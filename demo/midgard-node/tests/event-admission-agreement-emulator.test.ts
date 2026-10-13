@@ -61,11 +61,12 @@ const prepare = (
   fixture: Fixture,
   group: Group,
   options: SDK.UserHistoryBuildOptions,
-  withdrawal: Row["withdrawal"] = {},
+  row: Pick<Row, "l2Datum" | "withdrawal"> = {},
 ) =>
   Effect.runPromise(
     group === "withdrawal"
       ? Effect.gen(function* () {
+          const withdrawal = row.withdrawal ?? {};
           const address = yield* SDK.addressDataFromBech32(
             fixture.beneficiary.address,
           );
@@ -99,7 +100,7 @@ const prepare = (
       : SDK.prepareDepositSubmissionProgram(fixture.lucid, fixture.contracts, {
           ...depositConfig(
             fixture,
-            group === "deposit" ? null : EXTERNAL_L2_DATUM,
+            row.l2Datum ?? (group === "deposit" ? null : EXTERNAL_L2_DATUM),
           ),
           ...options,
         }),
@@ -173,7 +174,7 @@ const buildRow = async (
   let retained: UTxO[] = [];
   if (row.group === "external deposit") {
     const publishing = await withSdkReading(row.swap, () =>
-      prepare(fixture, row.group, options),
+      prepare(fixture, row.group, options, row),
     );
     expect(publishing.plan.kind).toBe("External");
     const publication = await withSdkReading(row.swap, () =>
@@ -194,7 +195,7 @@ const buildRow = async (
   const external =
     retained[0] === undefined ? {} : { externalData: retained[0] };
   const prepared = await withSdkReading(row.swap, () =>
-    prepare(fixture, row.group, { ...options, ...external }, row.withdrawal),
+    prepare(fixture, row.group, { ...options, ...external }, row),
   );
   const payloadCbor = withFields(prepared.request.payloadCbor, row.fields);
   const chain = await chainVerdict(() =>
@@ -261,50 +262,98 @@ describe("event-history admission agrees with the node's decoder (emulator)", ()
     nonce = (await fixture.lucid.wallet().getUtxos())[0]!;
   }, 120_000);
 
+  /** The chain's verdict on the row and the node's read of the same order. */
+  const verdicts = async (row: Row) => {
+    const { chain, location, prepared, retained } = await buildRow(
+      fixture,
+      nonce,
+      row,
+    );
+    // The order the node reads: the admitted one, or for a refused row the
+    // group's admitted control with only this row's payload (or its
+    // external storage hash) in place.
+    const orderDatum =
+      chain.orderDatum ??
+      replacePlutusConstrFieldCbor(
+        await controlOf(row.group),
+        LOCATION_FIELD,
+        location,
+      );
+    const policyId = (
+      row.group === "withdrawal"
+        ? fixture.contracts.withdrawal
+        : fixture.contracts.deposit
+    ).policyId;
+    const eventKey = datumToHash(
+      Data.to(
+        {
+          transactionId: nonce.txHash,
+          outputIndex: BigInt(nonce.outputIndex),
+        },
+        SDK.OutputReference,
+      ),
+    );
+    const order: UTxO = {
+      txHash: "00".repeat(32),
+      outputIndex: 1,
+      address: "",
+      assets: { ...prepared.request.assets, [policyId + eventKey]: 1n },
+      datum: orderDatum,
+    };
+    return {
+      chain: chain.admitted,
+      node: nodeDecodes(fixture, row.group, order, retained),
+    };
+  };
+
   it.each(ROWS)(
     "$group with $name: admitted $admitted",
     async (row) => {
-      const { chain, location, prepared, retained } = await buildRow(
-        fixture,
-        nonce,
-        row,
-      );
-      // The order the node reads: the admitted one, or for a refused row the
-      // group's admitted control with only this row's payload (or its
-      // external storage hash) in place.
-      const orderDatum =
-        chain.orderDatum ??
-        replacePlutusConstrFieldCbor(
-          await controlOf(row.group),
-          LOCATION_FIELD,
-          location,
-        );
-      const policyId = (
-        row.group === "withdrawal"
-          ? fixture.contracts.withdrawal
-          : fixture.contracts.deposit
-      ).policyId;
-      const eventKey = datumToHash(
-        Data.to(
-          {
-            transactionId: nonce.txHash,
-            outputIndex: BigInt(nonce.outputIndex),
-          },
-          SDK.OutputReference,
-        ),
-      );
-      const order: UTxO = {
-        txHash: "00".repeat(32),
-        outputIndex: 1,
-        address: "",
-        assets: { ...prepared.request.assets, [policyId + eventKey]: 1n },
-        datum: orderDatum,
-      };
-      expect({
-        chain: chain.admitted,
-        node: nodeDecodes(fixture, row.group, order, retained),
-      }).toEqual({ chain: row.admitted, node: row.admitted });
+      const { chain, node } = await verdicts(row);
+      expect({ chain, node }).toEqual({
+        chain: row.admitted,
+        node: row.admitted,
+      });
     },
     120_000,
   );
+
+  it("external deposit with a datum nested to the deployed node bound: admitted true", async () => {
+    const bound = SDK.requireEventHistoryContracts(fixture.contracts).deposit
+      .recipe.maxPayloadNodes;
+    // The payload's nodes besides a one-node datum, from the SDK's own
+    // payload for this deposit.
+    const shallow = await prepare(
+      fixture,
+      "deposit",
+      { nonceInput: nonce },
+      {
+        l2Datum: "00",
+      },
+    );
+    const others =
+      SDK.countHistoryDataNodesCbor(shallow.plan.payloadCbor, bound) - 1n;
+    const depth = Number(bound - others) - 1;
+    // `depth` nested lists around one integer.
+    const l2Datum = `${"9f".repeat(depth)}00${"ff".repeat(depth)}`;
+    const deep = await prepare(
+      fixture,
+      "external deposit",
+      { nonceInput: nonce },
+      {
+        l2Datum,
+      },
+    );
+    expect(SDK.countHistoryDataNodesCbor(deep.plan.payloadCbor, bound)).toBe(
+      bound,
+    );
+    expect(
+      await verdicts({
+        group: "external deposit",
+        name: "a deepest datum",
+        admitted: true,
+        l2Datum,
+      }),
+    ).toMatchObject({ chain: true, node: true });
+  }, 240_000);
 });

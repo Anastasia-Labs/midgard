@@ -41,6 +41,8 @@ export const setupWithdrawalMistagScenario = async ({
   payoutDatumBytes = 0,
   proofLevels = 0,
   maximumAssetNames = false,
+  l1DatumCbor,
+  honest = false,
 }: {
   readonly harness: Awaited<
     ReturnType<typeof makeWithdrawalMistagEmulatorHarness>
@@ -51,15 +53,20 @@ export const setupWithdrawalMistagScenario = async ({
   readonly payoutDatumBytes?: number;
   readonly proofLevels?: number;
   readonly maximumAssetNames?: boolean;
+  /** Raw `l1_datum` CBOR spliced into the committed bytes as written. */
+  readonly l1DatumCbor?: string;
+  /** Tag the withdrawal honestly instead of mistagging it. */
+  readonly honest?: boolean;
 }) => {
   const material = await buildWithdrawalMistagEvidenceMaterial(
     direction,
-    false,
+    honest,
     outputBytes,
     assetCount,
     payoutDatumBytes,
     proofLevels,
     maximumAssetNames,
+    l1DatumCbor,
   );
   const operatorVkey = await funderPaymentKeyHash(harness.funderLucid);
   const startTime =

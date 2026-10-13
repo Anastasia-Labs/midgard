@@ -29,6 +29,7 @@ import {
   operatorSetHook,
   publishedOperatorSetOf,
   publishOperatorMembership,
+  stateQueueStrikeFactsOf,
   stateQueueTailOf,
 } from "../../src/l1-operator-set/index.js";
 import { Globals } from "../../src/services/globals.js";
@@ -57,6 +58,8 @@ export const publishEmulatorOperatorSet = (
     const queue = yield* readLandedStateQueue(contracts.stateQueue);
     const stateQueueTail =
       queue.kind === "ok" ? stateQueueTailOf(queue.queue) : null;
+    const stateQueueStrikeFacts =
+      queue.kind === "ok" ? stateQueueStrikeFactsOf(queue.queue) : null;
     const store = yield* nodeFactStore;
     const config = operatorSetConfig(contracts);
     const eventHistory = SDK.requireEventHistoryContracts(contracts);
@@ -75,6 +78,7 @@ export const publishEmulatorOperatorSet = (
                 set,
                 membership,
                 stateQueueTail,
+                stateQueueStrikeFacts,
                 store,
                 retired: config.retired,
                 neglectedEvents: neglectedEventSourcesOf(

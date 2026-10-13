@@ -10,10 +10,11 @@ export const L1_EVENT_REFUSALS_UNREADABLE = "l1_event_refusals_unreadable";
 
 /**
  * The follower's event refusals still within k, as one degradation: their
- * count, the count per refusal reason and the newest refusal. A refusal is
- * a user's malformed or key-reusing order, so it reaches status and metrics
- * only and never fails readiness: anyone could otherwise hold the watcher
- * unready.
+ * count, the count per refusal reason and the newest refusal. Every refused
+ * order is one the on-chain observer admitted (the list token exists only
+ * through admission), so a refusal is a decoder defect that needs an
+ * operator. The follower runtime therefore also names it in readiness, until
+ * the refusal is k deep and pruned.
  */
 export const eventRefusalDegradationsIn = async (
   tx: SqlTx,

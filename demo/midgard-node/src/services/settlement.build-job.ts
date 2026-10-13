@@ -50,7 +50,15 @@ import {
   settlementCheck,
   settlementJobError,
 } from "./settlement-call.js";
-import { settlementRetryDelayMs } from "./settlement-retry.js";
+import {
+  clearSettlementReconcileFailures,
+  recordSettlementReconcileFailure,
+  type SettlementReconcileBackoff,
+  settlementReconcileBackoff,
+  settlementReconcileStuck,
+  settlementReconcileWait,
+  settlementRetryDelayMs,
+} from "./settlement-retry.js";
 
 const buildJob = (
   owner: Journal.SettlementOwner,
@@ -172,6 +180,7 @@ export const settlementTick = (
   owner: Journal.SettlementOwner,
   lucid: LucidEvolution,
   report: (health: SettlementHealth) => void,
+  reconcileBackoff: SettlementReconcileBackoff = settlementReconcileBackoff(),
 ) => {
   return Effect.gen(function* () {
     yield* Journal.assertOwner(owner);
@@ -182,17 +191,43 @@ export const settlementTick = (
     const blocker = yield* settleAttempts(owner, parameters);
     if (blocker !== undefined) {
       const { attempt } = blocker;
-      const detail = yield* reconcileAttempt(
-        owner,
-        attempt,
-        blocker.status,
-        lucid,
-      ).pipe(
-        Effect.mapError((cause) =>
-          settlementJobError(attempt, `${attempt.phase} reconcile`, cause),
+      const waitUntil = settlementReconcileWait(
+        reconcileBackoff,
+        attempt.tx_hash,
+        Date.now(),
+      );
+      if (waitUntil !== undefined) {
+        // A tick that only waits proves nothing about the worker run, so it
+        // never counts toward clearing the supervisor's failure streak.
+        report({
+          tickCompleted: false,
+          observedAt: Date.now(),
+          state: "error",
+          detail: `settlement reconcile retry at ${new Date(waitUntil).toISOString()}: ${reconcileBackoff.lastError ?? ""}`,
+        });
+        return;
+      }
+      const result = yield* Effect.exit(
+        reconcileAttempt(owner, attempt, blocker.status, lucid).pipe(
+          Effect.mapError((cause) =>
+            settlementJobError(attempt, `${attempt.phase} reconcile`, cause),
+          ),
         ),
       );
-      report({ observedAt: Date.now(), state: "waiting", detail });
+      if (result._tag === "Failure") {
+        recordSettlementReconcileFailure(
+          reconcileBackoff,
+          Date.now(),
+          settlementCauseDetail(result.cause).slice(0, 2000),
+        );
+        return yield* Effect.failCause(result.cause);
+      }
+      clearSettlementReconcileFailures(reconcileBackoff);
+      report({
+        observedAt: Date.now(),
+        state: "waiting",
+        detail: result.value,
+      });
       return;
     }
     const job = yield* Journal.nextJob(owner);
@@ -295,6 +330,7 @@ const acquireOwnership = (
 export const settlementProgram = (
   post: (health: SettlementHealth) => void,
   ownerToken: string = randomUUID(),
+  reconcileBackoff: SettlementReconcileBackoff = settlementReconcileBackoff(),
 ) =>
   Effect.gen(function* () {
     const config = yield* NodeConfig;
@@ -332,16 +368,29 @@ export const settlementProgram = (
       token: ownerToken,
     };
     yield* acquireOwnership(owner, report);
+    // Every tick's report names a stuck blocking reconcile.
+    const runReport = (health: SettlementHealth) => {
+      const stuck = settlementReconcileStuck(reconcileBackoff);
+      report(
+        stuck === undefined ? health : { ...health, reconcileStuck: stuck },
+      );
+    };
     // A report from inside a tick means the tick ran to its end without
-    // failing; the supervisor clears a worker's failure streak only on one.
+    // failing, unless it says otherwise; the supervisor clears a worker's
+    // failure streak only on such reports.
     const tickReport = (health: SettlementHealth) =>
-      report({ ...health, tickCompleted: true });
-    const tick = settlementTick(owner, baseLucid.api, tickReport).pipe(
+      runReport({ tickCompleted: true, ...health });
+    const tick = settlementTick(
+      owner,
+      baseLucid.api,
+      tickReport,
+      reconcileBackoff,
+    ).pipe(
       Effect.provideService(Lucid, settlementLucid),
       Effect.timeout("120 seconds"),
       Effect.catchAllCause((cause) =>
         Effect.sync(() => {
-          report({
+          runReport({
             observedAt: Date.now(),
             state: "error",
             detail: settlementCauseDetail(cause),

@@ -1,7 +1,7 @@
 /**
- * The follower's event refusals reach the watcher as one status-only
- * degradation: a user's malformed order is counted and named, never a
- * readiness reason.
+ * The follower's event refusals reach the watcher as one degradation: each
+ * refused order is counted and named. The follower runtime also names it in
+ * readiness (follower-runtime-liveness.test.ts).
  */
 import { afterEach, describe, expect, it } from "vitest";
 

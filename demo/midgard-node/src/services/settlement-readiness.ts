@@ -32,6 +32,16 @@ export const settlementStuckDetail = (stuck: {
     ? undefined
     : `settlement_jobs_stuck:${stuck.count.toString()}:${stuck.first.kind}:${stuck.first.event_id}:${stuck.first.phase}:${shortDetail(stuck.first.last_error)}`;
 
+/** The `/readyz` detail naming the attempt that blocks new settlement work
+ * while its reconcile has failed `SETTLEMENT_JOB_FAILURE_CAP` times in a row.
+ * A detail for the same reason as a stuck job. */
+export const settlementReconcileStuckDetail = (
+  health: SettlementHealth,
+): string | undefined =>
+  health.reconcileStuck === undefined
+    ? undefined
+    : `settlement_reconcile_stuck:${health.reconcileStuck.txHash}:${shortDetail(health.reconcileStuck.lastError)}`;
+
 /** Job-level failures, eligibility waits and pending confirmations are payout
  * delays and stay out of readiness reasons (a stuck job is a detail, above);
  * only a worker that cannot stay up is a reason. */

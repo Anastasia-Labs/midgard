@@ -315,6 +315,11 @@ export type WithdrawalMistagPreparedEvidence = {
     Data.Static<typeof OutputReferenceSchema>,
     WithdrawalInfo
   >;
+  /**
+   * The committed leaf value bytes. The redeemers carry these bytes, since a
+   * user datum need not survive the typed encoder.
+   */
+  readonly committedWithdrawalInfoCbor: string;
   readonly eventToStep: RootMembershipProof<
     Data.Static<typeof EventKeySchema>,
     Data.Static<typeof EventToStepValueSchema>

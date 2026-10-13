@@ -61,10 +61,12 @@ carries `ready: false` and current `reasons`. The operations server binds
 before the L1-dependent startup stages, so while they wait out an unanswering
 node `/readyz` names `startup:<stage>` and `/v1/status` answers 200. `GET /v1/status` remains the
 detailed runtime status and can return 200 while the watcher is held. Its
-`l1Degradations` are named L1 conditions that never fail readiness; among them
-`l1_user_event_refused` counts, by reason, the user orders the follower
-refused to admit within k (malformed or key-reusing) and names the newest, so
-no user can hold the watcher unready. The
+`l1Degradations` are named L1 conditions that never fail readiness on their
+own; among them `l1_user_event_refused` counts, by reason, the user orders the
+follower refused to admit within k and names the newest. Every such order was
+admitted by the on-chain observer, so a refusal is a disagreement between the
+node's decoder and the chain, and `/readyz` also names it until it is k deep
+and pruned. The
 operations endpoint is loopback and currently has no application bearer gate;
 keep it internal. An alive process does not establish watcher readiness. A held runtime must remain visible for diagnosis
 without admitting proof or availability work. Readiness must come from a live

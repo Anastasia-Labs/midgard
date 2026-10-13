@@ -33,13 +33,12 @@ import {
 import {
   datumSchemas,
   type IntermediateStepIndex,
-  redeemerSchemas,
   referenceScriptRoles,
   requireLiveDatum,
-  stepArgs,
   type SubmitWithdrawalMistagStepResult,
   withdrawalMistagStates,
   withdrawalMistagStepPayloadCbor,
+  withdrawalMistagStepRedeemerCbor,
 } from "./submit-withdrawal-mistag-steps.step-args.js";
 
 export const submitWithdrawalMistagIntermediateStep = async ({
@@ -137,23 +136,16 @@ export const submitWithdrawalMistagIntermediateStep = async ({
       `${withdrawalMistagStepLabel(stepIndex)} output`,
     );
     resolved = { inputIndex, outputIndex };
-    return Data.to(
-      {
-        Continue: [
-          stepArgs({
-            stepIndex,
-            prepared,
-            inputIndex,
-            outputIndex,
-            ctx,
-            hubOracleUtxo,
-            stateQueueBlockUtxo,
-            evidenceReferences,
-          }),
-        ],
-      } as never,
-      redeemerSchemas[stepIndex] as never,
-    );
+    return withdrawalMistagStepRedeemerCbor({
+      stepIndex,
+      prepared,
+      inputIndex,
+      outputIndex,
+      ctx,
+      hubOracleUtxo,
+      stateQueueBlockUtxo,
+      evidenceReferences,
+    });
   }) satisfies BuildTxWithRedeemer;
 
   signer.selectWallet(lucid);

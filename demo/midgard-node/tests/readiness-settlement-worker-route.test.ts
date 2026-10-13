@@ -209,4 +209,23 @@ describe("GET /readyz settlement worker", () => {
       [],
     );
   });
+
+  it("names a stuck blocking reconcile as a detail and stays ready on it", async () => {
+    const txHash = "ee".repeat(32);
+    expect(
+      await readyz({
+        ...health("error", "settlement reconcile retry at later: timeout"),
+        reconcileStuck: {
+          txHash,
+          failures: SETTLEMENT_JOB_FAILURE_CAP,
+          lastError: "transactionStatus: timeout\n    at stack",
+        },
+      }),
+    ).toMatchObject({
+      settlementReasons: [],
+      settlementDetails: [
+        `settlement_reconcile_stuck:${txHash}:transactionStatus: timeout`,
+      ],
+    });
+  });
 });

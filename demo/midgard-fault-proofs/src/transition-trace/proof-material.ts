@@ -1,3 +1,5 @@
+import { isDeepStrictEqual } from "node:util";
+
 import {
   aikenSerialisedPlutusDataCborPreservingMapOrder,
   plutusConstrFieldCbor,
@@ -80,6 +82,40 @@ const historySource = (
   return null;
 };
 
+/** The proof with its source value's user datum dropped, so the typed encoder
+ * frames every other field; the raw leaf then fills the value field. */
+const withSourceValueFrame = (
+  proof: SDK.TransitionFaultProof,
+  source: HistorySource,
+): SDK.TransitionFaultProof => {
+  const value =
+    source.kind === "Deposit"
+      ? { ...source.membership.value, l2_datum: null }
+      : {
+          ...source.membership.value,
+          body: { ...source.membership.value.body, l1_datum: "NoDatum" },
+        };
+  const [arm, fault] = Object.entries(proof.fault)[0]! as [
+    string,
+    { witness: Record<string, { source_membership: object }> },
+  ];
+  const [kind, witness] = Object.entries(fault.witness)[0]!;
+  return {
+    ...proof,
+    fault: {
+      [arm]: {
+        ...fault,
+        witness: {
+          [kind]: {
+            ...witness,
+            source_membership: { ...witness.source_membership, value },
+          },
+        },
+      },
+    } as SDK.TransitionFaultProof["fault"],
+  };
+};
+
 export const transitionProofHistorySource = (input: TransitionProofInput) => {
   const cbor = transitionProofCbor(input);
   const source = historySource(Data.from(cbor, SDK.TransitionFaultProof));
@@ -104,8 +140,11 @@ export const makeTransitionProofMaterial = (
       Data.to(reconstruction.header, SDK.Header)
   )
     throw new Error("Transition proof header differs from its reconstruction");
-  let proofCbor = Data.to(proof, SDK.TransitionFaultProof);
   const source = historySource(proof);
+  let proofCbor = Data.to(
+    source === null ? proof : withSourceValueFrame(proof, source),
+    SDK.TransitionFaultProof,
+  );
   if (source !== null) {
     const root =
       source.kind === "Deposit"
@@ -131,14 +170,16 @@ export const makeTransitionProofMaterial = (
     const valueCbor = entry.valueBytes.toString("hex");
     const schema =
       source.kind === "Deposit" ? SDK.DepositInfo : SDK.WithdrawalInfo;
-    const shadow =
-      source.kind === "Deposit"
-        ? Data.to(source.membership.value, SDK.DepositInfo)
-        : Data.to(source.membership.value, SDK.WithdrawalInfo);
+    // The raw leaf decides and the typed view must be its decoded view;
+    // neither is re-encoded, since user datum Data need not survive a typed
+    // encoder.
     if (
       aikenSerialisedPlutusDataCborPreservingMapOrder(valueCbor) !==
         valueCbor ||
-      Data.to(Data.from(valueCbor, schema as never), schema as never) !== shadow
+      !isDeepStrictEqual(
+        Data.from(valueCbor, schema as never),
+        source.membership.value,
+      )
     )
       throw new Error("Transition proof source view differs from its raw leaf");
     const opened = mpfProofFromWitness({

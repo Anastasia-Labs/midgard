@@ -4,6 +4,7 @@
  * clock, configuration) and it answers what to do this tick. Keeping it pure
  * lets the two tiers and the patience window be tested with a fake clock.
  */
+import type { StateQueueStrikeFacts } from "../l1-operator-set/strike-facts.js";
 
 /**
  * The part of a takeover plan the policy needs. The SDK planner produces a
@@ -65,6 +66,20 @@ export type WatchdogPolicyInput = {
   /** Whether this node's operator is currently in the active set. */
   readonly ownOperatorIsActive: boolean;
   readonly plan: WatchdogTakeoverPlan;
+  /** The landed state queue's strike facts. */
+  readonly stateQueue: StateQueueStrikeFacts;
+  /**
+   * How long after the tail's commit the shift holder counts as making
+   * progress: the new-shift inactivity grace period, the slice cadence an
+   * honest operator catching up keeps.
+   */
+  readonly progressWindowMs: number;
+  /**
+   * The least span from planning a commit to its TTL: within this of the
+   * append fence closing, a commit can no longer be planned to land before
+   * it, so the queue already counts as unappendable.
+   */
+  readonly commitTtlMs: number;
 };
 
 /**
@@ -80,6 +95,32 @@ const resolveTier = (
     return { tier: "successor", actAtMs: thresholdMs + 1 };
   }
   return { tier: "any_active", actAtMs: thresholdMs + 1 + input.patienceMs };
+};
+
+/**
+ * Never strike progress (B7). Nobody is struck while no append can land: a
+ * new shift holder could not commit either. That starts one commit TTL
+ * before the append fence closes, since a commit planned later cannot land
+ * in time. The shift holder is not struck
+ * while the tail it extends is recent: a holder committing a slice every
+ * progress window is catching up, however old the events it has yet to
+ * cover. The strike validator checks neither; a takeover held here is
+ * planned again when the hold ends.
+ */
+const progressHold = (
+  input: WatchdogPolicyInput,
+): WatchdogDecision | undefined => {
+  const { appendFenceClosesAtMs, tailBlockTimeMs } = input.stateQueue;
+  if (
+    appendFenceClosesAtMs !== null &&
+    BigInt(input.nowMs) >= appendFenceClosesAtMs - BigInt(input.commitTtlMs)
+  )
+    return { action: "idle", reason: "state_queue_unappendable" };
+  if (tailBlockTimeMs === null) return undefined;
+  const untilMs = Number(tailBlockTimeMs) + input.progressWindowMs + 1;
+  return input.nowMs < untilMs
+    ? { action: "wait", reason: "shift_holder_making_progress", untilMs }
+    : undefined;
 };
 
 export const decideOperatorWatchdogAction = (
@@ -125,6 +166,8 @@ export const decideOperatorWatchdogAction = (
           untilMs: actAtMs,
         };
       }
+      const held = progressHold(input);
+      if (held !== undefined) return held;
       return {
         action: "strike",
         tier,
@@ -147,6 +190,8 @@ export const decideOperatorWatchdogAction = (
           untilMs: actAtMs,
         };
       }
+      const held = progressHold(input);
+      if (held !== undefined) return held;
       return {
         action: "force_retire",
         tier,

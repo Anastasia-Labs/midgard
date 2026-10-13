@@ -1,8 +1,6 @@
 import { compareOutRefs, outRefLabel } from "@al-ft/midgard-core/out-ref";
-import { replacePlutusConstrFieldCbor } from "@al-ft/midgard-core/plutus-data-cbor";
 import {
   type Assets,
-  Data,
   getAddressDetails,
   type LucidEvolution,
   type UTxO,
@@ -18,7 +16,7 @@ import {
 } from "../tx-completion.js";
 import {
   EVENT_HISTORY_MAX_PROTECTION_TIME,
-  EventHistoryNode,
+  type EventHistoryNode,
   type EventHistoryRecipe,
 } from "./history.js";
 import {
@@ -33,6 +31,7 @@ import {
   eventHistoryWithdrawalFunding,
 } from "./history-funding.js";
 import {
+  encodeEventHistoryOrderNode,
   prepareEventHistoryPayload,
   prepareEventHistoryPayloadCbor,
 } from "./history-payload.js";
@@ -245,14 +244,7 @@ export const quoteUserHistoryFunding = ({
     lovelace: EVENT_HISTORY_MAX_PROTECTION_TIME,
     [unit]: 1n,
   };
-  const envelopeCbor = () =>
-    plan.kind === "Inline"
-      ? replacePlutusConstrFieldCbor(
-          Data.to(envelope, EventHistoryNode),
-          [3, 0, 2, 0],
-          plan.payloadCbor,
-        )
-      : Data.to(envelope, EventHistoryNode);
+  const envelopeCbor = () => encodeEventHistoryOrderNode(envelope, plan);
   const nodeMinimum = eventHistoryMinimumNodeLovelace(
     maximumAssets,
     envelopeCbor(),

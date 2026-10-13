@@ -2,7 +2,8 @@
  * The follower names what it cannot read or run: a failed refusals or
  * tx-inputs read is a degradation of its own rather than nothing to report,
  * and a follow loop that throws is named in readiness and not restarted: a
- * throw is a defect, not a transient failure.
+ * throw is a defect, not a transient failure. A refused order the chain
+ * admitted is named in readiness too.
  */
 import { fakeL1NodeTransport } from "@al-ft/l1-node-transport/testing";
 import type { FollowStatus } from "@al-ft/midgard-l1-follower";
@@ -18,6 +19,8 @@ import { D, RECOVERY_DEPTH } from "../support/l1-follower-store-reset.js";
 
 const faults = vi.hoisted(() => ({
   refusals: false,
+  /** The refusals read reports one refused order. */
+  refused: false,
   txInputs: false,
   /** Follow runs that throw before one runs until aborted. */
   loopThrows: 0,
@@ -57,6 +60,14 @@ vi.mock("../../src/l1-follower/event-refusals.js", async (load) => {
       ...args: Parameters<typeof actual.eventRefusalDegradationsIn>
     ) => {
       if (faults.refusals) throw new Error("refusals table is locked");
+      if (faults.refused)
+        return [
+          {
+            reason: actual.L1_USER_EVENT_REFUSED,
+            count: 1,
+            detail: "malformed=1; newest: deposit order ab#0",
+          },
+        ];
       return await actual.eventRefusalDegradationsIn(...args);
     },
   };
@@ -84,6 +95,7 @@ vi.mock("../../src/l1-follower/tx-inputs.js", async (load) => {
 afterEach(() => {
   Object.assign(faults, {
     refusals: false,
+    refused: false,
     txInputs: false,
     loopThrows: 0,
     loopRuns: 0,
@@ -149,6 +161,24 @@ describe("follower runtime liveness", () => {
       faults.refusals = false;
       faults.txInputs = false;
       expect(await reasons(follower)).toEqual([]);
+    } finally {
+      await follower.close();
+    }
+  });
+
+  it("names a refused admitted order in readiness until the refusal is gone", async () => {
+    const follower = open(true);
+    const refused = {
+      reason: "l1_user_event_refused",
+      detail: "malformed=1; newest: deposit order ab#0",
+    };
+    try {
+      await vi.waitFor(async () => expect(faults.loopRuns).toBe(1));
+      expect(await follower.readiness()).not.toContainEqual(refused);
+      faults.refused = true;
+      expect(await follower.readiness()).toContainEqual(refused);
+      faults.refused = false;
+      expect(await follower.readiness()).not.toContainEqual(refused);
     } finally {
       await follower.close();
     }

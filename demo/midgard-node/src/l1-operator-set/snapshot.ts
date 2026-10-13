@@ -29,6 +29,7 @@ import {
   neglectedUserEventIn,
 } from "./neglected-event.js";
 import type { OperatorSet } from "./set.js";
+import type { StateQueueStrikeFacts } from "./strike-facts.js";
 
 /**
  * What the operator-set hook publishes for the node's fibers
@@ -40,6 +41,8 @@ export type PublishedOperatorSet = Readonly<{
   set: OperatorSet;
   membership: OperatorMembership;
   stateQueueTail: SDK.StateQueueTail | null;
+  /** The same queue's strike facts (B7); null when the tail is. */
+  stateQueueStrikeFacts: StateQueueStrikeFacts | null;
   /** The retired insertion anchor of a key, read at the follower's tip. */
   retiredInsertionAnchor: (
     operatorKey: string,
@@ -63,6 +66,7 @@ export const publishedOperatorSetOf = (input: {
   readonly set: OperatorSet;
   readonly membership: OperatorMembership;
   readonly stateQueueTail: SDK.StateQueueTail | null;
+  readonly stateQueueStrikeFacts: StateQueueStrikeFacts | null;
   readonly store: Pick<FactStore, "dialect" | "transaction">;
   readonly retired: OperatorListContract;
   readonly neglectedEvents: NeglectedEventSources;
@@ -70,6 +74,7 @@ export const publishedOperatorSetOf = (input: {
   set: input.set,
   membership: input.membership,
   stateQueueTail: input.stateQueueTail,
+  stateQueueStrikeFacts: input.stateQueueStrikeFacts,
   retiredInsertionAnchor: (operatorKey) =>
     input.store.transaction("read", (tx) =>
       retiredInsertionAnchorIn(

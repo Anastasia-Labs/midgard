@@ -26,12 +26,17 @@
  * idle, and the tick re-plans a minute later. A forced retirement at the
  * strike cap needs no event: the chain checks the strike count alone.
  *
+ * Progress (B7): no strike or forced retirement lands while the state queue
+ * accepts no append, nor against a shift holder whose tail is younger than
+ * the new-shift grace period (`progressHold` in the policy).
+ *
  * A strike that fails on its citation does not wedge the tick: a script
  * refusal passes over that citation at once, any other failure after
  * `MAX_STRIKE_ATTEMPTS_PER_CITATION` attempts, and the next plan cites the
  * next citable event (`recordCitationFailure`). The record is per scheduler
  * UTxO and bounded, and each pass-over is logged and recorded by name.
  */
+import { COMMIT_TTL_FUTURE_BUFFER_MS } from "@al-ft/midgard-core/deployment-profile";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Effect, Ref, type Schedule } from "effect";
 
@@ -183,6 +188,12 @@ export const makeOperatorWatchdogTick = <R = never>(
       });
     if (directory.kind === "unavailable")
       return yield* deferUnplanned(directory.reason, directory.detail);
+    const stateQueue = published?.stateQueueStrikeFacts ?? null;
+    if (stateQueue === null)
+      return yield* deferUnplanned(
+        "state_queue_unavailable",
+        "the landed state queue has no strike facts",
+      );
     // S5: a plan from the published set records under the set's view.
     const intentPlan = intentPlanAt(directory.view);
     citationFailures = citationFailuresAt(
@@ -239,6 +250,9 @@ export const makeOperatorWatchdogTick = <R = never>(
         SDK.findNodeByKey(planning.snapshot.active, ownOperatorKey) !==
         undefined,
       plan: toWatchdogPlan(planning.plan),
+      stateQueue,
+      progressWindowMs: Number(SDK.NEW_SHIFT_INACTIVITY_GRACE_PERIOD_MS),
+      commitTtlMs: COMMIT_TTL_FUTURE_BUFFER_MS,
     });
 
     switch (decision.action) {

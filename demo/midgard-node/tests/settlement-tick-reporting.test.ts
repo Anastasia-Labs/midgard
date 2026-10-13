@@ -8,12 +8,7 @@ import { randomUUID } from "node:crypto";
 
 import { DEPLOYMENT_MANIFEST_L1_FINALITY } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { SqlClient } from "@effect/sql";
-import {
-  CML,
-  generateSeedPhrase,
-  OgmiosJsonRpcError,
-  walletFromSeed,
-} from "@lucid-evolution/lucid";
+import { generateSeedPhrase, OgmiosJsonRpcError } from "@lucid-evolution/lucid";
 import { Cause, Effect, Fiber } from "effect";
 import { UnknownException } from "effect/Cause";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -38,15 +33,20 @@ import {
   settlementCall,
   settlementCauseDetail,
 } from "../src/services/settlement-call.js";
-import { settlementStuckDetail } from "../src/services/settlement-readiness.js";
+import {
+  settlementReconcileStuckDetail,
+  settlementStuckDetail,
+} from "../src/services/settlement-readiness.js";
 import {
   SETTLEMENT_JOB_FAILURE_CAP,
   SETTLEMENT_STUCK_RETRY_MS,
+  type SettlementReconcileBackoff,
   settlementRetryDelayMs,
 } from "../src/services/settlement-retry.js";
 import { runSettlementWorker } from "../src/workers/settlement.run-settlement-worker.js";
 import { openFollowerWriteGate } from "./helpers/follower-write-gate.js";
 import { withoutFollowerJournal } from "./helpers/intent-journal.js";
+import { pendingSettlementAttempt } from "./helpers/settlement-pending-attempt.js";
 import { provideDatabaseLayers, resetApplicationTables } from "./utils.js";
 
 vi.mock("../src/l1-provider-view.js", async (original) => {
@@ -78,35 +78,8 @@ beforeEach(() =>
 );
 
 /** A signed-looking withdrawal initialize body, valid until slot `ttl`. */
-const pendingAttempt = (ttl = 120n): Journal.SettlementAttempt => {
-  const inputs = CML.TransactionInputList.new();
-  inputs.add(
-    CML.TransactionInput.new(CML.TransactionHash.from_hex("ab".repeat(32)), 0n),
-  );
-  const outputs = CML.TransactionOutputList.new();
-  outputs.add(
-    CML.TransactionOutput.new(
-      CML.Address.from_bech32(
-        walletFromSeed(generateSeedPhrase(), { network: "Preprod" }).address,
-      ),
-      CML.Value.from_coin(2_000_000n),
-    ),
-  );
-  const body = CML.TransactionBody.new(inputs, outputs, 200_000n);
-  body.set_ttl(ttl);
-  const tx = CML.Transaction.new(body, CML.TransactionWitnessSet.new(), true);
-  return {
-    deployment_id: deploymentId,
-    kind: "withdrawal",
-    event_id: EVENT_ID,
-    phase: "initialize",
-    signed_cbor: tx.to_cbor_hex(),
-    tx_hash: CML.hash_transaction(body).to_hex(),
-    required_outputs: [0],
-    fee_inputs: [`${"ab".repeat(32)}#0`],
-    status: "pending",
-  };
-};
+const pendingAttempt = (ttl = 120n): Journal.SettlementAttempt =>
+  pendingSettlementAttempt({ deploymentId, eventId: EVENT_ID, ttl });
 
 type L1 = {
   readonly transactionStatus?: (hash: string) => Promise<unknown>;
@@ -118,6 +91,8 @@ type L1 = {
   readonly ttl?: bigint;
   /** The job's consecutive failures before this tick (default 0). */
   readonly failures?: number;
+  /** The worker run's reconcile backoff before this tick. */
+  readonly reconcileBackoff?: SettlementReconcileBackoff;
 };
 
 /** Runs the worker program over one pending body (or one queued job) until
@@ -137,15 +112,25 @@ const firstTick = (l1: (attempt: Journal.SettlementAttempt) => L1) =>
     const sql = yield* SqlClient.SqlClient;
     yield* sql`INSERT INTO settlement_jobs (deployment_id, kind, event_id, phase)
       VALUES (${deploymentId}, ${attempt.kind}, ${attempt.event_id}, ${attempt.phase})`;
-    const { transactionStatus, submitTx, utxosAt, unbuilt, failures } =
-      l1(attempt);
+    const {
+      transactionStatus,
+      submitTx,
+      utxosAt,
+      unbuilt,
+      failures,
+      reconcileBackoff,
+    } = l1(attempt);
     yield* sql`UPDATE settlement_jobs SET failures = ${failures ?? 0}`;
     yield* Journal.renew(owner);
     if (unbuilt !== true)
       yield* Journal.saveAttempt(owner, attempt, Effect.void);
     const reports: SettlementHealth[] = [];
     const fiber = yield* Effect.fork(
-      settlementProgram((health) => reports.push(health), token).pipe(
+      settlementProgram(
+        (health) => reports.push(health),
+        token,
+        reconcileBackoff,
+      ).pipe(
         Effect.provideService(NodeConfig, config),
         Effect.provideService(ContractDeploymentIdentity, {
           kind: "manifest",
@@ -333,6 +318,34 @@ describe("settlement tick reporting", () => {
       `settlement withdrawal ${EVENT_ID} initialize reconcile: transactionStatus ${attempt.tx_hash}: socket hang up`,
     );
     expect(report.detail).not.toContain(UNKNOWN);
+  }, 30_000);
+
+  it("names a blocking reconcile stuck at the cap, in a wait tick that does not complete", async () => {
+    const statusReads = vi.fn(() => Promise.reject(new Error("never reached")));
+    const { report } = await run(
+      withoutFollowerJournal(
+        firstTick((attempt) => ({
+          ttl: 5n,
+          transactionStatus: statusReads,
+          submitTx: () => Promise.reject(new Error("never reached")),
+          reconcileBackoff: {
+            txHash: attempt.tx_hash,
+            failures: SETTLEMENT_JOB_FAILURE_CAP,
+            dueAt: Date.now() + 60_000,
+            lastError: "socket hang up",
+          },
+        })),
+      ),
+    );
+    expect(statusReads).not.toHaveBeenCalled();
+    expect(report).toMatchObject({ state: "error", tickCompleted: false });
+    expect(report.reconcileStuck).toMatchObject({
+      failures: SETTLEMENT_JOB_FAILURE_CAP,
+      lastError: "socket hang up",
+    });
+    expect(settlementReconcileStuckDetail(report)).toBe(
+      `settlement_reconcile_stuck:${report.reconcileStuck!.txHash}:socket hang up`,
+    );
   }, 30_000);
 
   it("reports a journaled pending body as a completed waiting tick and never sends it (S6 does)", async () => {

@@ -37,6 +37,7 @@ import {
 } from "./history.js";
 import { assertEventHistoryAdmissionFunding } from "./history-funding.js";
 import {
+  encodeEventHistoryOrderNode,
   prepareEventHistoryPayload,
   prepareEventHistoryPayloadCbor,
 } from "./history-payload.js";
@@ -295,14 +296,7 @@ export const buildEventHistoryAdmission = async (
       },
     },
   };
-  const nodeCbor =
-    plan.kind === "Inline"
-      ? replacePlutusConstrFieldCbor(
-          Data.to(node, EventHistoryNode),
-          [3, 0, 2, 0],
-          plan.payloadCbor,
-        )
-      : Data.to(node, EventHistoryNode);
+  const nodeCbor = encodeEventHistoryOrderNode(node, plan);
   assertEventHistoryAdmissionFunding(
     nodeCbor,
     { ...request.assets, [applied.policyId + plan.key]: 1n },

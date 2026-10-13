@@ -200,6 +200,7 @@ export const buildDuplicateOutRefMistagMaterial = async (
           withdrawalEntries[1]!.value,
         ),
       },
+      committedWithdrawalInfoCbor: withdrawalEntries[1]!.value.toString("hex"),
       eventToStep: {
         domain: SDK.ROOT_DOMAINS.eventToStep,
         root: event.root,

@@ -1,4 +1,8 @@
-import { aikenSerialisedPlutusDataCborPreservingMapOrder } from "@al-ft/midgard-core/plutus-data-cbor";
+import {
+  aikenSerialisedPlutusDataCborPreservingMapOrder,
+  plutusConstrFieldCbor,
+  replacePlutusConstrFieldCbor,
+} from "@al-ft/midgard-core/plutus-data-cbor";
 import {
   WithdrawalMistagStep01PayloadSchema,
   WithdrawalMistagStep02PayloadSchema,
@@ -146,6 +150,36 @@ export const requireLiveDatum = ({
   }
 };
 
+/**
+ * The committed withdrawal with its user datum dropped, so the typed encoder
+ * frames every other field. A user datum need not survive a typed encoder;
+ * the committed bytes fill the frame instead.
+ */
+const framedInfo = (
+  prepared: WithdrawalMistagPreparedEvidence,
+): WithdrawalMistagPreparedEvidence["committedWithdrawal"]["value"] => {
+  const info = prepared.committedWithdrawal.value;
+  return { ...info, body: { ...info.body, l1_datum: "NoDatum" } };
+};
+
+/** Where each step's payload carries the committed bytes, and which bytes. */
+const committedSplice = (
+  prepared: WithdrawalMistagPreparedEvidence,
+  stepIndex: IntermediateStepIndex,
+): { readonly path: readonly number[]; readonly cbor: string } => {
+  const infoCbor = prepared.committedWithdrawalInfoCbor;
+  switch (stepIndex) {
+    case 0:
+      // committed_withdrawal.value
+      return { path: [0, 5], cbor: infoCbor };
+    case 1:
+    case 2:
+      return { path: [0], cbor: infoCbor };
+    case 3:
+      return { path: [0], cbor: plutusConstrFieldCbor(infoCbor, [0]) };
+  }
+};
+
 const inlineStepArgs = ({
   stepIndex,
   prepared,
@@ -183,25 +217,28 @@ const inlineStepArgs = ({
           stateQueueBlockUtxo,
           "withdrawal-mistag state-queue node",
         ),
-        committed_withdrawal: prepared.committedWithdrawal,
+        committed_withdrawal: {
+          ...prepared.committedWithdrawal,
+          value: framedInfo(prepared),
+        },
       };
     case 1:
       return {
         ...common,
-        withdrawal_info: prepared.committedWithdrawal.value,
+        withdrawal_info: framedInfo(prepared),
         event_to_step: prepared.eventToStep,
         transition_step: prepared.transitionStep,
       };
     case 2:
       return {
         ...common,
-        withdrawal_info: prepared.committedWithdrawal.value,
+        withdrawal_info: framedInfo(prepared),
         evidence: prepared.ledgerEvidence,
       };
     case 3:
       return {
         ...common,
-        withdrawal_body: prepared.committedWithdrawal.value.body,
+        withdrawal_body: framedInfo(prepared).body,
       };
   }
 };
@@ -213,25 +250,31 @@ const payloadSchemas = [
   WithdrawalMistagStep04PayloadSchema,
 ] as const;
 
+/** The step's payload bytes, carrying the committed withdrawal bytes as committed. */
 export const withdrawalMistagStepPayloadCbor = (
   prepared: WithdrawalMistagPreparedEvidence,
   stepIndex: IntermediateStepIndex,
 ): string => {
+  const info = framedInfo(prepared);
   const payload = [
-    { committed_withdrawal: prepared.committedWithdrawal },
     {
-      withdrawal_info: prepared.committedWithdrawal.value,
+      committed_withdrawal: { ...prepared.committedWithdrawal, value: info },
+    },
+    {
+      withdrawal_info: info,
       event_to_step: prepared.eventToStep,
       transition_step: prepared.transitionStep,
     },
-    {
-      withdrawal_info: prepared.committedWithdrawal.value,
-      evidence: prepared.ledgerEvidence,
-    },
-    { withdrawal_body: prepared.committedWithdrawal.value.body },
+    { withdrawal_info: info, evidence: prepared.ledgerEvidence },
+    { withdrawal_body: info.body },
   ][stepIndex];
-  return aikenSerialisedPlutusDataCborPreservingMapOrder(
-    Data.to(payload as never, payloadSchemas[stepIndex] as never),
+  const { path, cbor } = committedSplice(prepared, stepIndex);
+  return replacePlutusConstrFieldCbor(
+    aikenSerialisedPlutusDataCborPreservingMapOrder(
+      Data.to(payload as never, payloadSchemas[stepIndex] as never),
+    ),
+    path,
+    cbor,
   );
 };
 
@@ -301,6 +344,27 @@ export const stepArgs = (
             },
           },
   };
+};
+
+/**
+ * The step's spend redeemer. Inline evidence carries the payload whose frame
+ * holds the committed withdrawal bytes as committed.
+ */
+export const withdrawalMistagStepRedeemerCbor = (
+  args: Parameters<typeof stepArgs>[0],
+): string => {
+  const redeemerCbor = Data.to(
+    { Continue: [stepArgs(args)] } as never,
+    redeemerSchemas[args.stepIndex] as never,
+  );
+  if (args.evidenceReferences !== undefined) return redeemerCbor;
+  // Continue's args, their payload field, then InlineEvidence's value.
+  const path = [0, args.stepIndex === 0 ? 4 : 2, 0];
+  const payloadCbor = withdrawalMistagStepPayloadCbor(
+    args.prepared,
+    args.stepIndex,
+  );
+  return replacePlutusConstrFieldCbor(redeemerCbor, path, payloadCbor);
 };
 
 export type SubmitWithdrawalMistagStepResult = {

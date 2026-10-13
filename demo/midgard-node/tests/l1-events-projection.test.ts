@@ -405,6 +405,18 @@ describe.each(["sqlite", "postgres"] as const)(
       );
       const newDeposit = userEventEntry(projectedDeposit, "Preprod");
       if (newDeposit.kind !== "deposit") throw new Error("expected a deposit");
+      // DepositInfo has exactly three fields, as the chain's typed read does.
+      const info = plutusConstrFieldCbor(projectedDeposit.payloadCbor, [0, 1]);
+      const fourFields = {
+        ...projectedDeposit,
+        payloadCbor: projectedDeposit.payloadCbor.replace(
+          info,
+          `${info.slice(0, -2)}00ff`,
+        ),
+      };
+      expect(() => userEventEntry(fourFields, "Preprod")).toThrow(
+        "deposit info is not a three-field constructor 0",
+      );
       expect(newDeposit.entry).toEqual({
         idCbor: oldDeposit.event_id.toString("hex"),
         infoCbor: oldDeposit.event_info.toString("hex"),
