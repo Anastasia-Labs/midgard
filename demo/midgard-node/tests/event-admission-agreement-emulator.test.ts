@@ -331,7 +331,8 @@ describe("event-history admission agrees with the node's decoder (emulator)", ()
         l2Datum: "00",
       },
     );
-    const others = SDK.countHistoryDataNodesCbor(shallow.plan.payloadCbor) - 1n;
+    const others =
+      SDK.countHistoryDataNodesCbor(shallow.plan.payloadCbor, bound) - 1n;
     const depth = Number(bound - others) - 1;
     // `depth` nested lists around one integer.
     const l2Datum = `${"9f".repeat(depth)}00${"ff".repeat(depth)}`;
@@ -343,7 +344,9 @@ describe("event-history admission agrees with the node's decoder (emulator)", ()
         l2Datum,
       },
     );
-    expect(SDK.countHistoryDataNodesCbor(deep.plan.payloadCbor)).toBe(bound);
+    expect(SDK.countHistoryDataNodesCbor(deep.plan.payloadCbor, bound)).toBe(
+      bound,
+    );
     expect(
       await verdicts({
         group: "external deposit",
