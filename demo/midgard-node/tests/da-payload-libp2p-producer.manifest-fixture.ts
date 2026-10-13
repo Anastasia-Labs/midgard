@@ -203,6 +203,7 @@ export const insertFixture = (): DaPayloadsDB.InsertInput => ({
   [DaPayloadsDB.Columns.VALIDATION_TRACE_COUNT]: 0n,
   [DaPayloadsDB.Columns.BLOCK_START_TIME]: new Date("2026-06-21T00:00:00Z"),
   [DaPayloadsDB.Columns.BLOCK_END_TIME]: new Date("2026-06-21T00:00:01Z"),
+  [DaPayloadsDB.Columns.BLOCK_TIME]: new Date("2026-06-21T00:00:01Z"),
 });
 
 export const rowFixture = (): DaPayloadsDB.Row => ({

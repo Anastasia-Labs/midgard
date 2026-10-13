@@ -786,7 +786,7 @@
   },
   {
     "file": "midgard-node-tools/devnet/watcher-journeys/staging-recovery.test.ts",
-    "max": 866,
+    "max": 865,
     "reason": "Hoisted or module-scoped Vitest mocks own this test file’s import/evaluation boundary. Moving registrations between modules changes mock timing; retain the suite with its mocks and local fixtures. DUPDEL (+15): the cross-block duplicate-event family was deleted; repeated deposit and withdrawal events are convicted by the fabricated-event families."
   },
   {
@@ -951,13 +951,13 @@
   },
   {
     "file": "midgard-node/src/workers/commit-block-header/submission.submit-deposit-only-commit.ts",
-    "max": 516,
-    "reason": "submitDepositOnlyCommit is the dominant indivisible declaration (466 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. U3 (+2): the final event-source recheck applies the configured horizon lag d. I2 (-30): the stale-operator-wallet retry and the confirmation reconcile pin are gone; the commit funds from the wallet view. I3 (+1): the journal-time recheck also refuses an included event shallower than d (plan §8.1). NBF2 (-1): a header held by a signed abandoned journal returns the next-window wait before the crash checkpoint, which unnests the journal submit."
+    "max": 518,
+    "reason": "submitDepositOnlyCommit is the dominant indivisible declaration (466 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. U3 (+2): the final event-source recheck applies the configured horizon lag d. I2 (-30): the stale-operator-wallet retry and the confirmation reconcile pin are gone; the commit funds from the wallet view. I3 (+1): the journal-time recheck also refuses an included event shallower than d (plan §8.1). NBF2 (-1): a header held by a signed abandoned journal returns the next-window wait before the crash checkpoint, which unnests the journal submit. C2 (+2): the journal records the block time beside the block end."
   },
   {
     "file": "midgard-node/src/workers/commit-block-header/submission.submit-tx-backed-commit.ts",
-    "max": 640,
-    "reason": "submitTxBackedCommit is the dominant indivisible declaration (580 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. U3 (+2): the final event-source recheck applies the configured horizon lag d. I2 (-29): the stale-operator-wallet retry and the confirmation reconcile pin are gone; the commit funds from the wallet view. I3 (+1): the journal-time recheck also refuses an included event shallower than d (plan §8.1)."
+    "max": 642,
+    "reason": "submitTxBackedCommit is the dominant indivisible declaration (580 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. U3 (+2): the final event-source recheck applies the configured horizon lag d. I2 (-29): the stale-operator-wallet retry and the confirmation reconcile pin are gone; the commit funds from the wallet view. I3 (+1): the journal-time recheck also refuses an included event shallower than d (plan §8.1). C2 (+2): the journal records the block time beside the block end."
   },
   {
     "file": "midgard-node/src/workers/mpf-engine-probe.ts",
@@ -1046,12 +1046,12 @@
   },
   {
     "file": "midgard-node/tests/database.test/availability.ts",
-    "max": 622,
-    "reason": "registerAvailabilityTests is the dominant indivisible declaration (593 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. I1-fix (+6): the finalized status is renamed locally_applied (I1-E1 option B), whose longer name wraps."
+    "max": 634,
+    "reason": "registerAvailabilityTests is the dominant indivisible declaration (593 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. I1-fix (+6): the finalized status is renamed locally_applied (I1-E1 option B), whose longer name wraps. C2 (+12): each DA payload and journal fixture row carries its block time."
   },
   {
     "file": "midgard-node/tests/database.test/finalization.register-finalization-tests.ts",
-    "max": 716,
+    "max": 704,
     "reason": "registerFinalizationTests is the dominant indivisible declaration (874 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
   },
   {
@@ -1066,8 +1066,8 @@
   },
   {
     "file": "midgard-node/tests/database.test/mpf.ts",
-    "max": 668,
-    "reason": "registerMpfTests is the dominant indivisible declaration (678 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. N5 (-43): the locked confirmed-ledger delta-chain transaction it tested is gone; the fold by stored delta is tested in confirmed-ledger-temporal.test.ts. N5b (-2): the merge finalization no longer clears the block rows, so the refusal case needs no rows of its own. N1H (-5): the merge finalization takes its header from the journal, so the calls pass no header hash."
+    "max": 670,
+    "reason": "registerMpfTests is the dominant indivisible declaration (678 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. N5 (-43): the locked confirmed-ledger delta-chain transaction it tested is gone; the fold by stored delta is tested in confirmed-ledger-temporal.test.ts. N5b (-2): the merge finalization no longer clears the block rows, so the refusal case needs no rows of its own. N1H (-5): the merge finalization takes its header from the journal, so the calls pass no header hash. C2 (+2): each journal fixture carries its block time."
   },
   {
     "file": "midgard-node/tests/deposit-flow-emulator-commit-selection.test.ts",

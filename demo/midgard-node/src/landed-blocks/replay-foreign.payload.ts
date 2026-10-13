@@ -38,6 +38,7 @@ const discardCorrupt = (
   refetching: Refetching,
   headerHash: string,
   header: SDK.Header,
+  blockTime: bigint,
   why: string,
 ) =>
   Effect.gen(function* () {
@@ -53,7 +54,7 @@ const discardCorrupt = (
       if (refetching.size <= REFETCHING_LIMIT) break;
       refetching.delete(oldest);
     }
-    return yield* fetched(fetchDa, refetching, headerHash, header);
+    return yield* fetched(fetchDa, refetching, headerHash, header, blockTime);
   });
 
 /** Fetches the payload; while a refetch is owed, a failure says so. */
@@ -62,6 +63,7 @@ const fetched = (
   refetching: Refetching,
   headerHash: string,
   header: SDK.Header,
+  blockTime: bigint,
 ) =>
   fetchDa(headerHash, header).pipe(
     Effect.mapError((error) => {
@@ -80,6 +82,7 @@ const fetched = (
         acquired: foreignRetainedDaInsert(
           headerHash,
           header,
+          blockTime,
           acquired.payloadBytes,
         ),
       };
@@ -92,6 +95,7 @@ export const payloadOf = (
   refetching: Refetching,
   headerHash: string,
   header: SDK.Header,
+  blockTime: bigint,
 ) =>
   Effect.gen(function* () {
     const identity = yield* ContractDeploymentIdentity;
@@ -99,9 +103,9 @@ export const payloadOf = (
       Buffer.from(headerHash, "hex"),
     );
     if (Option.isNone(stored))
-      return yield* fetched(fetchDa, refetching, headerHash, header);
+      return yield* fetched(fetchDa, refetching, headerHash, header, blockTime);
     const corrupt = (why: string) =>
-      discardCorrupt(fetchDa, refetching, headerHash, header, why);
+      discardCorrupt(fetchDa, refetching, headerHash, header, blockTime, why);
     const row = stored.value;
     if (
       !row[DaPayloadsDB.Columns.HEADER_HASH].equals(

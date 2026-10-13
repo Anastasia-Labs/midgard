@@ -38,6 +38,7 @@ export const registerRetainedScriptMaterialQuotaTests = (
             ...daPayloadInsertFixture("live-pin-durable-reservation"),
             block_start_time: new Date("2026-01-01"),
             block_end_time: new Date("2026-01-02"),
+            block_time: new Date("2026-01-02"),
           };
           yield* DaPayloadsDB.upsertAvailable(insert);
           yield* CekProgramMaterialDB.pinRetainedStateScriptRefs({
@@ -77,6 +78,7 @@ export const registerRetainedScriptMaterialQuotaTests = (
             ...daPayloadInsertFixture("live-pin-durable-reservation-head"),
             block_start_time: new Date("2026-01-02"),
             block_end_time: new Date("2026-01-03"),
+            block_time: new Date("2026-01-03"),
           };
           yield* DaPayloadsDB.upsertAvailable(head);
           expect(

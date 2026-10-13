@@ -445,6 +445,7 @@ const insertFromFixture = (
     fixture.header.validationTraceCount,
   [DaPayloadsDB.Columns.BLOCK_START_TIME]: new Date(1),
   [DaPayloadsDB.Columns.BLOCK_END_TIME]: new Date(2),
+  [DaPayloadsDB.Columns.BLOCK_TIME]: new Date(2),
 });
 
 const delay = (milliseconds: number): Promise<void> =>

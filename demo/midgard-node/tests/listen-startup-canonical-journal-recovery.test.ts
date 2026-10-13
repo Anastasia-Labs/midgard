@@ -56,7 +56,8 @@ const withDepositMember = (header: Buffer) =>
 const positiveWindows = Effect.flatMap(
   SqlClient.SqlClient,
   (sql) => sql`UPDATE pending_block_finalizations
-    SET block_end_time = block_start_time + INTERVAL '1 second'`,
+    SET block_end_time = block_start_time + INTERVAL '1 second',
+      block_time = block_start_time + INTERVAL '1 second'`,
 );
 
 const readStatus = (header: Buffer) =>

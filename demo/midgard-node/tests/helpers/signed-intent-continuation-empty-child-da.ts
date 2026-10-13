@@ -79,7 +79,12 @@ export const retainSignedIntentContinuationEmptyChildDa = (
       }),
     );
     yield* DaPayloadsDB.upsertAvailable(
-      foreignRetainedDaInsert(childHeaderHash, childHeader, bytes),
+      foreignRetainedDaInsert(
+        childHeaderHash,
+        childHeader,
+        childHeader.endTime,
+        bytes,
+      ),
     );
     return { payload, bytes, roots, counts };
   });

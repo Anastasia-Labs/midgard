@@ -99,6 +99,7 @@ const record = ({
   [PendingBlockFinalizationsDB.Columns.BASE_WITHDRAWALS_ROOT]: EMPTY_ROOT,
   [PendingBlockFinalizationsDB.Columns.BLOCK_START_TIME]: BLOCK_START,
   [PendingBlockFinalizationsDB.Columns.BLOCK_END_TIME]: BLOCK_END,
+  [PendingBlockFinalizationsDB.Columns.BLOCK_TIME]: BLOCK_END,
   [PendingBlockFinalizationsDB.Columns.EXPECTED_UTXOS_ROOT]: expectedRoot,
   [PendingBlockFinalizationsDB.Columns.EXPECTED_FORCED_TRANSACTIONS_ROOT]:
     EMPTY_ROOT,

@@ -63,6 +63,9 @@ export const registerAvailabilityTests = () => {
               [DaPayloadsDB.Columns.BLOCK_END_TIME]: new Date(
                 "2026-06-12T00:00:10.000Z",
               ),
+              [DaPayloadsDB.Columns.BLOCK_TIME]: new Date(
+                "2026-06-12T00:00:10.000Z",
+              ),
             } satisfies DaPayloadsDB.InsertInput;
 
             yield* DaPayloadsDB.upsertAvailable(insert);
@@ -101,6 +104,9 @@ export const registerAvailabilityTests = () => {
                 "2026-07-10T00:00:00.000Z",
               ),
               [DaPayloadsDB.Columns.BLOCK_END_TIME]: new Date(
+                "2026-07-10T00:00:20.000Z",
+              ),
+              [DaPayloadsDB.Columns.BLOCK_TIME]: new Date(
                 "2026-07-10T00:00:20.000Z",
               ),
             };
@@ -504,6 +510,9 @@ export const registerAvailabilityTests = () => {
               [PendingBlockFinalizationsDB.Columns.BLOCK_END_TIME]: new Date(
                 baseTime.getTime() + 1_000,
               ),
+              [PendingBlockFinalizationsDB.Columns.BLOCK_TIME]: new Date(
+                baseTime.getTime() + 1_000,
+              ),
               [PendingBlockFinalizationsDB.Columns.EXPECTED_UTXOS_ROOT]:
                 SDK.EMPTY_MERKLE_TREE_ROOT,
               [PendingBlockFinalizationsDB.Columns
@@ -589,6 +598,9 @@ export const registerAvailabilityTests = () => {
               [DaPayloadsDB.Columns.VALIDATION_TRACE_COUNT]: 0n,
               [DaPayloadsDB.Columns.BLOCK_START_TIME]: baseTime,
               [DaPayloadsDB.Columns.BLOCK_END_TIME]: new Date(
+                baseTime.getTime() + 1_000,
+              ),
+              [DaPayloadsDB.Columns.BLOCK_TIME]: new Date(
                 baseTime.getTime() + 1_000,
               ),
             });

@@ -50,6 +50,7 @@ export enum Columns {
   BASE_WITHDRAWALS_ROOT = "base_withdrawals_root",
   BLOCK_START_TIME = "block_start_time",
   BLOCK_END_TIME = "block_end_time",
+  BLOCK_TIME = "block_time",
   EXPECTED_UTXOS_ROOT = "expected_utxos_root",
   EXPECTED_FORCED_TRANSACTIONS_ROOT = "expected_forced_transactions_root",
   EXPECTED_TRANSACTIONS_ROOT = "expected_transactions_root",
@@ -158,6 +159,7 @@ export type Row = {
   [Columns.BASE_WITHDRAWALS_ROOT]: string;
   [Columns.BLOCK_START_TIME]: Date;
   [Columns.BLOCK_END_TIME]: Date;
+  [Columns.BLOCK_TIME]: Date;
   [Columns.EXPECTED_UTXOS_ROOT]: string;
   [Columns.EXPECTED_FORCED_TRANSACTIONS_ROOT]: string;
   [Columns.EXPECTED_TRANSACTIONS_ROOT]: string;

@@ -55,6 +55,7 @@ const journalRow = ({
   submitted_tx_hash:
     submittedTxHash === null ? null : Buffer.from(submittedTxHash, "hex"),
   block_end_time: createdAt,
+  block_time: createdAt,
   status,
   observed_confirmed_at_ms: null,
   created_at: createdAt,

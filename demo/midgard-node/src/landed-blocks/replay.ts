@@ -16,6 +16,8 @@ import type { WithdrawalMembership } from "./store.js";
 export type ReplayInput = Readonly<{
   headerHash: string;
   header: SDK.Header;
+  /** The block's commit time (its node's `block_time`). */
+  blockTime: bigint;
   parentHeaderHash: string;
   parentUtxosRoot: string;
   parentEntries: readonly Ledger.MinimalEntry[];

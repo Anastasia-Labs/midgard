@@ -149,6 +149,7 @@ export const insertJournal = (input: {
       intended_tx_hash: txHash,
       signed_tx_cbor: input.commit.cbor,
       block_end_time: at,
+      block_time: at,
       status: input.status,
       correction_transition_digest: correctionDigest,
       observed_confirmed_at_ms: null,

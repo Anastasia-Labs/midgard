@@ -59,6 +59,7 @@ const payloadFixture = (label: string): DaPayloadsDB.InsertInput => {
     [DaPayloadsDB.Columns.VALIDATION_TRACE_COUNT]: 0n,
     [DaPayloadsDB.Columns.BLOCK_START_TIME]: new Date(),
     [DaPayloadsDB.Columns.BLOCK_END_TIME]: new Date(),
+    [DaPayloadsDB.Columns.BLOCK_TIME]: new Date(),
   };
 };
 
@@ -123,6 +124,7 @@ const insertJournal = (
       header_hash: headerHash,
       submitted_tx_hash: null,
       block_end_time: at,
+      block_time: at,
       status,
       correction_transition_digest: correctionTransitionDigest,
       observed_confirmed_at_ms: null,

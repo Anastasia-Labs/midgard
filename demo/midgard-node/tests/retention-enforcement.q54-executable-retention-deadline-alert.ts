@@ -244,6 +244,7 @@ export const daPayloadFixture = (
       blockEndTime.getTime() - 1_000,
     ),
     [DaPayloadsDB.Columns.BLOCK_END_TIME]: blockEndTime,
+    [DaPayloadsDB.Columns.BLOCK_TIME]: blockEndTime,
   };
 };
 

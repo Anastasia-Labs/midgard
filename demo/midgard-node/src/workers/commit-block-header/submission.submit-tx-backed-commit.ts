@@ -343,6 +343,7 @@ export const submitTxBackedCommit = ({
                 newHeader,
                 newHeaderCbor,
                 blockEndTimeMs,
+                blockTimeMs,
                 signAndSubmitProgram,
                 txSize,
               } = buildResult;
@@ -464,6 +465,7 @@ export const submitTxBackedCommit = ({
                       headerCbor: newHeaderCbor,
                       metadata,
                       blockEndTime: new Date(blockEndTimeMs),
+                      blockTime: new Date(blockTimeMs),
                       depositEventIds: includedDepositEventIds,
                       depositEntries: includedDepositEntries,
                       forcedTransactionEventIds:

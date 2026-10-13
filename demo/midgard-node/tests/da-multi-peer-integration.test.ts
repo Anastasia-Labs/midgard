@@ -376,6 +376,7 @@ const insertFromFixture = (
   [DaPayloadsDB.Columns.VALIDATION_TRACE_COUNT]: 0n,
   [DaPayloadsDB.Columns.BLOCK_START_TIME]: new Date(1),
   [DaPayloadsDB.Columns.BLOCK_END_TIME]: new Date(2),
+  [DaPayloadsDB.Columns.BLOCK_TIME]: new Date(2),
 });
 
 const reserveLoopbackPort = (): Promise<number> =>

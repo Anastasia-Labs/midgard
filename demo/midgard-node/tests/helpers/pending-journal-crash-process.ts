@@ -74,6 +74,7 @@ const program = Effect.gen(function* () {
       },
     },
     blockEndTime: new Date("2026-04-13T18:01:00.000Z"),
+    blockTime: new Date("2026-04-13T18:01:00.000Z"),
     depositEventIds: [depositId],
     depositEntries: [deposit],
     forcedTransactionEventIds: [],

@@ -46,6 +46,7 @@ export enum Columns {
   VALIDATION_TRACE_COUNT = "validation_trace_count",
   BLOCK_START_TIME = "block_start_time",
   BLOCK_END_TIME = "block_end_time",
+  BLOCK_TIME = "block_time",
   CREATED_AT = "created_at",
   UPDATED_AT = "updated_at",
 }
@@ -73,6 +74,7 @@ export type Row = {
   [Columns.VALIDATION_TRACE_COUNT]: bigint;
   [Columns.BLOCK_START_TIME]: Date;
   [Columns.BLOCK_END_TIME]: Date;
+  [Columns.BLOCK_TIME]: Date;
   [Columns.CREATED_AT]: Date;
   [Columns.UPDATED_AT]: Date;
 };
@@ -140,6 +142,7 @@ export type InsertInput = Pick<
   | Columns.VALIDATION_TRACE_COUNT
   | Columns.BLOCK_START_TIME
   | Columns.BLOCK_END_TIME
+  | Columns.BLOCK_TIME
 >;
 
 export const upsertAvailable = (
@@ -217,6 +220,9 @@ export const upsertAvailable = (
         )}
         AND ${sql(tableName)}.${sql(Columns.BLOCK_END_TIME)} = EXCLUDED.${sql(
           Columns.BLOCK_END_TIME,
+        )}
+        AND ${sql(tableName)}.${sql(Columns.BLOCK_TIME)} = EXCLUDED.${sql(
+          Columns.BLOCK_TIME,
         )}
       RETURNING ${sql(Columns.HEADER_HASH)}
     `;

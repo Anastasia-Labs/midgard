@@ -45,6 +45,7 @@ export const decodeStoredPayload = ({
 export const foreignRetainedDaInsert = (
   headerHash: string,
   header: SDK.Header,
+  blockTime: bigint,
   payloadBytes: Buffer,
 ): DaPayloadsDB.InsertInput => ({
   header_hash: Buffer.from(headerHash, "hex"),
@@ -69,6 +70,7 @@ export const foreignRetainedDaInsert = (
   validation_trace_count: header.validationTraceCount,
   block_start_time: new Date(Number(header.startTime)),
   block_end_time: new Date(Number(header.endTime)),
+  block_time: new Date(Number(blockTime)),
 });
 
 /** Acquire untrusted public bytes through the existing authenticated libp2p

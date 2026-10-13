@@ -21,12 +21,18 @@ import {
 import type { MergePoint } from "./confirmed-merges.js";
 import { ViewMoved } from "./ports.js";
 
-/** A queue node: its header hash and header. */
-export type LandedNode = Readonly<{ headerHash: string; header: SDK.Header }>;
+/** A queue node: its header hash, header and block time (its commit time). */
+export type LandedNode = Readonly<{
+  headerHash: string;
+  header: SDK.Header;
+  blockTime: bigint;
+}>;
 
 export type QueueHistory = Readonly<{
   /** Every header a retained queue node carried, by header hash. */
   headers: ReadonlyMap<string, SDK.Header>;
+  /** The block time of each node in `headers`. */
+  blockTimes: ReadonlyMap<string, bigint>;
   /** Each header's end time, from a node or a root that carried it. */
   endTimes: ReadonlyMap<string, bigint>;
   /**
@@ -64,6 +70,7 @@ export const decodeHistory = (
   elements: readonly LandedStateQueueElement[],
 ): QueueHistory => {
   const headers = new Map<string, SDK.Header>();
+  const blockTimes = new Map<string, bigint>();
   const endTimes = new Map<string, bigint>();
   const roots = new Map<string, MergePoint>();
   for (const element of elements) {
@@ -80,14 +87,17 @@ export const decodeHistory = (
         });
       continue;
     }
-    const header = Effect.runSync(
-      Effect.either(SDK.getHeaderFromStateQueueDatum(element.element.datum)),
+    const node = Effect.runSync(
+      Effect.either(
+        SDK.getStateQueueNodeFromStateQueueDatum(element.element.datum),
+      ),
     );
-    if (header._tag === "Left") continue;
-    headers.set(element.headerHash, header.right);
-    endTimes.set(element.headerHash, header.right.endTime);
+    if (node._tag === "Left") continue;
+    headers.set(element.headerHash, node.right.header);
+    blockTimes.set(element.headerHash, node.right.block_time);
+    endTimes.set(element.headerHash, node.right.header.endTime);
   }
-  return { headers, endTimes, roots };
+  return { headers, blockTimes, endTimes, roots };
 };
 
 /** `to` and its ancestors after the first one `stop` accepts, oldest first. */
@@ -108,9 +118,14 @@ export const lineageBack = (
   let cursor = to;
   while (!stop(cursor)) {
     const header = history.headers.get(cursor);
-    if (header === undefined || headers.length >= history.headers.size)
+    const blockTime = history.blockTimes.get(cursor);
+    if (
+      header === undefined ||
+      blockTime === undefined ||
+      headers.length >= history.headers.size
+    )
       return undefined;
-    headers.unshift({ headerHash: cursor, header });
+    headers.unshift({ headerHash: cursor, header, blockTime });
     cursor = header.prevHeaderHash;
   }
   return { anchor: cursor, headers };
