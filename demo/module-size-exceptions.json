@@ -81,8 +81,8 @@
   },
   {
     "file": "lucid-midgard/src/builder.tx-builder.ts",
-    "max": 922,
-    "reason": "TxBuilder is one state owner: its methods share private state and lifecycle invariants. Further extraction would redesign ownership rather than separate independent declarations; surrounding helpers have been extracted."
+    "max": 952,
+    "reason": "TxBuilder is one state owner: its methods share private state and lifecycle invariants. Further extraction would redesign ownership rather than separate independent declarations; surrounding helpers have been extracted. P (+30): evaluate() and the complete/chain dispatch to it; the draft-and-evaluate loop lives in builder/redeemer-evaluation.ts."
   },
   {
     "file": "lucid-midgard/tests/finalization.test.ts",
