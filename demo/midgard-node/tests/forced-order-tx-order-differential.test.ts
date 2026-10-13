@@ -25,6 +25,7 @@ import {
   EMPTY_NULL_ROOT,
   encodeCbor,
   encodeMidgardForcedTxCanonical,
+  encodeMidgardSpendInputItem,
   encodeMidgardTxOutput,
   materializeMidgardForcedTxFromCanonical,
   MIDGARD_NATIVE_NETWORK_ID_NONE,
@@ -149,6 +150,10 @@ const harness = async (): Promise<Harness> => {
       )
     ).complete({ localUPLCEval: true }),
   );
+  // The SDK backdates user-event validity by 60 seconds. Advance this
+  // genesis-clock emulator before building orders so that lower slot is
+  // representable; production clocks are already past genesis.
+  emulator.awaitBlock(3);
   return h;
 };
 
@@ -182,7 +187,14 @@ const transaction = (tx: TxShape): Buffer =>
     materializeMidgardForcedTxFromCanonical({
       version: MIDGARD_NATIVE_TX_VERSION,
       body: {
-        spendInputsPreimageCbor: EMPTY_CBOR_LIST,
+        // Forced admission requires a spend input; the differential tests
+        // carriage commitment, rather than executing this L2 transaction.
+        spendInputsPreimageCbor: encodeCbor([
+          encodeMidgardSpendInputItem({
+            txId: Buffer.alloc(32, 0x3a),
+            outputIndex: 0,
+          }),
+        ]),
         referenceInputsPreimageCbor: EMPTY_CBOR_LIST,
         outputsPreimageCbor: encodeCbor(
           tx.outputs.map((output) =>
@@ -319,8 +331,10 @@ const buildOrder = async (
         }),
       ),
     );
-    if (redeemer === undefined)
+    if (redeemer === undefined) {
+      if (built._tag === "Left") throw built.left;
       throw new Error("the builder encoded no tx-order mint redeemer");
+    }
     return { built, redeemer };
   } finally {
     clock.mockRestore();

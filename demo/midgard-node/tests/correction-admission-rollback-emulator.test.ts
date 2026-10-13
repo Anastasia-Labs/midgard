@@ -106,6 +106,10 @@ it("admits a landed correction, recomputes its rollback at cd + 1 and its reland
     expect(depth()).toBe(1);
     const admitted = await observe(h, b1);
     expect(expectOneRoot(admitted)).toBe(base);
+    // The deposit remains projected for the next block, while its output
+    // becomes unspendable until assigned to a landed header again.
+    expect(admitted.workingRoot).toBe(applied.workingRoot);
+    expect(admitted.workingRoot).not.toBe(admitted.sqlRoot);
     expect(admitted.journal).toMatchObject({ status: "abandoned" });
     // D1 is pending again: released to awaiting, and at once re-projected
     // (it is due) with no header, for the next block to carry.
@@ -177,6 +181,7 @@ it("admits a landed correction, recomputes its rollback at cd + 1 and its reland
     await advance(h, 0);
     const readmitted = await observe(h, b1);
     expect(expectOneRoot(readmitted)).toBe(base);
+    expect(readmitted.workingRoot).toBe(admitted.workingRoot);
     expect(readmitted.journal).toMatchObject({ status: "abandoned" });
     expect(readmitted.deposits).toEqual(admitted.deposits);
     expect(readmitted.landed).toEqual(admitted.landed);
