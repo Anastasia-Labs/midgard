@@ -215,7 +215,7 @@ describe("retention-days floor and deployment binding", () => {
 describe("retentionDeadlineForBlockV1", () => {
   it("keys the deadline on block end time, not local insert time", () => {
     const deadline = retentionDeadlineForBlock({
-      blockEndTimeMs: BLOCK_END,
+      blockTimeMs: BLOCK_END,
       retentionDays: 15,
     });
     expect(deadline.challengeableUntilMs).toBe(BLOCK_END + HORIZON_MS);
@@ -228,7 +228,7 @@ describe("retentionDeadlineForBlockV1", () => {
 
   it("accepts retentionDays=0 without collapsing challengeability", () => {
     const deadline = retentionDeadlineForBlock({
-      blockEndTimeMs: BLOCK_END,
+      blockTimeMs: BLOCK_END,
       retentionDays: 0,
     });
     expect(deadline.retainUntilMs).toBe(BLOCK_END);
@@ -237,8 +237,8 @@ describe("retentionDeadlineForBlockV1", () => {
 
   it("rejects malformed block end times", () => {
     for (const bad of [Number.NaN, -1, 1.5, "0", null]) {
-      expect(() => retentionDeadlineForBlock({ blockEndTimeMs: bad })).toThrow(
-        /blockEndTimeMs must be a non-negative safe integer/u,
+      expect(() => retentionDeadlineForBlock({ blockTimeMs: bad })).toThrow(
+        /blockTimeMs must be a non-negative safe integer/u,
       );
     }
   });

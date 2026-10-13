@@ -1,5 +1,9 @@
 import { DatabaseSync } from "node:sqlite";
 
+import {
+  l1SlotToPosixTimeMs,
+  NAMED_NETWORK_L1_SLOT_CONFIGS,
+} from "@al-ft/midgard-core/l1-slot-config";
 import { afterEach, describe, expect, it } from "vitest";
 
 import {
@@ -12,9 +16,9 @@ import { makeWatcherTranscriptArchiveFixture } from "../support/replay-transcrip
 
 const resources: DatabaseSync[] = [];
 afterEach(() => resources.splice(0).forEach((database) => database.close()));
-const fixture = async () => {
+const fixture = async (blockTime?: bigint) => {
   const { createInput, retentionWindow, retirementObservation } =
-    await makeWatcherTranscriptArchiveFixture();
+    await makeWatcherTranscriptArchiveFixture({ blockTime });
   const transcript =
     await createWatcherAuthenticatedReplayTranscript(createInput);
   const database = new DatabaseSync(":memory:");
@@ -56,9 +60,47 @@ const fixture = async () => {
     operationDigest,
     sweep,
     retirementObservation,
+    retentionWindow,
   };
 };
 describe("classified transcript dependency lifecycle", () => {
+  it("keeps catch-up evidence through the commit-time horizon after coverage and inclusion horizons elapsed", async () => {
+    const clock = NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod;
+    const commitSlot = 4300n;
+    const blockTime =
+      l1SlotToPosixTimeMs(clock, commitSlot) + BigInt(clock.slotLength) - 1n;
+    const {
+      store,
+      transcript,
+      classification,
+      sweep,
+      retirementObservation,
+      retentionWindow,
+    } = await fixture(blockTime);
+    await store.completeClassification(classification);
+    const retainedSlot = (
+      commitSlot +
+      (BigInt(retentionWindow.retentionDays) * 86_400_000n) /
+        BigInt(clock.slotLength)
+    ).toString();
+    const before = (blockNo: string) => ({
+      ...sweep,
+      observation: retirementObservation({ slot: retainedSlot, blockNo }),
+    });
+    expect(await store.retireExpired(before("12000"))).toBe(0);
+    expect(await store.retireExpired(before("14161"))).toBe(0);
+    expect(await store.read(transcript)).not.toBeNull();
+    expect(
+      await store.retireExpired({
+        ...sweep,
+        observation: retirementObservation({
+          slot: (BigInt(retainedSlot) + 1n).toString(),
+          blockNo: "14162",
+        }),
+      }),
+    ).toBe(1);
+  });
+
   it("keeps time-expired old inclusion evidence while its recent absence remains recoverable, including the boundary", async () => {
     const { store, transcript, classification, sweep, retirementObservation } =
       await fixture();

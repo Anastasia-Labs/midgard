@@ -5,7 +5,7 @@ import {
   requireRetentionDays,
   retentionDeadlineForBlock,
 } from "@al-ft/midgard-core";
-import { Header } from "@al-ft/midgard-sdk";
+import { Header, StateQueueNode } from "@al-ft/midgard-sdk";
 import {
   Data,
   SLOT_CONFIG_NETWORK,
@@ -24,6 +24,7 @@ import {
   type VerifiedWatcherDeploymentIdentity,
 } from "../runtime/deployment-identity.js";
 import { createWatcherReplayTranscriptAbsence } from "./replay-transcript-absence.js";
+import { addReplayTranscriptBlockTimeColumn } from "./replay-transcript-lifecycle.block-time-migration.js";
 import { createWatcherReplayTranscriptOperationDoors } from "./replay-transcript-operation-doors.js";
 import type { WatcherReplayTranscriptIdentity } from "./replay-transcript-store.js";
 import {
@@ -49,6 +50,7 @@ const natural = /^(?:0|[1-9][0-9]{0,19})$/u;
 export type WatcherReplayTranscriptLifecyclePin = Readonly<{
   operation_digest: string;
   end_time: string;
+  block_time: string | null;
   retention_days: number;
   network: string;
   completed_slot: string | null;
@@ -74,6 +76,7 @@ export const createWatcherReplayTranscriptLifecycle = (input: {
     identity TEXT NOT NULL,
     operation_digest TEXT NOT NULL CHECK(length(operation_digest) = 64),
     end_time TEXT NOT NULL,
+    block_time TEXT,
     retention_days INTEGER NOT NULL,
     network TEXT NOT NULL,
     completed_slot TEXT,
@@ -88,8 +91,11 @@ export const createWatcherReplayTranscriptLifecycle = (input: {
     unresolved_legacy INTEGER NOT NULL CHECK(unresolved_legacy IN (0, 1)),
     pins_digest TEXT NOT NULL CHECK(length(pins_digest) = 64)
   ) STRICT;`);
+  transaction("BEGIN IMMEDIATE", () =>
+    addReplayTranscriptBlockTimeColumn(database, hash),
+  );
   const rows = database.prepare(
-    "SELECT operation_digest, end_time, retention_days, network, completed_slot, checksum, classification_complete, proof_started FROM watcher_replay_transcript_operation WHERE identity = ? ORDER BY operation_digest",
+    "SELECT operation_digest, end_time, block_time, retention_days, network, completed_slot, checksum, classification_complete, proof_started FROM watcher_replay_transcript_operation WHERE identity = ? ORDER BY operation_digest",
   );
   const summary = database.prepare(
     "SELECT pin_count, unresolved_legacy, pins_digest FROM watcher_replay_transcript_lifecycle WHERE identity = ?",
@@ -127,6 +133,7 @@ export const createWatcherReplayTranscriptLifecycle = (input: {
       if (
         !/^[0-9a-f]{64}$/u.test(pin.operation_digest) ||
         !natural.test(pin.end_time) ||
+        (pin.block_time !== null && !natural.test(pin.block_time)) ||
         (pin.completed_slot !== null && !natural.test(pin.completed_slot)) ||
         pin.retention_days !==
           requireRetentionDays(
@@ -141,6 +148,7 @@ export const createWatcherReplayTranscriptLifecycle = (input: {
             key,
             pin.operation_digest,
             pin.end_time,
+            pin.block_time,
             pin.retention_days,
             pin.network,
             pin.completed_slot,
@@ -185,6 +193,7 @@ export const createWatcherReplayTranscriptLifecycle = (input: {
                 key,
                 next.operation_digest,
                 next.end_time,
+                next.block_time,
                 next.retention_days,
                 next.network,
                 next.completed_slot,
@@ -237,9 +246,14 @@ export const createWatcherReplayTranscriptLifecycle = (input: {
         throw new Error("replay transcript lifecycle identity differs");
       const decoded = Data.from(header.headerCborHex, Header);
       const endTime = decoded.endTime.toString();
+      const node = Data.from(header.stateQueueNodeCborHex, StateQueueNode);
+      const blockTime = node.block_time.toString();
       if (
         Data.to(decoded, Header) !== header.headerCborHex ||
-        !natural.test(endTime)
+        Data.to(node.header, Header) !== header.headerCborHex ||
+        Data.to(node, StateQueueNode) !== header.stateQueueNodeCborHex ||
+        !natural.test(endTime) ||
+        !natural.test(blockTime)
       )
         throw new Error("replay transcript lifecycle header is invalid");
       const prior = pins.find(
@@ -249,6 +263,7 @@ export const createWatcherReplayTranscriptLifecycle = (input: {
         if (
           prior.completed_slot !== null ||
           prior.end_time !== endTime ||
+          (prior.block_time !== null && prior.block_time !== blockTime) ||
           prior.retention_days !== window.retentionDays ||
           prior.network !== lifecycle.deploymentIdentity.network
         )
@@ -257,13 +272,15 @@ export const createWatcherReplayTranscriptLifecycle = (input: {
           );
         database
           .prepare(
-            "UPDATE watcher_replay_transcript_operation SET classification_complete = 0, checksum = ? WHERE identity = ? AND operation_digest = ?",
+            "UPDATE watcher_replay_transcript_operation SET block_time = ?, classification_complete = 0, checksum = ? WHERE identity = ? AND operation_digest = ?",
           )
           .run(
+            blockTime,
             hash([
               key,
               prior.operation_digest,
               prior.end_time,
+              blockTime,
               prior.retention_days,
               prior.network,
               prior.completed_slot,
@@ -280,18 +297,20 @@ export const createWatcherReplayTranscriptLifecycle = (input: {
         throw new Error("replay transcript lifecycle exceeds pin limit");
       database
         .prepare(
-          "INSERT INTO watcher_replay_transcript_operation VALUES (?, ?, ?, ?, ?, NULL, ?, 0, 0)",
+          "INSERT INTO watcher_replay_transcript_operation (identity, operation_digest, end_time, block_time, retention_days, network, completed_slot, checksum, classification_complete, proof_started) VALUES (?, ?, ?, ?, ?, ?, NULL, ?, 0, 0)",
         )
         .run(
           key,
           lifecycle.operationDigest,
           endTime,
+          blockTime,
           window.retentionDays,
           lifecycle.deploymentIdentity.network,
           hash([
             key,
             lifecycle.operationDigest,
             endTime,
+            blockTime,
             window.retentionDays,
             lifecycle.deploymentIdentity.network,
             null,
@@ -352,6 +371,7 @@ export const createWatcherReplayTranscriptLifecycle = (input: {
           // No lifecycle record means legacy or unresolved work, never permission.
           if (
             pins.length === 0 ||
+            pins.some((pin) => pin.block_time === null) ||
             (summary.get(key) as { unresolved_legacy: number })
               .unresolved_legacy === 1 ||
             pins.some((pin) => pin.network !== request.network) ||
@@ -385,9 +405,8 @@ export const createWatcherReplayTranscriptLifecycle = (input: {
               BigInt(clock.slotLength);
           let eligible = true;
           for (const pin of pins) {
-            const endTime = Number(pin.end_time);
             const deadline = retentionDeadlineForBlock({
-              blockEndTimeMs: endTime,
+              blockTimeMs: Number(pin.block_time),
               retentionDays: pin.retention_days,
             });
             const duration = BigInt(deadline.deployedRetentionMs);

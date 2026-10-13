@@ -1,5 +1,6 @@
 import { MIDGARD_RETENTION_WINDOW } from "@al-ft/midgard-core";
 import * as SDK from "@al-ft/midgard-sdk";
+import { Data } from "@lucid-evolution/lucid";
 
 import type {
   DaPayloadRecord,
@@ -39,38 +40,63 @@ const headerRecord = (
   headerHash: string,
   endTimeMs: number | bigint,
   status: StateQueueHeaderStatus,
-): StateQueueHeaderRecord => ({
-  deploymentFingerprint: FINGERPRINT,
-  headerHash,
-  stateQueueOutRef: `${"11".repeat(32)}#0`,
-  blockAssetName: headerHash,
-  header: {
-    ...fixtureHeaderBase(),
-    utxosRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
-    forcedTransactionsRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
-    transactionsRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
-    depositsRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
-    withdrawalsRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
-    endTime: typeof endTimeMs === "bigint" ? endTimeMs : BigInt(endTimeMs),
-  },
-  computedHeaderHash: headerHash,
-  daAttestation: SDK.NO_DA_ATTESTATION,
-  observedChainPoint:
-    status === "merged" || status === "removed"
-      ? {
-          slot: 100,
-          blockHash: "12".repeat(32),
-          blockHeight: 90,
-          depth: 2161,
-          finalized: true,
-          providerSource: "authenticated_state_queue_transition_v1",
-        }
-      : { finalized: true },
-  finalized: true,
-  status,
-  validationErrors: [],
-  updatedAt: new Date(NOW).toISOString(),
-});
+  blockTimeMs: number | bigint = endTimeMs,
+): StateQueueHeaderRecord => {
+  const record: StateQueueHeaderRecord = {
+    deploymentFingerprint: FINGERPRINT,
+    headerHash,
+    stateQueueOutRef: `${"11".repeat(32)}#0`,
+    blockAssetName: headerHash,
+    header: {
+      ...fixtureHeaderBase(),
+      utxosRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
+      forcedTransactionsRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
+      transactionsRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
+      depositsRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
+      withdrawalsRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
+      endTime: typeof endTimeMs === "bigint" ? endTimeMs : BigInt(endTimeMs),
+    },
+    computedHeaderHash: headerHash,
+    daAttestation: SDK.NO_DA_ATTESTATION,
+    observedChainPoint:
+      status === "merged" || status === "removed"
+        ? {
+            slot: 100,
+            blockHash: "12".repeat(32),
+            blockHeight: 90,
+            depth: 2161,
+            finalized: true,
+            providerSource: "authenticated_state_queue_transition_v1",
+          }
+        : { finalized: true },
+    finalized: true,
+    status,
+    validationErrors: [],
+    updatedAt: new Date(NOW).toISOString(),
+  };
+  return {
+    ...record,
+    rawStateQueueDatumCbor: Data.to(
+      {
+        data: {
+          Node: {
+            data: Data.castTo(
+              {
+                header: record.header,
+                block_time: BigInt(blockTimeMs),
+                da_attestation: record.daAttestation,
+                proven_fraud: null,
+              },
+              SDK.StateQueueNode,
+            ),
+          },
+        },
+        link: null,
+      },
+      SDK.LinkedListDatum,
+    ),
+  };
+};
 
 export const payloadRecord = (
   headerHash: string,
@@ -92,6 +118,7 @@ export const seed = async (
   entries: readonly {
     readonly headerHash: string;
     readonly endTimeMs?: number | bigint;
+    readonly blockTimeMs?: number | bigint;
     readonly status?: StateQueueHeaderStatus;
     readonly deploymentFingerprint?: string;
     readonly withoutHeader?: boolean;
@@ -114,6 +141,7 @@ export const seed = async (
         entry.headerHash,
         entry.endTimeMs ?? NOW,
         entry.status ?? "attested",
+        entry.blockTimeMs ?? entry.endTimeMs ?? NOW,
       ),
     );
   }

@@ -9,21 +9,24 @@ import {
 
 /**
  * Computes the retention deadline for one block. The deadline is keyed on the
- * block's END TIME (the L2 consensus fact), never on a local insert timestamp -
- * a late or replayed local write must not extend or shorten challengeability.
+ * block's block_time (the commit's inclusive upper bound, recorded in its
+ * state-queue node), never on a local insert timestamp - a late or replayed
+ * local write must not extend or shorten challengeability. Every challenge
+ * clock starts at the commit, so a catch-up block whose end lies well before
+ * its block_time keeps the full window.
  */
 export const retentionDeadlineForBlock = (args: {
-  readonly blockEndTimeMs: unknown;
+  readonly blockTimeMs: unknown;
   readonly retentionDays?: unknown;
 }): RetentionDeadline => {
-  const blockEndTimeMs = args.blockEndTimeMs;
+  const blockTimeMs = args.blockTimeMs;
   if (
-    typeof blockEndTimeMs !== "number" ||
-    !Number.isSafeInteger(blockEndTimeMs) ||
-    blockEndTimeMs < 0
+    typeof blockTimeMs !== "number" ||
+    !Number.isSafeInteger(blockTimeMs) ||
+    blockTimeMs < 0
   ) {
     throw new Error(
-      "blockEndTimeMs must be a non-negative safe integer of milliseconds",
+      "blockTimeMs must be a non-negative safe integer of milliseconds",
     );
   }
   const retentionDays =
@@ -32,11 +35,11 @@ export const retentionDeadlineForBlock = (args: {
       : requireRetentionDays(args.retentionDays, "retentionDays");
   const deployedRetentionMs = retentionDays * RETENTION_MS_PER_DAY;
   const challengeableUntilMs =
-    blockEndTimeMs + MIDGARD_RETENTION_WINDOW.requiredRetentionMs;
+    blockTimeMs + MIDGARD_RETENTION_WINDOW.requiredRetentionMs;
   return {
-    blockEndTimeMs,
+    blockTimeMs,
     challengeableUntilMs,
-    retainUntilMs: blockEndTimeMs + deployedRetentionMs,
+    retainUntilMs: blockTimeMs + deployedRetentionMs,
     deployedRetentionMs,
     remainingMs: (nowMs: number): number => challengeableUntilMs - nowMs,
   };
@@ -71,8 +74,8 @@ export type RetentionPruneDecision = {
 
 export type RetentionPruneInput = {
   readonly nowMs: number;
-  /** End time of the payload's own block header. */
-  readonly blockEndTimeMs: number;
+  /** block_time of the payload's own block (its state-queue node). */
+  readonly blockTimeMs: number;
   /** Stored header status; `unobserved` when the store has no header row. */
   readonly headerStatus: RetentionHeaderStatus | "unobserved";
   readonly queueReference: RetentionQueueReference;
@@ -99,17 +102,16 @@ export const daRetentionPruneDecision = (
   if (!Number.isSafeInteger(input.nowMs)) {
     throw new Error("nowMs must be a safe integer of milliseconds");
   }
-  if (!Number.isSafeInteger(input.blockEndTimeMs) || input.blockEndTimeMs < 0) {
+  if (!Number.isSafeInteger(input.blockTimeMs) || input.blockTimeMs < 0) {
     throw new Error(
-      "blockEndTimeMs must be a non-negative safe integer of milliseconds",
+      "blockTimeMs must be a non-negative safe integer of milliseconds",
     );
   }
   const retentionDays = input.retentionDays ?? window.retentionDays;
-  const challengeableUntilMs =
-    input.blockEndTimeMs + window.requiredRetentionMs;
+  const challengeableUntilMs = input.blockTimeMs + window.requiredRetentionMs;
   const base = {
     challengeableUntilMs,
-    retainUntilMs: input.blockEndTimeMs + retentionDays * RETENTION_MS_PER_DAY,
+    retainUntilMs: input.blockTimeMs + retentionDays * RETENTION_MS_PER_DAY,
     remainingMs: challengeableUntilMs - input.nowMs,
   };
   if (input.queueReference === "confirmed_head") {
@@ -187,7 +189,7 @@ export const resolveL1ViewFatalMs = (args: {
  * The most time a merged, no-longer-head payload can have left before its
  * challengeability deadline: the horizon minus block maturity. A header leaves
  * the state queue only by merging, which the state-queue validator allows no
- * earlier than block maturity after the header's end time, so once a payload
+ * earlier than block maturity after the block's block_time, so once a payload
  * is still challengeable outside the queue it has at most this long left.
  */
 export const MIDGARD_MERGED_PAYLOAD_MAX_REMAINING_MS =
@@ -246,7 +248,7 @@ export type RetentionDeadlineAlert = {
  */
 export const retentionDeadlineAlert = (args: {
   readonly nowMs: number;
-  readonly blockEndTimeMs: number;
+  readonly blockTimeMs: number;
   readonly retentionDays?: number;
   readonly alertThresholdMs: number;
   readonly headerHash?: string;
@@ -256,7 +258,7 @@ export const retentionDeadlineAlert = (args: {
     throw new Error("alertThresholdMs must be a non-negative safe integer");
   }
   const deadline = retentionDeadlineForBlock({
-    blockEndTimeMs: args.blockEndTimeMs,
+    blockTimeMs: args.blockTimeMs,
     retentionDays: args.retentionDays,
   });
   const remainingMs = deadline.remainingMs(args.nowMs);

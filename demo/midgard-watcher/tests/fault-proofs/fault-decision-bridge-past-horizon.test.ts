@@ -1,4 +1,8 @@
 import { MIDGARD_RETENTION_WINDOW } from "@al-ft/midgard-core";
+import {
+  l1SlotToPosixTimeMs,
+  NAMED_NETWORK_L1_SLOT_CONFIGS,
+} from "@al-ft/midgard-core/l1-slot-config";
 import { RetainedDaPayloadUnavailableError } from "@al-ft/midgard-fault-proofs";
 import type { Header as HeaderType } from "@al-ft/midgard-sdk";
 import { describe, expect, it, vi } from "vitest";
@@ -45,6 +49,40 @@ const failedFetch = (
   });
 
 describe("fault decision bridge past the challengeability horizon", () => {
+  it("keeps a catch-up missing payload actionable through its commit-time horizon", async () => {
+    const clock = NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod;
+    const blockSlot = 2_000_000n;
+    const blockTime =
+      l1SlotToPosixTimeMs(clock, blockSlot) + BigInt(clock.slotLength) - 1n;
+    const coverageEnd = blockTime - 6n * 60n * 60n * 1000n;
+    const catchUp: HeaderType = {
+      ...header("01", coverageEnd),
+      startTime: coverageEnd - 1000n,
+      blockSlot,
+      l2TransactionCount: 0n,
+      depositCount: 1n,
+    };
+    const current = observation([catchUp], "Idle", [ATTESTED], [blockTime]);
+    const inWindow = current.finalizedHeaders[0]!;
+    const observability = operations();
+    const failure = unavailable(inWindow.headerHash);
+    const h = harness({
+      current,
+      categoryByHeader: { [inWindow.headerHash]: "transitionTrace" },
+      operationsSink: observability.sink,
+      nowMs: () =>
+        blockTime + BigInt(MIDGARD_RETENTION_WINDOW.requiredRetentionMs),
+      classifyOverride: () => {
+        throw failure;
+      },
+    });
+    await expect(h.bridge.reconcileAndDispatch(current)).rejects.toBe(failure);
+    expect(outcomes(observability)).toEqual([
+      { headerHash: inWindow.headerHash, outcome: "failed" },
+    ]);
+    expect(observability.api.metrics().unverifiedHeaders.pastHorizon).toBe("0");
+  });
+
   it("skips a header whose payload is gone past its horizon, warns once and selects the next fault", async () => {
     const current = observation([header("01"), header("02")], "Idle", [
       ATTESTED,
