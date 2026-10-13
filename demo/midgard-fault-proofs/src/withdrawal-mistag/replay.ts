@@ -2,6 +2,7 @@ import { encodeMidgardSpendInputItem } from "@al-ft/midgard-core";
 import * as SDK from "@al-ft/midgard-sdk";
 
 import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
+import { type CheckedLedger } from "../ledger-at.js";
 import { nativeScriptDecodingPriorLedger } from "../native-script-decoding/replay.js";
 import {
   type CountedRoot,
@@ -44,7 +45,7 @@ export const prepareWithdrawalMistagReplay = async ({
   index,
 }: {
   current: TransitionTraceReconstruction;
-  predecessor?: TransitionTraceReconstruction;
+  predecessor?: CheckedLedger;
   index: number;
 }) => {
   if (!Number.isSafeInteger(index) || index < 0)
@@ -130,13 +131,13 @@ export const detectWithdrawalMistagReplay = async ({
   predecessor,
 }: {
   block: CanonicalBlockEvidence;
-  predecessor?: CanonicalBlockEvidence;
+  predecessor?: CheckedLedger;
 }) => {
   return collectReplayFindings(
     block.reconstruction.withdrawals.map(async (_, index) => {
       const prepared = await prepareWithdrawalMistagReplay({
         current: block.reconstruction,
-        predecessor: predecessor?.reconstruction,
+        predecessor,
         index,
       });
       return prepared === null

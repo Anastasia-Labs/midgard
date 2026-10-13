@@ -26,6 +26,7 @@ import {
 import { reconstructDaPayload } from "../src/transition-trace/reconstruct.js";
 import { deriveTransitionTraceReplayEvidence } from "../src/transition-trace/replay.js";
 import { transitionTraceYieldData } from "../src/transition-trace/yield-data.js";
+import { checkedLedgerAfter } from "./support/predecessor-ledger.js";
 import { transitionTraceDepositRetainedFixture } from "./support/transition-trace-retained.js";
 
 const policy = "34".repeat(28);
@@ -103,7 +104,9 @@ describe("transition deposit retained opening", () => {
           committedHeader: fixture.header,
         });
       const current = await reconstruct(fixtures.current);
-      const predecessor = await reconstruct(fixtures.predecessor);
+      const predecessor = await checkedLedgerAfter(
+        await reconstruct(fixtures.predecessor),
+      );
       expect(current.deposits[0]!.valueBytes.toString("hex")).toBe(
         plutusConstrFieldCbor(eventCbor, [1]),
       );

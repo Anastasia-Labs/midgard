@@ -2,6 +2,7 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { type LucidEvolution, type UTxO } from "@lucid-evolution/lucid";
 
 import { type CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
+import { type CheckedLedger } from "../ledger-at.js";
 import type { StateQueueMutationLeaseCoordinator } from "../remove-fraudulent-block.js";
 import { type ResolvedProverSigner } from "../runtime.js";
 import type { CompleteCanonicalReplayContext } from "../workflow/complete-replay.js";
@@ -51,7 +52,7 @@ export type Prepared = Readonly<{
 export type ReplayCell = {
   evidence?: CanonicalBlockEvidence;
   /** The classifier-admitted predecessor this run replayed against. */
-  predecessor?: CanonicalBlockEvidence;
+  predecessor?: CheckedLedger;
   l1Events?: Awaited<ReturnType<typeof captureTransitionTraceL1Events>>;
   prepared?: ReadonlyMap<string, Prepared>;
 };

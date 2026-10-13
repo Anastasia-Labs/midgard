@@ -11,10 +11,8 @@ import {
   FRAUD_PROOF_EVIDENCE_ROUTE,
 } from "../evidence/fraud-proof-evidence.js";
 import { FIELD_PREIMAGE_LENGTH_MISMATCH_VIOLATION_ID } from "../field-preimage-length-mismatch/evidence.js";
-import {
-  fetchRetainedDaPayloadByHeaderHash,
-  type RetainedDaPayloadSource,
-} from "../transition-trace/fetch.js";
+import { type LedgerAt } from "../ledger-at.js";
+import { type RetainedDaPayloadSource } from "../transition-trace/fetch.js";
 import {
   requireTransitionTraceEventAuthority,
   type TransitionTraceL1Events,
@@ -66,7 +64,7 @@ export const classifyHeader = async ({
   sources,
   retries,
   replayContext,
-  predecessorObservation,
+  predecessorLedgerAt,
 }: {
   readonly classifier: HeaderClassifier;
   readonly observation: AuthenticatedStateQueueHeaderObservation;
@@ -75,10 +73,11 @@ export const classifyHeader = async ({
   readonly retries?: number;
   readonly replayContext?: CompleteCanonicalReplayContext;
   /**
-   * Opaque L1-admitted predecessor header. Its retained-DA bytes are fetched
-   * here through the same concrete public sources as the challenged block.
+   * Untrusted source of the ledger after the challenged header's
+   * `prev_header_hash`. Its answer is admitted only when it opens the
+   * challenged header's `prev_utxos_root`.
    */
-  readonly predecessorObservation?: AuthenticatedStateQueueHeaderObservation;
+  readonly predecessorLedgerAt?: LedgerAt;
 }): Promise<HeaderDecision> => {
   const authority = admittedClassifiers.get(classifier);
   if (authority === undefined) {
@@ -183,9 +182,9 @@ export const classifyHeader = async ({
     });
   }
 
-  if (replayContext !== undefined && predecessorObservation !== undefined) {
+  if (replayContext !== undefined && predecessorLedgerAt !== undefined) {
     throw new Error(
-      "production classifier accepts either an admitted replay context or a predecessor observation, never both",
+      "production classifier accepts either an admitted replay context or a predecessor ledger source, never both",
     );
   }
   if (replayContext?.transitionTraceEvents !== undefined) {
@@ -225,23 +224,12 @@ export const classifyHeader = async ({
       ));
   if (
     admittedReplayContext === undefined &&
-    predecessorObservation !== undefined
+    predecessorLedgerAt !== undefined
   ) {
-    const predecessorPayload = await fetchRetainedDaPayloadByHeaderHash({
-      headerHash: predecessorObservation.headerHash,
-      sources,
-      ...(retries === undefined ? {} : { retries }),
-    });
     admittedReplayContext = Object.freeze({
       predecessor: await admitCompleteCanonicalReplayPredecessor({
-        value: Object.freeze({
-          observation: predecessorObservation,
-          payloadEnvelopeCborHex:
-            predecessorPayload.payloadEnvelopeCbor.toString("hex"),
-          daProvenance: predecessorPayload.provenance,
-        }),
+        ledgerAt: predecessorLedgerAt,
         currentEvidence: routed.evidence,
-        minimumConfirmationDepth: authority.confirmationDepth,
       }),
     });
   }

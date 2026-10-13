@@ -10,6 +10,7 @@ import {
 import { detectDistinctAssetAccumulationCanonicalViolations } from "../distinct-asset-accumulation-limit/authenticated-replay.js";
 import { type CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
 import { detectExecutionNativeScriptInvalidCanonicalViolations } from "../execution-native-script-invalid/replay.js";
+import { type CheckedLedger } from "../ledger-at.js";
 import { detectMintAuthorizationReplay } from "../mint-authorization/replay.js";
 import { detectMintItemNonCanonicalCompleteReplay } from "../mint-item-non-canonical/replay.js";
 import { detectMissingRedeemerCanonicalViolations } from "../missing-redeemer/replay.js";
@@ -28,7 +29,7 @@ import { detectWithdrawalMistagReplay } from "../withdrawal-mistag/replay.js";
 import { type CanonicalViolationDetection } from "./classification.js";
 import {
   canonicalizeReplayJson,
-  completeCanonicalReplayPredecessorEvidence,
+  completeCanonicalReplayPredecessorLedger,
   detectDoubleSpends,
   detectNetworkIds,
   replayDecisionJson,
@@ -60,7 +61,7 @@ export const EXECUTION_NATIVE_SCRIPT_INVALID_COMPLETE_CANONICAL_REPLAY =
     async (evidence, context) =>
       detectExecutionNativeScriptInvalidCanonicalViolations({
         block: evidence,
-        predecessor: completeCanonicalReplayPredecessorEvidence({
+        predecessor: completeCanonicalReplayPredecessorLedger({
           evidence,
           context,
         }),
@@ -274,7 +275,7 @@ export const VALUE_NOT_PRESERVED_COMPLETE_CANONICAL_REPLAY = completeReplayer(
   async (evidence, context) =>
     detectValueConservationFaults({
       block: evidence,
-      predecessor: completeCanonicalReplayPredecessorEvidence({
+      predecessor: completeCanonicalReplayPredecessorLedger({
         evidence,
         context,
       }),
@@ -286,7 +287,7 @@ export const WITHDRAWAL_MISTAG_COMPLETE_CANONICAL_REPLAY = completeReplayer(
   async (evidence, context) =>
     await detectWithdrawalMistagReplay({
       block: evidence,
-      predecessor: completeCanonicalReplayPredecessorEvidence({
+      predecessor: completeCanonicalReplayPredecessorLedger({
         evidence,
         context,
       }),
@@ -298,7 +299,7 @@ export const MINT_AUTHORIZATION_COMPLETE_CANONICAL_REPLAY = completeReplayer(
   async (evidence, context) =>
     await detectMintAuthorizationReplay({
       block: evidence,
-      predecessor: completeCanonicalReplayPredecessorEvidence({
+      predecessor: completeCanonicalReplayPredecessorLedger({
         evidence,
         context,
       }),
@@ -307,7 +308,7 @@ export const MINT_AUTHORIZATION_COMPLETE_CANONICAL_REPLAY = completeReplayer(
 
 /** Complete transition replay derives every witness from the admitted predecessor and freshly admitted raw L1. */
 export const createTransitionTraceCompleteCanonicalReplayFromRetainedHistory = (
-  predecessor: () => CanonicalBlockEvidence | undefined,
+  predecessor: () => CheckedLedger | undefined,
   l1Events: () => TransitionTraceL1Events,
 ): CompleteCanonicalReplay =>
   completeReplayer(["transitionTrace"], async (evidence) => {
@@ -328,7 +329,7 @@ export const TRANSITION_TRACE_COMPLETE_CANONICAL_REPLAY = completeReplayer(
       );
     const replay = await replayTransitionTraceFromRetainedHistory({
       evidence,
-      predecessor: completeCanonicalReplayPredecessorEvidence({
+      predecessor: completeCanonicalReplayPredecessorLedger({
         evidence,
         context,
       }),

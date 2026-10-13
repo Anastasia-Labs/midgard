@@ -18,6 +18,7 @@ import {
   mintItemCborV1,
 } from "./mint-authorization-emulator.js";
 import { buildDecodingBlockFixture } from "./native-script-decoding-emulator.js";
+import { payloadLedgerAt } from "./predecessor-ledger.js";
 
 export const mintAuthorizationRetainedReferenceFixture = async ({
   now,
@@ -127,14 +128,8 @@ export const mintAuthorizationRetainedReferenceFixture = async ({
   });
   const context = {
     predecessor: await admitCompleteCanonicalReplayPredecessor({
-      value: {
-        observation: authenticatedHeaderObservation(predecessorFixture),
-        payloadEnvelopeCborHex:
-          predecessorFixture.payloadEnvelopeCbor.toString("hex"),
-        daProvenance: provenance,
-      },
+      ledgerAt: payloadLedgerAt(predecessorFixture.payloadEnvelopeCbor),
       currentEvidence: evidence,
-      minimumConfirmationDepth: 1,
     }),
   };
   return {

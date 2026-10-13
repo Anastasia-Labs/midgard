@@ -2,7 +2,9 @@ import { describe, expect, it } from "vitest";
 
 import { prepareWithdrawalMistagReplay } from "../src/withdrawal-mistag/replay.js";
 import { WITHDRAWAL_MISTAG_COMPLETE_CANONICAL_REPLAY } from "../src/workflow/complete-replay.js";
+import { checkedLedgerAfter } from "./support/predecessor-ledger.js";
 import { withdrawalMistagRetainedFixture } from "./support/withdrawal-mistag-retained.js";
+
 describe("withdrawal mistag retained replay", () => {
   it.each(["valid-marked-invalid", "invalid-marked-valid"] as const)(
     "authenticates the prior ledger and refuses honest %s tags",
@@ -26,7 +28,7 @@ describe("withdrawal mistag retained replay", () => {
         await expect(
           prepareWithdrawalMistagReplay({
             current: fixture.evidence.reconstruction,
-            predecessor: fixture.predecessor.reconstruction,
+            predecessor: await checkedLedgerAfter(fixture.predecessor),
             index: 1,
           }),
         ).rejects.toThrow("source index is absent");

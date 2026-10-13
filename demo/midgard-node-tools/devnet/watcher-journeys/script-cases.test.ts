@@ -256,9 +256,8 @@ it
           detection: detections[0]!,
           // Mirror the family artifact: the admitted predecessor's identity only.
           predecessor: {
-            headerHash: full.predecessor.headerHash,
-            payloadEnvelopeSha256: full.predecessor.payloadEnvelopeSha256,
-            payloadSha256: full.predecessor.payloadSha256,
+            headerHash: full.evidence.header.prevHeaderHash,
+            utxosRoot: full.predecessor.utxosRoot,
           },
         }),
       );

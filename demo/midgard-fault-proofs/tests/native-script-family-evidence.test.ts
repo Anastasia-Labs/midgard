@@ -20,6 +20,10 @@ import { buildCanonicalMidgardLedgerEntryOutputMaterial } from "@al-ft/midgard-v
 import { describe, expect, it } from "vitest";
 
 import {
+  checkLedgerAgainstRoot,
+  LedgerRootMismatchError,
+} from "../src/ledger-at.js";
+import {
   admitNativeScriptInvalidArtifact,
   nativeScriptInvalidDetectionId,
   prepareNativeScriptInvalidArtifact,
@@ -36,6 +40,26 @@ import {
   nativeScript,
   nativeTx,
 } from "./native-script-family-evidence.retained-source.js";
+import { checkedLedgerAfter } from "./support/predecessor-ledger.js";
+
+/** A canonical ledger entry for the predecessor output 0x55..55#0. */
+const ledgerEntry = (lovelace: bigint) => ({
+  key: Buffer.from(
+    encodeMidgardSpendInputItem({
+      txId: Buffer.alloc(32, 0x55),
+      outputIndex: 0,
+    }),
+  ),
+  value: Buffer.from(
+    encodeMidgardTxOutput({
+      address: Buffer.concat([
+        Buffer.from([0x70]),
+        Buffer.from(hashMidgardVersionedScript(nativeScript), "hex"),
+      ]),
+      value: { lovelace, assets: new Map() },
+    }),
+  ),
+});
 
 describe("Q33/Q34 retained-DA evidence", () => {
   it("prepares an authenticated evaluation-false native witness", async () => {
@@ -108,9 +132,20 @@ describe("Q33/Q34 retained-DA evidence", () => {
         priorRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
         outputs: new Map(),
       });
-      // A predecessor the genesis header does not name is substituted.
+      // A ledger for any root other than the committed empty one is substituted.
       await expect(
-        deriveResolvedOutputPriorLedgerReplay({ block, predecessor: block }),
+        deriveResolvedOutputPriorLedgerReplay({
+          block,
+          predecessor: await checkedLedgerAfter(
+            await evidenceFromFixture(
+              await buildCanonicalBlockFixture({
+                transactions: [],
+                utxos: [ledgerEntry(2_000_000n)],
+                prevHeaderHash: SDK.GENESIS_HEADER_HASH,
+              }),
+            ),
+          ),
+        }),
       ).rejects.toThrow(/substituted/u);
     },
   );
@@ -147,7 +182,9 @@ describe("Q33/Q34 retained-DA evidence", () => {
     await expect(
       deriveResolvedOutputPriorLedgerReplay({
         block,
-        predecessor: await evidenceFromFixture(predecessor),
+        predecessor: await checkedLedgerAfter(
+          await evidenceFromFixture(predecessor),
+        ),
       }),
     ).rejects.toThrow(/substituted/u);
   });
@@ -188,7 +225,9 @@ describe("Q33/Q34 retained-DA evidence", () => {
     const challenged = await evidenceFromFixture(challengedFixture);
     const priorLedger = await deriveResolvedOutputPriorLedgerReplay({
       block: challenged,
-      predecessor: await evidenceFromFixture(previousFixture),
+      predecessor: await checkedLedgerAfter(
+        await evidenceFromFixture(previousFixture),
+      ),
     });
     expect(priorLedger.priorRoot).toBe(previousRoot.root);
     expect([...priorLedger.outputs.keys()]).toEqual([
@@ -202,8 +241,8 @@ describe("Q33/Q34 retained-DA evidence", () => {
       descriptorCborHex: Buffer.from(descriptorCbor).toString("hex"),
       outputCborHex: outputCbor.toString("hex"),
     });
-    // The challenged header names its predecessor by hash; a different block
-    // with the same ledger cannot stand in for it.
+    // The ledger is admitted by its root alone: the same ledger read after a
+    // different block opens the same prior root.
     const lookalike = await buildCanonicalBlockFixture({
       transactions: [],
       utxos: [{ key: outRefKey, value: outputCbor }],
@@ -214,8 +253,19 @@ describe("Q33/Q34 retained-DA evidence", () => {
     await expect(
       deriveResolvedOutputPriorLedgerReplay({
         block: challenged,
-        predecessor: await evidenceFromFixture(lookalike),
+        predecessor: await checkedLedgerAfter(
+          await evidenceFromFixture(lookalike),
+        ),
       }),
-    ).rejects.toThrow(/substituted/u);
+    ).resolves.toMatchObject({ priorRoot: previousRoot.root });
+    // One wrong entry and the ledger no longer opens the prior root.
+    const wrong = ledgerEntry(2_000_001n);
+    await expect(
+      checkLedgerAgainstRoot({
+        entries: [{ outRef: wrong.key, output: wrong.value }],
+        utxosRoot: challenged.header.prevUtxosRoot,
+        label: "prior ledger",
+      }),
+    ).rejects.toBeInstanceOf(LedgerRootMismatchError);
   });
 });

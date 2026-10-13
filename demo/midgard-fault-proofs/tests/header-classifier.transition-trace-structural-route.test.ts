@@ -8,6 +8,7 @@ import {
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
+import { retainedPayloadLedgerAt } from "../src/retained-payload-ledger-at.js";
 import type { RetainedDaPayloadSource } from "../src/transition-trace/fetch.js";
 import {
   requireTransitionTraceL1Events,
@@ -246,9 +247,7 @@ const classify = async ({
     sources,
     ...(installed
       ? {
-          predecessorObservation: authenticatedHeaderObservation(
-            fixture.predecessor,
-          ),
+          predecessorLedgerAt: retainedPayloadLedgerAt({ sources }),
         }
       : {}),
     authenticatedObservationDigest:

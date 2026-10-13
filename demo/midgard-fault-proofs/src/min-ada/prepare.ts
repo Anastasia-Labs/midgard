@@ -10,18 +10,17 @@ import {
   Proof,
 } from "@al-ft/midgard-sdk";
 import {
-  buildCanonicalMidgardLedgerEntryOutputMaterial,
   buildCanonicalMidgardLedgerOutputMaterial,
   MIDGARD_COINS_PER_UTXO_BYTE,
   outputMeetsMinAda,
 } from "@al-ft/midgard-validation";
 import { Data } from "@lucid-evolution/lucid";
 
-import { type CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
 import {
   admitCanonicalEvidenceForProofBuild,
   type CanonicalEvidenceBuilderInput,
 } from "../evidence/prepare-from-evidence.js";
+import { type CheckedLedger, requireLedgerOpening } from "../ledger-at.js";
 import {
   buildTrieView,
   decodeTransactionMaterial,
@@ -33,7 +32,6 @@ import {
 import {
   keyValuePhasNonMembershipProof,
   keyValuePhasProof,
-  keyValuePhasRootWithCount,
 } from "../transition-trace/phas.js";
 import { requireReplayPredecessorLedger } from "../workflow/replay-predecessor-ledger.js";
 
@@ -169,10 +167,16 @@ const sameOutRef = (left: OutputReference, right: OutputReference): boolean =>
 export const prepareMinAdaUtxoFromCanonicalEvidence = async ({
   evidence,
   predecessor,
+  post,
   outRef,
 }: CanonicalEvidenceBuilderInput & {
   /** The classifier-admitted predecessor; absent only for the genesis ledger. */
-  readonly predecessor: CanonicalBlockEvidence | undefined;
+  readonly predecessor: CheckedLedger | undefined;
+  /**
+   * The classifier-admitted ledger after the block; absent only when the
+   * header commits the empty ledger.
+   */
+  readonly post: CheckedLedger | undefined;
   readonly outRef?: OutputReference;
 }): Promise<PreparedMinAdaUtxo> => {
   const previousLedger = requireReplayPredecessorLedger({
@@ -180,41 +184,27 @@ export const prepareMinAdaUtxoFromCanonicalEvidence = async ({
     predecessor,
     label: "min-ada UTxO",
   });
-  const members = (
-    entries: CanonicalBlockEvidence["reconstruction"]["utxos"],
-  ) =>
-    entries.map((entry) => {
-      const decoded = decodeMidgardSpendInputItem(entry.key);
-      const material = buildCanonicalMidgardLedgerEntryOutputMaterial({
-        outRef: entry.key,
-        outputCbor: entry.value,
-      });
-      return {
-        key: Buffer.from(entry.key),
-        value: Buffer.from(material.descriptorCbor),
-        outRef: {
-          transactionId: Buffer.from(decoded.txId).toString("hex"),
-          outputIndex: BigInt(decoded.outputIndex),
-        } satisfies OutputReference,
-      };
-    });
-  const postMembers = members(evidence.reconstruction.utxos);
-  const previousMembers = members(previousLedger?.utxos ?? []);
-  const postTrie = await keyValuePhasRootWithCount(postMembers);
-  const previousTrie = await keyValuePhasRootWithCount(previousMembers);
-  if (
-    postTrie.root !== evidence.header.utxosRoot ||
-    previousTrie.root !== evidence.header.prevUtxosRoot
-  ) {
-    throw new Error(
-      "min-ada reconstructed UTxO roots do not match the challenged header",
-    );
-  }
+  const postTrie = requireLedgerOpening({
+    ledger: post,
+    utxosRoot: evidence.header.utxosRoot,
+    label: "min-ada UTxO post ledger",
+  }).trie;
+  const postMembers = postTrie.entries.map(({ key, value }) => {
+    const decoded = decodeMidgardSpendInputItem(key);
+    return {
+      key,
+      value,
+      outRef: {
+        transactionId: Buffer.from(decoded.txId).toString("hex"),
+        outputIndex: BigInt(decoded.outputIndex),
+      } satisfies OutputReference,
+    };
+  });
   const selected = postMembers.find(
     (member) =>
       (outRef === undefined || sameOutRef(member.outRef, outRef)) &&
       descriptorViolatesMinAda(member.value) &&
-      !previousMembers.some((previous) => previous.key.equals(member.key)),
+      !previousLedger.outputs.has(member.key.toString("hex")),
   );
   if (selected === undefined) {
     throw new Error(
@@ -229,7 +219,7 @@ export const prepareMinAdaUtxoFromCanonicalEvidence = async ({
     selected.value,
   );
   const predecessorNonMembershipProof = await keyValuePhasNonMembershipProof(
-    previousTrie,
+    previousLedger.trie,
     selected.key,
   );
   return {
@@ -239,7 +229,7 @@ export const prepareMinAdaUtxoFromCanonicalEvidence = async ({
     outRefKeyCbor: selected.key.toString("hex"),
     descriptorCbor: selected.value.toString("hex"),
     postUtxosRoot: postTrie.root,
-    prevUtxosRoot: previousTrie.root,
+    prevUtxosRoot: previousLedger.utxosRoot,
     postMembershipProof,
     postMembershipProofCbor: Data.to(postMembershipProof, Proof),
     predecessorNonMembershipProof,

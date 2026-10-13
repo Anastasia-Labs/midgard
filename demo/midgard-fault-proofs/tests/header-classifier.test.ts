@@ -9,6 +9,7 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
+import { retainedPayloadLedgerAt } from "../src/retained-payload-ledger-at.js";
 import type { RetainedDaPayloadSource } from "../src/transition-trace/fetch.js";
 import {
   COMPLETE_CANONICAL_REPLAY,
@@ -460,9 +461,6 @@ describe("production authenticated-header classifier V1", () => {
       prevUtxosRoot: predecessor.header.utxosRoot,
     });
     const observation = authenticatedHeaderObservation(current);
-    const predecessorObservation = authenticatedHeaderObservation(predecessor, {
-      chainPoint: { slot: 4241n, blockHash: "06".repeat(32) },
-    });
     const classifier = await createHeaderClassifier({
       l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
       deploymentFingerprint: DEPLOYMENT_FINGERPRINT,
@@ -521,10 +519,10 @@ describe("production authenticated-header classifier V1", () => {
       observation,
       authenticatedObservationDigest,
       sources: [source],
-      predecessorObservation,
+      predecessorLedgerAt: retainedPayloadLedgerAt({ sources: [source] }),
     });
     expect(admitted.decision).toBe("healthy");
     expect(headerDecisionReplayContext(admitted)?.predecessor).toBeDefined();
-    expect(fetched.count).toBe(3);
+    expect(fetched.count).toBe(4);
   });
 });

@@ -365,6 +365,7 @@ export const setup = async ({
     return prepareMinAdaWorkflowArtifact({
       evidence: block,
       predecessor: undefined,
+      post: undefined,
       classification: {
         schemaVersion: "midgard-fraud-proof-classification-v1",
         decision: "fault_detected",

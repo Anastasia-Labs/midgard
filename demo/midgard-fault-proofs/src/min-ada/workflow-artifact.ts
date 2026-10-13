@@ -1,4 +1,5 @@
 import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
+import { type CheckedLedger } from "../ledger-at.js";
 import type { CanonicalBlockClassification } from "../workflow/classification.js";
 import { admitMinAdaArtifact, prepareMinAdaArtifact } from "./artifact.js";
 import {
@@ -12,7 +13,8 @@ export const prepareMinAdaWorkflowArtifact = async (args: {
     CanonicalBlockClassification,
     { decision: "fault_detected" }
   > & { category: "minAda" };
-  predecessor: CanonicalBlockEvidence | undefined;
+  predecessor: CheckedLedger | undefined;
+  post: CheckedLedger | undefined;
 }) => {
   if (args.classification.selected.detectionId.startsWith("min-ada:forced:"))
     return prepareMinAdaForcedArtifact({

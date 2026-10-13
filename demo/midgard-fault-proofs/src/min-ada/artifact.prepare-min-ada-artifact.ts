@@ -8,6 +8,7 @@ import {
 import { Data } from "@lucid-evolution/lucid";
 
 import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
+import { type CheckedLedger } from "../ledger-at.js";
 import type { CanonicalBlockClassification } from "../workflow/classification.js";
 import type { JournalJsonObject } from "../workflow/journal.js";
 import {
@@ -189,10 +190,12 @@ const requireClassification = ({
 export const prepareMinAdaArtifact = async ({
   evidence,
   predecessor,
+  post,
   classification,
 }: {
   readonly evidence: CanonicalBlockEvidence;
-  readonly predecessor: CanonicalBlockEvidence | undefined;
+  readonly predecessor: CheckedLedger | undefined;
+  readonly post: CheckedLedger | undefined;
   readonly classification: Classification;
 }): Promise<MinAdaArtifact> => {
   if (
@@ -203,6 +206,7 @@ export const prepareMinAdaArtifact = async ({
     const prepared = await prepareMinAdaUtxoFromCanonicalEvidence({
       evidence,
       predecessor,
+      post,
     });
     const detectionId = minAdaUtxoDetectionId(prepared.outRef);
     return Object.freeze({

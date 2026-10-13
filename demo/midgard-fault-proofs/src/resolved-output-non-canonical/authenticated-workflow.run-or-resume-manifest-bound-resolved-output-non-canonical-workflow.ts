@@ -3,7 +3,7 @@ import { FraudProofComputationThreadStepDatum } from "@al-ft/midgard-sdk";
 import { fetchCanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
 import { type RetainedDaPayloadSource } from "../transition-trace/fetch.js";
 import {
-  completeCanonicalReplayPredecessorEvidence,
+  completeCanonicalReplayPredecessorLedger,
   RESOLVED_OUTPUT_NON_CANONICAL_COMPLETE_CANONICAL_REPLAY,
 } from "../workflow/complete-replay.js";
 import { type CursorFamilyTransactionPort } from "../workflow/cursor-family-adapter.js";
@@ -130,7 +130,7 @@ export const runOrResumeManifestBoundResolvedOutputNonCanonicalWorkflow =
     });
     const priorLedger = await deriveResolvedOutputPriorLedgerReplay({
       block: canonical,
-      predecessor: completeCanonicalReplayPredecessorEvidence({
+      predecessor: completeCanonicalReplayPredecessorLedger({
         evidence: canonical,
         context: input.workflow.replayContext,
       }),

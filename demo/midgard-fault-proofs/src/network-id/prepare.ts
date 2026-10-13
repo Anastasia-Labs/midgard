@@ -6,25 +6,21 @@ import {
   decodeMidgardSpendInputItem,
 } from "@al-ft/midgard-core";
 import {
-  EMPTY_MERKLE_TREE_ROOT,
   type NetworkIdFault,
   type NetworkIdPostUtxoPredecessor,
   type OutputReference,
   Proof,
 } from "@al-ft/midgard-sdk";
-import { buildCanonicalMidgardLedgerEntryOutputMaterial } from "@al-ft/midgard-validation";
 import { Data } from "@lucid-evolution/lucid";
 
-import {
-  blockTransactionsFromCanonicalEvidence,
-  type CanonicalBlockEvidence,
-} from "../evidence/canonical-block-evidence.js";
+import { blockTransactionsFromCanonicalEvidence } from "../evidence/canonical-block-evidence.js";
 import {
   admitCanonicalEvidenceForProofBuild,
   type CanonicalEvidenceBuilderInput,
 } from "../evidence/prepare-from-evidence.js";
 import type { FaultProofFieldOpeningPlan } from "../field-opening.js";
 import { planFaultProofFieldOpening } from "../field-opening.js";
+import { type CheckedLedger, requireLedgerOpening } from "../ledger-at.js";
 import {
   buildTrieView,
   decodeTransactionMaterial,
@@ -36,7 +32,6 @@ import {
 import {
   keyValuePhasNonMembershipProof,
   keyValuePhasProof,
-  keyValuePhasRootWithCount,
 } from "../transition-trace/phas.js";
 import {
   findNetworkIdFaults,
@@ -181,48 +176,37 @@ const sameOutRef = (left: OutputReference, right: OutputReference): boolean =>
  */
 export const prepareNetworkIdPostUtxoFromCanonicalEvidence = async ({
   evidence,
-  previousBlockEvidence,
+  prevLedger,
+  postLedger,
   expectedNetworkId,
   outRef,
 }: CanonicalEvidenceBuilderInput & {
-  readonly previousBlockEvidence?: CanonicalBlockEvidence;
+  /** The ledger the block starts from; only the empty genesis ledger may be omitted. */
+  readonly prevLedger?: CheckedLedger;
+  /** The ledger after the block; only the empty ledger may be omitted. */
+  readonly postLedger?: CheckedLedger;
   readonly expectedNetworkId: 0n | 1n;
   readonly outRef?: OutputReference;
 }): Promise<PreparedNetworkIdPostUtxoProof> => {
   // Reuses the canonical evidence admission without imposing the transaction
   // inclusion convention, which this independent post-state route does not use.
   blockTransactionsFromCanonicalEvidence(evidence);
-  if (previousBlockEvidence !== undefined) {
-    blockTransactionsFromCanonicalEvidence(previousBlockEvidence);
-    if (previousBlockEvidence.headerHash !== evidence.header.prevHeaderHash) {
-      throw new Error(
-        "network-id previous block evidence is not the predecessor named by the challenged header",
-      );
-    }
-    if (
-      previousBlockEvidence.header.utxosRoot !== evidence.header.prevUtxosRoot
-    ) {
-      throw new Error(
-        "network-id previous block evidence does not authenticate the challenged prev_utxos_root",
-      );
-    }
-  } else if (evidence.header.prevUtxosRoot !== EMPTY_MERKLE_TREE_ROOT) {
-    throw new Error(
-      "network-id post-UTxO preparation requires authenticated predecessor evidence for a non-empty prev_utxos_root",
-    );
-  }
-  const descriptorMembers = (
-    entries: CanonicalBlockEvidence["reconstruction"]["utxos"],
-  ) =>
-    entries.map((entry) => {
-      const decodedOutRef = decodeMidgardSpendInputItem(entry.key);
-      const material = buildCanonicalMidgardLedgerEntryOutputMaterial({
-        outRef: entry.key,
-        outputCbor: entry.value,
-      });
-      const descriptor = decodeMidgardLedgerOutputCommitment(
-        material.descriptorCbor,
-      );
+  const prior = requireLedgerOpening({
+    ledger: prevLedger,
+    utxosRoot: evidence.header.prevUtxosRoot,
+    label: "network-id predecessor ledger",
+  });
+  const postTrie = requireLedgerOpening({
+    ledger: postLedger,
+    utxosRoot: evidence.header.utxosRoot,
+    label: "network-id post ledger",
+  }).trie;
+  const priorTrie = prior.trie;
+  // The trie leaves are the committed descriptors.
+  const descriptorMembers = (trie: typeof postTrie) =>
+    trie.entries.map(({ key, value }) => {
+      const decodedOutRef = decodeMidgardSpendInputItem(key);
+      const descriptor = decodeMidgardLedgerOutputCommitment(value);
       if (descriptor.outputIndex !== decodedOutRef.outputIndex) {
         throw new Error(
           "network-id post-UTxO descriptor index does not match its ledger out-ref",
@@ -233,30 +217,16 @@ export const prepareNetworkIdPostUtxoFromCanonicalEvidence = async ({
         outputIndex: BigInt(decodedOutRef.outputIndex),
       };
       return {
-        key: Buffer.from(entry.key),
-        value: Buffer.from(material.descriptorCbor),
+        key,
+        value,
         outRef: memberOutRef,
         observedNetworkId: BigInt(
           decodeMidgardAddressBytes(descriptor.address).networkId,
         ),
       };
     });
-  const postMembers = descriptorMembers(evidence.reconstruction.utxos);
-  const priorMembers = descriptorMembers(
-    previousBlockEvidence?.reconstruction.utxos ?? [],
-  );
-  const postTrie = await keyValuePhasRootWithCount(postMembers);
-  const priorTrie = await keyValuePhasRootWithCount(priorMembers);
-  if (postTrie.root !== evidence.header.utxosRoot) {
-    throw new Error(
-      `network-id post-UTxO ledger root ${postTrie.root} does not match authenticated header.utxos_root ${evidence.header.utxosRoot}`,
-    );
-  }
-  if (priorTrie.root !== evidence.header.prevUtxosRoot) {
-    throw new Error(
-      `network-id predecessor ledger root ${priorTrie.root} does not match authenticated header.prev_utxos_root ${evidence.header.prevUtxosRoot}`,
-    );
-  }
+  const postMembers = descriptorMembers(postTrie);
+  const priorMembers = descriptorMembers(priorTrie);
   const selected = postMembers
     .filter(
       (member) =>

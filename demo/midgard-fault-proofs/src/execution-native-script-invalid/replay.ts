@@ -9,6 +9,7 @@ import { decodeMidgardForcedTxFullFromCanonicalCbor } from "@al-ft/midgard-core/
 import { missingSignatureVkeyHash } from "@al-ft/midgard-sdk";
 
 import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
+import { type CheckedLedger } from "../ledger-at.js";
 import type { CanonicalViolationDetection } from "../workflow/classification.js";
 import {
   acceptedTransactionSubject,
@@ -38,7 +39,7 @@ const priorOutputs = ({
   predecessor,
 }: {
   block: CanonicalBlockEvidence;
-  predecessor: CanonicalBlockEvidence | undefined;
+  predecessor: CheckedLedger | undefined;
 }): ReadonlyMap<string, Uint8Array> =>
   replayPredecessorOutputs(
     requireReplayPredecessorLedger({
@@ -101,7 +102,7 @@ export const detectExecutionNativeScriptInvalidCanonicalViolations = ({
   predecessor,
 }: {
   block: CanonicalBlockEvidence;
-  predecessor: CanonicalBlockEvidence | undefined;
+  predecessor: CheckedLedger | undefined;
 }): readonly ExecutionNativeScriptInvalidReplayDetection[] => {
   const resolvedOutputs = priorOutputs({ block, predecessor });
   const detections: ExecutionNativeScriptInvalidReplayDetection[] = [];

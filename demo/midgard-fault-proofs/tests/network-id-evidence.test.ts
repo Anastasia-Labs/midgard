@@ -22,6 +22,10 @@ import {
   canonicalBlockEvidenceFromVerifiedPayload,
 } from "../src/evidence/index.js";
 import {
+  checkLedgerAgainstRoot,
+  LedgerRootMismatchError,
+} from "../src/ledger-at.js";
+import {
   findNetworkIdFaults,
   networkIdOutputsOpening,
   requireNetworkIdFault,
@@ -39,6 +43,10 @@ import {
   buildCanonicalBlockFixture,
   type FixtureTransaction,
 } from "./helpers/canonical-block-evidence-fixture.js";
+import {
+  checkedLedgerAfter,
+  ledgerEntriesAfter,
+} from "./support/predecessor-ledger.js";
 
 const nativeTx = ({
   transactionNetworkId = 0n,
@@ -402,7 +410,11 @@ describe("Q35 network-id DA-first evidence", () => {
       outputNetworkId: 2,
     });
     const prepared = await prepareNetworkIdPostUtxoFromCanonicalEvidence({
-      evidence,
+      evidence: {
+        ...evidence,
+        reconstruction: { ...evidence.reconstruction, utxos: [] },
+      },
+      postLedger: await checkedLedgerAfter(evidence),
       expectedNetworkId: 0n,
       outRef,
     });
@@ -427,12 +439,40 @@ describe("Q35 network-id DA-first evidence", () => {
     });
     const prepared = await prepareNetworkIdPostUtxoFromCanonicalEvidence({
       evidence: challenged.evidence,
-      previousBlockEvidence: previous.evidence,
+      prevLedger: await checkedLedgerAfter(previous.evidence),
+      postLedger: await checkedLedgerAfter(challenged.evidence),
       expectedNetworkId: 0n,
       outRef: challenged.outRef,
     });
     expect(prepared.faultClaim.observedNetworkId).toBe(7n);
     expect(prepared.predecessor).toHaveProperty("NetworkChanged");
+    // A predecessor ledger with one wrong entry never opens prev_utxos_root.
+    const [entry] = ledgerEntriesAfter(previous.evidence);
+    const [wrong] = ledgerEntriesAfter(challenged.evidence);
+    await expect(
+      checkLedgerAgainstRoot({
+        entries: [{ outRef: entry!.outRef, output: wrong!.output }],
+        utxosRoot: previous.evidence.header.utxosRoot,
+        label: "network-id test",
+      }),
+    ).rejects.toBeInstanceOf(LedgerRootMismatchError);
+    // A checked ledger for another root, or none, is refused on either side.
+    const prevLedger = await checkedLedgerAfter(previous.evidence);
+    const postLedger = await checkedLedgerAfter(challenged.evidence);
+    for (const [ledgers, refusal] of [
+      [{ prevLedger: postLedger, postLedger }, "predecessor"],
+      [{ postLedger }, "predecessor"],
+      [{ prevLedger, postLedger: prevLedger }, "post"],
+      [{ prevLedger }, "post"],
+    ] as const)
+      await expect(
+        prepareNetworkIdPostUtxoFromCanonicalEvidence({
+          evidence: challenged.evidence,
+          ...ledgers,
+          expectedNetworkId: 0n,
+          outRef: challenged.outRef,
+        }),
+      ).rejects.toThrow(`network-id ${refusal} ledger`);
   });
 
   it("refuses to blame a descendant for an inherited wrong-network UTxO", async () => {
@@ -448,7 +488,8 @@ describe("Q35 network-id DA-first evidence", () => {
     await expect(
       prepareNetworkIdPostUtxoFromCanonicalEvidence({
         evidence: challenged.evidence,
-        previousBlockEvidence: previous.evidence,
+        prevLedger: await checkedLedgerAfter(previous.evidence),
+        postLedger: await checkedLedgerAfter(challenged.evidence),
         expectedNetworkId: 0n,
         outRef: challenged.outRef,
       }),

@@ -6,7 +6,8 @@ import { type ResolvedProverSigner } from "../runtime.js";
 import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts.js";
 import {
   type CompleteCanonicalReplayContext,
-  completeCanonicalReplayPredecessorEvidence,
+  completeCanonicalReplayPostLedger,
+  completeCanonicalReplayPredecessorLedger,
 } from "../workflow/complete-replay.js";
 import {
   CURSOR_FAMILY_TRANSACTION_PORT,
@@ -60,7 +61,11 @@ export const transactionPort = (
   prepare: async ({ evidence, classification }) =>
     await prepareMinAdaArtifact({
       evidence,
-      predecessor: completeCanonicalReplayPredecessorEvidence({
+      predecessor: completeCanonicalReplayPredecessorLedger({
+        evidence,
+        context: config.replayContext,
+      }),
+      post: completeCanonicalReplayPostLedger({
         evidence,
         context: config.replayContext,
       }),

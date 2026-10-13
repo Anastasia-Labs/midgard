@@ -17,6 +17,10 @@ import {
 } from "./helpers/canonical-block-evidence-fixture.js";
 import { buildDecodingBlockFixture } from "./support/native-script-decoding-emulator.js";
 import {
+  checkedLedgerAfter,
+  ledgerAtAfter,
+} from "./support/predecessor-ledger.js";
+import {
   buildValueNotPreservedFixture,
   vnpOutput,
   vnpOutRef,
@@ -82,23 +86,18 @@ const fixture = async (forced: boolean, balanced: boolean) => {
     payloadEnvelopeCbor: await reencodeFixturePayload(payload),
     daProvenance: provenance,
   });
-  const predecessor = await canonicalBlockEvidenceFromVerifiedPayload({
+  const predecessorEvidence = await canonicalBlockEvidenceFromVerifiedPayload({
     observation: authenticatedHeaderObservation(predecessorFixture),
     payloadEnvelopeCbor: predecessorFixture.payloadEnvelopeCbor,
     daProvenance: provenance,
   });
   const context = {
     predecessor: await admitCompleteCanonicalReplayPredecessor({
-      value: {
-        observation: authenticatedHeaderObservation(predecessorFixture),
-        payloadEnvelopeCborHex:
-          predecessorFixture.payloadEnvelopeCbor.toString("hex"),
-        daProvenance: provenance,
-      },
+      ledgerAt: ledgerAtAfter(predecessorEvidence),
       currentEvidence: evidence,
-      minimumConfirmationDepth: 1,
     }),
   };
+  const predecessor = await checkedLedgerAfter(predecessorEvidence);
   return { evidence, predecessor, context };
 };
 describe("value conservation installed canonical replay", () => {
@@ -198,11 +197,13 @@ it.each([true, false])(
           }
         : { kind: "normal", nativeTx: next.nativeTx },
     });
-    const predecessor = await canonicalBlockEvidenceFromVerifiedPayload({
-      observation: authenticatedHeaderObservation(before),
-      payloadEnvelopeCbor: before.payloadEnvelopeCbor,
-      daProvenance: provenance,
-    });
+    const predecessor = await checkedLedgerAfter(
+      await canonicalBlockEvidenceFromVerifiedPayload({
+        observation: authenticatedHeaderObservation(before),
+        payloadEnvelopeCbor: before.payloadEnvelopeCbor,
+        daProvenance: provenance,
+      }),
+    );
     for (const corruptPriorEffect of [false, true]) {
       const a = first.reconstruction.payload.block_body;
       const b = second.reconstruction.payload.block_body;

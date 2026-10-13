@@ -11,7 +11,7 @@ import {
 import { planFaultProofFieldOpening } from "../field-opening.js";
 import { submitInit } from "../submit-init.js";
 import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts.js";
-import { completeCanonicalReplayPredecessorEvidence } from "../workflow/complete-replay.js";
+import { completeCanonicalReplayPredecessorLedger } from "../workflow/complete-replay.js";
 import { captureCursorRemoval } from "../workflow/cursor-family-runtime.js";
 import {
   assertManifestBoundWorkflowSigner,
@@ -366,7 +366,7 @@ export const createManifestBoundValueConservationWorkflow = async (
         throw new Error("value conservation: noncanonical source coordinate");
       const artifact = await prepareValueConservationArtifact({
         block: evidence,
-        predecessor: completeCanonicalReplayPredecessorEvidence({
+        predecessor: completeCanonicalReplayPredecessorLedger({
           evidence,
           context: replayContext,
         }),

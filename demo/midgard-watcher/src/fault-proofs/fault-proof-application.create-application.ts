@@ -19,6 +19,7 @@ import {
   journalJsonDigest,
   normalizeJournalJson,
   resolveFamilyApplicationReferences,
+  retainedPayloadReplaySource,
   runFraudProofWorkflowCli,
   type WorkflowAdapterRunner,
 } from "@al-ft/midgard-fault-proofs";
@@ -70,7 +71,6 @@ import {
   admittedApplications,
   type ApplicationConstruction,
   buildCommonInfrastructure,
-  predecessorObservationForClassifier,
   type WatcherFaultProofApplicationWithLoaderForTest,
   watcherFaultProofSourceId,
 } from "./fault-proof-application.build-common-infrastructure.js";
@@ -511,6 +511,10 @@ export function createApplication({
             "watcher retained-DA runtime changed deployment identity",
           );
         }
+        const replaySource = retainedPayloadReplaySource({
+          sources: retainedDa.sources,
+          retries: input.retries,
+        });
         const decision = await classifyProductionHeaderV1({
           classifier: await loadClassifier(
             watcherConfig,
@@ -518,21 +522,14 @@ export function createApplication({
           ),
           observation: input.observation,
           authenticatedObservationDigest: input.authenticatedObservationDigest,
-          sources: retainedDa.sources,
-          ...(input.predecessor === undefined
-            ? {}
-            : {
-                predecessorObservation: predecessorObservationForClassifier({
-                  current: input.observation,
-                  predecessor: input.predecessor,
-                }),
-              }),
+          sources: replaySource.sources,
+          predecessorLedgerAt: replaySource.ledgerAt,
           ...(input.retries === undefined ? {} : { retries: input.retries }),
         });
         const replayContext = headerDecisionReplayContext(decision);
         // A header committing a non-empty previous ledger can only be proved
-        // against that ledger; the genesis-ledger header (empty root) has no
-        // predecessor and the classifier forbids one.
+        // against that ledger; a header committing the empty one is proved
+        // against the empty ledger.
         if (
           decision.decision === "fault_detected" &&
           WATCHER_PREDECESSOR_AUTHORITY_CATEGORIES.includes(

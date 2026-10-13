@@ -403,13 +403,10 @@ export const captureExecutionNativeScriptInvalidAction = async ({
           stepIndex: acceptedStepIndex,
         });
         const membership = async (key: Buffer, output: Uint8Array) => {
-          const entries = (predecessorLedger?.utxos ?? []).map(
+          const entries = predecessorLedger.trie.entries.map(
             ({ key: candidate, value }) => ({
               key: Buffer.from(candidate),
-              value: buildCanonicalMidgardLedgerOutputMaterial({
-                outputIndex: decodeMidgardSpendInputItem(candidate).outputIndex,
-                outputCbor: value,
-              }).descriptorCbor,
+              value: Buffer.from(value),
             }),
           );
           const trie = await buildTrieView(entries);

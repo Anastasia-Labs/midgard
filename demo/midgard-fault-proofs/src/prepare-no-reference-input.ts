@@ -11,7 +11,7 @@
  * module was skipped.
  */
 
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 import {
@@ -36,6 +36,12 @@ import { Effect } from "effect";
 
 import { parseHex, stringifyJson } from "./json-file.js";
 import {
+  type CheckedLedger,
+  predecessorLedger,
+  readLedgerFile,
+  requireLedgerOpening,
+} from "./ledger-at.js";
+import {
   buildMembershipProof,
   buildNonMembershipProof,
   computeTrieRoot,
@@ -52,7 +58,6 @@ import { spendInputsWitnessFromCbors } from "./spend-input-witness.js";
 import { ledgerKeyBytesHex } from "./step-support.js";
 import { nativeTxFromCoreCompact } from "./step-support.js";
 import { keyValuePhasNonMembershipProof } from "./transition-trace/phas.js";
-import { reconstructDaPayload } from "./transition-trace/reconstruct.js";
 
 /**
  * One reference input of the bad transaction, as committed by its native
@@ -70,8 +75,9 @@ export type PrepareNoReferenceInputCliConfig = {
   readonly headerHash: string;
   readonly badTxId?: string;
   readonly badReferenceInputIndex?: string | number;
+  readonly prevHeaderHash?: string;
   readonly prevUtxosRoot?: string;
-  readonly prevBlockPayloadPath?: string;
+  readonly prevLedgerPath?: string;
   readonly expectedTransactionsRoot?: string;
   readonly outputDir?: string;
   readonly fetchImpl?: FetchLike;
@@ -82,8 +88,9 @@ export type PrepareNoReferenceInputFromFileConfig = {
   readonly headerHash: string;
   readonly badTxId?: string;
   readonly badReferenceInputIndex?: string | number;
+  readonly prevHeaderHash?: string;
   readonly prevUtxosRoot?: string;
-  readonly prevBlockPayloadPath?: string;
+  readonly prevLedgerPath?: string;
   readonly expectedTransactionsRoot?: string;
   readonly outputDir?: string;
 };
@@ -192,59 +199,24 @@ const parseBadReferenceInputIndex = (
 
 /**
  * Ledger non-membership proof CBOR for the missing reference input against the
- * block's `prevUtxosRoot`.
- *
- * - Empty genesis ledger: built locally against an empty trie.
- * - Non-empty ledger: reconstructed from the **previous** block's DA payload,
- *   whose `utxos_root` is exactly this block's `prev_utxos_root`. We verify the
- *   reconstruction opens `prevUtxosRoot` before proving exclusion.
+ * block's predecessor ledger, which `predecessorLedger` has already checked
+ * against the block's `prev_utxos_root`. Throws if the reference input is present.
  *
  * The `utxos_root` is a raw PHAS/MPF root (unlike the counted `transactions_root`),
  * so this exclusion proof verifies directly against `prev_utxos_root` on-chain via
  * `plutarch_pexcludes_raw`.
  */
-const resolveLedgerNonMembershipProof = async ({
-  prevUtxosRoot,
-  missingReferenceInput,
-  prevBlockPayloadEnvelopeCbor,
-}: {
-  readonly prevUtxosRoot: string;
-  readonly missingReferenceInput: MidgardTxInput;
-  readonly prevBlockPayloadEnvelopeCbor?: Uint8Array;
-}): Promise<string> => {
-  const ledgerKey = Buffer.from(
-    ledgerKeyBytesHex(missingReferenceInput),
-    "hex",
+const ledgerNonMembershipProof = async (
+  ledger: CheckedLedger,
+  missingReferenceInput: MidgardTxInput,
+): Promise<string> =>
+  Data.to(
+    await keyValuePhasNonMembershipProof(
+      ledger.trie,
+      Buffer.from(ledgerKeyBytesHex(missingReferenceInput), "hex"),
+    ),
+    asLucidSchema(Proof),
   );
-  if (prevUtxosRoot === EMPTY_MERKLE_TREE_ROOT) {
-    return await buildNonMembershipProof([], ledgerKey);
-  }
-  if (prevBlockPayloadEnvelopeCbor === undefined) {
-    throw new Error(
-      `The block sits over a non-empty prev-utxos ledger (root ${prevUtxosRoot}). ` +
-        "Supply the previous block's DA payload via --prev-block-payload-file so " +
-        "the ledger trie at that root can be reconstructed and the non-membership " +
-        "proof built. (Only the empty-genesis first block needs no payload.)",
-    );
-  }
-  const reconstruction = await reconstructDaPayload({
-    payloadEnvelopeCbor: prevBlockPayloadEnvelopeCbor,
-  });
-  if (reconstruction.roots.utxosRoot !== prevUtxosRoot) {
-    throw new Error(
-      `--prev-block-payload-file reconstructs utxos_root ${reconstruction.roots.utxosRoot}, ` +
-        `which does not match --prev-utxos-root ${prevUtxosRoot}. The supplied payload is ` +
-        "not the block immediately preceding the fraudulent one.",
-    );
-  }
-  // Throws if the reference input is actually present in the ledger (then it is
-  // not a non-existent reference input) and verifies the proof opens `prevUtxosRoot`.
-  const proof = await keyValuePhasNonMembershipProof(
-    reconstruction.rootData.utxos,
-    ledgerKey,
-  );
-  return Data.to(proof, asLucidSchema(Proof));
-};
 
 /**
  * Builds the four no-reference-input submit-step artifacts from a block the node
@@ -258,7 +230,7 @@ export const prepareNoReferenceInputFromTransactions = async ({
   badTxId,
   badReferenceInputIndex,
   prevUtxosRoot = EMPTY_MERKLE_TREE_ROOT,
-  prevBlockPayloadEnvelopeCbor,
+  prevLedger,
   expectedTransactionsRoot,
   outputDir,
 }: {
@@ -266,8 +238,10 @@ export const prepareNoReferenceInputFromTransactions = async ({
   readonly transactions: readonly NodeTransactionPayload[];
   readonly badTxId?: string;
   readonly badReferenceInputIndex?: string | number;
+  /** The challenged header's `prev_utxos_root`. */
   readonly prevUtxosRoot?: string;
-  readonly prevBlockPayloadEnvelopeCbor?: Uint8Array;
+  /** The ledger the block starts from; omitted over the empty genesis ledger. */
+  readonly prevLedger?: CheckedLedger;
   readonly expectedTransactionsRoot?: string;
   readonly outputDir?: string;
 }): Promise<PreparedNoReferenceInputOutput> => {
@@ -333,11 +307,14 @@ export const prepareNoReferenceInputFromTransactions = async ({
   // step-03 ledger non-membership: the missing reference input is absent from
   // the block's prev-utxos ledger trie (keyed by the Cardano `TransactionInput`
   // CBOR).
-  const ledgerNonMembershipProofCbor = await resolveLedgerNonMembershipProof({
-    prevUtxosRoot: normalizedPrevUtxosRoot,
+  const ledgerNonMembershipProofCbor = await ledgerNonMembershipProof(
+    requireLedgerOpening({
+      ledger: prevLedger,
+      utxosRoot: normalizedPrevUtxosRoot,
+      label: "no-reference-input predecessor ledger",
+    }),
     missingReferenceInput,
-    prevBlockPayloadEnvelopeCbor,
-  });
+  );
 
   const committedTransactionsRoot = await Effect.runPromise(
     commitCountedRootProgram({
@@ -440,30 +417,38 @@ export const prepareNoReferenceInputFromTransactions = async ({
 };
 
 /**
- * Reads a previous-block DA payload file: the `DaPayloadEnvelopeV1` canonical CBOR as a
- * hex string (whitespace tolerated). Returns `undefined` when no path is given.
+ * The predecessor ledger named by `--prev-header-hash` / `--prev-utxos-root`,
+ * read from `--prev-ledger-file` and checked against that root.
  */
-const readPrevBlockPayloadEnvelopeCbor = async (
-  path: string | undefined,
-): Promise<Uint8Array | undefined> => {
-  if (path === undefined) {
-    return undefined;
-  }
-  const raw = (await readFile(path, "utf8")).trim();
-  return Buffer.from(parseHex(raw, "--prev-block-payload-file"), "hex");
+const readPrevLedger = async (config: {
+  readonly prevHeaderHash?: string;
+  readonly prevUtxosRoot?: string;
+  readonly prevLedgerPath?: string;
+}): Promise<CheckedLedger | undefined> => {
+  if (config.prevLedgerPath === undefined) return undefined;
+  if (config.prevUtxosRoot === undefined || config.prevHeaderHash === undefined)
+    throw new Error(
+      "--prev-ledger-file needs --prev-header-hash and --prev-utxos-root to check it against.",
+    );
+  return await predecessorLedger({
+    prevHeaderHash: parseHex(config.prevHeaderHash, "--prev-header-hash", 28),
+    prevUtxosRoot: parseHex(config.prevUtxosRoot, "--prev-utxos-root", 32),
+    ledgerAt: await readLedgerFile(config.prevLedgerPath),
+    label: "--prev-ledger-file",
+  });
 };
 
 export const prepareNoReferenceInputFromNode = async (
   config: PrepareNoReferenceInputCliConfig,
 ): Promise<PreparedNoReferenceInputOutput> => {
   const headerHash = parseHex(config.headerHash, "--header-hash", 28);
-  const [transactions, prevBlockPayloadEnvelopeCbor] = await Promise.all([
+  const [transactions, prevLedger] = await Promise.all([
     fetchNodeBlockTransactions({
       midgardNodeUrl: config.midgardNodeUrl,
       headerHash,
       fetchImpl: config.fetchImpl,
     }),
-    readPrevBlockPayloadEnvelopeCbor(config.prevBlockPayloadPath),
+    readPrevLedger(config),
   ]);
   return await prepareNoReferenceInputFromTransactions({
     headerHash,
@@ -471,7 +456,7 @@ export const prepareNoReferenceInputFromNode = async (
     badTxId: config.badTxId,
     badReferenceInputIndex: config.badReferenceInputIndex,
     prevUtxosRoot: config.prevUtxosRoot,
-    prevBlockPayloadEnvelopeCbor,
+    prevLedger,
     expectedTransactionsRoot: config.expectedTransactionsRoot,
     outputDir: config.outputDir,
   });
@@ -480,9 +465,9 @@ export const prepareNoReferenceInputFromNode = async (
 export const prepareNoReferenceInputFromFile = async (
   config: PrepareNoReferenceInputFromFileConfig,
 ): Promise<PreparedNoReferenceInputOutput> => {
-  const [transactions, prevBlockPayloadEnvelopeCbor] = await Promise.all([
+  const [transactions, prevLedger] = await Promise.all([
     readNodeTransactionPayloadsFile(config.transactionsPath),
-    readPrevBlockPayloadEnvelopeCbor(config.prevBlockPayloadPath),
+    readPrevLedger(config),
   ]);
   return await prepareNoReferenceInputFromTransactions({
     headerHash: config.headerHash,
@@ -490,7 +475,7 @@ export const prepareNoReferenceInputFromFile = async (
     badTxId: config.badTxId,
     badReferenceInputIndex: config.badReferenceInputIndex,
     prevUtxosRoot: config.prevUtxosRoot,
-    prevBlockPayloadEnvelopeCbor,
+    prevLedger,
     expectedTransactionsRoot: config.expectedTransactionsRoot,
     outputDir: config.outputDir,
   });

@@ -11,6 +11,7 @@ import {
 import { Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
+import { checkLedgerAgainstRoot } from "../src/ledger-at.js";
 import {
   mpfProofFromWitness,
   normalizedMpfRoot,
@@ -54,7 +55,12 @@ describe("transition trace retained descriptor mutations", () => {
   it("replays a rejected forced transaction without retained machine endpoints", async () => {
     const id = outRef(88);
     const eventKey = forcedEventKey(id);
-    const predecessor = await reconstruct(await buildPayloadFixture({}));
+    const previous = await reconstruct(await buildPayloadFixture({}));
+    const predecessor = await checkLedgerAgainstRoot({
+      entries: [],
+      utxosRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
+      label: "predecessor",
+    });
     const transaction = forcedTx(88, {
       ForcedTxInvalid: { reason: "EmptyInputs" },
     });
@@ -81,7 +87,7 @@ describe("transition trace retained descriptor mutations", () => {
     );
     const current = await reconstruct(
       await buildPayloadFixture({
-        prevHeaderHash: predecessor.headerHash,
+        prevHeaderHash: previous.headerHash,
         forcedTransactions: [
           [
             Data.to(id, SDK.OutputReference),

@@ -10,7 +10,7 @@ import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-confi
 import {
   authenticatedStateQueueObservationDigest,
   classifyHeader,
-  completeCanonicalReplayPredecessorEvidence,
+  completeCanonicalReplayPredecessorLedger,
   computeFraudProofReleaseFinalityPolicyDigest,
   createCatalogueCompleteCanonicalReplay,
   createHeaderClassifier,
@@ -21,6 +21,7 @@ import {
   headerDecisionCanonicalEvidence,
   headerDecisionReplayContext,
   type RetainedDaPayloadSource,
+  retainedPayloadLedgerAt,
 } from "@al-ft/midgard-fault-proofs";
 import { authenticatedHeaderObservation } from "@al-ft/midgard-fault-proofs/test-support/canonical-block-evidence-fixture";
 import { captureRetainedPlutusIdentityOrigins } from "@al-ft/midgard-fault-proofs/test-support/retained-reason-classifier";
@@ -265,7 +266,7 @@ export const classifyFullCatalogueTransactionFixture = async (input: {
   const decision = await classifyHeader({
     classifier,
     observation,
-    predecessorObservation: authenticatedHeaderObservation(input.predecessor),
+    predecessorLedgerAt: retainedPayloadLedgerAt({ sources }),
     sources,
     authenticatedObservationDigest:
       await authenticatedStateQueueObservationDigest({
@@ -281,7 +282,7 @@ export const classifyFullCatalogueTransactionFixture = async (input: {
     predecessor:
       evidence === undefined
         ? undefined
-        : completeCanonicalReplayPredecessorEvidence({
+        : completeCanonicalReplayPredecessorLedger({
             evidence,
             context: headerDecisionReplayContext(decision),
           }),

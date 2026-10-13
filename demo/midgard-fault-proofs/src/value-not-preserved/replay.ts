@@ -12,6 +12,7 @@ import { buildCanonicalMidgardLedgerEntryOutputMaterial } from "@al-ft/midgard-v
 import { Data } from "@lucid-evolution/lucid";
 
 import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
+import { type CheckedLedger } from "../ledger-at.js";
 import { transactionHasNonCanonicalMintItem } from "../mint-item-non-canonical/replay.js";
 import {
   keyValuePhasProof,
@@ -45,18 +46,17 @@ export const VALUE_NOT_PRESERVED_REJECTION_VIOLATION =
 const eventLedger = async (
   block: CanonicalBlockEvidence,
   stepIndex: bigint,
-  predecessor?: CanonicalBlockEvidence,
+  predecessor?: CheckedLedger,
 ) => {
   if (
     predecessor !== undefined &&
-    (predecessor.headerHash !== block.header.prevHeaderHash ||
-      predecessor.header.utxosRoot !== block.header.prevUtxosRoot)
+    predecessor.utxosRoot !== block.header.prevUtxosRoot
   )
     throw new Error("value conservation: unrelated predecessor");
   const outputs = new Map(
-    (predecessor?.reconstruction.utxos ?? []).map((entry) => [
-      entry.key.toString("hex"),
-      entry,
+    (predecessor?.entries ?? []).map(({ outRef, output }) => [
+      outRef.toString("hex"),
+      { key: Buffer.from(outRef), value: Buffer.from(output) },
     ]),
   );
   const root = async () =>
@@ -149,7 +149,7 @@ export const prepareValueConservationArtifact = async ({
   forced,
 }: {
   readonly block: CanonicalBlockEvidence;
-  readonly predecessor?: CanonicalBlockEvidence;
+  readonly predecessor?: CheckedLedger;
   readonly sourceIndex: number;
   readonly forced: boolean;
 }): Promise<ValueConservationArtifact | null> => {
@@ -312,7 +312,7 @@ export const detectValueConservationFaults = async ({
   predecessor,
 }: {
   readonly block: CanonicalBlockEvidence;
-  readonly predecessor?: CanonicalBlockEvidence;
+  readonly predecessor?: CheckedLedger;
 }) => {
   const candidates: { forced: boolean; index: number }[] = [];
   for (const forced of [false, true]) {

@@ -21,7 +21,7 @@ import { ledgerKeyBytesHex } from "../step-support.js";
 import type { CanonicalBlockClassification } from "./classification.js";
 import {
   type CompleteCanonicalReplayContext,
-  completeCanonicalReplayPredecessorEvidence,
+  completeCanonicalReplayPredecessorLedger,
 } from "./complete-replay.js";
 import { type JournalJsonObject, normalizeJournalJson } from "./journal.js";
 import {
@@ -350,7 +350,7 @@ export const prepareLedgerAbsenceArtifact = async ({
     throw new Error(`${category} classification differs from evidence`);
   }
   const selected = selectedIdentity({ category, classification });
-  const previousBlockEvidence = completeCanonicalReplayPredecessorEvidence({
+  const prevLedger = await completeCanonicalReplayPredecessorLedger({
     evidence,
     context: replayContext,
   });
@@ -358,9 +358,7 @@ export const prepareLedgerAbsenceArtifact = async ({
     if (category === "nonExistentInput") {
       const result = await prepareNonExistentInputFromCanonicalEvidence({
         evidence,
-        ...(previousBlockEvidence === undefined
-          ? {}
-          : { previousBlockEvidence }),
+        prevLedger,
         badTxId: selected.badTxId,
         badInputIndex: selected.inputIndex,
       });
@@ -372,7 +370,7 @@ export const prepareLedgerAbsenceArtifact = async ({
     }
     const result = await prepareNoReferenceInputFromCanonicalEvidence({
       evidence,
-      ...(previousBlockEvidence === undefined ? {} : { previousBlockEvidence }),
+      prevLedger,
       badTxId: selected.badTxId,
       badReferenceInputIndex: selected.inputIndex,
     });

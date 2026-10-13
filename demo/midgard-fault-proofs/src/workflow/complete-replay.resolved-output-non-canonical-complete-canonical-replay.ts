@@ -25,7 +25,7 @@ import { detectSpendInputSignerMissingCompleteReplay } from "../spend-input-sign
 import { spendInputSignerWorkflowEvidenceIdentity } from "../spend-input-signer-missing/workflow.js";
 import { detectTransactionOutputNonCanonicalCompleteReplay } from "../transaction-output-non-canonical/workflow.js";
 import { detectWitnessScriptDecodingCompleteReplay } from "../witness-script-decoding/workflow.js";
-import { completeCanonicalReplayPredecessorEvidence } from "./complete-replay.admit-complete-canonical-replay-predecessor.js";
+import { completeCanonicalReplayPredecessorLedger } from "./complete-replay.admit-complete-canonical-replay-predecessor.js";
 import {
   detectL2TxMistags,
   detectMinFees,
@@ -110,7 +110,7 @@ export const NATIVE_SCRIPT_DECODING_COMPLETE_CANONICAL_REPLAY =
     async (evidence, context) =>
       await detectNativeScriptDecodingReplay({
         block: evidence,
-        predecessor: completeCanonicalReplayPredecessorEvidence({
+        predecessor: completeCanonicalReplayPredecessorLedger({
           evidence,
           context,
         }),
@@ -210,7 +210,7 @@ export const RESOLVED_OUTPUT_NON_CANONICAL_COMPLETE_CANONICAL_REPLAY =
     async (evidence, context) => {
       const priorLedger = await deriveResolvedOutputPriorLedgerReplay({
         block: evidence,
-        predecessor: completeCanonicalReplayPredecessorEvidence({
+        predecessor: completeCanonicalReplayPredecessorLedger({
           evidence,
           context,
         }),
@@ -264,7 +264,7 @@ export const SPEND_INPUT_SIGNER_MISSING_COMPLETE_CANONICAL_REPLAY =
   completeReplayer(["spendInputSignerMissing"], async (evidence, context) => {
     const priorLedger = await deriveResolvedOutputPriorLedgerReplay({
       block: evidence,
-      predecessor: completeCanonicalReplayPredecessorEvidence({
+      predecessor: completeCanonicalReplayPredecessorLedger({
         evidence,
         context,
       }),

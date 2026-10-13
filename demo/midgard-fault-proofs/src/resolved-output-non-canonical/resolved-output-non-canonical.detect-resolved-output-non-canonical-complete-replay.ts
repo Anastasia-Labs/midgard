@@ -12,6 +12,7 @@ import {
 } from "@al-ft/midgard-sdk";
 
 import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
+import { type CheckedLedger } from "../ledger-at.js";
 import { buildTrieView, requireProof } from "../prepare-double-spend.js";
 import { keyValuePhasProof } from "../transition-trace/phas.js";
 import {
@@ -37,7 +38,7 @@ export const deriveResolvedOutputPriorLedgerReplay = async ({
   predecessor,
 }: {
   readonly block: CanonicalBlockEvidence;
-  readonly predecessor: CanonicalBlockEvidence | undefined;
+  readonly predecessor: CheckedLedger | undefined;
 }): Promise<ResolvedOutputPriorLedgerReplay> => {
   if (predecessor === undefined) {
     if (block.header.prevUtxosRoot !== EMPTY_MERKLE_TREE_ROOT)
@@ -47,21 +48,16 @@ export const deriveResolvedOutputPriorLedgerReplay = async ({
       outputs: new Map(),
     });
   }
-  if (
-    predecessor.headerHash !== block.header.prevHeaderHash ||
-    predecessor.header.utxosRoot !== block.header.prevUtxosRoot
-  )
+  if (predecessor.utxosRoot !== block.header.prevUtxosRoot)
     return fail("authenticated predecessor history is substituted");
-  const ledger = predecessor.reconstruction;
-
-  // Retained UTxOs carry raw output bytes; the authenticated ledger root
-  // commits their descriptors. Use the already reconstructed descriptor view
-  // and pair it with the exact retained output by its canonical ledger key.
-  const descriptorEntries = ledger.rootData.utxos.entries;
+  // The checked ledger holds raw output bytes; the authenticated ledger root
+  // commits their descriptors. Use its descriptor view and pair it with the
+  // exact output by its canonical ledger key.
+  const descriptorEntries = predecessor.trie.entries;
   const outputPreimages = new Map(
-    ledger.utxos.map((entry) => [
-      entry.key.toString("hex"),
-      entry.value.toString("hex"),
+    [...predecessor.outputs].map(([key, output]) => [
+      key,
+      output.toString("hex"),
     ]),
   );
   const trie = await buildTrieView(descriptorEntries);
@@ -78,7 +74,7 @@ export const deriveResolvedOutputPriorLedgerReplay = async ({
     const key = outRefKey(transactionId, outputIndex);
     const outputCborHex = outputPreimages.get(entry.key.toString("hex"));
     if (outputCborHex === undefined)
-      return fail("predecessor retained DA omitted a live output preimage");
+      return fail("predecessor ledger omitted a live output preimage");
     const proof = await keyValuePhasProof(
       {
         root: trie.root,

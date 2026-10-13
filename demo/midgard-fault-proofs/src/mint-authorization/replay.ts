@@ -9,6 +9,7 @@ import { Data } from "@lucid-evolution/lucid";
 
 import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
 import { retainedOutputReferenceScript } from "../evidence/retained-ledger-output.js";
+import { type CheckedLedger } from "../ledger-at.js";
 import { transactionHasNonCanonicalMintItem } from "../mint-item-non-canonical/replay.js";
 import { nativeScriptDecodingPriorLedger } from "../native-script-decoding/replay.js";
 import { decodeTransactionMaterial } from "../prepare-double-spend.js";
@@ -39,7 +40,7 @@ export const prepareMintAuthorizationReplay = async ({
   sourceIndex,
 }: {
   current: TransitionTraceReconstruction;
-  predecessor?: TransitionTraceReconstruction;
+  predecessor?: CheckedLedger;
   sourceIndex: number;
 }) => {
   const source = current.transactions[sourceIndex];
@@ -153,7 +154,7 @@ export const detectMintAuthorizationReplay = async ({
   predecessor,
 }: {
   block: CanonicalBlockEvidence;
-  predecessor?: CanonicalBlockEvidence;
+  predecessor?: CheckedLedger;
 }) => {
   return collectReplayFindingBatches(
     block.reconstruction.transactions.map(async (source, sourceIndex) => {
@@ -167,7 +168,7 @@ export const detectMintAuthorizationReplay = async ({
         );
       const prepared = await prepareMintAuthorizationReplay({
         current: block.reconstruction,
-        predecessor: predecessor?.reconstruction,
+        predecessor,
         sourceIndex,
       });
       return prepared.map((item) => ({

@@ -1,9 +1,10 @@
 import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
+import { checkLedgerJson, ledgerJson } from "../ledger-at.js";
 import { reconstructDaPayload } from "../transition-trace/reconstruct.js";
 import type { CanonicalBlockClassification } from "../workflow/classification.js";
 import {
   type CompleteCanonicalReplayContext,
-  completeCanonicalReplayPredecessorEvidence,
+  completeCanonicalReplayPredecessorLedger,
 } from "../workflow/complete-replay.js";
 import {
   type JournalJsonObject,
@@ -16,13 +17,13 @@ import {
 } from "./replay.js";
 
 export const WITHDRAWAL_MISTAG_ARTIFACT =
-  "midgard-withdrawal-mistag-workflow-artifact-v1";
+  "midgard-withdrawal-mistag-workflow-artifact-v2";
 export const admitWithdrawalMistagWorkflowArtifact = async (
   value: JournalJsonObject,
 ) => {
   if (
     Object.keys(value).sort().join(",") !==
-      "detectionId,headerHash,index,payloadEnvelopeCbor,predecessorEnvelopeCbor,schemaVersion" ||
+      "detectionId,headerHash,index,payloadEnvelopeCbor,predecessorLedger,schemaVersion" ||
     value.schemaVersion !== WITHDRAWAL_MISTAG_ARTIFACT
   )
     throw new Error("withdrawalMistag artifact shape changed");
@@ -39,21 +40,13 @@ export const admitWithdrawalMistagWorkflowArtifact = async (
     ),
     expectedHeaderHash: value.headerHash as string,
   });
-  if (
-    value.predecessorEnvelopeCbor !== null &&
-    (typeof value.predecessorEnvelopeCbor !== "string" ||
-      !/^(?:[0-9a-f]{2})+$/u.test(value.predecessorEnvelopeCbor))
-  )
-    throw new Error("withdrawalMistag invalid predecessor envelope");
   const predecessor =
-    value.predecessorEnvelopeCbor === null
+    value.predecessorLedger === null
       ? undefined
-      : await reconstructDaPayload({
-          payloadEnvelopeCbor: Buffer.from(
-            value.predecessorEnvelopeCbor as string,
-            "hex",
-          ),
-          expectedHeaderHash: current.header.prevHeaderHash,
+      : await checkLedgerJson({
+          value: value.predecessorLedger,
+          utxosRoot: current.header.prevUtxosRoot,
+          label: "withdrawalMistag predecessor ledger",
         });
   const index = value.index;
   if (typeof index !== "number" || !Number.isSafeInteger(index) || index < 0)
@@ -81,7 +74,7 @@ export const prepareWithdrawalMistagWorkflowArtifact = async ({
     { decision: "fault_detected" }
   >;
 }) => {
-  const predecessor = completeCanonicalReplayPredecessorEvidence({
+  const predecessor = completeCanonicalReplayPredecessorLedger({
     evidence,
     context: replayContext,
   });
@@ -105,8 +98,8 @@ export const prepareWithdrawalMistagWorkflowArtifact = async ({
     index: finding.index,
     payloadEnvelopeCbor:
       evidence.reconstruction.payloadEnvelopeCbor.toString("hex"),
-    predecessorEnvelopeCbor:
-      predecessor?.reconstruction.payloadEnvelopeCbor.toString("hex") ?? null,
+    predecessorLedger:
+      predecessor === undefined ? null : ledgerJson(predecessor),
   }) as JournalJsonObject;
   await admitWithdrawalMistagWorkflowArtifact(artifact);
   return artifact;

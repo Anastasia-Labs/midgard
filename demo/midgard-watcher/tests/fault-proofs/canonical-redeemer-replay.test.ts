@@ -1,5 +1,4 @@
 import { decodeMidgardNativeTxFullFromCanonicalCbor } from "@al-ft/midgard-core/codec";
-import { DEPLOYMENT_MANIFEST_L1_FINALITY } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import {
   admitCompleteCanonicalReplayPredecessor,
@@ -11,6 +10,7 @@ import {
   authenticatedHeaderObservation,
   buildCanonicalBlockFixture,
 } from "@al-ft/midgard-fault-proofs/test-support/canonical-block-evidence-fixture";
+import { payloadLedgerAt } from "@al-ft/midgard-fault-proofs/test-support/predecessor-ledger";
 import { buildRetainedValidationBlockFixture } from "@al-ft/midgard-fault-proofs/test-support/retained-reason-classifier";
 import { GENESIS_HEADER_HASH } from "@al-ft/midgard-sdk";
 import {
@@ -58,14 +58,8 @@ describe("dishonest normal redeemer block replay", () => {
         daProvenance: provenance,
       });
       const predecessor = await admitCompleteCanonicalReplayPredecessor({
-        value: {
-          observation: authenticatedHeaderObservation(previous),
-          payloadEnvelopeCborHex: previous.payloadEnvelopeCbor.toString("hex"),
-          daProvenance: provenance,
-        },
+        ledgerAt: payloadLedgerAt(previous.payloadEnvelopeCbor),
         currentEvidence: evidence,
-        minimumConfirmationDepth:
-          DEPLOYMENT_MANIFEST_L1_FINALITY.confirmationDepth,
       });
       const validationTraceReplay = await admitValidationTraceReplayContext({
         l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,

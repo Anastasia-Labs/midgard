@@ -17,7 +17,7 @@ import { submitNoReferenceInputStep01 } from "../submit-no-reference-input-step-
 import { submitNoReferenceInputStep02 } from "../submit-no-reference-input-step-02.js";
 import { submitNoReferenceInputStep03 } from "../submit-no-reference-input-step-03.js";
 import { submitNoReferenceInputStep04 } from "../submit-no-reference-input-step-04.js";
-import { completeCanonicalReplayPredecessorEvidence } from "./complete-replay.js";
+import { completeCanonicalReplayPredecessorLedger } from "./complete-replay.js";
 import { type ManifestBoundLinearFamilyWorkflowConfig } from "./family-definition.js";
 import {
   admitLedgerAbsenceArtifact,
@@ -50,7 +50,7 @@ export const createTransactionPort = (
     ) {
       const detections = await detectNoReferenceInputWrongfulRejections({
         block: evidence,
-        predecessor: completeCanonicalReplayPredecessorEvidence({
+        predecessor: completeCanonicalReplayPredecessorLedger({
           evidence,
           context: replayContext,
         }),

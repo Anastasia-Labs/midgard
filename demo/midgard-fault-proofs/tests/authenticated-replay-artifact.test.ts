@@ -2,6 +2,7 @@ import { h32 } from "@al-ft/midgard-test-support/hex";
 import { describe, expect, it } from "vitest";
 
 import { canonicalBlockEvidenceFromVerifiedPayload } from "../src/evidence/canonical-block-evidence.js";
+import { LedgerRootMismatchError } from "../src/ledger-at.js";
 import {
   admitAuthenticatedReplayCaptureIdentity,
   admitRawPredecessorContext,
@@ -71,7 +72,7 @@ const context = async () => {
 };
 
 describe("production authenticated replay capture boundary V1", () => {
-  it("re-admits exact predecessor bytes and both challenged-header links", async () => {
+  it("admits a predecessor ledger only at the challenged header's prev_header_hash and prev_utxos_root", async () => {
     const predecessorFixture = await buildCanonicalBlockFixture({
       transactions: [],
     });
@@ -93,23 +94,13 @@ describe("production authenticated replay capture boundary V1", () => {
         prevUtxosRoot: predecessor.header.utxosRoot,
       },
     };
-    const raw = {
-      observation: authenticatedHeaderObservation(predecessorFixture),
-      payloadEnvelopeCborHex:
-        predecessorFixture.payloadEnvelopeCbor.toString("hex"),
-      daProvenance: {
-        trustClass: "public_or_permissionless_da",
-        sourceId: "libp2p/predecessor-capture-test",
-        grade: "security",
-      },
-    } as const;
+    const raw = { headerHash: predecessor.headerHash, ledger: [] } as const;
     await expect(
-      admitRawPredecessorContext({
-        value: raw,
-        currentEvidence: current,
-        minimumConfirmationDepth: 30,
-      }),
-    ).resolves.toMatchObject({ headerHash: predecessor.headerHash });
+      admitRawPredecessorContext({ value: raw, currentEvidence: current }),
+    ).resolves.toMatchObject({
+      headerHash: predecessor.headerHash,
+      utxosRoot: predecessor.header.utxosRoot,
+    });
     await expect(
       admitRawPredecessorContext({
         value: raw,
@@ -117,16 +108,29 @@ describe("production authenticated replay capture boundary V1", () => {
           ...current,
           header: { ...current.header, prevHeaderHash: "ff".repeat(28) },
         },
-        minimumConfirmationDepth: 30,
       }),
-    ).rejects.toThrow("prev_header_hash and prev_utxos_root");
+    ).rejects.toThrow("is unavailable");
     await expect(
       admitRawPredecessorContext({
-        value: { ...raw, payloadEnvelopeCborHex: "0" },
-        currentEvidence: current,
-        minimumConfirmationDepth: 30,
+        value: raw,
+        currentEvidence: {
+          ...current,
+          header: { ...current.header, prevUtxosRoot: "ee".repeat(32) },
+        },
       }),
-    ).rejects.toThrow("canonical lowercase byte hex");
+    ).rejects.toBeInstanceOf(LedgerRootMismatchError);
+    await expect(
+      admitRawPredecessorContext({
+        value: { ...raw, headerHash: "0" },
+        currentEvidence: current,
+      }),
+    ).rejects.toThrow("28-byte lowercase hex");
+    await expect(
+      admitRawPredecessorContext({
+        value: { ...raw, payloadEnvelopeCborHex: "00" },
+        currentEvidence: current,
+      }),
+    ).rejects.toThrow("missing or unknown fields");
   });
 
   it("admits the exact pre-classification identity from a module-admitted replay", async () => {

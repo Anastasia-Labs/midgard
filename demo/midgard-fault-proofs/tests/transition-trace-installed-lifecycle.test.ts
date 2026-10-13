@@ -20,6 +20,7 @@ import {
 } from "@lucid-evolution/lucid";
 import { afterAll, describe, expect, it, vi } from "vitest";
 
+import { retainedPayloadLedgerAt } from "../src/retained-payload-ledger-at.js";
 import { TRANSITION_TRACE_COMPLETE_CANONICAL_REPLAY } from "../src/workflow/complete-replay.js";
 import {
   authenticatedStateQueueObservationDigest,
@@ -80,7 +81,6 @@ import {
   computeFraudProofReleaseFinalityPolicyDigest,
   FRAUD_PROOF_RELEASE_FINALITY_POLICY_SCHEMA_VERSION,
 } from "../src/workflow/release-finality-policy.js";
-import { authenticatedHeaderObservation } from "./helpers/canonical-block-evidence-fixture.js";
 import {
   observeEmulatorSubmissions,
   recordCrossBlockRawEmulator,
@@ -699,9 +699,7 @@ describe("transition trace installed retained-history workflow", () => {
               minimumConfirmationDepth: finalityPolicy.confirmationDepth,
             }),
           sources,
-          predecessorObservation: authenticatedHeaderObservation(
-            fixture.predecessor,
-          ),
+          predecessorLedgerAt: retainedPayloadLedgerAt({ sources }),
         });
         expect(decision.decision).toBe(honest ? "healthy" : "fault_detected");
         if (!honest)

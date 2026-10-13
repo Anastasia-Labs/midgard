@@ -11,6 +11,7 @@ import { buildCanonicalMidgardLedgerEntryOutputMaterial } from "@al-ft/midgard-v
 import { Data } from "@lucid-evolution/lucid";
 
 import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
+import { type CheckedLedger } from "../ledger-at.js";
 import {
   type KeyValuePhasEntry,
   keyValuePhasProof,
@@ -99,16 +100,15 @@ export const nonExistentInputForcedSourceMaterial = (
 const priorLedger = async (
   block: CanonicalBlockEvidence,
   stepIndex: bigint,
-  predecessor?: CanonicalBlockEvidence,
+  predecessor?: CheckedLedger,
 ) => {
   if (
     predecessor !== undefined &&
-    (predecessor.headerHash !== block.header.prevHeaderHash ||
-      predecessor.header.utxosRoot !== block.header.prevUtxosRoot)
+    predecessor.utxosRoot !== block.header.prevUtxosRoot
   )
     throw new Error("nonExistentInput: unrelated predecessor");
   const entries = new Map<string, KeyValuePhasEntry>(
-    (predecessor?.reconstruction.rootData.utxos.entries ?? []).map((entry) => [
+    (predecessor?.trie.entries ?? []).map((entry) => [
       entry.key.toString("hex"),
       entry,
     ]),
@@ -185,7 +185,7 @@ export const prepareNonExistentInputWrongfulRejection = async ({
 }: {
   block: CanonicalBlockEvidence;
   forcedIndex: number;
-  predecessor?: CanonicalBlockEvidence;
+  predecessor?: CheckedLedger;
 }): Promise<PreparedNonExistentInputWrongfulRejection> => {
   const forced = block.reconstruction.forcedTransactions[forcedIndex];
   if (forced === undefined)
@@ -266,7 +266,7 @@ export const detectNonExistentInputWrongfulRejections = async ({
   predecessor,
 }: {
   block: CanonicalBlockEvidence;
-  predecessor?: CanonicalBlockEvidence;
+  predecessor?: CheckedLedger;
 }) => {
   const detections = [];
   for (const [

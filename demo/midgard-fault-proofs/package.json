@@ -19,6 +19,10 @@
       "midgard-source": "./tests/helpers/transition-history-fixture.ts",
       "types": "./tests/helpers/transition-history-fixture.ts"
     },
+    "./test-support/predecessor-ledger": {
+      "midgard-source": "./tests/support/predecessor-ledger.ts",
+      "types": "./tests/support/predecessor-ledger.ts"
+    },
     "./test-support/retained-reason-classifier": {
       "midgard-source": "./tests/support/retained-reason-classifier.ts",
       "types": "./tests/support/retained-reason-classifier.ts"

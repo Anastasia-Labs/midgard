@@ -23,6 +23,7 @@ import {
   buildFixtureTransaction,
   outRefCbor,
 } from "./helpers/canonical-block-evidence-fixture.js";
+import { payloadLedgerAt } from "./support/predecessor-ledger.js";
 import {
   buildRetainedValidationBlockFixture,
   captureRetainedPlutusIdentityOrigins,
@@ -84,13 +85,8 @@ const classifyAcceptedForcedRedeemer = async (redeemerData: string) => {
     minimumConfirmationDepth: policy.confirmationDepth,
   });
   const admittedPredecessor = await admitCompleteCanonicalReplayPredecessor({
-    value: {
-      observation: authenticatedHeaderObservation(predecessor),
-      payloadEnvelopeCborHex: predecessor.payloadEnvelopeCbor.toString("hex"),
-      daProvenance,
-    },
+    ledgerAt: payloadLedgerAt(predecessor.payloadEnvelopeCbor),
     currentEvidence: evidence,
-    minimumConfirmationDepth: policy.confirmationDepth,
   });
   const transitionTraceEvents = await captureRetainedPlutusIdentityOrigins({
     block,

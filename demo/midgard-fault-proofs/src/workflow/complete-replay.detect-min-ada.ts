@@ -22,7 +22,6 @@ import {
   WITHDRAWN_INPUT_VIOLATION_ID,
 } from "@al-ft/midgard-sdk";
 import {
-  buildCanonicalMidgardLedgerEntryOutputMaterial,
   buildCanonicalMidgardLedgerOutputMaterial,
   MIDGARD_COINS_PER_UTXO_BYTE,
   outputMeetsMinAda,
@@ -37,10 +36,14 @@ import {
 import { decodeTransactionMaterial } from "../prepare-double-spend.js";
 import { detectInputNoIdxViolationsFromTransactions } from "../prepare-input-no-idx.js";
 import { type CanonicalViolationDetection } from "./classification.js";
-import { PREDECESSOR_CONTEXT_UNAVAILABLE_VIOLATION_ID } from "./complete-replay.admit-complete-canonical-replay-predecessor.js";
+import {
+  POST_LEDGER_CONTEXT_UNAVAILABLE_VIOLATION_ID,
+  PREDECESSOR_CONTEXT_UNAVAILABLE_VIOLATION_ID,
+} from "./complete-replay.admit-complete-canonical-replay-predecessor.js";
 import {
   type CompleteCanonicalReplayContext,
-  requireReplayPredecessorEvidence,
+  requireReplayPostLedger,
+  requireReplayPredecessorLedger,
 } from "./complete-replay.replay-context-identity.js";
 import {
   acceptedTransactionSubject,
@@ -166,7 +169,7 @@ export const detectMinAda = async (
         : [];
     });
   });
-  const predecessor = requireReplayPredecessorEvidence({
+  const predecessor = requireReplayPredecessorLedger({
     evidence,
     context,
   });
@@ -187,21 +190,33 @@ export const detectMinAda = async (
       },
     ];
   }
-  const predecessorKeys = new Set(
-    (predecessor?.reconstruction.utxos ?? []).map((entry) =>
-      Buffer.from(entry.key).toString("hex"),
-    ),
+  const post = requireReplayPostLedger({ evidence, context });
+  // A mismatching ledger cannot prove a UTxO against this header.
+  // transitionTrace owns adjudication of the committed root.
+  if (post.kind === "root-mismatch") return txDetections;
+  if (post.kind === "unavailable") {
+    return [
+      ...txDetections,
+      {
+        ...BLOCK_SUBJECT,
+        detectionId: `${POST_LEDGER_CONTEXT_UNAVAILABLE_VIOLATION_ID}:min-ada-utxo:${evidence.headerHash}`,
+        headerHash: evidence.headerHash,
+        violationId: POST_LEDGER_CONTEXT_UNAVAILABLE_VIOLATION_ID,
+        position: BigInt(transactions.length),
+        diagnostic:
+          "MIN-ADA-UTXO classification requires the authenticated ledger after the challenged block",
+      },
+    ];
+  }
+  const predecessorKeys: ReadonlySet<string> = new Set(
+    predecessor?.outputs.keys() ?? [],
   );
-  const utxoDetections = evidence.reconstruction.utxos.flatMap(
-    (entry, index) => {
-      const key = Buffer.from(entry.key).toString("hex");
-      if (predecessorKeys.has(key)) return [];
-      const material = buildCanonicalMidgardLedgerEntryOutputMaterial({
-        outRef: entry.key,
-        outputCbor: entry.value,
-      });
-      if (!descriptorIsBelowMinAda(material.descriptorCbor)) return [];
-      const outRef = decodeMidgardSpendInputItem(entry.key);
+  // The trie leaves are the committed descriptors, ascending by out-ref key.
+  const utxoDetections = post.ledger.trie.entries.flatMap(
+    ({ key, value: descriptor }, index) => {
+      if (predecessorKeys.has(Buffer.from(key).toString("hex"))) return [];
+      if (!descriptorIsBelowMinAda(descriptor)) return [];
+      const outRef = decodeMidgardSpendInputItem(key);
       const transactionId = Buffer.from(outRef.txId).toString("hex");
       return [
         {

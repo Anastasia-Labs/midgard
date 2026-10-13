@@ -42,7 +42,7 @@ import { eventKeyFingerprint } from "../transition-trace/reconstruct.js";
 import { computeTransitionTraceL1EventEvidenceDigest } from "../transition-trace/replay-authority.js";
 import {
   type CompleteCanonicalReplayPredecessor,
-  completeCanonicalReplayPredecessorEvidence,
+  completeCanonicalReplayPredecessorLedger,
 } from "../workflow/complete-replay.js";
 import {
   type ReplayPrerequisiteFailure,
@@ -86,17 +86,12 @@ export const admitValidationTraceReplayContext = async ({
   /** The deployment manifest's slot mapping, which Plutus contexts use. */
   readonly l1SlotConfig: L1SlotConfig;
 }): Promise<ValidationTraceReplayContext> => {
-  const predecessorEvidence = completeCanonicalReplayPredecessorEvidence({
+  const prior = completeCanonicalReplayPredecessorLedger({
     evidence,
     context: predecessor === undefined ? undefined : { predecessor },
   });
-  // Snapshot and re-admit both envelopes before using any reconstructed value.
-  const [current, prior] = await Promise.all([
-    readmitEvidence(evidence),
-    predecessorEvidence === undefined
-      ? Promise.resolve(undefined)
-      : readmitEvidence(predecessorEvidence),
-  ]);
+  // Snapshot and re-admit the envelope before using any reconstructed value.
+  const current = await readmitEvidence(evidence);
   if (!sameEvidenceIdentity(current, evidence))
     throw new Error("validation replay current evidence identity changed");
   if (
@@ -112,9 +107,8 @@ export const admitValidationTraceReplayContext = async ({
       throw new Error("validation replay requires an admitted predecessor");
   } else if (
     predecessor === undefined ||
-    !sameEvidenceIdentity(prior, predecessor) ||
-    prior.headerHash !== current.header.prevHeaderHash ||
-    prior.header.utxosRoot !== current.header.prevUtxosRoot
+    predecessor.headerHash !== current.header.prevHeaderHash ||
+    prior.utxosRoot !== current.header.prevUtxosRoot
   )
     throw new Error("validation replay predecessor identity changed");
   const reconstruction = current.reconstruction;
@@ -157,9 +151,9 @@ export const admitValidationTraceReplayContext = async ({
         ),
     );
   const state = new Map(
-    (prior?.reconstruction.utxos ?? []).map(({ key, value }) => [
-      key.toString("hex"),
-      Buffer.from(value),
+    (prior?.entries ?? []).map(({ outRef, output }) => [
+      outRef.toString("hex"),
+      Buffer.from(output),
     ]),
   );
   let priorRoot = current.header.prevUtxosRoot;
