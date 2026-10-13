@@ -10,6 +10,7 @@ import { deriveCanonicalOriginalDepositTransitionEffect } from "@al-ft/midgard-v
 import { Data, type Network } from "@lucid-evolution/lucid";
 
 import { classifyCommittedFieldShapeFields } from "../committed-field-shape/prepare-committed-field-shape.js";
+import { type CheckedLedger } from "../ledger-at.js";
 import { transactionHasNonCanonicalMintItem } from "../mint-item-non-canonical/replay.js";
 import { replayPrerequisiteFailure } from "../workflow/replay-prerequisite.js";
 import {
@@ -46,21 +47,20 @@ export const deriveTransitionTraceReplayEvidence = async ({
   depositPolicyId,
 }: {
   current: TransitionTraceReconstruction;
-  predecessor?: TransitionTraceReconstruction;
+  predecessor?: CheckedLedger;
   deposits: readonly TransitionTraceDepositPreimage[];
   network: Network;
   depositPolicyId: string;
 }): Promise<TransitionTraceDetectionEvidence> => {
   if (
     predecessor !== undefined &&
-    (predecessor.headerHash !== current.header.prevHeaderHash ||
-      predecessor.header.utxosRoot !== current.header.prevUtxosRoot)
+    predecessor.utxosRoot !== current.header.prevUtxosRoot
   )
     throw new Error(
       "Transition replay predecessor differs from authenticated header",
     );
   const ledger = await createTransitionTraceLedgerReplay({
-    entries: predecessor?.rootData.utxos.entries ?? [],
+    entries: predecessor?.trie.entries ?? [],
     expectedRoot: current.header.prevUtxosRoot,
   });
   const l2: NonNullable<

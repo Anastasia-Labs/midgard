@@ -9,11 +9,11 @@ import type {
 // Admission compares already verified immutable facts. These bytes are not an
 // L1 authority; on-chain reopening separately authenticates the actual hashes.
 const artifact = (): JournalJsonObject => ({
-  schemaVersion: "midgard-transition-trace-workflow-artifact-v1",
+  schemaVersion: "midgard-transition-trace-workflow-artifact-v2",
   headerHash: "aa",
   detectionId: "deposit-0",
   payloadEnvelopeCbor: "bb",
-  predecessorEnvelopeCbor: null,
+  predecessorUtxosRoot: null,
   proofCbor: "cc",
   eventOutRef: "old#0",
   depositOpening: { commitmentCbor: "dd", openingCbor: "ee" },

@@ -22,6 +22,7 @@ import {
   admitCanonicalEvidenceForProofBuild,
   type CanonicalEvidenceBuilderInput,
 } from "../evidence/prepare-from-evidence.js";
+import { type CheckedLedger } from "../ledger-at.js";
 import {
   buildTrieView,
   decodeTransactionMaterial,
@@ -172,7 +173,7 @@ export const prepareMinAdaUtxoFromCanonicalEvidence = async ({
   outRef,
 }: CanonicalEvidenceBuilderInput & {
   /** The classifier-admitted predecessor; absent only for the genesis ledger. */
-  readonly predecessor: CanonicalBlockEvidence | undefined;
+  readonly predecessor: CheckedLedger | undefined;
   readonly outRef?: OutputReference;
 }): Promise<PreparedMinAdaUtxo> => {
   const previousLedger = requireReplayPredecessorLedger({
@@ -199,13 +200,8 @@ export const prepareMinAdaUtxoFromCanonicalEvidence = async ({
       };
     });
   const postMembers = members(evidence.reconstruction.utxos);
-  const previousMembers = members(previousLedger?.utxos ?? []);
   const postTrie = await keyValuePhasRootWithCount(postMembers);
-  const previousTrie = await keyValuePhasRootWithCount(previousMembers);
-  if (
-    postTrie.root !== evidence.header.utxosRoot ||
-    previousTrie.root !== evidence.header.prevUtxosRoot
-  ) {
+  if (postTrie.root !== evidence.header.utxosRoot) {
     throw new Error(
       "min-ada reconstructed UTxO roots do not match the challenged header",
     );
@@ -214,7 +210,7 @@ export const prepareMinAdaUtxoFromCanonicalEvidence = async ({
     (member) =>
       (outRef === undefined || sameOutRef(member.outRef, outRef)) &&
       descriptorViolatesMinAda(member.value) &&
-      !previousMembers.some((previous) => previous.key.equals(member.key)),
+      !previousLedger.outputs.has(member.key.toString("hex")),
   );
   if (selected === undefined) {
     throw new Error(
@@ -229,7 +225,7 @@ export const prepareMinAdaUtxoFromCanonicalEvidence = async ({
     selected.value,
   );
   const predecessorNonMembershipProof = await keyValuePhasNonMembershipProof(
-    previousTrie,
+    previousLedger.trie,
     selected.key,
   );
   return {
@@ -239,7 +235,7 @@ export const prepareMinAdaUtxoFromCanonicalEvidence = async ({
     outRefKeyCbor: selected.key.toString("hex"),
     descriptorCbor: selected.value.toString("hex"),
     postUtxosRoot: postTrie.root,
-    prevUtxosRoot: previousTrie.root,
+    prevUtxosRoot: previousLedger.utxosRoot,
     postMembershipProof,
     postMembershipProofCbor: Data.to(postMembershipProof, Proof),
     predecessorNonMembershipProof,

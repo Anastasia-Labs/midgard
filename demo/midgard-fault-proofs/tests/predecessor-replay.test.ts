@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { canonicalBlockEvidenceFromVerifiedPayload } from "../src/evidence/canonical-block-evidence.js";
+import { singleLedgerAt } from "../src/ledger-at.js";
 import {
   admitCompleteCanonicalReplayPredecessor,
   COMPLETE_CANONICAL_REPLAY_PREDECESSOR,
@@ -55,14 +56,8 @@ describe("production predecessor-relative complete replay V1", () => {
     });
     const context = {
       predecessor: await admitCompleteCanonicalReplayPredecessor({
-        value: {
-          observation: authenticatedHeaderObservation(predecessor),
-          payloadEnvelopeCborHex:
-            predecessor.payloadEnvelopeCbor.toString("hex"),
-          daProvenance,
-        },
+        ledgerAt: singleLedgerAt(predecessor.headerHash, []),
         currentEvidence: evidence,
-        minimumConfirmationDepth: 30,
       }),
     };
     for (const replayer of [
@@ -119,8 +114,7 @@ describe("production predecessor-relative complete replay V1", () => {
           schemaVersion: COMPLETE_CANONICAL_REPLAY_PREDECESSOR,
           challengedHeaderHash: evidence.headerHash,
           headerHash: evidence.header.prevHeaderHash,
-          payloadEnvelopeSha256: "11".repeat(32),
-          payloadSha256: "22".repeat(32),
+          utxosRoot: evidence.header.prevUtxosRoot,
         },
       }),
     ).rejects.toThrow("was not admitted for this challenged header");

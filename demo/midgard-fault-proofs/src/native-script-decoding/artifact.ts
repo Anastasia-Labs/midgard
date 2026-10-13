@@ -1,9 +1,10 @@
 import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
+import { checkLedgerJson, ledgerJson } from "../ledger-at.js";
 import { reconstructDaPayload } from "../transition-trace/reconstruct.js";
 import type { CanonicalBlockClassification } from "../workflow/classification.js";
 import {
   type CompleteCanonicalReplayContext,
-  completeCanonicalReplayPredecessorEvidence,
+  completeCanonicalReplayPredecessorLedger,
 } from "../workflow/complete-replay.js";
 import {
   type JournalJsonObject,
@@ -17,13 +18,13 @@ import {
 } from "./replay.js";
 
 export const NATIVE_SCRIPT_DECODING_ARTIFACT =
-  "midgard-native-script-decoding-workflow-artifact-v1";
+  "midgard-native-script-decoding-workflow-artifact-v2";
 export const admitNativeScriptDecodingWorkflowArtifact = async (
   value: JournalJsonObject,
 ) => {
   if (
     Object.keys(value).sort().join(",") !==
-      "coordinate,detectionId,headerHash,payloadEnvelopeCbor,predecessorEnvelopeCbor,schemaVersion" ||
+      "coordinate,detectionId,headerHash,payloadEnvelopeCbor,predecessorLedger,schemaVersion" ||
     value.schemaVersion !== NATIVE_SCRIPT_DECODING_ARTIFACT
   )
     throw new Error("nativeScriptDecoding artifact shape changed");
@@ -40,21 +41,13 @@ export const admitNativeScriptDecodingWorkflowArtifact = async (
     ),
     expectedHeaderHash: value.headerHash as string,
   });
-  if (
-    value.predecessorEnvelopeCbor !== null &&
-    (typeof value.predecessorEnvelopeCbor !== "string" ||
-      !/^(?:[0-9a-f]{2})+$/u.test(value.predecessorEnvelopeCbor))
-  )
-    throw new Error("nativeScriptDecoding invalid predecessor envelope");
   const predecessor =
-    value.predecessorEnvelopeCbor === null
+    value.predecessorLedger === null
       ? undefined
-      : await reconstructDaPayload({
-          payloadEnvelopeCbor: Buffer.from(
-            value.predecessorEnvelopeCbor as string,
-            "hex",
-          ),
-          expectedHeaderHash: current.header.prevHeaderHash,
+      : await checkLedgerJson({
+          value: value.predecessorLedger,
+          utxosRoot: current.header.prevUtxosRoot,
+          label: "nativeScriptDecoding predecessor ledger",
         });
   const rawCoordinate = value.coordinate;
   const c = rawCoordinate as JournalJsonObject;
@@ -101,7 +94,7 @@ export const prepareNativeScriptDecodingWorkflowArtifact = async ({
     { decision: "fault_detected" }
   >;
 }) => {
-  const predecessor = completeCanonicalReplayPredecessorEvidence({
+  const predecessor = completeCanonicalReplayPredecessorLedger({
     evidence,
     context: replayContext,
   });
@@ -125,8 +118,8 @@ export const prepareNativeScriptDecodingWorkflowArtifact = async ({
     coordinate: finding.prepared.coordinate,
     payloadEnvelopeCbor:
       evidence.reconstruction.payloadEnvelopeCbor.toString("hex"),
-    predecessorEnvelopeCbor:
-      predecessor?.reconstruction.payloadEnvelopeCbor.toString("hex") ?? null,
+    predecessorLedger:
+      predecessor === undefined ? null : ledgerJson(predecessor),
   }) as JournalJsonObject;
   await admitNativeScriptDecodingWorkflowArtifact(artifact);
   return artifact;

@@ -1,7 +1,7 @@
 import { fetchCanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
 import { deriveResolvedOutputPriorLedgerReplay } from "../resolved-output-non-canonical/resolved-output-non-canonical.js";
 import { type RetainedDaPayloadSource } from "../transition-trace/fetch.js";
-import { completeCanonicalReplayPredecessorEvidence } from "../workflow/complete-replay.js";
+import { completeCanonicalReplayPredecessorLedger } from "../workflow/complete-replay.js";
 import { observeFraudProofWorkflowHeader } from "../workflow/family-l1-observation.js";
 import { type FraudProofWorkflowJournalStore } from "../workflow/journal.js";
 import {
@@ -102,7 +102,7 @@ export const runOrResumeManifestBoundSpendInputSignerMissingWorkflow =
     });
     const priorLedger = await deriveResolvedOutputPriorLedgerReplay({
       block: canonical,
-      predecessor: completeCanonicalReplayPredecessorEvidence({
+      predecessor: completeCanonicalReplayPredecessorLedger({
         evidence: canonical,
         context: input.workflow.replayContext,
       }),
@@ -145,7 +145,7 @@ export const createSpendInputSignerMissingRecoveryAdapter = (
       await prepareSpendInputSignerMissingRecoveryMaterial(
         canonical,
         classification.selected.detectionId,
-        completeCanonicalReplayPredecessorEvidence({
+        completeCanonicalReplayPredecessorLedger({
           evidence: canonical,
           context: workflow.replayContext,
         }),

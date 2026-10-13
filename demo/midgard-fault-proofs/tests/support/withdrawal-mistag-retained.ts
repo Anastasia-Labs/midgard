@@ -11,6 +11,7 @@ import {
   buildCanonicalBlockFixture,
   reencodeFixturePayload,
 } from "../helpers/canonical-block-evidence-fixture.js";
+import { ledgerAtAfter } from "./predecessor-ledger.js";
 import {
   buildWithdrawalMistagEvidenceMaterial,
   type WithdrawalMistagDirectionFixture,
@@ -139,13 +140,8 @@ export const withdrawalMistagRetainedFixture = async ({
   });
   const context = {
     predecessor: await admitCompleteCanonicalReplayPredecessor({
-      value: {
-        observation: predecessorObservation,
-        payloadEnvelopeCborHex: predecessorEnvelope.toString("hex"),
-        daProvenance: provenance,
-      },
+      ledgerAt: ledgerAtAfter(predecessor),
       currentEvidence: evidence,
-      minimumConfirmationDepth: 1,
     }),
   };
   return { evidence, predecessor, context, material };

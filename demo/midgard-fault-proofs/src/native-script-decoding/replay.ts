@@ -24,6 +24,7 @@ import {
   retainedOutputReferenceScript,
   retainedUndecodableOutputDescriptor,
 } from "../evidence/retained-ledger-output.js";
+import { type CheckedLedger } from "../ledger-at.js";
 import {
   keyValuePhasProof,
   keyValuePhasRootWithCount,
@@ -47,32 +48,35 @@ function failure(message: string): never {
 export const nativeScriptDecodingPriorLedger = async (
   current: TransitionTraceReconstruction,
   stepIndex: bigint,
-  predecessor?: TransitionTraceReconstruction,
+  predecessor?: CheckedLedger,
 ) => {
   if (
     predecessor !== undefined &&
-    (predecessor.headerHash !== current.header.prevHeaderHash ||
-      predecessor.header.utxosRoot !== current.header.prevUtxosRoot)
+    predecessor.utxosRoot !== current.header.prevUtxosRoot
   )
     failure("unrelated predecessor");
-  const outputs = new Map(
-    (predecessor?.utxos ?? []).map(({ key, value }) => [
-      key.toString("hex"),
-      { key, value },
+  const outputs = new Map<
+    string,
+    { key: Buffer; value: Buffer; descriptor?: Buffer | undefined }
+  >(
+    (predecessor?.entries ?? []).map(({ outRef, output, descriptor }) => [
+      outRef.toString("hex"),
+      { key: Buffer.from(outRef), value: Buffer.from(output), descriptor },
     ]),
   );
-  const candidates = retainedLedgerDescriptorCandidates([
-    ...(predecessor?.payload.block_body.validation_trace_witnesses ?? []),
-    ...current.payload.block_body.validation_trace_witnesses,
-  ]);
+  const candidates = retainedLedgerDescriptorCandidates(
+    current.payload.block_body.validation_trace_witnesses,
+  );
   const resolveDescriptor = createCanonicalMidgardLedgerDescriptorResolver();
-  const descriptorFor = (key: Buffer, value: Buffer) => {
+  const descriptorFor = (key: Buffer, value: Buffer, descriptor?: Buffer) => {
     try {
       return resolveDescriptor({
         outRef: key,
         outputCbor: value,
       });
     } catch {
+      // The checked predecessor ledger already bound and authenticated it.
+      if (descriptor !== undefined) return descriptor;
       return retainedUndecodableOutputDescriptor({
         key,
         output: value,
@@ -82,9 +86,9 @@ export const nativeScriptDecodingPriorLedger = async (
   };
   const rootOf = async () =>
     await keyValuePhasRootWithCount(
-      [...outputs.values()].map(({ key, value }) => ({
+      [...outputs.values()].map(({ key, value, descriptor }) => ({
         key,
-        value: descriptorFor(key, value),
+        value: descriptorFor(key, value, descriptor),
       })),
     );
   let root = await rootOf();
@@ -176,7 +180,7 @@ export const prepareNativeScriptDecodingReplay = async ({
   coordinate,
 }: {
   current: TransitionTraceReconstruction;
-  predecessor?: TransitionTraceReconstruction;
+  predecessor?: CheckedLedger;
   coordinate: NativeScriptDecodingCoordinate;
 }) => {
   const forced =
@@ -344,7 +348,7 @@ export const detectNativeScriptDecodingReplay = async ({
   predecessor,
 }: {
   block: CanonicalBlockEvidence;
-  predecessor?: CanonicalBlockEvidence;
+  predecessor?: CheckedLedger;
 }) => {
   const candidates: NativeScriptDecodingCoordinate[] = [];
   for (const sourceKind of [0, 1] as const) {
@@ -404,7 +408,7 @@ export const detectNativeScriptDecodingReplay = async ({
     candidates.map(async (coordinate) => {
       const prepared = await prepareNativeScriptDecodingReplay({
         current: block.reconstruction,
-        predecessor: predecessor?.reconstruction,
+        predecessor,
         coordinate,
       });
       return prepared === null

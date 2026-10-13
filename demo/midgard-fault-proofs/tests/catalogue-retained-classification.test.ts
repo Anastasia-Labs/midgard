@@ -19,6 +19,7 @@ import {
 import { Effect } from "effect";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { retainedPayloadLedgerAt } from "../src/retained-payload-ledger-at.js";
 import { TRANSITION_HISTORY_FIXTURE_PARAMETERS } from "./helpers/transition-history-fixture.js";
 
 const transport = vi.hoisted(() => ({ raw: undefined as unknown }));
@@ -220,7 +221,7 @@ const setup = async (
     classifier,
     observation,
     sources,
-    predecessorObservation: authenticatedHeaderObservation(fixture.predecessor),
+    predecessorLedgerAt: retainedPayloadLedgerAt({ sources }),
     authenticatedObservationDigest:
       await authenticatedStateQueueObservationDigest({
         observation,
@@ -287,9 +288,6 @@ describe("installed catalogue retained classification", replayBudget, () => {
     );
     const { replayer, classifyInput } = await setup(fixture, "forced");
     expect(replayer.launchScope).toEqual(FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER);
-    expect(replayer.launchScope).toHaveLength(
-      FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER.length,
-    );
     const decision = await classifyHeader(classifyInput);
     expect(decision).toMatchObject({
       decision: "healthy",
@@ -673,7 +671,7 @@ describe("installed catalogue retained classification", replayBudget, () => {
     const { classifyInput } = await setup(fixture, "normal");
     const decision = await classifyHeader({
       ...classifyInput,
-      predecessorObservation: undefined,
+      predecessorLedgerAt: undefined,
     });
     expect(decision).toMatchObject({
       decision: "unprovable",
@@ -723,7 +721,7 @@ describe("installed catalogue retained classification", replayBudget, () => {
     );
     const decision = await classifyHeader({
       ...classifyInput,
-      predecessorObservation: undefined,
+      predecessorLedgerAt: undefined,
     });
     expect(decision).toMatchObject({
       decision: "unprovable",

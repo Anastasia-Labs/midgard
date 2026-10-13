@@ -40,7 +40,7 @@ import { type CanonicalViolationDetection } from "./classification.js";
 import { PREDECESSOR_CONTEXT_UNAVAILABLE_VIOLATION_ID } from "./complete-replay.admit-complete-canonical-replay-predecessor.js";
 import {
   type CompleteCanonicalReplayContext,
-  requireReplayPredecessorEvidence,
+  requireReplayPredecessorLedger,
 } from "./complete-replay.replay-context-identity.js";
 import {
   acceptedTransactionSubject,
@@ -166,7 +166,7 @@ export const detectMinAda = async (
         : [];
     });
   });
-  const predecessor = requireReplayPredecessorEvidence({
+  const predecessor = requireReplayPredecessorLedger({
     evidence,
     context,
   });
@@ -187,10 +187,8 @@ export const detectMinAda = async (
       },
     ];
   }
-  const predecessorKeys = new Set(
-    (predecessor?.reconstruction.utxos ?? []).map((entry) =>
-      Buffer.from(entry.key).toString("hex"),
-    ),
+  const predecessorKeys: ReadonlySet<string> = new Set(
+    predecessor?.outputs.keys() ?? [],
   );
   const utxoDetections = evidence.reconstruction.utxos.flatMap(
     (entry, index) => {

@@ -3,11 +3,12 @@ import { type FraudProofCatalogueCategoryName } from "@al-ft/midgard-sdk";
 
 import { type CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
 import { planFaultProofFieldOpening } from "../field-opening.js";
+import { type CheckedLedger } from "../ledger-at.js";
 import type { StateQueueMutationLeaseCoordinator } from "../remove-fraudulent-block.js";
 import { type RetainedDaPayloadSource } from "../transition-trace/fetch.js";
 import {
   type CompleteCanonicalReplayContext,
-  completeCanonicalReplayPredecessorEvidence,
+  completeCanonicalReplayPredecessorLedger,
 } from "../workflow/complete-replay.js";
 import {
   CURSOR_FAMILY_TRANSACTION_PORT,
@@ -158,7 +159,7 @@ export const resolvedOutputStageFromL1 = (
 export const prepareResolvedOutputNonCanonicalRecoveryMaterial = async (
   canonical: CanonicalBlockEvidence,
   detectionId: string,
-  predecessor: CanonicalBlockEvidence | undefined,
+  predecessor: CheckedLedger | undefined,
 ) => {
   const priorLedger = await deriveResolvedOutputPriorLedgerReplay({
     block: canonical,
@@ -196,7 +197,7 @@ export const createResolvedOutputNonCanonicalRecoveryPorts = (
       await prepareResolvedOutputNonCanonicalRecoveryMaterial(
         canonical,
         classification.selected.detectionId,
-        completeCanonicalReplayPredecessorEvidence({
+        completeCanonicalReplayPredecessorLedger({
           evidence: canonical,
           context: workflow.replayContext,
         }),

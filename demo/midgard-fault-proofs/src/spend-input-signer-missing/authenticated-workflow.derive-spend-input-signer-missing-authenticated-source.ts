@@ -9,6 +9,7 @@ import {
 import { Data } from "@lucid-evolution/lucid";
 
 import { type CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
+import { type CheckedLedger } from "../ledger-at.js";
 import {
   buildTrieView,
   decodeTransactionMaterial,
@@ -165,7 +166,7 @@ export const spendInputSignerStageFromL1 = (
 export const prepareSpendInputSignerMissingRecoveryMaterial = async (
   canonical: CanonicalBlockEvidence,
   detectionId: string,
-  predecessor: CanonicalBlockEvidence | undefined,
+  predecessor: CheckedLedger | undefined,
 ) => {
   const priorLedger = await deriveResolvedOutputPriorLedgerReplay({
     block: canonical,

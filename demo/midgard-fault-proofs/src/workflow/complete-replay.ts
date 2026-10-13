@@ -73,7 +73,6 @@ export {
 } from "../validation-dispute/replay.js";
 export {
   admitCompleteCanonicalReplayPredecessor,
-  completeCanonicalReplayPredecessorEvidence,
   completeCanonicalReplayPredecessorLedger,
 } from "./complete-replay.admit-complete-canonical-replay-predecessor.js";
 export {

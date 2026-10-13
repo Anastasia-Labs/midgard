@@ -8,7 +8,7 @@ import { type RetainedDaPayloadSource } from "../transition-trace/fetch.js";
 import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts.js";
 import {
   type CompleteCanonicalReplayContext,
-  completeCanonicalReplayPredecessorEvidence,
+  completeCanonicalReplayPredecessorLedger,
 } from "../workflow/complete-replay.js";
 import type { FraudProofWorkflowDeploymentBinding } from "../workflow/deployment-manifest-binding.js";
 import {
@@ -200,7 +200,7 @@ export const prepareManifestBoundExecutionNativeScriptInvalidReplay =
       }),
       sources,
     });
-    const predecessor = completeCanonicalReplayPredecessorEvidence({
+    const predecessor = completeCanonicalReplayPredecessorLedger({
       evidence: block,
       context: workflow.replayContext,
     });

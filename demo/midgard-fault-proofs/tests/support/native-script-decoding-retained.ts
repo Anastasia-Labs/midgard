@@ -28,6 +28,7 @@ import {
   reencodeFixturePayload,
 } from "../helpers/canonical-block-evidence-fixture.js";
 import { makeReferenceNativeTx as makeNativeTx } from "./no-reference-input-native.js";
+import { payloadLedgerAt } from "./predecessor-ledger.js";
 import { buildInvalidForcedTransitionTraceFixture } from "./submit-init-emulator-fixtures.js";
 
 const provenance = {
@@ -388,14 +389,8 @@ export const nativeDecodingFixture = async ({
   });
   const context = {
     predecessor: await admitCompleteCanonicalReplayPredecessor({
-      value: {
-        observation: authenticatedHeaderObservation(predecessorFixture),
-        payloadEnvelopeCborHex:
-          predecessorFixture.payloadEnvelopeCbor.toString("hex"),
-        daProvenance: provenance,
-      },
+      ledgerAt: payloadLedgerAt(predecessorFixture.payloadEnvelopeCbor),
       currentEvidence: evidence,
-      minimumConfirmationDepth: 1,
     }),
   };
   const predecessor = await canonicalBlockEvidenceFromVerifiedPayload({

@@ -17,7 +17,7 @@ import {
 } from "../non-existent-input/wrongful-rejection.js";
 import { resolveNonExistentInputDeploymentContracts } from "../runtime.js";
 import { submitInit } from "../submit-init.js";
-import { completeCanonicalReplayPredecessorEvidence } from "./complete-replay.js";
+import { completeCanonicalReplayPredecessorLedger } from "./complete-replay.js";
 import {
   type ManifestBoundLinearFamilyWorkflow,
   type ManifestBoundLinearFamilyWorkflowConfig,
@@ -53,7 +53,7 @@ export const createTransactionPort = (
     ) {
       const detections = await detectNonExistentInputWrongfulRejections({
         block: evidence,
-        predecessor: completeCanonicalReplayPredecessorEvidence({
+        predecessor: completeCanonicalReplayPredecessorLedger({
           evidence,
           context: replayContext,
         }),

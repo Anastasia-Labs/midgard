@@ -1,9 +1,10 @@
 import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
+import { checkLedgerJson, ledgerJson } from "../ledger-at.js";
 import { reconstructDaPayload } from "../transition-trace/reconstruct.js";
 import type { CanonicalBlockClassification } from "../workflow/classification.js";
 import {
   type CompleteCanonicalReplayContext,
-  completeCanonicalReplayPredecessorEvidence,
+  completeCanonicalReplayPredecessorLedger,
 } from "../workflow/complete-replay.js";
 import {
   journalJsonDigest,
@@ -25,7 +26,7 @@ import {
 } from "./replay.js";
 
 export const MINT_AUTHORIZATION_ARTIFACT =
-  "midgard-mint-authorization-workflow-artifact-v1";
+  "midgard-mint-authorization-workflow-artifact-v2";
 
 /** Serialized material is only a preimage; replay rederives the entire claim. */
 const deriveMintAuthorizationWorkflowArtifact = async (
@@ -39,7 +40,7 @@ const deriveMintAuthorizationWorkflowArtifact = async (
       "detectionId",
       "coordinate",
       "payloadEnvelopeCbor",
-      "predecessorEnvelopeCbor",
+      "predecessorLedger",
     ],
     "mint authorization artifact",
   );
@@ -62,18 +63,12 @@ const deriveMintAuthorizationWorkflowArtifact = async (
     expectedHeaderHash: headerHash,
   });
   const predecessor =
-    record.predecessorEnvelopeCbor === null
+    record.predecessorLedger === null
       ? undefined
-      : await reconstructDaPayload({
-          payloadEnvelopeCbor: Buffer.from(
-            canonicalHex(
-              record.predecessorEnvelopeCbor,
-              EVEN_HEX,
-              "mint authorization predecessor",
-            ),
-            "hex",
-          ),
-          expectedHeaderHash: current.header.prevHeaderHash,
+      : await checkLedgerJson({
+          value: record.predecessorLedger,
+          utxosRoot: current.header.prevUtxosRoot,
+          label: "mint authorization predecessor ledger",
         });
   const raw = exactJournalRecord(
     record.coordinate,
@@ -152,7 +147,7 @@ export const prepareMintAuthorizationWorkflowArtifact = async ({
   >;
   replayContext?: CompleteCanonicalReplayContext;
 }) => {
-  const predecessor = completeCanonicalReplayPredecessorEvidence({
+  const predecessor = completeCanonicalReplayPredecessorLedger({
     evidence,
     context: replayContext,
   });
@@ -174,8 +169,8 @@ export const prepareMintAuthorizationWorkflowArtifact = async ({
     coordinate: finding.prepared.coordinate,
     payloadEnvelopeCbor:
       evidence.reconstruction.payloadEnvelopeCbor.toString("hex"),
-    predecessorEnvelopeCbor:
-      predecessor?.reconstruction.payloadEnvelopeCbor.toString("hex") ?? null,
+    predecessorLedger:
+      predecessor === undefined ? null : ledgerJson(predecessor),
   }) as JournalJsonObject;
   await admitMintAuthorizationWorkflowArtifact(artifact);
   return artifact;

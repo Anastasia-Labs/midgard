@@ -14,6 +14,7 @@ import {
   authenticatedHeaderObservation,
   buildCanonicalBlockFixture,
 } from "./helpers/canonical-block-evidence-fixture.js";
+import { payloadLedgerAt } from "./support/predecessor-ledger.js";
 import {
   buildRetainedPlutusIdentityFixture,
   buildRetainedPlutusUnboundVariableFixture,
@@ -52,14 +53,8 @@ export const admitRetainedPlutus = async (
     minimumConfirmationDepth: policy.confirmationDepth,
   });
   const predecessor = await admitCompleteCanonicalReplayPredecessor({
-    value: {
-      observation: authenticatedHeaderObservation(fixture.predecessor),
-      payloadEnvelopeCborHex:
-        fixture.predecessor.payloadEnvelopeCbor.toString("hex"),
-      daProvenance,
-    },
+    ledgerAt: payloadLedgerAt(fixture.predecessor.payloadEnvelopeCbor),
     currentEvidence: evidence,
-    minimumConfirmationDepth: policy.confirmationDepth,
   });
   const transitionTraceEvents =
     options.sourceKind === "forced" && !options.omitOriginAuthority

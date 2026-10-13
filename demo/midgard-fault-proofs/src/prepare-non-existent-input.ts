@@ -289,7 +289,7 @@ export const prepareNonExistentInputFromTransactions = async ({
   // step-03 ledger non-membership: the missing input is absent from the block's
   // prev-utxos ledger trie (keyed by the Cardano `TransactionInput` CBOR).
   const ledgerNonMembershipProofCbor = await ledgerNonMembershipProof(
-    await requireLedgerOpening({
+    requireLedgerOpening({
       ledger: prevLedger,
       utxosRoot: normalizedPrevUtxosRoot,
       label: "non-existent-input predecessor ledger",

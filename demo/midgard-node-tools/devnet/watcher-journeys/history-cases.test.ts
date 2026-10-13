@@ -17,6 +17,10 @@ import {
   REFERENCE_INPUT_NO_IDX_COMPLETE_CANONICAL_REPLAY,
 } from "@al-ft/midgard-fault-proofs";
 import { authenticatedHeaderObservation } from "@al-ft/midgard-fault-proofs/test-support/canonical-block-evidence-fixture";
+import {
+  checkedLedgerAfter,
+  payloadLedgerAt,
+} from "@al-ft/midgard-fault-proofs/test-support/predecessor-ledger";
 import { depositEventsRetainedBlock } from "@al-ft/midgard-fault-proofs/test-support/transition-trace-retained";
 import { readPublishedDepositHistory } from "midgard-watcher/tests/support/published-deposit-history";
 import type { PublishedDepositTraceCheckpoint } from "midgard-watcher/tests/support/published-deposit-trace";
@@ -105,14 +109,8 @@ it
       });
       const context = {
         predecessor: await admitCompleteCanonicalReplayPredecessor({
-          value: {
-            observation: authenticatedHeaderObservation(predecessor),
-            payloadEnvelopeCborHex:
-              predecessor.payloadEnvelopeCbor.toString("hex"),
-            daProvenance,
-          },
+          ledgerAt: payloadLedgerAt(predecessor.payloadEnvelopeCbor),
           currentEvidence: evidence,
-          minimumConfirmationDepth: 1,
         }),
       };
       const result = await replayers[category].replay(evidence, context);
@@ -135,12 +133,13 @@ it
         expected: honest ? "healthy" : "fault",
       });
       if (!honest) {
-        const previousBlockEvidence =
+        const prevLedger = await checkedLedgerAfter(
           await canonicalBlockEvidenceFromVerifiedPayload({
             observation: authenticatedHeaderObservation(predecessor),
             payloadEnvelopeCbor: predecessor.payloadEnvelopeCbor,
             daProvenance,
-          });
+          }),
+        );
         const preparers = {
           doubleSpend: prepareDoubleSpendFromCanonicalEvidence,
           nonExistentInput: prepareNonExistentInputFromCanonicalEvidence,
@@ -152,7 +151,7 @@ it
           throw new Error("Fault decision omitted canonical evidence");
         const prepared = await preparers[category]({
           evidence: verification.evidence,
-          previousBlockEvidence,
+          prevLedger,
         });
         expect(prepared.headerHash).toBe(block.headerHash);
       }

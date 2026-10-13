@@ -1,14 +1,11 @@
-import {
-  type AuthenticatedStateQueueHeaderObservation,
-  EMPTY_MERKLE_TREE_ROOT,
-  type EvidenceProvenance,
-} from "@al-ft/midgard-sdk";
+import { EMPTY_MERKLE_TREE_ROOT } from "@al-ft/midgard-sdk";
 
+import { type CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
 import {
-  type CanonicalBlockEvidence,
-  canonicalBlockEvidenceFromVerifiedPayload,
-} from "../evidence/canonical-block-evidence.js";
-import { type CheckedLedger, checkLedgerAgainstRoot } from "../ledger-at.js";
+  type CheckedLedger,
+  type LedgerAt,
+  predecessorLedger,
+} from "../ledger-at.js";
 import { findNetworkIdFaults } from "../network-id/evidence.js";
 import { detectNetworkIdWrongfulRejections } from "../network-id/wrongful-rejection.js";
 import { decodeTransactionMaterial } from "../prepare-double-spend.js";
@@ -23,102 +20,54 @@ import {
   type CompleteCanonicalReplayContext,
   type CompleteCanonicalReplayDecision,
   type CompleteCanonicalReplayPredecessor,
-  predecessorEvidenceByAuthority,
-  predecessorRecord,
-  requireReplayPredecessorEvidence,
+  predecessorLedgerByAuthority,
+  requireReplayPredecessorLedger,
 } from "./complete-replay.replay-context-identity.js";
 import { acceptedTransactionSubject, subjectOf } from "./detection-subject.js";
 
 /**
- * Re-admits exact untrusted predecessor bytes through the canonical L1/DA
- * evidence constructor and returns a non-revivable replay authority.
+ * Admits the ledger the challenged block starts from: `ledgerAt` is asked for
+ * the ledger after the challenged header's `prev_header_hash`, and the answer
+ * is refused unless it opens the header's `prev_utxos_root`. The returned
+ * authority is non-revivable: only this module maps it to its ledger.
  */
 export const admitCompleteCanonicalReplayPredecessor = async ({
-  value,
+  ledgerAt,
   currentEvidence,
-  minimumConfirmationDepth,
 }: {
-  readonly value: unknown;
+  readonly ledgerAt: LedgerAt;
   readonly currentEvidence: CanonicalBlockEvidence;
-  readonly minimumConfirmationDepth: number;
 }): Promise<CompleteCanonicalReplayPredecessor> => {
-  const parsed = predecessorRecord(value, "raw predecessor context");
-  if (
-    Object.keys(parsed).sort().join(",") !==
-    "daProvenance,observation,payloadEnvelopeCborHex"
-  ) {
-    throw new Error("raw predecessor context has missing or unknown fields");
-  }
-  if (
-    typeof parsed.payloadEnvelopeCborHex !== "string" ||
-    !/^(?:[0-9a-f]{2})+$/u.test(parsed.payloadEnvelopeCborHex)
-  ) {
-    throw new Error(
-      "raw predecessor payload envelope must be canonical lowercase byte hex",
-    );
-  }
-  const predecessor = await canonicalBlockEvidenceFromVerifiedPayload({
-    observation: parsed.observation as AuthenticatedStateQueueHeaderObservation,
-    payloadEnvelopeCbor: Buffer.from(parsed.payloadEnvelopeCborHex, "hex"),
-    daProvenance: parsed.daProvenance as EvidenceProvenance,
-    minimumConfirmationDepth,
+  const ledger = await predecessorLedger({
+    prevHeaderHash: currentEvidence.header.prevHeaderHash,
+    prevUtxosRoot: currentEvidence.header.prevUtxosRoot,
+    ledgerAt,
+    label: "complete replay predecessor ledger",
   });
-  if (
-    currentEvidence.header.prevHeaderHash !== predecessor.headerHash ||
-    currentEvidence.header.prevUtxosRoot !== predecessor.header.utxosRoot
-  ) {
-    throw new Error(
-      "raw predecessor does not match the challenged header's prev_header_hash and prev_utxos_root",
-    );
-  }
   const authority: CompleteCanonicalReplayPredecessor = Object.freeze({
     schemaVersion: COMPLETE_CANONICAL_REPLAY_PREDECESSOR,
     challengedHeaderHash: currentEvidence.headerHash,
-    headerHash: predecessor.headerHash,
-    payloadEnvelopeSha256: predecessor.payloadEnvelopeSha256,
-    payloadSha256: predecessor.payloadSha256,
+    headerHash: currentEvidence.header.prevHeaderHash,
+    utxosRoot: ledger.utxosRoot,
   });
-  predecessorEvidenceByAuthority.set(authority, predecessor);
+  predecessorLedgerByAuthority.set(authority, ledger);
   return authority;
 };
 
 /**
- * Returns only the exact predecessor evidence retained behind an admitted
- * replay authority. Production family preparers use this instead of accepting
- * caller-supplied predecessor payloads or reconstructed ledger roots.
- */
-export const completeCanonicalReplayPredecessorEvidence = ({
-  evidence,
-  context,
-}: {
-  readonly evidence: CanonicalBlockEvidence;
-  readonly context: CompleteCanonicalReplayContext | undefined;
-}): CanonicalBlockEvidence | undefined =>
-  requireReplayPredecessorEvidence({ evidence, context });
-
-/**
  * The checked ledger the challenged block starts from, or `undefined` when the
  * context admitted no predecessor (then only the empty genesis ledger is
- * available, see `requireLedgerOpening`).
+ * available, see `requireLedgerOpening`). Production family preparers use this
+ * instead of accepting a caller-supplied ledger.
  */
-export const completeCanonicalReplayPredecessorLedger = async ({
+export const completeCanonicalReplayPredecessorLedger = ({
   evidence,
   context,
 }: {
   readonly evidence: CanonicalBlockEvidence;
   readonly context: CompleteCanonicalReplayContext | undefined;
-}): Promise<CheckedLedger | undefined> => {
-  const predecessor = requireReplayPredecessorEvidence({ evidence, context });
-  if (predecessor === undefined) return undefined;
-  return await checkLedgerAgainstRoot({
-    entries: predecessor.reconstruction.utxos.map(({ key, value }) => ({
-      outRef: key,
-      output: value,
-    })),
-    utxosRoot: evidence.header.prevUtxosRoot,
-    label: "complete replay predecessor ledger",
-  });
-};
+}): CheckedLedger | undefined =>
+  requireReplayPredecessorLedger({ evidence, context });
 
 type CanonicalReplayJson =
   | null
@@ -229,24 +178,9 @@ const predecessorLedgerKeys = ({
     }
     return new Set<string>();
   }
-  const predecessor = requireReplayPredecessorEvidence({
-    evidence,
-    context,
-  });
+  const predecessor = requireReplayPredecessorLedger({ evidence, context });
   if (predecessor === undefined) return null;
-  if (
-    evidence.header.prevHeaderHash !== predecessor.headerHash ||
-    evidence.header.prevUtxosRoot !== predecessor.header.utxosRoot
-  ) {
-    throw new Error(
-      "canonical replay predecessor differs from the challenged prev_header_hash or prev_utxos_root",
-    );
-  }
-  return new Set(
-    predecessor.reconstruction.utxos.map((entry) =>
-      Buffer.from(entry.key).toString("hex"),
-    ),
-  );
+  return new Set(predecessor.outputs.keys());
 };
 
 export const detectLedgerRelativeMissingInputs = async ({

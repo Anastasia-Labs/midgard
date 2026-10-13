@@ -1,6 +1,7 @@
 import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import type { AuthenticatedStateQueueHeaderObservation } from "@al-ft/midgard-sdk";
 
+import { retainedPayloadLedgerAt } from "../../src/retained-payload-ledger-at.js";
 import type { RetainedDaPayloadSource } from "../../src/transition-trace/fetch.js";
 import type {
   CompleteCanonicalReplay,
@@ -93,7 +94,7 @@ export const classifyRetainedReasonFixture = async ({
     ...(replayContext === undefined ? {} : { replayContext }),
     ...(predecessor === undefined
       ? {}
-      : { predecessorObservation: predecessor.observation }),
+      : { predecessorLedgerAt: retainedPayloadLedgerAt({ sources }) }),
   });
   return { decision, sources };
 };

@@ -6,6 +6,7 @@ import {
 } from "@al-ft/midgard-core";
 import * as Proofs from "@al-ft/midgard-fault-proofs";
 import { authenticatedHeaderObservation } from "@al-ft/midgard-fault-proofs/test-support/canonical-block-evidence-fixture";
+import { checkedLedgerAfter } from "@al-ft/midgard-fault-proofs/test-support/predecessor-ledger";
 import * as SDK from "@al-ft/midgard-sdk";
 
 import type { verifyJourneyFixture } from "./fixture-verification.js";
@@ -93,11 +94,13 @@ export const prepareJourneyTransactionProof = async (input: {
     // absent or substituted one for a non-genesis header.
     const priorLedger = await Proofs.deriveResolvedOutputPriorLedgerReplay({
       block: evidence,
-      predecessor: await Proofs.canonicalBlockEvidenceFromVerifiedPayload({
-        ...raw,
-        observation: authenticatedHeaderObservation(input.predecessor),
-        payloadEnvelopeCbor: input.predecessor.payloadEnvelopeCbor,
-      }),
+      predecessor: await checkedLedgerAfter(
+        await Proofs.canonicalBlockEvidenceFromVerifiedPayload({
+          ...raw,
+          observation: authenticatedHeaderObservation(input.predecessor),
+          payloadEnvelopeCbor: input.predecessor.payloadEnvelopeCbor,
+        }),
+      ),
     });
     if (category === "spendInputSignerMissing") {
       const prepared =
@@ -187,15 +190,16 @@ export const prepareJourneyTransactionProof = async (input: {
     case "distinctAssetAccumulationLimit":
       return Proofs.prepareDistinctAssetAccumulationArtifact(evidence);
     case "mintAuthorization": {
-      const predecessor =
+      const predecessor = await checkedLedgerAfter(
         await Proofs.canonicalBlockEvidenceFromVerifiedPayload({
           ...raw,
           observation: authenticatedHeaderObservation(input.predecessor),
           payloadEnvelopeCbor: input.predecessor.payloadEnvelopeCbor,
-        });
+        }),
+      );
       const prepared = await Proofs.prepareMintAuthorizationReplay({
         current: evidence.reconstruction,
-        predecessor: predecessor.reconstruction,
+        predecessor,
         sourceIndex: 0,
       });
       if (prepared.length !== 1)
@@ -205,12 +209,13 @@ export const prepareJourneyTransactionProof = async (input: {
       return prepared[0];
     }
     case "valueNotPreserved": {
-      const predecessor =
+      const predecessor = await checkedLedgerAfter(
         await Proofs.canonicalBlockEvidenceFromVerifiedPayload({
           ...raw,
           observation: authenticatedHeaderObservation(input.predecessor),
           payloadEnvelopeCbor: input.predecessor.payloadEnvelopeCbor,
-        });
+        }),
+      );
       const prepared = await Proofs.prepareValueConservationArtifact({
         block: evidence,
         predecessor,

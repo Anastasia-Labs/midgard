@@ -5,7 +5,7 @@ import {
   requireWorkflowArtifactMatches,
 } from "../workflow/artifact-codec.js";
 import {
-  completeCanonicalReplayPredecessorEvidence,
+  completeCanonicalReplayPredecessorLedger,
   EXECUTION_NATIVE_SCRIPT_INVALID_COMPLETE_CANONICAL_REPLAY,
 } from "../workflow/complete-replay.js";
 import {
@@ -151,7 +151,7 @@ const bindRun = (context: BoundContext) => {
   const prepareArtifact = async (
     block: import("../evidence/canonical-block-evidence.js").CanonicalBlockEvidence,
   ) => {
-    const predecessor = completeCanonicalReplayPredecessorEvidence({
+    const predecessor = completeCanonicalReplayPredecessorLedger({
       evidence: block,
       context: workflow.replayContext,
     });
@@ -176,9 +176,8 @@ const bindRun = (context: BoundContext) => {
       prepared.predecessor === undefined
         ? null
         : {
-            headerHash: prepared.predecessor.headerHash,
-            payloadEnvelopeSha256: prepared.predecessor.payloadEnvelopeSha256,
-            payloadSha256: prepared.predecessor.payloadSha256,
+            headerHash: prepared.block.header.prevHeaderHash,
+            utxosRoot: prepared.predecessor.utxosRoot,
           },
   });
   const transactions: CursorFamilyTransactionPort<"executionNativeScriptInvalid"> =

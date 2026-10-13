@@ -308,7 +308,7 @@ export const prepareNoReferenceInputFromTransactions = async ({
   // the block's prev-utxos ledger trie (keyed by the Cardano `TransactionInput`
   // CBOR).
   const ledgerNonMembershipProofCbor = await ledgerNonMembershipProof(
-    await requireLedgerOpening({
+    requireLedgerOpening({
       ledger: prevLedger,
       utxosRoot: normalizedPrevUtxosRoot,
       label: "no-reference-input predecessor ledger",

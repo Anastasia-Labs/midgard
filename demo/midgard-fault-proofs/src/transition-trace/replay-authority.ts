@@ -10,6 +10,7 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { Data, paymentCredentialOf } from "@lucid-evolution/lucid";
 
 import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
+import { type CheckedLedger } from "../ledger-at.js";
 import { computeFraudProofRawL1SnapshotEvidenceDigest } from "../workflow/raw-l1-snapshot.js";
 import { requireReplayPredecessorLedger } from "../workflow/replay-predecessor-ledger.js";
 import {
@@ -353,7 +354,7 @@ export const replayTransitionTraceFromRetainedHistory = async ({
   l1Events,
 }: {
   evidence: CanonicalBlockEvidence;
-  predecessor: CanonicalBlockEvidence | undefined;
+  predecessor: CheckedLedger | undefined;
   l1Events: TransitionTraceL1Events;
 }) => {
   if (l1Events.headerHash !== evidence.headerHash)

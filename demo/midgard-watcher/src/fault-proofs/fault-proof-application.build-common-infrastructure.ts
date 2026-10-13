@@ -6,17 +6,7 @@ import {
   type WorkflowAdapterRunnerInput,
   type WorkflowRuntimeLoader,
 } from "@al-ft/midgard-fault-proofs";
-import {
-  type AuthenticatedStateQueueHeaderObservation,
-  CANONICAL_EVIDENCE_SOURCE_SCHEMA_VERSION,
-  Header,
-} from "@al-ft/midgard-sdk";
-import { Data } from "@lucid-evolution/lucid";
 
-import {
-  assertWatcherStateQueueHeaderObservation,
-  type WatcherStateQueueHeaderObservation,
-} from "../indexers/authenticated-state-queue-observation.js";
 import type { WatcherConfig } from "../runtime/config.js";
 import { type VerifiedWatcherDeploymentIdentity } from "../runtime/deployment-identity.js";
 import { type WatcherWorkflowInfrastructure } from "../storage/retained-da-runtime.js";
@@ -155,47 +145,6 @@ export const assertWatcherFaultProofApplication = (
       "watcher fault-proof production application is not module-admitted",
     );
   }
-};
-
-export const predecessorObservationForClassifier = ({
-  current,
-  predecessor,
-}: {
-  readonly current: AuthenticatedStateQueueHeaderObservation;
-  readonly predecessor: WatcherStateQueueHeaderObservation;
-}): AuthenticatedStateQueueHeaderObservation => {
-  assertWatcherStateQueueHeaderObservation(predecessor);
-  const header = Data.from(predecessor.headerCborHex, Header);
-  if (
-    Data.to(header, Header) !== predecessor.headerCborHex ||
-    predecessor.headerHash !== current.header.prevHeaderHash
-  ) {
-    throw new Error(
-      "watcher predecessor observation differs from the challenged HeaderV1 link",
-    );
-  }
-  if (
-    !/^(?:0|[1-9][0-9]*)$/u.test(predecessor.observedSlot) ||
-    !/^(?:0|[1-9][0-9]*)$/u.test(predecessor.finalityDepth)
-  ) {
-    throw new Error("watcher predecessor chain point is malformed");
-  }
-  const confirmationDepth = BigInt(predecessor.finalityDepth);
-  if (confirmationDepth > BigInt(Number.MAX_SAFE_INTEGER)) {
-    throw new Error("watcher predecessor finality depth exceeds safe range");
-  }
-  return Object.freeze({
-    schemaVersion: CANONICAL_EVIDENCE_SOURCE_SCHEMA_VERSION,
-    sourceMode: current.sourceMode,
-    provenance: current.provenance,
-    chainPoint: Object.freeze({
-      slot: BigInt(predecessor.observedSlot),
-      blockHash: predecessor.observedBlockHash,
-    }),
-    confirmationDepth: Number(confirmationDepth),
-    headerHash: predecessor.headerHash,
-    header,
-  });
 };
 
 export type ApplicationConstruction = {

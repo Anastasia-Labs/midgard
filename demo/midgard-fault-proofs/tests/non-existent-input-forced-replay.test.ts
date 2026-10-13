@@ -28,6 +28,10 @@ import {
   reencodeFixturePayload,
 } from "./helpers/canonical-block-evidence-fixture.js";
 import { makeNativeTx } from "./support/emulator/native-tx.js";
+import {
+  checkedLedgerAfter,
+  ledgerAtAfter,
+} from "./support/predecessor-ledger.js";
 import { buildInvalidForcedTransitionTraceFixture } from "./support/submit-init-emulator-fixtures.js";
 
 const provenance = {
@@ -231,23 +235,18 @@ const fixture = async (present: boolean, index: bigint, consumed = false) => {
     payloadEnvelopeCbor: await reencodeFixturePayload(payload),
     daProvenance: provenance,
   });
-  const context = {
-    predecessor: await admitCompleteCanonicalReplayPredecessor({
-      value: {
-        observation: authenticatedHeaderObservation(predecessorFixture),
-        payloadEnvelopeCborHex:
-          predecessorFixture.payloadEnvelopeCbor.toString("hex"),
-        daProvenance: provenance,
-      },
-      currentEvidence: evidence,
-      minimumConfirmationDepth: 1,
-    }),
-  };
-  const predecessor = await canonicalBlockEvidenceFromVerifiedPayload({
+  const predecessorEvidence = await canonicalBlockEvidenceFromVerifiedPayload({
     observation: authenticatedHeaderObservation(predecessorFixture),
     payloadEnvelopeCbor: predecessorFixture.payloadEnvelopeCbor,
     daProvenance: provenance,
   });
+  const context = {
+    predecessor: await admitCompleteCanonicalReplayPredecessor({
+      ledgerAt: ledgerAtAfter(predecessorEvidence),
+      currentEvidence: evidence,
+    }),
+  };
+  const predecessor = await checkedLedgerAfter(predecessorEvidence);
   return { evidence, context, predecessor };
 };
 

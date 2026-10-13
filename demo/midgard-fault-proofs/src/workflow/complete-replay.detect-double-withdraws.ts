@@ -16,7 +16,7 @@ import { detectReferenceInputNoIdxViolationsFromTransactions } from "../prepare-
 import { detectValidationTraceReplay } from "../validation-dispute/replay.js";
 import { type CanonicalViolationDetection } from "./classification.js";
 import {
-  completeCanonicalReplayPredecessorEvidence,
+  completeCanonicalReplayPredecessorLedger,
   detectDoubleSpends,
   detectLedgerRelativeMissingInputs,
   detectNetworkIds,
@@ -221,7 +221,7 @@ export const NON_EXISTENT_INPUT_COMPLETE_CANONICAL_REPLAY = completeReplayer(
         }))),
     ...(await detectNonExistentInputWrongfulRejections({
       block: evidence,
-      predecessor: completeCanonicalReplayPredecessorEvidence({
+      predecessor: completeCanonicalReplayPredecessorLedger({
         evidence,
         context,
       }),
@@ -272,7 +272,7 @@ export const NO_REFERENCE_INPUT_COMPLETE_CANONICAL_REPLAY = completeReplayer(
         }))),
     ...(await detectNoReferenceInputWrongfulRejections({
       block: evidence,
-      predecessor: completeCanonicalReplayPredecessorEvidence({
+      predecessor: completeCanonicalReplayPredecessorLedger({
         evidence,
         context,
       }),

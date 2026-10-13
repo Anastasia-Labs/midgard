@@ -74,6 +74,7 @@ export * from "./redeemer-item-plan.js";
 export * from "./remove-fraudulent-block.js";
 export * from "./remove-unattested-block.js";
 export * from "./resolved-output-non-canonical/index.js";
+export * from "./retained-payload-ledger-at.js";
 export * from "./runtime.js";
 export * from "./script-integrity-hash-mismatch/index.js";
 export * from "./script-integrity-hash-missing/artifact.js";

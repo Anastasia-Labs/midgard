@@ -1,4 +1,5 @@
 import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
+import { type CheckedLedger } from "../ledger-at.js";
 import {
   type JournalJsonObject,
   normalizeJournalJson,
@@ -11,7 +12,7 @@ import {
 } from "./proof-material.js";
 
 export const TRANSITION_TRACE_WORKFLOW_ARTIFACT =
-  "midgard-transition-trace-workflow-artifact-v1";
+  "midgard-transition-trace-workflow-artifact-v2";
 export const createTransitionTraceWorkflowArtifact = ({
   evidence,
   predecessor,
@@ -22,7 +23,7 @@ export const createTransitionTraceWorkflowArtifact = ({
   depositOpening,
 }: {
   evidence: CanonicalBlockEvidence;
-  predecessor: CanonicalBlockEvidence | undefined;
+  predecessor: CheckedLedger | undefined;
   proof: TransitionProofInput;
   detectionId: string;
   l1Snapshot: FraudProofRawL1Snapshot;
@@ -31,7 +32,7 @@ export const createTransitionTraceWorkflowArtifact = ({
 }): JournalJsonObject => {
   if (
     predecessor !== undefined &&
-    predecessor.headerHash !== evidence.header.prevHeaderHash
+    predecessor.utxosRoot !== evidence.header.prevUtxosRoot
   )
     throw new Error(
       "Transition artifact predecessor is not the challenged header's predecessor",
@@ -42,8 +43,7 @@ export const createTransitionTraceWorkflowArtifact = ({
     detectionId,
     payloadEnvelopeCbor:
       evidence.reconstruction.payloadEnvelopeCbor.toString("hex"),
-    predecessorEnvelopeCbor:
-      predecessor?.reconstruction.payloadEnvelopeCbor.toString("hex") ?? null,
+    predecessorUtxosRoot: predecessor?.utxosRoot ?? null,
     proofCbor: transitionProofCbor(proof),
     eventOutRef,
     depositOpening,
@@ -67,7 +67,7 @@ export const requireTransitionTraceWorkflowArtifact = (
     "headerHash",
     "detectionId",
     "payloadEnvelopeCbor",
-    "predecessorEnvelopeCbor",
+    "predecessorUtxosRoot",
     "proofCbor",
   ] as const)
     if (artifact[key] !== freshlyDerived[key])

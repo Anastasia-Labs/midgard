@@ -8,6 +8,7 @@ import {
 import { Data } from "@lucid-evolution/lucid";
 
 import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
+import { type CheckedLedger } from "../ledger-at.js";
 import type { CanonicalBlockClassification } from "../workflow/classification.js";
 import type { JournalJsonObject } from "../workflow/journal.js";
 import {
@@ -192,7 +193,7 @@ export const prepareMinAdaArtifact = async ({
   classification,
 }: {
   readonly evidence: CanonicalBlockEvidence;
-  readonly predecessor: CanonicalBlockEvidence | undefined;
+  readonly predecessor: CheckedLedger | undefined;
   readonly classification: Classification;
 }): Promise<MinAdaArtifact> => {
   if (

@@ -1,6 +1,6 @@
 import {
   admitValidationTraceChallengeFromReplayContext,
-  completeCanonicalReplayPredecessorEvidence,
+  completeCanonicalReplayPredecessorLedger,
   type HeaderDecision,
   headerDecisionCanonicalEvidence,
   headerDecisionReplayContext,
@@ -197,7 +197,7 @@ export const captureWatcherValidationReplayTranscript = async ({
     detectionId: decision.detectionId,
   };
   const selection = readValidationTraceReplaySelection(selectedInput);
-  const predecessor = completeCanonicalReplayPredecessorEvidence({
+  const predecessor = completeCanonicalReplayPredecessorLedger({
     evidence,
     context,
   });
@@ -209,9 +209,9 @@ export const captureWatcherValidationReplayTranscript = async ({
       evidence.reconstruction.payloadEnvelopeCbor,
     ),
     daProvenance: evidence.provenance.da,
-    priorState: (predecessor?.reconstruction.utxos ?? []).map((entry) => ({
-      outRef: entry.key.toString("hex"),
-      outputCbor: entry.value.toString("hex"),
+    priorState: (predecessor?.entries ?? []).map((entry) => ({
+      outRef: entry.outRef.toString("hex"),
+      outputCbor: entry.output.toString("hex"),
     })),
     ruleBundle: ruleBundle.ruleBundle,
     ruleBundleCommitment: ruleBundle.ruleBundleCommitment,

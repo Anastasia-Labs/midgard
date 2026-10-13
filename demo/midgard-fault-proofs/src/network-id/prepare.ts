@@ -6,7 +6,6 @@ import {
   decodeMidgardSpendInputItem,
 } from "@al-ft/midgard-core";
 import {
-  EMPTY_MERKLE_TREE_ROOT,
   type NetworkIdFault,
   type NetworkIdPostUtxoPredecessor,
   type OutputReference,
@@ -15,16 +14,14 @@ import {
 import { buildCanonicalMidgardLedgerEntryOutputMaterial } from "@al-ft/midgard-validation";
 import { Data } from "@lucid-evolution/lucid";
 
-import {
-  blockTransactionsFromCanonicalEvidence,
-  type CanonicalBlockEvidence,
-} from "../evidence/canonical-block-evidence.js";
+import { blockTransactionsFromCanonicalEvidence } from "../evidence/canonical-block-evidence.js";
 import {
   admitCanonicalEvidenceForProofBuild,
   type CanonicalEvidenceBuilderInput,
 } from "../evidence/prepare-from-evidence.js";
 import type { FaultProofFieldOpeningPlan } from "../field-opening.js";
 import { planFaultProofFieldOpening } from "../field-opening.js";
+import { type CheckedLedger, requireLedgerOpening } from "../ledger-at.js";
 import {
   buildTrieView,
   decodeTransactionMaterial,
@@ -181,38 +178,28 @@ const sameOutRef = (left: OutputReference, right: OutputReference): boolean =>
  */
 export const prepareNetworkIdPostUtxoFromCanonicalEvidence = async ({
   evidence,
-  previousBlockEvidence,
+  prevLedger,
   expectedNetworkId,
   outRef,
 }: CanonicalEvidenceBuilderInput & {
-  readonly previousBlockEvidence?: CanonicalBlockEvidence;
+  /** The ledger the block starts from; only the empty genesis ledger may be omitted. */
+  readonly prevLedger?: CheckedLedger;
   readonly expectedNetworkId: 0n | 1n;
   readonly outRef?: OutputReference;
 }): Promise<PreparedNetworkIdPostUtxoProof> => {
   // Reuses the canonical evidence admission without imposing the transaction
   // inclusion convention, which this independent post-state route does not use.
   blockTransactionsFromCanonicalEvidence(evidence);
-  if (previousBlockEvidence !== undefined) {
-    blockTransactionsFromCanonicalEvidence(previousBlockEvidence);
-    if (previousBlockEvidence.headerHash !== evidence.header.prevHeaderHash) {
-      throw new Error(
-        "network-id previous block evidence is not the predecessor named by the challenged header",
-      );
-    }
-    if (
-      previousBlockEvidence.header.utxosRoot !== evidence.header.prevUtxosRoot
-    ) {
-      throw new Error(
-        "network-id previous block evidence does not authenticate the challenged prev_utxos_root",
-      );
-    }
-  } else if (evidence.header.prevUtxosRoot !== EMPTY_MERKLE_TREE_ROOT) {
-    throw new Error(
-      "network-id post-UTxO preparation requires authenticated predecessor evidence for a non-empty prev_utxos_root",
-    );
-  }
+  const prior = requireLedgerOpening({
+    ledger: prevLedger,
+    utxosRoot: evidence.header.prevUtxosRoot,
+    label: "network-id predecessor ledger",
+  });
   const descriptorMembers = (
-    entries: CanonicalBlockEvidence["reconstruction"]["utxos"],
+    entries: readonly {
+      readonly key: Uint8Array;
+      readonly value: Uint8Array;
+    }[],
   ) =>
     entries.map((entry) => {
       const decodedOutRef = decodeMidgardSpendInputItem(entry.key);
@@ -243,18 +230,13 @@ export const prepareNetworkIdPostUtxoFromCanonicalEvidence = async ({
     });
   const postMembers = descriptorMembers(evidence.reconstruction.utxos);
   const priorMembers = descriptorMembers(
-    previousBlockEvidence?.reconstruction.utxos ?? [],
+    prior.entries.map(({ outRef, output }) => ({ key: outRef, value: output })),
   );
   const postTrie = await keyValuePhasRootWithCount(postMembers);
-  const priorTrie = await keyValuePhasRootWithCount(priorMembers);
+  const priorTrie = prior.trie;
   if (postTrie.root !== evidence.header.utxosRoot) {
     throw new Error(
       `network-id post-UTxO ledger root ${postTrie.root} does not match authenticated header.utxos_root ${evidence.header.utxosRoot}`,
-    );
-  }
-  if (priorTrie.root !== evidence.header.prevUtxosRoot) {
-    throw new Error(
-      `network-id predecessor ledger root ${priorTrie.root} does not match authenticated header.prev_utxos_root ${evidence.header.prevUtxosRoot}`,
     );
   }
   const selected = postMembers

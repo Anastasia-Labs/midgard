@@ -1,10 +1,11 @@
-import type {
-  AuthenticatedStateQueueHeaderObservation,
-  EvidenceProvenance,
-  FraudProofCatalogueCategoryName,
-} from "@al-ft/midgard-sdk";
+import type { FraudProofCatalogueCategoryName } from "@al-ft/midgard-sdk";
 
 import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
+import {
+  type LedgerJson,
+  parseLedgerJson,
+  singleLedgerAt,
+} from "../ledger-at.js";
 import type { CanonicalViolationDetection } from "./classification.js";
 import {
   admitCompleteCanonicalReplayPredecessor,
@@ -43,32 +44,44 @@ export type AuthenticatedReplayCaptureIdentity = Readonly<{
   detectionId: string;
 }>;
 
-/** Exact predecessor bytes; fault-proofs independently re-admits both legs. */
+/**
+ * A captured predecessor ledger: the ledger after `headerHash`. It is
+ * untrusted; fault-proofs admits it only when it opens the challenged header's
+ * `prev_utxos_root`.
+ */
 export type RawPredecessorContext = Readonly<{
-  observation: AuthenticatedStateQueueHeaderObservation;
-  payloadEnvelopeCborHex: string;
-  daProvenance: EvidenceProvenance;
+  headerHash: string;
+  ledger: LedgerJson;
 }>;
 
 /**
- * Re-admits an untrusted predecessor capture through the same L1/public-DA
- * evidence constructor as the challenged block, then verifies the two exact
- * header links. No structural predecessor object is replay authority.
+ * Re-admits an untrusted predecessor capture: its header hash must be the
+ * challenged header's `prev_header_hash` and its ledger must open the
+ * challenged header's `prev_utxos_root`. No structural predecessor object is
+ * replay authority.
  */
 export const admitRawPredecessorContext = async ({
   value,
   currentEvidence,
-  minimumConfirmationDepth,
 }: {
   readonly value: unknown;
   readonly currentEvidence: CanonicalBlockEvidence;
-  readonly minimumConfirmationDepth: number;
-}): Promise<CompleteCanonicalReplayPredecessor> =>
-  await admitCompleteCanonicalReplayPredecessor({
-    value,
+}): Promise<CompleteCanonicalReplayPredecessor> => {
+  const parsed = record(value, "raw predecessor context");
+  if (Object.keys(parsed).sort().join(",") !== "headerHash,ledger")
+    throw new Error("raw predecessor context has missing or unknown fields");
+  if (typeof parsed.headerHash !== "string" || !HEX_28.test(parsed.headerHash))
+    throw new Error(
+      "raw predecessor header hash must be 28-byte lowercase hex",
+    );
+  return await admitCompleteCanonicalReplayPredecessor({
+    ledgerAt: singleLedgerAt(
+      parsed.headerHash,
+      parseLedgerJson(parsed.ledger, "raw predecessor ledger"),
+    ),
     currentEvidence,
-    minimumConfirmationDepth,
   });
+};
 
 export type NativeScriptDecodingReplayCapture = Readonly<{
   identity: AuthenticatedReplayCaptureIdentity;

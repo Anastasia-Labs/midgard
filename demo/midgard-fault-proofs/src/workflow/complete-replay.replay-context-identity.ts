@@ -1,6 +1,7 @@
 import { type FraudProofCatalogueCategoryName } from "@al-ft/midgard-sdk";
 
 import { type CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
+import { type CheckedLedger } from "../ledger-at.js";
 import {
   requireTransitionTraceL1Events,
   type TransitionTraceL1Events,
@@ -16,20 +17,23 @@ export const COMPLETE_CANONICAL_REPLAY =
   "midgard-complete-canonical-replay-v1" as const;
 
 export const COMPLETE_CANONICAL_REPLAY_PREDECESSOR =
-  "midgard-complete-canonical-replay-predecessor-v1" as const;
+  "midgard-complete-canonical-replay-predecessor-v2" as const;
 
+/**
+ * The ledger the challenged block starts from: the ledger after its
+ * `prev_header_hash`, checked against its `prev_utxos_root`.
+ */
 export type CompleteCanonicalReplayPredecessor = Readonly<{
   schemaVersion: typeof COMPLETE_CANONICAL_REPLAY_PREDECESSOR;
   challengedHeaderHash: string;
   headerHash: string;
-  payloadEnvelopeSha256: string;
-  payloadSha256: string;
+  utxosRoot: string;
 }>;
 
 export type CompleteCanonicalReplayContext = Readonly<{
   /**
-   * Exact public-DA/L1-authenticated predecessor. Required by ledger-relative
-   * detectors unless the current header commits the empty genesis ledger.
+   * The root-checked predecessor ledger. Required by ledger-relative detectors
+   * unless the current header commits the empty genesis ledger.
    */
   predecessor?: CompleteCanonicalReplayPredecessor;
   transitionTraceEvents?: TransitionTraceL1Events;
@@ -39,8 +43,7 @@ export type CompleteCanonicalReplayContext = Readonly<{
 
 export type CompleteCanonicalReplayContextIdentity = Readonly<{
   predecessorHeaderHash?: string;
-  predecessorPayloadEnvelopeSha256?: string;
-  predecessorPayloadSha256?: string;
+  predecessorUtxosRoot?: string;
   validationTraceReplayDigest?: string;
   validationTraceEventEvidenceDigest?: string;
   transitionTraceEventEvidenceDigest?: string;
@@ -69,9 +72,9 @@ export const admittedReplayers = new WeakSet<object>();
 
 export const admittedDecisions = new WeakSet<object>();
 
-export const predecessorEvidenceByAuthority = new WeakMap<
+export const predecessorLedgerByAuthority = new WeakMap<
   object,
-  CanonicalBlockEvidence
+  CheckedLedger
 >();
 
 export const replayContextIdentity = ({
@@ -81,7 +84,7 @@ export const replayContextIdentity = ({
   readonly evidence: CanonicalBlockEvidence;
   readonly context: CompleteCanonicalReplayContext | undefined;
 }): CompleteCanonicalReplayContextIdentity | null => {
-  const predecessor = requireReplayPredecessorEvidence({ evidence, context });
+  const predecessor = requireReplayPredecessorLedger({ evidence, context });
   const validation = context?.validationTraceReplay;
   const events = context?.transitionTraceEvents;
   if (events !== undefined) {
@@ -128,9 +131,8 @@ export const replayContextIdentity = ({
     ...(predecessor === undefined
       ? {}
       : {
-          predecessorHeaderHash: predecessor.headerHash,
-          predecessorPayloadEnvelopeSha256: predecessor.payloadEnvelopeSha256,
-          predecessorPayloadSha256: predecessor.payloadSha256,
+          predecessorHeaderHash: evidence.header.prevHeaderHash,
+          predecessorUtxosRoot: predecessor.utxosRoot,
         }),
   });
 };
@@ -151,24 +153,31 @@ export const predecessorRecord = (
   return value as Readonly<Record<string, unknown>>;
 };
 
-export const requireReplayPredecessorEvidence = ({
+/**
+ * The ledger behind an admitted predecessor authority, bound to the challenged
+ * header's `prev_header_hash` and `prev_utxos_root`.
+ */
+export const requireReplayPredecessorLedger = ({
   evidence,
   context,
 }: {
   readonly evidence: CanonicalBlockEvidence;
   readonly context: CompleteCanonicalReplayContext | undefined;
-}): CanonicalBlockEvidence | undefined => {
+}): CheckedLedger | undefined => {
   if (context?.predecessor === undefined) return undefined;
-  const predecessor = predecessorEvidenceByAuthority.get(context.predecessor);
+  const authority = context.predecessor;
+  const ledger = predecessorLedgerByAuthority.get(authority);
   if (
-    predecessor === undefined ||
-    context.predecessor.schemaVersion !==
-      COMPLETE_CANONICAL_REPLAY_PREDECESSOR ||
-    context.predecessor.challengedHeaderHash !== evidence.headerHash
+    ledger === undefined ||
+    authority.schemaVersion !== COMPLETE_CANONICAL_REPLAY_PREDECESSOR ||
+    authority.challengedHeaderHash !== evidence.headerHash ||
+    authority.headerHash !== evidence.header.prevHeaderHash ||
+    authority.utxosRoot !== evidence.header.prevUtxosRoot ||
+    ledger.utxosRoot !== evidence.header.prevUtxosRoot
   ) {
     throw new Error(
       "complete replay predecessor was not admitted for this challenged header",
     );
   }
-  return predecessor;
+  return ledger;
 };

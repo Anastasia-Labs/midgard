@@ -113,3 +113,26 @@ export const retainedUndecodableOutputDescriptor = ({
     throw new Error("retained output descriptor is absent or ambiguous");
   return matching[0]!;
 };
+
+/** `descriptor` if it is the one candidate that binds `output` (see
+ * `retainedUndecodableOutputDescriptor`); the caller's root check
+ * authenticates it. Transitional: B1's bytes-only derivation replaces it. */
+export const boundUndecodableOutputDescriptor = ({
+  key,
+  output,
+  descriptor,
+}: {
+  key: Buffer;
+  output: Buffer;
+  descriptor: Buffer;
+}) =>
+  retainedUndecodableOutputDescriptor({
+    key,
+    output,
+    candidates: new Map([
+      [
+        key.toString("hex"),
+        new Map([[descriptor.toString("hex"), descriptor]]),
+      ],
+    ]),
+  });

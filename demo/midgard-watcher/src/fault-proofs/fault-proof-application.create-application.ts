@@ -19,6 +19,7 @@ import {
   journalJsonDigest,
   normalizeJournalJson,
   resolveFamilyApplicationReferences,
+  retainedPayloadLedgerAt,
   runFraudProofWorkflowCli,
   type WorkflowAdapterRunner,
 } from "@al-ft/midgard-fault-proofs";
@@ -70,7 +71,6 @@ import {
   admittedApplications,
   type ApplicationConstruction,
   buildCommonInfrastructure,
-  predecessorObservationForClassifier,
   type WatcherFaultProofApplicationWithLoaderForTest,
   watcherFaultProofSourceId,
 } from "./fault-proof-application.build-common-infrastructure.js";
@@ -522,9 +522,9 @@ export function createApplication({
           ...(input.predecessor === undefined
             ? {}
             : {
-                predecessorObservation: predecessorObservationForClassifier({
-                  current: input.observation,
-                  predecessor: input.predecessor,
+                predecessorLedgerAt: retainedPayloadLedgerAt({
+                  sources: retainedDa.sources,
+                  retries: input.retries,
                 }),
               }),
           ...(input.retries === undefined ? {} : { retries: input.retries }),
