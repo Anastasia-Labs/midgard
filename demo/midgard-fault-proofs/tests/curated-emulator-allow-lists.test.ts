@@ -1,4 +1,8 @@
-import { SELECTED_DEPLOYMENT_PROFILE } from "@al-ft/midgard-core/deployment-profile";
+import {
+  type AllowList,
+  AllowListRefusal,
+  SELECTED_DEPLOYMENT_PROFILE,
+} from "@al-ft/midgard-core/deployment-profile";
 import {
   FRAUD_PROOF_CATALOGUE_CATEGORY_IDS,
   FraudProofComputationThreadStepDatum,
@@ -9,6 +13,13 @@ import {
   Lucid,
   paymentCredentialOf,
 } from "@lucid-evolution/lucid";
+import { Effect, Either } from "effect";
+import { runWithoutFollower } from "midgard-node/tests/helpers/intent-journal";
+import {
+  OperatorRegistrationRefusal,
+  registerAndActivateOperatorProgram,
+  registerOperatorProgram,
+} from "midgard-node/transactions/register-active-operator";
 import { describe, expect, it } from "vitest";
 
 import { resolveProverSigner } from "../src/index.js";
@@ -117,20 +128,39 @@ describe("preprod-emulator-curated allow-lists and catalogue", () => {
     });
 
     // Registration, negative: the same journey for a key the list omits,
-    // signed by that key, is refused by the validator.
+    // signed by that key, is refused by the builder and, past it, by the
+    // validator.
     const outsiderSeed = generateSeedPhrase();
     const outsiderLucid = await fundedWallet(context, outsiderSeed);
-    await expectOnchainRefusal(() =>
+    const onboardOutsider = (operatorAllowList?: AllowList) =>
       onboardEmulatorOperator({
         lucid: outsiderLucid,
         contracts,
         operatorKeyHash: curatedKeyHash(outsiderSeed),
+        operatorAllowList,
         // Reached only once the registration has landed.
         awaitActivation: () => {
           throw new Error("the unlisted operator's registration landed");
         },
-      }),
+      });
+    // The helper reports the builder's refusal by its message.
+    await expect(onboardOutsider()).rejects.toThrow(
+      /not on the deployment's operators allow-list/u,
     );
+    // The node's register and register-and-activate commands refuse the key
+    // before any L1 read; the node keeps following the chain.
+    for (const program of [
+      registerOperatorProgram,
+      registerAndActivateOperatorProgram,
+    ]) {
+      const outcome = await runWithoutFollower(
+        Effect.either(program(outsiderLucid, contracts, 0n, outsiderLucid)),
+      );
+      expect(Either.isLeft(outcome) && outcome.left).toBeInstanceOf(
+        OperatorRegistrationRefusal,
+      );
+    }
+    await expectOnchainRefusal(() => onboardOutsider(null));
 
     const doubleSpend = catalogue.categories.doubleSpend;
     const initContracts = (firstStep: {
@@ -152,8 +182,10 @@ describe("preprod-emulator-curated allow-lists and catalogue", () => {
       prover: Awaited<ReturnType<typeof fundedProver>>,
       category: typeof doubleSpend,
       firstStep: Parameters<typeof initContracts>[0],
+      proverAllowList?: AllowList,
     ) =>
       submitResolvedInit({
+        proverAllowList,
         lucid: prover.lucid,
         blueprint: realBlueprint,
         network,
@@ -169,10 +201,14 @@ describe("preprod-emulator-curated allow-lists and catalogue", () => {
     const doubleSpendFirstStep =
       contracts.fraudProofContracts.doubleSpend.steps[0]!;
 
-    // Thread init, negative: a prover the list omits.
+    // Thread init, negative: a prover the list omits, refused before any
+    // read and, past that check, by the validator.
     const outsiderProver = await fundedProver(context, generateSeedPhrase());
-    await expectOnchainRefusal(() =>
+    await expect(
       init(outsiderProver, doubleSpend, doubleSpendFirstStep),
+    ).rejects.toBeInstanceOf(AllowListRefusal);
+    await expectOnchainRefusal(() =>
+      init(outsiderProver, doubleSpend, doubleSpendFirstStep, null),
     );
 
     // Thread init, negative: a family the curated catalogue leaves out has no

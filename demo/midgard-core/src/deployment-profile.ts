@@ -113,3 +113,48 @@ export const deploymentFraudProofCatalogueCategories = (
     ),
   );
 };
+
+/** A stage-0 allow-list, keyed as the profile's `allow_lists`. */
+export type AllowListRole = "operators" | "fraud_provers" | "da_challengers";
+
+/** Admitted payment key hashes, or `null` to admit every key. */
+export type AllowList = readonly string[] | null;
+
+const ALLOW_LIST_ACTIONS: Readonly<Record<AllowListRole, string>> = {
+  operators: "register as an operator",
+  fraud_provers: "initialise a fraud-proof computation thread",
+  da_challengers: "open a DA availability challenge",
+};
+
+/** The profile's list for `role`; the validators compile the same list. */
+export const deploymentAllowList = (
+  role: AllowListRole,
+  profile: DeploymentProfile = SELECTED_DEPLOYMENT_PROFILE,
+): AllowList => profile.allow_lists[role];
+
+/** Whether `list` admits `keyHash`, as the on-chain `allow_list.admits`. */
+export const allowListAdmits = (list: AllowList, keyHash: string): boolean =>
+  list === null || list.includes(keyHash.toLowerCase());
+
+/** A key the deployment's allow-list leaves out, refused before any build. */
+export class AllowListRefusal extends Error {
+  override readonly name = "AllowListRefusal";
+  constructor(
+    readonly role: AllowListRole,
+    readonly keyHash: string,
+  ) {
+    super(
+      `key ${keyHash} is not on the deployment's ${role} allow-list, so it cannot ${ALLOW_LIST_ACTIONS[role]}`,
+    );
+  }
+}
+
+/** Throws `AllowListRefusal` unless `list` (the profile's by default) admits `keyHash`. */
+export const requireAllowListed = (
+  role: AllowListRole,
+  keyHash: string,
+  list: AllowList = deploymentAllowList(role),
+): void => {
+  if (!allowListAdmits(list, keyHash))
+    throw new AllowListRefusal(role, keyHash);
+};

@@ -936,8 +936,8 @@
   },
   {
     "file": "midgard-node/src/transactions/register-active-operator.operator-lifecycle-program.ts",
-    "max": 968,
-    "reason": "operatorLifecycleProgram is the dominant indivisible declaration (881 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. I1 (+21): the deregister, register and activate submissions each name their journaled intent. I5 (+8): the lifecycle opens one intent plan before its first L1 read and records the deregister, register and activate submissions under it."
+    "max": 972,
+    "reason": "operatorLifecycleProgram is the dominant indivisible declaration (881 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. I1 (+21): the deregister, register and activate submissions each name their journaled intent. I5 (+8): the lifecycle opens one intent plan before its first L1 read and records the deregister, register and activate submissions under it. C1 (+4): register and register-and-activate refuse a key the operator allow-list leaves out."
   },
   {
     "file": "midgard-node/src/transactions/state-queue/merge-to-confirmed-state.build-and-submit-merge-tx.ts",

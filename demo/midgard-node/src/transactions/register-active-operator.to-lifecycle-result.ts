@@ -1,3 +1,4 @@
+import { requireAllowListed } from "@al-ft/midgard-core/deployment-profile";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Effect } from "effect";
 
@@ -31,6 +32,21 @@ export type PermissionlessActivation = {
  * prints it as one line.
  */
 export class OperatorRegistrationRefusal extends SDK.StateQueueError {}
+
+/**
+ * Refuses a key the deployment's operator allow-list leaves out: the
+ * registered-operators validator would refuse its registration. A refused
+ * node registers nothing and keeps following the chain.
+ */
+export const requireListedOperator = (operatorKeyHash: string) =>
+  Effect.try({
+    try: () => requireAllowListed("operators", operatorKeyHash),
+    catch: (cause) =>
+      new OperatorRegistrationRefusal({
+        message: cause instanceof Error ? cause.message : String(cause),
+        cause,
+      }),
+  });
 
 /** ISO-8601 UTC followed by the raw POSIX milliseconds, for refusal messages. */
 export const describePosixTime = (posixMs: bigint): string =>

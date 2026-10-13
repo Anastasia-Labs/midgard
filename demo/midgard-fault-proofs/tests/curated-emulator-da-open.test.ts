@@ -1,3 +1,5 @@
+import { buildOpenDaAvailabilityChallengeTxProgram } from "@al-ft/midgard-sdk";
+import { Effect, Either } from "effect";
 import {
   assertAvailabilityRefusal,
   attestAvailability,
@@ -16,6 +18,24 @@ describe("preprod-emulator-curated DA challenger allow-list", () => {
   it("opens an availability challenge for a listed challenger and refuses one the list omits", async () => {
     // Negative first: a fresh challenger key, otherwise the same journey.
     const outsider = await createAvailabilityFixture();
+    // The SDK's Open builder refuses the key under the profile's list before
+    // it reads anything; the journey below builds its own Open past it.
+    const built = await Effect.runPromise(
+      Effect.either(
+        buildOpenDaAvailabilityChallengeTxProgram(
+          {} as never,
+          {} as never,
+          {
+            challenger: outsider.challengerKey,
+          } as unknown as Parameters<
+            typeof buildOpenDaAvailabilityChallengeTxProgram
+          >[2],
+        ),
+      ),
+    );
+    expect(Either.isLeft(built) && built.left.reason).toBe(
+      "challenger-not-allow-listed",
+    );
     const refused = await openAvailability(
       outsider,
       await attestAvailability(outsider),
