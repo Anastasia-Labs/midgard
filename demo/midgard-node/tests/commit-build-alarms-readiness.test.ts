@@ -10,10 +10,10 @@ import { readyz } from "./readiness-honest-degradation-route.readyz-fixture.js";
 
 /**
  * The commit worker's build alarms reach `/readyz` through the parent's
- * message handler: `commit_build_held:<stage>` while builds hold, until a
- * block commits, and `commit_stage_breaker:<stage>` once a stage's
- * rejections reach a build's limit, until a block commits from a build that
- * reached none.
+ * message handler. `commit_build_held:<stage>` fails readiness while builds
+ * hold, until a block commits. `commit_stage_breaker:<stage>` is only a
+ * detail, so the node stays ready, once a stage's rejections reach a build's
+ * limit, until a block commits from a build that reached none.
  */
 
 const held = (stage: string): CommitWorkerMessage => ({
@@ -40,9 +40,9 @@ const COMMITTED: CommitWorkerMessage = {
   mempoolLedgerDeletedOutRefHexes: [],
 };
 
-/** The commit alarm reasons `/readyz` names after the worker posts
- * `messages`. */
-const alarmsAfter = async (...messages: readonly CommitWorkerMessage[]) => {
+/** `/readyz` after the worker posts `messages`: whether the node is ready,
+ * and the commit alarm reasons and details it names. */
+const readyzAfter = async (...messages: readonly CommitWorkerMessage[]) => {
   const response = await readyz({
     journal: Effect.flatMap(Globals, (globals) =>
       Effect.sync(() => {
@@ -51,35 +51,55 @@ const alarmsAfter = async (...messages: readonly CommitWorkerMessage[]) => {
       }),
     ) as unknown as Effect.Effect<void, unknown, never>,
   });
-  return response.reasons.filter(
-    (reason) =>
-      reason.startsWith("commit_build_held") ||
-      reason.startsWith("commit_stage_breaker"),
-  );
+  const alarms = (names: readonly string[]) =>
+    names.filter(
+      (name) =>
+        name.startsWith("commit_build_held") ||
+        name.startsWith("commit_stage_breaker"),
+    );
+  return {
+    ready: response.ready,
+    reasons: alarms(response.reasons),
+    details: alarms(response.details),
+  };
 };
 
 describe("GET /readyz commit build alarms", () => {
-  it("names the stage held builds stop at until a block commits", async () => {
-    expect(await alarmsAfter(held("Phase B"), FAILED)).toEqual([
-      "commit_build_held:phase_b",
-    ]);
+  it("is unready naming the stage held builds stop at until a block commits", async () => {
+    expect(await readyzAfter(held("Phase B"), FAILED)).toEqual({
+      ready: false,
+      reasons: ["commit_build_held:phase_b"],
+      details: [],
+    });
     expect(
-      await alarmsAfter(held("Phase B"), FAILED, held("Phase A"), FAILED),
-    ).toEqual(["commit_build_held:phase_a"]);
-    expect(await alarmsAfter(held("Phase B"), FAILED, COMMITTED)).toEqual([]);
+      await readyzAfter(held("Phase B"), FAILED, held("Phase A"), FAILED),
+    ).toMatchObject({ ready: false, reasons: ["commit_build_held:phase_a"] });
+    expect(await readyzAfter(held("Phase B"), FAILED, COMMITTED)).toEqual({
+      ready: true,
+      reasons: [],
+      details: [],
+    });
   }, 60_000);
 
-  it("names a stage that reached its rejection limit until a block commits from a build that reached none", async () => {
+  it("stays ready naming a stage that reached its rejection limit until a block commits from a build that reached none", async () => {
     expect(
-      await alarmsAfter(breaker("Program material coverage"), COMMITTED),
-    ).toEqual(["commit_stage_breaker:program_material_coverage"]);
+      await readyzAfter(breaker("Program material coverage"), COMMITTED),
+    ).toEqual({
+      ready: true,
+      reasons: [],
+      details: ["commit_stage_breaker:program_material_coverage"],
+    });
     expect(
-      await alarmsAfter(breaker("Phase A"), COMMITTED, breaker("Phase A"), {
+      await readyzAfter(breaker("Phase A"), COMMITTED, breaker("Phase A"), {
         type: "NothingToCommitOutput",
       }),
-    ).toEqual(["commit_stage_breaker:phase_a"]);
-    expect(await alarmsAfter(breaker("Phase A"), COMMITTED, COMMITTED)).toEqual(
-      [],
+    ).toEqual({
+      ready: true,
+      reasons: [],
+      details: ["commit_stage_breaker:phase_a"],
+    });
+    expect(await readyzAfter(breaker("Phase A"), COMMITTED, COMMITTED)).toEqual(
+      { ready: true, reasons: [], details: [] },
     );
   }, 60_000);
 });

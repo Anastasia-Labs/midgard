@@ -72,14 +72,22 @@ const stageName = (stage: string) =>
     .replace(/[^a-z0-9]+/gu, "_")
     .replace(/^_|_$/gu, "");
 
-/** The `/readyz` reasons the alarms raise. */
-export const commitBuildAlarmReasons = (
+/**
+ * What `/readyz` names for the alarms. A held build is a reason: the node is
+ * not producing blocks. A tripped breaker is only a detail: the node still
+ * commits blocks, without the deferred transactions.
+ */
+export const commitBuildAlarmReadiness = (
   alarms: CommitBuildAlarms,
-): readonly string[] => [
-  ...(alarms.held === null
-    ? []
-    : [`${COMMIT_BUILD_HELD}:${stageName(alarms.held)}`]),
-  ...alarms.breaker.map(
+): {
+  readonly reasons: readonly string[];
+  readonly details: readonly string[];
+} => ({
+  reasons:
+    alarms.held === null
+      ? []
+      : [`${COMMIT_BUILD_HELD}:${stageName(alarms.held)}`],
+  details: alarms.breaker.map(
     (stage) => `${COMMIT_STAGE_BREAKER}:${stageName(stage)}`,
   ),
-];
+});
