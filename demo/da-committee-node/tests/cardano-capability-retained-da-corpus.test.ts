@@ -4,18 +4,11 @@ import { isAbsolute } from "node:path";
 import {
   collectMidgardAttachedProgramEnvelopes,
   decodeMidgardCekProgramMaterialDaEntry,
-  decodeMidgardNativeByteListPreimage,
   decodeMidgardNativeTxFullFromCanonicalCbor,
-  decodeMidgardTxOutput,
   decodeMidgardVersionedScriptListPreimage,
-  encodeMidgardCekProgramMaterialDaValue,
-  encodeMidgardCekTermNode,
-  encodeMidgardTxOutput,
-  hashMidgardCekTermNode,
   hashMidgardVersionedScript,
   verifyMidgardCekProgramMaterialBundle,
 } from "@al-ft/midgard-core";
-import { wrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
 import * as SDK from "@al-ft/midgard-sdk";
 import { describe, expect, it } from "vitest";
 
@@ -23,7 +16,6 @@ import { buildStrictRetainedDaPairFixture } from "../../midgard-fault-proofs/tes
 import {
   DaPayloadValidationError,
   decodeDaPayloadStrict,
-  validateDaPayloadEventProgramCoverage,
   verifyDaPayloadAgainstHeader,
 } from "../src/da/payload.js";
 
@@ -64,58 +56,6 @@ const boundaryCorpusInput = (): string | URL => {
 
 const corpus = JSON.parse(readFileSync(boundaryCorpusInput(), "utf8")) as {
   readonly entries: readonly CapabilityCorpusEntry[];
-};
-
-const corpusEntryFor = (label: string): CapabilityCorpusEntry => {
-  const matches = corpus.entries.filter((entry) => entry.label === label);
-  if (matches.length !== 1) {
-    throw new Error(`expected exactly one capability corpus row for ${label}`);
-  }
-  return matches[0]!;
-};
-
-/**
- * The state immediately before the fixture's single transaction: its
- * resolved reference UTxOs (unless `withoutReferences`) and one output for
- * each input it spends.
- */
-const preBlockUtxosOf = (
-  payload: SDK.DaPayload,
-  { withoutReferences = false }: { readonly withoutReferences?: boolean } = {},
-) => {
-  const [[, txCborHex]] = payload.block_body.transaction_preimages as [
-    SDK.DaPayloadEntry,
-  ];
-  const tx = decodeMidgardNativeTxFullFromCanonicalCbor(
-    Buffer.from(txCborHex, "hex"),
-  );
-  const [anyOutput] = decodeMidgardNativeByteListPreimage(
-    tx.body.outputsPreimageCbor,
-    "outputs",
-  );
-  return [
-    ...(withoutReferences ? [] : payload.block_body.utxos).map(
-      ([outRefHex, outputHex]) =>
-        [outRefHex, Buffer.from(outputHex, "hex")] as const,
-    ),
-    ...decodeMidgardNativeByteListPreimage(
-      tx.body.spendInputsPreimageCbor,
-      "spend_inputs",
-    ).map(
-      (outRef) => [Buffer.from(outRef).toString("hex"), anyOutput!] as const,
-    ),
-  ];
-};
-
-/** Strict decoding followed by the per-event program coverage replay. */
-const decodeAndReplay = (
-  payload: SDK.DaPayload,
-  options?: { readonly withoutReferences?: boolean },
-): void => {
-  validateDaPayloadEventProgramCoverage(
-    decodeDaPayloadStrict(SDK.encodeDaPayload(payload)).block_body,
-    preBlockUtxosOf(payload, options),
-  );
 };
 
 const materialFor = (payload: SDK.DaPayload) =>
@@ -168,7 +108,6 @@ describe("Cardano capability corpus production DA admission", () => {
         {
           payloadSchemaVersion: 1,
           stateQueueOutRef: `${"00".repeat(32)}#0`,
-          preBlockUtxos: preBlockUtxosOf(fixture.payload),
         },
       );
       expect(admitted.payload).toEqual(fixture.payload);
@@ -210,140 +149,4 @@ describe("Cardano capability corpus production DA admission", () => {
       }
     }, 120_000);
   });
-
-  it("rejects missing, mutated, or wrongly keyed typed material", async () => {
-    const boundary = corpusEntryFor("maximum-list-redeemer-breadth");
-    const canonicalCbor = Buffer.from(boundary.canonicalCborHex, "hex");
-    const materialSidecar = Buffer.from(
-      boundary.canonicalMaterialSidecarCborHex!,
-      "hex",
-    );
-    const fixture = await buildStrictRetainedDaPairFixture({
-      canonicalTransactionCbor: canonicalCbor,
-      canonicalMaterialSidecarCbor: materialSidecar,
-      withForcedTwin: false,
-    });
-    const [rootHex, valueHex] =
-      fixture.payload.block_body.cek_program_material[0]!;
-    const [entry] = materialFor(fixture.payload);
-    const mutatedPreimage = Buffer.from(entry!.preimage);
-    mutatedPreimage[mutatedPreimage.length - 1] ^= 0x01;
-    const existingRoots = new Set(
-      fixture.payload.block_body.cek_program_material.map(([root]) => root),
-    );
-    let extraIndex = 0xffff_ffffn;
-    while (
-      existingRoots.has(
-        hashMidgardCekTermNode({
-          kind: "variable",
-          index: extraIndex,
-        }).toString("hex"),
-      )
-    ) {
-      extraIndex -= 1n;
-    }
-    const extraNode = { kind: "variable" as const, index: extraIndex };
-    const extraRoot = hashMidgardCekTermNode(extraNode).toString("hex");
-    const extraValue = encodeMidgardCekProgramMaterialDaValue({
-      kind: "term",
-      preimage: encodeMidgardCekTermNode(extraNode),
-    }).toString("hex");
-
-    const malformedMaterialSets: readonly SDK.DaPayloadEntry[][] = [
-      [],
-      [
-        ...fixture.payload.block_body.cek_program_material,
-        [extraRoot, extraValue] satisfies SDK.DaPayloadEntry,
-      ].sort(([left], [right]) => left.localeCompare(right)),
-      [
-        [
-          rootHex,
-          encodeMidgardCekProgramMaterialDaValue({
-            kind: entry!.kind,
-            preimage: mutatedPreimage,
-          }).toString("hex"),
-        ],
-        ...fixture.payload.block_body.cek_program_material.slice(1),
-      ],
-      [
-        ["ff".repeat(32), valueHex] satisfies SDK.DaPayloadEntry,
-        ...fixture.payload.block_body.cek_program_material.slice(1),
-      ].sort(([left], [right]) => left.localeCompare(right)),
-    ];
-
-    for (const cekProgramMaterial of malformedMaterialSets) {
-      const malformed: SDK.DaPayload = {
-        ...fixture.payload,
-        block_body: {
-          ...fixture.payload.block_body,
-          cek_program_material: cekProgramMaterial,
-        },
-      };
-      let rejection: unknown;
-      try {
-        decodeAndReplay(malformed);
-      } catch (cause) {
-        rejection = cause;
-      }
-      expect(rejection).toBeInstanceOf(DaPayloadValidationError);
-      expect(rejection).toMatchObject({ code: "coverage_mismatch" });
-      expect((rejection as Error).message).toMatch(
-        /CEK program material does not exactly cover/u,
-      );
-    }
-  });
-
-  it("rejects missing or substituted resolved reference UTxO material", async () => {
-    const boundary = corpusEntryFor("maximum-reference-inputs");
-    const canonicalCbor = Buffer.from(boundary.canonicalCborHex, "hex");
-    const fixture = await buildStrictRetainedDaPairFixture({
-      canonicalTransactionCbor: canonicalCbor,
-      resolvedReferenceUtxos: boundary.resolvedReferenceUtxos,
-      withForcedTwin: false,
-    });
-    expect(() => decodeAndReplay(fixture.payload)).not.toThrow();
-    // A reference input absent from the state before its transaction.
-    expect(() =>
-      decodeAndReplay(fixture.payload, { withoutReferences: true }),
-    ).toThrow(
-      expect.objectContaining({
-        code: "malformed_transaction",
-        message: expect.stringMatching(
-          /reference_inputs entry [0-9a-f]+ is absent from the state immediately before the transaction/u,
-        ),
-      }),
-    );
-
-    const [first, ...remaining] = fixture.payload.block_body.utxos;
-    expect(first).toBeDefined();
-    const decodedOutput = decodeMidgardTxOutput(Buffer.from(first![1], "hex"));
-    const substitutedOutput = encodeMidgardTxOutput({
-      ...decodedOutput,
-      value: {
-        ...decodedOutput.value,
-        lovelace: decodedOutput.value.lovelace + 1n,
-      },
-    });
-    const substituted: SDK.DaPayload = {
-      ...fixture.payload,
-      block_body: {
-        ...fixture.payload.block_body,
-        utxos: [[first![0], substitutedOutput.toString("hex")], ...remaining],
-      },
-    };
-    await expect(
-      verifyDaPayloadAgainstHeader(
-        await wrapDaPayload(SDK.encodeDaPayload(substituted), {
-          mode: "identity",
-        }),
-        fixture.headerHash,
-        fixture.header,
-        {
-          payloadSchemaVersion: 1,
-          stateQueueOutRef: `${"00".repeat(32)}#0`,
-          preBlockUtxos: preBlockUtxosOf(fixture.payload),
-        },
-      ),
-    ).rejects.toMatchObject({ code: "root_mismatch" });
-  }, 30_000);
 });

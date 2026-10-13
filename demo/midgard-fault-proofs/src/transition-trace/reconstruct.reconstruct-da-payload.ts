@@ -2,17 +2,11 @@ import { unwrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
 import { DA_TRANSPORT_LIMITS } from "@al-ft/midgard-core/da-transport";
 import { aikenSerialisedPlutusDataCborPreservingMapOrder } from "@al-ft/midgard-core/plutus-data-cbor";
 import * as SDK from "@al-ft/midgard-sdk";
-import { createCanonicalMidgardLedgerDescriptorResolver } from "@al-ft/midgard-validation";
 import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
-import { undecodableNativeOutputDescriptor } from "../evidence/retained-ledger-output.js";
 import { transitionTraceError } from "./errors.js";
-import {
-  buildCountedRoot,
-  commitCountedRoot,
-  keyValuePhasRootWithCount,
-} from "./phas.js";
+import { buildCountedRoot, commitCountedRoot } from "./phas.js";
 import {
   authenticateForcedTransactionPreimages,
   buildSourceEvents,
@@ -89,38 +83,7 @@ export const reconstructDaPayload = async ({
   }
 
   const rawTransactions = rawEntries("transactions", body.transactions);
-  const rawUtxos = rawEntries("utxos", body.utxos);
-  const resolveDescriptor = createCanonicalMidgardLedgerDescriptorResolver();
-  const descriptorUtxos = rawUtxos.map((entry) => {
-    try {
-      return {
-        key: Buffer.from(entry.key),
-        value: resolveDescriptor({
-          outRef: entry.key,
-          outputCbor: entry.value,
-        }),
-      };
-    } catch (cause) {
-      try {
-        return {
-          key: Buffer.from(entry.key),
-          value: undecodableNativeOutputDescriptor({
-            key: entry.key,
-            output: entry.value,
-          }),
-        };
-      } catch {
-        /* The exact root check below remains the only authority. */
-      }
-      throw transitionTraceError(
-        "invalidPayloadEntries",
-        `UTxO ${entry.key.toString("hex")} cannot produce an exact canonical V1 descriptor.`,
-        cause,
-      );
-    }
-  });
   const rootData = {
-    utxos: await keyValuePhasRootWithCount(descriptorUtxos),
     withdrawals: await buildCountedRoot(
       SDK.ROOT_DOMAINS.withdrawals,
       rawEntries("withdrawals", body.withdrawals),
@@ -162,7 +125,6 @@ export const reconstructDaPayload = async ({
     }),
   };
   const roots: PayloadRootSet = {
-    utxosRoot: rootData.utxos.root,
     withdrawalsRoot: rootData.withdrawals.root,
     forcedTransactionsRoot: rootData.forcedTransactions.root,
     transactionsRoot: rootData.transactions.root,
@@ -334,7 +296,6 @@ export const reconstructDaPayload = async ({
     headerHash,
     roots,
     counts,
-    utxos: rawUtxos,
     withdrawals,
     forcedTransactions,
     transactions,

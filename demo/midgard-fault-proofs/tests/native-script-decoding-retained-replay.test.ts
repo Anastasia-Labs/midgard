@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { checkLedgerAgainstRoot } from "../src/ledger-at.js";
 import {
   admitNativeScriptDecodingWorkflowArtifact,
   prepareNativeScriptDecodingWorkflowArtifact,
@@ -9,6 +10,7 @@ import { classifyCanonicalBlockViolations } from "../src/workflow/classification
 import { NATIVE_SCRIPT_DECODING_COMPLETE_CANONICAL_REPLAY } from "../src/workflow/complete-replay.js";
 import { reencodeFixturePayload } from "./helpers/canonical-block-evidence-fixture.js";
 import { nativeDecodingFixture } from "./support/native-script-decoding-retained.js";
+import { ledgerEntriesAfter } from "./support/predecessor-ledger.js";
 
 describe("nativeScriptDecoding authenticated retained replay", () => {
   it.each([0n, -1n, 1n])(
@@ -131,39 +133,35 @@ it("reconstructs a block whose native script_ref does not decode, from the outpu
 });
 
 it.each(["key", "raw-script", "root"] as const)(
-  "refuses %s substitution under the authenticated header",
+  "refuses %s substitution at the predecessor root check",
   async (mutation) => {
     const fixture = await nativeDecodingFixture({
       direction: 0,
       item: Buffer.from("8200428109", "hex"),
     });
-    const body = fixture.predecessor.reconstruction.payload.block_body;
-    let utxos = body.utxos;
+    let entries = ledgerEntriesAfter(fixture.predecessor);
     if (mutation === "key")
-      utxos = [
-        ["00".repeat(fixture.key.length), fixture.output.toString("hex")],
+      entries = [
+        { outRef: Buffer.alloc(fixture.key.length), output: fixture.output },
       ];
     if (mutation === "raw-script")
-      utxos = [
-        [
-          fixture.key.toString("hex"),
-          fixture.output.subarray(0, -1).toString("hex") + "08",
-        ],
+      entries = [
+        {
+          outRef: fixture.key,
+          output: Buffer.concat([
+            fixture.output.subarray(0, -1),
+            Buffer.from("08", "hex"),
+          ]),
+        },
       ];
-    const payload = {
-      ...fixture.predecessor.reconstruction.payload,
-      block_body: {
-        ...body,
-        utxos,
-        ...(mutation === "root"
-          ? { header: { ...body.header, utxosRoot: "00".repeat(32) } }
-          : {}),
-      },
-    };
     await expect(
-      reconstructDaPayload({
-        payloadEnvelopeCbor: await reencodeFixturePayload(payload),
-        expectedHeaderHash: fixture.predecessor.headerHash,
+      checkLedgerAgainstRoot({
+        entries,
+        utxosRoot:
+          mutation === "root"
+            ? "00".repeat(32)
+            : fixture.predecessor.header.utxosRoot,
+        label: "predecessor ledger",
       }),
     ).rejects.toThrow();
   },

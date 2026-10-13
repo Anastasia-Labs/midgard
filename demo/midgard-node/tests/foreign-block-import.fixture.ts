@@ -99,7 +99,6 @@ export const fixture = async (
     block_body: {
       header_hash: "00".repeat(28),
       header,
-      utxos: [],
       deposits: [],
       withdrawals: [],
       transactions: [],

@@ -47,7 +47,6 @@ export const decodePayloadStrict = (payloadCbor: Uint8Array): SDK.DaPayload => {
     );
   }
   normalizeHeaderHash(payload.block_body.header_hash, "payload header_hash");
-  validatePayloadEntryArray("utxos", payload.block_body.utxos);
   validatePayloadEntryArray("withdrawals", payload.block_body.withdrawals);
   validatePayloadEntryArray(
     "forced_transactions",

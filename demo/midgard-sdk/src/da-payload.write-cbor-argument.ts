@@ -123,11 +123,13 @@ export const DaPayloadCounts = asDataType<DaPayloadCounts>(
  * V1 DA separates the compact, root-committed transaction sources from
  * their canonical full preimages. This keeps every L1 membership value inside
  * the proof envelope while retaining all data needed to replay validation.
+ * The body carries the block's events only, never a UTxO set: the post-state
+ * is a function of the parent's ledger and these events, and is committed by
+ * `header.utxosRoot`.
  */
 export const DaPayloadBodySchema = Data.Object({
   header_hash: HeaderHashSchema,
   header: HeaderSchema,
-  utxos: Data.Array(DaPayloadEntrySchema),
   withdrawals: Data.Array(DaPayloadEntrySchema),
   forced_transactions: Data.Array(DaPayloadEntrySchema),
   transactions: Data.Array(DaPayloadEntrySchema),

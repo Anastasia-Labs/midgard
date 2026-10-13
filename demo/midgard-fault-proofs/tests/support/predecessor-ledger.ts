@@ -1,7 +1,7 @@
 /**
- * Test sources for the ledger after a fixture block. Fixture payloads still
- * carry their post-state UTxO set, so a test reads the ledger from there; the
- * production code under test admits it only through the root check.
+ * Test sources for the ledger after a fixture block, read from the fixture
+ * ledger its builder recorded; the production code under test admits it only
+ * through the root check.
  */
 import type { CanonicalBlockEvidence } from "../../src/evidence/canonical-block-evidence.js";
 import {
@@ -11,19 +11,16 @@ import {
   type LedgerEntry,
   singleLedgerAt,
 } from "../../src/ledger-at.js";
-import { payloadLedgerEntries } from "../../src/retained-payload-ledger-at.js";
 import {
   reconstructDaPayload,
   type TransitionTraceReconstruction,
 } from "../../src/transition-trace/reconstruct.js";
+import { fixtureLedgerEntriesByRoot } from "./fixture-ledger.js";
 
 type Block = CanonicalBlockEvidence | TransitionTraceReconstruction;
 
-const reconstructionOf = (block: Block): TransitionTraceReconstruction =>
-  "reconstruction" in block ? block.reconstruction : block;
-
 export const ledgerEntriesAfter = (block: Block): LedgerEntry[] =>
-  payloadLedgerEntries(reconstructionOf(block));
+  fixtureLedgerEntriesByRoot(block.header.utxosRoot);
 
 /** A `LedgerAt` that holds only the ledger after `block`. */
 export const ledgerAtAfter = (block: Block): LedgerAt =>

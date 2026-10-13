@@ -378,11 +378,7 @@ export const NATIVE_MPF_RESTORE_READ_ESCALATION_MS = 10 * 60_000;
  * returns before the step-down for another reason, leaves it as it is. */
 export const COMMIT_DA_FRAME_SOURCE = "commit_da_frame";
 
-/** A block's events alone overflow the DA frame although its empty block
- * fits: the step-down has no transaction left to drop. */
+/** A block's required events alone overflow the DA frame: the step-down
+ * has no transaction left to drop. */
 export const COMMIT_DA_FRAME_EVENTS_OVERFLOW =
   "commit_da_frame_events_overflow";
-
-/** The base ledger's empty block alone exceeds the DA frame (every payload
- * carries the full post-block ledger). */
-export const COMMIT_DA_FRAME_LEDGER_CEILING = "commit_da_frame_ledger_ceiling";

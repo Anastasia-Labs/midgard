@@ -252,7 +252,6 @@ export const retentionFixture = async (
       {
         payloadSchemaVersion: 1,
         stateQueueOutRef: h.stateQueueOutRef,
-        preBlockUtxos: [],
       },
     );
     await store.saveDaPayload({

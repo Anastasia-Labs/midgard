@@ -56,11 +56,6 @@ const aggregate = (entries: readonly SDK.DaPayloadEntry[]) => ({
     0,
   ),
 });
-const ledgerAt = (prefix: number): SDK.DaPayloadEntry[] =>
-  Array.from({ length: (prefix % 7) + 1 }, (_, index) => [
-    index.toString(16).padStart(64, "0"),
-    "ab".repeat((prefix % 3) * 63),
-  ]);
 const source = (
   key: SDK.EventKey,
   phase: SDK.TransitionPhase,
@@ -86,7 +81,6 @@ const contentAt = (prefix: number): DaPayloadBlockContent => {
     mkCandidate(index + 1),
   );
   const normal = blockContentFor(txs, {
-    base: { entryCount: 0, encodedTupleBytes: 0 },
     descriptorBytes: 220 + 2 * 63,
   });
   const forcedKey: SDK.EventKey = {
@@ -135,11 +129,6 @@ const contentAt = (prefix: number): DaPayloadBlockContent => {
   const forcedValidation = { ...traceFor(999, 221), eventKey: forcedKey };
   return {
     ...normal,
-    utxoPayloadAggregate: aggregate(ledgerAt(prefix)),
-    utxoPayloadAggregatesByPrefix: Array.from(
-      { length: prefix + 1 },
-      (_, index) => aggregate(ledgerAt(index)),
-    ),
     includedForcedTransactionEntries: [forced],
     includedDepositEntries: [0, 24, 256].map(
       (index) =>
@@ -227,7 +216,6 @@ describe("complete DA prefix canonical sizing", () => {
           ...payload.block_body,
           header: { ...payload.block_body.header, ...counts },
           counts,
-          utxos: ledgerAt(prefix),
           cek_program_material: cek,
         },
       };
@@ -259,7 +247,7 @@ describe("complete DA prefix canonical sizing", () => {
     }
   });
 
-  it("refuses missing prefix ledger evidence and inconsistent accepted trace order", async () => {
+  it("refuses inconsistent accepted trace order", async () => {
     const content = contentAt(2);
     const payload = await payloadAt(content);
     const measure = (changed: DaPayloadBlockContent) =>
@@ -272,9 +260,6 @@ describe("complete DA prefix canonical sizing", () => {
         rejectedTxIds: [],
       });
     expect(() =>
-      measure({ ...content, utxoPayloadAggregatesByPrefix: undefined }),
-    ).toThrow(/accounting is unavailable/);
-    expect(() =>
       measure({
         ...content,
         processedMempoolTxs: [...content.processedMempoolTxs].reverse(),
@@ -284,15 +269,7 @@ describe("complete DA prefix canonical sizing", () => {
 });
 
 it("rebuilds the global minimum for final-header admission when every upper bound overflows", async () => {
-  const ledgers: SDK.DaPayloadEntry[][] = Array.from(
-    { length: 5 },
-    (_, prefix) => [["01", "ab".repeat(prefix === 1 ? 1 : 14_000)]],
-  );
-  const content = (count: number): DaPayloadBlockContent => ({
-    ...contentAt(count),
-    utxoPayloadAggregate: aggregate(ledgers[count]!),
-    utxoPayloadAggregatesByPrefix: ledgers.slice(0, count + 1).map(aggregate),
-  });
+  const content = (count: number): DaPayloadBlockContent => contentAt(count);
   const measure = async (built: DaPayloadBlockContent) =>
     measureDaPayloadPrefixes({
       payload: await payloadAt(built),
@@ -305,7 +282,7 @@ it("rebuilds the global minimum for final-header admission when every upper boun
       rejectedTxIds: [],
     });
   const full = await measure(content(4));
-  const limit = full.prefixes[1]!.innerBytesUpperBound - 1;
+  const limit = full.prefixes[0]!.innerBytesUpperBound - 1;
   expect(
     full.prefixes.every((prefix) => prefix.innerBytesUpperBound > limit),
   ).toBe(true);
@@ -318,7 +295,6 @@ it("rebuilds the global minimum for final-header admission when every upper boun
         ),
         processedMempoolTxs: [],
       }),
-      baseUtxoPayloadAggregate: aggregate(ledgers[0]!),
       maxInnerBytes: limit,
       process: (selection) =>
         Effect.sync(() => {
@@ -330,16 +306,16 @@ it("rebuilds the global minimum for final-header admission when every upper boun
     }),
   );
   expect(result.outcome).toBe("exact_check_required");
-  expect(builtCounts).toEqual([4, 1]);
+  expect(builtCounts).toEqual([4, 0]);
   const payload = await payloadAt(result.processed);
   const counts = {
     withdrawalCount: 0n,
     forcedTransactionCount: 1n,
-    l2TransactionCount: 1n,
+    l2TransactionCount: 0n,
     depositCount: 3n,
-    totalEventCount: 5n,
-    transitionStepCount: 5n,
-    validationTraceCount: 2n,
+    totalEventCount: 4n,
+    transitionStepCount: 4n,
+    validationTraceCount: 1n,
   };
   const exact = SDK.encodeDaPayload({
     ...payload,
@@ -348,7 +324,6 @@ it("rebuilds the global minimum for final-header admission when every upper boun
       header_hash: "33".repeat(28),
       header: { ...header, ...counts },
       counts,
-      utxos: ledgers[1]!,
       cek_program_material: [
         tuple(term.root, encodeMidgardCekProgramMaterialDaValue(term)),
       ],
@@ -374,7 +349,6 @@ it.each([1, 2, 3, 7, 100, 8_000])(
           mempoolTxs: rows,
           processedMempoolTxs: [],
         }),
-        baseUtxoPayloadAggregate: { entryCount: 0, encodedTupleBytes: 0 },
         maxInnerBytes: 100,
         process: (selection) =>
           Effect.sync(() => {

@@ -82,7 +82,6 @@ export const reconstruct = async ({
       block_body: {
         header_hash: headerHash,
         header,
-        utxos: [],
         withdrawals: sortedDaEntries(withdrawals),
         forced_transactions: [],
         transactions: [],

@@ -116,51 +116,45 @@ export const DA_PAYLOAD_UPPER_BOUND_HEADER: SDK.Header = {
 export const DA_PAYLOAD_UPPER_BOUND_HEADER_HASH = WIDEST_HASH;
 
 /**
- * Upper bound on the inner DaPayloadV1 bytes of a block with no events over a
- * ledger of `utxos`: the least any block on that ledger can carry.
+ * Upper bound on the inner DaPayloadV1 bytes of a block with no events: the
+ * least any block carries. The payload carries no UTxO set, so this does not
+ * depend on the ledger.
  */
-export const emptyBlockDaPayloadUpperBoundBytes = (
-  utxos: SDK.DaPayloadEntrySizeAggregate,
-): number =>
-  SDK.daPayloadEncodedSizeFromUtxoAggregate(
-    {
-      version: SDK.DA_PAYLOAD_VERSION,
-      block_body: {
-        header_hash: DA_PAYLOAD_UPPER_BOUND_HEADER_HASH,
-        header: DA_PAYLOAD_UPPER_BOUND_HEADER,
-        utxos: [],
-        withdrawals: [],
-        forced_transactions: [],
-        transactions: [],
-        transaction_preimages: [],
-        forced_transaction_preimages: [],
-        cek_program_material: [],
-        deposits: [],
-        transition_trace: [],
-        event_to_step: [],
-        validation_traces: [],
-        validation_trace_witnesses: [],
-        counts: {
-          withdrawalCount: UINT64_MAX,
-          forcedTransactionCount: UINT64_MAX,
-          l2TransactionCount: UINT64_MAX,
-          depositCount: UINT64_MAX,
-          totalEventCount: UINT64_MAX,
-          transitionStepCount: UINT64_MAX,
-          validationTraceCount: UINT64_MAX,
-        },
+export const EMPTY_BLOCK_DA_PAYLOAD_UPPER_BOUND_BYTES =
+  SDK.daPayloadEncodedSize({
+    version: SDK.DA_PAYLOAD_VERSION,
+    block_body: {
+      header_hash: DA_PAYLOAD_UPPER_BOUND_HEADER_HASH,
+      header: DA_PAYLOAD_UPPER_BOUND_HEADER,
+      withdrawals: [],
+      forced_transactions: [],
+      transactions: [],
+      transaction_preimages: [],
+      forced_transaction_preimages: [],
+      cek_program_material: [],
+      deposits: [],
+      transition_trace: [],
+      event_to_step: [],
+      validation_traces: [],
+      validation_trace_witnesses: [],
+      counts: {
+        withdrawalCount: UINT64_MAX,
+        forcedTransactionCount: UINT64_MAX,
+        l2TransactionCount: UINT64_MAX,
+        depositCount: UINT64_MAX,
+        totalEventCount: UINT64_MAX,
+        transitionStepCount: UINT64_MAX,
+        validationTraceCount: UINT64_MAX,
       },
     },
-    utxos,
-  );
+  });
 
 /**
  * The DA bytes one transaction is planned to add: its source entry and its
- * preimage entry (the block carries the transaction twice), ledger growth
- * bounded by twice its bytes (an output's UTxO entry adds its outref to the
- * output it copies), and a fixed per-event overhead. Program material is
- * not known before the block is built; the post-build measurement steps the
- * selection down when it does not fit.
+ * preimage entry (the block carries the transaction twice) and a fixed
+ * per-event overhead. Program material is not known before the block is
+ * built; the post-build measurement steps the selection down when it does
+ * not fit.
  */
 export const estimatedTxDaPayloadBytes = (
   txBytes: number,
@@ -168,11 +162,7 @@ export const estimatedTxDaPayloadBytes = (
 ): number => {
   const copyBytes =
     2 + plutusBytesEncodedSize(32) + plutusBytesEncodedSize(txBytes);
-  return (
-    2 * copyBytes +
-    2 * plutusBytesEncodedSize(txBytes) +
-    limits.estimatedDaOverheadBytesPerTx
-  );
+  return 2 * copyBytes + limits.estimatedDaOverheadBytesPerTx;
 };
 
 const estimateCommitBatchPlan = (
@@ -240,21 +230,11 @@ const firstExceededBudget = (
 export const planCommitBatchBudgets = ({
   candidateSelection,
   limits = DEFAULT_COMMIT_BATCH_BUDGET_LIMITS,
-  baseUtxoPayloadAggregate,
 }: {
   readonly candidateSelection: CommitTxCandidateSelection;
   readonly limits?: CommitBatchBudgetLimits;
-  /** The commit base's UTxO aggregate, once the base is resolved. */
-  readonly baseUtxoPayloadAggregate?: SDK.DaPayloadEntrySizeAggregate;
 }): PlannedCommitBatchSelection => {
-  // An empty base-ledger upper bound does not rule out ledger-consuming work.
-  // Stand aside when it exceeds the frame; complete-prefix accounting and
-  // final-header admission decide the selected family.
-  const baseDaPayloadBytes =
-    baseUtxoPayloadAggregate === undefined
-      ? 0
-      : emptyBlockDaPayloadUpperBoundBytes(baseUtxoPayloadAggregate);
-  const daBudgetApplies = baseDaPayloadBytes <= limits.maxDaPayloadBytes;
+  const baseDaPayloadBytes = EMPTY_BLOCK_DA_PAYLOAD_UPPER_BOUND_BYTES;
   const selected: EntryWithTimeStamp[] = [];
   let stopReason: CommitBatchStopReason = "mempool_exhausted";
   let selectedTxBytes = 0;
@@ -284,11 +264,7 @@ export const planCommitBatchBudgets = ({
     // The DA estimate never keeps out the first transaction: whether one
     // transaction fits is for the exact post-build measurement to decide, so
     // an allowance alone can never hold the head of the queue out of a block.
-    const exceeded = firstExceededBudget(
-      nextPlan,
-      limits,
-      daBudgetApplies && selectedTxCount > 1,
-    );
+    const exceeded = firstExceededBudget(nextPlan, limits, selectedTxCount > 1);
     if (exceeded !== null) {
       stopReason = exceeded;
       break;
@@ -378,7 +354,6 @@ export const planCommitDaFrameStepDown = ({
  * prefix from actual accepted order. Changed material is held before signing. */
 export const stepDownCommitSelectionToDaFrame = <P, E, R, E2, R2>({
   candidateSelection,
-  baseUtxoPayloadAggregate,
   maxInnerBytes,
   notify,
   process,
@@ -386,7 +361,6 @@ export const stepDownCommitSelectionToDaFrame = <P, E, R, E2, R2>({
   rebase,
 }: {
   readonly candidateSelection: CommitTxCandidateSelection;
-  readonly baseUtxoPayloadAggregate: SDK.DaPayloadEntrySizeAggregate;
   readonly maxInnerBytes: number;
   readonly notify?: (notice: CommitDaFrameNotice) => Effect.Effect<void>;
   readonly process: (
@@ -411,9 +385,6 @@ export const stepDownCommitSelectionToDaFrame = <P, E, R, E2, R2>({
   R | R2
 > =>
   Effect.gen(function* () {
-    const baseEmptyBlockInnerBytes = emptyBlockDaPayloadUpperBoundBytes(
-      baseUtxoPayloadAggregate,
-    );
     let selection = candidateSelection;
     let processed = yield* process(selection);
     const initial = yield* measure(processed);
@@ -488,7 +459,6 @@ export const stepDownCommitSelectionToDaFrame = <P, E, R, E2, R2>({
       passes,
       measurement,
       initialCandidateInnerBytesUpperBound: initial?.innerBytesUpperBound,
-      baseEmptyBlockInnerBytes,
       maxInnerBytes,
     });
     if (notice !== undefined && notify !== undefined) yield* notify(notice);

@@ -8,11 +8,11 @@ import {
   computeMidgardNativeTxId,
   encodeMidgardSpendInputItem,
 } from "@al-ft/midgard-core";
+import { decodeMidgardTxOutput } from "@al-ft/midgard-core/codec";
 import { encodeMidgardForcedTxCanonical } from "@al-ft/midgard-core/codec/forced";
 import { deriveMidgardForcedTxProofSource } from "@al-ft/midgard-core/codec/forced";
 import { materializeMidgardForcedTxFromCanonical } from "@al-ft/midgard-core/codec/forced";
 import * as SDK from "@al-ft/midgard-sdk";
-import { decodeMidgardTxOutput } from "@al-ft/midgard-core/codec";
 import {
   buildCanonicalMidgardLedgerEntryOutputMaterial,
   commitMidgardScriptContextTxOut,
@@ -31,6 +31,7 @@ import {
   reencodeFixturePayload,
 } from "../helpers/canonical-block-evidence-fixture.js";
 import { fixtureBlockSlot } from "./emulator/header-fixtures.js";
+import { recordFixtureLedger } from "./fixture-ledger.js";
 import { makeReferenceNativeTx as makeNativeTx } from "./no-reference-input-native.js";
 import { payloadLedgerAt } from "./predecessor-ledger.js";
 import { buildInvalidForcedTransitionTraceFixture } from "./submit-init-emulator-fixtures.js";
@@ -139,6 +140,7 @@ export const nativeDecodingFixture = async ({
     descriptor = outputMaterial.descriptorCbor;
   }
   const ledger = await keyValuePhasRootWithCount([{ key, value: descriptor }]);
+  recordFixtureLedger(ledger.root, [{ key, value: output }]);
   const predecessorHeader = {
     ...baseline.header,
     prevHeaderHash: SDK.GENESIS_HEADER_HASH,
@@ -158,7 +160,6 @@ export const nativeDecodingFixture = async ({
       ...baseline.payload.block_body,
       header: predecessorHeader,
       header_hash: predecessorHash,
-      utxos: [[key.toString("hex"), output.toString("hex")]],
       validation_trace_witnesses: [],
     },
   } as SDK.DaPayload;
@@ -347,7 +348,6 @@ export const nativeDecodingFixture = async ({
       header,
       header_hash: headerHash,
       counts,
-      utxos: consumed ? [] : predecessorFixture.payload.block_body.utxos,
       validation_trace_witnesses: [],
       forced_transactions: entries,
       forced_transaction_preimages: preimages,

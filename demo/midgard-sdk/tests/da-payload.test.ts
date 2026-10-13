@@ -16,7 +16,6 @@ import {
   DaPayloadCounts,
   daPayloadEncodedSize,
   daPayloadEncodedSizeFromEntryAggregates,
-  daPayloadEncodedSizeFromUtxoAggregate,
   daPayloadEntriesEncodedSizeFromAggregate,
   type DaPayloadEntry,
   daPayloadEntryEncodedSize,
@@ -27,6 +26,7 @@ import {
   EMPTY_MERKLE_TREE_ROOT,
   encodeDaPayload,
   encodeRetainedValidationWitnessKey,
+  Header,
   retainedValidationEndpointCoordinate,
   retainedValidationStateCoordinate,
 } from "../src/index.js";
@@ -41,7 +41,6 @@ const entries = (seed: number, count: number): DaPayloadEntry[] =>
   ]);
 
 const payload = (seed: number): DaPayloadType => {
-  const utxos = entries(seed, seed % 4);
   const withdrawals = entries(seed + 1, (seed + 1) % 3);
   const forcedTransactions = entries(seed + 2, (seed + 2) % 3);
   const transactions = entries(seed + 3, (seed + 3) % 5);
@@ -94,7 +93,6 @@ const payload = (seed: number): DaPayloadType => {
         operatorVkey: bytes(seed + 7, 28),
         protocolVersion: 1n,
       },
-      utxos,
       withdrawals,
       forced_transactions: forcedTransactions,
       transactions,
@@ -132,7 +130,6 @@ const emptyPayload = (): DaPayloadType => {
         startTime: 0n,
         endTime: 0n,
       },
-      utxos: [],
       withdrawals: [],
       forced_transactions: [],
       transactions: [],
@@ -202,9 +199,9 @@ describe("DaPayloadV1 canonical codec", () => {
     const encoded = encodeDaPayload(value);
 
     expect(encoded).toEqual(Buffer.from(Data.to(value, DaPayload), "hex"));
-    expect(encoded).toHaveLength(446);
+    expect(encoded).toHaveLength(445);
     expect(Buffer.from(sha256(encoded)).toString("hex")).toBe(
-      "e033dde650d6160e438b2b061adc17d481260f95b875eb8634a6eeefb7f23b71",
+      "2f3caa41a48bbf5a5609accecd95ddf8e27af29a2bf9a3043f3394e18e2b334c",
     );
 
     for (const trailingBreaks of [1, 2, 3]) {
@@ -231,18 +228,7 @@ describe("DaPayloadV1 canonical codec", () => {
     }
   });
 
-  it("sizes maintained UTxO aggregates exactly and rejects aggregate drift", () => {
-    const value = payload(1);
-    const encodedTupleBytes = value.block_body.utxos.reduce(
-      (sum, entry) => sum + daPayloadEntryEncodedSize(entry),
-      0,
-    );
-    expect(
-      daPayloadEncodedSizeFromUtxoAggregate(value, {
-        entryCount: value.block_body.utxos.length,
-        encodedTupleBytes,
-      }),
-    ).toBe(encodeDaPayload(value).length);
+  it("rejects entry aggregate drift", () => {
     expect(() =>
       daPayloadEntriesEncodedSizeFromAggregate({
         entryCount: 0,
@@ -251,9 +237,34 @@ describe("DaPayloadV1 canonical codec", () => {
     ).toThrow("must have zero tuple bytes");
   });
 
+  it("refuses a payload that carries a UTxO section", () => {
+    for (const utxoSection of [
+      Buffer.from([0x80]),
+      Buffer.from(`9f9f581c${bytes(9, 28)}5820${bytes(10, 32)}ffff`, "hex"),
+    ]) {
+      for (const value of [emptyPayload(), payload(1), payload(3)]) {
+        const encoded = encodeDaPayload(value);
+        // The header constructor closes right before the first entry list.
+        const header = Buffer.from(
+          Data.to(value.block_body.header, Header),
+          "hex",
+        );
+        const afterHeader = encoded.indexOf(header) + header.length;
+        expect(afterHeader).toBeGreaterThan(header.length);
+        const withUtxos = Buffer.concat([
+          encoded.subarray(0, afterHeader),
+          utxoSection,
+          encoded.subarray(afterHeader),
+        ]);
+        expect(() => decodeDaPayload(withUtxos)).toThrow(
+          /unexpected CBOR framing/u,
+        );
+      }
+    }
+  });
+
   it("sizes every entry list from its aggregate exactly", () => {
     const fields: readonly DaPayloadEntryField[] = [
-      "utxos",
       "withdrawals",
       "forced_transactions",
       "transactions",
@@ -385,10 +396,13 @@ describe("DaPayloadV1 canonical codec", () => {
       },
     });
 
-    expect(daPayloadEncodedSize(empty)).toBe(446);
+    expect(daPayloadEncodedSize(empty)).toBe(445);
     expect(tupleBytes).toBe(MIDGARD_CEK_MIN_PROGRAM_MATERIAL_DA_TUPLE_BYTES);
+    // The published fixed part was measured when the body also carried a
+    // one-byte empty UTxO list; it stays one byte above the exact framing so
+    // the consensus limits do not move, which keeps the ceilings conservative.
     expect(nonEmptyBytes).toBe(
-      MIDGARD_CEK_PROGRAM_MATERIAL_DA_FIXED_BYTES + tupleBytes,
+      MIDGARD_CEK_PROGRAM_MATERIAL_DA_FIXED_BYTES - 1 + tupleBytes,
     );
     expect(MIDGARD_CEK_MAX_PROGRAM_NODE_COUNT).toBe(
       BigInt(

@@ -13,7 +13,6 @@ import { initialL1ControlPlaneActivity } from "../src/services/globals.l1-contro
 import {
   activeLivenessReasons,
   COMMIT_DA_FRAME_EVENTS_OVERFLOW,
-  COMMIT_DA_FRAME_LEDGER_CEILING,
   COMMIT_DA_FRAME_SOURCE,
   FIBER_HALT_SOURCES,
 } from "../src/services/liveness-halt.js";
@@ -26,6 +25,7 @@ import {
 } from "../src/workers/utils/commit-block-planner.commit-da-frame-notice.js";
 import {
   blockContentFor,
+  eventContentOf,
   header,
   mkCandidate,
   MODES,
@@ -61,12 +61,6 @@ vi.mock("../src/database/index.js", async () => {
       ...actual.PendingBlockFinalizationsDB,
       assertNoUnreconciledSignedSubmission: Effect.void,
     },
-    MpfEngineStateDB: {
-      ...actual.MpfEngineStateDB,
-      stampLedgerPayloadAggregate: vi.fn(() =>
-        Effect.fail("later journal preparation failure"),
-      ),
-    },
     TxAdmissionsDB: {
       ...actual.TxAdmissionsDB,
       retrieveProgramMaterialSidecars: vi.fn((txIds: readonly Buffer[]) =>
@@ -89,6 +83,8 @@ vi.mock("../src/workers/commit-block-header/pending-journal.js", async () => {
     revalidateStateQueueLease: () => Effect.void,
     assertPendingJournalCompleteness: () => Effect.void,
     resolveLiveTailCommitBase: () => Effect.succeed({}),
+    buildPendingJournalMetadata: () =>
+      Effect.fail("later journal preparation failure"),
   };
 });
 vi.mock("../src/workers/commit-block-header/build-unsigned-tx.js", async () => {
@@ -129,11 +125,10 @@ const reasonsOf = (globals: Globals) =>
     reason,
   }));
 
-const refused = (baseEmptyBlockInnerBytes: number) =>
+const refused = () =>
   commitDaFrameNoticeForOutcome({
     outcome: "no_transactions_to_drop",
     passes: 3,
-    baseEmptyBlockInnerBytes,
     maxInnerBytes: 100_000,
   })!;
 
@@ -155,13 +150,11 @@ describe("commit DA frame readiness", () => {
             new Map([...reasons, ["commit_worker", "commit_worker_failed"]]),
         ),
       );
-      if (outcome !== "fits")
-        takeCommitWorkerOutput(globals, refused(100_001), 0);
+      if (outcome !== "fits") takeCommitWorkerOutput(globals, refused(), 0);
       const heldReasons = reasonsOf(globals);
       const notice = commitDaFrameNoticeForOutcome({
         outcome,
         passes: 1,
-        baseEmptyBlockInnerBytes: 40_000,
         maxInnerBytes: 100_000,
         measurement: {
           innerBytesUpperBound: stage * 1_000,
@@ -175,7 +168,6 @@ describe("commit DA frame readiness", () => {
       );
       expect(pressure).toMatchObject({
         candidateStagePercent: stage,
-        baseLedgerStagePercent: 0,
         requiredWorkInnerBytesUpperBound: null,
         effectiveInnerLimit: 100_000,
       });
@@ -228,7 +220,6 @@ describe("commit DA frame readiness", () => {
     const notice = commitDaFrameNoticeForOutcome({
       outcome: "fits",
       passes: 2,
-      baseEmptyBlockInnerBytes: 76_000,
       maxInnerBytes: 100_000,
       measurement: {
         innerBytesUpperBound: 91_000,
@@ -241,7 +232,6 @@ describe("commit DA frame readiness", () => {
       Effect.runSync(Ref.get(globals.COMMIT_DA_FRAME_PRESSURE)),
     ).toMatchObject({
       candidateStagePercent: 90,
-      baseLedgerStagePercent: 75,
       requiredWorkInnerBytesUpperBound: 91_000,
       requiredWorkStagePercent: 90,
     });
@@ -273,6 +263,7 @@ describe("commit DA frame readiness", () => {
       const deposit = {
         [DepositsDB.Columns.ID]: Buffer.alloc(38, 1),
         [DepositsDB.Columns.INFO]: Buffer.from("d87980", "hex"),
+        [DepositsDB.Columns.INCLUSION_TIME]: new Date(Number(header.endTime)),
       };
       const params = {
         contracts: {},
@@ -301,7 +292,6 @@ describe("commit DA frame readiness", () => {
             : SDK.EMPTY_MERKLE_TREE_ROOT,
         transitionStepCount: source === "transactions" ? 2 : 1,
         validationTraceCount: source === "transactions" ? 1 : 0,
-        utxoPayloadEntries: [],
         ledgerDelta: { spent: [], produced: [] },
         selectedBaseUtxosRoot: header.prevUtxosRoot,
         implicitGenesisEntries: [],
@@ -313,15 +303,15 @@ describe("commit DA frame readiness", () => {
         afterDaFrameAccepted,
       };
       const attempt = (overflow: boolean) => {
-        const supplied = {
-          ...params,
-          utxoPayloadAggregate: overflow
-            ? {
-                entryCount: 400_000,
-                encodedTupleBytes: maxDaPayloadInnerBytes(mode),
-              }
-            : content.utxoPayloadAggregate,
-        };
+        // An overflowing block carries trace content past the frame.
+        const supplied = overflow
+          ? {
+              ...params,
+              transitionTraceMembers: [
+                eventContentOf(maxDaPayloadInnerBytes(mode)),
+              ],
+            }
+          : params;
         const program =
           source === "events"
             ? submitDepositOnlyCommit(
@@ -339,7 +329,6 @@ describe("commit DA frame readiness", () => {
       const measuredRefusal = commitDaFrameNoticeForOutcome({
         outcome: "no_transactions_to_drop",
         passes: 3,
-        baseEmptyBlockInnerBytes: 1_000,
         maxInnerBytes: 100_000,
         measurement: {
           innerBytesUpperBound: 105_000,
@@ -372,7 +361,7 @@ describe("commit DA frame readiness", () => {
       ).toMatchObject({ value: 90 });
       expect(reasonsOf(globals)).toEqual([]);
 
-      takeCommitWorkerOutput(globals, refused(1_000), 0);
+      takeCommitWorkerOutput(globals, refused(), 0);
       notifications.length = 0;
       const refusedExactly = await attempt(true);
       expect(Either.isLeft(refusedExactly)).toBe(true);
@@ -387,14 +376,11 @@ describe("commit DA frame readiness", () => {
       ]);
     },
   );
-  it.each([
-    ["events_overflow", 1_000, COMMIT_DA_FRAME_EVENTS_OVERFLOW],
-    ["ledger_ceiling", 100_001, COMMIT_DA_FRAME_LEDGER_CEILING],
-  ] as const)(
+  it.each([["events_overflow", COMMIT_DA_FRAME_EVENTS_OVERFLOW]] as const)(
     "raises %s on a refused block and clears it on the next fitting tick",
-    (status, baseEmptyBlockInnerBytes, reason) => {
+    (status, reason) => {
       const globals = node();
-      const notice = refused(baseEmptyBlockInnerBytes);
+      const notice = refused();
       expect(notice.status).toBe(status);
       // The notice is consumed, not handed on as the worker's output.
       expect(takeCommitWorkerOutput(globals, notice, 0)).toBeUndefined();
@@ -413,17 +399,16 @@ describe("commit DA frame readiness", () => {
 
   it("keeps the reason through a nothing-to-commit output", () => {
     const globals = node();
-    // Only transactions were pending over an over-frame ledger: the step-down
-    // dropped them all, the empty block still overflows, and with no event
-    // left the worker commits nothing. The output is handed on and the
+    // The step-down dropped every transaction, the remaining block still
+    // overflows, and the worker commits nothing. The output is handed on and the
     // transactions stay pending, so the reason must stay too.
-    takeCommitWorkerOutput(globals, refused(100_001), 0);
+    takeCommitWorkerOutput(globals, refused(), 0);
     const nothing = { type: "NothingToCommitOutput" } as const;
     expect(takeCommitWorkerOutput(globals, nothing, 0)).toBe(nothing);
     expect(reasonsOf(globals)).toEqual([
       {
         source: COMMIT_DA_FRAME_SOURCE,
-        reason: COMMIT_DA_FRAME_LEDGER_CEILING,
+        reason: COMMIT_DA_FRAME_EVENTS_OVERFLOW,
       },
     ]);
     // A tick with no work posts the idle notice ahead of its output, which
@@ -436,24 +421,11 @@ describe("commit DA frame readiness", () => {
     );
   });
 
-  it("moves between its two reasons without a fitting tick in between", () => {
-    const globals = node();
-    takeCommitWorkerOutput(globals, refused(1_000), 0);
-    takeCommitWorkerOutput(globals, refused(100_001), 0);
-    expect(reasonsOf(globals)).toEqual([
-      {
-        source: COMMIT_DA_FRAME_SOURCE,
-        reason: COMMIT_DA_FRAME_LEDGER_CEILING,
-      },
-    ]);
-  });
-
   it("posts no notice for a fitting outcome's details and none for an unmeasured block", () => {
     expect(
       commitDaFrameNoticeForOutcome({
         outcome: "fits",
         passes: 2,
-        baseEmptyBlockInnerBytes: 1_000,
         maxInnerBytes: 100_000,
       }),
     ).toBe(COMMIT_DA_FRAME_FITS_NOTICE);
@@ -461,7 +433,6 @@ describe("commit DA frame readiness", () => {
       commitDaFrameNoticeForOutcome({
         outcome: "unmeasured",
         passes: 1,
-        baseEmptyBlockInnerBytes: 1_000,
         maxInnerBytes: 100_000,
       }),
     ).toBeUndefined();

@@ -152,7 +152,6 @@ const emptyBody = (): SDK.DaPayload["block_body"] => ({
     ) as Parameters<typeof headerFor>[0],
     countsFromLengths({}),
   ),
-  utxos: [],
   deposits: [],
   withdrawals: [],
   transactions: [],
@@ -235,7 +234,6 @@ export const depositBlock = async (entry: {
       ...body,
       header: { ...body.header, ...counts },
       counts,
-      utxos: [[key.toString("hex"), entry.ledgerOutput]],
       deposits: [[entry.idCbor, entry.infoCbor]],
       transition_trace: [
         [

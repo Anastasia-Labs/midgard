@@ -4,7 +4,6 @@ import type { Globals } from "../services/globals.js";
 import {
   clearLivenessIncident,
   COMMIT_DA_FRAME_EVENTS_OVERFLOW,
-  COMMIT_DA_FRAME_LEDGER_CEILING,
   COMMIT_DA_FRAME_SOURCE,
   raiseLivenessIncident,
 } from "../services/liveness-halt.js";
@@ -72,11 +71,6 @@ export const applyCommitDaFrameNotice = (
           pressure?.initialCandidateStagePercent,
         ],
         [
-          "base_ledger",
-          pressure?.baseEmptyBlockInnerBytesUpperBound,
-          pressure?.baseLedgerStagePercent,
-        ],
-        [
           "required_work",
           pressure?.requiredWorkInnerBytesUpperBound,
           pressure?.requiredWorkStagePercent,
@@ -99,16 +93,14 @@ export const applyCommitDaFrameNotice = (
         pressure !== null &&
         (pressure.candidateStagePercent > 0 ||
           pressure.initialCandidateStagePercent > 0 ||
-          pressure.baseLedgerStagePercent > 0 ||
           (pressure.requiredWorkStagePercent ?? 0) > 0) &&
         (prior?.candidateStagePercent !== pressure.candidateStagePercent ||
           prior?.initialCandidateStagePercent !==
             pressure.initialCandidateStagePercent ||
-          prior?.baseLedgerStagePercent !== pressure.baseLedgerStagePercent ||
           prior?.requiredWorkStagePercent !== pressure.requiredWorkStagePercent)
       ) {
         yield* Effect.logWarning(
-          `commit_da_frame_pressure candidate_stage_percent=${pressure.candidateStagePercent.toString()} initial_candidate_stage_percent=${pressure.initialCandidateStagePercent.toString()} base_ledger_stage_percent=${pressure.baseLedgerStagePercent.toString()} required_work_stage_percent=${pressure.requiredWorkStagePercent?.toString() ?? "unknown"} candidate_inner_bytes_upper_bound=${pressure.candidateInnerBytesUpperBound.toString()} base_empty_block_inner_bytes_upper_bound=${pressure.baseEmptyBlockInnerBytesUpperBound.toString()} required_work_inner_bytes_upper_bound=${pressure.requiredWorkInnerBytesUpperBound?.toString() ?? "unknown"} effective_inner_limit=${pressure.effectiveInnerLimit.toString()} passes=${pressure.passes.toString()}`,
+          `commit_da_frame_pressure candidate_stage_percent=${pressure.candidateStagePercent.toString()} initial_candidate_stage_percent=${pressure.initialCandidateStagePercent.toString()} required_work_stage_percent=${pressure.requiredWorkStagePercent?.toString() ?? "unknown"} candidate_inner_bytes_upper_bound=${pressure.candidateInnerBytesUpperBound.toString()} required_work_inner_bytes_upper_bound=${pressure.requiredWorkInnerBytesUpperBound?.toString() ?? "unknown"} effective_inner_limit=${pressure.effectiveInnerLimit.toString()} passes=${pressure.passes.toString()}`,
         );
       }
     }
@@ -124,9 +116,7 @@ export const applyCommitDaFrameNotice = (
       : raiseLivenessIncident(
           globals,
           COMMIT_DA_FRAME_SOURCE,
-          notice.status === "ledger_ceiling"
-            ? COMMIT_DA_FRAME_LEDGER_CEILING
-            : COMMIT_DA_FRAME_EVENTS_OVERFLOW,
+          COMMIT_DA_FRAME_EVENTS_OVERFLOW,
           notice.detail,
         );
   });

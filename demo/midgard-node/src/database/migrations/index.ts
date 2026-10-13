@@ -24,6 +24,7 @@ import dropEventHistoryControlPlaneSql from "./sql/0022_drop_event_history_contr
 import commitAnchorSql from "./sql/0023_commit_anchor.sql";
 import dropValidationTraceWitnessesSql from "./sql/0024_drop_validation_trace_witnesses.sql";
 import blockTimeSql from "./sql/0025_block_time.sql";
+import dropUtxoPayloadAggregateSql from "./sql/0026_drop_utxo_payload_aggregate.sql";
 
 export type Migration = {
   readonly version: number;
@@ -207,6 +208,13 @@ export const MIGRATIONS: readonly Migration[] = [
     name: "block_time",
     checksumSha256: sha256Hex(blockTimeSql),
     sql: blockTimeSql,
+    transactional: true,
+  },
+  {
+    version: 26,
+    name: "drop_utxo_payload_aggregate",
+    checksumSha256: sha256Hex(dropUtxoPayloadAggregateSql),
+    sql: dropUtxoPayloadAggregateSql,
     transactional: true,
   },
 ] as const;

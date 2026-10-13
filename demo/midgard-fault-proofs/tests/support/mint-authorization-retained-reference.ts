@@ -111,7 +111,6 @@ export const mintAuthorizationRetainedReferenceFixture = async ({
       ...current.reconstruction.payload.block_body,
       header,
       header_hash: headerHash,
-      utxos: predecessorFixture.payload.block_body.utxos,
     },
   };
   const provenance = {

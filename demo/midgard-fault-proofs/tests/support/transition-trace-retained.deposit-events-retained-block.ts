@@ -14,6 +14,7 @@ import { type Assets, Data } from "@lucid-evolution/lucid";
 import { buildCountedRoot } from "../../src/transition-trace/phas.js";
 import { buildCanonicalBlockFixture } from "../helpers/canonical-block-evidence-fixture.js";
 import { fixtureBlockSlot } from "./emulator/header-fixtures.js";
+import { fixtureLedgerAfter, fixtureLedgerEntries } from "./fixture-ledger.js";
 
 export const sealDepositPayload = async (payload: SDK.DaPayload) => {
   const header = payload.block_body.header;
@@ -63,10 +64,13 @@ export const depositEventsRetainedBlock = async (input: {
   blockSlot: bigint;
   prevHeaderHash: string;
   prevUtxosRoot: string;
-  priorLedger: readonly SDK.DaPayloadEntry[];
+  /** Defaults to the fixture ledger recorded for `prevUtxosRoot`. */
+  priorLedger?: readonly SDK.DaPayloadEntry[];
   events: readonly RetainedDepositEvent[];
 }) => {
-  const ledger = new Map(input.priorLedger);
+  const ledger = new Map(
+    input.priorLedger ?? fixtureLedgerEntries(input.prevUtxosRoot),
+  );
   const buildLedger = () =>
     buildCanonicalBlockFixture({
       transactions: [],
@@ -211,7 +215,7 @@ export const transitionTraceDepositRetainedFixture = async (
     blockSlot: 10n,
     prevHeaderHash: predecessor.headerHash,
     prevUtxosRoot: predecessor.header.utxosRoot,
-    priorLedger: predecessor.payload.block_body.utxos,
+    priorLedger: fixtureLedgerAfter(predecessor.header),
     events: [{ ...input, originalAssets, honest }],
   });
   return { predecessor, current };

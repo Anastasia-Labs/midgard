@@ -177,7 +177,7 @@ const build = (orders: readonly WithdrawalsDB.Entry[], baseRoot: string) =>
 
 type Produced = Effect.Effect.Success<ReturnType<typeof build>>["produced"];
 
-/** The DA payload of the produced block, extending the base ledger. */
+/** The DA payload of the produced block, committing its post-state root. */
 const payloadOf = async (produced: Produced, baseRoot: string) => {
   const entry = <K extends { readonly keyCbor: Buffer }>(
     member: K & { readonly valueCbor: Buffer },
@@ -194,16 +194,13 @@ const payloadOf = async (produced: Produced, baseRoot: string) => {
       countsFromLengths({ withdrawals: withdrawals.length }),
     ),
     prevUtxosRoot: baseRoot,
+    utxosRoot: produced.utxoRoot,
   };
   return rebind({
     version: SDK.DA_PAYLOAD_VERSION,
     block_body: {
       header_hash: "00".repeat(28),
       header,
-      utxos: produced.utxoPayloadEntries.map(({ outref, output }) => [
-        hex(outref),
-        hex(output),
-      ]),
       deposits: [],
       withdrawals,
       transactions: [],
@@ -291,9 +288,6 @@ describe("duplicate-outref withdrawals in one block window", () => {
       hex(U[LedgerUtils.Columns.OUTREF]),
     ]);
     expect(produced.ledgerDelta.produced).toEqual([]);
-    expect(
-      produced.utxoPayloadEntries.map(({ outref }) => hex(outref)),
-    ).toEqual([hex(V[LedgerUtils.Columns.OUTREF])]);
     const [first, second] = produced.transitionTraceMembers.map(
       (member) => member.value,
     );

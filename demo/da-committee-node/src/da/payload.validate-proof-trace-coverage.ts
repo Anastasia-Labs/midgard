@@ -75,7 +75,6 @@ export const decodeDaPayloadStrict = (
         `embedded V1 header hash ${embeddedHeaderHash} does not match payload header_hash ${body.header_hash}`,
       );
     }
-    validateEntries("utxos", body.utxos);
     validateEntries("withdrawals", body.withdrawals);
     validateEntries("forced_transactions", body.forced_transactions);
     validateEntries("transactions", body.transactions);

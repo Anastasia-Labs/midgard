@@ -22,7 +22,6 @@ import {
   type ActiveLivenessReason,
   clearLivenessIncident,
   COMMIT_DA_FRAME_EVENTS_OVERFLOW,
-  COMMIT_DA_FRAME_LEDGER_CEILING,
   COMMIT_DA_FRAME_SOURCE,
   HaltSource,
   raiseLivenessIncident,
@@ -172,7 +171,6 @@ describe("GET /readyz liveness reasons", () => {
             commitDaFrameNoticeForOutcome({
               outcome: "fits",
               passes: 1,
-              baseEmptyBlockInnerBytes: 1_000,
               maxInnerBytes: 100_000,
               measurement: {
                 innerBytesUpperBound: stage * 1_000,
@@ -244,19 +242,15 @@ describe("GET /readyz liveness reasons", () => {
     expect(cleared.reasons).toEqual([]);
   });
 
-  it.each([
-    [1_000, COMMIT_DA_FRAME_EVENTS_OVERFLOW],
-    [100_001, COMMIT_DA_FRAME_LEDGER_CEILING],
-  ] as const)(
-    "projects the parent's DA frame refusal %i as %s and clears on fitting evidence",
-    async (baseEmptyBlockInnerBytes, reason) => {
+  it.each([[COMMIT_DA_FRAME_EVENTS_OVERFLOW]] as const)(
+    "projects the parent's DA frame refusal as %s and clears on fitting evidence",
+    async (reason) => {
       const [before, raised, cleared] = await onNode(({ globals, readyz }) =>
         Effect.gen(function* () {
           const before = yield* readyz;
           const notice = commitDaFrameNoticeForOutcome({
             outcome: "no_transactions_to_drop",
             passes: 3,
-            baseEmptyBlockInnerBytes,
             maxInnerBytes: 100_000,
           })!;
           expect(takeCommitWorkerOutput(globals, notice, 0)).toBeUndefined();

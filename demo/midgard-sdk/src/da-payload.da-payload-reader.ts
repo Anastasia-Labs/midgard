@@ -54,7 +54,6 @@ class DaPayloadReader {
       protocolVersion: this.#integer("header.protocolVersion"),
     };
     this.#break("payload.block_body.header");
-    const utxos = this.#entryList("payload.block_body.utxos");
     const withdrawals = this.#entryList("payload.block_body.withdrawals");
     const forced_transactions = this.#entryList(
       "payload.block_body.forced_transactions",
@@ -103,7 +102,6 @@ class DaPayloadReader {
       block_body: {
         header_hash,
         header,
-        utxos,
         withdrawals,
         forced_transactions,
         transactions,

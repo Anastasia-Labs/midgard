@@ -46,7 +46,6 @@ import {
 import {
   daPayloadSha256,
   DaPayloadValidationError,
-  resolvePreBlockUtxos,
   type VerifiedDaPayload,
   verifyDaPayloadAgainstHeader,
 } from "./da/payload.js";
@@ -1105,18 +1104,10 @@ export class CommitteeService {
     record: StateQueueHeaderRecord,
     payloadRecord: DaPayloadRecord,
   ): Promise<VerifiedDaPayload> {
-    // Established before verification: an unavailable parent state is not a
-    // verdict on this payload, so it never marks the payload rejected.
-    const preBlockUtxos = await resolvePreBlockUtxos({
-      header: record.header,
-      getDaPayload: (headerHash) => this.deps.store.getDaPayload(headerHash),
-      payloadSource: this.deps.payloadSource,
-    });
     try {
       const verificationOptions = {
         payloadSchemaVersion: 1,
         stateQueueOutRef: record.stateQueueOutRef,
-        preBlockUtxos,
       } as const;
       const verified = await verifyDaPayloadAgainstHeader(
         payloadCbor,

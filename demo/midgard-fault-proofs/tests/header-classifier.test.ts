@@ -9,7 +9,6 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
-import { retainedPayloadLedgerAt } from "../src/retained-payload-ledger-at.js";
 import type { RetainedDaPayloadSource } from "../src/transition-trace/fetch.js";
 import {
   COMPLETE_CANONICAL_REPLAY,
@@ -43,6 +42,7 @@ import {
   buildFixtureTransaction,
   outRefCbor,
 } from "./helpers/canonical-block-evidence-fixture.js";
+import { fixtureLedgerAt } from "./support/fixture-ledger.js";
 
 const DEPLOYMENT_FINGERPRINT = "d1".repeat(32);
 const RELEASE_FINALITY_POLICY = { ...DEPLOYMENT_MANIFEST_L1_FINALITY };
@@ -519,7 +519,7 @@ describe("production authenticated-header classifier V1", () => {
       observation,
       authenticatedObservationDigest,
       sources: [source],
-      predecessorLedgerAt: retainedPayloadLedgerAt({ sources: [source] }),
+      predecessorLedgerAt: fixtureLedgerAt({ sources: [source] }),
     });
     expect(admitted.decision).toBe("healthy");
     expect(headerDecisionReplayContext(admitted)?.predecessor).toBeDefined();

@@ -16,7 +16,6 @@ import * as WithdrawalsDB from "../../src/database/withdrawals.js";
 import type {
   RetainedTransitionTraceMember,
   RetainedValidationTraceMember,
-  UtxoPayloadSizeAggregate,
 } from "../../src/mpf/index.js";
 import {
   encodeEventToStepValueCbor,
@@ -50,21 +49,12 @@ export const CANONICAL_TX = Buffer.from(
   "hex",
 );
 
-// The base ledger measured on the lc1 devnet held 9 UTxOs in 1,333 tuple bytes
-// (a mean entry of 148 bytes).
-export const LC1_BASE_LEDGER: UtxoPayloadSizeAggregate = {
-  entryCount: 9,
-  encodedTupleBytes: 1_333,
-};
-export const LC1_MEAN_ENTRY_BYTES = 148;
-
 // The value bytes of a placeholder validation descriptor.
 export const PLACEHOLDER_DESCRIPTOR_BYTES = 146;
 
 // A synthetic per-transaction DA weight. The sizing reads each descriptor's
 // value length, so an inflated descriptor value stands in for content the
-// planner's per-transaction estimate does not see (program material, a deep
-// ledger). At this weight a handful of transactions overflow one V1 frame.
+// planner's per-transaction estimate does not see (program material). At this weight a handful of transactions overflow one V1 frame.
 export const SYNTHETIC_TX_DA_BYTES = 164_640;
 
 // Every limit the commit program passes, at its configured default.
@@ -148,28 +138,23 @@ export const eventContentOf = (
   }) as unknown as RetainedTransitionTraceMember;
 
 export type BlockShape = {
-  readonly base?: UtxoPayloadSizeAggregate;
   /** Each transaction's descriptor value bytes (see SYNTHETIC_TX_DA_BYTES). */
   readonly descriptorBytes?: number;
   readonly eventBytes?: number;
-  /** Base entries the block's withdrawals remove from the ledger it carries. */
-  readonly withdrawnEntryCount?: number;
 };
 
 /**
- * The DA content of the block the node builds from `txs`: each transfer spends
- * one entry and creates two, and every transaction carries a descriptor.
+ * The DA content of the block the node builds from `txs`: every transaction
+ * carries a descriptor.
  */
 export const blockContentFor = (
   txs: readonly EntryWithTimeStamp[],
   {
-    base = LC1_BASE_LEDGER,
     descriptorBytes = PLACEHOLDER_DESCRIPTOR_BYTES,
     eventBytes = 0,
-    withdrawnEntryCount = 0,
   }: BlockShape = {},
 ) => {
-  const before = eventBytes > 0 || withdrawnEntryCount > 0 ? 1 : 0;
+  const before = eventBytes > 0 ? 1 : 0;
   const normal = txs.map((tx, index): RetainedTransitionTraceMember => {
     const value: SDK.TransitionStep = {
       schema_version: 1n,
@@ -192,18 +177,7 @@ export const blockContentFor = (
     ...(before > 0 ? [eventContentOf(eventBytes)] : []),
     ...normal,
   ];
-  const utxoPayloadAggregatesByPrefix = Array.from(
-    { length: txs.length + 1 },
-    (_, prefix) => ({
-      entryCount: base.entryCount + prefix - withdrawnEntryCount,
-      encodedTupleBytes:
-        base.encodedTupleBytes +
-        (prefix - withdrawnEntryCount) * LC1_MEAN_ENTRY_BYTES,
-    }),
-  );
   return {
-    utxoPayloadAggregate: utxoPayloadAggregatesByPrefix[txs.length]!,
-    utxoPayloadAggregatesByPrefix,
     includedDepositEntries: [],
     includedForcedTransactionEntries: [],
     includedWithdrawalEntries:

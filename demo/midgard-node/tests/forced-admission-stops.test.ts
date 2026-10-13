@@ -221,7 +221,6 @@ describe("kept forced admission screens", () => {
             header,
             header_hash: await Effect.runPromise(SDK.hashBlockHeader(header)),
             counts,
-            utxos: [],
             transactions: [],
             transaction_preimages: [],
             forced_transactions: [

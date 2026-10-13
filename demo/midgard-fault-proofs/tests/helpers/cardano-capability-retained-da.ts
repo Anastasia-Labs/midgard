@@ -70,6 +70,8 @@ export type StrictRetainedDaPairFixture = {
   readonly transactionCommitmentHex: string;
   readonly forcedTransactionCommitmentHex: string;
   readonly forcedOrderIdHex: string;
+  /** The ledger the header's UTxO roots commit to; the payload does not carry it. */
+  readonly ledger: readonly SDK.DaPayloadEntry[];
 };
 
 export const buildStrictRetainedDaPairFixture = async ({
@@ -286,7 +288,6 @@ export const buildStrictRetainedDaPairFixture = async ({
     block_body: {
       header_hash: headerHash,
       header,
-      utxos,
       withdrawals: [],
       forced_transactions: sorted(forcedTransactions),
       transactions: sorted(transactions),
@@ -322,5 +323,6 @@ export const buildStrictRetainedDaPairFixture = async ({
     forcedTransactionCommitmentHex:
       computeMidgardForcedTxProofCommitment(forcedProofSource).toString("hex"),
     forcedOrderIdHex,
+    ledger: utxos,
   };
 };
