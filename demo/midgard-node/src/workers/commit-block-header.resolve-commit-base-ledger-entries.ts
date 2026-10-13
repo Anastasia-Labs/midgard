@@ -3,7 +3,6 @@ import { Effect, Option } from "effect";
 
 import {
   ConfirmedLedgerDB,
-  MpfEngineStateDB,
   PendingBlockFinalizationsDB,
 } from "../database/index.js";
 import { DatabaseError } from "../database/utils/common.js";
@@ -16,7 +15,6 @@ import {
 import { retrieveRows } from "../landed-blocks/store.js";
 import {
   computeLedgerMpfRootFromLedgerEntries,
-  ledgerPayloadAggregateFromEntries,
   utxoToLedgerInsertMaterial,
 } from "../mpf/index.js";
 import { ForeignBlockVerificationError } from "../mpf/verified-block-import.js";
@@ -32,7 +30,6 @@ export type ResolvedCommitBaseLedgerEntries = {
   readonly source: string;
   readonly entries?: readonly Ledger.MinimalEntry[];
   readonly root: string;
-  readonly utxoPayloadAggregate: SDK.DaPayloadEntrySizeAggregate;
 };
 
 /** Why a commit waits on a foreign tail landed-block processing has not
@@ -59,6 +56,15 @@ export const resolveCommitBaseLedgerEntries = ({
         availableConfirmedBlock,
       );
       if (latestBlock.datum.key === "Empty") {
+        const confirmedState = (yield* SDK.getConfirmedStateFromStateQueueDatum(
+          latestBlock.datum,
+        )).data;
+        if (!requireEntries && nativeMpfRoot === confirmedState.utxoRoot) {
+          return {
+            source: "persistent-ledger-mpf",
+            root: nativeMpfRoot,
+          } satisfies ResolvedCommitBaseLedgerEntries;
+        }
         yield* Effect.logInfo(
           "🔹 Commit base state_queue tip is the confirmed-state root; using confirmed_ledger as base.",
         );
@@ -85,8 +91,6 @@ export const resolveCommitBaseLedgerEntries = ({
               source: "genesis",
               entries: genesisEntries,
               root,
-              utxoPayloadAggregate:
-                ledgerPayloadAggregateFromEntries(genesisEntries),
             } satisfies ResolvedCommitBaseLedgerEntries;
           }
         }
@@ -121,15 +125,10 @@ export const resolveCommitBaseLedgerEntries = ({
               }),
             );
           }
-          if (
-            !requireEntries &&
-            currentLedgerRootHex === header.utxosRoot &&
-            journal.value.utxoPayloadAggregate !== undefined
-          ) {
+          if (!requireEntries && currentLedgerRootHex === header.utxosRoot) {
             return {
               source: "persistent-ledger-mpf",
               root: header.utxosRoot,
-              utxoPayloadAggregate: journal.value.utxoPayloadAggregate,
             } satisfies ResolvedCommitBaseLedgerEntries;
           }
           const snapshot = yield* materializeConfirmedLedgerSnapshot(
@@ -152,9 +151,6 @@ export const resolveCommitBaseLedgerEntries = ({
             source: `pending-finalization:${headerHash}`,
             entries: snapshot.entries,
             root: snapshot.root,
-            utxoPayloadAggregate:
-              journal.value.utxoPayloadAggregate ??
-              ledgerPayloadAggregateFromEntries(snapshot.entries),
           } satisfies ResolvedCommitBaseLedgerEntries;
         }
         // A foreign tail is built on only once landed-block processing
@@ -181,22 +177,6 @@ export const resolveCommitBaseLedgerEntries = ({
           source: `landed:${headerHash}`,
           entries,
           root: at.root,
-          utxoPayloadAggregate: ledgerPayloadAggregateFromEntries(entries),
-        } satisfies ResolvedCommitBaseLedgerEntries;
-      }
-    }
-
-    if (!requireEntries) {
-      const currentLedgerRootHex = nativeMpfRoot;
-      const aggregate =
-        yield* MpfEngineStateDB.retrieveLedgerPayloadAggregate(
-          currentLedgerRootHex,
-        );
-      if (aggregate !== undefined) {
-        return {
-          source: "persistent-ledger-mpf",
-          root: currentLedgerRootHex,
-          utxoPayloadAggregate: aggregate,
         } satisfies ResolvedCommitBaseLedgerEntries;
       }
     }
@@ -207,16 +187,9 @@ export const resolveCommitBaseLedgerEntries = ({
     yield* Effect.logInfo(
       `🔹 Commit base ledger snapshot resolved from confirmed_ledger (entries=${confirmedEntries.length.toString()}).`,
     );
-    const utxoPayloadAggregate =
-      ledgerPayloadAggregateFromEntries(confirmedEntries);
-    yield* MpfEngineStateDB.stampLedgerPayloadAggregate({
-      rootHex: confirmedRoot,
-      aggregate: utxoPayloadAggregate,
-    });
     return {
       source: "confirmed_ledger",
       entries: confirmedEntries,
       root: confirmedRoot,
-      utxoPayloadAggregate,
     } satisfies ResolvedCommitBaseLedgerEntries;
   });

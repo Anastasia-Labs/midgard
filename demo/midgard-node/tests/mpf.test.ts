@@ -27,7 +27,6 @@ import {
   rejectedForcedTransactionLedgerWitnesses,
 } from "../src/mpf/event-window.js";
 import {
-  applyLedgerOpsToUtxoPayloadAggregateFromFullValues,
   applyTraceLedgerOpsToMpf,
   buildTransitionTraceResult,
   computeLedgerMpfRootFromLedgerEntries,
@@ -53,7 +52,6 @@ import {
   resetMpfArenaLimits,
   setMpfScratchBuild,
   type TransitionTraceSourceEvent,
-  utxoPayloadAggregateFromEntries,
   validateValidationTraceEventKeySet,
   verifyKeyValuePhasMembershipProof,
   verifyKeyValuePhasNonMembershipProof,
@@ -2376,186 +2374,6 @@ describe("Midgard MPF wrapper", () => {
             absent,
           ]).map((entry) => entry.outRef.toString("hex")),
         ).toEqual([present]);
-      }),
-  );
-
-  it.effect(
-    "maintains exact DA UTxO bytes across dependent within-block mutations",
-    () =>
-      Effect.gen(function* () {
-        const payloadEntry = (key: number, value: number) => ({
-          outref: Buffer.from([key]),
-          output: Buffer.from([value]),
-        });
-        const cases: readonly {
-          readonly label: string;
-          readonly base: readonly ReturnType<typeof payloadEntry>[];
-          readonly ops: readonly MpfBatchOp[];
-        }[] = [
-          {
-            label: "insert-new-delete",
-            base: [],
-            ops: [
-              {
-                type: "insert",
-                key: Buffer.from([1]),
-                value: Buffer.from([9]),
-              },
-              { type: "delete", key: Buffer.from([1]) },
-            ],
-          },
-          {
-            label: "replace-existing",
-            base: [payloadEntry(1, 1)],
-            ops: [
-              {
-                type: "insert",
-                key: Buffer.from([1]),
-                value: Buffer.from([2]),
-              },
-            ],
-          },
-          {
-            label: "delete-reinsert",
-            base: [payloadEntry(1, 1)],
-            ops: [
-              { type: "delete", key: Buffer.from([1]) },
-              {
-                type: "insert",
-                key: Buffer.from([1]),
-                value: Buffer.from([3]),
-              },
-            ],
-          },
-          {
-            label: "dependent-three-transaction-chain",
-            base: [payloadEntry(1, 1)],
-            ops: [
-              { type: "delete", key: Buffer.from([1]) },
-              {
-                type: "insert",
-                key: Buffer.from([2]),
-                value: Buffer.from([2]),
-              },
-              { type: "delete", key: Buffer.from([2]) },
-              {
-                type: "insert",
-                key: Buffer.from([3]),
-                value: Buffer.from([3]),
-              },
-              { type: "delete", key: Buffer.from([3]) },
-              {
-                type: "insert",
-                key: Buffer.from([4]),
-                value: Buffer.from([4]),
-              },
-            ],
-          },
-        ];
-
-        for (const testCase of cases) {
-          const actual =
-            yield* applyLedgerOpsToUtxoPayloadAggregateFromFullValues(
-              utxoPayloadAggregateFromEntries(testCase.base),
-              testCase.ops,
-              new Map(
-                testCase.base.map((entry) => [
-                  entry.outref.toString("hex"),
-                  entry.output,
-                ]),
-              ),
-              new Map(
-                testCase.ops.flatMap((operation) =>
-                  operation.type === "delete"
-                    ? []
-                    : [
-                        [
-                          operation.key.toString("hex"),
-                          operation.value,
-                        ] as const,
-                      ],
-                ),
-              ),
-            );
-          const materialized = new Map(
-            testCase.base.map((entry) => [
-              entry.outref.toString("hex"),
-              { outref: entry.outref, output: entry.output },
-            ]),
-          );
-          for (const op of testCase.ops) {
-            const key = op.key.toString("hex");
-            if (op.type === "delete") materialized.delete(key);
-            else materialized.set(key, { outref: op.key, output: op.value });
-          }
-          const finalEntries = [...materialized.values()];
-          expect(actual, testCase.label).toEqual(
-            utxoPayloadAggregateFromEntries(finalEntries),
-          );
-
-          const header: SDK.Header = {
-            prevUtxosRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
-            utxosRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
-            withdrawalsRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
-            forcedTransactionsRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
-            transactionsRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
-            depositsRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
-            transitionTraceRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
-            eventToStepRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
-            validationTracesRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
-            withdrawalCount: 0n,
-            forcedTransactionCount: 0n,
-            l2TransactionCount: 0n,
-            depositCount: 0n,
-            totalEventCount: 0n,
-            transitionStepCount: 0n,
-            validationTraceCount: 0n,
-            startTime: 0n,
-            endTime: 1n,
-            blockSlot: 0n,
-            expectedNetworkId: 0n,
-            minFeeA: 0n,
-            minFeeB: 0n,
-            prevHeaderHash: "00".repeat(28),
-            operatorVkey: "11".repeat(28),
-            protocolVersion: 1n,
-          };
-          const payload: SDK.DaPayload = {
-            version: SDK.DA_PAYLOAD_VERSION,
-            block_body: {
-              header_hash: "22".repeat(28),
-              header,
-              utxos: finalEntries.map((entry) => [
-                entry.outref.toString("hex"),
-                entry.output.toString("hex"),
-              ]),
-              withdrawals: [],
-              forced_transactions: [],
-              transactions: [],
-              deposits: [],
-              transition_trace: [],
-              event_to_step: [],
-              transaction_preimages: [],
-              forced_transaction_preimages: [],
-              cek_program_material: [],
-              validation_traces: [],
-              validation_trace_witnesses: [],
-              counts: {
-                withdrawalCount: 0n,
-                forcedTransactionCount: 0n,
-                l2TransactionCount: 0n,
-                depositCount: 0n,
-                totalEventCount: 0n,
-                transitionStepCount: 0n,
-                validationTraceCount: 0n,
-              },
-            },
-          };
-          expect(
-            SDK.daPayloadEncodedSizeFromUtxoAggregate(payload, actual),
-            testCase.label,
-          ).toBe(SDK.encodeDaPayload(payload).length);
-        }
       }),
   );
 });

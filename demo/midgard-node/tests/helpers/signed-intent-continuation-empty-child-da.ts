@@ -52,10 +52,6 @@ export const retainSignedIntentContinuationEmptyChildDa = (
       block_body: {
         header_hash: childHeaderHash,
         header: childHeader,
-        utxos: snapshot.entries.map((entry) => [
-          entry.outref.toString("hex"),
-          entry.output.toString("hex"),
-        ]),
         deposits: [],
         withdrawals: [],
         forced_transactions: [],

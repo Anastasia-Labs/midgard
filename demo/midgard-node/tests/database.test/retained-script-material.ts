@@ -33,6 +33,7 @@ import { classifyForcedTransactions } from "../../src/mpf/event-window.classify-
 import { programMaterialSidecarForEnvelopes } from "../../src/mpf/event-window.forced-verdict-for-rejection.js";
 import { encodeTransactionRootValue } from "../../src/mpf/index.js";
 import { NodeConfig } from "../../src/services/config.js";
+import { restoreRetainedStatePins } from "../../src/workers/commit-block-header/restore-retained-state-pins.js";
 import { finalizeCommittedBlockLocally } from "../../src/workers/utils/commit-submission.finalize-committed-block-locally.js";
 import { buildJournalFixture } from "../da-payload.build-journal-fixture.js";
 import { member, sourceRoot } from "../da-payload.record.js";
@@ -283,9 +284,9 @@ export const registerRetainedScriptMaterialTests = () => {
                 classified[0].programMaterialSidecarCbor,
               ),
             ).toEqual([attempt.material]);
-            // Reopening/restoring owners uses the retained payload and is idempotent.
-            yield* CekProgramMaterialDB.restoreRetainedStatePins;
-            yield* CekProgramMaterialDB.restoreRetainedStatePins;
+            // Restoring owners on reopen is idempotent and keeps the durable pin.
+            yield* restoreRetainedStatePins;
+            yield* restoreRetainedStatePins;
             expect(yield* owners).toEqual([
               { header_hash: fixture.headerHash },
             ]);

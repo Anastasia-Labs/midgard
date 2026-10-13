@@ -9,11 +9,6 @@ import { DatabaseError, sqlErrorToDatabaseError } from "./utils/common.js";
 
 export const tableName = "mpf_engine_state";
 
-export type UtxoPayloadSizeAggregate = {
-  readonly entryCount: number;
-  readonly encodedTupleBytes: number;
-};
-
 export const assertLedgerAuditHealthy: Effect.Effect<
   void,
   DatabaseError,
@@ -39,34 +34,21 @@ export const assertLedgerAuditHealthy: Effect.Effect<
 export const recordLedgerAudit = ({
   rootHex,
   diverged,
-  utxoPayloadAggregate,
 }: {
   readonly rootHex: string;
   readonly diverged: boolean;
-  readonly utxoPayloadAggregate?: UtxoPayloadSizeAggregate;
 }): Effect.Effect<void, DatabaseError, Database> =>
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;
     yield* sql`INSERT INTO ${sql(tableName)}
       (store_name, migration_version, root_hex, audit_diverged,
-       last_audit_diverged, last_audit_at, utxo_payload_entry_count,
-       utxo_payload_encoded_tuple_bytes)
-      VALUES ('ledger', 1, ${rootHex}, ${diverged}, ${diverged}, CURRENT_TIMESTAMP,
-        ${utxoPayloadAggregate?.entryCount ?? null},
-        ${utxoPayloadAggregate?.encodedTupleBytes ?? null})
+       last_audit_diverged, last_audit_at)
+      VALUES ('ledger', 1, ${rootHex}, ${diverged}, ${diverged}, CURRENT_TIMESTAMP)
       ON CONFLICT (store_name) DO UPDATE SET
         migration_version = 1,
         root_hex = EXCLUDED.root_hex,
         audit_diverged = ${sql(tableName)}.audit_diverged OR EXCLUDED.audit_diverged,
         last_audit_diverged = EXCLUDED.last_audit_diverged,
-        utxo_payload_entry_count = COALESCE(
-          EXCLUDED.utxo_payload_entry_count,
-          ${sql(tableName)}.utxo_payload_entry_count
-        ),
-        utxo_payload_encoded_tuple_bytes = COALESCE(
-          EXCLUDED.utxo_payload_encoded_tuple_bytes,
-          ${sql(tableName)}.utxo_payload_encoded_tuple_bytes
-        ),
         last_audit_at = CURRENT_TIMESTAMP,
         updated_at = CURRENT_TIMESTAMP`;
   }).pipe(
@@ -338,94 +320,10 @@ export const stampLedgerMigration = (
       VALUES ('ledger', 1, ${rootHex})
       ON CONFLICT (store_name) DO UPDATE SET
         migration_version = GREATEST(${sql(tableName)}.migration_version, 1),
-        utxo_payload_entry_count = CASE
-          WHEN ${sql(tableName)}.root_hex = EXCLUDED.root_hex
-            THEN ${sql(tableName)}.utxo_payload_entry_count
-          ELSE NULL
-        END,
-        utxo_payload_encoded_tuple_bytes = CASE
-          WHEN ${sql(tableName)}.root_hex = EXCLUDED.root_hex
-            THEN ${sql(tableName)}.utxo_payload_encoded_tuple_bytes
-          ELSE NULL
-        END,
         root_hex = EXCLUDED.root_hex,
         updated_at = CURRENT_TIMESTAMP`;
   }).pipe(
     sqlErrorToDatabaseError(tableName, "Failed to stamp ledger MPF migration"),
-  );
-
-export const stampLedgerPayloadAggregate = ({
-  rootHex,
-  aggregate,
-}: {
-  readonly rootHex: string;
-  readonly aggregate: UtxoPayloadSizeAggregate;
-}): Effect.Effect<void, DatabaseError, Database> =>
-  Effect.gen(function* () {
-    const sql = yield* SqlClient.SqlClient;
-    yield* sql`INSERT INTO ${sql(tableName)}
-      (store_name, migration_version, root_hex, utxo_payload_entry_count,
-       utxo_payload_encoded_tuple_bytes)
-      VALUES ('ledger', 1, ${rootHex}, ${aggregate.entryCount},
-        ${aggregate.encodedTupleBytes})
-      ON CONFLICT (store_name) DO UPDATE SET
-        migration_version = GREATEST(${sql(tableName)}.migration_version, 1),
-        root_hex = EXCLUDED.root_hex,
-        utxo_payload_entry_count = EXCLUDED.utxo_payload_entry_count,
-        utxo_payload_encoded_tuple_bytes =
-          EXCLUDED.utxo_payload_encoded_tuple_bytes,
-        updated_at = CURRENT_TIMESTAMP`;
-  }).pipe(
-    sqlErrorToDatabaseError(
-      tableName,
-      "Failed to persist ledger DA UTxO size aggregate",
-    ),
-  );
-
-export const retrieveLedgerPayloadAggregate = (
-  rootHex: string,
-): Effect.Effect<
-  UtxoPayloadSizeAggregate | undefined,
-  DatabaseError,
-  Database
-> =>
-  Effect.gen(function* () {
-    const sql = yield* SqlClient.SqlClient;
-    const rows = yield* sql<{
-      readonly entry_count: bigint | number | string;
-      readonly encoded_tuple_bytes: bigint | number | string;
-    }>`SELECT
-      utxo_payload_entry_count AS entry_count,
-      utxo_payload_encoded_tuple_bytes AS encoded_tuple_bytes
-      FROM ${sql(tableName)}
-      WHERE store_name = 'ledger'
-        AND root_hex = ${rootHex}
-        AND utxo_payload_entry_count IS NOT NULL
-        AND utxo_payload_encoded_tuple_bytes IS NOT NULL`;
-    const row = rows[0];
-    if (row === undefined) return undefined;
-    const entryCount = Number(row.entry_count);
-    const encodedTupleBytes = Number(row.encoded_tuple_bytes);
-    if (
-      !Number.isSafeInteger(entryCount) ||
-      entryCount < 0 ||
-      !Number.isSafeInteger(encodedTupleBytes) ||
-      encodedTupleBytes < 0
-    ) {
-      return yield* Effect.fail(
-        new DatabaseError({
-          table: tableName,
-          message: "Stored ledger DA UTxO size aggregate is invalid",
-          cause: `entry_count=${String(row.entry_count)},encoded_tuple_bytes=${String(row.encoded_tuple_bytes)}`,
-        }),
-      );
-    }
-    return { entryCount, encodedTupleBytes };
-  }).pipe(
-    sqlErrorToDatabaseError(
-      tableName,
-      "Failed to retrieve ledger DA UTxO size aggregate",
-    ),
   );
 
 export const ledgerAuditIsDue = ({

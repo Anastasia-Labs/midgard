@@ -24,10 +24,7 @@ import {
   unfoldFrontier,
 } from "../../src/landed-blocks/confirmed-merges.js";
 import { Frontier } from "../../src/landed-blocks/store.js";
-import {
-  computeLedgerMpfRootFromLedgerEntries,
-  ledgerPayloadAggregateFromEntries,
-} from "../../src/mpf/index.js";
+import { computeLedgerMpfRootFromLedgerEntries } from "../../src/mpf/index.js";
 import { materializeConfirmedLedgerSnapshot } from "../../src/transactions/state-queue/confirmed-ledger-snapshot.js";
 import { finalizeConfirmedMergeTransaction } from "../../src/transactions/state-queue/merge-to-confirmed-state.js";
 import { buildDaPayloadInsert } from "../../src/workers/commit-block-header/da-payload.js";
@@ -281,9 +278,6 @@ export const registerMpfTests = () => {
                         item[LedgerUtils.Columns.OUTPUT],
                     })),
                   },
-                  utxoPayloadAggregate: ledgerPayloadAggregateFromEntries(
-                    states[index + 1]!,
-                  ),
                 });
                 yield* sql`UPDATE ${sql(
                   PendingBlockFinalizationsDB.tableName,
@@ -300,9 +294,6 @@ export const registerMpfTests = () => {
               );
             expect(found._tag).toBe("Some");
             if (found._tag === "None") return;
-            expect(found.value.utxoPayloadAggregate).toEqual(
-              ledgerPayloadAggregateFromEntries(states[3]!),
-            );
             const snapshot = yield* materializeConfirmedLedgerSnapshot(
               found.value,
             );
@@ -317,18 +308,12 @@ export const registerMpfTests = () => {
               ),
             );
             expect(snapshot.deltaChain).toHaveLength(3);
-            const fullUtxos = snapshot.entries.map((item) => ({
-              outref: item[LedgerUtils.Columns.OUTREF],
-              output: item[LedgerUtils.Columns.OUTPUT],
-            }));
             const identityInsert = yield* buildDaPayloadInsert({
               record: found.value,
-              utxos: fullUtxos,
               envelope: { mode: "identity", zstdLevel: 3 },
             });
             const zstdInsert = yield* buildDaPayloadInsert({
               record: found.value,
-              utxos: fullUtxos,
               envelope: { mode: "zstd", zstdLevel: 3 },
             });
             const identityUnwrapped = yield* Effect.tryPromise({
@@ -345,17 +330,11 @@ export const registerMpfTests = () => {
                 }),
               catch: (cause) => cause,
             });
-            const expectedPayloadOutrefs = states[3]!
-              .map((item) => item[LedgerUtils.Columns.OUTREF].toString("hex"))
-              .sort();
             for (const payloadBytes of [
               identityUnwrapped.innerBytes,
               zstdUnwrapped.innerBytes,
             ]) {
               const payload = SDK.decodeDaPayload(payloadBytes);
-              expect(
-                payload.block_body.utxos.map(([outref]) => outref),
-              ).toEqual(expectedPayloadOutrefs);
               expect(payload.block_body.header.utxosRoot).toBe(roots[3]);
             }
 
@@ -555,7 +534,6 @@ export const registerMpfTests = () => {
               recordedBaseUtxosRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
               selectedBaseUtxosRoot,
               expectedFinalUtxosRoot,
-              expectedFinalEntryCount: finalEntries.length,
               implicitGenesisEntries: [genesis],
               transitionDelta: {
                 spent: [],
@@ -575,7 +553,6 @@ export const registerMpfTests = () => {
                 recordedBaseUtxosRoot: "ff".repeat(32),
                 selectedBaseUtxosRoot,
                 expectedFinalUtxosRoot,
-                expectedFinalEntryCount: finalEntries.length,
                 implicitGenesisEntries: [genesis],
                 transitionDelta: {
                   spent: [],
@@ -647,8 +624,6 @@ export const registerMpfTests = () => {
                     produced.output,
                 })),
               },
-              utxoPayloadAggregate:
-                ledgerPayloadAggregateFromEntries(finalEntries),
             });
             const journal =
               yield* PendingBlockFinalizationsDB.retrieveByHeaderHash(

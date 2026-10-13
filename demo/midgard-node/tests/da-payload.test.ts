@@ -82,7 +82,6 @@ describe("DaPayloadV1 builder", () => {
     const insert = await Effect.runPromise(
       buildDaPayloadInsert({
         record: pending,
-        utxos: [],
         envelope: { mode: "identity", zstdLevel: 3 },
       }),
     );
@@ -119,32 +118,8 @@ describe("DaPayloadV1 builder", () => {
       eventToStepEntries,
     });
 
-    /**
-     * Independently specified expectation: the canonical V1 body carries every
-     * supplied UTxO exactly once, keyed by out-ref hex, ascending. Built from
-     * the fixture inputs, never from the builder's own output — and fed to the
-     * builder in descending order so the sort has real work to do.
-     */
-    const expectedUtxoEntries = utxoEntries
-      .map(
-        ([outref, output]) =>
-          [outref.toString("hex"), output.toString("hex")] as const,
-      )
-      .sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0));
-    const descendingUtxoInputs = [...utxoEntries]
-      .sort(([left], [right]) =>
-        left.toString("hex") < right.toString("hex") ? 1 : -1,
-      )
-      .map(([outref, output]) => ({ outref, output }));
-    expect(
-      descendingUtxoInputs.map(({ outref }) => outref.toString("hex")),
-    ).not.toEqual(expectedUtxoEntries.map(([key]) => key));
-
     const insert = await Effect.runPromise(
-      buildDaPayloadInsert({
-        record: pending,
-        utxos: descendingUtxoInputs,
-      }),
+      buildDaPayloadInsert({ record: pending }),
     );
     const identityUnwrapped = await unwrapDaPayload(insert.payload_cbor, {
       maxPayloadBytes: DA_TRANSPORT_LIMITS.maxPayloadBytes,
@@ -153,9 +128,7 @@ describe("DaPayloadV1 builder", () => {
 
     expect(payload.block_body.header_hash).toBe(headerHash.toString("hex"));
     expect(payload.block_body.header).toEqual(header);
-    expect(payload.block_body.utxos).toEqual(
-      expectedUtxoEntries.map(([key, value]) => [key, value]),
-    );
+    expect(Object.keys(payload.block_body)).not.toContain("utxos");
     expect(insert.utxos_root).toBe(roots.utxosRoot);
     expect(insert.forced_transactions_root).toBe(roots.forcedTransactionsRoot);
     expect(insert.transactions_root).toBe(roots.transactionsRoot);
@@ -175,7 +148,6 @@ describe("DaPayloadV1 builder", () => {
     const zstdInsert = await Effect.runPromise(
       buildDaPayloadInsert({
         record: pending,
-        utxos: descendingUtxoInputs,
         envelope: { mode: "zstd", zstdLevel: 3 },
       }),
     );
@@ -193,6 +165,39 @@ describe("DaPayloadV1 builder", () => {
       createHash("sha256").update(zstdInsert.payload_cbor).digest("hex"),
     );
     expect(zstdInsert.payload_sha256).not.toEqual(insert.payload_sha256);
+  });
+
+  it("builds payloads whose size does not depend on the ledger size", async () => {
+    const events = {
+      depositEntries: [
+        [fixture("size-deposit", 34), fixture("size-deposit-info", 48)],
+      ] as readonly [Buffer, Buffer][],
+      transitionTraceEntries: retainedPairs("size-trace", 1),
+      eventToStepEntries: retainedPairs("size-event-to-step", 1),
+    };
+    const innerBytesOver = async (ledgerSize: number) => {
+      const { pending } = await buildJournalFixture({
+        utxoEntries: ledgerEntries(`size-ledger-${ledgerSize}`, ledgerSize),
+        ...events,
+      });
+      const insert = await Effect.runPromise(
+        buildDaPayloadInsert({
+          record: pending,
+          envelope: { mode: "identity", zstdLevel: 3 },
+        }),
+      );
+      return (
+        await unwrapDaPayload(insert.payload_cbor, {
+          maxPayloadBytes: DA_TRANSPORT_LIMITS.maxPayloadBytes,
+        })
+      ).innerBytes;
+    };
+    const small = await innerBytesOver(10);
+    const large = await innerBytesOver(10_000);
+    // Only the header's post-state root and the header hash differ.
+    expect(large.length).toBe(small.length);
+    const differing = [...small].filter((byte, index) => large[index] !== byte);
+    expect(differing.length).toBeLessThanOrEqual(64);
   });
 
   it("backfills a missing DA payload from complete journal payload members", async () => {
@@ -214,10 +219,8 @@ describe("DaPayloadV1 builder", () => {
       backfillMissingDaPayloadsFromFinalizedJournals({
         deps: {
           retrieveMissingRecords: () => Effect.succeed([pending]),
-          materializeUtxos: () =>
-            Effect.succeed(
-              utxoEntries.map(([outref, output]) => ({ outref, output })),
-            ),
+          materializeLedgerOutputs: () =>
+            Effect.succeed(utxoEntries.map(([, output]) => output)),
           upsertAvailable: (input) =>
             Effect.sync(() => {
               inserts.push(input);
@@ -252,7 +255,7 @@ describe("DaPayloadV1 builder", () => {
       backfillMissingDaPayloadsFromFinalizedJournals({
         deps: {
           retrieveMissingRecords: () => Effect.succeed([pending]),
-          materializeUtxos: () =>
+          materializeLedgerOutputs: () =>
             Effect.fail(
               new DatabaseError({
                 table: PendingBlockFinalizationsDB.tableName,
@@ -300,7 +303,7 @@ describe("DaPayloadV1 builder", () => {
           retrieveMissingRecords: () => Effect.succeed([]),
           retrieveJournalByHeaderHash: () =>
             Effect.succeed(Option.some(abandoned)),
-          materializeUtxos: () => Effect.succeed([]),
+          materializeLedgerOutputs: () => Effect.succeed([]),
           upsertAvailable: () => Effect.void,
         },
       }),
@@ -337,12 +340,7 @@ describe("DaPayloadV1 builder", () => {
     });
 
     const result = await Effect.runPromise(
-      Effect.either(
-        buildDaPayloadInsert({
-          record: pending,
-          utxos: utxoEntries.map(([outref, output]) => ({ outref, output })),
-        }),
-      ),
+      Effect.either(buildDaPayloadInsert({ record: pending })),
     );
 
     expect(result._tag).toBe("Left");

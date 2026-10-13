@@ -19,10 +19,10 @@
 import { formatUnknownError } from "@al-ft/midgard-core/error-format";
 import { Effect } from "effect";
 
-import { restoreRetainedStatePins } from "../database/cekProgramMaterial.restore-retained-state-pins.js";
 import * as NodeDeployment from "../database/node-deployment.js";
 import { ContractDeploymentIdentity } from "../services/midgard-contracts.js";
 import { backfillMissingDaPayloadsFromFinalizedJournals } from "../workers/commit-block-header/da-payload-backfill.js";
+import { restoreRetainedStatePins } from "../workers/commit-block-header/restore-retained-state-pins.js";
 import { landedStateQueueStartupReasons } from "./listen-startup.await-landed-state-queue.js";
 import {
   assertStartupMutationJobsRecoverable,

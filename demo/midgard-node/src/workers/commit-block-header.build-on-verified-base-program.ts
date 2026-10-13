@@ -565,19 +565,13 @@ export const buildOnVerifiedCommitBaseProgram = (
         ),
       );
     }
-    // Only now is the base ledger known, and every block carries all of it.
     const daFramePlan = planCommitBatchBudgets({
       candidateSelection,
       limits: commitBatchBudgetLimits,
-      baseUtxoPayloadAggregate: commitBase.utxoPayloadAggregate,
     });
-    yield* DaPrefix.logDaPrefixPreselection(
-      daFramePlan,
-      commitBase.utxoPayloadAggregate.entryCount,
-    );
+    yield* DaPrefix.logDaPrefixPreselection(daFramePlan);
     const daFrameBuild = yield* stepDownCommitSelectionToDaFrame({
       candidateSelection: daFramePlan.candidateSelection,
-      baseUtxoPayloadAggregate: commitBase.utxoPayloadAggregate,
       maxInnerBytes: daFrameInnerLimit,
       notify: notifyParent,
       process: (selection) => {
@@ -618,7 +612,6 @@ export const buildOnVerifiedCommitBaseProgram = (
           },
           selectedBaseUtxoRoot: commitBase.root,
           payloadRootCheck: nodeConfig.MPF_PAYLOAD_ROOT_CHECK,
-          baseUtxoPayloadAggregate: commitBase.utxoPayloadAggregate,
           recordCorpusPath: nodeConfig.MPF_RECORD_CORPUS,
           onMempoolLedgerReverted: notifyParent?.(
             MEMPOOL_LEDGER_REVERTED_NOTICE,
@@ -674,9 +667,7 @@ export const buildOnVerifiedCommitBaseProgram = (
       validationTraceMembers,
       transitionStepCount,
       validationTraceCount,
-      utxoPayloadEntries,
       ledgerDelta,
-      utxoPayloadAggregate,
       rejectedMempoolTxsCount,
       includedDepositEntriesCount,
       includedDepositEntries,
@@ -847,9 +838,7 @@ export const buildOnVerifiedCommitBaseProgram = (
           validationTraceMembers,
           transitionStepCount,
           validationTraceCount,
-          utxoPayloadEntries,
           ledgerDelta,
-          utxoPayloadAggregate,
           selectedBaseUtxosRoot: commitBase.root,
           implicitGenesisEntries:
             commitBase.source === "genesis" ? initialLedgerEntries : [],
@@ -886,9 +875,7 @@ export const buildOnVerifiedCommitBaseProgram = (
           validationTraceMembers,
           transitionStepCount,
           validationTraceCount,
-          utxoPayloadEntries,
           ledgerDelta,
-          utxoPayloadAggregate,
           selectedBaseUtxosRoot: commitBase.root,
           implicitGenesisEntries:
             commitBase.source === "genesis" ? initialLedgerEntries : [],

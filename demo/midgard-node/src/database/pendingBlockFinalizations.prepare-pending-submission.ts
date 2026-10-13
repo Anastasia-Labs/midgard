@@ -354,10 +354,6 @@ export const preparePendingSubmission = (
               output: entry[UtxoColumns.OUTPUT].toString("hex"),
             })),
           ),
-          [Columns.UTXO_PAYLOAD_ENTRY_COUNT]:
-            input.utxoPayloadAggregate?.entryCount ?? null,
-          [Columns.UTXO_PAYLOAD_ENCODED_TUPLE_BYTES]:
-            input.utxoPayloadAggregate?.encodedTupleBytes ?? null,
           [Columns.MPF_OWNER_SCHEMA]: nativeMpfReplay?.schema ?? null,
           [Columns.MPF_OWNER_BINARY_SHA256]:
             nativeMpfReplay?.ownerBinarySha256 ?? null,

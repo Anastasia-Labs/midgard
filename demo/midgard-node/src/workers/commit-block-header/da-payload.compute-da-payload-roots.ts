@@ -6,16 +6,11 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { Effect, Metric } from "effect";
 
 import {
-  DaPayloadsDB,
   ForcedTransactionsDB,
   PendingBlockFinalizationsDB,
 } from "../../database/index.js";
 import { DatabaseError } from "../../database/utils/common.js";
-import {
-  keyValuePhasRoot,
-  ledgerOutputToInsertBatchOp,
-  type MpfError,
-} from "../../mpf/index.js";
+import { type MpfError } from "../../mpf/index.js";
 import { buildAuthenticatedRootFromEncodedEntries } from "./transition-roots.js";
 
 export type PayloadRootSet = {
@@ -37,11 +32,6 @@ export type PayloadCountSet = {
   readonly totalEventCount: bigint;
   readonly transitionStepCount: bigint;
   readonly validationTraceCount: bigint;
-};
-
-export type PayloadUtxoEntry = {
-  readonly outref: Buffer;
-  readonly output: Buffer;
 };
 
 type DecodedForcedTransactionJournalMember =
@@ -129,24 +119,7 @@ export const computeDaPayloadRoots = (
   Effect.gen(function* () {
     const body = payload.block_body;
     const transactionValues = entryValues(body.transactions);
-    const utxoDescriptorOps = yield* Effect.try({
-      try: () =>
-        body.utxos.map(([outRef, output]) =>
-          ledgerOutputToInsertBatchOp({
-            outRef: Buffer.from(outRef, "hex"),
-            outputCbor: Buffer.from(output, "hex"),
-          }),
-        ),
-      catch: (cause) =>
-        new DatabaseError({
-          table: DaPayloadsDB.tableName,
-          message:
-            "Refusing a V1 DA payload whose full UTxOs cannot produce exact canonical descriptors",
-          cause,
-        }),
-    });
     const [
-      utxosRoot,
       withdrawalsRoot,
       forcedTransactionsRoot,
       transactionsRoot,
@@ -156,10 +129,6 @@ export const computeDaPayloadRoots = (
       validationTracesRoot,
     ] = yield* Effect.all(
       [
-        keyValuePhasRoot(
-          utxoDescriptorOps.map((op) => op.key),
-          utxoDescriptorOps.map((op) => op.value),
-        ),
         authenticatedPayloadRoot(
           SDK.ROOT_DOMAINS.withdrawals,
           body.withdrawals,
@@ -192,7 +161,9 @@ export const computeDaPayloadRoots = (
       { concurrency: "unbounded" },
     );
     return {
-      utxosRoot,
+      // The payload carries no UTxO set: the post-state root is the
+      // header's, and transition-trace replay convicts a wrong one.
+      utxosRoot: body.header.utxosRoot,
       withdrawalsRoot,
       forcedTransactionsRoot,
       transactionsRoot,

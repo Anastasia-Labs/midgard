@@ -65,8 +65,6 @@ export enum Columns {
   EXPECTED_VALIDATION_TRACE_COUNT = "expected_validation_trace_count",
   LEDGER_DELTA_SPENT = "ledger_delta_spent",
   LEDGER_DELTA_PRODUCED = "ledger_delta_produced",
-  UTXO_PAYLOAD_ENTRY_COUNT = "utxo_payload_entry_count",
-  UTXO_PAYLOAD_ENCODED_TUPLE_BYTES = "utxo_payload_encoded_tuple_bytes",
   MPF_OWNER_SCHEMA = "mpf_owner_schema",
   MPF_OWNER_BINARY_SHA256 = "mpf_owner_binary_sha256",
   MPF_REPLAY_BASE_ROOT = "mpf_replay_base_root",
@@ -174,8 +172,6 @@ export type Row = {
   [Columns.EXPECTED_VALIDATION_TRACE_COUNT]: bigint;
   [Columns.LEDGER_DELTA_SPENT]: unknown;
   [Columns.LEDGER_DELTA_PRODUCED]: unknown;
-  [Columns.UTXO_PAYLOAD_ENTRY_COUNT]?: number | null;
-  [Columns.UTXO_PAYLOAD_ENCODED_TUPLE_BYTES]?: number | null;
   [Columns.MPF_OWNER_SCHEMA]?: number | null;
   [Columns.MPF_OWNER_BINARY_SHA256]?: Buffer | null;
   [Columns.MPF_REPLAY_BASE_ROOT]?: Buffer | null;
@@ -205,8 +201,6 @@ export type RawRow = Omit<
   | Columns.EXPECTED_TOTAL_EVENT_COUNT
   | Columns.EXPECTED_TRANSITION_STEP_COUNT
   | Columns.EXPECTED_VALIDATION_TRACE_COUNT
-  | Columns.UTXO_PAYLOAD_ENTRY_COUNT
-  | Columns.UTXO_PAYLOAD_ENCODED_TUPLE_BYTES
   | Columns.MPF_OWNER_SCHEMA
   | Columns.MPF_REPLAY_EVENT_COUNT
   | Columns.OBSERVED_CONFIRMED_AT_MS
@@ -218,8 +212,6 @@ export type RawRow = Omit<
   [Columns.EXPECTED_TOTAL_EVENT_COUNT]: PgBigInt;
   [Columns.EXPECTED_TRANSITION_STEP_COUNT]: PgBigInt;
   [Columns.EXPECTED_VALIDATION_TRACE_COUNT]: PgBigInt;
-  [Columns.UTXO_PAYLOAD_ENTRY_COUNT]?: PgBigInt | null;
-  [Columns.UTXO_PAYLOAD_ENCODED_TUPLE_BYTES]?: PgBigInt | null;
   [Columns.MPF_OWNER_SCHEMA]?: PgBigInt | null;
   [Columns.MPF_REPLAY_EVENT_COUNT]?: PgBigInt | null;
   [Columns.OBSERVED_CONFIRMED_AT_MS]: PgBigInt | null;
@@ -294,12 +286,6 @@ export const normalizeRow = (row: RawRow): Row => ({
   ),
   [Columns.EXPECTED_VALIDATION_TRACE_COUNT]: toBigInt(
     row[Columns.EXPECTED_VALIDATION_TRACE_COUNT],
-  ),
-  [Columns.UTXO_PAYLOAD_ENTRY_COUNT]: toSafeNumber(
-    row[Columns.UTXO_PAYLOAD_ENTRY_COUNT],
-  ),
-  [Columns.UTXO_PAYLOAD_ENCODED_TUPLE_BYTES]: toSafeNumber(
-    row[Columns.UTXO_PAYLOAD_ENCODED_TUPLE_BYTES],
   ),
   [Columns.MPF_OWNER_SCHEMA]: toSafeNumber(row[Columns.MPF_OWNER_SCHEMA]),
   [Columns.MPF_REPLAY_EVENT_COUNT]: toSafeNumber(

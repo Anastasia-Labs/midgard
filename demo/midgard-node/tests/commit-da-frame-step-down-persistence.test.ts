@@ -379,7 +379,6 @@ describe("DA frame step-down persistence over Postgres", () => {
             mempoolTxs: (yield* mempoolPage).slice(0, TXS.length),
             processedMempoolTxs: [],
           }),
-          baseUtxoPayloadAggregate: { entryCount: 0, encodedTupleBytes: 0 },
           maxInnerBytes: 100_000,
           process: (selection) =>
             build(selection.candidateTxs).pipe(

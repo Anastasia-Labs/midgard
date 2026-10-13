@@ -30,7 +30,6 @@ import {
   type RetainedEventToStepMember,
   type RetainedTransitionTraceMember,
   type RetainedValidationTraceMember,
-  type UtxoPayloadSizeAggregate,
 } from "../../mpf/index.js";
 import type { Database } from "../../services/index.js";
 import {
@@ -72,8 +71,6 @@ export const daProgramMaterialFromSidecars = (
   );
 
 export type DaPayloadBlockContent = {
-  readonly utxoPayloadAggregatesByPrefix?: readonly UtxoPayloadSizeAggregate[];
-  readonly utxoPayloadAggregate: UtxoPayloadSizeAggregate;
   readonly includedDepositEntries: readonly DepositsDB.Entry[];
   readonly includedForcedTransactionEntries: readonly ForcedTransactionsDB.Entry[];
   readonly includedWithdrawalEntries: readonly WithdrawalsDB.Entry[];
@@ -148,8 +145,6 @@ export const commitDaPayloadForSizing = ({
     );
     const commonBody = {
       header_hash: headerHash,
-      // The exact aggregate replaces this list in the sizing function.
-      utxos: [],
       withdrawals,
       forced_transactions: includedForcedTransactionEntries.map((entry) =>
         daEntry(
@@ -198,19 +193,11 @@ export const commitDaPayloadForSizing = ({
 const daPayloadInnerBytes = (
   content: Parameters<typeof commitDaPayloadForSizing>[0],
 ) =>
-  commitDaPayloadForSizing(content).pipe(
-    Effect.map((payload) =>
-      SDK.daPayloadEncodedSizeFromUtxoAggregate(
-        payload,
-        content.utxoPayloadAggregate,
-      ),
-    ),
-  );
+  commitDaPayloadForSizing(content).pipe(Effect.map(SDK.daPayloadEncodedSize));
 
 export const assertPreSubmitDaPayloadSize = ({
   headerHash,
   header,
-  utxoPayloadAggregate,
   envelopeMode = readDaHardeningConfig().envelopeMode,
   ...content
 }: DaPayloadBlockContent & {
@@ -223,14 +210,11 @@ export const assertPreSubmitDaPayloadSize = ({
     const encodedBytes = yield* daPayloadInnerBytes({
       headerHash,
       header,
-      utxoPayloadAggregate,
       ...content,
     });
     const projection = projectDaPayloadSizes(encodedBytes, envelopeMode);
     const effectiveInnerLimit = maxDaPayloadInnerBytes(envelopeMode);
     const utilisation = (encodedBytes / effectiveInnerLimit).toFixed(4);
-    const utxoListBytes =
-      SDK.daPayloadEntriesEncodedSizeFromAggregate(utxoPayloadAggregate);
     const exceedsFrame = (innerBytes: number): boolean => {
       const sizes = projectDaPayloadSizes(innerBytes, envelopeMode);
       return (
@@ -240,61 +224,17 @@ export const assertPreSubmitDaPayloadSize = ({
       );
     };
     if (exceedsFrame(encodedBytes)) {
-      // The same post-block ledger with no events and no traces. The aggregate
-      // already includes this block's own outputs, so this does not say
-      // whether a smaller selection over the base ledger would fit.
-      const emptyHeader: SDK.Header = {
-        ...header,
-        withdrawalCount: 0n,
-        forcedTransactionCount: 0n,
-        l2TransactionCount: 0n,
-        depositCount: 0n,
-        totalEventCount: 0n,
-        transitionStepCount: 0n,
-        validationTraceCount: 0n,
-      };
-      const emptyBlockBytes = SDK.daPayloadEncodedSizeFromUtxoAggregate(
-        {
-          version: SDK.DA_PAYLOAD_VERSION,
-          block_body: {
-            header_hash: headerHash,
-            header: emptyHeader,
-            utxos: [],
-            withdrawals: [],
-            forced_transactions: [],
-            transactions: [],
-            deposits: [],
-            transition_trace: [],
-            event_to_step: [],
-            validation_trace_witnesses: [],
-            transaction_preimages: [],
-            forced_transaction_preimages: [],
-            cek_program_material: [],
-            validation_traces: [],
-            counts: {
-              withdrawalCount: 0n,
-              forcedTransactionCount: 0n,
-              l2TransactionCount: 0n,
-              depositCount: 0n,
-              totalEventCount: 0n,
-              transitionStepCount: 0n,
-              validationTraceCount: 0n,
-            },
-          },
-        },
-        utxoPayloadAggregate,
-      );
       return yield* Effect.fail(
         new DatabaseError({
           table: PendingBlockFinalizationsDB.tableName,
           message:
             "Refusing to prepare or submit a block whose DA payload cannot fit the V1 submit frame",
-          cause: `header_hash=${headerHash},envelope_mode=${envelopeMode},inner_bytes=${encodedBytes.toString()},stored_bytes_upper_bound=${projection.storedBytesUpperBound.toString()},request_bytes_upper_bound=${projection.requestBytesUpperBound.toString()},effective_inner_limit=${effectiveInnerLimit.toString()},max_frame_bytes=${DA_TRANSPORT_LIMITS.maxPayloadBytes.toString()},frame_utilisation=${utilisation},utxo_entry_count=${utxoPayloadAggregate.entryCount.toString()},utxo_encoded_tuple_bytes=${utxoPayloadAggregate.encodedTupleBytes.toString()},utxo_list_bytes=${utxoListBytes.toString()},post_block_ledger_without_events_inner_bytes=${emptyBlockBytes.toString()},post_block_ledger_without_events_exceeds_frame=${String(exceedsFrame(emptyBlockBytes))}`,
+          cause: `header_hash=${headerHash},envelope_mode=${envelopeMode},inner_bytes=${encodedBytes.toString()},stored_bytes_upper_bound=${projection.storedBytesUpperBound.toString()},request_bytes_upper_bound=${projection.requestBytesUpperBound.toString()},effective_inner_limit=${effectiveInnerLimit.toString()},max_frame_bytes=${DA_TRANSPORT_LIMITS.maxPayloadBytes.toString()},frame_utilisation=${utilisation}`,
         }),
       );
     }
     yield* Effect.logInfo(
-      `da_payload_pre_submit_inner_bytes=${encodedBytes.toString()} da_payload_stored_bytes_upper_bound=${projection.storedBytesUpperBound.toString()} da_payload_request_bytes_upper_bound=${projection.requestBytesUpperBound.toString()} da_payload_effective_inner_limit=${effectiveInnerLimit.toString()} da_payload_envelope_mode=${envelopeMode} da_payload_frame_limit_bytes=${DA_TRANSPORT_LIMITS.maxPayloadBytes.toString()} da_payload_frame_utilisation=${utilisation} utxo_entry_count=${utxoPayloadAggregate.entryCount.toString()} utxo_encoded_tuple_bytes=${utxoPayloadAggregate.encodedTupleBytes.toString()}`,
+      `da_payload_pre_submit_inner_bytes=${encodedBytes.toString()} da_payload_stored_bytes_upper_bound=${projection.storedBytesUpperBound.toString()} da_payload_request_bytes_upper_bound=${projection.requestBytesUpperBound.toString()} da_payload_effective_inner_limit=${effectiveInnerLimit.toString()} da_payload_envelope_mode=${envelopeMode} da_payload_frame_limit_bytes=${DA_TRANSPORT_LIMITS.maxPayloadBytes.toString()} da_payload_frame_utilisation=${utilisation}`,
     );
     const pressureStage = daPayloadFramePressureStage(
       encodedBytes,
@@ -302,16 +242,8 @@ export const assertPreSubmitDaPayloadSize = ({
     );
     if (pressureStage > 0) {
       const headroomBytes = effectiveInnerLimit - encodedBytes;
-      const entriesUntilFrame =
-        utxoPayloadAggregate.entryCount === 0
-          ? "unknown"
-          : Math.floor(
-              headroomBytes /
-                (utxoPayloadAggregate.encodedTupleBytes /
-                  utxoPayloadAggregate.entryCount),
-            ).toString();
       yield* Effect.logWarning(
-        `da_payload_frame_pressure=high header_hash=${headerHash} da_payload_frame_utilisation=${utilisation} da_payload_pressure_stage_percent=${pressureStage.toString()} da_payload_pre_submit_inner_bytes=${encodedBytes.toString()} da_payload_effective_inner_limit=${effectiveInnerLimit.toString()} da_payload_headroom_bytes=${headroomBytes.toString()} utxo_entry_count=${utxoPayloadAggregate.entryCount.toString()} utxo_list_bytes=${utxoListBytes.toString()} utxo_entries_until_frame_at_mean_size=${entriesUntilFrame}`,
+        `da_payload_frame_pressure=high header_hash=${headerHash} da_payload_frame_utilisation=${utilisation} da_payload_pressure_stage_percent=${pressureStage.toString()} da_payload_pre_submit_inner_bytes=${encodedBytes.toString()} da_payload_effective_inner_limit=${effectiveInnerLimit.toString()} da_payload_headroom_bytes=${headroomBytes.toString()}`,
       );
     }
     return encodedBytes;

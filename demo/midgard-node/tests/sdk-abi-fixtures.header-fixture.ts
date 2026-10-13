@@ -228,7 +228,6 @@ export const eventToStepValueFixture: SDK.EventToStepValue = {
 export const daPayloadBodyFixture: SDK.DaPayloadBody = {
   header_hash: h28,
   header: headerFixture,
-  utxos: [["01", "02"]],
   withdrawals: [["03", "04"]],
   forced_transactions: [["05", "06"]],
   transactions: [["07", "08"]],
