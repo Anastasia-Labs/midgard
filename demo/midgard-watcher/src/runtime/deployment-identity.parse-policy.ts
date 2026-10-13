@@ -1,7 +1,10 @@
 import {
-  computeDeploymentManifestJsonDigest,
-  DEPLOYMENT_MANIFEST_CONTRACT_NAMES,
-} from "@al-ft/midgard-core/deployment-manifest-identity";
+  DeploymentReleaseBindingError,
+  type DeploymentReleaseBindings,
+  makeDeploymentReleaseSignaturePayload,
+  parseDeploymentReleaseBindings,
+} from "@al-ft/midgard-core/deployment-release";
+import { DEPLOYMENT_MANIFEST_CONTRACT_NAMES } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { deploymentFraudProofCatalogueCategories } from "@al-ft/midgard-core/deployment-profile";
 
 import {
@@ -15,8 +18,6 @@ import {
   type ParsedPolicy,
   plainRecord,
   REFERENCE_SCRIPT_ROLES,
-  WATCHER_DEPLOYMENT_IDENTITY_SIGNATURE_DOMAIN,
-  WATCHER_DEPLOYMENT_RELEASE_BINDINGS_SCHEMA_VERSION,
   type WatcherDeploymentIdentityPolicy,
   type WatcherFraudProofCatalogueIdentity,
   type WatcherReferenceScriptIdentity,
@@ -186,94 +187,25 @@ export const parsePolicy = (
   });
 };
 
-export type ReleaseBindings = Readonly<{
-  schemaVersion: typeof WATCHER_DEPLOYMENT_RELEASE_BINDINGS_SCHEMA_VERSION;
-  fundingProfileBundleDigest: string;
-  ruleBundleCommitment: string;
-  programCommitments: Readonly<Record<string, string>>;
-  da: Readonly<{
-    mode: "authenticated_committee_v1";
-    identityDigest: string;
-  }>;
-  artifacts: Readonly<{
-    blueprintHash: string;
-  }>;
-}>;
+export type ReleaseBindings = DeploymentReleaseBindings;
 
 export const parseReleaseBindings = (
   value: unknown,
   path: string,
 ): ReleaseBindings => {
-  const bindings = exactRecord(value, path, [
-    "schemaVersion",
-    "ruleBundleCommitment",
-    "programCommitments",
-    "da",
-    "artifacts",
-    "fundingProfileBundleDigest",
-  ]);
-  if (
-    bindings.schemaVersion !==
-    WATCHER_DEPLOYMENT_RELEASE_BINDINGS_SCHEMA_VERSION
-  ) {
-    fail("invalid_field", `${path}.schemaVersion`);
+  try {
+    return parseDeploymentReleaseBindings(value, path);
+  } catch (error) {
+    if (error instanceof DeploymentReleaseBindingError)
+      return fail(error.code, error.path);
+    throw error;
   }
-  const da = exactRecord(bindings.da, `${path}.da`, ["mode", "identityDigest"]);
-  if (da.mode !== "authenticated_committee_v1") {
-    fail("invalid_field", `${path}.da.mode`);
-  }
-  const artifacts = exactRecord(bindings.artifacts, `${path}.artifacts`, [
-    "blueprintHash",
-  ]);
-  return Object.freeze({
-    schemaVersion: WATCHER_DEPLOYMENT_RELEASE_BINDINGS_SCHEMA_VERSION,
-    fundingProfileBundleDigest: exactString(
-      bindings.fundingProfileBundleDigest,
-      `${path}.fundingProfileBundleDigest`,
-      HEX_32,
-    ),
-    ruleBundleCommitment: exactString(
-      bindings.ruleBundleCommitment,
-      `${path}.ruleBundleCommitment`,
-      HEX_32,
-    ),
-    programCommitments: exactDynamicHexMap(
-      bindings.programCommitments,
-      `${path}.programCommitments`,
-      null,
-      HEX_32,
-    ),
-    da: Object.freeze({
-      mode: "authenticated_committee_v1",
-      identityDigest: exactString(
-        da.identityDigest,
-        `${path}.da.identityDigest`,
-        HEX_32,
-      ),
-    }),
-    artifacts: Object.freeze({
-      blueprintHash: exactString(
-        artifacts.blueprintHash,
-        `${path}.artifacts.blueprintHash`,
-        HEX_32,
-      ),
-    }),
-  });
 };
 
 export const signaturePayload = (
   manifestId: string,
   bindings: ReleaseBindings,
-): Buffer => {
-  const identityDigest = computeDeploymentManifestJsonDigest({
-    manifestId,
-    releaseBindings: bindings,
-  });
-  return Buffer.from(
-    `${WATCHER_DEPLOYMENT_IDENTITY_SIGNATURE_DOMAIN}\0${identityDigest}`,
-    "utf8",
-  );
-};
+): Buffer => makeDeploymentReleaseSignaturePayload(manifestId, bindings);
 
 export const makeWatcherDeploymentIdentitySignaturePayload = (
   manifestId: string,

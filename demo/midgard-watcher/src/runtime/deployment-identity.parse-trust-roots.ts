@@ -215,6 +215,7 @@ export type VerifiedWatcherDeploymentIdentity = Readonly<{
   trustRootId: string;
   blueprintHash: string;
   fundingProfileBundleDigest: string;
+  releaseProvenanceDigest?: string;
   ruleBundleCommitment: string;
   programCommitments: Readonly<Record<string, string>>;
   durableMarker: DeploymentMarker;

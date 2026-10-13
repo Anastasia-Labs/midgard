@@ -97,6 +97,7 @@ import {
 } from "./blueprints.js";
 import { chainFromSteps } from "./contracts.chain-from-steps.js";
 import {
+  alwaysScript,
   makeAlwaysSucceedsContracts,
   makeAuthenticatedValidator,
   makeIsolatedAlwaysSucceedsAuthenticatedValidator,
@@ -633,7 +634,9 @@ export const buildMinimalFaultProofContracts = async (
   // The availability-challenge policy is a stand-in here, mirroring the sdk
   // state-queue harness: these emulator flows never open a challenge, the
   // parameter only has to be a distinct policy id.
-  const availabilityChallengePolicyId = base.escapeHatch.policyId;
+  const availabilityChallengePolicyId = makeMintingValidator(
+    alwaysScript(alwaysBlueprint, "midgard", "escape_hatch", "mint"),
+  ).policyId;
   const parsedBlueprint = parseFaultProofBlueprint(realBlueprint);
   const correctionLock = await Effect.runPromise(
     buildCorrectionLockValidator({

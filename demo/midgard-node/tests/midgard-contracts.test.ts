@@ -150,8 +150,12 @@ describe("midgard contracts registry", () => {
             .digest("hex"),
         )
         .toBe(
-          "c3b1fc4b18aa08c2710caea4d3aa872d375d54be0ce4e2c2fdb1360db8aa2ddc",
+          "8dd12c510fd12c7a8e58fc3b14513adf61046fd957b1f62ce66412b93a6669b5",
         );
+      // Re-pinned after removing the unsupported escape-hatch fields and
+      // correcting the hub witness's script metadata. The current-parent
+      // baseline already changed both old fingerprints; its queue fingerprint
+      // equals this one, so the metadata correction changes no queue bytes.
       // The queue/correction subset is pinned independently of the full registry.
       // Includes every applied CBOR, hash, policy id, address, and queue yield.
       // Re-pinned by #689: the state queue and correction lock are applied over
@@ -172,7 +176,7 @@ describe("midgard contracts registry", () => {
             .digest("hex"),
         )
         .toBe(
-          "7d5685c27c297f3ac78b69f14c33b4485b5d19788e9a880c3d4223d5a7e26482",
+          "6666a02a09da771adf4ae0061002758562764b086a23410646f9256d6dadc8cf",
         );
       // The always-succeeds stand-in is a real hazard here: it satisfies every
       // spend, so a role that silently kept it would pass any behavioural test
@@ -191,19 +195,13 @@ describe("midgard contracts registry", () => {
        *
        * - `referenceScriptAuth:minting` is the stand-in this call site passes
        *   in itself (a real deployment supplies the timelocked native policy).
-       * - `escapeHatch` has no compiled validator yet.
-       * - `hubOracle:spending` is not a script at all: the hub oracle UTxO
-       *   lives at the mint policy's own address, so the spending slot carries
-       *   the stand-in bytes and the real policy id (see the exception below).
+       * The unsupported escape hatch has no deployment entry. The immutable
+       * hub witness carries its mint program's real bytes at that same hash;
+       * the mint-only validator's else handler refuses spending.
        *
        * Every other role must resolve to a real applied validator.
        */
-      const EXPECTED_STAND_INS = [
-        "escapeHatch:minting",
-        "escapeHatch:spending",
-        "hubOracle:spending",
-        "referenceScriptAuth:minting",
-      ];
+      const EXPECTED_STAND_INS = ["referenceScriptAuth:minting"];
       expect(
         inventory
           .filter(({ cbor }) => placeholderCbors.has(cbor))
@@ -211,14 +209,11 @@ describe("midgard contracts registry", () => {
           .sort(),
       ).toEqual(EXPECTED_STAND_INS);
 
-      // Script and declared hash must be the same script. `hubOracle:spending`
-      // is the one documented exception: it deliberately declares the mint
-      // policy id beside the stand-in bytes.
+      // Every declared hash must describe the exact script bytes.
       expect(
         inventory
           .filter(
             (entry) =>
-              scriptInventoryId(entry) !== "hubOracle:spending" &&
               validatorToScriptHash(entry.script) !== entry.declaredHash,
           )
           .map(scriptInventoryId),

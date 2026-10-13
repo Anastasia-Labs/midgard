@@ -1,13 +1,10 @@
 import { DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE } from "@al-ft/midgard-core/deployment-manifest-identity";
 
-export const WATCHER_SIGNED_DEPLOYMENT_IDENTITY_SCHEMA_VERSION =
-  "midgard-watcher-signed-deployment-identity-v1" as const;
-
-export const WATCHER_DEPLOYMENT_RELEASE_BINDINGS_SCHEMA_VERSION =
-  "midgard-watcher-deployment-release-bindings-v1" as const;
-
-export const WATCHER_DEPLOYMENT_IDENTITY_SIGNATURE_DOMAIN =
-  "midgard-watcher-deployment-identity-signature-v1" as const;
+export {
+  SIGNED_DEPLOYMENT_RELEASE_SCHEMA_VERSION as WATCHER_SIGNED_DEPLOYMENT_IDENTITY_SCHEMA_VERSION,
+  DEPLOYMENT_RELEASE_BINDINGS_SCHEMA_VERSION as WATCHER_DEPLOYMENT_RELEASE_BINDINGS_SCHEMA_VERSION,
+  DEPLOYMENT_RELEASE_SIGNATURE_DOMAIN as WATCHER_DEPLOYMENT_IDENTITY_SIGNATURE_DOMAIN,
+} from "@al-ft/midgard-core/deployment-release";
 
 export const WATCHER_DEPLOYMENT_PROTOCOL_SCRIPT_AUTHORITY_SCHEMA_VERSION =
   "midgard-watcher-deployment-protocol-script-authority-v1" as const;

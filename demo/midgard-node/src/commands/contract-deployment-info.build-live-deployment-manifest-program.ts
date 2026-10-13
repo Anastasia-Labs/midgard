@@ -4,6 +4,10 @@ import {
 } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { Effect } from "effect";
 
+import { manifestDeployableScripts } from "../deployable-scripts.js";
+import { publicDeploymentBlueprintRegistry } from "../deployment-blueprint-registry.js";
+import { writeJsonFileAtomic } from "../files/atomic-write.js";
+
 import {
   bindDeploymentRunStateToMarker,
   defaultDeploymentRunStatePath,
@@ -170,6 +174,26 @@ export const writeLiveContractDeploymentInfoProgram = (
           `Refusing to replace final deployment manifest ${runState.identity.deploymentMarker.manifestId} with ${marker.manifestId}; start an explicit fresh deployment run instead`,
         ),
       );
+    }
+    const contracts = yield* MidgardContracts;
+    const registry = publicDeploymentBlueprintRegistry(
+      manifestDeployableScripts(contracts),
+    );
+    if (registry !== undefined) {
+      yield* Effect.tryPromise({
+        try: () =>
+          writeJsonFileAtomic(`${outputPath}.blueprint-registry.json`, {
+            schemaVersion: "midgard-deployment-parameter-registry-v1",
+            manifestId: deploymentManifest.manifestId,
+            blueprintHash: deploymentManifest.artifacts.blueprintHash,
+            deployment: registry,
+            referenceScripts: deploymentManifest.referenceScripts,
+          }),
+        catch: (cause) =>
+          new Error("Failed to write complete deployment parameter registry", {
+            cause,
+          }),
+      });
     }
     const manifestPath = yield* writeContractDeploymentInfoFileProgram(
       outputPath,

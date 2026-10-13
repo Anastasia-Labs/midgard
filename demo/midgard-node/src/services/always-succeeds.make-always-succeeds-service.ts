@@ -74,7 +74,6 @@ export const makeAlwaysSucceedsService: Effect.Effect<SDK.MidgardValidators> =
     const registeredOperators = yield* mkAuthVal("registered_operators");
     const activeOperators = yield* mkAuthVal("active_operators");
     const retiredOperators = yield* mkAuthVal("retired_operators");
-    const escapeHatch = yield* mkAuthVal("escape_hatch");
     const fraudProofCatalogue = yield* mkAuthVal("fraud_proof_catalogue");
     const fraudProof = yield* mkAuthVal("fraud_proof");
     const deposit = yield* mkAuthVal("deposit");
@@ -517,7 +516,6 @@ export const makeAlwaysSucceedsService: Effect.Effect<SDK.MidgardValidators> =
       registeredOperators,
       activeOperators,
       retiredOperators,
-      escapeHatch,
       fraudProofCatalogue,
       computationThread: fraudProof,
       fraudProof,

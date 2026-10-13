@@ -1,5 +1,6 @@
 export {
   applyBlueprintParams,
+  verifyBlueprintDeploymentRegistry,
   assertParameterShapes,
   deriveValidationTraceDeploymentId,
   type FaultProofBlueprint,
@@ -377,3 +378,10 @@ export {
   type FaultProofContracts,
   type FraudProofChain,
 } from "./types.js";
+
+export {
+  blueprintApplicationRecords,
+  buildBlueprintDeploymentRegistry,
+  type BlueprintApplicationRecord,
+  type BlueprintDeploymentScript,
+} from "./blueprint-applications.js";

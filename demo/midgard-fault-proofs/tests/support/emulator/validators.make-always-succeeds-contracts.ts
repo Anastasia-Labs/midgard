@@ -478,7 +478,6 @@ export const makeAlwaysSucceedsContracts = (
     registeredOperators: alwaysAuthenticated(blueprint, "registered_operators"),
     activeOperators: alwaysAuthenticated(blueprint, "active_operators"),
     retiredOperators: alwaysAuthenticated(blueprint, "retired_operators"),
-    escapeHatch: alwaysAuthenticated(blueprint, "escape_hatch"),
     fraudProofCatalogue: alwaysAuthenticated(
       blueprint,
       "fraud_proof_catalogue",

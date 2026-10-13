@@ -1256,6 +1256,14 @@
     {
       "packageScript": "demo/midgard-node-tools:stress-corpus-generate",
       "why": "Writes a stress corpus to a caller-chosen path at run time; nothing is committed."
+    },
+    {
+      "path": "scripts/release/blueprint-rebuild.mjs",
+      "why": "Writes independent compiler receipts, private source archives and untracked blueprints only to a caller-chosen new release-evidence directory; nothing it writes is committed."
+    },
+    {
+      "path": "scripts/release/check-image-inputs.mjs",
+      "why": "Writes the verified public image build-input identity inside the isolated image build; nothing it writes is committed."
     }
   ]
 }
