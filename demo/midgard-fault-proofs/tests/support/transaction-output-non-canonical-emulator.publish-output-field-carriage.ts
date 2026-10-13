@@ -18,8 +18,11 @@ import type { ResolvedProverSigner } from "../../src/runtime.js";
 import type { TransactionOutputNonCanonicalContracts } from "../../src/transaction-output-non-canonical/contracts.js";
 import {
   TransactionOutputStep02RedeemerSchema,
+  TransactionOutputStep03DatumDatumSchema,
+  TransactionOutputStep03DatumRedeemerSchema,
   TransactionOutputStep03DatumSchema,
   TransactionOutputStep03RedeemerSchema,
+  TransactionOutputStep04DatumSchema,
   TransactionOutputStep04RedeemerSchema,
 } from "../../src/transaction-output-non-canonical/schemas.js";
 import type { FaultProofWitnessReferenceScripts } from "../../src/witness-reference-scripts.js";
@@ -42,7 +45,7 @@ export const submitOutputStep02Raw = async ({
 }: Common & {
   readonly opening: FieldOpening;
   readonly nextState: OutputScanStateData;
-  readonly nextStepIndex?: 2 | 3;
+  readonly nextStepIndex?: 2 | 3 | 4;
   readonly carriageUtxos?: readonly UTxO[];
   readonly extraReferenceInputs?: readonly UTxO[];
 }) =>
@@ -70,8 +73,8 @@ export const submitOutputStep03Raw = async ({
 }: Common & {
   readonly window: Buffer;
   readonly nextState: OutputScanStateData;
-  /** 2 keeps the scan self-loop, 3 hands over to step 04. */
-  readonly nextStepIndex: 2 | 3;
+  /** 2 keeps the scan self-loop, 3 opens the datum step, 4 hands over to step 04. */
+  readonly nextStepIndex: 2 | 3 | 4;
 }) =>
   await continueRaw({
     common,
@@ -83,6 +86,57 @@ export const submitOutputStep03Raw = async ({
       input_index,
       output_index,
       window: window.toString("hex"),
+    }),
+  });
+
+/** The datum step's redeemer arguments, before indexes. */
+export type OutputDatumStepArgs = {
+  readonly window: string;
+  readonly revealed: readonly unknown[];
+  readonly tail_root: string;
+  readonly node_budget: bigint;
+};
+
+/**
+ * The datum step with its arguments and successor supplied verbatim: a
+ * continuation (`next` carries `cursor` and `stack_root`) stays on the datum
+ * step, a verdict (`next` carries `outcome`) hands over to step 04.
+ */
+export const submitOutputStep03DatumRaw = async ({
+  args,
+  scan,
+  next,
+  nextStepIndex,
+  ...common
+}: Common & {
+  readonly args: OutputDatumStepArgs;
+  readonly scan: OutputScanStateData;
+  readonly next:
+    | { readonly cursor: bigint; readonly stack_root: string }
+    | { readonly outcome: bigint };
+  readonly nextStepIndex: 3 | 4;
+}) =>
+  await continueRaw({
+    common,
+    stepIndex: 3,
+    nextAddress: common.contracts.steps[nextStepIndex].spendingScriptAddress,
+    nextDatum:
+      "outcome" in next
+        ? datumOf(
+            common,
+            { ...scan, outcome: next.outcome },
+            TransactionOutputStep04DatumSchema,
+          )
+        : datumOf(
+            common,
+            { scan, ...next },
+            TransactionOutputStep03DatumDatumSchema,
+          ),
+    redeemerSchema: TransactionOutputStep03DatumRedeemerSchema,
+    args: (input_index, output_index) => ({
+      input_index,
+      output_index,
+      ...args,
     }),
   });
 
@@ -98,14 +152,14 @@ export const submitOutputStep04Raw = async ({
     contracts: common.contracts,
     categoryId: common.categoryId,
     family: FAMILY,
-    stepIndex: 3,
+    stepIndex: 4,
     threadOutRef: common.threadOutRef,
   });
   return await submitLinearFaultFinalize({
     lucid: common.lucid,
     family: FAMILY,
-    stepIndex: 3,
-    step: common.contracts.steps[3],
+    stepIndex: 4,
+    step: common.contracts.steps[4],
     computationThread: common.contracts.computationThread,
     fraudProof: common.contracts.fraudProof,
     signer: common.signer,

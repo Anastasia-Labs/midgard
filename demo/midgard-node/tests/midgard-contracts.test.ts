@@ -134,11 +134,11 @@ describe("midgard contracts registry", () => {
       // preimages), by removing missingNativeScriptTx/Utxo (superseded by
       // missingScriptSource), by deleting the cross-block family, by the
       // neglected-event strike rule (scheduler, so active operators and the
-      // state queue built on it), by the forced due-window fix
-      // (transition trace), by raising the new-shift inactivity grace to
-      // the maximum validity range (scheduler spend only), by the txInfo
-      // stage's L1 slot mapping (POSIX-ms validity ranges), and by the
-      // exclusive upper bound, bounds below -1, admission and the lock top-up.
+      // state queue built on it), the forced due-window fix (transition trace),
+      // the new-shift inactivity grace raised to the maximum validity range
+      // (scheduler spend only), the txInfo L1 slot mapping (POSIX-ms ranges),
+      // the exclusive upper bound, bounds below -1, admission, the lock top-up,
+      // the output proof's datum step and the split Data refusal executor.
       expect
         .soft(
           createHash("sha256")
@@ -148,7 +148,7 @@ describe("midgard contracts registry", () => {
             .digest("hex"),
         )
         .toBe(
-          "c2eb25cf45a4208bff40157fe5107dadbdf16d4101f2edd283605d24b41f1ec5",
+          "830cf0184f561f9ef64cf541923a3716d10d174718d9a38b4bc2946fe71eed5f",
         );
       // The queue/correction subset is pinned independently of the full registry.
       // Includes every applied CBOR, hash, policy id, address, and queue yield.

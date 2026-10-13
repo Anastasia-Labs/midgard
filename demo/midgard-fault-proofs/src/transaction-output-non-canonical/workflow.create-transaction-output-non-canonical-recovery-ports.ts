@@ -138,9 +138,10 @@ export const transactionOutputStageFromL1 = (
       if (stage.step === 1) return "step01";
       if (stage.step === 2) return "step02";
       if (stage.step === 3) return "step03";
-      if (stage.step === 4) return "step04";
+      if (stage.step === 4) return "step03Datum";
+      if (stage.step === 5) return "step04";
       throw new Error(
-        "transactionOutputNonCanonical L1 stage exceeds four-step topology",
+        "transactionOutputNonCanonical L1 stage exceeds five-step topology",
       );
     case "proof_token":
       return "proven";
@@ -209,7 +210,8 @@ const createTransactionOutputNonCanonicalRecoveryPorts = (
         step_01: "submitStep01",
         step_02: "submitStep02",
         step_03: "submitStep03",
-        step_04: "submitStep04",
+        step_04: "submitStep03Datum",
+        step_05: "submitStep04",
       } as const;
       const familyAction = actions[input.stage as keyof typeof actions];
       if (familyAction === undefined)
@@ -297,7 +299,7 @@ type Deployment = FamilyDeploymentContext<
   "transactionOutputNonCanonical",
   (typeof WITNESS_ROLES)[number],
   true,
-  4
+  5
 >;
 
 export type RunContext = Readonly<{
@@ -308,7 +310,7 @@ type BoundContext = FamilyAssemblyContext<
   "transactionOutputNonCanonical",
   (typeof WITNESS_ROLES)[number],
   true,
-  4,
+  5,
   RunContext
 >;
 

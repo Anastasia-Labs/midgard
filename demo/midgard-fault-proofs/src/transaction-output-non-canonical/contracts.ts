@@ -18,6 +18,8 @@ export const TRANSACTION_OUTPUT_NON_CANONICAL_BLUEPRINT_TITLES = {
   step01: "fraud_proofs/transaction_output_non_canonical/step_01.main.spend",
   step02: "fraud_proofs/transaction_output_non_canonical/step_02.main.spend",
   step03: "fraud_proofs/transaction_output_non_canonical/step_03.main.spend",
+  step03Datum:
+    "fraud_proofs/transaction_output_non_canonical/step_03_datum.main.spend",
   step04: "fraud_proofs/transaction_output_non_canonical/step_04.main.spend",
 } as const;
 
@@ -31,6 +33,7 @@ export type TransactionOutputNonCanonicalStepContract = {
 
 export type TransactionOutputNonCanonicalContracts = {
   readonly steps: readonly [
+    TransactionOutputNonCanonicalStepContract,
     TransactionOutputNonCanonicalStepContract,
     TransactionOutputNonCanonicalStepContract,
     TransactionOutputNonCanonicalStepContract,
@@ -60,7 +63,7 @@ export type TransactionOutputNonCanonicalBlueprint = Readonly<{
 }>;
 
 /**
- * Applies the four scripts backwards, in their blueprint-declared order. The
+ * Applies the five scripts backwards, in their blueprint-declared order. The
  * registered SDK chain applies the same parameters; the family's tests pin
  * the two applications against each other.
  */
@@ -108,6 +111,7 @@ export const applyTransactionOutputNonCanonicalScripts = ({
     adapt(steps[1], 1),
     adapt(steps[2], 2),
     adapt(steps[3], 3),
+    adapt(steps[4], 4),
   ];
 };
 

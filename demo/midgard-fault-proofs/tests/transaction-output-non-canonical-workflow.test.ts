@@ -41,6 +41,7 @@ const references = (): TransactionOutputNonCanonicalReferenceScripts => ({
   step01: utxo("1", 0),
   step02: utxo("2", 1),
   step03: utxo("3", 2),
+  step03Datum: utxo("a", 8),
   step04: utxo("4", 3),
   fieldPreimageCertificateMint: utxo("5", 4),
   witnesses: {
@@ -70,6 +71,10 @@ const suppliedByName = (
     [
       TRANSACTION_OUTPUT_NON_CANONICAL_MANIFEST_CONTRACTS.step03,
       supplied.step03,
+    ],
+    [
+      TRANSACTION_OUTPUT_NON_CANONICAL_MANIFEST_CONTRACTS.step03Datum,
+      supplied.step03Datum,
     ],
     [
       TRANSACTION_OUTPUT_NON_CANONICAL_MANIFEST_CONTRACTS.step04,
@@ -120,6 +125,7 @@ describe("transactionOutputNonCanonical production workflow", () => {
       TRANSACTION_OUTPUT_NON_CANONICAL_MANIFEST_CONTRACTS.step01,
       TRANSACTION_OUTPUT_NON_CANONICAL_MANIFEST_CONTRACTS.step02,
       TRANSACTION_OUTPUT_NON_CANONICAL_MANIFEST_CONTRACTS.step03,
+      TRANSACTION_OUTPUT_NON_CANONICAL_MANIFEST_CONTRACTS.step03Datum,
       TRANSACTION_OUTPUT_NON_CANONICAL_MANIFEST_CONTRACTS.step04,
     ]).toEqual(
       FRAUD_PROOF_DEPLOYMENT_ENTRIES_BY_CATEGORY.transactionOutputNonCanonical,
@@ -296,7 +302,7 @@ describe("transactionOutputNonCanonical production workflow", () => {
     // resolved stage carries the observed out-refs plus the authenticated
     // source bytes.
     await expect(
-      resolverFor(stepStage(4))({
+      resolverFor(stepStage(5))({
         action: "submitStep04",
         evidence: {} as never,
       }),
@@ -309,8 +315,16 @@ describe("transactionOutputNonCanonical production workflow", () => {
     // The stage is read for the workflow's own bound header.
     expect(observedHeaderHashes).toEqual([headerHash]);
 
+    // The datum step stands at the fourth physical checkpoint.
+    await expect(
+      resolverFor(stepStage(4))({
+        action: "submitStep03Datum",
+        evidence: {} as never,
+      }),
+    ).resolves.toMatchObject({ threadOutRef: `${"b".repeat(64)}#0` });
+
     // Reject: the same action against any other authenticated step.
-    for (const step of [1, 2, 3]) {
+    for (const step of [1, 2, 3, 4]) {
       await expect(
         resolverFor(stepStage(step))({
           action: "submitStep04",
@@ -322,7 +336,7 @@ describe("transactionOutputNonCanonical production workflow", () => {
     }
     // Reject: the right step for a different action.
     await expect(
-      resolverFor(stepStage(4))({
+      resolverFor(stepStage(5))({
         action: "submitStep03",
         evidence: {} as never,
       }),

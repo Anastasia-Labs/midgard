@@ -108,3 +108,30 @@ export const TransactionOutputStep04ArgsSchema = Data.Object({
 });
 export const TransactionOutputStep04RedeemerSchema =
   faultProofStepRedeemerSchema(TransactionOutputStep04ArgsSchema);
+export const TransactionOutputStreamFrameSchema = Data.Enum([
+  Data.Object({ ListFrame: Data.Object({ started: Data.Boolean() }) }),
+  Data.Object({ MapFrame: Data.Object({ remaining: Data.Integer() }) }),
+  Data.Object({
+    ChunksFrame: Data.Object({
+      seen: Data.Integer(),
+      leading: Data.Boolean(),
+    }),
+  }),
+]);
+export const TransactionOutputDatumScanStateSchema = Data.Object({
+  scan: TransactionOutputScanStateSchema,
+  cursor: Data.Integer(),
+  stack_root: Data.Bytes(),
+});
+export const TransactionOutputStep03DatumDatumSchema =
+  faultProofStepDatumSchema(TransactionOutputDatumScanStateSchema);
+export const TransactionOutputStep03DatumArgsSchema = Data.Object({
+  input_index: Data.Integer(),
+  output_index: Data.Integer(),
+  window: Data.Bytes(),
+  revealed: Data.Array(TransactionOutputStreamFrameSchema),
+  tail_root: Data.Bytes(),
+  node_budget: Data.Integer(),
+});
+export const TransactionOutputStep03DatumRedeemerSchema =
+  faultProofStepRedeemerSchema(TransactionOutputStep03DatumArgsSchema);
