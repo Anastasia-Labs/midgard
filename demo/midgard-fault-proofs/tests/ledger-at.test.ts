@@ -108,6 +108,28 @@ describe("ledger root check for an output with an undecodable native script_ref"
     ).rejects.toBeInstanceOf(LedgerRootMismatchError);
   });
 
+  it("refuses an output that is neither canonical nor an undecodable native script", async () => {
+    await expect(
+      checkLedgerAgainstRoot({
+        entries: [{ outRef, output: Buffer.from("ff", "hex") }],
+        utxosRoot: EMPTY_MERKLE_TREE_ROOT,
+        label: "test",
+      }),
+    ).rejects.toThrow("not a canonical ledger entry");
+    // Even with a supplied descriptor that the root commits.
+    const descriptor = committedDescriptor(script);
+    const { root } = await keyValuePhasRootWithCount([
+      { key: outRef, value: descriptor },
+    ]);
+    await expect(
+      checkLedgerAgainstRoot({
+        entries: [{ outRef, output: Buffer.from("ff", "hex"), descriptor }],
+        utxosRoot: root,
+        label: "test",
+      }),
+    ).rejects.toThrow("not a canonical ledger entry");
+  });
+
   it("uses the known genesis ledger without fetching a predecessor payload", async () => {
     const source = async () => {
       throw new Error("the empty ledger was asked of the source");

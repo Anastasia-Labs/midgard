@@ -31,8 +31,8 @@ export type LedgerEntry = {
   readonly outRef: Buffer;
   readonly output: Buffer;
   /**
-   * The source's committed descriptor, read only for an output that has no
-   * canonical one (see `withDescriptor`).
+   * Optional. For an output with no canonical descriptor it must equal the
+   * bytes-only derivation; otherwise it is ignored (see `withDescriptor`).
    */
   readonly descriptor?: Buffer | undefined;
 };
