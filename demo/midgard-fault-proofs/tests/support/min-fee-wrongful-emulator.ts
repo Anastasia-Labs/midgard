@@ -182,7 +182,7 @@ export const makeMinFeeWrongfulRejectionScenario = async (
         minFeeB: 0n,
       }).canonicalTxSize
     : minimum;
-  const header = {
+  const requestedHeader = {
     ...fixture.header,
     forcedTransactionsRoot: root.root,
     forcedTransactionCount: root.count,
@@ -194,8 +194,9 @@ export const makeMinFeeWrongfulRejectionScenario = async (
     contracts: h.contracts,
     nonceUtxo: h.nonceUtxo,
     catalogue: h.catalogue,
-    header,
+    header: requestedHeader,
   });
+  const header = seeded.header;
   const forcedSource = { header: header, membership, direction: 1n };
   const state: SDK.MinFeeStep02State = {
     subject: SDK.forcedVerdictSubject({

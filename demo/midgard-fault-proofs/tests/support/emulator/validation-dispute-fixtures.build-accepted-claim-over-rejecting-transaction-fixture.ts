@@ -25,6 +25,7 @@ import { Effect } from "effect";
 
 import { encodeData } from "../../../src/index.js";
 import { transitionTraceOutRef } from "./header-fixtures.js";
+import { fixtureBlockSlot } from "./header-fixtures.js";
 import { makeNativeTx } from "./native-tx.js";
 import {
   buildForcedValidationDisputeCommitments,
@@ -136,7 +137,7 @@ export const buildAcceptedClaimOverRejectingTransactionFixture = async ({
       expectedNetworkId: 0n,
       minFeeA: 0n,
       minFeeB: 0n,
-      blockSlot: 0n,
+      blockSlot: fixtureBlockSlot(BigInt(now + 1_000), 0n),
       transactionId,
       canonicalTransactionCbor: forcedCanonicalCbor,
       priorUtxosRoot: EMPTY_MERKLE_TREE_ROOT,

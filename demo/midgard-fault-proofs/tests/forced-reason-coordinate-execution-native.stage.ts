@@ -139,7 +139,7 @@ export const makeStage = async (
     catalogue,
     header: { ...block.header, utxosRoot: fixture.priorLedgerRoot },
   });
-  const header = {
+  const requestedHeader = {
     ...block.header,
     prevUtxosRoot: fixture.priorLedgerRoot,
     utxosRoot: fixture.priorLedgerRoot,
@@ -152,8 +152,9 @@ export const makeStage = async (
   const second = await submitSecondHeaderTx({
     lucid: harness.funderLucid,
     contracts: harness.contracts,
-    header,
+    header: requestedHeader,
   });
+  const header = second.header;
   const references: UTxO[] = [];
   for (const [index, step] of applied.entries())
     references.push(

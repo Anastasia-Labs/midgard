@@ -35,6 +35,7 @@ import {
   keyValuePhasRootWithCount,
 } from "../../src/transition-trace/phas.js";
 import { encodeData } from "../../src/transition-trace/reconstruct.js";
+import { fixtureBlockSlot } from "../support/emulator/header-fixtures.js";
 
 export { h28, h32 };
 
@@ -310,7 +311,7 @@ export const buildCanonicalBlockFixture = async ({
     ...counts,
     startTime,
     endTime,
-    blockSlot: 0n,
+    blockSlot: fixtureBlockSlot(endTime),
     expectedNetworkId: 0n,
     minFeeA,
     minFeeB,

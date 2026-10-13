@@ -35,6 +35,7 @@ import {
   keyValuePhasRootWithCount,
   reconstructDaPayload,
 } from "../../src/index.js";
+import { fixtureBlockSlot } from "./emulator/header-fixtures.js";
 import {
   sortedDaEntries,
   transitionTraceRawEntry,
@@ -289,7 +290,10 @@ const buildForcedTransitionTraceFixture = async ({
     ...makeHeader(operatorVkey, now),
     ...(headerDurationMs === undefined
       ? {}
-      : { endTime: BigInt(now + headerDurationMs) }),
+      : {
+          endTime: BigInt(now + headerDurationMs),
+          blockSlot: fixtureBlockSlot(BigInt(now + headerDurationMs)),
+        }),
     utxosRoot: finalUtxosRoot.root,
     forcedTransactionsRoot: forcedRoot.root,
     transitionTraceRoot: traceRoot.root,

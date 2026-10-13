@@ -234,10 +234,10 @@ export const buildMinimalFaultProofContracts = async (
     readonly alwaysStateQueue?: boolean;
     readonly referenceScriptAuthPolicyId?: string;
     /**
-     * The state-queue commit yield's slot mapping. A flow that commits a
-     * header through the real commit yield passes its emulator Lucid's
-     * `config().slotConfig`, or the commit rule's `block_slot` binding refuses
-     * every header.
+     * The state-queue commit yield's slot mapping. Every emulator deployment
+     * keeps the Preprod default and starts its emulator on a whole second, so
+     * the emulator's slot boundaries fall on this mapping's and a committed
+     * header's `block_slot` names its commit slot.
      */
     readonly l1SlotConfig?: L1SlotConfig;
   } = {},

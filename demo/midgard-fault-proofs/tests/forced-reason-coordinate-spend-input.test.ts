@@ -34,6 +34,7 @@ import { buildCatalogueDeploymentInfo } from "./support/emulator/catalogue.js";
 import { alignUnixTimeToEmulatorSlotBoundary } from "./support/emulator/emulator-context.js";
 import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
 import { makeFaultProofEmulatorHarness } from "./support/emulator/harness.js";
+import { withCommitSlot } from "./support/emulator/header-fixtures.js";
 import { makeNativeTx } from "./support/emulator/native-tx.js";
 import { nodeForcedVerdict } from "./support/emulator/node-forced-verdict.js";
 import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.js";
@@ -240,14 +241,13 @@ const setupScenario = async (inputIndex: bigint) => {
     Data.to(0n),
     Data.to(transition, SDK.TransitionStep),
   );
-  const header = {
+  const header = withCommitSlot(harness.contracts.l1SlotConfig, {
     ...base.header,
-    blockSlot: 10n,
     forcedTransactionsRoot: forcedMembership.root,
     eventToStepRoot: eventMembership.root,
     transitionTraceRoot: transitionMembership.root,
     utxosRoot: ledger.root,
-  };
+  });
   const forcedSource = { header, membership: forcedMembership, direction: 1n };
   const fullTransactionCbor =
     encodeMidgardForcedTxCanonical(native).toString("hex");

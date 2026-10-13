@@ -254,7 +254,7 @@ describe("missingScriptSource retained ScriptSources universe", () => {
                 verdict: { ForcedTxInvalid: { reason } },
               },
       });
-      const header = {
+      const requestedHeader = {
         ...block.header,
         endTime: block.header.endTime + 60_000n,
         validationTracesRoot: fixture.expectedRoot,
@@ -265,8 +265,9 @@ describe("missingScriptSource retained ScriptSources universe", () => {
         contracts: harness.contracts,
         nonceUtxo: harness.nonceUtxo,
         catalogue,
-        header,
+        header: requestedHeader,
       });
+      const header = setup.header;
       const successorStart = emulatorSuccessorHeaderStart({
         predecessorEndTime: header.endTime,
         emulator: harness.emulator,

@@ -82,6 +82,7 @@ import {
   network,
   transitionTraceDaEntry,
   transitionTraceOutRef,
+  withCommitSlot,
 } from "./support/submit-init-emulator-shared.js";
 
 afterAll(async () => {
@@ -131,9 +132,12 @@ describe("transition-trace omitted/out-of-window/count subvariant lifecycle", ()
   it("routes an omitted due withdrawal to final 6 and removes the block", async () => {
     const { harness, history, publications, transitionTraceReferenceScripts } =
       await makeHarness();
-    const header = makeHeader(
-      await funderPaymentKeyHash(harness.funderLucid),
-      await alignedHeaderStart(harness, FAMILY_HISTORY_HEADER_LEAD_MS),
+    const header = withCommitSlot(
+      harness.contracts.l1SlotConfig,
+      makeHeader(
+        await funderPaymentKeyHash(harness.funderLucid),
+        await alignedHeaderStart(harness, FAMILY_HISTORY_HEADER_LEAD_MS),
+      ),
     );
     const { lifecycle, event, withdrawalId } = await setupWithdrawalChallenge({
       harness,
@@ -253,7 +257,7 @@ describe("transition-trace omitted/out-of-window/count subvariant lifecycle", ()
             },
           ],
         );
-        const header: SDK.Header = {
+        const header = withCommitSlot(harness.contracts.l1SlotConfig, {
           ...makeHeader(operator, startTime),
           forcedTransactionsRoot: root.root,
           forcedTransactionCount: 1n,
@@ -263,7 +267,7 @@ describe("transition-trace omitted/out-of-window/count subvariant lifecycle", ()
           transitionTraceRoot: "ab".repeat(32),
           eventToStepRoot: "bc".repeat(32),
           validationTracesRoot: "cd".repeat(32),
-        };
+        });
         const lifecycle = await setupChallenge({
           harness,
           publications,
@@ -455,7 +459,7 @@ describe("transition-trace omitted/out-of-window/count subvariant lifecycle", ()
         })),
       ),
     ]);
-    const header: SDK.Header = {
+    const header = withCommitSlot(harness.contracts.l1SlotConfig, {
       ...makeHeader(operator, startTime),
       withdrawalsRoot: withdrawalsRoot.root,
       transitionTraceRoot: traceRoot.root,
@@ -463,7 +467,7 @@ describe("transition-trace omitted/out-of-window/count subvariant lifecycle", ()
       withdrawalCount: 1n,
       totalEventCount: 1n,
       transitionStepCount: 1n,
-    };
+    });
     const { lifecycle, event } = await setupWithdrawalChallenge({
       harness,
       history,
@@ -520,13 +524,13 @@ describe("transition-trace omitted/out-of-window/count subvariant lifecycle", ()
         // transition-trace chain and removal transaction remain real.
         alwaysStateQueue: true,
       });
-    const header: SDK.Header = {
+    const header = withCommitSlot(harness.contracts.l1SlotConfig, {
       ...makeHeader(
         await funderPaymentKeyHash(harness.funderLucid),
         await alignedHeaderStart(harness),
       ),
       transitionStepCount: 1n,
-    };
+    });
     const lifecycle = await setupChallenge({
       harness,
       publications,
@@ -563,9 +567,12 @@ describe("transition-trace omitted/out-of-window/count subvariant lifecycle", ()
   it("rejects an honest late withdrawal accused as omitted at final 6", async () => {
     const { harness, history, publications, transitionTraceReferenceScripts } =
       await makeHarness();
-    const header = makeHeader(
-      await funderPaymentKeyHash(harness.funderLucid),
-      await alignedHeaderStart(harness, FAMILY_HISTORY_HEADER_LEAD_MS),
+    const header = withCommitSlot(
+      harness.contracts.l1SlotConfig,
+      makeHeader(
+        await funderPaymentKeyHash(harness.funderLucid),
+        await alignedHeaderStart(harness, FAMILY_HISTORY_HEADER_LEAD_MS),
+      ),
     );
     const { lifecycle, event, withdrawalId } = await setupWithdrawalChallenge({
       harness,

@@ -97,7 +97,7 @@ it("authenticates a wrongly accepted forced mint and refuses a forged forced lea
         harness.emulator.now() + 120_000,
       ) - 1,
   });
-  const header = {
+  const requestedHeader = {
     ...base.header,
     forcedTransactionsRoot: root.root,
     forcedTransactionCount: root.count,
@@ -107,8 +107,9 @@ it("authenticates a wrongly accepted forced mint and refuses a forged forced lea
     contracts: harness.contracts,
     nonceUtxo: harness.nonceUtxo,
     catalogue: registered.catalogue,
-    header,
+    header: requestedHeader,
   });
+  const header = setup.header;
   await registered.publishReferences();
   const init = await registered.init(setup.fraudulentBlockOutRef);
   let threadOutRef = `${init.result.txHash}#${init.result.firstStepOutputIndex}`;

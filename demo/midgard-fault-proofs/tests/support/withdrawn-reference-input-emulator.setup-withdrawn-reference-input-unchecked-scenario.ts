@@ -26,6 +26,7 @@ import {
   makeHeader,
   publishPlainReferenceScriptUtxo,
   submitSetupTx,
+  withCommitSlot,
 } from "./submit-init-emulator-shared.js";
 
 export const WITHDRAWN_REFERENCE_INPUT_ACCUSED_OUTREF: SDK.MidgardTxInput = {
@@ -184,14 +185,14 @@ export const setupWithdrawnReferenceInputScenario = async ({
       harness.funderLucid,
       harness.emulator.now() + 120_000,
     ) - 1;
-  const header: SDK.Header = {
+  const header = withCommitSlot(harness.contracts.l1SlotConfig, {
     ...makeHeader(funderKeyHash, startTime, countedTransactions.root, 1n),
     withdrawalsRoot: countedWithdrawals.root,
     withdrawalCount: 1n,
     totalEventCount: 2n,
     transitionStepCount: 2n,
     validationTraceCount: 1n,
-  };
+  });
   const headerHash = await Effect.runPromise(SDK.hashBlockHeader(header));
   const blockTxs = [
     { nodeTxId: txId, txCbor: fullCbor.toString("hex") },
@@ -276,7 +277,7 @@ export const setupWithdrawnReferenceInputUncheckedScenario = async ({
       harness.funderLucid,
       harness.emulator.now() + 120_000,
     ) - 1;
-  const header: SDK.Header = {
+  const requestedHeader: SDK.Header = {
     ...makeHeader(funderKeyHash, startTime, countedTransactions.root, 1n),
     withdrawalsRoot: countedWithdrawals.root,
     withdrawalCount: 1n,
@@ -289,8 +290,9 @@ export const setupWithdrawnReferenceInputUncheckedScenario = async ({
     contracts: harness.contracts,
     nonceUtxo: harness.nonceUtxo,
     catalogue: harness.catalogue,
-    header,
+    header: requestedHeader,
   });
+  const header = setup.header;
   const blockTxs = [
     {
       nodeTxId: txId,

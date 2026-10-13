@@ -253,7 +253,7 @@ export const setupDuplicateOutRefMistagScenario = async ({
       harness.funderLucid,
       harness.emulator.now() + 120_000,
     ) - 1;
-  const header: SDK.Header = {
+  const requestedHeader: SDK.Header = {
     ...makeHeader(operatorVkey, startTime),
     withdrawalsRoot: material.source.root,
     withdrawalCount: material.source.count,
@@ -267,8 +267,9 @@ export const setupDuplicateOutRefMistagScenario = async ({
     contracts: harness.contracts,
     nonceUtxo: harness.nonceUtxo,
     catalogue: harness.catalogue,
-    header,
+    header: requestedHeader,
   });
+  const header = setup.header;
   const prepared = await prepareWithdrawalMistag({
     challengedHeaderHash: setup.headerHash,
     ...material.args,

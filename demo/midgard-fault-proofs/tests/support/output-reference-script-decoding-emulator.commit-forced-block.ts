@@ -48,6 +48,7 @@ import {
   submitSetupTx,
   transitionTraceDaEntry,
   transitionTraceOutRef,
+  withCommitSlot,
 } from "./submit-init-emulator-shared.js";
 
 /**
@@ -181,7 +182,7 @@ export const commitForcedBlock = async (
     transitionStepCount: count,
     validationTraceCount: count,
   };
-  const header = {
+  const header = withCommitSlot(harness.contracts.l1SlotConfig, {
     ...makeHeader(funderCredential.hash, now),
     utxosRoot: finalRoot.root,
     forcedTransactionsRoot: forcedRoot.root,
@@ -189,7 +190,7 @@ export const commitForcedBlock = async (
     eventToStepRoot: eventRoot.root,
     validationTracesRoot: validationRoot.root,
     ...counts,
-  };
+  });
   const headerHash = await Effect.runPromise(hashBlockHeader(header));
   const payloadEnvelopeCbor = await wrapDaPayload(
     encodeDaPayload({

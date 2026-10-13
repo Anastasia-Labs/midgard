@@ -183,7 +183,7 @@ const setupScenario = async (witnessIndex: bigint) => {
       SDK.Proof,
     ),
   };
-  const header = {
+  const requestedHeader = {
     ...base.header,
     blockSlot: 10n,
     forcedTransactionsRoot: root.root,
@@ -194,8 +194,9 @@ const setupScenario = async (witnessIndex: bigint) => {
     contracts: harness.contracts,
     nonceUtxo: harness.nonceUtxo,
     catalogue,
-    header,
+    header: requestedHeader,
   });
+  const header = setup.header;
   const witnessSet = signedSubject.witnessSetCompact;
   const init = await submitInit({
     lucid: harness.proverLucid,

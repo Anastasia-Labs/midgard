@@ -32,6 +32,7 @@ import { CML, Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { expect } from "vitest";
 
+import { fixtureBlockSlot } from "./emulator/header-fixtures.js";
 import { buildForcedValidationDisputeCommitments } from "./emulator/validation-dispute-fixtures.build-forced-validation-dispute-commitments.js";
 import { buildDeterministicValidationTraceMembers } from "./node-validation-trace-export.mjs";
 
@@ -148,7 +149,7 @@ export const buildInstalledCanonicalFixture = async ({
     expectedNetworkId: 0n,
     minFeeA: 0n,
     minFeeB: 0n,
-    blockSlot: 0n,
+    blockSlot: fixtureBlockSlot(BigInt(now + 1000), 0n),
     eventKeyCbor: Buffer.from(Data.to(eventKey, EventKey), "hex"),
     transactionId: transaction.txId,
     canonicalTransactionCbor: forcedBytes,
@@ -169,7 +170,7 @@ export const buildInstalledCanonicalFixture = async ({
       expectedNetworkId: 0n,
       minFeeA: 0n,
       minFeeB: 0n,
-      blockSlot: 0n,
+      blockSlot: challengerReplayInput.blockSlot,
       transactions: [
         {
           ...challengerReplayInput,

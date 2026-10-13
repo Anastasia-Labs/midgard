@@ -186,7 +186,7 @@ export const runInvalidSignatureWrongfulRejectionScenario = async (
       Proof,
     ),
   };
-  const header = {
+  const requestedHeader = {
     ...base.header,
     blockSlot: 10n,
     forcedTransactionsRoot: root.root,
@@ -197,8 +197,9 @@ export const runInvalidSignatureWrongfulRejectionScenario = async (
     contracts: harness.contracts,
     nonceUtxo: harness.nonceUtxo,
     catalogue,
-    header,
+    header: requestedHeader,
   });
+  const header = setup.header;
   const evidence = {
     subject: forcedVerdictSubject({
       transactionId,

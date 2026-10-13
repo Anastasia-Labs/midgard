@@ -254,7 +254,7 @@ export const setup = async ({
       SDK.Proof,
     ),
   };
-  const header = {
+  const requestedHeader = {
     ...fixture.header,
     forcedTransactionsRoot: root.root,
     forcedTransactionCount: root.count,
@@ -264,8 +264,9 @@ export const setup = async ({
     contracts: h.contracts,
     nonceUtxo: h.nonceUtxo,
     catalogue: h.catalogue,
-    header,
+    header: requestedHeader,
   });
+  const header = seeded.header;
   const source = { header, membership, direction: 1n };
   const state = {
     subject: SDK.forcedVerdictSubject({

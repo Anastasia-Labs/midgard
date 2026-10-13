@@ -38,6 +38,7 @@ import {
   makeHeader,
   network,
   transitionTraceDaEntry,
+  withCommitSlot,
 } from "./support/submit-init-emulator-shared.js";
 
 // A withdrawal step deletes the spent output from the ledger. When the delete
@@ -155,7 +156,7 @@ const commitWithdrawalStep = async (
         value: Buffer.from(value, "hex"),
       })),
     );
-  const header: SDK.Header = {
+  const header = withCommitSlot(harness.contracts.l1SlotConfig, {
     ...makeHeader(await funderPaymentKeyHash(harness.funderLucid), startTime),
     withdrawalsRoot: (await counted(SDK.ROOT_DOMAINS.withdrawals, withdrawals))
       .root,
@@ -167,7 +168,7 @@ const commitWithdrawalStep = async (
     withdrawalCount: 1n,
     totalEventCount: 1n,
     transitionStepCount: 1n,
-  };
+  });
   const { lifecycle } = await setupWithdrawalChallenge({
     ...harnessed,
     header,

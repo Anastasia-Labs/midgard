@@ -221,7 +221,7 @@ export const forcedBlock = async (
     sourceKey,
     rejectionReason,
   });
-  const header = {
+  const requestedHeader = {
     ...baseFixture.header,
     forcedTransactionsRoot: leaf.root.root,
   };
@@ -230,8 +230,9 @@ export const forcedBlock = async (
     contracts: h.harness.contracts,
     nonceUtxo: h.harness.nonceUtxo,
     catalogue: h.catalogue,
-    header,
+    header: requestedHeader,
   });
+  const header = setup.header;
   await h.publishReferences();
   const finding = forcedFinding(leaf, sourceKey, observerIndex);
   const source = { header, membership: leaf.membership, direction: 1n };

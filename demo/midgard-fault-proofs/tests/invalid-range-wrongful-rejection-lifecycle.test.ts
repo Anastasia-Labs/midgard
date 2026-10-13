@@ -31,6 +31,7 @@ import { submitZeroInputCancel } from "../src/zero-input/submit-cancel.js";
 import { buildCatalogueDeploymentInfo } from "./support/emulator/catalogue.js";
 import { alignUnixTimeToEmulatorSlotBoundary } from "./support/emulator/emulator-context.js";
 import { makeFaultProofEmulatorHarness } from "./support/emulator/harness.js";
+import { commitSlotForBlockTime } from "./support/emulator/header-fixtures.js";
 import { captureEmulatorSubmission } from "./support/emulator/measurement.js";
 import { makeNativeTx } from "./support/emulator/native-tx.js";
 import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.js";
@@ -90,12 +91,18 @@ describe("invalidRange wrongful-rejection real lifecycle", () => {
           harness.emulator.now() + 120_000,
         ) - 1,
     });
+    // The block commits at its own L1 slot; the wrongly rejected transaction's
+    // validity interval contains that slot.
+    const committedSlot = commitSlotForBlockTime(
+      harness.contracts.l1SlotConfig,
+      base.header.endTime,
+    );
     const invalid = materializeMidgardForcedTxFromCanonical(
       makeNativeTx({
         spendInputCbors: [],
         fee: 0n,
-        validityIntervalStart: 5n,
-        validityIntervalEnd: 20n,
+        validityIntervalStart: committedSlot - 5n,
+        validityIntervalEnd: committedSlot + 10n,
       }),
     );
     const transactionId = computeMidgardNativeTxId(invalid).toString("hex");
@@ -135,9 +142,8 @@ describe("invalidRange wrongful-rejection real lifecycle", () => {
       value: leaf,
       proof: Data.from(membershipProof.toCBOR().toString("hex"), Proof),
     };
-    const header = {
+    const requestedHeader = {
       ...base.header,
-      blockSlot: 10n,
       forcedTransactionsRoot: root.root,
       forcedTransactionCount: 1n,
     };
@@ -146,8 +152,9 @@ describe("invalidRange wrongful-rejection real lifecycle", () => {
       contracts: harness.contracts,
       nonceUtxo: harness.nonceUtxo,
       catalogue,
-      header,
+      header: requestedHeader,
     });
+    const header = setup.header;
     const evidence = prepareInvalidRangeEvidence({
       subject: forcedVerdictSubject({
         transactionId,

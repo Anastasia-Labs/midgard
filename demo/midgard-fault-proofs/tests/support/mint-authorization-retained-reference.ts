@@ -12,6 +12,7 @@ import {
   buildCanonicalBlockFixture,
   reencodeFixturePayload,
 } from "../helpers/canonical-block-evidence-fixture.js";
+import { fixtureBlockSlot } from "./emulator/header-fixtures.js";
 import {
   buildMintAuthorizationSubject,
   directionBNativeScript,
@@ -97,7 +98,7 @@ export const mintAuthorizationRetainedReferenceFixture = async ({
     prevHeaderHash: priorHash,
     prevUtxosRoot: priorHeader.utxosRoot,
     utxosRoot: priorHeader.utxosRoot,
-    blockSlot: 1n,
+    blockSlot: fixtureBlockSlot(BigInt(now + 61_000), 1n),
     endTime: BigInt(now + 61_000),
   };
   const headerHash = computeHash28(SDK.encodeHeaderCbor(header)).toString(

@@ -4,13 +4,12 @@ import {
   parsePhasMembershipBlueprint,
   phasMembershipWithdrawalScriptFromBlueprint,
 } from "@al-ft/midgard-sdk";
-import { type L1SlotConfig } from "@al-ft/midgard-core/l1-slot-config";
 import {
+  type Emulator,
   type EmulatorAccount,
   generateEmulatorAccount,
   getAddressDetails,
   Lucid,
-  type LucidEvolution,
   type Script,
   type UTxO,
 } from "@lucid-evolution/lucid";
@@ -21,14 +20,14 @@ import { resolveProverSigner } from "../../../src/index.js";
 import { type Blueprint, getCompiledScript, network } from "./blueprints.js";
 
 /**
- * The emulator Lucid's slot mapping. A state-queue commit yield that commits
- * headers in this emulator must be built with it.
+ * Starts `emulator` on a whole second, so its slot boundaries fall on those of
+ * the emulator deployments' slot mapping (Preprod's;
+ * `EMULATOR_DEPLOYMENT_L1_SLOT_CONFIG`) and a header's block_slot can name its
+ * commit time under that mapping. Call it before creating any Lucid instance
+ * on `emulator`: Lucid reads the emulator's slot mapping at creation.
  */
-export const emulatorL1SlotConfig = (lucid: LucidEvolution): L1SlotConfig => {
-  const slotConfig = lucid.config().slotConfig;
-  if (slotConfig === undefined)
-    throw new Error("The emulator Lucid instance has no slot configuration");
-  return slotConfig;
+export const alignEmulatorToWholeSecond = (emulator: Emulator): void => {
+  emulator.time = Math.ceil(emulator.time / 1_000) * 1_000;
 };
 
 export const alignUnixTimeToEmulatorSlotBoundary = (

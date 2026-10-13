@@ -21,7 +21,10 @@ import {
   validationDisputeValidityRange,
 } from "../../../src/index.js";
 import { network } from "./blueprints.js";
-import { seedDualAddressPartyAccounts } from "./emulator-context.js";
+import {
+  alignEmulatorToWholeSecond,
+  seedDualAddressPartyAccounts,
+} from "./emulator-context.js";
 import { EMULATOR_PROTOCOL_PARAMETERS } from "./protocol-parameters.js";
 import { type ReferenceScriptPublisher } from "./reference-script-publisher.js";
 import {
@@ -63,6 +66,7 @@ export const createValidationDisputeParties = async () => {
     ],
     EMULATOR_PROTOCOL_PARAMETERS,
   );
+  alignEmulatorToWholeSecond(emulator);
   const operatorLucid = await Lucid(emulator, "Custom");
   const challengerLucid = await Lucid(emulator, "Custom");
   operatorLucid.selectWallet.fromSeed(operator.seedPhrase);

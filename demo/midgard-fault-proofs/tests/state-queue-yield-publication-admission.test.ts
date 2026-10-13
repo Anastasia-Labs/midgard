@@ -23,6 +23,7 @@ import {
   realBlueprintPath,
 } from "./support/emulator/blueprints.js";
 import { buildMinimalFaultProofContracts } from "./support/emulator/contracts.js";
+import { alignEmulatorToWholeSecond } from "./support/emulator/emulator-context.js";
 import { EMULATOR_PROTOCOL_PARAMETERS } from "./support/emulator/protocol-parameters.js";
 import { createReferenceScriptPublisher } from "./support/emulator/reference-script-publisher.js";
 import {
@@ -46,6 +47,7 @@ describe("state-queue withdraw-zero publication admission V1", () => {
       [account, consumer],
       EMULATOR_PROTOCOL_PARAMETERS,
     );
+    alignEmulatorToWholeSecond(emulator);
     const consumerLucid = await Lucid(emulator, "Custom");
     consumerLucid.selectWallet.fromSeed(consumer.seedPhrase);
     const lucid = await Lucid(emulator, "Custom");

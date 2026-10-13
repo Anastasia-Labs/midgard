@@ -19,6 +19,7 @@ import { committedValidationClaimEndpointsAndSourceAreValid } from "../src/valid
 import { requireStagedOneStepArgument } from "../src/validation-dispute/submit/reference-scripts.require-staged-one-step-argument.js";
 import { forcedRejectionReason } from "../src/workflow/forced-rejection-reason.js";
 import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
+import { fixtureBlockSlot } from "./support/emulator/header-fixtures.js";
 import { buildForcedValidationDisputeCommitments } from "./support/emulator/validation-dispute-fixtures.build-forced-validation-dispute-commitments.js";
 import { runForcedValidationDisputeScenario } from "./support/submit-init-emulator-shared.js";
 
@@ -73,7 +74,7 @@ const fixture = async (
   const { trace, canonicalTransactionCbor, phaseA } = await nativeFaultFixture(
     shape,
     now,
-    0n,
+    fixtureBlockSlot(BigInt(now + 1000)),
   );
   const handoffCase = shape === "present" || shape === "earlierFalse";
   const low = handoffCase

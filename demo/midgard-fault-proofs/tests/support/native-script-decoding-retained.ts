@@ -27,6 +27,7 @@ import {
   buildCanonicalBlockFixture,
   reencodeFixturePayload,
 } from "../helpers/canonical-block-evidence-fixture.js";
+import { fixtureBlockSlot } from "./emulator/header-fixtures.js";
 import { makeReferenceNativeTx as makeNativeTx } from "./no-reference-input-native.js";
 import { buildInvalidForcedTransitionTraceFixture } from "./submit-init-emulator-fixtures.js";
 
@@ -168,7 +169,7 @@ export const nativeDecodingFixture = async ({
     operatorVkey,
     startTime: BigInt(now),
     endTime: BigInt(now) + 1000n,
-    blockSlot: 9n,
+    blockSlot: fixtureBlockSlot(BigInt(now) + 1000n, 9n),
     utxosRoot: ledger.root,
   };
   const predecessorHash = computeHash28(
@@ -348,7 +349,7 @@ export const nativeDecodingFixture = async ({
   };
   const header = {
     ...base.header,
-    blockSlot: 10n,
+    blockSlot: fixtureBlockSlot(BigInt(now) + 61_000n, 10n),
     endTime: BigInt(now) + 61_000n,
     ...counts,
     prevHeaderHash: predecessorFixture.headerHash,

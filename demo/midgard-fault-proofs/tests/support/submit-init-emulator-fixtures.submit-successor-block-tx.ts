@@ -31,7 +31,7 @@ import {
 import { Effect } from "effect";
 import { expect } from "vitest";
 
-import { commitSlotForBlockTime } from "./emulator/header-fixtures.js";
+import { withCommitSlot } from "./emulator/header-fixtures.js";
 import {
   findStateQueueYieldReferenceScript,
   type OperatorLifecycleReferenceScripts,
@@ -78,13 +78,7 @@ export const submitSuccessorBlockTx = async ({
   readonly activeOperatorNode: UTxO;
   readonly header: Header;
 }> => {
-  const header: Header = {
-    ...requestedHeader,
-    blockSlot: commitSlotForBlockTime(
-      contracts.l1SlotConfig,
-      requestedHeader.endTime,
-    ),
-  };
+  const header = withCommitSlot(contracts.l1SlotConfig, requestedHeader);
   const [anchorBlockUtxo] = await lucid.utxosAtWithUnit(
     contracts.stateQueue.spendingScriptAddress,
     anchorBlockUnit,

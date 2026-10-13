@@ -26,17 +26,13 @@ import {
   buildFixtureTransaction,
 } from "../helpers/canonical-block-evidence-fixture.js";
 import {
-  emulatorL1SlotConfig,
+  alignEmulatorToWholeSecond,
   requireUtxoWithUnit,
 } from "./emulator/emulator-context.js";
+import { EMULATOR_DEPLOYMENT_L1_SLOT_CONFIG } from "./emulator/header-fixtures.js";
 import { measureCompleteSignedTransaction } from "./emulator/measurement.js";
 import { createReferenceScriptPublisher } from "./emulator/reference-script-publisher.js";
 import { onboardEmulatorOperator } from "./emulator/setup-tx.onboard-emulator-operator.js";
-import { setupUnits } from "./emulator/setup-tx.setup-units.js";
-import {
-  submitHeaderCommitTx,
-  submitSchedulerAppointmentTx,
-} from "./emulator/setup-tx.submit-header-commit-tx.js";
 import {
   outputReferenceCbor,
   tx1InputsPreimage,
@@ -65,6 +61,7 @@ export const buildProvedFixtureDeploymentContext = async (
   const funder = generateEmulatorAccount({ lovelace: 40_000_000_000n });
   const prover = fundedProverEmulatorAccount(20_000_000_000n);
   const emulator = new Emulator([funder, prover], EMULATOR_PROTOCOL_PARAMETERS);
+  alignEmulatorToWholeSecond(emulator);
   const funderLucid = await Lucid(emulator, "Custom");
   const proverLucid = await Lucid(emulator, "Custom");
   funderLucid.selectWallet.fromSeed(funder.seedPhrase);
@@ -78,7 +75,7 @@ export const buildProvedFixtureDeploymentContext = async (
   await registerPhasMembershipRewardAccount(funderLucid, realBlueprint);
   const { nonceUtxo, referenceScriptAuth, referenceScriptPublisher } =
     await createReferenceScriptPublisher(funderLucid, emulator.now());
-  const l1SlotConfig = emulatorL1SlotConfig(funderLucid);
+  const l1SlotConfig = EMULATOR_DEPLOYMENT_L1_SLOT_CONFIG;
   const baseContracts = {
     ...(await buildMinimalFaultProofContracts(
       realBlueprint,
@@ -139,10 +136,8 @@ const buildCanonicalDeploymentContext = async () => {
     EMULATOR_PROTOCOL_PARAMETERS,
   );
   // The deployment is a named-network (Preprod) one, so its commit yield
-  // carries Preprod's slot mapping. Starting the emulator on a whole second
-  // puts its slot boundaries on Preprod's, so a header's block_slot can name
-  // the commit time under that mapping.
-  emulator.time = Math.ceil(emulator.time / 1_000) * 1_000;
+  // carries Preprod's slot mapping.
+  alignEmulatorToWholeSecond(emulator);
   const funderLucid = await Lucid(emulator, "Custom");
   const proverLucid = await Lucid(emulator, "Custom");
   const publisherLucid = await Lucid(emulator, "Custom");
@@ -385,100 +380,6 @@ const buildCanonicalDeploymentContext = async () => {
       doubleSpendStepReferenceScripts,
       witnessReferenceScripts,
     },
-  };
-};
-
-export const commitInitializedProvedFixtureHeader = async ({
-  lucid,
-  contracts,
-  header,
-  schedulerStartTime,
-}: {
-  readonly schedulerStartTime: bigint;
-  readonly lucid: Parameters<typeof submitHeaderCommitTx>[0]["lucid"];
-  readonly contracts: Parameters<typeof submitHeaderCommitTx>[0]["contracts"];
-  readonly header: SDK.Header;
-}): Promise<
-  Awaited<
-    ReturnType<
-      typeof import("./emulator/setup-tx.submit-setup-tx.js").submitSetupTx
-    >
-  >
-> => {
-  await Effect.runPromise(
-    SDK.validateHeaderTransitionCommitmentsProgram(header),
-  );
-  const headerHash = await Effect.runPromise(SDK.hashBlockHeader(header));
-  const units = setupUnits(contracts, header, headerHash);
-  const snapshot = await Effect.runPromise(
-    SDK.fetchOperatorDirectorySnapshotProgram(lucid, contracts),
-  );
-  const get = (address: string, unit: string) =>
-    requireUtxoWithUnit(lucid, address, unit, "canonical initialized setup");
-  const hubOracle = snapshot.hubOracle.utxo;
-  const scheduler = await get(
-    contracts.scheduler.spendingScriptAddress,
-    units.scheduler,
-  );
-  const correctionLock = await get(
-    contracts.correctionLock.spendingScriptAddress,
-    units.correctionLock,
-  );
-  const stateQueueRoot = await get(
-    contracts.stateQueue.spendingScriptAddress,
-    units.stateQueueRoot,
-  );
-  const activeOperatorNode = await get(
-    contracts.activeOperators.spendingScriptAddress,
-    units.activeOperatorNode,
-  );
-  const activeOperatorsRoot = await get(
-    contracts.activeOperators.spendingScriptAddress,
-    units.activeOperatorsRoot,
-  );
-  const retiredOperatorsRoot = await get(
-    contracts.retiredOperators.spendingScriptAddress,
-    units.retiredOperatorsRoot,
-  );
-  const registeredOperatorsRoot = await get(
-    contracts.registeredOperators.spendingScriptAddress,
-    units.registeredOperatorsRoot,
-  );
-  const appointedScheduler = await submitSchedulerAppointmentTx({
-    lucid,
-    contracts,
-    header: { ...header, startTime: schedulerStartTime },
-    units,
-    schedulerUtxo: scheduler,
-    activeOperatorNode,
-    registeredOperatorsRoot,
-  });
-  const committed = await submitHeaderCommitTx({
-    lucid,
-    contracts,
-    header,
-    headerHash,
-    units,
-    hubOracleUtxo: hubOracle,
-    correctionLockUtxo: correctionLock,
-    stateQueueRootUtxo: stateQueueRoot,
-    appointedSchedulerUtxo: appointedScheduler,
-    activeOperatorNode,
-  });
-  return {
-    fraudulentBlockOutRef: `${committed.fraudulentBlockUtxo.txHash}#${committed.fraudulentBlockUtxo.outputIndex}`,
-    headerHash,
-    stateQueueBlockUnit: units.stateQueueBlock,
-    stateQueueRootUnit: units.stateQueueRoot,
-    hubOracle,
-    scheduler: appointedScheduler,
-    activeOperatorsRoot,
-    activeOperatorsRootUnit: units.activeOperatorsRoot,
-    retiredOperatorsRoot,
-    retiredOperatorsRootUnit: units.retiredOperatorsRoot,
-    activeOperatorNode: committed.continuedActiveOperatorNode,
-    activeOperatorNodeUnit: units.activeOperatorNode,
-    registeredOperatorsRoot,
   };
 };
 

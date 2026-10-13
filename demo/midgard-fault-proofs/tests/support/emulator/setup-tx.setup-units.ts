@@ -1,3 +1,4 @@
+import { type L1SlotConfig } from "@al-ft/midgard-core/l1-slot-config";
 import {
   ACTIVE_OPERATOR_NODE_ASSET_NAME_PREFIX,
   ACTIVE_OPERATORS_ROOT_ASSET_NAME,
@@ -22,6 +23,8 @@ import { type OperatorLifecycleReferenceScripts } from "./reference-scripts.js";
 export type SetupLucid = Awaited<ReturnType<typeof Lucid>>;
 
 export type SetupContracts = MidgardValidators & {
+  /** The slot mapping the deployment's commit yield was built with. */
+  readonly l1SlotConfig: L1SlotConfig;
   readonly operatorLifecycleReferenceScripts?: OperatorLifecycleReferenceScripts;
   readonly minAdaYieldReferenceScripts?: MinAdaYieldReferenceScripts;
   readonly validationTraceDispute?: {
