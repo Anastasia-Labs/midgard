@@ -66,9 +66,12 @@ export const MIDGARD_CEK_PROGRAM_UPLC_VERSION = [1n, 1n, 0n] as const;
  * The canonical V1 DA envelope is the only aggregate program-size budget. The
  * constants below mirror its exact canonical Plutus-Data encoding:
  *
- * - an otherwise-empty, structurally valid V1 payload is 446 bytes;
+ * - an otherwise-empty, structurally valid V1 payload is 445 bytes;
  * - replacing its one-byte empty material list with the two-byte non-empty
- *   list framing leaves 447 fixed bytes outside material tuples;
+ *   list framing leaves 446 fixed bytes outside material tuples. The constant
+ *   is 447, measured when the body also carried a one-byte empty UTxO list;
+ *   it is kept so the consensus limits do not move, and is one byte
+ *   conservative;
  * - the smallest tuple is 42 bytes: tuple framing (2), a bytes32 key (34),
  *   and a five-byte `[v1, kind, one-byte-preimage]` value wrapped as Plutus
  *   bytes (6).
