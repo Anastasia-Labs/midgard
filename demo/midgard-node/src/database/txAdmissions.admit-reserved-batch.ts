@@ -1,8 +1,18 @@
+import {
+  decodeMidgardCekProgramMaterialDaEntry,
+  encodeMidgardCekProgramMaterialSidecar,
+  type MidgardCekProgramMaterialEntry,
+} from "@al-ft/midgard-core/cek-proof";
 import { SqlClient } from "@effect/sql";
 import type { PgClient } from "@effect/sql-pg/PgClient";
 import { Effect } from "effect";
 
 import { Database } from "../services/database.js";
+import {
+  admissionOwnerTableName,
+  canonicalEntries,
+  entryTableName,
+} from "./cekProgramMaterial.canonical-entries.js";
 import {
   ADMISSION_BYTE_QUOTA_LOCK_KEY,
   currentBacklogPayloadBytes,
@@ -179,8 +189,11 @@ export type ProgramMaterialSidecarRecord = {
 };
 
 /**
- * Loads immutable V1 sidecars for an exact transaction set. Missing rows are
- * omitted so callers can compare cardinality and fail closed.
+ * Loads the V1 sidecars of an exact transaction set. Missing rows are omitted
+ * so callers can compare cardinality and fail closed. Acceptance scrubs a
+ * payload's sidecar bytes after promoting its material into the global
+ * availability index; a scrubbed sidecar is rebuilt from the material the
+ * transaction owns there, which acceptance verified against its programs.
  */
 export const retrieveProgramMaterialSidecars = (
   txIds: readonly Buffer[],
@@ -203,10 +216,66 @@ export const retrieveProgramMaterialSidecars = (
       WHERE ${sql(Columns.TX_ID)} =
         ANY(${pg.array(postgresByteaArray(txIds))}::bytea[])
       ORDER BY ${sql(Columns.TX_ID)} ASC`;
-    return rows.map((row) => ({
-      txId: Buffer.from(row.tx_id),
-      sidecarCbor: Buffer.from(row.cek_program_material_sidecar_cbor),
-    }));
+    const scrubbed = encodeMidgardCekProgramMaterialSidecar([]);
+    const scrubbedTxIds = rows
+      .filter((row) =>
+        Buffer.from(row.cek_program_material_sidecar_cbor).equals(scrubbed),
+      )
+      .map((row) => Buffer.from(row.tx_id));
+    const owned =
+      scrubbedTxIds.length === 0
+        ? []
+        : yield* sql<{
+            readonly tx_id: Buffer;
+            readonly material_root: Buffer;
+            readonly da_value_cbor: Buffer;
+          }>`SELECT DISTINCT
+              owner.tx_id,
+              entry.material_root,
+              entry.da_value_cbor
+            FROM ${sql(admissionOwnerTableName)} owner
+            INNER JOIN ${sql(entryTableName)} entry
+              ON entry.material_root = owner.material_root
+            WHERE owner.tx_id =
+              ANY(${pg.array(postgresByteaArray(scrubbedTxIds))}::bytea[])`;
+    return yield* Effect.try({
+      try: () => {
+        const ownedByTxId = new Map<string, MidgardCekProgramMaterialEntry[]>();
+        for (const row of owned) {
+          const key = Buffer.from(row.tx_id).toString("hex");
+          const entries = ownedByTxId.get(key) ?? [];
+          entries.push(
+            decodeMidgardCekProgramMaterialDaEntry(
+              row.material_root,
+              row.da_value_cbor,
+            ),
+          );
+          ownedByTxId.set(key, entries);
+        }
+        return rows.map((row) => {
+          const txId = Buffer.from(row.tx_id);
+          const ownedEntries = ownedByTxId.get(txId.toString("hex"));
+          return {
+            txId,
+            sidecarCbor:
+              ownedEntries === undefined
+                ? Buffer.from(row.cek_program_material_sidecar_cbor)
+                : Buffer.from(
+                    encodeMidgardCekProgramMaterialSidecar(
+                      canonicalEntries(ownedEntries),
+                    ),
+                  ),
+          };
+        });
+      },
+      catch: (cause) =>
+        new DatabaseError({
+          table: entryTableName,
+          message:
+            "Durable CEK program material owned by an accepted transaction is malformed",
+          cause,
+        }),
+    });
   }).pipe(
     sqlErrorToDatabaseError(
       payloadTableName,

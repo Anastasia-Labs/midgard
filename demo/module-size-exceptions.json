@@ -1041,8 +1041,8 @@
   },
   {
     "file": "midgard-node/tests/database.test/admissions.register-admissions-tests.ts",
-    "max": 3459,
-    "reason": "registerAdmissionsTests is the dominant indivisible declaration (3341 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. Integrated DA correctness branches; exact final source line count. VR (+7): the pool-isolation drain's stub Lucid reports the L1 slot mapping the processor builds script contexts in. P (+3): the admission pool stub evaluates CEK verdicts in process; the backlog-full case asserts Retry-After (+1)."
+    "max": 3470,
+    "reason": "registerAdmissionsTests is the dominant indivisible declaration (3341 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. Integrated DA correctness branches; exact final source line count. VR (+7): the pool-isolation drain's stub Lucid reports the L1 slot mapping the processor builds script contexts in. P (+3): the admission pool stub evaluates CEK verdicts in process; the backlog-full case asserts Retry-After (+1). B2-8 (+11): the promotion case reads the accepted transaction's sidecar back as the commit does."
   },
   {
     "file": "midgard-node/tests/database.test/availability.ts",
