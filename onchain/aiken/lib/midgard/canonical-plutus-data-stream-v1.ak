@@ -17,10 +17,10 @@ use aiken/cbor
 use aiken/crypto.{blake2b_256}
 use aiken/primitive/bytearray
 use midgard/canonical_plutus_data_v1.{
-  byte_at, data_bytes_chunk, generic_constr_tag, large_constr_tag_base, major_of,
+  data_bytes_chunk, generic_constr_tag, large_constr_tag_base,
   max_large_constr_alternative, max_small_constr_alternative,
   min_bignum_magnitude_bytes, min_generic_constr_alternative,
-  negative_bignum_tag, positive_bignum_tag, scan_head, small_constr_tag_base,
+  negative_bignum_tag, positive_bignum_tag, small_constr_tag_base,
 }
 
 /// The most bytes one node reads past its first byte's offset: a bignum
@@ -32,7 +32,19 @@ pub const max_node_read_bytes: Int = 67
 
 const break_byte: Int = 0xff
 
-const indefinite_additional_info: Int = 31
+const indefinite_bytes_byte: Int = 0x5f
+
+const empty_list_byte: Int = 0x80
+
+const indefinite_list_byte: Int = 0x9f
+
+const generic_constr_pair_byte: Int = 0x82
+
+const last_small_constr_tag: Int =
+  small_constr_tag_base + max_small_constr_alternative
+
+const last_large_constr_tag: Int =
+  large_constr_tag_base + max_large_constr_alternative - 7
 
 /// One open container.
 pub type StreamFrameV1 {
@@ -91,117 +103,179 @@ pub fn run_v1(
   tail_root: ByteArray,
   budget: Int,
 ) -> StreamOutcomeV1 {
+  let limit = bytearray.length(bytes)
   run(
     bytes,
     full,
-    bytearray.length(bytes),
+    limit,
+    if full {
+      limit
+    } else {
+      limit - max_node_read_bytes
+    },
     root_start,
+    tail_root == empty_stack_root,
+    budget,
     offset,
     frames,
-    tail_root,
-    budget,
     0,
   )
 }
+
+/// Where the next node starts once the current one has been read.
+type Next =
+  fn(Int, List<StreamFrameV1>) -> StreamOutcomeV1
 
 fn run(
   bytes: ByteArray,
   full: Bool,
   limit: Int,
+  last_start: Int,
   root_start: Int,
+  tail_closed: Bool,
+  budget: Int,
   offset: Int,
   frames: List<StreamFrameV1>,
-  tail_root: ByteArray,
-  budget: Int,
   nodes: Int,
 ) -> StreamOutcomeV1 {
-  let closed = and {
-    frames == [],
-    tail_root == empty_stack_root,
-  }
-  if and {
-    closed,
-    offset > root_start,
-  } {
-    // The root item is complete: the span is canonical exactly when nothing
-    // follows it.
-    if and {
+  let next: Next = fn(next_offset, next_frames) {
+    run(
+      bytes,
       full,
-      offset == limit,
-    } {
-      StreamCanonical
-    } else {
-      StreamNonCanonical
-    }
-  } else if or {
+      limit,
+      last_start,
+      root_start,
+      tail_closed,
+      budget,
+      next_offset,
+      next_frames,
+      nodes + 1,
+    )
+  }
+  let paused = or {
     nodes >= budget,
-    and {
-      !full,
-      offset + max_node_read_bytes > limit,
-    },
-  } {
-    StreamPaused { offset, frames, nodes }
-  } else {
-    let next = when frames is {
-      [] ->
-        if closed {
-          Some(item(bytes, limit, offset, []))
+    offset > last_start,
+  }
+  when frames is {
+    [] ->
+      if !tail_closed {
+        // The open containers are below the revealed frames.
+        StreamPaused { offset, frames, nodes }
+      } else if offset > root_start {
+        // The root item is complete: the span is canonical exactly when
+        // nothing follows it.
+        if and {
+          full,
+          offset == limit,
+        } {
+          StreamCanonical
         } else {
-          // The open containers are below the revealed frames.
-          None
+          StreamNonCanonical
         }
-      [MapFrame { remaining }, ..rest] ->
-        if remaining == 0 {
-          Some(Some(Pair(offset, rest)))
-        } else {
-          Some(
-            item(
-              bytes,
-              limit,
-              offset,
-              [MapFrame { remaining: remaining - 1 }, ..rest],
-            ),
-          )
-        }
-      [ListFrame { started }, ..rest] ->
-        when byte_at(bytes, offset) is {
-          None -> Some(None)
-          Some(first) ->
-            if first == break_byte {
-              if started {
-                Some(Some(Pair(offset + 1, rest)))
-              } else {
-                Some(None)
-              }
+      } else if paused {
+        StreamPaused { offset, frames, nodes }
+      } else {
+        item(bytes, limit, offset, frames, next)
+      }
+    [frame, ..rest] ->
+      if paused {
+        StreamPaused { offset, frames, nodes }
+      } else {
+        when frame is {
+          MapFrame { remaining } ->
+            if remaining == 0 {
+              next(offset, rest)
             } else {
-              Some(
-                item(
-                  bytes,
-                  limit,
-                  offset,
-                  [ListFrame { started: True }, ..rest],
-                ),
+              item(
+                bytes,
+                limit,
+                offset,
+                [MapFrame { remaining: remaining - 1 }, ..rest],
+                next,
               )
             }
+          ListFrame { started } ->
+            if offset >= limit {
+              StreamNonCanonical
+            } else if bytearray.at(bytes, offset) == break_byte {
+              if started {
+                next(offset + 1, rest)
+              } else {
+                StreamNonCanonical
+              }
+            } else if started {
+              item(bytes, limit, offset, frames, next)
+            } else {
+              item(
+                bytes,
+                limit,
+                offset,
+                [ListFrame { started: True }, ..rest],
+                next,
+              )
+            }
+          ChunksFrame { seen, leading } ->
+            chunk(bytes, limit, offset, seen, leading, rest, next)
         }
-      [ChunksFrame { seen, leading }, ..rest] ->
-        Some(chunk(bytes, limit, offset, seen, leading, rest))
+      }
+  }
+}
+
+/// A canonical head at `offset`, whose first byte is `first`: the offset past
+/// it and its argument, given to `then`.
+fn head(
+  bytes: ByteArray,
+  limit: Int,
+  offset: Int,
+  first: Int,
+  then: fn(Int, Int) -> StreamOutcomeV1,
+) -> StreamOutcomeV1 {
+  let additional = first % 32
+  if additional <= 23 {
+    then(offset + 1, additional)
+  } else if additional == 24 {
+    if offset + 1 >= limit {
+      StreamNonCanonical
+    } else {
+      let value = bytearray.at(bytes, offset + 1)
+      if value >= 24 {
+        then(offset + 2, value)
+      } else {
+        StreamNonCanonical
+      }
     }
-    when next is {
-      None -> StreamPaused { offset, frames, nodes }
-      Some(None) -> StreamNonCanonical
-      Some(Some(Pair(next_offset, next_frames))) ->
-        run(
-          bytes,
-          full,
-          limit,
-          root_start,
-          next_offset,
-          next_frames,
-          tail_root,
-          budget,
-          nodes + 1,
-        )
+  } else if additional == 25 {
+    wide_head(bytes, limit, offset, 2, 0x100, then)
+  } else if additional == 26 {
+    wide_head(bytes, limit, offset, 4, 0x10000, then)
+  } else if additional == 27 {
+    wide_head(bytes, limit, offset, 8, 0x100000000, then)
+  } else {
+    StreamNonCanonical
+  }
+}
+
+/// A head whose argument is the `width` bytes after its first byte, and
+/// canonical only when at least `least`.
+fn wide_head(
+  bytes: ByteArray,
+  limit: Int,
+  offset: Int,
+  width: Int,
+  least: Int,
+  then: fn(Int, Int) -> StreamOutcomeV1,
+) -> StreamOutcomeV1 {
+  let end = offset + width
+  if end >= limit {
+    StreamNonCanonical
+  } else {
+    let value = bytearray.to_int_big_endian(
+      bytearray.slice(bytes, offset + 1, end),
+    )
+    if value >= least {
+      then(end + 1, value)
+    } else {
+      StreamNonCanonical
     }
   }
 }
@@ -213,85 +287,84 @@ fn item(
   limit: Int,
   offset: Int,
   frames: List<StreamFrameV1>,
-) -> Option<Pair<Int, List<StreamFrameV1>>> {
-  when byte_at(bytes, offset) is {
-    None -> None
-    Some(first) -> {
-      let major = major_of(first)
-      if or {
-        major == 0,
-        major == 1,
-      } {
-        when scan_head(bytes, offset) is {
-          None -> None
-          Some(Pair(next, _value)) -> Some(Pair(next, frames))
-        }
-      } else if major == 2 {
-        if first % 32 == indefinite_additional_info {
-          Some(
-            Pair(
-              offset + 1,
-              [ChunksFrame { seen: 0, leading: False }, ..frames],
-            ),
-          )
-        } else {
-          when scan_head(bytes, offset) is {
-            None -> None
-            Some(Pair(next, length)) ->
-              if and {
-                length <= data_bytes_chunk,
-                next + length <= limit,
-              } {
-                Some(Pair(next + length, frames))
-              } else {
-                None
-              }
-          }
-        }
-      } else if major == 4 {
-        list_open(bytes, offset, frames)
-      } else if major == 5 {
-        when scan_head(bytes, offset) is {
-          None -> None
-          Some(Pair(next, entries)) ->
-            if entries == 0 {
-              Some(Pair(next, frames))
-            } else {
-              Some(Pair(next, [MapFrame { remaining: 2 * entries }, ..frames]))
-            }
-        }
-      } else if and {
-        major == 6,
-        first % 32 != indefinite_additional_info,
-      } {
-        when scan_head(bytes, offset) is {
-          None -> None
-          Some(Pair(next, tag)) ->
-            if or {
-              and {
-                tag >= small_constr_tag_base,
-                tag <= small_constr_tag_base + max_small_constr_alternative,
-              },
-              and {
-                tag >= large_constr_tag_base,
-                tag <= large_constr_tag_base + max_large_constr_alternative - 7,
-              },
-            } {
-              list_open(bytes, next, frames)
-            } else if tag == generic_constr_tag {
-              generic_constr(bytes, next, frames)
-            } else if or {
-              tag == positive_bignum_tag,
-              tag == negative_bignum_tag,
-            } {
-              magnitude(bytes, limit, next, frames)
-            } else {
-              None
-            }
-        }
+  next: Next,
+) -> StreamOutcomeV1 {
+  if offset >= limit {
+    StreamNonCanonical
+  } else {
+    let first = bytearray.at(bytes, offset)
+    let major = first / 32
+    if major <= 1 {
+      head(bytes, limit, offset, first, fn(past, _value) { next(past, frames) })
+    } else if major == 2 {
+      if first == indefinite_bytes_byte {
+        next(offset + 1, [ChunksFrame { seen: 0, leading: False }, ..frames])
       } else {
-        None
+        head(
+          bytes,
+          limit,
+          offset,
+          first,
+          fn(past, length) {
+            if and {
+              length <= data_bytes_chunk,
+              past + length <= limit,
+            } {
+              next(past + length, frames)
+            } else {
+              StreamNonCanonical
+            }
+          },
+        )
       }
+    } else if major == 4 {
+      list_open(bytes, limit, offset, frames, next)
+    } else if major == 5 {
+      head(
+        bytes,
+        limit,
+        offset,
+        first,
+        fn(past, entries) {
+          if entries == 0 {
+            next(past, frames)
+          } else {
+            next(past, [MapFrame { remaining: 2 * entries }, ..frames])
+          }
+        },
+      )
+    } else if major == 6 {
+      head(
+        bytes,
+        limit,
+        offset,
+        first,
+        fn(past, tag) {
+          if or {
+            and {
+              tag >= small_constr_tag_base,
+              tag <= last_small_constr_tag,
+            },
+            and {
+              tag >= large_constr_tag_base,
+              tag <= last_large_constr_tag,
+            },
+          } {
+            list_open(bytes, limit, past, frames, next)
+          } else if tag == generic_constr_tag {
+            generic_constr(bytes, limit, past, frames, next)
+          } else if or {
+            tag == positive_bignum_tag,
+            tag == negative_bignum_tag,
+          } {
+            magnitude(bytes, limit, past, frames, next)
+          } else {
+            StreamNonCanonical
+          }
+        },
+      )
+    } else {
+      StreamNonCanonical
     }
   }
 }
@@ -299,47 +372,55 @@ fn item(
 /// A list or constructor-field list: exactly `80` when empty, else `9f`.
 fn list_open(
   bytes: ByteArray,
+  limit: Int,
   offset: Int,
   frames: List<StreamFrameV1>,
-) -> Option<Pair<Int, List<StreamFrameV1>>> {
-  when byte_at(bytes, offset) is {
-    None -> None
-    Some(first) ->
-      if first == 0x80 {
-        Some(Pair(offset + 1, frames))
-      } else if first == 0x9f {
-        Some(Pair(offset + 1, [ListFrame { started: False }, ..frames]))
-      } else {
-        None
-      }
+  next: Next,
+) -> StreamOutcomeV1 {
+  if offset >= limit {
+    StreamNonCanonical
+  } else {
+    let first = bytearray.at(bytes, offset)
+    if first == empty_list_byte {
+      next(offset + 1, frames)
+    } else if first == indefinite_list_byte {
+      next(offset + 1, [ListFrame { started: False }, ..frames])
+    } else {
+      StreamNonCanonical
+    }
   }
 }
 
 /// `d8 66` then `82 ‖ uint(alternative ≥ 128) ‖ fields`.
 fn generic_constr(
   bytes: ByteArray,
+  limit: Int,
   offset: Int,
   frames: List<StreamFrameV1>,
-) -> Option<Pair<Int, List<StreamFrameV1>>> {
-  if byte_at(bytes, offset) != Some(0x82) {
-    None
+  next: Next,
+) -> StreamOutcomeV1 {
+  if offset + 1 >= limit {
+    StreamNonCanonical
+  } else if bytearray.at(bytes, offset) != generic_constr_pair_byte {
+    StreamNonCanonical
   } else {
-    when byte_at(bytes, offset + 1) is {
-      None -> None
-      Some(alternative_head) ->
-        if major_of(alternative_head) != 0 {
-          None
-        } else {
-          when scan_head(bytes, offset + 1) is {
-            None -> None
-            Some(Pair(next, alternative)) ->
-              if alternative >= min_generic_constr_alternative {
-                list_open(bytes, next, frames)
-              } else {
-                None
-              }
+    let alternative_head = bytearray.at(bytes, offset + 1)
+    if alternative_head / 32 != 0 {
+      StreamNonCanonical
+    } else {
+      head(
+        bytes,
+        limit,
+        offset + 1,
+        alternative_head,
+        fn(past, alternative) {
+          if alternative >= min_generic_constr_alternative {
+            list_open(bytes, limit, past, frames, next)
+          } else {
+            StreamNonCanonical
           }
-        }
+        },
+      )
     }
   }
 }
@@ -351,32 +432,36 @@ fn magnitude(
   limit: Int,
   offset: Int,
   frames: List<StreamFrameV1>,
-) -> Option<Pair<Int, List<StreamFrameV1>>> {
-  when byte_at(bytes, offset) is {
-    None -> None
-    Some(first) ->
-      if major_of(first) != 2 {
-        None
-      } else if first % 32 == indefinite_additional_info {
-        Some(
-          Pair(offset + 1, [ChunksFrame { seen: 0, leading: True }, ..frames]),
-        )
-      } else {
-        when scan_head(bytes, offset) is {
-          None -> None
-          Some(Pair(next, length)) ->
-            if and {
-              length >= min_bignum_magnitude_bytes,
-              length <= data_bytes_chunk,
-              next + length <= limit,
-              byte_at(bytes, next) != Some(0),
-            } {
-              Some(Pair(next + length, frames))
-            } else {
-              None
-            }
-        }
-      }
+  next: Next,
+) -> StreamOutcomeV1 {
+  if offset >= limit {
+    StreamNonCanonical
+  } else {
+    let first = bytearray.at(bytes, offset)
+    if first / 32 != 2 {
+      StreamNonCanonical
+    } else if first == indefinite_bytes_byte {
+      next(offset + 1, [ChunksFrame { seen: 0, leading: True }, ..frames])
+    } else {
+      head(
+        bytes,
+        limit,
+        offset,
+        first,
+        fn(past, length) {
+          if and {
+            length >= min_bignum_magnitude_bytes,
+            length <= data_bytes_chunk,
+            past + length <= limit,
+            bytearray.at(bytes, past) != 0,
+          } {
+            next(past + length, frames)
+          } else {
+            StreamNonCanonical
+          }
+        },
+      )
+    }
   }
 }
 
@@ -389,47 +474,52 @@ fn chunk(
   seen: Int,
   leading: Bool,
   rest: List<StreamFrameV1>,
-) -> Option<Pair<Int, List<StreamFrameV1>>> {
-  when byte_at(bytes, offset) is {
-    None -> None
-    Some(first) ->
-      if first == break_byte {
-        if seen >= 2 {
-          Some(Pair(offset + 1, rest))
-        } else {
-          None
-        }
-      } else if major_of(first) != 2 {
-        None
+  next: Next,
+) -> StreamOutcomeV1 {
+  if offset >= limit {
+    StreamNonCanonical
+  } else {
+    let first = bytearray.at(bytes, offset)
+    if first == break_byte {
+      if seen >= 2 {
+        next(offset + 1, rest)
       } else {
-        when scan_head(bytes, offset) is {
-          None -> None
-          Some(Pair(next, length)) ->
-            if length == data_bytes_chunk {
-              if and {
-                next + length <= limit,
-                !leading || byte_at(bytes, next) != Some(0),
-              } {
-                Some(
-                  Pair(
-                    next + length,
-                    [ChunksFrame { seen: seen + 1, leading: False }, ..rest],
-                  ),
-                )
-              } else {
-                None
-              }
-            } else if and {
-              length > 0,
-              length < data_bytes_chunk,
-              seen >= 1,
-              byte_at(bytes, next + length) == Some(break_byte),
-            } {
-              Some(Pair(next + length + 1, rest))
-            } else {
-              None
-            }
-        }
+        StreamNonCanonical
       }
+    } else if first / 32 != 2 {
+      StreamNonCanonical
+    } else {
+      head(
+        bytes,
+        limit,
+        offset,
+        first,
+        fn(past, length) {
+          if length == data_bytes_chunk {
+            if and {
+              past + length <= limit,
+              !leading || bytearray.at(bytes, past) != 0,
+            } {
+              next(
+                past + length,
+                [ChunksFrame { seen: seen + 1, leading: False }, ..rest],
+              )
+            } else {
+              StreamNonCanonical
+            }
+          } else if and {
+            length > 0,
+            length < data_bytes_chunk,
+            seen >= 1,
+            past + length < limit,
+            bytearray.at(bytes, past + length) == break_byte,
+          } {
+            next(past + length + 1, rest)
+          } else {
+            StreamNonCanonical
+          }
+        },
+      )
+    }
   }
 }
