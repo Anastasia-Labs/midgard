@@ -70,7 +70,7 @@ validate_mithril_key_url() {
   url="$2"
   expected_network="$3"
   expected_suffix="$4"
-  if printf "%s" "$url" | grep -q "raw.githubusercontent.com/input-output-hk/mithril/"; then
+  if printf "%s" "$url" | grep -Eq "raw.githubusercontent.com/(IntersectMBO|input-output-hk)/mithril/"; then
     expected_path="/configuration/${expected_network}/${expected_suffix}"
     if ! printf "%s" "$url" | grep -q "$expected_path"; then
       echo "$var_name '$url' does not match NETWORK=$NETWORK." >&2
@@ -159,8 +159,8 @@ stage_dir="$tmp_root/stage.$$"
 resolved_cardano_network="$(normalize_cardano_network "$NETWORK")"
 mithril_network="$(resolve_mithril_network "$resolved_cardano_network")"
 default_mithril_aggregator="https://aggregator.${mithril_network}.api.mithril.network/aggregator"
-default_mithril_genesis_key_url="https://raw.githubusercontent.com/input-output-hk/mithril/main/mithril-infra/configuration/${mithril_network}/genesis.vkey"
-default_mithril_ancillary_key_url="https://raw.githubusercontent.com/input-output-hk/mithril/main/mithril-infra/configuration/${mithril_network}/ancillary.vkey"
+default_mithril_genesis_key_url="https://raw.githubusercontent.com/IntersectMBO/mithril/main/mithril-infra/configuration/${mithril_network}/genesis.vkey"
+default_mithril_ancillary_key_url="https://raw.githubusercontent.com/IntersectMBO/mithril/main/mithril-infra/configuration/${mithril_network}/ancillary.vkey"
 resolved_mithril_aggregator="${MITHRIL_AGGREGATOR_ENDPOINT:-$default_mithril_aggregator}"
 resolved_mithril_genesis_key_url="${MITHRIL_GENESIS_VERIFICATION_KEY_URL:-$default_mithril_genesis_key_url}"
 resolved_mithril_ancillary_key_url="${MITHRIL_ANCILLARY_VERIFICATION_KEY_URL:-$default_mithril_ancillary_key_url}"
