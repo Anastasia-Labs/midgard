@@ -68,6 +68,7 @@ test("every profile binds the commit-event depth and the Cardano consensus it as
     "preprod-testing": [3, 16, 3, -3],
     "local-devnet-testing": [3, 16, 3, -3],
     "preprod-emulator-testing": [8, 21, 8, 2],
+    "preprod-emulator-curated": [8, 21, 8, 2],
   };
   assert.equal(COMMIT_TTL_FUTURE_BUFFER_MS, 30_000);
   for (const [name, [depth, noStrike, feasible, production]] of Object.entries(
@@ -293,7 +294,10 @@ test("all profiles have explicit networks and independent deployment identities"
 });
 
 test("emulator-only profiles cannot be selected for generation, checks or builds", async () => {
-  assert.deepEqual(emulatorOnlyProfileNames, ["preprod-emulator-testing"]);
+  assert.deepEqual(emulatorOnlyProfileNames, [
+    "preprod-emulator-testing",
+    "preprod-emulator-curated",
+  ]);
   for (const name of emulatorOnlyProfileNames) {
     assert.ok(profileNames.includes(name));
     // Check mode writes nothing, so a missing guard fails on the message
@@ -344,6 +348,7 @@ test("every DA response window covers the minimum response budget, and the bound
     "preprod-testing": 640_000,
     "local-devnet-testing": 640_000,
     "preprod-emulator-testing": 360_000,
+    "preprod-emulator-curated": 360_000,
   };
   for (const [name, profile] of Object.entries(profiles)) {
     const budget = minimumDaResponseBudgetMs(profile);
@@ -621,17 +626,16 @@ test("every profile carries the pooled DA bond amounts and timing, rendered into
     da_bond_withdraw_delay_ms: "da_bond_withdraw_delay_ms_v1",
   };
   for (const [name, profile] of Object.entries(profiles)) {
-    const want =
-      name === "preprod-emulator-testing"
-        ? {
-            da_bond: expected.testing.da_bond,
-            timing: {
-              da_challenge_window_ms: 1_800_000,
-              da_slash_grace_ms: 300_000,
-              da_bond_withdraw_delay_ms: 15_180_000,
-            },
-          }
-        : expected[publicProfiles.includes(name) ? "public" : "testing"];
+    const want = emulatorOnlyProfileNames.includes(name)
+      ? {
+          da_bond: expected.testing.da_bond,
+          timing: {
+            da_challenge_window_ms: 1_800_000,
+            da_slash_grace_ms: 300_000,
+            da_bond_withdraw_delay_ms: 15_180_000,
+          },
+        }
+      : expected[publicProfiles.includes(name) ? "public" : "testing"];
     assert.deepEqual(profile.da_bond, want.da_bond);
     const rendered = renderAiken(profile, "");
     for (const [key, value] of Object.entries({
@@ -690,10 +694,9 @@ test("every profile's withdrawal delay meets the spec relation and the head-remo
     testing: { spec: 2_380_000, enforced: 2_380_000 },
   };
   for (const [name, original] of Object.entries(profiles)) {
-    const want =
-      name === "preprod-emulator-testing"
-        ? { spec: 3_420_000, enforced: 15_180_000 }
-        : floors[publicProfiles.includes(name) ? "public" : "testing"];
+    const want = emulatorOnlyProfileNames.includes(name)
+      ? { spec: 3_420_000, enforced: 15_180_000 }
+      : floors[publicProfiles.includes(name) ? "public" : "testing"];
     const profile = structuredClone(original);
     assert.equal(specDaBondWithdrawDelayFloorMs(profile.timing), want.spec);
     assert.equal(daBondWithdrawDelayFloorMs(profile.timing), want.enforced);
@@ -958,4 +961,24 @@ test("excluded fraud-proof categories are distinct catalogue names", () => {
     () => validateProfile(profile, "preprod-testing"),
     /profile must contain exactly/u,
   );
+});
+
+test("the curated emulator profile is the emulator profile with allow-lists and the P1 catalogue", () => {
+  const profiles = readProfiles();
+  const strip = ({
+    name: _name,
+    allow_lists: _lists,
+    excluded_fraud_proof_categories: _excluded,
+    ...rest
+  }) => rest;
+  const curated = profiles["preprod-emulator-curated"];
+  assert.deepEqual(strip(curated), strip(profiles["preprod-emulator-testing"]));
+  assert.deepEqual(
+    curated.excluded_fraud_proof_categories,
+    profiles["preprod-public"].excluded_fraud_proof_categories,
+  );
+  for (const keys of Object.values(curated.allow_lists)) {
+    assert.equal(keys.length, 1);
+    assert.ok(!isAllowListPlaceholderKey(keys[0]));
+  }
 });

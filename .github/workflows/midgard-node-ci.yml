@@ -202,10 +202,11 @@ jobs:
 
   # The blueprints only test runs read, built here once rather than in every
   # shard that reads them: the interactive-emulator one that the fault-proof
-  # and watcher suites' interactive project stamps for itself, and the two
-  # verbose-traced ones the traced-refusal step swaps modules out of. Each is
-  # built by the same code the suites would otherwise run, with its build
-  # record beside it. The consumers set MIDGARD_REQUIRE_PREBUILT_BLUEPRINTS,
+  # and watcher suites' interactive project stamps for itself, the
+  # curated-emulator one the fault-proof suite's curated project stamps, and
+  # the two verbose-traced ones the traced-refusal step swaps modules out of.
+  # Each is built by the same code the suites would otherwise run, with its
+  # build record beside it. The consumers set MIDGARD_REQUIRE_PREBUILT_BLUEPRINTS,
   # so a copy whose record no longer matches the checkout, the profile or the
   # pinned compiler fails the run rather than being rebuilt in place. The two
   # traced builds run only when the traced-refusal step below will read them:
@@ -224,6 +225,11 @@ jobs:
           - blueprint: interactive-emulator
             build: node demo/midgard-test-support/interactive-emulator.js
             directory: onchain/aiken/build/interactive-emulator
+            record: plutus.json.deployment.json
+            traced: false
+          - blueprint: curated-emulator
+            build: node demo/midgard-test-support/curated-emulator.js
+            directory: onchain/aiken/build/curated-emulator
             record: plutus.json.deployment.json
             traced: false
           - blueprint: traced-preprod-testing

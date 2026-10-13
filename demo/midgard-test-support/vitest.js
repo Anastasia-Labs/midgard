@@ -346,3 +346,8 @@ export {
   interactiveEmulatorSetup,
   interactiveEmulatorPlugin,
 } from "./interactive-emulator.js";
+export {
+  curatedEmulatorBlueprint,
+  curatedEmulatorSetup,
+  curatedEmulatorPlugin,
+} from "./curated-emulator.js";

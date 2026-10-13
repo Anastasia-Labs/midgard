@@ -11,6 +11,7 @@ import {
   Lucid,
   type Script,
   type UTxO,
+  walletFromSeed,
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { expect } from "vitest";
@@ -158,6 +159,27 @@ export const runEmulatorLifecycleStage = async <T>(
 };
 
 /**
+ * An emulator account at `seedPhrase`'s base address, as
+ * `generateEmulatorAccount` derives it, or a fresh one without a seed.
+ */
+export const emulatorAccountFromSeed = (
+  lovelace: bigint,
+  seedPhrase: string | undefined,
+): EmulatorAccount =>
+  seedPhrase === undefined
+    ? generateEmulatorAccount({ lovelace })
+    : {
+        seedPhrase,
+        address: walletFromSeed(seedPhrase, {
+          addressType: "Base",
+          accountIndex: 0,
+          network: "Custom",
+        }).address,
+        assets: { lovelace },
+        privateKey: "",
+      };
+
+/**
  * A prover account funded at the address the PROVER SIGNER resolves.
  *
  * `resolveProverSigner` derives the seed's enterprise address — the
@@ -169,8 +191,9 @@ export const runEmulatorLifecycleStage = async <T>(
  */
 export const fundedProverEmulatorAccount = (
   lovelace: bigint,
+  seedPhrase?: string,
 ): EmulatorAccount => {
-  const account = generateEmulatorAccount({ lovelace });
+  const account = emulatorAccountFromSeed(lovelace, seedPhrase);
   return {
     ...account,
     address: resolveProverSigner({

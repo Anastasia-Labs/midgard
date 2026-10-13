@@ -23,11 +23,22 @@ export const profileNames = [
   "preprod-testing",
   "local-devnet-testing",
   "preprod-emulator-testing",
+  "preprod-emulator-curated",
 ];
-const networks = ["Mainnet", "Preprod", "Preprod", "Custom", "Preprod"];
+const networks = [
+  "Mainnet",
+  "Preprod",
+  "Preprod",
+  "Custom",
+  "Preprod",
+  "Preprod",
+];
 // Generated and compiled for the interactive Vitest projects only; never the
 // checkout's selected deployment, and never built as the default blueprint.
-export const emulatorOnlyProfileNames = ["preprod-emulator-testing"];
+export const emulatorOnlyProfileNames = [
+  "preprod-emulator-testing",
+  "preprod-emulator-curated",
+];
 const timingConstants = {
   block_maturity_ms: "block_maturity_duration_v1",
   dispute_response_window_ms: "response_window_milliseconds",
@@ -375,9 +386,11 @@ export const validateProfile = (profile, name) => {
     Object.keys(economicsConstants),
     "economics",
   );
-  const expectedEconomics = name.endsWith("testing")
-    ? "bounded-acceptance-v1"
-    : "public-preprod-launch-v1";
+  // Emulator-only profiles are test deployments: bounded economics.
+  const expectedEconomics =
+    name.endsWith("testing") || emulatorOnlyProfileNames.includes(name)
+      ? "bounded-acceptance-v1"
+      : "public-preprod-launch-v1";
   if (profile.economics.profile !== expectedEconomics)
     throw new Error(`economics.profile must equal ${expectedEconomics}`);
   validateAllowLists(profile.allow_lists, name);

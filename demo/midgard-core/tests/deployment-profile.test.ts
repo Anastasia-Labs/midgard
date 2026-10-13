@@ -114,5 +114,9 @@ describe("deployment profile binding", () => {
       expect(DEPLOYMENT_PROFILES[name].excluded_fraud_proof_categories).toEqual(
         [],
       );
+    expect(
+      DEPLOYMENT_PROFILES["preprod-emulator-curated"]
+        .excluded_fraud_proof_categories,
+    ).toEqual(excluded);
   });
 });

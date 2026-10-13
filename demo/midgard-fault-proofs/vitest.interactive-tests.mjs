@@ -22,3 +22,10 @@ export const interactiveTests = [
   "./tests/submit-init-emulator-soundness*.test.ts",
   "./tests/submit-init-emulator-transition-trace-final-deep-deposit.test.ts",
 ];
+
+/**
+ * The test files the curated-emulator Vitest project runs, against a blueprint
+ * compiled for `preprod-emulator-curated` (stage-0 allow-lists and the P1
+ * fraud-proof catalogue). No other project runs them.
+ */
+export const curatedTests = ["./tests/curated-emulator-*.test.ts"];

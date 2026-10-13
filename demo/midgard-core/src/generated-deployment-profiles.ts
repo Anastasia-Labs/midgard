@@ -294,6 +294,74 @@ export const DEPLOYMENT_PROFILES = {
     },
     excluded_fraud_proof_categories: [],
   },
+  "preprod-emulator-curated": {
+    name: "preprod-emulator-curated",
+    network: "Preprod",
+    l1_finality: {
+      confirmation_depth: 3,
+      commit_event_depth: 8,
+      security_parameter: 2160,
+      active_slot_coeff: "0.05",
+      slot_length_ms: 1000,
+    },
+    timing: {
+      block_maturity_ms: 14400000,
+      dispute_response_window_ms: 60000,
+      operator_shift_ms: 1800000,
+      registration_ms: 30000,
+      event_wait_ms: 600000,
+      user_events_negligence_timeout_ms: 1200000,
+      new_shift_inactivity_grace_period_ms: 480000,
+      max_validity_range_ms: 480000,
+      da_attestation_timeout_ms: 600000,
+      da_small_response_window_ms: 720000,
+      da_full_response_window_ms: 840000,
+      da_challenge_window_ms: 1800000,
+      da_slash_grace_ms: 300000,
+      da_bond_withdraw_delay_ms: 15180000,
+    },
+    da_bond: {
+      da_bond_lovelace: 500000000,
+      da_slash_penalty_lovelace: 100000000,
+      da_bond_min_top_up_lovelace: 5000000,
+      da_bond_pool_floor_lovelace: 5000000,
+      challenge_record_lovelace: 27000000,
+    },
+    limits: {
+      max_bisection_rounds: 32,
+      max_inactivity_strikes: 5,
+      coins_per_utxo_byte: 4310,
+    },
+    economics: {
+      profile: "bounded-acceptance-v1",
+      requiredBondLovelace: 900000000,
+      slashingPenaltyLovelace: 500000000,
+      inactivitySlashingPenaltyLovelace: 100000000,
+      fraudProverRewardLovelace: 400000000,
+      proverCollateralFloorLovelace: 5000000,
+    },
+    allow_lists: {
+      operators: ["8372d26e23e36568f931b8e3a418ca29dc545054f017548733c78198"],
+      fraud_provers: [
+        "d429435c9f332ef50d6fc8f5694bd256a36740da3d21e83aade0594f",
+      ],
+      da_challengers: [
+        "3bd3eb08b8fb0166ddaa1cbe99248f88d6a749387740a7e6e1548d9b",
+      ],
+    },
+    excluded_fraud_proof_categories: [
+      "validationTraceDispute",
+      "executionSourceScriptDecoding",
+      "receivePurposeLanguage",
+      "unusedScriptWitness",
+      "missingScriptSource",
+      "missingRedeemer",
+      "unusedRedeemer",
+      "executionNativeScriptInvalid",
+      "scriptIntegrityHashMismatch",
+      "distinctAssetAccumulationLimit",
+    ],
+  },
 } as const;
 
 export const DEPLOYMENT_PROFILE_DIGESTS = {
@@ -306,6 +374,8 @@ export const DEPLOYMENT_PROFILE_DIGESTS = {
     "c63ff08d2de8e7a6b3b11bb7ad4968384255f346d4a53802cfa1568c5538a1c7",
   "preprod-emulator-testing":
     "bd41ec42bd1291a8940d05b21f39e358a1e310f4f9066b5de366defc96c24219",
+  "preprod-emulator-curated":
+    "9a952b78f360b86919313225fbce6460c2753ce47b40abd3f98547716008b5dc",
 } as const;
 
 export const DEPLOYMENT_MANIFEST_ECONOMICS_BY_PROFILE = {
