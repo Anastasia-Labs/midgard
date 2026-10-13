@@ -8,12 +8,14 @@ import {
   withdrawalClaimsValid,
   withdrawalInfoBytes,
   withdrawalMistagDirection,
-  withdrawalMistagExactPayoutOutputBytes,
-  withdrawalMistagMinimumLovelace,
-  withdrawalMistagPayable,
   WithdrawalMistagStep04Datum,
   withdrawalMistagThreadTokenAssetName,
 } from "../src/fraud-proof/withdrawal-mistag.js";
+import {
+  withdrawalMistagExactPayoutOutputBytes,
+  withdrawalMistagMinimumLovelace,
+  withdrawalMistagPayable,
+} from "../src/fraud-proof/withdrawal-payability.js";
 import type { WithdrawalBody, WithdrawalInfo } from "../src/ledger-state.js";
 
 const HEADER_HASH = "14".repeat(28);
@@ -71,13 +73,13 @@ describe("withdrawal-mistag V1", () => {
   it("matches the Aiken no-datum, enterprise-address output-size vector", () => {
     expect(
       withdrawalMistagExactPayoutOutputBytes({
-        body: body(1_000_000n),
+        bodyCbor: withdrawalBodyBytes(body(1_000_000n)),
         cardanoValueSize: 5n,
       }),
     ).toBe(39n);
     expect(
       withdrawalMistagMinimumLovelace({
-        body: body(1_000_000n),
+        bodyCbor: withdrawalBodyBytes(body(1_000_000n)),
         cardanoValueSize: 5n,
       }),
     ).toBe(857_690n);
@@ -87,7 +89,7 @@ describe("withdrawal-mistag V1", () => {
     const base = body(1_000_000n);
     expect(
       withdrawalMistagExactPayoutOutputBytes({
-        body: {
+        bodyCbor: withdrawalBodyBytes({
           ...base,
           l1_address: {
             ...base.l1_address,
@@ -96,13 +98,13 @@ describe("withdrawal-mistag V1", () => {
             },
           },
           l1_datum: { DatumHash: { hash: "33".repeat(32) } },
-        },
+        }),
         cardanoValueSize: 5n,
       }),
     ).toBe(104n);
     expect(
       withdrawalMistagExactPayoutOutputBytes({
-        body: {
+        bodyCbor: withdrawalBodyBytes({
           ...base,
           l1_address: {
             ...base.l1_address,
@@ -114,27 +116,27 @@ describe("withdrawal-mistag V1", () => {
               },
             },
           },
-        },
+        }),
         cardanoValueSize: 5n,
       }),
     ).toBe(45n);
     expect(
       withdrawalMistagExactPayoutOutputBytes({
-        body: {
+        bodyCbor: withdrawalBodyBytes({
           ...base,
           l1_datum: { InlineDatum: { data: 42n } },
-        },
+        }),
         cardanoValueSize: 5n,
       }),
     ).toBe(47n);
     expect(
       withdrawalMistagExactPayoutOutputBytes({
-        body: {
+        bodyCbor: withdrawalBodyBytes({
           ...base,
           l1_datum: {
             InlineDatum: { data: new Map<bigint, bigint>([[1n, 2n]]) },
           },
-        },
+        }),
         cardanoValueSize: 5n,
       }),
     ).toBe(48n);
@@ -142,10 +144,18 @@ describe("withdrawal-mistag V1", () => {
 
   it("accepts exact minimum and refuses one lovelace below", () => {
     expect(
-      withdrawalMistagPayable({ body: body(857_690n), cardanoValueSize: 5n }),
+      withdrawalMistagPayable({
+        bodyCbor: withdrawalBodyBytes(body(857_690n)),
+        lovelace: 857_690n,
+        cardanoValueSize: 5n,
+      }),
     ).toBe(true);
     expect(
-      withdrawalMistagPayable({ body: body(857_689n), cardanoValueSize: 5n }),
+      withdrawalMistagPayable({
+        bodyCbor: withdrawalBodyBytes(body(857_689n)),
+        lovelace: 857_689n,
+        cardanoValueSize: 5n,
+      }),
     ).toBe(false);
   });
 

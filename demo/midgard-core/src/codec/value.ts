@@ -230,3 +230,9 @@ export const midgardValueToCmlValue = (value: MidgardValue): CML.Value => {
     ? CML.Value.from_coin(value.lovelace)
     : CML.Value.new(value.lovelace, multiasset);
 };
+
+/** The byte length of `value` as one Cardano output carries it: the ledger
+ * descriptor's `cardano_value_size`, which the value-size cap and the
+ * withdrawal payout size both read. */
+export const midgardCardanoValueCborLength = (value: MidgardValue): number =>
+  midgardValueToCmlValue(value).to_cbor_bytes().length;

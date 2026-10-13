@@ -54,6 +54,12 @@ const twoPoliciesOutOfOrderCbor = [
   "40a1401a006acfc0",
   `581c${lowPolicy}a1410103`,
 ].join("");
+/** An inline l1_datum of 1,500 bytes (in Plutus Data's 64-byte chunks): the
+ * L1 payout output it makes needs more than the 7 ADA withdrawn. */
+const longInlineDatumCbor = `d87b9f5f${[
+  ...Array.from({ length: 23 }, () => `5840${"cd".repeat(64)}`),
+  `581c${"cd".repeat(28)}`,
+].join("")}ffff`;
 const ada = (quantity: bigint) =>
   ["", new Map([["", quantity]])] as [string, Map<string, bigint>];
 
@@ -70,6 +76,8 @@ const fixture = async (
     readonly requested?: SDK.Value;
     /** The requested l2_value as these exact bytes, in the signed body. */
     readonly requestedCbor?: string;
+    /** The l1_datum as these exact bytes, in the signed body. */
+    readonly l1DatumCbor?: string;
     readonly malformedValue?: boolean;
     readonly malformedEvent?: boolean;
     readonly malformedLedger?: boolean;
@@ -99,12 +107,21 @@ const fixture = async (
     l1_datum: "NoDatum",
   };
   const bodyCbor =
-    options.requestedCbor === undefined
+    options.requestedCbor === undefined && options.l1DatumCbor === undefined
       ? undefined
-      : replacePlutusConstrFieldCbor(
+      : [
+          [2, options.requestedCbor],
+          [4, options.l1DatumCbor],
+        ].reduce(
+          (cbor, [field, replacement]) =>
+            replacement === undefined
+              ? cbor
+              : replacePlutusConstrFieldCbor(
+                  cbor,
+                  [field as number],
+                  replacement as string,
+                ),
           Data.to(body, SDK.WithdrawalBody),
-          [2],
-          options.requestedCbor,
         );
   const info: SDK.WithdrawalInfo = {
     body,
@@ -143,7 +160,10 @@ const fixture = async (
       ? Buffer.from("00", "hex")
       : Buffer.from(options.requestedCbor ?? Data.to(value, SDK.Value), "hex"),
     l1_address: Buffer.from(Data.to(body.l1_address, SDK.AddressData), "hex"),
-    l1_datum: Buffer.from(Data.to(body.l1_datum, SDK.CardanoDatum), "hex"),
+    l1_datum: Buffer.from(
+      options.l1DatumCbor ?? Data.to(body.l1_datum, SDK.CardanoDatum),
+      "hex",
+    ),
     refund_address: Buffer.alloc(0),
     refund_datum: Buffer.alloc(0),
     validity: null,
@@ -214,6 +234,12 @@ describe("withdrawal classification semantics", () => {
       name: "100 non-ADA assets besides lovelace",
       options: { tokenCount: 100 },
       validity: "WithdrawalIsValid",
+    },
+    {
+      // Step-04: the L1 payout output must meet its min-ADA.
+      name: "an inline datum whose payout output needs more ADA",
+      options: { l1DatumCbor: longInlineDatumCbor },
+      validity: "UnpayableWithdrawalValue",
     },
     {
       name: "101 non-ADA assets besides lovelace",
@@ -360,6 +386,11 @@ describe("withdrawal classification semantics", () => {
         reason: "invalid_signature",
         public_key_hash: owner,
       });
+    } else if (validity === "UnpayableWithdrawalValue") {
+      expect(result.validityDetail).toEqual({
+        cardano_value_size: "5",
+        lovelace: "7000000",
+      });
     } else {
       expect(result.validityDetail).toEqual({});
     }
@@ -436,6 +467,16 @@ describe("withdrawal classification in trace order", () => {
     expect(await verdicts({ badSignature: true }, {})).toEqual([
       "IncorrectWithdrawalSignature",
       "WithdrawalIsValid",
+    ]);
+  });
+
+  it("leaves the outref for a valid order after an unpayable one", async () => {
+    expect(
+      await verdicts({ l1DatumCbor: longInlineDatumCbor }, {}, {}),
+    ).toEqual([
+      "UnpayableWithdrawalValue",
+      "WithdrawalIsValid",
+      "NonExistentWithdrawalUtxo",
     ]);
   });
 

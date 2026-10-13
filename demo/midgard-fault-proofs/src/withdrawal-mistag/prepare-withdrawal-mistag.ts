@@ -293,14 +293,16 @@ export const prepareWithdrawalMistag = async ({
     authenticatedLedgerEvidence = ledgerEvidence;
   }
 
+  const bodyCbor = SDK.withdrawalBodyBytes(info.body);
   const payable = SDK.withdrawalMistagPayable({
-    body: info.body,
+    bodyCbor,
+    lovelace: SDK.withdrawalMistagLovelace(info.body),
     cardanoValueSize,
   });
   const actualValid = outputPresent && coreValid && payable;
   const claimedValid = SDK.withdrawalClaimsValid(info);
   const exactOutputBytes = SDK.withdrawalMistagExactPayoutOutputBytes({
-    body: info.body,
+    bodyCbor,
     cardanoValueSize,
   });
   return {
@@ -323,7 +325,7 @@ export const prepareWithdrawalMistag = async ({
     actualValid,
     exactOutputBytes,
     requiredLovelace: SDK.withdrawalMistagMinimumLovelace({
-      body: info.body,
+      bodyCbor,
       cardanoValueSize,
     }),
     direction: SDK.withdrawalMistagDirection({ claimedValid, actualValid }),

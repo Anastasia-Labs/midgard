@@ -14,7 +14,7 @@ import {
   MIDGARD_NATIVE_TX_VERSION,
 } from "./codec/native-constants.js";
 import { decodeMidgardTxOutput } from "./codec/output.js";
-import { midgardValueToCmlValue } from "./codec/value.js";
+import { midgardCardanoValueCborLength } from "./codec/value.js";
 import {
   decodeMidgardVersionedScriptEnvelope,
   decodeMidgardVersionedScriptListPreimage,
@@ -225,9 +225,7 @@ export const validateMidgardConsensusTx = (
       );
     }
     const output = decodeMidgardTxOutput(outputCbors[index]!);
-    const cardanoValueBytes = midgardValueToCmlValue(
-      output.value,
-    ).to_cbor_bytes().length;
+    const cardanoValueBytes = midgardCardanoValueCborLength(output.value);
     if (cardanoValueBytes > limits.maxOutputValueCborBytes) {
       return violation(
         "E_VALUE_SIZE",
@@ -312,8 +310,7 @@ const validateMidgardForcedTxAdmission = (
   );
   for (let index = 0; index < outputs.length; index += 1) {
     const output = decodeMidgardTxOutput(outputs[index]!);
-    const valueSize = midgardValueToCmlValue(output.value).to_cbor_bytes()
-      .length;
+    const valueSize = midgardCardanoValueCborLength(output.value);
     if (valueSize > MIDGARD_CONSENSUS_LIMITS.maxOutputValueCborBytes) {
       return violation(
         "E_VALUE_SIZE",

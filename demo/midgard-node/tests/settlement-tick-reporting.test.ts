@@ -38,6 +38,12 @@ import {
   settlementCall,
   settlementCauseDetail,
 } from "../src/services/settlement-call.js";
+import { settlementStuckDetail } from "../src/services/settlement-readiness.js";
+import {
+  SETTLEMENT_JOB_FAILURE_CAP,
+  SETTLEMENT_STUCK_RETRY_MS,
+  settlementRetryDelayMs,
+} from "../src/services/settlement-retry.js";
 import { runSettlementWorker } from "../src/workers/settlement.run-settlement-worker.js";
 import { openFollowerWriteGate } from "./helpers/follower-write-gate.js";
 import { withoutFollowerJournal } from "./helpers/intent-journal.js";
@@ -110,6 +116,8 @@ type L1 = {
   readonly unbuilt?: boolean;
   /** The body's validity bound (default slot 120, above the indexer tip). */
   readonly ttl?: bigint;
+  /** The job's consecutive failures before this tick (default 0). */
+  readonly failures?: number;
 };
 
 /** Runs the worker program over one pending body (or one queued job) until
@@ -129,7 +137,9 @@ const firstTick = (l1: (attempt: Journal.SettlementAttempt) => L1) =>
     const sql = yield* SqlClient.SqlClient;
     yield* sql`INSERT INTO settlement_jobs (deployment_id, kind, event_id, phase)
       VALUES (${deploymentId}, ${attempt.kind}, ${attempt.event_id}, ${attempt.phase})`;
-    const { transactionStatus, submitTx, utxosAt, unbuilt } = l1(attempt);
+    const { transactionStatus, submitTx, utxosAt, unbuilt, failures } =
+      l1(attempt);
+    yield* sql`UPDATE settlement_jobs SET failures = ${failures ?? 0}`;
     yield* Journal.renew(owner);
     if (unbuilt !== true)
       yield* Journal.saveAttempt(owner, attempt, Effect.void);
@@ -173,8 +183,20 @@ const firstTick = (l1: (attempt: Journal.SettlementAttempt) => L1) =>
       throw new Error(`no tick report: ${JSON.stringify(reports)}`);
     const jobs = yield* sql<{
       last_error: string | null;
-    }>`SELECT last_error FROM settlement_jobs`;
-    return { report, reports, attempt, lastError: jobs[0]?.last_error };
+      failures: number;
+      due_in_ms: number;
+    }>`SELECT last_error, failures,
+      (EXTRACT(EPOCH FROM due_at - clock_timestamp()) * 1000)::float8 AS due_in_ms
+      FROM settlement_jobs`;
+    return {
+      report,
+      reports,
+      attempt,
+      owner,
+      lastError: jobs[0]?.last_error,
+      failures: jobs[0]?.failures,
+      dueInMs: jobs[0]?.due_in_ms,
+    };
   });
 
 /** Runs `program` as the settlement worker thread runs its program, through
@@ -223,6 +245,76 @@ describe("settlement tick reporting", () => {
     expect(report.detail).toBe(lastError);
     expect(report.tickCompleted).toBeUndefined();
   }, 30_000);
+
+  it("doubles the backoff up to the cap, then retries a stuck job hourly", () => {
+    expect(
+      Array.from({ length: SETTLEMENT_JOB_FAILURE_CAP + 1 }, (_, failures) =>
+        settlementRetryDelayMs(failures),
+      ),
+    ).toEqual([
+      5_000,
+      10_000,
+      20_000,
+      40_000,
+      80_000,
+      160_000,
+      320_000,
+      SETTLEMENT_STUCK_RETRY_MS,
+      SETTLEMENT_STUCK_RETRY_MS,
+    ]);
+  });
+
+  it("backs off a failing job, then marks it stuck at the cap and moves on", async () => {
+    const tick = (failures: number) =>
+      run(
+        withoutFollowerJournal(
+          firstTick(() => ({
+            unbuilt: true,
+            failures,
+            submitTx: () => Promise.reject(new Error("never reached")),
+          })),
+        ),
+      );
+    // Below the cap: the failure is counted and retried after its backoff.
+    const early = await tick(2);
+    expect(early.failures).toBe(3);
+    expect(early.dueInMs).toBeGreaterThan(15_000);
+    expect(early.dueInMs).toBeLessThanOrEqual(20_000);
+    expect(
+      await run(Journal.stuckJobs(deploymentId, SETTLEMENT_JOB_FAILURE_CAP)),
+    ).toEqual({ count: 0, first: undefined });
+
+    // The failure that reaches the cap: stuck, retried only hourly, and
+    // named for /readyz.
+    await run(
+      Effect.gen(function* () {
+        yield* resetApplicationTables;
+        yield* openFollowerWriteGate;
+      }),
+    );
+    const capped = await tick(SETTLEMENT_JOB_FAILURE_CAP - 1);
+    expect(capped.failures).toBe(SETTLEMENT_JOB_FAILURE_CAP);
+    expect(capped.dueInMs).toBeGreaterThan(SETTLEMENT_STUCK_RETRY_MS - 60_000);
+    expect(capped.dueInMs).toBeLessThanOrEqual(SETTLEMENT_STUCK_RETRY_MS);
+    const stuck = await run(
+      Journal.stuckJobs(deploymentId, SETTLEMENT_JOB_FAILURE_CAP),
+    );
+    expect(stuck.count).toBe(1);
+    expect(settlementStuckDetail(stuck)).toBe(
+      `settlement_jobs_stuck:1:withdrawal:${EVENT_ID}:initialize:${(capped.lastError!.split("\n", 1)[0] ?? "").trim().slice(0, 160)}`,
+    );
+
+    // The node's other settlement jobs keep moving past the stuck one.
+    const next = await run(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* sql`INSERT INTO settlement_jobs (deployment_id, kind, event_id, phase)
+          VALUES (${deploymentId}, 'deposit', ${"dd".repeat(34)}, 'absorb')`;
+        return yield* Journal.nextJob(capped.owner);
+      }),
+    );
+    expect(next).toMatchObject({ kind: "deposit", event_id: "dd".repeat(34) });
+  }, 60_000);
 
   it("names a failing status read with the provider's message", async () => {
     const { report, attempt } = await run(

@@ -15,9 +15,9 @@ import {
   encodeMidgardVersionedScript,
   hashMidgardVersionedScript,
   MIDGARD_MAX_OUTPUT_INDEX,
+  midgardCardanoValueCborLength,
   MidgardScriptHashPrefixes,
   type MidgardTxOutput,
-  midgardValueToCmlValue,
   MidgardVersionedScriptTags,
 } from "@al-ft/midgard-core/codec";
 import { DataConstr } from "@harmoniclabs/plutus-data";
@@ -122,8 +122,7 @@ const ledgerOutputMaterial = ({
       lovelace: output.value.lovelace,
       assetCount: assets.count,
       assetFrontierCommitment: assets.commitment,
-      cardanoValueSize: midgardValueToCmlValue(output.value).to_cbor_bytes()
-        .length,
+      cardanoValueSize: midgardCardanoValueCborLength(output.value),
       referenceScriptLanguage: referenceScript?.language ?? -1,
       referenceScriptHash: Buffer.from(referenceScript?.hash ?? "", "hex"),
       referenceScriptTotalLength: scriptItem?.bytes.length ?? 0,
