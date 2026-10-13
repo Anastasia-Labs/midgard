@@ -126,9 +126,6 @@ export const retainHistoryTransactions = async (
   const descriptors = retained.flatMap(
     (block) => block.payload.block_body.validation_traces,
   );
-  const witnesses = retained.flatMap(
-    (block) => block.payload.block_body.validation_trace_witnesses,
-  );
   const transitions: SDK.DaPayloadEntry[] = retained.map((block, index) => {
     const source = block.payload.block_body.transition_trace[0];
     if (source === undefined)
@@ -182,7 +179,7 @@ export const retainHistoryTransactions = async (
         transitionStepCount: BigInt(transitions.length),
       },
       validation_traces: sorted(descriptors),
-      validation_trace_witnesses: sorted(witnesses),
+      validation_trace_witnesses: [],
       transition_trace: sorted(transitions),
     },
   };

@@ -137,26 +137,6 @@ export const buildJourneyTransactionSourceFault = async (
   const validationTraces = control.payload.block_body.validation_traces.map(
     ([, value]): SDK.DaPayloadEntry => [eventKeyHex, value],
   );
-  // A retained field-source witness binds the control transaction's
-  // identity, which the source fault changes; drop it rather than re-key it.
-  const validationWitnesses =
-    control.payload.block_body.validation_trace_witnesses
-      .filter(
-        ([, value]) =>
-          SDK.retainedValidationFieldSource(
-            SDK.decodeRetainedValidationWitness(Buffer.from(value, "hex"))
-              .auxiliary,
-          ) === undefined,
-      )
-      .map(
-        ([key, value]): SDK.DaPayloadEntry => [
-          SDK.encodeRetainedValidationWitnessKey({
-            ...SDK.decodeRetainedValidationWitnessKey(Buffer.from(key, "hex")),
-            event_key: eventKey,
-          }).toString("hex"),
-          value,
-        ],
-      );
   const transitions = control.payload.block_body.transition_trace.map(
     ([key, value]): SDK.DaPayloadEntry => [
       key,
@@ -199,7 +179,7 @@ export const buildJourneyTransactionSourceFault = async (
       transactions: [[txId, sourceBytes.toString("hex")]],
       event_to_step: eventToStep,
       validation_traces: validationTraces,
-      validation_trace_witnesses: validationWitnesses,
+      validation_trace_witnesses: [],
       transition_trace: transitions,
       transaction_preimages: [[txId, canonicalCbor.toString("hex")]],
     },
