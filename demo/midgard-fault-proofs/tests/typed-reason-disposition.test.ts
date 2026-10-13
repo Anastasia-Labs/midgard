@@ -1,3 +1,4 @@
+import { DEPLOYMENT_PROFILES } from "@al-ft/midgard-core/deployment-profile";
 import {
   FRAUD_PROOF_CATALOGUE_CATEGORY_IDS,
   RejectionReasonSchema,
@@ -64,15 +65,54 @@ describe("typed rejection-reason disposition", () => {
     expect(NON_INTERACTIVE_DIRECT_CATEGORIES).toHaveLength(35);
   });
 
-  it("pins the runner-registry residue the program closure must empty", () => {
-    // Program closure (§8 step 5) requires this list to be empty: every
-    // non-interactive typed reason routes to a category with a compiled
-    // production runner. Keep it empty, never grow it.
+  it("keeps excluded global routes explicit and closes every supported direct route", () => {
+    const installed = Object.keys(WORKFLOW_RUNNER_FACTORIES);
+    const excluded =
+      DEPLOYMENT_PROFILES["preprod-public"].excluded_fraud_proof_categories;
+    // The complete global taxonomy keeps these P1-excluded routes visible.
+    // Their workflows retired because DA carries no validation-trace states.
+    expect(missingNonInteractiveInstallations(installed)).toEqual([
+      "ScriptSourceMissing -> missingScriptSource",
+      "RedeemerMissing -> missingRedeemer",
+      "UnusedScriptWitness -> unusedScriptWitness",
+      "UnusedRedeemer -> unusedRedeemer",
+      "ExecutionNativeScriptMalformed -> executionSourceScriptDecoding",
+      "ExecutionNativeScriptNodeLimit -> executionSourceScriptDecoding",
+      "ExecutionNativeScriptDepthLimit -> executionSourceScriptDecoding",
+      "ExecutionNativeScriptFalse -> executionNativeScriptInvalid",
+      "ScriptIntegrityHashMismatch -> scriptIntegrityHashMismatch",
+      "ReceivePurposePlutusV3Forbidden -> receivePurposeLanguage",
+      "InputAssetAccumulationLimit -> distinctAssetAccumulationLimit",
+      "OutputAssetAccumulationLimit -> distinctAssetAccumulationLimit",
+      "MintAssetAccumulationLimit -> distinctAssetAccumulationLimit",
+    ]);
     expect(
-      missingNonInteractiveInstallations(
-        Object.keys(WORKFLOW_RUNNER_FACTORIES),
-      ),
+      missingNonInteractiveInstallations([...installed, ...excluded]),
     ).toEqual([]);
+    // The strict global guard still refuses this incomplete global surface.
+    expect(() =>
+      assertNonInteractiveReasonsInstalled({
+        surface: "global registry",
+        installedCategories: installed,
+      }),
+    ).toThrow(/ScriptSourceMissing -> missingScriptSource/u);
+  });
+
+  it("refuses an omitted supported category with every P1 exclusion accounted for", () => {
+    const excluded =
+      DEPLOYMENT_PROFILES["preprod-public"].excluded_fraud_proof_categories;
+    const installed = Object.keys(WORKFLOW_RUNNER_FACTORIES).filter(
+      (category) => category !== "minFee",
+    );
+    expect(
+      missingNonInteractiveInstallations([...installed, ...excluded]),
+    ).toEqual(["FeeBelowMinimum -> minFee"]);
+    expect(() =>
+      assertNonInteractiveReasonsInstalled({
+        surface: "supported registry",
+        installedCategories: [...installed, ...excluded],
+      }),
+    ).toThrow(/FeeBelowMinimum -> minFee/u);
   });
 
   it("lists every omission when a surface lacks a direct category", () => {
