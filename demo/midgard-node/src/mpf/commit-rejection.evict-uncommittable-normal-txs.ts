@@ -82,6 +82,15 @@ const RESOURCE_EXHAUSTION =
 // The depth a transaction drives evaluation to is the transaction's own.
 const STACK_OVERFLOW = /^Maximum call stack size exceeded$/u;
 const MAX_ERROR_NESTING = 5;
+// Read structurally: packages that compile this module without DOM lib types
+// have no WebAssembly global in scope.
+const WASM_RUNTIME_ERROR = (
+  globalThis as {
+    readonly WebAssembly?: {
+      readonly RuntimeError?: abstract new (...args: never[]) => Error;
+    };
+  }
+).WebAssembly?.RuntimeError;
 
 const isNodeFaultError = (error: unknown, depth: number): boolean => {
   if (depth > MAX_ERROR_NESTING || error === null || error === undefined)
@@ -90,8 +99,7 @@ const isNodeFaultError = (error: unknown, depth: number): boolean => {
   if (typeof error !== "object") return false;
   if (
     (error instanceof RangeError && !STACK_OVERFLOW.test(error.message)) ||
-    (typeof WebAssembly !== "undefined" &&
-      error instanceof WebAssembly.RuntimeError)
+    (WASM_RUNTIME_ERROR !== undefined && error instanceof WASM_RUNTIME_ERROR)
   )
     return true;
   const { _tag, message, cause } = error as {
