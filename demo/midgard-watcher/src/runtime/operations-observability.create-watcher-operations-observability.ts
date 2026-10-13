@@ -1,6 +1,7 @@
 import type { WatcherFaultProofSupervisor } from "../fault-proofs/fault-proof-supervisor.js";
 import { watcherDecisionHoldReason } from "../fault-proofs/watcher-decision-hold.js";
 import type { WatcherRetainedDaTransportStatus } from "../storage/retained-da-runtime.js";
+import type { WatcherSubmissionModes } from "./observe-and-prepare.js";
 import {
   createWatcherAlertBook,
   WATCHER_DA_FETCH_ALERT_MAXIMUM_AGE_MS,
@@ -59,6 +60,8 @@ export const createWatcherOperationsObservability = (input: {
     count: number;
     detail: string;
   }>[];
+  /** The watcher's submission mode per key (`observe_and_prepare`). */
+  readonly submissionModes?: () => WatcherSubmissionModes;
   readonly nowMs?: () => bigint;
   readonly monotonicNowMs?: () => number;
   readonly l1FreshnessMaximumAgeMs?: number;
@@ -452,6 +455,7 @@ export const createWatcherOperationsObservability = (input: {
         Object.fromEntries(l1Degradations().map((d) => [d.reason, d.count])),
       ),
       l1Readiness: countWatcherReadinessReasons(input.l1Readiness?.() ?? []),
+      submissionModes: input.submissionModes?.() ?? null,
     });
   };
 

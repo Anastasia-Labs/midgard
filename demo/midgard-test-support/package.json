@@ -69,6 +69,7 @@
     "workspace-bundle-guard.js",
     "blueprint-stamp-setup.js",
     "interactive-emulator.js",
+    "curated-emulator.js",
     "database-identity.js",
     "database-identity.d.ts",
     "duration-shards.js",

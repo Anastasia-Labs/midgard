@@ -441,6 +441,7 @@ export const DEPLOYMENT_MANIFEST_CONTRACT_NAMES = Object.freeze([
   "fraudProofTransactionOutputNonCanonicalStep02",
   "fraudProofMintItemNonCanonicalStep02",
   "fraudProofTransactionOutputNonCanonicalStep03",
+  "fraudProofTransactionOutputNonCanonicalStep03Datum",
   "fraudProofMintItemNonCanonicalStep03",
   "fraudProofTransactionOutputNonCanonicalStep04",
   "fraudProofMintItemNonCanonicalStep04",

@@ -64,6 +64,8 @@ describe("Q39 fabricated-deposit submit-side re-derivation", () => {
     const handoff = await deriveFabricatedDepositStep01Handoff({
       stateQueuePolicyId: h28(0x15),
       header: fixture.header,
+      // A catch-up node: committed after the header's covered end.
+      blockTime: fixture.header.endTime + 1_000n,
       headerHash: fixture.headerHash,
       inclusion,
     });
@@ -76,6 +78,7 @@ describe("Q39 fabricated-deposit submit-side re-derivation", () => {
       challenged_header_hash: fixture.headerHash,
       header_start_time: HEADER_START_TIME,
       header_end_time: HEADER_END_TIME,
+      header_block_time: HEADER_END_TIME + 1_000n,
       committed_deposit_id: AUTHENTIC_DEPOSIT_ID,
       committed_deposit_info_hash: HASH_DIVERTED_DEPOSIT_INFO,
     });
@@ -84,6 +87,7 @@ describe("Q39 fabricated-deposit submit-side re-derivation", () => {
       deriveFabricatedDepositStep01Handoff({
         stateQueuePolicyId: h28(0x15),
         header: fixture.header,
+        blockTime: fixture.header.endTime,
         headerHash: fixture.headerHash,
         inclusion: { ...inclusion, depositsPhasRoot: FI_DEPOSITS_PHAS_ROOT },
       }),

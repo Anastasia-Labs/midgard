@@ -27,6 +27,7 @@ use midgard/operator_directory.{SlashOperatorForBadState}
 use midgard/operator_directory/active_operators
 use midgard/operator_directory/retired_operators
 use midgard/scheduler
+use midgard/script_context_v1.{L1SlotConfigV1}
 use midgard/settlement
 use midgard/state_queue.{
   AttachDaAttestation, AttestationTimeoutRemovalApproach,
@@ -48,18 +49,23 @@ use midgard/state_queue.{
 use midgard/state_queue_yield
 
 /// Pure CommitBlockHeader structural seam. The full validator authenticates
-/// the linked-list output before reaching this predicate.
+/// the linked-list output before reaching this predicate; the covered
+/// interval is checked with the commit time
+/// (`commit_bound_header_time_is_valid`). A committed block carries at least
+/// one event: `header_v1_is_valid` ties `total_event_count` to the sum of the
+/// withdrawal, forced, L2 transaction and deposit counts.
 pub fn commit_block_header_output_is_valid_v1(header: HeaderV1) -> Bool {
   and {
-    header.start_time < header.end_time,
     header_v1_is_valid(header),
+    header.total_event_count > 0,
   }
 }
 
-/// Exclusive upper bound (2^64) on the committed header's `block_slot`,
-/// `min_fee_a` and `min_fee_b`. No honest header reaches it: a Cardano slot
-/// number is a 64-bit word, and the ledger fee coefficients are 64-bit coin
-/// amounts. Below it a non-negative Int's CBOR encoding is at most 9 bytes.
+/// Exclusive upper bound (2^64) on the committed header's `min_fee_a` and
+/// `min_fee_b`. No honest header reaches it: the ledger fee coefficients are
+/// 64-bit coin amounts. Below it a non-negative Int's CBOR encoding is at most
+/// 9 bytes. `block_slot` needs no bound here: the commit rule ties it to the
+/// ledger-validated commit time, so it is a 64-bit slot number.
 pub const commit_header_int_exclusive_bound_v1: Int = 18_446_744_073_709_551_616
 
 /// Commit-time width bound on every header field that nothing else bounds, so
@@ -67,17 +73,17 @@ pub const commit_header_int_exclusive_bound_v1: Int = 18_446_744_073_709_551_616
 /// `state_queue_node_min_lovelace_v1` can cover it. `header_v1_is_valid` bounds
 /// the count-tied roots to 32 bytes (or the empty root), the counts to their
 /// V1 maxima, `expected_network_id` to 0 or 1 and `protocol_version` to V1, but
-/// not `utxos_root` and only the lower end of the three Ints below. The rest of
+/// not `utxos_root` and only the lower end of the two Ints below. The rest of
 /// the header is bounded by carry-over or equality in the commit arm:
 /// `prev_utxos_root`, `prev_header_hash` and `start_time` equal fields of the
-/// anchor (itself bounded by this rule or by genesis), `end_time` is the
-/// ledger-validated validity upper bound, and `operator_vkey` is a required
+/// anchor (itself bounded by this rule or by genesis), `end_time` is at most
+/// the ledger-validated validity upper bound, `block_slot` is that bound's
+/// slot, and `operator_vkey` is a required
 /// signer (a 28-byte key hash). This lives here, not in `header_v1_is_valid`,
 /// so the TypeScript twin and the fraud-proof goldens do not move.
 pub fn commit_block_header_width_is_bounded_v1(header: HeaderV1) -> Bool {
   and {
     bytearray.length(header.utxos_root) == 32,
-    header.block_slot < commit_header_int_exclusive_bound_v1,
     header.min_fee_a < commit_header_int_exclusive_bound_v1,
     header.min_fee_b < commit_header_int_exclusive_bound_v1,
   }
@@ -148,7 +154,7 @@ pub fn state_queue_head_allows_append_v1(
     head.proven_fraud == None,
     when head.da_attestation is {
       availability.Unattested ->
-        inclusive_tx_upper_bound < header.end_time + da_attestation_timeout_v1
+        inclusive_tx_upper_bound < head.block_time + da_attestation_timeout_v1
       availability.Attested { .. } -> True
       availability.Challenged { .. } -> False
       availability.Published { .. } -> True
@@ -449,6 +455,7 @@ fn merge_to_confirmed_state(
     expect
         StateQueueNode {
           header: input_header_data,
+          block_time: input_block_time,
           da_attestation,
           proven_fraud,
         }: StateQueueNode
@@ -470,7 +477,7 @@ fn merge_to_confirmed_state(
       validity_range,
     )
     expect
-      inclusive_tx_lower_bound >= input_header.end_time + block_maturity_duration_v1
+      inclusive_tx_lower_bound >= input_block_time + block_maturity_duration_v1
 
     expect
         ConfirmedState {
@@ -770,7 +777,7 @@ pub fn unattested_block_timeout_elapsed_v1(
     ),
     node.da_attestation == no_da_attestation,
     header_v1_is_valid(header),
-    inclusive_tx_lower_bound >= header.end_time + da_attestation_timeout_v1,
+    inclusive_tx_lower_bound >= node.block_time + da_attestation_timeout_v1,
   }
 }
 
@@ -1068,6 +1075,7 @@ pub fn validate_commit_block_header_v1(
   active_operators_redeemer_index: Int,
   m_confirmed_state_ref_input_index: Option<Int>,
   m_head_state_queue_node_ref_input_index: Option<Int>,
+  l1_slot_config: L1SlotConfigV1,
 ) -> Bool {
   let correction_lock_address = from_script(correction_lock_script_hash)
   let
@@ -1143,6 +1151,7 @@ pub fn validate_commit_block_header_v1(
     expect
         StateQueueNode {
           header: output_header_data,
+          block_time: output_block_time,
           da_attestation,
           proven_fraud,
         }: StateQueueNode
@@ -1157,15 +1166,17 @@ pub fn validate_commit_block_header_v1(
     )
     expect output_header_key == output_header_hash
 
-    // 5. New element's data must be `HeaderV1` with a valid time range.
+    // 5. New element's data must be `HeaderV1` with a valid time range,
+    //    bound to the commit time.
     let output_header = decode_header_view(output_header_data)
     let output_operator_vkey = output_header.operator_vkey
     expect commit_block_header_output_is_valid_v1(output_header)
     expect commit_block_header_width_is_bounded_v1(output_header)
     expect
       commit_bound_header_time_is_valid(
-        output_header.start_time,
-        output_header.end_time,
+        output_header,
+        output_block_time,
+        l1_slot_config,
         validity_range,
       )
 
@@ -1858,6 +1869,10 @@ const q49_utxo_root_a =
 const q49_utxo_root_b =
   #"2222222222222222222222222222222222222222222222222222222222222222"
 
+const q49_event_root =
+  #"3333333333333333333333333333333333333333333333333333333333333333"
+
+/// A one-deposit block moving the ledger root from a to b.
 fn q49_header_fixture() -> HeaderV1 {
   HeaderV1 {
     prev_utxos_root: q49_utxo_root_a,
@@ -1865,16 +1880,16 @@ fn q49_header_fixture() -> HeaderV1 {
     withdrawals_root: env.empty_merkle_tree_root,
     forced_transactions_root: env.empty_merkle_tree_root,
     transactions_root: env.empty_merkle_tree_root,
-    deposits_root: env.empty_merkle_tree_root,
-    transition_trace_root: env.empty_merkle_tree_root,
-    event_to_step_root: env.empty_merkle_tree_root,
+    deposits_root: q49_event_root,
+    transition_trace_root: q49_event_root,
+    event_to_step_root: q49_event_root,
     validation_traces_root: env.empty_merkle_tree_root,
     withdrawal_count: 0,
     forced_transaction_count: 0,
     l2_transaction_count: 0,
-    deposit_count: 0,
-    total_event_count: 0,
-    transition_step_count: 0,
+    deposit_count: 1,
+    total_event_count: 1,
+    transition_step_count: 1,
     validation_trace_count: 0,
     start_time: 100,
     end_time: 200,
@@ -1888,21 +1903,88 @@ fn q49_header_fixture() -> HeaderV1 {
   }
 }
 
-test q49_l295_header_shape_control_and_interval_mutations() {
+test q49_l295_header_shape_control_and_protocol_mutations() {
   let control = q49_header_fixture()
   and {
     commit_block_header_output_is_valid_v1(control),
-    !commit_block_header_output_is_valid_v1(
-      HeaderV1 { ..control, start_time: control.end_time },
-    ),
-    !commit_block_header_output_is_valid_v1(
-      HeaderV1 { ..control, start_time: control.end_time + 1 },
-    ),
     !commit_block_header_output_is_valid_v1(
       HeaderV1 { ..control, protocol_version: 0 },
     ),
     !commit_block_header_output_is_valid_v1(
       HeaderV1 { ..control, protocol_version: 2 },
+    ),
+  }
+}
+
+/// The q49 block with no events: the same root move, every count zero and
+/// every count-tied root empty.
+fn q49_zero_event_header() -> HeaderV1 {
+  HeaderV1 {
+    ..q49_header_fixture(),
+    deposits_root: env.empty_merkle_tree_root,
+    transition_trace_root: env.empty_merkle_tree_root,
+    event_to_step_root: env.empty_merkle_tree_root,
+    deposit_count: 0,
+    total_event_count: 0,
+    transition_step_count: 0,
+  }
+}
+
+/// Control: `q49_l295_header_shape_control_and_protocol_mutations`. The
+/// zero-event header is well formed (`header_v1_is_valid`) and is refused only
+/// by `total_event_count > 0` in `commit_block_header_output_is_valid_v1`.
+test q49_l295_zero_event_header_is_refused_at_commit() {
+  let empty = q49_zero_event_header()
+  and {
+    header_v1_is_valid(empty),
+    !commit_block_header_output_is_valid_v1(empty),
+    !commit_block_header_output_is_valid_v1(
+      HeaderV1 { ..empty, utxos_root: empty.prev_utxos_root },
+    ),
+  }
+}
+
+/// Each event kind alone satisfies the commit's event-count rule.
+test q49_l295_one_event_of_each_kind_commits() {
+  let empty = q49_zero_event_header()
+  and {
+    commit_block_header_output_is_valid_v1(q49_header_fixture()),
+    commit_block_header_output_is_valid_v1(
+      HeaderV1 {
+        ..empty,
+        withdrawals_root: q49_event_root,
+        transition_trace_root: q49_event_root,
+        event_to_step_root: q49_event_root,
+        withdrawal_count: 1,
+        total_event_count: 1,
+        transition_step_count: 1,
+      },
+    ),
+    commit_block_header_output_is_valid_v1(
+      HeaderV1 {
+        ..empty,
+        forced_transactions_root: q49_event_root,
+        transition_trace_root: q49_event_root,
+        event_to_step_root: q49_event_root,
+        validation_traces_root: q49_event_root,
+        forced_transaction_count: 1,
+        total_event_count: 1,
+        transition_step_count: 1,
+        validation_trace_count: 1,
+      },
+    ),
+    commit_block_header_output_is_valid_v1(
+      HeaderV1 {
+        ..empty,
+        transactions_root: q49_event_root,
+        transition_trace_root: q49_event_root,
+        event_to_step_root: q49_event_root,
+        validation_traces_root: q49_event_root,
+        l2_transaction_count: 1,
+        total_event_count: 1,
+        transition_step_count: 1,
+        validation_trace_count: 1,
+      },
     ),
   }
 }
@@ -1919,9 +2001,6 @@ test q49_l295_validation_context_scalar_control_and_mutations() {
   and {
     commit_block_header_output_is_valid_v1(control),
     commit_block_header_output_is_valid_v1(supported_network_and_runtime_values),
-    !commit_block_header_output_is_valid_v1(
-      HeaderV1 { ..control, block_slot: -1 },
-    ),
     !commit_block_header_output_is_valid_v1(
       HeaderV1 { ..control, expected_network_id: -1 },
     ),

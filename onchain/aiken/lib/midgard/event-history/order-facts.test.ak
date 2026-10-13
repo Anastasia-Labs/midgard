@@ -381,7 +381,6 @@ fn capture(tx: Transaction) -> order_facts.Commitment {
     address.from_script(retention),
     Deposit,
     nonce,
-    60_500,
     1000,
     15000,
     1024,
@@ -424,14 +423,6 @@ test staged_opening_rejects_substituted_payload() {
     },
   }
   !order_facts.opens(initial, different, assets.from_lovelace(7_000_000))
-}
-
-test capture_before_header_horizon_rejects() fail {
-  let tx = capture_tx(order_output(facts(), None, 600), 3)
-  expect _ = capture(
-    Transaction { ..tx, validity_range: interval.between(60_500, 60_600) },
-  )
-  True
 }
 
 fn withdrawal_payload() -> Payload {

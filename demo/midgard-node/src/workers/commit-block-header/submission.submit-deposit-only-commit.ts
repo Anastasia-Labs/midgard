@@ -7,7 +7,6 @@ import type { CommitAnchor } from "../../database/commit-anchor.js";
 import {
   DepositsDB,
   ForcedTransactionsDB,
-  MpfEngineStateDB,
   PendingBlockFinalizationsDB,
   WithdrawalsDB,
 } from "../../database/index.js";
@@ -21,8 +20,6 @@ import {
   type RetainedEventToStepMember,
   type RetainedTransitionTraceMember,
   type RetainedValidationTraceMember,
-  type UtxoPayloadEntry,
-  type UtxoPayloadSizeAggregate,
 } from "../../mpf/index.js";
 import { configuredCommitAnchorClock } from "../../services/history-commit-window.js";
 import {
@@ -95,9 +92,7 @@ export const submitDepositOnlyCommit = ({
   validationTraceMembers,
   transitionStepCount,
   validationTraceCount,
-  utxoPayloadEntries,
   ledgerDelta,
-  utxoPayloadAggregate,
   selectedBaseUtxosRoot,
   implicitGenesisEntries,
   afterDaFrameAccepted,
@@ -130,9 +125,7 @@ export const submitDepositOnlyCommit = ({
   readonly validationTraceMembers: readonly RetainedValidationTraceMember[];
   readonly transitionStepCount: number;
   readonly validationTraceCount: number;
-  readonly utxoPayloadEntries: readonly UtxoPayloadEntry[];
   readonly ledgerDelta: LedgerDelta;
-  readonly utxoPayloadAggregate: UtxoPayloadSizeAggregate;
   readonly selectedBaseUtxosRoot: string;
   readonly implicitGenesisEntries: readonly Ledger.MinimalEntry[];
   readonly nativeMpfReplay: NativeMpfReplayBuild;
@@ -199,9 +192,6 @@ export const submitDepositOnlyCommit = ({
       emptyRoot,
     });
     yield* assertPendingJournalCompleteness({
-      utxoRoot: roots.utxoRoot,
-      utxoMemberCount: utxoPayloadEntries.length,
-      hasLedgerDelta: true,
       txRoot: roots.txRoot,
       emptyTxRoot: emptyRoot,
       txMemberCount: 0,
@@ -302,7 +292,6 @@ export const submitDepositOnlyCommit = ({
                 yield* assertPreSubmitDaPayloadSize({
                   headerHash: newHeaderHash,
                   header: newHeader,
-                  utxoPayloadAggregate,
                   includedDepositEntries,
                   includedForcedTransactionEntries,
                   includedWithdrawalEntries,
@@ -313,10 +302,6 @@ export const submitDepositOnlyCommit = ({
                   cekProgramMaterial,
                 });
                 yield* afterDaFrameAccepted ?? Effect.void;
-                yield* MpfEngineStateDB.stampLedgerPayloadAggregate({
-                  rootHex: roots.utxoRoot,
-                  aggregate: utxoPayloadAggregate,
-                });
                 yield* assertCommitInputsWithinBlockEndTime({
                   blockEndTimeMs,
                   includedDepositEntries,
@@ -358,7 +343,6 @@ export const submitDepositOnlyCommit = ({
                     recordedBaseUtxosRoot: metadata.baseRoots.utxosRoot,
                     selectedBaseUtxosRoot,
                     expectedFinalUtxosRoot: roots.utxoRoot,
-                    expectedFinalEntryCount: utxoPayloadAggregate.entryCount,
                     implicitGenesisEntries,
                     transitionDelta: ledgerDelta,
                   });
@@ -401,7 +385,6 @@ export const submitDepositOnlyCommit = ({
                           journalLedgerState.ledgerDelta.produced,
                         ),
                       },
-                      utxoPayloadAggregate,
                       nativeMpfReplay,
                     },
                     { beforeJournalInsert },

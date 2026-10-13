@@ -1,3 +1,4 @@
+import type { SettlementFailingJob } from "../database/settlement.js";
 import type { SettlementHealth } from "./settlement.reconcile-attempt.js";
 
 /** Worker runs that must die back to back before readiness names settlement.
@@ -19,8 +20,21 @@ export const SETTLEMENT_WORKER_RECOVERY_TICKS = 3;
 const shortDetail = (detail: string) =>
   (detail.split("\n", 1)[0] ?? "").trim().slice(0, 160);
 
+/** The `/readyz` detail naming stuck settlement jobs (settlement-retry.ts):
+ * how many, and the earliest-due one's kind, event, phase and last error.
+ * A detail, not a reason: a stuck payout does not stop admission or block
+ * production, so the node stays ready while it raises the alarm. */
+export const settlementStuckDetail = (stuck: {
+  readonly count: number;
+  readonly first: SettlementFailingJob | undefined;
+}): string | undefined =>
+  stuck.first === undefined
+    ? undefined
+    : `settlement_jobs_stuck:${stuck.count.toString()}:${stuck.first.kind}:${stuck.first.event_id}:${stuck.first.phase}:${shortDetail(stuck.first.last_error)}`;
+
 /** Job-level failures, eligibility waits and pending confirmations are payout
- * delays and stay out of readiness; only a worker that cannot stay up is. */
+ * delays and stay out of readiness reasons (a stuck job is a detail, above);
+ * only a worker that cannot stay up is a reason. */
 export const settlementReadinessReason = (
   health: SettlementHealth,
   now: number,

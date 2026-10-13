@@ -7,9 +7,9 @@ import {
   type MidgardMpfProofStep,
 } from ".././mpf-proof-fold.js";
 import { midgardBlake2b } from "../codec/blake2b.js";
+import { deploymentFraudProofCatalogueCategories } from "../deployment-profile.js";
 import {
   DEPLOYMENT_MANIFEST_FRAUD_PROOF_CATALOGUE_CATEGORY_IDS,
-  DEPLOYMENT_MANIFEST_FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER,
   type DeploymentManifestFraudProofCatalogueCategory,
   type DeploymentManifestFraudProofCatalogueCategoryIdentity,
   type DeploymentManifestFraudProofCatalogueIdentity,
@@ -215,8 +215,14 @@ const proofDataToMpfSteps = (
     };
   });
 
+/**
+ * Checks a manifest's fraud-proof catalogue: exactly the deployment's
+ * catalogue categories (the profile's set), each with its frozen ID, a
+ * membership proof, and together the declared root.
+ */
 export const verifyDeploymentManifestFraudProofCatalogueIdentity = (
   catalogue: DeploymentManifestFraudProofCatalogueIdentity,
+  catalogueCategories: readonly DeploymentManifestFraudProofCatalogueCategory[] = deploymentFraudProofCatalogueCategories(),
 ): DeploymentManifestFraudProofCatalogueIdentity => {
   requireExactKeys(
     catalogue as unknown as Record<string, unknown>,
@@ -226,7 +232,7 @@ export const verifyDeploymentManifestFraudProofCatalogueIdentity = (
   );
   requireExactKeys(
     catalogue.categories as unknown as Record<string, unknown>,
-    DEPLOYMENT_MANIFEST_FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER,
+    catalogueCategories,
     [],
     "contracts.fraudProofCatalogueMint.fraudProofCatalogue.categories",
   );
@@ -240,52 +246,52 @@ export const verifyDeploymentManifestFraudProofCatalogueIdentity = (
     DeploymentManifestFraudProofCatalogueCategory,
     { readonly key: Buffer; readonly value: Buffer }
   >();
-  const parsedCategories = {} as Record<
-    DeploymentManifestFraudProofCatalogueCategory,
-    DeploymentManifestFraudProofCatalogueCategoryIdentity
-  >;
+  const parsedCategories: Partial<
+    Record<
+      DeploymentManifestFraudProofCatalogueCategory,
+      DeploymentManifestFraudProofCatalogueCategoryIdentity
+    >
+  > = {};
 
-  DEPLOYMENT_MANIFEST_FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER.forEach(
-    (categoryName) => {
-      const field = `contracts.fraudProofCatalogueMint.fraudProofCatalogue.categories.${categoryName}`;
-      const candidate = requireRecord(
-        (catalogue.categories as unknown as Record<string, unknown>)[
-          categoryName
-        ],
-        `Deployment manifest ${field}`,
+  catalogueCategories.forEach((categoryName) => {
+    const field = `contracts.fraudProofCatalogueMint.fraudProofCatalogue.categories.${categoryName}`;
+    const candidate = requireRecord(
+      (catalogue.categories as unknown as Record<string, unknown>)[
+        categoryName
+      ],
+      `Deployment manifest ${field}`,
+    );
+    requireExactKeys(
+      candidate,
+      ["categoryId", "scriptHash", "membershipProofCbor"],
+      [],
+      field,
+    );
+    const category = {
+      categoryId: requireHex(candidate.categoryId, 4, `${field}.categoryId`),
+      scriptHash: requireHex(candidate.scriptHash, 28, `${field}.scriptHash`),
+      membershipProofCbor: requireHex(
+        candidate.membershipProofCbor,
+        undefined,
+        `${field}.membershipProofCbor`,
+      ),
+    } satisfies DeploymentManifestFraudProofCatalogueCategoryIdentity;
+    parsedCategories[categoryName] = category;
+    const expectedCategoryId =
+      DEPLOYMENT_MANIFEST_FRAUD_PROOF_CATALOGUE_CATEGORY_IDS[categoryName];
+    if (category.categoryId !== expectedCategoryId) {
+      throw new Error(
+        `Deployment manifest ${field}.categoryId must be ${expectedCategoryId}`,
       );
-      requireExactKeys(
-        candidate,
-        ["categoryId", "scriptHash", "membershipProofCbor"],
-        [],
-        field,
-      );
-      const category = {
-        categoryId: requireHex(candidate.categoryId, 4, `${field}.categoryId`),
-        scriptHash: requireHex(candidate.scriptHash, 28, `${field}.scriptHash`),
-        membershipProofCbor: requireHex(
-          candidate.membershipProofCbor,
-          undefined,
-          `${field}.membershipProofCbor`,
-        ),
-      } satisfies DeploymentManifestFraudProofCatalogueCategoryIdentity;
-      parsedCategories[categoryName] = category;
-      const expectedCategoryId =
-        DEPLOYMENT_MANIFEST_FRAUD_PROOF_CATALOGUE_CATEGORY_IDS[categoryName];
-      if (category.categoryId !== expectedCategoryId) {
-        throw new Error(
-          `Deployment manifest ${field}.categoryId must be ${expectedCategoryId}`,
-        );
-      }
-      const key = encodeFraudProofCatalogueKey(category.categoryId);
-      const value = encodeFraudProofCatalogueValue(category.scriptHash);
-      encodedEntries.set(categoryName, { key, value });
-      entries.push({
-        path: mpfHash(key),
-        valueHash: mpfHash(value),
-      });
-    },
-  );
+    }
+    const key = encodeFraudProofCatalogueKey(category.categoryId);
+    const value = encodeFraudProofCatalogueValue(category.scriptHash);
+    encodedEntries.set(categoryName, { key, value });
+    entries.push({
+      path: mpfHash(key),
+      valueHash: mpfHash(value),
+    });
+  });
 
   const reconstructedRoot = reconstructFraudProofCatalogueMpfNode(
     entries,
@@ -297,9 +303,9 @@ export const verifyDeploymentManifestFraudProofCatalogueIdentity = (
     );
   }
 
-  for (const categoryName of DEPLOYMENT_MANIFEST_FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER) {
+  for (const categoryName of catalogueCategories) {
     const field = `contracts.fraudProofCatalogueMint.fraudProofCatalogue.categories.${categoryName}`;
-    const category = parsedCategories[categoryName];
+    const category = parsedCategories[categoryName]!;
     const encoded = encodedEntries.get(categoryName)!;
     let proof: FraudProofCatalogueProofData;
     try {

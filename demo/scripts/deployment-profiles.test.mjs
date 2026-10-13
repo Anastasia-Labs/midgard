@@ -6,11 +6,14 @@ import {
   withDelayAtFloor,
 } from "./deployment-profiles.test-helpers.mjs";
 import {
+  ALLOW_LIST_PLACEHOLDER_KEY_PREFIX,
+  canonicalJson,
   daBondWithdrawDelayFloorMs,
   emulatorOnlyProfileNames,
   COMMIT_TTL_FUTURE_BUFFER_MS,
   exactDecimal,
   generateProfiles,
+  isAllowListPlaceholderKey,
   largestFeasibleCommitEventDepth,
   largestNoStrikeCommitEventDepth,
   largestProductionCommitEventDepth,
@@ -65,6 +68,7 @@ test("every profile binds the commit-event depth and the Cardano consensus it as
     "preprod-testing": [3, 16, 3, -3],
     "local-devnet-testing": [3, 16, 3, -3],
     "preprod-emulator-testing": [8, 21, 8, 2],
+    "preprod-emulator-curated": [8, 21, 8, 2],
   };
   assert.equal(COMMIT_TTL_FUTURE_BUFFER_MS, 30_000);
   for (const [name, [depth, noStrike, feasible, production]] of Object.entries(
@@ -290,7 +294,10 @@ test("all profiles have explicit networks and independent deployment identities"
 });
 
 test("emulator-only profiles cannot be selected for generation, checks or builds", async () => {
-  assert.deepEqual(emulatorOnlyProfileNames, ["preprod-emulator-testing"]);
+  assert.deepEqual(emulatorOnlyProfileNames, [
+    "preprod-emulator-testing",
+    "preprod-emulator-curated",
+  ]);
   for (const name of emulatorOnlyProfileNames) {
     assert.ok(profileNames.includes(name));
     // Check mode writes nothing, so a missing guard fails on the message
@@ -341,6 +348,7 @@ test("every DA response window covers the minimum response budget, and the bound
     "preprod-testing": 640_000,
     "local-devnet-testing": 640_000,
     "preprod-emulator-testing": 360_000,
+    "preprod-emulator-curated": 360_000,
   };
   for (const [name, profile] of Object.entries(profiles)) {
     const budget = minimumDaResponseBudgetMs(profile);
@@ -618,17 +626,16 @@ test("every profile carries the pooled DA bond amounts and timing, rendered into
     da_bond_withdraw_delay_ms: "da_bond_withdraw_delay_ms_v1",
   };
   for (const [name, profile] of Object.entries(profiles)) {
-    const want =
-      name === "preprod-emulator-testing"
-        ? {
-            da_bond: expected.testing.da_bond,
-            timing: {
-              da_challenge_window_ms: 1_800_000,
-              da_slash_grace_ms: 300_000,
-              da_bond_withdraw_delay_ms: 15_180_000,
-            },
-          }
-        : expected[publicProfiles.includes(name) ? "public" : "testing"];
+    const want = emulatorOnlyProfileNames.includes(name)
+      ? {
+          da_bond: expected.testing.da_bond,
+          timing: {
+            da_challenge_window_ms: 1_800_000,
+            da_slash_grace_ms: 300_000,
+            da_bond_withdraw_delay_ms: 15_180_000,
+          },
+        }
+      : expected[publicProfiles.includes(name) ? "public" : "testing"];
     assert.deepEqual(profile.da_bond, want.da_bond);
     const rendered = renderAiken(profile, "");
     for (const [key, value] of Object.entries({
@@ -687,10 +694,9 @@ test("every profile's withdrawal delay meets the spec relation and the head-remo
     testing: { spec: 2_380_000, enforced: 2_380_000 },
   };
   for (const [name, original] of Object.entries(profiles)) {
-    const want =
-      name === "preprod-emulator-testing"
-        ? { spec: 3_420_000, enforced: 15_180_000 }
-        : floors[publicProfiles.includes(name) ? "public" : "testing"];
+    const want = emulatorOnlyProfileNames.includes(name)
+      ? { spec: 3_420_000, enforced: 15_180_000 }
+      : floors[publicProfiles.includes(name) ? "public" : "testing"];
     const profile = structuredClone(original);
     assert.equal(specDaBondWithdrawDelayFloorMs(profile.timing), want.spec);
     assert.equal(daBondWithdrawDelayFloorMs(profile.timing), want.enforced);
@@ -839,5 +845,141 @@ test("public profiles leave confirmation depth plus two validity ranges between 
     );
     assert.ok(120_000 < minimumPublicOpenAfterApplyMarginMs(profile));
     validateProfile(profile, name);
+  }
+});
+
+test("production profiles list their allow-listed keys; testing profiles admit every key", () => {
+  const profiles = readProfiles();
+  const lists = ["operators", "fraud_provers", "da_challengers"];
+  for (const name of ["mainnet", "preprod-public"]) {
+    for (const list of lists) {
+      const keys = profiles[name].allow_lists[list];
+      assert.ok(keys.length > 0);
+      // Owner input I1 supplied preprod-public's real keys; mainnet still
+      // carries the stand-ins.
+      assert.equal(keys.some(isAllowListPlaceholderKey), name === "mainnet");
+    }
+    const profile = structuredClone(profiles[name]);
+    profile.allow_lists.operators = null;
+    assert.throws(
+      () => validateProfile(profile, name),
+      /allow_lists.operators must list the admitted keys on a production profile/u,
+    );
+  }
+  for (const name of [
+    "preprod-testing",
+    "local-devnet-testing",
+    "preprod-emulator-testing",
+  ])
+    for (const list of lists)
+      assert.equal(profiles[name].allow_lists[list], null);
+  assert.equal(
+    Buffer.from(ALLOW_LIST_PLACEHOLDER_KEY_PREFIX, "hex").toString("ascii"),
+    "placeholder:",
+  );
+});
+
+test("allow-list keys are distinct 28-byte lowercase hex, never empty", () => {
+  const key = (byte) => byte.repeat(28);
+  for (const [keys, message] of [
+    [[], /non-empty list of 28-byte lowercase hex key hashes/u],
+    [[key("ab").slice(2)], /28-byte lowercase hex/u],
+    [[key("AB")], /28-byte lowercase hex/u],
+    [[key("ab"), key("ab")], /must not repeat a key/u],
+    ["ab", /28-byte lowercase hex/u],
+  ]) {
+    const profile = structuredClone(readProfiles()["preprod-testing"]);
+    profile.allow_lists.fraud_provers = keys;
+    assert.throws(() => validateProfile(profile, "preprod-testing"), message);
+  }
+  const profile = structuredClone(readProfiles()["preprod-testing"]);
+  profile.allow_lists.fraud_provers = [key("ab"), key("cd")];
+  validateProfile(profile, "preprod-testing");
+  delete profile.allow_lists.da_challengers;
+  assert.throws(
+    () => validateProfile(profile, "preprod-testing"),
+    /allow_lists must contain exactly/u,
+  );
+});
+
+test("allow-lists render as Option<List<ByteArray>> env constants in the layout aiken fmt gives", () => {
+  const profile = structuredClone(readProfiles()["preprod-testing"]);
+  const one = "ab".repeat(28);
+  const two = "cd".repeat(28);
+  profile.allow_lists.operators = [one];
+  profile.allow_lists.fraud_provers = [one, two];
+  const rendered = renderAiken(profile, "");
+  assert.match(
+    rendered,
+    new RegExp(
+      `pub const operator_allow_list: Option<List<ByteArray>> =\\n  Some\\(\\[#"${one}"\\]\\)\\n`,
+      "u",
+    ),
+  );
+  assert.ok(
+    rendered.includes(
+      `pub const fraud_prover_allow_list: Option<List<ByteArray>> =\n  Some(\n    [\n      #"${one}",\n      #"${two}",\n    ],\n  )\n`,
+    ),
+  );
+  assert.ok(
+    rendered.endsWith(
+      "pub const da_challenger_allow_list: Option<List<ByteArray>> = None\n",
+    ),
+  );
+});
+
+test("the profile digest keeps list order and shape", () => {
+  assert.equal(
+    canonicalJson({ b: ["y", "x"], a: [], c: { e: [1], d: null } }),
+    '{"a":[],"b":["y","x"],"c":{"d":null,"e":[1]}}',
+  );
+});
+
+test("excluded fraud-proof categories are distinct catalogue names", () => {
+  const profiles = readProfiles();
+  assert.ok(
+    profiles["preprod-public"].excluded_fraud_proof_categories.includes(
+      "validationTraceDispute",
+    ),
+  );
+  assert.deepEqual(
+    profiles["preprod-testing"].excluded_fraud_proof_categories,
+    [],
+  );
+  for (const [categories, message] of [
+    [null, /must be a list of catalogue category names/u],
+    [["unused-redeemer"], /must be a list of catalogue category names/u],
+    [[""], /must be a list of catalogue category names/u],
+    [["minFee", "minFee"], /must not repeat a category/u],
+  ]) {
+    const profile = structuredClone(profiles["preprod-testing"]);
+    profile.excluded_fraud_proof_categories = categories;
+    assert.throws(() => validateProfile(profile, "preprod-testing"), message);
+  }
+  const profile = structuredClone(profiles["preprod-testing"]);
+  delete profile.excluded_fraud_proof_categories;
+  assert.throws(
+    () => validateProfile(profile, "preprod-testing"),
+    /profile must contain exactly/u,
+  );
+});
+
+test("the curated emulator profile is the emulator profile with allow-lists and the P1 catalogue", () => {
+  const profiles = readProfiles();
+  const strip = ({
+    name: _name,
+    allow_lists: _lists,
+    excluded_fraud_proof_categories: _excluded,
+    ...rest
+  }) => rest;
+  const curated = profiles["preprod-emulator-curated"];
+  assert.deepEqual(strip(curated), strip(profiles["preprod-emulator-testing"]));
+  assert.deepEqual(
+    curated.excluded_fraud_proof_categories,
+    profiles["preprod-public"].excluded_fraud_proof_categories,
+  );
+  for (const keys of Object.values(curated.allow_lists)) {
+    assert.equal(keys.length, 1);
+    assert.ok(!isAllowListPlaceholderKey(keys[0]));
   }
 });

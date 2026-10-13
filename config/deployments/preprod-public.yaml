@@ -13,7 +13,7 @@ timing:
   block_maturity_ms: 604800000
   dispute_response_window_ms: 300000
   operator_shift_ms: 3600000
-  registration_ms: 30
+  registration_ms: 30000
   event_wait_ms: 1800000 # worst case for 30 blocks = 3N/f slots = 3*30/0.05 s (30 min)
   user_events_negligence_timeout_ms: 1200000
   new_shift_inactivity_grace_period_ms: 480000
@@ -38,7 +38,8 @@ da_bond:
   challenge_record_lovelace: 27000000
 limits:
   max_bisection_rounds: 32
-  max_inactivity_strikes: 5
+  # P1: out of reach, so a strike skips the shift but never ejects an operator.
+  max_inactivity_strikes: 1000000
   coins_per_utxo_byte: 4310
 economics:
   profile: public-preprod-launch-v1
@@ -47,3 +48,26 @@ economics:
   inactivitySlashingPenaltyLovelace: 10000000000
   fraudProverRewardLovelace: 75000000000
   proverCollateralFloorLovelace: 5000000
+allow_lists:
+  # P1 curated keys (owner input I1): payment key hashes of the Preprod
+  # operator, fault-prover and DA-challenger wallets.
+  operators:
+    - "041388eef29da389e7b9dac19509ef8ac95a398a9909991a4326d424"
+    - "4189f341bddd0c74ecb4f5a1ddae8653ee204be022fe530e2f65a6a6"
+  fraud_provers:
+    - "3fce32946bbc65915c9abecaac07b0b00b0ee85fce73d06a209e3e5f"
+  da_challengers:
+    - "c3276ebd1e6886c2bdc4ef2ca4d084ed8da3901b6054d3c881eb1e81"
+# P1 carries no validation-trace states, so the families that read them are
+# left out of the fraud-proof catalogue (Computation-Thread Init refuses them).
+excluded_fraud_proof_categories:
+  - validationTraceDispute
+  - executionSourceScriptDecoding
+  - receivePurposeLanguage
+  - unusedScriptWitness
+  - missingScriptSource
+  - missingRedeemer
+  - unusedRedeemer
+  - executionNativeScriptInvalid
+  - scriptIntegrityHashMismatch
+  - distinctAssetAccumulationLimit

@@ -16,6 +16,7 @@ use midgard/ledger_state.{
   ValidationTracesRoot, WithdrawalsRoot, block_maturity_duration_v1,
   protocol_version_v1,
 }
+use midgard/script_context_v1.{L1SlotConfigV1, slot_to_posix_time_v1}
 
 /// TODO: It might be better to be space-conscious and use an empty name.
 pub const confirmed_state_asset_name: AssetName = "MIDGARD_CONFIRMED_STATE"
@@ -35,12 +36,20 @@ pub const no_da_attestation: availability.StateQueueStatusV1 =
   availability.Unattested
 
 /// F04's canonical V1 deadline for applying a DA attestation to a committed
-/// block. The block's `end_time` is commit-bound by Q60, so this duration has
-/// one authenticated on-chain origin rather than a submitter-selected clock.
+/// block, measured from the node's `block_time`. That time is commit-bound
+/// (`commit_bound_header_time_is_valid`), so this duration has one
+/// authenticated on-chain origin rather than a submitter-selected clock.
 pub const da_attestation_timeout_v1: Int = env.da_attestation_timeout_v1
 
 pub type StateQueueNode {
   header: HeaderV1,
+  /// POSIX milliseconds at which the block was committed: the commit
+  /// transaction's inclusive validity upper bound. `header.end_time` is what
+  /// the block covers; `block_time` is when it was committed, and every
+  /// maturity and attestation clock runs from it. The commit arm binds it to
+  /// the header's hashed `block_slot` (`commit_bound_header_time_is_valid`),
+  /// and no transition may change it.
+  block_time: Int,
   da_attestation: availability.StateQueueStatusV1,
   /// Completed fraud, never proof initiation. The marked header cannot merge.
   proven_fraud: Option<AssetName>,
@@ -57,20 +66,34 @@ pub fn decode_header_view(header: HeaderV1) -> HeaderView {
   header
 }
 
-/// Bind the canonical event interval's end to the L1 transaction that commits
-/// it. The start remains the preceding header's end, while the end is the
-/// normalized inclusive upper bound of a short Cardano validity interval.
+/// Bind a new block's commit time and covered interval to the L1
+/// transaction that commits it.
+///
+/// - R1: `block_time` is the commit's inclusive validity upper bound, and the
+///   covered interval is non-empty and ends no later than it.
+/// - R2: a block carrying L2 transactions covers up to its commit time, so
+///   only an event-only (catch-up) block may end before `block_time`.
+/// - R3: the hashed header field `block_slot` is the L1 slot whose last
+///   millisecond is `block_time`, so the header itself commits to its commit
+///   time and cannot be re-committed later with another one.
+///
+/// R3 also bounds `block_slot` to the ledger's slot domain: `block_time` is a
+/// ledger-validated upper bound, so its slot is a non-negative 64-bit word.
 pub fn commit_bound_header_time_is_valid(
-  header_start_time: Int,
-  header_end_time: Int,
+  header: HeaderV1,
+  block_time: Int,
+  slot_config: L1SlotConfigV1,
   commit_validity_range: ValidityRange,
 ) -> Bool {
   let (_, inclusive_commit_upper_bound) = utils.get_inclusive_bounds_of_a_short_validity_range(
     commit_validity_range,
   )
   and {
-    header_start_time < header_end_time,
-    header_end_time == inclusive_commit_upper_bound,
+    block_time == inclusive_commit_upper_bound,
+    header.start_time < header.end_time,
+    header.end_time <= block_time,
+    header.l2_transaction_count == 0 || header.end_time == block_time,
+    slot_to_posix_time_v1(slot_config, header.block_slot) + slot_config.slot_length - 1 == block_time,
   }
 }
 
@@ -415,7 +438,7 @@ fn get_node_info(
 
 /// Unattested→Attested: the DA policy attaches the hash of the burned,
 /// authenticated commitment before the attestation deadline measured from the
-/// node's own header end time.
+/// node's commit time.
 pub fn validate_da_attestation_attachment(
   inputs: List<Input>,
   outputs: List<Output>,
@@ -426,7 +449,7 @@ pub fn validate_da_attestation_attachment(
   commitment_hash: ByteArray,
   validity_range: ValidityRange,
 ) -> Bool {
-  let end_time <- da_availability_status_transition(
+  let block_time <- da_availability_status_transition(
     inputs,
     outputs,
     state_queue_policy,
@@ -439,12 +462,12 @@ pub fn validate_da_attestation_attachment(
   let (_, inclusive_tx_upper_bound) = utils.get_inclusive_bounds_of_a_short_validity_range(
     validity_range,
   )
-  inclusive_tx_upper_bound <= end_time + da_attestation_timeout_v1
+  inclusive_tx_upper_bound <= block_time + da_attestation_timeout_v1
 }
 
 /// Attested→Challenged for the availability open: the node keeps its
 /// commitment hash and gains the challenge name. Returns the node's
-/// commit-bound header end time, from which the open measures its challenge
+/// commit-bound `block_time`, from which the open measures its challenge
 /// window.
 pub fn validate_da_challenge_open_transition_v1(
   inputs: List<Input>,
@@ -456,7 +479,7 @@ pub fn validate_da_challenge_open_transition_v1(
   commitment_hash: ByteArray,
   challenge_asset_name: AssetName,
 ) -> Int {
-  let end_time <- da_availability_status_transition(
+  let block_time <- da_availability_status_transition(
     inputs,
     outputs,
     state_queue_policy,
@@ -466,7 +489,7 @@ pub fn validate_da_challenge_open_transition_v1(
     availability.Attested { commitment_hash },
     availability.Challenged { commitment_hash, challenge_asset_name },
   )
-  end_time
+  block_time
 }
 
 /// Exact in-place availability status transition for one authenticated linked-
@@ -483,7 +506,7 @@ pub fn validate_da_availability_status_transition(
   expected_input_status: availability.StateQueueStatusV1,
   expected_output_status: availability.StateQueueStatusV1,
 ) -> Bool {
-  let _end_time <- da_availability_status_transition(
+  let _block_time <- da_availability_status_transition(
     inputs,
     outputs,
     state_queue_policy,
@@ -497,10 +520,10 @@ pub fn validate_da_availability_status_transition(
 }
 
 /// The one decode of both node sides. Only the status may change: the node's
-/// full value, address, link, header and fraud marker are carried exactly
-/// (HAZ-13), and the output carries no reference script (the state-queue
-/// element invariant, `element_output_has_no_reference_script`). The
-/// continuation receives the input header's end time.
+/// full value, address, link, header, commit time and fraud marker are carried
+/// exactly (HAZ-13), and the output carries no reference script (the
+/// state-queue element invariant, `element_output_has_no_reference_script`).
+/// The continuation receives the node's commit time, `block_time`.
 fn da_availability_status_transition(
   inputs: List<Input>,
   outputs: List<Output>,
@@ -537,9 +560,10 @@ fn da_availability_status_transition(
   expect output_link == input_link
   expect input_block.da_attestation == expected_input_status
   expect output_block.header == input_block.header
+  expect output_block.block_time == input_block.block_time
   expect output_block.da_attestation == expected_output_status
   expect output_block.proven_fraud == input_block.proven_fraud
-  return(input_block.header.end_time)
+  return(input_block.block_time)
 }
 
 /// Consume the challenged node in the terminal proof transaction. A prepared
@@ -572,8 +596,8 @@ pub fn validate_completed_fraud_record(
     fraud_proof.asset_name_to_header_hash(proof_asset) == header_hash,
     header_hash == utils.serialise_and_hash_28(header_data),
     before.proven_fraud == None,
-    before.header.end_time < lower,
-    upper < before.header.end_time + block_maturity_duration_v1,
+    before.block_time < lower,
+    upper < before.block_time + block_maturity_duration_v1,
     assets.quantity_of(tx.mint, fraud_proof_policy, proof_asset) == 1,
     assets.tokens(tx.mint, state_queue_policy) == assets.tokens(
       assets.zero,
@@ -623,8 +647,8 @@ pub fn require_completed_fraud_witness(
     fraud_proof.asset_name_to_header_hash(recorded_proof) == header_hash,
     header_hash == utils.serialise_and_hash_28(header_data),
     !newly_recorded || recorded_proof == terminal_proof_asset,
-    node.header.end_time < lower,
-    upper < node.header.end_time + block_maturity_duration_v1,
+    node.block_time < lower,
+    upper < node.block_time + block_maturity_duration_v1,
   }
 }
 

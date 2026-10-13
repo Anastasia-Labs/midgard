@@ -3,7 +3,6 @@ import {
   DoubleSpendStep02Datum,
   DoubleSpendStep03Datum,
   DoubleSpendStep04Datum,
-  EMPTY_MERKLE_TREE_ROOT,
   FraudProofComputationThreadStepDatum,
   FraudProofTokenDatum,
 } from "@al-ft/midgard-sdk";
@@ -21,10 +20,10 @@ import {
 } from "./legacy-submit-emulator.js";
 import { countedTransactionsRoot } from "./submit-init-emulator-fixtures.build-non-existent-input-fixture.js";
 import { buildTransactionInclusionFixture } from "./submit-init-emulator-fixtures.build-transaction-inclusion-fixture.js";
+import { commitInitializedProvedFixtureHeader } from "./submit-init-emulator-fixtures.commit-initialized-proved-fixture-header.js";
 import {
   bindCanonicalFixtureHeader,
   buildProvedFixtureDeploymentContext,
-  commitInitializedProvedFixtureHeader,
 } from "./submit-init-emulator-fixtures.deployment-context.js";
 import {
   expectStateQueueHeaderOrder,
@@ -52,6 +51,7 @@ import {
   publishFraudProofChainReferenceScripts,
   publishRemovalReferenceScripts,
   submitSetupTx,
+  withPlaceholderDeposit,
 } from "./submit-init-emulator-shared.js";
 
 export const buildProvedDoubleSpendFixture = async ({
@@ -141,7 +141,7 @@ export const buildProvedDoubleSpendFixture = async ({
   ) {
     throw new Error("Expected funder wallet to expose a payment key hash");
   }
-  const fraudulentHeader = {
+  const requestedHeader = {
     ...makeHeader(
       funderPaymentCredential.hash,
       headerStartTime,
@@ -168,7 +168,7 @@ export const buildProvedDoubleSpendFixture = async ({
       ? await commitInitializedProvedFixtureHeader({
           lucid: funderLucid,
           contracts,
-          header: fraudulentHeader,
+          header: requestedHeader,
           schedulerStartTime: BigInt(headerStartTime),
         })
       : nonceUtxo !== undefined
@@ -177,11 +177,12 @@ export const buildProvedDoubleSpendFixture = async ({
             contracts,
             nonceUtxo,
             catalogue,
-            header: fraudulentHeader,
+            header: requestedHeader,
           })
         : (() => {
             throw new Error("Legacy setup omitted its actual nonce");
           })();
+  const fraudulentHeader = setup.header;
   if (canonical !== undefined)
     expect(fraudulentHeader.transactionsRoot).toBe(
       await countedTransactionsRoot(
@@ -208,10 +209,8 @@ export const buildProvedDoubleSpendFixture = async ({
             predecessorEndTime: previousHeader.endTime,
             emulator,
           });
-      const baseSuccessorHeader = makeHeader(
-        funderPaymentCredential.hash,
-        successorStart,
-        EMPTY_MERKLE_TREE_ROOT,
+      const baseSuccessorHeader = withPlaceholderDeposit(
+        makeHeader(funderPaymentCredential.hash, successorStart),
       );
       const successorHeader = {
         ...baseSuccessorHeader,
@@ -237,10 +236,10 @@ export const buildProvedDoubleSpendFixture = async ({
         activeOperatorNode,
         activeOperatorNodeUnit: setup.activeOperatorNodeUnit,
       });
-      successors.push({ ...successor, header: successorHeader });
+      successors.push(successor);
       anchorBlockUnit = successor.successorBlockUnit;
       activeOperatorNode = successor.activeOperatorNode;
-      previousHeader = successorHeader;
+      previousHeader = successor.header;
       previousHeaderHash = successor.successorHeaderHash;
     }
     await expectStateQueueHeaderOrder({

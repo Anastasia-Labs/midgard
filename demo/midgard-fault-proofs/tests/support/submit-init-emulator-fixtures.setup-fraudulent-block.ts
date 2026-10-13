@@ -25,6 +25,7 @@ import {
   makeHeader,
   network,
   submitSetupTx,
+  withPlaceholderDeposit,
 } from "./submit-init-emulator-shared.js";
 
 export const submitRemovalForFixture = async (
@@ -157,7 +158,7 @@ export const setupFraudulentBlock = async ({
   const headerStartTime =
     alignUnixTimeToEmulatorSlotBoundary(funderLucid, emulator.now() + 120_000) -
     1;
-  const baseHeader = makeHeader(
+  const transactionsHeader = makeHeader(
     funderKeyHash,
     headerStartTime,
     await countedTransactionsRoot(
@@ -166,7 +167,13 @@ export const setupFraudulentBlock = async ({
     ),
     fixture.l2TransactionCount,
   );
-  const fraudulentHeader = {
+  // A fixture with no transactions (a ledger-only transition) carries one
+  // placeholder deposit: a committed block carries at least one event.
+  const baseHeader =
+    fixture.l2TransactionCount === 0n
+      ? withPlaceholderDeposit(transactionsHeader)
+      : transactionsHeader;
+  const requestedFraudulentHeader = {
     ...baseHeader,
     ...(fixture.headerDurationMs === undefined
       ? {}
@@ -185,7 +192,8 @@ export const setupFraudulentBlock = async ({
     contracts,
     nonceUtxo: (await funderLucid.wallet().getUtxos())[0]!,
     catalogue,
-    header: fraudulentHeader,
+    header: requestedFraudulentHeader,
   });
+  const fraudulentHeader = setup.header;
   return { ...setup, header: fraudulentHeader };
 };

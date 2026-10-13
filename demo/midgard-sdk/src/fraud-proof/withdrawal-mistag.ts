@@ -10,7 +10,6 @@ import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
 import {
-  type AddressData,
   H32Schema,
   hashHexWithBlake2b,
   type HashingError,
@@ -19,7 +18,6 @@ import {
   ProofSchema,
 } from "../common.js";
 import {
-  type CardanoDatum,
   EventKeySchema,
   EventToStepValueSchema,
   HeaderHashSchema,
@@ -43,9 +41,6 @@ import {
 
 export const WITHDRAWAL_MISTAG_VIOLATION_ID = "withdrawal-mistag" as const;
 export const WITHDRAWAL_MISTAG_MAXIMUM_ASSET_COUNT = 100;
-export const WITHDRAWAL_MISTAG_MAXIMUM_VALUE_CBOR_BYTES = 5_000;
-export const WITHDRAWAL_MISTAG_COINS_PER_UTXO_BYTE = 4_310n;
-
 export const withdrawalMistagThreadTokenAssetName = (
   challengedHeaderHash: string,
 ): string => {
@@ -366,104 +361,8 @@ export const withdrawalMistagBodyCommitment = (
 ): Effect.Effect<string, HashingError> =>
   hashHexWithBlake2b(withdrawalBodyBytes(body), 32);
 
-const cborHeadLength = (length: bigint): bigint => {
-  if (length < 24n) return 1n;
-  if (length <= 255n) return 2n;
-  if (length <= 65_535n) return 3n;
-  if (length <= 4_294_967_295n) return 5n;
-  return 9n;
-};
-
-const pointerWordLength = (value: bigint): bigint => {
-  if (value < 0n)
-    throw new Error("withdrawal pointer component must be non-negative");
-  return value < 128n ? 1n : 1n + pointerWordLength(value / 128n);
-};
-
-export const withdrawalMistagAddressPayloadBytes = (
-  address: AddressData,
-): bigint => {
-  const stake = address.stakeCredential;
-  if (stake === null) return 29n;
-  if ("Inline" in stake) return 57n;
-  const pointer = stake.Pointer;
-  return (
-    29n +
-    pointerWordLength(pointer.slotNumber) +
-    pointerWordLength(pointer.transactionIndex) +
-    pointerWordLength(pointer.certificateIndex)
-  );
-};
-
-const datumOptionBytes = (datum: CardanoDatum): bigint => {
-  if (datum === "NoDatum") return 0n;
-  if ("DatumHash" in datum) {
-    if (!/^[0-9a-fA-F]{64}$/u.test(datum.DatumHash.hash)) {
-      throw new Error("withdrawal datum hash must be 32 bytes");
-    }
-    return 37n;
-  }
-  // Aiken's `cbor.serialise(Data)` uses canonical definite maps. Lucid may
-  // emit an equivalent indefinite map, whose byte length is different.
-  const encoded = aikenSerialisedPlutusDataCborPreservingMapOrder(
-    Data.to(datum.InlineDatum.data),
-  );
-  const dataLength = BigInt(encoded.length / 2);
-  return 5n + cborHeadLength(dataLength) + dataLength;
-};
-
-/** Exact twin of `step_04.exact_payout_output_bytes_v1`. */
-export const withdrawalMistagExactPayoutOutputBytes = ({
-  body,
-  cardanoValueSize,
-}: {
-  readonly body: WithdrawalBody;
-  readonly cardanoValueSize: bigint;
-}): bigint => {
-  if (cardanoValueSize < 0n)
-    throw new Error("Cardano value size must be non-negative");
-  const addressLength = withdrawalMistagAddressPayloadBytes(body.l1_address);
-  return (
-    3n +
-    cborHeadLength(addressLength) +
-    addressLength +
-    cardanoValueSize +
-    datumOptionBytes(body.l1_datum)
-  );
-};
-
-export const withdrawalMistagMinimumLovelace = ({
-  body,
-  cardanoValueSize,
-  coinsPerUtxoByte = WITHDRAWAL_MISTAG_COINS_PER_UTXO_BYTE,
-}: {
-  readonly body: WithdrawalBody;
-  readonly cardanoValueSize: bigint;
-  readonly coinsPerUtxoByte?: bigint;
-}): bigint =>
-  coinsPerUtxoByte *
-  (160n + withdrawalMistagExactPayoutOutputBytes({ body, cardanoValueSize }));
-
 export const withdrawalMistagLovelace = (body: WithdrawalBody): bigint =>
   body.l2_value.get("")?.get("") ?? 0n;
-
-export const withdrawalMistagPayable = ({
-  body,
-  cardanoValueSize,
-  coinsPerUtxoByte = WITHDRAWAL_MISTAG_COINS_PER_UTXO_BYTE,
-}: {
-  readonly body: WithdrawalBody;
-  readonly cardanoValueSize: bigint;
-  readonly coinsPerUtxoByte?: bigint;
-}): boolean =>
-  cardanoValueSize > 0n &&
-  cardanoValueSize <= BigInt(WITHDRAWAL_MISTAG_MAXIMUM_VALUE_CBOR_BYTES) &&
-  withdrawalMistagLovelace(body) >=
-    withdrawalMistagMinimumLovelace({
-      body,
-      cardanoValueSize,
-      coinsPerUtxoByte,
-    });
 
 export const withdrawalClaimsValid = (info: WithdrawalInfo): boolean =>
   info.validity === "WithdrawalIsValid";

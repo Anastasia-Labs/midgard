@@ -8,7 +8,7 @@ import { describe, expect, it } from "vitest";
 import { canonicalBlockEvidenceFromVerifiedPayload } from "../src/evidence/canonical-block-evidence.js";
 import { type LedgerAt } from "../src/ledger-at.js";
 import { prepareMinAdaTxFromCanonicalEvidence } from "../src/min-ada/prepare.js";
-import { retainedPayloadReplaySource } from "../src/retained-payload-ledger-at.js";
+import { retainedPayloadReplaySource } from "../src/retained-payload-replay-source.js";
 import { type RetainedDaPayloadSource } from "../src/transition-trace/fetch.js";
 import { MIN_ADA_COMPLETE_CANONICAL_REPLAY } from "../src/workflow/complete-replay.js";
 import {
@@ -28,6 +28,7 @@ import {
   buildCanonicalBlockFixture,
   buildFixtureTransaction,
 } from "./helpers/canonical-block-evidence-fixture.js";
+import { fixtureLedgerAt } from "./support/fixture-ledger.js";
 
 const fingerprint = "d1".repeat(32);
 const policy = { ...DEPLOYMENT_MANIFEST_L1_FINALITY };
@@ -124,7 +125,8 @@ const setup = async ({ failFirstRead = false } = {}) => {
       observation,
       authenticatedObservationDigest,
       sources: replaySource.sources,
-      predecessorLedgerAt: externalLedgerAt ?? replaySource.ledgerAt,
+      predecessorLedgerAt:
+        externalLedgerAt ?? fixtureLedgerAt({ sources: replaySource.sources }),
     });
   };
   return { classify, readCount: () => readCount };

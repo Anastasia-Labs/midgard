@@ -1,3 +1,4 @@
+import { type AllowList } from "@al-ft/midgard-core/deployment-profile";
 import {
   ACTIVE_OPERATOR_NODE_ASSET_NAME_PREFIX,
   buildActivateOperatorTx,
@@ -47,12 +48,15 @@ export const onboardEmulatorOperator = async ({
   operatorKeyHash,
   registrationSlots = 120,
   awaitActivation = () => {},
+  operatorAllowList,
 }: {
   readonly lucid: SetupLucid;
   readonly contracts: SetupContracts;
   readonly operatorKeyHash: string;
   readonly registrationSlots?: number;
   readonly awaitActivation?: (activationTime: bigint) => void | Promise<void>;
+  /** Passed to the register builder's off-chain allow-list check. */
+  readonly operatorAllowList?: AllowList;
 }): Promise<{ registeredNodeUnit: string; activeNodeUnit: string }> => {
   const hubOracleUnit = toUnit(
     contracts.hubOracle.policyId,
@@ -147,6 +151,7 @@ export const onboardEmulatorOperator = async ({
       lucid,
       contracts,
       operatorKeyHash,
+      operatorAllowList,
       registeredOperatorScriptRefs: lifecycleReferences.registered,
       hubOracleRefInput: hubOracleUtxo,
       activeNotMemberWitness,

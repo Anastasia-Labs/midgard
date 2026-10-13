@@ -94,7 +94,6 @@ const genuineFixture = async () => {
     block_body: {
       header_hash: headerHash,
       header,
-      utxos: [],
       withdrawals: [],
       forced_transactions: [],
       transactions: [],

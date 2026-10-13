@@ -59,7 +59,6 @@ vi.mock("../src/database/index.js", async () => {
       ...actual.MpfEngineStateDB,
       assertLedgerAuditHealthy: Effect.void,
       revalidateLedgerStoreLease: vi.fn(() => Effect.void),
-      stampLedgerPayloadAggregate: vi.fn(() => Effect.void),
       tryWithLedgerStoreLease: vi.fn(
         (
           owner: string,
@@ -301,9 +300,7 @@ const baseCommitArgs = {
   validationTraceMembers: [],
   transitionStepCount: 0,
   validationTraceCount: 0,
-  utxoPayloadEntries: [],
   ledgerDelta: { spent: [], produced: [] },
-  utxoPayloadAggregate: { entryCount: 0, encodedTupleBytes: 0 },
   selectedBaseUtxosRoot: "33".repeat(32),
   implicitGenesisEntries: [],
   nativeMpfReplay: undefined,

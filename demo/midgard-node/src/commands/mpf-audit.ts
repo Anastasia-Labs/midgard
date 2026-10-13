@@ -11,7 +11,6 @@ import type { DatabaseError } from "../database/utils/common.js";
 import type * as Ledger from "../database/utils/ledger.js";
 import {
   computeLedgerMpfRootFromLedgerEntries,
-  ledgerPayloadAggregateFromEntries,
   MidgardMpf,
   setMpfScratchBuild,
 } from "../mpf/index.js";
@@ -413,9 +412,6 @@ export const runMpfAudit = ({
                   yield* MpfEngineStateDB.recordLedgerAudit({
                     rootHex: recorded.root,
                     diverged,
-                    utxoPayloadAggregate: ledgerPayloadAggregateFromEntries(
-                      recorded.entries,
-                    ),
                   });
                   if (acknowledgeClean) {
                     if (diverged) {

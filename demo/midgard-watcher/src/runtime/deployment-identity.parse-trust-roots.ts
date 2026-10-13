@@ -10,6 +10,7 @@ import {
   type DeploymentMarker,
   verifyFinalizedDeploymentManifest,
 } from "@al-ft/midgard-core/deployment-manifest-identity";
+import { deploymentFraudProofCatalogueCategories } from "@al-ft/midgard-core/deployment-profile";
 import {
   type FraudProofReleaseEconomicsAuthority,
   type FraudProofReleaseFinalityAuthority,
@@ -17,7 +18,6 @@ import {
 } from "@al-ft/midgard-fault-proofs";
 
 import {
-  CATALOGUE_CATEGORY_TO_CONTRACT,
   equalStringMaps,
   exactRecord,
   exactString,
@@ -137,12 +137,13 @@ const assertCatalogue = (
     );
   }
   const categories = catalogue.categories;
-  for (const category of Object.keys(CATALOGUE_CATEGORY_TO_CONTRACT) as Array<
-    keyof typeof CATALOGUE_CATEGORY_TO_CONTRACT
-  >) {
+  // Both sides hold exactly the deployment's catalogue (the profile's set).
+  for (const category of deploymentFraudProofCatalogueCategories()) {
     const entry = categories[category];
     const expectedEntry = expected.categories[category];
     if (
+      entry === undefined ||
+      expectedEntry === undefined ||
       entry.categoryId !== expectedEntry.categoryId ||
       entry.scriptHash !== expectedEntry.scriptHash
     ) {

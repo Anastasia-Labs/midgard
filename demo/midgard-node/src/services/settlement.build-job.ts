@@ -50,6 +50,7 @@ import {
   settlementCheck,
   settlementJobError,
 } from "./settlement-call.js";
+import { settlementRetryDelayMs } from "./settlement-retry.js";
 
 const buildJob = (
   owner: Journal.SettlementOwner,
@@ -221,8 +222,13 @@ export const settlementTick = (
           });
           return;
         }
-        const delay = Math.min(60_000, 5_000 * 2 ** Math.min(job.failures, 4));
-        yield* Journal.updateJob(owner, job, job.phase, delay, detail);
+        yield* Journal.updateJob(
+          owner,
+          job,
+          job.phase,
+          settlementRetryDelayMs(job.failures),
+          detail,
+        );
         return yield* Effect.fail(new Error(detail));
       }
     }

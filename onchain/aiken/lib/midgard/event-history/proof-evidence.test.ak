@@ -61,6 +61,7 @@ fn capture(tx: Transaction) -> order_facts.Commitment {
     order_facts.Deposit,
     d1.authentic_deposit_id_v1(),
     20,
+    20,
     fixture.parameters(),
     0,
     None,
@@ -74,6 +75,7 @@ fn absence(tx: Transaction) -> Bool {
     policy,
     address.from_script(policy),
     d1.authentic_deposit_id_v1(),
+    20,
     20,
     0,
   )

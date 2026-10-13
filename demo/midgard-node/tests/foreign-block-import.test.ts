@@ -259,15 +259,6 @@ describe("foreign block import failure attribution", () => {
       expect(result.left).toMatchObject({ reason: "invalid" });
   });
 
-  it("calls DA entries whose roots cannot be formed invalid", async () => {
-    const payload = await fixture();
-    payload.block_body.utxos = [["00", "00"]];
-    const result = await verdict(payload);
-    expect(result._tag).toBe("Left");
-    if (result._tag === "Left")
-      expect(result.left).toMatchObject({ reason: "invalid" });
-  });
-
   it("calls a failure it cannot pin on the block incomplete, never invalid", async () => {
     // A parent ledger the local MPF cannot hash: a local computation fails.
     const result = await verdict(await fixture(), {

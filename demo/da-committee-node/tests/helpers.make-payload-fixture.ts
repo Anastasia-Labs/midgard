@@ -102,7 +102,7 @@ const transactionSource = (
 export const makePayloadFixture = async (
   transactionCount = 3,
   headerOverrides: Partial<
-    Pick<Header, "prevHeaderHash" | "prevUtxosRoot">
+    Pick<Header, "prevHeaderHash" | "prevUtxosRoot" | "utxosRoot">
   > = {},
 ): Promise<{
   readonly payload: SDK.DaPayload;
@@ -146,8 +146,8 @@ export const makePayloadFixture = async (
   };
   const placeholderHeader: Header = {
     ...fixtureHeaderBase(),
-    ...headerOverrides,
     utxosRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
+    ...headerOverrides,
     forcedTransactionsRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
     transactionsRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
     depositsRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
@@ -158,7 +158,6 @@ export const makePayloadFixture = async (
     block_body: {
       header_hash: "00".repeat(28),
       header: placeholderHeader,
-      utxos: [],
       transactions: sources.map((source) => [
         source.tx_id,
         LucidData.to(source as never, SDK.L2TransactionSourceSchema as never),

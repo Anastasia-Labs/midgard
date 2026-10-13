@@ -455,10 +455,10 @@ describe("applied transition history", () => {
       );
       expect(queueNodeBefore.proven_fraud).toBeNull();
       // Bypass client deadline planning to exercise the deployed terminal check.
-      // Keep a short finite interval that straddles earliest merge maturity.
+      // Keep a short interval straddling merge maturity (from block_time).
       const newTx = h.proverLucid.newTx.bind(h.proverLucid);
       const deadline = Number(
-        fixture.proof.header.endTime + SDK.MATURITY_DURATION_MS,
+        queueNodeBefore.block_time + SDK.MATURITY_DURATION_MS,
       );
       const expire = vi.spyOn(h.proverLucid, "newTx").mockImplementation(() => {
         const tx = newTx();

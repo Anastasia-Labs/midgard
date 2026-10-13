@@ -158,6 +158,12 @@ export type AvailabilityFixtureOptions = {
         readonly lovelace?: bigint;
         readonly datum?: SDK.DaBondPoolDatum;
       };
+  /**
+   * The challenger's payment signing key (bech32). Default: a fresh key. A
+   * deployment whose DA-challenger allow-list admits only listed keys needs a
+   * listed one.
+   */
+  readonly challengerPrivateKey?: string;
 };
 
 /** Reference-script roles only a commit fixture publishes. */

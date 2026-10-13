@@ -1,6 +1,7 @@
 import "./submit-init-emulator-fixtures.expect-state-queue-header-order.js";
 
 import { MIDGARD_CONSENSUS_PROFILE, outRefLabel } from "@al-ft/midgard-core";
+import { type L1SlotConfig } from "@al-ft/midgard-core/l1-slot-config";
 import {
   ActiveOperatorDatum,
   ActiveOperatorSpendRedeemer,
@@ -30,6 +31,7 @@ import {
 import { Effect } from "effect";
 import { expect } from "vitest";
 
+import { withCommitSlot } from "./emulator/header-fixtures.js";
 import {
   findStateQueueYieldReferenceScript,
   type OperatorLifecycleReferenceScripts,
@@ -41,7 +43,7 @@ export const submitSuccessorBlockTx = async ({
   emulator,
   contracts,
   anchorBlockUnit,
-  header,
+  header: requestedHeader,
   hubOracle,
   scheduler,
   activeOperatorNode,
@@ -51,9 +53,16 @@ export const submitSuccessorBlockTx = async ({
   readonly lucid: Awaited<ReturnType<typeof Lucid>>;
   readonly emulator: Emulator;
   readonly contracts: MidgardValidators & {
+    /** The slot mapping the deployment's commit yield was built with. */
+    readonly l1SlotConfig: L1SlotConfig;
     readonly operatorLifecycleReferenceScripts?: OperatorLifecycleReferenceScripts;
   };
   readonly anchorBlockUnit: string;
+  /**
+   * The successor header. It commits at block_time = endTime, so its
+   * block_slot is stamped here from endTime under the deployment's mapping;
+   * use the returned `header`, which is the one committed and hashed.
+   */
   readonly header: Header;
   readonly hubOracle: UTxO;
   readonly scheduler: UTxO;
@@ -67,7 +76,9 @@ export const submitSuccessorBlockTx = async ({
   readonly successorHeaderHash: string;
   readonly successorBlockUnit: string;
   readonly activeOperatorNode: UTxO;
+  readonly header: Header;
 }> => {
+  const header = withCommitSlot(contracts.l1SlotConfig, requestedHeader);
   const [anchorBlockUtxo] = await lucid.utxosAtWithUnit(
     contracts.stateQueue.spendingScriptAddress,
     anchorBlockUnit,
@@ -285,14 +296,13 @@ export const submitSuccessorBlockTx = async ({
     successorHeaderHash,
     successorBlockUnit,
     activeOperatorNode: continuedActiveOperatorNode,
+    header,
   };
 };
 
 export type SuccessorBlockFixture = Awaited<
   ReturnType<typeof submitSuccessorBlockTx>
-> & {
-  readonly header: Header;
-};
+>;
 
 /**
  * Publication labels for the four double-spend step validators, following the

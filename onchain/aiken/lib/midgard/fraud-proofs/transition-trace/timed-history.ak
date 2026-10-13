@@ -7,6 +7,7 @@ use aiken/cbor
 use cardano/address.{Address}
 use cardano/assets.{PolicyId}
 use cardano/transaction.{OutputReference, Transaction}
+use midgard/common/utils
 use midgard/event_history/horizon
 use midgard/event_history/order_facts.{Deposit, Withdrawal}
 use midgard/event_history/proof_evidence
@@ -34,6 +35,13 @@ fn capture(
   target: OutputReference,
   header_end: Int,
 ) -> (order_facts.Facts, order_facts.Payload) {
+  let (lower, upper) = utils.get_inclusive_bounds_of_a_short_validity_range(
+    tx.validity_range,
+  )
+  // Coverage only. The merge deadline is enforced at the terminal by
+  // `state_queue.require_completed_fraud_witness` (state-queue.ak:621-653),
+  // which l1-event-v1.ak:68 calls against the node's block_time.
+  expect horizon.captured_after_coverage(header_end, lower, upper)
   let (facts, payload, _) = order_facts.capture_payload(
     tx,
     parameters.policy,
@@ -41,7 +49,6 @@ fn capture(
     parameters.data.retention_address,
     kind,
     target,
-    header_end,
     parameters.data.inline_limit,
     parameters.data.max_payload_bytes,
     parameters.data.max_payload_nodes,

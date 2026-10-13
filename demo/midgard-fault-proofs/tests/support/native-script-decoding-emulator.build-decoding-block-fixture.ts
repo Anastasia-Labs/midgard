@@ -28,6 +28,7 @@ import {
   encodeData,
   reconstructDaPayload,
 } from "../../src/transition-trace/reconstruct.js";
+import { fixtureBlockSlot } from "./emulator/header-fixtures.js";
 import {
   bufferEntries,
   type DecodingBlockFixture,
@@ -307,7 +308,7 @@ export const buildDecodingBlockFixture = async ({
     ...counts,
     startTime,
     endTime: startTime + 1_000n,
-    blockSlot: 0n,
+    blockSlot: fixtureBlockSlot(startTime + 1_000n),
     expectedNetworkId: 0n,
     minFeeA: 0n,
     minFeeB: 0n,
@@ -321,7 +322,6 @@ export const buildDecodingBlockFixture = async ({
     block_body: {
       header_hash: headerHash,
       header,
-      utxos: [],
       withdrawals: [],
       forced_transactions: sorted(forcedTransactions),
       transactions: sorted(transactions),

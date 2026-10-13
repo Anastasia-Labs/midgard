@@ -5,6 +5,8 @@ use aiken/crypto.{ScriptHash}
 use cardano/address.{Address, Credential}
 use cardano/assets.{PolicyId}
 use cardano/transaction.{Transaction}
+use midgard/common/utils
+use midgard/event_history/horizon
 use midgard/event_history/order_facts
 use midgard/fraud_proofs/native_tx/components
 use midgard/fraud_proofs/transition_trace/deposit_source
@@ -72,6 +74,13 @@ validator projection(
         hub_oracle,
         args.hub_ref_input_index,
       )
+      let (lower, upper) = utils.get_inclusive_bounds_of_a_short_validity_range(
+        tx.validity_range,
+      )
+      // Coverage only. The merge deadline is enforced at the terminal by
+      // `state_queue.require_completed_fraud_witness` (state-queue.ak:621-653),
+      // which deposit-v1.ak:97 calls against the node's block_time.
+      expect horizon.captured_after_coverage(header.end_time, lower, upper)
       let (commitment, payload, original_assets) = order_facts.capture_open(
         tx,
         hub_datum.deposit,
@@ -79,7 +88,6 @@ validator projection(
         retention_address,
         order_facts.Deposit,
         source.key,
-        header.end_time,
         inline_limit,
         max_payload_bytes,
         max_payload_nodes,

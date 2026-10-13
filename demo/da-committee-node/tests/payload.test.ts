@@ -8,14 +8,11 @@ import "vitest";
 import "../src/da/payload.js";
 import "./helpers.js";
 import "./payload.payload-with-program-material.js";
-import "./payload.make-da-bytes-constant-material.js";
 
 import {
-  encodeMidgardCekProgramMaterialDaValue,
   encodeMidgardCekTermNode,
   hashMidgardCekTermNode,
 } from "@al-ft/midgard-core/cek-proof";
-import { encodeMidgardSpendInputItem } from "@al-ft/midgard-core/codec";
 import { wrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
 import * as SDK from "@al-ft/midgard-sdk";
 import { describe, expect, it } from "vitest";
@@ -23,27 +20,11 @@ import { describe, expect, it } from "vitest";
 import {
   computeDaPayloadRoots,
   decodeDaPayloadStrict,
-  validateDaPayloadEventProgramCoverage,
   verifyDaPayloadAgainstHeader,
 } from "../src/da/payload.js";
 import { headerHashOf } from "../src/l1/follower/queue-derivation.js";
 import { makePayloadFixture } from "./helpers.js";
-import { makeDaBytesConstantMaterial } from "./payload.make-da-bytes-constant-material.js";
-import {
-  payloadWithDuplicateProgramEnvelopes,
-  payloadWithProgramMaterial,
-  sortedEntries,
-} from "./payload.payload-with-program-material.js";
-
-/**
- * Strict decoding followed by the per-event program coverage replay from the
- * empty pre-state (the fixture transactions spend and reference nothing).
- */
-const decodeAndReplay = (payload: SDK.DaPayload): SDK.DaPayload => {
-  const decoded = decodeDaPayloadStrict(SDK.encodeDaPayload(payload));
-  validateDaPayloadEventProgramCoverage(decoded.block_body, []);
-  return decoded;
-};
+import { payloadWithProgramMaterial } from "./payload.payload-with-program-material.js";
 
 describe("canonical V1 DA payload verification", () => {
   it("attests a block of script transactions whose retained-witness section is empty", async () => {
@@ -81,7 +62,6 @@ describe("canonical V1 DA payload verification", () => {
       {
         payloadSchemaVersion: 1,
         stateQueueOutRef: "state-queue#0",
-        preBlockUtxos: [],
       },
     );
     expect(verified.validation.rootsMatch).toBe(true);
@@ -138,7 +118,6 @@ describe("canonical V1 DA payload verification", () => {
       {
         payloadSchemaVersion: 1,
         stateQueueOutRef: "state-queue#0",
-        preBlockUtxos: [],
       },
     );
 
@@ -197,7 +176,6 @@ describe("canonical V1 DA payload verification", () => {
         {
           payloadSchemaVersion: 1,
           stateQueueOutRef: "state-queue#0",
-          preBlockUtxos: [],
         },
       ),
     ).rejects.toMatchObject({
@@ -217,7 +195,6 @@ describe("canonical V1 DA payload verification", () => {
           {
             payloadSchemaVersion: payloadSchemaVersion as 1,
             stateQueueOutRef: "state-queue#0",
-            preBlockUtxos: [],
           },
         ),
       ).rejects.toMatchObject({
@@ -245,37 +222,50 @@ describe("canonical V1 DA payload verification", () => {
 
   it("rejects well-formed payload members whose derived roots differ from the header", async () => {
     const fixture = await makePayloadFixture();
+    // A header (and payload) that commits a transactions root other than
+    // the one the payload's transactions derive.
+    const header = {
+      ...fixture.header,
+      transactionsRoot: "ab".repeat(32),
+    };
+    const headerHash = headerHashOf(header);
     const inner = SDK.encodeDaPayload({
       ...fixture.payload,
       block_body: {
         ...fixture.payload.block_body,
-        utxos: [
-          [
-            // The ledger key must stay *well formed* — the point of this case is
-            // a root mismatch, not a malformed member — so it is built by the
-            // §5.3 encoder rather than hand-written. CML's minimal-index form
-            // (`825820…00`, 36 bytes) is not an admissible out-ref spelling and
-            // would fail closed as `malformed_da` before the root comparison.
-            encodeMidgardSpendInputItem({
-              txId: Buffer.alloc(32, 0x01),
-              outputIndex: 0,
-            }).toString("hex"),
-            "a200581d70aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa018200a0",
-          ],
-        ],
+        header_hash: headerHash,
+        header,
       },
     });
     const stored = await wrapDaPayload(inner, { mode: "identity" });
 
     await expect(
-      verifyDaPayloadAgainstHeader(stored, fixture.headerHash, fixture.header, {
+      verifyDaPayloadAgainstHeader(stored, headerHash, header, {
         payloadSchemaVersion: 1,
         stateQueueOutRef: "state-queue#0",
-        preBlockUtxos: [],
       }),
     ).rejects.toMatchObject({
       code: "root_mismatch",
+      message: expect.stringMatching(/: transactions_root$/u),
     });
+  });
+
+  it("takes the post-state root from the header: the payload carries no UTxO set", async () => {
+    // A block deep in the chain: its parent payload is nowhere, and its
+    // pre- and post-state roots are not the empty set's.
+    const fixture = await makePayloadFixture(3, {
+      prevHeaderHash: "11".repeat(28),
+      prevUtxosRoot: "cd".repeat(32),
+      utxosRoot: "ef".repeat(32),
+    });
+    const verified = await verifyDaPayloadAgainstHeader(
+      fixture.payloadCbor,
+      fixture.headerHash,
+      fixture.header,
+      { payloadSchemaVersion: 1, stateQueueOutRef: "state-queue#0" },
+    );
+    expect(verified.roots.utxosRoot).toBe("ef".repeat(32));
+    expect(verified.validation.rootsMatch).toBe(true);
   });
 
   it("rejects duplicate transaction keys before committee attestation", async () => {
@@ -302,7 +292,6 @@ describe("canonical V1 DA payload verification", () => {
       verifyDaPayloadAgainstHeader(stored, fixture.headerHash, fixture.header, {
         payloadSchemaVersion: 1,
         stateQueueOutRef: "state-queue#0",
-        preBlockUtxos: [],
       }),
     ).rejects.toMatchObject({
       code: "duplicate_key",
@@ -335,79 +324,5 @@ describe("canonical V1 DA payload verification", () => {
         /validation_traces member count/u,
       );
     });
-  });
-
-  it("deduplicates repeated retained program envelopes without weakening exact material coverage", async () => {
-    const fixture = await payloadWithDuplicateProgramEnvelopes();
-    expect(() => decodeAndReplay(fixture.payload)).not.toThrow();
-
-    const missing = {
-      ...fixture.payload,
-      block_body: {
-        ...fixture.payload.block_body,
-        cek_program_material: [],
-      },
-    };
-    expect(() => decodeAndReplay(missing)).toThrow(
-      /exactly cover every program of every event at its position/u,
-    );
-
-    const extraNode = { kind: "builtin", tag: 0n } as const;
-    const extraPreimage = encodeMidgardCekTermNode(extraNode);
-    const extraRoot = hashMidgardCekTermNode(extraNode);
-    const extraEntry = [
-      extraRoot.toString("hex"),
-      encodeMidgardCekProgramMaterialDaValue({
-        kind: "term",
-        preimage: extraPreimage,
-      }).toString("hex"),
-    ] satisfies SDK.DaPayloadEntry;
-    const extra = {
-      ...fixture.payload,
-      block_body: {
-        ...fixture.payload.block_body,
-        cek_program_material: sortedEntries([
-          fixture.materialEntry,
-          extraEntry,
-        ]),
-      },
-    };
-    expect(() => decodeAndReplay(extra)).toThrow(
-      /exactly cover every program of every event at its position/u,
-    );
-  });
-
-  it("accepts distinct envelopes sharing a near-cap constant through strict coverage-only verification", async () => {
-    const shared = makeDaBytesConstantMaterial(8_900, 3);
-    expect(shared.payloadCborLength).toBeLessThanOrEqual(9_215);
-    const payload = await payloadWithProgramMaterial(
-      shared.envelopes,
-      shared.material,
-    );
-
-    expect(() => decodeAndReplay(payload)).not.toThrow();
-  });
-
-  it("rejects an authenticated oversized semantic constant through the strict DA decoder", async () => {
-    const oversized = makeDaBytesConstantMaterial(9_000, 0);
-    expect(oversized.payloadCborLength).toBeGreaterThan(9_215);
-    const payload = await payloadWithProgramMaterial(
-      oversized.envelopes,
-      oversized.material,
-    );
-    let rejection: unknown;
-
-    try {
-      decodeAndReplay(payload);
-    } catch (cause) {
-      rejection = cause;
-    }
-    expect(rejection).toMatchObject({ code: "coverage_mismatch" });
-    expect(
-      (rejection as Error & { readonly cause?: unknown }).cause,
-    ).toBeInstanceOf(Error);
-    expect(
-      (rejection as Error & { readonly cause: Error }).cause.message,
-    ).toMatch(/source constant payload exceeds the 9215-byte/u);
   });
 });

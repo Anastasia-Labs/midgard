@@ -19,8 +19,9 @@ inputs:
     default: "false"
   interactive-blueprint:
     description: >-
-      "true" restores the interactive-emulator blueprint and its build record
-      from the run's `test-blueprint-interactive-emulator` artifact and sets
+      "true" restores the interactive- and curated-emulator blueprints and
+      their build records from the run's `test-blueprint-interactive-emulator`
+      and `test-blueprint-curated-emulator` artifacts and sets
       MIDGARD_REQUIRE_PREBUILT_BLUEPRINTS=1, so the suites' setup fails on a
       stale copy instead of rebuilding it. Implies "aiken".
     default: "false"
@@ -112,6 +113,12 @@ runs:
       with:
         name: test-blueprint-interactive-emulator
         path: onchain/aiken/build/interactive-emulator
+    - name: Download the curated-emulator blueprint and its build record
+      if: inputs.interactive-blueprint == 'true'
+      uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+      with:
+        name: test-blueprint-curated-emulator
+        path: onchain/aiken/build/curated-emulator
     - name: Download the traced preprod-testing blueprint and its build record
       if: inputs.traced-blueprints == 'true'
       uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0

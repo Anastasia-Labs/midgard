@@ -35,6 +35,8 @@ import {
   keyValuePhasRootWithCount,
   reconstructDaPayload,
 } from "../../src/index.js";
+import { fixtureBlockSlot } from "./emulator/header-fixtures.js";
+import { recordFixtureLedger } from "./fixture-ledger.js";
 import {
   sortedDaEntries,
   transitionTraceRawEntry,
@@ -117,6 +119,7 @@ const buildForcedTransitionTraceFixture = async ({
       value: finalDescriptor,
     },
   ]);
+  recordFixtureLedger(finalUtxosRoot.root, [finalUtxo]);
   const forcedNativeTx = makeNativeTx({
     spendInputCbors: [],
     fee: 0n,
@@ -289,7 +292,10 @@ const buildForcedTransitionTraceFixture = async ({
     ...makeHeader(operatorVkey, now),
     ...(headerDurationMs === undefined
       ? {}
-      : { endTime: BigInt(now + headerDurationMs) }),
+      : {
+          endTime: BigInt(now + headerDurationMs),
+          blockSlot: fixtureBlockSlot(BigInt(now + headerDurationMs)),
+        }),
     utxosRoot: finalUtxosRoot.root,
     forcedTransactionsRoot: forcedRoot.root,
     transitionTraceRoot: traceRoot.root,
@@ -304,7 +310,6 @@ const buildForcedTransitionTraceFixture = async ({
       block_body: {
         header_hash: headerHash,
         header,
-        utxos: sortedDaEntries([finalUtxo]),
         withdrawals: [],
         forced_transactions: sortedDaEntries(forcedEntries),
         transactions: [],

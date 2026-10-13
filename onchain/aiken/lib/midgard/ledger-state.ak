@@ -284,7 +284,6 @@ fn header_validation_context_scalars_v1_are_valid(header: HeaderV1) -> Bool {
     header.expected_network_id == 0 || header.expected_network_id == 1,
     header.min_fee_a >= 0,
     header.min_fee_b >= 0,
-    header.block_slot >= 0,
   }
 }
 

@@ -9,7 +9,6 @@ import { DatabaseError } from "../database/utils/common.js";
 import * as Ledger from "../database/utils/ledger.js";
 import type { ContractDeploymentIdentityValue } from "../services/midgard-contracts.js";
 import { MpfError } from "./errors.js";
-import { type UtxoPayloadSizeAggregate } from "./payload-size.js";
 import { type NativeMpfBuildContext } from "./transition-trace.js";
 import {
   type RetainedValidationTraceMember,
@@ -38,7 +37,6 @@ export type ProcessMpfsConfig = {
   readonly initialLedgerEntries?: readonly Ledger.MinimalEntry[];
   readonly selectedBaseUtxoRoot?: string;
   readonly payloadRootCheck?: "every_block" | "periodic" | "off";
-  readonly baseUtxoPayloadAggregate?: UtxoPayloadSizeAggregate;
   readonly recordCorpusPath?: string;
   /** Runs once a commit-stage rejection's mempool_ledger revert commits. */
   readonly onMempoolLedgerReverted?: Effect.Effect<void>;

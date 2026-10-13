@@ -216,7 +216,7 @@ describe("unusedRedeemer concrete retained lifecycle material", () => {
       });
       if (direction === "accepted" && block.txInclusion === null)
         throw new Error("accepted inclusion absent");
-      const header = {
+      const requestedHeader = {
         ...block.header,
         validationTracesRoot: traceRoot.root,
         validationTraceCount: traceRoot.count,
@@ -226,8 +226,9 @@ describe("unusedRedeemer concrete retained lifecycle material", () => {
         contracts: harness.contracts,
         nonceUtxo: harness.nonceUtxo,
         catalogue,
-        header,
+        header: requestedHeader,
       });
+      const header = setup.header;
       const references: UTxO[] = [];
       for (const [index, step] of contracts.steps.entries())
         references.push(

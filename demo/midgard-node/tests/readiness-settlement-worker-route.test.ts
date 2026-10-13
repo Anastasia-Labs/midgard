@@ -2,6 +2,7 @@ import "./utils.js";
 
 import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
 import { HttpServerRequest, HttpServerResponse } from "@effect/platform";
+import { SqlClient } from "@effect/sql";
 import { Effect, Ref } from "effect";
 import { describe, expect, it } from "vitest";
 
@@ -17,8 +18,9 @@ import {
   MidgardContracts,
 } from "../src/services/midgard-contracts.js";
 import type { SettlementHealth } from "../src/services/settlement.js";
+import { SETTLEMENT_JOB_FAILURE_CAP } from "../src/services/settlement-retry.js";
 import { ValidationPool } from "../src/services/validation-pool.js";
-import { provideDatabaseLayers } from "./utils.js";
+import { provideDatabaseLayers, resetApplicationTables } from "./utils.js";
 
 // Only the settings /readyz reads. Fresh exact provider evidence keeps the
 // handler off Lucid and the contracts, so those are never dereferenced.
@@ -36,10 +38,11 @@ const nodeConfig = {
 
 type ReadyzSettlement = {
   readonly settlementReasons: readonly string[];
+  readonly settlementDetails: readonly string[];
   readonly settlement: SettlementHealth;
 };
 
-const readyz = (health: SettlementHealth) =>
+const readyz = (health: SettlementHealth, manifestId?: string) =>
   Effect.runPromise(
     provideDatabaseLayers(
       Effect.gen(function* () {
@@ -65,11 +68,15 @@ const readyz = (health: SettlementHealth) =>
           HttpServerResponse.toWeb(response).json(),
         )) as {
           readonly reasons: readonly string[];
+          readonly details: readonly string[];
           readonly settlement: SettlementHealth;
         };
         return {
           settlementReasons: body.reasons.filter((reason) =>
             reason.startsWith("settlement"),
+          ),
+          settlementDetails: body.details.filter((detail) =>
+            detail.startsWith("settlement"),
           ),
           settlement: body.settlement,
         };
@@ -87,10 +94,15 @@ const readyz = (health: SettlementHealth) =>
         Effect.provideService(MidgardContracts, {} as MidgardContracts),
         Effect.provideService(
           ContractDeploymentIdentity,
-          ContractDeploymentIdentity.make({
-            kind: "derived",
-            consensusProfile: MIDGARD_CONSENSUS_PROFILE,
-          }),
+          manifestId === undefined
+            ? ContractDeploymentIdentity.make({
+                kind: "derived",
+                consensusProfile: MIDGARD_CONSENSUS_PROFILE,
+              })
+            : ({
+                kind: "manifest",
+                manifestId,
+              } as unknown as ContractDeploymentIdentity),
         ),
         Effect.provide(Globals.Default),
       ) as unknown as Effect.Effect<ReadyzSettlement, unknown, never>,
@@ -158,5 +170,43 @@ describe("GET /readyz settlement worker", () => {
       (await readyz(health("running", "settlement queue drained")))
         .settlementReasons,
     ).toEqual([]);
+  });
+
+  it("names a stuck settlement job as a detail and stays ready on it", async () => {
+    const deploymentId = "a2".repeat(32);
+    const insertJob = (eventId: string, failures: number, error: string) =>
+      Effect.runPromise(
+        provideDatabaseLayers(
+          Effect.gen(function* () {
+            const sql = yield* SqlClient.SqlClient;
+            yield* sql`INSERT INTO settlement_jobs
+              (deployment_id, kind, event_id, phase, failures, last_error)
+              VALUES (${deploymentId}, 'withdrawal', ${eventId}, 'conclude',
+                ${failures}, ${error})`;
+          }),
+        ),
+      );
+    await Effect.runPromise(provideDatabaseLayers(resetApplicationTables));
+    const running = health("running", "settlement progress checkpointed");
+    await insertJob("cc".repeat(34), SETTLEMENT_JOB_FAILURE_CAP - 1, "failing");
+    expect(await readyz(running, deploymentId)).toMatchObject({
+      settlementReasons: [],
+      settlementDetails: [],
+    });
+    await insertJob(
+      "dd".repeat(34),
+      SETTLEMENT_JOB_FAILURE_CAP,
+      "settlement withdrawal conclude: builder refused\n    at stack",
+    );
+    expect(await readyz(running, deploymentId)).toMatchObject({
+      settlementReasons: [],
+      settlementDetails: [
+        `settlement_jobs_stuck:1:withdrawal:${"dd".repeat(34)}:conclude:settlement withdrawal conclude: builder refused`,
+      ],
+    });
+    // Another deployment's stuck jobs are not this node's.
+    expect((await readyz(running, "b3".repeat(32))).settlementDetails).toEqual(
+      [],
+    );
   });
 });

@@ -99,7 +99,7 @@ export const appendFieldRecoverySuccessor = async (
       activeOperatorNodeUnit: fixture.fraudulent.activeOperatorNodeUnit,
     });
     if (index === 0) targetOutRef = successor.continuedAnchorOutRef;
-    predecessorHeader = header;
+    predecessorHeader = successor.header;
     predecessorHash = successor.successorHeaderHash;
     anchorBlockUnit = successor.successorBlockUnit;
     activeOperatorNode = successor.activeOperatorNode;

@@ -56,7 +56,7 @@ export {
   commitDaFrameStepDownPassBound,
   DA_PAYLOAD_UPPER_BOUND_HEADER,
   DA_PAYLOAD_UPPER_BOUND_HEADER_HASH,
-  emptyBlockDaPayloadUpperBoundBytes,
+  EMPTY_BLOCK_DA_PAYLOAD_UPPER_BOUND_BYTES,
   estimatedTxDaPayloadBytes,
   planCommitBatchBudgets,
   planCommitDaFrameStepDown,

@@ -2,30 +2,26 @@ import { maxDaPayloadInnerBytes } from "@al-ft/midgard-core/da-payload-sizing";
 import { Either } from "effect";
 import { describe, expect, it } from "vitest";
 
-import type { UtxoPayloadSizeAggregate } from "../src/mpf/index.js";
 import {
-  emptyBlockDaPayloadUpperBoundBytes,
+  EMPTY_BLOCK_DA_PAYLOAD_UPPER_BOUND_BYTES,
   estimatedTxDaPayloadBytes,
   planCommitBatchBudgets,
   selectCommitTxCandidates,
 } from "../src/workers/utils/commit-block-planner.js";
 import {
   CANONICAL_TX,
-  LC1_BASE_LEDGER,
-  LC1_MEAN_ENTRY_BYTES,
   mkCandidate,
   MODES,
   preSubmit,
   PROGRAM_LIMITS,
-  REFUSAL,
 } from "./helpers/commit-da-frame-fixtures.js";
 
 describe("commit planner DA frame budget", () => {
   it.each(MODES)(
     "fits a full mempool of plain transfers in one frame, identically on consecutive ticks (%s)",
     async (mode) => {
-      // A plain transfer carries its two copies, its ledger growth and a
-      // placeholder descriptor: a few hundred transfers are far from a frame.
+      // A plain transfer carries its two copies and a placeholder
+      // descriptor: a few hundred transfers are far from a frame.
       const candidates = Array.from({ length: 400 }, (_, index) =>
         mkCandidate(index + 1),
       );
@@ -37,8 +33,7 @@ describe("commit planner DA frame budget", () => {
             processedMempoolTxs: [],
           }),
           limits: PROGRAM_LIMITS(mode),
-          baseUtxoPayloadAggregate: LC1_BASE_LEDGER,
-        } as Parameters<typeof planCommitBatchBudgets>[0]);
+        });
         const result = await preSubmit(
           planned.candidateSelection.candidateTxs,
           mode,
@@ -65,81 +60,37 @@ describe("commit planner DA frame budget", () => {
   );
 
   it.each(MODES)(
-    "budgets the base ledger's empty block before any transaction (%s)",
+    "budgets the empty block before any transaction (%s)",
     (mode) => {
-      // A base ledger that leaves room for exactly forty transactions'
-      // allowance: the base-free plan would admit all hundred.
-      const limits = PROGRAM_LIMITS(mode);
-      const perTx = estimatedTxDaPayloadBytes(CANONICAL_TX.length, limits);
-      const room = 40.5 * perTx;
-      let entryCount = Math.floor(
-        (limits.maxDaPayloadBytes - room) / LC1_MEAN_ENTRY_BYTES,
+      // A frame that leaves room for exactly forty transactions' allowance
+      // past the empty block.
+      const programLimits = PROGRAM_LIMITS(mode);
+      const perTx = estimatedTxDaPayloadBytes(
+        CANONICAL_TX.length,
+        programLimits,
       );
-      const aggregate = (count: number) => ({
-        entryCount: count,
-        encodedTupleBytes: count * LC1_MEAN_ENTRY_BYTES,
+      const limits = {
+        ...programLimits,
+        maxDaPayloadBytes: Math.floor(
+          EMPTY_BLOCK_DA_PAYLOAD_UPPER_BOUND_BYTES + 40.5 * perTx,
+        ),
+      };
+      const planned = planCommitBatchBudgets({
+        candidateSelection: selectCommitTxCandidates({
+          mempoolTxs: Array.from({ length: 100 }, (_, index) =>
+            mkCandidate(index + 1),
+          ),
+          processedMempoolTxs: [],
+        }),
+        limits,
       });
-      // The empty block also carries the ledger's list framing and header.
-      while (
-        emptyBlockDaPayloadUpperBoundBytes(aggregate(entryCount)) + room >
-        limits.maxDaPayloadBytes
-      )
-        entryCount -= 1;
-      const base = aggregate(entryCount);
-      const plan = (baseUtxoPayloadAggregate?: UtxoPayloadSizeAggregate) =>
-        planCommitBatchBudgets({
-          candidateSelection: selectCommitTxCandidates({
-            mempoolTxs: Array.from({ length: 100 }, (_, index) =>
-              mkCandidate(index + 1),
-            ),
-            processedMempoolTxs: [],
-          }),
-          limits,
-          baseUtxoPayloadAggregate,
-        });
-      expect(plan().plan.selectedTxCount).toBe(100);
-      const planned = plan(base);
       expect(planned.plan).toMatchObject({
         selectedTxCount: 40,
         stopReason: "da_payload_budget",
         estimatedDaPayloadBytes:
-          emptyBlockDaPayloadUpperBoundBytes(base) + 40 * perTx,
+          EMPTY_BLOCK_DA_PAYLOAD_UPPER_BOUND_BYTES + 40 * perTx,
       });
       expect(planned.prunedTxCount).toBe(60);
-    },
-  );
-
-  it.each(MODES)(
-    "still refuses at the same check when the base ledger alone cannot fit (%s)",
-    async (mode) => {
-      const limit = maxDaPayloadInnerBytes(mode);
-      const base: UtxoPayloadSizeAggregate = {
-        entryCount: Math.ceil(limit / LC1_MEAN_ENTRY_BYTES),
-        encodedTupleBytes: limit,
-      };
-      const candidates = Array.from({ length: 3 }, (_, index) =>
-        mkCandidate(index + 1),
-      );
-      const planned = planCommitBatchBudgets({
-        candidateSelection: selectCommitTxCandidates({
-          mempoolTxs: candidates,
-          processedMempoolTxs: [],
-        }),
-        limits: PROGRAM_LIMITS(mode),
-        baseUtxoPayloadAggregate: base,
-      } as Parameters<typeof planCommitBatchBudgets>[0]);
-      // The DA budget never trims a selection no block could carry, so the
-      // refusal below stays the one that names the ledger.
-      expect(planned.plan.selectedTxCount).toBe(candidates.length);
-      for (const txs of [planned.candidateSelection.candidateTxs, []]) {
-        const result = await preSubmit(txs, mode, { base });
-        expect(Either.isLeft(result)).toBe(true);
-        if (Either.isRight(result)) return;
-        expect(result.left.message).toBe(REFUSAL);
-        expect(String(result.left.cause)).toContain(
-          "post_block_ledger_without_events_exceeds_frame=true",
-        );
-      }
     },
   );
 });

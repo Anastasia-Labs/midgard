@@ -364,6 +364,7 @@ fn node_input(
     data: linked_list.Node(
       state_queue.StateQueueNode {
         header: node_header,
+        block_time: node_header.end_time,
         da_attestation: status,
         proven_fraud: None,
       },

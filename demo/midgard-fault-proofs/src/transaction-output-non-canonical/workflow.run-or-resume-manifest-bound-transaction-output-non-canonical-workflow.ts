@@ -14,6 +14,7 @@ import {
 import { executeManifestBoundFamilyRecovery } from "../workflow/manifest-bound-family-recovery.js";
 import {
   TransactionOutputStep02DatumSchema,
+  TransactionOutputStep03DatumDatumSchema,
   TransactionOutputStep03DatumSchema,
   TransactionOutputStep04DatumSchema,
 } from "./schemas.js";
@@ -55,6 +56,7 @@ export const createManifestBoundTransactionOutputNonCanonicalWorkflow = async (
           input.referenceScripts.step01,
           input.referenceScripts.step02,
           input.referenceScripts.step03,
+          input.referenceScripts.step03Datum,
           input.referenceScripts.step04,
         ],
         witnesses: input.referenceScripts.witnesses,
@@ -71,7 +73,8 @@ export const createManifestBoundTransactionOutputNonCanonicalWorkflow = async (
       step01: deployment.references.steps[0],
       step02: deployment.references.steps[1],
       step03: deployment.references.steps[2],
-      step04: deployment.references.steps[3],
+      step03Datum: deployment.references.steps[3],
+      step04: deployment.references.steps[4],
       witnesses: deployment.references.witnesses,
       fieldPreimageCertificateMint:
         deployment.references.fieldPreimageCertificateMint,
@@ -141,7 +144,7 @@ export const TRANSACTION_OUTPUT_NON_CANONICAL_FAMILY_DEFINITION = defineFamily<
   "transactionOutputNonCanonical",
   (typeof WITNESS_ROLES)[number],
   true,
-  4,
+  5,
   RunContext
 >({
   category: "transactionOutputNonCanonical",
@@ -149,6 +152,7 @@ export const TRANSACTION_OUTPUT_NON_CANONICAL_FAMILY_DEFINITION = defineFamily<
     FraudProofComputationThreadStepDatum,
     TransactionOutputStep02DatumSchema,
     TransactionOutputStep03DatumSchema,
+    TransactionOutputStep03DatumDatumSchema,
     TransactionOutputStep04DatumSchema,
   ],
   witnessRoles: WITNESS_ROLES,
@@ -161,6 +165,7 @@ export const TRANSACTION_OUTPUT_NON_CANONICAL_FAMILY_DEFINITION = defineFamily<
       TRANSACTION_OUTPUT_NON_CANONICAL_MANIFEST_CONTRACTS.step01,
       TRANSACTION_OUTPUT_NON_CANONICAL_MANIFEST_CONTRACTS.step02,
       TRANSACTION_OUTPUT_NON_CANONICAL_MANIFEST_CONTRACTS.step03,
+      TRANSACTION_OUTPUT_NON_CANONICAL_MANIFEST_CONTRACTS.step03Datum,
       TRANSACTION_OUTPUT_NON_CANONICAL_MANIFEST_CONTRACTS.step04,
     ],
     transactionPort: (context) => runFor(context).transactions,

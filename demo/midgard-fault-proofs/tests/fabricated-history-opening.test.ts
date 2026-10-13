@@ -105,6 +105,7 @@ for (const kind of ["Deposit", "Withdrawal"] as const)
         challenged_header_hash: "cc".repeat(28),
         header_start_time: 100n,
         header_end_time: 200n,
+        header_block_time: 200n,
       };
       const commitment = SDK.eventHistoryCommitment(
         policy,
@@ -293,19 +294,30 @@ it("parses complete opening artifacts and refuses the obsolete datum-only shape"
   }
 });
 
-it("bounds stage transactions before maturity without backdating into the header", () => {
-  expect(fabricatedProofValidity(10_000n, 100_000)).toEqual({
-    validFrom: 40_000,
-    validTo: 220_000,
-  });
-  expect(fabricatedProofValidity(10_000n, 11_000).validFrom).toBe(11_000);
-  expect(() => fabricatedProofValidity(10_000n, 10_000)).toThrow(/window/);
+it("bounds stage transactions to the node's block_time window", () => {
+  const at = (nodeBlockTime: bigint, now: number) =>
+    fabricatedProofValidity({ nodeBlockTime, now });
+  expect(at(10_000n, 100_000)).toEqual({ validFrom: 40_000, validTo: 220_000 });
+  expect(at(10_000n, 11_000).validFrom).toBe(11_000);
+  expect(() => at(10_000n, 10_000)).toThrow(/window/);
   const deadline = Number(10_000n + SDK.MATURITY_DURATION_MS);
-  expect(fabricatedProofValidity(10_000n, deadline - 2000).validTo).toBe(
-    deadline,
+  expect(at(10_000n, deadline - 2000).validTo).toBe(deadline);
+  expect(() => at(10_000n, deadline - 1000)).toThrow(/window/);
+  // A catch-up node committed after its covered end: the window opens after
+  // block_time, and its deadline runs from block_time, not from end_time.
+  const headerEnd = 10_000n;
+  const blockTime = headerEnd + 400_000n;
+  const late = Number(headerEnd + SDK.MATURITY_DURATION_MS) + 5_000;
+  expect(() => at(headerEnd, late)).toThrow(/window/);
+  expect(() => at(blockTime, Number(blockTime))).toThrow(/window/);
+  expect(at(blockTime, Number(blockTime) + 1_000).validFrom).toBe(
+    Number(blockTime) + 1_000,
   );
-  expect(() => fabricatedProofValidity(10_000n, deadline - 1000)).toThrow(
-    /window/,
+  expect(at(blockTime, late).validTo).toBeGreaterThan(
+    Number(headerEnd + SDK.MATURITY_DURATION_MS),
+  );
+  expect(at(blockTime, late).validTo).toBeLessThanOrEqual(
+    Number(blockTime + SDK.MATURITY_DURATION_MS),
   );
 });
 
@@ -362,6 +374,7 @@ for (const kind of ["Deposit", "Withdrawal"] as const)
           ? deriveFabricatedDepositStep01Handoff({
               stateQueuePolicyId: policy,
               header,
+              blockTime: header.endTime,
               headerHash: "cc".repeat(28),
               inclusion: {
                 committedDepositIdCbor: keyCbor,
@@ -374,6 +387,7 @@ for (const kind of ["Deposit", "Withdrawal"] as const)
           : deriveFabricatedWithdrawalStep01Handoff({
               stateQueuePolicyId: policy,
               header,
+              blockTime: header.endTime,
               headerHash: "cc".repeat(28),
               inclusion: {
                 committedWithdrawalIdCbor: keyCbor,

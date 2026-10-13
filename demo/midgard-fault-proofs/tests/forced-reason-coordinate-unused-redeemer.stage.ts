@@ -130,7 +130,7 @@ export const makeStage = async (da: RetainedDa, material: Material) => {
       },
     },
   });
-  const header = {
+  const requestedHeader = {
     ...block.header,
     validationTracesRoot: da.traceRoot.root,
     validationTraceCount: da.traceRoot.count,
@@ -140,8 +140,9 @@ export const makeStage = async (da: RetainedDa, material: Material) => {
     contracts: harness.contracts,
     nonceUtxo: harness.nonceUtxo,
     catalogue,
-    header,
+    header: requestedHeader,
   });
+  const header = setup.header;
   const references: UTxO[] = [];
   for (const [index, step] of contracts.steps.entries())
     references.push(

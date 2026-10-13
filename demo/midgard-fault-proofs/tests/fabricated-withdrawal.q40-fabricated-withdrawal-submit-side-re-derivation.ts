@@ -69,6 +69,8 @@ describe("Q40 fabricated-withdrawal submit-side re-derivation", () => {
     const handoff = await deriveFabricatedWithdrawalStep01Handoff({
       stateQueuePolicyId: h28(0x15),
       header: fixture.header,
+      // A catch-up node: committed after the header's covered end.
+      blockTime: fixture.header.endTime + 1_000n,
       headerHash: fixture.headerHash,
       inclusion,
     });
@@ -85,6 +87,7 @@ describe("Q40 fabricated-withdrawal submit-side re-derivation", () => {
       challenged_header_hash: fixture.headerHash,
       header_start_time: HEADER_START_TIME,
       header_end_time: HEADER_END_TIME,
+      header_block_time: HEADER_END_TIME + 1_000n,
       committed_withdrawal_id: AUTHENTIC_WITHDRAWAL_ID,
       committed_withdrawal_content_hash: HASH_DIVERTED_WITHDRAWAL_CONTENT,
     });
@@ -93,6 +96,7 @@ describe("Q40 fabricated-withdrawal submit-side re-derivation", () => {
       deriveFabricatedWithdrawalStep01Handoff({
         stateQueuePolicyId: h28(0x15),
         header: fixture.header,
+        blockTime: fixture.header.endTime,
         headerHash: fixture.headerHash,
         inclusion: {
           ...inclusion,
@@ -107,6 +111,7 @@ describe("Q40 fabricated-withdrawal submit-side re-derivation", () => {
       deriveFabricatedWithdrawalStep01Handoff({
         stateQueuePolicyId: h28(0x15),
         header: fixture.header,
+        blockTime: fixture.header.endTime,
         headerHash: fixture.headerHash,
         inclusion: {
           ...inclusion,

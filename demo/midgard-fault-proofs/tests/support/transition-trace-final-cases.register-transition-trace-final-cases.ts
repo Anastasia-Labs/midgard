@@ -49,6 +49,7 @@ import {
 import * as yieldDataModule from "../../src/transition-trace/yield-data.js";
 import * as structuredDataModule from "../../src/workflow/structured-data-preimage.js";
 import { captureLocallyEvaluatedTransaction } from "../../src/workflow/transaction-boundary.js";
+import { alignEmulatorToWholeSecond } from "./emulator/emulator-context.js";
 import { measureCompleteSignedTransaction } from "./emulator/measurement.js";
 import { createReferenceScriptPublisher } from "./emulator/reference-script-publisher.js";
 import {
@@ -175,6 +176,7 @@ export const registerTransitionTraceFinalCases = (
           [funder, prover, depositor],
           EMULATOR_PROTOCOL_PARAMETERS,
         );
+        alignEmulatorToWholeSecond(emulator);
         const submit = emulator.submitTx.bind(emulator);
         let measuredIndex = 0;
         emulator.submitTx = async (cbor) => {

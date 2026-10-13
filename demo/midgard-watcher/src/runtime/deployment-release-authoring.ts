@@ -10,8 +10,8 @@ import {
   parseDeploymentManifestEconomics,
   verifyFinalizedDeploymentManifest,
 } from "@al-ft/midgard-core/deployment-manifest-identity";
+import { deploymentFraudProofCatalogueCategories } from "@al-ft/midgard-core/deployment-profile";
 import { computeFraudProofReleaseEconomicsPolicyDigest } from "@al-ft/midgard-fault-proofs";
-import { FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER } from "@al-ft/midgard-sdk";
 
 import {
   createWatcherWorkflowFundingProfileBundle,
@@ -268,7 +268,7 @@ export const authorWatcherDeploymentRelease = async ({
     fraudProofCatalogue: {
       root: catalogue.root,
       categories: Object.fromEntries(
-        FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER.map((category) => {
+        deploymentFraudProofCatalogueCategories().map((category) => {
           const entry = catalogue.categories[category]!;
           return [
             category,

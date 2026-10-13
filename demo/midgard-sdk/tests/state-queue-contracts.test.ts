@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 
+import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import { credentialToAddress, getAddressDetails } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
@@ -32,6 +33,7 @@ const input = {
   daAttestationPolicyId: "88".repeat(28),
   availabilityChallengePolicyId: "99".repeat(28),
   referenceScriptAuthPolicyId: "aa".repeat(28),
+  l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
 };
 
 describe("queue deployment recipes", () => {

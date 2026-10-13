@@ -118,17 +118,14 @@ export const exerciseForcedLifecycle = async ({
     value: forcedTransaction,
     proof: Data.from(membershipProof.toCBOR().toString("hex"), Proof),
   };
-  const header = {
-    ...base.header,
-    forcedTransactionsRoot: forcedRoot.root,
-  };
   const setup = await submitSetupTx({
     lucid: harness.funderLucid,
     contracts: harness.contracts,
     nonceUtxo: harness.nonceUtxo,
     catalogue: harness.catalogue,
-    header,
+    header: { ...base.header, forcedTransactionsRoot: forcedRoot.root },
   });
+  const header = setup.header;
   console.info("[isu-frontier] setup");
   const references = await publishInputSetUniquenessReferenceScripts({
     lucid: harness.funderLucid,

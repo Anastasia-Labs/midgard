@@ -282,6 +282,7 @@ for (const kind of ["Deposit", "Withdrawal"] as const) {
         challenged_header_hash: f.headerHash,
         header_start_time: f.headerStartTime,
         header_end_time: f.headerEndTime,
+        header_block_time: f.headerEndTime,
       };
       const handoff =
         kind === "Deposit"

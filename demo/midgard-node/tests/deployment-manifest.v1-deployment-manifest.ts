@@ -184,7 +184,7 @@ describe("V1 deployment manifest", () => {
             categories: {
               ...catalogue.categories,
               nonExistentInputNoIndex: {
-                ...catalogue.categories.nonExistentInputNoIndex,
+                ...catalogue.categories.nonExistentInputNoIndex!,
                 categoryId: "00000003",
               },
             },
@@ -201,7 +201,7 @@ describe("V1 deployment manifest", () => {
             categories: {
               ...catalogue.categories,
               zeroInput: {
-                ...catalogue.categories.zeroInput,
+                ...catalogue.categories.zeroInput!,
                 membershipProofCbor: "80",
               },
             },

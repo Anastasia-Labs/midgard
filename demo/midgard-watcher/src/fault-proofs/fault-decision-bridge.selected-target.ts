@@ -1,3 +1,4 @@
+import { deploymentFraudProofCatalogueCategories } from "@al-ft/midgard-core/deployment-profile";
 import {
   assertWorkflowActuationPermitIdentity,
   type HeaderDecision,
@@ -253,6 +254,12 @@ export const selectedTarget = (input: {
   readonly decisions: readonly HeaderDecision[];
   /** Headers L1 already merged or removed; none can be a runnable target. */
   readonly merged?: ReadonlySet<string>;
+  /**
+   * The deployment's fraud-proof catalogue (the profile's set). A fault in a
+   * category outside it has no membership proof, so Computation-Thread Init
+   * refuses it and it is never a runnable target.
+   */
+  readonly catalogueCategories?: readonly string[];
 }): WatcherFaultDecisionTarget | null => {
   const lock = input.observation.finalizedCorrectionLock;
   if (lock === null) {
@@ -260,13 +267,18 @@ export const selectedTarget = (input: {
       "initialized production state has no authenticated CorrectionLock",
     );
   }
+  const catalogue: ReadonlySet<string> = new Set(
+    input.catalogueCategories ?? deploymentFraudProofCatalogueCategories(),
+  );
   const faults = input.decisions.filter(
     (
       decision,
     ): decision is Extract<
       HeaderDecision,
       { readonly decision: "fault_detected" }
-    > => decision.decision === "fault_detected",
+    > =>
+      decision.decision === "fault_detected" &&
+      catalogue.has(decision.category),
   );
   if (lock.datum === "Idle") {
     const first = faults[0];

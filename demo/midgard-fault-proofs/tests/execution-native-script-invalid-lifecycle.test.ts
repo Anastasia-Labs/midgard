@@ -109,6 +109,7 @@ import {
   publishRemovalReferenceScripts,
   submitSecondHeaderTx,
   submitSetupTx,
+  withCommitSlot,
 } from "./support/submit-init-emulator-shared.js";
 
 const measuredFit = createMeasuredFitRecorder(
@@ -597,17 +598,19 @@ describe("executionNativeScriptInvalid genuine machine fixture", () => {
             utxosRoot: mutations.at(-1)!.postRoot.toString("hex"),
           }
         : block.header;
-      let header =
+      let header = withCommitSlot(
+        harness.contracts.l1SlotConfig,
         authentication === undefined
           ? canonicalLedgerHeader
           : {
               ...canonicalLedgerHeader,
               validationTracesRoot: authentication.validationTracesRoot,
               validationTraceCount: authentication.validationTraceCount,
-            };
+            },
+      );
       const setup = needsPriorLedger
         ? await (async () => {
-            const firstHeader = {
+            const requestedFirstHeader = {
               ...block.header,
               utxosRoot: mutations[0]!.preRoot.toString("hex"),
             };
@@ -616,14 +619,15 @@ describe("executionNativeScriptInvalid genuine machine fixture", () => {
               contracts: harness.contracts,
               nonceUtxo: harness.nonceUtxo,
               catalogue,
-              header: firstHeader,
+              header: requestedFirstHeader,
             });
-            header = {
+            const firstHeader = first.header;
+            header = withCommitSlot(harness.contracts.l1SlotConfig, {
               ...header,
               prevHeaderHash: first.headerHash,
               startTime: firstHeader.endTime,
               endTime: firstHeader.endTime + 120_000n,
-            };
+            });
             const second = await submitSecondHeaderTx({
               lucid: harness.funderLucid,
               contracts: harness.contracts,

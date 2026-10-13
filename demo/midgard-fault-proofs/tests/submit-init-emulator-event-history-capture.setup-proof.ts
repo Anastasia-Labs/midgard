@@ -143,6 +143,7 @@ export const setupProof = async (
     challenged_header_hash: "ab".repeat(28),
     header_start_time: headerEnd - 100_000n,
     header_end_time: headerEnd,
+    header_block_time: headerEnd,
   };
   const state02 =
     kind === "Deposit"

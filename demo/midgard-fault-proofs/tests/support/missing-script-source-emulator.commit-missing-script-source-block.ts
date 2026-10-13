@@ -270,7 +270,7 @@ export const commitMissingScriptSourceBlock = async ({
             verdict: { ForcedTxInvalid: { reason: committedReason } },
           },
   });
-  const header = {
+  const requestedHeader = {
     ...block.header,
     endTime: block.header.endTime + 60_000n,
     validationTracesRoot: fixture.expectedRoot,
@@ -281,8 +281,9 @@ export const commitMissingScriptSourceBlock = async ({
     contracts: harness.contracts,
     nonceUtxo: harness.nonceUtxo,
     catalogue,
-    header,
+    header: requestedHeader,
   });
+  const header = setup.header;
   const successorStart = emulatorSuccessorHeaderStart({
     predecessorEndTime: header.endTime,
     emulator: harness.emulator,

@@ -148,9 +148,13 @@ test canonical_scan_reaches_unique_terminal() {
 }
 
 test maximum_output_scans_with_bounded_windows() {
+  // A canonical datum: an indefinite list of 16,286 zeros.
   let first = bytearray.from_int_big_endian(0, 8192)
-  let second = bytearray.from_int_big_endian(0, 8096)
-  let payload = bytearray.concat(first, second)
+  let second = bytearray.from_int_big_endian(0, 8094)
+  let payload = bytearray.concat(
+    #"9f",
+    bytearray.concat(first, bytearray.concat(second, #"ff")),
+  )
   let output = bytearray.concat(
     #"a3",
     bytearray.concat(

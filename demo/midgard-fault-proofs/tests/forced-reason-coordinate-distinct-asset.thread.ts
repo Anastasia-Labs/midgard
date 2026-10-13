@@ -105,7 +105,7 @@ export const commitDistinctAssetBlock = async ({
     SDK.ROOT_DOMAINS.validationTraces,
     validationEntries,
   );
-  const header = {
+  const requestedHeader = {
     ...block.header,
     validationTracesRoot: traceRoot.root,
     validationTraceCount: traceRoot.count,
@@ -115,8 +115,9 @@ export const commitDistinctAssetBlock = async ({
     contracts: harness.contracts,
     nonceUtxo: harness.nonceUtxo,
     catalogue,
-    header,
+    header: requestedHeader,
   });
+  const header = setup.header;
   const references: UTxO[] = [];
   for (const [index, step] of contracts.steps.entries())
     references.push(

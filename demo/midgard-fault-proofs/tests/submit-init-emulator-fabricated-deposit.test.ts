@@ -75,6 +75,7 @@ import {
   publishRemovalReferenceScripts,
   submitFabricatedFamilyInit,
   submitSetupTx,
+  withCommitSlot,
 } from "./support/submit-init-emulator-shared.js";
 
 const historyRecords: unknown[] = [];
@@ -239,6 +240,7 @@ const setupChallengedBlockOnEmulator = async (
   mode: "inline" | "external" = "inline",
   absent = false,
   admittedBefore = false,
+  commitLagMs = 0n,
 ) => {
   const {
     emulator,
@@ -279,7 +281,7 @@ const setupChallengedBlockOnEmulator = async (
   // whenever that count is non-zero. Reusing the deposits counted root keeps
   // the header committable without touching validation traces (no forced or
   // L2 transactions in this block).
-  const header: SDK.Header = {
+  const unstamped = {
     ...makeHeader(funderKeyHash, headerStartTime),
     depositsRoot: counted.root,
     depositCount: counted.count,
@@ -288,6 +290,9 @@ const setupChallengedBlockOnEmulator = async (
     transitionTraceRoot: counted.root,
     eventToStepRoot: counted.root,
   };
+  // With no L2 transactions the commit may land after the covered end.
+  const blockTime = unstamped.endTime + commitLagMs;
+  const header = withCommitSlot(contracts.l1SlotConfig, unstamped, blockTime);
   const authenticEvent = {
     ...Data.from(DATUM_AUTHENTIC_DEPOSIT_EVENT, SDK.DepositDatum).event,
     id: eventId,
@@ -300,6 +305,7 @@ const setupChallengedBlockOnEmulator = async (
     nonceUtxo,
     catalogue,
     header,
+    blockTime,
     beforeHeaderCommit: async (hub) => {
       // A repeat admits the event for the block that ends where this one
       // starts, so its inclusion time belongs to that earlier block.
@@ -427,6 +433,7 @@ describe("fabricated-deposit fault-proof emulator lifecycle", () => {
     const step01Handoff = await deriveFabricatedDepositStep01Handoff({
       stateQueuePolicyId: "15".repeat(28),
       header: block.header,
+      blockTime: block.header.endTime,
       headerHash: block.headerHash,
       inclusion: parseSubmitFabricatedDepositInclusion(plan.depositInclusion),
     });
@@ -469,19 +476,23 @@ describe("fabricated-deposit fault-proof emulator lifecycle", () => {
     }
   }, 60_000);
 
-  it.each(
-    (["inline", "external"] as const).flatMap((mode) =>
+  it.each([
+    ...(["inline", "external"] as const).flatMap((mode) =>
       (["diverted-content", "absent-identity", "repeated-event"] as const).map(
         (scenario) => ({ mode, scenario }),
       ),
     ),
-  )(
+    // Diverted content committed late: block_time trails end_time, and every
+    // stage runs after end_time + maturity but inside block_time + maturity.
+    { mode: "inline" as const, scenario: "late-commit" as const },
+  ])(
     "proves $scenario deposit with $mode history, mints permanent evidence, and removes the fraudulent commitment",
     async ({ mode, scenario }) => {
       const absent = scenario === "absent-identity";
       // A repeat commits the authentic content of an event an earlier block
       // already carried.
       const repeated = scenario === "repeated-event";
+      const commitLagMs = scenario === "late-commit" ? 400_000n : 0n;
       const harness = await makeEmulatorHarness();
       const {
         realBlueprint,
@@ -521,6 +532,7 @@ describe("fabricated-deposit fault-proof emulator lifecycle", () => {
         mode,
         absent,
         repeated,
+        commitLagMs,
       );
       if (!("DepositPayload" in admitted.captured.payload))
         throw new Error("Wrong payload kind");
@@ -541,6 +553,19 @@ describe("fabricated-deposit fault-proof emulator lifecycle", () => {
         lucid: proverLucid,
         contracts,
       });
+      if (commitLagMs > 0n) {
+        // Past end_time + maturity: only the node's block_time leaves a window.
+        const lateNow = header.endTime + SDK.MATURITY_DURATION_MS + 10_000n;
+        harness.emulator.awaitSlot(
+          Math.ceil((Number(lateNow) - harness.emulator.now()) / 1000),
+        );
+        expect(() =>
+          fabricatedProofValidity({
+            nodeBlockTime: header.endTime,
+            now: harness.emulator.now(),
+          }),
+        ).toThrow("no usable validity window");
+      }
 
       // ## Evidence admission over the emulator block's retained-DA bytes.
       const base = await buildCanonicalBlockFixture({ transactions: [] });
@@ -639,9 +664,21 @@ describe("fabricated-deposit fault-proof emulator lifecycle", () => {
       const inclusion = parseSubmitFabricatedDepositInclusion(
         plan.depositInclusion,
       );
+      const fraudulentNode = await Effect.runPromise(
+        SDK.utxoToStateQueueUTxO(
+          await funderLucid.utxoByUnit(setup.stateQueueBlockUnit),
+          contracts.stateQueue.policyId,
+        ),
+      );
+      const nodeBlockTime = Data.castFrom(
+        fraudulentNode.datum.data,
+        SDK.StateQueueNode,
+      ).block_time;
+      expect(nodeBlockTime).toBe(header.endTime + commitLagMs);
       const expectedHandoff = await deriveFabricatedDepositStep01Handoff({
         stateQueuePolicyId: contracts.stateQueue.policyId,
         header,
+        blockTime: nodeBlockTime,
         headerHash,
         inclusion,
       });
@@ -1198,10 +1235,10 @@ describe("fabricated-deposit fault-proof emulator lifecycle", () => {
       proverSigner.selectWallet(proverLucid);
       const fee = selectFeeInput(await proverLucid.wallet().getUtxos());
       expect(fee.scriptRef == null && fee.datum == null).toBe(true);
-      const validity = fabricatedProofValidity(
-        state.header_end_time,
-        harness.emulator.now(),
-      );
+      const validity = fabricatedProofValidity({
+        nodeBlockTime: state.header_block_time,
+        now: harness.emulator.now(),
+      });
       // Test-only construction deliberately bypasses only the honest-content
       // preflight. Funding, indices, reference script, signer, time bounds and
       // local UPLC evaluation follow the production stage03 builder.

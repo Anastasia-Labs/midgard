@@ -40,7 +40,6 @@ describe(
           {
             payloadSchemaVersion: 1,
             stateQueueOutRef: `${"00".repeat(32)}#0`,
-            preBlockUtxos: [[built.spent.toString("hex"), built.output]],
           },
         );
         expect(verified.counts.validationTraceCount).toBe(1n);

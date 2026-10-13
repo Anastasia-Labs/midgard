@@ -5,6 +5,7 @@ import {
   type WatcherStateQueueRemovalKind,
 } from "../indexers/authenticated-state-queue-observation.parse-persisted-header.js";
 import type { WatcherRetainedDaTransportStatus } from "../storage/retained-da-runtime.js";
+import type { WatcherSubmissionModes } from "./observe-and-prepare.js";
 
 export const WATCHER_OPERATIONS_OBSERVABILITY =
   "midgard-watcher-production-operations-observability-v1" as const;
@@ -29,6 +30,7 @@ export const WATCHER_ALERT_CODES = Object.freeze([
   "l1_source_stale",
   "da_bond_pool_under_backed",
   "da_bond_pool_withdrawing",
+  "prepared_proof_awaiting_submission",
 ] as const);
 
 export type WatcherAlertCode = (typeof WATCHER_ALERT_CODES)[number];
@@ -39,12 +41,14 @@ export type WatcherAlertCode = (typeof WATCHER_ALERT_CODES)[number];
  * watcher `not_ready` (spec #685 E5): a short or withdrawing DA bond pool
  * pauses attestations, while the watcher keeps verifying and challenging. An
  * L1 rollback is routine before finality and the watcher replays through it.
+ * A prepared proof waits on an allow-listed key, not on this watcher.
  */
 export const WATCHER_INFORMATIONAL_ALERT_CODES: ReadonlySet<WatcherAlertCode> =
   new Set<WatcherAlertCode>([
     "da_bond_pool_under_backed",
     "da_bond_pool_withdrawing",
     "chain_rollback",
+    "prepared_proof_awaiting_submission",
   ]);
 
 /** The last pooled DA bond readout, as `/v1/status` serves it. */
@@ -348,6 +352,8 @@ export type WatcherOperationsMetrics = Readonly<{
   l1Degradations: Readonly<Record<string, string>>;
   /** Named L1 readiness reasons counted per held objective; zeros omitted. */
   l1Readiness: Readonly<Record<string, string>>;
+  /** Whether each key submits or only prepares; `null` when not reported. */
+  submissionModes: WatcherSubmissionModes | null;
 }>;
 
 export type WatcherOperationsPage = Readonly<{

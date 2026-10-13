@@ -7,10 +7,6 @@ import "../src/commands/transfer-build-core.make-static-midgard-provider.js";
 import "./deposit-flow-emulator-shared.js";
 import "./deposit-flow-emulator-merge-payout.admit-l2-tx.js";
 
-import {
-  DaPayloadValidationError,
-  verifyDaPayloadAgainstHeader,
-} from "da-committee-node/da/payload";
 import { describe, expect, it, vi } from "vitest";
 
 import { type NodeUtxo } from "../src/commands/command-utils.js";
@@ -25,7 +21,6 @@ import {
   CML,
   commitConfirmRecoverAndMerge,
   configureEmulatorDaRuntimeManifest,
-  DaPayloadsDB,
   Data,
   decodeNodeUtxo,
   Effect,
@@ -36,7 +31,6 @@ import {
   makeGlobalsService,
   makeLucidRuntimeService,
   MempoolLedgerDB,
-  Option,
   resetActiveRuntimePaths,
   runNodeDatabaseEffect,
   SDK,
@@ -247,39 +241,6 @@ describe(
           .sort(([, left], [, right]) => (left < right ? -1 : 1))
           .map(([txId]) => txId),
       ).toEqual(committedOrder.map((tx) => tx.txId.toString("hex")));
-
-      // Replayed from the block's own post-state instead of its pre-state, the
-      // referencer's input is gone at its position, so the same payload is
-      // refused: the committee's verdict depends on the state before each
-      // transaction.
-      const stored = await runNodeDatabaseEffect(
-        DaPayloadsDB.retrieveByHeaderHash(
-          Buffer.from(shapesBlock.queuedHeaderHash, "hex"),
-        ),
-      );
-      if (Option.isNone(stored)) throw new Error("missing persisted payload");
-      const postState = verified.payload.block_body.utxos.map(
-        ([outRefHex, outputHex]) =>
-          [outRefHex, Buffer.from(outputHex, "hex")] as const,
-      );
-      const refusal = await verifyDaPayloadAgainstHeader(
-        stored.value[DaPayloadsDB.Columns.PAYLOAD_CBOR],
-        shapesBlock.queuedHeaderHash,
-        shapesBlock.queuedHeader,
-        {
-          payloadSchemaVersion: 1,
-          stateQueueOutRef: `emulator:${shapesBlock.queuedHeaderHash}`,
-          preBlockUtxos: postState,
-        },
-      ).then(
-        () => undefined,
-        (error: unknown) => error,
-      );
-      expect(refusal).toBeInstanceOf(DaPayloadValidationError);
-      expect(refusal).toMatchObject({ code: "malformed_transaction" });
-      expect(String((refusal as Error).message)).toMatch(
-        /is absent from the state immediately before the transaction/u,
-      );
     });
   },
 );

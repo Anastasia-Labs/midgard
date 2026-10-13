@@ -10,9 +10,15 @@ import {
   MIDGARD_POSIX_TIME_NONE,
   type MidgardNativeTxFull,
 } from "@al-ft/midgard-core";
+import { type L1SlotConfig } from "@al-ft/midgard-core/l1-slot-config";
 import { type LucidDataSchema } from "@al-ft/midgard-core/lucid-data";
 import { h32 } from "@al-ft/midgard-test-support/hex";
-import { CML, Data, type UTxO } from "@lucid-evolution/lucid";
+import {
+  CML,
+  Data,
+  type LucidEvolution,
+  type UTxO,
+} from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
@@ -22,6 +28,7 @@ import {
   castConfirmedStateToData,
   EMPTY_HEADER_TRANSITION_COMMITMENTS,
   EMPTY_MERKLE_TREE_ROOT,
+  l1SlotConfigParameterData,
   type LinkedListNodeView,
   makeGenesisConfirmedState,
   updateLatestBlocksDatumAndGetTheNewHeaderProgram,
@@ -37,9 +44,27 @@ import {
   type StateQueueTestContracts,
 } from "./state-queue.state-queue-operator-funding-inputs.js";
 
+/** The emulator Lucid's slot mapping, which the commit yield must be built with. */
+export const emulatorL1SlotConfig = (lucid: LucidEvolution): L1SlotConfig => {
+  const slotConfig = lucid.config().slotConfig;
+  if (slotConfig === undefined)
+    throw new Error("The emulator Lucid instance has no slot configuration");
+  return slotConfig;
+};
+
+/**
+ * The header `block_slot` the commit rule requires of a block committed at
+ * `blockTime`: the L1 slot whose last millisecond is `blockTime`.
+ */
+export const commitBlockSlot = (
+  lucid: LucidEvolution,
+  blockTime: bigint,
+): bigint => BigInt(lucid.unixTimeToSlot(Number(blockTime)));
+
 export const buildTestContracts = async (
   realBlueprint: Blueprint,
   alwaysBlueprint: Blueprint,
+  l1SlotConfig: L1SlotConfig,
 ): Promise<StateQueueTestContracts> => {
   const hubOracleScript = alwaysScript(alwaysBlueprint, "hub_oracle", "mint");
   const base = {
@@ -108,6 +133,7 @@ export const buildTestContracts = async (
         activeOperatorsAddressData,
         base.scheduler.policyId,
         base.daAttestation.policyId,
+        l1SlotConfigParameterData(l1SlotConfig),
       ],
     ),
   );

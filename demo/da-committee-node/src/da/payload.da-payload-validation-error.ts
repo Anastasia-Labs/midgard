@@ -15,13 +15,6 @@ export type DataSchema = Parameters<typeof LucidData.Nullable>[0];
 export type PayloadVerificationOptions = {
   readonly payloadSchemaVersion: 1;
   readonly stateQueueOutRef: string;
-  /**
-   * The L2 UTxO set immediately before the block, already bound to
-   * `header.prevUtxosRoot` by the caller (`resolvePreBlockUtxos`). Every
-   * event's inputs resolve against the state immediately before it, replayed
-   * from this set.
-   */
-  readonly preBlockUtxos: readonly (readonly [string, Uint8Array])[];
   readonly timing?: DaPayloadVerificationTimingOptions;
 };
 

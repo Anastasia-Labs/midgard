@@ -9,6 +9,8 @@ use cardano/transaction.{
   InlineDatum, Input, Output, Redeemer, ScriptPurpose, Spend, Transaction,
   placeholder,
 }
+use env
+use midgard/common/allow_list
 use midgard/common/utils
 use midgard/computation_thread.{
   BurnForCancellation, Init, MintRedeemer, StepDatum, Success,
@@ -121,8 +123,10 @@ validator mint(
         //    prover, without any additional data.
         expect StepDatum { fraud_prover, data: None }: StepDatum<Data> = first_step_output_datum_data
 
-        // 9. Transaction must be signed by the specified fraud prover.
+        // 9. Transaction must be signed by the specified fraud prover, and the
+        //    deployment's fraud-prover allow-list must admit it.
         expect fraud_prover |> utils.has_signed(extra_signatories)
+        expect allow_list.admits(env.fraud_prover_allow_list, fraud_prover)
 
         // 10. The NFT in `first_step_output` must be the only asset minted in
         //     the transaction.
@@ -171,6 +175,18 @@ const test_catalogue_root =
 
 const test_other_policy =
   #"99999999999999999999999999999999999999999999999999999999"
+
+/// A prover the deployment's fraud-prover allow-list admits: the fixture's
+/// prover under a profile that admits every key.
+const test_prover =
+  allow_list.admitted_or(
+    env.fraud_prover_allow_list,
+    fixture.fraud_prover_key_hash,
+  )
+
+/// A prover no profile lists.
+const unlisted_prover =
+  #"eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
 
 fn test_block() -> fixture.NativeBlockFixtureV1 {
   fixture.native_block_fixture_v1(fixture.valid_native_tx_v1())
@@ -242,10 +258,11 @@ fn run_init(
 }
 
 fn bare_step_datum_data() -> Data {
-  let step_datum: StepDatum<Data> = StepDatum {
-    fraud_prover: fixture.fraud_prover_key_hash,
-    data: None,
-  }
+  step_datum_data_for(test_prover)
+}
+
+fn step_datum_data_for(fraud_prover: ByteArray) -> Data {
+  let step_datum: StepDatum<Data> = StepDatum { fraud_prover, data: None }
   let step_datum_data: Data = step_datum
   step_datum_data
 }
@@ -287,7 +304,7 @@ test ct_init_accepts_authentic_catalogue_backed_thread() {
     fixture.step_script_hash,
     bare_step_datum_data(),
     single_thread_mint(),
-    [fixture.fraud_prover_key_hash],
+    [test_prover],
     standard_init_references(test_block()),
     membership_attestation(fixture.step_script_hash),
   )
@@ -300,7 +317,7 @@ test ct_init_rejects_first_step_not_at_proven_category() fail {
     fixture.next_step_script_hash,
     bare_step_datum_data(),
     single_thread_mint(),
-    [fixture.fraud_prover_key_hash],
+    [test_prover],
     standard_init_references(test_block()),
     membership_attestation(fixture.step_script_hash),
   )
@@ -311,7 +328,7 @@ test ct_init_rejects_first_step_not_at_proven_category() fail {
 test ct_init_rejects_preloaded_step_state() fail {
   let preloaded_state: Data = "smuggled-mid-thread-state"
   let step_datum: StepDatum<Data> = StepDatum {
-    fraud_prover: fixture.fraud_prover_key_hash,
+    fraud_prover: test_prover,
     data: Some(preloaded_state),
   }
   let step_datum_data: Data = step_datum
@@ -319,7 +336,7 @@ test ct_init_rejects_preloaded_step_state() fail {
     fixture.step_script_hash,
     step_datum_data,
     single_thread_mint(),
-    [fixture.fraud_prover_key_hash],
+    [test_prover],
     standard_init_references(test_block()),
     membership_attestation(fixture.step_script_hash),
   )
@@ -337,6 +354,23 @@ test ct_init_rejects_missing_prover_signature() fail {
   )
 }
 
+/// Allow-list negative: a prover the deployment does not list cannot start a
+/// thread, even when it signs. Under a profile that admits every prover there
+/// is nothing to refuse and the test passes at the `expect`; the default
+/// (mainnet) env lists its provers.
+test ct_init_rejects_unlisted_prover() fail {
+  expect Some(provers) = env.fraud_prover_allow_list
+  expect !list.has(provers, unlisted_prover)
+  happy_init(
+    fixture.step_script_hash,
+    step_datum_data_for(unlisted_prover),
+    single_thread_mint(),
+    [unlisted_prover],
+    standard_init_references(test_block()),
+    membership_attestation(fixture.step_script_hash),
+  )
+}
+
 /// Duplicate-init negative: minting the same thread token twice in one
 /// transaction rejects.
 test ct_init_rejects_parallel_thread_mint_in_one_tx() fail {
@@ -348,7 +382,7 @@ test ct_init_rejects_parallel_thread_mint_in_one_tx() fail {
     assets.from_lovelace(2_000_000)
       |> assets.add(fixture.computation_thread_policy_id, asset_name, 2),
     assets.from_asset(fixture.computation_thread_policy_id, asset_name, 2),
-    [fixture.fraud_prover_key_hash],
+    [test_prover],
     standard_init_references(block),
     membership_attestation(fixture.step_script_hash),
   )
@@ -367,7 +401,7 @@ test ct_init_rejects_second_thread_token_in_one_tx() fail {
     fixture.step_script_hash,
     bare_step_datum_data(),
     extra_minted,
-    [fixture.fraud_prover_key_hash],
+    [test_prover],
     standard_init_references(test_block()),
     membership_attestation(fixture.step_script_hash),
   )
@@ -380,7 +414,7 @@ test ct_init_rejects_substituted_catalogue_reference() fail {
     fixture.step_script_hash,
     bare_step_datum_data(),
     single_thread_mint(),
-    [fixture.fraud_prover_key_hash],
+    [test_prover],
     [
       fixture.catalogue_reference_input_with_nft_policy(
         test_catalogue_root,
@@ -400,7 +434,7 @@ test ct_init_rejects_uncatalogued_fraud_category() fail {
     fixture.step_script_hash,
     bare_step_datum_data(),
     single_thread_mint(),
-    [fixture.fraud_prover_key_hash],
+    [test_prover],
     standard_init_references(test_block()),
     membership_attestation(test_other_policy),
   )
@@ -413,7 +447,7 @@ test ct_init_rejects_absent_membership_attestation() fail {
     fixture.step_script_hash,
     bare_step_datum_data(),
     single_thread_mint(),
-    [fixture.fraud_prover_key_hash],
+    [test_prover],
     standard_init_references(test_block()),
     [],
   )
@@ -426,7 +460,7 @@ test ct_init_rejects_substituted_hub_oracle() fail {
     fixture.step_script_hash,
     bare_step_datum_data(),
     single_thread_mint(),
-    [fixture.fraud_prover_key_hash],
+    [test_prover],
     [
       fixture.catalogue_reference_input(test_catalogue_root),
       fixture.hub_reference_input_with_nft_policy(test_other_policy),
@@ -443,7 +477,7 @@ test ct_init_rejects_unregistered_block_reference() fail {
     fixture.step_script_hash,
     bare_step_datum_data(),
     single_thread_mint(),
-    [fixture.fraud_prover_key_hash],
+    [test_prover],
     [
       fixture.catalogue_reference_input(test_catalogue_root),
       fixture.hub_reference_input(),

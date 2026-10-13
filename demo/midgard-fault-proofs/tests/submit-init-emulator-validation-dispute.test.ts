@@ -46,6 +46,7 @@ import {
   validationDisputeValidityRange,
   validationSemanticResolverGlobalIndex,
 } from "../src/index.js";
+import { alignEmulatorToWholeSecond } from "./support/emulator/emulator-context.js";
 import { createReferenceScriptPublisher } from "./support/emulator/reference-script-publisher.js";
 import { submitInit } from "./support/legacy-submit-emulator.js";
 import { buildInvalidForcedValidationDisputeFixture } from "./support/submit-init-emulator-fixtures.js";
@@ -86,6 +87,7 @@ describe("fault-proof emulator integration", () => {
       ...EMULATOR_PROTOCOL_PARAMETERS,
       maxTxSize: PROTOCOL_PARAMETERS_DEFAULT.maxTxSize,
     });
+    alignEmulatorToWholeSecond(emulator);
     const lucid = await Lucid(emulator, "Custom");
     lucid.selectWallet.fromSeed(publisher.seedPhrase);
     const nonceUtxo = (await lucid.wallet().getUtxos())[0];
@@ -181,6 +183,7 @@ describe("fault-proof emulator integration", () => {
       ...EMULATOR_PROTOCOL_PARAMETERS,
       maxTxSize: PROTOCOL_PARAMETERS_DEFAULT.maxTxSize,
     });
+    alignEmulatorToWholeSecond(emulator);
     const lucid = await Lucid(emulator, "Custom");
     lucid.selectWallet.fromSeed(publisher.seedPhrase);
     const contracts = await Effect.runPromise(
@@ -304,6 +307,7 @@ describe("fault-proof emulator integration", () => {
         ],
         EMULATOR_PROTOCOL_PARAMETERS,
       );
+      alignEmulatorToWholeSecond(emulator);
       const operatorLucid = await Lucid(emulator, "Custom");
       const challengerLucid = await Lucid(emulator, "Custom");
       operatorLucid.selectWallet.fromSeed(operator.seedPhrase);

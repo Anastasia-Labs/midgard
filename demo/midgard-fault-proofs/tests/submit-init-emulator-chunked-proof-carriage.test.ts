@@ -99,6 +99,7 @@ import {
   alignUnixTimeToEmulatorSlotBoundary,
   buildRemovalDeploymentInfo,
   captureEmulatorSubmission,
+  commitSlotForBlockTime,
   type CompleteSignedTransactionMeasurement,
   expectProofFit,
   expectSingleUtxoWithUnit,
@@ -427,7 +428,10 @@ describe("fault-proof published-chunk proof carriage", () => {
         emulator.now() + 120_000,
       ) - 1;
     const fixture = await buildInvalidRangeTransactionInclusionFixture({
-      blockSlot: 0n,
+      blockSlot: commitSlotForBlockTime(
+        contracts.l1SlotConfig,
+        BigInt(headerStartTime + 1_000),
+      ),
     });
     expect(fixture.violationReason).toBe("starts-after-block-slot");
     const { deep, inclusion } = deepenInclusion({

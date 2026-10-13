@@ -178,10 +178,6 @@ export const normalFixture = async (
     block_body: {
       header,
       header_hash: "00".repeat(28),
-      utxos: replay.statePatch.upsertedOutRefs.map(([key, value]) => [
-        key,
-        value.toString("hex"),
-      ]),
       transactions: [
         [sourceKey, encodeTransactionRootValue(tx.txCbor).toString("hex")],
       ],

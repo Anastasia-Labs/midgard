@@ -35,6 +35,8 @@ import {
   keyValuePhasRootWithCount,
 } from "../../src/transition-trace/phas.js";
 import { encodeData } from "../../src/transition-trace/reconstruct.js";
+import { fixtureBlockSlot } from "../support/emulator/header-fixtures.js";
+import { recordFixtureLedger } from "../support/fixture-ledger.js";
 
 export { h28, h32 };
 
@@ -273,10 +275,6 @@ export const buildCanonicalBlockFixture = async ({
     SDK.ROOT_DOMAINS.validationTraces,
     bufferEntries(validationTraceEntries),
   );
-  const rawUtxoEntries: SDK.DaPayloadEntry[] = utxos.map(({ key, value }) => [
-    Buffer.from(key).toString("hex"),
-    Buffer.from(value).toString("hex"),
-  ]);
   const utxosRoot = await keyValuePhasRootWithCount(
     utxos.map(({ key, value }) => ({
       key: Buffer.from(key),
@@ -297,6 +295,8 @@ export const buildCanonicalBlockFixture = async ({
     validationTraceCount: BigInt(transactions.length),
   };
 
+  recordFixtureLedger(utxosRoot.root, utxos);
+
   const header: SDK.Header = {
     prevUtxosRoot,
     utxosRoot: utxosRoot.root,
@@ -310,7 +310,7 @@ export const buildCanonicalBlockFixture = async ({
     ...counts,
     startTime,
     endTime,
-    blockSlot: 0n,
+    blockSlot: fixtureBlockSlot(endTime),
     expectedNetworkId: 0n,
     minFeeA,
     minFeeB,
@@ -324,7 +324,6 @@ export const buildCanonicalBlockFixture = async ({
     block_body: {
       header_hash: headerHash,
       header,
-      utxos: sortEntries(rawUtxoEntries),
       withdrawals: [],
       forced_transactions: [],
       transactions: sortEntries(transactionEntries),

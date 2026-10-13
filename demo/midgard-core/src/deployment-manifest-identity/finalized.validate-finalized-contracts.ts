@@ -1,10 +1,10 @@
 import { validatorToScriptHash } from "@lucid-evolution/lucid";
 import { bytesToHex } from "@noble/hashes/utils.js";
 
+import { deploymentFraudProofCatalogueCategories } from "../deployment-profile.js";
 import { verifyDeploymentManifestFraudProofCatalogueIdentity } from "./catalogue-proof.js";
 import {
   DEPLOYMENT_MANIFEST_CONTRACT_NAMES,
-  DEPLOYMENT_MANIFEST_FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER,
   DEPLOYMENT_MANIFEST_FRAUD_PROOF_CONTRACT_BY_CATEGORY,
   type DeploymentManifestFraudProofCatalogueCategory,
   type DeploymentManifestFraudProofCatalogueCategoryIdentity,
@@ -175,17 +175,22 @@ export const validateFinalizedContracts = (
     catalogue.categories,
     "contracts.fraudProofCatalogueMint.fraudProofCatalogue.categories",
   );
+  // The deployment's catalogue is the profile's set: an excluded category is
+  // absent, and its contract still deploys.
+  const catalogueCategories = deploymentFraudProofCatalogueCategories();
   requireExactKeys(
     categories,
-    DEPLOYMENT_MANIFEST_FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER,
+    catalogueCategories,
     [],
     "contracts.fraudProofCatalogueMint.fraudProofCatalogue.categories",
   );
-  const parsedCategories = {} as Record<
-    DeploymentManifestFraudProofCatalogueCategory,
-    DeploymentManifestFraudProofCatalogueCategoryIdentity
-  >;
-  for (const categoryName of DEPLOYMENT_MANIFEST_FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER) {
+  const parsedCategories: Partial<
+    Record<
+      DeploymentManifestFraudProofCatalogueCategory,
+      DeploymentManifestFraudProofCatalogueCategoryIdentity
+    >
+  > = {};
+  for (const categoryName of catalogueCategories) {
     const contractName =
       DEPLOYMENT_MANIFEST_FRAUD_PROOF_CONTRACT_BY_CATEGORY[categoryName];
     const field = `contracts.fraudProofCatalogueMint.fraudProofCatalogue.categories.${categoryName}`;
@@ -222,14 +227,17 @@ export const validateFinalizedContracts = (
       membershipProofCbor,
     };
   }
-  verifyDeploymentManifestFraudProofCatalogueIdentity({
-    root: requireHex(
-      catalogue.root,
-      32,
-      "contracts.fraudProofCatalogueMint.fraudProofCatalogue.root",
-    ),
-    categories: parsedCategories,
-  });
+  verifyDeploymentManifestFraudProofCatalogueIdentity(
+    {
+      root: requireHex(
+        catalogue.root,
+        32,
+        "contracts.fraudProofCatalogueMint.fraudProofCatalogue.root",
+      ),
+      categories: parsedCategories,
+    },
+    catalogueCategories,
+  );
 };
 
 export const validateFinalizedReferenceScripts = (

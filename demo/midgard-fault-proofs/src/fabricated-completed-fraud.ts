@@ -22,31 +22,24 @@ import { requireSingletonUtxo } from "./runtime.js";
 import { outputWithDatumAndUnitPredicate } from "./tx-layout.js";
 import { governedUserEventAddress } from "./workflow/user-event-address.js";
 
-export const prepareFabricatedCompletedFraud = async ({
+/** The queue node carrying `headerHash`, authenticated through the hub as the
+ * terminal reads it; its `block_time` anchors every stage's validity. */
+export const resolveCompletedFraudQueueNode = async ({
   lucid,
   hubOraclePolicyId,
   stateQueuePolicyId,
   headerHash,
   headerEnd,
-  proofAsset,
-  queueReferenceScript,
-  now,
 }: {
   readonly lucid: LucidEvolution;
   readonly hubOraclePolicyId: string;
   readonly stateQueuePolicyId: string;
   readonly headerHash: string;
   readonly headerEnd: bigint;
-  readonly proofAsset: string;
-  readonly queueReferenceScript?: UTxO;
-  readonly now: number;
 }) => {
   const network = lucid.config().network;
   if (network === undefined)
     throw new Error("Terminal proof requires a network");
-  const validity = fabricatedProofValidity(headerEnd, now);
-  if (!/^[0-9a-f]{64}$/u.test(proofAsset) || proofAsset.slice(8) !== headerHash)
-    throw new Error("Terminal proof asset does not name the carried header");
   const hubAddress = credentialToAddress(
     network,
     scriptHashToCredential(hubOraclePolicyId),
@@ -97,6 +90,43 @@ export const prepareFabricatedCompletedFraud = async ({
     throw new Error(
       "Terminal proof queue header does not match the carried state",
     );
+  return { input, view, node, address, credential, unit };
+};
+
+export const prepareFabricatedCompletedFraud = async ({
+  lucid,
+  hubOraclePolicyId,
+  stateQueuePolicyId,
+  headerHash,
+  headerEnd,
+  proofAsset,
+  queueReferenceScript,
+  now,
+}: {
+  readonly lucid: LucidEvolution;
+  readonly hubOraclePolicyId: string;
+  readonly stateQueuePolicyId: string;
+  readonly headerHash: string;
+  readonly headerEnd: bigint;
+  readonly proofAsset: string;
+  readonly queueReferenceScript?: UTxO;
+  readonly now: number;
+}) => {
+  if (!/^[0-9a-f]{64}$/u.test(proofAsset) || proofAsset.slice(8) !== headerHash)
+    throw new Error("Terminal proof asset does not name the carried header");
+  const { input, view, node, address, credential, unit } =
+    await resolveCompletedFraudQueueNode({
+      lucid,
+      hubOraclePolicyId,
+      stateQueuePolicyId,
+      headerHash,
+      headerEnd,
+    });
+  // The terminal reads its window from this node's block_time.
+  const validity = fabricatedProofValidity({
+    nodeBlockTime: node.block_time,
+    now,
+  });
   if (
     node.proven_fraud !== null &&
     (!/^[0-9a-f]{64}$/u.test(node.proven_fraud) ||

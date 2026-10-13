@@ -80,7 +80,7 @@ describe("Fraud Proof Catalogue Root", () => {
         for (const [categoryId, fraudProof, categoryName] of indexedFraudProofs
           .filter((_, index) => index % 7 === 0)
           .concat([indexedFraudProofs[indexedFraudProofs.length - 1]!])) {
-          const category = deploymentInfo.categories[categoryName];
+          const category = deploymentInfo.categories[categoryName]!;
           expect(category.categoryId).toBe(categoryId.toString("hex"));
           expect(category.scriptHash).toBe(fraudProof.spendingScriptHash);
         }
@@ -104,7 +104,7 @@ describe("Fraud Proof Catalogue Root", () => {
           categories: {
             ...deploymentInfo.categories,
             zeroInput: {
-              ...deploymentInfo.categories.zeroInput,
+              ...deploymentInfo.categories.zeroInput!,
               scriptHash: "cd".repeat(28),
             },
           },
@@ -133,9 +133,9 @@ describe("Fraud Proof Catalogue Root", () => {
           categories: {
             ...deploymentInfo.categories,
             zeroInput: {
-              ...deploymentInfo.categories.zeroInput,
+              ...deploymentInfo.categories.zeroInput!,
               membershipProofCbor:
-                deploymentInfo.categories.doubleSpend.membershipProofCbor,
+                deploymentInfo.categories.doubleSpend!.membershipProofCbor,
             },
           },
         };

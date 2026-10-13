@@ -4,11 +4,11 @@ import {
   parseDeploymentManifestEventHistoryRetentionAddress,
   parseDeploymentManifestEventHistoryRetentionAddresses,
 } from "@al-ft/midgard-core/deployment-manifest-identity";
+import { deploymentFraudProofCatalogueCategories } from "@al-ft/midgard-core/deployment-profile";
 import { formatUnknownError } from "@al-ft/midgard-core/error-format";
 import { asLucidSchema } from "@al-ft/midgard-core/lucid-data";
 import {
   EMPTY_MERKLE_TREE_ROOT,
-  FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER,
   FRAUD_PROOF_CATALOGUE_ID_BYTE_COUNT,
   type FraudProofCatalogueCategoryDeploymentInfo,
   type FraudProofCatalogueCategoryName,
@@ -102,9 +102,10 @@ const parseFraudProofCatalogueDeploymentInfo = (
     candidate.categories,
     "fraudProofCatalogue.categories",
   );
-  const canonicalCategoryNames = new Set<string>(
-    FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER,
-  );
+  // The deployment's catalogue is the profile's set; an excluded category
+  // is absent.
+  const catalogueCategories = deploymentFraudProofCatalogueCategories();
+  const canonicalCategoryNames = new Set<string>(catalogueCategories);
   for (const rawCategoryName of Object.keys(rawCategories)) {
     if (!canonicalCategoryNames.has(rawCategoryName)) {
       throw new Error(
@@ -114,7 +115,7 @@ const parseFraudProofCatalogueDeploymentInfo = (
   }
   const seenCategoryIds = new Map<string, FraudProofCatalogueCategoryName>();
   const categories = Object.fromEntries(
-    FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER.map((name) => {
+    catalogueCategories.map((name) => {
       const category = rawCategories[name];
       if (category === undefined) {
         throw new Error(`fraudProofCatalogue.categories.${name} is missing`);

@@ -72,13 +72,8 @@ export {
   refuseMalformedMempoolCandidates,
 } from "./mempool-order.js";
 export {
-  applyLedgerOpsToUtxoPayloadAggregateFromFullValues,
   computeUtxoPayloadRoot,
   estimateMpfStoredValueBytes,
-  ledgerPayloadAggregateFromEntries,
-  utxoPayloadAggregateFromEntries,
-  utxoPayloadEntryEncodedSize,
-  type UtxoPayloadSizeAggregate,
 } from "./payload-size.js";
 export { processMpfs } from "./process.js";
 export { type ProcessMpfsConfig } from "./process-config.js";

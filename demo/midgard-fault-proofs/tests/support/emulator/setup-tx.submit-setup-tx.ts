@@ -2,7 +2,6 @@ import {
   type FraudProofCatalogueDeploymentInfo,
   hashBlockHeader,
   Header,
-  type MidgardValidators,
   STATE_QUEUE_NODE_ASSET_NAME_PREFIX,
 } from "@al-ft/midgard-sdk";
 import {
@@ -15,6 +14,7 @@ import { Effect } from "effect";
 
 import { network } from "./blueprints.js";
 import { requireUtxoWithUnit } from "./emulator-context.js";
+import { withCommitSlot } from "./header-fixtures.js";
 import {
   type MinAdaYieldReferenceScripts,
   publishMinAdaYieldReferenceScripts,
@@ -41,17 +41,25 @@ export const submitSetupTx = async ({
   contracts,
   nonceUtxo,
   catalogue,
-  header,
+  header: requestedHeader,
+  blockTime,
   beforeHeaderCommit,
 }: {
   readonly lucid: SetupLucid;
   readonly contracts: SetupContracts;
   readonly nonceUtxo: UTxO;
   readonly catalogue: FraudProofCatalogueDeploymentInfo;
+  /**
+   * The header to commit. It commits at `blockTime` (default endTime), so its
+   * block_slot is stamped here; use the returned `header`.
+   */
   readonly header: Header;
+  /** Commit at this block_time instead of endTime (a catch-up commit). */
+  readonly blockTime?: bigint;
   /** Run actual event admission after hub creation, before committing this header. */
   readonly beforeHeaderCommit?: (hubOracle: UTxO) => Promise<void>;
 }): Promise<{
+  readonly header: Header;
   readonly fraudulentBlockOutRef: string;
   readonly headerHash: string;
   readonly stateQueueBlockUnit: string;
@@ -67,6 +75,11 @@ export const submitSetupTx = async ({
   readonly registeredOperatorsRoot: UTxO;
   readonly minAdaYieldReferenceScripts?: MinAdaYieldReferenceScripts;
 }> => {
+  const header = withCommitSlot(
+    contracts.l1SlotConfig,
+    requestedHeader,
+    blockTime,
+  );
   const headerHash = await Effect.runPromise(hashBlockHeader(header));
   const units = setupUnits(contracts, header, headerHash);
 
@@ -161,9 +174,11 @@ export const submitSetupTx = async ({
       stateQueueRootUtxo,
       appointedSchedulerUtxo,
       activeOperatorNode,
+      blockTime,
     });
 
   return {
+    header,
     fraudulentBlockOutRef: `${fraudulentBlockUtxo.txHash}#${fraudulentBlockUtxo.outputIndex.toString()}`,
     headerHash,
     stateQueueBlockUnit: units.stateQueueBlock,
@@ -192,15 +207,18 @@ export const submitSetupTx = async ({
 export const submitSecondHeaderTx = async ({
   lucid,
   contracts,
-  header,
+  header: requestedHeader,
 }: {
   readonly lucid: SetupLucid;
-  readonly contracts: MidgardValidators;
+  readonly contracts: SetupContracts;
+  /** Stamped with its commit slot like `submitSetupTx`'s; use the returned one. */
   readonly header: Header;
 }): Promise<{
+  readonly header: Header;
   readonly blockOutRef: string;
   readonly headerHash: string;
 }> => {
+  const header = withCommitSlot(contracts.l1SlotConfig, requestedHeader);
   const headerHash = await Effect.runPromise(hashBlockHeader(header));
   const units = setupUnits(contracts, header, headerHash);
   const hubOracleUtxo = await requireUtxoWithUnit(
@@ -259,6 +277,7 @@ export const submitSecondHeaderTx = async ({
     activeOperatorNode,
   });
   return {
+    header,
     blockOutRef: `${committed.fraudulentBlockUtxo.txHash}#${committed.fraudulentBlockUtxo.outputIndex.toString()}`,
     headerHash,
   };

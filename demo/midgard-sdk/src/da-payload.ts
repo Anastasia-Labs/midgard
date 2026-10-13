@@ -15,7 +15,6 @@ export {
 export {
   daPayloadEncodedSize,
   daPayloadEncodedSizeFromEntryAggregates,
-  daPayloadEncodedSizeFromUtxoAggregate,
   daPayloadEntriesEncodedSizeFromAggregate,
   daPayloadEntryEncodedSize,
   type DaPayloadEntryField,

@@ -295,9 +295,6 @@ export const validateDaPayloadConsensus = (body: SDK.DaPayloadBody): void => {
       `ledger operations ${ledgerOperationCount.toString()} exceed V1 maximum ${limits.maxLedgerOperationCount.toString()}`,
     );
   }
-  // Program material coverage depends on each event's pre-state, so it is
-  // checked by `validateDaPayloadEventProgramCoverage` against the state
-  // before the block.
 };
 
 export const dataHex = <A>(value: A, schema: DataSchema): string =>

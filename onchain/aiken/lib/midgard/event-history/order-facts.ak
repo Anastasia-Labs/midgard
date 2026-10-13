@@ -14,7 +14,6 @@ use env
 use midgard/common/utils
 use midgard/event_history/data_budget
 use midgard/event_history/funding
-use midgard/event_history/horizon
 use midgard/event_history/node_role.{Order}
 use midgard/event_history/ordering.{Key, Link}
 use midgard/event_history/retained_data
@@ -351,7 +350,6 @@ pub fn capture(
   retention_address: Address,
   kind: Kind,
   target: OutputReference,
-  authenticated_header_end: Int,
   inline_limit: Int,
   max_payload_bytes: Int,
   max_payload_nodes: Int,
@@ -365,7 +363,6 @@ pub fn capture(
     retention_address,
     kind,
     target,
-    authenticated_header_end,
     inline_limit,
     max_payload_bytes,
     max_payload_nodes,
@@ -377,7 +374,8 @@ pub fn capture(
 
 /// Timing predicates need authenticated metadata/content, but not an original
 /// Value commitment. Keep the shared L1 authentication here so those scripts
-/// do not carry deposit projection/accounting code they never use.
+/// do not carry deposit projection/accounting code they never use. Each caller
+/// applies its own capture timing from `horizon` to the same transaction.
 pub fn capture_payload(
   tx: Transaction,
   policy: PolicyId,
@@ -385,17 +383,12 @@ pub fn capture_payload(
   retention_address: Address,
   kind: Kind,
   target: OutputReference,
-  authenticated_header_end: Int,
   inline_limit: Int,
   max_payload_bytes: Int,
   max_payload_nodes: Int,
   node_reference_index: Int,
   external_reference_index: Option<Int>,
 ) -> (Facts, Payload, Value) {
-  let (lower, upper) = utils.get_inclusive_bounds_of_a_short_validity_range(
-    tx.validity_range,
-  )
-  expect horizon.capture_permitted(authenticated_header_end, lower, upper)
   expect Some(input) = list.at(tx.reference_inputs, node_reference_index)
   expect
     !list.any(
@@ -428,7 +421,6 @@ pub fn capture_open(
   retention_address: Address,
   kind: Kind,
   target: OutputReference,
-  authenticated_header_end: Int,
   inline_limit: Int,
   max_payload_bytes: Int,
   max_payload_nodes: Int,
@@ -442,7 +434,6 @@ pub fn capture_open(
     retention_address,
     kind,
     target,
-    authenticated_header_end,
     inline_limit,
     max_payload_bytes,
     max_payload_nodes,

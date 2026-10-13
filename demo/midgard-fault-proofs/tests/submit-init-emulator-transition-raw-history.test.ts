@@ -43,6 +43,7 @@ import {
 } from "./support/emulator/family-history.js";
 import { measureCompleteSignedTransaction } from "./support/emulator/measurement.js";
 import { EMULATOR_PROTOCOL_PARAMETERS } from "./support/emulator/protocol-parameters.js";
+import { fixtureLedgerAfter } from "./support/fixture-ledger.js";
 import {
   alignUnixTimeToEmulatorSlotBoundary,
   buildRemovalDeploymentInfo,
@@ -304,7 +305,7 @@ it.each([false, true])(
     );
     expect(
       decodeMidgardTxOutput(
-        Buffer.from(retained.payload.block_body.utxos[0]![1], "hex"),
+        Buffer.from(fixtureLedgerAfter(retained.header)[0]![1], "hex"),
       ).datum,
     ).toEqual({ kind: "inline", cbor: Buffer.from(rawDatum, "hex") });
     const common = {

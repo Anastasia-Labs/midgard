@@ -30,13 +30,7 @@ export type Record = Row & {
   readonly eventToStepMembers: readonly MemberRecord[];
   readonly validationTraceMembers: readonly MemberRecord[];
   readonly ledgerDelta: LedgerDeltaInput;
-  readonly utxoPayloadAggregate?: UtxoPayloadSizeAggregate;
   readonly nativeMpfReplay?: NativeMpfReplayInput;
-};
-
-export type UtxoPayloadSizeAggregate = {
-  readonly entryCount: number;
-  readonly encodedTupleBytes: number;
 };
 
 export type LedgerDeltaInput = {
@@ -144,7 +138,6 @@ export type PrepareInput = {
   readonly eventToStepMembers: readonly RetainedRootMemberInput[];
   readonly validationTraceMembers: readonly RetainedRootMemberInput[];
   readonly ledgerDelta: LedgerDeltaInput;
-  readonly utxoPayloadAggregate?: UtxoPayloadSizeAggregate;
   readonly nativeMpfReplay?: NativeMpfReplayInput;
 };
 

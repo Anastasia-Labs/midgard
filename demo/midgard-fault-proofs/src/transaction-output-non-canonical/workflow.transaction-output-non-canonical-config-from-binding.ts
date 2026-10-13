@@ -16,9 +16,13 @@ import {
   type FraudProofWorkflowDeploymentBinding,
   requireManifestBoundReferenceScriptUtxo,
 } from "../workflow/deployment-manifest-binding.js";
-import type { TransactionOutputNonCanonicalContracts } from "./contracts.js";
+import {
+  TRANSACTION_OUTPUT_NON_CANONICAL_BLUEPRINT_TITLES,
+  type TransactionOutputNonCanonicalContracts,
+} from "./contracts.js";
 import {
   TransactionOutputStep02DatumSchema,
+  TransactionOutputStep03DatumDatumSchema,
   TransactionOutputStep03DatumSchema,
   TransactionOutputStep04DatumSchema,
 } from "./schemas.js";
@@ -34,6 +38,7 @@ export const TRANSACTION_OUTPUT_NON_CANONICAL_MANIFEST_CONTRACTS =
     step01: "fraudProofTransactionOutputNonCanonical",
     step02: "fraudProofTransactionOutputNonCanonicalStep02",
     step03: "fraudProofTransactionOutputNonCanonicalStep03",
+    step03Datum: "fraudProofTransactionOutputNonCanonicalStep03Datum",
     step04: "fraudProofTransactionOutputNonCanonicalStep04",
     computationThreadMint: "computationThreadMint",
     fraudProofMint: "fraudProofMint",
@@ -45,6 +50,7 @@ export type TransactionOutputNonCanonicalReferenceScripts = Readonly<{
   step01: UTxO;
   step02: UTxO;
   step03: UTxO;
+  step03Datum: UTxO;
   step04: UTxO;
   fieldPreimageCertificateMint: UTxO;
   witnesses: FaultProofWitnessReferenceScripts & {
@@ -108,6 +114,11 @@ export const bindTransactionOutputNonCanonicalReferenceScripts = ({
       contractName: names.step03,
       utxo: referenceScripts.step03,
     }),
+    step03Datum: bindReference({
+      binding,
+      contractName: names.step03Datum,
+      utxo: referenceScripts.step03Datum,
+    }),
     step04: bindReference({
       binding,
       contractName: names.step04,
@@ -153,6 +164,7 @@ export const loadManifestBoundTransactionOutputNonCanonicalConfig = async (
       FraudProofComputationThreadStepDatum,
       TransactionOutputStep02DatumSchema,
       TransactionOutputStep03DatumSchema,
+      TransactionOutputStep03DatumDatumSchema,
       TransactionOutputStep04DatumSchema,
     ],
   });
@@ -184,9 +196,9 @@ export const transactionOutputNonCanonicalConfigFromBinding = (input: {
   };
   const chain = localContracts.transactionOutputNonCanonical;
   const certificate = binding.fieldPreimageCertificate;
-  if (chain === undefined || chain.steps.length !== 4) {
+  if (chain === undefined || chain.steps.length !== 5) {
     throw new Error(
-      "transactionOutputNonCanonical deployment changed its four-step topology",
+      "transactionOutputNonCanonical deployment changed its five-step topology",
     );
   }
   if (certificate === null) {
@@ -202,16 +214,14 @@ export const transactionOutputNonCanonicalConfigFromBinding = (input: {
     contracts: {
       steps: chain.steps.map((step, index) => ({
         ...step,
-        blueprintTitle: [
-          "fraud_proofs/transaction_output_non_canonical/step_01.main.spend",
-          "fraud_proofs/transaction_output_non_canonical/step_02.main.spend",
-          "fraud_proofs/transaction_output_non_canonical/step_03.main.spend",
-          "fraud_proofs/transaction_output_non_canonical/step_04.main.spend",
-        ][index]!,
+        blueprintTitle: Object.values(
+          TRANSACTION_OUTPUT_NON_CANONICAL_BLUEPRINT_TITLES,
+        )[index]!,
         referenceOutRef: [
           referenceScripts.step01,
           referenceScripts.step02,
           referenceScripts.step03,
+          referenceScripts.step03Datum,
           referenceScripts.step04,
         ][index]!.txHash.concat(
           "#",
@@ -219,6 +229,7 @@ export const transactionOutputNonCanonicalConfigFromBinding = (input: {
             referenceScripts.step01,
             referenceScripts.step02,
             referenceScripts.step03,
+            referenceScripts.step03Datum,
             referenceScripts.step04,
           ][index]!.outputIndex.toString(),
         ),

@@ -246,12 +246,15 @@ export type WatcherReferenceScriptIdentity = Readonly<{
   outRef: string;
 }>;
 
+/** `categories` holds exactly the deployment's catalogue (the profile's set). */
 export type WatcherFraudProofCatalogueIdentity = Readonly<{
   root: string;
   categories: Readonly<
-    Record<
-      keyof typeof CATALOGUE_CATEGORY_TO_CONTRACT,
-      Readonly<{ categoryId: string; scriptHash: string }>
+    Partial<
+      Record<
+        keyof typeof CATALOGUE_CATEGORY_TO_CONTRACT,
+        Readonly<{ categoryId: string; scriptHash: string }>
+      >
     >
   >;
 }>;

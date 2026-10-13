@@ -20,7 +20,6 @@ import {
   daPayloadCompressionRatioGauge,
   expectedCounts,
   journalCekProgramMaterial,
-  type PayloadUtxoEntry,
   sortedEntries,
 } from "./da-payload.compute-da-payload-roots.js";
 import {
@@ -30,18 +29,15 @@ import {
 
 export const buildDaPayloadInsert = ({
   record,
-  utxos,
   envelope,
 }: {
   readonly record: PendingBlockFinalizationsDB.Record;
-  readonly utxos: readonly PayloadUtxoEntry[];
   readonly envelope?: {
     readonly mode: "identity" | "zstd";
     readonly zstdLevel: number;
   };
 }): Effect.Effect<DaPayloadsDB.InsertInput, DatabaseError | MpfError> =>
   Effect.gen(function* () {
-    const payloadUtxos = utxos;
     const header = yield* decodeHeader(record);
     const counts = expectedCounts(record);
     const profileId =
@@ -96,9 +92,6 @@ export const buildDaPayloadInsert = ({
     const commonBody = {
       header_hash:
         record[PendingBlockFinalizationsDB.Columns.HEADER_HASH].toString("hex"),
-      utxos: sortedEntries(
-        payloadUtxos.map((entry) => bufferEntry(entry.outref, entry.output)),
-      ),
       withdrawals: sortedEntries(
         record.withdrawalMembers.map((member) =>
           bufferEntry(

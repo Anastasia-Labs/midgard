@@ -8,11 +8,11 @@ import {
   computeMidgardNativeTxId,
   encodeMidgardSpendInputItem,
 } from "@al-ft/midgard-core";
+import { decodeMidgardTxOutput } from "@al-ft/midgard-core/codec";
 import { encodeMidgardForcedTxCanonical } from "@al-ft/midgard-core/codec/forced";
 import { deriveMidgardForcedTxProofSource } from "@al-ft/midgard-core/codec/forced";
 import { materializeMidgardForcedTxFromCanonical } from "@al-ft/midgard-core/codec/forced";
 import * as SDK from "@al-ft/midgard-sdk";
-import { decodeMidgardTxOutput } from "@al-ft/midgard-core/codec";
 import {
   buildCanonicalMidgardLedgerEntryOutputMaterial,
   commitMidgardScriptContextTxOut,
@@ -30,6 +30,9 @@ import {
   buildCanonicalBlockFixture,
   reencodeFixturePayload,
 } from "../helpers/canonical-block-evidence-fixture.js";
+import { withPlaceholderWithdrawalBlock } from "../helpers/canonical-block-evidence-fixture.with-placeholder-withdrawal.js";
+import { fixtureBlockSlot } from "./emulator/header-fixtures.js";
+import { recordFixtureLedger } from "./fixture-ledger.js";
 import { makeReferenceNativeTx as makeNativeTx } from "./no-reference-input-native.js";
 import { payloadLedgerAt } from "./predecessor-ledger.js";
 import { buildInvalidForcedTransitionTraceFixture } from "./submit-init-emulator-fixtures.js";
@@ -80,10 +83,12 @@ export const nativeDecodingFixture = async ({
     Buffer.from("03", "hex"),
     item,
   ]);
-  const baseline = await buildCanonicalBlockFixture({
-    transactions: [],
-    utxos: [{ key, value: plainOutput }],
-  });
+  const baseline = await withPlaceholderWithdrawalBlock(
+    await buildCanonicalBlockFixture({
+      transactions: [],
+      utxos: [{ key, value: plainOutput }],
+    }),
+  );
   const baseDescriptor = buildCanonicalMidgardLedgerEntryOutputMaterial({
     outRef: key,
     outputCbor: plainOutput,
@@ -138,6 +143,7 @@ export const nativeDecodingFixture = async ({
     descriptor = outputMaterial.descriptorCbor;
   }
   const ledger = await keyValuePhasRootWithCount([{ key, value: descriptor }]);
+  recordFixtureLedger(ledger.root, [{ key, value: output }]);
   const predecessorHeader = {
     ...baseline.header,
     prevHeaderHash: SDK.GENESIS_HEADER_HASH,
@@ -145,7 +151,7 @@ export const nativeDecodingFixture = async ({
     operatorVkey,
     startTime: BigInt(now),
     endTime: BigInt(now) + 1000n,
-    blockSlot: 9n,
+    blockSlot: fixtureBlockSlot(BigInt(now) + 1000n, 9n),
     utxosRoot: ledger.root,
   };
   const predecessorHash = computeHash28(
@@ -157,7 +163,6 @@ export const nativeDecodingFixture = async ({
       ...baseline.payload.block_body,
       header: predecessorHeader,
       header_hash: predecessorHash,
-      utxos: [[key.toString("hex"), output.toString("hex")]],
       validation_trace_witnesses: [],
     },
   } as SDK.DaPayload;
@@ -325,7 +330,7 @@ export const nativeDecodingFixture = async ({
   };
   const header = {
     ...base.header,
-    blockSlot: 10n,
+    blockSlot: fixtureBlockSlot(BigInt(now) + 61_000n, 10n),
     endTime: BigInt(now) + 61_000n,
     ...counts,
     prevHeaderHash: predecessorFixture.headerHash,
@@ -346,7 +351,6 @@ export const nativeDecodingFixture = async ({
       header,
       header_hash: headerHash,
       counts,
-      utxos: consumed ? [] : predecessorFixture.payload.block_body.utxos,
       validation_trace_witnesses: [],
       forced_transactions: entries,
       forced_transaction_preimages: preimages,

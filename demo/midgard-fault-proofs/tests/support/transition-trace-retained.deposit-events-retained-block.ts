@@ -13,6 +13,9 @@ import { type Assets, Data } from "@lucid-evolution/lucid";
 
 import { buildCountedRoot } from "../../src/transition-trace/phas.js";
 import { buildCanonicalBlockFixture } from "../helpers/canonical-block-evidence-fixture.js";
+import { withPlaceholderWithdrawalBlock } from "../helpers/canonical-block-evidence-fixture.with-placeholder-withdrawal.js";
+import { fixtureBlockSlot } from "./emulator/header-fixtures.js";
+import { fixtureLedgerAfter, fixtureLedgerEntries } from "./fixture-ledger.js";
 
 export const sealDepositPayload = async (payload: SDK.DaPayload) => {
   const header = payload.block_body.header;
@@ -62,10 +65,13 @@ export const depositEventsRetainedBlock = async (input: {
   blockSlot: bigint;
   prevHeaderHash: string;
   prevUtxosRoot: string;
-  priorLedger: readonly SDK.DaPayloadEntry[];
+  /** Defaults to the fixture ledger recorded for `prevUtxosRoot`. */
+  priorLedger?: readonly SDK.DaPayloadEntry[];
   events: readonly RetainedDepositEvent[];
 }) => {
-  const ledger = new Map(input.priorLedger);
+  const ledger = new Map(
+    input.priorLedger ?? fixtureLedgerEntries(input.prevUtxosRoot),
+  );
   const buildLedger = () =>
     buildCanonicalBlockFixture({
       transactions: [],
@@ -167,7 +173,7 @@ export const depositEventsRetainedBlock = async (input: {
     ...base.header,
     ...counts,
     operatorVkey: input.operatorVkey,
-    blockSlot: input.blockSlot,
+    blockSlot: fixtureBlockSlot(input.endTime, input.blockSlot),
     depositsRoot: await root(SDK.ROOT_DOMAINS.deposits, entries.deposits),
     eventToStepRoot: await root(
       SDK.ROOT_DOMAINS.eventToStep,
@@ -193,16 +199,18 @@ export const transitionTraceDepositRetainedFixture = async (
   },
 ) => {
   const { operatorVkey, now, originalAssets, honest = false } = input;
-  const predecessor = await depositEventsRetainedBlock({
-    operatorVkey,
-    startTime: BigInt(now),
-    endTime: BigInt(now + 60_000),
-    blockSlot: 9n,
-    prevHeaderHash: SDK.GENESIS_HEADER_HASH,
-    prevUtxosRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
-    priorLedger: [],
-    events: [],
-  });
+  const predecessor = await withPlaceholderWithdrawalBlock(
+    await depositEventsRetainedBlock({
+      operatorVkey,
+      startTime: BigInt(now),
+      endTime: BigInt(now + 60_000),
+      blockSlot: 9n,
+      prevHeaderHash: SDK.GENESIS_HEADER_HASH,
+      prevUtxosRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
+      priorLedger: [],
+      events: [],
+    }),
+  );
   const current = await depositEventsRetainedBlock({
     operatorVkey,
     startTime: predecessor.header.endTime,
@@ -210,7 +218,7 @@ export const transitionTraceDepositRetainedFixture = async (
     blockSlot: 10n,
     prevHeaderHash: predecessor.headerHash,
     prevUtxosRoot: predecessor.header.utxosRoot,
-    priorLedger: predecessor.payload.block_body.utxos,
+    priorLedger: fixtureLedgerAfter(predecessor.header),
     events: [{ ...input, originalAssets, honest }],
   });
   return { predecessor, current };

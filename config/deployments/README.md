@@ -10,6 +10,7 @@ a deployment profile: both `preprod-public` and `preprod-testing` use `Preprod`.
 | `preprod-testing`          | `Preprod`       | Bounded testing                |
 | `local-devnet-testing`     | `Custom`        | Bounded testing                |
 | `preprod-emulator-testing` | `Preprod`       | Bounded testing; emulator only |
+| `preprod-emulator-curated` | `Preprod`       | Bounded testing; emulator only |
 
 The public profiles retain the existing testnet timing values, including seven-day
 block maturity, a five-minute dispute response window, a one-hour operator shift,
@@ -122,6 +123,7 @@ Each profile uses the largest d all bounds admit:
 | `preprod-testing`          | 17 − 1 = 16         | 269,000      | 4 − 1 = 3           | —                    | 3    |
 | `local-devnet-testing`     | 17 − 1 = 16         | 269,000      | 4 − 1 = 3           | —                    | 3    |
 | `preprod-emulator-testing` | 22 − 1 = 21         | 569,000      | 9 − 1 = 8           | —                    | 8    |
+| `preprod-emulator-curated` | 22 − 1 = 21         | 569,000      | 9 − 1 = 8           | —                    | 8    |
 
 The no-strike column divides W + N − L by 60,000 ms, the plannable column
 divides W − B − slot and the production column W − L; each rounds down.
@@ -143,6 +145,20 @@ plugin selects the matching TypeScript profile only within that test project's
 module graph. The checked-in selected profile and default `plutus.json` remain
 `preprod-testing`; live testing and devnet timings stay unchanged. New interactive
 journey files belong in `interactiveTests` in the fault-proof Vitest config.
+
+### Curated emulator tests
+
+`preprod-emulator-curated` is `preprod-emulator-testing` with stage-0
+allow-lists and the `preprod-public` catalogue exclusions. Each list names one
+key derived from a fixed test seed (`tests/support/curated-emulator.ts` in
+`midgard-fault-proofs`). The fault-proof `curated-emulator` Vitest project
+selects it the same way and caches its blueprint at
+`onchain/aiken/build/curated-emulator/plutus.json`; build it directly with
+`node demo/midgard-test-support/curated-emulator.js`. The project's journeys
+register an operator, initialise a computation thread and open a DA challenge
+with a listed and an unlisted key, and claim a family the catalogue excludes.
+New curated journey files belong in `curatedTests` in the fault-proof Vitest
+config.
 
 ### Live testing profiles
 

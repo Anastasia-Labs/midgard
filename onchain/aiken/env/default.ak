@@ -90,3 +90,12 @@ pub const inactivity_slashing_penalty: Int = 10_000_000_000
 pub const fraud_prover_reward: Int = 75_000_000_000
 
 pub const prover_collateral_floor: Int = 5_000_000
+
+pub const operator_allow_list: Option<List<ByteArray>> =
+  Some([#"706c616365686f6c6465723a6f706572000000000000000000000001"])
+
+pub const fraud_prover_allow_list: Option<List<ByteArray>> =
+  Some([#"706c616365686f6c6465723a70726f76000000000000000000000001"])
+
+pub const da_challenger_allow_list: Option<List<ByteArray>> =
+  Some([#"706c616365686f6c6465723a64616368000000000000000000000001"])

@@ -249,7 +249,7 @@ export const setupInputSetUniquenessScenario = async ({
     alignUnixTimeToEmulatorSlotBoundary(funderLucid, emulator.now() + 120_000) -
     1;
   const funderKeyHash = await funderPaymentKeyHash(funderLucid);
-  const header = makeHeader(
+  const requestedHeader = makeHeader(
     funderKeyHash,
     headerStartTime,
     await countedTransactionsRoot(
@@ -263,8 +263,9 @@ export const setupInputSetUniquenessScenario = async ({
     contracts,
     nonceUtxo,
     catalogue,
-    header,
+    header: requestedHeader,
   });
+  const header = setup.header;
   return { header, setup: { ...setup, witnessReferenceScripts } };
 };
 

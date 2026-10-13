@@ -26,6 +26,7 @@ import {
 import { reconstructDaPayload } from "../src/transition-trace/reconstruct.js";
 import { deriveTransitionTraceReplayEvidence } from "../src/transition-trace/replay.js";
 import { transitionTraceYieldData } from "../src/transition-trace/yield-data.js";
+import { fixtureLedgerAfter } from "./support/fixture-ledger.js";
 import { checkedLedgerAfter } from "./support/predecessor-ledger.js";
 import { transitionTraceDepositRetainedFixture } from "./support/transition-trace-retained.js";
 
@@ -124,7 +125,10 @@ describe("transition deposit retained opening", () => {
       const projected = replay.depositTransitions![0]!.projectedUtxo;
       expect(
         decodeMidgardTxOutput(
-          Buffer.from(fixtures.current.payload.block_body.utxos[0]![1], "hex"),
+          Buffer.from(
+            fixtureLedgerAfter(fixtures.current.header)[0]![1],
+            "hex",
+          ),
         ).datum,
       ).toEqual({ kind: "inline", cbor: Buffer.from(rawDatum, "hex") });
       const operation = deriveCanonicalOriginalDepositTransitionEffect({

@@ -303,11 +303,14 @@ test capture_before_header_end_rejects() fail {
   )
 }
 
-test capture_at_merge_deadline_rejects() fail {
+// Capture checks coverage only; the merge deadline runs from the node's
+// block_time at the terminal (state_queue.require_completed_fraud_witness), so
+// a capture at or past end_time + maturity is no longer refused here.
+test capture_past_end_time_maturity_is_accepted() {
   let tx = transaction(order_facts.Withdrawal, 20)
   let end = base_header().end_time + ledger_state.block_maturity_duration_v1
   omitted(
-    Transaction { ..tx, validity_range: interval.between(end - 1, end) },
+    Transaction { ..tx, validity_range: interval.between(end - 1, end + 1) },
     order_facts.Withdrawal,
   )
 }

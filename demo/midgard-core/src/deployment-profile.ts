@@ -1,5 +1,9 @@
 import { canonicalJson } from "./canonical-json.js";
 import {
+  DEPLOYMENT_MANIFEST_FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER,
+  type DeploymentManifestFraudProofCatalogueCategory,
+} from "./deployment-manifest-identity/catalogue-roles.js";
+import {
   DEPLOYMENT_PROFILES,
   SELECTED_DEPLOYMENT_PROFILE,
   SELECTED_DEPLOYMENT_PROFILE_DIGEST,
@@ -76,4 +80,81 @@ export const verifyDeploymentProfileBinding = (
       "Deployment profile, digest, and network must match the compiled profile",
     );
   }
+};
+
+const catalogueCategories: ReadonlySet<string> = new Set(
+  DEPLOYMENT_MANIFEST_FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER,
+);
+for (const profile of Object.values(DEPLOYMENT_PROFILES)) {
+  for (const category of profile.excluded_fraud_proof_categories) {
+    if (!catalogueCategories.has(category)) {
+      throw new Error(
+        `Deployment profile ${profile.name} excludes ${category}, which is not a fraud-proof catalogue category`,
+      );
+    }
+  }
+}
+
+/**
+ * The fraud-proof catalogue a deployment carries: every catalogue category
+ * the profile does not exclude, in the catalogue's presentation order. The
+ * atomic init builds the catalogue MPF from exactly this set, so an excluded
+ * category has no membership proof and Computation-Thread Init refuses it.
+ */
+export const deploymentFraudProofCatalogueCategories = (
+  profile: DeploymentProfile = SELECTED_DEPLOYMENT_PROFILE,
+): readonly DeploymentManifestFraudProofCatalogueCategory[] => {
+  const excluded: ReadonlySet<string> = new Set(
+    profile.excluded_fraud_proof_categories,
+  );
+  return Object.freeze(
+    DEPLOYMENT_MANIFEST_FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER.filter(
+      (category) => !excluded.has(category),
+    ),
+  );
+};
+
+/** A stage-0 allow-list, keyed as the profile's `allow_lists`. */
+export type AllowListRole = "operators" | "fraud_provers" | "da_challengers";
+
+/** Admitted payment key hashes, or `null` to admit every key. */
+export type AllowList = readonly string[] | null;
+
+const ALLOW_LIST_ACTIONS: Readonly<Record<AllowListRole, string>> = {
+  operators: "register as an operator",
+  fraud_provers: "initialise a fraud-proof computation thread",
+  da_challengers: "open a DA availability challenge",
+};
+
+/** The profile's list for `role`; the validators compile the same list. */
+export const deploymentAllowList = (
+  role: AllowListRole,
+  profile: DeploymentProfile = SELECTED_DEPLOYMENT_PROFILE,
+): AllowList => profile.allow_lists[role];
+
+/** Whether `list` admits `keyHash`, as the on-chain `allow_list.admits`. */
+export const allowListAdmits = (list: AllowList, keyHash: string): boolean =>
+  list === null || list.includes(keyHash.toLowerCase());
+
+/** A key the deployment's allow-list leaves out, refused before any build. */
+export class AllowListRefusal extends Error {
+  override readonly name = "AllowListRefusal";
+  constructor(
+    readonly role: AllowListRole,
+    readonly keyHash: string,
+  ) {
+    super(
+      `key ${keyHash} is not on the deployment's ${role} allow-list, so it cannot ${ALLOW_LIST_ACTIONS[role]}`,
+    );
+  }
+}
+
+/** Throws `AllowListRefusal` unless `list` (the profile's by default) admits `keyHash`. */
+export const requireAllowListed = (
+  role: AllowListRole,
+  keyHash: string,
+  list: AllowList = deploymentAllowList(role),
+): void => {
+  if (!allowListAdmits(list, keyHash))
+    throw new AllowListRefusal(role, keyHash);
 };

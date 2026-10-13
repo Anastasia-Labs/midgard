@@ -5,18 +5,31 @@ import {
   phasMembershipWithdrawalScriptFromBlueprint,
 } from "@al-ft/midgard-sdk";
 import {
+  type Emulator,
   type EmulatorAccount,
   generateEmulatorAccount,
   getAddressDetails,
   Lucid,
   type Script,
   type UTxO,
+  walletFromSeed,
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { expect } from "vitest";
 
 import { resolveProverSigner } from "../../../src/index.js";
 import { type Blueprint, getCompiledScript, network } from "./blueprints.js";
+
+/**
+ * Starts `emulator` on a whole second, so its slot boundaries fall on those of
+ * the emulator deployments' slot mapping (Preprod's;
+ * `EMULATOR_DEPLOYMENT_L1_SLOT_CONFIG`) and a header's block_slot can name its
+ * commit time under that mapping. Call it before creating any Lucid instance
+ * on `emulator`: Lucid reads the emulator's slot mapping at creation.
+ */
+export const alignEmulatorToWholeSecond = (emulator: Emulator): void => {
+  emulator.time = Math.ceil(emulator.time / 1_000) * 1_000;
+};
 
 export const alignUnixTimeToEmulatorSlotBoundary = (
   lucid: Awaited<ReturnType<typeof Lucid>>,
@@ -158,6 +171,27 @@ export const runEmulatorLifecycleStage = async <T>(
 };
 
 /**
+ * An emulator account at `seedPhrase`'s base address, as
+ * `generateEmulatorAccount` derives it, or a fresh one without a seed.
+ */
+export const emulatorAccountFromSeed = (
+  lovelace: bigint,
+  seedPhrase: string | undefined,
+): EmulatorAccount =>
+  seedPhrase === undefined
+    ? generateEmulatorAccount({ lovelace })
+    : {
+        seedPhrase,
+        address: walletFromSeed(seedPhrase, {
+          addressType: "Base",
+          accountIndex: 0,
+          network: "Custom",
+        }).address,
+        assets: { lovelace },
+        privateKey: "",
+      };
+
+/**
  * A prover account funded at the address the PROVER SIGNER resolves.
  *
  * `resolveProverSigner` derives the seed's enterprise address — the
@@ -169,8 +203,9 @@ export const runEmulatorLifecycleStage = async <T>(
  */
 export const fundedProverEmulatorAccount = (
   lovelace: bigint,
+  seedPhrase?: string,
 ): EmulatorAccount => {
-  const account = generateEmulatorAccount({ lovelace });
+  const account = emulatorAccountFromSeed(lovelace, seedPhrase);
   return {
     ...account,
     address: resolveProverSigner({

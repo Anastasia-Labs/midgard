@@ -44,6 +44,7 @@ import {
   alignUnixTimeToEmulatorSlotBoundary,
   buildRemovalDeploymentInfo,
   captureEmulatorSubmission,
+  commitSlotForBlockTime,
   type CompleteSignedTransactionMeasurement,
   expectProofFit,
   expectSingleUtxoWithUnit,
@@ -95,14 +96,17 @@ describe("fault-proof emulator integration", () => {
       ) - 1;
     const invalidRangeInclusion =
       await buildInvalidRangeTransactionInclusionFixture({
-        blockSlot: 0n,
+        blockSlot: commitSlotForBlockTime(
+          contracts.l1SlotConfig,
+          BigInt(headerStartTime + 1_000),
+        ),
       });
     expect(invalidRangeInclusion.violationReason).toBe(
       "starts-after-block-slot",
     );
 
     const funderKeyHash = await funderPaymentKeyHash(funderLucid);
-    const fraudulentHeader = makeHeader(
+    const requestedFraudulentHeader = makeHeader(
       funderKeyHash,
       headerStartTime,
       await countedTransactionsRoot(
@@ -116,8 +120,9 @@ describe("fault-proof emulator integration", () => {
       contracts,
       nonceUtxo,
       catalogue,
-      header: fraudulentHeader,
+      header: requestedFraudulentHeader,
     });
+    const fraudulentHeader = setup.header;
     const { headerHash } = setup;
     await expectStateQueueHeaderOrder({
       lucid: funderLucid,

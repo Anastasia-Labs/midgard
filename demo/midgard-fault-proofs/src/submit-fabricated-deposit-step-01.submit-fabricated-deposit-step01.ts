@@ -2,8 +2,8 @@ import { replacePlutusConstrFieldCbor } from "@al-ft/midgard-core/plutus-data-cb
 import {
   FabricatedDepositStep01SpendRedeemer,
   FabricatedDepositStep02Datum,
-  getHeaderFromStateQueueDatum,
   getLinkedListNodeViewFromUTxO,
+  getStateQueueNodeFromStateQueueDatum,
   HUB_ORACLE_ASSET_NAME,
   requireInputIndex,
   requireOwnSpendPurpose,
@@ -134,18 +134,23 @@ export const submitFabricatedDepositStep01 = async ({
   const stateQueueNodeView = await Effect.runPromise(
     getLinkedListNodeViewFromUTxO(stateQueueBlockUtxo),
   );
-  const header = await Effect.runPromise(
-    getHeaderFromStateQueueDatum(stateQueueNodeView),
+  const stateQueueNode = await Effect.runPromise(
+    getStateQueueNodeFromStateQueueDatum(stateQueueNodeView),
   );
+  const header = stateQueueNode.header;
   const { committedDeposit, step02State } =
     await deriveFabricatedDepositStep01Handoff({
       stateQueuePolicyId: contracts.stateQueuePolicyId,
       header,
+      blockTime: stateQueueNode.block_time,
       headerHash: stateQueueHeaderHash,
       inclusion: depositInclusion,
     });
 
-  const validity = fabricatedProofValidity(header.endTime, now());
+  const validity = fabricatedProofValidity({
+    nodeBlockTime: stateQueueNode.block_time,
+    now: now(),
+  });
   signer.selectWallet(lucid);
   const feeInput = selectFeeInput(await lucid.wallet().getUtxos());
   const referenceInputs = [hubOracleUtxo, stateQueueBlockUtxo];

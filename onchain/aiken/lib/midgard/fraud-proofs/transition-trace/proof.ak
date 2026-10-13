@@ -14,6 +14,7 @@ use env
 use midgard/canonical_cbor_scan_v1 as key_cbor
 use midgard/common/types.{Proof}
 use midgard/common/utils
+use midgard/event_history/horizon
 use midgard/event_history/order_facts
 use midgard/event_history/proof_evidence
 use midgard/fraud_proof_catalogue
@@ -1359,6 +1360,13 @@ pub fn validate_valid_deposit_transition(
   >,
   projected_utxo: LedgerInsertWitness,
 ) -> Bool {
+  let (lower, upper) = utils.get_inclusive_bounds_of_a_short_validity_range(
+    evidence.transaction.validity_range,
+  )
+  // Coverage only. The merge deadline is enforced at the terminal by
+  // `state_queue.require_completed_fraud_witness` (state-queue.ak:621-653),
+  // which deposit-v1.ak:97 calls against the node's block_time.
+  expect horizon.captured_after_coverage(header.end_time, lower, upper)
   let (_, payload, original_assets) = order_facts.capture_open(
     evidence.transaction,
     hub_datum.deposit,
@@ -1366,7 +1374,6 @@ pub fn validate_valid_deposit_transition(
     evidence.history_data.retention_address,
     order_facts.Deposit,
     source_membership.key,
-    header.end_time,
     evidence.history_data.inline_limit,
     evidence.history_data.max_payload_bytes,
     evidence.history_data.max_payload_nodes,

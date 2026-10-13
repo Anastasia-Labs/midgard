@@ -25,7 +25,10 @@ import {
   fullIndexHealthOf,
   fullIndexNearCapDetails,
 } from "../services/mpf-native-owner/service.full-index-accounting.js";
-import { settlementReadinessReason } from "../services/settlement-readiness.js";
+import {
+  settlementReadinessReason,
+  settlementStuckDetail,
+} from "../services/settlement-readiness.js";
 import {
   DEFAULT_MIN_QUEUE_LENGTH_FOR_MERGING,
   planMergePreflight,
@@ -67,9 +70,11 @@ export const getReadinessHandler = Effect.gen(function* () {
   const validationPool = yield* ValidationPool;
   const validationPoolStats = yield* validationPool.stats;
 
+  const deploymentIdentity = yield* ContractDeploymentIdentity;
   const databaseState = yield* Effect.either(
     readReadinessDatabaseState(
-      deploymentIdentityDigestOf(yield* ContractDeploymentIdentity),
+      deploymentIdentityDigestOf(deploymentIdentity),
+      deploymentIdentity.manifestId,
     ),
   );
   if (databaseState._tag === "Left") {
@@ -93,6 +98,7 @@ export const getReadinessHandler = Effect.gen(function* () {
     leaseInspection,
     journalAges,
     ownLandedForcedOrphans,
+    stuckSettlementJobs,
   } = databaseState.right;
   const nowMillis = Date.now();
   const stateQueueBlocksInQueue = yield* Ref.get(globals.BLOCKS_IN_QUEUE);
@@ -294,7 +300,6 @@ export const getReadinessHandler = Effect.gen(function* () {
     for (const [kind, stage] of [
       ["candidate", daFramePressure.candidateStagePercent],
       ["initial_candidate", daFramePressure.initialCandidateStagePercent],
-      ["base_ledger", daFramePressure.baseLedgerStagePercent],
       ["required_work", daFramePressure.requiredWorkStagePercent],
     ] as const) {
       if (stage !== null && stage > 0)
@@ -348,6 +353,8 @@ export const getReadinessHandler = Effect.gen(function* () {
     ownLandedForcedOrphans,
   );
   if (forcedOrphanDetail !== undefined) details.push(forcedOrphanDetail);
+  const stuckSettlementDetail = settlementStuckDetail(stuckSettlementJobs);
+  if (stuckSettlementDetail !== undefined) details.push(stuckSettlementDetail);
   if (
     durableAdmissionOldestAgeMs >
     nodeConfig.READINESS_MAX_DURABLE_ADMISSION_AGE_MS

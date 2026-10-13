@@ -134,11 +134,13 @@ describe("midgard contracts registry", () => {
       // preimages), by removing missingNativeScriptTx/Utxo (superseded by
       // missingScriptSource), by deleting the cross-block family, by the
       // neglected-event strike rule (scheduler, so active operators and the
-      // state queue built on it), by the forced due-window fix
-      // (transition trace), by raising the new-shift inactivity grace to
-      // the maximum validity range (scheduler spend only), by the txInfo
-      // stage's L1 slot mapping (POSIX-ms validity ranges), and by the
-      // exclusive upper bound, bounds below -1, admission and the lock top-up.
+      // state queue built on it), the forced due-window fix (transition trace),
+      // the new-shift inactivity grace raised to the maximum validity range
+      // (scheduler spend only), the txInfo L1 slot mapping (POSIX-ms ranges),
+      // the exclusive upper bound, bounds below -1, admission, the lock top-up,
+      // the output proof's datum step and the split Data refusal executor, and
+      // the composed P1 tree (allow-lists, the datum canonicity step, the
+      // non-empty block rule).
       expect
         .soft(
           createHash("sha256")
@@ -148,7 +150,7 @@ describe("midgard contracts registry", () => {
             .digest("hex"),
         )
         .toBe(
-          "c2eb25cf45a4208bff40157fe5107dadbdf16d4101f2edd283605d24b41f1ec5",
+          "2e7b040edcaea379aaec16b15a419d0fa6663e654225b633b2d703d312cefe16",
         );
       // The queue/correction subset is pinned independently of the full registry.
       // Includes every applied CBOR, hash, policy id, address, and queue yield.
@@ -156,7 +158,8 @@ describe("midgard contracts registry", () => {
       // the availability-challenge policy, whose parameters now include the
       // pooled DA bond policy, and again for disjoint MPF node preimages and
       // for the neglected-event strike rule (the state queue is applied over
-      // the scheduler and active-operator scripts), and the lock ADA top-up.
+      // the scheduler and active-operator scripts), the lock ADA top-up, and
+      // the composed P1 tree (allow-lists, the non-empty block rule).
       expect
         .soft(
           createHash("sha256")
@@ -169,7 +172,7 @@ describe("midgard contracts registry", () => {
             .digest("hex"),
         )
         .toBe(
-          "db216a117ef1c0ef7585310ebd6ef93cf20f663a133b6a6db1cea0ffcdc865ca",
+          "7d5685c27c297f3ac78b69f14c33b4485b5d19788e9a880c3d4223d5a7e26482",
         );
       // The always-succeeds stand-in is a real hazard here: it satisfies every
       // spend, so a role that silently kept it would pass any behavioural test

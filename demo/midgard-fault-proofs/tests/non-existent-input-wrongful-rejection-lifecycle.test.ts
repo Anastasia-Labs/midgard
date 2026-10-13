@@ -51,6 +51,7 @@ import { realBlueprintPath } from "./support/emulator/blueprints.js";
 import { buildCatalogueDeploymentInfo } from "./support/emulator/catalogue.js";
 import { alignUnixTimeToEmulatorSlotBoundary } from "./support/emulator/emulator-context.js";
 import { makeFaultProofEmulatorHarness } from "./support/emulator/harness.js";
+import { withCommitSlot } from "./support/emulator/header-fixtures.js";
 import { captureEmulatorSubmission } from "./support/emulator/measurement.js";
 import { makeNativeTx } from "./support/emulator/native-tx.js";
 import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.js";
@@ -298,14 +299,13 @@ describe("nonExistentInput wrongful rejection registered lifecycle", () => {
         Data.to(0n),
         Data.to(transition, SDK.TransitionStep),
       );
-      const header = {
+      const header = withCommitSlot(harness.contracts.l1SlotConfig, {
         ...base.header,
-        blockSlot: 10n,
         forcedTransactionsRoot: forcedMembership.root,
         eventToStepRoot: eventMembership.root,
         transitionTraceRoot: transitionMembership.root,
         utxosRoot: ledgerRoot,
-      };
+      });
       const forcedSource = {
         header,
         membership: forcedMembership,

@@ -36,6 +36,7 @@ import {
   network as emulatorNetwork,
   publishPlainReferenceScriptUtxo,
   submitSetupTx,
+  withPlaceholderDeposit,
 } from "./submit-init-emulator-shared.js";
 import { type ValueNotPreservedFixture } from "./value-not-preserved-emulator.build-value-not-preserved-fixture.js";
 import {
@@ -88,8 +89,10 @@ export const setupValueNotPreservedScenario = async ({
     alignUnixTimeToEmulatorSlotBoundary(funderLucid, emulator.now() + 120_000) -
     1;
   const funderKeyHash = await funderPaymentKeyHash(funderLucid);
-  const baseAnchorHeader = makeHeader(funderKeyHash, headerStartTime);
-  const anchorHeader = {
+  const baseAnchorHeader = withPlaceholderDeposit(
+    makeHeader(funderKeyHash, headerStartTime),
+  );
+  const requestedAnchorHeader = {
     ...baseAnchorHeader,
     endTime:
       baseAnchorHeader.startTime + BigInt(EMULATOR_HEADER_CLOCK_HEADROOM_MS),
@@ -100,8 +103,9 @@ export const setupValueNotPreservedScenario = async ({
     contracts,
     nonceUtxo,
     catalogue,
-    header: anchorHeader,
+    header: requestedAnchorHeader,
   });
+  const anchorHeader = anchorSetup.header;
   const successorStart = emulatorSuccessorHeaderStart({
     predecessorEndTime: anchorHeader.endTime,
     emulator,
@@ -134,7 +138,7 @@ export const setupValueNotPreservedScenario = async ({
     anchorBlockUnit: anchorSetup.stateQueueBlockUnit,
     witnessReferenceScripts,
   };
-  return { header, anchorHeader, setup };
+  return { header: commit.header, anchorHeader: anchorSetup.header, setup };
 };
 
 /**
