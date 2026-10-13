@@ -60,7 +60,7 @@ export const DEPLOYMENT_PROFILES = {
       block_maturity_ms: 604800000,
       dispute_response_window_ms: 300000,
       operator_shift_ms: 3600000,
-      registration_ms: 30,
+      registration_ms: 30000,
       event_wait_ms: 1800000,
       user_events_negligence_timeout_ms: 1200000,
       new_shift_inactivity_grace_period_ms: 480000,
@@ -81,7 +81,7 @@ export const DEPLOYMENT_PROFILES = {
     },
     limits: {
       max_bisection_rounds: 32,
-      max_inactivity_strikes: 5,
+      max_inactivity_strikes: 1000000,
       coins_per_utxo_byte: 4310,
     },
     economics: {
@@ -239,7 +239,7 @@ export const DEPLOYMENT_PROFILES = {
 export const DEPLOYMENT_PROFILE_DIGESTS = {
   mainnet: "358b0514f25e42a78eff0a008fa555b921c00eb60977bc1e3d5f657a6aa2559b",
   "preprod-public":
-    "71096553732b77bbccaab07105129f46495738defde5de403d45bbe91306f3e4",
+    "d3db2cc6ffdba568cee93cd0d2cbada0a566ed5966613639221e911db667b3f0",
   "preprod-testing":
     "aef34be851493cba14b637d8785f40b04a95901f1e328c85c9348d00b5c138d5",
   "local-devnet-testing":

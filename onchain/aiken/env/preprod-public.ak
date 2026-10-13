@@ -41,7 +41,7 @@ pub const response_window_milliseconds: Int = 300_000
 
 pub const shift_duration: Int = 3_600_000
 
-pub const registration_duration: Int = 30
+pub const registration_duration: Int = 30_000
 
 pub const event_wait_duration: Int = 1_800_000
 
@@ -75,7 +75,7 @@ pub const challenge_record_lovelace_v1: Int = 27_000_000
 
 pub const max_bisection_rounds: Int = 32
 
-pub const max_inactivity_strikes: Int = 5
+pub const max_inactivity_strikes: Int = 1_000_000
 
 pub const coins_per_utxo_byte: Int = 4_310
 

@@ -13,7 +13,7 @@ timing:
   block_maturity_ms: 604800000
   dispute_response_window_ms: 300000
   operator_shift_ms: 3600000
-  registration_ms: 30
+  registration_ms: 30000
   event_wait_ms: 1800000 # worst case for 30 blocks = 3N/f slots = 3*30/0.05 s (30 min)
   user_events_negligence_timeout_ms: 1200000
   new_shift_inactivity_grace_period_ms: 480000
@@ -37,7 +37,8 @@ da_bond:
   challenge_record_lovelace: 27000000
 limits:
   max_bisection_rounds: 32
-  max_inactivity_strikes: 5
+  # P1: out of reach, so a strike skips the shift but never ejects an operator.
+  max_inactivity_strikes: 1000000
   coins_per_utxo_byte: 4310
 economics:
   profile: public-preprod-launch-v1
