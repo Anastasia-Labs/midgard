@@ -162,20 +162,25 @@ const datumData = (output: MidgardTxOutput): DataConstr => {
   return constr(2, [plutusDataFromCborIterative(datum.cbor)]);
 };
 
+/**
+ * `referenceScriptHash` names the reference script by its hash, which is all
+ * a `TxOut` carries of it; when omitted it is the hash of `output.script_ref`.
+ */
 export const scriptContextTxOutData = (
   output: MidgardTxOutput,
   addressEncoding: ScriptContextAddressEncoding,
-): DataConstr => {
-  const scriptRef = output.script_ref;
-  return constr(0, [
+  referenceScriptHash: string | undefined = output.script_ref === undefined
+    ? undefined
+    : hashMidgardVersionedScript(output.script_ref),
+): DataConstr =>
+  constr(0, [
     addressData(output, addressEncoding),
     valueData(output),
     datumData(output),
-    scriptRef === undefined
+    referenceScriptHash === undefined
       ? none()
-      : some(bytes(hashMidgardVersionedScript(scriptRef))),
+      : some(bytes(referenceScriptHash)),
   ]);
-};
 
 export const scriptContextTxInInfoData = (
   input: ResolvedInput,

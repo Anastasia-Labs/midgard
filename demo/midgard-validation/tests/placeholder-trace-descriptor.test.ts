@@ -6,8 +6,14 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { Data as LucidData } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
-import { placeholderValidationTraceDescriptorV1 } from "../src/validation-machine/placeholder-trace-descriptor.js";
-import { PLACEHOLDER_VALIDATION_TRACE_DESCRIPTOR_VECTORS } from "./placeholder-validation-trace-descriptor-v1.vectors.js";
+import {
+  placeholderValidationTraceDescriptorV1,
+  validationTransactionCommitmentV1,
+} from "../src/validation-machine/placeholder-trace-descriptor.js";
+import {
+  PLACEHOLDER_VALIDATION_TRACE_DESCRIPTOR_VECTORS,
+  placeholderValidationTraceDescriptorVector,
+} from "./placeholder-validation-trace-descriptor-v1.vectors.js";
 
 const hex = (value: string): Buffer => Buffer.from(value, "hex");
 
@@ -58,8 +64,13 @@ describe("placeholderValidationTraceDescriptorV1", () => {
   );
 
   it("distinguishes the event, the transaction and the verdict", () => {
-    const [accepted, , rejected, otherCode] =
-      PLACEHOLDER_VALIDATION_TRACE_DESCRIPTOR_VECTORS;
+    const accepted =
+      placeholderValidationTraceDescriptorVector("normal-accepted");
+    const rejected =
+      placeholderValidationTraceDescriptorVector("forced-rejected");
+    const otherCode = placeholderValidationTraceDescriptorVector(
+      "forced-rejected-min-fee",
+    );
     expect(
       new Set(
         PLACEHOLDER_VALIDATION_TRACE_DESCRIPTOR_VECTORS.map(
@@ -67,26 +78,46 @@ describe("placeholderValidationTraceDescriptorV1", () => {
         ),
       ).size,
     ).toBe(PLACEHOLDER_VALIDATION_TRACE_DESCRIPTOR_VECTORS.length);
-    expect(rejected!.expected.initialStateHash).toBe(
-      otherCode!.expected.initialStateHash,
+    expect(rejected.expected.initialStateHash).toBe(
+      otherCode.expected.initialStateHash,
     );
-    expect(rejected!.expected.terminalStateHash).not.toBe(
-      otherCode!.expected.terminalStateHash,
+    expect(rejected.expected.terminalStateHash).not.toBe(
+      otherCode.expected.terminalStateHash,
     );
     const changedCommitment = placeholderValidationTraceDescriptorV1(
       {
-        eventKeyCbor: hex(accepted!.eventKeyCbor),
+        eventKeyCbor: hex(accepted.eventKeyCbor),
         transactionCommitment: Buffer.alloc(32, 0x12),
       },
       "accepted",
       null,
     );
     expect(changedCommitment.initialStateHash.toString("hex")).not.toBe(
-      accepted!.expected.initialStateHash,
+      accepted.expected.initialStateHash,
     );
     expect(changedCommitment.terminalStateHash.toString("hex")).toBe(
-      accepted!.expected.terminalStateHash,
+      accepted.expected.terminalStateHash,
     );
+  });
+
+  it("derives the vector commitments from the transaction bytes", () => {
+    const withTransactions =
+      PLACEHOLDER_VALIDATION_TRACE_DESCRIPTOR_VECTORS.filter(
+        (vector) => vector.transaction !== undefined,
+      );
+    expect(
+      withTransactions.map(({ transaction }) => transaction!.sourceKind),
+    ).toEqual(["normal", "forced"]);
+    for (const vector of withTransactions) {
+      expect(
+        validationTransactionCommitmentV1({
+          canonicalTransactionCbor: hex(
+            vector.transaction!.canonicalTransactionCbor,
+          ),
+          sourceKind: vector.transaction!.sourceKind,
+        }).toString("hex"),
+      ).toBe(vector.transactionCommitment);
+    }
   });
 
   it("refuses a verdict that disagrees with its rejection code", () => {

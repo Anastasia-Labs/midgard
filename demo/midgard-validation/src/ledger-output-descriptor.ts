@@ -2,23 +2,26 @@ import {
   buildMidgardBoundedItem,
   buildMidgardLedgerOutputAssetFrontier,
   buildMidgardLedgerOutputMaterial,
+  buildMidgardLedgerOutputScanTrace,
   ensureHash32,
   MIDGARD_LEDGER_OUTPUT_FIELD_INDEX,
-  type MidgardLedgerOutputCommitment,
   type MidgardLedgerOutputDataSummary,
   type MidgardLedgerOutputMaterial,
   type MidgardLedgerOutputReferenceScriptLanguage,
 } from "@al-ft/midgard-core";
 import {
   decodeMidgardTxOutput,
+  decodeMidgardVersionedScriptEnvelope,
   encodeMidgardVersionedScript,
   hashMidgardVersionedScript,
   MIDGARD_MAX_OUTPUT_INDEX,
+  MidgardScriptHashPrefixes,
   type MidgardTxOutput,
   midgardValueToCmlValue,
   MidgardVersionedScriptTags,
 } from "@al-ft/midgard-core/codec";
 import { DataConstr } from "@harmoniclabs/plutus-data";
+import { blake2b } from "@noble/hashes/blake2.js";
 
 import { commitMidgardCekDataTree } from "./cek-data-tree.js";
 import { decodeMidgardOutRefBytes } from "./ledger-tx/codec.js";
@@ -55,8 +58,11 @@ const exactSummary = ({
 const contextTxOutSummary = (
   output: MidgardTxOutput,
   encoding: "cardano" | "midgard",
+  referenceScriptHash: string | undefined,
 ): MidgardLedgerOutputDataSummary =>
-  exactSummary(commitMidgardScriptContextTxOut(output, encoding));
+  exactSummary(
+    commitMidgardScriptContextTxOut(output, encoding, referenceScriptHash),
+  );
 
 const cardanoSpendDatumSummary = (
   output: MidgardTxOutput,
@@ -80,42 +86,61 @@ const flattenedAssets = (output: MidgardTxOutput) =>
     })),
   );
 
-const referenceScriptFacts = ({
+/** A reference script as the ledger descriptor sees it: tag, hash and item bytes. */
+type ReferenceScriptItem = {
+  readonly language: Exclude<MidgardLedgerOutputReferenceScriptLanguage, -1>;
+  readonly hash: string;
+  readonly cbor: Buffer;
+};
+
+const ledgerOutputMaterial = ({
   outputIndex,
+  outputCbor,
   output,
+  referenceScript,
 }: {
   readonly outputIndex: number;
+  readonly outputCbor: Uint8Array;
+  /** Address, value and datum; any `script_ref` is ignored for `referenceScript`. */
   readonly output: MidgardTxOutput;
-}): Pick<
-  MidgardLedgerOutputCommitment,
-  | "referenceScriptLanguage"
-  | "referenceScriptHash"
-  | "referenceScriptTotalLength"
-  | "referenceScriptItemCommitment"
-> => {
-  const script = output.script_ref;
-  if (script === undefined) {
-    return {
-      referenceScriptLanguage: -1,
-      referenceScriptHash: Buffer.alloc(0),
-      referenceScriptTotalLength: 0,
-      referenceScriptItemCommitment: Buffer.alloc(0),
-    };
-  }
-  const scriptCbor = encodeMidgardVersionedScript(script);
-  const item = buildMidgardBoundedItem({
-    fieldIndex: MIDGARD_LEDGER_OUTPUT_FIELD_INDEX,
-    itemIndex: outputIndex,
-    bytes: scriptCbor,
+  readonly referenceScript: ReferenceScriptItem | undefined;
+}): MidgardLedgerOutputMaterial => {
+  const assets = buildMidgardLedgerOutputAssetFrontier(flattenedAssets(output));
+  const scriptItem =
+    referenceScript === undefined
+      ? undefined
+      : buildMidgardBoundedItem({
+          fieldIndex: MIDGARD_LEDGER_OUTPUT_FIELD_INDEX,
+          itemIndex: outputIndex,
+          bytes: referenceScript.cbor,
+        });
+  return buildMidgardLedgerOutputMaterial({
+    outputIndex,
+    outputCbor,
+    facts: {
+      address: Buffer.from(output.address),
+      lovelace: output.value.lovelace,
+      assetCount: assets.count,
+      assetFrontierCommitment: assets.commitment,
+      cardanoValueSize: midgardValueToCmlValue(output.value).to_cbor_bytes()
+        .length,
+      referenceScriptLanguage: referenceScript?.language ?? -1,
+      referenceScriptHash: Buffer.from(referenceScript?.hash ?? "", "hex"),
+      referenceScriptTotalLength: scriptItem?.bytes.length ?? 0,
+      referenceScriptItemCommitment: scriptItem?.commitment ?? Buffer.alloc(0),
+      cardanoTxOut: contextTxOutSummary(
+        output,
+        "cardano",
+        referenceScript?.hash,
+      ),
+      midgardTxOut: contextTxOutSummary(
+        output,
+        "midgard",
+        referenceScript?.hash,
+      ),
+      cardanoSpendDatum: cardanoSpendDatumSummary(output),
+    },
   });
-  return {
-    referenceScriptLanguage: Number(
-      MidgardVersionedScriptTags[script.language],
-    ) as Exclude<MidgardLedgerOutputReferenceScriptLanguage, -1>,
-    referenceScriptHash: Buffer.from(hashMidgardVersionedScript(script), "hex"),
-    referenceScriptTotalLength: item.bytes.length,
-    referenceScriptItemCommitment: item.commitment,
-  };
 };
 
 /**
@@ -132,21 +157,85 @@ export const buildCanonicalMidgardLedgerOutputMaterial = ({
   readonly outputCbor: Uint8Array;
 }): MidgardLedgerOutputMaterial => {
   const output = decodeMidgardTxOutput(outputCbor);
-  const assets = buildMidgardLedgerOutputAssetFrontier(flattenedAssets(output));
-  return buildMidgardLedgerOutputMaterial({
+  const script = output.script_ref;
+  return ledgerOutputMaterial({
     outputIndex,
     outputCbor,
-    facts: {
-      address: Buffer.from(output.address),
-      lovelace: output.value.lovelace,
-      assetCount: assets.count,
-      assetFrontierCommitment: assets.commitment,
-      cardanoValueSize: midgardValueToCmlValue(output.value).to_cbor_bytes()
-        .length,
-      ...referenceScriptFacts({ outputIndex, output }),
-      cardanoTxOut: contextTxOutSummary(output, "cardano"),
-      midgardTxOut: contextTxOutSummary(output, "midgard"),
-      cardanoSpendDatum: cardanoSpendDatumSummary(output),
+    output,
+    referenceScript:
+      script === undefined
+        ? undefined
+        : {
+            language: Number(
+              MidgardVersionedScriptTags[script.language],
+            ) as ReferenceScriptItem["language"],
+            hash: hashMidgardVersionedScript(script),
+            cbor: encodeMidgardVersionedScript(script),
+          },
+  });
+};
+
+const CBOR_MAP_HEADER = 0xa0;
+const OUTPUT_SCRIPT_REF_KEY = 0x03;
+
+/**
+ * The ledger descriptor of an output whose reference script is a native
+ * script, derived from the output bytes without interpreting the script: its
+ * hash, length and item commitment are taken over the script bytes exactly as
+ * they stand, as the bounded output scan reads them. The rest of the output
+ * must decode canonically. For a decodable native script this equals
+ * `buildCanonicalMidgardLedgerOutputMaterial`; it exists for fault evidence
+ * about outputs whose native script does not decode, and does not make such
+ * an output valid.
+ */
+export const buildOpaqueNativeReferenceScriptLedgerOutputMaterial = ({
+  outputIndex,
+  outputCbor,
+}: {
+  readonly outputIndex: number;
+  readonly outputCbor: Uint8Array;
+}): MidgardLedgerOutputMaterial => {
+  const bytes = Buffer.from(outputCbor);
+  const scan = buildMidgardLedgerOutputScanTrace(bytes).terminal;
+  const itemOffset = scan.referenceScriptItemOffset;
+  // The reference script is the output map's last key (3): stripping it
+  // leaves the canonical encoding of the same output without one.
+  if (
+    itemOffset < 1 ||
+    scan.referenceScriptOffset + scan.referenceScriptLength !== bytes.length ||
+    bytes[itemOffset - 1] !== OUTPUT_SCRIPT_REF_KEY ||
+    bytes[0]! < CBOR_MAP_HEADER + 3 ||
+    bytes[0]! > CBOR_MAP_HEADER + 4
+  )
+    throw new Error("output does not end in a reference script");
+  const cbor = bytes.subarray(itemOffset);
+  const envelope = decodeMidgardVersionedScriptEnvelope(cbor);
+  if (envelope.language !== "NativeCardano")
+    throw new Error("output reference script is not a native script");
+  const output = decodeMidgardTxOutput(
+    Buffer.concat([
+      Buffer.from([bytes[0]! - 1]),
+      bytes.subarray(1, itemOffset - 1),
+    ]),
+  );
+  return ledgerOutputMaterial({
+    outputIndex,
+    outputCbor: bytes,
+    output,
+    referenceScript: {
+      language: Number(
+        MidgardVersionedScriptTags.NativeCardano,
+      ) as ReferenceScriptItem["language"],
+      hash: Buffer.from(
+        blake2b(
+          Buffer.concat([
+            Buffer.from([MidgardScriptHashPrefixes.NativeCardano]),
+            envelope.scriptBytes,
+          ]),
+          { dkLen: 28 },
+        ),
+      ).toString("hex"),
+      cbor: Buffer.from(cbor),
     },
   });
 };

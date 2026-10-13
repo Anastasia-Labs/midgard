@@ -62,6 +62,139 @@ export type ValidationMachineEventReplay = Readonly<{
   rejection?: RejectedTx;
 }>;
 
+export type ValidationVerdictEventInput = Readonly<{
+  consensusProfile: MidgardConsensusProfile;
+  canonicalTransactionCbor: Buffer;
+  programMaterialSidecarCbor?: Buffer;
+  /** Every ledger entry the transaction may resolve, keyed by out-ref. */
+  ledgerWitnessEntries: readonly ValidationMachineLedgerEntry[];
+  blockEndTimeMs: number;
+  expectedNetworkId: bigint;
+  minFeeA: bigint;
+  minFeeB: bigint;
+  blockSlot: bigint;
+  /** The deployment manifest's slot mapping (see `PhaseBConfig`). */
+  l1SlotConfig: L1SlotConfig;
+  sourceKind: "normal" | "forced";
+}>;
+
+export type ValidationVerdictEvent = Readonly<{
+  transactionId: Buffer;
+  verdict: "accepted" | "rejected";
+  rejection?: RejectedTx;
+  statePatch: UTxOStatePatch;
+  scriptEvaluations: readonly LocalScriptEvaluation[];
+}>;
+
+/**
+ * Derives one event's canonical verdict and ledger patch with the shared
+ * Phase A/B pipeline, without building a validation-machine trace.
+ */
+export const replayValidationVerdictEvent = (
+  input: ValidationVerdictEventInput,
+): Effect.Effect<ValidationVerdictEvent, Error> =>
+  Effect.gen(function* () {
+    const snapshot = yield* Effect.try(() => {
+      if (!isMidgardConsensusProfile(input.consensusProfile)) {
+        throw new Error("event replay requires the compiled consensus profile");
+      }
+      if (input.sourceKind !== "normal" && input.sourceKind !== "forced") {
+        throw new Error("event replay requires an exact source commitment");
+      }
+      const canonicalTransactionCbor = Buffer.from(
+        input.canonicalTransactionCbor,
+      );
+      return {
+        consensusProfile: MIDGARD_CONSENSUS_PROFILE,
+        canonicalTransactionCbor,
+        transactionId: Buffer.from(
+          computeMidgardNativeTxId(
+            (input.sourceKind === "forced"
+              ? decodeMidgardForcedTxFullFromCanonicalCbor
+              : decodeMidgardNativeTxFullFromCanonicalCbor)(
+              canonicalTransactionCbor,
+            ).compact,
+          ),
+        ),
+        programMaterialSidecarCbor: Buffer.from(
+          input.programMaterialSidecarCbor ??
+            encodeMidgardCekProgramMaterialSidecar([]),
+        ),
+        l1SlotConfig: parseL1SlotConfig(input.l1SlotConfig),
+      };
+    });
+    const queued: QueuedTx = {
+      sourceKind: input.sourceKind,
+      txId: snapshot.transactionId,
+      txCbor: snapshot.canonicalTransactionCbor,
+      programMaterialSidecarCbor: snapshot.programMaterialSidecarCbor,
+      arrivalSeq: 0n,
+      createdAt: new Date(input.blockEndTimeMs),
+    };
+    const phaseA = yield* Effect.try(() =>
+      validatePhaseASingle(queued, {
+        consensusProfile: snapshot.consensusProfile,
+        expectedNetworkId: input.expectedNetworkId,
+        minFeeA: input.minFeeA,
+        minFeeB: input.minFeeB,
+        concurrency: 1,
+        strictnessProfile: "phase1_midgard",
+      }),
+    );
+    const scriptEvaluations: LocalScriptEvaluation[] = [];
+    if ("code" in phaseA) {
+      return {
+        transactionId: snapshot.transactionId,
+        verdict: "rejected" as const,
+        rejection: phaseA,
+        statePatch: { deletedOutRefs: [], upsertedOutRefs: [] },
+        scriptEvaluations,
+      };
+    }
+    const phaseB = yield* runPhaseBValidationWithPatch(
+      [phaseA],
+      new Map(
+        input.ledgerWitnessEntries.map(({ outRef, output }) => [
+          Buffer.from(outRef).toString("hex"),
+          Buffer.from(output),
+        ]),
+      ),
+      {
+        nowCardanoSlotNo: input.blockSlot,
+        l1SlotConfig: snapshot.l1SlotConfig,
+        bucketConcurrency: 1,
+        enforceScriptBudget: true,
+        maxScriptExecutionSteps:
+          snapshot.consensusProfile.limits.maxValidationMachineStepCount,
+        onScriptEvaluated: (_txId, evaluation) =>
+          scriptEvaluations.push(evaluation),
+      },
+    );
+    if (phaseB.accepted.length + phaseB.rejected.length !== 1) {
+      return yield* Effect.fail(
+        new Error("event replay must produce exactly one canonical verdict"),
+      );
+    }
+    const rejection = phaseB.rejected[0];
+    if (
+      rejection !== undefined &&
+      (phaseB.statePatch.deletedOutRefs.length !== 0 ||
+        phaseB.statePatch.upsertedOutRefs.length !== 0)
+    ) {
+      return yield* Effect.fail(
+        new Error("rejected event replay produced a ledger mutation"),
+      );
+    }
+    return {
+      transactionId: snapshot.transactionId,
+      verdict:
+        rejection === undefined ? ("accepted" as const) : ("rejected" as const),
+      rejection,
+      statePatch: phaseB.statePatch,
+      scriptEvaluations,
+    };
+  });
+
 /**
  * Replays one event with the canonical validation pipeline, then constructs its
  * trace from the independently derived verdict and exact ledger mutations.
@@ -72,137 +205,36 @@ export const replayValidationMachineEvent = (
   input: ValidationMachineEventReplayInput,
 ): Effect.Effect<ValidationMachineEventReplay, Error> =>
   Effect.gen(function* () {
-    const snapshot = yield* Effect.try(() => {
-      if (!isMidgardConsensusProfile(input.consensusProfile)) {
-        throw new Error("event replay requires the compiled consensus profile");
-      }
-      if (input.sourceKind !== "normal" && input.sourceKind !== "forced") {
-        throw new Error("event replay requires an exact source commitment");
-      }
-      const ledgerWitnessEntries = input.ledgerWitnessEntries
+    const ledgerWitnessEntries = yield* Effect.try(() => {
+      const sorted = input.ledgerWitnessEntries
         .map(({ outRef, output }) => ({
           outRef: Buffer.from(outRef),
           output: Buffer.from(output),
         }))
         .sort((left, right) => Buffer.compare(left.outRef, right.outRef));
-      for (let index = 1; index < ledgerWitnessEntries.length; index++) {
-        if (
-          ledgerWitnessEntries[index - 1]!.outRef.equals(
-            ledgerWitnessEntries[index]!.outRef,
-          )
-        ) {
+      for (let index = 1; index < sorted.length; index++) {
+        if (sorted[index - 1]!.outRef.equals(sorted[index]!.outRef)) {
           throw new Error("event replay prior ledger repeats an out-ref");
         }
       }
-      const canonicalTransactionCbor = Buffer.from(
-        input.canonicalTransactionCbor,
-      );
-      const transactionId = Buffer.from(
-        computeMidgardNativeTxId(
-          (input.sourceKind === "forced"
-            ? decodeMidgardForcedTxFullFromCanonicalCbor
-            : decodeMidgardNativeTxFullFromCanonicalCbor)(
-            canonicalTransactionCbor,
-          ).compact,
-        ),
-      );
-      return {
-        consensusProfile: MIDGARD_CONSENSUS_PROFILE,
-        eventKeyCbor: Buffer.from(input.eventKeyCbor),
-        canonicalTransactionCbor,
-        transactionId,
-        programMaterialSidecarCbor: Buffer.from(
-          input.programMaterialSidecarCbor ??
-            encodeMidgardCekProgramMaterialSidecar([]),
-        ),
-        ledgerWitnessEntries,
-        priorUtxosRoot: input.priorUtxosRoot,
-        blockEndTimeMs: input.blockEndTimeMs,
-        expectedNetworkId: input.expectedNetworkId,
-        minFeeA: input.minFeeA,
-        minFeeB: input.minFeeB,
-        blockSlot: input.blockSlot,
-        l1SlotConfig: parseL1SlotConfig(input.l1SlotConfig),
-        sourceKind: input.sourceKind,
-      };
+      return sorted;
     });
     const priorRoot = yield* Effect.tryPromise(() =>
-      validationMachineLedgerRoot(snapshot.ledgerWitnessEntries),
+      validationMachineLedgerRoot(ledgerWitnessEntries),
     );
-    if (priorRoot.toString("hex") !== snapshot.priorUtxosRoot) {
+    if (priorRoot.toString("hex") !== input.priorUtxosRoot) {
       return yield* Effect.fail(
         new Error(
           "event replay prior ledger root differs from authenticated context",
         ),
       );
     }
-    const queued: QueuedTx = {
-      sourceKind: snapshot.sourceKind,
-      txId: snapshot.transactionId,
-      txCbor: snapshot.canonicalTransactionCbor,
-      programMaterialSidecarCbor: snapshot.programMaterialSidecarCbor,
-      arrivalSeq: 0n,
-      createdAt: new Date(snapshot.blockEndTimeMs),
-    };
-    const phaseA = yield* Effect.try(() =>
-      validatePhaseASingle(queued, {
-        consensusProfile: snapshot.consensusProfile,
-        expectedNetworkId: snapshot.expectedNetworkId,
-        minFeeA: snapshot.minFeeA,
-        minFeeB: snapshot.minFeeB,
-        concurrency: 1,
-        strictnessProfile: "phase1_midgard",
-      }),
-    );
-    const scriptEvaluations: LocalScriptEvaluation[] = [];
-    let rejectionCode: RejectCode | null;
-    let rejection: RejectedTx | undefined;
-    let statePatch: UTxOStatePatch = {
-      deletedOutRefs: [],
-      upsertedOutRefs: [],
-    };
-    if ("code" in phaseA) {
-      rejectionCode = phaseA.code;
-      rejection = phaseA;
-    } else {
-      const phaseB = yield* runPhaseBValidationWithPatch(
-        [phaseA],
-        new Map(
-          snapshot.ledgerWitnessEntries.map(({ outRef, output }) => [
-            outRef.toString("hex"),
-            Buffer.from(output),
-          ]),
-        ),
-        {
-          nowCardanoSlotNo: snapshot.blockSlot,
-          l1SlotConfig: snapshot.l1SlotConfig,
-          bucketConcurrency: 1,
-          enforceScriptBudget: true,
-          maxScriptExecutionSteps:
-            snapshot.consensusProfile.limits.maxValidationMachineStepCount,
-          onScriptEvaluated: (_txId, evaluation) =>
-            scriptEvaluations.push(evaluation),
-        },
-      );
-      if (phaseB.accepted.length + phaseB.rejected.length !== 1) {
-        return yield* Effect.fail(
-          new Error("event replay must produce exactly one canonical verdict"),
-        );
-      }
-      rejection = phaseB.rejected[0];
-      rejectionCode = rejection?.code ?? null;
-      statePatch = phaseB.statePatch;
-    }
-    const expectedVerdict = rejectionCode === null ? "accepted" : "rejected";
-    if (
-      expectedVerdict === "rejected" &&
-      (statePatch.deletedOutRefs.length !== 0 ||
-        statePatch.upsertedOutRefs.length !== 0)
-    ) {
-      return yield* Effect.fail(
-        new Error("rejected event replay produced a ledger mutation"),
-      );
-    }
+    const verdictEvent = yield* replayValidationVerdictEvent({
+      ...input,
+      ledgerWitnessEntries,
+    });
+    const { statePatch, rejection } = verdictEvent;
+    const rejectionCode: RejectCode | null = rejection?.code ?? null;
     const expectedLedgerOps: readonly ValidationMachineLedgerOp[] = [
       ...statePatch.deletedOutRefs.map((outRef) => ({
         type: "delete" as const,
@@ -217,7 +249,7 @@ export const replayValidationMachineEvent = (
     ];
     const ledgerMutationSteps = yield* Effect.tryPromise(() =>
       buildValidationMachineLedgerMutationSteps({
-        initialEntries: snapshot.ledgerWitnessEntries,
+        initialEntries: ledgerWitnessEntries,
         operations: expectedLedgerOps,
       }),
     );
@@ -225,9 +257,25 @@ export const replayValidationMachineEvent = (
       ledgerMutationSteps.at(-1)?.postRoot ?? priorRoot
     ).toString("hex");
     const replayInput: ValidationMachineReplayInput = {
-      ...snapshot,
-      expectedVerdict,
-      scriptEvaluations,
+      consensusProfile: MIDGARD_CONSENSUS_PROFILE,
+      eventKeyCbor: Buffer.from(input.eventKeyCbor),
+      canonicalTransactionCbor: Buffer.from(input.canonicalTransactionCbor),
+      transactionId: verdictEvent.transactionId,
+      programMaterialSidecarCbor: Buffer.from(
+        input.programMaterialSidecarCbor ??
+          encodeMidgardCekProgramMaterialSidecar([]),
+      ),
+      ledgerWitnessEntries,
+      priorUtxosRoot: input.priorUtxosRoot,
+      blockEndTimeMs: input.blockEndTimeMs,
+      expectedNetworkId: input.expectedNetworkId,
+      minFeeA: input.minFeeA,
+      minFeeB: input.minFeeB,
+      blockSlot: input.blockSlot,
+      l1SlotConfig: parseL1SlotConfig(input.l1SlotConfig),
+      sourceKind: input.sourceKind,
+      expectedVerdict: verdictEvent.verdict,
+      scriptEvaluations: [...verdictEvent.scriptEvaluations],
       expectedRejectionCode: rejectionCode,
       expectedLedgerOps,
       ledgerMutationSteps,

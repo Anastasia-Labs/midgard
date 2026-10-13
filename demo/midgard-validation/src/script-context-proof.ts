@@ -35,8 +35,11 @@ export {
 export const commitMidgardScriptContextTxOut = (
   output: MidgardTxOutput,
   addressEncoding: ScriptContextAddressEncoding,
+  referenceScriptHash?: string,
 ): MidgardCekDataTreeCommitment =>
-  commitMidgardCekDataTree(scriptContextTxOutData(output, addressEncoding));
+  commitMidgardCekDataTree(
+    scriptContextTxOutData(output, addressEncoding, referenceScriptHash),
+  );
 
 export const commitMidgardScriptContextTxInInfo = (
   outRefHex: string,
