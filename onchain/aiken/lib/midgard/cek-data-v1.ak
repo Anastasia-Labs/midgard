@@ -72,7 +72,9 @@ fn blob_range_root_v1(bytes: ByteArray) -> ByteArray {
   }
 }
 
-fn bounded_blob_root_v1(bytes: ByteArray) -> ByteArray {
+/// The blob root a semantic summary commits for a byte or integer leaf of
+/// ledger Data (at most one bounded ledger output long).
+pub fn bounded_blob_root_v1(bytes: ByteArray) -> ByteArray {
   expect bytearray.length(bytes) <= max_ledger_data_blob_bytes
   blob_range_root_v1(bytes)
 }
