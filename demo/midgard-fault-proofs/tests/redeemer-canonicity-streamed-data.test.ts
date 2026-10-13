@@ -518,10 +518,11 @@ describe("redeemer-canonicity streamed data verdict", () => {
       const stepMemory: [string, number][] = [];
       perStep[shape] = stepMemory;
       const read = await readToVerdict(opened, opened.threadOutRef, (m) => {
-        stepMemory.push([
-          m.executionMemory.toString(),
-          planned[stepMemory.length]!.estimatedMemory,
-        ]);
+        const estimate = planned[stepMemory.length]!.estimatedMemory;
+        stepMemory.push([m.executionMemory.toString(), estimate]);
+        // Never above the planned estimate, which the planner keeps below
+        // one transaction's budget.
+        expect(m.executionMemory).toBeLessThanOrEqual(BigInt(estimate));
         expect(m.executionMemory).toBeLessThanOrEqual(STEP_MEMORY_CAP);
         expect(m.executionSteps).toBeLessThanOrEqual(STEP_CPU_CAP);
         expect(m.l1ByteMargin).toBeGreaterThan(0);

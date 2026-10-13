@@ -20,10 +20,8 @@ import type { ResolvedProverSigner } from "../runtime.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
 import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary.js";
 import type { TransactionOutputNonCanonicalContracts } from "./contracts.js";
-import {
-  transactionOutputDatumFrameData,
-  type TransactionOutputDatumStep,
-} from "./datum-plan.js";
+import { canonicalDataStreamFrameData } from "../canonical-data-stream-plan.js";
+import type { TransactionOutputDatumStep } from "./datum-plan.js";
 import {
   TransactionOutputScanStateSchema,
   TransactionOutputStep03DatumDatumSchema,
@@ -63,7 +61,7 @@ export const transactionOutputDatumStepArgs = (
     .toString("hex"),
   revealed: step.stack
     .slice(0, step.revealedCount)
-    .map(transactionOutputDatumFrameData),
+    .map(canonicalDataStreamFrameData),
   tail_root: step.tailRoot,
   node_budget: BigInt(step.nodeBudget),
 });

@@ -152,7 +152,7 @@ describe("midgard contracts registry", () => {
             .digest("hex"),
         )
         .toBe(
-          "3092f07d3fad1daf4ab5bbae2274e8805bc9fb3b6380a1b3ed6cca6e6a76cdce",
+          "a3be6a981f1df940b553d943ab7d7fcc3c961186cd868cc945e2c14937973b01",
         );
       // The queue/correction subset is pinned independently of the full registry.
       // Includes every applied CBOR, hash, policy id, address, and queue yield.

@@ -13,56 +13,90 @@ import {
  * the step authenticates, and reveals one open container more than it pops,
  * so its run equals a run with the whole stack revealed.
  *
- * The node budget is chosen per step from an execution-memory estimate: every
- * node is charged by its shape, read from its first byte and the container
- * it sits in. The weights are measured upper bounds of the on-chain reader's
- * cost per node (pushes include hashing the new frame into the stored stack
- * root); a step's estimate adds the family's fixed per-transaction cost and
- * the revealed frames. Memory binds before CPU for every node shape.
+ * The node budget is chosen per step from an execution-memory estimate that
+ * bounds the step's measured cost from above: every node is charged by its
+ * shape, read from its first bytes, and every popped container by its kind;
+ * a step adds the family's fixed per-transaction cost and the frames it
+ * reveals. The weights are measured per-shape costs of the on-chain reader
+ * with a margin of about four percent, fitted so that no measured step of
+ * a corpus covering every shape exceeds its estimate. Memory binds before
+ * CPU for every node shape.
  */
 
 /** Execution memory one data step may spend, estimate included. */
 export const CANONICAL_DATA_STEP_MEMORY_TARGET = 12_000_000;
 
-const PER_REVEALED_FRAME = 10_000;
+/** Revealing one stored frame: decoding it and hashing it into the root. */
+const PER_REVEALED_FRAME = 13_500;
 
-const ITEM_IN_MAP = 2_000;
+/** Closing a container: a list's or byte string's break, a map's last value. */
+const POP_LIST = 15_000;
+const POP_MAP = 8_500;
+const POP_CHUNKS = 7_500;
 
-const unsignedWeight = (additional: number): number =>
+/** One definite chunk of an indefinite byte string. */
+const CHUNK = 34_500;
+
+/** An integer head, by its additional information. */
+const integerWeight = (additional: number): number =>
   additional < 24
-    ? 25_000
+    ? 24_500
     : additional === 24
-      ? 30_000
+      ? 29_000
       : additional === 25
-        ? 34_500
+        ? 34_000
         : additional === 26
-          ? 35_500
+          ? 35_000
           : 36_500;
+
+/**
+ * The cost of a tag node, which also opens the list or magnitude after it:
+ * opening an indefinite list or byte string pushes a frame.
+ */
+const tagWeight = (bytes: Uint8Array, offset: number): number => {
+  const first = bytes[offset];
+  if (first === 0xc2 || first === 0xc3)
+    return bytes[offset + 1] === 0x5f ? 52_000 : 50_500;
+  if (first === 0xd8 && bytes[offset + 1] === 0x66) {
+    // `d8 66 82 <alternative> <fields>`: the widest alternatives cost most.
+    const alternative = bytes[offset + 3];
+    const width =
+      alternative === 0x18
+        ? 1
+        : alternative === 0x19
+          ? 2
+          : alternative === 0x1a
+            ? 4
+            : 8;
+    const fields = bytes[offset + 4 + width];
+    if (width === 1) return fields === 0x9f ? 62_000 : 59_000;
+    return fields === 0x9f ? 71_000 : 66_500;
+  }
+  if (first === 0xd8) return bytes[offset + 2] === 0x9f ? 45_500 : 41_000;
+  if (first === 0xd9) return bytes[offset + 3] === 0x9f ? 52_000 : 47_500;
+  return 71_000;
+};
 
 /** The cost of reading the item whose first byte is at `offset`. */
 const itemWeight = (bytes: Uint8Array, offset: number): number => {
   const first = bytes[offset];
-  if (first === undefined) return 25_000;
+  if (first === undefined) return 71_000;
   const major = first >> 5;
   const additional = first & 31;
   switch (major) {
     case 0:
     case 1:
-      return unsignedWeight(additional);
+      return integerWeight(additional);
     case 2:
-      return first === 0x5f ? 33_000 : additional < 24 ? 30_000 : 35_000;
+      return first === 0x5f ? 31_500 : additional < 24 ? 29_500 : 34_500;
     case 4:
-      return first === 0x9f ? 32_500 : 27_500;
+      return first === 0x9f ? 31_500 : 27_000;
     case 5:
-      return first === 0xa0 ? 29_000 : 31_000;
-    case 6: {
-      if (first === 0xc2 || first === 0xc3) return 55_000;
-      if (first === 0xd9) return 51_500;
-      if (first === 0xd8) return bytes[offset + 1] === 0x66 ? 70_000 : 46_000;
-      return 30_000;
-    }
+      return first === 0xa0 ? 28_500 : additional < 24 ? 28_000 : 40_000;
+    case 6:
+      return tagWeight(bytes, offset);
     default:
-      return 25_000;
+      return 71_000;
   }
 };
 
@@ -75,13 +109,11 @@ export const canonicalDataNodeWeight = (
   if (top === undefined) return itemWeight(bytes, offset);
   switch (top.kind) {
     case "map":
-      return top.remaining === 0n
-        ? 12_000
-        : itemWeight(bytes, offset) + ITEM_IN_MAP;
+      return top.remaining === 0n ? POP_MAP : itemWeight(bytes, offset);
     case "chunks":
-      return bytes[offset] === 0xff ? 16_000 : 35_000;
+      return bytes[offset] === 0xff ? POP_CHUNKS : CHUNK;
     case "list":
-      return bytes[offset] === 0xff ? 14_000 : itemWeight(bytes, offset);
+      return bytes[offset] === 0xff ? POP_LIST : itemWeight(bytes, offset);
   }
 };
 

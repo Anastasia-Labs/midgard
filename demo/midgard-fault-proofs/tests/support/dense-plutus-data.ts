@@ -9,7 +9,7 @@ export type DensePlutusDataShape =
  * to read per byte on chain: a chain of one-entry maps keyed by the empty
  * map; nested generic constructors (tag 102) whose alternative takes the
  * widest integer; a flat list of one-byte integers; and a bytestring longer
- * than 64 bytes, in 64-byte chunks.
+ * than 64 bytes, in 64-byte chunks and one shorter final chunk.
  */
 export const densePlutusData = (
   shape: DensePlutusDataShape,
@@ -47,20 +47,33 @@ export const densePlutusData = (
         Buffer.from("ff", "hex"),
       ]);
     case "chunked-bytes": {
-      // `5f`, full 64-byte chunks, one shorter final chunk, `ff`.
+      // `5f`, full 64-byte chunks, at most one shorter final chunk, `ff`.
       const full = Buffer.concat([
         Buffer.from("5840", "hex"),
         Buffer.alloc(64),
       ]);
-      const chunks = Math.floor((length - 3) / full.length);
-      const rest = length - 2 - chunks * full.length - 1;
-      if (chunks < 2 || rest < 1 || rest > 23)
+      const chunks = Math.floor((length - 2) / full.length);
+      const rest = length - 2 - chunks * full.length;
+      // The final chunk's head is one byte below 24 bytes and two from 24.
+      const finalBytes = rest <= 24 ? rest - 1 : rest - 2;
+      if (
+        chunks < 2 ||
+        (rest > 0 && (finalBytes < 1 || (rest > 24 && finalBytes < 24)))
+      )
         throw new Error("chunked bytestring length is out of reach");
+      const final =
+        rest === 0
+          ? []
+          : [
+              Buffer.from(
+                finalBytes < 24 ? [0x40 + finalBytes] : [0x58, finalBytes],
+              ),
+              Buffer.alloc(finalBytes),
+            ];
       return Buffer.concat([
         Buffer.from("5f", "hex"),
         ...Array.from({ length: chunks }, () => full),
-        Buffer.from([0x40 + rest]),
-        Buffer.alloc(rest),
+        ...final,
         Buffer.from("ff", "hex"),
       ]);
     }

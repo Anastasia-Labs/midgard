@@ -24,7 +24,7 @@ const runDirectory = process.env.MIDGARD_FINALIZED_RUN_DIR;
 describe.skipIf(runDirectory === undefined)(
   "redeemerCanonicity actual finalized-manifest startup",
   () => {
-    it("binds three applied steps and refuses substituted reference identities", async () => {
+    it("binds four applied steps and refuses substituted reference identities", async () => {
       const [manifestJson, blueprintJson, deploymentInfoJson] =
         await Promise.all([
           readFile(join(runDirectory!, "deploymentInfo/manifest.json"), "utf8"),

@@ -144,18 +144,24 @@ export const scanToTerminal = async ({
 
 /**
  * Drives the datum step from its first checkpoint to the verdict, one planned
- * node read per transaction, recording the first, final and costliest read.
+ * read per transaction, recording the first, final and costliest read.
  */
 export const datumToVerdict = async ({
   registered,
   threadOutRef,
   evidence,
   label,
+  onStep,
 }: {
   readonly registered: Registered;
   readonly threadOutRef: string;
   readonly evidence: Evidence;
   readonly label: string;
+  /** Sees each datum step's measurement with its index from this thread. */
+  readonly onStep?: (
+    measurement: Parameters<typeof record>[1],
+    index: number,
+  ) => void;
 }) => {
   let current = threadOutRef;
   let datumSteps = 0;
@@ -174,6 +180,7 @@ export const datumToVerdict = async ({
           referenceScriptUtxo: registered.references[3]!,
         }),
     );
+    onStep?.(step.measurement, datumSteps);
     datumSteps += 1;
     current = step.result.nextThreadOutRef;
     if (

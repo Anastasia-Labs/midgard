@@ -9,10 +9,10 @@ export const RESOLVED_OUTPUT_DATUM_CHUNK_BYTES = 4_095;
 /**
  * Execution memory a datum step spends besides its nodes: the thread's spend
  * and successor checks and the admission of one or two output chunks against
- * the item commitment. The family fit ledger's datum-verdict row measures the
- * costliest step against it.
+ * the item commitment, measured with margin. The family fit ledger's
+ * datum-verdict row measures the costliest step against it.
  */
-export const RESOLVED_OUTPUT_DATUM_STEP_FIXED_MEMORY = 2_500_000;
+export const RESOLVED_OUTPUT_DATUM_STEP_FIXED_MEMORY = 1_100_000;
 
 /** The output window `advance_datum_v1` authenticates at a cursor. */
 export const resolvedOutputDatumWindow = ({
