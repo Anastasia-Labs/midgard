@@ -60,6 +60,7 @@ import {
 } from "./orchestrator.fraud-proof-family-workflow-adapter.js";
 import {
   attemptCount,
+  FRAUD_PROOF_WORKFLOW_FRESH_SUBMISSION_REQUIRED,
   type FraudProofWorkflowRunResult,
   latestSubmissionIntent,
 } from "./orchestrator.fraud-proof-workflow-run-result.js";
@@ -82,7 +83,6 @@ import { reobserveRequiredWorkflowParent } from "./orchestrator.reobserve-requir
 import { supersedeWorkflowFundingAttempt } from "./orchestrator.supersede-funding-attempt.js";
 import { type VerifiedFraudProofReleaseFinalityPolicy } from "./release-finality-policy.js";
 import { supersededAttemptReadSchedule } from "./superseded-attempt-read-schedule.js";
-
 /**
  * Q51/W-O4 single-command core. Preparation, every submission intent,
  * ambiguous result, reconciliation, submitted hash, and confirmation are
@@ -792,7 +792,7 @@ export const runAdmittedFraudProofWorkflow = async ({
         workflowId,
         identity,
         entries,
-        reason: "Canonical workflow requires fresh submission authority",
+        reason: FRAUD_PROOF_WORKFLOW_FRESH_SUBMISSION_REQUIRED,
       };
     const action = validateAction(observation.action);
     const latest = lastActionEvent(entries, action.actionId);

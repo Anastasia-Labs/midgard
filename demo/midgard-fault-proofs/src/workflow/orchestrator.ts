@@ -34,7 +34,10 @@ export {
   type FraudProofWorkflowTerminalVerifier,
   type WorkflowRawFamilyEvidence,
 } from "./orchestrator.fraud-proof-family-workflow-adapter.js";
-export { type FraudProofWorkflowRunResult } from "./orchestrator.fraud-proof-workflow-run-result.js";
+export {
+  FRAUD_PROOF_WORKFLOW_FRESH_SUBMISSION_REQUIRED,
+  type FraudProofWorkflowRunResult,
+} from "./orchestrator.fraud-proof-workflow-run-result.js";
 export { createFraudProofWorkflowRegistry } from "./orchestrator.immutable-fraud-proof-workflow-registry.js";
 export { normalizeWorkflowTerminal } from "./orchestrator.normalize-workflow-terminal.js";
 export {

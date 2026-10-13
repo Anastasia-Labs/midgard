@@ -57,6 +57,7 @@ import { progressObservation } from "../support/fault-proof-progress-observation
 import { waitForFaultProofSupervisorIdle } from "../support/fault-proof-supervisor-idle.js";
 import { storelessProofRetention } from "../support/proof-retention.js";
 import { TEST_JOURNAL_KEY } from "../support/watcher-journal-fixture.js";
+import { registerFaultProofResubmissionVisibilityTest } from "./fault-proof-objective-progress.hold-visibility.js";
 const finishControl = vi.hoisted(() => ({
   beforeFinish: async (): Promise<void> => undefined,
   beforeRegister: async (): Promise<void> => undefined,
@@ -139,7 +140,7 @@ afterEach(async () => {
   await cleanupFundingRecoveryFixtures();
 });
 
-const setup = async (
+export const setup = async (
   headerEndTime = BigInt(Date.now()),
   terminalBeyondRecoveryHorizon = true,
   withoutSubmissionIntent = false,
@@ -373,7 +374,6 @@ const setup = async (
     },
   };
 };
-
 /** The reasons `/readyz` names for this supervisor alone. */
 const readyzReasons = async (
   supervisor: ReturnType<typeof createWatcherFaultProofSupervisor>,
@@ -1171,7 +1171,7 @@ describe("proof objective progress with durable funding and journals", () => {
     expect(await test.fixture.records()).toHaveLength(1);
     expect(supervisor.status().journalDecisionMissing).toEqual([]);
   });
-
+  registerFaultProofResubmissionVisibilityTest(setup);
   it("does not spin or repeat funding admission for identical pending observations", async () => {
     const test = await setup();
     const supervisor = test.createSupervisor();

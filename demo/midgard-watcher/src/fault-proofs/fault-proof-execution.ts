@@ -33,6 +33,7 @@ import {
   type WatcherProofObjective,
   watcherProofObjectiveDirectory,
 } from "./fault-proof-objective-journal.js";
+import { holdWatcherFaultProofForResubmission } from "./fault-proof-resubmission-hold.js";
 import type { WatcherFaultProofJob } from "./fault-proof-supervisor.js";
 import { isWatcherPreflightStalledResult } from "./preflight-stall-retry.js";
 import { isWatcherProofDecisionMissingError } from "./watcher-decision-hold.js";
@@ -76,14 +77,15 @@ export type WatcherFaultProofExecution = Readonly<{
   }): Promise<WatcherFaultProofExecutionOutcome>;
   /**
    * Objectives held on an L1 read the source refused
-   * (`fault_proof_l1_refused:<reason>`), until their next run or completion
-   * check meets something else, or until the objective is settled.
+   * (`fault_proof_l1_refused:<reason>`) or need a new submission after their
+   * latest safe start (`fault_proof_resubmission_required`), until the next run
+   * or completion check meets something else, or the objective is settled.
    */
   readiness(): readonly Readonly<{ reason: string; detail: string }>[];
   /**
    * The supervisor no longer drives the objective (held under another name,
    * completed, or its header left the queue with nothing signed), so no run
-   * or completion check would clear its refusal hold: this does.
+   * or completion check would clear its hold: this does.
    */
   objectiveSettled(objective: WatcherProofObjective): void;
 }>;
@@ -233,11 +235,9 @@ export const createWatcherFaultProofExecution = (dependencies: {
 }): WatcherFaultProofExecution => {
   // A refused L1 read says nothing about the fault and is not a process
   // failure: the objective is held by name and runs again on the next
-  // observation, which clears or renews the hold.
-  const refusals = new Map<
-    string,
-    Readonly<{ reason: string; detail: string }>
-  >();
+  // observation, which clears or renews the hold. An objective that needs a
+  // resubmission after its latest safe start is held by name the same way.
+  const holds = new Map<string, Readonly<{ reason: string; detail: string }>>();
   const objectiveOf = ({ category, headerHash }: WatcherProofObjective) =>
     `${category}/${headerHash}`;
   const holdOnRefusal = (
@@ -247,16 +247,15 @@ export const createWatcherFaultProofExecution = (dependencies: {
     const refusal = l1RefusalOf(error);
     if (refusal === undefined) return undefined;
     const reason = `fault_proof_l1_refused:${refusal.reason}`;
-    refusals.set(objectiveOf(job), {
+    holds.set(objectiveOf(job), {
       reason,
       detail: `${objectiveOf(job)}: ${refusal.detail}`,
     });
     return { kind: "pending", reason: `${reason}: ${refusal.detail}` };
   };
   return Object.freeze({
-    readiness: () => Object.freeze([...refusals.values()]),
-    objectiveSettled: (objective) =>
-      void refusals.delete(objectiveOf(objective)),
+    readiness: () => Object.freeze([...holds.values()]),
+    objectiveSettled: (objective) => void holds.delete(objectiveOf(objective)),
     verifyCompleted: async ({ job, actuationPermit, entries, terminal }) => {
       const identity = assertWorkflowActuationPermitIdentity({
         permit: actuationPermit,
@@ -292,12 +291,12 @@ export const createWatcherFaultProofExecution = (dependencies: {
           entries,
           terminal,
         });
-        refusals.delete(objectiveOf(job));
+        holds.delete(objectiveOf(job));
         return verification;
       } catch (cause) {
         const held = holdOnRefusal(job, cause);
         if (held !== undefined) return held;
-        refusals.delete(objectiveOf(job));
+        holds.delete(objectiveOf(job));
         if (isWatcherL1TransientFailure(cause))
           return {
             kind: "retryable",
@@ -331,7 +330,7 @@ export const createWatcherFaultProofExecution = (dependencies: {
           updatedAtMs: Date.now().toString(),
         });
       record("preflight", "prepare");
-      // Any outcome but a refusal ends the objective's hold.
+      // Any outcome but a refusal or resubmission ends the objective's hold.
       let held: ReturnType<typeof holdOnRefusal>;
       try {
         const authority = assertWorkflowActuationPermitIdentity({
@@ -409,6 +408,7 @@ export const createWatcherFaultProofExecution = (dependencies: {
               result.kind === "awaiting_counterparty" ||
               isWatcherPreflightStalledResult(result))
           ) {
+            held = holdWatcherFaultProofForResubmission(holds, job, result);
             record("reconciling");
             return {
               kind: "pending",
@@ -492,7 +492,7 @@ export const createWatcherFaultProofExecution = (dependencies: {
         });
         throw error;
       } finally {
-        if (held === undefined) refusals.delete(objectiveOf(job));
+        if (held === undefined) holds.delete(objectiveOf(job));
         await dependencies.fundingFactory.releaseUnused({ actuationPermit });
       }
     },
