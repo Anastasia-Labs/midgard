@@ -14,13 +14,13 @@ const empty_inline_datum =
   #"a300581d601111111111111111111111111111111111111111111111111111111101821a004c4b40a00240"
 
 const multi_asset_output =
-  #"a200581d601111111111111111111111111111111111111111111111111111111101821a007a1200a1581c55555555555555555555555555555555555555555555555555555555a241ff07420000182a"
+  #"a200581d601111111111111111111111111111111111111111111111111111111101821a007a1200a1581c55555555555555555555555555555555555555555555555555555555a2420000182a41ff07"
 
 const large_datum_prefix =
   #"a300581d601111111111111111111111111111111111111111111111111111111101821a004c4b40a002591388"
 
 const cross_language_terminal_control_cbor =
-  #"970107192bf10402581d78111111111111111111111111111111111111111111111111111111111a007a1200182e000000581c555555555555555555555555555555555555555555555555555555554040028182015820fdd05992e96e478560b718d45058402827072f35e5220f396e2569800a2b76fe1854191427000319147c191481191770"
+  #"970107192bf10402581d78111111111111111111111111111111111111111111111111111111111a007a1200182e000000581c555555555555555555555555555555555555555555555555555555554040028182015820de4ab123673d8a9958247e2b709508944a6f64a4db4c7208d0a871d3358804c01854191427000319147c191481191770"
 
 test scans_required_fields_without_revealing_the_complete_output() {
   let initial = ledger_output_scan_v1.initial_control_v1()
@@ -94,6 +94,44 @@ test derives_the_exact_cardano_value_size_for_multi_asset_output() {
     optional_control.asset_count == 2,
     ledger_output_scan_v1.terminal_is_exact_v1(terminal, total_length),
   }
+}
+
+/// The multi-asset output with its two names in length-first order, `ff`
+/// before `0000`: the second asset step refuses it.
+test refuses_length_first_asset_names() {
+  let output = #"a200581d601111111111111111111111111111111111111111111111111111111101821a007a1200a1581c55555555555555555555555555555555555555555555555555555555a241ff07420000182a"
+  let total_length = bytearray.length(output)
+  let initial = ledger_output_scan_v1.initial_control_v1()
+  expect Some(value_control) = ledger_output_scan_v1.step_v1(
+    initial,
+    total_length,
+    output,
+    0,
+  )
+  expect Some(policy_control) = ledger_output_scan_v1.step_v1(
+    value_control,
+    total_length,
+    output,
+    value_control.cursor,
+  )
+  expect Some(asset_control) = ledger_output_scan_v1.step_v1(
+    policy_control,
+    total_length,
+    output,
+    policy_control.cursor,
+  )
+  expect Some(first_asset_control) = ledger_output_scan_v1.step_v1(
+    asset_control,
+    total_length,
+    output,
+    asset_control.cursor,
+  )
+  ledger_output_scan_v1.step_v1(
+    first_asset_control,
+    total_length,
+    output,
+    first_asset_control.cursor,
+  ) == None
 }
 
 test advances_a_large_datum_only_to_authenticated_chunk_boundaries() {

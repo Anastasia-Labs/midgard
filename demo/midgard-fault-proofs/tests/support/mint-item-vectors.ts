@@ -20,6 +20,8 @@ export const malformedMintItems = [
   ["tagged integer", policy() + "a140c24101"],
   ["duplicate asset", policy() + "a240014002"],
   ["descending asset", policy() + "a2410201410101"],
+  // `42` before `4141`: ascending only under a length-first order.
+  ["length-first asset order", policy() + "a241420142414102"],
   ["trailing bytes", policy() + "a1400100"],
   ["truncated integer", policy() + "a1401b01"],
   ["truncated policy", "82581c11"],
@@ -31,6 +33,8 @@ export const canonicalMintItems = [
   mintItem("a1401bffffffffffffffff"),
   mintItem("a1403bffffffffffffffff"),
   mintItem("a3400141002042010002"),
+  // `4141` before the shorter `42`: plain byte order, as on Cardano.
+  mintItem("a242414101414202"),
 ];
 /** Exactly 32764 item bytes + the four-byte field wrapper = 32768. */
 export const maximumCanonicalMintItem = () => {

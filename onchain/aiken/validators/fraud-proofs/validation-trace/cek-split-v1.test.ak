@@ -3020,11 +3020,11 @@ test context_mint_order_refuses_omitted_previous_head() fail {
 // Stage 8: the mixed-width mint ordering closure at the deployed validator
 // ---------------------------------------------------------------------------
 //
-// Native CBOR authenticates mint assets in encoded-key order; the execution
-// context builds the mint map in the lexical order `script-context.ts`
-// commits to. The fold proves that permutation instead of changing either
-// contract: every item authenticates its own frontier index, opens the map
-// head the fold already committed, and is strictly smaller than it.
+// Native CBOR authenticates mint assets in plain byte order, the order of the
+// execution context's mint map. The fold builds that map head-first, so it
+// walks the frontier descending: every item authenticates its own frontier
+// index, opens the map head the fold already committed, and is strictly
+// smaller than it.
 
 fn mint_low_leaf() -> ByteArray {
   mint_asset_leaf_hash(h_28_a, #"00", 7)
@@ -3051,9 +3051,9 @@ fn mint_item_witness(
   }
 }
 
-/// A stage-8 step over two same-policy assets whose native and execution
-/// orders differ: the frontier authenticates `#"00"` at index 0 and `#"ff"`
-/// at index 1, while the fold walks them descending. `cursor` is the fold
+/// A stage-8 step over two same-policy assets: the frontier authenticates
+/// `#"00"` at index 0 and `#"ff"` at index 1, while the fold walks them
+/// descending. `cursor` is the fold
 /// position the pre-state records, `assets` its committed map head chain.
 fn mint_stage_fixture(
   cursor: Int,
@@ -3244,7 +3244,7 @@ test context_mint_item_validator_wins_the_permuted_membership_step() {
   let next_hash = fixture.next_step_script_hash
   and {
     // The item the fold authenticates sits at frontier index 0 while the
-    // fold cursor is 1: the permutation is proven, not assumed.
+    // fold cursor is 1: the descending walk is proven, not assumed.
     verified == mint_item_claim(f, #"00", 7),
     run_kind(2, f),
     context_bind.main.spend(

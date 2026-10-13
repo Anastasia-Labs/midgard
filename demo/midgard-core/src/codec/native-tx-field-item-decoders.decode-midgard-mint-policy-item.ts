@@ -6,7 +6,6 @@ import {
   MIDGARD_SPEND_INPUT_ITEM_BYTES,
 } from "./native-tx-field-access.js";
 import {
-  compareMidgardCanonicalKeyBytes,
   MIDGARD_REDEEMER_PURPOSE_TAGS,
   type MidgardAddressWitness,
   type MidgardMintAsset,
@@ -14,6 +13,7 @@ import {
   type MidgardRedeemerPurpose,
   type MidgardTxInput,
 } from "./native-tx-field-items.js";
+import { compareMidgardAssetKeyBytes } from "./value.js";
 
 const fail = (message: string, detail?: string): never => {
   throw new MidgardTxCodecError(
@@ -158,10 +158,7 @@ const expectCanonicalKeyOrder = (
   label: string,
 ): void => {
   for (let index = 1; index < keys.length; index += 1) {
-    const order = compareMidgardCanonicalKeyBytes(
-      keys[index - 1]!,
-      keys[index]!,
-    );
+    const order = compareMidgardAssetKeyBytes(keys[index - 1]!, keys[index]!);
     if (order > 0) {
       return void fail(
         `§5.6 ${label} must be in canonical key order`,

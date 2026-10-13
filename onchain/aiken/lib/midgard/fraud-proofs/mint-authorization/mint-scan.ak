@@ -1,9 +1,9 @@
 use aiken/primitive/bytearray
 use midgard/fraud_proofs/native_tx/codec.{decode_canonical_int_at, expect_byte}
 use midgard/fraud_proofs/native_tx/preimages.{
-  canonical_bytes_key_precedes, decode_canonical_bytes_at,
-  decode_canonical_map_header_at,
+  decode_canonical_bytes_at, decode_canonical_map_header_at,
 }
+use midgard/ledger_output_v1.{asset_key_precedes}
 use midgard/native_tx_field_access_v1.{
   decode_field_array_header_at, max_transaction_aggregate_field_bytes,
 }
@@ -67,7 +67,7 @@ pub fn advance(
     expect
       when control.previous_asset_name is {
         None -> True
-        Some(previous) -> canonical_bytes_key_precedes(previous, asset_name)
+        Some(previous) -> asset_key_precedes(previous, asset_name)
       }
     let Pair(cursor, quantity) = decode_canonical_int_at(bytes, cursor)
     expect quantity != 0 && cursor <= control.item_end

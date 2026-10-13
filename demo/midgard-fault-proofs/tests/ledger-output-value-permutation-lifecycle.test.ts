@@ -7,24 +7,22 @@ import {
 
 // Authenticated mixed-width asset ordering across descriptor and context
 // (docs/fault-proofs/decisions/0003-publishable-semantic-resolvers.md):
-// the descriptor asset frontier commits assets in canonical
-// (length-then-bytes) key order while the evaluated script context orders
-// asset names lexicographically, and `ledger_output_value_v1.asset_step`
-// proves that permutation - each step authenticates its membership index
+// the descriptor asset frontier and the evaluated script context both order
+// asset names as plain bytes, and `ledger_output_value_v1.asset_step` folds
+// the frontier descending - each step authenticates its membership index
 // into the original frontier and, on a same-policy step, a previous
 // map-head opening whose reconstruction must equal the accumulated
 // within-policy commitment before a strictly smaller name is admitted.
 //
 // The 1,304-asset shape is the exact mixed-width maximum: names 0, 1 and 2
-// bytes wide under one policy, so the two orders are genuinely different
-// permutations. The positive journey disputes one ledger-output value step
-// that carries a previous-head opening and wins it end to end on the
-// emulator; the negatives exchange only that step's own permutation witness
-// in the challenger's otherwise honest trace, so every local builder gate
-// passes and the refusal is the on-chain membership / head-opening clause
-// the selector tests pin (ledger-output-value-v1.test.ak's
-// duplicate/out-of-range membership index, omitted/forged head opening and
-// non-strictly-smaller head refusals).
+// bytes wide under one policy, interleaved by plain byte order. The positive
+// journey disputes one ledger-output value step that carries a previous-head
+// opening and wins it end to end on the emulator; the negatives exchange only
+// that step's own membership/head witness in the challenger's otherwise
+// honest trace, so every local builder gate passes and the refusal is the
+// on-chain membership / head-opening clause the selector tests pin
+// (ledger-output-value-v1.test.ak's duplicate/out-of-range membership index,
+// omitted/forged head opening and non-strictly-smaller head refusals).
 describe("mixed-width ledger output value permutation lifecycle", () => {
   it("proves a value step with a previous-head opening at the 1,304-asset output maximum", async () => {
     const result = await runForcedValidationDisputeScenario(

@@ -18,7 +18,11 @@
  *   pre-state-membership evidence model — the search says so explicitly
  *   instead of accusing on partial sums.
  */
-import type { MidgardMintPolicyItem, MidgardValue } from "@al-ft/midgard-core";
+import {
+  compareMidgardAssetKeyBytes,
+  type MidgardMintPolicyItem,
+  type MidgardValue,
+} from "@al-ft/midgard-core";
 
 import { VALUE_NOT_PRESERVED_CATEGORY_LABEL } from "./contracts.js";
 import type { ClaimedAsset, ClaimedImbalanceDirection } from "./schemas.js";
@@ -54,10 +58,9 @@ const unitOrder = (left: UnitTotals, right: UnitTotals): number => {
     Buffer.from(right.policyIdHex, "hex"),
   );
   if (policyCompare !== 0) return policyCompare;
-  const leftName = Buffer.from(left.assetNameHex, "hex");
-  const rightName = Buffer.from(right.assetNameHex, "hex");
-  return (
-    leftName.length - rightName.length || Buffer.compare(leftName, rightName)
+  return compareMidgardAssetKeyBytes(
+    Buffer.from(left.assetNameHex, "hex"),
+    Buffer.from(right.assetNameHex, "hex"),
   );
 };
 

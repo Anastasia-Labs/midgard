@@ -221,7 +221,7 @@ describe("Midgard output codec", () => {
     );
   });
 
-  it("orders asset names by canonical CBOR byte-string order", () => {
+  it("orders asset names by plain bytes, as on Cardano", () => {
     const policyId = "55".repeat(28);
     const encoded = encodeMidgardValue({
       lovelace: 0n,
@@ -229,15 +229,15 @@ describe("Midgard output codec", () => {
         [
           policyId,
           new Map([
-            ["0000", 2n],
             ["ff", 1n],
+            ["0000", 2n],
           ]),
         ],
       ]),
     });
     expect([
       ...decodeMidgardValue(encoded).assets.get(policyId)!.keys(),
-    ]).toStrictEqual(["ff", "0000"]);
+    ]).toStrictEqual(["0000", "ff"]);
 
     const nonCanonical = encodeCborArrayRaw([
       encodeCborUnsigned(0n),
@@ -245,18 +245,42 @@ describe("Midgard output codec", () => {
         [
           encodeCborBytes(Buffer.alloc(28, 0x55)),
           encodeCborMapRaw([
+            [encodeCborBytes(Buffer.from("ff", "hex")), encodeCborUnsigned(1n)],
             [
               encodeCborBytes(Buffer.from("0000", "hex")),
               encodeCborUnsigned(2n),
             ],
-            [encodeCborBytes(Buffer.from("ff", "hex")), encodeCborUnsigned(1n)],
           ]),
         ],
       ]),
     ]);
     expect(() => decodeMidgardValue(nonCanonical)).toThrow(
-      /canonical CBOR byte-string order/,
+      /sorted by raw asset name bytes/,
     );
+  });
+
+  it("decodes an output whose asset names disagree with CBOR key order", () => {
+    // "4141" precedes "42" in plain byte order but follows it in CBOR's
+    // length-first map-key order; the output decoder must use the former.
+    const output: MidgardTxOutput = {
+      ...sampleOutput(),
+      value: {
+        lovelace: 2_000_000n,
+        assets: new Map([
+          [
+            "55".repeat(28),
+            new Map([
+              ["42", 1n],
+              ["4141", 2n],
+            ]),
+          ],
+        ]),
+      },
+    };
+    const decoded = decodeMidgardTxOutput(encodeMidgardTxOutput(output));
+    expect([
+      ...decoded.value.assets.get("55".repeat(28))!.keys(),
+    ]).toStrictEqual(["4141", "42"]);
   });
 
   it("rejects non-canonical value encoding on decode-to-encode mismatch", () => {

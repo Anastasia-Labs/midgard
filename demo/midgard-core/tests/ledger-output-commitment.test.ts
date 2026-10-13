@@ -47,22 +47,39 @@ describe("ledger output commitment V1", () => {
     const assets = buildMidgardLedgerOutputAssetFrontier([
       {
         policyId: Buffer.alloc(28, 0x55),
-        assetName: Buffer.from("03", "hex"),
-        quantity: 7n,
-      },
-      {
-        policyId: Buffer.alloc(28, 0x55),
         assetName: Buffer.from("0102", "hex"),
         quantity: 42n,
       },
+      {
+        policyId: Buffer.alloc(28, 0x55),
+        assetName: Buffer.from("03", "hex"),
+        quantity: 7n,
+      },
     ]);
     expect(assets.leaves.map((leaf) => leaf.toString("hex"))).toStrictEqual([
-      "d4fab6956ed316d6c8094e2f8ba31c07f9b8e11d6b9ed1236541a102187a58ce",
       "9ed4bad2bc3c66d009d021f8fa57eb32d6035c71aa6f1c415e8f66bf35c6661c",
+      "d4fab6956ed316d6c8094e2f8ba31c07f9b8e11d6b9ed1236541a102187a58ce",
     ]);
     expect(assets.commitment.toString("hex")).toBe(
-      "1af1c3eeb6379f3bb3dac82d19faffa1318a2a64f739b38c5fc5640b58196cc5",
+      "b9820bd310b105e406009dea4f93f9c5a54a922b3798c64e7129647c02408938",
     );
+  });
+
+  it("refuses assets ordered by length instead of plain bytes", () => {
+    expect(() =>
+      buildMidgardLedgerOutputAssetFrontier([
+        {
+          policyId: Buffer.alloc(28, 0x55),
+          assetName: Buffer.from("03", "hex"),
+          quantity: 7n,
+        },
+        {
+          policyId: Buffer.alloc(28, 0x55),
+          assetName: Buffer.from("0102", "hex"),
+          quantity: 42n,
+        },
+      ]),
+    ).toThrow(/canonical policy\/name order/);
   });
 
   it("keeps the ledger leaf bounded while authenticating a multi-chunk output", () => {

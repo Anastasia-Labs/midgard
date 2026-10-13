@@ -72,7 +72,7 @@ test agrees_mixed_width_names() {
     #"bf40bf401a006acfc0ff581c0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0abf4200000241ff01ffff",
     7_000_000,
     2,
-    #"9f11ba02826a6db71faf861c8b858ba4cf52567fc6bfeca70f34568f1854e823",
+    #"b2ebaf96a59c5228342bcaf4c1f3d2b371a0bc97b45fed6e740f96a2a09a4e37",
   ) == True
 }
 
@@ -81,7 +81,7 @@ test agrees_changed_quantity() {
     #"a240a1401a006acfc0581c0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0aa24200000241ff02",
     7_000_000,
     2,
-    #"9f11ba02826a6db71faf861c8b858ba4cf52567fc6bfeca70f34568f1854e823",
+    #"b2ebaf96a59c5228342bcaf4c1f3d2b371a0bc97b45fed6e740f96a2a09a4e37",
   ) == False
 }
 
@@ -90,7 +90,7 @@ test agrees_missing_asset() {
     #"a240a1401a006acfc0581c0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0aa141ff01",
     7_000_000,
     2,
-    #"9f11ba02826a6db71faf861c8b858ba4cf52567fc6bfeca70f34568f1854e823",
+    #"b2ebaf96a59c5228342bcaf4c1f3d2b371a0bc97b45fed6e740f96a2a09a4e37",
   ) == False
 }
 

@@ -408,9 +408,8 @@ describe("midgard native tx codec - cardano compatibility bridge", () => {
     );
     const policyId = Buffer.from("33".repeat(28), "hex");
     const assetName = Buffer.from("aa", "hex");
-    // §5.6 orders asset names length-first, then byte-lexicographically, so the
-    // empty name precedes `aa`; the production encoder enforces that rather than
-    // trusting the caller.
+    // §5.6 orders asset names as plain bytes, so the empty name precedes `aa`;
+    // the production encoder enforces that rather than trusting the caller.
     const mintPreimageCbor = encodeMidgardFieldPreimageForField({
       fieldIndex: 5,
       items: [

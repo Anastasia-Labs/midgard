@@ -414,7 +414,10 @@ fn step_policy_header(
           let policy_ordered = if control.previous_policy == #"" {
             True
           } else {
-            bytearray.compare(control.previous_policy, policy.value) == Less
+            ledger_output_v1.asset_key_precedes(
+              control.previous_policy,
+              policy.value,
+            )
           }
           if and {
             bytearray.length(policy.value) == 28,
@@ -465,15 +468,10 @@ fn step_asset(
           let name_ordered = if control.policy_asset_cursor == 0 {
             True
           } else {
-            let previous_length = bytearray.length(control.previous_asset_name)
-            let current_length = bytearray.length(asset_name.value)
-            if previous_length < current_length {
-              True
-            } else if previous_length > current_length {
-              False
-            } else {
-              bytearray.compare(control.previous_asset_name, asset_name.value) == Less
-            }
+            ledger_output_v1.asset_key_precedes(
+              control.previous_asset_name,
+              asset_name.value,
+            )
           }
           if and {
             bytearray.length(control.current_policy) == 28,

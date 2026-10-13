@@ -137,7 +137,7 @@ const CASES: readonly Case[] = [
     ]),
   },
   {
-    // Names given length-first; the SDK writes them in byte order.
+    // Names given in descending order; the SDK writes them in byte order.
     name: "mixed_width_names",
     lovelace: ADA,
     assets: mixed,

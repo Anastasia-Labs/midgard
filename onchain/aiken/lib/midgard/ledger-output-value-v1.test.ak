@@ -270,16 +270,15 @@ test substituted_asset_facts_fail_closed() {
   ) == None
 }
 
-// Mixed-width permutation battery: the frontier commits assets in canonical
-// (length-then-bytes) order, `#"aa"` before `#"0102"`, while the evaluated
-// context map is lexicographic, `#"0102"` before `#"aa"`. The fold must accept
-// exactly the descending-lexical traversal with per-step membership indices
-// and refuse every mutation at its clause.
+// Mixed-width battery: the frontier commits assets in plain byte order,
+// `#"0102"` before the shorter `#"aa"`, the same order as the evaluated context
+// map. The fold must accept exactly the descending traversal with per-step
+// membership indices and refuse every mutation at its clause.
 
 fn mixed_width_leaves() -> List<ByteArray> {
   [
-    ledger_output_commitment_v1.asset_leaf_hash(policy(17), #"aa", 5),
     ledger_output_commitment_v1.asset_leaf_hash(policy(17), #"0102", 7),
+    ledger_output_commitment_v1.asset_leaf_hash(policy(17), #"aa", 5),
   ]
 }
 
@@ -290,18 +289,18 @@ fn mixed_width_peaks() -> List<validation_merkle_v1.FrontierPeak> {
 }
 
 fn mixed_width_first_step() -> ledger_output_value_v1.LedgerOutputValueControlV1 {
-  expect [_first, second] = mixed_width_leaves()
+  expect [first, _second] = mixed_width_leaves()
   expect Some(control1) = ledger_output_value_v1.step_v1(
     ledger_output_value_v1.initial_control_v1(2),
     2,
     mixed_width_peaks(),
     8000000,
     ledger_output_value_v1.LedgerOutputValueAsset {
-      asset_index: 0,
+      asset_index: 1,
       policy_id: policy(17),
       asset_name: #"aa",
       quantity: 5,
-      siblings: [second],
+      siblings: [first],
       previous: None,
     },
   )
@@ -312,13 +311,13 @@ fn mixed_width_second_witness(
   asset_index: Int,
   previous: Option<ledger_output_value_v1.LedgerOutputValueHeadV1>,
 ) -> ledger_output_value_v1.LedgerOutputValueWitnessV1 {
-  expect [first, _second] = mixed_width_leaves()
+  expect [_first, second] = mixed_width_leaves()
   ledger_output_value_v1.LedgerOutputValueAsset {
     asset_index,
     policy_id: policy(17),
     asset_name: #"0102",
     quantity: 7,
-    siblings: [first],
+    siblings: [second],
     previous,
   }
 }
@@ -338,7 +337,7 @@ test mixed_width_permutation_folds_to_the_lexicographic_map() {
     2,
     peaks,
     8000000,
-    mixed_width_second_witness(1, Some(mixed_width_head())),
+    mixed_width_second_witness(0, Some(mixed_width_head())),
   )
   expect Some(control3) = ledger_output_value_v1.step_v1(
     control2,
@@ -404,14 +403,14 @@ test finalize_is_refused_while_assets_remain() {
 }
 
 test duplicate_membership_index_is_refused() {
-  // The second step claims the already-consumed frontier slot 0; the leaf at
+  // The second step claims the already-consumed frontier slot 1; the leaf at
   // that index is the first asset, so the membership clause refuses.
   ledger_output_value_v1.step_v1(
     mixed_width_first_step(),
     2,
     mixed_width_peaks(),
     8000000,
-    mixed_width_second_witness(0, Some(mixed_width_head())),
+    mixed_width_second_witness(1, Some(mixed_width_head())),
   ) == None
 }
 
@@ -443,25 +442,25 @@ test same_policy_step_without_head_opening_is_refused() {
     2,
     mixed_width_peaks(),
     8000000,
-    mixed_width_second_witness(1, None),
+    mixed_width_second_witness(0, None),
   ) == None
 }
 
 test non_strictly_smaller_head_is_refused() {
   // Repeating the head name (`compare == Equal`) must fail the strict order
   // clause even though the head opening itself is genuine.
-  expect [_first, second] = mixed_width_leaves()
+  expect [first, _second] = mixed_width_leaves()
   ledger_output_value_v1.step_v1(
     mixed_width_first_step(),
     2,
     mixed_width_peaks(),
     8000000,
     ledger_output_value_v1.LedgerOutputValueAsset {
-      asset_index: 0,
+      asset_index: 1,
       policy_id: policy(17),
       asset_name: #"aa",
       quantity: 5,
-      siblings: [second],
+      siblings: [first],
       previous: Some(mixed_width_head()),
     },
   ) == None
@@ -476,7 +475,7 @@ test forged_head_opening_is_refused() {
     mixed_width_peaks(),
     8000000,
     mixed_width_second_witness(
-      1,
+      0,
       Some(
         ledger_output_value_v1.LedgerOutputValueHeadV1 {
           asset_name: #"aa",
@@ -489,18 +488,18 @@ test forged_head_opening_is_refused() {
 }
 
 test first_step_with_head_opening_is_refused() {
-  expect [_first, second] = mixed_width_leaves()
+  expect [first, _second] = mixed_width_leaves()
   ledger_output_value_v1.step_v1(
     ledger_output_value_v1.initial_control_v1(2),
     2,
     mixed_width_peaks(),
     8000000,
     ledger_output_value_v1.LedgerOutputValueAsset {
-      asset_index: 0,
+      asset_index: 1,
       policy_id: policy(17),
       asset_name: #"aa",
       quantity: 5,
-      siblings: [second],
+      siblings: [first],
       previous: Some(mixed_width_head()),
     },
   ) == None
@@ -553,18 +552,18 @@ test stale_first_step_resumption_is_refused() {
     ..ledger_output_value_v1.initial_control_v1(2),
     asset_remaining: 1,
   }
-  expect [_first, second] = mixed_width_leaves()
+  expect [first, _second] = mixed_width_leaves()
   ledger_output_value_v1.step_v1(
     crafted,
     2,
     mixed_width_peaks(),
     8000000,
     ledger_output_value_v1.LedgerOutputValueAsset {
-      asset_index: 0,
+      asset_index: 1,
       policy_id: policy(17),
       asset_name: #"aa",
       quantity: 5,
-      siblings: [second],
+      siblings: [first],
       previous: None,
     },
   ) == None

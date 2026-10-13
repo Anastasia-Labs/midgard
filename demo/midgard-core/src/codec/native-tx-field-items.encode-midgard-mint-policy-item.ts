@@ -1,10 +1,11 @@
-import { compareBytes, encodeCborInteger } from "./cbor.js";
+import { encodeCborInteger } from "./cbor.js";
 import { MidgardTxCodecError, MidgardTxCodecErrorCodes } from "./errors.js";
 import {
   encodeMidgardDefiniteBytes,
   MIDGARD_HASH28_ITEM_BYTES,
   MIDGARD_SPEND_INPUT_ITEM_BYTES,
 } from "./native-tx-field-access.js";
+import { compareMidgardAssetKeyBytes } from "./value.js";
 
 // `encodeMidgardTxOutput` (field 2) and `encodeMidgardVersionedScript`
 // (field 6) are deliberately **not** re-exported here. `codec/index.ts` is a
@@ -149,26 +150,9 @@ export type MidgardMintAsset = {
 export type MidgardMintPolicyItem = {
   /** 28-byte policy id. */
   readonly policyId: Uint8Array;
-  /** Non-empty, in canonical key order (length-first, then byte-lexicographic). */
+  /** Non-empty, in canonical key order (plain byte order). */
   readonly assets: readonly MidgardMintAsset[];
 };
-
-/**
- * §5.6's canonical key order: length first, then byte-lexicographic. Twin of
- * `canonical_bytes_key_precedes`.
- *
- * Exported because §5.5's Value maps and §5.6's mint items share this one
- * ordering, so a producer and the decoder that checks it can never disagree about
- * what "canonical" means. Producers of field-5 items do not call it directly —
- * {@link sortMidgardMintItems} is the one spelling of the two-level sort they
- * need, and {@link encodeMidgardFieldItems} then enforces the result rather than
- * trusting it. This is for the ordering itself, wherever else §5.5/§5.6 keys are
- * compared.
- */
-export const compareMidgardCanonicalKeyBytes = (
-  left: Uint8Array,
-  right: Uint8Array,
-): number => left.length - right.length || compareBytes(left, right);
 
 /**
  * §5.6's canonical order applied to a whole field-5 item list: policy items by
@@ -193,16 +177,16 @@ export const sortMidgardMintItems = (
     .map((item) => ({
       ...item,
       assets: [...item.assets].sort((left, right) =>
-        compareMidgardCanonicalKeyBytes(left.assetName, right.assetName),
+        compareMidgardAssetKeyBytes(left.assetName, right.assetName),
       ),
     }))
     .sort((left, right) =>
-      compareMidgardCanonicalKeyBytes(left.policyId, right.policyId),
+      compareMidgardAssetKeyBytes(left.policyId, right.policyId),
     );
 
 /**
  * §5.6's ordering rule applied to one run of keys: strictly ascending under
- * {@link compareMidgardCanonicalKeyBytes}, so both "out of order" and
+ * {@link compareMidgardAssetKeyBytes}, so both "out of order" and
  * "duplicated" reject.
  *
  * It is used at both levels the spec names — asset names within a policy, and
@@ -214,10 +198,7 @@ const assertCanonicalKeyOrder = (
   label: string,
 ): void => {
   for (let index = 1; index < keys.length; index += 1) {
-    const order = compareMidgardCanonicalKeyBytes(
-      keys[index - 1]!,
-      keys[index]!,
-    );
+    const order = compareMidgardAssetKeyBytes(keys[index - 1]!, keys[index]!);
     if (order > 0) {
       return void fail(
         `§5.6 ${label} must be in canonical key order`,

@@ -466,8 +466,9 @@ optional 28-byte stake hash), `1 →` inline `encode_midgard_value`
 (`82 ‖ uint(lovelace) ‖ policy-asset map`), `2 → bytes(datum_cbor)` when an
 inline datum is present, `3 → encode_midgard_versioned_script` when a
 reference script is present. Within the Value's policy-asset map, policy
-groups and asset names appear in canonical key order (length-first, then
-byte-lexicographic compare), duplicates reject, every policy group is
+groups and asset names appear in canonical key order (plain byte order, as
+on Cardano: byte-lexicographic compare, a proper prefix sorts first),
+duplicates reject, every policy group is
 non-empty, an asset name is at most 32 bytes, and asset quantities are
 strictly positive; `datum_cbor` MUST satisfy the §6.2 canonicity
 predicate. The group-emptiness and name-width clauses restate conditions
@@ -497,8 +498,8 @@ The field-5 preimage is the **enveloped list of per-policy items** under the
 form. Each item is `encode_mint_policy_item`:
 `82 ‖ 58 1C policy_id ‖ map(k) ‖ asset entries`, where each asset entry is
 `bytes(asset_name ≤ 32) ‖ int(quantity ≠ 0)`. Policy items appear in
-canonical key order (length-first, then lexicographic byte compare), assets
-likewise within each policy; duplicates reject. An empty mint field encodes
+canonical key order (plain byte order, as in §5.5), assets likewise within
+each policy; duplicates reject. An empty mint field encodes
 as `80` like every other field.
 
 ## 6. Canonicality
@@ -1577,10 +1578,13 @@ a different mechanism because each is a different shape:
 | B    | a datum or redeemer | §5.5/§5.3, field-2 and field-8 items     | the **Canonical-Data Acceptor** (§11.2) |
 | C    | a native script     | §5.3, a field-6 item at `language_tag` 0 | the **checkpointable pushdown** (§11.3) |
 
-The reference implementations are
-`onchain/aiken/lib/midgard/native-tx-intra-item-v1.ak` (cases A and B) and
-`onchain/aiken/lib/midgard/native-tx-script-pushdown-v1.ak` (case C), with
-their seam suites at the same paths plus `.test.ak`. The §6.2 predicate and its
+The reference implementation of case C is
+`onchain/aiken/lib/midgard/native-tx-script-pushdown-v1.ak`, with its seam
+suite at the same path plus `.test.ak`. Cases A and B have no implementation:
+their reference module, `native-tx-intra-item-v1.ak`, had no caller and was
+deleted when §5.5's key order became plain bytes (2026-10-12); it remains in
+git history. Sections 11.1, 11.2, 11.4 and 11.5 are the design an
+implementation of cases A and B must meet. The §6.2 predicate and its
 recursive companion live in
 `onchain/aiken/lib/midgard/canonical-plutus-data-v1.ak`.
 
@@ -1883,8 +1887,8 @@ for §10.4's reason: the recursion stops at zero, so a negative budget would mea
 ### 11.4 Cost claims
 
 Use the `budget_*` controls in
-[`native-tx-intra-item-v1.test.ak`](../../onchain/aiken/lib/midgard/native-tx-intra-item-v1.test.ak)
-and [`native-tx-script-pushdown-v1.test.ak`](../../onchain/aiken/lib/midgard/native-tx-script-pushdown-v1.test.ak)
+[`native-tx-script-pushdown-v1.test.ak`](../../onchain/aiken/lib/midgard/native-tx-script-pushdown-v1.test.ak)
+(and, for cases A and B, those of the deleted `native-tx-intra-item-v1.test.ak`)
 to measure these mechanisms under the pinned compiler and GOAL_SPEC §3.3 basis.
 
 - Value-bookmark comparisons must separate the initial structural pass from
@@ -2005,9 +2009,11 @@ inside them. This section says what a challenger **claims**, and it exists
 because the two layers below it make a much smaller claim possible than the
 counted scheme did.
 
-The reference implementation is
-`onchain/aiken/lib/midgard/native-tx-fault-statement-v1.ak`, and its seam suite
-is the same path with `.test.ak`.
+Sections 12.1–12.6 have no implementation. Their reference module,
+`native-tx-fault-statement-v1.ak`, had no caller and was deleted when §5.5's
+key order became plain bytes (2026-10-12); it remains in git history. They are
+the design an implementation must meet. Sections 12.7 and 12.8 are implemented
+by their registered families.
 
 ### 12.1 What a statement is
 
@@ -2257,10 +2263,10 @@ the only way to obtain either of them.
 ### 12.5 Cost claims — the tier-2 per-step full-preimage re-hash
 
 A resuming tier-2 transaction must authenticate its own full preimage (§10.2).
-The `tier2_fixed_stride_*` and `tier2_variable_width_*` controls in
-[`native-tx-fault-statement-v1.test.ak`](../../onchain/aiken/lib/midgard/native-tx-fault-statement-v1.test.ak)
-measure one versus two door openings over the same boundary fixture. Compare
-the paired differences; their absolute runner cost includes fixture construction.
+The `tier2_fixed_stride_*` and `tier2_variable_width_*` controls in the
+deleted `native-tx-fault-statement-v1.test.ak` measured one versus two door
+openings over the same boundary fixture. Compare the paired differences; their
+absolute runner cost includes fixture construction.
 
 For fixed-stride fields, opening hashes the bytes and checks the count
 arithmetically. For variable-width fields, `whole_view` also walks every item to

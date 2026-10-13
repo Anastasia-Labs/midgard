@@ -1,3 +1,4 @@
+import { compareMidgardAssetKeyBytes } from "@al-ft/midgard-core";
 import {
   PROOF_THREAD_DIRECTION_WRONGFUL_ACCEPTANCE,
   PROOF_THREAD_DIRECTION_WRONGFUL_REJECTION,
@@ -129,14 +130,11 @@ export const readCanonicalInt = (
   return { value: major === 0 ? magnitude : -1n - magnitude, next };
 };
 
-/** `canonical_bytes_key_precedes`: shorter first, then lexicographic. */
-export const canonicalKeyPrecedes = (
+/** `asset_key_precedes`: plain byte order, as on Cardano. */
+export const assetKeyPrecedes = (
   left: Uint8Array,
   right: Uint8Array,
-): boolean =>
-  left.length < right.length ||
-  (left.length === right.length &&
-    Buffer.compare(Buffer.from(left), Buffer.from(right)) < 0);
+): boolean => compareMidgardAssetKeyBytes(left, right) < 0;
 
 /** The exact pre-rejection header read performed by the frozen machine. */
 export const decodeMintDeclaredPolicyHeader = (item: Uint8Array): Header => {
@@ -250,7 +248,7 @@ export const beginMintDeclaredPolicy = ({
   const header = decodeMintDeclaredPolicyHeader(item);
   if (
     itemIndex !== 0 &&
-    !canonicalKeyPrecedes(
+    !assetKeyPrecedes(
       Buffer.from(cursor.previousPolicy, "hex"),
       header.policyId,
     )

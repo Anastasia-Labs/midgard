@@ -5,8 +5,7 @@ use midgard/fraud_proofs/native_tx/codec.{
 }
 use midgard/fraud_proofs/native_tx/compact.{verify_tx_proof_source_v1}
 use midgard/fraud_proofs/native_tx/preimages.{
-  canonical_bytes_key_precedes, decode_canonical_bytes_at,
-  decode_canonical_map_header_at,
+  decode_canonical_bytes_at, decode_canonical_map_header_at,
 }
 use midgard/fraud_proofs/native_tx/types.{
   MidgardAddress, NativeTxWitnessSetCompact, PubKeyCredential, ScriptCredential,
@@ -824,7 +823,7 @@ pub fn script_sources_begin_mint_policy_with_successor(
     asset_count > 0,
     or {
       fold.policy_cursor == 0,
-      bytearray.compare(fold.previous_policy, policy_id) == Less,
+      ledger_output_v1.asset_key_precedes(fold.previous_policy, policy_id),
     },
   }
   if and {
@@ -920,7 +919,7 @@ pub fn script_sources_fold_mint_asset_with_successor(
     next_asset_count <= ledger_output_v1.max_distinct_asset_count,
     or {
       fold.policy_asset_cursor == 0,
-      canonical_bytes_key_precedes(fold.previous_asset, asset_name),
+      ledger_output_v1.asset_key_precedes(fold.previous_asset, asset_name),
     },
     if fold.assets_remaining == 1 {
       next_item_cursor == fold.item_length

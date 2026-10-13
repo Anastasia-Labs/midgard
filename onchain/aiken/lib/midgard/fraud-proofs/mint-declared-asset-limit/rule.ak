@@ -6,10 +6,10 @@ use midgard/fraud_proofs/native_tx/codec.{
   decode_canonical_int_at, decode_definite_array_header_at,
 }
 use midgard/fraud_proofs/native_tx/preimages.{
-  canonical_bytes_key_precedes, decode_canonical_bytes_at,
-  decode_canonical_map_header_at,
+  decode_canonical_bytes_at, decode_canonical_map_header_at,
 }
 use midgard/fraud_proofs/proof_thread_substrate_v1 as substrate
+use midgard/ledger_output_v1.{asset_key_precedes}
 use midgard/rejection_reason_v1.{MintDeclaredAssetLimit}
 
 pub const mint_field_index: Int = 5
@@ -153,7 +153,7 @@ pub fn begin_policy_v1(
   let header = policy_header_v1(item)
   expect or {
       item_index == 0,
-      canonical_bytes_key_precedes(state.previous_policy, header.policy_id),
+      asset_key_precedes(state.previous_policy, header.policy_id),
     }
   let next_count = state.accumulated_count + header.declared_count
   if item_index == state.policy_index {
@@ -295,7 +295,7 @@ fn consume_entries(
         next_count <= max_distinct_asset_count,
         or {
           asset_cursor == 0,
-          canonical_bytes_key_precedes(previous, asset_name),
+          asset_key_precedes(previous, asset_name),
         },
         if remaining == 1 {
           next_cursor == item_length

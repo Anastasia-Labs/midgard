@@ -1,8 +1,9 @@
 import {
   computeHash28,
-  encodeCbor,
   encodeMidgardFieldPreimage,
+  encodeMidgardMintPolicyItem,
   encodeMidgardVersionedScript,
+  sortMidgardMintItems,
 } from "@al-ft/midgard-core";
 
 import { mintItemCborV1 } from "./mint-authorization-emulator.js";
@@ -101,20 +102,23 @@ export const mintAuthorizationMaximumWitnessField = () => {
 
 /** Exact32KiB field with the most distinct minimally encoded selected-policy assets. */
 export const mintAuthorizationMaximumSelectedAssets = () => {
-  const assets = new Map<Buffer, bigint>();
+  const assets: { assetName: Buffer; quantity: bigint }[] = [];
   for (let index = 0; index < 8247; index++) {
     const name = Buffer.alloc(index === 0 ? 0 : index <= 256 ? 1 : 2);
     if (name.length > 0)
       name.writeUIntBE(index <= 256 ? index - 1 : index - 257, 0, name.length);
-    assets.set(name, index % 2 === 0 ? 1n : -1n);
+    assets.push({ assetName: name, quantity: index % 2 === 0 ? 1n : -1n });
   }
-  const item = encodeCbor([Buffer.alloc(28, 0xff), assets]);
+  const [policy] = sortMidgardMintItems([
+    { policyId: Buffer.alloc(28, 0xff), assets },
+  ]);
+  const item = encodeMidgardMintPolicyItem(policy!);
   const field = encodeMidgardFieldPreimage([item]);
   if (field.length !== 32768)
     throw new Error(`selected asset maximum field is ${field.length} bytes`);
   return {
     mintItemCbors: [item.toString("hex")],
     targetPolicyIndex: 0,
-    assetCount: assets.size,
+    assetCount: assets.length,
   };
 };

@@ -8,10 +8,10 @@ use midgard/script_context_v1
 use midgard/validation_merkle_v1
 
 /// One policy holding asset names `aa` and `0102`. The output's canonical CBOR
-/// orders them length-first, `aa` first; the script context orders them by
-/// their bytes, `0102` first.
+/// and the script context both order them as plain bytes, so `0102` precedes
+/// the shorter `aa`.
 const mixed_width_output_cbor =
-  #"a200581d60aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa01821a007a1200a1581c11111111111111111111111111111111111111111111111111111111a241aa0542010207"
+  #"a200581d60aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa01821a007a1200a1581c11111111111111111111111111111111111111111111111111111111a24201020741aa05"
 
 const lovelace = 8000000
 
@@ -26,8 +26,8 @@ fn folded_value_summary() -> cek_data_v1.DataSummaryV1 {
   let wide = ledger_output_commitment_v1.asset_leaf_hash(policy(), #"0102", 7)
   let peaks = validation_merkle_v1.append_leaf(
     1,
-    validation_merkle_v1.append_leaf(0, [], narrow),
-    wide,
+    validation_merkle_v1.append_leaf(0, [], wide),
+    narrow,
   )
   let step = fn(control, witness) {
     ledger_output_value_v1.step_v1(control, 2, peaks, lovelace, witness)
@@ -35,7 +35,7 @@ fn folded_value_summary() -> cek_data_v1.DataSummaryV1 {
   expect Some(first) = step(
     ledger_output_value_v1.initial_control_v1(2),
     ledger_output_value_v1.LedgerOutputValueAsset {
-      asset_index: 0,
+      asset_index: 1,
       policy_id: policy(),
       asset_name: #"aa",
       quantity: 5,
@@ -46,7 +46,7 @@ fn folded_value_summary() -> cek_data_v1.DataSummaryV1 {
   expect Some(second) = step(
     first,
     ledger_output_value_v1.LedgerOutputValueAsset {
-      asset_index: 1,
+      asset_index: 0,
       policy_id: policy(),
       asset_name: #"0102",
       quantity: 7,

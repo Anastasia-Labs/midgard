@@ -81,6 +81,12 @@ type Golden = {
     readonly outputIndex: number;
     readonly encodedHex: string;
   }[];
+  readonly assetKeyOrder: readonly {
+    readonly label: string;
+    readonly leftHex: string;
+    readonly rightHex: string;
+    readonly precedes: boolean;
+  }[];
   readonly datumCanonicityBoundaries: readonly {
     readonly label: string;
     readonly cborHex: string;
@@ -172,6 +178,7 @@ const DECLARED_VECTOR_EXPORTS: Record<keyof typeof vectors, true> = {
   FIELD_PREIMAGE_LENGTHS: true,
   FIELD_PREIMAGE_LENGTH_SOURCE: true,
   FIELD_VECTORS: true,
+  ASSET_KEY_ORDER_PAIRS: true,
   STRADDLE_FIELD_INDEX: true,
   STRADDLE_BLOCK_ITEMS: true,
   STRADDLE_REPEATS: true,

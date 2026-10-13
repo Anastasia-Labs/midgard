@@ -24,6 +24,7 @@ import {
   encodeMidgardVersionedScript,
   type MidgardVersionedScript,
 } from "../src/codec/versioned-script.js";
+import { compareMidgardAssetKeyBytes } from "../src/codec/value.js";
 import * as vectors from "./fixtures/native-tx-field-items-v1.vectors.mjs";
 import {
   golden,
@@ -112,18 +113,48 @@ describe("§5.3 fixed-width item assertions", () => {
   });
 });
 
+describe("§5.5/§5.6 key order is plain bytes", () => {
+  it("pins every comparator vector to the row's written expectation", () => {
+    expect(
+      golden.assetKeyOrder.map(({ label, leftHex, rightHex, precedes }) => [
+        label,
+        leftHex,
+        rightHex,
+        precedes,
+      ]),
+    ).toEqual(vectors.ASSET_KEY_ORDER_PAIRS);
+    for (const entry of golden.assetKeyOrder) {
+      const left = Buffer.from(entry.leftHex, "hex");
+      const right = Buffer.from(entry.rightHex, "hex");
+      expect(compareMidgardAssetKeyBytes(left, right) < 0).toBe(entry.precedes);
+    }
+  });
+
+  it("keeps rows where a length-first order would answer the other way", () => {
+    const lengthFirstPrecedes = (leftHex: string, rightHex: string) =>
+      leftHex.length < rightHex.length ||
+      (leftHex.length === rightHex.length && leftHex < rightHex);
+    expect(
+      golden.assetKeyOrder.filter(
+        (entry) =>
+          lengthFirstPrecedes(entry.leftHex, entry.rightHex) !== entry.precedes,
+      ).length,
+    ).toBeGreaterThanOrEqual(4);
+  });
+});
+
 describe("§5.6 mint ordering is enforced, not assumed", () => {
   const policy = (seed: number, nameHex: string) =>
     vectors.mintPolicy(seed, [vectors.asset(nameHex, 1)]);
 
   it("rejects asset names out of canonical order or repeated", () => {
-    // Canonical order is length-first, then byte-lexicographic: "4141" (2 B)
-    // sorts after "42" (1 B), so this pair is descending.
+    // Canonical order is plain byte order: "4141" sorts before "42" although
+    // "42" is shorter, so this pair is descending.
     expect(() =>
       encodeMidgardMintPolicyItem(
         vectors.mintPolicy(1, [
-          vectors.asset("4141", 1),
-          vectors.asset("42", 2),
+          vectors.asset("42", 1),
+          vectors.asset("4141", 2),
         ]),
       ),
     ).toThrow();
