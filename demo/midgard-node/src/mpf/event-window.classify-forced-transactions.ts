@@ -234,6 +234,8 @@ export const classifyForcedTransactions = <R>({
             bucketConcurrency: validation.bucketConcurrency,
             l1SlotConfig: validation.l1SlotConfig,
             enforceScriptBudget: true,
+            // The validation trace replays every retained CEK step.
+            cekExecutionMode: "proof",
             maxScriptExecutionSteps:
               consensusProfile.limits.maxValidationMachineStepCount,
             onScriptEvaluated: (_txId, evaluation) =>

@@ -220,7 +220,7 @@ export const runLocalScriptEvaluation = (
             proofProgramMaterial,
             contextCbor,
           );
-          cek = executeMidgardCekStructuralProgram({
+          const outcome = executeMidgardCekStructuralProgram({
             root: graph.root,
             material: graph.material.values(),
             constantWitnesses: graph.constantWitnesses,
@@ -229,20 +229,24 @@ export const runLocalScriptEvaluation = (
               config.maxScriptExecutionSteps ??
               MIDGARD_CONSENSUS_LIMITS.maxValidationMachineStepCount,
             executionBudget,
+            mode: config.cekExecutionMode ?? "verdict",
           });
+          // Only a proof-mode run carries the per-step evidence a trace
+          // consumer needs; a verdict-mode run is reported without it.
+          cek = "steps" in outcome ? outcome : null;
           result =
-            cek.stopReason === "budgetExceeded" ||
-            cek.terminalState.mode === "haltSuccess"
+            outcome.stopReason === "budgetExceeded" ||
+            outcome.terminalState.mode === "haltSuccess"
               ? {
                   kind: "accepted",
                   budget: {
-                    cpu: cek.terminalState.cpu,
-                    memory: cek.terminalState.memory,
+                    cpu: outcome.terminalState.cpu,
+                    memory: outcome.terminalState.memory,
                   },
                 }
               : {
                   kind: "script_invalid",
-                  detail: `V1 CEK halted with error ${cek.terminalState.auxiliary.toString(10)}`,
+                  detail: `V1 CEK halted with error ${outcome.terminalState.auxiliary.toString(10)}`,
                 };
         } catch (cause) {
           result = {

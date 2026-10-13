@@ -6,6 +6,7 @@ import type { Effect } from "effect";
 
 import type {
   MidgardCekExecutionGraph,
+  MidgardCekExecutionMode,
   MidgardCekStructuralExecution,
 } from "./cek-executor.js";
 import type { LedgerEntry } from "./ledger.js";
@@ -251,6 +252,13 @@ export type PhaseBConfig = {
   readonly bucketConcurrency: number;
   readonly enforceScriptBudget?: boolean;
   readonly maxScriptExecutionSteps?: number;
+  /**
+   * `verdict` (the default) runs CEK scripts without per-step verification or
+   * retention, so each `onScriptEvaluated` report has `execution: null`. A
+   * caller that builds a validation trace from the reported executions must
+   * pass `proof`.
+   */
+  readonly cekExecutionMode?: MidgardCekExecutionMode;
   readonly onScriptEvaluated?: (
     txId: Buffer,
     evaluation: LocalScriptEvaluation,

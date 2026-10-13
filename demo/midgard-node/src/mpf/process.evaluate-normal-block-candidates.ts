@@ -25,6 +25,8 @@ export const evaluateNormalBlockCandidates = (input: {
     l1SlotConfig: input.l1SlotConfig,
     bucketConcurrency: input.bucketConcurrency,
     enforceScriptBudget: true,
+    // The validation trace replays every retained CEK step.
+    cekExecutionMode: "proof",
     maxScriptExecutionSteps:
       input.consensusProfile.limits.maxValidationMachineStepCount,
     onScriptEvaluated: (txId, evaluation) => {

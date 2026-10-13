@@ -178,6 +178,8 @@ export const replayValidationMachineEvent = (
           l1SlotConfig: snapshot.l1SlotConfig,
           bucketConcurrency: 1,
           enforceScriptBudget: true,
+          // The validation trace replays every retained CEK step.
+          cekExecutionMode: "proof",
           maxScriptExecutionSteps:
             snapshot.consensusProfile.limits.maxValidationMachineStepCount,
           onScriptEvaluated: (_txId, evaluation) =>
