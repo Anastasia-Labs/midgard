@@ -261,9 +261,11 @@ describe("authenticated CEK Data integer V1", () => {
     const accepted = [
       Buffer.from("1880", "hex"),
       Buffer.from("1bffffffffffffffff", "hex"),
-      Buffer.from("c249010000000000000000", "hex"),
     ];
+    // Cardano decodes the alternative as a Word64, so a bignum spelling
+    // (2^64 here) is never a constructor alternative.
     const rejected = [
+      Buffer.from("c249010000000000000000", "hex"),
       Buffer.from("1817", "hex"),
       Buffer.from("187f", "hex"),
       Buffer.from("3880", "hex"),
