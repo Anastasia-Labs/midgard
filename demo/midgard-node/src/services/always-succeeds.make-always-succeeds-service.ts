@@ -460,10 +460,9 @@ export const makeAlwaysSucceedsService: Effect.Effect<SDK.MidgardValidators> =
       },
       nativeScriptInvalid: repeatedFaultProofChain(zeroInput, 5),
       minAda: {
-        ...repeatedFaultProofChain(invalidRange, 5),
+        ...repeatedFaultProofChain(invalidRange, 4),
         yields: {
           tx: stateQueueYield,
-          utxo: stateQueueYield,
         },
       },
       fieldPreimageLengthMismatch: {

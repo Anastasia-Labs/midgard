@@ -9,14 +9,11 @@ import {
   requireOwnMintPurpose,
   requireOwnSpendPurpose,
   requireUniqueOutputIndex,
-  requireWithdrawalRedeemerIndex,
 } from "@al-ft/midgard-sdk";
 import {
   type BuildTxWithRedeemer,
   Data,
   type LucidEvolution,
-  type Network,
-  type Script,
   toUnit,
   type UTxO,
 } from "@lucid-evolution/lucid";
@@ -27,38 +24,22 @@ import {
   publishFaultProofFieldCarriage,
 } from "../field-opening.js";
 import {
-  chunkedMembershipClaimRedeemer,
-  chunkedNonMembershipClaimRedeemer,
-  chunkedVerifyWithdrawalScript,
-  derivedChunkReferenceIndices,
-  type PublishedProofChunk,
-  requireBuiltChunkReferenceIndices,
-} from "../proof-chunk-carriage.js";
-import {
   DEFAULT_CONFIRMATION_POLL_MS,
-  encodeRawPexcludesProofRedeemer,
-  encodeRawPhasMembershipProofRedeemer,
-  getCompiledScript,
-  phasMembershipRewardAddress,
   type ResolvedProverSigner,
 } from "../runtime.js";
 import { excludeUtxo } from "../spend-input-witness.js";
-import { PEXCLUDES_EXCLUSION_WITHDRAW_TITLE } from "../step-support.js";
-import {
-  PHAS_MEMBERSHIP_WITHDRAW_TITLE,
-  selectFeeInput,
-} from "../step-support.js";
+import { selectFeeInput } from "../step-support.js";
 import { outputWithDatumAndUnitPredicate } from "../tx-layout.js";
 import {
   type FaultProofWitnessReferenceScripts,
   witnessMintingPolicyCarriage,
-  witnessWithdrawalValidatorCarriage,
 } from "../witness-reference-scripts.js";
 import {
   type FraudProofPreSubmitBoundary,
   reachFraudProofPreSubmitBoundary,
   workflowReferenceScript,
 } from "../workflow/transaction-boundary.js";
+import { isAcceptedForcedPrepared } from "./accepted-forced.js";
 import type { NetworkIdContracts } from "./contracts.js";
 import type { PreparedNetworkIdProof } from "./prepare.js";
 import {
@@ -69,7 +50,6 @@ import {
 } from "./submit-common.js";
 import {
   isForcedPrepared,
-  isPostUtxoPrepared,
   type PreparedNetworkIdFinalProof,
   sameFault,
   STEP_LABEL,
@@ -80,28 +60,22 @@ import { networkIdWrongfulRejectionCloses } from "./wrongful-rejection.js";
 
 export const submitNetworkIdStep02 = async ({
   lucid,
-  blueprint,
   contracts,
   categoryId,
-  network,
   signer,
   threadOutRef,
   prepared,
   outputsOpeningPlan,
   referenceScriptUtxo,
   witnessReferenceScripts,
-  publishedPredecessorProofChunks,
   certificateUtxos = [],
   preSubmitBoundary,
   awaitConfirmation = true,
+  unsafeSkipLocalViolationCheckForTest = false,
 }: {
   readonly lucid: LucidEvolution;
-  /** Required for the post-UTxO predecessor proof route. */
-  readonly blueprint?: unknown;
   readonly contracts: NetworkIdContracts;
   readonly categoryId: string;
-  /** Required for the post-UTxO predecessor proof route. */
-  readonly network?: Network;
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
   readonly prepared: PreparedNetworkIdFinalProof;
@@ -110,12 +84,12 @@ export const submitNetworkIdStep02 = async ({
   /** Mandatory published Q35 step-02 reference script. */
   readonly referenceScriptUtxo: UTxO;
   readonly witnessReferenceScripts: FaultProofWitnessReferenceScripts;
-  /** Optional published carriage for the predecessor proof. */
-  readonly publishedPredecessorProofChunks?: readonly PublishedProofChunk[];
   /** Existing §8.6 certificate UTxOs, required only for tier 3. */
   readonly certificateUtxos?: readonly UTxO[];
   readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
+  /** Test-only: make an honest body-network claim reach the validator. */
+  readonly unsafeSkipLocalViolationCheckForTest?: boolean;
 }): Promise<SubmitNetworkIdStep02Result> => {
   const { threadUtxo, threadToken } = await requireNetworkIdThreadUtxo({
     lucid,
@@ -130,20 +104,17 @@ export const submitNetworkIdStep02 = async ({
     schema: NetworkIdStep02Datum,
     stepIndex: 1,
   });
-  const postUtxo = isPostUtxoPrepared(prepared);
   const forcedPrepared = isForcedPrepared(prepared) ? prepared : null;
   const forced = forcedPrepared !== null;
-  const preparedBadTxId = postUtxo
-    ? prepared.outRef.transactionId
-    : prepared.badTxId;
-  const preparedCommittedNetworkId = postUtxo
-    ? 255n
-    : forced
-      ? forcedPrepared!.evidence.committedNetworkId
+  const acceptedForced = isAcceptedForcedPrepared(prepared) ? prepared : null;
+  const preparedCommittedNetworkId = forced
+    ? forcedPrepared!.evidence.committedNetworkId
+    : acceptedForced !== null
+      ? acceptedForced.committedNetworkId
       : (prepared as PreparedNetworkIdProof).txInclusion.nativeTx.body
           .network_id;
   if (
-    state.bad_tx_id !== preparedBadTxId ||
+    state.bad_tx_id !== prepared.badTxId ||
     state.committed_tx_network_id !== preparedCommittedNetworkId ||
     state.expected_network_id !== prepared.expectedNetworkId ||
     !sameFault(state.fault, prepared.fault)
@@ -154,46 +125,7 @@ export const submitNetworkIdStep02 = async ({
   }
 
   let planned: FaultProofFieldOpeningPlan | undefined;
-  if (postUtxo) {
-    if (outputsOpeningPlan !== undefined) {
-      throw networkIdSubmitError(
-        "post-UTxO finalization must not carry a transaction outputs opening",
-      );
-    }
-    if (
-      state.fault === "TransactionNetwork" ||
-      typeof state.fault !== "object" ||
-      !("OutputNetworkUtxo" in state.fault) ||
-      state.fault.OutputNetworkUtxo.observed_network_id ===
-        state.expected_network_id
-    ) {
-      throw networkIdSubmitError(
-        "live step-02 state does not describe an authenticated post-UTxO network mismatch",
-      );
-    }
-    if (
-      state.post_utxo === null ||
-      state.post_utxo.out_ref.transactionId !== prepared.outRef.transactionId ||
-      state.post_utxo.out_ref.outputIndex !== prepared.outRef.outputIndex ||
-      state.post_utxo.descriptor_cbor !== prepared.descriptorCbor ||
-      state.post_utxo.prev_utxos_root !== prepared.prevUtxosRoot ||
-      (state.post_utxo.predecessor === "Introduced"
-        ? prepared.predecessor !== "Introduced"
-        : prepared.predecessor === "Introduced" ||
-          state.post_utxo.predecessor.NetworkChanged
-            .previous_descriptor_cbor !==
-            prepared.predecessor.NetworkChanged.previous_descriptor_cbor)
-    ) {
-      throw networkIdSubmitError(
-        "live step-02 state does not match the frozen post-UTxO predecessor claim",
-      );
-    }
-    if (blueprint === undefined || network === undefined) {
-      throw networkIdSubmitError(
-        "post-UTxO finalization requires the Aiken blueprint and Cardano network",
-      );
-    }
-  } else if (forced) {
+  if (forced) {
     if (
       state.fault !== "ForcedNetworkIdMismatch" ||
       state.forced_source_key === null ||
@@ -212,6 +144,13 @@ export const submitNetworkIdStep02 = async ({
         "forced finalization must not carry an outputs opening; the forced outputs scan already certified field 2",
       );
     }
+  } else if (
+    state.forced_source_key !==
+    (acceptedForced === null ? null : acceptedForced.subject.source_key)
+  ) {
+    throw networkIdSubmitError(
+      "live step-02 state was bound from another transaction source",
+    );
   } else if (prepared.faultClaim.kind === "transaction-network") {
     if (outputsOpeningPlan !== undefined) {
       throw networkIdSubmitError(
@@ -219,8 +158,9 @@ export const submitNetworkIdStep02 = async ({
       );
     }
     if (
-      state.committed_tx_network_id === 255n ||
-      state.committed_tx_network_id === state.expected_network_id
+      !unsafeSkipLocalViolationCheckForTest &&
+      (state.committed_tx_network_id === 255n ||
+        state.committed_tx_network_id === state.expected_network_id)
     ) {
       throw networkIdSubmitError(
         "live step-02 state does not describe an explicit transaction network mismatch",
@@ -234,6 +174,7 @@ export const submitNetworkIdStep02 = async ({
     }
     if (
       outputsOpeningPlan.fieldIndex !== 2 ||
+      outputsOpeningPlan.sourceKind !== (acceptedForced === null ? 0n : 1n) ||
       outputsOpeningPlan.nativeTxId !== state.bad_tx_id ||
       outputsOpeningPlan.nativeTxCompactCbor !== prepared.nativeTxCompactCbor
     ) {
@@ -257,54 +198,6 @@ export const submitNetworkIdStep02 = async ({
   }
 
   signer.selectWallet(lucid);
-  const predecessorChunks = publishedPredecessorProofChunks ?? [];
-  if (!postUtxo && predecessorChunks.length > 0) {
-    throw networkIdSubmitError(
-      "transaction network finalization must not carry predecessor proof chunks",
-    );
-  }
-  const predecessorCarriedByChunks = predecessorChunks.length > 0;
-  const predecessorProofScript: Script | undefined = postUtxo
-    ? predecessorCarriedByChunks
-      ? chunkedVerifyWithdrawalScript(blueprint as unknown)
-      : prepared.predecessor === "Introduced"
-        ? {
-            type: "PlutusV3",
-            script: getCompiledScript(
-              blueprint as unknown,
-              PEXCLUDES_EXCLUSION_WITHDRAW_TITLE,
-            ),
-          }
-        : {
-            type: "PlutusV3",
-            script: getCompiledScript(
-              blueprint as unknown,
-              PHAS_MEMBERSHIP_WITHDRAW_TITLE,
-            ),
-          }
-    : undefined;
-  const predecessorRewardAddress =
-    predecessorProofScript === undefined
-      ? undefined
-      : phasMembershipRewardAddress(network as Network, predecessorProofScript);
-  const predecessorCarriage =
-    predecessorProofScript === undefined
-      ? undefined
-      : witnessWithdrawalValidatorCarriage({
-          script: predecessorProofScript,
-          referenceUtxo: predecessorCarriedByChunks
-            ? witnessReferenceScripts.chunkedVerifyWithdraw
-            : postUtxo && prepared.predecessor === "Introduced"
-              ? witnessReferenceScripts.pexcludesWithdraw
-              : witnessReferenceScripts.phasMembershipWithdraw,
-          label: `${STEP_LABEL} predecessor ${
-            predecessorCarriedByChunks
-              ? "chunked verify"
-              : postUtxo && prepared.predecessor === "Introduced"
-                ? "pexcludes exclusion"
-                : "PHAS membership"
-          }`,
-        });
   const published =
     planned === undefined
       ? []
@@ -336,17 +229,10 @@ export const submitNetworkIdStep02 = async ({
   const referenceInputs = uniqueUtxos([
     ...published,
     ...certificateUtxos,
-    ...predecessorChunks.map((chunk) => chunk.utxo),
     stepReference,
-    ...(predecessorCarriage?.referenceInputs ?? []),
     ...computationThreadMintCarriage.referenceInputs,
     ...fraudProofMintCarriage.referenceInputs,
   ]);
-  const predecessorChunkIndices = derivedChunkReferenceIndices({
-    referenceInputs,
-    chunks: predecessorChunks,
-    label: `${STEP_LABEL} predecessor`,
-  });
   const outputsOpening =
     planned === undefined
       ? null
@@ -399,63 +285,6 @@ export const submitNetworkIdStep02 = async ({
         `${STEP_LABEL} proof mint`,
       ),
     };
-    requireBuiltChunkReferenceIndices({
-      ctx,
-      chunks: predecessorChunks,
-      derived: predecessorChunkIndices,
-      label: `${STEP_LABEL} predecessor`,
-    });
-    const encodedPredecessorCarriage = !postUtxo
-      ? null
-      : prepared.predecessor === "Introduced"
-        ? {
-            IntroducedPredecessor: [
-              predecessorCarriedByChunks
-                ? {
-                    PublishedChunkNonMembership: [
-                      {
-                        ordered_chunk_reference_input_indices:
-                          predecessorChunkIndices,
-                      },
-                    ],
-                  }
-                : {
-                    RedeemerCarriedNonMembership: {
-                      non_membership_proof: prepared.predecessorProof,
-                      non_membership_proof_script_redeemer_index:
-                        requireWithdrawalRedeemerIndex(
-                          ctx,
-                          predecessorRewardAddress as string,
-                          `${STEP_LABEL} predecessor exclusion`,
-                        ),
-                    },
-                  },
-            ],
-          }
-        : {
-            NetworkChangedPredecessor: [
-              predecessorCarriedByChunks
-                ? {
-                    PublishedChunkMembership: [
-                      {
-                        ordered_chunk_reference_input_indices:
-                          predecessorChunkIndices,
-                      },
-                    ],
-                  }
-                : {
-                    RedeemerCarriedMembership: {
-                      membership_proof: prepared.predecessorProof,
-                      membership_proof_script_redeemer_index:
-                        requireWithdrawalRedeemerIndex(
-                          ctx,
-                          predecessorRewardAddress as string,
-                          `${STEP_LABEL} predecessor membership`,
-                        ),
-                    },
-                  },
-            ],
-          };
     return Data.to(
       {
         Continue: [
@@ -465,7 +294,6 @@ export const submitNetworkIdStep02 = async ({
             fraud_proof_mint_redeemer_index:
               spendLayout.fraudProofMintRedeemerIndex,
             outputs_opening: outputsOpening,
-            predecessor_carriage: encodedPredecessorCarriage,
           },
         ],
       } as never,
@@ -508,45 +336,7 @@ export const submitNetworkIdStep02 = async ({
     .collectFrom([feeInput])
     .collectFrom([threadUtxo], spendRedeemer)
     .readFrom([...referenceInputs]);
-  const withPredecessor = !postUtxo
-    ? base
-    : predecessorCarriedByChunks
-      ? base.withdraw(predecessorRewardAddress as string, 0n, ((_ctx) =>
-          prepared.predecessor === "Introduced"
-            ? chunkedNonMembershipClaimRedeemer({
-                merkleRoot: prepared.prevUtxosRoot,
-                keyBytes: prepared.outRefKeyCbor,
-                orderedChunkReferenceInputIndices: predecessorChunkIndices,
-              })
-            : chunkedMembershipClaimRedeemer({
-                merkleRoot: prepared.prevUtxosRoot,
-                keyBytes: prepared.outRefKeyCbor,
-                valueBytes:
-                  prepared.predecessor.NetworkChanged.previous_descriptor_cbor,
-                orderedChunkReferenceInputIndices: predecessorChunkIndices,
-              })) satisfies BuildTxWithRedeemer)
-      : prepared.predecessor === "Introduced"
-        ? base.withdraw(
-            predecessorRewardAddress as string,
-            0n,
-            encodeRawPexcludesProofRedeemer({
-              root: prepared.prevUtxosRoot,
-              keyBytes: prepared.outRefKeyCbor,
-              nonMembershipProofCbor: prepared.predecessorProofCbor,
-            }),
-          )
-        : base.withdraw(
-            predecessorRewardAddress as string,
-            0n,
-            encodeRawPhasMembershipProofRedeemer({
-              root: prepared.prevUtxosRoot,
-              keyBytes: prepared.outRefKeyCbor,
-              valueBytes:
-                prepared.predecessor.NetworkChanged.previous_descriptor_cbor,
-              membershipProofCbor: prepared.predecessorProofCbor,
-            }),
-          );
-  const minted = withPredecessor
+  const minted = base
     .mintAssets({ [threadToken.unit]: -1n }, threadBurnRedeemer)
     .mintAssets({ [fraudProofUnit]: 1n }, fraudProofMintRedeemer)
     .pay.ToContract(
@@ -558,13 +348,8 @@ export const submitNetworkIdStep02 = async ({
       },
     )
     .addSignerKey(signer.paymentKeyHash);
-  const claimBound = minted;
   const unsigned = await fraudProofMintCarriage
-    .attach(
-      computationThreadMintCarriage.attach(
-        predecessorCarriage?.attach(claimBound) ?? claimBound,
-      ),
-    )
+    .attach(computationThreadMintCarriage.attach(minted))
     .complete({ localUPLCEval: true });
   if (
     spendLayout === undefined ||
@@ -581,20 +366,6 @@ export const submitNetworkIdStep02 = async ({
         utxo: stepReference,
         expectedScript: contracts.steps[1].spendingScript,
       }),
-      ...(predecessorProofScript === undefined ||
-      predecessorCarriage === undefined
-        ? []
-        : [
-            workflowReferenceScript({
-              role: predecessorCarriedByChunks
-                ? "network-id-predecessor-chunked-verify"
-                : postUtxo && prepared.predecessor === "Introduced"
-                  ? "network-id-predecessor-pexcludes"
-                  : "network-id-predecessor-phas",
-              utxo: predecessorCarriage.referenceInputs[0],
-              expectedScript: predecessorProofScript,
-            }),
-          ]),
       workflowReferenceScript({
         role: "V1 fraud-proof computation-thread minting",
         utxo: witnessReferenceScripts.computationThreadMint,

@@ -7,7 +7,6 @@ export const MIN_ADA_BLUEPRINT_TITLES = {
   step02: "fraud_proofs/min_ada/step_02.main.spend",
   step03: "fraud_proofs/min_ada/step_03.main.spend",
   step04: "fraud_proofs/min_ada/step_04.main.spend",
-  step05: "fraud_proofs/min_ada/step_05.main.spend",
 } as const;
 
 export type MinAdaStepContract = {
@@ -22,15 +21,9 @@ export type MinAdaContracts = {
     MinAdaStepContract,
     MinAdaStepContract,
     MinAdaStepContract,
-    MinAdaStepContract,
   ];
   readonly yields: {
     readonly tx: {
-      readonly withdrawalScriptCBOR: string;
-      readonly withdrawalScript: Script;
-      readonly withdrawalScriptHash: string;
-    };
-    readonly utxo: {
       readonly withdrawalScriptCBOR: string;
       readonly withdrawalScript: Script;
       readonly withdrawalScriptHash: string;

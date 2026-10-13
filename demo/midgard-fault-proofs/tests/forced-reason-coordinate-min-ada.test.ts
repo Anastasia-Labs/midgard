@@ -1,5 +1,4 @@
 import { encodeMidgardSpendInputItem } from "@al-ft/midgard-core";
-import { MIDGARD_COINS_PER_UTXO_BYTE } from "@al-ft/midgard-validation";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -9,8 +8,8 @@ import {
 import { admitMinAdaForcedArtifact } from "../src/min-ada/forced-artifact.js";
 import { submitMinAdaStep01Forced } from "../src/min-ada/submit-step-01-forced.js";
 import { submitMinAdaTxStep02 } from "../src/min-ada/submit-step-02.js";
-import { submitMinAdaUtxoStep03 } from "../src/min-ada/submit-step-03.js";
-import { submitMinAdaStep05 } from "../src/min-ada/submit-step-05.js";
+import { submitMinAdaStep03 } from "../src/min-ada/submit-step-03.js";
+import { submitMinAdaStep04 } from "../src/min-ada/submit-step-04.js";
 import { admitMinAdaWorkflowArtifact } from "../src/min-ada/workflow-artifact.js";
 import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.js";
 import { setup } from "./min-ada-wrongful-rejection-lifecycle.setup.js";
@@ -123,17 +122,16 @@ describe("forced OutputBelowMinAda coordinate the node writes", () => {
       referenceScriptUtxo: f.refs[1]!,
       yieldReferenceScriptUtxo: f.seeded.minAdaYieldReferenceScripts!.tx.utxo,
     });
-    const checked = await submitMinAdaUtxoStep03({
+    const checked = await submitMinAdaStep03({
       ...f.common,
       threadOutRef: opened.nextThreadOutRef,
       outputItemCbors: f.prepared.outputItemCbors,
-      coinsPerUtxoByte: MIDGARD_COINS_PER_UTXO_BYTE,
       referenceScriptUtxo: f.refs[2]!,
     });
-    const proof = await submitMinAdaStep05({
+    const proof = await submitMinAdaStep04({
       ...f.common,
       threadOutRef: checked.nextThreadOutRef,
-      referenceScriptUtxo: f.refs[4]!,
+      referenceScriptUtxo: f.refs[3]!,
       witnessReferenceScripts: f.h.witnessReferenceScripts,
     });
     expect(proof.fraudProofUnit).toBeTruthy();
@@ -195,11 +193,10 @@ describe("forced OutputBelowMinAda coordinate the node writes", () => {
     // transaction runs: the step's own thread spend.
     const refusal = await expectOnchainRefusal(
       async () =>
-        await submitMinAdaUtxoStep03({
+        await submitMinAdaStep03({
           ...f.common,
           threadOutRef: opened.nextThreadOutRef,
           outputItemCbors: f.prepared.outputItemCbors,
-          coinsPerUtxoByte: MIDGARD_COINS_PER_UTXO_BYTE,
           referenceScriptUtxo: f.refs[2]!,
           unsafeSkipLocalViolationCheckForTest: true,
         }),

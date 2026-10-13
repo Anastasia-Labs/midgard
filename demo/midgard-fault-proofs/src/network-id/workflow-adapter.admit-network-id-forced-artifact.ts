@@ -1,19 +1,11 @@
-import { Proof as MpfProof } from "@aiken-lang/merkle-patricia-forestry";
-import {
-  computeHash28,
-  decodeMidgardAddressBytes,
-  decodeMidgardFieldPreimage,
-  decodeMidgardOutputFieldPreimage,
-} from "@al-ft/midgard-core";
+import { computeHash28, decodeMidgardFieldPreimage } from "@al-ft/midgard-core";
 import { decodeMidgardForcedTxCompact } from "@al-ft/midgard-core/codec/forced";
 import {
   type AuthenticatedStateQueueHeaderObservation,
   bindExactVerdictSubjectReason,
   encodeHeaderCbor,
-  ForcedInclusionTxV1Schema,
   forcedVerdictSubject,
   type NetworkIdFault,
-  OutputReferenceSchema,
 } from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 
@@ -27,55 +19,29 @@ import {
   type SignedTransactionRecoveryObservation,
   type SignedWorkflowTransaction,
 } from "../workflow/signed-transaction-reconciliation.js";
+import type { PreparedNetworkIdAcceptedForced } from "./accepted-forced.js";
 import { type PreparedNetworkIdProof } from "./prepare.js";
+import {
+  admitNetworkIdAcceptedForcedArtifact,
+  type NetworkIdAcceptedForcedWorkflowArtifact,
+} from "./workflow-adapter.accepted-forced-artifact.js";
+import { bindForcedLeafMembership } from "./workflow-adapter.bind-forced-leaf.js";
 import {
   ARTIFACT_VERSION,
   type ForcedSourcePayload,
   NetworkIdForcedSourceSchema,
   type NetworkIdForcedWorkflowArtifact,
   preparedFromArtifact,
-  proofSteps,
   requireString,
   type WorkflowContext,
 } from "./workflow-adapter.prepared-from-artifact.js";
 import {
   NETWORK_ID_MISMATCH_REASON,
+  networkIdOfOutput,
   networkIdWrongfulRejectionCloses,
   type NetworkIdWrongfulRejectionEvidence,
   type PreparedNetworkIdWrongfulRejection,
 } from "./wrongful-rejection.js";
-
-/**
- * Replays the counted-root membership the forced door re-derives on chain, so a
- * journal artifact whose proof no longer opens its own leaf is refused here
- * rather than at submission.
- */
-const bindForcedLeafMembership = (source: ForcedSourcePayload): void => {
-  const membership = source.membership;
-  let replayed: Buffer | null;
-  try {
-    replayed = MpfProof.fromJSON(
-      Buffer.from(
-        Data.to(membership.key as never, OutputReferenceSchema as never),
-        "hex",
-      ),
-      Buffer.from(
-        Data.to(membership.value as never, ForcedInclusionTxV1Schema as never),
-        "hex",
-      ),
-      proofSteps(membership.proof),
-    ).verify(true);
-  } catch {
-    throw new Error(
-      "network-id forced artifact membership proof cannot be replayed",
-    );
-  }
-  if (replayed?.toString("hex") !== membership.phas_root) {
-    throw new Error(
-      "network-id forced artifact membership proof opens another root",
-    );
-  }
-};
 
 /** Prepared forced contradiction to its durable journal artifact. */
 export const networkIdForcedArtifactFromPrepared = (
@@ -171,11 +137,8 @@ export const admitNetworkIdForcedArtifact = (
       "network-id forced artifact outputs differ from their authenticated preimage",
     );
   }
-  const outputNetworkIds = decodeMidgardOutputFieldPreimage(
-    outputsPreimage,
-  ).map((output) =>
-    BigInt(decodeMidgardAddressBytes(output.address).networkId),
-  );
+  const outputNetworkIds =
+    decodeMidgardFieldPreimage(outputsPreimage).map(networkIdOfOutput);
   const evidence: NetworkIdWrongfulRejectionEvidence = Object.freeze({
     subject,
     expectedNetworkId,
@@ -212,6 +175,10 @@ export const admitNetworkIdForcedArtifact = (
 /** Either direction of the family, discriminated by the artifact itself. */
 export type AdmittedNetworkIdArtifact =
   | {
+      readonly direction: "accepted_forced";
+      readonly prepared: PreparedNetworkIdAcceptedForced;
+    }
+  | {
       readonly direction: "accepted";
       readonly prepared: PreparedNetworkIdProof;
     }
@@ -229,6 +196,14 @@ export const admitNetworkIdWorkflowArtifact = (
   };
   if (candidate.schemaVersion !== ARTIFACT_VERSION) {
     throw new Error("network-id workflow artifact has an unsupported version");
+  }
+  if (candidate.direction === "accepted_forced") {
+    return {
+      direction: "accepted_forced",
+      prepared: admitNetworkIdAcceptedForcedArtifact(
+        value as unknown as NetworkIdAcceptedForcedWorkflowArtifact,
+      ),
+    };
   }
   if (candidate.direction === "forced") {
     return {

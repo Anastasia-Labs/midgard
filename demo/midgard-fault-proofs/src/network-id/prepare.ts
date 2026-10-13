@@ -1,26 +1,13 @@
 /** Authenticated retained-DA preparation for the Q35 network-id family. */
-import {
-  decodeMidgardAddressBytes,
-  decodeMidgardFieldPreimage,
-  decodeMidgardLedgerOutputCommitment,
-  decodeMidgardSpendInputItem,
-} from "@al-ft/midgard-core";
-import {
-  type NetworkIdFault,
-  type NetworkIdPostUtxoPredecessor,
-  type OutputReference,
-  Proof,
-} from "@al-ft/midgard-sdk";
-import { Data } from "@lucid-evolution/lucid";
+import { decodeMidgardFieldPreimage } from "@al-ft/midgard-core";
+import { type NetworkIdFault } from "@al-ft/midgard-sdk";
 
-import { blockTransactionsFromCanonicalEvidence } from "../evidence/canonical-block-evidence.js";
 import {
   admitCanonicalEvidenceForProofBuild,
   type CanonicalEvidenceBuilderInput,
 } from "../evidence/prepare-from-evidence.js";
 import type { FaultProofFieldOpeningPlan } from "../field-opening.js";
 import { planFaultProofFieldOpening } from "../field-opening.js";
-import { type CheckedLedger, requireLedgerOpening } from "../ledger-at.js";
 import {
   buildTrieView,
   decodeTransactionMaterial,
@@ -29,10 +16,7 @@ import {
   requireTransactionsRootMatch,
   transactionSourceTrieItem,
 } from "../prepare-double-spend.js";
-import {
-  keyValuePhasNonMembershipProof,
-  keyValuePhasProof,
-} from "../transition-trace/phas.js";
+import type { PreparedNetworkIdAcceptedForced } from "./accepted-forced.js";
 import {
   findNetworkIdFaults,
   type NetworkIdFaultClaim,
@@ -50,34 +34,6 @@ export type PreparedNetworkIdProof = {
   readonly faultClaim: NetworkIdFaultClaim;
   readonly fault: NetworkIdFault;
   readonly txInclusion: PreparedTxInclusionJson;
-};
-
-export type NetworkIdPostUtxoFaultClaim = {
-  readonly kind: "post-utxo-network";
-  readonly outRef: OutputReference;
-  readonly observedNetworkId: bigint;
-};
-
-/**
- * A post-block UTxO claim authenticates the compact descriptor committed by
- * `header.utxos_root`; it never carries or reconstructs the full output in the
- * proof transaction.
- */
-export type PreparedNetworkIdPostUtxoProof = {
-  readonly headerHash: string;
-  readonly expectedNetworkId: 0n | 1n;
-  readonly outRef: OutputReference;
-  readonly outRefKeyCbor: string;
-  readonly descriptorCbor: string;
-  readonly postUtxosRoot: string;
-  readonly prevUtxosRoot: string;
-  readonly membershipProofCbor: string;
-  readonly membershipProof: Proof;
-  readonly predecessor: NetworkIdPostUtxoPredecessor;
-  readonly predecessorProof: Proof;
-  readonly predecessorProofCbor: string;
-  readonly faultClaim: NetworkIdPostUtxoFaultClaim;
-  readonly fault: NetworkIdFault;
 };
 
 const wireFault = (claim: NetworkIdFaultClaim): NetworkIdFault =>
@@ -163,151 +119,6 @@ export const prepareNetworkIdFromCanonicalEvidence = async ({
   };
 };
 
-const sameOutRef = (left: OutputReference, right: OutputReference): boolean =>
-  left.transactionId === right.transactionId &&
-  left.outputIndex === right.outputIndex;
-
-/**
- * Selects a wrong-network member of the authenticated post-block ledger. This
- * covers zero-transaction fabricated post-state entries and entries whose
- * network was changed by this transition. An unchanged inherited violation is
- * deliberately excluded: descendants are corrected with their fraudulent
- * ancestor, but are not blamed for introducing its fault.
- */
-export const prepareNetworkIdPostUtxoFromCanonicalEvidence = async ({
-  evidence,
-  prevLedger,
-  postLedger,
-  expectedNetworkId,
-  outRef,
-}: CanonicalEvidenceBuilderInput & {
-  /** The ledger the block starts from; only the empty genesis ledger may be omitted. */
-  readonly prevLedger?: CheckedLedger;
-  /** The ledger after the block; only the empty ledger may be omitted. */
-  readonly postLedger?: CheckedLedger;
-  readonly expectedNetworkId: 0n | 1n;
-  readonly outRef?: OutputReference;
-}): Promise<PreparedNetworkIdPostUtxoProof> => {
-  // Reuses the canonical evidence admission without imposing the transaction
-  // inclusion convention, which this independent post-state route does not use.
-  blockTransactionsFromCanonicalEvidence(evidence);
-  const prior = requireLedgerOpening({
-    ledger: prevLedger,
-    utxosRoot: evidence.header.prevUtxosRoot,
-    label: "network-id predecessor ledger",
-  });
-  const postTrie = requireLedgerOpening({
-    ledger: postLedger,
-    utxosRoot: evidence.header.utxosRoot,
-    label: "network-id post ledger",
-  }).trie;
-  const priorTrie = prior.trie;
-  // The trie leaves are the committed descriptors.
-  const descriptorMembers = (trie: typeof postTrie) =>
-    trie.entries.map(({ key, value }) => {
-      const decodedOutRef = decodeMidgardSpendInputItem(key);
-      const descriptor = decodeMidgardLedgerOutputCommitment(value);
-      if (descriptor.outputIndex !== decodedOutRef.outputIndex) {
-        throw new Error(
-          "network-id post-UTxO descriptor index does not match its ledger out-ref",
-        );
-      }
-      const memberOutRef: OutputReference = {
-        transactionId: Buffer.from(decodedOutRef.txId).toString("hex"),
-        outputIndex: BigInt(decodedOutRef.outputIndex),
-      };
-      return {
-        key,
-        value,
-        outRef: memberOutRef,
-        observedNetworkId: BigInt(
-          decodeMidgardAddressBytes(descriptor.address).networkId,
-        ),
-      };
-    });
-  const postMembers = descriptorMembers(postTrie);
-  const priorMembers = descriptorMembers(priorTrie);
-  const selected = postMembers
-    .filter(
-      (member) =>
-        (outRef === undefined || sameOutRef(member.outRef, outRef)) &&
-        member.observedNetworkId !== expectedNetworkId,
-    )
-    .map((post) => ({
-      post,
-      previous: priorMembers.find((prior) => prior.key.equals(post.key)),
-    }))
-    .find(
-      ({ post, previous }) =>
-        previous === undefined ||
-        (previous.observedNetworkId === expectedNetworkId &&
-          !previous.value.equals(post.value)),
-    );
-  if (selected === undefined) {
-    throw new Error(
-      outRef === undefined
-        ? "authenticated post-block ledger contains no network-id violation introduced by this transition"
-        : `post-block UTxO ${outRef.transactionId}#${outRef.outputIndex.toString()} is absent, valid, or inherited unchanged from its predecessor`,
-    );
-  }
-  const membershipProof = await keyValuePhasProof(
-    postTrie,
-    selected.post.key,
-    selected.post.value,
-  );
-  let predecessor: NetworkIdPostUtxoPredecessor;
-  let predecessorProof: Proof;
-  let predecessorProofCbor: string;
-  if (selected.previous === undefined) {
-    const proof = await keyValuePhasNonMembershipProof(
-      priorTrie,
-      selected.post.key,
-    );
-    predecessor = "Introduced";
-    predecessorProof = proof;
-    predecessorProofCbor = Data.to(proof, Proof);
-  } else {
-    const proof = await keyValuePhasProof(
-      priorTrie,
-      selected.previous.key,
-      selected.previous.value,
-    );
-    predecessor = {
-      NetworkChanged: {
-        previous_descriptor_cbor: selected.previous.value.toString("hex"),
-      },
-    };
-    predecessorProof = proof;
-    predecessorProofCbor = Data.to(proof, Proof);
-  }
-  const faultClaim: NetworkIdPostUtxoFaultClaim = {
-    kind: "post-utxo-network",
-    outRef: selected.post.outRef,
-    observedNetworkId: selected.post.observedNetworkId,
-  };
-  const fault = {
-    OutputNetworkUtxo: {
-      observed_network_id: selected.post.observedNetworkId,
-    },
-  } as NetworkIdFault;
-  return {
-    headerHash: evidence.headerHash,
-    expectedNetworkId,
-    outRef: selected.post.outRef,
-    outRefKeyCbor: selected.post.key.toString("hex"),
-    descriptorCbor: selected.post.value.toString("hex"),
-    postUtxosRoot: postTrie.root,
-    prevUtxosRoot: priorTrie.root,
-    membershipProofCbor: Data.to(membershipProof, Proof),
-    membershipProof,
-    predecessor,
-    predecessorProof,
-    predecessorProofCbor,
-    faultClaim,
-    fault,
-  };
-};
-
 /** Plans field-2's canonical tier for an output-network claim. */
 export const planNetworkIdOutputsOpening = ({
   prepared,
@@ -316,7 +127,8 @@ export const planNetworkIdOutputsOpening = ({
 }: {
   readonly prepared:
     | PreparedNetworkIdProof
-    | PreparedNetworkIdWrongfulRejection;
+    | PreparedNetworkIdWrongfulRejection
+    | PreparedNetworkIdAcceptedForced;
   readonly owner: string;
   readonly publish?: boolean;
 }): FaultProofFieldOpeningPlan => {
@@ -329,8 +141,8 @@ export const planNetworkIdOutputsOpening = ({
     );
   }
   return planFaultProofFieldOpening({
-    anchorSourceKind:
-      prepared.faultClaim.kind === "forced-network-mismatch" ? 1n : 0n,
+    // A forced leaf of either verdict opens under the forced source.
+    anchorSourceKind: "forcedSource" in prepared ? 1n : 0n,
     fieldIndex: 2,
     anchorTxId: prepared.badTxId,
     nativeTxCompactCbor: prepared.nativeTxCompactCbor,

@@ -19,19 +19,12 @@ import { FieldOpeningSchema } from "./field-opening.js";
 import {
   faultProofStepDatumSchema,
   faultProofStepRedeemerSchema,
-  MembershipCarriageSchema,
   NativeTxInclusionCarriageSchema,
-  NonMembershipCarriageSchema,
 } from "./native.js";
 
 export const NetworkIdFaultSchema = Data.Enum([
   Data.Literal("TransactionNetwork"),
   Data.Object({ OutputNetwork: Data.Object({ output_index: Data.Integer() }) }),
-  Data.Object({
-    OutputNetworkUtxo: Data.Object({
-      observed_network_id: Data.Integer(),
-    }),
-  }),
   Data.Literal("ForcedNetworkIdMismatch"),
 ]);
 export type NetworkIdFault = Data.Static<typeof NetworkIdFaultSchema>;
@@ -52,37 +45,8 @@ export type NetworkIdForcedStepDatum = Data.Static<
 export const NetworkIdForcedStepDatum = asDataType<NetworkIdForcedStepDatum>(
   NetworkIdForcedStepDatumSchema,
 );
-export const NetworkIdPostUtxoPredecessorSchema = Data.Enum([
-  Data.Literal("Introduced"),
-  Data.Object({
-    NetworkChanged: Data.Object({
-      previous_descriptor_cbor: Data.Bytes(),
-    }),
-  }),
-]);
-export type NetworkIdPostUtxoPredecessor = Data.Static<
-  typeof NetworkIdPostUtxoPredecessorSchema
->;
-export const NetworkIdPostUtxoPredecessor =
-  asDataType<NetworkIdPostUtxoPredecessor>(NetworkIdPostUtxoPredecessorSchema);
-export const NetworkIdPostUtxoMembershipSchema = Data.Object({
-  input_index: Data.Integer(),
-  output_index: Data.Integer(),
-  hub_ref_input_index: Data.Integer(),
-  state_queue_node_ref_input_index: Data.Integer(),
-  out_ref: OutputReferenceSchema,
-  descriptor_cbor: Data.Bytes(),
-  membership: MembershipCarriageSchema,
-  predecessor: NetworkIdPostUtxoPredecessorSchema,
-});
-export type NetworkIdPostUtxoMembership = Data.Static<
-  typeof NetworkIdPostUtxoMembershipSchema
->;
-export const NetworkIdPostUtxoMembership =
-  asDataType<NetworkIdPostUtxoMembership>(NetworkIdPostUtxoMembershipSchema);
 export const NetworkIdStep01ArgsSchema = Data.Object({
   tx_inclusion: Data.Nullable(NativeTxInclusionCarriageSchema),
-  post_utxo_membership: Data.Nullable(NetworkIdPostUtxoMembershipSchema),
   forced_source: Data.Nullable(
     Data.Object({
       input_index: Data.Integer(),
@@ -113,14 +77,6 @@ export const NetworkIdStep02StateSchema = Data.Object({
   committed_tx_network_id: Data.Integer(),
   expected_network_id: Data.Integer(),
   fault: NetworkIdFaultSchema,
-  post_utxo: Data.Nullable(
-    Data.Object({
-      out_ref: OutputReferenceSchema,
-      descriptor_cbor: Data.Bytes(),
-      prev_utxos_root: H32Schema,
-      predecessor: NetworkIdPostUtxoPredecessorSchema,
-    }),
-  ),
   forced_source_key: Data.Nullable(Data.Bytes()),
 });
 export type NetworkIdStep02State = Data.Static<
@@ -144,16 +100,6 @@ export const NetworkIdStep02ArgsSchema = Data.Object({
   output_index: Data.Integer(),
   fraud_proof_mint_redeemer_index: Data.Integer(),
   outputs_opening: Data.Nullable(FieldOpeningSchema),
-  predecessor_carriage: Data.Nullable(
-    Data.Enum([
-      Data.Object({
-        IntroducedPredecessor: Data.Tuple([NonMembershipCarriageSchema]),
-      }),
-      Data.Object({
-        NetworkChangedPredecessor: Data.Tuple([MembershipCarriageSchema]),
-      }),
-    ]),
-  ),
 });
 export type NetworkIdStep02Args = Data.Static<typeof NetworkIdStep02ArgsSchema>;
 export const NetworkIdStep02Args = asDataType<NetworkIdStep02Args>(

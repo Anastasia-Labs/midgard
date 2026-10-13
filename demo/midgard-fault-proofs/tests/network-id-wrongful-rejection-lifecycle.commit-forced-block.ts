@@ -5,7 +5,11 @@ import {
   encodeMidgardSpendInputItem,
   encodeMidgardTxOutput,
 } from "@al-ft/midgard-core";
-import { deriveMidgardForcedTxProofSource } from "@al-ft/midgard-core/codec/forced";
+import { encodeCborBytes } from "@al-ft/midgard-core/codec/cbor";
+import {
+  deriveMidgardForcedTxProofSource,
+  encodeMidgardForcedTxCanonical,
+} from "@al-ft/midgard-core/codec/forced";
 import { materializeMidgardForcedTxFromCanonical } from "@al-ft/midgard-core/codec/forced";
 import {
   ForcedInclusionTxV1Schema,
@@ -58,21 +62,31 @@ export const forcedTransactionAt = ({
   outputNetworkIds,
   bodyNetworkId = 0n,
   inputByte = "77",
+  datumHex,
 }: {
   readonly outputNetworkIds: readonly number[];
   readonly bodyNetworkId?: bigint;
   readonly inputByte?: string;
+  readonly datumHex?: string;
 }) => {
-  const outputs = outputNetworkIds.map((networkId, index) =>
-    encodeMidgardTxOutput({
+  const outputs = outputNetworkIds.map((networkId, index) => {
+    const base = encodeMidgardTxOutput({
       // Enterprise key address: header nibble `6`, low nibble = network id.
       address: Buffer.concat([
         Buffer.from([0x60 | networkId]),
         Buffer.alloc(28, 0x40 + (index % 64)),
       ]),
       value: { lovelace: 2_000_000n + BigInt(index), assets: new Map() },
-    }),
-  );
+    });
+    return datumHex === undefined
+      ? base
+      : Buffer.concat([
+          Buffer.from([0xa3]),
+          base.subarray(1),
+          Buffer.from([2]),
+          encodeCborBytes(Buffer.from(datumHex, "hex")),
+        ]);
+  });
   const invalid = materializeMidgardForcedTxFromCanonical(
     makeNativeTx({
       spendInputCbors: [
@@ -89,6 +103,8 @@ export const forcedTransactionAt = ({
   const proofSource = deriveMidgardForcedTxProofSource(invalid);
   return {
     transactionId: computeMidgardNativeTxId(invalid).toString("hex"),
+    fullTransactionCbor:
+      encodeMidgardForcedTxCanonical(invalid).toString("hex"),
     outputs,
     bodyNetworkId,
     outputNetworkIds,

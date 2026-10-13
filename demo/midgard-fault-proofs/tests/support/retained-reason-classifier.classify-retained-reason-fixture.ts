@@ -95,8 +95,8 @@ export const classifyRetainedReasonFixture = async ({
       }),
     sources: replaySource.sources,
     ...(replayContext === undefined ? {} : { replayContext }),
-    // The fixture's empty predecessor is supplied directly; the fixture
-    // ledger recorded for each retained header supplies the others.
+    // The fixture's empty predecessor is supplied directly; any other
+    // predecessor ledger is read from retained bytes.
     ...(replayContext === undefined &&
     (predecessor !== undefined ||
       observation.header.prevUtxosRoot === EMPTY_MERKLE_TREE_ROOT)

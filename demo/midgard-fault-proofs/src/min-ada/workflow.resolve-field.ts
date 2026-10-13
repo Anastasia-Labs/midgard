@@ -2,7 +2,7 @@ import {
   decodeMidgardNativeTxFullFromCanonicalCbor,
   deriveMidgardNativeTxWitnessSetCompact,
 } from "@al-ft/midgard-core";
-import { decodeMidgardForcedTxFullFromCanonicalCbor } from "@al-ft/midgard-core/codec/forced";
+import { decodeMidgardForcedTxCanonicalEnvelopeForFaultEvidence } from "@al-ft/midgard-core/codec/forced";
 import { MIDGARD_FIELD_INDEX } from "@al-ft/midgard-sdk";
 import { type LucidEvolution, type UTxO } from "@lucid-evolution/lucid";
 
@@ -14,7 +14,6 @@ import {
 import type { StateQueueMutationLeaseCoordinator } from "../remove-fraudulent-block.js";
 import { type ResolvedProverSigner } from "../runtime.js";
 import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts.js";
-import { type CompleteCanonicalReplayContext } from "../workflow/complete-replay.js";
 import { type FraudProofWorkflowDeploymentBinding } from "../workflow/deployment-manifest-binding.js";
 import type { MinAdaContracts } from "./contracts.js";
 import { admitMinAdaWorkflowArtifact as admitMinAdaArtifact } from "./workflow-artifact.js";
@@ -22,8 +21,8 @@ import { admitMinAdaWorkflowArtifact as admitMinAdaArtifact } from "./workflow-a
 type AdmittedMinAdaArtifact = Awaited<ReturnType<typeof admitMinAdaArtifact>>;
 
 export type MinAdaWorkflowReferenceScripts = Readonly<{
-  steps: readonly [UTxO, UTxO, UTxO, UTxO, UTxO];
-  yields: Readonly<{ tx: UTxO; utxo: UTxO }>;
+  steps: readonly [UTxO, UTxO, UTxO, UTxO];
+  yields: Readonly<{ tx: UTxO }>;
   witnesses: Required<FaultProofWitnessReferenceScripts>;
   fieldPreimageCertificateMint: UTxO;
 }>;
@@ -34,29 +33,18 @@ export type BoundConfig = Readonly<{
   signer: ResolvedProverSigner;
   contracts: MinAdaContracts;
   references: MinAdaWorkflowReferenceScripts;
-  /** The classifier-admitted context carrying the authenticated predecessor. */
-  replayContext?: CompleteCanonicalReplayContext;
   stateQueueMutationLeaseCoordinator: StateQueueMutationLeaseCoordinator;
 }>;
-
-type AdmittedTx = Exclude<
-  AdmittedMinAdaArtifact,
-  { prepared: { kind: "min-ada-utxo" } }
->;
-
-export const isTx = (
-  admitted: AdmittedMinAdaArtifact,
-): admitted is AdmittedTx => admitted.prepared.kind !== "min-ada-utxo";
 
 export const isForced = (
   admitted: AdmittedMinAdaArtifact,
 ): admitted is Extract<AdmittedMinAdaArtifact, { forcedSource: unknown }> =>
   "forcedSource" in admitted;
 
-const witnessSet = (admitted: AdmittedTx) => {
+const witnessSet = (admitted: AdmittedMinAdaArtifact) => {
   const compact = deriveMidgardNativeTxWitnessSetCompact(
     (isForced(admitted)
-      ? decodeMidgardForcedTxFullFromCanonicalCbor
+      ? decodeMidgardForcedTxCanonicalEnvelopeForFaultEvidence
       : decodeMidgardNativeTxFullFromCanonicalCbor)(
       Buffer.from(admitted.prepared.nativeTxCanonicalCbor, "hex"),
     ).witnessSet,
@@ -70,7 +58,7 @@ const witnessSet = (admitted: AdmittedTx) => {
   };
 };
 
-export const txFieldPlan = (admitted: AdmittedTx, owner: string) =>
+export const txFieldPlan = (admitted: AdmittedMinAdaArtifact, owner: string) =>
   planFaultProofFieldOpening({
     anchorSourceKind: isForced(admitted) ? 1n : 0n,
     fieldIndex: MIDGARD_FIELD_INDEX.outputs,
@@ -90,7 +78,7 @@ export const resolveField = async ({
   admitted,
 }: {
   readonly config: BoundConfig;
-  readonly admitted: AdmittedTx;
+  readonly admitted: AdmittedMinAdaArtifact;
 }) => {
   const planned = txFieldPlan(admitted, config.signer.paymentKeyHash);
   const publications = await resolveFaultProofFieldCarriagePublications({

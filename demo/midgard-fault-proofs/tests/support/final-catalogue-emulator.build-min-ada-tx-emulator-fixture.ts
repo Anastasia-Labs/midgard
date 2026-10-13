@@ -5,7 +5,6 @@ import {
   deriveMidgardNativeTxWitnessSetCompact,
   encodeMidgardNativeTxCanonical,
   encodeMidgardNativeTxCompact,
-  encodeMidgardSpendInputItem,
   encodeMidgardTxOutput,
 } from "@al-ft/midgard-core";
 import {
@@ -13,25 +12,13 @@ import {
   type MinAdaFault,
   type NativeTxWitnessSetCompact,
   parseFaultProofBlueprint,
-  Proof,
 } from "@al-ft/midgard-sdk";
-import {
-  buildCanonicalMidgardLedgerEntryOutputMaterial,
-  buildCanonicalMidgardLedgerOutputMaterial,
-} from "@al-ft/midgard-validation";
-import { Data, type Script, type UTxO } from "@lucid-evolution/lucid";
+import { type Script, type UTxO } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
-import type {
-  PreparedMinAdaTx,
-  PreparedMinAdaUtxo,
-} from "../../src/min-ada/prepare.js";
+import type { PreparedMinAdaTx } from "../../src/min-ada/prepare.js";
 import type { NativeScriptInvalidContracts } from "../../src/native-script-invalid/contracts.js";
 import { nativeTxFromCoreCompact } from "../../src/step-support.js";
-import {
-  keyValuePhasNonMembershipProof,
-  keyValuePhasRootWithCount,
-} from "../../src/transition-trace/phas.js";
 import { registerPexcludesExclusionRewardAccount } from "./submit-init-emulator-fixtures.js";
 import {
   buildCatalogueDeploymentInfo,
@@ -172,13 +159,7 @@ export const buildMinAdaTxEmulatorFixture = async () => {
     Buffer.from(l2TransactionSourceCbor, "hex"),
   );
   const proof = await trie.prove(Buffer.from(badTxId, "hex"));
-  const material = buildCanonicalMidgardLedgerOutputMaterial({
-    outputIndex: 0,
-    outputCbor,
-  });
-  const fault = {
-    MinAdaTx: { output_index: 0n },
-  } as MinAdaFault;
+  const fault: MinAdaFault = { output_index: 0n };
   const prepared: PreparedMinAdaTx = {
     kind: "min-ada-tx",
     headerHash: "",
@@ -189,7 +170,6 @@ export const buildMinAdaTxEmulatorFixture = async () => {
     outputItemCbors: decodeMidgardFieldPreimage(
       tx.body.outputsPreimageCbor,
     ).map((item) => Buffer.from(item).toString("hex")),
-    descriptorCbor: material.descriptorCbor.toString("hex"),
     txInclusion: {
       nativeTxId: badTxId,
       nativeTx: nativeTxFromCoreCompact(tx.compact),
@@ -203,76 +183,6 @@ export const buildMinAdaTxEmulatorFixture = async () => {
   return {
     transactionsRoot: trieRootHex(trie),
     l2TransactionCount: 1n,
-    prepared,
-  };
-};
-
-export const buildMinAdaPostUtxoEmulatorFixture = async ({
-  emptyPrevious = false,
-}: {
-  readonly emptyPrevious?: boolean;
-} = {}) => {
-  const outputCbor = encodeMidgardTxOutput({
-    address: Buffer.concat([Buffer.from([0x60]), Buffer.alloc(28, 0x55)]),
-    value: { lovelace: 0n, assets: new Map() },
-  });
-  const tx = makeNativeTx({ spendInputCbors: [], fee: 7n, outputCbor });
-  const transactionId = computeMidgardNativeTxId(tx).toString("hex");
-  const outRef = { transactionId, outputIndex: 0n } as const;
-  const outRefKey = encodeMidgardSpendInputItem({
-    txId: Buffer.from(outRef.transactionId, "hex"),
-    outputIndex: Number(outRef.outputIndex),
-  });
-  const descriptorCbor = buildCanonicalMidgardLedgerEntryOutputMaterial({
-    outRef: outRefKey,
-    outputCbor,
-  }).descriptorCbor;
-  const postStore = new Store(undefined);
-  await postStore.ready();
-  const postTrie = new Trie(postStore);
-  await postTrie.insert(outRefKey, descriptorCbor);
-  const postMembershipProofCbor = (await postTrie.prove(outRefKey))
-    .toCBOR()
-    .toString("hex");
-  const previous = await keyValuePhasRootWithCount(
-    emptyPrevious
-      ? []
-      : [{ key: Buffer.alloc(outRefKey.length, 0xa5), value: descriptorCbor }],
-  );
-  const predecessorNonMembershipProof = await keyValuePhasNonMembershipProof(
-    previous,
-    outRefKey,
-  );
-  const predecessorNonMembershipProofCbor = Data.to(
-    predecessorNonMembershipProof,
-    Proof,
-  );
-  const txStore = new Store(undefined);
-  await txStore.ready();
-  const txTrie = new Trie(txStore);
-  await txTrie.insert(
-    Buffer.from(transactionId, "hex"),
-    Buffer.from(l2TransactionSourceCborV1(tx), "hex"),
-  );
-  const prepared: PreparedMinAdaUtxo = {
-    kind: "min-ada-utxo",
-    headerHash: "",
-    outRef,
-    outRefKeyCbor: outRefKey.toString("hex"),
-    descriptorCbor: descriptorCbor.toString("hex"),
-    postUtxosRoot: trieRootHex(postTrie),
-    prevUtxosRoot: previous.root,
-    postMembershipProof: Data.from(postMembershipProofCbor, Proof),
-    postMembershipProofCbor,
-    predecessorNonMembershipProof,
-    predecessorNonMembershipProofCbor,
-    fault: "MinAdaUtxo" as MinAdaFault,
-  };
-  return {
-    transactionsRoot: trieRootHex(txTrie),
-    l2TransactionCount: 1n,
-    prevUtxosRoot: prepared.prevUtxosRoot,
-    utxosRoot: prepared.postUtxosRoot,
     prepared,
   };
 };

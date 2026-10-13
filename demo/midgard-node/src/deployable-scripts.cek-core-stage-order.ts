@@ -171,7 +171,6 @@ export const TRANSITION_TRACE_YIELD_CONTRACT_NAMES = [
 
 export const MIN_ADA_YIELD_CONTRACT_NAMES = [
   ["tx", "fraudProofMinAdaStep02TxWithdraw"],
-  ["utxo", "fraudProofMinAdaStep02UtxoWithdraw"],
 ] as const satisfies readonly (readonly [
   keyof SDK.FaultProofContractChains["minAda"]["yields"],
   string,

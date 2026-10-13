@@ -1,4 +1,4 @@
-/** Q27 step 02: adjudicate a produced output or authenticate post membership. */
+/** Q27 step 02: open the produced output named by the fault. */
 
 import "@al-ft/midgard-core";
 import "@al-ft/midgard-core/lucid-data";
@@ -17,6 +17,4 @@ import "./field-walk.js";
 import "./scan.js";
 import "./submit-step-02.require-step02.js";
 import "./submit-step-02.submit-min-ada-tx-step02.js";
-import "./submit-step-02.submit-min-ada-utxo-step02.js";
 export { submitMinAdaTxStep02 } from "./submit-step-02.submit-min-ada-tx-step02.js";
-export { submitMinAdaUtxoStep02 } from "./submit-step-02.submit-min-ada-utxo-step02.js";

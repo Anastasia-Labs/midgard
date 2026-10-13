@@ -1,16 +1,17 @@
-import { decodeMidgardLedgerOutputCommitment } from "@al-ft/midgard-core";
 import { asDataType } from "@al-ft/midgard-core/lucid-data";
 import { MinAdaOutputScanControlSchema } from "@al-ft/midgard-sdk";
 import {
   MinAdaStep03DatumSchema,
   MinAdaStep03SpendRedeemerSchema,
   MinAdaStep04DatumSchema,
-  MinAdaStep05DatumSchema,
   requireInputIndex,
   requireOwnSpendPurpose,
   requireUniqueOutputIndex,
 } from "@al-ft/midgard-sdk";
-import { outputMeetsMinAda } from "@al-ft/midgard-validation";
+import {
+  MIDGARD_COINS_PER_UTXO_BYTE,
+  outputMeetsMinAda,
+} from "@al-ft/midgard-validation";
 import {
   type BuildTxWithRedeemer,
   Data,
@@ -42,19 +43,35 @@ type Step03Datum = Data.Static<typeof MinAdaStep03DatumSchema>;
 const Step03Datum = asDataType<Step03Datum>(MinAdaStep03DatumSchema);
 type Step04Datum = Data.Static<typeof MinAdaStep04DatumSchema>;
 const Step04Datum = asDataType<Step04Datum>(MinAdaStep04DatumSchema);
-type Step05Datum = Data.Static<typeof MinAdaStep05DatumSchema>;
-const Step05Datum = asDataType<Step05Datum>(MinAdaStep05DatumSchema);
 type Redeemer = Data.Static<typeof MinAdaStep03SpendRedeemerSchema>;
 const Redeemer = asDataType<Redeemer>(MinAdaStep03SpendRedeemerSchema);
 
+/**
+ * Whether the authenticated descriptor carries the fault step 03 adjudicates in
+ * its direction: an accepted output below the floor (direction 0), or a
+ * rejected one that meets it (direction 1). The floor is Midgard's L2 rate,
+ * the deployment constant step 03 compiles (`env.coins_per_utxo_byte`), never
+ * the L1 protocol parameter.
+ */
+export const minAdaDescriptorIsFault = (facts: {
+  readonly direction: bigint;
+  readonly total_length: bigint;
+  readonly lovelace: bigint;
+}): boolean =>
+  outputMeetsMinAda(
+    MIDGARD_COINS_PER_UTXO_BYTE,
+    facts.total_length,
+    facts.lovelace,
+  ) ===
+  (facts.direction === 1n);
+
 /** Applies the exact release-bound min-Ada predicate to the authenticated descriptor. */
-export const submitMinAdaUtxoStep03 = async ({
+export const submitMinAdaStep03 = async ({
   lucid,
   contracts,
   categoryId,
   signer,
   threadOutRef,
-  coinsPerUtxoByte,
   outputItemCbors,
   referenceScriptUtxo,
   preSubmitBoundary,
@@ -66,7 +83,6 @@ export const submitMinAdaUtxoStep03 = async ({
   readonly categoryId: string;
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
-  readonly coinsPerUtxoByte: bigint;
   readonly outputItemCbors?: readonly string[];
   readonly referenceScriptUtxo: UTxO;
   readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
@@ -223,13 +239,12 @@ export const submitMinAdaUtxoStep03 = async ({
       if (!awaitConfirmation)
         return { txHash, nextThreadOutRef: cursor, nextStepIndex: 2 };
       if (terminal)
-        return submitMinAdaUtxoStep03({
+        return submitMinAdaStep03({
           lucid,
           contracts,
           categoryId,
           signer,
           threadOutRef: cursor,
-          coinsPerUtxoByte,
           referenceScriptUtxo,
           preSubmitBoundary,
           awaitConfirmation,
@@ -240,28 +255,10 @@ export const submitMinAdaUtxoStep03 = async ({
       scanState = nextState.MinAdaTxScan;
     }
   }
-  const facts =
-    "MinAdaTxDescriptor" in state
-      ? state.MinAdaTxDescriptor
-      : (() => {
-          const descriptor = decodeMidgardLedgerOutputCommitment(
-            Buffer.from(state.MinAdaUtxoDescriptor.descriptor_cbor, "hex"),
-          );
-          return {
-            total_length: BigInt(descriptor.totalLength),
-            lovelace: descriptor.lovelace,
-          };
-        })();
+  const facts = state.MinAdaTxDescriptor;
   if (
-    coinsPerUtxoByte <= 0n ||
-    (!unsafeSkipLocalViolationCheckForTest &&
-      outputMeetsMinAda(
-        coinsPerUtxoByte,
-        facts.total_length,
-        facts.lovelace,
-      ) !==
-        ("MinAdaTxDescriptor" in state &&
-          state.MinAdaTxDescriptor.direction === 1n))
+    !unsafeSkipLocalViolationCheckForTest &&
+    !minAdaDescriptorIsFault(facts)
   ) {
     throw new Error(
       `${label}: authenticated descriptor does not violate min-Ada`,
@@ -274,26 +271,11 @@ export const submitMinAdaUtxoStep03 = async ({
     family: FAMILY,
     stepIndex,
   });
-  const isTx = "MinAdaTxDescriptor" in state;
-  const nextDatum = isTx
-    ? Data.to(
-        {
-          fraud_prover: signer.paymentKeyHash,
-          data: "PredicateAndCulpabilityAuthenticated",
-        },
-        Step05Datum,
-      )
-    : Data.to(
-        {
-          fraud_prover: signer.paymentKeyHash,
-          data: {
-            out_ref_key: state.MinAdaUtxoDescriptor.out_ref_key,
-            prev_utxos_root: state.MinAdaUtxoDescriptor.prev_utxos_root,
-          },
-        },
-        Step04Datum,
-      );
-  const nextStepIndex = isTx ? 4 : 3;
+  const nextDatum = Data.to(
+    { fraud_prover: signer.paymentKeyHash, data: "PredicateAuthenticated" },
+    Step04Datum,
+  );
+  const nextStepIndex = 3;
   const outputMatches = computationThreadOutputPredicate({
     address: contracts.steps[nextStepIndex].spendingScriptAddress,
     datum: nextDatum,

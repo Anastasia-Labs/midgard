@@ -8,8 +8,6 @@ use midgard/fraud_proofs/min_ada/step_02.{Datum, SpendRedeemer}
 
 pub const tx_role = "V1FpMinAdaS02TxYield"
 
-pub const utxo_role = "V1FpMinAdaS02UtxoYield"
-
 /// Resolve the one min-Ada step-02 spend delegated to this rewarding purpose.
 /// Requiring a singleton prevents one withdrawal from discharging multiple
 /// otherwise-compatible computation threads in the same transaction.

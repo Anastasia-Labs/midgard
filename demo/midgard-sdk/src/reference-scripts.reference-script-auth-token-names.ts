@@ -542,11 +542,9 @@ export const REFERENCE_SCRIPT_AUTH_TOKEN_NAMES = {
   "V1 fraud-proof transition-trace final-5 summaries yield":
     "V1FpTtF5SummariesYield",
 
-  "V1 fraud-proof min-ada step-02 UTxO yield": "V1FpMinAdaS02UtxoYield",
   "correction-lock spending": "CorrectionLockSpend",
   "V1 fraud-proof min-ada step-03": "V1FpMinAdaS03",
   "V1 fraud-proof min-ada step-04": "V1FpMinAdaS04",
-  "V1 fraud-proof min-ada step-05": "V1FpMinAdaS05",
   "V1 fraud-proof field-preimage-length-mismatch step-01": "V1FpFieldLenS01",
   "V1 fraud-proof field-preimage-length-mismatch step-02 accepted":
     "V1FpFieldLenS02Accepted",

@@ -54,13 +54,13 @@ import { describe, expect, it } from "vitest";
 
 import {
   certifyFaultProofFieldCarriage,
+  planFaultProofFieldOpening,
   publishFaultProofFieldCarriage,
 } from "../src/field-opening.js";
 import {
   NETWORK_ID_FORCED_CERTIFIED_SCAN_DRIVER_BATCH,
   NETWORK_ID_FORCED_GRAMMAR_DRIVER_BATCH,
   networkIdWrongfulRejectionCloses,
-  planNetworkIdOutputsOpening,
 } from "../src/network-id/index.js";
 import { buildCountedRoot } from "../src/transition-trace/phas.js";
 import {
@@ -487,15 +487,15 @@ describe("networkId wrongful-rejection real lifecycle", () => {
       const transaction = forcedTransactionAt({
         outputNetworkIds: Array.from({ length: count }, () => 0),
       });
-      return planNetworkIdOutputsOpening({
-        prepared: {
-          badTxId: transaction.transactionId,
-          nativeTxCompactCbor: transaction.source.compact_cbor,
-          outputsItemCbors: transaction.outputs.map((o) => o.toString("hex")),
-          faultClaim: { kind: "forced-network-mismatch" },
-        } as never,
+      return planFaultProofFieldOpening({
+        anchorSourceKind: 1n,
+        fieldIndex: 2,
+        anchorTxId: transaction.transactionId,
+        nativeTxCompactCbor: transaction.source.compact_cbor,
+        itemCbors: transaction.outputs,
         owner,
         publish: true,
+        label: "network-id forced output tier boundary",
       }).plan.tier;
     };
     let low = 1;

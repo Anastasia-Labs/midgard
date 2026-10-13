@@ -522,10 +522,13 @@ committed program _envelope itself_ is malformed.
   unrepresentable in canonical typed values; malformed encodings are handled at
   raw/canonicality boundaries. They do not require semantic categories for
   impossible typed statements.
-- **Post-state UTxO network ID:** the `networkId` family now includes
-  `OutputNetworkUtxo` and its SDK workflow, so the earlier post-state-output gap
-  is closed in current source
-  ([fault type](../../onchain/aiken/lib/midgard/fraud-proofs/network-id/step-01.ak#L13-L20)).
+- **Post-state UTxO network ID and minimum Ada:** not separate categories. Every
+  output that enters the ledger comes from an accepted transaction, either a
+  normal `TxIsValid` transaction or a `ForcedTxValid` forced leaf, and the
+  `networkId` and `minAda` families check those outputs at the transaction
+  level. Deposits are projected faithfully under `transitionTrace`, and genesis
+  is empty
+  ([fault type](../../onchain/aiken/lib/midgard/fraud-proofs/network-id/step-01.ak)).
 - **Deployment and acceptance gaps:** missing Preprod evidence, transaction fit,
   economics, and public-data retrieval remain release blockers tracked by the
   testing and execution documents. They are not additional protocol categories

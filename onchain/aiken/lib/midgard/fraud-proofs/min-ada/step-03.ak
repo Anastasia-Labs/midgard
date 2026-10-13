@@ -1,6 +1,6 @@
-//// Q27 min-Ada UTxO predicate step. The preceding step authenticated the
-//// exact post-root descriptor; this step applies the compiled production
-//// min-Ada predicate without carrying another MPF opening.
+//// Q27 min-Ada predicate step. The preceding step opened the claimed output;
+//// this step scans it to its descriptor and applies the compiled production
+//// min-Ada predicate.
 
 use midgard/computation_thread as ct
 use midgard/fraud_proofs/transaction_output_non_canonical/rule.{
@@ -10,11 +10,6 @@ use midgard/fraud_proofs/transaction_output_non_canonical/rule.{
 pub type State {
   MinAdaTxScan { direction: Int, scan: OutputScanStateV1 }
   MinAdaTxDescriptor { direction: Int, total_length: Int, lovelace: Int }
-  MinAdaUtxoDescriptor {
-    descriptor_cbor: ByteArray,
-    out_ref_key: ByteArray,
-    prev_utxos_root: ByteArray,
-  }
 }
 
 pub type Args {

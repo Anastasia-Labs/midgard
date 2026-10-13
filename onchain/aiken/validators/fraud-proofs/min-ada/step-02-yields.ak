@@ -1,26 +1,17 @@
 use aiken/collection/list
 use aiken/crypto.{ScriptHash}
-use aiken/primitive/bytearray
 use cardano/address.{Credential, Script}
 use cardano/assets.{PolicyId}
 use cardano/transaction.{InlineDatum, Transaction}
 use midgard/computation_thread as ct
-use midgard/fraud_proofs/chunked_inclusion_v1.{
-  published_chunk_membership_four_chunks,
-}
-use midgard/fraud_proofs/common.{
-  PublishedChunkMembership, RedeemerCarriedMembership, verify_membership_carried,
-}
 use midgard/fraud_proofs/field_opening_v1.{BodyAnchor, outputs_field_index}
 use midgard/fraud_proofs/field_opening_v1 as opening
-use midgard/fraud_proofs/min_ada/step_01.{MinAdaTx, MinAdaUtxo}
+use midgard/fraud_proofs/min_ada/step_01.{MinAdaTx}
 use midgard/fraud_proofs/min_ada/step_02.{Args, State, YieldRedeemer}
 use midgard/fraud_proofs/min_ada/step_03 as step_03
 use midgard/fraud_proofs/min_ada/yield.{unique_dispatch}
 use midgard/fraud_proofs/proof_thread_substrate_v1 as substrate
 use midgard/fraud_proofs/transaction_output_non_canonical/rule as scan_rule
-use midgard/fraud_proofs/transition_trace/proof.{ledger_outref_key}
-use midgard/ledger_output_commitment_v1
 use midgard/native_tx_machine_walk_v1 as walk
 
 validator tx(
@@ -43,17 +34,16 @@ validator tx(
           input_index: _,
           output_index,
           yield_to_ref_input_index: _,
-          outputs_opening: Some(opening),
-          post_membership: None,
+          outputs_opening: opening,
           grammar_checkpoint_bytes,
           walk_checkpoint_bytes,
         })
       = spend_redeemer
     expect Some(state) = step_datum.data
-    expect MinAdaTx { output_index: bad_output_index } = state.fault
+    let MinAdaTx { output_index: bad_output_index } = state.fault
     let anchor = BodyAnchor {
       tx_id: state.bad_tx_id,
-      source_kind: state.direction,
+      source_kind: state.source_kind,
     }
     expect Some(next_output) = outputs |> list.at(output_index)
     expect InlineDatum(next_datum_data) = next_output.datum
@@ -153,69 +143,6 @@ validator tx(
         }
         output_state == expected
       }
-    }
-  }
-
-  else(_) {
-    fail
-  }
-}
-
-validator utxo(dispatcher_script_hash: ScriptHash) {
-  withdraw(
-    _yield_redeemer: YieldRedeemer,
-    _credential: Credential,
-    transaction: Transaction,
-  ) {
-    let Transaction { inputs, outputs, reference_inputs, redeemers, .. } = transaction
-    let (step_datum, spend_redeemer, _own_out_ref) = unique_dispatch(
-      dispatcher_script_hash,
-      inputs,
-      redeemers,
-    )
-    expect
-        ct.Continue(Args {
-          input_index: _,
-          output_index,
-          yield_to_ref_input_index: _,
-          outputs_opening: None,
-          post_membership: Some(membership),
-          ..
-        })
-      = spend_redeemer
-    expect Some(state) = step_datum.data
-    expect MinAdaUtxo = state.fault
-    expect Some(post) = state.post_utxo
-    expect
-      ledger_output_commitment_v1.decode(post.descriptor_cbor).output_index == post.out_ref.output_index
-    expect Some(next_output) = outputs |> list.at(output_index)
-    expect InlineDatum(next_datum_data) = next_output.datum
-    expect next_datum: ct.StepDatum<step_03.State> = next_datum_data
-    expect Some(output_state) = next_datum.data
-    expect
-      output_state == step_03.MinAdaUtxoDescriptor {
-        descriptor_cbor: post.descriptor_cbor,
-        out_ref_key: ledger_outref_key(post.out_ref),
-        prev_utxos_root: post.prev_utxos_root,
-      }
-    when membership is {
-      RedeemerCarriedMembership { .. } ->
-        verify_membership_carried(
-          membership,
-          post.post_utxos_root,
-          ledger_outref_key(post.out_ref),
-          post.descriptor_cbor,
-          reference_inputs,
-          redeemers,
-        )
-      PublishedChunkMembership(published) ->
-        published_chunk_membership_four_chunks(
-          reference_inputs,
-          published,
-          post.post_utxos_root,
-          ledger_outref_key(post.out_ref),
-          post.descriptor_cbor,
-        )
     }
   }
 

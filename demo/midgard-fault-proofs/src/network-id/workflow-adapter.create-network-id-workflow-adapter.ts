@@ -46,6 +46,7 @@ import {
   workflowTransactionInputOutRefs,
   workflowTransactionReferenceInputOutRefs,
 } from "../workflow/transaction-boundary.js";
+import type { PreparedNetworkIdAcceptedForced } from "./accepted-forced.js";
 import {
   type NetworkIdForcedScanStep,
   networkIdForcedScanStepForState,
@@ -55,8 +56,8 @@ import {
 import {
   planNetworkIdOutputsOpening,
   type PreparedNetworkIdProof,
-  prepareNetworkIdFromCanonicalEvidence,
 } from "./prepare.js";
+import { submitNetworkIdAcceptedForcedBind } from "./submit-network-id-accepted-forced-bind.js";
 import { submitNetworkIdForcedBind } from "./submit-network-id-forced-bind.js";
 import { submitNetworkIdForcedScanAction } from "./submit-network-id-forced-scan.js";
 import { submitNetworkIdForcedStep01 } from "./submit-network-id-forced-step-01.js";
@@ -68,7 +69,6 @@ import {
   type AdmittedNetworkIdArtifact,
   confirmedTxHash,
   latestRemovalIntent,
-  networkIdForcedArtifactFromPrepared,
   parseMutationLeaseRecovery,
 } from "./workflow-adapter.admit-network-id-forced-artifact.js";
 import {
@@ -76,11 +76,11 @@ import {
   recoverMutationLease,
 } from "./workflow-adapter.create-network-id-raw-l1-observation-port.js";
 import { createNetworkIdForcedStepContract } from "./workflow-adapter.forced-step-contract.js";
+import { prepareNetworkIdWorkflowArtifact } from "./workflow-adapter.prepare-artifact.js";
 import {
   action,
   type ActionKind,
   actionKind,
-  artifactFromPrepared,
   CATEGORY,
   contentActionId,
   forcedScanKindFor,
@@ -88,12 +88,7 @@ import {
   requireString,
   type WorkflowContext,
 } from "./workflow-adapter.prepared-from-artifact.js";
-import {
-  createNetworkIdWrongfulRejectionPlanner,
-  detectNetworkIdWrongfulRejections,
-  NETWORK_ID_WRONGFUL_REJECTION_VIOLATION_ID,
-  type PreparedNetworkIdWrongfulRejection,
-} from "./wrongful-rejection.js";
+import { type PreparedNetworkIdWrongfulRejection } from "./wrongful-rejection.js";
 
 /**
  * Concrete last-header adapter. It captures the actual signed transaction at
@@ -217,7 +212,7 @@ export const createNetworkIdWorkflowAdapter = (
     readonly admitted: AdmittedNetworkIdArtifact;
     readonly kind: ActionKind;
   }): Promise<boolean> => {
-    if (admitted.direction !== "forced") return false;
+    if (admitted.direction === "accepted") return false;
     if (kind !== "init" && kind !== "forced_step01" && kind !== "forced_bind") {
       return false;
     }
@@ -355,7 +350,8 @@ export const createNetworkIdWorkflowAdapter = (
   }: {
     readonly prepared:
       | PreparedNetworkIdProof
-      | PreparedNetworkIdWrongfulRejection;
+      | PreparedNetworkIdWrongfulRejection
+      | PreparedNetworkIdAcceptedForced;
     readonly publications: readonly UTxO[];
     readonly certificate?: UTxO;
   }): Promise<void> => {
@@ -710,7 +706,7 @@ export const createNetworkIdWorkflowAdapter = (
       return {
         kind: "action_required",
         action:
-          admitted.direction === "forced"
+          admitted.direction !== "accepted"
             ? action("forced_step01", { threadOutRef: step01OutRef })
             : action("step01", {
                 threadOutRef: step01OutRef,
@@ -718,7 +714,7 @@ export const createNetworkIdWorkflowAdapter = (
               }),
       };
     }
-    if (admitted.direction === "forced") {
+    if (admitted.direction !== "accepted") {
       const forcedOutRef = await forcedThreadOutRef(prepared.headerHash);
       if (forcedOutRef !== undefined) {
         return {
@@ -749,35 +745,11 @@ export const createNetworkIdWorkflowAdapter = (
         { readonly decision: "fault_detected" }
       >;
     }): Promise<JournalJsonObject> => {
-      if (
-        classification?.category === CATEGORY &&
-        classification.selected.violationId ===
-          NETWORK_ID_WRONGFUL_REJECTION_VIOLATION_ID
-      ) {
-        const expectedNetworkId = config.contracts.expectedNetworkId;
-        const detections = detectNetworkIdWrongfulRejections({
-          block: evidence,
-          expectedNetworkId,
-        });
-        if (
-          detections[0]?.detectionId !== classification.selected.detectionId
-        ) {
-          throw new Error(
-            "network-id forced classification does not select the earliest authenticated wrongful rejection",
-          );
-        }
-        return networkIdForcedArtifactFromPrepared(
-          await createNetworkIdWrongfulRejectionPlanner(expectedNetworkId)({
-            block: evidence,
-          }),
-        ) as unknown as JournalJsonObject;
-      }
-      return artifactFromPrepared(
-        await prepareNetworkIdFromCanonicalEvidence({
-          evidence,
-          expectedNetworkId: config.contracts.expectedNetworkId,
-        }),
-      );
+      return await prepareNetworkIdWorkflowArtifact({
+        evidence,
+        classification,
+        expectedNetworkId: config.contracts.expectedNetworkId,
+      });
     },
     observe,
     preflight: async (context): Promise<FraudProofWorkflowPreflight> => {
@@ -837,7 +809,7 @@ export const createNetworkIdWorkflowAdapter = (
           return;
         }
         if (kind === "forced_step01") {
-          if (admitted.direction !== "forced") {
+          if (admitted.direction === "accepted") {
             throw new Error(
               "network-id accepted artifact cannot enter the forced step-01 handover",
             );
@@ -860,12 +832,12 @@ export const createNetworkIdWorkflowAdapter = (
           return;
         }
         if (kind === "forced_bind") {
-          if (admitted.direction !== "forced") {
+          if (admitted.direction === "accepted") {
             throw new Error(
               "network-id accepted artifact cannot enter the forced door",
             );
           }
-          await submitNetworkIdForcedBind({
+          const args = {
             lucid: config.lucid,
             contracts: config.contracts,
             categoryId: config.category.categoryId,
@@ -874,11 +846,21 @@ export const createNetworkIdWorkflowAdapter = (
               context.action.input.threadOutRef,
               "forced-step thread out-ref",
             ),
-            prepared: admitted.prepared,
             referenceScriptUtxo: requireForcedStepReferenceScript(),
             preSubmitBoundary: boundary,
             awaitConfirmation: false,
-          });
+          };
+          if (admitted.direction === "accepted_forced") {
+            await submitNetworkIdAcceptedForcedBind({
+              ...args,
+              prepared: admitted.prepared,
+            });
+          } else {
+            await submitNetworkIdForcedBind({
+              ...args,
+              prepared: admitted.prepared,
+            });
+          }
           return;
         }
         if (isForcedScanKind(kind)) {

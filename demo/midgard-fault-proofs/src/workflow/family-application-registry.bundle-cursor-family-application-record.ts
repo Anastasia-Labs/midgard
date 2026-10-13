@@ -195,17 +195,13 @@ export const WITHDRAWAL_MISTAG_FAMILY_APPLICATION_RECORD =
     execute: runOrResumeManifestBoundWithdrawalMistagWorkflow,
   });
 
-/**
- * Min-ADA replays the challenged block against its authenticated predecessor,
- * read from the classifier-admitted replay context.
- */
 export const MIN_ADA_FAMILY_APPLICATION_RECORD =
   bundleCursorFamilyApplicationRecord<
     "minAda",
     ManifestBoundMinAdaWorkflowConfig,
     ManifestBoundMinAdaWorkflow
   >(MIN_ADA_FAMILY_DEFINITION, {
-    requires: ["replayContext"],
+    requires: [],
     auxiliaryReferenceScriptsKey: "yields",
     constructWorkflow: createManifestBoundMinAdaWorkflow,
     execute: runOrResumeManifestBoundMinAdaWorkflow,

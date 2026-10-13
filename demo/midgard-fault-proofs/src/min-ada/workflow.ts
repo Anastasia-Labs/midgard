@@ -1,7 +1,6 @@
 import "@al-ft/midgard-core";
 import "@al-ft/midgard-core/codec/forced";
 import "@al-ft/midgard-sdk";
-import "../evidence/canonical-block-evidence.js";
 import "../field-opening.js";
 import "../inspect-contracts.js";
 import "../publish-proof-chunks.js";
@@ -20,7 +19,6 @@ import "./submit-step-01.js";
 import "./submit-step-02.js";
 import "./submit-step-03.js";
 import "./submit-step-04.js";
-import "./submit-step-05.js";
 import "./workflow-spec.js";
 import "./workflow.resolve-field.js";
 import "./workflow.transaction-port.js";

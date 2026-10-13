@@ -13,7 +13,7 @@ import { missingSignatureVkeyHash } from "@al-ft/midgard-sdk";
 
 import type { PreparedNativeScriptInvalid } from "../../src/native-script-invalid/prepare.js";
 import { nativeTxFromCoreCompact } from "../../src/step-support.js";
-import { nativeWitnessSet } from "./final-catalogue-emulator.build-min-ada-post-utxo-emulator-fixture.js";
+import { nativeWitnessSet } from "./final-catalogue-emulator.build-min-ada-tx-emulator-fixture.js";
 import {
   l2TransactionSourceCbor as l2TransactionSourceCborV1,
   makeNativeTx,

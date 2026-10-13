@@ -41,6 +41,7 @@ import {
   buildFixtureTransaction,
   outRefCbor,
 } from "./helpers/canonical-block-evidence-fixture.js";
+import { retainedDaSource } from "./helpers/header-classifier.retained-da-source.js";
 import { fixtureLedgerAt } from "./support/fixture-ledger.js";
 
 const DEPLOYMENT_FINGERPRINT = "d1".repeat(32);
@@ -57,31 +58,6 @@ const finalityAuthority = (): FraudProofReleaseFinalityAuthority => ({
     ),
     policy: RELEASE_FINALITY_POLICY,
   }),
-});
-
-const retainedDaSource = ({
-  payloadEnvelopeCbor,
-  fetched,
-}: {
-  readonly payloadEnvelopeCbor: Buffer;
-  readonly fetched: { count: number };
-}): RetainedDaPayloadSource => ({
-  sourceId: "libp2p",
-  fetchPayloadByHeaderHash: async () => {
-    fetched.count += 1;
-    return {
-      ok: true,
-      provenance: {
-        trustClass: "public_or_permissionless_da",
-        sourceId: "libp2p/peer-a",
-        grade: "security",
-      },
-      sourceId: "libp2p",
-      sourcePeerId: "peer-a",
-      payloadEnvelopeCbor,
-      attempts: [],
-    };
-  },
 });
 
 describe("production authenticated-header classifier V1", () => {
@@ -513,6 +489,8 @@ describe("production authenticated-header classifier V1", () => {
     });
     expect(admitted.decision).toBe("healthy");
     expect(headerDecisionReplayContext(admitted)?.predecessor).toBeDefined();
-    expect(fetched.count).toBe(4);
+    // The first attempt reads the current payload once; the admitted attempt
+    // reads current and predecessor payloads. No post-ledger fetch is needed.
+    expect(fetched.count).toBe(3);
   });
 });

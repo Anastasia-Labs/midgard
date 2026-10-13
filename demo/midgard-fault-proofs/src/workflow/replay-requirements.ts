@@ -4,7 +4,7 @@ import type { FraudProofCatalogueCategoryName } from "@al-ft/midgard-sdk";
  * Families whose proof replays the challenged block against the ledger its
  * header commits as `prev_utxos_root`: a predecessor membership or
  * non-membership proof is part of the artifact (nonExistentInput,
- * noReferenceInput, minAda), or the replay resolves spent and referenced
+ * noReferenceInput), or the replay resolves spent and referenced
  * outputs from that ledger (resolvedOutputNonCanonical, spendInputSignerMissing,
  * transitionTrace). The classifier must hold the
  * authenticated predecessor before it issues a fault decision for a header
@@ -19,7 +19,6 @@ import type { FraudProofCatalogueCategoryName } from "@al-ft/midgard-sdk";
 export const PREDECESSOR_LEDGER_PROOF_CATEGORIES = Object.freeze([
   "nonExistentInput",
   "noReferenceInput",
-  "minAda",
   "resolvedOutputNonCanonical",
   "spendInputSignerMissing",
   "transitionTrace",

@@ -68,8 +68,12 @@ export const submitMinAdaStep01Forced = async ({
   readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
 }) => {
-  if (state.direction !== 1n)
-    throw new Error("minAda: expected exact wrongful rejection subject");
+  if (
+    state.source_kind !== 1n ||
+    state.direction !== forcedSource.direction ||
+    (state.direction !== 0n && state.direction !== 1n)
+  )
+    throw new Error("minAda: expected an exact forced verdict subject");
   const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxo({
     lucid,
     contracts,
@@ -109,7 +113,6 @@ export const submitMinAdaStep01Forced = async ({
           {
             fault: state.fault,
             tx_inclusion: null,
-            post_utxo_membership: null,
             forced_source: {
               ...forcedSource,
               input_index: requireInputIndex(ctx, threadUtxo, "min-ada"),

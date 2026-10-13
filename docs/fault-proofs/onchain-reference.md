@@ -45,12 +45,12 @@ for accepted-invalid evidence, true for wrongful forced rejection. Tests live in
 
 ### `min-ada` (`0000001f`)
 
-Five spending steps and two authenticated rewarding-script yields support
-transaction-output and post-UTxO violation shapes. They use
+Four spending steps and one authenticated rewarding-script yield support the
+transaction-output violation shape, for accepted normal transactions and
+accepted (`ForcedTxValid`) forced leaves alike. They use
 the same canonical minimum-Ada function and production parameter snapshot as
-the validation machine, authenticate membership/non-membership as required,
-and reject exact-floor or inherited-underfunding false accusations on the
-accepted-invalid route. Wrongful forced `OutputBelowMinAda` rejection instead
+the validation machine, authenticate the transaction or forced-leaf membership,
+and reject exact-floor false accusations on the accepted-invalid route. Wrongful forced `OutputBelowMinAda` rejection instead
 requires sufficiency, including the exact floor, at the authenticated output
 index. Tests live
 in `family-v1.test.ak`.

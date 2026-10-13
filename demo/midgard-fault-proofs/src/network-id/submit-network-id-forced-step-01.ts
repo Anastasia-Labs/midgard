@@ -17,6 +17,7 @@ import type { ResolvedProverSigner } from "../runtime.js";
 import { requireInitialStepDatum } from "../step-support.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
 import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary.js";
+import type { PreparedNetworkIdAcceptedForced } from "./accepted-forced.js";
 import type { NetworkIdContracts } from "./contracts.js";
 import {
   requireNetworkIdReferenceScript,
@@ -40,13 +41,25 @@ export const submitNetworkIdForcedStep01 = async ({
   readonly categoryId: string;
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
-  readonly prepared: PreparedNetworkIdWrongfulRejection;
+  readonly prepared:
+    | PreparedNetworkIdWrongfulRejection
+    | PreparedNetworkIdAcceptedForced;
   readonly referenceScriptUtxo: UTxO;
   readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
 }) => {
   if (prepared.expectedNetworkId !== contracts.expectedNetworkId)
     throw new Error("networkId: forced evidence targets another deployment");
+  // A rejected leaf travels as the `ForcedNetworkIdMismatch` marker; an
+  // accepted one carries its own body or output claim to the forced door.
+  const fault = prepared.fault;
+  if (
+    (prepared.forcedSource.direction === 1n) !==
+      (fault === "ForcedNetworkIdMismatch") ||
+    (typeof fault === "object" &&
+      (!("OutputNetwork" in fault) || fault.OutputNetwork.output_index < 0n))
+  )
+    throw new Error("networkId: forced claim does not match its verdict");
   const { threadUtxo, threadToken } = await requireNetworkIdThreadUtxo({
     lucid,
     contracts,
@@ -64,10 +77,10 @@ export const submitNetworkIdForcedStep01 = async ({
   const forcedStep = contracts.forcedStep;
   if (forcedStep === undefined)
     throw new Error("networkId: forced binding step is not deployed");
-  // The forced door authenticates this marker as its input state; step 01
+  // The forced door authenticates this claim as its input state; step 01
   // refuses any other successor state (see `pass_forced_claim` on chain).
   const datum = Data.to(
-    { fraud_prover: signer.paymentKeyHash, data: "ForcedNetworkIdMismatch" },
+    { fraud_prover: signer.paymentKeyHash, data: fault },
     NetworkIdForcedStepDatum,
   );
   const outputMatches = computationThreadOutputPredicate({
@@ -88,7 +101,6 @@ export const submitNetworkIdForcedStep01 = async ({
         Continue: [
           {
             tx_inclusion: null,
-            post_utxo_membership: null,
             forced_source: {
               input_index: requireInputIndex(
                 ctx,
@@ -97,7 +109,7 @@ export const submitNetworkIdForcedStep01 = async ({
               ),
               output_index: outputIndex,
             },
-            fault: "ForcedNetworkIdMismatch" as const,
+            fault,
           },
         ],
       } as never,

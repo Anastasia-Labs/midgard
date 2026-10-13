@@ -1,4 +1,4 @@
-/** Bind Q27's accepted transaction or challenged post-block UTxO roots. */
+/** Bind Q27's accepted transaction to the challenged header. */
 import { asDataType } from "@al-ft/midgard-core/lucid-data";
 import {
   getHeaderFromStateQueueDatum,
@@ -51,14 +51,13 @@ import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scr
 import {
   type FraudProofPreSubmitBoundary,
   reachFraudProofPreSubmitBoundary,
-  workflowReferenceScript,
   workflowReferenceScriptsUsedByTransaction,
 } from "../workflow/transaction-boundary.js";
 import {
   MIN_ADA_CATEGORY_LABEL as FAMILY,
   type MinAdaContracts,
 } from "./contracts.js";
-import type { PreparedMinAdaTx, PreparedMinAdaUtxo } from "./prepare.js";
+import type { PreparedMinAdaTx } from "./prepare.js";
 
 type Step02Datum = Data.Static<typeof MinAdaStep02DatumSchema>;
 const Step02Datum = asDataType<Step02Datum>(MinAdaStep02DatumSchema);
@@ -67,25 +66,14 @@ const Step01Redeemer = asDataType<Step01Redeemer>(
   MinAdaStep01SpendRedeemerSchema,
 );
 
-const stepState = (prepared: PreparedMinAdaTx | PreparedMinAdaUtxo) => ({
+const stepState = (prepared: PreparedMinAdaTx) => ({
   grammar_checkpoint_hash: "",
   grammar_complete: false,
   walk_checkpoint_hash: "",
   direction: 0n,
-  bad_tx_id:
-    prepared.kind === "min-ada-tx"
-      ? prepared.badTxId
-      : prepared.outRef.transactionId,
+  source_kind: 0n,
+  bad_tx_id: prepared.badTxId,
   fault: prepared.fault,
-  post_utxo:
-    prepared.kind === "min-ada-tx"
-      ? null
-      : {
-          out_ref: prepared.outRef,
-          descriptor_cbor: prepared.descriptorCbor,
-          post_utxos_root: prepared.postUtxosRoot,
-          prev_utxos_root: prepared.prevUtxosRoot,
-        },
 });
 
 const resolveAnchors = async ({
@@ -244,7 +232,6 @@ export const submitMinAdaTxStep01 = async ({
                 `${label} state-queue block`,
               ),
             }),
-            post_utxo_membership: null,
             fault: prepared.fault,
           },
         ],
@@ -306,141 +293,4 @@ export const submitMinAdaTxStep01 = async ({
     proofCarriage:
       publishedProofChunks.length === 0 ? "redeemer" : "published-chunks",
   } as const;
-};
-
-export const submitMinAdaUtxoStep01 = async ({
-  lucid,
-  contracts,
-  categoryId,
-  network,
-  signer,
-  threadOutRef,
-  stateQueueBlockOutRef,
-  prepared,
-  referenceScriptUtxo,
-  preSubmitBoundary,
-  awaitConfirmation = true,
-}: Omit<Common, "blueprint" | "witnessReferenceScripts"> & {
-  readonly prepared: PreparedMinAdaUtxo;
-}) => {
-  const stepIndex = 0;
-  const label = `${linearFaultStepLabel(FAMILY, stepIndex)} post-UTxO`;
-  const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxo({
-    lucid,
-    contracts,
-    categoryId,
-    family: FAMILY,
-    stepIndex,
-    threadOutRef,
-  });
-  requireLinearFaultInitialDatum({ threadUtxo, signer, family: FAMILY });
-  if (threadToken.fraudulentHeaderHash !== prepared.headerHash) {
-    throw new Error(`${label}: prepared header does not match thread token`);
-  }
-  const anchors = await resolveAnchors({
-    lucid,
-    contracts,
-    network,
-    stateQueueBlockOutRef,
-    expectedHeaderHash: prepared.headerHash,
-  });
-  if (
-    anchors.header.utxosRoot !== prepared.postUtxosRoot ||
-    anchors.header.prevUtxosRoot !== prepared.prevUtxosRoot
-  ) {
-    throw new Error(`${label}: prepared roots do not match challenged header`);
-  }
-  const stepReference = requireLinearFaultReferenceScript({
-    utxo: referenceScriptUtxo,
-    expectedScriptHash: contracts.steps[stepIndex].spendingScriptHash,
-    family: FAMILY,
-    stepIndex,
-  });
-  const nextDatum = Data.to(
-    { fraud_prover: signer.paymentKeyHash, data: stepState(prepared) },
-    Step02Datum,
-  );
-  const outputMatches = computationThreadOutputPredicate({
-    address: contracts.steps[1].spendingScriptAddress,
-    datum: nextDatum,
-    unit: threadToken.unit,
-  });
-  let outputIndex: bigint | undefined;
-  const redeemer = ((ctx) => {
-    requireOwnSpendPurpose(ctx, threadUtxo, label);
-    const inputIndex = requireInputIndex(ctx, threadUtxo, label);
-    outputIndex = requireUniqueOutputIndex(ctx.outputs, outputMatches, label);
-    return Data.to(
-      {
-        Continue: [
-          {
-            forced_source: null,
-            tx_inclusion: null,
-            post_utxo_membership: {
-              input_index: inputIndex,
-              output_index: outputIndex,
-              hub_ref_input_index: requireReferenceInputIndex(
-                ctx,
-                anchors.hubOracleUtxo,
-                `${label} hub oracle`,
-              ),
-              state_queue_node_ref_input_index: requireReferenceInputIndex(
-                ctx,
-                anchors.stateQueueBlockUtxo,
-                `${label} state-queue block`,
-              ),
-              out_ref: prepared.outRef,
-              descriptor_cbor: prepared.descriptorCbor,
-            },
-            fault: prepared.fault,
-          },
-        ],
-      },
-      Step01Redeemer,
-    );
-  }) satisfies BuildTxWithRedeemer;
-  signer.selectWallet(lucid);
-  const unsigned = await lucid
-    .newTx()
-    .collectFrom([selectFeeInput(await lucid.wallet().getUtxos())])
-    .collectFrom([threadUtxo], redeemer)
-    .readFrom([
-      anchors.hubOracleUtxo,
-      anchors.stateQueueBlockUtxo,
-      stepReference,
-    ])
-    .pay.ToContract(
-      contracts.steps[1].spendingScriptAddress,
-      { kind: "inline", value: nextDatum },
-      {
-        lovelace: threadUtxo.assets.lovelace ?? 0n,
-        [threadToken.unit]: 1n,
-      },
-    )
-    .addSignerKey(signer.paymentKeyHash)
-    .complete({ localUPLCEval: true });
-  if (outputIndex === undefined) throw new Error(`${label}: unresolved layout`);
-  const signed = await unsigned.sign.withWallet().complete();
-  const expectedTxHash = await reachFraudProofPreSubmitBoundary({
-    signed,
-    referenceScripts: [
-      workflowReferenceScript({
-        role: label,
-        utxo: stepReference,
-        expectedScript: contracts.steps[stepIndex].spendingScript,
-      }),
-    ],
-    boundary: preSubmitBoundary,
-  });
-  const txHash = await signed.submit();
-  if (txHash !== expectedTxHash) throw new Error(`${label}: hash mismatch`);
-  if (awaitConfirmation) {
-    await lucid.awaitTx(txHash, DEFAULT_CONFIRMATION_POLL_MS);
-  }
-  return {
-    txHash,
-    nextThreadOutRef: `${txHash}#${outputIndex.toString()}`,
-    fraudulentHeaderHash: anchors.headerHash,
-    computationThreadUnit: threadToken.unit,
-  };
 };

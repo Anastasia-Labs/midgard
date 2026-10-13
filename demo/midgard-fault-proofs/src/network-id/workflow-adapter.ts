@@ -41,6 +41,11 @@ import "./workflow-adapter.seal-manifest-bound-network-id-runtime.js";
 import "./workflow-adapter.create-network-id-workflow-adapter.js";
 import "./workflow-adapter.create-manifest-bound-network-id-workflow.js";
 export {
+  admitNetworkIdAcceptedForcedArtifact,
+  networkIdAcceptedForcedArtifactFromPrepared,
+  type NetworkIdAcceptedForcedWorkflowArtifact,
+} from "./workflow-adapter.accepted-forced-artifact.js";
+export {
   admitNetworkIdForcedArtifact,
   admitNetworkIdWorkflowArtifact,
   type AdmittedNetworkIdArtifact,
