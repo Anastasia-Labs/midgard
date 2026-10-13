@@ -23,7 +23,7 @@
  * usage: node scripts/generate-forced-tx-admission-v1-goldens.mjs [--check]
  */
 
-import { dirname, join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { decodeMidgardTxOutput } from "../dist/codec/output.js";
@@ -62,12 +62,11 @@ const generatedJsonPath = join(
   packageRoot,
   "tests/fixtures/forced-tx-admission-v1.generated.json",
 );
-const aikenFileName = "forced-tx-admission-v1-golden.test.ak";
 const generatedAikenPath = join(
   repositoryRoot,
-  "onchain/aiken/lib/midgard/user-events",
-  aikenFileName,
+  "onchain/aiken/lib/midgard/user-events/forced-tx-admission-v1-golden.test.ak",
 );
+const aikenFileName = basename(generatedAikenPath);
 
 const { checkOnly } = parseGoldenChannelArguments(
   "usage: node scripts/generate-forced-tx-admission-v1-goldens.mjs [--check]",
