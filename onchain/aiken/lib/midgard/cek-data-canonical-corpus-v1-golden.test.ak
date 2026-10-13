@@ -3,6 +3,7 @@
 //// Do not edit; run `pnpm --dir demo/midgard-core run fixtures:cek-data-canonical-corpus-v1:sync`.
 
 use aiken/primitive/bytearray
+use midgard/canonical_plutus_data_v1
 use midgard/cek_data_v1
 use midgard/validation_machine_tests/data_traverse_driver
 
@@ -22,6 +23,7 @@ test corpus_int_zero() {
       1,
       bytearray.length(source),
     ) == expected,
+    canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == True,
   }
 }
 
@@ -41,6 +43,7 @@ test corpus_int_23() {
       1,
       bytearray.length(source),
     ) == expected,
+    canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == True,
   }
 }
 
@@ -60,6 +63,7 @@ test corpus_int_24() {
       1,
       bytearray.length(source),
     ) == expected,
+    canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == True,
   }
 }
 
@@ -79,6 +83,7 @@ test corpus_int_256() {
       1,
       bytearray.length(source),
     ) == expected,
+    canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == True,
   }
 }
 
@@ -98,6 +103,7 @@ test corpus_int_2_pow_32() {
       1,
       bytearray.length(source),
     ) == expected,
+    canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == True,
   }
 }
 
@@ -117,6 +123,7 @@ test corpus_int_2_pow_64_minus_1() {
       1,
       bytearray.length(source),
     ) == expected,
+    canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == True,
   }
 }
 
@@ -136,6 +143,7 @@ test corpus_int_minus_1() {
       1,
       bytearray.length(source),
     ) == expected,
+    canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == True,
   }
 }
 
@@ -155,6 +163,7 @@ test corpus_int_minus_2_pow_64() {
       1,
       bytearray.length(source),
     ) == expected,
+    canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == True,
   }
 }
 
@@ -174,6 +183,7 @@ test corpus_bignum_2_pow_64() {
       1,
       bytearray.length(source),
     ) == expected,
+    canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == True,
   }
 }
 
@@ -193,6 +203,7 @@ test corpus_bignum_minus_2_pow_64_minus_1() {
       1,
       bytearray.length(source),
     ) == expected,
+    canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == True,
   }
 }
 
@@ -212,6 +223,7 @@ test corpus_bignum_64_byte_magnitude() {
       1,
       bytearray.length(source),
     ) == expected,
+    canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == True,
   }
 }
 
@@ -231,6 +243,7 @@ test corpus_bignum_65_byte_magnitude_chunked() {
       1,
       bytearray.length(source),
     ) == expected,
+    canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == True,
   }
 }
 
@@ -250,6 +263,7 @@ test corpus_bignum_negative_129_byte_magnitude_chunked() {
       1,
       bytearray.length(source),
     ) == expected,
+    canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == True,
   }
 }
 
@@ -263,6 +277,7 @@ test corpus_int_non_minimal_one_byte() {
       1,
       bytearray.length(source),
     ) == expected,
+    canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == False,
   }
 }
 
@@ -276,6 +291,7 @@ test corpus_int_non_minimal_two_byte() {
       1,
       bytearray.length(source),
     ) == expected,
+    canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == False,
   }
 }
 
@@ -289,6 +305,7 @@ test corpus_int_non_minimal_eight_byte() {
       1,
       bytearray.length(source),
     ) == expected,
+    canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == False,
   }
 }
 
@@ -302,6 +319,7 @@ test corpus_int_reserved_additional_28() {
       1,
       bytearray.length(source),
     ) == expected,
+    canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == False,
   }
 }
 
@@ -315,6 +333,7 @@ test corpus_int_reserved_additional_30() {
       1,
       bytearray.length(source),
     ) == expected,
+    canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == False,
   }
 }
 
@@ -328,6 +347,7 @@ test corpus_int_indefinite_additional() {
       1,
       bytearray.length(source),
     ) == expected,
+    canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == False,
   }
 }
 
@@ -341,6 +361,7 @@ test corpus_int_truncated_argument() {
       1,
       bytearray.length(source),
     ) == expected,
+    canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == False,
   }
 }
 
@@ -354,6 +375,7 @@ test corpus_bignum_one_byte_magnitude() {
       1,
       bytearray.length(source),
     ) == expected,
+    canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == False,
   }
 }
 
@@ -367,6 +389,7 @@ test corpus_bignum_empty_magnitude() {
       1,
       bytearray.length(source),
     ) == expected,
+    canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == False,
   }
 }
 
@@ -380,6 +403,7 @@ test corpus_bignum_eight_byte_magnitude() {
       1,
       bytearray.length(source),
     ) == expected,
+    canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == False,
   }
 }
 
@@ -393,6 +417,7 @@ test corpus_bignum_leading_zero() {
       1,
       bytearray.length(source),
     ) == expected,
+    canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == False,
   }
 }
 
@@ -406,6 +431,7 @@ test corpus_negative_bignum_one_byte() {
       1,
       bytearray.length(source),
     ) == expected,
+    canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == False,
   }
 }
 
@@ -419,6 +445,7 @@ test corpus_bignum_indefinite_nine_bytes() {
       1,
       bytearray.length(source),
     ) == expected,
+    canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == False,
   }
 }
 
@@ -432,6 +459,7 @@ test corpus_bignum_indefinite_one_full_chunk() {
       1,
       bytearray.length(source),
     ) == expected,
+    canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == False,
   }
 }
 
@@ -445,6 +473,7 @@ test corpus_bignum_over_integer() {
       1,
       bytearray.length(source),
     ) == expected,
+    canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == False,
   }
 }
 
@@ -458,6 +487,7 @@ test corpus_bignum_magnitude_past_end() {
       1,
       bytearray.length(source),
     ) == expected,
+    canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == False,
   }
 }
 
@@ -477,6 +507,7 @@ test corpus_bytes_empty() {
       1,
       bytearray.length(source),
     ) == expected,
+    canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == True,
   }
 }
 
@@ -496,6 +527,7 @@ test corpus_bytes_one() {
       1,
       bytearray.length(source),
     ) == expected,
+    canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == True,
   }
 }
 
@@ -515,6 +547,7 @@ test corpus_bytes_32() {
       1,
       bytearray.length(source),
     ) == expected,
+    canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == True,
   }
 }
 
@@ -534,6 +567,7 @@ test corpus_bytes_64() {
       1,
       bytearray.length(source),
     ) == expected,
+    canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == True,
   }
 }
 
@@ -553,6 +587,7 @@ test corpus_bytes_65_chunked() {
       1,
       bytearray.length(source),
     ) == expected,
+    canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == True,
   }
 }
 
@@ -572,6 +607,7 @@ test corpus_bytes_128_chunked() {
       1,
       bytearray.length(source),
     ) == expected,
+    canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == True,
   }
 }
 
@@ -591,6 +627,7 @@ test corpus_bytes_129_chunked() {
       1,
       bytearray.length(source),
     ) == expected,
+    canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == True,
   }
 }
 
@@ -604,6 +641,7 @@ test corpus_bytes_definite_65() {
       1,
       bytearray.length(source),
     ) == expected,
+    canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == False,
   }
 }
 
@@ -617,6 +655,7 @@ test corpus_bytes_indefinite_empty() {
       1,
       bytearray.length(source),
     ) == expected,
+    canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == False,
   }
 }
 
@@ -630,6 +669,7 @@ test corpus_bytes_indefinite_short() {
       1,
       bytearray.length(source),
     ) == expected,
+    canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == False,
   }
 }
 
@@ -643,6 +683,7 @@ test corpus_bytes_indefinite_one_full_chunk() {
       1,
       bytearray.length(source),
     ) == expected,
+    canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == False,
   }
 }
 
@@ -656,6 +697,7 @@ test corpus_bytes_short_chunk_first() {
       1,
       bytearray.length(source),
     ) == expected,
+    canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == False,
   }
 }
 
@@ -669,6 +711,7 @@ test corpus_bytes_empty_final_chunk() {
       1,
       bytearray.length(source),
     ) == expected,
+    canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == False,
   }
 }
 
@@ -682,6 +725,7 @@ test corpus_bytes_empty_first_chunk() {
       1,
       bytearray.length(source),
     ) == expected,
+    canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == False,
   }
 }
 
@@ -695,6 +739,7 @@ test corpus_bytes_oversized_chunk() {
       1,
       bytearray.length(source),
     ) == expected,
+    canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == False,
   }
 }
 
@@ -708,6 +753,7 @@ test corpus_bytes_integer_chunk() {
       1,
       bytearray.length(source),
     ) == expected,
+    canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == False,
   }
 }
 
@@ -721,6 +767,7 @@ test corpus_bytes_nested_indefinite_chunk() {
       1,
       bytearray.length(source),
     ) == expected,
+    canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == False,
   }
 }
 
@@ -734,6 +781,7 @@ test corpus_bytes_missing_break() {
       1,
       bytearray.length(source),
     ) == expected,
+    canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == False,
   }
 }
 
@@ -747,6 +795,7 @@ test corpus_bytes_past_end() {
       1,
       bytearray.length(source),
     ) == expected,
+    canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == False,
   }
 }
 
@@ -760,6 +809,7 @@ test corpus_text_string() {
       1,
       bytearray.length(source),
     ) == expected,
+    canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == False,
   }
 }
 
@@ -773,6 +823,7 @@ test corpus_text_empty() {
       1,
       bytearray.length(source),
     ) == expected,
+    canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == False,
   }
 }
 
@@ -786,6 +837,7 @@ test corpus_simple_false() {
       1,
       bytearray.length(source),
     ) == expected,
+    canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == False,
   }
 }
 
@@ -799,6 +851,7 @@ test corpus_simple_null() {
       1,
       bytearray.length(source),
     ) == expected,
+    canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == False,
   }
 }
 
@@ -812,6 +865,7 @@ test corpus_float_half() {
       1,
       bytearray.length(source),
     ) == expected,
+    canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == False,
   }
 }
 
@@ -831,6 +885,7 @@ test corpus_list_empty() {
       1,
       bytearray.length(source),
     ) == expected,
+    canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == True,
   }
 }
 
@@ -850,6 +905,7 @@ test corpus_list_one() {
       1,
       bytearray.length(source),
     ) == expected,
+    canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == True,
   }
 }
 
@@ -869,6 +925,7 @@ test corpus_list_two() {
       1,
       bytearray.length(source),
     ) == expected,
+    canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == True,
   }
 }
 
@@ -888,6 +945,7 @@ test corpus_list_nested() {
       1,
       bytearray.length(source),
     ) == expected,
+    canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == True,
   }
 }
 
@@ -907,6 +965,7 @@ test corpus_list_of_bytes() {
       1,
       bytearray.length(source),
     ) == expected,
+    canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == True,
   }
 }
 
@@ -920,6 +979,7 @@ test corpus_list_definite_one() {
       1,
       bytearray.length(source),
     ) == expected,
+    canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == False,
   }
 }
 
@@ -933,6 +993,7 @@ test corpus_list_definite_two() {
       1,
       bytearray.length(source),
     ) == expected,
+    canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == False,
   }
 }
 
@@ -946,6 +1007,7 @@ test corpus_list_indefinite_empty() {
       1,
       bytearray.length(source),
     ) == expected,
+    canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == False,
   }
 }
 
@@ -959,6 +1021,7 @@ test corpus_list_open_only() {
       1,
       bytearray.length(source),
     ) == expected,
+    canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == False,
   }
 }
 
@@ -972,6 +1035,7 @@ test corpus_list_missing_break() {
       1,
       bytearray.length(source),
     ) == expected,
+    canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == False,
   }
 }
 
@@ -985,6 +1049,7 @@ test corpus_list_nested_missing_break() {
       1,
       bytearray.length(source),
     ) == expected,
+    canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == False,
   }
 }
 
@@ -998,6 +1063,7 @@ test corpus_list_inner_empty_indefinite() {
       1,
       bytearray.length(source),
     ) == expected,
+    canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == False,
   }
 }
 
@@ -1017,6 +1083,7 @@ test corpus_map_empty() {
       1,
       bytearray.length(source),
     ) == expected,
+    canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == True,
   }
 }
 
@@ -1036,6 +1103,7 @@ test corpus_map_one() {
       1,
       bytearray.length(source),
     ) == expected,
+    canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == True,
   }
 }
 
@@ -1055,6 +1123,7 @@ test corpus_map_duplicate_keys_kept() {
       1,
       bytearray.length(source),
     ) == expected,
+    canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == True,
   }
 }
 
@@ -1074,6 +1143,7 @@ test corpus_map_out_of_order_kept() {
       1,
       bytearray.length(source),
     ) == expected,
+    canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == True,
   }
 }
 
@@ -1093,6 +1163,7 @@ test corpus_map_nested() {
       1,
       bytearray.length(source),
     ) == expected,
+    canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == True,
   }
 }
 
@@ -1106,6 +1177,7 @@ test corpus_map_indefinite() {
       1,
       bytearray.length(source),
     ) == expected,
+    canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == False,
   }
 }
 
@@ -1119,6 +1191,7 @@ test corpus_map_indefinite_empty() {
       1,
       bytearray.length(source),
     ) == expected,
+    canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == False,
   }
 }
 
@@ -1132,6 +1205,7 @@ test corpus_map_missing_value() {
       1,
       bytearray.length(source),
     ) == expected,
+    canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == False,
   }
 }
 
@@ -1145,6 +1219,7 @@ test corpus_map_missing_pair() {
       1,
       bytearray.length(source),
     ) == expected,
+    canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == False,
   }
 }
 
@@ -1164,6 +1239,7 @@ test corpus_constr_0_empty() {
       1,
       bytearray.length(source),
     ) == expected,
+    canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == True,
   }
 }
 
@@ -1183,6 +1259,7 @@ test corpus_constr_0_one() {
       1,
       bytearray.length(source),
     ) == expected,
+    canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == True,
   }
 }
 
@@ -1202,6 +1279,7 @@ test corpus_constr_6_empty() {
       1,
       bytearray.length(source),
     ) == expected,
+    canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == True,
   }
 }
 
@@ -1221,6 +1299,7 @@ test corpus_constr_7_empty() {
       1,
       bytearray.length(source),
     ) == expected,
+    canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == True,
   }
 }
 
@@ -1240,6 +1319,7 @@ test corpus_constr_127_one() {
       1,
       bytearray.length(source),
     ) == expected,
+    canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == True,
   }
 }
 
@@ -1259,6 +1339,7 @@ test corpus_constr_nested() {
       1,
       bytearray.length(source),
     ) == expected,
+    canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == True,
   }
 }
 
@@ -1272,6 +1353,7 @@ test corpus_constr_empty_indefinite_fields() {
       1,
       bytearray.length(source),
     ) == expected,
+    canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == False,
   }
 }
 
@@ -1285,6 +1367,7 @@ test corpus_constr_definite_fields() {
       1,
       bytearray.length(source),
     ) == expected,
+    canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == False,
   }
 }
 
@@ -1298,6 +1381,7 @@ test corpus_constr_fields_missing() {
       1,
       bytearray.length(source),
     ) == expected,
+    canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == False,
   }
 }
 
@@ -1311,6 +1395,7 @@ test corpus_constr_fields_open_only() {
       1,
       bytearray.length(source),
     ) == expected,
+    canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == False,
   }
 }
 
@@ -1324,6 +1409,7 @@ test corpus_constr_fields_missing_break() {
       1,
       bytearray.length(source),
     ) == expected,
+    canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == False,
   }
 }
 
@@ -1337,6 +1423,7 @@ test corpus_tag_120() {
       1,
       bytearray.length(source),
     ) == expected,
+    canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == False,
   }
 }
 
@@ -1350,6 +1437,7 @@ test corpus_tag_128() {
       1,
       bytearray.length(source),
     ) == expected,
+    canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == False,
   }
 }
 
@@ -1363,6 +1451,7 @@ test corpus_tag_1279() {
       1,
       bytearray.length(source),
     ) == expected,
+    canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == False,
   }
 }
 
@@ -1376,6 +1465,7 @@ test corpus_tag_1401() {
       1,
       bytearray.length(source),
     ) == expected,
+    canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == False,
   }
 }
 
@@ -1389,6 +1479,7 @@ test corpus_tag_constr_7_non_minimal() {
       1,
       bytearray.length(source),
     ) == expected,
+    canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == False,
   }
 }
 
@@ -1402,6 +1493,7 @@ test corpus_tag_1() {
       1,
       bytearray.length(source),
     ) == expected,
+    canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == False,
   }
 }
 
@@ -1415,6 +1507,7 @@ test corpus_tag_4() {
       1,
       bytearray.length(source),
     ) == expected,
+    canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == False,
   }
 }
 
@@ -1434,6 +1527,7 @@ test corpus_large_constr_128_empty() {
       1,
       bytearray.length(source),
     ) == expected,
+    canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == True,
   }
 }
 
@@ -1453,6 +1547,7 @@ test corpus_large_constr_128_one() {
       1,
       bytearray.length(source),
     ) == expected,
+    canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == True,
   }
 }
 
@@ -1472,6 +1567,7 @@ test corpus_large_constr_256() {
       1,
       bytearray.length(source),
     ) == expected,
+    canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == True,
   }
 }
 
@@ -1491,6 +1587,7 @@ test corpus_large_constr_max_index() {
       1,
       bytearray.length(source),
     ) == expected,
+    canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == True,
   }
 }
 
@@ -1510,6 +1607,7 @@ test corpus_large_constr_nested() {
       1,
       bytearray.length(source),
     ) == expected,
+    canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == True,
   }
 }
 
@@ -1523,6 +1621,7 @@ test corpus_large_constr_index_5() {
       1,
       bytearray.length(source),
     ) == expected,
+    canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == False,
   }
 }
 
@@ -1536,6 +1635,7 @@ test corpus_large_constr_index_127() {
       1,
       bytearray.length(source),
     ) == expected,
+    canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == False,
   }
 }
 
@@ -1549,6 +1649,7 @@ test corpus_large_constr_index_non_minimal() {
       1,
       bytearray.length(source),
     ) == expected,
+    canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == False,
   }
 }
 
@@ -1562,6 +1663,7 @@ test corpus_large_constr_index_negative() {
       1,
       bytearray.length(source),
     ) == expected,
+    canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == False,
   }
 }
 
@@ -1575,6 +1677,7 @@ test corpus_large_constr_index_bignum() {
       1,
       bytearray.length(source),
     ) == expected,
+    canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == False,
   }
 }
 
@@ -1588,6 +1691,7 @@ test corpus_large_constr_indefinite_outer() {
       1,
       bytearray.length(source),
     ) == expected,
+    canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == False,
   }
 }
 
@@ -1601,6 +1705,7 @@ test corpus_large_constr_outer_length_3() {
       1,
       bytearray.length(source),
     ) == expected,
+    canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == False,
   }
 }
 
@@ -1614,6 +1719,7 @@ test corpus_large_constr_outer_length_1() {
       1,
       bytearray.length(source),
     ) == expected,
+    canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == False,
   }
 }
 
@@ -1627,6 +1733,7 @@ test corpus_large_constr_fields_missing() {
       1,
       bytearray.length(source),
     ) == expected,
+    canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == False,
   }
 }
 
@@ -1640,6 +1747,7 @@ test corpus_large_constr_empty_indefinite_fields() {
       1,
       bytearray.length(source),
     ) == expected,
+    canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == False,
   }
 }
 
@@ -1653,6 +1761,7 @@ test corpus_large_constr_definite_fields() {
       1,
       bytearray.length(source),
     ) == expected,
+    canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == False,
   }
 }
 
@@ -1666,6 +1775,7 @@ test corpus_large_constr_map_fields() {
       1,
       bytearray.length(source),
     ) == expected,
+    canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == False,
   }
 }
 
@@ -1679,6 +1789,7 @@ test corpus_trailing_after_integer() {
       1,
       bytearray.length(source),
     ) == expected,
+    canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == False,
   }
 }
 
@@ -1692,6 +1803,7 @@ test corpus_trailing_after_bytes() {
       1,
       bytearray.length(source),
     ) == expected,
+    canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == False,
   }
 }
 
@@ -1705,6 +1817,7 @@ test corpus_trailing_after_list() {
       1,
       bytearray.length(source),
     ) == expected,
+    canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == False,
   }
 }
 
@@ -1718,6 +1831,7 @@ test corpus_trailing_after_indefinite_list() {
       1,
       bytearray.length(source),
     ) == expected,
+    canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == False,
   }
 }
 
@@ -1731,6 +1845,7 @@ test corpus_trailing_after_map() {
       1,
       bytearray.length(source),
     ) == expected,
+    canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == False,
   }
 }
 
@@ -1744,5 +1859,6 @@ test corpus_trailing_break() {
       1,
       bytearray.length(source),
     ) == expected,
+    canonical_plutus_data_v1.is_canonical_plutus_data_v1(source) == False,
   }
 }
