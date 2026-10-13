@@ -51,6 +51,14 @@ export type ProviderDiagnostics = {
   readonly protocolInfoSource: "node" | "offline" | "unknown";
 };
 
+/** The ex-units one redeemer's script spends, by redeemer pointer. */
+export type MidgardRedeemerBudget = {
+  readonly tag: number;
+  readonly index: bigint;
+  readonly memory: bigint;
+  readonly steps: bigint;
+};
+
 export type MidgardProvider = {
   getUtxos(address: Address): Promise<readonly MidgardUtxo[]>;
   getUtxoByOutRef(outRef: OutRef): Promise<MidgardUtxo | undefined>;
@@ -65,6 +73,14 @@ export type MidgardProvider = {
     txCanonicalCborHex: string,
     programMaterial?: readonly MidgardCekProgramMaterialEntry[],
   ): Promise<SubmitTxResult>;
+  /**
+   * The ex-units each Plutus redeemer of a draft transaction spends, as the
+   * node's Phase B charges them. The draft's declared ex-units are ignored.
+   */
+  evaluateTx?(
+    txCanonicalCborHex: string,
+    programMaterial?: readonly MidgardCekProgramMaterialEntry[],
+  ): Promise<readonly MidgardRedeemerBudget[]>;
   getTxStatus(txId: TxHash): Promise<TxStatus>;
   diagnostics(): ProviderDiagnostics;
 };

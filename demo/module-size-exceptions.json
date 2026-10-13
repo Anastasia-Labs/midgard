@@ -81,8 +81,8 @@
   },
   {
     "file": "lucid-midgard/src/builder.tx-builder.ts",
-    "max": 922,
-    "reason": "TxBuilder is one state owner: its methods share private state and lifecycle invariants. Further extraction would redesign ownership rather than separate independent declarations; surrounding helpers have been extracted."
+    "max": 952,
+    "reason": "TxBuilder is one state owner: its methods share private state and lifecycle invariants. Further extraction would redesign ownership rather than separate independent declarations; surrounding helpers have been extracted. P (+30): evaluate() and the complete/chain dispatch to it; the draft-and-evaluate loop lives in builder/redeemer-evaluation.ts."
   },
   {
     "file": "lucid-midgard/tests/finalization.test.ts",
@@ -1041,8 +1041,8 @@
   },
   {
     "file": "midgard-node/tests/database.test/admissions.register-admissions-tests.ts",
-    "max": 3458,
-    "reason": "registerAdmissionsTests is the dominant indivisible declaration (3341 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. Integrated DA correctness branches; exact final source line count. VR (+7): the pool-isolation drain's stub Lucid reports the L1 slot mapping the processor builds script contexts in. P (+3): the admission pool stub evaluates CEK verdicts in process."
+    "max": 3459,
+    "reason": "registerAdmissionsTests is the dominant indivisible declaration (3341 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. Integrated DA correctness branches; exact final source line count. VR (+7): the pool-isolation drain's stub Lucid reports the L1 slot mapping the processor builds script contexts in. P (+3): the admission pool stub evaluates CEK verdicts in process; the backlog-full case asserts Retry-After (+1)."
   },
   {
     "file": "midgard-node/tests/database.test/availability.ts",

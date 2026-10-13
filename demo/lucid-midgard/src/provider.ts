@@ -38,6 +38,7 @@ import {
   isObject,
   normalizeTxIdHex,
   parseProtocolInfo,
+  parseRedeemerBudgets,
   parseSubmitTxCanonicalCbor,
   parseSubmitTxResult,
   parseTxStatus,
@@ -53,6 +54,7 @@ import type {
   MidgardNodeProviderOptions,
   MidgardProtocolInfo,
   MidgardProvider,
+  MidgardRedeemerBudget,
   ProviderDiagnostics,
 } from "./provider/types.js";
 
@@ -61,6 +63,7 @@ export type {
   MidgardNodeProviderOptions,
   MidgardProtocolInfo,
   MidgardProvider,
+  MidgardRedeemerBudget,
   ProtocolScriptLanguage,
   ProviderDiagnostics,
 } from "./provider/types.js";
@@ -322,6 +325,45 @@ export class MidgardNodeProvider implements MidgardProvider {
       );
     }
     return admission;
+  }
+
+  async evaluateTx(
+    txCanonicalCborHex: string,
+    programMaterial: readonly MidgardCekProgramMaterialEntry[] = [],
+  ): Promise<readonly MidgardRedeemerBudget[]> {
+    const endpoint = "/tx/evaluate";
+    const protocolInfo = await this.getProtocolInfo();
+    const draft = submittedTxCanonicalCbor(
+      txCanonicalCborHex,
+      endpoint,
+      protocolInfo.submissionLimits.maxSubmitTxCborBytes,
+    );
+    const { response, payload } = await this.transport.requestJson(endpoint, {
+      method: "POST",
+      headers: { "content-type": "application/vnd.midgard.v1+cbor" },
+      body: encodeMidgardProofSubmission({
+        transactionCbor: draft.txCanonicalCbor,
+        programMaterial,
+      }),
+    });
+    if (response.status !== 200) {
+      const detail = isObject(payload)
+        ? [payload.error, payload.detail]
+            .filter((part) => typeof part === "string")
+            .join(": ")
+        : "";
+      throw new ProviderHttpError({
+        endpoint,
+        statusCode: response.status,
+        message:
+          detail.length > 0
+            ? detail
+            : `POST ${endpoint} failed with status ${response.status.toString()}`,
+        detail: JSON.stringify(payload ?? null),
+        retryable: response.status === 503 || response.status >= 500,
+      });
+    }
+    return parseRedeemerBudgets(payload, endpoint);
   }
 
   async getTxStatus(txId: string): Promise<TxStatus> {

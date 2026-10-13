@@ -9,13 +9,8 @@ import {
 import { MIDGARD_CONSENSUS_LIMITS } from "@al-ft/midgard-core/consensus-profile";
 import { Effect } from "effect";
 
-import {
-  type MidgardCekExecutionGraph,
-  type MidgardCekStructuralExecution,
-} from "./cek-executor.js";
 import { findRedeemerByPointer } from "./midgard-redeemers.js";
 import { discoverLocalScriptExecutions } from "./phase-b.discover-local-script-executions.js";
-import { evaluateMidgardCekScript } from "./phase-b.evaluate-cek-script.js";
 import {
   type CandidateNode,
   collectInlineScriptSources,
@@ -23,16 +18,11 @@ import {
   requiredScriptLanguages,
   type ResolvedReferenceInputs,
 } from "./phase-b.resolve-reference-inputs.js";
-import { encodeMidgardCekPlutusData } from "./plutus-data-iterative.encode.js";
 import {
-  buildMidgardScriptContext,
-  buildPlutusV3ScriptContext,
-} from "./script-context.js";
-import {
-  type LocalScriptEvalResult,
-  PhaseBConfig,
-  RejectCodes,
-} from "./types.js";
+  runScriptExecution,
+  scriptExecutionContextCbor,
+} from "./phase-b.script-run.js";
+import { PhaseBConfig, RejectCodes } from "./types.js";
 
 export const runLocalScriptEvaluation = (
   node: CandidateNode,
@@ -177,19 +167,11 @@ export const runLocalScriptEvaluation = (
         };
       }
 
-      const context =
-        execution.resolved.version === "MidgardV1"
-          ? buildMidgardScriptContext(
-              discovered.contextView,
-              execution.purpose,
-              redeemer,
-            )
-          : buildPlutusV3ScriptContext(
-              discovered.contextView,
-              execution.purpose,
-              redeemer,
-            );
-      const contextCbor = encodeMidgardCekPlutusData(context);
+      const contextCbor = scriptExecutionContextCbor(
+        discovered.contextView,
+        execution,
+        redeemer,
+      );
       const executionBudget =
         config.enforceScriptBudget === false
           ? undefined
@@ -197,44 +179,25 @@ export const runLocalScriptEvaluation = (
               cpu: redeemer.exUnits.steps,
               memory: redeemer.exUnits.memory,
             };
-      let graph: MidgardCekExecutionGraph | null = null;
-      let cek: MidgardCekStructuralExecution | null = null;
       const executionIndex = executionIndexOf.get(execution)!;
-      const run = {
-        scriptBytes: execution.resolved.source.scriptBytes,
-        contextCbor,
-        executionBudget,
-        executionIndex,
-        maxSteps:
-          config.maxScriptExecutionSteps ??
-          MIDGARD_CONSENSUS_LIMITS.maxValidationMachineStepCount,
-      };
-      const mode = config.cekExecutionMode ?? "verdict";
-      let result: LocalScriptEvalResult;
-      if (config.evaluateProofScript !== undefined) {
-        result = yield* config.evaluateProofScript(
-          execution.resolved.source.scriptBytes,
+      const {
+        result,
+        graph,
+        execution: cek,
+      } = yield* runScriptExecution(
+        {
+          scriptBytes: execution.resolved.source.scriptBytes,
           contextCbor,
           executionBudget,
           executionIndex,
-        );
-      } else if (
-        mode === "verdict" &&
-        config.evaluateCekVerdict !== undefined
-      ) {
-        result = yield* config.evaluateCekVerdict({
-          ...run,
-          programMaterialSidecarCbor:
-            candidate.submission.programMaterialSidecarCbor,
-        });
-      } else {
-        const evaluated = evaluateMidgardCekScript(
-          run,
-          proofProgramMaterial,
-          mode,
-        );
-        ({ graph, execution: cek, result } = evaluated);
-      }
+          maxSteps:
+            config.maxScriptExecutionSteps ??
+            MIDGARD_CONSENSUS_LIMITS.maxValidationMachineStepCount,
+        },
+        candidate.submission.programMaterialSidecarCbor,
+        proofProgramMaterial,
+        config,
+      );
       config.onScriptEvaluated?.(candidate.ledgerTx.txId, {
         scriptBytes: Buffer.from(execution.resolved.source.scriptBytes),
         contextCbor: Buffer.from(contextCbor),

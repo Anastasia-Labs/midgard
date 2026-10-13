@@ -1201,6 +1201,7 @@ export const registerAdmissionsTests = () => {
                 backlog: "2",
                 maxBacklog: "2",
               },
+              retryAfter: "5",
             });
 
             const identicalTx = makeNativeSubmitTx();

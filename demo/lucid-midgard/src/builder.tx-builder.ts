@@ -73,6 +73,10 @@ import {
   normalizeNonNegativeBigInt,
 } from "./builder/normalizers.js";
 import {
+  evaluateMissingExUnits,
+  hasRedeemerWithoutExUnits,
+} from "./builder/redeemer-evaluation.js";
+import {
   deriveScriptMaterialization,
   normalizeMintAssetsForNormalizedPolicy,
   normalizePolicyId,
@@ -715,7 +719,30 @@ export class TxBuilder {
     );
   }
 
+  /**
+   * This builder with every redeemer that has no exUnits given the budget
+   * the provider evaluates for it (see `evaluateMissingExUnits`).
+   */
+  async evaluate(options: CompleteOptions = {}): Promise<TxBuilder> {
+    if (!hasRedeemerWithoutExUnits(this.state)) {
+      return this;
+    }
+    const state = await evaluateMissingExUnits(
+      this.state,
+      this.context.provider.provider,
+      (draft) =>
+        makeTxBuilder(this.context, draft).complete({
+          ...options,
+          localValidation: "none",
+        }),
+    );
+    return makeTxBuilder(this.context, state);
+  }
+
   async complete(options: CompleteOptions = {}): Promise<CompleteTx> {
+    if (hasRedeemerWithoutExUnits(this.state)) {
+      return (await this.evaluate(options)).complete(options);
+    }
     const clonedState = cloneState(this.state);
     const prepared = isMidgardConsensusProfile(
       this.context.config.consensusProfile,
@@ -864,6 +891,9 @@ export class TxBuilder {
   }
 
   async chain(options: CompleteOptions = {}): Promise<ChainResult> {
+    if (hasRedeemerWithoutExUnits(this.state)) {
+      return (await this.evaluate(options)).chain(options);
+    }
     const clonedState = cloneState(this.state);
     const prepared = isMidgardConsensusProfile(
       this.context.config.consensusProfile,

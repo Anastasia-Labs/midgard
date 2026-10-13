@@ -15,6 +15,8 @@ import "./value-accounting.js";
 import "./phase-b.resolve-reference-inputs.js";
 import "./phase-b.discover-local-script-executions.js";
 import "./phase-b.evaluate-cek-script.js";
+import "./phase-b.script-run.js";
+import "./phase-b.evaluate-tx-redeemers.js";
 import "./phase-b.run-local-script-evaluation.js";
 import "./phase-b.validate-candidate-against-state.js";
 import "./phase-b.validate-plain-candidate-against-state.js";
@@ -25,6 +27,11 @@ export {
   type MidgardCekScriptRun,
   type MidgardCekVerdictRequest,
 } from "./phase-b.evaluate-cek-script.js";
+export {
+  evaluateMidgardTxRedeemers,
+  type MidgardRedeemerBudget,
+  type MidgardTxRedeemerEvaluation,
+} from "./phase-b.evaluate-tx-redeemers.js";
 export {
   applyUTxOStatePatch,
   type PhaseBResultWithPatch,

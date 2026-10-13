@@ -7,11 +7,13 @@ import "../core/index.js";
 import "../core/out-ref.js";
 import "./payload.validate-supported-script-languages.js";
 import "./payload.parse-protocol-info.js";
+import "./payload.parse-redeemer-budgets.js";
 export {
   parseProtocolInfo,
   parseSubmitTxResult,
   parseTxStatus,
 } from "./payload.parse-protocol-info.js";
+export { parseRedeemerBudgets } from "./payload.parse-redeemer-budgets.js";
 export {
   cloneSupportedScriptLanguages,
   decodeEncodedUtxo,

@@ -112,6 +112,11 @@ Completion and chaining each have Promise, `Safe`, and `Program` forms:
 - `complete(options?)` / `completeSafe(options?)` / `completeProgram(options?)`
 - `chain(options?)` / `chainSafe(options?)` / `chainProgram(options?)`, returns
   `[newWalletUtxos, derivedOutputs, completeTx]` for [local chaining](/docs/sdk/lucid-midgard/builder-state-machine).
+- `evaluate(options?)`, returns the builder with every redeemer that has no
+  `exUnits` given the budget the provider's `evaluateTx` (`POST /tx/evaluate`)
+  reports for a draft of the transaction. `complete` and `chain` call it when
+  any redeemer has no `exUnits`; a redeemer with `exUnits` keeps them. Drafts
+  are rebuilt until every evaluated budget fits what the draft declares.
 
 <Callout type="info" title="Completion options">
   `complete` accepts `changeAddress`, `localValidation` (`"none" | "phase-a" |
@@ -183,7 +188,8 @@ Returned by `submit()`. Members include `txIdHex` (and `toHash()`),
 - `MidgardNodeProvider` with static `create(options)` and instance
   `diagnostics()`. Implements the `MidgardProvider` interface
   (`getUtxos`, `getUtxoByOutRef`, `getUtxosByOutRefs`, `getProtocolInfo`,
-  `getProtocolParameters`, `getCurrentSlot`, `submitTx`, `getTxStatus`).
+  `getProtocolParameters`, `getCurrentSlot`, `submitTx`, `getTxStatus`, and
+  the optional `evaluateTx`).
 - Wallet factories: `walletFromSeedPhrase`, `walletFromPrivateKey`,
   `walletFromExternalSigner`; helpers `makeVKeyWitness`, `verifyVKeyWitness`,
   `assertVKeyWitness`, `paymentKeyHashFromAddress`, `addressNetworkId`,
