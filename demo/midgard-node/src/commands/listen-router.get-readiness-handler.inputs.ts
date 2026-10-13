@@ -12,10 +12,12 @@ import {
   PENDING_FINALIZATION_AGE_BOUND_MS,
   retrieveActiveJournalAges,
 } from "../database/pendingBlockFinalizations.retrieve-finalized-missing-da-payloads.js";
+import * as SettlementJournal from "../database/settlement.js";
 import {
   L1_OWN_BLOCK_FORCED_ORDER_ORPHANED,
   readOwnLandedForcedOrphans,
 } from "../forced-orders/own-landed-orphans.js";
+import { SETTLEMENT_JOB_FAILURE_CAP } from "../services/settlement-retry.js";
 
 /**
  * Every database read `/readyz` makes, run only after the connectivity probe
@@ -24,6 +26,7 @@ import {
  */
 export const readReadinessDatabaseState = (
   deploymentIdentityDigest: Buffer | undefined,
+  settlementDeploymentId: string | undefined,
 ) =>
   Effect.gen(function* () {
     const sql = yield* SqlClient;
@@ -42,6 +45,13 @@ export const readReadinessDatabaseState = (
       }),
       journalAges: yield* retrieveActiveJournalAges,
       ownLandedForcedOrphans: (yield* readOwnLandedForcedOrphans).length,
+      stuckSettlementJobs:
+        settlementDeploymentId === undefined
+          ? { count: 0, first: undefined }
+          : yield* SettlementJournal.stuckJobs(
+              settlementDeploymentId,
+              SETTLEMENT_JOB_FAILURE_CAP,
+            ),
     };
   });
 

@@ -172,6 +172,37 @@ export const inspectBacklog = (deploymentId: string, failingLimit: number) =>
     };
   });
 
+/** Deployment `deploymentId`'s stuck settlement jobs: unfinished jobs whose
+ * consecutive failures reached `failureCap`. How many, and the earliest-due
+ * one with its last error. */
+export const stuckJobs = (deploymentId: string, failureCap: number) =>
+  Effect.gen(function* () {
+    const sql = yield* SqlClient.SqlClient;
+    const rows = yield* sql<
+      SettlementFailingJob & { stuck: string }
+    >`SELECT j.kind, j.event_id, j.phase, j.failures, j.last_error, j.due_at,
+        COUNT(*) OVER ()::text AS stuck
+      FROM settlement_jobs j
+      WHERE j.deployment_id = ${deploymentId}
+        AND j.phase <> 'complete' AND j.failures >= ${failureCap}
+      ORDER BY j.due_at, j.created_at, j.kind, j.event_id
+      LIMIT 1`;
+    const first = rows[0];
+    return first === undefined
+      ? { count: 0, first: undefined }
+      : {
+          count: Number(first.stuck),
+          first: {
+            kind: first.kind,
+            event_id: first.event_id,
+            phase: first.phase,
+            failures: first.failures,
+            last_error: first.last_error,
+            due_at: first.due_at,
+          } satisfies SettlementFailingJob,
+        };
+  });
+
 /** A descendant of a body proven expired cannot land either. This allows
  * interrupted payout chains to rewind without forgetting signed descendants. */
 export const expiredParents = (
