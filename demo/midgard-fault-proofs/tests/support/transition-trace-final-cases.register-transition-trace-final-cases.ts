@@ -46,7 +46,6 @@ import {
   resolveTransitionTraceByteCarriage,
   transitionTraceByteChunks,
 } from "../../src/transition-trace/proof-carriage.js";
-import * as walkModule from "../../src/transition-trace/data-summary-walk.js";
 import * as yieldDataModule from "../../src/transition-trace/yield-data.js";
 import { captureLocallyEvaluatedTransaction } from "../../src/workflow/transaction-boundary.js";
 import { alignEmulatorToWholeSecond } from "./emulator/emulator-context.js";
@@ -76,6 +75,7 @@ import {
   registerPhasMembershipRewardAccount,
   submitSetupTx,
 } from "./submit-init-emulator-shared.js";
+import { proveAfterForgedWalk } from "./transition-trace-final-cases.forged-walk.js";
 import { type TransitionTraceFinalCase } from "./transition-trace-final-cases.types.js";
 import {
   buildAcceptedClaimTransitionFixture,
@@ -714,6 +714,10 @@ export const registerTransitionTraceFinalCases = (
         expect(proverPaymentCredential?.type).toBe("Key");
         const proverPaymentKeyHash = proverPaymentCredential!.hash;
 
+        const fraudProofUnit = toUnit(
+          contracts.fraudProof.policyId,
+          initResult.computationThreadAssetName,
+        );
         const submitProof = () =>
           submitTransitionTraceProof({
             lucid: proverLucid,
@@ -729,80 +733,26 @@ export const registerTransitionTraceFinalCases = (
             awaitConfirmation: true,
           });
         if (corruptWalk) {
-          // One datum walk step per transaction, so later transactions
-          // restore stack entries; every restore is forged in its top entry.
-          const plan = walkModule.planDataSummaryWalkTransaction;
-          const oneStep = { memory: 0, cpu: 0, restoreBytes: 0 };
-          const forged = vi
-            .spyOn(walkModule, "planDataSummaryWalkTransaction")
-            .mockImplementation((trace, from) => {
-              const transaction = plan(trace, from, oneStep);
-              const [top, ...rest] = transaction.restore;
-              if (top === undefined) return transaction;
-              const swapped: walkModule.DataSummaryWalkEntry =
-                top.kind === "item"
-                  ? {
-                      kind: "item",
-                      summary: {
-                        ...top.summary,
-                        memory: top.summary.memory + 1n,
-                      },
-                    }
-                  : {
-                      kind: "parent",
-                      frame:
-                        top.frame.kind === "list"
-                          ? { kind: "constr", constructor: 0n }
-                          : { kind: "list" },
-                    };
-              return { ...transaction, restore: [swapped, ...rest] };
-            });
-          try {
-            await expect(submitProof()).rejects.toThrow();
-          } finally {
-            forged.mockRestore();
-          }
-          // The thread stopped mid-walk, at the checkpoint the forged
-          // transaction spent; no fraud-proof token was minted.
-          const stopped = await proverLucid.utxoByUnit(
-            initResult.computationThreadUnit,
-          );
-          const stoppedState = Data.from(
-            stopped.datum!,
-            SDK.TransitionTraceProofCommitmentDatum,
-          ).data!;
-          expect(stoppedState.phase).toBe(8n);
-          expect(stoppedState.datum_walk).not.toBeNull();
-          const fraudProofUnit = toUnit(
-            contracts.fraudProof.policyId,
-            initResult.computationThreadAssetName,
-          );
-          await expect(
-            proverLucid.utxosAtWithUnit(
-              contracts.fraudProof.spendingScriptAddress,
-              fraudProofUnit,
-            ),
-          ).resolves.toHaveLength(0);
-          // The honest witness from that same checkpoint is accepted, and the
-          // walk goes on to prove the fault.
-          const finished = await submitTransitionTraceFinal({
+          await proveAfterForgedWalk({
             lucid: proverLucid,
-            blueprint: realBlueprint,
-            deploymentInfo,
-            network,
-            signer: proverSigner,
-            threadOutRef: outRefLabel(stopped),
-            proof: traceFixture.proof,
-            additionalReferenceInputs,
-            depositOpening,
-            witnessReferenceScripts,
-          });
-          expect(finished.fraudProofUnit).toBe(fraudProofUnit);
-          await expectSingleUtxoWithUnit(
-            proverLucid,
-            contracts.fraudProof.spendingScriptAddress,
+            submitProof,
+            finish: (threadOutRef) =>
+              submitTransitionTraceFinal({
+                lucid: proverLucid,
+                blueprint: realBlueprint,
+                deploymentInfo,
+                network,
+                signer: proverSigner,
+                threadOutRef,
+                proof: traceFixture.proof,
+                additionalReferenceInputs,
+                depositOpening,
+                witnessReferenceScripts,
+              }),
+            threadUnit: initResult.computationThreadUnit,
+            fraudProofAddress: contracts.fraudProof.spendingScriptAddress,
             fraudProofUnit,
-          );
+          });
           return;
         }
         if (corruptSourceReference) {
@@ -838,10 +788,7 @@ export const registerTransitionTraceFinalCases = (
             await expect(
               proverLucid.utxosAtWithUnit(
                 contracts.fraudProof.spendingScriptAddress,
-                toUnit(
-                  contracts.fraudProof.policyId,
-                  initResult.computationThreadAssetName,
-                ),
+                fraudProofUnit,
               ),
             ).resolves.toHaveLength(0);
           } finally {
@@ -875,10 +822,7 @@ export const registerTransitionTraceFinalCases = (
             await expect(
               proverLucid.utxosAtWithUnit(
                 contracts.fraudProof.spendingScriptAddress,
-                toUnit(
-                  contracts.fraudProof.policyId,
-                  initResult.computationThreadAssetName,
-                ),
+                fraudProofUnit,
               ),
             ).resolves.toHaveLength(0);
           } finally {
@@ -893,10 +837,7 @@ export const registerTransitionTraceFinalCases = (
           await expect(
             proverLucid.utxosAtWithUnit(
               contracts.fraudProof.spendingScriptAddress,
-              toUnit(
-                contracts.fraudProof.policyId,
-                initResult.computationThreadAssetName,
-              ),
+              fraudProofUnit,
             ),
           ).resolves.toHaveLength(0);
           return;
@@ -908,12 +849,7 @@ export const registerTransitionTraceFinalCases = (
         expect(proofResult.fraudProofAssetName).toBe(
           initResult.computationThreadAssetName,
         );
-        expect(proofResult.fraudProofUnit).toBe(
-          toUnit(
-            contracts.fraudProof.policyId,
-            initResult.computationThreadAssetName,
-          ),
-        );
+        expect(proofResult.fraudProofUnit).toBe(fraudProofUnit);
         expect(proofResult.fraudProofMintRedeemerIndex).not.toBe(
           proofResult.computationThreadMintRedeemerIndex,
         );

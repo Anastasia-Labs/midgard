@@ -23,41 +23,30 @@ import {
   summarizeMidgardCekMapData,
   summarizeMidgardCekSmallConstrData,
 } from "@al-ft/midgard-core";
-import { computeHash32 } from "@al-ft/midgard-core/codec/hash";
-import { Constr, Data } from "@lucid-evolution/lucid";
 
-export type DataSummaryWalkFrame =
-  | { readonly kind: "root" }
-  | { readonly kind: "list" }
-  | { readonly kind: "constr"; readonly constructor: bigint }
-  | {
-      readonly kind: "largeConstr";
-      readonly indexRoot: Uint8Array;
-      readonly indexCborLength: bigint;
-      readonly indexMemory: bigint;
-    }
-  | { readonly kind: "map"; readonly remaining: bigint }
-  | {
-      readonly kind: "folding";
-      readonly open: DataSummaryWalkFrame;
-      readonly folded: MidgardCekDataSequenceSummary;
-    };
+import { byteAt, byteString, head } from "./data-summary-walk.cbor.js";
+import { pushDataSummaryWalkEntry as push } from "./data-summary-walk.data.js";
+import type {
+  DataSummaryWalkFrame,
+  DataSummaryWalkPoint,
+  DataSummaryWalkStack,
+  DataSummaryWalkStep,
+  DataSummaryWalkTrace,
+} from "./data-summary-walk.types.js";
 
-export type DataSummaryWalkEntry =
-  | { readonly kind: "item"; readonly summary: MidgardCekDataSummary }
-  | { readonly kind: "parent"; readonly frame: DataSummaryWalkFrame };
-
-/**
- * A stack as an immutable list, top first. Each node caches the hash chain of
- * itself and everything below it, so a checkpoint's root costs one hash per
- * push.
- */
-export type DataSummaryWalkStack = {
-  readonly entry: DataSummaryWalkEntry;
-  readonly below: DataSummaryWalkStack | null;
-  readonly depth: number;
-  readonly chain: Buffer;
-} | null;
+export {
+  dataSummaryWalkData,
+  dataSummaryWalkEntryData,
+  dataSummaryWalkFrameData,
+  dataSummaryWalkWitnessData,
+} from "./data-summary-walk.data.js";
+export {
+  DATA_SUMMARY_WALK_TRANSACTION_BUDGET,
+  type DataSummaryWalkBudget,
+  type DataSummaryWalkTransaction,
+  planDataSummaryWalkTransaction,
+} from "./data-summary-walk.plan.js";
+export type * from "./data-summary-walk.types.js";
 
 type Progress =
   | {
@@ -69,177 +58,7 @@ type Progress =
   | { readonly kind: "finished"; readonly summary: MidgardCekDataSummary }
   | { readonly kind: "refused" };
 
-/** What one on-chain step did, for the transaction cost model. */
-export type DataSummaryWalkStepKind =
-  | "integer"
-  | "bytes"
-  | "open"
-  | "close"
-  | "pop"
-  | "popPair"
-  | "finish";
-
-export type DataSummaryWalkStep = {
-  readonly kind: DataSummaryWalkStepKind;
-  /** Content bytes a leaf step hashed (byte string, bignum or index). */
-  readonly hashedBytes: number;
-};
-
-/** The checkpoint between two steps. */
-export type DataSummaryWalkPoint = {
-  readonly at: number;
-  readonly frame: DataSummaryWalkFrame;
-  readonly stack: DataSummaryWalkStack;
-};
-
-export type DataSummaryWalkTrace = {
-  /** `points[i]` is the checkpoint after `i` steps. */
-  readonly points: readonly DataSummaryWalkPoint[];
-  /** `steps[i]` leads from `points[i]` to `points[i + 1]` (or the end). */
-  readonly steps: readonly DataSummaryWalkStep[];
-  readonly outcome:
-    | { readonly kind: "summarised"; readonly summary: MidgardCekDataSummary }
-    | { readonly kind: "unreadable" };
-};
-
-const EMPTY_STACK_ROOT = Buffer.alloc(0);
-
-// ## Data encodings (the on-chain types' constructor order)
-
-const sequenceData = (sequence: MidgardCekDataSequenceSummary): Data =>
-  new Constr(0, [
-    Buffer.from(sequence.root).toString("hex"),
-    sequence.length,
-    sequence.payloadCborLength,
-    sequence.memory,
-  ]);
-
-const summaryData = (summary: MidgardCekDataSummary): Data =>
-  new Constr(0, [
-    Buffer.from(summary.root).toString("hex"),
-    summary.cborLength,
-    summary.memory,
-  ]);
-
-export const dataSummaryWalkFrameData = (frame: DataSummaryWalkFrame): Data => {
-  switch (frame.kind) {
-    case "root":
-      return new Constr(0, []);
-    case "list":
-      return new Constr(1, []);
-    case "constr":
-      return new Constr(2, [frame.constructor]);
-    case "largeConstr":
-      return new Constr(3, [
-        Buffer.from(frame.indexRoot).toString("hex"),
-        frame.indexCborLength,
-        frame.indexMemory,
-      ]);
-    case "map":
-      return new Constr(4, [frame.remaining]);
-    case "folding":
-      return new Constr(5, [
-        dataSummaryWalkFrameData(frame.open),
-        sequenceData(frame.folded),
-      ]);
-  }
-};
-
-export const dataSummaryWalkEntryData = (entry: DataSummaryWalkEntry): Data =>
-  entry.kind === "item"
-    ? new Constr(0, [summaryData(entry.summary)])
-    : new Constr(1, [dataSummaryWalkFrameData(entry.frame)]);
-
-const push = (
-  entry: DataSummaryWalkEntry,
-  below: DataSummaryWalkStack,
-): DataSummaryWalkStack => ({
-  entry,
-  below,
-  depth: (below?.depth ?? 0) + 1,
-  chain: computeHash32(
-    Buffer.concat([
-      Buffer.from(Data.to(dataSummaryWalkEntryData(entry)), "hex"),
-      below?.chain ?? EMPTY_STACK_ROOT,
-    ]),
-  ),
-});
-
-/** The on-chain `Walk { offset, frame, stack_root }` of a checkpoint. */
-export const dataSummaryWalkData = (point: DataSummaryWalkPoint): Data =>
-  new Constr(0, [
-    BigInt(point.at),
-    dataSummaryWalkFrameData(point.frame),
-    (point.stack?.chain ?? EMPTY_STACK_ROOT).toString("hex"),
-  ]);
-
 // ## Reading
-
-const byteAt = (bytes: Uint8Array, at: number, end: number) =>
-  at < end ? bytes[at]! : -1;
-
-const bigEndian = (bytes: Uint8Array) =>
-  bytes.reduce((value, byte) => (value << 8n) | BigInt(byte), 0n);
-
-/** A minimal head: [major, argument (-1 when indefinite), next]. */
-const head = (
-  bytes: Uint8Array,
-  at: number,
-  end: number,
-): readonly [number, bigint, number] | null => {
-  const first = byteAt(bytes, at, end);
-  if (first < 0) return null;
-  const major = first >> 5;
-  const info = first & 31;
-  if (info < 24) return [major, BigInt(info), at + 1];
-  if (info <= 27) {
-    const size = [1, 2, 4, 8][info - 24]!;
-    if (at + 1 + size > end) return null;
-    const value = bigEndian(bytes.subarray(at + 1, at + 1 + size));
-    const minimal = value.toString(16).length;
-    if (value >= 24n && 2 * Math.ceil(minimal / 2) > size)
-      return [major, value, at + 1 + size];
-    return null;
-  }
-  return info === 31 ? [major, -1n, at + 1] : null;
-};
-
-const chunks = (
-  bytes: Uint8Array,
-  at: number,
-  end: number,
-  content: Buffer,
-): readonly [Buffer, number] | null => {
-  const read = head(bytes, at, end);
-  if (read === null || read[0] !== 2) return null;
-  const length = Number(read[1]);
-  const next = read[2];
-  if (!(length >= 1 && length <= 64 && next + length <= end)) return null;
-  const joined = Buffer.concat([content, bytes.subarray(next, next + length)]);
-  const after = next + length;
-  if (byteAt(bytes, after, end) === 255) return [joined, after + 1];
-  return length === 64 ? chunks(bytes, after, end, joined) : null;
-};
-
-const byteString = (
-  bytes: Uint8Array,
-  at: number,
-  end: number,
-): readonly [Buffer, number] | null => {
-  const read = head(bytes, at, end);
-  if (read === null || read[0] !== 2) return null;
-  const [, length, next] = read;
-  if (length === -1n) {
-    const joined = chunks(bytes, next, end, Buffer.alloc(0));
-    return joined !== null && joined[0].length > 64 ? joined : null;
-  }
-  if (length <= 64n && next + Number(length) <= end)
-    return [
-      Buffer.from(bytes.subarray(next, next + Number(length))),
-      next + Number(length),
-    ];
-  return null;
-};
 
 const unsignedByteSize = (value: bigint): bigint =>
   value < 256n ? 1n : 1n + unsignedByteSize(value / 256n);
@@ -301,7 +120,8 @@ const finish = (
       });
     case "map":
       return summarizeMidgardCekMapData(folded);
-    default:
+    case "root":
+    case "folding":
       throw new Error(`data summary walk cannot finish a ${open.kind} frame`);
   }
 };
@@ -620,183 +440,3 @@ export const traceDataSummaryWalk = (
     points.push(progress);
   }
 };
-
-// ## Transactions
-
-/**
- * A transaction's budget for its walk steps. The step model below rounds
- * every calibrated cost up, and the rest of a phase-8 transaction (its
- * dispatcher and, when the walk ends, the output summaries) measured at most
- * about 3.9M memory and 1.7B cpu in the emulator, so a transaction planned to
- * this budget stays inside 13.2M memory and 8B cpu.
- */
-export type DataSummaryWalkBudget = {
-  readonly memory: number;
-  readonly cpu: number;
-  /** Encoded bytes of the restored entries the redeemer carries. */
-  readonly restoreBytes: number;
-};
-
-export const DATA_SUMMARY_WALK_TRANSACTION_BUDGET: DataSummaryWalkBudget = {
-  memory: 9_200_000,
-  cpu: 6_000_000_000,
-  restoreBytes: 6_000,
-};
-
-/**
- * The measured on-chain cost of each step kind (memory, cpu), rounded up;
- * a leaf adds a cost per byte it hashes (a byte string's content, an
- * integer's CBOR), and a bignum adds its tagged byte string's decoding.
- */
-const STEP_COST: Readonly<
-  Record<DataSummaryWalkStepKind, readonly [number, number]>
-> = {
-  integer: [65_000, 26_000_000],
-  bytes: [160_000, 60_000_000],
-  open: [50_000, 16_000_000],
-  close: [25_000, 12_000_000],
-  pop: [65_000, 32_000_000],
-  popPair: [95_000, 47_000_000],
-  finish: [85_000, 36_000_000],
-};
-const HASHED_BYTE_COST = [150, 40_000] as const;
-/** An integer whose CBOR exceeds nine bytes is a tagged bignum. */
-const BIGNUM_COST = [100_000, 35_000_000] as const;
-/** A large constructor's index is hashed when its fields open. */
-const LARGE_INDEX_COST = [130_000, 55_000_000] as const;
-/** Decoding a restored entry and hashing it into the chain. */
-const RESTORED_ENTRY_COST = [48_000, 22_000_000] as const;
-/** Hashing an entry this transaction pushed into its chain. */
-const PUSHED_ENTRY_COST = [14_000, 12_000_000] as const;
-
-const stepCost = (step: DataSummaryWalkStep): readonly [number, number] => {
-  const [memory, cpu] = STEP_COST[step.kind];
-  if (step.kind === "open" && step.hashedBytes > 0)
-    return [memory + LARGE_INDEX_COST[0], cpu + LARGE_INDEX_COST[1]];
-  const [bignumMemory, bignumCpu] =
-    step.kind === "integer" && step.hashedBytes > 9 ? BIGNUM_COST : [0, 0];
-  return [
-    memory + bignumMemory + step.hashedBytes * HASHED_BYTE_COST[0],
-    cpu + bignumCpu + step.hashedBytes * HASHED_BYTE_COST[1],
-  ];
-};
-
-export type DataSummaryWalkTransaction = {
-  readonly from: number;
-  /** Steps the transaction takes; `from + steps` is its next checkpoint. */
-  readonly steps: number;
-  readonly restore: readonly DataSummaryWalkEntry[];
-  readonly base: Buffer;
-  /** Whether the transaction ends the walk. */
-  readonly final: boolean;
-  /** The modelled cost of its steps, restores and pushes. */
-  readonly estimate: { readonly memory: number; readonly cpu: number };
-};
-
-const nodes = (stack: DataSummaryWalkStack) => {
-  const byDepth: NonNullable<DataSummaryWalkStack>[] = [];
-  for (let node = stack; node !== null; node = node.below)
-    byDepth[node.depth - 1] = node;
-  return byDepth;
-};
-
-/**
- * How many entries of `start` survive under `stack`: the depth of the
- * deepest node the two share.
- */
-const shared = (
-  startNodes: readonly NonNullable<DataSummaryWalkStack>[],
-  stack: DataSummaryWalkStack,
-) => {
-  let node = stack;
-  while (node !== null && startNodes[node.depth - 1] !== node)
-    node = node.below;
-  return node?.depth ?? 0;
-};
-
-/**
- * One transaction of the walk from checkpoint `from`: as many steps as the
- * memory model allows (at least one), the entries they pop below their own
- * pushes, and the chain root under those.
- */
-export const planDataSummaryWalkTransaction = (
-  trace: DataSummaryWalkTrace,
-  from: number,
-  budget = DATA_SUMMARY_WALK_TRANSACTION_BUDGET,
-): DataSummaryWalkTransaction => {
-  const startPoint = trace.points[from];
-  if (startPoint === undefined)
-    throw new Error("data summary walk checkpoint is past its end");
-  const startNodes = nodes(startPoint.stack);
-  const startDepth = startPoint.stack?.depth ?? 0;
-  const entryBytes = (depth: number) =>
-    Data.to(dataSummaryWalkEntryData(startNodes[depth - 1]!.entry)).length / 2;
-  let kept = startDepth;
-  let restoreBytes = 0;
-  let memory = 0;
-  let cpu = 0;
-  let steps = 0;
-  let estimate = { memory: 0, cpu: 0 };
-  for (let index = from; index < trace.steps.length; index++) {
-    const [stepMemory, stepCpu] = stepCost(trace.steps[index]!);
-    // The checkpoint after this step, or none when it ends the walk, which
-    // pops everything left down to the root.
-    const after = trace.points[index + 1];
-    const keptAfter =
-      after === undefined ? 0 : Math.min(kept, shared(startNodes, after.stack));
-    let restoredBytes = restoreBytes;
-    for (let depth = kept; depth > keptAfter; depth--)
-      restoredBytes += entryBytes(depth);
-    const pushed =
-      after === undefined ? 0 : (after.stack?.depth ?? 0) - keptAfter;
-    const restored = startDepth - keptAfter;
-    const totalMemory =
-      memory +
-      stepMemory +
-      restored * RESTORED_ENTRY_COST[0] +
-      pushed * PUSHED_ENTRY_COST[0];
-    const totalCpu =
-      cpu +
-      stepCpu +
-      restored * RESTORED_ENTRY_COST[1] +
-      pushed * PUSHED_ENTRY_COST[1];
-    if (
-      steps > 0 &&
-      (totalMemory > budget.memory ||
-        totalCpu > budget.cpu ||
-        restoredBytes > budget.restoreBytes)
-    )
-      break;
-    estimate = { memory: totalMemory, cpu: totalCpu };
-    memory += stepMemory;
-    cpu += stepCpu;
-    kept = keptAfter;
-    restoreBytes = restoredBytes;
-    steps += 1;
-  }
-  const restore: DataSummaryWalkEntry[] = [];
-  for (
-    let node = startPoint.stack;
-    node !== null && node.depth > kept;
-    node = node.below
-  )
-    restore.push(node.entry);
-  return {
-    from,
-    steps,
-    restore,
-    base: startNodes[kept - 1]?.chain ?? EMPTY_STACK_ROOT,
-    final: from + steps === trace.steps.length,
-    estimate,
-  };
-};
-
-/** The on-chain `WalkWitness { restore, base, steps }`. */
-export const dataSummaryWalkWitnessData = (
-  transaction: Pick<DataSummaryWalkTransaction, "restore" | "base" | "steps">,
-): Data =>
-  new Constr(0, [
-    transaction.restore.map(dataSummaryWalkEntryData),
-    transaction.base.toString("hex"),
-    BigInt(transaction.steps),
-  ]);

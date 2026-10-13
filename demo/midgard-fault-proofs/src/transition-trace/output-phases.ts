@@ -10,8 +10,8 @@ import { Data } from "@lucid-evolution/lucid";
 
 import {
   dataSummaryWalkData,
-  dataSummaryWalkWitnessData,
   type DataSummaryWalkTrace,
+  dataSummaryWalkWitnessData,
   planDataSummaryWalkTransaction,
   traceDataSummaryWalk,
 } from "./data-summary-walk.js";
