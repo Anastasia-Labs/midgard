@@ -1,9 +1,5 @@
 import { Trie } from "@aiken-lang/merkle-patricia-forestry";
 import {
-  encodeMidgardCekProgramMaterialSidecar,
-  type MidgardCekProgramEnvelope,
-} from "@al-ft/midgard-core/cek-proof";
-import {
   ForcedRejectionStopped,
   forcedVerdictForRejection,
 } from "@al-ft/midgard-fault-proofs";
@@ -18,10 +14,8 @@ import {
 } from "@al-ft/midgard-validation";
 import { Effect } from "effect";
 
-import * as CekProgramMaterialDB from "../database/cekProgramMaterial.js";
 import * as ForcedTransactionsDB from "../database/forcedTransactions.js";
 import { DatabaseError } from "../database/utils/common.js";
-import { Database } from "../services/index.js";
 import { type MpfBatchOp } from "./types.js";
 
 export type ClassifiedForcedTransaction = {
@@ -70,10 +64,6 @@ export const forcedRejectionVerdict = (
         : Effect.void,
     ),
   );
-
-export type ForcedProgramMaterialSidecarResolver<R> = (
-  envelopes: readonly MidgardCekProgramEnvelope[],
-) => Effect.Effect<Buffer, DatabaseError, R>;
 
 export const applyValidationLedgerMutations = async (
   trie: Trie,
@@ -138,10 +128,3 @@ export const rejectedForcedTransactionLedgerWitnesses = (
     const output = state.get(outRefHex);
     return output === undefined ? [] : [ledgerWitnessEntry(outRefHex, output)];
   });
-
-export const programMaterialSidecarForEnvelopes = (
-  envelopes: readonly MidgardCekProgramEnvelope[],
-): Effect.Effect<Buffer, DatabaseError, Database> =>
-  CekProgramMaterialDB.retrieveVerifiedBundles(envelopes).pipe(
-    Effect.map((entries) => encodeMidgardCekProgramMaterialSidecar(entries)),
-  );

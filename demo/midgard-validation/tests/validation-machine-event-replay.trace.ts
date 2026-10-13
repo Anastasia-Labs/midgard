@@ -32,7 +32,7 @@ export type ValidationMachineEventReplayInput = Readonly<{
   /** The complete prior ledger, whose descriptor root must equal priorUtxosRoot. */
   ledgerWitnessEntries: readonly ValidationMachineLedgerEntry[];
   priorUtxosRoot: string;
-  blockEndTimeMs: number;
+  blockTimeMs: number;
   expectedNetworkId: bigint;
   minFeeA: bigint;
   minFeeB: bigint;
@@ -123,7 +123,7 @@ export const replayValidationMachineEvent = (
       ),
       ledgerWitnessEntries,
       priorUtxosRoot: input.priorUtxosRoot,
-      blockEndTimeMs: input.blockEndTimeMs,
+      blockTimeMs: input.blockTimeMs,
       expectedNetworkId: input.expectedNetworkId,
       minFeeA: input.minFeeA,
       minFeeB: input.minFeeB,

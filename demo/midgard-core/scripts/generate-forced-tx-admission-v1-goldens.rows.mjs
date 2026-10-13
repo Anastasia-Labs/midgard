@@ -557,16 +557,15 @@ addCanonicalMint("mint_names_in_byte_order", [
     ],
   },
 ]);
+addCanonicalMint("mint_entry_with_the_minimal_array_head", [
+  { policyId: POLICY_A, assets: [{ assetName: ascii("a"), quantity: 1n }] },
+]);
 addCanonicalMint("mint_two_policies_burning", [
   { policyId: POLICY_A, assets: [{ assetName: ascii("a"), quantity: -5n }] },
   {
     policyId: POLICY_B,
     assets: [{ assetName: filled(32, 0x7a), quantity: 0x100000000n }],
   },
-]);
-// The fold reads the entry's array header at any width.
-addMint("mint_entry_with_a_wide_array_head", null, [
-  mintItem(POLICY_A, [[ascii("a"), 1n]], { arrayHead: [0x98, 0x02] }),
 ]);
 
 addMint("mint_policies_out_of_order", MINT_CHECK, [
@@ -613,6 +612,15 @@ addMint(
   "mint_entry_of_three_items",
   MINT_CHECK,
   [mintItem(POLICY_A, [[ascii("a"), 1n]], { arrayHead: [0x83] })],
+  { halts: true },
+);
+// The entry's header must be the minimal two-item array head: the same two
+// items admitted under `82` (mint_entry_with_the_minimal_array_head) are
+// refused under a wider head.
+addMint(
+  "mint_entry_with_a_wide_array_head",
+  MINT_CHECK,
+  [mintItem(POLICY_A, [[ascii("a"), 1n]], { arrayHead: [0x98, 0x02] })],
   { halts: true },
 );
 addMint(

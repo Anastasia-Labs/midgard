@@ -453,7 +453,7 @@ families, and the profile digest cannot drift from source.
 
 <!-- BEGIN MIDGARD_CONSENSUS_PROFILE_V1_GENERATED: do not edit -->
 
-Profile digest: `b0ede32c0f6d345dfba99881f3c7e8176d05d28ebda0aed593da51fdf211c65b`
+Profile digest: `1cef7f991e87ff6220159def5be8deb3ba5be512ad5944586b65f0ed180b196c`
 
 ```json
 {
@@ -557,8 +557,7 @@ Profile digest: `b0ede32c0f6d345dfba99881f3c7e8176d05d28ebda0aed593da51fdf211c65
     "validation-dispute-timeout",
     "transition-trace-accepted-transaction",
     "transition-trace-rejected-no-op",
-    "forced-transaction-verdict-mismatch",
-    "forced-program-material-availability"
+    "forced-transaction-verdict-mismatch"
   ],
   "scriptProofSchemaVersion": 1,
   "stateQueueSchemaVersion": 1,

@@ -1,6 +1,5 @@
 import "@al-ft/midgard-core/cek-proof";
 import "@al-ft/midgard-core/codec";
-import "@al-ft/midgard-core/codec/forced";
 import "@al-ft/midgard-core/consensus-profile";
 import "@al-ft/midgard-core/script-proof";
 import "effect";

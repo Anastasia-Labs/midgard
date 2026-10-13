@@ -1,7 +1,7 @@
 /**
  * Reads of the forced-order projection at a point: each live order with its
- * row and its order output, and the published CEK program material, in one
- * transaction after checking the point is canonical in the follower store.
+ * row and its order output, in one transaction after checking the point is
+ * canonical in the follower store.
  */
 import {
   changedUtxosIn,
@@ -43,8 +43,6 @@ export type ForcedOrdersRead =
   | Readonly<{
       kind: "ok";
       orders: readonly ForcedOrderRow[];
-      /** Live outputs under the CEK program-material credential. */
-      programMaterial: readonly UTxO[];
     }>
   | PointRefusal
   | Readonly<{ kind: "unhealthy"; detail: string }>;
@@ -63,10 +61,9 @@ const decodeReferenceInputs = (bytes: Buffer): OutRef[] => {
 
 const STATUSES = new Set<string>(["resolved", "carriage_pending", "malformed"]);
 
-/** Every live forced order at `at`, with the CEK material there. */
+/** Every live forced order at `at`. */
 export const forcedOrdersAt = (
   store: FactStore,
-  config: ForcedOrderConfig,
   at: Point,
 ): Promise<ForcedOrdersRead> =>
   store.transaction("read", async (tx): Promise<ForcedOrdersRead> => {
@@ -95,16 +92,6 @@ export const forcedOrdersAt = (
       if (read.kind !== "ok") return read;
       for (const utxo of read.utxos) live.set(outRefLabel(utxo.outRef), utxo);
     }
-    const material = await liveUtxosIn(
-      tx,
-      store.dialect,
-      {
-        by: "payment_credential",
-        hash: Buffer.from(config.cekMaterialCredential, "hex"),
-      },
-      at,
-    );
-    if (material.kind !== "ok") return material;
     const orders: ForcedOrderRow[] = [];
     for (const [index, row] of rows.entries()) {
       const outRef = outRefs[index]!;
@@ -132,13 +119,7 @@ export const forcedOrdersAt = (
         detail: row.detail == null ? null : (row.detail as string),
       });
     }
-    return {
-      kind: "ok",
-      orders,
-      programMaterial: material.utxos.map((utxo) =>
-        lucidUtxo(utxo.outRef, utxo.output),
-      ),
-    };
+    return { kind: "ok", orders };
   });
 
 /**

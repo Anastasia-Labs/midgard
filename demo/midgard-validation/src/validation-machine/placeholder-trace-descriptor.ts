@@ -10,7 +10,7 @@
 import {
   computeMidgardForcedTxProofCommitment,
   computeMidgardNativeTxProofCommitment,
-  deriveMidgardForcedTxProofSourceFromCanonicalCbor,
+  deriveMidgardForcedTxFaultEvidenceMaterial,
   deriveMidgardNativeTxProofSourceFromCanonicalCbor,
 } from "@al-ft/midgard-core/codec";
 import {
@@ -60,7 +60,9 @@ const exact32 = (bytes: Uint8Array, fieldName: string): Buffer => {
 
 /**
  * The proof-source commitment of a canonical normal or forced transaction,
- * the same commitment the validation machine binds into every state.
+ * the same commitment the validation machine binds into every state. A forced
+ * transaction's source is read from its envelope alone, so an order whose
+ * items do not decode still has its commitment.
  */
 export const validationTransactionCommitmentV1 = ({
   canonicalTransactionCbor,
@@ -71,9 +73,8 @@ export const validationTransactionCommitmentV1 = ({
 }>): Buffer =>
   sourceKind === "forced"
     ? computeMidgardForcedTxProofCommitment(
-        deriveMidgardForcedTxProofSourceFromCanonicalCbor(
-          canonicalTransactionCbor,
-        ),
+        deriveMidgardForcedTxFaultEvidenceMaterial(canonicalTransactionCbor)
+          .proofSource,
       )
     : computeMidgardNativeTxProofCommitment(
         deriveMidgardNativeTxProofSourceFromCanonicalCbor(

@@ -438,15 +438,9 @@ describe("phase A validation", () => {
     },
   );
 
-  it.each([
-    ["d8798101", true],
-    ["1801", true],
-    ["8101", true],
-    ["60", false],
-    ["0102", false],
-  ] as const)(
-    "forced redeemer %s is admitted iff well-formed (%s)",
-    async (dataHex, accepted) => {
+  it.each(["d8798101", "1801", "8101", "60", "0102"])(
+    "forced redeemer %s needs canonical Data, as a normal one does",
+    async (dataHex) => {
       const fixture = redeemerDataTx(dataHex);
       const result = await runPhaseA([
         {
@@ -457,18 +451,11 @@ describe("phase A validation", () => {
           ),
         },
       ]);
-      expect(result.accepted).toHaveLength(accepted ? 1 : 0);
-      expect(result.rejected).toHaveLength(accepted ? 0 : 1);
-      if (accepted) {
-        expect(
-          result.accepted[0]!.ledgerTx.redeemers[0]!.dataCbor.toString("hex"),
-        ).toBe(dataHex);
-      } else {
-        expect(result.rejected[0]).toMatchObject({
-          code: RejectCodes.InvalidFieldType,
-          consensusPhase: "canonicalDecode",
-        });
-      }
+      expect(result.accepted).toHaveLength(0);
+      expect(result.rejected[0]).toMatchObject({
+        code: RejectCodes.InvalidFieldType,
+        consensusPhase: "canonicalDecode",
+      });
     },
   );
 

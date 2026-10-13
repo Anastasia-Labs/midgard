@@ -14,7 +14,6 @@ import { decodeMidgardSpendInputItem } from "./codec/native-tx-field-item-decode
 import { encodeMidgardSpendInputItem } from "./codec/native-tx-field-items.js";
 import { decodeMidgardTxOutput } from "./codec/output.js";
 import {
-  decodeMidgardVersionedScriptEnvelope,
   decodeMidgardVersionedScriptListPreimage,
   encodeMidgardVersionedScript,
   hashMidgardVersionedScript,
@@ -133,32 +132,20 @@ export const hashMidgardV1VersionedScript = (
 };
 
 /**
- * Collects every V1 program physically attached to a canonical
+ * Collects every V1 program physically attached to a canonical normal
  * transaction: inline witness scripts and reference scripts created by its
  * outputs. Programs reached through reference inputs are resolved from ledger
  * state later and therefore are intentionally not inferred here.
  */
 export const collectMidgardAttachedProgramEnvelopes = (
   tx: Pick<MidgardNativeTxCanonical, "body" | "witnessSet">,
-  sourceKind: "normal" | "forced" = "normal",
 ): readonly MidgardCekProgramEnvelope[] => {
   const envelopes: MidgardCekProgramEnvelope[] = [];
-  if (sourceKind === "forced") {
-    for (const item of decodeMidgardNativeByteListPreimage(
-      tx.witnessSet.scriptTxWitsPreimageCbor,
-      "forced.script_witnesses",
-    )) {
-      const script = decodeMidgardVersionedScriptEnvelope(item);
-      if (script.language !== "NativeCardano")
-        envelopes.push(decodeMidgardCekProgramEnvelope(script.scriptBytes));
-    }
-  } else {
-    for (const script of decodeMidgardVersionedScriptListPreimage(
-      tx.witnessSet.scriptTxWitsPreimageCbor,
-    )) {
-      const envelope = decodeMidgardScriptProgramEnvelope(script);
-      if (envelope !== null) envelopes.push(envelope);
-    }
+  for (const script of decodeMidgardVersionedScriptListPreimage(
+    tx.witnessSet.scriptTxWitsPreimageCbor,
+  )) {
+    const envelope = decodeMidgardScriptProgramEnvelope(script);
+    if (envelope !== null) envelopes.push(envelope);
   }
   const outputs = decodeSingleCbor(tx.body.outputsPreimageCbor);
   if (!Array.isArray(outputs)) {
@@ -194,7 +181,10 @@ export const collectMidgardEventProgramEnvelopes = (
   preStateOutput: (outRefHex: string) => Uint8Array | undefined,
   sourceKind: "normal" | "forced" = "normal",
 ): readonly MidgardCekProgramEnvelope[] => {
-  const envelopes = [...collectMidgardAttachedProgramEnvelopes(tx, sourceKind)];
+  // A forced transaction carries no redeemer and no V1 program, so it
+  // executes nothing and needs no program material.
+  if (sourceKind === "forced") return Object.freeze([]);
+  const envelopes = [...collectMidgardAttachedProgramEnvelopes(tx)];
   // Program sources taken from ledger state: the reference inputs.
   for (const outRef of decodeMidgardNativeByteListPreimage(
     tx.body.referenceInputsPreimageCbor,

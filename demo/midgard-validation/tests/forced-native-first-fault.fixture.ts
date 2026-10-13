@@ -14,26 +14,21 @@ import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
 import {
-  buildMidgardCanonicalCekProgram,
   validatePhaseASingle,
   validationMachineLedgerRoot,
 } from "../src/index.js";
 import {
   FUNDED_OUTPUT_LOVELACE,
-  hashScriptWitness,
   makeMintPreimageCbor,
   makeNativeTx,
   makeOutput,
-  makeProtectedScriptOutput,
-  makeRedeemersCbor,
   outRefFromByte,
-  plutusV3ScriptWitness,
 } from "./validation-fixtures.js";
 import { replayValidationMachineEvent } from "./validation-machine-event-replay.trace.js";
 
 export const nativeFaultContext = {
   consensusProfile: MIDGARD_CONSENSUS_PROFILE,
-  blockEndTimeMs: 1750000000000,
+  blockTimeMs: 1750000000000,
   expectedNetworkId: 0n,
   minFeeA: 0n,
   minFeeB: 0n,
@@ -53,7 +48,7 @@ export type NativeFaultShape =
   | "invalidThresholdChildren";
 export async function nativeFaultFixture(
   shape: NativeFaultShape,
-  now = nativeFaultContext.blockEndTimeMs - 1000,
+  now = nativeFaultContext.blockTimeMs - 1000,
   blockSlot = nativeFaultContext.blockSlot,
 ) {
   const spent = outRefFromByte(0x4d);
@@ -130,7 +125,7 @@ export async function nativeFaultFixture(
     replayValidationMachineEvent({
       l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
       ...nativeFaultContext,
-      blockEndTimeMs: now + 1000,
+      blockTimeMs: now + 1000,
       blockSlot,
       sourceKind: "forced",
       eventKeyCbor: Buffer.from(
@@ -163,65 +158,4 @@ export async function nativeFaultFixture(
     programMaterialSidecarCbor,
     entries,
   };
-}
-
-export async function redeemerFaultFixture(missingScript: boolean) {
-  const program = buildMidgardCanonicalCekProgram(
-    Buffer.from("010100200101", "hex"),
-  );
-  const script = plutusV3ScriptWitness(program.envelopeCbor);
-  const spent = outRefFromByte(0x4e);
-  const native = makeNativeTx({
-    spendInputs: [spent],
-    outputs: [makeOutput(FUNDED_OUTPUT_LOVELACE)],
-    scriptWitnesses: missingScript ? [] : [script],
-    scriptLanguages: ["PlutusV3"],
-    redeemerTxWitsPreimageCbor: makeRedeemersCbor([
-      {
-        tag: 0,
-        index: 0n,
-        data: Buffer.from("1801", "hex"),
-        exUnits: [1000000000n, 1000000000n],
-      },
-    ]),
-  });
-  const canonicalTransactionCbor = encodeMidgardForcedTxCanonical(
-    materializeMidgardForcedTxFromCanonical(native.tx),
-  );
-  const programMaterialSidecarCbor = encodeMidgardCekProgramMaterialSidecar(
-    missingScript ? [] : [...program.material.values()],
-  );
-  const entries = [
-    {
-      outRef: spent,
-      output: makeProtectedScriptOutput(
-        hashScriptWitness(script),
-        FUNDED_OUTPUT_LOVELACE,
-      ),
-    },
-  ];
-  return Effect.runPromise(
-    replayValidationMachineEvent({
-      l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
-      ...nativeFaultContext,
-      sourceKind: "forced",
-      eventKeyCbor: Buffer.from(
-        Data.to(
-          {
-            ForcedTransactionEventKey: {
-              tx_order_id: { transactionId: "4e".repeat(32), outputIndex: 0n },
-            },
-          },
-          EventKey,
-        ),
-        "hex",
-      ),
-      canonicalTransactionCbor,
-      programMaterialSidecarCbor,
-      ledgerWitnessEntries: entries,
-      priorUtxosRoot: (await validationMachineLedgerRoot(entries)).toString(
-        "hex",
-      ),
-    }),
-  );
 }

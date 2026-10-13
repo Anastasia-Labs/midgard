@@ -50,7 +50,6 @@ export { MpfError } from "./errors.js";
 export {
   type ClassifiedForcedTransaction,
   classifyForcedTransactions,
-  type ForcedProgramMaterialSidecarResolver,
   resolveIncludedDepositEntriesForWindow,
   resolveIncludedForcedTransactionEntriesForWindow,
   resolveIncludedWithdrawalEntriesForWindow,

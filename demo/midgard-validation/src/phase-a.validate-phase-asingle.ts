@@ -9,19 +9,19 @@ import {
   EMPTY_NULL_ROOT,
   verifyMidgardNativeScript,
 } from "@al-ft/midgard-core/codec";
-import { decodeMidgardForcedTxFullFromCanonicalCbor } from "@al-ft/midgard-core/codec/forced";
 import {
   isMidgardConsensusProfile,
   MIDGARD_CONSENSUS_PROFILE,
   type MidgardConsensusProfile,
 } from "@al-ft/midgard-core/consensus-profile";
-import { validateMidgardConsensusForcedTxCbor } from "@al-ft/midgard-core/consensus-validation";
 import { validateMidgardConsensusTxCbor } from "@al-ft/midgard-core/consensus-validation";
 import { collectMidgardAttachedProgramEnvelopes } from "@al-ft/midgard-core/script-proof";
 import { Effect } from "effect";
 
 import {
   decodeMidgardSubmittedTxFromCanonicalCbor,
+  locateMidgardForcedTxOutputFault,
+  locateMidgardForcedTxWitnessScriptFault,
   MidgardLedgerTxDecodeError,
   type MidgardRawEnvelopePhaseAProjection,
   projectMidgardMalformedNativeWitnessEnvelopeV1,
@@ -186,6 +186,21 @@ export const validatePhaseASingle = (
   config: PhaseAConfig,
   localContext: PhaseALocalContext = {},
 ): PhaseAValidatedTx | RejectedTx => {
+  const forced = queuedTx.sourceKind === "forced";
+  // The tx-order mint admits a forced transaction whose outputs or native
+  // script bodies may not decode. Each such item is a machine verdict: the
+  // rejection names the lowest faulty output first.
+  if (forced) {
+    const outputFault = locateMidgardForcedTxOutputFault(queuedTx.txCbor);
+    if (outputFault !== null)
+      return reject(
+        queuedTx.txId,
+        RejectCodes.InvalidOutput,
+        `output[${outputFault.itemIndex}] is not a canonical ledger output`,
+        "canonicalDecode",
+        { arm: "OutputNonCanonical", index: BigInt(outputFault.itemIndex) },
+      );
+  }
   let submittedTx: MidgardSubmittedTx | null = null;
   let rawProjection: MidgardRawEnvelopePhaseAProjection | null = null;
   try {
@@ -213,8 +228,26 @@ export const validatePhaseASingle = (
             queuedTx.sourceKind,
           )
         : null;
+    const scriptFault =
+      forced && malformedNative?.malformedScriptIndex == null
+        ? locateMidgardForcedTxWitnessScriptFault(queuedTx.txCbor)
+        : null;
     if (malformedNative?.malformedScriptIndex != null) {
       rawProjection = malformedNative.projection;
+    } else if (scriptFault !== null) {
+      return reject(
+        queuedTx.txId,
+        RejectCodes.InvalidFieldType,
+        codecErrorDetail(e),
+        "canonicalDecode",
+        {
+          arm:
+            scriptFault.itemClass === "headerMalformed"
+              ? "WitnessScriptHeaderMalformed"
+              : "WitnessNativeScriptMalformed",
+          index: BigInt(scriptFault.itemIndex),
+        },
+      );
     } else {
       return reject(
         queuedTx.txId,
@@ -268,27 +301,24 @@ export const validatePhaseASingle = (
       "unsupported consensus profile",
     );
   }
-  if (queuedTx.programMaterialSidecarCbor == null) {
+  // A forced transaction passed the tx-order mint's admission rules and runs
+  // no program, so it has no normal-admission screen and no program material.
+  if (!forced && queuedTx.programMaterialSidecarCbor == null) {
     return reject(
       ledgerTx.txId,
       RejectCodes.CekProgramMaterial,
       "V1 admission is missing its canonical program-material sidecar",
     );
   }
-  // Forced orders retain only screens without a deployed total machine arm.
-  // Normal-admission proof-fit bounds must not preempt a forced machine verdict.
-  // The raw projection is reject-only: its native payload cannot decode and
-  // must reach the ordered native scan after the earlier Phase A checks.
-  // Normal structured admission/material decoders would throw on that payload
-  // before the machine can name the first faulty witness. Forced admission
-  // parses native envelopes only, so its operator-stop screens still run.
-  // Every admissible candidate also passes the material screen below.
+  // Normal-admission proof-fit bounds. The raw projection is reject-only: its
+  // native payload cannot decode and must reach the ordered native scan after
+  // the earlier Phase A checks. Normal structured admission/material decoders
+  // would throw on that payload before the machine can name the first faulty
+  // witness. Every admissible candidate also passes the material screen below.
   const consensusViolation =
-    queuedTx.sourceKind === "forced"
-      ? validateMidgardConsensusForcedTxCbor(queuedTx.txCbor)
-      : rawProjection === null
-        ? validateMidgardConsensusTxCbor(queuedTx.txCbor)
-        : null;
+    !forced && rawProjection === null
+      ? validateMidgardConsensusTxCbor(queuedTx.txCbor)
+      : null;
   if (consensusViolation !== null) {
     return reject(
       ledgerTx.txId,
@@ -296,19 +326,13 @@ export const validatePhaseASingle = (
       `${consensusViolation.featureId}: ${consensusViolation.detail}`,
     );
   }
-  if (rawProjection === null) {
+  if (!forced && rawProjection === null) {
     try {
       const material = decodeMidgardCekProgramMaterialSidecar(
-        queuedTx.programMaterialSidecarCbor,
+        queuedTx.programMaterialSidecarCbor!,
       );
-      const canonicalTx = (
-        queuedTx.sourceKind === "forced"
-          ? decodeMidgardForcedTxFullFromCanonicalCbor
-          : decodeMidgardNativeTxFullFromCanonicalCbor
-      )(queuedTx.txCbor);
       const envelopes = collectMidgardAttachedProgramEnvelopes(
-        canonicalTx,
-        queuedTx.sourceKind,
+        decodeMidgardNativeTxFullFromCanonicalCbor(queuedTx.txCbor),
       );
       if (ledgerTx.referenceInputs.length > 0) {
         // Phase A has not resolved reference-input outputs yet. Require complete
@@ -385,25 +409,18 @@ export const validatePhaseASingle = (
     );
   }
 
-  try {
-    return buildPhaseAValidatedTx({
-      sourceKind: queuedTx.sourceKind ?? "normal",
-      ledgerTx: submittedTx.ledgerTx,
-      expectedNetworkId: config.expectedNetworkId,
-      txCbor: submittedTx.txCbor,
-      programMaterialSidecarCbor: queuedTx.programMaterialSidecarCbor ?? null,
-      arrivalSeq: queuedTx.arrivalSeq,
-      createdAt: queuedTx.createdAt,
-      redeemerWitnessHash: submittedTx.commitments.redeemerWitnessHash,
-    });
-  } catch (e) {
-    return reject(
-      ledgerTx.txId,
-      RejectCodes.InvalidOutput,
-      `failed to materialize Phase B candidate: ${String(e)}`,
-      "phaseAScriptPreconditions",
-    );
-  }
+  // Every output decoded above, so building the candidate cannot fail on
+  // transaction content; a throw here is a defect, not a verdict.
+  return buildPhaseAValidatedTx({
+    sourceKind: queuedTx.sourceKind ?? "normal",
+    ledgerTx: submittedTx.ledgerTx,
+    expectedNetworkId: config.expectedNetworkId,
+    txCbor: submittedTx.txCbor,
+    programMaterialSidecarCbor: queuedTx.programMaterialSidecarCbor ?? null,
+    arrivalSeq: queuedTx.arrivalSeq,
+    createdAt: queuedTx.createdAt,
+    redeemerWitnessHash: submittedTx.commitments.redeemerWitnessHash,
+  });
 };
 
 export const runPhaseAValidation = (

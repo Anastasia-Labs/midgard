@@ -144,6 +144,58 @@ const ADMITTED = [
   "mint_two_policies_burning",
 ] as const;
 
+/**
+ * `lucid` whose transaction builders set the L1 lower bound from
+ * `lowerBound(validTo)` when the upper bound is set, ignoring the builder's
+ * own lower bound; null leaves the range open below.
+ */
+const withLowerBound = (
+  lucid: LucidEvolution,
+  lowerBound: (validTo: number) => number | null,
+): LucidEvolution => {
+  const intercept = (builder: object): object => {
+    const wrap = (target: object): object =>
+      new Proxy(target, {
+        get(on, property) {
+          if (on === builder && property === "validFrom") return () => proxy;
+          const value: unknown = Reflect.get(on, property, on);
+          if (on === builder && property === "validTo")
+            return (validTo: number) => {
+              const lower = lowerBound(validTo);
+              const set = builder as {
+                validFrom: (time: number) => object;
+                validTo: (time: number) => object;
+              };
+              if (lower !== null) set.validFrom(lower);
+              set.validTo(validTo);
+              return proxy;
+            };
+          if (typeof value === "function")
+            return (...args: unknown[]) => {
+              const result: unknown = value.apply(on, args);
+              return result === builder ? proxy : result;
+            };
+          return value !== null && typeof value === "object"
+            ? wrap(value)
+            : value;
+        },
+      });
+    const proxy = wrap(builder);
+    return proxy;
+  };
+  return new Proxy(lucid, {
+    get(on, property) {
+      const value: unknown = Reflect.get(on, property, on);
+      if (property === "newTx")
+        return () => intercept(on.newTx()) as ReturnType<typeof on.newTx>;
+      return typeof value === "function" ? value.bind(on) : value;
+    },
+  });
+};
+
+/** The deployment's longest closed L1 range a tx-order may carry (ms). */
+const MAX_EVENT_RANGE_MS = 600_000;
+
 describe("forced-tx admission at the real tx-order mint", () => {
   let h: Awaited<ReturnType<typeof makeFaultProofEmulatorHarness>>;
   let lucid: LucidEvolution;
@@ -185,8 +237,15 @@ describe("forced-tx admission at the real tx-order mint", () => {
     ).utxo;
   }, 300_000);
 
-  /** Publish the row's carriage and build its order; the build evaluates the mint. */
-  const mintOrder = async (bytes: Buffer) => {
+  /**
+   * Publish the row's carriage and build its order; the build evaluates the
+   * mint. `lowerBound`, given the upper bound the SDK chose, replaces the
+   * SDK's L1 lower bound (null leaves it open), as a modified builder would.
+   */
+  const mintOrder = async (
+    bytes: Buffer,
+    lowerBound?: (validTo: number) => number | null,
+  ) => {
     const carriage = await publishForcedOrderCarriage(h, lucid, bytes);
     const [nonce] = (await lucid.wallet().getUtxos())
       .filter(
@@ -203,16 +262,20 @@ describe("forced-tx admission at the real tx-order mint", () => {
       .spyOn(Date, "now")
       .mockImplementation(() => h.emulator.now());
     const built = await Effect.runPromise(
-      SDK.buildUnsignedTxOrderTxWithMetadataProgram(lucid, h.contracts, {
-        nonceInput: nonce,
-        submittedTxCbor: bytes.toString("hex"),
-        carriageReferenceInputs: carriage.referenceInputs,
-        fieldPreimageCertificatePolicyId:
-          h.contracts.fieldPreimageCertificate.policyId,
-        refundAddress,
-        lovelace: 3_000_000n,
-        referenceScripts: { txOrderMinting },
-      }),
+      SDK.buildUnsignedTxOrderTxWithMetadataProgram(
+        lowerBound === undefined ? lucid : withLowerBound(lucid, lowerBound),
+        h.contracts,
+        {
+          nonceInput: nonce,
+          submittedTxCbor: bytes.toString("hex"),
+          carriageReferenceInputs: carriage.referenceInputs,
+          fieldPreimageCertificatePolicyId:
+            h.contracts.fieldPreimageCertificate.policyId,
+          refundAddress,
+          lovelace: 3_000_000n,
+          referenceScripts: { txOrderMinting },
+        },
+      ),
     ).finally(() => clock.mockRestore());
     const signed = await built.tx.sign.withWallet().complete();
     await lucid.awaitTx(await signed.submit());
@@ -274,6 +337,51 @@ describe("forced-tx admission at the real tx-order mint", () => {
     },
     300_000,
   );
+
+  // The ledger bounds a range in whole slots and its upper bound is exclusive,
+  // so a range of exactly 600 slots spans 599,999 ms inclusive and one slot
+  // more spans 600,999 ms. The millisecond boundary itself (600,000 admitted,
+  // 600,001 refused) is pinned by the utils Aiken tests.
+  it("mints an order whose L1 range is the deployment's event range", async () => {
+    screen.enabled = true;
+    const before = (
+      await lucid.utxosAt(h.contracts.txOrder.spendingScriptAddress)
+    ).length;
+    await mintOrder(
+      submittedBytes(row("base")),
+      (validTo) => validTo - MAX_EVENT_RANGE_MS,
+    );
+    expect(
+      (await lucid.utxosAt(h.contracts.txOrder.spendingScriptAddress)).length,
+    ).toBe(before + 1);
+  }, 300_000);
+
+  it("refuses an order whose L1 range is one slot longer than the event range", async () => {
+    screen.enabled = true;
+    const slot = 1_000;
+    await expectOnchainRefusal(
+      () =>
+        mintOrder(
+          submittedBytes(row("base")),
+          (validTo) => validTo - MAX_EVENT_RANGE_MS - slot,
+        ),
+      {
+        refusedBy: "user_events/tx_order_v1",
+        check: /upper - lower <= max_length/u,
+      },
+    );
+  }, 300_000);
+
+  it("refuses an order whose L1 range is open below", async () => {
+    screen.enabled = true;
+    await expectOnchainRefusal(
+      () => mintOrder(submittedBytes(row("base")), () => null),
+      {
+        refusedBy: "user_events/tx_order_v1",
+        check: /Validity range was expected to be a closed range/u,
+      },
+    );
+  }, 300_000);
 
   it("mints an order at the SDK's mint-policy capacity limit", async () => {
     // The base row with field 5 widened to the most single-asset policies the

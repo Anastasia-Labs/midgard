@@ -40,6 +40,7 @@ import {
   encodeUserEventAuthenticateMintRedeemer,
   outputReferenceToPlutusDataCbor,
   type PrepareUserEventMintContextParams,
+  resolveUserEventValidFrom,
   resolveUserEventValidTo,
   selectWalletNonceInputProgram,
   type UserEventAuthenticateMintRedeemerParams,
@@ -56,6 +57,7 @@ export type UserEventMintContext = {
   readonly eventUnit: string;
   readonly witnessScript: CertificateValidator;
   readonly witnessScriptHash: string;
+  readonly validFrom: number;
   readonly validTo: number;
   readonly inclusionTime: number;
 };
@@ -131,6 +133,7 @@ export const prepareUserEventMintContext = ({
       eventUnit: toUnit(eventPolicyId, nonceAssetName),
       witnessScript,
       witnessScriptHash: validatorToScriptHash(witnessScript),
+      validFrom: resolveUserEventValidFrom(),
       validTo,
       inclusionTime: resolveEventInclusionTime(validTo, network),
     };
@@ -144,6 +147,8 @@ export type BuildCompletedUserEventMintTxParams = {
   readonly eventAddress: string;
   readonly eventDatumCbor: string;
   readonly outputAssets: Assets;
+  /** The closed L1 range the tx-order mint requires: lower and upper bound. */
+  readonly validFrom: number;
   readonly validTo: number;
   readonly mintingPolicy: MintingPolicy;
   readonly attachMintingPolicy: boolean;
@@ -247,6 +252,7 @@ export const buildCompletedUserEventMintTxProgram = (
             },
             params.outputAssets,
           )
+          .validFrom(params.validFrom)
           .validTo(params.validTo)
           .register.Stake(
             scriptRewardAddress(params.network, params.witnessScript),

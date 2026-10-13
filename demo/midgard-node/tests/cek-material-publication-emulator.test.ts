@@ -18,10 +18,8 @@ import {
 } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
-import { publishedProgramMaterialEntries } from "../src/forced-orders/index.js";
-
 describe("immutable CEK material publication", () => {
-  it("publishes an ordinary blob chunk and ingests its exact typed material", async () => {
+  it("publishes an ordinary blob chunk under its exact typed datum", async () => {
     const blueprint = SDK.parseFaultProofBlueprint(
       JSON.parse(
         readFileSync(
@@ -87,9 +85,5 @@ describe("immutable CEK material publication", () => {
           .coinsPerUtxoByte,
       }),
     );
-    expect(publishedProgramMaterialEntries(outputs)).toMatchObject({
-      ignoredCount: 0,
-      entries: [entry],
-    });
   }, 60_000);
 });

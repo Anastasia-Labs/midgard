@@ -1,7 +1,4 @@
-import {
-  computeMidgardNativeTxId,
-  decodeMidgardForcedTxFullFromCanonicalCbor,
-} from "@al-ft/midgard-core/codec";
+import { deriveMidgardForcedTxFaultEvidenceMaterial } from "@al-ft/midgard-core/codec";
 import {
   type ForcedRejection,
   forcedRejectionReason,
@@ -104,11 +101,12 @@ export const replayForcedTransitionEffect = async (input: {
       "$.committedEventClaim.verdict",
     );
   }
-  const nativeTx = decodeMidgardForcedTxFullFromCanonicalCbor(
-    input.authority.canonicalNativeTxCbor,
-  );
   const queued: QueuedTx = {
-    txId: Buffer.from(computeMidgardNativeTxId(nativeTx)),
+    txId: Buffer.from(
+      deriveMidgardForcedTxFaultEvidenceMaterial(
+        input.authority.canonicalNativeTxCbor,
+      ).transactionId,
+    ),
     txCbor: Buffer.from(input.authority.canonicalNativeTxCbor),
     sourceKind: "forced",
     programMaterialSidecarCbor: input.authority.programMaterialSidecarCbor,

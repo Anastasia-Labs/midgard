@@ -351,7 +351,8 @@ export const replayForeignBlock = (deps: {
         expectedNetworkId: config.NETWORK === "Mainnet" ? 1n : 0n,
         minFeeA: config.MIN_FEE_A,
         minFeeB: config.MIN_FEE_B,
-        // Validity is judged at the block's time: its header's block slot.
+        // Validity is judged at the block's time: its node's block_time.
+        blockTimeMs: Number(input.blockTime),
         blockSlot: BigInt(
           unixTimeToSlotForConfig(
             Number(input.blockTime),

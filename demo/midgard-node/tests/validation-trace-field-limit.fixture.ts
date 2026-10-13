@@ -171,7 +171,7 @@ export const fixture = async (
       classifyForcedTransactions({
         entries: [entry],
         initialState: new Map([[spent.toString("hex"), output]]),
-        effectiveEndTime: new Date(1_750_000_000_000),
+        blockTime: new Date(1_750_000_000_000),
         consensusProfile: MIDGARD_CONSENSUS_PROFILE,
         validation: {
           l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
@@ -181,7 +181,6 @@ export const fixture = async (
           bucketConcurrency: 1,
           slotForUnixTime: () => 100n,
         },
-        resolveProgramMaterialSidecar: () => Effect.succeed(sidecar),
       }),
     );
     if (classified === undefined)

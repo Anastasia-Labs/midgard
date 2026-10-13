@@ -8,6 +8,7 @@ export const timingConstants = {
   user_events_negligence_timeout_ms: "user_events_negligence_timeout",
   new_shift_inactivity_grace_period_ms: "new_shift_inactivity_grace_period",
   max_validity_range_ms: "max_validity_range_length",
+  max_event_validity_range_ms: "max_event_validity_range_length",
   da_attestation_timeout_ms: "da_attestation_timeout_v1",
   da_small_response_window_ms: "small_response_window_ms_v1",
   da_full_response_window_ms: "full_response_window_ms_v1",

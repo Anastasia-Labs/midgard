@@ -18,6 +18,7 @@ export const DEPLOYMENT_PROFILES = {
       user_events_negligence_timeout_ms: 1200000,
       new_shift_inactivity_grace_period_ms: 480000,
       max_validity_range_ms: 480000,
+      max_event_validity_range_ms: 600000,
       da_attestation_timeout_ms: 3600000,
       da_small_response_window_ms: 3600000,
       da_full_response_window_ms: 172800000,
@@ -86,6 +87,7 @@ export const DEPLOYMENT_PROFILES = {
       user_events_negligence_timeout_ms: 1200000,
       new_shift_inactivity_grace_period_ms: 480000,
       max_validity_range_ms: 480000,
+      max_event_validity_range_ms: 600000,
       da_attestation_timeout_ms: 3600000,
       da_small_response_window_ms: 3600000,
       da_full_response_window_ms: 172800000,
@@ -157,6 +159,7 @@ export const DEPLOYMENT_PROFILES = {
       user_events_negligence_timeout_ms: 1200000,
       new_shift_inactivity_grace_period_ms: 480000,
       max_validity_range_ms: 480000,
+      max_event_validity_range_ms: 600000,
       da_attestation_timeout_ms: 600000,
       da_small_response_window_ms: 880000,
       da_full_response_window_ms: 880000,
@@ -210,6 +213,7 @@ export const DEPLOYMENT_PROFILES = {
       user_events_negligence_timeout_ms: 1200000,
       new_shift_inactivity_grace_period_ms: 480000,
       max_validity_range_ms: 480000,
+      max_event_validity_range_ms: 600000,
       da_attestation_timeout_ms: 600000,
       da_small_response_window_ms: 880000,
       da_full_response_window_ms: 880000,
@@ -263,6 +267,7 @@ export const DEPLOYMENT_PROFILES = {
       user_events_negligence_timeout_ms: 1200000,
       new_shift_inactivity_grace_period_ms: 480000,
       max_validity_range_ms: 480000,
+      max_event_validity_range_ms: 600000,
       da_attestation_timeout_ms: 600000,
       da_small_response_window_ms: 720000,
       da_full_response_window_ms: 840000,
@@ -316,6 +321,7 @@ export const DEPLOYMENT_PROFILES = {
       user_events_negligence_timeout_ms: 1200000,
       new_shift_inactivity_grace_period_ms: 480000,
       max_validity_range_ms: 480000,
+      max_event_validity_range_ms: 600000,
       da_attestation_timeout_ms: 600000,
       da_small_response_window_ms: 720000,
       da_full_response_window_ms: 840000,
@@ -368,17 +374,17 @@ export const DEPLOYMENT_PROFILES = {
 } as const;
 
 export const DEPLOYMENT_PROFILE_DIGESTS = {
-  mainnet: "8a63410f9421cb851b67a2c13015722d759ce6135b71db1b40e7544652b53fbd",
+  mainnet: "8228a2d0552be07669710ff433b980772ae1506cf2bb3c7160782a6a59366912",
   "preprod-public":
-    "dbd1ae0d600f42babf26862793f0740107d7204fdcf69ba4a5084536a1e192e1",
+    "8bd688e6ca826e9ccbdf290a6df6fa0da2badd462d6f3b9ed601ee7938bda0f5",
   "preprod-testing":
-    "dc9896f9d9f6dcfb648525c702a1fbf87a32c5769ce25e7b28d55bc30847f05d",
+    "30d117db4ca0852fc22f80a4c687b3c118e5eeb6eb3cf360f02c2e2d13ad2b70",
   "local-devnet-testing":
-    "c63ff08d2de8e7a6b3b11bb7ad4968384255f346d4a53802cfa1568c5538a1c7",
+    "15441a106087154f16c6052eb984260fe4bbb2c9b168fa7f15e2ab17082eda29",
   "preprod-emulator-testing":
-    "bd41ec42bd1291a8940d05b21f39e358a1e310f4f9066b5de366defc96c24219",
+    "4a3edd7153f17f26fc115b61a63721848ed6979e92a16e96789fabf629192789",
   "preprod-emulator-curated":
-    "9a952b78f360b86919313225fbce6460c2753ce47b40abd3f98547716008b5dc",
+    "e4b118c838a4b968f6b77a1a71fd30c63b4489852d83ca5779ff0bd96ade6eb9",
 } as const;
 
 export const DEPLOYMENT_MANIFEST_ECONOMICS_BY_PROFILE = {

@@ -103,7 +103,7 @@ describe("malformed field-6 native script the classifier does not name", () => {
           consensusProfile: MIDGARD_CONSENSUS_PROFILE,
           eventKeyCbor: encodeCbor([2n, malformed.txId]),
           sourceKind: "normal",
-          blockEndTimeMs: 1_750_000_000_000,
+          blockTimeMs: 1_750_000_000_000,
           expectedNetworkId: 0n,
           minFeeA: 0n,
           minFeeB: 0n,

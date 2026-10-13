@@ -6,7 +6,7 @@ import {
   MIDGARD_CONSENSUS_PROFILE,
   type MidgardConsensusProfile,
 } from "@al-ft/midgard-core";
-import { decodeMidgardForcedTxFullFromCanonicalCbor } from "@al-ft/midgard-core/codec/forced";
+import { deriveMidgardForcedTxFaultEvidenceMaterial } from "@al-ft/midgard-core/codec/forced";
 import {
   type L1SlotConfig,
   parseL1SlotConfig,
@@ -32,7 +32,9 @@ export type ValidationVerdictEventInput = Readonly<{
   programMaterialSidecarCbor?: Buffer;
   /** Every ledger entry the transaction may resolve, keyed by out-ref. */
   ledgerWitnessEntries: readonly ValidationMachineLedgerEntry[];
-  blockEndTimeMs: number;
+  /** The block's clock: its state-queue node's authenticated `block_time`.
+   * A header's `end_time` bounds event coverage only and is never this. */
+  blockTimeMs: number;
   expectedNetworkId: bigint;
   minFeeA: bigint;
   minFeeB: bigint;
@@ -75,13 +77,15 @@ export const replayValidationVerdictEvent = (
         consensusProfile: MIDGARD_CONSENSUS_PROFILE,
         canonicalTransactionCbor,
         transactionId: Buffer.from(
-          computeMidgardNativeTxId(
-            (input.sourceKind === "forced"
-              ? decodeMidgardForcedTxFullFromCanonicalCbor
-              : decodeMidgardNativeTxFullFromCanonicalCbor)(
-              canonicalTransactionCbor,
-            ).compact,
-          ),
+          input.sourceKind === "forced"
+            ? deriveMidgardForcedTxFaultEvidenceMaterial(
+                canonicalTransactionCbor,
+              ).transactionId
+            : computeMidgardNativeTxId(
+                decodeMidgardNativeTxFullFromCanonicalCbor(
+                  canonicalTransactionCbor,
+                ).compact,
+              ),
         ),
         programMaterialSidecarCbor: Buffer.from(
           input.programMaterialSidecarCbor ??
@@ -96,7 +100,7 @@ export const replayValidationVerdictEvent = (
       txCbor: snapshot.canonicalTransactionCbor,
       programMaterialSidecarCbor: snapshot.programMaterialSidecarCbor,
       arrivalSeq: 0n,
-      createdAt: new Date(input.blockEndTimeMs),
+      createdAt: new Date(input.blockTimeMs),
     };
     const phaseA = yield* Effect.try(() =>
       validatePhaseASingle(queued, {

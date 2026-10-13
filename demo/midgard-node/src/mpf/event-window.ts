@@ -26,8 +26,6 @@ export {
   acceptedTransactionLedgerWitnesses,
   applyValidationLedgerMutations,
   type ClassifiedForcedTransaction,
-  type ForcedProgramMaterialSidecarResolver,
-  programMaterialSidecarForEnvelopes,
   rejectedForcedTransactionLedgerWitnesses,
 } from "./event-window.forced-verdict-for-rejection.js";
 export {

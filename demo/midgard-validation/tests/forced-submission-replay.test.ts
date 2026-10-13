@@ -227,7 +227,7 @@ describe("forced submission validation boundary", () => {
           ),
           ledgerWitnessEntries: entries,
           priorUtxosRoot: priorRoot,
-          blockEndTimeMs: 1_750_000_000_000,
+          blockTimeMs: 1_750_000_000_000,
           expectedNetworkId: 0n,
           minFeeA: 0n,
           minFeeB: 0n,

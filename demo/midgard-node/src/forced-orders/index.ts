@@ -20,14 +20,9 @@ export {
   forcedOrderTrackedSet,
 } from "./config.js";
 export { forcedOrderDerivation, outRefLabel } from "./derive.js";
-export {
-  forcedOrderEntry,
-  publishedProgramMaterialEntries,
-  type PublishedProgramMaterialSnapshot,
-} from "./entry.js";
+export { forcedOrderEntry } from "./entry.js";
 export { forcedOrderHorizon } from "./horizon.js";
 export {
-  FORCED_ORDER_ADMISSION_STOPPED,
   FORCED_ORDER_CARRIAGE_PENDING,
   FORCED_ORDER_INGESTION_FAILED,
   forcedOrderIngestionHook,

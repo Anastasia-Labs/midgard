@@ -24,7 +24,6 @@ import {
   encodeMidgardCekProgramEnvelope,
   encodeMidgardCekProgramMaterialSidecar,
   encodeMidgardCekTermNode,
-  hashMidgardCekProgramMaterialPreimage,
   hashMidgardCekTermNode,
 } from "@al-ft/midgard-core/cek-proof";
 import { encodeMidgardTxOutput } from "@al-ft/midgard-core/codec";
@@ -36,7 +35,7 @@ import {
   buildCanonicalMidgardLedgerEntryOutputMaterial,
   RejectCodes,
 } from "@al-ft/midgard-validation";
-import { Data, type UTxO } from "@lucid-evolution/lucid";
+import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
@@ -45,7 +44,6 @@ import {
   ForcedTransactionsDB,
   PendingBlockFinalizationsDB,
 } from "../src/database/index.js";
-import { publishedProgramMaterialEntries } from "../src/forced-orders/index.js";
 import {
   buildPlaceholderValidationTraceMembers,
   classifyForcedTransactions,
@@ -60,36 +58,6 @@ import {
 } from "./forced-transactions.make-signed-effectful-transaction.js";
 
 describe("V1 forced transaction material", () => {
-  it("accepts only exact self-authenticating material from the immutable L1 address", () => {
-    const preimage = encodeMidgardCekTermNode({ kind: "error" });
-    const root = hashMidgardCekProgramMaterialPreimage("term", preimage);
-    const [publication] = SDK.deriveCekProgramMaterialPublications([
-      { kind: "term", root, preimage },
-    ]);
-    const utxo = (datum: string | undefined, outputIndex: number): UTxO =>
-      ({
-        txHash: "12".repeat(32),
-        outputIndex,
-        address: "addr_test1wmaterial",
-        assets: { lovelace: 2_000_000n },
-        ...(datum === undefined ? {} : { datum }),
-      }) as UTxO;
-    const decoded = publishedProgramMaterialEntries([
-      utxo(publication!.datumCbor, 0),
-      utxo(
-        Data.to(
-          { ...publication!.datum, root: "ff".repeat(32) },
-          SDK.CekProgramMaterialDatum,
-        ),
-        1,
-      ),
-      utxo(undefined, 2),
-    ]);
-
-    expect(decoded.entries).toEqual([publication!.entry]);
-    expect(decoded.ignoredCount).toBe(2);
-  });
-
   it("keeps the submitted source and identity identical across operator verdicts", async () => {
     const nativeTxCbor = encodedTransaction();
     const accepted = await Effect.runPromise(
@@ -422,12 +390,11 @@ describe("V1 forced transaction material", () => {
       await forcedEntry({ label: 1, transaction: firstTransaction }),
       await forcedEntry({ label: 2, transaction: secondTransaction }),
     ];
-    const resolverCalls: string[][] = [];
     const classified = await Effect.runPromise(
       classifyForcedTransactions({
         entries,
         initialState: new Map([[initialInput.toString("hex"), output]]),
-        effectiveEndTime: new Date("2026-07-23T12:01:00.000Z"),
+        blockTime: new Date("2026-07-23T12:01:00.000Z"),
         consensusProfile: MIDGARD_CONSENSUS_PROFILE,
         validation: {
           l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
@@ -437,18 +404,9 @@ describe("V1 forced transaction material", () => {
           bucketConcurrency: 1,
           slotForUnixTime: () => 100n,
         },
-        resolveProgramMaterialSidecar: (envelopes) => {
-          resolverCalls.push(
-            envelopes.map((envelope) =>
-              Buffer.from(envelope.termRoot).toString("hex"),
-            ),
-          );
-          return Effect.succeed(encodeMidgardCekProgramMaterialSidecar([]));
-        },
       }),
     );
 
-    expect(resolverCalls).toEqual([[], []]);
     expect(classified).toHaveLength(2);
     for (const result of classified) {
       expect(ForcedTransactionsDB.operatorValidityOfEntry(result.entry)).toBe(
@@ -527,7 +485,7 @@ describe("V1 forced transaction material", () => {
       classifyForcedTransactions({
         entries: [await forcedEntry({ label: 3, transaction })],
         initialState: new Map(),
-        effectiveEndTime: new Date("2026-07-23T12:01:00.000Z"),
+        blockTime: new Date("2026-07-23T12:01:00.000Z"),
         consensusProfile: MIDGARD_CONSENSUS_PROFILE,
         validation: {
           l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
@@ -537,8 +495,6 @@ describe("V1 forced transaction material", () => {
           bucketConcurrency: 1,
           slotForUnixTime: () => 100n,
         },
-        resolveProgramMaterialSidecar: () =>
-          Effect.succeed(encodeMidgardCekProgramMaterialSidecar([])),
       }),
     );
 
@@ -569,9 +525,10 @@ describe("V1 forced transaction material", () => {
 
 /**
  * Every input of a forced transaction resolves against the ledger state
- * immediately before it, as on Cardano. Its program material is the shared
- * per-event set at that position whatever its verdict, and the DA committee
- * derives the same set from the same pre-state.
+ * immediately before it, as on Cardano. A forced transaction runs no
+ * program, so it carries no program material whatever its verdict, even when
+ * it references an output that holds a script, and the DA committee derives
+ * the same empty set from the same pre-state.
  */
 describe("forced transaction program material at its position", () => {
   const terminal = { kind: "error" } as const;
@@ -583,12 +540,6 @@ describe("forced transaction program material at its position", () => {
     nodeCount: 1n,
     materialByteLength: BigInt(termPreimage.length),
   };
-  const materialByRoot = new Map([
-    [
-      termRoot.toString("hex"),
-      { kind: "term" as const, root: termRoot, preimage: termPreimage },
-    ],
-  ]);
   const scriptRefOutput = encodeMidgardTxOutput({
     address: TEST_ADDRESS,
     value: { lovelace: FUNDED_OUTPUT_LOVELACE, assets: new Map() },
@@ -606,43 +557,24 @@ describe("forced transaction program material at its position", () => {
     slotForUnixTime: () => 100n,
   };
 
-  /** Classifies `transaction` as the block's only event, recording every
-   * program set the node asks the material store for. */
+  /** Classifies `transaction` as the block's only event. */
   const classifyAlone = async (
     transaction: ReturnType<typeof makeSignedEffectfulTransaction>,
     initialState: ReadonlyMap<string, Buffer>,
   ) => {
-    const resolverCalls: string[][] = [];
     const [classified] = await Effect.runPromise(
       classifyForcedTransactions({
         entries: [await forcedEntry({ label: 9, transaction })],
         initialState: new Map(initialState),
-        effectiveEndTime: new Date("2026-07-23T12:01:00.000Z"),
+        blockTime: new Date("2026-07-23T12:01:00.000Z"),
         consensusProfile: MIDGARD_CONSENSUS_PROFILE,
         validation,
-        resolveProgramMaterialSidecar: (envelopes) => {
-          resolverCalls.push(
-            envelopes.map((requested) =>
-              Buffer.from(requested.termRoot).toString("hex"),
-            ),
-          );
-          return Effect.succeed(
-            encodeMidgardCekProgramMaterialSidecar(
-              envelopes.map(
-                (requested) =>
-                  materialByRoot.get(
-                    Buffer.from(requested.termRoot).toString("hex"),
-                  )!,
-              ),
-            ),
-          );
-        },
       }),
     );
-    return { classified: classified!, resolverCalls };
+    return { classified: classified! };
   };
 
-  it("judges an absent reference input InputNotFound and commits only the attached material", async () => {
+  it("judges an absent reference input InputNotFound and commits no material", async () => {
     const spent = outputReferenceFromHash(Buffer.alloc(32, 0x61));
     const absentReference = outputReferenceFromHash(Buffer.alloc(32, 0x62));
     const spentOutput = makeOutput(FUNDED_OUTPUT_LOVELACE);
@@ -651,12 +583,8 @@ describe("forced transaction program material at its position", () => {
       referenceInputs: [absentReference],
     });
 
-    const { classified, resolverCalls } = await classifyAlone(
-      transaction,
-      initialState,
-    );
+    const { classified } = await classifyAlone(transaction, initialState);
 
-    expect(resolverCalls).toEqual([[]]);
     expect(
       (
         Data.from(
@@ -683,7 +611,7 @@ describe("forced transaction program material at its position", () => {
     ).toEqual([]);
   });
 
-  it("commits a live reference's program for a transaction Phase A rejects", async () => {
+  it("commits no material for a live script reference of a transaction Phase A rejects", async () => {
     const spent = outputReferenceFromHash(Buffer.alloc(32, 0x63));
     const reference = outputReferenceFromHash(Buffer.alloc(32, 0x64));
     const spentOutput = makeOutput(FUNDED_OUTPUT_LOVELACE);
@@ -696,12 +624,8 @@ describe("forced transaction program material at its position", () => {
       networkId: 1n,
     });
 
-    const { classified, resolverCalls } = await classifyAlone(
-      transaction,
-      initialState,
-    );
+    const { classified } = await classifyAlone(transaction, initialState);
 
-    expect(resolverCalls).toEqual([[termRoot.toString("hex")]]);
     expect(ForcedTransactionsDB.operatorValidityOfEntry(classified.entry)).toBe(
       "TxIsInvalid",
     );
@@ -710,6 +634,37 @@ describe("forced transaction program material at its position", () => {
       decodeMidgardCekProgramMaterialSidecar(
         classified.programMaterialSidecarCbor,
       ),
-    ).toEqual([materialByRoot.get(termRoot.toString("hex"))]);
+    ).toEqual([]);
+  });
+
+  it("accepts a transaction referencing a live script reference with no material retained", async () => {
+    const spent = outputReferenceFromHash(Buffer.alloc(32, 0x65));
+    const reference = outputReferenceFromHash(Buffer.alloc(32, 0x66));
+    const spentOutput = makeOutput(FUNDED_OUTPUT_LOVELACE);
+    const initialState = new Map([
+      [spent.toString("hex"), spentOutput],
+      [reference.toString("hex"), scriptRefOutput],
+    ]);
+    const transaction = makeSignedEffectfulTransaction(spent, spentOutput, {
+      referenceInputs: [reference],
+    });
+
+    const { classified } = await classifyAlone(transaction, initialState);
+
+    expect(ForcedTransactionsDB.operatorValidityOfEntry(classified.entry)).toBe(
+      "TxIsValid",
+    );
+    expect(classified.rejectionCode).toBeNull();
+    expect(classified.ledgerWitnessEntries).toEqual(
+      expect.arrayContaining([
+        { outRef: spent, output: spentOutput },
+        { outRef: reference, output: scriptRefOutput },
+      ]),
+    );
+    expect(
+      decodeMidgardCekProgramMaterialSidecar(
+        classified.programMaterialSidecarCbor,
+      ),
+    ).toEqual([]);
   });
 });

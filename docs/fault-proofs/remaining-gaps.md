@@ -504,12 +504,10 @@ not cement the current mutable-validity workaround.
 
 ### Forced CEK material availability
 
-Missing retained CEK graph material for a forced transaction is an
-admission/liveness and cancellation problem, not a post-commit static statement
-about a program that can necessarily be evaluated. Keep its owner under the
-`forced-program-material-availability` consensus rule rather than creating a
-misleading non-interactive proof category. NIFP-06 still applies when the
-committed program _envelope itself_ is malformed.
+Closed. The tx-order mint admits only native-script forced transactions with no
+redeemers, so a forced transaction executes no program and has no CEK material
+to make available. Its program-material sidecar is always empty, and the
+`forced-program-material-availability` consensus rule is deleted.
 
 ## Explicitly excluded or closed findings
 

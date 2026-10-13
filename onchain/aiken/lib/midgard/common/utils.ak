@@ -32,16 +32,27 @@ pub fn is_canonical_value(xs: Pairs<PolicyId, Pairs<AssetName, Int>>) -> Value {
     |> assets.from_ascending_pairs
 }
 
-pub fn get_inclusive_bounds_of_a_short_validity_range(
+/// Inclusive bounds of a closed validity range at most `max_length` long.
+pub fn get_inclusive_bounds_of_a_bounded_validity_range(
   interval: Interval,
+  max_length: Int,
 ) -> (PosixTime, PosixTime) {
   when vrn.normalize_time_range(interval) is {
     vrn.ClosedRange { lower, upper } -> {
-      expect upper - lower <= env.max_validity_range_length
+      expect upper - lower <= max_length
       (lower, upper)
     }
     _ -> fail @"Validity range was expected to be a closed range"
   }
+}
+
+pub fn get_inclusive_bounds_of_a_short_validity_range(
+  interval: Interval,
+) -> (PosixTime, PosixTime) {
+  get_inclusive_bounds_of_a_bounded_validity_range(
+    interval,
+    env.max_validity_range_length,
+  )
 }
 
 pub fn get_inclusive_upper_bound_of_interval(interval: Interval) -> Int {

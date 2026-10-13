@@ -183,7 +183,7 @@ const buildRetainedPlutusFixture = async (
           }),
       ledgerWitnessEntries: [{ outRef: spent, output: inputOutput }],
       priorUtxosRoot: predecessor.header.utxosRoot,
-      blockEndTimeMs,
+      blockTimeMs: blockEndTimeMs,
       expectedNetworkId: 0n,
       minFeeA: 0n,
       minFeeB: 0n,

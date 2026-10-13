@@ -48,7 +48,6 @@ import { MpfError } from "./errors.js";
 import {
   type ClassifiedForcedTransaction,
   classifyForcedTransactions,
-  programMaterialSidecarForEnvelopes,
   resolveIncludedDepositEntriesForWindow,
   resolveIncludedForcedTransactionEntriesForWindow,
   resolveIncludedWithdrawalEntriesForWindow,
@@ -446,10 +445,9 @@ export const processMpfs = (
         : yield* classifyForcedTransactions({
             entries: includedForcedTransactionEntries,
             initialState: forcedPreState,
-            effectiveEndTime: effectiveEndTime!,
+            blockTime: effectiveEndTime!,
             consensusProfile,
             validation: config!.forcedValidation!,
-            resolveProgramMaterialSidecar: programMaterialSidecarForEnvelopes,
           });
     includedForcedTransactionEntries = classifiedForcedTransactions.map(
       ({ entry }) => entry,

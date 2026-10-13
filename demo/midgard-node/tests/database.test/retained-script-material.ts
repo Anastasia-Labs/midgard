@@ -1,7 +1,4 @@
-import {
-  decodeMidgardCekProgramMaterialSidecar,
-  encodeMidgardCekProgramEnvelope,
-} from "@al-ft/midgard-core/cek-proof";
+import { encodeMidgardCekProgramEnvelope } from "@al-ft/midgard-core/cek-proof";
 import {
   computeMidgardNativeTxId,
   decodeMidgardNativeTxFullFromCanonicalCbor,
@@ -13,9 +10,7 @@ import {
 } from "@al-ft/midgard-core/codec";
 import { encodeCbor } from "@al-ft/midgard-core/codec/cbor";
 import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
-import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import * as SDK from "@al-ft/midgard-sdk";
-import { RejectCodes } from "@al-ft/midgard-validation";
 import { SqlClient } from "@effect/sql";
 import { it } from "@effect/vitest";
 import { Data } from "@lucid-evolution/lucid";
@@ -29,19 +24,13 @@ import {
   MempoolDB,
   PendingBlockFinalizationsDB,
 } from "../../src/database/index.js";
-import { classifyForcedTransactions } from "../../src/mpf/event-window.classify-forced-transactions.js";
-import { programMaterialSidecarForEnvelopes } from "../../src/mpf/event-window.forced-verdict-for-rejection.js";
 import { encodeTransactionRootValue } from "../../src/mpf/index.js";
 import { NodeConfig } from "../../src/services/config.js";
 import { restoreRetainedStatePins } from "../../src/workers/commit-block-header/restore-retained-state-pins.js";
 import { finalizeCommittedBlockLocally } from "../../src/workers/utils/commit-submission.finalize-committed-block-locally.js";
 import { buildJournalFixture } from "../da-payload.build-journal-fixture.js";
 import { member, sourceRoot } from "../da-payload.record.js";
-import {
-  forcedEntry,
-  makeOutput,
-  makeSignedEffectfulTransaction,
-} from "../forced-transactions.make-signed-effectful-transaction.js";
+import { makeOutput } from "../forced-transactions.make-signed-effectful-transaction.js";
 import { makeOutRefCbor } from "../midgard-output-helpers.js";
 import {
   daPayloadInsertFixture,
@@ -119,7 +108,7 @@ export const registerRetainedScriptMaterialTests = () => {
     );
 
     it.effect(
-      "pins journal script_refs before local finalization releases their admissions and classifies a later forced reference",
+      "pins journal script_refs before local finalization releases their admissions",
       () =>
         isolatedDb(
           Effect.gen(function* () {
@@ -253,37 +242,6 @@ export const registerRetainedScriptMaterialTests = () => {
             expect(
               yield* sql`SELECT * FROM cek_program_material_admission_owners`,
             ).toEqual([]);
-            const absentSpend = makeOutRefCbor(77);
-            const transaction = makeSignedEffectfulTransaction(
-              absentSpend,
-              makeOutput(5_000_000n),
-              { referenceInputs: [outref] },
-            );
-            const entry = yield* Effect.promise(() =>
-              forcedEntry({ label: 7, transaction }),
-            );
-            const classified = yield* classifyForcedTransactions({
-              entries: [entry],
-              initialState: new Map([[outref.toString("hex"), output]]),
-              effectiveEndTime: new Date("2026-07-23T12:01:00Z"),
-              consensusProfile: MIDGARD_CONSENSUS_PROFILE,
-              validation: {
-                l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
-                expectedNetworkId: 0n,
-                minFeeA: 0n,
-                minFeeB: 0n,
-                bucketConcurrency: 1,
-                slotForUnixTime: () => 100n,
-              },
-              resolveProgramMaterialSidecar: programMaterialSidecarForEnvelopes,
-            });
-            expect(classified).toHaveLength(1);
-            expect(classified[0].rejectionCode).toBe(RejectCodes.InputNotFound);
-            expect(
-              decodeMidgardCekProgramMaterialSidecar(
-                classified[0].programMaterialSidecarCbor,
-              ),
-            ).toEqual([attempt.material]);
             // Restoring owners on reopen is idempotent and keeps the durable pin.
             yield* restoreRetainedStatePins;
             yield* restoreRetainedStatePins;

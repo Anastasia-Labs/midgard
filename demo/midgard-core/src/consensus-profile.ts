@@ -382,7 +382,6 @@ export const MIDGARD_REQUIRED_PROOF_FAMILIES = Object.freeze([
   "transition-trace-accepted-transaction",
   "transition-trace-rejected-no-op",
   "forced-transaction-verdict-mismatch",
-  "forced-program-material-availability",
 ] as const);
 
 export const MIDGARD_CONSENSUS_PROFILE = Object.freeze({

@@ -96,12 +96,7 @@ const singleAssetPolicies = (count: number, pairHead = Buffer.from([0x82])) =>
     return Buffer.concat([pairHead, item.subarray(1)]);
   });
 
-const onePolicyOfAssets = (
-  count: number,
-  quantity = 1n,
-  nameBytes = 2,
-  pairHead = "82",
-) => {
+const onePolicyOfAssets = (count: number, quantity = 1n, nameBytes = 2) => {
   const item = encodeMidgardMintPolicyItem({
     policyId: policyId(0),
     assets: Array.from({ length: count }, (_, index) => ({
@@ -112,7 +107,7 @@ const onePolicyOfAssets = (
       quantity,
     })),
   });
-  return [Buffer.concat([Buffer.from(pairHead, "hex"), item.subarray(1)])];
+  return [item];
 };
 
 const outputsWithData = (count: number) =>
@@ -127,19 +122,14 @@ const memoryWithOneOutput =
 const countAtBasis = (fixed: number, perItem: number) =>
   Math.floor((MIDGARD_FORCED_TX_ORDER_MINT_MEMORY_BASIS - fixed) / perItem);
 
-const assetLimitAtBasis = (
-  quantityExtra: number,
-  nameBytes = 2,
-  pairHeadExtra = 0,
-) =>
+const assetLimitAtBasis = (quantityExtra: number, nameBytes = 2) =>
   1 +
   countAtBasis(
     memoryWithOneOutput +
       RATES.variableItem +
       RATES.mintPolicy +
       RATES.mintFirstAssetName +
-      quantityExtra +
-      pairHeadExtra,
+      quantityExtra,
     RATES.mintAsset +
       quantityExtra +
       (nameBytes >= 24 ? RATES.mintLongAssetName : 0),
@@ -212,51 +202,19 @@ describe("forced-transaction capacity limits", () => {
   );
 
   it.each([
-    [1n, "82", 381, RATES.mintPositiveQuantity[0], 0],
-    [0xffffffffffffffffn, "82", 243, RATES.mintPositiveQuantity[4], 0],
-    [
-      -0x10000000000000000n,
-      "9a00000002",
-      236,
-      RATES.mintNegativeQuantity[4],
-      RATES.mintPairHead[3],
-    ],
+    [1n, 381, RATES.mintPositiveQuantity[0]],
+    [0xffffffffffffffffn, 243, RATES.mintPositiveQuantity[4]],
+    [-0x10000000000000000n, 236, RATES.mintNegativeQuantity[4]],
   ] as const)(
-    "admits maximal names with quantity %s and head %s up to %i assets",
-    (quantity, head, expectedLimit, extra, headExtra) => {
-      const limit = assetLimitAtBasis(extra, 32, headExtra);
+    "admits maximal names with quantity %s up to %i assets",
+    (quantity, expectedLimit, extra) => {
+      const limit = assetLimitAtBasis(extra, 32);
       expect(limit).toBe(expectedLimit);
       expect(
-        derive(
-          forcedTx({ mint: onePolicyOfAssets(limit, quantity, 32, head) }),
-        ),
+        derive(forcedTx({ mint: onePolicyOfAssets(limit, quantity, 32) })),
       ).not.toThrow();
       expect(
-        derive(
-          forcedTx({ mint: onePolicyOfAssets(limit + 1, quantity, 32, head) }),
-        ),
-      ).toThrow(CAPACITY);
-    },
-  );
-
-  it.each([
-    ["9802", 119, RATES.mintPairHead[1]],
-    ["990002", 116, RATES.mintPairHead[2]],
-    ["9a00000002", 112, RATES.mintPairHead[3]],
-  ] as const)(
-    "admits pair head %s up to %i policies and refuses one more",
-    (head, expectedLimit, extra) => {
-      const limit = countAtBasis(
-        memoryWithOneOutput,
-        RATES.variableItem + RATES.mintPolicy + extra,
-      );
-      expect(limit).toBe(expectedLimit);
-      const pairHead = Buffer.from(head, "hex");
-      expect(
-        derive(forcedTx({ mint: singleAssetPolicies(limit, pairHead) })),
-      ).not.toThrow();
-      expect(
-        derive(forcedTx({ mint: singleAssetPolicies(limit + 1, pairHead) })),
+        derive(forcedTx({ mint: onePolicyOfAssets(limit + 1, quantity, 32) })),
       ).toThrow(CAPACITY);
     },
   );
@@ -272,15 +230,14 @@ describe("forced-transaction capacity limits", () => {
   );
 
   it.each(["9802", "990002", "9a00000002"])(
-    "refuses 121 policies with a nonminimal pair head %s",
+    "admits a policy under the minimal pair head and refuses it under %s",
     (head) => {
-      const pairHead = Buffer.from(head, "hex");
+      expect(derive(forcedTx({ mint: singleAssetPolicies(1) }))).not.toThrow();
       expect(
-        derive(forcedTx({ mint: singleAssetPolicies(1, pairHead) })),
-      ).not.toThrow();
-      expect(
-        derive(forcedTx({ mint: singleAssetPolicies(121, pairHead) })),
-      ).toThrow(CAPACITY);
+        derive(
+          forcedTx({ mint: singleAssetPolicies(1, Buffer.from(head, "hex")) }),
+        ),
+      ).toThrow(/^Forced admission refused at mint_items_are_valid\(mint\): /u);
     },
   );
 

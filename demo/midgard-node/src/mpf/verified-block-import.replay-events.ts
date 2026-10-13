@@ -1,3 +1,4 @@
+import { deriveMidgardForcedTxFaultEvidenceMaterial } from "@al-ft/midgard-core/codec/forced";
 import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
 import { type L1SlotConfig } from "@al-ft/midgard-core/l1-slot-config";
 import * as SDK from "@al-ft/midgard-sdk";
@@ -35,6 +36,9 @@ export type ImportedBlockReplayContext = {
   readonly minFeeA: bigint;
   readonly minFeeB: bigint;
   readonly blockSlot: bigint;
+  /** The block's clock: its state-queue node's authenticated `block_time`,
+   * never the header's `end_time`. */
+  readonly blockTimeMs: number;
   /** The slot mapping script contexts carry their validity range in. */
   readonly l1SlotConfig: L1SlotConfig;
   /** Observation only: emitted after a transition matches canonical replay.
@@ -172,6 +176,10 @@ export const replayImportedBlockEvents = (
           encodeTransactionRootValue(cbor).toString("hex") !== source.source[1]
         )
           throw new Error("foreign transaction preimage source mismatch");
+        // A forced preimage is the §5.1 envelope its order authenticated; its
+        // items may not decode, which the replay rejects at the item.
+        if (step.phase === "ForcedTransaction")
+          deriveMidgardForcedTxFaultEvidenceMaterial(cbor);
         const witnessEntries: ValidationMachineLedgerEntry[] = [...ledger].map(
           ([outRef, output]) => ({
             outRef: Buffer.from(outRef, "hex"),
@@ -190,7 +198,7 @@ export const replayImportedBlockEvents = (
             reached,
           }),
           ledgerWitnessEntries: witnessEntries,
-          blockEndTimeMs: Number(input.header.endTime),
+          blockTimeMs: input.blockTimeMs,
           expectedNetworkId: input.expectedNetworkId,
           minFeeA: input.minFeeA,
           minFeeB: input.minFeeB,

@@ -1,17 +1,12 @@
 import {
   computeMidgardForcedTxProofCommitment,
-  computeMidgardNativeTxId,
-  decodeMidgardForcedTxFullFromCanonicalCbor,
-  deriveMidgardForcedTxProofSource,
+  deriveMidgardForcedTxFaultEvidenceMaterial,
+  type MidgardForcedTxProofSource,
 } from "@al-ft/midgard-core/codec";
 import {
   isMidgardConsensusProfile,
   MIDGARD_CONSENSUS_PROFILE_ID,
 } from "@al-ft/midgard-core/consensus-profile";
-import {
-  MidgardForcedTxAdmissionStopped,
-  validateMidgardConsensusForcedTxCbor,
-} from "@al-ft/midgard-core/consensus-validation";
 import { aikenSerialisedPlutusDataCbor } from "@al-ft/midgard-core/plutus-data-cbor";
 import * as SDK from "@al-ft/midgard-sdk";
 import { SqlClient } from "@effect/sql";
@@ -39,10 +34,10 @@ export const encodeForcedInclusionValueV1 = ({
     readonly txId: Buffer;
     readonly txCompact: Buffer;
     readonly transactionCommitment: Buffer;
-    readonly source: ReturnType<typeof deriveMidgardForcedTxProofSource>;
+    readonly source: MidgardForcedTxProofSource;
     readonly value: Buffer;
   },
-  DatabaseError | MidgardForcedTxAdmissionStopped
+  DatabaseError
 > =>
   Effect.gen(function* () {
     if (!isMidgardConsensusProfile(consensusProfile)) {
@@ -55,34 +50,27 @@ export const encodeForcedInclusionValueV1 = ({
         }),
       );
     }
+    // The source is read from the §5.1 envelope the tx-order mint
+    // authenticated, so an order whose items do not decode still encodes; its
+    // verdict is the machine's.
     const material = yield* Effect.try({
       try: () => {
-        const violation = validateMidgardConsensusForcedTxCbor(nativeTxCbor);
-        if (violation !== null) {
-          throw new MidgardForcedTxAdmissionStopped(violation);
-        }
-        const nativeTx =
-          decodeMidgardForcedTxFullFromCanonicalCbor(nativeTxCbor);
-        const txId = computeMidgardNativeTxId(nativeTx.compact);
-        const source = deriveMidgardForcedTxProofSource(nativeTx);
-        const transactionCommitment =
-          computeMidgardForcedTxProofCommitment(source);
+        const evidence =
+          deriveMidgardForcedTxFaultEvidenceMaterial(nativeTxCbor);
+        const source = evidence.proofSource;
         return {
-          txId,
+          txId: Buffer.from(evidence.transactionId),
           source,
-          transactionCommitment,
+          transactionCommitment: computeMidgardForcedTxProofCommitment(source),
           txCompact: source.compactCbor,
         };
       },
       catch: (cause) =>
-        cause instanceof MidgardForcedTxAdmissionStopped
-          ? cause
-          : new DatabaseError({
-              table: tableName,
-              message:
-                "Failed to verify the exact canonical V1 forced transaction",
-              cause,
-            }),
+        new DatabaseError({
+          table: tableName,
+          message: "Failed to read the canonical V1 forced transaction",
+          cause,
+        }),
     });
     const forcedInclusionTx: SDK.ForcedInclusionTxV1 = {
       tx_id: material.txId.toString("hex"),
@@ -111,21 +99,7 @@ export const encodeForcedInclusionValueV1 = ({
         }),
     });
     return { ...material, value };
-  }).pipe(
-    Effect.tapError((cause) =>
-      cause instanceof MidgardForcedTxAdmissionStopped
-        ? Effect.logError(
-            "Forced transaction admission stopped; no verdict encoded",
-          ).pipe(
-            Effect.annotateLogs({
-              alarm: cause._tag,
-              code: cause.code,
-              feature: cause.violation.featureId,
-            }),
-          )
-        : Effect.void,
-    ),
-  );
+  });
 
 export const insertEntries = (
   entries: readonly Entry[],

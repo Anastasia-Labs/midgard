@@ -37,12 +37,12 @@ import {
 import { failureHold } from "../src/services/l1-follower.failure-hold.js";
 import {
   FORCED_CONFIG,
-  nativeTransactionCbor,
   orderTx,
   publicationTx,
   publishedOrderMaterial,
   simContentSource,
   simLedger,
+  spendingTransactionCbor,
   WALLET,
 } from "./helpers/forced-orders-chain.js";
 import {
@@ -84,7 +84,7 @@ const follow = async () => {
 
 /** A tier-2 order and the publication of its one carried field. */
 const fixture = (chain: ChainDriver["chain"], tamper = false) => {
-  const submitted = nativeTransactionCbor([0x11, 0x22]);
+  const submitted = spendingTransactionCbor([0x11, 0x22]);
   const { material, preimage } = publishedOrderMaterial(submitted);
   const published = Buffer.from(preimage);
   // Same length, last byte changed: only the field commitment can refuse it.

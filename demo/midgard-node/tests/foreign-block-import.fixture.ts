@@ -5,8 +5,9 @@ import {
 } from "@al-ft/midgard-core/codec";
 import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
 import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
+import { forcedVerdictForRejection } from "@al-ft/midgard-fault-proofs";
 import * as SDK from "@al-ft/midgard-sdk";
-import { RejectCodes } from "@al-ft/midgard-validation";
+import { type RejectCode, RejectCodes } from "@al-ft/midgard-validation";
 import { buildMidgardCanonicalCekProgram } from "@al-ft/midgard-validation/cek-program";
 import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
@@ -26,7 +27,16 @@ import { ALWAYS_SUCCEEDS_SPEND_SCRIPT_HEX } from "./native-transaction-integrati
 // A real canonical rejected forced transaction leaves the ledger unchanged but
 // commits nonempty transaction, transition, mapping and validation roots.
 export const fixture = async (
-  options: { readonly withProgram?: boolean; readonly orderByte?: string } = {},
+  options: {
+    readonly withProgram?: boolean;
+    readonly orderByte?: string;
+    /** A forced transaction to carry instead, rejected with `rejection`. */
+    readonly forced?: {
+      readonly cbor: Buffer;
+      readonly reason: SDK.RejectionReason;
+      readonly rejectionCode: RejectCode;
+    };
+  } = {},
 ) => {
   const program = options.withProgram
     ? buildMidgardCanonicalCekProgram(
@@ -43,7 +53,11 @@ export const fixture = async (
           : [{ language: "PlutusV3", scriptBytes: program.envelopeCbor }],
     }).tx,
   );
-  const cbor = encodeMidgardForcedTxCanonical(transaction);
+  const cbor =
+    options.forced?.cbor ?? encodeMidgardForcedTxCanonical(transaction);
+  const reason = options.forced?.reason ?? "EmptyInputs";
+  const rejectionCode =
+    options.forced?.rejectionCode ?? RejectCodes.EmptyInputs;
   const { encodeForcedInclusionValueV1 } = await import(
     "../src/database/forcedTransactions.js"
   );
@@ -51,7 +65,7 @@ export const fixture = async (
     encodeForcedInclusionValueV1({
       nativeTxCbor: cbor,
       consensusProfile: MIDGARD_CONSENSUS_PROFILE,
-      verdict: { ForcedTxInvalid: { reason: "EmptyInputs" } },
+      verdict: { ForcedTxInvalid: { reason } },
     }),
   );
   const orderId = {
@@ -88,7 +102,7 @@ export const fixture = async (
           canonicalTransactionCbor: cbor,
           sourceKind: "forced",
           verdict: "rejected",
-          rejectionCode: RejectCodes.EmptyInputs,
+          rejectionCode,
         },
       ],
     }),
@@ -167,6 +181,8 @@ const imported = (
     minFeeA: 0n,
     minFeeB: 0n,
     blockSlot: 0n,
+    // The fixture block's node time; its traces were built at this clock.
+    blockTimeMs: 2,
     l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
     replayUserEvent: () => Effect.die("fixture has no user event"),
     verifyForcedSource: ({ source, canonicalTransactionCbor, rejection }) =>
@@ -178,9 +194,9 @@ const imported = (
           nativeTxCbor: canonicalTransactionCbor,
           consensusProfile: MIDGARD_CONSENSUS_PROFILE,
           verdict:
-            rejection?.code === RejectCodes.EmptyInputs
-              ? { ForcedTxInvalid: { reason: "EmptyInputs" } }
-              : "ForcedTxValid",
+            rejection === undefined
+              ? "ForcedTxValid"
+              : forcedVerdictForRejection(rejection),
         });
         if (encoded.value.toString("hex") !== source[1])
           return yield* Effect.fail(new Error("forced verdict mismatch"));
