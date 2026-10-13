@@ -4,12 +4,9 @@ import {
   type PhaseAValidatedTx,
   runPhaseBValidationWithPatch,
 } from "@al-ft/midgard-validation";
-import { Effect } from "effect";
 
-import * as MempoolDB from "../database/mempool.js";
-import { DatabaseError } from "../database/utils/common.js";
-
-/** Classify normal block candidates. */
+/** Classify normal block candidates. A failure stays Phase B's own, so the
+ * commit can tell a transaction's failure from the node's. */
 export const evaluateNormalBlockCandidates = (input: {
   readonly candidates: readonly PhaseAValidatedTx[];
   readonly state: Map<string, Buffer>;
@@ -25,13 +22,4 @@ export const evaluateNormalBlockCandidates = (input: {
     enforceScriptBudget: true,
     maxScriptExecutionSteps:
       input.consensusProfile.limits.maxValidationMachineStepCount,
-  }).pipe(
-    Effect.mapError(
-      (cause) =>
-        new DatabaseError({
-          table: MempoolDB.tableName,
-          message: "V1 normal transaction Phase B failed",
-          cause,
-        }),
-    ),
-  );
+  });

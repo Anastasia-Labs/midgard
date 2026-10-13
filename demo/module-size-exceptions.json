@@ -1546,8 +1546,13 @@
   },
   {
     "file": "midgard-node/tests/commit-da-frame-step-down-persistence.test.ts",
-    "max": 511,
+    "max": 510,
     "reason": "One persistence journey sharing one commit-worker fixture. VR (+2): forced validation names the deployment's L1 slot mapping, as script contexts carry POSIX-ms validity bounds. B2-8 (+9): the fixture's opaque transactions stub the per-transaction validation descriptor and the block-wide program coverage check that commit-stage eviction now runs before Phase B."
+  },
+  {
+    "file": "midgard-node/tests/commit-stage-eviction.test.ts",
+    "max": 616,
+    "reason": "One commit-stage eviction family over real processMpfs and Postgres, sharing one hoisted fixture that reduces Phase A, Phase B, the root value and program collection to injectable effects that its vi.mock factories close over. B2-8 review: each stage is covered in both polarities (the transaction's own failure rejects it; a node fault, a non-reproducing failure or the per-stage breaker holds), plus coverage deferral and rejection."
   },
   {
     "file": "midgard-node/tests/forced-admission-screens.test.ts",

@@ -1,4 +1,5 @@
 import {
+  encodeMidgardCekProgramMaterialSidecar,
   encodeMidgardCekTermNode,
   hashMidgardCekTermNode,
   type MidgardCekProgramEnvelope,
@@ -72,3 +73,32 @@ export const lambdaChain = (nodeCount: number) => {
   }
   return { material, envelopes };
 };
+
+/** Two variants of one program, each within its own limits; together they
+ * declare more node visits than one block's material may. Built once. */
+export const programVariants = (() => {
+  let variants:
+    | {
+        readonly variantA: MidgardCekProgramEnvelope;
+        readonly variantB: MidgardCekProgramEnvelope;
+        readonly material: readonly MidgardCekProgramMaterialEntry[];
+        readonly sidecarA: Buffer;
+        readonly sidecarB: Buffer;
+      }
+    | undefined;
+  return () => {
+    if (variants !== undefined) return variants;
+    const visits = 800_000;
+    const chain = lambdaChain(visits + 1);
+    variants = {
+      variantA: chain.envelopes[visits - 1]!,
+      variantB: chain.envelopes[visits]!,
+      material: chain.material,
+      sidecarA: encodeMidgardCekProgramMaterialSidecar(
+        chain.material.slice(0, visits),
+      ),
+      sidecarB: encodeMidgardCekProgramMaterialSidecar(chain.material),
+    };
+    return variants;
+  };
+})();
