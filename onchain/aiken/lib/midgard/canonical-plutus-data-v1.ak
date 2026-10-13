@@ -127,7 +127,7 @@ pub fn canonical_data_end_at_v1(bytes: ByteArray, offset: Int) -> Option<Int> {
   }
 }
 
-fn byte_at(bytes: ByteArray, offset: Int) -> Option<Int> {
+pub fn byte_at(bytes: ByteArray, offset: Int) -> Option<Int> {
   if or {
     offset < 0,
     offset >= bytearray.length(bytes),
@@ -142,7 +142,7 @@ fn byte_at(bytes: ByteArray, offset: Int) -> Option<Int> {
 /// Only minimal (shortest-form) widths are accepted, and additional-info
 /// values 28–31 always fail here — indefinite forms are handled by their own
 /// callers, which check for the `5f`/`9f` prefix byte before reaching this.
-fn scan_head(bytes: ByteArray, offset: Int) -> Option<Pair<Int, Int>> {
+pub fn scan_head(bytes: ByteArray, offset: Int) -> Option<Pair<Int, Int>> {
   when byte_at(bytes, offset) is {
     None -> None
     Some(first) -> {
@@ -219,7 +219,7 @@ fn pow256(exponent: Int) -> Int {
   }
 }
 
-fn major_of(first: Int) -> Int {
+pub fn major_of(first: Int) -> Int {
   first / 32
 }
 
