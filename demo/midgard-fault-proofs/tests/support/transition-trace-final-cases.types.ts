@@ -8,8 +8,11 @@ export type TransitionTraceFinalCase = Readonly<{
   kind?: string;
   cancelAt?: number;
   corruptAssetIndex?: boolean;
-  corruptDatum?: boolean;
+  /** Forge the restored stack entries of the output datum walk. */
+  corruptWalk?: boolean;
   corruptSourceReference?: boolean;
   datumBytes?: number;
+  /** An output datum's CBOR, in place of a `datumBytes` byte string. */
+  datumCbor?: string;
   drained?: boolean;
 }>;

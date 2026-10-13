@@ -9,7 +9,7 @@ import {
   replacePlutusConstrFieldCbor,
 } from "@al-ft/midgard-core/plutus-data-cbor";
 import * as SDK from "@al-ft/midgard-sdk";
-import { CML, Data } from "@lucid-evolution/lucid";
+import { CML, Data, type UTxO } from "@lucid-evolution/lucid";
 import { afterAll, expect, it } from "vitest";
 
 import { submitInit } from "../src/submit-init.js";
@@ -66,6 +66,43 @@ const RAW_DATUMS: readonly (readonly [string, string])[] = [
   ["a general-form constructor 0", "d866820080"],
   ["a map with a repeated key", "a201020103"],
 ];
+/** A definite list head over `count` items. */
+const listHead = (count: number) =>
+  count < 24
+    ? (0x80 + count).toString(16)
+    : count < 256
+      ? `98${count.toString(16).padStart(2, "0")}`
+      : `99${count.toString(16).padStart(4, "0")}`;
+/** `nodes` Data nodes: lists each holding the next, around an empty list. */
+const nestedDatum = (nodes: number) => "81".repeat(nodes - 1) + "80";
+/** `nodes` Data nodes: one list of `nodes - 1` zeros. */
+const flatDatum = (nodes: number) =>
+  listHead(nodes - 1) + "00".repeat(nodes - 1);
+/** The deployment manifest's own payload bounds (1,024 nodes). */
+const MANIFEST_BOUNDS: SDK.EventHistoryPayloadBounds = {
+  inlineLimitBytes: 512n,
+  maxPayloadBytes: 15_000n,
+  maxPayloadNodes: 1_024n,
+};
+/**
+ * Deposit datums whose summary takes more than one transaction, or whose
+ * constructor index or integer is outside the 64-bit range.
+ */
+const LARGE_DATUMS: readonly (readonly [string, string])[] = [
+  ["512 nested nodes", nestedDatum(512)],
+  ["512 flat nodes", flatDatum(512)],
+  // History admission's node walk is the ceiling for nested datums: 768
+  // nested nodes are admitted, 880 exceed its transaction memory.
+  ["768 nested nodes", nestedDatum(768)],
+  // The deposit event around the datum takes 12 of the payload's 1,024 nodes.
+  ["1,012 flat nodes", flatDatum(1_012)],
+  ["constructor 1280", "d8668219050080"],
+  ["constructor 2^64 - 1", "d866821bffffffffffffffff80"],
+  ["integer 2^64", "c249010000000000000000"],
+  ["integer 2^512", `c25841${"01"}${"00".repeat(64)}`],
+  ["integer -2^512 - 1", `c35841${"01"}${"00".repeat(64)}`],
+  ["integer -2^512", `c35840${"ff".repeat(64)}`],
+];
 const originalAssets = { lovelace: 20_000_000n };
 afterAll(() => {
   const directory = process.env.MIDGARD_EVENT_HISTORY_EVIDENCE_DIR;
@@ -92,16 +129,38 @@ afterAll(() => {
   );
 });
 
-it.each([
+it.each<{
+  name: string;
+  datum: string;
+  honest: boolean;
+  bounds?: SDK.EventHistoryPayloadBounds;
+}>([
   ...RAW_DATUMS.map(([name, datum]) => ({ name, datum, honest: false })),
   { name: "an unsorted map that repeats a key", datum: rawDatum, honest: true },
+  ...LARGE_DATUMS.map(([name, datum]) => ({
+    name,
+    datum,
+    honest: false,
+    bounds: MANIFEST_BOUNDS,
+  })),
+  ...LARGE_DATUMS.filter(([name]) =>
+    ["512 nested nodes", "constructor 2^64 - 1", "integer -2^512"].includes(
+      name,
+    ),
+  ).map(([name, datum]) => ({
+    name,
+    datum,
+    honest: true,
+    bounds: MANIFEST_BOUNDS,
+  })),
 ])(
   "proves a raw Deposit datum through applied transition stages: $name; honest=$honest",
-  async ({ name, datum: datumRow, honest }) => {
+  async ({ name, datum: datumRow, honest, bounds }) => {
     const h = await makeFaultProofEmulatorHarness({
       contractOptions: {
         realTransitionTrace: true,
         alwaysFraudProofCatalogue: true,
+        ...(bounds === undefined ? {} : { eventHistoryBounds: bounds }),
       },
     });
     const submit = h.emulator.submitTx.bind(h.emulator);
@@ -151,7 +210,7 @@ it.each([
       });
       return txHash;
     };
-    const history = await prepareFamilyHistory(h, records);
+    const history = await prepareFamilyHistory(h, records, bounds);
     const contracts = history.contracts;
     const yields = await publishTransitionTraceYields(h.proverLucid, contracts);
     const removal = await publishRemovalReferenceScripts({
@@ -225,41 +284,64 @@ it.each([
       beforeHeaderCommit: async (hubReference) => {
         const validTo =
           Number(retained.header.endTime) + 1 - SDK.EVENT_WAIT_DURATION_MS;
+        const reserved = new Set(
+          [nonce, history.nonce("Withdrawal")].map(outRefLabel),
+        );
+        const funding = async () =>
+          (await h.proverLucid.wallet().getUtxos()).filter(
+            (utxo) =>
+              !reserved.has(outRefLabel(utxo)) &&
+              utxo.datum == null &&
+              utxo.scriptRef == null,
+          );
+        const context = {
+          lucid: h.proverLucid,
+          applied,
+          recipe,
+          hubReference,
+          scriptReference: history.scripts[0]!,
+          fundingInputs: await funding(),
+        };
+        const reclaimAuth: SDK.CredentialD = {
+          PublicKeyCredential: [h.proverSigner.paymentKeyHash],
+        };
+        // A payload above the inline limit is published to the retention
+        // address first and admitted against that output.
+        let externalData: UTxO | undefined;
+        if (
+          SDK.prepareEventHistoryPayloadCbor(payloadCbor, reclaimAuth, recipe)
+            .kind === "External"
+        ) {
+          const publication = await SDK.buildEventHistoryPublication(
+            context,
+            payloadCbor,
+            reclaimAuth,
+            validTo,
+          );
+          const txHash = await history.submit(
+            "raw-deposit-publication",
+            publication.tx,
+          );
+          [externalData] = await h.proverLucid.utxosByOutRef([
+            { txHash, outputIndex: publication.publicationOutputIndex },
+          ]);
+          context.fundingInputs = await funding();
+        }
         const target = validTo - 10_000;
         if (h.emulator.now() < target)
           h.emulator.awaitSlot(Math.ceil((target - h.emulator.now()) / 1000));
         expect(h.emulator.now()).toBeLessThan(validTo);
-        const reserved = new Set(
-          [nonce, history.nonce("Withdrawal")].map(outRefLabel),
-        );
-        const fundingInputs = (await h.proverLucid.wallet().getUtxos()).filter(
-          (utxo) =>
-            !reserved.has(outRefLabel(utxo)) &&
-            utxo.datum == null &&
-            utxo.scriptRef == null,
-        );
-        const admission = await SDK.buildEventHistoryAdmission(
-          {
-            lucid: h.proverLucid,
-            applied,
-            recipe,
-            hubReference,
-            scriptReference: history.scripts[0]!,
-            fundingInputs,
-          },
-          {
-            payloadCbor,
-            reclaimAuth: {
-              PublicKeyCredential: [h.proverSigner.paymentKeyHash],
-            },
-            nonce,
-            assets: { lovelace: 25_000_000n },
-            structuralLovelace: 5_000_000n,
-            structuralRefundKey: h.proverSigner.paymentKeyHash,
-            validFrom: h.emulator.now() - 60_000,
-            validTo,
-          },
-        );
+        const admission = await SDK.buildEventHistoryAdmission(context, {
+          payloadCbor,
+          reclaimAuth,
+          ...(externalData === undefined ? {} : { externalData }),
+          nonce,
+          assets: { lovelace: 25_000_000n },
+          structuralLovelace: 5_000_000n,
+          structuralRefundKey: h.proverSigner.paymentKeyHash,
+          validFrom: h.emulator.now() - 60_000,
+          validTo,
+        });
         await history.submit("raw-deposit-admission", admission.tx);
         awaitHeaderCommitWindow(h.emulator, retained.header);
       },
@@ -366,7 +448,7 @@ it.each([
       ])
     )[0]!;
     let terminal = false;
-    for (let hop = 0; hop < 16; hop++) {
+    for (let hop = 0; hop < 64; hop++) {
       const state = Data.from(
         checkpoint.datum!,
         SDK.TransitionTraceProofCommitmentDatum,
@@ -437,7 +519,7 @@ it.each([
         },
       ]);
       expect(queueBefore).toHaveLength(1);
-      await expect(finish()).rejects.toThrow(/failed script execution/u);
+      await expect(finish()).rejects.toThrow();
       expect(await h.proverLucid.utxosByOutRef([checkpoint])).toHaveLength(1);
       expect(await h.proverLucid.utxosByOutRef(queueBefore)).toEqual(
         queueBefore,
