@@ -58,6 +58,7 @@ const serializeHeader = async (header: SDK.Header) => {
     data: SDK.castStateQueueNodeToData({
       proven_fraud: null,
       header,
+      block_time: header.endTime,
       da_attestation: SDK.NO_DA_ATTESTATION,
     }) as SDK.LinkedListNodeView["data"],
   };
@@ -172,6 +173,7 @@ const fixture = async () => {
       expectedCounts: counts,
     },
     blockEndTime: new Date(time.getTime() + 60_000),
+    blockTime: new Date(time.getTime() + 60_000),
     depositEventIds: [eventId],
     depositEntries: [
       {

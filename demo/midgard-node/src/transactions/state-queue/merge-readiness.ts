@@ -158,13 +158,13 @@ export const planMergePreflight = (
 
 export const mergeMaturityWindow = (
   lucid: LucidEvolution,
-  blockEndTimeMs: number,
+  blockTimeMs: number,
 ): {
   readonly validFromUnixTime: number;
   readonly readyAfterUnixTime: number;
 } => {
   const maturityThresholdUnixTime =
-    blockEndTimeMs + STATE_QUEUE_MATURITY_DURATION_MS;
+    blockTimeMs + STATE_QUEUE_MATURITY_DURATION_MS;
   const validFromUnixTime = alignedUnixTimeStrictlyAfter(
     lucid,
     maturityThresholdUnixTime - 1,

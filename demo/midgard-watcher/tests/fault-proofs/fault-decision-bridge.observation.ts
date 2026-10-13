@@ -5,6 +5,7 @@ import {
   FRAUD_PROOF_CATALOGUE_CATEGORY_IDS,
   Header,
   type Header as HeaderType,
+  StateQueueNode,
 } from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 
@@ -55,6 +56,7 @@ export const observation = (
   headers: readonly HeaderType[],
   lockDatum: CorrectionLockDatum = "Idle",
   daAvailability: readonly DaAvailabilityStateQueueStatus[] = [],
+  blockTimes: readonly bigint[] = [],
 ): WatcherAuthenticatedStateQueueObservation => {
   const encoded = headers.map(encodedHeader);
   return Object.freeze({
@@ -88,7 +90,15 @@ export const observation = (
         Object.freeze({
           headerHash: hash,
           headerCborHex: cbor,
-          stateQueueNodeCborHex: "d87980",
+          stateQueueNodeCborHex: Data.to(
+            {
+              header: headers[index]!,
+              block_time: blockTimes[index] ?? headers[index]!.endTime,
+              da_attestation: daAvailability[index] ?? "Unattested",
+              proven_fraud: null,
+            },
+            StateQueueNode,
+          ),
           linkedListDatumCborHex: "d87980",
           daAvailability: daAvailability[index] ?? "Unattested",
           queueOutRef: `${"17".repeat(32)}#${index.toString()}`,

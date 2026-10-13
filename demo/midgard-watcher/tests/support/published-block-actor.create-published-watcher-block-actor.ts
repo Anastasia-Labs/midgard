@@ -682,7 +682,7 @@ export const createPublishedWatcherBlockActor = async ({
     await Effect.runPromise(
       SDK.daAttestationApplyValidityRangeProgram({
         currentTime: BigInt(lucid.slotToUnixTime(lucid.currentSlot())),
-        headerEndTime: existingTarget.stateQueueNode.header.endTime,
+        blockTime: existingTarget.stateQueueNode.block_time,
       }),
     );
     const daParamsDatum = Data.from(daParamsUtxo.datum!, SDK.DaParamsDatum);
@@ -793,7 +793,7 @@ export const createPublishedWatcherBlockActor = async ({
       const validityRange = await Effect.runPromise(
         SDK.daAttestationApplyValidityRangeProgram({
           currentTime: BigInt(lucid.slotToUnixTime(lucid.currentSlot())),
-          headerEndTime: block.header.endTime,
+          blockTime: target.stateQueueNode.block_time,
         }),
       );
       onStage(`DA attestation apply ${block.headerHash}`);

@@ -102,7 +102,7 @@ const commitAnchorSettled = async (
  * append checks against the queue's head (`state-queue.ak:1207-1229`): no
  * completed fraud proof on the head, and its DA status Attested or
  * Published, or Unattested with the transaction's inclusive upper validity
- * bound strictly before `end_time + da_attestation_timeout`; Challenged
+ * bound strictly before `block_time + da_attestation_timeout`; Challenged
  * never. The inclusive upper bound is the POSIX time of the exclusive upper
  * slot bound minus one; an unattested head with no upper bound cannot pass
  * (the validator requires a closed range). An empty queue (the root is the
@@ -122,7 +122,7 @@ const headAllowsAppend = (read: Read, queue: LandedStateQueue): boolean => {
   const { validToSlot } = read.state.intent;
   if (validToSlot === null) return false;
   const inclusiveUpper = BigInt(read.deps.slotToPosixMs(validToSlot)) - 1n;
-  return inclusiveUpper < head.endTimeMs + SDK.DA_ATTESTATION_TIMEOUT_MS;
+  return inclusiveUpper < node.block_time + SDK.DA_ATTESTATION_TIMEOUT_MS;
 };
 
 /**
@@ -187,7 +187,9 @@ const correction = async (read: Read): Promise<boolean> => {
     queueNode(queue, contentRefHex(read.state)) !== undefined &&
     node !== undefined &&
     node.daStatus === "Unattested" &&
-    node.endTimeMs + SDK.DA_ATTESTATION_TIMEOUT_MS <= BigInt(validFromMs(read))
+    node.blockTimeMs !== null &&
+    node.blockTimeMs + SDK.DA_ATTESTATION_TIMEOUT_MS <=
+      BigInt(validFromMs(read))
   );
 };
 

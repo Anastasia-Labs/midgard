@@ -115,6 +115,15 @@ export const preparePendingSubmission = (
             "PendingBlockFinalizationV1 block window must be increasing",
           );
         }
+        const blockTime = exactDate(
+          input.blockTime,
+          "PendingBlockFinalizationV1 blockTime",
+        );
+        if (blockTime.getTime() < blockEndTime.getTime()) {
+          throw new Error(
+            "PendingBlockFinalizationV1 block time must not precede the block end",
+          );
+        }
         return pending;
       },
       catch: (cause) =>
@@ -307,6 +316,7 @@ export const preparePendingSubmission = (
           [Columns.BASE_WITHDRAWALS_ROOT]: metadata.baseRoots.withdrawalsRoot,
           [Columns.BLOCK_START_TIME]: metadata.blockStartTime,
           [Columns.BLOCK_END_TIME]: input.blockEndTime,
+          [Columns.BLOCK_TIME]: input.blockTime,
           [Columns.EXPECTED_UTXOS_ROOT]: metadata.expectedRoots.utxosRoot,
           [Columns.EXPECTED_FORCED_TRANSACTIONS_ROOT]:
             metadata.expectedRoots.forcedTransactionsRoot,

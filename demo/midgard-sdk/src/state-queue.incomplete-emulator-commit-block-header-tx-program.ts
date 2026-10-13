@@ -84,9 +84,14 @@ export const incompleteEmulatorCommitBlockHeaderTxProgram = (
       key: { Key: { key: newHeaderHash } },
       next: "Empty",
       data: castStateQueueNodeToData({
-        proven_fraud: null,
         header: params.newHeader,
+        block_time:
+          params.blockTime ??
+          (params.validTo === undefined
+            ? params.newHeader.endTime
+            : params.validTo - 1n),
         da_attestation: NO_DA_ATTESTATION,
+        proven_fraud: null,
       }) as LinkedListNodeView["data"],
     };
     const newBlockDatumCbor = encodeLinkedListNodeView(newBlockDatum);

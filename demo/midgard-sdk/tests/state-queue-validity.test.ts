@@ -31,7 +31,8 @@ import {
   buildMergeToConfirmedStateTxProgram,
   COMMIT_MAX_VALIDITY_RANGE_MS,
   type CommitBlockHeaderParams,
-  commitHeaderMatchesValidityUpperBound,
+  commitBlockTimeOfValidTo,
+  commitHeaderFitsBlockTime,
   isCommitValidityInterval,
   type MergeToConfirmedStateParams,
 } from "../src/state-queue-transactions.js";
@@ -191,6 +192,7 @@ describe("production commit validity binding", () => {
     header: {
       ...makeCommitParams({} as LucidEvolution, 0, headEndTime + 1).newHeader,
     },
+    block_time: BigInt(headEndTime),
     proven_fraud: null,
     da_attestation: "Unattested",
   });
@@ -213,6 +215,23 @@ describe("production commit validity binding", () => {
       ).rejects.toThrow("waiting for DA attestation");
     },
   );
+
+  it("counts a catch-up head's DA deadline from its block time, not its end", async () => {
+    const catchUp = {
+      ...head(),
+      header: { ...head().header, endTime: BigInt(headEndTime - 3_600_000) },
+    };
+    await expect(
+      Effect.runPromise(
+        assertCommitHeadDaDeadline(catchUp, deadline - 1, headEndTime),
+      ),
+    ).resolves.toBeUndefined();
+    await expect(
+      Effect.runPromise(
+        assertCommitHeadDaDeadline(catchUp, deadline, headEndTime),
+      ),
+    ).rejects.toThrow("waiting for DA attestation");
+  });
 
   it("distinguishes an already expired head from waiting for attestation", async () => {
     await expect(
@@ -396,17 +415,13 @@ describe("production commit validity binding", () => {
     expect(newTx).not.toHaveBeenCalled();
   });
 
-  it("accepts a bounded interval and binds the header to its inclusive upper bound", () => {
+  it("accepts a bounded interval and takes its inclusive upper bound as the block time", () => {
     const validFrom = 1_000_000;
     const validTo = validFrom + COMMIT_MAX_VALIDITY_RANGE_MS;
 
     expect(isCommitValidityInterval({ validFrom, validTo })).toBe(true);
-    expect(
-      commitHeaderMatchesValidityUpperBound({
-        headerEndTime: BigInt(validTo - 1),
-        validTo,
-      }),
-    ).toBe(true);
+    expect(commitBlockTimeOfValidTo(validTo)).toBe(BigInt(validTo - 1));
+    expect(() => commitBlockTimeOfValidTo(Number.NaN)).toThrow(/validTo/u);
   });
 
   it("rejects absent, empty, unsafe, and overlong lower-bound intervals", () => {
@@ -432,14 +447,24 @@ describe("production commit validity binding", () => {
     ).toBe(false);
   });
 
-  it("rejects a header end-time that differs from validTo minus one", () => {
-    const validTo = 1_480_000;
+  it("binds the header window to the block time: end at it with L2 transactions, at or before it without", () => {
+    const blockTime = 1_479_999n;
+    const fits = (
+      startTime: bigint,
+      endTime: bigint,
+      l2TransactionCount: bigint,
+    ) =>
+      commitHeaderFitsBlockTime({
+        header: { startTime, endTime, l2TransactionCount },
+        blockTime,
+      });
 
-    expect(
-      commitHeaderMatchesValidityUpperBound({
-        headerEndTime: BigInt(validTo),
-        validTo,
-      }),
-    ).toBe(false);
+    expect(fits(1n, blockTime, 1n)).toBe(true);
+    expect(fits(1n, blockTime, 0n)).toBe(true);
+    // A catch-up slice: user events only, ending before its commit time.
+    expect(fits(1n, blockTime - 1n, 0n)).toBe(true);
+    expect(fits(1n, blockTime - 1n, 1n)).toBe(false);
+    expect(fits(1n, blockTime + 1n, 0n)).toBe(false);
+    expect(fits(blockTime, blockTime, 0n)).toBe(false);
   });
 });

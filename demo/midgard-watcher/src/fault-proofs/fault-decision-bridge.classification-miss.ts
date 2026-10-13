@@ -1,6 +1,6 @@
 import { daRetentionPruneDecision } from "@al-ft/midgard-core";
 import { isRetainedDaPayloadUnavailableError } from "@al-ft/midgard-fault-proofs";
-import { Header } from "@al-ft/midgard-sdk";
+import { StateQueueNode } from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 
 import type {
@@ -46,7 +46,7 @@ export type WatcherClassificationWarning = Readonly<
 >;
 
 /**
- * The header's challengeability horizon, from its own block end time and the
+ * The header's challengeability horizon, from its node's block_time and the
  * DA store's own prune rule. `past_challengeability_horizon` is the reason
  * the committee drops a payload that is not held for another reason, so this
  * asks that same rule about this header alone.
@@ -57,7 +57,9 @@ const challengeability = (
 ) => {
   const decision = daRetentionPruneDecision({
     nowMs: Number(nowMs),
-    blockEndTimeMs: Number(Data.from(header.headerCborHex, Header).endTime),
+    blockTimeMs: Number(
+      Data.from(header.stateQueueNodeCborHex, StateQueueNode).block_time,
+    ),
     headerStatus: "unobserved",
     queueReference: "none",
   });
@@ -142,7 +144,7 @@ export const classificationMissRecorder = (
       // after maturity. Waiting, even on a source that did not answer, cannot
       // change that, and it would hold every later header behind this one.
       // An in-window miss never reaches this arm. A predecessor's payload
-      // needs no separate horizon check: end times only grow along the queue.
+      // needs no separate horizon check: commit times only grow along the queue.
       pastHorizon.add(header.headerHash);
       verification.recordPastHorizon(subjectDigest);
       accountFor(error.headerHash);

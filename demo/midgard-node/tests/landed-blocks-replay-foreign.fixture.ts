@@ -276,6 +276,7 @@ export const retainedRow = async (
     foreignRetainedDaInsert(
       payload.block_body.header_hash,
       payload.block_body.header,
+      payload.block_body.header.endTime,
       await envelope(payload),
     ),
   );
@@ -337,6 +338,7 @@ export const inputFor = async (
   return {
     headerHash: payload.block_body.header_hash,
     header,
+    blockTime: header.endTime,
     parentHeaderHash: header.prevHeaderHash,
     parentUtxosRoot: header.prevUtxosRoot,
     parentEntries: [],

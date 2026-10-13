@@ -77,12 +77,12 @@ export const MIDGARD_RETENTION_WINDOW: RetentionWindow =
 // but that horizon alone does not keep a payload for as long as the pooled DA
 // bond can still be slashed over it: on the testing profiles the latest
 // response deadline (challenge window plus full response window after the
-// block's end time) lies past the horizon. Retention for an availability
+// block's block_time) lies past the horizon. Retention for an availability
 // challenge rests on the `live_in_queue` arm instead. A header is live in the
 // queue for as long as it can be challenged, provided that
 // `da_challenge_window_ms <= block_maturity_ms` in every profile:
-//   - an Open must land strictly before `end_time + da_challenge_window_ms`,
-//     and a merge no earlier than `end_time + block_maturity_ms`, so every Open
+//   - an Open must land strictly before `block_time + da_challenge_window_ms`,
+//     and a merge no earlier than `block_time + block_maturity_ms`, so every Open
 //     lands while the header is still in the queue;
 //   - a `Challenged` header never merges, so it stays live until Close
 //     publishes the payload on L1 or a timeout removes the header and slashes
@@ -262,8 +262,8 @@ export const assertRetentionWindowCoversDeployment = (
 };
 
 export type RetentionDeadline = {
-  /** Block end time the deadline is keyed on. */
-  readonly blockEndTimeMs: number;
+  /** Block time (the node's block_time) the deadline is keyed on. */
+  readonly blockTimeMs: number;
   /** Last instant the block's evidence is still challengeable. */
   readonly challengeableUntilMs: number;
   /** Last instant the deployed retention window promises the evidence. */

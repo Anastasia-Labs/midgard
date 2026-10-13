@@ -95,7 +95,9 @@ export const computeRetentionCutoff = (
 };
 
 /**
- * Cutoff for block END TIME below which a block is no longer challengeable.
+ * Cutoff for a block's block_time below which it is no longer challengeable:
+ * maturity counts from the commit, so a catch-up block whose end is far
+ * behind stays challengeable for the full window.
  *
  * Derived from block maturity plus the worst-case proof-time BOUND (half
  * maturity). The measured dispute schedule is never used here.

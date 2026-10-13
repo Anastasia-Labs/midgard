@@ -110,11 +110,11 @@ const decodeQueue = (queue: LandedStateQueue) =>
       root.element.datum,
     )).data;
     const nodes: LandedNode[] = [];
-    for (const node of queue.nodes)
-      nodes.push({
-        headerHash: node.headerHash,
-        header: yield* SDK.getHeaderFromStateQueueDatum(node.element.datum),
-      });
+    for (const { headerHash, element } of queue.nodes) {
+      const { header, block_time: blockTime } =
+        yield* SDK.getStateQueueNodeFromStateQueueDatum(element.datum);
+      nodes.push({ headerHash, header, blockTime });
+    }
     return {
       root: {
         headerHash: state.headerHash,
@@ -255,6 +255,7 @@ const newRow = <R>(
       ports.replay({
         headerHash: node.headerHash,
         header: node.header,
+        blockTime: node.blockTime,
         parentHeaderHash: parent.headerHash,
         parentUtxosRoot: parent.utxosRoot,
         parentEntries: ledgerEntries(ledger),

@@ -85,7 +85,8 @@ it.each(["pre-rollback", "restored"] as const)(
                 },
               });
               yield* sql`UPDATE pending_block_finalizations SET status = 'locally_applied',
-        block_end_time = ${new Date(NOW.getTime() - ageDays * RETENTION_MS_PER_DAY)}
+        block_end_time = ${new Date(NOW.getTime() - ageDays * RETENTION_MS_PER_DAY)},
+        block_time = ${new Date(NOW.getTime() - ageDays * RETENTION_MS_PER_DAY)}
         WHERE header_hash = ${hash}`;
               yield* recordMergeJob(hash, "completed");
             }

@@ -77,6 +77,7 @@ const fixture = async (tailApplied = false, headApplied = true) => {
       data: SDK.castStateQueueNodeToData({
         proven_fraud: null,
         header: header(1000n),
+        block_time: header(1000n).endTime,
         da_attestation: headApplied
           ? { Attested: { commitment_hash: "11".repeat(32) } }
           : SDK.NO_DA_ATTESTATION,
@@ -92,6 +93,7 @@ const fixture = async (tailApplied = false, headApplied = true) => {
       data: SDK.castStateQueueNodeToData({
         proven_fraud: null,
         header: header(2000n),
+        block_time: header(2000n).endTime,
         da_attestation: tailApplied
           ? { Attested: { commitment_hash: "22".repeat(32) } }
           : SDK.NO_DA_ATTESTATION,

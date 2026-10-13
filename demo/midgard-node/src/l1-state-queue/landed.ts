@@ -42,6 +42,8 @@ export type LandedStateQueueElement = Readonly<{
   headerHash: string;
   /** A node: its header's end time. The root: the confirmed state's. */
   endTimeMs: bigint;
+  /** A node's `block_time` (its commit time); null for the root. */
+  blockTimeMs: bigint | null;
   /** A node's DA status identity; null for the root. */
   daStatus: string | null;
   /** A node's key and asset-name mismatches (it is still walked). */
@@ -109,6 +111,7 @@ const entryOf = (
     },
     headerHash: decoded.headerHash ?? "",
     endTimeMs: decoded.endTimeMs ?? 0n,
+    blockTimeMs: decoded.blockTimeMs,
     daStatus: decoded.daStatus,
     problems: decoded.problems,
     created: stored.created,

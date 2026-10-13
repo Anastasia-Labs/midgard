@@ -77,7 +77,12 @@ const fixture = async () => {
       key: { Key: { key: payload.headerHash } },
       next: "Empty",
       data: Data.castTo(
-        { header: payload.header, da_attestation: status, proven_fraud: null },
+        {
+          header: payload.header,
+          block_time: payload.header.endTime,
+          da_attestation: status,
+          proven_fraud: null,
+        },
         SDK.StateQueueNode,
       ),
     }),
@@ -161,6 +166,7 @@ describe("current timing scheduling versus protected restoration", () => {
         data: Data.castTo(
           {
             header: f.args.liabilities[0]!.header.header,
+            block_time: f.args.liabilities[0]!.header.header.endTime,
             da_attestation: {
               Challenged: {
                 commitment_hash: SDK.daAvailabilityCommitmentHash(

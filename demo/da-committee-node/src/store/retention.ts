@@ -13,6 +13,7 @@ import type {
   StateQueueHeaderRecord,
 } from "../domain.js";
 import type { CommitteeStore } from "../store.js";
+import { retentionBlockTimeMs } from "./retention.block-time.js";
 
 /**
  * Retention enforcement for the committee node store (GOAL_SPEC 9.4 / Q54).
@@ -21,7 +22,7 @@ import type { CommitteeStore } from "../store.js";
  * final (deeper than k, plan §9): a terminal record counts only when its
  * authenticated exit is final, and the challengeability horizon is measured
  * by the release clock, the start of the latest final block's slot, never by
- * the wall clock. A commit's validity ends at its header's `endTime`, so once
+ * the wall clock. A commit's validity ends at its node's `block_time`, so once
  * a final block is past a header's horizon every commit of that header that
  * can ever land is final: in the queue at that block (held below), or final
  * out of it. Missing authority retains bytes and is exposed in retention
@@ -33,7 +34,7 @@ import type { CommitteeStore } from "../store.js";
 export type RetentionCandidate = {
   readonly headerHash: string;
   readonly deploymentFingerprint: string;
-  readonly blockEndTimeMs: number;
+  readonly blockTimeMs: number;
   readonly headerStatus: StateQueueHeaderRecord["status"] | "unobserved";
   readonly queueReference: RetentionQueueReference;
   /** Diagnostic only: payload or header written under another deployment. */
@@ -70,34 +71,6 @@ export type RetentionScanOptions = RetainedPayloadReleaseOptions & {
   readonly nowMs: number;
   /** A released payload takes its header row; never under promise adoption. */
   readonly releaseHeader?: boolean;
-};
-
-/**
- * End time the horizon is measured from: the payload's own header `endTime`,
- * or, when the store holds no representable header row, the local receipt
- * time of the payload. A header that is unobserved here and not live in the
- * L1 queue has left the queue, so no availability challenge can open against
- * it; receipt time still keeps a payload pushed before its header commits
- * retained for one full horizon, and bounds the rest.
- */
-export const retentionBlockEndTimeMs = (
-  payload: Pick<DaStoredPayloadRecord, "fetchedAt">,
-  header: StateQueueHeaderRecord | undefined,
-): number => {
-  const endTime: unknown = header?.header.endTime;
-  const asNumber =
-    typeof endTime === "bigint"
-      ? Number(endTime)
-      : typeof endTime === "number"
-        ? endTime
-        : Number.NaN;
-  if (Number.isSafeInteger(asNumber) && asNumber >= 0) {
-    return asNumber;
-  }
-  const fetchedAtMs = Date.parse(payload.fetchedAt);
-  return Number.isSafeInteger(fetchedAtMs) && fetchedAtMs >= 0
-    ? fetchedAtMs
-    : 0;
 };
 
 export const retentionQueueReference = (
@@ -228,7 +201,7 @@ export const retainedPayloadPruneDecision = (
 ): RetentionPruneDecision =>
   daRetentionPruneDecision({
     nowMs: options.finalBlockTimeMs ?? 0,
-    blockEndTimeMs: retentionBlockEndTimeMs(payload, header),
+    blockTimeMs: retentionBlockTimeMs(payload, header),
     headerStatus: header?.status ?? "unobserved",
     queueReference: retentionQueueReference(payload.headerHash, options),
     retentionDays: options.retentionDays,
@@ -257,7 +230,7 @@ export const retentionCandidates = async (
 
   return payloads.map((payload: DaStoredPayloadRecord) => {
     const header = headerByHash.get(payload.headerHash);
-    const blockEndTimeMs = retentionBlockEndTimeMs(payload, header);
+    const blockTimeMs = retentionBlockTimeMs(payload, header);
     const headerStatus = header?.status ?? "unobserved";
     const queueReference = retentionQueueReference(payload.headerHash, options);
     const fingerprintMismatch =
@@ -274,7 +247,7 @@ export const retentionCandidates = async (
     return {
       headerHash: payload.headerHash,
       deploymentFingerprint: payload.deploymentFingerprint,
-      blockEndTimeMs,
+      blockTimeMs,
       headerStatus,
       queueReference,
       fingerprintMismatch,
@@ -423,7 +396,7 @@ const retentionDeadlineReportFromCandidates = (
     }
     const alert = retentionDeadlineAlert({
       nowMs: options.nowMs,
-      blockEndTimeMs: candidate.blockEndTimeMs,
+      blockTimeMs: candidate.blockTimeMs,
       retentionDays: options.retentionDays,
       alertThresholdMs,
       headerHash: candidate.headerHash,

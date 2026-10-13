@@ -59,6 +59,7 @@ export const queueNode = (input: {
       {
         proven_fraud: null,
         header: header(input.endTime ?? HEADER_END_TIME),
+        block_time: input.endTime ?? HEADER_END_TIME,
         da_attestation: input.status,
       },
       SDK.StateQueueNode,

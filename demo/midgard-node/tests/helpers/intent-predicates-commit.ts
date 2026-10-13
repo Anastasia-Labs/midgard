@@ -29,6 +29,7 @@ export const journalRow = (status: string, anchor: CommitAnchor | null) =>
         header_hash: BLOCK,
         submitted_tx_hash: null,
         block_end_time: at,
+        block_time: at,
         status,
         observed_confirmed_at_ms: null,
         state_queue_lease_token: "predicate-test",

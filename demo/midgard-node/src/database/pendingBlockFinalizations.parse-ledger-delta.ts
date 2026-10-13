@@ -125,6 +125,8 @@ export type PrepareInput = {
   readonly headerCbor: Buffer;
   readonly metadata: PendingBlockFinalizationMetadata;
   readonly blockEndTime: Date;
+  /** The block's commit time (its node's `block_time`); at or after its end. */
+  readonly blockTime: Date;
   readonly depositEventIds: readonly Buffer[];
   readonly depositEntries: readonly DepositsDB.Entry[];
   readonly forcedTransactionEventIds: readonly Buffer[];

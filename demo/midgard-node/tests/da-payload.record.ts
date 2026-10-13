@@ -226,6 +226,7 @@ export const record = ({
       SDK.EMPTY_MERKLE_TREE_ROOT,
     [PendingBlockFinalizationsDB.Columns.BLOCK_START_TIME]: blockStart,
     [PendingBlockFinalizationsDB.Columns.BLOCK_END_TIME]: blockEnd,
+    [PendingBlockFinalizationsDB.Columns.BLOCK_TIME]: blockEnd,
     [PendingBlockFinalizationsDB.Columns.EXPECTED_UTXOS_ROOT]: roots.utxosRoot,
     [PendingBlockFinalizationsDB.Columns.EXPECTED_FORCED_TRANSACTIONS_ROOT]:
       roots.forcedTransactionsRoot,

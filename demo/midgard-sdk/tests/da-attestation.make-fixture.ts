@@ -207,6 +207,7 @@ export const makeFixture = () => {
       operatorVkey: h28(0x07),
       protocolVersion: 0n,
     },
+    block_time: 2n,
     da_attestation: NO_DA_ATTESTATION,
   };
   const linkedListNode: LinkedListNodeView = {

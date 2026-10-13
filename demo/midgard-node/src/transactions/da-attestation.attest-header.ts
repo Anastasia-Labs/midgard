@@ -228,7 +228,7 @@ export const attestHeader = ({
         const validityRange = yield* SDK.daAttestationApplyValidityRangeProgram(
           {
             currentTime: BigInt(lucid.slotToUnixTime(lucid.currentSlot())),
-            headerEndTime: target.stateQueueNode.header.endTime,
+            blockTime: target.stateQueueNode.block_time,
           },
         );
         // The SDK re-reads the pool immediately before assembling the

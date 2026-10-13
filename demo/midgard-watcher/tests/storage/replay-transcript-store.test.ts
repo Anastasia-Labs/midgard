@@ -25,7 +25,6 @@ const directories: string[] = [];
 let first: WatcherAuthenticatedReplayTranscript;
 let second: WatcherAuthenticatedReplayTranscript;
 let third: WatcherAuthenticatedReplayTranscript;
-
 beforeAll(async () => {
   const { createInput } = await makeWatcherTranscriptArchiveFixture();
   [first, second, third] = (await Promise.all(
@@ -169,6 +168,7 @@ describe("durable authenticated replay transcript archive", () => {
       identity: string;
       operation_digest: string;
       end_time: string;
+      block_time: string | null;
       retention_days: number;
       network: string;
       completed_slot: string;
@@ -187,12 +187,13 @@ describe("durable authenticated replay transcript archive", () => {
     expect((await restarted.read(first))?.chainLength).toBe(2);
     reopened
       .prepare(
-        "INSERT INTO watcher_replay_transcript_operation VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO watcher_replay_transcript_operation (identity, operation_digest, end_time, block_time, retention_days, network, completed_slot, checksum, classification_complete, proof_started) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
       )
       .run(
         pin.identity,
         pin.operation_digest,
         pin.end_time,
+        pin.block_time,
         pin.retention_days,
         pin.network,
         pin.completed_slot,

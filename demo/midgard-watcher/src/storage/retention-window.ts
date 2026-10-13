@@ -130,7 +130,7 @@ const makeRetentionWindow = (
   // Duration arithmetic is delegated to the Q54 helper so a profile change
   // propagates instead of being restated here.
   const deadline = retentionDeadlineForBlock({
-    blockEndTimeMs: 0,
+    blockTimeMs: 0,
     retentionDays,
   });
   return Object.freeze({

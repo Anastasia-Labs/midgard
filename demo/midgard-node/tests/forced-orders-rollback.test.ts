@@ -67,6 +67,7 @@ const journal = (txOrderId: Buffer, status: string) =>
         header_hash: HEADER,
         submitted_tx_hash: null,
         block_end_time: new Date(at.getTime() + 1_000),
+        block_time: new Date(at.getTime() + 1_000),
         status,
         observed_confirmed_at_ms: null,
         state_queue_lease_token: "forced-rollback-test",

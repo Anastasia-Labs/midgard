@@ -321,6 +321,7 @@ export const replayForeignBlock = (deps: {
         refetching,
         headerHash,
         header,
+        input.blockTime,
       );
       const body = payload.block_body;
       const mismatch =
@@ -350,9 +351,10 @@ export const replayForeignBlock = (deps: {
         expectedNetworkId: config.NETWORK === "Mainnet" ? 1n : 0n,
         minFeeA: config.MIN_FEE_A,
         minFeeB: config.MIN_FEE_B,
+        // Validity is judged at the block's time: its header's block slot.
         blockSlot: BigInt(
           unixTimeToSlotForConfig(
-            Number(header.endTime),
+            Number(input.blockTime),
             canonicalSlotConfigForLucid(lucid.api),
           ),
         ),

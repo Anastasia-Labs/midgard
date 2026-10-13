@@ -29,6 +29,7 @@ export const progressObservation = (input: {
             {
               proven_fraud: null,
               header: input.header.header,
+              block_time: input.header.header.endTime,
               da_attestation: "Unattested",
             },
             StateQueueNode,

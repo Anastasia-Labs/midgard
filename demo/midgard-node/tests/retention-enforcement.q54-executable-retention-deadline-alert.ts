@@ -38,18 +38,18 @@ beforeAll(async () => {
 
 describe("Q54 executable retention deadline alert", () => {
   const headerHash = "ab".repeat(28);
-  const blockEndTimeMs = NOW.getTime() - REQUIRED_RETENTION_MS / 2;
+  const blockTimeMs = NOW.getTime() - REQUIRED_RETENTION_MS / 2;
 
   it("raises no deadline alert without an operator threshold", () => {
     // Opt-in alert (owner ruling 2026-09-26): with no threshold, not even a
     // record one millisecond from its deadline alerts. Pruning never removes
     // still-challengeable evidence, so ageing towards the deadline is no fault.
     const result = evaluateRetentionCheck({
-      nowMillis: blockEndTimeMs + REQUIRED_RETENTION_MS - 1,
+      nowMillis: blockTimeMs + REQUIRED_RETENTION_MS - 1,
       records: [
         {
           headerHash,
-          blockEndTimeMs,
+          blockTimeMs,
           headerStatus: "attested",
           queueReference: "none",
         },
@@ -70,7 +70,7 @@ describe("Q54 executable retention deadline alert", () => {
       records: [
         {
           headerHash,
-          blockEndTimeMs,
+          blockTimeMs,
           headerStatus: "attested",
           queueReference: "none",
         },
@@ -93,12 +93,12 @@ describe("Q54 executable retention deadline alert", () => {
   it("alerts at zero remaining headroom but not at one millisecond", () => {
     const at = (remainingMs: number) =>
       evaluateRetentionCheck({
-        nowMillis: blockEndTimeMs + REQUIRED_RETENTION_MS - remainingMs,
+        nowMillis: blockTimeMs + REQUIRED_RETENTION_MS - remainingMs,
         alertThresholdMs: 0,
         records: [
           {
             headerHash,
-            blockEndTimeMs,
+            blockTimeMs,
             headerStatus: "attested",
             queueReference: "none",
           },
@@ -117,7 +117,7 @@ describe("Q54 executable retention deadline alert", () => {
       records: [
         {
           headerHash,
-          blockEndTimeMs,
+          blockTimeMs,
           headerStatus: "attested",
           queueReference: "none",
           deploymentFingerprint: "bb".repeat(32),
@@ -140,25 +140,25 @@ describe("Q54 executable retention deadline alert", () => {
       records: [
         {
           headerHash: "01".repeat(28),
-          blockEndTimeMs: pastHorizon,
+          blockTimeMs: pastHorizon,
           headerStatus: "unobserved",
           queueReference: "none",
         },
         {
           headerHash: "02".repeat(28),
-          blockEndTimeMs: pastHorizon,
+          blockTimeMs: pastHorizon,
           headerStatus: "merged",
           queueReference: "confirmed_head",
         },
         {
           headerHash: "03".repeat(28),
-          blockEndTimeMs,
+          blockTimeMs,
           headerStatus: "removed",
           queueReference: "none",
         },
         {
           headerHash: "04".repeat(28),
-          blockEndTimeMs,
+          blockTimeMs,
           headerStatus: "unobserved",
           queueReference: "none",
         },
@@ -244,6 +244,7 @@ export const daPayloadFixture = (
       blockEndTime.getTime() - 1_000,
     ),
     [DaPayloadsDB.Columns.BLOCK_END_TIME]: blockEndTime,
+    [DaPayloadsDB.Columns.BLOCK_TIME]: blockEndTime,
   };
 };
 

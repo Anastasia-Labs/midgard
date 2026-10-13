@@ -31,6 +31,52 @@ describe("retentionDeadlineReportV1", () => {
   // (DA_RETENTION_ALERT_THRESHOLD_MS) turns the deadline into an alert.
   const THRESHOLD_MS = 60_000;
 
+  it("keeps a catch-up payload and keys its deadline alert on the authenticated commit time", async () => {
+    const store = await openStore();
+    const headerHash = hashOf(37);
+    const blockTimeMs = NOW - REQUIRED_RETENTION_MS + THRESHOLD_MS;
+    await seed(store, [
+      {
+        headerHash,
+        endTimeMs: blockTimeMs - 6 * 60 * 60 * 1000,
+        blockTimeMs,
+        status: "attested",
+      },
+    ]);
+    const cycle = await runRetentionCycle(store, {
+      ...retentionOptions(),
+      alertThresholdMs: THRESHOLD_MS,
+    });
+    expect(cycle.prune.prunedHeaderHashes).toEqual([]);
+    expect(await store.getDaPayload(headerHash)).toBeDefined();
+    expect(cycle.deadlines.entries).toEqual([
+      {
+        headerHash,
+        reasonCode: "still_challengeable",
+        challengeableUntilMs: blockTimeMs + REQUIRED_RETENTION_MS,
+        remainingMs: THRESHOLD_MS,
+        headroomMs: 0,
+        alerting: true,
+      },
+    ]);
+    expect(
+      (
+        await runRetentionCycle(
+          store,
+          retentionOptions(blockTimeMs + REQUIRED_RETENTION_MS),
+        )
+      ).prune.prunedHeaderHashes,
+    ).toEqual([]);
+    expect(
+      (
+        await runRetentionCycle(
+          store,
+          retentionOptions(blockTimeMs + REQUIRED_RETENTION_MS + 1),
+        )
+      ).prune.prunedHeaderHashes,
+    ).toEqual([headerHash]);
+  });
+
   it("raises no alert and leaves readiness ok without an operator threshold", async () => {
     const store = await openStore();
     await seed(store, [

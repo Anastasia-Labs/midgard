@@ -24,11 +24,11 @@ describe("daRetentionPruneDecisionV1", () => {
       typeof daRetentionPruneDecision
     >[0]["headerStatus"] = "merged",
     queueReference: RetentionQueueReference = "none",
-    blockEndTimeMs = BLOCK_END,
+    blockTimeMs = BLOCK_END,
   ) =>
     daRetentionPruneDecision({
       nowMs,
-      blockEndTimeMs,
+      blockTimeMs,
       headerStatus,
       queueReference,
       terminalRecoveryFinal: true,
@@ -61,7 +61,7 @@ describe("daRetentionPruneDecisionV1", () => {
         expect(
           daRetentionPruneDecision({
             nowMs: BLOCK_END + HORIZON + 1,
-            blockEndTimeMs: BLOCK_END,
+            blockTimeMs: BLOCK_END,
             headerStatus,
             queueReference: "none",
             terminalRecoveryFinal,
@@ -120,10 +120,10 @@ describe("daRetentionPruneDecisionV1", () => {
   it("rejects malformed times instead of retaining", () => {
     expect(() => decide(Number.NaN)).toThrow(/nowMs/u);
     expect(() => decide(BLOCK_END, "merged", "none", -1)).toThrow(
-      /blockEndTimeMs/u,
+      /blockTimeMs/u,
     );
     expect(() => decide(BLOCK_END, "merged", "none", 1.5)).toThrow(
-      /blockEndTimeMs/u,
+      /blockTimeMs/u,
     );
   });
 
@@ -157,7 +157,7 @@ describe("daRetentionPruneDecisionV1", () => {
       let retained = 0;
       let insideHorizon = 0;
       for (let index = 0; index < count; index += 1) {
-        const blockEndTimeMs =
+        const blockTimeMs =
           BLOCK_END + Math.floor(next() * 60 * RETENTION_MS_PER_DAY);
         const queueReference =
           index === headIndex
@@ -170,10 +170,10 @@ describe("daRetentionPruneDecisionV1", () => {
         const headerStatus = statuses[
           Math.floor(next() * statuses.length)
         ] as never;
-        const inside = now <= blockEndTimeMs + HORIZON;
+        const inside = now <= blockTimeMs + HORIZON;
         const decision = daRetentionPruneDecision({
           nowMs: now,
-          blockEndTimeMs,
+          blockTimeMs,
           headerStatus,
           queueReference,
           terminalRecoveryFinal: true,
@@ -241,7 +241,7 @@ describe("retentionDeadlineAlertV1", () => {
     const at = (remainingMs: number, alertThresholdMs: number) =>
       retentionDeadlineAlert({
         nowMs: BLOCK_END + HORIZON_MS - remainingMs,
-        blockEndTimeMs: BLOCK_END,
+        blockTimeMs: BLOCK_END,
         alertThresholdMs,
       });
     expect(at(0, 0)).toMatchObject({ remainingMs: 0, alerting: true });
@@ -256,7 +256,7 @@ describe("retentionDeadlineAlertV1", () => {
     expect(() =>
       retentionDeadlineAlert({
         nowMs: BLOCK_END,
-        blockEndTimeMs: BLOCK_END,
+        blockTimeMs: BLOCK_END,
         // @ts-expect-error the threshold is required
         alertThresholdMs: undefined,
       }),
@@ -265,7 +265,7 @@ describe("retentionDeadlineAlertV1", () => {
       expect(() =>
         retentionDeadlineAlert({
           nowMs: BLOCK_END,
-          blockEndTimeMs: BLOCK_END,
+          blockTimeMs: BLOCK_END,
           alertThresholdMs: bad,
         }),
       ).toThrow(/alertThresholdMs/u);
@@ -281,7 +281,7 @@ describe("retentionDeadlineAlertV1", () => {
     const atMerge = (alertThresholdMs: number) =>
       retentionDeadlineAlert({
         nowMs: BLOCK_END + MATURITY_MS,
-        blockEndTimeMs: BLOCK_END,
+        blockTimeMs: BLOCK_END,
         alertThresholdMs,
       });
     // At the window a payload alerts the instant it merges; one below, not.
@@ -310,7 +310,7 @@ describe("retentionDeadlineAlertV1", () => {
     const threshold = 60_000;
     const atThreshold = retentionDeadlineAlert({
       nowMs: BLOCK_END + HORIZON_MS - threshold,
-      blockEndTimeMs: BLOCK_END,
+      blockTimeMs: BLOCK_END,
       alertThresholdMs: threshold,
     });
     expect(atThreshold).toMatchObject({
@@ -320,7 +320,7 @@ describe("retentionDeadlineAlertV1", () => {
     });
     const justAbove = retentionDeadlineAlert({
       nowMs: BLOCK_END + HORIZON_MS - threshold - 1,
-      blockEndTimeMs: BLOCK_END,
+      blockTimeMs: BLOCK_END,
       alertThresholdMs: threshold,
     });
     expect(justAbove).toMatchObject({ headroomMs: 1, alerting: false });

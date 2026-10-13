@@ -244,6 +244,7 @@ const preparePendingBlock = async (
           expectedCounts: counts,
         },
         blockEndTime: new Date(time.getTime() + 60_000),
+        blockTime: new Date(time.getTime() + 60_000),
         depositEventIds: [],
         depositEntries: [],
         forcedTransactionEventIds: [],

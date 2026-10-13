@@ -79,7 +79,13 @@ const nodeDatum = (
     data: {
       Node: {
         data: Data.castTo(
-          { header: value, da_attestation: status, proven_fraud: null },
+          {
+            header: value,
+            // A commit time after the window's end, as a catch-up slice has.
+            block_time: value.endTime + 7n,
+            da_attestation: status,
+            proven_fraud: null,
+          },
           SDK.StateQueueNode,
         ),
       },
@@ -118,11 +124,12 @@ describe("decodeStateQueueOutput: queue elements", () => {
       headerHash: "ef".repeat(28),
       daStatus: null,
       endTimeMs: 7_000n,
+      blockTimeMs: null,
       problems: [],
     });
   });
 
-  it("reads a node: its key is its header hash, which equals the SDK's block hash", async () => {
+  it("reads a node: its key is its header hash, which equals the SDK's block hash, and its block time", async () => {
     const block = header(1);
     const hash = SDK.stateQueueHeaderHash(block);
     expect(hash).toBe(await Effect.runPromise(SDK.hashBlockHeader(block)));
@@ -144,6 +151,7 @@ describe("decodeStateQueueOutput: queue elements", () => {
       headerHash: hash,
       daStatus: `Attested:${"11".repeat(32)}`,
       endTimeMs: 2_001n,
+      blockTimeMs: 2_008n,
       problems: [],
     });
     expect(decoded!.datum).not.toBeNull();

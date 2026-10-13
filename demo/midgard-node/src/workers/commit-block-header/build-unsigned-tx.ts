@@ -77,7 +77,10 @@ export type BuiltCommitTx = {
   readonly newHeaderHash: string;
   readonly newHeader: SDK.Header;
   readonly newHeaderCbor: Buffer;
+  /** The header's covered window end. */
   readonly blockEndTimeMs: number;
+  /** The node's `block_time`: the commit's inclusive validity upper bound. */
+  readonly blockTimeMs: number;
   readonly txValidFromMs: number;
   readonly txValidToMs: number;
   readonly signAndSubmitProgram: Effect.Effect<
@@ -276,14 +279,17 @@ export const buildUnsignedCommitTx = (
         minimumMonotonicEndTime,
         resolvedEndTime: txValidToMs,
       } = commitValidityWindow;
-      const {
-        validFromMs: txValidFromMs,
-        inclusiveUpperBoundMs: blockEndTimeMs,
-      } = resolveCommitValidityInterval({
-        lucid: lucid.api,
-        submitSlotSnapshot: initialSubmitSlotSnapshot,
-        validToMs: txValidToMs,
-      });
+      // The block time is the commit's inclusive validity upper bound; the
+      // header names it as its slot, and every validity verdict in the block
+      // is taken at that slot.
+      const { validFromMs: txValidFromMs, inclusiveUpperBoundMs: blockTimeMs } =
+        resolveCommitValidityInterval({
+          lucid: lucid.api,
+          submitSlotSnapshot: initialSubmitSlotSnapshot,
+          validToMs: txValidToMs,
+        });
+      // A normal block covers the window up to its block time.
+      const blockEndTimeMs = blockTimeMs;
       if (txValidToMs !== alignedCandidateEndTime) {
         yield* Effect.logWarning(
           `Adjusted commit transaction validity and bound the committed header to its inclusive upper bound (candidate_end=${candidateEndTimeMs},header_end=${blockEndTimeMs},candidate_valid_to=${alignedCandidateEndTime},minimum=${minimumMonotonicEndTime},selected_valid_from=${txValidFromMs},selected_valid_to=${txValidToMs},latest_block_end=${latestEndTime}).`,
@@ -305,7 +311,7 @@ export const buildUnsignedCommitTx = (
           transitionCommitments,
           BigInt(blockEndTimeMs),
           {
-            blockSlot: BigInt(lucid.api.unixTimeToSlot(blockEndTimeMs)),
+            blockSlot: BigInt(lucid.api.unixTimeToSlot(blockTimeMs)),
             expectedNetworkId: nodeConfig.NETWORK === "Mainnet" ? 1n : 0n,
             minFeeA: nodeConfig.MIN_FEE_A,
             minFeeB: nodeConfig.MIN_FEE_B,
@@ -410,6 +416,7 @@ export const buildUnsignedCommitTx = (
           "hex",
         ),
         blockEndTimeMs,
+        blockTimeMs,
         txValidFromMs,
         txValidToMs,
         signAndSubmitProgram,

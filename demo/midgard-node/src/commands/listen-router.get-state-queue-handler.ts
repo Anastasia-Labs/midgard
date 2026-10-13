@@ -225,7 +225,7 @@ export const getStateQueueHandler = Effect.gen(function* () {
           const headerHash = yield* SDK.hashBlockHeader(blockHeader);
           const maturity = mergeMaturityWindow(
             lucid.api,
-            Number(blockHeader.endTime),
+            Number(stateQueueNode.block_time),
           );
           return classifyOldestQueuedBlockReadiness({
             headerHash,

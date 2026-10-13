@@ -23,6 +23,7 @@ import followerWriteGateSql from "./sql/0021_follower_write_gate.sql";
 import dropEventHistoryControlPlaneSql from "./sql/0022_drop_event_history_control_plane.sql";
 import commitAnchorSql from "./sql/0023_commit_anchor.sql";
 import dropValidationTraceWitnessesSql from "./sql/0024_drop_validation_trace_witnesses.sql";
+import blockTimeSql from "./sql/0025_block_time.sql";
 
 export type Migration = {
   readonly version: number;
@@ -199,6 +200,13 @@ export const MIGRATIONS: readonly Migration[] = [
     name: "drop_validation_trace_witnesses",
     checksumSha256: sha256Hex(dropValidationTraceWitnessesSql),
     sql: dropValidationTraceWitnessesSql,
+    transactional: true,
+  },
+  {
+    version: 25,
+    name: "block_time",
+    checksumSha256: sha256Hex(blockTimeSql),
+    sql: blockTimeSql,
     transactional: true,
   },
 ] as const;

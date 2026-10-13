@@ -235,5 +235,7 @@ export const buildDaPayloadInsert = ({
         record[PendingBlockFinalizationsDB.Columns.BLOCK_START_TIME],
       [DaPayloadsDB.Columns.BLOCK_END_TIME]:
         record[PendingBlockFinalizationsDB.Columns.BLOCK_END_TIME],
+      [DaPayloadsDB.Columns.BLOCK_TIME]:
+        record[PendingBlockFinalizationsDB.Columns.BLOCK_TIME],
     };
   });

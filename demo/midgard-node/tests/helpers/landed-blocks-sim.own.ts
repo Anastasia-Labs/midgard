@@ -84,6 +84,7 @@ export const insertOwnJournal = (journal: SimOwnJournal) =>
         header_hash: header,
         submitted_tx_hash: null,
         block_end_time: new Date(journal.at.getTime() + 1_000),
+        block_time: new Date(journal.at.getTime() + 1_000),
         status: JournalStatus.SubmittedUnconfirmed,
         observed_confirmed_at_ms: null,
         created_at: journal.at,

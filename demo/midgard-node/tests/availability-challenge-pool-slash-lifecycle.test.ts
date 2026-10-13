@@ -578,7 +578,7 @@ describe("pooled DA bond challenge and slash lifecycle", () => {
     expect(() =>
       SDK.assertDaAvailabilityOpenWithinChallengeWindow({
         validTo: firstLate,
-        nodeEndTime: endTime,
+        nodeBlockTime: endTime,
         daChallengeWindowMs: f.timing.daChallengeWindowMs,
       }),
     ).toThrow(expect.objectContaining({ reason: "challenge-window-closed" }));

@@ -260,7 +260,7 @@ export const pruneFinalizedBeyondChallengeability = ({
         WHERE ${sql(Columns.HEADER_HASH)} IN (
           SELECT ${sql(Columns.HEADER_HASH)} FROM ${sql(tableName)}
           WHERE ${sql(Columns.STATUS)} = ${Status.LocallyApplied}
-            AND ${sql(Columns.BLOCK_END_TIME)} < ${challengeableCutoff}
+            AND ${sql(Columns.BLOCK_TIME)} < ${challengeableCutoff}
             AND NOT ${challengeRelevantHeader(sql, `${tableName}.${Columns.HEADER_HASH}`, { view, deploymentIdentityDigest })}
             AND NOT ${recoveryRelevantJournal(sql, `${tableName}.${Columns.HEADER_HASH}`)}
             AND NOT ${orphanMemberJournal(sql, `${tableName}.${Columns.HEADER_HASH}`)}

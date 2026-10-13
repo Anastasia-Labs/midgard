@@ -57,6 +57,7 @@ const block = (
     data: SDK.castStateQueueNodeToData({
       proven_fraud: null,
       header: { ...header, endTime },
+      block_time: endTime,
       da_attestation: attested
         ? { Attested: { commitment_hash: tx("ab") } }
         : SDK.NO_DA_ATTESTATION,

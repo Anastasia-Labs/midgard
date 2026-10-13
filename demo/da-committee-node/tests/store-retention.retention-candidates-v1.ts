@@ -91,6 +91,19 @@ describe("retentionCandidatesV1", () => {
     ]);
   });
 
+  it("retains evidence by refusing a known header whose authenticated commit clock is missing", async () => {
+    const store = await openStore();
+    const headerHash = hashOf(15);
+    await seed(store, [{ headerHash, endTimeMs: PAST_HORIZON }]);
+    const header = (await store.getStateQueueHeader(headerHash))!;
+    const { rawStateQueueDatumCbor: _datum, ...withoutClock } = header;
+    await store.upsertStateQueueHeader(withoutClock);
+    await expect(
+      pruneExpiredDaPayloads(store, retentionOptions()),
+    ).rejects.toThrow("Retained header has no authenticated block_time");
+    expect(await store.getDaPayload(headerHash)).toBeDefined();
+  });
+
   it("decides a payload with no header row on its receipt time", async () => {
     const store = await openStore();
     await seed(store, [
@@ -101,12 +114,12 @@ describe("retentionCandidatesV1", () => {
     expect(candidates).toMatchObject([
       {
         headerStatus: "unobserved",
-        blockEndTimeMs: NOW,
+        blockTimeMs: NOW,
         decision: { decision: "retain", reasonCode: "still_challengeable" },
       },
       {
         headerStatus: "unobserved",
-        blockEndTimeMs: PAST_HORIZON,
+        blockTimeMs: PAST_HORIZON,
         decision: {
           decision: "prune",
           reasonCode: "past_challengeability_horizon",
@@ -144,7 +157,7 @@ describe("retentionCandidatesV1", () => {
     expect(candidates).toMatchObject([
       {
         headerHash: hashOf(8),
-        blockEndTimeMs: 0,
+        blockTimeMs: 0,
         decision: {
           decision: "prune",
           reasonCode: "past_challengeability_horizon",

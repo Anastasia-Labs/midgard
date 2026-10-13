@@ -46,6 +46,7 @@ export enum Columns {
   VALIDATION_TRACE_COUNT = "validation_trace_count",
   BLOCK_START_TIME = "block_start_time",
   BLOCK_END_TIME = "block_end_time",
+  BLOCK_TIME = "block_time",
   CREATED_AT = "created_at",
   UPDATED_AT = "updated_at",
 }
@@ -73,6 +74,7 @@ export type Row = {
   [Columns.VALIDATION_TRACE_COUNT]: bigint;
   [Columns.BLOCK_START_TIME]: Date;
   [Columns.BLOCK_END_TIME]: Date;
+  [Columns.BLOCK_TIME]: Date;
   [Columns.CREATED_AT]: Date;
   [Columns.UPDATED_AT]: Date;
 };
@@ -140,6 +142,7 @@ export type InsertInput = Pick<
   | Columns.VALIDATION_TRACE_COUNT
   | Columns.BLOCK_START_TIME
   | Columns.BLOCK_END_TIME
+  | Columns.BLOCK_TIME
 >;
 
 export const upsertAvailable = (
@@ -217,6 +220,9 @@ export const upsertAvailable = (
         )}
         AND ${sql(tableName)}.${sql(Columns.BLOCK_END_TIME)} = EXCLUDED.${sql(
           Columns.BLOCK_END_TIME,
+        )}
+        AND ${sql(tableName)}.${sql(Columns.BLOCK_TIME)} = EXCLUDED.${sql(
+          Columns.BLOCK_TIME,
         )}
       RETURNING ${sql(Columns.HEADER_HASH)}
     `;
@@ -344,7 +350,7 @@ export const pruneBeyondRetention = (args: {
         yield* sql`SELECT pg_advisory_xact_lock(${STORE_ADVISORY_LOCK_NAMESPACE}, ${STORE_ADVISORY_LOCK_KEY})`;
         const rows = yield* sql<{ readonly header_hash: Buffer }>`
       DELETE FROM ${sql(tableName)}
-      WHERE (${sql(Columns.BLOCK_END_TIME)} < ${args.challengeableCutoff} OR ${removed})
+      WHERE (${sql(Columns.BLOCK_TIME)} < ${args.challengeableCutoff} OR ${removed})
         AND NOT ${sql.in(Columns.HEADER_HASH, exempt)}
         AND NOT ${finalityHeldPayload(sql, args.deploymentIdentityDigest, `${tableName}.${Columns.HEADER_HASH}`, args.view.finalThroughHeight)}
         AND NOT ${args.deploymentIdentityDigest === undefined ? sql`FALSE` : recoveryRelevantJournal(sql, Columns.HEADER_HASH)}

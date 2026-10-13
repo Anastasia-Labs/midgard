@@ -72,7 +72,7 @@ describe("DA apply validity at production cadence", () => {
     async (nearDeadline) => {
       const f = await createAvailabilityFixture(1, 0, HEADER_END_TIME_LEAD_MS);
       const attestation = await thresholdAttestation(f);
-      const headerEndTime = f.target.stateQueueNode.header.endTime;
+      const headerEndTime = f.target.stateQueueNode.block_time;
       const deadline = headerEndTime + SDK.DA_ATTESTATION_TIMEOUT_MS;
       // Unclipped, the full range from validFrom fits before the deadline.
       expect(deadline - BigInt(f.emulator.now())).toBeGreaterThan(
@@ -87,7 +87,7 @@ describe("DA apply validity at production cadence", () => {
       const validityRange = await Effect.runPromise(
         SDK.daAttestationApplyValidityRangeProgram({
           currentTime,
-          headerEndTime,
+          blockTime: headerEndTime,
         }),
       );
       expect(validityRange.validFrom).toBe(currentTime - 60_000n);
@@ -175,7 +175,7 @@ describe("DA apply validity at production cadence", () => {
       const headerEndTime = 1_000_000n;
       const result = await Effect.runPromise(
         SDK.daAttestationApplyValidityRangeProgram({
-          headerEndTime,
+          blockTime: headerEndTime,
           currentTime: headerEndTime + SDK.DA_ATTESTATION_TIMEOUT_MS + elapsed,
         }).pipe(Effect.either),
       );

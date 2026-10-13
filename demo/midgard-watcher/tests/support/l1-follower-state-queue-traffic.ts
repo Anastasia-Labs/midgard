@@ -253,6 +253,7 @@ export const commitTx = (
   const node: SDK.StateQueueNode = {
     proven_fraud: null,
     header,
+    block_time: header.endTime,
     da_attestation: "Unattested",
   };
   const nodeUnit = `${SDK.STATE_QUEUE_NODE_ASSET_NAME_PREFIX}${headerHash}`;

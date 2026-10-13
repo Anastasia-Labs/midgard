@@ -304,16 +304,19 @@ export const registerRetainedScriptMaterialTests = () => {
               ...daPayloadInsertFixture("live-pin-1"),
               block_start_time: new Date("2026-01-01"),
               block_end_time: new Date("2026-01-02"),
+              block_time: new Date("2026-01-02"),
             };
             const second = {
               ...daPayloadInsertFixture("live-pin-2"),
               block_start_time: new Date("2026-01-02"),
               block_end_time: new Date("2026-01-03"),
+              block_time: new Date("2026-01-03"),
             };
             const spent = {
               ...daPayloadInsertFixture("live-pin-spent"),
               block_start_time: new Date("2026-01-03"),
               block_end_time: new Date("2026-01-04"),
+              block_time: new Date("2026-01-04"),
             };
             yield* DaPayloadsDB.upsertAvailable(first);
             yield* CekProgramMaterialDB.pinRetainedStateScriptRefs({

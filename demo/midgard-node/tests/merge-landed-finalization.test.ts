@@ -130,6 +130,7 @@ const journal = ({
         expectedCounts,
       },
       blockEndTime: new Date(blockStartTime.getTime() + 60_000),
+      blockTime: new Date(blockStartTime.getTime() + 60_000),
       depositEventIds: [],
       depositEntries: [],
       forcedTransactionEventIds: [],

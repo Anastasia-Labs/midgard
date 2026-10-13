@@ -278,6 +278,7 @@ export const submitDepositOnlyCommit = ({
                 newHeader,
                 newHeaderCbor,
                 blockEndTimeMs,
+                blockTimeMs,
                 signAndSubmitProgram,
                 txSize,
               } = buildResult;
@@ -378,6 +379,7 @@ export const submitDepositOnlyCommit = ({
                       headerCbor: newHeaderCbor,
                       metadata,
                       blockEndTime: new Date(blockEndTimeMs),
+                      blockTime: new Date(blockTimeMs),
                       depositEventIds: includedDepositEventIds,
                       depositEntries: includedDepositEntries,
                       forcedTransactionEventIds:

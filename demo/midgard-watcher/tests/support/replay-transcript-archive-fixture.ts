@@ -19,7 +19,9 @@ import { makeWatcherDeploymentAuthorityFixture } from "./deployment-authority-fi
 const h28 = (byte: string): string => byte.repeat(28);
 const h32 = (byte: string): string => byte.repeat(32);
 
-export const makeWatcherTranscriptArchiveFixture = async () => {
+export const makeWatcherTranscriptArchiveFixture = async (
+  options: Readonly<{ blockTime?: bigint }> = {},
+) => {
   const baseAuthority = makeWatcherDeploymentAuthorityFixture();
   const bundle = makeWatcherCanonicalRuleBundle({
     constructionIdentity: {
@@ -66,7 +68,13 @@ export const makeWatcherTranscriptArchiveFixture = async () => {
     ...counts,
     startTime: 1n,
     endTime: 2n,
-    blockSlot: 0n,
+    blockSlot:
+      options.blockTime === undefined
+        ? 0n
+        : (options.blockTime -
+            BigInt(NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod.zeroTime)) /
+            BigInt(NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod.slotLength) +
+          BigInt(NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod.zeroSlot),
     expectedNetworkId: 0n,
     minFeeA: 0n,
     minFeeB: 0n,
@@ -106,7 +114,12 @@ export const makeWatcherTranscriptArchiveFixture = async () => {
     headerHash,
     headerCborHex,
     stateQueueNodeCborHex: Data.to(
-      { proven_fraud: null, header, da_attestation: "Unattested" },
+      {
+        proven_fraud: null,
+        header,
+        block_time: options.blockTime ?? header.endTime,
+        da_attestation: "Unattested",
+      },
       SDK.StateQueueNode,
     ),
     linkedListDatumCborHex: "80",

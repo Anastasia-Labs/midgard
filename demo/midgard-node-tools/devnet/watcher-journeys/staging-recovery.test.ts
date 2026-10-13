@@ -111,15 +111,14 @@ const openStage = async () => {
         {
           proven_fraud: null,
           header: block.header,
+          block_time: block.header.endTime,
           da_attestation: daAttestation,
         },
         SDK.StateQueueNode,
       ),
     }),
   });
-  const attested = {
-    Attested: { commitment_hash: "cd".repeat(32) },
-  };
+  const attested = { Attested: { commitment_hash: "cd".repeat(32) } };
   const removalTxHash = "55".repeat(32);
   const initRecord: PublishedDaTransactionRecord = {
     step: "init",

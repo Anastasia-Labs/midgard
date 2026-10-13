@@ -73,7 +73,8 @@ export const journals = (specs: readonly JournalSpec[]) =>
       });
       yield* sql`UPDATE pending_block_finalizations
         SET status = ${spec.status},
-          block_end_time = NOW() - make_interval(secs => ${spec.endedAgoMs / 1000})
+          block_end_time = NOW() - make_interval(secs => ${spec.endedAgoMs / 1000}),
+          block_time = NOW() - make_interval(secs => ${spec.endedAgoMs / 1000})
         WHERE header_hash = ${headerHash}`;
       const mergeJob =
         spec.mergeJob ??

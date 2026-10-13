@@ -41,7 +41,8 @@ export { buildMergeToConfirmedStateTxProgram } from "./state-queue-transactions.
 export {
   assertCommitHeadDaDeadline,
   COMMIT_MAX_VALIDITY_RANGE_MS,
-  commitHeaderMatchesValidityUpperBound,
+  commitBlockTimeOfValidTo,
+  commitHeaderFitsBlockTime,
   isCommitValidityInterval,
   requireOperatorWalletInputs,
   type StateQueueCommitWitnessContext,

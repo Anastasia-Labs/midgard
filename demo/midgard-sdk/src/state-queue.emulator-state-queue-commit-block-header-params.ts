@@ -74,6 +74,12 @@ export type EmulatorStateQueueCommitBlockHeaderParams = {
   additionalInputs?: readonly UTxO[];
   validFrom?: bigint;
   validTo?: bigint;
+  /**
+   * The new node's `block_time`. Defaults to the inclusive validity upper
+   * bound `validTo - 1`, or to the header end when no upper bound is set; an
+   * explicit value builds the adversarial shapes the commit arm refuses.
+   */
+  blockTime?: bigint;
   schedulerRefInput: UTxO;
   correctionLockRefInput: CorrectionLockUTxO;
   /** Required when `anchorUTxO` is a block node; omitted for an empty queue. */

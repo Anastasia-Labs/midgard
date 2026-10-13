@@ -34,8 +34,8 @@ import { parseNonNegativeIntegerOption } from "./cli-options.js";
 /** One retained DA record as observed by the caller. */
 export type RetentionCheckRecord = {
   readonly headerHash: string;
-  /** Block END TIME in ms. */
-  readonly blockEndTimeMs: number;
+  /** Commit block_time in ms. */
+  readonly blockTimeMs: number;
   /** Authenticated terminal status, or `unobserved` when none is recorded. */
   readonly headerStatus: RetentionHeaderStatus | "unobserved";
   /** Where the header sits in the caller's authenticated L1 view. */
@@ -111,7 +111,7 @@ export const evaluateRetentionCheck = (
   for (const record of input.records) {
     const decision = daRetentionPruneDecision({
       nowMs: input.nowMillis,
-      blockEndTimeMs: record.blockEndTimeMs,
+      blockTimeMs: record.blockTimeMs,
       headerStatus: record.headerStatus,
       queueReference: record.queueReference,
       retentionDays,
@@ -142,7 +142,7 @@ export const evaluateRetentionCheck = (
 
     const alert = retentionDeadlineAlert({
       nowMs: input.nowMillis,
-      blockEndTimeMs: record.blockEndTimeMs,
+      blockTimeMs: record.blockTimeMs,
       retentionDays,
       alertThresholdMs,
       headerHash: record.headerHash,
@@ -204,10 +204,10 @@ export const retentionCheckProgram = (alertThresholdMs?: number) =>
     const sql = yield* SqlClient.SqlClient;
     const rows = yield* sql<{
       readonly header_hash: Buffer;
-      readonly block_end_time: Date;
+      readonly block_time: Date;
       readonly terminal_outcome: "merged" | "removed" | null;
     }>`
-      SELECT payload.header_hash, payload.block_end_time,
+      SELECT payload.header_hash, payload.block_time,
         ${newestTerminalOutcome(sql, "payload.header_hash")} AS terminal_outcome
       FROM da_payloads payload`;
     const confirmedHeadHash = view.confirmedHeadHash.toString("hex");
@@ -221,7 +221,7 @@ export const retentionCheckProgram = (alertThresholdMs?: number) =>
         const headerHash = row.header_hash.toString("hex");
         return {
           headerHash,
-          blockEndTimeMs: row.block_end_time.getTime(),
+          blockTimeMs: row.block_time.getTime(),
           headerStatus: row.terminal_outcome ?? "unobserved",
           queueReference:
             headerHash === confirmedHeadHash

@@ -118,6 +118,7 @@ const nodeMinUtxo = (
   const nodeKey = h28(0x10);
   const node: StateQueueNode = {
     header: largestHeader(),
+    block_time: MAX_BOUNDED_INT,
     da_attestation: status,
     proven_fraud: provenFraud,
   };
