@@ -153,6 +153,7 @@ export const FRAUD_PROOF_DEPLOYMENT_ENTRIES_BY_CATEGORY = {
     "fraudProofTransactionOutputNonCanonical",
     "fraudProofTransactionOutputNonCanonicalStep02",
     "fraudProofTransactionOutputNonCanonicalStep03",
+    "fraudProofTransactionOutputNonCanonicalStep03Datum",
     "fraudProofTransactionOutputNonCanonicalStep04",
   ],
   mintItemNonCanonical: [

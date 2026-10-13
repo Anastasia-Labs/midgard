@@ -43,26 +43,65 @@ export const TRANSACTION_OUTPUT_SCAN_CHUNK_BYTES = 4_095;
 
 export const TRANSACTION_OUTPUT_SCAN_WINDOW_BYTES = 8_190;
 
-/** The output shape the rule's own maximum selector scans, sized to `total` bytes. */
-export const canonicalOutputOfLength = (total: number): Buffer => {
-  // a3 | 00 <address> | 01 <value> | 02 <inline datum bytes>
-  const head = Buffer.from(
-    "a300581d601111111111111111111111111111111111111111111111111111111101821a004c4b40a002",
-    "hex",
-  );
-  const payloadLength = total - head.length - 3;
-  if (payloadLength < 0 || payloadLength > 0xffff)
-    throw new Error(
-      "canonical output length is outside the two-byte datum form",
-    );
-  const datumHeader = Buffer.alloc(3);
-  datumHeader[0] = 0x59;
-  datumHeader.writeUInt16BE(payloadLength, 1);
-  const output = Buffer.concat([
-    head,
-    datumHeader,
-    Buffer.alloc(payloadLength),
+const OUTPUT_HEAD = Buffer.from(
+  "a300581d601111111111111111111111111111111111111111111111111111111101821a004c4b40a002",
+  "hex",
+);
+
+const DATA_BYTES_CHUNK = 64;
+
+/**
+ * Canonical Data of exactly `length` bytes: an indefinite list holding one
+ * chunked byte string of zeros, then integer zeros to pad, so a large datum
+ * stays a few hundred nodes.
+ */
+export const canonicalDatumOfLength = (length: number): Buffer => {
+  const chunkBytes = DATA_BYTES_CHUNK + 2;
+  const chunks =
+    length - 4 >= 2 * chunkBytes ? Math.floor((length - 4) / chunkBytes) : 0;
+  const padding = length - 2 - (chunks === 0 ? 0 : 2 + chunks * chunkBytes);
+  if (padding < (chunks === 0 ? 1 : 0))
+    throw new Error("canonical datum is too short");
+  const bytes =
+    chunks === 0
+      ? Buffer.alloc(0)
+      : Buffer.concat([
+          Buffer.from([0x5f]),
+          ...Array.from({ length: chunks }, () =>
+            Buffer.concat([
+              Buffer.from([0x58, DATA_BYTES_CHUNK]),
+              Buffer.alloc(DATA_BYTES_CHUNK),
+            ]),
+          ),
+          Buffer.from([0xff]),
+        ]);
+  return Buffer.concat([
+    Buffer.from([0x9f]),
+    bytes,
+    Buffer.alloc(padding),
+    Buffer.from([0xff]),
   ]);
+};
+
+/** The selector's output shape carrying `datum` verbatim as its inline datum. */
+export const outputWithInlineDatum = (datum: Buffer): Buffer => {
+  if (datum.length === 0 || datum.length > 0xffff)
+    throw new Error("inline datum is outside the two-byte length form");
+  // The byte-string head takes its shortest form.
+  const header =
+    datum.length < 24
+      ? Buffer.from([0x40 | datum.length])
+      : datum.length < 0x100
+        ? Buffer.from([0x58, datum.length])
+        : Buffer.from([0x59, datum.length >> 8, datum.length & 0xff]);
+  return Buffer.concat([OUTPUT_HEAD, header, datum]);
+};
+
+/** The output shape the rule's own maximum selector scans, sized to `total` bytes, with a canonical datum. */
+export const canonicalOutputOfLength = (total: number): Buffer => {
+  const output = outputWithInlineDatum(
+    canonicalDatumOfLength(total - OUTPUT_HEAD.length - 3),
+  );
   if (output.length !== total)
     throw new Error("canonical output sizing drifted");
   return output;
@@ -233,7 +272,7 @@ export const scanWindowAt = (
   );
 };
 
-export const readOutputScanState = async (common: Common, stepIndex: 2 | 3) => {
+export const readOutputScanState = async (common: Common, stepIndex: 2 | 4) => {
   const { threadUtxo } = await requireLinearFaultThreadUtxo({
     lucid: common.lucid,
     contracts: common.contracts,

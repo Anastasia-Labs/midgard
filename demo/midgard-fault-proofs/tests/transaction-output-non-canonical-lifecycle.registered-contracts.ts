@@ -1,3 +1,5 @@
+import { basename } from "node:path";
+
 import { Store, Trie } from "@aiken-lang/merkle-patricia-forestry";
 import {
   computeMidgardNativeTxId,
@@ -55,9 +57,13 @@ export const MAXIMUM_OUTPUT_BYTES = 16_384;
 
 export const coverage = createLifecycleCoverageRecorder();
 
+// Each importing suite records its own fragment, named for its file.
 const measuredFit = createMeasuredFitRecorder(
   "transaction-output-non-canonical",
-  "lifecycle",
+  basename(expect.getState().testPath ?? "lifecycle", ".test.ts").replace(
+    /^transaction-output-non-canonical-/u,
+    "",
+  ),
   "16,384-byte selected output in a 32,768-byte certified field, both directions and canonical terminal scan",
 );
 
@@ -96,6 +102,13 @@ export const recordAll = (
       );
   });
 };
+
+/** Physical step positions: step 01, 02, 03, the datum step, step 04. */
+export type StepIndex = 0 | 1 | 2 | 3 | 4;
+
+/** A physical step's name in labels and coverage. */
+export const stepLabel = (stepIndex: StepIndex): string =>
+  ["01", "02", "03", "03-datum", "04"][stepIndex]!;
 
 type Harness = Awaited<ReturnType<typeof makeFaultProofEmulatorHarness>>;
 
@@ -169,7 +182,7 @@ export const registeredContracts = async (harness: Harness) => {
       })
     ).utxo;
   };
-  const common = (threadOutRef: string, stepIndex: 0 | 1 | 2 | 3): Common => ({
+  const common = (threadOutRef: string, stepIndex: StepIndex): Common => ({
     lucid: harness.proverLucid,
     contracts,
     categoryId: category.categoryId,
@@ -206,7 +219,7 @@ export const registeredContracts = async (harness: Harness) => {
     if (utxo === undefined) throw new Error(`thread ${txHash} absent`);
     return utxo;
   };
-  const cancel = async (threadOutRef: string, stepIndex: 0 | 1 | 2 | 3) =>
+  const cancel = async (threadOutRef: string, stepIndex: StepIndex) =>
     await captureEmulatorSubmission(harness.emulator, () =>
       submitTransactionOutputNonCanonicalCancel({
         lucid: harness.proverLucid,

@@ -286,7 +286,7 @@ export const makeAlwaysSucceedsContracts = (
         outerNormalizer: alwaysValidationTraceDispute,
         sourceAuthenticator: alwaysValidationTraceDispute,
         executors: Array.from(
-          { length: 20 },
+          { length: 21 },
           () => alwaysValidationTraceDispute,
         ),
         foldMapExecutor: alwaysValidationTraceDispute,
@@ -386,7 +386,7 @@ export const makeAlwaysSucceedsContracts = (
       scriptScan: appendedFamilyFallback,
       redeemerGrammar: appendedFamilyFallback,
     },
-    transactionOutputNonCanonical: scaffoldChain(appendedFamilyFallback, 4),
+    transactionOutputNonCanonical: scaffoldChain(appendedFamilyFallback, 5),
     mintItemNonCanonical: scaffoldChain(appendedFamilyFallback, 4),
     resolvedOutputNonCanonical: scaffoldChain(appendedFamilyFallback, 5),
     mintDeclaredAssetLimit: scaffoldChain(appendedFamilyFallback, 4),

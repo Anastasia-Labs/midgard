@@ -281,6 +281,20 @@ export const VALIDATOR_SCENARIOS: Readonly<
       },
     ],
   },
+  "fraud_proofs/transaction_output_non_canonical/step_03_datum.main": {
+    passing: [
+      {
+        file: "demo/midgard-fault-proofs/tests/transaction-output-non-canonical-datum-lifecycle.test.ts",
+        test: "convicts a forced rejection of a canonical inline datum that ends at the output's last byte on a chunk boundary, then mints and removes",
+      },
+    ],
+    failing: [
+      {
+        file: "demo/midgard-fault-proofs/tests/transaction-output-non-canonical-datum-lifecycle.test.ts",
+        test: "upholds an honest forced rejection of a non-canonical inline datum read across chunk boundaries and transactions, refusing every forged datum checkpoint, the early verdicts and the proof mint",
+      },
+    ],
+  },
   "fraud_proofs/transaction_output_non_canonical/step_04.main": {
     passing: [
       {

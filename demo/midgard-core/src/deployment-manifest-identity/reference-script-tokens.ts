@@ -583,6 +583,8 @@ export const DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_TOKEN_NAMES = Object.freeze({
     "V1FpMintItemNonCanonicalS02",
   "V1 fraud-proof transaction-output-non-canonical step-03":
     "V1FpTxOutputCanonicalS03",
+  "V1 fraud-proof transaction-output-non-canonical step-03 datum":
+    "V1FpTxOutputCanonicalS03Datum",
   "V1 fraud-proof mint-item-non-canonical step-03":
     "V1FpMintItemNonCanonicalS03",
   "V1 fraud-proof transaction-output-non-canonical step-04":

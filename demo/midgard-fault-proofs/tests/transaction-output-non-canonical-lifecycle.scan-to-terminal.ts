@@ -2,6 +2,7 @@ import { expect } from "vitest";
 
 import {
   submitTransactionOutputNonCanonicalStep03,
+  submitTransactionOutputNonCanonicalStep03Datum,
   transactionOutputScanControlData,
 } from "../src/transaction-output-non-canonical/index.js";
 import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
@@ -68,7 +69,20 @@ export const scanToTerminal = async ({
     if (scans === 1) record(`${label}-scan-first`, scan.measurement);
     if (scan.result.terminal) {
       record(`${label}-scan-final`, scan.measurement);
-      return { threadOutRef: current, scans };
+      if (scan.result.nextStage !== "step03Datum")
+        return {
+          threadOutRef: current,
+          scans,
+          datumSteps: 0,
+          costliest: undefined,
+        };
+      const datum = await datumToVerdict({
+        registered,
+        threadOutRef: current,
+        evidence,
+        label,
+      });
+      return { scans, ...datum };
     }
     if (scans === 1) {
       // A real checkpoint: the thread now carries the trace position after
@@ -95,7 +109,7 @@ export const scanToTerminal = async ({
             ...registered.common(current, 2),
             window,
             nextState: scanStateOf(evidence, 2, 0n),
-            nextStepIndex: 3,
+            nextStepIndex: 4,
           }),
       );
       coverage.seamMutated("step_03_successor");
@@ -106,7 +120,7 @@ export const scanToTerminal = async ({
             ...registered.common(current, 2),
             window,
             nextState: { ...scanStateOf(evidence, 2, 0n), outcome: 1n },
-            nextStepIndex: 3,
+            nextStepIndex: 4,
           }),
       );
       // Replayed checkpoint: re-emitting the consumed position is no progress.
@@ -124,6 +138,53 @@ export const scanToTerminal = async ({
       active = rederive();
       expect(active).toStrictEqual(evidence);
       coverage.resumed();
+    }
+  }
+};
+
+/**
+ * Drives the datum step from its first checkpoint to the verdict, one planned
+ * node read per transaction, recording the first, final and costliest read.
+ */
+export const datumToVerdict = async ({
+  registered,
+  threadOutRef,
+  evidence,
+  label,
+}: {
+  readonly registered: Registered;
+  readonly threadOutRef: string;
+  readonly evidence: Evidence;
+  readonly label: string;
+}) => {
+  let current = threadOutRef;
+  let datumSteps = 0;
+  let costliest: Parameters<typeof record>[1] | undefined;
+  for (;;) {
+    const step = await captureEmulatorSubmission(
+      registered.harness.emulator,
+      () =>
+        submitTransactionOutputNonCanonicalStep03Datum({
+          lucid: registered.harness.proverLucid,
+          contracts: registered.contracts,
+          categoryId: registered.category.categoryId,
+          signer: registered.harness.proverSigner,
+          threadOutRef: current,
+          evidence,
+          referenceScriptUtxo: registered.references[3]!,
+        }),
+    );
+    datumSteps += 1;
+    current = step.result.nextThreadOutRef;
+    if (
+      costliest === undefined ||
+      step.measurement.executionMemory > costliest.executionMemory
+    )
+      costliest = step.measurement;
+    if (datumSteps === 1) record(`${label}-datum-first`, step.measurement);
+    if (step.result.finished) {
+      record(`${label}-datum-final`, step.measurement);
+      return { threadOutRef: current, datumSteps, costliest };
     }
   }
 };

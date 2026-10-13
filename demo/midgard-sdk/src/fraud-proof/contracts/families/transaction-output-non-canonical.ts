@@ -19,6 +19,8 @@ export const TRANSACTION_OUTPUT_NON_CANONICAL_FAULT_PROOF_TITLES = {
   step01: "fraud_proofs/transaction_output_non_canonical/step_01.main.spend",
   step02: "fraud_proofs/transaction_output_non_canonical/step_02.main.spend",
   step03: "fraud_proofs/transaction_output_non_canonical/step_03.main.spend",
+  step03Datum:
+    "fraud_proofs/transaction_output_non_canonical/step_03_datum.main.spend",
   step04: "fraud_proofs/transaction_output_non_canonical/step_04.main.spend",
 } as const;
 
@@ -28,6 +30,7 @@ export type TransactionOutputNonCanonicalFaultProofContracts = {
   readonly fieldPreimageCertificate: MintingValidator;
   readonly transactionOutputNonCanonical: FraudProofChain & {
     readonly steps: readonly [
+      SpendingValidator,
       SpendingValidator,
       SpendingValidator,
       SpendingValidator,
@@ -63,10 +66,20 @@ export const buildTransactionOutputNonCanonicalChain = ({
       ],
       "Failed to build transaction-output-non-canonical step 04",
     );
+    const step03Datum = yield* buildFaultProofSpendingStep(
+      context,
+      TRANSACTION_OUTPUT_NON_CANONICAL_FAULT_PROOF_TITLES.step03Datum,
+      [step04.spendingScriptHash, computationThread.policyId],
+      "Failed to build transaction-output-non-canonical step 03 datum",
+    );
     const step03 = yield* buildFaultProofSpendingStep(
       context,
       TRANSACTION_OUTPUT_NON_CANONICAL_FAULT_PROOF_TITLES.step03,
-      [step04.spendingScriptHash, computationThread.policyId],
+      [
+        step03Datum.spendingScriptHash,
+        step04.spendingScriptHash,
+        computationThread.policyId,
+      ],
       "Failed to build transaction-output-non-canonical step 03",
     );
     const step02 = yield* buildFaultProofSpendingStep(
@@ -89,7 +102,10 @@ export const buildTransactionOutputNonCanonicalChain = ({
       ],
       "Failed to build transaction-output-non-canonical step 01",
     );
-    return { firstStep: step01, steps: [step01, step02, step03, step04] };
+    return {
+      firstStep: step01,
+      steps: [step01, step02, step03, step03Datum, step04],
+    };
   });
 
 export const buildTransactionOutputNonCanonicalFaultProofContracts = (

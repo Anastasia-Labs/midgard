@@ -180,7 +180,7 @@ describe("forced OutputNonCanonical coordinate the node writes", () => {
       ...s.step,
       threadOutRef: await s.scanToTerminal(),
       evidence: s.evidence,
-      referenceScriptUtxo: s.references[3]!,
+      referenceScriptUtxo: s.references[4]!,
       witnessReferenceScripts: s.harness.witnessReferenceScripts,
     });
     expect(minted.fraudProofUnit).toBeTruthy();
@@ -204,7 +204,7 @@ describe("forced OutputNonCanonical coordinate the node writes", () => {
         ...s.step,
         threadOutRef: terminal,
         evidence: s.evidence,
-        referenceScriptUtxo: s.references[3]!,
+        referenceScriptUtxo: s.references[4]!,
         witnessReferenceScripts: s.harness.witnessReferenceScripts,
       }),
     ).rejects.toThrow(/does not contradict/u);
@@ -213,7 +213,7 @@ describe("forced OutputNonCanonical coordinate the node writes", () => {
     await expectOnchainRefusal(
       async () =>
         await submitOutputStep04Raw({
-          ...s.registered.common(terminal, 3),
+          ...s.registered.common(terminal, 4),
           witnessReferenceScripts: s.harness.witnessReferenceScripts,
         }),
       {
