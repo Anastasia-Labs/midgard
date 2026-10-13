@@ -74,6 +74,12 @@ export type WatchdogPolicyInput = {
    * honest operator catching up keeps.
    */
   readonly progressWindowMs: number;
+  /**
+   * The least span from planning a commit to its TTL: within this of the
+   * append fence closing, a commit can no longer be planned to land before
+   * it, so the queue already counts as unappendable.
+   */
+  readonly commitTtlMs: number;
 };
 
 /**
@@ -93,7 +99,9 @@ const resolveTier = (
 
 /**
  * Never strike progress (B7). Nobody is struck while no append can land: a
- * new shift holder could not commit either. The shift holder is not struck
+ * new shift holder could not commit either. That starts one commit TTL
+ * before the append fence closes, since a commit planned later cannot land
+ * in time. The shift holder is not struck
  * while the tail it extends is recent: a holder committing a slice every
  * progress window is catching up, however old the events it has yet to
  * cover. The strike validator checks neither; a takeover held here is
@@ -105,7 +113,7 @@ const progressHold = (
   const { appendFenceClosesAtMs, tailBlockTimeMs } = input.stateQueue;
   if (
     appendFenceClosesAtMs !== null &&
-    BigInt(input.nowMs) >= appendFenceClosesAtMs
+    BigInt(input.nowMs) >= appendFenceClosesAtMs - BigInt(input.commitTtlMs)
   )
     return { action: "idle", reason: "state_queue_unappendable" };
   if (tailBlockTimeMs === null) return undefined;

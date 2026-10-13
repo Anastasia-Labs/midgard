@@ -22,6 +22,7 @@ const C = "c".repeat(56);
 const THRESHOLD = 1_000_000;
 const PATIENCE = 120_000;
 const PROGRESS_WINDOW = 480_000;
+const COMMIT_TTL = 30_000;
 
 const base = (
   overrides: Partial<WatchdogPolicyInput> = {},
@@ -39,6 +40,7 @@ const base = (
   },
   stateQueue: { tailBlockTimeMs: null, appendFenceClosesAtMs: null },
   progressWindowMs: PROGRESS_WINDOW,
+  commitTtlMs: COMMIT_TTL,
   ...overrides,
 });
 
@@ -328,7 +330,13 @@ describe("operator watchdog never strikes progress (B7)", () => {
   });
 
   it("strikes nobody while the queue accepts no append", () => {
-    for (const appendFenceClosesAtMs of [0n, BigInt(NOW)])
+    // Closed from one commit TTL before the fence: no commit planned from
+    // then on can land before it.
+    for (const appendFenceClosesAtMs of [
+      0n,
+      BigInt(NOW),
+      BigInt(NOW + COMMIT_TTL),
+    ])
       for (const { plan } of takeovers)
         for (const own of [B, C])
           expect(
@@ -338,7 +346,10 @@ describe("operator watchdog never strikes progress (B7)", () => {
     for (const { plan, action } of takeovers)
       expect(
         at(
-          { tailBlockTimeMs: null, appendFenceClosesAtMs: BigInt(NOW + 1) },
+          {
+            tailBlockTimeMs: null,
+            appendFenceClosesAtMs: BigInt(NOW + COMMIT_TTL + 1),
+          },
           plan,
         ).action,
       ).toBe(action);

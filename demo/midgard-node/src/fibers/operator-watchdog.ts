@@ -36,6 +36,7 @@
  * next citable event (`recordCitationFailure`). The record is per scheduler
  * UTxO and bounded, and each pass-over is logged and recorded by name.
  */
+import { COMMIT_TTL_FUTURE_BUFFER_MS } from "@al-ft/midgard-core/deployment-profile";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Effect, Ref, type Schedule } from "effect";
 
@@ -251,6 +252,7 @@ export const makeOperatorWatchdogTick = <R = never>(
       plan: toWatchdogPlan(planning.plan),
       stateQueue,
       progressWindowMs: Number(SDK.NEW_SHIFT_INACTIVITY_GRACE_PERIOD_MS),
+      commitTtlMs: COMMIT_TTL_FUTURE_BUFFER_MS,
     });
 
     switch (decision.action) {
