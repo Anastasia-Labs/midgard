@@ -59,6 +59,13 @@ import { publishTransitionTraceYields } from "./support/transition-trace-yields.
 
 const records: unknown[] = [];
 const rawDatum = "a3020a010b020c";
+/** Deposit datums a typed Data codec cannot carry. */
+const RAW_DATUMS: readonly (readonly [string, string])[] = [
+  ["an unsorted map that repeats a key", rawDatum],
+  ["a tagged small bignum", "c24105"],
+  ["a general-form constructor 0", "d866820080"],
+  ["a map with a repeated key", "a201020103"],
+];
 const originalAssets = { lovelace: 20_000_000n };
 afterAll(() => {
   const directory = process.env.MIDGARD_EVENT_HISTORY_EVIDENCE_DIR;
@@ -85,9 +92,12 @@ afterAll(() => {
   );
 });
 
-it.each([false, true])(
-  "retains raw Deposit map pairs through applied transition stages; honest=%s",
-  async (honest) => {
+it.each([
+  ...RAW_DATUMS.map(([name, datum]) => ({ name, datum, honest: false })),
+  { name: "an unsorted map that repeats a key", datum: rawDatum, honest: true },
+])(
+  "proves a raw Deposit datum through applied transition stages: $name; honest=$honest",
+  async ({ name, datum: datumRow, honest }) => {
     const h = await makeFaultProofEmulatorHarness({
       contractOptions: {
         realTransitionTrace: true,
@@ -133,7 +143,7 @@ it.each([false, true])(
           signedOpenings.push(plutusConstrFieldCbor(raw, [0, 9, 0]));
       }
       records.push({
-        label: `honest-${honest}/accepted`,
+        label: `${name}/honest-${honest}/accepted`,
         txHash,
         transactionCbor: cbor,
         measurement,
@@ -160,31 +170,35 @@ it.each([false, true])(
       transactionId: nonce.txHash,
       outputIndex: BigInt(nonce.outputIndex),
     };
-    const eventCbor = aikenSerialisedPlutusDataCborPreservingMapOrder(
-      replacePlutusConstrFieldCbor(
-        Data.to(
-          {
-            id,
-            info: {
-              l2_address: {
-                paymentCredential: { PublicKeyCredential: ["aa".repeat(28)] },
-                stakeCredential: null,
+    const depositPayload = (datum: string) => {
+      const event = aikenSerialisedPlutusDataCborPreservingMapOrder(
+        replacePlutusConstrFieldCbor(
+          Data.to(
+            {
+              id,
+              info: {
+                l2_address: {
+                  paymentCredential: { PublicKeyCredential: ["aa".repeat(28)] },
+                  stakeCredential: null,
+                },
+                l2_network_id: 0n,
+                l2_datum: 0n,
               },
-              l2_network_id: 0n,
-              l2_datum: 0n,
             },
-          },
-          SDK.DepositEvent,
+            SDK.DepositEvent,
+          ),
+          [1, 2, 0],
+          datum,
         ),
-        [1, 2, 0],
-        rawDatum,
-      ),
-    );
-    const payloadCbor = replacePlutusConstrFieldCbor(
-      "d8799f00ff",
-      [0],
-      eventCbor,
-    );
+      );
+      return {
+        eventCbor: event,
+        payloadCbor: replacePlutusConstrFieldCbor("d8799f00ff", [0], event),
+      };
+    };
+    // The committed bytes are serialiseData form.
+    const datum = aikenSerialisedPlutusDataCborPreservingMapOrder(datumRow);
+    const { eventCbor, payloadCbor } = depositPayload(datum);
     const now =
       alignUnixTimeToEmulatorSlotBoundary(
         h.funderLucid,
@@ -270,7 +284,7 @@ it.each([false, true])(
     expect(captured.payloadCbor).toBe(payloadCbor);
     expect(SDK.valueToAssets(captured.originalAssets)).toEqual(originalAssets);
     expect(plutusConstrFieldCbor(captured.payloadCbor, [0, 1, 2, 0])).toBe(
-      rawDatum,
+      datum,
     );
     const opening = transitionDepositOpening(captured);
     const current = await reconstructDaPayload({
@@ -300,14 +314,16 @@ it.each([false, true])(
     const proof = makeTransitionProofMaterial(current, typedProof);
     const sourceCbor = plutusConstrFieldCbor(eventCbor, [1]);
     expect(transitionProofHistorySource(proof)?.valueCbor).toBe(sourceCbor);
-    expect(proof.proofCbor).not.toBe(
-      Data.to(typedProof, SDK.TransitionFaultProof),
-    );
+    if (datumRow === rawDatum)
+      // The typed encoder collapses the repeated key; the proof keeps it.
+      expect(proof.proofCbor).not.toBe(
+        Data.to(typedProof, SDK.TransitionFaultProof),
+      );
     expect(
       decodeMidgardTxOutput(
         Buffer.from(fixtureLedgerAfter(retained.header)[0]![1], "hex"),
       ).datum,
-    ).toEqual({ kind: "inline", cbor: Buffer.from(rawDatum, "hex") });
+    ).toEqual({ kind: "inline", cbor: Buffer.from(datum, "hex") });
     const common = {
       lucid: h.proverLucid,
       blueprint: h.realBlueprint,
@@ -337,7 +353,7 @@ it.each([false, true])(
       decodeMidgardTxOutput(Buffer.from(outputCbors[0]!, "hex")).datum,
     ).toEqual({
       kind: "inline",
-      cbor: Buffer.from(rawDatum, "hex"),
+      cbor: Buffer.from(datum, "hex"),
     });
     for (const outputCbor of outputCbors)
       await resolveTransitionTraceByteCarriage({
@@ -388,9 +404,12 @@ it.each([false, true])(
       ).toBe(
         aikenSerialisedPlutusDataCborPreservingMapOrder(opening.openingCbor),
       );
-      expect(plutusConstrFieldCbor(signedOpening, [0, 0, 1, 2, 0])).toBe(
-        rawDatum,
-      );
+      // Redeemer Data carries no encoding, so compare serialiseData forms.
+      expect(
+        aikenSerialisedPlutusDataCborPreservingMapOrder(
+          plutusConstrFieldCbor(signedOpening, [0, 0, 1, 2, 0]),
+        ),
+      ).toBe(datum);
       expect(
         Data.from(plutusConstrFieldCbor(signedOpening, [1]), SDK.Value),
       ).toEqual(captured.originalAssets);
@@ -447,7 +466,7 @@ it.each([false, true])(
       (await h.proverLucid.utxosByOutRef([witness.anchor.utxo]))[0]!.assets,
     ).toEqual(witness.anchor.utxo.assets);
     records.push({
-      label: `honest-${honest}/raw-material`,
+      label: `${name}/honest-${honest}/raw-material`,
       deploymentInfo,
       eventCbor,
       payloadCbor,
