@@ -22,3 +22,15 @@ import "./redeemer-canonicity-lifecycle.init-thread.js";
 import "./redeemer-canonicity-lifecycle.redeemer-canonicity-accepted-lifecycle.js";
 import "./redeemer-canonicity-lifecycle.redeemer-canonicity-forced-lifecycle.js";
 import "./redeemer-canonicity-lifecycle.redeemer-canonicity-forced-accepted-lifecycle.js";
+
+import { describe, it } from "vitest";
+
+import { refuseFinalizeAgainstHonestCanonicalRedeemer } from "./redeemer-canonicity-lifecycle.redeemer-canonicity-forced-accepted-lifecycle.js";
+
+describe("redeemer-canonicity forced wrongful acceptance", () => {
+  it(
+    "refuses to finalize a wrongful-acceptance thread against an honest canonical redeemer",
+    refuseFinalizeAgainstHonestCanonicalRedeemer,
+    300_000,
+  );
+});
