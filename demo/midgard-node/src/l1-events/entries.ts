@@ -57,15 +57,15 @@ const normalised = (cbor: string, path: readonly number[]): string =>
 /** The Some field of a serialised `Option`, or null for None. */
 const optionalFieldCbor = (cbor: string): Buffer | null => {
   if (cbor === NONE_CBOR) return null;
-  if (!cbor.startsWith(SOME_PREFIX))
+  if (!cbor.startsWith(CONSTR_0_OPEN))
     throw new Error("optional field is neither Some nor None");
   const value = plutusConstrFieldCbor(cbor, [0]);
-  if (cbor !== `${SOME_PREFIX}${value}ff`)
+  if (cbor !== `${CONSTR_0_OPEN}${value}ff`)
     throw new Error("optional field carries more than one value");
   return Buffer.from(value, "hex");
 };
 const NONE_CBOR = "d87a80";
-const SOME_PREFIX = "d8799f";
+const CONSTR_0_OPEN = "d8799f";
 
 const inclusionMs = (event: ProjectedEvent): number => {
   const time = Number(event.inclusionTime);
@@ -79,17 +79,25 @@ const depositEntry = (
   network: Network,
 ): DepositEntryContent => {
   const infoCbor = normalised(event.payloadCbor, [0, 1]);
-  // The address and network id are fixed-shape; the datum is user Data and is
+  // `DepositInfo { l2_address, l2_network_id, l2_datum }`, exactly. The
+  // address and network id are fixed-shape; the datum is user Data and is
   // carried as its exact bytes, never through a typed view.
-  const l2NetworkId = Data.from<Data>(plutusConstrFieldCbor(infoCbor, [1]));
+  const [addressCbor, networkIdCbor, datumCbor] = [0, 1, 2].map((field) =>
+    plutusConstrFieldCbor(infoCbor, [field]),
+  ) as [string, string, string];
+  if (
+    infoCbor !== `${CONSTR_0_OPEN}${addressCbor}${networkIdCbor}${datumCbor}ff`
+  )
+    throw new Error("deposit info is not a three-field constructor 0");
+  const l2NetworkId = Data.from<Data>(networkIdCbor);
   if (typeof l2NetworkId !== "bigint")
     throw new Error("deposit network id is not an integer");
   const effect = deriveCanonicalOriginalDepositTransitionEffect({
     configuredNetwork: network,
     eventId: Data.from(event.idCbor, SDK.OutputReference),
     l2NetworkId,
-    l2Address: Data.from(plutusConstrFieldCbor(infoCbor, [0]), SDK.AddressData),
-    l2DatumCbor: optionalFieldCbor(plutusConstrFieldCbor(infoCbor, [2])),
+    l2Address: Data.from(addressCbor, SDK.AddressData),
+    l2DatumCbor: optionalFieldCbor(datumCbor),
     originalAssets: SDK.valueToAssets(
       Data.from(event.originalAssetsCbor, SDK.Value),
     ),
