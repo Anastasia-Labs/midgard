@@ -261,6 +261,7 @@ fn node_input_with_attestation(
     data: linked_list.Node(
       state_queue.StateQueueNode {
         header: node_header,
+        block_time: node_header.end_time,
         da_attestation,
         proven_fraud: None,
       },
@@ -515,6 +516,7 @@ test attestation_timeout_accepts_exact_boundary_and_rejects_adjacent_premature()
   let node = state_queue.StateQueueNode {
     proven_fraud: None,
     header: timed_out_header,
+    block_time: timed_out_header.end_time,
     da_attestation: state_queue.no_da_attestation,
   }
   let boundary = timed_out_header.end_time + state_queue.da_attestation_timeout_v1
@@ -709,6 +711,7 @@ test attestation_timeout_append_fence_pins_boundary_and_marker_identity() {
       state_queue.StateQueueNode {
         proven_fraud: None,
         header: head_header,
+        block_time: head_header.end_time,
         da_attestation: state_queue.no_da_attestation,
       },
       da_attestation_policy,
@@ -718,6 +721,7 @@ test attestation_timeout_append_fence_pins_boundary_and_marker_identity() {
       state_queue.StateQueueNode {
         proven_fraud: None,
         header: head_header,
+        block_time: head_header.end_time,
         da_attestation: state_queue.no_da_attestation,
       },
       da_attestation_policy,
@@ -727,6 +731,7 @@ test attestation_timeout_append_fence_pins_boundary_and_marker_identity() {
       state_queue.StateQueueNode {
         proven_fraud: None,
         header: head_header,
+        block_time: head_header.end_time,
         da_attestation: availability.Attested { commitment_hash },
       },
       da_attestation_policy,
@@ -736,6 +741,7 @@ test attestation_timeout_append_fence_pins_boundary_and_marker_identity() {
       state_queue.StateQueueNode {
         proven_fraud: None,
         header: head_header,
+        block_time: head_header.end_time,
         da_attestation: availability.Challenged {
           commitment_hash,
           challenge_asset_name,
@@ -753,6 +759,7 @@ fn append_head_with_status(
   state_queue.StateQueueNode {
     proven_fraud: None,
     header: header(faulty_operator, parent_header_hash),
+    block_time: header(faulty_operator, parent_header_hash).end_time,
     da_attestation,
   }
 }
@@ -804,6 +811,7 @@ test attestation_timeout_append_fence_authenticates_single_and_deep_queue_heads(
   let head_node = state_queue.StateQueueNode {
     proven_fraud: None,
     header: head_header,
+    block_time: head_header.end_time,
     da_attestation: state_queue.no_da_attestation,
   }
   let head_data: Data = head_node
@@ -812,6 +820,7 @@ test attestation_timeout_append_fence_authenticates_single_and_deep_queue_heads(
   let tail_data: Data = state_queue.StateQueueNode {
     proven_fraud: None,
     header: header(rotated_operator, head_header_hash),
+    block_time: header(rotated_operator, head_header_hash).end_time,
     da_attestation: state_queue.no_da_attestation,
   }
   and {
@@ -841,6 +850,7 @@ test attestation_timeout_append_fence_rejects_missing_deep_head_reference() fail
   let tail_data: Data = state_queue.StateQueueNode {
     proven_fraud: None,
     header: header(rotated_operator, head_header_hash),
+    block_time: header(rotated_operator, head_header_hash).end_time,
     da_attestation: state_queue.no_da_attestation,
   }
   state_queue_validator.authenticated_queue_head_for_append_v1(
@@ -853,6 +863,7 @@ test attestation_timeout_append_fence_rejects_missing_deep_head_reference() fail
   ) == state_queue.StateQueueNode {
     proven_fraud: None,
     header: head_header,
+    block_time: head_header.end_time,
     da_attestation: state_queue.no_da_attestation,
   }
 }
@@ -1535,6 +1546,7 @@ test completed_fraud_marked_head_cannot_append() {
   !state_queue_validator.state_queue_head_allows_append_v1(
     state_queue.StateQueueNode {
       header: header(faulty_operator, parent_header_hash),
+      block_time: header(faulty_operator, parent_header_hash).end_time,
       da_attestation: availability.Attested { commitment_hash },
       proven_fraud: Some(completed_fraud_asset()),
     },
@@ -2030,4 +2042,153 @@ test unavailable_prune_rejects_anchor_losing_lovelace() fail {
 /// `prune_unavailable_block_descendant_v1`: the pin is exact.
 test unavailable_prune_rejects_anchor_gaining_lovelace() fail {
   unavailable_prune(with_lovelace_delta(1))
+}
+
+// ---------------------------------------------------------------------------
+// C2 — the clocks read the node's `block_time`, not its header's `end_time`.
+//
+// Each fixture below is a catch-up node: committed `catch_up_lag` after its
+// covered interval ends. A clock read from `end_time` would open (or close)
+// `catch_up_lag` early, so each boundary is probed at `block_time`-relative
+// values that the `end_time`-relative rule would judge differently.
+// ---------------------------------------------------------------------------
+
+const catch_up_lag = 10_000
+
+fn catch_up_block_time() -> Int {
+  header(faulty_operator, parent_header_hash).end_time + catch_up_lag
+}
+
+fn catch_up_node(
+  da_attestation: availability.StateQueueStatusV1,
+) -> state_queue.StateQueueNode {
+  state_queue.StateQueueNode {
+    proven_fraud: None,
+    header: header(faulty_operator, parent_header_hash),
+    block_time: catch_up_block_time(),
+    da_attestation,
+  }
+}
+
+/// Unattested timeout: correction opens exactly at `block_time +
+/// da_attestation_timeout_v1`, and not one millisecond earlier, nor at the
+/// boundary measured from `end_time`. Refusals come from
+/// `inclusive_tx_lower_bound >= node.block_time + da_attestation_timeout_v1`
+/// in `unattested_block_timeout_elapsed_v1`.
+test attestation_timeout_runs_from_block_time() {
+  let timed_out_header_hash = hash_header(
+    header(faulty_operator, parent_header_hash),
+  )
+  let node = catch_up_node(state_queue.no_da_attestation)
+  let boundary = catch_up_block_time() + state_queue.da_attestation_timeout_v1
+  let elapsed = fn(lower) {
+    state_queue_validator.unattested_block_timeout_elapsed_v1(
+      timed_out_header_hash,
+      timed_out_header_hash,
+      node,
+      between(lower, lower + 1_000),
+    )
+  }
+  and {
+    elapsed(boundary),
+    !elapsed(boundary - 1),
+    !elapsed(boundary - catch_up_lag),
+  }
+}
+
+/// Append fence: an unattested catch-up head stays appendable through
+/// `block_time + da_attestation_timeout_v1 - 1`, past the `end_time`-relative
+/// boundary, and is fenced at `block_time + da_attestation_timeout_v1` by
+/// `inclusive_tx_upper_bound < head.block_time + da_attestation_timeout_v1`
+/// in `state_queue_head_allows_append_v1`.
+test append_fence_runs_from_block_time() {
+  let head = catch_up_node(state_queue.no_da_attestation)
+  let boundary = catch_up_block_time() + state_queue.da_attestation_timeout_v1
+  and {
+    state_queue_validator.state_queue_head_allows_append_v1(
+      head,
+      da_attestation_policy,
+      between(boundary - 1_000, boundary - 1),
+    ),
+    !state_queue_validator.state_queue_head_allows_append_v1(
+      head,
+      da_attestation_policy,
+      between(boundary - 1_000, boundary),
+    ),
+  }
+}
+
+/// `output`'s node with `block_time` replaced.
+fn with_node_block_time(output: Output, block_time: Int) -> Output {
+  expect InlineDatum(data) = output.datum
+  expect element: state_queue.Datum = data
+  expect linked_list.Node(node) = element.data
+  let continued: state_queue.Datum = linked_list.Element {
+    ..element,
+    data: linked_list.Node(state_queue.StateQueueNode { ..node, block_time }),
+  }
+  Output { ..output, datum: InlineDatum(continued) }
+}
+
+/// `completed_fraud_tx` over the catch-up node, inside `(lower, upper)`.
+fn catch_up_completed_fraud_tx(
+  lower: Int,
+  upper: Int,
+) -> transaction.Transaction {
+  let tx = completed_fraud_tx()
+  expect [input] = tx.inputs
+  expect [output] = tx.outputs
+  transaction.Transaction {
+    ..tx,
+    inputs: [
+      Input {
+        ..input,
+        output: with_node_block_time(input.output, catch_up_block_time()),
+      },
+    ],
+    outputs: [with_node_block_time(output, catch_up_block_time())],
+    validity_range: between(lower, upper),
+  }
+}
+
+/// Fraud-record maturity: a completed proof is recorded strictly after
+/// `block_time` and strictly before `block_time + block_maturity_duration_v1`.
+/// Refusals come from `before.block_time < lower` and
+/// `upper < before.block_time + block_maturity_duration_v1` in
+/// `validate_completed_fraud_record`.
+test completed_fraud_marker_runs_from_block_time() {
+  let block_time = catch_up_block_time()
+  let maturity = block_time + ledger_state.block_maturity_duration_v1
+  and {
+    record_completed_fraud(
+      catch_up_completed_fraud_tx(block_time + 1, block_time + 1_000),
+    ),
+    !record_completed_fraud(
+      catch_up_completed_fraud_tx(block_time, block_time + 1_000),
+    ),
+    record_completed_fraud(
+      catch_up_completed_fraud_tx(maturity - 1_000, maturity - 1),
+    ),
+    !record_completed_fraud(
+      catch_up_completed_fraud_tx(maturity - 1_000, maturity),
+    ),
+  }
+}
+
+/// A fraud record may not rewrite `block_time`: refused by the whole-node
+/// equality `after == StateQueueNode { ..before, proven_fraud: .. }` in
+/// `validate_completed_fraud_record`.
+test completed_fraud_marker_rejects_changed_block_time() {
+  let block_time = catch_up_block_time()
+  let tx = catch_up_completed_fraud_tx(block_time + 1, block_time + 1_000)
+  expect [output] = tx.outputs
+  and {
+    record_completed_fraud(tx),
+    !record_completed_fraud(
+      transaction.Transaction {
+        ..tx,
+        outputs: [with_node_block_time(output, block_time + 1)],
+      },
+    ),
+  }
 }

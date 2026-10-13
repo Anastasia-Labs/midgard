@@ -238,6 +238,7 @@ export const withRealStateQueueAndOperatorContracts = (
       network,
       withRealDaAttestation,
       deploymentParameters.referenceScriptAuth.policyId,
+      deploymentParameters.l1SlotConfig,
     );
 
     const withRealStateQueue: SDK.MidgardValidators = {

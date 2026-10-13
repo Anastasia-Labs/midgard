@@ -3,6 +3,7 @@ use cardano/address.{Address, Credential}
 use cardano/assets.{PolicyId}
 use cardano/transaction.{Transaction}
 use midgard/common/utils
+use midgard/script_context_v1.{L1SlotConfigV1}
 use midgard/state_queue.{
   CommitBlockHeader, MergeToConfirmedStateV1, MintRedeemer,
   RemoveFraudulentBlockHeader, RemoveUnattestedBlockAfterTimeout,
@@ -18,6 +19,7 @@ validator commit(
   active_operators_addr: Address,
   scheduler_script_hash: PolicyId,
   da_attestation_policy_id: PolicyId,
+  l1_slot_config: L1SlotConfigV1,
 ) {
   withdraw(
     _yield_redeemer: YieldRedeemerV1,
@@ -54,6 +56,7 @@ validator commit(
       active_operators_redeemer_index,
       m_confirmed_state_ref_input_index,
       m_head_state_queue_node_ref_input_index,
+      l1_slot_config,
     )
   }
 

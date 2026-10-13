@@ -8,6 +8,7 @@ import {
   Header,
   OutputReference,
 } from "@al-ft/midgard-sdk";
+import { type L1SlotConfig } from "@al-ft/midgard-core/l1-slot-config";
 import { Data } from "@lucid-evolution/lucid";
 
 import { encodeData } from "../../../src/index.js";
@@ -36,6 +37,25 @@ export const deploymentManifest = (
   l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
   contracts,
 });
+
+/**
+ * The slot whose last millisecond is `blockTime` under the slot mapping the
+ * deployment's commit yield was built with, as the commit requires of
+ * `block_slot`. Refuses a `blockTime` that is not a slot's last millisecond
+ * under that mapping.
+ */
+export const commitSlotForBlockTime = (
+  l1SlotConfig: L1SlotConfig,
+  blockTime: bigint,
+): bigint => {
+  const slotLength = BigInt(l1SlotConfig.slotLength);
+  const elapsed = blockTime + 1n - BigInt(l1SlotConfig.zeroTime);
+  if (elapsed <= 0n || elapsed % slotLength !== 0n)
+    throw new Error(
+      `block time ${blockTime.toString()} is not the last millisecond of a slot`,
+    );
+  return BigInt(l1SlotConfig.zeroSlot) + elapsed / slotLength - 1n;
+};
 
 export const makeHeader = (
   operatorVkey: string,

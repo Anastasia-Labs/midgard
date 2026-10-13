@@ -46,6 +46,7 @@ import {
   buildRemovalDeploymentInfo,
   captureEmulatorSubmission,
   expectSingleUtxoWithUnit,
+  commitSlotForBlockTime,
   makeHeader,
   network,
   publishFaultProofWitnessReferenceScripts,
@@ -88,6 +89,7 @@ export const buildProvedDoubleSpendFixture = async ({
     contracts,
     catalogue,
     canonical,
+    l1SlotConfig,
   } = await buildProvedFixtureDeploymentContext(
     headerMinimumFee,
     coherentCanonicalEvidence,
@@ -162,6 +164,10 @@ export const buildProvedDoubleSpendFixture = async ({
     minFeeB: headerMinimumFee,
     endTime:
       BigInt(headerStartTime) + BigInt(EMULATOR_HEADER_CLOCK_HEADROOM_MS),
+    blockSlot: commitSlotForBlockTime(
+      l1SlotConfig,
+      BigInt(headerStartTime) + BigInt(EMULATOR_HEADER_CLOCK_HEADROOM_MS),
+    ),
   };
   const setup =
     canonical !== undefined

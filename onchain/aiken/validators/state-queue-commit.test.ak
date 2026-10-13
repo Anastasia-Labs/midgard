@@ -51,6 +51,7 @@ use midgard/ledger_state.{
 }
 use midgard/operator_directory/active_operators
 use midgard/scheduler
+use midgard/script_context_v1.{L1SlotConfigV1}
 use midgard/state_queue.{CommitBlockHeader, InitV1, MintRedeemer}
 use midgard/state_queue_yield
 use state_queue as state_queue_validator
@@ -96,6 +97,17 @@ const reference_script_auth_policy =
 
 const commit_yield_script =
   #"b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4"
+
+/// The commit yield's L1 slot config: one-second slots, with slot `s`
+/// starting at `1 + 1_000 * s`, so slot `s` ends at `1_000 * (s + 1)`.
+const test_slot_config =
+  L1SlotConfigV1 { zero_time: 1, zero_slot: 0, slot_length: 1_000 }
+
+/// The slot whose last millisecond is `block_time` under `test_slot_config`
+/// (R3). Every fixture commit time is a whole second.
+fn slot_ending_at(block_time: Int) -> Int {
+  block_time / 1_000 - 1
+}
 
 // ## Fixture values
 
@@ -215,7 +227,7 @@ fn block_header(
     validation_trace_count: 0,
     start_time,
     end_time,
-    block_slot: 0,
+    block_slot: slot_ending_at(end_time),
     expected_network_id: 0,
     min_fee_a: 0,
     min_fee_b: 0,
@@ -255,14 +267,29 @@ fn root_output(link: Option<ByteArray>) -> Output {
   }
 }
 
+/// A node committed in normal mode: its commit time is its header's end.
 fn node_output(
   header: HeaderV1,
   da_attestation: availability.StateQueueStatusV1,
   link: Option<ByteArray>,
 ) -> Output {
+  node_output_at(header, header.end_time, da_attestation, link)
+}
+
+fn node_output_at(
+  header: HeaderV1,
+  block_time: Int,
+  da_attestation: availability.StateQueueStatusV1,
+  link: Option<ByteArray>,
+) -> Output {
   let datum: state_queue.Datum = linked_list.Element {
     data: linked_list.Node(
-      state_queue.StateQueueNode { header, da_attestation, proven_fraud: None },
+      state_queue.StateQueueNode {
+        header,
+        block_time,
+        da_attestation,
+        proven_fraud: None,
+      },
     ),
     link,
   }
@@ -359,9 +386,30 @@ fn idle_correction_lock_reference_input() -> Input {
 /// Assemble one commit transaction in the shared layout. `anchor` is the
 /// spent terminal element (the root or the tail node); `queue_references`
 /// are appended after the three fixed reference inputs, at indices 3 and 4.
+/// The commit is in normal mode: its commit time is the new header's end.
 fn commit_transaction(
   anchor: Output,
   new_header: HeaderV1,
+  queue_references: List<Output>,
+  m_confirmed_state_ref_input_index: Option<Int>,
+  m_head_state_queue_node_ref_input_index: Option<Int>,
+) -> Transaction {
+  commit_transaction_at(
+    anchor,
+    new_header,
+    new_header.end_time,
+    queue_references,
+    m_confirmed_state_ref_input_index,
+    m_head_state_queue_node_ref_input_index,
+  )
+}
+
+/// `commit_transaction` with the new node's `block_time` given. The
+/// validity range's inclusive upper bound is `block_time` (R1).
+fn commit_transaction_at(
+  anchor: Output,
+  new_header: HeaderV1,
+  block_time: Int,
   queue_references: List<Output>,
   m_confirmed_state_ref_input_index: Option<Int>,
   m_head_state_queue_node_ref_input_index: Option<Int>,
@@ -422,13 +470,18 @@ fn commit_transaction(
     ),
     outputs: [
       relink(anchor, Some(new_key)),
-      node_output(new_header, state_queue.no_da_attestation, None),
+      node_output_at(
+        new_header,
+        block_time,
+        state_queue.no_da_attestation,
+        None,
+      ),
       active_operator_output(),
     ],
     mint: assets.from_asset(state_queue_policy, node_asset_name(new_key), 1),
     withdrawals: [Pair(Script(commit_yield_script), 0)],
-    // The commit binds `new_header.end_time` to the inclusive upper bound.
-    validity_range: between(new_header.end_time - 500, new_header.end_time),
+    // The commit binds `block_time` to the inclusive upper bound.
+    validity_range: between(block_time - 500, block_time),
     extra_signatories: [operator],
     redeemers: [
       Pair(Mint(state_queue_policy), commit_redeemer),
@@ -667,6 +720,7 @@ fn validates_commit(tx: Transaction) -> Bool {
     active_operators_redeemer_index,
     m_confirmed_state_ref_input_index,
     m_head_state_queue_node_ref_input_index,
+    test_slot_config,
   )
 }
 
@@ -681,6 +735,7 @@ fn commit_yield_accepts(tx: Transaction) -> Bool {
     address.from_script(active_operators_policy),
     scheduler_policy,
     da_attestation_policy,
+    test_slot_config,
     state_queue.YieldStateQueueV1,
     Script(commit_yield_script),
     tx,
@@ -1112,7 +1167,6 @@ test state_queue_commit_accepts_header_ints_at_the_largest_bounded_value() {
       fn(header) {
         HeaderV1 {
           ..header,
-          block_slot: largest_bounded_header_int,
           min_fee_a: largest_bounded_header_int,
           min_fee_b: largest_bounded_header_int,
         }
@@ -1148,22 +1202,6 @@ test state_queue_commit_rejects_31_byte_utxos_root() fail {
 }
 
 /// Control: `state_queue_commit_accepts_header_ints_at_the_largest_bounded_value`.
-/// Refused by `header.block_slot < commit_header_int_exclusive_bound_v1` in
-/// `commit_block_header_width_is_bounded_v1`: `block_slot` at the bound.
-test state_queue_commit_rejects_block_slot_at_the_bound() fail {
-  validates_commit(
-    root_anchor_commit_with_header(
-      fn(header) {
-        HeaderV1 {
-          ..header,
-          block_slot: state_queue_validator.commit_header_int_exclusive_bound_v1,
-        }
-      },
-    ),
-  )
-}
-
-/// Control: `state_queue_commit_accepts_header_ints_at_the_largest_bounded_value`.
 /// Refused by `header.min_fee_a < commit_header_int_exclusive_bound_v1` in
 /// `commit_block_header_width_is_bounded_v1`: `min_fee_a` at the bound.
 test state_queue_commit_rejects_min_fee_a_at_the_bound() fail {
@@ -1191,6 +1229,140 @@ test state_queue_commit_rejects_min_fee_b_at_the_bound() fail {
           min_fee_b: state_queue_validator.commit_header_int_exclusive_bound_v1,
         }
       },
+    ),
+  )
+}
+
+// ## Commit time (C2: R1-R3 over the full commit transaction)
+//
+// The honest controls above are normal-mode commits (`block_time ==
+// end_time`). The fixtures below add an event-only catch-up commit and probe
+// each rule through every script the commit runs.
+
+/// The catch-up commit's time, one second after the honest root-anchor
+/// header's `end_time` would have been.
+const catch_up_block_time = 3_000
+
+/// An event-only header on the confirmed state that ends at 1_500, committed
+/// at `catch_up_block_time` (`block_slot` names that commit time's slot).
+fn catch_up_header() -> HeaderV1 {
+  let confirmed = confirmed_state()
+  HeaderV1 {
+    ..block_header(
+      operator,
+      confirmed.header_hash,
+      confirmed.utxo_root,
+      new_utxo_root,
+      confirmed.end_time,
+      1_500,
+    ),
+    block_slot: slot_ending_at(catch_up_block_time),
+  }
+}
+
+fn catch_up_root_anchor_commit() -> Transaction {
+  commit_transaction_at(
+    root_output(None),
+    catch_up_header(),
+    catch_up_block_time,
+    [],
+    None,
+    None,
+  )
+}
+
+/// Move the commit's validity window so its inclusive upper bound is `upper`.
+fn with_validity_upper_bound(tx: Transaction, upper: Int) -> Transaction {
+  Transaction { ..tx, validity_range: between(upper - 500, upper) }
+}
+
+/// An event-only block whose covered interval ends before its commit time is
+/// accepted by every script the commit runs.
+test state_queue_commit_accepts_catch_up_root_anchor_append() {
+  commit_is_accepted(catch_up_root_anchor_commit())
+}
+
+/// Control: `state_queue_commit_accepts_catch_up_root_anchor_append`. Refused
+/// by `block_time == inclusive_commit_upper_bound` (R1) in
+/// `commit_bound_header_time_is_valid`: the node's `block_time` and
+/// `block_slot` agree, but the commit lands one slot later.
+test state_queue_commit_rejects_backdated_block_time() fail {
+  validates_commit(
+    with_validity_upper_bound(
+      catch_up_root_anchor_commit(),
+      catch_up_block_time + 1_000,
+    ),
+  )
+}
+
+/// Control: `state_queue_commit_accepts_catch_up_root_anchor_append`. Refused
+/// by `header.l2_transaction_count == 0 || header.end_time == block_time` (R2)
+/// in `commit_bound_header_time_is_valid`: the same catch-up interval with one
+/// L2 transaction.
+test state_queue_commit_rejects_l2_block_ending_before_its_block_time() fail {
+  let header = HeaderV1 {
+    ..catch_up_header(),
+    transactions_root: new_utxo_root,
+    transition_trace_root: new_utxo_root,
+    event_to_step_root: new_utxo_root,
+    validation_traces_root: new_utxo_root,
+    l2_transaction_count: 1,
+    total_event_count: 1,
+    transition_step_count: 1,
+    validation_trace_count: 1,
+  }
+  validates_commit(
+    commit_transaction_at(
+      root_output(None),
+      header,
+      catch_up_block_time,
+      [],
+      None,
+      None,
+    ),
+  )
+}
+
+/// Control: `state_queue_commit_accepts_catch_up_root_anchor_append`. Refused
+/// by the `block_slot` equation (R3) in `commit_bound_header_time_is_valid`:
+/// the header names the next slot.
+test state_queue_commit_rejects_block_slot_that_disagrees() fail {
+  validates_commit(
+    commit_transaction_at(
+      root_output(None),
+      HeaderV1 {
+        ..catch_up_header(),
+        block_slot: slot_ending_at(catch_up_block_time) + 1,
+      },
+      catch_up_block_time,
+      [],
+      None,
+      None,
+    ),
+  )
+}
+
+/// Control: `state_queue_commit_accepts_honest_root_anchor_append`. Refused
+/// by the `block_slot` equation (R3) in `commit_bound_header_time_is_valid`:
+/// the honest header, with its hash and so its key unchanged, committed again
+/// one slot later. A removed header can never return with a new commit time.
+test state_queue_commit_rejects_recommit_of_a_header_at_a_later_time() fail {
+  let confirmed = confirmed_state()
+  validates_commit(
+    commit_transaction_at(
+      root_output(None),
+      block_header(
+        operator,
+        confirmed.header_hash,
+        confirmed.utxo_root,
+        new_utxo_root,
+        confirmed.end_time,
+        2_000,
+      ),
+      3_000,
+      [],
+      None,
+      None,
     ),
   )
 }

@@ -1,4 +1,7 @@
-import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
+import {
+  type L1SlotConfig,
+  NAMED_NETWORK_L1_SLOT_CONFIGS,
+} from "@al-ft/midgard-core/l1-slot-config";
 import {
   AddressData,
   addressDataFromBech32,
@@ -168,6 +171,7 @@ export const buildMinimalFaultProofContracts = async (
     alwaysFraudProofCatalogue = false,
     alwaysStateQueue = false,
     referenceScriptAuthPolicyId,
+    l1SlotConfig = NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
   }: {
     readonly realNonExistentInput?: boolean;
     readonly realInvalidRange?: boolean;
@@ -229,6 +233,13 @@ export const buildMinimalFaultProofContracts = async (
      */
     readonly alwaysStateQueue?: boolean;
     readonly referenceScriptAuthPolicyId?: string;
+    /**
+     * The state-queue commit yield's slot mapping. A flow that commits a
+     * header through the real commit yield passes its emulator Lucid's
+     * `config().slotConfig`, or the commit rule's `block_slot` binding refuses
+     * every header.
+     */
+    readonly l1SlotConfig?: L1SlotConfig;
   } = {},
 ): Promise<
   MidgardValidators & {
@@ -673,6 +684,7 @@ export const buildMinimalFaultProofContracts = async (
       availabilityChallengePolicyId,
       referenceScriptAuthPolicyId:
         referenceScriptAuthPolicyId ?? base.referenceScriptAuth.policyId,
+      l1SlotConfig,
     }),
   );
   const stateQueue = alwaysStateQueue

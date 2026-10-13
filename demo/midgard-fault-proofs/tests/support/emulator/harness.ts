@@ -60,6 +60,7 @@ import {
 import { buildCatalogueDeploymentInfo, categoryIdSchema } from "./catalogue.js";
 import { buildMinimalFaultProofContracts } from "./contracts.js";
 import {
+  emulatorL1SlotConfig,
   fundedProverEmulatorAccount,
   registerPhasMembershipRewardAccount,
 } from "./emulator-context.js";
@@ -415,6 +416,7 @@ export const makeFaultProofEmulatorHarness = async ({
       alwaysBlueprint,
       nonceUtxo,
       {
+        l1SlotConfig: emulatorL1SlotConfig(funderLucid),
         ...contractOptions,
         referenceScriptAuthPolicyId: referenceScriptAuth.policyId,
       },

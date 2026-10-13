@@ -3,11 +3,14 @@ use aiken/primitive/bytearray
 use aiken_design_patterns/linked_list
 use cardano/address
 use cardano/assets
-use cardano/transaction.{InlineDatum, Input, Output, OutputReference}
+use cardano/transaction.{
+  InlineDatum, Input, Output, OutputReference, ValidityRange,
+}
 use env
 use midgard/availability_challenge as availability
 use midgard/common/utils
 use midgard/ledger_state
+use midgard/script_context_v1
 use midgard/state_queue
 
 const non_empty_root =
@@ -124,223 +127,229 @@ test committed_header_identity_binds_each_admission_count_and_root() {
 }
 
 // ---------------------------------------------------------------------------
-// Q60 / D-S12 — the commit `end_time` bound.
+// The commit time rules (C2): `state_queue.commit_bound_header_time_is_valid`.
 //
-// `state_queue.commit_bound_header_time_is_valid` anchors a committed header's
-// `end_time` to the *inclusive upper bound* of the commit transaction's short
-// validity interval. Acceptance is therefore equality with a single point, not
-// membership in a range, and the accepted point moves only when the commit
-// transaction's own window moves.
+// - R1: `block_time` equals the commit transaction's inclusive validity upper
+//   bound, and `start_time < end_time <= block_time`.
+// - R2: a header with L2 transactions has `end_time == block_time`.
+// - R3: `slot_to_posix_time_v1(block_slot) + slot_length - 1 == block_time`.
 //
-// Every test below is named `state_queue_commit_end_time_*` on purpose. Aiken's
-// `-m` selector is a glob over *test names*, not module names, so the
-// `state_queue` selector this family is gated by collects a test only when
-// `state_queue` appears in the test's own name. The five originally
-// `commit_header_time_*`-named tests were invisible to that gate.
+// Every fixture uses the Preprod slot config and one commit window whose
+// ledger-side exclusive upper bound is the start of slot `commit_slot + 1`, so
+// its inclusive upper bound is the last millisecond of `commit_slot`.
 // ---------------------------------------------------------------------------
 
-test state_queue_commit_end_time_accepts_the_normalized_commit_upper_bound() {
-  state_queue.commit_bound_header_time_is_valid(
-    1_000,
-    2_000,
-    Interval {
-      lower_bound: IntervalBound {
-        bound_type: Finite(1_900),
-        is_inclusive: True,
-      },
-      upper_bound: IntervalBound {
-        bound_type: Finite(2_001),
-        is_inclusive: False,
-      },
+const preprod_slot_config =
+  script_context_v1.L1SlotConfigV1 {
+    zero_time: 1_655_769_600_000,
+    zero_slot: 86_400,
+    slot_length: 1_000,
+  }
+
+/// The slot the commit window ends in, and its last millisecond.
+const commit_slot = 44_317_279
+
+const commit_block_time = 1_700_000_479_999
+
+/// The commit transaction's validity window, as the ledger presents it: an
+/// inclusive lower bound and an exclusive upper bound at a slot start. Its
+/// inclusive upper bound is `commit_block_time`.
+fn commit_window() -> Interval {
+  Interval {
+    lower_bound: IntervalBound {
+      bound_type: Finite(1_700_000_000_000),
+      is_inclusive: True,
     },
-  )
+    upper_bound: IntervalBound {
+      bound_type: Finite(commit_block_time + 1),
+      is_inclusive: False,
+    },
+  }
 }
 
-test state_queue_commit_end_time_rejects_a_backdated_end() {
-  !state_queue.commit_bound_header_time_is_valid(
-    1_000,
-    1_500,
-    between(1_900, 2_000),
-  )
+/// A header covering `(start_time, end_time]` with `l2_transaction_count`
+/// L2 transactions, committed in `block_slot`. The rule reads no other field.
+fn timed_header(
+  start_time: Int,
+  end_time: Int,
+  l2_transaction_count: Int,
+  block_slot: Int,
+) -> ledger_state.HeaderV1 {
+  ledger_state.HeaderV1 {
+    ..empty_header(),
+    start_time,
+    end_time,
+    l2_transaction_count,
+    block_slot,
+  }
 }
 
-test state_queue_commit_end_time_rejects_an_overlong_validity_range() fail {
+fn commit_time_is_valid(header: ledger_state.HeaderV1, block_time: Int) -> Bool {
   state_queue.commit_bound_header_time_is_valid(
-    1,
-    env.max_validity_range_length + 1,
-    between(0, env.max_validity_range_length + 1),
+    header,
+    block_time,
+    preprod_slot_config,
+    commit_window(),
   )
 }
 
-test state_queue_commit_end_time_rejects_a_future_end() {
-  !state_queue.commit_bound_header_time_is_valid(
-    1_000,
-    2_500,
-    between(1_900, 2_000),
-  )
-}
-
-test state_queue_commit_end_time_rejects_a_non_advancing_event_interval() {
-  !state_queue.commit_bound_header_time_is_valid(
-    2_000,
-    2_000,
-    between(1_900, 2_000),
-  )
-}
-
-// ---------------------------------------------------------------------------
-// Q60 adjacent-bound fixtures.
-//
-// All five boundary cases share one absolute commit window so the accepted
-// value and its neighbours are directly comparable:
-//
-//   inclusive lower bound  1_700_000_000_000
-//   inclusive upper bound  1_700_000_480_000  (lower + 480_000)
-//
-// 1_700_000_480_000 is therefore both the only accepted `end_time` for this
-// window and the largest `end_time` any commit opening at 1_700_000_000_000
-// can carry, because a longer interval is not a short validity range at all.
-//
-// Four of the five probe the bound from at or above it. That is not enough on
-// its own: a rule reading `lower <= end_time <= upper` would agree with every
-// one of them, so a family built only from those four cannot tell the anchor
-// apart from interval membership. Boundary 5 probes from strictly *inside* the
-// window, and is the fixture that separates the two.
-// ---------------------------------------------------------------------------
-
-/// The absolute fixtures in this family are the adjacent bounds of the accepted
-/// `end_time` only while the maximum short-range length is 480_000 ms. Pin it,
-/// so widening the range fails here instead of silently redefining what
-/// "the maximum accepted end_time" means.
-test state_queue_commit_end_time_maximum_range_length_is_pinned() {
-  env.max_validity_range_length == 480_000
-}
-
-/// Boundary 1 of 5 — lower-bound control. The window's *lower* bound does not
-/// gate acceptance: moving it 479_000 ms later, so the interval is 1_000 ms
-/// long instead of the maximal 480_000, leaves the same header times accepted.
-/// Only the upper bound decides.
-///
-/// That is a statement about which bound is consulted, not a proof that the
-/// accepted set is a single point: an interval-membership rule accepts this
-/// fixture too. Boundary 5 is what excludes membership.
-///
-/// The lower bound cannot be moved all the way onto the upper bound: a
-/// zero-length interval is not a closed range to
-/// `utils.get_inclusive_bounds_of_a_short_validity_range`, which aborts before
-/// the anchor is ever consulted.
-test state_queue_commit_end_time_lower_bound_control_accepts_the_anchor() {
-  state_queue.commit_bound_header_time_is_valid(
-    1_700_000_000_000,
-    1_700_000_480_000,
-    between(1_700_000_479_000, 1_700_000_480_000),
-  )
-}
-
-/// Boundary 2 of 5 — the maximum accepted `end_time`: the inclusive upper bound
-/// of the longest short validity range opening at 1_700_000_000_000.
-test state_queue_commit_end_time_maximum_accepted_is_the_inclusive_upper_bound() {
-  state_queue.commit_bound_header_time_is_valid(
-    1_700_000_000_000,
-    1_700_000_480_000,
-    between(1_700_000_000_000, 1_700_000_480_000),
-  )
-}
-
-/// Boundary 3 of 5 — one millisecond above the bound is already rejected.
-test state_queue_commit_end_time_rejects_one_millisecond_above_the_bound() {
-  !state_queue.commit_bound_header_time_is_valid(
-    1_700_000_000_000,
-    1_700_000_480_001,
-    between(1_700_000_000_000, 1_700_000_480_000),
-  )
-}
-
-/// Boundary 4 of 5 — the D-S12 far-future `end_time`, ten years (315_360_000_000
-/// ms) past the window that commits it.
-test state_queue_commit_end_time_rejects_a_far_future_end() {
-  !state_queue.commit_bound_header_time_is_valid(
-    1_700_000_000_000,
-    2_015_360_480_000,
-    between(1_700_000_000_000, 1_700_000_480_000),
-  )
-}
-
-/// Boundary 5 of 5 — strictly *inside* the commit window, and the one fixture
-/// that makes this family a proof of equality rather than of membership.
-///
-/// 1_700_000_479_000 sits 479_000 ms above the inclusive lower bound and
-/// 1_000 ms below the inclusive upper bound, so `lower <= end_time <= upper`
-/// holds of it and the rule refuses it anyway. Boundaries 1-4 all probe the
-/// bound from at or above it, so an interval-membership rule agrees with every
-/// one of them; it disagrees here.
-///
-/// Measured, not asserted. With `header_end_time == inclusive_commit_upper_bound`
-/// replaced by `lower <= header_end_time <= upper` on a scratch copy of this
-/// project, this is the test — and, with the sweep below, the only test — that
-/// fails. The Q60 evidence artifact's `mutationExperiment` records both arms of
-/// that run with their exact counts.
-test state_queue_commit_end_time_rejects_an_end_strictly_inside_the_commit_window() {
-  !state_queue.commit_bound_header_time_is_valid(
-    1_700_000_000_000,
-    1_700_000_479_000,
-    between(1_700_000_000_000, 1_700_000_480_000),
-  )
-}
-
-/// Nothing past the bound is accepted at any distance. This pins the accepted
-/// set from above only — an interval-membership rule passes this sweep
-/// unchanged — so it is the companion sweep below, not this one, that shows the
-/// accepted set is the single point at the bound.
-test state_queue_commit_end_time_never_accepts_any_value_past_the_bound() {
+/// The fixture constants agree: `commit_slot` ends at `commit_block_time`.
+test state_queue_commit_time_fixture_slot_ends_at_the_block_time() {
   and {
-    !state_queue.commit_bound_header_time_is_valid(
-      1_700_000_000_000,
-      1_700_000_480_001,
-      between(1_700_000_000_000, 1_700_000_480_000),
+    script_context_v1.slot_to_posix_time_v1(preprod_slot_config, commit_slot) + 999 == commit_block_time,
+    script_context_v1.slot_to_posix_time_v1(
+      preprod_slot_config,
+      commit_slot + 1,
+    ) == commit_block_time + 1,
+  }
+}
+
+/// Normal mode: the block covers up to its commit time.
+test state_queue_commit_time_accepts_a_normal_block() {
+  commit_time_is_valid(
+    timed_header(1_700_000_000_000, commit_block_time, 1, commit_slot),
+    commit_block_time,
+  )
+}
+
+/// Catch-up mode: an event-only block may end anywhere before its commit
+/// time, here six hours earlier and one millisecond earlier.
+test state_queue_commit_time_accepts_an_event_only_catch_up_block() {
+  and {
+    commit_time_is_valid(
+      timed_header(
+        1_699_978_000_000,
+        commit_block_time - 21_600_000,
+        0,
+        commit_slot,
+      ),
+      commit_block_time,
     ),
-    !state_queue.commit_bound_header_time_is_valid(
-      1_700_000_000_000,
-      1_700_000_480_010,
-      between(1_700_000_000_000, 1_700_000_480_000),
-    ),
-    !state_queue.commit_bound_header_time_is_valid(
-      1_700_000_000_000,
-      1_700_001_000_000,
-      between(1_700_000_000_000, 1_700_000_480_000),
-    ),
-    !state_queue.commit_bound_header_time_is_valid(
-      1_700_000_000_000,
-      2_015_360_480_000,
-      between(1_700_000_000_000, 1_700_000_480_000),
+    commit_time_is_valid(
+      timed_header(1_699_978_000_000, commit_block_time - 1, 0, commit_slot),
+      commit_block_time,
     ),
   }
 }
 
-/// Nothing strictly *inside* the window is accepted either, at any depth: one
-/// millisecond above the inclusive lower bound, the midpoint, and one
-/// millisecond below the inclusive upper bound are all refused. The sweep above
-/// pins the accepted set from above; this one pins it from below, and together
-/// they leave exactly the single point at the upper bound.
-///
-/// Every case here is strictly interior, so each is refused by the real rule
-/// and accepted by an interval-membership rule.
-test state_queue_commit_end_time_never_accepts_any_value_inside_the_window() {
+/// R1: a `block_time` one slot before the commit's upper bound is refused,
+/// even with `block_slot` and `end_time` consistent with it.
+test state_queue_commit_time_rejects_a_backdated_block_time() {
+  !commit_time_is_valid(
+    timed_header(
+      1_700_000_000_000,
+      commit_block_time - 1_000,
+      0,
+      commit_slot - 1,
+    ),
+    commit_block_time - 1_000,
+  )
+}
+
+/// R1: a `block_time` one slot after the commit's upper bound is refused.
+test state_queue_commit_time_rejects_a_future_block_time() {
+  !commit_time_is_valid(
+    timed_header(1_700_000_000_000, commit_block_time, 0, commit_slot + 1),
+    commit_block_time + 1_000,
+  )
+}
+
+/// R1: the covered interval may not end after the commit time, by one
+/// millisecond or by ten years.
+test state_queue_commit_time_rejects_an_end_after_the_block_time() {
+  and {
+    !commit_time_is_valid(
+      timed_header(1_700_000_000_000, commit_block_time + 1, 0, commit_slot),
+      commit_block_time,
+    ),
+    !commit_time_is_valid(
+      timed_header(
+        1_700_000_000_000,
+        commit_block_time + 315_360_000_000,
+        0,
+        commit_slot,
+      ),
+      commit_block_time,
+    ),
+  }
+}
+
+/// R1: the covered interval must advance; one millisecond is enough.
+test state_queue_commit_time_rejects_a_non_advancing_interval() {
+  and {
+    !commit_time_is_valid(
+      timed_header(commit_block_time, commit_block_time, 0, commit_slot),
+      commit_block_time,
+    ),
+    commit_time_is_valid(
+      timed_header(commit_block_time - 1, commit_block_time, 0, commit_slot),
+      commit_block_time,
+    ),
+  }
+}
+
+/// R1 reads a short validity range only.
+test state_queue_commit_time_rejects_an_overlong_validity_range() fail {
+  state_queue.commit_bound_header_time_is_valid(
+    timed_header(1, env.max_validity_range_length + 1, 0, 0),
+    env.max_validity_range_length + 1,
+    preprod_slot_config,
+    between(0, env.max_validity_range_length + 1),
+  )
+}
+
+/// R2: a block carrying L2 transactions must cover up to its commit time; one
+/// millisecond short is refused.
+test state_queue_commit_time_rejects_an_l2_block_ending_before_its_block_time() {
+  !commit_time_is_valid(
+    timed_header(1_700_000_000_000, commit_block_time - 1, 1, commit_slot),
+    commit_block_time,
+  )
+}
+
+/// R3: `block_slot` must be exactly the commit time's slot.
+test state_queue_commit_time_rejects_a_block_slot_that_disagrees() {
+  and {
+    !commit_time_is_valid(
+      timed_header(1_700_000_000_000, commit_block_time, 0, commit_slot - 1),
+      commit_block_time,
+    ),
+    !commit_time_is_valid(
+      timed_header(1_700_000_000_000, commit_block_time, 0, commit_slot + 1),
+      commit_block_time,
+    ),
+    !commit_time_is_valid(
+      timed_header(1_700_000_000_000, commit_block_time, 0, -1),
+      commit_block_time,
+    ),
+  }
+}
+
+/// R3: a commit time that is not the last millisecond of a slot has no
+/// `block_slot`. The window is otherwise honest.
+test state_queue_commit_time_rejects_a_block_time_inside_a_slot() {
+  let mid_slot_window = Interval {
+    lower_bound: IntervalBound {
+      bound_type: Finite(1_700_000_000_000),
+      is_inclusive: True,
+    },
+    upper_bound: IntervalBound {
+      bound_type: Finite(commit_block_time),
+      is_inclusive: False,
+    },
+  }
   and {
     !state_queue.commit_bound_header_time_is_valid(
-      1_700_000_000_000,
-      1_700_000_000_001,
-      between(1_700_000_000_000, 1_700_000_480_000),
+      timed_header(1_700_000_000_000, commit_block_time - 1, 0, commit_slot),
+      commit_block_time - 1,
+      preprod_slot_config,
+      mid_slot_window,
     ),
     !state_queue.commit_bound_header_time_is_valid(
-      1_700_000_000_000,
-      1_700_000_240_000,
-      between(1_700_000_000_000, 1_700_000_480_000),
-    ),
-    !state_queue.commit_bound_header_time_is_valid(
-      1_700_000_000_000,
-      1_700_000_479_999,
-      between(1_700_000_000_000, 1_700_000_480_000),
+      timed_header(1_700_000_000_000, commit_block_time - 1, 0, commit_slot - 1),
+      commit_block_time - 1,
+      preprod_slot_config,
+      mid_slot_window,
     ),
   }
 }
@@ -366,11 +375,8 @@ test state_queue_commit_end_time_never_accepts_any_value_inside_the_window() {
 //
 // The other half of the argument — that the far-future `end_time` which would
 // make these events due is refused at commit time — is proved against the real
-// predicate by `state_queue_commit_end_time_rejects_a_far_future_end` and
-// `state_queue_commit_end_time_maximum_accepted_is_the_inclusive_upper_bound`.
-// Each test below used to restate those two calls on byte-identical fixtures;
-// the restatements are gone, because a duplicated call adds no failure mode the
-// original did not already have.
+// predicate by `state_queue_commit_time_rejects_an_end_after_the_block_time`
+// and `state_queue_commit_time_accepts_a_normal_block`.
 // ---------------------------------------------------------------------------
 
 /// The due window `start_time < inclusion_time <= end_time`, restated locally.
@@ -424,39 +430,6 @@ test state_queue_commit_end_time_bound_keeps_a_future_withdrawal_not_due() {
   }
 }
 
-/// Queue and merge liveness control. Committing the maximum accepted `end_time`
-/// does not stall anything: each successor commit opens exactly where its
-/// predecessor closed and re-anchors on its own window, and the block matures a
-/// finite `block_maturity_duration_v1` after the `end_time` the anchor pinned —
-/// the deadline the rejected far-future `end_time` would have pushed ten years
-/// out, which is the stall half of D-S12.
-///
-/// Only two things here can move, so only two things are asserted: the rule
-/// itself and the maturity constant, which is the sole symbol in
-/// `end_time + block_maturity_duration_v1`. The second rule call over the next
-/// consecutive window is a translation-invariance companion — the predicate is
-/// a pure comparison over integer offsets, so the call cannot fail
-/// independently of the first; it documents the advancing-window shape and is
-/// not claimed as a distinct failure mode. Three further conjuncts comparing
-/// the maturity sum against pre-computed literals were removed: with the
-/// constant pinned on the line above them they reduced to comparisons between
-/// two closed forms and could not fail unless the pin had already failed.
-test state_queue_commit_end_time_maximum_accepted_keeps_queue_and_merge_live() {
-  and {
-    state_queue.commit_bound_header_time_is_valid(
-      1_700_000_480_000,
-      1_700_000_960_000,
-      between(1_700_000_480_000, 1_700_000_960_000),
-    ),
-    state_queue.commit_bound_header_time_is_valid(
-      1_700_000_960_000,
-      1_700_001_440_000,
-      between(1_700_000_960_000, 1_700_001_440_000),
-    ),
-    ledger_state.block_maturity_duration_v1 == 604_800_000,
-  }
-}
-
 // ## State-queue element invariant: the DA core pins `reference_script`
 //
 // `da_availability_status_transition` is the one node-continuation core behind
@@ -481,6 +454,11 @@ const da_core_terminal_commitment =
 const da_core_probe_reference_script =
   #"f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3"
 
+/// The DA core node's commit time: a catch-up commit, three seconds after
+/// `empty_header().end_time`, so a clock read from the header's end and one
+/// read from `block_time` disagree.
+const da_core_block_time = 5_000
+
 /// The node for `empty_header()` at the state-queue address, carrying `status`.
 fn da_core_node(status: availability.StateQueueStatusV1) -> Output {
   let header = empty_header()
@@ -488,6 +466,7 @@ fn da_core_node(status: availability.StateQueueStatusV1) -> Output {
     data: linked_list.Node(
       state_queue.StateQueueNode {
         header,
+        block_time: da_core_block_time,
         da_attestation: status,
         proven_fraud: None,
       },
@@ -571,7 +550,16 @@ fn da_core_open(rewrite: fn(Output) -> Output) -> Int {
 }
 
 fn da_core_apply(rewrite: fn(Output) -> Output) -> Bool {
-  let end_time = empty_header().end_time
+  da_core_apply_within(
+    rewrite,
+    between(da_core_block_time, da_core_block_time + 1_000),
+  )
+}
+
+fn da_core_apply_within(
+  rewrite: fn(Output) -> Output,
+  validity_range: ValidityRange,
+) -> Bool {
   state_queue.validate_da_attestation_attachment(
     da_core_inputs(state_queue.no_da_attestation),
     [
@@ -586,7 +574,7 @@ fn da_core_apply(rewrite: fn(Output) -> Output) -> Bool {
     0,
     header_hash(empty_header()),
     da_core_commitment_hash,
-    between(end_time, end_time + 1_000),
+    validity_range,
   )
 }
 
@@ -605,7 +593,7 @@ test state_queue_element_reference_script_predicate_is_exact() {
 test da_core_controls_accept_node_output_without_reference_script() {
   and {
     da_core_apply(fn(output) { output }),
-    da_core_open(fn(output) { output }) == empty_header().end_time,
+    da_core_open(fn(output) { output }) == da_core_block_time,
     da_core_close(fn(output) { output }),
   }
 }
@@ -623,7 +611,7 @@ test da_core_apply_rejects_node_output_reference_script() fail {
 /// `da_availability_status_transition`, reached through
 /// `validate_da_challenge_open_transition_v1` (Open).
 test da_core_open_rejects_node_output_reference_script() fail {
-  da_core_open(with_probe_reference_script) == empty_header().end_time
+  da_core_open(with_probe_reference_script) == da_core_block_time
 }
 
 /// Control: `da_core_controls_accept_node_output_without_reference_script`.
@@ -632,4 +620,84 @@ test da_core_open_rejects_node_output_reference_script() fail {
 /// `validate_da_availability_status_transition` (Close).
 test da_core_close_rejects_node_output_reference_script() fail {
   da_core_close(with_probe_reference_script)
+}
+
+// ## The DA core pins `block_time` (C2)
+//
+// Apply, Open and Close rebuild the node datum field by field. `block_time`
+// is the clock of the attestation deadline, the challenge window, merge
+// maturity and fraud-record maturity, so a transition that rewrote it could
+// move every one of them. Each negative below is the honest control
+// `da_core_controls_accept_node_output_without_reference_script` with the
+// output node's `block_time` moved by one millisecond, refused by
+// `expect output_block.block_time == input_block.block_time` in
+// `da_availability_status_transition`.
+
+/// Move the output node's `block_time` by `delta`, leaving the rest intact.
+fn with_block_time_shifted(delta: Int) -> fn(Output) -> Output {
+  fn(output: Output) {
+    expect InlineDatum(datum_data) = output.datum
+    expect
+        linked_list.Element { data: linked_list.Node(node), link }: state_queue.Datum
+      = datum_data
+    let shifted: state_queue.Datum = linked_list.Element {
+      data: linked_list.Node(
+        state_queue.StateQueueNode {
+          ..node,
+          block_time: node.block_time + delta,
+        },
+      ),
+      link,
+    }
+    Output { ..output, datum: InlineDatum(shifted) }
+  }
+}
+
+test da_core_apply_rejects_a_later_block_time() fail {
+  da_core_apply(with_block_time_shifted(1))
+}
+
+test da_core_apply_rejects_an_earlier_block_time() fail {
+  da_core_apply(with_block_time_shifted(-1))
+}
+
+test da_core_open_rejects_a_later_block_time() fail {
+  da_core_open(with_block_time_shifted(1)) == da_core_block_time
+}
+
+test da_core_open_rejects_an_earlier_block_time() fail {
+  da_core_open(with_block_time_shifted(-1)) == da_core_block_time
+}
+
+test da_core_close_rejects_a_later_block_time() fail {
+  da_core_close(with_block_time_shifted(1))
+}
+
+test da_core_close_rejects_an_earlier_block_time() fail {
+  da_core_close(with_block_time_shifted(-1))
+}
+
+/// The attestation deadline runs from `block_time`: an Apply whose upper
+/// bound is exactly `block_time + da_attestation_timeout_v1` is accepted,
+/// although it is past `end_time + da_attestation_timeout_v1`.
+test da_core_apply_accepts_the_deadline_measured_from_block_time() {
+  let deadline = da_core_block_time + state_queue.da_attestation_timeout_v1
+  and {
+    deadline > empty_header().end_time + state_queue.da_attestation_timeout_v1,
+    da_core_apply_within(
+      fn(output) { output },
+      between(deadline - 1_000, deadline),
+    ),
+  }
+}
+
+/// One millisecond past the deadline measured from `block_time` is refused by
+/// `inclusive_tx_upper_bound <= block_time + da_attestation_timeout_v1` in
+/// `validate_da_attestation_attachment`.
+test da_core_apply_rejects_one_millisecond_past_the_deadline() {
+  let deadline = da_core_block_time + state_queue.da_attestation_timeout_v1
+  !da_core_apply_within(
+    fn(output) { output },
+    between(deadline - 999, deadline + 1),
+  )
 }

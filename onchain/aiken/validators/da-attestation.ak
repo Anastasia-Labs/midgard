@@ -1296,6 +1296,7 @@ fn test_state_queue_node_output(
   let node = state_queue.StateQueueNode {
     proven_fraud: None,
     header: test_header(),
+    block_time: test_header().end_time,
     da_attestation,
   }
   let element: linked_list.Element<Data, state_queue.StateQueueNode> = linked_list.Element {

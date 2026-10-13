@@ -1,3 +1,4 @@
+import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import * as SDK from "@al-ft/midgard-sdk";
 import { credentialToAddress } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
@@ -52,6 +53,8 @@ const buildContracts = () =>
         daAttestationPolicyId: unrelatedPolicy,
         availabilityChallengePolicyId: availabilityPolicy,
         referenceScriptAuthPolicyId: referencePolicy,
+        // No header is committed here; the commit yield only has to build.
+        l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
       });
       return {
         mint: queue.mintingScript,

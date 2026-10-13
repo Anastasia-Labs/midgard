@@ -70,6 +70,7 @@ for (const [mode, [core, cbor, validation, sdk]] of Object.entries(loaded)) {
       settlementPolicyId: policyId,
       daAttestationPolicyId: policyId,
       referenceScriptAuthPolicyId: policyId,
+      l1SlotConfig: { zeroTime: 1655769600000, zeroSlot: 86400, slotLength: 1000 },
     }),
   );
   assert.equal(queue.policyId.length, 56);

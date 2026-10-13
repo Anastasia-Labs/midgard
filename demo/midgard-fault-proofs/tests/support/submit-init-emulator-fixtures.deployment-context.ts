@@ -25,7 +25,10 @@ import {
   buildCanonicalL2BlockFixture,
   buildFixtureTransaction,
 } from "../helpers/canonical-block-evidence-fixture.js";
-import { requireUtxoWithUnit } from "./emulator/emulator-context.js";
+import {
+  emulatorL1SlotConfig,
+  requireUtxoWithUnit,
+} from "./emulator/emulator-context.js";
 import { measureCompleteSignedTransaction } from "./emulator/measurement.js";
 import { createReferenceScriptPublisher } from "./emulator/reference-script-publisher.js";
 import { onboardEmulatorOperator } from "./emulator/setup-tx.onboard-emulator-operator.js";
@@ -75,6 +78,7 @@ export const buildProvedFixtureDeploymentContext = async (
   await registerPhasMembershipRewardAccount(funderLucid, realBlueprint);
   const { nonceUtxo, referenceScriptAuth, referenceScriptPublisher } =
     await createReferenceScriptPublisher(funderLucid, emulator.now());
+  const l1SlotConfig = emulatorL1SlotConfig(funderLucid);
   const baseContracts = {
     ...(await buildMinimalFaultProofContracts(
       realBlueprint,
@@ -83,6 +87,7 @@ export const buildProvedFixtureDeploymentContext = async (
       {
         realMinFee: headerMinimumFee > 0n,
         referenceScriptAuthPolicyId: referenceScriptAuth.policyId,
+        l1SlotConfig,
       },
     )),
     referenceScriptAuth,
@@ -111,6 +116,7 @@ export const buildProvedFixtureDeploymentContext = async (
     contracts,
     catalogue,
     canonical: undefined,
+    l1SlotConfig,
   };
 };
 
@@ -133,6 +139,11 @@ const buildCanonicalDeploymentContext = async () => {
     [funder, prover, publisher],
     EMULATOR_PROTOCOL_PARAMETERS,
   );
+  // The deployment is a named-network (Preprod) one, so its commit yield
+  // carries Preprod's slot mapping. Starting the emulator on a whole second
+  // puts its slot boundaries on Preprod's, so a header's block_slot can name
+  // the commit time under that mapping.
+  emulator.time = Math.ceil(emulator.time / 1_000) * 1_000;
   const funderLucid = await Lucid(emulator, "Custom");
   const proverLucid = await Lucid(emulator, "Custom");
   const publisherLucid = await Lucid(emulator, "Custom");
@@ -365,6 +376,7 @@ const buildCanonicalDeploymentContext = async () => {
     nonceUtxo: undefined,
     contracts,
     catalogue: await buildCatalogueDeploymentInfo(contracts.fraudProofs),
+    l1SlotConfig: deployment.manifest.l1SlotConfig,
     canonical: {
       ...canonical,
       genesisEndTime: genesis.data.endTime,
