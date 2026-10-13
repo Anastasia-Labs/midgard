@@ -1,12 +1,15 @@
 import { type UTxO } from "@lucid-evolution/lucid";
 import { expect } from "vitest";
 
+import { type FaultProofFieldOpeningPlan } from "../src/field-opening.js";
 import {
   type NetworkIdForcedScanPlan,
   type NetworkIdForcedScanStep,
   planNetworkIdForcedScan,
   planNetworkIdOutputsOpening,
+  type PreparedNetworkIdAcceptedForced,
   type PreparedNetworkIdWrongfulRejection,
+  submitNetworkIdAcceptedForcedBind,
   submitNetworkIdCancel,
   submitNetworkIdForcedBind,
   submitNetworkIdForcedScanAction,
@@ -88,7 +91,9 @@ export const makeStages = (
   };
   const dispatch = async (
     threadOutRef: string,
-    prepared: PreparedNetworkIdWrongfulRejection,
+    prepared:
+      | PreparedNetworkIdWrongfulRejection
+      | PreparedNetworkIdAcceptedForced,
     referenceScriptUtxo: UTxO = step01Ref,
   ) => {
     console.info("[network-id-forced-stage] dispatch");
@@ -124,6 +129,29 @@ export const makeStages = (
           threadOutRef,
           prepared,
           referenceScriptUtxo,
+        }),
+      ),
+    );
+  };
+  /** The forced door over an accepted leaf, handing step 02 its claim. */
+  const acceptedBind = async (
+    threadOutRef: string,
+    prepared: PreparedNetworkIdAcceptedForced,
+    unsafeSkipLocalViolationCheckForTest = false,
+  ) => {
+    console.info("[network-id-forced-stage] accepted-bind");
+    return record(
+      "accepted-bind",
+      await captureEmulatorSubmission(harness.emulator, () =>
+        submitNetworkIdAcceptedForcedBind({
+          lucid: harness.proverLucid,
+          contracts: harness.networkId,
+          categoryId: harness.category.categoryId,
+          signer: harness.proverSigner,
+          threadOutRef,
+          prepared,
+          referenceScriptUtxo: forcedRef,
+          unsafeSkipLocalViolationCheckForTest,
         }),
       ),
     );
@@ -211,7 +239,11 @@ export const makeStages = (
   };
   const finalize = async (
     threadOutRef: string,
-    prepared: PreparedNetworkIdWrongfulRejection,
+    prepared:
+      | PreparedNetworkIdWrongfulRejection
+      | PreparedNetworkIdAcceptedForced,
+    outputsOpeningPlan?: FaultProofFieldOpeningPlan,
+    unsafeSkipLocalViolationCheckForTest = false,
   ) => {
     console.info("[network-id-forced-stage] finalize");
     return record(
@@ -224,8 +256,10 @@ export const makeStages = (
           signer: harness.proverSigner,
           threadOutRef,
           prepared,
+          ...(outputsOpeningPlan === undefined ? {} : { outputsOpeningPlan }),
           referenceScriptUtxo: step02Ref,
           witnessReferenceScripts: harness.witnessReferenceScripts,
+          unsafeSkipLocalViolationCheckForTest,
         }),
       ),
     );
@@ -333,6 +367,7 @@ export const makeStages = (
     initialize,
     dispatch,
     bind,
+    acceptedBind,
     scanPlanFor,
     scanStep,
     scan,

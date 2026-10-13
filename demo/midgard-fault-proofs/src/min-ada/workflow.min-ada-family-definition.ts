@@ -3,17 +3,12 @@ import {
   MinAdaStep02DatumSchema,
   MinAdaStep03DatumSchema,
   MinAdaStep04DatumSchema,
-  MinAdaStep05DatumSchema,
 } from "@al-ft/midgard-sdk";
 
-import { fetchCanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
 import { parseContractDeploymentReferenceScriptAuthPolicyId } from "../inspect-contracts.js";
 import type { RetainedDaPayloadSource } from "../transition-trace/fetch.js";
 import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts.js";
-import {
-  MIN_ADA_COMPLETE_CANONICAL_REPLAY,
-  requireCompleteCanonicalReplayDecision,
-} from "../workflow/complete-replay.js";
+import { MIN_ADA_COMPLETE_CANONICAL_REPLAY } from "../workflow/complete-replay.js";
 import { defineFamily } from "../workflow/family-definition.js";
 import { observeFraudProofWorkflowHeader } from "../workflow/family-l1-observation.js";
 import { type FieldCarriageRequirement } from "../workflow/field-carriage-prerequisite.js";
@@ -22,13 +17,12 @@ import { assembleManifestBoundFamilyWorkflow } from "../workflow/manifest-bound-
 import {
   createFraudProofWorkflowRegistry,
   type FraudProofWorkflowRunResult,
-  runFraudProofWorkflow,
+  runFraudProofWorkflowFromRetainedDa,
 } from "../workflow/orchestrator.js";
 import type { MinAdaContracts } from "./contracts.js";
 import {
   type BoundConfig,
   isForced,
-  isTx,
   type MinAdaWorkflowReferenceScripts,
   txFieldPlan,
 } from "./workflow.resolve-field.js";
@@ -37,7 +31,6 @@ import {
   boundConfigs,
   type ManifestBoundMinAdaWorkflow,
   type ManifestBoundMinAdaWorkflowConfig,
-  type MinAdaRuntime,
   transactionPort,
 } from "./workflow.transaction-port.js";
 import { admitMinAdaWorkflowArtifact as admitMinAdaArtifact } from "./workflow-artifact.js";
@@ -47,7 +40,6 @@ const boundFor = (context: AssemblyContext): BoundConfig => {
   const existing = boundConfigs.get(context);
   if (existing !== undefined) return existing;
   const { binding, certificate } = context;
-  const { replayContext } = context.runtime;
   const chain = binding.resolvedContracts.contracts.minAda;
   const stateQueuePolicyId = binding.resolvedContracts.stateQueuePolicyId;
   if (
@@ -79,10 +71,7 @@ const boundFor = (context: AssemblyContext): BoundConfig => {
   });
   const references: MinAdaWorkflowReferenceScripts = {
     ...context.references,
-    yields: {
-      tx: context.auxiliaryReferences.tx!,
-      utxo: context.auxiliaryReferences.utxo!,
-    },
+    yields: { tx: context.auxiliaryReferences.tx! },
   };
   const bound: BoundConfig = {
     binding,
@@ -90,7 +79,6 @@ const boundFor = (context: AssemblyContext): BoundConfig => {
     signer: context.signer,
     contracts,
     references,
-    ...(replayContext === undefined ? {} : { replayContext }),
     stateQueueMutationLeaseCoordinator:
       context.stateQueueMutationLeaseCoordinator,
   };
@@ -103,8 +91,7 @@ export const MIN_ADA_FAMILY_DEFINITION = defineFamily<
   "minAda",
   keyof FaultProofWitnessReferenceScripts,
   true,
-  5,
-  MinAdaRuntime
+  4
 >({
   category: "minAda",
   stepDatumSchemas: [
@@ -112,7 +99,6 @@ export const MIN_ADA_FAMILY_DEFINITION = defineFamily<
     MinAdaStep02DatumSchema,
     MinAdaStep03DatumSchema,
     MinAdaStep04DatumSchema,
-    MinAdaStep05DatumSchema,
   ],
   witnessRoles: [
     "computationThreadMint",
@@ -125,7 +111,6 @@ export const MIN_ADA_FAMILY_DEFINITION = defineFamily<
   replayer: () => MIN_ADA_COMPLETE_CANONICAL_REPLAY,
   auxiliaryReferenceScripts: {
     tx: "fraudProofMinAdaStep02TxWithdraw",
-    utxo: "fraudProofMinAdaStep02UtxoWithdraw",
   },
   adapter: {
     kind: "cursor",
@@ -135,7 +120,6 @@ export const MIN_ADA_FAMILY_DEFINITION = defineFamily<
       "fraudProofMinAdaStep02",
       "fraudProofMinAdaStep03",
       "fraudProofMinAdaStep04",
-      "fraudProofMinAdaStep05",
     ],
     transactionPort: (context) => {
       return transactionPort(boundFor(context));
@@ -148,7 +132,6 @@ export const MIN_ADA_FAMILY_DEFINITION = defineFamily<
 
         if (action.input.stage !== "step_02") return null;
         const admitted = await admitMinAdaArtifact(artifact);
-        if (!isTx(admitted)) return null;
         return {
           planned: txFieldPlan(admitted, context.signer.paymentKeyHash),
           compactCbor: admitted.prepared.nativeTxCompactCbor,
@@ -163,36 +146,19 @@ export const MIN_ADA_FAMILY_DEFINITION = defineFamily<
   ],
   proofChunk: async (_context, { action, artifact }) => {
     const admitted = await admitMinAdaArtifact(artifact);
-    return action.input.stage === "step_01" &&
-      isTx(admitted) &&
-      !isForced(admitted)
+    return action.input.stage === "step_01" && !isForced(admitted)
       ? admitted.prepared.txInclusion.txMembershipProofCbor
-      : action.input.stage === "step_02" && !isTx(admitted)
-        ? admitted.prepared.postMembershipProofCbor
-        : action.input.stage === "step_04" && !isTx(admitted)
-          ? admitted.prepared.predecessorNonMembershipProofCbor
-          : null;
+      : null;
   },
-  extend: (context) =>
-    context.runtime.replayContext === undefined
-      ? {}
-      : { replayContext: context.runtime.replayContext },
 });
 
 export const createManifestBoundMinAdaWorkflow = async (
   config: ManifestBoundMinAdaWorkflowConfig,
-): Promise<ManifestBoundMinAdaWorkflow> => {
-  const runtime: MinAdaRuntime =
-    config.replayContext === undefined
-      ? {}
-      : { replayContext: config.replayContext };
-  const workflow = await assembleManifestBoundFamilyWorkflow(
-    MIN_ADA_FAMILY_DEFINITION,
-    { ...config, auxiliaryReferenceScripts: config.referenceScripts.yields },
-    runtime,
-  );
-  return workflow as unknown as ManifestBoundMinAdaWorkflow;
-};
+): Promise<ManifestBoundMinAdaWorkflow> =>
+  await assembleManifestBoundFamilyWorkflow(MIN_ADA_FAMILY_DEFINITION, {
+    ...config,
+    auxiliaryReferenceScripts: config.referenceScripts.yields,
+  });
 
 export const runOrResumeManifestBoundMinAdaWorkflow = async ({
   workflow,
@@ -202,28 +168,14 @@ export const runOrResumeManifestBoundMinAdaWorkflow = async ({
   readonly workflow: ManifestBoundMinAdaWorkflow;
   readonly sources: readonly RetainedDaPayloadSource[];
   readonly journal: FraudProofWorkflowJournalStore;
-}): Promise<FraudProofWorkflowRunResult> => {
-  const observation = await observeFraudProofWorkflowHeader(workflow.l1, {
-    headerHash: workflow.binding.definition.headerHash,
-  });
-  const evidence = await fetchCanonicalBlockEvidence({
-    observation,
-    sources,
-    minimumConfirmationDepth: 1,
-  });
-  const replayer = MIN_ADA_COMPLETE_CANONICAL_REPLAY;
-  const { replayContext } = workflow;
-  const decision = await replayer.replay(evidence, replayContext);
-  const detections = requireCompleteCanonicalReplayDecision({
-    evidence,
-    replayer,
-    decision,
-    ...(replayContext === undefined ? {} : { context: replayContext }),
-  });
-  return await runFraudProofWorkflow({
+}): Promise<FraudProofWorkflowRunResult> =>
+  await runFraudProofWorkflowFromRetainedDa({
     deploymentFingerprint: workflow.binding.deploymentFingerprint,
-    evidence,
-    detections,
+    observation: await observeFraudProofWorkflowHeader(workflow.l1, {
+      headerHash: workflow.binding.definition.headerHash,
+    }),
+    sources,
+    replayer: MIN_ADA_COMPLETE_CANONICAL_REPLAY,
     registry: createFraudProofWorkflowRegistry({
       adapters: [workflow.adapter],
       launchScope: ["minAda"],
@@ -232,4 +184,3 @@ export const runOrResumeManifestBoundMinAdaWorkflow = async ({
     terminalVerifier: workflow.terminalVerifier,
     releaseFinalityAuthority: workflow.releaseFinalityAuthority,
   });
-};

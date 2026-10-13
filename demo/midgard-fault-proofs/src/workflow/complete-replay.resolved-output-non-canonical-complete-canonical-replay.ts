@@ -124,11 +124,11 @@ export const NATIVE_SCRIPT_INVALID_COMPLETE_CANONICAL_REPLAY = completeReplayer(
   ],
 );
 
-/** Complete transaction-output and introducing post-state min-Ada scan. */
+/** Complete accepted and forced transaction-output min-Ada scan. */
 export const MIN_ADA_COMPLETE_CANONICAL_REPLAY = completeReplayer(
   ["minAda"],
-  async (evidence, context) => [
-    ...(await detectMinAda(evidence, context)),
+  async (evidence) => [
+    ...(await detectMinAda(evidence)),
     ...detectMinAdaForcedReplay(evidence),
   ],
 );

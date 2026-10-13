@@ -26,9 +26,7 @@ export const MIN_ADA_FAULT_PROOF_TITLES = {
   step02: "fraud_proofs/min_ada/step_02.main.spend",
   step03: "fraud_proofs/min_ada/step_03.main.spend",
   step04: "fraud_proofs/min_ada/step_04.main.spend",
-  step05: "fraud_proofs/min_ada/step_05.main.spend",
   txYield: "fraud_proofs/min_ada/step_02_yields.tx.withdraw",
-  utxoYield: "fraud_proofs/min_ada/step_02_yields.utxo.withdraw",
 } as const;
 
 export type MinAdaFaultProofContracts = {
@@ -38,10 +36,8 @@ export type MinAdaFaultProofContracts = {
   readonly minAda: FraudProofChain & {
     readonly yields: {
       readonly tx: WithdrawalValidator;
-      readonly utxo: WithdrawalValidator;
     };
     readonly steps: readonly [
-      SpendingValidator,
       SpendingValidator,
       SpendingValidator,
       SpendingValidator,
@@ -71,30 +67,20 @@ export const buildMinAdaChain = ({
 > =>
   Effect.gen(function* () {
     const context = { blueprint, network };
-    const step05 = yield* buildFaultProofSpendingStep(
+    const step04 = yield* buildFaultProofSpendingStep(
       context,
-      MIN_ADA_FAULT_PROOF_TITLES.step05,
+      MIN_ADA_FAULT_PROOF_TITLES.step04,
       [
         fraudProof.policyId,
         fraudProofTokenAddressData,
         computationThread.policyId,
       ],
-      "Failed to build min-ada step 05",
-    );
-    const step04 = yield* buildFaultProofSpendingStep(
-      context,
-      MIN_ADA_FAULT_PROOF_TITLES.step04,
-      [step05.spendingScriptHash, computationThread.policyId],
       "Failed to build min-ada step 04",
     );
     const step03 = yield* buildFaultProofSpendingStep(
       context,
       MIN_ADA_FAULT_PROOF_TITLES.step03,
-      [
-        step04.spendingScriptHash,
-        step05.spendingScriptHash,
-        computationThread.policyId,
-      ],
+      [step04.spendingScriptHash, computationThread.policyId],
       "Failed to build min-ada step 03",
     );
     const step02 = yield* buildFaultProofSpendingStep(
@@ -102,7 +88,6 @@ export const buildMinAdaChain = ({
       MIN_ADA_FAULT_PROOF_TITLES.step02,
       [
         step03.spendingScriptHash,
-        step05.spendingScriptHash,
         computationThread.policyId,
         referenceScriptAuthPolicyId,
       ],
@@ -126,21 +111,10 @@ export const buildMinAdaChain = ({
         ]),
       ),
     );
-    const utxoYield = yield* tryBuild(
-      "Failed to build min-ada UTxO yield",
-      () =>
-        makeWithdrawalValidator(
-          applyBlueprintParams(
-            blueprint,
-            MIN_ADA_FAULT_PROOF_TITLES.utxoYield,
-            [step02.spendingScriptHash],
-          ),
-        ),
-    );
     return {
       firstStep: step01,
-      steps: [step01, step02, step03, step04, step05],
-      yields: { tx: txYield, utxo: utxoYield },
+      steps: [step01, step02, step03, step04],
+      yields: { tx: txYield },
     };
   });
 

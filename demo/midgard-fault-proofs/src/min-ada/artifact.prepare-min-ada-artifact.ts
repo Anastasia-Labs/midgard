@@ -1,14 +1,6 @@
-import { Proof as MpfProof } from "@aiken-lang/merkle-patricia-forestry";
-import {
-  EMPTY_MERKLE_TREE_ROOT,
-  MIN_ADA_VIOLATION_ID,
-  Proof,
-  type Proof as ProofV1,
-} from "@al-ft/midgard-sdk";
-import { Data } from "@lucid-evolution/lucid";
+import { MIN_ADA_VIOLATION_ID } from "@al-ft/midgard-sdk";
 
 import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
-import { type CheckedLedger } from "../ledger-at.js";
 import type { CanonicalBlockClassification } from "../workflow/classification.js";
 import type { JournalJsonObject } from "../workflow/journal.js";
 import {
@@ -20,9 +12,7 @@ import {
 } from "../workflow/native-index-artifact.js";
 import {
   type PreparedMinAdaTx,
-  type PreparedMinAdaUtxo,
   prepareMinAdaTxFromCanonicalEvidence,
-  prepareMinAdaUtxoFromCanonicalEvidence,
 } from "./prepare.js";
 
 export const MIN_ADA_ARTIFACT =
@@ -43,59 +33,14 @@ export type MinAdaTxArtifact = CommonArtifact &
     nativeTxCanonicalCbor: string;
     badOutputIndex: string;
     outputItemCbors: readonly string[];
-    descriptorCbor: string;
   }>;
 
-export type MinAdaUtxoArtifact = CommonArtifact &
-  Readonly<{
-    kind: "min-ada-utxo";
-    outRef: Readonly<{ transactionId: string; outputIndex: string }>;
-    outRefKeyCbor: string;
-    descriptorCbor: string;
-    postUtxosRoot: string;
-    prevUtxosRoot: string;
-    postMembershipProofCbor: string;
-    predecessorNonMembershipProofCbor: string;
-  }>;
+export type MinAdaArtifact = MinAdaTxArtifact;
 
-export type MinAdaArtifact = MinAdaTxArtifact | MinAdaUtxoArtifact;
-
-export type AdmittedMinAdaArtifact =
-  | Readonly<{
-      artifact: MinAdaTxArtifact;
-      prepared: PreparedMinAdaTx;
-    }>
-  | Readonly<{
-      artifact: MinAdaUtxoArtifact;
-      prepared: PreparedMinAdaUtxo;
-    }>;
-
-const proofSteps = (proof: ProofV1) =>
-  proof.map((step) => {
-    if ("Branch" in step) {
-      return {
-        type: "branch" as const,
-        skip: Number(step.Branch.skip),
-        neighbors: step.Branch.neighbors,
-      };
-    }
-    if ("Fork" in step) {
-      return {
-        type: "fork" as const,
-        skip: Number(step.Fork.skip),
-        neighbor: {
-          nibble: Number(step.Fork.neighbor.nibble),
-          prefix: step.Fork.neighbor.prefix,
-          root: step.Fork.neighbor.root,
-        },
-      };
-    }
-    return {
-      type: "leaf" as const,
-      skip: Number(step.Leaf.skip),
-      neighbor: { key: step.Leaf.key, value: step.Leaf.value },
-    };
-  });
+export type AdmittedMinAdaArtifact = Readonly<{
+  artifact: MinAdaTxArtifact;
+  prepared: PreparedMinAdaTx;
+}>;
 
 export const canonicalHexList = (
   value: unknown,
@@ -109,38 +54,6 @@ export const canonicalHexList = (
   );
 };
 
-export const replayRoot = ({
-  key,
-  value,
-  proof,
-  membership,
-  label,
-}: {
-  readonly key: Buffer;
-  readonly value?: Buffer;
-  readonly proof: ProofV1;
-  readonly membership: boolean;
-  readonly label: string;
-}): string => {
-  let root: Buffer | null;
-  try {
-    root = MpfProof.fromJSON(key, value, proofSteps(proof)).verify(membership);
-  } catch {
-    throw new Error(`${label} cannot be replayed`);
-  }
-  return root === null ? EMPTY_MERKLE_TREE_ROOT : root.toString("hex");
-};
-
-export const decodeProof = (cbor: string, label: string): ProofV1 => {
-  try {
-    const proof = Data.from(cbor, Proof);
-    if (Data.to(proof, Proof) !== cbor) throw new Error("noncanonical");
-    return proof;
-  } catch {
-    throw new Error(`${label} is not canonical proof CBOR`);
-  }
-};
-
 export const minAdaTxDetectionId = ({
   txId,
   outputIndex,
@@ -148,15 +61,6 @@ export const minAdaTxDetectionId = ({
   readonly txId: string;
   readonly outputIndex: bigint;
 }): string => `${MIN_ADA_VIOLATION_ID}:tx:${txId}:${outputIndex.toString()}`;
-
-export const minAdaUtxoDetectionId = ({
-  transactionId,
-  outputIndex,
-}: {
-  readonly transactionId: string;
-  readonly outputIndex: bigint;
-}): string =>
-  `${MIN_ADA_VIOLATION_ID}:utxo:${transactionId}:${outputIndex.toString()}`;
 
 type Classification = Extract<
   CanonicalBlockClassification,
@@ -189,49 +93,11 @@ const requireClassification = ({
 
 export const prepareMinAdaArtifact = async ({
   evidence,
-  predecessor,
-  post,
   classification,
 }: {
   readonly evidence: CanonicalBlockEvidence;
-  readonly predecessor: CheckedLedger | undefined;
-  readonly post: CheckedLedger | undefined;
   readonly classification: Classification;
 }): Promise<MinAdaArtifact> => {
-  if (
-    classification.selected.detectionId.startsWith(
-      `${MIN_ADA_VIOLATION_ID}:utxo:`,
-    )
-  ) {
-    const prepared = await prepareMinAdaUtxoFromCanonicalEvidence({
-      evidence,
-      predecessor,
-      post,
-    });
-    const detectionId = minAdaUtxoDetectionId(prepared.outRef);
-    return Object.freeze({
-      schemaVersion: MIN_ADA_ARTIFACT,
-      kind: "min-ada-utxo",
-      headerHash: prepared.headerHash,
-      detectionId,
-      position: requireClassification({
-        classification,
-        headerHash: prepared.headerHash,
-        detectionId,
-      }),
-      outRef: Object.freeze({
-        transactionId: prepared.outRef.transactionId,
-        outputIndex: prepared.outRef.outputIndex.toString(),
-      }),
-      outRefKeyCbor: prepared.outRefKeyCbor,
-      descriptorCbor: prepared.descriptorCbor,
-      postUtxosRoot: prepared.postUtxosRoot,
-      prevUtxosRoot: prepared.prevUtxosRoot,
-      postMembershipProofCbor: prepared.postMembershipProofCbor,
-      predecessorNonMembershipProofCbor:
-        prepared.predecessorNonMembershipProofCbor,
-    });
-  }
   const prepared = await prepareMinAdaTxFromCanonicalEvidence({ evidence });
   const detectionId = minAdaTxDetectionId({
     txId: prepared.badTxId,
@@ -257,7 +123,6 @@ export const prepareMinAdaArtifact = async ({
     nativeTxCanonicalCbor: prepared.nativeTxCanonicalCbor,
     badOutputIndex: prepared.badOutputIndex.toString(),
     outputItemCbors: Object.freeze([...prepared.outputItemCbors]),
-    descriptorCbor: prepared.descriptorCbor,
   });
 };
 

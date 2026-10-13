@@ -3,7 +3,6 @@ import {
   MinAdaStep02DatumSchema,
   MinAdaStep02SpendRedeemerSchema,
   MinAdaStep03DatumSchema,
-  MinAdaStep05DatumSchema,
 } from "@al-ft/midgard-sdk";
 import { Data, type LucidEvolution, type UTxO } from "@lucid-evolution/lucid";
 
@@ -28,10 +27,6 @@ export const Step02Datum = asDataType<Step02Datum>(MinAdaStep02DatumSchema);
 export type Step03Datum = Data.Static<typeof MinAdaStep03DatumSchema>;
 
 export const Step03Datum = asDataType<Step03Datum>(MinAdaStep03DatumSchema);
-
-type Step05Datum = Data.Static<typeof MinAdaStep05DatumSchema>;
-
-const Step05Datum = asDataType<Step05Datum>(MinAdaStep05DatumSchema);
 
 export type Redeemer = Data.Static<typeof MinAdaStep02SpendRedeemerSchema>;
 

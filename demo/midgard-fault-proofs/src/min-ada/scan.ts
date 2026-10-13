@@ -5,6 +5,7 @@ import {
 import { acceptedVerdictSubject } from "@al-ft/midgard-sdk";
 
 import {
+  deriveTransactionOutputScan,
   prepareTransactionOutputEvidence,
   transactionOutputScanControlData,
 } from "../transaction-output-non-canonical/transaction-output-non-canonical.js";
@@ -38,3 +39,12 @@ export const minAdaInitialScanState = (
   control: transactionOutputScanControlData(evidence.scanControls[0]!),
   outcome: 0n,
 });
+
+/** Reads only the exact output framing and value, retaining the datum bytes opaquely. */
+export const minAdaOutputFacts = (outputCbor: Uint8Array) => {
+  const bytes = Buffer.from(outputCbor);
+  const scan = deriveTransactionOutputScan(bytes);
+  if (!scan.canonical) return null;
+  const terminal = scan.controls[scan.controls.length - 1]!;
+  return { totalLength: bytes.length, lovelace: terminal.lovelace };
+};

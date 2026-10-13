@@ -7,6 +7,7 @@ import {
   materializeMidgardNativeTxFromCanonical,
   type MidgardNativeTxFull,
 } from "@al-ft/midgard-core";
+import { encodeCborBytes } from "@al-ft/midgard-core/codec/cbor";
 import { deriveMidgardForcedTxProofSource } from "@al-ft/midgard-core/codec/forced";
 import { materializeMidgardForcedTxFromCanonical } from "@al-ft/midgard-core/codec/forced";
 import * as SDK from "@al-ft/midgard-sdk";
@@ -59,6 +60,7 @@ export const setup = async ({
     makeNativeTx({ spendInputCbors: [], fee: 7n, outputCbors: [...outputs] }),
   namedOutputIndex = undefined as number | undefined,
   underfunded = false,
+  accepted = false,
   depth = 0,
   wrongReason = false,
   outputBytes = 0,
@@ -67,6 +69,7 @@ export const setup = async ({
   cancelAt = "",
   assetCount = 0,
   prefixCount = 0,
+  datumHex = undefined as string | undefined,
 } = {}) => {
   const scenarioId = scenarioSequence++;
   const h = await makeMinAdaEmulatorHarness();
@@ -85,8 +88,8 @@ export const setup = async ({
     assets.set("44".repeat(28), names);
   }
   let padding = 0;
-  const output = (lovelace: bigint) =>
-    encodeMidgardTxOutput({
+  const output = (lovelace: bigint) => {
+    const base = encodeMidgardTxOutput({
       ...(outputBytes === 0
         ? {}
         : {
@@ -98,6 +101,15 @@ export const setup = async ({
       address: Buffer.concat([Buffer.from([0x60]), Buffer.alloc(28, 0x44)]),
       value: { lovelace, assets },
     });
+    return datumHex === undefined
+      ? base
+      : Buffer.concat([
+          Buffer.from([0xa3]),
+          base.subarray(1),
+          Buffer.from([2]),
+          encodeCborBytes(Buffer.from(datumHex, "hex")),
+        ]);
+  };
   if (outputBytes > 0) {
     while (output(2_000_000n).length < outputBytes) padding++;
     expect(output(2_000_000n).length).toBe(outputBytes);
@@ -160,7 +172,9 @@ export const setup = async ({
       field_preimage_lengths_cbor:
         proofSource.fieldPreimageLengthsCbor.toString("hex"),
     },
-    verdict: { ForcedTxInvalid: { reason } },
+    verdict: accepted
+      ? ("ForcedTxValid" as const)
+      : { ForcedTxInvalid: { reason } },
   };
   const keyBytes = Buffer.from(Data.to(key, SDK.OutputReference), "hex");
   const valueBytes = Buffer.from(
@@ -217,7 +231,8 @@ export const setup = async ({
     header: requestedHeader,
   });
   const header = seeded.header;
-  const source = { header, membership, direction: 1n };
+  const direction = accepted ? 0n : 1n;
+  const source = { header, membership, direction };
   const scriptPublications: ReturnType<
     typeof import("./support/emulator/measurement.js").measureCompleteSignedTransaction
   >[] = [];
@@ -233,17 +248,18 @@ export const setup = async ({
     grammar_checkpoint_hash: "",
     grammar_complete: false,
     walk_checkpoint_hash: "",
-    direction: 1n,
+    direction,
+    source_kind: 1n,
     bad_tx_id: txId,
-    fault: { MinAdaTx: { output_index: outputIndex } },
-    post_utxo: null,
+    fault: { output_index: outputIndex },
   };
-  const material = buildCanonicalMidgardLedgerOutputMaterial({
-    outputIndex: Number(outputIndex),
-    outputCbor: outputs[Number(outputIndex)]!,
-  });
   if (assetCount === 1304)
-    expect(material.descriptor.cardanoValueSize).toBe(5000);
+    expect(
+      buildCanonicalMidgardLedgerOutputMaterial({
+        outputIndex: Number(outputIndex),
+        outputCbor: outputs[Number(outputIndex)]!,
+      }).descriptor.cardanoValueSize,
+    ).toBe(5000);
   const prepared = {
     kind: "min-ada-forced" as const,
     headerHash: seeded.headerHash,
@@ -253,12 +269,11 @@ export const setup = async ({
     nativeTxCanonicalCbor:
       encodeMidgardForcedTxCanonical(submitted).toString("hex"),
     outputItemCbors: outputs.map((item) => item.toString("hex")),
-    descriptorCbor: material.descriptorCbor.toString("hex"),
     fault: state.fault,
     subject: SDK.forcedVerdictSubject({
       transactionId: txId,
       sourceKey: key,
-      rejectionReason: reason,
+      rejectionReason: accepted ? null : reason,
     }),
     state,
   };
@@ -280,7 +295,7 @@ export const setup = async ({
     categoryId: h.category.categoryId,
     signer: h.proverSigner,
   };
-  const shape = `scenario-${scenarioId}-assets-${assetCount}-cancel-${cancelAt}-output-${outputCbor.length}-field-${encodeMidgardFieldPreimage(outputs).length}-mpf-${depth}-above-${above}`;
+  const shape = `scenario-${scenarioId}${accepted ? "-accepted" : ""}-assets-${assetCount}-cancel-${cancelAt}-output-${outputCbor.length}-field-${encodeMidgardFieldPreimage(outputs).length}-mpf-${depth}-above-${above}`;
   let measurementSequence = 0;
   const record = (
     name: string,
@@ -300,7 +315,6 @@ export const setup = async ({
   record("family-publications", "publication", scriptPublications);
   record("yield-publications", "publication", [
     seeded.minAdaYieldReferenceScripts!.tx.publicationMeasurement,
-    seeded.minAdaYieldReferenceScripts!.utxo.publicationMeasurement,
   ]);
   const capture = async <T>(
     name: string,
@@ -365,8 +379,6 @@ export const setup = async ({
     if (depth > 0) return artifact;
     return prepareMinAdaWorkflowArtifact({
       evidence: block,
-      predecessor: undefined,
-      post: undefined,
       classification: {
         schemaVersion: "midgard-fraud-proof-classification-v1",
         decision: "fault_detected",

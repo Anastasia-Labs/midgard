@@ -179,7 +179,11 @@ export const FRAUD_PROOF_CLASSIFICATION_RULES = Object.freeze([
   },
   {
     category: "networkId",
-    violationIds: [NETWORK_ID_VIOLATION_ID, "network-id-wrongful-rejection"],
+    violationIds: [
+      NETWORK_ID_VIOLATION_ID,
+      "network-id-accepted-forced",
+      "network-id-wrongful-rejection",
+    ],
   },
   {
     category: "nativeScriptInvalid",

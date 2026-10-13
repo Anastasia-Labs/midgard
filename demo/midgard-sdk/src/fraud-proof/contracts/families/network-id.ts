@@ -77,9 +77,10 @@ export const buildNetworkIdChain = ({
         ),
       );
     }
-    // The forced door hands the thread to the resumable outputs scan, and the
-    // scan hands it to step 02: the parameterization chain is therefore
-    // step 02 -> forced scan -> forced door, and it is built in that order.
+    // The forced door hands a rejected leaf to the resumable outputs scan,
+    // which hands it to step 02, and an accepted leaf straight to step 02:
+    // the parameterization chain is therefore step 02 -> forced scan ->
+    // forced door, and it is built in that order.
     const forcedScan = yield* buildFaultProofSpendingStep(
       context,
       NETWORK_ID_FAULT_PROOF_TITLES.forcedScan,
@@ -95,6 +96,7 @@ export const buildNetworkIdChain = ({
       NETWORK_ID_FAULT_PROOF_TITLES.forcedStep,
       [
         forcedScan.spendingScriptHash,
+        step02.spendingScriptHash,
         computationThread.policyId,
         expectedNetworkId,
       ],

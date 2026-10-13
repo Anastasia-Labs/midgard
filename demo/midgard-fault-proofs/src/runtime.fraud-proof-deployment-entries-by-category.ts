@@ -121,7 +121,6 @@ export const FRAUD_PROOF_DEPLOYMENT_ENTRIES_BY_CATEGORY = {
     "fraudProofMinAdaStep02",
     "fraudProofMinAdaStep03",
     "fraudProofMinAdaStep04",
-    "fraudProofMinAdaStep05",
   ],
   fieldPreimageLengthMismatch: [
     "fraudProofFieldPreimageLengthMismatch",

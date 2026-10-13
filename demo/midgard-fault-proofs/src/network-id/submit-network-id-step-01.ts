@@ -240,7 +240,6 @@ export const submitNetworkIdStep01 = async ({
     committed_tx_network_id: txInclusion.nativeTx.body.network_id,
     expected_network_id: contracts.expectedNetworkId,
     fault: prepared.fault,
-    post_utxo: null,
     forced_source_key: null,
   };
   const datum = Data.to(
@@ -298,7 +297,6 @@ export const submitNetworkIdStep01 = async ({
         Continue: [
           {
             tx_inclusion: carriage,
-            post_utxo_membership: null,
             forced_source: null,
             fault: prepared.fault,
           },

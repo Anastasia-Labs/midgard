@@ -1,24 +1,12 @@
 //// Q35 network-id step 02: decisive check and permanent proof-token mint.
 
 use aiken/collection/list
-use aiken/crypto.{blake2b_256}
-use aiken/merkle_patricia_forestry as mpf
 use cardano/address.{Address}
 use cardano/assets.{PolicyId}
-use cardano/transaction.{
-  Input, OutputReference, Redeemer, ScriptPurpose, Transaction,
-}
-use env
+use cardano/transaction.{OutputReference, Transaction}
 use midgard/computation_thread as ct
-use midgard/fraud_proofs/chunked_inclusion_v1.{
-  ChunkedProofClaim, Membership, NonMembership, PublishedProofCarriage,
-  absent_value_hash, published_chunk_membership, published_chunk_non_membership,
-}
-use midgard/fraud_proofs/common.{
-  PublishedChunkMembership, PublishedChunkNonMembership,
-  RedeemerCarriedMembership, RedeemerCarriedNonMembership, cancel, finalize,
-  verify_membership_carried, verify_non_membership_carried,
-}
+use midgard/forced_submission_fixture as forced_fixture
+use midgard/fraud_proofs/common.{cancel, finalize}
 use midgard/fraud_proofs/field_opening_v1.{
   BodyAnchor, opened_field_view, outputs_field_index,
 }
@@ -33,18 +21,9 @@ use midgard/fraud_proofs/network_id/rule.{
   is_output_network_violation_v1, is_transaction_network_violation_v1,
 }
 use midgard/fraud_proofs/network_id/step_01.{
-  ForcedNetworkIdMismatch, Introduced, NetworkChanged, NetworkIdFaultV1,
-  OutputNetwork, OutputNetworkUtxo, PostUtxoPredecessorClaimV1, PostUtxoStateV1,
-  TransactionNetwork,
+  ForcedNetworkIdMismatch, NetworkIdFaultV1, OutputNetwork, TransactionNetwork,
 }
-use midgard/fraud_proofs/network_id/step_02.{
-  Args, Datum, IntroducedPredecessor, NetworkChangedPredecessor,
-  PostUtxoPredecessorCarriageV1, SpendRedeemer, State,
-}
-use midgard/fraud_proofs/transition_trace/proof.{ledger_outref_key}
-use midgard/ledger_output_commitment_v1
-use midgard/ledger_output_descriptor_v1
-use midgard/ledger_output_v1
+use midgard/fraud_proofs/network_id/step_02.{Args, Datum, SpendRedeemer, State}
 use midgard/native_tx_field_access_v1.{field_item_at}
 
 validator main(
@@ -74,7 +53,6 @@ validator main(
         output_index,
         fraud_proof_mint_redeemer_index,
         outputs_opening,
-        predecessor_carriage,
       }) -> {
         let Transaction { inputs, outputs, redeemers, reference_inputs, .. } = tx
         expect Some(step_datum) = datum
@@ -104,9 +82,6 @@ validator main(
             // V1 spells absence as 255; only an explicitly different id is a
             // TRANSACTION-NETWORK violation.
             expect None = outputs_opening
-            expect None = predecessor_carriage
-            expect None = state.post_utxo
-            expect None = state.forced_source_key
             is_transaction_network_violation_v1(
               state.committed_tx_network_id,
               state.expected_network_id,
@@ -114,12 +89,15 @@ validator main(
           }
           OutputNetwork { output_index: bad_output_index } -> {
             expect Some(opening) = outputs_opening
-            expect None = predecessor_carriage
-            expect None = state.post_utxo
-            expect None = state.forced_source_key
+            // Step 01 binds a normal transaction without a forced root key;
+            // the forced door binds an accepted forced one with it.
+            let source_kind = when state.forced_source_key is {
+              None -> 0
+              Some(_) -> 1
+            }
             let outputs_view = opened_field_view(
               opening,
-              BodyAnchor { tx_id: state.bad_tx_id, source_kind: 0 },
+              BodyAnchor { tx_id: state.bad_tx_id, source_kind },
               outputs_field_index,
               reference_inputs,
               field_preimage_certificate_policy_id,
@@ -129,51 +107,6 @@ validator main(
             )
             is_output_network_violation_v1(
               bad_output.address.network_id,
-              state.expected_network_id,
-            )
-          }
-          OutputNetworkUtxo { observed_network_id } -> {
-            expect None = outputs_opening
-            expect Some(post) = state.post_utxo
-            expect None = state.forced_source_key
-            expect Some(predecessor) = predecessor_carriage
-            let key = ledger_outref_key(post.out_ref)
-            when post.predecessor is {
-              Introduced -> {
-                expect IntroducedPredecessor(carriage) = predecessor
-                expect
-                  verify_non_membership_carried(
-                    carriage,
-                    post.prev_utxos_root,
-                    key,
-                    reference_inputs,
-                    redeemers,
-                  )
-              }
-              NetworkChanged { previous_descriptor_cbor } -> {
-                expect NetworkChangedPredecessor(carriage) = predecessor
-                expect previous_descriptor_cbor != post.descriptor_cbor
-                expect
-                  verify_membership_carried(
-                    carriage,
-                    post.prev_utxos_root,
-                    key,
-                    previous_descriptor_cbor,
-                    reference_inputs,
-                    redeemers,
-                  )
-                let previous = ledger_output_commitment_v1.decode(
-                  previous_descriptor_cbor,
-                )
-                expect previous.output_index == post.out_ref.output_index
-                expect Some(previous_address) = ledger_output_v1.decode_canonical_address_bytes(
-                  previous.address,
-                )
-                expect previous_address.network_id == state.expected_network_id
-              }
-            }
-            is_output_network_violation_v1(
-              observed_network_id,
               state.expected_network_id,
             )
           }
@@ -189,8 +122,6 @@ validator main(
             // `forced_scan.State` at the scan's address — so there is no route
             // that reaches this arm with the scan unperformed.
             expect None = outputs_opening
-            expect None = predecessor_carriage
-            expect None = state.post_utxo
             expect Some(_) = state.forced_source_key
             True
           }
@@ -251,7 +182,6 @@ fn state_for(
     committed_tx_network_id: block.compact.body.network_id,
     expected_network_id: 0,
     fault,
-    post_utxo: None,
     forced_source_key: None,
   }
 }
@@ -288,109 +218,10 @@ fn run_finalize(
         output_index: 0,
         fraud_proof_mint_redeemer_index: 0,
         outputs_opening,
-        predecessor_carriage: None,
       },
     ),
     fixture.own_out_ref(),
     fixture.finalize_step_l1_tx_v1(fixture.ct_token_asset_name(block)),
-  )
-}
-
-fn post_utxo_material(
-  network_id: Int,
-) -> (OutputReference, ByteArray, ByteArray) {
-  let base = fixture.valid_native_tx_v1()
-  expect [output] = base.body.outputs
-  let output_cbor = encode_midgard_tx_output(
-    output_at_network(output, network_id),
-  )
-  expect Some(descriptor) = ledger_output_descriptor_v1.build_v1(0, output_cbor)
-  let descriptor_cbor = ledger_output_commitment_v1.encode(descriptor)
-  let out_ref = OutputReference {
-    transaction_id: #"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
-    output_index: 0,
-  }
-  let root = mpf.root(
-    mpf.insert(mpf.empty, ledger_outref_key(out_ref), descriptor_cbor, []),
-  )
-  (out_ref, descriptor_cbor, root)
-}
-
-fn run_post_finalize(
-  observed_network_id: Int,
-  post_descriptor_cbor: ByteArray,
-  prev_utxos_root: ByteArray,
-  predecessor_claim: PostUtxoPredecessorClaimV1,
-  predecessor_carriage: PostUtxoPredecessorCarriageV1,
-  withdrawal_redeemer: Pair<ScriptPurpose, Redeemer>,
-) -> Bool {
-  run_post_finalize_with_reference_inputs(
-    observed_network_id,
-    post_descriptor_cbor,
-    prev_utxos_root,
-    predecessor_claim,
-    predecessor_carriage,
-    withdrawal_redeemer,
-    [],
-  )
-}
-
-fn run_post_finalize_with_reference_inputs(
-  observed_network_id: Int,
-  post_descriptor_cbor: ByteArray,
-  prev_utxos_root: ByteArray,
-  predecessor_claim: PostUtxoPredecessorClaimV1,
-  predecessor_carriage: PostUtxoPredecessorCarriageV1,
-  withdrawal_redeemer: Pair<ScriptPurpose, Redeemer>,
-  reference_inputs: List<Input>,
-) -> Bool {
-  let (out_ref, _, _) = post_utxo_material(observed_network_id)
-  let fault = OutputNetworkUtxo { observed_network_id }
-  let state = State {
-    bad_tx_id: out_ref.transaction_id,
-    committed_tx_network_id: 255,
-    expected_network_id: 0,
-    fault,
-    post_utxo: Some(
-      PostUtxoStateV1 {
-        out_ref,
-        descriptor_cbor: post_descriptor_cbor,
-        prev_utxos_root,
-        predecessor: predecessor_claim,
-      },
-    ),
-    forced_source_key: None,
-  }
-  let asset_name = fixture.ct_token_asset_name(
-    fixture.native_block_fixture_v1(fixture.valid_native_tx_v1()),
-  )
-  let base_tx = fixture.finalize_step_l1_tx_v1(asset_name)
-  main.spend(
-    fixture.fraud_proof_policy_id,
-    fixture.fraud_proof_token_address(),
-    fixture.computation_thread_policy_id,
-    fixture.test_certificate_policy_id,
-    Some(
-      ct.StepDatum {
-        fraud_prover: fixture.fraud_prover_key_hash,
-        data: Some(state),
-      },
-    ),
-    ct.Continue(
-      Args {
-        input_index: 0,
-        output_index: 0,
-        fraud_proof_mint_redeemer_index: 0,
-        outputs_opening: None,
-        predecessor_carriage: Some(predecessor_carriage),
-      },
-    ),
-    fixture.own_out_ref(),
-    Transaction {
-      ..base_tx,
-      reference_inputs,
-      redeemers: list.concat(base_tx.redeemers, [withdrawal_redeemer]),
-    },
   )
 }
 
@@ -458,372 +289,6 @@ test network_id_step_02_convicts_foreign_raw_network_nibble_15() {
   run_finalize(block, OutputNetwork { output_index: 0 }, Some(bad_outputs))
 }
 
-test network_id_step_02_convicts_an_authenticated_post_utxo_network() {
-  let (out_ref, post_descriptor, _) = post_utxo_material(2)
-  let key = ledger_outref_key(out_ref)
-  run_post_finalize(
-    2,
-    post_descriptor,
-    env.empty_merkle_tree_root,
-    Introduced,
-    IntroducedPredecessor(
-      RedeemerCarriedNonMembership {
-        non_membership_proof: [],
-        non_membership_proof_script_redeemer_index: 0,
-      },
-    ),
-    fixture.pexcludes_withdraw_redeemer_entry(
-      env.empty_merkle_tree_root,
-      key,
-      [],
-    ),
-  )
-}
-
-test network_id_step_02_convicts_an_introduction_over_a_nonempty_predecessor() {
-  let (out_ref, post_descriptor, _) = post_utxo_material(2)
-  let key = ledger_outref_key(out_ref)
-  let (prev_root, absence_proof) = fixture.absence_witness()
-  run_post_finalize(
-    2,
-    post_descriptor,
-    prev_root,
-    Introduced,
-    IntroducedPredecessor(
-      RedeemerCarriedNonMembership {
-        non_membership_proof: absence_proof,
-        non_membership_proof_script_redeemer_index: 0,
-      },
-    ),
-    fixture.pexcludes_withdraw_redeemer_entry(prev_root, key, absence_proof),
-  )
-}
-
-test network_id_step_02_convicts_an_expected_to_foreign_network_mutation() {
-  let (out_ref, post_descriptor, _) = post_utxo_material(2)
-  let (_, previous_descriptor, prev_root) = post_utxo_material(0)
-  let key = ledger_outref_key(out_ref)
-  run_post_finalize(
-    2,
-    post_descriptor,
-    prev_root,
-    NetworkChanged { previous_descriptor_cbor: previous_descriptor },
-    NetworkChangedPredecessor(
-      RedeemerCarriedMembership {
-        membership_proof: [],
-        membership_proof_script_redeemer_index: 0,
-      },
-    ),
-    fixture.phas_withdraw_redeemer_entry(prev_root, key, previous_descriptor),
-  )
-}
-
-test network_id_step_02_rejects_an_inherited_wrong_network_utxo() fail {
-  let (out_ref, post_descriptor, post_root) = post_utxo_material(2)
-  let key = ledger_outref_key(out_ref)
-  run_post_finalize(
-    2,
-    post_descriptor,
-    post_root,
-    NetworkChanged { previous_descriptor_cbor: post_descriptor },
-    NetworkChangedPredecessor(
-      RedeemerCarriedMembership {
-        membership_proof: [],
-        membership_proof_script_redeemer_index: 0,
-      },
-    ),
-    fixture.phas_withdraw_redeemer_entry(post_root, key, post_descriptor),
-  )
-}
-
-test network_id_step_02_rejects_a_foreign_to_foreign_network_mutation() fail {
-  let (out_ref, post_descriptor, _) = post_utxo_material(2)
-  let (_, previous_descriptor, prev_root) = post_utxo_material(3)
-  let key = ledger_outref_key(out_ref)
-  run_post_finalize(
-    2,
-    post_descriptor,
-    prev_root,
-    NetworkChanged { previous_descriptor_cbor: previous_descriptor },
-    NetworkChangedPredecessor(
-      RedeemerCarriedMembership {
-        membership_proof: [],
-        membership_proof_script_redeemer_index: 0,
-      },
-    ),
-    fixture.phas_withdraw_redeemer_entry(prev_root, key, previous_descriptor),
-  )
-}
-
-test network_id_step_02_rejects_a_forged_predecessor_root() fail {
-  let (out_ref, post_descriptor, _) = post_utxo_material(2)
-  let (_, previous_descriptor, prev_root) = post_utxo_material(0)
-  run_post_finalize(
-    2,
-    post_descriptor,
-    prev_root,
-    NetworkChanged { previous_descriptor_cbor: previous_descriptor },
-    NetworkChangedPredecessor(
-      RedeemerCarriedMembership {
-        membership_proof: [],
-        membership_proof_script_redeemer_index: 0,
-      },
-    ),
-    fixture.phas_withdraw_redeemer_entry(
-      env.empty_merkle_tree_root,
-      ledger_outref_key(out_ref),
-      previous_descriptor,
-    ),
-  )
-}
-
-test network_id_step_02_rejects_a_forged_predecessor_key() fail {
-  let (_, post_descriptor, _) = post_utxo_material(2)
-  let (_, previous_descriptor, prev_root) = post_utxo_material(0)
-  let forged_out_ref = OutputReference {
-    transaction_id: #"eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
-    output_index: 0,
-  }
-  run_post_finalize(
-    2,
-    post_descriptor,
-    prev_root,
-    NetworkChanged { previous_descriptor_cbor: previous_descriptor },
-    NetworkChangedPredecessor(
-      RedeemerCarriedMembership {
-        membership_proof: [],
-        membership_proof_script_redeemer_index: 0,
-      },
-    ),
-    fixture.phas_withdraw_redeemer_entry(
-      prev_root,
-      ledger_outref_key(forged_out_ref),
-      previous_descriptor,
-    ),
-  )
-}
-
-test network_id_step_02_rejects_a_forged_predecessor_value() fail {
-  let (out_ref, post_descriptor, _) = post_utxo_material(2)
-  let (_, previous_descriptor, prev_root) = post_utxo_material(0)
-  let (_, forged_descriptor, _) = post_utxo_material(1)
-  run_post_finalize(
-    2,
-    post_descriptor,
-    prev_root,
-    NetworkChanged { previous_descriptor_cbor: previous_descriptor },
-    NetworkChangedPredecessor(
-      RedeemerCarriedMembership {
-        membership_proof: [],
-        membership_proof_script_redeemer_index: 0,
-      },
-    ),
-    fixture.phas_withdraw_redeemer_entry(
-      prev_root,
-      ledger_outref_key(out_ref),
-      forged_descriptor,
-    ),
-  )
-}
-
-test network_id_step_02_rejects_a_forged_predecessor_proof() fail {
-  let (out_ref, post_descriptor, _) = post_utxo_material(2)
-  let (_, previous_descriptor, prev_root) = post_utxo_material(0)
-  let forged_proof = [
-    mpf.Leaf {
-      skip: 0,
-      key: #"1111111111111111111111111111111111111111111111111111111111111111",
-      value: #"2222222222222222222222222222222222222222222222222222222222222222",
-    },
-  ]
-  run_post_finalize(
-    2,
-    post_descriptor,
-    prev_root,
-    NetworkChanged { previous_descriptor_cbor: previous_descriptor },
-    NetworkChangedPredecessor(
-      RedeemerCarriedMembership {
-        membership_proof: forged_proof,
-        membership_proof_script_redeemer_index: 0,
-      },
-    ),
-    fixture.phas_withdraw_redeemer_entry(
-      prev_root,
-      ledger_outref_key(out_ref),
-      previous_descriptor,
-    ),
-  )
-}
-
-test network_id_step_02_rejects_a_cross_step_predecessor_kind_swap() fail {
-  let (out_ref, post_descriptor, _) = post_utxo_material(2)
-  let (_, previous_descriptor, prev_root) = post_utxo_material(0)
-  run_post_finalize(
-    2,
-    post_descriptor,
-    prev_root,
-    Introduced,
-    NetworkChangedPredecessor(
-      RedeemerCarriedMembership {
-        membership_proof: [],
-        membership_proof_script_redeemer_index: 0,
-      },
-    ),
-    fixture.phas_withdraw_redeemer_entry(
-      prev_root,
-      ledger_outref_key(out_ref),
-      previous_descriptor,
-    ),
-  )
-}
-
-test network_id_step_02_authenticates_a_maximum_64_step_published_predecessor_membership() {
-  let (out_ref, post_descriptor, _) = post_utxo_material(2)
-  let (_, previous_descriptor, _) = post_utxo_material(0)
-  let key = ledger_outref_key(out_ref)
-  let steps = fixture.adversarial_branch_steps(64)
-  let prev_root = fixture.adversarial_membership_root(
-    key,
-    previous_descriptor,
-    steps,
-  )
-  let chunks = fixture.proof_chunk_reference_inputs(steps)
-  let indices = [0, 1, 2, 3]
-  let carriage = PublishedProofCarriage {
-    ordered_chunk_reference_input_indices: indices,
-  }
-  let claim = ChunkedProofClaim {
-    mode: Membership,
-    merkle_root: prev_root,
-    key_bytes: key,
-    value_hash: blake2b_256(previous_descriptor),
-    ordered_chunk_reference_input_indices: indices,
-  }
-  and {
-    published_chunk_membership(
-      chunks,
-      carriage,
-      prev_root,
-      key,
-      previous_descriptor,
-    ),
-    run_post_finalize_with_reference_inputs(
-      2,
-      post_descriptor,
-      prev_root,
-      NetworkChanged { previous_descriptor_cbor: previous_descriptor },
-      NetworkChangedPredecessor(PublishedChunkMembership(carriage)),
-      fixture.chunked_verify_withdraw_redeemer_entry(claim),
-      chunks,
-    ),
-  }
-}
-
-test network_id_step_02_authenticates_a_maximum_64_step_published_predecessor_non_membership() {
-  let (out_ref, post_descriptor, _) = post_utxo_material(2)
-  let key = ledger_outref_key(out_ref)
-  let steps = fixture.adversarial_non_membership_steps(63)
-  let prev_root = fixture.adversarial_non_membership_root(key, steps)
-  let chunks = fixture.proof_chunk_reference_inputs(steps)
-  let indices = [0, 1, 2, 3]
-  let carriage = PublishedProofCarriage {
-    ordered_chunk_reference_input_indices: indices,
-  }
-  let claim = ChunkedProofClaim {
-    mode: NonMembership,
-    merkle_root: prev_root,
-    key_bytes: key,
-    value_hash: absent_value_hash,
-    ordered_chunk_reference_input_indices: indices,
-  }
-  and {
-    published_chunk_non_membership(chunks, carriage, prev_root, key),
-    run_post_finalize_with_reference_inputs(
-      2,
-      post_descriptor,
-      prev_root,
-      Introduced,
-      IntroducedPredecessor(PublishedChunkNonMembership(carriage)),
-      fixture.chunked_verify_withdraw_redeemer_entry(claim),
-      chunks,
-    ),
-  }
-}
-
-test network_id_step_02_rejects_reordered_published_predecessor_chunks() fail {
-  let (out_ref, post_descriptor, _) = post_utxo_material(2)
-  let (_, previous_descriptor, _) = post_utxo_material(0)
-  let key = ledger_outref_key(out_ref)
-  let steps = fixture.adversarial_branch_steps(64)
-  let prev_root = fixture.adversarial_membership_root(
-    key,
-    previous_descriptor,
-    steps,
-  )
-  let chunks = fixture.proof_chunk_reference_inputs(steps)
-  let reordered = [0, 2, 1, 3]
-  let carriage = PublishedProofCarriage {
-    ordered_chunk_reference_input_indices: reordered,
-  }
-  let claim = ChunkedProofClaim {
-    mode: Membership,
-    merkle_root: prev_root,
-    key_bytes: key,
-    value_hash: blake2b_256(previous_descriptor),
-    ordered_chunk_reference_input_indices: reordered,
-  }
-  and {
-    published_chunk_membership(
-      chunks,
-      carriage,
-      prev_root,
-      key,
-      previous_descriptor,
-    ),
-    run_post_finalize_with_reference_inputs(
-      2,
-      post_descriptor,
-      prev_root,
-      NetworkChanged { previous_descriptor_cbor: previous_descriptor },
-      NetworkChangedPredecessor(PublishedChunkMembership(carriage)),
-      fixture.chunked_verify_withdraw_redeemer_entry(claim),
-      chunks,
-    ),
-  }
-}
-
-test network_id_step_02_rejects_a_cross_step_predecessor_chunk_order_mismatch() fail {
-  let (out_ref, post_descriptor, _) = post_utxo_material(2)
-  let (_, previous_descriptor, _) = post_utxo_material(0)
-  let key = ledger_outref_key(out_ref)
-  let steps = fixture.adversarial_branch_steps(64)
-  let prev_root = fixture.adversarial_membership_root(
-    key,
-    previous_descriptor,
-    steps,
-  )
-  let chunks = fixture.proof_chunk_reference_inputs(steps)
-  let carriage = PublishedProofCarriage {
-    ordered_chunk_reference_input_indices: [0, 1, 2, 3],
-  }
-  let mismatched_claim = ChunkedProofClaim {
-    mode: Membership,
-    merkle_root: prev_root,
-    key_bytes: key,
-    value_hash: blake2b_256(previous_descriptor),
-    ordered_chunk_reference_input_indices: [0, 2, 1, 3],
-  }
-  run_post_finalize_with_reference_inputs(
-    2,
-    post_descriptor,
-    prev_root,
-    NetworkChanged { previous_descriptor_cbor: previous_descriptor },
-    NetworkChangedPredecessor(PublishedChunkMembership(carriage)),
-    fixture.chunked_verify_withdraw_redeemer_entry(mismatched_claim),
-    chunks,
-  )
-}
-
 /// Exercises a non-trivial high-cardinality opening. This is intentionally not
 /// labelled the canonical maximum: Q38 owns the exact maximum-output frontier
 /// and its required tiered-carriage proof-fit evidence.
@@ -855,28 +320,6 @@ test network_id_step_02_rejects_a_protected_matching_network_output() fail {
     block,
     OutputNetwork { output_index: 0 },
     Some(protected_outputs),
-  )
-}
-
-test network_id_step_02_rejects_a_matching_post_utxo_network() fail {
-  let (out_ref, post_descriptor, _) = post_utxo_material(0)
-  let key = ledger_outref_key(out_ref)
-  run_post_finalize(
-    0,
-    post_descriptor,
-    env.empty_merkle_tree_root,
-    Introduced,
-    IntroducedPredecessor(
-      RedeemerCarriedNonMembership {
-        non_membership_proof: [],
-        non_membership_proof_script_redeemer_index: 0,
-      },
-    ),
-    fixture.pexcludes_withdraw_redeemer_entry(
-      env.empty_merkle_tree_root,
-      key,
-      [],
-    ),
   )
 }
 
@@ -937,8 +380,6 @@ fn run_forced_finalize(
   block: fixture.NativeBlockFixtureV1,
   carried_outputs: Option<List<MidgardTxOutput>>,
   forced_source_key: Option<ByteArray>,
-  post_utxo: Option<PostUtxoStateV1>,
-  predecessor_carriage: Option<PostUtxoPredecessorCarriageV1>,
 ) -> Bool {
   let outputs_opening = when carried_outputs is {
     None -> None
@@ -955,7 +396,6 @@ fn run_forced_finalize(
     committed_tx_network_id: block.compact.body.network_id,
     expected_network_id: 0,
     fault: ForcedNetworkIdMismatch,
-    post_utxo,
     forced_source_key,
   }
   main.spend(
@@ -975,7 +415,6 @@ fn run_forced_finalize(
         output_index: 0,
         fraud_proof_mint_redeemer_index: 0,
         outputs_opening,
-        predecessor_carriage,
       },
     ),
     fixture.own_out_ref(),
@@ -990,8 +429,6 @@ test network_id_step_02_convicts_the_state_the_forced_scan_writes() {
     fixture.native_block_fixture_v1(fixture.valid_native_tx_v1()),
     None,
     Some(forced_source_key_bytes),
-    None,
-    None,
   )
 }
 
@@ -1002,8 +439,6 @@ test network_id_step_02_convicts_a_forced_state_over_an_untagged_tx() {
     fixture.native_block_fixture_v1(with_tx_network_id(255)),
     None,
     Some(forced_source_key_bytes),
-    None,
-    None,
   )
 }
 
@@ -1015,8 +450,6 @@ test network_id_step_02_rejects_a_forced_claim_carrying_an_outputs_opening() fai
     block,
     Some(block.tx.body.outputs),
     Some(forced_source_key_bytes),
-    None,
-    None,
   )
 }
 
@@ -1024,51 +457,39 @@ test network_id_step_02_rejects_a_forced_claim_carrying_an_outputs_opening() fai
 /// an accepted-invalid route's, so the wrongful-rejection polarity is unfixed.
 test network_id_step_02_rejects_a_forced_claim_without_a_source_key() fail {
   let block = fixture.native_block_fixture_v1(fixture.valid_native_tx_v1())
-  run_forced_finalize(block, None, None, None, None)
+  run_forced_finalize(block, None, None)
 }
 
-test network_id_step_02_rejects_a_forced_claim_carrying_post_utxo_state() fail {
-  let block = fixture.native_block_fixture_v1(fixture.valid_native_tx_v1())
-  let (out_ref, post_descriptor, _) = post_utxo_material(2)
-  run_forced_finalize(
-    block,
-    None,
-    Some(forced_source_key_bytes),
-    Some(
-      PostUtxoStateV1 {
-        out_ref,
-        descriptor_cbor: post_descriptor,
-        prev_utxos_root: env.empty_merkle_tree_root,
-        predecessor: Introduced,
-      },
-    ),
-    None,
-  )
-}
+// ## Accepted forced transactions
+//
+// The forced door writes an accepted forced leaf's claim with its root key;
+// step 02 adjudicates it exactly as an accepted normal transaction's, opening
+// the outputs under the forced source.
 
-test network_id_step_02_rejects_a_forced_claim_carrying_predecessor_evidence() fail {
-  let block = fixture.native_block_fixture_v1(fixture.valid_native_tx_v1())
-  run_forced_finalize(
-    block,
-    None,
-    Some(forced_source_key_bytes),
-    None,
-    Some(
-      IntroducedPredecessor(
-        RedeemerCarriedNonMembership {
-          non_membership_proof: [],
-          non_membership_proof_script_redeemer_index: 0,
+fn run_accepted_forced_finalize(
+  block: fixture.NativeBlockFixtureV1,
+  fault: NetworkIdFaultV1,
+  carried_outputs: Option<List<MidgardTxOutput>>,
+  source_kind: Int,
+) -> Bool {
+  let outputs_opening = when carried_outputs is {
+    None -> None
+    Some(items) -> {
+      let opening = fixture.inline_body_opening(
+        block.compact_cbor,
+        items |> list.map(encode_midgard_tx_output),
+      )
+      Some(
+        if source_kind == 1 {
+          forced_fixture.from_native_opening(opening)
+        } else {
+          opening
         },
-      ),
-    ),
-  )
-}
-
-/// The forced source key must not leak into the accepted-invalid routes.
-test network_id_step_02_rejects_a_forced_source_key_on_a_transaction_claim() fail {
-  let block = fixture.native_block_fixture_v1(with_tx_network_id(1))
+      )
+    }
+  }
   let state = State {
-    ..state_for(block, TransactionNetwork),
+    ..state_for(block, fault),
     forced_source_key: Some(forced_source_key_bytes),
   }
   main.spend(
@@ -1087,11 +508,66 @@ test network_id_step_02_rejects_a_forced_source_key_on_a_transaction_claim() fai
         input_index: 0,
         output_index: 0,
         fraud_proof_mint_redeemer_index: 0,
-        outputs_opening: None,
-        predecessor_carriage: None,
+        outputs_opening,
       },
     ),
     fixture.own_out_ref(),
     fixture.finalize_step_l1_tx_v1(fixture.ct_token_asset_name(block)),
+  )
+}
+
+test network_id_step_02_convicts_an_accepted_forced_transaction_network() {
+  let block = fixture.native_block_fixture_v1(with_tx_network_id(1))
+  run_accepted_forced_finalize(block, TransactionNetwork, None, 1)
+}
+
+test network_id_step_02_refuses_an_honest_accepted_forced_transaction_network() fail {
+  let block = fixture.native_block_fixture_v1(with_tx_network_id(0))
+  run_accepted_forced_finalize(block, TransactionNetwork, None, 1)
+}
+
+test network_id_step_02_refuses_an_absent_accepted_forced_transaction_network() fail {
+  let block = fixture.native_block_fixture_v1(with_tx_network_id(255))
+  run_accepted_forced_finalize(block, TransactionNetwork, None, 1)
+}
+
+test network_id_step_02_convicts_an_accepted_forced_wrong_output_network() {
+  let base = fixture.valid_native_tx_v1()
+  expect [output] = base.body.outputs
+  let bad_outputs = [output_at_network(output, 1)]
+  let block = fixture.native_block_fixture_v1(with_outputs(bad_outputs))
+  run_accepted_forced_finalize(
+    block,
+    OutputNetwork { output_index: 0 },
+    Some(bad_outputs),
+    1,
+  )
+}
+
+test network_id_step_02_refuses_an_honest_accepted_forced_output_network() fail {
+  let base = fixture.valid_native_tx_v1()
+  expect [output] = base.body.outputs
+  let outputs = [output]
+  let block = fixture.native_block_fixture_v1(with_outputs(outputs))
+  run_accepted_forced_finalize(
+    block,
+    OutputNetwork { output_index: 0 },
+    Some(outputs),
+    1,
+  )
+}
+
+/// A forced root key fixes the forced source: the transactions-root encoding
+/// of the same body does not open its outputs.
+test network_id_step_02_rejects_a_normal_opening_for_a_forced_output_claim() fail {
+  let base = fixture.valid_native_tx_v1()
+  expect [output] = base.body.outputs
+  let bad_outputs = [output_at_network(output, 1)]
+  let block = fixture.native_block_fixture_v1(with_outputs(bad_outputs))
+  run_accepted_forced_finalize(
+    block,
+    OutputNetwork { output_index: 0 },
+    Some(bad_outputs),
+    0,
   )
 }

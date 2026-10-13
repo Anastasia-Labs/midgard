@@ -1,9 +1,7 @@
 import {
   decodeMidgardAddressWitnessFieldPreimage,
   decodeMidgardFieldPreimage,
-  decodeMidgardLedgerOutputCommitment,
   decodeMidgardNativeByteListPreimage,
-  decodeMidgardSpendInputItem,
   decodeMidgardVersionedScript,
   MIDGARD_POSIX_TIME_NONE,
   verifyMidgardNativeScript,
@@ -11,7 +9,6 @@ import {
 import {
   committedWithdrawalKeyBytes,
   decodeAddressWitnessPreimage,
-  EMPTY_MERKLE_TREE_ROOT,
   INPUT_NO_IDX_VIOLATION_ID,
   INVALID_SIGNATURE_VIOLATION_ID,
   isWithdrawnInputViolation,
@@ -22,7 +19,6 @@ import {
   WITHDRAWN_INPUT_VIOLATION_ID,
 } from "@al-ft/midgard-sdk";
 import {
-  buildCanonicalMidgardLedgerOutputMaterial,
   MIDGARD_COINS_PER_UTXO_BYTE,
   outputMeetsMinAda,
 } from "@al-ft/midgard-validation";
@@ -33,24 +29,11 @@ import {
   INPUT_SET_UNIQUENESS_VIOLATION_ID,
   scanInputSetUniqueness,
 } from "../input-set-uniqueness/scan.js";
+import { minAdaOutputFacts } from "../min-ada/scan.js";
 import { decodeTransactionMaterial } from "../prepare-double-spend.js";
 import { detectInputNoIdxViolationsFromTransactions } from "../prepare-input-no-idx.js";
 import { type CanonicalViolationDetection } from "./classification.js";
-import {
-  POST_LEDGER_CONTEXT_UNAVAILABLE_VIOLATION_ID,
-  PREDECESSOR_CONTEXT_UNAVAILABLE_VIOLATION_ID,
-} from "./complete-replay.admit-complete-canonical-replay-predecessor.js";
-import {
-  type CompleteCanonicalReplayContext,
-  requireReplayPostLedger,
-  requireReplayPredecessorLedger,
-} from "./complete-replay.replay-context-identity.js";
-import {
-  acceptedTransactionSubject,
-  BLOCK_SUBJECT,
-  introducedOutputSubject,
-  subjectOf,
-} from "./detection-subject.js";
+import { acceptedTransactionSubject, subjectOf } from "./detection-subject.js";
 
 /** Complete positional scan of every committed address witness. */
 export const detectInvalidSignatures = async (
@@ -129,33 +112,25 @@ export const detectNativeScriptInvalid = async (
   });
 };
 
-const descriptorIsBelowMinAda = (descriptorCbor: Uint8Array): boolean => {
-  const descriptor = decodeMidgardLedgerOutputCommitment(descriptorCbor);
-  return !outputMeetsMinAda(
-    MIDGARD_COINS_PER_UTXO_BYTE,
-    BigInt(descriptor.totalLength),
-    descriptor.lovelace,
-  );
-};
-
-/** Complete MIN-ADA-TX and introducing-transition MIN-ADA-UTXO scan. */
+/** Complete MIN-ADA-TX scan of every accepted transaction output. */
 export const detectMinAda = async (
   evidence: CanonicalBlockEvidence,
-  context: CompleteCanonicalReplayContext | undefined,
 ): Promise<readonly CanonicalViolationDetection[]> => {
   const transactions = await Promise.all(
     evidence.transactions.map(decodeTransactionMaterial),
   );
-  const txDetections = transactions.flatMap((transaction, transactionIndex) => {
+  return transactions.flatMap((transaction, transactionIndex) => {
     if (transaction.nativeTxCompact.validity_code !== 0n) return [];
     return decodeMidgardFieldPreimage(
       transaction.nativeTx.body.outputsPreimageCbor,
     ).flatMap((output, outputIndex) => {
-      const descriptor = buildCanonicalMidgardLedgerOutputMaterial({
-        outputIndex,
-        outputCbor: output,
-      }).descriptorCbor;
-      return descriptorIsBelowMinAda(descriptor)
+      const facts = minAdaOutputFacts(output);
+      return facts !== null &&
+        !outputMeetsMinAda(
+          MIDGARD_COINS_PER_UTXO_BYTE,
+          BigInt(facts.totalLength),
+          facts.lovelace,
+        )
         ? [
             {
               ...acceptedTransactionSubject(transaction.nodeTxId),
@@ -169,71 +144,6 @@ export const detectMinAda = async (
         : [];
     });
   });
-  const predecessor = requireReplayPredecessorLedger({
-    evidence,
-    context,
-  });
-  if (
-    predecessor === undefined &&
-    evidence.header.prevUtxosRoot !== EMPTY_MERKLE_TREE_ROOT
-  ) {
-    return [
-      ...txDetections,
-      {
-        ...BLOCK_SUBJECT,
-        detectionId: `${PREDECESSOR_CONTEXT_UNAVAILABLE_VIOLATION_ID}:min-ada-utxo:${evidence.headerHash}`,
-        headerHash: evidence.headerHash,
-        violationId: PREDECESSOR_CONTEXT_UNAVAILABLE_VIOLATION_ID,
-        position: BigInt(transactions.length),
-        diagnostic:
-          "MIN-ADA-UTXO classification requires the exact authenticated predecessor ledger",
-      },
-    ];
-  }
-  const post = requireReplayPostLedger({ evidence, context });
-  // A mismatching ledger cannot prove a UTxO against this header.
-  // transitionTrace owns adjudication of the committed root.
-  if (post.kind === "root-mismatch") return txDetections;
-  if (post.kind === "unavailable") {
-    return [
-      ...txDetections,
-      {
-        ...BLOCK_SUBJECT,
-        detectionId: `${POST_LEDGER_CONTEXT_UNAVAILABLE_VIOLATION_ID}:min-ada-utxo:${evidence.headerHash}`,
-        headerHash: evidence.headerHash,
-        violationId: POST_LEDGER_CONTEXT_UNAVAILABLE_VIOLATION_ID,
-        position: BigInt(transactions.length),
-        diagnostic:
-          "MIN-ADA-UTXO classification requires the authenticated ledger after the challenged block",
-      },
-    ];
-  }
-  const predecessorKeys: ReadonlySet<string> = new Set(
-    predecessor?.outputs.keys() ?? [],
-  );
-  // The trie leaves are the committed descriptors, ascending by out-ref key.
-  const utxoDetections = post.ledger.trie.entries.flatMap(
-    ({ key, value: descriptor }, index) => {
-      if (predecessorKeys.has(Buffer.from(key).toString("hex"))) return [];
-      if (!descriptorIsBelowMinAda(descriptor)) return [];
-      const outRef = decodeMidgardSpendInputItem(key);
-      const transactionId = Buffer.from(outRef.txId).toString("hex");
-      return [
-        {
-          ...introducedOutputSubject(evidence.reconstruction, {
-            transactionId,
-            outputIndex: BigInt(outRef.outputIndex),
-          }),
-          detectionId: `${MIN_ADA_VIOLATION_ID}:utxo:${transactionId}:${outRef.outputIndex.toString()}`,
-          headerHash: evidence.headerHash,
-          violationId: MIN_ADA_VIOLATION_ID,
-          position: BigInt(transactions.length + index),
-          diagnostic: `post-state UTxO ${transactionId}#${outRef.outputIndex.toString()} was introduced below the exact min-Ada floor`,
-        },
-      ];
-    },
-  );
-  return [...txDetections, ...utxoDetections];
 };
 
 export const detectInputNoIdxViolations = async (

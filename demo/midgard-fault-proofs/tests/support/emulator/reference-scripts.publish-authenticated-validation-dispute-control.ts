@@ -199,12 +199,9 @@ export type MinAdaYieldReferenceScripts = Readonly<{
   tx: ReferenceScriptPublication & {
     readonly publicationMeasurement: CompleteSignedTransactionMeasurement;
   };
-  utxo: ReferenceScriptPublication & {
-    readonly publicationMeasurement: CompleteSignedTransactionMeasurement;
-  };
 }>;
 
-/** Publishes the two authenticated rewarding validators delegated to by min-Ada step 02. */
+/** Publishes the authenticated rewarding validator delegated to by min-Ada step 02. */
 export const publishMinAdaYieldReferenceScripts = async ({
   lucid,
   contracts,
@@ -218,12 +215,6 @@ export const publishMinAdaYieldReferenceScripts = async ({
       control: "min-ada step-02 tx yield",
       name: "V1 fraud-proof min-ada step-02 tx yield" as const,
       script: contracts.fraudProofContracts.minAda.yields.tx.withdrawalScript,
-    },
-    {
-      key: "utxo" as const,
-      control: "min-ada step-02 UTxO yield",
-      name: "V1 fraud-proof min-ada step-02 UTxO yield" as const,
-      script: contracts.fraudProofContracts.minAda.yields.utxo.withdrawalScript,
     },
   ];
   const publications = {} as Record<

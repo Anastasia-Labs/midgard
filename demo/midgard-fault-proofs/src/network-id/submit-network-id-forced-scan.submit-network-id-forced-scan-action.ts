@@ -186,7 +186,6 @@ export const submitNetworkIdForcedScanAction = async ({
           committed_tx_network_id: prepared.evidence.committedNetworkId,
           expected_network_id: prepared.expectedNetworkId,
           fault: "ForcedNetworkIdMismatch",
-          post_utxo: null,
           forced_source_key: prepared.subject.source_key,
         }
       : null;

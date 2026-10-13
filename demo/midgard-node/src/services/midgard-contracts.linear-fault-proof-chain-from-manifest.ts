@@ -203,11 +203,6 @@ export const linearFaultProofChainFromManifest = <
           sourcePath,
           "fraudProofMinAdaStep02TxWithdraw",
         ),
-        utxo: withdrawalValidatorFromManifest(
-          manifest,
-          sourcePath,
-          "fraudProofMinAdaStep02UtxoWithdraw",
-        ),
       },
     } as unknown as SDK.FaultProofContractChains[Category];
   }

@@ -1,10 +1,8 @@
 import { type NetworkIdStep02State } from "@al-ft/midgard-sdk";
 import { type UTxO } from "@lucid-evolution/lucid";
 
-import type {
-  PreparedNetworkIdPostUtxoProof,
-  PreparedNetworkIdProof,
-} from "./prepare.js";
+import type { PreparedNetworkIdAcceptedForced } from "./accepted-forced.js";
+import type { PreparedNetworkIdProof } from "./prepare.js";
 import { networkIdStepLabel } from "./submit-common.js";
 import { type PreparedNetworkIdWrongfulRejection } from "./wrongful-rejection.js";
 
@@ -12,13 +10,8 @@ export const STEP_LABEL = networkIdStepLabel(1);
 
 export type PreparedNetworkIdFinalProof =
   | PreparedNetworkIdProof
-  | PreparedNetworkIdPostUtxoProof
-  | PreparedNetworkIdWrongfulRejection;
-
-export const isPostUtxoPrepared = (
-  prepared: PreparedNetworkIdFinalProof,
-): prepared is PreparedNetworkIdPostUtxoProof =>
-  prepared.faultClaim.kind === "post-utxo-network";
+  | PreparedNetworkIdWrongfulRejection
+  | PreparedNetworkIdAcceptedForced;
 
 export const isForcedPrepared = (
   prepared: PreparedNetworkIdFinalProof,
@@ -47,17 +40,7 @@ export const sameFault = (
   ) {
     return left === right;
   }
-  if ("OutputNetwork" in left || "OutputNetwork" in right) {
-    return (
-      "OutputNetwork" in left &&
-      "OutputNetwork" in right &&
-      left.OutputNetwork.output_index === right.OutputNetwork.output_index
-    );
-  }
-  return (
-    left.OutputNetworkUtxo.observed_network_id ===
-    right.OutputNetworkUtxo.observed_network_id
-  );
+  return left.OutputNetwork.output_index === right.OutputNetwork.output_index;
 };
 
 export type SubmitNetworkIdStep02Result = {

@@ -14,7 +14,6 @@ import {
   NetworkIdForcedScanStateSchema,
   NetworkIdForcedStepDatumSchema,
   NetworkIdForcedStepSpendRedeemerSchema,
-  NetworkIdStep01SpendRedeemerSchema,
   NetworkIdStep02DatumSchema,
   NetworkIdStep02SpendRedeemerSchema,
   NetworkIdStep02StateSchema,
@@ -36,45 +35,8 @@ describe("Q35 network-id wire codec", () => {
       ),
     ).toBe("d87a9f0bff");
     expect(
-      Data.to(
-        { OutputNetworkUtxo: { observed_network_id: 7n } } as never,
-        NetworkIdFaultSchema,
-      ),
-    ).toBe("d87b9f07ff");
-  });
-
-  it("round-trips direct post-UTxO descriptor membership evidence", () => {
-    const redeemer = {
-      Continue: [
-        {
-          tx_inclusion: null,
-          post_utxo_membership: {
-            input_index: 0n,
-            output_index: 0n,
-            hub_ref_input_index: 0n,
-            state_queue_node_ref_input_index: 1n,
-            out_ref: { transactionId: h32, outputIndex: 11n },
-            descriptor_cbor: "80",
-            membership: {
-              RedeemerCarriedMembership: {
-                membership_proof: [],
-                membership_proof_script_redeemer_index: 0n,
-              },
-            },
-            predecessor: "Introduced",
-          },
-          forced_source: null,
-          fault: { OutputNetworkUtxo: { observed_network_id: 7n } },
-        },
-      ],
-    } as const;
-    const encoded = Data.to(
-      redeemer as never,
-      NetworkIdStep01SpendRedeemerSchema,
-    );
-    expect(Data.from(encoded, NetworkIdStep01SpendRedeemerSchema)).toEqual(
-      redeemer,
-    );
+      Data.to("ForcedNetworkIdMismatch" as never, NetworkIdFaultSchema),
+    ).toBe("d87b80");
   });
 
   it("round-trips the authenticated step-02 state", () => {
@@ -85,7 +47,6 @@ describe("Q35 network-id wire codec", () => {
         committed_tx_network_id: 1n,
         expected_network_id: 0n,
         fault: { OutputNetwork: { output_index: 11n } },
-        post_utxo: null,
         forced_source_key: null,
       },
     } as const;
@@ -106,7 +67,6 @@ describe("Q35 network-id wire codec", () => {
               carriage: { Inline: { preimage: "81" } },
             },
           },
-          predecessor_carriage: null,
         },
       ],
     } as const;
@@ -144,10 +104,10 @@ const FORCED_STEP_REDEEMER_CBOR =
   "d87a9fd8799f0000d8799f582055555555555555555555555555555555555555555555555555555555555555555820666666666666666666666666666666666666666666666666666666666666666658200000000000000000000000000000000000000000000000000000000000000000582033333333333333333333333333333333333333333333333333333333333333335820000000000000000000000000000000000000000000000000000000000000000058200000000000000000000000000000000000000000000000000000000000000000582000000000000000000000000000000000000000000000000000000000000000005820000000000000000000000000000000000000000000000000000000000000000058200000000000000000000000000000000000000000000000000000000000000000000100000101000a1400000000581c99999999999999999999999999999999999999999999999999999999581c9999999999999999999999999999999999999999999999999999999901ffd8799fd87a80582033333333333333333333333333333333333333333333333333333333333333335820444444444444444444444444444444444444444444444444444444444444444401d8799f5820777777777777777777777777777777777777777777777777777777777777777700ffd8799f58202222222222222222222222222222222222222222222222222222222222222222d8799f418041814182ffd87a9fd87e80ffff80ff01ffff";
 
 const FORCED_STEP_02_STATE_CBOR =
-  "d8799f5820222222222222222222222222222222222222222222222222222222222222222218ff00d87c80d87a80d8799f5827d8799f5820777777777777777777777777777777777777777777777777777777777777777700ffffff";
+  "d8799f5820222222222222222222222222222222222222222222222222222222222222222218ff00d87b80d8799f5827d8799f5820777777777777777777777777777777777777777777777777777777777777777700ffffff";
 
 const FORCED_STEP_02_DATUM_CBOR =
-  "d8799f581c11111111111111111111111111111111111111111111111111111111d8799fd8799f5820222222222222222222222222222222222222222222222222222222222222222218ff00d87c80d87a80d8799f5827d8799f5820777777777777777777777777777777777777777777777777777777777777777700ffffffffff";
+  "d8799f581c11111111111111111111111111111111111111111111111111111111d8799fd8799f5820222222222222222222222222222222222222222222222222222222222222222218ff00d87b80d8799f5827d8799f5820777777777777777777777777777777777777777777777777777777777777777700ffffffffff";
 
 /**
  * ## Forced-door wire twins
@@ -202,7 +162,6 @@ describe("Q35 network-id forced-door wire twins", () => {
     committed_tx_network_id: 255n,
     expected_network_id: 0n,
     fault: "ForcedNetworkIdMismatch",
-    post_utxo: null,
     forced_source_key: forcedSourceKey,
   } as const;
 
@@ -212,7 +171,7 @@ describe("Q35 network-id forced-door wire twins", () => {
         { fraud_prover: fraudProver, data: "ForcedNetworkIdMismatch" } as never,
         NetworkIdForcedStepDatumSchema,
       ),
-    ).toBe(`d8799f581c${fraudProver}d8799fd87c80ffff`);
+    ).toBe(`d8799f581c${fraudProver}d8799fd87b80ffff`);
   });
 
   it("pins the empty forced handoff datum the door refuses", () => {

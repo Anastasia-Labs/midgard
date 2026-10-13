@@ -28,7 +28,10 @@ export const CATEGORY = "networkId";
  * exactly the accepted shape it always was; the forced direction is additive
  * and the schema version is unchanged.
  */
-export type NetworkIdWorkflowDirection = "accepted" | "forced";
+export type NetworkIdWorkflowDirection =
+  | "accepted"
+  | "accepted_forced"
+  | "forced";
 
 type NetworkIdWorkflowArtifact = {
   readonly schemaVersion: typeof ARTIFACT_VERSION;

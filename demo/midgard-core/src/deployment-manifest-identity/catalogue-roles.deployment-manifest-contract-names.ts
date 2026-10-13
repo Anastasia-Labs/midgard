@@ -413,11 +413,9 @@ export const DEPLOYMENT_MANIFEST_CONTRACT_NAMES = Object.freeze([
   "fraudProofTransitionTraceForcedTimingWithdraw",
   "fraudProofTransitionTraceDepositSummariesWithdraw",
 
-  "fraudProofMinAdaStep02UtxoWithdraw",
   "correctionLockSpend",
   "fraudProofMinAdaStep03",
   "fraudProofMinAdaStep04",
-  "fraudProofMinAdaStep05",
   "fraudProofFieldPreimageLengthMismatch",
   "fraudProofFieldPreimageLengthMismatchStep02Accepted",
   "fraudProofFieldPreimageLengthMismatchStep02Forced",

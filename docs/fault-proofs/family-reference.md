@@ -95,19 +95,22 @@ is challengeable.
 
 ## Minimum-Ada fault
 
-The registered `minAda` family uses five spending scripts and authenticated
-step-02 transaction/UTxO withdrawals. It proves accepted transaction output
-underfunding, newly introduced post-state UTxO underfunding, and wrongful forced
-`OutputBelowMinAda` rejection for the exact authenticated output index.
+The registered `minAda` family uses four spending scripts and an authenticated
+step-02 transaction withdrawal. It proves output underfunding on an accepted
+transaction, whether a normal `TxIsValid` transaction or a `ForcedTxValid`
+forced leaf, and wrongful forced `OutputBelowMinAda` rejection, for the exact
+authenticated output index. Every output that enters the ledger comes from one
+of those accepted transactions (deposits are projected faithfully and policed by
+`transitionTrace`), so there is no separate post-state UTxO route.
 
-Step 01 binds accepted, forced, or post-UTxO evidence. The transaction withdrawal
+Step 01 binds accepted transaction evidence or a forced leaf under either
+verdict, with the direction fixed by that verdict. The transaction withdrawal
 certifies output-field grammar and advances an authenticated indexed walk in
 bounded batches. Step 03 scans the selected canonical output in bounded batches,
 then applies the compiled minimum-Ada formula to its exact byte length and
 lovelace. Accepted evidence requires underfunding; wrongful rejection requires
-sufficiency, including the exact floor. The post-UTxO route authenticates the
-committed descriptor, applies the same predicate, and proves predecessor
-non-membership. Step 05 mints permanent evidence for registered-chain removal.
+sufficiency, including the exact floor. Step 04 mints permanent evidence for
+registered-chain removal.
 
 Source artifacts preserve submitted full transaction bytes and authenticate the
 invalid adjudication committed by a forced leaf. Installed complete replay and

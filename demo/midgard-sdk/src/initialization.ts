@@ -400,13 +400,6 @@ export const incompleteInitializationTxProgram = (
           midgardValidators.fraudProofContracts.minAda.yields.tx
             .withdrawalScript,
         ),
-      )
-      .register.Stake(
-        scriptRewardAddress(
-          network,
-          midgardValidators.fraudProofContracts.minAda.yields.utxo
-            .withdrawalScript,
-        ),
       );
 
     for (const validator of Object.values(

@@ -101,7 +101,7 @@ export type TransactionOutputEvidence = TransactionOutputFinding & {
   readonly decisiveFaultHolds: boolean;
 };
 
-const deriveScan = (
+export const deriveTransactionOutputScan = (
   item: Buffer,
 ): {
   readonly canonical: boolean;
@@ -165,7 +165,7 @@ export const prepareTransactionOutputEvidence = ({
   if (item === undefined) fail("output coordinate is outside field 2");
   if (item.length > TRANSACTION_OUTPUT_NON_CANONICAL_MAX_OUTPUT_BYTES)
     fail("output item belongs to fieldItemWidthIllegal");
-  const scan = deriveScan(item);
+  const scan = deriveTransactionOutputScan(item);
   const terminal = scan.controls.at(-1)!;
   const datumPlan =
     scan.canonical && terminal.datumOffset >= 0

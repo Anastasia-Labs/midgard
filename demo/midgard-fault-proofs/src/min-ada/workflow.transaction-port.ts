@@ -5,11 +5,6 @@ import type { StateQueueMutationLeaseCoordinator } from "../remove-fraudulent-bl
 import { type ResolvedProverSigner } from "../runtime.js";
 import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts.js";
 import {
-  type CompleteCanonicalReplayContext,
-  completeCanonicalReplayPostLedger,
-  completeCanonicalReplayPredecessorLedger,
-} from "../workflow/complete-replay.js";
-import {
   CURSOR_FAMILY_TRANSACTION_PORT,
   type CursorFamilyTransactionPort,
 } from "../workflow/cursor-family-adapter.js";
@@ -29,22 +24,14 @@ import {
 import type { FraudProofReleaseFinalityAuthority } from "../workflow/release-finality-policy.js";
 import { captureLocallyEvaluatedTransaction } from "../workflow/transaction-boundary.js";
 import { submitMinAdaInit } from "./submit-init.js";
-import {
-  submitMinAdaTxStep01,
-  submitMinAdaUtxoStep01,
-} from "./submit-step-01.js";
+import { submitMinAdaTxStep01 } from "./submit-step-01.js";
 import { submitMinAdaStep01Forced } from "./submit-step-01-forced.js";
-import {
-  submitMinAdaTxStep02,
-  submitMinAdaUtxoStep02,
-} from "./submit-step-02.js";
-import { submitMinAdaUtxoStep03 } from "./submit-step-03.js";
-import { submitMinAdaUtxoStep04 } from "./submit-step-04.js";
-import { submitMinAdaStep05 } from "./submit-step-05.js";
+import { submitMinAdaTxStep02 } from "./submit-step-02.js";
+import { submitMinAdaStep03 } from "./submit-step-03.js";
+import { submitMinAdaStep04 } from "./submit-step-04.js";
 import {
   type BoundConfig,
   isForced,
-  isTx,
   type MinAdaWorkflowReferenceScripts,
   resolveField,
 } from "./workflow.resolve-field.js";
@@ -59,18 +46,7 @@ export const transactionPort = (
   portVersion: CURSOR_FAMILY_TRANSACTION_PORT,
   category: "minAda",
   prepare: async ({ evidence, classification }) =>
-    await prepareMinAdaArtifact({
-      evidence,
-      predecessor: completeCanonicalReplayPredecessorLedger({
-        evidence,
-        context: config.replayContext,
-      }),
-      post: completeCanonicalReplayPostLedger({
-        evidence,
-        context: config.replayContext,
-      }),
-      classification,
-    }),
+    await prepareMinAdaArtifact({ evidence, classification }),
   capture: async ({ action, artifact }) => {
     const admitted = await admitMinAdaArtifact(artifact);
     if (admitted.artifact.headerHash !== config.binding.definition.headerHash) {
@@ -106,14 +82,13 @@ export const transactionPort = (
       });
     }
     if (input.stage === "step_01") {
-      const chunks =
-        isTx(admitted) && !isForced(admitted)
-          ? await resolvePublishedProofChunks({
-              lucid: config.lucid,
-              address: config.signer.address,
-              proofCbor: admitted.prepared.txInclusion.txMembershipProofCbor,
-            })
-          : [];
+      const chunks = !isForced(admitted)
+        ? await resolvePublishedProofChunks({
+            lucid: config.lucid,
+            address: config.signer.address,
+            proofCbor: admitted.prepared.txInclusion.txMembershipProofCbor,
+          })
+        : [];
       if (chunks === undefined) {
         throw new Error("min-ada transaction proof disappeared");
       }
@@ -142,7 +117,7 @@ export const transactionPort = (
                 state: admitted.prepared.state,
                 forcedSource: admitted.forcedSource,
               });
-            } else if (isTx(admitted)) {
+            } else {
               await submitMinAdaTxStep01({
                 ...shared,
                 blueprint: config.binding.blueprint,
@@ -150,66 +125,29 @@ export const transactionPort = (
                 publishedProofChunks: chunks,
                 witnessReferenceScripts: config.references.witnesses,
               });
-            } else {
-              await submitMinAdaUtxoStep01({
-                ...shared,
-                prepared: admitted.prepared,
-              });
             }
           },
         ),
       });
     }
     if (input.stage === "step_02") {
-      if (isTx(admitted)) {
-        const carriage = await resolveField({ config, admitted });
-        return Object.freeze({
-          transaction: await captureLocallyEvaluatedTransaction(
-            async (preSubmitBoundary) => {
-              await submitMinAdaTxStep02({
-                lucid: config.lucid,
-                contracts: config.contracts,
-                categoryId,
-                signer: config.signer,
-                threadOutRef: threadOutRef(),
-                prepared: admitted.prepared,
-                publishedCarriageUtxos: carriage.publications,
-                ...(carriage.certificate === undefined
-                  ? {}
-                  : { certificateUtxo: carriage.certificate }),
-                referenceScriptUtxo: config.references.steps[1],
-                yieldReferenceScriptUtxo: config.references.yields.tx,
-                preSubmitBoundary,
-                awaitConfirmation: false,
-              });
-            },
-          ),
-        });
-      }
-      const chunks = await resolvePublishedProofChunks({
-        lucid: config.lucid,
-        address: config.signer.address,
-        proofCbor: admitted.prepared.postMembershipProofCbor,
-      });
-      if (chunks === undefined) {
-        throw new Error("min-ada post-membership proof disappeared");
-      }
+      const carriage = await resolveField({ config, admitted });
       return Object.freeze({
         transaction: await captureLocallyEvaluatedTransaction(
           async (preSubmitBoundary) => {
-            await submitMinAdaUtxoStep02({
+            await submitMinAdaTxStep02({
               lucid: config.lucid,
-              blueprint: config.binding.blueprint,
-              network: config.binding.network,
               contracts: config.contracts,
               categoryId,
               signer: config.signer,
               threadOutRef: threadOutRef(),
               prepared: admitted.prepared,
-              publishedProofChunks: chunks,
+              publishedCarriageUtxos: carriage.publications,
+              ...(carriage.certificate === undefined
+                ? {}
+                : { certificateUtxo: carriage.certificate }),
               referenceScriptUtxo: config.references.steps[1],
-              yieldReferenceScriptUtxo: config.references.yields.utxo,
-              witnessReferenceScripts: config.references.witnesses,
+              yieldReferenceScriptUtxo: config.references.yields.tx,
               preSubmitBoundary,
               awaitConfirmation: false,
             });
@@ -221,18 +159,13 @@ export const transactionPort = (
       return Object.freeze({
         transaction: await captureLocallyEvaluatedTransaction(
           async (preSubmitBoundary) => {
-            await submitMinAdaUtxoStep03({
+            await submitMinAdaStep03({
               lucid: config.lucid,
               contracts: config.contracts,
               categoryId,
               signer: config.signer,
               threadOutRef: threadOutRef(),
-              ...(isTx(admitted)
-                ? { outputItemCbors: admitted.prepared.outputItemCbors }
-                : {}),
-              coinsPerUtxoByte: BigInt(
-                config.binding.cardanoProtocolParameters.coinsPerUtxoByte,
-              ),
+              outputItemCbors: admitted.prepared.outputItemCbors,
               referenceScriptUtxo: config.references.steps[2],
               preSubmitBoundary,
               awaitConfirmation: false,
@@ -241,49 +174,17 @@ export const transactionPort = (
         ),
       });
     }
-    if (input.stage === "step_04" && !isTx(admitted)) {
-      const chunks = await resolvePublishedProofChunks({
-        lucid: config.lucid,
-        address: config.signer.address,
-        proofCbor: admitted.prepared.predecessorNonMembershipProofCbor,
-      });
-      if (chunks === undefined) {
-        throw new Error("min-ada predecessor proof disappeared");
-      }
+    if (input.stage === "step_04") {
       return Object.freeze({
         transaction: await captureLocallyEvaluatedTransaction(
           async (preSubmitBoundary) => {
-            await submitMinAdaUtxoStep04({
+            await submitMinAdaStep04({
               lucid: config.lucid,
-              blueprint: config.binding.blueprint,
-              network: config.binding.network,
               contracts: config.contracts,
               categoryId,
               signer: config.signer,
               threadOutRef: threadOutRef(),
-              predecessorNonMembershipProofCbor:
-                admitted.prepared.predecessorNonMembershipProofCbor,
-              publishedProofChunks: chunks,
               referenceScriptUtxo: config.references.steps[3],
-              witnessReferenceScripts: config.references.witnesses,
-              preSubmitBoundary,
-              awaitConfirmation: false,
-            });
-          },
-        ),
-      });
-    }
-    if (input.stage === "step_05") {
-      return Object.freeze({
-        transaction: await captureLocallyEvaluatedTransaction(
-          async (preSubmitBoundary) => {
-            await submitMinAdaStep05({
-              lucid: config.lucid,
-              contracts: config.contracts,
-              categoryId,
-              signer: config.signer,
-              threadOutRef: threadOutRef(),
-              referenceScriptUtxo: config.references.steps[4],
               witnessReferenceScripts: config.references.witnesses,
               preSubmitBoundary,
               awaitConfirmation: false,
@@ -324,8 +225,6 @@ export type ManifestBoundMinAdaWorkflowConfig = Readonly<{
   signer: ResolvedProverSigner;
   referenceScripts: MinAdaWorkflowReferenceScripts;
   l1Source: FraudProofL1Source;
-  /** The classifier-admitted context carrying the authenticated predecessor. */
-  replayContext?: CompleteCanonicalReplayContext;
   stateQueueMutationLeaseCoordinator: StateQueueMutationLeaseCoordinator;
 }>;
 
@@ -336,20 +235,13 @@ export type ManifestBoundMinAdaWorkflow = Readonly<{
   adapter: FraudProofFamilyWorkflowAdapter;
   terminalVerifier: FraudProofWorkflowTerminalVerifier;
   releaseFinalityAuthority: FraudProofReleaseFinalityAuthority;
-  replayContext?: CompleteCanonicalReplayContext;
 }>;
-
-export type MinAdaRuntime = Pick<
-  ManifestBoundMinAdaWorkflowConfig,
-  "replayContext"
->;
 
 export type AssemblyContext = FamilyAssemblyContext<
   "minAda",
   keyof FaultProofWitnessReferenceScripts,
   true,
-  5,
-  MinAdaRuntime
+  4
 >;
 
 export const boundConfigs = new WeakMap<AssemblyContext, BoundConfig>();

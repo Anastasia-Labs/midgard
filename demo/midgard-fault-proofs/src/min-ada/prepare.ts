@@ -1,26 +1,15 @@
-/** Authenticated retained-DA preparation for Q27 MIN-ADA-TX/UTXO. */
+/** Authenticated retained-DA preparation for Q27 MIN-ADA-TX. */
+import { decodeMidgardFieldPreimage } from "@al-ft/midgard-core";
+import { type MinAdaFault } from "@al-ft/midgard-sdk";
 import {
-  decodeMidgardFieldPreimage,
-  decodeMidgardLedgerOutputCommitment,
-  decodeMidgardSpendInputItem,
-} from "@al-ft/midgard-core";
-import {
-  type MinAdaFault,
-  type OutputReference,
-  Proof,
-} from "@al-ft/midgard-sdk";
-import {
-  buildCanonicalMidgardLedgerOutputMaterial,
   MIDGARD_COINS_PER_UTXO_BYTE,
   outputMeetsMinAda,
 } from "@al-ft/midgard-validation";
-import { Data } from "@lucid-evolution/lucid";
 
 import {
   admitCanonicalEvidenceForProofBuild,
   type CanonicalEvidenceBuilderInput,
 } from "../evidence/prepare-from-evidence.js";
-import { type CheckedLedger, requireLedgerOpening } from "../ledger-at.js";
 import {
   buildTrieView,
   decodeTransactionMaterial,
@@ -29,11 +18,7 @@ import {
   requireTransactionsRootMatch,
   transactionSourceTrieItem,
 } from "../prepare-double-spend.js";
-import {
-  keyValuePhasNonMembershipProof,
-  keyValuePhasProof,
-} from "../transition-trace/phas.js";
-import { requireReplayPredecessorLedger } from "../workflow/replay-predecessor-ledger.js";
+import { minAdaOutputFacts } from "./scan.js";
 
 export type PreparedMinAdaTx = {
   readonly kind: "min-ada-tx";
@@ -43,35 +28,8 @@ export type PreparedMinAdaTx = {
   readonly nativeTxCanonicalCbor: string;
   readonly nativeTxCompactCbor: string;
   readonly outputItemCbors: readonly string[];
-  readonly descriptorCbor: string;
   readonly txInclusion: PreparedTxInclusionJson;
   readonly fault: MinAdaFault;
-};
-
-export type PreparedMinAdaUtxo = {
-  readonly kind: "min-ada-utxo";
-  readonly headerHash: string;
-  readonly outRef: OutputReference;
-  readonly outRefKeyCbor: string;
-  readonly descriptorCbor: string;
-  readonly postUtxosRoot: string;
-  readonly prevUtxosRoot: string;
-  readonly postMembershipProof: Proof;
-  readonly postMembershipProofCbor: string;
-  readonly predecessorNonMembershipProof: Proof;
-  readonly predecessorNonMembershipProofCbor: string;
-  readonly fault: MinAdaFault;
-};
-
-export type PreparedMinAda = PreparedMinAdaTx | PreparedMinAdaUtxo;
-
-const descriptorViolatesMinAda = (descriptorCbor: Uint8Array): boolean => {
-  const descriptor = decodeMidgardLedgerOutputCommitment(descriptorCbor);
-  return !outputMeetsMinAda(
-    MIDGARD_COINS_PER_UTXO_BYTE,
-    BigInt(descriptor.totalLength),
-    descriptor.lovelace,
-  );
 };
 
 export const prepareMinAdaTxFromCanonicalEvidence = async ({
@@ -110,12 +68,14 @@ export const prepareMinAdaTxFromCanonicalEvidence = async ({
       ) {
         return [];
       }
-      const material = buildCanonicalMidgardLedgerOutputMaterial({
-        outputIndex,
-        outputCbor,
-      });
-      return descriptorViolatesMinAda(material.descriptorCbor)
-        ? [{ tx, outputs, outputIndex, material }]
+      const facts = minAdaOutputFacts(outputCbor);
+      return facts !== null &&
+        !outputMeetsMinAda(
+          MIDGARD_COINS_PER_UTXO_BYTE,
+          BigInt(facts.totalLength),
+          facts.lovelace,
+        )
+        ? [{ tx, outputs, outputIndex }]
         : [];
     });
   })[0];
@@ -130,9 +90,7 @@ export const prepareMinAdaTxFromCanonicalEvidence = async ({
     expectedTransactionsRoot: admitted.expectedTransactionsRoot,
     count: BigInt(decoded.length),
   });
-  const fault = {
-    MinAdaTx: { output_index: BigInt(selected.outputIndex) },
-  } as MinAdaFault;
+  const fault: MinAdaFault = { output_index: BigInt(selected.outputIndex) };
   return {
     kind: "min-ada-tx",
     headerHash: admitted.headerHash,
@@ -143,7 +101,6 @@ export const prepareMinAdaTxFromCanonicalEvidence = async ({
     outputItemCbors: selected.outputs.map((item) =>
       Buffer.from(item).toString("hex"),
     ),
-    descriptorCbor: selected.material.descriptorCbor.toString("hex"),
     txInclusion: {
       nativeTxId: selected.tx.nodeTxId,
       nativeTx: selected.tx.nativeTxCompact,
@@ -157,86 +114,5 @@ export const prepareMinAdaTxFromCanonicalEvidence = async ({
       ),
     },
     fault,
-  };
-};
-
-const sameOutRef = (left: OutputReference, right: OutputReference): boolean =>
-  left.transactionId === right.transactionId &&
-  left.outputIndex === right.outputIndex;
-
-export const prepareMinAdaUtxoFromCanonicalEvidence = async ({
-  evidence,
-  predecessor,
-  post,
-  outRef,
-}: CanonicalEvidenceBuilderInput & {
-  /** The classifier-admitted predecessor; absent only for the genesis ledger. */
-  readonly predecessor: CheckedLedger | undefined;
-  /**
-   * The classifier-admitted ledger after the block; absent only when the
-   * header commits the empty ledger.
-   */
-  readonly post: CheckedLedger | undefined;
-  readonly outRef?: OutputReference;
-}): Promise<PreparedMinAdaUtxo> => {
-  const previousLedger = requireReplayPredecessorLedger({
-    block: evidence,
-    predecessor,
-    label: "min-ada UTxO",
-  });
-  const postTrie = requireLedgerOpening({
-    ledger: post,
-    utxosRoot: evidence.header.utxosRoot,
-    label: "min-ada UTxO post ledger",
-  }).trie;
-  const postMembers = postTrie.entries.map(({ key, value }) => {
-    const decoded = decodeMidgardSpendInputItem(key);
-    return {
-      key,
-      value,
-      outRef: {
-        transactionId: Buffer.from(decoded.txId).toString("hex"),
-        outputIndex: BigInt(decoded.outputIndex),
-      } satisfies OutputReference,
-    };
-  });
-  const selected = postMembers.find(
-    (member) =>
-      (outRef === undefined || sameOutRef(member.outRef, outRef)) &&
-      descriptorViolatesMinAda(member.value) &&
-      !previousLedger.outputs.has(member.key.toString("hex")),
-  );
-  if (selected === undefined) {
-    throw new Error(
-      outRef === undefined
-        ? "authenticated post-block ledger contains no newly introduced underfunded UTxO"
-        : `post-block UTxO ${outRef.transactionId}#${outRef.outputIndex.toString()} is absent, sufficiently funded, or inherited`,
-    );
-  }
-  const postMembershipProof = await keyValuePhasProof(
-    postTrie,
-    selected.key,
-    selected.value,
-  );
-  const predecessorNonMembershipProof = await keyValuePhasNonMembershipProof(
-    previousLedger.trie,
-    selected.key,
-  );
-  return {
-    kind: "min-ada-utxo",
-    headerHash: evidence.headerHash,
-    outRef: selected.outRef,
-    outRefKeyCbor: selected.key.toString("hex"),
-    descriptorCbor: selected.value.toString("hex"),
-    postUtxosRoot: postTrie.root,
-    prevUtxosRoot: previousLedger.utxosRoot,
-    postMembershipProof,
-    postMembershipProofCbor: Data.to(postMembershipProof, Proof),
-    predecessorNonMembershipProof,
-    predecessorNonMembershipProofCbor: Data.to(
-      predecessorNonMembershipProof,
-      Proof,
-    ),
-    fault: "MinAdaUtxo" as MinAdaFault,
   };
 };

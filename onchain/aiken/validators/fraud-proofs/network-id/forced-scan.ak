@@ -240,7 +240,6 @@ fn execute(
           committed_tx_network_id: bound.committed_tx_network_id,
           expected_network_id: bound.expected_network_id,
           fault: ForcedNetworkIdMismatch,
-          post_utxo: None,
           forced_source_key: Some(bound.forced_source_key),
         }
         and {
@@ -390,7 +389,6 @@ fn handoff_state(block: fixture.NativeBlockFixtureV1) -> step_02.State {
     committed_tx_network_id: block.compact.body.network_id,
     expected_network_id: 0,
     fault: ForcedNetworkIdMismatch,
-    post_utxo: None,
     forced_source_key: Some(forced_source_key_bytes),
   }
 }

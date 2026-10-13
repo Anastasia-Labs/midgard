@@ -359,14 +359,9 @@ export const makeAlwaysSucceedsContracts = (
     },
     nativeScriptInvalid: scaffoldChain(appendedFamilyFallback, 5),
     minAda: {
-      ...scaffoldChain(appendedFamilyFallback, 5),
+      ...scaffoldChain(appendedFamilyFallback, 4),
       yields: {
         tx: {
-          withdrawalScriptCBOR: appendedFamilyFallback.spendingScriptCBOR,
-          withdrawalScript: appendedFamilyFallback.spendingScript,
-          withdrawalScriptHash: appendedFamilyFallback.spendingScriptHash,
-        },
-        utxo: {
           withdrawalScriptCBOR: appendedFamilyFallback.spendingScriptCBOR,
           withdrawalScript: appendedFamilyFallback.spendingScript,
           withdrawalScriptHash: appendedFamilyFallback.spendingScriptHash,

@@ -1,6 +1,5 @@
-//// Q27 min-Ada UTxO predicate step. Post-root membership is already
-//// authenticated by step 02; this transaction applies only the exact compiled
-//// predicate and writes the compact predecessor-proof state.
+//// Q27 min-Ada predicate step: scan the opened output to its descriptor, then
+//// apply the exact compiled predicate in the claimed direction.
 
 use aiken/crypto.{ScriptHash}
 use cardano/assets.{PolicyId}
@@ -11,14 +10,11 @@ use midgard/fraud_proofs/common.{cancel, continue}
 use midgard/fraud_proofs/min_ada/scan as min_ada_scan
 use midgard/fraud_proofs/min_ada/step_03.{Args, Datum, SpendRedeemer}
 use midgard/fraud_proofs/min_ada/step_04 as step_04
-use midgard/fraud_proofs/min_ada/step_05 as step_05
 use midgard/fraud_proofs/transaction_output_non_canonical/rule as scan_rule
-use midgard/ledger_output_commitment_v1
 use midgard/validation_machine/shared as vm_shared
 
 validator main(
   step_04_validator_script_hash: ScriptHash,
-  step_05_validator_script_hash: ScriptHash,
   computation_thread_token_policy_id: PolicyId,
 ) {
   spend(
@@ -74,8 +70,8 @@ validator main(
             output_state_data == expected
           }
           step_03.MinAdaTxDescriptor { direction, total_length, lovelace } -> {
-            expect output_script_hash == step_05_validator_script_hash
-            let expected_output_state: Data = step_05.PredicateAndCulpabilityAuthenticated
+            expect output_script_hash == step_04_validator_script_hash
+            let expected_output_state: Data = step_04.PredicateAuthenticated
             expect output_state_data == expected_output_state
             let meets = vm_shared.output_meets_min_ada_v1(
               env.coins_per_utxo_byte,
@@ -88,24 +84,6 @@ validator main(
               expect direction == 0
               !meets
             }
-          }
-          step_03.MinAdaUtxoDescriptor {
-            descriptor_cbor,
-            out_ref_key,
-            prev_utxos_root,
-          } -> {
-            expect output_script_hash == step_04_validator_script_hash
-            let expected_output_state: Data = step_04.State {
-              out_ref_key,
-              prev_utxos_root,
-            }
-            expect output_state_data == expected_output_state
-            let descriptor = ledger_output_commitment_v1.decode(descriptor_cbor)
-            !vm_shared.output_meets_min_ada_v1(
-              env.coins_per_utxo_byte,
-              descriptor.total_length,
-              descriptor.lovelace,
-            )
           }
         }
       }

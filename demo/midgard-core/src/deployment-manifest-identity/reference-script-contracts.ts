@@ -699,12 +699,9 @@ export const DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE =
     "V1 fraud-proof transition-trace final-5 summaries yield":
       "fraudProofTransitionTraceDepositSummariesWithdraw",
 
-    "V1 fraud-proof min-ada step-02 UTxO yield":
-      "fraudProofMinAdaStep02UtxoWithdraw",
     "correction-lock spending": "correctionLockSpend",
     "V1 fraud-proof min-ada step-03": "fraudProofMinAdaStep03",
     "V1 fraud-proof min-ada step-04": "fraudProofMinAdaStep04",
-    "V1 fraud-proof min-ada step-05": "fraudProofMinAdaStep05",
     "V1 fraud-proof field-preimage-length-mismatch step-01":
       "fraudProofFieldPreimageLengthMismatch",
     "V1 fraud-proof field-preimage-length-mismatch step-02 accepted":

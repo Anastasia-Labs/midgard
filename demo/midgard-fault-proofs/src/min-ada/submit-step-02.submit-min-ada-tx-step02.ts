@@ -8,7 +8,6 @@ import {
   scriptRewardAddress,
 } from "@al-ft/midgard-sdk";
 import {
-  buildCanonicalMidgardLedgerOutputMaterial,
   MIDGARD_COINS_PER_UTXO_BYTE,
   outputMeetsMinAda,
 } from "@al-ft/midgard-validation";
@@ -51,7 +50,11 @@ import {
 } from "./field-walk.js";
 import type { detectMinAdaForcedReplay } from "./forced.js";
 import type { PreparedMinAdaTx } from "./prepare.js";
-import { minAdaInitialScanState, minAdaOutputScanEvidence } from "./scan.js";
+import {
+  minAdaInitialScanState,
+  minAdaOutputFacts,
+  minAdaOutputScanEvidence,
+} from "./scan.js";
 import {
   Redeemer,
   requireStep02,
@@ -111,9 +114,7 @@ export const submitMinAdaTxStep02 = async ({
   const label = `${linearFaultStepLabel(FAMILY, stepIndex)} transaction`;
   if (
     state.bad_tx_id !== prepared.badTxId ||
-    state.post_utxo !== null ||
-    state.fault === "MinAdaUtxo" ||
-    state.fault.MinAdaTx.output_index !== prepared.badOutputIndex
+    state.fault.output_index !== prepared.badOutputIndex
   ) {
     throw new Error(
       `${label}: prepared transaction does not match thread state`,
@@ -123,24 +124,24 @@ export const submitMinAdaTxStep02 = async ({
   if (item === undefined) {
     throw new Error(`${label}: bad output index is outside field 2`);
   }
-  const material = buildCanonicalMidgardLedgerOutputMaterial({
-    outputIndex: Number(prepared.badOutputIndex),
-    outputCbor: Buffer.from(item, "hex"),
-  });
+  const facts = minAdaOutputFacts(Buffer.from(item, "hex"));
+  const anchorSourceKind = state.source_kind;
+  if (anchorSourceKind !== 0n && anchorSourceKind !== 1n)
+    throw new Error(`${label}: unknown transaction source kind`);
   if (
-    material.descriptorCbor.toString("hex") !== prepared.descriptorCbor ||
+    facts === null ||
     (!unsafeSkipLocalViolationCheckForTest &&
       outputMeetsMinAda(
         MIDGARD_COINS_PER_UTXO_BYTE,
-        BigInt(material.descriptor.totalLength),
-        material.descriptor.lovelace,
+        BigInt(facts.totalLength),
+        facts.lovelace,
       ) !==
         (state.direction === 1n))
   ) {
     throw new Error(`${label}: selected output does not violate min-Ada`);
   }
   const planned = planFaultProofFieldOpening({
-    anchorSourceKind: state.direction === 1n ? 1n : 0n,
+    anchorSourceKind,
     fieldIndex: MIDGARD_FIELD_INDEX.outputs,
     anchorTxId: state.bad_tx_id,
     nativeTxCompactCbor: prepared.nativeTxCompactCbor,
@@ -294,7 +295,6 @@ export const submitMinAdaTxStep02 = async ({
               label,
             ),
             outputs_opening: opening,
-            post_membership: null,
           },
         ],
       },

@@ -6,7 +6,6 @@ import {
   encodeCbor,
   encodeMidgardNativeTxCanonical,
   encodeMidgardNativeTxCompact,
-  encodeMidgardSpendInputItem,
   encodeMidgardTxOutput,
   materializeMidgardNativeTxFromCanonical,
   MIDGARD_NATIVE_TX_VERSION,
@@ -14,17 +13,12 @@ import {
   type MidgardTxValidity,
 } from "@al-ft/midgard-core";
 import * as SDK from "@al-ft/midgard-sdk";
-import { buildCanonicalMidgardLedgerEntryOutputMaterial } from "@al-ft/midgard-validation";
 import { describe, expect, it } from "vitest";
 
 import {
   authenticateTransactionsInclusionRoots,
   canonicalBlockEvidenceFromVerifiedPayload,
 } from "../src/evidence/index.js";
-import {
-  checkLedgerAgainstRoot,
-  LedgerRootMismatchError,
-} from "../src/ledger-at.js";
 import {
   findNetworkIdFaults,
   networkIdOutputsOpening,
@@ -34,20 +28,13 @@ import {
 import {
   planNetworkIdOutputsOpening,
   prepareNetworkIdFromCanonicalEvidence,
-  prepareNetworkIdPostUtxoFromCanonicalEvidence,
 } from "../src/network-id/prepare.js";
-import { keyValuePhasRootWithCount } from "../src/transition-trace/phas.js";
 import { encodeData } from "../src/transition-trace/reconstruct.js";
 import {
   authenticatedHeaderObservation,
   buildCanonicalBlockFixture,
   type FixtureTransaction,
 } from "./helpers/canonical-block-evidence-fixture.js";
-import { recordFixtureLedger } from "./support/fixture-ledger.js";
-import {
-  checkedLedgerAfter,
-  ledgerEntriesAfter,
-} from "./support/predecessor-ledger.js";
 
 const nativeTx = ({
   transactionNetworkId = 0n,
@@ -159,52 +146,6 @@ const canonicalEvidence = async (tx: ReturnType<typeof nativeTx>) => {
       reconstruction: evidence.reconstruction,
       transactions: evidence.transactions,
     }),
-  };
-};
-
-const evidenceWithUtxo = async ({
-  outputNetworkId,
-  protectedAddress = false,
-  headerHash = "aa".repeat(28),
-  prevHeaderHash,
-  prevUtxosRoot = SDK.EMPTY_MERKLE_TREE_ROOT,
-}: {
-  readonly outputNetworkId: number;
-  readonly protectedAddress?: boolean;
-  readonly headerHash?: string;
-  readonly prevHeaderHash?: string;
-  readonly prevUtxosRoot?: string;
-}) => {
-  const base = await canonicalEvidence(nativeTx({}));
-  const key = encodeMidgardSpendInputItem({
-    txId: Buffer.alloc(32, 0x55),
-    outputIndex: 0,
-  });
-  const output = encodeMidgardTxOutput({
-    address: Buffer.concat([
-      Buffer.from([0x60 | outputNetworkId | (protectedAddress ? 0x08 : 0)]),
-      Buffer.alloc(28, 0x44),
-    ]),
-    value: { lovelace: 2_000_000n, assets: new Map() },
-  });
-  const descriptor = buildCanonicalMidgardLedgerEntryOutputMaterial({
-    outRef: key,
-    outputCbor: output,
-  }).descriptorCbor;
-  const post = await keyValuePhasRootWithCount([{ key, value: descriptor }]);
-  recordFixtureLedger(post.root, [{ key, value: output }]);
-  return {
-    evidence: {
-      ...base,
-      headerHash,
-      header: {
-        ...base.header,
-        ...(prevHeaderHash === undefined ? {} : { prevHeaderHash }),
-        prevUtxosRoot,
-        utxosRoot: post.root,
-      },
-    },
-    outRef: { transactionId: "55".repeat(32), outputIndex: 0n },
   };
 };
 
@@ -401,93 +342,5 @@ describe("Q35 network-id DA-first evidence", () => {
         expectedNetworkId: 0n,
       }),
     ).rejects.toThrow("no accepted network-id violation");
-  });
-
-  it("prepares a post-state wrong-network UTxO introduced from an empty predecessor", async () => {
-    const { evidence, outRef } = await evidenceWithUtxo({
-      outputNetworkId: 2,
-    });
-    const prepared = await prepareNetworkIdPostUtxoFromCanonicalEvidence({
-      evidence,
-      postLedger: await checkedLedgerAfter(evidence),
-      expectedNetworkId: 0n,
-      outRef,
-    });
-    expect(prepared.fault).toEqual({
-      OutputNetworkUtxo: { observed_network_id: 2n },
-    });
-    expect(prepared.predecessor).toBe("Introduced");
-    expect(prepared.predecessorProof).toEqual([]);
-    expect(prepared.descriptorCbor.length).toBeLessThan(16 * 1024 * 2);
-  });
-
-  it("prepares only an authenticated expected-to-foreign network mutation", async () => {
-    const previous = await evidenceWithUtxo({
-      outputNetworkId: 0,
-      headerHash: "bb".repeat(28),
-    });
-    const challenged = await evidenceWithUtxo({
-      outputNetworkId: 7,
-      protectedAddress: true,
-      prevHeaderHash: previous.evidence.headerHash,
-      prevUtxosRoot: previous.evidence.header.utxosRoot,
-    });
-    const prepared = await prepareNetworkIdPostUtxoFromCanonicalEvidence({
-      evidence: challenged.evidence,
-      prevLedger: await checkedLedgerAfter(previous.evidence),
-      postLedger: await checkedLedgerAfter(challenged.evidence),
-      expectedNetworkId: 0n,
-      outRef: challenged.outRef,
-    });
-    expect(prepared.faultClaim.observedNetworkId).toBe(7n);
-    expect(prepared.predecessor).toHaveProperty("NetworkChanged");
-    // A predecessor ledger with one wrong entry never opens prev_utxos_root.
-    const [entry] = ledgerEntriesAfter(previous.evidence);
-    const [wrong] = ledgerEntriesAfter(challenged.evidence);
-    await expect(
-      checkLedgerAgainstRoot({
-        entries: [{ outRef: entry!.outRef, output: wrong!.output }],
-        utxosRoot: previous.evidence.header.utxosRoot,
-        label: "network-id test",
-      }),
-    ).rejects.toBeInstanceOf(LedgerRootMismatchError);
-    // A checked ledger for another root, or none, is refused on either side.
-    const prevLedger = await checkedLedgerAfter(previous.evidence);
-    const postLedger = await checkedLedgerAfter(challenged.evidence);
-    for (const [ledgers, refusal] of [
-      [{ prevLedger: postLedger, postLedger }, "predecessor"],
-      [{ postLedger }, "predecessor"],
-      [{ prevLedger, postLedger: prevLedger }, "post"],
-      [{ prevLedger }, "post"],
-    ] as const)
-      await expect(
-        prepareNetworkIdPostUtxoFromCanonicalEvidence({
-          evidence: challenged.evidence,
-          ...ledgers,
-          expectedNetworkId: 0n,
-          outRef: challenged.outRef,
-        }),
-      ).rejects.toThrow(`network-id ${refusal} ledger`);
-  });
-
-  it("refuses to blame a descendant for an inherited wrong-network UTxO", async () => {
-    const previous = await evidenceWithUtxo({
-      outputNetworkId: 2,
-      headerHash: "cc".repeat(28),
-    });
-    const challenged = await evidenceWithUtxo({
-      outputNetworkId: 2,
-      prevHeaderHash: previous.evidence.headerHash,
-      prevUtxosRoot: previous.evidence.header.utxosRoot,
-    });
-    await expect(
-      prepareNetworkIdPostUtxoFromCanonicalEvidence({
-        evidence: challenged.evidence,
-        prevLedger: await checkedLedgerAfter(previous.evidence),
-        postLedger: await checkedLedgerAfter(challenged.evidence),
-        expectedNetworkId: 0n,
-        outRef: challenged.outRef,
-      }),
-    ).rejects.toThrow("inherited unchanged from its predecessor");
   });
 });

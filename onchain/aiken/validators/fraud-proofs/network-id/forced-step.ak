@@ -1,5 +1,5 @@
 //// Q35 network-id forced source binding.  Kept physically separate so the
-//// accepted/post-UTxO first step and this authenticated forced-leaf door both
+//// transaction first step and this authenticated forced-leaf door both
 //// retain signed reference-publication margin.
 ////
 //// The door is a *binding* step for the output half of the negated predicate
@@ -10,6 +10,10 @@
 //// scan that could never acquit it.  What the door does not decide is whether
 //// any *output* names a foreign network: that field reaches the raw-carriage
 //// bound and beyond, and proving it is `forced_scan`'s batched walk.
+////
+//// An accepted leaf (`ForcedTxValid`, direction 0) carries step 01's
+//// `TransactionNetwork` or `OutputNetwork` claim straight to step 02, which
+//// adjudicates it exactly as for an accepted normal transaction.
 
 use aiken/cbor
 use aiken/crypto.{ScriptHash}
@@ -34,8 +38,9 @@ use midgard/fraud_proofs/network_id/forced_scan.{
 use midgard/fraud_proofs/network_id/forced_step.{Args, Datum, SpendRedeemer}
 use midgard/fraud_proofs/network_id/rule.{is_transaction_network_violation_v1}
 use midgard/fraud_proofs/network_id/step_01.{
-  ForcedNetworkIdMismatch, NetworkIdFaultV1, TransactionNetwork,
+  ForcedNetworkIdMismatch, NetworkIdFaultV1, OutputNetwork, TransactionNetwork,
 }
+use midgard/fraud_proofs/network_id/step_02
 use midgard/ledger_state
 use midgard/rejection_reason_v1.{
   FeeBelowMinimum, ForcedTxInvalid, ForcedTxValid, NetworkIdMismatch,
@@ -44,6 +49,7 @@ use midgard/transition_trace
 
 validator main(
   forced_scan_validator_script_hash: ScriptHash,
+  step_02_validator_script_hash: ScriptHash,
   computation_thread_token_policy_id: PolicyId,
   expected_network_id: Int,
 ) {
@@ -81,11 +87,10 @@ validator main(
           inputs,
           outputs,
         )
-        expect Some(ForcedNetworkIdMismatch) = input_state
+        expect Some(handoff) = input_state
         let leaf = membership.value
         let header_data: Data = header
         expect and {
-            direction == 1,
             utils.serialise_and_hash_28(header_data) == bytearray.drop(
               thread_name,
               fraud_proof_catalogue.id_byte_count,
@@ -99,34 +104,61 @@ validator main(
               cbor.serialise(leaf),
             ),
           }
-        expect ForcedTxInvalid { reason: NetworkIdMismatch } = leaf.verdict
         let Pair(verified, _) = verify_forced_tx_proof_source_v1(
           leaf.tx_id,
           leaf.submitted_source.compact_cbor,
           leaf.submitted_source.witness_set_compact_cbor,
           leaf.submitted_source.field_preimage_lengths_cbor,
         )
-        // The source authenticates immutable submission content; the verdict above authenticates rejection.
-        // The body half of the negated predicate, decided here. A committed
-        // body network that really is foreign makes the operator's
-        // `NetworkIdMismatch` rejection honest, and no amount of scanning the
-        // outputs could contradict it.
-        expect
-          !is_transaction_network_violation_v1(
-            verified.tx_compact.body.network_id,
-            expected_network_id,
-          )
-        let expected: Data = Ready {
-          bound: BoundV1 {
-            bad_tx_id: leaf.tx_id,
-            committed_tx_network_id: verified.tx_compact.body.network_id,
-            expected_network_id,
-            forced_source_key: cbor.serialise(membership.key),
-          },
-        }
-        and {
-          output_hash == forced_scan_validator_script_hash,
-          output_state == expected,
+        // The source authenticates immutable submission content; the verdict
+        // matched below authenticates the operator's decision.
+        let committed_tx_network_id = verified.tx_compact.body.network_id
+        let forced_source_key = cbor.serialise(membership.key)
+        when handoff is {
+          ForcedNetworkIdMismatch -> {
+            expect direction == 1
+            expect ForcedTxInvalid { reason: NetworkIdMismatch } = leaf.verdict
+            // The body half of the negated predicate, decided here. A
+            // committed body network that really is foreign makes the
+            // operator's `NetworkIdMismatch` rejection honest, and no amount
+            // of scanning the outputs could contradict it.
+            expect
+              !is_transaction_network_violation_v1(
+                committed_tx_network_id,
+                expected_network_id,
+              )
+            let expected: Data = Ready {
+              bound: BoundV1 {
+                bad_tx_id: leaf.tx_id,
+                committed_tx_network_id,
+                expected_network_id,
+                forced_source_key,
+              },
+            }
+            and {
+              output_hash == forced_scan_validator_script_hash,
+              output_state == expected,
+            }
+          }
+          // Step 01 hands over only `TransactionNetwork` or a non-negative
+          // `OutputNetwork` claim besides the rejection marker. An accepted
+          // leaf goes to step 02's ordinary adjudication of that claim, with
+          // the forced root key naming the source its outputs open under.
+          _ -> {
+            expect direction == 0
+            expect ForcedTxValid = leaf.verdict
+            let expected: Data = step_02.State {
+              bad_tx_id: leaf.tx_id,
+              committed_tx_network_id,
+              expected_network_id,
+              fault: handoff,
+              forced_source_key: Some(forced_source_key),
+            }
+            and {
+              output_hash == step_02_validator_script_hash,
+              output_state == expected,
+            }
+          }
         }
       }
     }
@@ -279,6 +311,7 @@ fn run_forced_step_v1(
 ) -> Bool {
   main.spend(
     successor_script_hash,
+    fixture.step_script_hash,
     fixture.computation_thread_policy_id,
     0,
     Some(
@@ -895,5 +928,153 @@ test network_id_forced_step_rejects_a_tampered_bad_tx_id() fail {
     0,
     0,
     state,
+  )
+}
+
+// ## Accepted leaves
+//
+// An accepted forced leaf carries step 01's claim to step 02 under the forced
+// root key; step 02 adjudicates it like an accepted normal transaction.
+
+fn run_accepted_forced_step_v1(
+  step_02_script_hash: ScriptHash,
+  handoff: NetworkIdFaultV1,
+  leaf: ledger_state.ForcedInclusionTxV1,
+  direction: Int,
+  output_state: Data,
+) -> Bool {
+  let key = forced_order_key_v1()
+  let membership = forced_membership_v1(key, leaf, 1)
+  let header = forced_header_v1(membership.root, 1)
+  main.spend(
+    fixture.step_script_hash,
+    step_02_script_hash,
+    fixture.computation_thread_policy_id,
+    0,
+    Some(
+      ct.StepDatum {
+        fraud_prover: fixture.fraud_prover_key_hash,
+        data: Some(handoff),
+      },
+    ),
+    ct.Continue(
+      Args { input_index: 0, output_index: 0, header, membership, direction },
+    ),
+    fixture.own_out_ref(),
+    fixture.continue_mid_step_l1_tx_v1(thread_name_v1(header), output_state),
+  )
+}
+
+fn accepted_state_v1(
+  leaf: ledger_state.ForcedInclusionTxV1,
+  committed_tx_network_id: Int,
+  fault: NetworkIdFaultV1,
+) -> Data {
+  let state: Data = step_02.State {
+    bad_tx_id: leaf.tx_id,
+    committed_tx_network_id,
+    expected_network_id: 0,
+    fault,
+    forced_source_key: Some(cbor.serialise(forced_order_key_v1())),
+  }
+  state
+}
+
+test network_id_forced_step_binds_an_accepted_transaction_network_claim() {
+  let leaf = forced_leaf_v1(accepted_forced_tx_v1(1), ForcedTxValid)
+  run_accepted_forced_step_v1(
+    fixture.next_step_script_hash,
+    TransactionNetwork,
+    leaf,
+    0,
+    accepted_state_v1(leaf, 1, TransactionNetwork),
+  )
+}
+
+test network_id_forced_step_binds_an_accepted_output_network_claim() {
+  let leaf = forced_leaf_v1(accepted_forced_tx_v1(0), ForcedTxValid)
+  let fault = OutputNetwork { output_index: 0 }
+  run_accepted_forced_step_v1(
+    fixture.next_step_script_hash,
+    fault,
+    leaf,
+    0,
+    accepted_state_v1(leaf, 0, fault),
+  )
+}
+
+test network_id_forced_step_rejects_an_accepted_claim_on_a_rejected_leaf() fail {
+  let leaf = forced_leaf_v1(
+    rejected_forced_tx_v1(1),
+    ForcedTxInvalid { reason: NetworkIdMismatch },
+  )
+  run_accepted_forced_step_v1(
+    fixture.next_step_script_hash,
+    TransactionNetwork,
+    leaf,
+    0,
+    accepted_state_v1(leaf, 1, TransactionNetwork),
+  )
+}
+
+test network_id_forced_step_rejects_an_accepted_claim_with_direction_one() fail {
+  let leaf = forced_leaf_v1(accepted_forced_tx_v1(1), ForcedTxValid)
+  run_accepted_forced_step_v1(
+    fixture.next_step_script_hash,
+    TransactionNetwork,
+    leaf,
+    1,
+    accepted_state_v1(leaf, 1, TransactionNetwork),
+  )
+}
+
+test network_id_forced_step_rejects_an_accepted_claim_sent_to_the_scan() fail {
+  let leaf = forced_leaf_v1(accepted_forced_tx_v1(1), ForcedTxValid)
+  run_accepted_forced_step_v1(
+    fixture.step_script_hash,
+    TransactionNetwork,
+    leaf,
+    0,
+    accepted_state_v1(leaf, 1, TransactionNetwork),
+  )
+}
+
+test network_id_forced_step_rejects_an_accepted_claim_without_the_source_key() fail {
+  let leaf = forced_leaf_v1(accepted_forced_tx_v1(1), ForcedTxValid)
+  let state: Data = step_02.State {
+    bad_tx_id: leaf.tx_id,
+    committed_tx_network_id: 1,
+    expected_network_id: 0,
+    fault: TransactionNetwork,
+    forced_source_key: None,
+  }
+  run_accepted_forced_step_v1(
+    fixture.next_step_script_hash,
+    TransactionNetwork,
+    leaf,
+    0,
+    state,
+  )
+}
+
+test network_id_forced_step_rejects_a_tampered_accepted_network_id() fail {
+  let leaf = forced_leaf_v1(accepted_forced_tx_v1(0), ForcedTxValid)
+  run_accepted_forced_step_v1(
+    fixture.next_step_script_hash,
+    TransactionNetwork,
+    leaf,
+    0,
+    accepted_state_v1(leaf, 1, TransactionNetwork),
+  )
+}
+
+test network_id_forced_step_rejects_a_substituted_accepted_output_index() fail {
+  let leaf = forced_leaf_v1(accepted_forced_tx_v1(0), ForcedTxValid)
+  run_accepted_forced_step_v1(
+    fixture.next_step_script_hash,
+    OutputNetwork { output_index: 0 },
+    leaf,
+    0,
+    accepted_state_v1(leaf, 0, OutputNetwork { output_index: 1 }),
   )
 }

@@ -1,4 +1,3 @@
-import "@aiken-lang/merkle-patricia-forestry";
 import "@al-ft/midgard-core";
 import "@al-ft/midgard-sdk";
 import "@al-ft/midgard-validation";
@@ -14,7 +13,5 @@ export {
   type MinAdaArtifact,
   type MinAdaTxArtifact,
   minAdaTxDetectionId,
-  type MinAdaUtxoArtifact,
-  minAdaUtxoDetectionId,
   prepareMinAdaArtifact,
 } from "./artifact.prepare-min-ada-artifact.js";

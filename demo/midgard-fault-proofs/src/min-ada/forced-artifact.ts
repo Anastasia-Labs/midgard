@@ -65,7 +65,7 @@ export const admitMinAdaForcedArtifact = async (
     throw new Error("minAda: noncanonical forced source");
   const { membership, header } = source;
   if (
-    source.direction !== 1n ||
+    (source.direction !== 0n && source.direction !== 1n) ||
     header.protocolVersion !== 1n ||
     membership.domain !== SDK.ROOT_DOMAINS.forcedTransactionsV1 ||
     membership.root !== header.forcedTransactionsRoot ||
@@ -115,7 +115,7 @@ export const admitMinAdaForcedArtifact = async (
   ).verify(true);
   if (opened?.toString("hex") !== membership.phas_root)
     throw new Error("minAda: artifact membership changed");
-  const detection = detectMinAdaForcedReplay({
+  const detections = detectMinAdaForcedReplay({
     headerHash: artifact.headerHash,
     header,
     reconstruction: {
@@ -130,19 +130,29 @@ export const admitMinAdaForcedArtifact = async (
         },
       ],
     },
-  } as unknown as CanonicalBlockEvidence)[0];
-  if (detection === undefined)
+  } as unknown as CanonicalBlockEvidence);
+  if (detections.length === 0)
     throw new Error("minAda: artifact has no contradiction");
-  const detectionId =
-    `min-ada:forced:${String(artifact.forcedIndex)}:${membership.value.tx_id}:${detection.evidence.badOutputIndex.toString()}` as const;
-  if (artifact.detectionId !== detectionId)
+  const located = detections.map((detection) => ({
+    detection,
+    detectionId:
+      `min-ada:forced:${String(artifact.forcedIndex)}:${membership.value.tx_id}:${detection.evidence.badOutputIndex.toString()}` as const,
+  }));
+  const selected = located.find(
+    ({ detectionId }) => artifact.detectionId === detectionId,
+  );
+  if (selected === undefined)
     throw new Error("minAda: detection identity changed");
+  const { detection, detectionId } = selected;
+  // The retained direction must be the one the committed verdict implies.
+  if (source.direction !== detection.evidence.state.direction)
+    throw new Error("minAda: artifact source/header changed");
   return Object.freeze({
     ...detection,
     detectionId,
     forcedIndex: Number(artifact.forcedIndex),
     position: BigInt(Number(artifact.forcedIndex)),
-    forcedSource: { header, membership, direction: 1n as const },
+    forcedSource: { header, membership, direction: source.direction },
   });
 };
 export const prepareMinAdaForcedArtifact = async ({
