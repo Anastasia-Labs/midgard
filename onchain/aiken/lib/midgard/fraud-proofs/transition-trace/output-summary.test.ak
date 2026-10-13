@@ -88,7 +88,7 @@ test folded_value_composes_to_the_one_shot_output_summaries() {
         value: MidgardValue { lovelace: 0, assets: [] },
       },
       folded_value_summary(),
-      builtin.constr_data(0, []),
+      None,
     ),
   )
 }
