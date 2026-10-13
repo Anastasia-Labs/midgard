@@ -9,6 +9,7 @@ import "./codec/value.js";
 import "./codec/versioned-script.js";
 import "./consensus-profile.js";
 import "./consensus-validation.reconstruct-midgard-transaction.js";
+import "./consensus-validation.screen-midgard-forced-tx-admission.js";
 import "./consensus-validation.validate-midgard-consensus-tx.js";
 export {
   deriveMidgardTxFieldPreimages,
@@ -21,6 +22,14 @@ export {
   reconstructMidgardTransaction,
   verifyMidgardTxFieldPreimage,
 } from "./consensus-validation.reconstruct-midgard-transaction.js";
+export {
+  MIDGARD_FORCED_TX_ADMISSION_CHECKS,
+  type MidgardForcedTxAdmissionCheck,
+  type MidgardForcedTxAdmissionInput,
+  MidgardForcedTxAdmissionRefused,
+  type MidgardForcedTxAdmissionRefusal,
+  screenMidgardForcedTxAdmission,
+} from "./consensus-validation.screen-midgard-forced-tx-admission.js";
 export {
   MidgardForcedTxAdmissionStopped,
   validateMidgardConsensusForcedTxCbor,

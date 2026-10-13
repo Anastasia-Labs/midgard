@@ -4,8 +4,11 @@ import {
   computeHash32,
   computeMidgardNativeTxId,
   EMPTY_NULL_ROOT,
+  encodeCbor,
   encodeMidgardNativeTxCanonical,
+  encodeMidgardSpendInputItem,
   materializeMidgardNativeTxFromCanonical,
+  MIDGARD_POSIX_TIME_NONE,
 } from "@al-ft/midgard-core";
 import {
   computeMidgardForcedTxProofCommitment,
@@ -86,6 +89,14 @@ describe("immutable forced submission SDK boundary", () => {
         ...submitted.body,
         auxiliaryDataHash: EMPTY_NULL_ROOT,
         scriptIntegrityHash: EMPTY_NULL_ROOT,
+        // A forced tx carries no validity upper bound and spends something.
+        validityIntervalEnd: MIDGARD_POSIX_TIME_NONE,
+        spendInputsPreimageCbor: encodeCbor([
+          encodeMidgardSpendInputItem({
+            txId: Buffer.alloc(32, 0x33),
+            outputIndex: 0,
+          }),
+        ]),
       },
     });
     const material = SDK.deriveTxOrderMaterial({

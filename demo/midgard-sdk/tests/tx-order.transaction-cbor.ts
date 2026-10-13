@@ -8,6 +8,7 @@ import {
   encodeMidgardCekProgramMaterialSidecar,
   encodeMidgardCekTermNode,
   encodeMidgardForcedTxCanonical,
+  encodeMidgardSpendInputItem,
   encodeMidgardTxOutput,
   hashMidgardCekProgramMaterialPreimage,
   hashMidgardCekTermNode,
@@ -25,7 +26,13 @@ export const transactionCbor = (): Buffer =>
     materializeMidgardForcedTxFromCanonical({
       version: MIDGARD_NATIVE_TX_VERSION,
       body: {
-        spendInputsPreimageCbor: EMPTY_CBOR_LIST,
+        // One spend input: the tx-order mint admits no forced tx without one.
+        spendInputsPreimageCbor: encodeCbor([
+          encodeMidgardSpendInputItem({
+            txId: Buffer.alloc(32, 0x33),
+            outputIndex: 0,
+          }),
+        ]),
         referenceInputsPreimageCbor: EMPTY_CBOR_LIST,
         outputsPreimageCbor: encodeCbor(
           [0x11, 0x22].map((fill) =>

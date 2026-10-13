@@ -15,8 +15,8 @@ import {
 import { MIDGARD_CONSENSUS_LIMITS } from "@al-ft/midgard-core/consensus-profile";
 import {
   deriveMidgardTxFieldPreimages,
-  MidgardForcedTxAdmissionStopped,
-  validateMidgardConsensusForcedTxCbor,
+  MidgardForcedTxAdmissionRefused,
+  screenMidgardForcedTxAdmission,
 } from "@al-ft/midgard-core/consensus-validation";
 import { getAddressDetails, LucidEvolution } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
@@ -51,11 +51,13 @@ export const deriveTxOrderMaterial = ({
   readonly submittedTxCbor: Uint8Array;
   readonly owner: Uint8Array;
 }): TxOrderMaterial => {
-  const violation = validateMidgardConsensusForcedTxCbor(submittedTxCbor);
-  if (violation !== null) {
-    throw new MidgardForcedTxAdmissionStopped(violation);
-  }
   const tx = decodeMidgardForcedTxFullFromCanonicalCbor(submittedTxCbor);
+  // The tx-order mint's own admission rules: refuse here, before anything is
+  // signed, rather than let the mint fail on chain.
+  const refusal = screenMidgardForcedTxAdmission(tx);
+  if (refusal !== null) {
+    throw new MidgardForcedTxAdmissionRefused(refusal);
+  }
   const transactionId = computeMidgardNativeTxId(tx.compact);
   const proofSource = deriveMidgardForcedTxProofSource(tx);
   const source: ForcedTxProofSource = {
