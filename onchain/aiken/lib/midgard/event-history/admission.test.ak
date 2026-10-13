@@ -1,3 +1,4 @@
+use aiken/builtin
 use aiken/collection/list
 use aiken/interval
 use cardano/address
@@ -291,12 +292,11 @@ test insert_order_cannot_claim_filler_as_event() fail {
   insert(Transaction { ..tx, outputs: [continued, filler(None, 600)] })
 }
 
-/// A deposit payload whose datum is a list of 1,023 integers: past the
-/// 1,024-node bound once the payload's own nodes are counted.
-fn wide_facts() -> Facts {
+/// A deposit payload around `datum`: the payload adds 12 nodes of its own, so
+/// a 1,012-node datum puts it exactly at the 1,024-node bound.
+fn datum_facts(datum: Data) -> Facts {
   expect DepositPayload { event } = payload()
-  let wide: Data = list.repeat(0, 1023)
-  let info = DepositInfo { ..event.info, l2_datum: Some(wide) }
+  let info = DepositInfo { ..event.info, l2_datum: Some(datum) }
   Facts {
     ..facts(),
     location: Inline {
@@ -305,42 +305,169 @@ fn wide_facts() -> Facts {
   }
 }
 
-fn bounded(max_payload_nodes: Int) -> semantics.Parameters {
-  semantics.Parameters { ..params(), inline_limit: 15000, max_payload_nodes }
+const at_bound = 1012
+
+fn nested_lists(nodes: Int) -> Data {
+  if nodes <= 1 {
+    builtin.list_data([])
+  } else {
+    builtin.list_data([nested_lists(nodes - 1)])
+  }
 }
 
-fn wide_insertion() -> Transaction {
+fn nested_constructors(nodes: Int) -> Data {
+  if nodes <= 1 {
+    builtin.constr_data(0, [])
+  } else {
+    builtin.constr_data(0, [nested_constructors(nodes - 1)])
+  }
+}
+
+fn flat_list(nodes: Int) -> Data {
+  builtin.list_data(list.repeat(builtin.i_data(0), nodes - 1))
+}
+
+/// A list around one map of two-node entries, and an integer for odd counts.
+fn wide_map(nodes: Int) -> Data {
+  let map = builtin.map_data(
+    list.repeat(Pair(builtin.i_data(0), builtin.i_data(0)), ( nodes - 2 ) / 2),
+  )
+  builtin.list_data(
+    if nodes % 2 == 0 {
+      [map]
+    } else {
+      [map, builtin.i_data(0)]
+    },
+  )
+}
+
+/// A list of 13-byte strings: the most payload bytes at the node bound.
+fn long_bytes(nodes: Int) -> Data {
+  builtin.list_data(
+    list.repeat(builtin.b_data(#"ababababababababababababab"), nodes - 1),
+  )
+}
+
+/// The deployed node bound, with an inline limit that holds every shape.
+fn bounded() -> semantics.Parameters {
+  semantics.Parameters { ..params(), inline_limit: 15000 }
+}
+
+/// An Order around `datum`, funded for the largest inline payload.
+fn datum_order(datum: Data) -> Output {
+  let output = order_output(datum_facts(datum), None, 600)
+  Output {
+    ..output,
+    value: assets.merge(output.value, assets.from_lovelace(90_000_000)),
+  }
+}
+
+fn insert_datum(datum: Data) -> Bool {
   let tx = insertion()
   expect [continued, _] = tx.outputs
-  Transaction {
-    ..tx,
-    outputs: [continued, order_output(wide_facts(), None, 600)],
-  }
+  semantics.insert_order(
+    Transaction { ..tx, outputs: [continued, datum_order(datum)] },
+    bounded(),
+    0,
+    0,
+    1,
+    1,
+    None,
+  )
 }
 
-test insert_order_admits_a_wide_payload_under_a_larger_node_bound() {
-  semantics.insert_order(wide_insertion(), bounded(2048), 0, 0, 1, 1, None)
-}
-
-test insert_order_refuses_a_payload_past_the_node_bound() fail {
-  semantics.insert_order(wide_insertion(), bounded(1024), 0, 0, 1, 1, None)
-}
-
-fn wide_promotion() -> Transaction {
+fn promote_datum(datum: Data) -> Bool {
   let tx = promotion()
   expect [_, refund_output] = tx.outputs
-  Transaction {
-    ..tx,
-    outputs: [order_output(wide_facts(), None, 600), refund_output],
-  }
+  semantics.promote_filler(
+    Transaction { ..tx, outputs: [datum_order(datum), refund_output] },
+    bounded(),
+    0,
+    0,
+    1,
+    1,
+    None,
+  )
 }
 
-test promotion_admits_a_wide_payload_under_a_larger_node_bound() {
-  semantics.promote_filler(wide_promotion(), bounded(2048), 0, 0, 1, 1, None)
+test insert_order_admits_nested_lists_at_the_node_bound() {
+  insert_datum(nested_lists(at_bound))
 }
 
-test promotion_refuses_a_payload_past_the_node_bound() fail {
-  semantics.promote_filler(wide_promotion(), bounded(1024), 0, 0, 1, 1, None)
+test insert_order_admits_nested_constructors_at_the_node_bound() {
+  insert_datum(nested_constructors(at_bound))
+}
+
+test insert_order_admits_a_flat_list_at_the_node_bound() {
+  insert_datum(flat_list(at_bound))
+}
+
+test insert_order_admits_a_wide_map_at_the_node_bound() {
+  insert_datum(wide_map(at_bound))
+}
+
+test insert_order_admits_long_bytes_at_the_node_bound() {
+  insert_datum(long_bytes(at_bound))
+}
+
+test insert_order_refuses_nested_lists_past_the_node_bound() fail {
+  insert_datum(nested_lists(at_bound + 1))
+}
+
+test insert_order_refuses_nested_constructors_past_the_node_bound() fail {
+  insert_datum(nested_constructors(at_bound + 1))
+}
+
+test insert_order_refuses_a_flat_list_past_the_node_bound() fail {
+  insert_datum(flat_list(at_bound + 1))
+}
+
+test insert_order_refuses_a_wide_map_past_the_node_bound() fail {
+  insert_datum(wide_map(at_bound + 1))
+}
+
+test insert_order_refuses_long_bytes_past_the_node_bound() fail {
+  insert_datum(long_bytes(at_bound + 1))
+}
+
+test promotion_admits_nested_lists_at_the_node_bound() {
+  promote_datum(nested_lists(at_bound))
+}
+
+test promotion_admits_nested_constructors_at_the_node_bound() {
+  promote_datum(nested_constructors(at_bound))
+}
+
+test promotion_admits_a_flat_list_at_the_node_bound() {
+  promote_datum(flat_list(at_bound))
+}
+
+test promotion_admits_a_wide_map_at_the_node_bound() {
+  promote_datum(wide_map(at_bound))
+}
+
+test promotion_admits_long_bytes_at_the_node_bound() {
+  promote_datum(long_bytes(at_bound))
+}
+
+test promotion_refuses_nested_lists_past_the_node_bound() fail {
+  promote_datum(nested_lists(at_bound + 1))
+}
+
+test promotion_refuses_nested_constructors_past_the_node_bound() fail {
+  promote_datum(nested_constructors(at_bound + 1))
+}
+
+test promotion_refuses_a_flat_list_past_the_node_bound() fail {
+  promote_datum(flat_list(at_bound + 1))
+}
+
+test promotion_refuses_a_wide_map_past_the_node_bound() fail {
+  promote_datum(wide_map(at_bound + 1))
+}
+
+test promotion_refuses_long_bytes_past_the_node_bound() fail {
+  promote_datum(long_bytes(at_bound + 1))
 }
 
 /// A filler insertion cannot write Order content, so `admit` is skipped only
