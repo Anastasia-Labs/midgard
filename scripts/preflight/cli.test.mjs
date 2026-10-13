@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
-import { test } from "node:test";
+import { after, before, test } from "node:test";
 import { fileURLToPath } from "node:url";
 
 import {
@@ -13,8 +14,77 @@ import {
 } from "../preflight.mjs";
 import { REQUIRED_CHECKS_DOC, renderRequiredChecks } from "./docs.mjs";
 import { buildRegistry } from "./registry.mjs";
+import { DEFAULT_BASE } from "./run.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
+
+// CLI presentation tests need a fixed Git topology, independent of the live
+// checkpoint advancing beyond this checkout. The fixture's target is one
+// commit ahead of HEAD, so HEAD is deliberately stale and the target is valid.
+let cliRoot;
+const fixtureGit = (cwd, args) => {
+  const env = Object.fromEntries(
+    Object.entries(process.env).filter(([key]) => !key.startsWith("GIT_")),
+  );
+  const run = spawnSync("git", args, {
+    cwd,
+    env: {
+      ...env,
+      GIT_CONFIG_NOSYSTEM: "1",
+      GIT_CONFIG_GLOBAL: "/dev/null",
+      GIT_AUTHOR_NAME: "test",
+      GIT_AUTHOR_EMAIL: "test@example.invalid",
+      GIT_COMMITTER_NAME: "test",
+      GIT_COMMITTER_EMAIL: "test@example.invalid",
+    },
+    encoding: "utf8",
+  });
+  assert.equal(run.status, 0, `git ${args.join(" ")}: ${run.stderr}`);
+  return run.stdout.trim();
+};
+before(() => {
+  cliRoot = mkdtempSync(join(tmpdir(), "preflight-cli-test-"));
+  fixtureGit(root, [
+    "clone",
+    "--quiet",
+    "--shared",
+    "--no-checkout",
+    "--origin",
+    "fixture",
+    root,
+    cliRoot,
+  ]);
+  fixtureGit(cliRoot, [
+    "-c",
+    "core.hooksPath=/dev/null",
+    "checkout",
+    "--quiet",
+    "--detach",
+    "HEAD",
+  ]);
+  const head = fixtureGit(cliRoot, ["rev-parse", "HEAD"]);
+  fixtureGit(cliRoot, [
+    "-c",
+    "core.hooksPath=/dev/null",
+    "commit",
+    "--quiet",
+    "--allow-empty",
+    "-m",
+    "target moved",
+  ]);
+  fixtureGit(cliRoot, ["update-ref", `refs/remotes/${DEFAULT_BASE}`, "HEAD"]);
+  fixtureGit(cliRoot, [
+    "-c",
+    "core.hooksPath=/dev/null",
+    "checkout",
+    "--quiet",
+    "--detach",
+    head,
+  ]);
+});
+after(() => {
+  if (cliRoot !== undefined) rmSync(cliRoot, { recursive: true, force: true });
+});
 
 const capture = () => {
   const out = { stdout: "", stderr: "" };
@@ -96,10 +166,28 @@ test("usage errors exit 2", async () => {
   }
 });
 
+test("a stale target ancestor is refused before any check runs", async () => {
+  const io = capture();
+  let ran = 0;
+  const exitCode = await main(["--strict", "--base", "HEAD", "--json"], {
+    root: cliRoot,
+    env: {},
+    ...io,
+    probes: allAvailable,
+    runStep: async () => {
+      ran += 1;
+      return { status: 0, output: "" };
+    },
+  });
+  assert.equal(exitCode, 2);
+  assert.equal(ran, 0);
+  assert.equal(io.out.stdout, "");
+});
+
 test("--json prints one document with the stable schema and nothing else", async () => {
   const io = capture();
-  const exitCode = await main(["--strict", "--base", "HEAD", "--json"], {
-    root,
+  const exitCode = await main(["--strict", "--base", DEFAULT_BASE, "--json"], {
+    root: cliRoot,
     env: {},
     ...io,
     probes: allAvailable,
@@ -134,9 +222,9 @@ test("--list runs nothing and --json reports the plan separately", async () => {
   const io = capture();
   let ran = 0;
   const exitCode = await main(
-    ["--strict", "--base", "HEAD", "--list", "--json", "--full"],
+    ["--strict", "--base", DEFAULT_BASE, "--list", "--json", "--full"],
     {
-      root,
+      root: cliRoot,
       env: {},
       ...io,
       probes: allAvailable,
@@ -152,13 +240,13 @@ test("--list runs nothing and --json reports the plan separately", async () => {
   assert.deepEqual(report.checks, []);
   assert.equal(report.full, true);
   assert.deepEqual(report.fullReasons, ["--full"]);
-  assert.equal(report.planned.length, buildRegistry(root).checks.length);
+  assert.equal(report.planned.length, buildRegistry(cliRoot).checks.length);
 });
 
 test("the kill switch forces a full run and a failed check exits 1 with its fix", async () => {
   const io = capture();
-  const exitCode = await main(["--strict", "--base", "HEAD"], {
-    root,
+  const exitCode = await main(["--strict", "--base", DEFAULT_BASE], {
+    root: cliRoot,
     env: { MIDGARD_PREFLIGHT_FULL: "1" },
     ...io,
     probes: allAvailable,
