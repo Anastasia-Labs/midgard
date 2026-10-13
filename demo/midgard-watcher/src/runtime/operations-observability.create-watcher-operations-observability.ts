@@ -5,6 +5,7 @@ import {
   createWatcherAlertBook,
   WATCHER_DA_FETCH_ALERT_MAXIMUM_AGE_MS,
 } from "./operations-observability.alert-book.js";
+import { countWatcherReadinessReasons } from "./operations-observability.count-readiness-reasons.js";
 import { handleWatcherOperationsHttpRequest } from "./operations-observability.handle-http-request.js";
 import { hash32, percentile } from "./operations-observability.percentile.js";
 import {
@@ -293,14 +294,12 @@ export const createWatcherOperationsObservability = (input: {
       maximumAge: unknownAge ? null : maximumAge,
     });
   };
-
   const l1Degradations = () =>
     Object.freeze(
       (input.l1Degradations?.() ?? []).map(({ reason, count, detail }) =>
         Object.freeze({ reason, count: count.toString(), detail }),
       ),
     );
-
   const status = (): WatcherOperationsStatus => {
     const observedAt = nowMs();
     if (observedAt < 0n) throw new Error("observability clock is invalid");
@@ -452,6 +451,7 @@ export const createWatcherOperationsObservability = (input: {
       l1Degradations: Object.freeze(
         Object.fromEntries(l1Degradations().map((d) => [d.reason, d.count])),
       ),
+      l1Readiness: countWatcherReadinessReasons(input.l1Readiness?.() ?? []),
     });
   };
 

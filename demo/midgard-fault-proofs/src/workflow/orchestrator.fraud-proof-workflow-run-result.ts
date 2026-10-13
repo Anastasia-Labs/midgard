@@ -37,6 +37,14 @@ export const latestSubmissionIntent = (
       > => event.kind === "submission_intent" && event.actionId === actionId,
     );
 
+/**
+ * The `pending` reason of a run whose next action needs a new submission while
+ * it holds reconciliation-only authority (its latest safe start has passed).
+ * The run takes no further step by itself; a person resubmits.
+ */
+export const FRAUD_PROOF_WORKFLOW_FRESH_SUBMISSION_REQUIRED =
+  "Canonical workflow requires fresh submission authority";
+
 export type FraudProofWorkflowRunResult =
   | {
       readonly kind: "no_fault_detected" | "unprovable_gap";

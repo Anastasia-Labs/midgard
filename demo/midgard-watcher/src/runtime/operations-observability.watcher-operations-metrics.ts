@@ -251,9 +251,8 @@ export type WatcherOperationsStatus = Readonly<{
   /**
    * The watcher's own reasons, then each named L1 reason of `l1Readiness`
    * (the follower's, the decision driver's and the proof execution's, for
-   * example `l1_follower_catching_up`, `wallet_seed_pending`, a rollback
-   * intervention or `fault_proof_l1_refused:<reason>`, an objective held on
-   * an L1 read the follower refused for `<reason>`).
+   * example `l1_follower_catching_up`, `fault_proof_l1_refused:<reason>` or
+   * `fault_proof_resubmission_required` for manual proof submission).
    */
   readinessReasons: readonly (WatcherOperationsReadinessReason | string)[];
   /** The named L1 reasons with their detail; empty when L1 holds nothing. */
@@ -347,6 +346,8 @@ export type WatcherOperationsMetrics = Readonly<{
   deferredClassifications: string;
   /** The count of each named L1 degradation. Never a readiness reason. */
   l1Degradations: Readonly<Record<string, string>>;
+  /** Named L1 readiness reasons counted per held objective; zeros omitted. */
+  l1Readiness: Readonly<Record<string, string>>;
 }>;
 
 export type WatcherOperationsPage = Readonly<{
