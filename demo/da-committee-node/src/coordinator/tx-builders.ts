@@ -293,7 +293,7 @@ export const daAttestationApplyValidityRange = async ({
   const result = await Effect.runPromise(
     SDK.daAttestationApplyValidityRangeProgram({
       currentTime,
-      headerEndTime: target.stateQueueNode.header.endTime,
+      blockTime: target.stateQueueNode.block_time,
     }).pipe(Effect.either),
   );
   if (Either.isLeft(result)) {

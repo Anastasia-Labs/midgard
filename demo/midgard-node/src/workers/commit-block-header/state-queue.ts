@@ -124,7 +124,7 @@ export type CommitAppendFenceReferences = {
 };
 
 /**
- * The header ends of every unattested node after the root, failing instead
+ * The block times of every unattested node after the root, failing instead
  * when any of them is past its DA attestation deadline. Appending to an
  * expired unattested suffix only creates more work for permissionless
  * correction, so the commit pauses until correction removes it. Every pending
@@ -135,7 +135,7 @@ export type CommitAppendFenceReferences = {
  * clock that runs fast must not pause commits early. While no L1 tip has been
  * read the commit pauses the same way, and the next tick retries.
  */
-const unexpiredUnattestedSuffixEndTimes = (
+const unexpiredUnattestedSuffixBlockTimes = (
   lucid: LucidEvolution,
   ordered: readonly SDK.StateQueueUTxO[],
 ): Effect.Effect<readonly number[], SDK.StateQueueError> =>
@@ -151,7 +151,7 @@ const unexpiredUnattestedSuffixEndTimes = (
         ),
       ),
     );
-    const unattestedEndTimesMs: number[] = [];
+    const unattestedBlockTimesMs: number[] = [];
     for (const entry of ordered.slice(1)) {
       const node = yield* localizeSdkEffect<
         SDK.StateQueueNode,
@@ -168,7 +168,7 @@ const unexpiredUnattestedSuffixEndTimes = (
       if (node.da_attestation !== SDK.NO_DA_ATTESTATION) {
         continue;
       }
-      if (nowMs >= node.header.endTime + SDK.DA_ATTESTATION_TIMEOUT_MS) {
+      if (nowMs >= node.block_time + SDK.DA_ATTESTATION_TIMEOUT_MS) {
         return yield* Effect.fail(
           new SDK.StateQueueError({
             message:
@@ -177,19 +177,19 @@ const unexpiredUnattestedSuffixEndTimes = (
           }),
         );
       }
-      unattestedEndTimesMs.push(Number(node.header.endTime));
+      unattestedBlockTimesMs.push(Number(node.block_time));
     }
-    return unattestedEndTimesMs;
+    return unattestedBlockTimesMs;
   });
 
 /**
- * Q61's append fence as a cap on the new header's end. The header end is the
- * append's inclusive upper bound, so it must fall strictly before the DA
- * attestation deadline of every unattested node still in the queue, not only
- * the head's: an append landing after a pending tail's deadline takes the
- * tail that timeout correction is about to remove. Only the head's
+ * Q61's append fence as a cap on the new block's block_time, the append's
+ * inclusive upper bound: it must fall strictly before the DA attestation
+ * deadline (block_time + timeout) of every unattested node still in the queue,
+ * not only the head's: an append landing after a pending tail's deadline
+ * takes the tail that timeout correction is about to remove. Only the head's
  * fence is enforced on chain; the rest is this node's own build policy. An
- * on-chain node already past its deadline leaves no end to cap: the fence
+ * on-chain node already past its deadline leaves nothing to cap: the fence
  * fails with the build's expired-suffix refusal instead.
  */
 export const resolveCommitAppendFenceEndTimeCapLocal = (
@@ -205,13 +205,13 @@ export const resolveCommitAppendFenceEndTimeCapLocal = (
       stateQueueContractOf(fetchConfig),
       "the commit append fence",
     );
-    const unattestedEndTimesMs = yield* unexpiredUnattestedSuffixEndTimes(
+    const unattestedBlockTimesMs = yield* unexpiredUnattestedSuffixBlockTimes(
       lucid,
       ordered,
     );
-    return unattestedEndTimesMs.length === 0
+    return unattestedBlockTimesMs.length === 0
       ? undefined
-      : Math.min(...unattestedEndTimesMs) +
+      : Math.min(...unattestedBlockTimesMs) +
           Number(SDK.DA_ATTESTATION_TIMEOUT_MS) -
           1;
   });
@@ -237,7 +237,7 @@ export const resolveCommitAppendFenceReferencesLocal = (
       stateQueueContractOf(fetchConfig),
       "the commit append fence",
     );
-    yield* unexpiredUnattestedSuffixEndTimes(lucid, ordered);
+    yield* unexpiredUnattestedSuffixBlockTimes(lucid, ordered);
     const canonicalTail = ordered.at(-1);
     if (canonicalTail === undefined) {
       return yield* Effect.fail(

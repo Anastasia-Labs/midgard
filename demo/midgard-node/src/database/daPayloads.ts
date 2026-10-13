@@ -350,7 +350,7 @@ export const pruneBeyondRetention = (args: {
         yield* sql`SELECT pg_advisory_xact_lock(${STORE_ADVISORY_LOCK_NAMESPACE}, ${STORE_ADVISORY_LOCK_KEY})`;
         const rows = yield* sql<{ readonly header_hash: Buffer }>`
       DELETE FROM ${sql(tableName)}
-      WHERE (${sql(Columns.BLOCK_END_TIME)} < ${args.challengeableCutoff} OR ${removed})
+      WHERE (${sql(Columns.BLOCK_TIME)} < ${args.challengeableCutoff} OR ${removed})
         AND NOT ${sql.in(Columns.HEADER_HASH, exempt)}
         AND NOT ${finalityHeldPayload(sql, args.deploymentIdentityDigest, `${tableName}.${Columns.HEADER_HASH}`, args.view.finalThroughHeight)}
         AND NOT ${args.deploymentIdentityDigest === undefined ? sql`FALSE` : recoveryRelevantJournal(sql, Columns.HEADER_HASH)}

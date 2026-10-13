@@ -114,7 +114,7 @@ export const incompleteApplyDaAttestationToStateQueueTxProgram = (
       );
     }
     const attestationDeadline =
-      config.target.stateQueueNode.header.endTime + DA_ATTESTATION_TIMEOUT_MS;
+      config.target.stateQueueNode.block_time + DA_ATTESTATION_TIMEOUT_MS;
     if (config.validityRange.validTo > attestationDeadline) {
       return yield* failBuild(
         "validity_range_past_deadline",

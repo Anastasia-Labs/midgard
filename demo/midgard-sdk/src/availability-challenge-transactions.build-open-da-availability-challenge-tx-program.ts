@@ -131,7 +131,7 @@ export const buildOpenDaAvailabilityChallengeTxProgram = (
     });
     assertDaAvailabilityOpenWithinChallengeWindow({
       validTo: p.validTo,
-      nodeEndTime: node.header.endTime,
+      nodeBlockTime: node.block_time,
       daChallengeWindowMs: p.daChallengeWindowMs,
     });
     if (

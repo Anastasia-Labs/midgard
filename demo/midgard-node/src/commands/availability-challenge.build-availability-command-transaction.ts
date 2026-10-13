@@ -155,7 +155,7 @@ export const buildAvailabilityCommandTransaction = async (
     const { daChallengeWindowMs, unitHistory } = context;
     // The validator requires the inclusive upper bound, validTo - 1, to fall
     // before the window's end.
-    const windowEnd = node.header.endTime + daChallengeWindowMs;
+    const windowEnd = node.block_time + daChallengeWindowMs;
     if (validTo > windowEnd) validTo = windowEnd;
     const commitment = await recoverAvailabilityOpenCommitment({
       unitHistory,

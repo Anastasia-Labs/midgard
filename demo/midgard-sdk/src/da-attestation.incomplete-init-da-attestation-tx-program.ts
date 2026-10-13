@@ -266,16 +266,17 @@ export const DA_ATTESTATION_APPLY_SLOT_LAG_ALLOWANCE_MS = 60_000n;
  */
 export const daAttestationApplyValidityRangeProgram = ({
   currentTime,
-  headerEndTime,
+  blockTime,
 }: {
   readonly currentTime: bigint;
-  readonly headerEndTime: bigint;
+  /** The node's `block_time`: the attestation deadline counts from it. */
+  readonly blockTime: bigint;
 }): Effect.Effect<
   { readonly validFrom: bigint; readonly validTo: bigint },
   DaAttestationBuildError
 > =>
   Effect.gen(function* () {
-    const deadline = headerEndTime + DA_ATTESTATION_TIMEOUT_MS;
+    const deadline = blockTime + DA_ATTESTATION_TIMEOUT_MS;
     if (currentTime >= deadline) {
       return yield* failBuild(
         "validity_range_past_deadline",

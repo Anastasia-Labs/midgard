@@ -167,7 +167,7 @@ export const fetchCanonicalMergeCandidateReadiness = (
 
     const mergeMaturity = mergeMaturityWindow(
       lucid,
-      Number(blockHeader.endTime),
+      Number(firstBlockNode.block_time),
     );
     const nowUnixTime = yield* l1NowUnixTimeMs(lucid).pipe(
       Effect.mapError(

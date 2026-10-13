@@ -95,6 +95,7 @@ export const element = (
   },
   headerHash,
   endTimeMs,
+  blockTimeMs: endTimeMs,
   daStatus: null,
   problems: [],
   created: null,

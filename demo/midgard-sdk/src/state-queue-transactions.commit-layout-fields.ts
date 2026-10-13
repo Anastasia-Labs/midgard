@@ -37,7 +37,7 @@ export const assertCommitHeadDaDeadline = (
   nowMs = Date.now(),
 ): Effect.Effect<void, StateQueueError> => {
   const deadlineMs =
-    head.header.endTime +
+    head.block_time +
     BigInt(SELECTED_DEPLOYMENT_PROFILE.timing.da_attestation_timeout_ms);
   if (
     head.da_attestation === NO_DA_ATTESTATION &&

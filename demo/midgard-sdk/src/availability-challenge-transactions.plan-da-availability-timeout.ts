@@ -227,19 +227,19 @@ export const assertDaAvailabilityOpenCommitment = (input: {
 };
 
 /**
- * `OpenChallenge` requires `inclusive_upper < end_time + da_challenge_window`.
+ * `OpenChallenge` requires `inclusive_upper < block_time + da_challenge_window`.
  * The inclusive upper bound is `validTo - 1`.
  */
 export const assertDaAvailabilityOpenWithinChallengeWindow = (input: {
   readonly validTo: bigint;
-  readonly nodeEndTime: bigint;
+  readonly nodeBlockTime: bigint;
   readonly daChallengeWindowMs: bigint;
 }): void => {
   if (input.daChallengeWindowMs <= 0n)
     fail("da_challenge_window_ms must be positive");
-  if (input.validTo - 1n >= input.nodeEndTime + input.daChallengeWindowMs)
+  if (input.validTo - 1n >= input.nodeBlockTime + input.daChallengeWindowMs)
     fail(
-      `Challenge window closed: inclusive upper ${input.validTo - 1n} is not before ${input.nodeEndTime + input.daChallengeWindowMs}`,
+      `Challenge window closed: inclusive upper ${input.validTo - 1n} is not before ${input.nodeBlockTime + input.daChallengeWindowMs}`,
       "challenge-window-closed",
     );
 };

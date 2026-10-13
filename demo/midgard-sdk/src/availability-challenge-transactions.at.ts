@@ -187,7 +187,7 @@ export type DaAvailabilityTransactionErrorReason =
   | "commitment-hash-mismatch"
   /** The record's live min-UTxO exceeds `challenge_record_lovelace`. */
   | "record-min-ada"
-  /** The open's upper bound is at or past `end_time + da_challenge_window_ms`. */
+  /** The open's upper bound is at or past `block_time + da_challenge_window_ms`. */
   | "challenge-window-closed"
   /** The timeout needs a challenger fee contribution above `max_timeout_fee`. */
   | "timeout-challenger-fee-cap"

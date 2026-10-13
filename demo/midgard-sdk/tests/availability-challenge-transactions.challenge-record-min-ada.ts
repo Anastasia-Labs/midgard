@@ -143,22 +143,22 @@ describe("Open commitment binding", () => {
 });
 
 describe("Open challenge window", () => {
-  it("admits an inclusive upper bound strictly before end_time + window", () => {
+  it("admits an inclusive upper bound strictly before block_time + window", () => {
     expect(() =>
       assertDaAvailabilityOpenWithinChallengeWindow({
         validTo: 1_000n + 600n,
-        nodeEndTime: 1_000n,
+        nodeBlockTime: 1_000n,
         daChallengeWindowMs: 600n,
       }),
     ).not.toThrow();
   });
 
-  it("refuses an inclusive upper bound at end_time + window", () => {
+  it("refuses an inclusive upper bound at block_time + window", () => {
     refusal(
       () =>
         assertDaAvailabilityOpenWithinChallengeWindow({
           validTo: 1_000n + 600n + 1n,
-          nodeEndTime: 1_000n,
+          nodeBlockTime: 1_000n,
           daChallengeWindowMs: 600n,
         }),
       "challenge-window-closed",

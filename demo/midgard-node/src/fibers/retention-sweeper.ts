@@ -95,9 +95,9 @@ const publishDaPayloadRetentionDeadline = (
             view.finalThroughHeight,
           )}`;
     const rows = yield* sql<{
-      readonly oldest_block_end_time: Date | null;
-    }>`SELECT MIN(block_end_time) AS oldest_block_end_time FROM da_payloads WHERE ${exempt}`;
-    const oldest = rows[0]?.oldest_block_end_time ?? null;
+      readonly oldest_block_time: Date | null;
+    }>`SELECT MIN(block_time) AS oldest_block_time FROM da_payloads WHERE ${exempt}`;
+    const oldest = rows[0]?.oldest_block_time ?? null;
     const remainingMs =
       oldest === null
         ? MIDGARD_RETENTION_WINDOW.requiredRetentionMs

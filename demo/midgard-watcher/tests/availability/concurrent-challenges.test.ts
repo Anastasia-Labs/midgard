@@ -376,7 +376,7 @@ describe("concurrent availability challenges on one wallet (spec #685 E3, P9)", 
     const accepts = (validTo: bigint) => () =>
       assertDaAvailabilityOpenWithinChallengeWindow({
         validTo,
-        nodeEndTime: endTime,
+        nodeBlockTime: endTime,
         daChallengeWindowMs: window,
       });
     expect(accepts(deadline)).not.toThrow();

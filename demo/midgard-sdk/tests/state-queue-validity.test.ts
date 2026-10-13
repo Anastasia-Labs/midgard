@@ -216,6 +216,23 @@ describe("production commit validity binding", () => {
     },
   );
 
+  it("counts a catch-up head's DA deadline from its block time, not its end", async () => {
+    const catchUp = {
+      ...head(),
+      header: { ...head().header, endTime: BigInt(headEndTime - 3_600_000) },
+    };
+    await expect(
+      Effect.runPromise(
+        assertCommitHeadDaDeadline(catchUp, deadline - 1, headEndTime),
+      ),
+    ).resolves.toBeUndefined();
+    await expect(
+      Effect.runPromise(
+        assertCommitHeadDaDeadline(catchUp, deadline, headEndTime),
+      ),
+    ).rejects.toThrow("waiting for DA attestation");
+  });
+
   it("distinguishes an already expired head from waiting for attestation", async () => {
     await expect(
       Effect.runPromise(

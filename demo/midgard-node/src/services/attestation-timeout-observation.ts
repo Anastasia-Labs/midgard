@@ -26,8 +26,7 @@ export const observeAttestationTimeoutQueue = (
       const node = yield* SDK.getStateQueueNodeFromStateQueueDatum(entry.datum);
       if (
         node.da_attestation === SDK.NO_DA_ATTESTATION &&
-        (pending === undefined ||
-          node.header.endTime < pending.node.header.endTime)
+        (pending === undefined || node.block_time < pending.node.block_time)
       ) {
         pending = { entry, node };
       }
@@ -35,7 +34,7 @@ export const observeAttestationTimeoutQueue = (
     if (pending === undefined) return { status: "queue-attested" } as const;
     const { entry, node } = pending;
     const headerHash = yield* SDK.headerHashFromStateQueueUTxO(entry);
-    const deadlineMs = node.header.endTime + SDK.DA_ATTESTATION_TIMEOUT_MS;
+    const deadlineMs = node.block_time + SDK.DA_ATTESTATION_TIMEOUT_MS;
     const remainingMs = deadlineMs - nowMs;
     return {
       status:
