@@ -22,6 +22,9 @@ export const NEW_SHIFT_INACTIVITY_GRACE_PERIOD_MS = BigInt(
 export const MAX_VALIDITY_RANGE_LENGTH_MS = BigInt(
   SELECTED_DEPLOYMENT_PROFILE.timing.max_validity_range_ms,
 );
+export const MAX_EVENT_VALIDITY_RANGE_LENGTH_MS = BigInt(
+  SELECTED_DEPLOYMENT_PROFILE.timing.max_event_validity_range_ms,
+);
 export const MAX_INACTIVITY_STRIKES = BigInt(
   SELECTED_DEPLOYMENT_PROFILE.limits.max_inactivity_strikes,
 );
