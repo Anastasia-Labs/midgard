@@ -1,10 +1,7 @@
 import { Option } from "effect";
 import { describe, expect, it } from "vitest";
 
-import {
-  Columns as TxColumns,
-  EntryWithTimeStamp,
-} from "../src/database/utils/tx.js";
+import { Columns as TxColumns } from "../src/database/utils/tx.js";
 import { establishEffectiveEndTimeFromDecodedMempool } from "../src/mpf/index.js";
 import { HISTORY_COMMIT_LANDING_MARGIN_MS } from "../src/services/history-commit-window.js";
 import { shouldShortCircuitIdleCommitAttempt } from "../src/workers/commit-block-header.js";
@@ -12,7 +9,6 @@ import {
   buildSuccessfulCommitBatches,
   calibratedCommitBuildMsPerTx,
   clampCommitBuildMsPerTx,
-  type CommitSchedulerStateQueueEvidence,
   DEFAULT_BLOCK_EX_UNITS_BUDGET,
   establishEndTimeFromTxRequests,
   planCommitBatchBudgets,
@@ -23,61 +19,13 @@ import {
   selectCommitTxCandidates,
   updateCommitBuildEwma,
 } from "../src/workers/utils/commit-block-planner.js";
-
-const mkTxEntry = (
-  seed: number,
-  timestamp = new Date("2026-01-01T00:00:00.000Z"),
-): EntryWithTimeStamp => ({
-  [TxColumns.TX_ID]: Buffer.from(seed.toString(16).padStart(64, "0"), "hex"),
-  [TxColumns.TX]: Buffer.from(`tx-${seed}`),
-  [TxColumns.TIMESTAMPTZ]: timestamp,
-});
-
-const fitInsideSchedulerWindow = ({
-  resolvedEndTimeMs,
-  maximumEndTimeMs,
-}: {
-  readonly resolvedEndTimeMs: number;
-  readonly maximumEndTimeMs: number;
-}) =>
-  ({
-    status: "fits",
-    alignedCandidateEndTime: resolvedEndTimeMs,
-    minimumMonotonicEndTime: resolvedEndTimeMs - 2_000,
-    minimumCurrentTimeEndTime: resolvedEndTimeMs - 1_000,
-    resolvedEndTime: resolvedEndTimeMs,
-    maximumEndTimeMs,
-  }) as const;
-
-const fitExceedingSchedulerWindow = ({
-  resolvedEndTimeMs,
-  maximumEndTimeMs,
-}: {
-  readonly resolvedEndTimeMs: number;
-  readonly maximumEndTimeMs: number;
-}) =>
-  ({
-    status: "exceeds_cap",
-    alignedCandidateEndTime: resolvedEndTimeMs - 2_000,
-    minimumMonotonicEndTime: resolvedEndTimeMs - 1_000,
-    minimumCurrentTimeEndTime: resolvedEndTimeMs,
-    resolvedEndTime: resolvedEndTimeMs,
-    maximumEndTimeMs,
-    reason: `resolved_end_time_ms=${resolvedEndTimeMs.toString()},maximum_end_time_ms=${maximumEndTimeMs.toString()}`,
-  }) as const;
-
-const submitSlotSnapshot = {
-  source: "test",
-  currentSlot: 10,
-  observedAtMs: 50_000,
-  slotLengthMs: 1_000,
-} as const;
-
-const stateQueueEvidence: CommitSchedulerStateQueueEvidence = {
-  tailCommitBaseOutRef: "stateq#1",
-  tailBlockEndTimeMs: Date.parse("2026-01-01T00:00:00.000Z"),
-  stateQueueHasUnmergedTail: false,
-};
+import {
+  fitExceedingSchedulerWindow,
+  fitInsideSchedulerWindow,
+  mkTxEntry,
+  stateQueueEvidence,
+  submitSlotSnapshot,
+} from "./commit-block-planner.fixture.js";
 
 describe("commit block planner", () => {
   it("clamps and updates measured commit-build EWMA deterministically", () => {

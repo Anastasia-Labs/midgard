@@ -1,27 +1,25 @@
 import { encodeMidgardCekProgramMaterialSidecar } from "@al-ft/midgard-core/cek-proof";
-import {
-  type DaPayloadEmissionMode,
-  maxDaPayloadInnerBytes,
-} from "@al-ft/midgard-core/da-payload-sizing";
-import { Effect, Either, Logger } from "effect";
+import { maxDaPayloadInnerBytes } from "@al-ft/midgard-core/da-payload-sizing";
+import { Effect, Either } from "effect";
 import { describe, expect, it, vi } from "vitest";
 
-import {
-  Columns as TxColumns,
-  type EntryWithTimeStamp,
-} from "../src/database/utils/tx.js";
-import { measureCommitDaPayloadUpperBound } from "../src/workers/commit-block-header/submission.assert-pre-submit-da-payload-size.js";
+import { Columns as TxColumns } from "../src/database/utils/tx.js";
 import {
   type CommitDaFrameMeasurement,
   commitDaFrameStepDownPassBound,
-  type CommitTxCandidateSelection,
   planCommitBatchBudgets,
   planCommitDaFrameStepDown,
   selectCommitTxCandidates,
   stepDownCommitSelectionToDaFrame,
 } from "../src/workers/utils/commit-block-planner.js";
 import {
-  blockContentFor,
+  HEAVY_TRANSFER,
+  quiet,
+  stepDown,
+  threeTransfers,
+  txIdsOf,
+} from "./commit-da-frame-step-down.fixture.js";
+import {
   type BlockShape,
   mkCandidate,
   MODES,
@@ -50,60 +48,6 @@ vi.mock("../src/database/index.js", async () => {
     },
   };
 });
-
-const quiet = <A, E>(effect: Effect.Effect<A, E, unknown>) =>
-  Effect.runPromise(
-    effect.pipe(
-      Effect.provide(Logger.remove(Logger.defaultLogger)),
-    ) as Effect.Effect<A, E, never>,
-  );
-
-const txIdsOf = (txs: readonly EntryWithTimeStamp[]) =>
-  txs.map((entry) => entry[TxColumns.TX_ID].toString("hex"));
-
-/**
- * Runs the step-down over a fake block build whose DA content has `shape`,
- * measured by the commit program's real upper-bound measurement.
- */
-const stepDown = async (
-  candidateSelection: CommitTxCandidateSelection,
-  mode: DaPayloadEmissionMode,
-  shape: BlockShape,
-) => {
-  const processed: (readonly EntryWithTimeStamp[])[] = [];
-  const measured: (CommitDaFrameMeasurement | undefined)[] = [];
-  let rebases = 0;
-  const result = await quiet(
-    stepDownCommitSelectionToDaFrame({
-      candidateSelection,
-      maxInnerBytes: maxDaPayloadInnerBytes(mode),
-      process: (selection) =>
-        Effect.sync(() => {
-          processed.push(selection.candidateTxs);
-          return blockContentFor(selection.candidateTxs, shape);
-        }),
-      measure: (built) =>
-        measureCommitDaPayloadUpperBound({
-          ...built,
-          rejectedTxIds: [],
-        }).pipe(Effect.tap((measurement) => measured.push(measurement))),
-      rebase: Effect.sync(() => {
-        rebases += 1;
-      }),
-    }),
-  );
-  return { result, processed, measured, rebases };
-};
-
-const threeTransfers = () =>
-  selectCommitTxCandidates({
-    mempoolTxs: Array.from({ length: 3 }, (_, index) => mkCandidate(index + 1)),
-    processedMempoolTxs: [],
-  });
-
-// A transfer carrying about 336 KB of DA weight the planner's estimate does
-// not see (see SYNTHETIC_TX_DA_BYTES).
-const HEAVY_TRANSFER: BlockShape = { descriptorBytes: 336_000 };
 
 describe("commit DA frame step-down", () => {
   it("finds an interior-only fitting prefix without discarding unvisited counts", async () => {

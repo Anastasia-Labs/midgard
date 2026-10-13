@@ -1,9 +1,10 @@
-import * as SDK from "@al-ft/midgard-sdk";
 import {
   Emulator,
   generateEmulatorAccount,
   Lucid,
 } from "@lucid-evolution/lucid";
+import { makeLucid, currentSlotStartMs } from "./commit-end-time.fixture.js";
+import * as SDK from "@al-ft/midgard-sdk";
 import { describe, expect, it, vi } from "vitest";
 
 import {
@@ -21,20 +22,6 @@ import {
   resolveExplicitCommitCandidateEndTimeMs,
   resolveHistoryCommitEndTime,
 } from "../src/workers/utils/commit-end-time.js";
-
-/**
- * Builds a Lucid instance for commit-end-time tests.
- */
-const makeLucid = async () => {
-  const operator = generateEmulatorAccount({ lovelace: 50_000_000n });
-  const emulator = new Emulator([operator]);
-  const lucid = await Lucid(emulator, "Custom");
-  lucid.selectWallet.fromSeed(operator.seedPhrase);
-  return lucid;
-};
-
-const currentSlotStartMs = (lucid: Awaited<ReturnType<typeof makeLucid>>) =>
-  lucid.slotToUnixTime(lucid.currentSlot());
 
 describe("commit end-time resolver", () => {
   it("keeps submit-slot time monotonic across wall-clock jumps", () => {
