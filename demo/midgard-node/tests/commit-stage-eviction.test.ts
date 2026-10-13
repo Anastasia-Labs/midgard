@@ -22,6 +22,7 @@ import {
   type EntryWithTimeStamp,
 } from "../src/database/utils/tx.js";
 import {
+  COMMIT_REJECT_CODE_DA_OVERSIZE,
   COMMIT_REJECT_CODE_PROGRAM_COVERAGE,
   COMMIT_REJECT_CODE_SPENDS_REJECTED_OUTPUT,
   COMMIT_REJECT_CODE_TRACE_UNAVAILABLE,
@@ -301,6 +302,7 @@ const mempoolPage = MempoolDB.retrievePage({ limit: 100 }).pipe(
 const build = (
   count: number,
   validationTraceBuilder?: Parameters<typeof config>[0],
+  commitEvictions?: ReadonlyMap<string, { code: string; detail: string }>,
 ) =>
   Effect.gen(function* () {
     fixture.phaseBAccepted = [];
@@ -311,7 +313,7 @@ const build = (
     const refused = yield* processMpfs(
       { root: () => Effect.succeed("") } as unknown as MidgardMpf,
       page,
-      config(validationTraceBuilder) as never,
+      { ...config(validationTraceBuilder), commitEvictions } as never,
     ).pipe(Effect.flip);
     expect(refused.message).toBe(BASE_ROOT_REFUSAL);
     return fixture.phaseBAccepted.at(-1) ?? [];
@@ -362,6 +364,24 @@ describe("commit-stage eviction of normal transactions", () => {
     expect(result.next).toEqual([t3, t4, t5]);
     expect(result.afterNext).toEqual(result.afterFirst);
     expect(result.pending).toEqual([t3, t4, t5]);
+  }, 60_000);
+
+  it("rejects a transaction the DA step-down evicts, with its dependents, and the next block commits", async () => {
+    const evictions = new Map([
+      [t1, { code: COMMIT_REJECT_CODE_DA_OVERSIZE, detail: "oversize" }],
+    ]);
+    const result = await run(
+      Effect.gen(function* () {
+        yield* seed();
+        const first = yield* build(SELECTION, undefined, evictions);
+        const rejected = yield* rejections;
+        return { first, rejected, next: yield* build(100) };
+      }),
+    );
+    expect(result.first).toEqual([t3, t4]);
+    expect(result.rejected[t1]).toBe(COMMIT_REJECT_CODE_DA_OVERSIZE);
+    expect(Object.keys(result.rejected).sort()).toEqual([t1, t2]);
+    expect(result.next).toEqual([t3, t4, t5]);
   }, 60_000);
 
   it("narrows a Phase B failure to the transaction that causes it and rejects its pending dependents", async () => {

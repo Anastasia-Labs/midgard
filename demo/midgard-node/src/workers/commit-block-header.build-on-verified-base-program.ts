@@ -52,6 +52,10 @@ import {
 } from "./commit-block-header.pending-user-event-counts-up-to.js";
 import { recordSuccessfulBuildCalibration as recordBuildCalibration } from "./commit-block-header.record-successful-build-calibration.js";
 import { resolveCommitBaseLedgerEntries } from "./commit-block-header.resolve-commit-base-ledger-entries.js";
+import {
+  type CommitEviction,
+  stepDownEvictingOversizeNormalTx,
+} from "./commit-block-header/commit-da-oversize-eviction.js";
 import * as DaPrefix from "./commit-block-header/commit-da-prefix-search.js";
 import {
   getLatestBlockDatumEndTime,
@@ -75,7 +79,9 @@ import {
 } from "./utils/commit-block-planner.commit-da-frame-notice.js";
 import {
   calibratedCommitBuildMsPerTx,
+  type CommitDaFrameMeasurement,
   type CommitSchedulerStateQueueEvidence,
+  type CommitTxCandidateSelection,
   type CurrentOperatorSchedulerWindow,
   DEFAULT_COMMIT_BATCH_BUDGET_LIMITS,
   establishEndTimeFromTxRequests,
@@ -575,12 +581,14 @@ export const buildOnVerifiedCommitBaseProgram = (
       daFramePlan,
       commitBase.utxoPayloadAggregate.entryCount,
     );
-    const daFrameBuild = yield* stepDownCommitSelectionToDaFrame({
+    const commitEvictions = new Map<string, CommitEviction>();
+    let daFrameMeasurement: CommitDaFrameMeasurement | undefined;
+    const daFrameStepDown = {
       candidateSelection: daFramePlan.candidateSelection,
       baseUtxoPayloadAggregate: commitBase.utxoPayloadAggregate,
       maxInnerBytes: daFrameInnerLimit,
       notify: notifyParent,
-      process: (selection) => {
+      process: (selection: CommitTxCandidateSelection) => {
         mpfProcessingStartedAtMs = Date.now();
         return processMpfs(transactionsMpf, selection.candidateTxs, {
           fixedBlockEndTime: fixedHistoryEndTime,
@@ -624,6 +632,7 @@ export const buildOnVerifiedCommitBaseProgram = (
             MEMPOOL_LEDGER_REVERTED_NOTICE,
           ),
           nativeMpf: nativeMpfContext,
+          commitEvictions,
         }).pipe(
           Effect.tap((built) =>
             Effect.sync(() => {
@@ -632,12 +641,18 @@ export const buildOnVerifiedCommitBaseProgram = (
           ),
         );
       },
-      measure: (built) =>
+      measure: (built: Effect.Effect.Success<ReturnType<typeof processMpfs>>) =>
         DaPrefix.measureBuiltCommitDaPrefixes(
           built,
           commitBase.root,
           deploymentIdentity.consensusProfile,
           nodeConfig,
+        ).pipe(
+          Effect.tap((measured) =>
+            Effect.sync(() => {
+              daFrameMeasurement = measured;
+            }),
+          ),
         ),
       // A superseded pass's ledger fork and transactions trie never reach
       // commit; the next pass rebuilds both from the same base.
@@ -654,6 +669,14 @@ export const buildOnVerifiedCommitBaseProgram = (
         yield* transactionsMpf.resetToEmpty();
         nativeMpfContext = yield* forkNativeMpfContext;
       }),
+    };
+    // A lone normal transaction the DA frame refuses is rejected.
+    const daFrameBuild = yield* stepDownEvictingOversizeNormalTx({
+      stepDown: stepDownCommitSelectionToDaFrame(daFrameStepDown),
+      measurement: () => daFrameMeasurement,
+      evictions: commitEvictions,
+      rebase: daFrameStepDown.rebase,
+      maxInnerBytes: daFrameInnerLimit,
     });
     yield* DaPrefix.assertCompleteDaPrefixSearch(daFrameBuild.outcome);
     const processed = daFrameBuild.processed;
