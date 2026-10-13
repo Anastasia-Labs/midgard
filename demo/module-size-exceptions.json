@@ -1351,8 +1351,23 @@
   },
   {
     "file": "midgard-watcher/src/availability/runtime.create-watcher-availability-runtime.ts",
-    "max": 795,
-    "reason": "createWatcherAvailabilityRuntime is the dominant indivisible declaration (809 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
+    "max": 820,
+    "reason": "createWatcherAvailabilityRuntime is the dominant indivisible declaration (809 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. C1 (+25): a watcher whose availability key the DA challenger allow-list omits prepares each due Open instead of building it."
+  },
+  {
+    "file": "midgard-watcher/src/fault-proofs/fault-proof-execution.ts",
+    "max": 515,
+    "reason": "One execution adapter: admission identity checks, funding permit mint, invocation, outcome mapping and cleanup share the refusal holds and the operations sink; a split would pass that state across modules. C1 (+15): a watcher whose prover key the fraud-prover allow-list omits prepares each admitted objective instead of running it."
+  },
+  {
+    "file": "midgard-watcher/src/runtime/operations-observability.watcher-operations-metrics.ts",
+    "max": 505,
+    "reason": "The one declaration module for the operations observability contract (alert codes, diagnostics, status, metrics and API types); splitting it scatters one versioned schema. C1 (+6): the prepared-proof alert and the submission-mode metric."
+  },
+  {
+    "file": "midgard-watcher/src/runtime/watcher-runtime.create-watcher-runtime.ts",
+    "max": 507,
+    "reason": "createWatcherRuntime is the composition root: it allocates and wires follower, workflows, funding, supervisor, observability, availability and driver in one ordered sequence that shares cleanup state. C1 (+11): wires observe-and-prepare for keys the allow-lists omit."
   },
   {
     "file": "midgard-watcher/src/fault-proofs/fault-decision-bridge.create-bridge.ts",
@@ -1496,8 +1511,8 @@
   },
   {
     "file": "midgard-watcher/src/runtime/operations-observability.create-watcher-operations-observability.ts",
-    "max": 502,
-    "reason": "One observability owner: status, metrics, readiness reasons and diagnostics share the alert book, source health and supervisor reads, so a split would pass that state across modules. FIXW (+2): a failed objective cleanup names the readiness reason fault_proof_objective_cleanup_failed."
+    "max": 506,
+    "reason": "One observability owner: status, metrics, readiness reasons and diagnostics share the alert book, source health and supervisor reads, so a split would pass that state across modules. FIXW (+2): a failed objective cleanup names the readiness reason fault_proof_objective_cleanup_failed. C1 (+4): metrics report each key's submission mode."
   },
   {
     "file": "../.agents/skills/adding-fault-proof-families/scripts/family-checklist.check-family.mjs",

@@ -71,6 +71,7 @@ describe("DA bond pool alerts (spec #685 E5, #691)", () => {
       "chain_rollback",
       "da_bond_pool_under_backed",
       "da_bond_pool_withdrawing",
+      "prepared_proof_awaiting_submission",
     ]);
   });
 

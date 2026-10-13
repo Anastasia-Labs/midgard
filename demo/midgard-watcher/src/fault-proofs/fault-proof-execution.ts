@@ -21,6 +21,7 @@ import {
 } from "../funding/prover-funding-authority.js";
 import { WatcherProverFundingUnavailableError } from "../funding/prover-funding-reservation.js";
 import { isWatcherL1TransientFailure } from "../l1/transient-failure.js";
+import type { WatcherFaultProofPreparation } from "../runtime/observe-and-prepare.js";
 import type { WatcherOperationsSink } from "../runtime/operations-observability.js";
 import { watcherSha256CanonicalJson } from "../storage/durable-store.js";
 import { isWatcherRetainedDaTransportUnavailable } from "../storage/retained-da-transport-unavailable.js";
@@ -230,6 +231,9 @@ export const createWatcherFaultProofExecution = (dependencies: {
     WatcherOperationsSink,
     "recordProofStep" | "setAlert"
   >;
+  /** Set when the prover key is not on the fraud-prover allow-list: each
+   * admitted objective is prepared for an allow-listed key, never run. */
+  readonly preparation?: WatcherFaultProofPreparation;
 }): WatcherFaultProofExecution => {
   // A refused L1 read says nothing about the fault and is not a process
   // failure: the objective is held by name and runs again on the next
@@ -255,8 +259,10 @@ export const createWatcherFaultProofExecution = (dependencies: {
   };
   return Object.freeze({
     readiness: () => Object.freeze([...refusals.values()]),
-    objectiveSettled: (objective) =>
-      void refusals.delete(objectiveOf(objective)),
+    objectiveSettled: (objective) => {
+      refusals.delete(objectiveOf(objective));
+      dependencies.preparation?.settled(objective);
+    },
     verifyCompleted: async ({ job, actuationPermit, entries, terminal }) => {
       const identity = assertWorkflowActuationPermitIdentity({
         permit: actuationPermit,
@@ -353,6 +359,15 @@ export const createWatcherFaultProofExecution = (dependencies: {
           throw new Error(
             "fault-proof execution admission changed its objective or authority",
           );
+        if (dependencies.preparation !== undefined) {
+          const bundle = dependencies.preparation.prepare(job);
+          record("reconciling");
+          return {
+            kind: "pending",
+            resume: "await_observation",
+            reason: `prepared_proof_awaiting_submission: ${bundle}`,
+          };
+        }
         const journalDirectory = watcherProofObjectiveDirectory(
           dependencies.journalRoot,
           { category, headerHash },
