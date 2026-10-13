@@ -3,7 +3,9 @@ import { EMPTY_MERKLE_TREE_ROOT } from "@al-ft/midgard-sdk";
 import { type CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
 import {
   type CheckedLedger,
+  checkLedgerAgainstRoot,
   type LedgerAt,
+  LedgerRootMismatchError,
   predecessorLedger,
 } from "../ledger-at.js";
 import { findNetworkIdFaults } from "../network-id/evidence.js";
@@ -20,16 +22,55 @@ import {
   type CompleteCanonicalReplayContext,
   type CompleteCanonicalReplayDecision,
   type CompleteCanonicalReplayPredecessor,
+  postLedgerByAuthority,
   predecessorLedgerByAuthority,
+  type ReplayPostLedger,
+  requireReplayPostLedger,
   requireReplayPredecessorLedger,
 } from "./complete-replay.replay-context-identity.js";
 import { acceptedTransactionSubject, subjectOf } from "./detection-subject.js";
 
 /**
+ * The ledger after the challenged block from the same source. The block's
+ * `utxos_root` is not trusted to be honest, so a ledger that fails to open it
+ * is recorded rather than refused; a source without the ledger, or with an
+ * entry that is not a canonical ledger entry, leaves it unavailable.
+ */
+const admitPostLedger = async ({
+  ledgerAt,
+  currentEvidence,
+}: {
+  readonly ledgerAt: LedgerAt;
+  readonly currentEvidence: CanonicalBlockEvidence;
+}): Promise<ReplayPostLedger> => {
+  try {
+    const entries = await ledgerAt(currentEvidence.headerHash);
+    if (entries === undefined) return Object.freeze({ kind: "unavailable" });
+    return Object.freeze({
+      kind: "checked",
+      ledger: await checkLedgerAgainstRoot({
+        entries,
+        utxosRoot: currentEvidence.header.utxosRoot,
+        label: "complete replay post ledger",
+      }),
+    });
+  } catch (error) {
+    return Object.freeze({
+      kind:
+        error instanceof LedgerRootMismatchError
+          ? "root-mismatch"
+          : "unavailable",
+    });
+  }
+};
+
+/**
  * Admits the ledger the challenged block starts from: `ledgerAt` is asked for
  * the ledger after the challenged header's `prev_header_hash`, and the answer
- * is refused unless it opens the header's `prev_utxos_root`. The returned
- * authority is non-revivable: only this module maps it to its ledger.
+ * is refused unless it opens the header's `prev_utxos_root`. The same source
+ * is asked for the ledger after the challenged block (`admitPostLedger`). The
+ * returned authority is non-revivable: only this module maps it to its
+ * ledgers.
  */
 export const admitCompleteCanonicalReplayPredecessor = async ({
   ledgerAt,
@@ -51,6 +92,10 @@ export const admitCompleteCanonicalReplayPredecessor = async ({
     utxosRoot: ledger.utxosRoot,
   });
   predecessorLedgerByAuthority.set(authority, ledger);
+  postLedgerByAuthority.set(
+    authority,
+    await admitPostLedger({ ledgerAt, currentEvidence }),
+  );
   return authority;
 };
 
@@ -68,6 +113,21 @@ export const completeCanonicalReplayPredecessorLedger = ({
   readonly context: CompleteCanonicalReplayContext | undefined;
 }): CheckedLedger | undefined =>
   requireReplayPredecessorLedger({ evidence, context });
+
+/**
+ * The checked ledger after the challenged block, or `undefined` when the
+ * context holds none that opens the header's `utxos_root`.
+ */
+export const completeCanonicalReplayPostLedger = ({
+  evidence,
+  context,
+}: {
+  readonly evidence: CanonicalBlockEvidence;
+  readonly context: CompleteCanonicalReplayContext | undefined;
+}): CheckedLedger | undefined => {
+  const post = requireReplayPostLedger({ evidence, context });
+  return post.kind === "checked" ? post.ledger : undefined;
+};
 
 type CanonicalReplayJson =
   | null
@@ -163,6 +223,10 @@ export const detectDoubleSpends = async (
 export const PREDECESSOR_CONTEXT_UNAVAILABLE_VIOLATION_ID =
   "authenticated-predecessor-context-unavailable" as const;
 
+/** The ledger after the challenged block was not available to a detector. */
+export const POST_LEDGER_CONTEXT_UNAVAILABLE_VIOLATION_ID =
+  "authenticated-post-ledger-context-unavailable" as const;
+
 const predecessorLedgerKeys = ({
   evidence,
   context,
@@ -170,17 +234,11 @@ const predecessorLedgerKeys = ({
   readonly evidence: CanonicalBlockEvidence;
   readonly context: CompleteCanonicalReplayContext | undefined;
 }): ReadonlySet<string> | null => {
-  if (evidence.header.prevUtxosRoot === EMPTY_MERKLE_TREE_ROOT) {
-    if (context?.predecessor !== undefined) {
-      throw new Error(
-        "genesis-ledger replay received a predecessor that the challenged header does not commit",
-      );
-    }
-    return new Set<string>();
-  }
   const predecessor = requireReplayPredecessorLedger({ evidence, context });
-  if (predecessor === undefined) return null;
-  return new Set(predecessor.outputs.keys());
+  if (predecessor !== undefined) return new Set(predecessor.outputs.keys());
+  return evidence.header.prevUtxosRoot === EMPTY_MERKLE_TREE_ROOT
+    ? new Set<string>()
+    : null;
 };
 
 export const detectLedgerRelativeMissingInputs = async ({

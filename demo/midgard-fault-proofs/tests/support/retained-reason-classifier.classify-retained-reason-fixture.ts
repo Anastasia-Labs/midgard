@@ -1,7 +1,10 @@
 import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
-import type { AuthenticatedStateQueueHeaderObservation } from "@al-ft/midgard-sdk";
+import {
+  type AuthenticatedStateQueueHeaderObservation,
+  EMPTY_MERKLE_TREE_ROOT,
+} from "@al-ft/midgard-sdk";
 
-import { retainedPayloadLedgerAt } from "../../src/retained-payload-ledger-at.js";
+import { retainedPayloadReplaySource } from "../../src/retained-payload-ledger-at.js";
 import type { RetainedDaPayloadSource } from "../../src/transition-trace/fetch.js";
 import type {
   CompleteCanonicalReplay,
@@ -82,6 +85,7 @@ export const classifyRetainedReasonFixture = async ({
   const policy = await releaseFinalityAuthority.verifyForWorkflow({
     deploymentFingerprint,
   });
+  const replaySource = retainedPayloadReplaySource({ sources });
   const decision = await classifyHeader({
     classifier,
     observation,
@@ -90,11 +94,22 @@ export const classifyRetainedReasonFixture = async ({
         observation,
         minimumConfirmationDepth: policy.policy.confirmationDepth,
       }),
-    sources,
+    sources: replaySource.sources,
     ...(replayContext === undefined ? {} : { replayContext }),
-    ...(predecessor === undefined
-      ? {}
-      : { predecessorLedgerAt: retainedPayloadLedgerAt({ sources }) }),
+    // The fixture's empty predecessor is supplied directly; retained bytes
+    // supply the challenged block's post ledger.
+    ...(replayContext === undefined &&
+    (predecessor !== undefined ||
+      observation.header.prevUtxosRoot === EMPTY_MERKLE_TREE_ROOT)
+      ? {
+          predecessorLedgerAt: async (headerHash: string) =>
+            predecessor === undefined &&
+            headerHash === observation.header.prevHeaderHash &&
+            observation.header.prevUtxosRoot === EMPTY_MERKLE_TREE_ROOT
+              ? []
+              : await replaySource.ledgerAt(headerHash),
+        }
+      : {}),
   });
   return { decision, sources };
 };

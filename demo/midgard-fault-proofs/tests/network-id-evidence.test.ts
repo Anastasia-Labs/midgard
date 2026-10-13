@@ -410,7 +410,11 @@ describe("Q35 network-id DA-first evidence", () => {
       outputNetworkId: 2,
     });
     const prepared = await prepareNetworkIdPostUtxoFromCanonicalEvidence({
-      evidence,
+      evidence: {
+        ...evidence,
+        reconstruction: { ...evidence.reconstruction, utxos: [] },
+      },
+      postLedger: await checkedLedgerAfter(evidence),
       expectedNetworkId: 0n,
       outRef,
     });
@@ -436,6 +440,7 @@ describe("Q35 network-id DA-first evidence", () => {
     const prepared = await prepareNetworkIdPostUtxoFromCanonicalEvidence({
       evidence: challenged.evidence,
       prevLedger: await checkedLedgerAfter(previous.evidence),
+      postLedger: await checkedLedgerAfter(challenged.evidence),
       expectedNetworkId: 0n,
       outRef: challenged.outRef,
     });
@@ -451,19 +456,23 @@ describe("Q35 network-id DA-first evidence", () => {
         label: "network-id test",
       }),
     ).rejects.toBeInstanceOf(LedgerRootMismatchError);
-    // A checked ledger for another root, or none, is refused.
-    for (const prevLedger of [
-      await checkedLedgerAfter(challenged.evidence),
-      undefined,
-    ])
+    // A checked ledger for another root, or none, is refused on either side.
+    const prevLedger = await checkedLedgerAfter(previous.evidence);
+    const postLedger = await checkedLedgerAfter(challenged.evidence);
+    for (const [ledgers, refusal] of [
+      [{ prevLedger: postLedger, postLedger }, "predecessor"],
+      [{ postLedger }, "predecessor"],
+      [{ prevLedger, postLedger: prevLedger }, "post"],
+      [{ prevLedger }, "post"],
+    ] as const)
       await expect(
         prepareNetworkIdPostUtxoFromCanonicalEvidence({
           evidence: challenged.evidence,
-          ...(prevLedger === undefined ? {} : { prevLedger }),
+          ...ledgers,
           expectedNetworkId: 0n,
           outRef: challenged.outRef,
         }),
-      ).rejects.toThrow("network-id predecessor ledger");
+      ).rejects.toThrow(`network-id ${refusal} ledger`);
   });
 
   it("refuses to blame a descendant for an inherited wrong-network UTxO", async () => {
@@ -480,6 +489,7 @@ describe("Q35 network-id DA-first evidence", () => {
       prepareNetworkIdPostUtxoFromCanonicalEvidence({
         evidence: challenged.evidence,
         prevLedger: await checkedLedgerAfter(previous.evidence),
+        postLedger: await checkedLedgerAfter(challenged.evidence),
         expectedNetworkId: 0n,
         outRef: challenged.outRef,
       }),

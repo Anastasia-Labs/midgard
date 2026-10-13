@@ -9,6 +9,7 @@
 import { type LedgerAt, type LedgerEntry } from "./ledger-at.js";
 import {
   fetchRetainedDaPayloadByHeaderHash,
+  type RetainedDaPayloadFetchResult,
   type RetainedDaPayloadSource,
 } from "./transition-trace/fetch.js";
 import {
@@ -58,3 +59,49 @@ export const retainedPayloadLedgerAt =
     });
     return payloadLedgerEntries(reconstruction);
   };
+
+/**
+ * Evidence and ledger reads share the first verified payload for each header
+ * within one classification. Create this source at the operation boundary;
+ * failed reads are not captured, so the fetch owner's retries still apply.
+ */
+export const retainedPayloadReplaySource = ({
+  sources,
+  retries,
+}: {
+  readonly sources: readonly RetainedDaPayloadSource[];
+  readonly retries?: number | undefined;
+}): {
+  readonly sources: readonly RetainedDaPayloadSource[];
+  readonly ledgerAt: LedgerAt;
+} => {
+  const captured = new Map<string, RetainedDaPayloadFetchResult>();
+  const source: RetainedDaPayloadSource = {
+    sourceId: "retained-replay-snapshot",
+    fetchPayloadByHeaderHash: async (headerHash) => {
+      let payload = captured.get(headerHash);
+      if (payload === undefined) {
+        const fetched = await fetchRetainedDaPayloadByHeaderHash({
+          headerHash,
+          sources,
+          ...(retries === undefined ? {} : { retries }),
+        });
+        payload = {
+          ...fetched,
+          payloadEnvelopeCbor: Buffer.from(fetched.payloadEnvelopeCbor),
+        };
+        captured.set(headerHash, payload);
+      }
+      return {
+        ...payload,
+        ok: true,
+        payloadEnvelopeCbor: Buffer.from(payload.payloadEnvelopeCbor),
+      };
+    },
+  };
+  const snapshotSources = [source];
+  return {
+    sources: snapshotSources,
+    ledgerAt: retainedPayloadLedgerAt({ sources: snapshotSources, retries }),
+  };
+};

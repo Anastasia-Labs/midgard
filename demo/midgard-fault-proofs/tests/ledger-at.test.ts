@@ -5,6 +5,10 @@ import {
   encodeMidgardSpendInputItem,
   MIDGARD_LEDGER_OUTPUT_FIELD_INDEX,
 } from "@al-ft/midgard-core";
+import {
+  EMPTY_MERKLE_TREE_ROOT,
+  GENESIS_HEADER_HASH,
+} from "@al-ft/midgard-sdk";
 import { buildCanonicalMidgardLedgerEntryOutputMaterial } from "@al-ft/midgard-validation";
 import { describe, expect, it } from "vitest";
 
@@ -13,6 +17,7 @@ import {
   checkLedgerJson,
   ledgerJson,
   LedgerRootMismatchError,
+  predecessorLedger,
 } from "../src/ledger-at.js";
 import { keyValuePhasRootWithCount } from "../src/transition-trace/phas.js";
 
@@ -104,6 +109,38 @@ describe("ledger root check for an output with an undecodable native script_ref"
       checkLedgerAgainstRoot({
         entries: [{ outRef, output, descriptor }],
         utxosRoot: unboundRoot.root,
+        label: "test",
+      }),
+    ).rejects.toBeInstanceOf(LedgerRootMismatchError);
+  });
+
+  it("uses the known genesis ledger without fetching a predecessor payload", async () => {
+    const source = async () => {
+      throw new Error("the empty ledger was asked of the source");
+    };
+    const empty = await predecessorLedger({
+      prevHeaderHash: GENESIS_HEADER_HASH,
+      prevUtxosRoot: EMPTY_MERKLE_TREE_ROOT,
+      ledgerAt: source,
+      label: "test",
+    });
+    expect(empty.entries).toEqual([]);
+    await expect(
+      predecessorLedger({
+        prevHeaderHash: "22".repeat(28),
+        prevUtxosRoot: "11".repeat(32),
+        ledgerAt: source,
+        label: "test",
+      }),
+    ).rejects.toThrow("the empty ledger was asked of the source");
+  });
+
+  it("checks a supplied non-genesis ledger even when the committed root is empty", async () => {
+    await expect(
+      predecessorLedger({
+        prevHeaderHash: "22".repeat(28),
+        prevUtxosRoot: EMPTY_MERKLE_TREE_ROOT,
+        ledgerAt: async () => [{ outRef, output: plainOutput }],
         label: "test",
       }),
     ).rejects.toBeInstanceOf(LedgerRootMismatchError);

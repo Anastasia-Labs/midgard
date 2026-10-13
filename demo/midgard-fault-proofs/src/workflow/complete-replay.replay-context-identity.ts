@@ -77,6 +77,23 @@ export const predecessorLedgerByAuthority = new WeakMap<
   CheckedLedger
 >();
 
+/**
+ * The ledger after the challenged block, as its admission found it: checked
+ * against the header's `utxos_root`; refused because its root differs (the
+ * block's committed root is then transitionTrace's to judge); or unavailable,
+ * which a reader must treat as a classification gap.
+ */
+export type ReplayPostLedger =
+  | Readonly<{ kind: "checked"; ledger: CheckedLedger }>
+  | Readonly<{ kind: "root-mismatch" }>
+  | Readonly<{ kind: "unavailable" }>;
+
+export const postLedgerByAuthority = new WeakMap<object, ReplayPostLedger>();
+
+const POST_LEDGER_UNAVAILABLE: ReplayPostLedger = Object.freeze({
+  kind: "unavailable",
+});
+
 export const replayContextIdentity = ({
   evidence,
   context,
@@ -180,4 +197,22 @@ export const requireReplayPredecessorLedger = ({
     );
   }
   return ledger;
+};
+
+/**
+ * The ledger after the challenged block, admitted with the context's
+ * predecessor. With no admitted context the post ledger is unavailable, even
+ * when the challenged header commits the empty root.
+ */
+export const requireReplayPostLedger = ({
+  evidence,
+  context,
+}: {
+  readonly evidence: CanonicalBlockEvidence;
+  readonly context: CompleteCanonicalReplayContext | undefined;
+}): ReplayPostLedger => {
+  const authority = context?.predecessor;
+  if (authority === undefined) return POST_LEDGER_UNAVAILABLE;
+  requireReplayPredecessorLedger({ evidence, context });
+  return postLedgerByAuthority.get(authority) ?? POST_LEDGER_UNAVAILABLE;
 };

@@ -11,7 +11,6 @@ import {
   type OutputReference,
   Proof,
 } from "@al-ft/midgard-sdk";
-import { buildCanonicalMidgardLedgerEntryOutputMaterial } from "@al-ft/midgard-validation";
 import { Data } from "@lucid-evolution/lucid";
 
 import { blockTransactionsFromCanonicalEvidence } from "../evidence/canonical-block-evidence.js";
@@ -33,7 +32,6 @@ import {
 import {
   keyValuePhasNonMembershipProof,
   keyValuePhasProof,
-  keyValuePhasRootWithCount,
 } from "../transition-trace/phas.js";
 import {
   findNetworkIdFaults,
@@ -179,11 +177,14 @@ const sameOutRef = (left: OutputReference, right: OutputReference): boolean =>
 export const prepareNetworkIdPostUtxoFromCanonicalEvidence = async ({
   evidence,
   prevLedger,
+  postLedger,
   expectedNetworkId,
   outRef,
 }: CanonicalEvidenceBuilderInput & {
   /** The ledger the block starts from; only the empty genesis ledger may be omitted. */
   readonly prevLedger?: CheckedLedger;
+  /** The ledger after the block; only the empty ledger may be omitted. */
+  readonly postLedger?: CheckedLedger;
   readonly expectedNetworkId: 0n | 1n;
   readonly outRef?: OutputReference;
 }): Promise<PreparedNetworkIdPostUtxoProof> => {
@@ -195,21 +196,17 @@ export const prepareNetworkIdPostUtxoFromCanonicalEvidence = async ({
     utxosRoot: evidence.header.prevUtxosRoot,
     label: "network-id predecessor ledger",
   });
-  const descriptorMembers = (
-    entries: readonly {
-      readonly key: Uint8Array;
-      readonly value: Uint8Array;
-    }[],
-  ) =>
-    entries.map((entry) => {
-      const decodedOutRef = decodeMidgardSpendInputItem(entry.key);
-      const material = buildCanonicalMidgardLedgerEntryOutputMaterial({
-        outRef: entry.key,
-        outputCbor: entry.value,
-      });
-      const descriptor = decodeMidgardLedgerOutputCommitment(
-        material.descriptorCbor,
-      );
+  const postTrie = requireLedgerOpening({
+    ledger: postLedger,
+    utxosRoot: evidence.header.utxosRoot,
+    label: "network-id post ledger",
+  }).trie;
+  const priorTrie = prior.trie;
+  // The trie leaves are the committed descriptors.
+  const descriptorMembers = (trie: typeof postTrie) =>
+    trie.entries.map(({ key, value }) => {
+      const decodedOutRef = decodeMidgardSpendInputItem(key);
+      const descriptor = decodeMidgardLedgerOutputCommitment(value);
       if (descriptor.outputIndex !== decodedOutRef.outputIndex) {
         throw new Error(
           "network-id post-UTxO descriptor index does not match its ledger out-ref",
@@ -220,25 +217,16 @@ export const prepareNetworkIdPostUtxoFromCanonicalEvidence = async ({
         outputIndex: BigInt(decodedOutRef.outputIndex),
       };
       return {
-        key: Buffer.from(entry.key),
-        value: Buffer.from(material.descriptorCbor),
+        key,
+        value,
         outRef: memberOutRef,
         observedNetworkId: BigInt(
           decodeMidgardAddressBytes(descriptor.address).networkId,
         ),
       };
     });
-  const postMembers = descriptorMembers(evidence.reconstruction.utxos);
-  const priorMembers = descriptorMembers(
-    prior.entries.map(({ outRef, output }) => ({ key: outRef, value: output })),
-  );
-  const postTrie = await keyValuePhasRootWithCount(postMembers);
-  const priorTrie = prior.trie;
-  if (postTrie.root !== evidence.header.utxosRoot) {
-    throw new Error(
-      `network-id post-UTxO ledger root ${postTrie.root} does not match authenticated header.utxos_root ${evidence.header.utxosRoot}`,
-    );
-  }
+  const postMembers = descriptorMembers(postTrie);
+  const priorMembers = descriptorMembers(priorTrie);
   const selected = postMembers
     .filter(
       (member) =>

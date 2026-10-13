@@ -523,6 +523,6 @@ describe("production authenticated-header classifier V1", () => {
     });
     expect(admitted.decision).toBe("healthy");
     expect(headerDecisionReplayContext(admitted)?.predecessor).toBeDefined();
-    expect(fetched.count).toBe(3);
+    expect(fetched.count).toBe(4);
   });
 });

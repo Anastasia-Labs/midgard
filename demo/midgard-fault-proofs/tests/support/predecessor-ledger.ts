@@ -29,6 +29,17 @@ export const ledgerEntriesAfter = (block: Block): LedgerEntry[] =>
 export const ledgerAtAfter = (block: Block): LedgerAt =>
   singleLedgerAt(block.headerHash, ledgerEntriesAfter(block));
 
+/**
+ * A `LedgerAt` holding the ledger after each of `blocks`: a replay context
+ * reads both the predecessor's and the challenged block's.
+ */
+export const ledgerAtAcross = (...blocks: readonly Block[]): LedgerAt => {
+  const ledgers = new Map(
+    blocks.map((block) => [block.headerHash, ledgerEntriesAfter(block)]),
+  );
+  return async (headerHash) => ledgers.get(headerHash);
+};
+
 /** The ledger after `block`, checked against its `utxos_root`. */
 export const checkedLedgerAfter = async (
   block: Block,

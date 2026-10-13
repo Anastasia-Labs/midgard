@@ -6,6 +6,7 @@ import { type ResolvedProverSigner } from "../runtime.js";
 import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts.js";
 import {
   type CompleteCanonicalReplayContext,
+  completeCanonicalReplayPostLedger,
   completeCanonicalReplayPredecessorLedger,
 } from "../workflow/complete-replay.js";
 import {
@@ -61,6 +62,10 @@ export const transactionPort = (
     await prepareMinAdaArtifact({
       evidence,
       predecessor: completeCanonicalReplayPredecessorLedger({
+        evidence,
+        context: config.replayContext,
+      }),
+      post: completeCanonicalReplayPostLedger({
         evidence,
         context: config.replayContext,
       }),

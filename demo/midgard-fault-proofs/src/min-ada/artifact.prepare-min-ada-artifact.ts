@@ -190,10 +190,12 @@ const requireClassification = ({
 export const prepareMinAdaArtifact = async ({
   evidence,
   predecessor,
+  post,
   classification,
 }: {
   readonly evidence: CanonicalBlockEvidence;
   readonly predecessor: CheckedLedger | undefined;
+  readonly post: CheckedLedger | undefined;
   readonly classification: Classification;
 }): Promise<MinAdaArtifact> => {
   if (
@@ -204,6 +206,7 @@ export const prepareMinAdaArtifact = async ({
     const prepared = await prepareMinAdaUtxoFromCanonicalEvidence({
       evidence,
       predecessor,
+      post,
     });
     const detectionId = minAdaUtxoDetectionId(prepared.outRef);
     return Object.freeze({

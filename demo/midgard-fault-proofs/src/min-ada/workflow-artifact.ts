@@ -14,6 +14,7 @@ export const prepareMinAdaWorkflowArtifact = async (args: {
     { decision: "fault_detected" }
   > & { category: "minAda" };
   predecessor: CheckedLedger | undefined;
+  post: CheckedLedger | undefined;
 }) => {
   if (args.classification.selected.detectionId.startsWith("min-ada:forced:"))
     return prepareMinAdaForcedArtifact({

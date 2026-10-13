@@ -13,7 +13,10 @@
 
 import { readFile } from "node:fs/promises";
 
-import { EMPTY_MERKLE_TREE_ROOT } from "@al-ft/midgard-sdk";
+import {
+  EMPTY_MERKLE_TREE_ROOT,
+  GENESIS_HEADER_HASH,
+} from "@al-ft/midgard-sdk";
 import { buildCanonicalMidgardLedgerEntryOutputMaterial } from "@al-ft/midgard-validation";
 
 import { boundUndecodableOutputDescriptor } from "./evidence/retained-ledger-output.js";
@@ -181,8 +184,9 @@ const genesisLedger = (prevUtxosRoot: string, label: string): CheckedLedger => {
 
 /**
  * The ledger a block starts from, named by its authenticated header's
- * `prev_header_hash` and `prev_utxos_root`. Without a source only the empty
- * genesis ledger is available: it is the one ledger that opens the empty root.
+ * `prev_header_hash` and `prev_utxos_root`. The known genesis ledger needs no
+ * source. Other supplied sources are always consulted, including for an empty
+ * root, and every returned ledger must open that root.
  */
 export const predecessorLedger = async ({
   prevHeaderHash,
@@ -195,6 +199,11 @@ export const predecessorLedger = async ({
   readonly ledgerAt?: LedgerAt;
   readonly label: string;
 }): Promise<CheckedLedger> => {
+  if (
+    prevHeaderHash === GENESIS_HEADER_HASH &&
+    prevUtxosRoot === EMPTY_MERKLE_TREE_ROOT
+  )
+    return emptyLedger;
   if (ledgerAt !== undefined && prevHeaderHash !== undefined)
     return await ledgerAfter({
       ledgerAt,
