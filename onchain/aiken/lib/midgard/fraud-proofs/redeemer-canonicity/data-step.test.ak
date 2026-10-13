@@ -390,3 +390,22 @@ test window_carrying_extra_bytes_refuses() fail {
     10,
   ) != ContinueData(scan)
 }
+
+/// The window crosses into the next chunk: the cursor chunk is authentic and
+/// the bytes past the boundary are not the span's.
+test window_with_substituted_next_chunk_refuses() fail {
+  let data = long_byte_strings(100)
+  let scan = scan_of(data)
+  let window = window_of(scan, data)
+  let first_next = bytearray.at(window, rule.data_chunk_bytes)
+  let substituted = bytearray.concat(
+    bytearray.take(window, rule.data_chunk_bytes),
+    bytearray.push(
+      bytearray.drop(window, rule.data_chunk_bytes + 1),
+      ( first_next + 1 ) % 256,
+    ),
+  )
+  rule.advance_data_v1(scan, substituted, [], stream.empty_stack_root, 1) != ContinueData(
+    scan,
+  )
+}
