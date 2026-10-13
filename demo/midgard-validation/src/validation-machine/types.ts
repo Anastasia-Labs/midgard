@@ -50,7 +50,9 @@ export type ValidationMachineReplayInput = {
   readonly scriptEvaluations?: readonly LocalScriptEvaluation[];
   readonly expectedVerdict: "accepted" | "rejected";
   readonly expectedRejectionCode: RejectCode | null;
-  readonly blockEndTimeMs: number;
+  /** The block's clock: its state-queue node's authenticated `block_time`.
+   * A header's `end_time` bounds event coverage only and is never this. */
+  readonly blockTimeMs: number;
   readonly expectedNetworkId: bigint;
   readonly minFeeA: bigint;
   readonly minFeeB: bigint;

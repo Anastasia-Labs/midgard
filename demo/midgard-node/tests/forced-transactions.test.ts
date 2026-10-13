@@ -636,4 +636,35 @@ describe("forced transaction program material at its position", () => {
       ),
     ).toEqual([]);
   });
+
+  it("accepts a transaction referencing a live script reference with no material retained", async () => {
+    const spent = outputReferenceFromHash(Buffer.alloc(32, 0x65));
+    const reference = outputReferenceFromHash(Buffer.alloc(32, 0x66));
+    const spentOutput = makeOutput(FUNDED_OUTPUT_LOVELACE);
+    const initialState = new Map([
+      [spent.toString("hex"), spentOutput],
+      [reference.toString("hex"), scriptRefOutput],
+    ]);
+    const transaction = makeSignedEffectfulTransaction(spent, spentOutput, {
+      referenceInputs: [reference],
+    });
+
+    const { classified } = await classifyAlone(transaction, initialState);
+
+    expect(ForcedTransactionsDB.operatorValidityOfEntry(classified.entry)).toBe(
+      "TxIsValid",
+    );
+    expect(classified.rejectionCode).toBeNull();
+    expect(classified.ledgerWitnessEntries).toEqual(
+      expect.arrayContaining([
+        { outRef: spent, output: spentOutput },
+        { outRef: reference, output: scriptRefOutput },
+      ]),
+    );
+    expect(
+      decodeMidgardCekProgramMaterialSidecar(
+        classified.programMaterialSidecarCbor,
+      ),
+    ).toEqual([]);
+  });
 });

@@ -221,7 +221,7 @@ describe("forced admission screens", () => {
           programMaterialSidecarCbor: sidecar,
           sourceKind: "forced",
           ledgerWitnessEntries: result.ledgerWitnessEntries,
-          blockEndTimeMs: time.getTime(),
+          blockTimeMs: time.getTime(),
           expectedNetworkId: 0n,
           minFeeA: 0n,
           minFeeB: 0n,

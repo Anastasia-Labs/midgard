@@ -47,7 +47,7 @@ it.each([
         initialState: new Map(
           fixture.entries.map((e) => [e.outRef.toString("hex"), e.output]),
         ),
-        blockTime: new Date(nativeFaultContext.blockEndTimeMs),
+        blockTime: new Date(nativeFaultContext.blockTimeMs),
         consensusProfile: MIDGARD_CONSENSUS_PROFILE,
         validation: {
           l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,

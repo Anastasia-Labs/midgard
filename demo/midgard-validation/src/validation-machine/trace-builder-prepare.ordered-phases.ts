@@ -70,9 +70,9 @@ export const orderedPhases: readonly MidgardValidationPhaseName[] = [
   "ledgerDelta",
 ];
 
-export const safeBlockEndTime = (value: number): bigint => {
+export const safeBlockTime = (value: number): bigint => {
   if (!Number.isSafeInteger(value) || value < 0) {
-    throw new Error("blockEndTimeMs must be a non-negative safe integer");
+    throw new Error("blockTimeMs must be a non-negative safe integer");
   }
   return BigInt(value);
 };

@@ -108,7 +108,7 @@ export const buildDataRefusalTrace = async (
       "hex",
     ),
     sourceKind: "forced",
-    blockEndTimeMs: now + 1_000,
+    blockTimeMs: now + 1_000,
     expectedNetworkId: 0n,
     minFeeA: 0n,
     minFeeB: 0n,

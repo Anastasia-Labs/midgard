@@ -28,7 +28,7 @@ import { replayValidationMachineEvent } from "./validation-machine-event-replay.
 
 export const nativeFaultContext = {
   consensusProfile: MIDGARD_CONSENSUS_PROFILE,
-  blockEndTimeMs: 1750000000000,
+  blockTimeMs: 1750000000000,
   expectedNetworkId: 0n,
   minFeeA: 0n,
   minFeeB: 0n,
@@ -48,7 +48,7 @@ export type NativeFaultShape =
   | "invalidThresholdChildren";
 export async function nativeFaultFixture(
   shape: NativeFaultShape,
-  now = nativeFaultContext.blockEndTimeMs - 1000,
+  now = nativeFaultContext.blockTimeMs - 1000,
   blockSlot = nativeFaultContext.blockSlot,
 ) {
   const spent = outRefFromByte(0x4d);
@@ -125,7 +125,7 @@ export async function nativeFaultFixture(
     replayValidationMachineEvent({
       l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
       ...nativeFaultContext,
-      blockEndTimeMs: now + 1000,
+      blockTimeMs: now + 1000,
       blockSlot,
       sourceKind: "forced",
       eventKeyCbor: Buffer.from(

@@ -73,7 +73,7 @@ describe("raw-envelope execution-source validation trace", () => {
       consensusProfile: MIDGARD_CONSENSUS_PROFILE,
       eventKeyCbor: encodeCbor([2n, malformed.txId]),
       sourceKind: "normal" as const,
-      blockEndTimeMs: 1_750_000_000_000,
+      blockTimeMs: 1_750_000_000_000,
       expectedNetworkId: 0n,
       minFeeA: 0n,
       minFeeB: 0n,

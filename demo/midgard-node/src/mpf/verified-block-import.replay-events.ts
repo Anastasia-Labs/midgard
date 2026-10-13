@@ -36,6 +36,9 @@ export type ImportedBlockReplayContext = {
   readonly minFeeA: bigint;
   readonly minFeeB: bigint;
   readonly blockSlot: bigint;
+  /** The block's clock: its state-queue node's authenticated `block_time`,
+   * never the header's `end_time`. */
+  readonly blockTimeMs: number;
   /** The slot mapping script contexts carry their validity range in. */
   readonly l1SlotConfig: L1SlotConfig;
   /** Observation only: emitted after a transition matches canonical replay.
@@ -195,7 +198,7 @@ export const replayImportedBlockEvents = (
             reached,
           }),
           ledgerWitnessEntries: witnessEntries,
-          blockEndTimeMs: Number(input.header.endTime),
+          blockTimeMs: input.blockTimeMs,
           expectedNetworkId: input.expectedNetworkId,
           minFeeA: input.minFeeA,
           minFeeB: input.minFeeB,

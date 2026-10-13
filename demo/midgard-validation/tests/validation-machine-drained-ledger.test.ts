@@ -40,7 +40,7 @@ const buildDrainTrace = async (postUtxosRoot: string) => {
       consensusProfile: MIDGARD_CONSENSUS_PROFILE,
       eventKeyCbor: encodeCbor([2n, Buffer.alloc(32, 0x73)]),
       sourceKind: "forced",
-      blockEndTimeMs: 1_750_000_000_000,
+      blockTimeMs: 1_750_000_000_000,
       expectedNetworkId: 0n,
       minFeeA: 0n,
       minFeeB: 0n,

@@ -181,6 +181,8 @@ const imported = (
     minFeeA: 0n,
     minFeeB: 0n,
     blockSlot: 0n,
+    // The fixture block's node time; its traces were built at this clock.
+    blockTimeMs: 2,
     l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
     replayUserEvent: () => Effect.die("fixture has no user event"),
     verifyForcedSource: ({ source, canonicalTransactionCbor, rejection }) =>

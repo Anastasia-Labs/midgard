@@ -136,7 +136,7 @@ import {
   exactHash32,
   orderedPhases,
   rejectionPhase,
-  safeBlockEndTime,
+  safeBlockTime,
   sameLedgerOps,
 } from "./trace-builder-prepare.ordered-phases.js";
 import { ValidationTraceStopped } from "./trace-builder-stop.js";
@@ -162,7 +162,7 @@ export const prepareValidationTrace = (input: ValidationMachineReplayInput) =>
         encodeCbor([
           1n,
           Buffer.from(input.consensusProfile.profileId, "ascii"),
-          safeBlockEndTime(input.blockEndTimeMs),
+          safeBlockTime(input.blockTimeMs),
           input.expectedNetworkId,
           input.minFeeA,
           input.minFeeB,
@@ -189,7 +189,7 @@ export const prepareValidationTrace = (input: ValidationMachineReplayInput) =>
           ? encodeMidgardCekProgramMaterialSidecar([])
           : Buffer.from(input.programMaterialSidecarCbor),
       arrivalSeq: 0n,
-      createdAt: new Date(input.blockEndTimeMs),
+      createdAt: new Date(input.blockTimeMs),
     };
     const phaseA = validatePhaseASingle(queued, {
       expectedNetworkId: input.expectedNetworkId,

@@ -2,11 +2,18 @@ import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
-import { encodeMidgardCekProgramMaterialSidecar } from "@al-ft/midgard-core/cek-proof";
+import {
+  decodeMidgardCekProgramMaterialSidecar,
+  encodeMidgardCekProgramEnvelope,
+  encodeMidgardCekProgramMaterialSidecar,
+  encodeMidgardCekTermNode,
+  hashMidgardCekTermNode,
+} from "@al-ft/midgard-core/cek-proof";
 import {
   decodeMidgardFieldPreimage,
   encodeMidgardFieldPreimage,
   encodeMidgardForcedTxCanonical,
+  encodeMidgardTxOutput,
   materializeMidgardForcedTxFromCanonical,
   MIDGARD_NATIVE_TX_VERSION,
   MIDGARD_POSIX_TIME_NONE,
@@ -21,11 +28,16 @@ import { Data } from "@lucid-evolution/lucid";
 import { Cause, Effect, Exit } from "effect";
 import { describe, expect, it } from "vitest";
 
+import { FUNDED_OUTPUT_LOVELACE } from "../../midgard-validation/tests/validation-fixtures.js";
 import { ForcedTransactionsDB } from "../src/database/index.js";
 import {
   buildPlaceholderValidationTraceMembers,
   classifyForcedTransactions,
 } from "../src/mpf/index.js";
+import {
+  makeOutput,
+  TEST_ADDRESS,
+} from "./forced-transactions.make-signed-effectful-transaction.js";
 
 /**
  * Forced verdict totality: every order the tx-order mint admits gets a forced
@@ -245,6 +257,51 @@ const admitted = (tx: MidgardForcedTxCanonical): Buffer | null => {
 
 const sidecar = encodeMidgardCekProgramMaterialSidecar([]);
 
+/** An L2 output carrying a script reference whose material no one retains. */
+const scriptRefOutput = (() => {
+  const terminal = { kind: "error" } as const;
+  const termPreimage = encodeMidgardCekTermNode(terminal);
+  return encodeMidgardTxOutput({
+    address: TEST_ADDRESS,
+    value: { lovelace: FUNDED_OUTPUT_LOVELACE, assets: new Map() },
+    script_ref: {
+      language: "MidgardV1",
+      scriptBytes: encodeMidgardCekProgramEnvelope({
+        uplcVersion: [1n, 1n, 0n],
+        termRoot: hashMidgardCekTermNode(terminal),
+        nodeCount: 1n,
+        materialByteLength: BigInt(termPreimage.length),
+      }),
+    },
+  });
+})();
+
+const itemsOf = (preimage: Buffer): readonly Buffer[] => {
+  try {
+    return decodeMidgardFieldPreimage(preimage).map((item) =>
+      Buffer.from(item),
+    );
+  } catch {
+    return [];
+  }
+};
+
+/**
+ * The ledger before `tx` with every input live: spent inputs hold plain
+ * outputs, and every reference input holds a script reference, so the
+ * classifier reaches reference resolution with no program material.
+ */
+const liveInputsOf = (tx: MidgardForcedTxCanonical): Map<string, Buffer> =>
+  new Map([
+    ...itemsOf(tx.body.spendInputsPreimageCbor).map(
+      (outRef) =>
+        [outRef.toString("hex"), makeOutput(FUNDED_OUTPUT_LOVELACE)] as const,
+    ),
+    ...itemsOf(tx.body.referenceInputsPreimageCbor).map(
+      (outRef) => [outRef.toString("hex"), scriptRefOutput] as const,
+    ),
+  ]);
+
 const entryOf = (nativeTxCbor: Buffer, label: number) =>
   ForcedTransactionsDB.encodeForcedInclusionValueV1({
     nativeTxCbor,
@@ -293,12 +350,16 @@ const entryOf = (nativeTxCbor: Buffer, label: number) =>
   );
 
 /** Ingest, classify and describe one admitted order: its leaf's reason arm. */
-const leafOf = (nativeTxCbor: Buffer, label: number) =>
+const leafOf = (
+  nativeTxCbor: Buffer,
+  label: number,
+  initialState: Map<string, Buffer> = new Map(),
+) =>
   Effect.gen(function* () {
     const entry = yield* entryOf(nativeTxCbor, label);
     const [classified] = yield* classifyForcedTransactions({
       entries: [entry],
-      initialState: new Map(),
+      initialState,
       blockTime: new Date("2026-07-23T12:01:00.000Z"),
       consensusProfile: MIDGARD_CONSENSUS_PROFILE,
       validation: {
@@ -316,6 +377,13 @@ const leafOf = (nativeTxCbor: Buffer, label: number) =>
       ].toString("hex"),
       SDK.ForcedInclusionTxV1,
     );
+    // A forced transaction never commits program material.
+    if (
+      decodeMidgardCekProgramMaterialSidecar(
+        classified!.programMaterialSidecarCbor,
+      ).length !== 0
+    )
+      return yield* Effect.die("forced transaction committed program material");
     yield* buildPlaceholderValidationTraceMembers({
       transactions: [
         {
@@ -371,5 +439,30 @@ describe("forced verdict totality over mint-admissible orders", () => {
     // arm. A malformed native payload is admitted too, but the machine reads it
     // only after the signer checks, which every corpus row fails first.
     expect(arms.get("OutputNonCanonical") ?? 0).toBeGreaterThan(0);
+  }, 600_000);
+
+  it("gives a leaf when every input is live and every reference input carries an unretained script reference", async () => {
+    const bases = golden.rows
+      .filter(({ expected }) => expected === null)
+      .map(transactionOf);
+    const residue: string[] = [];
+    let referencing = 0;
+    for (let sample = 0; sample < SAMPLES / 4; sample += 1) {
+      const base = bases[sample % bases.length]!;
+      const candidate = sample < bases.length ? base : mutate(base);
+      const nativeTxCbor = admitted(candidate);
+      if (nativeTxCbor === null) continue;
+      const state = liveInputsOf(candidate);
+      if ([...state.values()].includes(scriptRefOutput)) referencing += 1;
+      const exit = await Effect.runPromiseExit(
+        leafOf(nativeTxCbor, sample, state),
+      );
+      if (!Exit.isSuccess(exit))
+        residue.push(
+          `${nativeTxCbor.toString("hex")}: ${Cause.pretty(exit.cause).split("\n")[0]}`,
+        );
+    }
+    expect(residue).toEqual([]);
+    expect(referencing).toBeGreaterThan(0);
   }, 600_000);
 });

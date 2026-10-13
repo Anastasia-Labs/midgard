@@ -12,10 +12,7 @@ import {
   replayValidationVerdictEvent,
 } from "@al-ft/midgard-validation";
 import { Data } from "@lucid-evolution/lucid";
-import {
-  decodeDaPayloadStrict,
-  validateDaPayloadEventProgramCoverage,
-} from "da-committee-node/da/payload";
+import { decodeDaPayloadStrict } from "da-committee-node/da/payload";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
@@ -129,7 +126,7 @@ describe("forced admission at the tx-order mint", () => {
           ),
           sourceKind: "forced",
           ledgerWitnessEntries: result.ledgerWitnessEntries,
-          blockEndTimeMs: time.getTime(),
+          blockTimeMs: time.getTime(),
           expectedNetworkId: 0n,
           minFeeA: 0n,
           minFeeB: 0n,
@@ -199,7 +196,6 @@ describe("forced admission at the tx-order mint", () => {
           header,
           header_hash: await Effect.runPromise(SDK.hashBlockHeader(header)),
           counts,
-          utxos: [],
           transactions: [],
           transaction_preimages: [],
           forced_transactions: [
@@ -247,7 +243,6 @@ describe("forced admission at the tx-order mint", () => {
         decodeDaPayloadStrict(SDK.encodeDaPayload(payload)).block_body
           .forced_transactions,
       ).toEqual(payload.block_body.forced_transactions);
-      validateDaPayloadEventProgramCoverage(payload.block_body, []);
       // A ForcedTxValid claim for the same transaction is refused.
       payload.block_body.forced_transactions = [
         [

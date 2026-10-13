@@ -249,6 +249,8 @@ const replay = (
         minFeeA: 0n,
         minFeeB: 0n,
         blockSlot: 0n,
+        // The clock the block above was built at.
+        blockTimeMs: at(10).getTime(),
         l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
       }),
     ),

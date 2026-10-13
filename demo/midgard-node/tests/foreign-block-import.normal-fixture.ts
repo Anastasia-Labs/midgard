@@ -125,7 +125,7 @@ export const normalFixture = async (
       programMaterialSidecarCbor:
         encodeMidgardCekProgramMaterialSidecar(material),
       ledgerWitnessEntries: [{ outRef: spent, output }],
-      blockEndTimeMs: 2,
+      blockTimeMs: 2,
       expectedNetworkId: 0n,
       minFeeA: 0n,
       minFeeB: 0n,

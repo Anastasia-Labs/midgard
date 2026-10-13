@@ -32,7 +32,9 @@ export type ValidationVerdictEventInput = Readonly<{
   programMaterialSidecarCbor?: Buffer;
   /** Every ledger entry the transaction may resolve, keyed by out-ref. */
   ledgerWitnessEntries: readonly ValidationMachineLedgerEntry[];
-  blockEndTimeMs: number;
+  /** The block's clock: its state-queue node's authenticated `block_time`.
+   * A header's `end_time` bounds event coverage only and is never this. */
+  blockTimeMs: number;
   expectedNetworkId: bigint;
   minFeeA: bigint;
   minFeeB: bigint;
@@ -98,7 +100,7 @@ export const replayValidationVerdictEvent = (
       txCbor: snapshot.canonicalTransactionCbor,
       programMaterialSidecarCbor: snapshot.programMaterialSidecarCbor,
       arrivalSeq: 0n,
-      createdAt: new Date(input.blockEndTimeMs),
+      createdAt: new Date(input.blockTimeMs),
     };
     const phaseA = yield* Effect.try(() =>
       validatePhaseASingle(queued, {

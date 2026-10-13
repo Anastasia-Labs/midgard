@@ -85,7 +85,7 @@ export const retainedTransactionFixture = async (input: {
           }),
       ledgerWitnessEntries: input.ledgerEntries,
       priorUtxosRoot: prior.utxosRoot,
-      blockEndTimeMs: Number(input.endTime),
+      blockTimeMs: Number(input.endTime),
       expectedNetworkId: prior.expectedNetworkId,
       minFeeA: input.minFeeA ?? prior.minFeeA,
       minFeeB: input.minFeeB ?? prior.minFeeB,
