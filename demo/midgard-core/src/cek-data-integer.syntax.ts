@@ -123,9 +123,9 @@ export const parseMidgardCekDataIntegerSyntax = ({
 };
 
 /**
- * Restricts the integer grammar to a canonical nonnegative constructor
- * alternative above 127. Positive bignums are accepted without materializing
- * their value; major-one and tag-three encodings fail closed.
+ * Restricts the integer grammar to a canonical constructor alternative above
+ * 127: a minimal major-0 head (Cardano reads the index with `decodeWord64`, so
+ * a bignum or negative spelling is never canonical).
  */
 export const parseMidgardCekDataLargeConstructorSyntax = ({
   syntaxBytes,
@@ -139,8 +139,6 @@ export const parseMidgardCekDataLargeConstructorSyntax = ({
     sourceLength,
   });
   if (memory === null) return null;
-  const first = syntaxBytes[0]!;
-  if (first === 0xc2) return memory;
   const argument = readCanonicalCborArgument(syntaxBytes, 0);
   return argument !== null &&
     argument.major === 0 &&

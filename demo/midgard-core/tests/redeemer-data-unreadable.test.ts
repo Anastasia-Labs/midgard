@@ -2,12 +2,11 @@ import { expect, it } from "vitest";
 
 import { MidgardCekDataTraverseStages } from "../src/cek-data-traverse.js";
 import {
-  buildMidgardRedeemerDataHeadRejectionTrace,
+  buildMidgardRedeemerDataUnreadableTrace,
   buildMidgardRedeemerItemProofTrace,
   encodeCbor,
-  hasNonCanonicalDefiniteSequenceHead,
-  inspectMidgardRedeemerSequenceHeads,
-  isMidgardRedeemerDataHeadRejection,
+  inspectMidgardRedeemerData,
+  isMidgardRedeemerDataUnreadable,
   MidgardRedeemerItemProofModes,
 } from "../src/index.js";
 
@@ -15,28 +14,28 @@ const item = (data: string) =>
   encodeCbor([0n, 0n, Buffer.from(data, "hex"), [10n, 20n]]);
 
 it("authenticates the observed constructor refusal without treating wrong evidence as invalid Data", () => {
-  const refusal = buildMidgardRedeemerDataHeadRejectionTrace({
+  const refusal = buildMidgardRedeemerDataUnreadableTrace({
     itemIndex: 0,
     itemCount: 1,
     itemBytes: item("d8798101"),
   });
   expect(
-    isMidgardRedeemerDataHeadRejection(refusal.control, refusal.witness),
+    isMidgardRedeemerDataUnreadable(refusal.control, refusal.witness),
   ).toBe(true);
   expect(
-    isMidgardRedeemerDataHeadRejection(refusal.control, {
+    isMidgardRedeemerDataUnreadable(refusal.control, {
       ...refusal.witness,
       chunkProof: null,
     }),
   ).toBe(false);
   expect(
-    isMidgardRedeemerDataHeadRejection(refusal.control, {
+    isMidgardRedeemerDataUnreadable(refusal.control, {
       ...refusal.witness,
       nextChunkProof: refusal.witness.chunkProof,
     }),
   ).toBe(false);
   expect(
-    isMidgardRedeemerDataHeadRejection(refusal.control, {
+    isMidgardRedeemerDataUnreadable(refusal.control, {
       ...refusal.witness,
       action: {
         kind: "traverseData",
@@ -52,7 +51,7 @@ it("authenticates the observed constructor refusal without treating wrong eviden
   });
   const head = honest.steps[2]!;
   expect(
-    isMidgardRedeemerDataHeadRejection(head.control, {
+    isMidgardRedeemerDataUnreadable(head.control, {
       ...head.witness,
       action: { kind: "traverseData", action: null },
     }),
@@ -62,9 +61,9 @@ it("authenticates the observed constructor refusal without treating wrong eviden
 it.each(["80", "9f01ff", "d87980", "d8799f01ff", "d9050080", "d905009f01ff"])(
   "keeps canonical head %s outside the refusal",
   (data) => {
-    expect(hasNonCanonicalDefiniteSequenceHead(Buffer.from(data, "hex"))).toBe(
-      false,
-    );
+    expect(inspectMidgardRedeemerData(Buffer.from(data, "hex"))).toEqual({
+      kind: "canonical",
+    });
   },
 );
 
@@ -83,10 +82,11 @@ it.each([
 ])(
   "authenticates nested sequence refusal $data through the canonical original prefix",
   ({ data, offset, stage }) => {
-    expect(
-      inspectMidgardRedeemerSequenceHeads(Buffer.from(data, "hex")),
-    ).toEqual({ kind: "refusal", offset });
-    const refusal = buildMidgardRedeemerDataHeadRejectionTrace({
+    expect(inspectMidgardRedeemerData(Buffer.from(data, "hex"))).toEqual({
+      kind: "refusal",
+      offset,
+    });
+    const refusal = buildMidgardRedeemerDataUnreadableTrace({
       itemIndex: 0,
       itemCount: 1,
       itemBytes: item(data),
@@ -98,22 +98,22 @@ it.each([
       action: { kind: "headSequence" },
     });
     expect(
-      isMidgardRedeemerDataHeadRejection(refusal.control, refusal.witness),
+      isMidgardRedeemerDataUnreadable(refusal.control, refusal.witness),
     ).toBe(true);
     expect(
-      isMidgardRedeemerDataHeadRejection(refusal.control, {
+      isMidgardRedeemerDataUnreadable(refusal.control, {
         ...refusal.witness,
         chunkProof: null,
       }),
     ).toBe(false);
     expect(
-      isMidgardRedeemerDataHeadRejection(refusal.control, {
+      isMidgardRedeemerDataUnreadable(refusal.control, {
         ...refusal.witness,
         nextChunkProof: refusal.witness.chunkProof,
       }),
     ).toBe(false);
     expect(
-      isMidgardRedeemerDataHeadRejection(refusal.control, {
+      isMidgardRedeemerDataUnreadable(refusal.control, {
         ...refusal.witness,
         action: {
           kind: "traverseData",
@@ -126,21 +126,21 @@ it.each([
 it.each(["d8799f9f01ffff", "d8799f428101ff"])(
   "does not confuse honest nested Data/payload %s with a sequence refusal",
   (data) => {
-    expect(
-      inspectMidgardRedeemerSequenceHeads(Buffer.from(data, "hex")),
-    ).toEqual({ kind: "canonical" });
+    expect(inspectMidgardRedeemerData(Buffer.from(data, "hex"))).toEqual({
+      kind: "canonical",
+    });
     expect(() =>
-      buildMidgardRedeemerDataHeadRejectionTrace({
+      buildMidgardRedeemerDataUnreadableTrace({
         itemIndex: 0,
         itemCount: 1,
         itemBytes: item(data),
       }),
-    ).toThrow("no authenticated sequence refusal");
+    ).toThrow("no step refuses it");
   },
 );
 it("an earlier nonminimal scalar names its own fault before a later definite sequence", () => {
   expect(
-    inspectMidgardRedeemerSequenceHeads(Buffer.from("d8799f18018101ff", "hex")),
+    inspectMidgardRedeemerData(Buffer.from("d8799f18018101ff", "hex")),
   ).toEqual({ kind: "refusal", offset: 3 });
 });
 
@@ -157,19 +157,19 @@ it("honest later nested Data refuses semantic invalidity under the same NoAction
       control.traversal.offset === 4,
   )!;
   expect(
-    isMidgardRedeemerDataHeadRejection(later.control, {
+    isMidgardRedeemerDataUnreadable(later.control, {
       ...later.witness,
       action: { kind: "traverseData", action: null },
     }),
   ).toBe(false);
   expect(
-    isMidgardRedeemerDataHeadRejection(later.control, {
+    isMidgardRedeemerDataUnreadable(later.control, {
       ...later.witness,
       action: { kind: "traverseData", action: { kind: "headScalar" } },
     }),
   ).toBe(false);
   expect(
-    isMidgardRedeemerDataHeadRejection(later.control, {
+    isMidgardRedeemerDataUnreadable(later.control, {
       ...later.witness,
       chunkProof: null,
       action: { kind: "traverseData", action: null },
@@ -211,39 +211,40 @@ it.each([
 ])(
   "authenticates malformed Data $data while canonical $honest cannot claim the same refusal",
   ({ data, honest, offset, stage }) => {
-    expect(
-      inspectMidgardRedeemerSequenceHeads(Buffer.from(data, "hex")),
-    ).toEqual({ kind: "refusal", offset });
-    const refusal = buildMidgardRedeemerDataHeadRejectionTrace({
+    expect(inspectMidgardRedeemerData(Buffer.from(data, "hex"))).toEqual({
+      kind: "refusal",
+      offset,
+    });
+    const refusal = buildMidgardRedeemerDataUnreadableTrace({
       itemIndex: 0,
       itemCount: 1,
       itemBytes: item(data),
     });
     expect(refusal.control.traversal).toMatchObject({ offset, stage });
     expect(
-      isMidgardRedeemerDataHeadRejection(refusal.control, refusal.witness),
+      isMidgardRedeemerDataUnreadable(refusal.control, refusal.witness),
     ).toBe(true);
     expect(
-      isMidgardRedeemerDataHeadRejection(refusal.control, {
+      isMidgardRedeemerDataUnreadable(refusal.control, {
         ...refusal.witness,
         chunkProof: null,
       }),
     ).toBe(false);
     expect(
-      isMidgardRedeemerDataHeadRejection(
+      isMidgardRedeemerDataUnreadable(
         { ...refusal.control, dataOffset: refusal.control.dataOffset + 1 },
         refusal.witness,
       ),
     ).toBe(false);
     expect(
-      isMidgardRedeemerDataHeadRejection(refusal.control, {
+      isMidgardRedeemerDataUnreadable(refusal.control, {
         ...refusal.witness,
         action: { kind: "traverseData", action: { kind: "headScalar" } },
       }),
     ).toBe(false);
-    expect(
-      inspectMidgardRedeemerSequenceHeads(Buffer.from(honest, "hex")),
-    ).toEqual({ kind: "canonical" });
+    expect(inspectMidgardRedeemerData(Buffer.from(honest, "hex"))).toEqual({
+      kind: "canonical",
+    });
     const canonical = buildMidgardRedeemerItemProofTrace({
       itemIndex: 0,
       itemCount: 1,
@@ -257,7 +258,7 @@ it.each([
     )!;
     expect(frontier).toBeDefined();
     expect(
-      isMidgardRedeemerDataHeadRejection(frontier.control, {
+      isMidgardRedeemerDataUnreadable(frontier.control, {
         ...frontier.witness,
         action: { kind: "traverseData", action: null },
       }),
@@ -268,17 +269,18 @@ it.each([
 it.each(["d8799f1801", "d8799f1801ff", "d8799f18018101ff", "d8799f1801f6"])(
   "stops at the first scalar fault without parsing suffix %s",
   (data) => {
-    expect(
-      inspectMidgardRedeemerSequenceHeads(Buffer.from(data, "hex")),
-    ).toEqual({ kind: "refusal", offset: 3 });
-    const refusal = buildMidgardRedeemerDataHeadRejectionTrace({
+    expect(inspectMidgardRedeemerData(Buffer.from(data, "hex"))).toEqual({
+      kind: "refusal",
+      offset: 3,
+    });
+    const refusal = buildMidgardRedeemerDataUnreadableTrace({
       itemIndex: 0,
       itemCount: 1,
       itemBytes: item(data),
     });
     expect(refusal.control.traversal!.offset).toBe(3);
     expect(
-      isMidgardRedeemerDataHeadRejection(refusal.control, refusal.witness),
+      isMidgardRedeemerDataUnreadable(refusal.control, refusal.witness),
     ).toBe(true);
   },
 );
@@ -297,17 +299,18 @@ it.each([
 ] as const)(
   "authenticates the first bounded noncanonical byte/map/tag head %s at %s",
   (data, offset) => {
-    expect(
-      inspectMidgardRedeemerSequenceHeads(Buffer.from(data, "hex")),
-    ).toEqual({ kind: "refusal", offset });
-    const refusal = buildMidgardRedeemerDataHeadRejectionTrace({
+    expect(inspectMidgardRedeemerData(Buffer.from(data, "hex"))).toEqual({
+      kind: "refusal",
+      offset,
+    });
+    const refusal = buildMidgardRedeemerDataUnreadableTrace({
       itemIndex: 0,
       itemCount: 1,
       itemBytes: item(data),
     });
     expect(refusal.control.traversal!.offset).toBe(offset);
     expect(
-      isMidgardRedeemerDataHeadRejection(refusal.control, refusal.witness),
+      isMidgardRedeemerDataUnreadable(refusal.control, refusal.witness),
     ).toBe(true);
     const substituted = {
       ...refusal.witness,
@@ -316,9 +319,9 @@ it.each([
         chunk: Buffer.alloc(refusal.witness.chunkProof!.chunk.length),
       },
     };
-    expect(
-      isMidgardRedeemerDataHeadRejection(refusal.control, substituted),
-    ).toBe(false);
+    expect(isMidgardRedeemerDataUnreadable(refusal.control, substituted)).toBe(
+      false,
+    );
   },
 );
 it.each([
@@ -330,9 +333,9 @@ it.each([
   "a10101",
   "d87980",
 ])("canonical byte/map/tag head %s cannot claim a refusal", (data) => {
-  expect(inspectMidgardRedeemerSequenceHeads(Buffer.from(data, "hex"))).toEqual(
-    { kind: "canonical" },
-  );
+  expect(inspectMidgardRedeemerData(Buffer.from(data, "hex"))).toEqual({
+    kind: "canonical",
+  });
   const trace = buildMidgardRedeemerItemProofTrace({
     itemIndex: 0,
     itemCount: 1,
@@ -341,17 +344,18 @@ it.each([
   });
   const head = trace.steps[2]!;
   expect(
-    isMidgardRedeemerDataHeadRejection(head.control, {
+    isMidgardRedeemerDataUnreadable(head.control, {
       ...head.witness,
       action: { kind: "traverseData", action: null },
     }),
   ).toBe(false);
 });
 it.each(["58", "5900", "5a000000", "5b00000000000000", "b8", "d900"])(
-  "incomplete argument %s stays unsupported",
+  "incomplete argument %s is Unreadable at its head",
   (data) => {
-    expect(
-      inspectMidgardRedeemerSequenceHeads(Buffer.from(data, "hex")).kind,
-    ).toBe("unsupported");
+    expect(inspectMidgardRedeemerData(Buffer.from(data, "hex"))).toEqual({
+      kind: "refusal",
+      offset: 0,
+    });
   },
 );

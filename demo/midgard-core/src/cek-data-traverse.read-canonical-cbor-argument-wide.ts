@@ -217,7 +217,6 @@ export type ParsedDataNode =
     };
 
 type ParsedContainerHead = {
-  readonly refusalOffset?: number;
   readonly node: Exclude<ParsedDataNode, { readonly kind: "scalar" }>;
   readonly nextOffset: number;
   readonly remainingChildren: number | null;

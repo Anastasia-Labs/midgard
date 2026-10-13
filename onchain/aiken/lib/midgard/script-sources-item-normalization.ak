@@ -130,6 +130,22 @@ pub fn execution_output_is_exact(
   }
 }
 
+/// The traversal stage of an item control that carries a traversal.
+fn traversal_stage(current: Data) -> Int {
+  let Pair(control_tag, control_fields) = builtin.un_constr_data(current)
+  expect control_tag == 0
+  expect Some(optional_traversal) = list.at(control_fields, 15)
+  let Pair(option_tag, option_fields) = builtin.un_constr_data(
+    optional_traversal,
+  )
+  expect option_tag == 0
+  expect [inner] = option_fields
+  let Pair(inner_tag, inner_fields) = builtin.un_constr_data(inner)
+  expect inner_tag == 0
+  expect Some(stage_data) = list.at(inner_fields, 1)
+  builtin.un_i_data(stage_data)
+}
+
 /// Deployment roster index derived from the authenticated action and current
 /// traversal stage. Executors independently enforce their complete stage/action.
 pub fn executor_index(current: Data, witness: Data, family: Int) -> Int {
@@ -155,7 +171,12 @@ pub fn executor_index(current: Data, witness: Data, family: Int) -> Int {
         18
       } else {
         expect action_tag == 2
-        19
+        let stage = traversal_stage(current)
+        if stage >= 1 && stage <= 3 {
+          20
+        } else {
+          19
+        }
       }
     }
   } else {
@@ -168,18 +189,7 @@ pub fn executor_index(current: Data, witness: Data, family: Int) -> Int {
     } else if family == envelope.fold_list_family {
       10
     } else {
-      let Pair(control_tag, control_fields) = builtin.un_constr_data(current)
-      expect control_tag == 0
-      expect Some(optional_traversal) = list.at(control_fields, 15)
-      let Pair(option_tag, option_fields) = builtin.un_constr_data(
-        optional_traversal,
-      )
-      expect option_tag == 0
-      expect [inner] = option_fields
-      let Pair(inner_tag, inner_fields) = builtin.un_constr_data(inner)
-      expect inner_tag == 0
-      expect Some(stage_data) = list.at(inner_fields, 1)
-      let stage = builtin.un_i_data(stage_data)
+      let stage = traversal_stage(current)
       if family == envelope.attach_scalar_family {
         expect stage == 1 || stage == 2
         stage + 7

@@ -98,6 +98,8 @@ export const DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_TOKEN_NAMES = Object.freeze({
     "V1VtRiInvalidTail",
   "V1 validation-trace redeemer item invalid data executor":
     "V1VtRiInvalidData",
+  "V1 validation-trace redeemer item invalid scalar data executor":
+    "V1VtRiInvalidScalarData",
   "V1 validation-trace redeemer item settlement": "V1VtRiSettlement",
   "V1 validation-trace script-sources RedeemerNormalization semantic":
     "V1VtSsRedeemerNorm",

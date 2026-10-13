@@ -213,7 +213,9 @@ export const nextValidatedMidgardCekDataBytesSpan = (
  * One measuring step: the authenticated window at the measured end is either
  * the 0xff break, which fixes the encoding length and starts the content pass,
  * or one definite chunk header, which extends the measured length by that
- * whole chunk. The chunk layout itself is checked by the content pass.
+ * whole chunk. Every chunk but the last is exactly 64 bytes and the total
+ * exceeds 64, so a non-canonical layout is refused at the header that breaks
+ * it and the content pass always finds the canonical headers.
  */
 const advanceMeasure = (
   control: MidgardCekDataBytesControl,
@@ -248,6 +250,10 @@ const advanceMeasure = (
     return isWellFormedMidgardCekDataBytesControlWithValidatedBlob(next)
       ? next
       : null;
+  }
+  // Only a full 64-byte chunk may precede another chunk header.
+  if ((control.sourceLength - 1) % (CARDANO_DATA_BYTES_CHUNK + 2) !== 0) {
+    return null;
   }
   const chunkLength =
     first >= 0x41 && first <= 0x57

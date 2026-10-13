@@ -4,7 +4,7 @@ import {
   encodeCbor,
   encodeMidgardCekDataTraverseControl,
   hashMidgardRedeemerItemProofControl,
-  isMidgardRedeemerDataHeadRejection,
+  isMidgardRedeemerDataUnreadable,
   MIDGARD_BOUNDED_ITEM_CHUNK_BYTES,
   type MidgardRedeemerItemProofControl,
   nextMidgardRedeemerItemProofSpan,
@@ -148,7 +148,11 @@ export const deriveScriptSourcesRedeemerItemPlan = ({
     !(
       (control.stage === 0 && coreWitness.action.kind === "openHeader") ||
       (control.stage === 1 && coreWitness.action.kind === "openTail") ||
-      isMidgardRedeemerDataHeadRejection(control, coreWitness)
+      // The split executors (`invalid_data`, `invalid_scalar_data`) claim
+      // Unreadable with NoAction only.
+      (coreWitness.action.kind === "traverseData" &&
+        coreWitness.action.action === null &&
+        isMidgardRedeemerDataUnreadable(control, coreWitness))
     )
   )
     throw new Error(
@@ -179,6 +183,18 @@ export const deriveScriptSourcesRedeemerItemPlan = ({
     transition,
     invalid: next === null,
   });
+};
+
+/**
+ * Mirrors `executor_index` (script-sources-item-normalization.ak): a Data
+ * refusal at an integer, bytes or large-constructor traverse stage runs the
+ * scalar invalid-data executor (20); head, close and large fields run 19.
+ */
+const invalidDataExecutorIndex = (control: {
+  readonly traversal: { readonly stage: number } | null;
+}): number => {
+  const stage = control.traversal?.stage;
+  return stage !== undefined && stage >= 1 && stage <= 3 ? 20 : 19;
 };
 
 const deriveItemPlan = ({
@@ -213,7 +229,11 @@ const deriveItemPlan = ({
     ? {
         family: 9,
         index:
-          plan.control.stage === 0 ? 17 : plan.control.stage === 1 ? 18 : 19,
+          plan.control.stage === 0
+            ? 17
+            : plan.control.stage === 1
+              ? 18
+              : invalidDataExecutorIndex(plan.control),
       }
     : redeemerItemExecutor(plan.control, coreWitness);
   const executor = stages.executors[index];

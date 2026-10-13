@@ -1475,14 +1475,6 @@ pub fn step_v1(
   }
 }
 
-/// Where a scalar sub-control is: reading its syntax or measuring its extent
-/// (the bytes decide the grammar), streaming content, or complete.
-type ScalarPhaseV1 {
-  ScalarGrammar
-  ScalarContent
-  ScalarDone { summary: Option<cek_data_v1.DataSummaryV1>, offset: Int }
-}
-
 /// The window is exactly the control-derived span: absent when the control
 /// reads no source bytes, otherwise of the span's length.
 fn window_is_exact(
@@ -1555,15 +1547,178 @@ fn attach_extent_unreadable(
   }
 }
 
+/// The integer sub-control's grammar step (syntax or measure) refuses the
+/// window: it yields no successor, or one that leaves the traverse control
+/// ill-formed. Content streaming and the terminal stage never refuse a byte.
+fn integer_grammar_refuses(
+  control: DataTraverseControlV1,
+  integer: cek_data_integer_v1.CekDataIntegerControlV1,
+  source_bytes: Option<ByteArray>,
+) -> Bool {
+  when
+    cek_data_integer_v1.prevalidated_grammar_step_v1(
+      integer,
+      control.source_start + control.source_length,
+      source_bytes,
+    )
+  is {
+    None -> True
+    Some(next_integer) ->
+      !control_is_well_formed(
+        DataTraverseControlV1 { ..control, integer: Some(next_integer) },
+      )
+  }
+}
+
+/// A scalar or large-constructor sub-control in its syntax or measure stage
+/// refuses the exact window. The caller has checked the control and window.
+fn scalar_read_refuses(
+  control: DataTraverseControlV1,
+  source_bytes: Option<ByteArray>,
+) -> Bool {
+  if control.stage == stage_integer {
+    expect Some(integer) = control.integer
+    and {
+      or {
+        integer.stage == cek_data_integer_v1.stage_syntax,
+        integer.stage == cek_data_integer_v1.stage_measure,
+      },
+      integer_grammar_refuses(control, integer, source_bytes),
+    }
+  } else if control.stage == stage_bytes {
+    expect Some(bytes_control) = control.bytes
+    and {
+      or {
+        bytes_control.stage == cek_data_bytes_v1.stage_syntax,
+        bytes_control.stage == cek_data_bytes_v1.stage_measure,
+      },
+      when
+        cek_data_bytes_v1.prevalidated_grammar_step_v1(
+          bytes_control,
+          control.source_start + control.source_length,
+          source_bytes,
+        )
+      is {
+        None -> True
+        Some(next_bytes) ->
+          !control_is_well_formed(
+            DataTraverseControlV1 { ..control, bytes: Some(next_bytes) },
+          )
+      },
+    }
+  } else if control.stage == stage_large_constructor {
+    expect Some(integer) = control.integer
+    if integer.stage != cek_data_integer_v1.stage_syntax {
+      False
+    } else {
+      when source_bytes is {
+        None -> False
+        Some(bytes) -> or {
+            cek_data_integer_v1.parse_large_constructor_syntax_v1(
+              bytes,
+              integer.source_length,
+            ) == None,
+            integer_grammar_refuses(control, integer, source_bytes),
+          }
+      }
+    }
+  } else {
+    False
+  }
+}
+
+/// Head and close refuse the window under every head action (and close
+/// under the break); the large-constructor field opener refuses its byte.
+/// The caller has checked the control and window.
+fn frame_read_refuses(
+  control: DataTraverseControlV1,
+  source_bytes: Option<ByteArray>,
+) -> Bool {
+  if control.stage == stage_large_fields {
+    prevalidated_advance_large_fields(control, source_bytes, NoAction) == None
+  } else {
+    when source_bytes is {
+      None -> False
+      Some(bytes) ->
+        if control.stage == stage_head {
+          no_head_action_advances(control, bytes)
+        } else if control.stage == stage_close {
+          and {
+            prevalidated_close(control, source_bytes, NoAction) == None,
+            no_head_action_advances(control, bytes),
+          }
+        } else {
+          False
+        }
+    }
+  }
+}
+
+fn read_is_checked(
+  control: DataTraverseControlV1,
+  source_bytes: Option<ByteArray>,
+) -> Bool {
+  control_is_well_formed(control) && window_is_exact(control, source_bytes)
+}
+
+fn is_scalar_read_stage(stage: Int) -> Bool {
+  or {
+    stage == stage_integer,
+    stage == stage_bytes,
+    stage == stage_large_constructor,
+  }
+}
+
+/// `Unreadable` at a byte-reading step: the control takes `NoAction` and the
+/// exact derived window, and the stage's derived action refuses that window
+/// (head and close: every head action, and the break at close; a scalar or
+/// large-constructor sub-control in its syntax or measure stage; the
+/// large-constructor field opener). Content streaming never is: once the
+/// extent is fixed, every byte is grammatical. This is `unreadable_v1` at
+/// `NoAction`, without the attach and finalize code.
+pub fn unreadable_read_v1(
+  control: DataTraverseControlV1,
+  source_bytes: Option<ByteArray>,
+) -> Bool {
+  if !read_is_checked(control, source_bytes) {
+    False
+  } else if is_scalar_read_stage(control.stage) {
+    scalar_read_refuses(control, source_bytes)
+  } else {
+    frame_read_refuses(control, source_bytes)
+  }
+}
+
+/// `unreadable_read_v1` at the scalar and large-constructor stages only (one
+/// split executor's share; `False` at every other stage).
+pub fn unreadable_scalar_read_v1(
+  control: DataTraverseControlV1,
+  source_bytes: Option<ByteArray>,
+) -> Bool {
+  and {
+    is_scalar_read_stage(control.stage),
+    read_is_checked(control, source_bytes),
+    scalar_read_refuses(control, source_bytes),
+  }
+}
+
+/// `unreadable_read_v1` at the head, close and large-fields stages only (the
+/// other split executor's share; `False` at every other stage).
+pub fn unreadable_frame_read_v1(
+  control: DataTraverseControlV1,
+  source_bytes: Option<ByteArray>,
+) -> Bool {
+  and {
+    !is_scalar_read_stage(control.stage),
+    read_is_checked(control, source_bytes),
+    frame_read_refuses(control, source_bytes),
+  }
+}
+
 /// `Unreadable`: the source span is not canonical Data, decided at the step
 /// that reads the offending byte. Exclusive with `step_v1`: it holds only
 /// where no admissible action of the stage advances.
-/// - A byte-reading stage takes `NoAction` and the exact derived window; it is
-///   `Unreadable` iff the stage's derived action refuses that window (head and
-///   close: every head action, and the break at close; a scalar or
-///   large-constructor sub-control in its syntax or measure stage; the
-///   large-constructor field opener). Content streaming never is: once the
-///   extent is fixed, every byte is grammatical.
+/// - A byte-reading stage takes `NoAction`: `unreadable_read_v1`.
 /// - An attach (`AttachScalar`) or frame finalization (`FinalizeFrame`) takes
 ///   the same authenticated frame witness as its advancing action and is
 ///   `Unreadable` iff the source extent alone refuses it.
@@ -1572,106 +1727,74 @@ pub fn unreadable_v1(
   source_bytes: Option<ByteArray>,
   action: DataTraverseActionV1,
 ) -> Bool {
-  if !control_is_well_formed(control) {
-    False
-  } else if control.stage == stage_fold {
-    when action is {
-      FinalizeFrame { frame, parent } ->
-        if and {
-          source_bytes == None,
-          cek_data_frame_v1.frame_is_well_formed(frame),
-          cek_data_frame_v1.hash_frame_v1(frame) == control.frame_root,
-        } {
-          when cek_data_frame_v1.finalized_summary_v1(frame) is {
-            None -> False
-            Some(summary) ->
-              attach_extent_unreadable(
-                frame.tail,
-                summary,
-                parent,
-                control.offset,
-                control.source_length,
-              )
+  when action is {
+    NoAction -> unreadable_read_v1(control, source_bytes)
+    FinalizeFrame { frame, parent } ->
+      if and {
+        source_bytes == None,
+        control_is_well_formed(control),
+        control.stage == stage_fold,
+        cek_data_frame_v1.frame_is_well_formed(frame),
+        cek_data_frame_v1.hash_frame_v1(frame) == control.frame_root,
+      } {
+        when cek_data_frame_v1.finalized_summary_v1(frame) is {
+          None -> False
+          Some(summary) ->
+            attach_extent_unreadable(
+              frame.tail,
+              summary,
+              parent,
+              control.offset,
+              control.source_length,
+            )
+        }
+      } else {
+        False
+      }
+    AttachScalar { parent } ->
+      if source_bytes != None || !control_is_well_formed(control) {
+        False
+      } else {
+        let done = if control.stage == stage_integer {
+          expect Some(integer) = control.integer
+          if integer.stage == cek_data_integer_v1.stage_terminal {
+            Some(
+              (
+                cek_data_integer_v1.finalize_v1(integer),
+                control.offset + integer.source_length,
+              ),
+            )
+          } else {
+            None
+          }
+        } else if control.stage == stage_bytes {
+          expect Some(bytes_control) = control.bytes
+          if bytes_control.stage == cek_data_bytes_v1.stage_terminal {
+            Some(
+              (
+                cek_data_bytes_v1.finalize_v1(bytes_control),
+                control.offset + bytes_control.source_length,
+              ),
+            )
+          } else {
+            None
           }
         } else {
-          False
+          None
         }
-      _ -> False
-    }
-  } else if or {
-    control.stage == stage_integer,
-    control.stage == stage_bytes,
-  } {
-    let phase = if control.stage == stage_integer {
-      expect Some(integer) = control.integer
-      if integer.stage == cek_data_integer_v1.stage_terminal {
-        ScalarDone {
-          summary: cek_data_integer_v1.finalize_v1(integer),
-          offset: control.offset + integer.source_length,
-        }
-      } else if integer.stage == cek_data_integer_v1.stage_blob {
-        ScalarContent
-      } else {
-        ScalarGrammar
-      }
-    } else {
-      expect Some(bytes_control) = control.bytes
-      if bytes_control.stage == cek_data_bytes_v1.stage_terminal {
-        ScalarDone {
-          summary: cek_data_bytes_v1.finalize_v1(bytes_control),
-          offset: control.offset + bytes_control.source_length,
-        }
-      } else if bytes_control.stage == cek_data_bytes_v1.stage_blob {
-        ScalarContent
-      } else {
-        ScalarGrammar
-      }
-    }
-    when phase is {
-      ScalarContent -> False
-      ScalarGrammar -> and {
-          action == NoAction,
-          window_is_exact(control, source_bytes),
-          step_v1(control, source_bytes, NoAction) == None,
-        }
-      ScalarDone { summary: Some(summary), offset } ->
-        when action is {
-          AttachScalar { parent } -> and {
-              source_bytes == None,
-              attach_extent_unreadable(
-                control.frame_root,
-                summary,
-                parent,
-                offset,
-                control.source_length,
-              ),
-            }
+        when done is {
+          Some((Some(summary), offset)) ->
+            attach_extent_unreadable(
+              control.frame_root,
+              summary,
+              parent,
+              offset,
+              control.source_length,
+            )
           _ -> False
         }
-      ScalarDone { summary: None, .. } -> False
-    }
-  } else if action != NoAction || !window_is_exact(control, source_bytes) {
-    False
-  } else if control.stage == stage_large_constructor {
-    expect Some(integer) = control.integer
-    and {
-      integer.stage == cek_data_integer_v1.stage_syntax,
-      prevalidated_advance_large_constructor(control, source_bytes, NoAction) == None,
-    }
-  } else if control.stage == stage_large_fields {
-    prevalidated_advance_large_fields(control, source_bytes, NoAction) == None
-  } else {
-    expect Some(bytes) = source_bytes
-    if control.stage == stage_head {
-      no_head_action_advances(control, bytes)
-    } else if control.stage == stage_close {
-      and {
-        prevalidated_close(control, source_bytes, NoAction) == None,
-        no_head_action_advances(control, bytes),
       }
-    } else {
-      False
-    }
+    _ -> False
   }
 }
 

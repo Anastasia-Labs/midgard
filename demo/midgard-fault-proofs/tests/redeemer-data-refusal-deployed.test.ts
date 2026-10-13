@@ -2,7 +2,7 @@ import {
   buildMidgardRedeemerItemProofTrace,
   encodeCbor,
   hashMidgardValidationMachineState,
-  isMidgardRedeemerDataHeadRejection,
+  isMidgardRedeemerDataUnreadable,
   nextMidgardRedeemerItemProofSpan,
   readMidgardRedeemerItemProofSource,
 } from "@al-ft/midgard-core";
@@ -70,7 +70,15 @@ const values = [
   ["d9007980", "d87980", 0],
   ["580100", "4100", 0, true],
   ["d8799f01580100ff", "d8799f014100ff", 4, true],
+  // Refused inside a scalar sub-control: the scalar invalid-data executor.
+  ["c24105", "c24901" + "00".repeat(8), 0],
+  ["d8799fc34101ff", "d8799fc34901" + "00".repeat(8) + "ff", 3],
+  ["5f416aff", "5f5840" + "ab".repeat(64) + "4101ff", 0],
+  ["d8799f015f416affff", "d8799f015f5840" + "ab".repeat(64) + "4101ffff", 4],
 ] as const;
+/** Roster index of the invalid-data executor for a traverse stage. */
+const invalidDataExecutorAt = (stage: number) =>
+  stage >= 1 && stage <= 3 ? 20 : 19;
 const policy = "72".repeat(28),
   deploymentId = "71".repeat(32),
   awardHash = "73".repeat(28);
@@ -186,7 +194,14 @@ it("settles authenticated Data refusals through the deployed ScriptSources item 
         "execute",
         "settle",
       ]);
-      expect(plan[4]!.validator).toEqual(stages.executors[19]);
+      expect(plan[4]!.validator).toEqual(
+        stages.executors[
+          invalidDataExecutorAt(
+            (witness.auxiliary as { control: { traversal: { stage: number } } })
+              .control.traversal.stage,
+          )
+        ],
+      );
       return {
         data,
         prepared,
@@ -216,6 +231,7 @@ it("settles authenticated Data refusals through the deployed ScriptSources item 
     stages.outerNormalizer,
     stages.sourceAuthenticator,
     stages.executors[19]!,
+    stages.executors[20]!,
     stages.settlement,
   ]) {
     const publication = await publishPlainReferenceScriptUtxo({
@@ -325,15 +341,14 @@ it("settles authenticated Data refusals through the deployed ScriptSources item 
   }
 }, 1_800_000);
 
-it("refuses canonical Data at the deployed invalid executor", async () => {
-  const stages = makeStages(),
-    executor = stages.executors[19]!;
+it("refuses canonical Data at the deployed invalid executors", async () => {
+  const stages = makeStages();
   const account = generateEmulatorAccount({ lovelace: 40_000_000_000n });
   const prover = getAddressDetails(account.address).paymentCredential!.hash;
   const datum = (state: Data) =>
     Data.to(new Constr(0, [prover, new Constr(0, [state])]));
   const attestation = new Constr(0, [1n]);
-  const cases = values.map(([, canonical, offset], index) => {
+  const cases = values.flatMap(([, canonical, offset], index) => {
     const trace = buildMidgardRedeemerItemProofTrace({
       itemIndex: 0,
       itemCount: 1,
@@ -345,48 +360,57 @@ it("refuses canonical Data at the deployed invalid executor", async () => {
       ]),
       mode: 1,
     });
-    const step = trace.steps.find(
+    const steps = trace.steps.filter(
       (s) =>
         s.control.stage === 2 &&
         s.control.traversal?.offset === offset &&
-        [0, 4, 5].includes(s.control.traversal.stage),
-    )!;
-    expect(step).toBeDefined();
-    const witness = {
-      ...step.witness,
-      action: { kind: "traverseData" as const, action: null },
-    };
-    expect(isMidgardRedeemerDataHeadRejection(step.control, witness)).toBe(
-      false,
+        s.control.traversal.stage <= 5 &&
+        nextMidgardRedeemerItemProofSpan(s.control) !== null,
     );
-    const source = readMidgardRedeemerItemProofSource({
-      control: step.control,
-      witness,
+    expect(steps.length).toBeGreaterThan(0);
+    return steps.map((step, stepIndex) => {
+      const executor =
+        stages.executors[invalidDataExecutorAt(step.control.traversal!.stage)]!;
+      const witness = {
+        ...step.witness,
+        action: { kind: "traverseData" as const, action: null },
+      };
+      expect(isMidgardRedeemerDataUnreadable(step.control, witness)).toBe(
+        false,
+      );
+      const source = readMidgardRedeemerItemProofSource({
+        control: step.control,
+        witness,
+      });
+      expect(source).not.toBeNull();
+      expect(nextMidgardRedeemerItemProofSpan(step.control)).not.toBeNull();
+      const current = exactData(redeemerItemControlData(step.control));
+      const state = new Constr(0, [
+        new Constr(0, [
+          deploymentId,
+          9n,
+          executor.spendingScriptHash,
+          stages.settlement.spendingScriptHash,
+          attestation,
+        ]),
+        current,
+        current,
+        new Constr(2, [new Constr(0, [])]),
+        new Constr(0, [Buffer.from(source!.sourceBytes!).toString("hex")]),
+      ]);
+      return {
+        state,
+        executor,
+        unit: policy + (index * 64 + stepIndex).toString(16).padStart(64, "0"),
+      };
     });
-    expect(source).not.toBeNull();
-    expect(nextMidgardRedeemerItemProofSpan(step.control)).not.toBeNull();
-    const current = exactData(redeemerItemControlData(step.control));
-    const state = new Constr(0, [
-      new Constr(0, [
-        deploymentId,
-        9n,
-        executor.spendingScriptHash,
-        stages.settlement.spendingScriptHash,
-        attestation,
-      ]),
-      current,
-      current,
-      new Constr(2, [new Constr(0, [])]),
-      new Constr(0, [Buffer.from(source!.sourceBytes!).toString("hex")]),
-    ]);
-    return { state, unit: policy + index.toString(16).padStart(64, "0") };
   });
   const emulator = new Emulator(
     [
       account,
       ...cases.map((c) => ({
         ...account,
-        address: executor.spendingScriptAddress,
+        address: c.executor.spendingScriptAddress,
         assets: { lovelace: 30_000_000n, [c.unit]: 1n },
         outputData: { inline: datum(c.state) },
       })),
@@ -395,13 +419,21 @@ it("refuses canonical Data at the deployed invalid executor", async () => {
   );
   const lucid = await Lucid(emulator, network);
   lucid.selectWallet.fromSeed(account.seedPhrase);
-  const publication = await publishPlainReferenceScriptUtxo({
-    lucid,
-    script: executor.spendingScript,
-    label: "Data refusal negative",
-  });
+  const publications = new Map<string, UTxO>();
+  for (const executor of [stages.executors[19]!, stages.executors[20]!])
+    publications.set(
+      executor.spendingScriptHash,
+      (
+        await publishPlainReferenceScriptUtxo({
+          lucid,
+          script: executor.spendingScript,
+          label: "Data refusal negative",
+        })
+      ).utxo,
+    );
   for (const c of cases) {
-    const thread = (await lucid.utxosAt(executor.spendingScriptAddress)).find(
+    const scalar = c.executor === stages.executors[20];
+    const thread = (await lucid.utxosAt(c.executor.spendingScriptAddress)).find(
       (u) => u.assets[c.unit] === 1n,
     )!;
     const spend = ((ctx) =>
@@ -415,7 +447,7 @@ it("refuses canonical Data at the deployed invalid executor", async () => {
         lucid
           .newTx()
           .collectFrom([thread], spend)
-          .readFrom([publication.utxo])
+          .readFrom([publications.get(c.executor.spendingScriptHash)!])
           .pay.ToContract(
             stages.settlement.spendingScriptAddress,
             { kind: "inline", value: datum(attestation) },
@@ -423,11 +455,17 @@ it("refuses canonical Data at the deployed invalid executor", async () => {
           )
           .addSignerKey(prover)
           .complete({ localUPLCEval: true }),
-      {
-        refusedBy:
-          "fraud_proofs/validation_trace/script_sources_stage_one_redeemer_invalid_data_executor",
-        check: /semantics.invalid_data\(state\)/u,
-      },
+      scalar
+        ? {
+            refusedBy:
+              "fraud_proofs/validation_trace/script_sources_stage_one_redeemer_invalid_scalar_data_executor",
+            check: /semantics.invalid_scalar_data\(state\)/u,
+          }
+        : {
+            refusedBy:
+              "fraud_proofs/validation_trace/script_sources_stage_one_redeemer_invalid_data_executor",
+            check: /semantics.invalid_data\(state\)/u,
+          },
     );
   }
 }, 240_000);

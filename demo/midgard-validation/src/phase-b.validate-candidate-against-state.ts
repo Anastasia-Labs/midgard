@@ -1,5 +1,5 @@
 import {
-  inspectMidgardRedeemerSequenceHeads,
+  inspectMidgardRedeemerData,
   type MidgardValidationPhaseName,
 } from "@al-ft/midgard-core";
 import {
@@ -234,7 +234,7 @@ export const validateCandidateAgainstState = (
 
     // Stage1 Data audit precedes all purpose/source discovery (including missing sources).
     for (const [index, redeemer] of ledgerTx.redeemers.entries()) {
-      const inspection = inspectMidgardRedeemerSequenceHeads(redeemer.dataCbor);
+      const inspection = inspectMidgardRedeemerData(redeemer.dataCbor);
       if (inspection.kind === "refusal") {
         return fail(
           RejectCodes.InvalidFieldType,

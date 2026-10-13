@@ -745,6 +745,23 @@ pub fn prevalidated_step_v1(
   }
 }
 
+/// `prevalidated_step_v1` at the syntax and measure stages, the steps that
+/// read grammar; every other stage yields `None`. A refusal check reaches only
+/// these stages, so it carries no content-streaming code.
+pub fn prevalidated_grammar_step_v1(
+  control: CekDataBytesControlV1,
+  source_end: Int,
+  source_bytes: Option<ByteArray>,
+) -> Option<CekDataBytesControlV1> {
+  if control.stage == stage_syntax {
+    step_syntax(control, source_bytes)
+  } else if control.stage == stage_measure {
+    step_measure(control, source_end, source_bytes)
+  } else {
+    None
+  }
+}
+
 pub fn finalize_v1(
   control: CekDataBytesControlV1,
 ) -> Option<cek_data_v1.DataSummaryV1> {

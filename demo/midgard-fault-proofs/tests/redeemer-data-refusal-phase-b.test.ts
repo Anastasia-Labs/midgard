@@ -1,5 +1,5 @@
 import {
-  inspectMidgardRedeemerSequenceHeads,
+  inspectMidgardRedeemerData,
   MIDGARD_CONSENSUS_PROFILE,
 } from "@al-ft/midgard-core";
 import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
@@ -47,7 +47,7 @@ it.each([
     expect(phaseA.accepted).toHaveLength(1);
     const retained = phaseA.accepted[0]!.ledgerTx.redeemers[0]!.dataCbor;
     expect(retained.toString("hex")).toBe(data);
-    expect(inspectMidgardRedeemerSequenceHeads(retained)).toEqual({
+    expect(inspectMidgardRedeemerData(retained)).toEqual({
       kind: "refusal",
       offset,
     });

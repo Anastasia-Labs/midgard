@@ -818,6 +818,7 @@ describe("fault-proof contract builder", () => {
       sharedTitles.invalidHeaderExecutor,
       sharedTitles.invalidTailExecutor,
       sharedTitles.invalidDataExecutor,
+      sharedTitles.invalidScalarDataExecutor,
     ];
     const expectedExecutors = expectedExecutorTitles.map((title) =>
       applyExpectedScriptParams(compiledScript(blueprint, title), [

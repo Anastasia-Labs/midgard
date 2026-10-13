@@ -7,7 +7,7 @@ import {
   buildMidgardBoundedItem,
   buildMidgardBoundedItemChunkProof,
   buildMidgardLedgerOutputProofTrace,
-  buildMidgardRedeemerDataHeadRejectionTrace,
+  buildMidgardRedeemerDataUnreadableTrace,
   buildMidgardRedeemerItemProofTrace,
   buildMidgardValidationLedgerDeltaFrontier,
   buildMidgardValidationMerkleFrontier,
@@ -38,7 +38,7 @@ import {
   hashMidgardValidationContext,
   hashMidgardValidationLedgerDelta,
   hashMidgardValidationLedgerDeltaOperation,
-  inspectMidgardRedeemerSequenceHeads,
+  inspectMidgardRedeemerData,
   MIDGARD_BOUNDED_ITEM_CHUNK_BYTES,
   MIDGARD_CONSENSUS_LIMITS,
   type MidgardBlake2b224TraceControl,
@@ -2480,7 +2480,7 @@ export const prepareValidationTrace = (input: ValidationMachineReplayInput) =>
               redeemerTotalCount = redeemerWitnessesCollection.items.length;
             }
             if (
-              inspectMidgardRedeemerSequenceHeads(
+              inspectMidgardRedeemerData(
                 Buffer.from(redeemer.dataCborHex, "hex"),
               ).kind === "refusal"
             ) {
@@ -2496,7 +2496,7 @@ export const prepareValidationTrace = (input: ValidationMachineReplayInput) =>
                   ),
                 );
               }
-              const refusal = buildMidgardRedeemerDataHeadRejectionTrace({
+              const refusal = buildMidgardRedeemerDataUnreadableTrace({
                 itemIndex: item.itemIndex,
                 itemCount: redeemerTotalCount,
                 itemBytes: item.bytes,

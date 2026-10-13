@@ -2,6 +2,7 @@ import {
   initialMidgardCekDataBytesControl,
   initialMidgardCekDataBytesMeasureControl,
 } from "./cek-data-bytes.js";
+import { CARDANO_DATA_BYTES_CHUNK } from "./cek-data-bytes.parse-midgard-cek-data-bytes-syntax.js";
 import {
   appendMidgardCekDataFrameChild,
   hashMidgardCekDataFrame,
@@ -22,7 +23,6 @@ import {
   summaryIsWellFormed,
   UINT32_MAX,
 } from "./cek-data-traverse.is-well-formed-midgard-cek-data-traverse-control.js";
-import { hasNonCanonicalDataHead } from "./cek-data-traverse.noncanonical-sequence-head.js";
 import { parseDataNodeHead } from "./cek-data-traverse.parse-data-node-head.js";
 import {
   type DataParserFrame,
@@ -33,29 +33,16 @@ import {
 } from "./cek-data-traverse.read-canonical-cbor-argument-wide.js";
 import { type MidgardCekDataSummary } from "./cek-semantic.js";
 
-const parseDataNodes = (
+export const parseMidgardCekDataNodes = (
   source: Buffer,
-  stopAtSequenceRefusal: boolean,
-): {
-  readonly nodes: readonly ParsedDataNode[];
-  readonly refusalOffset: number | null;
-} => {
+): readonly ParsedDataNode[] => {
   if (source.length === 0 || source.length > UINT32_MAX) {
     throw new Error("V1 CEK Data traversal source must fit uint32");
   }
   const nodes: ParsedDataNode[] = [];
   const frames: DataParserFrame[] = [];
-  if (stopAtSequenceRefusal && hasNonCanonicalDataHead(source)) {
-    return { nodes, refusalOffset: 0 };
-  }
-  const root = parseDataNodeHead(source, 0, stopAtSequenceRefusal);
+  const root = parseDataNodeHead(source, 0);
   nodes.push(root.node);
-  if (
-    root.node.kind !== "scalar" &&
-    "refusalOffset" in root &&
-    root.refusalOffset !== undefined
-  )
-    return { nodes, refusalOffset: root.refusalOffset };
   let cursor = root.nextOffset;
   if (root.remainingChildren !== 0) {
     frames.push({
@@ -96,27 +83,10 @@ const parseDataNodes = (
     if (cursor >= source.length || source[cursor] === 0xff) {
       throw new Error("V1 CEK Data traversal rejected an incomplete container");
     }
-    if (
-      stopAtSequenceRefusal &&
-      hasNonCanonicalDataHead(source.subarray(cursor))
-    ) {
-      const refusalOffset = cursor;
-      // The next operation names the refusal cursor rather than a parsed Data node.
-      node.children.push(nodes.length);
-      // Open-ended ancestor frames derive their arity from authenticated traversal,
-      // so unvisited suffix nodes need not be parsed or assigned invented summaries.
-      return { nodes, refusalOffset };
-    }
-    const child = parseDataNodeHead(source, cursor, stopAtSequenceRefusal);
+    const child = parseDataNodeHead(source, cursor);
     const childIndex = nodes.length;
     nodes.push(child.node);
     node.children.push(childIndex);
-    if (
-      child.node.kind !== "scalar" &&
-      "refusalOffset" in child &&
-      child.refusalOffset !== undefined
-    )
-      return { nodes, refusalOffset: child.refusalOffset };
     if (frame.remainingChildren !== null) {
       frame.remainingChildren -= 1;
     }
@@ -137,15 +107,8 @@ const parseDataNodes = (
   if (cursor !== source.length) {
     throw new Error("V1 CEK Data traversal rejected trailing source bytes");
   }
-  return { nodes, refusalOffset: null };
+  return nodes;
 };
-
-export const parseMidgardCekDataNodes = (
-  source: Buffer,
-): readonly ParsedDataNode[] => parseDataNodes(source, false).nodes;
-
-export const parseMidgardCekDataNodesPrefix = (source: Buffer) =>
-  parseDataNodes(source, true);
 
 /** `control` must already be validated in the same call chain. */
 export const exactSourceBytes = ({
@@ -289,7 +252,12 @@ export const stepHeadScalar = ({
     const argument = readCanonicalCborArgument(bytes, 0);
     if (argument === null) return null;
     const itemLength = argument.nextOffset + argument.value;
-    if (control.offset + itemLength > control.sourceLength) return null;
+    if (
+      argument.value > CARDANO_DATA_BYTES_CHUNK ||
+      control.offset + itemLength > control.sourceLength
+    ) {
+      return null;
+    }
     return advanced({
       ...control,
       stage: MidgardCekDataTraverseStages.Bytes,

@@ -19,6 +19,11 @@ export {
   readMidgardRedeemerItemProofSource,
 } from "./redeemer-item-proof.authenticated-span.js";
 export {
+  buildMidgardRedeemerDataUnreadableTrace,
+  inspectMidgardRedeemerData,
+  isMidgardRedeemerDataUnreadable,
+} from "./redeemer-item-proof.data-unreadable.js";
+export {
   initialMidgardRedeemerItemProofControl,
   isWellFormedMidgardRedeemerItemProofControl,
   MIDGARD_REDEEMER_ITEM_FIELD_INDEX,
@@ -36,9 +41,3 @@ export {
   type MidgardRedeemerItemProofTraceStep,
   type MidgardRedeemerItemProofWitness,
 } from "./redeemer-item-proof.is-well-formed-midgard-redeemer-item-proof-control.js";
-export {
-  buildMidgardRedeemerDataHeadRejectionTrace,
-  hasNonCanonicalDefiniteSequenceHead,
-  inspectMidgardRedeemerSequenceHeads,
-  isMidgardRedeemerDataHeadRejection,
-} from "./redeemer-item-proof.noncanonical-sequence-head.js";
