@@ -41,6 +41,7 @@ import {
   makeHeader,
   network,
   publishRemovalReferenceScripts,
+  withPlaceholderDeposit,
 } from "./support/submit-init-emulator-shared.js";
 import {
   MAXIMUM_PROOF_STEP_COUNT,
@@ -476,10 +477,8 @@ describe("Q35 network-id real-fault lifecycle", () => {
       emulator: harness.emulator,
     });
     const targetHeader = {
-      ...makeHeader(
-        predecessorSetup.header.operatorVkey,
-        targetStart,
-        EMPTY_MERKLE_TREE_ROOT,
+      ...withPlaceholderDeposit(
+        makeHeader(predecessorSetup.header.operatorVkey, targetStart),
       ),
       prevHeaderHash: predecessorSetup.headerHash,
       prevUtxosRoot: previous.root,

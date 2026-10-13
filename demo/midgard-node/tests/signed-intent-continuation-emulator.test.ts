@@ -34,10 +34,14 @@ import {
   utxosProgram,
 } from "./deposit-flow-emulator-shared.js";
 import { openProductionLifecycle } from "./helpers/production-lifecycle.js";
-import { retainSignedIntentContinuationEmptyChildDa } from "./helpers/signed-intent-continuation-empty-child-da.js";
+import {
+  retainSignedIntentContinuationChildDa,
+  signedIntentContinuationChildEvents,
+  signedIntentContinuationChildRoots,
+} from "./helpers/signed-intent-continuation-child-da.js";
 
 /** Real accepted commitment with a lost provider response, then an authorized
- * empty child recreating the parent outref. Synthetic transport ancestry;
+ * event-only child recreating the parent outref. Synthetic transport ancestry;
  * block confirmation observes the parent through the recreated outref. */
 it("retains the original signed intent through an accepted queue pointer continuation before local confirmation", async () => {
   const h = await openProductionLifecycle();
@@ -294,7 +298,7 @@ it("retains the original signed intent through an accepted queue pointer continu
     expect(canonical.utxo.txHash).toBe(accepted.txHash);
     expect(canonical.datum.next).toBe("Empty");
 
-    diagnostic.stage = "authorized-empty-child-before-node-confirmation";
+    diagnostic.stage = "authorized-child-before-node-confirmation";
     await advanceEmulatorPastUnixTime(fixture, Number(accepted.header.endTime));
     vi.setSystemTime(fixture.emulator.now());
     await alignCommitSchedulerBeforeTestWorker({
@@ -336,7 +340,13 @@ it("retains the original signed intent through an accepted queue pointer continu
     });
     diagnostic.childEndTime = childEndTime;
     expect(childEndTime.status).toBe("fits");
-    // The empty child preserves the actual parent ledger without repeating its deposit.
+    // The child preserves the actual parent ledger without repeating its
+    // deposit; its one event is a placeholder withdrawal.
+    const childRoots = await h.command(
+      signedIntentContinuationChildRoots(
+        signedIntentContinuationChildEvents(accepted.header.utxosRoot),
+      ),
+    );
     const beforeChildReceiptCount = h.receipts.length;
     expect(Object.keys(fixture.emulator.mempool)).toHaveLength(0);
     const child = await h.command(
@@ -344,8 +354,8 @@ it("retains the original signed intent through an accepted queue pointer continu
         utxosRoot: accepted.header.utxosRoot,
         transactionsRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
         depositsRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
-        withdrawalsRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
-        l2TransactionCount: 0n,
+        ...childRoots,
+        withdrawalCount: 1n,
         endTimeMs: childEndTime.resolvedEndTime - 1,
         awaitConfirmation: true,
       }),
@@ -420,17 +430,15 @@ it("retains the original signed intent through an accepted queue pointer continu
       startTime: accepted.header.endTime,
       transactionsRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
       depositsRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
-      withdrawalsRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
+      ...childRoots,
       forcedTransactionsRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
-      transitionTraceRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
-      eventToStepRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
       validationTracesRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
       depositCount: 0n,
-      withdrawalCount: 0n,
+      withdrawalCount: 1n,
       forcedTransactionCount: 0n,
       l2TransactionCount: 0n,
-      totalEventCount: 0n,
-      transitionStepCount: 0n,
+      totalEventCount: 1n,
+      transitionStepCount: 1n,
       validationTraceCount: 0n,
     });
     expect(childHeader.endTime).toBeGreaterThan(accepted.header.endTime);
@@ -452,11 +460,11 @@ it("retains the original signed intent through an accepted queue pointer continu
       nativeBeforeContinuation,
       nativeBeforeConfirmation: await nativeBefore!.diagnostics(),
       submissionMode:
-        "Authorized operator explicit empty-child builder, not automatic pending worker",
+        "Authorized operator explicit event-only child builder, not automatic pending worker",
     };
     diagnostic.stage = "canonical-confirmation-through-continuation";
     diagnostic.childDa = await h.command(
-      retainSignedIntentContinuationEmptyChildDa(
+      retainSignedIntentContinuationChildDa(
         accepted.headerHash,
         child.headerHash,
         childHeader,
@@ -545,7 +553,7 @@ it("retains the original signed intent through an accepted queue pointer continu
           JSON.stringify(
             {
               scope:
-                "Actual emulator acceptance followed by one lost provider response; independent durable pre-provider SQL read; real authorized explicit empty-child submission recreates the parent queue outref before node acknowledgement/confirmation. Original signed intent identity preserved through canonical observation and native local finalization. Synthetic transport ancestry. No automatic-worker child, service restart, OS kill, or production FailureOutput mutation-lease classification coverage.",
+                "Actual emulator acceptance followed by one lost provider response; independent durable pre-provider SQL read; real authorized explicit event-only child submission recreates the parent queue outref before node acknowledgement/confirmation. Original signed intent identity preserved through canonical observation and native local finalization. Synthetic transport ancestry. No automatic-worker child, service restart, OS kill, or production FailureOutput mutation-lease classification coverage.",
               manifestId: h.deployment.manifest.manifestId,
               blueprintSha256: h.deployment.manifest.artifacts.blueprintHash,
               deploymentInfoSha256: h.deploymentInfoSha256,

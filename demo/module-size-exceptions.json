@@ -531,7 +531,7 @@
   },
   {
     "file": "midgard-fault-proofs/tests/submit-init-emulator-network-id.test.ts",
-    "max": 747,
+    "max": 746,
     "reason": "Retained test registration “Q35 network-id real-fault lifecycle” (692 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
   },
   {
@@ -546,13 +546,13 @@
   },
   {
     "file": "midgard-fault-proofs/tests/submit-init-emulator-transition-timing-history.test.ts",
-    "max": 574,
-    "reason": "Retained test registration “applied timed history final” (487 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+    "max": 589,
+    "reason": "Retained test registration “applied timed history final” (487 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor. C3 (+15): an omitting block carries a placeholder event of the other kind, since a committed block carries at least one event."
   },
   {
     "file": "midgard-fault-proofs/tests/submit-init-emulator-transition-trace-subvariants.test.ts",
-    "max": 636,
-    "reason": "Retained test registration “transition-trace omitted/out-of-window/count subvariant lifecycle” (501 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor. C2a (+7): headers are committed with the commit slot as block_slot, and callers use the header the commit returns."
+    "max": 637,
+    "reason": "Retained test registration “transition-trace omitted/out-of-window/count subvariant lifecycle” (501 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor. C2a (+7): headers are committed with the commit slot as block_slot, and callers use the header the commit returns. C3 (+1): omitting blocks carry an unrelated withdrawal, since a committed block carries at least one event."
   },
   {
     "file": "midgard-fault-proofs/tests/submit-init-emulator-validation-dispute.test.ts",
@@ -611,7 +611,7 @@
   },
   {
     "file": "midgard-fault-proofs/tests/support/submit-init-emulator-fixtures.build-proved-double-spend-fixture.ts",
-    "max": 551,
+    "max": 549,
     "reason": "buildProvedDoubleSpendFixture is the dominant indivisible declaration (482 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. C2a (+1): headers are committed with the commit slot as block_slot, and callers use the header the commit returns."
   },
   {
@@ -651,8 +651,8 @@
   },
   {
     "file": "midgard-fault-proofs/tests/transition-trace-installed-lifecycle.test.ts",
-    "max": 945,
-    "reason": "Hoisted or module-scoped Vitest mocks own this test file’s import/evaluation boundary. Moving registrations between modules changes mock timing; retain the suite with its mocks and local fixtures. VR (+2): script contexts carry POSIX-ms validity bounds, so the phase-B, trace, classifier and contract-builder inputs here name the deployment's L1 slot mapping."
+    "max": 981,
+    "reason": "Hoisted or module-scoped Vitest mocks own this test file’s import/evaluation boundary. Moving registrations between modules changes mock timing; retain the suite with its mocks and local fixtures. VR (+2): script contexts carry POSIX-ms validity bounds, so the phase-B, trace, classifier and contract-builder inputs here name the deployment's L1 slot mapping. C3 (+36): an omitting block carries a real L1 event of the other kind, admitted due in it, since a committed block carries at least one event; the prover wallet is then split so the proof workflow keeps a spare UTxO."
   },
   {
     "file": "midgard-fault-proofs/tests/transition-trace-l1-evidence.test.ts",
@@ -1111,8 +1111,8 @@
   },
   {
     "file": "midgard-node/tests/signed-intent-continuation-emulator.test.ts",
-    "max": 573,
-    "reason": "Retained test registration “retains the original signed intent through an accepted queue pointer continuation before local confirmation” (545 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor. I1-fix (+2): the finalized status is renamed locally_applied (I1-E1 option B), whose longer name wraps."
+    "max": 581,
+    "reason": "Retained test registration “retains the original signed intent through an accepted queue pointer continuation before local confirmation” (545 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor. I1-fix (+2): the finalized status is renamed locally_applied (I1-E1 option B), whose longer name wraps. C3 (+8): the explicit child carries a placeholder withdrawal, since a committed block carries at least one event, so its roots are computed before the commit and asserted after it."
   },
   {
     "file": "midgard-node/tests/production-lifecycle-streaming-emulator.test.ts",

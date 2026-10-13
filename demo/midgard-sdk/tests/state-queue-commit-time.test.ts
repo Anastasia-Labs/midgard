@@ -1,3 +1,4 @@
+import { h32 } from "@al-ft/midgard-test-support/hex";
 import {
   Data,
   Emulator,
@@ -5,7 +6,6 @@ import {
   getAddressDetails,
   Lucid,
 } from "@lucid-evolution/lucid";
-import { h32 } from "@al-ft/midgard-test-support/hex";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
@@ -104,7 +104,7 @@ const nodeBlockTime = (block: StateQueueUTxO): bigint =>
   Data.castFrom(block.datum.data, StateQueueNode).block_time;
 
 describe("state-queue commit binds the commit time (R1-R3)", () => {
-  it("refuses every mis-timed commit and lands an event-only catch-up block, then an L2 block", async () => {
+  it("refuses every mis-timed or event-free commit and lands an event-only catch-up block, then an L2 block", async () => {
     const { lucid, operator, genesisTime, root, activeOperatorInput, ...q } =
       await setupQueue();
     const transactionsRoot = await buildTransactionsRoot();
@@ -179,6 +179,20 @@ describe("state-queue commit binds the commit time (R1-R3)", () => {
       await expect(attempt({ ...catchUp, blockSlot })).rejects.toThrow(
         COMMIT_REFUSED,
       );
+
+    // A committed block carries at least one event: the catch-up header with
+    // its deposit removed is otherwise valid and on time, and is refused.
+    await expect(
+      attempt({
+        ...catchUp,
+        depositsRoot: EMPTY_MERKLE_TREE_ROOT,
+        transitionTraceRoot: EMPTY_MERKLE_TREE_ROOT,
+        eventToStepRoot: EMPTY_MERKLE_TREE_ROOT,
+        depositCount: 0n,
+        totalEventCount: 0n,
+        transitionStepCount: 0n,
+      }),
+    ).rejects.toThrow(COMMIT_REFUSED);
 
     // The honest catch-up block lands: it covers (genesis, genesis + 1 s] and
     // records the commit time separately.

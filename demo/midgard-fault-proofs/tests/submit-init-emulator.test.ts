@@ -18,7 +18,6 @@ import {
   DoubleSpendStep02Datum,
   DoubleSpendStep03Datum,
   DoubleSpendStep04Datum,
-  EMPTY_MERKLE_TREE_ROOT,
   FraudProofComputationThreadStepDatum,
   FraudProofTokenDatum,
   referenceScriptAuthPolicyDeploymentInfo,
@@ -76,6 +75,7 @@ import {
   publishRemovalReferenceScripts,
   type RemovalReferenceScriptName,
   submitSetupTx,
+  withPlaceholderDeposit,
 } from "./support/submit-init-emulator-shared.js";
 
 describe("fault-proof emulator integration", () => {
@@ -141,7 +141,7 @@ describe("fault-proof emulator integration", () => {
       contracts,
       anchorBlockUnit: setup.stateQueueBlockUnit,
       header: {
-        ...makeHeader(funderKeyHash, successorStart, EMPTY_MERKLE_TREE_ROOT),
+        ...withPlaceholderDeposit(makeHeader(funderKeyHash, successorStart)),
         prevHeaderHash: headerHash,
       },
       hubOracle: setup.hubOracle,

@@ -11,6 +11,7 @@ import {
   buildCanonicalBlockFixture,
   reencodeFixturePayload,
 } from "../helpers/canonical-block-evidence-fixture.js";
+import { withPlaceholderWithdrawalBlock } from "../helpers/canonical-block-evidence-fixture.with-placeholder-withdrawal.js";
 import { fixtureBlockSlot } from "./emulator/header-fixtures.js";
 import {
   buildWithdrawalMistagEvidenceMaterial,
@@ -57,12 +58,14 @@ export const withdrawalMistagRetainedFixture = async ({
       "hex",
     ),
   };
-  const predecessorBase = await buildCanonicalBlockFixture({
-    transactions: [],
-    utxos: [output],
-    startTime: BigInt(now),
-    endTime: BigInt(now + 1000),
-  });
+  const predecessorBase = await withPlaceholderWithdrawalBlock(
+    await buildCanonicalBlockFixture({
+      transactions: [],
+      utxos: [output],
+      startTime: BigInt(now),
+      endTime: BigInt(now + 1000),
+    }),
+  );
   const predecessorHeader = {
     ...predecessorBase.header,
     operatorVkey,

@@ -136,6 +136,10 @@ const tail_utxo_root =
 const new_utxo_root =
   #"e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4"
 
+/// The deposit, transition-trace and event-to-step root of a one-deposit block.
+const one_deposit_root =
+  #"d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5"
+
 const attested_commitment_hash =
   #"f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1"
 
@@ -199,7 +203,8 @@ fn node_asset_name(key: ByteArray) -> ByteArray {
   bytearray.concat(state_queue.block_asset_name_prefix, key)
 }
 
-/// An empty-material V1 block (no events), valid under `header_v1_is_valid`.
+/// A one-deposit V1 block, valid under `header_v1_is_valid` and the commit's
+/// event-count rule.
 fn block_header(
   block_operator: ByteArray,
   prev_header_hash: ByteArray,
@@ -214,16 +219,16 @@ fn block_header(
     withdrawals_root: env.empty_merkle_tree_root,
     forced_transactions_root: env.empty_merkle_tree_root,
     transactions_root: env.empty_merkle_tree_root,
-    deposits_root: env.empty_merkle_tree_root,
-    transition_trace_root: env.empty_merkle_tree_root,
-    event_to_step_root: env.empty_merkle_tree_root,
+    deposits_root: one_deposit_root,
+    transition_trace_root: one_deposit_root,
+    event_to_step_root: one_deposit_root,
     validation_traces_root: env.empty_merkle_tree_root,
     withdrawal_count: 0,
     forced_transaction_count: 0,
     l2_transaction_count: 0,
-    deposit_count: 0,
-    total_event_count: 0,
-    transition_step_count: 0,
+    deposit_count: 1,
+    total_event_count: 1,
+    transition_step_count: 1,
     validation_trace_count: 0,
     start_time,
     end_time,
@@ -1016,6 +1021,28 @@ fn root_anchor_commit_with_header(
   )
 }
 
+/// Control: `state_queue_commit_accepts_honest_root_anchor_append`. Refused by
+/// `header.total_event_count > 0` in `commit_block_header_output_is_valid_v1`:
+/// the same block with no events (every count zero, every count-tied root
+/// empty) still moves the ledger root.
+test state_queue_commit_rejects_zero_event_block() fail {
+  validates_commit(
+    root_anchor_commit_with_header(
+      fn(header) {
+        HeaderV1 {
+          ..header,
+          deposits_root: env.empty_merkle_tree_root,
+          transition_trace_root: env.empty_merkle_tree_root,
+          event_to_step_root: env.empty_merkle_tree_root,
+          deposit_count: 0,
+          total_event_count: 0,
+          transition_step_count: 0,
+        }
+      },
+    ),
+  )
+}
+
 /// The largest value each bounded header Int may take.
 const largest_bounded_header_int =
   state_queue_validator.commit_header_int_exclusive_bound_v1 - 1
@@ -1302,6 +1329,8 @@ test state_queue_commit_rejects_backdated_block_time() fail {
 test state_queue_commit_rejects_l2_block_ending_before_its_block_time() fail {
   let header = HeaderV1 {
     ..catch_up_header(),
+    deposits_root: env.empty_merkle_tree_root,
+    deposit_count: 0,
     transactions_root: new_utxo_root,
     transition_trace_root: new_utxo_root,
     event_to_step_root: new_utxo_root,

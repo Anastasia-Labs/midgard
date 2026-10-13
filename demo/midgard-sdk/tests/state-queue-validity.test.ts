@@ -89,13 +89,19 @@ const makeCommitParams = (
     datum: updatedNodeDatum,
     assetName: STATE_QUEUE_ROOT_ASSET_NAME,
   };
+  // One deposit: the commit rule requires at least one event.
   const newHeader: Header = {
     prevUtxosRoot: EMPTY_MERKLE_TREE_ROOT,
     utxosRoot: EMPTY_MERKLE_TREE_ROOT,
     withdrawalsRoot: EMPTY_MERKLE_TREE_ROOT,
     ...EMPTY_HEADER_TRANSITION_COMMITMENTS,
+    transitionTraceRoot: "d5".repeat(32),
+    eventToStepRoot: "d5".repeat(32),
+    depositCount: 1n,
+    totalEventCount: 1n,
+    transitionStepCount: 1n,
     transactionsRoot: EMPTY_MERKLE_TREE_ROOT,
-    depositsRoot: EMPTY_MERKLE_TREE_ROOT,
+    depositsRoot: "d5".repeat(32),
     startTime: 0n,
     endTime: BigInt(validTo - 1),
     blockSlot: 0n,
@@ -335,6 +341,27 @@ describe("production commit validity binding", () => {
 
     expect(result._tag).toBe("Failure");
     expect(newTx).not.toHaveBeenCalled();
+  });
+
+  it("rejects a block with no events before opening a transaction builder", async () => {
+    const validFrom = 1_000_000;
+    const validTo = validFrom + COMMIT_MAX_VALIDITY_RANGE_MS;
+    const recordingLucid = makeValidityRecordingLucid();
+    const params = makeCommitParams(recordingLucid.lucid, validFrom, validTo);
+    const result = await Effect.runPromiseExit(
+      buildCommitBlockHeaderTxProgram({
+        ...params,
+        newHeader: {
+          ...params.newHeader,
+          ...EMPTY_HEADER_TRANSITION_COMMITMENTS,
+          depositsRoot: EMPTY_MERKLE_TREE_ROOT,
+        },
+      }),
+    );
+
+    expect(result._tag).toBe("Failure");
+    expect(JSON.stringify(result)).toContain("a block with no events");
+    expect(recordingLucid.newTx).not.toHaveBeenCalled();
   });
 
   it("rejects append while the authenticated correction lock is held", async () => {
