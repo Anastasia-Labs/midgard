@@ -30,8 +30,6 @@ export * from "./registered-operators.js";
 export * from "./rejection-reason.js";
 export * from "./reserve.js";
 export * from "./reserve-payout.js";
-export * from "./retained-validation-auxiliary.js";
-export * from "./retained-validation-trace.js";
 export * from "./retired-operators.js";
 export * from "./scheduler.js";
 export * from "./scheduler-refresh.js";

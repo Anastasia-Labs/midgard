@@ -145,7 +145,6 @@ export type BridgeDependencies = Readonly<{
   revokeAuthority(reason: string): void;
   unfinishedObjectiveCount(): number;
   retainDecisionAuthorities(decisionDigest: string | null): void;
-  decisionUsesLocalEventHistory(decisionDigest: string): boolean;
 }>;
 
 export const exactInstalledScope = (

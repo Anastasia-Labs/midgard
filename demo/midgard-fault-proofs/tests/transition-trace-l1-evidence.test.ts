@@ -20,7 +20,7 @@ import {
   computeTransitionTraceL1EventEvidenceDigest,
   replayTransitionTraceFromRetainedHistory,
 } from "../src/transition-trace/replay-authority.js";
-import { VALIDATION_TRACE_DISPUTE_COMPLETE_CANONICAL_REPLAY } from "../src/workflow/complete-replay.js";
+import { TRANSITION_TRACE_COMPLETE_CANONICAL_REPLAY } from "../src/workflow/complete-replay.js";
 import { FraudProofL1CheckpointChangedError } from "../src/workflow/l1-source.js";
 import * as rawSnapshot from "../src/workflow/raw-l1-snapshot.js";
 import {
@@ -444,7 +444,7 @@ describe("transition trace immutable L1 evidence", () => {
               policy: { ...RELEASE_L1_FINALITY_POLICY },
             }),
           },
-          replayer: VALIDATION_TRACE_DISPUTE_COMPLETE_CANONICAL_REPLAY,
+          replayer: TRANSITION_TRACE_COMPLETE_CANONICAL_REPLAY,
           transitionTraceEventAuthority,
           predecessor: {
             observation: authenticatedHeaderObservation(retained.predecessor),

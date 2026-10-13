@@ -187,8 +187,6 @@ export const prepareJourneyTransactionProof = async (input: {
       return Proofs.deriveMintItemNonCanonicalEvidenceFromCanonicalBlock(
         evidence,
       );
-    case "distinctAssetAccumulationLimit":
-      return Proofs.prepareDistinctAssetAccumulationArtifact(evidence);
     case "mintAuthorization": {
       const predecessor = await checkedLedgerAfter(
         await Proofs.canonicalBlockEvidenceFromVerifiedPayload({

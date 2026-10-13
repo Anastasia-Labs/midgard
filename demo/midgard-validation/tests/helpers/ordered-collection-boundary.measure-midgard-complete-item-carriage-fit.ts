@@ -8,7 +8,6 @@ import {
   MIDGARD_CONSENSUS_LIMITS,
   MIDGARD_ENVELOPE_MEASUREMENTS,
 } from "@al-ft/midgard-core/consensus-profile";
-import { selectValidationCompleteItemCarriage } from "@al-ft/midgard-fault-proofs";
 import { deriveValidationProofItemPublication } from "@al-ft/midgard-sdk";
 import { CML } from "@lucid-evolution/lucid";
 
@@ -166,16 +165,14 @@ export type MidgardCompleteItemCarriageFit = {
  * necessary only when both complete routes are measured to overflow.
  *
  * The publication side builds a real signed Conway transaction carrying the
- * published inline datum, using the same framing as
- * `complete-item-proof-fit.test.ts`. Since #597 that datum holds the field's
+ * published inline datum, using the validation-proof item publication framing. Since #597 that datum holds the field's
  * whole §5.1 preimage rather than one item beside an opening into it, so what is
  * published here is the single-item envelope of `itemCbor` — the smallest
  * genuine field a complete-item step can name, which keeps the measurement a
  * lower bound on the publication transaction rather than an invented shape.
  *
- * Direct carriage is decided by the production selector
- * `selectValidationCompleteItemCarriage`, whose bound is the applied
- * deployed-validator measurement pinned in `MIDGARD_ENVELOPE_MEASUREMENTS`.
+ * Direct carriage is bounded by the applied deployed-validator measurement
+ * pinned in `MIDGARD_ENVELOPE_MEASUREMENTS`.
  */
 export const measureMidgardCompleteItemCarriageFit = ({
   fieldIndex,
@@ -276,9 +273,11 @@ export const measureMidgardCompleteItemCarriageFit = ({
     itemIndex,
     itemBytes: itemCbor.length,
     commitmentHex: commitment.toString("hex"),
-    carriage: fitsItemPublicationBound
-      ? selectValidationCompleteItemCarriage(itemCbor.length)
-      : "reference",
+    carriage:
+      fitsItemPublicationBound &&
+      itemCbor.length <= maxReliableDirectCompleteItemBytes
+        ? "direct"
+        : "reference",
     boundedFallbackChunkCount: midgardBoundedItemChunkCount(itemCbor.length),
     maxReliableDirectCompleteItemBytes,
     maxSinglePublicationCompleteItemBytes,

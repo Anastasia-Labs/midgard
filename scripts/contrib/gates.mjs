@@ -27,10 +27,7 @@ export const GATES = {
       [
         "tests/workflow-terminal-recovery.test.ts",
         "tests/central-family-recovery.test.ts",
-        "tests/distinct-asset-accumulation-recovery.test.ts",
         "tests/mint-item-terminal-recovery.test.ts",
-        "tests/script-family-recovery.test.ts",
-        "tests/submit-init-emulator-route-freedom-recovery.test.ts",
       ],
     ],
     [
@@ -129,8 +126,6 @@ export const GATES = {
         "tests/*envelope.test.ts",
         "tests/*maximum*.test.ts",
         "tests/submit-init-emulator-committed-field-shape-adversarial.test.ts",
-        "tests/retained-classification-polarities.test.ts",
-        "tests/validation-dispute-origin-classification.test.ts",
       ],
     ],
     [

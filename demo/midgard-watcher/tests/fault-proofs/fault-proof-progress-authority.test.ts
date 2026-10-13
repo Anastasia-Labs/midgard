@@ -10,6 +10,7 @@ import {
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import * as DecisionJournal from "../../src/fault-proofs/fault-decision-journal.js";
+import { installedLaunchScope } from "../../src/fault-proofs/fault-proof-application.js";
 import { createWatcherFaultProofProgressAuthority } from "../../src/fault-proofs/fault-proof-progress-authority.js";
 import { watcherFaultProofDeadline } from "../../src/fault-proofs/fault-proof-supervisor.js";
 import { isWatcherProofDecisionMissingError } from "../../src/fault-proofs/watcher-decision-hold.js";
@@ -34,7 +35,7 @@ const setup = async (unsigned = false) => {
   const authority = createWatcherFaultProofProgressAuthority({
     journalRoot: fixture.journalRoot,
     deploymentFingerprint: deploymentIdentity.manifestId,
-    categories: fixture.old.launchScope,
+    categories: installedLaunchScope(fixture.old.launchScope),
     authenticationKey: TEST_JOURNAL_KEY,
   });
   const observation = progressObservation({
@@ -138,7 +139,7 @@ describe("supervisor historical progress authority", () => {
       const journalInput = {
         directory: journalRoot,
         deploymentFingerprint: deploymentIdentity.manifestId,
-        launchScope: fixture.old.launchScope,
+        launchScope: installedLaunchScope(fixture.old.launchScope),
         authenticationKey: TEST_JOURNAL_KEY,
       };
       const writer =
@@ -146,7 +147,7 @@ describe("supervisor historical progress authority", () => {
       const authority = createWatcherFaultProofProgressAuthority({
         journalRoot,
         deploymentFingerprint: deploymentIdentity.manifestId,
-        categories: fixture.old.launchScope,
+        categories: installedLaunchScope(fixture.old.launchScope),
         authenticationKey: TEST_JOURNAL_KEY,
       });
       const observation = progressObservation({
@@ -215,13 +216,13 @@ describe("supervisor historical progress authority", () => {
         const writer = await DecisionJournal.openWatcherFaultDecisionJournal({
           directory: journalRoot,
           deploymentFingerprint: deploymentIdentity.manifestId,
-          launchScope: fixture.old.launchScope,
+          launchScope: installedLaunchScope(fixture.old.launchScope),
           authenticationKey: TEST_JOURNAL_KEY,
         });
         const authority = createWatcherFaultProofProgressAuthority({
           journalRoot,
           deploymentFingerprint: deploymentIdentity.manifestId,
-          categories: fixture.old.launchScope,
+          categories: installedLaunchScope(fixture.old.launchScope),
           authenticationKey: TEST_JOURNAL_KEY,
         });
         await authority.admit({
@@ -405,14 +406,14 @@ describe("supervisor progress authority: proof retention", () => {
       const writer = await DecisionJournal.openWatcherFaultDecisionJournal({
         directory: journalRoot,
         deploymentFingerprint: deploymentIdentity.manifestId,
-        launchScope: fixture.old.launchScope,
+        launchScope: installedLaunchScope(fixture.old.launchScope),
         authenticationKey: TEST_JOURNAL_KEY,
       });
       const pinned: string[] = [];
       const authority = createWatcherFaultProofProgressAuthority({
         journalRoot,
         deploymentFingerprint: deploymentIdentity.manifestId,
-        categories: fixture.old.launchScope,
+        categories: installedLaunchScope(fixture.old.launchScope),
         authenticationKey: TEST_JOURNAL_KEY,
         retention: {
           ...storelessProofRetention,

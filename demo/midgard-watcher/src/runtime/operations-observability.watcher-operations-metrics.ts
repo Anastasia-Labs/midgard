@@ -209,12 +209,6 @@ export type WatcherOperationsReadinessReason =
    * not hold; `supervisor.journalDecisionMissing` lists each. Held, never
    * run again; each clears once L1 facts resolve it. */
   | "journal_decision_missing"
-  /** A validation-trace dispute started from a transcript recorded before
-   * user events were read from follower facts is open; it is listed in
-   * `supervisor.journalDecisionMissing` with this `readiness`. Held, never
-   * run again, the process up; clears once its header leaves the finalized
-   * queue. */
-  | "validation_transcript_pre_follower"
   /** A fault-proof objective's latest safe start, fixed by its header, passed
    * before it signed any attempt; it is listed in
    * `supervisor.journalDecisionMissing` with this `readiness` and the detail

@@ -26,10 +26,8 @@ import {
   GENESIS_HEADER_HASH,
   hashBlockHeader,
 } from "@al-ft/midgard-sdk";
-import {
-  buildMidgardCanonicalCekProgram,
-  replayValidationMachineEvent,
-} from "@al-ft/midgard-validation";
+import { buildMidgardCanonicalCekProgram } from "@al-ft/midgard-validation";
+import { replayValidationMachineEvent } from "@al-ft/midgard-validation/tests/validation-machine-event-replay.trace";
 import { Constr, Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
@@ -40,8 +38,8 @@ import {
 } from "../helpers/canonical-block-evidence-fixture.js";
 import {
   buildRetainedValidationBlockFixture,
+  placeholderValidationTraceEntries,
   type RetainedPlutusFixtureOptions,
-  retainValidationTrace,
 } from "./retained-reason-classifier.build-retained-validation-block-fixture.js";
 
 /** Re-frames a predecessor fixture under another operator and block window. */
@@ -76,7 +74,7 @@ const framePredecessor = async (
 };
 
 const buildRetainedPlutusFixture = async (
-  claim: Parameters<typeof retainValidationTrace>[0]["claim"],
+  claim: Parameters<typeof placeholderValidationTraceEntries>[0]["claim"],
   flatProgramHex: string,
   options: RetainedPlutusFixtureOptions = {},
 ) => {
@@ -157,6 +155,16 @@ const buildRetainedPlutusFixture = async (
   const blockEndTimeMs = options.blockEndTimeMs ?? 1_750_000_000_000;
   const blockSlot = options.blockSlot ?? 100n;
   const material = [...program.material.values()];
+  const canonicalTransactionCbor =
+    sourceKind === "forced"
+      ? forcedTraceBytes(
+          forcedTraceView(
+            decodeMidgardNativeTxFullFromCanonicalCbor(
+              transaction.canonicalCbor,
+            ),
+          ),
+        )
+      : transaction.canonicalCbor;
   const replay = await Effect.runPromise(
     replayValidationMachineEvent({
       l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
@@ -165,16 +173,7 @@ const buildRetainedPlutusFixture = async (
         Data.to(eventKey, asLucidSchema(EventKeySchema)),
         "hex",
       ),
-      canonicalTransactionCbor:
-        sourceKind === "forced"
-          ? forcedTraceBytes(
-              forcedTraceView(
-                decodeMidgardNativeTxFullFromCanonicalCbor(
-                  transaction.canonicalCbor,
-                ),
-              ),
-            )
-          : transaction.canonicalCbor,
+      canonicalTransactionCbor,
       programMaterialSidecarCbor:
         encodeMidgardCekProgramMaterialSidecar(material),
       ...(sourceKind === "normal"
@@ -221,9 +220,10 @@ const buildRetainedPlutusFixture = async (
     ...(options.blockStartTimeMs === undefined
       ? {}
       : { blockStartTimeMs: options.blockStartTimeMs }),
-    ...retainValidationTrace({
-      trace: options.committedTrace?.(replay.trace) ?? replay.trace,
+    ...placeholderValidationTraceEntries({
       eventKey,
+      canonicalTransactionCbor,
+      sourceKind,
       claim,
     }),
     programMaterialEntries: material.map((entry) => [
@@ -244,12 +244,12 @@ const buildRetainedPlutusFixture = async (
 
 /** Existing UPLC 1.1.0 lambda(var0) from validation-machine-event-replay.test.ts. */
 export const buildRetainedPlutusIdentityFixture = (
-  claim: Parameters<typeof retainValidationTrace>[0]["claim"],
+  claim: Parameters<typeof placeholderValidationTraceEntries>[0]["claim"],
   options: RetainedPlutusFixtureOptions = {},
 ) => buildRetainedPlutusFixture(claim, "010100200101", options);
 
 /** Exact existing bounded CEK unbound-variable refusal from cek-executor.test.ts. */
 export const buildRetainedPlutusUnboundVariableFixture = (
-  claim: Parameters<typeof retainValidationTrace>[0]["claim"],
+  claim: Parameters<typeof placeholderValidationTraceEntries>[0]["claim"],
   options: RetainedPlutusFixtureOptions = {},
 ) => buildRetainedPlutusFixture(claim, "0101000011", options);

@@ -40,6 +40,7 @@ import {
   onboardEmulatorOperator,
   publishFaultProofWitnessReferenceScripts,
   submitSetupTx,
+  withPlaceholderDeposit,
 } from "./support/submit-init-emulator-shared.js";
 
 type DeploymentContext = Awaited<
@@ -111,7 +112,7 @@ describe("preprod-emulator-curated allow-lists and catalogue", () => {
       operatorKeyHash,
     );
     const header = {
-      ...makeHeader(operatorKeyHash, headerStartTime),
+      ...withPlaceholderDeposit(makeHeader(operatorKeyHash, headerStartTime)),
       endTime:
         BigInt(headerStartTime) + BigInt(EMULATOR_HEADER_CLOCK_HEADROOM_MS),
     };

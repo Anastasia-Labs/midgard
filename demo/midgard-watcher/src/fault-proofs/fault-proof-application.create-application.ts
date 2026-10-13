@@ -11,7 +11,6 @@ import {
   createCatalogueCompleteCanonicalReplay,
   createHeaderClassifier,
   FAMILY_APPLICATION_REGISTRY,
-  type FamilyValidationChallengePort,
   FraudProofL1CheckpointChangedError,
   type HeaderDecision,
   headerDecisionReplayContext,
@@ -50,22 +49,17 @@ import {
   watcherDeploymentProtocolScriptAuthority,
   watcherDeploymentReleaseFinalityAuthority,
 } from "../runtime/deployment-identity.js";
-import {
-  verifyCompletedWatcherReplayTranscriptWorkflow,
-  watcherReplayTranscriptClassification,
-} from "../storage/replay-transcript-completion.js";
+import { verifyCompletedWatcherReplayTranscriptWorkflow } from "../storage/replay-transcript-completion.js";
 import {
   createWatcherRetainedDaRuntimeOwner,
   createWatcherWorkflowRuntimeLoader,
   readAdmittedWatcherRuntimeConfig,
 } from "../storage/retained-da-runtime.js";
-import { archiveWatcherValidationCapture } from "./fault-proof-application.archive-validation-capture.js";
 import {
   admitInfrastructure,
   bindWatcherDeploymentAuthority,
   readSecret,
   requireCanonicalFile,
-  watcherManifestL1SlotConfig,
 } from "./fault-proof-application.bind-watcher-deployment-authority.js";
 import {
   admittedApplications,
@@ -82,12 +76,6 @@ import {
   type WatcherFaultProofApplication,
   type WatcherInstalledWorkflowCategory,
 } from "./fault-proof-application.production-dependencies.js";
-import {
-  assertWatcherValidationReplayCaptureCurrent,
-  captureWatcherValidationReplayTranscript,
-  refreshWatcherValidationReplayCapture,
-} from "./replay-transcript-capture.js";
-import { WatcherProofDecisionMissingError } from "./watcher-decision-hold.js";
 
 export function createApplication(
   input: ApplicationConstruction &
@@ -118,24 +106,16 @@ export function createApplication({
   const l1 = options.l1;
   const deploymentAuthority = options.deploymentAuthority;
   const replayTranscriptStore = options.replayTranscriptStore;
-  const userEvents = options.userEvents;
   if (allowExecution) {
     if (
       deploymentAuthority === undefined ||
-      replayTranscriptStore === undefined ||
-      userEvents === undefined
+      replayTranscriptStore === undefined
     ) {
       throw new Error(
         "watcher execution requires deployment/rule authority and durable replay transcripts",
       );
     }
     assertWatcherVerifiedDeploymentAuthority(deploymentAuthority);
-    if (
-      userEvents.deploymentManifestId !== deploymentIdentity.manifestId ||
-      userEvents.blueprintHash !== deploymentIdentity.blueprintHash
-    ) {
-      throw new Error("watcher user-event reads' deployment authority differs");
-    }
     if (deploymentAuthority.deploymentIdentity !== deploymentIdentity) {
       throw new Error("watcher application deployment authorities differ");
     }
@@ -171,15 +151,6 @@ export function createApplication({
   const environmentSnapshot = Object.freeze({ ...environment });
   const replayContexts = new Map<string, CompleteCanonicalReplayContext>();
   let authorityGeneration = 0;
-  const validationCaptures = new Map<
-    string,
-    Awaited<ReturnType<typeof captureWatcherValidationReplayTranscript>>
-  >();
-  /** Decisions held over a pre-follower transcript with an open proof. */
-  const heldValidationDecisions = new Map<
-    string,
-    Readonly<{ headerHash: string; detail: string }>
-  >();
   const retainedDaOptions = {
     deploymentIdentity,
     ...(options.unsafeTransportOptionsForTest === undefined
@@ -196,49 +167,6 @@ export function createApplication({
   const retainedDaOwner =
     createWatcherRetainedDaRuntimeOwner(retainedDaOptions);
   const loaderOptions = { ...retainedDaOptions, runtimeOwner: retainedDaOwner };
-  /**
-   * How the validation-trace dispute reaches the challenge its classifier
-   * captured for this decision. The capture is refreshed and its currency
-   * asserted here, at the moment the family binds its config, so a retired
-   * or superseded decision cannot be disputed.
-   */
-  const validationChallenge: FamilyValidationChallengePort = Object.freeze({
-    currentChallenge: async ({ headerHash, decisionDigest }) => {
-      const held = heldValidationDecisions.get(decisionDigest);
-      if (held !== undefined && held.headerHash === headerHash)
-        throw new WatcherProofDecisionMissingError({
-          kind: "objective",
-          category: "validationTraceDispute",
-          headerHash,
-          decisionDigest,
-          detail: held.detail,
-          readiness: "validation_transcript_pre_follower",
-        });
-      const capture = validationCaptures.get(decisionDigest);
-      if (
-        capture === undefined ||
-        capture.transcript.headerHash !== headerHash
-      ) {
-        throw new Error(
-          "validation execution has no freshly captured classifier transcript",
-        );
-      }
-      await refreshWatcherValidationReplayCapture(capture);
-      assertWatcherValidationReplayCaptureCurrent(capture);
-      if (validationCaptures.get(decisionDigest) !== capture) {
-        throw new Error(
-          "validation decision authority was retired during workflow loading",
-        );
-      }
-      if (replayTranscriptStore === undefined)
-        throw new Error("validation challenge has no transcript lifecycle");
-      await replayTranscriptStore.beginProofOperation(
-        watcherReplayTranscriptClassification(capture),
-      );
-      assertWatcherValidationReplayCaptureCurrent(capture);
-      return capture.challenge;
-    },
-  });
   /** One loader for all installed families; the record does the rest. */
   const loadRuntime = createWatcherWorkflowRuntimeLoader({
     ...loaderOptions,
@@ -249,7 +177,6 @@ export function createApplication({
         infrastructure,
         deploymentIdentity,
         replayContexts,
-        validationChallenge,
         l1,
         dependencies,
         environment: environmentSnapshot,
@@ -411,10 +338,6 @@ export function createApplication({
       return await createHeaderClassifier({
         transitionTraceEventAuthority,
         deploymentFingerprint: deploymentIdentity.manifestId,
-        l1SlotConfig: watcherManifestL1SlotConfig(
-          JSON.parse(manifestJson!) as unknown,
-          lucid,
-        ),
         replayer,
         releaseFinalityAuthority:
           watcherDeploymentReleaseFinalityAuthority(deploymentIdentity),
@@ -427,8 +350,6 @@ export function createApplication({
       admittedApplications.delete(application);
       authorityGeneration += 1;
       replayContexts.clear();
-      validationCaptures.clear();
-      heldValidationDecisions.clear();
       await retainedDaOwner.close();
     },
     schemaVersion: WATCHER_FAULT_PROOF_APPLICATION,
@@ -437,19 +358,10 @@ export function createApplication({
     runners,
     applicationRegistry,
     retainedDaTransportStatus: retainedDaOwner.transportStatus,
-    decisionUsesLocalEventHistory: (decisionDigest) =>
-      validationCaptures.has(decisionDigest) ||
-      heldValidationDecisions.has(decisionDigest),
     retainDecisionAuthorities: (decisionDigest) => {
       authorityGeneration += 1;
       for (const digest of replayContexts.keys()) {
         if (digest !== decisionDigest) replayContexts.delete(digest);
-      }
-      for (const digest of validationCaptures.keys()) {
-        if (digest !== decisionDigest) validationCaptures.delete(digest);
-      }
-      for (const digest of heldValidationDecisions.keys()) {
-        if (digest !== decisionDigest) heldValidationDecisions.delete(digest);
       }
     },
     classifyHeader: async (request) => {
@@ -499,10 +411,6 @@ export function createApplication({
       }
       const retainedDa = await retainedDaOwner.createRuntime(watcherConfig);
       let completedDecision: HeaderDecision;
-      let pendingCapture:
-        | Awaited<ReturnType<typeof captureWatcherValidationReplayTranscript>>
-        | undefined;
-      let pendingHold: string | undefined;
       try {
         if (
           retainedDa.deploymentFingerprint !== deploymentIdentity.manifestId
@@ -534,9 +442,9 @@ export function createApplication({
         // against the empty ledger.
         if (
           decision.decision === "fault_detected" &&
-          WATCHER_PREDECESSOR_AUTHORITY_CATEGORIES.includes(
-            decision.category,
-          ) &&
+          (
+            WATCHER_PREDECESSOR_AUTHORITY_CATEGORIES as readonly string[]
+          ).includes(decision.category) &&
           input.observation.header.prevUtxosRoot !== EMPTY_MERKLE_TREE_ROOT &&
           replayContext?.predecessor === undefined
         ) {
@@ -544,64 +452,14 @@ export function createApplication({
             `${decision.category} classifier decision omitted the authenticated predecessor ledger`,
           );
         }
-        if (
-          decision.decision === "fault_detected" &&
-          decision.category === "validationTraceDispute"
-        ) {
-          if (
-            deploymentAuthority === undefined ||
-            replayTranscriptStore === undefined ||
-            userEvents === undefined
-          ) {
-            throw new Error(
-              "validation classification requires live deployment authority and transcript storage",
-            );
-          }
-          const archived = await archiveWatcherValidationCapture({
-            deploymentAuthority,
-            replayTranscriptStore,
-            stateQueueObservation: input.stateQueueObservation,
-            header: input.header,
-            decision,
-            userEvents,
-          });
-          if (archived.kind === "captured") pendingCapture = archived.capture;
-          else pendingHold = archived.detail;
-        }
         completedDecision = decision;
       } finally {
         await retainedDa.close();
-      }
-      if (pendingCapture !== undefined) {
-        await refreshWatcherValidationReplayCapture(pendingCapture);
-        assertWatcherValidationReplayCaptureCurrent(pendingCapture);
       }
       if (generation !== authorityGeneration) {
         throw new Error(
           "decision authority was invalidated during classification",
         );
-      }
-      if (pendingCapture !== undefined) {
-        if (replayTranscriptStore === undefined)
-          throw new Error(
-            "validation classification has no transcript lifecycle",
-          );
-        await replayTranscriptStore.completeClassification(
-          watcherReplayTranscriptClassification(pendingCapture),
-        );
-        assertWatcherValidationReplayCaptureCurrent(pendingCapture);
-        heldValidationDecisions.delete(completedDecision.decisionDigest);
-        validationCaptures.set(
-          completedDecision.decisionDigest,
-          pendingCapture,
-        );
-      }
-      if (pendingHold !== undefined) {
-        validationCaptures.delete(completedDecision.decisionDigest);
-        heldValidationDecisions.set(completedDecision.decisionDigest, {
-          headerHash: completedDecision.headerHash,
-          detail: pendingHold,
-        });
       }
       const replayContext = headerDecisionReplayContext(completedDecision);
       if (replayContext !== undefined) {

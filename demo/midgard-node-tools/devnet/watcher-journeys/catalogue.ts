@@ -1,4 +1,4 @@
-import { FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER } from "@al-ft/midgard-sdk";
+import { INSTALLED_FRAUD_PROOF_CATEGORY_ORDER } from "@al-ft/midgard-fault-proofs";
 
 import type { JourneyCategory, JourneyFixture } from "./fixture.js";
 import {
@@ -40,20 +40,11 @@ export const JOURNEY_FIXTURE_OWNERS = {
   protectedOutputSignerMissing: "transaction",
   observersForbiddenOnUntaggedNetwork: "transaction",
   observerOrderInvalid: "transaction",
-  distinctAssetAccumulationLimit: "transaction",
   nativeScriptDecoding: "script",
   nativeScriptInvalid: "script",
   witnessScriptDecoding: "script",
   scriptIntegrityHashMissing: "script",
   outputReferenceScriptDecoding: "script",
-  executionSourceScriptDecoding: "script",
-  receivePurposeLanguage: "script",
-  unusedScriptWitness: "script",
-  missingScriptSource: "script",
-  missingRedeemer: "script",
-  unusedRedeemer: "script",
-  executionNativeScriptInvalid: "script",
-  scriptIntegrityHashMismatch: "script",
   redeemerCanonicity: "script",
   doubleSpend: "history",
   nonExistentInput: "history",
@@ -69,10 +60,8 @@ export const JOURNEY_FIXTURE_OWNERS = {
   withdrawnInput: "history",
 } as const satisfies Record<JourneyCategory, JourneyFixtureOwner>;
 
-export const JOURNEY_CATEGORIES = FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER.filter(
-  (category): category is JourneyCategory =>
-    category !== "validationTraceDispute",
-);
+export const JOURNEY_CATEGORIES: readonly JourneyCategory[] =
+  INSTALLED_FRAUD_PROOF_CATEGORY_ORDER;
 
 // Registration is separate from assignment: an assigned family is not evidence
 // that its fixture or automatic live journey has passed.

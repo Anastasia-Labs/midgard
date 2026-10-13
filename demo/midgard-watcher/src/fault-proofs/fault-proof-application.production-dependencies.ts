@@ -36,7 +36,6 @@ import {
   type WatcherAuthenticatedStateQueueObservation,
   type WatcherStateQueueHeaderObservation,
 } from "../indexers/authenticated-state-queue-observation.js";
-import type { WatcherUserEvents } from "../l1-follower/user-events.js";
 import type { WatcherConfig } from "../runtime/config.js";
 import { type VerifiedWatcherDeploymentAuthority } from "../runtime/deployment-authority.js";
 import { type VerifiedWatcherDeploymentIdentity } from "../runtime/deployment-identity.js";
@@ -75,12 +74,26 @@ const registeredWorkflowCategories: ReadonlySet<string> = new Set(
 
 export const WATCHER_INSTALLED_WORKFLOW_CATEGORIES: readonly WatcherInstalledWorkflowCategory[] =
   Object.freeze(
-    FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER.filter((category) =>
-      registeredWorkflowCategories.has(category),
+    FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER.filter(
+      (category): category is WatcherInstalledWorkflowCategory =>
+        registeredWorkflowCategories.has(category),
     ),
   );
 
-/** Catalogue categories the registry does not carry: empty since #673. */
+/** A launch scope narrowed to installed categories; refused if any category has no workflow. */
+export const installedLaunchScope = (
+  scope: readonly FraudProofCatalogueCategoryName[],
+): readonly WatcherInstalledWorkflowCategory[] => {
+  if (
+    !scope.every((category): category is WatcherInstalledWorkflowCategory =>
+      registeredWorkflowCategories.has(category),
+    )
+  )
+    throw new Error("launch scope names a category with no installed workflow");
+  return scope;
+};
+
+/** Catalogue categories the registry does not carry: those whose evidence the DA payload does not carry. */
 export const WATCHER_MISSING_WORKFLOW_CATEGORIES: readonly FraudProofCatalogueCategoryName[] =
   Object.freeze(
     FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER.filter(
@@ -134,23 +147,18 @@ export type WatcherFaultProofApplicationOptions = Readonly<{
   l1: WatcherFaultProofL1;
   deploymentAuthority: VerifiedWatcherDeploymentAuthority;
   replayTranscriptStore: WatcherReplayTranscriptStore;
-  userEvents: WatcherUserEvents;
   infrastructure: WatcherFaultProofInfrastructureAuthority;
   fundingProfileOverlay: WatcherWorkflowFundingProfileOverlay;
 }>;
 
 export type WatcherFaultProofApplicationConstructionOptions = Omit<
   WatcherFaultProofApplicationOptions,
-  | "fundingProfileOverlay"
-  | "deploymentAuthority"
-  | "replayTranscriptStore"
-  | "userEvents"
+  "fundingProfileOverlay" | "deploymentAuthority" | "replayTranscriptStore"
 > &
   Readonly<{
     deploymentIdentity: VerifiedWatcherDeploymentIdentity;
     deploymentAuthority?: VerifiedWatcherDeploymentAuthority;
     replayTranscriptStore?: WatcherReplayTranscriptStore;
-    userEvents?: WatcherUserEvents;
     fundingProfileOverlay?: WatcherWorkflowFundingProfileOverlay;
     unsafeTransportOptionsForTest?: WatcherRetainedDaRuntimeOptions["unsafeTransportOptionsForTest"];
     unsafeTransportFactoryForTest?: WatcherRetainedDaRuntimeOptions["unsafeTransportFactoryForTest"];
@@ -201,8 +209,6 @@ export type WatcherFaultProofApplication = Readonly<{
   ): Promise<HeaderDecision>;
   /** Retire private replay authority after target selection or invalidation. */
   retainDecisionAuthorities(decisionDigest: string | null): void;
-  /** Whether an admitted decision retains capabilities of the live event head. */
-  decisionUsesLocalEventHistory(decisionDigest: string): boolean;
   assertStartupReady(
     invocation: WorkflowAdapterReadinessInput,
   ): Promise<WatcherFaultProofStartupReadiness>;

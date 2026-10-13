@@ -19,4 +19,4 @@ import "./transition-trace-challenger.native-material.js";
 import "./transition-trace-challenger.build-payload-fixture.js";
 import "./transition-trace-challenger.build-l2-replay-fixture.js";
 import "./transition-trace-challenger.transition-trace-challenger-tooling.js";
-import "./transition-trace-challenger.retained-operator-validation-claims.js";
+import "./transition-trace-challenger.single-ledger-mutation-replay.js";

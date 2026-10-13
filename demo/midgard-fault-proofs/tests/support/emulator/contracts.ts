@@ -2,7 +2,6 @@ import "@al-ft/midgard-sdk";
 import "@lucid-evolution/lucid";
 import "effect";
 import "vitest";
-import "../../../src/distinct-asset-accumulation-limit/contracts.js";
 import "./blueprints.js";
 import "./validators.js";
 import "./contracts.chain-from-steps.js";

@@ -29,9 +29,8 @@ const identityProgram = buildMidgardCanonicalCekProgram(
 export const buildJourneyScriptTransaction = (input: {
   predecessor: { header: SDK.Header; payload: SDK.DaPayload };
   ledgerOwnerSeedPhrase: string;
-  variant?: "plutusMint" | "nativeMint" | "nativeReceive";
+  variant?: "plutusMint" | "nativeMint";
   outputReferenceScript?: boolean;
-  retainWalletChange?: boolean;
 }) => {
   const wallet = walletFromSeed(input.ledgerOwnerSeedPhrase, {
     network: "Custom",
@@ -62,10 +61,8 @@ export const buildJourneyScriptTransaction = (input: {
     [...output.value.assets].map(([hash, tokens]) => [hash, new Map(tokens)]),
   );
   const tokens = assets.get(policy) ?? new Map<string, bigint>();
-  if (variant !== "nativeReceive") {
-    tokens.set("", (tokens.get("") ?? 0n) + 1n);
-    assets.set(policy, tokens);
-  }
+  tokens.set("", (tokens.get("") ?? 0n) + 1n);
+  assets.set(policy, tokens);
   const mintRedeemer = encodeMidgardRedeemerWitnessItem({
     purpose: "Mint",
     index: 0n,
@@ -74,10 +71,7 @@ export const buildJourneyScriptTransaction = (input: {
   });
   const scriptOutput = {
     ...output,
-    address:
-      variant === "nativeReceive"
-        ? Buffer.concat([Buffer.from([0x78]), Buffer.from(policy, "hex")])
-        : protectMidgardAddress(output.address),
+    address: protectMidgardAddress(output.address),
     value: { ...output.value, assets },
     script_ref:
       input.outputReferenceScript === false
@@ -85,48 +79,18 @@ export const buildJourneyScriptTransaction = (input: {
         : decodeMidgardVersionedScript(Buffer.from("820043820180", "hex")),
   };
   const outputs = [encodeMidgardTxOutput(scriptOutput)];
-  if (input.retainWalletChange) {
-    const receiveLovelace = 3_000_000n;
-    if (
-      variant !== "nativeReceive" ||
-      output.value.lovelace < 2n * receiveLovelace
-    )
-      throw new Error(
-        "Native receive journey needs enough funding for a wallet change output",
-      );
-    outputs.splice(
-      0,
-      1,
-      encodeMidgardTxOutput({
-        ...output,
-        address: protectMidgardAddress(output.address),
-        value: {
-          ...output.value,
-          lovelace: output.value.lovelace - receiveLovelace,
-        },
-        script_ref: undefined,
-      }),
-      encodeMidgardTxOutput({
-        ...scriptOutput,
-        value: { lovelace: receiveLovelace, assets: new Map() },
-      }),
-    );
-  }
   const transactionInput: FixtureTransactionInput = {
     spendInputs: [Buffer.from(spent[0], "hex")],
     outputs,
     fee: 0n,
     networkId: input.predecessor.header.expectedNetworkId,
     requiredSigners: [Buffer.from(key.to_public().hash().to_raw_bytes())],
-    mintPolicyItems:
-      variant === "nativeReceive"
-        ? []
-        : [
-            encodeCbor([
-              Buffer.from(policy, "hex"),
-              new Map([[Buffer.alloc(0), 1n]]),
-            ]),
-          ],
+    mintPolicyItems: [
+      encodeCbor([
+        Buffer.from(policy, "hex"),
+        new Map([[Buffer.alloc(0), 1n]]),
+      ]),
+    ],
     scriptWitnesses: [encodeMidgardVersionedScript(script)],
     redeemerWitnesses: variant === "plutusMint" ? [mintRedeemer] : [],
     scriptIntegrityHash:
@@ -167,22 +131,6 @@ export const JOURNEY_SCRIPT_FORCED_REASONS = {
   outputReferenceScriptDecoding: {
     OutputReferenceScriptMalformed: { output_index: 0n },
   },
-  executionSourceScriptDecoding: {
-    ExecutionNativeScriptMalformed: { execution_index: 0n },
-  },
-  receivePurposeLanguage: {
-    ReceivePurposePlutusV3Forbidden: { execution_index: 0n },
-  },
-  unusedScriptWitness: { UnusedScriptWitness: { script_index: 0n } },
-  missingScriptSource: {
-    ScriptSourceMissing: { purpose_kind: 1n, purpose_index: 0n },
-  },
-  missingRedeemer: { RedeemerMissing: { purpose_kind: 1n, purpose_index: 0n } },
-  unusedRedeemer: { UnusedRedeemer: { redeemer_index: 0n } },
-  executionNativeScriptInvalid: {
-    ExecutionNativeScriptFalse: { execution_index: 0n },
-  },
-  scriptIntegrityHashMismatch: "ScriptIntegrityHashMismatch",
   redeemerCanonicity: { RedeemerMalformed: { redeemer_index: 0n } },
 } satisfies Partial<
   Record<SDK.FraudProofCatalogueCategoryName, SDK.RejectionReason>
@@ -201,18 +149,11 @@ export const prepareJourneyScriptForcedTransaction = (input: {
 }) =>
   buildJourneyScriptTransaction({
     ...input,
-    retainWalletChange: input.category === "receivePurposeLanguage",
-    variant:
-      input.category === "receivePurposeLanguage"
-        ? "nativeReceive"
-        : [
-              "nativeScriptInvalid",
-              "witnessScriptDecoding",
-              "executionSourceScriptDecoding",
-              "executionNativeScriptInvalid",
-            ].includes(input.category)
-          ? "nativeMint"
-          : "plutusMint",
+    variant: ["nativeScriptInvalid", "witnessScriptDecoding"].includes(
+      input.category,
+    )
+      ? "nativeMint"
+      : "plutusMint",
   });
 
 export type JourneyScriptFixtureInput = {

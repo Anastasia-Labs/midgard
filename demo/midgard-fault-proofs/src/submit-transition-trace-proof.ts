@@ -2,7 +2,7 @@ import { aikenSerialisedPlutusDataCborPreservingMapOrder } from "@al-ft/midgard-
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 
-import { readJsonFile } from "./json-file.js";
+import { readCborHexFile, readJsonFile } from "./json-file.js";
 import {
   fetchUtxoByOutRef,
   makeLucidForSubmit,
@@ -15,7 +15,6 @@ import {
   submitTransitionTraceProof,
   type SubmitTransitionTraceProofResult,
 } from "./transition-trace/submit.js";
-import { readValidationDisputeCborFile } from "./validation-dispute/from-files.js";
 
 export type SubmitTransitionTraceProofFromCborFileConfig =
   SubmitProviderConfig &
@@ -32,7 +31,7 @@ export type SubmitTransitionTraceProofFromCborFileConfig =
 export const submitTransitionTraceProofFromCborFile = async (
   config: SubmitTransitionTraceProofFromCborFileConfig,
 ): Promise<SubmitTransitionTraceProofResult> => {
-  const proofCbor = await readValidationDisputeCborFile(
+  const proofCbor = await readCborHexFile(
     config.transitionFaultProofPath,
     "--transition-fault-proof",
   );

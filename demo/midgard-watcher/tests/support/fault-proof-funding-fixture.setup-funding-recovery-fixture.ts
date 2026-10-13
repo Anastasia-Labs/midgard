@@ -2,7 +2,6 @@ import { createHash } from "node:crypto";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 
-import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import {
   acceptedTransactionSubject,
   authenticatedStateQueueObservationDigest,
@@ -44,6 +43,7 @@ import {
 import { expect, vi } from "vitest";
 
 import { openWatcherFaultDecisionJournal } from "../../src/fault-proofs/fault-decision-journal.js";
+import { installedLaunchScope } from "../../src/fault-proofs/fault-proof-application.js";
 import {
   createWatcherProverFundingAuthority,
   createWatcherProverFundingAuthorityFactory,
@@ -107,7 +107,6 @@ export const setupFundingRecoveryFixture = async (
   });
   const observation = authenticatedHeaderObservation(fixture);
   const classifier = await createHeaderClassifier({
-    l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
     deploymentFingerprint: deploymentIdentity.manifestId,
     replayer: DOUBLE_SPEND_COMPLETE_CANONICAL_REPLAY,
     releaseFinalityAuthority: finality,
@@ -134,7 +133,7 @@ export const setupFundingRecoveryFixture = async (
   const decisionJournal = await openWatcherFaultDecisionJournal({
     directory: journalRoot,
     deploymentFingerprint: deploymentIdentity.manifestId,
-    launchScope: old.launchScope,
+    launchScope: installedLaunchScope(old.launchScope),
     authenticationKey: TEST_JOURNAL_KEY,
   });
   expect(old.detectionId).toContain("#");
@@ -179,7 +178,7 @@ export const setupFundingRecoveryFixture = async (
   let capturedPlan: WatcherProverFundingReservationPlan | undefined;
   const factory = () =>
     createWatcherProverFundingAuthorityFactory({
-      launchScope: old.launchScope,
+      launchScope: installedLaunchScope(old.launchScope),
       journalRoot,
       journalAuthenticationKey: TEST_JOURNAL_KEY,
       deploymentIdentity,

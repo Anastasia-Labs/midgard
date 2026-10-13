@@ -182,3 +182,48 @@ export const parseSafeNonNegativeInteger = (
     invalidError: error,
   });
 };
+
+const exactCborHex = (value: unknown, label: string): string => {
+  if (
+    typeof value !== "string" ||
+    value.length === 0 ||
+    value.length % 2 !== 0 ||
+    !/^[0-9a-f]+$/u.test(value)
+  ) {
+    throw new Error(`${label} must be non-empty lowercase CBOR hex`);
+  }
+  return value;
+};
+
+/**
+ * Reads a CBOR artifact file holding either raw lowercase hex or a JSON object
+ * with exactly one `cborHex` field.
+ */
+export const readCborHexFile = async (
+  path: string,
+  label: string,
+): Promise<string> => {
+  const text = (await readFile(path, "utf8")).trim();
+  if (/^[0-9a-f]+$/u.test(text)) {
+    return exactCborHex(text, label);
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    throw new Error(`${label} file must contain raw CBOR hex or JSON`);
+  }
+  if (
+    typeof parsed !== "object" ||
+    parsed === null ||
+    Array.isArray(parsed) ||
+    !("cborHex" in parsed)
+  ) {
+    throw new Error(`${label} JSON must contain exactly a cborHex field`);
+  }
+  const record = parsed as Record<string, unknown>;
+  if (Object.keys(record).length !== 1) {
+    throw new Error(`${label} JSON must contain exactly a cborHex field`);
+  }
+  return exactCborHex(record.cborHex, `${label}.cborHex`);
+};

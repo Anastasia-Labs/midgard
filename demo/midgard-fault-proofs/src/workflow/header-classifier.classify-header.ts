@@ -3,7 +3,6 @@ import {
   CANONICAL_DECODABILITY_VIOLATION_ID,
   DA_HASH_PREIMAGE_VIOLATION_ID,
   EMPTY_MERKLE_TREE_ROOT,
-  GENESIS_HEADER_HASH,
 } from "@al-ft/midgard-sdk";
 
 import {
@@ -20,7 +19,6 @@ import {
 import { classifyCanonicalBlockViolations } from "./classification.js";
 import {
   admitCompleteCanonicalReplayPredecessor,
-  admitValidationTraceReplayContext,
   COMPLETE_CANONICAL_REPLAY,
   type CompleteCanonicalReplayContext,
   completeCanonicalReplayDecisionDigest,
@@ -46,6 +44,7 @@ import {
   classifyTransitionTraceStructuralRoute,
   sealPreUnionDecision,
 } from "./header-classifier.transition-trace-structural-route.js";
+import { isInstalledFraudProofCategory } from "./installed-categories.js";
 import {
   launchScopeRequires,
   PREDECESSOR_LEDGER_PROOF_CATEGORIES,
@@ -194,11 +193,7 @@ export const classifyHeader = async ({
   }
   // Captured once: the structural route and the replay read the same events.
   let transitionTraceEvents: TransitionTraceL1Events | undefined;
-  if (
-    classifier.launchScope.includes("transitionTrace") ||
-    (classifier.launchScope.includes("validationTraceDispute") &&
-      authority.transitionTraceEventAuthority !== undefined)
-  ) {
+  if (classifier.launchScope.includes("transitionTrace")) {
     if (authority.transitionTraceEventAuthority === undefined)
       throw new Error("Transition event authority was lost");
     transitionTraceEvents = await requireTransitionTraceEventAuthority(
@@ -215,13 +210,11 @@ export const classifyHeader = async ({
   if (structural !== undefined) return structural;
   let admittedReplayContext = replayContext;
   const predecessorRequired =
-    (authority.replayer.launchScope.includes("validationTraceDispute") &&
-      routed.evidence.header.prevHeaderHash !== GENESIS_HEADER_HASH) ||
-    (routed.evidence.header.prevUtxosRoot !== EMPTY_MERKLE_TREE_ROOT &&
-      launchScopeRequires(
-        authority.replayer.launchScope,
-        PREDECESSOR_LEDGER_PROOF_CATEGORIES,
-      ));
+    routed.evidence.header.prevUtxosRoot !== EMPTY_MERKLE_TREE_ROOT &&
+    launchScopeRequires(
+      authority.replayer.launchScope,
+      PREDECESSOR_LEDGER_PROOF_CATEGORIES,
+    );
   if (
     admittedReplayContext === undefined &&
     predecessorLedgerAt !== undefined
@@ -291,20 +284,6 @@ export const classifyHeader = async ({
       transitionTraceEvents,
     });
   }
-  if (
-    classifier.launchScope.includes("validationTraceDispute") &&
-    admittedReplayContext?.validationTraceReplay === undefined
-  ) {
-    admittedReplayContext = Object.freeze({
-      ...admittedReplayContext,
-      validationTraceReplay: await admitValidationTraceReplayContext({
-        evidence: routed.evidence,
-        predecessor: admittedReplayContext?.predecessor,
-        transitionTraceEvents: admittedReplayContext?.transitionTraceEvents,
-        l1SlotConfig: authority.l1SlotConfig,
-      }),
-    });
-  }
   const replayDecision = await authority.replayer.replay(
     routed.evidence,
     admittedReplayContext,
@@ -324,7 +303,8 @@ export const classifyHeader = async ({
   });
   if (
     classification.decision === "fault_detected" &&
-    !classifier.launchScope.includes(classification.category)
+    (!classifier.launchScope.includes(classification.category) ||
+      !isInstalledFraudProofCategory(classification.category))
   ) {
     throw new Error(
       "admitted replay selected a category outside its installed launch scope",
@@ -378,11 +358,16 @@ export const classifyHeader = async ({
       },
     );
   }
+  const category = classification.category;
+  if (!isInstalledFraudProofCategory(category))
+    throw new Error(
+      "admitted replay selected a category outside its installed launch scope",
+    );
   return sealDecision(
     {
       ...common,
       decision: "fault_detected",
-      category: classification.category,
+      category,
       violationId: classification.selected.violationId,
       detectionId: classification.selected.detectionId,
       position: classification.selected.position.toString(),

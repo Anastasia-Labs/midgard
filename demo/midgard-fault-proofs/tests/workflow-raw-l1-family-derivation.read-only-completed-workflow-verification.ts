@@ -1,5 +1,3 @@
-import "./workflow-raw-l1-family-derivation.distinct-asset-computation-datum-recovery.js";
-
 import { FraudProofTokenDatum } from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";

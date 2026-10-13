@@ -20,9 +20,6 @@ const wrongfulReasons = {
     FieldItemWidthIllegal: { field_index: 5n, item_index: 0n },
   },
   mintDeclaredAssetLimit: { MintDeclaredAssetLimit: { policy_index: 0n } },
-  distinctAssetAccumulationLimit: {
-    MintAssetAccumulationLimit: { mint_index: 0n },
-  },
 } satisfies Partial<
   Record<SDK.FraudProofCatalogueCategoryName, SDK.RejectionReason>
 >;

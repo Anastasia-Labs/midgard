@@ -66,20 +66,6 @@ export const parseArgs = (argv: readonly string[]): ParsedArgs => {
   let nativeTxCompactPath: string | undefined;
   let addrTxWitsPreimagePath: string | undefined;
   let badAddrTxWitIndex: string | undefined;
-  let validationClaimCborPath: string | undefined;
-  let challengerDescriptorCborPath: string | undefined;
-  let validationTraceProofCborPath: string | undefined;
-  let validationBoundaryEvidenceCborPath: string | undefined;
-  let validationTransitionCborPath: string | undefined;
-  let validationAuxiliaryCborPath: string | undefined;
-  let validationResolverIndex: string | undefined;
-  let validationSemanticResolverIndex: string | undefined;
-  let validationDisputeRole: "operator" | "challenger" | undefined;
-  let validationCekEnvelopeCborPath: string | undefined;
-  let validationCekProgramMaterialSidecarCborPath: string | undefined;
-  let validationCekIncrementalNecessityReceiptSetPath: string | undefined;
-  let validationCekSinglePublicationOutRef: string | undefined;
-  const validationCekMinimumMultiOutputOutRefs: string[] = [];
   let workflowJournalDir: string | undefined;
   let workflowRuntimeConfigPath: string | undefined;
   let deploymentFingerprint: string | undefined;
@@ -261,62 +247,6 @@ export const parseArgs = (argv: readonly string[]): ParsedArgs => {
       case "--bad-addr-tx-wit-index":
         badAddrTxWitIndex = rest[++index];
         break;
-      case "--validation-claim-cbor":
-        validationClaimCborPath = rest[++index];
-        break;
-      case "--challenger-descriptor-cbor":
-        challengerDescriptorCborPath = rest[++index];
-        break;
-      case "--validation-trace-proof-cbor":
-        validationTraceProofCborPath = rest[++index];
-        break;
-      case "--validation-boundary-evidence-cbor":
-        validationBoundaryEvidenceCborPath = rest[++index];
-        break;
-      case "--validation-transition-cbor":
-        validationTransitionCborPath = rest[++index];
-        break;
-      case "--validation-auxiliary-cbor":
-        validationAuxiliaryCborPath = rest[++index];
-        break;
-      case "--validation-resolver-index":
-        validationResolverIndex = rest[++index];
-        break;
-      case "--validation-semantic-resolver-index":
-        validationSemanticResolverIndex = rest[++index];
-        break;
-      case "--validation-cek-envelope-cbor":
-        validationCekEnvelopeCborPath = rest[++index];
-        break;
-      case "--validation-cek-program-material-sidecar-cbor":
-        validationCekProgramMaterialSidecarCborPath = rest[++index];
-        break;
-      case "--validation-cek-incremental-necessity-receipt-set":
-        validationCekIncrementalNecessityReceiptSetPath = rest[++index];
-        break;
-      case "--validation-cek-single-publication-out-ref":
-        validationCekSinglePublicationOutRef = rest[++index];
-        break;
-      case "--validation-cek-multi-output-out-ref": {
-        const outRef = rest[++index];
-        if (outRef === undefined) {
-          throw new Error(
-            "--validation-cek-multi-output-out-ref requires a txHash#outputIndex value",
-          );
-        }
-        validationCekMinimumMultiOutputOutRefs.push(outRef);
-        break;
-      }
-      case "--validation-dispute-role": {
-        const role = rest[++index];
-        if (role !== "operator" && role !== "challenger") {
-          throw new Error(
-            '--validation-dispute-role must be either "operator" or "challenger".',
-          );
-        }
-        validationDisputeRole = role;
-        break;
-      }
       case "--no-await-confirmation":
         awaitConfirmation = false;
         break;
@@ -400,20 +330,6 @@ export const parseArgs = (argv: readonly string[]): ParsedArgs => {
     nativeTxCompactPath,
     addrTxWitsPreimagePath,
     badAddrTxWitIndex,
-    validationClaimCborPath,
-    challengerDescriptorCborPath,
-    validationTraceProofCborPath,
-    validationBoundaryEvidenceCborPath,
-    validationTransitionCborPath,
-    validationAuxiliaryCborPath,
-    validationResolverIndex,
-    validationSemanticResolverIndex,
-    validationDisputeRole,
-    validationCekEnvelopeCborPath,
-    validationCekProgramMaterialSidecarCborPath,
-    validationCekIncrementalNecessityReceiptSetPath,
-    validationCekSinglePublicationOutRef,
-    validationCekMinimumMultiOutputOutRefs,
     workflowJournalDir,
     workflowRuntimeConfigPath,
     deploymentFingerprint,

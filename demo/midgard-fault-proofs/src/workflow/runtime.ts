@@ -28,6 +28,7 @@ import {
 } from "./family-application-registry.js";
 import type { WorkflowFundingRequirements } from "./funding-requirements.js";
 import { bindWorkflowFundingReservationJournal } from "./funding-reservation-permit.js";
+import { type InstalledFraudProofCategory } from "./installed-categories.js";
 import { DirectoryFraudProofWorkflowJournalStore } from "./journal.js";
 import { resumeRecordedFraudProofWorkflow } from "./orchestrator.js";
 import { continuePendingWorkflow } from "./pending-continuation.js";
@@ -304,11 +305,11 @@ const familyApplicationWorkflowRunnerFactory = <
 };
 
 type WorkflowRunnerFactories = {
-  readonly [Category in FraudProofCatalogueCategoryName]: FamilyWorkflowRunnerFactory;
+  readonly [Category in InstalledFraudProofCategory]: FamilyWorkflowRunnerFactory;
 };
 
 /**
- * One admitted factory per catalogue family, derived from the registry: the
+ * One admitted factory per installed family, derived from the registry: the
  * table is the registry mapped through the module-private admission, so
  * registering a family's record is what adds its row here. This is
  * deliberately separate from launch readiness: a factory is not ready until a

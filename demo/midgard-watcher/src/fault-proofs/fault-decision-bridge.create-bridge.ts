@@ -275,10 +275,7 @@ export const createBridge = (input: {
               predecessor ?? null,
             ) &&
             watcherSameCanonicalJson(targetClassification.deadline, deadline) &&
-            watcherSameCanonicalJson(targetDeadline, deadline) &&
-            !input.dependencies.decisionUsesLocalEventHistory(
-              target.decisionDigest,
-            )
+            watcherSameCanonicalJson(targetDeadline, deadline)
           ) {
             assertRetainedTargetAuthority();
             classifications[index] = targetDecision;

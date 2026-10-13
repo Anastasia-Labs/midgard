@@ -23,7 +23,10 @@ import {
 import type { FraudProofCatalogueCategoryName } from "@al-ft/midgard-sdk";
 
 import { openWatcherFaultDecisionJournal } from "../fault-proofs/fault-decision-journal.js";
-import type { WatcherInstalledWorkflowCategory } from "../fault-proofs/fault-proof-application.js";
+import {
+  installedLaunchScope,
+  type WatcherInstalledWorkflowCategory,
+} from "../fault-proofs/fault-proof-application.js";
 import {
   type WatcherDecisionHold,
   WatcherProofDecisionMissingError,
@@ -160,7 +163,7 @@ export const authorizeWatcherProverFundingRecovery = async (input: {
   const decisions = await openWatcherFaultDecisionJournal({
     directory: input.journalRoot,
     deploymentFingerprint: authority.deploymentFingerprint,
-    launchScope: authority.launchScope,
+    launchScope: installedLaunchScope(authority.launchScope),
     authenticationKey: input.journalAuthenticationKey,
   });
   const matches = (await decisions.readAll()).filter(

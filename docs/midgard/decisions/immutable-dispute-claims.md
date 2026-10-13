@@ -18,7 +18,5 @@ transition immutability and prevent adjudication of a nonempty claimed delta.
 
 The implementation is `rejected_successor_is_exact` in
 [validation-machine/shared.ak](../../../onchain/aiken/lib/midgard/validation-machine/shared.ak).
-The [dispute emulator fixture](../../../demo/midgard-fault-proofs/tests/support/emulator/dispute-scenario.ts)
-keeps a nonempty claimed delta so rejection and honest-transition controls
-exercise this distinction. Current coverage is governed by
+Current coverage is governed by
 [the proof matrix](../../fault-proofs/coverage-matrix.md).

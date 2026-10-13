@@ -33,20 +33,6 @@ export const FAMILY_SCENARIOS: Readonly<
       },
     ],
   },
-  validationTraceDispute: {
-    passing: [
-      {
-        file: "demo/midgard-fault-proofs/tests/validation-trace-dispute-installed-lifecycle.test.ts",
-        test: "plays the full honest game to award and removal, refusing forged and caller-authored material at the exact checks",
-      },
-    ],
-    failing: [
-      {
-        file: "demo/midgard-fault-proofs/tests/submit-init-emulator-validation-dispute-phase-a-item.test.ts",
-        test: "refuses a forged %s successor against an honest trace",
-      },
-    ],
-  },
   daHashPreimage: {
     passing: [
       {
@@ -506,118 +492,6 @@ export const FAMILY_SCENARIOS: Readonly<
       {
         file: "demo/midgard-fault-proofs/tests/output-reference-script-decoding-lifecycle.test.ts",
         test: "contradicts a wrongful acceptance of an empty native payload at the bind, and refuses to convict an honest accepted signature script",
-      },
-    ],
-  },
-  executionSourceScriptDecoding: {
-    passing: [
-      {
-        file: "demo/midgard-fault-proofs/tests/execution-source-script-decoding-lifecycle.test.ts",
-        test: "contradicts a wrongful forced DepthLimit rejection of nested containers through the frame stack",
-      },
-    ],
-    failing: [
-      {
-        file: "demo/midgard-fault-proofs/tests/execution-source-script-decoding-lifecycle.test.ts",
-        test: "refuses to convict an honest accepted block whose source item decodes to the exact terminal",
-      },
-    ],
-  },
-  receivePurposeLanguage: {
-    passing: [
-      {
-        file: "demo/midgard-fault-proofs/tests/receive-purpose-language-lifecycle.test.ts",
-        test: "contradicts a wrongful forced rejection of a native receive at the maximum shape: refuses every forced-door seam, then mints and removes",
-      },
-    ],
-    failing: [
-      {
-        file: "demo/midgard-fault-proofs/tests/receive-purpose-language-lifecycle.test.ts",
-        test: "refuses to convict an honest accepted native receive at the terminal step",
-      },
-    ],
-  },
-  unusedScriptWitness: {
-    passing: [
-      {
-        file: "demo/midgard-fault-proofs/tests/unused-script-witness-lifecycle.test.ts",
-        test: "contradicts a wrongful forced rejection of a used inline script at the maximum shape: refuses every forced-door seam, then mints and removes",
-      },
-    ],
-    failing: [
-      {
-        file: "demo/midgard-fault-proofs/tests/unused-script-witness-lifecycle.test.ts",
-        test: "refuses to convict an honest accepted block whose accused inline script is used, at the terminal step",
-      },
-    ],
-  },
-  missingScriptSource: {
-    passing: [
-      {
-        file: "demo/midgard-fault-proofs/tests/missing-script-source-lifecycle.test.ts",
-        test: "corrects purpose kind $purposeKind with the required source $presentAt",
-      },
-    ],
-    failing: [
-      {
-        file: "demo/midgard-fault-proofs/tests/missing-script-source-lifecycle.test.ts",
-        test: "refuses the honest forced rejection off chain and at the terminal contradiction",
-      },
-    ],
-  },
-  missingRedeemer: {
-    passing: [
-      {
-        file: "demo/midgard-fault-proofs/tests/missing-redeemer-lifecycle.test.ts",
-        test: "convicts the $direction direction for purpose kind $purposeKind from Init through the permanent mint and removal",
-      },
-    ],
-    failing: [
-      {
-        file: "demo/midgard-fault-proofs/tests/missing-redeemer-lifecycle.test.ts",
-        test: "refuses honest blocks, mutated coordinates, and every substituted authentication seam, and cancels every other physical step",
-      },
-    ],
-  },
-  executionNativeScriptInvalid: {
-    passing: [
-      {
-        file: "demo/midgard-fault-proofs/tests/execution-native-script-invalid-lifecycle.test.ts",
-        test: "runs $direction/$sourceOrigin/$acceptedPurpose lifecycle (cancel=$cancelAt, maximum=$maximum)",
-      },
-    ],
-    failing: [
-      {
-        file: "demo/midgard-fault-proofs/tests/execution-native-script-invalid-lifecycle.test.ts",
-        test: "runs $direction/$sourceOrigin/$acceptedPurpose lifecycle (cancel=$cancelAt, maximum=$maximum)",
-      },
-    ],
-  },
-  scriptIntegrityHashMismatch: {
-    passing: [
-      {
-        file: "demo/midgard-fault-proofs/tests/script-integrity-hash-mismatch-lifecycle.test.ts",
-        test: "$direction bitmap $bitmap honest=$honest: authenticated lifecycle and terminal polarity",
-      },
-    ],
-    failing: [
-      {
-        file: "demo/midgard-fault-proofs/tests/script-integrity-hash-mismatch-lifecycle.test.ts",
-        test: "$direction bitmap $bitmap honest=$honest: authenticated lifecycle and terminal polarity",
-      },
-    ],
-  },
-  distinctAssetAccumulationLimit: {
-    passing: [
-      {
-        file: "demo/midgard-fault-proofs/tests/distinct-asset-accumulation-limit-lifecycle.test.ts",
-        test: "proves $kind forced=$forced maximum=$maximum honest=$honest crossing/boundary",
-      },
-    ],
-    failing: [
-      {
-        file: "demo/midgard-fault-proofs/tests/distinct-asset-accumulation-limit-lifecycle.test.ts",
-        test: "proves $kind forced=$forced maximum=$maximum honest=$honest crossing/boundary",
       },
     ],
   },

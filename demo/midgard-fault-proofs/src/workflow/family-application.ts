@@ -41,6 +41,5 @@ export {
   type FamilyResolvedReferenceScripts,
   type FamilyRosterDefinition,
   familyStepRole,
-  type FamilyValidationChallengePort,
   type LinearFamilyApplicationRecord,
 } from "./family-application.assert-family-definition-roster.js";

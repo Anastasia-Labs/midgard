@@ -5,7 +5,6 @@ import {
   encodeCbor,
 } from "@al-ft/midgard-core";
 import { DEPLOYMENT_MANIFEST_L1_FINALITY } from "@al-ft/midgard-core/deployment-manifest-identity";
-import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import {
   type L2TransactionSource,
   L2TransactionSource as L2TransactionSourceCodec,
@@ -183,7 +182,6 @@ describe("production canonical-decodability public-evidence workflow V1", () => 
   it("routes the authenticated raw defect through one-DA-fetch header classification", async () => {
     const { evidence, fixture, observation } = await preparedArtifact();
     const classifier = await createHeaderClassifier({
-      l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
       deploymentFingerprint: DEPLOYMENT_FINGERPRINT,
       replayer: CANONICAL_DECODABILITY_COMPLETE_CANONICAL_REPLAY,
       releaseFinalityAuthority: finalityAuthority(),

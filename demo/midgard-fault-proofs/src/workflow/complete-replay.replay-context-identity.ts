@@ -7,10 +7,6 @@ import {
   type TransitionTraceL1Events,
 } from "../transition-trace/l1-events.js";
 import { computeTransitionTraceL1EventEvidenceDigest } from "../transition-trace/replay-authority.js";
-import {
-  requireValidationTraceReplayContext,
-  type ValidationTraceReplayContext,
-} from "../validation-dispute/replay.js";
 import { type CanonicalViolationDetection } from "./classification.js";
 
 export const COMPLETE_CANONICAL_REPLAY =
@@ -37,15 +33,11 @@ export type CompleteCanonicalReplayContext = Readonly<{
    */
   predecessor?: CompleteCanonicalReplayPredecessor;
   transitionTraceEvents?: TransitionTraceL1Events;
-  /** Opaque independently derived transaction and originating-event replay. */
-  validationTraceReplay?: ValidationTraceReplayContext;
 }>;
 
 export type CompleteCanonicalReplayContextIdentity = Readonly<{
   predecessorHeaderHash?: string;
   predecessorUtxosRoot?: string;
-  validationTraceReplayDigest?: string;
-  validationTraceEventEvidenceDigest?: string;
   transitionTraceEventEvidenceDigest?: string;
 }>;
 
@@ -102,7 +94,6 @@ export const replayContextIdentity = ({
   readonly context: CompleteCanonicalReplayContext | undefined;
 }): CompleteCanonicalReplayContextIdentity | null => {
   const predecessor = requireReplayPredecessorLedger({ evidence, context });
-  const validation = context?.validationTraceReplay;
   const events = context?.transitionTraceEvents;
   if (events !== undefined) {
     requireTransitionTraceL1Events(events);
@@ -111,19 +102,7 @@ export const replayContextIdentity = ({
         "complete replay event authority belongs to another header",
       );
   }
-  if (validation !== undefined)
-    requireValidationTraceReplayContext({
-      evidence,
-      context: validation,
-      predecessor: context?.predecessor,
-      transitionTraceEvents: context?.transitionTraceEvents,
-    });
-  if (
-    predecessor === undefined &&
-    validation === undefined &&
-    events === undefined
-  )
-    return null;
+  if (predecessor === undefined && events === undefined) return null;
   return Object.freeze({
     ...(events === undefined
       ? {}
@@ -133,17 +112,6 @@ export const replayContextIdentity = ({
               evidence,
               l1Events: events,
             }),
-        }),
-    ...(validation === undefined
-      ? {}
-      : {
-          validationTraceReplayDigest: validation.replayDigest,
-          ...(validation.eventEvidenceDigest === undefined
-            ? {}
-            : {
-                validationTraceEventEvidenceDigest:
-                  validation.eventEvidenceDigest,
-              }),
         }),
     ...(predecessor === undefined
       ? {}

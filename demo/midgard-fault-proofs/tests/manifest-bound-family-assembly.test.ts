@@ -15,6 +15,7 @@ import {
 import * as observations from "../src/workflow/family-l1-observation.js";
 import { FRAUD_PROOF_FAMILY_L1_OBSERVATION_PORT } from "../src/workflow/family-l1-observation.js";
 import * as fieldCarriage from "../src/workflow/field-carriage-prerequisite.js";
+import { INSTALLED_FRAUD_PROOF_CATEGORY_ORDER } from "../src/workflow/installed-categories.js";
 import {
   assembleManifestBoundFamilyWorkflow,
   runOrResumeManifestBoundFamilyWorkflow,
@@ -207,7 +208,20 @@ const fixture = (category: AssembledFamilyCategory) => {
 
 describe("manifest-bound family assembly", () => {
   it("covers every migrated definition, linear and cursor", () => {
-    expect(categories).toHaveLength(46);
+    // These five installed families still own their adapters outside this
+    // shared assembly; every other installed category must have a definition.
+    const separatelyAssembled = new Set([
+      "doubleSpend",
+      "missingSignature",
+      "mintItemNonCanonical",
+      "networkId",
+      "valueNotPreserved",
+    ]);
+    expect([...categories].sort()).toEqual(
+      INSTALLED_FRAUD_PROOF_CATEGORY_ORDER.filter(
+        (category) => !separatelyAssembled.has(category),
+      ).sort(),
+    );
     expect(
       categories.filter(
         (category) => FAMILY_DEFINITIONS[category].adapter.kind === "linear",
@@ -217,7 +231,7 @@ describe("manifest-bound family assembly", () => {
       categories.filter(
         (category) => FAMILY_DEFINITIONS[category].adapter.kind === "cursor",
       ),
-    ).toHaveLength(28);
+    ).toHaveLength(19);
     for (const category of categories) {
       expect(FAMILY_DEFINITIONS[category].category).toBe(category);
     }
