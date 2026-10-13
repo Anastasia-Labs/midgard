@@ -1,6 +1,7 @@
 //// Authenticate sorted-list absence or immutable Order facts before maturity.
 
 use aiken/crypto.{ScriptHash}
+use aiken/interval
 use cardano/address.{Address}
 use cardano/assets.{PolicyId}
 use cardano/transaction.{Input, OutputReference, Transaction}
@@ -74,6 +75,7 @@ validator main(
               challenged_header_hash,
               header_start_time,
               header_end_time,
+              header_block_time,
               committed_deposit_id,
               committed_deposit_info_hash,
             }
@@ -105,6 +107,7 @@ validator main(
           challenged_header_hash,
           header_start_time,
           header_end_time,
+          header_block_time,
           committed_deposit_id,
           committed_deposit_info_hash,
           verdict,
@@ -134,6 +137,17 @@ fn run_step_02(
   verdict: step_02.DepositEvidenceVerdictV1,
   reference_inputs: List<Input>,
 ) -> Bool {
+  run_step_02_until(input_state, evidence, verdict, reference_inputs, 22)
+}
+
+/// `run_step_02` with the capture valid up to `upper`.
+fn run_step_02_until(
+  input_state: State,
+  evidence: step_02.DepositEvidenceV1,
+  verdict: step_02.DepositEvidenceVerdictV1,
+  reference_inputs: List<Input>,
+  upper: Int,
+) -> Bool {
   let asset_name = step_01.computation_thread_token_asset_name_v1(
     input_state.challenged_header_hash,
   )
@@ -142,6 +156,7 @@ fn run_step_02(
     challenged_header_hash: input_state.challenged_header_hash,
     header_start_time: input_state.header_start_time,
     header_end_time: input_state.header_end_time,
+    header_block_time: input_state.header_block_time,
     committed_deposit_id: input_state.committed_deposit_id,
     committed_deposit_info_hash: input_state.committed_deposit_info_hash,
     verdict,
@@ -162,11 +177,14 @@ fn run_step_02(
     ),
     ct.Continue(Args { input_index: 0, output_index: 0, evidence }),
     fixture.own_out_ref(),
-    step_01.continue_step_l1_tx_v1(
-      asset_name,
-      expected_output_state,
-      reference_inputs,
-    ),
+    Transaction {
+      ..step_01.continue_step_l1_tx_v1(
+        asset_name,
+        expected_output_state,
+        reference_inputs,
+      ),
+      validity_range: interval.between(upper - 1, upper),
+    },
   )
 }
 
@@ -275,4 +293,38 @@ test rejects_untrusted_evidence() fail {
   run_present_event(
     step_02.untrusted_deposit_datum_reference_input_v1(authentic_event_datum()),
   )
+}
+
+/// The covered end of every fixture header.
+const catch_up_header_end: Int = 20
+
+/// A catch-up block committed long after its covered end.
+const catch_up_block_time: Int = catch_up_header_end + 1_000_000
+
+fn run_catch_up(upper: Int) -> Bool {
+  run_step_02_until(
+    State { ..absent_identity_state(), header_block_time: catch_up_block_time },
+    AbsentDepositIdentity { hub_ref_input_index: 0, history_ref_input_index: 1 },
+    step_02.DepositIdentityAbsent,
+    [
+      fixture.hub_reference_input(),
+      proof_fixture.absent_reference(
+        step_02.fixture_deposit_event_policy_v1(),
+        step_01.fabricated_deposit_id_v1(),
+      ),
+    ],
+    upper,
+  )
+}
+
+/// Catch-up positive selector: the evidence capture clock runs from the
+/// forwarded block_time, so a capture later than the covered end plus the
+/// maturity period is still accepted.
+test accepts_catch_up_capture_clocked_from_block_time() {
+  run_catch_up(catch_up_header_end + ledger_state.block_maturity_duration_v1)
+}
+
+/// The capture must precede the block's maturity, measured from block_time.
+test rejects_catch_up_capture_at_maturity() fail {
+  run_catch_up(catch_up_block_time + ledger_state.block_maturity_duration_v1)
 }

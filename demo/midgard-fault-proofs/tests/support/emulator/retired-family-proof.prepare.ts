@@ -216,6 +216,7 @@ export const prepare = async (
         await deriveFabricatedDepositStep01Handoff({
           stateQueuePolicyId: contracts.stateQueuePolicyId,
           header,
+          blockTime: header.endTime,
           headerHash: input.headerHash,
           inclusion: depositInclusion,
         })
@@ -224,6 +225,7 @@ export const prepare = async (
         await deriveFabricatedWithdrawalStep01Handoff({
           stateQueuePolicyId: contracts.stateQueuePolicyId,
           header,
+          blockTime: header.endTime,
           headerHash: input.headerHash,
           inclusion: withdrawalInclusion,
         })

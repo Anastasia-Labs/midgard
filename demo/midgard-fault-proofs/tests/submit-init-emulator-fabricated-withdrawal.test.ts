@@ -470,6 +470,7 @@ describe("fabricated-withdrawal fault-proof emulator lifecycle", () => {
     const step01Handoff = await deriveFabricatedWithdrawalStep01Handoff({
       stateQueuePolicyId: "15".repeat(28),
       header: block.header,
+      blockTime: block.header.endTime,
       headerHash: block.headerHash,
       inclusion: parseSubmitFabricatedWithdrawalInclusion(
         plan.withdrawalInclusion,
@@ -709,9 +710,17 @@ describe("fabricated-withdrawal fault-proof emulator lifecycle", () => {
       const inclusion = parseSubmitFabricatedWithdrawalInclusion(
         plan.withdrawalInclusion,
       );
+      const fraudulentNode = await Effect.runPromise(
+        SDK.utxoToStateQueueUTxO(
+          await funderLucid.utxoByUnit(setup.stateQueueBlockUnit),
+          contracts.stateQueue.policyId,
+        ),
+      );
       const expectedHandoff = await deriveFabricatedWithdrawalStep01Handoff({
         stateQueuePolicyId: contracts.stateQueue.policyId,
         header,
+        blockTime: Data.castFrom(fraudulentNode.datum.data, SDK.StateQueueNode)
+          .block_time,
         headerHash,
         inclusion,
       });

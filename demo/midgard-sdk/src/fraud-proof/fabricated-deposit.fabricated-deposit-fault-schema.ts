@@ -119,6 +119,8 @@ export const FabricatedDepositStep02StateSchema = Data.Object({
   header_start_time: POSIXTimeSchema,
   /** Challenged header's `end_time`. */
   header_end_time: POSIXTimeSchema,
+  /** The challenged node's `block_time`; the capture clock's origin. */
+  header_block_time: POSIXTimeSchema,
   /** The committed deposit identity — an L1 output reference. */
   committed_deposit_id: OutputReferenceSchema,
   /** Blake2b-256 of the committed `DepositInfo`'s canonical bytes. */
@@ -225,6 +227,8 @@ export const FabricatedDepositStep03StateSchema = Data.Object({
   header_start_time: POSIXTimeSchema,
   /** Challenged header's `end_time`. */
   header_end_time: POSIXTimeSchema,
+  /** The challenged node's `block_time`; the capture clock's origin. */
+  header_block_time: POSIXTimeSchema,
   /** The committed deposit identity — an L1 output reference. */
   committed_deposit_id: OutputReferenceSchema,
   /** Blake2b-256 of the committed `DepositInfo`'s canonical bytes. */

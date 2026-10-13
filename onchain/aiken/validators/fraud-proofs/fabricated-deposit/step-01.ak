@@ -15,6 +15,7 @@
 
 use aiken/builtin
 use aiken/crypto.{ScriptHash}
+use aiken/interval
 use cardano/assets.{AssetName, PolicyId}
 use cardano/transaction.{OutputReference, Transaction}
 use midgard/common/utils
@@ -83,7 +84,7 @@ validator main(
         // 2. The thread must belong to this family's catalogue category, and the
         //    header must be the authentic state-queue block the thread token
         //    names.
-        let header, header_hash, hub_datum <- verify_challenged_header_v1(
+        let header, block_time, header_hash, hub_datum <- verify_challenged_header_v1(
           computation_thread_token_asset_name,
           hub_oracle,
           hub_ref_input_index,
@@ -94,7 +95,8 @@ validator main(
         let (lower, upper) = utils.get_inclusive_bounds_of_a_short_validity_range(
           tx.validity_range,
         )
-        expect horizon.capture_permitted(header.end_time, lower, upper)
+        expect
+          horizon.capture_permitted(header.end_time, block_time, lower, upper)
 
         // 3. The challenged header must genuinely commit the deposit leaf under
         //    dispute. Without this the family would adjudicate a leaf no block
@@ -111,6 +113,7 @@ validator main(
           challenged_header_hash: header_hash,
           header_start_time: header.start_time,
           header_end_time: header.end_time,
+          header_block_time: block_time,
           committed_deposit_id: committed_deposit.key,
           committed_deposit_info_hash: committed_deposit_info_hash_v1(
             committed_deposit,
@@ -145,6 +148,7 @@ fn run_step_01(
     challenged_header_hash: block.block.header_hash,
     header_start_time: block.block.header.start_time,
     header_end_time: block.block.header.end_time,
+    header_block_time: block.block.header.end_time,
     committed_deposit_id: membership.key,
     committed_deposit_info_hash: committed_deposit_info_hash_v1(membership),
   }
@@ -181,6 +185,89 @@ test accepts_committed_deposit_membership() {
     block,
     step_01.committed_deposit_membership_v1(block),
     step_01.block_thread_asset_name_v1(block),
+  )
+}
+
+/// Drives step-01 on a catch-up block: the node was committed at `block_time`,
+/// after the header's covered end. `forwarded_block_time` is the value the
+/// expected step-02 state carries, and the capture is valid up to `upper`.
+fn run_step_01_catch_up(
+  block_time: Int,
+  forwarded_block_time: Int,
+  upper: Int,
+) -> Bool {
+  let block = step_01.authentic_deposit_block_v1()
+  let membership = step_01.committed_deposit_membership_v1(block)
+  let expected_output_state: Data = step_02.State {
+    state_queue_policy: fixture.state_queue_policy_id,
+    challenged_header_hash: block.block.header_hash,
+    header_start_time: block.block.header.start_time,
+    header_end_time: block.block.header.end_time,
+    header_block_time: forwarded_block_time,
+    committed_deposit_id: membership.key,
+    committed_deposit_info_hash: committed_deposit_info_hash_v1(membership),
+  }
+  main.spend(
+    fixture.next_step_script_hash,
+    fixture.computation_thread_policy_id,
+    fixture.hub_oracle_script_hash,
+    Some(fixture.step_datum_without_state()),
+    ct.Continue(
+      Args {
+        input_index: 0,
+        output_index: 0,
+        hub_ref_input_index: 0,
+        state_queue_node_ref_input_index: 1,
+        committed_deposit: membership,
+      },
+    ),
+    fixture.own_out_ref(),
+    Transaction {
+      ..step_01.continue_step_l1_tx_v1(
+        step_01.block_thread_asset_name_v1(block),
+        expected_output_state,
+        [
+          fixture.hub_reference_input(),
+          fixture.state_queue_reference_input_at(block.block, block_time),
+        ],
+      ),
+      validity_range: interval.between(upper - 1, upper),
+    },
+  )
+}
+
+/// The covered end of every fixture header.
+const catch_up_header_end: Int = 20
+
+/// A catch-up block committed long after its covered end.
+const catch_up_block_time: Int = catch_up_header_end + 1_000_000
+
+/// Catch-up positive selector: step-01 forwards the node's block_time, and the
+/// capture clock runs from it, so a capture later than the covered end plus the
+/// maturity period is still accepted.
+test accepts_catch_up_capture_clocked_from_block_time() {
+  run_step_01_catch_up(
+    catch_up_block_time,
+    catch_up_block_time,
+    catch_up_header_end + ledger_state.block_maturity_duration_v1,
+  )
+}
+
+/// The forwarded clock origin is the node's block_time, not the covered end.
+test rejects_catch_up_forwarding_the_covered_end() fail {
+  run_step_01_catch_up(
+    catch_up_block_time,
+    catch_up_header_end,
+    catch_up_header_end + 2,
+  )
+}
+
+/// The capture must precede the block's maturity, measured from block_time.
+test rejects_catch_up_capture_at_maturity() fail {
+  run_step_01_catch_up(
+    catch_up_block_time,
+    catch_up_block_time,
+    catch_up_block_time + ledger_state.block_maturity_duration_v1,
   )
 }
 

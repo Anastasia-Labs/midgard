@@ -175,6 +175,7 @@ export const fiStep03State: SDK.FabricatedDepositStep03State = {
   challenged_header_hash: FI_HEADER_HASH,
   header_start_time: HEADER_START_TIME,
   header_end_time: HEADER_END_TIME,
+  header_block_time: HEADER_END_TIME,
   committed_deposit_id: FABRICATED_DEPOSIT_ID,
   committed_deposit_info_hash: HASH_AUTHENTIC_DEPOSIT_INFO,
   verdict: "DepositIdentityAbsent",
@@ -185,6 +186,7 @@ export const mmStep03State: SDK.FabricatedDepositStep03State = {
   challenged_header_hash: MM_HEADER_HASH,
   header_start_time: HEADER_START_TIME,
   header_end_time: HEADER_END_TIME,
+  header_block_time: HEADER_END_TIME,
   committed_deposit_id: AUTHENTIC_DEPOSIT_ID,
   committed_deposit_info_hash: HASH_DIVERTED_DEPOSIT_INFO,
   verdict: {

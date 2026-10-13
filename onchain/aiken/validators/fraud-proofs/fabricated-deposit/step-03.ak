@@ -10,6 +10,7 @@
 //// thread's L1 footprint independent of `DepositInfo.l2_datum`'s size.
 
 use aiken/crypto.{ScriptHash}
+use aiken/interval
 use cardano/assets.{PolicyId}
 use cardano/transaction.{OutputReference, Transaction}
 use midgard/common/types.{PosixTime}
@@ -26,6 +27,7 @@ use midgard/fraud_proofs/fabricated_deposit/step_03.{
 }
 use midgard/fraud_proofs/fabricated_deposit/step_04
 use midgard/fraud_proofs/native_binding_fixture_v1 as fixture
+use midgard/ledger_state
 use midgard/user_events/deposit
 
 validator main(
@@ -76,7 +78,12 @@ validator main(
           tx.validity_range,
         )
         expect
-          horizon.capture_permitted(input_state.header_end_time, lower, upper)
+          horizon.capture_permitted(
+            input_state.header_end_time,
+            input_state.header_block_time,
+            lower,
+            upper,
+          )
 
         // 2. Classify the fault. The opening must pair with the verdict, its
         //    bytes must be the ones step-02 committed to, and the authentic
@@ -136,6 +143,16 @@ fn run_step_03(
   authentic_content: AuthenticContentOpeningV1,
   expected_fault: step_04.FabricatedDepositFaultV1,
 ) -> Bool {
+  run_step_03_until(input_state, authentic_content, expected_fault, 22)
+}
+
+/// `run_step_03` with the capture valid up to `upper`.
+fn run_step_03_until(
+  input_state: State,
+  authentic_content: AuthenticContentOpeningV1,
+  expected_fault: step_04.FabricatedDepositFaultV1,
+  upper: Int,
+) -> Bool {
   let asset_name = step_01.computation_thread_token_asset_name_v1(
     input_state.challenged_header_hash,
   )
@@ -154,9 +171,10 @@ fn run_step_03(
     ),
     ct.Continue(Args { input_index: 0, output_index: 0, authentic_content }),
     fixture.own_out_ref(),
-    proof_fixture.after_header(
-      fixture.continue_mid_step_l1_tx_v1(asset_name, expected_output_state),
-    ),
+    Transaction {
+      ..fixture.continue_mid_step_l1_tx_v1(asset_name, expected_output_state),
+      validity_range: interval.between(upper - 1, upper),
+    },
   )
 }
 
@@ -255,4 +273,37 @@ test rejects_forged_handoff() fail {
     NoAuthenticContent,
     step_04.NonexistentDepositIdentity,
   )
+}
+
+/// The covered end of every fixture header.
+const catch_up_header_end: Int = 20
+
+/// A catch-up block committed long after its covered end.
+const catch_up_block_time: Int = catch_up_header_end + 1_000_000
+
+fn run_catch_up(upper: Int) -> Bool {
+  run_step_03_until(
+    State {
+      ..state_from(
+        step_01.fabricated_identity_block_v1(),
+        step_02.DepositIdentityAbsent,
+      ),
+      header_block_time: catch_up_block_time,
+    },
+    NoAuthenticContent,
+    step_04.NonexistentDepositIdentity,
+    upper,
+  )
+}
+
+/// Catch-up positive selector: the capture clock runs from the forwarded
+/// block_time, so a capture later than the covered end plus the maturity period
+/// is still accepted.
+test accepts_catch_up_capture_clocked_from_block_time() {
+  run_catch_up(catch_up_header_end + ledger_state.block_maturity_duration_v1)
+}
+
+/// The capture must precede the block's maturity, measured from block_time.
+test rejects_catch_up_capture_at_maturity() fail {
+  run_catch_up(catch_up_block_time + ledger_state.block_maturity_duration_v1)
 }

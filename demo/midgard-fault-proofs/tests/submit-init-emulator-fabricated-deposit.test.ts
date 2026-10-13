@@ -427,6 +427,7 @@ describe("fabricated-deposit fault-proof emulator lifecycle", () => {
     const step01Handoff = await deriveFabricatedDepositStep01Handoff({
       stateQueuePolicyId: "15".repeat(28),
       header: block.header,
+      blockTime: block.header.endTime,
       headerHash: block.headerHash,
       inclusion: parseSubmitFabricatedDepositInclusion(plan.depositInclusion),
     });
@@ -639,9 +640,17 @@ describe("fabricated-deposit fault-proof emulator lifecycle", () => {
       const inclusion = parseSubmitFabricatedDepositInclusion(
         plan.depositInclusion,
       );
+      const fraudulentNode = await Effect.runPromise(
+        SDK.utxoToStateQueueUTxO(
+          await funderLucid.utxoByUnit(setup.stateQueueBlockUnit),
+          contracts.stateQueue.policyId,
+        ),
+      );
       const expectedHandoff = await deriveFabricatedDepositStep01Handoff({
         stateQueuePolicyId: contracts.stateQueue.policyId,
         header,
+        blockTime: Data.castFrom(fraudulentNode.datum.data, SDK.StateQueueNode)
+          .block_time,
         headerHash,
         inclusion,
       });

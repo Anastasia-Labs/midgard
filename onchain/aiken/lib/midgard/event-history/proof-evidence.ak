@@ -26,12 +26,13 @@ pub fn absence(
   list_address: Address,
   target: OutputReference,
   header_end: Int,
+  block_time: Int,
   history_reference_index: Int,
 ) -> Bool {
   let (lower, upper) = utils.get_inclusive_bounds_of_a_short_validity_range(
     tx.validity_range,
   )
-  expect horizon.capture_permitted(header_end, lower, upper)
+  expect horizon.capture_permitted(header_end, block_time, lower, upper)
   expect Some(input) = list.at(tx.reference_inputs, history_reference_index)
   expect
     !list.any(
@@ -53,6 +54,7 @@ pub fn presence(
   kind: Kind,
   target: OutputReference,
   header_end: Int,
+  block_time: Int,
   params: Parameters,
   event_reference_index: Int,
   external_reference_index: Option<Int>,
@@ -65,6 +67,7 @@ pub fn presence(
     kind,
     target,
     header_end,
+    block_time,
     params.inline_limit,
     params.max_payload_bytes,
     params.max_payload_nodes,

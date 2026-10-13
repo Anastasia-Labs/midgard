@@ -114,11 +114,14 @@ export type FabricatedDepositStep01Handoff = {
 export const deriveFabricatedDepositStep01Handoff = async ({
   stateQueuePolicyId,
   header,
+  blockTime,
   headerHash,
   inclusion,
 }: {
   readonly stateQueuePolicyId: string;
   readonly header: Header;
+  /** The challenged state-queue node's `block_time`. */
+  readonly blockTime: bigint;
   readonly headerHash: string;
   readonly inclusion: SubmitFabricatedDepositInclusion;
 }): Promise<FabricatedDepositStep01Handoff> => {
@@ -158,6 +161,7 @@ export const deriveFabricatedDepositStep01Handoff = async ({
     challenged_header_hash: headerHash,
     header_start_time: header.startTime,
     header_end_time: header.endTime,
+    header_block_time: blockTime,
     committed_deposit_id: key,
     committed_deposit_info_hash: await Effect.runPromise(
       depositInfoCommitmentCbor(inclusion.committedDepositInfoCbor),

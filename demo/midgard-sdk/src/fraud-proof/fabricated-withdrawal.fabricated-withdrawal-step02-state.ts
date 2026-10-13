@@ -265,12 +265,14 @@ export const fabricatedWithdrawalStep02State = ({
   challengedHeaderHash,
   headerStartTime,
   headerEndTime,
+  headerBlockTime,
   committedWithdrawal,
 }: {
   readonly stateQueuePolicy: string;
   readonly challengedHeaderHash: FabricatedWithdrawalChallengedHeaderHash;
   readonly headerStartTime: bigint;
   readonly headerEndTime: bigint;
+  readonly headerBlockTime: bigint;
   readonly committedWithdrawal: CommittedWithdrawalSourceProof;
 }): Effect.Effect<FabricatedWithdrawalStep02State, HashingError> =>
   Effect.map(
@@ -280,6 +282,7 @@ export const fabricatedWithdrawalStep02State = ({
       challenged_header_hash: challengedHeaderHash,
       header_start_time: headerStartTime,
       header_end_time: headerEndTime,
+      header_block_time: headerBlockTime,
       committed_withdrawal_id: committedWithdrawal.key,
       committed_withdrawal_content_hash,
     }),
@@ -294,6 +297,7 @@ export const fabricatedWithdrawalStep03State = (
   challenged_header_hash: state.challenged_header_hash,
   header_start_time: state.header_start_time,
   header_end_time: state.header_end_time,
+  header_block_time: state.header_block_time,
   committed_withdrawal_id: state.committed_withdrawal_id,
   committed_withdrawal_content_hash: state.committed_withdrawal_content_hash,
   verdict,

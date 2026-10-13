@@ -105,6 +105,7 @@ for (const kind of ["Deposit", "Withdrawal"] as const)
         challenged_header_hash: "cc".repeat(28),
         header_start_time: 100n,
         header_end_time: 200n,
+        header_block_time: 200n,
       };
       const commitment = SDK.eventHistoryCommitment(
         policy,
@@ -362,6 +363,7 @@ for (const kind of ["Deposit", "Withdrawal"] as const)
           ? deriveFabricatedDepositStep01Handoff({
               stateQueuePolicyId: policy,
               header,
+              blockTime: header.endTime,
               headerHash: "cc".repeat(28),
               inclusion: {
                 committedDepositIdCbor: keyCbor,
@@ -374,6 +376,7 @@ for (const kind of ["Deposit", "Withdrawal"] as const)
           : deriveFabricatedWithdrawalStep01Handoff({
               stateQueuePolicyId: policy,
               header,
+              blockTime: header.endTime,
               headerHash: "cc".repeat(28),
               inclusion: {
                 committedWithdrawalIdCbor: keyCbor,

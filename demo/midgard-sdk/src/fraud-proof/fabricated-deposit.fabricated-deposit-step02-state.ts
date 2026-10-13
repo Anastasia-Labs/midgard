@@ -151,12 +151,14 @@ export const fabricatedDepositStep02State = ({
   challengedHeaderHash,
   headerStartTime,
   headerEndTime,
+  headerBlockTime,
   committedDeposit,
 }: {
   readonly stateQueuePolicy: string;
   readonly challengedHeaderHash: ChallengedHeaderHash;
   readonly headerStartTime: bigint;
   readonly headerEndTime: bigint;
+  readonly headerBlockTime: bigint;
   readonly committedDeposit: CommittedDepositSourceProof;
 }): Effect.Effect<FabricatedDepositStep02State, HashingError> =>
   Effect.map(
@@ -166,6 +168,7 @@ export const fabricatedDepositStep02State = ({
       challenged_header_hash: challengedHeaderHash,
       header_start_time: headerStartTime,
       header_end_time: headerEndTime,
+      header_block_time: headerBlockTime,
       committed_deposit_id: committedDeposit.key,
       committed_deposit_info_hash,
     }),
@@ -180,6 +183,7 @@ export const fabricatedDepositStep03State = (
   challenged_header_hash: state.challenged_header_hash,
   header_start_time: state.header_start_time,
   header_end_time: state.header_end_time,
+  header_block_time: state.header_block_time,
   committed_deposit_id: state.committed_deposit_id,
   committed_deposit_info_hash: state.committed_deposit_info_hash,
   verdict,
