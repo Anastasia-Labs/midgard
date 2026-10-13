@@ -19,7 +19,10 @@ import {
   keyValuePhasRootWithCount,
 } from "../src/transition-trace/phas.js";
 import { prepareWithdrawalMistag } from "../src/withdrawal-mistag/prepare-withdrawal-mistag.js";
-import { withdrawalMistagStates } from "../src/withdrawal-mistag/submit-withdrawal-mistag-steps.js";
+import {
+  withdrawalMistagStates,
+  withdrawalMistagStepPayloadCbor,
+} from "../src/withdrawal-mistag/submit-withdrawal-mistag-steps.js";
 
 const makeEvidence = async ({
   lovelace,
@@ -441,4 +444,40 @@ describe("withdrawal-mistag payout sizing over committed bytes", () => {
       }),
     ).rejects.toThrow(/do not encode the committed withdrawal/u);
   });
+});
+
+/** An inline datum carrying constructor 2^64 - 1, which no typed encoder writes. */
+const LARGEST_CONSTRUCTOR_DATUM = "d87b9fd866821bffffffffffffffff80ff";
+
+describe("withdrawal-mistag payloads carry the committed bytes", () => {
+  for (const [label, l1DatumCbor] of [
+    ["the largest constructor index", LARGEST_CONSTRUCTOR_DATUM],
+    ["a repeated map key", REPEATED_KEY_DATUM],
+  ] as const) {
+    it(`carries a datum with ${label} through every step payload`, async () => {
+      const evidence = await makeEvidence({
+        lovelace: 2_000_000n,
+        validity: "UnpayableWithdrawalValue",
+        l1DatumCbor,
+      });
+      const prepared = await prepareWithdrawalMistag(evidence);
+      const infoCbor = evidence.committedWithdrawalInfoCbor;
+      expect(prepared.committedWithdrawalInfoCbor).toBe(infoCbor);
+      const committed = [
+        infoCbor,
+        infoCbor,
+        infoCbor,
+        plutusConstrFieldCbor(infoCbor, [0]),
+      ];
+      const paths = [[0, 5], [0], [0], [0]];
+      for (const step of [0, 1, 2, 3] as const) {
+        expect(
+          plutusConstrFieldCbor(
+            withdrawalMistagStepPayloadCbor(prepared, step),
+            paths[step]!,
+          ),
+        ).toBe(committed[step]);
+      }
+    });
+  }
 });

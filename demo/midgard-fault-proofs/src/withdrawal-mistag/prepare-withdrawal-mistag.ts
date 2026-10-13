@@ -1,4 +1,6 @@
 /** Strict evidence preparation for the standalone withdrawal-mistag family. */
+import { isDeepStrictEqual } from "node:util";
+
 import { Proof as MpfProof } from "@aiken-lang/merkle-patricia-forestry";
 import { computeHash32 } from "@al-ft/midgard-core";
 import {
@@ -145,9 +147,19 @@ const signatureIsValid = (
 const hash32Hex = (cbor: string): string =>
   computeHash32(Buffer.from(cbor, "hex")).toString("hex");
 
+const decodedInfo = (infoCbor: string): SDK.WithdrawalInfo | undefined => {
+  try {
+    return Data.from(infoCbor, SDK.WithdrawalInfo);
+  } catch {
+    return undefined;
+  }
+};
+
 /**
  * Admits the committed leaf value bytes: they must be serialiseData-form and
- * decode to the typed value the caller carries.
+ * the carried typed value must be their decoded view. Neither is re-encoded,
+ * since a user datum need not survive a typed encoder; the counted-root
+ * membership below authenticates the bytes themselves.
  */
 const committedInfoCbor = (
   committedWithdrawal: SDK.WithdrawalSourceMembershipProof,
@@ -156,9 +168,7 @@ const committedInfoCbor = (
   if (
     !/^(?:[0-9a-f]{2})+$/u.test(infoCbor) ||
     aikenSerialisedPlutusDataCborPreservingMapOrder(infoCbor) !== infoCbor ||
-    SDK.committedWithdrawalValueBytes(
-      Data.from(infoCbor, SDK.WithdrawalInfo),
-    ) !== SDK.committedWithdrawalValueBytes(committedWithdrawal.value)
+    !isDeepStrictEqual(decodedInfo(infoCbor), committedWithdrawal.value)
   ) {
     throw new Error(
       "withdrawal source bytes do not encode the committed withdrawal",
@@ -343,6 +353,7 @@ export const prepareWithdrawalMistag = async ({
     version: 1,
     challengedHeaderHash,
     committedWithdrawal,
+    committedWithdrawalInfoCbor: infoCbor,
     eventToStep,
     transitionStep,
     ledgerEvidence: authenticatedLedgerEvidence,

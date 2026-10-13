@@ -3,6 +3,7 @@ import {
   encodeMidgardSpendInputItem,
   encodeMidgardTxOutput,
 } from "@al-ft/midgard-core/codec";
+import { replacePlutusConstrFieldCbor } from "@al-ft/midgard-core/plutus-data-cbor";
 import * as SDK from "@al-ft/midgard-sdk";
 import { buildCanonicalMidgardLedgerOutputMaterial } from "@al-ft/midgard-validation";
 import { CML, Data } from "@lucid-evolution/lucid";
@@ -29,6 +30,8 @@ export const buildWithdrawalMistagEvidenceMaterial = async (
   payoutDatumBytes = 0,
   proofLevels = 0,
   maximumAssetNames = false,
+  /** Raw `l1_datum` CBOR spliced into the committed bytes as written. */
+  l1DatumCbor?: string,
 ) => {
   const privateKey = CML.PrivateKey.generate_ed25519();
   const publicKey = privateKey.to_public();
@@ -83,13 +86,21 @@ export const buildWithdrawalMistagEvidenceMaterial = async (
             },
           },
   };
+  const bodyCbor =
+    l1DatumCbor === undefined
+      ? SDK.withdrawalBodyBytes(body)
+      : replacePlutusConstrFieldCbor(
+          SDK.withdrawalBodyBytes(body),
+          [4],
+          l1DatumCbor,
+        );
   const message = computeHash32(
     Buffer.concat([
       Buffer.from("MidgardWithdrawalV1", "utf8"),
-      Buffer.from(SDK.withdrawalBodyBytes(body), "hex"),
+      Buffer.from(bodyCbor, "hex"),
     ]),
   );
-  const info: SDK.WithdrawalInfo = {
+  const typedInfo: SDK.WithdrawalInfo = {
     body,
     signature: [
       Buffer.from(publicKey.to_raw_bytes()).toString("hex"),
@@ -195,9 +206,16 @@ export const buildWithdrawalMistagEvidenceMaterial = async (
     "hex",
   );
   const sourceValue = Buffer.from(
-    SDK.committedWithdrawalValueBytes(info),
+    l1DatumCbor === undefined
+      ? SDK.committedWithdrawalValueBytes(typedInfo)
+      : replacePlutusConstrFieldCbor(
+          SDK.committedWithdrawalValueBytes(typedInfo),
+          [0, 4],
+          l1DatumCbor,
+        ),
     "hex",
   );
+  const info = Data.from(sourceValue.toString("hex"), SDK.WithdrawalInfo);
   const { counted: source, proof: sourceProof } = await countedMembership(
     SDK.ROOT_DOMAINS.withdrawals,
     sourceKey,
