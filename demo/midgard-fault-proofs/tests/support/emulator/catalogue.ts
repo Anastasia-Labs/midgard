@@ -1,11 +1,12 @@
 import { Store, Trie } from "@aiken-lang/merkle-patricia-forestry";
 import { compareOutRefs, findOutRefIndex } from "@al-ft/midgard-core";
+import { deploymentFraudProofCatalogueCategories } from "@al-ft/midgard-core/deployment-profile";
 import { asLucidSchema } from "@al-ft/midgard-core/lucid-data";
 import {
   EMPTY_MERKLE_TREE_ROOT,
   FRAUD_PROOF_CATALOGUE_CATEGORY_IDS,
-  FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER,
   FRAUD_PROOF_CATALOGUE_ID_BYTE_COUNT,
+  type FraudProofCatalogueCategoryDeploymentInfo,
   type FraudProofCatalogueDeploymentInfo,
   type FraudProofs,
   ScriptHashSchema,
@@ -58,18 +59,38 @@ export type CatalogueExtraCategory = {
   readonly membershipProofCbor: string;
 };
 
+/**
+ * The fixture's catalogue type. Every category is typed present so family
+ * suites read their own entry directly; under a profile that excludes
+ * categories (`preprod-emulator-curated`) an excluded entry is absent.
+ */
+export type CatalogueFixtureDeploymentInfo =
+  FraudProofCatalogueDeploymentInfo & {
+    readonly categories: Readonly<
+      Record<
+        keyof FraudProofCatalogueDeploymentInfo["categories"],
+        FraudProofCatalogueCategoryDeploymentInfo
+      >
+    >;
+  };
+
+/**
+ * The deployment's catalogue under the selected profile: an excluded category
+ * is absent, as the atomic init leaves it out.
+ */
 export const buildCatalogueDeploymentInfo = async (
   fraudProofs: FraudProofs,
   extraCategories: Readonly<
     Record<string, { readonly categoryId: string; readonly scriptHash: string }>
   > = {},
 ): Promise<
-  FraudProofCatalogueDeploymentInfo & {
+  CatalogueFixtureDeploymentInfo & {
     readonly extraCategories: Readonly<Record<string, CatalogueExtraCategory>>;
   }
 > => {
+  const catalogueCategories = deploymentFraudProofCatalogueCategories();
   const categories = Object.fromEntries(
-    FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER.map((name) => [
+    catalogueCategories.map((name) => [
       name,
       {
         categoryId: FRAUD_PROOF_CATALOGUE_CATEGORY_IDS[name],
@@ -82,17 +103,17 @@ export const buildCatalogueDeploymentInfo = async (
   const store = new Store(undefined);
   await store.ready();
   const trie = new Trie(store);
-  for (const name of FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER) {
-    const category = categories[name];
+  for (const name of catalogueCategories) {
+    const category = categories[name]!;
     await trie.insert(
       encodeCatalogueKey(category.categoryId),
       encodeCatalogueValue(category.scriptHash),
     );
   }
   const canonicalHashById = new Map(
-    Object.values(categories).map((category) => [
-      category.categoryId,
-      category.scriptHash,
+    catalogueCategories.map((name) => [
+      categories[name]!.categoryId,
+      categories[name]!.scriptHash,
     ]),
   );
   for (const [name, extra] of Object.entries(extraCategories)) {
@@ -114,8 +135,8 @@ export const buildCatalogueDeploymentInfo = async (
     );
   }
   const categoriesWithProofs = { ...categories };
-  for (const name of FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER) {
-    const category = categories[name];
+  for (const name of catalogueCategories) {
+    const category = categories[name]!;
     const proof = await trie.prove(encodeCatalogueKey(category.categoryId));
     categoriesWithProofs[name] = {
       ...category,
@@ -132,7 +153,8 @@ export const buildCatalogueDeploymentInfo = async (
   }
   return {
     root: trieRootHex(trie),
-    categories: categoriesWithProofs,
+    categories:
+      categoriesWithProofs as CatalogueFixtureDeploymentInfo["categories"],
     extraCategories: extraCategoriesWithProofs,
   };
 };

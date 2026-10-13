@@ -56,3 +56,16 @@ allow_lists:
     - "706c616365686f6c6465723a70726f76000000000000000000000001"
   da_challengers:
     - "706c616365686f6c6465723a64616368000000000000000000000001"
+# P1 carries no validation-trace states, so the families that read them are
+# left out of the fraud-proof catalogue (Computation-Thread Init refuses them).
+excluded_fraud_proof_categories:
+  - validationTraceDispute
+  - executionSourceScriptDecoding
+  - receivePurposeLanguage
+  - unusedScriptWitness
+  - missingScriptSource
+  - missingRedeemer
+  - unusedRedeemer
+  - executionNativeScriptInvalid
+  - scriptIntegrityHashMismatch
+  - distinctAssetAccumulationLimit

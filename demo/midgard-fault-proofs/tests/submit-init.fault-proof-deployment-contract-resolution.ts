@@ -177,9 +177,9 @@ describe("fault-proof deployment contract resolution", () => {
                 categories: {
                   ...fraudProofCatalogue.categories,
                   nonExistentInputNoIndex: {
-                    ...fraudProofCatalogue.categories.nonExistentInputNoIndex,
+                    ...fraudProofCatalogue.categories.nonExistentInputNoIndex!,
                     membershipProofCbor:
-                      fraudProofCatalogue.categories.doubleSpend
+                      fraudProofCatalogue.categories.doubleSpend!
                         .membershipProofCbor,
                   },
                 },
@@ -297,9 +297,9 @@ describe("fault-proof deployment contract resolution", () => {
       categories: {
         ...fraudProofCatalogue.categories,
         invalidRange: {
-          ...fraudProofCatalogue.categories.invalidRange,
+          ...fraudProofCatalogue.categories.invalidRange!,
           membershipProofCbor:
-            fraudProofCatalogue.categories.doubleSpend.membershipProofCbor,
+            fraudProofCatalogue.categories.doubleSpend!.membershipProofCbor,
         },
       },
     };

@@ -1,5 +1,9 @@
 import { canonicalJson } from "./canonical-json.js";
 import {
+  DEPLOYMENT_MANIFEST_FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER,
+  type DeploymentManifestFraudProofCatalogueCategory,
+} from "./deployment-manifest-identity/catalogue-roles.js";
+import {
   DEPLOYMENT_PROFILES,
   SELECTED_DEPLOYMENT_PROFILE,
   SELECTED_DEPLOYMENT_PROFILE_DIGEST,
@@ -76,4 +80,36 @@ export const verifyDeploymentProfileBinding = (
       "Deployment profile, digest, and network must match the compiled profile",
     );
   }
+};
+
+const catalogueCategories: ReadonlySet<string> = new Set(
+  DEPLOYMENT_MANIFEST_FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER,
+);
+for (const profile of Object.values(DEPLOYMENT_PROFILES)) {
+  for (const category of profile.excluded_fraud_proof_categories) {
+    if (!catalogueCategories.has(category)) {
+      throw new Error(
+        `Deployment profile ${profile.name} excludes ${category}, which is not a fraud-proof catalogue category`,
+      );
+    }
+  }
+}
+
+/**
+ * The fraud-proof catalogue a deployment carries: every catalogue category
+ * the profile does not exclude, in the catalogue's presentation order. The
+ * atomic init builds the catalogue MPF from exactly this set, so an excluded
+ * category has no membership proof and Computation-Thread Init refuses it.
+ */
+export const deploymentFraudProofCatalogueCategories = (
+  profile: DeploymentProfile = SELECTED_DEPLOYMENT_PROFILE,
+): readonly DeploymentManifestFraudProofCatalogueCategory[] => {
+  const excluded: ReadonlySet<string> = new Set(
+    profile.excluded_fraud_proof_categories,
+  );
+  return Object.freeze(
+    DEPLOYMENT_MANIFEST_FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER.filter(
+      (category) => !excluded.has(category),
+    ),
+  );
 };

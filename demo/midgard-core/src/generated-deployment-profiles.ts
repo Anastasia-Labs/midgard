@@ -54,6 +54,18 @@ export const DEPLOYMENT_PROFILES = {
         "706c616365686f6c6465723a64616368000000000000000000000001",
       ],
     },
+    excluded_fraud_proof_categories: [
+      "validationTraceDispute",
+      "executionSourceScriptDecoding",
+      "receivePurposeLanguage",
+      "unusedScriptWitness",
+      "missingScriptSource",
+      "missingRedeemer",
+      "unusedRedeemer",
+      "executionNativeScriptInvalid",
+      "scriptIntegrityHashMismatch",
+      "distinctAssetAccumulationLimit",
+    ],
   },
   "preprod-public": {
     name: "preprod-public",
@@ -110,6 +122,18 @@ export const DEPLOYMENT_PROFILES = {
         "706c616365686f6c6465723a64616368000000000000000000000001",
       ],
     },
+    excluded_fraud_proof_categories: [
+      "validationTraceDispute",
+      "executionSourceScriptDecoding",
+      "receivePurposeLanguage",
+      "unusedScriptWitness",
+      "missingScriptSource",
+      "missingRedeemer",
+      "unusedRedeemer",
+      "executionNativeScriptInvalid",
+      "scriptIntegrityHashMismatch",
+      "distinctAssetAccumulationLimit",
+    ],
   },
   "preprod-testing": {
     name: "preprod-testing",
@@ -162,6 +186,7 @@ export const DEPLOYMENT_PROFILES = {
       fraud_provers: null,
       da_challengers: null,
     },
+    excluded_fraud_proof_categories: [],
   },
   "local-devnet-testing": {
     name: "local-devnet-testing",
@@ -214,6 +239,7 @@ export const DEPLOYMENT_PROFILES = {
       fraud_provers: null,
       da_challengers: null,
     },
+    excluded_fraud_proof_categories: [],
   },
   "preprod-emulator-testing": {
     name: "preprod-emulator-testing",
@@ -266,19 +292,20 @@ export const DEPLOYMENT_PROFILES = {
       fraud_provers: null,
       da_challengers: null,
     },
+    excluded_fraud_proof_categories: [],
   },
 } as const;
 
 export const DEPLOYMENT_PROFILE_DIGESTS = {
-  mainnet: "e4841ffe1cfa4dc2b5abff14c84493ee63044f22aa02e10e05df1bf8c42e1ed8",
+  mainnet: "8a63410f9421cb851b67a2c13015722d759ce6135b71db1b40e7544652b53fbd",
   "preprod-public":
-    "833985231946c909412faaa05c5639076a82b04f4c50bf1874498b3c19739893",
+    "b784b57b530907b2a312677dbd1e6f5a9147012d49ff7e4e2a74bf51101d5f2c",
   "preprod-testing":
-    "9869ab222f3db44cc273dd8039b4c39c0776fb8cd9bd58ae66180968a3b19d62",
+    "dc9896f9d9f6dcfb648525c702a1fbf87a32c5769ce25e7b28d55bc30847f05d",
   "local-devnet-testing":
-    "0e99310be71f06d7630121d2fb6c503e517e82921b42d45321cb479b9b9b39ce",
+    "c63ff08d2de8e7a6b3b11bb7ad4968384255f346d4a53802cfa1568c5538a1c7",
   "preprod-emulator-testing":
-    "69e021537bc3303910c4b59dd887c8f196fe2d992b6132bf653c502f63357de4",
+    "bd41ec42bd1291a8940d05b21f39e358a1e310f4f9066b5de366defc96c24219",
 } as const;
 
 export const DEPLOYMENT_MANIFEST_ECONOMICS_BY_PROFILE = {
@@ -316,6 +343,7 @@ for (const profile of Object.values(DEPLOYMENT_PROFILES)) {
   for (const keys of Object.values(profile.allow_lists))
     if (keys !== null) Object.freeze(keys);
   Object.freeze(profile.allow_lists);
+  Object.freeze(profile.excluded_fraud_proof_categories);
   Object.freeze(profile);
 }
 Object.freeze(DEPLOYMENT_PROFILES);

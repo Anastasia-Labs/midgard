@@ -27,6 +27,7 @@ import {
   DEPLOYMENT_MANIFEST_L1_FINALITY,
   DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE,
   DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_TOKEN_NAMES,
+  type DeploymentManifestFraudProofCatalogueCategoryIdentity,
   type DeploymentManifestFraudProofCatalogueIdentity,
 } from "../src/deployment-manifest-identity.js";
 import {
@@ -36,7 +37,20 @@ import {
 } from "../src/deployment-profile.js";
 import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "../src/l1-slot-config.js";
 
-let generatedCatalogueFixture: DeploymentManifestFraudProofCatalogueIdentity;
+type CatalogueCategory =
+  (typeof DEPLOYMENT_MANIFEST_FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER)[number];
+
+/** A catalogue whose categories are all present, as the fixture builds it. */
+export type CatalogueFixture = DeploymentManifestFraudProofCatalogueIdentity & {
+  readonly categories: Readonly<
+    Record<
+      CatalogueCategory,
+      DeploymentManifestFraudProofCatalogueCategoryIdentity
+    >
+  >;
+};
+
+let generatedCatalogueFixture: CatalogueFixture;
 
 const CATALOGUE_FIXTURE_SCRIPT_HASH =
   "bddf4b5c833decbf82201931cffc54f7c7dc51e4e6743a25a95aa2c0";
@@ -44,23 +58,26 @@ const CATALOGUE_FIXTURE_SCRIPT_HASH =
 const catalogueFixtureKey = (categoryId: string): Buffer =>
   Buffer.concat([Buffer.from([0x44]), Buffer.from(categoryId, "hex")]);
 
-beforeAll(async () => {
+/** Builds a catalogue holding exactly `categoryNames`. */
+export const buildCatalogueFixture = async (
+  categoryNames: readonly CatalogueCategory[],
+): Promise<DeploymentManifestFraudProofCatalogueIdentity> => {
   const value = Buffer.from(`581c${CATALOGUE_FIXTURE_SCRIPT_HASH}`, "hex");
   const trie = await Trie.fromList(
-    DEPLOYMENT_MANIFEST_FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER.map(
-      (categoryName) => ({
-        key: catalogueFixtureKey(
-          DEPLOYMENT_MANIFEST_FRAUD_PROOF_CATALOGUE_CATEGORY_IDS[categoryName],
-        ),
-        value,
-      }),
-    ),
+    categoryNames.map((categoryName) => ({
+      key: catalogueFixtureKey(
+        DEPLOYMENT_MANIFEST_FRAUD_PROOF_CATALOGUE_CATEGORY_IDS[categoryName],
+      ),
+      value,
+    })),
   );
-  const categories: Record<
-    string,
-    DeploymentManifestFraudProofCatalogueIdentity["categories"][keyof DeploymentManifestFraudProofCatalogueIdentity["categories"]]
+  const categories: Partial<
+    Record<
+      CatalogueCategory,
+      DeploymentManifestFraudProofCatalogueCategoryIdentity
+    >
   > = {};
-  for (const categoryName of DEPLOYMENT_MANIFEST_FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER) {
+  for (const categoryName of categoryNames) {
     const categoryId =
       DEPLOYMENT_MANIFEST_FRAUD_PROOF_CATALOGUE_CATEGORY_IDS[categoryName];
     const proof = await trie.prove(catalogueFixtureKey(categoryId));
@@ -70,16 +87,17 @@ beforeAll(async () => {
       membershipProofCbor: proof.toCBOR().toString("hex"),
     };
   }
-  generatedCatalogueFixture = {
-    root: Buffer.from(trie.hash).toString("hex"),
-    categories:
-      categories as DeploymentManifestFraudProofCatalogueIdentity["categories"],
-  };
+  return { root: Buffer.from(trie.hash).toString("hex"), categories };
+};
+
+beforeAll(async () => {
+  generatedCatalogueFixture = (await buildCatalogueFixture(
+    DEPLOYMENT_MANIFEST_FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER,
+  )) as CatalogueFixture;
 });
 
-export const catalogueFixture =
-  (): DeploymentManifestFraudProofCatalogueIdentity =>
-    generatedCatalogueFixture;
+export const catalogueFixture = (): CatalogueFixture =>
+  generatedCatalogueFixture;
 
 export const identityInput = () => ({
   schemaVersion: MIDGARD_DEPLOYMENT_MANIFEST_SCHEMA_VERSION,

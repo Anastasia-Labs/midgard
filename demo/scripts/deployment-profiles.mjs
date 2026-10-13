@@ -108,15 +108,40 @@ const validateAllowLists = (allowLists, name) => {
   }
 };
 
+// Fraud-proof catalogue categories the deployment leaves out (P1: the
+// families that read validation-trace states). The atomic init builds the
+// catalogue MPF without them, so Computation-Thread Init has no membership
+// proof for them. midgard-core checks each name against the catalogue.
+const catalogueCategoryName = /^[a-z][A-Za-z0-9]*$/u;
+const validateExcludedFraudProofCategories = (categories) => {
+  if (
+    !Array.isArray(categories) ||
+    categories.some(
+      (entry) =>
+        typeof entry !== "string" || !catalogueCategoryName.test(entry),
+    )
+  )
+    throw new Error(
+      "excluded_fraud_proof_categories must be a list of catalogue category names",
+    );
+  if (new Set(categories).size !== categories.length)
+    throw new Error(
+      "excluded_fraud_proof_categories must not repeat a category",
+    );
+};
+
+// Sorted object keys; arrays keep their order (midgard-core canonicalJson).
 export const canonicalJson = (value) =>
   JSON.stringify(
-    value !== null && typeof value === "object"
-      ? Object.fromEntries(
-          Object.keys(value)
-            .sort()
-            .map((key) => [key, JSON.parse(canonicalJson(value[key]))]),
-        )
-      : value,
+    Array.isArray(value)
+      ? value.map((entry) => JSON.parse(canonicalJson(entry)))
+      : value !== null && typeof value === "object"
+        ? Object.fromEntries(
+            Object.keys(value)
+              .sort()
+              .map((key) => [key, JSON.parse(canonicalJson(value[key]))]),
+          )
+        : value,
   );
 export const profileDigest = (profile) =>
   createHash("sha256").update(canonicalJson(profile)).digest("hex");
@@ -302,6 +327,7 @@ export const validateProfile = (profile, name) => {
       "limits",
       "economics",
       "allow_lists",
+      "excluded_fraud_proof_categories",
     ],
     "profile",
   );
@@ -355,6 +381,7 @@ export const validateProfile = (profile, name) => {
   if (profile.economics.profile !== expectedEconomics)
     throw new Error(`economics.profile must equal ${expectedEconomics}`);
   validateAllowLists(profile.allow_lists, name);
+  validateExcludedFraudProofCategories(profile.excluded_fraud_proof_categories);
   const timing = profile.timing;
   const maturity = BigInt(timing.block_maturity_ms);
   const disputeDuration =
@@ -643,7 +670,7 @@ export const generateProfiles = async (selected, check = false) => {
     `export const SELECTED_DEPLOYMENT_PROFILE = DEPLOYMENT_PROFILES[${JSON.stringify(selected)}];\n` +
     `export const SELECTED_DEPLOYMENT_PROFILE_DIGEST = DEPLOYMENT_PROFILE_DIGESTS[${JSON.stringify(selected)}];\n` +
     `for (const profile of Object.values(DEPLOYMENT_PROFILES)) {\n` +
-    `  Object.freeze(profile.l1_finality);\n  Object.freeze(profile.timing);\n  Object.freeze(profile.da_bond);\n  Object.freeze(profile.limits);\n  Object.freeze(profile.economics);\n  for (const keys of Object.values(profile.allow_lists)) if (keys !== null) Object.freeze(keys);\n  Object.freeze(profile.allow_lists);\n  Object.freeze(profile);\n}\n` +
+    `  Object.freeze(profile.l1_finality);\n  Object.freeze(profile.timing);\n  Object.freeze(profile.da_bond);\n  Object.freeze(profile.limits);\n  Object.freeze(profile.economics);\n  for (const keys of Object.values(profile.allow_lists)) if (keys !== null) Object.freeze(keys);\n  Object.freeze(profile.allow_lists);\n  Object.freeze(profile.excluded_fraud_proof_categories);\n  Object.freeze(profile);\n}\n` +
     `Object.freeze(DEPLOYMENT_PROFILES);\nObject.freeze(DEPLOYMENT_PROFILE_DIGESTS);\n` +
     `for (const economics of Object.values(DEPLOYMENT_MANIFEST_ECONOMICS_BY_PROFILE)) Object.freeze(economics);\n` +
     `Object.freeze(DEPLOYMENT_MANIFEST_ECONOMICS_BY_PROFILE);\n`;

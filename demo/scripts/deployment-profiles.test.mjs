@@ -7,6 +7,7 @@ import {
 } from "./deployment-profiles.test-helpers.mjs";
 import {
   ALLOW_LIST_PLACEHOLDER_KEY_PREFIX,
+  canonicalJson,
   daBondWithdrawDelayFloorMs,
   emulatorOnlyProfileNames,
   COMMIT_TTL_FUTURE_BUFFER_MS,
@@ -920,5 +921,41 @@ test("allow-lists render as Option<List<ByteArray>> env constants in the layout 
     rendered.endsWith(
       "pub const da_challenger_allow_list: Option<List<ByteArray>> = None\n",
     ),
+  );
+});
+
+test("the profile digest keeps list order and shape", () => {
+  assert.equal(
+    canonicalJson({ b: ["y", "x"], a: [], c: { e: [1], d: null } }),
+    '{"a":[],"b":["y","x"],"c":{"d":null,"e":[1]}}',
+  );
+});
+
+test("excluded fraud-proof categories are distinct catalogue names", () => {
+  const profiles = readProfiles();
+  assert.ok(
+    profiles["preprod-public"].excluded_fraud_proof_categories.includes(
+      "validationTraceDispute",
+    ),
+  );
+  assert.deepEqual(
+    profiles["preprod-testing"].excluded_fraud_proof_categories,
+    [],
+  );
+  for (const [categories, message] of [
+    [null, /must be a list of catalogue category names/u],
+    [["unused-redeemer"], /must be a list of catalogue category names/u],
+    [[""], /must be a list of catalogue category names/u],
+    [["minFee", "minFee"], /must not repeat a category/u],
+  ]) {
+    const profile = structuredClone(profiles["preprod-testing"]);
+    profile.excluded_fraud_proof_categories = categories;
+    assert.throws(() => validateProfile(profile, "preprod-testing"), message);
+  }
+  const profile = structuredClone(profiles["preprod-testing"]);
+  delete profile.excluded_fraud_proof_categories;
+  assert.throws(
+    () => validateProfile(profile, "preprod-testing"),
+    /profile must contain exactly/u,
   );
 });

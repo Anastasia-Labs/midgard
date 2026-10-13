@@ -132,7 +132,7 @@ export const catalogueFor = async (
   await store.ready();
   const trie = new Trie(store);
   for (const name of FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER) {
-    const category = categories[name];
+    const category = categories[name]!;
     await trie.insert(
       encodeCatalogueKey(category.categoryId),
       encodeCatalogueValue(category.scriptHash),
@@ -140,7 +140,7 @@ export const catalogueFor = async (
   }
   const withProofs = { ...categories };
   for (const name of FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER) {
-    const category = categories[name];
+    const category = categories[name]!;
     const proof = await trie.prove(encodeCatalogueKey(category.categoryId));
     withProofs[name] = {
       ...category,

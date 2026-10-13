@@ -2,9 +2,9 @@ import {
   computeDeploymentManifestJsonDigest,
   DEPLOYMENT_MANIFEST_CONTRACT_NAMES,
 } from "@al-ft/midgard-core/deployment-manifest-identity";
+import { deploymentFraudProofCatalogueCategories } from "@al-ft/midgard-core/deployment-profile";
 
 import {
-  CATALOGUE_CATEGORY_TO_CONTRACT,
   exactDynamicHexMap,
   exactRecord,
   exactString,
@@ -67,16 +67,18 @@ const parseCataloguePolicy = (
   path: string,
 ): WatcherFraudProofCatalogueIdentity => {
   const catalogue = exactRecord(value, path, ["root", "categories"]);
+  // The deployment's catalogue is the profile's set.
+  const catalogueCategories = deploymentFraudProofCatalogueCategories();
   const categories = exactRecord(
     catalogue.categories,
     `${path}.categories`,
-    Object.keys(CATALOGUE_CATEGORY_TO_CONTRACT),
+    catalogueCategories,
   );
   return Object.freeze({
     root: exactString(catalogue.root, `${path}.root`, HEX_32),
     categories: Object.freeze(
       Object.fromEntries(
-        Object.keys(CATALOGUE_CATEGORY_TO_CONTRACT).map((category) => {
+        catalogueCategories.map((category) => {
           const entry = exactRecord(
             categories[category],
             `${path}.categories.${category}`,
