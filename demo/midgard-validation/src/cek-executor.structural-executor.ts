@@ -69,12 +69,15 @@ import {
   errorSuccessor,
   exactComputeSuccessor,
   exactState,
-  type MidgardCekExecutionStep,
   type MidgardCekStructuralExecution,
   rootHex,
   sameBytes,
   type SequenceNode,
 } from "./cek-executor.build-midgard-cek-execution-graph.js";
+import {
+  type MidgardCekStepRecorder,
+  type MidgardCekStructuralVerdict,
+} from "./cek-executor.step-recorder.js";
 import { readMidgardCekSemanticData } from "./cek-executor.structural-executor-data.js";
 import {
   hashMidgardCekMapConversionControl,
@@ -84,13 +87,11 @@ import {
   type MidgardCekEnvironmentSummary,
   MidgardCekErrorCodes,
   type MidgardCekMapConversionControl,
-  verifyMidgardCekCoreStep,
 } from "./cek-machine.js";
 import { isPlutusDataMap } from "./plutus-data-narrowing.js";
 
 export class StructuralExecutor {
   private state: MidgardCekMachineState;
-  private readonly steps: MidgardCekExecutionStep[] = [];
   private readonly material = new Map<string, MidgardCekProgramMaterialEntry>();
   private readonly values = new Map<string, MidgardCekValueNode>();
   private readonly constants = new Map<
@@ -124,6 +125,7 @@ export class StructuralExecutor {
     material: Iterable<MidgardCekProgramMaterialEntry>,
     executionIndex: bigint,
     constantWitnesses: ReadonlyMap<string, MidgardCekConstantValueWitness>,
+    private readonly recorder: MidgardCekStepRecorder,
   ) {
     for (const entry of material) {
       const exact = decodeMidgardCekProgramMaterialEntry(
@@ -193,16 +195,10 @@ export class StructuralExecutor {
     });
   }
 
-  public run(
-    maxSteps: number,
-    executionBudget?: {
-      readonly cpu: bigint;
-      readonly memory: bigint;
-    },
-  ): MidgardCekStructuralExecution {
-    if (!Number.isSafeInteger(maxSteps) || maxSteps <= 0) {
-      throw new Error("CEK maxSteps must be a positive safe integer");
-    }
+  public run(executionBudget?: {
+    readonly cpu: bigint;
+    readonly memory: bigint;
+  }): MidgardCekStructuralExecution | MidgardCekStructuralVerdict {
     if (
       executionBudget !== undefined &&
       (executionBudget.cpu < 0n || executionBudget.memory < 0n)
@@ -214,44 +210,24 @@ export class StructuralExecutor {
       this.state.mode !== "haltSuccess" &&
       this.state.mode !== "haltError"
     ) {
-      if (this.steps.length >= maxSteps) {
-        throw new Error(
-          `CEK execution exceeded the exact ${maxSteps.toString(10)}-step bound`,
-        );
-      }
+      this.recorder.assertWithinBound();
       this.step();
       if (
         executionBudget !== undefined &&
         (this.state.cpu > executionBudget.cpu ||
           this.state.memory > executionBudget.memory)
       ) {
-        return Object.freeze({
-          initialState,
-          steps: Object.freeze([...this.steps]),
-          terminalState: this.state,
-          stopReason: "budgetExceeded",
-        });
+        return this.recorder.finish(initialState, this.state, "budgetExceeded");
       }
     }
-    return Object.freeze({
-      initialState,
-      steps: Object.freeze([...this.steps]),
-      terminalState: this.state,
-      stopReason: "halted",
-    });
+    return this.recorder.finish(initialState, this.state, "halted");
   }
 
   private record(
     witness: MidgardCekCoreStepWitness,
     post: MidgardCekMachineState,
   ): void {
-    const pre = this.state;
-    if (!verifyMidgardCekCoreStep(pre, post, witness)) {
-      throw new Error(
-        `generated CEK ${witness.kind} transition does not pass the consensus verifier`,
-      );
-    }
-    this.steps.push(Object.freeze({ pre, post, witness }));
+    this.recorder.record(this.state, post, witness);
     this.state = post;
   }
 

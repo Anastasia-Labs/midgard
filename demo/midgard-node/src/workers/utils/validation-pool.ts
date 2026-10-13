@@ -1,4 +1,6 @@
 import type {
+  LocalScriptEvalResult,
+  MidgardCekVerdictRequest,
   PhaseAConfig,
   RejectCode,
   WirePhaseACandidateV1,
@@ -31,7 +33,14 @@ export type PhaseAJobRequest = {
   }>;
 };
 
-export type ValidationJobRequest = PhaseAJobRequest;
+/** One Phase B script run in verdict mode. */
+export type CekVerdictJobRequest = {
+  readonly kind: "cek_verdict";
+  readonly jobId: number;
+  readonly request: MidgardCekVerdictRequest;
+};
+
+export type ValidationJobRequest = PhaseAJobRequest | CekVerdictJobRequest;
 
 export type ValidationCacheStats = {
   readonly size: number;
@@ -64,7 +73,16 @@ export type WorkerFailure = {
   readonly error: string;
 };
 
-export type ValidationWorkerResponse = PhaseAJobResponse | WorkerFailure;
+export type CekVerdictJobResponse = {
+  readonly kind: "cek_verdict";
+  readonly jobId: number;
+  readonly result: LocalScriptEvalResult;
+};
+
+export type ValidationWorkerResponse =
+  | PhaseAJobResponse
+  | CekVerdictJobResponse
+  | WorkerFailure;
 
 export type PhaseAWorkerInput = {
   readonly txId: Buffer;

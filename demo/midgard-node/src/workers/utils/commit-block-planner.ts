@@ -23,15 +23,18 @@ export {
   type CommitTxCandidateSelection,
   type CommitTxSourceTable,
   type CurrentOperatorSchedulerWindow,
+  DEFAULT_BLOCK_EX_UNITS_BUDGET,
   DEFAULT_COMMIT_BATCH_BUDGET_LIMITS,
   EARLIEST_COMMIT_SCHEDULER_PLANNER_VERSION,
   type EarliestCommitSchedulerPlan,
+  type ExUnitsBudget,
   MAX_COMMIT_BUILD_MS_PER_TX,
   MIN_COMMIT_BUILD_MS_PER_TX,
   type PlannedCommitBatchSelection,
   type SuccessfulCommitBatch,
   updateCommitBuildEwma,
 } from "./commit-block-planner.commit-scheduler-evidence-key.js";
+export { declaredTxExUnits } from "./commit-block-planner.declared-ex-units.js";
 export {
   establishEndTimeFromTxRequests,
   planEarliestCommitSchedulerDueWork,

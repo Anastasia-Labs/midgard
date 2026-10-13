@@ -15,6 +15,7 @@ import {
   positiveSafeInteger,
 } from "../artifact-schema.js";
 import { isStrictlyAscending, splitPackedHex } from "../da/local-signers.js";
+import { type ExUnitsBudget } from "../workers/utils/commit-block-planner.commit-scheduler-evidence-key.js";
 import { type NativeLedgerSettings } from "./native-ledger.js";
 
 /**
@@ -192,6 +193,9 @@ export type NodeConfigDep = {
   /** The node-behind bound in ms (`config.node-behind.ts`): the follower's
    * `l1_node_behind` reason and the hold on the node's own sends. */
   L1_NODE_BEHIND_MAX_MS: number;
+  /** The per-block declared ex-units budget for normal transactions
+   * (`config.block-ex-units-budget.ts`). */
+  BLOCK_EX_UNITS_BUDGET: ExUnitsBudget;
   /** Explicit housekeeping window in days; undefined when unset, which means
    * the verified deployment manifest's window (`resolveHousekeepingRetentionDays`). */
   RETENTION_DAYS: number | undefined;

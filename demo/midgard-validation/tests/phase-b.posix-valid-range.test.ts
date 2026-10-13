@@ -28,7 +28,10 @@ import { describe, expect, it } from "vitest";
 
 import {
   buildMidgardCanonicalCekProgram,
+  evaluateMidgardCekVerdict,
+  type MidgardCekVerdictRequest,
   MidgardRedeemerTag,
+  type PhaseBConfig,
   RejectCodes,
   runPhaseBValidationWithPatch,
 } from "../src/index.js";
@@ -102,6 +105,7 @@ const lockedAfterPosixInstant = (() => {
 const verdict = async (
   l1SlotConfig: L1SlotConfig,
   validityIntervalStart: bigint,
+  hooks: Pick<PhaseBConfig, "evaluateCekVerdict" | "cekExecutionMode"> = {},
 ) => {
   const program = buildMidgardCanonicalCekProgram(lockedAfterPosixInstant);
   const script = plutusV3ScriptWitness(program.envelopeCbor);
@@ -129,7 +133,7 @@ const verdict = async (
       {
         tag: MidgardRedeemerTag.Spend,
         index: 0n,
-        exUnits: [1_000_000_000n, 1_000_000_000n],
+        exUnits: [5_000_000n, 1_000_000_000n],
       },
     ]),
     scriptLanguages: ["PlutusV3"],
@@ -145,6 +149,7 @@ const verdict = async (
         l1SlotConfig,
         nowCardanoSlotNo: LOWER_BOUND_SLOT + 100n,
         bucketConcurrency: 1,
+        ...hooks,
       },
     ),
   );
@@ -173,5 +178,41 @@ describe("phase B POSIX validRange", () => {
     await expect(verdict(SLOT_DOMAIN, LOWER_BOUND_SLOT)).resolves.toBe(
       `rejected ${RejectCodes.PlutusScriptInvalid}`,
     );
+  });
+
+  it("gives the same verdicts through an out-of-process evaluator", async () => {
+    const requests: MidgardCekVerdictRequest[] = [];
+    const evaluateCekVerdict = (request: MidgardCekVerdictRequest) =>
+      Effect.sync(() => {
+        requests.push(request);
+        return evaluateMidgardCekVerdict(request);
+      });
+    const preprod = NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod;
+    await expect(
+      verdict(preprod, LOWER_BOUND_SLOT, { evaluateCekVerdict }),
+    ).resolves.toBe("accepted");
+    await expect(
+      verdict(preprod, LOWER_BOUND_SLOT - 1n, { evaluateCekVerdict }),
+    ).resolves.toBe(`rejected ${RejectCodes.PlutusScriptInvalid}`);
+    expect(requests).toHaveLength(2);
+    expect(requests[0]?.programMaterialSidecarCbor).not.toBeNull();
+
+    // A proof-mode run keeps its per-step evidence in process.
+    await expect(
+      verdict(preprod, LOWER_BOUND_SLOT, {
+        evaluateCekVerdict,
+        cekExecutionMode: "proof",
+      }),
+    ).resolves.toBe("accepted");
+    expect(requests).toHaveLength(2);
+  });
+
+  it("refuses when the out-of-process evaluator reports a failed script", async () => {
+    await expect(
+      verdict(NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod, LOWER_BOUND_SLOT, {
+        evaluateCekVerdict: () =>
+          Effect.succeed({ kind: "script_invalid", detail: "stub" }),
+      }),
+    ).resolves.toBe(`rejected ${RejectCodes.PlutusScriptInvalid}`);
   });
 });

@@ -72,7 +72,7 @@ const SORTED_MAP = "a24200000241ff01";
 /** `{h'ff': 1, h'ff': 2}`: a duplicate key. */
 const DUPLICATE_KEY_MAP = "a241ff0141ff02";
 
-const EX_UNITS = [1_000_000_000n, 1_000_000_000n] as const;
+const EX_UNITS = [5_000_000n, 1_000_000_000n] as const;
 
 const builtin = (tag: UPLCBuiltinTag): UPLCTerm => {
   let term: UPLCTerm = new Builtin(tag);

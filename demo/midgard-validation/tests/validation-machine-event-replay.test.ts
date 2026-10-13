@@ -192,7 +192,7 @@ describe("independent validation event replay", () => {
           spentInputs.map((_, index) => ({
             tag: MidgardRedeemerTag.Spend,
             index: BigInt(index),
-            exUnits: [1_000_000_000n, 1_000_000_000n],
+            exUnits: [5_000_000n, 1_000_000_000n],
           })),
         ),
       });
@@ -218,10 +218,11 @@ describe("independent validation event replay", () => {
       // Byte pin after uniform §5.1 byte-string item counting and the Cardano
       // `validRange` (an absent upper bound is an inclusive PosInf); emitted
       // Phase A steps are independently checked by the Aiken one-step predicate.
+      // Re-pinned when the declared ex-units moved under the per-tx cap.
       const expectedTraceHash =
         executionCount === 1
-          ? "b9adac97c2c284b04647ed360addbb404250ca74509f4ad62b4b6ac81fb9b662"
-          : "62f309f67fa193af7fc01849e3985e6f80ddd8c6ba6cd6a2d791f2495079a110";
+          ? "03ea3ccec540f4f0927b0a1bc2c632f866b1b5b3bb28ddbdeded9b4e5bb1f5b8"
+          : "9b64ca0218cef402d841ffb2c280cc9d084020caed5546ae883992e36ec377d6";
       expect(createHash("sha256").update(traceBytes).digest("hex")).toBe(
         expectedTraceHash,
       );
@@ -374,7 +375,7 @@ describe("independent validation event replay", () => {
                   tag: 0,
                   index: 0n,
                   data: Buffer.from("d8799f01ff", "hex"),
-                  exUnits: [1_000_000_000n, 1_000_000_000n] as const,
+                  exUnits: [5_000_000n, 1_000_000_000n] as const,
                 },
               ]
             : []),
@@ -382,7 +383,7 @@ describe("independent validation event replay", () => {
             tag: 0,
             index: 0n,
             data: Buffer.from(dataHex, "hex"),
-            exUnits: [1_000_000_000n, 1_000_000_000n],
+            exUnits: [5_000_000n, 1_000_000_000n],
           },
         ]),
       });

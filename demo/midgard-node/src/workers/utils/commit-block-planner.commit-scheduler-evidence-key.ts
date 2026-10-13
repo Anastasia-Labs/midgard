@@ -27,7 +27,14 @@ export type CommitBatchStopReason =
   | "da_payload_budget"
   | "commit_tx_budget"
   | "latency_budget"
+  | "ex_units_budget"
   | "mempool_exhausted";
+
+/** Plutus execution units: memory and CPU steps. */
+export type ExUnitsBudget = {
+  readonly memory: bigint;
+  readonly steps: bigint;
+};
 
 export type CommitBatchBudgetLimits = {
   readonly maxL2TxCount: number;
@@ -42,6 +49,11 @@ export type CommitBatchBudgetLimits = {
   readonly estimatedDaOverheadBytesPerTx: number;
   readonly estimatedCommitTxOverheadBytes: number;
   readonly estimatedCommitBuildMsPerTx: number;
+  /**
+   * The most declared redeemer ex-units the normal transactions of one block
+   * may sum to, in each component. Forced transactions are not counted.
+   */
+  readonly blockExUnitsBudget: ExUnitsBudget;
 };
 
 export type CommitBatchPlan = {
@@ -81,6 +93,22 @@ export type CommitDaFrameStepDown =
   | { readonly status: "incomplete" }
   | { readonly status: "step_down"; readonly nextTxCount: number };
 
+/**
+ * Twice the per-transaction execution cap of the consensus profile, so a block
+ * holds at least two transactions at the cap. There is no fixed commit tick,
+ * so the budget is absolute per block.
+ */
+export const DEFAULT_BLOCK_EX_UNITS_BUDGET: ExUnitsBudget = {
+  memory:
+    2n *
+    BigInt(
+      MIDGARD_CONSENSUS_LIMITS.minSupportedTransactionExecutionMemoryUnits,
+    ),
+  steps:
+    2n *
+    BigInt(MIDGARD_CONSENSUS_LIMITS.minSupportedTransactionExecutionCpuUnits),
+};
+
 export const DEFAULT_COMMIT_BATCH_BUDGET_LIMITS: CommitBatchBudgetLimits = {
   maxL2TxCount: MIDGARD_CONSENSUS_LIMITS.maxL2TransactionCount,
   maxCanonicalTxBytes:
@@ -101,6 +129,7 @@ export const DEFAULT_COMMIT_BATCH_BUDGET_LIMITS: CommitBatchBudgetLimits = {
   estimatedDaOverheadBytesPerTx: 800,
   estimatedCommitTxOverheadBytes: 512,
   estimatedCommitBuildMsPerTx: 1,
+  blockExUnitsBudget: DEFAULT_BLOCK_EX_UNITS_BUDGET,
 };
 
 export const MIN_COMMIT_BUILD_MS_PER_TX = 0.05;

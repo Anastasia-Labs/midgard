@@ -140,7 +140,7 @@ const maximumRedeemerData = () => {
             purpose: "Spend",
             index: 0n,
             redeemerCbor: data,
-            executionUnits: { memory: 1_000_000_000n, steps: 1_000_000_000n },
+            executionUnits: { memory: 5_000_000n, steps: 1_000_000_000n },
           },
         ],
       });

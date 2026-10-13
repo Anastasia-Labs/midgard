@@ -14,6 +14,7 @@ export const nodeConfig = {
   COMMIT_MAX_L2_TX_COUNT: 100,
   COMMIT_MAX_LEDGER_OP_COUNT: 1_000,
   COMMIT_MAX_TRANSITION_STEP_COUNT: 1_000,
+  BLOCK_EX_UNITS_BUDGET: { memory: 33_000_000n, steps: 20_000_000_000n },
   NETWORK: "Testnet",
   MIN_FEE_A: 0n,
   MIN_FEE_B: 0n,

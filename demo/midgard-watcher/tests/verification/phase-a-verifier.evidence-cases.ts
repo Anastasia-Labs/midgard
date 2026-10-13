@@ -5,6 +5,7 @@ import { h32 } from "@al-ft/midgard-test-support/hex";
 import {
   makeNativeTx,
   makeOutput,
+  makeRedeemersCbor,
   nativeScriptWitness,
   outRefFromByte,
   plutusV3ScriptWitness,
@@ -174,6 +175,17 @@ export const EVIDENCE_CASES: readonly EvidenceCase[] = [
     RejectCodes.CekProgramMaterial,
     "canonicalDecode",
     fromNativeTx({}, { programMaterialSidecarCbor: null }),
+  ),
+  evidenceCase(
+    "declared redeemer ex-units over the per-tx cap",
+    RejectCodes.TxExUnits,
+    "phaseAScriptPreconditions",
+    fromNativeTx({
+      redeemerTxWitsPreimageCbor: makeRedeemersCbor([
+        { tag: 0, index: 0n, exUnits: [16_500_001n, 1n] },
+      ]),
+      scriptLanguages: ["PlutusV3"],
+    }),
   ),
 ];
 

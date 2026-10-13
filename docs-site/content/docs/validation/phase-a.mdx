@@ -120,6 +120,14 @@ When `requiresPlutusEvaluation` is set:
 - If required observers are present, `networkId` must be set
   (`E_INVALID_FIELD_TYPE`).
 
+### 10. Per-transaction execution cap: `validateDeclaredExUnits`
+
+A normal transaction's declared redeemer ex-units, summed over all its
+redeemers, must not exceed the consensus profile's per-transaction execution
+capability (Cardano's `maxTxExUnits`: 16,500,000 memory and 10,000,000,000
+steps) in either component (`E_TX_EX_UNITS`). Forced transactions carry no
+redeemers in this release.
+
 ## Output: `PhaseAValidatedTx`
 
 On success, `buildPhaseAValidatedTx` (from `validation-candidate.ts`)

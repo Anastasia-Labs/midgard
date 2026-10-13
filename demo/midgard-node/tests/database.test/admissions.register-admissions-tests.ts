@@ -18,6 +18,7 @@ import {
 } from "@al-ft/midgard-core/codec";
 import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
 import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
+import { evaluateMidgardCekVerdict } from "@al-ft/midgard-validation";
 import { RejectCodes } from "@al-ft/midgard-validation/types";
 import { SqlClient } from "@effect/sql";
 import { type PgClient } from "@effect/sql-pg/PgClient";
@@ -1485,6 +1486,8 @@ export const registerAdmissionsTests = () => {
                 liveWorkers: 1,
                 restartingWorkers: 0,
               }),
+              evaluateCekVerdict: (request) =>
+                Effect.sync(() => evaluateMidgardCekVerdict(request)),
               runPhaseAChunk: (txs) =>
                 Effect.sync(() => {
                   validationRuns += 1;

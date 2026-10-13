@@ -49,6 +49,7 @@ import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile
 import * as SDK from "@al-ft/midgard-sdk";
 import {
   deserializePhaseACandidate,
+  evaluateMidgardCekVerdict,
   type PhaseAResult,
   type QueuedTx,
   runPhaseAValidation,
@@ -677,6 +678,8 @@ const drainReplica = async (
     consensusProfile: MIDGARD_CONSENSUS_PROFILE,
     ready: Effect.void,
     stats: Effect.sync(() => pool.stats()),
+    evaluateCekVerdict: (request) =>
+      Effect.sync(() => evaluateMidgardCekVerdict(request)),
     runPhaseAChunk: (txs) =>
       Effect.tryPromise({
         try: async () => {

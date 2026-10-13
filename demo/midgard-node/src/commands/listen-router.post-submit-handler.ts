@@ -50,6 +50,17 @@ import {
 } from "./listen-utils.js";
 
 /**
+ * A full submission queue answers 503 with this Retry-After, about one
+ * cap-sized script verdict on a worker.
+ */
+export const SUBMIT_RETRY_AFTER_SECONDS = 5;
+
+const SUBMIT_UNAVAILABLE = {
+  status: 503,
+  headers: { "retry-after": SUBMIT_RETRY_AFTER_SECONDS.toString() },
+};
+
+/**
  * `POST /submit`: validates, normalizes, and enqueues a submitted L2
  * transaction.
  */
@@ -365,7 +376,7 @@ export const postSubmitHandler = <R>(
           {
             error: "Submit ingress capacity is full; retry later",
           },
-          { status: 503 },
+          SUBMIT_UNAVAILABLE,
         );
       }
       return yield* permittedResponse.value;
@@ -394,7 +405,7 @@ export const postSubmitHandler = <R>(
                 backlogBytes: e.backlog.toString(),
                 maxBacklogBytes: e.maxBacklog.toString(),
               },
-              { status: 503 },
+              SUBMIT_UNAVAILABLE,
             );
           }
           return yield* HttpServerResponse.json(
@@ -403,7 +414,7 @@ export const postSubmitHandler = <R>(
               backlog: e.backlog.toString(),
               maxBacklog: e.maxBacklog.toString(),
             },
-            { status: 503 },
+            SUBMIT_UNAVAILABLE,
           );
         }),
       ),
@@ -416,7 +427,7 @@ export const postSubmitHandler = <R>(
               error: "Durable submission admission writer is unavailable",
               message: e.message,
             },
-            { status: 503 },
+            SUBMIT_UNAVAILABLE,
           );
         }),
       ),

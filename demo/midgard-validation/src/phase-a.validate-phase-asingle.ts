@@ -13,6 +13,7 @@ import { decodeMidgardForcedTxFullFromCanonicalCbor } from "@al-ft/midgard-core/
 import {
   isMidgardConsensusProfile,
   MIDGARD_CONSENSUS_PROFILE,
+  type MidgardConsensusProfile,
 } from "@al-ft/midgard-core/consensus-profile";
 import { validateMidgardConsensusForcedTxCbor } from "@al-ft/midgard-core/consensus-validation";
 import { validateMidgardConsensusTxCbor } from "@al-ft/midgard-core/consensus-validation";
@@ -150,6 +151,34 @@ const validateScriptEvaluationPreconditions = (
   }
 
   return null;
+};
+
+/**
+ * A normal transaction's declared execution units, summed over its redeemers,
+ * must fit the per-transaction execution capability of the consensus profile
+ * (Cardano's maxTxExUnits) in both components. Forced transactions carry no
+ * redeemers in this release.
+ */
+const validateDeclaredExUnits = (
+  tx: Pick<MidgardLedgerTx, "txId" | "redeemers">,
+  limits: MidgardConsensusProfile["limits"],
+): RejectedTx | null => {
+  let memory = 0n;
+  let steps = 0n;
+  for (const redeemer of tx.redeemers) {
+    memory += redeemer.exUnits.memory;
+    steps += redeemer.exUnits.steps;
+  }
+  const maxMemory = BigInt(limits.minSupportedTransactionExecutionMemoryUnits);
+  const maxSteps = BigInt(limits.minSupportedTransactionExecutionCpuUnits);
+  return memory > maxMemory || steps > maxSteps
+    ? reject(
+        tx.txId,
+        RejectCodes.TxExUnits,
+        `declared ex-units mem=${memory} steps=${steps} exceed the per-tx cap mem=${maxMemory} steps=${maxSteps}`,
+        "phaseAScriptPreconditions",
+      )
+    : null;
 };
 
 export const validatePhaseASingle = (
@@ -342,6 +371,9 @@ export const validatePhaseASingle = (
   if (rejection === null) rejection = validateRequiredObservers(ledgerTx);
   if (rejection === null) {
     rejection = validateScriptEvaluationPreconditions(ledgerTx);
+  }
+  if (rejection === null && queuedTx.sourceKind !== "forced") {
+    rejection = validateDeclaredExUnits(ledgerTx, consensusProfile.limits);
   }
   if (rejection !== null) {
     return rejection;

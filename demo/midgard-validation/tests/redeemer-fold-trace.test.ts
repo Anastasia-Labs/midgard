@@ -47,7 +47,7 @@ type Select = Extract<Auxiliary, { kind: "cekRedeemerContextSelect" }>;
 type Skip = Extract<Auxiliary, { kind: "cekRedeemerContextSkip" }>;
 type ItemStep = Extract<Auxiliary, { kind: "redeemerItemStep" }>;
 
-const EX_UNITS = [1_000_000_000n, 1_000_000_000n] as const;
+const EX_UNITS = [5_000_000n, 1_000_000_000n] as const;
 
 const acceptedTrace = async ({
   spent,

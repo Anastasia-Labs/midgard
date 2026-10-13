@@ -19,21 +19,21 @@ import {
 } from "../../src/verification/phase-a-verifier.js";
 
 describe("W25 published rejection-code partition", () => {
-  it("is a disjoint total 14/26/10 partition of the canonical 50-code vocabulary", () => {
+  it("is a disjoint total 14/27/10 partition of the canonical 51-code vocabulary", () => {
     expect(WATCHER_BLOCK_REPLAY_CANONICAL_REJECT_CODES).toStrictEqual(
       Object.values(RejectCodes),
     );
-    expect(WATCHER_BLOCK_REPLAY_CANONICAL_REJECT_CODES).toHaveLength(50);
+    expect(WATCHER_BLOCK_REPLAY_CANONICAL_REJECT_CODES).toHaveLength(51);
     const claimed = [
       ...WATCHER_BLOCK_REPLAY_REACHABLE_REJECT_CODES,
       ...WATCHER_BLOCK_REPLAY_PHASE_A_OWNED_REJECT_CODES,
       ...WATCHER_BLOCK_REPLAY_UNCLAIMED_REJECT_CODES,
     ];
-    expect(new Set(claimed).size).toBe(50);
+    expect(new Set(claimed).size).toBe(51);
     expect([...claimed].sort()).toStrictEqual(
       [...WATCHER_BLOCK_REPLAY_CANONICAL_REJECT_CODES].sort(),
     );
-    expect(WATCHER_BLOCK_REPLAY_PROTOCOL_MINUS_UNCLAIMED).toHaveLength(40);
+    expect(WATCHER_BLOCK_REPLAY_PROTOCOL_MINUS_UNCLAIMED).toHaveLength(41);
     expect(WATCHER_PHASE_A_CANONICAL_REJECT_CODES).toStrictEqual(
       WATCHER_BLOCK_REPLAY_CANONICAL_REJECT_CODES,
     );

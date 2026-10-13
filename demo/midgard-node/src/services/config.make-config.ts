@@ -17,6 +17,7 @@ import {
   VERIFICATION_KEY_HEX_LENGTH,
 } from "../da/local-signers.js";
 import { validateRetentionDays } from "../database/retention-policy.js";
+import { blockExUnitsBudgetConfig } from "./config.block-ex-units-budget.js";
 import { hubOracleOriginConfig } from "./config.hub-oracle-origin.js";
 import { l1ContentSourcesConfig } from "./config.l1-content-sources.js";
 import { nodeBehindConfig } from "./config.node-behind.js";
@@ -195,6 +196,7 @@ const makeConfig = Effect.gen(function* () {
     }),
   );
   const nodeBehind = yield* nodeBehindConfig;
+  const blockExUnitsBudget = yield* blockExUnitsBudgetConfig;
   const blockConfirmationAwaitTimeoutMs = yield* Config.integer(
     "BLOCK_CONFIRMATION_AWAIT_TIMEOUT_MS",
   ).pipe(Config.withDefault(12_000));
@@ -952,6 +954,7 @@ const makeConfig = Effect.gen(function* () {
       stateQueueMutationLeaseStaleGraceMs,
     COMMIT_EVENT_DEPTH: DEPLOYMENT_MANIFEST_L1_FINALITY.commitEventDepth,
     ...nodeBehind,
+    BLOCK_EX_UNITS_BUDGET: blockExUnitsBudget,
     RETENTION_DAYS: retentionDays,
     WAIT_BETWEEN_RETENTION_SWEEPS: waitBetweenRetentionSweeps,
     L1_VIEW_FATAL_MS: l1ViewFatalMs,

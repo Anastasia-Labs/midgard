@@ -312,7 +312,8 @@ export const makeRedeemersCbor = (
       index: item.index,
       redeemerCbor: Buffer.from(item.data ?? emptyData),
       executionUnits: {
-        memory: item.exUnits?.[0] ?? 1_000_000_000n,
+        // Four default redeemers fit the per-tx cap (16.5M mem, 10B steps).
+        memory: item.exUnits?.[0] ?? 4_000_000n,
         steps: item.exUnits?.[1] ?? 1_000_000_000n,
       },
     })),

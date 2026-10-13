@@ -351,6 +351,7 @@ export const buildOnVerifiedCommitBaseProgram = (
       maxL2TxCount: nodeConfig.COMMIT_MAX_L2_TX_COUNT,
       maxLedgerOpCount: nodeConfig.COMMIT_MAX_LEDGER_OP_COUNT,
       maxTransitionStepCount: nodeConfig.COMMIT_MAX_TRANSITION_STEP_COUNT,
+      blockExUnitsBudget: nodeConfig.BLOCK_EX_UNITS_BUDGET,
       maxDaPayloadBytes: daFrameInnerLimit,
       estimatedCommitBuildMsPerTx,
     };

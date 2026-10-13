@@ -111,7 +111,7 @@ const buildRetainedPlutusFixture = async (
     purpose: "Spend",
     index: 0n,
     redeemerCbor: Buffer.from(Data.to(new Constr(0, [])), "hex"),
-    executionUnits: { memory: 1_000_000_000n, steps: 1_000_000_000n },
+    executionUnits: { memory: 5_000_000n, steps: 1_000_000_000n },
   });
   const transaction = buildFixtureTransaction({
     spendInputs: [spent],

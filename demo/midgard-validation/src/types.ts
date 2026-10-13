@@ -6,6 +6,7 @@ import type { Effect } from "effect";
 
 import type {
   MidgardCekExecutionGraph,
+  MidgardCekExecutionMode,
   MidgardCekStructuralExecution,
 } from "./cek-executor.js";
 import type { LedgerEntry } from "./ledger.js";
@@ -13,6 +14,7 @@ import type {
   MidgardLedgerTx,
   MidgardLedgerVKeyWitness,
 } from "./ledger-tx/types.js";
+import type { MidgardCekVerdictRequest } from "./phase-b.evaluate-cek-script.js";
 import type { RejectSubject } from "./reject-subject.js";
 
 /**
@@ -72,6 +74,7 @@ export const RejectCodes = {
   ReferenceInputForbidden: "E_REFERENCE_INPUT_FORBIDDEN",
   ScriptFeatureForbidden: "E_SCRIPT_FEATURE_FORBIDDEN",
   CekProgramMaterial: "E_CEK_PROGRAM_MATERIAL",
+  TxExUnits: "E_TX_EX_UNITS",
 } as const;
 
 export type RejectCode = (typeof RejectCodes)[keyof typeof RejectCodes];
@@ -251,6 +254,13 @@ export type PhaseBConfig = {
   readonly bucketConcurrency: number;
   readonly enforceScriptBudget?: boolean;
   readonly maxScriptExecutionSteps?: number;
+  /**
+   * `verdict` (the default) runs CEK scripts without per-step verification or
+   * retention, so each `onScriptEvaluated` report has `execution: null`. A
+   * caller that builds a validation trace from the reported executions must
+   * pass `proof`.
+   */
+  readonly cekExecutionMode?: MidgardCekExecutionMode;
   readonly onScriptEvaluated?: (
     txId: Buffer,
     evaluation: LocalScriptEvaluation,
@@ -263,6 +273,14 @@ export type PhaseBConfig = {
       readonly memory: bigint;
     },
     executionIndex?: bigint,
+  ) => Effect.Effect<LocalScriptEvalResult, Error>;
+  /**
+   * Computes a verdict-mode script run elsewhere, such as on a worker thread.
+   * It must return exactly what `evaluateMidgardCekVerdict` returns for the
+   * request. Used only in verdict mode without `evaluateProofScript`.
+   */
+  readonly evaluateCekVerdict?: (
+    request: MidgardCekVerdictRequest,
   ) => Effect.Effect<LocalScriptEvalResult, Error>;
 };
 

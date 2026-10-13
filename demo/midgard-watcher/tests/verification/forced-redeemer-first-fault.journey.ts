@@ -83,7 +83,7 @@ export async function journey(
             tag: 0,
             index: 0n,
             data: Buffer.from("d8799f01ff", "hex"),
-            exUnits: [1000000000n, 1000000000n] as const,
+            exUnits: [5_000_000n, 1_000_000_000n] as const,
           },
         ]
       : []),
@@ -91,7 +91,7 @@ export async function journey(
       tag: 0,
       index: 0n,
       data: Buffer.from(dataHex, "hex"),
-      exUnits: [1000000000n, 1000000000n] as const,
+      exUnits: [5_000_000n, 1_000_000_000n] as const,
     },
   ];
   const native = makeNativeTx({

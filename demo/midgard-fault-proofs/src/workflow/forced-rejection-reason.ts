@@ -91,6 +91,7 @@ export const FORCED_REJECTION_NO_ARM_CODES = Object.freeze([
   RejectCodes.ReferenceInputForbidden,
   RejectCodes.ScriptFeatureForbidden,
   RejectCodes.CekProgramMaterial,
+  RejectCodes.TxExUnits,
 ] as const);
 
 /** The `RejectionReasonV1` value a recorded subject names, coordinates included. */
@@ -295,6 +296,7 @@ const dispositionOf = (code: RejectCode): CodeDisposition => {
     case RejectCodes.ReferenceInputForbidden:
     case RejectCodes.ScriptFeatureForbidden:
     case RejectCodes.CekProgramMaterial:
+    case RejectCodes.TxExUnits:
       return { kind: "stop" };
     default: {
       const unreachable: never = code;

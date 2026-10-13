@@ -38,6 +38,10 @@ const makeValidationPool = Effect.gen(function* () {
         Effect.fail(
           new ValidationWorkerError({ message: "validation pool is disabled" }),
         ),
+      evaluateCekVerdict: () =>
+        Effect.fail(
+          new ValidationWorkerError({ message: "validation pool is disabled" }),
+        ),
       ready: Effect.void,
       stats: Effect.succeed({
         busyWorkers: 0,
@@ -105,6 +109,22 @@ const makeValidationPool = Effect.gen(function* () {
     consensusProfile: deploymentIdentity.consensusProfile,
     ready,
     stats: Effect.sync(() => pool.stats()),
+    evaluateCekVerdict: (request) =>
+      runJob({
+        kind: "cek_verdict",
+        jobId: pool.allocateJobId(),
+        request,
+      }).pipe(
+        Effect.flatMap((response) =>
+          response.kind === "cek_verdict"
+            ? Effect.succeed(response.result)
+            : Effect.fail(
+                new ValidationWorkerError({
+                  message: `expected cek_verdict response, got ${response.kind}`,
+                }),
+              ),
+        ),
+      ),
     runPhaseAChunk: (txs) => {
       const serializeStartedAt = Date.now();
       const request = packPhaseAJob(pool.allocateJobId(), txs);

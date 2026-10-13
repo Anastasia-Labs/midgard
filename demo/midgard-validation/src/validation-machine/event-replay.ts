@@ -20,6 +20,7 @@ import {
 } from "../phase-b.js";
 import {
   type LocalScriptEvaluation,
+  type PhaseBConfig,
   type QueuedTx,
   type RejectCode,
   type RejectedTx,
@@ -76,6 +77,9 @@ export type ValidationVerdictEventInput = Readonly<{
   /** The deployment manifest's slot mapping (see `PhaseBConfig`). */
   l1SlotConfig: L1SlotConfig;
   sourceKind: "normal" | "forced";
+  /** "proof" captures every CEK step for a validation-machine trace;
+   * verdict-only callers leave the default. */
+  cekExecutionMode?: PhaseBConfig["cekExecutionMode"];
 }>;
 
 export type ValidationVerdictEvent = Readonly<{
@@ -164,6 +168,9 @@ export const replayValidationVerdictEvent = (
         l1SlotConfig: snapshot.l1SlotConfig,
         bucketConcurrency: 1,
         enforceScriptBudget: true,
+        ...(input.cekExecutionMode === undefined
+          ? {}
+          : { cekExecutionMode: input.cekExecutionMode }),
         maxScriptExecutionSteps:
           snapshot.consensusProfile.limits.maxValidationMachineStepCount,
         onScriptEvaluated: (_txId, evaluation) =>
@@ -232,6 +239,8 @@ export const replayValidationMachineEvent = (
     const verdictEvent = yield* replayValidationVerdictEvent({
       ...input,
       ledgerWitnessEntries,
+      // The validation trace replays every retained CEK step.
+      cekExecutionMode: "proof",
     });
     const { statePatch, rejection } = verdictEvent;
     const rejectionCode: RejectCode | null = rejection?.code ?? null;

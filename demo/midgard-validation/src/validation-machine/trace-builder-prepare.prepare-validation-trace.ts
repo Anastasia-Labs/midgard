@@ -274,7 +274,7 @@ export const prepareValidationTrace = (input: ValidationMachineReplayInput) =>
               scriptEvaluations.push(evaluation);
           },
           ...(input.scriptEvaluations === undefined
-            ? {}
+            ? { cekExecutionMode: "proof" as const }
             : {
                 evaluateProofScript: (
                   scriptBytes: Uint8Array,

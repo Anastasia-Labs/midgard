@@ -38,6 +38,7 @@ import {
   validationRejectionInsertDurationTimer,
   validationWorkerUtilizationGauge,
 } from "./tx-queue-processor.classify-plutus-evaluation-failure.js";
+import { pooledCekVerdictEvaluator } from "./tx-queue-processor.pooled-cek-verdict.js";
 import {
   admissionToQueuedTx,
   collectAcceptedProgramEnvelopes,
@@ -241,6 +242,8 @@ export const txQueueProcessorAction = (
                       bucketConcurrency:
                         nodeConfig.VALIDATION_G4_BUCKET_CONCURRENCY,
                       enforceScriptBudget: true,
+                      evaluateCekVerdict:
+                        pooledCekVerdictEvaluator(validationPool),
                     },
                   });
                   yield* validationPhaseBLatencyGauge(

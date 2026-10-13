@@ -14,10 +14,17 @@ import "./types.js";
 import "./value-accounting.js";
 import "./phase-b.resolve-reference-inputs.js";
 import "./phase-b.discover-local-script-executions.js";
+import "./phase-b.evaluate-cek-script.js";
 import "./phase-b.run-local-script-evaluation.js";
 import "./phase-b.validate-candidate-against-state.js";
 import "./phase-b.validate-plain-candidate-against-state.js";
 import "./phase-b.run-phase-bvalidation-with-patch.js";
+export {
+  evaluateMidgardCekScript,
+  evaluateMidgardCekVerdict,
+  type MidgardCekScriptRun,
+  type MidgardCekVerdictRequest,
+} from "./phase-b.evaluate-cek-script.js";
 export {
   applyUTxOStatePatch,
   type PhaseBResultWithPatch,
