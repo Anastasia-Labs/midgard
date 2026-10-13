@@ -20,6 +20,7 @@ import {
   familyContracts,
   initThread,
   publishFamilyReferences,
+  readRedeemerData,
 } from "./redeemer-canonicity-lifecycle.init-thread.js";
 import { alignUnixTimeToEmulatorSlotBoundary } from "./support/emulator/emulator-context.js";
 import { makeFaultProofEmulatorHarness } from "./support/emulator/harness.js";
@@ -125,15 +126,25 @@ describe("redeemer-canonicity forced lifecycle", () => {
       }),
     );
     emitFit("forced-step02", step02.measurement);
+    expect(step02.result.nextStage).toBe("step02Data");
+    const read = await readRedeemerData({
+      harness,
+      contracts,
+      categoryId: category.categoryId,
+      threadOutRef: step02.result.nextThreadOutRef,
+      evidence,
+      referenceScriptUtxo: references[2],
+      onStep: (measurement) => emitFit("forced-step02-data", measurement),
+    });
     const step03 = await captureEmulatorSubmission(harness.emulator, () =>
       submitRedeemerCanonicityStep03({
         lucid: harness.proverLucid,
         contracts,
         categoryId: category.categoryId,
         signer: harness.proverSigner,
-        threadOutRef: step02.result.nextThreadOutRef,
+        threadOutRef: read.threadOutRef,
         evidence,
-        referenceScriptUtxo: references[2],
+        referenceScriptUtxo: references[3],
         witnessReferenceScripts: harness.witnessReferenceScripts,
       }),
     );

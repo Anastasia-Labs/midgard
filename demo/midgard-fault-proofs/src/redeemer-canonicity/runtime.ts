@@ -24,6 +24,7 @@ import "./family.js";
 import "./schemas.js";
 import "./submit-step-01.js";
 import "./submit-step-02.js";
+import "./submit-step-02-data.js";
 import "./submit-step-03.js";
 import "./runtime.admit-redeemer-workflow-artifact.js";
 import "./runtime.capture-redeemer-action.js";

@@ -3,7 +3,6 @@ import { getAddressDetails } from "@lucid-evolution/lucid";
 import { expect } from "vitest";
 
 import {
-  planTransactionOutputDatum,
   submitTransactionOutputNonCanonicalStep01Forced,
   submitTransactionOutputNonCanonicalStep02,
   submitTransactionOutputNonCanonicalStep03,
@@ -18,13 +17,11 @@ import {
 } from "./support/submit-init-emulator-shared.js";
 import {
   buildForcedOutputFixture,
-  outputWithInlineDatum,
   TRANSACTION_OUTPUT_SCAN_CHUNK_BYTES,
 } from "./support/transaction-output-non-canonical-emulator.js";
 import {
   type Evidence,
   evidenceOf,
-  MAXIMUM_OUTPUT_BYTES,
   type NativeTx,
   record,
   type Registered,
@@ -67,7 +64,7 @@ export const nestedDatum = (integers: number, last: Buffer): Buffer =>
   ]);
 
 /** The last integer encoded with a needless one-byte argument: not canonical. */
-export const NON_CANONICAL_DATUM = nestedDatum(300, hex("1805"));
+export const NON_CANONICAL_DATUM = nestedDatum(1_000, hex("1805"));
 
 /**
  * The canonical twin sized so the output ends exactly at its third chunk
@@ -80,32 +77,6 @@ export const EXACT_TERMINAL_DATUM = nestedDatum(
   hex("05"),
 );
 
-/**
- * The costliest node shape at the largest datum an output can carry: nested
- * generic constructors (tag 102) whose alternative takes the widest integer
- * argument, each opening a frame. The levels fill the output exactly.
- */
-export const GENERIC_OPEN = hex("d866821bffffffffffffffff9f");
-export const GENERIC_DEPTH = Math.floor(
-  (MAXIMUM_OUTPUT_BYTES - DATUM_OFFSET) / (GENERIC_OPEN.length + 1),
-);
-export const WORST_DENSITY_DATUM = Buffer.concat([
-  ...Array.from({ length: GENERIC_DEPTH }, () => GENERIC_OPEN),
-  Buffer.alloc(
-    MAXIMUM_OUTPUT_BYTES -
-      DATUM_OFFSET -
-      GENERIC_DEPTH * (GENERIC_OPEN.length + 1),
-  ),
-  Buffer.alloc(GENERIC_DEPTH, 0xff),
-]);
-
-/** The most nodes a maximum-length datum holds: one-byte integers. */
-export const MOST_NODES_DATUM = Buffer.concat([
-  hex("9f"),
-  Buffer.alloc(MAXIMUM_OUTPUT_BYTES - DATUM_OFFSET - 2, 0x00),
-  hex("ff"),
-]);
-
 export const nodeTransaction = (output: Buffer) =>
   makeNativeTx({
     spendInputCbors: [],
@@ -115,13 +86,6 @@ export const nodeTransaction = (output: Buffer) =>
   });
 
 /** Every planned datum step for `datum`, run whole off chain. */
-export const planOf = (datum: Buffer) =>
-  planTransactionOutputDatum({
-    item: outputWithInlineDatum(datum),
-    datumOffset: DATUM_OFFSET,
-    datumLength: datum.length,
-  });
-
 export const makeHarness = async () =>
   await makeFaultProofEmulatorHarness({
     contractOptions: {

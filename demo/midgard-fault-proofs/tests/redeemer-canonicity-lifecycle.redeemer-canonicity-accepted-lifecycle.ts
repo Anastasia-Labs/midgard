@@ -20,6 +20,7 @@ import {
   familyContracts,
   initThread,
   publishFamilyReferences,
+  readRedeemerData,
 } from "./redeemer-canonicity-lifecycle.init-thread.js";
 import {
   type CommittedFieldShapeEmulatorHarness,
@@ -156,15 +157,26 @@ describe("redeemer-canonicity accepted lifecycle", () => {
     );
     emitFit("accepted-step02-certified-maximum", step02.measurement);
     expect(step02.result.carriageTier).toBe("Certified");
+    expect(step02.result.nextStage).toBe("step02Data");
+    const read = await readRedeemerData({
+      harness,
+      contracts,
+      categoryId: category.categoryId,
+      threadOutRef: step02.result.nextThreadOutRef,
+      evidence,
+      referenceScriptUtxo: references[2],
+      onStep: (measurement) => emitFit("accepted-step02-data", measurement),
+    });
+    expect(read.steps).toBe(1);
     const step03 = await captureEmulatorSubmission(harness.emulator, () =>
       submitRedeemerCanonicityStep03({
         lucid: harness.proverLucid,
         contracts,
         categoryId: category.categoryId,
         signer: harness.proverSigner,
-        threadOutRef: step02.result.nextThreadOutRef,
+        threadOutRef: read.threadOutRef,
         evidence,
-        referenceScriptUtxo: references[2],
+        referenceScriptUtxo: references[3],
         witnessReferenceScripts: harness.witnessReferenceScripts,
       }),
     );
@@ -214,7 +226,7 @@ describe("redeemer-canonicity accepted lifecycle", () => {
     expect(removal.measurement.l1ByteMargin).toBeGreaterThan(0);
   }, 300_000);
 
-  it.each([0, 1, 2] as const)(
+  it.each([0, 1, 2, 3] as const)(
     "cancels the real thread at physical step %s",
     async (targetStep) => {
       const harness = await makeFaultProofEmulatorHarness({
@@ -295,6 +307,19 @@ describe("redeemer-canonicity accepted lifecycle", () => {
           certificateReferenceScriptUtxo: certificateReference,
         });
         threadOutRef = step02.nextThreadOutRef;
+      }
+      if (targetStep > 2) {
+        // The one data step reads the item to its verdict.
+        threadOutRef = (
+          await readRedeemerData({
+            harness,
+            contracts,
+            categoryId: category.categoryId,
+            threadOutRef,
+            evidence,
+            referenceScriptUtxo: references[2],
+          })
+        ).threadOutRef;
       }
       const cancel = await captureEmulatorSubmission(harness.emulator, () =>
         submitRedeemerCanonicityCancel({

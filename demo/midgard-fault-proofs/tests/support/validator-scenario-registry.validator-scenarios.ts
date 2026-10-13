@@ -162,6 +162,34 @@ export const VALIDATOR_SCENARIOS: Readonly<
       },
     ],
   },
+  "fraud_proofs/redeemer_canonicity/step_02_data.main": {
+    passing: [
+      {
+        file: "demo/midgard-fault-proofs/tests/redeemer-canonicity-streamed-data.test.ts",
+        test: "convicts the acceptance of redeemer data whose only flaw lies past its first 30,000 bytes",
+      },
+    ],
+    failing: [
+      {
+        file: "demo/midgard-fault-proofs/tests/redeemer-canonicity-streamed-data.test.ts",
+        test: "refuses a false acceptance claim against canonical redeemer data nested 4,000 lists deep, and every forged data step on the way",
+      },
+    ],
+  },
+  "fraud_proofs/resolved_output_non_canonical/step_04_datum.main": {
+    passing: [
+      {
+        file: "demo/midgard-fault-proofs/tests/resolved-output-non-canonical-lifecycle.test.ts",
+        test: "convicts a forced rejection of maximum outputs whose inline datums are the densest canonical Data, reading each to its verdict, and measures the costliest datum step",
+      },
+    ],
+    failing: [
+      {
+        file: "demo/midgard-fault-proofs/tests/resolved-output-non-canonical-lifecycle.test.ts",
+        test: "convicts the acceptance of an output whose inline datum is not canonical under a canonical envelope, refusing forged datum steps, and cancels a thread parked on the datum step",
+      },
+    ],
+  },
   "fraud_proofs/transaction_output_non_canonical/step_03_datum.main": {
     passing: [
       {

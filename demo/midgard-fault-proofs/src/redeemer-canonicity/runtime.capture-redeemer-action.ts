@@ -48,6 +48,7 @@ import {
 } from "./runtime.admit-redeemer-workflow-artifact.js";
 import {
   RedeemerCanonicityStep01SourceSchema,
+  RedeemerCanonicityStep02DataDatumSchema,
   RedeemerCanonicityStep02DatumSchema,
   RedeemerCanonicityStep03DatumSchema,
   RedeemerCanonicityVerdictSubjectSchema,
@@ -57,18 +58,20 @@ import {
   submitRedeemerCanonicityStep01Forced,
 } from "./submit-step-01.js";
 import { submitRedeemerCanonicityStep02 } from "./submit-step-02.js";
+import { submitRedeemerCanonicityStep02Data } from "./submit-step-02-data.js";
 import { submitRedeemerCanonicityStep03 } from "./submit-step-03.js";
 
 export const REDEEMER_CANONICITY_FAMILY_DEFINITION = defineFamily<
   "redeemerCanonicity",
   (typeof WITNESS_ROLES)[number],
   true,
-  3
+  4
 >({
   category: "redeemerCanonicity",
   stepDatumSchemas: [
     FraudProofComputationThreadStepDatum,
     RedeemerCanonicityStep02DatumSchema,
+    RedeemerCanonicityStep02DataDatumSchema,
     RedeemerCanonicityStep03DatumSchema,
   ],
   witnessRoles: WITNESS_ROLES,
@@ -79,8 +82,8 @@ export const REDEEMER_CANONICITY_FAMILY_DEFINITION = defineFamily<
     kind: "cursor",
     spec: {
       category: "redeemerCanonicity",
-      stepCount: 3,
-      successors: { 1: [2], 2: [3], 3: ["proof_token"] },
+      stepCount: 4,
+      successors: { 1: [2], 2: [3, 4], 3: [3, 4], 4: ["proof_token"] },
     },
     stepContractNames: STEP_CONTRACT_NAMES,
     transactionPort: (context) =>
@@ -320,11 +323,18 @@ const captureRedeemerAction = async (
             workflow.referenceScripts.fieldPreimageCertificateMint,
         });
       } else if (input.stage === "step_03")
-        await submitRedeemerCanonicityStep03({
+        await submitRedeemerCanonicityStep02Data({
           ...common,
           threadOutRef: cursorStringField(input, "threadOutRef"),
           evidence: admitted.evidence,
           referenceScriptUtxo: workflow.referenceScripts.steps[2],
+        });
+      else if (input.stage === "step_04")
+        await submitRedeemerCanonicityStep03({
+          ...common,
+          threadOutRef: cursorStringField(input, "threadOutRef"),
+          evidence: admitted.evidence,
+          referenceScriptUtxo: workflow.referenceScripts.steps[3],
           witnessReferenceScripts: workflow.referenceScripts.witnesses,
         });
       else throw new Error("redeemerCanonicity action changed");

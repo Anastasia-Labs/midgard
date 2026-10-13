@@ -1,12 +1,6 @@
 import {
-  aikenSerialisedPlutusDataCborPreservingMapOrder,
-  assertMidgardPlutusDataWellFormed,
-  buildMidgardRedeemerItemProofTrace,
   decodeMidgardFieldPreimage,
-  decodeMidgardRedeemerWitnessItem,
   midgardFieldCommitment,
-  MidgardRedeemerItemProofModes,
-  type MidgardRedeemerItemProofTrace,
   selectMidgardFieldCarriageTier,
 } from "@al-ft/midgard-core";
 import {
@@ -16,6 +10,8 @@ import {
   type VerdictSubject,
   verdictSubjectIsCanonical,
 } from "@al-ft/midgard-sdk";
+
+import { planRedeemerData, type RedeemerDataPlan } from "./data-plan.js";
 
 export const REDEEMER_CANONICITY_CATEGORY = "redeemerCanonicity" as const;
 export const REDEEMER_CANONICITY_CATEGORY_ID = "00000028" as const;
@@ -61,20 +57,6 @@ export const classifyRedeemerCanonicityFinding = (
   return Object.freeze({ ...finding });
 };
 
-const canonicalData = (bytes: Uint8Array): boolean => {
-  try {
-    assertMidgardPlutusDataWellFormed(bytes);
-    return Buffer.from(
-      aikenSerialisedPlutusDataCborPreservingMapOrder(
-        Buffer.from(bytes).toString("hex"),
-      ),
-      "hex",
-    ).equals(Buffer.from(bytes));
-  } catch {
-    return false;
-  }
-};
-
 export type RedeemerCanonicityEvidence = RedeemerCanonicityFinding &
   Readonly<{
     fieldPreimageHex: string;
@@ -82,7 +64,8 @@ export type RedeemerCanonicityEvidence = RedeemerCanonicityFinding &
     itemHex: string;
     itemCount: number;
     canonical: boolean;
-    trace: MidgardRedeemerItemProofTrace | null;
+    /** The data steps' read; `null` when step 02 decides the item alone. */
+    dataPlan: RedeemerDataPlan | null;
     carriage: "Inline" | "RawUtxo" | "Certified";
   }>;
 
@@ -103,32 +86,15 @@ export const prepareRedeemerCanonicityEvidence = ({
   const items = decodeMidgardFieldPreimage(fieldPreimage);
   const item = items[finding.redeemerIndex];
   if (item === undefined) return fail("redeemer coordinate is outside field 8");
-  let canonical = false;
-  try {
-    const decoded = decodeMidgardRedeemerWitnessItem(item);
-    canonical =
-      ["Spend", "Mint", "Reward", "Receive"].includes(decoded.purpose) &&
-      canonicalData(decoded.redeemerCbor);
-  } catch {
-    canonical = false;
-  }
-  let trace: MidgardRedeemerItemProofTrace | null = null;
-  if (canonical) {
-    trace = buildMidgardRedeemerItemProofTrace({
-      itemIndex: finding.redeemerIndex,
-      itemCount: items.length,
-      itemBytes: item,
-      mode: MidgardRedeemerItemProofModes.Data,
-    });
-  }
+  const dataPlan = planRedeemerData(item);
   return Object.freeze({
     ...finding,
     fieldPreimageHex: Buffer.from(fieldPreimage).toString("hex"),
     fieldCommitmentHex: actual,
     itemHex: item.toString("hex"),
     itemCount: items.length,
-    canonical,
-    trace,
+    canonical: dataPlan?.canonical ?? false,
+    dataPlan,
     carriage: selectMidgardFieldCarriageTier(fieldPreimage.length),
   });
 };

@@ -20,6 +20,8 @@ export const RESOLVED_OUTPUT_NON_CANONICAL_FAULT_PROOF_TITLES = {
   step02: "fraud_proofs/resolved_output_non_canonical/step_02.main.spend",
   step03: "fraud_proofs/resolved_output_non_canonical/step_03.main.spend",
   step04: "fraud_proofs/resolved_output_non_canonical/step_04.main.spend",
+  step04Datum:
+    "fraud_proofs/resolved_output_non_canonical/step_04_datum.main.spend",
   step05: "fraud_proofs/resolved_output_non_canonical/step_05.main.spend",
 } as const;
 
@@ -29,6 +31,7 @@ export type ResolvedOutputNonCanonicalFaultProofContracts = {
   readonly fieldPreimageCertificate: MintingValidator;
   readonly resolvedOutputNonCanonical: FraudProofChain & {
     readonly steps: readonly [
+      SpendingValidator,
       SpendingValidator,
       SpendingValidator,
       SpendingValidator,
@@ -65,10 +68,20 @@ export const buildResolvedOutputNonCanonicalChain = ({
       ],
       "Failed to build resolved-output-non-canonical step 05",
     );
+    const step04Datum = yield* buildFaultProofSpendingStep(
+      context,
+      RESOLVED_OUTPUT_NON_CANONICAL_FAULT_PROOF_TITLES.step04Datum,
+      [step05.spendingScriptHash, computationThread.policyId],
+      "Failed to build resolved-output-non-canonical step 04 datum",
+    );
     const step04 = yield* buildFaultProofSpendingStep(
       context,
       RESOLVED_OUTPUT_NON_CANONICAL_FAULT_PROOF_TITLES.step04,
-      [step05.spendingScriptHash, computationThread.policyId],
+      [
+        step04Datum.spendingScriptHash,
+        step05.spendingScriptHash,
+        computationThread.policyId,
+      ],
       "Failed to build resolved-output-non-canonical step 04",
     );
     const step03 = yield* buildFaultProofSpendingStep(
@@ -99,7 +112,7 @@ export const buildResolvedOutputNonCanonicalChain = ({
     );
     return {
       firstStep: step01,
-      steps: [step01, step02, step03, step04, step05],
+      steps: [step01, step02, step03, step04, step04Datum, step05],
     };
   });
 

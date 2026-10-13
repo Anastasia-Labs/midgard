@@ -18,6 +18,7 @@ const stages: readonly ResolvedOutputStage[] = [
   "step02",
   "step03",
   "reconstructing",
+  "step04Datum",
   "step05",
   "proven",
   "removed",

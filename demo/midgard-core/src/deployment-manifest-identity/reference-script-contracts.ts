@@ -764,6 +764,8 @@ export const DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE =
       "fraudProofResolvedOutputNonCanonicalStep03",
     "V1 fraud-proof resolved-output-non-canonical step-04":
       "fraudProofResolvedOutputNonCanonicalStep04",
+    "V1 fraud-proof resolved-output-non-canonical step-04 datum":
+      "fraudProofResolvedOutputNonCanonicalStep04Datum",
     "V1 fraud-proof resolved-output-non-canonical step-05":
       "fraudProofResolvedOutputNonCanonicalStep05",
     "V1 fraud-proof mint-declared-asset-limit step-01":
@@ -832,6 +834,8 @@ export const DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE =
       "fraudProofRedeemerCanonicity",
     "V1 fraud-proof redeemer-canonicity step-02":
       "fraudProofRedeemerCanonicityStep02",
+    "V1 fraud-proof redeemer-canonicity step-02 data":
+      "fraudProofRedeemerCanonicityStep02Data",
     "V1 fraud-proof redeemer-canonicity step-03":
       "fraudProofRedeemerCanonicityStep03",
     "V1 fraud-proof receive-purpose-language step-01":

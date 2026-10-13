@@ -43,6 +43,7 @@ import {
 import {
   ResolvedOutputStep02DatumSchema,
   ResolvedOutputStep03DatumSchema,
+  ResolvedOutputStep04DatumDatumSchema,
   ResolvedOutputStep04DatumSchema,
   ResolvedOutputStep05DatumSchema,
 } from "./schemas.js";
@@ -66,6 +67,7 @@ export const createManifestBoundResolvedOutputNonCanonicalWorkflow = async (
           input.referenceScripts.step02,
           input.referenceScripts.step03,
           input.referenceScripts.step04,
+          input.referenceScripts.step04Datum,
           input.referenceScripts.step05,
         ],
         witnesses: input.referenceScripts.witnesses,
@@ -83,7 +85,8 @@ export const createManifestBoundResolvedOutputNonCanonicalWorkflow = async (
       step02: deployment.references.steps[1],
       step03: deployment.references.steps[2],
       step04: deployment.references.steps[3],
-      step05: deployment.references.steps[4],
+      step04Datum: deployment.references.steps[4],
+      step05: deployment.references.steps[5],
       witnesses: deployment.references.witnesses,
       fieldPreimageCertificateMint:
         deployment.references.fieldPreimageCertificateMint,
@@ -168,7 +171,7 @@ type BoundContext = FamilyAssemblyContext<
   "resolvedOutputNonCanonical",
   (typeof WITNESS_ROLES)[number],
   true,
-  5,
+  6,
   RunContext
 >;
 
@@ -191,7 +194,7 @@ export const RESOLVED_OUTPUT_NON_CANONICAL_FAMILY_DEFINITION = defineFamily<
   "resolvedOutputNonCanonical",
   (typeof WITNESS_ROLES)[number],
   true,
-  5,
+  6,
   RunContext
 >({
   category: "resolvedOutputNonCanonical",
@@ -200,6 +203,7 @@ export const RESOLVED_OUTPUT_NON_CANONICAL_FAMILY_DEFINITION = defineFamily<
     ResolvedOutputStep02DatumSchema,
     ResolvedOutputStep03DatumSchema,
     ResolvedOutputStep04DatumSchema,
+    ResolvedOutputStep04DatumDatumSchema,
     ResolvedOutputStep05DatumSchema,
   ],
   witnessRoles: WITNESS_ROLES,
@@ -213,6 +217,7 @@ export const RESOLVED_OUTPUT_NON_CANONICAL_FAMILY_DEFINITION = defineFamily<
       RESOLVED_OUTPUT_NON_CANONICAL_MANIFEST_CONTRACTS.step02,
       RESOLVED_OUTPUT_NON_CANONICAL_MANIFEST_CONTRACTS.step03,
       RESOLVED_OUTPUT_NON_CANONICAL_MANIFEST_CONTRACTS.step04,
+      RESOLVED_OUTPUT_NON_CANONICAL_MANIFEST_CONTRACTS.step04Datum,
       RESOLVED_OUTPUT_NON_CANONICAL_MANIFEST_CONTRACTS.step05,
     ],
     transactionPort: (context) => runFor(context).transactions,

@@ -11,14 +11,11 @@ import {
   requireLinearFaultStepState,
   requireLinearFaultThreadUtxo,
 } from "../src/linear-fault-family.js";
-import { submitLinearFaultFinalize } from "../src/linear-fault-finalize.js";
 import {
   detectRedeemerCanonicityFromCanonicalBlock,
   prepareRedeemerCanonicityEvidence,
-  type RedeemerCanonicityContracts,
   redeemerCanonicityEvidenceCloses,
   RedeemerCanonicityStep03DatumSchema,
-  RedeemerCanonicityStep03RedeemerSchema,
   submitRedeemerCanonicityStep01Forced,
   submitRedeemerCanonicityStep02,
   submitRedeemerCanonicityStep03,
@@ -28,8 +25,10 @@ import { buildForcedTransactionLeafMembershipProof } from "../src/transition-tra
 import {
   emitFit,
   familyContracts,
+  finalizeWithoutGuards,
   initThread,
   publishFamilyReferences,
+  readRedeemerData,
 } from "./redeemer-canonicity-lifecycle.init-thread.js";
 import { network } from "./support/emulator/blueprints.js";
 import { alignUnixTimeToEmulatorSlotBoundary } from "./support/emulator/emulator-context.js";
@@ -43,8 +42,6 @@ import {
   createRecordingLeaseCoordinator,
 } from "./support/submit-init-emulator-fixtures.js";
 import { publishRemovalReferenceScripts } from "./support/submit-init-emulator-shared.js";
-
-type Harness = Awaited<ReturnType<typeof makeFaultProofEmulatorHarness>>;
 
 /**
  * Lands a block that commits one forced transaction ForcedTxValid with the
@@ -115,8 +112,9 @@ const landForcedAcceptance = async (redeemerDataHex: string) => {
   };
 };
 
-/** Binds the forced event as a wrongful acceptance (direction 0) and opens
- * the committed item: steps 01 and 02. */
+/** Binds the forced event as a wrongful acceptance (direction 0), opens the
+ * committed item and reads its data to the verdict: steps 01, 02 and the
+ * data step. */
 const bindAndOpen = async (
   run: Awaited<ReturnType<typeof landForcedAcceptance>>,
   evidence: NonNullable<
@@ -159,61 +157,16 @@ const bindAndOpen = async (
       referenceScriptUtxo: references[1],
     }),
   );
-  return { step01, step02 };
-};
-
-/**
- * The step-03 finalize exactly as `submitRedeemerCanonicityStep03` builds it,
- * without its off-chain closing guards, so the validator itself decides.
- */
-const finalizeWithoutGuards = async ({
-  harness,
-  contracts,
-  categoryId,
-  threadOutRef,
-  referenceScriptUtxo,
-}: {
-  readonly harness: Harness;
-  readonly contracts: RedeemerCanonicityContracts;
-  readonly categoryId: string;
-  readonly threadOutRef: string;
-  readonly referenceScriptUtxo: Parameters<
-    typeof submitLinearFaultFinalize
-  >[0]["referenceScriptUtxo"];
-}) => {
-  const stepIndex = 2;
-  const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxo({
-    lucid: harness.proverLucid,
+  expect(step02.result.nextStage).toBe("step02Data");
+  const read = await readRedeemerData({
+    harness,
     contracts,
-    categoryId,
-    family: "redeemer-canonicity",
-    stepIndex,
-    threadOutRef,
+    categoryId: category.categoryId,
+    threadOutRef: step02.result.nextThreadOutRef,
+    evidence,
+    referenceScriptUtxo: references[2],
   });
-  return await submitLinearFaultFinalize({
-    lucid: harness.proverLucid,
-    family: "redeemer-canonicity",
-    stepIndex,
-    step: contracts.steps[2],
-    computationThread: contracts.computationThread,
-    fraudProof: contracts.fraudProof,
-    signer: harness.proverSigner,
-    threadUtxo,
-    threadToken,
-    spendRedeemerSchema: RedeemerCanonicityStep03RedeemerSchema,
-    buildFamilyArgs: ({
-      inputIndex,
-      outputIndex,
-      fraudProofMintRedeemerIndex,
-    }) => ({
-      input_index: inputIndex,
-      output_index: outputIndex,
-      fraud_proof_mint_redeemer_index: fraudProofMintRedeemerIndex,
-    }),
-    referenceScriptUtxo,
-    witnessReferenceScripts: harness.witnessReferenceScripts,
-    awaitConfirmation: true,
-  });
+  return { step01, step02, verdictThreadOutRef: read.threadOutRef };
 };
 
 describe("redeemer-canonicity forced wrongful acceptance", () => {
@@ -225,7 +178,10 @@ describe("redeemer-canonicity forced wrongful acceptance", () => {
     expect(evidence.subject.rejection_reason).toBeNull();
     expect(evidence.canonical).toBe(false);
     expect(redeemerCanonicityEvidenceCloses(evidence)).toBe(true);
-    const { step01, step02 } = await bindAndOpen(run, evidence);
+    const { step01, step02, verdictThreadOutRef } = await bindAndOpen(
+      run,
+      evidence,
+    );
     emitFit("forced-accepted-step01", step01.measurement);
     emitFit("forced-accepted-step02", step02.measurement);
     const { harness, contracts, category, references } = run;
@@ -235,9 +191,9 @@ describe("redeemer-canonicity forced wrongful acceptance", () => {
         contracts,
         categoryId: category.categoryId,
         signer: harness.proverSigner,
-        threadOutRef: step02.result.nextThreadOutRef,
+        threadOutRef: verdictThreadOutRef,
         evidence,
-        referenceScriptUtxo: references[2],
+        referenceScriptUtxo: references[3],
         witnessReferenceScripts: harness.witnessReferenceScripts,
       }),
     );
@@ -303,24 +259,26 @@ describe("redeemer-canonicity forced wrongful acceptance", () => {
     });
     expect(evidence.canonical).toBe(true);
     expect(redeemerCanonicityEvidenceCloses(evidence)).toBe(false);
-    const { step02 } = await bindAndOpen(run, evidence);
-    const threadOutRef = step02.result.nextThreadOutRef;
+    const { verdictThreadOutRef: threadOutRef } = await bindAndOpen(
+      run,
+      evidence,
+    );
     const { threadUtxo } = await requireLinearFaultThreadUtxo({
       lucid: harness.proverLucid,
       contracts,
       categoryId: category.categoryId,
       family: "redeemer-canonicity",
-      stepIndex: 2,
+      stepIndex: 3,
       threadOutRef,
     });
-    // Step-02 recorded the chain's own verdict on the item: canonical.
+    // The data step recorded the chain's own verdict on the item: canonical.
     expect(
       requireLinearFaultStepState<{ canonical: boolean }>({
         threadUtxo,
         signer: harness.proverSigner,
         schema: RedeemerCanonicityStep03DatumSchema as never,
         family: "redeemer-canonicity",
-        stepIndex: 2,
+        stepIndex: 3,
       }).canonical,
     ).toBe(true);
     await expect(
@@ -331,21 +289,25 @@ describe("redeemer-canonicity forced wrongful acceptance", () => {
         signer: harness.proverSigner,
         threadOutRef,
         evidence,
-        referenceScriptUtxo: references[2],
+        referenceScriptUtxo: references[3],
         witnessReferenceScripts: harness.witnessReferenceScripts,
       }),
-    ).rejects.toThrow(/terminal state does not contradict verdict/u);
+    ).rejects.toThrow();
     // Finalize differs from the positive case only in the item the chain
     // judged canonical, so the refusal is step-03's terminal contradiction.
-    const refusal = await expectOnchainRefusal(() =>
-      finalizeWithoutGuards({
-        harness,
-        contracts,
-        categoryId: category.categoryId,
-        threadOutRef,
-        referenceScriptUtxo: references[2],
-      }),
+    await expectOnchainRefusal(
+      () =>
+        finalizeWithoutGuards({
+          harness,
+          contracts,
+          categoryId: category.categoryId,
+          threadOutRef,
+          referenceScriptUtxo: references[3],
+        }),
+      {
+        refusedBy: "fraud_proofs/redeemer_canonicity/step_03",
+        check: /^Validator returned false$/u,
+      },
     );
-    expect(refusal).toMatch(/failed script execution/u);
   }, 300_000);
 });

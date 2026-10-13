@@ -54,10 +54,10 @@ describe("redeemerCanonicity V1", () => {
     const malformed = evidence(accepted, "1800");
     const canonical = evidence(rejected(0), "00");
     expect(malformed.canonical).toBe(false);
-    expect(malformed.trace).toBeNull();
+    expect(malformed.dataPlan?.canonical).toBe(false);
     expect(redeemerCanonicityEvidenceCloses(malformed)).toBe(true);
     expect(canonical.canonical).toBe(true);
-    expect(canonical.trace?.steps.length).toBeGreaterThan(2);
+    expect(canonical.dataPlan?.steps).toHaveLength(1);
     expect(redeemerCanonicityEvidenceCloses(canonical)).toBe(true);
   });
 
@@ -138,7 +138,15 @@ describe("redeemerCanonicity durable workflow", () => {
       txHash: "00".repeat(32),
       outputReference: null,
     };
-    const stages = ["step01", "step02", "step03", "proven", "removed"] as const;
+    const stages = [
+      "step01",
+      "step02",
+      "step02Data",
+      "step02Data",
+      "step03",
+      "proven",
+      "removed",
+    ] as const;
     let submitted = 0;
     const result = await runRedeemerCanonicityWorkflow({
       evidence: prepared,
@@ -153,14 +161,16 @@ describe("redeemerCanonicity durable workflow", () => {
         observe: async () => state,
         submit: async ({ action }) => {
           expect(action).toBe(
-            ["init", "bind", "decode", "finalize", "remove"][submitted],
+            ["init", "bind", "open", "decode", "decode", "finalize", "remove"][
+              submitted
+            ],
           );
           state = {
             stage: stages[submitted]!,
-            decodeCursor: submitted === 2 ? 1 : 0,
+            decodeCursor: submitted === 3 ? 7 : 0,
             txHash: submitted.toString(16).padStart(64, "0"),
             outputReference:
-              submitted === 4 ? null : `${submitted.toString()}#0`,
+              submitted === 6 ? null : `${submitted.toString()}#0`,
           };
           submitted += 1;
           return state;
@@ -173,7 +183,7 @@ describe("redeemerCanonicity durable workflow", () => {
 
   it("fails closed on checkpoint or stage regression", () => {
     const recorded: RedeemerCanonicityDurableState = {
-      stage: "step02",
+      stage: "step02Data",
       decodeCursor: 2,
       txHash: "11".repeat(32),
       outputReference: "11".repeat(32) + "#0",

@@ -67,6 +67,35 @@ export const RedeemerCanonicityStep02ArgsSchema = Data.Object({
 });
 export const RedeemerCanonicityStep02RedeemerSchema =
   faultProofStepRedeemerSchema(RedeemerCanonicityStep02ArgsSchema);
+export const RedeemerCanonicityStreamFrameSchema = Data.Enum([
+  Data.Object({ ListFrame: Data.Object({ started: Data.Boolean() }) }),
+  Data.Object({ MapFrame: Data.Object({ remaining: Data.Integer() }) }),
+  Data.Object({
+    ChunksFrame: Data.Object({
+      seen: Data.Integer(),
+      leading: Data.Boolean(),
+    }),
+  }),
+]);
+export const RedeemerCanonicityDataScanStateSchema = Data.Object({
+  bound: RedeemerCanonicityBoundSchema,
+  data_length: Data.Integer(),
+  chunk_hashes: Data.Array(Data.Bytes({ minLength: 32, maxLength: 32 })),
+  cursor: Data.Integer(),
+  stack_root: Data.Bytes(),
+});
+export const RedeemerCanonicityStep02DataDatumSchema =
+  faultProofStepDatumSchema(RedeemerCanonicityDataScanStateSchema);
+export const RedeemerCanonicityStep02DataArgsSchema = Data.Object({
+  input_index: Data.Integer(),
+  output_index: Data.Integer(),
+  window: Data.Bytes(),
+  revealed: Data.Array(RedeemerCanonicityStreamFrameSchema),
+  tail_root: Data.Bytes(),
+  node_budget: Data.Integer(),
+});
+export const RedeemerCanonicityStep02DataRedeemerSchema =
+  faultProofStepRedeemerSchema(RedeemerCanonicityStep02DataArgsSchema);
 export const RedeemerCanonicityStep03DatumSchema = faultProofStepDatumSchema(
   RedeemerCanonicityTerminalSchema,
 );

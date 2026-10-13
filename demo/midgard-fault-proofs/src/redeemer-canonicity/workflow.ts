@@ -5,6 +5,7 @@ export type RedeemerCanonicityDurableState = Readonly<{
     | "none"
     | "step01"
     | "step02"
+    | "step02Data"
     | "step03"
     | "proven"
     | "removed"
@@ -30,7 +31,7 @@ export type RedeemerCanonicityActuator = Readonly<{
   submit: (
     input: Readonly<{
       identity: string;
-      action: "init" | "bind" | "decode" | "finalize" | "remove";
+      action: "init" | "bind" | "open" | "decode" | "finalize" | "remove";
       decodeCursor: number;
       evidence: RedeemerCanonicityEvidence;
     }>,
@@ -52,6 +53,7 @@ const rank = (stage: RedeemerCanonicityDurableState["stage"]): number =>
     "none",
     "step01",
     "step02",
+    "step02Data",
     "step03",
     "proven",
     "removed",
@@ -72,7 +74,8 @@ export const reconcileRedeemerCanonicityState = ({
       "redeemerCanonicity: authenticated chain regressed behind journal",
     );
   if (
-    observed.stage === "step02" &&
+    observed.stage === "step02Data" &&
+    recorded.stage === "step02Data" &&
     observed.decodeCursor < recorded.decodeCursor
   )
     throw new Error("redeemerCanonicity: decode checkpoint regressed");
@@ -104,10 +107,12 @@ export const runRedeemerCanonicityWorkflow = async ({
         : state.stage === "step01"
           ? "bind"
           : state.stage === "step02"
-            ? "decode"
-            : state.stage === "step03"
-              ? "finalize"
-              : "remove";
+            ? "open"
+            : state.stage === "step02Data"
+              ? "decode"
+              : state.stage === "step03"
+                ? "finalize"
+                : "remove";
     const next = await actuator.submit({
       identity,
       action,

@@ -43,6 +43,8 @@ import {
   ResolvedOutputStep02DatumSchema,
   ResolvedOutputStep02RedeemerSchema,
   ResolvedOutputStep03DatumSchema,
+  ResolvedOutputStep04DatumDatumSchema,
+  ResolvedOutputStep04DatumRedeemerSchema,
   ResolvedOutputStep04DatumSchema,
   ResolvedOutputStep04RedeemerSchema,
   ResolvedOutputStep05DatumSchema,
@@ -53,6 +55,7 @@ import {
   submitResolvedOutputNonCanonicalStep02,
   submitResolvedOutputNonCanonicalStep03,
   submitResolvedOutputNonCanonicalStep04,
+  submitResolvedOutputNonCanonicalStep04Datum,
   submitResolvedOutputNonCanonicalStep05,
 } from "../../src/resolved-output-non-canonical/index.js";
 import { computationThreadOutputPredicate } from "../../src/tx-layout.js";
@@ -418,7 +421,11 @@ export const makeResolvedOutputStages = async (
       }),
     );
 
-  /** Drives the self-loop from `threadOutRef` until the thread leaves step 04. */
+  /**
+   * Drives the self-loop from `threadOutRef` until the thread leaves step 04:
+   * to the terminal step, or to the datum step when the output's envelope
+   * closes canonical over an inline datum.
+   */
   const reconstruct = async (
     threadOutRef: string,
     evidence: ResolvedOutputEvidence,
@@ -434,11 +441,72 @@ export const makeResolvedOutputStages = async (
       onTransition?.(captured, transitions);
       transitions += 1;
       current = captured.result.nextThreadOutRef;
-      if (captured.result.terminal) {
+      if (captured.result.nextStage !== "reconstructing") {
         return { threadOutRef: current, transitions, final: captured.result };
       }
     }
   };
+
+  const step04Datum = async (
+    threadOutRef: string,
+    evidence: ResolvedOutputEvidence,
+  ) =>
+    await capture(() =>
+      submitResolvedOutputNonCanonicalStep04Datum({
+        ...common(threadOutRef, 4),
+        evidence,
+      }),
+    );
+
+  /** Drives the datum step from `threadOutRef` until it hands over a verdict. */
+  const readDatum = async (
+    threadOutRef: string,
+    evidence: ResolvedOutputEvidence,
+    onStep?: (
+      captured: Captured<Awaited<ReturnType<typeof step04Datum>>["result"]>,
+      index: number,
+    ) => void,
+  ) => {
+    let current = threadOutRef;
+    let steps = 0;
+    for (;;) {
+      const captured = await step04Datum(current, evidence);
+      onStep?.(captured, steps);
+      steps += 1;
+      current = captured.result.nextThreadOutRef;
+      if (captured.result.finished) return { threadOutRef: current, steps };
+    }
+  };
+
+  /** The datum step with its arguments and successor handed over verbatim. */
+  const step04DatumRaw = async ({
+    threadOutRef,
+    args,
+    nextData,
+    nextStepIndex,
+  }: {
+    readonly threadOutRef: string;
+    readonly args: Record<string, unknown>;
+    /** Successor `DatumVerdictStateV1` or `CanonicalVerdictV1` data. */
+    readonly nextData: Record<string, unknown>;
+    readonly nextStepIndex: 4 | 5;
+  }) =>
+    await continueRaw({
+      threadOutRef,
+      stepIndex: 4,
+      nextStepIndex,
+      nextData,
+      nextDatumSchema:
+        nextStepIndex === 5
+          ? ResolvedOutputStep05DatumSchema
+          : ResolvedOutputStep04DatumDatumSchema,
+      redeemerSchema: ResolvedOutputStep04DatumRedeemerSchema,
+      args: (input_index, output_index) => ({
+        input_index,
+        output_index,
+        ...args,
+      }),
+    });
 
   /** Step 04 with the action and successor state handed to the validator verbatim. */
   const step04Raw = async ({
@@ -453,7 +521,7 @@ export const makeResolvedOutputStages = async (
     readonly action: unknown;
     /** Successor `ReconstructionV1` or `CanonicalVerdictV1` data. */
     readonly nextData: Record<string, unknown>;
-    readonly nextStepIndex: 3 | 4;
+    readonly nextStepIndex: 3 | 5;
   }) =>
     await continueRaw({
       threadOutRef,
@@ -461,7 +529,7 @@ export const makeResolvedOutputStages = async (
       nextStepIndex,
       nextData: { subject: evidence.subject, ...nextData },
       nextDatumSchema:
-        nextStepIndex === 4
+        nextStepIndex === 5
           ? ResolvedOutputStep05DatumSchema
           : ResolvedOutputStep04DatumSchema,
       redeemerSchema: ResolvedOutputStep04RedeemerSchema,
@@ -478,7 +546,7 @@ export const makeResolvedOutputStages = async (
   ) =>
     await capture(() =>
       submitResolvedOutputNonCanonicalStep05({
-        ...common(threadOutRef, 4),
+        ...common(threadOutRef, 5),
         evidence,
         witnessReferenceScripts: harness.witnessReferenceScripts,
       }),
@@ -491,14 +559,14 @@ export const makeResolvedOutputStages = async (
       contracts,
       categoryId: category.categoryId,
       family: FAMILY,
-      stepIndex: 4,
+      stepIndex: 5,
       threadOutRef,
     });
     return await submitLinearFaultFinalize({
       lucid: harness.proverLucid,
       family: FAMILY,
-      stepIndex: 4,
-      step: contracts.steps[4],
+      stepIndex: 5,
+      step: contracts.steps[5],
       computationThread: contracts.computationThread,
       fraudProof: contracts.fraudProof,
       signer: harness.proverSigner,
@@ -510,7 +578,7 @@ export const makeResolvedOutputStages = async (
         output_index: layout.outputIndex,
         fraud_proof_mint_redeemer_index: layout.fraudProofMintRedeemerIndex,
       }),
-      referenceScriptUtxo: references[4]!,
+      referenceScriptUtxo: references[5]!,
       witnessReferenceScripts: harness.witnessReferenceScripts,
       awaitConfirmation: true,
     });
@@ -698,6 +766,20 @@ export const makeResolvedOutputStages = async (
     ).data!;
   };
 
+  /** The live datum-step checkpoint a fresh process would resume from. */
+  const readDatumState = async (threadOutRef: string) => {
+    const [txHash, index] = threadOutRef.split("#");
+    const [utxo] = await harness.proverLucid.utxosByOutRef([
+      { txHash: txHash!, outputIndex: Number(index) },
+    ]);
+    if (utxo?.datum == null) throw new Error("datum-step checkpoint absent");
+    return (
+      Data.from(utxo.datum, ResolvedOutputStep04DatumDatumSchema as never) as {
+        data: Data.Static<typeof ResolvedOutputStep04DatumDatumSchema>["data"];
+      }
+    ).data!;
+  };
+
   return {
     references,
     certificateReference,
@@ -712,6 +794,10 @@ export const makeResolvedOutputStages = async (
     step04,
     step04Raw,
     reconstruct,
+    step04Datum,
+    step04DatumRaw,
+    readDatum,
+    readDatumState,
     step05,
     step05Raw,
     cancel,

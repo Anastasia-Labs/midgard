@@ -19,6 +19,7 @@ import {
 import type { ResolvedOutputNonCanonicalContracts } from "./contracts.js";
 import {
   ResolvedOutputStep02DatumSchema,
+  ResolvedOutputStep04DatumDatumSchema,
   ResolvedOutputStep03DatumSchema,
   ResolvedOutputStep04DatumSchema,
   ResolvedOutputStep05DatumSchema,
@@ -35,6 +36,7 @@ export const RESOLVED_OUTPUT_NON_CANONICAL_MANIFEST_CONTRACTS = Object.freeze({
   step02: "fraudProofResolvedOutputNonCanonicalStep02",
   step03: "fraudProofResolvedOutputNonCanonicalStep03",
   step04: "fraudProofResolvedOutputNonCanonicalStep04",
+  step04Datum: "fraudProofResolvedOutputNonCanonicalStep04Datum",
   step05: "fraudProofResolvedOutputNonCanonicalStep05",
   computationThreadMint: "computationThreadMint",
   fraudProofMint: "fraudProofMint",
@@ -47,6 +49,7 @@ export type ResolvedOutputNonCanonicalReferenceScripts = Readonly<{
   step02: UTxO;
   step03: UTxO;
   step04: UTxO;
+  step04Datum: UTxO;
   step05: UTxO;
   fieldPreimageCertificateMint: UTxO;
   witnesses: FaultProofWitnessReferenceScripts & {
@@ -115,6 +118,11 @@ export const bindResolvedOutputNonCanonicalReferenceScripts = ({
       contractName: names.step04,
       utxo: referenceScripts.step04,
     }),
+    step04Datum: bindReference({
+      binding,
+      contractName: names.step04Datum,
+      utxo: referenceScripts.step04Datum,
+    }),
     step05: bindReference({
       binding,
       contractName: names.step05,
@@ -161,6 +169,7 @@ export const loadManifestBoundResolvedOutputNonCanonicalConfig = async (
       ResolvedOutputStep02DatumSchema,
       ResolvedOutputStep03DatumSchema,
       ResolvedOutputStep04DatumSchema,
+      ResolvedOutputStep04DatumDatumSchema,
       ResolvedOutputStep05DatumSchema,
     ],
   });
@@ -192,9 +201,9 @@ export const resolvedOutputNonCanonicalConfigFromBinding = (input: {
   };
   const chain = localContracts.resolvedOutputNonCanonical;
   const certificate = binding.fieldPreimageCertificate;
-  if (chain === undefined || chain.steps.length !== 5) {
+  if (chain === undefined || chain.steps.length !== 6) {
     throw new Error(
-      "resolvedOutputNonCanonical deployment changed its five-step topology",
+      "resolvedOutputNonCanonical deployment changed its six-step topology",
     );
   }
   if (certificate === null) {
@@ -215,6 +224,7 @@ export const resolvedOutputNonCanonicalConfigFromBinding = (input: {
           "fraud_proofs/resolved_output_non_canonical/step_02.main.spend",
           "fraud_proofs/resolved_output_non_canonical/step_03.main.spend",
           "fraud_proofs/resolved_output_non_canonical/step_04.main.spend",
+          "fraud_proofs/resolved_output_non_canonical/step_04_datum.main.spend",
           "fraud_proofs/resolved_output_non_canonical/step_05.main.spend",
         ][index]!,
         referenceOutRef: [
@@ -222,6 +232,7 @@ export const resolvedOutputNonCanonicalConfigFromBinding = (input: {
           referenceScripts.step02,
           referenceScripts.step03,
           referenceScripts.step04,
+          referenceScripts.step04Datum,
           referenceScripts.step05,
         ][index]!.txHash.concat(
           "#",
@@ -230,6 +241,7 @@ export const resolvedOutputNonCanonicalConfigFromBinding = (input: {
             referenceScripts.step02,
             referenceScripts.step03,
             referenceScripts.step04,
+            referenceScripts.step04Datum,
             referenceScripts.step05,
           ][index]!.outputIndex.toString(),
         ),

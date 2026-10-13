@@ -22,6 +22,7 @@ export const RESOLVED_OUTPUT_NON_CANONICAL_BLUEPRINT_TITLES = [
   "fraud_proofs/resolved_output_non_canonical/step_02.main.spend",
   "fraud_proofs/resolved_output_non_canonical/step_03.main.spend",
   "fraud_proofs/resolved_output_non_canonical/step_04.main.spend",
+  "fraud_proofs/resolved_output_non_canonical/step_04_datum.main.spend",
   "fraud_proofs/resolved_output_non_canonical/step_05.main.spend",
 ] as const;
 
@@ -35,6 +36,7 @@ export type ResolvedOutputNonCanonicalAppliedStep = Readonly<{
 
 export type ResolvedOutputNonCanonicalContracts = Readonly<{
   steps: readonly [
+    ResolvedOutputNonCanonicalAppliedStep,
     ResolvedOutputNonCanonicalAppliedStep,
     ResolvedOutputNonCanonicalAppliedStep,
     ResolvedOutputNonCanonicalAppliedStep,
@@ -62,6 +64,7 @@ export type ResolvedOutputNonCanonicalManifest = Readonly<{
   categoryId: typeof RESOLVED_OUTPUT_NON_CANONICAL_ID;
   network: Network;
   steps: readonly [
+    ResolvedOutputNonCanonicalAppliedStep,
     ResolvedOutputNonCanonicalAppliedStep,
     ResolvedOutputNonCanonicalAppliedStep,
     ResolvedOutputNonCanonicalAppliedStep,
@@ -129,6 +132,7 @@ export const applyResolvedOutputNonCanonicalScripts = ({
     adapt(steps[2], 2),
     adapt(steps[3], 3),
     adapt(steps[4], 4),
+    adapt(steps[5], 5),
   ];
 };
 

@@ -23,6 +23,11 @@ import {
 } from "@al-ft/midgard-sdk";
 import { buildCanonicalMidgardLedgerOutputMaterial } from "@al-ft/midgard-validation";
 
+import {
+  planResolvedOutputDatum,
+  type ResolvedOutputDatumPlan,
+} from "./datum-plan.js";
+
 export const RESOLVED_OUTPUT_NON_CANONICAL_CATEGORY =
   "resolvedOutputNonCanonical" as const;
 
@@ -70,6 +75,11 @@ export type ResolvedOutputNonCanonicalEvidence = Readonly<{
   inputFieldPreimageHex: string;
   carriage: "Inline" | "RawUtxo" | "Certified";
   scanControls: readonly MidgardLedgerOutputScanControl[];
+  /**
+   * The read of the inline datum of an output whose envelope closes
+   * canonical; `null` when the envelope faults or the output has no datum.
+   */
+  datumPlan: ResolvedOutputDatumPlan | null;
 }>;
 
 export type ResolvedOutputEvidence = ResolvedOutputNonCanonicalEvidence;
@@ -111,6 +121,34 @@ const deriveScanControls = (
       return Object.freeze(controls);
   }
   return fail("output scan exceeded its strict progress bound");
+};
+
+/**
+ * The envelope's closing control: the first authenticated control the
+ * zero-byte closing edge accepts, or `null` when the envelope faults.
+ */
+export const resolvedOutputEnvelopeTerminal = (
+  controls: readonly MidgardLedgerOutputScanControl[],
+  totalLength: number,
+): MidgardLedgerOutputScanControl | null => {
+  for (const control of controls) {
+    const finished = finishMidgardLedgerOutputScan({ control, totalLength });
+    if (finished !== null) return finished;
+  }
+  return null;
+};
+
+const deriveDatumPlan = (
+  output: Buffer,
+  controls: readonly MidgardLedgerOutputScanControl[],
+): ResolvedOutputDatumPlan | null => {
+  const terminal = resolvedOutputEnvelopeTerminal(controls, output.length);
+  if (terminal === null || terminal.datumOffset < 0) return null;
+  return planResolvedOutputDatum({
+    output,
+    datumOffset: terminal.datumOffset,
+    datumLength: terminal.datumLength,
+  });
 };
 
 export const resolvedOutputScanControlData = (
@@ -265,6 +303,10 @@ export const prepareResolvedOutputNonCanonicalEvidence = ({
       throw cause;
     outputIsNonCanonical = true;
   }
+  const scanControls = deriveScanControls(outputBytes);
+  const datumPlan = deriveDatumPlan(outputBytes, scanControls);
+  if (datumPlan !== null && datumPlan.canonical === outputIsNonCanonical)
+    return fail("the output's datum reading differs from its decoding");
   const evidence = Object.freeze({
     subject,
     coordinate,
@@ -279,7 +321,8 @@ export const prepareResolvedOutputNonCanonicalEvidence = ({
     carriage: selectMidgardFieldCarriageTier(
       material.fieldPreimages[coordinate.sourceKind]!.length,
     ),
-    scanControls: deriveScanControls(outputBytes),
+    scanControls,
+    datumPlan,
   });
   if (!terminalVerdictContradiction(subject, outputIsNonCanonical))
     return fail("authenticated output agrees with the operator verdict");

@@ -16,13 +16,16 @@ import {
   submitTransactionOutputNonCanonicalStep02,
   submitTransactionOutputNonCanonicalStep03Datum,
   submitTransactionOutputNonCanonicalStep04,
-  TRANSACTION_OUTPUT_DATUM_NODE_BUDGET,
   transactionOutputDatumScanState,
   transactionOutputDatumStepArgs,
 } from "../src/transaction-output-non-canonical/index.js";
 import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
-import { captureEmulatorSubmission } from "./support/emulator/measurement.js";
+import {
+  captureEmulatorSubmission,
+  type CompleteSignedTransactionMeasurement,
+} from "./support/emulator/measurement.js";
 import { makeNativeTx } from "./support/emulator/native-tx.js";
+import { densePlutusData } from "./support/dense-plutus-data.js";
 import { nodeForcedVerdict } from "./support/emulator/node-forced-verdict.js";
 import { setupFraudulentBlock } from "./support/submit-init-emulator-fixtures.js";
 import {
@@ -39,13 +42,10 @@ import {
   forcedDatumScenario,
   hex,
   makeHarness,
-  MOST_NODES_DATUM,
   nodeTransaction,
   NON_CANONICAL_DATUM,
-  planOf,
   scanToDatum,
   stepCommon,
-  WORST_DENSITY_DATUM,
 } from "./transaction-output-non-canonical-datum-lifecycle.scenario.js";
 import {
   committedInclusions,
@@ -360,38 +360,55 @@ describe("transactionOutputNonCanonical inline-datum verdict", () => {
     coverage.reason("OutputNonCanonical", "accepted_invalid");
   }, 900_000);
 
-  it("fits the datum step at the costliest node shape and the maximum datum length, and counts the steps of the densest datum", async () => {
-    // Plan-only: the most nodes a maximum-length datum holds, and the
-    // transactions an honest read of it takes.
-    const densest = planOf(MOST_NODES_DATUM);
-    expect(densest.canonical).toBe(true);
-    expect(densest.steps).toHaveLength(
-      Math.ceil(MOST_NODES_DATUM.length / TRANSACTION_OUTPUT_DATUM_NODE_BUDGET),
-    );
-    // Measured: every transaction of a maximum-length generic-constructor
-    // datum, falsely rejected and convicted.
-    const output = outputWithInlineDatum(WORST_DENSITY_DATUM);
-    expect(output).toHaveLength(MAXIMUM_OUTPUT_BYTES);
-    const s = await forcedDatumScenario(nodeTransaction(output));
-    expect(s.evidence.canonical).toBe(true);
-    const thread = await s.bindToDatum();
-    const verdict = await datumToVerdict({
-      registered: s.registered,
-      threadOutRef: thread,
-      evidence: s.evidence,
-      label: "worst-density",
-    });
-    expect(verdict.datumSteps).toBe(s.evidence.datumPlan!.steps.length);
-    record("tonc_datum_verdict_step_max", verdict.costliest!);
-    const minted = await submitTransactionOutputNonCanonicalStep04({
-      ...stepCommon(s.registered),
-      threadOutRef: verdict.threadOutRef,
-      evidence: s.evidence,
-      referenceScriptUtxo: s.registered.references[4]!,
-      witnessReferenceScripts: s.harness.witnessReferenceScripts,
-    });
-    expect(minted.fraudProofUnit).toBeTruthy();
-  }, 1_800_000);
+  it("convicts forced rejections of maximum outputs whose inline datums are the densest canonical Data, fitting every datum step within its planned memory and one transaction's budget", async () => {
+    const datumLength = MAXIMUM_OUTPUT_BYTES - DATUM_OFFSET;
+    let costliest: CompleteSignedTransactionMeasurement | undefined;
+    for (const shape of [
+      "map-chain",
+      "generic-constructors",
+      "flat-integers",
+      "chunked-bytes",
+    ] as const) {
+      const datum = densePlutusData(shape, datumLength);
+      expect(isCanonicalMidgardDataStream(datum)).toBe(true);
+      const output = outputWithInlineDatum(datum);
+      expect(output).toHaveLength(MAXIMUM_OUTPUT_BYTES);
+      const s = await forcedDatumScenario(nodeTransaction(output));
+      expect(s.evidence.canonical).toBe(true);
+      const plan = s.evidence.datumPlan!;
+      const thread = await s.bindToDatum();
+      const verdict = await datumToVerdict({
+        registered: s.registered,
+        threadOutRef: thread,
+        evidence: s.evidence,
+        label: `dense-${shape}`,
+        // Never above the planned estimate, which the planner keeps below
+        // one transaction's budget.
+        onStep: ({ executionMemory, executionSteps }, index) => {
+          expect(executionMemory).toBeLessThanOrEqual(
+            BigInt(plan.steps[index]!.estimatedMemory),
+          );
+          expect(executionMemory).toBeLessThanOrEqual(13_200_000n);
+          expect(executionSteps).toBeLessThanOrEqual(8_000_000_000n);
+        },
+      });
+      expect(verdict.datumSteps).toBe(plan.steps.length);
+      if (
+        costliest === undefined ||
+        verdict.costliest!.executionMemory > costliest.executionMemory
+      )
+        costliest = verdict.costliest;
+      const minted = await submitTransactionOutputNonCanonicalStep04({
+        ...stepCommon(s.registered),
+        threadOutRef: verdict.threadOutRef,
+        evidence: s.evidence,
+        referenceScriptUtxo: s.registered.references[4]!,
+        witnessReferenceScripts: s.harness.witnessReferenceScripts,
+      });
+      expect(minted.fraudProofUnit).toBeTruthy();
+    }
+    record("tonc_datum_verdict_step_max", costliest!);
+  }, 3_600_000);
 
   it("writes the measured fit when asked", async () => {
     for (const [name, measurement] of fit) {

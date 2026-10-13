@@ -597,6 +597,8 @@ export const DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_TOKEN_NAMES = Object.freeze({
     "V1FpResolvedOutputS03",
   "V1 fraud-proof resolved-output-non-canonical step-04":
     "V1FpResolvedOutputS04",
+  "V1 fraud-proof resolved-output-non-canonical step-04 datum":
+    "V1FpResolvedOutputS04Datum",
   "V1 fraud-proof resolved-output-non-canonical step-05":
     "V1FpResolvedOutputS05",
   "V1 fraud-proof mint-declared-asset-limit step-01": "V1FpMintAssetLimitS01",
@@ -650,6 +652,7 @@ export const DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_TOKEN_NAMES = Object.freeze({
   "V1 fraud-proof observer-order-invalid step-04": "V1FpObserverOrderS04",
   "V1 fraud-proof redeemer-canonicity step-01": "V1FpRedeemerCanonS01",
   "V1 fraud-proof redeemer-canonicity step-02": "V1FpRedeemerCanonS02",
+  "V1 fraud-proof redeemer-canonicity step-02 data": "V1FpRedeemerCanonS02Data",
   "V1 fraud-proof redeemer-canonicity step-03": "V1FpRedeemerCanonS03",
   "V1 fraud-proof receive-purpose-language step-01": "V1FpReceivePurposeS01",
   "V1 fraud-proof receive-purpose-language step-02": "V1FpReceivePurposeS02",

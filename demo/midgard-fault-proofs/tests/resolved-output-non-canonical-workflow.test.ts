@@ -10,7 +10,7 @@ import {
 /**
  * The submitter action owed at each durable stage, written out from the
  * family's documented step order (init, steps 01-03, the reconstruction loop,
- * step 05, removal, then nothing) rather than read back out of the production
+ * the datum loop, step 05, removal, then nothing) rather than read back out of the production
  * switch. A dropped stage, a renamed action, or a wrong edge for the three
  * stages the old five-sample test never exercised fails here.
  */
@@ -22,6 +22,7 @@ const EXPECTED_NEXT_ACTION: Readonly<
   step02: "submitStep02",
   step03: "submitStep03",
   reconstructing: "submitReconstruction",
+  step04Datum: "submitStep04Datum",
   step05: "submitStep05",
   proven: "removeDescendants",
   removed: "done",
@@ -29,13 +30,14 @@ const EXPECTED_NEXT_ACTION: Readonly<
 };
 
 describe("resolvedOutputNonCanonical durable workflow", () => {
-  it("declares exactly the nine durable stages the driver reconciles", () => {
+  it("declares exactly the ten durable stages the driver reconciles", () => {
     expect([...RESOLVED_OUTPUT_STAGES]).toEqual([
       "none",
       "step01",
       "step02",
       "step03",
       "reconstructing",
+      "step04Datum",
       "step05",
       "proven",
       "removed",

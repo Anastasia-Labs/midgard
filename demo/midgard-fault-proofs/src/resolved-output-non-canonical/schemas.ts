@@ -135,6 +135,38 @@ export const ResolvedOutputStep04ArgsSchema = Data.Object({
 export const ResolvedOutputStep04RedeemerSchema = faultProofStepRedeemerSchema(
   ResolvedOutputStep04ArgsSchema,
 );
+export const ResolvedOutputStreamFrameSchema = Data.Enum([
+  Data.Object({ ListFrame: Data.Object({ started: Data.Boolean() }) }),
+  Data.Object({ MapFrame: Data.Object({ remaining: Data.Integer() }) }),
+  Data.Object({
+    ChunksFrame: Data.Object({
+      seen: Data.Integer(),
+      leading: Data.Boolean(),
+    }),
+  }),
+]);
+export const ResolvedOutputDatumVerdictStateSchema = Data.Object({
+  subject: ResolvedOutputVerdictSubjectSchema,
+  item_commitment: Data.Bytes(),
+  datum_start: Data.Integer(),
+  datum_end: Data.Integer(),
+  cursor: Data.Integer(),
+  stack_root: Data.Bytes(),
+});
+export const ResolvedOutputStep04DatumDatumSchema = faultProofStepDatumSchema(
+  ResolvedOutputDatumVerdictStateSchema,
+);
+export const ResolvedOutputStep04DatumArgsSchema = Data.Object({
+  input_index: Data.Integer(),
+  output_index: Data.Integer(),
+  chunk_proof: BoundedItemChunkProofSchema,
+  next_chunk_proof: Data.Nullable(BoundedItemChunkProofSchema),
+  revealed: Data.Array(ResolvedOutputStreamFrameSchema),
+  tail_root: Data.Bytes(),
+  node_budget: Data.Integer(),
+});
+export const ResolvedOutputStep04DatumRedeemerSchema =
+  faultProofStepRedeemerSchema(ResolvedOutputStep04DatumArgsSchema);
 export const ResolvedOutputStep05DatumSchema = faultProofStepDatumSchema(
   ResolvedOutputCanonicalVerdictSchema,
 );
