@@ -378,17 +378,20 @@ test data_head_refusal_authenticates_noncanonical_constructor_and_refuses_bad_vi
     redeemer_item_proof_v1.step_v1(head, witness) == Some(
       redeemer_item_proof_v1.RedeemerItemProofInvalid,
     ),
-    cek_data_traverse_v1.noncanonical_definite_sequence_head_v1(
+    cek_data_traverse_v1.unreadable_v1(
       traversal,
       Some(#"d8798101"),
+      cek_data_traverse_v1.NoAction,
     ),
-    !cek_data_traverse_v1.noncanonical_definite_sequence_head_v1(
+    !cek_data_traverse_v1.unreadable_v1(
       traversal,
       Some(#"d87981"),
+      cek_data_traverse_v1.NoAction,
     ),
-    !cek_data_traverse_v1.noncanonical_definite_sequence_head_v1(
+    !cek_data_traverse_v1.unreadable_v1(
       traversal,
       Some(#"d879810182"),
+      cek_data_traverse_v1.NoAction,
     ),
     redeemer_item_proof_v1.step_v1(
       head,
@@ -431,13 +434,15 @@ test data_head_refusal_cannot_reject_honest_constructor_under_wrong_action_or_vi
     ),
   )
   and {
-    !cek_data_traverse_v1.noncanonical_definite_sequence_head_v1(
+    !cek_data_traverse_v1.unreadable_v1(
       traversal,
       Some(#"d8799f01ff"),
+      cek_data_traverse_v1.NoAction,
     ),
-    !cek_data_traverse_v1.noncanonical_definite_sequence_head_v1(
+    !cek_data_traverse_v1.unreadable_v1(
       traversal,
       Some(#"d87981"),
+      cek_data_traverse_v1.NoAction,
     ),
     redeemer_item_proof_v1.step_v1(
       head,

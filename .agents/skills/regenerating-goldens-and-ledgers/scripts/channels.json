@@ -123,6 +123,37 @@
       }
     },
     {
+      "id": "cek-data-canonical-corpus-v1",
+      "kind": "golden",
+      "summary": "Canonical Data corpus: accepted spans bound to the TypeScript traverse summary and unreadable spans to their stage, rendered as a whole generated Aiken module run by the honest traverse driver.",
+      "generators": [
+        "demo/midgard-core/scripts/generate-cek-data-canonical-corpus-v1-goldens.mjs"
+      ],
+      "packageScripts": [
+        "demo/midgard-core:fixtures:cek-data-canonical-corpus-v1:sync",
+        "demo/midgard-core:fixtures:cek-data-canonical-corpus-v1:check"
+      ],
+      "producers": ["demo/midgard-core"],
+      "inputs": [
+        "@golden-channel",
+        "demo/midgard-core/tests/fixtures/cek-data-canonical-corpus-v1.vectors.mjs"
+      ],
+      "outputs": [
+        "onchain/aiken/lib/midgard/cek-data-canonical-corpus-v1-golden.test.ak"
+      ],
+      "aikenImportsOfOutputs": true,
+      "sync": {
+        "run": "pnpm --dir demo/midgard-core run fixtures:cek-data-canonical-corpus-v1:sync"
+      },
+      "check": {
+        "run": "pnpm --dir demo/midgard-core run fixtures:cek-data-canonical-corpus-v1:check"
+      },
+      "ci": {
+        "workflow": ".github/workflows/midgard-node-ci.yml",
+        "step": "Check canonical Data corpus golden vectors"
+      }
+    },
+    {
       "id": "mpf-node-encoding-v1",
       "kind": "golden",
       "summary": "MPF node encoding (leaf suffix markers, leaf hashes, proofs and roots) from the MPF library's Trie alone: JSON fixture plus a whole generated Aiken module.",

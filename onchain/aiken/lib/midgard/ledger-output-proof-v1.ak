@@ -1219,7 +1219,16 @@ fn datum_traversal_step(
             when
               cek_data_traverse_v1.step_v1(datum_control, source_bytes, action)
             is {
-              None -> None
+              None ->
+                if cek_data_traverse_v1.unreadable_v1(
+                  datum_control,
+                  source_bytes,
+                  action,
+                ) {
+                  Some(LedgerOutputProofInvalidOutput)
+                } else {
+                  None
+                }
               Some(next_datum) ->
                 advanced(
                   LedgerOutputProofControlV1 {

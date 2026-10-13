@@ -239,12 +239,12 @@ pub fn invalid_tail(state: normalized.OuterExecution) -> Bool {
 }
 
 // The source authenticator has pinned this exact window to the current item.
-// Decoder failure is never invalidity: only the shared bounded predicate is.
+// Decoder failure is never invalidity: only the traverse's Unreadable is.
 pub fn invalid_data(state: normalized.OuterExecution) -> Bool {
   expect state.current.mode == item.mode_data
   expect state.current.stage == item.stage_data
   expect item.RedeemerItemTraverseData { action: traversal.NoAction } = state.action
   expect state.next == state.current
   expect Some(current) = state.current.traversal
-  traversal.noncanonical_data_head_v1(current, state.source_bytes)
+  traversal.unreadable_v1(current, state.source_bytes, traversal.NoAction)
 }

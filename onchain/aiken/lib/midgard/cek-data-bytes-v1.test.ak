@@ -205,9 +205,9 @@ test rejects_noncanonical_and_impossible_framing_lengths() {
         |> bytearray.concat(builtin.replicate_byte(65, 106))
         |> bytearray.concat(#"416aff"),
     ) == None,
-    // A short leading chunk measures to a canonical total length; its
-    // layout is refused by the content pass.
-    measured_length(indefinite([chunk(1), chunk(64)])) == Some(65),
+    // A short leading chunk is refused by the measuring pass at the next
+    // chunk header, although the total length would be canonical.
+    measured_length(indefinite([chunk(1), chunk(64)])) == None,
     trace_refused(
       cek_data_bytes_v1.initial_measure_control_v1(0),
       indefinite([chunk(1), chunk(64)]),

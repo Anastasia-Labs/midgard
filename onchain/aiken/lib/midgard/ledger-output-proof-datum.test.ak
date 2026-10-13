@@ -3,8 +3,8 @@
 //// family, over the honest span/scalar claims a step dispatcher action
 //// carries (see
 //// docs/fault-proofs/decisions/0004-checkpointed-ledger-output-facts.md).
-//// The chain below streams a bignum-tagged large constructor
-//// (`d86682c2490100000000000000009f01ff`), so a single traversal exercises
+//// The chain below streams a large constructor with an eight-byte index
+//// (`d866821b01000000000000009f01ff`), so a single traversal exercises
 //// every datum stage role: head large-constructor, large-constructor
 //// streaming, large-fields completion, head scalar, integer advance and
 //// attach, close, list fold, frame finalize and the terminal finish
@@ -26,11 +26,10 @@ use midgard/ledger_output_proof_stages as narrow
 use midgard/ledger_output_proof_v1 as proof
 use midgard/validation_merkle_v1 as merkle
 
-/// `a3 00 address 01 empty-value 02 bytes(17)` where the datum item is the
-/// large-constructor source of
-/// `cek_data_traverse_v1.test.streams_large_constructor_before_fields_and_matches_typescript`.
+/// `a3 00 address 01 empty-value 02 bytes(15)` where the datum item is a large
+/// constructor (index 2^56, minimal eight-byte head) over one integer field.
 const large_datum_output =
-  #"a300581d7811111111111111111111111111111111111111111111111111111111018200a00251d86682c2490100000000000000009f01ff"
+  #"a300581d7811111111111111111111111111111111111111111111111111111111018200a0024fd866821b01000000000000009f01ff"
 
 fn one_chunk_material(
   output_index: Int,
@@ -417,7 +416,8 @@ test datum_family_golden_agreement_over_a_streamed_large_constructor() {
     finished.stage == proof.stage_terminal,
     {
       expect Some(summary) = traverse.finalize_v1(terminal_datum)
-      summary.root == #"844cdd8ac8dc97d87e4ed149da121054504365b523034a804a12c014d55c2c44"
+      // The TypeScript twin's summary root for the datum item.
+      summary.root == #"b5822d21df1af70ea902b57f6bebc7693e64cf2be6cb34804b6cb346e8baacfb"
     },
   }
 }
@@ -627,58 +627,32 @@ test datum_family_golden_agreement_over_a_streamed_chunked_integer() {
   }
 }
 
-test datum_family_golden_agreement_over_a_chunked_constructor_alternative() {
+/// A tag-102 index spelled as a chunked bignum is not canonical Data: no head
+/// action opens it on either path, and the typed step reports the output
+/// invalid on the exact head window.
+test chunked_constructor_alternative_is_unreadable_at_the_head() {
   let output = #"a300581d7811111111111111111111111111111111111111111111111111111111018200a002584bd86682c25f5840010000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000004100ff80"
-  let Pair(ready, chunk_proof) = datum_ready(output)
-  let opened = same_datum_step(
-    ready,
-    traverse.HeadLargeConstructor,
-    chunk_proof,
-    output,
-  )
-  let large_fields = same_no_action_while(
-    opened,
-    traverse.stage_large_constructor,
-    chunk_proof,
-    output,
-    256,
-  )
-  expect Some(integer) = active_datum(large_fields).integer
-  let fields = same_datum_step(
-    large_fields,
-    traverse.NoAction,
-    chunk_proof,
-    output,
-  )
-  and {
-    integer.source_length == 71,
-    integer.memory == 69,
-    active_datum(fields).stage == traverse.stage_fold,
+  let Pair(ready, _chunk_proof) = datum_ready(output)
+  let window = Some(recorded_window(ready, output))
+  let head = proof.LedgerOutputProofDatum {
+    action: traverse.HeadLargeConstructor,
+    window,
   }
-}
-
-test chunked_constructor_break_without_fields_header_is_refused_by_both_paths() {
-  let output = #"a300581d7811111111111111111111111111111111111111111111111111111111018200a002584ad86682c25f5840010000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000004100ff"
-  let Pair(ready, chunk_proof) = datum_ready(output)
-  let opened = same_datum_step(
-    ready,
-    traverse.HeadLargeConstructor,
-    chunk_proof,
-    output,
-  )
-  let full = same_datum_step(opened, traverse.NoAction, chunk_proof, output)
-  let partial = same_datum_step(full, traverse.NoAction, chunk_proof, output)
-  let datum_control = active_datum(partial)
-  let typed_witness = proof.LedgerOutputProofDatum {
+  let head_data: Data = head
+  let no_action = proof.LedgerOutputProofDatum {
     action: traverse.NoAction,
-    window: Some(recorded_window(partial, output)),
+    window,
   }
-  let witness_data: Data = typed_witness
-  expect proof.step_v1(partial, typed_witness) == None
-  narrow_datum.advance_large_constructor(
-    raw.open(proof.encode_control_v1(partial)),
-    witness_data,
-  ) == None
+  and {
+    proof.step_v1(ready, head) == None,
+    narrow_datum.head_large_constructor(
+      raw.open(proof.encode_control_v1(ready)),
+      head_data,
+    ) == None,
+    proof.step_v1(ready, no_action) == Some(
+      proof.LedgerOutputProofInvalidOutput,
+    ),
+  }
 }
 
 // An ordinary integer attestation must not authenticate a large-constructor
