@@ -21,22 +21,26 @@ test evidence_must_be_captured_after_accused_interval() {
   }
 }
 
-test earliest_merge_is_excluded_from_capture_and_completion() {
+test earliest_merge_is_excluded_from_capture() {
   let merge = 20 + block_maturity_duration_v1
   and {
     horizon.capture_permitted(20, 20, merge - 2, merge - 1),
-    horizon.completion_permitted(20, merge - 1),
     !horizon.capture_permitted(20, 20, merge - 1, merge),
-    !horizon.completion_permitted(20, merge),
-    !horizon.completion_permitted(20, merge + 1),
   }
 }
 
-test stale_thread_does_not_extend_deadline_when_queue_stalls() {
-  let terminal_time = 20 + block_maturity_duration_v1 + 1
+// The coverage half alone has no merge deadline; callers that use it rely on
+// the terminal's block_time bound (state_queue.require_completed_fraud_witness).
+test coverage_capture_reads_only_the_header_end() {
+  let merge = 20 + block_maturity_duration_v1
   and {
-    horizon.capture_permitted(20, 20, 21, 22),
-    !horizon.completion_permitted(20, terminal_time),
+    !horizon.captured_after_coverage(20, 19, 21),
+    !horizon.captured_after_coverage(20, 20, 21),
+    horizon.captured_after_coverage(20, 21, 22),
+    !horizon.captured_after_coverage(20, 22, 21),
+    !horizon.captured_after_coverage(-1, 21, 22),
+    horizon.captured_after_coverage(20, merge - 1, merge),
+    horizon.captured_after_coverage(20, merge, merge + 1),
   }
 }
 
