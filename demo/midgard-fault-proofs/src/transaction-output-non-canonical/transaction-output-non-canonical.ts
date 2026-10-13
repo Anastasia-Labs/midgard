@@ -21,6 +21,11 @@ import {
 } from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 
+import {
+  planTransactionOutputDatum,
+  type TransactionOutputDatumPlan,
+} from "./datum-plan.js";
+
 export const TRANSACTION_OUTPUT_NON_CANONICAL_CATEGORY =
   "transactionOutputNonCanonical" as const;
 export const TRANSACTION_OUTPUT_NON_CANONICAL_PROPOSED_ID = "00000029" as const;
@@ -86,8 +91,13 @@ export type TransactionOutputEvidence = TransactionOutputFinding & {
   readonly itemHash: string;
   readonly chunkHashes: readonly string[];
   readonly carriage: "Inline" | "RawUtxo" | "Certified";
+  /** The output is canonical: its envelope and, if it has one, its datum. */
   readonly canonical: boolean;
+  /** The envelope scan alone reached its canonical terminal. */
+  readonly envelopeCanonical: boolean;
   readonly scanControls: readonly MidgardLedgerOutputScanControl[];
+  /** The datum steps after a canonical envelope with an inline datum. */
+  readonly datumPlan: TransactionOutputDatumPlan | null;
   readonly decisiveFaultHolds: boolean;
 };
 
@@ -156,6 +166,16 @@ export const prepareTransactionOutputEvidence = ({
   if (item.length > TRANSACTION_OUTPUT_NON_CANONICAL_MAX_OUTPUT_BYTES)
     fail("output item belongs to fieldItemWidthIllegal");
   const scan = deriveScan(item);
+  const terminal = scan.controls.at(-1)!;
+  const datumPlan =
+    scan.canonical && terminal.datumOffset >= 0
+      ? planTransactionOutputDatum({
+          item,
+          datumOffset: terminal.datumOffset,
+          datumLength: terminal.datumLength,
+        })
+      : null;
+  const canonical = scan.canonical && (datumPlan?.canonical ?? true);
   return Object.freeze({
     ...finding,
     fieldPreimageHex: Buffer.from(fieldPreimage).toString("hex"),
@@ -171,9 +191,11 @@ export const prepareTransactionOutputEvidence = ({
       ),
     ),
     carriage: selectMidgardFieldCarriageTier(fieldPreimage.length),
-    canonical: scan.canonical,
+    canonical,
+    envelopeCanonical: scan.canonical,
     scanControls: scan.controls,
-    decisiveFaultHolds: !scan.canonical,
+    datumPlan,
+    decisiveFaultHolds: !canonical,
   });
 };
 
@@ -243,6 +265,7 @@ export const TRANSACTION_OUTPUT_NON_CANONICAL_STAGES = [
   "step01",
   "step02",
   "step03",
+  "step03Datum",
   "step04",
   "proven",
   "removed",
@@ -302,6 +325,7 @@ export type TransactionOutputAction =
   | "submitStep01"
   | "submitStep02"
   | "submitStep03"
+  | "submitStep03Datum"
   | "submitStep04"
   | "removeDescendants"
   | "done";
@@ -317,6 +341,8 @@ export const nextTransactionOutputAction = (
       return "submitStep02";
     case "step03":
       return "submitStep03";
+    case "step03Datum":
+      return "submitStep03Datum";
     case "step04":
       return "submitStep04";
     case "proven":
@@ -338,7 +364,7 @@ export type TransactionOutputSubmissionAdapter = {
     evidence: TransactionOutputEvidence,
   ) => Promise<TransactionOutputSubmissionResult>;
   readonly cancel: (
-    stage: "step01" | "step02" | "step03" | "step04",
+    stage: "step01" | "step02" | "step03" | "step03Datum" | "step04",
     evidence: TransactionOutputEvidence,
   ) => Promise<TransactionOutputSubmissionResult>;
 };

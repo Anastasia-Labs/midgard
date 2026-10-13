@@ -19,7 +19,6 @@ import {
 import { Effect } from "effect";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { retainedPayloadLedgerAt } from "../src/retained-payload-ledger-at.js";
 import { TRANSITION_HISTORY_FIXTURE_PARAMETERS } from "./helpers/transition-history-fixture.js";
 
 const transport = vi.hoisted(() => ({ raw: undefined as unknown }));
@@ -63,6 +62,7 @@ import {
   buildCanonicalBlockFixture,
   reencodeFixturePayload,
 } from "./helpers/canonical-block-evidence-fixture.js";
+import { fixtureLedgerAt } from "./support/fixture-ledger.js";
 import { fraudProofL1SourceForTest } from "./support/fraud-proof-l1-source.js";
 import {
   buildRetainedPlutusIdentityFixture,
@@ -221,7 +221,7 @@ const setup = async (
     classifier,
     observation,
     sources,
-    predecessorLedgerAt: retainedPayloadLedgerAt({ sources }),
+    predecessorLedgerAt: fixtureLedgerAt({ sources }),
     authenticatedObservationDigest:
       await authenticatedStateQueueObservationDigest({
         observation,

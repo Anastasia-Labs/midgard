@@ -87,7 +87,6 @@ const constructorSize = (fieldSizes: readonly number[]): number =>
 
 /** The DaPayloadV1 block-body fields that are `[key, value]` entry lists. */
 export type DaPayloadEntryField =
-  | "utxos"
   | "withdrawals"
   | "forced_transactions"
   | "transactions"
@@ -146,7 +145,6 @@ const encodedPayloadSize = (
   const bodySize = constructorSize([
     bytesSize(body.header_hash),
     headerSize,
-    entryListSize("utxos"),
     entryListSize("withdrawals"),
     entryListSize("forced_transactions"),
     entryListSize("transactions"),
@@ -167,21 +165,6 @@ const encodedPayloadSize = (
 /** Exact encoded inner DaPayload size without allocating its CBOR bytes. */
 export const daPayloadEncodedSize = (payload: DaPayload): number =>
   encodedPayloadSize(payload);
-
-/**
- * Exact encoded inner size when the full UTxO list is represented by a
- * durable entry-count/tuple-byte aggregate rather than materialized in RAM.
- * The `payload.block_body.utxos` value is ignored.
- */
-export const daPayloadEncodedSizeFromUtxoAggregate = (
-  payload: DaPayload,
-  utxos: DaPayloadEntrySizeAggregate,
-): number =>
-  encodedPayloadSize(payload, (field) =>
-    field === "utxos"
-      ? daPayloadEntriesEncodedSizeFromAggregate(utxos)
-      : listSize(payload.block_body[field]),
-  );
 
 /**
  * Exact encoded inner size when every entry list is represented by its
@@ -255,7 +238,6 @@ export const encodeDaPayload = (payload: DaPayload): Buffer => {
   writeInteger(writer, header.protocolVersion);
   writer.writeByte(0xff);
 
-  writeList(writer, body.utxos);
   writeList(writer, body.withdrawals);
   writeList(writer, body.forced_transactions);
   writeList(writer, body.transactions);

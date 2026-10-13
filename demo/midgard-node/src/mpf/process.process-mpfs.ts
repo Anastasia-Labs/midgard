@@ -50,6 +50,7 @@ import {
   resolveTxDeltaForCommit,
 } from "./commit-rejection.js";
 import { settleCommitStageRejections } from "./commit-rejection.persist-commit-stage-rejected-transactions.js";
+import { buildDepositSourceEvents } from "./deposit-source-events.js";
 import { MpfError } from "./errors.js";
 import {
   type ClassifiedForcedTransaction,
@@ -74,14 +75,8 @@ import {
 } from "./mempool-order.js";
 import {
   computeUtxoPayloadRoot,
-  ledgerPayloadAggregateFromEntries,
   materializeUtxoPayloadEntries,
-  type UtxoPayloadSizeAggregate,
 } from "./payload-size.js";
-import {
-  buildDepositPrefixSources,
-  buildLedgerPayloadPrefixAccounting,
-} from "./payload-size.prefix-aggregates.js";
 import { evaluateNormalBlockCandidates } from "./process.evaluate-normal-block-candidates.js";
 import {
   hexOf,
@@ -110,11 +105,7 @@ import {
   type NativeMpfReplayBuild,
   type TransitionTraceBuildResult,
 } from "./transition-trace.js";
-import {
-  type MpfBatchOp,
-  type MpfInsertBatchOp,
-  type UtxoPayloadEntry,
-} from "./types.js";
+import { type MpfBatchOp, type MpfInsertBatchOp } from "./types.js";
 import {
   buildPlaceholderValidationTraceMembers,
   type RetainedValidationTraceMember,
@@ -141,10 +132,7 @@ export const processMpfs = (
     transitionStepCount: number;
     validationTraceCount: number;
     totalEventCount: number;
-    utxoPayloadEntries: readonly UtxoPayloadEntry[];
     ledgerDelta: LedgerDelta;
-    utxoPayloadAggregate: UtxoPayloadSizeAggregate;
-    utxoPayloadAggregatesByPrefix: readonly UtxoPayloadSizeAggregate[];
     mempoolTxHashes: Buffer[];
     processedMempoolTxs: readonly Tx.EntryWithTimeStamp[];
     sizeOfProcessedTxs: number;
@@ -998,10 +986,9 @@ export const processMpfs = (
           } satisfies TransitionTraceSourceEvent;
         }),
     );
-    const {
-      sourceEvents: depositSourceEvents,
-      outputs: depositFinalOutputsByOutRef,
-    } = yield* buildDepositPrefixSources(includedDepositEntries);
+    const depositSourceEvents = yield* buildDepositSourceEvents(
+      includedDepositEntries,
+    );
     const sourceEvents = [
       ...withdrawalSourceEvents,
       ...forcedTransactionSourceEvents,
@@ -1011,18 +998,6 @@ export const processMpfs = (
     const transitionLedgerOps = sourceEvents.flatMap((event) =>
       event.ledgerOps.map((op) => ({ ...op })),
     );
-    const baseUtxoPayloadAggregate =
-      config.baseUtxoPayloadAggregate ??
-      ledgerPayloadAggregateFromEntries(initialLedgerEntries);
-    const { utxoPayloadAggregate, utxoPayloadAggregatesByPrefix } =
-      yield* buildLedgerPayloadPrefixAccounting({
-        base: baseUtxoPayloadAggregate,
-        sourceEvents,
-        initialLedgerEntries,
-        insertedValues: rawInsertedLedgerOutputsByOutRef,
-        depositValues: depositFinalOutputsByOutRef,
-        acceptedTxCount: processedMempoolTxs.length,
-      });
     const txRootFiber = yield* buildTransactionsSourceRoot(
       transactionSourceOps,
       SDK.ROOT_DOMAINS.transactionsV1,
@@ -1100,13 +1075,6 @@ export const processMpfs = (
           transitionTraceBuild.pathHydration.peakDecodedNodes,
       },
     );
-    const utxoPayloadEntries = shouldCheckPayloadRoot
-      ? materializeUtxoPayloadEntries(
-          initialLedgerEntries,
-          transitionLedgerOps,
-          rawInsertedLedgerOutputsByOutRef,
-        )
-      : [];
     const transactionMpfApplyDurationMs = (yield* Fiber.join(
       transactionMpfFiber,
     )).durationMs;
@@ -1121,27 +1089,6 @@ export const processMpfs = (
     const rawTxRoot = yield* transactionsMpf.rootHex();
     const txRoot = yield* Fiber.join(txRootFiber);
     const utxoRoot = nativeMpf.candidateRoot!;
-    if (shouldCheckPayloadRoot) {
-      const payloadRootCheckStartedAtMs = Date.now();
-      const payloadUtxoRoot = yield* computeUtxoPayloadRoot(utxoPayloadEntries);
-      yield* logCommitMpfPhaseTiming(
-        "payload_root_check",
-        payloadRootCheckStartedAtMs,
-        {
-          payload_entry_count: utxoPayloadEntries.length,
-        },
-      );
-      if (payloadUtxoRoot !== utxoRoot) {
-        return yield* Effect.fail(
-          new DatabaseError({
-            table: MempoolLedgerDB.tableName,
-            message:
-              "Refusing to build a block because the DA payload UTxO snapshot root does not match the computed ledger MPF root",
-            cause: `payload_utxos_root=${payloadUtxoRoot},computed_utxos_root=${utxoRoot}`,
-          }),
-        );
-      }
-    }
     if (transitionTraceBuild.finalUtxosRoot !== utxoRoot) {
       return yield* Effect.fail(
         new DatabaseError({
@@ -1426,13 +1373,10 @@ export const processMpfs = (
       transitionStepCount: transitionTraceBuild.transitionStepCount,
       validationTraceCount: validationTraceBuild.validationTraceCount,
       totalEventCount: transitionTraceBuild.totalEventCount,
-      utxoPayloadEntries,
       ledgerDelta: collapseLedgerDelta(
         transitionLedgerOps,
         rawInsertedLedgerOutputsByOutRef,
       ),
-      utxoPayloadAggregate,
-      utxoPayloadAggregatesByPrefix,
       mempoolTxHashes,
       processedMempoolTxs,
       sizeOfProcessedTxs,

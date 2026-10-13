@@ -27,7 +27,10 @@ import {
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
-import { prepareFabricatedCompletedFraud } from "../fabricated-completed-fraud.js";
+import {
+  prepareFabricatedCompletedFraud,
+  resolveCompletedFraudQueueNode,
+} from "../fabricated-completed-fraud.js";
 import { fetchCurrentHistory } from "../fabricated-history-witness.js";
 import { fabricatedProofValidity } from "../fabricated-proof-validity.js";
 import {
@@ -227,10 +230,8 @@ export const submitTransitionTraceFinal = async ({
     "ValidDepositTransition" in proof.fault.InvalidOneStepTransition.witness
       ? proof.fault.InvalidOneStepTransition.witness.ValidDepositTransition
       : null;
-  const depositPolicyId = Data.from(
-    hubOracleUtxo.datum,
-    HubOracleDatum,
-  ).deposit;
+  const hubDatum = Data.from(hubOracleUtxo.datum, HubOracleDatum);
+  const depositPolicyId = hubDatum.deposit;
   let retainedDeposit = depositOpening;
   let depositReference: UTxO | undefined;
   let depositExternalReference: UTxO | undefined;
@@ -345,12 +346,11 @@ export const submitTransitionTraceFinal = async ({
           : null;
     if (forced === null)
       throw new Error("Timed transition final has no supported event witness");
-    const hub = Data.from(hubOracleUtxo.datum, HubOracleDatum);
     eventReference = {
       order: await requireSingletonUtxo({
         lucid,
-        address: governedUserEventAddress(network, hub.tx_order_addr),
-        unit: toUnit(hub.tx_order, forced.event_asset_name),
+        address: governedUserEventAddress(network, hubDatum.tx_order_addr),
+        unit: toUnit(hubDatum.tx_order, forced.event_asset_name),
         label: "timed transition forced order",
       }),
     };
@@ -548,10 +548,17 @@ export const submitTransitionTraceFinal = async ({
         ...outputReferences,
       ]);
     if (depositWitness !== null) {
-      const validity = fabricatedProofValidity(
-        proof.header.endTime,
-        lucid.slotToUnixTime(lucid.currentSlot()),
-      );
+      const { node } = await resolveCompletedFraudQueueNode({
+        lucid,
+        hubOraclePolicyId,
+        stateQueuePolicyId: hubDatum.state_queue,
+        headerHash: proof.challenged_header_hash,
+        headerEnd: proof.header.endTime,
+      });
+      const validity = fabricatedProofValidity({
+        nodeBlockTime: node.block_time,
+        now: lucid.slotToUnixTime(lucid.currentSlot()),
+      });
       checkpointBuilder = checkpointBuilder
         .validFrom(validity.validFrom)
         .validTo(validity.validTo);
@@ -649,8 +656,7 @@ export const submitTransitionTraceFinal = async ({
       : await prepareFabricatedCompletedFraud({
           lucid,
           hubOraclePolicyId,
-          stateQueuePolicyId: Data.from(hubOracleUtxo.datum, HubOracleDatum)
-            .state_queue,
+          stateQueuePolicyId: hubDatum.state_queue,
           headerHash: proof.challenged_header_hash,
           headerEnd: proof.header.endTime,
           proofAsset: threadToken.assetName,

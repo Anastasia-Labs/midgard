@@ -11,6 +11,7 @@ import {
   reconstructDaPayload,
   type TransitionTraceReconstruction,
 } from "../src/transition-trace/index.js";
+import { recordFixtureLedger } from "./support/fixture-ledger.js";
 import {
   canonicalPreimageByCommitment,
   encodedEntry,
@@ -177,6 +178,7 @@ export const buildPayloadFixture = async ({
     transitionStepCount: BigInt(transitionTraceEntries.length),
     validationTraceCount: BigInt(validationTraces.length),
   };
+  recordFixtureLedger(utxoRoot.root, utxos);
   const header: SDK.Header = {
     prevUtxosRoot,
     utxosRoot: utxoRoot.root,
@@ -204,7 +206,6 @@ export const buildPayloadFixture = async ({
     block_body: {
       header_hash: headerHash,
       header,
-      utxos: sorted(utxos),
       withdrawals: sorted(withdrawals),
       forced_transactions: sorted(forcedTransactions),
       transactions: sorted(transactions),

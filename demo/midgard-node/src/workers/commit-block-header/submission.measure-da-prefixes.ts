@@ -167,15 +167,8 @@ export const measureDaPayloadPrefixes = ({
   readonly rejectedTxIds: readonly Buffer[];
 }): CommitDaFrameMeasurement => {
   const n = content.processedMempoolTxs.length;
-  const ledger = content.utxoPayloadAggregatesByPrefix;
-  if (
-    ledger === undefined ||
-    ledger.length !== n + 1 ||
-    ordinarySidecars.length !== n
-  )
-    throw new Error(
-      "Complete DA prefix ledger/material accounting is unavailable",
-    );
+  if (ordinarySidecars.length !== n)
+    throw new Error("Complete DA prefix material accounting is unavailable");
   const body = payload.block_body;
   const w = body.withdrawals.length;
   const f = body.forced_transactions.length;
@@ -197,7 +190,6 @@ export const measureDaPayloadPrefixes = ({
   ] as const)
     bindEntries(digest, body[field]);
   const aggregates: Record<SDK.DaPayloadEntryField, Aggregate> = {
-    utxos: ledger[0]!,
     withdrawals: add(empty(), body.withdrawals),
     forced_transactions: add(empty(), body.forced_transactions),
     forced_transaction_preimages: add(
@@ -290,7 +282,6 @@ export const measureDaPayloadPrefixes = ({
     };
     const snapshot = {
       ...aggregates,
-      utxos: ledger[prefix]!,
       transition_trace: {
         entryCount: aggregates.transition_trace.entryCount + d,
         encodedTupleBytes:
@@ -313,16 +304,7 @@ export const measureDaPayloadPrefixes = ({
       snapshot,
     );
     const identity = digest.copy();
-    bindBytes(
-      identity,
-      Buffer.from(
-        JSON.stringify([
-          prefix,
-          ledger[prefix]!.entryCount,
-          ledger[prefix]!.encodedTupleBytes,
-        ]),
-      ),
-    );
+    bindBytes(identity, Buffer.from(JSON.stringify([prefix])));
     prefixes.push({
       innerBytesUpperBound,
       materialDigest: identity.digest("hex"),
@@ -330,16 +312,13 @@ export const measureDaPayloadPrefixes = ({
     if (
       prefix === n &&
       innerBytesUpperBound !==
-        SDK.daPayloadEncodedSizeFromUtxoAggregate(
-          {
-            ...sizedPayload,
-            block_body: {
-              ...sizedPayload.block_body,
-              cek_program_material: allMaterial,
-            },
+        SDK.daPayloadEncodedSize({
+          ...sizedPayload,
+          block_body: {
+            ...sizedPayload.block_body,
+            cek_program_material: allMaterial,
           },
-          ledger[prefix]!,
-        )
+        })
     )
       throw new Error(
         "Complete DA prefix accounting differs from canonical full block sizing",

@@ -7,7 +7,6 @@ import { Effect, Either, Logger, LogLevel } from "effect";
 import { describe, expect, it } from "vitest";
 
 import { DatabaseError } from "../src/database/utils/common.js";
-import type { UtxoPayloadSizeAggregate } from "../src/mpf/index.js";
 import { assertPreSubmitDaPayloadSize } from "../src/workers/commit-block-header/submission.assert-pre-submit-da-payload-size.js";
 
 const header: SDK.Header = {
@@ -40,12 +39,10 @@ const header: SDK.Header = {
 
 type Logged = { readonly level: LogLevel.LogLevel; readonly text: string };
 
-// The UTxO list is sized from the durable aggregate, so a ledger of any size
-// costs nothing to project here. Only the aggregate varies between cases.
+// The block's size is set through its program material alone.
 const assertSize = (
-  utxoPayloadAggregate: UtxoPayloadSizeAggregate,
+  cekProgramMaterial: readonly SDK.DaPayloadEntry[],
   envelopeMode: DaPayloadEmissionMode,
-  cekProgramMaterial: readonly SDK.DaPayloadEntry[] = [],
 ) =>
   Effect.gen(function* () {
     const logs: Logged[] = [];
@@ -53,7 +50,6 @@ const assertSize = (
       assertPreSubmitDaPayloadSize({
         headerHash: "33".repeat(28),
         header,
-        utxoPayloadAggregate,
         includedDepositEntries: [],
         includedForcedTransactionEntries: [],
         includedWithdrawalEntries: [],
@@ -82,29 +78,51 @@ const assertSize = (
     return { result, logs };
   });
 
-const BASELINE_TUPLE_BYTES = 400;
-
-/** Builds the UTxO aggregate whose block projects to exactly `innerBytes`. */
-const aggregateForInnerBytes = async (
-  innerBytes: number,
-  entryCount: number,
+const innerBytesOf = async (
+  material: readonly SDK.DaPayloadEntry[],
   envelopeMode: DaPayloadEmissionMode,
-  cekProgramMaterial: readonly SDK.DaPayloadEntry[] = [],
-): Promise<UtxoPayloadSizeAggregate> => {
+): Promise<number> => {
   const { result } = await Effect.runPromise(
-    assertSize(
-      { entryCount: 1, encodedTupleBytes: BASELINE_TUPLE_BYTES },
-      envelopeMode,
-      cekProgramMaterial,
-    ),
+    assertSize(material, envelopeMode),
   );
-  if (result._tag !== "Right") throw new Error("baseline block was refused");
-  // The UTxO list is one indefinite-length list, so the inner size moves byte
-  // for byte with the aggregate's tuple bytes.
-  return {
-    entryCount,
-    encodedTupleBytes: innerBytes - (result.right - BASELINE_TUPLE_BYTES),
-  };
+  if (Either.isRight(result)) return result.right;
+  const inner = /inner_bytes=(\d+)/.exec(String(result.left.cause))?.[1];
+  if (inner === undefined) throw new Error("block was refused unmeasured");
+  return Number(inner);
+};
+
+const materialOf = (
+  coarseBytes: number,
+  fineBytes: number,
+): SDK.DaPayloadEntry[] => [
+  ["44".repeat(32), "55".repeat(coarseBytes)],
+  ["66".repeat(32), "77".repeat(fineBytes)],
+];
+
+/**
+ * Program material whose block projects to exactly `innerBytes`: a coarse
+ * entry found by bisection, then a short entry (24 to 64 bytes, one encoded
+ * byte per value byte) that closes the remaining gap.
+ */
+const materialForInnerBytes = async (
+  innerBytes: number,
+  envelopeMode: DaPayloadEmissionMode,
+): Promise<SDK.DaPayloadEntry[]> => {
+  let low = 0;
+  let high = innerBytes;
+  while (low < high) {
+    const mid = Math.ceil((low + high) / 2);
+    if ((await innerBytesOf(materialOf(mid, 24), envelopeMode)) <= innerBytes)
+      low = mid;
+    else high = mid - 1;
+  }
+  const gap =
+    innerBytes - (await innerBytesOf(materialOf(low, 24), envelopeMode));
+  if (gap < 0 || gap > 40) throw new Error(`unreachable size gap ${gap}`);
+  const material = materialOf(low, 24 + gap);
+  if ((await innerBytesOf(material, envelopeMode)) !== innerBytes)
+    throw new Error("material does not reach the target size");
+  return material;
 };
 
 const pressureWarnings = (logs: readonly Logged[]) =>
@@ -124,9 +142,9 @@ describe("pre-submit DA payload frame pressure", () => {
       const limit = maxDaPayloadInnerBytes(mode);
       const boundary = Math.ceil((limit * stage) / 100);
       for (const target of [boundary - 1, boundary]) {
-        const aggregate = await aggregateForInnerBytes(target, 10_000, mode);
+        const material = await materialForInnerBytes(target, mode);
         const { result, logs } = await Effect.runPromise(
-          assertSize(aggregate, mode),
+          assertSize(material, mode),
         );
         expect(Either.getOrUndefined(result)).toBe(target);
         const expected =
@@ -150,9 +168,9 @@ describe("pre-submit DA payload frame pressure", () => {
   it.each(MODES)("stays quiet well below the frame (%s)", async (mode) => {
     const limit = maxDaPayloadInnerBytes(mode);
     const target = Math.floor(limit * 0.2);
-    const aggregate = await aggregateForInnerBytes(target, 10_000, mode);
+    const material = await materialForInnerBytes(target, mode);
     const { result, logs } = await Effect.runPromise(
-      assertSize(aggregate, mode),
+      assertSize(material, mode),
     );
     expect(Either.getOrUndefined(result)).toBe(target);
     expect(pressureWarnings(logs)).toEqual([]);
@@ -168,9 +186,9 @@ describe("pre-submit DA payload frame pressure", () => {
         [atRatio - 1, 0],
         [atRatio, 1],
       ] as const) {
-        const aggregate = await aggregateForInnerBytes(target, 10_000, mode);
+        const material = await materialForInnerBytes(target, mode);
         const { result, logs } = await Effect.runPromise(
-          assertSize(aggregate, mode),
+          assertSize(material, mode),
         );
         expect(Either.getOrUndefined(result)).toBe(target);
         expect(pressureWarnings(logs)).toHaveLength(warnings);
@@ -179,14 +197,13 @@ describe("pre-submit DA payload frame pressure", () => {
   );
 
   it.each(MODES)(
-    "reports the approaching frame limit with the UTxO headroom, and still commits (%s)",
+    "reports the approaching frame limit with its headroom, and still commits (%s)",
     async (mode) => {
       const limit = maxDaPayloadInnerBytes(mode);
       const target = Math.ceil(limit * 0.6);
-      const entryCount = 200_000;
-      const aggregate = await aggregateForInnerBytes(target, entryCount, mode);
+      const material = await materialForInnerBytes(target, mode);
       const { result, logs } = await Effect.runPromise(
-        assertSize(aggregate, mode),
+        assertSize(material, mode),
       );
       expect(Either.getOrUndefined(result)).toBe(target);
       const warnings = pressureWarnings(logs);
@@ -200,14 +217,6 @@ describe("pre-submit DA payload frame pressure", () => {
       expect(field(text, "da_payload_headroom_bytes")).toBe(
         (limit - target).toString(),
       );
-      expect(field(text, "utxo_list_bytes")).toBe(
-        (aggregate.encodedTupleBytes + 2).toString(),
-      );
-      expect(field(text, "utxo_entries_until_frame_at_mean_size")).toBe(
-        Math.floor(
-          (limit - target) / (aggregate.encodedTupleBytes / entryCount),
-        ).toString(),
-      );
     },
   );
 
@@ -215,9 +224,9 @@ describe("pre-submit DA payload frame pressure", () => {
     "admits a block that exactly fills the frame (%s)",
     async (mode) => {
       const limit = maxDaPayloadInnerBytes(mode);
-      const aggregate = await aggregateForInnerBytes(limit, 400_000, mode);
+      const material = await materialForInnerBytes(limit, mode);
       const { result, logs } = await Effect.runPromise(
-        assertSize(aggregate, mode),
+        assertSize(material, mode),
       );
       expect(Either.getOrUndefined(result)).toBe(limit);
       expect(pressureWarnings(logs)).toHaveLength(1);
@@ -234,9 +243,9 @@ describe("pre-submit DA payload frame pressure", () => {
     "still refuses one byte past the frame at the same check (%s)",
     async (mode) => {
       const limit = maxDaPayloadInnerBytes(mode);
-      const aggregate = await aggregateForInnerBytes(limit + 1, 400_000, mode);
+      const material = await materialForInnerBytes(limit + 1, mode);
       const { result, logs } = await Effect.runPromise(
-        assertSize(aggregate, mode),
+        assertSize(material, mode),
       );
       expect(result._tag).toBe("Left");
       if (result._tag !== "Left") return;
@@ -246,56 +255,7 @@ describe("pre-submit DA payload frame pressure", () => {
       );
       const cause = String(result.left.cause);
       expect(field(cause, "inner_bytes")).toBe((limit + 1).toString());
-      // This block carries no events or traces, so dropping them cannot help.
-      expect(
-        field(cause, "post_block_ledger_without_events_exceeds_frame"),
-      ).toBe("true");
       expect(pressureWarnings(logs)).toEqual([]);
     },
   );
-
-  it.each(MODES)(
-    "tells a block whose own content tipped it over from the ledger (%s)",
-    async (mode) => {
-      const limit = maxDaPayloadInnerBytes(mode);
-      const material: SDK.DaPayloadEntry[] = [
-        ["44".repeat(32), "55".repeat(4096)],
-      ];
-      const aggregate = await aggregateForInnerBytes(
-        limit + 1,
-        400_000,
-        mode,
-        material,
-      );
-      const { result } = await Effect.runPromise(
-        assertSize(aggregate, mode, material),
-      );
-      expect(result._tag).toBe("Left");
-      if (result._tag !== "Left") return;
-      const cause = String(result.left.cause);
-      expect(field(cause, "inner_bytes")).toBe((limit + 1).toString());
-      // The same ledger with no events or traces would still fit.
-      expect(
-        field(cause, "post_block_ledger_without_events_exceeds_frame"),
-      ).toBe("false");
-    },
-  );
-
-  it("names a UTxO list that by itself exceeds the frame", async () => {
-    const limit = maxDaPayloadInnerBytes("identity");
-    const aggregate: UtxoPayloadSizeAggregate = {
-      entryCount: 500_000,
-      encodedTupleBytes: limit,
-    };
-    const { result } = await Effect.runPromise(
-      assertSize(aggregate, "identity"),
-    );
-    expect(result._tag).toBe("Left");
-    if (result._tag !== "Left") return;
-    const cause = String(result.left.cause);
-    expect(field(cause, "utxo_list_bytes")).toBe((limit + 2).toString());
-    expect(field(cause, "post_block_ledger_without_events_exceeds_frame")).toBe(
-      "true",
-    );
-  });
 });

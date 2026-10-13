@@ -196,7 +196,10 @@ export const submitFabricatedDepositStep02 = async ({
       ? [witness.retainedDataUtxo]
       : []),
   ];
-  const validity = fabricatedProofValidity(state.header_end_time, now());
+  const validity = fabricatedProofValidity({
+    nodeBlockTime: state.header_block_time,
+    now: now(),
+  });
 
   const step03State = fabricatedDepositStep03State(state, verdict);
   signer.selectWallet(lucid);

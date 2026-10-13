@@ -209,7 +209,7 @@ describe("commit block planner", () => {
         maxCanonicalTxBytes: 1_000,
         maxLedgerOpCount: 1_000,
         maxTransitionStepCount: 1_000,
-        maxDaPayloadBytes: 1_000,
+        maxDaPayloadBytes: 10_000,
         maxCommitTxBytes: 1_000,
         maxEstimatedCommitBuildMs: 1_000,
         estimatedLedgerOpsPerTx: 1,

@@ -75,7 +75,6 @@ const fixture = async (forced: boolean, balanced: boolean) => {
       ...base.reconstruction.payload.block_body,
       header,
       header_hash: headerHash,
-      utxos: predecessorFixture.payload.block_body.utxos,
     },
   };
   const evidence = await canonicalBlockEvidenceFromVerifiedPayload({
@@ -301,7 +300,6 @@ it.each([true, false])(
           ...b,
           header,
           header_hash: headerHash,
-          utxos: after.payload.block_body.utxos,
           counts: {
             ...b.counts,
             forcedTransactionCount: BigInt(forced_transactions.length),

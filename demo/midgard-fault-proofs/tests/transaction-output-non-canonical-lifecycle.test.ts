@@ -83,6 +83,7 @@ import {
   record,
   recordAll,
   registeredContracts,
+  stepLabel,
   witnessSetCborOf,
 } from "./transaction-output-non-canonical-lifecycle.registered-contracts.js";
 import { scanToTerminal } from "./transaction-output-non-canonical-lifecycle.scan-to-terminal.js";
@@ -107,8 +108,7 @@ describe("transactionOutputNonCanonical registered-chain lifecycle", () => {
       fee: 7n,
       outputCbors: [Buffer.alloc(MAXIMUM_OUTPUT_BYTES), Buffer.alloc(16_377)],
     });
-    // B: the honest twin at the same maximum shape, canonical through the
-    // longest admissible scan frontier.
+    // B: the honest twin at the same maximum shape, datum and all canonical.
     const canonicalTx = makeNativeTx({
       spendInputCbors: [],
       fee: 8n,
@@ -342,7 +342,7 @@ describe("transactionOutputNonCanonical registered-chain lifecycle", () => {
         signer: harness.proverSigner,
         threadOutRef: scanned.result.nextThreadOutRef,
         evidence: malformedEvidence,
-        referenceScriptUtxo: references[3]!,
+        referenceScriptUtxo: references[4]!,
         witnessReferenceScripts: harness.witnessReferenceScripts,
       }),
     );
@@ -352,7 +352,7 @@ describe("transactionOutputNonCanonical registered-chain lifecycle", () => {
     coverage.scenario("wrongful_acceptance_success");
 
     // ## Cancel from every physical step.
-    for (const targetStep of [0, 1, 2, 3] as const) {
+    for (const targetStep of [0, 1, 2, 4] as const) {
       const init = await registered.init(setup.fraudulentBlockOutRef);
       let thread = `${init.result.txHash}#${init.result.firstStepOutputIndex.toString()}`;
       if (targetStep >= 1) {
@@ -397,10 +397,10 @@ describe("transactionOutputNonCanonical registered-chain lifecycle", () => {
       }
       const cancelled = await registered.cancel(thread, targetStep);
       record(
-        `accepted-cancel-step0${(targetStep + 1).toString()}`,
+        `accepted-cancel-step${stepLabel(targetStep)}`,
         cancelled.measurement,
       );
-      coverage.cancelled(`step-0${(targetStep + 1).toString()}`);
+      coverage.cancelled(`step-${stepLabel(targetStep)}`);
     }
 
     // ## Step-01 transaction-membership seams.
@@ -529,7 +529,7 @@ describe("transactionOutputNonCanonical registered-chain lifecycle", () => {
             ...common(seamScan.result.nextThreadOutRef, 2),
             window,
             nextState: terminalState,
-            nextStepIndex: 3,
+            nextStepIndex: 4,
             ...input,
           }),
       );
@@ -572,8 +572,8 @@ describe("transactionOutputNonCanonical registered-chain lifecycle", () => {
     });
     expect(honestScan.scans).toBe(canonicalEvidence.scanControls.length - 1);
     const honestTerminal = await readOutputScanState(
-      common(honestScan.threadOutRef, 3),
-      3,
+      common(honestScan.threadOutRef, 4),
+      4,
     );
     expect(honestTerminal.outcome).toBe(1n);
     await expect(
@@ -584,19 +584,19 @@ describe("transactionOutputNonCanonical registered-chain lifecycle", () => {
         signer: harness.proverSigner,
         threadOutRef: honestScan.threadOutRef,
         evidence: canonicalEvidence,
-        referenceScriptUtxo: references[3]!,
+        referenceScriptUtxo: references[4]!,
         witnessReferenceScripts: harness.witnessReferenceScripts,
       }),
     ).rejects.toThrow(/does not contradict/u);
     await expectOnchainRefusal(
       async () =>
         await submitOutputStep04Raw({
-          ...common(honestScan.threadOutRef, 3),
+          ...common(honestScan.threadOutRef, 4),
           witnessReferenceScripts: harness.witnessReferenceScripts,
         }),
     );
     coverage.scenario("honest_accepted_block_refusal");
-    await registered.cancel(honestScan.threadOutRef, 3);
+    await registered.cancel(honestScan.threadOutRef, 4);
 
     // ## Adjacent over-bound width: the 16,385-byte item is authenticated
     // and then refused by the scan initializer, never scanned.
@@ -783,7 +783,7 @@ describe("transactionOutputNonCanonical registered-chain lifecycle", () => {
         signer: harness.proverSigner,
         threadOutRef: scanned.threadOutRef,
         evidence,
-        referenceScriptUtxo: references[3]!,
+        referenceScriptUtxo: references[4]!,
         witnessReferenceScripts: harness.witnessReferenceScripts,
       }),
     );
@@ -875,8 +875,8 @@ describe("transactionOutputNonCanonical registered-chain lifecycle", () => {
     });
     expect(scanned.terminal).toBe(true);
     const terminal = await readOutputScanState(
-      common(scanned.nextThreadOutRef, 3),
-      3,
+      common(scanned.nextThreadOutRef, 4),
+      4,
     );
     expect(terminal.outcome).toBe(2n);
     await expect(
@@ -887,19 +887,19 @@ describe("transactionOutputNonCanonical registered-chain lifecycle", () => {
         signer: harness.proverSigner,
         threadOutRef: scanned.nextThreadOutRef,
         evidence,
-        referenceScriptUtxo: references[3]!,
+        referenceScriptUtxo: references[4]!,
         witnessReferenceScripts: harness.witnessReferenceScripts,
       }),
     ).rejects.toThrow(/does not contradict/u);
     await expectOnchainRefusal(
       async () =>
         await submitOutputStep04Raw({
-          ...common(scanned.nextThreadOutRef, 3),
+          ...common(scanned.nextThreadOutRef, 4),
           witnessReferenceScripts: harness.witnessReferenceScripts,
         }),
     );
     coverage.scenario("honest_forced_rejection_refusal");
-    await registered.cancel(scanned.nextThreadOutRef, 3);
+    await registered.cancel(scanned.nextThreadOutRef, 4);
   }, 600_000);
 
   it("declares the complete lifecycle coverage it exercised", async () => {

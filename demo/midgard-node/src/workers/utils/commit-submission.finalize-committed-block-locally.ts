@@ -134,13 +134,7 @@ export const finalizeCommittedBlockLocally = (
         : yield* Effect.gen(function* () {
             const record = options.daPayloadRecord!;
             const snapshot = yield* materializeConfirmedLedgerSnapshot(record);
-            const insert = yield* buildDaPayloadInsert({
-              record,
-              utxos: snapshot.entries.map((entry) => ({
-                outref: entry.outref,
-                output: entry.output,
-              })),
-            });
+            const insert = yield* buildDaPayloadInsert({ record });
             return {
               insert,
               outputs: snapshot.entries.map((entry) => entry.output),

@@ -300,7 +300,6 @@ export const getReadinessHandler = Effect.gen(function* () {
     for (const [kind, stage] of [
       ["candidate", daFramePressure.candidateStagePercent],
       ["initial_candidate", daFramePressure.initialCandidateStagePercent],
-      ["base_ledger", daFramePressure.baseLedgerStagePercent],
       ["required_work", daFramePressure.requiredWorkStagePercent],
     ] as const) {
       if (stage !== null && stage > 0)

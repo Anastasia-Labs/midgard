@@ -11,14 +11,11 @@ import type { CommitDaFrameMeasurement } from "./commit-block-planner.commit-sch
 export type CommitDaFramePressure = {
   readonly candidateInnerBytesUpperBound: number;
   readonly initialCandidateInnerBytesUpperBound: number;
-  readonly baseEmptyBlockInnerBytesUpperBound: number;
-  /** Known only after ordinary transactions have been removed. Withdrawals
-   * may shrink the base ledger, so its empty-block estimate is not this floor. */
+  /** Known only after ordinary transactions have been removed. */
   readonly requiredWorkInnerBytesUpperBound: number | null;
   readonly effectiveInnerLimit: number;
   readonly candidateStagePercent: DaPayloadFramePressureStage;
   readonly initialCandidateStagePercent: DaPayloadFramePressureStage;
-  readonly baseLedgerStagePercent: DaPayloadFramePressureStage;
   readonly requiredWorkStagePercent: DaPayloadFramePressureStage | null;
   readonly acceptedTxCount: number;
   readonly passes: number;
@@ -45,13 +42,10 @@ export type CommitDaFrameNotice = {
   readonly type: "CommitDaFrameNotice";
   /** `fits`: the frame admits this tick's measured block, or there is no
    * work to build one.
-   * `events_overflow`: the block's events alone overflow a frame whose empty
-   * block fits. `ledger_ceiling`: the base ledger's empty block alone
-   * exceeds the frame, and this block's withdrawals do not bring it under. */
+   * `events_overflow`: the block's required events alone overflow the frame. */
   readonly status:
     | "fits"
     | "events_overflow"
-    | "ledger_ceiling"
     | "exact_check_required"
     | "incomplete";
   /** Goes only to the reason's raise warning log; /readyz carries the
@@ -79,7 +73,6 @@ export const COMMIT_DA_FRAME_IDLE_NOTICE: CommitDaFrameNotice = {
 export const commitDaFrameNoticeForOutcome = ({
   outcome,
   passes,
-  baseEmptyBlockInnerBytes,
   maxInnerBytes,
   measurement,
   initialCandidateInnerBytesUpperBound,
@@ -91,7 +84,6 @@ export const commitDaFrameNoticeForOutcome = ({
     | "incomplete"
     | "unmeasured";
   readonly passes: number;
-  readonly baseEmptyBlockInnerBytes: number;
   readonly maxInnerBytes: number;
   readonly measurement?: Pick<
     CommitDaFrameMeasurement,
@@ -110,7 +102,6 @@ export const commitDaFrameNoticeForOutcome = ({
           initialCandidateInnerBytesUpperBound:
             initialCandidateInnerBytesUpperBound ??
             measurement.innerBytesUpperBound,
-          baseEmptyBlockInnerBytesUpperBound: baseEmptyBlockInnerBytes,
           requiredWorkInnerBytesUpperBound:
             measurement.acceptedTxCount === 0
               ? measurement.innerBytesUpperBound
@@ -123,10 +114,6 @@ export const commitDaFrameNoticeForOutcome = ({
           initialCandidateStagePercent: daPayloadFramePressureStage(
             initialCandidateInnerBytesUpperBound ??
               measurement.innerBytesUpperBound,
-            maxInnerBytes,
-          ),
-          baseLedgerStagePercent: daPayloadFramePressureStage(
-            baseEmptyBlockInnerBytes,
             maxInnerBytes,
           ),
           requiredWorkStagePercent:
@@ -147,13 +134,11 @@ export const commitDaFrameNoticeForOutcome = ({
         ? outcome
         : outcome === "fits"
           ? "fits"
-          : baseEmptyBlockInnerBytes > maxInnerBytes
-            ? "ledger_ceiling"
-            : "events_overflow",
+          : "events_overflow",
     detail:
       outcome === "fits"
         ? ""
-        : `passes=${passes.toString()} base_empty_block_inner_bytes=${baseEmptyBlockInnerBytes.toString()} effective_inner_limit=${maxInnerBytes.toString()}`,
+        : `passes=${passes.toString()} effective_inner_limit=${maxInnerBytes.toString()}`,
   };
 };
 
@@ -162,7 +147,7 @@ export const commitDaFrameNoticeForOutcome = ({
  * refused then, so it posts `COMMIT_DA_FRAME_IDLE_NOTICE` first, clearing a
  * standing DA frame reason and the frame diagnostics. Only these ticks do: the deposit-only path's
  * "nothing to commit" also ends a step-down that dropped every transaction
- * from an over-frame ledger, and must leave its reason standing.
+ * from an over-frame block, and must leave its reason standing.
  */
 export const nothingToCommitWithNoWork = (
   notify: ((notice: CommitDaFrameNotice) => Effect.Effect<void>) | undefined,

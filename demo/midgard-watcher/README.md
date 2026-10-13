@@ -524,7 +524,7 @@ after the cause and retained residue have been verified.
 
 The reliability program's final acceptance requires a fresh deployment,
 automatic deposit/transfer/merge/withdrawal and exact payout, then separate
-Cardano restart, Kupo stop, Ogmios stop, and public retained-DA loss drills.
+Cardano restart, public retained-DA loss, and all-operator outage drills.
 The running services must recover without manual commit, merge, or database
 repair. Focused tests and provider-only calibration do not close these gates.
 The response-budget decision must include actual source/cursor cost, signed

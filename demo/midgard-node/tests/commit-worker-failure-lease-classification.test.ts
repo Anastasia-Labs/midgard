@@ -33,10 +33,6 @@ vi.mock("../src/database/index.js", async () => {
       ...actual.ForcedTransactionsDB,
       retrievePendingHeaderEntriesUpTo: vi.fn(() => Effect.succeed([])),
     },
-    MpfEngineStateDB: {
-      ...actual.MpfEngineStateDB,
-      stampLedgerPayloadAggregate: vi.fn(() => Effect.void),
-    },
     PendingBlockFinalizationsDB: {
       ...actual.PendingBlockFinalizationsDB,
       markAbandoned: vi.fn(() => Effect.void),
@@ -374,9 +370,7 @@ const baseCommitArgs = {
   validationTraceMembers: [],
   transitionStepCount: 0,
   validationTraceCount: 0,
-  utxoPayloadEntries: [],
   ledgerDelta: { spent: [], produced: [] },
-  utxoPayloadAggregate: { entryCount: 0, encodedTupleBytes: 0 },
   selectedBaseUtxosRoot: "33".repeat(32),
   implicitGenesisEntries: [],
   nativeMpfReplay: undefined,

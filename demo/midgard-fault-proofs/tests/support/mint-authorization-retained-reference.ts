@@ -12,6 +12,7 @@ import {
   buildCanonicalBlockFixture,
   reencodeFixturePayload,
 } from "../helpers/canonical-block-evidence-fixture.js";
+import { withPlaceholderWithdrawalBlock } from "../helpers/canonical-block-evidence-fixture.with-placeholder-withdrawal.js";
 import { fixtureBlockSlot } from "./emulator/header-fixtures.js";
 import {
   buildMintAuthorizationSubject,
@@ -52,13 +53,15 @@ export const mintAuthorizationRetainedReferenceFixture = async ({
     ]);
     return { key, value };
   });
-  const baseline = await buildCanonicalBlockFixture({
-    transactions: [],
-    utxos,
-    prevHeaderHash: SDK.GENESIS_HEADER_HASH,
-    startTime: BigInt(now),
-    endTime: BigInt(now + 1000),
-  });
+  const baseline = await withPlaceholderWithdrawalBlock(
+    await buildCanonicalBlockFixture({
+      transactions: [],
+      utxos,
+      prevHeaderHash: SDK.GENESIS_HEADER_HASH,
+      startTime: BigInt(now),
+      endTime: BigInt(now + 1000),
+    }),
+  );
   const priorHeader = { ...baseline.header, operatorVkey };
   const priorHash = computeHash28(SDK.encodeHeaderCbor(priorHeader)).toString(
     "hex",
@@ -111,7 +114,6 @@ export const mintAuthorizationRetainedReferenceFixture = async ({
       ...current.reconstruction.payload.block_body,
       header,
       header_hash: headerHash,
-      utxos: predecessorFixture.payload.block_body.utxos,
     },
   };
   const provenance = {

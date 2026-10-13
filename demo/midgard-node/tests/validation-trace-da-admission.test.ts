@@ -129,7 +129,6 @@ describe("node-produced validation traces pass DA committee admission", () => {
       {
         payloadSchemaVersion: 1,
         stateQueueOutRef: `${"00".repeat(32)}#0`,
-        preBlockUtxos: [],
       },
     );
     expect(verified.validation.headerHash).toBe(headerHash);

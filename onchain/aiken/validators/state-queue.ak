@@ -51,9 +51,14 @@ use midgard/state_queue_yield
 /// Pure CommitBlockHeader structural seam. The full validator authenticates
 /// the linked-list output before reaching this predicate; the covered
 /// interval is checked with the commit time
-/// (`commit_bound_header_time_is_valid`).
+/// (`commit_bound_header_time_is_valid`). A committed block carries at least
+/// one event: `header_v1_is_valid` ties `total_event_count` to the sum of the
+/// withdrawal, forced, L2 transaction and deposit counts.
 pub fn commit_block_header_output_is_valid_v1(header: HeaderV1) -> Bool {
-  header_v1_is_valid(header)
+  and {
+    header_v1_is_valid(header),
+    header.total_event_count > 0,
+  }
 }
 
 /// Exclusive upper bound (2^64) on the committed header's `min_fee_a` and
@@ -1864,6 +1869,10 @@ const q49_utxo_root_a =
 const q49_utxo_root_b =
   #"2222222222222222222222222222222222222222222222222222222222222222"
 
+const q49_event_root =
+  #"3333333333333333333333333333333333333333333333333333333333333333"
+
+/// A one-deposit block moving the ledger root from a to b.
 fn q49_header_fixture() -> HeaderV1 {
   HeaderV1 {
     prev_utxos_root: q49_utxo_root_a,
@@ -1871,16 +1880,16 @@ fn q49_header_fixture() -> HeaderV1 {
     withdrawals_root: env.empty_merkle_tree_root,
     forced_transactions_root: env.empty_merkle_tree_root,
     transactions_root: env.empty_merkle_tree_root,
-    deposits_root: env.empty_merkle_tree_root,
-    transition_trace_root: env.empty_merkle_tree_root,
-    event_to_step_root: env.empty_merkle_tree_root,
+    deposits_root: q49_event_root,
+    transition_trace_root: q49_event_root,
+    event_to_step_root: q49_event_root,
     validation_traces_root: env.empty_merkle_tree_root,
     withdrawal_count: 0,
     forced_transaction_count: 0,
     l2_transaction_count: 0,
-    deposit_count: 0,
-    total_event_count: 0,
-    transition_step_count: 0,
+    deposit_count: 1,
+    total_event_count: 1,
+    transition_step_count: 1,
     validation_trace_count: 0,
     start_time: 100,
     end_time: 200,
@@ -1903,6 +1912,79 @@ test q49_l295_header_shape_control_and_protocol_mutations() {
     ),
     !commit_block_header_output_is_valid_v1(
       HeaderV1 { ..control, protocol_version: 2 },
+    ),
+  }
+}
+
+/// The q49 block with no events: the same root move, every count zero and
+/// every count-tied root empty.
+fn q49_zero_event_header() -> HeaderV1 {
+  HeaderV1 {
+    ..q49_header_fixture(),
+    deposits_root: env.empty_merkle_tree_root,
+    transition_trace_root: env.empty_merkle_tree_root,
+    event_to_step_root: env.empty_merkle_tree_root,
+    deposit_count: 0,
+    total_event_count: 0,
+    transition_step_count: 0,
+  }
+}
+
+/// Control: `q49_l295_header_shape_control_and_protocol_mutations`. The
+/// zero-event header is well formed (`header_v1_is_valid`) and is refused only
+/// by `total_event_count > 0` in `commit_block_header_output_is_valid_v1`.
+test q49_l295_zero_event_header_is_refused_at_commit() {
+  let empty = q49_zero_event_header()
+  and {
+    header_v1_is_valid(empty),
+    !commit_block_header_output_is_valid_v1(empty),
+    !commit_block_header_output_is_valid_v1(
+      HeaderV1 { ..empty, utxos_root: empty.prev_utxos_root },
+    ),
+  }
+}
+
+/// Each event kind alone satisfies the commit's event-count rule.
+test q49_l295_one_event_of_each_kind_commits() {
+  let empty = q49_zero_event_header()
+  and {
+    commit_block_header_output_is_valid_v1(q49_header_fixture()),
+    commit_block_header_output_is_valid_v1(
+      HeaderV1 {
+        ..empty,
+        withdrawals_root: q49_event_root,
+        transition_trace_root: q49_event_root,
+        event_to_step_root: q49_event_root,
+        withdrawal_count: 1,
+        total_event_count: 1,
+        transition_step_count: 1,
+      },
+    ),
+    commit_block_header_output_is_valid_v1(
+      HeaderV1 {
+        ..empty,
+        forced_transactions_root: q49_event_root,
+        transition_trace_root: q49_event_root,
+        event_to_step_root: q49_event_root,
+        validation_traces_root: q49_event_root,
+        forced_transaction_count: 1,
+        total_event_count: 1,
+        transition_step_count: 1,
+        validation_trace_count: 1,
+      },
+    ),
+    commit_block_header_output_is_valid_v1(
+      HeaderV1 {
+        ..empty,
+        transactions_root: q49_event_root,
+        transition_trace_root: q49_event_root,
+        event_to_step_root: q49_event_root,
+        validation_traces_root: q49_event_root,
+        l2_transaction_count: 1,
+        total_event_count: 1,
+        transition_step_count: 1,
+        validation_trace_count: 1,
+      },
     ),
   }
 }

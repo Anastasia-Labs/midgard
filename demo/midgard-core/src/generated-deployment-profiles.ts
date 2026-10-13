@@ -114,12 +114,15 @@ export const DEPLOYMENT_PROFILES = {
       proverCollateralFloorLovelace: 5000000,
     },
     allow_lists: {
-      operators: ["706c616365686f6c6465723a6f706572000000000000000000000001"],
+      operators: [
+        "041388eef29da389e7b9dac19509ef8ac95a398a9909991a4326d424",
+        "4189f341bddd0c74ecb4f5a1ddae8653ee204be022fe530e2f65a6a6",
+      ],
       fraud_provers: [
-        "706c616365686f6c6465723a70726f76000000000000000000000001",
+        "3fce32946bbc65915c9abecaac07b0b00b0ee85fce73d06a209e3e5f",
       ],
       da_challengers: [
-        "706c616365686f6c6465723a64616368000000000000000000000001",
+        "c3276ebd1e6886c2bdc4ef2ca4d084ed8da3901b6054d3c881eb1e81",
       ],
     },
     excluded_fraud_proof_categories: [
@@ -367,7 +370,7 @@ export const DEPLOYMENT_PROFILES = {
 export const DEPLOYMENT_PROFILE_DIGESTS = {
   mainnet: "8a63410f9421cb851b67a2c13015722d759ce6135b71db1b40e7544652b53fbd",
   "preprod-public":
-    "b784b57b530907b2a312677dbd1e6f5a9147012d49ff7e4e2a74bf51101d5f2c",
+    "dbd1ae0d600f42babf26862793f0740107d7204fdcf69ba4a5084536a1e192e1",
   "preprod-testing":
     "dc9896f9d9f6dcfb648525c702a1fbf87a32c5769ce25e7b28d55bc30847f05d",
   "local-devnet-testing":

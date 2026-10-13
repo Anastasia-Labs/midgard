@@ -90,10 +90,15 @@ pub const fraud_prover_reward: Int = 75_000_000_000
 pub const prover_collateral_floor: Int = 5_000_000
 
 pub const operator_allow_list: Option<List<ByteArray>> =
-  Some([#"706c616365686f6c6465723a6f706572000000000000000000000001"])
+  Some(
+    [
+      #"041388eef29da389e7b9dac19509ef8ac95a398a9909991a4326d424",
+      #"4189f341bddd0c74ecb4f5a1ddae8653ee204be022fe530e2f65a6a6",
+    ],
+  )
 
 pub const fraud_prover_allow_list: Option<List<ByteArray>> =
-  Some([#"706c616365686f6c6465723a70726f76000000000000000000000001"])
+  Some([#"3fce32946bbc65915c9abecaac07b0b00b0ee85fce73d06a209e3e5f"])
 
 pub const da_challenger_allow_list: Option<List<ByteArray>> =
-  Some([#"706c616365686f6c6465723a64616368000000000000000000000001"])
+  Some([#"c3276ebd1e6886c2bdc4ef2ca4d084ed8da3901b6054d3c881eb1e81"])

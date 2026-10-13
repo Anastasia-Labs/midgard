@@ -308,7 +308,10 @@ export const submitFabricatedDepositStep03 = async ({
     );
   }) satisfies BuildTxWithRedeemer;
 
-  const validity = fabricatedProofValidity(state.header_end_time, now());
+  const validity = fabricatedProofValidity({
+    nodeBlockTime: state.header_block_time,
+    now: now(),
+  });
   const tx = lucid
     .newTx()
     .validFrom(validity.validFrom)

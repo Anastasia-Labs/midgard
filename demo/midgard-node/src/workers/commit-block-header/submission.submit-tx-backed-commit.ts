@@ -7,7 +7,6 @@ import type { CommitAnchor } from "../../database/commit-anchor.js";
 import {
   DepositsDB,
   ForcedTransactionsDB,
-  MpfEngineStateDB,
   PendingBlockFinalizationsDB,
   ProcessedMempoolDB,
   TxAdmissionsDB,
@@ -26,8 +25,6 @@ import {
   type RetainedEventToStepMember,
   type RetainedTransitionTraceMember,
   type RetainedValidationTraceMember,
-  type UtxoPayloadEntry,
-  type UtxoPayloadSizeAggregate,
 } from "../../mpf/index.js";
 import { configuredCommitAnchorClock } from "../../services/history-commit-window.js";
 import {
@@ -45,6 +42,7 @@ import {
   skippedSubmissionProgram,
 } from "../utils/commit-submission.js";
 import { buildUnsignedCommitTx } from "./build-unsigned-tx.js";
+import { attributeDaFrameRefusal } from "./commit-da-oversize-eviction.js";
 import {
   resolveDepositsRoot,
   resolveForcedTransactionsRoot,
@@ -101,9 +99,7 @@ export const submitTxBackedCommit = ({
   validationTraceMembers,
   transitionStepCount,
   validationTraceCount,
-  utxoPayloadEntries,
   ledgerDelta,
-  utxoPayloadAggregate,
   selectedBaseUtxosRoot,
   implicitGenesisEntries,
   transactionsMpf,
@@ -140,9 +136,7 @@ export const submitTxBackedCommit = ({
   readonly validationTraceMembers: readonly RetainedValidationTraceMember[];
   readonly transitionStepCount: number;
   readonly validationTraceCount: number;
-  readonly utxoPayloadEntries: readonly UtxoPayloadEntry[];
   readonly ledgerDelta: LedgerDelta;
-  readonly utxoPayloadAggregate: UtxoPayloadSizeAggregate;
   readonly selectedBaseUtxosRoot: string;
   readonly implicitGenesisEntries: readonly Ledger.MinimalEntry[];
   readonly nativeMpfReplay: NativeMpfReplayBuild;
@@ -191,9 +185,6 @@ export const submitTxBackedCommit = ({
       );
     }
     yield* assertPendingJournalCompleteness({
-      utxoRoot,
-      utxoMemberCount: utxoPayloadEntries.length,
-      hasLedgerDelta: true,
       txRoot,
       emptyTxRoot: emptyRoot,
       txMemberCount: currentBlockMempoolTxsCount,
@@ -387,7 +378,6 @@ export const submitTxBackedCommit = ({
                 yield* assertPreSubmitDaPayloadSize({
                   headerHash: newHeaderHash,
                   header: newHeader,
-                  utxoPayloadAggregate,
                   includedDepositEntries,
                   includedForcedTransactionEntries,
                   includedWithdrawalEntries,
@@ -396,12 +386,17 @@ export const submitTxBackedCommit = ({
                   eventToStepMembers,
                   validationTraceMembers,
                   cekProgramMaterial,
-                });
+                }).pipe(
+                  Effect.catchTag("DatabaseError", (error) =>
+                    attributeDaFrameRefusal(error, {
+                      processedMempoolTxs,
+                      includedDepositEntries,
+                      includedForcedTransactionEntries,
+                      includedWithdrawalEntries,
+                    }),
+                  ),
+                );
                 yield* afterDaFrameAccepted ?? Effect.void;
-                yield* MpfEngineStateDB.stampLedgerPayloadAggregate({
-                  rootHex: utxoRoot,
-                  aggregate: utxoPayloadAggregate,
-                });
                 yield* assertCommitInputsWithinBlockEndTime({
                   blockEndTimeMs,
                   processedMempoolTxs,
@@ -444,7 +439,6 @@ export const submitTxBackedCommit = ({
                     recordedBaseUtxosRoot: metadata.baseRoots.utxosRoot,
                     selectedBaseUtxosRoot,
                     expectedFinalUtxosRoot: utxoRoot,
-                    expectedFinalEntryCount: utxoPayloadAggregate.entryCount,
                     implicitGenesisEntries,
                     transitionDelta: ledgerDelta,
                   });
@@ -489,7 +483,6 @@ export const submitTxBackedCommit = ({
                           journalLedgerState.ledgerDelta.produced,
                         ),
                       },
-                      utxoPayloadAggregate,
                       nativeMpfReplay,
                     },
                     { beforeJournalInsert },

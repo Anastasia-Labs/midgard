@@ -2,7 +2,6 @@ import { MIDGARD_PROTOCOL_VERSION } from "@al-ft/midgard-core/consensus-profile"
 import { unwrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
 import { DA_TRANSPORT_LIMITS } from "@al-ft/midgard-core/da-transport";
 import * as SDK from "@al-ft/midgard-sdk";
-import { buildCanonicalMidgardLedgerEntryOutputMaterial } from "@al-ft/midgard-validation";
 import { sha256 } from "@noble/hashes/sha2.js";
 
 import type { PayloadCountSet, PayloadRootSet } from "../domain.js";
@@ -21,44 +20,11 @@ import {
   hashBlockHeaderCbor,
   headerCborHex,
 } from "./payload.source-event-fingerprints.js";
-import { validateDaPayloadEventProgramCoverage } from "./payload.validate-event-program-coverage.js";
 import {
   countedRoot,
   countedRootWithValues,
   decodeDaPayloadStrict,
-  keyValuePhasRootWithValues,
 } from "./payload.validate-proof-trace-coverage.js";
-
-/**
- * The `utxos_root` of a full V1 UTxO set: the key-value PHAS root over each
- * entry's exact canonical ledger descriptor.
- */
-export const computeDaPayloadUtxosRoot = async (
-  utxos: readonly SDK.DaPayloadEntry[],
-): Promise<string> => {
-  const utxoDescriptorValues: Buffer[] = [];
-  const utxoKeys: Buffer[] = [];
-  for (const [outRefHex, outputHex] of utxos) {
-    try {
-      const outRef = hexToBytes(outRefHex, "utxos key");
-      const outputCbor = hexToBytes(outputHex, "utxos value");
-      utxoKeys.push(outRef);
-      utxoDescriptorValues.push(
-        buildCanonicalMidgardLedgerEntryOutputMaterial({
-          outRef,
-          outputCbor,
-        }).descriptorCbor,
-      );
-    } catch (cause) {
-      throw new DaPayloadValidationError(
-        "malformed_da",
-        "failed to project a full V1 UTxO to its exact canonical descriptor",
-        { cause },
-      );
-    }
-  }
-  return keyValuePhasRootWithValues(utxoKeys, utxoDescriptorValues);
-};
 
 const computeDaPayloadRootsForForcedDomain = async (
   payload: SDK.DaPayload,
@@ -77,7 +43,6 @@ const computeDaPayloadRootsForForcedDomain = async (
     }
   }
   const [
-    utxosRoot,
     withdrawalsRoot,
     forcedTransactionsRoot,
     transactionsRoot,
@@ -85,7 +50,6 @@ const computeDaPayloadRootsForForcedDomain = async (
     transitionTraceRoot,
     eventToStepRoot,
   ] = await Promise.all([
-    computeDaPayloadUtxosRoot(body.utxos),
     countedRoot(SDK.ROOT_DOMAINS.withdrawals, body.withdrawals),
     countedRoot(
       SDK.ROOT_DOMAINS.forcedTransactionsV1,
@@ -101,7 +65,9 @@ const computeDaPayloadRootsForForcedDomain = async (
     countedRoot(SDK.ROOT_DOMAINS.eventToStep, body.event_to_step),
   ]);
   return {
-    utxosRoot,
+    // The payload carries no UTxO set: the post-state root is the header's,
+    // and a wrong one is convicted by replay (transitionTrace).
+    utxosRoot: body.header.utxosRoot,
     withdrawalsRoot,
     forcedTransactionsRoot,
     transactionsRoot,
@@ -205,10 +171,6 @@ export const verifyDaPayloadAgainstHeader = async (
         `V1 DA payload counts do not match L1 header: ${countMismatchFields.join(",")}`,
       );
     }
-    validateDaPayloadEventProgramCoverage(
-      payload.block_body,
-      options.preBlockUtxos,
-    );
     return {
       payload,
       storedPayloadCbor: storedPayloadBuffer,
@@ -245,7 +207,6 @@ const rootMismatches = (
   roots: PayloadRootSet,
 ): readonly string[] =>
   [
-    header.utxosRoot === roots.utxosRoot ? undefined : "utxos_root",
     header.withdrawalsRoot === roots.withdrawalsRoot
       ? undefined
       : "withdrawals_root",

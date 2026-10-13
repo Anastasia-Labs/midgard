@@ -164,7 +164,6 @@ export const buildFixture = async ({
     block_body: {
       header_hash: headerHash,
       header,
-      utxos: [],
       withdrawals: sortEntries(withdrawalEntries),
       forced_transactions: [],
       transactions: sortEntries(transactionEntries),
@@ -213,7 +212,6 @@ export const clonePayload = (payload: SDK.DaPayload): SDK.DaPayload => ({
     ],
     cek_program_material: [...payload.block_body.cek_program_material],
     validation_traces: [...payload.block_body.validation_traces],
-    utxos: [...payload.block_body.utxos],
   },
 });
 

@@ -52,7 +52,7 @@ program
 program
   .command("commit-explicit-block-header")
   .description(
-    "Commit a state_queue block header with caller-supplied roots using the live operator path",
+    "Commit a state_queue block header with caller-supplied roots using the live operator path; the block must carry at least one event",
   )
   .requiredOption("--utxos-root <hex>", "Committed UTxO MPF root")
   .requiredOption(
@@ -64,6 +64,14 @@ program
   .option(
     "--l2-transaction-count <n>",
     "L2 transaction count to commit in the header (must be > 0 for a non-empty transactions root)",
+  )
+  .option(
+    "--deposit-count <n>",
+    "Deposit count to commit in the header (must be > 0 for a non-empty deposits root)",
+  )
+  .option(
+    "--withdrawal-count <n>",
+    "Withdrawal count to commit in the header (must be > 0 for a non-empty withdrawals root)",
   )
   .option(
     "--transition-trace-root <hex>",
@@ -98,6 +106,12 @@ program
         opts.l2TransactionCount === undefined
           ? undefined
           : BigInt(opts.l2TransactionCount),
+      depositCount:
+        opts.depositCount === undefined ? undefined : BigInt(opts.depositCount),
+      withdrawalCount:
+        opts.withdrawalCount === undefined
+          ? undefined
+          : BigInt(opts.withdrawalCount),
       transitionTraceRoot:
         opts.transitionTraceRoot === undefined
           ? undefined

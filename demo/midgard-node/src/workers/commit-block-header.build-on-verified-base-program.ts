@@ -52,10 +52,7 @@ import {
 } from "./commit-block-header.pending-user-event-counts-up-to.js";
 import { recordSuccessfulBuildCalibration as recordBuildCalibration } from "./commit-block-header.record-successful-build-calibration.js";
 import { resolveCommitBaseLedgerEntries } from "./commit-block-header.resolve-commit-base-ledger-entries.js";
-import {
-  type CommitEviction,
-  stepDownEvictingOversizeNormalTx,
-} from "./commit-block-header/commit-da-oversize-eviction.js";
+import type { CommitEviction } from "./commit-block-header/commit-da-oversize-eviction.js";
 import * as DaPrefix from "./commit-block-header/commit-da-prefix-search.js";
 import {
   getLatestBlockDatumEndTime,
@@ -79,9 +76,7 @@ import {
 } from "./utils/commit-block-planner.commit-da-frame-notice.js";
 import {
   calibratedCommitBuildMsPerTx,
-  type CommitDaFrameMeasurement,
   type CommitSchedulerStateQueueEvidence,
-  type CommitTxCandidateSelection,
   type CurrentOperatorSchedulerWindow,
   DEFAULT_COMMIT_BATCH_BUDGET_LIMITS,
   establishEndTimeFromTxRequests,
@@ -116,6 +111,8 @@ export const buildOnVerifiedCommitBaseProgram = (
       }
     | undefined,
   acquireCommitLucid: CommitLucidFactory,
+  /** Normal transactions this build rejects before validation. */
+  commitEvictions?: ReadonlyMap<string, CommitEviction>,
 ): Effect.Effect<
   WorkerOutput,
   unknown,
@@ -571,24 +568,16 @@ export const buildOnVerifiedCommitBaseProgram = (
         ),
       );
     }
-    // Only now is the base ledger known, and every block carries all of it.
     const daFramePlan = planCommitBatchBudgets({
       candidateSelection,
       limits: commitBatchBudgetLimits,
-      baseUtxoPayloadAggregate: commitBase.utxoPayloadAggregate,
     });
-    yield* DaPrefix.logDaPrefixPreselection(
-      daFramePlan,
-      commitBase.utxoPayloadAggregate.entryCount,
-    );
-    const commitEvictions = new Map<string, CommitEviction>();
-    let daFrameMeasurement: CommitDaFrameMeasurement | undefined;
-    const daFrameStepDown = {
+    yield* DaPrefix.logDaPrefixPreselection(daFramePlan);
+    const daFrameBuild = yield* stepDownCommitSelectionToDaFrame({
       candidateSelection: daFramePlan.candidateSelection,
-      baseUtxoPayloadAggregate: commitBase.utxoPayloadAggregate,
       maxInnerBytes: daFrameInnerLimit,
       notify: notifyParent,
-      process: (selection: CommitTxCandidateSelection) => {
+      process: (selection) => {
         mpfProcessingStartedAtMs = Date.now();
         return processMpfs(transactionsMpf, selection.candidateTxs, {
           fixedBlockEndTime: fixedHistoryEndTime,
@@ -626,7 +615,6 @@ export const buildOnVerifiedCommitBaseProgram = (
           },
           selectedBaseUtxoRoot: commitBase.root,
           payloadRootCheck: nodeConfig.MPF_PAYLOAD_ROOT_CHECK,
-          baseUtxoPayloadAggregate: commitBase.utxoPayloadAggregate,
           recordCorpusPath: nodeConfig.MPF_RECORD_CORPUS,
           onMempoolLedgerReverted: notifyParent?.(
             MEMPOOL_LEDGER_REVERTED_NOTICE,
@@ -641,18 +629,12 @@ export const buildOnVerifiedCommitBaseProgram = (
           ),
         );
       },
-      measure: (built: Effect.Effect.Success<ReturnType<typeof processMpfs>>) =>
+      measure: (built) =>
         DaPrefix.measureBuiltCommitDaPrefixes(
           built,
           commitBase.root,
           deploymentIdentity.consensusProfile,
           nodeConfig,
-        ).pipe(
-          Effect.tap((measured) =>
-            Effect.sync(() => {
-              daFrameMeasurement = measured;
-            }),
-          ),
         ),
       // A superseded pass's ledger fork and transactions trie never reach
       // commit; the next pass rebuilds both from the same base.
@@ -669,14 +651,6 @@ export const buildOnVerifiedCommitBaseProgram = (
         yield* transactionsMpf.resetToEmpty();
         nativeMpfContext = yield* forkNativeMpfContext;
       }),
-    };
-    // A lone normal transaction the DA frame refuses is rejected.
-    const daFrameBuild = yield* stepDownEvictingOversizeNormalTx({
-      stepDown: stepDownCommitSelectionToDaFrame(daFrameStepDown),
-      measurement: () => daFrameMeasurement,
-      evictions: commitEvictions,
-      rebase: daFrameStepDown.rebase,
-      maxInnerBytes: daFrameInnerLimit,
     });
     yield* DaPrefix.assertCompleteDaPrefixSearch(daFrameBuild.outcome);
     const processed = daFrameBuild.processed;
@@ -697,9 +671,7 @@ export const buildOnVerifiedCommitBaseProgram = (
       validationTraceMembers,
       transitionStepCount,
       validationTraceCount,
-      utxoPayloadEntries,
       ledgerDelta,
-      utxoPayloadAggregate,
       rejectedMempoolTxsCount,
       includedDepositEntriesCount,
       includedDepositEntries,
@@ -870,9 +842,7 @@ export const buildOnVerifiedCommitBaseProgram = (
           validationTraceMembers,
           transitionStepCount,
           validationTraceCount,
-          utxoPayloadEntries,
           ledgerDelta,
-          utxoPayloadAggregate,
           selectedBaseUtxosRoot: commitBase.root,
           implicitGenesisEntries:
             commitBase.source === "genesis" ? initialLedgerEntries : [],
@@ -909,9 +879,7 @@ export const buildOnVerifiedCommitBaseProgram = (
           validationTraceMembers,
           transitionStepCount,
           validationTraceCount,
-          utxoPayloadEntries,
           ledgerDelta,
-          utxoPayloadAggregate,
           selectedBaseUtxosRoot: commitBase.root,
           implicitGenesisEntries:
             commitBase.source === "genesis" ? initialLedgerEntries : [],

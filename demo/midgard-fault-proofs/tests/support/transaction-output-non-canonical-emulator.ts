@@ -23,11 +23,13 @@ import "./transaction-output-non-canonical-emulator.publish-output-field-carriag
 import "./transaction-output-non-canonical-emulator.build-forced-output-fixture.js";
 export { buildForcedOutputFixture } from "./transaction-output-non-canonical-emulator.build-forced-output-fixture.js";
 export {
+  canonicalDatumOfLength,
   canonicalOutputOfLength,
   type Common,
   initialScanStateOfItem,
   MALFORMED_OUTPUT,
   type OutputScanStateData,
+  outputWithInlineDatum,
   readOutputScanState,
   scanStateOf,
   scanWindowAt,
@@ -37,10 +39,12 @@ export {
 } from "./transaction-output-non-canonical-emulator.continue-raw.js";
 export {
   carriageReferenceInputs,
+  type OutputDatumStepArgs,
   outputFieldOpening,
   type PublishedOutputFieldCarriage,
   publishOutputFieldCarriage,
   submitOutputStep02Raw,
+  submitOutputStep03DatumRaw,
   submitOutputStep03Raw,
   submitOutputStep04Raw,
 } from "./transaction-output-non-canonical-emulator.publish-output-field-carriage.js";

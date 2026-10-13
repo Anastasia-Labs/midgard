@@ -246,7 +246,7 @@ describe("W22 canonical producer agreement", () => {
     const result = await evaluateFixture(fixture);
     expect(result.action).toBe("accept");
     expect(result.reconstructedRoots).toStrictEqual({
-      utxos_root: producer.roots.utxosRoot,
+      utxos_root: producer.header.utxosRoot,
       withdrawals_root: producer.roots.withdrawalsRoot,
       forced_transactions_root: producer.roots.forcedTransactionsRoot,
       transactions_root: producer.roots.transactionsRoot,

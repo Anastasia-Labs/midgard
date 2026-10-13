@@ -1,8 +1,6 @@
 import {
   encodeMidgardCekProgramEnvelope,
   encodeMidgardCekProgramMaterialDaValue,
-  encodeMidgardCekTermNode,
-  hashMidgardCekTermNode,
   type MidgardCekProgramEnvelope,
   type MidgardCekProgramMaterialEntry,
 } from "@al-ft/midgard-core/cek-proof";
@@ -19,7 +17,7 @@ import { Data as LucidData } from "@lucid-evolution/lucid";
 
 import { makePayloadFixture } from "./helpers.js";
 
-export const sortedEntries = (
+const sortedEntries = (
   entries: readonly SDK.DaPayloadEntry[],
 ): SDK.DaPayloadEntry[] =>
   [...entries].sort(([left], [right]) =>
@@ -149,32 +147,5 @@ export const payloadWithProgramMaterial = async (
         ]),
       ),
     },
-  };
-};
-
-export const payloadWithDuplicateProgramEnvelopes = async (): Promise<{
-  readonly payload: SDK.DaPayload;
-  readonly materialEntry: SDK.DaPayloadEntry;
-}> => {
-  const terminal = { kind: "error" } as const;
-  const preimage = encodeMidgardCekTermNode(terminal);
-  const root = hashMidgardCekTermNode(terminal);
-  const envelope = {
-    uplcVersion: [1n, 1n, 0n] as const,
-    termRoot: root,
-    nodeCount: 1n,
-    materialByteLength: BigInt(preimage.length),
-  };
-  const material = [{ kind: "term", root, preimage }] as const;
-  const materialEntry = [
-    root.toString("hex"),
-    encodeMidgardCekProgramMaterialDaValue(material[0]).toString("hex"),
-  ] satisfies SDK.DaPayloadEntry;
-  return {
-    payload: await payloadWithProgramMaterial(
-      [envelope, { ...envelope, termRoot: Buffer.from(root) }],
-      material,
-    ),
-    materialEntry,
   };
 };

@@ -16,10 +16,10 @@ import {
   FRAUD_PROOF_RAW_L1_SNAPSHOT_AUTHORITY,
   type FraudProofL1Source,
   type FraudProofRawL1SnapshotAuthority,
-  retainedPayloadLedgerAt,
   VALIDATION_TRACE_DISPUTE_COMPLETE_CANONICAL_REPLAY,
 } from "@al-ft/midgard-fault-proofs";
 import { authenticatedHeaderObservation } from "@al-ft/midgard-fault-proofs/test-support/canonical-block-evidence-fixture";
+import { fixtureLedgerAt } from "@al-ft/midgard-fault-proofs/test-support/fixture-ledger";
 import {
   buildRetainedPlutusIdentityFixture,
   buildRetainedPlutusUnboundVariableFixture,
@@ -289,7 +289,7 @@ export const classifyRetainedValidationHeader = async (
     classifier,
     observation,
     sources,
-    predecessorLedgerAt: retainedPayloadLedgerAt({ sources }),
+    predecessorLedgerAt: fixtureLedgerAt({ sources }),
     authenticatedObservationDigest:
       await authenticatedStateQueueObservationDigest({
         observation,

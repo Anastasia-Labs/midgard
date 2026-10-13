@@ -111,7 +111,11 @@ export const evaluateWatcherHeaderRootReconstruction = async (
     reasonCodes: [],
     rootMismatches: [],
     countMismatches: [],
-    reconstructedRoots: rootSetFromCanonical(evidence.reconstruction.roots),
+    // The payload carries no UTxO set; the post-state root is the header's.
+    reconstructedRoots: rootSetFromCanonical({
+      ...evidence.reconstruction.roots,
+      utxosRoot: evidence.reconstruction.header.utxosRoot,
+    }),
     reconstructedCounts: countSetFromCanonical(evidence.reconstruction.counts),
     payloadSha256: sha256Hex(evidence.reconstruction.payloadCbor),
   });

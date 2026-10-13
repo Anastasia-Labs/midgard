@@ -522,8 +522,10 @@ export function createApplication({
           ),
           observation: input.observation,
           authenticatedObservationDigest: input.authenticatedObservationDigest,
+          // No predecessor ledger source until the watcher keeps its own
+          // replayed ledger: a family that needs one classifies as
+          // unprovable (predecessor_context_unavailable).
           sources: replaySource.sources,
-          predecessorLedgerAt: replaySource.ledgerAt,
           ...(input.retries === undefined ? {} : { retries: input.retries }),
         });
         const replayContext = headerDecisionReplayContext(decision);

@@ -23,11 +23,7 @@ import {
   replayValidationVerdictEvent,
 } from "@al-ft/midgard-validation";
 import { Data } from "@lucid-evolution/lucid";
-import {
-  computeDaPayloadUtxosRoot,
-  decodeDaPayloadStrict,
-  validateDaPayloadEventProgramCoverage,
-} from "da-committee-node/da/payload";
+import { decodeDaPayloadStrict } from "da-committee-node/da/payload";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
@@ -35,6 +31,7 @@ import { ForcedTransactionsDB } from "../src/database/index.js";
 import {
   buildPlaceholderValidationTraceMembers,
   classifyForcedTransactions,
+  computeUtxoPayloadRoot,
 } from "../src/mpf/index.js";
 import {
   canonicalTransaction,
@@ -201,11 +198,13 @@ describe("forced admission screens", () => {
       };
       const priorRoot =
         result.ledgerMutationSteps[0]?.preRoot.toString("hex") ??
-        (await computeDaPayloadUtxosRoot(
-          [...initialState.entries()].map(([key, value]) => [
-            key,
-            value.toString("hex"),
-          ]),
+        (await Effect.runPromise(
+          computeUtxoPayloadRoot(
+            [...initialState.entries()].map(([key, value]) => ({
+              outref: Buffer.from(key, "hex"),
+              output: value,
+            })),
+          ),
         ));
       const postRoot =
         result.ledgerMutationSteps.at(-1)?.postRoot.toString("hex") ??
@@ -284,7 +283,6 @@ describe("forced admission screens", () => {
           header,
           header_hash: await Effect.runPromise(SDK.hashBlockHeader(header)),
           counts,
-          utxos: [],
           transactions: [],
           transaction_preimages: [],
           forced_transactions: [
@@ -342,9 +340,6 @@ describe("forced admission screens", () => {
       expect(decoded.block_body.validation_traces).toEqual(
         payload.block_body.validation_traces,
       );
-      validateDaPayloadEventProgramCoverage(payload.block_body, [
-        ...initialState.entries(),
-      ]);
       payload.block_body.forced_transactions = [
         [
           orderKey,

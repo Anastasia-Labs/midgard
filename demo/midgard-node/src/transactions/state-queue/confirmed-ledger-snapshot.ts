@@ -272,10 +272,13 @@ const materializeFromBase = <R>({
 export const materializeConfirmedLedgerDeltaChain = <R>({
   record,
   confirmedEntries,
+  confirmedRoot,
   retrieveParent,
 }: {
   readonly record: PendingBlockFinalizationsDB.Record;
   readonly confirmedEntries: readonly Ledger.Entry[];
+  /** The root of `confirmedEntries`, when the caller has already computed it. */
+  readonly confirmedRoot?: string;
   readonly retrieveParent: (
     headerHash: Buffer,
   ) => Effect.Effect<
@@ -285,11 +288,11 @@ export const materializeConfirmedLedgerDeltaChain = <R>({
   >;
 }): Effect.Effect<ConfirmedLedgerSnapshot, DatabaseError, R> =>
   Effect.gen(function* () {
-    const confirmedRoot = yield* computeRecoveredRoot(confirmedEntries);
     return yield* materializeFromBase({
       record,
       confirmedEntries,
-      confirmedRoot,
+      confirmedRoot:
+        confirmedRoot ?? (yield* computeRecoveredRoot(confirmedEntries)),
       retrieveParent,
       seen: new Set(),
     });

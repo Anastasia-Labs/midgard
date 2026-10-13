@@ -22,12 +22,10 @@ import { createHash } from "node:crypto";
 import {
   decodeMidgardCekProgramMaterialSidecar,
   encodeMidgardCekProgramEnvelope,
-  encodeMidgardCekProgramMaterialDaValue,
   encodeMidgardCekProgramMaterialSidecar,
   encodeMidgardCekTermNode,
   hashMidgardCekProgramMaterialPreimage,
   hashMidgardCekTermNode,
-  mergeMidgardCekProgramMaterialSidecars,
 } from "@al-ft/midgard-core/cek-proof";
 import { encodeMidgardTxOutput } from "@al-ft/midgard-core/codec";
 import { decodeSingleCbor, encodeCbor } from "@al-ft/midgard-core/codec/cbor";
@@ -39,11 +37,9 @@ import {
   RejectCodes,
 } from "@al-ft/midgard-validation";
 import { Data, type UTxO } from "@lucid-evolution/lucid";
-import { validateDaPayloadEventProgramCoverage } from "da-committee-node/da/payload";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
-import { makePayloadFixture } from "../../da-committee-node/tests/helpers.js";
 import { FUNDED_OUTPUT_LOVELACE } from "../../midgard-validation/tests/validation-fixtures.js";
 import {
   ForcedTransactionsDB,
@@ -646,66 +642,6 @@ describe("forced transaction program material at its position", () => {
     return { classified: classified!, resolverCalls };
   };
 
-  /** The DA committee's replay of a block holding only `classified`, from
-   * `initialState`, over the material the node journals for it. */
-  const committeeReplay = async (
-    classified: Awaited<ReturnType<typeof classifyAlone>>["classified"],
-    initialState: ReadonlyMap<string, Buffer>,
-  ): Promise<void> => {
-    const base = await makePayloadFixture(1);
-    const orderKeyHex =
-      classified.entry[ForcedTransactionsDB.Columns.TX_ORDER_ID].toString(
-        "hex",
-      );
-    const txOrderId = Data.from(
-      orderKeyHex,
-      SDK.OutputReference,
-    ) as SDK.OutputReference;
-    validateDaPayloadEventProgramCoverage(
-      {
-        ...base.payload.block_body,
-        withdrawals: [],
-        transactions: [],
-        transaction_preimages: [],
-        forced_transactions: [
-          [
-            orderKeyHex,
-            classified.entry[
-              ForcedTransactionsDB.Columns.FORCED_INCLUSION_VALUE
-            ].toString("hex"),
-          ],
-        ],
-        forced_transaction_preimages: [
-          [
-            orderKeyHex,
-            classified.entry[
-              ForcedTransactionsDB.Columns.NATIVE_TX_CBOR
-            ].toString("hex"),
-          ],
-        ],
-        event_to_step: [
-          [
-            Data.to(
-              { ForcedTransactionEventKey: { tx_order_id: txOrderId } },
-              SDK.EventKey,
-            ),
-            Data.to(
-              { step_index: 0n, phase: "ForcedTransaction" },
-              SDK.EventToStepValue,
-            ),
-          ],
-        ],
-        cek_program_material: mergeMidgardCekProgramMaterialSidecars([
-          classified.programMaterialSidecarCbor,
-        ]).map((entry) => [
-          Buffer.from(entry.root).toString("hex"),
-          encodeMidgardCekProgramMaterialDaValue(entry).toString("hex"),
-        ]),
-      },
-      [...initialState.entries()],
-    );
-  };
-
   it("judges an absent reference input InputNotFound and commits only the attached material", async () => {
     const spent = outputReferenceFromHash(Buffer.alloc(32, 0x61));
     const absentReference = outputReferenceFromHash(Buffer.alloc(32, 0x62));
@@ -745,9 +681,6 @@ describe("forced transaction program material at its position", () => {
         classified.programMaterialSidecarCbor,
       ),
     ).toEqual([]);
-    await expect(
-      committeeReplay(classified, initialState),
-    ).resolves.toBeUndefined();
   });
 
   it("commits a live reference's program for a transaction Phase A rejects", async () => {
@@ -778,21 +711,5 @@ describe("forced transaction program material at its position", () => {
         classified.programMaterialSidecarCbor,
       ),
     ).toEqual([materialByRoot.get(termRoot.toString("hex"))]);
-    await expect(
-      committeeReplay(classified, initialState),
-    ).resolves.toBeUndefined();
-    // The committee derives the same program set: without the referenced
-    // program the block's material does not cover the event at its position.
-    await expect(
-      committeeReplay(
-        {
-          ...classified,
-          programMaterialSidecarCbor: encodeMidgardCekProgramMaterialSidecar(
-            [],
-          ),
-        },
-        initialState,
-      ),
-    ).rejects.toMatchObject({ code: "coverage_mismatch" });
   });
 });
