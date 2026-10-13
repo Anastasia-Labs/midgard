@@ -65,6 +65,48 @@ const limitConstants = {
   max_inactivity_strikes: "max_inactivity_strikes",
   coins_per_utxo_byte: "coins_per_utxo_byte",
 };
+// Stage-0 allow-lists (P1). Each is null (every key admitted) or the
+// verification key hashes the deployment admits, fixed for its life. They
+// render as `Option<List<ByteArray>>` env constants checked by
+// `midgard/common/allow_list.admits`.
+const allowListConstants = {
+  operators: "operator_allow_list",
+  fraud_provers: "fraud_prover_allow_list",
+  da_challengers: "da_challenger_allow_list",
+};
+// Stand-in keys until the owner supplies the real ones: the ASCII prefix
+// "placeholder:" marks them. Nothing yet marks a profile for release, so no
+// check refuses them; a release gate must.
+export const ALLOW_LIST_PLACEHOLDER_KEY_PREFIX = Buffer.from(
+  "placeholder:",
+  "ascii",
+).toString("hex");
+export const isAllowListPlaceholderKey = (key) =>
+  key.startsWith(ALLOW_LIST_PLACEHOLDER_KEY_PREFIX);
+const verificationKeyHash = /^[0-9a-f]{56}$/u;
+const validateAllowLists = (allowLists, name) => {
+  exactKeys(allowLists, Object.keys(allowListConstants), "allow_lists");
+  for (const key of Object.keys(allowListConstants)) {
+    const keys = allowLists[key];
+    if (keys === null) {
+      if (productionProfileNames.includes(name))
+        throw new Error(
+          `allow_lists.${key} must list the admitted keys on a production profile`,
+        );
+      continue;
+    }
+    if (
+      !Array.isArray(keys) ||
+      keys.length === 0 ||
+      keys.some((entry) => !verificationKeyHash.test(entry))
+    )
+      throw new Error(
+        `allow_lists.${key} must be null or a non-empty list of 28-byte lowercase hex key hashes`,
+      );
+    if (new Set(keys).size !== keys.length)
+      throw new Error(`allow_lists.${key} must not repeat a key`);
+  }
+};
 
 export const canonicalJson = (value) =>
   JSON.stringify(
@@ -259,6 +301,7 @@ export const validateProfile = (profile, name) => {
       "da_bond",
       "limits",
       "economics",
+      "allow_lists",
     ],
     "profile",
   );
@@ -311,6 +354,7 @@ export const validateProfile = (profile, name) => {
     : "public-preprod-launch-v1";
   if (profile.economics.profile !== expectedEconomics)
     throw new Error(`economics.profile must equal ${expectedEconomics}`);
+  validateAllowLists(profile.allow_lists, name);
   const timing = profile.timing;
   const maturity = BigInt(timing.block_maturity_ms);
   const disputeDuration =
@@ -546,7 +590,16 @@ export const renderAiken = (profile, template) => {
         `pub const ${name}: Int = ${values[key].toLocaleString("en-US").replaceAll(",", "_")}`,
     ),
   );
-  return `${template.trimEnd()}\n\n${constants.join("\n\n")}\n`;
+  const allowLists = Object.entries(allowListConstants).map(([key, name]) => {
+    const keys = profile.allow_lists[key];
+    // The layout `aiken fmt` gives each form, so the generated env stays
+    // format-clean.
+    const head = `pub const ${name}: Option<List<ByteArray>> =`;
+    if (keys === null) return `${head} None`;
+    if (keys.length === 1) return `${head}\n  Some([#"${keys[0]}"])`;
+    return `${head}\n  Some(\n    [\n${keys.map((entry) => `      #"${entry}",`).join("\n")}\n    ],\n  )`;
+  });
+  return `${template.trimEnd()}\n\n${[...constants, ...allowLists].join("\n\n")}\n`;
 };
 
 export const generateProfiles = async (selected, check = false) => {
@@ -590,7 +643,7 @@ export const generateProfiles = async (selected, check = false) => {
     `export const SELECTED_DEPLOYMENT_PROFILE = DEPLOYMENT_PROFILES[${JSON.stringify(selected)}];\n` +
     `export const SELECTED_DEPLOYMENT_PROFILE_DIGEST = DEPLOYMENT_PROFILE_DIGESTS[${JSON.stringify(selected)}];\n` +
     `for (const profile of Object.values(DEPLOYMENT_PROFILES)) {\n` +
-    `  Object.freeze(profile.l1_finality);\n  Object.freeze(profile.timing);\n  Object.freeze(profile.da_bond);\n  Object.freeze(profile.limits);\n  Object.freeze(profile.economics);\n  Object.freeze(profile);\n}\n` +
+    `  Object.freeze(profile.l1_finality);\n  Object.freeze(profile.timing);\n  Object.freeze(profile.da_bond);\n  Object.freeze(profile.limits);\n  Object.freeze(profile.economics);\n  for (const keys of Object.values(profile.allow_lists)) if (keys !== null) Object.freeze(keys);\n  Object.freeze(profile.allow_lists);\n  Object.freeze(profile);\n}\n` +
     `Object.freeze(DEPLOYMENT_PROFILES);\nObject.freeze(DEPLOYMENT_PROFILE_DIGESTS);\n` +
     `for (const economics of Object.values(DEPLOYMENT_MANIFEST_ECONOMICS_BY_PROFILE)) Object.freeze(economics);\n` +
     `Object.freeze(DEPLOYMENT_MANIFEST_ECONOMICS_BY_PROFILE);\n`;

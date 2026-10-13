@@ -15,6 +15,7 @@ use cardano/transaction.{
 use env
 use midgard/availability_challenge as availability
 use midgard/availability_challenge_yield as yielding
+use midgard/common/allow_list
 use midgard/da_attestation_types as da_attestation
 use midgard/da_bond_pool as pool
 use midgard/hub_oracle as hub
@@ -41,7 +42,13 @@ const miscellaneous_policy =
 /// The block operator, and the non-challenger key the negatives use.
 const operator = #"55555555555555555555555555555555555555555555555555555555"
 
-const challenger = #"66666666666666666666666666666666666666666666666666666666"
+/// The challenger the deployment's DA-challenger allow-list admits; `66..`
+/// under a profile that admits every key.
+const challenger =
+  allow_list.admitted_or(
+    env.da_challenger_allow_list,
+    #"66666666666666666666666666666666666666666666666666666666",
+  )
 
 const terminal =
   #"7777777777777777777777777777777777777777777777777777777777777777"
@@ -2001,6 +2008,17 @@ test q58_open_accepts_exact_distinct_inputs_outputs_and_signer() {
 test q58_open_rejects_missing_challenger_signature() fail {
   let redeemer = open_redeemer(0, 1, challenger)
   validates_close(open_transaction(0, 1, challenger, operator), redeemer)
+}
+
+/// Allow-list negative: a key the deployment does not list cannot open, even
+/// with its own funded input and signature. Under a profile that admits every
+/// challenger there is nothing to refuse and the test passes at the `expect`;
+/// the default (mainnet) env lists its challengers.
+test availability_open_rejects_unlisted_challenger() fail {
+  expect Some(challengers) = env.da_challenger_allow_list
+  expect !list.has(challengers, operator)
+  let redeemer = open_redeemer(0, 1, operator)
+  validates_close(open_transaction(0, 1, operator, operator), redeemer)
 }
 
 /// The open must land strictly before the node's challenge window closes:

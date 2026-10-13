@@ -9,7 +9,9 @@ use cardano/assets.{AssetName, PolicyId, Value, quantity_of}
 use cardano/transaction.{
   InlineDatum, Input, Mint, NoDatum, Output, OutputReference, Spend, Transaction,
 }
+use env
 use midgard/availability_challenge as availability
+use midgard/common/allow_list
 use midgard/common/utils
 use midgard/da_bond_pool as pool
 use midgard/hub_oracle as hub
@@ -315,6 +317,7 @@ pub fn validate_open_challenge(
     commitment.deployment_identity == hub_oracle_policy_id,
     inclusive_upper_bound < node_end_time + availability.da_challenge_window_ms_v1,
     utils.has_signed(challenger, tx.extra_signatories),
+    allow_list.admits(env.da_challenger_allow_list, challenger),
     challenger_input.output.address == from_verification_key(challenger),
     challenger_input.output.value == assets.from_lovelace(
       parameters.challenger_bond_lovelace + parameters.challenge_record_lovelace + tx.fee,

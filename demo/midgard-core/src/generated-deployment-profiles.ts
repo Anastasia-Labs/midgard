@@ -45,6 +45,15 @@ export const DEPLOYMENT_PROFILES = {
       fraudProverRewardLovelace: 75000000000,
       proverCollateralFloorLovelace: 5000000,
     },
+    allow_lists: {
+      operators: ["706c616365686f6c6465723a6f706572000000000000000000000001"],
+      fraud_provers: [
+        "706c616365686f6c6465723a70726f76000000000000000000000001",
+      ],
+      da_challengers: [
+        "706c616365686f6c6465723a64616368000000000000000000000001",
+      ],
+    },
   },
   "preprod-public": {
     name: "preprod-public",
@@ -91,6 +100,15 @@ export const DEPLOYMENT_PROFILES = {
       inactivitySlashingPenaltyLovelace: 10000000000,
       fraudProverRewardLovelace: 75000000000,
       proverCollateralFloorLovelace: 5000000,
+    },
+    allow_lists: {
+      operators: ["706c616365686f6c6465723a6f706572000000000000000000000001"],
+      fraud_provers: [
+        "706c616365686f6c6465723a70726f76000000000000000000000001",
+      ],
+      da_challengers: [
+        "706c616365686f6c6465723a64616368000000000000000000000001",
+      ],
     },
   },
   "preprod-testing": {
@@ -139,6 +157,11 @@ export const DEPLOYMENT_PROFILES = {
       fraudProverRewardLovelace: 400000000,
       proverCollateralFloorLovelace: 5000000,
     },
+    allow_lists: {
+      operators: null,
+      fraud_provers: null,
+      da_challengers: null,
+    },
   },
   "local-devnet-testing": {
     name: "local-devnet-testing",
@@ -185,6 +208,11 @@ export const DEPLOYMENT_PROFILES = {
       inactivitySlashingPenaltyLovelace: 100000000,
       fraudProverRewardLovelace: 400000000,
       proverCollateralFloorLovelace: 5000000,
+    },
+    allow_lists: {
+      operators: null,
+      fraud_provers: null,
+      da_challengers: null,
     },
   },
   "preprod-emulator-testing": {
@@ -233,19 +261,24 @@ export const DEPLOYMENT_PROFILES = {
       fraudProverRewardLovelace: 400000000,
       proverCollateralFloorLovelace: 5000000,
     },
+    allow_lists: {
+      operators: null,
+      fraud_provers: null,
+      da_challengers: null,
+    },
   },
 } as const;
 
 export const DEPLOYMENT_PROFILE_DIGESTS = {
-  mainnet: "358b0514f25e42a78eff0a008fa555b921c00eb60977bc1e3d5f657a6aa2559b",
+  mainnet: "e4841ffe1cfa4dc2b5abff14c84493ee63044f22aa02e10e05df1bf8c42e1ed8",
   "preprod-public":
-    "d3db2cc6ffdba568cee93cd0d2cbada0a566ed5966613639221e911db667b3f0",
+    "833985231946c909412faaa05c5639076a82b04f4c50bf1874498b3c19739893",
   "preprod-testing":
-    "aef34be851493cba14b637d8785f40b04a95901f1e328c85c9348d00b5c138d5",
+    "9869ab222f3db44cc273dd8039b4c39c0776fb8cd9bd58ae66180968a3b19d62",
   "local-devnet-testing":
-    "85a735a1ec01c534c7d46d936115c2e46814c0b9f57f385e212c725b0e8337bb",
+    "0e99310be71f06d7630121d2fb6c503e517e82921b42d45321cb479b9b9b39ce",
   "preprod-emulator-testing":
-    "3e4fba1eb2b23c54640ac43002c7555ac148645da3ffb07ed38a99c83d8c966e",
+    "69e021537bc3303910c4b59dd887c8f196fe2d992b6132bf653c502f63357de4",
 } as const;
 
 export const DEPLOYMENT_MANIFEST_ECONOMICS_BY_PROFILE = {
@@ -280,6 +313,9 @@ for (const profile of Object.values(DEPLOYMENT_PROFILES)) {
   Object.freeze(profile.da_bond);
   Object.freeze(profile.limits);
   Object.freeze(profile.economics);
+  for (const keys of Object.values(profile.allow_lists))
+    if (keys !== null) Object.freeze(keys);
+  Object.freeze(profile.allow_lists);
   Object.freeze(profile);
 }
 Object.freeze(DEPLOYMENT_PROFILES);

@@ -6,11 +6,13 @@ import {
   withDelayAtFloor,
 } from "./deployment-profiles.test-helpers.mjs";
 import {
+  ALLOW_LIST_PLACEHOLDER_KEY_PREFIX,
   daBondWithdrawDelayFloorMs,
   emulatorOnlyProfileNames,
   COMMIT_TTL_FUTURE_BUFFER_MS,
   exactDecimal,
   generateProfiles,
+  isAllowListPlaceholderKey,
   largestFeasibleCommitEventDepth,
   largestNoStrikeCommitEventDepth,
   largestProductionCommitEventDepth,
@@ -840,4 +842,83 @@ test("public profiles leave confirmation depth plus two validity ranges between 
     assert.ok(120_000 < minimumPublicOpenAfterApplyMarginMs(profile));
     validateProfile(profile, name);
   }
+});
+
+test("production profiles list their allow-listed keys; testing profiles admit every key", () => {
+  const profiles = readProfiles();
+  const lists = ["operators", "fraud_provers", "da_challengers"];
+  for (const name of ["mainnet", "preprod-public"]) {
+    for (const list of lists) {
+      const keys = profiles[name].allow_lists[list];
+      assert.ok(keys.length > 0);
+      // Owner input I1: the real keys replace these stand-ins before release.
+      assert.ok(keys.every(isAllowListPlaceholderKey));
+    }
+    const profile = structuredClone(profiles[name]);
+    profile.allow_lists.operators = null;
+    assert.throws(
+      () => validateProfile(profile, name),
+      /allow_lists.operators must list the admitted keys on a production profile/u,
+    );
+  }
+  for (const name of [
+    "preprod-testing",
+    "local-devnet-testing",
+    "preprod-emulator-testing",
+  ])
+    for (const list of lists)
+      assert.equal(profiles[name].allow_lists[list], null);
+  assert.equal(
+    Buffer.from(ALLOW_LIST_PLACEHOLDER_KEY_PREFIX, "hex").toString("ascii"),
+    "placeholder:",
+  );
+});
+
+test("allow-list keys are distinct 28-byte lowercase hex, never empty", () => {
+  const key = (byte) => byte.repeat(28);
+  for (const [keys, message] of [
+    [[], /non-empty list of 28-byte lowercase hex key hashes/u],
+    [[key("ab").slice(2)], /28-byte lowercase hex/u],
+    [[key("AB")], /28-byte lowercase hex/u],
+    [[key("ab"), key("ab")], /must not repeat a key/u],
+    ["ab", /28-byte lowercase hex/u],
+  ]) {
+    const profile = structuredClone(readProfiles()["preprod-testing"]);
+    profile.allow_lists.fraud_provers = keys;
+    assert.throws(() => validateProfile(profile, "preprod-testing"), message);
+  }
+  const profile = structuredClone(readProfiles()["preprod-testing"]);
+  profile.allow_lists.fraud_provers = [key("ab"), key("cd")];
+  validateProfile(profile, "preprod-testing");
+  delete profile.allow_lists.da_challengers;
+  assert.throws(
+    () => validateProfile(profile, "preprod-testing"),
+    /allow_lists must contain exactly/u,
+  );
+});
+
+test("allow-lists render as Option<List<ByteArray>> env constants in the layout aiken fmt gives", () => {
+  const profile = structuredClone(readProfiles()["preprod-testing"]);
+  const one = "ab".repeat(28);
+  const two = "cd".repeat(28);
+  profile.allow_lists.operators = [one];
+  profile.allow_lists.fraud_provers = [one, two];
+  const rendered = renderAiken(profile, "");
+  assert.match(
+    rendered,
+    new RegExp(
+      `pub const operator_allow_list: Option<List<ByteArray>> =\\n  Some\\(\\[#"${one}"\\]\\)\\n`,
+      "u",
+    ),
+  );
+  assert.ok(
+    rendered.includes(
+      `pub const fraud_prover_allow_list: Option<List<ByteArray>> =\n  Some(\n    [\n      #"${one}",\n      #"${two}",\n    ],\n  )\n`,
+    ),
+  );
+  assert.ok(
+    rendered.endsWith(
+      "pub const da_challenger_allow_list: Option<List<ByteArray>> = None\n",
+    ),
+  );
 });
