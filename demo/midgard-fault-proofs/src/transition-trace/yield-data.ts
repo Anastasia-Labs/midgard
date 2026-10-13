@@ -17,7 +17,7 @@ import {
   transitionProofCbor,
   type TransitionProofInput,
 } from "./proof-material.js";
-import { transitionProofHistorySource } from "./proof-material.js";
+import { depositSourceView } from "./proof-material.js";
 import { TRANSITION_TRACE_YIELD_REFERENCES } from "./yield-references.js";
 
 type YieldKey = keyof typeof TRANSITION_TRACE_YIELD_REFERENCES;
@@ -38,6 +38,7 @@ const deriveTransitionTraceYieldData = ({
   depositSourceCbor?: string;
   depositAssetCount?: number;
   depositAssetIndexes?: Readonly<Record<string, number>>;
+  outputSummaries?: SDK.TransitionTraceOutputSummaries["summaries"];
 }[] => {
   const proof = readTransitionProof(proofInput);
   if ("OmittedDueL1Event" in proof.fault)
@@ -75,7 +76,6 @@ const deriveTransitionTraceYieldData = ({
   let depositAssetCount: number | undefined;
   let depositAssetIndexes: Record<string, number> | undefined;
   let openKey: YieldKey;
-  let summaryKey: YieldKey;
   if ("L2TransactionTransition" in witness) {
     const l2 = witness.L2TransactionTransition;
     outputCbors = [
@@ -89,21 +89,17 @@ const deriveTransitionTraceYieldData = ({
       "transition inputs",
     ).map((bytes) => Buffer.from(bytes).toString("hex"));
     openKey = "l2Open";
-    summaryKey = "l2Summaries";
   } else if ("ValidDepositTransition" in witness) {
     const deposit = witness.ValidDepositTransition;
     if (depositOpening === undefined)
       throw new Error(
         "Transition deposit projection requires its retained opening",
       );
-    const source = deposit.source_membership;
+    const source = depositSourceView(deposit.source_membership);
     const { commitment, opening, infoCbor } = reopenTransitionDeposit(
       depositOpening,
       depositPolicyId,
-      {
-        ...source,
-        valueCbor: transitionProofHistorySource(proofInput)!.valueCbor,
-      },
+      source,
     );
     const value = opening.original_assets;
     depositSourceCbor = Data.to(commitment, SDK.EventHistoryCommitment);
@@ -147,7 +143,6 @@ const deriveTransitionTraceYieldData = ({
     spendInputKeys = [];
     outputIndex = Number(source.key.outputIndex);
     openKey = "depositProjection";
-    summaryKey = "depositSummaries";
   } else return [];
   const opened: SDK.TransitionTraceOpenedOutputs = {
     spend_input_keys: spendInputKeys,
@@ -155,6 +150,8 @@ const deriveTransitionTraceYieldData = ({
       computeHash32(bytes).toString("hex"),
     ),
   };
+  // The summaries the phase-8 walk derives on chain, so the stepper can write
+  // the checkpoint that commits them.
   const summaries: SDK.TransitionTraceOutputSummaries = {
     summaries: outputCbors.map((bytes, index) => {
       const descriptor = buildCanonicalMidgardLedgerOutputMaterial({
@@ -181,10 +178,7 @@ const deriveTransitionTraceYieldData = ({
       depositAssetIndexes,
       redeemer: Data.to(opened, SDK.TransitionTraceOpenedOutputs),
       outputCbors: outputCbors.map((bytes) => bytes.toString("hex")),
-    },
-    {
-      key: summaryKey,
-      redeemer: Data.to(summaries, SDK.TransitionTraceOutputSummaries),
+      outputSummaries: summaries.summaries,
     },
     {
       key: openKey === "l2Open" ? "l2Assembly" : "depositAssembly",

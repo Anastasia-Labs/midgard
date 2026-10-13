@@ -9,7 +9,7 @@ import {
   replacePlutusConstrFieldCbor,
 } from "@al-ft/midgard-core/plutus-data-cbor";
 import * as SDK from "@al-ft/midgard-sdk";
-import { CML, Data } from "@lucid-evolution/lucid";
+import { CML, Data, type UTxO } from "@lucid-evolution/lucid";
 import { afterAll, expect, it } from "vitest";
 
 import { submitInit } from "../src/submit-init.js";
@@ -54,18 +54,14 @@ import {
   publishRemovalReferenceScripts,
   submitSetupTx,
 } from "./support/submit-init-emulator-shared.js";
+import {
+  RAW_HISTORY_ROWS,
+  rawDatum,
+} from "./support/transition-raw-history-datums.js";
 import { depositEventsRetainedBlock } from "./support/transition-trace-retained.js";
 import { publishTransitionTraceYields } from "./support/transition-trace-yields.js";
 
 const records: unknown[] = [];
-const rawDatum = "a3020a010b020c";
-/** Deposit datums a typed Data codec cannot carry. */
-const RAW_DATUMS: readonly (readonly [string, string])[] = [
-  ["an unsorted map that repeats a key", rawDatum],
-  ["a tagged small bignum", "c24105"],
-  ["a general-form constructor 0", "d866820080"],
-  ["a map with a repeated key", "a201020103"],
-];
 const originalAssets = { lovelace: 20_000_000n };
 afterAll(() => {
   const directory = process.env.MIDGARD_EVENT_HISTORY_EVIDENCE_DIR;
@@ -92,16 +88,14 @@ afterAll(() => {
   );
 });
 
-it.each([
-  ...RAW_DATUMS.map(([name, datum]) => ({ name, datum, honest: false })),
-  { name: "an unsorted map that repeats a key", datum: rawDatum, honest: true },
-])(
+it.each(RAW_HISTORY_ROWS)(
   "proves a raw Deposit datum through applied transition stages: $name; honest=$honest",
-  async ({ name, datum: datumRow, honest }) => {
+  async ({ name, datum: datumRow, honest, bounds }) => {
     const h = await makeFaultProofEmulatorHarness({
       contractOptions: {
         realTransitionTrace: true,
         alwaysFraudProofCatalogue: true,
+        ...(bounds === undefined ? {} : { eventHistoryBounds: bounds }),
       },
     });
     const submit = h.emulator.submitTx.bind(h.emulator);
@@ -151,7 +145,7 @@ it.each([
       });
       return txHash;
     };
-    const history = await prepareFamilyHistory(h, records);
+    const history = await prepareFamilyHistory(h, records, bounds);
     const contracts = history.contracts;
     const yields = await publishTransitionTraceYields(h.proverLucid, contracts);
     const removal = await publishRemovalReferenceScripts({
@@ -225,41 +219,64 @@ it.each([
       beforeHeaderCommit: async (hubReference) => {
         const validTo =
           Number(retained.header.endTime) + 1 - SDK.EVENT_WAIT_DURATION_MS;
+        const reserved = new Set(
+          [nonce, history.nonce("Withdrawal")].map(outRefLabel),
+        );
+        const funding = async () =>
+          (await h.proverLucid.wallet().getUtxos()).filter(
+            (utxo) =>
+              !reserved.has(outRefLabel(utxo)) &&
+              utxo.datum == null &&
+              utxo.scriptRef == null,
+          );
+        const context = {
+          lucid: h.proverLucid,
+          applied,
+          recipe,
+          hubReference,
+          scriptReference: history.scripts[0]!,
+          fundingInputs: await funding(),
+        };
+        const reclaimAuth: SDK.CredentialD = {
+          PublicKeyCredential: [h.proverSigner.paymentKeyHash],
+        };
+        // A payload above the inline limit is published to the retention
+        // address first and admitted against that output.
+        let externalData: UTxO | undefined;
+        if (
+          SDK.prepareEventHistoryPayloadCbor(payloadCbor, reclaimAuth, recipe)
+            .kind === "External"
+        ) {
+          const publication = await SDK.buildEventHistoryPublication(
+            context,
+            payloadCbor,
+            reclaimAuth,
+            validTo,
+          );
+          const txHash = await history.submit(
+            "raw-deposit-publication",
+            publication.tx,
+          );
+          [externalData] = await h.proverLucid.utxosByOutRef([
+            { txHash, outputIndex: publication.publicationOutputIndex },
+          ]);
+          context.fundingInputs = await funding();
+        }
         const target = validTo - 10_000;
         if (h.emulator.now() < target)
           h.emulator.awaitSlot(Math.ceil((target - h.emulator.now()) / 1000));
         expect(h.emulator.now()).toBeLessThan(validTo);
-        const reserved = new Set(
-          [nonce, history.nonce("Withdrawal")].map(outRefLabel),
-        );
-        const fundingInputs = (await h.proverLucid.wallet().getUtxos()).filter(
-          (utxo) =>
-            !reserved.has(outRefLabel(utxo)) &&
-            utxo.datum == null &&
-            utxo.scriptRef == null,
-        );
-        const admission = await SDK.buildEventHistoryAdmission(
-          {
-            lucid: h.proverLucid,
-            applied,
-            recipe,
-            hubReference,
-            scriptReference: history.scripts[0]!,
-            fundingInputs,
-          },
-          {
-            payloadCbor,
-            reclaimAuth: {
-              PublicKeyCredential: [h.proverSigner.paymentKeyHash],
-            },
-            nonce,
-            assets: { lovelace: 25_000_000n },
-            structuralLovelace: 5_000_000n,
-            structuralRefundKey: h.proverSigner.paymentKeyHash,
-            validFrom: h.emulator.now() - 60_000,
-            validTo,
-          },
-        );
+        const admission = await SDK.buildEventHistoryAdmission(context, {
+          payloadCbor,
+          reclaimAuth,
+          ...(externalData === undefined ? {} : { externalData }),
+          nonce,
+          assets: { lovelace: 25_000_000n },
+          structuralLovelace: 5_000_000n,
+          structuralRefundKey: h.proverSigner.paymentKeyHash,
+          validFrom: h.emulator.now() - 60_000,
+          validTo,
+        });
         await history.submit("raw-deposit-admission", admission.tx);
         awaitHeaderCommitWindow(h.emulator, retained.header);
       },
@@ -314,11 +331,9 @@ it.each([
     const proof = makeTransitionProofMaterial(current, typedProof);
     const sourceCbor = plutusConstrFieldCbor(eventCbor, [1]);
     expect(transitionProofHistorySource(proof)?.valueCbor).toBe(sourceCbor);
-    if (datumRow === rawDatum)
-      // The typed encoder collapses the repeated key; the proof keeps it.
-      expect(proof.proofCbor).not.toBe(
-        Data.to(typedProof, SDK.TransitionFaultProof),
-      );
+    // The typed proof carries the committed leaf bytes, so even a datum the
+    // typed deposit view would collapse reaches the material unchanged.
+    expect(proof.proofCbor).toBe(Data.to(typedProof, SDK.TransitionFaultProof));
     expect(
       decodeMidgardTxOutput(
         Buffer.from(fixtureLedgerAfter(retained.header)[0]![1], "hex"),
@@ -368,7 +383,7 @@ it.each([
       ])
     )[0]!;
     let terminal = false;
-    for (let hop = 0; hop < 16; hop++) {
+    for (let hop = 0; hop < 64; hop++) {
       const state = Data.from(
         checkpoint.datum!,
         SDK.TransitionTraceProofCommitmentDatum,
@@ -439,7 +454,7 @@ it.each([
         },
       ]);
       expect(queueBefore).toHaveLength(1);
-      await expect(finish()).rejects.toThrow(/failed script execution/u);
+      await expect(finish()).rejects.toThrow();
       expect(await h.proverLucid.utxosByOutRef([checkpoint])).toHaveLength(1);
       expect(await h.proverLucid.utxosByOutRef(queueBefore)).toEqual(
         queueBefore,

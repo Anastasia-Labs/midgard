@@ -6,6 +6,7 @@ import {
   buildEventToStepMembershipProof,
   buildIndexedTraceProof,
   buildRawL2TransactionSourceMembershipProof,
+  leafMembershipProof,
   membershipProof,
   requireTraceEntry,
   sourceEventOrThrow,
@@ -76,7 +77,7 @@ export const buildValidDepositTransitionWitness = async ({
         reconstruction,
         eventKey: trace.value.event_key,
       }),
-      source_membership: await membershipProof({
+      source_membership: await leafMembershipProof({
         root: reconstruction.rootData.deposits,
         entry: source.entry,
       }),

@@ -246,8 +246,8 @@
   },
   {
     "file": "midgard-fault-proofs/src/transition-trace/submit.submit-transition-trace-final.ts",
-    "max": 827,
-    "reason": "submitTransitionTraceFinal is the dominant indivisible declaration (725 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
+    "max": 777,
+    "reason": "submitTransitionTraceFinal is the dominant indivisible declaration (725 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. T302 (-50): the phase-8 datum walk moved to data-summary-walk; cap reduced to the measured count."
   },
   {
     "file": "midgard-fault-proofs/src/value-not-preserved/union-plan.plan-conservation-fold.ts",
@@ -526,8 +526,8 @@
   },
   {
     "file": "midgard-fault-proofs/tests/support/transition-trace-final-cases.register-transition-trace-final-cases.ts",
-    "max": 934,
-    "reason": "registerTransitionTraceFinalCases is the dominant indivisible declaration (846 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. C2a (+2): headers are committed with the commit slot as block_slot, and callers use the header the commit returns."
+    "max": 925,
+    "reason": "registerTransitionTraceFinalCases is the dominant indivisible declaration (846 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. C2a (+2): headers are committed with the commit slot as block_slot, and callers use the header the commit returns. T302 (-9): the forged datum walk case lives in transition-trace-final-cases.forged-walk.ts; cap reduced to the measured count."
   },
   {
     "file": "midgard-fault-proofs/tests/support/validator-scenario-registry.family-scenarios.ts",

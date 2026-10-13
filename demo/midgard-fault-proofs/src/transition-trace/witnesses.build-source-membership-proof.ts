@@ -42,6 +42,18 @@ export const membershipProof = async <K, V>({
   ),
 });
 
+/** A membership proof whose value is the committed leaf bytes themselves. */
+export const leafMembershipProof = async <K, V>({
+  root,
+  entry,
+}: {
+  readonly root: CountedRoot;
+  readonly entry: DecodedRootEntry<K, V>;
+}): Promise<SDK.RootMembershipProof<K, string>> => ({
+  ...(await membershipProof({ root, entry })),
+  value: entry.valueBytes.toString("hex"),
+});
+
 export const nonMembershipProof = async <K>({
   root,
   key,

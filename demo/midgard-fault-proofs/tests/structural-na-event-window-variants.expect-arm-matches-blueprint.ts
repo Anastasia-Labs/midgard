@@ -23,8 +23,10 @@ export const EVENT_KEY_DEF = "midgard/ledger_state/EventKey";
 export const nonMembershipProofDef = (idType: string): string =>
   `midgard/transition_trace/RootNonMembershipProof<midgard/ledger_state/${idType}>`;
 
+/** `infoType` is a ledger_state type, or `ByteArray` for a leaf carried as
+ * its committed bytes. */
 export const membershipProofDef = (idType: string, infoType: string): string =>
-  `midgard/transition_trace/RootMembershipProof<midgard/ledger_state/${idType},midgard/ledger_state/${infoType}>`;
+  `midgard/transition_trace/RootMembershipProof<midgard/ledger_state/${idType},${infoType === "ByteArray" ? infoType : `midgard/ledger_state/${infoType}`}>`;
 
 export const NON_MEMBERSHIP_FIELDS = [
   "domain",

@@ -14,8 +14,8 @@ import {
 import {
   type AdjacentTraceProof,
   AdjacentTraceProofSchema,
-  type DepositSourceMembershipProof,
-  DepositSourceMembershipProofSchema,
+  type DepositSourceLeafMembershipProof,
+  DepositSourceLeafMembershipProofSchema,
   type EventToStepMembershipProof,
   type EventToStepProof,
   EventToStepProofSchema,
@@ -77,7 +77,7 @@ export type InvalidOneStepTransitionWitness =
       readonly ValidDepositTransition: {
         readonly trace_proof: IndexedTraceProof;
         readonly event_to_step: EventToStepMembershipProof;
-        readonly source_membership: DepositSourceMembershipProof;
+        readonly source_membership: DepositSourceLeafMembershipProof;
         readonly projected_utxo: LedgerInsertWitness;
       };
     }
@@ -146,7 +146,7 @@ export const OmittedDueL1EventWitness = asDataType<OmittedDueL1EventWitness>(
 export const OutOfWindowSourceEventWitnessSchema = Data.Enum([
   Data.Object({
     OutOfWindowDeposit: Data.Object({
-      source_membership: DepositSourceMembershipProofSchema,
+      source_membership: DepositSourceLeafMembershipProofSchema,
     }),
   }),
   Data.Object({
@@ -167,7 +167,7 @@ export const OutOfWindowSourceEventWitnessSchema = Data.Enum([
 export type OutOfWindowSourceEventWitness =
   | {
       readonly OutOfWindowDeposit: {
-        readonly source_membership: DepositSourceMembershipProof;
+        readonly source_membership: DepositSourceLeafMembershipProof;
       };
     }
   | {

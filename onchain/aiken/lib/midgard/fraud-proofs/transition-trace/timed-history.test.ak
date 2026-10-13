@@ -178,7 +178,7 @@ fn omitted(tx: Transaction, kind: order_facts.Kind) -> Bool {
 fn deposit_outside(tx: Transaction, info: ledger_state.DepositInfo) -> Bool {
   let source = membership(
     transition_trace.DepositsRootDomain,
-    info,
+    cbor.serialise(info),
     cbor.serialise(info),
   )
   let header = ledger_state.HeaderV1 {

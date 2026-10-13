@@ -62,12 +62,7 @@ validator projection(
       expect [trace_data,
             _, source_data, projected_data] = one_step_witness(fault, 3)
       expect trace_proof: IndexedTraceProof = trace_data
-      expect
-          source: RootMembershipProof<
-            ledger_state.DepositId,
-            ledger_state.DepositInfo,
-          >
-        = source_data
+      expect source: RootMembershipProof<ledger_state.DepositId, ByteArray> = source_data
       expect projected: proof.LedgerInsertWitness = projected_data
       let hub_datum = hub.get_datum(
         tx.reference_inputs,
@@ -109,7 +104,7 @@ validator projection(
           )
       and {
         event.id == source.key,
-        event.info == source.value,
+        cbor.serialise(event.info) == source.value,
         projected.key == proof.ledger_outref_key(source.key),
         opened.spend_input_keys == [],
         list.length(opened.output_hashes) == 1,

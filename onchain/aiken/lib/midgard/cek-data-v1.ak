@@ -5,12 +5,12 @@ use midgard/fraud_proofs/native_tx/codec.{
   encode_definite_array_header, encode_definite_bytes, slice_len,
 }
 
-const data_node_domain = #"4d69646761726443656b446174614e6f64655631"
+pub const data_node_domain = #"4d69646761726443656b446174614e6f64655631"
 
-const data_list_node_domain =
+pub const data_list_node_domain =
   #"4d69646761726443656b446174614c6973744e6f64655631"
 
-const data_pair_node_domain =
+pub const data_pair_node_domain =
   #"4d69646761726443656b44617461506169724e6f64655631"
 
 const uint32_max = 4294967295
@@ -72,7 +72,9 @@ fn blob_range_root_v1(bytes: ByteArray) -> ByteArray {
   }
 }
 
-fn bounded_blob_root_v1(bytes: ByteArray) -> ByteArray {
+/// The blob root a semantic summary commits for a byte or integer leaf of
+/// ledger Data (at most one bounded ledger output long).
+pub fn bounded_blob_root_v1(bytes: ByteArray) -> ByteArray {
   expect bytearray.length(bytes) <= max_ledger_data_blob_bytes
   blob_range_root_v1(bytes)
 }

@@ -2,7 +2,10 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 
 import { mpfProofFromWitness, normalizedMpfRoot } from "./detect.js";
-import { nextTransitionOutputPhase } from "./output-phases.js";
+import {
+  nextTransitionDatumPhase,
+  nextTransitionOutputPhase,
+} from "./output-phases.js";
 import { transitionTraceProofChunks } from "./proof-carriage.js";
 import {
   readTransitionProof,
@@ -40,6 +43,7 @@ export const initialTransitionTraceState = (
     deposit_index: 0n,
     deposit_source_cbor: "",
     deposit_asset_count: 0n,
+    datum_walk: null,
   };
 };
 export const transitionTracePhaseIsTerminal = (
@@ -93,11 +97,20 @@ export const nextTransitionTracePhase = ({
   yields: ReturnType<typeof transitionTraceYieldData>;
 }): { state: SDK.TransitionTraceFinalState; redeemer: string } => {
   const proof = readTransitionProof(proofInput);
-  if (state.kind !== 2n && (state.phase === 2n || state.phase === 7n)) {
-    const output = yields.find((item) => item.outputCbors !== undefined)
-      ?.outputCbors?.[Number(state.output_index)];
+  if (
+    state.kind !== 2n &&
+    (state.phase === 2n || state.phase === 7n || state.phase === 8n)
+  ) {
+    const opened = yields.find((item) => item.outputCbors !== undefined);
+    const output = opened?.outputCbors?.[Number(state.output_index)];
     if (output === undefined)
       throw new Error("Transition output bytes missing");
+    if (state.phase === 8n) {
+      const summaries = opened?.outputSummaries?.[Number(state.output_index)];
+      if (summaries === undefined)
+        throw new Error("transition output summary missing");
+      return nextTransitionDatumPhase(state, output, summaries);
+    }
     return nextTransitionOutputPhase(
       state,
       output,
@@ -185,17 +198,6 @@ export const nextTransitionTracePhase = ({
           current_root: replay(item, false),
         },
         redeemer,
-      };
-    }
-    case 8n: {
-      const all = Data.from(redeemer, SDK.TransitionTraceOutputSummaries);
-      const summary = all.summaries[Number(state.output_index)];
-      if (summary === undefined)
-        throw new Error("transition output summary missing");
-      const summaries = { summaries: [summary] };
-      return {
-        state: { ...state, phase: 3n, summaries },
-        redeemer: Data.to(summaries, SDK.TransitionTraceOutputSummaries),
       };
     }
     case 3n: {

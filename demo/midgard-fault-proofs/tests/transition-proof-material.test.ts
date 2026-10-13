@@ -18,7 +18,10 @@ import {
   transitionProofHistorySource,
 } from "../src/transition-trace/proof-material.js";
 import { reconstructDaPayload } from "../src/transition-trace/reconstruct.js";
-import { membershipProof } from "../src/transition-trace/witnesses.build-source-membership-proof.js";
+import {
+  leafMembershipProof,
+  membershipProof,
+} from "../src/transition-trace/witnesses.build-source-membership-proof.js";
 import { buildCanonicalBlockFixture } from "./helpers/canonical-block-evidence-fixture.js";
 
 const id = { transactionId: "11".repeat(32), outputIndex: 0n };
@@ -28,13 +31,15 @@ const address: SDK.AddressData = {
 };
 const rawDatum = "a3020a010b020c";
 let reconstruction: Awaited<ReturnType<typeof reconstructDaPayload>>;
-let deposit: SDK.DepositSourceMembershipProof;
+let deposit: SDK.DepositSourceLeafMembershipProof;
 let withdrawal: SDK.WithdrawalSourceMembershipProof;
 let cases: {
   name: string;
   fault: SDK.TransitionFault;
   path: number[];
   raw: string;
+  /** The proof field's own CBOR: the raw leaf, or a deposit's leaf bytes. */
+  field: string;
 }[];
 
 beforeAll(async () => {
@@ -168,7 +173,7 @@ beforeAll(async () => {
     expectedHeaderHash: headerHash,
     committedHeader: header,
   });
-  deposit = await membershipProof({
+  deposit = await leafMembershipProof({
     root: reconstruction.rootData.deposits,
     entry: reconstruction.deposits[0]!,
   });
@@ -225,6 +230,7 @@ beforeAll(async () => {
       },
       path: [2, 0, 2, 5],
       raw: rawDeposit,
+      field: Data.to(rawDeposit),
     },
     {
       name: "valid withdrawal transition",
@@ -246,6 +252,7 @@ beforeAll(async () => {
       },
       path: [2, 0, 2, 5],
       raw: rawWithdrawal,
+      field: rawWithdrawal,
     },
     {
       name: "invalid withdrawal noop",
@@ -261,6 +268,7 @@ beforeAll(async () => {
       },
       path: [2, 0, 2, 5],
       raw: rawWithdrawal,
+      field: rawWithdrawal,
     },
   ];
   for (const [kind, member, raw] of [
@@ -271,7 +279,7 @@ beforeAll(async () => {
       kind === "Deposit"
         ? {
             OutOfWindowDeposit: {
-              source_membership: member as SDK.DepositSourceMembershipProof,
+              source_membership: member as SDK.DepositSourceLeafMembershipProof,
             },
           }
         : {
@@ -284,6 +292,7 @@ beforeAll(async () => {
       fault: { OutOfWindowSourceEvent: { witness: window } },
       path: [2, 0, 0, 5],
       raw,
+      field: kind === "Deposit" ? Data.to(raw) : raw,
     });
   }
 });
@@ -301,7 +310,7 @@ describe("transition raw proof material", () => {
       expect(
         plutusConstrFieldCbor(material.proofCbor, item.path),
         item.name,
-      ).toBe(item.raw);
+      ).toBe(item.field);
       expect(transitionProofHistorySource(material)?.valueCbor, item.name).toBe(
         item.raw,
       );
@@ -314,11 +323,15 @@ describe("transition raw proof material", () => {
       expect(
         serialise(plutusConstrFieldCbor(chunks.chunks.join(""), item.path)),
         item.name,
-      ).toBe(item.raw);
-      expect(
-        transitionTraceProofChunks(readTransitionProof(material)).hash,
-        item.name,
-      ).not.toBe(chunks.hash);
+      ).toBe(item.field);
+      // A deposit proof carries the committed leaf as bytes, so its typed
+      // encoding is the material; a withdrawal's typed view still collapses it.
+      const typedHash = transitionTraceProofChunks(
+        readTransitionProof(material),
+      ).hash;
+      if (item.field === item.raw)
+        expect(typedHash, item.name).not.toBe(chunks.hash);
+      else expect(typedHash, item.name).toBe(chunks.hash);
       const detached = readTransitionProof(material);
       detached.header.endTime += 1n;
       expect(transitionTraceProofChunks(material)).toEqual(chunks);
@@ -343,12 +356,11 @@ describe("transition raw proof material", () => {
     expect(Data.from(valueBytes.toString("hex"), SDK.DepositInfo)).toEqual(
       entry.value,
     );
-    expect(() =>
-      makeTransitionProofMaterial(
-        { ...reconstruction, deposits: [{ ...entry, valueBytes }] },
-        proof,
-      ),
-    ).toThrow(/membership/);
+    const altered = { ...reconstruction, deposits: [{ ...entry, valueBytes }] };
+    // The carried leaf bytes differ from the altered committed leaf.
+    expect(() => makeTransitionProofMaterial(altered, proof)).toThrow(
+      /raw leaf/,
+    );
     const changed = structuredClone(proof);
     if (
       !("InvalidOneStepTransition" in changed.fault) ||
@@ -360,6 +372,26 @@ describe("transition raw proof material", () => {
       throw new Error("Missing deposit fixture");
     const witness =
       changed.fault.InvalidOneStepTransition.witness.ValidDepositTransition;
+    // Carrying the altered leaf itself reaches the membership check.
+    const carried = {
+      ...changed,
+      fault: {
+        InvalidOneStepTransition: {
+          witness: {
+            ValidDepositTransition: {
+              ...witness,
+              source_membership: {
+                ...witness.source_membership,
+                value: valueBytes.toString("hex"),
+              },
+            },
+          },
+        },
+      },
+    };
+    expect(() => makeTransitionProofMaterial(altered, carried)).toThrow(
+      /membership/,
+    );
     const changedCount = {
       ...changed,
       fault: {

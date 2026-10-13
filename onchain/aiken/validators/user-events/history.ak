@@ -7,6 +7,7 @@ use cardano/transaction.{OutputReference, Transaction}
 use midgard/common/utils
 use midgard/event_history/actions.{Apply, Initialize, Observe}
 use midgard/event_history/admission
+use midgard/event_history/node_role
 use midgard/event_history/order_facts.{Deposit, Kind, Withdrawal}
 use midgard/event_history/ordering
 use midgard/event_history/output_claims
@@ -187,4 +188,114 @@ validator history(
   else(_) {
     fail
   }
+}
+
+// Every list token, and so every Order node, exists only through a run of this
+// kind's observer: minting and spending both require its zero withdrawal, and
+// each observer operation that writes Order content calls `order_facts.admit`.
+
+const test_policy = #"11111111111111111111111111111111111111111111111111111111"
+
+fn test_mint(tx: Transaction) -> Bool {
+  let redeemer: Data = Void
+  history.mint(
+    #"22222222222222222222222222222222222222222222222222222222",
+    Deposit,
+    address.from_script(
+      #"33333333333333333333333333333333333333333333333333333333",
+    ),
+    #"44444444444444444444444444444444444444444444444444444444",
+    OutputReference {
+      transaction_id: #"5555555555555555555555555555555555555555555555555555555555555555",
+      output_index: 0,
+    },
+    200,
+    1000,
+    15000,
+    1024,
+    redeemer,
+    test_policy,
+    tx,
+  )
+}
+
+fn minting(withdrawals: Pairs<Credential, Int>) -> Transaction {
+  Transaction {
+    ..transaction.placeholder,
+    mint: assets.from_asset(test_policy, #"abcd", 1),
+    withdrawals,
+  }
+}
+
+test minting_a_list_token_defers_to_the_own_observer() {
+  test_mint(minting([Pair(Script(test_policy), 0)]))
+}
+
+test minting_a_list_token_without_the_own_observer_is_refused() fail {
+  test_mint(minting([]))
+}
+
+test minting_a_list_token_under_another_observer_is_refused() fail {
+  test_mint(
+    minting(
+      [
+        Pair(
+          Script(#"66666666666666666666666666666666666666666666666666666666"),
+          0,
+        ),
+      ],
+    ),
+  )
+}
+
+fn test_spend(withdrawals: Pairs<Credential, Int>) -> Bool {
+  let content: Data = node_role.RootContent
+  let link: Data = ordering.Link {
+    position: ordering.Root,
+    next: None,
+    protected_until: 0,
+    payload: content,
+  }
+  let own_ref = OutputReference {
+    transaction_id: #"7777777777777777777777777777777777777777777777777777777777777777",
+    output_index: 0,
+  }
+  let input = transaction.Input {
+    output_reference: own_ref,
+    output: transaction.Output {
+      address: address.from_script(test_policy),
+      value: assets.from_lovelace(3_000_000)
+        |> assets.add(test_policy, #"", 1),
+      datum: transaction.InlineDatum(link),
+      reference_script: None,
+    },
+  }
+  history.spend(
+    #"22222222222222222222222222222222222222222222222222222222",
+    Deposit,
+    address.from_script(
+      #"33333333333333333333333333333333333333333333333333333333",
+    ),
+    #"44444444444444444444444444444444444444444444444444444444",
+    OutputReference {
+      transaction_id: #"5555555555555555555555555555555555555555555555555555555555555555",
+      output_index: 0,
+    },
+    200,
+    1000,
+    15000,
+    1024,
+    None,
+    0,
+    own_ref,
+    Transaction { ..transaction.placeholder, inputs: [input], withdrawals },
+  )
+}
+
+test spending_a_list_node_defers_to_the_own_observer() {
+  test_spend([Pair(Script(test_policy), 0)])
+}
+
+test spending_a_list_node_without_the_own_observer_is_refused() fail {
+  test_spend([])
 }

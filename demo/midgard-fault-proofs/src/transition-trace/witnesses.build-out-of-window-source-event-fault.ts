@@ -11,6 +11,7 @@ import {
 } from "./witnesses.build-omitted-due-l1-event-fault.js";
 import {
   buildIndexedTraceProof,
+  leafMembershipProof,
   membershipProof,
   sourceEventOrThrow,
 } from "./witnesses.build-source-membership-proof.js";
@@ -40,7 +41,7 @@ export const buildOutOfWindowSourceEventFault = async ({
       }
       return SDK.outOfWindowSourceEventFault({
         OutOfWindowDeposit: {
-          source_membership: await membershipProof({
+          source_membership: await leafMembershipProof({
             root: reconstruction.rootData.deposits,
             entry: source.entry,
           }),

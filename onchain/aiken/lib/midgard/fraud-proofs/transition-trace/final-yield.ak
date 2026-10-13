@@ -63,6 +63,10 @@ pub type State {
   deposit_index: Int,
   deposit_source_cbor: ByteArray,
   deposit_asset_count: Int,
+  /// The `data_summary_walk_v1.Walk` checkpoint of the output datum; `Some`
+  /// only while phase 8 walks a datum. Held as `Data` so that only phase 8
+  /// decodes it.
+  datum_walk: Option<Data>,
 }
 
 pub fn initial(kind: Int, commitment: proof_carriage.Commitment) -> State {
@@ -88,6 +92,7 @@ pub fn initial(kind: Int, commitment: proof_carriage.Commitment) -> State {
     deposit_index: 0,
     deposit_source_cbor: #"",
     deposit_asset_count: 0,
+    datum_walk: None,
   }
 }
 

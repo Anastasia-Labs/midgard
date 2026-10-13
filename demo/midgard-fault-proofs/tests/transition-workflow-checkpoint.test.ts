@@ -26,6 +26,7 @@ const state = (phase: bigint): SDK.TransitionTraceFinalState => ({
   deposit_index: 0n,
   deposit_source_cbor: "",
   deposit_asset_count: 0n,
+  datum_walk: null,
 });
 const thread = (phase = 5n): UTxO => ({
   address,

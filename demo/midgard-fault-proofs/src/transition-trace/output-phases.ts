@@ -8,6 +8,14 @@ import {
 import type * as SDK from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 
+import {
+  dataSummaryWalkData,
+  type DataSummaryWalkTrace,
+  dataSummaryWalkWitnessData,
+  planDataSummaryWalkTransaction,
+  traceDataSummaryWalk,
+} from "./data-summary-walk.js";
+
 const ValueHeadSchema = Data.Object({
   asset_name: Data.Bytes(),
   quantity: Data.Integer(),
@@ -42,6 +50,11 @@ let cached: {
   hex: string;
   scan: ReturnType<typeof buildMidgardLedgerOutputScanTrace>;
   value: ReturnType<typeof buildMidgardLedgerOutputValueTrace> | null;
+  datum: {
+    readonly trace: DataSummaryWalkTrace;
+    /** Each checkpoint's encoded `Walk`, to its step index. */
+    readonly checkpoints: ReadonlyMap<string, number>;
+  } | null;
 } | null = null;
 const outputTrace = (bytes: Buffer) => {
   const key = hex(bytes);
@@ -50,6 +63,7 @@ const outputTrace = (bytes: Buffer) => {
     hex: key,
     scan: buildMidgardLedgerOutputScanTrace(bytes),
     value: null,
+    datum: null,
   };
   return cached;
 };
@@ -190,5 +204,86 @@ export const nextTransitionOutputPhase = (
             ]),
           )
         : Data.to(witnesses, ValueWitnesses),
+  };
+};
+
+/** The phase-8 datum walk could not summarise an output's inline datum. */
+export class TransitionDatumUnreadableError extends Error {
+  readonly _tag = "TransitionDatumUnreadableError";
+  constructor() {
+    super("Transition output datum is not canonical Data");
+  }
+}
+
+const datumWalk = (bytes: Buffer) => {
+  const trace = outputTrace(bytes);
+  if (trace.datum !== null) return trace.datum;
+  const { datumOffset, datumLength } = trace.scan.terminal;
+  const walk = traceDataSummaryWalk(
+    bytes,
+    datumOffset,
+    datumOffset + datumLength,
+  );
+  trace.datum = {
+    trace: walk,
+    checkpoints: new Map(
+      walk.points.map((point, index) => [
+        Data.to(dataSummaryWalkData(point)),
+        index,
+      ]),
+    ),
+  };
+  return trace.datum;
+};
+
+/**
+ * The next phase-8 checkpoint of the output whose committed bytes are
+ * `outputCbor`: one transaction of the walk over its inline datum, then
+ * phase 3 with `summaries` once the walk ends. An output without an inline
+ * datum is summarised at once.
+ */
+export const nextTransitionDatumPhase = (
+  state: SDK.TransitionTraceFinalState,
+  outputCbor: string,
+  summaries: SDK.TransitionTraceOutputSummaries["summaries"][number],
+): { state: SDK.TransitionTraceFinalState; redeemer: string } => {
+  const bytes = Buffer.from(outputCbor, "hex");
+  const summarised = {
+    ...state,
+    phase: 3n,
+    summaries: { summaries: [summaries] },
+    datum_walk: null,
+  };
+  if (outputTrace(bytes).scan.terminal.datumOffset === -1)
+    return {
+      state: summarised,
+      redeemer: Data.to(
+        dataSummaryWalkWitnessData({
+          steps: 1,
+          restore: [],
+          base: Buffer.alloc(0),
+        }),
+      ),
+    };
+  const { trace, checkpoints } = datumWalk(bytes);
+  if (trace.outcome.kind === "unreadable")
+    throw new TransitionDatumUnreadableError();
+  const from =
+    state.datum_walk === null
+      ? 0
+      : checkpoints.get(Data.to(state.datum_walk as Data));
+  if (from === undefined)
+    throw new Error(
+      "Transition datum checkpoint differs from the committed output bytes",
+    );
+  const transaction = planDataSummaryWalkTransaction(trace, from);
+  const redeemer = Data.to(dataSummaryWalkWitnessData(transaction));
+  if (transaction.final) return { state: summarised, redeemer };
+  return {
+    state: {
+      ...state,
+      datum_walk: dataSummaryWalkData(trace.points[from + transaction.steps]!),
+    },
+    redeemer,
   };
 };

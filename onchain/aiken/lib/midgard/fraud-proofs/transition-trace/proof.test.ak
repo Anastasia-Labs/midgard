@@ -283,10 +283,7 @@ fn withdrawal_source_membership(
 fn deposit_source_membership(
   deposit_id: ledger_state.DepositId,
   info: ledger_state.DepositInfo,
-) -> transition_trace.RootMembershipProof<
-  ledger_state.DepositId,
-  ledger_state.DepositInfo,
-> {
+) -> transition_trace.RootMembershipProof<ledger_state.DepositId, ByteArray> {
   let key_bytes = cbor.serialise(deposit_id)
   let value_bytes = cbor.serialise(info)
   let phas_root = mpf.root(mpf.insert(mpf.empty, key_bytes, value_bytes, []))
@@ -300,7 +297,7 @@ fn deposit_source_membership(
     phas_root,
     count: 1,
     key: deposit_id,
-    value: info,
+    value: value_bytes,
     proof: [],
   }
 }

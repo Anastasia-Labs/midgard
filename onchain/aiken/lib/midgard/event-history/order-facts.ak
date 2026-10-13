@@ -78,15 +78,13 @@ pub fn payload_id(payload: Payload) -> OutputReference {
   }
 }
 
-/// An inline payload within the deployment's node and inline byte limits.
+/// An inline payload within the deployment's inline byte limit.
 fn inline_payload(
   payload: Payload,
   inline_limit: Int,
-  max_payload_nodes: Int,
   external_reference_index: Option<Int>,
 ) -> Payload {
   expect external_reference_index == None
-  expect data_budget.within_nodes(payload, max_payload_nodes)
   expect bytearray.length(cbor.serialise(payload)) <= inline_limit
   payload
 }
@@ -97,7 +95,6 @@ fn external_data(
   storage_datum_hash: ByteArray,
   tx: Transaction,
   retention_address: Address,
-  max_payload_nodes: Int,
   external_reference_index: Option<Int>,
 ) -> retained_data.EventData {
   expect Some(index) = external_reference_index
@@ -108,7 +105,6 @@ fn external_data(
     retention_address,
     user_events.out_ref_to_nonce(facts.event_id),
     storage_datum_hash,
-    max_payload_nodes,
   )
 }
 
@@ -125,30 +121,30 @@ fn bounded_payload(
 
 /// The inline limit is supplied by the measured deployment recipe. It bounds
 /// serialized Plutus Data, not JSON, and is not inferred from initial tx fit.
+///
+/// Opening does not re-walk the payload's Data nodes. Facts come only from an
+/// authenticated Order node, and every Order node was produced by `admit`,
+/// which enforces the node bound on the same payload (inline: the immutable
+/// facts; external: the retained datum whose complete hash the facts pin). So
+/// `_max_payload_nodes` is unused here and kept for the callers' parameters.
 pub fn open_payload(
   facts: Facts,
   tx: Transaction,
   retention_address: Address,
   inline_limit: Int,
   max_payload_bytes: Int,
-  max_payload_nodes: Int,
+  _max_payload_nodes: Int,
   external_reference_index: Option<Int>,
 ) -> Payload {
   let payload = when facts.location is {
     Inline { payload } ->
-      inline_payload(
-        payload,
-        inline_limit,
-        max_payload_nodes,
-        external_reference_index,
-      )
+      inline_payload(payload, inline_limit, external_reference_index)
     External { storage_datum_hash } -> {
       let data = external_data(
         facts,
         storage_datum_hash,
         tx,
         retention_address,
-        max_payload_nodes,
         external_reference_index,
       )
       expect payload: Payload = data.event_payload
@@ -221,25 +217,23 @@ pub fn admit(
     user_events.out_ref_to_nonce(facts.event_id),
     facts.structural_lovelace,
   )
-  // As `open_payload`, and the node also decodes an external payload's
-  // retention datum, so its reclamation credential must be decodable.
+  // As `open_payload`, plus the Data node bound that opening relies on, and
+  // the node also decodes an external payload's retention datum, so its
+  // reclamation credential must be decodable.
   let opened = when facts.location is {
-    Inline { payload } ->
-      inline_payload(
-        payload,
-        inline_limit,
-        max_payload_nodes,
-        external_reference_index,
-      )
+    Inline { payload } -> {
+      expect data_budget.within_nodes(payload, max_payload_nodes)
+      inline_payload(payload, inline_limit, external_reference_index)
+    }
     External { storage_datum_hash } -> {
       let data = external_data(
         facts,
         storage_datum_hash,
         tx,
         retention_address,
-        max_payload_nodes,
         external_reference_index,
       )
+      expect data_budget.within_nodes(data.event_payload, max_payload_nodes)
       expect decodable_credential(data.reclaim_auth)
       expect payload: Payload = data.event_payload
       payload

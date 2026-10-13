@@ -204,6 +204,7 @@ export const TransitionTraceFinalStateSchema = Data.Object({
   deposit_index: Data.Integer(),
   deposit_source_cbor: Data.Bytes(),
   deposit_asset_count: Data.Integer(),
+  datum_walk: Data.Nullable(Data.Any()),
 });
 
 export type TransitionTraceFinalState = Data.Static<

@@ -102,7 +102,7 @@ validator timing(
             expect
                 source: transition_trace.RootMembershipProof<
                   ledger_state.DepositId,
-                  ledger_state.DepositInfo,
+                  ByteArray,
                 >
               = source_data
             timed_history.out_of_window_deposit(

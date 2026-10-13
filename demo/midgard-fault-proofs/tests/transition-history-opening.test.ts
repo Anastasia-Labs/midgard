@@ -188,16 +188,11 @@ describe("transition deposit retained opening", () => {
         expect(source?.valueCbor).toBe(
           current.deposits[0]!.valueBytes.toString("hex"),
         );
-        // The material carries the committed leaf, which the typed proof's
-        // encoding loses or cannot write.
-        const typedChunks = () => transitionTraceProofChunks(finding.proof);
-        if (typed === "throws") expect(typedChunks).toThrow();
-        else if (typed === "differs")
-          expect(transitionTraceProofChunks(material)).not.toEqual(
-            typedChunks(),
-          );
-        else
-          expect(transitionTraceProofChunks(material)).toEqual(typedChunks());
+        // The proof carries the committed leaf as bytes, so its typed
+        // encoding is the material even where the typed deposit view is not.
+        expect(transitionTraceProofChunks(material)).toEqual(
+          transitionTraceProofChunks(finding.proof),
+        );
         expect(
           initialTransitionTraceState(material).proof_commitment.hash,
         ).toBe(transitionTraceProofChunks(material).hash);

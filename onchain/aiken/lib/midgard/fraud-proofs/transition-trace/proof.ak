@@ -225,7 +225,7 @@ pub type InvalidOneStepTransitionWitness {
     >,
     source_membership: transition_trace.RootMembershipProof<
       ledger_state.DepositId,
-      ledger_state.DepositInfo,
+      ByteArray,
     >,
     projected_utxo: LedgerInsertWitness,
   }
@@ -276,7 +276,7 @@ pub type OutOfWindowSourceEventWitness {
   OutOfWindowDeposit {
     source_membership: transition_trace.RootMembershipProof<
       ledger_state.DepositId,
-      ledger_state.DepositInfo,
+      ByteArray,
     >,
   }
   OutOfWindowWithdrawal {
@@ -1051,7 +1051,7 @@ pub fn validate_deposit_one_step_binding(
   >,
   source_membership: transition_trace.RootMembershipProof<
     ledger_state.DepositId,
-    ledger_state.DepositInfo,
+    ByteArray,
   >,
 ) -> Bool {
   and {
@@ -1062,7 +1062,7 @@ pub fn validate_deposit_one_step_binding(
       header.deposits_root,
       header.deposit_count,
       cbor.serialise(source_membership.key),
-      cbor.serialise(source_membership.value),
+      source_membership.value,
     ),
     trace_proof.value.event_key == ledger_state.DepositEventKey {
       deposit_id: source_membership.key,
@@ -1356,7 +1356,7 @@ pub fn validate_valid_deposit_transition(
   >,
   source_membership: transition_trace.RootMembershipProof<
     ledger_state.DepositId,
-    ledger_state.DepositInfo,
+    ByteArray,
   >,
   projected_utxo: LedgerInsertWitness,
 ) -> Bool {
@@ -1384,7 +1384,7 @@ pub fn validate_valid_deposit_transition(
   let expected_key = ledger_outref_key(source_membership.key)
   expect Some(expected_value) = ledger_output_descriptor_v1.ledger_value_v1(
     source_membership.key.output_index,
-    projected_original_deposit_output(source_membership.value, original_assets)
+    projected_original_deposit_output(event.info, original_assets)
       |> native_components.encode_midgard_tx_output,
   )
   let checked_projected_utxo = LedgerInsertWitness {
@@ -1405,7 +1405,7 @@ pub fn validate_valid_deposit_transition(
       source_membership,
     ),
     event.id == source_membership.key,
-    event.info == source_membership.value,
+    cbor.serialise(event.info) == source_membership.value,
     projected_utxo.key == expected_key,
     projected_utxo.value == expected_value,
     expected_post_root != trace_proof.value.post_utxos_root,

@@ -47,7 +47,6 @@ import {
   transitionTraceByteChunks,
 } from "../../src/transition-trace/proof-carriage.js";
 import * as yieldDataModule from "../../src/transition-trace/yield-data.js";
-import * as structuredDataModule from "../../src/workflow/structured-data-preimage.js";
 import { captureLocallyEvaluatedTransaction } from "../../src/workflow/transaction-boundary.js";
 import { alignEmulatorToWholeSecond } from "./emulator/emulator-context.js";
 import { measureCompleteSignedTransaction } from "./emulator/measurement.js";
@@ -76,6 +75,7 @@ import {
   registerPhasMembershipRewardAccount,
   submitSetupTx,
 } from "./submit-init-emulator-shared.js";
+import { proveAfterForgedWalk } from "./transition-trace-final-cases.forged-walk.js";
 import { type TransitionTraceFinalCase } from "./transition-trace-final-cases.types.js";
 import {
   buildAcceptedClaimTransitionFixture,
@@ -135,7 +135,7 @@ export const registerTransitionTraceFinalCases = (
   });
   describe("fault-proof emulator integration", () => {
     it.each(cases)(
-      "publishes accepted semantic yields and removes a wrong transition root assets=$assetCount outputs=$outputCount bytes=$outputBytes field=$fieldBytes honest=$honest depth=$depth kind=$kind cancel=$cancelAt datum=$datumBytes corruptIndex=$corruptAssetIndex corruptDatum=$corruptDatum corruptSource=$corruptSourceReference drained=$drained",
+      "publishes accepted semantic yields and removes a wrong transition root assets=$assetCount outputs=$outputCount bytes=$outputBytes field=$fieldBytes honest=$honest depth=$depth kind=$kind cancel=$cancelAt datum=$datumBytes corruptIndex=$corruptAssetIndex corruptWalk=$corruptWalk corruptSource=$corruptSourceReference drained=$drained",
       async ({
         assetCount,
         outputCount,
@@ -146,9 +146,10 @@ export const registerTransitionTraceFinalCases = (
         kind = "accepted",
         cancelAt = -1,
         corruptAssetIndex = false,
-        corruptDatum = false,
+        corruptWalk = false,
         corruptSourceReference = false,
         datumBytes = 0,
+        datumCbor,
         drained = false,
       }) => {
         const realBlueprint = readBlueprint(realBlueprintPath);
@@ -187,7 +188,7 @@ export const registerTransitionTraceFinalCases = (
           let publication = false;
           for (let i = 0; i < outputs.len(); i++)
             if (outputs.get(i).script_ref() != null) publication = true;
-          const shape = `assets-${assetCount}-outputs-${outputCount}-bytes-${outputBytes}-field-${fieldBytes}-honest-${honest}-depth-${depth}-kind-${kind}-cancel-${cancelAt}-datum-${datumBytes}-corrupt-index-${corruptAssetIndex}-corrupt-datum-${corruptDatum}-corrupt-source-${corruptSourceReference}`;
+          const shape = `assets-${assetCount}-outputs-${outputCount}-bytes-${outputBytes}-field-${fieldBytes}-honest-${honest}-depth-${depth}-kind-${kind}-cancel-${cancelAt}-datum-${datumCbor === undefined ? datumBytes : `cbor-${datumCbor.length / 2}`}-corrupt-index-${corruptAssetIndex}-corrupt-walk-${corruptWalk}-corrupt-source-${corruptSourceReference}`;
           records.push({
             label: `${shape}/tx-${measuredIndex}`,
             txHash: result,
@@ -309,12 +310,15 @@ export const registerTransitionTraceFinalCases = (
             funderLucid,
             emulator.now() + (kind === "deposit" ? 240_000 : 120_000),
           ) - 1;
+        const outputDatum =
+          datumCbor ??
+          (datumBytes > 0 ? Data.to("ab".repeat(datumBytes)) : undefined);
         const makeOutput = (padding: number, script: boolean) =>
           encodeMidgardTxOutput({
             address: Buffer.from("60" + "aa".repeat(28), "hex"),
             value: {
               lovelace:
-                datumBytes > 0
+                outputDatum !== undefined
                   ? 90_000_000n
                   : kind === "deposit" && assetCount > 0
                     ? 30_000_000n
@@ -324,11 +328,11 @@ export const registerTransitionTraceFinalCases = (
                   ? new Map()
                   : new Map([["44".repeat(28), names]]),
             },
-            ...(datumBytes > 0
+            ...(outputDatum !== undefined
               ? {
                   datum: {
                     kind: "inline" as const,
-                    cbor: Buffer.from(Data.to("ab".repeat(datumBytes)), "hex"),
+                    cbor: Buffer.from(outputDatum, "hex"),
                   },
                 }
               : {}),
@@ -710,6 +714,10 @@ export const registerTransitionTraceFinalCases = (
         expect(proverPaymentCredential?.type).toBe("Key");
         const proverPaymentKeyHash = proverPaymentCredential!.hash;
 
+        const fraudProofUnit = toUnit(
+          contracts.fraudProof.policyId,
+          initResult.computationThreadAssetName,
+        );
         const submitProof = () =>
           submitTransitionTraceProof({
             lucid: proverLucid,
@@ -724,30 +732,27 @@ export const registerTransitionTraceFinalCases = (
             witnessReferenceScripts,
             awaitConfirmation: true,
           });
-        if (corruptDatum) {
-          const derive = structuredDataModule.structuredDataPublicationPlan;
-          const replacement = vi
-            .spyOn(structuredDataModule, "structuredDataPublicationPlan")
-            .mockImplementation((input) => ({
-              ...derive(input),
-              publicationDatums: [Data.to("00")],
-            }));
-          try {
-            await expect(submitProof()).rejects.toThrow(
-              /failed script execution/u,
-            );
-            await expect(
-              proverLucid.utxosAtWithUnit(
-                contracts.fraudProof.spendingScriptAddress,
-                toUnit(
-                  contracts.fraudProof.policyId,
-                  initResult.computationThreadAssetName,
-                ),
-              ),
-            ).resolves.toHaveLength(0);
-          } finally {
-            replacement.mockRestore();
-          }
+        if (corruptWalk) {
+          await proveAfterForgedWalk({
+            lucid: proverLucid,
+            submitProof,
+            finish: (threadOutRef) =>
+              submitTransitionTraceFinal({
+                lucid: proverLucid,
+                blueprint: realBlueprint,
+                deploymentInfo,
+                network,
+                signer: proverSigner,
+                threadOutRef,
+                proof: traceFixture.proof,
+                additionalReferenceInputs,
+                depositOpening,
+                witnessReferenceScripts,
+              }),
+            threadUnit: initResult.computationThreadUnit,
+            fraudProofAddress: contracts.fraudProof.spendingScriptAddress,
+            fraudProofUnit,
+          });
           return;
         }
         if (corruptSourceReference) {
@@ -783,10 +788,7 @@ export const registerTransitionTraceFinalCases = (
             await expect(
               proverLucid.utxosAtWithUnit(
                 contracts.fraudProof.spendingScriptAddress,
-                toUnit(
-                  contracts.fraudProof.policyId,
-                  initResult.computationThreadAssetName,
-                ),
+                fraudProofUnit,
               ),
             ).resolves.toHaveLength(0);
           } finally {
@@ -820,10 +822,7 @@ export const registerTransitionTraceFinalCases = (
             await expect(
               proverLucid.utxosAtWithUnit(
                 contracts.fraudProof.spendingScriptAddress,
-                toUnit(
-                  contracts.fraudProof.policyId,
-                  initResult.computationThreadAssetName,
-                ),
+                fraudProofUnit,
               ),
             ).resolves.toHaveLength(0);
           } finally {
@@ -838,10 +837,7 @@ export const registerTransitionTraceFinalCases = (
           await expect(
             proverLucid.utxosAtWithUnit(
               contracts.fraudProof.spendingScriptAddress,
-              toUnit(
-                contracts.fraudProof.policyId,
-                initResult.computationThreadAssetName,
-              ),
+              fraudProofUnit,
             ),
           ).resolves.toHaveLength(0);
           return;
@@ -853,12 +849,7 @@ export const registerTransitionTraceFinalCases = (
         expect(proofResult.fraudProofAssetName).toBe(
           initResult.computationThreadAssetName,
         );
-        expect(proofResult.fraudProofUnit).toBe(
-          toUnit(
-            contracts.fraudProof.policyId,
-            initResult.computationThreadAssetName,
-          ),
-        );
+        expect(proofResult.fraudProofUnit).toBe(fraudProofUnit);
         expect(proofResult.fraudProofMintRedeemerIndex).not.toBe(
           proofResult.computationThreadMintRedeemerIndex,
         );

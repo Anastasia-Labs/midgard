@@ -1,4 +1,3 @@
-import { decodeMidgardTxOutput } from "@al-ft/midgard-core/codec";
 import { formatUnknownError } from "@al-ft/midgard-core/error-format";
 import {
   aikenSerialisedPlutusDataCborPreservingMapOrder,
@@ -17,7 +16,6 @@ import {
 } from "@al-ft/midgard-sdk";
 import {
   type BuildTxWithRedeemer,
-  Constr,
   credentialToAddress,
   Data,
   scriptHashToCredential,
@@ -48,10 +46,6 @@ import {
 import { outputWithDatumAndUnitPredicate } from "../tx-layout.js";
 import { witnessMintingPolicyCarriage } from "../witness-reference-scripts.js";
 import {
-  structuredDataPublicationPlan,
-  structuredDataTreeData,
-} from "../workflow/structured-data-preimage.js";
-import {
   type FraudProofPreSubmitBoundary,
   reachFraudProofPreSubmitBoundary,
   workflowReferenceScriptsUsedByTransaction,
@@ -70,17 +64,13 @@ import {
 } from "./phases.js";
 import {
   resolveTransitionTraceByteCarriage,
-  resolveTransitionTraceDataCarriage,
   transitionTraceByteChunks,
 } from "./proof-carriage.js";
 import {
   resolveTransitionTraceProofCarriage,
   transitionTraceProofChunks,
 } from "./proof-carriage.js";
-import {
-  readTransitionProof,
-  transitionProofHistorySource,
-} from "./proof-material.js";
+import { depositSourceView, readTransitionProof } from "./proof-material.js";
 import {
   makeComputationThreadSuccessRedeemer,
   makeFraudProofMintRedeemer,
@@ -224,7 +214,6 @@ export const submitTransitionTraceFinal = async ({
   );
   if (hubOracleUtxo.datum == null)
     throw new Error("transition-trace hub oracle omitted datum");
-  const rawDepositSource = transitionProofHistorySource(proofInput);
   const depositWitness =
     "InvalidOneStepTransition" in proof.fault &&
     "ValidDepositTransition" in proof.fault.InvalidOneStepTransition.witness
@@ -269,10 +258,7 @@ export const submitTransitionTraceFinal = async ({
         reopenTransitionDeposit(
           retainedDeposit,
           depositPolicyId,
-          {
-            ...depositWitness.source_membership,
-            valueCbor: rawDepositSource!.valueCbor,
-          },
+          depositSourceView(depositWitness.source_membership),
           captured.commitmentCbor,
         );
       retainedDeposit = captured;
@@ -288,10 +274,7 @@ export const submitTransitionTraceFinal = async ({
     reopenTransitionDeposit(
       retainedDeposit,
       depositPolicyId,
-      {
-        ...depositWitness.source_membership,
-        valueCbor: rawDepositSource!.valueCbor,
-      },
+      depositSourceView(depositWitness.source_membership),
       checkpoint?.data?.deposit_source_cbor || undefined,
     );
   }
@@ -396,24 +379,6 @@ export const submitTransitionTraceFinal = async ({
     checkpoint?.data == null
       ? null
       : transitionTracePhaseYield(checkpoint.data);
-  const inlineDatum =
-    selected === "l2Summaries" && selectedOutput !== undefined
-      ? decodeMidgardTxOutput(Buffer.from(selectedOutput, "hex")).datum
-      : undefined;
-  const datumPlan =
-    inlineDatum?.kind === "inline"
-      ? structuredDataPublicationPlan(
-          Buffer.from(inlineDatum.cbor).toString("hex"),
-        )
-      : undefined;
-  const datumReferences =
-    datumPlan === undefined
-      ? []
-      : await resolveTransitionTraceDataCarriage({
-          lucid,
-          datums: datumPlan.publicationDatums,
-          publish: preSubmitBoundary === undefined,
-        });
   const selectedData =
     finalIndex === 6
       ? allYieldData
@@ -495,10 +460,12 @@ export const submitTransitionTraceFinal = async ({
                       "transition retained deposit data",
                     ),
               completed_fraud_witness: null,
+              // The opening's own bytes replace this placeholder below: a
+              // Lucid Data value cannot hold every constructor index.
               deposit_opening:
                 retainedDeposit !== undefined &&
-                [7n, 8n, 10n].includes(checkpoint.data!.phase)
-                  ? Data.from<Data>(retainedDeposit.openingCbor)
+                [7n, 10n].includes(checkpoint.data!.phase)
+                  ? 0n
                   : null,
               output_ref_indices: outputReferences.map((utxo) =>
                 requireReferenceInputIndex(
@@ -526,7 +493,7 @@ export const submitTransitionTraceFinal = async ({
         TransitionTraceYieldFinalSpendRedeemer,
       );
       return retainedDeposit !== undefined &&
-        [7n, 8n, 10n].includes(checkpoint.data!.phase)
+        [7n, 10n].includes(checkpoint.data!.phase)
         ? replacePlutusConstrFieldCbor(
             encoded,
             [0, 9, 0],
@@ -543,7 +510,6 @@ export const submitTransitionTraceFinal = async ({
         finalReferenceScript,
         ...(semantic === undefined ? [] : [semantic.reference]),
         ...continuationReferences,
-        ...datumReferences,
         ...proofReferences,
         ...outputReferences,
       ]);
@@ -567,23 +533,7 @@ export const submitTransitionTraceFinal = async ({
       checkpointBuilder = checkpointBuilder.withdraw(
         validatorToRewardAddress(network, semantic.validator.withdrawalScript),
         0n,
-        selected === "l2Summaries"
-          ? (((ctx) =>
-              Data.to([
-                Data.from(planned.redeemer),
-                datumPlan === undefined
-                  ? new Constr(0, [new Constr(0, [])])
-                  : new Constr(1, [
-                      structuredDataTreeData(datumPlan.tree, (index) =>
-                        requireReferenceInputIndex(
-                          ctx,
-                          datumReferences[index]!,
-                          "transition output datum",
-                        ),
-                      ),
-                    ]),
-              ])) satisfies BuildTxWithRedeemer)
-          : planned.redeemer,
+        planned.redeemer,
       );
     const completed = await checkpointBuilder.pay
       .ToContract(

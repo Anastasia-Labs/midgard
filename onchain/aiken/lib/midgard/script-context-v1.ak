@@ -207,20 +207,17 @@ pub fn tx_out_summary_v1(
   }
 }
 
-/// The spend `ScriptInfo` datum summary read straight off the `TxOut` datum
-/// field `datum_data` already derived.
-///
-/// `datum_data` is total on the two constructors it emits -- `NoOutputDatum`
-/// (0, no fields) and `OutputDatum` (2, one field) -- and the `ScriptInfo`
-/// field is the `Option` of the same datum, so the summary follows from the
-/// tag without re-reading, re-screening or re-materialising the datum bytes.
-fn spend_datum_summary_of_field(datum_field: Data) -> cek_data_v1.DataSummaryV1 {
-  let Pair(constructor, fields) = builtin.un_constr_data(datum_field)
-  if constructor == 0 {
-    none_summary()
-  } else {
-    expect [datum] = fields
-    small_constr_summary(0, [cek_data_v1.semantic_data_summary_v1(datum)])
+/// The `TxOut` datum field (`NoOutputDatum` or `OutputDatum`) and the spend
+/// `ScriptInfo` datum (`None` or `Some`) of an output whose inline datum, if
+/// any, has the given semantic summary. Both are small constructors over that
+/// one summary, so the datum is never re-read.
+fn datum_field_summaries(
+  datum: Option<cek_data_v1.DataSummaryV1>,
+) -> (cek_data_v1.DataSummaryV1, cek_data_v1.DataSummaryV1) {
+  when datum is {
+    None -> (small_constr_summary(0, []), none_summary())
+    Some(summary) ->
+      (small_constr_summary(2, [summary]), small_constr_summary(0, [summary]))
   }
 }
 
@@ -258,10 +255,19 @@ pub fn ledger_output_summaries_v1(
         Some(output_data) ->
           when output_value_data(output_data) is {
             None -> None
-            Some(value_data) ->
-              when datum_data(output) is {
+            Some(value_data) -> {
+              let datum = when output.datum_cbor is {
+                None -> Some(None)
+                Some(datum_cbor) ->
+                  when materialise_datum(datum_cbor) is {
+                    None -> None
+                    Some(data) ->
+                      Some(Some(cek_data_v1.semantic_data_summary_v1(data)))
+                  }
+              }
+              when datum is {
                 None -> None
-                Some(datum_field) -> {
+                Some(datum_summary) -> {
                   // Both language views share these exact subtrees. Summarize
                   // them once; the address encoding is the only difference.
                   let value = cek_data_v1.semantic_data_summary_v1(
@@ -271,11 +277,12 @@ pub fn ledger_output_summaries_v1(
                     ledger_output_summaries_of_authenticated_parts_v1(
                       output,
                       value,
-                      datum_field,
+                      datum_summary,
                     ),
                   )
                 }
               }
+            }
           }
       }
   }
@@ -283,21 +290,23 @@ pub fn ledger_output_summaries_v1(
 
 /// The three summaries of `ledger_output_summaries_v1`, composed from parts the
 /// caller has already authenticated: the output's address and reference
-/// script, the exact script-context `Value` summary, and the `TxOut` datum
-/// field. It reads neither `output.value` nor `output.datum_cbor`. The staged
-/// transition-trace rules take the `Value` summary from the
-/// `ledger_output_value_v1` fold, which orders asset names as
-/// `script_value_data` does, so their summaries match the one-shot ones.
+/// script, the exact script-context `Value` summary, and the semantic summary
+/// of the inline datum (`None` for an output without one). It reads neither
+/// `output.value` nor `output.datum_cbor`. The staged transition-trace rules
+/// take the `Value` summary from the `ledger_output_value_v1` fold, which
+/// orders asset names as `script_value_data` does, and the datum summary from
+/// the `data_summary_walk_v1` walk of the datum bytes, so their
+/// summaries match the one-shot ones.
 pub fn ledger_output_summaries_of_authenticated_parts_v1(
   output: MidgardTxOutput,
   value: cek_data_v1.DataSummaryV1,
-  datum_field: Data,
+  datum: Option<cek_data_v1.DataSummaryV1>,
 ) -> (
   cek_data_v1.DataSummaryV1,
   cek_data_v1.DataSummaryV1,
   cek_data_v1.DataSummaryV1,
 ) {
-  let datum = cek_data_v1.semantic_data_summary_v1(datum_field)
+  let (datum_field, spend_datum) = datum_field_summaries(datum)
   let reference_script = cek_data_v1.semantic_data_summary_v1(
     reference_script_data(output),
   )
@@ -309,16 +318,12 @@ pub fn ledger_output_summaries_of_authenticated_parts_v1(
           address_data(output, midgard_encoding),
         ),
         value,
-        datum,
+        datum_field,
         reference_script,
       ],
     )
   }
-  (
-    tx_out_summary(False),
-    tx_out_summary(True),
-    spend_datum_summary_of_field(datum_field),
-  )
+  (tx_out_summary(False), tx_out_summary(True), spend_datum)
 }
 
 fn tx_out_ref_data(input: MidgardTxInput) -> Data {

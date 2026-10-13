@@ -11,7 +11,6 @@ import "../runtime.js";
 import "../step-support.js";
 import "../tx-layout.js";
 import "../witness-reference-scripts.js";
-import "../workflow/structured-data-preimage.js";
 import "../workflow/transaction-boundary.js";
 import "../workflow/user-event-address.js";
 import "./errors.js";

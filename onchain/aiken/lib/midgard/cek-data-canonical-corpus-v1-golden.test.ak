@@ -5,6 +5,7 @@
 use aiken/primitive/bytearray
 use midgard/canonical_plutus_data_v1
 use midgard/cek_data_v1
+use midgard/data_summary_walk_v1
 use midgard/validation_machine_tests/data_stream_driver
 use midgard/validation_machine_tests/data_traverse_driver
 
@@ -17,7 +18,30 @@ test corpus_int_zero() {
       memory: 5,
     },
   }
+  let walked = data_summary_walk_v1.Summarised {
+    summary: cek_data_v1.DataSummaryV1 {
+      root: #"0c4e8e7a8396d11dd8c0554ec32416c3257d87175f2dfcc7714469663e0f1da2",
+      cbor_length: 1,
+      memory: 5,
+    },
+  }
   and {
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(0),
+      source,
+      bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(1),
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1 + bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
     data_traverse_driver.drive_source_v1(source) == expected,
     data_traverse_driver.drive_v1(
       bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
@@ -51,7 +75,30 @@ test corpus_int_23() {
       memory: 5,
     },
   }
+  let walked = data_summary_walk_v1.Summarised {
+    summary: cek_data_v1.DataSummaryV1 {
+      root: #"a1aa9f6a11abd70d51540348a2408681bc14ef282219c94099948922e1948252",
+      cbor_length: 1,
+      memory: 5,
+    },
+  }
   and {
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(0),
+      source,
+      bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(1),
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1 + bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
     data_traverse_driver.drive_source_v1(source) == expected,
     data_traverse_driver.drive_v1(
       bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
@@ -85,7 +132,30 @@ test corpus_int_24() {
       memory: 5,
     },
   }
+  let walked = data_summary_walk_v1.Summarised {
+    summary: cek_data_v1.DataSummaryV1 {
+      root: #"028c3220c1da8bdb1581cc7d1166d8177cd7208fab4b0fbba6522a0143a8dc0a",
+      cbor_length: 2,
+      memory: 5,
+    },
+  }
   and {
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(0),
+      source,
+      bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(1),
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1 + bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
     data_traverse_driver.drive_source_v1(source) == expected,
     data_traverse_driver.drive_v1(
       bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
@@ -119,7 +189,30 @@ test corpus_int_256() {
       memory: 6,
     },
   }
+  let walked = data_summary_walk_v1.Summarised {
+    summary: cek_data_v1.DataSummaryV1 {
+      root: #"39acc02cb0d68f825c3a525dab652bcc06cc5fdb70099d98411c2c792384d807",
+      cbor_length: 3,
+      memory: 6,
+    },
+  }
   and {
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(0),
+      source,
+      bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(1),
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1 + bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
     data_traverse_driver.drive_source_v1(source) == expected,
     data_traverse_driver.drive_v1(
       bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
@@ -153,7 +246,30 @@ test corpus_int_2_pow_32() {
       memory: 9,
     },
   }
+  let walked = data_summary_walk_v1.Summarised {
+    summary: cek_data_v1.DataSummaryV1 {
+      root: #"caaad13a70a0c6e5ed90e0298a531876338742c03545918e057cf6cea9e1d7fb",
+      cbor_length: 9,
+      memory: 9,
+    },
+  }
   and {
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(0),
+      source,
+      bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(1),
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1 + bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
     data_traverse_driver.drive_source_v1(source) == expected,
     data_traverse_driver.drive_v1(
       bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
@@ -187,7 +303,30 @@ test corpus_int_2_pow_64_minus_1() {
       memory: 13,
     },
   }
+  let walked = data_summary_walk_v1.Summarised {
+    summary: cek_data_v1.DataSummaryV1 {
+      root: #"ee634083f127d4d1e32ee7c4f13c98207b757566577621cc789d08a22d2323f1",
+      cbor_length: 9,
+      memory: 13,
+    },
+  }
   and {
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(0),
+      source,
+      bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(1),
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1 + bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
     data_traverse_driver.drive_source_v1(source) == expected,
     data_traverse_driver.drive_v1(
       bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
@@ -221,7 +360,30 @@ test corpus_int_minus_1() {
       memory: 5,
     },
   }
+  let walked = data_summary_walk_v1.Summarised {
+    summary: cek_data_v1.DataSummaryV1 {
+      root: #"045b6d8572fcb30c6ac06398f3dda84638c1f44e43df6acce9ec954870dfdc37",
+      cbor_length: 1,
+      memory: 5,
+    },
+  }
   and {
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(0),
+      source,
+      bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(1),
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1 + bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
     data_traverse_driver.drive_source_v1(source) == expected,
     data_traverse_driver.drive_v1(
       bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
@@ -255,7 +417,30 @@ test corpus_int_minus_2_pow_64() {
       memory: 13,
     },
   }
+  let walked = data_summary_walk_v1.Summarised {
+    summary: cek_data_v1.DataSummaryV1 {
+      root: #"b00e3755734bee81984165b45b222a64eb921353ba06f94f27ec6bd6b153be3d",
+      cbor_length: 9,
+      memory: 13,
+    },
+  }
   and {
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(0),
+      source,
+      bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(1),
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1 + bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
     data_traverse_driver.drive_source_v1(source) == expected,
     data_traverse_driver.drive_v1(
       bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
@@ -289,7 +474,30 @@ test corpus_bignum_2_pow_64() {
       memory: 13,
     },
   }
+  let walked = data_summary_walk_v1.Summarised {
+    summary: cek_data_v1.DataSummaryV1 {
+      root: #"2224bfd7ec7c115c2fd76a5957d6d99eba13948fd3bc89e16aed7a7d1e0610ad",
+      cbor_length: 11,
+      memory: 13,
+    },
+  }
   and {
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(0),
+      source,
+      bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(1),
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1 + bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
     data_traverse_driver.drive_source_v1(source) == expected,
     data_traverse_driver.drive_v1(
       bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
@@ -323,7 +531,30 @@ test corpus_bignum_minus_2_pow_64_minus_1() {
       memory: 13,
     },
   }
+  let walked = data_summary_walk_v1.Summarised {
+    summary: cek_data_v1.DataSummaryV1 {
+      root: #"720c28eb8291c0e25d860108458a13027f509d93b9c61296532fdb230063c691",
+      cbor_length: 11,
+      memory: 13,
+    },
+  }
   and {
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(0),
+      source,
+      bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(1),
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1 + bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
     data_traverse_driver.drive_source_v1(source) == expected,
     data_traverse_driver.drive_v1(
       bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
@@ -357,7 +588,30 @@ test corpus_bignum_64_byte_magnitude() {
       memory: 68,
     },
   }
+  let walked = data_summary_walk_v1.Summarised {
+    summary: cek_data_v1.DataSummaryV1 {
+      root: #"a7456893ae91a315f81b31fa59cac06c361a46b16db1a284afc051c6437d856f",
+      cbor_length: 67,
+      memory: 68,
+    },
+  }
   and {
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(0),
+      source,
+      bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(1),
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1 + bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
     data_traverse_driver.drive_source_v1(source) == expected,
     data_traverse_driver.drive_v1(
       bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
@@ -391,7 +645,30 @@ test corpus_bignum_65_byte_magnitude_chunked() {
       memory: 69,
     },
   }
+  let walked = data_summary_walk_v1.Summarised {
+    summary: cek_data_v1.DataSummaryV1 {
+      root: #"2245ce3c839885a8e667481cec15cbe0e91df8a04f816859ae3bb38a8217b6aa",
+      cbor_length: 71,
+      memory: 69,
+    },
+  }
   and {
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(0),
+      source,
+      bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(1),
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1 + bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
     data_traverse_driver.drive_source_v1(source) == expected,
     data_traverse_driver.drive_v1(
       bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
@@ -425,7 +702,30 @@ test corpus_bignum_negative_129_byte_magnitude_chunked() {
       memory: 133,
     },
   }
+  let walked = data_summary_walk_v1.Summarised {
+    summary: cek_data_v1.DataSummaryV1 {
+      root: #"df432f362221257fd23edd5cb144aa5ca56853f5e09565a8c2688a23a54118d1",
+      cbor_length: 137,
+      memory: 133,
+    },
+  }
   and {
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(0),
+      source,
+      bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(1),
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1 + bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
     data_traverse_driver.drive_source_v1(source) == expected,
     data_traverse_driver.drive_v1(
       bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
@@ -453,7 +753,24 @@ test corpus_bignum_negative_129_byte_magnitude_chunked() {
 test corpus_int_non_minimal_one_byte() {
   let source = #"1817"
   let expected = data_traverse_driver.DriveUnreadable { stage: 0 }
+  let walked = data_summary_walk_v1.Unreadable
   and {
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(0),
+      source,
+      bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(1),
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1 + bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
     data_traverse_driver.drive_source_v1(source) == expected,
     data_traverse_driver.drive_v1(
       bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
@@ -481,7 +798,24 @@ test corpus_int_non_minimal_one_byte() {
 test corpus_int_non_minimal_two_byte() {
   let source = #"190017"
   let expected = data_traverse_driver.DriveUnreadable { stage: 0 }
+  let walked = data_summary_walk_v1.Unreadable
   and {
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(0),
+      source,
+      bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(1),
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1 + bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
     data_traverse_driver.drive_source_v1(source) == expected,
     data_traverse_driver.drive_v1(
       bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
@@ -509,7 +843,24 @@ test corpus_int_non_minimal_two_byte() {
 test corpus_int_non_minimal_eight_byte() {
   let source = #"1b00000000ffffffff"
   let expected = data_traverse_driver.DriveUnreadable { stage: 0 }
+  let walked = data_summary_walk_v1.Unreadable
   and {
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(0),
+      source,
+      bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(1),
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1 + bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
     data_traverse_driver.drive_source_v1(source) == expected,
     data_traverse_driver.drive_v1(
       bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
@@ -537,7 +888,24 @@ test corpus_int_non_minimal_eight_byte() {
 test corpus_int_reserved_additional_28() {
   let source = #"1c"
   let expected = data_traverse_driver.DriveUnreadable { stage: 0 }
+  let walked = data_summary_walk_v1.Unreadable
   and {
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(0),
+      source,
+      bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(1),
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1 + bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
     data_traverse_driver.drive_source_v1(source) == expected,
     data_traverse_driver.drive_v1(
       bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
@@ -565,7 +933,24 @@ test corpus_int_reserved_additional_28() {
 test corpus_int_reserved_additional_30() {
   let source = #"3e"
   let expected = data_traverse_driver.DriveUnreadable { stage: 0 }
+  let walked = data_summary_walk_v1.Unreadable
   and {
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(0),
+      source,
+      bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(1),
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1 + bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
     data_traverse_driver.drive_source_v1(source) == expected,
     data_traverse_driver.drive_v1(
       bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
@@ -593,7 +978,24 @@ test corpus_int_reserved_additional_30() {
 test corpus_int_indefinite_additional() {
   let source = #"1f"
   let expected = data_traverse_driver.DriveUnreadable { stage: 0 }
+  let walked = data_summary_walk_v1.Unreadable
   and {
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(0),
+      source,
+      bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(1),
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1 + bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
     data_traverse_driver.drive_source_v1(source) == expected,
     data_traverse_driver.drive_v1(
       bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
@@ -621,7 +1023,24 @@ test corpus_int_indefinite_additional() {
 test corpus_int_truncated_argument() {
   let source = #"1a0001"
   let expected = data_traverse_driver.DriveUnreadable { stage: 0 }
+  let walked = data_summary_walk_v1.Unreadable
   and {
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(0),
+      source,
+      bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(1),
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1 + bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
     data_traverse_driver.drive_source_v1(source) == expected,
     data_traverse_driver.drive_v1(
       bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
@@ -649,7 +1068,24 @@ test corpus_int_truncated_argument() {
 test corpus_bignum_one_byte_magnitude() {
   let source = #"c24105"
   let expected = data_traverse_driver.DriveUnreadable { stage: 1 }
+  let walked = data_summary_walk_v1.Unreadable
   and {
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(0),
+      source,
+      bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(1),
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1 + bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
     data_traverse_driver.drive_source_v1(source) == expected,
     data_traverse_driver.drive_v1(
       bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
@@ -677,7 +1113,24 @@ test corpus_bignum_one_byte_magnitude() {
 test corpus_bignum_empty_magnitude() {
   let source = #"c240"
   let expected = data_traverse_driver.DriveUnreadable { stage: 1 }
+  let walked = data_summary_walk_v1.Unreadable
   and {
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(0),
+      source,
+      bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(1),
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1 + bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
     data_traverse_driver.drive_source_v1(source) == expected,
     data_traverse_driver.drive_v1(
       bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
@@ -705,7 +1158,24 @@ test corpus_bignum_empty_magnitude() {
 test corpus_bignum_eight_byte_magnitude() {
   let source = #"c2480100000000000000"
   let expected = data_traverse_driver.DriveUnreadable { stage: 1 }
+  let walked = data_summary_walk_v1.Unreadable
   and {
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(0),
+      source,
+      bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(1),
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1 + bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
     data_traverse_driver.drive_source_v1(source) == expected,
     data_traverse_driver.drive_v1(
       bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
@@ -733,7 +1203,24 @@ test corpus_bignum_eight_byte_magnitude() {
 test corpus_bignum_leading_zero() {
   let source = #"c249000100000000000000"
   let expected = data_traverse_driver.DriveUnreadable { stage: 1 }
+  let walked = data_summary_walk_v1.Unreadable
   and {
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(0),
+      source,
+      bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(1),
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1 + bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
     data_traverse_driver.drive_source_v1(source) == expected,
     data_traverse_driver.drive_v1(
       bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
@@ -761,7 +1248,24 @@ test corpus_bignum_leading_zero() {
 test corpus_negative_bignum_one_byte() {
   let source = #"c34101"
   let expected = data_traverse_driver.DriveUnreadable { stage: 1 }
+  let walked = data_summary_walk_v1.Unreadable
   and {
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(0),
+      source,
+      bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(1),
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1 + bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
     data_traverse_driver.drive_source_v1(source) == expected,
     data_traverse_driver.drive_v1(
       bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
@@ -789,7 +1293,24 @@ test corpus_negative_bignum_one_byte() {
 test corpus_bignum_indefinite_nine_bytes() {
   let source = #"c25f49010000000000000000ff"
   let expected = data_traverse_driver.DriveUnreadable { stage: 1 }
+  let walked = data_summary_walk_v1.Unreadable
   and {
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(0),
+      source,
+      bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(1),
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1 + bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
     data_traverse_driver.drive_source_v1(source) == expected,
     data_traverse_driver.drive_v1(
       bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
@@ -817,7 +1338,24 @@ test corpus_bignum_indefinite_nine_bytes() {
 test corpus_bignum_indefinite_one_full_chunk() {
   let source = #"c25f584001000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000ff"
   let expected = data_traverse_driver.DriveUnreadable { stage: 1 }
+  let walked = data_summary_walk_v1.Unreadable
   and {
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(0),
+      source,
+      bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(1),
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1 + bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
     data_traverse_driver.drive_source_v1(source) == expected,
     data_traverse_driver.drive_v1(
       bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
@@ -845,7 +1383,24 @@ test corpus_bignum_indefinite_one_full_chunk() {
 test corpus_bignum_over_integer() {
   let source = #"c200"
   let expected = data_traverse_driver.DriveUnreadable { stage: 0 }
+  let walked = data_summary_walk_v1.Unreadable
   and {
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(0),
+      source,
+      bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(1),
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1 + bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
     data_traverse_driver.drive_source_v1(source) == expected,
     data_traverse_driver.drive_v1(
       bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
@@ -873,7 +1428,24 @@ test corpus_bignum_over_integer() {
 test corpus_bignum_magnitude_past_end() {
   let source = #"c2490100000000000000"
   let expected = data_traverse_driver.DriveUnreadable { stage: 0 }
+  let walked = data_summary_walk_v1.Unreadable
   and {
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(0),
+      source,
+      bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(1),
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1 + bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
     data_traverse_driver.drive_source_v1(source) == expected,
     data_traverse_driver.drive_v1(
       bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
@@ -907,7 +1479,30 @@ test corpus_bytes_empty() {
       memory: 5,
     },
   }
+  let walked = data_summary_walk_v1.Summarised {
+    summary: cek_data_v1.DataSummaryV1 {
+      root: #"f3f2777df4485f9e3e4abff00c01e3036f171903ed0279565383a81c0e74929f",
+      cbor_length: 1,
+      memory: 5,
+    },
+  }
   and {
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(0),
+      source,
+      bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(1),
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1 + bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
     data_traverse_driver.drive_source_v1(source) == expected,
     data_traverse_driver.drive_v1(
       bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
@@ -941,7 +1536,30 @@ test corpus_bytes_one() {
       memory: 5,
     },
   }
+  let walked = data_summary_walk_v1.Summarised {
+    summary: cek_data_v1.DataSummaryV1 {
+      root: #"4381abbfd79dcadd705f63a2d900d07ce336e8362e530aed047478ba1d29a84e",
+      cbor_length: 2,
+      memory: 5,
+    },
+  }
   and {
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(0),
+      source,
+      bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(1),
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1 + bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
     data_traverse_driver.drive_source_v1(source) == expected,
     data_traverse_driver.drive_v1(
       bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
@@ -975,7 +1593,30 @@ test corpus_bytes_32() {
       memory: 36,
     },
   }
+  let walked = data_summary_walk_v1.Summarised {
+    summary: cek_data_v1.DataSummaryV1 {
+      root: #"32b5965233220be47fc6dd81a2ae5572a84b876cb2722c521849fe40ab8e4c0c",
+      cbor_length: 34,
+      memory: 36,
+    },
+  }
   and {
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(0),
+      source,
+      bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(1),
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1 + bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
     data_traverse_driver.drive_source_v1(source) == expected,
     data_traverse_driver.drive_v1(
       bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
@@ -1009,7 +1650,30 @@ test corpus_bytes_64() {
       memory: 68,
     },
   }
+  let walked = data_summary_walk_v1.Summarised {
+    summary: cek_data_v1.DataSummaryV1 {
+      root: #"4fe7107a8bcc30e8103e4c09a1df1d4df13b263176f2a292ba7f67357fbd407a",
+      cbor_length: 66,
+      memory: 68,
+    },
+  }
   and {
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(0),
+      source,
+      bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(1),
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1 + bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
     data_traverse_driver.drive_source_v1(source) == expected,
     data_traverse_driver.drive_v1(
       bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
@@ -1043,7 +1707,30 @@ test corpus_bytes_65_chunked() {
       memory: 69,
     },
   }
+  let walked = data_summary_walk_v1.Summarised {
+    summary: cek_data_v1.DataSummaryV1 {
+      root: #"ab4f11d4dbc509016d2050d320d2782553845a24cc30a9041ac58c8c03326829",
+      cbor_length: 70,
+      memory: 69,
+    },
+  }
   and {
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(0),
+      source,
+      bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(1),
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1 + bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
     data_traverse_driver.drive_source_v1(source) == expected,
     data_traverse_driver.drive_v1(
       bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
@@ -1077,7 +1764,30 @@ test corpus_bytes_128_chunked() {
       memory: 132,
     },
   }
+  let walked = data_summary_walk_v1.Summarised {
+    summary: cek_data_v1.DataSummaryV1 {
+      root: #"f7f45b1deca52121689584670d43ce97a31e1600db308ff0c8f020825ace84b4",
+      cbor_length: 134,
+      memory: 132,
+    },
+  }
   and {
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(0),
+      source,
+      bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(1),
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1 + bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
     data_traverse_driver.drive_source_v1(source) == expected,
     data_traverse_driver.drive_v1(
       bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
@@ -1111,7 +1821,30 @@ test corpus_bytes_129_chunked() {
       memory: 133,
     },
   }
+  let walked = data_summary_walk_v1.Summarised {
+    summary: cek_data_v1.DataSummaryV1 {
+      root: #"4a49a1a5f0bfc1e06e6de328dab55fb4091a793ece2eb54f7410dc9b4c1a6503",
+      cbor_length: 136,
+      memory: 133,
+    },
+  }
   and {
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(0),
+      source,
+      bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(1),
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1 + bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
     data_traverse_driver.drive_source_v1(source) == expected,
     data_traverse_driver.drive_v1(
       bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
@@ -1139,7 +1872,24 @@ test corpus_bytes_129_chunked() {
 test corpus_bytes_definite_65() {
   let source = #"5841030a11181f262d343b424950575e656c737a81888f969da4abb2b9c0c7ced5dce3eaf1f8ff060d141b222930373e454c535a61686f767d848b9299a0a7aeb5bcc3"
   let expected = data_traverse_driver.DriveUnreadable { stage: 0 }
+  let walked = data_summary_walk_v1.Unreadable
   and {
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(0),
+      source,
+      bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(1),
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1 + bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
     data_traverse_driver.drive_source_v1(source) == expected,
     data_traverse_driver.drive_v1(
       bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
@@ -1167,7 +1917,24 @@ test corpus_bytes_definite_65() {
 test corpus_bytes_indefinite_empty() {
   let source = #"5fff"
   let expected = data_traverse_driver.DriveUnreadable { stage: 2 }
+  let walked = data_summary_walk_v1.Unreadable
   and {
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(0),
+      source,
+      bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(1),
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1 + bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
     data_traverse_driver.drive_source_v1(source) == expected,
     data_traverse_driver.drive_v1(
       bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
@@ -1195,7 +1962,24 @@ test corpus_bytes_indefinite_empty() {
 test corpus_bytes_indefinite_short() {
   let source = #"5f416aff"
   let expected = data_traverse_driver.DriveUnreadable { stage: 2 }
+  let walked = data_summary_walk_v1.Unreadable
   and {
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(0),
+      source,
+      bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(1),
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1 + bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
     data_traverse_driver.drive_source_v1(source) == expected,
     data_traverse_driver.drive_v1(
       bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
@@ -1223,7 +2007,24 @@ test corpus_bytes_indefinite_short() {
 test corpus_bytes_indefinite_one_full_chunk() {
   let source = #"5f5840030a11181f262d343b424950575e656c737a81888f969da4abb2b9c0c7ced5dce3eaf1f8ff060d141b222930373e454c535a61686f767d848b9299a0a7aeb5bcff"
   let expected = data_traverse_driver.DriveUnreadable { stage: 2 }
+  let walked = data_summary_walk_v1.Unreadable
   and {
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(0),
+      source,
+      bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(1),
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1 + bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
     data_traverse_driver.drive_source_v1(source) == expected,
     data_traverse_driver.drive_v1(
       bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
@@ -1251,7 +2052,24 @@ test corpus_bytes_indefinite_one_full_chunk() {
 test corpus_bytes_short_chunk_first() {
   let source = #"5f41035840030a11181f262d343b424950575e656c737a81888f969da4abb2b9c0c7ced5dce3eaf1f8ff060d141b222930373e454c535a61686f767d848b9299a0a7aeb5bcff"
   let expected = data_traverse_driver.DriveUnreadable { stage: 2 }
+  let walked = data_summary_walk_v1.Unreadable
   and {
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(0),
+      source,
+      bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(1),
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1 + bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
     data_traverse_driver.drive_source_v1(source) == expected,
     data_traverse_driver.drive_v1(
       bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
@@ -1279,7 +2097,24 @@ test corpus_bytes_short_chunk_first() {
 test corpus_bytes_empty_final_chunk() {
   let source = #"5f5840030a11181f262d343b424950575e656c737a81888f969da4abb2b9c0c7ced5dce3eaf1f8ff060d141b222930373e454c535a61686f767d848b9299a0a7aeb5bc40ff"
   let expected = data_traverse_driver.DriveUnreadable { stage: 2 }
+  let walked = data_summary_walk_v1.Unreadable
   and {
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(0),
+      source,
+      bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(1),
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1 + bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
     data_traverse_driver.drive_source_v1(source) == expected,
     data_traverse_driver.drive_v1(
       bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
@@ -1307,7 +2142,24 @@ test corpus_bytes_empty_final_chunk() {
 test corpus_bytes_empty_first_chunk() {
   let source = #"5f405840030a11181f262d343b424950575e656c737a81888f969da4abb2b9c0c7ced5dce3eaf1f8ff060d141b222930373e454c535a61686f767d848b9299a0a7aeb5bc4103ff"
   let expected = data_traverse_driver.DriveUnreadable { stage: 2 }
+  let walked = data_summary_walk_v1.Unreadable
   and {
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(0),
+      source,
+      bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(1),
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1 + bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
     data_traverse_driver.drive_source_v1(source) == expected,
     data_traverse_driver.drive_v1(
       bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
@@ -1335,7 +2187,24 @@ test corpus_bytes_empty_first_chunk() {
 test corpus_bytes_oversized_chunk() {
   let source = #"5f5841030a11181f262d343b424950575e656c737a81888f969da4abb2b9c0c7ced5dce3eaf1f8ff060d141b222930373e454c535a61686f767d848b9299a0a7aeb5bcc34103ff"
   let expected = data_traverse_driver.DriveUnreadable { stage: 2 }
+  let walked = data_summary_walk_v1.Unreadable
   and {
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(0),
+      source,
+      bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(1),
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1 + bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
     data_traverse_driver.drive_source_v1(source) == expected,
     data_traverse_driver.drive_v1(
       bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
@@ -1363,7 +2232,24 @@ test corpus_bytes_oversized_chunk() {
 test corpus_bytes_integer_chunk() {
   let source = #"5f5840030a11181f262d343b424950575e656c737a81888f969da4abb2b9c0c7ced5dce3eaf1f8ff060d141b222930373e454c535a61686f767d848b9299a0a7aeb5bc00ff"
   let expected = data_traverse_driver.DriveUnreadable { stage: 2 }
+  let walked = data_summary_walk_v1.Unreadable
   and {
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(0),
+      source,
+      bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(1),
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1 + bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
     data_traverse_driver.drive_source_v1(source) == expected,
     data_traverse_driver.drive_v1(
       bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
@@ -1391,7 +2277,24 @@ test corpus_bytes_integer_chunk() {
 test corpus_bytes_nested_indefinite_chunk() {
   let source = #"5f5f5840030a11181f262d343b424950575e656c737a81888f969da4abb2b9c0c7ced5dce3eaf1f8ff060d141b222930373e454c535a61686f767d848b9299a0a7aeb5bc4101ffff"
   let expected = data_traverse_driver.DriveUnreadable { stage: 2 }
+  let walked = data_summary_walk_v1.Unreadable
   and {
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(0),
+      source,
+      bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(1),
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1 + bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
     data_traverse_driver.drive_source_v1(source) == expected,
     data_traverse_driver.drive_v1(
       bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
@@ -1419,7 +2322,24 @@ test corpus_bytes_nested_indefinite_chunk() {
 test corpus_bytes_missing_break() {
   let source = #"5f5840030a11181f262d343b424950575e656c737a81888f969da4abb2b9c0c7ced5dce3eaf1f8ff060d141b222930373e454c535a61686f767d848b9299a0a7aeb5bc4101"
   let expected = data_traverse_driver.DriveUnreadable { stage: 2 }
+  let walked = data_summary_walk_v1.Unreadable
   and {
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(0),
+      source,
+      bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(1),
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1 + bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
     data_traverse_driver.drive_source_v1(source) == expected,
     data_traverse_driver.drive_v1(
       bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
@@ -1447,7 +2367,24 @@ test corpus_bytes_missing_break() {
 test corpus_bytes_past_end() {
   let source = #"5820030a11181f262d343b424950575e656c737a81888f969da4abb2b9c0c7ced5"
   let expected = data_traverse_driver.DriveUnreadable { stage: 0 }
+  let walked = data_summary_walk_v1.Unreadable
   and {
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(0),
+      source,
+      bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(1),
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1 + bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
     data_traverse_driver.drive_source_v1(source) == expected,
     data_traverse_driver.drive_v1(
       bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
@@ -1475,7 +2412,24 @@ test corpus_bytes_past_end() {
 test corpus_text_string() {
   let source = #"6161"
   let expected = data_traverse_driver.DriveUnreadable { stage: 0 }
+  let walked = data_summary_walk_v1.Unreadable
   and {
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(0),
+      source,
+      bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(1),
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1 + bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
     data_traverse_driver.drive_source_v1(source) == expected,
     data_traverse_driver.drive_v1(
       bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
@@ -1503,7 +2457,24 @@ test corpus_text_string() {
 test corpus_text_empty() {
   let source = #"60"
   let expected = data_traverse_driver.DriveUnreadable { stage: 0 }
+  let walked = data_summary_walk_v1.Unreadable
   and {
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(0),
+      source,
+      bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(1),
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1 + bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
     data_traverse_driver.drive_source_v1(source) == expected,
     data_traverse_driver.drive_v1(
       bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
@@ -1531,7 +2502,24 @@ test corpus_text_empty() {
 test corpus_simple_false() {
   let source = #"f4"
   let expected = data_traverse_driver.DriveUnreadable { stage: 0 }
+  let walked = data_summary_walk_v1.Unreadable
   and {
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(0),
+      source,
+      bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(1),
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1 + bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
     data_traverse_driver.drive_source_v1(source) == expected,
     data_traverse_driver.drive_v1(
       bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
@@ -1559,7 +2547,24 @@ test corpus_simple_false() {
 test corpus_simple_null() {
   let source = #"f6"
   let expected = data_traverse_driver.DriveUnreadable { stage: 0 }
+  let walked = data_summary_walk_v1.Unreadable
   and {
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(0),
+      source,
+      bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(1),
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1 + bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
     data_traverse_driver.drive_source_v1(source) == expected,
     data_traverse_driver.drive_v1(
       bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
@@ -1587,7 +2592,24 @@ test corpus_simple_null() {
 test corpus_float_half() {
   let source = #"f93c00"
   let expected = data_traverse_driver.DriveUnreadable { stage: 0 }
+  let walked = data_summary_walk_v1.Unreadable
   and {
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(0),
+      source,
+      bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(1),
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1 + bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
     data_traverse_driver.drive_source_v1(source) == expected,
     data_traverse_driver.drive_v1(
       bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
@@ -1621,7 +2643,30 @@ test corpus_list_empty() {
       memory: 4,
     },
   }
+  let walked = data_summary_walk_v1.Summarised {
+    summary: cek_data_v1.DataSummaryV1 {
+      root: #"40789c0e0bcfa83d22dbad06c2fd2bcbcabef4fad15df776b3f25250f0511998",
+      cbor_length: 1,
+      memory: 4,
+    },
+  }
   and {
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(0),
+      source,
+      bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(1),
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1 + bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
     data_traverse_driver.drive_source_v1(source) == expected,
     data_traverse_driver.drive_v1(
       bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
@@ -1655,7 +2700,30 @@ test corpus_list_one() {
       memory: 9,
     },
   }
+  let walked = data_summary_walk_v1.Summarised {
+    summary: cek_data_v1.DataSummaryV1 {
+      root: #"d066fb41f1d0e3faa19bd86b0faf7f62f51a0c976d9a2f4d6894a2bd50c5ba47",
+      cbor_length: 3,
+      memory: 9,
+    },
+  }
   and {
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(0),
+      source,
+      bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(1),
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1 + bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
     data_traverse_driver.drive_source_v1(source) == expected,
     data_traverse_driver.drive_v1(
       bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
@@ -1689,7 +2757,30 @@ test corpus_list_two() {
       memory: 14,
     },
   }
+  let walked = data_summary_walk_v1.Summarised {
+    summary: cek_data_v1.DataSummaryV1 {
+      root: #"648263e7d66193122b23c5e8d2f950781d802f797ff26d7920a0b0b1b56a9f1d",
+      cbor_length: 4,
+      memory: 14,
+    },
+  }
   and {
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(0),
+      source,
+      bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(1),
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1 + bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
     data_traverse_driver.drive_source_v1(source) == expected,
     data_traverse_driver.drive_v1(
       bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
@@ -1723,7 +2814,30 @@ test corpus_list_nested() {
       memory: 17,
     },
   }
+  let walked = data_summary_walk_v1.Summarised {
+    summary: cek_data_v1.DataSummaryV1 {
+      root: #"6cadebffb73ed8dfac9eddf2ba1fb38559613a4faa543660bb9adbc46bd39ddb",
+      cbor_length: 6,
+      memory: 17,
+    },
+  }
   and {
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(0),
+      source,
+      bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(1),
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1 + bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
     data_traverse_driver.drive_source_v1(source) == expected,
     data_traverse_driver.drive_v1(
       bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
@@ -1757,7 +2871,30 @@ test corpus_list_of_bytes() {
       memory: 79,
     },
   }
+  let walked = data_summary_walk_v1.Summarised {
+    summary: cek_data_v1.DataSummaryV1 {
+      root: #"34d4e75d78226edf5aad789d69fe9890487dd75d69386645ec2aa2e9f84d56e5",
+      cbor_length: 74,
+      memory: 79,
+    },
+  }
   and {
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(0),
+      source,
+      bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(1),
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1 + bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
     data_traverse_driver.drive_source_v1(source) == expected,
     data_traverse_driver.drive_v1(
       bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
@@ -1785,7 +2922,24 @@ test corpus_list_of_bytes() {
 test corpus_list_definite_one() {
   let source = #"8100"
   let expected = data_traverse_driver.DriveUnreadable { stage: 0 }
+  let walked = data_summary_walk_v1.Unreadable
   and {
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(0),
+      source,
+      bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(1),
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1 + bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
     data_traverse_driver.drive_source_v1(source) == expected,
     data_traverse_driver.drive_v1(
       bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
@@ -1813,7 +2967,24 @@ test corpus_list_definite_one() {
 test corpus_list_definite_two() {
   let source = #"820001"
   let expected = data_traverse_driver.DriveUnreadable { stage: 0 }
+  let walked = data_summary_walk_v1.Unreadable
   and {
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(0),
+      source,
+      bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(1),
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1 + bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
     data_traverse_driver.drive_source_v1(source) == expected,
     data_traverse_driver.drive_v1(
       bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
@@ -1841,7 +3012,24 @@ test corpus_list_definite_two() {
 test corpus_list_indefinite_empty() {
   let source = #"9fff"
   let expected = data_traverse_driver.DriveUnreadable { stage: 0 }
+  let walked = data_summary_walk_v1.Unreadable
   and {
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(0),
+      source,
+      bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(1),
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1 + bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
     data_traverse_driver.drive_source_v1(source) == expected,
     data_traverse_driver.drive_v1(
       bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
@@ -1869,7 +3057,24 @@ test corpus_list_indefinite_empty() {
 test corpus_list_open_only() {
   let source = #"9f"
   let expected = data_traverse_driver.DriveUnreadable { stage: 0 }
+  let walked = data_summary_walk_v1.Unreadable
   and {
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(0),
+      source,
+      bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(1),
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1 + bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
     data_traverse_driver.drive_source_v1(source) == expected,
     data_traverse_driver.drive_v1(
       bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
@@ -1897,7 +3102,24 @@ test corpus_list_open_only() {
 test corpus_list_missing_break() {
   let source = #"9f00"
   let expected = data_traverse_driver.DriveUnreadable { stage: 1 }
+  let walked = data_summary_walk_v1.Unreadable
   and {
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(0),
+      source,
+      bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(1),
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1 + bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
     data_traverse_driver.drive_source_v1(source) == expected,
     data_traverse_driver.drive_v1(
       bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
@@ -1925,7 +3147,24 @@ test corpus_list_missing_break() {
 test corpus_list_nested_missing_break() {
   let source = #"9f9f00ff"
   let expected = data_traverse_driver.DriveUnreadable { stage: 6 }
+  let walked = data_summary_walk_v1.Unreadable
   and {
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(0),
+      source,
+      bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(1),
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1 + bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
     data_traverse_driver.drive_source_v1(source) == expected,
     data_traverse_driver.drive_v1(
       bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
@@ -1953,7 +3192,24 @@ test corpus_list_nested_missing_break() {
 test corpus_list_inner_empty_indefinite() {
   let source = #"9f9fffff"
   let expected = data_traverse_driver.DriveUnreadable { stage: 0 }
+  let walked = data_summary_walk_v1.Unreadable
   and {
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(0),
+      source,
+      bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(1),
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1 + bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
     data_traverse_driver.drive_source_v1(source) == expected,
     data_traverse_driver.drive_v1(
       bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
@@ -1987,7 +3243,30 @@ test corpus_map_empty() {
       memory: 4,
     },
   }
+  let walked = data_summary_walk_v1.Summarised {
+    summary: cek_data_v1.DataSummaryV1 {
+      root: #"ee74a59f1ed4e11ab8a5035f44d49fdb4b7a77e51fc7f9bb4013d73037afb0e0",
+      cbor_length: 1,
+      memory: 4,
+    },
+  }
   and {
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(0),
+      source,
+      bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(1),
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1 + bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
     data_traverse_driver.drive_source_v1(source) == expected,
     data_traverse_driver.drive_v1(
       bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
@@ -2021,7 +3300,30 @@ test corpus_map_one() {
       memory: 14,
     },
   }
+  let walked = data_summary_walk_v1.Summarised {
+    summary: cek_data_v1.DataSummaryV1 {
+      root: #"276eac1acc1e7a83160387bf5850b1c3f9d6c13e5759de5d0e95ddb425d59586",
+      cbor_length: 3,
+      memory: 14,
+    },
+  }
   and {
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(0),
+      source,
+      bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(1),
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1 + bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
     data_traverse_driver.drive_source_v1(source) == expected,
     data_traverse_driver.drive_v1(
       bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
@@ -2055,7 +3357,30 @@ test corpus_map_duplicate_keys_kept() {
       memory: 24,
     },
   }
+  let walked = data_summary_walk_v1.Summarised {
+    summary: cek_data_v1.DataSummaryV1 {
+      root: #"43ac4ceadea00ac6b819276d14d5531759d86cf0a320ee18a40fb92ca3a6f0b4",
+      cbor_length: 5,
+      memory: 24,
+    },
+  }
   and {
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(0),
+      source,
+      bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(1),
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1 + bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
     data_traverse_driver.drive_source_v1(source) == expected,
     data_traverse_driver.drive_v1(
       bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
@@ -2089,7 +3414,30 @@ test corpus_map_out_of_order_kept() {
       memory: 24,
     },
   }
+  let walked = data_summary_walk_v1.Summarised {
+    summary: cek_data_v1.DataSummaryV1 {
+      root: #"f551627f9b4dd160417c939c3230403314d13bf72663c9eacf18ec18fc5e3576",
+      cbor_length: 5,
+      memory: 24,
+    },
+  }
   and {
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(0),
+      source,
+      bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(1),
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1 + bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
     data_traverse_driver.drive_source_v1(source) == expected,
     data_traverse_driver.drive_v1(
       bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
@@ -2123,7 +3471,30 @@ test corpus_map_nested() {
       memory: 29,
     },
   }
+  let walked = data_summary_walk_v1.Summarised {
+    summary: cek_data_v1.DataSummaryV1 {
+      root: #"bd8a574f5d1f0ce7f518c53ca9c34f98b6cc9157407f8994fe744d6d44fa41bc",
+      cbor_length: 10,
+      memory: 29,
+    },
+  }
   and {
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(0),
+      source,
+      bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(1),
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1 + bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
     data_traverse_driver.drive_source_v1(source) == expected,
     data_traverse_driver.drive_v1(
       bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
@@ -2151,7 +3522,24 @@ test corpus_map_nested() {
 test corpus_map_indefinite() {
   let source = #"bf0000ff"
   let expected = data_traverse_driver.DriveUnreadable { stage: 0 }
+  let walked = data_summary_walk_v1.Unreadable
   and {
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(0),
+      source,
+      bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(1),
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1 + bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
     data_traverse_driver.drive_source_v1(source) == expected,
     data_traverse_driver.drive_v1(
       bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
@@ -2179,7 +3567,24 @@ test corpus_map_indefinite() {
 test corpus_map_indefinite_empty() {
   let source = #"bfff"
   let expected = data_traverse_driver.DriveUnreadable { stage: 0 }
+  let walked = data_summary_walk_v1.Unreadable
   and {
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(0),
+      source,
+      bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(1),
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1 + bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
     data_traverse_driver.drive_source_v1(source) == expected,
     data_traverse_driver.drive_v1(
       bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
@@ -2207,7 +3612,24 @@ test corpus_map_indefinite_empty() {
 test corpus_map_missing_value() {
   let source = #"a100"
   let expected = data_traverse_driver.DriveUnreadable { stage: 1 }
+  let walked = data_summary_walk_v1.Unreadable
   and {
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(0),
+      source,
+      bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(1),
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1 + bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
     data_traverse_driver.drive_source_v1(source) == expected,
     data_traverse_driver.drive_v1(
       bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
@@ -2235,7 +3657,24 @@ test corpus_map_missing_value() {
 test corpus_map_missing_pair() {
   let source = #"a2000000"
   let expected = data_traverse_driver.DriveUnreadable { stage: 1 }
+  let walked = data_summary_walk_v1.Unreadable
   and {
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(0),
+      source,
+      bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(1),
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1 + bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
     data_traverse_driver.drive_source_v1(source) == expected,
     data_traverse_driver.drive_v1(
       bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
@@ -2269,7 +3708,30 @@ test corpus_constr_0_empty() {
       memory: 4,
     },
   }
+  let walked = data_summary_walk_v1.Summarised {
+    summary: cek_data_v1.DataSummaryV1 {
+      root: #"284d708d538f4a2427de3995ea06dbb2ffadff18ebb763b56498bb66882e17f9",
+      cbor_length: 3,
+      memory: 4,
+    },
+  }
   and {
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(0),
+      source,
+      bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(1),
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1 + bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
     data_traverse_driver.drive_source_v1(source) == expected,
     data_traverse_driver.drive_v1(
       bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
@@ -2303,7 +3765,30 @@ test corpus_constr_0_one() {
       memory: 9,
     },
   }
+  let walked = data_summary_walk_v1.Summarised {
+    summary: cek_data_v1.DataSummaryV1 {
+      root: #"913bed4e7e02ed024f982b49ba78357648a71fdbd8fbf227a84df1634903fa2d",
+      cbor_length: 5,
+      memory: 9,
+    },
+  }
   and {
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(0),
+      source,
+      bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(1),
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1 + bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
     data_traverse_driver.drive_source_v1(source) == expected,
     data_traverse_driver.drive_v1(
       bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
@@ -2337,7 +3822,30 @@ test corpus_constr_6_empty() {
       memory: 4,
     },
   }
+  let walked = data_summary_walk_v1.Summarised {
+    summary: cek_data_v1.DataSummaryV1 {
+      root: #"e1a7c5ea5422c87e6dd94137e4fdd101753c18f7d584fec56d061dc21a9da690",
+      cbor_length: 3,
+      memory: 4,
+    },
+  }
   and {
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(0),
+      source,
+      bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(1),
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1 + bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
     data_traverse_driver.drive_source_v1(source) == expected,
     data_traverse_driver.drive_v1(
       bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
@@ -2371,7 +3879,30 @@ test corpus_constr_7_empty() {
       memory: 4,
     },
   }
+  let walked = data_summary_walk_v1.Summarised {
+    summary: cek_data_v1.DataSummaryV1 {
+      root: #"4c55b7af5ce04b6d5a18b9dab7b1ae0ed584f16acd4e808a208ddd589117af2a",
+      cbor_length: 4,
+      memory: 4,
+    },
+  }
   and {
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(0),
+      source,
+      bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(1),
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1 + bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
     data_traverse_driver.drive_source_v1(source) == expected,
     data_traverse_driver.drive_v1(
       bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
@@ -2405,7 +3936,30 @@ test corpus_constr_127_one() {
       memory: 9,
     },
   }
+  let walked = data_summary_walk_v1.Summarised {
+    summary: cek_data_v1.DataSummaryV1 {
+      root: #"0fdfff98e43d75a86789fcdf080c06668cb6da86d16044a1a478541c2a5ac0f2",
+      cbor_length: 6,
+      memory: 9,
+    },
+  }
   and {
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(0),
+      source,
+      bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(1),
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1 + bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
     data_traverse_driver.drive_source_v1(source) == expected,
     data_traverse_driver.drive_v1(
       bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
@@ -2439,7 +3993,30 @@ test corpus_constr_nested() {
       memory: 21,
     },
   }
+  let walked = data_summary_walk_v1.Summarised {
+    summary: cek_data_v1.DataSummaryV1 {
+      root: #"31454e01e4fa89f1c5273569cd523e851d483090b7e3a2afec50e4e45bd6dc22",
+      cbor_length: 12,
+      memory: 21,
+    },
+  }
   and {
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(0),
+      source,
+      bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(1),
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1 + bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
     data_traverse_driver.drive_source_v1(source) == expected,
     data_traverse_driver.drive_v1(
       bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
@@ -2467,7 +4044,24 @@ test corpus_constr_nested() {
 test corpus_constr_empty_indefinite_fields() {
   let source = #"d8799fff"
   let expected = data_traverse_driver.DriveUnreadable { stage: 0 }
+  let walked = data_summary_walk_v1.Unreadable
   and {
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(0),
+      source,
+      bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(1),
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1 + bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
     data_traverse_driver.drive_source_v1(source) == expected,
     data_traverse_driver.drive_v1(
       bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
@@ -2495,7 +4089,24 @@ test corpus_constr_empty_indefinite_fields() {
 test corpus_constr_definite_fields() {
   let source = #"d879810000"
   let expected = data_traverse_driver.DriveUnreadable { stage: 0 }
+  let walked = data_summary_walk_v1.Unreadable
   and {
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(0),
+      source,
+      bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(1),
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1 + bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
     data_traverse_driver.drive_source_v1(source) == expected,
     data_traverse_driver.drive_v1(
       bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
@@ -2523,7 +4134,24 @@ test corpus_constr_definite_fields() {
 test corpus_constr_fields_missing() {
   let source = #"d879"
   let expected = data_traverse_driver.DriveUnreadable { stage: 0 }
+  let walked = data_summary_walk_v1.Unreadable
   and {
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(0),
+      source,
+      bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(1),
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1 + bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
     data_traverse_driver.drive_source_v1(source) == expected,
     data_traverse_driver.drive_v1(
       bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
@@ -2551,7 +4179,24 @@ test corpus_constr_fields_missing() {
 test corpus_constr_fields_open_only() {
   let source = #"d8799f"
   let expected = data_traverse_driver.DriveUnreadable { stage: 0 }
+  let walked = data_summary_walk_v1.Unreadable
   and {
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(0),
+      source,
+      bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(1),
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1 + bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
     data_traverse_driver.drive_source_v1(source) == expected,
     data_traverse_driver.drive_v1(
       bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
@@ -2579,7 +4224,24 @@ test corpus_constr_fields_open_only() {
 test corpus_constr_fields_missing_break() {
   let source = #"d8799f00"
   let expected = data_traverse_driver.DriveUnreadable { stage: 1 }
+  let walked = data_summary_walk_v1.Unreadable
   and {
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(0),
+      source,
+      bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(1),
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1 + bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
     data_traverse_driver.drive_source_v1(source) == expected,
     data_traverse_driver.drive_v1(
       bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
@@ -2607,7 +4269,24 @@ test corpus_constr_fields_missing_break() {
 test corpus_tag_120() {
   let source = #"d87880"
   let expected = data_traverse_driver.DriveUnreadable { stage: 0 }
+  let walked = data_summary_walk_v1.Unreadable
   and {
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(0),
+      source,
+      bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(1),
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1 + bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
     data_traverse_driver.drive_source_v1(source) == expected,
     data_traverse_driver.drive_v1(
       bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
@@ -2635,7 +4314,24 @@ test corpus_tag_120() {
 test corpus_tag_128() {
   let source = #"d88080"
   let expected = data_traverse_driver.DriveUnreadable { stage: 0 }
+  let walked = data_summary_walk_v1.Unreadable
   and {
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(0),
+      source,
+      bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(1),
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1 + bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
     data_traverse_driver.drive_source_v1(source) == expected,
     data_traverse_driver.drive_v1(
       bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
@@ -2663,7 +4359,24 @@ test corpus_tag_128() {
 test corpus_tag_1279() {
   let source = #"d904ff80"
   let expected = data_traverse_driver.DriveUnreadable { stage: 0 }
+  let walked = data_summary_walk_v1.Unreadable
   and {
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(0),
+      source,
+      bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(1),
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1 + bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
     data_traverse_driver.drive_source_v1(source) == expected,
     data_traverse_driver.drive_v1(
       bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
@@ -2691,7 +4404,24 @@ test corpus_tag_1279() {
 test corpus_tag_1401() {
   let source = #"d9057980"
   let expected = data_traverse_driver.DriveUnreadable { stage: 0 }
+  let walked = data_summary_walk_v1.Unreadable
   and {
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(0),
+      source,
+      bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(1),
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1 + bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
     data_traverse_driver.drive_source_v1(source) == expected,
     data_traverse_driver.drive_v1(
       bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
@@ -2719,7 +4449,24 @@ test corpus_tag_1401() {
 test corpus_tag_constr_7_non_minimal() {
   let source = #"d9000580"
   let expected = data_traverse_driver.DriveUnreadable { stage: 0 }
+  let walked = data_summary_walk_v1.Unreadable
   and {
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(0),
+      source,
+      bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(1),
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1 + bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
     data_traverse_driver.drive_source_v1(source) == expected,
     data_traverse_driver.drive_v1(
       bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
@@ -2747,7 +4494,24 @@ test corpus_tag_constr_7_non_minimal() {
 test corpus_tag_1() {
   let source = #"c100"
   let expected = data_traverse_driver.DriveUnreadable { stage: 0 }
+  let walked = data_summary_walk_v1.Unreadable
   and {
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(0),
+      source,
+      bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(1),
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1 + bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
     data_traverse_driver.drive_source_v1(source) == expected,
     data_traverse_driver.drive_v1(
       bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
@@ -2775,7 +4539,24 @@ test corpus_tag_1() {
 test corpus_tag_4() {
   let source = #"c400"
   let expected = data_traverse_driver.DriveUnreadable { stage: 0 }
+  let walked = data_summary_walk_v1.Unreadable
   and {
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(0),
+      source,
+      bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(1),
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1 + bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
     data_traverse_driver.drive_source_v1(source) == expected,
     data_traverse_driver.drive_v1(
       bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
@@ -2809,7 +4590,30 @@ test corpus_large_constr_128_empty() {
       memory: 4,
     },
   }
+  let walked = data_summary_walk_v1.Summarised {
+    summary: cek_data_v1.DataSummaryV1 {
+      root: #"f5c98a10b0ff538b58924f1f150283778dfacc1526ca30741388a3fdf40aeac9",
+      cbor_length: 6,
+      memory: 4,
+    },
+  }
   and {
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(0),
+      source,
+      bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(1),
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1 + bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
     data_traverse_driver.drive_source_v1(source) == expected,
     data_traverse_driver.drive_v1(
       bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
@@ -2843,7 +4647,30 @@ test corpus_large_constr_128_one() {
       memory: 9,
     },
   }
+  let walked = data_summary_walk_v1.Summarised {
+    summary: cek_data_v1.DataSummaryV1 {
+      root: #"681281f22e6b17b52a18651737c30104cccc4e1bb98f91f8db91bcd0450712bc",
+      cbor_length: 8,
+      memory: 9,
+    },
+  }
   and {
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(0),
+      source,
+      bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(1),
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1 + bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
     data_traverse_driver.drive_source_v1(source) == expected,
     data_traverse_driver.drive_v1(
       bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
@@ -2877,7 +4704,30 @@ test corpus_large_constr_256() {
       memory: 4,
     },
   }
+  let walked = data_summary_walk_v1.Summarised {
+    summary: cek_data_v1.DataSummaryV1 {
+      root: #"f6a5daeb9c2286fa599ed4ec9fa964cea78f0edff978dc038539839903aa93d1",
+      cbor_length: 7,
+      memory: 4,
+    },
+  }
   and {
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(0),
+      source,
+      bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(1),
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1 + bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
     data_traverse_driver.drive_source_v1(source) == expected,
     data_traverse_driver.drive_v1(
       bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
@@ -2911,7 +4761,30 @@ test corpus_large_constr_max_index() {
       memory: 4,
     },
   }
+  let walked = data_summary_walk_v1.Summarised {
+    summary: cek_data_v1.DataSummaryV1 {
+      root: #"2adf0f09b3a40180da3394283faeac95e522ef821bbaef663752a7b03d79888c",
+      cbor_length: 13,
+      memory: 4,
+    },
+  }
   and {
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(0),
+      source,
+      bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(1),
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1 + bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
     data_traverse_driver.drive_source_v1(source) == expected,
     data_traverse_driver.drive_v1(
       bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
@@ -2945,7 +4818,30 @@ test corpus_large_constr_nested() {
       memory: 13,
     },
   }
+  let walked = data_summary_walk_v1.Summarised {
+    summary: cek_data_v1.DataSummaryV1 {
+      root: #"d5e5c157951863e7f6511701a4c0ea0945080116bd4b92efa9b3d9659788d0e2",
+      cbor_length: 16,
+      memory: 13,
+    },
+  }
   and {
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(0),
+      source,
+      bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(1),
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1 + bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
     data_traverse_driver.drive_source_v1(source) == expected,
     data_traverse_driver.drive_v1(
       bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
@@ -2973,7 +4869,24 @@ test corpus_large_constr_nested() {
 test corpus_large_constr_index_5() {
   let source = #"d866820580"
   let expected = data_traverse_driver.DriveUnreadable { stage: 0 }
+  let walked = data_summary_walk_v1.Unreadable
   and {
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(0),
+      source,
+      bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(1),
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1 + bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
     data_traverse_driver.drive_source_v1(source) == expected,
     data_traverse_driver.drive_v1(
       bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
@@ -3001,7 +4914,24 @@ test corpus_large_constr_index_5() {
 test corpus_large_constr_index_127() {
   let source = #"d86682187f80"
   let expected = data_traverse_driver.DriveUnreadable { stage: 0 }
+  let walked = data_summary_walk_v1.Unreadable
   and {
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(0),
+      source,
+      bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(1),
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1 + bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
     data_traverse_driver.drive_source_v1(source) == expected,
     data_traverse_driver.drive_v1(
       bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
@@ -3029,7 +4959,24 @@ test corpus_large_constr_index_127() {
 test corpus_large_constr_index_non_minimal() {
   let source = #"d866821900c880"
   let expected = data_traverse_driver.DriveUnreadable { stage: 0 }
+  let walked = data_summary_walk_v1.Unreadable
   and {
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(0),
+      source,
+      bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(1),
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1 + bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
     data_traverse_driver.drive_source_v1(source) == expected,
     data_traverse_driver.drive_v1(
       bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
@@ -3057,7 +5004,24 @@ test corpus_large_constr_index_non_minimal() {
 test corpus_large_constr_index_negative() {
   let source = #"d86682388080"
   let expected = data_traverse_driver.DriveUnreadable { stage: 0 }
+  let walked = data_summary_walk_v1.Unreadable
   and {
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(0),
+      source,
+      bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(1),
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1 + bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
     data_traverse_driver.drive_source_v1(source) == expected,
     data_traverse_driver.drive_v1(
       bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
@@ -3085,7 +5049,24 @@ test corpus_large_constr_index_negative() {
 test corpus_large_constr_index_bignum() {
   let source = #"d86682c2490100000000000000009f01ff"
   let expected = data_traverse_driver.DriveUnreadable { stage: 0 }
+  let walked = data_summary_walk_v1.Unreadable
   and {
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(0),
+      source,
+      bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(1),
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1 + bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
     data_traverse_driver.drive_source_v1(source) == expected,
     data_traverse_driver.drive_v1(
       bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
@@ -3113,7 +5094,24 @@ test corpus_large_constr_index_bignum() {
 test corpus_large_constr_indefinite_outer() {
   let source = #"d8669f188080ff"
   let expected = data_traverse_driver.DriveUnreadable { stage: 0 }
+  let walked = data_summary_walk_v1.Unreadable
   and {
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(0),
+      source,
+      bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(1),
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1 + bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
     data_traverse_driver.drive_source_v1(source) == expected,
     data_traverse_driver.drive_v1(
       bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
@@ -3141,7 +5139,24 @@ test corpus_large_constr_indefinite_outer() {
 test corpus_large_constr_outer_length_3() {
   let source = #"d8668318808000"
   let expected = data_traverse_driver.DriveUnreadable { stage: 0 }
+  let walked = data_summary_walk_v1.Unreadable
   and {
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(0),
+      source,
+      bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(1),
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1 + bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
     data_traverse_driver.drive_source_v1(source) == expected,
     data_traverse_driver.drive_v1(
       bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
@@ -3169,7 +5184,24 @@ test corpus_large_constr_outer_length_3() {
 test corpus_large_constr_outer_length_1() {
   let source = #"d866811880"
   let expected = data_traverse_driver.DriveUnreadable { stage: 0 }
+  let walked = data_summary_walk_v1.Unreadable
   and {
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(0),
+      source,
+      bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(1),
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1 + bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
     data_traverse_driver.drive_source_v1(source) == expected,
     data_traverse_driver.drive_v1(
       bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
@@ -3197,7 +5229,24 @@ test corpus_large_constr_outer_length_1() {
 test corpus_large_constr_fields_missing() {
   let source = #"d866821880"
   let expected = data_traverse_driver.DriveUnreadable { stage: 0 }
+  let walked = data_summary_walk_v1.Unreadable
   and {
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(0),
+      source,
+      bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(1),
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1 + bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
     data_traverse_driver.drive_source_v1(source) == expected,
     data_traverse_driver.drive_v1(
       bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
@@ -3225,7 +5274,24 @@ test corpus_large_constr_fields_missing() {
 test corpus_large_constr_empty_indefinite_fields() {
   let source = #"d8668218c89fff"
   let expected = data_traverse_driver.DriveUnreadable { stage: 0 }
+  let walked = data_summary_walk_v1.Unreadable
   and {
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(0),
+      source,
+      bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(1),
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1 + bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
     data_traverse_driver.drive_source_v1(source) == expected,
     data_traverse_driver.drive_v1(
       bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
@@ -3253,7 +5319,24 @@ test corpus_large_constr_empty_indefinite_fields() {
 test corpus_large_constr_definite_fields() {
   let source = #"d8668218c88100"
   let expected = data_traverse_driver.DriveUnreadable { stage: 4 }
+  let walked = data_summary_walk_v1.Unreadable
   and {
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(0),
+      source,
+      bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(1),
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1 + bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
     data_traverse_driver.drive_source_v1(source) == expected,
     data_traverse_driver.drive_v1(
       bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
@@ -3281,7 +5364,24 @@ test corpus_large_constr_definite_fields() {
 test corpus_large_constr_map_fields() {
   let source = #"d8668218c8a0"
   let expected = data_traverse_driver.DriveUnreadable { stage: 4 }
+  let walked = data_summary_walk_v1.Unreadable
   and {
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(0),
+      source,
+      bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(1),
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1 + bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
     data_traverse_driver.drive_source_v1(source) == expected,
     data_traverse_driver.drive_v1(
       bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
@@ -3309,7 +5409,24 @@ test corpus_large_constr_map_fields() {
 test corpus_trailing_after_integer() {
   let source = #"0000"
   let expected = data_traverse_driver.DriveUnreadable { stage: 1 }
+  let walked = data_summary_walk_v1.Unreadable
   and {
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(0),
+      source,
+      bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(1),
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1 + bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
     data_traverse_driver.drive_source_v1(source) == expected,
     data_traverse_driver.drive_v1(
       bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
@@ -3337,7 +5454,24 @@ test corpus_trailing_after_integer() {
 test corpus_trailing_after_bytes() {
   let source = #"4000"
   let expected = data_traverse_driver.DriveUnreadable { stage: 2 }
+  let walked = data_summary_walk_v1.Unreadable
   and {
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(0),
+      source,
+      bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(1),
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1 + bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
     data_traverse_driver.drive_source_v1(source) == expected,
     data_traverse_driver.drive_v1(
       bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
@@ -3365,7 +5499,24 @@ test corpus_trailing_after_bytes() {
 test corpus_trailing_after_list() {
   let source = #"8000"
   let expected = data_traverse_driver.DriveUnreadable { stage: 6 }
+  let walked = data_summary_walk_v1.Unreadable
   and {
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(0),
+      source,
+      bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(1),
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1 + bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
     data_traverse_driver.drive_source_v1(source) == expected,
     data_traverse_driver.drive_v1(
       bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
@@ -3393,7 +5544,24 @@ test corpus_trailing_after_list() {
 test corpus_trailing_after_indefinite_list() {
   let source = #"9f00ff00"
   let expected = data_traverse_driver.DriveUnreadable { stage: 6 }
+  let walked = data_summary_walk_v1.Unreadable
   and {
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(0),
+      source,
+      bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(1),
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1 + bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
     data_traverse_driver.drive_source_v1(source) == expected,
     data_traverse_driver.drive_v1(
       bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
@@ -3421,7 +5589,24 @@ test corpus_trailing_after_indefinite_list() {
 test corpus_trailing_after_map() {
   let source = #"a000"
   let expected = data_traverse_driver.DriveUnreadable { stage: 6 }
+  let walked = data_summary_walk_v1.Unreadable
   and {
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(0),
+      source,
+      bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(1),
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1 + bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
     data_traverse_driver.drive_source_v1(source) == expected,
     data_traverse_driver.drive_v1(
       bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
@@ -3449,7 +5634,24 @@ test corpus_trailing_after_map() {
 test corpus_trailing_break() {
   let source = #"00ff"
   let expected = data_traverse_driver.DriveUnreadable { stage: 1 }
+  let walked = data_summary_walk_v1.Unreadable
   and {
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(0),
+      source,
+      bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
+    data_summary_walk_v1.resume(
+      data_summary_walk_v1.start(1),
+      bytearray.concat(#"5a", bytearray.concat(source, #"a5")),
+      1 + bytearray.length(source),
+      [],
+      data_summary_walk_v1.empty_stack_root,
+      1_000_000,
+    ) == walked,
     data_traverse_driver.drive_source_v1(source) == expected,
     data_traverse_driver.drive_v1(
       bytearray.concat(#"5a", bytearray.concat(source, #"a5")),

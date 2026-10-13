@@ -123,13 +123,13 @@ export const buildTransitionTraceAbiFixtures = (): Record<
     value: Data.to(l2TransactionSourceFixture, SDK.L2TransactionSource),
     proof,
   };
-  const depositSourceMembership: SDK.DepositSourceMembershipProof = {
+  const depositSourceMembership: SDK.DepositSourceLeafMembershipProof = {
     domain: SDK.ROOT_DOMAINS.deposits,
     root: headerFixture.depositsRoot,
     phas_root: "70".repeat(32),
     count: 1n,
     key: outputReference,
-    value: depositInfo,
+    value: Data.to(depositInfo, SDK.DepositInfo),
     proof,
   };
   const withdrawalSourceNonMembership: SDK.WithdrawalSourceNonMembershipProof =

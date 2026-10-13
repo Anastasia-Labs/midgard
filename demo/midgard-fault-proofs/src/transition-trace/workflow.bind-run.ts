@@ -1,4 +1,3 @@
-import { decodeMidgardTxOutput } from "@al-ft/midgard-core";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 
@@ -16,11 +15,7 @@ import {
 } from "../workflow/cursor-family-runtime.js";
 import type { JournalJsonObject } from "../workflow/journal.js";
 import { type FraudProofWorkflowAction } from "../workflow/orchestrator.js";
-import {
-  createChunkedRawDatumPreimageRequirement,
-  createStructuredDataPreimageRequirement,
-} from "../workflow/raw-datum-preimage-prerequisite.js";
-import { structuredDataPublicationPlan } from "../workflow/structured-data-preimage.js";
+import { createChunkedRawDatumPreimageRequirement } from "../workflow/raw-datum-preimage-prerequisite.js";
 import { captureLocallyEvaluatedTransaction } from "../workflow/transaction-boundary.js";
 import {
   transitionTraceProofChunks,
@@ -173,14 +168,6 @@ const bindRun = (context: TransitionContext) => {
     }).find((item) => item.outputCbors !== undefined)?.outputCbors;
     const output = outputs?.[Number(state.output_index)];
     if (output === undefined) return null;
-    if (state.kind === 0n && state.phase === 8n) {
-      const datum = decodeMidgardTxOutput(Buffer.from(output, "hex")).datum;
-      if (datum?.kind !== "inline") return null;
-      const bytes = Buffer.from(datum.cbor).toString("hex");
-      return structuredDataPublicationPlan(bytes).publicationDatums.length === 0
-        ? null
-        : createStructuredDataPreimageRequirement({ preimageHex: bytes });
-    }
     return createChunkedRawDatumPreimageRequirement({
       preimage: Buffer.from(output, "hex"),
     });
