@@ -21,6 +21,7 @@ import {
   DEFAULT_COMMIT_BATCH_BUDGET_LIMITS,
   type PlannedCommitBatchSelection,
 } from "./commit-block-planner.commit-scheduler-evidence-key.js";
+import { DeclaredExUnitsTally } from "./commit-block-planner.declared-ex-units.js";
 
 export const selectCommitTxCandidates = ({
   mempoolTxs,
@@ -257,6 +258,7 @@ export const planCommitBatchBudgets = ({
   let stopReason: CommitBatchStopReason = "mempool_exhausted";
   let selectedTxBytes = 0;
   let estimatedDaPayloadBytes = baseDaPayloadBytes;
+  const exUnits = new DeclaredExUnitsTally(limits.blockExUnitsBudget);
 
   for (const candidate of candidateSelection.candidateTxs) {
     const selectedTxCount = selected.length + 1;
@@ -288,6 +290,10 @@ export const planCommitBatchBudgets = ({
     );
     if (exceeded !== null) {
       stopReason = exceeded;
+      break;
+    }
+    if (!exUnits.admit(candidate[TxColumns.TX])) {
+      stopReason = "ex_units_budget";
       break;
     }
     selected.push(candidate);

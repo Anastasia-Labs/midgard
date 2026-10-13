@@ -13,6 +13,7 @@ import {
   calibratedCommitBuildMsPerTx,
   clampCommitBuildMsPerTx,
   type CommitSchedulerStateQueueEvidence,
+  DEFAULT_BLOCK_EX_UNITS_BUDGET,
   establishEndTimeFromTxRequests,
   planCommitBatchBudgets,
   planEarliestCommitSchedulerDueWork,
@@ -216,6 +217,7 @@ describe("commit block planner", () => {
         estimatedDaOverheadBytesPerTx: 1,
         estimatedCommitTxOverheadBytes: 1,
         estimatedCommitBuildMsPerTx: 1,
+        blockExUnitsBudget: DEFAULT_BLOCK_EX_UNITS_BUDGET,
       },
     });
 
@@ -246,6 +248,7 @@ describe("commit block planner", () => {
         estimatedDaOverheadBytesPerTx: 0,
         estimatedCommitTxOverheadBytes: 0,
         estimatedCommitBuildMsPerTx: 1,
+        blockExUnitsBudget: DEFAULT_BLOCK_EX_UNITS_BUDGET,
       },
     });
 

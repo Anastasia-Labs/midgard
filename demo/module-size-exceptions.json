@@ -916,8 +916,8 @@
   },
   {
     "file": "midgard-node/src/services/config.make-config.ts",
-    "max": 1037,
-    "reason": "makeConfig is the dominant indivisible declaration (1022 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. U3 (+3, since replaced): read the horizon lag d from the environment. I5 (+3): reads the node-behind bound L1_NODE_BEHIND_MAX_MS from config.node-behind.ts, which refuses a non-positive or fractional value at startup. N4 (-15): the deleted correction observer's STATE_QUEUE_CORRECTION_FINALITY_DEPTH is no longer read. N1-close (-10): the deleted Ogmios and Kupo endpoint keys are no longer read. FIXN (-5): STARTUP_PROTOCOL_STATUS_QUERY_MAX_ATTEMPTS is no longer read; the startup deployment-status read retries with no attempt bound. DEPTH (-1): the commit-event depth d is read from the deployment manifest, whose profile build refuses a d that could cause a strike. FIXRT (+5): STARTUP_PROTOCOL_STATUS_QUERY_MAX_ATTEMPTS is read again; the startup deployment-status read retries a transient failure under that attempt budget and then fails startup by name."
+    "max": 1040,
+    "reason": "makeConfig is the dominant indivisible declaration (1022 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. U3 (+3, since replaced): read the horizon lag d from the environment. I5 (+3): reads the node-behind bound L1_NODE_BEHIND_MAX_MS from config.node-behind.ts, which refuses a non-positive or fractional value at startup. N4 (-15): the deleted correction observer's STATE_QUEUE_CORRECTION_FINALITY_DEPTH is no longer read. N1-close (-10): the deleted Ogmios and Kupo endpoint keys are no longer read. FIXN (-5): STARTUP_PROTOCOL_STATUS_QUERY_MAX_ATTEMPTS is no longer read; the startup deployment-status read retries with no attempt bound. DEPTH (-1): the commit-event depth d is read from the deployment manifest, whose profile build refuses a d that could cause a strike. FIXRT (+5): STARTUP_PROTOCOL_STATUS_QUERY_MAX_ATTEMPTS is read again; the startup deployment-status read retries a transient failure under that attempt budget and then fails startup by name. P (+3): reads the per-block ex-units budget from config.block-ex-units-budget.ts."
   },
   {
     "file": "midgard-node/src/services/midgard-contracts.midgard-contracts-from-deployment-manifest.ts",
@@ -946,8 +946,8 @@
   },
   {
     "file": "midgard-node/src/workers/commit-block-header.build-on-verified-base-program.ts",
-    "max": 909,
-    "reason": "buildOnVerifiedCommitBaseProgram is the dominant indivisible declaration (807 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. U3 (+8): the planned event horizon is capped by the horizon lag d, with the Lucid clock acquired only when d > 0. I1 (+5): the commit submission names its journaled intent. N1H (-3): the event horizon no longer reads a history journal's coverage. DEPTH (+2): the commit anchor d below the permit's view replaces the horizon lag and is passed to both submissions. L1 access E (+1): the commit Lucid factory has no default, so every caller names the follower or tool Lucid. VR (+1): forced validation takes the deployment's L1 slot mapping."
+    "max": 910,
+    "reason": "buildOnVerifiedCommitBaseProgram is the dominant indivisible declaration (807 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. U3 (+8): the planned event horizon is capped by the horizon lag d, with the Lucid clock acquired only when d > 0. I1 (+5): the commit submission names its journaled intent. N1H (-3): the event horizon no longer reads a history journal's coverage. DEPTH (+2): the commit anchor d below the permit's view replaces the horizon lag and is passed to both submissions. L1 access E (+1): the commit Lucid factory has no default, so every caller names the follower or tool Lucid. VR (+1): forced validation takes the deployment's L1 slot mapping. P (+1): the commit planner takes the configured per-block ex-units budget."
   },
   {
     "file": "midgard-node/src/workers/commit-block-header/submission.submit-deposit-only-commit.ts",
@@ -1011,8 +1011,8 @@
   },
   {
     "file": "midgard-node/tests/commit-block-planner.test.ts",
-    "max": 783,
-    "reason": "Retained test registration “commit block planner” (704 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+    "max": 786,
+    "reason": "Retained test registration “commit block planner” (704 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor. P (+3): the explicit planner limits name the per-block ex-units budget."
   },
   {
     "file": "midgard-node/tests/commit-end-time.test.ts",
@@ -1281,8 +1281,8 @@
   },
   {
     "file": "midgard-validation/src/cek-executor.structural-executor.ts",
-    "max": 2448,
-    "reason": "StructuralExecutor is one state owner: its methods share private state and lifecycle invariants. Further extraction would redesign ownership rather than separate independent declarations; surrounding helpers have been extracted."
+    "max": 2424,
+    "reason": "StructuralExecutor is one state owner: its methods share private state and lifecycle invariants. Further extraction would redesign ownership rather than separate independent declarations; surrounding helpers have been extracted. P (-24): step verification and retention moved to cek-executor.step-recorder.ts."
   },
   {
     "file": "midgard-validation/src/validation-machine/trace-builder-complete.ts",
