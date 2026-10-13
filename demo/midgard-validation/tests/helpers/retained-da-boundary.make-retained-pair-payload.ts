@@ -170,7 +170,6 @@ export const makeRetainedPairPayload = ({
     block_body: {
       header_hash: ZERO_HASH_28,
       header,
-      utxos: [],
       withdrawals: [],
       forced_transactions: [
         [forcedOrderIdHex, forcedSourceValueHex(forcedSource)],
