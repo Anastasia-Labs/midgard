@@ -47,6 +47,7 @@ import {
   describePosixTime,
   OperatorRegistrationRefusal,
   type PermissionlessActivation,
+  requireListedOperator,
   toLifecycleResult,
 } from "./register-active-operator.to-lifecycle-result.js";
 import { canActivateRegisteredOperatorImmediately } from "./register-active-operator/activation.js";
@@ -96,6 +97,9 @@ export const operatorLifecycleProgram = (
     const operatorKeyHash =
       permissionlessActivation?.operatorKeyHash ??
       (yield* getOperatorKeyHash(lucid));
+    // Only an allow-listed key may register; refused before any L1 read.
+    if (mode === "register-and-activate" || mode === "register-only")
+      yield* requireListedOperator(operatorKeyHash);
     const usesWallClockTime = lucid.config().network === "Custom";
     const hubOracleRefInput = yield* fetchHubOracleRefInput(lucid, contracts);
     const hubOracleDatum = yield* decodeHubOracleDatum(hubOracleRefInput);

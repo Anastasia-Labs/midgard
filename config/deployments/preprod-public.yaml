@@ -13,7 +13,7 @@ timing:
   block_maturity_ms: 604800000
   dispute_response_window_ms: 300000
   operator_shift_ms: 3600000
-  registration_ms: 30
+  registration_ms: 30000
   event_wait_ms: 1800000 # worst case for 30 blocks = 3N/f slots = 3*30/0.05 s (30 min)
   user_events_negligence_timeout_ms: 1200000
   new_shift_inactivity_grace_period_ms: 480000
@@ -37,7 +37,8 @@ da_bond:
   challenge_record_lovelace: 27000000
 limits:
   max_bisection_rounds: 32
-  max_inactivity_strikes: 5
+  # P1: out of reach, so a strike skips the shift but never ejects an operator.
+  max_inactivity_strikes: 1000000
   coins_per_utxo_byte: 4310
 economics:
   profile: public-preprod-launch-v1
@@ -46,3 +47,25 @@ economics:
   inactivitySlashingPenaltyLovelace: 10000000000
   fraudProverRewardLovelace: 75000000000
   proverCollateralFloorLovelace: 5000000
+allow_lists:
+  # P1 curated keys (owner input I1, due 2026-10-23). The "placeholder:"
+  # keys below are stand-ins and must be replaced before release.
+  operators:
+    - "706c616365686f6c6465723a6f706572000000000000000000000001"
+  fraud_provers:
+    - "706c616365686f6c6465723a70726f76000000000000000000000001"
+  da_challengers:
+    - "706c616365686f6c6465723a64616368000000000000000000000001"
+# P1 carries no validation-trace states, so the families that read them are
+# left out of the fraud-proof catalogue (Computation-Thread Init refuses them).
+excluded_fraud_proof_categories:
+  - validationTraceDispute
+  - executionSourceScriptDecoding
+  - receivePurposeLanguage
+  - unusedScriptWitness
+  - missingScriptSource
+  - missingRedeemer
+  - unusedRedeemer
+  - executionNativeScriptInvalid
+  - scriptIntegrityHashMismatch
+  - distinctAssetAccumulationLimit

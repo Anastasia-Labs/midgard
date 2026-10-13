@@ -119,7 +119,7 @@ const matchesDeployedScripts = (
 ): boolean =>
   DEPLOYMENT_MANIFEST_FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER.every(
     (category) =>
-      catalogue.categories[category].scriptHash ===
+      catalogue.categories[category]?.scriptHash ===
       contracts[DEPLOYMENT_MANIFEST_FRAUD_PROOF_CONTRACT_BY_CATEGORY[category]]
         ?.scriptHash,
   );

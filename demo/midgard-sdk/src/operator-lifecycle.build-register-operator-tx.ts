@@ -1,4 +1,8 @@
 import {
+  type AllowList,
+  requireAllowListed,
+} from "@al-ft/midgard-core/deployment-profile";
+import {
   type Assets,
   type BuildTxWithRedeemer,
   Data as LucidData,
@@ -89,6 +93,11 @@ export type RegisterOperatorTxConfig = {
   readonly registerValidTo: bigint;
   readonly layout?: RegisterRedeemerLayout;
   readonly onLayout?: (layout: RegisterRedeemerLayout) => void;
+  /**
+   * The operator allow-list checked before building; the selected profile's
+   * by default. Another list only serves tests of the validator's own check.
+   */
+  readonly operatorAllowList?: AllowList;
 };
 
 const deriveRegisterLayoutFromContext = ({
@@ -152,6 +161,11 @@ const deriveRegisterLayoutFromContext = ({
 export const buildRegisterOperatorTx = (
   config: RegisterOperatorTxConfig,
 ): TxBuilder => {
+  requireAllowListed(
+    "operators",
+    config.operatorKeyHash,
+    config.operatorAllowList,
+  );
   const prependedNodeDatumCbor = encodeLinkedListNodeView(
     config.prependedNodeDatum,
   );

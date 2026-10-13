@@ -1,11 +1,11 @@
 import { Store, Trie } from "@aiken-lang/merkle-patricia-forestry";
+import { deploymentFraudProofCatalogueCategories } from "@al-ft/midgard-core/deployment-profile";
 import { formatUnknownError } from "@al-ft/midgard-core/error-format";
 import {
   type L1SlotConfig,
   parseL1SlotConfig,
 } from "@al-ft/midgard-core/l1-slot-config";
 import {
-  FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER,
   type FraudProofCatalogueCategoryDeploymentInfo,
   type FraudProofCatalogueCategoryName,
   type FraudProofCatalogueDeploymentInfo,
@@ -209,8 +209,15 @@ export const inspectFraudProofCatalogueCategoryReadiness = async ({
   const store = new Store(undefined);
   await store.ready();
   const trie = new Trie(store);
+  const catalogueCategories = deploymentFraudProofCatalogueCategories();
+  if (!catalogueCategories.includes(categoryName)) {
+    throw new Error(
+      `${categoryName} is excluded from this deployment's fraud-proof catalogue`,
+    );
+  }
   const categories = fraudProofCatalogueCategories(catalogue);
-  for (const currentCategoryName of FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER) {
+  // The root re-derives over the deployment's catalogue (the profile's set).
+  for (const currentCategoryName of catalogueCategories) {
     const currentCategory = categories[currentCategoryName];
     if (currentCategory === undefined) {
       throw new Error(

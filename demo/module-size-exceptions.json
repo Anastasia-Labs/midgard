@@ -96,8 +96,8 @@
   },
   {
     "file": "midgard-core/scripts/generate-native-tx-field-items-v1-goldens.render-aiken.mjs",
-    "max": 504,
-    "reason": "renderAiken is the dominant indivisible declaration (484 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
+    "max": 521,
+    "reason": "renderAiken is the dominant indivisible declaration (484 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. C5 (+17): the generator also renders the plain-bytes asset-key order vectors as an Aiken golden test."
   },
   {
     "file": "midgard-core/src/availability-operation-journal.ts",
@@ -586,8 +586,8 @@
   },
   {
     "file": "midgard-fault-proofs/tests/support/emulator/validation-dispute-fixtures.build-forged-operator-successor-validation-dispute-fixture.ts",
-    "max": 716,
-    "reason": "buildForgedOperatorSuccessorValidationDisputeFixture is the dominant indivisible declaration (663 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. Integrated recovered DA branch source; exact measured line count. Direct committed-step fixture: uses the canonical nonterminal phase-name type for both argument and result, removing the duplicated phase unions. Root combined integration preserves prior terminal/builtin behavior; cap records the resulting source count."
+    "max": 715,
+    "reason": "buildForgedOperatorSuccessorValidationDisputeFixture is the dominant indivisible declaration (663 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. Integrated recovered DA branch source; exact measured line count. Direct committed-step fixture: uses the canonical nonterminal phase-name type for both argument and result, removing the duplicated phase unions. Root combined integration preserves prior terminal/builtin behavior; cap records the resulting source count. C5 (-1)."
   },
   {
     "file": "midgard-fault-proofs/tests/support/emulator/validators.make-always-succeeds-contracts.ts",
@@ -936,8 +936,8 @@
   },
   {
     "file": "midgard-node/src/transactions/register-active-operator.operator-lifecycle-program.ts",
-    "max": 968,
-    "reason": "operatorLifecycleProgram is the dominant indivisible declaration (881 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. I1 (+21): the deregister, register and activate submissions each name their journaled intent. I5 (+8): the lifecycle opens one intent plan before its first L1 read and records the deregister, register and activate submissions under it."
+    "max": 972,
+    "reason": "operatorLifecycleProgram is the dominant indivisible declaration (881 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. I1 (+21): the deregister, register and activate submissions each name their journaled intent. I5 (+8): the lifecycle opens one intent plan before its first L1 read and records the deregister, register and activate submissions under it. C1 (+4): register and register-and-activate refuse a key the operator allow-list leaves out."
   },
   {
     "file": "midgard-node/src/transactions/state-queue/merge-to-confirmed-state.build-and-submit-merge-tx.ts",
@@ -1091,8 +1091,8 @@
   },
   {
     "file": "midgard-node/tests/helpers/availability-challenge-emulator.create-fixture.ts",
-    "max": 806,
-    "reason": "createFixture is the dominant indivisible declaration (688 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. C2a (+9): the fixture deploys against Preprod's slot mapping and starts its emulator on a whole second, so committed headers name their commit slot."
+    "max": 825,
+    "reason": "createFixture is the dominant indivisible declaration (688 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. C2a (+9): the fixture deploys against Preprod's slot mapping and starts its emulator on a whole second, so committed headers name their commit slot. C1 adds the fixed challenger key option for the curated emulator profile."
   },
   {
     "file": "midgard-node/tests/initialization-emulator.test.ts",
@@ -1286,8 +1286,8 @@
   },
   {
     "file": "midgard-validation/src/validation-machine/trace-builder-complete.ts",
-    "max": 2877,
-    "reason": "completeValidationTrace is the dominant indivisible declaration (2717 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. Combined F1/RLO source measured at integration."
+    "max": 2875,
+    "reason": "completeValidationTrace is the dominant indivisible declaration (2717 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. Combined F1/RLO source measured at integration. C5 (-2)."
   },
   {
     "file": "midgard-validation/src/validation-machine/trace-builder-prepare.prepare-validation-trace.ts",
@@ -1351,8 +1351,23 @@
   },
   {
     "file": "midgard-watcher/src/availability/runtime.create-watcher-availability-runtime.ts",
-    "max": 795,
-    "reason": "createWatcherAvailabilityRuntime is the dominant indivisible declaration (809 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
+    "max": 820,
+    "reason": "createWatcherAvailabilityRuntime is the dominant indivisible declaration (809 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. C1 (+25): a watcher whose availability key the DA challenger allow-list omits prepares each due Open instead of building it."
+  },
+  {
+    "file": "midgard-watcher/src/fault-proofs/fault-proof-execution.ts",
+    "max": 516,
+    "reason": "One execution adapter: admission identity checks, funding permit mint, invocation, outcome mapping and cleanup share the refusal holds and the operations sink; a split would pass that state across modules. C1 (+15): a watcher whose prover key the fraud-prover allow-list omits prepares each admitted objective instead of running it. The C1 composition keeps both readiness and submission-mode reporting (+1)."
+  },
+  {
+    "file": "midgard-watcher/src/runtime/operations-observability.watcher-operations-metrics.ts",
+    "max": 506,
+    "reason": "The one declaration module for the operations observability contract (alert codes, diagnostics, status, metrics and API types); splitting it scatters one versioned schema. C1 (+6): the prepared-proof alert and the submission-mode metric. The C1 composition keeps both readiness and submission-mode reporting (+1)."
+  },
+  {
+    "file": "midgard-watcher/src/runtime/watcher-runtime.create-watcher-runtime.ts",
+    "max": 507,
+    "reason": "createWatcherRuntime is the composition root: it allocates and wires follower, workflows, funding, supervisor, observability, availability and driver in one ordered sequence that shares cleanup state. C1 (+11): wires observe-and-prepare for keys the allow-lists omit."
   },
   {
     "file": "midgard-watcher/src/fault-proofs/fault-decision-bridge.create-bridge.ts",
@@ -1481,13 +1496,13 @@
   },
   {
     "file": "scripts/deployment-profiles.mjs",
-    "max": 663,
-    "reason": "validateProfile is the dominant indivisible declaration (273 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
+    "max": 756,
+    "reason": "validateProfile is the dominant indivisible declaration (273 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. C1 (+80): the stage-0 allow-lists (validation, placeholder marker, Option<List<ByteArray>> rendering) and the excluded fraud-proof categories; canonicalJson keeps arrays as arrays. C1 adds the curated emulator-only profile."
   },
   {
     "file": "scripts/deployment-profiles.test.mjs",
-    "max": 843,
-    "reason": "Retained test registration “every profile carries the pooled DA bond amounts and timing, rendered into env” (71 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+    "max": 984,
+    "reason": "Retained test registration “every profile carries the pooled DA bond amounts and timing, rendered into env” (71 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor. C1 (+118): allow-list and excluded-category validation and rendering tests. C1 adds the curated emulator profile checks."
   },
   {
     "file": "scripts/verify-canonical-v1-cg1-control-publication-fit.mjs",
@@ -1496,8 +1511,8 @@
   },
   {
     "file": "midgard-watcher/src/runtime/operations-observability.create-watcher-operations-observability.ts",
-    "max": 502,
-    "reason": "One observability owner: status, metrics, readiness reasons and diagnostics share the alert book, source health and supervisor reads, so a split would pass that state across modules. FIXW (+2): a failed objective cleanup names the readiness reason fault_proof_objective_cleanup_failed."
+    "max": 506,
+    "reason": "One observability owner: status, metrics, readiness reasons and diagnostics share the alert book, source health and supervisor reads, so a split would pass that state across modules. FIXW (+2): a failed objective cleanup names the readiness reason fault_proof_objective_cleanup_failed. C1 (+4): metrics report each key's submission mode."
   },
   {
     "file": "../.agents/skills/adding-fault-proof-families/scripts/family-checklist.check-family.mjs",

@@ -41,7 +41,7 @@ pub const response_window_milliseconds: Int = 300_000
 
 pub const shift_duration: Int = 3_600_000
 
-pub const registration_duration: Int = 30
+pub const registration_duration: Int = 30_000
 
 pub const event_wait_duration: Int = 1_800_000
 
@@ -75,7 +75,7 @@ pub const challenge_record_lovelace_v1: Int = 27_000_000
 
 pub const max_bisection_rounds: Int = 32
 
-pub const max_inactivity_strikes: Int = 5
+pub const max_inactivity_strikes: Int = 1_000_000
 
 pub const coins_per_utxo_byte: Int = 4_310
 
@@ -88,3 +88,12 @@ pub const inactivity_slashing_penalty: Int = 10_000_000_000
 pub const fraud_prover_reward: Int = 75_000_000_000
 
 pub const prover_collateral_floor: Int = 5_000_000
+
+pub const operator_allow_list: Option<List<ByteArray>> =
+  Some([#"706c616365686f6c6465723a6f706572000000000000000000000001"])
+
+pub const fraud_prover_allow_list: Option<List<ByteArray>> =
+  Some([#"706c616365686f6c6465723a70726f76000000000000000000000001"])
+
+pub const da_challenger_allow_list: Option<List<ByteArray>> =
+  Some([#"706c616365686f6c6465723a64616368000000000000000000000001"])

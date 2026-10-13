@@ -43,6 +43,7 @@ import {
   buildCatalogueDeploymentInfo,
   buildMinimalFaultProofContracts,
   EMULATOR_PROTOCOL_PARAMETERS,
+  emulatorAccountFromSeed,
   fundedProverEmulatorAccount,
   network,
   publishOperatorLifecycleReferenceScripts,
@@ -54,12 +55,13 @@ import {
 export const buildProvedFixtureDeploymentContext = async (
   headerMinimumFee: bigint,
   coherentCanonicalEvidence = false,
+  seeds: { readonly funder?: string; readonly prover?: string } = {},
 ) => {
   if (coherentCanonicalEvidence) return buildCanonicalDeploymentContext();
   const realBlueprint = readBlueprint(realBlueprintPath);
   const alwaysBlueprint = readBlueprint(alwaysSucceedsBlueprintPath);
-  const funder = generateEmulatorAccount({ lovelace: 40_000_000_000n });
-  const prover = fundedProverEmulatorAccount(20_000_000_000n);
+  const funder = emulatorAccountFromSeed(40_000_000_000n, seeds.funder);
+  const prover = fundedProverEmulatorAccount(20_000_000_000n, seeds.prover);
   const emulator = new Emulator([funder, prover], EMULATOR_PROTOCOL_PARAMETERS);
   alignEmulatorToWholeSecond(emulator);
   const funderLucid = await Lucid(emulator, "Custom");

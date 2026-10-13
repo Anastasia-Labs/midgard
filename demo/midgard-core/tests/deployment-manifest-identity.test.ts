@@ -10,4 +10,5 @@ import "../src/deployment-profile.js";
 import "./deployment-manifest-identity.finalized-manifest.js";
 import "./deployment-manifest-identity.finalized-deployment-manifest.js";
 import "./deployment-manifest-identity.deployment-manifest-v1-shared-identity.js";
+import "./deployment-manifest-identity.curated-catalogue.js";
 import "./deployment-manifest-identity.event-history-applied-bounds-in-deployment-identity.js";

@@ -3,6 +3,9 @@ import { fileURLToPath } from "node:url";
 import { durationShards } from "@al-ft/midgard-test-support/duration-shards";
 import {
   blueprintStampGlobalSetup,
+  curatedEmulatorBlueprint,
+  curatedEmulatorPlugin,
+  curatedEmulatorSetup,
   interactiveEmulatorBlueprint,
   interactiveEmulatorPlugin,
   interactiveEmulatorSetup,
@@ -13,7 +16,7 @@ import {
 } from "@al-ft/midgard-test-support/vitest";
 import { defineConfig } from "vitest/config";
 
-import { interactiveTests } from "./vitest.interactive-tests.mjs";
+import { curatedTests, interactiveTests } from "./vitest.interactive-tests.mjs";
 
 /**
  * How many test files may run at once. Overridable with
@@ -58,7 +61,7 @@ export default defineConfig({
           test: {
             name: "testing-profile",
             include: ["./tests/**/*.test.{ts,tsx}"],
-            exclude: interactiveTests,
+            exclude: [...interactiveTests, ...curatedTests],
             globalSetup: [blueprintStampGlobalSetup],
           },
         },
@@ -79,6 +82,17 @@ export default defineConfig({
               process.env.MIDGARD_TRACED_INTERACTIVE_BLUEPRINT ??
               interactiveEmulatorBlueprint,
           },
+        },
+      },
+      // Not bundled, for the same reason.
+      {
+        extends: true,
+        plugins: [curatedEmulatorPlugin()],
+        test: {
+          name: "curated-emulator",
+          include: curatedTests,
+          globalSetup: [curatedEmulatorSetup],
+          env: { MIDGARD_REAL_BLUEPRINT_PATH: curatedEmulatorBlueprint },
         },
       },
     ],

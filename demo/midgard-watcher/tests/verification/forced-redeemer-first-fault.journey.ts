@@ -235,7 +235,6 @@ export async function journey(
             blockSlot: context.blockSlot,
             bucketConcurrency: 1,
             consensusProfile: MIDGARD_CONSENSUS_PROFILE,
-            scriptEvaluationsByTxId: new Map(),
           }),
         );
   const normalEventKey: SDK.EventKey = {

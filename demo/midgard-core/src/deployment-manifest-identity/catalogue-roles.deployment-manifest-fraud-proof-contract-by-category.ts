@@ -185,12 +185,15 @@ export type DeploymentManifestFraudProofCatalogueCategoryIdentity = {
   readonly membershipProofCbor: string;
 };
 
+/** `categories` holds exactly the deployment's catalogue (the profile's set). */
 export type DeploymentManifestFraudProofCatalogueIdentity = {
   readonly root: string;
   readonly categories: Readonly<
-    Record<
-      DeploymentManifestFraudProofCatalogueCategory,
-      DeploymentManifestFraudProofCatalogueCategoryIdentity
+    Partial<
+      Record<
+        DeploymentManifestFraudProofCatalogueCategory,
+        DeploymentManifestFraudProofCatalogueCategoryIdentity
+      >
     >
   >;
 };

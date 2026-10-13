@@ -118,7 +118,7 @@ describe("inspect-contracts", { timeout: 30_000 }, () => {
         scriptHash: contracts[category].firstStep.spendingScriptHash,
         scriptHashMatchesFirstStep: true,
         membershipProofCbor:
-          fraudProofCatalogue.categories[category].membershipProofCbor,
+          fraudProofCatalogue.categories[category]!.membershipProofCbor,
         membershipProofMatchesDerived: true,
       });
     }
@@ -329,7 +329,7 @@ describe("inspect-contracts", { timeout: 30_000 }, () => {
       categories: {
         ...fixture.fraudProofCatalogue.categories,
         invalidRange: {
-          ...fixture.fraudProofCatalogue.categories.invalidRange,
+          ...fixture.fraudProofCatalogue.categories.invalidRange!,
           categoryId: "ffffffff",
         },
       },
@@ -365,9 +365,9 @@ describe("inspect-contracts", { timeout: 30_000 }, () => {
       categories: {
         ...fixture.fraudProofCatalogue.categories,
         invalidRange: {
-          ...fixture.fraudProofCatalogue.categories.invalidRange,
+          ...fixture.fraudProofCatalogue.categories.invalidRange!,
           categoryId:
-            fixture.fraudProofCatalogue.categories.doubleSpend.categoryId,
+            fixture.fraudProofCatalogue.categories.doubleSpend!.categoryId,
         },
       },
     };

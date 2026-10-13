@@ -37,12 +37,7 @@ const plan = (txs: readonly EntryWithTimeStamp[]) =>
       mempoolTxs: txs,
       processedMempoolTxs: [],
     }),
-    // Only the ex-units budget may bind: the DA allowance would otherwise
-    // stop a plain-transfer block first.
-    limits: {
-      ...DEFAULT_COMMIT_BATCH_BUDGET_LIMITS,
-      estimatedDaTraceAllowanceBytesPerTx: 0,
-    },
+    limits: DEFAULT_COMMIT_BATCH_BUDGET_LIMITS,
   });
 
 describe("commit planner per-block ex-units budget", () => {
@@ -116,7 +111,6 @@ describe("commit planner per-block ex-units budget", () => {
         }),
         limits: {
           ...DEFAULT_COMMIT_BATCH_BUDGET_LIMITS,
-          estimatedDaTraceAllowanceBytesPerTx: 0,
           blockExUnitsBudget: { memory, steps },
         },
       }).plan;

@@ -23,11 +23,22 @@ export const profileNames = [
   "preprod-testing",
   "local-devnet-testing",
   "preprod-emulator-testing",
+  "preprod-emulator-curated",
 ];
-const networks = ["Mainnet", "Preprod", "Preprod", "Custom", "Preprod"];
+const networks = [
+  "Mainnet",
+  "Preprod",
+  "Preprod",
+  "Custom",
+  "Preprod",
+  "Preprod",
+];
 // Generated and compiled for the interactive Vitest projects only; never the
 // checkout's selected deployment, and never built as the default blueprint.
-export const emulatorOnlyProfileNames = ["preprod-emulator-testing"];
+export const emulatorOnlyProfileNames = [
+  "preprod-emulator-testing",
+  "preprod-emulator-curated",
+];
 const timingConstants = {
   block_maturity_ms: "block_maturity_duration_v1",
   dispute_response_window_ms: "response_window_milliseconds",
@@ -65,16 +76,83 @@ const limitConstants = {
   max_inactivity_strikes: "max_inactivity_strikes",
   coins_per_utxo_byte: "coins_per_utxo_byte",
 };
+// Stage-0 allow-lists (P1). Each is null (every key admitted) or the
+// verification key hashes the deployment admits, fixed for its life. They
+// render as `Option<List<ByteArray>>` env constants checked by
+// `midgard/common/allow_list.admits`.
+const allowListConstants = {
+  operators: "operator_allow_list",
+  fraud_provers: "fraud_prover_allow_list",
+  da_challengers: "da_challenger_allow_list",
+};
+// Stand-in keys until the owner supplies the real ones: the ASCII prefix
+// "placeholder:" marks them. Nothing yet marks a profile for release, so no
+// check refuses them; a release gate must.
+export const ALLOW_LIST_PLACEHOLDER_KEY_PREFIX = Buffer.from(
+  "placeholder:",
+  "ascii",
+).toString("hex");
+export const isAllowListPlaceholderKey = (key) =>
+  key.startsWith(ALLOW_LIST_PLACEHOLDER_KEY_PREFIX);
+const verificationKeyHash = /^[0-9a-f]{56}$/u;
+const validateAllowLists = (allowLists, name) => {
+  exactKeys(allowLists, Object.keys(allowListConstants), "allow_lists");
+  for (const key of Object.keys(allowListConstants)) {
+    const keys = allowLists[key];
+    if (keys === null) {
+      if (productionProfileNames.includes(name))
+        throw new Error(
+          `allow_lists.${key} must list the admitted keys on a production profile`,
+        );
+      continue;
+    }
+    if (
+      !Array.isArray(keys) ||
+      keys.length === 0 ||
+      keys.some((entry) => !verificationKeyHash.test(entry))
+    )
+      throw new Error(
+        `allow_lists.${key} must be null or a non-empty list of 28-byte lowercase hex key hashes`,
+      );
+    if (new Set(keys).size !== keys.length)
+      throw new Error(`allow_lists.${key} must not repeat a key`);
+  }
+};
 
+// Fraud-proof catalogue categories the deployment leaves out (P1: the
+// families that read validation-trace states). The atomic init builds the
+// catalogue MPF without them, so Computation-Thread Init has no membership
+// proof for them. midgard-core checks each name against the catalogue.
+const catalogueCategoryName = /^[a-z][A-Za-z0-9]*$/u;
+const validateExcludedFraudProofCategories = (categories) => {
+  if (
+    !Array.isArray(categories) ||
+    categories.some(
+      (entry) =>
+        typeof entry !== "string" || !catalogueCategoryName.test(entry),
+    )
+  )
+    throw new Error(
+      "excluded_fraud_proof_categories must be a list of catalogue category names",
+    );
+  if (new Set(categories).size !== categories.length)
+    throw new Error(
+      "excluded_fraud_proof_categories must not repeat a category",
+    );
+};
+
+// Sorted object keys; arrays keep their order (midgard-core canonicalJson).
 export const canonicalJson = (value) =>
   JSON.stringify(
-    value !== null && typeof value === "object"
-      ? Object.fromEntries(
-          Object.keys(value)
-            .sort()
-            .map((key) => [key, JSON.parse(canonicalJson(value[key]))]),
-        )
-      : value,
+    Array.isArray(value)
+      ? value.map((entry) => JSON.parse(canonicalJson(entry)))
+      : value !== null && typeof value === "object"
+        ? Object.fromEntries(
+            Object.keys(value)
+              .sort()
+              .map((key) => [key, JSON.parse(canonicalJson(value[key]))]),
+          )
+        : value,
   );
 export const profileDigest = (profile) =>
   createHash("sha256").update(canonicalJson(profile)).digest("hex");
@@ -259,6 +337,8 @@ export const validateProfile = (profile, name) => {
       "da_bond",
       "limits",
       "economics",
+      "allow_lists",
+      "excluded_fraud_proof_categories",
     ],
     "profile",
   );
@@ -306,11 +386,15 @@ export const validateProfile = (profile, name) => {
     Object.keys(economicsConstants),
     "economics",
   );
-  const expectedEconomics = name.endsWith("testing")
-    ? "bounded-acceptance-v1"
-    : "public-preprod-launch-v1";
+  // Emulator-only profiles are test deployments: bounded economics.
+  const expectedEconomics =
+    name.endsWith("testing") || emulatorOnlyProfileNames.includes(name)
+      ? "bounded-acceptance-v1"
+      : "public-preprod-launch-v1";
   if (profile.economics.profile !== expectedEconomics)
     throw new Error(`economics.profile must equal ${expectedEconomics}`);
+  validateAllowLists(profile.allow_lists, name);
+  validateExcludedFraudProofCategories(profile.excluded_fraud_proof_categories);
   const timing = profile.timing;
   const maturity = BigInt(timing.block_maturity_ms);
   const disputeDuration =
@@ -546,7 +630,16 @@ export const renderAiken = (profile, template) => {
         `pub const ${name}: Int = ${values[key].toLocaleString("en-US").replaceAll(",", "_")}`,
     ),
   );
-  return `${template.trimEnd()}\n\n${constants.join("\n\n")}\n`;
+  const allowLists = Object.entries(allowListConstants).map(([key, name]) => {
+    const keys = profile.allow_lists[key];
+    // The layout `aiken fmt` gives each form, so the generated env stays
+    // format-clean.
+    const head = `pub const ${name}: Option<List<ByteArray>> =`;
+    if (keys === null) return `${head} None`;
+    if (keys.length === 1) return `${head}\n  Some([#"${keys[0]}"])`;
+    return `${head}\n  Some(\n    [\n${keys.map((entry) => `      #"${entry}",`).join("\n")}\n    ],\n  )`;
+  });
+  return `${template.trimEnd()}\n\n${[...constants, ...allowLists].join("\n\n")}\n`;
 };
 
 export const generateProfiles = async (selected, check = false) => {
@@ -590,7 +683,7 @@ export const generateProfiles = async (selected, check = false) => {
     `export const SELECTED_DEPLOYMENT_PROFILE = DEPLOYMENT_PROFILES[${JSON.stringify(selected)}];\n` +
     `export const SELECTED_DEPLOYMENT_PROFILE_DIGEST = DEPLOYMENT_PROFILE_DIGESTS[${JSON.stringify(selected)}];\n` +
     `for (const profile of Object.values(DEPLOYMENT_PROFILES)) {\n` +
-    `  Object.freeze(profile.l1_finality);\n  Object.freeze(profile.timing);\n  Object.freeze(profile.da_bond);\n  Object.freeze(profile.limits);\n  Object.freeze(profile.economics);\n  Object.freeze(profile);\n}\n` +
+    `  Object.freeze(profile.l1_finality);\n  Object.freeze(profile.timing);\n  Object.freeze(profile.da_bond);\n  Object.freeze(profile.limits);\n  Object.freeze(profile.economics);\n  for (const keys of Object.values(profile.allow_lists)) if (keys !== null) Object.freeze(keys);\n  Object.freeze(profile.allow_lists);\n  Object.freeze(profile.excluded_fraud_proof_categories);\n  Object.freeze(profile);\n}\n` +
     `Object.freeze(DEPLOYMENT_PROFILES);\nObject.freeze(DEPLOYMENT_PROFILE_DIGESTS);\n` +
     `for (const economics of Object.values(DEPLOYMENT_MANIFEST_ECONOMICS_BY_PROFILE)) Object.freeze(economics);\n` +
     `Object.freeze(DEPLOYMENT_MANIFEST_ECONOMICS_BY_PROFILE);\n`;

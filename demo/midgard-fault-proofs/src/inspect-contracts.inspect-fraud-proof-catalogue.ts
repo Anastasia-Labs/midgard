@@ -1,4 +1,5 @@
 import { Store, Trie } from "@aiken-lang/merkle-patricia-forestry";
+import { deploymentFraudProofCatalogueCategories } from "@al-ft/midgard-core/deployment-profile";
 import { formatUnknownError } from "@al-ft/midgard-core/error-format";
 import {
   FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER,
@@ -58,7 +59,9 @@ export const inspectFraudProofCatalogue = (
       await store.ready();
       const trie = new Trie(store);
       const categories = fraudProofCatalogueCategories(catalogue);
-      for (const categoryName of FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER) {
+      // The root re-derives over the deployment's catalogue (the profile's
+      // set); an excluded category is absent and inspects as empty.
+      for (const categoryName of deploymentFraudProofCatalogueCategories()) {
         const category = categories[categoryName];
         if (category === undefined) {
           throw new Error(

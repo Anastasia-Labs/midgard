@@ -18,7 +18,7 @@ import {
   makeDeploymentMarker,
   verifyFinalizedDeploymentManifest,
 } from "@al-ft/midgard-core/deployment-manifest-identity";
-import { FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER } from "@al-ft/midgard-sdk";
+import { deploymentFraudProofCatalogueCategories } from "@al-ft/midgard-core/deployment-profile";
 import type { WatcherDeploymentIdentityPolicy } from "midgard-watcher";
 
 import { writeDurableFile, writeOnceFile } from "./durable.js";
@@ -129,7 +129,7 @@ const identityPolicy = (
     fraudProofCatalogue: {
       root: catalogue.root,
       categories: Object.fromEntries(
-        FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER.map((category) => {
+        deploymentFraudProofCatalogueCategories().map((category) => {
           const entry = catalogue.categories[category]!;
           return [
             category,

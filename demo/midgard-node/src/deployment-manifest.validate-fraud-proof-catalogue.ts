@@ -4,10 +4,8 @@ import {
   verifyDeploymentManifestFraudProofCatalogueIdentity,
   verifyReferenceScriptPublicationAuthority,
 } from "@al-ft/midgard-core/deployment-manifest-identity";
-import {
-  FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER,
-  REFERENCE_SCRIPT_AUTH_TOKEN_NAMES,
-} from "@al-ft/midgard-sdk";
+import { deploymentFraudProofCatalogueCategories } from "@al-ft/midgard-core/deployment-profile";
+import { REFERENCE_SCRIPT_AUTH_TOKEN_NAMES } from "@al-ft/midgard-sdk";
 import { validatorToScriptHash } from "@lucid-evolution/lucid";
 
 import {
@@ -154,9 +152,12 @@ export const validateFraudProofCatalogue = (
     candidate.categories,
     "contracts.fraudProofCatalogueMint.fraudProofCatalogue.categories",
   );
+  // The deployment's catalogue is the profile's set: an excluded category is
+  // absent, and its contract still deploys.
+  const catalogueCategories = deploymentFraudProofCatalogueCategories();
   requireExactKeys(
     categories,
-    FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER,
+    catalogueCategories,
     [],
     "contracts.fraudProofCatalogueMint.fraudProofCatalogue.categories",
   );
@@ -215,11 +216,13 @@ export const validateFraudProofCatalogue = (
     scriptIntegrityHashMismatch: "fraudProofScriptIntegrityHashMismatch",
     distinctAssetAccumulationLimit: "fraudProofDistinctAssetAccumulationLimit",
   } as const;
-  const parsedCategories = {} as Record<
-    DeploymentManifestFraudProofCatalogueCategory,
-    DeploymentManifestFraudProofCatalogueCategoryIdentity
-  >;
-  for (const categoryName of FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER) {
+  const parsedCategories: Partial<
+    Record<
+      DeploymentManifestFraudProofCatalogueCategory,
+      DeploymentManifestFraudProofCatalogueCategoryIdentity
+    >
+  > = {};
+  for (const categoryName of catalogueCategories) {
     const field = `contracts.fraudProofCatalogueMint.fraudProofCatalogue.categories.${categoryName}`;
     const category = requireObject(categories[categoryName], field);
     requireExactKeys(
@@ -257,8 +260,8 @@ export const validateFraudProofCatalogue = (
       );
     }
   }
-  verifyDeploymentManifestFraudProofCatalogueIdentity({
-    root,
-    categories: parsedCategories,
-  });
+  verifyDeploymentManifestFraudProofCatalogueIdentity(
+    { root, categories: parsedCategories },
+    catalogueCategories,
+  );
 };

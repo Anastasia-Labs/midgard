@@ -360,6 +360,25 @@ holds back a challenge action. `daBondPool` keeps the last good readout, whose
 good read sets it back to `null`. Funding, top-up and the owner-quorum withdrawal are operator commands; see
 [DA bond pool commands](../midgard-node/docs/da-bond-commands.md).
 
+A deployment whose profile lists fraud provers or DA challengers
+(`allow_lists`) refuses a Computation-Thread Init or an availability Open
+signed by any other key. The watcher checks its two payment keys against the
+compiled profile at startup, and `/v1/metrics` reports the result as
+`submissionModes: {faultProofs, availability}`, each `submit` or
+`observe_and_prepare` (`null` when not reported). A key in
+`observe_and_prepare` still observes, classifies and proves, but submits
+nothing the list would refuse: each admitted fault-proof objective, and each
+due Open, is written as a prepared-proof bundle under
+`<storage.path>.prepared-proofs/` (owner-only JSON,
+`midgard-watcher-prepared-proof-v1`, naming the objective and the observing
+key, never evidence) and raises the `prepared_proof_awaiting_submission`
+alert, one per objective or header. The objective stays pending on each
+observation. Its bundle and alert go once it is settled (a listed prover's
+proof removed the header, or the header left the queue) or, for an Open, once
+it is no longer due. The alert is informational: the watcher stays ready.
+Other availability steps (Settle, Close, Timeout, prune) are not
+allow-listed and run as usual.
+
 `$.l1.source` names one source, `local_node`: the Cardano node the L1
 follower reads over its socket. `$.l1.finality` holds only `depth`. The
 installed CLI process parser requires `mode: "acceptance"`, `targetNetwork` of
