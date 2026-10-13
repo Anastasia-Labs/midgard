@@ -57,6 +57,7 @@ export const tracedRefusalInputs = [
   "demo/midgard-test-support/",
   "demo/scripts/lib/",
   "demo/scripts/deployment-profiles.mjs",
+  "demo/scripts/deployment-profile-aiken.mjs",
   "demo/package.json",
   "demo/pnpm-lock.yaml",
   "demo/pnpm-workspace.yaml",
