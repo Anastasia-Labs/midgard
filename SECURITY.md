@@ -2,7 +2,7 @@
 
 ## Reporting a vulnerability
 
-Send a private report to [phil@midgardlabs.io](mailto:phil@midgardlabs.io)
+Send a private report to [info@anastasialabs.io](mailto:info@anastasialabs.io)
 with the subject `Midgard security report`. Include the affected revision and
 deployment profile, the behavior you observed, reproduction steps, and the
 expected impact. Do not include wallet seed phrases or other credentials.

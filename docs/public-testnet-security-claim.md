@@ -86,6 +86,6 @@ that a release or migration has happened.
 
 ## Disclosure
 
-Send private or urgent security reports to [phil@midgardlabs.io](mailto:phil@midgardlabs.io).
+Send private or urgent security reports to [info@anastasialabs.io](mailto:info@anastasialabs.io).
 The project owner handles intake. The response targets, encrypted reporting
 process and good-faith research terms are in [SECURITY.md](../SECURITY.md).
