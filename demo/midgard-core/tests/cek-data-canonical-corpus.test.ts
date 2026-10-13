@@ -10,6 +10,15 @@ import {
 } from "../src/index.js";
 import { vectors } from "./fixtures/cek-data-canonical-corpus-v1.vectors.mjs";
 
+const nodeAdmitsDatum = (source: Buffer): boolean => {
+  try {
+    decodeMidgardDatum(source);
+    return true;
+  } catch {
+    return false;
+  }
+};
+
 // The same corpus the generated Aiken module drives through
 // `cek_data_traverse_v1` (cek-data-canonical-corpus-v1-golden.test.ak).
 describe("canonical Data corpus V1 through the TypeScript traverse twin", () => {
@@ -47,6 +56,9 @@ describe("canonical Data corpus V1 through the TypeScript traverse twin", () => 
       expect(isCanonicalMidgardCekData(source)).toBe(
         vector.verdict === "accepted",
       );
+      // Node admission keeps its own single-pass gate in P1 (DC ruling F3);
+      // it must take exactly the corpus's accepted spans.
+      expect(nodeAdmitsDatum(source)).toBe(vector.verdict === "accepted");
     },
   );
 
@@ -80,14 +92,6 @@ describe("canonical Data corpus V1 through the TypeScript traverse twin", () => 
   // traverse; this locks its verdict to the traverse's, so a datum the node
   // admits is one the datum canonicity proof reads as canonical and back.
   it("node datum admission agrees with the traverse on the corpus and seeded mutations", () => {
-    const admitted = (source: Buffer): boolean => {
-      try {
-        decodeMidgardDatum(source);
-        return true;
-      } catch {
-        return false;
-      }
-    };
     const seeds = vectors
       .map((vector) => Buffer.from(vector.hex, "hex"))
       .filter((source) => source.length < 400);
@@ -131,10 +135,11 @@ describe("canonical Data corpus V1 through the TypeScript traverse twin", () => 
     }
     const disagreements = cases
       .filter(
-        (source) => admitted(source) !== isCanonicalMidgardCekData(source),
+        (source) =>
+          nodeAdmitsDatum(source) !== isCanonicalMidgardCekData(source),
       )
       .map((source) => source.toString("hex"));
     expect(disagreements).toEqual([]);
-    expect(cases.filter(admitted).length).toBeGreaterThan(200);
+    expect(cases.filter(nodeAdmitsDatum).length).toBeGreaterThan(200);
   }, 120_000);
 });
