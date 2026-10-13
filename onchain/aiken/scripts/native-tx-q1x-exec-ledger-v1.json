@@ -20,52 +20,52 @@
       ],
       "rows": {
         "q1x_f6_no_input_step_02_control_at_one_spend_input": {
-          "mem": 1135232,
-          "cpu": 507586367
+          "mem": 1134832,
+          "cpu": 507522367
         },
         "q1x_f6_no_input_step_02_at_one_spend_input": {
-          "mem": 1664703,
-          "cpu": 670442492
+          "mem": 1664303,
+          "cpu": 670378492
         },
         "q1x_f6_no_input_step_02_control_at_the_admissible_maximum": {
-          "mem": 24165515,
-          "cpu": 10048819248
+          "mem": 24165115,
+          "cpu": 10048755248
         },
         "q1x_f6_no_input_step_02_at_the_admissible_maximum": {
-          "mem": 24523905,
-          "cpu": 10197288015
+          "mem": 24523505,
+          "cpu": 10197224015
         },
         "q1x_f6_double_spend_step_04_control_at_one_spend_input": {
-          "mem": 1138376,
-          "cpu": 507692188
+          "mem": 1137976,
+          "cpu": 507628188
         },
         "q1x_f6_double_spend_step_04_at_one_spend_input": {
-          "mem": 1664381,
-          "cpu": 672505208
+          "mem": 1663981,
+          "cpu": 672441208
         },
         "q1x_f6_double_spend_step_04_control_at_the_admissible_maximum": {
-          "mem": 24168659,
-          "cpu": 10048925069
+          "mem": 24168259,
+          "cpu": 10048861069
         },
         "q1x_f6_double_spend_step_04_at_the_admissible_maximum": {
-          "mem": 24523583,
-          "cpu": 10199350731
+          "mem": 24523183,
+          "cpu": 10199286731
         },
         "q1x_f6_missing_signature_step_04_control_at_one_address_witness": {
-          "mem": 1145458,
-          "cpu": 509114145
+          "mem": 1145058,
+          "cpu": 509050145
         },
         "q1x_f6_missing_signature_step_04_at_one_address_witness": {
-          "mem": 1815788,
-          "cpu": 721198127
+          "mem": 1815388,
+          "cpu": 721134127
         },
         "q1x_f6_missing_signature_step_04_control_at_the_admissible_maximum": {
-          "mem": 41704101,
-          "cpu": 16668619296
+          "mem": 41703701,
+          "cpu": 16668555296
         },
         "q1x_f6_missing_signature_step_04_at_the_admissible_maximum": {
-          "mem": 49862797,
-          "cpu": 19403226113
+          "mem": 49862397,
+          "cpu": 19403162113
         }
       }
     }
