@@ -113,9 +113,9 @@ const PRE_DATA_CANONICITY_PLACEHOLDER_PUBLICATION_ORDER_DIGEST =
 const PRE_DATA_CANONICITY_PLACEHOLDER_COMMAND_ORDER_DIGEST =
   "993c9f270b936ead6e61caec004a371abaeeff1258c20fa66e2dfa484f04a7af";
 
-// New pins are derived only after projecting out exactly the four
-// data-canonicity entries reproduces every pre-data-canonicity order digest
-// and its 516/509 counts.
+// These pins retain all four data-canonicity additions and min-ADA retirement.
+// Removing those four additions reproduces every pre-data-canonicity order
+// digest and its post-retirement 516/509 counts.
 const MANIFEST_CONTRACT_ORDER_DIGEST =
   "6a4c88bfb38fdc67303ec9799124d2e8ef7b89998ffac584e06a2df069266299";
 const MANIFEST_ROLE_ORDER_DIGEST =

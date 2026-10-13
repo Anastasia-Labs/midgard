@@ -240,7 +240,6 @@ export const REPLAY_CONTEXT_FAMILIES = [
   "nativeScriptDecoding",
   "mintAuthorization",
   "withdrawalMistag",
-  "minAda",
   "transitionTrace",
   "resolvedOutputNonCanonical",
   "spendInputSignerMissing",
