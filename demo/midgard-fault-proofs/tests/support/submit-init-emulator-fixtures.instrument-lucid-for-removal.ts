@@ -1,3 +1,4 @@
+import { type L1SlotConfig } from "@al-ft/midgard-core/l1-slot-config";
 import type { DeploymentManifest } from "@al-ft/midgard-core/deployment-manifest-identity";
 import {
   type FraudProofCatalogueDeploymentInfo,
@@ -27,6 +28,8 @@ import {
 
 export type ProvedDoubleSpendFixture = {
   readonly emulator: Emulator;
+  /** The slot mapping the deployment's commit yield was built with. */
+  readonly l1SlotConfig: L1SlotConfig;
   readonly realBlueprint: Blueprint;
   readonly funderLucid: Awaited<ReturnType<typeof Lucid>>;
   readonly proverLucid: Awaited<ReturnType<typeof Lucid>>;

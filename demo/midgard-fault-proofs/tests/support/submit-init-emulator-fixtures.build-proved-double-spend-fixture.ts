@@ -232,6 +232,10 @@ export const buildProvedDoubleSpendFixture = async ({
             : 0n),
         prevHeaderHash: previousHeaderHash,
       };
+      successorHeader.blockSlot = commitSlotForBlockTime(
+        l1SlotConfig,
+        successorHeader.endTime,
+      );
       const successor = await submitSuccessorBlockTx({
         lucid: funderLucid,
         emulator,
@@ -521,6 +525,7 @@ export const buildProvedDoubleSpendFixture = async ({
 
   return {
     emulator,
+    l1SlotConfig,
     realBlueprint,
     funderLucid,
     proverLucid,

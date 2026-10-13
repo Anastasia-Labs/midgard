@@ -16,6 +16,7 @@ import {
   resolveProverSigner,
   workflowTransactionInputOutRefs,
 } from "../src/index.js";
+import { commitSlotForBlockTime } from "./support/emulator/header-fixtures.js";
 import { captureEmulatorSubmission } from "./support/emulator/measurement.js";
 import type { OperatorLifecycleReferenceScripts } from "./support/emulator/reference-scripts.js";
 import { preparePermissionlessSlashSqlite } from "./support/permissionless-slash-sqlite.js";
@@ -171,6 +172,10 @@ it("a distinct caller prunes active and retired rotated descendants and pays the
             ? endTime
             : predecessor.endTime + 60_000n,
       };
+      header.blockSlot = commitSlotForBlockTime(
+        fixture.l1SlotConfig,
+        header.endTime,
+      );
       const [activeOperatorNode] = await funderLucid.utxosAtWithUnit(
         contracts.activeOperators.spendingScriptAddress,
         rotated.activeNodeUnit,
