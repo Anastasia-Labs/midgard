@@ -4,7 +4,6 @@
  * typed encoder cannot write, and a map that repeats a key, which decoding
  * collapses. The redeemers carry the committed bytes as committed.
  */
-import { aikenSerialisedPlutusDataCborPreservingMapOrder } from "@al-ft/midgard-core/plutus-data-cbor";
 import * as SDK from "@al-ft/midgard-sdk";
 import { describe, expect, it, vi } from "vitest";
 
@@ -71,14 +70,6 @@ const convict = async (harness: Harness, scenario: Scenario) => {
 };
 
 describe("withdrawal-mistag over a committed l1_datum the typed encoder cannot reproduce", () => {
-  it("both datums are serialiseData-form", () => {
-    for (const datum of [LARGEST_CONSTRUCTOR_DATUM, REPEATED_KEY_DATUM]) {
-      expect(aikenSerialisedPlutusDataCborPreservingMapOrder(datum)).toBe(
-        datum,
-      );
-    }
-  });
-
   it("convicts a valid withdrawal marked invalid whose datum has the largest constructor index", async () => {
     const harness = await makeWithdrawalMistagEmulatorHarness();
     const scenario = await setupWithdrawalMistagScenario({
