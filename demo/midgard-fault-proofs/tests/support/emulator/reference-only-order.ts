@@ -28,6 +28,7 @@ import {
   makeHeader,
   publishPlainReferenceScriptUtxo,
   submitSetupTx,
+  withPlaceholderDeposit,
 } from "../submit-init-emulator-shared.js";
 
 export const mintReferenceOnlyOrder = async (
@@ -48,12 +49,14 @@ export const mintReferenceOnlyOrder = async (
     contracts: h.contracts,
     nonceUtxo: h.nonceUtxo,
     catalogue: h.catalogue,
-    header: makeHeader(
-      operator.hash,
-      alignUnixTimeToEmulatorSlotBoundary(
-        h.funderLucid,
-        h.emulator.now() + 120_000,
-      ) - 1,
+    header: withPlaceholderDeposit(
+      makeHeader(
+        operator.hash,
+        alignUnixTimeToEmulatorSlotBoundary(
+          h.funderLucid,
+          h.emulator.now() + 120_000,
+        ) - 1,
+      ),
     ),
   });
   const txOrderMinting = (

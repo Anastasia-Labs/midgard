@@ -29,6 +29,7 @@ import {
   makeHeader,
   publishPlainReferenceScriptUtxo,
   submitSetupTx,
+  withPlaceholderDeposit,
 } from "./support/submit-init-emulator-shared.js";
 
 // An adversary skips the SDK's admission screen. Refused rows switch it off so
@@ -164,12 +165,14 @@ describe("forced-tx admission at the real tx-order mint", () => {
       contracts: h.contracts,
       nonceUtxo: h.nonceUtxo,
       catalogue: h.catalogue,
-      header: makeHeader(
-        operator.hash,
-        alignUnixTimeToEmulatorSlotBoundary(
-          h.funderLucid,
-          h.emulator.now() + 120_000,
-        ) - 1,
+      header: withPlaceholderDeposit(
+        makeHeader(
+          operator.hash,
+          alignUnixTimeToEmulatorSlotBoundary(
+            h.funderLucid,
+            h.emulator.now() + 120_000,
+          ) - 1,
+        ),
       ),
     });
     // Deployed as a reference script, as the mint is in production.
