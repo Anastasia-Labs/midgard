@@ -117,7 +117,15 @@ vi.mock("@al-ft/midgard-validation", async () => {
     ),
   };
 });
-// Opaque fixture bytes do not affect the persisted state compared here.
+// Opaque fixture bytes (no programs, no descriptors) do not affect the
+// persisted state compared here.
+vi.mock(
+  "../src/mpf/commit-rejection.evict-uncommittable-normal-txs.js",
+  async (original) => ({
+    ...(await original<object>()),
+    normalProgramCoverageBreak: () => undefined,
+  }),
+);
 vi.mock("../src/mpf/ledger-hydration.js", async () => {
   const actual = await vi.importActual<
     typeof import("../src/mpf/ledger-hydration.js")
@@ -310,6 +318,7 @@ const build = (txs: readonly EntryWithTimeStamp[]) =>
         initialLedgerEntries: BASE,
         selectedBaseUtxoRoot: "11".repeat(32),
         nativeMpf: { handle: { baseRoot: "22".repeat(32) } } as never,
+        validationTraceBuilder: () => Effect.succeed([]),
         forcedValidation: {
           l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
           expectedNetworkId: 0n,

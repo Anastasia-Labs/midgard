@@ -1546,8 +1546,8 @@
   },
   {
     "file": "midgard-node/tests/commit-da-frame-step-down-persistence.test.ts",
-    "max": 502,
-    "reason": "One persistence journey sharing one commit-worker fixture. VR (+2): forced validation names the deployment's L1 slot mapping, as script contexts carry POSIX-ms validity bounds."
+    "max": 511,
+    "reason": "One persistence journey sharing one commit-worker fixture. VR (+2): forced validation names the deployment's L1 slot mapping, as script contexts carry POSIX-ms validity bounds. B2-8 (+9): the fixture's opaque transactions stub the per-transaction validation descriptor and the block-wide program coverage check that commit-stage eviction now runs before Phase B."
   },
   {
     "file": "midgard-node/tests/forced-admission-screens.test.ts",
