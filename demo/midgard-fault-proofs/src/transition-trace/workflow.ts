@@ -11,7 +11,6 @@ import "../workflow/family-definition.js";
 import "../workflow/manifest-bound-family-assembly.js";
 import "../workflow/orchestrator.js";
 import "../workflow/raw-datum-preimage-prerequisite.js";
-import "../workflow/structured-data-preimage.js";
 import "../workflow/transaction-boundary.js";
 import "./l1-events.js";
 import "./proof-carriage.js";
