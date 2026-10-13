@@ -24,8 +24,6 @@ import "./payload.source-event-fingerprints.js";
 import "./payload.validate-trace-coverage.js";
 import "./payload.validate-proof-trace-coverage.js";
 import "./payload.verify-da-payload-against-header.js";
-import "./payload.validate-event-program-coverage.js";
-import "./payload.pre-block-utxos.js";
 export {
   type DaPayloadCountSet,
   type DaPayloadRootSet,
@@ -35,19 +33,10 @@ export {
   type PayloadVerificationOptions,
   type VerifiedDaPayload,
 } from "./payload.da-payload-validation-error.js";
-export {
-  ParentStateUnavailableError,
-  resolvePreBlockUtxos,
-} from "./payload.pre-block-utxos.js";
-export {
-  type PreBlockUtxos,
-  validateDaPayloadEventProgramCoverage,
-} from "./payload.validate-event-program-coverage.js";
 export { decodeDaPayloadStrict } from "./payload.validate-proof-trace-coverage.js";
 export { decodeCommittedValidationTraceDescriptor } from "./payload.validate-trace-coverage.js";
 export {
   computeDaPayloadRoots,
-  computeDaPayloadUtxosRoot,
   daPayloadSha256,
   verifyDaPayloadAgainstHeader,
 } from "./payload.verify-da-payload-against-header.js";
