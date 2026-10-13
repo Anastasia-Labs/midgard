@@ -17,7 +17,7 @@ test exact_node_limit_includes_containers_and_map_keys() {
   }
 }
 
-test wide_data_rejects_after_bounded_work() {
+test wide_data_far_past_the_bound_is_refused() {
   let data: Data = list.repeat(0, 14_000)
   !data_budget.within_nodes(data, 1024)
 }

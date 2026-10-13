@@ -4,6 +4,7 @@ import {
   eventHistoryKey,
   EventHistoryNode,
   EventHistoryObserve,
+  type EventHistoryPayloadBounds,
   type FaultProofBlueprint,
   HubOracleDatum,
 } from "@al-ft/midgard-sdk";
@@ -32,10 +33,16 @@ export const setupHistoryPair = async ({
   blueprint,
   records,
   protectionDurationMs = 120_000n,
+  bounds: payloadBounds = {
+    inlineLimitBytes: 512n,
+    maxPayloadBytes: 5000n,
+    maxPayloadNodes: 512n,
+  },
 }: {
   readonly blueprint: FaultProofBlueprint;
   readonly records: unknown[];
   readonly protectionDurationMs?: bigint;
+  readonly bounds?: EventHistoryPayloadBounds;
 }) => {
   const wallet = generateEmulatorAccount({ lovelace: 2_000_000_000n });
   const owner = getAddressDetails(wallet.address).paymentCredential!.hash;
@@ -105,9 +112,7 @@ export const setupHistoryPair = async ({
       outputIndex: BigInt(nonces[i]!.outputIndex),
     },
     protectionDurationMs,
-    inlineLimitBytes: 512n,
-    maxPayloadBytes: 5000n,
-    maxPayloadNodes: 512n,
+    ...payloadBounds,
   }));
   const applied = recipes.map((recipe) =>
     applyEventHistoryValidators(blueprint, "Custom", recipe),

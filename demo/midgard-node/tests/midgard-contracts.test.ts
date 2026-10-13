@@ -141,8 +141,8 @@ describe("midgard contracts registry", () => {
       // the output proof's datum step and the split Data refusal executor, and
       // the composed P1 tree (allow-lists, the datum canonicity step, the
       // non-empty block rule, one event NFT per user-event mint), the retired
-      // post-UTxO minimum-Ada mode, and the streamed redeemer and datum Data
-      // verdict steps.
+      // post-UTxO minimum-Ada mode, the streamed redeemer and datum Data
+      // verdict steps, and the one-pass history payload node count.
       expect
         .soft(
           createHash("sha256")
@@ -152,7 +152,7 @@ describe("midgard contracts registry", () => {
             .digest("hex"),
         )
         .toBe(
-          "a3be6a981f1df940b553d943ab7d7fcc3c961186cd868cc945e2c14937973b01",
+          "6f2116f4ceb0b7f0527fdbea55edaecdebbed686b55dc4582c8c140f0af0cdb5",
         );
       // The queue/correction subset is pinned independently of the full registry.
       // Includes every applied CBOR, hash, policy id, address, and queue yield.
@@ -161,8 +161,8 @@ describe("midgard contracts registry", () => {
       // pooled DA bond policy, and again for disjoint MPF node preimages and
       // for the neglected-event strike rule (the state queue is applied over
       // the scheduler and active-operator scripts), the lock ADA top-up, and
-      // the composed P1 tree (allow-lists, the non-empty block rule), and the
-      // fault-proof scripts the state queue is applied over (the retired
+      // the composed P1 tree (allow-lists, the non-empty block rule, T302), and
+      // the fault-proof scripts the state queue is applied over (the retired
       // post-UTxO minimum-Ada mode, the streamed Data verdict steps).
       expect
         .soft(
