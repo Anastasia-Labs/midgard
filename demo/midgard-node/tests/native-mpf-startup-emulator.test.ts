@@ -77,14 +77,8 @@ it("restarts the production native initializer after withdrawal empties an unmer
     h.command(
       Effect.gen(function* () {
         const sql = yield* SqlClient.SqlClient;
-        const [row] = yield* sql<{
-          readonly utxo_payload_entry_count: string | null;
-          readonly utxo_payload_encoded_tuple_bytes: string | null;
-        }>`SELECT utxo_payload_entry_count, utxo_payload_encoded_tuple_bytes
-          FROM mpf_engine_state WHERE store_name = 'ledger'`;
         yield* sql`UPDATE mpf_engine_state SET root_hex = NULL
           WHERE store_name = 'ledger'`;
-        return row!;
       }),
     );
   const queue = () =>
@@ -159,7 +153,7 @@ it("restarts the production native initializer after withdrawal empties an unmer
     await cp(production.nodeConfig.LEDGER_MPF_DB_PATH, staleLedgerPath, {
       recursive: true,
     });
-    const cleared = await clearLedgerStamp();
+    await clearLedgerStamp();
     const restamped = await h.command(
       initializeArchitectureGOwner(globals, production.nodeConfig),
     );
@@ -169,18 +163,15 @@ it("restarts the production native initializer after withdrawal empties an unmer
     expect((await restamped.diagnostics()).durableRoot).toBe(
       nonemptyNative.durableRoot,
     );
-    // A stamp over a cleared root drops the payload aggregate; put it back so
-    // the rest of the journey runs on the original marker.
-    await h.command(
-      Effect.gen(function* () {
-        const sql = yield* SqlClient.SqlClient;
-        yield* sql`UPDATE mpf_engine_state SET
-          utxo_payload_entry_count = ${cleared.utxo_payload_entry_count},
-          utxo_payload_encoded_tuple_bytes = ${cleared.utxo_payload_encoded_tuple_bytes}
-          WHERE store_name = 'ledger'`;
-      }),
-    );
-    expect(await ledger()).toEqual(stampedBefore);
+    expect(await ledger()).toEqual({
+      ...stampedBefore,
+      // Restamping records the independently observed durable native root;
+      // the initialized marker need not have followed every prior promotion.
+      marker: stampedBefore.marker.map((row) => ({
+        ...row,
+        root_hex: nonemptyNative.durableRoot,
+      })),
+    });
     // Explicit reload sentinel: this is the actual subsequently withdrawn L2
     // output, not a claim that the published empty genesis originally held it.
     const sentinel: UTxO = {

@@ -98,6 +98,7 @@ describe("splitSqlStatements", () => {
       [23, "commit_anchor", true],
       [24, "drop_validation_trace_witnesses", true],
       [25, "block_time", true],
+      [26, "drop_utxo_payload_aggregate", true],
     ]);
   });
 

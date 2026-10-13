@@ -53,9 +53,7 @@ vi.mock("../src/services/landed-state-queue.js", async (importOriginal) => {
   };
 });
 
-// The poisoned-own-headers read is the readiness check's one database read
-// (a landed own block whose event left the chain is not merged); it runs
-// before the BlocksDB lookup, so it is replaced here like the landed queue.
+// Poisoned own-header readiness precedes the block lookup.
 vi.mock("../src/database/poisoned-own-headers.js", async (importOriginal) => {
   const actual =
     await importOriginal<
@@ -193,9 +191,11 @@ const genesisConfirmed = {
 const configureCandidate = ({
   daAttestation,
   endTime,
+  blockTime,
 }: {
   readonly daAttestation: SDK.DaAvailabilityStateQueueStatus;
   readonly endTime: bigint;
+  readonly blockTime?: bigint;
 }) => {
   const blockHeader = {
     endTime,
@@ -212,6 +212,8 @@ const configureCandidate = ({
     Effect.succeed({
       proven_fraud: null,
       header: blockHeader,
+      // The authenticated commit clock is separate from the payload end time.
+      block_time: blockTime ?? endTime,
       da_attestation: daAttestation,
     } as SDK.StateQueueNode),
   );
@@ -282,10 +284,7 @@ describe("merge builder maturity preflight", () => {
     poisonedHeaders.value = new Set();
 
     configureCandidate({
-      // A state-queue node's `da_attestation` is the
-      // `DaAvailabilityStateQueueStatus` enum, not a raw policy-id string;
-      // `Attested` is one of the two merge-permitting kinds, so the maturity
-      // window (not availability) is what this default exercises.
+      // Attested permits merging; the default isolates its maturity check.
       daAttestation: { Attested: { commitment_hash: "22".repeat(32) } },
       endTime: 500_000n,
     });
@@ -310,20 +309,25 @@ describe("merge builder maturity preflight", () => {
     vi.useRealTimers();
   });
 
-  it("returns not-mature before BlocksDB lookup or decode", async () => {
-    const result = await runBuilder();
-
-    expect(result).toMatchObject({
-      status: "skipped_oldest_block_not_mature",
-      headerHash,
-      readyAfterUnixTime:
-        520_000 + SELECTED_DEPLOYMENT_PROFILE.timing.block_maturity_ms,
-      nowUnixTime: 510_000,
-    });
-    expect(fetchFirstBlockTxsMock).not.toHaveBeenCalled();
-    expect(breakDownTxMock).not.toHaveBeenCalled();
-    expect(localSlotSnapshotProviderMock).not.toHaveBeenCalled();
-  });
+  it.each([500_000n, 100_000n])(
+    "holds the immature commit clock before decode with payload end %s",
+    async (endTime) => {
+      configureCandidate({
+        daAttestation: { Attested: { commitment_hash: "22".repeat(32) } },
+        endTime,
+        blockTime: 500_000n,
+      });
+      expect(await runBuilder()).toMatchObject({
+        status: "skipped_oldest_block_not_mature",
+        headerHash,
+        readyAfterUnixTime,
+        nowUnixTime: 510_000,
+      });
+      expect(fetchFirstBlockTxsMock).not.toHaveBeenCalled();
+      expect(breakDownTxMock).not.toHaveBeenCalled();
+      expect(localSlotSnapshotProviderMock).not.toHaveBeenCalled();
+    },
+  );
 
   it("returns DA-unattested before BlocksDB lookup or decode", async () => {
     configureCandidate({

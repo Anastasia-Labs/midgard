@@ -8,7 +8,7 @@
  *
  * `observe` reads everything the acceptance compares: the block's journal,
  * the deposits, the landed rows, the native MPF (durable root, child
- * restarts), the SQL ledger-store root, a fresh replay of the landed ledger
+ * restarts), the roots rebuilt from SQL working and spendable rows, a fresh replay of the landed ledger
  * (`confirmed_ledger` plus every processed row's delta, rooted from scratch)
  * and the raised liveness reasons.
  */
@@ -16,6 +16,7 @@ import { SqlClient } from "@effect/sql";
 import { Effect, Option, Ref } from "effect";
 import { expect, vi } from "vitest";
 
+import * as MempoolLedger from "../../src/database/mempoolLedger.js";
 import * as Pending from "../../src/database/pendingBlockFinalizations.js";
 import {
   landedLedger,
@@ -202,8 +203,11 @@ export const observe = async (
         projected_header_hash: Buffer | null;
       }>`SELECT status, projected_header_hash FROM deposits_utxos
         ORDER BY inclusion_time`;
-      const [store] = yield* sql<{ root_hex: string }>`SELECT root_hex
-        FROM mpf_engine_state WHERE store_name = 'ledger'`;
+      // Native durable state excludes unassigned projected deposits. Compare
+      // the SQL spendable ledger at that same state, and retain the full
+      // working root to prove pending projections survive a correction.
+      const sqlLedger = yield* MempoolLedger.retrieveSpendable;
+      const workingLedger = yield* MempoolLedger.retrieve;
       const rows = yield* retrieveRows;
       // Landed-block processing bootstraps its frontier at the first merged
       // root it folds; before that there is nothing to replay.
@@ -236,7 +240,9 @@ export const observe = async (
           landed === undefined
             ? undefined
             : (landed.chain.at(-1)?.headerHash ?? landed.frontier.headerHash),
-        sqlRoot: store?.root_hex,
+        sqlRoot: yield* computeLedgerMpfRootFromLedgerEntries(sqlLedger),
+        workingRoot:
+          yield* computeLedgerMpfRootFromLedgerEntries(workingLedger),
         replayRoot:
           replay === undefined
             ? undefined
@@ -256,8 +262,9 @@ export const observe = async (
 
 export type Observed = Awaited<ReturnType<typeof observe>>;
 
-/** The working ledger's three roots agree: native MPF, the SQL ledger-store
- * stamp, and a fresh replay of the landed ledger. Returns the root. */
+/** The applied deposit ledger's three roots agree: native durable MPF,
+ * SQL spendable rows, and a fresh replay of the landed ledger. The working
+ * root also includes pending projections. Returns the applied root. */
 export const expectOneRoot = (observed: Observed) => {
   expect(observed.sqlRoot).toBe(observed.nativeRoot);
   expect(observed.replayRoot).toBe(observed.nativeRoot);
