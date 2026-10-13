@@ -9,6 +9,8 @@ export type CommitPlanningSelection = Readonly<{
   observedAtMs: number;
   authority: Readonly<{
     view: GateView;
+    /** Canonical nonnegative PostgreSQL bigint counter (migration 0021),
+     * emitted by the follower driver as epoch::text; never a lease UUID. */
     epoch: string;
     baseHeaderHash: string;
     baseUtxosRoot: string;
@@ -55,6 +57,12 @@ const record = (v: unknown): v is Record<string, unknown> =>
   typeof v === "object" && v !== null && !Array.isArray(v);
 const hex = (v: unknown, length: number): v is string =>
   typeof v === "string" && v.length === length && /^[a-f0-9]+$/u.test(v);
+/** Migration 0021 starts at 0 and the sole driver increments. Refuse negative,
+ * noncanonical or overflowing counters; bound the input before BigInt parse. */
+const historyEpoch = (v: unknown): v is string =>
+  typeof v === "string" &&
+  /^(?:0|[1-9][0-9]{0,18})$/u.test(v) &&
+  BigInt(v) <= 9223372036854775807n;
 const counts = (v: unknown): v is CommitEventCounts =>
   record(v) &&
   natural(v.deposits) &&
@@ -88,10 +96,7 @@ export const parseCommitPlanningNotice = (
     !["normal", "catch_up"].includes(String(s.mode)) ||
     !record(s.authority) ||
     !view(s.authority.view) ||
-    typeof s.authority.epoch !== "string" ||
-    !/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/u.test(
-      s.authority.epoch,
-    ) ||
+    !historyEpoch(s.authority.epoch) ||
     !hex(s.authority.baseHeaderHash, 56) ||
     !hex(s.authority.baseUtxosRoot, 64) ||
     !(
