@@ -20,9 +20,8 @@ import { Data } from "@lucid-evolution/lucid";
 
 import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
 import {
-  retainedLedgerDescriptorCandidates,
   retainedOutputReferenceScript,
-  retainedUndecodableOutputDescriptor,
+  undecodableNativeOutputDescriptor,
 } from "../evidence/retained-ledger-output.js";
 import {
   keyValuePhasProof,
@@ -61,10 +60,6 @@ export const nativeScriptDecodingPriorLedger = async (
       { key, value },
     ]),
   );
-  const candidates = retainedLedgerDescriptorCandidates([
-    ...(predecessor?.payload.block_body.validation_trace_witnesses ?? []),
-    ...current.payload.block_body.validation_trace_witnesses,
-  ]);
   const resolveDescriptor = createCanonicalMidgardLedgerDescriptorResolver();
   const descriptorFor = (key: Buffer, value: Buffer) => {
     try {
@@ -73,11 +68,7 @@ export const nativeScriptDecodingPriorLedger = async (
         outputCbor: value,
       });
     } catch {
-      return retainedUndecodableOutputDescriptor({
-        key,
-        output: value,
-        candidates,
-      });
+      return undecodableNativeOutputDescriptor({ key, output: value });
     }
   };
   const rootOf = async () =>

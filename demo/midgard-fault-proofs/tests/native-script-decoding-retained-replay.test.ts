@@ -1,4 +1,3 @@
-import * as SDK from "@al-ft/midgard-sdk";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -113,8 +112,26 @@ it.each([
   ).toHaveLength(1);
 });
 
-it.each(["key", "raw-script", "descriptor", "missing", "root"] as const)(
-  "refuses retained %s substitution under the authenticated header",
+it("reconstructs a block whose native script_ref does not decode, from the output bytes alone", async () => {
+  const fixture = await nativeDecodingFixture({
+    direction: 0,
+    item: Buffer.from("8200428109", "hex"),
+  });
+  const body = fixture.predecessor.reconstruction.payload.block_body;
+  expect(body.validation_trace_witnesses).toEqual([]);
+  const reconstruction = await reconstructDaPayload({
+    payloadEnvelopeCbor: await reencodeFixturePayload(
+      fixture.predecessor.reconstruction.payload,
+    ),
+    expectedHeaderHash: fixture.predecessor.headerHash,
+  });
+  expect(reconstruction.payload.block_body.header.utxosRoot).toBe(
+    body.header.utxosRoot,
+  );
+});
+
+it.each(["key", "raw-script", "root"] as const)(
+  "refuses %s substitution under the authenticated header",
   async (mutation) => {
     const fixture = await nativeDecodingFixture({
       direction: 0,
@@ -122,7 +139,6 @@ it.each(["key", "raw-script", "descriptor", "missing", "root"] as const)(
     });
     const body = fixture.predecessor.reconstruction.payload.block_body;
     let utxos = body.utxos;
-    let witnesses = body.validation_trace_witnesses;
     if (mutation === "key")
       utxos = [
         ["00".repeat(fixture.key.length), fixture.output.toString("hex")],
@@ -134,31 +150,11 @@ it.each(["key", "raw-script", "descriptor", "missing", "root"] as const)(
           fixture.output.subarray(0, -1).toString("hex") + "08",
         ],
       ];
-    if (mutation === "missing") witnesses = [];
-    if (mutation === "descriptor") {
-      const retained = SDK.decodeRetainedValidationWitness(
-        Buffer.from(witnesses[0]![1], "hex"),
-      );
-      if (
-        typeof retained.auxiliary !== "object" ||
-        !("ScheduledLedgerMembershipWitness" in retained.auxiliary)
-      )
-        throw new Error("missing membership");
-      retained.auxiliary.ScheduledLedgerMembershipWitness.value =
-        fixture.descriptor.subarray(0, -1).toString("hex") + "00";
-      witnesses = [
-        [
-          witnesses[0]![0],
-          SDK.encodeRetainedValidationWitness(retained).toString("hex"),
-        ],
-      ];
-    }
     const payload = {
       ...fixture.predecessor.reconstruction.payload,
       block_body: {
         ...body,
         utxos,
-        validation_trace_witnesses: witnesses,
         ...(mutation === "root"
           ? { header: { ...body.header, utxosRoot: "00".repeat(32) } }
           : {}),

@@ -12,13 +12,16 @@ import { encodeMidgardForcedTxCanonical } from "@al-ft/midgard-core/codec/forced
 import { deriveMidgardForcedTxProofSource } from "@al-ft/midgard-core/codec/forced";
 import { materializeMidgardForcedTxFromCanonical } from "@al-ft/midgard-core/codec/forced";
 import * as SDK from "@al-ft/midgard-sdk";
-import { buildCanonicalMidgardLedgerEntryOutputMaterial } from "@al-ft/midgard-validation";
+import { decodeMidgardTxOutput } from "@al-ft/midgard-core/codec";
+import {
+  buildCanonicalMidgardLedgerEntryOutputMaterial,
+  commitMidgardScriptContextTxOut,
+} from "@al-ft/midgard-validation";
 import { Data } from "@lucid-evolution/lucid";
 
 import { canonicalBlockEvidenceFromVerifiedPayload } from "../../src/evidence/canonical-block-evidence.js";
 import {
   buildCountedRoot,
-  keyValuePhasProof,
   keyValuePhasRootWithCount,
 } from "../../src/transition-trace/phas.js";
 import { admitCompleteCanonicalReplayPredecessor } from "../../src/workflow/complete-replay.js";
@@ -91,25 +94,39 @@ export const nativeDecodingFixture = async ({
     itemCommitment: _commitment,
     ...baseFacts
   } = baseDescriptor;
+  const referenceScriptHash = computeHash28(
+    Buffer.concat([Buffer.from([item[1]!]), item.subarray(3)]),
+  );
+  // The TxOut summaries carry the reference script hash, as the on-chain
+  // terminal descriptor derives them.
+  const txOutSummary = (encoding: "cardano" | "midgard") => {
+    const { root, cborLength, memory } = commitMidgardScriptContextTxOut(
+      decodeMidgardTxOutput(plainOutput),
+      encoding,
+      referenceScriptHash.toString("hex"),
+    );
+    return { root: Buffer.from(root), cborLength, memory };
+  };
   const outputMaterial = buildMidgardLedgerOutputMaterial({
     outputIndex: 0,
     outputCbor: output,
     facts: {
       ...baseFacts,
       referenceScriptLanguage: item[1] === 0 ? 0 : 3,
-      referenceScriptHash: computeHash28(
-        Buffer.concat([Buffer.from([item[1]!]), item.subarray(3)]),
-      ),
+      referenceScriptHash,
       referenceScriptTotalLength: item.length,
       referenceScriptItemCommitment: buildMidgardBoundedItem({
         fieldIndex: MIDGARD_LEDGER_OUTPUT_FIELD_INDEX,
         itemIndex: 0,
         bytes: item,
       }).commitment,
+      cardanoTxOut: txOutSummary("cardano"),
+      midgardTxOut: txOutSummary("midgard"),
     },
   });
-  // For canonical items derive every descriptor fact; malformed subjects retain
-  // the operator's committed descriptor instead of declaring it correct.
+  // Canonical items use the canonical descriptor; malformed native items use the
+  // descriptor computed here from the output bytes, independently of the
+  // fault-proof derivation under test.
   let descriptor: Buffer;
   try {
     descriptor = buildCanonicalMidgardLedgerEntryOutputMaterial({
@@ -120,47 +137,6 @@ export const nativeDecodingFixture = async ({
     descriptor = outputMaterial.descriptorCbor;
   }
   const ledger = await keyValuePhasRootWithCount([{ key, value: descriptor }]);
-  const z = "00".repeat(32);
-  const retained: SDK.RetainedValidationWitness = {
-    machine_state: {
-      machine_version: 1n,
-      event_key_hash: z,
-      transaction_id: "55".repeat(32),
-      transaction_commitment: z,
-      validation_context_hash: z,
-      source_kind: "Normal",
-      prior_ledger_root: ledger.root,
-      phase: "ResolveInputs",
-      program_counter: 0n,
-      work_root: z,
-      execution_cpu: 0n,
-      execution_memory: 0n,
-      verdict: "Pending",
-      rejection_code_hash: z,
-      ledger_delta_root: z,
-    },
-    trace_proof: { state_index: 0n, state_hash: z, siblings: [] },
-    phase: 7n,
-    program_counter: 0n,
-    witness_cbor: "80",
-    auxiliary: {
-      ScheduledLedgerMembershipWitness: {
-        source_kind: BigInt(sourceKind),
-        key: key.toString("hex"),
-        next_schedule_hash: z,
-        value: descriptor.toString("hex"),
-        proof: await keyValuePhasProof(ledger, key, descriptor),
-        signer_proof: "NoSignerSetProof",
-      },
-    },
-  };
-  const retainedEntry: SDK.DaPayloadEntry = [
-    SDK.encodeRetainedValidationWitnessKey({
-      event_key: { L2TransactionEventKey: { tx_id: "55".repeat(32) } },
-      execution_index: -1n,
-    }).toString("hex"),
-    SDK.encodeRetainedValidationWitness(retained).toString("hex"),
-  ];
   const predecessorHeader = {
     ...baseline.header,
     prevHeaderHash: SDK.GENESIS_HEADER_HASH,
@@ -181,7 +157,7 @@ export const nativeDecodingFixture = async ({
       header: predecessorHeader,
       header_hash: predecessorHash,
       utxos: [[key.toString("hex"), output.toString("hex")]],
-      validation_trace_witnesses: [retainedEntry],
+      validation_trace_witnesses: [],
     },
   } as SDK.DaPayload;
   const predecessorFixture = {
@@ -370,7 +346,7 @@ export const nativeDecodingFixture = async ({
       header_hash: headerHash,
       counts,
       utxos: consumed ? [] : predecessorFixture.payload.block_body.utxos,
-      validation_trace_witnesses: [retainedEntry],
+      validation_trace_witnesses: [],
       forced_transactions: entries,
       forced_transaction_preimages: preimages,
       transition_trace: traces,
