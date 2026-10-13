@@ -4,6 +4,7 @@ import {
   decodeMidgardSpendInputItem,
   decodeMidgardTxOutput,
   encodeMidgardAddressText,
+  midgardCardanoValueCborLength,
   type MidgardValue,
 } from "@al-ft/midgard-core/codec";
 import {
@@ -16,6 +17,7 @@ import { Data as EffectData, Effect, type Either } from "effect";
 
 import { Value } from "./common.js";
 import { WITHDRAWAL_MISTAG_MAXIMUM_ASSET_COUNT } from "./fraud-proof/withdrawal-mistag.js";
+import { withdrawalMistagPayable } from "./fraud-proof/withdrawal-payability.js";
 import { WithdrawalInfo, WithdrawalValidity } from "./ledger-state.js";
 import { verifyWithdrawalSignatureCbor } from "./withdrawal-signature.js";
 import {
@@ -191,7 +193,33 @@ export const classifyWithdrawalFromLedger = (
                 : { public_key_hash: verification.publicKeyHash }),
             };
           } else {
-            validity = "WithdrawalIsValid";
+            // The chain's rule (withdrawal-mistag step-04): the value fits
+            // one L1 output and meets that output's min-ADA.
+            const cardanoValueSize = BigInt(
+              midgardCardanoValueCborLength(ledger.value),
+            );
+            const payable = yield* Effect.try({
+              try: () =>
+                withdrawalMistagPayable({
+                  bodyCbor: plutusConstrFieldCbor(input.eventInfoCbor, [0]),
+                  lovelace: ledger.value.lovelace,
+                  cardanoValueSize,
+                }),
+              catch: (cause) =>
+                new WithdrawalValidationError({
+                  message: "Failed to read the withdrawal payout target",
+                  cause,
+                }),
+            });
+            if (payable) {
+              validity = "WithdrawalIsValid";
+            } else {
+              validity = "UnpayableWithdrawalValue";
+              validityDetail = {
+                cardano_value_size: cardanoValueSize.toString(),
+                lovelace: ledger.value.lovelace.toString(),
+              };
+            }
           }
         }
       }

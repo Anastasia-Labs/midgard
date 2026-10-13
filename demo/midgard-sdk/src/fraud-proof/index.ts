@@ -38,6 +38,7 @@ export * from "./validation-auxiliary-witness.js";
 export * from "./validation-dispute.js";
 export * from "./validation-proof-item.js";
 export * from "./withdrawal-mistag.js";
+export * from "./withdrawal-payability.js";
 export * from "./withdrawn-input.js";
 export * from "./withdrawn-reference-input.js";
 export * from "./witness-script-decoding.js";
