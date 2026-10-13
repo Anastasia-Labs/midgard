@@ -52,6 +52,13 @@ export const T3 = tx(0x0c, 3, U2);
 export const T4 = tx(0x0d, 4, U3);
 export const T5 = tx(0x0e, 5, T3.produced[0]!);
 export const TXS = [T1, T2, T3, T4, T5];
+// Four independent transactions pending ahead of T1, on their own outputs.
+export const EXTRA_BASE = [0x14, 0x15, 0x16, 0x17].map((byte) =>
+  ledgerEntry(byte),
+);
+export const EXTRA_TXS = EXTRA_BASE.map((spent, index) =>
+  tx(0x01 + index, 0.2 * (index + 1), spent),
+);
 /** A chain of `nodeCount` lambda nodes; a longer chain shares its material. */
 export const lambdaChain = (nodeCount: number) => {
   const material: MidgardCekProgramMaterialEntry[] = [];

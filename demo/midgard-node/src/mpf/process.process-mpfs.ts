@@ -38,8 +38,10 @@ import {
   causeError,
   confirmTransactionFailure,
   evaluateEvictingUncommittable,
+  heldBuildError,
+  heldBuildStage,
+  inBlockDescendants,
   makeCommitStageRejectionBreaker,
-  normalProgramCoverageBreak,
   traceUnavailableRejection,
 } from "./commit-rejection.evict-uncommittable-normal-txs.js";
 import {
@@ -51,6 +53,7 @@ import {
   commitTxDeltaFallbackDecodedCounter,
   resolveTxDeltaForCommit,
 } from "./commit-rejection.js";
+import { normalProgramCoverageBreak } from "./commit-rejection.normal-program-coverage-break.js";
 import { settleCommitStageRejections } from "./commit-rejection.persist-commit-stage-rejected-transactions.js";
 import { buildDepositSourceEvents } from "./deposit-source-events.js";
 import { MpfError } from "./errors.js";
@@ -520,10 +523,16 @@ export const processMpfs = (
         `Rejecting mempool tx ${rejection[TxRejectionsDB.Columns.TX_ID].toString("hex")} at commit: ${rejection[TxRejectionsDB.Columns.REJECT_CODE]}`,
       );
     };
-    const commitStageBreaker = makeCommitStageRejectionBreaker();
+    const commitStageBreaker = makeCommitStageRejectionBreaker((stage) =>
+      config.onCommitBuildAlarm === undefined
+        ? Effect.void
+        : config.onCommitBuildAlarm("breaker", stage),
+    );
+    // Normal transactions the breaker left pending, by id hex.
+    const breakerDeferredTxIds = new Set<string>();
     // Rejects a normal transaction a commit stage failed on, once `rerun`
-    // shows the failure is the transaction's own; any other failure holds
-    // the build.
+    // shows the failure is the transaction's own, or defers it past the
+    // breaker's limit; any other failure holds the build.
     const rejectOwnFailure = <E, E2>(
       txId: Uint8Array,
       stage: string,
@@ -536,7 +545,10 @@ export const processMpfs = (
           cause,
           rerun,
         );
-        yield* commitStageBreaker(stage);
+        if ((yield* commitStageBreaker(stage)) === "defer") {
+          breakerDeferredTxIds.add(Buffer.from(txId).toString("hex"));
+          return;
+        }
         yield* rejectNormalTx(
           traceUnavailableRejection(txId, stage, causeError(reproduced)),
         );
@@ -686,7 +698,7 @@ export const processMpfs = (
       );
       if (withoutMaterial !== undefined) {
         return yield* Effect.fail(
-          new DatabaseError({
+          heldBuildError("Program material sidecar", {
             table: TxAdmissionsDB.payloadTableName,
             message:
               "Holding the block build: a selected normal transaction has no durable canonical CEK material sidecar",
@@ -765,8 +777,24 @@ export const processMpfs = (
           [TxRejectionsDB.Columns.REJECT_DETAIL]: rejected.detail,
         });
       }
+      // A transaction the breaker left pending takes its in-block
+      // descendants with it.
+      const leftPending = inBlockDescendants(
+        decodedMempoolTxs.flatMap((decoded) =>
+          breakerDeferredTxIds.has(decoded.txHash.toString("hex"))
+            ? decoded.produced.map((row) => hexOf(row[Ledger.Columns.OUTREF]))
+            : [],
+        ),
+        proofPhaseA.accepted,
+      );
+      if (breakerDeferredTxIds.size > 0)
+        yield* Effect.logWarning(
+          `Leaving ${(breakerDeferredTxIds.size + leftPending.size).toString()} normal transaction(s) pending for a later block: past the commit-stage rejection limit.`,
+        );
       const proofPhaseB = yield* settleCommitStageRejections({
-        candidates: proofPhaseA.accepted,
+        candidates: proofPhaseA.accepted.filter(
+          (accepted) => !leftPending.has(accepted),
+        ),
         evaluate: (candidates) =>
           evaluateEvictingUncommittable({
             candidates,
@@ -1408,4 +1436,11 @@ export const processMpfs = (
       nativeMpfReplay,
       nativeMpfHandle: nativeMpf.handle,
     };
-  });
+  }).pipe(
+    Effect.tapError((error) => {
+      const stage = heldBuildStage(error);
+      return stage === undefined || config.onCommitBuildAlarm === undefined
+        ? Effect.void
+        : config.onCommitBuildAlarm("held", stage);
+    }),
+  );

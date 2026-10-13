@@ -21,6 +21,7 @@ import {
   Columns as TxColumns,
   type EntryWithTimeStamp,
 } from "../src/database/utils/tx.js";
+import { heldBuildStage } from "../src/mpf/commit-rejection.evict-uncommittable-normal-txs.js";
 import {
   COMMIT_REJECT_CODE_DA_OVERSIZE,
   COMMIT_REJECT_CODE_PROGRAM_COVERAGE,
@@ -32,6 +33,8 @@ import { forcedProjectionEntry } from "./helpers/commit-da-frame-forced-projecti
 import {
   at,
   BASE,
+  EXTRA_BASE,
+  EXTRA_TXS,
   programVariants,
   T1,
   T3,
@@ -43,10 +46,11 @@ import { provideDatabaseLayers, resetApplicationTables } from "./utils.js";
 /**
  * A normal transaction that a commit stage cannot process is rejected, with
  * its dependents, and the block is built without it, when the failure is the
- * transaction's own. A node fault, a failure that does not happen again, or
- * too many rejections at one stage hold the build instead, as does a
- * forced-transaction store fault. Real `processMpfs` over Postgres, with
- * Phase A and Phase B reduced to their ledger effects.
+ * transaction's own. A node fault or a failure that does not happen again
+ * holds the build instead, as does a forced-transaction store fault. Past a
+ * few rejections at one stage, the rest stay pending for later builds. Real
+ * `processMpfs` over Postgres, with Phase A and Phase B reduced to their
+ * ledger effects.
  */
 
 const hex = (bytes: Uint8Array) => Buffer.from(bytes).toString("hex");
@@ -265,24 +269,34 @@ vi.mock("../src/database/forcedTransactions.js", async () => {
 
 const SELECTION = 4;
 const [t1, t2, t3, t4, t5] = TXS.map(({ txId }) => hex(txId));
-for (const { txId, spent, produced } of TXS)
+const [e1, e2, e3, e4] = EXTRA_TXS.map(({ txId }) => hex(txId));
+for (const { txId, spent, produced } of [...TXS, ...EXTRA_TXS])
   fixture.graphs.set(hex(txId), { spent: spent.map(hex), produced });
 
 beforeEach(() => {
   for (const injected of Object.values(fixture.injected)) injected.clear();
   fixture.forcedStoreFault = false;
   fixture.envelopesByTxCbor.clear();
-  for (const { txCbor } of TXS) fixture.envelopesByTxCbor.set(hex(txCbor), []);
+  for (const { txCbor } of [...TXS, ...EXTRA_TXS])
+    fixture.envelopesByTxCbor.set(hex(txCbor), []);
   fixture.sidecarsByTxId.clear();
 });
 
-const seed = (forced: readonly ForcedTransactionsDB.Entry[] = []) =>
+const seed = (
+  forced: readonly ForcedTransactionsDB.Entry[] = [],
+  extra: readonly (typeof EXTRA_TXS)[number][] = [],
+) =>
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;
     yield* resetApplicationTables;
-    yield* MempoolLedgerDB.insert(BASE);
+    yield* MempoolLedgerDB.insert(
+      extra.length > 0 ? [...BASE, ...EXTRA_BASE] : BASE,
+    );
     if (forced.length > 0) yield* ForcedTransactionsDB.insertEntries(forced);
-    for (const { seconds, txId, txCbor, spent, produced } of TXS) {
+    for (const { seconds, txId, txCbor, spent, produced } of [
+      ...TXS,
+      ...extra,
+    ]) {
       yield* MempoolDB.insertMultipleCore([
         { txId, txCbor, spent: [...spent], produced: [...produced] },
       ]);
@@ -314,10 +328,7 @@ const mempoolPage = MempoolDB.retrievePage({ limit: 100 }).pipe(
   Effect.map((page) => page.entries),
 );
 
-const attemptBuild = (
-  count: number,
-  commitEvictions?: ReadonlyMap<string, { code: string; detail: string }>,
-) =>
+const attemptBuild = (count: number, overrides: object = {}) =>
   Effect.gen(function* () {
     fixture.phaseBAccepted = [];
     const page: readonly EntryWithTimeStamp[] = (yield* mempoolPage).slice(
@@ -327,7 +338,7 @@ const attemptBuild = (
     return yield* processMpfs(
       { root: () => Effect.succeed("") } as unknown as MidgardMpf,
       page,
-      { ...config(), commitEvictions } as never,
+      { ...config(), ...overrides } as never,
     ).pipe(Effect.flip);
   });
 
@@ -337,12 +348,9 @@ const attemptBuild = (
  * check, past every normal-transaction stage. Returns what Phase B accepted
  * last.
  */
-const build = (
-  count: number,
-  commitEvictions?: ReadonlyMap<string, { code: string; detail: string }>,
-) =>
+const build = (count: number, overrides: object = {}) =>
   Effect.gen(function* () {
-    const refused = yield* attemptBuild(count, commitEvictions);
+    const refused = yield* attemptBuild(count, overrides);
     expect(refused.message).toBe(BASE_ROOT_REFUSAL);
     return fixture.phaseBAccepted.at(-1) ?? [];
   });
@@ -428,7 +436,9 @@ describe("commit-stage eviction of normal transactions", () => {
     const result = await run(
       Effect.gen(function* () {
         yield* seed();
-        const first = yield* build(SELECTION, evictions);
+        const first = yield* build(SELECTION, {
+          commitEvictions: evictions,
+        });
         const rejected = yield* rejections;
         return { first, rejected, next: yield* build(100) };
       }),
@@ -474,38 +484,104 @@ describe("commit-stage eviction of normal transactions", () => {
     expect(transient).toMatchObject(NOTHING_REJECTED);
   }, 60_000);
 
+  const STAGES = {
+    phaseA: "Phase A",
+    phaseB: "Phase B",
+    root: "Transaction root derivation",
+  } as const;
+  const ALLOCATION = () => new RangeError("Array buffer allocation failed");
+  const TRANSIENT = () => new Error("injected transient failure");
   it.each([
-    ["phaseA", "a memory allocation failure", false],
-    ["phaseA", "a failure that does not happen again", true],
-    ["phaseB", "a memory allocation failure", false],
-    ["phaseB", "a failure that does not happen again", true],
-    ["root", "a memory allocation failure", false],
+    ["phaseA", "a memory allocation failure", ALLOCATION, Infinity],
+    [
+      "phaseA",
+      "a RangeError other than a stack overflow",
+      () => new RangeError("Invalid array length"),
+      Infinity,
+    ],
+    ["phaseA", "a failure that does not happen again", TRANSIENT, 1],
+    ["phaseB", "a memory allocation failure", ALLOCATION, Infinity],
+    ["phaseB", "a failure that does not happen again", TRANSIENT, 1],
+    ["root", "a memory allocation failure", ALLOCATION, Infinity],
   ] as const)(
     "holds the build on %s fault of %s, rejecting nothing",
-    async (stage, _kind, transient) => {
+    async (stage, _kind, error, times) => {
       const id = stage === "root" ? hex(T4.txCbor) : t4;
-      inject(
-        stage,
-        id,
-        transient
-          ? new Error("injected transient failure")
-          : new RangeError("Array buffer allocation failed"),
-        transient ? 1 : Number.POSITIVE_INFINITY,
-        stage === "phaseB",
-      );
+      inject(stage, id, error(), times, stage === "phaseB");
       const result = await run(held(SELECTION));
       expect(result.failure.message).toMatch(/^Holding the block build/u);
+      expect(heldBuildStage(result.failure)).toBe(STAGES[stage]);
       expect(result).toMatchObject(NOTHING_REJECTED);
     },
     60_000,
   );
 
-  it("holds the build when one stage would reject too many transactions", async () => {
-    for (const id of [t1, t2, t3, t4, t5])
+  it("rejects a transaction whose validation overflows the stack again", async () => {
+    inject("phaseA", t4, new RangeError("Maximum call stack size exceeded"));
+    const result = await run(
+      Effect.gen(function* () {
+        yield* seed();
+        return { first: yield* build(SELECTION), rejected: yield* rejections };
+      }),
+    );
+    expect(result.first).toEqual([t1, t2, t3]);
+    expect(result.rejected).toEqual({
+      [t4]: COMMIT_REJECT_CODE_TRACE_UNAVAILABLE,
+    });
+  }, 60_000);
+
+  it("rejects the first four failures one stage confirms, leaves the rest pending with their descendants, and raises the breaker alarm", async () => {
+    for (const id of [e1, e2, e3, e4, t3, t4])
       inject("phaseA", id, new Error("injected Phase A defect"));
-    const result = await run(held(100));
-    expect(result.failure.message).toMatch(/than one build may/u);
-    expect(result).toMatchObject(NOTHING_REJECTED);
+    const tripped: string[] = [];
+    const overrides = {
+      initialLedgerEntries: [...BASE, ...EXTRA_BASE],
+      onCommitBuildAlarm: (alarm: string, stage: string) =>
+        Effect.sync(() => {
+          tripped.push(`${alarm}:${stage}`);
+        }),
+    };
+    const result = await run(
+      Effect.gen(function* () {
+        yield* seed([], EXTRA_TXS);
+        const first = yield* build(100, overrides);
+        const afterFirst = {
+          rejected: yield* rejections,
+          pending: yield* pending,
+          tripped: [...tripped],
+        };
+        const next = yield* build(100, overrides);
+        return {
+          first,
+          afterFirst,
+          next,
+          rejected: yield* rejections,
+          pending: yield* pending,
+        };
+      }),
+    );
+    const extraRejected = Object.fromEntries(
+      [e1, e2, e3, e4].map((id) => [id, COMMIT_REJECT_CODE_TRACE_UNAVAILABLE]),
+    );
+    // T3 and T4 stay pending, and T5 with T3.
+    expect(result.first).toEqual([t1, t2]);
+    expect(result.afterFirst).toEqual({
+      rejected: extraRejected,
+      pending: [t1, t2, t3, t4, t5],
+      tripped: [`breaker:${STAGES.phaseA}`],
+    });
+    // The next build rejects them, and T5 with T3.
+    expect(result.next).toEqual([t1, t2]);
+    expect(result.rejected).toMatchObject({
+      ...extraRejected,
+      [t3]: COMMIT_REJECT_CODE_TRACE_UNAVAILABLE,
+      [t4]: COMMIT_REJECT_CODE_TRACE_UNAVAILABLE,
+    });
+    expect(Object.keys(result.rejected).sort()).toEqual(
+      [e1, e2, e3, e4, t3, t4, t5].sort(),
+    );
+    expect(result.pending).toEqual([t1, t2]);
+    expect(tripped).toEqual([`breaker:${STAGES.phaseA}`]);
   }, 60_000);
 
   it("holds the build on a Phase B store fault and on a wasm fault, rejecting nothing", async () => {
@@ -532,6 +608,7 @@ describe("commit-stage eviction of normal transactions", () => {
     expect(result.failure.message).toMatch(
       /no durable canonical CEK material sidecar/u,
     );
+    expect(heldBuildStage(result.failure)).toBe("Program material sidecar");
     expect(result).toMatchObject(NOTHING_REJECTED);
   }, 60_000);
 

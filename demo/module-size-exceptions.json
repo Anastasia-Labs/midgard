@@ -801,8 +801,8 @@
   },
   {
     "file": "midgard-node/src/mpf/process.process-mpfs.ts",
-    "max": 1411,
-    "reason": "processMpfs is the dominant indivisible declaration (1445 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. T161 (+15): the block commits its normal transactions in exactly the order Phase B applied them, and an accepted transaction's ledger witnesses fail closed on a missing input; a split of this module is a separate proven pure move. VR (+2): normal-block phase-B and the validation trace take the deployment's L1 slot mapping. Duplicate withdrawals (-33): the block-wide duplicate-outref refusal is replaced by in-order classification in withdrawal-classification.ts. P1 integration recount: record the exact committed source size after forced-admission and block-time changes; no source behavior is changed. B2-8 (+87): commit-stage eviction of normal transactions (reproduce-or-hold, the per-stage breaker, coverage deferral) and the cached transaction root value."
+    "max": 1446,
+    "reason": "processMpfs is the dominant indivisible declaration (1445 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. T161 (+15): the block commits its normal transactions in exactly the order Phase B applied them, and an accepted transaction's ledger witnesses fail closed on a missing input; a split of this module is a separate proven pure move. VR (+2): normal-block phase-B and the validation trace take the deployment's L1 slot mapping. Duplicate withdrawals (-33): the block-wide duplicate-outref refusal is replaced by in-order classification in withdrawal-classification.ts. P1 integration recount: record the exact committed source size after forced-admission and block-time changes; no source behavior is changed. B2-8 (+87): commit-stage eviction of normal transactions (reproduce-or-hold, the per-stage breaker, coverage deferral) and the cached transaction root value. B2-8 round 2 (+35): past the breaker's limit a stage's confirmed failures stay pending with their in-block descendants, and a hold or a breaker trip is reported to the commit build alarm."
   },
   {
     "file": "midgard-node/src/mpf/root-view-store.ts",
@@ -856,8 +856,8 @@
   },
   {
     "file": "midgard-node/src/workers/commit-block-header.build-on-verified-base-program.ts",
-    "max": 901,
-    "reason": "buildOnVerifiedCommitBaseProgram is the dominant indivisible declaration (807 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. U3 (+8): the planned event horizon is capped by the horizon lag d, with the Lucid clock acquired only when d > 0. I1 (+5): the commit submission names its journaled intent. N1H (-3): the event horizon no longer reads a history journal's coverage. DEPTH (+2): the commit anchor d below the permit's view replaces the horizon lag and is passed to both submissions. L1 access E (+1): the commit Lucid factory has no default, so every caller names the follower or tool Lucid. VR (+1): forced validation takes the deployment's L1 slot mapping. P (+1): the commit planner takes the configured per-block ex-units budget. B2-8 (+4): the build takes the normal transactions the exact DA frame refused alone and rejects them before validation."
+    "max": 904,
+    "reason": "buildOnVerifiedCommitBaseProgram is the dominant indivisible declaration (807 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. U3 (+8): the planned event horizon is capped by the horizon lag d, with the Lucid clock acquired only when d > 0. I1 (+5): the commit submission names its journaled intent. N1H (-3): the event horizon no longer reads a history journal's coverage. DEPTH (+2): the commit anchor d below the permit's view replaces the horizon lag and is passed to both submissions. L1 access E (+1): the commit Lucid factory has no default, so every caller names the follower or tool Lucid. VR (+1): forced validation takes the deployment's L1 slot mapping. P (+1): the commit planner takes the configured per-block ex-units budget. B2-8 (+4): the build takes the normal transactions the exact DA frame refused alone and rejects them before validation. B2-8 round 2 (+3): the build reports commit build alarms to the parent."
   },
   {
     "file": "midgard-node/src/workers/commit-block-header/submission.submit-tx-backed-commit.ts",
@@ -1406,7 +1406,7 @@
   },
   {
     "file": "midgard-node/tests/commit-stage-eviction.test.ts",
-    "max": 616,
-    "reason": "One commit-stage eviction family over real processMpfs and Postgres, sharing one hoisted fixture that reduces Phase A, Phase B, the root value and program collection to injectable effects that its vi.mock factories close over. B2-8 review: each stage is covered in both polarities (the transaction's own failure rejects it; a node fault, a non-reproducing failure or the per-stage breaker holds), plus coverage deferral and rejection."
+    "max": 693,
+    "reason": "One commit-stage eviction family over real processMpfs and Postgres, sharing one hoisted fixture that reduces Phase A, Phase B, the root value and program collection to injectable effects that its vi.mock factories close over. B2-8 review: each stage is covered in both polarities (the transaction's own failure rejects it; a node fault or a non-reproducing failure holds), plus coverage deferral and rejection. B2-8 round 2 (+77): the breaker rejects four confirmed failures and leaves the rest pending with their descendants, a reproducing stack overflow is rejected while any other RangeError holds, and each hold names its stage."
   }
 ]

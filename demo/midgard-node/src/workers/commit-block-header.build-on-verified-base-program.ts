@@ -619,6 +619,9 @@ export const buildOnVerifiedCommitBaseProgram = (
           onMempoolLedgerReverted: notifyParent?.(
             MEMPOOL_LEDGER_REVERTED_NOTICE,
           ),
+          onCommitBuildAlarm: (alarm, stage) =>
+            notifyParent?.({ type: "CommitBuildAlarmNotice", alarm, stage }) ??
+            Effect.void,
           nativeMpf: nativeMpfContext,
           commitEvictions,
         }).pipe(

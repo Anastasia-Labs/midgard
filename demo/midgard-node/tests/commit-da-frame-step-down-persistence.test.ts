@@ -120,7 +120,7 @@ vi.mock("@al-ft/midgard-validation", async () => {
 // Opaque fixture bytes (no programs, no descriptors) do not affect the
 // persisted state compared here.
 vi.mock(
-  "../src/mpf/commit-rejection.evict-uncommittable-normal-txs.js",
+  "../src/mpf/commit-rejection.normal-program-coverage-break.js",
   async (original) => ({
     ...(await original<object>()),
     normalProgramCoverageBreak: () => undefined,

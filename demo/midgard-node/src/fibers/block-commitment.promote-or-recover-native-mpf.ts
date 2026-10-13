@@ -1,6 +1,10 @@
-import { Effect, Metric, Option } from "effect";
+import { Effect, Metric, Option, Ref } from "effect";
 
 import { PendingBlockFinalizationsDB } from "../database/index.js";
+import {
+  noticeCommitBuildAlarm,
+  settleCommitBuildAlarms,
+} from "../services/globals.commit-build-alarms.js";
 import { publishMempoolLedgerDelta } from "../services/globals.js";
 import { Database, Globals } from "../services/index.js";
 import type { UnwrittenHold } from "../services/intent-journal.holds.js";
@@ -10,6 +14,7 @@ import type {
   PersistedNativeMpfReplay,
 } from "../services/mpf-native-owner/index.js";
 import {
+  type CommitBuildAlarmNotice,
   type IntentRefusalHoldsNotice,
   type MempoolLedgerRevertedNotice,
   type SerializedStateQueueUTxO,
@@ -273,7 +278,8 @@ export type CommitWorkerMessage =
   | WorkerOutput
   | MempoolLedgerRevertedNotice
   | CommitDaFrameNotice
-  | IntentRefusalHoldsNotice;
+  | IntentRefusalHoldsNotice
+  | CommitBuildAlarmNotice;
 
 /**
  * Applies a notice the commit worker posts while it still runs and returns
@@ -285,7 +291,9 @@ export type CommitWorkerMessage =
  * because a "nothing to commit" output also ends a tick whose step-down
  * dropped every transaction from an over-frame ledger. A notice of refusal
  * holds the worker could not write goes to `adoptRefusalHolds` (the node
- * journal's `adopt`), which names them on `/readyz` and writes them.
+ * journal's `adopt`), which names them on `/readyz` and writes them. A
+ * commit build alarm notice and the output that ends the build update
+ * `COMMIT_BUILD_ALARMS`.
  */
 export const takeCommitWorkerOutput = (
   globals: Globals,
@@ -301,8 +309,21 @@ export const takeCommitWorkerOutput = (
     Effect.runSync(applyCommitDaFrameNotice(globals, message));
     return undefined;
   }
+  if (message.type === "CommitBuildAlarmNotice") {
+    Effect.runSync(
+      Ref.update(globals.COMMIT_BUILD_ALARMS, (alarms) =>
+        noticeCommitBuildAlarm(alarms, message),
+      ),
+    );
+    return undefined;
+  }
   if (message.type !== "MempoolLedgerRevertedNotice") {
     Effect.runSync(applyCommitWorkerReadiness(globals, message));
+    Effect.runSync(
+      Ref.update(globals.COMMIT_BUILD_ALARMS, (alarms) =>
+        settleCommitBuildAlarms(alarms, message),
+      ),
+    );
     return message;
   }
   Effect.runSync(publishFullMempoolLedgerReload(globals, deltaLogMax));

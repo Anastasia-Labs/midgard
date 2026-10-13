@@ -9,6 +9,7 @@ import { READINESS_L1_PROVIDER_PROBE_TIMEOUT_MS } from "../l1-provider-readiness
 import { submitSlotEvidence } from "../l1-provider-view.js";
 import { deploymentIdentityDigestOf } from "../l1-queue-terminals/index.js";
 import { followerWriteGateReasons } from "../services/follower-write-gate.local.js";
+import { commitBuildAlarmReasons } from "../services/globals.commit-build-alarms.js";
 import {
   DEFAULT_L1_CONTROL_PLANE_MAX_HOLD_MS,
   ValidationPool,
@@ -288,6 +289,11 @@ export const getReadinessHandler = Effect.gen(function* () {
   for (const reason of l1Follower.reasons)
     if (!reasons.includes(reason)) reasons.push(reason);
   const details: string[] = [...l1Follower.details];
+  // A commit build held at a stage until a block commits, and a stage whose
+  // rejections reached a build's limit.
+  reasons.push(
+    ...commitBuildAlarmReasons(yield* Ref.get(globals.COMMIT_BUILD_ALARMS)),
+  );
   const daFramePressure = yield* Ref.get(globals.COMMIT_DA_FRAME_PRESSURE);
   const commitDaFramePressure =
     daFramePressure === null

@@ -4,18 +4,12 @@
  * failure that is the transaction's own: one that happens again on a second
  * run and is not a fault of the node (a store, the MPF, memory or the wasm
  * runtime). Any other failure holds the build and raises the alarm, as do
- * failures of forced transactions, deposits, withdrawals and the stores, and
- * more rejections at one stage than one bad transaction per few can explain.
+ * failures of forced transactions, deposits, withdrawals and the stores.
+ * Past a few rejections at one stage of one build, the stage's further
+ * failures are left pending for later builds and the breaker alarm is raised.
  */
 
-import {
-  assertMidgardCekProgramMaterialBundle,
-  mergeMidgardCekProgramMaterialSidecars,
-  type MidgardCekProgramEnvelope,
-} from "@al-ft/midgard-core/cek-proof";
-import { decodeMidgardNativeTxFullFromCanonicalCbor } from "@al-ft/midgard-core/codec";
 import { formatUnknownError } from "@al-ft/midgard-core/error-format";
-import { collectMidgardEventProgramEnvelopes } from "@al-ft/midgard-core/script-proof";
 import type { PhaseAValidatedTx } from "@al-ft/midgard-validation";
 import { Cause, Effect, Exit, Option } from "effect";
 
@@ -23,10 +17,7 @@ import * as MempoolDB from "../database/mempool.js";
 import * as TxRejectionsDB from "../database/txRejections.js";
 import { DatabaseError } from "../database/utils/common.js";
 import * as Ledger from "../database/utils/ledger.js";
-import {
-  COMMIT_REJECT_CODE_PROGRAM_COVERAGE,
-  COMMIT_REJECT_CODE_TRACE_UNAVAILABLE,
-} from "./commit-rejection.js";
+import { COMMIT_REJECT_CODE_TRACE_UNAVAILABLE } from "./commit-rejection.js";
 
 const MAX_DETAIL_CAUSE_LENGTH = 512;
 
@@ -87,6 +78,8 @@ export const causeError = (cause: Cause.Cause<unknown>): unknown =>
 const NODE_FAULT_TAGS = new Set(["DatabaseError", "MpfError", "SqlError"]);
 const RESOURCE_EXHAUSTION =
   /out of memory|allocation failed|heap limit|ENOMEM|cannot allocate|maximum memory/iu;
+// The depth a transaction drives evaluation to is the transaction's own.
+const STACK_OVERFLOW = /^Maximum call stack size exceeded$/u;
 const MAX_ERROR_NESTING = 5;
 
 const isNodeFaultError = (error: unknown, depth: number): boolean => {
@@ -95,7 +88,7 @@ const isNodeFaultError = (error: unknown, depth: number): boolean => {
   if (typeof error === "string") return RESOURCE_EXHAUSTION.test(error);
   if (typeof error !== "object") return false;
   if (
-    error instanceof RangeError ||
+    (error instanceof RangeError && !STACK_OVERFLOW.test(error.message)) ||
     (typeof WebAssembly !== "undefined" &&
       error instanceof WebAssembly.RuntimeError)
   )
@@ -116,13 +109,32 @@ const isNodeFaultError = (error: unknown, depth: number): boolean => {
 
 /**
  * Whether a failure is the node's rather than any transaction's: a store or
- * MPF failure, a `RangeError`, a wasm runtime error or memory exhaustion,
- * anywhere in the cause or the errors it wraps.
+ * MPF failure, a `RangeError` other than a stack overflow, a wasm runtime
+ * error or memory exhaustion, anywhere in the cause or the errors it wraps.
  */
 export const isNodeFault = (cause: Cause.Cause<unknown>): boolean =>
   [...Cause.failures(cause), ...Cause.defects(cause)].some((error) =>
     isNodeFaultError(error, 0),
   );
+
+const heldStages = new WeakMap<object, string>();
+
+/** A failure that holds the build at `stage`; {@link heldBuildStage} names
+ * the stage. */
+export const heldBuildError = (
+  stage: string,
+  fields: ConstructorParameters<typeof DatabaseError>[0],
+): DatabaseError => {
+  const error = new DatabaseError(fields);
+  heldStages.set(error, stage);
+  return error;
+};
+
+/** The commit stage `error` holds the build at, if it is such a hold. */
+export const heldBuildStage = (error: unknown): string | undefined =>
+  typeof error === "object" && error !== null
+    ? heldStages.get(error)
+    : undefined;
 
 /** Holds the build: the stage's failure is not one transaction's own. */
 export const holdBuild = (
@@ -130,7 +142,7 @@ export const holdBuild = (
   cause: Cause.Cause<unknown>,
 ): Effect.Effect<never, DatabaseError> =>
   Effect.fail(
-    new DatabaseError({
+    heldBuildError(stage, {
       table: MempoolDB.tableName,
       message: `Holding the block build: ${stage} failed and the failure is not a normal transaction's own`,
       cause: causeError(cause),
@@ -162,26 +174,30 @@ export const confirmTransactionFailure = <E, E2, R>(
   });
 
 /** At most this many normal transactions are rejected at one commit stage
- * of one build; past it, the stage's failures are the node's. */
+ * of one build. */
 export const COMMIT_STAGE_REJECTION_LIMIT = 4;
 
-/** Counts one build's rejections per commit stage, and holds the build once
- * one stage rejects more than {@link COMMIT_STAGE_REJECTION_LIMIT}. */
-export const makeCommitStageRejectionBreaker = () => {
+/**
+ * Counts one build's rejections per commit stage. A stage's first
+ * {@link COMMIT_STAGE_REJECTION_LIMIT} confirmed failures are rejected; every
+ * later one is deferred: left pending with its in-block descendants for a
+ * later build. `onTrip` runs once for each stage that defers.
+ */
+export const makeCommitStageRejectionBreaker = (
+  onTrip: (stage: string) => Effect.Effect<void> = () => Effect.void,
+) => {
   const counts = new Map<string, number>();
-  return (stage: string): Effect.Effect<void, DatabaseError> =>
+  return (stage: string): Effect.Effect<"reject" | "defer"> =>
     Effect.suspend(() => {
       const count = (counts.get(stage) ?? 0) + 1;
       counts.set(stage, count);
-      return count > COMMIT_STAGE_REJECTION_LIMIT
-        ? Effect.fail(
-            new DatabaseError({
-              table: TxRejectionsDB.tableName,
-              message: `Holding the block build: ${stage} would reject more normal transactions than one build may`,
-              cause: `limit=${COMMIT_STAGE_REJECTION_LIMIT.toString()}`,
-            }),
-          )
-        : Effect.void;
+      if (count <= COMMIT_STAGE_REJECTION_LIMIT)
+        return Effect.succeed("reject" as const);
+      return count === COMMIT_STAGE_REJECTION_LIMIT + 1
+        ? Effect.logWarning(
+            `${stage} would reject more than ${COMMIT_STAGE_REJECTION_LIMIT.toString()} normal transactions in one build; leaving the rest pending.`,
+          ).pipe(Effect.zipRight(onTrip(stage)), Effect.as("defer" as const))
+        : Effect.succeed("defer" as const);
     });
 };
 
@@ -220,19 +236,15 @@ type EvaluatedCandidates<C> = {
 
 type CommitCandidate = Pick<PhaseAValidatedTx, "ledgerTx" | "graph">;
 
-/** `deferred` and every candidate that spends or references an output of
- * one already taken, transitively. */
-export const withInBlockDescendants = <C extends CommitCandidate>(
-  deferred: C,
+/** Every candidate that spends or references one of `outRefHexes` or an
+ * output of one already taken, transitively. */
+export const inBlockDescendants = <C extends CommitCandidate>(
+  outRefHexes: Iterable<string>,
   candidates: readonly C[],
-): ReadonlySet<C> => {
-  const taken = new Set([deferred]);
-  const produced = new Set(
-    deferred.graph.produced.map((row) =>
-      Buffer.from(row[Ledger.Columns.OUTREF]).toString("hex"),
-    ),
-  );
-  for (let grew = true; grew; ) {
+): Set<C> => {
+  const taken = new Set<C>();
+  const produced = new Set(outRefHexes);
+  for (let grew = produced.size > 0; grew; ) {
     grew = false;
     for (const candidate of candidates) {
       if (
@@ -251,6 +263,21 @@ export const withInBlockDescendants = <C extends CommitCandidate>(
   }
   return taken;
 };
+
+/** `deferred` and its in-block descendants among `candidates`. */
+export const withInBlockDescendants = <C extends CommitCandidate>(
+  deferred: C,
+  candidates: readonly C[],
+): ReadonlySet<C> =>
+  new Set([
+    deferred,
+    ...inBlockDescendants(
+      deferred.graph.produced.map((row) =>
+        Buffer.from(row[Ledger.Columns.OUTREF]).toString("hex"),
+      ),
+      candidates.filter((candidate) => candidate !== deferred),
+    ),
+  ]);
 
 /** A transaction that breaks the block-wide check: rejected when it fails
  * the check on its own, otherwise left pending with its in-block
@@ -273,9 +300,10 @@ export type BlockCheckBreak =
  * candidates. Its last transaction is rejected only when that prefix fails
  * again, the prefix without it passes, and no run failed on a node fault;
  * otherwise the build holds. A transaction that breaks the block-wide check
- * is rejected or deferred as {@link BlockCheckBreak} says; a deferred one is
- * neither accepted nor rejected and stays pending. The rejected transactions
- * are returned with the evaluation's own rejections.
+ * is rejected or deferred as {@link BlockCheckBreak} says. A rejection the
+ * breaker refuses is a deferral. A deferred transaction and its in-block
+ * descendants are neither accepted nor rejected and stay pending. The
+ * rejected transactions are returned with the evaluation's own rejections.
  */
 export const evaluateEvictingUncommittable = <C extends CommitCandidate, E, R>({
   candidates,
@@ -297,6 +325,13 @@ export const evaluateEvictingUncommittable = <C extends CommitCandidate, E, R>({
   Effect.gen(function* () {
     let remaining = candidates;
     const evicted: EvaluatedCandidates<C>["rejected"][number][] = [];
+    const defer = (own: C, detail: string) => {
+      const deferred = withInBlockDescendants(own, remaining);
+      remaining = remaining.filter((candidate) => !deferred.has(candidate));
+      return Effect.logWarning(
+        `Leaving ${deferred.size.toString()} transaction(s) from tx ${Buffer.from(own.ledgerTx.txId).toString("hex")} pending for a later block: ${detail}`,
+      );
+    };
     const passes = (prefix: readonly C[]) =>
       attempt(evaluate(prefix)).pipe(
         Effect.flatMap((result) =>
@@ -325,12 +360,16 @@ export const evaluateEvictingUncommittable = <C extends CommitCandidate, E, R>({
           evaluated.cause,
           evaluate(remaining.slice(0, failing)),
         );
-        yield* breaker(stage);
         const culprit = remaining[failing - 1]!;
+        const detail = commitStageFailureDetail(stage, causeError(reproduced));
+        if ((yield* breaker(stage)) === "defer") {
+          yield* defer(culprit, detail);
+          continue;
+        }
         evicted.push({
           txId: culprit.ledgerTx.txId,
           code: COMMIT_REJECT_CODE_TRACE_UNAVAILABLE,
-          detail: commitStageFailureDetail(stage, causeError(reproduced)),
+          detail,
         });
         remaining = remaining.filter((candidate) => candidate !== culprit);
         continue;
@@ -342,8 +381,10 @@ export const evaluateEvictingUncommittable = <C extends CommitCandidate, E, R>({
         const own = remaining.find((candidate) =>
           culpritId.equals(candidate.ledgerTx.txId),
         )!;
-        if (broken.kind === "reject") {
-          yield* breaker(broken.stage);
+        if (
+          broken.kind === "reject" &&
+          (yield* breaker(broken.stage)) === "reject"
+        ) {
           evicted.push({
             txId: culprit.ledgerTx.txId,
             code: broken.code,
@@ -352,11 +393,7 @@ export const evaluateEvictingUncommittable = <C extends CommitCandidate, E, R>({
           remaining = remaining.filter((candidate) => candidate !== own);
           continue;
         }
-        const deferred = withInBlockDescendants(own, remaining);
-        yield* Effect.logWarning(
-          `Leaving ${deferred.size.toString()} transaction(s) from tx ${culpritId.toString("hex")} pending for a later block: ${broken.detail}`,
-        );
-        remaining = remaining.filter((candidate) => !deferred.has(candidate));
+        yield* defer(own, broken.detail);
         continue;
       }
       return {
@@ -365,105 +402,3 @@ export const evaluateEvictingUncommittable = <C extends CommitCandidate, E, R>({
       };
     }
   });
-
-export const PROGRAM_COVERAGE_STAGE = "Program material coverage";
-
-/**
- * The block-wide CEK program-material check the DA committee runs on a
- * payload, over the normal transactions in commit order: every transaction's
- * programs are collected against the state immediately before it, and the
- * merged material must cover exactly their union within the bundle limits.
- * Finds the transaction whose addition makes the check fail. It is rejected
- * when its own programs fail the check against its own material; otherwise
- * the failure is the combination's, and it is deferred.
- */
-export const normalProgramCoverageBreak = (
-  accepted: readonly PhaseAValidatedTx[],
-  preState: ReadonlyMap<string, Buffer>,
-): (BlockCheckBreak & { readonly stage: string }) | undefined => {
-  // A node fault is no transaction's: it fails the build.
-  const rethrowNodeFault = (cause: unknown) => {
-    if (isNodeFault(Cause.die(cause))) throw cause;
-    return cause;
-  };
-  const state = new Map(preState);
-  const envelopes: (
-    | {
-        readonly ok: true;
-        readonly value: readonly MidgardCekProgramEnvelope[];
-      }
-    | { readonly ok: false; readonly cause: unknown }
-  )[] = [];
-  for (const candidate of accepted) {
-    try {
-      envelopes.push({
-        ok: true,
-        value: collectMidgardEventProgramEnvelopes(
-          decodeMidgardNativeTxFullFromCanonicalCbor(
-            candidate.submission.txCbor,
-          ),
-          (outRefHex) => state.get(outRefHex),
-        ),
-      });
-    } catch (cause) {
-      envelopes.push({ ok: false, cause: rethrowNodeFault(cause) });
-    }
-    for (const spent of candidate.graph.spentOutRefHexes) state.delete(spent);
-    for (const produced of candidate.graph.produced)
-      state.set(
-        produced[Ledger.Columns.OUTREF].toString("hex"),
-        Buffer.from(produced[Ledger.Columns.OUTPUT]),
-      );
-  }
-  const sidecars = (members: readonly PhaseAValidatedTx[]) =>
-    members.flatMap(({ submission }) =>
-      submission.programMaterialSidecarCbor === null
-        ? []
-        : [submission.programMaterialSidecarCbor],
-    );
-  const failure = (
-    collected: typeof envelopes,
-    members: readonly PhaseAValidatedTx[],
-  ): { readonly cause: unknown } | undefined => {
-    const uncollected = collected.find((entry) => !entry.ok);
-    if (uncollected !== undefined && !uncollected.ok)
-      return { cause: uncollected.cause };
-    try {
-      assertMidgardCekProgramMaterialBundle(
-        collected.flatMap((entry) => (entry.ok ? entry.value : [])),
-        mergeMidgardCekProgramMaterialSidecars(sidecars(members)),
-      );
-      return undefined;
-    } catch (cause) {
-      return { cause: rethrowNodeFault(cause) };
-    }
-  };
-  const prefixFailure = (length: number) =>
-    failure(envelopes.slice(0, length), accepted.slice(0, length));
-  const blockFailure = prefixFailure(accepted.length);
-  if (blockFailure === undefined) return undefined;
-  const index =
-    Effect.runSync(
-      firstFailingPrefix(accepted.length, (length) =>
-        Effect.sync(() => prefixFailure(length) === undefined),
-      ),
-    ) - 1;
-  const alone = failure([envelopes[index]!], [accepted[index]!]);
-  return alone === undefined
-    ? {
-        kind: "defer",
-        index,
-        stage: PROGRAM_COVERAGE_STAGE,
-        detail: commitStageFailureDetail(
-          "Block-wide program material coverage",
-          blockFailure.cause,
-        ),
-      }
-    : {
-        kind: "reject",
-        index,
-        stage: PROGRAM_COVERAGE_STAGE,
-        code: COMMIT_REJECT_CODE_PROGRAM_COVERAGE,
-        detail: commitStageFailureDetail(PROGRAM_COVERAGE_STAGE, alone.cause),
-      };
-};
