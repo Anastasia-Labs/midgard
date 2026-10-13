@@ -802,7 +802,8 @@
       "summary": "Aiken environments and the typed off-chain profile module, generated from config/deployments/*.yaml and env.ak.template.",
       "generators": [
         "demo/scripts/deployment-profiles.mjs",
-        "demo/scripts/deployment-profile-aiken.mjs"
+        "demo/scripts/deployment-profile-aiken.mjs",
+        "demo/scripts/deployment-profile-identity.mjs"
       ],
       "packageScripts": [
         "demo:deployment:generate",

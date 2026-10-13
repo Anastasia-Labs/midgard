@@ -30,6 +30,7 @@ const makeFixture = async (t) => {
     "demo/midgard-fault-proofs/scripts/traced-blueprint.mjs",
     "demo/scripts/deployment-profiles.mjs",
     "demo/scripts/deployment-profile-aiken.mjs",
+    "demo/scripts/deployment-profile-identity.mjs",
     "demo/scripts/lib/blueprint-stamp.mjs",
     "onchain/aiken/scripts/pinned-compiler.mjs",
     ".github/workflows/aiken-ci.yml",
