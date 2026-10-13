@@ -218,22 +218,23 @@ test resolved_output_non_canonical_reconstructs_canonical_output_to_exact_end() 
   let at_end = walk_value(canonical_output)
   and {
     at_end.cursor == bytearray.length(canonical_output),
-    rule.finalize_canonical_v1(descriptor(0, canonical_output), at_end),
+    rule.finalize_canonical_v1(descriptor(0, canonical_output), at_end).stage == ledger_output_scan_v1.stage_terminal,
   }
 }
 
-test resolved_output_non_canonical_refuses_premature_finalize() {
+test resolved_output_non_canonical_refuses_finalize_at_initial_control() fail {
+  rule.finalize_canonical_v1(
+    descriptor(0, canonical_output),
+    ledger_output_scan_v1.initial_control_v1(),
+  ).stage == ledger_output_scan_v1.stage_terminal
+}
+
+test resolved_output_non_canonical_refuses_premature_finalize() fail {
   expect Some(after_address) = advance(
     canonical_output,
     ledger_output_scan_v1.initial_control_v1(),
   )
-  and {
-    !rule.finalize_canonical_v1(
-      descriptor(0, canonical_output),
-      ledger_output_scan_v1.initial_control_v1(),
-    ),
-    !rule.finalize_canonical_v1(descriptor(0, canonical_output), after_address),
-  }
+  rule.finalize_canonical_v1(descriptor(0, canonical_output), after_address).stage == ledger_output_scan_v1.stage_terminal
 }
 
 /// The accepted-path guard: a finishable control cannot be advanced into a
@@ -248,11 +249,20 @@ test resolved_output_non_canonical_trailing_byte_is_non_canonical() {
   expect Some(terminal) = advance(trailing, at_end)
   and {
     at_end.cursor == bytearray.length(canonical_output),
-    !rule.finalize_canonical_v1(descriptor(0, trailing), at_end),
     terminal.stage == ledger_output_scan_v1.stage_terminal,
-    !rule.finalize_canonical_v1(descriptor(0, trailing), terminal),
     advance(trailing, terminal) == None,
   }
+}
+
+test resolved_output_non_canonical_trailing_byte_refuses_finalize_before_it() fail {
+  let trailing = bytearray.concat(canonical_output, #"00")
+  rule.finalize_canonical_v1(descriptor(0, trailing), walk_value(trailing)).stage == ledger_output_scan_v1.stage_terminal
+}
+
+test resolved_output_non_canonical_trailing_byte_refuses_finalize_after_it() fail {
+  let trailing = bytearray.concat(canonical_output, #"00")
+  expect Some(terminal) = advance(trailing, walk_value(trailing))
+  rule.finalize_canonical_v1(descriptor(0, trailing), terminal).stage == ledger_output_scan_v1.stage_terminal
 }
 
 test resolved_output_non_canonical_malformed_address_is_non_canonical() {
@@ -380,7 +390,7 @@ test resolved_output_non_canonical_successor_is_decided_by_the_engine() {
     // A nonterminal transition continues the self-loop.
     advance(canonical_output, ledger_output_scan_v1.initial_control_v1()) != None,
     // The exact end closes as canonical, never as a self-loop.
-    rule.finalize_canonical_v1(descriptor(0, canonical_output), at_end),
+    rule.finalize_canonical_v1(descriptor(0, canonical_output), at_end).stage == ledger_output_scan_v1.stage_terminal,
     // A structural fault closes as non-canonical, never as a self-loop.
     advance(trailing, walk_value(trailing)) != None,
     advance(

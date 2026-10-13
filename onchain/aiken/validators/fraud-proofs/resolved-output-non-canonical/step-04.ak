@@ -4,7 +4,8 @@ use cardano/transaction.{OutputReference, Transaction}
 use midgard/computation_thread as ct
 use midgard/fraud_proofs/common.{cancel, continue}
 use midgard/fraud_proofs/resolved_output_non_canonical/rule.{
-  CanonicalVerdictV1, advance_reconstruction_v1, finalize_canonical_v1,
+  CanonicalVerdictV1, ContinueDatum, FinishDatum, advance_reconstruction_v1,
+  finalize_canonical_v1, open_datum_v1,
 }
 use midgard/fraud_proofs/resolved_output_non_canonical/step_03.{
   ReconstructionV1,
@@ -14,7 +15,11 @@ use midgard/fraud_proofs/resolved_output_non_canonical/step_04.{
 }
 use midgard/ledger_output_commitment_v1
 
-validator main(step_05_hash: ScriptHash, thread_policy: PolicyId) {
+validator main(
+  step_04_datum_hash: ScriptHash,
+  step_05_hash: ScriptHash,
+  thread_policy: PolicyId,
+) {
   spend(
     datum: Option<Datum>,
     redeemer: SpendRedeemer,
@@ -47,6 +52,12 @@ validator main(step_05_hash: ScriptHash, thread_policy: PolicyId) {
         let descriptor = ledger_output_commitment_v1.decode_canonical_schema(
           descriptor_cbor,
         )
+        let emit = fn(hash: ScriptHash, value: Data) {
+          and {
+            next_hash == hash,
+            next_state == value,
+          }
+        }
         when action is {
           Advance { chunk_proof, next_chunk_proof } ->
             when
@@ -57,39 +68,33 @@ validator main(step_05_hash: ScriptHash, thread_policy: PolicyId) {
                 next_chunk_proof,
               )
             is {
-              Some(next_control) -> {
-                let output: Data = ReconstructionV1 {
-                  subject,
-                  descriptor_cbor,
-                  control: next_control,
-                }
-                and {
-                  next_hash == own_hash,
-                  next_state == output,
-                }
-              }
-              None -> {
-                let output: Data = CanonicalVerdictV1 {
-                  subject,
-                  output_is_non_canonical: True,
-                }
-                and {
-                  next_hash == step_05_hash,
-                  next_state == output,
-                }
-              }
+              Some(next_control) ->
+                emit(
+                  own_hash,
+                  ReconstructionV1 {
+                    subject,
+                    descriptor_cbor,
+                    control: next_control,
+                  },
+                )
+              None ->
+                emit(
+                  step_05_hash,
+                  CanonicalVerdictV1 { subject, output_is_non_canonical: True },
+                )
             }
-          FinalizeCanonical -> {
-            expect finalize_canonical_v1(descriptor, control)
-            let output: Data = CanonicalVerdictV1 {
-              subject,
-              output_is_non_canonical: False,
+          FinalizeCanonical ->
+            when
+              open_datum_v1(
+                subject,
+                descriptor,
+                finalize_canonical_v1(descriptor, control),
+              )
+            is {
+              ContinueDatum { state: datum_state } ->
+                emit(step_04_datum_hash, datum_state)
+              FinishDatum { verdict } -> emit(step_05_hash, verdict)
             }
-            and {
-              next_hash == step_05_hash,
-              next_state == output,
-            }
-          }
         }
       }
     }
