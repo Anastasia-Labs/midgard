@@ -8,7 +8,6 @@ use aiken/collection/list
 use aiken/crypto.{VerificationKeyHash, blake2b_256}
 use cardano/address.{Address, Credential, Script, VerificationKey}
 use cardano/transaction.{InlineDatum, Input, Output}
-use midgard/event_history/data_budget
 use midgard/event_history/ordering
 
 pub type EventData {
@@ -24,6 +23,8 @@ pub fn datum_hash(data: EventData) -> ByteArray {
 /// Only the actual reference-input set can provide this evidence. A redeemer
 /// opening or newly produced output is never an alternative publication path.
 /// Copies with the same complete datum at the correct address are equivalent.
+/// The payload's Data node bound is admission's (`order_facts.admit`); a later
+/// reader is bound to the admitted datum by its complete hash.
 pub fn authenticate(
   reference_inputs: List<Input>,
   spent_inputs: List<Input>,
@@ -31,7 +32,6 @@ pub fn authenticate(
   retention_address: Address,
   event_key: ByteArray,
   expected_hash: ByteArray,
-  max_payload_nodes: Int,
 ) -> EventData {
   expect ordering.valid_key(event_key)
   expect Some(input) = list.at(reference_inputs, index)
@@ -45,7 +45,6 @@ pub fn authenticate(
   expect address == retention_address
   expect data: EventData = raw
   expect data.event_key == event_key
-  expect data_budget.within_nodes(data.event_payload, max_payload_nodes)
   expect datum_hash(data) == expected_hash
   data
 }

@@ -1,3 +1,4 @@
+use aiken/collection/list
 use aiken/interval
 use cardano/address
 use cardano/assets
@@ -288,6 +289,65 @@ test insert_order_cannot_claim_filler_as_event() fail {
   let tx = insertion()
   expect [continued, _] = tx.outputs
   insert(Transaction { ..tx, outputs: [continued, filler(None, 600)] })
+}
+
+/// A deposit payload whose datum is a list of 1,023 integers: past the
+/// 1,024-node bound once the payload's own nodes are counted.
+fn wide_facts() -> Facts {
+  expect DepositPayload { event } = payload()
+  let wide: Data = list.repeat(0, 1023)
+  let info = DepositInfo { ..event.info, l2_datum: Some(wide) }
+  Facts {
+    ..facts(),
+    location: Inline {
+      payload: DepositPayload { event: DepositEvent { ..event, info } },
+    },
+  }
+}
+
+fn bounded(max_payload_nodes: Int) -> semantics.Parameters {
+  semantics.Parameters { ..params(), inline_limit: 15000, max_payload_nodes }
+}
+
+fn wide_insertion() -> Transaction {
+  let tx = insertion()
+  expect [continued, _] = tx.outputs
+  Transaction {
+    ..tx,
+    outputs: [continued, order_output(wide_facts(), None, 600)],
+  }
+}
+
+test insert_order_admits_a_wide_payload_under_a_larger_node_bound() {
+  semantics.insert_order(wide_insertion(), bounded(2048), 0, 0, 1, 1, None)
+}
+
+test insert_order_refuses_a_payload_past_the_node_bound() fail {
+  semantics.insert_order(wide_insertion(), bounded(1024), 0, 0, 1, 1, None)
+}
+
+fn wide_promotion() -> Transaction {
+  let tx = promotion()
+  expect [_, refund_output] = tx.outputs
+  Transaction {
+    ..tx,
+    outputs: [order_output(wide_facts(), None, 600), refund_output],
+  }
+}
+
+test promotion_admits_a_wide_payload_under_a_larger_node_bound() {
+  semantics.promote_filler(wide_promotion(), bounded(2048), 0, 0, 1, 1, None)
+}
+
+test promotion_refuses_a_payload_past_the_node_bound() fail {
+  semantics.promote_filler(wide_promotion(), bounded(1024), 0, 0, 1, 1, None)
+}
+
+/// A filler insertion cannot write Order content, so `admit` is skipped only
+/// for nodes that carry no event facts.
+test insert_filler_cannot_write_an_order() fail {
+  let tx = insertion()
+  semantics.insert_filler(tx, params(), 0, 0, 1)
 }
 
 test insert_filler_is_permissionless() {

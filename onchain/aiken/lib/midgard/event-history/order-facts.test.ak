@@ -103,6 +103,15 @@ fn admit(
   limit: Int,
   external_index: Option<Int>,
 ) -> (Facts, Payload, assets.Value) {
+  admit_within(tx, limit, 1024, external_index)
+}
+
+fn admit_within(
+  tx: Transaction,
+  limit: Int,
+  max_payload_nodes: Int,
+  external_index: Option<Int>,
+) -> (Facts, Payload, assets.Value) {
   order_facts.admit(
     Deposit,
     tx,
@@ -111,7 +120,7 @@ fn admit(
     address.from_script(retention),
     limit,
     15000,
-    1024,
+    max_payload_nodes,
     0,
     0,
     external_index,
@@ -225,17 +234,51 @@ test admission_rejects_pointer_l2_stake_credential() fail {
   True
 }
 
-test admission_rejects_inline_payload_with_too_many_data_nodes() fail {
+/// A deposit payload whose datum alone is 1,024 Data nodes (a list of 1,023
+/// integers), so the whole payload is past the 1,024-node bound `admit` gets.
+fn wide_payload() -> Payload {
   expect DepositPayload { event } = payload()
-  let wide: Data = list.repeat(0, 1024)
+  let wide: Data = list.repeat(0, 1023)
   let info = DepositInfo { ..event.info, l2_datum: Some(wide) }
-  let changed = Facts {
-    ..facts(),
-    location: Inline {
-      payload: DepositPayload { event: DepositEvent { ..event, info } },
+  DepositPayload { event: DepositEvent { ..event, info } }
+}
+
+fn wide_inline_admission() -> Transaction {
+  admission(Facts { ..facts(), location: Inline { payload: wide_payload() } })
+}
+
+test admission_accepts_wide_inline_payload_under_a_larger_node_bound() {
+  let (_, opened, _) = admit_within(wide_inline_admission(), 15_000, 2048, None)
+  opened == wide_payload()
+}
+
+test admission_rejects_inline_payload_with_too_many_data_nodes() fail {
+  expect _ = admit(wide_inline_admission(), 15_000, None)
+  True
+}
+
+/// Opening does not re-walk the nodes, so admission is the only node bound:
+/// the external arm enforces it on the retained datum the facts' hash pins.
+fn wide_external_admission() -> Transaction {
+  let publication = data_output_with(wide_payload())
+  expect InlineDatum(raw) = publication.output.datum
+  expect data: EventData = raw
+  let tx = admission(
+    Facts {
+      ..facts(),
+      location: External { storage_datum_hash: retained_data.datum_hash(data) },
     },
-  }
-  expect _ = admit(admission(changed), 15_000, None)
+  )
+  Transaction { ..tx, reference_inputs: [publication] }
+}
+
+test admission_accepts_wide_external_payload_under_a_larger_node_bound() {
+  let (_, opened, _) = admit_within(wide_external_admission(), 1, 2048, Some(0))
+  opened == wide_payload()
+}
+
+test admission_rejects_external_payload_with_too_many_data_nodes() fail {
+  expect _ = admit(wide_external_admission(), 1, Some(0))
   True
 }
 
@@ -285,7 +328,11 @@ test inline_one_byte_over_bound_rejects() fail {
 }
 
 fn data_output() -> Input {
-  let event_payload: Data = payload()
+  data_output_with(payload())
+}
+
+fn data_output_with(payload: Payload) -> Input {
+  let event_payload: Data = payload
   let data = EventData {
     event_key: user_events.out_ref_to_nonce(nonce),
     event_payload,

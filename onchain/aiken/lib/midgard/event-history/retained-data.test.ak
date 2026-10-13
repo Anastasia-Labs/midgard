@@ -51,7 +51,6 @@ fn read(
     address.from_script(retention),
     key,
     hash,
-    1024,
   )
 }
 
