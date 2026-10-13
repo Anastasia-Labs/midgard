@@ -7,6 +7,7 @@ import { encodeMidgardAddressBytes } from "./codec/address.js";
 import { midgardBlake2b } from "./codec/blake2b.js";
 import { decodeSingleCbor, encodeCbor } from "./codec/cbor.js";
 import { ensureHash32, type Hash32 } from "./codec/hash.js";
+import { compareMidgardAssetKeyBytes } from "./codec/value.js";
 import {
   decodedBigInt,
   decodedSafeInteger,
@@ -197,9 +198,10 @@ export const buildMidgardLedgerOutputAssetFrontier = (
     const previous = assets[index - 1]!;
     const current = assets[index]!;
     const policyOrder = Buffer.compare(previous.policyId, current.policyId);
-    const assetNameOrder =
-      previous.assetName.length - current.assetName.length ||
-      Buffer.compare(previous.assetName, current.assetName);
+    const assetNameOrder = compareMidgardAssetKeyBytes(
+      previous.assetName,
+      current.assetName,
+    );
     if (policyOrder > 0 || (policyOrder === 0 && assetNameOrder >= 0)) {
       throw new Error(
         "V1 ledger output assets must be in canonical policy/name order",

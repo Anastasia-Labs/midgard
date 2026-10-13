@@ -53,13 +53,13 @@ describe("ledger output scan V1", () => {
     const expectedAssets = buildMidgardLedgerOutputAssetFrontier([
       {
         policyId: Buffer.alloc(28, 0x55),
-        assetName: Buffer.from("ff", "hex"),
-        quantity: 7n,
+        assetName: Buffer.from("0000", "hex"),
+        quantity: 42n,
       },
       {
         policyId: Buffer.alloc(28, 0x55),
-        assetName: Buffer.from("0000", "hex"),
-        quantity: 42n,
+        assetName: Buffer.from("ff", "hex"),
+        quantity: 7n,
       },
     ]);
 
@@ -83,7 +83,7 @@ describe("ledger output scan V1", () => {
       encodeMidgardVersionedScript(fixture.output.script_ref!).length,
     );
     expect(encodeMidgardLedgerOutputScanControl(terminal).toString("hex")).toBe(
-      "970107192bf10402581d78111111111111111111111111111111111111111111111111111111111a007a1200182e000000581c555555555555555555555555555555555555555555555555555555554040028182015820fdd05992e96e478560b718d45058402827072f35e5220f396e2569800a2b76fe1854191427000319147c191481191770",
+      "970107192bf10402581d78111111111111111111111111111111111111111111111111111111111a007a1200182e000000581c555555555555555555555555555555555555555555555555555555554040028182015820de4ab123673d8a9958247e2b709508944a6f64a4db4c7208d0a871d3358804c01854191427000319147c191481191770",
     );
     expect(
       trace.steps

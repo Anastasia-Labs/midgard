@@ -89,18 +89,6 @@ pub fn asset_key_precedes(left: ByteArray, right: ByteArray) -> Bool {
   builtin.less_than_bytearray(left, right)
 }
 
-fn canonical_bytes_key_precedes(left: ByteArray, right: ByteArray) -> Bool {
-  let left_length = bytearray.length(left)
-  let right_length = bytearray.length(right)
-  if left_length < right_length {
-    True
-  } else if left_length > right_length {
-    False
-  } else {
-    bytearray.compare(left, right) == Less
-  }
-}
-
 fn append_assets(
   left: List<Pair<ByteArray, Int>>,
   right: List<Pair<ByteArray, Int>>,
@@ -131,7 +119,7 @@ fn parse_asset_quantities(
               Some(quantity) -> {
                 let ordered = when previous_name is {
                   None -> True
-                  Some(previous) -> canonical_bytes_key_precedes(previous, name)
+                  Some(previous) -> asset_key_precedes(previous, name)
                 }
                 if and {
                   bytearray.length(name) <= 32,
@@ -184,7 +172,7 @@ fn parse_policy_assets(
             Some(quantity_entries) -> {
               let ordered = when previous_policy is {
                 None -> True
-                Some(previous) -> bytearray.compare(previous, policy_id) == Less
+                Some(previous) -> asset_key_precedes(previous, policy_id)
               }
               if and {
                 bytearray.length(policy_id) == 28,

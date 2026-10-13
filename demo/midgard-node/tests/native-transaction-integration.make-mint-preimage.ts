@@ -215,8 +215,8 @@ export const makePlutusIntegerData = (value: bigint): CML.PlutusData =>
  * The §5.6 preimage of field 5, built through the production encoder.
  *
  * The flat `(policy, asset, quantity)` entries the call sites spell are grouped
- * per policy and sorted into §5.6's canonical key order — length first, then
- * byte-lexicographic — at both levels, because the encoder *enforces* that order
+ * per policy and sorted into §5.6's canonical key order — plain byte order —
+ * at both levels, because the encoder *enforces* that order
  * rather than imposing it, and the decoder rejects anything else. The retired
  * scheme spelled this field as a raw CBOR map and is no longer a field preimage
  * at all.

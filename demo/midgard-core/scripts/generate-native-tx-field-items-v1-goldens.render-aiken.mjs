@@ -301,14 +301,14 @@ export const renderAiken = (golden) => {
     ...widthNegative(
       "golden_f5_asset_names_reject_descending_order",
       [
-        "/// §5.6 asset-name order is length-first, then byte-lexicographic, so `42`",
-        "/// (1 B) precedes `4141` (2 B) and this run descends. The producer must",
-        "/// refuse it: the decoder does, so bytes that got past here would never",
-        "/// decode on either side.",
+        "/// §5.6 asset-name order is plain bytes, as on Cardano, so `4141`",
+        "/// precedes `42` although `42` is shorter, and this run descends. The",
+        "/// producer must refuse it: the decoder does, so bytes that got past here",
+        "/// would never decode on either side.",
       ],
       `encode_mint_policy_item(${aikenMintPolicyId(0)}, ${aikenMintAssets([
-        ["4141", 1],
-        ["42", 2],
+        ["42", 1],
+        ["4141", 2],
       ])})`,
     ),
     ...widthNegative(

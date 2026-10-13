@@ -101,9 +101,9 @@ export const ROWS: readonly Row[] = [
   },
   { group: "withdrawal", name: "the SDK's withdrawal", admitted: true },
   {
-    // The names are given length-first, the Midgard L2 codec's order; the
-    // `l2_value` the SDK writes holds them in byte order, which admission's
-    // `from_asset_list` requires.
+    // The names are given in descending order; the `l2_value` the SDK writes
+    // holds them in byte order (the Midgard L2 codec's order too), which
+    // admission's `from_asset_list` requires.
     group: "withdrawal",
     name: "SDK-built asset names ff and 0000 under one policy",
     admitted: true,

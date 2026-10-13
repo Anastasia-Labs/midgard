@@ -12,7 +12,7 @@ import { Data } from "@lucid-evolution/lucid";
 
 import {
   beginMintDeclaredPolicy,
-  canonicalKeyPrecedes,
+  assetKeyPrecedes,
   classifyMintDeclaredAssetLimitFinding,
   decodeMintDeclaredPolicyHeader,
   exactIndex,
@@ -62,7 +62,7 @@ export const consumeMintDeclaredAsset = ({
     return fail("mint asset count crossed inside a prior policy");
   if (
     cursor.policyAssetCursor !== 0 &&
-    !canonicalKeyPrecedes(Buffer.from(cursor.previousAsset, "hex"), assetName)
+    !assetKeyPrecedes(Buffer.from(cursor.previousAsset, "hex"), assetName)
   )
     return fail("mint asset order is not strictly ascending");
   const last = cursor.assetsRemaining === 1;

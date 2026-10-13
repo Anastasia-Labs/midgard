@@ -49,6 +49,7 @@ use midgard/fraud_proofs/native_tx/types.{
   MidgardAddressWitness, MidgardRedeemerWitness, MidgardScriptWitness,
   MidgardTxInput, MidgardTxOutput, MidgardVersionedScript,
 }
+use midgard/ledger_output_v1.{asset_key_precedes}
 use midgard/native_tx_field_access_v1.{
   decode_field_array_header_at, encode_field_preimage, field_commitment,
   hash28_item_bytes,
@@ -367,7 +368,7 @@ fn encode_mint_asset_quantities(
       expect
         when previous_asset_name is {
           None -> True
-          Some(previous) -> canonical_bytes_key_precedes(previous, asset_name)
+          Some(previous) -> asset_key_precedes(previous, asset_name)
         }
       encode_definite_bytes(asset_name)
         |> bytearray.concat(cbor.serialise(quantity))
@@ -422,7 +423,7 @@ fn encode_mint_policy_items(
       expect
         when previous_policy_id is {
           None -> True
-          Some(previous) -> canonical_bytes_key_precedes(previous, policy_id)
+          Some(previous) -> asset_key_precedes(previous, policy_id)
         }
       [
         encode_mint_policy_item(policy_id_data, asset_map_data),
@@ -480,7 +481,7 @@ fn decode_mint_policy_items_at(
     expect
       when previous_policy_id is {
         None -> True
-        Some(previous) -> canonical_bytes_key_precedes(previous, policy_id)
+        Some(previous) -> asset_key_precedes(previous, policy_id)
       }
     let Pair(offset, rest) = decode_mint_policy_items_at(
       preimage_cbor,
@@ -537,7 +538,7 @@ fn decode_mint_assets_at(
     expect
       when previous_asset_name is {
         None -> True
-        Some(previous) -> canonical_bytes_key_precedes(previous, asset_name)
+        Some(previous) -> asset_key_precedes(previous, asset_name)
       }
     let Pair(offset, quantity) = decode_canonical_int_at(item_cbor, offset)
     expect quantity != 0
@@ -620,31 +621,6 @@ pub fn decode_canonical_map_header_at(
   }
 }
 
-fn canonical_bytes_encoded_length(bytes: ByteArray) -> Int {
-  let length = bytearray.length(bytes)
-  if length < 24 {
-    1 + length
-  } else if length <= 0xff {
-    2 + length
-  } else if length <= 0xffff {
-    3 + length
-  } else {
-    5 + length
-  }
-}
-
-pub fn canonical_bytes_key_precedes(left: ByteArray, right: ByteArray) -> Bool {
-  let left_length = canonical_bytes_encoded_length(left)
-  let right_length = canonical_bytes_encoded_length(right)
-  if left_length < right_length {
-    True
-  } else if left_length > right_length {
-    False
-  } else {
-    bytearray.compare(left, right) == Less
-  }
-}
-
 /// Checks the mint preimage against its flat field commitment without first
 /// materialising the whole map as Plutus `Data`: the hash is taken over the
 /// raw bytes, and the canonical-CBOR, ordering, non-empty-policy,
@@ -678,7 +654,7 @@ fn verify_canonical_mint_items_at(
     expect
       when previous_policy_id is {
         None -> True
-        Some(previous) -> canonical_bytes_key_precedes(previous, policy_id)
+        Some(previous) -> asset_key_precedes(previous, policy_id)
       }
     verify_canonical_mint_items_at(
       preimage_cbor,

@@ -377,14 +377,16 @@ export const FIELD_VECTORS = [
         items: [mintPolicy(1, [asset("4d4944", 5)])],
       },
       {
-        // §5.6 canonical asset order: length first, then byte-lexicographic.
+        // §5.6 canonical asset order: plain bytes, as on Cardano, so a shorter
+        // name sorts first only on an equal prefix ("41" before "4141") and
+        // "4141" sorts before the shorter "42".
         label: "ordered_assets",
         items: [
           mintPolicy(2, [
             asset("", 1),
             asset("41", 2),
-            asset("42", 3),
             asset("4141", 4),
+            asset("42", 3),
             asset(filler(32, 3).toString("hex"), 6),
           ]),
         ],

@@ -62,6 +62,25 @@ test ledger_output_v1_rejects_unsorted_asset_names() {
   ledger_output_v1.decode_canonical_output(output_cbor) == None
 }
 
+fn mixed_width_output_cbor(asset_map: ByteArray) -> ByteArray {
+  #"a200581d60aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa018200a1581c01010101010101010101010101010101010101010101010101010101"
+    |> bytearray.concat(asset_map)
+}
+
+/// `4141` precedes the shorter `42` in plain byte order, as on Cardano.
+test ledger_output_v1_accepts_byte_ordered_mixed_width_names() {
+  ledger_output_v1.decode_canonical_output(
+    mixed_width_output_cbor(#"a242414101414202"),
+  ) != None
+}
+
+/// `42` before `4141` ascends only under a length-first order.
+test ledger_output_v1_rejects_length_first_asset_names() {
+  ledger_output_v1.decode_canonical_output(
+    mixed_width_output_cbor(#"a241420142414102"),
+  ) == None
+}
+
 test ledger_output_v1_rejects_noncanonical_embedded_datum() {
   // 0x18 0x17 is a non-minimal encoding of integer 23.
   let output_cbor = #"a300581d60aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa018200a002421817"

@@ -340,14 +340,14 @@ const golden_f5_single_policy_single_asset_view =
 
 const golden_f5_ordered_assets_items: List<ByteArray> =
   [
-    #"82581c41484f565d646b727980878e959ca3aab1b8bfc6cdd4dbe2e9f0f7fea5400141410241420342414104582060676e757c838a91989fa6adb4bbc2c9d0d7dee5ecf3fa01080f161d242b323906",
+    #"82581c41484f565d646b727980878e959ca3aab1b8bfc6cdd4dbe2e9f0f7fea5400141410242414104414203582060676e757c838a91989fa6adb4bbc2c9d0d7dee5ecf3fa01080f161d242b323906",
   ]
 
 const golden_f5_ordered_assets_preimage =
-  #"81584f82581c41484f565d646b727980878e959ca3aab1b8bfc6cdd4dbe2e9f0f7fea5400141410241420342414104582060676e757c838a91989fa6adb4bbc2c9d0d7dee5ecf3fa01080f161d242b323906"
+  #"81584f82581c41484f565d646b727980878e959ca3aab1b8bfc6cdd4dbe2e9f0f7fea5400141410242414104414203582060676e757c838a91989fa6adb4bbc2c9d0d7dee5ecf3fa01080f161d242b323906"
 
 const golden_f5_ordered_assets_commitment =
-  #"f45bf4838470d9a83678cf8a99b3cf6563b67a739e39c31e968510153bbc5d25"
+  #"9861d1486e35ea9e0db671e45aa7dc773809257f56a877ad90d22c5669e9e5b2"
 
 const golden_f5_ordered_assets_view =
   Whole { bytes: golden_f5_ordered_assets_preimage, count: 1, stride: 0 }
@@ -916,7 +916,7 @@ test golden_f5_ordered_assets_matches_typescript() {
     decode_field_array_header(golden_f5_ordered_assets_preimage) == Pair(1, 1),
     field_stride(5) == 0,
     field_item_extent(golden_f5_ordered_assets_view, 0) == Pair(3, 79),
-    field_item_at(golden_f5_ordered_assets_view, 0) == #"82581c41484f565d646b727980878e959ca3aab1b8bfc6cdd4dbe2e9f0f7fea5400141410241420342414104582060676e757c838a91989fa6adb4bbc2c9d0d7dee5ecf3fa01080f161d242b323906",
+    field_item_at(golden_f5_ordered_assets_view, 0) == #"82581c41484f565d646b727980878e959ca3aab1b8bfc6cdd4dbe2e9f0f7fea5400141410242414104414203582060676e757c838a91989fa6adb4bbc2c9d0d7dee5ecf3fa01080f161d242b323906",
   }
 }
 
@@ -1686,10 +1686,10 @@ test golden_asset_key_order_matches_typescript() {
 // §5.6 ordering assertions — the negatives that bite
 // ---------------------------------------------------------------------------
 
-/// §5.6 asset-name order is length-first, then byte-lexicographic, so `42`
-/// (1 B) precedes `4141` (2 B) and this run descends. The producer must
-/// refuse it: the decoder does, so bytes that got past here would never
-/// decode on either side.
+/// §5.6 asset-name order is plain bytes, as on Cardano, so `4141`
+/// precedes `42` although `42` is shorter, and this run descends. The
+/// producer must refuse it: the decoder does, so bytes that got past here
+/// would never decode on either side.
 test golden_f5_asset_names_reject_descending_order() fail {
   bytearray.length(
     encode_mint_policy_item(
@@ -1698,8 +1698,8 @@ test golden_f5_asset_names_reject_descending_order() fail {
       ),
       builtin.map_data(
         [
-          Pair(builtin.b_data(#"4141"), builtin.i_data(1)),
-          Pair(builtin.b_data(#"42"), builtin.i_data(2)),
+          Pair(builtin.b_data(#"42"), builtin.i_data(1)),
+          Pair(builtin.b_data(#"4141"), builtin.i_data(2)),
         ],
       ),
     ),

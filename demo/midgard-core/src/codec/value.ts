@@ -37,11 +37,6 @@ export const compareMidgardAssetKeyBytes = (
   right: Uint8Array,
 ): number => compareBytes(left, right);
 
-const compareCanonicalAssetNames = (
-  left: Uint8Array,
-  right: Uint8Array,
-): number => left.length - right.length || compareBytes(left, right);
-
 const fail = (message: string, detail?: string): never => {
   throw new MidgardTxCodecError(
     MidgardTxCodecErrorCodes.InvalidFieldType,
@@ -81,7 +76,7 @@ export const encodeMidgardValue = (value: MidgardValue): Buffer => {
         fail("Value policy asset map cannot be empty", policyHex);
       }
       assetEntries.sort(([left], [right]) =>
-        compareCanonicalAssetNames(left, right),
+        compareMidgardAssetKeyBytes(left, right),
       );
       return [
         policy,
@@ -95,7 +90,9 @@ export const encodeMidgardValue = (value: MidgardValue): Buffer => {
     },
   );
 
-  policyEntries.sort(([left], [right]) => compareBytes(left, right));
+  policyEntries.sort(([left], [right]) =>
+    compareMidgardAssetKeyBytes(left, right),
+  );
 
   return encodeCborArrayRaw([
     encodeCborUnsigned(value.lovelace),
@@ -108,8 +105,17 @@ export const encodeMidgardValue = (value: MidgardValue): Buffer => {
   ]);
 };
 
-export const decodeMidgardValue = (bytes: Uint8Array): MidgardValue => {
-  const top = readCborArrayHeader(bytes, 0, "value");
+/**
+ * Decodes the canonical Midgard value that starts at `offset` and returns the
+ * offset just past it. A Value is read structurally, never through the generic
+ * CBOR map-key check, because its policy and asset-name keys follow §5.5's
+ * plain byte order rather than CBOR's length-first one.
+ */
+export const decodeMidgardValueAt = (
+  bytes: Uint8Array,
+  offset: number,
+): { readonly value: MidgardValue; readonly nextOffset: number } => {
+  const top = readCborArrayHeader(bytes, offset, "value");
   if (top.length !== 2) {
     fail("Midgard value must be [coin, assets]", `length=${top.length}`);
   }
@@ -131,7 +137,7 @@ export const decodeMidgardValue = (bytes: Uint8Array): MidgardValue => {
     }
     if (
       previousPolicy !== undefined &&
-      compareBytes(previousPolicy, policy.value) >= 0
+      compareMidgardAssetKeyBytes(previousPolicy, policy.value) >= 0
     ) {
       fail(
         "Value policies must be sorted by raw policy id bytes",
@@ -158,10 +164,10 @@ export const decodeMidgardValue = (bytes: Uint8Array): MidgardValue => {
       }
       if (
         previousAssetName !== undefined &&
-        compareCanonicalAssetNames(previousAssetName, assetName.value) >= 0
+        compareMidgardAssetKeyBytes(previousAssetName, assetName.value) >= 0
       ) {
         fail(
-          "Value asset names must be in canonical CBOR byte-string order",
+          "Value asset names must be sorted by raw asset name bytes",
           `policy=${policyHex}`,
         );
       }
@@ -176,25 +182,29 @@ export const decodeMidgardValue = (bytes: Uint8Array): MidgardValue => {
     policies.set(policyHex, assets);
   }
 
-  if (cursor !== bytes.length) {
-    throw new MidgardTxCodecError(
-      MidgardTxCodecErrorCodes.CborDecode,
-      "Trailing bytes after Midgard value",
-      `offset=${cursor}`,
-    );
-  }
-
   const decoded: MidgardValue = {
     lovelace: coin.value,
     assets: policies,
   };
   assertCanonicalCborRoundTrip(
-    bytes,
+    bytes.subarray(offset, cursor),
     decoded,
     encodeMidgardValue,
     "Midgard value is not canonical",
   );
-  return decoded;
+  return { value: decoded, nextOffset: cursor };
+};
+
+export const decodeMidgardValue = (bytes: Uint8Array): MidgardValue => {
+  const { value, nextOffset } = decodeMidgardValueAt(bytes, 0);
+  if (nextOffset !== bytes.length) {
+    throw new MidgardTxCodecError(
+      MidgardTxCodecErrorCodes.CborDecode,
+      "Trailing bytes after Midgard value",
+      `offset=${nextOffset}`,
+    );
+  }
+  return value;
 };
 
 export const midgardValueToCmlValue = (value: MidgardValue): CML.Value => {

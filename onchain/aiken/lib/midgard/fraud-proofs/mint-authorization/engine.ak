@@ -49,9 +49,9 @@
 use aiken/primitive/bytearray
 use midgard/fraud_proofs/native_tx/codec.{decode_canonical_int_at, expect_byte}
 use midgard/fraud_proofs/native_tx/preimages.{
-  canonical_bytes_key_precedes, decode_canonical_bytes_at,
-  decode_canonical_map_header_at,
+  decode_canonical_bytes_at, decode_canonical_map_header_at,
 }
+use midgard/ledger_output_v1.{asset_key_precedes}
 use midgard/native_script_scan_v1 as scan
 
 // ## Direction domain
@@ -101,7 +101,7 @@ fn check_mint_assets_at(
     expect
       when previous_asset_name is {
         None -> True
-        Some(previous) -> canonical_bytes_key_precedes(previous, asset_name)
+        Some(previous) -> asset_key_precedes(previous, asset_name)
       }
     let Pair(offset, quantity) = decode_canonical_int_at(item_cbor, offset)
     expect quantity != 0

@@ -1,3 +1,4 @@
+import { compareMidgardAssetKeyBytes } from "@al-ft/midgard-core";
 import {
   readCborArrayHeader,
   readCborBytes,
@@ -61,9 +62,7 @@ export const advanceMintScan = (
       if (
         asset.value.length > 32 ||
         (previous !== null &&
-          (previous.length > asset.value.length ||
-            (previous.length === asset.value.length &&
-              Buffer.compare(previous, asset.value) >= 0)))
+          compareMidgardAssetKeyBytes(previous, asset.value) >= 0)
       )
         throw new Error("mint scan asset names are not canonical");
       const quantity = readCborInteger(bytes, asset.nextOffset);

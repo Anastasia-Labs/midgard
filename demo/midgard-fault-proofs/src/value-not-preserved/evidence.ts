@@ -20,6 +20,7 @@
  */
 import {
   buildMidgardLedgerOutputAssetFrontier,
+  compareMidgardAssetKeyBytes,
   decodeMidgardLedgerOutputCommitment,
   type MidgardLedgerOutputAsset,
 } from "@al-ft/midgard-core";
@@ -52,8 +53,8 @@ const evidenceError = (message: string): Error =>
 // ---------------------------------------------------------------------------
 
 /**
- * Flattens a `MidgardValue`'s assets in the canonical §5.3 order (policy
- * bytewise, then asset name length-first bytewise) — the exact leaf order of
+ * Flattens a `MidgardValue`'s assets in the canonical §5.3 order (policy,
+ * then asset name, both as plain bytes) — the exact leaf order of
  * the descriptor's asset frontier and of a canonical mint field.
  */
 export const flattenMidgardValueAssets = (
@@ -65,14 +66,11 @@ export const flattenMidgardValueAssets = (
   );
   for (const policyHex of policies) {
     const names = [...(value.assets.get(policyHex) ?? new Map()).keys()].sort(
-      (left, right) => {
-        const leftBytes = Buffer.from(left, "hex");
-        const rightBytes = Buffer.from(right, "hex");
-        return (
-          leftBytes.length - rightBytes.length ||
-          Buffer.compare(leftBytes, rightBytes)
-        );
-      },
+      (left, right) =>
+        compareMidgardAssetKeyBytes(
+          Buffer.from(left, "hex"),
+          Buffer.from(right, "hex"),
+        ),
     );
     for (const nameHex of names) {
       const quantity = value.assets.get(policyHex)?.get(nameHex);

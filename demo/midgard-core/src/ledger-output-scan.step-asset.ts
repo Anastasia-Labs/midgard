@@ -6,6 +6,7 @@ import {
   readCborMapHeader,
   readCborUnsigned,
 } from "./codec/cbor.js";
+import { compareMidgardAssetKeyBytes } from "./codec/value.js";
 import { hashMidgardLedgerOutputAssetLeaf } from "./ledger-output-commitment.js";
 import {
   absoluteOffset,
@@ -115,11 +116,6 @@ export const stepPolicyHeader = ({
   };
 };
 
-const compareCanonicalAssetNames = (
-  left: Uint8Array,
-  right: Uint8Array,
-): number => left.length - right.length || compareBytes(left, right);
-
 export const stepAsset = ({
   control,
   window,
@@ -146,7 +142,7 @@ export const stepAsset = ({
     control.assetRemaining <= 0 ||
     control.assetFrontier.count >= MIDGARD_VALIDATION_MERKLE_MAX_LEAF_COUNT ||
     (control.policyAssetCursor > 0 &&
-      compareCanonicalAssetNames(control.previousAssetName, assetName.value) >=
+      compareMidgardAssetKeyBytes(control.previousAssetName, assetName.value) >=
         0)
   ) {
     throw new Error("Invalid V1 ledger output asset");

@@ -148,13 +148,13 @@ describe("§5.6 mint ordering is enforced, not assumed", () => {
     vectors.mintPolicy(seed, [vectors.asset(nameHex, 1)]);
 
   it("rejects asset names out of canonical order or repeated", () => {
-    // Canonical order is length-first, then byte-lexicographic: "4141" (2 B)
-    // sorts after "42" (1 B), so this pair is descending.
+    // Canonical order is plain byte order: "4141" sorts before "42" although
+    // "42" is shorter, so this pair is descending.
     expect(() =>
       encodeMidgardMintPolicyItem(
         vectors.mintPolicy(1, [
-          vectors.asset("4141", 1),
-          vectors.asset("42", 2),
+          vectors.asset("42", 1),
+          vectors.asset("4141", 2),
         ]),
       ),
     ).toThrow();

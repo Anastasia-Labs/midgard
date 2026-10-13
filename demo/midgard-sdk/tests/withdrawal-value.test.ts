@@ -2,7 +2,7 @@
  * policies and asset names in bytewise order, the order Aiken's
  * `assets.from_asset_list` requires of asset names at admission, whatever
  * order the in-memory value lists them in (the caller's assets, or a ledger
- * output's names in the Midgard L2 codec's length-first order). The encoder
+ * output's names, which the Midgard L2 codec also keeps in byte order). The encoder
  * (Lucid's `Data.to`, over CML) writes map entries sorted by key; nothing in
  * the SDK sorts them, so this pins the encoder behaviour admission relies on.
  * `Data.from` keeps the order the bytes hold. */
@@ -58,7 +58,7 @@ describe("withdrawal l2_value byte order", () => {
         },
       }),
     );
-    expect([...value.assets.get(P)!.keys()]).toEqual(["ff", "0000"]);
+    expect([...value.assets.get(P)!.keys()]).toEqual(["0000", "ff"]);
     // As the devnet journey's withdrawal body builds it.
     expect(
       encodedOrder(
