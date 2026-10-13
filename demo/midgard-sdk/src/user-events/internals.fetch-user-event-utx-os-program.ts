@@ -245,6 +245,17 @@ export const slotToUnixTimeForLucidOrEmulatorFallback = (
   slot: number,
 ): number => slotToUnixTimeForLucid(lucid, slot) ?? slot * 1000;
 
+// A user event's L1 lower bound sits this far below now, so a local clock
+// ahead of the chain tip still yields a range the ledger admits. The tx-order
+// mint refuses a range wider than the deployment's event range (600 s), and
+// with the 60 s TTL above the range stays near 120 s.
+const USER_EVENT_LOWER_BOUND_BACKOFF_MS = 60_000;
+
+export const resolveUserEventValidFrom = (
+  /** Injected so the bound can be exercised at a known instant. */
+  now: () => number = Date.now,
+): number => now() - USER_EVENT_LOWER_BOUND_BACKOFF_MS;
+
 export const resolveUserEventValidTo = (
   lucid: LucidEvolution,
   ttlMs = USER_EVENT_TX_TTL_MS,

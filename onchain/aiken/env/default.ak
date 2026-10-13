@@ -51,6 +51,8 @@ pub const new_shift_inactivity_grace_period: Int = 480_000
 
 pub const max_validity_range_length: Int = 480_000
 
+pub const max_event_validity_range_length: Int = 600_000
+
 pub const da_attestation_timeout_v1: Int = 3_600_000
 
 pub const small_response_window_ms_v1: Int = 3_600_000

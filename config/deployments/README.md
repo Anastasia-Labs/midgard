@@ -43,6 +43,14 @@ the commit became valid, so an honest block omits one only if L1 rolls back past
 that span. The live testing profiles are exempt: a short L1 fork there can make
 an honest block omit an event.
 
+`max_event_validity_range_ms` (600,000 ms on every profile) bounds a tx-order's
+L1 validity range: the tx-order mint requires a closed range no longer than it
+(`validators/user-events/tx-order-v1.ak`), so the orders due at one inclusion time
+were all submitted within that range. Deposits and withdrawals already carry
+the shorter `max_validity_range_ms`, which their history-list insertion
+enforces. Validation requires `max_validity_range_ms ≤
+max_event_validity_range_ms`.
+
 The existing economics schedule identifiers are retained as manifest data, not
 runtime selectors. Profiles sharing a schedule identifier must have identical
 economics. Settle launch parameter choices before deploying; generation does not

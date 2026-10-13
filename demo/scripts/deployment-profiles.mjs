@@ -37,6 +37,7 @@ const timingConstants = {
   user_events_negligence_timeout_ms: "user_events_negligence_timeout",
   new_shift_inactivity_grace_period_ms: "new_shift_inactivity_grace_period",
   max_validity_range_ms: "max_validity_range_length",
+  max_event_validity_range_ms: "max_event_validity_range_length",
   da_attestation_timeout_ms: "da_attestation_timeout_v1",
   da_small_response_window_ms: "small_response_window_ms_v1",
   da_full_response_window_ms: "full_response_window_ms_v1",
@@ -411,6 +412,14 @@ export const validateProfile = (profile, name) => {
       `Event wait must cover the maximum validity range plus confirmation depth, at least ${eventWaitFloor} ms`,
     );
   }
+  // A tx-order's L1 validity range is closed and at most the event range
+  // (the tx-order mint), so the orders due at one inclusion time were submitted
+  // within that range. Deposits and withdrawals already get the shorter
+  // maximum validity range from their history-list insertion.
+  if (timing.max_validity_range_ms > timing.max_event_validity_range_ms)
+    throw new Error(
+      "Maximum event validity range must cover the maximum validity range",
+    );
   if (
     timing.new_shift_inactivity_grace_period_ms > timing.operator_shift_ms ||
     timing.max_validity_range_ms > timing.operator_shift_ms
