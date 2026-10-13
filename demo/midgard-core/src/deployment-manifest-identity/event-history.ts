@@ -9,9 +9,9 @@ import {
 } from "./primitives.js";
 import { type DeploymentManifestEventHistoryBounds } from "./types.js";
 
-/** The largest Data-node bound a deployment may set. Admission still
- * refuses a payload whose walk exceeds the transaction budget, so a payload
- * within this bound is not always admitted. */
+/** The largest Data-node bound a deployment may set. History admission
+ * counts every payload of this many nodes, in any shape, within the
+ * transaction budget. */
 export const DEPLOYMENT_MANIFEST_MAX_PAYLOAD_NODES = 1_024n;
 
 export const parseDeploymentManifestEventHistoryBounds = (

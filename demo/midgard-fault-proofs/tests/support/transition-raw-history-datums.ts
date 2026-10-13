@@ -34,10 +34,8 @@ const MANIFEST_BOUNDS: SDK.EventHistoryPayloadBounds = {
 const LARGE_DATUMS: readonly (readonly [string, string])[] = [
   ["512 nested nodes", nestedDatum(512)],
   ["512 flat nodes", flatDatum(512)],
-  // History admission's node walk is the ceiling for nested datums: 768
-  // nested nodes are admitted, 880 exceed its transaction memory.
-  ["768 nested nodes", nestedDatum(768)],
   // The deposit event around the datum takes 12 of the payload's 1,024 nodes.
+  ["1,012 nested nodes", nestedDatum(1_012)],
   ["1,012 flat nodes", flatDatum(1_012)],
   ["constructor 1280", "d8668219050080"],
   ["constructor 2^64 - 1", "d866821bffffffffffffffff80"],

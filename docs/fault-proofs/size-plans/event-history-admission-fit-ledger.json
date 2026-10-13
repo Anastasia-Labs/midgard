@@ -1,0 +1,141 @@
+{
+  "schemaVersion": "midgard-van-rossem-fit-ledger-v1",
+  "category": "eventHistoryAdmission",
+  "blueprintSha256": "fbd8e416905464118768fbb1d75956eaf8ebe903797a5b82ed8171e8b96e1c71",
+  "compilerVersion": "aiken v1.1.23+5adf783",
+  "entries": [
+    {
+      "name": "InsertOrder flat list at the node bound",
+      "kind": "lifecycle",
+      "maximumShape": "flat list, 1024 payload nodes, 1110 payload bytes",
+      "signedBytes": 1202,
+      "memoryUnits": "5295027",
+      "cpuUnits": "3901248731",
+      "signedByteMargin": 15182,
+      "memoryUnitMargin": "11204973",
+      "cpuUnitMargin": "6098751269",
+      "publicationReserveMargin": null
+    },
+    {
+      "name": "InsertOrder inline flat list filling the inline limit",
+      "kind": "lifecycle",
+      "maximumShape": "flat list, 426 payload nodes, 512 payload bytes",
+      "signedBytes": 1707,
+      "memoryUnits": "3133325",
+      "cpuUnits": "2484546040",
+      "signedByteMargin": 14677,
+      "memoryUnitMargin": "13366675",
+      "cpuUnitMargin": "7515453960",
+      "publicationReserveMargin": null
+    },
+    {
+      "name": "InsertOrder long bytes at the node bound",
+      "kind": "lifecycle",
+      "maximumShape": "long bytes, 1024 payload nodes, 14253 payload bytes",
+      "signedBytes": 1266,
+      "memoryUnits": "5292733",
+      "cpuUnits": "4343481378",
+      "signedByteMargin": 15118,
+      "memoryUnitMargin": "11207267",
+      "cpuUnitMargin": "5656518622",
+      "publicationReserveMargin": null
+    },
+    {
+      "name": "InsertOrder nested constructors at the node bound",
+      "kind": "lifecycle",
+      "maximumShape": "nested constructors, 1024 payload nodes, 4144 payload bytes",
+      "signedBytes": 1202,
+      "memoryUnits": "7302111",
+      "cpuUnits": "4081290342",
+      "signedByteMargin": 15182,
+      "memoryUnitMargin": "9197889",
+      "cpuUnitMargin": "5918709658",
+      "publicationReserveMargin": null
+    },
+    {
+      "name": "InsertOrder nested lists at the node bound",
+      "kind": "lifecycle",
+      "maximumShape": "nested lists, 1024 payload nodes, 2120 payload bytes",
+      "signedBytes": 1266,
+      "memoryUnits": "7064057",
+      "cpuUnits": "3902568632",
+      "signedByteMargin": 15118,
+      "memoryUnitMargin": "9435943",
+      "cpuUnitMargin": "6097431368",
+      "publicationReserveMargin": null
+    },
+    {
+      "name": "InsertOrder wide map at the node bound",
+      "kind": "lifecycle",
+      "maximumShape": "wide map, 1024 payload nodes, 1112 payload bytes",
+      "signedBytes": 1206,
+      "memoryUnits": "7019879",
+      "cpuUnits": "4524751398",
+      "signedByteMargin": 15178,
+      "memoryUnitMargin": "9480121",
+      "cpuUnitMargin": "5475248602",
+      "publicationReserveMargin": null
+    },
+    {
+      "name": "PromoteFiller flat list at the node bound",
+      "kind": "lifecycle",
+      "maximumShape": "flat list, 1024 payload nodes, 1110 payload bytes",
+      "signedBytes": 983,
+      "memoryUnits": "5160400",
+      "cpuUnits": "3848687734",
+      "signedByteMargin": 15401,
+      "memoryUnitMargin": "11339600",
+      "cpuUnitMargin": "6151312266",
+      "publicationReserveMargin": null
+    },
+    {
+      "name": "PromoteFiller long bytes at the node bound",
+      "kind": "lifecycle",
+      "maximumShape": "long bytes, 1024 payload nodes, 14253 payload bytes",
+      "signedBytes": 983,
+      "memoryUnits": "5167974",
+      "cpuUnits": "4294830711",
+      "signedByteMargin": 15401,
+      "memoryUnitMargin": "11332026",
+      "cpuUnitMargin": "5705169289",
+      "publicationReserveMargin": null
+    },
+    {
+      "name": "PromoteFiller nested constructors at the node bound",
+      "kind": "lifecycle",
+      "maximumShape": "nested constructors, 1024 payload nodes, 4144 payload bytes",
+      "signedBytes": 983,
+      "memoryUnits": "7183748",
+      "cpuUnits": "4033696496",
+      "signedByteMargin": 15401,
+      "memoryUnitMargin": "9316252",
+      "cpuUnitMargin": "5966303504",
+      "publicationReserveMargin": null
+    },
+    {
+      "name": "PromoteFiller nested lists at the node bound",
+      "kind": "lifecycle",
+      "maximumShape": "nested lists, 1024 payload nodes, 2120 payload bytes",
+      "signedBytes": 983,
+      "memoryUnits": "6958630",
+      "cpuUnits": "3859809363",
+      "signedByteMargin": 15401,
+      "memoryUnitMargin": "9541370",
+      "cpuUnitMargin": "6140190637",
+      "publicationReserveMargin": null
+    },
+    {
+      "name": "PromoteFiller wide map at the node bound",
+      "kind": "lifecycle",
+      "maximumShape": "wide map, 1024 payload nodes, 1112 payload bytes",
+      "signedBytes": 987,
+      "memoryUnits": "6910720",
+      "cpuUnits": "4479930293",
+      "signedByteMargin": 15397,
+      "memoryUnitMargin": "9589280",
+      "cpuUnitMargin": "5520069707",
+      "publicationReserveMargin": null
+    }
+  ],
+  "ledgerSha256": "a9816967ac115a1d8ae3e37075f213968d29d0dd138757a271bd4b5847775a04"
+}
