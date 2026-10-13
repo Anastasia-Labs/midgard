@@ -1,9 +1,5 @@
+import { encodeMidgardCekProgramMaterialDaValue } from "@al-ft/midgard-core/cek-proof";
 import {
-  encodeMidgardCekProgramMaterialDaValue,
-  encodeMidgardCekProgramMaterialSidecar,
-} from "@al-ft/midgard-core/cek-proof";
-import {
-  computeMidgardNativeTxId,
   encodeMidgardForcedTxCanonical,
   materializeMidgardForcedTxFromCanonical,
 } from "@al-ft/midgard-core/codec";
@@ -20,7 +16,7 @@ import {
   encodeTransitionIntegerCbor,
   encodeTransitionStepCbor,
 } from "../src/mpf/transition-cbor.js";
-import { buildDeterministicValidationTraceMembers } from "../src/mpf/validation-trace.js";
+import { buildPlaceholderValidationTraceMembers } from "../src/mpf/validation-trace.js";
 import { verifyAndImportBlock } from "../src/mpf/verified-block-import.js";
 import { computeDaPayloadRoots } from "../src/workers/commit-block-header/da-payload.js";
 import { countsFromLengths, headerFor } from "./da-payload.record.js";
@@ -85,28 +81,12 @@ export const fixture = async (
   };
   const header = headerFor(roots, counts);
   const [member] = await Effect.runPromise(
-    buildDeterministicValidationTraceMembers({
-      l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
-      consensusProfile: MIDGARD_CONSENSUS_PROFILE,
-      blockEndTime: new Date(Number(header.endTime)),
-      expectedNetworkId: 0n,
-      minFeeA: 0n,
-      minFeeB: 0n,
-      blockSlot: 0n,
+    buildPlaceholderValidationTraceMembers({
       transactions: [
         {
           eventKey,
-          transactionId: computeMidgardNativeTxId(transaction),
           canonicalTransactionCbor: cbor,
-          programMaterialSidecarCbor: encodeMidgardCekProgramMaterialSidecar(
-            program === undefined ? [] : [...program.material.values()],
-          ),
           sourceKind: "forced",
-          priorUtxosRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
-          postUtxosRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
-          ledgerOps: [],
-          ledgerWitnessEntries: [],
-          ledgerMutationSteps: [],
           verdict: "rejected",
           rejectionCode: RejectCodes.EmptyInputs,
         },
@@ -156,7 +136,7 @@ export const fixture = async (
         ],
       ],
       validation_traces: [[eventCbor, member.valueCbor.toString("hex")]],
-      validation_trace_witnesses: [...member.witnesses],
+      validation_trace_witnesses: [],
       counts,
     },
   };

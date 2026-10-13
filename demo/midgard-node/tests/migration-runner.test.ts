@@ -96,6 +96,7 @@ describe("splitSqlStatements", () => {
       [21, "follower_write_gate", true],
       [22, "drop_event_history_control_plane", true],
       [23, "commit_anchor", true],
+      [24, "drop_validation_trace_witnesses", true],
     ]);
   });
 

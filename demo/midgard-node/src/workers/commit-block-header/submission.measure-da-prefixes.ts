@@ -211,20 +211,11 @@ export const measureDaPayloadPrefixes = ({
     transition_trace: add(empty(), body.transition_trace.slice(0, before)),
     event_to_step: add(empty(), body.event_to_step.slice(0, before)),
     validation_traces: add(empty(), body.validation_traces.slice(0, f)),
-    validation_trace_witnesses: add(
-      empty(),
-      content.validationTraceMembers
-        .slice(0, f)
-        .flatMap((member) => member.witnesses),
-    ),
   };
   bindEntries(digest, body.transition_trace.slice(0, before));
   bindEntries(digest, body.event_to_step.slice(0, before));
   for (const member of content.validationTraceMembers.slice(0, f)) {
-    bindEntries(digest, [
-      pair(member.keyCbor, member.valueCbor),
-      ...member.witnesses,
-    ]);
+    bindEntries(digest, [pair(member.keyCbor, member.valueCbor)]);
   }
   const materialByRoot = new Map<string, Buffer>();
   const allMaterial: SDK.DaPayloadEntry[] = [];
@@ -285,11 +276,7 @@ export const measureDaPayloadPrefixes = ({
       aggregates.validation_traces = add(aggregates.validation_traces, [
         descriptor,
       ]);
-      aggregates.validation_trace_witnesses = add(
-        aggregates.validation_trace_witnesses,
-        validation.witnesses,
-      );
-      bindEntries(digest, [descriptor, ...validation.witnesses]);
+      bindEntries(digest, [descriptor]);
       addMaterial(ordinarySidecars[index]!);
     }
     const counts = {

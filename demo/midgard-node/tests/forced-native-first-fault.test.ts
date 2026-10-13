@@ -11,7 +11,7 @@ import { expect, it } from "vitest";
 
 import { ForcedTransactionsDB } from "../src/database/index.js";
 import {
-  buildDeterministicValidationTraceMembers,
+  buildPlaceholderValidationTraceMembers,
   classifyForcedTransactions,
 } from "../src/mpf/index.js";
 import { forcedEntry } from "./forced-transactions.make-signed-effectful-transaction.js";
@@ -29,7 +29,7 @@ it.each([
   "mint",
   "validKey",
 ] as const)(
-  "classifies and retains the authentic %s native first fault",
+  "classifies the authentic %s native first fault under a placeholder descriptor",
   async (shape) => {
     const fixture = await nativeFaultFixture(shape);
     const [result] = await Effect.runPromise(
@@ -88,40 +88,20 @@ it.each([
         ),
       },
     };
-    const root = fixture.trace.states[0]!.priorLedgerRoot.toString("hex");
-    const [retained] = await Effect.runPromise(
-      buildDeterministicValidationTraceMembers({
-        l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
-        ...nativeFaultContext,
-        blockEndTime: new Date(nativeFaultContext.blockEndTimeMs),
+    const [member] = await Effect.runPromise(
+      buildPlaceholderValidationTraceMembers({
         transactions: [
           {
             eventKey,
-            transactionId: fixture.native.txId,
             canonicalTransactionCbor: fixture.canonicalTransactionCbor,
-            programMaterialSidecarCbor: fixture.programMaterialSidecarCbor,
             sourceKind: "forced",
-            priorUtxosRoot: root,
-            postUtxosRoot: root,
-            ledgerOps: result!.ledgerOps,
-            ledgerWitnessEntries: result!.ledgerWitnessEntries,
-            ledgerMutationSteps: result!.ledgerMutationSteps,
             verdict: "rejected",
             rejectionCode: result!.rejectionCode,
-            scriptEvaluations: result!.scriptEvaluations,
           },
         ],
       }),
     );
-    expect(retained!.value.verdict).toBe("Rejected");
-    expect(retained!.witnesses.length).toBeGreaterThan(
-      fixture.trace.witnesses.length,
-    );
-    // Every exported witness must decode through the real retained wire schema.
-    for (const [, value] of retained!.witnesses)
-      expect(
-        SDK.decodeRetainedValidationWitness(Buffer.from(value, "hex")),
-      ).toBeDefined();
+    expect(member!.value.verdict).toBe("Rejected");
   },
   60000,
 );

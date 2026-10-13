@@ -87,8 +87,7 @@ const contentAt = (prefix: number): DaPayloadBlockContent => {
   );
   const normal = blockContentFor(txs, {
     base: { entryCount: 0, encodedTupleBytes: 0 },
-    witnessCount: 2,
-    witnessValueBytes: 63,
+    descriptorBytes: 220 + 2 * 63,
   });
   const forcedKey: SDK.EventKey = {
     ForcedTransactionEventKey: {
@@ -133,7 +132,7 @@ const contentAt = (prefix: number): DaPayloadBlockContent => {
       value,
     };
   });
-  const forcedValidation = { ...traceFor(999, 1, "ff"), eventKey: forcedKey };
+  const forcedValidation = { ...traceFor(999, 221), eventKey: forcedKey };
   return {
     ...normal,
     utxoPayloadAggregate: aggregate(ledgerAt(prefix)),

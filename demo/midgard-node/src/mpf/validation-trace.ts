@@ -1,15 +1,14 @@
 /**
- * Deterministic validation-trace member construction and event-key set validation.
+ * Validation-trace member construction and event-key set validation.
+ *
+ * P1 commits a placeholder descriptor per transaction event and retains no
+ * validation-machine state.
  */
 
-import { type MidgardConsensusProfile } from "@al-ft/midgard-core/consensus-profile";
-import { type L1SlotConfig } from "@al-ft/midgard-core/l1-slot-config";
-import { MidgardValidationPhase } from "@al-ft/midgard-core/validation-trace";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
-  buildDeterministicValidationMachineTrace,
-  retainedValidationAuxiliaryWitnessData,
-  ValidationTraceStopped,
+  placeholderValidationTraceDescriptorV1,
+  validationTransactionCommitmentV1,
 } from "@al-ft/midgard-validation";
 import { Data as LucidData } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
@@ -23,13 +22,6 @@ import {
 } from "./trace-events.js";
 
 export type ValidationTraceBuildInput = {
-  readonly consensusProfile: MidgardConsensusProfile;
-  readonly blockEndTime: Date;
-  readonly expectedNetworkId: bigint;
-  readonly minFeeA: bigint;
-  readonly minFeeB: bigint;
-  readonly blockSlot: bigint;
-  readonly l1SlotConfig: L1SlotConfig;
   readonly transactions: readonly ValidationTraceTransactionInput[];
 };
 
@@ -38,7 +30,6 @@ export type RetainedValidationTraceMember = {
   readonly keyCbor: Buffer;
   readonly valueCbor: Buffer;
   readonly value: SDK.ValidationTraceDescriptor;
-  readonly witnesses: readonly SDK.DaPayloadEntry[];
 };
 
 export type ValidationTraceBuildResult = {
@@ -47,189 +38,48 @@ export type ValidationTraceBuildResult = {
   readonly validationTraceCount: number;
 };
 
-export const buildDeterministicValidationTraceMembers = (
+export const buildPlaceholderValidationTraceMembers = (
   input: ValidationTraceBuildInput,
 ): Effect.Effect<
   readonly RetainedValidationTraceMember[],
   DatabaseError | MpfError
 > =>
-  Effect.forEach(
-    input.transactions,
-    (transaction) =>
-      Effect.gen(function* () {
-        const keyCbor = yield* eventKeyCbor(transaction.eventKey);
-        const trace = yield* buildDeterministicValidationMachineTrace({
-          consensusProfile: input.consensusProfile,
-          eventKeyCbor: keyCbor,
-          transactionId: transaction.transactionId,
-          canonicalTransactionCbor: transaction.canonicalTransactionCbor,
-          programMaterialSidecarCbor: transaction.programMaterialSidecarCbor,
-          sourceKind: transaction.sourceKind,
-          priorUtxosRoot: transaction.priorUtxosRoot,
-          postUtxosRoot: transaction.postUtxosRoot,
-          ledgerWitnessEntries: transaction.ledgerWitnessEntries,
-          ledgerMutationSteps: transaction.ledgerMutationSteps,
-          expectedLedgerOps: transaction.ledgerOps,
-          expectedVerdict: transaction.verdict,
-          scriptEvaluations: transaction.scriptEvaluations,
-          expectedRejectionCode: transaction.rejectionCode,
-          blockEndTimeMs: input.blockEndTime.getTime(),
-          expectedNetworkId: input.expectedNetworkId,
-          minFeeA: input.minFeeA,
-          minFeeB: input.minFeeB,
-          blockSlot: input.blockSlot,
-          l1SlotConfig: input.l1SlotConfig,
-        }).pipe(
-          Effect.tapError((cause) =>
-            Effect.logError(
-              "Validation trace block stopped: evaluator classification preserved",
-            ).pipe(
-              Effect.annotateLogs({
-                alarm:
-                  cause instanceof ValidationTraceStopped
-                    ? cause.reason
-                    : "unavailable",
-                committedVerdict: transaction.verdict,
-                committedRejectionCode: transaction.rejectionCode ?? "none",
-                transactionId: transaction.transactionId.toString("hex"),
-              }),
+  Effect.forEach(input.transactions, (transaction) =>
+    Effect.gen(function* () {
+      const keyCbor = yield* eventKeyCbor(transaction.eventKey);
+      const value = yield* Effect.try({
+        try: () =>
+          SDK.validationTraceDescriptorDataFromCore(
+            placeholderValidationTraceDescriptorV1(
+              {
+                eventKeyCbor: keyCbor,
+                transactionCommitment: validationTransactionCommitmentV1({
+                  canonicalTransactionCbor:
+                    transaction.canonicalTransactionCbor,
+                  sourceKind: transaction.sourceKind,
+                }),
+              },
+              transaction.verdict,
+              transaction.rejectionCode,
             ),
           ),
-          Effect.mapError(
-            (cause) =>
-              new DatabaseError({
-                table: PendingBlockFinalizationsDB.tableName,
-                message:
-                  "Deterministic validation-machine replay failed while building a V1 block",
-                cause,
-              }),
-          ),
-        );
-        const descriptor: SDK.ValidationTraceDescriptor = {
-          schema_version: BigInt(trace.tree.descriptor.schemaVersion),
-          machine_version: BigInt(trace.tree.descriptor.machineVersion),
-          trace_root: trace.tree.descriptor.traceRoot.toString("hex"),
-          step_count: BigInt(trace.tree.descriptor.stepCount),
-          initial_state_hash:
-            trace.tree.descriptor.initialStateHash.toString("hex"),
-          terminal_state_hash:
-            trace.tree.descriptor.terminalStateHash.toString("hex"),
-          verdict:
-            trace.tree.descriptor.verdict === "accepted"
-              ? "Accepted"
-              : "Rejected",
-          rejection_code_hash:
-            trace.tree.descriptor.rejectionCodeHash.toString("hex"),
-        };
-        const witnesses = trace.witnesses.flatMap((witness, stateIndex) => {
-          const retainedNativeExecution =
-            witness.phase === "nativeScripts" &&
-            witness.auxiliary?.kind === "nativeExecutionDescriptor";
-          const retainedCoordinate = SDK.retainedValidationStateCoordinate(
-            descriptor.step_count,
-            BigInt(stateIndex),
-          );
-          const key: SDK.RetainedValidationWitnessKey = {
-            event_key: transaction.eventKey,
-            execution_index: retainedCoordinate,
-          };
-          const auxiliary = LucidData.from(
-            LucidData.to(
-              retainedValidationAuxiliaryWitnessData(
-                witness.auxiliary,
-              ) as never,
-            ),
-            SDK.RetainedValidationAuxiliaryWitnessSchema,
-          ) as unknown as SDK.RetainedValidationAuxiliaryWitness;
-          const value: SDK.RetainedValidationWitness = {
-            machine_state: SDK.validationMachineStateDataFromCore(
-              trace.states[stateIndex]!,
-            ),
-            trace_proof: SDK.validationTraceProofDataFromCore(
-              trace.tree.proofs[stateIndex]!,
-            ),
-            phase: BigInt(MidgardValidationPhase[witness.phase]),
-            program_counter: BigInt(witness.programCounter),
-            witness_cbor: witness.cbor.toString("hex"),
-            auxiliary,
-          };
-          const keys = retainedNativeExecution
-            ? [
-                key,
-                {
-                  ...key,
-                  execution_index: BigInt(witness.auxiliary.executionIndex),
-                },
-              ]
-            : [key];
-          return keys.map(
-            (coordinate) =>
-              [
-                SDK.encodeRetainedValidationWitnessKey(coordinate).toString(
-                  "hex",
-                ),
-                SDK.encodeRetainedValidationWitness(value).toString("hex"),
-              ] satisfies SDK.DaPayloadEntry,
-          );
-        });
-        const terminalIndex = trace.states.length - 1;
-        const endpoints = (["initial", "terminal"] as const).map((endpoint) => {
-          const stateIndex = endpoint === "initial" ? 0 : terminalIndex;
-          const sourceWitness = trace.witnesses[stateIndex]!;
-          const value: SDK.RetainedValidationWitness = {
-            machine_state: SDK.validationMachineStateDataFromCore(
-              trace.states[stateIndex]!,
-            ),
-            trace_proof: SDK.validationTraceProofDataFromCore(
-              trace.tree.proofs[stateIndex]!,
-            ),
-            phase:
-              endpoint === "initial"
-                ? -1n
-                : BigInt(MidgardValidationPhase[sourceWitness.phase]),
-            program_counter: BigInt(sourceWitness.programCounter),
-            witness_cbor: (endpoint === "initial"
-              ? trace.validationContextCbor
-              : sourceWitness.cbor
-            ).toString("hex"),
-            auxiliary: "NoAuxiliaryWitness",
-          };
-          return [
-            SDK.encodeRetainedValidationWitnessKey({
-              event_key: transaction.eventKey,
-              execution_index: SDK.retainedValidationEndpointCoordinate(
-                descriptor.step_count,
-                endpoint,
-              ),
-            }).toString("hex"),
-            SDK.encodeRetainedValidationWitness(value).toString("hex"),
-          ] satisfies SDK.DaPayloadEntry;
-        });
-        witnesses.push(...endpoints);
-        if (new Set(witnesses.map(([key]) => key)).size !== witnesses.length) {
-          return yield* Effect.fail(
-            new DatabaseError({
-              table: PendingBlockFinalizationsDB.tableName,
-              message: "Validation trace retained coordinates are not unique",
-              cause: transaction.eventKey,
-            }),
-          );
-        }
-        return {
-          eventKey: transaction.eventKey,
-          keyCbor,
-          valueCbor: Buffer.from(
-            LucidData.to(
-              descriptor as never,
-              SDK.ValidationTraceDescriptor as never,
-            ),
-            "hex",
-          ),
-          value: descriptor,
-          witnesses,
-        };
-      }),
-    { concurrency: 1 },
+        catch: (cause) =>
+          new DatabaseError({
+            table: PendingBlockFinalizationsDB.tableName,
+            message: "Failed to derive a placeholder validation descriptor",
+            cause,
+          }),
+      });
+      return {
+        eventKey: transaction.eventKey,
+        keyCbor,
+        valueCbor: Buffer.from(
+          LucidData.to(value, SDK.ValidationTraceDescriptor),
+          "hex",
+        ),
+        value,
+      };
+    }),
   );
 
 export const validateValidationTraceEventKeySet = ({

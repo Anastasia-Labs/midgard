@@ -1,4 +1,3 @@
-import { encodeMidgardCekProgramMaterialSidecar } from "@al-ft/midgard-core/cek-proof";
 import {
   computeMidgardNativeTxId,
   decodeMidgardNativeTxFullFromCanonicalCbor,
@@ -6,9 +5,7 @@ import {
   encodeMidgardForcedTxCanonical,
   materializeMidgardForcedTxFromCanonical,
 } from "@al-ft/midgard-core/codec";
-import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
 import { wrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
-import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import * as SDK from "@al-ft/midgard-sdk";
 import { RejectCodes } from "@al-ft/midgard-validation";
 import { Data } from "@lucid-evolution/lucid";
@@ -21,18 +18,11 @@ import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
 import { makePayloadFixture } from "../../da-committee-node/tests/helpers.js";
-import { retainedEndpointsMatchDescriptor } from "../../da-committee-node/tests/helpers.validation-trace.js";
-import { buildDeterministicValidationTraceMembers } from "../src/mpf/index.js";
-
-const byKey = (entries: readonly SDK.DaPayloadEntry[]): SDK.DaPayloadEntry[] =>
-  [...entries].sort(([left], [right]) =>
-    left < right ? -1 : left > right ? 1 : 0,
-  );
+import { buildPlaceholderValidationTraceMembers } from "../src/mpf/index.js";
 
 /**
- * A committed block whose single transaction source carries the validation
- * trace descriptor and retained witnesses exactly as the node's block builder
- * produces them, with every root and count recomputed so only the trace
+ * A committed block whose single forced transaction carries the validation
+ * descriptor exactly as the node's block builder produces it, with every root and count recomputed so only the trace
  * material is under test.
  */
 const nodeTracedForcedPayload = async () => {
@@ -61,28 +51,12 @@ const nodeTracedForcedPayload = async () => {
     verdict: { ForcedTxInvalid: { reason: "EmptyInputs" } },
   };
   const [member] = await Effect.runPromise(
-    buildDeterministicValidationTraceMembers({
-      l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
-      consensusProfile: MIDGARD_CONSENSUS_PROFILE,
-      blockEndTime: new Date(Number(base.header.endTime)),
-      expectedNetworkId: base.header.expectedNetworkId,
-      minFeeA: base.header.minFeeA,
-      minFeeB: base.header.minFeeB,
-      blockSlot: base.header.blockSlot,
+    buildPlaceholderValidationTraceMembers({
       transactions: [
         {
           eventKey,
-          transactionId: txId,
           canonicalTransactionCbor: forcedBytes,
-          programMaterialSidecarCbor: encodeMidgardCekProgramMaterialSidecar(
-            [],
-          ),
           sourceKind: "forced",
-          priorUtxosRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
-          postUtxosRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
-          ledgerOps: [],
-          ledgerWitnessEntries: [],
-          ledgerMutationSteps: [],
           verdict: "rejected",
           rejectionCode: RejectCodes.EmptyInputs,
         },
@@ -130,7 +104,7 @@ const nodeTracedForcedPayload = async () => {
       validation_traces: [
         [member.keyCbor.toString("hex"), member.valueCbor.toString("hex")],
       ],
-      validation_trace_witnesses: byKey(member.witnesses),
+      validation_trace_witnesses: [],
     },
   };
   const roots = await computeDaPayloadRoots(unhashed);
@@ -144,13 +118,10 @@ const nodeTracedForcedPayload = async () => {
 };
 
 describe("node-produced validation traces pass DA committee admission", () => {
-  it("admits the node's descriptor and every retained state and endpoint", async () => {
+  it("admits the node's placeholder descriptor with an empty retained-witness section", async () => {
     const { member, header, headerHash, payload } =
       await nodeTracedForcedPayload();
-    // The full dense retention: one chronological record per state plus the
-    // initial and terminal endpoints.
-    expect(member.witnesses).toHaveLength(Number(member.value.step_count) + 3);
-    expect(retainedEndpointsMatchDescriptor(member)).toBe(true);
+    expect(member.value.step_count).toBe(1n);
     const verified = await verifyDaPayloadAgainstHeader(
       await wrapDaPayload(SDK.encodeDaPayload(payload), { mode: "identity" }),
       headerHash,
@@ -165,76 +136,42 @@ describe("node-produced validation traces pass DA committee admission", () => {
     expect(verified.counts.validationTraceCount).toBe(1n);
   });
 
-  it.each(["initial", "terminal"] as const)(
-    "refuses a node trace after removing only its %s endpoint, preserving every chronological state",
-    async (endpoint) => {
-      const { member, payload } = await nodeTracedForcedPayload();
-      const coordinate = SDK.retainedValidationEndpointCoordinate(
-        member.value.step_count,
-        endpoint,
-      );
-      const witnesses = payload.block_body.validation_trace_witnesses.filter(
-        ([keyHex]) =>
-          SDK.decodeRetainedValidationWitnessKey(Buffer.from(keyHex, "hex"))
-            .execution_index !== coordinate,
-      );
-      expect(witnesses).toHaveLength(member.witnesses.length - 1);
-      expect(() =>
-        decodeDaPayloadStrict(
-          SDK.encodeDaPayload({
-            ...payload,
-            block_body: {
-              ...payload.block_body,
-              validation_trace_witnesses: witnesses,
-            },
-          }),
-        ),
-      ).toThrow(`validation trace omits its retained ${endpoint} endpoint`);
-    },
-  );
-
-  it.each([
-    ["a chronological state", "state", /do not match state\.work_root/u],
-    ["the initial endpoint", "initial", /context differs/u],
-    ["the terminal endpoint", "terminal", /do not match state\.work_root/u],
-  ] as const)(
-    "refuses substituted work bytes at %s",
-    async (_label, target, message) => {
-      const { member, payload } = await nodeTracedForcedPayload();
-      const stepCount = member.value.step_count;
-      const coordinate =
-        target === "state"
-          ? SDK.retainedValidationStateCoordinate(stepCount, 1n)
-          : SDK.retainedValidationEndpointCoordinate(stepCount, target);
-      const witnesses = payload.block_body.validation_trace_witnesses.map(
-        ([keyHex, valueHex]): SDK.DaPayloadEntry => {
-          const key = SDK.decodeRetainedValidationWitnessKey(
-            Buffer.from(keyHex, "hex"),
-          );
-          if (key.execution_index !== coordinate) return [keyHex, valueHex];
-          const value = SDK.decodeRetainedValidationWitness(
-            Buffer.from(valueHex, "hex"),
-          );
-          return [
-            keyHex,
-            SDK.encodeRetainedValidationWitness({
-              ...value,
-              witness_cbor: `${value.witness_cbor}00`,
-            }).toString("hex"),
-          ];
-        },
-      );
-      expect(() =>
-        decodeDaPayloadStrict(
-          SDK.encodeDaPayload({
-            ...payload,
-            block_body: {
-              ...payload.block_body,
-              validation_trace_witnesses: witnesses,
-            },
-          }),
-        ),
-      ).toThrow(message);
-    },
-  );
+  it("refuses a descriptor whose verdict differs from the forced leaf", async () => {
+    const { payload } = await nodeTracedForcedPayload();
+    const [accepted] = await Effect.runPromise(
+      buildPlaceholderValidationTraceMembers({
+        transactions: [
+          {
+            eventKey: Data.from(
+              payload.block_body.validation_traces[0]![0],
+              SDK.EventKey,
+            ) as SDK.EventKey,
+            canonicalTransactionCbor: Buffer.from(
+              payload.block_body.forced_transaction_preimages[0]![1],
+              "hex",
+            ),
+            sourceKind: "forced",
+            verdict: "accepted",
+            rejectionCode: null,
+          },
+        ],
+      }),
+    );
+    expect(() =>
+      decodeDaPayloadStrict(
+        SDK.encodeDaPayload({
+          ...payload,
+          block_body: {
+            ...payload.block_body,
+            validation_traces: [
+              [
+                accepted!.keyCbor.toString("hex"),
+                accepted!.valueCbor.toString("hex"),
+              ],
+            ],
+          },
+        }),
+      ),
+    ).toThrow(/verdict/u);
+  });
 });

@@ -109,7 +109,6 @@ export const journalFixture = (
     transitionTraceMembers: [],
     eventToStepMembers: [],
     validationTraceMembers: [],
-    validationTraceWitnessMembers: [],
     ledgerDelta: { spent: [], produced: [] },
   };
 };

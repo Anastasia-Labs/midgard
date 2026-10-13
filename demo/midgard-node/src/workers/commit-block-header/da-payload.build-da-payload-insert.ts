@@ -137,20 +137,13 @@ export const buildDaPayloadInsert = ({
           ),
         ),
       ),
-      validation_trace_witnesses: sortedEntries(
-        record.validationTraceWitnessMembers.map((member) =>
-          bufferEntry(
-            member[PendingBlockFinalizationsDB.MemberColumns.MEMBER_ID],
-            member[PendingBlockFinalizationsDB.MemberColumns.PAYLOAD_CBOR],
-          ),
-        ),
-      ),
     } as const;
     const payload: SDK.DaPayload = {
       version: SDK.DA_PAYLOAD_VERSION,
       block_body: {
         ...commonBody,
         header,
+        validation_trace_witnesses: [],
         transaction_preimages: sortedEntries(
           record.txMembers.map((member) =>
             bufferEntry(

@@ -17,7 +17,6 @@ import {
   transitionTraceTableName,
   txsTableName,
   validationTracesTableName,
-  validationTraceWitnessesTableName,
   WithdrawalMemberColumns,
   type WithdrawalMemberRecord,
   withdrawalsTableName,
@@ -47,7 +46,6 @@ export const retrieveRecord = (
       transitionTraceMembers,
       eventToStepMembers,
       validationTraceMembers,
-      validationTraceWitnessMembers,
     ] = yield* Effect.all(
       [
         retrieveMembers(
@@ -79,11 +77,6 @@ export const retrieveRecord = (
         retrieveMembers(
           sql,
           validationTracesTableName,
-          normalizedRow[Columns.HEADER_HASH],
-        ),
-        retrieveMembers(
-          sql,
-          validationTraceWitnessesTableName,
           normalizedRow[Columns.HEADER_HASH],
         ),
       ],
@@ -159,7 +152,6 @@ export const retrieveRecord = (
       transitionTraceMembers,
       eventToStepMembers,
       validationTraceMembers,
-      validationTraceWitnessMembers,
     };
   });
 

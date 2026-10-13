@@ -268,7 +268,6 @@ describe("commit DA frame readiness", () => {
       });
       const content = blockContentFor(
         source === "transactions" ? [mkCandidate(1)] : [],
-        { witnessCount: 0 },
       );
       // A nonempty event root takes the event-only helper through its build.
       const deposit = {

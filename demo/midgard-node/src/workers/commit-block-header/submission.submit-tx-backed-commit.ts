@@ -481,13 +481,6 @@ export const submitTxBackedCommit = ({
                       transitionTraceMembers,
                       eventToStepMembers,
                       validationTraceMembers,
-                      validationTraceWitnessMembers:
-                        validationTraceMembers.flatMap((entry) =>
-                          entry.witnesses.map(([key, value]) => ({
-                            keyCbor: Buffer.from(key, "hex"),
-                            valueCbor: Buffer.from(value, "hex"),
-                          })),
-                        ),
                       ledgerDelta: {
                         spent: journalLedgerState.ledgerDelta.spent,
                         produced: journalUtxoEntries(

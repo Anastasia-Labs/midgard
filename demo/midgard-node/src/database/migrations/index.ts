@@ -22,6 +22,7 @@ import dropQueueTerminalObserverSql from "./sql/0020_drop_queue_terminal_observe
 import followerWriteGateSql from "./sql/0021_follower_write_gate.sql";
 import dropEventHistoryControlPlaneSql from "./sql/0022_drop_event_history_control_plane.sql";
 import commitAnchorSql from "./sql/0023_commit_anchor.sql";
+import dropValidationTraceWitnessesSql from "./sql/0024_drop_validation_trace_witnesses.sql";
 
 export type Migration = {
   readonly version: number;
@@ -193,6 +194,13 @@ export const MIGRATIONS: readonly Migration[] = [
     sql: commitAnchorSql,
     transactional: true,
   },
+  {
+    version: 24,
+    name: "drop_validation_trace_witnesses",
+    checksumSha256: sha256Hex(dropValidationTraceWitnessesSql),
+    sql: dropValidationTraceWitnessesSql,
+    transactional: true,
+  },
 ] as const;
 
 export const EXPECTED_SCHEMA_VERSION =
@@ -255,7 +263,6 @@ export const APPLICATION_TABLE_NAMES = [
   "pending_block_finalization_transition_trace",
   "pending_block_finalization_event_to_step",
   "pending_block_finalization_validation_traces",
-  "pending_block_finalization_validation_trace_witnesses",
   "tx_admissions",
   "tx_admission_payloads",
   "local_mutation_jobs",

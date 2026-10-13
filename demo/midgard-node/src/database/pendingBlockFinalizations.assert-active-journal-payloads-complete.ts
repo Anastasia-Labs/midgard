@@ -14,7 +14,6 @@ import {
   transitionTraceTableName,
   txsTableName,
   validationTracesTableName,
-  validationTraceWitnessesTableName,
   withdrawalsTableName,
 } from "./pendingBlockFinalizations.columns.js";
 import { retrieveActive } from "./pendingBlockFinalizations.retrieve-record.js";
@@ -46,7 +45,6 @@ export const assertActiveJournalPayloadsComplete: Effect.Effect<
       record.transitionTraceMembers,
       record.eventToStepMembers,
       record.validationTraceMembers,
-      record.validationTraceWitnessMembers,
     ].some(hasIncompletePayload) ||
     BigInt(record.validationTraceMembers.length) !==
       record[Columns.EXPECTED_VALIDATION_TRACE_COUNT]
@@ -71,7 +69,6 @@ export const clear = Effect.all(
     clearTable(transitionTraceTableName),
     clearTable(eventToStepTableName),
     clearTable(validationTracesTableName),
-    clearTable(validationTraceWitnessesTableName),
     clearTable(tableName),
   ],
   { discard: true },

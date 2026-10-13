@@ -294,7 +294,6 @@ export const record = ({
     transitionTraceMembers,
     eventToStepMembers,
     validationTraceMembers: [],
-    validationTraceWitnessMembers: [],
     ledgerDelta: {
       spent: [],
       produced: utxoEntries.map(([outref, output]) => ({

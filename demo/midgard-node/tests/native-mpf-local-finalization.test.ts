@@ -196,7 +196,6 @@ const fixture = async () => {
     transitionTraceMembers: [],
     eventToStepMembers: [],
     validationTraceMembers: [],
-    validationTraceWitnessMembers: [],
     ledgerDelta: { spent: [], produced: [] },
     nativeMpfReplay: replay,
   };

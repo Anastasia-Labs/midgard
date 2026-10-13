@@ -35,6 +35,7 @@ import {
   type BlockShape,
   CANONICAL_TX,
   LC1_BASE_LEDGER,
+  SYNTHETIC_TX_DA_BYTES,
 } from "./helpers/commit-da-frame-fixtures.js";
 import {
   deploymentIdentity,
@@ -219,7 +220,10 @@ const runWorker = async (
           ...shape,
           base: baseAggregate,
           ...(invalidateOnRebuild && builds.length > 1
-            ? { witnessValueBytes: (shape.witnessValueBytes ?? 1470) + 1 }
+            ? {
+                descriptorBytes:
+                  (shape.descriptorBytes ?? SYNTHETIC_TX_DA_BYTES) + 112,
+              }
             : {}),
         }),
         effectiveBlockEndTime:
@@ -288,9 +292,8 @@ const runWorker = async (
   };
 };
 
-// About 925 KB of retained validation trace per transaction: a hundred of them
-// overflow one V1 frame.
-const DEEP_LEDGER_TRANSFER: BlockShape = { witnessValueBytes: 8_000 };
+// About 900 KB of DA weight per transaction (see SYNTHETIC_TX_DA_BYTES).
+const DEEP_LEDGER_TRANSFER: BlockShape = { descriptorBytes: 896_000 };
 
 describe("commit worker DA frame step-down", () => {
   it("rebuilds an overflowing block once from a fresh fork and hands on the smaller one", async () => {

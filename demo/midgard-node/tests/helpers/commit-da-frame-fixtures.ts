@@ -50,16 +50,22 @@ export const CANONICAL_TX = Buffer.from(
   "hex",
 );
 
-// Shapes measured on the lc1 devnet: a one-transaction block retained 112
-// validation-trace witnesses totalling 169,337 bytes, and the base ledger held
-// 9 UTxOs in 1,333 tuple bytes (a mean entry of 148 bytes).
-export const LC1_WITNESSES_PER_TX = 112;
-export const LC1_WITNESS_VALUE_BYTES = 1_470;
+// The base ledger measured on the lc1 devnet held 9 UTxOs in 1,333 tuple bytes
+// (a mean entry of 148 bytes).
 export const LC1_BASE_LEDGER: UtxoPayloadSizeAggregate = {
   entryCount: 9,
   encodedTupleBytes: 1_333,
 };
 export const LC1_MEAN_ENTRY_BYTES = 148;
+
+// The value bytes of a placeholder validation descriptor.
+export const PLACEHOLDER_DESCRIPTOR_BYTES = 146;
+
+// A synthetic per-transaction DA weight. The sizing reads each descriptor's
+// value length, so an inflated descriptor value stands in for content the
+// planner's per-transaction estimate does not see (program material, a deep
+// ledger). At this weight a handful of transactions overflow one V1 frame.
+export const SYNTHETIC_TX_DA_BYTES = 164_640;
 
 // Every limit the commit program passes, at its configured default.
 export const PROGRAM_LIMITS = (
@@ -106,31 +112,18 @@ export const mkCandidate = (seed: number): EntryWithTimeStamp => ({
   [TxColumns.TIMESTAMPTZ]: new Date(1_780_000_000_000 + seed),
 });
 
-/**
- * One transaction's retained validation trace. Strings are immutable, so every
- * witness shares one value string and a large block costs little memory.
- */
+/** One transaction's validation descriptor, `descriptorBytes` long. */
 export const traceFor = (
   seed: number,
-  witnessCount: number,
-  witnessValue: string,
-): RetainedValidationTraceMember => {
-  const key = seed.toString(16).padStart(80, "0");
-  return {
+  descriptorBytes: number,
+): RetainedValidationTraceMember =>
+  ({
     eventKey: {
       L2TransactionEventKey: { tx_id: seed.toString(16).padStart(64, "0") },
     },
-    keyCbor: Buffer.from(key, "hex"),
-    valueCbor: Buffer.alloc(220, 7),
-    witnesses: Array.from(
-      { length: witnessCount },
-      (_, index): SDK.DaPayloadEntry => [
-        `${key}${index.toString(16).padStart(8, "0")}`,
-        witnessValue,
-      ],
-    ),
-  } as unknown as RetainedValidationTraceMember;
-};
+    keyCbor: Buffer.from(seed.toString(16).padStart(80, "0"), "hex"),
+    valueCbor: Buffer.alloc(descriptorBytes, 7),
+  }) as unknown as RetainedValidationTraceMember;
 
 /** A transition-trace member of `valueBytes`, standing in for event content. */
 export const eventContentOf = (
@@ -156,8 +149,8 @@ export const eventContentOf = (
 
 export type BlockShape = {
   readonly base?: UtxoPayloadSizeAggregate;
-  readonly witnessCount?: number;
-  readonly witnessValueBytes?: number;
+  /** Each transaction's descriptor value bytes (see SYNTHETIC_TX_DA_BYTES). */
+  readonly descriptorBytes?: number;
   readonly eventBytes?: number;
   /** Base entries the block's withdrawals remove from the ledger it carries. */
   readonly withdrawnEntryCount?: number;
@@ -165,19 +158,17 @@ export type BlockShape = {
 
 /**
  * The DA content of the block the node builds from `txs`: each transfer spends
- * one entry and creates two, and every transaction retains a validation trace.
+ * one entry and creates two, and every transaction carries a descriptor.
  */
 export const blockContentFor = (
   txs: readonly EntryWithTimeStamp[],
   {
     base = LC1_BASE_LEDGER,
-    witnessCount = LC1_WITNESSES_PER_TX,
-    witnessValueBytes = LC1_WITNESS_VALUE_BYTES,
+    descriptorBytes = PLACEHOLDER_DESCRIPTOR_BYTES,
     eventBytes = 0,
     withdrawnEntryCount = 0,
   }: BlockShape = {},
 ) => {
-  const witnessValue = "ab".repeat(witnessValueBytes);
   const before = eventBytes > 0 || withdrawnEntryCount > 0 ? 1 : 0;
   const normal = txs.map((tx, index): RetainedTransitionTraceMember => {
     const value: SDK.TransitionStep = {
@@ -241,8 +232,7 @@ export const blockContentFor = (
     validationTraceMembers: txs.map((tx) =>
       traceFor(
         Number.parseInt(tx[TxColumns.TX_ID].toString("hex"), 16),
-        witnessCount,
-        witnessValue,
+        descriptorBytes,
       ),
     ),
   } as const;

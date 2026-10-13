@@ -1,6 +1,5 @@
 import { dirname } from "node:path";
 
-import { Store, Trie } from "@aiken-lang/merkle-patricia-forestry";
 import {
   isMidgardConsensusProfile,
   MIDGARD_CONSENSUS_PROFILE,
@@ -11,8 +10,6 @@ import {
   type LocalScriptEvaluation,
   type PhaseAValidatedTx,
   runPhaseAValidation,
-  type ValidationMachineLedgerEntry,
-  type ValidationMachineLedgerMutationStep,
 } from "@al-ft/midgard-validation";
 import { Effect, Fiber, Metric } from "effect";
 import * as FS from "fs";
@@ -49,8 +46,6 @@ import {
 import { settleCommitStageRejections } from "./commit-rejection.persist-commit-stage-rejected-transactions.js";
 import { MpfError } from "./errors.js";
 import {
-  acceptedTransactionLedgerWitnesses,
-  applyValidationLedgerMutations,
   type ClassifiedForcedTransaction,
   classifyForcedTransactions,
   programMaterialSidecarForEnvelopes,
@@ -115,7 +110,7 @@ import {
   type UtxoPayloadEntry,
 } from "./types.js";
 import {
-  buildDeterministicValidationTraceMembers,
+  buildPlaceholderValidationTraceMembers,
   type RetainedValidationTraceMember,
   validateValidationTraceEventKeySet,
   type ValidationTraceBuildResult,
@@ -514,14 +509,6 @@ export const processMpfs = (
       ),
     );
     const proofNormalLedgerOpsByTxId = new Map<string, readonly MpfBatchOp[]>();
-    const proofNormalLedgerWitnessesByTxId = new Map<
-      string,
-      readonly ValidationMachineLedgerEntry[]
-    >();
-    const proofNormalLedgerMutationsByTxId = new Map<
-      string,
-      readonly ValidationMachineLedgerMutationStep[]
-    >();
     const proofScriptEvaluationsByTxId = new Map<
       string,
       LocalScriptEvaluation[]
@@ -745,31 +732,6 @@ export const processMpfs = (
           decoded,
         ]),
       );
-      const proofNormalReplayState = new Map(
-        [...proofPreState.entries()].map(([outRef, output]) => [
-          outRef,
-          Buffer.from(output),
-        ]),
-      );
-      const proofNormalMutationTrie = yield* Effect.tryPromise({
-        try: () =>
-          Trie.fromList(
-            [...proofNormalReplayState.entries()].map(([key, value]) =>
-              ledgerOutputToInsertBatchOp({
-                outRef: Buffer.from(key, "hex"),
-                outputCbor: value,
-              }),
-            ),
-            new Store(undefined),
-          ),
-        catch: (cause) =>
-          new DatabaseError({
-            table: MempoolDB.tableName,
-            message:
-              "Failed to construct the normal-transaction validation mutation trie",
-            cause,
-          }),
-      });
       processedMempoolTxs.length = 0;
       mempoolTxHashes.length = 0;
       transactionOps.length = 0;
@@ -804,43 +766,8 @@ export const processMpfs = (
           ),
         ];
         proofNormalLedgerOpsByTxId.set(txIdHex, ledgerOps);
-        proofNormalLedgerWitnessesByTxId.set(
-          txIdHex,
-          yield* acceptedTransactionLedgerWitnesses(
-            proofNormalReplayState,
-            { table: MempoolDB.tableName, txIdHex },
-            [
-              ...accepted.graph.spentOutRefHexes,
-              ...accepted.graph.referenceOutRefHexes,
-            ],
-          ),
-        );
-        proofNormalLedgerMutationsByTxId.set(
-          txIdHex,
-          yield* Effect.tryPromise({
-            try: () =>
-              applyValidationLedgerMutations(
-                proofNormalMutationTrie,
-                ledgerOps,
-              ),
-            catch: (cause) =>
-              new DatabaseError({
-                table: MempoolDB.tableName,
-                message:
-                  "Failed to derive normal-transaction ledger mutation roots",
-                cause,
-              }),
-          }),
-        );
-        for (const outRef of accepted.graph.spentOutRefHexes) {
-          proofNormalReplayState.delete(outRef);
-        }
         for (const produced of accepted.graph.produced) {
           rawInsertedLedgerOutputsByOutRef.set(
-            produced[Ledger.Columns.OUTREF].toString("hex"),
-            Buffer.from(produced[Ledger.Columns.OUTPUT]),
-          );
-          proofNormalReplayState.set(
             produced[Ledger.Columns.OUTREF].toString("hex"),
             Buffer.from(produced[Ledger.Columns.OUTPUT]),
           );
@@ -1168,10 +1095,9 @@ export const processMpfs = (
             validationTraceCount: 0,
           };
         }
-        const validation = config!.forcedValidation!;
         const validationTraceBuilder =
           config.validationTraceBuilder ??
-          buildDeterministicValidationTraceMembers;
+          buildPlaceholderValidationTraceMembers;
         const traceByEventKey = new Map<
           string,
           RetainedTransitionTraceMember
@@ -1205,15 +1131,12 @@ export const processMpfs = (
           (entry) =>
             Effect.gen(function* () {
               const eventKey = yield* forcedTransactionTraceEventKey(entry);
-              const keyCbor = yield* eventKeyCbor(eventKey);
-              const trace = traceByEventKey.get(keyCbor.toString("hex"));
               const classified = forcedByOrderId.get(
                 entry[ForcedTransactionsDB.Columns.TX_ORDER_ID].toString("hex"),
               );
               const canonicalTransactionCbor =
                 entry[ForcedTransactionsDB.Columns.NATIVE_TX_CBOR];
               if (
-                trace === undefined ||
                 classified === undefined ||
                 canonicalTransactionCbor == null
               ) {
@@ -1230,100 +1153,28 @@ export const processMpfs = (
               }
               return {
                 eventKey,
-                transactionId: Buffer.from(
-                  entry[ForcedTransactionsDB.Columns.TX_ID],
-                ),
                 canonicalTransactionCbor: Buffer.from(canonicalTransactionCbor),
-                programMaterialSidecarCbor: Buffer.from(
-                  classified.programMaterialSidecarCbor,
-                ),
                 sourceKind: "forced" as const,
-                priorUtxosRoot: trace.value.pre_utxos_root,
-                postUtxosRoot: trace.value.post_utxos_root,
-                ledgerOps: classified.ledgerOps,
-                ledgerWitnessEntries: classified.ledgerWitnessEntries,
-                ledgerMutationSteps: classified.ledgerMutationSteps,
                 verdict:
                   classified.rejectionCode === null
                     ? ("accepted" as const)
                     : ("rejected" as const),
                 rejectionCode: classified.rejectionCode,
-                scriptEvaluations: classified.scriptEvaluations,
               };
             }),
         );
-        const normalValidationInputs = yield* Effect.forEach(
-          processedMempoolTxs,
-          (entry) =>
-            Effect.gen(function* () {
-              const eventKey = l2TransactionTraceEventKey(
-                entry[Tx.Columns.TX_ID],
-              );
-              const keyCbor = yield* eventKeyCbor(eventKey);
-              const trace = traceByEventKey.get(keyCbor.toString("hex"));
-              const ledgerOps = proofNormalLedgerOpsByTxId.get(
-                entry[Tx.Columns.TX_ID].toString("hex"),
-              );
-              const ledgerWitnessEntries = proofNormalLedgerWitnessesByTxId.get(
-                entry[Tx.Columns.TX_ID].toString("hex"),
-              );
-              const ledgerMutationSteps = proofNormalLedgerMutationsByTxId.get(
-                entry[Tx.Columns.TX_ID].toString("hex"),
-              );
-              const programMaterialSidecarCbor =
-                proofNormalProgramMaterialByTxId.get(
-                  entry[Tx.Columns.TX_ID].toString("hex"),
-                );
-              if (
-                trace === undefined ||
-                ledgerOps === undefined ||
-                ledgerWitnessEntries === undefined ||
-                ledgerMutationSteps === undefined ||
-                programMaterialSidecarCbor === undefined
-              ) {
-                return yield* Effect.fail(
-                  new DatabaseError({
-                    table: MempoolDB.tableName,
-                    message:
-                      "V1 normal transaction is missing validation-trace source material",
-                    cause: `tx_id=${entry[Tx.Columns.TX_ID].toString("hex")}`,
-                  }),
-                );
-              }
-              return {
-                eventKey,
-                transactionId: Buffer.from(entry[Tx.Columns.TX_ID]),
-                canonicalTransactionCbor: Buffer.from(entry[Tx.Columns.TX]),
-                programMaterialSidecarCbor: Buffer.from(
-                  programMaterialSidecarCbor,
-                ),
-                sourceKind: "normal" as const,
-                priorUtxosRoot: trace.value.pre_utxos_root,
-                postUtxosRoot: trace.value.post_utxos_root,
-                ledgerOps,
-                ledgerWitnessEntries,
-                ledgerMutationSteps,
-                scriptEvaluations:
-                  proofScriptEvaluationsByTxId.get(
-                    entry[Tx.Columns.TX_ID].toString("hex"),
-                  ) ?? [],
-                verdict: "accepted" as const,
-                rejectionCode: null,
-              };
-            }),
-        );
+        const normalValidationInputs = processedMempoolTxs.map((entry) => ({
+          eventKey: l2TransactionTraceEventKey(entry[Tx.Columns.TX_ID]),
+          canonicalTransactionCbor: Buffer.from(entry[Tx.Columns.TX]),
+          sourceKind: "normal" as const,
+          verdict: "accepted" as const,
+          rejectionCode: null,
+        }));
         const validationInputs = [
           ...forcedValidationInputs,
           ...normalValidationInputs,
         ];
         const validationTraceMembers = yield* validationTraceBuilder({
-          consensusProfile,
-          blockEndTime: effectiveEndTime!,
-          expectedNetworkId: validation.expectedNetworkId,
-          minFeeA: validation.minFeeA,
-          minFeeB: validation.minFeeB,
-          blockSlot: validation.slotForUnixTime(effectiveEndTime!.getTime()),
-          l1SlotConfig: validation.l1SlotConfig,
           transactions: validationInputs,
         });
         yield* validateValidationTraceEventKeySet({

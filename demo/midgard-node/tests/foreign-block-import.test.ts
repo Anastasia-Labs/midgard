@@ -80,10 +80,7 @@ describe("complete foreign block import", () => {
           ...first.block_body.validation_traces,
           ...body.validation_traces,
         ],
-        validation_trace_witnesses: [
-          ...first.block_body.validation_trace_witnesses,
-          ...body.validation_trace_witnesses,
-        ],
+        validation_trace_witnesses: [],
       },
     });
     const result = await verdict(merged);

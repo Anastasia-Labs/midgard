@@ -22,10 +22,10 @@ import {
 
 describe("commit planner DA frame budget", () => {
   it.each(MODES)(
-    "selects only what the pre-submit check admits, identically on consecutive ticks (%s)",
+    "fits a full mempool of plain transfers in one frame, identically on consecutive ticks (%s)",
     async (mode) => {
-      // A full mempool of plain transfers: 400 lc1-shaped blocks' worth of
-      // DA content is more than one V1 frame holds.
+      // A plain transfer carries its two copies, its ledger growth and a
+      // placeholder descriptor: a few hundred transfers are far from a frame.
       const candidates = Array.from({ length: 400 }, (_, index) =>
         mkCandidate(index + 1),
       );
@@ -55,12 +55,11 @@ describe("commit planner DA frame budget", () => {
       const [tick] = ticks;
       expect(tick).toMatchObject({
         refusal: undefined,
-        stopReason: "da_payload_budget",
+        selected: candidates.length,
+        stopReason: "mempool_exhausted",
       });
-      expect(tick?.selected).toBeGreaterThan(0);
-      expect(tick?.selected).toBeLessThan(candidates.length);
       expect(tick?.innerBytes).toBeLessThanOrEqual(
-        maxDaPayloadInnerBytes(mode),
+        maxDaPayloadInnerBytes(mode) / 100,
       );
     },
   );

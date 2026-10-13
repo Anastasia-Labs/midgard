@@ -1,10 +1,29 @@
+import {
+  encodeMidgardCekProgramMaterialDaValue,
+  encodeMidgardCekProgramMaterialSidecar,
+} from "@al-ft/midgard-core/cek-proof";
 import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
 import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
-  replayValidationMachineEvent,
+  buildMidgardCanonicalCekProgram,
+  MidgardRedeemerTag,
+  placeholderValidationTraceDescriptorV1,
+  replayValidationVerdictEvent,
   validationMachineLedgerRoot,
+  validationTransactionCommitmentV1,
 } from "@al-ft/midgard-validation";
+import {
+  FUNDED_OUTPUT_LOVELACE,
+  hashScriptWitness,
+  makeNativeTx,
+  makeOutput,
+  makeProtectedScriptOutput,
+  makeRedeemersCbor,
+  outRefFromByte,
+  plutusV3ScriptWitness,
+} from "@al-ft/midgard-validation/tests/validation-fixtures";
+import { Lambda, UPLCEncoder, UPLCProgram, UPLCVar } from "@harmoniclabs/uplc";
 import { CML, Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
@@ -22,9 +41,8 @@ import {
 } from "./midgard-output-helpers.js";
 import { buildNativeTx } from "./native-transaction-integration.build-native-tx.js";
 
-/** Real signed native transfer on a fabricated funded prior ledger. The alias
- * control regenerates every semantic commitment using the wrong event identity. */
-export const normalFixture = async (alias = false) => {
+/** A signed native transfer spending a key-locked output. */
+const signedTransfer = () => {
   const signer = CML.PrivateKey.from_normal_bytes(Buffer.alloc(32, 0x17));
   const address = CML.EnterpriseAddress.new(
     0,
@@ -42,6 +60,56 @@ export const normalFixture = async (alias = false) => {
     witnessMode: "valid",
     witnessSignerPrivateKey: signer,
   });
+  return { spent, output, tx, material: [] };
+};
+
+/** A PlutusV3 spend of a script-locked output under an accepting program. */
+const plutusSpend = () => {
+  const program = buildMidgardCanonicalCekProgram(
+    Buffer.from(
+      UPLCEncoder.compile(
+        new UPLCProgram([1, 1, 0], new Lambda(new UPLCVar(0))),
+      ),
+    ),
+  );
+  const script = plutusV3ScriptWitness(program.envelopeCbor);
+  const spent = outRefFromByte(0x1d);
+  const output = makeProtectedScriptOutput(
+    hashScriptWitness(script),
+    FUNDED_OUTPUT_LOVELACE,
+  );
+  const tx = makeNativeTx({
+    spendInputs: [spent],
+    outputs: [
+      makeOutput(
+        FUNDED_OUTPUT_LOVELACE,
+        Buffer.concat([Buffer.from([0x60]), Buffer.alloc(28, 0x4d)]),
+      ),
+    ],
+    omitVkeyWitness: true,
+    scriptWitnesses: [script],
+    scriptLanguages: ["PlutusV3"],
+    redeemerTxWitsPreimageCbor: makeRedeemersCbor([
+      {
+        tag: MidgardRedeemerTag.Spend,
+        index: 0n,
+        exUnits: [1_000_000_000n, 1_000_000_000n],
+      },
+    ]),
+  });
+  return { spent, output, tx, material: [...program.material.values()] };
+};
+
+/** Real normal transaction on a fabricated funded prior ledger: a signed
+ * native transfer, or a PlutusV3 spend whose CEK material rides the block. The
+ * alias control regenerates every semantic commitment using the wrong event
+ * identity. */
+export const normalFixture = async (
+  alias = false,
+  kind: "native" | "plutus" = "native",
+) => {
+  const { spent, output, tx, material } =
+    kind === "plutus" ? plutusSpend() : signedTransfer();
   const sourceKey = alias ? "a7".repeat(32) : tx.txId.toString("hex");
   const event: SDK.EventKey = { L2TransactionEventKey: { tx_id: sourceKey } };
   const eventCbor = Data.to(event, SDK.EventKey);
@@ -49,13 +117,13 @@ export const normalFixture = async (alias = false) => {
     await validationMachineLedgerRoot([{ outRef: spent, output }])
   ).toString("hex");
   const replay = await Effect.runPromise(
-    replayValidationMachineEvent({
+    replayValidationVerdictEvent({
       l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
       consensusProfile: MIDGARD_CONSENSUS_PROFILE,
-      eventKeyCbor: Buffer.from(eventCbor, "hex"),
       canonicalTransactionCbor: tx.txCbor,
+      programMaterialSidecarCbor:
+        encodeMidgardCekProgramMaterialSidecar(material),
       ledgerWitnessEntries: [{ outRef: spent, output }],
-      priorUtxosRoot: prior,
       blockEndTimeMs: 2,
       expectedNetworkId: 0n,
       minFeeA: 0n,
@@ -64,9 +132,29 @@ export const normalFixture = async (alias = false) => {
       sourceKind: "normal",
     }),
   );
-  if (replay.replayInput.expectedVerdict !== "accepted")
+  if (replay.verdict !== "accepted")
     throw new Error(`normal fixture was rejected: ${replay.rejection?.code}`);
-  const d = replay.trace.tree.descriptor;
+  const post = (
+    await validationMachineLedgerRoot(
+      replay.statePatch.upsertedOutRefs.map(([key, value]) => ({
+        outRef: Buffer.from(key, "hex"),
+        output: value,
+      })),
+    )
+  ).toString("hex");
+  const descriptor = SDK.validationTraceDescriptorDataFromCore(
+    placeholderValidationTraceDescriptorV1(
+      {
+        eventKeyCbor: Buffer.from(eventCbor, "hex"),
+        transactionCommitment: validationTransactionCommitmentV1({
+          canonicalTransactionCbor: tx.txCbor,
+          sourceKind: "normal",
+        }),
+      },
+      "accepted",
+      null,
+    ),
+  );
   const counts = {
     ...countsFromLengths({ transactions: 1 }),
     validationTraceCount: 1n,
@@ -101,7 +189,10 @@ export const normalFixture = async (alias = false) => {
       forced_transactions: [],
       forced_transaction_preimages: [],
       deposits: [],
-      cek_program_material: [],
+      cek_program_material: material.map((entry) => [
+        Buffer.from(entry.root).toString("hex"),
+        encodeMidgardCekProgramMaterialDaValue(entry).toString("hex"),
+      ]),
       transition_trace: [
         [
           encodeTransitionIntegerCbor(0n).toString("hex"),
@@ -111,7 +202,7 @@ export const normalFixture = async (alias = false) => {
             event_key: event,
             phase: "L2Transaction",
             pre_utxos_root: prior,
-            post_utxos_root: replay.replayInput.postUtxosRoot,
+            post_utxos_root: post,
           }).toString("hex"),
         ],
       ],
@@ -125,22 +216,7 @@ export const normalFixture = async (alias = false) => {
         ],
       ],
       validation_traces: [
-        [
-          eventCbor,
-          Data.to(
-            {
-              schema_version: BigInt(d.schemaVersion),
-              machine_version: BigInt(d.machineVersion),
-              trace_root: d.traceRoot.toString("hex"),
-              step_count: BigInt(d.stepCount),
-              initial_state_hash: d.initialStateHash.toString("hex"),
-              terminal_state_hash: d.terminalStateHash.toString("hex"),
-              verdict: "Accepted",
-              rejection_code_hash: d.rejectionCodeHash.toString("hex"),
-            },
-            SDK.ValidationTraceDescriptor,
-          ),
-        ],
+        [eventCbor, Data.to(descriptor, SDK.ValidationTraceDescriptor)],
       ],
       validation_trace_witnesses: [],
       counts,
