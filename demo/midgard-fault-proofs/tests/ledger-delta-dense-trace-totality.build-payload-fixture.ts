@@ -1,8 +1,3 @@
-import {
-  encodeCborArrayRaw,
-  encodeCborBytes,
-  encodeCborUnsigned,
-} from "@al-ft/midgard-core/codec/cbor";
 import { computeMidgardForcedTxProofCommitment } from "@al-ft/midgard-core/codec/forced";
 import { wrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
 import * as SDK from "@al-ft/midgard-sdk";
@@ -233,51 +228,4 @@ export const depositEventKey = (id: SDK.OutputReference): SDK.EventKey => ({
 
 export const withdrawalEventKey = (id: SDK.OutputReference): SDK.EventKey => ({
   WithdrawalEventKey: { withdrawal_id: id },
-});
-
-// ---------------------------------------------------------------------------
-// acceptedTransactionTransitionMismatch fixture. This is the one fault kind
-// the 39-test challenger suite never exercises. `detectAcceptedTransaction-
-// TransitionMismatches` in src/transition-trace/detect.ts only reads
-// `claim.descriptor_membership.value.verdict` and
-// `claim.transition_step_membership.value.post_utxos_root`, plus decodes
-// `terminalAcceptanceWitnessCbor` itself — it never verifies any of the
-// membership proofs — so the proof/root/count fields below only need to
-// satisfy the schema shape, not open a real PHAS tree.
-// ---------------------------------------------------------------------------
-
-export const terminalAcceptanceWitnessCbor = (
-  validatedPostRootHex: string,
-): string =>
-  encodeCborArrayRaw([
-    encodeCborUnsigned(1n),
-    encodeCborBytes(Buffer.alloc(0)),
-    encodeCborBytes(Buffer.from(validatedPostRootHex, "hex")),
-    encodeCborBytes(Buffer.alloc(0)),
-  ]).toString("hex");
-
-export const dummyMembershipFields = (domain: SDK.RootDomain) => ({
-  domain,
-  root: h32(996),
-  phas_root: h32(997),
-  count: 1n,
-  proof: [] as SDK.Proof,
-});
-
-export const dummyValidationMachineState = (): SDK.ValidationMachineState => ({
-  machine_version: 1n,
-  event_key_hash: h32(980),
-  transaction_id: h32(981),
-  transaction_commitment: h32(982),
-  validation_context_hash: h32(983),
-  source_kind: "Forced",
-  prior_ledger_root: h32(984),
-  phase: "Terminal",
-  program_counter: 0n,
-  work_root: h32(985),
-  execution_cpu: 0n,
-  execution_memory: 0n,
-  verdict: "Accepted",
-  rejection_code_hash: "00".repeat(32),
-  ledger_delta_root: h32(987),
 });

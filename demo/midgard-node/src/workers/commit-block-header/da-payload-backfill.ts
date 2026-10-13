@@ -149,7 +149,6 @@ const journalHasIncompletePayloads = (
     record.transitionTraceMembers,
     record.eventToStepMembers,
     record.validationTraceMembers,
-    record.validationTraceWitnessMembers,
   ].some(hasIncompletePayload) ||
   BigInt(record.withdrawalMembers.length) !==
     record[PendingBlockFinalizationsDB.Columns.EXPECTED_WITHDRAWAL_COUNT] ||

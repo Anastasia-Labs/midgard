@@ -256,7 +256,6 @@ const preparePendingBlock = async (
         transitionTraceMembers: [],
         eventToStepMembers: [],
         validationTraceMembers: [],
-        validationTraceWitnessMembers: [],
         ledgerDelta: { spent: [], produced: [] },
       },
       { beforeJournalInsert: Effect.orDie(simCommitAnchor) },

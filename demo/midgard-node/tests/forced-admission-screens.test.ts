@@ -16,14 +16,11 @@ import {
   validateMidgardConsensusTxCbor,
 } from "@al-ft/midgard-core/consensus-validation";
 import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
-import {
-  hashMidgardValidationRejectionCode,
-  MidgardValidationPhase,
-} from "@al-ft/midgard-core/validation-trace";
+import { hashMidgardValidationRejectionCode } from "@al-ft/midgard-core/validation-trace";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
-  buildDeterministicValidationMachineTrace,
   RejectCodes,
+  replayValidationVerdictEvent,
 } from "@al-ft/midgard-validation";
 import { Data } from "@lucid-evolution/lucid";
 import {
@@ -36,7 +33,7 @@ import { describe, expect, it } from "vitest";
 
 import { ForcedTransactionsDB } from "../src/database/index.js";
 import {
-  buildDeterministicValidationTraceMembers,
+  buildPlaceholderValidationTraceMembers,
   classifyForcedTransactions,
 } from "../src/mpf/index.js";
 import {
@@ -69,11 +66,10 @@ const input = outputReferenceFromHash(Buffer.alloc(32, 0x31));
 const legalLargeOutput = makeInlineDatumOutput(50_000_000n, "ab".repeat(8_500));
 const fundedInputOutput = makeOutput(100_000_000n);
 
-/** This composition test needs the ingest encoder, node classification, real
- * trace builder and committee decoder. Codec unit tests cannot catch a consumer
- * retaining the removed forced screen or fabricating a different terminal.
- * Full node retention above the Inline tier is a separately recorded transport
- * gap: this test retains the machine's genuine endpoints, never fake carriage. */
+/** This composition test needs the ingest encoder, node classification, the
+ * shared verdict replay and committee decoder. Codec unit tests cannot catch a
+ * consumer retaining the removed forced screen or committing a different
+ * verdict. */
 describe("forced admission screens", () => {
   it.each([
     ["large", true],
@@ -214,23 +210,15 @@ describe("forced admission screens", () => {
       const postRoot =
         result.ledgerMutationSteps.at(-1)?.postRoot.toString("hex") ??
         priorRoot;
-      const trace = await Effect.runPromise(
-        buildDeterministicValidationMachineTrace({
+      // The shared Phase A/B verdict replay agrees with the classification.
+      const replay = await Effect.runPromise(
+        replayValidationVerdictEvent({
           l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
           consensusProfile: MIDGARD_CONSENSUS_PROFILE,
-          eventKeyCbor: Buffer.from(Data.to(eventKey, SDK.EventKey), "hex"),
-          transactionId: transaction.transactionId,
           canonicalTransactionCbor: transaction.canonicalCbor,
           programMaterialSidecarCbor: sidecar,
           sourceKind: "forced",
-          priorUtxosRoot: priorRoot,
-          postUtxosRoot: postRoot,
           ledgerWitnessEntries: result.ledgerWitnessEntries,
-          ledgerMutationSteps: result.ledgerMutationSteps,
-          expectedLedgerOps: result.ledgerOps,
-          expectedVerdict: accepts ? "accepted" : "rejected",
-          expectedRejectionCode: result.rejectionCode,
-          scriptEvaluations: result.scriptEvaluations,
           blockEndTimeMs: time.getTime(),
           expectedNetworkId: 0n,
           minFeeA: 0n,
@@ -238,136 +226,26 @@ describe("forced admission screens", () => {
           blockSlot: 100n,
         }),
       );
-      const descriptor = SDK.validationTraceDescriptorDataFromCore(
-        trace.tree.descriptor,
+      expect(replay.verdict).toBe(accepts ? "accepted" : "rejected");
+      expect(replay.rejection?.code ?? null).toBe(expectedCode);
+      const [member] = await Effect.runPromise(
+        buildPlaceholderValidationTraceMembers({
+          transactions: [
+            {
+              eventKey,
+              canonicalTransactionCbor: transaction.canonicalCbor,
+              sourceKind: "forced",
+              verdict: accepts ? "accepted" : "rejected",
+              rejectionCode: expectedCode,
+            },
+          ],
+        }),
       );
-      if (shape === "malformed native") {
-        expect(
-          trace.witnesses.some(({ phase }) => phase === "phaseANativeScripts"),
-        ).toBe(true);
-        expect(
-          trace.witnesses.some(
-            ({ auxiliary }) => auxiliary?.kind === "nativeExecutionDescriptor",
-          ),
-        ).toBe(false);
-      }
-      const witnesses = (["initial", "terminal"] as const).map((endpoint) => {
-        const stateIndex = endpoint === "initial" ? 0 : trace.states.length - 1;
-        const source = trace.witnesses[stateIndex]!;
-        return [
-          SDK.encodeRetainedValidationWitnessKey({
-            event_key: eventKey,
-            execution_index: SDK.retainedValidationEndpointCoordinate(
-              descriptor.step_count,
-              endpoint,
-            ),
-          }).toString("hex"),
-          SDK.encodeRetainedValidationWitness({
-            machine_state: SDK.validationMachineStateDataFromCore(
-              trace.states[stateIndex]!,
-            ),
-            trace_proof: SDK.validationTraceProofDataFromCore(
-              trace.tree.proofs[stateIndex]!,
-            ),
-            phase:
-              endpoint === "initial"
-                ? -1n
-                : BigInt(MidgardValidationPhase[source.phase]),
-            program_counter: BigInt(source.programCounter),
-            witness_cbor: (endpoint === "initial"
-              ? trace.validationContextCbor
-              : source.cbor
-            ).toString("hex"),
-            auxiliary: "NoAuxiliaryWitness",
-          }).toString("hex"),
-        ] satisfies SDK.DaPayloadEntry;
-      });
-      let member = {
-        eventKey,
-        value: descriptor,
-        keyCbor: Buffer.from(Data.to(eventKey, SDK.EventKey), "hex"),
-        valueCbor: Buffer.from(
-          Data.to(descriptor, SDK.ValidationTraceDescriptor),
-          "hex",
-        ),
-        witnesses,
-      };
-      if (shape === "malformed native") {
-        const [retained] = await Effect.runPromise(
-          buildDeterministicValidationTraceMembers({
-            l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
-            consensusProfile: MIDGARD_CONSENSUS_PROFILE,
-            blockEndTime: time,
-            expectedNetworkId: 0n,
-            minFeeA: 0n,
-            minFeeB: 0n,
-            blockSlot: 100n,
-            transactions: [
-              {
-                eventKey,
-                transactionId: transaction.transactionId,
-                canonicalTransactionCbor: transaction.canonicalCbor,
-                programMaterialSidecarCbor: sidecar,
-                sourceKind: "forced",
-                priorUtxosRoot: priorRoot,
-                postUtxosRoot: postRoot,
-                ledgerOps: result.ledgerOps,
-                ledgerWitnessEntries: result.ledgerWitnessEntries,
-                ledgerMutationSteps: result.ledgerMutationSteps,
-                verdict: "rejected",
-                rejectionCode: expectedCode,
-                scriptEvaluations: result.scriptEvaluations,
-              },
-            ],
-          }),
-        );
-        member = {
-          ...retained!,
-          eventKey,
-          witnesses: [...retained!.witnesses],
-        };
-      }
-      const mismatched = await Effect.runPromise(
-        Effect.either(
-          buildDeterministicValidationMachineTrace({
-            l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
-            consensusProfile: MIDGARD_CONSENSUS_PROFILE,
-            eventKeyCbor: Buffer.from(Data.to(eventKey, SDK.EventKey), "hex"),
-            transactionId: transaction.transactionId,
-            canonicalTransactionCbor: transaction.canonicalCbor,
-            programMaterialSidecarCbor: sidecar,
-            sourceKind: "forced",
-            priorUtxosRoot: priorRoot,
-            postUtxosRoot: postRoot,
-            ledgerWitnessEntries: result.ledgerWitnessEntries,
-            ledgerMutationSteps: result.ledgerMutationSteps,
-            expectedLedgerOps: result.ledgerOps,
-            expectedVerdict: accepts ? "rejected" : "accepted",
-            expectedRejectionCode: accepts ? RejectCodes.InputNotFound : null,
-            scriptEvaluations: result.scriptEvaluations,
-            blockEndTimeMs: time.getTime(),
-            expectedNetworkId: 0n,
-            minFeeA: 0n,
-            minFeeB: 0n,
-            blockSlot: 100n,
-          }),
-        ),
-      );
-      expect(mismatched._tag).toBe("Left");
       expect(member!.value.verdict).toBe(accepts ? "Accepted" : "Rejected");
       expect(member!.value.rejection_code_hash).toBe(
         accepts
           ? "00".repeat(32)
           : hashMidgardValidationRejectionCode(expectedCode!).toString("hex"),
-      );
-      const endpoints = SDK.readRetainedValidationEndpoints({
-        entries: member!.witnesses,
-        eventKey,
-        descriptor: member!.value,
-      });
-      expect(endpoints.initial.trace_proof.state_index).toBe(0n);
-      expect(endpoints.terminal.trace_proof.state_index).toBe(
-        member!.value.step_count,
       );
       const eventCbor = Data.to(eventKey, SDK.EventKey);
       const counts = {
@@ -453,9 +331,7 @@ describe("forced admission screens", () => {
               member!.valueCbor.toString("hex"),
             ],
           ],
-          validation_trace_witnesses: [...member!.witnesses].sort(([a], [b]) =>
-            a < b ? -1 : a > b ? 1 : 0,
-          ),
+          validation_trace_witnesses: [],
           cek_program_material: [],
         },
       };

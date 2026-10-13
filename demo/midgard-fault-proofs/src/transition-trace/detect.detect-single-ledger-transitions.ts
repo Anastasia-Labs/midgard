@@ -17,7 +17,6 @@ import {
   detectTraceLinkFaults,
 } from "./detect.detect-source-membership-mismatches.js";
 import {
-  detectAcceptedTransactionTransitionMismatches,
   mpfProofFromWitness,
   normalizedMpfRoot,
   requireDeletionKeepsTwoChildren,
@@ -233,10 +232,6 @@ export const detectTransitionTraceFaults = async (
     evidence.l2TransactionTransitions ?? [],
   )),
   ...(await detectSingleLedgerTransitions(reconstruction, evidence)),
-  ...detectAcceptedTransactionTransitionMismatches(
-    reconstruction,
-    evidence.acceptedTransactionTransitionMismatches ?? [],
-  ),
   ...(await detectOmittedDueL1Events(
     reconstruction,
     evidence.omittedDueL1Events ?? [],

@@ -19,7 +19,6 @@ import "./forced-transactions.make-signed-effectful-transaction.js";
 
 import { createHash } from "node:crypto";
 
-import { computeHash28, encodeMidgardNativeScript } from "@al-ft/midgard-core";
 import {
   decodeMidgardCekProgramMaterialSidecar,
   encodeMidgardCekProgramEnvelope,
@@ -30,21 +29,13 @@ import {
   hashMidgardCekTermNode,
   mergeMidgardCekProgramMaterialSidecars,
 } from "@al-ft/midgard-core/cek-proof";
-import {
-  computeMidgardNativeTxId,
-  encodeMidgardForcedTxCanonical,
-  encodeMidgardTxOutput,
-  materializeMidgardForcedTxFromCanonical,
-  materializeMidgardNativeTxFromCanonical,
-} from "@al-ft/midgard-core/codec";
+import { encodeMidgardTxOutput } from "@al-ft/midgard-core/codec";
 import { decodeSingleCbor, encodeCbor } from "@al-ft/midgard-core/codec/cbor";
 import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
 import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
   buildCanonicalMidgardLedgerEntryOutputMaterial,
-  buildValidationMachineLedgerInsertOp,
-  buildValidationMachineLedgerMutationSteps,
   RejectCodes,
 } from "@al-ft/midgard-validation";
 import { Data, type UTxO } from "@lucid-evolution/lucid";
@@ -53,27 +44,17 @@ import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
 import { makePayloadFixture } from "../../da-committee-node/tests/helpers.js";
-import { retainedEndpointsMatchDescriptor } from "../../da-committee-node/tests/helpers.validation-trace.js";
-import {
-  FUNDED_OUTPUT_LOVELACE,
-  makeMintPreimageCbor,
-  makeNativeTx,
-  makeOutput as makeValidationOutput,
-  nativeScriptWitness,
-  outRefFromByte,
-  outRefFromTxId,
-} from "../../midgard-validation/tests/validation-fixtures.js";
+import { FUNDED_OUTPUT_LOVELACE } from "../../midgard-validation/tests/validation-fixtures.js";
 import {
   ForcedTransactionsDB,
   PendingBlockFinalizationsDB,
 } from "../src/database/index.js";
 import { publishedProgramMaterialEntries } from "../src/forced-orders/index.js";
 import {
-  buildDeterministicValidationTraceMembers,
+  buildPlaceholderValidationTraceMembers,
   classifyForcedTransactions,
 } from "../src/mpf/index.js";
 import {
-  canonicalTransaction,
   encodedTransaction,
   forcedEntry,
   makeOutput,
@@ -420,283 +401,6 @@ describe("V1 forced transaction material", () => {
     }
   });
 
-  it("builds a deterministic forced rejection descriptor from the same Phase A/B replay", async () => {
-    const nativeTxCbor = encodedTransaction();
-    const txId = computeMidgardNativeTxId(
-      materializeMidgardNativeTxFromCanonical(canonicalTransaction()),
-    );
-    const eventKey: SDK.EventKey = {
-      ForcedTransactionEventKey: {
-        tx_order_id: {
-          transactionId: "44".repeat(32),
-          outputIndex: 0n,
-        },
-      },
-    };
-    const members = await Effect.runPromise(
-      buildDeterministicValidationTraceMembers({
-        l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
-        consensusProfile: MIDGARD_CONSENSUS_PROFILE,
-        blockEndTime: new Date("2026-07-23T12:00:00.000Z"),
-        expectedNetworkId: 0n,
-        minFeeA: 0n,
-        minFeeB: 0n,
-        blockSlot: 100n,
-        transactions: [
-          {
-            eventKey,
-            transactionId: txId,
-            canonicalTransactionCbor: nativeTxCbor,
-            programMaterialSidecarCbor: encodeMidgardCekProgramMaterialSidecar(
-              [],
-            ),
-            sourceKind: "forced",
-            priorUtxosRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
-            postUtxosRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
-            ledgerOps: [],
-            ledgerWitnessEntries: [],
-            ledgerMutationSteps: [],
-            verdict: "rejected",
-            rejectionCode: RejectCodes.EmptyInputs,
-          },
-        ],
-      }),
-    );
-
-    expect(members).toHaveLength(1);
-    const member = members[0]!;
-    const endpoints = SDK.readRetainedValidationEndpoints({
-      entries: member.witnesses,
-      eventKey,
-      descriptor: member.value,
-    });
-    expect(endpoints.initial.trace_proof.state_index).toBe(0n);
-    expect(endpoints.terminal.trace_proof.state_index).toBe(
-      member.value.step_count,
-    );
-    const records = member.witnesses.map(([key, value]) => ({
-      key: SDK.decodeRetainedValidationWitnessKey(Buffer.from(key, "hex")),
-      value: SDK.decodeRetainedValidationWitness(Buffer.from(value, "hex")),
-    }));
-    for (let index = 0n; index <= member.value.step_count; index += 1n) {
-      expect(
-        records.filter(
-          (entry) =>
-            entry.key.execution_index ===
-            SDK.retainedValidationStateCoordinate(
-              member.value.step_count,
-              index,
-            ),
-        ),
-      ).toHaveLength(1);
-      expect(
-        SDK.readRetainedValidationState({
-          entries: member.witnesses,
-          eventKey,
-          descriptor: member.value,
-          stateIndex: index,
-        }).trace_proof.state_index,
-      ).toBe(index);
-    }
-    expect(new Set(member.witnesses.map(([key]) => key)).size).toBe(
-      member.witnesses.length,
-    );
-    const tampered = member.witnesses.map(([key, value]) => {
-      const coordinate = SDK.decodeRetainedValidationWitnessKey(
-        Buffer.from(key, "hex"),
-      );
-      return coordinate.execution_index ===
-        SDK.retainedValidationEndpointCoordinate(
-          member.value.step_count,
-          "initial",
-        )
-        ? ([
-            key,
-            SDK.encodeRetainedValidationWitness({
-              ...SDK.decodeRetainedValidationWitness(Buffer.from(value, "hex")),
-              witness_cbor: "00",
-            }).toString("hex"),
-          ] as SDK.DaPayloadEntry)
-        : ([key, value] as SDK.DaPayloadEntry);
-    });
-    expect(() =>
-      SDK.readRetainedValidationEndpoints({
-        entries: tampered,
-        eventKey,
-        descriptor: member.value,
-      }),
-    ).toThrow(/context differs/u);
-    expect(() =>
-      SDK.readRetainedValidationEndpoints({
-        entries: member.witnesses,
-        eventKey,
-        descriptor: { ...member.value, trace_root: "ff".repeat(32) },
-      }),
-    ).toThrow(/selected operator trace/u);
-
-    expect(members[0]?.value).toMatchObject({
-      schema_version: 1n,
-      machine_version: 1n,
-      verdict: "Rejected",
-    });
-    expect(
-      Data.from(
-        members[0]!.valueCbor.toString("hex"),
-        SDK.ValidationTraceDescriptor,
-      ),
-    ).toEqual(members[0]!.value);
-  });
-
-  it("retains the complete ScriptSources frontier and canonical native execution witness", async () => {
-    const spent = outRefFromByte(0x7a);
-    const spentOutput = makeValidationOutput(FUNDED_OUTPUT_LOVELACE);
-    const nativePayload = encodeMidgardNativeScript({
-      type: "all",
-      scripts: [],
-    });
-    const policyId = computeHash28(
-      Buffer.concat([Buffer.from([0]), nativePayload]),
-    );
-    const assetName = Buffer.from("31", "hex");
-    const output = makeValidationOutput(
-      FUNDED_OUTPUT_LOVELACE,
-      undefined,
-      new Map([
-        [policyId.toString("hex"), new Map([[assetName.toString("hex"), 1n]])],
-      ]),
-    );
-    const transaction = makeNativeTx({
-      spendInputs: [spent],
-      outputs: [output],
-      scriptWitnesses: [nativeScriptWitness({ type: "all", scripts: [] })],
-      mintPreimageCbor: makeMintPreimageCbor(
-        new Map([[policyId, new Map([[assetName, 1n]])]]),
-      ),
-    });
-    const ledgerOps = [
-      { type: "delete" as const, key: spent },
-      buildValidationMachineLedgerInsertOp({
-        key: outRefFromTxId(transaction.txId),
-        outputCbor: output,
-      }),
-    ];
-    const mutations = await buildValidationMachineLedgerMutationSteps({
-      initialEntries: [{ outRef: spent, output: spentOutput }],
-      operations: ledgerOps,
-    });
-    const eventKey: SDK.EventKey = {
-      ForcedTransactionEventKey: {
-        tx_order_id: {
-          transactionId: "66".repeat(32),
-          outputIndex: 0n,
-        },
-      },
-    };
-    const [member] = await Effect.runPromise(
-      buildDeterministicValidationTraceMembers({
-        l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
-        consensusProfile: MIDGARD_CONSENSUS_PROFILE,
-        blockEndTime: new Date("2026-07-23T12:00:00.000Z"),
-        expectedNetworkId: 0n,
-        minFeeA: 0n,
-        minFeeB: 0n,
-        blockSlot: 100n,
-        transactions: [
-          {
-            eventKey,
-            transactionId: transaction.txId,
-            canonicalTransactionCbor: encodeMidgardForcedTxCanonical(
-              materializeMidgardForcedTxFromCanonical(transaction.tx),
-            ),
-            programMaterialSidecarCbor: encodeMidgardCekProgramMaterialSidecar(
-              [],
-            ),
-            sourceKind: "forced",
-            priorUtxosRoot: mutations[0]!.preRoot.toString("hex"),
-            postUtxosRoot: mutations.at(-1)!.postRoot.toString("hex"),
-            ledgerOps,
-            ledgerWitnessEntries: [{ outRef: spent, output: spentOutput }],
-            ledgerMutationSteps: mutations,
-            verdict: "accepted",
-            rejectionCode: null,
-          },
-        ],
-      }),
-    );
-    expect(member).toBeDefined();
-    expect(member!.value.verdict).toBe("Accepted");
-    expect(member!.value.rejection_code_hash).toBe("00".repeat(32));
-    const retainedEntries = member!.witnesses.map(([keyHex, valueHex]) => ({
-      key: SDK.decodeRetainedValidationWitnessKey(Buffer.from(keyHex, "hex")),
-      value: SDK.decodeRetainedValidationWitness(Buffer.from(valueHex, "hex")),
-    }));
-    const resolvedMemberships = retainedEntries.filter(
-      ({ value }) =>
-        value.phase === 7n &&
-        typeof value.auxiliary === "object" &&
-        "ScheduledLedgerMembershipWitness" in value.auxiliary,
-    );
-    expect(resolvedMemberships.length).toBeGreaterThan(0);
-    expect(
-      resolvedMemberships.every(({ key }) => key.execution_index < 0n),
-    ).toBe(true);
-    for (const { value } of resolvedMemberships) {
-      if (
-        typeof value.auxiliary !== "object" ||
-        !("ScheduledLedgerMembershipWitness" in value.auxiliary)
-      )
-        throw new Error("missing membership");
-      expect(value.auxiliary.ScheduledLedgerMembershipWitness.key).toBe(
-        spent.toString("hex"),
-      );
-      expect(value.auxiliary.ScheduledLedgerMembershipWitness.value).not.toBe(
-        "",
-      );
-    }
-    const scriptSources = retainedEntries.filter(
-      ({ value }) => value.phase === 8n,
-    );
-    const nativeExecutions = retainedEntries.filter(
-      ({ key, value }) => key.execution_index >= 0n && value.phase === 9n,
-    );
-    expect(scriptSources.length).toBeGreaterThan(0);
-    expect(scriptSources.every(({ key }) => key.execution_index < 0n)).toBe(
-      true,
-    );
-    expect(
-      scriptSources.some(
-        ({ value }) =>
-          typeof value.auxiliary === "object" &&
-          "ScriptPurposeScanWitness" in value.auxiliary,
-      ),
-    ).toBe(true);
-    expect(
-      scriptSources.some(
-        ({ value }) =>
-          typeof value.auxiliary === "object" &&
-          "ScriptSourceScanWitness" in value.auxiliary,
-      ),
-    ).toBe(true);
-    expect(
-      scriptSources.some(
-        ({ value }) => value.auxiliary === "NoAuxiliaryWitness",
-      ),
-    ).toBe(true);
-    expect(nativeExecutions).toHaveLength(1);
-    const [{ key, value: retained }] = nativeExecutions;
-    expect(key).toEqual({ event_key: eventKey, execution_index: 0n });
-    expect(retained).toMatchObject({
-      phase: 9n,
-      program_counter: retained.machine_state.program_counter,
-      auxiliary: {
-        NativeExecutionDescriptorWitness: {
-          execution_index: 0n,
-          language_tag: 0n,
-        },
-      },
-    });
-  });
-
   it("executes sequential valid forced deltas and emits accepted validation traces", async () => {
     const initialInput = outputReferenceFromHash(Buffer.alloc(32, 0x31));
     // Phase B enforces MIN-ADA-TX on every produced output, so a 10-lovelace
@@ -794,29 +498,12 @@ describe("V1 forced transaction material", () => {
       },
     });
     const members = await Effect.runPromise(
-      buildDeterministicValidationTraceMembers({
-        l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
-        consensusProfile: MIDGARD_CONSENSUS_PROFILE,
-        blockEndTime: new Date("2026-07-23T12:01:00.000Z"),
-        expectedNetworkId: 0n,
-        minFeeA: 0n,
-        minFeeB: 0n,
-        blockSlot: 100n,
+      buildPlaceholderValidationTraceMembers({
         transactions: classified.map((result, index) => ({
           eventKey: eventKey(index + 1),
-          transactionId: result.entry[ForcedTransactionsDB.Columns.TX_ID],
           canonicalTransactionCbor:
-            result.entry[ForcedTransactionsDB.Columns.NATIVE_TX_CBOR],
-          programMaterialSidecarCbor: result.programMaterialSidecarCbor,
+            result.entry[ForcedTransactionsDB.Columns.NATIVE_TX_CBOR]!,
           sourceKind: "forced" as const,
-          priorUtxosRoot:
-            result.ledgerMutationSteps[0]!.preRoot.toString("hex"),
-          postUtxosRoot: result.ledgerMutationSteps
-            .at(-1)!
-            .postRoot.toString("hex"),
-          ledgerOps: result.ledgerOps,
-          ledgerWitnessEntries: result.ledgerWitnessEntries,
-          ledgerMutationSteps: result.ledgerMutationSteps,
           verdict: "accepted" as const,
           rejectionCode: null,
         })),
@@ -825,76 +512,12 @@ describe("V1 forced transaction material", () => {
 
     expect(members).toHaveLength(2);
     for (const member of members) {
-      expect(member.value.machine_version).toBe(1n);
-      expect(member.value.verdict).toBe("Accepted");
-      expect(retainedEndpointsMatchDescriptor(member)).toBe(true);
-      const retained = member.witnesses.map(([keyHex, valueHex]) => ({
-        key: SDK.decodeRetainedValidationWitnessKey(Buffer.from(keyHex, "hex")),
-        value: SDK.decodeRetainedValidationWitness(
-          Buffer.from(valueHex, "hex"),
-        ),
-      }));
-      const outputDescriptors = retained.filter(
-        ({ value }) =>
-          value.phase === 13n &&
-          typeof value.auxiliary === "object" &&
-          "LedgerDeltaOutputWitness" in value.auxiliary,
-      );
-      expect(outputDescriptors).toHaveLength(1);
-      expect(outputDescriptors[0]!.key.execution_index).toBeLessThan(0n);
-      const terminal = retained.find(({ value }) => {
-        if (value.phase !== 10n) return false;
-        const control = decodeSingleCbor(
-          Buffer.from(value.witness_cbor, "hex"),
-        );
-        return (
-          Array.isArray(control) &&
-          control.length === 4 &&
-          BigInt(control[1] as number) === 3n
-        );
+      expect(member.value).toMatchObject({
+        machine_version: 1n,
+        step_count: 1n,
+        verdict: "Accepted",
+        rejection_code_hash: "00".repeat(32),
       });
-      expect(terminal).toMatchObject({
-        value: {
-          phase: 10n,
-          auxiliary: "NoAuxiliaryWitness",
-        },
-      });
-      const control = decodeSingleCbor(
-        Buffer.from(terminal!.value.witness_cbor, "hex"),
-      );
-      expect(Array.isArray(control) ? BigInt(control[1] as number) : null).toBe(
-        3n,
-      );
-      expect(terminal!.key.execution_index).toBeLessThan(0n);
-      const assetMutations = retained.filter(
-        ({ value }) =>
-          value.phase === 12n &&
-          typeof value.auxiliary === "object" &&
-          ("ValueInputAssetWitness" in value.auxiliary ||
-            "ValueOutputAssetWitness" in value.auxiliary ||
-            "ValueMintAssetWitness" in value.auxiliary),
-      );
-      expect(assetMutations).toHaveLength(2);
-      expect(assetMutations.every(({ key }) => key.execution_index < 0n)).toBe(
-        true,
-      );
-      expect(
-        assetMutations.map(({ value }) => {
-          const control = decodeSingleCbor(
-            Buffer.from(value.witness_cbor, "hex"),
-          );
-          return {
-            stage: Array.isArray(control) ? BigInt(control[1] as number) : null,
-            auxiliary:
-              typeof value.auxiliary === "object"
-                ? Object.keys(value.auxiliary)[0]
-                : value.auxiliary,
-          };
-        }),
-      ).toEqual([
-        { stage: 2n, auxiliary: "ValueInputAssetWitness" },
-        { stage: 3n, auxiliary: "ValueOutputAssetWitness" },
-      ]);
     }
   });
 

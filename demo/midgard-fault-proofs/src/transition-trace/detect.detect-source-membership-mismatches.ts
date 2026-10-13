@@ -1,8 +1,3 @@
-import {
-  readCborArrayHeader,
-  readCborBytes,
-  readCborInteger,
-} from "@al-ft/midgard-core/codec/cbor";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 
@@ -13,7 +8,6 @@ import {
   sourceForStep,
   type TransitionTraceDetection,
 } from "./detect.detect-count-faults.js";
-import { transitionTraceError } from "./errors.js";
 import { traceStepPhaseFault } from "./phase-band.js";
 import {
   eventKeyFingerprint,
@@ -352,50 +346,4 @@ export const detectInvalidNoOpTransitions = async (
     }
   }
   return detections;
-};
-
-export const acceptedTerminalPostRoot = (
-  terminalAcceptanceWitnessCbor: string,
-): string => {
-  const bytes = Buffer.from(terminalAcceptanceWitnessCbor, "hex");
-  const array = readCborArrayHeader(bytes, 0, "terminal acceptance witness");
-  if (array.length !== 4) {
-    throw transitionTraceError(
-      "malformedPayload",
-      "Terminal acceptance witness must contain exactly four fields.",
-    );
-  }
-  const version = readCborInteger(bytes, array.nextOffset, "terminal version");
-  if (version.value !== 1n) {
-    throw transitionTraceError(
-      "malformedPayload",
-      "Terminal acceptance witness has an unsupported version.",
-    );
-  }
-  const tag = readCborBytes(bytes, version.nextOffset, "terminal tag");
-  if (tag.value.length !== 0) {
-    throw transitionTraceError(
-      "malformedPayload",
-      "Terminal acceptance witness tag must be empty.",
-    );
-  }
-  const root = readCborBytes(bytes, tag.nextOffset, "terminal ledger root");
-  if (root.value.length !== 32) {
-    throw transitionTraceError(
-      "malformedPayload",
-      "Terminal acceptance witness ledger root must contain 32 bytes.",
-    );
-  }
-  const frontier = readCborBytes(
-    bytes,
-    root.nextOffset,
-    "terminal delta frontier",
-  );
-  if (frontier.nextOffset !== bytes.length) {
-    throw transitionTraceError(
-      "malformedPayload",
-      "Terminal acceptance witness contains trailing bytes.",
-    );
-  }
-  return root.value.toString("hex");
 };

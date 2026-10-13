@@ -34,7 +34,7 @@ import { type Entry } from "midgard-node/database/forcedTransactions.exact-force
 import { Columns } from "midgard-node/database/forcedTransactions.exact-forced-transaction-journal-member";
 import { classifyForcedTransactions } from "midgard-node/mpf/event-window.classify-forced-transactions";
 import { evaluateNormalBlockCandidates } from "midgard-node/mpf/process.evaluate-normal-block-candidates";
-import { buildDeterministicValidationTraceMembers } from "midgard-node/mpf/validation-trace";
+import { buildPlaceholderValidationTraceMembers } from "midgard-node/mpf/validation-trace";
 
 import { replayForcedTransitionEffect } from "../../src/verification/block-replay.replay-forced-transition-effect.js";
 import { type ValidatedEventAuthority } from "../../src/verification/block-replay.watcher-block-replay-prior-state.js";
@@ -271,18 +271,14 @@ export async function journey(
     );
     retained.push(
       ...(await Effect.runPromise(
-        buildDeterministicValidationTraceMembers({
-          l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
-          ...context,
-          blockEndTime: new Date(context.blockEndTimeMs),
+        buildPlaceholderValidationTraceMembers({
           transactions: [
             {
-              ...input,
               eventKey,
+              canonicalTransactionCbor: input.canonicalTransactionCbor,
+              sourceKind: input.sourceKind,
               verdict: input.expectedVerdict,
               rejectionCode: input.expectedRejectionCode,
-              ledgerOps: input.expectedLedgerOps,
-              programMaterialSidecarCbor: sidecar,
             },
           ],
         }),

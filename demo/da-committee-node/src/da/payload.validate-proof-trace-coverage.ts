@@ -1,6 +1,5 @@
 import { Trie } from "@aiken-lang/merkle-patricia-forestry";
 import { MIDGARD_CONSENSUS_LIMITS } from "@al-ft/midgard-core/consensus-profile";
-import { type MidgardValidationTraceDescriptor } from "@al-ft/midgard-core/validation-trace";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Effect } from "effect";
 
@@ -20,10 +19,8 @@ import {
   l2EventKeyFingerprintFromTxId,
 } from "./payload.source-event-fingerprints.js";
 import { validateDaPayloadConsensus } from "./payload.validate-da-payload-consensus.js";
-import { validateRetainedValidationWitnesses } from "./payload.validate-retained-validation-witnesses.js";
 import {
   decodeCommittedValidationTraceDescriptor,
-  retainedTransactionPreimages,
   validateTraceCoverage,
 } from "./payload.validate-trace-coverage.js";
 
@@ -108,6 +105,14 @@ export const decodeDaPayloadStrict = (
 const validateProofTraceCoverage = (payload: SDK.DaPayload): void => {
   validateTraceCoverage(payload);
   const body = payload.block_body;
+  // P1 retains no validation machine states: the section stays in the format
+  // and must be empty.
+  if (body.validation_trace_witnesses.length !== 0) {
+    throw new DaPayloadValidationError(
+      "coverage_mismatch",
+      "validation_trace_witnesses must be empty",
+    );
+  }
   if (
     BigInt(body.validation_traces.length) !== body.counts.validationTraceCount
   ) {
@@ -145,13 +150,6 @@ const validateProofTraceCoverage = (payload: SDK.DaPayload): void => {
   }
 
   const observed = new Set<string>();
-  const descriptors = new Map<
-    string,
-    {
-      readonly keyCbor: Buffer;
-      readonly descriptor: MidgardValidationTraceDescriptor;
-    }
-  >();
   for (const [index, [keyHex, valueHex]] of body.validation_traces.entries()) {
     const eventKey = decodeCanonicalData<SDK.EventKey>(
       keyHex,
@@ -192,10 +190,6 @@ const validateProofTraceCoverage = (payload: SDK.DaPayload): void => {
       );
     }
     observed.add(fingerprint);
-    descriptors.set(fingerprint, {
-      keyCbor: Buffer.from(keyHex, "hex"),
-      descriptor,
-    });
   }
 
   for (const fingerprint of expectedVerdicts.keys()) {
@@ -206,11 +200,6 @@ const validateProofTraceCoverage = (payload: SDK.DaPayload): void => {
       );
     }
   }
-  validateRetainedValidationWitnesses(
-    body.validation_trace_witnesses,
-    descriptors,
-    retainedTransactionPreimages(payload),
-  );
 };
 
 export const keyValuePhasRootWithValues = async (

@@ -13,6 +13,7 @@ import {
   DA_PAYLOAD_VERSION,
   DaPayload,
   type DaPayload as DaPayloadType,
+  DaPayloadCounts,
   daPayloadEncodedSize,
   daPayloadEncodedSizeFromEntryAggregates,
   daPayloadEncodedSizeFromUtxoAggregate,
@@ -22,11 +23,9 @@ import {
   type DaPayloadEntryField,
   type DaPayloadEntrySizeAggregate,
   decodeDaPayload,
-  decodeRetainedValidationWitness,
   decodeRetainedValidationWitnessKey,
   EMPTY_MERKLE_TREE_ROOT,
   encodeDaPayload,
-  encodeRetainedValidationWitness,
   encodeRetainedValidationWitnessKey,
   retainedValidationEndpointCoordinate,
   retainedValidationStateCoordinate,
@@ -165,49 +164,36 @@ const replaceFirst = (
 };
 
 describe("DaPayloadV1 canonical codec", () => {
-  it("round-trips a chronological ScriptSources retained witness canonically", () => {
-    const key = {
-      event_key: { L2TransactionEventKey: { tx_id: bytes(1, 32) } },
-      execution_index: -2n,
-    } as const;
-    const value = {
-      machine_state: {
-        machine_version: 1n,
-        event_key_hash: bytes(2, 32),
-        transaction_id: bytes(3, 32),
-        transaction_commitment: bytes(4, 32),
-        validation_context_hash: bytes(5, 32),
-        source_kind: "Normal" as const,
-        prior_ledger_root: bytes(6, 32),
-        phase: "ScriptSources" as const,
-        program_counter: 9n,
-        work_root: bytes(7, 32),
-        execution_cpu: 1n,
-        execution_memory: 2n,
-        verdict: "Pending" as const,
-        rejection_code_hash: bytes(8, 32),
-        ledger_delta_root: bytes(9, 32),
-      },
-      trace_proof: {
-        state_index: 9n,
-        state_hash: bytes(10, 32),
-        siblings: [bytes(11, 32)],
-      },
-      phase: 8n,
-      program_counter: 9n,
-      witness_cbor: "80",
-      auxiliary: "NoAuxiliaryWitness" as const,
-    };
-    const keyCbor = encodeRetainedValidationWitnessKey(key);
-    const valueCbor = encodeRetainedValidationWitness(value);
-    expect(decodeRetainedValidationWitnessKey(keyCbor)).toEqual(key);
-    expect(decodeRetainedValidationWitness(valueCbor)).toEqual(value);
-    const withWitness = payload(1);
-    withWitness.block_body.validation_trace_witnesses = [
-      [keyCbor.toString("hex"), valueCbor.toString("hex")],
-    ];
-    expect(daPayloadEncodedSize(withWitness)).toBe(
-      encodeDaPayload(withWitness).length,
+  it("requires an empty retained validation witness section", () => {
+    const value = payload(1);
+    const encoded = encodeDaPayload(value);
+    expect(
+      decodeDaPayload(encoded).block_body.validation_trace_witnesses,
+    ).toEqual([]);
+    const witness: DaPayloadEntry = [bytes(1, 1), bytes(2, 1)];
+    expect(() =>
+      encodeDaPayload({
+        ...value,
+        block_body: {
+          ...value.block_body,
+          validation_trace_witnesses: [witness],
+        },
+      }),
+    ).toThrow(/validation_trace_witnesses must be empty/u);
+    // The section is the empty list just before the counts constructor and
+    // the two closing breaks.
+    const tail =
+      Buffer.from(Data.to(value.block_body.counts, DaPayloadCounts), "hex")
+        .length + 2;
+    const section = encoded.length - tail - 1;
+    expect(encoded[section]).toBe(0x80);
+    const withWitness = Buffer.concat([
+      encoded.subarray(0, section),
+      Buffer.from("9f9f41014102ffff", "hex"),
+      encoded.subarray(section + 1),
+    ]);
+    expect(() => decodeDaPayload(withWitness)).toThrow(
+      /validation_trace_witnesses \(must be empty\)/u,
     );
   });
 
@@ -278,7 +264,6 @@ describe("DaPayloadV1 canonical codec", () => {
       "transition_trace",
       "event_to_step",
       "validation_traces",
-      "validation_trace_witnesses",
     ];
     for (let seed = 0; seed < 20; seed += 1) {
       const value = payload(seed);

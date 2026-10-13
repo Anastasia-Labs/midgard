@@ -119,7 +119,7 @@ export {
   type UtxoPayloadEntry,
 } from "./types.js";
 export {
-  buildDeterministicValidationTraceMembers,
+  buildPlaceholderValidationTraceMembers,
   type RetainedValidationTraceMember,
   validateValidationTraceEventKeySet,
   type ValidationTraceBuildInput,

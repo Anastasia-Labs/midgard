@@ -31,7 +31,6 @@ import {
   txsTableName,
   UtxoColumns,
   validationTracesTableName,
-  validationTraceWitnessesTableName,
   WithdrawalMemberColumns,
   withdrawalsTableName,
 } from "./pendingBlockFinalizations.columns.js";
@@ -212,16 +211,6 @@ export const preparePendingSubmission = (
           blockEndTime: input.blockEndTime,
         }),
     );
-    const validationTraceWitnessMembers =
-      input.validationTraceWitnessMembers.map((entry, ordinal) =>
-        retainedRootMemberEntry({
-          headerHash: input.headerHash,
-          entry,
-          ordinal,
-          sourceTable: validationTraceWitnessesTableName,
-          blockEndTime: input.blockEndTime,
-        }),
-      );
     return yield* withFollowerWrite(
       Effect.gen(function* () {
         const candidateHistory = yield* requireCandidateView;
@@ -462,11 +451,6 @@ export const preparePendingSubmission = (
           yield* sql`INSERT INTO ${sql(
             validationTracesTableName,
           )} ${sql.insert(validationTraceMembers)}`;
-        }
-        if (validationTraceWitnessMembers.length > 0) {
-          yield* sql`INSERT INTO ${sql(
-            validationTraceWitnessesTableName,
-          )} ${sql.insert(validationTraceWitnessMembers)}`;
         }
         return { kind: "prepared" as const };
       }),

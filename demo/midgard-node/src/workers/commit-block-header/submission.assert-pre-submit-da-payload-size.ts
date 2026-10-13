@@ -167,9 +167,7 @@ export const commitDaPayloadForSizing = ({
       event_to_step: eventToStepMembers.map((entry) =>
         daEntry(entry.keyCbor, entry.valueCbor),
       ),
-      validation_trace_witnesses: validationTraceMembers.flatMap(
-        (entry) => entry.witnesses,
-      ),
+      validation_trace_witnesses: [],
     };
     return {
       version: SDK.DA_PAYLOAD_VERSION,

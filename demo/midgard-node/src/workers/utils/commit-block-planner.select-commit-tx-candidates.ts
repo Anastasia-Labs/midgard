@@ -157,7 +157,9 @@ export const emptyBlockDaPayloadUpperBoundBytes = (
  * The DA bytes one transaction is planned to add: its source entry and its
  * preimage entry (the block carries the transaction twice), ledger growth
  * bounded by twice its bytes (an output's UTxO entry adds its outref to the
- * output it copies), and the allowance for program material and traces.
+ * output it copies), and a fixed per-event overhead. Program material is
+ * not known before the block is built; the post-build measurement steps the
+ * selection down when it does not fit.
  */
 export const estimatedTxDaPayloadBytes = (
   txBytes: number,
@@ -168,8 +170,7 @@ export const estimatedTxDaPayloadBytes = (
   return (
     2 * copyBytes +
     2 * plutusBytesEncodedSize(txBytes) +
-    limits.estimatedDaOverheadBytesPerTx +
-    (limits.estimatedDaTraceAllowanceBytesPerTx ?? 0)
+    limits.estimatedDaOverheadBytesPerTx
   );
 };
 

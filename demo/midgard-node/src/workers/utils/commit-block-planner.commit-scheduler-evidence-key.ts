@@ -40,13 +40,6 @@ export type CommitBatchBudgetLimits = {
   readonly estimatedLedgerOpsPerTx: number;
   readonly estimatedTransitionStepsPerTx: number;
   readonly estimatedDaOverheadBytesPerTx: number;
-  /**
-   * DA bytes a transaction adds beyond its two copies and its ledger growth:
-   * its program material and its retained validation trace. Neither is known
-   * before the block is built, so this is an allowance, not a bound; the
-   * post-build measurement steps the selection down when it is exceeded.
-   */
-  readonly estimatedDaTraceAllowanceBytesPerTx?: number;
   readonly estimatedCommitTxOverheadBytes: number;
   readonly estimatedCommitBuildMsPerTx: number;
 };
@@ -101,11 +94,11 @@ export const DEFAULT_COMMIT_BATCH_BUDGET_LIMITS: CommitBatchBudgetLimits = {
   maxEstimatedCommitBuildMs: 30_000,
   estimatedLedgerOpsPerTx: 2,
   estimatedTransitionStepsPerTx: 1,
-  estimatedDaOverheadBytesPerTx: 128,
-  // lc1 measured 169-196 KB of DA per plain transfer on a 9-11 UTxO ledger,
-  // almost all of it validation-trace witnesses. Witness proofs deepen as
-  // the ledger grows and script transactions carry far longer traces.
-  estimatedDaTraceAllowanceBytesPerTx: 256 * 1024,
+  // What a plain transfer adds beyond its two copies and ledger growth,
+  // measured on the V1 encodings: its source value's fixed part (393 bytes
+  // over the transaction), placeholder validation descriptor (195),
+  // transition step (129) and event-to-step entry (53).
+  estimatedDaOverheadBytesPerTx: 800,
   estimatedCommitTxOverheadBytes: 512,
   estimatedCommitBuildMsPerTx: 1,
 };

@@ -11,17 +11,25 @@ import {
   FRAUD_PROOF_RELEASE_FINALITY_POLICY_SCHEMA_VERSION,
   RELEASE_L1_FINALITY_POLICY,
 } from "../src/workflow/release-finality-policy.js";
-import { TRANSITION_HISTORY_FIXTURE_PARAMETERS } from "./helpers/transition-history-fixture.js";
 import {
-  buildRetainedPlutusIdentityFixture,
-  captureRetainedPlutusIdentityOrigins,
-} from "./support/retained-reason-classifier.js";
+  buildCanonicalBlockFixture,
+  buildFixtureTransaction,
+  outRefCbor,
+} from "./helpers/canonical-block-evidence-fixture.js";
+import { TRANSITION_HISTORY_FIXTURE_PARAMETERS } from "./helpers/transition-history-fixture.js";
+import { captureRetainedPlutusIdentityOrigins } from "./support/retained-reason-classifier.js";
 
 describe("transition event authority raw test transport", () => {
   it("admits raw observations on every capture and rejects malformed hub output bytes", async () => {
-    const fixture = await buildRetainedPlutusIdentityFixture({
-      verdict: "accepted",
+    const transaction = buildFixtureTransaction({
+      spendInputs: [outRefCbor(0x1d, 0n)],
+      fee: 0n,
     });
+    const fixture = {
+      block: await buildCanonicalBlockFixture({ transactions: [transaction] }),
+      transaction,
+      orderKey: { transactionId: "52".repeat(32), outputIndex: 0n },
+    };
     const seed = requireTransitionTraceL1Events(
       await captureRetainedPlutusIdentityOrigins(fixture, { omitEvent: true }),
     ).snapshot;

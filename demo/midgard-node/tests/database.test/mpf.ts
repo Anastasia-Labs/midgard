@@ -271,7 +271,6 @@ export const registerMpfTests = () => {
                   transitionTraceMembers: [],
                   eventToStepMembers: [],
                   validationTraceMembers: [],
-                  validationTraceWitnessMembers: [],
                   ledgerDelta: {
                     spent,
                     produced: produced.map((item) => ({
@@ -637,7 +636,6 @@ export const registerMpfTests = () => {
               transitionTraceMembers: [],
               eventToStepMembers: [],
               validationTraceMembers: [],
-              validationTraceWitnessMembers: [],
               ledgerDelta: {
                 spent: journalState.ledgerDelta.spent,
                 produced: journalState.ledgerDelta.produced.map((produced) => ({

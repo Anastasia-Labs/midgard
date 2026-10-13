@@ -2,9 +2,11 @@ import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile
 import { type L1SlotConfig } from "@al-ft/midgard-core/l1-slot-config";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
+  placeholderValidationTraceDescriptorV1,
   type RejectedTx,
-  replayValidationMachineEvent,
+  replayValidationVerdictEvent,
   type ValidationMachineLedgerEntry,
+  validationTransactionCommitmentV1,
 } from "@al-ft/midgard-validation";
 import { Data as LucidData } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
@@ -176,38 +178,34 @@ export const replayImportedBlockEvents = (
             output,
           }),
         );
-        const replay = yield* replayValidationMachineEvent({
+        const sourceKind = step.phase === "L2Transaction" ? "normal" : "forced";
+        const replay = yield* replayValidationVerdictEvent({
           consensusProfile: MIDGARD_CONSENSUS_PROFILE,
-          eventKeyCbor: Buffer.from(key, "hex"),
           canonicalTransactionCbor: cbor,
           programMaterialSidecarCbor: importedEventProgramSidecar({
             cbor,
-            sourceKind: step.phase === "L2Transaction" ? "normal" : "forced",
+            sourceKind,
             ledger,
             material,
             reached,
           }),
           ledgerWitnessEntries: witnessEntries,
-          priorUtxosRoot: root,
           blockEndTimeMs: Number(input.header.endTime),
           expectedNetworkId: input.expectedNetworkId,
           minFeeA: input.minFeeA,
           minFeeB: input.minFeeB,
           blockSlot: input.blockSlot,
           l1SlotConfig: input.l1SlotConfig,
-          sourceKind: step.phase === "L2Transaction" ? "normal" : "forced",
+          sourceKind,
         });
         if (
           step.phase === "L2Transaction" &&
-          replay.replayInput.transactionId.toString("hex") !== source.source[0]
+          replay.transactionId.toString("hex") !== source.source[0]
         )
           throw new Error(
             "foreign normal transaction source key differs from canonical transaction id",
           );
-        if (
-          step.phase === "L2Transaction" &&
-          replay.replayInput.expectedVerdict !== "accepted"
-        )
+        if (step.phase === "L2Transaction" && replay.verdict !== "accepted")
           throw new Error("foreign normal transaction was rejected by replay");
         if (step.phase === "ForcedTransaction")
           yield* input.verifyForcedSource({
@@ -218,23 +216,25 @@ export const replayImportedBlockEvents = (
         for (const key of replay.statePatch.deletedOutRefs) ledger.delete(key);
         for (const [key, output] of replay.statePatch.upsertedOutRefs)
           ledger.set(key, output);
-        const descriptor = replay.trace.tree.descriptor;
-        const expected: SDK.ValidationTraceDescriptor = {
-          schema_version: BigInt(descriptor.schemaVersion),
-          machine_version: BigInt(descriptor.machineVersion),
-          trace_root: descriptor.traceRoot.toString("hex"),
-          step_count: BigInt(descriptor.stepCount),
-          initial_state_hash: descriptor.initialStateHash.toString("hex"),
-          terminal_state_hash: descriptor.terminalStateHash.toString("hex"),
-          verdict: descriptor.verdict === "accepted" ? "Accepted" : "Rejected",
-          rejection_code_hash: descriptor.rejectionCodeHash.toString("hex"),
-        };
+        const expected = SDK.validationTraceDescriptorDataFromCore(
+          placeholderValidationTraceDescriptorV1(
+            {
+              eventKeyCbor: Buffer.from(key, "hex"),
+              transactionCommitment: validationTransactionCommitmentV1({
+                canonicalTransactionCbor: cbor,
+                sourceKind,
+              }),
+            },
+            replay.verdict,
+            replay.rejection?.code ?? null,
+          ),
+        );
         if (
           descriptors.get(key) !==
           LucidData.to(expected, SDK.ValidationTraceDescriptor)
         )
           throw new Error(
-            "foreign validation descriptor differs from deterministic replay",
+            "foreign validation descriptor differs from the placeholder for the replayed verdict",
           );
         descriptors.delete(key);
       } else {

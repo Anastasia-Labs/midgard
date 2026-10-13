@@ -116,7 +116,6 @@ export const registerFinalizationTests = () => {
         transitionTraceMembers: [],
         eventToStepMembers: [],
         validationTraceMembers: [],
-        validationTraceWitnessMembers: [],
         ledgerDelta: {
           spent: [],
           produced: [],

@@ -3,12 +3,7 @@
  */
 
 import * as SDK from "@al-ft/midgard-sdk";
-import {
-  type LocalScriptEvaluation,
-  type RejectCode,
-  type ValidationMachineLedgerEntry,
-  type ValidationMachineLedgerMutationStep,
-} from "@al-ft/midgard-validation";
+import { type RejectCode } from "@al-ft/midgard-validation";
 import { Data as LucidData } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
@@ -41,16 +36,8 @@ export type RetainedEventToStepMember = {
 
 export type ValidationTraceTransactionInput = {
   readonly eventKey: SDK.EventKey;
-  readonly transactionId: Buffer;
   readonly canonicalTransactionCbor: Buffer;
-  readonly programMaterialSidecarCbor: Buffer;
   readonly sourceKind: "normal" | "forced";
-  readonly priorUtxosRoot: string;
-  readonly postUtxosRoot: string;
-  readonly ledgerOps: readonly MpfBatchOp[];
-  readonly ledgerWitnessEntries: readonly ValidationMachineLedgerEntry[];
-  readonly ledgerMutationSteps: readonly ValidationMachineLedgerMutationStep[];
-  readonly scriptEvaluations?: readonly LocalScriptEvaluation[];
   readonly verdict: "accepted" | "rejected";
   readonly rejectionCode: RejectCode | null;
 };

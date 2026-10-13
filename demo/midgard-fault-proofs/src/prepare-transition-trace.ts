@@ -34,12 +34,10 @@ export type PreparedTransitionTraceGuidance = {
   readonly evidence:
     | "omittedDueL1Events"
     | "outOfWindowSourceEvents"
-    | "acceptedTransactionTransitionMismatches"
     | "l2TransactionTransitions";
   readonly kind:
     | "omittedDueL1Event"
     | "outOfWindowSourceEvent"
-    | "acceptedTransactionTransitionMismatch"
     | "invalidOneStepTransition";
   readonly buildableFromRetainedDaOnly: false;
   readonly reason: string;
@@ -69,13 +67,6 @@ const RETAINED_DA_ONLY_GUIDANCE = [
     buildableFromRetainedDaOnly: false,
     reason:
       "Requires an authentic surviving L1 event NFT reference input and its ledger-sorted event_ref_input_index.",
-  },
-  {
-    evidence: "acceptedTransactionTransitionMismatches",
-    kind: "acceptedTransactionTransitionMismatch",
-    buildableFromRetainedDaOnly: false,
-    reason:
-      "Requires authenticated validation-claim and terminal-ledger evidence that retained DA alone does not supply.",
   },
   {
     evidence: "l2TransactionTransitions",

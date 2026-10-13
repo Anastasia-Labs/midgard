@@ -6,8 +6,11 @@ export {
 } from "./control-encoding.js";
 export {
   replayValidationMachineEvent,
+  replayValidationVerdictEvent,
   type ValidationMachineEventReplay,
   type ValidationMachineEventReplayInput,
+  type ValidationVerdictEvent,
+  type ValidationVerdictEventInput,
 } from "./event-replay.js";
 export {
   countedMachineFieldChunkSteps,
@@ -33,6 +36,11 @@ export {
   type ValidationMachineValueMutationStep,
 } from "./ledger-mutation.js";
 export { type ValidationMachineNativeScriptFrame } from "./native-script-frame.js";
+export {
+  placeholderValidationTraceDescriptorV1,
+  type PlaceholderValidationTraceEventV1,
+  validationTransactionCommitmentV1,
+} from "./placeholder-trace-descriptor.js";
 export {
   type MidgardPurposeKind,
   type MidgardRedeemerPurposeTag,

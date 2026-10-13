@@ -142,7 +142,6 @@ const journal = ({
       transitionTraceMembers: [],
       eventToStepMembers: [],
       validationTraceMembers: [],
-      validationTraceWitnessMembers: [],
       ledgerDelta: { spent: [], produced: [] },
     });
     yield* PendingBlockFinalizationsDB.markSubmitted(

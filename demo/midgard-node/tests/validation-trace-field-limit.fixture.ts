@@ -32,7 +32,7 @@ import { expect } from "vitest";
 import { makePayloadFixture } from "../../da-committee-node/tests/helpers.js";
 import * as ForcedTransactionsDB from "../src/database/forcedTransactions.js";
 import { classifyForcedTransactions } from "../src/mpf/event-window.classify-forced-transactions.js";
-import { buildDeterministicValidationTraceMembers } from "../src/mpf/validation-trace.js";
+import { buildPlaceholderValidationTraceMembers } from "../src/mpf/validation-trace.js";
 import { sha256 } from "../src/sha256.js";
 // Capacity fixtures require funded, signed transactions with real ledger proofs;
 // the neighbouring admission suite exercises small rejected EmptyInputs events.
@@ -214,28 +214,12 @@ export const fixture = async (
   };
   const eventCbor = Data.to(eventKey, SDK.EventKey);
   const [member] = await Effect.runPromise(
-    buildDeterministicValidationTraceMembers({
-      l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
-      consensusProfile: MIDGARD_CONSENSUS_PROFILE,
-      blockEndTime: new Date(Number(base.header.endTime)),
-      expectedNetworkId: base.header.expectedNetworkId,
-      minFeeA: 0n,
-      minFeeB: 0n,
-      blockSlot: base.header.blockSlot,
+    buildPlaceholderValidationTraceMembers({
       transactions: [
         {
           eventKey,
-          transactionId: transaction.txId,
           canonicalTransactionCbor: forcedBytes,
-          programMaterialSidecarCbor: encodeMidgardCekProgramMaterialSidecar(
-            [],
-          ),
           sourceKind: "forced",
-          priorUtxosRoot,
-          postUtxosRoot,
-          ledgerOps,
-          ledgerWitnessEntries: [{ outRef: spent, output }],
-          ledgerMutationSteps,
           verdict: observerCount > 0 ? "rejected" : "accepted",
           rejectionCode,
         },
@@ -302,9 +286,7 @@ export const fixture = async (
       validation_traces: [
         [member.keyCbor.toString("hex"), member.valueCbor.toString("hex")],
       ],
-      validation_trace_witnesses: [...member.witnesses].sort(([a], [b]) =>
-        a < b ? -1 : a > b ? 1 : 0,
-      ),
+      validation_trace_witnesses: [],
     },
   };
   const roots = await computeDaPayloadRoots(unhashed);

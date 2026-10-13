@@ -32,6 +32,7 @@ import {
   preSubmit,
   PROGRAM_LIMITS,
   REFUSAL,
+  SYNTHETIC_TX_DA_BYTES,
 } from "./helpers/commit-da-frame-fixtures.js";
 
 // Every normal transaction has its durable program-material sidecar.
@@ -106,9 +107,9 @@ const threeTransfers = () =>
     processedMempoolTxs: [],
   });
 
-// A plain transfer whose retained validation trace is about 350 KB: heavier
-// than the planner's per-transaction allowance, as a deep ledger makes it.
-const HEAVY_TRANSFER: BlockShape = { witnessValueBytes: 3_000 };
+// A transfer carrying about 336 KB of DA weight the planner's estimate does
+// not see (see SYNTHETIC_TX_DA_BYTES).
+const HEAVY_TRANSFER: BlockShape = { descriptorBytes: 336_000 };
 
 describe("commit DA frame step-down", () => {
   it("finds an interior-only fitting prefix without discarding unvisited counts", async () => {
@@ -276,7 +277,11 @@ describe("commit DA frame step-down", () => {
         encodedTupleBytes: (brick + 10) * LC1_MEAN_ENTRY_BYTES,
       };
       expect(emptyBlockDaPayloadUpperBoundBytes(base)).toBeGreaterThan(limit);
-      const shape: BlockShape = { base, withdrawnEntryCount: 100 };
+      const shape: BlockShape = {
+        base,
+        withdrawnEntryCount: 100,
+        descriptorBytes: SYNTHETIC_TX_DA_BYTES,
+      };
       const selection = threeTransfers();
       expect(
         Either.isLeft(await preSubmit(selection.candidateTxs, mode, shape)),

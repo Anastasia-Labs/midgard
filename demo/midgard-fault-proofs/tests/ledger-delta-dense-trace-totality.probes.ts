@@ -5,7 +5,6 @@ import {
   type TransitionTraceDetection,
 } from "../src/transition-trace/index.js";
 import {
-  buildAcceptedTransactionTransitionMismatchEvidence,
   countFaultProbe,
   eventToStepMismatchProbe,
   type FaultProbe,
@@ -118,16 +117,6 @@ const outOfWindowSourceEventProbe = async (): Promise<
   });
 };
 
-const acceptedTransactionTransitionMismatchProbe = async (): Promise<
-  readonly TransitionTraceDetection[]
-> => {
-  const reconstruction = await reconstruct(await buildPayloadFixture({}));
-  const { evidence } = buildAcceptedTransactionTransitionMismatchEvidence();
-  return detectTransitionTraceFaults(reconstruction, {
-    acceptedTransactionTransitionMismatches: [evidence],
-  });
-};
-
 export const probes: readonly FaultProbe[] = [
   {
     kind: "countFault",
@@ -173,10 +162,5 @@ export const probes: readonly FaultProbe[] = [
     kind: "outOfWindowSourceEvent",
     invariant: "source_event_is_within_block_window",
     run: outOfWindowSourceEventProbe,
-  },
-  {
-    kind: "acceptedTransactionTransitionMismatch",
-    invariant: "accepted_transaction_uses_validated_ledger_root",
-    run: acceptedTransactionTransitionMismatchProbe,
   },
 ];

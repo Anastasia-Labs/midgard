@@ -22,9 +22,6 @@ export const eventToStepTableName = "pending_block_finalization_event_to_step";
 export const validationTracesTableName =
   "pending_block_finalization_validation_traces";
 
-export const validationTraceWitnessesTableName =
-  "pending_block_finalization_validation_trace_witnesses";
-
 export enum Columns {
   HEADER_HASH = "header_hash",
   HEADER_CBOR = "header_cbor",

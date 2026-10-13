@@ -7,7 +7,6 @@ import {
   type TransitionTraceReconstruction,
 } from "./reconstruct.js";
 import {
-  type AcceptedTransactionTransitionMismatchEvidence,
   buildCountFault,
   buildTraceBoundaryFault,
   buildTransitionFaultProof,
@@ -35,7 +34,6 @@ export const TRANSITION_TRACE_FAULT_KINDS = [
   "duplicateTraceEvent",
   "outOfWindowSourceEvent",
   "countFault",
-  "acceptedTransactionTransitionMismatch",
 ] as const;
 
 export type TransitionTraceFaultKind =
@@ -67,7 +65,6 @@ export type TransitionTraceDetectionEvidence = {
   })[];
   readonly omittedDueL1Events?: readonly OmittedDueL1EventEvidence[];
   readonly outOfWindowSourceEvents?: readonly OutOfWindowSourceEventEvidence[];
-  readonly acceptedTransactionTransitionMismatches?: readonly AcceptedTransactionTransitionMismatchEvidence[];
   /**
    * Authenticated ledger mutation witnesses for L2 steps whose committed
    * post-root is disputed. Retained DA authenticates the transaction and its

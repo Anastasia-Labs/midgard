@@ -11,7 +11,6 @@ import "vitest";
 import "../src/transition-trace/index.js";
 import "./ledger-delta-dense-trace-totality.native-material.js";
 import "./ledger-delta-dense-trace-totality.build-payload-fixture.js";
-import "./ledger-delta-dense-trace-totality.build-accepted-transaction-transition-mismatch-evidence.js";
 import "./ledger-delta-dense-trace-totality.probes.js";
 
 import * as SDK from "@al-ft/midgard-sdk";
@@ -485,30 +484,6 @@ describe("ledger-delta dense trace totality v1", () => {
     expect([...seenKinds].sort()).toEqual(
       [...TRANSITION_TRACE_FAULT_KINDS].sort(),
     );
-
-    // The one kind the 39-test challenger suite never exercises: confirm its
-    // fault proof round-trips through CBOR like every other buildable
-    // detection's does.
-    const acceptedDetection = detectionsByKind
-      .get("acceptedTransactionTransitionMismatch")
-      ?.find(
-        (detection) =>
-          detection.kind === "acceptedTransactionTransitionMismatch",
-      );
-    if (acceptedDetection === undefined || !acceptedDetection.buildable) {
-      throw new Error(
-        "expected a buildable acceptedTransactionTransitionMismatch detection",
-      );
-    }
-    expect(() =>
-      Data.from(
-        Data.to(
-          acceptedDetection.proof as never,
-          SDK.TransitionFaultProof as never,
-        ),
-        SDK.TransitionFaultProof as never,
-      ),
-    ).not.toThrow();
   });
 
   it("rejects extra, missing, reordered, and substituted operations against an otherwise-valid dense trace", async () => {
