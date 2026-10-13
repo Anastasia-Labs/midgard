@@ -485,12 +485,8 @@ const REPLAY_CONTEXT_FAMILIES = WATCHER_INSTALLED_WORKFLOW_CATEGORIES.filter(
 const REPLAY_CONTEXT_ONLY_FAMILIES = REPLAY_CONTEXT_FAMILIES.filter(
   (category) => !PREDECESSOR_FAMILIES.includes(category),
 );
-// The dispute family's decision path continues into transcript capture,
-// which the replay-capture tests exercise against a real event runtime.
 const OTHER_FAMILIES = WATCHER_INSTALLED_WORKFLOW_CATEGORIES.filter(
-  (category) =>
-    !PREDECESSOR_FAMILIES.includes(category) &&
-    category !== "validationTraceDispute",
+  (category) => !PREDECESSOR_FAMILIES.includes(category),
 );
 
 describe("watcher decision-time predecessor ledger", () => {
@@ -702,8 +698,7 @@ describe("watcher decision-time predecessor ledger", () => {
   it("admits every other installed family's fault decision without a replay context", async () => {
     expect(OTHER_FAMILIES).toHaveLength(
       WATCHER_INSTALLED_WORKFLOW_CATEGORIES.length -
-        PREDECESSOR_FAMILIES.length -
-        1,
+        PREDECESSOR_FAMILIES.length,
     );
     for (const category of OTHER_FAMILIES) {
       const decision = issue(category, undefined);

@@ -94,21 +94,14 @@ export const resolveMidgardFieldCarriageAgainstReferenceInputs = ({
  * later, so a reference-input set that moved in between failed on L1 after
  * the evidence was already staged; re-checking the frozen indices here, off
  * chain, was the one defense. Since Option B the committed evidence is
- * transition-only and the production builder
- * (`submitValidationDisputeSemanticResolution` in
- * `demo/midgard-fault-proofs/src/validation-dispute/submit.ts`) calls
+ * transition-only and a builder calls
  * {@link resolveMidgardFieldCarriageAgainstReferenceInputs} at build time
- * and puts the freshly-resolved carriage on the observe wire itself — there
- * is no committed index left to re-check, so this guard is no longer on the
- * production path.
+ * and puts the freshly-resolved carriage on the observe wire itself, so there
+ * is no committed index left to re-check.
  *
  * It remains the re-checker for any caller that carries a *pre-resolved*
- * carriage to a door transaction: it is pinned by its own unit tests
- * (`demo/midgard-sdk/tests/field-preimage-carriage-door.test.ts`) and
- * driven over real ledger-resolved carriage by the tiers-2/3 emulator leg
- * (`demo/midgard-validation/tests/complete-item-carriage-tiers-emulator.test.ts`),
- * which submits the same door transaction the guard admits and the one it
- * refuses.
+ * carriage to a door transaction; its own unit tests
+ * (`demo/midgard-sdk/tests/field-preimage-carriage-door.test.ts`) pin it.
  */
 export const assertMidgardFieldCarriageResolvesAtDoor = ({
   carriage,

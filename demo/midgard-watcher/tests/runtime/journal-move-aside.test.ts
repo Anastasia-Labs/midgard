@@ -6,7 +6,10 @@ import { createWorkflowActuationPermitController } from "@al-ft/midgard-fault-pr
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { openWatcherFaultDecisionJournal } from "../../src/fault-proofs/fault-decision-journal.js";
-import { WATCHER_INSTALLED_WORKFLOW_CATEGORIES } from "../../src/fault-proofs/fault-proof-application.js";
+import {
+  installedLaunchScope,
+  WATCHER_INSTALLED_WORKFLOW_CATEGORIES,
+} from "../../src/fault-proofs/fault-proof-application.js";
 import {
   createWatcherFaultProofSupervisor,
   watcherFaultProofDeadline,
@@ -196,7 +199,7 @@ describe("journal repair by moving the journal database aside", () => {
     const decisions = await openWatcherFaultDecisionJournal({
       directory: test.journalRoot,
       deploymentFingerprint: deploymentIdentity.manifestId,
-      launchScope: test.old.launchScope,
+      launchScope: installedLaunchScope(test.old.launchScope),
       authenticationKey: KEY,
     });
     await decisions.appendLiveDecision(test.fresh);

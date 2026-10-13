@@ -11,7 +11,6 @@ import {
   type NoReferenceInputFaultProofContracts,
   type ReferenceInputNoIdxFaultProofContracts,
   type TransitionTraceFaultProofContracts,
-  type ValidationTraceDisputeFaultProofContracts,
   type ZeroInputFaultProofContracts,
 } from "@al-ft/midgard-sdk";
 import {
@@ -124,18 +123,6 @@ export type ResolvedTransitionTraceDeploymentContracts = {
   readonly fraudProofCataloguePolicyId: string;
   readonly hubOraclePolicyId: string;
   readonly contracts: TransitionTraceFaultProofContracts;
-};
-
-export type ResolvedValidationTraceDisputeDeploymentContracts = {
-  readonly deploymentInfo: ContractDeploymentInfo;
-  readonly referenceScriptAuthPolicyId: string;
-  readonly cekProgramMaterialScriptHash: string;
-  readonly cekProgramMaterialAddress: string;
-  readonly validationTraceDisputeCategory: FraudProofCatalogueCategoryDeploymentInfo;
-  readonly stateQueuePolicyId: string | undefined;
-  readonly fraudProofCataloguePolicyId: string;
-  readonly hubOraclePolicyId: string;
-  readonly contracts: ValidationTraceDisputeFaultProofContracts;
 };
 
 export type ResolvedDaHashPreimageDeploymentContracts = {

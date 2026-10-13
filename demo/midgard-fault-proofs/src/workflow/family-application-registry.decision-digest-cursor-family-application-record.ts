@@ -1,40 +1,12 @@
 import type { LucidEvolution, UTxO } from "@lucid-evolution/lucid";
 
 import {
-  createManifestBoundDistinctAssetAccumulationWorkflow,
-  DISTINCT_ASSET_ACCUMULATION_FAMILY_DEFINITION,
-  executeManifestBoundDistinctAssetAccumulationWorkflow,
-  type ManifestBoundDistinctAssetAccumulationWorkflow,
-  type ManifestBoundDistinctAssetAccumulationWorkflowConfig,
-} from "../distinct-asset-accumulation-limit/v1.js";
-import {
-  createManifestBoundExecutionSourceScriptDecodingWorkflow,
-  executeManifestBoundExecutionSourceScriptDecodingWorkflow,
-  EXECUTION_SOURCE_SCRIPT_DECODING_FAMILY_DEFINITION,
-  type ManifestBoundExecutionSourceScriptDecodingWorkflow,
-  type ManifestBoundExecutionSourceScriptDecodingWorkflowConfig,
-} from "../execution-source-script-decoding/v1.js";
-import {
   createManifestBoundMintDeclaredAssetLimitWorkflow,
   executeManifestBoundMintDeclaredAssetLimitWorkflow,
   type ManifestBoundMintDeclaredAssetLimitWorkflow,
   type ManifestBoundMintDeclaredAssetLimitWorkflowConfig,
   MINT_DECLARED_ASSET_LIMIT_FAMILY_DEFINITION,
 } from "../mint-declared-asset-limit/v1.js";
-import {
-  createManifestBoundMissingRedeemerWorkflow,
-  executeManifestBoundMissingRedeemerWorkflow,
-  type ManifestBoundMissingRedeemerWorkflow,
-  type ManifestBoundMissingRedeemerWorkflowConfig,
-  MISSING_REDEEMER_FAMILY_DEFINITION,
-} from "../missing-redeemer/v1.js";
-import {
-  createManifestBoundMissingScriptSourceWorkflow,
-  executeManifestBoundMissingScriptSourceWorkflow,
-  type ManifestBoundMissingScriptSourceWorkflow,
-  type ManifestBoundMissingScriptSourceWorkflowConfig,
-  MISSING_SCRIPT_SOURCE_FAMILY_DEFINITION,
-} from "../missing-script-source/v1.js";
 import {
   createManifestBoundObserverOrderInvalidWorkflow,
   executeManifestBoundObserverOrderInvalidWorkflow,
@@ -50,13 +22,6 @@ import {
   OBSERVERS_FORBIDDEN_FAMILY_DEFINITION,
 } from "../observers-forbidden-on-untagged-network/v1.js";
 import {
-  createManifestBoundReceivePurposeLanguageWorkflow,
-  executeManifestBoundReceivePurposeLanguageWorkflow,
-  type ManifestBoundReceivePurposeLanguageWorkflow,
-  type ManifestBoundReceivePurposeLanguageWorkflowConfig,
-  RECEIVE_PURPOSE_LANGUAGE_FAMILY_DEFINITION,
-} from "../receive-purpose-language/manifest-workflow.js";
-import {
   createManifestBoundRedeemerCanonicityWorkflow,
   executeManifestBoundRedeemerCanonicityWorkflow,
   type ManifestBoundRedeemerCanonicityWorkflow,
@@ -66,13 +31,6 @@ import {
 import { type StateQueueMutationLeaseCoordinator } from "../remove-fraudulent-block.js";
 import { type ResolvedProverSigner } from "../runtime.js";
 import {
-  createManifestBoundScriptIntegrityHashMismatchWorkflow,
-  executeManifestBoundScriptIntegrityHashMismatchWorkflow,
-  type ManifestBoundScriptIntegrityHashMismatchWorkflow,
-  type ManifestBoundScriptIntegrityHashMismatchWorkflowConfig,
-  SCRIPT_INTEGRITY_HASH_MISMATCH_FAMILY_DEFINITION,
-} from "../script-integrity-hash-mismatch/manifest-workflow.js";
-import {
   createManifestBoundScriptIntegrityHashMissingWorkflow,
   executeManifestBoundScriptIntegrityHashMissingWorkflow,
   type ManifestBoundScriptIntegrityHashMissingWorkflow,
@@ -80,20 +38,6 @@ import {
   SCRIPT_INTEGRITY_HASH_MISSING_FAMILY_DEFINITION,
 } from "../script-integrity-hash-missing/v1.js";
 import type { RetainedDaPayloadSource } from "../transition-trace/fetch.js";
-import {
-  createManifestBoundUnusedRedeemerWorkflow,
-  executeManifestBoundUnusedRedeemerWorkflow,
-  type ManifestBoundUnusedRedeemerWorkflow,
-  type ManifestBoundUnusedRedeemerWorkflowConfig,
-  UNUSED_REDEEMER_FAMILY_DEFINITION,
-} from "../unused-redeemer/v1.js";
-import {
-  createManifestBoundUnusedScriptWitnessWorkflow,
-  executeManifestBoundUnusedScriptWitnessWorkflow,
-  type ManifestBoundUnusedScriptWitnessWorkflow,
-  type ManifestBoundUnusedScriptWitnessWorkflowConfig,
-  UNUSED_SCRIPT_WITNESS_FAMILY_DEFINITION,
-} from "../unused-script-witness/v1.js";
 import {
   assertFamilyDefinitionRoster,
   defineFamilyApplication,
@@ -178,70 +122,10 @@ const decisionDigestCursorFamilyApplicationRecord = <
 };
 
 /**
- * The twelve decision-digest families on the state-queue-removal witness set.
+ * The decision-digest families on the state-queue-removal witness set.
  * Each row names its exact config and workflow types so the record's
  * `bindConfig` result is what its `constructWorkflow` consumes.
  */
-export const DISTINCT_ASSET_ACCUMULATION_LIMIT_FAMILY_APPLICATION_RECORD =
-  decisionDigestCursorFamilyApplicationRecord<
-    "distinctAssetAccumulationLimit",
-    ManifestBoundDistinctAssetAccumulationWorkflowConfig,
-    ManifestBoundDistinctAssetAccumulationWorkflow
-  >(DISTINCT_ASSET_ACCUMULATION_FAMILY_DEFINITION, {
-    constructWorkflow: createManifestBoundDistinctAssetAccumulationWorkflow,
-    execute: executeManifestBoundDistinctAssetAccumulationWorkflow,
-  });
-
-export const EXECUTION_SOURCE_SCRIPT_DECODING_FAMILY_APPLICATION_RECORD =
-  decisionDigestCursorFamilyApplicationRecord<
-    "executionSourceScriptDecoding",
-    ManifestBoundExecutionSourceScriptDecodingWorkflowConfig,
-    ManifestBoundExecutionSourceScriptDecodingWorkflow
-  >(EXECUTION_SOURCE_SCRIPT_DECODING_FAMILY_DEFINITION, {
-    constructWorkflow: createManifestBoundExecutionSourceScriptDecodingWorkflow,
-    execute: executeManifestBoundExecutionSourceScriptDecodingWorkflow,
-  });
-
-export const MISSING_SCRIPT_SOURCE_FAMILY_APPLICATION_RECORD =
-  decisionDigestCursorFamilyApplicationRecord<
-    "missingScriptSource",
-    ManifestBoundMissingScriptSourceWorkflowConfig,
-    ManifestBoundMissingScriptSourceWorkflow
-  >(MISSING_SCRIPT_SOURCE_FAMILY_DEFINITION, {
-    constructWorkflow: createManifestBoundMissingScriptSourceWorkflow,
-    execute: executeManifestBoundMissingScriptSourceWorkflow,
-  });
-
-export const RECEIVE_PURPOSE_LANGUAGE_FAMILY_APPLICATION_RECORD =
-  decisionDigestCursorFamilyApplicationRecord<
-    "receivePurposeLanguage",
-    ManifestBoundReceivePurposeLanguageWorkflowConfig,
-    ManifestBoundReceivePurposeLanguageWorkflow
-  >(RECEIVE_PURPOSE_LANGUAGE_FAMILY_DEFINITION, {
-    constructWorkflow: createManifestBoundReceivePurposeLanguageWorkflow,
-    execute: executeManifestBoundReceivePurposeLanguageWorkflow,
-  });
-
-export const SCRIPT_INTEGRITY_HASH_MISMATCH_FAMILY_APPLICATION_RECORD =
-  decisionDigestCursorFamilyApplicationRecord<
-    "scriptIntegrityHashMismatch",
-    ManifestBoundScriptIntegrityHashMismatchWorkflowConfig,
-    ManifestBoundScriptIntegrityHashMismatchWorkflow
-  >(SCRIPT_INTEGRITY_HASH_MISMATCH_FAMILY_DEFINITION, {
-    constructWorkflow: createManifestBoundScriptIntegrityHashMismatchWorkflow,
-    execute: executeManifestBoundScriptIntegrityHashMismatchWorkflow,
-  });
-
-export const UNUSED_REDEEMER_FAMILY_APPLICATION_RECORD =
-  decisionDigestCursorFamilyApplicationRecord<
-    "unusedRedeemer",
-    ManifestBoundUnusedRedeemerWorkflowConfig,
-    ManifestBoundUnusedRedeemerWorkflow
-  >(UNUSED_REDEEMER_FAMILY_DEFINITION, {
-    constructWorkflow: createManifestBoundUnusedRedeemerWorkflow,
-    execute: executeManifestBoundUnusedRedeemerWorkflow,
-  });
-
 export const MINT_DECLARED_ASSET_LIMIT_FAMILY_APPLICATION_RECORD =
   decisionDigestCursorFamilyApplicationRecord<
     "mintDeclaredAssetLimit",
@@ -250,16 +134,6 @@ export const MINT_DECLARED_ASSET_LIMIT_FAMILY_APPLICATION_RECORD =
   >(MINT_DECLARED_ASSET_LIMIT_FAMILY_DEFINITION, {
     constructWorkflow: createManifestBoundMintDeclaredAssetLimitWorkflow,
     execute: executeManifestBoundMintDeclaredAssetLimitWorkflow,
-  });
-
-export const MISSING_REDEEMER_FAMILY_APPLICATION_RECORD =
-  decisionDigestCursorFamilyApplicationRecord<
-    "missingRedeemer",
-    ManifestBoundMissingRedeemerWorkflowConfig,
-    ManifestBoundMissingRedeemerWorkflow
-  >(MISSING_REDEEMER_FAMILY_DEFINITION, {
-    constructWorkflow: createManifestBoundMissingRedeemerWorkflow,
-    execute: executeManifestBoundMissingRedeemerWorkflow,
   });
 
 export const OBSERVER_ORDER_INVALID_FAMILY_APPLICATION_RECORD =
@@ -300,16 +174,6 @@ export const SCRIPT_INTEGRITY_HASH_MISSING_FAMILY_APPLICATION_RECORD =
   >(SCRIPT_INTEGRITY_HASH_MISSING_FAMILY_DEFINITION, {
     constructWorkflow: createManifestBoundScriptIntegrityHashMissingWorkflow,
     execute: executeManifestBoundScriptIntegrityHashMissingWorkflow,
-  });
-
-export const UNUSED_SCRIPT_WITNESS_FAMILY_APPLICATION_RECORD =
-  decisionDigestCursorFamilyApplicationRecord<
-    "unusedScriptWitness",
-    ManifestBoundUnusedScriptWitnessWorkflowConfig,
-    ManifestBoundUnusedScriptWitnessWorkflow
-  >(UNUSED_SCRIPT_WITNESS_FAMILY_DEFINITION, {
-    constructWorkflow: createManifestBoundUnusedScriptWitnessWorkflow,
-    execute: executeManifestBoundUnusedScriptWitnessWorkflow,
   });
 
 /**

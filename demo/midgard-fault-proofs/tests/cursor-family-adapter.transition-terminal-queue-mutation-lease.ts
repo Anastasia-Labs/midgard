@@ -2,7 +2,6 @@ import "./cursor-family-adapter.production-cursor-family-adapter-v1.js";
 
 import { describe, expect, it, vi } from "vitest";
 
-import { EXECUTION_NATIVE_SCRIPT_INVALID_CURSOR_SPEC } from "../src/execution-native-script-invalid/workflow-spec.js";
 import { TRANSITION_TRACE_CURSOR_SPEC } from "../src/transition-trace/workflow-spec.js";
 import {
   createCursorFamilyWorkflowAdapter,
@@ -20,6 +19,7 @@ import {
   transaction,
   txHash,
 } from "./cursor-family-adapter.terminal.js";
+import { THIRTEEN_STEP_CURSOR_SPEC } from "./support/thirteen-step-cursor-spec.js";
 
 describe("authenticated family action refinement", () => {
   const stage = {
@@ -35,7 +35,7 @@ describe("authenticated family action refinement", () => {
     const capture = vi.fn(async () => ({ transaction: transaction() }));
     const refineAction = vi.fn(async () => ({ grammar }));
     const adapter = createCursorFamilyWorkflowAdapter({
-      spec: EXECUTION_NATIVE_SCRIPT_INVALID_CURSOR_SPEC,
+      spec: THIRTEEN_STEP_CURSOR_SPEC,
       l1: l1(stage),
       transactions: port(capture),
       stateQueueMutationLeaseCoordinator: noLeaseCoordinator,
@@ -58,7 +58,7 @@ describe("authenticated family action refinement", () => {
   it("never permits canonical input overrides and does not refine read-only observation", async () => {
     const refineAction = vi.fn(async () => ({ stage: "remove" }));
     const adapter = createCursorFamilyWorkflowAdapter({
-      spec: EXECUTION_NATIVE_SCRIPT_INVALID_CURSOR_SPEC,
+      spec: THIRTEEN_STEP_CURSOR_SPEC,
       l1: l1(stage),
       transactions: port(async () => ({ transaction: transaction() })),
       stateQueueMutationLeaseCoordinator: noLeaseCoordinator,
@@ -85,7 +85,7 @@ it("reobserves the original self-loop cursor after its successor rolls back", as
   let included = true;
   const capture = vi.fn(async () => ({ transaction: transaction() }));
   const adapter = createCursorFamilyWorkflowAdapter({
-    spec: EXECUTION_NATIVE_SCRIPT_INVALID_CURSOR_SPEC,
+    spec: THIRTEEN_STEP_CURSOR_SPEC,
     l1: l1(stage, async () => included),
     transactions: port(capture),
     stateQueueMutationLeaseCoordinator: noLeaseCoordinator,

@@ -1,6 +1,5 @@
 import {
   type CompleteCanonicalReplayContext,
-  type FamilyValidationChallengePort,
   restrictWorkflowFundingSigner,
   type WorkflowAdapterReadinessInput,
   type WorkflowAdapterRunnerInput,
@@ -62,7 +61,6 @@ export const buildCommonInfrastructure = async ({
   infrastructure,
   deploymentIdentity,
   replayContexts,
-  validationChallenge,
   l1,
   dependencies,
   environment,
@@ -73,7 +71,6 @@ export const buildCommonInfrastructure = async ({
   readonly infrastructure: WatcherFaultProofInfrastructureAuthority;
   readonly deploymentIdentity: VerifiedWatcherDeploymentIdentity;
   readonly replayContexts: ReadonlyMap<string, CompleteCanonicalReplayContext>;
-  readonly validationChallenge: FamilyValidationChallengePort;
   readonly dependencies: WatcherFaultProofApplicationDependencies;
   readonly environment: NodeJS.ProcessEnv;
 }): Promise<WatcherWorkflowInfrastructure> => {
@@ -128,7 +125,6 @@ export const buildCommonInfrastructure = async ({
       ),
       stateQueueMutationLeaseCoordinator: dependencies.createLeaseCoordinator(),
       ...(replayContext === undefined ? {} : { replayContext }),
-      validationChallenge,
     }),
     resolveReferenceScript: binding.resolveReferenceScript,
   });

@@ -15,6 +15,7 @@ import { dirname, join } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
+import { installedLaunchScope } from "../../src/fault-proofs/fault-proof-application.js";
 import {
   readWatcherProofExecution,
   removeWatcherProofObjectiveDirectory,
@@ -79,7 +80,7 @@ const setup = async (withoutSubmissionIntent: boolean) => {
     createWatcherFaultProofProgressAuthority({
       journalRoot: fixture.journalRoot,
       deploymentFingerprint,
-      categories: fixture.old.launchScope,
+      categories: installedLaunchScope(fixture.old.launchScope),
       authenticationKey: TEST_JOURNAL_KEY,
       retention,
     });

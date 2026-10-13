@@ -1,11 +1,4 @@
 import {
-  createManifestBoundExecutionNativeScriptInvalidWorkflow,
-  EXECUTION_NATIVE_SCRIPT_INVALID_FAMILY_DEFINITION,
-  type ManifestBoundExecutionNativeScriptInvalidWorkflow,
-  type ManifestBoundExecutionNativeScriptInvalidWorkflowConfig,
-  runOrResumeManifestBoundExecutionNativeScriptInvalidWorkflow,
-} from "../execution-native-script-invalid/v1.js";
-import {
   createManifestBoundMinAdaWorkflow,
   type ManifestBoundMinAdaWorkflow,
   type ManifestBoundMinAdaWorkflowConfig,
@@ -203,8 +196,8 @@ export const WITHDRAWAL_MISTAG_FAMILY_APPLICATION_RECORD =
   });
 
 /**
- * The families that replay the challenged block against its authenticated
- * predecessor read it from the classifier-admitted replay context.
+ * Min-ADA replays the challenged block against its authenticated predecessor,
+ * read from the classifier-admitted replay context.
  */
 export const MIN_ADA_FAMILY_APPLICATION_RECORD =
   bundleCursorFamilyApplicationRecord<
@@ -216,18 +209,6 @@ export const MIN_ADA_FAMILY_APPLICATION_RECORD =
     auxiliaryReferenceScriptsKey: "yields",
     constructWorkflow: createManifestBoundMinAdaWorkflow,
     execute: runOrResumeManifestBoundMinAdaWorkflow,
-  });
-
-export const EXECUTION_NATIVE_SCRIPT_INVALID_FAMILY_APPLICATION_RECORD =
-  bundleCursorFamilyApplicationRecord<
-    "executionNativeScriptInvalid",
-    ManifestBoundExecutionNativeScriptInvalidWorkflowConfig,
-    ManifestBoundExecutionNativeScriptInvalidWorkflow
-  >(EXECUTION_NATIVE_SCRIPT_INVALID_FAMILY_DEFINITION, {
-    requires: ["replayContext"],
-    auxiliaryReferenceScriptsKey: "removal",
-    constructWorkflow: createManifestBoundExecutionNativeScriptInvalidWorkflow,
-    execute: runOrResumeManifestBoundExecutionNativeScriptInvalidWorkflow,
   });
 
 /**

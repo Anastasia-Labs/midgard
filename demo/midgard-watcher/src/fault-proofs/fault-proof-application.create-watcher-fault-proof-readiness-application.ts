@@ -18,7 +18,6 @@ export const createWatcherFaultProofApplication = (
       deploymentIdentity: options.deploymentAuthority.deploymentIdentity,
       deploymentAuthority: options.deploymentAuthority,
       replayTranscriptStore: options.replayTranscriptStore,
-      userEvents: options.userEvents,
       infrastructure: options.infrastructure,
       fundingProfileOverlay: options.fundingProfileOverlay,
     }),

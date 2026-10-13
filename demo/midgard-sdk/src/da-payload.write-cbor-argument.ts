@@ -2,16 +2,7 @@ import { encodeCborInteger } from "@al-ft/midgard-core/codec/cbor";
 import { asDataType } from "@al-ft/midgard-core/lucid-data";
 import { Data } from "@lucid-evolution/lucid";
 
-import {
-  ValidationMachineStateSchema,
-  ValidationTraceProofSchema,
-} from "./fraud-proof/validation-dispute.js";
-import {
-  EventKeySchema,
-  HeaderHashSchema,
-  HeaderSchema,
-} from "./ledger-state.js";
-import { RetainedValidationAuxiliaryWitnessSchema } from "./retained-validation-auxiliary.js";
+import { HeaderHashSchema, HeaderSchema } from "./ledger-state.js";
 
 export const DA_PAYLOAD_VERSION = 1n;
 
@@ -20,88 +11,6 @@ export const DaPayloadEntrySchema = Data.Tuple([Data.Bytes(), Data.Bytes()]);
 export type DaPayloadEntry = Data.Static<typeof DaPayloadEntrySchema>;
 
 export const DaPayloadEntry = asDataType<DaPayloadEntry>(DaPayloadEntrySchema);
-
-/**
- * Event-local retained validation coordinate. Non-negative values are exact
- * NativeScripts execution indexes; the negative domain is reserved for
- * all chronological state/work witnesses; two further negative coordinates
- * retain initial context and terminal endpoint openings. See
- * retainedValidationStateCoordinate and retainedValidationEndpointCoordinate.
- */
-export const RetainedValidationWitnessKeySchema = Data.Object({
-  event_key: EventKeySchema,
-  execution_index: Data.Integer(),
-});
-
-export type RetainedValidationWitnessKey = Data.Static<
-  typeof RetainedValidationWitnessKeySchema
->;
-
-/**
- * Public reconstruction material for every chronological deterministic state,
- * initial context and terminal endpoint, including a ScriptSources frontier/control
- * or redeemer-item state, the ScriptIntegrity stage-3 terminal control, a
- * ValueAndMint asset mutation, or a NativeScripts
- * `nativeExecutionDescriptor` transition. The state
- * remains committed by `validation_traces_root`; this record only opens that
- * state and its exact work witness against the descriptor. Family consumers
- * must additionally verify any auxiliary membership against the authenticated
- * terminal frontier they use.
- */
-export const RetainedValidationWitnessSchema = Data.Object({
-  machine_state: ValidationMachineStateSchema,
-  trace_proof: ValidationTraceProofSchema,
-  phase: Data.Integer(),
-  program_counter: Data.Integer(),
-  witness_cbor: Data.Bytes(),
-  auxiliary: RetainedValidationAuxiliaryWitnessSchema,
-});
-
-export type RetainedValidationWitness = Data.Static<
-  typeof RetainedValidationWitnessSchema
->;
-
-const canonicalDataBytes = <T>(value: T, schema: unknown): Buffer =>
-  Buffer.from(Data.to(value as never, schema as never), "hex");
-
-export const encodeRetainedValidationWitnessKey = (
-  key: RetainedValidationWitnessKey,
-): Buffer => canonicalDataBytes(key, RetainedValidationWitnessKeySchema);
-
-export const encodeRetainedValidationWitness = (
-  witness: RetainedValidationWitness,
-): Buffer => canonicalDataBytes(witness, RetainedValidationWitnessSchema);
-
-const decodeCanonicalData = <T>(
-  bytes: Uint8Array,
-  schema: unknown,
-  fieldName: string,
-): T => {
-  const exact = Buffer.from(bytes);
-  const decoded = Data.from(exact.toString("hex"), schema as never) as T;
-  if (!canonicalDataBytes(decoded, schema).equals(exact)) {
-    throw new DaPayloadNonCanonicalError(`${fieldName} is not canonical`);
-  }
-  return decoded;
-};
-
-export const decodeRetainedValidationWitnessKey = (
-  bytes: Uint8Array,
-): RetainedValidationWitnessKey =>
-  decodeCanonicalData(
-    bytes,
-    RetainedValidationWitnessKeySchema,
-    "retained validation witness key",
-  );
-
-export const decodeRetainedValidationWitness = (
-  bytes: Uint8Array,
-): RetainedValidationWitness =>
-  decodeCanonicalData(
-    bytes,
-    RetainedValidationWitnessSchema,
-    "retained validation witness",
-  );
 
 export const DaPayloadCountsSchema = Data.Object({
   withdrawalCount: Data.Integer(),

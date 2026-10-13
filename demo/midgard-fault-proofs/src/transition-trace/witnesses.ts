@@ -6,7 +6,7 @@ import "./reconstruct.js";
 import "./witnesses.build-source-membership-proof.js";
 import "./witnesses.build-source-non-membership-proof.js";
 import "./witnesses.build-omitted-due-l1-event-fault.js";
-import "./witnesses.build-retained-validation-claim-witness.js";
+import "./witnesses.build-out-of-window-source-event-fault.js";
 export {
   buildInvalidForcedTransactionNoOpWitness,
   buildL2TransactionTransitionWitness,
@@ -20,9 +20,8 @@ export {
   buildCountFault,
   buildDuplicateTraceEventFault,
   buildOutOfWindowSourceEventFault,
-  buildRetainedValidationClaimWitness,
   buildTransitionFaultProof,
-} from "./witnesses.build-retained-validation-claim-witness.js";
+} from "./witnesses.build-out-of-window-source-event-fault.js";
 export {
   buildAdjacentTraceProof,
   buildEventToStepMembershipProof,

@@ -4,7 +4,6 @@ import { DEPLOYMENT_MANIFEST_L1_FINALITY } from "@al-ft/midgard-core/deployment-
 import { CML } from "@lucid-evolution/lucid";
 import { afterEach, expect, it, vi } from "vitest";
 
-import { executeManifestBoundDistinctAssetAccumulationWorkflow } from "../src/distinct-asset-accumulation-limit/v1.js";
 import { canonicalBlockEvidenceFromVerifiedPayload } from "../src/evidence/canonical-block-evidence.js";
 import { executeManifestBoundMintDeclaredAssetLimitWorkflow } from "../src/mint-declared-asset-limit/v1.js";
 import { executeManifestBoundObserverOrderInvalidWorkflow } from "../src/observer-order-invalid/v1.js";
@@ -69,7 +68,6 @@ const categories = [
   "observersForbiddenOnUntaggedNetwork",
   "observerOrderInvalid",
   "redeemerCanonicity",
-  "distinctAssetAccumulationLimit",
 ] as const;
 type Category = (typeof categories)[number];
 const executors = {
@@ -78,8 +76,6 @@ const executors = {
     executeManifestBoundObserversForbiddenWorkflow,
   observerOrderInvalid: executeManifestBoundObserverOrderInvalidWorkflow,
   redeemerCanonicity: executeManifestBoundRedeemerCanonicityWorkflow,
-  distinctAssetAccumulationLimit:
-    executeManifestBoundDistinctAssetAccumulationWorkflow,
 };
 const execute = (
   category: Category,
@@ -95,10 +91,7 @@ const execute = (
     >[0] &
       Parameters<typeof executeManifestBoundObserversForbiddenWorkflow>[0] &
       Parameters<typeof executeManifestBoundObserverOrderInvalidWorkflow>[0] &
-      Parameters<typeof executeManifestBoundRedeemerCanonicityWorkflow>[0] &
-      Parameters<
-        typeof executeManifestBoundDistinctAssetAccumulationWorkflow
-      >[0],
+      Parameters<typeof executeManifestBoundRedeemerCanonicityWorkflow>[0],
   );
 const headerHash = "11".repeat(28);
 const deploymentFingerprint = hash("22");
@@ -585,7 +578,6 @@ it.each(categories)(
         "observers-forbidden-on-untagged-network",
       observerOrderInvalid: "observer-order-invalid",
       redeemerCanonicity: "redeemer-malformed",
-      distinctAssetAccumulationLimit: "mint-asset-accumulation-limit",
     }[category];
     const result = await runFraudProofWorkflow({
       deploymentFingerprint,

@@ -26,6 +26,7 @@ import {
   HEADER_DECISION,
   type HeaderFaultDecision,
 } from "../../src/workflow/header-classifier.js";
+import type { InstalledFraudProofCategory } from "../../src/workflow/installed-categories.js";
 import {
   computeFraudProofWorkflowId,
   FRAUD_PROOF_WORKFLOW_IDENTITY_SCHEMA_VERSION,
@@ -148,7 +149,7 @@ const terminal = (
   observedAt: { slot: "1234", blockHash: hash("cc"), confirmationDepth },
 });
 export const customWorkflowRecoveryFixture = async (
-  spec: CursorFamilySpec,
+  spec: CursorFamilySpec<InstalledFraudProofCategory>,
   removed = false,
 ) => {
   const category = spec.category,

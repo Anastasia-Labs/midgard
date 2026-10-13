@@ -1,6 +1,5 @@
 import type { EvidenceProvenance } from "@al-ft/midgard-sdk";
 
-import { EXECUTION_NATIVE_SCRIPT_INVALID_CURSOR_SPEC } from "../src/execution-native-script-invalid/workflow-spec.js";
 import {
   CURSOR_FAMILY_TRANSACTION_PORT,
   type CursorFamilyTransactionPort,
@@ -16,6 +15,7 @@ import type {
 } from "../src/workflow/journal.js";
 import type { FraudProofRawL1FamilyStage } from "../src/workflow/raw-l1-family-derivation.js";
 import { type LocallyEvaluatedTransaction } from "../src/workflow/transaction-boundary.js";
+import { THIRTEEN_STEP_CURSOR_SPEC } from "./support/thirteen-step-cursor-spec.js";
 
 export const hash = (byte: string): string => byte.repeat(32);
 
@@ -132,7 +132,7 @@ export const context = {
 
 export const required = (stage: FraudProofRawL1FamilyStage) => {
   const observation = cursorFamilyObservation({
-    spec: EXECUTION_NATIVE_SCRIPT_INVALID_CURSOR_SPEC,
+    spec: THIRTEEN_STEP_CURSOR_SPEC,
     headerHash,
     provenance,
     stage,

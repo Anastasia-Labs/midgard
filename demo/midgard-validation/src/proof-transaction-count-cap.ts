@@ -24,9 +24,7 @@ import { MIDGARD_CONSENSUS_LIMITS } from "@al-ft/midgard-core/consensus-profile"
  * `"16500000"` in capability-parity.test.ts:49). §3.3 "Execution fit"
  * requires every individual proof transaction to stay at or below the
  * deployment's measured protocol limits with at least a 20% reserve
- * (docs/consensus-profile-v1.md §10; the same reserve is applied at
- * complete-item-proof-fit-emulator.test.ts:84-89 as
- * `RESERVED_MEMORY_UNITS`/`RESERVED_CPU_UNITS`), so one proof transaction
+ * (docs/consensus-profile-v1.md §10), so one proof transaction
  * can carry at most 80% of the target snapshot's ceiling.
  *
  * The cap check inverts the retired floor's direction: for each fault

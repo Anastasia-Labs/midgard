@@ -17,10 +17,6 @@ export {
   publishAuthenticatedValidationDisputeControl,
   publishMinAdaYieldReferenceScripts,
   publishStateQueueYieldReferenceScript,
-  publishValidationDisputeReferenceScript,
-  VALIDATION_DISPUTE_REFERENCE_SCRIPT_ROLE,
-  type ValidationDisputeControlPublicationTarget,
-  validationDisputeControlPublicationTargets,
 } from "./reference-scripts.publish-authenticated-validation-dispute-control.js";
 export {
   publishFaultProofWitnessReferenceScripts,

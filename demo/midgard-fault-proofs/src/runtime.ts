@@ -14,7 +14,7 @@ import "./runtime.fraud-proof-deployment-entries-by-category.js";
 import "./runtime.category-label.js";
 import "./runtime.build-one-category-fault-proof-contracts.js";
 import "./runtime.resolve-fault-proof-deployment-contracts.js";
-import "./runtime.resolve-validation-trace-dispute-deployment-contracts.js";
+import "./runtime.resolve-category-deployment-contracts.js";
 import "./runtime.resolve-fraudulent-header-hash.js";
 
 import {
@@ -43,10 +43,22 @@ export {
   type ResolvedNoReferenceInputDeploymentContracts,
   type ResolvedReferenceInputNoIdxDeploymentContracts,
   type ResolvedTransitionTraceDeploymentContracts,
-  type ResolvedValidationTraceDisputeDeploymentContracts,
   type ResolvedZeroInputDeploymentContracts,
   type SupportedFaultProofCategoryName,
 } from "./runtime.require-fault-proof-step-reference-script.js";
+export {
+  faultProofCategoryLabel,
+  requireSingletonUtxo,
+  resolveDaHashPreimageDeploymentContracts,
+  resolveInputNoIdxDeploymentContracts,
+  resolveInvalidRangeDeploymentContracts,
+  resolveInvalidSignatureDeploymentContracts,
+  resolveNonExistentInputDeploymentContracts,
+  resolveNoReferenceInputDeploymentContracts,
+  resolveReferenceInputNoIdxDeploymentContracts,
+  resolveTransitionTraceDeploymentContracts,
+  resolveZeroInputDeploymentContracts,
+} from "./runtime.resolve-category-deployment-contracts.js";
 export {
   resolveDoubleSpendDeploymentContracts,
   resolveFaultProofDeploymentContracts,
@@ -73,20 +85,6 @@ export {
   type ResolvedProverSigner,
   resolveProverSigner,
 } from "./runtime.resolve-prover-signer.js";
-export {
-  faultProofCategoryLabel,
-  requireSingletonUtxo,
-  resolveDaHashPreimageDeploymentContracts,
-  resolveInputNoIdxDeploymentContracts,
-  resolveInvalidRangeDeploymentContracts,
-  resolveInvalidSignatureDeploymentContracts,
-  resolveNonExistentInputDeploymentContracts,
-  resolveNoReferenceInputDeploymentContracts,
-  resolveReferenceInputNoIdxDeploymentContracts,
-  resolveTransitionTraceDeploymentContracts,
-  resolveValidationTraceDisputeDeploymentContracts,
-  resolveZeroInputDeploymentContracts,
-} from "./runtime.resolve-validation-trace-dispute-deployment-contracts.js";
 
 export { compareOutRefs, outRefLabel, outRefsEqual };
 

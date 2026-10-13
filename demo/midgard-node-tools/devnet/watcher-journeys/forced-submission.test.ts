@@ -1,27 +1,15 @@
 import {
   decodeMidgardForcedTxFullFromCanonicalCbor,
   decodeMidgardNativeTxFullFromCanonicalCbor,
-  encodeMidgardSpendInputItem,
-  encodeMidgardTxOutput,
 } from "@al-ft/midgard-core";
-import { EXECUTION_NATIVE_SCRIPT_INVALID_COMPLETE_CANONICAL_REPLAY } from "@al-ft/midgard-fault-proofs";
 import {
   buildCanonicalBlockFixture,
   buildFixtureTransaction,
 } from "@al-ft/midgard-fault-proofs/test-support/canonical-block-evidence-fixture";
 import { retainedTransactionFixture } from "@al-ft/midgard-fault-proofs/test-support/retained-transaction";
 import * as SDK from "@al-ft/midgard-sdk";
-import {
-  CML,
-  Data,
-  generateSeedPhrase,
-  walletFromSeed,
-} from "@lucid-evolution/lucid";
+import { Data } from "@lucid-evolution/lucid";
 import { expect, it } from "vitest";
-
-import { verifyJourneyFixture } from "./fixture-verification.js";
-import { buildJourneyScriptForcedFault } from "./script-cases.js";
-import { prepareJourneyNativeExecutionEvidence } from "./script-execution-evidence.js";
 
 it("retains one forced submission across both operator claims while replay independently rejects it", async () => {
   const transaction = buildFixtureTransaction({
@@ -80,59 +68,4 @@ it("retains one forced submission across both operator claims while replay indep
   expect(normal.payload.block_body.transaction_preimages).toEqual([
     [transaction.txId, transaction.canonicalCbor.toString("hex")],
   ]);
-});
-
-it("reconstructs forced native execution evidence from the journey's retained validation trace", async () => {
-  const ledgerOwnerSeedPhrase = generateSeedPhrase();
-  const wallet = walletFromSeed(ledgerOwnerSeedPhrase, { network: "Custom" });
-  const key = CML.PrivateKey.from_bech32(wallet.paymentKey);
-  const owner = Buffer.from(key.to_public().hash().to_raw_bytes());
-  const predecessor = await buildCanonicalBlockFixture({
-    transactions: [],
-    prevHeaderHash: SDK.GENESIS_HEADER_HASH,
-    utxos: [
-      {
-        key: encodeMidgardSpendInputItem({
-          txId: Buffer.alloc(32, 0x31),
-          outputIndex: 0,
-        }),
-        value: encodeMidgardTxOutput({
-          address: Buffer.concat([Buffer.from([0x60]), owner]),
-          value: { lovelace: 10_000_000n, assets: new Map() },
-        }),
-      },
-    ],
-  });
-  const input = {
-    predecessor,
-    ledgerOwnerSeedPhrase,
-    operatorVkey: predecessor.header.operatorVkey,
-    endTime: 60_020n,
-    blockSlot: 60n,
-    orderKey: { transactionId: "52".repeat(32), outputIndex: 0n },
-  };
-  const block = await buildJourneyScriptForcedFault({
-    ...input,
-    category: "executionNativeScriptInvalid",
-  });
-  expect(block.replay.trace.verdict).toBe("accepted");
-  const classified = await verifyJourneyFixture({
-    category: "executionNativeScriptInvalid",
-    replayer: EXECUTION_NATIVE_SCRIPT_INVALID_COMPLETE_CANONICAL_REPLAY,
-    block,
-    predecessor,
-  });
-  if (classified.evidence === undefined)
-    throw new Error("Missing retained canonical evidence");
-  const prepared = await prepareJourneyNativeExecutionEvidence(
-    classified.evidence,
-    predecessor,
-  );
-  expect(prepared.evidence.contradiction).toBe(true);
-
-  const plutus = await buildJourneyScriptForcedFault({
-    ...input,
-    category: "unusedRedeemer",
-  });
-  expect(plutus.replay.trace.verdict).toBe("accepted");
 });

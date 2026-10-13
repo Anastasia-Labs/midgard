@@ -9,12 +9,10 @@ import "../../src/transition-trace/phas.js";
 import "../helpers/canonical-block-evidence-fixture.js";
 import "./transition-trace-final-fixtures.js";
 import "./transition-trace-retained.deposit-events-retained-block.js";
-import "./transition-trace-retained.transition-trace-accepted-retained-fixture.js";
 import "./transition-trace-retained.transition-trace-timing-retained-fixture.js";
 export {
   depositEventsRetainedBlock,
   type RetainedDepositEvent,
   transitionTraceDepositRetainedFixture,
 } from "./transition-trace-retained.deposit-events-retained-block.js";
-export { transitionTraceAcceptedRetainedFixture } from "./transition-trace-retained.transition-trace-accepted-retained-fixture.js";
 export { transitionTraceTimingRetainedFixture } from "./transition-trace-retained.transition-trace-timing-retained-fixture.js";

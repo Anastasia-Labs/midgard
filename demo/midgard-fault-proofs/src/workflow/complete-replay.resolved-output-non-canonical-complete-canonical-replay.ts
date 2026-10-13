@@ -2,7 +2,6 @@ import { encodeProofThreadForcedSourceKey } from "@al-ft/midgard-sdk";
 import { type VerdictSubject } from "@al-ft/midgard-sdk";
 
 import { type CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
-import { detectExecutionSourceScriptDecodingCanonicalViolations } from "../execution-source-script-decoding/authenticated-replay.js";
 import { detectFieldItemWidthIllegalCompleteReplay } from "../field-item-width-illegal/workflow.js";
 import { detectFieldPreimageLengthCompleteReplay } from "../field-preimage-length-mismatch/evidence.js";
 import { detectInvalidSignatureWrongfulRejections } from "../invalid-signature/wrongful-rejection.js";
@@ -308,10 +307,4 @@ export const OBSERVERS_FORBIDDEN_ON_UNTAGGED_NETWORK_COMPLETE_CANONICAL_REPLAY =
 export const OUTPUT_REFERENCE_SCRIPT_DECODING_COMPLETE_CANONICAL_REPLAY =
   completeReplayer(["outputReferenceScriptDecoding"], async (evidence) =>
     detectOutputReferenceScriptDecodingCanonicalViolations(evidence),
-  );
-
-/** Complete accepted and forced scan for malformed execution-source scripts. */
-export const EXECUTION_SOURCE_SCRIPT_DECODING_COMPLETE_CANONICAL_REPLAY =
-  completeReplayer(["executionSourceScriptDecoding"], async (evidence) =>
-    detectExecutionSourceScriptDecodingCanonicalViolations(evidence),
   );

@@ -15,7 +15,6 @@ import { Effect } from "effect";
 
 import {
   buildMidgardCanonicalCekProgram,
-  replayValidationMachineEvent,
   validatePhaseASingle,
   validationMachineLedgerRoot,
 } from "../src/index.js";
@@ -30,6 +29,7 @@ import {
   outRefFromByte,
   plutusV3ScriptWitness,
 } from "./validation-fixtures.js";
+import { replayValidationMachineEvent } from "./validation-machine-event-replay.trace.js";
 
 export const nativeFaultContext = {
   consensusProfile: MIDGARD_CONSENSUS_PROFILE,

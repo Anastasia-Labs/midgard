@@ -9,15 +9,13 @@ import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile
 import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import { makeForcedOrderSettlementScenario } from "@al-ft/midgard-fault-proofs/test-support/forced-order-settlement";
 import * as SDK from "@al-ft/midgard-sdk";
-import {
-  replayValidationMachineEvent,
-  validationMachineLedgerRoot,
-} from "@al-ft/midgard-validation";
+import { validationMachineLedgerRoot } from "@al-ft/midgard-validation";
 import {
   makeNativeTx,
   makeOutput,
   outRefFromByte,
 } from "@al-ft/midgard-validation/tests/validation-fixtures";
+import { replayValidationMachineEvent } from "@al-ft/midgard-validation/tests/validation-machine-event-replay.trace";
 import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";

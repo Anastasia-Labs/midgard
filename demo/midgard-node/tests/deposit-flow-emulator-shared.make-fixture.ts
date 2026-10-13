@@ -7,6 +7,7 @@ import { randomUUID } from "node:crypto";
 
 import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
 import { makeDeploymentMarker } from "@al-ft/midgard-core/deployment-manifest-identity";
+import type { L1SlotConfig } from "@al-ft/midgard-core/l1-slot-config";
 import * as SDK from "@al-ft/midgard-sdk";
 import { createReferenceScriptAuthPolicy } from "@al-ft/midgard-sdk";
 import {
@@ -20,6 +21,7 @@ import {
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
+import { canonicalSlotConfigForLucid } from "../src/lucid-time.js";
 import { FollowerWriteFixture } from "../src/services/follower-write-gate.js";
 import {
   ContractDeploymentIdentity,
@@ -101,7 +103,14 @@ export const loadContracts = (
     outputIndex: number;
   },
   referenceScriptAuth: SDK.MintingValidator,
-) => loadRealMidgardContractsForTest(oneShotOutRef, referenceScriptAuth);
+  l1SlotConfig?: L1SlotConfig,
+) =>
+  loadRealMidgardContractsForTest(
+    oneShotOutRef,
+    referenceScriptAuth,
+    undefined,
+    l1SlotConfig,
+  );
 
 export const fixtureDeploymentIdentity = (fixture: EmulatorFixture) =>
   ContractDeploymentIdentity.make(
@@ -227,12 +236,16 @@ const deployFixture = async (): Promise<{
     emulator.now(),
     EMULATOR_REFERENCE_SCRIPT_AUTH_TIMELOCK_MS,
   );
+  // The commit validator binds blockSlot to POSIX time with its deployment
+  // mapping. Custom emulator clients anchor their slots at creation time,
+  // so derive the scripts with that same immutable Lucid mapping.
   const contracts = await loadContracts(
     {
       txHash: nonceUtxo.txHash,
       outputIndex: nonceUtxo.outputIndex,
     },
     referenceScriptAuth,
+    canonicalSlotConfigForLucid(operatorLucid),
   );
   const operatorKeyHash = await readKeyHash(operatorLucid);
   const referenceScripts = await publishDepositFlowReferenceScripts({

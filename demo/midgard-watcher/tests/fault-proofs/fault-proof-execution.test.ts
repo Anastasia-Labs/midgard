@@ -8,6 +8,7 @@ import {
 } from "@al-ft/midgard-fault-proofs";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { installedLaunchScope } from "../../src/fault-proofs/fault-proof-application.js";
 import { createWatcherFaultProofExecution } from "../../src/fault-proofs/fault-proof-execution.js";
 import { WatcherProofDecisionMissingError } from "../../src/fault-proofs/watcher-decision-hold.js";
 import { createWatcherProverFundingAuthorityFactory } from "../../src/funding/prover-funding-authority.js";
@@ -36,7 +37,7 @@ const setup = async (newReservation = false) => {
     ? createWatcherProverFundingAuthorityFactory({
         journalRoot,
         journalAuthenticationKey: TEST_JOURNAL_KEY,
-        launchScope: fixture.fresh.launchScope,
+        launchScope: installedLaunchScope(fixture.fresh.launchScope),
         deploymentIdentity,
         protocolParameters: fixture.protocolParameters,
         store: fixture.store,

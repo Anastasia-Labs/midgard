@@ -5,6 +5,7 @@ import {
 } from "@al-ft/midgard-fault-proofs";
 import { afterEach, expect, it, vi } from "vitest";
 
+import { installedLaunchScope } from "../../src/fault-proofs/fault-proof-application.js";
 import * as parameterAuthorities from "../../src/funding/prover-funding.js";
 import { createWatcherProtocolParameterRuntimeAuthority } from "../../src/funding/prover-funding.js";
 import * as authorityCreation from "../../src/funding/prover-funding-authority.create-watcher-prover-funding-authority.js";
@@ -48,7 +49,7 @@ const setup = async (priorRoster = false) => {
   const factory = createWatcherProverFundingAuthorityFactory({
     journalRoot: fixture.journalRoot,
     journalAuthenticationKey: TEST_JOURNAL_KEY,
-    launchScope: fixture.old.launchScope,
+    launchScope: installedLaunchScope(fixture.old.launchScope),
     deploymentIdentity,
     protocolParameters: fixture.protocolParameters,
     store: { ...fixture.store, readAll },
@@ -144,7 +145,7 @@ it("resumes an exact deployed reservation after a live fee update and restart", 
   const factory = createWatcherProverFundingAuthorityFactory({
     journalRoot: fixture.journalRoot,
     journalAuthenticationKey: TEST_JOURNAL_KEY,
-    launchScope: fixture.old.launchScope,
+    launchScope: installedLaunchScope(fixture.old.launchScope),
     deploymentIdentity,
     protocolParameters: current,
     store: fixture.store,
@@ -194,7 +195,7 @@ it("uses updated live parameters for new decisions instead of its cached startup
   const factory = createWatcherProverFundingAuthorityFactory({
     journalRoot: fixture.journalRoot + "/new",
     journalAuthenticationKey: TEST_JOURNAL_KEY,
-    launchScope: fixture.old.launchScope,
+    launchScope: installedLaunchScope(fixture.old.launchScope),
     deploymentIdentity,
     protocolParameters: fixture.protocolParameters,
     store: { ...fixture.store, readAll },
@@ -244,7 +245,7 @@ it("authenticates and resumes a nondeployment parameter basis after restart", as
   const factory = createWatcherProverFundingAuthorityFactory({
     journalRoot: fixture.journalRoot,
     journalAuthenticationKey: TEST_JOURNAL_KEY,
-    launchScope: fixture.old.launchScope,
+    launchScope: installedLaunchScope(fixture.old.launchScope),
     deploymentIdentity,
     protocolParameters: await createWatcherProtocolParameterRuntimeAuthority({
       deploymentIdentity,
@@ -307,7 +308,7 @@ it("reprices the next installed step's idle collateral after reconciling its ori
   const factory = createWatcherProverFundingAuthorityFactory({
     journalRoot: fixture.journalRoot,
     journalAuthenticationKey: TEST_JOURNAL_KEY,
-    launchScope: fixture.old.launchScope,
+    launchScope: installedLaunchScope(fixture.old.launchScope),
     deploymentIdentity,
     protocolParameters: current,
     protocolParameterHistory: fixture.protocolParameterHistory,

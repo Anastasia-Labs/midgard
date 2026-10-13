@@ -1,7 +1,7 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
-import { stringifyJson } from "./json-file.js";
+import { readCborHexFile, stringifyJson } from "./json-file.js";
 import {
   detectTransitionTraceFaults,
   reconstructDaPayload,
@@ -9,7 +9,6 @@ import {
   transitionTraceFinalIndex,
 } from "./transition-trace/index.js";
 import { makeTransitionProofMaterial } from "./transition-trace/proof-material.js";
-import { readValidationDisputeCborFile } from "./validation-dispute/from-files.js";
 
 export const TRANSITION_TRACE_PREPARE_SCHEMA_VERSION =
   "midgard-transition-trace-prepare-v1" as const;
@@ -95,7 +94,7 @@ export const prepareTransitionTraceFromDaEnvelope = async ({
   headerHash,
   outputDir,
 }: PrepareTransitionTraceFromDaEnvelopeConfig): Promise<PreparedTransitionTraceOutput> => {
-  const payloadEnvelopeHex = await readValidationDisputeCborFile(
+  const payloadEnvelopeHex = await readCborHexFile(
     daPayloadEnvelopePath,
     "--da-payload-envelope",
   );

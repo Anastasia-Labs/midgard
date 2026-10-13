@@ -27,9 +27,8 @@ export {
 } from "./retained-reason-classifier.build-retained-plutus-fixture.js";
 export {
   buildRetainedValidationBlockFixture,
+  placeholderValidationTraceEntries,
   type RetainedPlutusFixtureOptions,
-  retainRejectedValidationTrace,
-  retainValidationTrace,
 } from "./retained-reason-classifier.build-retained-validation-block-fixture.js";
 export { captureRetainedPlutusIdentityOrigins } from "./retained-reason-classifier.capture-retained-plutus-identity-origins.js";
 export { classifyRetainedReasonFixture } from "./retained-reason-classifier.classify-retained-reason-fixture.js";

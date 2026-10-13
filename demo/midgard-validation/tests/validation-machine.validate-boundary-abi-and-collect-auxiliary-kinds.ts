@@ -7,13 +7,7 @@ import {
   MIDGARD_CONSENSUS_PROFILE,
   MIDGARD_VALIDATION_DISPUTE_VERSION,
 } from "@al-ft/midgard-core";
-import {
-  deriveLedgerOutputProofFinalizePlan,
-  deriveLedgerOutputProofStepPlan,
-  encodeValidationSemanticResolutionRedeemer,
-  parseExactAikenDataCbor,
-  scriptSourcesDescriptorClaim,
-} from "@al-ft/midgard-fault-proofs";
+import { parseExactAikenDataCbor } from "@al-ft/midgard-fault-proofs";
 import {
   Application,
   Lambda,
@@ -21,7 +15,6 @@ import {
   UPLCProgram,
   UPLCVar,
 } from "@harmoniclabs/uplc";
-import { Constr, Data } from "@lucid-evolution/lucid";
 
 import {
   buildMidgardCanonicalCekProgram,
@@ -31,9 +24,6 @@ import {
 } from "../src/index.js";
 import {
   assertPinnedAuxiliaryEnvelope,
-  semanticResolverDefinitions,
-  semanticResolverOffsets,
-  spendRedeemerDefinitionName,
   validationDisputeBlueprint,
 } from "./validation-machine.semantic-resolver-definitions.js";
 
@@ -117,179 +107,6 @@ export const validateBoundaryAbiAndCollectAuxiliaryKinds = (
       oneStepArgument.auxiliaryCbor.length,
       oneStepArgument.evidenceCbor.length,
     );
-    if (
-      oneStepArgument.resolverIndex === 8 &&
-      oneStepArgument.semanticResolverIndex === 28
-    ) {
-      // The shared ScriptSources item route (8/28) resolves through a staged
-      // multi-validator submission plan (`deriveScriptSourcesItemSubmissionPlan`),
-      // not one semantic resolver's `SpendRedeemer`; its per-stage redeemers
-      // are pinned by the shared-item plan tests and the item-max emulator
-      // lifecycle. The transition and auxiliary envelopes are still validated
-      // above like every other step.
-      maxArgumentsBytes = Math.max(maxArgumentsBytes, argumentsCbor.length);
-      validated.add(auxiliaryKind);
-      continue;
-    }
-    const globalIndex =
-      semanticResolverOffsets[oneStepArgument.resolverIndex]! +
-      oneStepArgument.semanticResolverIndex;
-    const moduleName = semanticResolverDefinitions[globalIndex];
-    if (moduleName === undefined) {
-      throw new Error(
-        `semantic resolver ${globalIndex.toString()} has no ABI definition`,
-      );
-    }
-    // The CEK execution-selection action carries the material route the
-    // submitter chose; the direct route is the one every selection in these
-    // traces can take (the selection of a native execution names no
-    // material and rides `NoCekMaterial`).
-    const materialRoute =
-      oneStepArgument.resolverIndex === 11 &&
-      oneStepArgument.semanticResolverIndex === 1
-        ? oneStepArgument.cekRouteMaterial === undefined
-          ? ("NoCekMaterial" as const)
-          : {
-              DirectCekMaterial: {
-                envelope_cbor:
-                  oneStepArgument.cekRouteMaterial.envelopeCbor.toString("hex"),
-                sidecar_cbor:
-                  oneStepArgument.cekRouteMaterial.programMaterialSidecarCbor.toString(
-                    "hex",
-                  ),
-              },
-            }
-        : undefined;
-    // The yield-dispatching semantic resolvers refuse to encode without the
-    // exact arity of authenticated reference-input indices their proof
-    // transaction would carry. This walk validates redeemer ABI shape only —
-    // there is no transaction, so it supplies zero-valued indices at the
-    // arity each step's own plan demands.
-    const yieldInvocationOptions = (() => {
-      const resolverIndex = oneStepArgument.resolverIndex;
-      const semanticResolverIndex = oneStepArgument.semanticResolverIndex;
-      if (resolverIndex === 5 && semanticResolverIndex === 1) {
-        // The kind is one integer field either way; the shape is identical.
-        return {
-          phaseANativeItemInvocation: {
-            referenceInputIndex: 0n,
-            kind: 0 as const,
-          },
-        };
-      }
-      if (
-        (resolverIndex === 7 && semanticResolverIndex === 3) ||
-        (resolverIndex === 8 && semanticResolverIndex === 2)
-      ) {
-        const plan = deriveLedgerOutputProofStepPlan({
-          resolverIndex,
-          semanticResolverIndex,
-          transitionCbor: oneStepArgument.transitionCbor,
-          auxiliaryCbor: oneStepArgument.auxiliaryCbor,
-          ...(oneStepArgument.ledgerOutputProofSuccessorWorkWitnessCbor ===
-          undefined
-            ? {}
-            : {
-                ledgerOutputProofSuccessorWorkWitnessCbor:
-                  oneStepArgument.ledgerOutputProofSuccessorWorkWitnessCbor,
-              }),
-        });
-        return {
-          ledgerOutputProofYieldReferenceInputIndices: Array.from(
-            { length: 1 + plan.attestationRoles.length },
-            () => 0n,
-          ),
-        };
-      }
-      if (
-        (resolverIndex === 7 && semanticResolverIndex === 4) ||
-        (resolverIndex === 8 && semanticResolverIndex === 3)
-      ) {
-        const plan = deriveLedgerOutputProofFinalizePlan({
-          resolverIndex,
-          semanticResolverIndex,
-          transitionCbor: oneStepArgument.transitionCbor,
-        });
-        return {
-          ledgerOutputProofYieldReferenceInputIndices: Array.from(
-            { length: plan.attachRoles.length },
-            () => 0n,
-          ),
-        };
-      }
-      if (resolverIndex === 11 && semanticResolverIndex === 1) {
-        const auxiliary = Data.from(
-          oneStepArgument.auxiliaryCbor.toString("hex"),
-        );
-        const wide = auxiliary instanceof Constr && auxiliary.fields[1] !== 0n;
-        return {
-          cekSelectionYieldReferenceInputIndices: Array.from(
-            { length: wide ? 4 : 2 },
-            () => 0n,
-          ),
-        };
-      }
-      if (resolverIndex === 12 && [3, 6, 8].includes(semanticResolverIndex)) {
-        return { assetFoldYieldReferenceInputIndex: 0n };
-      }
-      if (resolverIndex === 8 && semanticResolverIndex === 0) {
-        // The kind is one integer field whatever its value; the shape is
-        // identical.
-        return {
-          scriptSourcesMiddleInvocation: { kind: 0, referenceInputIndex: 0n },
-        };
-      }
-      if (resolverIndex === 8 && [19, 21, 22].includes(semanticResolverIndex)) {
-        const auxiliary = Data.from(
-          oneStepArgument.auxiliaryCbor.toString("hex"),
-        );
-        if (auxiliary instanceof Constr && auxiliary.index === 18) {
-          // The claim is a pure function of the step's own evidence.
-          return {
-            scriptSourcesDescriptorInvocation: {
-              claim: scriptSourcesDescriptorClaim(auxiliary),
-              referenceInputIndex: 0n,
-            },
-          };
-        }
-        return {};
-      }
-      if (resolverIndex === 8 && semanticResolverIndex === 25) {
-        return {
-          scriptSourcesObserverInvocation: {
-            observerHash: "00".repeat(28),
-            activeCount: 1n,
-            indices: [0n, 0n],
-          },
-        };
-      }
-      return {};
-    })();
-    const semanticRedeemer = (() => {
-      try {
-        return encodeValidationSemanticResolutionRedeemer({
-          oneStepArgument,
-          inputIndex: 0n,
-          outputIndex: 0n,
-          ...(materialRoute === undefined ? {} : { materialRoute }),
-          ...yieldInvocationOptions,
-        });
-      } catch (error) {
-        const auxiliary = Data.from(
-          oneStepArgument.auxiliaryCbor.toString("hex"),
-        );
-        throw new Error(
-          `semantic redeemer for resolver ${oneStepArgument.resolverIndex.toString()}/${oneStepArgument.semanticResolverIndex.toString()} (auxiliary constructor ${auxiliary instanceof Constr ? auxiliary.index.toString() : "none"}): ${error instanceof Error ? error.message : String(error)}`,
-        );
-      }
-    })();
-    parseExactAikenDataCbor({
-      blueprint: validationDisputeBlueprint,
-      definitionName: spendRedeemerDefinitionName(moduleName),
-      cbor: semanticRedeemer.toString("hex"),
-      maxBytes: 16 * 1024 - 1,
-    });
-    maxArgumentsBytes = Math.max(maxArgumentsBytes, semanticRedeemer.length);
     maxArgumentsBytes = Math.max(maxArgumentsBytes, argumentsCbor.length);
     validated.add(auxiliaryKind);
   }

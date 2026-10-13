@@ -5,12 +5,10 @@ import "@al-ft/midgard-sdk";
 import "@lucid-evolution/lucid";
 import "../funding/workflow-funding-profile-overlay.js";
 import "../indexers/authenticated-state-queue-observation.js";
-import "../l1-follower/user-events.js";
 import "../runtime/config.js";
 import "../runtime/deployment-authority.js";
 import "../runtime/deployment-identity.js";
 import "../storage/retained-da-runtime.js";
-import "./replay-transcript-capture.js";
 import "./fault-proof-application.production-dependencies.js";
 import "./fault-proof-application.bind-watcher-deployment-authority.js";
 import "./fault-proof-application.build-common-infrastructure.js";
@@ -23,6 +21,7 @@ export {
   unsafeCreateWatcherFaultProofApplicationForTest,
 } from "./fault-proof-application.create-watcher-fault-proof-readiness-application.js";
 export {
+  installedLaunchScope,
   WATCHER_FAULT_PROOF_APPLICATION,
   WATCHER_FAULT_PROOF_STARTUP_READINESS,
   WATCHER_INSTALLED_WORKFLOW_CATEGORIES,

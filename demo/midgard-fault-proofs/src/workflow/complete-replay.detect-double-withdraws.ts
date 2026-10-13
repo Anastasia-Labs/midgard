@@ -13,7 +13,6 @@ import { detectNoReferenceInputWrongfulRejections } from "../no-reference-input/
 import { detectNonExistentInputWrongfulRejections } from "../non-existent-input/wrongful-rejection.js";
 import { decodeTransactionMaterial } from "../prepare-double-spend.js";
 import { detectReferenceInputNoIdxViolationsFromTransactions } from "../prepare-reference-input-no-idx.js";
-import { detectValidationTraceReplay } from "../validation-dispute/replay.js";
 import { type CanonicalViolationDetection } from "./classification.js";
 import {
   completeCanonicalReplayPredecessorLedger,
@@ -234,18 +233,6 @@ export const NETWORK_ID_COMPLETE_CANONICAL_REPLAY = completeReplayer(
   ["networkId"],
   async (evidence) => detectNetworkIds(evidence),
 );
-
-export const VALIDATION_TRACE_DISPUTE_COMPLETE_CANONICAL_REPLAY =
-  completeReplayer(["validationTraceDispute"], async (evidence, context) => {
-    if (context?.validationTraceReplay === undefined)
-      throw new Error("validation trace replay requires its admitted context");
-    return detectValidationTraceReplay({
-      evidence,
-      context: context.validationTraceReplay,
-      predecessor: context.predecessor,
-      transitionTraceEvents: context.transitionTraceEvents,
-    });
-  });
 
 /** Complete replay for the two-step invalid-range family. */
 export const INVALID_RANGE_COMPLETE_CANONICAL_REPLAY = completeReplayer(

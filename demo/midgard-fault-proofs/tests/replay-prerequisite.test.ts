@@ -5,7 +5,6 @@ import "vitest";
 import "../src/evidence/canonical-block-evidence.js";
 import "../src/transition-trace/reconstruct.js";
 import "../src/transition-trace/replay-authority.js";
-import "../src/transition-trace/replay-terminal.js";
 import "../src/transition-trace/witnesses.js";
 import "../src/workflow/classification.js";
 import "../src/workflow/complete-replay.js";

@@ -12,12 +12,12 @@ describe("selected target under a curated catalogue", () => {
     const current = observation([headerFixture("01"), headerFixture("02")]);
     const [first, second] = current.finalizedHeaders;
     const decisions = [
-      decision(first!.headerHash, "unusedRedeemer"),
+      decision(first!.headerHash, "minFee"),
       decision(second!.headerHash, "doubleSpend"),
     ];
-    // The selected testing profile carries the whole catalogue.
+    // Both installed families are in the selected testing catalogue.
     expect(selectedTarget({ observation: current, decisions })).toMatchObject({
-      category: "unusedRedeemer",
+      category: "minFee",
       headerHash: first!.headerHash,
     });
     expect(
