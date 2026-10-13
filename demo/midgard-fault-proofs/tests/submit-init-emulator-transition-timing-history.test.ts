@@ -289,7 +289,7 @@ describe("applied timed history final", () => {
                         OutOfWindowDeposit: {
                           source_membership: {
                             ...sourceBase,
-                            value: depositInfo,
+                            value: Data.to(depositInfo, SDK.DepositInfo),
                           },
                         },
                       }

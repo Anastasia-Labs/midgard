@@ -1,4 +1,5 @@
 import * as SDK from "@al-ft/midgard-sdk";
+import { Data } from "@lucid-evolution/lucid";
 
 import {
   depositInfo,
@@ -46,8 +47,8 @@ export const outOfWindowDepositFault = (): SDK.TransitionFault =>
       source_membership: membership({
         domain: SDK.ROOT_DOMAINS.deposits,
         key: outRef(0n),
-        value: depositInfo,
-      }) as SDK.DepositSourceMembershipProof,
+        value: Data.to(depositInfo, SDK.DepositInfo),
+      }) as SDK.DepositSourceLeafMembershipProof,
     },
   });
 

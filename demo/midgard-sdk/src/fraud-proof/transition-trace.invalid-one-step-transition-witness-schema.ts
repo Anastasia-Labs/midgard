@@ -9,7 +9,7 @@ import {
 } from "../common.js";
 import { type EventKey, EventKeySchema } from "../ledger-state.js";
 import {
-  DepositSourceMembershipProofSchema,
+  DepositSourceLeafMembershipProofSchema,
   type EventToStepMembershipProof,
   EventToStepMembershipProofSchema,
   type EventToStepNonMembershipProof,
@@ -366,7 +366,7 @@ export const InvalidOneStepTransitionWitnessSchema = Data.Enum([
     ValidDepositTransition: Data.Object({
       trace_proof: TransitionTraceMembershipProofSchema,
       event_to_step: EventToStepMembershipProofSchema,
-      source_membership: DepositSourceMembershipProofSchema,
+      source_membership: DepositSourceLeafMembershipProofSchema,
       projected_utxo: LedgerInsertWitnessSchema,
     }),
   }),

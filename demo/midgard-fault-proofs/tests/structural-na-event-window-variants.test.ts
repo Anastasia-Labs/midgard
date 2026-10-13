@@ -131,7 +131,7 @@ describe("Q47 omitted / out-of-window event-window variants", () => {
       expectedFieldTitles: ["source_membership"],
       expectedScalars: {},
       proof: {
-        definitionKey: membershipProofDef("DepositId", "DepositInfo"),
+        definitionKey: membershipProofDef("DepositId", "ByteArray"),
         constructorTitle: "RootMembershipProof",
         expectedFieldTitles: MEMBERSHIP_FIELDS,
         domainConstructorTitle: "DepositsRootDomain",

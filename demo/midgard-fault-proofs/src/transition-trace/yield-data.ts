@@ -17,7 +17,7 @@ import {
   transitionProofCbor,
   type TransitionProofInput,
 } from "./proof-material.js";
-import { transitionProofHistorySource } from "./proof-material.js";
+import { depositSourceView } from "./proof-material.js";
 import { TRANSITION_TRACE_YIELD_REFERENCES } from "./yield-references.js";
 
 type YieldKey = keyof typeof TRANSITION_TRACE_YIELD_REFERENCES;
@@ -96,14 +96,11 @@ const deriveTransitionTraceYieldData = ({
       throw new Error(
         "Transition deposit projection requires its retained opening",
       );
-    const source = deposit.source_membership;
+    const source = depositSourceView(deposit.source_membership);
     const { commitment, opening, infoCbor } = reopenTransitionDeposit(
       depositOpening,
       depositPolicyId,
-      {
-        ...source,
-        valueCbor: transitionProofHistorySource(proofInput)!.valueCbor,
-      },
+      source,
     );
     const value = opening.original_assets;
     depositSourceCbor = Data.to(commitment, SDK.EventHistoryCommitment);

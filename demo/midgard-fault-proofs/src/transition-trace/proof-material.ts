@@ -33,9 +33,18 @@ export const readTransitionProof = (
   Data.from(transitionProofCbor(input), SDK.TransitionFaultProof);
 
 type HistorySource = (
-  | { kind: "Deposit"; membership: SDK.DepositSourceMembershipProof }
+  | { kind: "Deposit"; membership: SDK.DepositSourceLeafMembershipProof }
   | { kind: "Withdrawal"; membership: SDK.WithdrawalSourceMembershipProof }
 ) & { valuePath: readonly number[] };
+
+/** A deposit source leaf's typed view beside its committed bytes. */
+export const depositSourceView = (
+  membership: SDK.DepositSourceLeafMembershipProof,
+) => ({
+  key: membership.key,
+  value: Data.from(membership.value, SDK.DepositInfo),
+  valueCbor: membership.value,
+});
 
 const historySource = (
   proof: SDK.TransitionFaultProof,
@@ -82,19 +91,18 @@ const historySource = (
   return null;
 };
 
-/** The proof with its source value's user datum dropped, so the typed encoder
- * frames every other field; the raw leaf then fills the value field. */
+/** The proof with a withdrawal source value's user datum dropped, so the typed
+ * encoder frames every other field; the raw leaf then fills the value field.
+ * A deposit source carries its leaf as bytes and needs no frame. */
 const withSourceValueFrame = (
   proof: SDK.TransitionFaultProof,
   source: HistorySource,
 ): SDK.TransitionFaultProof => {
-  const value =
-    source.kind === "Deposit"
-      ? { ...source.membership.value, l2_datum: null }
-      : {
-          ...source.membership.value,
-          body: { ...source.membership.value.body, l1_datum: "NoDatum" },
-        };
+  if (source.kind === "Deposit") return proof;
+  const value = {
+    ...source.membership.value,
+    body: { ...source.membership.value.body, l1_datum: "NoDatum" },
+  };
   const [arm, fault] = Object.entries(proof.fault)[0]! as [
     string,
     { witness: Record<string, { source_membership: object }> },
@@ -123,7 +131,10 @@ export const transitionProofHistorySource = (input: TransitionProofInput) => {
     ? null
     : {
         ...source,
-        valueCbor: plutusConstrFieldCbor(cbor, source.valuePath),
+        valueCbor:
+          source.kind === "Deposit"
+            ? source.membership.value
+            : plutusConstrFieldCbor(cbor, source.valuePath),
       };
 };
 
@@ -168,18 +179,18 @@ export const makeTransitionProofMaterial = (
     )
       throw new Error("Transition proof source differs from its counted root");
     const valueCbor = entry.valueBytes.toString("hex");
-    const schema =
-      source.kind === "Deposit" ? SDK.DepositInfo : SDK.WithdrawalInfo;
-    // The raw leaf decides and the typed view must be its decoded view;
-    // neither is re-encoded, since user datum Data need not survive a typed
-    // encoder.
+    // The raw leaf decides. A deposit carries it as bytes; a withdrawal's
+    // typed view must be its decoded view. Neither is re-encoded, since user
+    // datum Data need not survive a typed encoder.
     if (
       aikenSerialisedPlutusDataCborPreservingMapOrder(valueCbor) !==
         valueCbor ||
-      !isDeepStrictEqual(
-        Data.from(valueCbor, schema as never),
-        source.membership.value,
-      )
+      (source.kind === "Deposit"
+        ? source.membership.value !== valueCbor
+        : !isDeepStrictEqual(
+            Data.from(valueCbor, SDK.WithdrawalInfo),
+            source.membership.value,
+          ))
     )
       throw new Error("Transition proof source view differs from its raw leaf");
     const opened = mpfProofFromWitness({
@@ -195,11 +206,12 @@ export const makeTransitionProofMaterial = (
       throw new Error(
         "Transition proof raw source membership does not open its root",
       );
-    proofCbor = replacePlutusConstrFieldCbor(
-      proofCbor,
-      source.valuePath,
-      valueCbor,
-    );
+    if (source.kind === "Withdrawal")
+      proofCbor = replacePlutusConstrFieldCbor(
+        proofCbor,
+        source.valuePath,
+        valueCbor,
+      );
   }
   return Object.freeze({ proofCbor });
 };

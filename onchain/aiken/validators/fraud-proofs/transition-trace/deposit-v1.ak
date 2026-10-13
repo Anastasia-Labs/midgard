@@ -121,10 +121,7 @@ validator main(
                   >
                 = event_data
               expect
-                  source: RootMembershipProof<
-                    ledger_state.DepositId,
-                    ledger_state.DepositInfo,
-                  >
+                  source: RootMembershipProof<ledger_state.DepositId, ByteArray>
                 = source_data
               proof.validate_deposit_one_step_binding(
                 header,

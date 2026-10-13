@@ -195,6 +195,21 @@ export type DepositSourceMembershipProof = RootMembershipProof<
 export const DepositSourceMembershipProof =
   asDataType<DepositSourceMembershipProof>(DepositSourceMembershipProofSchema);
 
+/** A transition-trace deposit source leaf: the value is the committed
+ * `DepositInfo` leaf bytes, so its user datum is never decoded on chain. */
+export const DepositSourceLeafMembershipProofSchema = rootMembershipProofSchema(
+  OutputReferenceSchema,
+  Data.Bytes(),
+);
+export type DepositSourceLeafMembershipProof = RootMembershipProof<
+  OutputReference,
+  string
+>;
+export const DepositSourceLeafMembershipProof =
+  asDataType<DepositSourceLeafMembershipProof>(
+    DepositSourceLeafMembershipProofSchema,
+  );
+
 export const WithdrawalSourceMembershipProofSchema = rootMembershipProofSchema(
   OutputReferenceSchema,
   WithdrawalInfoSchema,

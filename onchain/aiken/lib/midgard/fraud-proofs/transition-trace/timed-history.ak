@@ -107,7 +107,7 @@ pub fn out_of_window_deposit(
   header: ledger_state.HeaderV1,
   source: transition_trace.RootMembershipProof<
     ledger_state.DepositId,
-    ledger_state.DepositInfo,
+    ByteArray,
   >,
 ) -> Bool {
   let (facts, payload) = capture(
@@ -121,14 +121,14 @@ pub fn out_of_window_deposit(
   expect order_facts.DepositPayload { event } = payload
   and {
     !horizon.eligible(facts.inclusion_time, header.start_time, header.end_time),
-    source.value == event.info,
+    cbor.serialise(event.info) == source.value,
     transition_trace.verify_root_membership_with_bytes(
       source,
       transition_trace.DepositsRootDomain,
       header.deposits_root,
       header.deposit_count,
       cbor.serialise(source.key),
-      cbor.serialise(source.value),
+      source.value,
     ),
   }
 }

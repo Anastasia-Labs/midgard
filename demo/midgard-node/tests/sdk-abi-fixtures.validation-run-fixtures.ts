@@ -5,7 +5,7 @@ import { h32, proof } from "./sdk-abi-fixtures.header-fixture.js";
 
 export const sourceKeyOpeningFixtures = (
   withdrawalSourceMembership: SDK.WithdrawalSourceMembershipProof,
-  depositSourceMembership: SDK.DepositSourceMembershipProof,
+  depositSourceMembership: SDK.DepositSourceLeafMembershipProof,
 ) => {
   const sourceMemberships = {
     withdrawal: {

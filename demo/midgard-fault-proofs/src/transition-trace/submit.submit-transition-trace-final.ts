@@ -77,10 +77,7 @@ import {
   resolveTransitionTraceProofCarriage,
   transitionTraceProofChunks,
 } from "./proof-carriage.js";
-import {
-  readTransitionProof,
-  transitionProofHistorySource,
-} from "./proof-material.js";
+import { depositSourceView, readTransitionProof } from "./proof-material.js";
 import {
   makeComputationThreadSuccessRedeemer,
   makeFraudProofMintRedeemer,
@@ -224,7 +221,6 @@ export const submitTransitionTraceFinal = async ({
   );
   if (hubOracleUtxo.datum == null)
     throw new Error("transition-trace hub oracle omitted datum");
-  const rawDepositSource = transitionProofHistorySource(proofInput);
   const depositWitness =
     "InvalidOneStepTransition" in proof.fault &&
     "ValidDepositTransition" in proof.fault.InvalidOneStepTransition.witness
@@ -269,10 +265,7 @@ export const submitTransitionTraceFinal = async ({
         reopenTransitionDeposit(
           retainedDeposit,
           depositPolicyId,
-          {
-            ...depositWitness.source_membership,
-            valueCbor: rawDepositSource!.valueCbor,
-          },
+          depositSourceView(depositWitness.source_membership),
           captured.commitmentCbor,
         );
       retainedDeposit = captured;
@@ -288,10 +281,7 @@ export const submitTransitionTraceFinal = async ({
     reopenTransitionDeposit(
       retainedDeposit,
       depositPolicyId,
-      {
-        ...depositWitness.source_membership,
-        valueCbor: rawDepositSource!.valueCbor,
-      },
+      depositSourceView(depositWitness.source_membership),
       checkpoint?.data?.deposit_source_cbor || undefined,
     );
   }

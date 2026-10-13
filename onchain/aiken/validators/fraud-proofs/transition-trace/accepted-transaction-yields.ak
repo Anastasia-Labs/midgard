@@ -118,12 +118,7 @@ validator l2_replay(dispatcher: ScriptHash) {
         )
       } else {
         expect [_, _, source_data, _] = one_step_witness(fault, 3)
-        expect
-            source: RootMembershipProof<
-              ledger_state.DepositId,
-              ledger_state.DepositInfo,
-            >
-          = source_data
+        expect source: RootMembershipProof<ledger_state.DepositId, ByteArray> = source_data
         proof.ledger_outref_key(source.key)
       }
       expect produced: List<proof.LedgerInsertWitness> = produced_data

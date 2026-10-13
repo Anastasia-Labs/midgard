@@ -314,11 +314,9 @@ it.each([
     const proof = makeTransitionProofMaterial(current, typedProof);
     const sourceCbor = plutusConstrFieldCbor(eventCbor, [1]);
     expect(transitionProofHistorySource(proof)?.valueCbor).toBe(sourceCbor);
-    if (datumRow === rawDatum)
-      // The typed encoder collapses the repeated key; the proof keeps it.
-      expect(proof.proofCbor).not.toBe(
-        Data.to(typedProof, SDK.TransitionFaultProof),
-      );
+    // The typed proof carries the committed leaf bytes, so even a datum the
+    // typed deposit view would collapse reaches the material unchanged.
+    expect(proof.proofCbor).toBe(Data.to(typedProof, SDK.TransitionFaultProof));
     expect(
       decodeMidgardTxOutput(
         Buffer.from(fixtureLedgerAfter(retained.header)[0]![1], "hex"),

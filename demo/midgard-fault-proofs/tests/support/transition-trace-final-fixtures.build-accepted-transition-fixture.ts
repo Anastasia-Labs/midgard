@@ -349,7 +349,7 @@ export const buildDepositTransitionFixture = async ({
             source_membership: {
               ...fields(source),
               key: id,
-              value: info,
+              value: Data.to(info, SDK.DepositInfo),
               proof: deep === null ? [] : Data.from(deep.proofCbor, SDK.Proof),
             },
             projected_utxo: {
