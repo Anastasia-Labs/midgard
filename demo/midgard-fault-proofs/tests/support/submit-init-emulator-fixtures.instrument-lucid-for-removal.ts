@@ -28,13 +28,14 @@ import {
 
 export type ProvedDoubleSpendFixture = {
   readonly emulator: Emulator;
-  /** The slot mapping the deployment's commit yield was built with. */
-  readonly l1SlotConfig: L1SlotConfig;
   readonly realBlueprint: Blueprint;
   readonly funderLucid: Awaited<ReturnType<typeof Lucid>>;
   readonly proverLucid: Awaited<ReturnType<typeof Lucid>>;
   readonly proverSigner: ReturnType<typeof resolveProverSigner>;
-  readonly contracts: MidgardValidators;
+  readonly contracts: MidgardValidators & {
+    /** The slot mapping the deployment's commit yield was built with. */
+    readonly l1SlotConfig: L1SlotConfig;
+  };
   readonly catalogue: FraudProofCatalogueDeploymentInfo;
   readonly transactionInclusion: Awaited<
     ReturnType<typeof buildTransactionInclusionFixture>

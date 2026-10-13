@@ -116,7 +116,6 @@ export const buildProvedFixtureDeploymentContext = async (
     contracts,
     catalogue,
     canonical: undefined,
-    l1SlotConfig,
   };
 };
 
@@ -240,6 +239,7 @@ const buildCanonicalDeploymentContext = async () => {
   });
   const contracts = {
     ...deployment.contracts,
+    l1SlotConfig: deployment.manifest.l1SlotConfig,
     operatorLifecycleReferenceScripts: {
       registered: [
         role("registered-operators spending"),
@@ -376,7 +376,6 @@ const buildCanonicalDeploymentContext = async () => {
     nonceUtxo: undefined,
     contracts,
     catalogue: await buildCatalogueDeploymentInfo(contracts.fraudProofs),
-    l1SlotConfig: deployment.manifest.l1SlotConfig,
     canonical: {
       ...canonical,
       genesisEndTime: genesis.data.endTime,

@@ -89,7 +89,6 @@ export const buildProvedDoubleSpendFixture = async ({
     contracts,
     catalogue,
     canonical,
-    l1SlotConfig,
   } = await buildProvedFixtureDeploymentContext(
     headerMinimumFee,
     coherentCanonicalEvidence,
@@ -165,7 +164,7 @@ export const buildProvedDoubleSpendFixture = async ({
     endTime:
       BigInt(headerStartTime) + BigInt(EMULATOR_HEADER_CLOCK_HEADROOM_MS),
     blockSlot: commitSlotForBlockTime(
-      l1SlotConfig,
+      contracts.l1SlotConfig,
       BigInt(headerStartTime) + BigInt(EMULATOR_HEADER_CLOCK_HEADROOM_MS),
     ),
   };
@@ -232,10 +231,6 @@ export const buildProvedDoubleSpendFixture = async ({
             : 0n),
         prevHeaderHash: previousHeaderHash,
       };
-      successorHeader.blockSlot = commitSlotForBlockTime(
-        l1SlotConfig,
-        successorHeader.endTime,
-      );
       const successor = await submitSuccessorBlockTx({
         lucid: funderLucid,
         emulator,
@@ -247,10 +242,10 @@ export const buildProvedDoubleSpendFixture = async ({
         activeOperatorNode,
         activeOperatorNodeUnit: setup.activeOperatorNodeUnit,
       });
-      successors.push({ ...successor, header: successorHeader });
+      successors.push(successor);
       anchorBlockUnit = successor.successorBlockUnit;
       activeOperatorNode = successor.activeOperatorNode;
-      previousHeader = successorHeader;
+      previousHeader = successor.header;
       previousHeaderHash = successor.successorHeaderHash;
     }
     await expectStateQueueHeaderOrder({
@@ -525,7 +520,6 @@ export const buildProvedDoubleSpendFixture = async ({
 
   return {
     emulator,
-    l1SlotConfig,
     realBlueprint,
     funderLucid,
     proverLucid,

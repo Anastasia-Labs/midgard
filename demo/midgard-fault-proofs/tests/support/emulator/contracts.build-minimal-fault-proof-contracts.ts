@@ -243,6 +243,8 @@ export const buildMinimalFaultProofContracts = async (
   } = {},
 ): Promise<
   MidgardValidators & {
+    /** The slot mapping the state-queue commit yield was built with. */
+    readonly l1SlotConfig: L1SlotConfig;
     readonly computationThread: SdkMintingValidator;
     readonly fabricatedDeposit?: FabricatedDepositContracts;
     readonly fabricatedWithdrawal?: FabricatedWithdrawalContracts;
@@ -1106,6 +1108,7 @@ export const buildMinimalFaultProofContracts = async (
 
   return {
     ...withScheduler,
+    l1SlotConfig,
     ...(fabricatedDeposit === undefined ? {} : { fabricatedDeposit }),
     ...(fabricatedWithdrawal === undefined ? {} : { fabricatedWithdrawal }),
     ...(nativeScriptDecoding === undefined ? {} : { nativeScriptDecoding }),
