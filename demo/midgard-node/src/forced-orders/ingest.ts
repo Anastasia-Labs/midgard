@@ -48,7 +48,7 @@ import {
 } from "@al-ft/midgard-l1-follower";
 import * as SDK from "@al-ft/midgard-sdk";
 import { SqlClient } from "@effect/sql";
-import { Cause, Effect, Exit } from "effect";
+import { Cause, Effect, Exit, Metric } from "effect";
 
 import { followerViewValid } from "../database/follower-schema.js";
 import { ForcedTransactionsDB } from "../database/index.js";
@@ -65,6 +65,7 @@ import type { NodeConfig } from "../services/config.js";
 import type { Database } from "../services/database.js";
 import {
   FORCED_ADMISSION_DIVERGENCE_EVENT,
+  forcedAdmissionDivergenceCounter,
   type ForcedAdmissionDivergences,
   forcedAdmissionDivergences,
   forcedAdmissionRefusal,
@@ -352,6 +353,15 @@ export const forcedOrderIngestionHook = (
       if (!divergences.record(orderId, refusal.refusalCode)) continue;
       await options.run(
         Effect.logError(FORCED_ADMISSION_DIVERGENCE_EVENT).pipe(
+          Effect.zipRight(
+            Metric.increment(
+              Metric.tagged(
+                forcedAdmissionDivergenceCounter,
+                "refusal_code",
+                refusal.refusalCode,
+              ),
+            ),
+          ),
           Effect.annotateLogs({
             event: FORCED_ADMISSION_DIVERGENCE_EVENT,
             orderId,

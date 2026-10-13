@@ -154,7 +154,11 @@ export type L1FollowerHandle = Readonly<{
   refused?: () => readonly EventRefusal[];
   /**
    * The `forced_admission_divergence:<orderIdHex>:<refusalCode>` details of
-   * the latest chain-admitted forced orders the admission screen refuses.
+   * the latest chain-admitted forced orders the admission screen refused:
+   * recent observations for the process lifetime, not an active set. An
+   * order leaving the list is not resolved; alert on the
+   * `ForcedAdmissionDivergence` log event or the
+   * `forced_admission_divergence_total` counter.
    */
   forcedAdmissionDivergences?: () => readonly string[];
 }>;
