@@ -140,7 +140,7 @@ describe("midgard contracts registry", () => {
       // the exclusive upper bound, bounds below -1, admission, the lock top-up,
       // the output proof's datum step and the split Data refusal executor, and
       // the composed P1 tree (allow-lists, the datum canonicity step, the
-      // non-empty block rule).
+      // non-empty block rule, one event NFT per user-event mint).
       expect
         .soft(
           createHash("sha256")
@@ -150,7 +150,7 @@ describe("midgard contracts registry", () => {
             .digest("hex"),
         )
         .toBe(
-          "2e7b040edcaea379aaec16b15a419d0fa6663e654225b633b2d703d312cefe16",
+          "c3b1fc4b18aa08c2710caea4d3aa872d375d54be0ce4e2c2fdb1360db8aa2ddc",
         );
       // The queue/correction subset is pinned independently of the full registry.
       // Includes every applied CBOR, hash, policy id, address, and queue yield.
