@@ -18,7 +18,6 @@ import {
 import { encodeMidgardSpendInputItem } from "@al-ft/midgard-core/codec";
 import { wrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
 import * as SDK from "@al-ft/midgard-sdk";
-import { Data as LucidData } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -27,10 +26,10 @@ import {
   validateDaPayloadEventProgramCoverage,
   verifyDaPayloadAgainstHeader,
 } from "../src/da/payload.js";
+import { headerHashOf } from "../src/l1/follower/queue-derivation.js";
 import { makePayloadFixture } from "./helpers.js";
 import { makeDaBytesConstantMaterial } from "./payload.make-da-bytes-constant-material.js";
 import {
-  dummyRetainedWitnessEntry,
   payloadWithDuplicateProgramEnvelopes,
   payloadWithProgramMaterial,
   sortedEntries,
@@ -47,119 +46,49 @@ const decodeAndReplay = (payload: SDK.DaPayload): SDK.DaPayload => {
 };
 
 describe("canonical V1 DA payload verification", () => {
-  it.each(["initial", "terminal", "both"] as const)(
-    "rejects omission of %s endpoints from any committed validation descriptor",
-    async (endpoint) => {
-      const fixture = await makePayloadFixture(3);
-      expect(() =>
-        decodeDaPayloadStrict(fixture.innerPayloadCbor),
-      ).not.toThrow();
-      for (const [eventCbor, descriptorCbor] of fixture.payload.block_body
-        .validation_traces) {
-        const descriptor = LucidData.from(
-          descriptorCbor,
-          SDK.ValidationTraceDescriptor,
-        );
-        const removed = (
-          endpoint === "both" ? (["initial", "terminal"] as const) : [endpoint]
-        ).map((kind) =>
-          SDK.retainedValidationEndpointCoordinate(descriptor.step_count, kind),
-        );
-        const witnesses =
-          fixture.payload.block_body.validation_trace_witnesses.filter(
-            ([keyCbor]) => {
-              const key = SDK.decodeRetainedValidationWitnessKey(
-                Buffer.from(keyCbor, "hex"),
-              );
-              return (
-                LucidData.to(key.event_key, SDK.EventKey) !== eventCbor ||
-                !removed.includes(key.execution_index)
-              );
-            },
-          );
-        expect(() =>
-          decodeDaPayloadStrict(
-            SDK.encodeDaPayload({
-              ...fixture.payload,
-              block_body: {
-                ...fixture.payload.block_body,
-                validation_trace_witnesses: witnesses,
-              },
-            }),
-          ),
-        ).toThrow(
-          /validation trace omits its retained (initial|terminal) endpoint/u,
-        );
-      }
-    },
-  );
-
-  it("rejects duplicate and orphan retained validation witness coordinates", async () => {
-    const fixture = await makePayloadFixture();
-    const existingEvent = LucidData.from(
-      fixture.payload.block_body.validation_traces[0]![0],
-      SDK.EventKeySchema as never,
-    ) as SDK.EventKey;
-    const duplicate = dummyRetainedWitnessEntry(existingEvent);
-    expect(() =>
-      decodeDaPayloadStrict(
-        SDK.encodeDaPayload({
-          ...fixture.payload,
-          block_body: {
-            ...fixture.payload.block_body,
-            validation_trace_witnesses: [duplicate, duplicate],
-          },
-        }),
-      ),
-    ).toThrow(/duplicate/u);
-
-    const orphan = dummyRetainedWitnessEntry({
-      L2TransactionEventKey: { tx_id: "ff".repeat(32) },
-    });
-    expect(() =>
-      decodeDaPayloadStrict(
-        SDK.encodeDaPayload({
-          ...fixture.payload,
-          block_body: {
-            ...fixture.payload.block_body,
-            validation_trace_witnesses: [orphan],
-          },
-        }),
-      ),
-    ).toThrow(/orphaned/u);
+  it("attests a block of script transactions whose retained-witness section is empty", async () => {
+    const terminal = { kind: "error" } as const;
+    const preimage = encodeMidgardCekTermNode(terminal);
+    const root = hashMidgardCekTermNode(terminal);
+    const unhashed = await payloadWithProgramMaterial(
+      [
+        {
+          uplcVersion: [1n, 1n, 0n] as const,
+          termRoot: root,
+          nodeCount: 1n,
+          materialByteLength: BigInt(preimage.length),
+        },
+      ],
+      [{ kind: "term", root, preimage }],
+    );
+    expect(unhashed.block_body.cek_program_material).toHaveLength(1);
+    expect(unhashed.block_body.validation_trace_witnesses).toEqual([]);
+    const roots = await computeDaPayloadRoots(unhashed);
+    const header = { ...unhashed.block_body.header, ...roots };
+    const headerHash = headerHashOf(header);
+    const payload: SDK.DaPayload = {
+      ...unhashed,
+      block_body: {
+        ...unhashed.block_body,
+        header,
+        header_hash: headerHash,
+      },
+    };
+    const verified = await verifyDaPayloadAgainstHeader(
+      await wrapDaPayload(SDK.encodeDaPayload(payload), { mode: "identity" }),
+      headerHash,
+      header,
+      {
+        payloadSchemaVersion: 1,
+        stateQueueOutRef: "state-queue#0",
+        preBlockUtxos: [],
+      },
+    );
+    expect(verified.validation.rootsMatch).toBe(true);
+    expect(verified.counts.validationTraceCount).toBe(
+      BigInt(payload.block_body.transactions.length),
+    );
   });
-
-  it.each([
-    // The fixture descriptors have step_count 1: states 0/1 are -2/-1,
-    // the initial endpoint is -3 and the terminal endpoint is -4.
-    [-5n, /outside its descriptor's retained domain/u],
-    [0n, /reserved for NativeScripts execution aliases/u],
-    [-2n, /does not open the committed descriptor/u],
-    [-3n, /does not open the committed descriptor/u],
-    [-4n, /does not open the committed descriptor/u],
-  ] as const)(
-    "rejects a retained witness at coordinate %s that does not open its descriptor",
-    async (executionIndex, message) => {
-      const fixture = await makePayloadFixture();
-      const eventKey = LucidData.from(
-        fixture.payload.block_body.validation_traces[0]![0],
-        SDK.EventKeySchema as never,
-      ) as SDK.EventKey;
-      expect(() =>
-        decodeDaPayloadStrict(
-          SDK.encodeDaPayload({
-            ...fixture.payload,
-            block_body: {
-              ...fixture.payload.block_body,
-              validation_trace_witnesses: [
-                dummyRetainedWitnessEntry(eventKey, executionIndex),
-              ],
-            },
-          }),
-        ),
-      ).toThrow(message);
-    },
-  );
 
   it("names the decoder's cause when a descriptor is not canonical Plutus Data", async () => {
     const fixture = await makePayloadFixture();

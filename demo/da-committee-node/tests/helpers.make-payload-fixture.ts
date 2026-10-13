@@ -177,9 +177,7 @@ export const makePayloadFixture = async (
       validation_traces: sortedEntries(
         validationTraces.map(({ entry }) => entry),
       ),
-      validation_trace_witnesses: sortedEntries(
-        validationTraces.flatMap(({ witnesses }) => witnesses),
-      ),
+      validation_trace_witnesses: [],
       counts,
     },
   };

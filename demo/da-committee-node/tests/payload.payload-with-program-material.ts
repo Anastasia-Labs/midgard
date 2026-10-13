@@ -26,45 +26,6 @@ export const sortedEntries = (
     left < right ? -1 : left > right ? 1 : 0,
   );
 
-export const dummyRetainedWitnessEntry = (
-  eventKey: SDK.EventKey,
-  executionIndex = 0n,
-): SDK.DaPayloadEntry => {
-  const key = SDK.encodeRetainedValidationWitnessKey({
-    event_key: eventKey,
-    execution_index: executionIndex,
-  });
-  const value = SDK.encodeRetainedValidationWitness({
-    machine_state: {
-      machine_version: 1n,
-      event_key_hash: "01".repeat(32),
-      transaction_id: "02".repeat(32),
-      transaction_commitment: "03".repeat(32),
-      validation_context_hash: "04".repeat(32),
-      source_kind: "Normal",
-      prior_ledger_root: "05".repeat(32),
-      phase: "NativeScripts",
-      program_counter: 9n,
-      work_root: "06".repeat(32),
-      execution_cpu: 0n,
-      execution_memory: 0n,
-      verdict: "Pending",
-      rejection_code_hash: "07".repeat(32),
-      ledger_delta_root: "08".repeat(32),
-    },
-    trace_proof: {
-      state_index: 9n,
-      state_hash: "09".repeat(32),
-      siblings: [],
-    },
-    phase: 9n,
-    program_counter: 9n,
-    witness_cbor: "80",
-    auxiliary: "NoAuxiliaryWitness",
-  });
-  return [key.toString("hex"), value.toString("hex")];
-};
-
 const rewriteL2EventTxId = (
   event: SDK.EventKey,
   txIds: ReadonlyMap<string, string>,

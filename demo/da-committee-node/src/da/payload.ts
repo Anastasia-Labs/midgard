@@ -22,8 +22,6 @@ import "./payload.da-payload-validation-error.js";
 import "./payload.validate-da-payload-consensus.js";
 import "./payload.source-event-fingerprints.js";
 import "./payload.validate-trace-coverage.js";
-import "./payload.state-from-retained-data.js";
-import "./payload.validate-retained-validation-witnesses.js";
 import "./payload.validate-proof-trace-coverage.js";
 import "./payload.verify-da-payload-against-header.js";
 import "./payload.validate-event-program-coverage.js";

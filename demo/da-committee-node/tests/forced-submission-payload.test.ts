@@ -9,7 +9,6 @@ import {
   encodeMidgardForcedTxCanonical,
   materializeMidgardForcedTxFromCanonical,
 } from "@al-ft/midgard-core/codec/forced";
-import { hashMidgardValidationRejectionCode } from "@al-ft/midgard-core/validation-trace";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
@@ -61,9 +60,7 @@ const fixture = async (verdict: SDK.OperatorVerdict = "ForcedTxValid") => {
     eventKey,
     leaf.tx_id,
     verdict === "ForcedTxValid" ? "accepted" : "rejected",
-    verdict === "ForcedTxValid"
-      ? Buffer.alloc(32)
-      : hashMidgardValidationRejectionCode("E_EMPTY_INPUTS"),
+    verdict === "ForcedTxValid" ? null : "E_EMPTY_INPUTS",
   );
   const payload: SDK.DaPayload = {
     ...base.payload,
@@ -98,9 +95,7 @@ const fixture = async (verdict: SDK.OperatorVerdict = "ForcedTxValid") => {
         ),
       ]),
       validation_traces: [validationTrace.entry],
-      validation_trace_witnesses: validationTrace.witnesses.sort(
-        ([left], [right]) => (left < right ? -1 : left > right ? 1 : 0),
-      ),
+      validation_trace_witnesses: [],
     },
   };
   const roots = await computeDaPayloadRoots(payload);
