@@ -108,43 +108,53 @@ describe("Midgard ledger transaction codec", () => {
     for (const mutation of mutations)
       expect(() => projectMidgardRawEnvelopeForPhaseAV1(mutation)).toThrow();
   });
-  it("keeps normal redeemer canonicity on the malformed field-6 projection and preserves forced bytes", () => {
-    const base = makeNativeTx();
-    const fixture = encodeRecomputedNativeTx({
-      ...base.tx,
-      witnessSet: {
-        ...base.tx.witnessSet,
-        scriptTxWitsPreimageCbor: encodeCbor([
-          Buffer.from("820043820700", "hex"),
-        ]),
-        redeemerTxWitsPreimageCbor: makeRedeemersCbor([
-          { tag: 0, index: 0n, data: Buffer.from("d8798101", "hex") },
-        ]),
-      },
-    });
-    let refusal: unknown;
-    try {
-      projectMidgardRawEnvelopeForPhaseAV1(fixture.txCbor);
-    } catch (cause) {
-      refusal = cause;
+  it("refuses non-canonical redeemer Data in both projection modes and admits its canonical form", () => {
+    const withRedeemerData = (data: string) => {
+      const base = makeNativeTx();
+      return encodeRecomputedNativeTx({
+        ...base.tx,
+        witnessSet: {
+          ...base.tx.witnessSet,
+          scriptTxWitsPreimageCbor: encodeCbor([
+            Buffer.from("820043820700", "hex"),
+          ]),
+          redeemerTxWitsPreimageCbor: makeRedeemersCbor([
+            { tag: 0, index: 0n, data: Buffer.from(data, "hex") },
+          ]),
+        },
+      });
+    };
+    const refusalOf = (project: () => unknown): unknown => {
+      try {
+        project();
+      } catch (cause) {
+        return cause;
+      }
+      return null;
+    };
+    // Constr 0 [1] with a definite-length field list; Plutus Data encodes a
+    // non-empty list with an indefinite-length head.
+    const nonCanonical = withRedeemerData("d8798101");
+    const canonical = withRedeemerData("d8799f01ff");
+    for (const project of [
+      () => projectMidgardRawEnvelopeForPhaseAV1(nonCanonical.txCbor),
+      () =>
+        projectMidgardRawEnvelopeForPhaseAV1(
+          encodeMidgardForcedTxCanonical(
+            materializeMidgardForcedTxFromCanonical(nonCanonical.tx),
+          ),
+          "forced",
+        ),
+    ]) {
+      const refusal = refusalOf(project);
+      expect(refusal).toBeInstanceOf(MidgardLedgerTxDecodeError);
+      if (!(refusal instanceof MidgardLedgerTxDecodeError))
+        throw new Error("expected a ledger decode refusal");
+      expect(refusal.stage).toBe("ledger");
     }
-    expect(refusal).toBeInstanceOf(MidgardLedgerTxDecodeError);
-    if (!(refusal instanceof MidgardLedgerTxDecodeError))
-      throw new Error("expected a ledger decode refusal");
-    expect(refusal.stage).toBe("ledger");
-    expect(refusal.causeValue).toBeInstanceOf(Error);
-    if (!(refusal.causeValue instanceof Error))
-      throw new Error("expected the underlying canonical Data error");
-    expect(refusal.causeValue.message).toMatch(/canonical Plutus Data/u);
-    const forced = projectMidgardRawEnvelopeForPhaseAV1(
-      encodeMidgardForcedTxCanonical(
-        materializeMidgardForcedTxFromCanonical(fixture.tx),
-      ),
-      "forced",
-    );
-    expect(forced.canonicalSubmittedTx).toBeNull();
-    expect(forced.ledgerTx.redeemers[0]!.dataCbor.toString("hex")).toBe(
-      "d8798101",
+    const admitted = projectMidgardRawEnvelopeForPhaseAV1(canonical.txCbor);
+    expect(admitted.ledgerTx.redeemers[0]!.dataCbor.toString("hex")).toBe(
+      "d8799f01ff",
     );
   });
 
