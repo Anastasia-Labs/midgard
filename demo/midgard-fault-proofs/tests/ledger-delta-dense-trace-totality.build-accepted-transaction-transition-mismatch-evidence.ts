@@ -2,7 +2,6 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 
 import {
-  type AcceptedTransactionTransitionMismatchEvidence,
   detectTransitionTraceFaults,
   type TransitionTraceDetection,
   type TransitionTraceFaultKind,
@@ -10,11 +9,8 @@ import {
 import {
   buildPayloadFixture,
   depositEventKey,
-  dummyMembershipFields,
-  dummyValidationMachineState,
   forcedEventKey,
   reconstruct,
-  terminalAcceptanceWitnessCbor,
 } from "./ledger-delta-dense-trace-totality.build-payload-fixture.js";
 import {
   depositInfo,
@@ -29,96 +25,6 @@ import {
   rawLedgerEntry,
   utxoRootWithDescriptors,
 } from "./ledger-delta-dense-trace-totality.native-material.js";
-
-export const buildAcceptedTransactionTransitionMismatchEvidence = (): {
-  readonly committedPostRoot: string;
-  readonly evidence: AcceptedTransactionTransitionMismatchEvidence;
-} => {
-  const eventKey: SDK.EventKey = {
-    ForcedTransactionEventKey: { tx_order_id: outRef(690) },
-  };
-  const committedPostRoot = h32(695);
-  const validatedPostRoot = h32(696);
-  const descriptor: SDK.ValidationTraceDescriptor = {
-    schema_version: 1n,
-    machine_version: 1n,
-    trace_root: h32(691),
-    step_count: 1n,
-    initial_state_hash: h32(692),
-    terminal_state_hash: h32(693),
-    verdict: "Accepted",
-    rejection_code_hash: h32(694),
-  };
-  const step: SDK.TransitionStep = {
-    schema_version: 1n,
-    step_index: 0n,
-    event_key: eventKey,
-    phase: "ForcedTransaction",
-    pre_utxos_root: h32(697),
-    post_utxos_root: committedPostRoot,
-  };
-  const eventToStepValue: SDK.EventToStepValue = {
-    step_index: 0n,
-    phase: "ForcedTransaction",
-  };
-  const dummyForcedInclusionTx: SDK.ForcedInclusionTxV1 = {
-    tx_id: h32(689),
-    submitted_source: {
-      compact_cbor: "",
-      witness_set_compact_cbor: "",
-      field_preimage_lengths_cbor: "",
-    },
-    verdict: "ForcedTxValid",
-  };
-  const claim: SDK.ValidationClaimWitness = {
-    version: 1n,
-    descriptor_membership: {
-      ...dummyMembershipFields(SDK.ROOT_DOMAINS.validationTraces),
-      key: eventKey,
-      value: descriptor,
-    },
-    transition_step_membership: {
-      ...dummyMembershipFields(SDK.ROOT_DOMAINS.transitionTrace),
-      key: 0n,
-      value: step,
-    },
-    event_to_step_membership: {
-      ...dummyMembershipFields(SDK.ROOT_DOMAINS.eventToStep),
-      key: eventKey,
-      value: eventToStepValue,
-    },
-    source_membership: {
-      ForcedValidationSource: {
-        membership: {
-          ...dummyMembershipFields(SDK.ROOT_DOMAINS.forcedTransactionsV1),
-          key: outRef(690),
-          value: dummyForcedInclusionTx,
-        },
-      },
-    },
-    validation_context_cbor: "",
-    initial_state: dummyValidationMachineState(),
-    terminal_state: dummyValidationMachineState(),
-    initial_state_proof: {
-      state_index: 0n,
-      state_hash: h32(998),
-      siblings: [],
-    },
-    terminal_state_proof: {
-      state_index: 1n,
-      state_hash: h32(999),
-      siblings: [],
-    },
-  };
-  return {
-    committedPostRoot,
-    evidence: {
-      claim,
-      terminalAcceptanceWitnessCbor:
-        terminalAcceptanceWitnessCbor(validatedPostRoot),
-    },
-  };
-};
 
 // ---------------------------------------------------------------------------
 // One probe per fault kind. Each is an independent minimal fixture (no

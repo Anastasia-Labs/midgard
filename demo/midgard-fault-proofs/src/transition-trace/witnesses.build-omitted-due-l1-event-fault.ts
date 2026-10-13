@@ -11,7 +11,6 @@ import {
   sourceEventOrThrow,
 } from "./witnesses.build-source-membership-proof.js";
 import {
-  type AcceptedTransactionTransitionMismatchEvidence,
   buildSourceNonMembershipProof,
   type L2TransactionTransitionEvidence,
   type ValidDepositTransitionEvidence,
@@ -127,15 +126,6 @@ export const buildL2TransactionTransitionWitness = async ({
     },
   };
 };
-
-export const buildAcceptedTransactionTransitionMismatchFault = ({
-  claim,
-  terminalAcceptanceWitnessCbor,
-}: AcceptedTransactionTransitionMismatchEvidence): SDK.TransitionFault =>
-  SDK.acceptedTransactionTransitionMismatchFault({
-    claim,
-    terminalAcceptanceWitnessCbor,
-  });
 
 export type OmittedDueL1EventEvidence =
   | {

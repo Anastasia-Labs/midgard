@@ -160,7 +160,7 @@ describe("fault-proof CLI argument parsing", () => {
       proofCount: 0,
       detections: [],
     });
-    expect(plan.guidance).toHaveLength(4);
+    expect(plan.guidance).toHaveLength(3);
   });
 
   it("keeps legacy diagnostic inputs outside the authenticated transition-trace prepare lane", async () => {

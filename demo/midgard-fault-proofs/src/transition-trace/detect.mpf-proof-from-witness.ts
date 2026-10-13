@@ -7,51 +7,9 @@ import {
 import * as SDK from "@al-ft/midgard-sdk";
 
 import {
-  detection,
-  type TransitionTraceDetection,
-} from "./detect.detect-count-faults.js";
-import { acceptedTerminalPostRoot } from "./detect.detect-source-membership-mismatches.js";
-import {
   TransitionTraceChallengerError,
   transitionTraceError,
 } from "./errors.js";
-import { type TransitionTraceReconstruction } from "./reconstruct.js";
-import {
-  type AcceptedTransactionTransitionMismatchEvidence,
-  buildAcceptedTransactionTransitionMismatchFault,
-} from "./witnesses.js";
-
-export const detectAcceptedTransactionTransitionMismatches = (
-  reconstruction: TransitionTraceReconstruction,
-  evidence: readonly AcceptedTransactionTransitionMismatchEvidence[],
-): readonly TransitionTraceDetection[] => {
-  const detections: TransitionTraceDetection[] = [];
-  for (const item of evidence) {
-    if (item.claim.descriptor_membership.value.verdict !== "Accepted") {
-      throw transitionTraceError(
-        "missingWitnessData",
-        "Accepted transition mismatch evidence must reference an accepted descriptor.",
-      );
-    }
-    const committedPostRoot =
-      item.claim.transition_step_membership.value.post_utxos_root;
-    const validatedPostRoot = acceptedTerminalPostRoot(
-      item.terminalAcceptanceWitnessCbor,
-    );
-    if (committedPostRoot !== validatedPostRoot) {
-      detections.push(
-        detection({
-          reconstruction,
-          kind: "acceptedTransactionTransitionMismatch",
-          invariant: "accepted_transaction_uses_validated_ledger_root",
-          diagnostic: `Accepted transaction transition commits ${committedPostRoot}, but its authenticated terminal validation witness commits ${validatedPostRoot}.`,
-          fault: buildAcceptedTransactionTransitionMismatchFault(item),
-        }),
-      );
-    }
-  }
-  return detections;
-};
 
 export const exactHexBytes = (value: string, label: string): Buffer => {
   if (

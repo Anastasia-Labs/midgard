@@ -20,6 +20,7 @@ import {
 } from "./transition-trace-challenger.native-material.js";
 
 type PayloadFixtureInput = {
+  readonly prevHeaderHash?: string;
   readonly prevUtxosRoot?: string;
   readonly validationDescriptors?: readonly SDK.DaPayloadEntry[];
   readonly retainedWitnesses?: readonly SDK.DaPayloadEntry[];
@@ -35,6 +36,7 @@ type PayloadFixtureInput = {
 };
 
 export const buildPayloadFixture = async ({
+  prevHeaderHash = h28(90),
   prevUtxosRoot = SDK.EMPTY_MERKLE_TREE_ROOT,
   validationDescriptors,
   retainedWitnesses = [],
@@ -192,7 +194,7 @@ export const buildPayloadFixture = async ({
     expectedNetworkId: 0n,
     minFeeA: 0n,
     minFeeB: 0n,
-    prevHeaderHash: h28(90),
+    prevHeaderHash,
     operatorVkey: h28(91),
     protocolVersion: 1n,
   };

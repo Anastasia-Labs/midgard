@@ -203,11 +203,6 @@ export type L2TransactionTransitionEvidence = {
   readonly producedUtxos: readonly SDK.LedgerInsertWitness[];
 };
 
-export type AcceptedTransactionTransitionMismatchEvidence = {
-  readonly claim: SDK.ValidationClaimWitness;
-  readonly terminalAcceptanceWitnessCbor: string;
-};
-
 export const buildInvalidWithdrawalNoOpWitness = async ({
   reconstruction,
   stepIndex,

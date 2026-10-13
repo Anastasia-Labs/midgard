@@ -2,15 +2,12 @@ import "./transition-trace-challenger.transition-trace-challenger-tooling.js";
 
 import { Trie } from "@aiken-lang/merkle-patricia-forestry";
 import {
-  buildMidgardValidationTraceTree,
-  hashMidgardValidationContext,
-  hashMidgardValidationMachineState,
-  hashMidgardValidationWorkWitness,
-  MIDGARD_VALIDATION_NO_REJECTION_CODE_HASH,
-  type MidgardValidationMachineState,
+  computeMidgardForcedTxProofCommitment,
+  computeMidgardNativeTxProofCommitment,
 } from "@al-ft/midgard-core";
 import * as SDK from "@al-ft/midgard-sdk";
 import { h32 } from "@al-ft/midgard-test-support/hex";
+import { placeholderValidationTraceDescriptorV1 } from "@al-ft/midgard-validation";
 import { Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
@@ -153,7 +150,7 @@ describe("transition trace single ledger mutation replay", () => {
 
 describe("retained operator validation claims", () => {
   it.each(["normal", "forced"] as const)(
-    "opens %s counted sources and exact operator endpoint bytes",
+    "refuses a retained %s validation claim when the block carries only a placeholder",
     async (kind) => {
       const material = nativeMaterial(88);
       const id = outRef(80);
@@ -161,79 +158,38 @@ describe("retained operator validation claims", () => {
         kind === "normal"
           ? { L2TransactionEventKey: { tx_id: material.txId } }
           : forcedEventKey(id);
-      const context = Buffer.from("80", "hex");
-      const terminalWork = Buffer.from("8100", "hex");
-      const initial: MidgardValidationMachineState = {
-        machineVersion: 1,
-        eventKeyHash: Buffer.alloc(32, 1),
-        transactionId: Buffer.from(material.txId, "hex"),
-        transactionCommitment: Buffer.alloc(32, 2),
-        validationContextHash: hashMidgardValidationContext(context),
-        sourceKind: kind,
-        priorLedgerRoot: Buffer.from(SDK.EMPTY_MERKLE_TREE_ROOT, "hex"),
-        phase: "canonicalDecode",
-        programCounter: 0,
-        workRoot: Buffer.alloc(32, 3),
-        executionCpu: 0n,
-        executionMemory: 0n,
-        verdict: "pending",
-        rejectionCodeHash: MIDGARD_VALIDATION_NO_REJECTION_CODE_HASH,
-        ledgerDeltaRoot: Buffer.alloc(32, 4),
-      };
-      const terminal: MidgardValidationMachineState = {
-        ...initial,
-        phase: "terminal",
-        programCounter: 1,
-        verdict: "accepted",
-        workRoot: hashMidgardValidationWorkWitness({
-          phase: "terminal",
-          programCounter: 1,
-          witnessCbor: terminalWork,
-        }),
-      };
-      const tree = buildMidgardValidationTraceTree(
-        [initial, terminal].map(hashMidgardValidationMachineState),
-        "accepted",
-        MIDGARD_VALIDATION_NO_REJECTION_CODE_HASH,
-      );
-      const descriptor = SDK.validationTraceDescriptorDataFromCore(
-        tree.descriptor,
-      );
-      const records: SDK.DaPayloadEntry[] = (
-        ["initial", "terminal"] as const
-      ).map((endpoint) => {
-        const coordinate = SDK.retainedValidationEndpointCoordinate(
-          1n,
-          endpoint,
-        );
-        const terminalEndpoint = endpoint === "terminal";
-        const record = {
-          phase: terminalEndpoint ? 14n : -1n,
-          program_counter: terminalEndpoint ? 1n : 0n,
-          machine_state: SDK.validationMachineStateDataFromCore(
-            terminalEndpoint ? terminal : initial,
-          ),
-          trace_proof: SDK.validationTraceProofDataFromCore(
-            tree.proofs[terminalEndpoint ? 1 : 0]!,
-          ),
-          witness_cbor: (terminalEndpoint ? terminalWork : context).toString(
-            "hex",
-          ),
-          auxiliary: "NoAuxiliaryWitness" as const,
-        };
-        return [
-          SDK.encodeRetainedValidationWitnessKey({
-            event_key: eventKey,
-            execution_index: coordinate,
-          }).toString("hex"),
-          SDK.encodeRetainedValidationWitness(record).toString("hex"),
-        ];
-      });
       const source: SDK.L2TransactionSource = {
         tx_id: material.txId,
         source: material.source,
       };
       const forced = forcedTx(88, "ForcedTxValid");
+      const submitted =
+        kind === "normal" ? material.source : forced.submitted_source;
+      const transactionCommitment = (
+        kind === "normal"
+          ? computeMidgardNativeTxProofCommitment
+          : computeMidgardForcedTxProofCommitment
+      )({
+        compactCbor: Buffer.from(submitted.compact_cbor, "hex"),
+        witnessSetCompactCbor: Buffer.from(
+          submitted.witness_set_compact_cbor,
+          "hex",
+        ),
+        fieldPreimageLengthsCbor: Buffer.from(
+          submitted.field_preimage_lengths_cbor,
+          "hex",
+        ),
+      });
+      const descriptor = SDK.validationTraceDescriptorDataFromCore(
+        placeholderValidationTraceDescriptorV1(
+          {
+            eventKeyCbor: Buffer.from(Data.to(eventKey, SDK.EventKey), "hex"),
+            transactionCommitment,
+          },
+          "accepted",
+          null,
+        ),
+      );
       const fixture = await buildPayloadFixture({
         transactions:
           kind === "normal"
@@ -258,7 +214,7 @@ describe("retained operator validation claims", () => {
             Data.to(descriptor, SDK.ValidationTraceDescriptor),
           ],
         ],
-        retainedWitnesses: records,
+        retainedWitnesses: [],
         steps: [
           {
             schema_version: 1n,
@@ -277,35 +233,9 @@ describe("retained operator validation claims", () => {
         ],
       });
       const reconstruction = await reconstruct(fixture);
-      const opened = await buildRetainedValidationClaimWitness({
-        reconstruction,
-        eventKey,
-      });
-      expect(opened.claim.descriptor_membership.root).toBe(
-        reconstruction.header.validationTracesRoot,
-      );
-      expect(opened.claim.source_membership).toHaveProperty(
-        kind === "normal" ? "NormalValidationSource" : "ForcedValidationSource",
-      );
-      expect(opened.claim.validation_context_cbor).toBe(
-        context.toString("hex"),
-      );
-      expect(opened.terminalWorkWitnessCbor).toBe(terminalWork.toString("hex"));
-      const original =
-        reconstruction.payload.block_body.validation_trace_witnesses[1]!;
-      const record = SDK.decodeRetainedValidationWitness(
-        Buffer.from(original[1], "hex"),
-      );
-      reconstruction.payload.block_body.validation_trace_witnesses[1] = [
-        original[0],
-        SDK.encodeRetainedValidationWitness({
-          ...record,
-          witness_cbor: "8101",
-        }).toString("hex"),
-      ];
       await expect(
         buildRetainedValidationClaimWitness({ reconstruction, eventKey }),
-      ).rejects.toThrow();
+      ).rejects.toThrow("Retained validation initial endpoint is absent");
     },
   );
 });

@@ -25,8 +25,6 @@ import {
   eventKeyFingerprint,
   type TransitionTraceReconstruction,
 } from "./reconstruct.js";
-import { assertRetainedReplayTerminal } from "./replay-terminal.js";
-import { buildRetainedValidationClaimWitness } from "./witnesses.js";
 
 /** Exact L1 event preimages; the installed caller must admit their raw snapshot
  * before invoking this pure replay builder. This type grants no replay authority. */
@@ -72,14 +70,10 @@ export const deriveTransitionTraceReplayEvidence = async ({
   const deposit: NonNullable<
     TransitionTraceDetectionEvidence["depositTransitions"]
   >[number][] = [];
-  const claims: NonNullable<
-    TransitionTraceDetectionEvidence["acceptedTransactionTransitionMismatches"]
-  >[number][] = [];
   const evidence = {
     l2TransactionTransitions: l2,
     withdrawalTransitions: withdrawal,
     depositTransitions: deposit,
-    acceptedTransactionTransitionMismatches: claims,
   };
   // Structural faults already have complete authenticated evidence in the block.
   if ((await detectTransitionTraceFaults(current)).some((d) => d.buildable))
@@ -134,20 +128,6 @@ export const deriveTransitionTraceReplayEvidence = async ({
           step.event_key,
           "representable_field_shape",
         );
-      const retained = await buildRetainedValidationClaimWitness({
-        reconstruction: current,
-        eventKey: step.event_key,
-      });
-      assertRetainedReplayTerminal(retained);
-      const acceptedDescriptor =
-        retained.claim.descriptor_membership.value.verdict === "Accepted";
-      const acceptedTerminal =
-        retained.claim.terminal_state.verdict === "Accepted";
-      if (acceptedDescriptor && acceptedTerminal)
-        claims.push({
-          claim: retained.claim,
-          terminalAcceptanceWitnessCbor: retained.terminalWorkWitnessCbor,
-        });
       const valid =
         source.phase === "L2Transaction"
           ? source.entry.validity === "TxIsValid"
@@ -192,23 +172,6 @@ export const deriveTransitionTraceReplayEvidence = async ({
           );
         if (source.phase === "L2Transaction")
           l2.push({ stepIndex: index, spentUtxos, producedUtxos });
-      }
-      if (acceptedDescriptor && !acceptedTerminal) {
-        if (retained.claim.terminal_state.verdict !== "Rejected")
-          throw new Error(
-            "Transition replay retained endpoint is not terminal",
-          );
-        if (
-          (await detectTransitionTraceFaults(current, evidence)).some(
-            (d) => d.buildable,
-          )
-        )
-          return evidence;
-        throw replayPrerequisiteFailure(
-          current.headerHash,
-          step.event_key,
-          "accepted_terminal",
-        );
       }
     } else if (source.phase === "Withdrawal") {
       if (source.entry.value.validity === "WithdrawalIsValid") {

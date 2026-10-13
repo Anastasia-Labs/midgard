@@ -1,9 +1,14 @@
 import {
+  computeMidgardForcedTxProofCommitment,
   encodeMidgardSpendInputItem,
   encodeMidgardTxOutput,
 } from "@al-ft/midgard-core";
 import * as SDK from "@al-ft/midgard-sdk";
-import { buildCanonicalMidgardLedgerEntryOutputMaterial } from "@al-ft/midgard-validation";
+import {
+  buildCanonicalMidgardLedgerEntryOutputMaterial,
+  placeholderValidationTraceDescriptorV1,
+} from "@al-ft/midgard-validation";
+import { Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -13,6 +18,17 @@ import {
 import { requireDeletionKeepsTwoChildren } from "../src/transition-trace/detect.mpf-proof-from-witness.js";
 import { createTransitionTraceLedgerReplay } from "../src/transition-trace/ledger-replay.js";
 import { keyValuePhasRootWithCount } from "../src/transition-trace/phas.js";
+import { deriveTransitionTraceReplayEvidence } from "../src/transition-trace/replay.js";
+import {
+  buildPayloadFixture,
+  forcedEventKey,
+  reconstruct,
+} from "./transition-trace-challenger.build-payload-fixture.js";
+import {
+  eventToStepEntry,
+  forcedTx,
+  outRef,
+} from "./transition-trace-challenger.native-material.js";
 
 const key = (index: number) =>
   encodeMidgardSpendInputItem({
@@ -35,6 +51,82 @@ const descriptorEntry = (index: number) => ({
 });
 
 describe("transition trace retained descriptor mutations", () => {
+  it("replays a rejected forced transaction without retained machine endpoints", async () => {
+    const id = outRef(88);
+    const eventKey = forcedEventKey(id);
+    const predecessor = await reconstruct(await buildPayloadFixture({}));
+    const transaction = forcedTx(88, {
+      ForcedTxInvalid: { reason: "EmptyInputs" },
+    });
+    const submitted = transaction.submitted_source;
+    const descriptor = SDK.validationTraceDescriptorDataFromCore(
+      placeholderValidationTraceDescriptorV1(
+        {
+          eventKeyCbor: Buffer.from(Data.to(eventKey, SDK.EventKey), "hex"),
+          transactionCommitment: computeMidgardForcedTxProofCommitment({
+            compactCbor: Buffer.from(submitted.compact_cbor, "hex"),
+            witnessSetCompactCbor: Buffer.from(
+              submitted.witness_set_compact_cbor,
+              "hex",
+            ),
+            fieldPreimageLengthsCbor: Buffer.from(
+              submitted.field_preimage_lengths_cbor,
+              "hex",
+            ),
+          }),
+        },
+        "rejected",
+        "E_EMPTY_INPUTS",
+      ),
+    );
+    const current = await reconstruct(
+      await buildPayloadFixture({
+        prevHeaderHash: predecessor.headerHash,
+        forcedTransactions: [
+          [
+            Data.to(id, SDK.OutputReference),
+            Data.to(transaction, SDK.ForcedInclusionTxV1),
+          ],
+        ],
+        steps: [
+          {
+            schema_version: 1n,
+            step_index: 0n,
+            event_key: eventKey,
+            phase: "ForcedTransaction",
+            pre_utxos_root: SDK.EMPTY_MERKLE_TREE_ROOT,
+            post_utxos_root: SDK.EMPTY_MERKLE_TREE_ROOT,
+          },
+        ],
+        eventToStep: [
+          eventToStepEntry(eventKey, {
+            step_index: 0n,
+            phase: "ForcedTransaction",
+          }),
+        ],
+        validationDescriptors: [
+          [
+            Data.to(eventKey, SDK.EventKey),
+            Data.to(descriptor, SDK.ValidationTraceDescriptor),
+          ],
+        ],
+        retainedWitnesses: [],
+      }),
+    );
+    const evidence = await deriveTransitionTraceReplayEvidence({
+      current,
+      predecessor,
+      deposits: [],
+      network: "Custom",
+      depositPolicyId: "34".repeat(28),
+    });
+    expect(evidence).toEqual({
+      l2TransactionTransitions: [],
+      withdrawalTransitions: [],
+      depositTransitions: [],
+    });
+  });
+
   it("sends the terminal-Branch group opening with every deletion that needs one", async () => {
     const entries = Array.from({ length: 256 }, (_, index) =>
       descriptorEntry(index),
