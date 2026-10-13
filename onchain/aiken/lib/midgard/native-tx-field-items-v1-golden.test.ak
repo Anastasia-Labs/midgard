@@ -46,6 +46,7 @@ use midgard/fraud_proofs/native_tx/types.{
   ReceiveRedeemer, RewardRedeemer, SpendRedeemer, VoteRedeemer,
 }
 use midgard/fraud_proofs/transition_trace/proof.{ledger_outref_key}
+use midgard/ledger_output_v1.{asset_key_precedes}
 use midgard/native_tx_field_access_v1.{
   Chunked, Whole, chunk_bytes_k, decode_field_array_header,
   encode_field_preimage, field_commitment, field_commitment_from_items,
@@ -1639,6 +1640,46 @@ test golden_f7_item_rejects_a_short_signature() fail {
       },
     ),
   ) >= 0
+}
+
+// ---------------------------------------------------------------------------
+// §5.5/§5.6 key order — plain bytes, as on Cardano
+// ---------------------------------------------------------------------------
+
+/// The one comparator for policy ids and asset names agrees with the
+/// TypeScript `compareMidgardAssetKeyBytes` on every row, including the rows
+/// where a length-first order would answer the other way.
+test golden_asset_key_order_matches_typescript() {
+  and {
+    asset_key_precedes(#"", #"00") == True,
+    asset_key_precedes(#"00", #"") == False,
+    asset_key_precedes(#"", #"") == False,
+    asset_key_precedes(#"4141", #"4141") == False,
+    asset_key_precedes(#"41", #"4141") == True,
+    asset_key_precedes(#"4141", #"41") == False,
+    asset_key_precedes(#"4141", #"42") == True,
+    asset_key_precedes(#"42", #"4141") == False,
+    asset_key_precedes(#"0102", #"aa") == True,
+    asset_key_precedes(#"aa", #"0102") == False,
+    asset_key_precedes(#"0000", #"ff") == True,
+    asset_key_precedes(#"ff", #"0000") == False,
+    asset_key_precedes(
+      #"000000000000000000000000000000000000000000000000",
+      #"0101010101010101010101010101010101010101010101",
+    ) == True,
+    asset_key_precedes(
+      #"0101010101010101010101010101010101010101010101",
+      #"000000000000000000000000000000000000000000000000",
+    ) == False,
+    asset_key_precedes(
+      #"ababababababababababababababababababababababababababababababab00",
+      #"ababababababababababababababababababababababababababababababab01",
+    ) == True,
+    asset_key_precedes(
+      #"05050505050505050505050505050505050505050505050505050505",
+      #"06060606060606060606060606060606060606060606060606060606",
+    ) == True,
+  }
 }
 
 // ---------------------------------------------------------------------------

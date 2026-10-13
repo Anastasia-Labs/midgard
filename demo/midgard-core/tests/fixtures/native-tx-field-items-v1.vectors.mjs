@@ -109,6 +109,34 @@ export const DATUM_CANONICITY_BOUNDARIES = [
 ];
 
 /**
+ * §5.5/§5.6 key order for policy ids and asset names: plain byte order,
+ * Cardano's (`compareMidgardAssetKeyBytes` / `asset_key_precedes`). Each row is
+ * `[label, leftHex, rightHex, leftPrecedesRight]`, the expectation written down
+ * here rather than read off either comparator. The rows where the retired
+ * length-first order disagrees are the ones that bite; the 23/24-byte pair
+ * straddles the CBOR byte-string head width, where comparing encoded keys would
+ * also disagree.
+ */
+export const ASSET_KEY_ORDER_PAIRS = [
+  ["empty_before_one_byte", "", "00", true],
+  ["one_byte_after_empty", "00", "", false],
+  ["empty_equal_is_strict", "", "", false],
+  ["equal_is_strict", "4141", "4141", false],
+  ["equal_prefix_shorter_first", "41", "4141", true],
+  ["equal_prefix_longer_after", "4141", "41", false],
+  ["lexicographic_beats_length", "4141", "42", true],
+  ["length_does_not_win", "42", "4141", false],
+  ["low_wide_before_high_narrow", "0102", "aa", true],
+  ["high_narrow_after_low_wide", "aa", "0102", false],
+  ["zero_pair_before_ff", "0000", "ff", true],
+  ["ff_after_zero_pair", "ff", "0000", false],
+  ["head_width_24_before_23", "00".repeat(24), "01".repeat(23), true],
+  ["head_width_23_after_24", "01".repeat(23), "00".repeat(24), false],
+  ["width_32_last_byte", `${"ab".repeat(31)}00`, `${"ab".repeat(31)}01`, true],
+  ["policy_width_28", "05".repeat(28), "06".repeat(28), true],
+];
+
+/**
  * §8, simplest-fitting-first. The boundary lengths at which the carriage tier
  * changes, pinned so the §8.4 partition — a preimage has exactly one admissible
  * carriage — is a cross-language fact rather than a convention.

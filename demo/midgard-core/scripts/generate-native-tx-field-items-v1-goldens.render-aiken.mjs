@@ -70,6 +70,7 @@ export const renderAiken = (golden) => {
     "  ReceiveRedeemer, RewardRedeemer, SpendRedeemer, VoteRedeemer,",
     "}",
     "use midgard/fraud_proofs/transition_trace/proof.{ledger_outref_key}",
+    "use midgard/ledger_output_v1.{asset_key_precedes}",
     "use midgard/native_tx_field_access_v1.{",
     "  Chunked, Whole, chunk_bytes_k, decode_field_array_header,",
     "  encode_field_preimage, field_commitment, field_commitment_from_items,",
@@ -279,6 +280,22 @@ export const renderAiken = (golden) => {
   // ordering negatives in `tests/native-tx-field-items-goldens.test.ts`;
   // without them "§5.6 ordering is enforced" would be a claim about one twin
   // and an assumption about the other.
+  lines.push(...section("§5.5/§5.6 key order — plain bytes, as on Cardano"));
+  lines.push(
+    "/// The one comparator for policy ids and asset names agrees with the",
+    "/// TypeScript `compareMidgardAssetKeyBytes` on every row, including the rows",
+    "/// where a length-first order would answer the other way.",
+    "test golden_asset_key_order_matches_typescript() {",
+    "  and {",
+    ...golden.assetKeyOrder.map(
+      (entry) =>
+        `    asset_key_precedes(${aikenBytes(entry.leftHex)}, ${aikenBytes(entry.rightHex)}) == ${entry.precedes ? "True" : "False"},`,
+    ),
+    "  }",
+    "}",
+    "",
+  );
+
   lines.push(...section("§5.6 ordering assertions — the negatives that bite"));
   lines.push(
     ...widthNegative(

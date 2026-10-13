@@ -24,6 +24,7 @@ import {
   encodeMidgardVersionedScript,
   type MidgardVersionedScript,
 } from "../src/codec/versioned-script.js";
+import { compareMidgardAssetKeyBytes } from "../src/codec/value.js";
 import * as vectors from "./fixtures/native-tx-field-items-v1.vectors.mjs";
 import {
   golden,
@@ -109,6 +110,36 @@ describe("§5.3 fixed-width item assertions", () => {
         signature: vectors.filler(63, 2),
       }),
     ).toThrow();
+  });
+});
+
+describe("§5.5/§5.6 key order is plain bytes", () => {
+  it("pins every comparator vector to the row's written expectation", () => {
+    expect(
+      golden.assetKeyOrder.map(({ label, leftHex, rightHex, precedes }) => [
+        label,
+        leftHex,
+        rightHex,
+        precedes,
+      ]),
+    ).toEqual(vectors.ASSET_KEY_ORDER_PAIRS);
+    for (const entry of golden.assetKeyOrder) {
+      const left = Buffer.from(entry.leftHex, "hex");
+      const right = Buffer.from(entry.rightHex, "hex");
+      expect(compareMidgardAssetKeyBytes(left, right) < 0).toBe(entry.precedes);
+    }
+  });
+
+  it("keeps rows where a length-first order would answer the other way", () => {
+    const lengthFirstPrecedes = (leftHex: string, rightHex: string) =>
+      leftHex.length < rightHex.length ||
+      (leftHex.length === rightHex.length && leftHex < rightHex);
+    expect(
+      golden.assetKeyOrder.filter(
+        (entry) =>
+          lengthFirstPrecedes(entry.leftHex, entry.rightHex) !== entry.precedes,
+      ).length,
+    ).toBeGreaterThanOrEqual(4);
   });
 });
 

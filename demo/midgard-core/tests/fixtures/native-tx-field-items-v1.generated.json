@@ -993,6 +993,104 @@
       "keyHex": "825820f3fa01080f161d242b323940474e555c636a71787f868d949ba2a9b0b7bec5cc19ffff"
     }
   ],
+  "assetKeyOrder": [
+    {
+      "label": "empty_before_one_byte",
+      "leftHex": "",
+      "rightHex": "00",
+      "precedes": true
+    },
+    {
+      "label": "one_byte_after_empty",
+      "leftHex": "00",
+      "rightHex": "",
+      "precedes": false
+    },
+    {
+      "label": "empty_equal_is_strict",
+      "leftHex": "",
+      "rightHex": "",
+      "precedes": false
+    },
+    {
+      "label": "equal_is_strict",
+      "leftHex": "4141",
+      "rightHex": "4141",
+      "precedes": false
+    },
+    {
+      "label": "equal_prefix_shorter_first",
+      "leftHex": "41",
+      "rightHex": "4141",
+      "precedes": true
+    },
+    {
+      "label": "equal_prefix_longer_after",
+      "leftHex": "4141",
+      "rightHex": "41",
+      "precedes": false
+    },
+    {
+      "label": "lexicographic_beats_length",
+      "leftHex": "4141",
+      "rightHex": "42",
+      "precedes": true
+    },
+    {
+      "label": "length_does_not_win",
+      "leftHex": "42",
+      "rightHex": "4141",
+      "precedes": false
+    },
+    {
+      "label": "low_wide_before_high_narrow",
+      "leftHex": "0102",
+      "rightHex": "aa",
+      "precedes": true
+    },
+    {
+      "label": "high_narrow_after_low_wide",
+      "leftHex": "aa",
+      "rightHex": "0102",
+      "precedes": false
+    },
+    {
+      "label": "zero_pair_before_ff",
+      "leftHex": "0000",
+      "rightHex": "ff",
+      "precedes": true
+    },
+    {
+      "label": "ff_after_zero_pair",
+      "leftHex": "ff",
+      "rightHex": "0000",
+      "precedes": false
+    },
+    {
+      "label": "head_width_24_before_23",
+      "leftHex": "000000000000000000000000000000000000000000000000",
+      "rightHex": "0101010101010101010101010101010101010101010101",
+      "precedes": true
+    },
+    {
+      "label": "head_width_23_after_24",
+      "leftHex": "0101010101010101010101010101010101010101010101",
+      "rightHex": "000000000000000000000000000000000000000000000000",
+      "precedes": false
+    },
+    {
+      "label": "width_32_last_byte",
+      "leftHex": "ababababababababababababababababababababababababababababababab00",
+      "rightHex": "ababababababababababababababababababababababababababababababab01",
+      "precedes": true
+    },
+    {
+      "label": "policy_width_28",
+      "leftHex": "05050505050505050505050505050505050505050505050505050505",
+      "rightHex": "06060606060606060606060606060606060606060606060606060606",
+      "precedes": true
+    }
+  ],
   "datumCanonicityBoundaries": [
     {
       "label": "unit",

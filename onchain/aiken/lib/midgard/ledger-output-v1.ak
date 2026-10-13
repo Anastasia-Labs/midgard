@@ -81,6 +81,14 @@ fn key_is(data: Data, expected: Int) -> Bool {
   }
 }
 
+/// The one key order for policy ids and asset names in a Value or a mint
+/// field (§5.5, §5.6): plain byte order, Cardano's. Strict, so a repeated key
+/// is refused rather than shadowed; on an equal prefix the shorter key comes
+/// first, and the empty asset name precedes every other name.
+pub fn asset_key_precedes(left: ByteArray, right: ByteArray) -> Bool {
+  builtin.less_than_bytearray(left, right)
+}
+
 fn canonical_bytes_key_precedes(left: ByteArray, right: ByteArray) -> Bool {
   let left_length = bytearray.length(left)
   let right_length = bytearray.length(right)

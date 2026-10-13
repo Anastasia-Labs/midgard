@@ -26,6 +26,17 @@ export type MidgardValue = {
 const POLICY_ID_LENGTH = 28;
 const MAX_ASSET_NAME_LENGTH = 32;
 
+/**
+ * The one key order for policy ids and asset names in a Value or a mint field
+ * (§5.5, §5.6): plain byte order, Cardano's, and the twin of Aiken's
+ * `ledger_output_v1.asset_key_precedes`. Negative when `left` sorts first; on
+ * an equal prefix the shorter key sorts first.
+ */
+export const compareMidgardAssetKeyBytes = (
+  left: Uint8Array,
+  right: Uint8Array,
+): number => compareBytes(left, right);
+
 const compareCanonicalAssetNames = (
   left: Uint8Array,
   right: Uint8Array,

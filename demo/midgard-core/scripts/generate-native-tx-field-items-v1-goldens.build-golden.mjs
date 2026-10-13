@@ -21,8 +21,10 @@ import {
   MIDGARD_REDEEMER_PURPOSE_TAGS,
   midgardFieldCommitmentForField,
 } from "../dist/codec/native-tx-field-items.js";
+import { compareMidgardAssetKeyBytes } from "../dist/codec/value.js";
 import { encodeMidgardVersionedScript } from "../dist/codec/versioned-script.js";
 import {
+  ASSET_KEY_ORDER_PAIRS,
   CARRIAGE_BOUNDARY_LENGTHS,
   DATUM_CANONICITY_BOUNDARIES,
   FIELD_PREIMAGE_LENGTH_SOURCE,
@@ -155,6 +157,23 @@ export const buildGolden = () => {
         keyHex: hex(encodeMidgardSpendInputItem({ txId, outputIndex })),
       };
     }),
+    // §5.5/§5.6 key order, computed by the TypeScript comparator and checked
+    // against the expectation each row writes down.
+    assetKeyOrder: ASSET_KEY_ORDER_PAIRS.map(
+      ([label, leftHex, rightHex, expected]) => {
+        const precedes =
+          compareMidgardAssetKeyBytes(
+            Buffer.from(leftHex, "hex"),
+            Buffer.from(rightHex, "hex"),
+          ) < 0;
+        if (precedes !== expected) {
+          throw new Error(
+            `§5.6 key order vector ${label}: comparator says ${precedes}, row says ${expected}`,
+          );
+        }
+        return { label, leftHex, rightHex, precedes };
+      },
+    ),
     datumCanonicityBoundaries: DATUM_CANONICITY_BOUNDARIES.map(
       ([label, cborHex]) => ({ label, cborHex }),
     ),
