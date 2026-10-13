@@ -154,6 +154,11 @@ const invalidNonEnvelopeCanonical = (): MidgardNativeTxCanonical => ({
 
 export const committedFieldShapeScenarioMaterial = (
   kind: CommittedFieldShapeScenarioKind,
+  /**
+   * For `redeemer-canonicity`: the data of a field-8 item that is then the
+   * field's only item, in place of the default 224-item field.
+   */
+  redeemerData?: Buffer,
 ): {
   readonly canonicalTx: MidgardNativeTxCanonical | null;
   readonly fullTx: MidgardNativeTxFull | null;
@@ -227,16 +232,18 @@ export const committedFieldShapeScenarioMaterial = (
     // item has a valid redeemer envelope but a non-minimal Plutus integer;
     // retaining the full 224-item field proves that exact-coordinate access
     // remains bounded independently of unrelated trailing witnesses.
-    const redeemerItems = Array.from({ length: 224 }, (_, index) =>
-      encodeMidgardRedeemerWitnessItem({
-        purpose: "Spend",
-        index: BigInt(index),
-        redeemerCbor:
-          index === 0
-            ? Buffer.from("1800", "hex")
-            : Buffer.concat([Buffer.from("5840", "hex"), Buffer.alloc(64)]),
-        executionUnits: { memory: 1_000_000n, steps: 1_000_000n },
-      }),
+    const redeemerItems = Array.from(
+      { length: redeemerData === undefined ? 224 : 1 },
+      (_, index) =>
+        encodeMidgardRedeemerWitnessItem({
+          purpose: "Spend",
+          index: BigInt(index),
+          redeemerCbor:
+            index === 0
+              ? (redeemerData ?? Buffer.from("1800", "hex"))
+              : Buffer.concat([Buffer.from("5840", "hex"), Buffer.alloc(64)]),
+          executionUnits: { memory: 1_000_000n, steps: 1_000_000n },
+        }),
     );
     const redeemerPreimage = encodeMidgardFieldPreimage(redeemerItems);
     const fullTx = makeNativeTx({
@@ -288,11 +295,14 @@ export const committedFieldShapeScenarioMaterial = (
 export const setupCommittedFieldShapeScenario = async ({
   harness,
   kind,
+  redeemerData,
 }: {
   readonly harness: CommittedFieldShapeEmulatorHarness;
   readonly kind: CommittedFieldShapeScenarioKind;
+  /** See `committedFieldShapeScenarioMaterial`. */
+  readonly redeemerData?: Buffer;
 }): Promise<CommittedFieldShapeScenario> => {
-  const material = committedFieldShapeScenarioMaterial(kind);
+  const material = committedFieldShapeScenarioMaterial(kind, redeemerData);
   const nativeTxId = computeMidgardNativeTxId(material.compact).toString("hex");
   const compact = encodeMidgardNativeTxCompact(material.compact);
   const store = new Store(undefined);

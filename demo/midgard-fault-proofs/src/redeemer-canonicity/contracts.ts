@@ -9,6 +9,7 @@ import { Effect } from "effect";
 export const REDEEMER_CANONICITY_BLUEPRINT_TITLES = Object.freeze([
   "fraud_proofs/redeemer_canonicity/step_01.main.spend",
   "fraud_proofs/redeemer_canonicity/step_02.main.spend",
+  "fraud_proofs/redeemer_canonicity/step_02_data.main.spend",
   "fraud_proofs/redeemer_canonicity/step_03.main.spend",
 ] as const);
 
@@ -22,6 +23,7 @@ export type RedeemerCanonicityStepContract = Readonly<{
 
 export type RedeemerCanonicityContracts = Readonly<{
   steps: readonly [
+    RedeemerCanonicityStepContract,
     RedeemerCanonicityStepContract,
     RedeemerCanonicityStepContract,
     RedeemerCanonicityStepContract,
@@ -86,5 +88,10 @@ export const applyRedeemerCanonicityScripts = ({
       spendingScriptAddress: step.spendingScriptAddress,
       referenceOutRef: `${"0".repeat(64)}#0`,
     });
-  return [adapt(steps[0], 0), adapt(steps[1], 1), adapt(steps[2], 2)];
+  return [
+    adapt(steps[0], 0),
+    adapt(steps[1], 1),
+    adapt(steps[2], 2),
+    adapt(steps[3], 3),
+  ];
 };

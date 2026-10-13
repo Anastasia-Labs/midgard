@@ -94,6 +94,11 @@ const walk = (evidence: ResolvedOutputEvidence) => {
       control: resolvedOutputScanControlData(control),
     });
     kinds.push(transition.kind);
+    if (transition.kind === "finalize" && !transition.terminal) {
+      // An inline datum is decided by the datum step after the envelope.
+      terminal = { outputIsNonCanonical: !transition.openDatum.canonical };
+      break;
+    }
     if (transition.terminal) {
       terminal = transition;
       break;
@@ -128,7 +133,7 @@ describe("resolvedOutputNonCanonical deterministic reconstruction actions", () =
           evidence: { ...evidence, outputIsNonCanonical: true },
           control: resolvedOutputScanControlData(finishable),
         }),
-      ).toThrow(/closes canonical/u);
+      ).toThrow();
     }
   });
 

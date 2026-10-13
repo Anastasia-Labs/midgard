@@ -1,3 +1,4 @@
+import { decodeMidgardLedgerOutputCommitment } from "@al-ft/midgard-core";
 import {
   requireInputIndex,
   requireOwnSpendPurpose,
@@ -20,12 +21,14 @@ import type { ResolvedProverSigner } from "../runtime.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
 import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary.js";
 import type { ResolvedOutputNonCanonicalContracts } from "./contracts.js";
+import { resolvedOutputDatumState } from "./datum-plan.js";
 import { planResolvedOutputReconstructionTransition } from "./reconstruction-plan.js";
 import {
   type ResolvedOutputEvidence,
   resolvedOutputScanControlData,
 } from "./resolved-output-non-canonical.js";
 import {
+  ResolvedOutputStep04DatumDatumSchema,
   ResolvedOutputStep04DatumSchema,
   ResolvedOutputStep04RedeemerSchema,
   ResolvedOutputStep05DatumSchema,
@@ -35,7 +38,8 @@ import {
  * One step-04 transition from the live checkpoint. The action is the pure
  * `planResolvedOutputReconstructionTransition` of the retained output and the
  * thread's own control: `Advance` continues the self-loop or closes at a
- * structural fault, `FinalizeCanonical` closes at the exact canonical end.
+ * structural fault, `FinalizeCanonical` ends the envelope at the exact
+ * canonical end, opening the datum step when the output has an inline datum.
  */
 export const submitResolvedOutputNonCanonicalStep04 = async ({
   lucid,
@@ -87,25 +91,56 @@ export const submitResolvedOutputNonCanonicalStep04 = async ({
     control: state.control,
   });
   const { terminal } = transition;
-  const nextDatum = Data.to(
-    {
-      fraud_prover: signer.paymentKeyHash,
-      data: transition.terminal
-        ? {
-            subject: evidence.subject,
-            output_is_non_canonical: transition.outputIsNonCanonical,
-          }
-        : {
-            subject: evidence.subject,
-            descriptor_cbor: evidence.resolved.descriptorCborHex,
-            control: resolvedOutputScanControlData(transition.nextControl),
-          },
-    } as never,
-    (terminal
-      ? ResolvedOutputStep05DatumSchema
-      : ResolvedOutputStep04DatumSchema) as never,
-  );
-  const nextStepIndex = terminal ? 4 : 3;
+  const next = transition.terminal
+    ? {
+        stage: "step05" as const,
+        stepIndex: 5,
+        datum: Data.to(
+          {
+            fraud_prover: signer.paymentKeyHash,
+            data: {
+              subject: evidence.subject,
+              output_is_non_canonical: transition.outputIsNonCanonical,
+            },
+          } as never,
+          ResolvedOutputStep05DatumSchema as never,
+        ),
+      }
+    : transition.kind === "finalize"
+      ? {
+          stage: "step04Datum" as const,
+          stepIndex: 4,
+          datum: Data.to(
+            {
+              fraud_prover: signer.paymentKeyHash,
+              data: resolvedOutputDatumState(
+                evidence.subject,
+                decodeMidgardLedgerOutputCommitment(
+                  Buffer.from(evidence.resolved.descriptorCborHex, "hex"),
+                ).itemCommitment.toString("hex"),
+                transition.openDatum,
+              ),
+            } as never,
+            ResolvedOutputStep04DatumDatumSchema as never,
+          ),
+        }
+      : {
+          stage: "reconstructing" as const,
+          stepIndex: 3,
+          datum: Data.to(
+            {
+              fraud_prover: signer.paymentKeyHash,
+              data: {
+                subject: evidence.subject,
+                descriptor_cbor: evidence.resolved.descriptorCborHex,
+                control: resolvedOutputScanControlData(transition.nextControl),
+              },
+            } as never,
+            ResolvedOutputStep04DatumSchema as never,
+          ),
+        };
+  const nextDatum = next.datum;
+  const nextStepIndex = next.stepIndex;
   const outputMatches = computationThreadOutputPredicate({
     address: contracts.steps[nextStepIndex].spendingScriptAddress,
     datum: nextDatum,
@@ -167,6 +202,7 @@ export const submitResolvedOutputNonCanonicalStep04 = async ({
     txHash,
     nextThreadOutRef: `${txHash}#${outputIndex.toString()}`,
     terminal,
+    nextStage: next.stage,
     action: transition.kind,
   };
 };

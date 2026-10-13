@@ -88,6 +88,7 @@ describe.skipIf(runDirectory === undefined)(
           steps: [
             reference("fraudProofRedeemerCanonicity"),
             reference("fraudProofRedeemerCanonicityStep02"),
+            reference("fraudProofRedeemerCanonicityStep02Data"),
             reference("fraudProofRedeemerCanonicityStep03"),
           ],
           witnesses: {
@@ -119,7 +120,7 @@ describe.skipIf(runDirectory === undefined)(
         await createManifestBoundRedeemerCanonicityWorkflow(config);
       expect(workflow.binding.deploymentFingerprint).toBe(manifest.manifestId);
       expect(workflow.binding.definition.computationThread.steps).toHaveLength(
-        3,
+        4,
       );
       expect(
         workflow.contracts.steps.map((step) => step.blueprintTitle),
@@ -129,15 +130,16 @@ describe.skipIf(runDirectory === undefined)(
       ).toEqual([
         entries.fraudProofRedeemerCanonicity!.scriptHash,
         entries.fraudProofRedeemerCanonicityStep02!.scriptHash,
+        entries.fraudProofRedeemerCanonicityStep02Data!.scriptHash,
         entries.fraudProofRedeemerCanonicityStep03!.scriptHash,
       ]);
-      const [first, second, third] = config.referenceScripts.steps;
+      const [first, second, third, fourth] = config.referenceScripts.steps;
       await expect(
         createManifestBoundRedeemerCanonicityWorkflow({
           ...config,
           referenceScripts: {
             ...config.referenceScripts,
-            steps: [second, first, third],
+            steps: [second, first, third, fourth],
           },
         }),
       ).rejects.toThrow(
@@ -148,7 +150,12 @@ describe.skipIf(runDirectory === undefined)(
           ...config,
           referenceScripts: {
             ...config.referenceScripts,
-            steps: [{ ...first, scriptRef: second.scriptRef }, second, third],
+            steps: [
+              { ...first, scriptRef: second.scriptRef },
+              second,
+              third,
+              fourth,
+            ],
           },
         }),
       ).rejects.toThrow(

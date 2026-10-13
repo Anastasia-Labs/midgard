@@ -31,11 +31,13 @@ import type { ResolvedProverSigner } from "../runtime.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
 import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary.js";
 import type { RedeemerCanonicityContracts } from "./contracts.js";
+import { redeemerDataScanState } from "./data-plan.js";
 import {
   REDEEMER_CANONICITY_FIELD_INDEX,
   type RedeemerCanonicityEvidence,
 } from "./family.js";
 import {
+  RedeemerCanonicityStep02DataDatumSchema,
   RedeemerCanonicityStep02DatumSchema,
   RedeemerCanonicityStep02RedeemerSchema,
   RedeemerCanonicityStep03DatumSchema,
@@ -181,22 +183,32 @@ export const submitRedeemerCanonicityStep02 = async ({
     certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
     label: "redeemer-canonicity field opening",
   });
-  const nextDatum = Data.to(
-    {
-      fraud_prover: signer.paymentKeyHash,
-      data: {
-        bound: {
-          subject: evidence.subject,
-          witness_set_hash: state.witness_set_hash,
-          redeemer_index: BigInt(evidence.redeemerIndex),
-        },
-        canonical: evidence.canonical,
-      },
-    } as never,
-    RedeemerCanonicityStep03DatumSchema as never,
-  );
+  const bound = {
+    subject: evidence.subject,
+    witness_set_hash: state.witness_set_hash,
+    redeemer_index: BigInt(evidence.redeemerIndex),
+  };
+  const plan = evidence.dataPlan;
+  // A readable envelope opens the data step; any other item is decided here.
+  const nextStepIndex = plan === null ? 3 : 2;
+  const nextDatum =
+    plan === null
+      ? Data.to(
+          {
+            fraud_prover: signer.paymentKeyHash,
+            data: { bound, canonical: false },
+          } as never,
+          RedeemerCanonicityStep03DatumSchema as never,
+        )
+      : Data.to(
+          {
+            fraud_prover: signer.paymentKeyHash,
+            data: redeemerDataScanState(bound, plan),
+          } as never,
+          RedeemerCanonicityStep02DataDatumSchema as never,
+        );
   const outputMatches = computationThreadOutputPredicate({
-    address: contracts.steps[2].spendingScriptAddress,
+    address: contracts.steps[nextStepIndex].spendingScriptAddress,
     datum: nextDatum,
     unit: threadToken.unit,
   });
@@ -230,7 +242,7 @@ export const submitRedeemerCanonicityStep02 = async ({
     stepReference,
     stepScript: contracts.steps[1].spendingScript,
     stepRole: "redeemer-canonicity step-02",
-    nextAddress: contracts.steps[2].spendingScriptAddress,
+    nextAddress: contracts.steps[nextStepIndex].spendingScriptAddress,
     nextDatum,
     redeemer,
     carriageUtxos,
@@ -245,5 +257,6 @@ export const submitRedeemerCanonicityStep02 = async ({
     txHash,
     nextThreadOutRef: `${txHash}#${outputIndex.toString()}`,
     carriageTier: planned.plan.tier,
+    nextStage: plan === null ? ("step03" as const) : ("step02Data" as const),
   };
 };

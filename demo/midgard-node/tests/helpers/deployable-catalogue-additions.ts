@@ -76,8 +76,9 @@ export const historyRoles = new Set<string>(
   HISTORY_CATALOGUE_ADDITIONS.map(({ role }) => role),
 );
 
-// The inline-datum step of the non-canonical output proof and the scalar half
-// of the redeemer item's Data refusal executor.
+// The inline-datum steps of the non-canonical and resolved output proofs, the
+// data step of the redeemer canonicity proof, and the scalar half of the
+// redeemer item's Data refusal executor.
 const DATA_CANONICITY_CATALOGUE_ADDITIONS = [
   {
     contract: "validationTraceDisputeRedeemerItemInvalidScalarDataExecutor",
@@ -86,6 +87,14 @@ const DATA_CANONICITY_CATALOGUE_ADDITIONS = [
   {
     contract: "fraudProofTransactionOutputNonCanonicalStep03Datum",
     role: "V1 fraud-proof transaction-output-non-canonical step-03 datum",
+  },
+  {
+    contract: "fraudProofResolvedOutputNonCanonicalStep04Datum",
+    role: "V1 fraud-proof resolved-output-non-canonical step-04 datum",
+  },
+  {
+    contract: "fraudProofRedeemerCanonicityStep02Data",
+    role: "V1 fraud-proof redeemer-canonicity step-02 data",
   },
 ] as const;
 

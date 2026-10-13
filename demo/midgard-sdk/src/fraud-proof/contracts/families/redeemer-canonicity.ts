@@ -18,6 +18,7 @@ import {
 export const REDEEMER_CANONICITY_FAULT_PROOF_TITLES = {
   step01: "fraud_proofs/redeemer_canonicity/step_01.main.spend",
   step02: "fraud_proofs/redeemer_canonicity/step_02.main.spend",
+  step02Data: "fraud_proofs/redeemer_canonicity/step_02_data.main.spend",
   step03: "fraud_proofs/redeemer_canonicity/step_03.main.spend",
 } as const;
 
@@ -27,6 +28,7 @@ export type RedeemerCanonicityFaultProofContracts = {
   readonly fieldPreimageCertificate: MintingValidator;
   readonly redeemerCanonicity: FraudProofChain & {
     readonly steps: readonly [
+      SpendingValidator,
       SpendingValidator,
       SpendingValidator,
       SpendingValidator,
@@ -61,10 +63,17 @@ export const buildRedeemerCanonicityChain = ({
       ],
       "Failed to build redeemer-canonicity step 03",
     );
+    const step02Data = yield* buildFaultProofSpendingStep(
+      context,
+      REDEEMER_CANONICITY_FAULT_PROOF_TITLES.step02Data,
+      [step03.spendingScriptHash, computationThread.policyId],
+      "Failed to build redeemer-canonicity step 02 data",
+    );
     const step02 = yield* buildFaultProofSpendingStep(
       context,
       REDEEMER_CANONICITY_FAULT_PROOF_TITLES.step02,
       [
+        step02Data.spendingScriptHash,
         step03.spendingScriptHash,
         computationThread.policyId,
         fieldPreimageCertificatePolicyId,
@@ -81,7 +90,7 @@ export const buildRedeemerCanonicityChain = ({
       ],
       "Failed to build redeemer-canonicity step 01",
     );
-    return { firstStep: step01, steps: [step01, step02, step03] };
+    return { firstStep: step01, steps: [step01, step02, step02Data, step03] };
   });
 
 export const buildRedeemerCanonicityFaultProofContracts = (

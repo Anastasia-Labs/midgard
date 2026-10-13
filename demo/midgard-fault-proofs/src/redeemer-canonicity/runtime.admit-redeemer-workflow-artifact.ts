@@ -63,7 +63,7 @@ export type RedeemerCanonicityRemovalReferenceScripts = Readonly<{
 }>;
 
 export type RedeemerCanonicityWorkflowReferenceScripts = Readonly<{
-  steps: readonly [UTxO, UTxO, UTxO];
+  steps: readonly [UTxO, UTxO, UTxO, UTxO];
   witnesses: Required<FaultProofWitnessReferenceScripts>;
   fieldPreimageCertificateMint: UTxO;
   removal: RedeemerCanonicityRemovalReferenceScripts;
@@ -109,6 +109,7 @@ export const WITNESS_ROLES = [
 export const STEP_CONTRACT_NAMES = [
   "fraudProofRedeemerCanonicity",
   "fraudProofRedeemerCanonicityStep02",
+  "fraudProofRedeemerCanonicityStep02Data",
   "fraudProofRedeemerCanonicityStep03",
 ] as const;
 
@@ -116,7 +117,7 @@ type BoundContext = FamilyAssemblyContext<
   "redeemerCanonicity",
   (typeof WITNESS_ROLES)[number],
   true,
-  3
+  4
 >;
 
 const bindFamily = (context: BoundContext): RedeemerWorkflowCore => {
@@ -129,7 +130,7 @@ const bindFamily = (context: BoundContext): RedeemerWorkflowCore => {
   const stateQueuePolicyId = binding.resolvedContracts.stateQueuePolicyId;
   if (
     chain === undefined ||
-    chain.steps.length !== 3 ||
+    chain.steps.length !== 4 ||
     certificate === null ||
     stateQueuePolicyId === undefined
   )

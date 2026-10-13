@@ -34,7 +34,7 @@ export const submitRedeemerCanonicityStep03 = async (input: {
     throw new Error(
       "redeemer-canonicity: terminal state does not contradict verdict",
     );
-  const stepIndex = 2;
+  const stepIndex = 3;
   const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxo({
     lucid: input.lucid,
     contracts: input.contracts,
@@ -64,7 +64,7 @@ export const submitRedeemerCanonicityStep03 = async (input: {
     lucid: input.lucid,
     family: "redeemer-canonicity",
     stepIndex,
-    step: input.contracts.steps[2],
+    step: input.contracts.steps[3],
     computationThread: input.contracts.computationThread,
     fraudProof: input.contracts.fraudProof,
     signer: input.signer,

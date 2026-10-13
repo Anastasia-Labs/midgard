@@ -1,13 +1,15 @@
 /**
  * resolvedOutputNonCanonical (`00000026`) — complete Lucid lifecycle over the
- * five registered reference scripts.
+ * six registered reference scripts.
  *
  * Every thread starts from the generic computation-thread `Init` and walks
  * step 01 (input coordinate, prior root and, for a forced leaf, the exact
  * typed reason) → step 02 (field 0/1 opening, exact out-ref) → step 03
  * (prior-ledger membership, descriptor and item commitment) → step 04 (the
- * resumable canonical reconstruction) → step 05 (terminal polarity, permanent
- * mint) → state-queue target-and-descendant removal. Evidence is built from
+ * resumable canonical reconstruction of the envelope) → the datum step (the
+ * resumable read of an inline datum, when the envelope closes canonical over
+ * one) → step 05 (terminal polarity, permanent mint) → state-queue
+ * target-and-descendant removal. Evidence is built from
  * the retained prior ledger and the committed transaction, never from a
  * fabricated mid-thread datum. The suite covers every §5.3 item for both
  * source kinds and both directions: wrongful acceptance and wrongful forced
@@ -60,6 +62,9 @@ import {
   classifyResolvedOutputNonCanonicalFinding,
   locateResolvedOutputScanControl,
   resolvedOutputChunkProofData,
+  resolvedOutputDatumState,
+  resolvedOutputDatumStepArgs,
+  type ResolvedOutputEvidence,
   resolvedOutputScanControlData,
 } from "../src/resolved-output-non-canonical/index.js";
 import { assertCompleteLifecycleCoverage } from "../src/testing/complete-lifecycle.js";
@@ -75,7 +80,9 @@ import {
   recordCarriage,
   recordPublication,
 } from "./resolved-output-non-canonical-lifecycle.record-carriage.js";
+import { densePlutusData } from "./support/dense-plutus-data.js";
 import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
+import type { CompleteSignedTransactionMeasurement } from "./support/emulator/measurement.js";
 import {
   buildPriorLedger,
   buildSubjectTransaction,
@@ -83,9 +90,11 @@ import {
   forcedSourceOf,
   makeResolvedOutputContext,
   makeResolvedOutputStages,
+  MAXIMUM_DATUM_BYTES,
   MAXIMUM_INPUT_ITEM_COUNT,
   maximumCanonicalOutput,
   maximumMalformedOutput,
+  outputWithDatumBytes,
   RESOLVED_OUTPUT_MAXIMUM_BYTES,
   RESOLVED_OUTPUT_REASON_ARM,
   resolvedOutputEvidence,
@@ -95,6 +104,98 @@ import {
   subjectTransactionFor,
 } from "./support/resolved-output-non-canonical-emulator.js";
 import { realBlueprintPath } from "./support/submit-init-emulator-shared.js";
+
+type Stages = Awaited<ReturnType<typeof makeResolvedOutputStages>>;
+
+/**
+ * Every forged datum step against the live datum checkpoint, each refused on
+ * chain: chunk proofs for another item, the honest read handed another
+ * successor, and, once a container is open, another stack.
+ */
+const refuseDatumSeams = async (
+  stages: Stages,
+  threadOutRef: string,
+  evidence: ResolvedOutputEvidence,
+) => {
+  const plan = evidence.datumPlan!;
+  const state = await stages.readDatumState(threadOutRef);
+  const step = plan.steps.find(
+    (candidate) =>
+      BigInt(candidate.cursor) === state.cursor &&
+      candidate.stackRoot === state.stack_root,
+  );
+  if (step === undefined) throw new Error("datum checkpoint is not planned");
+  const args = resolvedOutputDatumStepArgs({ evidence, plan, step });
+  const honest =
+    step.next.kind === "finish"
+      ? {
+          nextStepIndex: 5 as const,
+          nextData: {
+            subject: evidence.subject,
+            output_is_non_canonical: !step.next.canonical,
+          },
+        }
+      : {
+          nextStepIndex: 4 as const,
+          nextData: resolvedOutputDatumState(
+            evidence.subject,
+            state.item_commitment,
+            plan,
+            step.next,
+          ) as Record<string, unknown>,
+        };
+  // Chunk proofs for the output with the byte at the cursor flipped.
+  const substituted = Buffer.from(evidence.resolved.outputCborHex, "hex");
+  substituted[step.cursor] = substituted[step.cursor]! ^ 0xff;
+  await expectOnchainRefusal(() =>
+    stages.step04DatumRaw({
+      threadOutRef,
+      ...honest,
+      args: resolvedOutputDatumStepArgs({
+        evidence,
+        plan,
+        step,
+        item: buildMidgardBoundedItem({
+          fieldIndex: 2,
+          itemIndex: evidence.resolved.outputIndex,
+          bytes: substituted,
+        }),
+      }),
+    }),
+  );
+  coverage.seamMutated("datum_chunk");
+  // The honest read handed the other verdict, or a checkpoint a byte ahead.
+  const forged =
+    step.next.kind === "finish"
+      ? {
+          nextStepIndex: 5 as const,
+          nextData: {
+            subject: evidence.subject,
+            output_is_non_canonical: step.next.canonical,
+          },
+        }
+      : {
+          nextStepIndex: 4 as const,
+          nextData: {
+            ...honest.nextData,
+            cursor: BigInt(step.next.cursor) + 1n,
+          },
+        };
+  await expectOnchainRefusal(() =>
+    stages.step04DatumRaw({ threadOutRef, ...forged, args }),
+  );
+  coverage.seamMutated("datum_checkpoint");
+  if (step.stack.length > 0) {
+    await expectOnchainRefusal(() =>
+      stages.step04DatumRaw({
+        threadOutRef,
+        ...honest,
+        args: { ...args, tail_root: "00".repeat(32) },
+      }),
+    );
+    coverage.seamMutated("datum_stack");
+  }
+};
 
 describe("resolvedOutputNonCanonical registered-chain lifecycle", () => {
   it("contradicts a wrongful acceptance of a non-canonical spend input at the maximum shape: refuses the accepted seams, resumes the scan, mints and removes", async () => {
@@ -276,7 +377,7 @@ describe("resolvedOutputNonCanonical registered-chain lifecycle", () => {
         evidence,
         action: advance(),
         nextData: { output_is_non_canonical: true },
-        nextStepIndex: 4,
+        nextStepIndex: 5,
       }),
     );
     coverage.seamMutated("wrong_successor");
@@ -287,7 +388,7 @@ describe("resolvedOutputNonCanonical registered-chain lifecycle", () => {
         evidence,
         action: "FinalizeCanonical",
         nextData: { output_is_non_canonical: false },
-        nextStepIndex: 4,
+        nextStepIndex: 5,
       }),
     );
     coverage.seamMutated("premature_finalize");
@@ -471,7 +572,7 @@ describe("resolvedOutputNonCanonical registered-chain lifecycle", () => {
       evidence,
       (captured, index) =>
         record(
-          captured.result.terminal
+          captured.result.action === "finalize"
             ? "forced-step04-finalize-canonical"
             : `forced-step04-resume-${index.toString().padStart(2, "0")}`,
           captured.measurement,
@@ -481,8 +582,24 @@ describe("resolvedOutputNonCanonical registered-chain lifecycle", () => {
     expect(walked.final.action).toBe("finalize");
     coverage.resumed();
 
+    progress("forced datum step");
+    // The envelope closes canonical over an inline datum, which the datum
+    // step reads to the canonical verdict.
+    expect(walked.final.nextStage).toBe("step04Datum");
+    await refuseDatumSeams(stages, walked.threadOutRef, evidence);
+    const read = await stages.readDatum(
+      walked.threadOutRef,
+      evidence,
+      (captured, index) =>
+        record(
+          `forced-step04-datum-${index.toString().padStart(2, "0")}`,
+          captured.measurement,
+        ),
+    );
+    expect(read.steps).toBe(evidence.datumPlan!.steps.length);
+
     progress("forced step 05 and removal");
-    const minted = await stages.step05(walked.threadOutRef, evidence);
+    const minted = await stages.step05(read.threadOutRef, evidence);
     expect(minted.result.fraudProofUnit).toBeTruthy();
     record("forced-step05-proof-mint", minted.measurement);
     coverage.reason(RESOLVED_OUTPUT_REASON_ARM, "forced_rejection_wrong");
@@ -557,7 +674,7 @@ describe("resolvedOutputNonCanonical registered-chain lifecycle", () => {
           },
         },
         nextData: { output_is_non_canonical: true },
-        nextStepIndex: 4,
+        nextStepIndex: 5,
       }),
     );
     coverage.seamMutated("finishable_advance");
@@ -573,7 +690,7 @@ describe("resolvedOutputNonCanonical registered-chain lifecycle", () => {
     await expectOnchainRefusal(() =>
       stages.step05Raw(closed.result.nextThreadOutRef),
     );
-    await stages.cancel(closed.result.nextThreadOutRef, 4);
+    await stages.cancel(closed.result.nextThreadOutRef, 5);
     coverage.cancelled("step-05");
     coverage.scenario("honest_accepted_block_refusal");
   }, 900_000);
@@ -620,7 +737,7 @@ describe("resolvedOutputNonCanonical registered-chain lifecycle", () => {
       /does not contradict verdict/u,
     );
     await expectOnchainRefusal(() => stages.step05Raw(walked.threadOutRef));
-    await stages.cancel(walked.threadOutRef, 4);
+    await stages.cancel(walked.threadOutRef, 5);
     coverage.cancelled("step-05");
     coverage.scenario("honest_forced_rejection_refusal");
   }, 900_000);
@@ -763,6 +880,184 @@ describe("resolvedOutputNonCanonical registered-chain lifecycle", () => {
       coverage.cancelled("step-04");
     }
   }, 1_200_000);
+
+  it("convicts the acceptance of an output whose inline datum is not canonical under a canonical envelope, refusing forged datum steps, and cancels a thread parked on the datum step", async () => {
+    const context = await makeResolvedOutputContext();
+    // Zero written with a one-byte argument it does not need.
+    const prior = await buildPriorLedger({
+      output: outputWithDatumBytes(Buffer.from("1800", "hex")),
+      adversarialDepth: false,
+    });
+    const coordinate = { sourceKind: 0, inputIndex: 0 } as const;
+    const block = await commitBlock({
+      context,
+      nativeTx: subjectTransactionFor({
+        sourceKind: 0,
+        outRefBytes: prior.outRefBytes,
+        count: 1,
+      }),
+      priorRoot: prior.priorRoot,
+    });
+    const evidence = resolvedOutputEvidence({ block, prior, coordinate });
+    expect(evidence.outputIsNonCanonical).toBe(true);
+    expect(evidence.datumPlan?.canonical).toBe(false);
+    const stages = await makeResolvedOutputStages(context, block);
+    const toDatum = async () => {
+      const bound = await stages.step01Accepted(await stages.init(), evidence);
+      const opened = await stages.step02(
+        bound.result.nextThreadOutRef,
+        evidence,
+      );
+      const staged = await stages.step03(
+        opened.result.nextThreadOutRef,
+        evidence,
+      );
+      const walked = await stages.reconstruct(
+        staged.result.nextThreadOutRef,
+        evidence,
+      );
+      expect(walked.final.action).toBe("finalize");
+      expect(walked.final.nextStage).toBe("step04Datum");
+      return walked.threadOutRef;
+    };
+    const atDatum = await toDatum();
+    await refuseDatumSeams(stages, atDatum, evidence);
+    const read = await stages.readDatum(atDatum, evidence);
+    expect(read.steps).toBe(1);
+    const minted = await stages.step05(read.threadOutRef, evidence);
+    expect(minted.result.fraudProofUnit).toBeTruthy();
+    coverage.reason(RESOLVED_OUTPUT_REASON_ARM, "accepted_invalid");
+    await stages.cancel(await toDatum(), 4);
+    coverage.cancelled("step-04-datum");
+  }, 900_000);
+
+  it("refuses to convict an honest acceptance of an output whose inline datum is canonical: the datum reads canonical and cannot mint under an accepted subject", async () => {
+    const context = await makeResolvedOutputContext();
+    const prior = await buildPriorLedger({
+      output: outputWithDatumBytes(Buffer.from("1818", "hex")),
+      adversarialDepth: false,
+    });
+    const coordinate = { sourceKind: 1, inputIndex: 0 } as const;
+    const block = await commitBlock({
+      context,
+      nativeTx: subjectTransactionFor({
+        sourceKind: 1,
+        outRefBytes: prior.outRefBytes,
+        count: 1,
+      }),
+      priorRoot: prior.priorRoot,
+    });
+    expect(() =>
+      resolvedOutputEvidence({ block, prior, coordinate }),
+    ).toThrow();
+    const lying = resolvedOutputEvidence({
+      block,
+      prior,
+      coordinate,
+      claim: "lying",
+    });
+    expect(lying.outputIsNonCanonical).toBe(false);
+    expect(lying.datumPlan?.canonical).toBe(true);
+    const stages = await makeResolvedOutputStages(context, block);
+    const bound = await stages.step01Accepted(await stages.init(), lying);
+    const opened = await stages.step02(bound.result.nextThreadOutRef, lying);
+    const staged = await stages.step03(opened.result.nextThreadOutRef, lying);
+    const walked = await stages.reconstruct(
+      staged.result.nextThreadOutRef,
+      lying,
+    );
+    expect(walked.final.nextStage).toBe("step04Datum");
+    const read = await stages.readDatum(walked.threadOutRef, lying);
+    await expect(stages.step05(read.threadOutRef, lying)).rejects.toThrow();
+    await expectOnchainRefusal(() => stages.step05Raw(read.threadOutRef), {
+      refusedBy: "fraud_proofs/resolved_output_non_canonical/step_05",
+      check: /^Validator returned false$/u,
+    });
+    coverage.scenario("honest_accepted_block_refusal");
+  }, 900_000);
+
+  it("convicts a forced rejection of maximum outputs whose inline datums are the densest canonical Data, reading each to its verdict, and measures the costliest datum step", async () => {
+    let costliest: CompleteSignedTransactionMeasurement | undefined;
+    let costliestShape = "";
+    for (const shape of [
+      "map-chain",
+      "generic-constructors",
+      "flat-integers",
+    ] as const) {
+      const context = await makeResolvedOutputContext();
+      const output = outputWithDatumBytes(
+        densePlutusData(shape, MAXIMUM_DATUM_BYTES),
+      );
+      expect(output).toHaveLength(RESOLVED_OUTPUT_MAXIMUM_BYTES);
+      const prior = await buildPriorLedger({ output, adversarialDepth: false });
+      const coordinate = { sourceKind: 0, inputIndex: 0 } as const;
+      const block = await commitBlock({
+        context,
+        nativeTx: subjectTransactionFor({
+          sourceKind: 0,
+          outRefBytes: prior.outRefBytes,
+          count: 1,
+        }),
+        priorRoot: prior.priorRoot,
+        reason: resolvedOutputReason(coordinate),
+      });
+      const evidence = resolvedOutputEvidence({ block, prior, coordinate });
+      expect(evidence.outputIsNonCanonical).toBe(false);
+      const plan = evidence.datumPlan!;
+      expect(plan.canonical).toBe(true);
+      const stages = await makeResolvedOutputStages(context, block);
+      const bound = await stages.step01Forced(
+        stages.threadOf(await stages.init()),
+        evidence,
+      );
+      const opened = await stages.step02(
+        bound.result.nextThreadOutRef,
+        evidence,
+      );
+      const staged = await stages.step03(
+        opened.result.nextThreadOutRef,
+        evidence,
+      );
+      const walked = await stages.reconstruct(
+        staged.result.nextThreadOutRef,
+        evidence,
+      );
+      expect(walked.final.nextStage).toBe("step04Datum");
+      const keep = (captured: {
+        readonly measurement: CompleteSignedTransactionMeasurement;
+      }) => {
+        if (
+          costliest === undefined ||
+          captured.measurement.executionMemory > costliest.executionMemory
+        ) {
+          costliest = captured.measurement;
+          costliestShape = shape;
+        }
+      };
+      const first = await stages.step04Datum(walked.threadOutRef, evidence);
+      expect(first.result.finished).toBe(false);
+      keep(first);
+      // A container is open at the second checkpoint.
+      await refuseDatumSeams(stages, first.result.nextThreadOutRef, evidence);
+      const read = await stages.readDatum(
+        first.result.nextThreadOutRef,
+        evidence,
+        keep,
+      );
+      expect(read.steps + 1).toBe(plan.steps.length);
+      progress(
+        `${shape}: ${walked.transitions.toString()} envelope and ${plan.steps.length.toString()} datum transactions`,
+      );
+      const minted = await stages.step05(read.threadOutRef, evidence);
+      expect(minted.result.fraudProofUnit).toBeTruthy();
+      coverage.reason(RESOLVED_OUTPUT_REASON_ARM, "forced_rejection_wrong");
+    }
+    expect(costliest!.executionMemory).toBeLessThanOrEqual(13_200_000n);
+    expect(costliest!.executionSteps).toBeLessThanOrEqual(8_000_000_000n);
+    record("ronc_datum_verdict_step_max", costliest!, {
+      maximumShape: `${MAXIMUM_DATUM_BYTES.toLocaleString("en-US")}-byte inline datum (${costliestShape}, the costliest of map chains, generic constructors and flat integers) filling a ${RESOLVED_OUTPUT_MAXIMUM_BYTES.toLocaleString("en-US")}-byte output`,
+    });
+  }, 3_600_000);
 
   afterAll(async () => {
     assertCompleteLifecycleCoverage({

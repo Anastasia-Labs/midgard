@@ -64,6 +64,38 @@ export const smallCanonicalOutput = (): Buffer =>
 export const smallMalformedOutput = (): Buffer =>
   Buffer.concat([smallCanonicalOutput(), Buffer.from([0])]);
 
+/** CBOR head of a definite byte string of `length` bytes, shortest form. */
+const byteStringHead = (length: number): Buffer =>
+  length < 24
+    ? Buffer.from([0x40 | length])
+    : length < 0x100
+      ? Buffer.from([0x58, length])
+      : Buffer.from([0x59, length >> 8, length & 0xff]);
+
+/**
+ * The small canonical output with `datum` as its inline datum, written
+ * verbatim, so a datum that is not canonical Data rides an envelope that is.
+ */
+export const outputWithDatumBytes = (datum: Buffer): Buffer => {
+  const base = smallCanonicalOutput();
+  // Address and value: a two-entry map, which gains the datum entry.
+  if (base[0] !== 0xa2) throw new Error("small output is not a two-entry map");
+  if (datum.length === 0 || datum.length > 0xffff)
+    throw new Error("datum is outside the two-byte length form");
+  return Buffer.concat([
+    Buffer.from([0xa3]),
+    base.subarray(1),
+    Buffer.from([0x02]),
+    byteStringHead(datum.length),
+    datum,
+  ]);
+};
+
+/** The longest datum `outputWithDatumBytes` fits in a maximum output. */
+export const MAXIMUM_DATUM_BYTES =
+  RESOLVED_OUTPUT_MAXIMUM_BYTES -
+  (outputWithDatumBytes(Buffer.alloc(256)).length - 256);
+
 const multiAssetValue = () => ({
   lovelace: 2_000_000n,
   assets: new Map(

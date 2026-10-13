@@ -200,6 +200,20 @@ const FAULT_PROOF_STEP_CONTRACT_NAMES: Partial<
     "fraudProofTransactionOutputNonCanonicalStep03Datum",
     "fraudProofTransactionOutputNonCanonicalStep04",
   ],
+  resolvedOutputNonCanonical: [
+    "fraudProofResolvedOutputNonCanonical",
+    "fraudProofResolvedOutputNonCanonicalStep02",
+    "fraudProofResolvedOutputNonCanonicalStep03",
+    "fraudProofResolvedOutputNonCanonicalStep04",
+    "fraudProofResolvedOutputNonCanonicalStep04Datum",
+    "fraudProofResolvedOutputNonCanonicalStep05",
+  ],
+  redeemerCanonicity: [
+    "fraudProofRedeemerCanonicity",
+    "fraudProofRedeemerCanonicityStep02",
+    "fraudProofRedeemerCanonicityStep02Data",
+    "fraudProofRedeemerCanonicityStep03",
+  ],
   executionNativeScriptInvalid: [
     "fraudProofExecutionNativeScriptInvalid",
     "fraudProofExecutionNativeScriptInvalidStep02",

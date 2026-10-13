@@ -24,6 +24,7 @@ import { submitResolvedOutputNonCanonicalStep01Forced } from "./submit-step-01-f
 import { submitResolvedOutputNonCanonicalStep02 } from "./submit-step-02.js";
 import { submitResolvedOutputNonCanonicalStep03 } from "./submit-step-03.js";
 import { submitResolvedOutputNonCanonicalStep04 } from "./submit-step-04.js";
+import { submitResolvedOutputNonCanonicalStep04Datum } from "./submit-step-04-datum.js";
 import { submitResolvedOutputNonCanonicalStep05 } from "./submit-step-05.js";
 import { type ResolvedOutputStage } from "./workflow.js";
 
@@ -52,6 +53,7 @@ export const createManifestBoundResolvedOutputNonCanonicalSubmission = ({
       | "submitStep02"
       | "submitStep03"
       | "submitReconstruction"
+      | "submitStep04Datum"
       | "submitStep05"
       | "removeDescendants",
     evidence: ResolvedOutputEvidence,
@@ -72,9 +74,11 @@ export const createManifestBoundResolvedOutputNonCanonicalSubmission = ({
               ? (["step03", "reconstructing"] as const)
               : action === "submitReconstruction"
                 ? (["reconstructing", "step05"] as const)
-                : action === "submitStep05"
-                  ? (["step05", "proven"] as const)
-                  : (["proven", "removed"] as const);
+                : action === "submitStep04Datum"
+                  ? (["step04Datum", "step05"] as const)
+                  : action === "submitStep05"
+                    ? (["step05", "proven"] as const)
+                    : (["proven", "removed"] as const);
     await centralJournal?.begin(
       action,
       familyIdentity,
@@ -284,9 +288,31 @@ export const createManifestBoundResolvedOutputNonCanonicalSubmission = ({
           ),
       });
       return {
-        stage: result.terminal
-          ? ("step05" as const)
-          : ("reconstructing" as const),
+        stage: result.nextStage,
+        txHash: result.txHash,
+        outputReference: result.nextThreadOutRef,
+      };
+    }
+    if (action === "submitStep04Datum") {
+      const result = await submitResolvedOutputNonCanonicalStep04Datum({
+        lucid: config.lucid,
+        contracts: config.contracts,
+        categoryId: config.binding.resolvedContracts.category.categoryId,
+        signer: config.signer,
+        threadOutRef: required(stage.threadOutRef, "datum thread out-ref"),
+        evidence,
+        referenceScriptUtxo: config.referenceScripts.step04Datum,
+        preSubmitBoundary:
+          preSubmitBoundary ??
+          centralJournal?.boundary(
+            action,
+            familyIdentity,
+            transition[0],
+            transition[1],
+          ),
+      });
+      return {
+        stage: result.nextStage,
         txHash: result.txHash,
         outputReference: result.nextThreadOutRef,
       };
@@ -352,7 +378,7 @@ export const createManifestBoundResolvedOutputNonCanonicalSubmission = ({
     };
   },
   cancel: async (
-    current: "step01" | "step02" | "step03" | "reconstructing",
+    current: "step01" | "step02" | "step03" | "reconstructing" | "step04Datum",
     evidence: ResolvedOutputEvidence,
   ) => {
     const stage = await resolveStage({ action: "cancel", evidence });
@@ -363,7 +389,9 @@ export const createManifestBoundResolvedOutputNonCanonicalSubmission = ({
           ? 1
           : current === "step03"
             ? 2
-            : 3;
+            : current === "reconstructing"
+              ? 3
+              : 4;
     const result = await submitResolvedOutputNonCanonicalCancel({
       lucid: config.lucid,
       contracts: config.contracts,
@@ -375,6 +403,7 @@ export const createManifestBoundResolvedOutputNonCanonicalSubmission = ({
         config.referenceScripts.step02,
         config.referenceScripts.step03,
         config.referenceScripts.step04,
+        config.referenceScripts.step04Datum,
       ][index]!,
       witnessReferenceScripts: config.referenceScripts.witnesses,
     });

@@ -140,7 +140,9 @@ describe("midgard contracts registry", () => {
       // the exclusive upper bound, bounds below -1, admission, the lock top-up,
       // the output proof's datum step and the split Data refusal executor, and
       // the composed P1 tree (allow-lists, the datum canonicity step, the
-      // non-empty block rule, one event NFT per user-event mint).
+      // non-empty block rule, one event NFT per user-event mint), the retired
+      // post-UTxO minimum-Ada mode, and the streamed redeemer and datum Data
+      // verdict steps.
       expect
         .soft(
           createHash("sha256")
@@ -150,7 +152,7 @@ describe("midgard contracts registry", () => {
             .digest("hex"),
         )
         .toBe(
-          "c3b1fc4b18aa08c2710caea4d3aa872d375d54be0ce4e2c2fdb1360db8aa2ddc",
+          "3092f07d3fad1daf4ab5bbae2274e8805bc9fb3b6380a1b3ed6cca6e6a76cdce",
         );
       // The queue/correction subset is pinned independently of the full registry.
       // Includes every applied CBOR, hash, policy id, address, and queue yield.
@@ -159,7 +161,9 @@ describe("midgard contracts registry", () => {
       // pooled DA bond policy, and again for disjoint MPF node preimages and
       // for the neglected-event strike rule (the state queue is applied over
       // the scheduler and active-operator scripts), the lock ADA top-up, and
-      // the composed P1 tree (allow-lists, the non-empty block rule).
+      // the composed P1 tree (allow-lists, the non-empty block rule), and the
+      // fault-proof scripts the state queue is applied over (the retired
+      // post-UTxO minimum-Ada mode, the streamed Data verdict steps).
       expect
         .soft(
           createHash("sha256")
@@ -172,7 +176,7 @@ describe("midgard contracts registry", () => {
             .digest("hex"),
         )
         .toBe(
-          "7d5685c27c297f3ac78b69f14c33b4485b5d19788e9a880c3d4223d5a7e26482",
+          "6666a02a09da771adf4ae0061002758562764b086a23410646f9256d6dadc8cf",
         );
       // The always-succeeds stand-in is a real hazard here: it satisfies every
       // spend, so a role that silently kept it would pass any behavioural test

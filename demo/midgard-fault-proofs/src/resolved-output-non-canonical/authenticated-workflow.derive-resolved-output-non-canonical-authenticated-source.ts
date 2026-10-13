@@ -149,6 +149,7 @@ export type ResolvedOutputNonCanonicalRuntimeLoader = Readonly<{
       | "submitStep02"
       | "submitStep03"
       | "submitReconstruction"
+      | "submitStep04Datum"
       | "submitStep05"
       | "removeDescendants"
       | "cancel";
@@ -196,7 +197,9 @@ export const createResolvedOutputNonCanonicalRawL1StageResolver =
             ? 3
             : action === "submitReconstruction"
               ? 4
-              : 5;
+              : action === "submitStep04Datum"
+                ? 5
+                : 6;
     if (stage.kind !== "step" || stage.step !== expectedStep) {
       throw new Error(
         `resolvedOutputNonCanonical ${action} differs from authenticated raw-L1 stage`,

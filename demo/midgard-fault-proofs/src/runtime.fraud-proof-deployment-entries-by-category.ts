@@ -166,6 +166,7 @@ export const FRAUD_PROOF_DEPLOYMENT_ENTRIES_BY_CATEGORY = {
     "fraudProofResolvedOutputNonCanonicalStep02",
     "fraudProofResolvedOutputNonCanonicalStep03",
     "fraudProofResolvedOutputNonCanonicalStep04",
+    "fraudProofResolvedOutputNonCanonicalStep04Datum",
     "fraudProofResolvedOutputNonCanonicalStep05",
   ],
   mintDeclaredAssetLimit: [
@@ -216,6 +217,7 @@ export const FRAUD_PROOF_DEPLOYMENT_ENTRIES_BY_CATEGORY = {
   redeemerCanonicity: [
     "fraudProofRedeemerCanonicity",
     "fraudProofRedeemerCanonicityStep02",
+    "fraudProofRedeemerCanonicityStep02Data",
     "fraudProofRedeemerCanonicityStep03",
   ],
   receivePurposeLanguage: [

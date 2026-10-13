@@ -25,6 +25,9 @@ export const AUTHENTICATION_SEAMS = [
   "wrong_successor",
   "finishable_advance",
   "premature_finalize",
+  "datum_chunk",
+  "datum_checkpoint",
+  "datum_stack",
 ] as const;
 
 export const CANCELLABLE_STEPS = [
@@ -32,7 +35,18 @@ export const CANCELLABLE_STEPS = [
   "step-02",
   "step-03",
   "step-04",
+  "step-04-datum",
   "step-05",
+] as const;
+
+/** The registered steps' publication rows, in chain order. */
+const PUBLICATION_NAMES = [
+  "publish-step01",
+  "publish-step02",
+  "publish-step03",
+  "publish-step04",
+  "publish-step04-datum",
+  "publish-step05",
 ] as const;
 
 const MAXIMUM_SHAPE = `${RESOLVED_OUTPUT_MAXIMUM_BYTES.toLocaleString("en-US")}-byte prior-ledger output at adversarial membership depth and a Certified ${MAXIMUM_INPUT_ITEM_COUNT.toString()}-item input field`;
@@ -81,20 +95,20 @@ export const recordPublication = (
   stepIndex: number,
   measurement: CompleteSignedTransactionMeasurement,
 ) => {
-  expect(
-    measurement.completeSignedBytes,
-    `step ${(stepIndex + 1).toString()} publication`,
-  ).toBeLessThanOrEqual(15_872);
+  const name = PUBLICATION_NAMES[stepIndex];
+  if (name === undefined)
+    throw new Error(`no step at index ${stepIndex.toString()}`);
+  expect(measurement.completeSignedBytes, name).toBeLessThanOrEqual(15_872);
   if (publicationsRecorded) return;
   measurements.push({
-    name: `publish-step0${(stepIndex + 1).toString()}`,
+    name,
     kind: "publication",
     maximumShape: "fully applied testnet validator",
     signedBytes: measurement.completeSignedBytes,
     memoryUnits: measurement.executionMemory,
     cpuUnits: measurement.executionSteps,
   });
-  if (stepIndex === 4) publicationsRecorded = true;
+  if (stepIndex === PUBLICATION_NAMES.length - 1) publicationsRecorded = true;
 };
 
 /** Step 02 submits its carriage chunks and certificate before the step itself. */

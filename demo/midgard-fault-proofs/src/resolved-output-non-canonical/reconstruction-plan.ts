@@ -12,6 +12,7 @@ import {
   type ResolvedOutputEvidence,
   resolvedOutputScanControlData,
 } from "./resolved-output-non-canonical.js";
+import type { ResolvedOutputDatumPlan } from "./datum-plan.js";
 import { ResolvedOutputScanControlSchema } from "./schemas.js";
 
 /** `bounded_item_v1.chunk_bytes`: the on-chain output chunk domain. */
@@ -49,10 +50,12 @@ export type ResolvedOutputAdvanceAction = {
 /**
  * The one deterministic step-04 transition from an authenticated checkpoint.
  * `advance` continues the self-loop or, at a structural fault, closes the
- * thread as non-canonical; `finalize` closes it as canonical at the control
- * the engine's zero-byte closing edge accepts. The choice is a pure function
- * of the retained output and the on-chain control: the evidence's own
- * verdict must agree with it, never override it.
+ * thread as non-canonical; `finalize` ends the envelope at the control the
+ * engine's zero-byte closing edge accepts, closing the thread as canonical
+ * when the output has no inline datum and opening the datum step when it
+ * has one. The choice is a pure function of the retained output and the
+ * on-chain control: the evidence's own verdict must agree with it, never
+ * override it.
  */
 export type ResolvedOutputReconstructionTransition =
   | {
@@ -72,6 +75,12 @@ export type ResolvedOutputReconstructionTransition =
       readonly action: "FinalizeCanonical";
       readonly terminal: true;
       readonly outputIsNonCanonical: false;
+    }
+  | {
+      readonly kind: "finalize";
+      readonly action: "FinalizeCanonical";
+      readonly terminal: false;
+      readonly openDatum: ResolvedOutputDatumPlan;
     };
 
 const encodeControl = (control: unknown): string =>
@@ -108,6 +117,16 @@ export const planResolvedOutputReconstructionTransition = ({
       totalLength: outputBytes.length,
     }) !== null
   ) {
+    if (evidence.datumPlan !== null) {
+      if (evidence.datumPlan.canonical === evidence.outputIsNonCanonical)
+        return fail("evidence verdict contradicts the reading of its datum");
+      return {
+        kind: "finalize",
+        action: "FinalizeCanonical",
+        terminal: false,
+        openDatum: evidence.datumPlan,
+      };
+    }
     if (evidence.outputIsNonCanonical)
       return fail(
         "evidence claims a non-canonical output but its reconstruction closes canonical",

@@ -144,9 +144,10 @@ export const resolvedOutputStageFromL1 = (
       if (stage.step === 2) return "step02";
       if (stage.step === 3) return "step03";
       if (stage.step === 4) return "reconstructing";
-      if (stage.step === 5) return "step05";
+      if (stage.step === 5) return "step04Datum";
+      if (stage.step === 6) return "step05";
       throw new Error(
-        "resolvedOutputNonCanonical L1 stage exceeds five-step topology",
+        "resolvedOutputNonCanonical L1 stage exceeds six-step topology",
       );
     case "proof_token":
       return "proven";
@@ -232,7 +233,8 @@ export const createResolvedOutputNonCanonicalRecoveryPorts = (
         step_02: "submitStep02",
         step_03: "submitStep03",
         step_04: "submitReconstruction",
-        step_05: "submitStep05",
+        step_05: "submitStep04Datum",
+        step_06: "submitStep05",
       } as const;
       const familyAction = actions[input.stage as keyof typeof actions];
       if (familyAction === undefined)
@@ -319,7 +321,7 @@ type Deployment = FamilyDeploymentContext<
   "resolvedOutputNonCanonical",
   (typeof WITNESS_ROLES)[number],
   true,
-  5
+  6
 >;
 
 export type RunContext = Readonly<{

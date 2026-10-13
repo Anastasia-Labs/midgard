@@ -7,6 +7,7 @@ export const RESOLVED_OUTPUT_STAGES = [
   "step02",
   "step03",
   "reconstructing",
+  "step04Datum",
   "step05",
   "proven",
   "removed",
@@ -19,6 +20,7 @@ export type ResolvedOutputAction =
   | "submitStep02"
   | "submitStep03"
   | "submitReconstruction"
+  | "submitStep04Datum"
   | "submitStep05"
   | "removeDescendants"
   | "done";
@@ -59,6 +61,8 @@ export const nextResolvedOutputAction = (
       return "submitStep03";
     case "reconstructing":
       return "submitReconstruction";
+    case "step04Datum":
+      return "submitStep04Datum";
     case "step05":
       return "submitStep05";
     case "proven":
@@ -83,7 +87,11 @@ const targetStage = (
     case "submitStep03":
       return "reconstructing";
     case "submitReconstruction":
-      return observed === "reconstructing" ? "reconstructing" : "step05";
+      return observed === "reconstructing" || observed === "step04Datum"
+        ? observed
+        : "step05";
+    case "submitStep04Datum":
+      return observed === "step04Datum" ? "step04Datum" : "step05";
     case "submitStep05":
       return "proven";
     case "removeDescendants":
