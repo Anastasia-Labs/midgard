@@ -33,6 +33,7 @@ import {
   makeHarness,
   reconstruct,
   setupChallenge,
+  withUnrelatedWithdrawal,
 } from "./submit-init-emulator-transition-trace-subvariants.setup-challenge.js";
 import { makeNativeTx } from "./support/emulator/native-tx.js";
 import {
@@ -91,9 +92,12 @@ describe("transition-trace forced order validity interval", () => {
           },
         ],
       );
+      // The omitting block carries one unrelated withdrawal: a committed
+      // block carries at least one event.
+      const omitting = await withUnrelatedWithdrawal(baseHeader);
       const header: SDK.Header =
         scenario === "omission"
-          ? baseHeader
+          ? omitting.header
           : {
               ...baseHeader,
               forcedTransactionsRoot: root.root,
@@ -168,7 +172,7 @@ describe("transition-trace forced order validity interval", () => {
       const fault: SDK.TransitionFault =
         scenario === "omission"
           ? await buildOmittedDueL1EventFault({
-              reconstruction: await reconstruct({ header }),
+              reconstruction: await reconstruct({ ...omitting, header }),
               evidence: {
                 kind: "forcedTransaction",
                 txOrderId: id,

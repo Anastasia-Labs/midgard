@@ -36,6 +36,7 @@ import {
   network as emulatorNetwork,
   publishPlainReferenceScriptUtxo,
   submitSetupTx,
+  withPlaceholderDeposit,
 } from "./submit-init-emulator-shared.js";
 import { type ValueNotPreservedFixture } from "./value-not-preserved-emulator.build-value-not-preserved-fixture.js";
 import {
@@ -88,7 +89,9 @@ export const setupValueNotPreservedScenario = async ({
     alignUnixTimeToEmulatorSlotBoundary(funderLucid, emulator.now() + 120_000) -
     1;
   const funderKeyHash = await funderPaymentKeyHash(funderLucid);
-  const baseAnchorHeader = makeHeader(funderKeyHash, headerStartTime);
+  const baseAnchorHeader = withPlaceholderDeposit(
+    makeHeader(funderKeyHash, headerStartTime),
+  );
   const requestedAnchorHeader = {
     ...baseAnchorHeader,
     endTime:

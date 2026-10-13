@@ -65,6 +65,7 @@ import {
   setupWithdrawalChallenge,
   withdrawalIdFor,
   withdrawalInfo,
+  withUnrelatedWithdrawal,
 } from "./submit-init-emulator-transition-trace-subvariants.setup-challenge.js";
 import { realBlueprintPath } from "./support/emulator/blueprints.js";
 import { FAMILY_HISTORY_HEADER_LEAD_MS } from "./support/emulator/family-history.js";
@@ -132,13 +133,13 @@ describe("transition-trace omitted/out-of-window/count subvariant lifecycle", ()
   it("routes an omitted due withdrawal to final 6 and removes the block", async () => {
     const { harness, history, publications, transitionTraceReferenceScripts } =
       await makeHarness();
-    const header = withCommitSlot(
-      harness.contracts.l1SlotConfig,
+    const block = await withUnrelatedWithdrawal(
       makeHeader(
         await funderPaymentKeyHash(harness.funderLucid),
         await alignedHeaderStart(harness, FAMILY_HISTORY_HEADER_LEAD_MS),
       ),
     );
+    const header = withCommitSlot(harness.contracts.l1SlotConfig, block.header);
     const { lifecycle, event, withdrawalId } = await setupWithdrawalChallenge({
       harness,
       history,
@@ -148,7 +149,7 @@ describe("transition-trace omitted/out-of-window/count subvariant lifecycle", ()
       inclusionTime: header.endTime,
     });
 
-    const reconstruction = await reconstruct({ header });
+    const reconstruction = await reconstruct({ ...block, header });
     const proof = buildTransitionFaultProof({
       reconstruction,
       fault: await buildOmittedDueL1EventFault({
@@ -567,13 +568,13 @@ describe("transition-trace omitted/out-of-window/count subvariant lifecycle", ()
   it("rejects an honest late withdrawal accused as omitted at final 6", async () => {
     const { harness, history, publications, transitionTraceReferenceScripts } =
       await makeHarness();
-    const header = withCommitSlot(
-      harness.contracts.l1SlotConfig,
+    const block = await withUnrelatedWithdrawal(
       makeHeader(
         await funderPaymentKeyHash(harness.funderLucid),
         await alignedHeaderStart(harness, FAMILY_HISTORY_HEADER_LEAD_MS),
       ),
     );
+    const header = withCommitSlot(harness.contracts.l1SlotConfig, block.header);
     const { lifecycle, event, withdrawalId } = await setupWithdrawalChallenge({
       harness,
       history,
@@ -583,7 +584,7 @@ describe("transition-trace omitted/out-of-window/count subvariant lifecycle", ()
       inclusionTime: header.endTime + 1000n,
     });
 
-    const reconstruction = await reconstruct({ header });
+    const reconstruction = await reconstruct({ ...block, header });
     const proof = buildTransitionFaultProof({
       reconstruction,
       fault: await buildOmittedDueL1EventFault({

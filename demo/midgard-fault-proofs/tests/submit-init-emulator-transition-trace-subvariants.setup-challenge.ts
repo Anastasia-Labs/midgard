@@ -1,10 +1,11 @@
 import { wrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
 import * as SDK from "@al-ft/midgard-sdk";
-import { CML } from "@lucid-evolution/lucid";
+import { CML, Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { expect } from "vitest";
 
 import {
+  buildCountedRoot,
   FRAUD_PROOF_DEPLOYMENT_ENTRIES_BY_CATEGORY,
   reconstructDaPayload,
 } from "../src/index.js";
@@ -23,6 +24,7 @@ import {
   publishFraudProofChainReferenceScripts,
   publishRemovalReferenceScripts,
   submitSetupTx,
+  transitionTraceDaEntry,
   transitionTraceOutRef,
 } from "./support/submit-init-emulator-shared.js";
 import { publishTransitionTraceYields } from "./support/transition-trace-yields.js";
@@ -63,6 +65,82 @@ const headerCounts = (header: SDK.Header) => ({
   transitionStepCount: header.transitionStepCount,
   validationTraceCount: header.validationTraceCount,
 });
+
+/**
+ * `header` (which has no events of its own) carrying one withdrawal unrelated
+ * to the event a test accuses, so the block can be committed (a committed
+ * block carries at least one event). Returns the DA entries `reconstruct`
+ * needs for it.
+ */
+export const withUnrelatedWithdrawal = async (header: SDK.Header) => {
+  if (header.totalEventCount !== 0n)
+    throw new Error("withUnrelatedWithdrawal expects a header with no events");
+  const eventKey: SDK.EventKey = {
+    WithdrawalEventKey: { withdrawal_id: transitionTraceOutRef("94") },
+  };
+  const step: SDK.TransitionStep = {
+    schema_version: 1n,
+    step_index: 0n,
+    event_key: eventKey,
+    phase: "Withdrawal",
+    pre_utxos_root: header.prevUtxosRoot,
+    post_utxos_root: header.prevUtxosRoot,
+  };
+  const withdrawals: SDK.DaPayloadEntry[] = [
+    [
+      Data.to(transitionTraceOutRef("94"), SDK.OutputReference),
+      SDK.committedWithdrawalValueBytes(
+        withdrawalInfo("IncorrectWithdrawalSignature"),
+      ),
+    ],
+  ];
+  const transitionTrace = [
+    transitionTraceDaEntry({
+      key: 0n,
+      keySchema: Data.Integer() as never,
+      value: step,
+      valueSchema: SDK.TransitionStepSchema,
+    }),
+  ];
+  const eventToStep = [
+    transitionTraceDaEntry({
+      key: eventKey,
+      keySchema: SDK.EventKeySchema,
+      value: { step_index: 0n, phase: "Withdrawal" },
+      valueSchema: SDK.EventToStepValueSchema,
+    }),
+  ];
+  const root = (
+    domain: SDK.RootDomain,
+    entries: readonly SDK.DaPayloadEntry[],
+  ) =>
+    buildCountedRoot(
+      domain,
+      entries.map(([key, value]) => ({
+        key: Buffer.from(key, "hex"),
+        value: Buffer.from(value, "hex"),
+      })),
+    );
+  const [withdrawalsRoot, traceRoot, mappingRoot] = await Promise.all([
+    root(SDK.ROOT_DOMAINS.withdrawals, withdrawals),
+    root(SDK.ROOT_DOMAINS.transitionTrace, transitionTrace),
+    root(SDK.ROOT_DOMAINS.eventToStep, eventToStep),
+  ]);
+  return {
+    header: {
+      ...header,
+      withdrawalsRoot: withdrawalsRoot.root,
+      transitionTraceRoot: traceRoot.root,
+      eventToStepRoot: mappingRoot.root,
+      withdrawalCount: 1n,
+      totalEventCount: 1n,
+      transitionStepCount: 1n,
+    },
+    withdrawals,
+    transitionTrace,
+    eventToStep,
+  };
+};
 
 export const reconstruct = async ({
   header,

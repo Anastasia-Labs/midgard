@@ -3,29 +3,39 @@ import { type Assets, Data } from "@lucid-evolution/lucid";
 
 import { buildCountedRoot } from "../../src/transition-trace/phas.js";
 import { fixtureLedgerAfter } from "./fixture-ledger.js";
+import { withPlaceholderWithdrawalBlock } from "../helpers/canonical-block-evidence-fixture.with-placeholder-withdrawal.js";
 import {
   depositEventsRetainedBlock,
   sealDepositPayload,
 } from "./transition-trace-retained.deposit-events-retained-block.js";
 
-/** Structurally complete timing evidence; L1 admission supplies event authority. */
+/**
+ * Structurally complete timing evidence; L1 admission supplies event authority.
+ * An `omitted` current block leaves `payload` out and carries `companion`, an
+ * event of the other kind due in it, instead: a committed block carries at
+ * least one event. A companion deposit locks `originalAssets` too.
+ */
 export const transitionTraceTimingRetainedFixture = async (input: {
   operatorVkey: string;
   now: number;
   payload: SDK.EventHistoryPayload;
+  companion: SDK.EventHistoryPayload;
   originalAssets: Assets;
   omitted: boolean;
 }) => {
-  const predecessor = await depositEventsRetainedBlock({
-    operatorVkey: input.operatorVkey,
-    startTime: BigInt(input.now),
-    endTime: BigInt(input.now + 60_000),
-    blockSlot: 9n,
-    prevHeaderHash: SDK.GENESIS_HEADER_HASH,
-    prevUtxosRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
-    priorLedger: [],
-    events: [],
-  });
+  const included = input.omitted ? input.companion : input.payload;
+  const predecessor = await withPlaceholderWithdrawalBlock(
+    await depositEventsRetainedBlock({
+      operatorVkey: input.operatorVkey,
+      startTime: BigInt(input.now),
+      endTime: BigInt(input.now + 60_000),
+      blockSlot: 9n,
+      prevHeaderHash: SDK.GENESIS_HEADER_HASH,
+      prevUtxosRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
+      priorLedger: [],
+      events: [],
+    }),
+  );
   const current = await depositEventsRetainedBlock({
     operatorVkey: input.operatorVkey,
     startTime: predecessor.header.endTime,
@@ -40,19 +50,18 @@ export const transitionTraceTimingRetainedFixture = async (input: {
     prevUtxosRoot: predecessor.header.utxosRoot,
     priorLedger: fixtureLedgerAfter(predecessor.header),
     events:
-      !input.omitted && "DepositPayload" in input.payload
+      "DepositPayload" in included
         ? [
             {
-              event: input.payload.DepositPayload.event,
+              event: included.DepositPayload.event,
               originalAssets: input.originalAssets,
               honest: true,
             },
           ]
         : [],
   });
-  if (input.omitted || "DepositPayload" in input.payload)
-    return { predecessor, current };
-  const { event } = input.payload.WithdrawalPayload;
+  if ("DepositPayload" in included) return { predecessor, current };
+  const { event } = included.WithdrawalPayload;
   // The committed verdict is independent of the submitted body. Timing proof
   // validates the source body and signature while preserving that distinction.
   const info: SDK.WithdrawalInfo = {

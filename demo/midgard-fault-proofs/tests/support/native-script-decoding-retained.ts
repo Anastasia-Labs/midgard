@@ -30,6 +30,7 @@ import {
   buildCanonicalBlockFixture,
   reencodeFixturePayload,
 } from "../helpers/canonical-block-evidence-fixture.js";
+import { withPlaceholderWithdrawalBlock } from "../helpers/canonical-block-evidence-fixture.with-placeholder-withdrawal.js";
 import { fixtureBlockSlot } from "./emulator/header-fixtures.js";
 import { recordFixtureLedger } from "./fixture-ledger.js";
 import { makeReferenceNativeTx as makeNativeTx } from "./no-reference-input-native.js";
@@ -82,10 +83,12 @@ export const nativeDecodingFixture = async ({
     Buffer.from("03", "hex"),
     item,
   ]);
-  const baseline = await buildCanonicalBlockFixture({
-    transactions: [],
-    utxos: [{ key, value: plainOutput }],
-  });
+  const baseline = await withPlaceholderWithdrawalBlock(
+    await buildCanonicalBlockFixture({
+      transactions: [],
+      utxos: [{ key, value: plainOutput }],
+    }),
+  );
   const baseDescriptor = buildCanonicalMidgardLedgerEntryOutputMaterial({
     outRef: key,
     outputCbor: plainOutput,

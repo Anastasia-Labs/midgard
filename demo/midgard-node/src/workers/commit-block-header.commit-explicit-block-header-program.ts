@@ -122,12 +122,14 @@ export type ExplicitBlockHeaderCommitParams = {
   readonly transactionsRoot: string;
   readonly depositsRoot: string;
   readonly withdrawalsRoot: string;
-  // For fault-proof drills that commit a non-empty transactions root, the
-  // header must carry a matching l2_transaction_count (> 0) and, because
-  // total_event_count > 0, non-empty transition roots. The transition roots are
-  // not checked by the CommitBlockHeader validator, so callers supply arbitrary
-  // non-empty values.
+  // A committed block carries at least one event, so a caller names one: a
+  // non-empty transactions, deposits or withdrawals root with its matching
+  // count (> 0) and, because total_event_count > 0, non-empty transition
+  // roots. The transition roots are not checked by the CommitBlockHeader
+  // validator, so drills may supply arbitrary non-empty values.
   readonly l2TransactionCount?: bigint;
+  readonly depositCount?: bigint;
+  readonly withdrawalCount?: bigint;
   readonly transitionTraceRoot?: string;
   readonly eventToStepRoot?: string;
   readonly validationTracesRoot?: string;
@@ -239,10 +241,10 @@ export const commitExplicitBlockHeaderProgram = (
         eventToStepRoot: params.eventToStepRoot ?? SDK.EMPTY_MERKLE_TREE_ROOT,
       },
       {
-        withdrawalCount: 0n,
+        withdrawalCount: params.withdrawalCount ?? 0n,
         forcedTransactionCount: 0n,
         l2TransactionCount: params.l2TransactionCount ?? 0n,
-        depositCount: 0n,
+        depositCount: params.depositCount ?? 0n,
       },
       {
         validationTracesRoot:

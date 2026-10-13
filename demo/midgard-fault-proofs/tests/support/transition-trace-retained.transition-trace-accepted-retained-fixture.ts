@@ -12,6 +12,7 @@ import {
   buildCanonicalBlockFixture,
   buildFixtureTransaction,
 } from "../helpers/canonical-block-evidence-fixture.js";
+import { withPlaceholderWithdrawalBlock } from "../helpers/canonical-block-evidence-fixture.with-placeholder-withdrawal.js";
 import { fixtureBlockSlot } from "./emulator/header-fixtures.js";
 import { buildAcceptedClaimTransitionFixture } from "./transition-trace-final-fixtures.js";
 
@@ -41,12 +42,14 @@ export const transitionTraceAcceptedRetainedFixture = async ({
       }),
     };
   };
-  const first = await buildCanonicalBlockFixture({
-    transactions: [],
-    startTime: BigInt(now),
-    endTime: BigInt(now + 60000),
-    prevHeaderHash: SDK.GENESIS_HEADER_HASH,
-  });
+  const first = await withPlaceholderWithdrawalBlock(
+    await buildCanonicalBlockFixture({
+      transactions: [],
+      startTime: BigInt(now),
+      endTime: BigInt(now + 60000),
+      prevHeaderHash: SDK.GENESIS_HEADER_HASH,
+    }),
+  );
   const predecessor = await seal({
     ...first.payload,
     block_body: {

@@ -347,11 +347,14 @@ describe("transition trace installed retained-history workflow", () => {
             h.funderLucid,
             h.emulator.now() + FAMILY_HISTORY_HEADER_LEAD_MS,
           ) - 1;
-        const nonce = history.nonce(kind);
-        const id = {
-          transactionId: nonce.txHash,
-          outputIndex: BigInt(nonce.outputIndex),
+        const eventId = (eventKind: SDK.EventHistoryKind) => {
+          const nonce = history.nonce(eventKind);
+          return {
+            transactionId: nonce.txHash,
+            outputIndex: BigInt(nonce.outputIndex),
+          };
         };
+        const id = eventId(kind);
         const info: SDK.DepositInfo = {
           l2_address: {
             paymentCredential: { PublicKeyCredential: ["aa".repeat(28)] },
@@ -361,13 +364,15 @@ describe("transition trace installed retained-history workflow", () => {
           l2_datum: datumBytes === 0 ? null : "ab".repeat(datumBytes),
         };
         const event = { id, info };
-        const payload: SDK.EventHistoryPayload =
-          kind === "Deposit"
-            ? { DepositPayload: { event } }
+        const eventPayload = (
+          eventKind: SDK.EventHistoryKind,
+        ): SDK.EventHistoryPayload =>
+          eventKind === "Deposit"
+            ? { DepositPayload: { event: { id: eventId(eventKind), info } } }
             : {
                 WithdrawalPayload: {
                   event: {
-                    id,
+                    id: eventId(eventKind),
                     info: {
                       body: {
                         l2_outref: {
@@ -394,6 +399,10 @@ describe("transition trace installed retained-history workflow", () => {
                   refund_datum: "NoDatum",
                 },
               };
+        const payload = eventPayload(kind);
+        // An omitting block carries an event of the other kind, due in it.
+        const companionKind = kind === "Deposit" ? "Withdrawal" : "Deposit";
+        const companion = eventPayload(companionKind);
         const originalAssets = { lovelace: 90_000_000n };
         const operator = getAddressDetails(
           await h.funderLucid.wallet().address(),
@@ -404,6 +413,7 @@ describe("transition trace installed retained-history workflow", () => {
                 operatorVkey: operator.hash,
                 now,
                 payload,
+                companion,
                 originalAssets,
                 omitted: timing === "omitted",
               })
@@ -460,6 +470,32 @@ describe("transition trace installed retained-history workflow", () => {
             };
             if (timing !== null && honest) admitAfterPredecessor = admitEvent;
             else await admitEvent();
+            // Due in the current block, 30 s after an omitted due event.
+            if (timing === "omitted") {
+              await history.admit(
+                hub,
+                companion,
+                {
+                  ...fixture.current.header,
+                  endTime: fixture.current.header.startTime + 31_000n,
+                },
+                {
+                  lovelace:
+                    companionKind === "Deposit" ? 95_000_000n : 100_000_000n,
+                },
+              );
+              // The companion spends the wallet's spare UTxO; the proof
+              // workflow needs a second one.
+              await history.submit(
+                "split-prover-funds",
+                await lucid
+                  .newTx()
+                  .pay.ToAddress(h.proverSigner.address, {
+                    lovelace: 20_000_000n,
+                  })
+                  .complete({ localUPLCEval: true }),
+              );
+            }
             awaitHeaderCommitWindow(h.emulator, fixture.predecessor.header);
           },
         });
@@ -667,7 +703,7 @@ describe("transition trace installed retained-history workflow", () => {
           authority: recorder.authority,
         });
         expect(requireTransitionTraceL1Events(rawHandle).events).toHaveLength(
-          1,
+          timing === "omitted" ? 2 : 1,
         );
         expect(() => requireTransitionTraceL1Events({ ...rawHandle })).toThrow(
           "freshly admitted",

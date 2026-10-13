@@ -80,6 +80,15 @@ export const buildCommitBlockHeaderTxProgram = ({
         }),
       );
     }
+    if (newHeader.totalEventCount <= 0n) {
+      return yield* Effect.fail(
+        new StateQueueError({
+          message:
+            "Refusing to build a commit transaction for a block with no events",
+          cause: `total_event_count=${newHeader.totalEventCount.toString()}`,
+        }),
+      );
+    }
     const queueIsEmpty = latestBlock.datum.key === "Empty";
     if (
       queueIsEmpty !== (witness.confirmedStateRefInput === undefined) ||
