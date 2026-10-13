@@ -8,12 +8,7 @@ import { randomUUID } from "node:crypto";
 
 import { DEPLOYMENT_MANIFEST_L1_FINALITY } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { SqlClient } from "@effect/sql";
-import {
-  CML,
-  generateSeedPhrase,
-  OgmiosJsonRpcError,
-  walletFromSeed,
-} from "@lucid-evolution/lucid";
+import { generateSeedPhrase, OgmiosJsonRpcError } from "@lucid-evolution/lucid";
 import { Cause, Effect, Fiber } from "effect";
 import { UnknownException } from "effect/Cause";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -47,6 +42,7 @@ import {
 import { runSettlementWorker } from "../src/workers/settlement.run-settlement-worker.js";
 import { openFollowerWriteGate } from "./helpers/follower-write-gate.js";
 import { withoutFollowerJournal } from "./helpers/intent-journal.js";
+import { pendingSettlementAttempt } from "./helpers/settlement-pending-attempt.js";
 import { provideDatabaseLayers, resetApplicationTables } from "./utils.js";
 
 vi.mock("../src/l1-provider-view.js", async (original) => {
@@ -78,35 +74,8 @@ beforeEach(() =>
 );
 
 /** A signed-looking withdrawal initialize body, valid until slot `ttl`. */
-const pendingAttempt = (ttl = 120n): Journal.SettlementAttempt => {
-  const inputs = CML.TransactionInputList.new();
-  inputs.add(
-    CML.TransactionInput.new(CML.TransactionHash.from_hex("ab".repeat(32)), 0n),
-  );
-  const outputs = CML.TransactionOutputList.new();
-  outputs.add(
-    CML.TransactionOutput.new(
-      CML.Address.from_bech32(
-        walletFromSeed(generateSeedPhrase(), { network: "Preprod" }).address,
-      ),
-      CML.Value.from_coin(2_000_000n),
-    ),
-  );
-  const body = CML.TransactionBody.new(inputs, outputs, 200_000n);
-  body.set_ttl(ttl);
-  const tx = CML.Transaction.new(body, CML.TransactionWitnessSet.new(), true);
-  return {
-    deployment_id: deploymentId,
-    kind: "withdrawal",
-    event_id: EVENT_ID,
-    phase: "initialize",
-    signed_cbor: tx.to_cbor_hex(),
-    tx_hash: CML.hash_transaction(body).to_hex(),
-    required_outputs: [0],
-    fee_inputs: [`${"ab".repeat(32)}#0`],
-    status: "pending",
-  };
-};
+const pendingAttempt = (ttl = 120n): Journal.SettlementAttempt =>
+  pendingSettlementAttempt({ deploymentId, eventId: EVENT_ID, ttl });
 
 type L1 = {
   readonly transactionStatus?: (hash: string) => Promise<unknown>;
