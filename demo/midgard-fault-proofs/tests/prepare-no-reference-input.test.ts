@@ -13,7 +13,6 @@ import {
   MIDGARD_POSIX_TIME_NONE,
   type MidgardNativeTxFull,
 } from "@al-ft/midgard-core";
-import { wrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
 import { EMPTY_MERKLE_TREE_ROOT } from "@al-ft/midgard-sdk";
 import * as SDK from "@al-ft/midgard-sdk";
 import { h28, h32 } from "@al-ft/midgard-test-support/hex";
@@ -23,10 +22,13 @@ import { describe, expect, it } from "vitest";
 
 import {
   keyValuePhasRootWithCount,
+  LedgerRootMismatchError,
   type NodeTransactionPayload,
+  predecessorLedger,
   prepareNoReferenceInputFromFile,
   prepareNoReferenceInputFromNode,
   prepareNoReferenceInputFromTransactions,
+  singleLedgerAt,
 } from "../src/index.js";
 
 const EMPTY_CBOR_LIST = encodeCbor([]);
@@ -107,93 +109,47 @@ const withTempDir = async <A>(run: (dir: string) => Promise<A>): Promise<A> => {
   }
 };
 
-const ZERO_COUNTS = {
-  withdrawalCount: 0n,
-  forcedTransactionCount: 0n,
-  l2TransactionCount: 0n,
-  depositCount: 0n,
-  totalEventCount: 0n,
-  transitionStepCount: 0n,
-  validationTraceCount: 0n,
-};
+type LedgerPairs = readonly (readonly [string, string])[];
 
-/**
- * Builds a minimal `DaPayload` whose body carries only a `utxos` set (the
- * ledger snapshot), with every other body root empty. Returns its canonical CBOR
- * and the raw `utxos_root` — which is what the *next* block commits as its
- * `prev_utxos_root`.
- */
-const buildPrevBlockPayload = async (
-  utxos: readonly (readonly [string, string])[],
-): Promise<{
-  readonly payloadEnvelopeCbor: Buffer;
-  readonly utxosRoot: string;
-}> => {
-  const utxoRoot = await keyValuePhasRootWithCount(
-    utxos.map(([key, value]) => ({
-      key: Buffer.from(key, "hex"),
-      value: buildCanonicalMidgardLedgerEntryOutputMaterial({
+/** The MPF root a header commits for this ledger: out-ref to descriptor. */
+const ledgerRoot = async (ledger: LedgerPairs): Promise<string> =>
+  (
+    await keyValuePhasRootWithCount(
+      ledger.map(([key, value]) => ({
+        key: Buffer.from(key, "hex"),
+        value: buildCanonicalMidgardLedgerEntryOutputMaterial({
+          outRef: Buffer.from(key, "hex"),
+          outputCbor: Buffer.from(value, "hex"),
+        }).descriptorCbor,
+      })),
+    )
+  ).root;
+
+// The challenged block's `prev_header_hash`: the predecessor the ledger is after.
+const PREV_HEADER_HASH = h28(0x90);
+
+/** The predecessor ledger as a replaying party holds it, checked against `root`. */
+const checkedPredecessor = async (ledger: LedgerPairs, root: string) =>
+  await predecessorLedger({
+    prevHeaderHash: PREV_HEADER_HASH,
+    prevUtxosRoot: root,
+    ledgerAt: singleLedgerAt(
+      PREV_HEADER_HASH,
+      ledger.map(([key, value]) => ({
         outRef: Buffer.from(key, "hex"),
-        outputCbor: Buffer.from(value, "hex"),
-      }).descriptorCbor,
-    })),
-  );
-  const header: SDK.Header = {
-    prevUtxosRoot: EMPTY_MERKLE_TREE_ROOT,
-    utxosRoot: utxoRoot.root,
-    withdrawalsRoot: EMPTY_MERKLE_TREE_ROOT,
-    forcedTransactionsRoot: EMPTY_MERKLE_TREE_ROOT,
-    transactionsRoot: EMPTY_MERKLE_TREE_ROOT,
-    depositsRoot: EMPTY_MERKLE_TREE_ROOT,
-    transitionTraceRoot: EMPTY_MERKLE_TREE_ROOT,
-    eventToStepRoot: EMPTY_MERKLE_TREE_ROOT,
-    validationTracesRoot: EMPTY_MERKLE_TREE_ROOT,
-    ...ZERO_COUNTS,
-    startTime: 10n,
-    endTime: 20n,
-    blockSlot: 0n,
-    expectedNetworkId: 0n,
-    minFeeA: 0n,
-    minFeeB: 0n,
-    prevHeaderHash: h28(0x90),
-    operatorVkey: h28(0x91),
-    protocolVersion: 1n,
-  };
-  const headerHash = await Effect.runPromise(SDK.hashBlockHeader(header));
-  const payload: SDK.DaPayload = {
-    version: SDK.DA_PAYLOAD_VERSION,
-    block_body: {
-      header_hash: headerHash,
-      header,
-      utxos: [...utxos]
-        .map(([key, value]) => [key, value] as [string, string])
-        .sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0)),
-      withdrawals: [],
-      forced_transactions: [],
-      transactions: [],
-      deposits: [],
-      transition_trace: [],
-      event_to_step: [],
-      transaction_preimages: [],
-      forced_transaction_preimages: [],
-      cek_program_material: [],
-      validation_traces: [],
-      validation_trace_witnesses: [],
-      counts: ZERO_COUNTS,
-    },
-  };
-  return {
-    payloadEnvelopeCbor: await wrapDaPayload(SDK.encodeDaPayload(payload), {
-      mode: "identity",
-    }),
-    utxosRoot: utxoRoot.root,
-  };
-};
+        output: Buffer.from(value, "hex"),
+      })),
+    ),
+    label: "test predecessor ledger",
+  });
 
-// A ledger UTxO (present in the prev-block snapshot) that is NOT the phantom
+// A ledger UTxO (present in the predecessor ledger) that is NOT the phantom
 // reference input the bad tx reads.
 const LEDGER_UTXO_KEY = inputCbor(h32(0xaa), 0n).toString("hex");
 const PHANTOM_LEDGER_KEY = inputCbor(PHANTOM_TX_ID, 0n).toString("hex");
+// The same out-ref with a different output: one wrong ledger entry.
+const WRONG_OUTPUT_CBOR =
+  "a200581d70bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb018200a0";
 
 describe("prepare-no-reference-input", () => {
   it("prepares the four submit-step artifacts for a phantom-reference-input tx over the empty ledger", async () => {
@@ -308,7 +264,7 @@ describe("prepare-no-reference-input", () => {
         transactions: [badTxPayload],
         prevUtxosRoot: h32(0xab),
       }),
-    ).rejects.toThrow("non-empty prev-utxos ledger");
+    ).rejects.toThrow("starts from a non-empty ledger");
   });
 
   it("writes deterministic submit-step files from an explicit transactions file", async () => {
@@ -392,51 +348,105 @@ describe("prepare-no-reference-input", () => {
     expect(output.missingReferenceInput.tx_id).toBe(PHANTOM_TX_ID);
   });
 
-  it("reconstructs the ledger from the previous block's DA payload for a non-first block", async () => {
-    const { payloadEnvelopeCbor, utxosRoot } = await buildPrevBlockPayload([
-      [LEDGER_UTXO_KEY, LEDGER_OUTPUT_CBOR],
-    ]);
+  it("runs from the checked predecessor ledger for a non-first block", async () => {
+    const ledger: LedgerPairs = [[LEDGER_UTXO_KEY, LEDGER_OUTPUT_CBOR]];
+    const utxosRoot = await ledgerRoot(ledger);
     expect(utxosRoot).not.toBe(EMPTY_MERKLE_TREE_ROOT);
 
     const output = await prepareNoReferenceInputFromTransactions({
       headerHash: h28(0xaa),
       transactions: [badTxPayload],
       prevUtxosRoot: utxosRoot,
-      prevBlockPayloadEnvelopeCbor: payloadEnvelopeCbor,
+      prevLedger: await checkedPredecessor(ledger, utxosRoot),
     });
 
     expect(output.prevUtxosRoot).toBe(utxosRoot);
     expect(output.missingReferenceInput.tx_id).toBe(PHANTOM_TX_ID);
-    // A real ledger non-membership proof against the reconstructed trie.
+    // A real ledger non-membership proof against the predecessor ledger's trie.
     expect(output.ledgerNonMembershipProofCbor.length).toBeGreaterThan(0);
   });
 
-  it("rejects a prev-block payload whose utxos_root does not match --prev-utxos-root", async () => {
-    const { payloadEnvelopeCbor } = await buildPrevBlockPayload([
-      [LEDGER_UTXO_KEY, LEDGER_OUTPUT_CBOR],
-    ]);
+  it("refuses a predecessor ledger with one wrong entry at the root check", async () => {
+    const utxosRoot = await ledgerRoot([[LEDGER_UTXO_KEY, LEDGER_OUTPUT_CBOR]]);
+    await expect(
+      checkedPredecessor([[LEDGER_UTXO_KEY, WRONG_OUTPUT_CBOR]], utxosRoot),
+    ).rejects.toBeInstanceOf(LedgerRootMismatchError);
+  });
+
+  it("refuses a checked ledger for a different root than the block's prev_utxos_root", async () => {
+    const ledger: LedgerPairs = [[LEDGER_UTXO_KEY, LEDGER_OUTPUT_CBOR]];
     await expect(
       prepareNoReferenceInputFromTransactions({
         headerHash: h28(0xaa),
         transactions: [badTxPayload],
         prevUtxosRoot: h32(0xbb),
-        prevBlockPayloadEnvelopeCbor: payloadEnvelopeCbor,
+        prevLedger: await checkedPredecessor(ledger, await ledgerRoot(ledger)),
       }),
-    ).rejects.toThrow("does not match --prev-utxos-root");
+    ).rejects.toBeInstanceOf(LedgerRootMismatchError);
   });
 
-  it("refuses to prove non-membership when the reference input is present in the reconstructed ledger", async () => {
-    const { payloadEnvelopeCbor, utxosRoot } = await buildPrevBlockPayload([
+  it("refuses to prove non-membership when the reference input is present in the predecessor ledger", async () => {
+    const ledger: LedgerPairs = [
       [LEDGER_UTXO_KEY, LEDGER_OUTPUT_CBOR],
       [PHANTOM_LEDGER_KEY, LEDGER_OUTPUT_CBOR],
-    ]);
+    ];
+    const utxosRoot = await ledgerRoot(ledger);
     await expect(
       prepareNoReferenceInputFromTransactions({
         headerHash: h28(0xaa),
         transactions: [badTxPayload],
         prevUtxosRoot: utxosRoot,
-        prevBlockPayloadEnvelopeCbor: payloadEnvelopeCbor,
+        prevLedger: await checkedPredecessor(ledger, utxosRoot),
       }),
     ).rejects.toThrow(/present key/i);
+  });
+
+  it("reads --prev-ledger-file and checks it against --prev-utxos-root", async () => {
+    await withTempDir(async (dir) => {
+      const transactionsPath = join(dir, "block-transactions.json");
+      await writeFile(transactionsPath, JSON.stringify([badTxPayload]));
+      const ledger: LedgerPairs = [[LEDGER_UTXO_KEY, LEDGER_OUTPUT_CBOR]];
+      const utxosRoot = await ledgerRoot(ledger);
+      const prevLedgerPath = join(dir, "prev-ledger.json");
+      await writeFile(
+        prevLedgerPath,
+        JSON.stringify({ headerHash: PREV_HEADER_HASH, entries: ledger }),
+      );
+      const wrongLedgerPath = join(dir, "wrong-ledger.json");
+      await writeFile(
+        wrongLedgerPath,
+        JSON.stringify({
+          headerHash: PREV_HEADER_HASH,
+          entries: [[LEDGER_UTXO_KEY, WRONG_OUTPUT_CBOR]],
+        }),
+      );
+      const config = {
+        headerHash: h28(0xaa),
+        transactionsPath,
+        prevHeaderHash: PREV_HEADER_HASH,
+        prevUtxosRoot: utxosRoot,
+      };
+
+      const output = await prepareNoReferenceInputFromFile({
+        ...config,
+        prevLedgerPath,
+      });
+      expect(output.prevUtxosRoot).toBe(utxosRoot);
+      expect(output.missingReferenceInput.tx_id).toBe(PHANTOM_TX_ID);
+
+      await expect(
+        prepareNoReferenceInputFromFile({
+          ...config,
+          prevLedgerPath: wrongLedgerPath,
+        }),
+      ).rejects.toBeInstanceOf(LedgerRootMismatchError);
+      await expect(
+        prepareNoReferenceInputFromFile({
+          ...config,
+          prevHeaderHash: h28(0x91),
+          prevLedgerPath,
+        }),
+      ).rejects.toThrow("is unavailable");
+    });
   });
 });

@@ -17,6 +17,7 @@
  */
 import { assertTransactionSourceInclusionRootAuthenticated } from "@al-ft/midgard-sdk";
 
+import { type CheckedLedger } from "../ledger-at.js";
 import {
   type PreparedDoubleSpendOutput,
   prepareDoubleSpendFromTransactions,
@@ -173,50 +174,27 @@ export const prepareMinFeeFromCanonicalEvidence = async ({
 
 /**
  * Builds a non-existent-input proof solely from admitted block evidence. A
- * non-genesis predecessor ledger must be supplied as its own verified
- * DA/L1-bound block evidence; an operator file is never accepted here.
+ * non-genesis predecessor ledger is a checked ledger, bound to the admitted
+ * header's `prev_utxos_root` before any proof is built.
  */
 export const prepareNonExistentInputFromCanonicalEvidence = async ({
   evidence,
-  previousBlockEvidence,
+  prevLedger,
   badTxId,
   badInputIndex,
   outputDir,
 }: CanonicalEvidenceBuilderInput & {
-  readonly previousBlockEvidence?: CanonicalBlockEvidence;
+  readonly prevLedger?: CheckedLedger;
   readonly badTxId?: string;
   readonly badInputIndex?: string | number;
 }): Promise<PreparedNonExistentInputOutput> => {
   const admitted = admitCanonicalEvidenceForProofBuild(evidence);
-  let previousBlockPayloadEnvelopeCbor: Uint8Array | undefined;
-  if (previousBlockEvidence !== undefined) {
-    // The predecessor contributes an authenticated ledger snapshot, not a
-    // native transaction-inclusion argument. Admit both provenances without
-    // incorrectly requiring its transaction leaf convention to be native.
-    blockTransactionsFromCanonicalEvidence(previousBlockEvidence);
-    if (evidence.header.prevHeaderHash !== previousBlockEvidence.headerHash) {
-      throw new Error(
-        "Previous canonical block evidence is not the predecessor committed by this header.",
-      );
-    }
-    if (
-      evidence.header.prevUtxosRoot !== previousBlockEvidence.header.utxosRoot
-    ) {
-      throw new Error(
-        "Previous canonical block evidence does not authenticate this block's prev_utxos_root.",
-      );
-    }
-    previousBlockPayloadEnvelopeCbor =
-      previousBlockEvidence.reconstruction.payloadEnvelopeCbor;
-  }
   return await prepareNonExistentInputFromTransactions({
     headerHash: admitted.headerHash,
     transactions: admitted.transactions,
     prevUtxosRoot: evidence.header.prevUtxosRoot,
+    prevLedger,
     expectedTransactionsRoot: admitted.expectedTransactionsRoot,
-    ...(previousBlockPayloadEnvelopeCbor === undefined
-      ? {}
-      : { prevBlockPayloadEnvelopeCbor: previousBlockPayloadEnvelopeCbor }),
     ...(badTxId === undefined ? {} : { badTxId }),
     ...(badInputIndex === undefined ? {} : { badInputIndex }),
     ...(outputDir === undefined ? {} : { outputDir }),
@@ -224,47 +202,27 @@ export const prepareNonExistentInputFromCanonicalEvidence = async ({
 };
 
 /**
- * Builds a no-reference-input proof from the same exact authenticated current
- * and predecessor evidence boundary as non-existent-input.
+ * Builds a no-reference-input proof from the same admitted current evidence
+ * and checked predecessor ledger as non-existent-input.
  */
 export const prepareNoReferenceInputFromCanonicalEvidence = async ({
   evidence,
-  previousBlockEvidence,
+  prevLedger,
   badTxId,
   badReferenceInputIndex,
   outputDir,
 }: CanonicalEvidenceBuilderInput & {
-  readonly previousBlockEvidence?: CanonicalBlockEvidence;
+  readonly prevLedger?: CheckedLedger;
   readonly badTxId?: string;
   readonly badReferenceInputIndex?: string | number;
 }): Promise<PreparedNoReferenceInputOutput> => {
   const admitted = admitCanonicalEvidenceForProofBuild(evidence);
-  let previousBlockPayloadEnvelopeCbor: Uint8Array | undefined;
-  if (previousBlockEvidence !== undefined) {
-    blockTransactionsFromCanonicalEvidence(previousBlockEvidence);
-    if (evidence.header.prevHeaderHash !== previousBlockEvidence.headerHash) {
-      throw new Error(
-        "Previous canonical block evidence is not the predecessor committed by this header.",
-      );
-    }
-    if (
-      evidence.header.prevUtxosRoot !== previousBlockEvidence.header.utxosRoot
-    ) {
-      throw new Error(
-        "Previous canonical block evidence does not authenticate this block's prev_utxos_root.",
-      );
-    }
-    previousBlockPayloadEnvelopeCbor =
-      previousBlockEvidence.reconstruction.payloadEnvelopeCbor;
-  }
   return await prepareNoReferenceInputFromTransactions({
     headerHash: admitted.headerHash,
     transactions: admitted.transactions,
     prevUtxosRoot: evidence.header.prevUtxosRoot,
+    prevLedger,
     expectedTransactionsRoot: admitted.expectedTransactionsRoot,
-    ...(previousBlockPayloadEnvelopeCbor === undefined
-      ? {}
-      : { prevBlockPayloadEnvelopeCbor: previousBlockPayloadEnvelopeCbor }),
     ...(badTxId === undefined ? {} : { badTxId }),
     ...(badReferenceInputIndex === undefined ? {} : { badReferenceInputIndex }),
     ...(outputDir === undefined ? {} : { outputDir }),
@@ -318,11 +276,12 @@ export type CanonicalPrepareCommand =
 export const executeCanonicalPrepareCommand = async ({
   request,
   evidence,
-  previousBlockEvidence,
+  prevLedger,
 }: {
   readonly request: CanonicalPrepareCommand;
   readonly evidence: CanonicalBlockEvidence;
-  readonly previousBlockEvidence?: CanonicalBlockEvidence;
+  /** The checked predecessor ledger for ledger-relative verbs. */
+  readonly prevLedger?: CheckedLedger;
 }) => {
   switch (request.command) {
     case "prepare-double-spend":
@@ -364,9 +323,7 @@ export const executeCanonicalPrepareCommand = async ({
     case "prepare-non-existent-input":
       return await prepareNonExistentInputFromCanonicalEvidence({
         evidence,
-        ...(previousBlockEvidence === undefined
-          ? {}
-          : { previousBlockEvidence }),
+        prevLedger,
         ...(request.badTxId === undefined ? {} : { badTxId: request.badTxId }),
         ...(request.badInputIndex === undefined
           ? {}

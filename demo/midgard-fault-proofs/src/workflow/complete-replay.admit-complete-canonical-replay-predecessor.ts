@@ -8,6 +8,7 @@ import {
   type CanonicalBlockEvidence,
   canonicalBlockEvidenceFromVerifiedPayload,
 } from "../evidence/canonical-block-evidence.js";
+import { type CheckedLedger, checkLedgerAgainstRoot } from "../ledger-at.js";
 import { findNetworkIdFaults } from "../network-id/evidence.js";
 import { detectNetworkIdWrongfulRejections } from "../network-id/wrongful-rejection.js";
 import { decodeTransactionMaterial } from "../prepare-double-spend.js";
@@ -94,6 +95,30 @@ export const completeCanonicalReplayPredecessorEvidence = ({
   readonly context: CompleteCanonicalReplayContext | undefined;
 }): CanonicalBlockEvidence | undefined =>
   requireReplayPredecessorEvidence({ evidence, context });
+
+/**
+ * The checked ledger the challenged block starts from, or `undefined` when the
+ * context admitted no predecessor (then only the empty genesis ledger is
+ * available, see `requireLedgerOpening`).
+ */
+export const completeCanonicalReplayPredecessorLedger = async ({
+  evidence,
+  context,
+}: {
+  readonly evidence: CanonicalBlockEvidence;
+  readonly context: CompleteCanonicalReplayContext | undefined;
+}): Promise<CheckedLedger | undefined> => {
+  const predecessor = requireReplayPredecessorEvidence({ evidence, context });
+  if (predecessor === undefined) return undefined;
+  return await checkLedgerAgainstRoot({
+    entries: predecessor.reconstruction.utxos.map(({ key, value }) => ({
+      outRef: key,
+      output: value,
+    })),
+    utxosRoot: evidence.header.prevUtxosRoot,
+    label: "complete replay predecessor ledger",
+  });
+};
 
 type CanonicalReplayJson =
   | null

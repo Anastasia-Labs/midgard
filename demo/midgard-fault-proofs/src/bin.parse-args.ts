@@ -49,8 +49,9 @@ export const parseArgs = (argv: readonly string[]): ParsedArgs => {
   let txId: string | undefined;
   let badTxId: string | undefined;
   let badInputIndex: string | undefined;
+  let prevHeaderHash: string | undefined;
   let prevUtxosRoot: string | undefined;
-  let prevBlockPayloadPath: string | undefined;
+  let prevLedgerPath: string | undefined;
   let inputsPreimagePath: string | undefined;
   let depositInclusionPath: string | undefined;
   let withdrawalInclusionPath: string | undefined;
@@ -209,11 +210,14 @@ export const parseArgs = (argv: readonly string[]): ParsedArgs => {
       case "--bad-input-index":
         badInputIndex = rest[++index];
         break;
+      case "--prev-header-hash":
+        prevHeaderHash = rest[++index];
+        break;
       case "--prev-utxos-root":
         prevUtxosRoot = rest[++index];
         break;
-      case "--prev-block-payload-file":
-        prevBlockPayloadPath = rest[++index];
+      case "--prev-ledger-file":
+        prevLedgerPath = rest[++index];
         break;
       case "--inputs-preimage":
         inputsPreimagePath = rest[++index];
@@ -379,8 +383,9 @@ export const parseArgs = (argv: readonly string[]): ParsedArgs => {
     txId,
     badTxId,
     badInputIndex,
+    prevHeaderHash,
     prevUtxosRoot,
-    prevBlockPayloadPath,
+    prevLedgerPath,
     inputsPreimagePath,
     depositInclusionPath,
     withdrawalInclusionPath,
