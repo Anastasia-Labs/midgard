@@ -1,4 +1,5 @@
 import * as SDK from "@al-ft/midgard-sdk";
+import { RejectCodes } from "@al-ft/midgard-validation";
 import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
@@ -8,6 +9,7 @@ import {
   encodeTransitionIntegerCbor,
   encodeTransitionStepCbor,
 } from "../src/mpf/transition-cbor.js";
+import { MINT_ADMITTED_UNDECODABLE } from "./forced-mint-boundary.fixtures.js";
 import { fixture, rebind, verdict } from "./foreign-block-import.fixture.js";
 
 describe("complete foreign block import", () => {
@@ -25,9 +27,53 @@ describe("complete foreign block import", () => {
         entries: [],
       });
   });
-  it("imports mixed event programs using an exact sidecar at each event", async () => {
+  it.each(MINT_ADMITTED_UNDECODABLE)(
+    "imports a forced order with %s under its committed rejection",
+    async (_name, reason, bytes) => {
+      const payload = await fixture({
+        forced: {
+          cbor: bytes(),
+          reason,
+          rejectionCode:
+            typeof reason === "object" && "OutputNonCanonical" in reason
+              ? RejectCodes.InvalidOutput
+              : RejectCodes.InvalidFieldType,
+        },
+      });
+      const result = await verdict(payload);
+      if (result._tag === "Left") throw result.left;
+      expect(result.right).toEqual({
+        headerHash: payload.block_body.header_hash,
+        root: SDK.EMPTY_MERKLE_TREE_ROOT,
+        entries: [],
+      });
+    },
+  );
+  it("refuses CEK material in a block whose forced events reach none", async () => {
+    const payload = await fixture();
+    payload.block_body.cek_program_material = (
+      await fixture({ withProgram: true })
+    ).block_body.cek_program_material;
+    expect(payload.block_body.cek_program_material.length).toBeGreaterThan(0);
+    const result = await verdict(await rebind(payload));
+    expect(result._tag).toBe("Left");
+    if (result._tag === "Left")
+      expect(result.left).toMatchObject({
+        reason: "invalid",
+        detail: expect.stringContaining("unreachable"),
+      });
+  });
+  it("imports two forced orders, one whose items do not decode, each at its own step", async () => {
     const first = await fixture();
-    const second = await fixture({ withProgram: true, orderByte: "5b" });
+    const [, reason, bytes] = MINT_ADMITTED_UNDECODABLE[0]!;
+    const second = await fixture({
+      orderByte: "5b",
+      forced: {
+        cbor: bytes(),
+        reason,
+        rejectionCode: RejectCodes.InvalidOutput,
+      },
+    });
     const body = second.block_body;
     const step = Data.from(body.transition_trace[0]![1], SDK.TransitionStep);
     const merged = await rebind({
@@ -56,7 +102,7 @@ describe("complete foreign block import", () => {
           ...first.block_body.forced_transaction_preimages,
           ...body.forced_transaction_preimages,
         ],
-        cek_program_material: body.cek_program_material,
+        cek_program_material: [],
         transition_trace: [
           ...first.block_body.transition_trace,
           [
@@ -140,18 +186,6 @@ describe("complete foreign block import", () => {
         });
     },
   );
-  it("waits for missing reachable CEK material", async () => {
-    const payload = await fixture({ withProgram: true });
-    payload.block_body.cek_program_material = [];
-    const result = await verdict(payload);
-    expect(result._tag).toBe("Left");
-    if (result._tag === "Left")
-      expect(result.left).toMatchObject({
-        reason: "missing",
-        detail: expect.stringContaining("material"),
-      });
-  });
-
   it.each([
     "utxosRoot",
     "withdrawalsRoot",
@@ -215,7 +249,7 @@ describe("foreign block import failure attribution", () => {
     if (result._tag === "Left") expect(result.left).toBe(verdictOfCaller);
   });
 
-  it("calls a transaction preimage that does not decode invalid (the program sidecar decodes it first)", async () => {
+  it("calls a forced preimage that is not a transaction envelope invalid", async () => {
     const payload = await fixture();
     const [key] = payload.block_body.forced_transaction_preimages[0]!;
     payload.block_body.forced_transaction_preimages[0] = [key, "00"];

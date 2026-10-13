@@ -4,7 +4,6 @@ import {
   type MidgardCekProgramMaterialEntry,
   verifyMidgardCekProgramMaterialBundle,
 } from "@al-ft/midgard-core/cek-proof";
-import { decodeMidgardForcedTxFullFromCanonicalCbor } from "@al-ft/midgard-core/codec/forced";
 import { decodeMidgardNativeTxFullFromCanonicalCbor } from "@al-ft/midgard-core/codec/native";
 import {
   MIDGARD_CONSENSUS_PROFILE,
@@ -238,21 +237,20 @@ export const EMPTY_SIDECAR = encodeMidgardCekProgramMaterialSidecar([]);
  * There is no watcher-authored traversal. If that canonical computation throws
  * for any reason, the complete block-wide set is handed to Phase A unchanged,
  * so the canonical validator - not this function - renders the verdict.
+ *
+ * A forced transaction carries no program material: its witness scripts are
+ * native, so its sidecar is always empty.
  */
 export const projectProgramMaterialSidecar = (
   txCbor: Buffer,
   blockMaterial: readonly MidgardCekProgramMaterialEntry[],
   sourceKind: "normal" | "forced",
 ): Buffer => {
-  if (blockMaterial.length === 0) {
+  if (blockMaterial.length === 0 || sourceKind === "forced") {
     return EMPTY_SIDECAR;
   }
   try {
-    const canonicalTx = (
-      sourceKind === "forced"
-        ? decodeMidgardForcedTxFullFromCanonicalCbor
-        : decodeMidgardNativeTxFullFromCanonicalCbor
-    )(txCbor);
+    const canonicalTx = decodeMidgardNativeTxFullFromCanonicalCbor(txCbor);
     const envelopes = collectMidgardAttachedProgramEnvelopes(canonicalTx);
     const verifications = verifyMidgardCekProgramMaterialBundle(
       envelopes,

@@ -5,7 +5,6 @@ import {
   verifyMidgardCekProgramMaterialBundle,
 } from "@al-ft/midgard-core/cek-proof";
 import { decodeMidgardNativeTxFullFromCanonicalCbor } from "@al-ft/midgard-core/codec";
-import { decodeMidgardForcedTxFullFromCanonicalCbor } from "@al-ft/midgard-core/codec/forced";
 import { collectMidgardEventProgramEnvelopes } from "@al-ft/midgard-core/script-proof";
 import type * as SDK from "@al-ft/midgard-sdk";
 
@@ -20,7 +19,10 @@ export const importedProgramMaterial = (
   );
 
 /** Select only the programs reachable by this event against its own pre-state.
- * DA carries a block union; the ordinary replay sidecar requires an exact event set. */
+ * DA carries a block union; the ordinary replay sidecar requires an exact event set.
+ * A forced transaction runs no Plutus program, so its sidecar is empty and its
+ * items are never decoded here: an admitted order whose items do not decode
+ * still replays to its committed rejection. */
 export const importedEventProgramSidecar = (input: {
   readonly cbor: Buffer;
   readonly sourceKind: "normal" | "forced";
@@ -28,11 +30,9 @@ export const importedEventProgramSidecar = (input: {
   readonly material: readonly MidgardCekProgramMaterialEntry[];
   readonly reached: Set<string>;
 }): Buffer => {
-  const transaction = (
-    input.sourceKind === "forced"
-      ? decodeMidgardForcedTxFullFromCanonicalCbor
-      : decodeMidgardNativeTxFullFromCanonicalCbor
-  )(input.cbor);
+  if (input.sourceKind === "forced")
+    return encodeMidgardCekProgramMaterialSidecar([]);
+  const transaction = decodeMidgardNativeTxFullFromCanonicalCbor(input.cbor);
   const envelopes = collectMidgardEventProgramEnvelopes(
     transaction,
     (key) => input.ledger.get(key),

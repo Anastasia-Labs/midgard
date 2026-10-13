@@ -409,10 +409,9 @@ source=l1_follower`), its supervisor's restart being the backoff. Restore
 - `forced_order_carriage_pending`: a forced order's carriage resolved from
   no source yet; it is retried. If the detail leads with "no L1 tx content
   source is configured", set `L1_TX_CONTENT_SOURCES`.
-- `forced_order_ingestion_failed`: a forced order could not be rebuilt.
-  `forced_order_admission_stopped`: a ruled admission stop refused an
-  order's transaction; the detail names the stop. Both hold the horizon;
-  read the detail.
+- `forced_order_ingestion_failed`: a forced order could not be rebuilt. It
+  holds the horizon; read the detail. An order whose transaction items do
+  not decode is not a failure: it is ingested and rejected.
 - `operator_set_unhealthy`: the operator directory is not well formed; the
   detail names why. `operator_set_unavailable` (in a detail): the driver
   has not published the set yet.

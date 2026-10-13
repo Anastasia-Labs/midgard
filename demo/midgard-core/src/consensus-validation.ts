@@ -39,8 +39,6 @@ export {
   screenMidgardForcedTxAdmission,
 } from "./consensus-validation.screen-midgard-forced-tx-admission.js";
 export {
-  MidgardForcedTxAdmissionStopped,
-  validateMidgardConsensusForcedTxCbor,
   validateMidgardConsensusTx,
   validateMidgardConsensusTxCbor,
 } from "./consensus-validation.validate-midgard-consensus-tx.js";

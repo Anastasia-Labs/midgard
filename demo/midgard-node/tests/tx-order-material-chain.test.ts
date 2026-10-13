@@ -3,10 +3,8 @@ import {
   EMPTY_CBOR_LIST,
   EMPTY_NULL_ROOT,
   encodeCbor,
-  encodeMidgardCekBlobChunk,
   encodeMidgardForcedTxCanonical,
   encodeMidgardTxOutput,
-  hashMidgardCekProgramMaterialPreimage,
   materializeMidgardForcedTxFromCanonical,
   MIDGARD_NATIVE_NETWORK_ID_NONE,
   MIDGARD_NATIVE_TX_VERSION,
@@ -14,14 +12,16 @@ import {
 } from "@al-ft/midgard-core";
 import type { MidgardFieldCarriage } from "@al-ft/midgard-core/codec/native-tx-field-access";
 import * as SDK from "@al-ft/midgard-sdk";
-import { Data, type UTxO } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
 import {
   carriageFieldPreimages,
-  publishedProgramMaterialEntries,
   reconstructTxOrderMaterial,
 } from "../src/forced-orders/index.js";
+import { makeOutRefCbor } from "./midgard-output-helpers.js";
+
+/** The mint admits only a transaction that spends something: field 0. */
+const SPEND_INPUTS = encodeCbor([makeOutRefCbor(0x33)]);
 
 const transactionCbor = ({
   addrTxWitsPreimageCbor = EMPTY_CBOR_LIST,
@@ -41,7 +41,7 @@ const transactionCbor = ({
     materializeMidgardForcedTxFromCanonical({
       version: MIDGARD_NATIVE_TX_VERSION,
       body: {
-        spendInputsPreimageCbor: EMPTY_CBOR_LIST,
+        spendInputsPreimageCbor: SPEND_INPUTS,
         referenceInputsPreimageCbor: EMPTY_CBOR_LIST,
         outputsPreimageCbor: encodeCbor(
           outputFills.map((fill) =>
@@ -81,12 +81,12 @@ const transactionCbor = ({
     }),
   );
 
-const emptyTransactionCbor = (): Buffer =>
+const spendOnlyTransactionCbor = (): Buffer =>
   encodeMidgardForcedTxCanonical(
     materializeMidgardForcedTxFromCanonical({
       version: MIDGARD_NATIVE_TX_VERSION,
       body: {
-        spendInputsPreimageCbor: EMPTY_CBOR_LIST,
+        spendInputsPreimageCbor: SPEND_INPUTS,
         referenceInputsPreimageCbor: EMPTY_CBOR_LIST,
         outputsPreimageCbor: EMPTY_CBOR_LIST,
         fee: 0n,
@@ -168,30 +168,31 @@ const FIELD_HASH_REFUSAL =
   /field preimage does not match the committed field hash/u;
 
 describe("V1 tx-order §8 field carriage", () => {
-  it("reconstructs a canonically-empty forced order, which consumes no carriage", () => {
-    const submittedTxCbor = emptyTransactionCbor();
+  it("reconstructs an order whose only non-empty field is its spend inputs", () => {
+    const submittedTxCbor = spendOnlyTransactionCbor();
     const material = SDK.deriveTxOrderMaterial({
       submittedTxCbor,
       owner: Buffer.alloc(28, 0x66),
     });
 
-    // Nine empty fields carry nothing, so the redeemer's vector is empty and the
-    // walk opens the door at no slot at all (§7.1: an untouched field is never
-    // authenticated).
-    expect(material.carriage).toEqual([]);
-    expect(reconstruct(payloadFor(submittedTxCbor))).toEqual(submittedTxCbor);
+    // Eight empty fields carry nothing (§7.1: an untouched field is never
+    // authenticated), so the vector has the one spend-input entry.
+    expect(material.carriage.map((field) => field.fieldIndex)).toEqual([0]);
+    expect(
+      reconstruct(payloadFor(submittedTxCbor), inlineCarriageFor(material)),
+    ).toEqual(submittedTxCbor);
   });
 
   it("reassembles a material-bearing forced order from inline carriage", () => {
-    // `transactionCbor()` puts two 5 kB-datum outputs in field 2: one field
-    // preimage, authenticated once against the flat commitment the payload's
-    // compact body carries.
+    // `transactionCbor()` puts one spend input in field 0 and two 5 kB-datum
+    // outputs in field 2: each preimage authenticated once against the flat
+    // commitment the payload's compact body carries.
     const submittedTxCbor = transactionCbor();
     const material = SDK.deriveTxOrderMaterial({
       submittedTxCbor,
       owner: Buffer.alloc(28, 0x66),
     });
-    expect(material.carriage.map((field) => field.fieldIndex)).toEqual([2]);
+    expect(material.carriage.map((field) => field.fieldIndex)).toEqual([0, 2]);
     expect(
       reconstruct(payloadFor(submittedTxCbor), inlineCarriageFor(material)),
     ).toEqual(submittedTxCbor);
@@ -205,13 +206,16 @@ describe("V1 tx-order §8 field carriage", () => {
       submittedTxCbor,
       owner: Buffer.alloc(28, 0x66),
     });
-    const [field] = material.carriage;
-    expect(field).toBeDefined();
+    const [spends, outputs] = material.carriage;
+    expect(outputs).toBeDefined();
     expect(
       reconstruct(
         payloadFor(submittedTxCbor),
-        [{ carriage: "RawUtxo", refInputIndex: 1 }],
-        [Buffer.from("deadbeef", "hex"), field!.preimage],
+        [
+          { carriage: "Inline", preimage: spends!.preimage },
+          { carriage: "RawUtxo", refInputIndex: 1 },
+        ],
+        [Buffer.from("deadbeef", "hex"), outputs!.preimage],
       ),
     ).toEqual(submittedTxCbor);
   });
@@ -240,8 +244,8 @@ describe("V1 tx-order §8 field carriage", () => {
       submittedTxCbor,
       owner: Buffer.alloc(28, 0x66),
     });
-    expect(material.carriage.map((field) => field.fieldIndex)).toEqual([2]);
-    const [field] = material.carriage;
+    expect(material.carriage.map((field) => field.fieldIndex)).toEqual([0, 2]);
+    const [spends, field] = material.carriage;
     expect(field!.plan.tier).toBe("Certified");
     expect(field!.plan.publications.length).toBeGreaterThan(1);
 
@@ -249,6 +253,7 @@ describe("V1 tx-order §8 field carriage", () => {
       (publication) => publication.bytes,
     );
     const certifiedCarriage: readonly MidgardFieldCarriage[] = [
+      { carriage: "Inline", preimage: spends!.preimage },
       {
         carriage: "Certified",
         certRefInputIndex: 0,
@@ -317,14 +322,14 @@ describe("V1 tx-order §8 field carriage", () => {
   });
 
   it("fails closed when the committed field lengths do not describe the source", () => {
-    const payload = payloadFor(emptyTransactionCbor());
+    const payload = payloadFor(spendOnlyTransactionCbor());
     const lengths = Buffer.from(
       payload.submitted_source.field_preimage_lengths_cbor,
       "hex",
     );
-    // Nine one-byte fields encode as nine `01`s behind a `89` header; claiming
-    // two bytes for field 0 leaves every length still "empty enough" to pass the
-    // header check and wrong against the source.
+    // The eight empty fields encode as one-byte `01` lengths; claiming two bytes
+    // for the first of them still passes the header check and is wrong against
+    // the source.
     const index = lengths.indexOf(0x01);
     expect(index).toBeGreaterThan(0);
     const mutated = Buffer.from(lengths);
@@ -341,93 +346,14 @@ describe("V1 tx-order §8 field carriage", () => {
   });
 
   it("fails closed when the payload's transaction id is not the source's", () => {
-    const payload = payloadFor(emptyTransactionCbor());
+    const payload = payloadFor(spendOnlyTransactionCbor());
     expect(() => reconstruct({ ...payload, tx_id: "11".repeat(32) })).toThrow();
   });
 
   it("fails closed when the payload's commitment is not the source's", () => {
-    const payload = payloadFor(emptyTransactionCbor());
+    const payload = payloadFor(spendOnlyTransactionCbor());
     expect(() =>
       reconstruct({ ...payload, transaction_commitment: "22".repeat(32) }),
     ).toThrow();
-  });
-});
-
-describe("V1 CEK program-material publication ingestion", () => {
-  const materialUtxo = (datum: string, outputIndex = 0): UTxO =>
-    ({
-      txHash: "aa".repeat(32),
-      outputIndex,
-      address: "addr_test1vprogrammaterial",
-      assets: { lovelace: 2_000_000n },
-      datum,
-    }) as UTxO;
-
-  it("accepts one exact typed hash and skips wrong roots, kinds, and encodings", () => {
-    const preimage = encodeMidgardCekBlobChunk(Buffer.from("material"));
-    const root = hashMidgardCekProgramMaterialPreimage("blobChunk", preimage);
-    const datum: SDK.CekProgramMaterialDatum = {
-      kind: 3n,
-      root: Buffer.from(root).toString("hex"),
-      preimage: preimage.toString("hex"),
-    };
-    const datumCbor = Data.to(datum, SDK.CekProgramMaterialDatum);
-
-    const exact = publishedProgramMaterialEntries([materialUtxo(datumCbor)]);
-    expect(exact.ignoredCount).toBe(0);
-    expect(exact.entries).toEqual([{ kind: "blobChunk", root, preimage }]);
-
-    const wrongRoot = Data.to(
-      { ...datum, root: "00".repeat(32) },
-      SDK.CekProgramMaterialDatum,
-    );
-    const wrongKind = Data.to(
-      { ...datum, kind: 4n },
-      SDK.CekProgramMaterialDatum,
-    );
-    const unknownKind = Data.to(
-      { ...datum, kind: 8n },
-      SDK.CekProgramMaterialDatum,
-    );
-    const noncanonicalKind = datumCbor.replace("d8799f03", "d8799f1803");
-    expect(Data.from(noncanonicalKind, SDK.CekProgramMaterialDatum)).toEqual(
-      datum,
-    );
-
-    const hostile = publishedProgramMaterialEntries([
-      materialUtxo(wrongRoot, 1),
-      materialUtxo(wrongKind, 2),
-      materialUtxo(unknownKind, 3),
-      materialUtxo(noncanonicalKind, 4),
-    ]);
-    expect(hostile.entries).toEqual([]);
-    expect(hostile.ignoredCount).toBe(4);
-  });
-
-  it("does not let foreign outputs under the shared credential hide valid material", () => {
-    const preimage = encodeMidgardCekBlobChunk(Buffer.from("material"));
-    const root = hashMidgardCekProgramMaterialPreimage("blobChunk", preimage);
-    const datumCbor = Data.to(
-      {
-        kind: 3n,
-        root: Buffer.from(root).toString("hex"),
-        preimage: preimage.toString("hex"),
-      },
-      SDK.CekProgramMaterialDatum,
-    );
-    // What the always-fails credential holds on a public network: bare Ada,
-    // reference-script parking, and other protocols' datums.
-    const noDatum = { ...materialUtxo(datumCbor, 1), datum: undefined };
-    const foreignDatum = materialUtxo("d87980", 2);
-    const notCbor = materialUtxo("ff", 3);
-
-    const snapshot = publishedProgramMaterialEntries([
-      noDatum,
-      materialUtxo(datumCbor, 0),
-      foreignDatum,
-      notCbor,
-    ]);
-    expect(snapshot.entries).toEqual([{ kind: "blobChunk", root, preimage }]);
-    expect(snapshot.ignoredCount).toBe(3);
   });
 });

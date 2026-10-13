@@ -1481,8 +1481,8 @@
   },
   {
     "file": "scripts/deployment-profiles.mjs",
-    "max": 663,
-    "reason": "validateProfile is the dominant indivisible declaration (273 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
+    "max": 672,
+    "reason": "validateProfile is the dominant indivisible declaration (273 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. A2 (+9): the profile carries the maximum event validity range and refuses one shorter than the maximum validity range."
   },
   {
     "file": "scripts/deployment-profiles.test.mjs",

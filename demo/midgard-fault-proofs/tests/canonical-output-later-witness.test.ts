@@ -5,7 +5,7 @@ import {
   encodeMidgardCekProgramMaterialSidecar,
   encodeMidgardForcedTxCanonical,
   MIDGARD_CONSENSUS_PROFILE,
-  validateMidgardConsensusForcedTxCbor,
+  screenMidgardForcedTxAdmission,
 } from "@al-ft/midgard-core";
 import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import {
@@ -52,11 +52,13 @@ it.each([16384, 16385])(
         addrTxWitsPreimageCbor: encodeCbor([malformedAddress]),
       },
     });
-    expect(
-      validateMidgardConsensusForcedTxCbor(canonicalTransactionCbor),
-    ).toBeNull();
     const material = deriveMidgardForcedTxFaultEvidenceMaterial(
       canonicalTransactionCbor,
+    );
+    // The tx-order mint refuses this witness; the replay still closes the
+    // transaction at its first fault.
+    expect(screenMidgardForcedTxAdmission(material.canonical)?.check).toBe(
+      "address_witness_items_are_fixed(address_witnesses)",
     );
     expect(material.canonical.witnessSet.addrTxWitsPreimageCbor).toEqual(
       encodeCbor([malformedAddress]),

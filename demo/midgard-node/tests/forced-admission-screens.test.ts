@@ -2,6 +2,7 @@ import { computeHash28 } from "@al-ft/midgard-core";
 import { encodeMidgardCekProgramMaterialSidecar } from "@al-ft/midgard-core/cek-proof";
 import {
   decodeSingleCbor,
+  deriveMidgardForcedTxFaultEvidenceMaterial,
   encodeCbor,
   encodeMidgardForcedTxCanonical,
   encodeMidgardTxOutput,
@@ -12,7 +13,7 @@ import {
   MIDGARD_CONSENSUS_PROFILE,
 } from "@al-ft/midgard-core/consensus-profile";
 import {
-  validateMidgardConsensusForcedTxCbor,
+  screenMidgardForcedTxAdmission,
   validateMidgardConsensusTxCbor,
 } from "@al-ft/midgard-core/consensus-validation";
 import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
@@ -108,7 +109,10 @@ describe("forced admission screens", () => {
               }),
             };
       expect(
-        validateMidgardConsensusForcedTxCbor(transaction.canonicalCbor),
+        screenMidgardForcedTxAdmission(
+          deriveMidgardForcedTxFaultEvidenceMaterial(transaction.canonicalCbor)
+            .canonical,
+        ),
       ).toBeNull();
       const orderMaterial = SDK.deriveTxOrderMaterial({
         submittedTxCbor: transaction.canonicalCbor,
@@ -161,10 +165,9 @@ describe("forced admission screens", () => {
         classifyForcedTransactions({
           entries: [await forcedEntry({ label: 8, transaction })],
           initialState,
-          effectiveEndTime: time,
+          blockTime: time,
           consensusProfile: MIDGARD_CONSENSUS_PROFILE,
           validation,
-          resolveProgramMaterialSidecar: () => Effect.succeed(sidecar),
         }),
       );
       expect(classified).toBeDefined();

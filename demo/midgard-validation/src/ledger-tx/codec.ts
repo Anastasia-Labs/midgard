@@ -1,3 +1,4 @@
+import "@al-ft/midgard-core";
 import "@al-ft/midgard-core/codec";
 import "@al-ft/midgard-core/codec/cbor";
 import "@al-ft/midgard-core/codec/forced";
@@ -7,6 +8,7 @@ import "../midgard-redeemers.js";
 import "./codec.copy-native-tx-compact.js";
 import "./codec.encode-vkey-witnesses.js";
 import "./codec.encode-mint.js";
+import "./codec.locate-forced-tx-item-fault.js";
 import "./codec.project-midgard-raw-envelope-for-phase-av1.js";
 export {
   decodeMidgardOutRefBytes,
@@ -16,6 +18,12 @@ export {
   type MidgardRawEnvelopePhaseAProjection,
 } from "./codec.copy-native-tx-compact.js";
 export { decodeMidgardSubmittedTxFromCanonicalCbor } from "./codec.encode-mint.js";
+export {
+  locateMidgardForcedTxOutputFault,
+  locateMidgardForcedTxWitnessScriptFault,
+  type MidgardForcedTxItemFault,
+  type MidgardForcedTxWitnessScriptFault,
+} from "./codec.locate-forced-tx-item-fault.js";
 export {
   computeMidgardTxIdFromCanonicalCbor,
   decodeMidgardLedgerTxFromCanonicalCbor,

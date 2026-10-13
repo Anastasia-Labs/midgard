@@ -5,18 +5,13 @@ import {
   deriveMidgardNativeTxProofSource,
 } from "@al-ft/midgard-core/codec";
 import {
-  decodeMidgardForcedTxFullFromCanonicalCbor,
-  deriveMidgardForcedTxProofSource,
-  type MidgardForcedTxFull,
+  deriveMidgardForcedTxFaultEvidenceMaterial,
+  type MidgardForcedTxProofSource,
 } from "@al-ft/midgard-core/codec/forced";
 import {
   MIDGARD_CONSENSUS_LIMITS,
   MIDGARD_PROTOCOL_VERSION,
 } from "@al-ft/midgard-core/consensus-profile";
-import {
-  MidgardForcedTxAdmissionStopped,
-  validateMidgardConsensusForcedTxCbor,
-} from "@al-ft/midgard-core/consensus-validation";
 import { validateMidgardConsensusTxCbor } from "@al-ft/midgard-core/consensus-validation";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data as LucidData } from "@lucid-evolution/lucid";
@@ -101,19 +96,11 @@ export const validateDaPayloadConsensus = (body: SDK.DaPayloadBody): void => {
   const validateFullTransaction = (
     txCbor: Buffer,
     fieldName: string,
-    sourceKind: "normal" | "forced" = "normal",
-  ):
-    | ReturnType<typeof decodeMidgardNativeTxFullFromCanonicalCbor>
-    | MidgardForcedTxFull => {
-    canonicalTransactionBytes +=
-      txCbor.length + (sourceKind === "forced" ? 1 : 0);
+  ): ReturnType<typeof decodeMidgardNativeTxFullFromCanonicalCbor> => {
+    canonicalTransactionBytes += txCbor.length;
     let tx;
     try {
-      tx = (
-        sourceKind === "forced"
-          ? decodeMidgardForcedTxFullFromCanonicalCbor
-          : decodeMidgardNativeTxFullFromCanonicalCbor
-      )(txCbor);
+      tx = decodeMidgardNativeTxFullFromCanonicalCbor(txCbor);
     } catch (cause) {
       throw new DaPayloadValidationError(
         "malformed_transaction",
@@ -121,15 +108,8 @@ export const validateDaPayloadConsensus = (body: SDK.DaPayloadBody): void => {
         { cause },
       );
     }
-    const violation = (
-      sourceKind === "forced"
-        ? validateMidgardConsensusForcedTxCbor
-        : validateMidgardConsensusTxCbor
-    )(txCbor);
+    const violation = validateMidgardConsensusTxCbor(txCbor);
     if (violation !== null) {
-      if (sourceKind === "forced") {
-        throw new MidgardForcedTxAdmissionStopped(violation);
-      }
       throw new DaPayloadValidationError(
         violation.code === "E_TX_SIZE" ||
         violation.code === "E_FIELD_PREIMAGE_SIZE" ||
@@ -142,9 +122,12 @@ export const validateDaPayloadConsensus = (body: SDK.DaPayloadBody): void => {
     return tx;
   };
   const countLedgerOperations = (
-    tx:
-      | ReturnType<typeof decodeMidgardNativeTxFullFromCanonicalCbor>
-      | MidgardForcedTxFull,
+    tx: {
+      readonly body: {
+        readonly spendInputsPreimageCbor: Buffer;
+        readonly outputsPreimageCbor: Buffer;
+      };
+    },
     fieldName: string,
   ): void => {
     ledgerOperationCount +=
@@ -159,12 +142,13 @@ export const validateDaPayloadConsensus = (body: SDK.DaPayloadBody): void => {
   };
   const assertSourceBinding = (
     source: SDK.L2TransactionSource | SDK.ForcedInclusionTxV1,
-    tx:
-      | ReturnType<typeof decodeMidgardNativeTxFullFromCanonicalCbor>
-      | MidgardForcedTxFull,
+    decoded: {
+      readonly transactionId: Buffer;
+      readonly proofSource: MidgardForcedTxProofSource;
+    },
     fieldName: string,
   ): string => {
-    const decodedTxId = computeMidgardNativeTxId(tx.compact).toString("hex");
+    const decodedTxId = decoded.transactionId.toString("hex");
     const committedTxId = normalizeHex(source.tx_id, {
       fieldName: `${fieldName}.tx_id`,
       byteLength: 32,
@@ -177,16 +161,7 @@ export const validateDaPayloadConsensus = (body: SDK.DaPayloadBody): void => {
     }
     const submitted =
       "submitted_source" in source ? source.submitted_source : source.source;
-    const derived =
-      "submitted_source" in source
-        ? deriveMidgardForcedTxProofSource(tx)
-        : deriveMidgardNativeTxProofSource(
-            "validity" in tx
-              ? tx
-              : (() => {
-                  throw new Error("Normal source requires native material");
-                })(),
-          );
+    const derived = decoded.proofSource;
     const compactCbor = normalizeHex(submitted.compact_cbor, {
       fieldName: `${fieldName}.source.compact_cbor`,
     });
@@ -243,7 +218,16 @@ export const validateDaPayloadConsensus = (body: SDK.DaPayloadBody): void => {
       hexToBytes(preimageHex, `transaction_preimages[${index.toString()}]`),
       `transaction_preimages[${index.toString()}]`,
     );
-    if (assertSourceBinding(source, tx, fieldName) !== committedTxId) {
+    if (
+      assertSourceBinding(
+        source,
+        {
+          transactionId: computeMidgardNativeTxId(tx.compact),
+          proofSource: deriveMidgardNativeTxProofSource(tx),
+        },
+        fieldName,
+      ) !== committedTxId
+    ) {
       throw new DaPayloadValidationError(
         "malformed_transaction",
         `${fieldName}.key does not match the committed transaction source`,
@@ -269,17 +253,33 @@ export const validateDaPayloadConsensus = (body: SDK.DaPayloadBody): void => {
       SDK.ForcedInclusionTxV1Schema as never,
       `${fieldName}.value`,
     );
-    const tx = validateFullTransaction(
-      hexToBytes(
-        preimageHex,
-        `forced_transaction_preimages[${index.toString()}]`,
-      ),
-      `forced_transaction_preimages[${index.toString()}]`,
-      "forced",
-    );
-    assertSourceBinding(forced, tx, fieldName);
+    // A forced transaction is bound by its §5.1 envelope alone: its items
+    // may not decode, and its verdict then rejects it, so only a valid one
+    // has its ledger operations counted.
+    const preimageField = `forced_transaction_preimages[${index.toString()}]`;
+    const preimage = hexToBytes(preimageHex, preimageField);
+    canonicalTransactionBytes += preimage.length + 1;
+    let material;
+    try {
+      material = deriveMidgardForcedTxFaultEvidenceMaterial(preimage);
+    } catch (cause) {
+      throw new DaPayloadValidationError(
+        "malformed_transaction",
+        `${preimageField} is not a canonical forced Midgard transaction envelope`,
+        { cause },
+      );
+    }
+    assertSourceBinding(forced, material, fieldName);
     if (forced.verdict === "ForcedTxValid") {
-      countLedgerOperations(tx, fieldName);
+      try {
+        countLedgerOperations(material.canonical, fieldName);
+      } catch (cause) {
+        throw new DaPayloadValidationError(
+          "malformed_transaction",
+          `${fieldName} is ForcedTxValid but its inputs or outputs do not decode`,
+          { cause },
+        );
+      }
     }
   }
 

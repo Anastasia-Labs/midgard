@@ -400,7 +400,7 @@ test admission_output_at_100_assets_control() {
   control(2, output_policies(1, 100))
 }
 
-// Controlled admitted mint widths: names, signed quantities and pair heads.
+// Controlled admitted mint widths: names and signed quantities.
 fn measured_bytes(bytes: ByteArray) -> ByteArray {
   let size = bytearray.length(bytes)
   let head = if size < 24 {
@@ -456,7 +456,6 @@ fn measured_mint_policies(
   count: Int,
   quantity: ByteArray,
   name_size: Int,
-  pair_head: ByteArray,
 ) -> ByteArray {
   let name = measured_bytes(repeated(#"ee", name_size))
   let items = list.foldr(
@@ -471,7 +470,7 @@ fn measured_mint_policies(
         ),
       )
       let item = bytearray.concat(
-        pair_head,
+        #"82",
         bytearray.concat(
           policy,
           bytearray.concat(#"a1", bytearray.concat(name, quantity)),
@@ -708,111 +707,51 @@ test measured_assets_name_32_200_control() {
 }
 
 test measured_policies_baseline_50() {
-  admitted(5, measured_mint_policies(50, #"01", 0, #"82"))
+  admitted(5, measured_mint_policies(50, #"01", 0))
 }
 
 test measured_policies_baseline_50_control() {
-  control(5, measured_mint_policies(50, #"01", 0, #"82"))
+  control(5, measured_mint_policies(50, #"01", 0))
 }
 
 test measured_policies_baseline_100() {
-  admitted(5, measured_mint_policies(100, #"01", 0, #"82"))
+  admitted(5, measured_mint_policies(100, #"01", 0))
 }
 
 test measured_policies_baseline_100_control() {
-  control(5, measured_mint_policies(100, #"01", 0, #"82"))
+  control(5, measured_mint_policies(100, #"01", 0))
 }
 
 test measured_policies_name_32_50() {
-  admitted(5, measured_mint_policies(50, #"01", 32, #"82"))
+  admitted(5, measured_mint_policies(50, #"01", 32))
 }
 
 test measured_policies_name_32_50_control() {
-  control(5, measured_mint_policies(50, #"01", 32, #"82"))
+  control(5, measured_mint_policies(50, #"01", 32))
 }
 
 test measured_policies_name_32_100() {
-  admitted(5, measured_mint_policies(100, #"01", 32, #"82"))
+  admitted(5, measured_mint_policies(100, #"01", 32))
 }
 
 test measured_policies_name_32_100_control() {
-  control(5, measured_mint_policies(100, #"01", 32, #"82"))
-}
-
-test measured_policies_head_98_50() {
-  admitted(5, measured_mint_policies(50, #"01", 0, #"9802"))
-}
-
-test measured_policies_head_98_50_control() {
-  control(5, measured_mint_policies(50, #"01", 0, #"9802"))
-}
-
-test measured_policies_head_98_100() {
-  admitted(5, measured_mint_policies(100, #"01", 0, #"9802"))
-}
-
-test measured_policies_head_98_100_control() {
-  control(5, measured_mint_policies(100, #"01", 0, #"9802"))
-}
-
-test measured_policies_head_99_50() {
-  admitted(5, measured_mint_policies(50, #"01", 0, #"990002"))
-}
-
-test measured_policies_head_99_50_control() {
-  control(5, measured_mint_policies(50, #"01", 0, #"990002"))
-}
-
-test measured_policies_head_99_100() {
-  admitted(5, measured_mint_policies(100, #"01", 0, #"990002"))
-}
-
-test measured_policies_head_99_100_control() {
-  control(5, measured_mint_policies(100, #"01", 0, #"990002"))
-}
-
-test measured_policies_head_9a_50() {
-  admitted(5, measured_mint_policies(50, #"01", 0, #"9a00000002"))
-}
-
-test measured_policies_head_9a_50_control() {
-  control(5, measured_mint_policies(50, #"01", 0, #"9a00000002"))
-}
-
-test measured_policies_head_9a_100() {
-  admitted(5, measured_mint_policies(100, #"01", 0, #"9a00000002"))
-}
-
-test measured_policies_head_9a_100_control() {
-  control(5, measured_mint_policies(100, #"01", 0, #"9a00000002"))
+  control(5, measured_mint_policies(100, #"01", 32))
 }
 
 test measured_policies_maximum_50() {
-  admitted(
-    5,
-    measured_mint_policies(50, #"3bffffffffffffffff", 32, #"9a00000002"),
-  )
+  admitted(5, measured_mint_policies(50, #"3bffffffffffffffff", 32))
 }
 
 test measured_policies_maximum_50_control() {
-  control(
-    5,
-    measured_mint_policies(50, #"3bffffffffffffffff", 32, #"9a00000002"),
-  )
+  control(5, measured_mint_policies(50, #"3bffffffffffffffff", 32))
 }
 
 test measured_policies_maximum_100() {
-  admitted(
-    5,
-    measured_mint_policies(100, #"3bffffffffffffffff", 32, #"9a00000002"),
-  )
+  admitted(5, measured_mint_policies(100, #"3bffffffffffffffff", 32))
 }
 
 test measured_policies_maximum_100_control() {
-  control(
-    5,
-    measured_mint_policies(100, #"3bffffffffffffffff", 32, #"9a00000002"),
-  )
+  control(5, measured_mint_policies(100, #"3bffffffffffffffff", 32))
 }
 
 test measured_assets_maximum_100() {

@@ -125,6 +125,8 @@ export const rejectionReasonOfSubject = (
       return { WitnessNativeScriptFalse: { script_index: subject.index } };
     case "WitnessNativeScriptMalformed":
       return { WitnessNativeScriptMalformed: { script_index: subject.index } };
+    case "WitnessScriptHeaderMalformed":
+      return { WitnessScriptHeaderMalformed: { script_index: subject.index } };
     case "ObserverOrderInvalid":
       return { ObserverOrderInvalid: { observer_index: subject.index } };
     case "ScriptIntegrityHashMissing":

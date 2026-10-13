@@ -1,3 +1,4 @@
+import { deriveMidgardForcedTxFaultEvidenceMaterial } from "@al-ft/midgard-core/codec/forced";
 import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
 import { type L1SlotConfig } from "@al-ft/midgard-core/l1-slot-config";
 import * as SDK from "@al-ft/midgard-sdk";
@@ -172,6 +173,10 @@ export const replayImportedBlockEvents = (
           encodeTransactionRootValue(cbor).toString("hex") !== source.source[1]
         )
           throw new Error("foreign transaction preimage source mismatch");
+        // A forced preimage is the §5.1 envelope its order authenticated; its
+        // items may not decode, which the replay rejects at the item.
+        if (step.phase === "ForcedTransaction")
+          deriveMidgardForcedTxFaultEvidenceMaterial(cbor);
         const witnessEntries: ValidationMachineLedgerEntry[] = [...ledger].map(
           ([outRef, output]) => ({
             outRef: Buffer.from(outRef, "hex"),

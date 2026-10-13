@@ -34,10 +34,10 @@ import {
 } from "../../src/forced-orders/index.js";
 import {
   FORCED_CONFIG,
-  nativeTransactionCbor,
   orderTx,
   publicationTx,
   publishedOrderMaterial,
+  spendingTransactionCbor,
   WALLET,
 } from "./forced-orders-chain.js";
 
@@ -79,7 +79,7 @@ const orderMaterials = (): Material[] =>
   (materials ??= [
     [0x11, 0x22],
     [0x33, 0x44],
-  ].map((fills) => publishedOrderMaterial(nativeTransactionCbor(fills))));
+  ].map((fills) => publishedOrderMaterial(spendingTransactionCbor(fills))));
 
 const tampered = (bytes: Buffer): Buffer => {
   const copy = Buffer.from(bytes);
@@ -345,7 +345,7 @@ export const forcedOrderSimProjection = (
     if (rows !== null) return rows;
     // The reader at the tip: exactly the unspent orders, at their parent points.
     const tip = canonical[canonical.length - 1]?.point ?? SIM_ORIGIN.point;
-    const read = await forcedOrdersAt(store, FORCED_CONFIG, tip);
+    const read = await forcedOrdersAt(store, tip);
     if (read.kind !== "ok") return `forcedOrdersAt: ${read.kind}`;
     const live = difference(
       "live forced orders",

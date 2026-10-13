@@ -277,13 +277,14 @@ describe("independent validation event replay", () => {
     });
   });
 
-  // Phase A refuses these redeemer data bytes at canonicalDecode (the first
-  // spells a constructor's fields definite-length, the second is not Plutus
-  // Data), so the replay owes the typed direct-proof failure, not a defect
+  // Phase A refuses these redeemer data bytes at canonicalDecode for both
+  // sources (the first spells a constructor's fields definite-length, the
+  // second is not Plutus Data), so the replay owes the typed direct-proof failure, not a defect
   // from the trace re-decoding the bytes phase A refused.
   it.each([
     ["normal", "d8798101"],
     ["normal", "60"],
+    ["forced", "d8798101"],
     ["forced", "60"],
   ] as const)(
     "returns the typed canonicalDecode failure for %s redeemer data %s",
@@ -338,154 +339,108 @@ describe("independent validation event replay", () => {
     },
   );
 
-  it.each([
-    { dataHex: "d8799f01ff", priorCanonical: false },
-    { dataHex: "d8798101", priorCanonical: false },
-    { dataHex: "d8798101", priorCanonical: true },
-  ])(
-    "forced identity spend $dataHex prior canonical=$priorCanonical agrees across intake, classification and mandatory trace",
-    async ({ dataHex, priorCanonical }) => {
-      const program = buildMidgardCanonicalCekProgram(
-        Buffer.from(
-          UPLCEncoder.compile(
-            new UPLCProgram([1, 1, 0], new Lambda(new UPLCVar(0))),
-          ),
+  it("a forced identity spend agrees across intake, classification and mandatory trace", async () => {
+    const dataHex = "d8799f01ff";
+    const program = buildMidgardCanonicalCekProgram(
+      Buffer.from(
+        UPLCEncoder.compile(
+          new UPLCProgram([1, 1, 0], new Lambda(new UPLCVar(0))),
         ),
-      );
-      const script = plutusV3ScriptWitness(program.envelopeCbor);
-      const spent = outRefFromByte(0x1d);
-      const entries = [
+      ),
+    );
+    const script = plutusV3ScriptWitness(program.envelopeCbor);
+    const spent = outRefFromByte(0x1d);
+    const entries = [
+      {
+        outRef: spent,
+        output: makeProtectedScriptOutput(
+          hashScriptWitness(script),
+          FUNDED_OUTPUT_LOVELACE,
+        ),
+      },
+    ];
+    const native = makeNativeTx({
+      spendInputs: [spent],
+      outputs: [makeOutput(FUNDED_OUTPUT_LOVELACE)],
+      scriptWitnesses: [script],
+      scriptLanguages: ["PlutusV3"],
+      redeemerTxWitsPreimageCbor: makeRedeemersCbor([
         {
-          outRef: spent,
-          output: makeProtectedScriptOutput(
-            hashScriptWitness(script),
-            FUNDED_OUTPUT_LOVELACE,
-          ),
+          tag: 0,
+          index: 0n,
+          data: Buffer.from(dataHex, "hex"),
+          exUnits: [5_000_000n, 1_000_000_000n],
         },
-      ];
-      const native = makeNativeTx({
-        spendInputs: [spent],
-        outputs: [makeOutput(FUNDED_OUTPUT_LOVELACE)],
-        scriptWitnesses: [script],
-        scriptLanguages: ["PlutusV3"],
-        redeemerTxWitsPreimageCbor: makeRedeemersCbor([
-          ...(priorCanonical
-            ? [
-                {
-                  tag: 0,
-                  index: 0n,
-                  data: Buffer.from("d8799f01ff", "hex"),
-                  exUnits: [5_000_000n, 1_000_000_000n] as const,
-                },
-              ]
-            : []),
+      ]),
+    });
+    const txCbor = encodeMidgardForcedTxCanonical(
+      materializeMidgardForcedTxFromCanonical(native.tx),
+    );
+    const material = encodeMidgardCekProgramMaterialSidecar([
+      ...program.material.values(),
+    ]);
+    const phaseA = await Effect.runPromise(
+      runPhaseAValidation(
+        [
           {
-            tag: 0,
-            index: 0n,
-            data: Buffer.from(dataHex, "hex"),
-            exUnits: [5_000_000n, 1_000_000_000n],
+            ...makeQueued(native.txId, txCbor),
+            sourceKind: "forced",
+            programMaterialSidecarCbor: material,
           },
-        ]),
-      });
-      const txCbor = encodeMidgardForcedTxCanonical(
-        materializeMidgardForcedTxFromCanonical(native.tx),
-      );
-      const material = encodeMidgardCekProgramMaterialSidecar([
-        ...program.material.values(),
-      ]);
-      const phaseA = await Effect.runPromise(
-        runPhaseAValidation(
-          [
-            {
-              ...makeQueued(native.txId, txCbor),
-              sourceKind: "forced",
-              programMaterialSidecarCbor: material,
-            },
-          ],
-          { ...context, concurrency: 1, strictnessProfile: "phase1_midgard" },
+        ],
+        { ...context, concurrency: 1, strictnessProfile: "phase1_midgard" },
+      ),
+    );
+    expect(phaseA.rejected).toEqual([]);
+    expect(
+      phaseA.accepted[0]!.ledgerTx.redeemers[0]!.dataCbor.toString("hex"),
+    ).toBe(dataHex);
+    const phaseB = await Effect.runPromise(
+      runPhaseBValidationWithPatch(
+        phaseA.accepted,
+        new Map(
+          entries.map(({ outRef, output }) => [outRef.toString("hex"), output]),
         ),
-      );
-      expect(phaseA.rejected).toEqual([]);
-      expect(
-        phaseA.accepted[0]!.ledgerTx.redeemers[
-          priorCanonical ? 1 : 0
-        ]!.dataCbor.toString("hex"),
-      ).toBe(dataHex);
-      const phaseB = await Effect.runPromise(
-        runPhaseBValidationWithPatch(
-          phaseA.accepted,
-          new Map(
-            entries.map(({ outRef, output }) => [
-              outRef.toString("hex"),
-              output,
-            ]),
-          ),
-          {
-            l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
-            nowCardanoSlotNo: 100n,
-            bucketConcurrency: 1,
-            enforceScriptBudget: true,
-          },
-        ),
-      );
-      const noncanonical = dataHex === "d8798101";
-      expect(phaseB.accepted).toHaveLength(noncanonical ? 0 : 1);
-      expect(phaseB.rejected).toHaveLength(noncanonical ? 1 : 0);
-      if (noncanonical)
-        expect(phaseB.rejected[0]).toMatchObject({
-          code: RejectCodes.InvalidFieldType,
-          consensusPhase: "scriptSources",
-          subject: {
-            arm: "RedeemerMalformed",
-            index: priorCanonical ? 1n : 0n,
-          },
-        });
-      const result = await Effect.runPromise(
-        replayValidationMachineEvent({
+        {
           l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
-          ...context,
-          sourceKind: "forced",
-          canonicalTransactionCbor: txCbor,
-          programMaterialSidecarCbor: material,
-          eventKeyCbor: Buffer.from(
-            Data.to(
-              {
-                ForcedTransactionEventKey: {
-                  tx_order_id: {
-                    transactionId: "22".repeat(32),
-                    outputIndex: 0n,
-                  },
+          nowCardanoSlotNo: 100n,
+          bucketConcurrency: 1,
+          enforceScriptBudget: true,
+        },
+      ),
+    );
+    expect(phaseB.accepted).toHaveLength(1);
+    expect(phaseB.rejected).toEqual([]);
+    const result = await Effect.runPromise(
+      replayValidationMachineEvent({
+        l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
+        ...context,
+        sourceKind: "forced",
+        canonicalTransactionCbor: txCbor,
+        programMaterialSidecarCbor: material,
+        eventKeyCbor: Buffer.from(
+          Data.to(
+            {
+              ForcedTransactionEventKey: {
+                tx_order_id: {
+                  transactionId: "22".repeat(32),
+                  outputIndex: 0n,
                 },
               },
-              EventKey,
-            ),
-            "hex",
+            },
+            EventKey,
           ),
-          ledgerWitnessEntries: entries,
-          priorUtxosRoot: (await validationMachineLedgerRoot(entries)).toString(
-            "hex",
-          ),
-        }),
-      );
-      expect(result.trace.verdict).toBe(noncanonical ? "rejected" : "accepted");
-      expect(result.trace.rejectionCode).toBe(
-        noncanonical ? RejectCodes.InvalidFieldType : null,
-      );
-      if (noncanonical) {
-        expect(result.statePatch).toEqual({
-          deletedOutRefs: [],
-          upsertedOutRefs: [],
-        });
-        const last = result.trace.witnesses.at(-2)!;
-        expect(last.phase).toBe("scriptSources");
-        expect(last.auxiliary).toMatchObject({
-          kind: "redeemerItemStep",
-          control: { itemIndex: priorCanonical ? 1 : 0, dataLength: 4 },
-          witness: { action: { kind: "traverseData", action: null } },
-        });
-      }
-    },
-  );
+          "hex",
+        ),
+        ledgerWitnessEntries: entries,
+        priorUtxosRoot: (await validationMachineLedgerRoot(entries)).toString(
+          "hex",
+        ),
+      }),
+    );
+    expect(result.trace.verdict).toBe("accepted");
+    expect(result.trace.rejectionCode).toBeNull();
+  });
 
   it("refuses stale prior ledger context before deriving a transaction verdict", async () => {
     const fixture = plainTransfer();

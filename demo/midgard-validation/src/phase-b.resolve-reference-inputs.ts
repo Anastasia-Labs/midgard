@@ -9,7 +9,6 @@ import {
   type MidgardTxOutput,
   type ScriptLanguageName,
 } from "@al-ft/midgard-core/codec";
-import { decodeMidgardForcedTxFullFromCanonicalCbor } from "@al-ft/midgard-core/codec/forced";
 import { collectMidgardEventProgramEnvelopes } from "@al-ft/midgard-core/script-proof";
 
 import { LedgerColumns, type LedgerEntry } from "./ledger.js";
@@ -218,15 +217,14 @@ export const resolveReferenceInputs = (
     scriptHashes.add(source.scriptHash);
   }
 
+  // A forced transaction runs no program and carries no program material.
   const sidecar = node.candidate.submission.programMaterialSidecarCbor;
-  if (sidecar !== null) {
+  if (sidecar !== null && node.candidate.submission.sourceKind !== "forced") {
     try {
       const material = decodeMidgardCekProgramMaterialSidecar(sidecar);
-      const canonicalTx = (
-        node.candidate.submission.sourceKind === "forced"
-          ? decodeMidgardForcedTxFullFromCanonicalCbor
-          : decodeMidgardNativeTxFullFromCanonicalCbor
-      )(node.candidate.submission.txCbor);
+      const canonicalTx = decodeMidgardNativeTxFullFromCanonicalCbor(
+        node.candidate.submission.txCbor,
+      );
       // Every reference input is present here, so this is the event's whole
       // program set, the one block builders and DA committee members derive.
       verifyMidgardCekProgramMaterialBundle(

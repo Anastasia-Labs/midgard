@@ -14,7 +14,7 @@ import { canonical } from "./consensus-validation.canonical.js";
 // The new raw envelope projection is distinct from the strict script decoder;
 // its nearest source-proof suite already fills the 500-line module budget.
 describe("forced canonical script envelope projection", () => {
-  it("preserves exact forced native envelopes without widening normal or reference-output admission", () => {
+  it("collects no program material for a forced transaction and keeps the normal decoder strict", () => {
     const malformedNative = Buffer.from("820043820700", "hex");
     const base = canonical();
     const tx = {
@@ -34,7 +34,6 @@ describe("forced canonical script envelope projection", () => {
       language: "NativeCardano",
       scriptBytes: Buffer.from("820700", "hex"),
     });
-    expect(collectMidgardAttachedProgramEnvelopes(tx, "forced")).toEqual([]);
     expect(
       collectMidgardEventProgramEnvelopes(tx, () => undefined, "forced"),
     ).toEqual([]);

@@ -1,16 +1,10 @@
 import { Store, Trie } from "@aiken-lang/merkle-patricia-forestry";
-import { type MidgardCekProgramEnvelope } from "@al-ft/midgard-core/cek-proof";
+import { encodeMidgardCekProgramMaterialSidecar } from "@al-ft/midgard-core/cek-proof";
 import {
   computeMidgardForcedTxProofCommitment,
-  decodeMidgardForcedTxFullFromCanonicalCbor,
-  deriveMidgardForcedTxProofSource,
+  deriveMidgardForcedTxFaultEvidenceMaterial,
 } from "@al-ft/midgard-core/codec";
 import { type MidgardConsensusProfile } from "@al-ft/midgard-core/consensus-profile";
-import { type MidgardForcedTxAdmissionStopped } from "@al-ft/midgard-core/consensus-validation";
-import {
-  collectMidgardAttachedProgramEnvelopes,
-  collectMidgardEventProgramEnvelopes,
-} from "@al-ft/midgard-core/script-proof";
 import { type ForcedRejectionStopped } from "@al-ft/midgard-fault-proofs";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
@@ -34,7 +28,6 @@ import {
   acceptedTransactionLedgerWitnesses,
   applyValidationLedgerMutations,
   type ClassifiedForcedTransaction,
-  type ForcedProgramMaterialSidecarResolver,
   forcedRejectionVerdict,
   rejectedForcedTransactionLedgerWitnesses,
 } from "./event-window.forced-verdict-for-rejection.js";
@@ -46,24 +39,26 @@ import {
 import { type ProcessMpfsConfig } from "./process-config.js";
 import { type MpfBatchOp } from "./types.js";
 
-export const classifyForcedTransactions = <R>({
+/** A forced transaction runs no program, so its material is always empty. */
+const FORCED_PROGRAM_MATERIAL_SIDECAR = encodeMidgardCekProgramMaterialSidecar(
+  [],
+);
+
+export const classifyForcedTransactions = ({
   entries,
   initialState,
-  effectiveEndTime,
+  blockTime,
   consensusProfile,
   validation,
-  resolveProgramMaterialSidecar,
 }: {
   readonly entries: readonly ForcedTransactionsDB.Entry[];
   readonly initialState: Map<string, Buffer>;
-  readonly effectiveEndTime: Date;
+  readonly blockTime: Date;
   readonly consensusProfile: MidgardConsensusProfile;
   readonly validation: NonNullable<ProcessMpfsConfig["forcedValidation"]>;
-  readonly resolveProgramMaterialSidecar: ForcedProgramMaterialSidecarResolver<R>;
 }): Effect.Effect<
   readonly ClassifiedForcedTransaction[],
-  DatabaseError | ForcedRejectionStopped | MidgardForcedTxAdmissionStopped,
-  R
+  DatabaseError | ForcedRejectionStopped
 > =>
   Effect.gen(function* () {
     const state = new Map(
@@ -116,48 +111,9 @@ export const classifyForcedTransactions = <R>({
         );
       }
       const txId = entry[ForcedTransactionsDB.Columns.TX_ID];
-      const canonicalTx = yield* Effect.try({
-        try: () => decodeMidgardForcedTxFullFromCanonicalCbor(nativeTxCbor),
-        catch: (cause) =>
-          new DatabaseError({
-            table: ForcedTransactionsDB.tableName,
-            message:
-              "Forced transaction canonical bytes cannot be decoded while resolving CEK program material",
-            cause,
-          }),
-      });
-      // The program material of a forced transaction is the shared per-event
-      // set: its attached programs plus the script_refs of its reference
-      // inputs present in the state immediately before it, whatever its
-      // verdict. Malformed attached script/output bytes remain a deterministic
-      // Phase A rejection: no material can be authenticated for a
-      // non-envelope.
-      const eventEnvelopes = yield* (() => {
-        try {
-          collectMidgardAttachedProgramEnvelopes(canonicalTx, "forced");
-        } catch {
-          return Effect.succeed(
-            Object.freeze([]) as readonly MidgardCekProgramEnvelope[],
-          );
-        }
-        return Effect.try({
-          try: () =>
-            collectMidgardEventProgramEnvelopes(
-              canonicalTx,
-              (outRefHex) => state.get(outRefHex),
-              "forced",
-            ),
-          catch: (cause) =>
-            new DatabaseError({
-              table: ForcedTransactionsDB.tableName,
-              message:
-                "A ledger output referenced by a forced transaction has a malformed script_ref",
-              cause,
-            }),
-        });
-      })();
-      const programMaterialSidecarCbor =
-        yield* resolveProgramMaterialSidecar(eventEnvelopes);
+      const programMaterialSidecarCbor = Buffer.from(
+        FORCED_PROGRAM_MATERIAL_SIDECAR,
+      );
       const phaseA = yield* runPhaseAValidation(
         [
           {
@@ -226,9 +182,7 @@ export const classifyForcedTransactions = <R>({
           [acceptedCandidate],
           state,
           {
-            nowCardanoSlotNo: validation.slotForUnixTime(
-              effectiveEndTime.getTime(),
-            ),
+            nowCardanoSlotNo: validation.slotForUnixTime(blockTime.getTime()),
             bucketConcurrency: validation.bucketConcurrency,
             l1SlotConfig: validation.l1SlotConfig,
             enforceScriptBudget: true,
@@ -266,9 +220,17 @@ export const classifyForcedTransactions = <R>({
             },
             inputOutRefHexes,
           );
-          transitionEffect = canonicalTransitionEffectFromStatePatch(
-            phaseB.statePatch,
-          );
+          transitionEffect = yield* Effect.try({
+            try: () =>
+              canonicalTransitionEffectFromStatePatch(phaseB.statePatch),
+            catch: (cause) =>
+              new DatabaseError({
+                table: ForcedTransactionsDB.tableName,
+                message:
+                  "Forced transaction state patch has no canonical transition effect",
+                cause,
+              }),
+          });
           rawLedgerOps = transitionEffectToRawLedgerOps(transitionEffect);
           ledgerOps = transitionEffectToLedgerOps(transitionEffect);
           ledgerMutationSteps = yield* Effect.tryPromise({
@@ -291,7 +253,8 @@ export const classifyForcedTransactions = <R>({
       });
       // Classification must preserve the submission identity authenticated at ingest.
       const submittedSource = yield* Effect.try({
-        try: () => deriveMidgardForcedTxProofSource(canonicalTx),
+        try: () =>
+          deriveMidgardForcedTxFaultEvidenceMaterial(nativeTxCbor).proofSource,
         catch: (cause) =>
           new DatabaseError({
             table: ForcedTransactionsDB.tableName,

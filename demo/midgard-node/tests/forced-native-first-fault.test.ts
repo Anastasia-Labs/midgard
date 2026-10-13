@@ -47,7 +47,7 @@ it.each([
         initialState: new Map(
           fixture.entries.map((e) => [e.outRef.toString("hex"), e.output]),
         ),
-        effectiveEndTime: new Date(nativeFaultContext.blockEndTimeMs),
+        blockTime: new Date(nativeFaultContext.blockEndTimeMs),
         consensusProfile: MIDGARD_CONSENSUS_PROFILE,
         validation: {
           l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
@@ -57,8 +57,6 @@ it.each([
           bucketConcurrency: 1,
           slotForUnixTime: () => 100n,
         },
-        resolveProgramMaterialSidecar: () =>
-          Effect.succeed(fixture.programMaterialSidecarCbor),
       }),
     );
     expect(result!.rejectionCode).toBe(fixture.trace.rejectionCode);

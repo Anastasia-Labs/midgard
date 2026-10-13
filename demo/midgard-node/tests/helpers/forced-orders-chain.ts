@@ -8,13 +8,12 @@
 import {
   aikenSerialisedPlutusDataCborPreservingMapOrder,
   computeMidgardForcedTxProofCommitment,
-  computeMidgardNativeTxId,
-  decodeMidgardForcedTxFullFromCanonicalCbor,
-  deriveMidgardForcedTxProofSource,
+  deriveMidgardForcedTxFaultEvidenceMaterial,
   EMPTY_CBOR_LIST,
   EMPTY_NULL_ROOT,
   encodeCbor,
   encodeMidgardForcedTxCanonical,
+  encodeMidgardSpendInputItem,
   encodeMidgardTxOutput,
   materializeMidgardForcedTxFromCanonical,
   MIDGARD_NATIVE_NETWORK_ID_NONE,
@@ -47,7 +46,6 @@ import type { ChainDriver } from "./l1-events-store.js";
 export const FORCED_CONFIG: ForcedOrderConfig = {
   policyId: "f1".repeat(28),
   orderAddress: `70${"f2".repeat(28)}`,
-  cekMaterialCredential: "f3".repeat(28),
 };
 
 /** The order creator's wallet: untracked, so its outputs are not facts. */
@@ -108,6 +106,44 @@ export const nativeTransactionCbor = (outputFills: readonly number[]): Buffer =>
   );
 
 /**
+ * A canonical native transaction the tx-order mint admits whose one
+ * non-empty field is its spend inputs, one per fill: an order for it carries
+ * exactly one field.
+ */
+export const spendingTransactionCbor = (fills: readonly number[]): Buffer =>
+  encodeMidgardForcedTxCanonical(
+    materializeMidgardForcedTxFromCanonical({
+      version: MIDGARD_NATIVE_TX_VERSION,
+      body: {
+        spendInputsPreimageCbor: encodeCbor(
+          fills.map((fill) =>
+            encodeMidgardSpendInputItem({
+              txId: Buffer.alloc(32, fill),
+              outputIndex: 0,
+            }),
+          ),
+        ),
+        referenceInputsPreimageCbor: EMPTY_CBOR_LIST,
+        outputsPreimageCbor: EMPTY_CBOR_LIST,
+        fee: 0n,
+        validityIntervalStart: MIDGARD_POSIX_TIME_NONE,
+        validityIntervalEnd: MIDGARD_POSIX_TIME_NONE,
+        requiredObserversPreimageCbor: EMPTY_CBOR_LIST,
+        requiredSignersPreimageCbor: EMPTY_CBOR_LIST,
+        mintPreimageCbor: EMPTY_CBOR_LIST,
+        scriptIntegrityHash: EMPTY_NULL_ROOT,
+        auxiliaryDataHash: EMPTY_NULL_ROOT,
+        networkId: MIDGARD_NATIVE_NETWORK_ID_NONE,
+      },
+      witnessSet: {
+        addrTxWitsPreimageCbor: EMPTY_CBOR_LIST,
+        scriptTxWitsPreimageCbor: EMPTY_CBOR_LIST,
+        redeemerTxWitsPreimageCbor: EMPTY_CBOR_LIST,
+      },
+    }),
+  );
+
+/**
  * An order's material and its carriage plan with every field published
  * (tier 2; nothing inline), so the order reads its preimage off a
  * reference input.
@@ -135,12 +171,13 @@ export const publishedOrderMaterial = (submittedTxCbor: Buffer) => {
  * so ingestion has to meet transactions the screen would have refused.
  */
 export const inlineOrderMaterial = (submittedTxCbor: Buffer) => {
-  const tx = decodeMidgardForcedTxFullFromCanonicalCbor(submittedTxCbor);
-  const source = deriveMidgardForcedTxProofSource(tx);
+  // The envelope alone: an admitted order's items need not decode.
+  const evidence = deriveMidgardForcedTxFaultEvidenceMaterial(submittedTxCbor);
+  const source = evidence.proofSource;
   const empty = encodeMidgardFieldArrayHeader(0);
   return {
     material: {
-      transactionId: computeMidgardNativeTxId(tx.compact).toString("hex"),
+      transactionId: evidence.transactionId.toString("hex"),
       transactionCommitment:
         computeMidgardForcedTxProofCommitment(source).toString("hex"),
       submitted_source: {

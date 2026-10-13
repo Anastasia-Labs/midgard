@@ -6,7 +6,7 @@ import {
   MIDGARD_CONSENSUS_PROFILE,
   type MidgardConsensusProfile,
 } from "@al-ft/midgard-core";
-import { decodeMidgardForcedTxFullFromCanonicalCbor } from "@al-ft/midgard-core/codec/forced";
+import { deriveMidgardForcedTxFaultEvidenceMaterial } from "@al-ft/midgard-core/codec/forced";
 import {
   type L1SlotConfig,
   parseL1SlotConfig,
@@ -112,13 +112,15 @@ export const replayValidationVerdictEvent = (
         consensusProfile: MIDGARD_CONSENSUS_PROFILE,
         canonicalTransactionCbor,
         transactionId: Buffer.from(
-          computeMidgardNativeTxId(
-            (input.sourceKind === "forced"
-              ? decodeMidgardForcedTxFullFromCanonicalCbor
-              : decodeMidgardNativeTxFullFromCanonicalCbor)(
-              canonicalTransactionCbor,
-            ).compact,
-          ),
+          input.sourceKind === "forced"
+            ? deriveMidgardForcedTxFaultEvidenceMaterial(
+                canonicalTransactionCbor,
+              ).transactionId
+            : computeMidgardNativeTxId(
+                decodeMidgardNativeTxFullFromCanonicalCbor(
+                  canonicalTransactionCbor,
+                ).compact,
+              ),
         ),
         programMaterialSidecarCbor: Buffer.from(
           input.programMaterialSidecarCbor ??

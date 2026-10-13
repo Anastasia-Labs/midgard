@@ -1,8 +1,6 @@
 import {
   computeMidgardForcedTxProofCommitment,
-  computeMidgardNativeTxId,
-  decodeMidgardForcedTxFullFromCanonicalCbor,
-  deriveMidgardForcedTxProofSourceFromCanonicalCbor,
+  deriveMidgardForcedTxFaultEvidenceMaterial,
 } from "@al-ft/midgard-core/codec";
 import {
   aikenSerialisedPlutusDataCborPreservingMapOrder,
@@ -84,14 +82,14 @@ export const bindWatcherOriginEventClaim = (
     const origin = Data.from(event.eventCborHex, TxOrderEvent);
     const committed = Data.from(claim.valueCborHex, ForcedInclusionTxV1);
     const bytes = Buffer.from(claim.canonicalNativeTxCborHex, "hex");
-    const native = decodeMidgardForcedTxFullFromCanonicalCbor(bytes);
-    const submitted = deriveMidgardForcedTxProofSourceFromCanonicalCbor(bytes);
+    // The §5.1 envelope binds the order whether or not its items decode.
+    const material = deriveMidgardForcedTxFaultEvidenceMaterial(bytes);
+    const submitted = material.proofSource;
     const operatorValidity = watcherForcedOperatorVerdict(committed.verdict);
     if (
       Data.to(origin.id, OutputReference) !== claim.eventIdCborHex ||
       operatorValidity === null ||
-      origin.tx.tx_id !==
-        computeMidgardNativeTxId(native.compact).toString("hex") ||
+      origin.tx.tx_id !== material.transactionId.toString("hex") ||
       committed.tx_id !== origin.tx.tx_id ||
       origin.tx.transaction_commitment !==
         computeMidgardForcedTxProofCommitment(submitted).toString("hex") ||

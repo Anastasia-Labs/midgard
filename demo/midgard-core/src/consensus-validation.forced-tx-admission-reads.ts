@@ -134,22 +134,6 @@ export const headValue = (
 };
 
 /**
- * A definite array header, the twin of `decode_definite_array_header_at`: any
- * width up to four argument bytes, minimal or not.
- */
-export const definiteArrayHeaderAt = (
-  bytes: Uint8Array,
-  offset: number,
-): [number, bigint] => {
-  const tag = byteAt(bytes, offset);
-  if (tag >= 0x80 && tag <= 0x97) return [offset + 1, BigInt(tag - 0x80)];
-  if (tag === 0x98) return [offset + 2, headValue(bytes, offset, 1)];
-  if (tag === 0x99) return [offset + 3, headValue(bytes, offset, 2)];
-  if (tag === 0x9a) return [offset + 5, headValue(bytes, offset, 4)];
-  throw new Malformed(`array head ${tag.toString(16)} at ${offset}`);
-};
-
-/**
  * A canonical (minimal) head of `major` with at most four argument bytes, the
  * shared arithmetic of `decode_canonical_bytes_at` and
  * `decode_canonical_map_header_at`: the offset after the head and its argument.

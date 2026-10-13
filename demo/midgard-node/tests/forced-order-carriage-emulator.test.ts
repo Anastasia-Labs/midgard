@@ -49,7 +49,7 @@ import {
   forcedOrderProjection,
 } from "../src/forced-orders/index.js";
 import { AlwaysSucceedsContract } from "../src/services/always-succeeds.js";
-import { nativeTransactionCbor } from "./helpers/forced-orders-chain.js";
+import { spendingTransactionCbor } from "./helpers/forced-orders-chain.js";
 import {
   db,
   forcedRows,
@@ -139,7 +139,7 @@ const signedTxSource = (txs: readonly Buffer[]): TxContentSource => {
  * signed publication and order and the submitted transaction.
  */
 const publishAndOrder = async (h: Harness, tamper: boolean) => {
-  const submitted = nativeTransactionCbor([0x11, 0x22]);
+  const submitted = spendingTransactionCbor([0x11, 0x22]);
   const material = SDK.deriveTxOrderMaterial({
     submittedTxCbor: submitted,
     owner: h.creatorKeyHash,

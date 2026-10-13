@@ -4,9 +4,7 @@ use aiken/primitive/bytearray
 use cardano/assets.{PolicyId}
 use cardano/transaction.{InlineDatum, Input, Output}
 use midgard/common/utils
-use midgard/fraud_proofs/native_tx/codec.{
-  decode_canonical_int_at, decode_definite_array_header_at,
-}
+use midgard/fraud_proofs/native_tx/codec.{decode_canonical_int_at}
 use midgard/fraud_proofs/native_tx/compact.{
   decode_native_tx_field_preimage_lengths_v1, forced_tx_proof_commitment_v1,
   verify_forced_tx_proof_source_v1,
@@ -718,8 +716,8 @@ fn mint_assets_are_valid(
 /// Rule 6 on the mint items from `offset` to the field's `end`: the stage-6
 /// mint fold's checks, through the decoders and the shared predicates
 /// (`midgard/mint_order`) it uses, so an admitted mint field never stalls the
-/// fold. Each item is `[policy_id, {asset_name => quantity}]`, policies
-/// strictly ascending. The fold's item-count bound is not repeated: an item
+/// fold. Each item is `[policy_id, {asset_name => quantity}]` under the
+/// minimal two-item array head, policies strictly ascending. The fold's item-count bound is not repeated: an item
 /// that passes is at least 34 bytes, so a field holds far fewer.
 fn mint_items_from(
   bytes: ByteArray,
@@ -740,14 +738,11 @@ fn mint_items_from(
       offset + 3
     }
     let item_end = skip_bytes(bytes, offset)
-    let Pair(policy_offset, item_count) = decode_definite_array_header_at(
-      bytes,
-      start,
-    )
-    expect item_count == 2
+    // The entry's header is the minimal two-item array head.
+    expect builtin.index_bytearray(bytes, start) == 0x82
     let Pair(assets_header_offset, policy_id) = decode_canonical_bytes_at(
       bytes,
-      policy_offset,
+      start + 1,
     )
     let Pair(assets_offset, asset_count) = decode_canonical_map_header_at(
       bytes,

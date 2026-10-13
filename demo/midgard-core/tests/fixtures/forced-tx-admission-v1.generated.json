@@ -1736,7 +1736,7 @@
       "networkId": "0"
     },
     {
-      "name": "mint_two_policies_burning",
+      "name": "mint_entry_with_the_minimal_array_head",
       "expected": null,
       "halts": false,
       "fields": [
@@ -1745,7 +1745,7 @@
         "815829a200581d617777777777777777777777777777777777777777777777777777777701821a001e8480a0",
         "80",
         "81581cbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
-        "82582382581c11111111111111111111111111111111111111111111111111111111a1416124584b82581c22222222222222222222222222222222222222222222222222222222a158207a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a1b0000000100000000",
+        "81582382581c11111111111111111111111111111111111111111111111111111111a1416101",
         "80",
         "815865825820dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd5840dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
         "80"
@@ -1756,7 +1756,7 @@
       "networkId": "0"
     },
     {
-      "name": "mint_entry_with_a_wide_array_head",
+      "name": "mint_two_policies_burning",
       "expected": null,
       "halts": false,
       "fields": [
@@ -1765,7 +1765,7 @@
         "815829a200581d617777777777777777777777777777777777777777777777777777777701821a001e8480a0",
         "80",
         "81581cbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
-        "8158249802581c11111111111111111111111111111111111111111111111111111111a1416101",
+        "82582382581c11111111111111111111111111111111111111111111111111111111a1416124584b82581c22222222222222222222222222222222222222222222222222222222a158207a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a1b0000000100000000",
         "80",
         "815865825820dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd5840dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
         "80"
@@ -2006,6 +2006,26 @@
         "80",
         "81581cbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
         "81582383581c11111111111111111111111111111111111111111111111111111111a1416101",
+        "80",
+        "815865825820dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd5840dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+        "80"
+      ],
+      "validityIntervalEnd": "-1",
+      "scriptIntegrityHash": "01f4b788593d4f70de2a45c2e1e87088bfbdfa29577ae1b62aba60e095e3ab53",
+      "auxiliaryDataHash": "01f4b788593d4f70de2a45c2e1e87088bfbdfa29577ae1b62aba60e095e3ab53",
+      "networkId": "0"
+    },
+    {
+      "name": "mint_entry_with_a_wide_array_head",
+      "expected": "mint_items_are_valid(mint)",
+      "halts": true,
+      "fields": [
+        "815826825820aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa190003",
+        "80",
+        "815829a200581d617777777777777777777777777777777777777777777777777777777701821a001e8480a0",
+        "80",
+        "81581cbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "8158249802581c11111111111111111111111111111111111111111111111111111111a1416101",
         "80",
         "815865825820dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd5840dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
         "80"

@@ -8,8 +8,7 @@
  * `startup_preparation_failed` and `l1_driver_recompute_failed`; a refused
  * gated write's `l1_follower_view_stale` and `l1_driver_recompute_pending`;
  * the forced-order hook's
- * `forced_order_carriage_pending`, `forced_order_admission_stopped` and
- * `forced_order_ingestion_failed`; and landed-block processing's, from
+ * `forced_order_carriage_pending` and `forced_order_ingestion_failed`; and landed-block processing's, from
  * `landed-blocks/holds.ts`: `landed_block_invalid`,
  * `landed_block_own_journal_mismatch`,
  * `landed_block_follower_schema_missing`, `landed_block_event_unknown`,

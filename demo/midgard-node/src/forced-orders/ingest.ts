@@ -20,10 +20,11 @@
  * (`forcedOrderHorizon`), so it also holds every block that would end at
  * or after it. With no content source configured the pending detail
  * leads with `NO_CONTENT_SOURCE`: only the local ledger and the
- * follower's own transactions can resolve its carriage. An order one of the three ruled admission stops refuses (the
- * auxiliary-data hash, the script program envelope, the output value size)
- * holds `forced_order_admission_stopped`, naming the stop; any other order
- * that cannot be rebuilt holds `forced_order_ingestion_failed`.
+ * follower's own transactions can resolve its carriage. A rebuilt order is
+ * always ingested: its row is read from the §5.1 envelope the tx-order mint
+ * authenticated, so an order whose items do not decode still gets a row and
+ * classification gives it a verdict. An order that cannot be rebuilt holds
+ * `forced_order_ingestion_failed`.
  *
  * A rollback that removes an order removes its follower key and its order
  * row (N10b). In the same transaction, while the follower is caught up, the
@@ -38,7 +39,6 @@
  * from its own bytes, to the same row.
  */
 import type { MidgardConsensusProfile } from "@al-ft/midgard-core/consensus-profile";
-import type { MidgardForcedTxAdmissionStopped } from "@al-ft/midgard-core/consensus-validation";
 import {
   type FactStore,
   type LedgerOutputs,
@@ -48,8 +48,7 @@ import {
 } from "@al-ft/midgard-l1-follower";
 import * as SDK from "@al-ft/midgard-sdk";
 import { SqlClient } from "@effect/sql";
-import type { UTxO } from "@lucid-evolution/lucid";
-import { Cause, Effect, Exit, Option } from "effect";
+import { Cause, Effect, Exit } from "effect";
 
 import { followerViewValid } from "../database/follower-schema.js";
 import { ForcedTransactionsDB } from "../database/index.js";
@@ -90,19 +89,6 @@ export const NO_CONTENT_SOURCE =
   "no L1 tx content source is configured: set L1_TX_CONTENT_SOURCES so carriage the local ledger and the follower's transactions lack can resolve";
 /** An order could not be rebuilt (malformed, or its bytes do not open). */
 export const FORCED_ORDER_INGESTION_FAILED = "forced_order_ingestion_failed";
-/**
- * One of the three ruled admission stops refused an order's transaction:
- * its auxiliary-data hash, a script program envelope, or an output value's
- * size. The detail names the stop. It holds the horizon as a failure does.
- */
-export const FORCED_ORDER_ADMISSION_STOPPED = "forced_order_admission_stopped";
-
-/** The ruled stops `forced_order_admission_stopped` names. */
-const RULED_STOPS: ReadonlySet<string> = new Set([
-  "E_AUX_DATA_FORBIDDEN",
-  "E_SCRIPT_PROGRAM_ENCODING",
-  "E_VALUE_SIZE",
-]);
 
 /** Runs a node database effect (the node's runtime, or a test's). */
 export type RunDatabase = <A, E>(
@@ -314,11 +300,9 @@ const preimagesOf = async (
 const entryOf = async (
   options: ForcedOrderIngestionOptions,
   outcome: OrderPreimages,
-  programMaterial: () => readonly UTxO[],
 ): Promise<
   | Readonly<{ kind: "entry"; entry: ForcedTransactionsDB.Entry }>
   | Exclude<OrderPreimages, { kind: "ok" }>
-  | Readonly<{ kind: "stopped"; detail: string }>
 > => {
   if (outcome.kind !== "ok") return outcome;
   const exit = await options.run(
@@ -326,32 +310,12 @@ const entryOf = async (
       order: outcome.order,
       fieldPreimages: outcome.preimages,
       consensusProfile: options.consensusProfile,
-      programMaterial,
     }),
   );
   const label = `${outcome.order.utxo.txHash}#${outcome.order.utxo.outputIndex.toString()}`;
-  if (Exit.isSuccess(exit)) return { kind: "entry", entry: exit.value };
-  const stop = ruledStop(exit.cause);
-  return stop === undefined
-    ? { kind: "failed", detail: `${label}: ${failureText(exit)}` }
-    : {
-        kind: "stopped",
-        detail: `${label}: ${stop.code} ${stop.violation.featureId} (${stop.violation.detail})`,
-      };
-};
-
-/** The ruled admission stop a failed entry stopped at, if it was one. */
-const ruledStop = <E>(
-  cause: Cause.Cause<E>,
-): MidgardForcedTxAdmissionStopped | undefined => {
-  const failure = Cause.failureOption(cause);
-  if (Option.isNone(failure)) return undefined;
-  const error = failure.value as Partial<MidgardForcedTxAdmissionStopped>;
-  return error?._tag === "MidgardForcedTxAdmissionStopped" &&
-    error.code !== undefined &&
-    RULED_STOPS.has(error.code)
-    ? (error as MidgardForcedTxAdmissionStopped)
-    : undefined;
+  return Exit.isSuccess(exit)
+    ? { kind: "entry", entry: exit.value }
+    : { kind: "failed", detail: `${label}: ${failureText(exit)}` };
 };
 
 /** The driver hook that ingests the follower's forced orders. */
@@ -387,11 +351,7 @@ export const forcedOrderIngestionHook = (
   return async () => {
     const view = await options.store.currentView();
     if (view === null) return undefined;
-    const read = await forcedOrdersAt(
-      options.store,
-      options.config,
-      view.point,
-    );
+    const read = await forcedOrdersAt(options.store, view.point);
     if (read.kind === "point_not_canonical") return undefined; // the next run reads the new view
     if (read.kind !== "ok")
       return {
@@ -407,21 +367,14 @@ export const forcedOrderIngestionHook = (
         reason: FORCED_ORDER_INGESTION_FAILED,
         detail: failureText(done),
       };
-    const programMaterial = (): readonly UTxO[] => read.programMaterial;
     const entries: ForcedTransactionsDB.Entry[] = [];
     const pending: string[] = [];
-    const stopped: string[] = [];
     const failed: string[] = [];
     for (const row of read.orders) {
       if (done.value.has(outRefLabel(row.outRef))) continue;
-      const outcome = await entryOf(
-        options,
-        await preimagesOf(options, row),
-        programMaterial,
-      );
+      const outcome = await entryOf(options, await preimagesOf(options, row));
       if (outcome.kind === "entry") entries.push(outcome.entry);
       else if (outcome.kind === "pending") pending.push(outcome.detail);
-      else if (outcome.kind === "stopped") stopped.push(outcome.detail);
       else failed.push(outcome.detail);
     }
     const sweep = options.caughtUp?.() ?? true;
@@ -450,12 +403,6 @@ export const forcedOrderIngestionHook = (
     if (failed.length > 0)
       return hold(FORCED_ORDER_INGESTION_FAILED, [
         ...failed,
-        ...more(stopped.length, "stopped at a ruled admission stop"),
-        ...more(pending.length, "await carriage"),
-      ]);
-    if (stopped.length > 0)
-      return hold(FORCED_ORDER_ADMISSION_STOPPED, [
-        ...stopped,
         ...more(pending.length, "await carriage"),
       ]);
     if (orphaned.length > 0)

@@ -138,36 +138,3 @@ describe.each(["normal", "forced"] as const)(
     });
   },
 );
-
-it.each([
-  ["invalid program envelope", RejectCodes.ScriptProgramEncoding],
-  ["auxiliary data", RejectCodes.AuxDataForbidden],
-] as const)(
-  "retains the forced %s stop screen with a malformed native item",
-  (shape, code) => {
-    const base = withScriptItems([
-      shape === "invalid program envelope" ? "82034100" : SOUND_NATIVE,
-      MALFORMED_NATIVE,
-    ]);
-    const fixture =
-      shape === "auxiliary data"
-        ? encodeRecomputedNativeTx({
-            ...base.tx,
-            body: { ...base.tx.body, auxiliaryDataHash: Buffer.alloc(32, 1) },
-          })
-        : base;
-    const txCbor = encodeMidgardForcedTxCanonical(
-      materializeMidgardForcedTxFromCanonical(fixture.tx),
-    );
-    expect(
-      projectMidgardMalformedNativeWitnessEnvelopeV1(txCbor, "forced")
-        ?.malformedScriptIndex,
-    ).toBe(1);
-    expect(
-      validatePhaseASingle(
-        { ...makeQueued(fixture.txId, txCbor), sourceKind: "forced" },
-        phaseAConfig,
-      ),
-    ).toMatchObject({ code, consensusPhase: "canonicalDecode" });
-  },
-);

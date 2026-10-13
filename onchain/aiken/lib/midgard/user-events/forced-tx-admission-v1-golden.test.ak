@@ -2025,14 +2025,14 @@ test forced_tx_admission_mint_names_in_byte_order() {
   }
 }
 
-test forced_tx_admission_mint_two_policies_burning() {
+test forced_tx_admission_mint_entry_with_the_minimal_array_head() {
   let views = row_views(
     [
       #"815826825820aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa190003",
       #"80",
       #"815829a200581d617777777777777777777777777777777777777777777777777777777701821a001e8480a0",
       #"80", #"81581cbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
-      #"82582382581c11111111111111111111111111111111111111111111111111111111a1416124584b82581c22222222222222222222222222222222222222222222222222222222a158207a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a1b0000000100000000",
+      #"81582382581c11111111111111111111111111111111111111111111111111111111a1416101",
       #"80",
       #"815865825820dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd5840dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
       #"80",
@@ -2048,14 +2048,14 @@ test forced_tx_admission_mint_two_policies_burning() {
   }
 }
 
-test forced_tx_admission_mint_entry_with_a_wide_array_head() {
+test forced_tx_admission_mint_two_policies_burning() {
   let views = row_views(
     [
       #"815826825820aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa190003",
       #"80",
       #"815829a200581d617777777777777777777777777777777777777777777777777777777701821a001e8480a0",
       #"80", #"81581cbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
-      #"8158249802581c11111111111111111111111111111111111111111111111111111111a1416101",
+      #"82582382581c11111111111111111111111111111111111111111111111111111111a1416124584b82581c22222222222222222222222222222222222222222222222222222222a158207a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a1b0000000100000000",
       #"80",
       #"815865825820dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd5840dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
       #"80",
@@ -2346,6 +2346,47 @@ test forced_tx_admission_mint_entry_of_three_items() fail {
 }
 
 test forced_tx_admission_mint_entry_of_three_items_passes_the_other_checks() {
+  first_refusal(
+    row_views(
+      [
+        #"815826825820aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa190003",
+        #"80",
+        #"815829a200581d617777777777777777777777777777777777777777777777777777777701821a001e8480a0",
+        #"80", #"81581cbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        #"80", #"80",
+        #"815865825820dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd5840dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+        #"80",
+      ],
+      -1,
+      #"01f4b788593d4f70de2a45c2e1e87088bfbdfa29577ae1b62aba60e095e3ab53",
+      #"01f4b788593d4f70de2a45c2e1e87088bfbdfa29577ae1b62aba60e095e3ab53",
+      0,
+    ),
+  ) == -1
+}
+
+test forced_tx_admission_mint_entry_with_a_wide_array_head() fail {
+  forced_tx_is_admissible_v1(
+    row_views(
+      [
+        #"815826825820aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa190003",
+        #"80",
+        #"815829a200581d617777777777777777777777777777777777777777777777777777777701821a001e8480a0",
+        #"80", #"81581cbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        #"8158249802581c11111111111111111111111111111111111111111111111111111111a1416101",
+        #"80",
+        #"815865825820dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd5840dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+        #"80",
+      ],
+      -1,
+      #"01f4b788593d4f70de2a45c2e1e87088bfbdfa29577ae1b62aba60e095e3ab53",
+      #"01f4b788593d4f70de2a45c2e1e87088bfbdfa29577ae1b62aba60e095e3ab53",
+      0,
+    ),
+  )
+}
+
+test forced_tx_admission_mint_entry_with_a_wide_array_head_passes_the_other_checks() {
   first_refusal(
     row_views(
       [

@@ -9,10 +9,7 @@ import {
   buildValidationOneStepArgument,
   validationMachineStateData,
 } from "../src/validation-machine-data.js";
-import {
-  nativeFaultFixture,
-  redeemerFaultFixture,
-} from "./forced-native-first-fault.fixture.js";
+import { nativeFaultFixture } from "./forced-native-first-fault.fixture.js";
 
 /** The raw envelope must retain prior Phase A faults, then use the same native
  * scan as canonical witnesses. Optional output captures actual producer bytes
@@ -154,30 +151,3 @@ describe("forced malformed native first fault", () => {
     }
   });
 });
-
-it.each([false, true])(
-  "scans malformed redeemer Data before missing script=%s",
-  async (missingScript) => {
-    const { trace } = await redeemerFaultFixture(missingScript);
-    expect(trace.rejectionCode).toBe(RejectCodes.InvalidFieldType);
-    expect(trace.states.at(-2)?.phase).toBe("scriptSources");
-    if (process.env.MIDGARD_NATIVE_FAULT_VECTORS != null) {
-      const steps = trace.witnesses.flatMap((w, i) => {
-        if (w.phase === "terminal") return [];
-        const arg = buildValidationOneStepArgument({ trace, stateIndex: i });
-        return [
-          {
-            phase: w.phase,
-            pre: Data.to(validationMachineStateData(trace.states[i]!) as never),
-            transition: arg.transitionCbor.toString("hex"),
-            auxiliary: arg.auxiliaryCbor.toString("hex"),
-          },
-        ];
-      });
-      await writeFile(
-        `${process.env.MIDGARD_NATIVE_FAULT_VECTORS}/redeemer${missingScript ? "Missing" : "Present"}.json`,
-        JSON.stringify(steps),
-      );
-    }
-  },
-);

@@ -3,7 +3,6 @@ import {
   canonicalBytesAt,
   canonicalHeadAt,
   canonicalIntAt,
-  definiteArrayHeaderAt,
   eachVariableItem,
   fieldHeader,
   headArgument,
@@ -51,18 +50,16 @@ export const MIDGARD_FORCED_TX_ORDER_MINT_MEMORY_BASIS = 13_200_000;
  *     minus the narrow unsigned slope 26,218. Positive deltas are
  *     0 / 2,910 / 5,022 / 8,544 / 15,486; negative deltas are
  *     1,502 / 4,010 / 6,322 / 9,844 / 16,786.
- *   * `mintPairHead`: surcharge per policy for 82 / 98 / 99 / 9a pair heads,
- *     from the 50-to-100 policy slopes: 0 / 1,306 / 3,618 / 7,140.
  *   * `mintFirstAssetName`: the 32-byte first name versus the empty name
  *     costs 3,720 per policy; conservatively charged for any nonempty first
  *     name. `mintLongAssetName` adds 1,008 per further name of 24-to-32 bytes.
- *     Combined maximum rows measure 91,734 per policy and 44,012 per further
+ *     Combined maximum rows measure 79,564 per policy and 44,012 per further
  *     asset, below the corresponding combined charges.
  *
  * These are the P1 forced-transaction capacity limits: an order whose estimate
  * exceeds the basis is one the mint is not expected to fit. They are an
- * estimate from controlled shapes, including the admitted signed integer and
- * nonminimal pair-head widths. They are not a proof of full transaction fit:
+ * estimate from controlled shapes, including the admitted signed integer
+ * widths. They are not a proof of full transaction fit:
  * local L1 evaluation remains authoritative for combined memory, CPU, size
  * and carriage overhead that these admission-rule rows do not measure.
  */
@@ -79,7 +76,6 @@ export const MIDGARD_FORCED_TX_ORDER_MINT_MEMORY_RATES = {
   mintAsset: 26_300,
   mintPositiveQuantity: [0, 3_000, 5_100, 8_600, 15_500],
   mintNegativeQuantity: [1_600, 4_100, 6_400, 9_900, 16_800],
-  mintPairHead: [0, 1_400, 3_700, 7_200],
   mintFirstAssetName: 3_800,
   mintLongAssetName: 1_100,
 } as const;
@@ -178,8 +174,8 @@ export const estimateMidgardForcedTxOrderMintMemory = (
   if (!isEmptyField(body.mintPreimageCbor)) {
     const mint = body.mintPreimageCbor;
     eachVariableItem(mint, (start) => {
-      const [policyOffset] = definiteArrayHeaderAt(mint, start);
-      const [assetsHeaderOffset] = canonicalBytesAt(mint, policyOffset);
+      // The screen admits only the minimal one-byte pair head.
+      const [assetsHeaderOffset] = canonicalBytesAt(mint, start + 1);
       const [assetsOffset, assetCount] = canonicalHeadAt(
         mint,
         assetsHeaderOffset,
@@ -191,15 +187,6 @@ export const estimateMidgardForcedTxOrderMintMemory = (
         rates.variableItem +
         rates.mintPolicy +
         (Number(assetCount) - 1) * rates.mintAsset;
-      const pairHead = byteAt(mint, start);
-      memory +=
-        pairHead === 0x82
-          ? rates.mintPairHead[0]
-          : pairHead === 0x98
-            ? rates.mintPairHead[1]
-            : pairHead === 0x99
-              ? rates.mintPairHead[2]
-              : rates.mintPairHead[3];
       let cursor = assetsOffset;
       for (let asset = 0; asset < Number(assetCount); asset += 1) {
         const [quantityOffset, name] = canonicalBytesAt(mint, cursor);

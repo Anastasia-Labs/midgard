@@ -9,7 +9,7 @@ import {
 import { decodeSingleCbor } from "@al-ft/midgard-core/codec";
 import { MIDGARD_ADDRESS_WITNESS_ITEM_BYTES } from "@al-ft/midgard-core/codec/native-tx-field-access";
 import {
-  validateMidgardConsensusForcedTxCbor,
+  screenMidgardForcedTxAdmission,
   validateMidgardConsensusTxCbor,
 } from "@al-ft/midgard-core/consensus-validation";
 import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
@@ -115,7 +115,7 @@ describe("deterministic signature consume order", { timeout: 60_000 }, () => {
       });
       expect(validateMidgardConsensusTxCbor(transaction.txCbor)).toBeNull();
       const forcedCbor = encodeMidgardForcedTxCanonical(transaction.tx);
-      expect(validateMidgardConsensusForcedTxCbor(forcedCbor)).toBeNull();
+      expect(screenMidgardForcedTxAdmission(transaction.tx)).toBeNull();
       const order = deriveTxOrderMaterial({
         submittedTxCbor: forcedCbor,
         owner: Buffer.alloc(28),
