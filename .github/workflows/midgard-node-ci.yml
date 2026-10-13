@@ -400,6 +400,9 @@ jobs:
       - name: Check MPF node-encoding golden vectors
         if: ${{ !cancelled() }}
         run: node scripts/preflight.mjs --run golden:mpf-node-encoding-v1
+      - name: Check forced-tx admission golden vectors
+        if: ${{ !cancelled() }}
+        run: node scripts/preflight.mjs --run golden:forced-tx-admission-v1
       # The §12.7 canonical-decodability channel (#596). It emits both artifacts
       # from one generator run on exactly the footing of the four above, and it
       # was left unwired when it landed — so an edited producer plus a `:sync`

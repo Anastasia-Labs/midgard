@@ -121,7 +121,9 @@ export const formatAikenSource = ({
         `Aiken formatter (${aikenBinary}) failed: ${result.error?.message ?? result.stderr.trim()}`,
       );
     }
-    return readFileSync(target, "utf8");
+    // The formatter emits trailing spaces after a multi-line `expect`/`let`
+    // pattern; the tree stores them stripped (aiken-ci.yml's formatter check).
+    return readFileSync(target, "utf8").replace(/[ \t]+$/gmu, "");
   } finally {
     rmSync(directory, { force: true, recursive: true });
   }

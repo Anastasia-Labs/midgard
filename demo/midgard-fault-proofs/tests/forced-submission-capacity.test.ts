@@ -1,6 +1,7 @@
 import {
   encodeCbor,
   encodeMidgardAddressWitnessItem,
+  encodeMidgardMintPolicyItem,
   encodeMidgardSpendInputItem,
   encodeMidgardTxOutput,
   encodeMidgardVersionedScript,
@@ -15,14 +16,25 @@ import {
 } from "./support/submit-init-emulator-shared.js";
 
 /** SDK-admitted counterpart of tx_order_mint_variable_width_aggregate_maximum.
- * It uses a canonical output and versioned script, filling the remaining
- * aggregate space with minimum-width opaque redeemers. The mint must
+ * It uses a canonical output, filling the remaining aggregate space with
+ * minimum-width native script witnesses (`82 00 40`, the narrowest item the
+ * mint's admission rules accept in a variable-width field). The mint must
  * authenticate opaque field envelopes even when ledger validation will later
  * reject an item's meaning; semantic invalidity is not an admission shortcut.
  */
 const maximumVariableWidthSubmission = () => {
-  const item = Buffer.from([0]);
-  const build = (redeemerCount: number, lovelace: bigint) =>
+  // The narrowest mint item the mint's rule 6 admits: one unit of one asset.
+  const item = encodeMidgardMintPolicyItem({
+    policyId: Buffer.alloc(28, 0x44),
+    assets: [{ assetName: Buffer.alloc(0), quantity: 1n }],
+  });
+  /** A native versioned script with a `width`-byte payload: `3 + width` bytes. */
+  const nativeWitness = (width: number) =>
+    Buffer.concat([
+      Buffer.from([0x82, 0x00, 0x40 + width]),
+      Buffer.alloc(width, 0x00),
+    ]);
+  const build = (witnessCount: number, lastWidth: number) =>
     materializeMidgardForcedTxFromCanonical(
       makeNativeTx({
         spendInputCbors: [
@@ -38,7 +50,7 @@ const maximumVariableWidthSubmission = () => {
               Buffer.from([0x60]),
               Buffer.alloc(28, 0x11),
             ]),
-            value: { lovelace, assets: new Map() },
+            value: { lovelace: 2_000_000n, assets: new Map() },
           }),
         ],
         fee: 0n,
@@ -51,6 +63,8 @@ const maximumVariableWidthSubmission = () => {
             nativeScript: { type: "after", slot: 0n },
             scriptBytes: Buffer.from("820400", "hex"),
           }),
+          ...Array.from({ length: witnessCount }, () => nativeWitness(0)),
+          nativeWitness(lastWidth),
         ]),
         addrTxWitsPreimageCbor: encodeCbor([
           encodeMidgardAddressWitnessItem({
@@ -58,9 +72,6 @@ const maximumVariableWidthSubmission = () => {
             signature: Buffer.alloc(64, 0x33),
           }),
         ]),
-        redeemerTxWitsPreimageCbor: encodeCbor(
-          Array.from({ length: redeemerCount }, () => item),
-        ),
       }),
     );
   const fieldsOf = (submitted: ReturnType<typeof build>) => [
@@ -74,28 +85,24 @@ const maximumVariableWidthSubmission = () => {
     submitted.witnessSet.addrTxWitsPreimageCbor,
     submitted.witnessSet.redeemerTxWitsPreimageCbor,
   ];
-  // Two adjacent canonical ADA widths select the parity needed by the dense
-  // two-byte item envelope; the field sum remains exactly the frozen maximum.
-  let lovelace = 0n;
-  let base = build(0, lovelace);
-  let otherBytes = fieldsOf(base)
-    .slice(0, 8)
-    .reduce((total, field) => total + field.length, 0);
-  if ((32_768 - otherBytes - 3) % 2 !== 0) {
-    lovelace = 24n;
-    base = build(0, lovelace);
-    otherBytes = fieldsOf(base)
-      .slice(0, 8)
-      .reduce((total, field) => total + field.length, 0);
-  }
-  const submitted = build((32_768 - otherBytes - 3) / 2, lovelace);
-  const fields = fieldsOf(submitted);
-  expect(fields.reduce((total, field) => total + field.length, 0)).toBe(32_768);
+  const total = (submitted: ReturnType<typeof build>) =>
+    fieldsOf(submitted).reduce((sum, field) => sum + field.length, 0);
+  // Every filler item is four bytes; the last one's payload width takes up the
+  // remainder, so the field sum lands exactly on the frozen maximum. Its count
+  // stays inside one header width (256..65,535 items), so the header does not
+  // move as the count grows.
+  const base = build(256, 0);
+  const spare = 32_768 - total(base);
+  const submitted = build(256 + Math.floor(spare / 4), spare % 4);
+  expect(total(submitted)).toBe(32_768);
   return submitted;
 };
 
 describe("forced-order capacity dependency", () => {
-  it("publishes the maximum variable-width carriage and exposes the unresolved mint budget gap", async () => {
+  it("refuses the maximum variable-width carriage before anything is signed", async () => {
+    // The mint's own run over this shape (tx_order_mint_variable_width_aggregate_maximum)
+    // is far above the per-transaction budget, so the SDK refuses it from the
+    // measured rates before publishing or signing anything.
     const measurements: {
       stage: string;
       measurement: CompleteSignedTransactionMeasurement;
@@ -106,28 +113,7 @@ describe("forced-order capacity dependency", () => {
         onMeasurement: (stage, measurement) =>
           measurements.push({ stage, measurement }),
       }),
-    ).rejects.toThrow(/budget|execution units|ExUnits/iu);
-    expect(
-      measurements.filter(({ stage }) => stage.endsWith("-publication")),
-    ).toHaveLength(3);
-    expect(
-      measurements.some(({ stage }) => stage === "field-8-certificate"),
-    ).toBe(true);
-    expect(measurements.some(({ stage }) => stage === "order-mint")).toBe(
-      false,
-    );
-    for (const { measurement } of measurements) {
-      expect(measurement.completeSignedBytes).toBeLessThanOrEqual(15_872);
-      expect(measurement.executionMemory).toBeLessThanOrEqual(13_200_000n);
-      expect(measurement.executionSteps).toBeLessThanOrEqual(8_000_000_000n);
-    }
-    // This diagnostic is evidence of an open capacity dependency, never a
-    // passing maximum-order fit row. No order was accepted or settled.
-    console.info(
-      "forced-order maximum carriage measurements",
-      JSON.stringify(measurements, (_key, value: unknown) =>
-        typeof value === "bigint" ? value.toString() : value,
-      ),
-    );
+    ).rejects.toThrow(/exceeds the tx-order mint's capacity/u);
+    expect(measurements).toEqual([]);
   }, 300_000);
 });

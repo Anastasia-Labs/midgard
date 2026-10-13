@@ -156,6 +156,40 @@
       }
     },
     {
+      "id": "forced-tx-admission-v1",
+      "kind": "golden",
+      "summary": "Forced-transaction admission rows (the tx-order mint's rules 1, 3, 4, 5, 6 and 7), labelled by hand and checked against the midgard-core screen: JSON fixture plus a whole generated Aiken module.",
+      "generators": [
+        "demo/midgard-core/scripts/generate-forced-tx-admission-v1-goldens.mjs",
+        "demo/midgard-core/scripts/generate-forced-tx-admission-v1-goldens.rows.mjs"
+      ],
+      "packageScripts": [
+        "demo/midgard-core:fixtures:forced-tx-admission-v1:sync",
+        "demo/midgard-core:fixtures:forced-tx-admission-v1:check"
+      ],
+      "producers": [
+        "demo/midgard-core"
+      ],
+      "inputs": [
+        "@golden-channel"
+      ],
+      "outputs": [
+        "demo/midgard-core/tests/fixtures/forced-tx-admission-v1.generated.json",
+        "onchain/aiken/lib/midgard/user-events/forced-tx-admission-v1-golden.test.ak"
+      ],
+      "aikenImportsOfOutputs": true,
+      "sync": {
+        "run": "pnpm --dir demo/midgard-core run fixtures:forced-tx-admission-v1:sync"
+      },
+      "check": {
+        "run": "pnpm --dir demo/midgard-core run fixtures:forced-tx-admission-v1:check"
+      },
+      "ci": {
+        "workflow": ".github/workflows/midgard-node-ci.yml",
+        "step": "Check forced-tx admission golden vectors"
+      }
+    },
+    {
       "id": "native-tx-carriage-wire-v1",
       "kind": "golden",
       "summary": "Carriage wire (Plutus Data) surface from the SDK schemas: JSON fixture plus a whole generated Aiken module.",

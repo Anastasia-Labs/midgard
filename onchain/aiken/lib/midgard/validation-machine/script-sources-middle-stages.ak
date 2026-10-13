@@ -14,6 +14,7 @@ use midgard/fraud_proofs/native_tx/types.{
 use midgard/ledger_output_commitment_v1
 use midgard/ledger_output_proof_v1
 use midgard/ledger_output_v1
+use midgard/mint_order
 use midgard/native_tx_field_access_v1
 use midgard/rejection_reason_v1.{
   reject_asset_count, reject_invalid_field_type, reject_invalid_output,
@@ -819,12 +820,12 @@ pub fn script_sources_begin_mint_policy_with_successor(
     policy_item_count <= max_tx_size_derived_collection_item_count,
     item_length > assets_offset,
     item_length <= max_aggregate_field_preimage_bytes,
-    bytearray.length(policy_id) == 28,
-    asset_count > 0,
-    or {
+    mint_order.mint_policy_is_valid(
       fold.policy_cursor == 0,
-      ledger_output_v1.asset_key_precedes(fold.previous_policy, policy_id),
-    },
+      fold.previous_policy,
+      policy_id,
+      asset_count,
+    ),
   }
   if and {
     common_is_valid,
@@ -914,13 +915,13 @@ pub fn script_sources_fold_mint_asset_with_successor(
     bytearray.length(fold.active_policy) == 28,
     fold.assets_remaining > 0,
     fold.policy_asset_cursor >= 0,
-    bytearray.length(asset_name) <= 32,
-    quantity != 0,
-    next_asset_count <= ledger_output_v1.max_distinct_asset_count,
-    or {
+    mint_order.mint_asset_is_valid(
       fold.policy_asset_cursor == 0,
-      ledger_output_v1.asset_key_precedes(fold.previous_asset, asset_name),
-    },
+      fold.previous_asset,
+      asset_name,
+      quantity,
+    ),
+    next_asset_count <= ledger_output_v1.max_distinct_asset_count,
     if fold.assets_remaining == 1 {
       next_item_cursor == fold.item_length
     } else {

@@ -181,12 +181,12 @@ describe("V1 transaction-order datum, §8 field carriage, and CEK program materi
     expect(cbor.length).toBeLessThanOrEqual(
       MIDGARD_CONSENSUS_LIMITS.maxTxCanonicalCborBytes,
     );
-    // Only field 2 (outputs) carries anything in this fixture, so the carriage
-    // list is exactly one entry: the counted scheme published four per-item
-    // chunks for the same bytes, which is the whole difference the §4 reversion
-    // makes to a publisher.
-    expect(material.carriage.map((field) => field.fieldIndex)).toEqual([2]);
-    const outputs = material.carriage[0]!;
+    // Only fields 0 (one spend input) and 2 (outputs) carry anything in this
+    // fixture, so the carriage list is exactly those two entries: the counted
+    // scheme published four per-item chunks for the outputs alone, which is the
+    // whole difference the §4 reversion makes to a publisher.
+    expect(material.carriage.map((field) => field.fieldIndex)).toEqual([0, 2]);
+    const outputs = material.carriage[1]!;
     expect(outputs.fieldName).toBe("outputs");
     expect(outputs.preimage).toEqual(
       decodeMidgardForcedTxFullFromCanonicalCbor(cbor).body.outputsPreimageCbor,
@@ -211,15 +211,20 @@ describe("V1 transaction-order datum, §8 field carriage, and CEK program materi
       submittedTxCbor: cbor,
       owner,
     });
-    const [outputs] = material.carriage;
+    const [spendInputs, outputs] = material.carriage;
     expect(outputs).toBeDefined();
 
-    // Under the default reserve the one field fits the order transaction's own
+    // Under the default reserve both fields fit the order transaction's own
     // redeemer, so nothing has to be published first.
     const inline = SDK.planTxOrderMaterialCarriage({ material, owner });
-    expect(inline.carriage.map((field) => field.plan.tier)).toEqual(["Inline"]);
+    expect(inline.carriage.map((field) => field.plan.tier)).toEqual([
+      "Inline",
+      "Inline",
+    ]);
     expect(inline.referenced).toEqual([]);
-    expect(inline.inlineBytes).toBe(outputs!.preimage.length);
+    expect(inline.inlineBytes).toBe(
+      spendInputs!.preimage.length + outputs!.preimage.length,
+    );
     expect(inline.inlineReserveBytes).toBe(
       SDK.MIDGARD_TX_ORDER_INLINE_CARRIAGE_RESERVE_BYTES,
     );
@@ -233,8 +238,9 @@ describe("V1 transaction-order datum, §8 field carriage, and CEK program materi
       owner,
       inlineReserveBytes: outputs!.preimage.length - 1,
     });
-    expect(published.inline).toEqual([]);
-    expect(published.inlineBytes).toBe(0);
+    // The small spend-input field still fits the reserve the outputs missed.
+    expect(published.inline.map((field) => field.fieldIndex)).toEqual([0]);
+    expect(published.inlineBytes).toBe(spendInputs!.preimage.length);
     expect(published.referenced.map((field) => field.plan.tier)).toEqual([
       "RawUtxo",
     ]);

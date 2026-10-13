@@ -10,7 +10,8 @@ use midgard/transition_trace
 use midgard/user_events
 use midgard/user_events/tx_order_v1.{
   Datum, MintRedeemer, SpendRedeemer, forced_inclusion_key_value,
-  material_carriage_matches_event, verify_order_material,
+  forced_tx_is_admissible_v1, material_carriage_matches_event,
+  verify_order_material,
 }
 
 validator spend(hub_oracle: ScriptHash) {
@@ -160,15 +161,14 @@ validator mint(
     expect output_tx_order_nft_triplet == (own_policy, l1_id, 1)
 
     expect tx_order_payload: ledger_state.TxOrderPayloadV1 = tx_order_payload_data
-    expect
+    forced_tx_is_admissible_v1(
       verify_order_material(
         tx_order_payload,
         material_carriage,
         tx.reference_inputs,
         field_preimage_certificate_policy_id,
-      )
-
-    True
+      ),
+    )
   }
 
   else(_) {

@@ -44,6 +44,24 @@ use midgard/user_events/tx_order_v1.{
   material_carriage_matches_event, verify_order_material,
 }
 
+/// `verify_order_material` returns the nine slots' views; a test that only asks
+/// whether the material authenticates reads that it returned all nine.
+fn authenticated(
+  payload: TxOrderPayloadV1,
+  material_carriage: List<FieldCarriageV1>,
+  reference_inputs: List<Input>,
+  certificate_policy_id: PolicyId,
+) -> Bool {
+  list.length(
+    verify_order_material(
+      payload,
+      material_carriage,
+      reference_inputs,
+      certificate_policy_id,
+    ).fields,
+  ) == field_count
+}
+
 const order_transaction_id =
   #"4444444444444444444444444444444444444444444444444444444444444444"
 
@@ -332,7 +350,7 @@ fn material(
   material_carriage: List<FieldCarriageV1>,
   reference_inputs: List<Input>,
 ) -> Bool {
-  verify_order_material(
+  authenticated(
     payload(tx),
     material_carriage,
     reference_inputs,
@@ -821,7 +839,7 @@ test certified_carriage_without_the_policy_token_is_refused() fail {
 /// internally consistent everywhere except in the one claim under test.
 test declared_field_length_disagreeing_with_the_material_is_refused() fail {
   let base = all_empty_declared_lengths()
-  verify_order_material(
+  authenticated(
     payload_with_declared_lengths(
       sample_v1_transaction(False),
       NativeTxFieldPreimageLengthsV1 {
@@ -851,7 +869,7 @@ test declared_field_length_disagreeing_with_the_material_is_refused() fail {
 /// let this through.
 test declared_length_of_an_empty_field_other_than_one_is_refused() fail {
   let base = all_empty_declared_lengths()
-  verify_order_material(
+  authenticated(
     payload_with_declared_lengths(
       empty_v1_transaction(),
       NativeTxFieldPreimageLengthsV1 { ..base, reference_inputs: 2 },
@@ -925,7 +943,7 @@ test raw_bound_payload_matches_the_encoder_and_activates_the_order() {
       let raw = payload_with_raw_bounds(start, end)
       and {
         raw == payload(empty_v1_transaction_with_bounds(start, end)),
-        verify_order_material(raw, [], [], certificate_policy_id),
+        authenticated(raw, [], [], certificate_policy_id),
       }
     },
   )
@@ -937,21 +955,11 @@ test raw_bound_payload_matches_the_encoder_and_activates_the_order() {
 /// be minted. This alone does not keep such a body out of a forced leaf: a
 /// forced leaf is not yet proven equal to its order's body (NIFP-04).
 test tx_order_mint_refuses_a_submitted_start_below_the_sentinel() fail {
-  verify_order_material(
-    payload_with_raw_bounds(-2, 5),
-    [],
-    [],
-    certificate_policy_id,
-  )
+  authenticated(payload_with_raw_bounds(-2, 5), [], [], certificate_policy_id)
 }
 
 test tx_order_mint_refuses_a_submitted_end_below_the_sentinel() fail {
-  verify_order_material(
-    payload_with_raw_bounds(-1, -5),
-    [],
-    [],
-    certificate_policy_id,
-  )
+  authenticated(payload_with_raw_bounds(-1, -5), [], [], certificate_policy_id)
 }
 
 // -- The burn's empty-vector rule ------------------------------------------
@@ -1333,7 +1341,7 @@ fn variable_width_shape(count: Int) -> OrderMaterialShapeV1 {
 
 fn open_all_nine(shape: OrderMaterialShapeV1) -> Bool {
   let OrderMaterialShapeV1 { payload, material_carriage, reference_inputs } = shape
-  verify_order_material(
+  authenticated(
     payload,
     material_carriage,
     reference_inputs,
@@ -1471,7 +1479,7 @@ test tx_order_mint_material_at_the_aggregate_bound_refuses_a_tampered_tail_chunk
     bytearray.take(tail_bytes, bytearray.length(tail_bytes) - 1),
     #"01",
   )
-  verify_order_material(
+  authenticated(
     payload,
     material_carriage,
     [certificate, chunk_0, chunk_1, creator_publication(3, tampered)],
