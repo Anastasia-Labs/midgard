@@ -15,14 +15,13 @@ export const UNMAPPED_FAMILIES: readonly Readonly<{
       "invalidRange",
       "zeroInput",
       "redeemerCanonicity",
-      "unusedRedeemer",
       "withdrawalMistag",
     ],
   },
 ];
 
 /** Only ever lowered. */
-export const UNMAPPED_VALIDATOR_COUNT = 539;
+export const UNMAPPED_VALIDATOR_COUNT = 548;
 
 /** Only ever lowered. */
-export const UNMAPPED_FAMILY_COUNT = 7;
+export const UNMAPPED_FAMILY_COUNT = 6;

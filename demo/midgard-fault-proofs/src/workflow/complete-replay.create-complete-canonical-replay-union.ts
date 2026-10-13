@@ -7,23 +7,15 @@ import {
   type FraudProofCatalogueCategoryName,
 } from "@al-ft/midgard-sdk";
 
-import { detectDistinctAssetAccumulationCanonicalViolations } from "../distinct-asset-accumulation-limit/authenticated-replay.js";
 import { type CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
-import { detectExecutionNativeScriptInvalidCanonicalViolations } from "../execution-native-script-invalid/replay.js";
 import { type CheckedLedger } from "../ledger-at.js";
 import { detectMintAuthorizationReplay } from "../mint-authorization/replay.js";
 import { detectMintItemNonCanonicalCompleteReplay } from "../mint-item-non-canonical/replay.js";
-import { detectMissingRedeemerCanonicalViolations } from "../missing-redeemer/replay.js";
-import { detectMissingScriptSourceCanonicalViolations } from "../missing-script-source/authenticated-replay.js";
 import { detectObserverOrderInvalidCompleteReplay } from "../observer-order-invalid/replay.js";
-import { detectReceivePurposeLanguageCanonicalViolations } from "../receive-purpose-language/authenticated-replay.js";
 import { detectRedeemerCanonicityCompleteReplay } from "../redeemer-canonicity/authenticated-workflow.js";
-import { detectScriptIntegrityHashMismatchCanonicalViolations } from "../script-integrity-hash-mismatch/replay.js";
 import { type TransitionTraceL1Events } from "../transition-trace/l1-events.js";
 import { transitionTraceCanonicalDetections } from "../transition-trace/replay-authority.canonical-detections.js";
 import { replayTransitionTraceFromRetainedHistory } from "../transition-trace/replay-authority.js";
-import { detectUnusedRedeemerCanonicalViolations } from "../unused-redeemer/replay.js";
-import { detectUnusedScriptWitnessCanonicalViolations } from "../unused-script-witness/replay.js";
 import { detectValueConservationFaults } from "../value-not-preserved/replay.js";
 import { detectWithdrawalMistagReplay } from "../withdrawal-mistag/replay.js";
 import { type CanonicalViolationDetection } from "./classification.js";
@@ -54,20 +46,6 @@ import {
   CanonicalReplayPrerequisiteError,
 } from "./replay-prerequisite.js";
 
-/** Complete accepted-false and forced-true native execution replay. */
-export const EXECUTION_NATIVE_SCRIPT_INVALID_COMPLETE_CANONICAL_REPLAY =
-  completeReplayer(
-    ["executionNativeScriptInvalid"],
-    async (evidence, context) =>
-      detectExecutionNativeScriptInvalidCanonicalViolations({
-        block: evidence,
-        predecessor: completeCanonicalReplayPredecessorLedger({
-          evidence,
-          context,
-        }),
-      }),
-  );
-
 export const OBSERVER_ORDER_INVALID_COMPLETE_CANONICAL_REPLAY =
   completeReplayer(["observerOrderInvalid"], async (evidence) =>
     detectObserverOrderInvalidCompleteReplay(evidence),
@@ -85,45 +63,6 @@ export const REDEEMER_CANONICITY_COMPLETE_CANONICAL_REPLAY = completeReplayer(
       diagnostic: "authenticated redeemer item is not canonical Plutus Data",
     })),
 );
-
-export const RECEIVE_PURPOSE_LANGUAGE_COMPLETE_CANONICAL_REPLAY =
-  completeReplayer(["receivePurposeLanguage"], async (evidence) =>
-    detectReceivePurposeLanguageCanonicalViolations(evidence),
-  );
-
-export const UNUSED_SCRIPT_WITNESS_COMPLETE_CANONICAL_REPLAY = completeReplayer(
-  ["unusedScriptWitness"],
-  async (evidence) => detectUnusedScriptWitnessCanonicalViolations(evidence),
-);
-
-export const MISSING_SCRIPT_SOURCE_COMPLETE_CANONICAL_REPLAY = completeReplayer(
-  ["missingScriptSource"],
-  async (evidence) => detectMissingScriptSourceCanonicalViolations(evidence),
-);
-
-/** Complete retained-stage-10 scan for accepted absence and forced presence. */
-export const MISSING_REDEEMER_COMPLETE_CANONICAL_REPLAY = completeReplayer(
-  ["missingRedeemer"],
-  async (evidence) => detectMissingRedeemerCanonicalViolations(evidence),
-);
-
-/** Complete retained-stage-10 reverse match for every redeemer purpose kind. */
-export const UNUSED_REDEEMER_COMPLETE_CANONICAL_REPLAY = completeReplayer(
-  ["unusedRedeemer"],
-  async (evidence) => detectUnusedRedeemerCanonicalViolations(evidence),
-);
-
-/** Complete accepted-mismatch and forced-equality ScriptIntegrity replay. */
-export const SCRIPT_INTEGRITY_HASH_MISMATCH_COMPLETE_CANONICAL_REPLAY =
-  completeReplayer(["scriptIntegrityHashMismatch"], async (evidence) =>
-    detectScriptIntegrityHashMismatchCanonicalViolations(evidence),
-  );
-
-/** Complete typed input/output/mint distinct-asset accumulation replay. */
-export const DISTINCT_ASSET_ACCUMULATION_LIMIT_COMPLETE_CANONICAL_REPLAY =
-  completeReplayer(["distinctAssetAccumulationLimit"], async (evidence) =>
-    detectDistinctAssetAccumulationCanonicalViolations(evidence),
-  );
 
 /** Complete accepted-spend/withdrawal intersection scan for one block. */
 export const WITHDRAWN_INPUT_COMPLETE_CANONICAL_REPLAY = completeReplayer(

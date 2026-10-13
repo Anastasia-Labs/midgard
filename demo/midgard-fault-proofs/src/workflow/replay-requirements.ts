@@ -6,7 +6,7 @@ import type { FraudProofCatalogueCategoryName } from "@al-ft/midgard-sdk";
  * non-membership proof is part of the artifact (nonExistentInput,
  * noReferenceInput, minAda), or the replay resolves spent and referenced
  * outputs from that ledger (resolvedOutputNonCanonical, spendInputSignerMissing,
- * executionNativeScriptInvalid, transitionTrace). The classifier must hold the
+ * transitionTrace). The classifier must hold the
  * authenticated predecessor before it issues a fault decision for a header
  * that commits a non-empty previous ledger; otherwise it decides `unprovable`
  * with `predecessor_context_unavailable`. The watcher's decision-time gate
@@ -22,7 +22,6 @@ export const PREDECESSOR_LEDGER_PROOF_CATEGORIES = Object.freeze([
   "minAda",
   "resolvedOutputNonCanonical",
   "spendInputSignerMissing",
-  "executionNativeScriptInvalid",
   "transitionTrace",
 ] as const satisfies readonly FraudProofCatalogueCategoryName[]);
 

@@ -1,8 +1,4 @@
 import { normalizeDaDeploymentFingerprintHex } from "@al-ft/midgard-core/da-transport";
-import {
-  type L1SlotConfig,
-  parseL1SlotConfig,
-} from "@al-ft/midgard-core/l1-slot-config";
 
 import {
   type CanonicalBlockEvidence,
@@ -41,24 +37,17 @@ export const createHeaderClassifier = async ({
   replayer,
   releaseFinalityAuthority,
   transitionTraceEventAuthority,
-  l1SlotConfig,
 }: {
   readonly deploymentFingerprint: string;
   readonly replayer: CompleteCanonicalReplay;
   readonly releaseFinalityAuthority: FraudProofReleaseFinalityAuthority;
   readonly transitionTraceEventAuthority?: TransitionTraceEventAuthority;
-  /** The deployment manifest's slot mapping; validation replay builds Plutus contexts with it. */
-  readonly l1SlotConfig: L1SlotConfig;
 }): Promise<HeaderClassifier> => {
   const normalizedDeploymentFingerprint = normalizeDaDeploymentFingerprintHex(
     deploymentFingerprint,
   );
   requireCompleteCanonicalReplayBundle(replayer);
-  if (
-    replayer.launchScope.includes("transitionTrace") ||
-    (replayer.launchScope.includes("validationTraceDispute") &&
-      transitionTraceEventAuthority !== undefined)
-  ) {
+  if (replayer.launchScope.includes("transitionTrace")) {
     if (
       transitionTraceEventAuthority === undefined ||
       transitionTraceEventAuthority.deploymentFingerprint !==
@@ -103,7 +92,6 @@ export const createHeaderClassifier = async ({
         : { transitionTraceEventAuthority }),
       // Classification authorizes reversible fault-proof actions on inclusion.
       confirmationDepth: 1,
-      l1SlotConfig: parseL1SlotConfig(l1SlotConfig),
     }),
   );
   return classifier;

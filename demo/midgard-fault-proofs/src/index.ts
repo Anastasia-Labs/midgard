@@ -2,8 +2,6 @@ export * from "./aiken-blueprint-data.js";
 export * from "./canonical-decodability/index.js";
 export * from "./committed-field-shape/index.js";
 export * from "./evidence/index.js";
-export * as executionNativeScriptInvalid from "./execution-native-script-invalid/index.js";
-export * from "./execution-source-script-decoding/index.js";
 export * from "./field-item-width-illegal/index.js";
 export * from "./field-preimage-length-mismatch/index.js";
 export * from "./input-set-uniqueness/index.js";
@@ -25,7 +23,6 @@ export * from "./output-reference-script-decoding/index.js";
 // RF-043: legacy diagnostic submit-init/submit-step APIs are intentionally not
 // part of the production package surface.  The CLI and file entrypoints retain
 // the same retirement guard until an authenticated canonical submitter exists.
-export * from "./distinct-asset-accumulation-limit/index.js";
 export * from "./invalid-signature/artifact.js";
 export * from "./invalid-signature/contracts.js";
 export * from "./invalid-signature/submit.js";
@@ -35,13 +32,6 @@ export * from "./min-fee-forced.js";
 export * from "./min-fee-forced-artifact.js";
 export * from "./mint-declared-asset-limit/index.js";
 export * from "./mint-item-non-canonical/index.js";
-export * from "./missing-redeemer/index.js";
-export * as missingScriptSourceV1 from "./missing-script-source/index.js";
-export {
-  createManifestBoundMissingScriptSourceWorkflow,
-  type ManifestBoundMissingScriptSourceWorkflow,
-  type ManifestBoundMissingScriptSourceWorkflowConfig,
-} from "./missing-script-source/v1.js";
 export * from "./native-script-decoding/artifact.js";
 export * from "./native-script-decoding/replay.js";
 export * from "./native-script-decoding/workflow.js";
@@ -67,7 +57,6 @@ export * from "./prepare-zero-input.js";
 export * from "./proof-fit/van-rossem-fit-ledger.js";
 export * from "./protected-output-signer-missing/index.js";
 export * from "./publish-proof-chunks.js";
-export * from "./receive-purpose-language/index.js";
 export * from "./redeemer-canonicity/index.js";
 export * from "./redeemer-item-data.js";
 export * from "./redeemer-item-plan.js";
@@ -76,7 +65,6 @@ export * from "./remove-unattested-block.js";
 export * from "./resolved-output-non-canonical/index.js";
 export * from "./retained-payload-replay-source.js";
 export * from "./runtime.js";
-export * from "./script-integrity-hash-mismatch/index.js";
 export * from "./script-integrity-hash-missing/artifact.js";
 export * from "./script-integrity-hash-missing/contracts.js";
 export * from "./script-integrity-hash-missing/family.js";
@@ -108,9 +96,6 @@ export * from "./submit-transition-trace-proof.js";
 export * from "./testing/complete-lifecycle.js";
 export * from "./transaction-output-non-canonical/index.js";
 export * from "./transition-trace/index.js";
-export * from "./unused-redeemer/index.js";
-export * from "./unused-script-witness/index.js";
-export * from "./validation-dispute/index.js";
 export * from "./value-not-preserved/index.js";
 export * from "./withdrawal-mistag/index.js";
 export * from "./withdrawal-mistag/workflow.js";

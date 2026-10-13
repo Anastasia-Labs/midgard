@@ -5,6 +5,7 @@ import { h28 } from "@al-ft/midgard-test-support/hex";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { openWatcherFaultDecisionJournal } from "../../src/fault-proofs/fault-decision-journal.js";
+import { installedLaunchScope } from "../../src/fault-proofs/fault-proof-application.js";
 import { unsafeCreateWatcherFaultProofSupervisorForTest } from "../../src/fault-proofs/fault-proof-supervisor.js";
 import {
   classifyDoubleSpend,
@@ -56,7 +57,7 @@ describe("fault-proof supervisor queue order", () => {
     const journal = await openWatcherFaultDecisionJournal({
       directory: root,
       deploymentFingerprint: deploymentIdentity.manifestId,
-      launchScope: reconciled.launchScope,
+      launchScope: installedLaunchScope(reconciled.launchScope),
       authenticationKey: TEST_JOURNAL_KEY,
     });
     await journal.appendLiveDecision(reconciled);

@@ -10,10 +10,8 @@ import {
   buildCommittedFieldShapeFaultProofContracts,
   buildCorrectionLockValidator,
   buildDaHashPreimageFaultProofContracts,
-  buildDistinctAssetAccumulationLimitFaultProofContracts,
   buildDoubleSpendFaultProofContracts,
   buildDoubleWithdrawFaultProofContracts,
-  buildExecutionSourceScriptDecodingFaultProofContracts,
   buildFabricatedDepositFaultProofContracts,
   buildFabricatedWithdrawalFaultProofContracts,
   buildFieldItemWidthIllegalFaultProofContracts,
@@ -41,7 +39,6 @@ import {
   buildRedeemerCanonicityFaultProofContracts,
   buildReferenceInputNoIdxFaultProofContracts,
   buildResolvedOutputNonCanonicalFaultProofContracts,
-  buildScriptIntegrityHashMismatchFaultProofContracts,
   buildScriptIntegrityHashMissingFaultProofContracts,
   buildSpendInputSignerMissingFaultProofContracts,
   buildStateQueueValidator,
@@ -76,10 +73,6 @@ import { expect } from "vitest";
 
 import { type CanonicalDecodabilityContracts } from "../../../src/canonical-decodability/contracts.js";
 import { type CommittedFieldShapeContracts } from "../../../src/committed-field-shape/contracts.js";
-import {
-  DISTINCT_ASSET_ACCUMULATION_LIMIT_BLUEPRINT_TITLES,
-  type DistinctAssetAccumulationContracts,
-} from "../../../src/distinct-asset-accumulation-limit/contracts.js";
 import { type DoubleWithdrawContracts } from "../../../src/double-withdraw/contracts.js";
 import { type InputSetUniquenessContracts } from "../../../src/input-set-uniqueness/contracts.js";
 import { type L2TxMistagContracts } from "../../../src/l2-tx-mistag/contracts.js";
@@ -145,7 +138,6 @@ export const buildMinimalFaultProofContracts = async (
     realFieldPreimageLengthMismatch = false,
     realWitnessScriptDecoding = false,
     realScriptIntegrityHashMissing = false,
-    realScriptIntegrityHashMismatch = false,
     realWithdrawnReferenceInput = false,
     realMinFee = false,
     realDoubleWithdraw = false,
@@ -157,7 +149,6 @@ export const buildMinimalFaultProofContracts = async (
     realInputSetUniqueness = false,
     realValueNotPreserved = false,
     realMintAuthorization = false,
-    realDistinctAssetAccumulationLimit = false,
     realMintDeclaredAssetLimit = false,
     realTransactionOutputNonCanonical = false,
     realMintItemNonCanonical = false,
@@ -167,7 +158,6 @@ export const buildMinimalFaultProofContracts = async (
     realObserversForbiddenOnUntaggedNetwork = false,
     realObserverOrderInvalid = false,
     realOutputReferenceScriptDecoding = false,
-    realExecutionSourceScriptDecoding = false,
     alwaysFraudProofCatalogue = false,
     alwaysStateQueue = false,
     referenceScriptAuthPolicyId,
@@ -201,7 +191,6 @@ export const buildMinimalFaultProofContracts = async (
     readonly realFieldPreimageLengthMismatch?: boolean;
     readonly realWitnessScriptDecoding?: boolean;
     readonly realScriptIntegrityHashMissing?: boolean;
-    readonly realScriptIntegrityHashMismatch?: boolean;
     readonly realWithdrawnReferenceInput?: boolean;
     readonly realMinFee?: boolean;
     readonly realDoubleWithdraw?: boolean;
@@ -213,7 +202,6 @@ export const buildMinimalFaultProofContracts = async (
     readonly realInputSetUniqueness?: boolean;
     readonly realValueNotPreserved?: boolean;
     readonly realMintAuthorization?: boolean;
-    readonly realDistinctAssetAccumulationLimit?: boolean;
     readonly realMintDeclaredAssetLimit?: boolean;
     readonly realTransactionOutputNonCanonical?: boolean;
     readonly realMintItemNonCanonical?: boolean;
@@ -223,7 +211,6 @@ export const buildMinimalFaultProofContracts = async (
     readonly realObserversForbiddenOnUntaggedNetwork?: boolean;
     readonly realObserverOrderInvalid?: boolean;
     readonly realOutputReferenceScriptDecoding?: boolean;
-    readonly realExecutionSourceScriptDecoding?: boolean;
     readonly alwaysFraudProofCatalogue?: boolean;
     /**
      * Test-only admission bypass for faults whose malformed header is rejected
@@ -263,7 +250,6 @@ export const buildMinimalFaultProofContracts = async (
     readonly inputSetUniqueness?: InputSetUniquenessContracts;
     readonly valueNotPreserved?: ValueNotPreservedContracts;
     readonly mintAuthorization?: MintAuthorizationContracts;
-    readonly distinctAssetAccumulationLimit?: DistinctAssetAccumulationContracts;
   }
 > => {
   // This integration test proves the real active-operators slashing and
@@ -576,10 +562,6 @@ export const buildMinimalFaultProofContracts = async (
     realMintAuthorization,
     buildMintAuthorizationFaultProofContracts,
   );
-  const distinctAssetAccumulationLimitContracts = await buildFamilyContracts(
-    realDistinctAssetAccumulationLimit,
-    buildDistinctAssetAccumulationLimitFaultProofContracts,
-  );
   // Centrally registered proof-thread families: their lifecycle suites drive
   // the very chain the catalogue root folds, so the real chain is opt-in here
   // exactly like every other real family above.
@@ -619,14 +601,6 @@ export const buildMinimalFaultProofContracts = async (
   const outputReferenceScriptDecodingContracts = await buildFamilyContracts(
     realOutputReferenceScriptDecoding,
     buildOutputReferenceScriptDecodingFaultProofContracts,
-  );
-  const executionSourceScriptDecodingContracts = await buildFamilyContracts(
-    realExecutionSourceScriptDecoding,
-    buildExecutionSourceScriptDecodingFaultProofContracts,
-  );
-  const scriptIntegrityHashMismatchContracts = await buildFamilyContracts(
-    realScriptIntegrityHashMismatch,
-    buildScriptIntegrityHashMismatchFaultProofContracts,
   );
   const activeOperatorsAddressData = await Effect.runPromise(
     addressDataFromBech32(
@@ -901,26 +875,6 @@ export const buildMinimalFaultProofContracts = async (
           stateQueuePolicyId: productionStateQueue.policyId,
           fieldPreimageCertificatePolicyId,
         };
-  const distinctAssetAccumulationLimit:
-    | DistinctAssetAccumulationContracts
-    | undefined =
-    distinctAssetAccumulationLimitContracts === undefined
-      ? undefined
-      : {
-          steps:
-            distinctAssetAccumulationLimitContracts.distinctAssetAccumulationLimit.steps.map(
-              (step, index) => ({
-                ...step,
-                blueprintTitle:
-                  DISTINCT_ASSET_ACCUMULATION_LIMIT_BLUEPRINT_TITLES[index]!,
-              }),
-            ) as unknown as DistinctAssetAccumulationContracts["steps"],
-          computationThread:
-            distinctAssetAccumulationLimitContracts.computationThread,
-          fraudProof: distinctAssetAccumulationLimitContracts.fraudProof,
-          hubOraclePolicyId: hubOracle.policyId,
-          stateQueuePolicyId: productionStateQueue.policyId,
-        };
   const fabricatedWithdrawal: FabricatedWithdrawalContracts | undefined =
     fabricatedWithdrawalContracts === undefined
       ? undefined
@@ -1052,9 +1006,7 @@ export const buildMinimalFaultProofContracts = async (
         ? withActiveOperators.fraudProofContracts.mintAuthorization
         : chainFromSteps(mintAuthorization.steps),
     distinctAssetAccumulationLimit:
-      distinctAssetAccumulationLimit === undefined
-        ? withActiveOperators.fraudProofContracts.distinctAssetAccumulationLimit
-        : chainFromSteps(distinctAssetAccumulationLimit.steps),
+      withActiveOperators.fraudProofContracts.distinctAssetAccumulationLimit,
     fieldItemWidthIllegal:
       fieldItemWidthIllegalContracts?.fieldItemWidthIllegal ??
       withActiveOperators.fraudProofContracts.fieldItemWidthIllegal,
@@ -1099,10 +1051,8 @@ export const buildMinimalFaultProofContracts = async (
       outputReferenceScriptDecodingContracts?.outputReferenceScriptDecoding ??
       withActiveOperators.fraudProofContracts.outputReferenceScriptDecoding,
     executionSourceScriptDecoding:
-      executionSourceScriptDecodingContracts?.executionSourceScriptDecoding ??
       withActiveOperators.fraudProofContracts.executionSourceScriptDecoding,
     scriptIntegrityHashMismatch:
-      scriptIntegrityHashMismatchContracts?.scriptIntegrityHashMismatch ??
       withActiveOperators.fraudProofContracts.scriptIntegrityHashMismatch,
   };
 
@@ -1128,9 +1078,6 @@ export const buildMinimalFaultProofContracts = async (
     ...(inputSetUniqueness === undefined ? {} : { inputSetUniqueness }),
     ...(valueNotPreserved === undefined ? {} : { valueNotPreserved }),
     ...(mintAuthorization === undefined ? {} : { mintAuthorization }),
-    ...(distinctAssetAccumulationLimit === undefined
-      ? {}
-      : { distinctAssetAccumulationLimit }),
     ...(validationTraceDisputeContracts === undefined
       ? {}
       : {

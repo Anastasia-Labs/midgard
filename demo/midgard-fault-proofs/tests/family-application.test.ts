@@ -195,54 +195,8 @@ describe("shared family application loop", () => {
     },
   );
 
-  it("refuses a record requiring the challenge port when the host omits it and binds the port's challenge when supplied", async () => {
-    const challenge = Object.freeze({ sentinel: "challenge" });
-    const currentChallenge = vi.fn(async () => challenge as never);
-    const f = fixture({
-      requires: ["validationChallenge"],
-      bindConfig: async ({ infrastructure }) =>
-        ({
-          roles: [],
-          challenge: await infrastructure.validationChallenge?.currentChallenge(
-            {
-              headerHash: infrastructure.headerHash,
-              decisionDigest: infrastructure.decisionDigest ?? "",
-            },
-          ),
-        }) as never,
-    });
-    await expect(
-      applyFamilyApplicationRecord({
-        record: f.record,
-        infrastructure: f.infrastructure,
-        resolveReferenceScript: f.resolveReferenceScript,
-        invocation: f.invocation,
-      }),
-    ).rejects.toThrow(
-      "minFee application requires validationChallenge, which the host did not supply",
-    );
-    expect(f.resolveReferenceScript).not.toHaveBeenCalled();
-    const applied = await applyFamilyApplicationRecord({
-      record: f.record,
-      infrastructure: {
-        ...f.infrastructure,
-        decisionDigest,
-        validationChallenge: { currentChallenge },
-      },
-      resolveReferenceScript: f.resolveReferenceScript,
-      invocation: f.invocation,
-    });
-    expect((applied.config as { challenge?: unknown }).challenge).toBe(
-      challenge,
-    );
-    expect(currentChallenge).toHaveBeenCalledWith({
-      headerHash,
-      decisionDigest,
-    });
-  });
-
   it("refuses a reconciliation exemption that cannot prove itself", async () => {
-    const f = fixture({ requires: ["validationChallenge"] });
+    const f = fixture({ requires: ["replayContext"] });
     await expect(
       applyFamilyApplicationRecord({
         record: f.record,
@@ -260,7 +214,7 @@ describe("shared family application loop", () => {
   });
 
   it("resolves a roster for readiness without binding or requiring anything", async () => {
-    const f = fixture({ requires: ["validationChallenge", "replayContext"] });
+    const f = fixture({ requires: ["replayContext"] });
     const resolved = await resolveFamilyApplicationReferences({
       record: f.record,
       resolveReferenceScript: f.resolveReferenceScript,

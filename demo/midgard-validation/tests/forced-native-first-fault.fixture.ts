@@ -14,7 +14,6 @@ import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
 import {
-  replayValidationMachineEvent,
   validatePhaseASingle,
   validationMachineLedgerRoot,
 } from "../src/index.js";
@@ -25,6 +24,7 @@ import {
   makeOutput,
   outRefFromByte,
 } from "./validation-fixtures.js";
+import { replayValidationMachineEvent } from "./validation-machine-event-replay.trace.js";
 
 export const nativeFaultContext = {
   consensusProfile: MIDGARD_CONSENSUS_PROFILE,

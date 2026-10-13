@@ -4,7 +4,6 @@ import type { LucidEvolution, UTxO } from "@lucid-evolution/lucid";
 import type { StateQueueMutationLeaseCoordinator } from "../remove-fraudulent-block.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import type { RetainedDaPayloadSource } from "../transition-trace/fetch.js";
-import type { ValidationTraceChallenge } from "./challenge-authority.js";
 import type { CompleteCanonicalReplayContext } from "./complete-replay.js";
 import type {
   FamilyCategory,
@@ -30,21 +29,7 @@ export const FAMILY_APPLICATION_RECORD =
  * Deliberately capped at what today's families need: growing this set is a
  * design decision, not an implementation detail.
  */
-export type FamilyApplicationRequirement =
-  | "replayContext"
-  | "validationChallenge";
-
-/**
- * How a family that disputes a validation trace reaches the freshly admitted
- * challenge for this decision. The host owns capture, refresh and the
- * currency assertion; the family only declares that it needs one.
- */
-export type FamilyValidationChallengePort = Readonly<{
-  currentChallenge(input: {
-    readonly headerHash: string;
-    readonly decisionDigest: string;
-  }): Promise<ValidationTraceChallenge>;
-}>;
+export type FamilyApplicationRequirement = "replayContext";
 
 /**
  * Everything a host builds once per invocation and every family draws from.
@@ -63,7 +48,6 @@ export type FamilyCommonInfrastructure = Readonly<{
   /** The admitted decision this invocation acts on, when there is one. */
   decisionDigest?: string;
   replayContext?: CompleteCanonicalReplayContext;
-  validationChallenge?: FamilyValidationChallengePort;
 }>;
 
 /**
@@ -108,8 +92,6 @@ export type FamilyApplicationRecord<
   requires: readonly FamilyApplicationRequirement[];
   /**
    * Lays the resolved roster into the family's own manifest-bound config.
-   * Asynchronous only where a required part is reached through a port: the
-   * validation-trace dispute obtains its challenge from the host's port here.
    */
   bindConfig: (input: {
     readonly infrastructure: FamilyCommonInfrastructure;

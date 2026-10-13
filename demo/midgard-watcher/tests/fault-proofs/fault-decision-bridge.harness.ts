@@ -41,7 +41,6 @@ export const harness = (input: {
     header: WatcherStateQueueHeaderObservation,
   ) => Promise<WatcherStateQueueHeaderObservation | undefined>;
   readonly classificationContextIdentity?: () => Promise<string>;
-  readonly decisionUsesLocalEventHistory?: boolean;
   readonly permitAuthority?:
     | "submission"
     | "reconciliation"
@@ -104,8 +103,6 @@ export const harness = (input: {
       ...(input.warn === undefined ? {} : { warn: input.warn }),
       retainDecisionAuthorities: (digest) =>
         retainedDecisionAuthorities.push(digest),
-      decisionUsesLocalEventHistory: () =>
-        input.decisionUsesLocalEventHistory ?? false,
       assertObservation: (candidate) => {
         if (!admitted.has(candidate)) throw new Error("not admitted");
       },

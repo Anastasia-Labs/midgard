@@ -1,3 +1,4 @@
+import { UNINSTALLED_FRAUD_PROOF_CATEGORIES } from "@al-ft/midgard-fault-proofs";
 import { FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER } from "@al-ft/midgard-sdk";
 import { describe, expect, it } from "vitest";
 
@@ -10,16 +11,17 @@ import {
 } from "./catalogue.js";
 
 describe("automatic journey catalogue", () => {
-  it("provides exactly one candidate adapter for every non-interactive family", () => {
+  it("provides exactly one candidate adapter for every installed family", () => {
     expect(
       JOURNEY_FIXTURE_CANDIDATES.map(({ category }) => category).sort(),
     ).toEqual([...JOURNEY_CATEGORIES].sort());
   });
-  it("assigns each of the 51 non-interactive families to exactly one fixture owner", () => {
+  it("assigns each of the 42 installed families to exactly one fixture owner", () => {
+    const uninstalled: readonly string[] = UNINSTALLED_FRAUD_PROOF_CATEGORIES;
     const expected = FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER.filter(
-      (category) => category !== "validationTraceDispute",
+      (category) => !uninstalled.includes(category),
     );
-    expect(expected).toHaveLength(51);
+    expect(expected).toHaveLength(42);
     expect(JOURNEY_CATEGORIES).toEqual(expected);
     expect(Object.keys(JOURNEY_FIXTURE_OWNERS).sort()).toEqual(
       [...expected].sort(),
@@ -28,12 +30,12 @@ describe("automatic journey catalogue", () => {
       Object.values(JOURNEY_FIXTURE_OWNERS).filter(
         (owner) => owner === "transaction",
       ),
-    ).toHaveLength(25);
+    ).toHaveLength(24);
     expect(
       Object.values(JOURNEY_FIXTURE_OWNERS).filter(
         (owner) => owner === "script",
       ),
-    ).toHaveLength(14);
+    ).toHaveLength(6);
     expect(
       Object.values(JOURNEY_FIXTURE_OWNERS).filter(
         (owner) => owner === "history",
@@ -55,7 +57,7 @@ describe("automatic journey catalogue", () => {
     ]);
   });
 
-  it("registers only distinct assigned non-interactive fixtures", () => {
+  it("registers only distinct assigned installed fixtures", () => {
     const registered = JOURNEY_FIXTURES.map(({ category }) => category);
     expect(new Set(registered).size).toBe(registered.length);
     for (const category of registered)
@@ -64,6 +66,7 @@ describe("automatic journey catalogue", () => {
 
   it.each([
     "validationTraceDispute",
+    "missingRedeemer",
     "unknown",
     "transitionTrace,",
     "zeroInput,zeroInput",

@@ -6,7 +6,7 @@ import {
 } from "@lucid-evolution/lucid";
 import { afterEach, expect, it, vi } from "vitest";
 
-import { RECEIVE_PURPOSE_LANGUAGE_COMPLETE_CANONICAL_REPLAY } from "../src/workflow/complete-replay.js";
+import { MISSING_SIGNATURE_COMPLETE_CANONICAL_REPLAY } from "../src/workflow/complete-replay.js";
 import {
   CURSOR_FAMILY_TRANSACTION_PORT,
   type CursorFamilyTransactionPort,
@@ -28,7 +28,7 @@ import { FRAUD_PROOF_RAW_L1_SNAPSHOT_AUTHORITY } from "../src/workflow/raw-l1-sn
 
 afterEach(() => vi.restoreAllMocks());
 
-const category = "receivePurposeLanguage";
+const category = "missingSignature";
 const headerHash = "aa".repeat(28);
 const owner = "11".repeat(28);
 const script = { type: "PlutusV3", script: "49480100002221200101" } as const;
@@ -143,7 +143,7 @@ const fixture = () => {
     witnessRoles: ["computationThreadMint"],
     fieldPreimageCertificate: false,
     auxiliaryReferenceScripts: { removal: "correctionLockSpend" },
-    replayer: () => RECEIVE_PURPOSE_LANGUAGE_COMPLETE_CANONICAL_REPLAY,
+    replayer: () => MISSING_SIGNATURE_COMPLETE_CANONICAL_REPLAY,
     adapter: arm,
     fieldCarriage: [
       {

@@ -22,10 +22,8 @@ import {
   DirectValidationTraceUnavailable,
   MidgardRedeemerTag,
   RejectCodes,
-  replayValidationMachineEvent,
   runPhaseAValidation,
   runPhaseBValidationWithPatch,
-  type ValidationMachineEventReplayInput,
   type ValidationMachineLedgerEntry,
   validationMachineLedgerRoot,
 } from "../src/index.js";
@@ -43,6 +41,7 @@ import {
   outRefFromTxId,
   plutusV3ScriptWitness,
 } from "./validation-fixtures.js";
+import { replayValidationMachineEvent } from "./validation-machine-event-replay.trace.js";
 
 const context = {
   consensusProfile: MIDGARD_CONSENSUS_PROFILE,
@@ -56,7 +55,7 @@ const context = {
 const replayInput = async (
   transaction: NativeTxFixture,
   entries: readonly ValidationMachineLedgerEntry[],
-): Promise<ValidationMachineEventReplayInput> => ({
+): Promise<Parameters<typeof replayValidationMachineEvent>[0]> => ({
   l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
   ...context,
   sourceKind: "normal",
@@ -299,7 +298,7 @@ describe("independent validation event replay", () => {
         scriptLanguages: ["PlutusV3"],
       });
       const normal = await replayInput(transaction, fixture.entries);
-      const input: ValidationMachineEventReplayInput =
+      const input: typeof normal =
         sourceKind === "normal"
           ? normal
           : {

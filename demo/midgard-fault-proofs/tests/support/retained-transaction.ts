@@ -13,19 +13,20 @@ import { unwrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
 import { DA_TRANSPORT_LIMITS } from "@al-ft/midgard-core/da-transport";
 import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import * as SDK from "@al-ft/midgard-sdk";
-import { replayValidationMachineEvent } from "@al-ft/midgard-validation";
+import { replayValidationMachineEvent } from "@al-ft/midgard-validation/tests/validation-machine-event-replay.trace";
 import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
 import {
   buildRetainedValidationBlockFixture,
-  retainValidationTrace,
+  placeholderValidationTraceEntries,
 } from "./retained-reason-classifier.js";
 
 /**
- * Retain an operator's transaction verdict against caller-supplied ledger state.
- * The real validation machine supplies the witnesses, including its actual
- * refusal when the operator's accepted verdict is deliberately fraudulent.
+ * Commit an operator's transaction verdict against caller-supplied ledger
+ * state. The real validation pipeline replays the event, so callers can read
+ * its honest verdict (including its refusal when the operator's accepted
+ * verdict is deliberately wrong) next to the committed placeholder descriptor.
  */
 export const retainedTransactionFixture = async (input: {
   canonicalTransactionCbor: Buffer;
@@ -61,18 +62,19 @@ export const retainedTransactionFixture = async (input: {
           verdict: "rejected" as const,
           reason: verdict.ForcedTxInvalid.reason,
         };
+  const canonicalTransactionCbor =
+    input.source === undefined
+      ? input.canonicalTransactionCbor
+      : encodeMidgardForcedTxCanonical(
+          submittedForcedTransactionFromNative(nativeTx),
+        );
   const prior = input.predecessor.header;
   const replay = await Effect.runPromise(
     replayValidationMachineEvent({
       l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
       consensusProfile: MIDGARD_CONSENSUS_PROFILE,
       eventKeyCbor: Buffer.from(Data.to(eventKey, SDK.EventKey), "hex"),
-      canonicalTransactionCbor:
-        input.source === undefined
-          ? input.canonicalTransactionCbor
-          : encodeMidgardForcedTxCanonical(
-              submittedForcedTransactionFromNative(nativeTx),
-            ),
+      canonicalTransactionCbor,
       programMaterialSidecarCbor: encodeMidgardCekProgramMaterialSidecar(
         input.programMaterial ?? [],
       ),
@@ -133,9 +135,10 @@ export const retainedTransactionFixture = async (input: {
     operatorVkey: input.operatorVkey,
     minFeeA: input.minFeeA ?? prior.minFeeA,
     minFeeB: input.minFeeB ?? prior.minFeeB,
-    ...retainValidationTrace({
-      trace: replay.trace,
+    ...placeholderValidationTraceEntries({
       eventKey,
+      canonicalTransactionCbor,
+      sourceKind: input.source === undefined ? "normal" : "forced",
       claim,
     }),
     programMaterialEntries: (input.programMaterial ?? []).map((entry) => [

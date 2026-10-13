@@ -76,8 +76,6 @@ export const createWatcherFaultDecisionBridge = async (input: {
         : { pendingAvailabilityHeaders: input.pendingAvailabilityHeaders }),
       assertObservation: assertWatcherStateQueueObservation,
       retainDecisionAuthorities: input.application.retainDecisionAuthorities,
-      decisionUsesLocalEventHistory:
-        input.application.decisionUsesLocalEventHistory,
       observationDigest: async (candidate) =>
         await authenticatedStateQueueObservationDigest({
           observation: candidate,

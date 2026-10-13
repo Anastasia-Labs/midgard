@@ -1,13 +1,12 @@
+import type { InstalledFraudProofCategory } from "@al-ft/midgard-fault-proofs";
 import type * as SDK from "@al-ft/midgard-sdk";
 import type { PublishedDaAttestationOutcome } from "midgard-watcher/tests/support/published-block-actor";
 
 import type { loadJourneyContext } from "./live-context.js";
 import type { SignedCommitReconciliationPorts } from "./signed-commit-reconciliation.js";
 
-export type JourneyCategory = Exclude<
-  SDK.FraudProofCatalogueCategoryName,
-  "validationTraceDispute"
->;
+/** A category with an installed off-chain workflow. */
+export type JourneyCategory = InstalledFraudProofCategory;
 
 export type JourneyContext = Awaited<ReturnType<typeof loadJourneyContext>>;
 

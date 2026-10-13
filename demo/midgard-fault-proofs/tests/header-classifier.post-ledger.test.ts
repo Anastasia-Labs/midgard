@@ -1,7 +1,6 @@
 import { encodeMidgardTxOutput } from "@al-ft/midgard-core";
 import { DaRequestResponseProtocol } from "@al-ft/midgard-core/da-transport";
 import { DEPLOYMENT_MANIFEST_L1_FINALITY } from "@al-ft/midgard-core/deployment-manifest-identity";
-import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import { GENESIS_HEADER_HASH } from "@al-ft/midgard-sdk";
 import { describe, expect, it } from "vitest";
 
@@ -73,7 +72,6 @@ const setup = async ({ failFirstRead = false } = {}) => {
   const prepared = await prepareMinAdaTxFromCanonicalEvidence({ evidence });
   expect(prepared.badTxId).toBe(tx.txId);
   const classifier = await createHeaderClassifier({
-    l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
     deploymentFingerprint: fingerprint,
     replayer: MIN_ADA_COMPLETE_CANONICAL_REPLAY,
     releaseFinalityAuthority: finality,

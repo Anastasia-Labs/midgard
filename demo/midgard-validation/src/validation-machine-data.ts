@@ -28,7 +28,6 @@ export {
   redeemerItemControlData,
   redeemerItemProofWitnessData,
 } from "./validation-machine-data.redeemer-item-control-data.js";
-export { retainedValidationAuxiliaryWitnessData } from "./validation-machine-data.retained-validation-auxiliary-witness-data.js";
 export {
   extractCekProgramEnvelopeFromFirstSourceChunk,
   validateCekRouteMaterial,

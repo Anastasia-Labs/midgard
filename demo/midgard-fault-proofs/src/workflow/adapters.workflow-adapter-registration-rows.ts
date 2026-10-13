@@ -103,12 +103,10 @@ export const workflowAdapterRegistrationRows = [
   {
     category: "validationTraceDispute",
     status: "missing",
-    reason: "constrained_adapter_is_not_launch_scope_complete",
-    existingSurface: [
-      "workflow/family-application-registry.ts#VALIDATION_TRACE_DISPUTE_FAMILY_APPLICATION_RECORD",
-    ],
+    reason: "evidence_not_carried_by_da_payload",
+    existingSurface: [],
     requiredClosure:
-      "install the manifest-bound interactive-dispute runner in the compiled watcher application with authenticated retained DA",
+      "a DA payload that carries this family's validation evidence and a manifest-bound runner over it",
   },
   {
     category: "daHashPreimage",
@@ -559,94 +557,74 @@ export const workflowAdapterRegistrationRows = [
   {
     category: "executionSourceScriptDecoding",
     status: "missing",
-    reason: "constrained_adapter_is_not_launch_scope_complete",
-    existingSurface: [
-      "execution-source-script-decoding production runner surface is centrally installed",
-    ],
+    reason: "evidence_not_carried_by_da_payload",
+    existingSurface: [],
     requiredClosure:
-      "install the manifest-bound five-script runner in the compiled watcher application with authenticated retained validation witnesses",
+      "a DA payload that carries this family's validation evidence and a manifest-bound runner over it",
   },
   {
     category: "receivePurposeLanguage",
     status: "missing",
-    reason: "constrained_adapter_is_not_launch_scope_complete",
-    existingSurface: [
-      "receive-purpose-language/manifest-workflow.ts",
-      "workflow/manifest-bound-family-assembly.ts",
-      "receive-purpose-language production runner surface is centrally installed",
-    ],
+    reason: "evidence_not_carried_by_da_payload",
+    existingSurface: [],
     requiredClosure:
-      "install the manifest-bound three-script runner in the compiled watcher application with authenticated retained DA",
+      "a DA payload that carries this family's validation evidence and a manifest-bound runner over it",
   },
   {
     category: "unusedScriptWitness",
     status: "missing",
-    reason: "constrained_adapter_is_not_launch_scope_complete",
-    existingSurface: [
-      "unused-script-witness production runner surface is being centrally installed",
-    ],
+    reason: "evidence_not_carried_by_da_payload",
+    existingSurface: [],
     requiredClosure:
-      "install the manifest-bound six-script runner in the compiled watcher application with authenticated retained DA",
+      "a DA payload that carries this family's validation evidence and a manifest-bound runner over it",
   },
   {
     category: "missingScriptSource",
     status: "missing",
-    reason: "constrained_adapter_is_not_launch_scope_complete",
-    existingSurface: [
-      "missing-script-source production runner surface is being centrally installed",
-    ],
+    reason: "evidence_not_carried_by_da_payload",
+    existingSurface: [],
     requiredClosure:
-      "install the manifest-bound six-script runner in the compiled watcher application with authenticated retained DA",
+      "a DA payload that carries this family's validation evidence and a manifest-bound runner over it",
   },
   {
     category: "missingRedeemer",
     status: "missing",
-    reason: "constrained_adapter_is_not_launch_scope_complete",
-    existingSurface: [
-      "missing-redeemer production runner surface is being centrally installed",
-    ],
+    reason: "evidence_not_carried_by_da_payload",
+    existingSurface: [],
     requiredClosure:
-      "install the manifest-bound seven-script runner in the compiled watcher application with authenticated retained DA",
+      "a DA payload that carries this family's validation evidence and a manifest-bound runner over it",
   },
   {
     category: "unusedRedeemer",
     status: "missing",
-    reason: "constrained_adapter_is_not_launch_scope_complete",
-    existingSurface: [
-      "unused-redeemer production runner surface is being centrally installed",
-    ],
+    reason: "evidence_not_carried_by_da_payload",
+    existingSurface: [],
     requiredClosure:
-      "install the manifest-bound nine-script runner in the compiled watcher application with authenticated retained DA",
+      "a DA payload that carries this family's validation evidence and a manifest-bound runner over it",
   },
   {
     category: "executionNativeScriptInvalid",
     status: "missing",
-    reason: "constrained_adapter_is_not_launch_scope_complete",
-    existingSurface: [
-      "execution-native-script-invalid transaction-driving 13-script production runner surface is centrally installed",
-    ],
+    reason: "evidence_not_carried_by_da_payload",
+    existingSurface: [],
     requiredClosure:
-      "retain the manifest-bound 13-script runner in the compiled watcher application with authenticated retained DA and the admitted predecessor",
+      "a DA payload that carries this family's validation evidence and a manifest-bound runner over it",
   },
   {
     category: "scriptIntegrityHashMismatch",
     status: "missing",
-    reason: "constrained_adapter_is_not_launch_scope_complete",
-    existingSurface: [
-      "script-integrity-hash-mismatch production runner surface is being centrally installed",
-    ],
+    reason: "evidence_not_carried_by_da_payload",
+    existingSurface: [],
     requiredClosure:
-      "install the manifest-bound five-script runner in the compiled watcher application with authenticated retained DA",
+      "a DA payload that carries this family's validation evidence and a manifest-bound runner over it",
   },
   {
     category: "distinctAssetAccumulationLimit",
     status: "missing",
-    reason: "constrained_adapter_is_not_launch_scope_complete",
-    existingSurface: [
-      "distinct-asset-accumulation-limit production runner surface is being centrally installed",
-    ],
+    reason: "evidence_not_carried_by_da_payload",
+    existingSurface: [],
     requiredClosure:
-      "install the manifest-bound six-script runner in the compiled watcher application with authenticated retained DA",
+      "a DA payload that carries this family's validation evidence and a manifest-bound runner over it",
   },
   {
     category: "mintItemNonCanonical",
