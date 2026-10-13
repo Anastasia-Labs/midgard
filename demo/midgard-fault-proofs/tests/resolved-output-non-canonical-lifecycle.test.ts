@@ -16,8 +16,11 @@
  * rejection at the maximum shape, honest refusals at the exact on-chain
  * predicate, reason/coordinate mutation, substitution at every seam, cancel
  * from every physical step, resume from a live checkpoint, mint plus removal.
+ * The datum step's own cases (its verdicts in both directions, its seams and
+ * its cancel) are in resolved-output-non-canonical-datum-lifecycle.test.ts.
  * Every positive transaction is measured against the Van Rossem envelope;
- * the suite teardown pins the coverage gate and the fit ledger after all cases.
+ * the suite teardown pins the coverage gate and checks every measured row's
+ * margins. The two files together write the fit ledger.
  */
 import "node:crypto";
 import "node:fs";
@@ -38,9 +41,6 @@ import "./support/submit-init-emulator-shared.js";
 import "./resolved-output-non-canonical-lifecycle.record-carriage.js";
 import "./resolved-output-non-canonical-lifecycle.refuse-datum-seams.js";
 
-import { createHash } from "node:crypto";
-import { readFileSync } from "node:fs";
-
 import { Store, Trie } from "@aiken-lang/merkle-patricia-forestry";
 import {
   buildMidgardBoundedItem,
@@ -56,10 +56,6 @@ import { Data } from "@lucid-evolution/lucid";
 import { afterAll, describe, expect, it } from "vitest";
 
 import {
-  buildVanRossemFitLedger,
-  writeVanRossemFitLedger,
-} from "../src/proof-fit/van-rossem-fit-ledger.js";
-import {
   classifyResolvedOutputNonCanonicalFinding,
   locateResolvedOutputScanControl,
   resolvedOutputChunkProofData,
@@ -69,19 +65,20 @@ import { assertCompleteLifecycleCoverage } from "../src/testing/complete-lifecyc
 import { buildCountedRoot } from "../src/transition-trace/phas.js";
 import {
   AUTHENTICATION_SEAMS,
+  beginMeasuredCase,
   CANCELLABLE_STEPS,
   coverage,
-  ledgerPath,
-  measurements,
+  expectMeasuredFit,
+  MEASURED_CASES,
+  measureFitPart,
+  passMeasuredCase,
   progress,
   record,
   recordCarriage,
   recordPublication,
 } from "./resolved-output-non-canonical-lifecycle.record-carriage.js";
 import { refuseDatumSeams } from "./resolved-output-non-canonical-lifecycle.refuse-datum-seams.js";
-import { densePlutusData } from "./support/dense-plutus-data.js";
 import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
-import type { CompleteSignedTransactionMeasurement } from "./support/emulator/measurement.js";
 import {
   buildPriorLedger,
   buildSubjectTransaction,
@@ -89,11 +86,9 @@ import {
   forcedSourceOf,
   makeResolvedOutputContext,
   makeResolvedOutputStages,
-  MAXIMUM_DATUM_BYTES,
   MAXIMUM_INPUT_ITEM_COUNT,
   maximumCanonicalOutput,
   maximumMalformedOutput,
-  outputWithDatumBytes,
   RESOLVED_OUTPUT_MAXIMUM_BYTES,
   RESOLVED_OUTPUT_REASON_ARM,
   resolvedOutputEvidence,
@@ -102,10 +97,15 @@ import {
   smallMalformedOutput,
   subjectTransactionFor,
 } from "./support/resolved-output-non-canonical-emulator.js";
-import { realBlueprintPath } from "./support/submit-init-emulator-shared.js";
 
 describe("resolvedOutputNonCanonical registered-chain lifecycle", () => {
+  measureFitPart("lifecycle", [
+    MEASURED_CASES.acceptedMaximum,
+    MEASURED_CASES.forcedMaximum,
+  ]);
+
   it("contradicts a wrongful acceptance of a non-canonical spend input at the maximum shape: refuses the accepted seams, resumes the scan, mints and removes", async () => {
+    beginMeasuredCase(MEASURED_CASES.acceptedMaximum);
     const context = await makeResolvedOutputContext();
     const prior = await buildPriorLedger({
       output: maximumMalformedOutput(),
@@ -325,9 +325,11 @@ describe("resolvedOutputNonCanonical registered-chain lifecycle", () => {
       (await stages.remove()).measurement,
     );
     coverage.scenario("permanent_proof_token_and_descendant_removal");
+    passMeasuredCase();
   }, 1_800_000);
 
   it("contradicts a wrongful forced rejection of a canonical reference input at the maximum shape: refuses every forced-door and certificate seam, closes at the exact end, mints and removes", async () => {
+    beginMeasuredCase(MEASURED_CASES.forcedMaximum);
     const context = await makeResolvedOutputContext();
     const prior = await buildPriorLedger({
       output: maximumCanonicalOutput(),
@@ -515,6 +517,7 @@ describe("resolvedOutputNonCanonical registered-chain lifecycle", () => {
       "forced-remove-fraudulent-block",
       (await stages.remove()).measurement,
     );
+    passMeasuredCase();
   }, 1_800_000);
 
   it("refuses to convict an honest accepted block: the finishable control cannot be advanced and a canonical verdict cannot mint under an accepted subject", async () => {
@@ -788,195 +791,7 @@ describe("resolvedOutputNonCanonical registered-chain lifecycle", () => {
     }
   }, 1_200_000);
 
-  it("convicts the acceptance of an output whose inline datum is not canonical under a canonical envelope, refusing forged datum steps, and cancels a thread parked on the datum step", async () => {
-    const context = await makeResolvedOutputContext();
-    // Zero written with a one-byte argument it does not need.
-    const prior = await buildPriorLedger({
-      output: outputWithDatumBytes(Buffer.from("1800", "hex")),
-      adversarialDepth: false,
-    });
-    const coordinate = { sourceKind: 0, inputIndex: 0 } as const;
-    const block = await commitBlock({
-      context,
-      nativeTx: subjectTransactionFor({
-        sourceKind: 0,
-        outRefBytes: prior.outRefBytes,
-        count: 1,
-      }),
-      priorRoot: prior.priorRoot,
-    });
-    const evidence = resolvedOutputEvidence({ block, prior, coordinate });
-    expect(evidence.outputIsNonCanonical).toBe(true);
-    expect(evidence.datumPlan?.canonical).toBe(false);
-    const stages = await makeResolvedOutputStages(context, block);
-    const toDatum = async () => {
-      const bound = await stages.step01Accepted(await stages.init(), evidence);
-      const opened = await stages.step02(
-        bound.result.nextThreadOutRef,
-        evidence,
-      );
-      const staged = await stages.step03(
-        opened.result.nextThreadOutRef,
-        evidence,
-      );
-      const walked = await stages.reconstruct(
-        staged.result.nextThreadOutRef,
-        evidence,
-      );
-      expect(walked.final.action).toBe("finalize");
-      expect(walked.final.nextStage).toBe("step04Datum");
-      return walked.threadOutRef;
-    };
-    const atDatum = await toDatum();
-    await refuseDatumSeams(stages, atDatum, evidence);
-    const read = await stages.readDatum(atDatum, evidence);
-    expect(read.steps).toBe(1);
-    const minted = await stages.step05(read.threadOutRef, evidence);
-    expect(minted.result.fraudProofUnit).toBeTruthy();
-    coverage.reason(RESOLVED_OUTPUT_REASON_ARM, "accepted_invalid");
-    await stages.cancel(await toDatum(), 4);
-    coverage.cancelled("step-04-datum");
-  }, 900_000);
-
-  it("refuses to convict an honest acceptance of an output whose inline datum is canonical: the datum reads canonical and cannot mint under an accepted subject", async () => {
-    const context = await makeResolvedOutputContext();
-    const prior = await buildPriorLedger({
-      output: outputWithDatumBytes(Buffer.from("1818", "hex")),
-      adversarialDepth: false,
-    });
-    const coordinate = { sourceKind: 1, inputIndex: 0 } as const;
-    const block = await commitBlock({
-      context,
-      nativeTx: subjectTransactionFor({
-        sourceKind: 1,
-        outRefBytes: prior.outRefBytes,
-        count: 1,
-      }),
-      priorRoot: prior.priorRoot,
-    });
-    expect(() =>
-      resolvedOutputEvidence({ block, prior, coordinate }),
-    ).toThrow();
-    const lying = resolvedOutputEvidence({
-      block,
-      prior,
-      coordinate,
-      claim: "lying",
-    });
-    expect(lying.outputIsNonCanonical).toBe(false);
-    expect(lying.datumPlan?.canonical).toBe(true);
-    const stages = await makeResolvedOutputStages(context, block);
-    const bound = await stages.step01Accepted(await stages.init(), lying);
-    const opened = await stages.step02(bound.result.nextThreadOutRef, lying);
-    const staged = await stages.step03(opened.result.nextThreadOutRef, lying);
-    const walked = await stages.reconstruct(
-      staged.result.nextThreadOutRef,
-      lying,
-    );
-    expect(walked.final.nextStage).toBe("step04Datum");
-    const read = await stages.readDatum(walked.threadOutRef, lying);
-    await expect(stages.step05(read.threadOutRef, lying)).rejects.toThrow();
-    await expectOnchainRefusal(() => stages.step05Raw(read.threadOutRef), {
-      refusedBy: "fraud_proofs/resolved_output_non_canonical/step_05",
-      check: /^Validator returned false$/u,
-    });
-    coverage.scenario("honest_accepted_block_refusal");
-  }, 900_000);
-
-  it("convicts a forced rejection of maximum outputs whose inline datums are the densest canonical Data, reading each to its verdict, and measures the costliest datum step", async () => {
-    let costliest: CompleteSignedTransactionMeasurement | undefined;
-    let costliestShape = "";
-    for (const shape of [
-      "map-chain",
-      "generic-constructors",
-      "flat-integers",
-      "chunked-bytes",
-    ] as const) {
-      const context = await makeResolvedOutputContext();
-      const output = outputWithDatumBytes(
-        densePlutusData(shape, MAXIMUM_DATUM_BYTES),
-      );
-      expect(output).toHaveLength(RESOLVED_OUTPUT_MAXIMUM_BYTES);
-      const prior = await buildPriorLedger({ output, adversarialDepth: false });
-      const coordinate = { sourceKind: 0, inputIndex: 0 } as const;
-      const block = await commitBlock({
-        context,
-        nativeTx: subjectTransactionFor({
-          sourceKind: 0,
-          outRefBytes: prior.outRefBytes,
-          count: 1,
-        }),
-        priorRoot: prior.priorRoot,
-        reason: resolvedOutputReason(coordinate),
-      });
-      const evidence = resolvedOutputEvidence({ block, prior, coordinate });
-      expect(evidence.outputIsNonCanonical).toBe(false);
-      const plan = evidence.datumPlan!;
-      expect(plan.canonical).toBe(true);
-      const stages = await makeResolvedOutputStages(context, block);
-      const bound = await stages.step01Forced(
-        stages.threadOf(await stages.init()),
-        evidence,
-      );
-      const opened = await stages.step02(
-        bound.result.nextThreadOutRef,
-        evidence,
-      );
-      const staged = await stages.step03(
-        opened.result.nextThreadOutRef,
-        evidence,
-      );
-      const walked = await stages.reconstruct(
-        staged.result.nextThreadOutRef,
-        evidence,
-      );
-      expect(walked.final.nextStage).toBe("step04Datum");
-      // Every datum step stays within its planned estimate, which the
-      // planner keeps below one transaction's budget.
-      const keep = (
-        captured: {
-          readonly measurement: CompleteSignedTransactionMeasurement;
-        },
-        index: number,
-      ) => {
-        const { executionMemory, executionSteps } = captured.measurement;
-        expect(executionMemory).toBeLessThanOrEqual(
-          BigInt(plan.steps[index]!.estimatedMemory),
-        );
-        expect(executionMemory).toBeLessThanOrEqual(13_200_000n);
-        expect(executionSteps).toBeLessThanOrEqual(8_000_000_000n);
-        if (
-          costliest === undefined ||
-          captured.measurement.executionMemory > costliest.executionMemory
-        ) {
-          costliest = captured.measurement;
-          costliestShape = shape;
-        }
-      };
-      const first = await stages.step04Datum(walked.threadOutRef, evidence);
-      expect(first.result.finished).toBe(false);
-      keep(first, 0);
-      // A container is open at the second checkpoint.
-      await refuseDatumSeams(stages, first.result.nextThreadOutRef, evidence);
-      const read = await stages.readDatum(
-        first.result.nextThreadOutRef,
-        evidence,
-        (captured, index) => keep(captured, index + 1),
-      );
-      expect(read.steps + 1).toBe(plan.steps.length);
-      progress(
-        `${shape}: ${walked.transitions.toString()} envelope and ${plan.steps.length.toString()} datum transactions`,
-      );
-      const minted = await stages.step05(read.threadOutRef, evidence);
-      expect(minted.result.fraudProofUnit).toBeTruthy();
-      coverage.reason(RESOLVED_OUTPUT_REASON_ARM, "forced_rejection_wrong");
-    }
-    record("ronc_datum_verdict_step_max", costliest!, {
-      maximumShape: `${MAXIMUM_DATUM_BYTES.toLocaleString("en-US")}-byte inline datum (${costliestShape}, the costliest of map chains, generic constructors, flat integers and chunked byte strings) filling a ${RESOLVED_OUTPUT_MAXIMUM_BYTES.toLocaleString("en-US")}-byte output`,
-    });
-  }, 3_600_000);
-
-  afterAll(async () => {
+  afterAll(() => {
     assertCompleteLifecycleCoverage({
       coverage: coverage.snapshot(),
       expectedReasonArms: [RESOLVED_OUTPUT_REASON_ARM],
@@ -985,36 +800,6 @@ describe("resolvedOutputNonCanonical registered-chain lifecycle", () => {
       resumable: true,
       hasAdjacentConsensusBound: false,
     });
-    const blueprintBytes = readFileSync(realBlueprintPath);
-    const preamble = JSON.parse(blueprintBytes.toString("utf8")) as {
-      readonly preamble?: { readonly compiler?: { readonly version?: string } };
-    };
-    const ledger = buildVanRossemFitLedger({
-      category: "resolvedOutputNonCanonical:00000026:testnet",
-      blueprintSha256: createHash("sha256")
-        .update(blueprintBytes)
-        .digest("hex"),
-      compilerVersion: `aiken ${preamble.preamble?.compiler?.version ?? "unknown"}`,
-      measurements,
-    });
-    for (const entry of ledger.entries) {
-      expect(entry.signedByteMargin, entry.name).toBeGreaterThan(0);
-      expect(BigInt(entry.memoryUnitMargin), entry.name).toBeGreaterThan(0n);
-      expect(BigInt(entry.cpuUnitMargin), entry.name).toBeGreaterThan(0n);
-      if (entry.kind === "publication")
-        expect(
-          entry.publicationReserveMargin,
-          entry.name,
-        ).toBeGreaterThanOrEqual(0);
-    }
-    if (process.env.MIDGARD_WRITE_FIT_LEDGER === "1") {
-      await writeVanRossemFitLedger(ledgerPath, ledger);
-      console.info(
-        `[resolved-output-non-canonical-fit-ledger] wrote ${ledgerPath}`,
-      );
-    }
-    console.info(
-      `[resolved-output-non-canonical-fit-ledger] ${JSON.stringify(ledger.entries)}`,
-    );
+    expectMeasuredFit();
   });
 });

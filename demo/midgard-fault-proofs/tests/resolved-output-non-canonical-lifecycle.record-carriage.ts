@@ -1,14 +1,26 @@
+import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 import { expect } from "vitest";
 
-import { type VanRossemFitMeasurement } from "../src/proof-fit/van-rossem-fit-ledger.js";
+import {
+  buildVanRossemFitLedger,
+  type VanRossemFitMeasurement,
+} from "../src/proof-fit/van-rossem-fit-ledger.js";
+import { realBlueprintPath } from "./support/emulator/blueprints.js";
 import type { CompleteSignedTransactionMeasurement } from "./support/emulator/measurement.js";
 import { createLifecycleCoverageRecorder } from "./support/lifecycle-coverage.js";
 import {
   MAXIMUM_INPUT_ITEM_COUNT,
   RESOLVED_OUTPUT_MAXIMUM_BYTES,
 } from "./support/resolved-output-non-canonical-emulator.js";
+import {
+  createSplitFitLedgerPart,
+  type SplitFitLedger,
+} from "./support/split-fit-ledger.js";
+
+/** The envelope suite's seams; the datum suite's are {@link DATUM_SEAMS}. */
 
 export const AUTHENTICATION_SEAMS = [
   "tx_membership",
@@ -25,17 +37,21 @@ export const AUTHENTICATION_SEAMS = [
   "wrong_successor",
   "finishable_advance",
   "premature_finalize",
+] as const;
+
+export const DATUM_SEAMS = [
   "datum_chunk",
   "datum_checkpoint",
   "datum_stack",
 ] as const;
+
+/** The envelope suite's cancels; the datum suite cancels `step-04-datum`. */
 
 export const CANCELLABLE_STEPS = [
   "step-01",
   "step-02",
   "step-03",
   "step-04",
-  "step-04-datum",
   "step-05",
 ] as const;
 
@@ -51,18 +67,71 @@ const PUBLICATION_NAMES = [
 
 const MAXIMUM_SHAPE = `${RESOLVED_OUTPUT_MAXIMUM_BYTES.toLocaleString("en-US")}-byte prior-ledger output at adversarial membership depth and a Certified ${MAXIMUM_INPUT_ITEM_COUNT.toString()}-item input field`;
 
-export const ledgerPath = fileURLToPath(
-  new URL(
-    "../../../docs/fault-proofs/size-plans/resolved-output-non-canonical-v1-fit-ledger.json",
-    import.meta.url,
+/**
+ * The cases that measure rows, in ledger order: the two maximum-shape
+ * lifecycles of the envelope suite and the densest-datum read of the datum
+ * suite. The suites' other cases measure nothing.
+ */
+export const MEASURED_CASES = {
+  acceptedMaximum: 0,
+  forcedMaximum: 1,
+  densestDatum: 2,
+} as const;
+
+const FIT_LEDGER: SplitFitLedger = {
+  path: fileURLToPath(
+    new URL(
+      "../../../docs/fault-proofs/size-plans/resolved-output-non-canonical-v1-fit-ledger.json",
+      import.meta.url,
+    ),
   ),
-);
+  category: "resolvedOutputNonCanonical:00000026:testnet",
+  compilerVersion: "aiken v1.1.23+5adf783",
+  caseCount: Object.keys(MEASURED_CASES).length,
+  parts: ["lifecycle", "datum"],
+  source: fileURLToPath(import.meta.url),
+  // Every row name is unique already.
+  rowNames: "stem",
+};
 
 export const coverage = createLifecycleCoverageRecorder();
 
-export const measurements: VanRossemFitMeasurement[] = [];
+/** This file's rows, checked for margin at its teardown. */
+const measurements: VanRossemFitMeasurement[] = [];
 
-export let publicationsRecorded = false;
+let publicationsRecorded = false;
+
+let fit: ReturnType<typeof createSplitFitLedgerPart> | undefined;
+
+let measuredCase: number | undefined;
+
+/** Registers the calling test file as one part of the fit ledger. */
+export const measureFitPart = (
+  part: "lifecycle" | "datum",
+  ordinals: readonly number[],
+) => {
+  fit = createSplitFitLedgerPart(FIT_LEDGER, part, ordinals);
+};
+
+/** Starts a measured case; every row until it passes belongs to it. */
+export const beginMeasuredCase = (ordinal: number) => {
+  measuredCase = ordinal;
+  fit?.begin(ordinal);
+};
+
+/** Marks the measured case passed; the last statement of the case. */
+export const passMeasuredCase = () => {
+  if (measuredCase !== undefined) fit?.pass(measuredCase);
+  measuredCase = undefined;
+};
+
+const push = (measurement: VanRossemFitMeasurement) => {
+  if (fit === undefined || measuredCase === undefined)
+    throw new Error(`${measurement.name} is measured outside a measured case`);
+  measurements.push(measurement);
+  const { name, ...row } = measurement;
+  fit.record(measuredCase, { stem: name, ...row });
+};
 
 const expectFit = (
   name: string,
@@ -81,7 +150,7 @@ export const record = (
   { runsScripts = true, maximumShape = MAXIMUM_SHAPE } = {},
 ) => {
   expectFit(name, measurement, runsScripts);
-  measurements.push({
+  push({
     name,
     kind: "lifecycle",
     maximumShape,
@@ -100,7 +169,7 @@ export const recordPublication = (
     throw new Error(`no step at index ${stepIndex.toString()}`);
   expect(measurement.completeSignedBytes, name).toBeLessThanOrEqual(15_872);
   if (publicationsRecorded) return;
-  measurements.push({
+  push({
     name,
     kind: "publication",
     maximumShape: "fully applied testnet validator",
@@ -131,6 +200,30 @@ export const recordCarriage = (
       { runsScripts: last },
     );
   });
+};
+
+/** Every row this file measured fits with a margin; the rows are logged. */
+export const expectMeasuredFit = () => {
+  const ledger = buildVanRossemFitLedger({
+    category: FIT_LEDGER.category,
+    blueprintSha256: createHash("sha256")
+      .update(readFileSync(realBlueprintPath))
+      .digest("hex"),
+    compilerVersion: FIT_LEDGER.compilerVersion,
+    measurements,
+  });
+  for (const entry of ledger.entries) {
+    expect(entry.signedByteMargin, entry.name).toBeGreaterThan(0);
+    expect(BigInt(entry.memoryUnitMargin), entry.name).toBeGreaterThan(0n);
+    expect(BigInt(entry.cpuUnitMargin), entry.name).toBeGreaterThan(0n);
+    if (entry.kind === "publication")
+      expect(entry.publicationReserveMargin, entry.name).toBeGreaterThanOrEqual(
+        0,
+      );
+  }
+  console.info(
+    `[resolved-output-non-canonical-fit-ledger] ${JSON.stringify(ledger.entries)}`,
+  );
 };
 
 export const progress = (message: string) =>
