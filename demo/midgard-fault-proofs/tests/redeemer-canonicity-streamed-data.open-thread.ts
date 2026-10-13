@@ -19,6 +19,7 @@ import {
 import { submitLinearFaultContinue } from "../src/linear-fault-submit.js";
 import {
   prepareRedeemerCanonicityEvidence,
+  REDEEMER_DATA_CHUNK_BYTES,
   RedeemerCanonicityStep02DataDatumSchema,
   RedeemerCanonicityStep02DataRedeemerSchema,
   RedeemerCanonicityStep03DatumSchema,
@@ -327,9 +328,9 @@ const dataStepRaw = async ({
 
 /**
  * At the checkpoint `threadOutRef` holds, the data step refuses a window
- * that differs from the committed data, a successor other than the honest
- * one, and (with frames hidden) a tail that does not hash to the stored
- * stack.
+ * that differs from the committed data, at the cursor or past the cursor
+ * chunk's boundary, a successor other than the honest one, and (with frames
+ * hidden) a tail that does not hash to the stored stack.
  */
 export const refuseDataSeams = async (thread: Thread, threadOutRef: string) => {
   const plan = thread.evidence.dataPlan!;
@@ -378,6 +379,21 @@ export const refuseDataSeams = async (thread: Thread, threadOutRef: string) => {
       next: honest,
     }),
   );
+  // A window into the next chunk: the cursor's chunk is the span's, the
+  // bytes past the boundary are not.
+  if (step.windowLength > REDEEMER_DATA_CHUNK_BYTES) {
+    const crossing = Buffer.from(args.window, "hex");
+    crossing[REDEEMER_DATA_CHUNK_BYTES] =
+      crossing[REDEEMER_DATA_CHUNK_BYTES]! ^ 0xff;
+    await expectOnchainRefusal(() =>
+      dataStepRaw({
+        thread,
+        threadOutRef,
+        args: { ...args, window: crossing.toString("hex") },
+        next: honest,
+      }),
+    );
+  }
   const forged =
     step.next.kind === "finish"
       ? {

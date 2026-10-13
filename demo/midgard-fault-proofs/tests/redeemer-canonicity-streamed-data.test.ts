@@ -2,7 +2,10 @@ import { writeFile } from "node:fs/promises";
 
 import { describe, expect, it } from "vitest";
 
-import { redeemerCanonicityEvidenceCloses } from "../src/redeemer-canonicity/index.js";
+import {
+  REDEEMER_DATA_CHUNK_BYTES,
+  redeemerCanonicityEvidenceCloses,
+} from "../src/redeemer-canonicity/index.js";
 import {
   dataStep,
   mint,
@@ -82,7 +85,9 @@ describe("redeemer-canonicity streamed data verdict", () => {
     progress(`4,000 levels: ${plan.steps.length.toString()} data steps`);
     // Forge at the opening checkpoint, then again once frames are hidden
     // below the revealed ones, and at the verdict.
-    await refuseDataSeams(opened, opened.threadOutRef);
+    const opening = await refuseDataSeams(opened, opened.threadOutRef);
+    // The opening window runs into the span's second chunk.
+    expect(opening.windowLength).toBeGreaterThan(REDEEMER_DATA_CHUNK_BYTES);
     const first = await dataStep(opened, opened.threadOutRef);
     expect(first.result.finished).toBe(false);
     const deep = await refuseDataSeams(opened, first.result.nextThreadOutRef);
