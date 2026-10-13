@@ -614,13 +614,15 @@ addMint(
   [mintItem(POLICY_A, [[ascii("a"), 1n]], { arrayHead: [0x83] })],
   { halts: true },
 );
-// The entry's header must be the minimal two-item array head: the same two
-// items admitted under `82` (mint_entry_with_the_minimal_array_head) are
-// refused under a wider head.
+// The entry's header must be the minimal two-item array head. Here the head
+// is the wide `98` form and its count byte is the policy's own `58` head, so
+// the bytes after the head byte decode as the policy and asset map admitted
+// under `82` (mint_entry_with_the_minimal_array_head): only the head check
+// refuses the entry.
 addMint(
   "mint_entry_with_a_wide_array_head",
   MINT_CHECK,
-  [mintItem(POLICY_A, [[ascii("a"), 1n]], { arrayHead: [0x98, 0x02] })],
+  [mintItem(POLICY_A, [[ascii("a"), 1n]], { arrayHead: [0x98] })],
   { halts: true },
 );
 addMint(
