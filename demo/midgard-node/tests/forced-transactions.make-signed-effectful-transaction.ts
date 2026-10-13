@@ -110,10 +110,16 @@ export const makeSignedEffectfulTransaction = (
     referenceInputs = [],
     additionalOutputs = [],
     networkId = MIDGARD_NATIVE_NETWORK_ID_NONE,
+    fee = 0n,
+    validityIntervalStart = MIDGARD_POSIX_TIME_NONE,
+    validityIntervalEnd = MIDGARD_POSIX_TIME_NONE,
   }: {
     readonly referenceInputs?: readonly Buffer[];
     readonly additionalOutputs?: readonly Buffer[];
     readonly networkId?: bigint;
+    readonly fee?: bigint;
+    readonly validityIntervalStart?: bigint;
+    readonly validityIntervalEnd?: bigint;
   } = {},
 ): {
   readonly transaction: MidgardNativeTxFull;
@@ -127,9 +133,9 @@ export const makeSignedEffectfulTransaction = (
         ? EMPTY_CBOR_LIST
         : encodeByteList(referenceInputs),
     outputsPreimageCbor: encodeByteList([output, ...additionalOutputs]),
-    fee: 0n,
-    validityIntervalStart: MIDGARD_POSIX_TIME_NONE,
-    validityIntervalEnd: MIDGARD_POSIX_TIME_NONE,
+    fee,
+    validityIntervalStart,
+    validityIntervalEnd,
     requiredObserversPreimageCbor: EMPTY_CBOR_LIST,
     requiredSignersPreimageCbor: EMPTY_CBOR_LIST,
     mintPreimageCbor: EMPTY_CBOR_LIST,
