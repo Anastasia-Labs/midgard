@@ -1,7 +1,8 @@
+import { encodeMidgardTxOutput } from "@al-ft/midgard-core";
 import { describe, expect, it } from "vitest";
 
 import { canonicalBlockEvidenceFromVerifiedPayload } from "../src/evidence/canonical-block-evidence.js";
-import { singleLedgerAt } from "../src/ledger-at.js";
+import { LedgerRootMismatchError, singleLedgerAt } from "../src/ledger-at.js";
 import {
   admitCompleteCanonicalReplayPredecessor,
   COMPLETE_CANONICAL_REPLAY_PREDECESSOR,
@@ -68,6 +69,56 @@ describe("production predecessor-relative complete replay V1", () => {
         detections: [],
       });
     }
+  });
+
+  it("admits a predecessor ledger only when it opens prev_utxos_root", async () => {
+    const outRef = outRefCbor(14, 0n);
+    const output = (lovelace: bigint) =>
+      encodeMidgardTxOutput({
+        address: Buffer.concat([Buffer.from([0x60]), Buffer.alloc(28, 0x44)]),
+        value: { lovelace, assets: new Map() },
+      });
+    const predecessor = await buildCanonicalBlockFixture({
+      transactions: [],
+      utxos: [{ key: outRef, value: output(2_000_000n) }],
+    });
+    const current = await buildCanonicalBlockFixture({
+      transactions: [],
+      prevHeaderHash: predecessor.headerHash,
+      prevUtxosRoot: predecessor.header.utxosRoot,
+    });
+    const currentEvidence = await canonicalBlockEvidenceFromVerifiedPayload({
+      observation: authenticatedHeaderObservation(current),
+      payloadEnvelopeCbor: current.payloadEnvelopeCbor,
+      daProvenance: {
+        trustClass: "public_or_permissionless_da",
+        sourceId: "libp2p/predecessor-replay-test",
+        grade: "security",
+      },
+    });
+    const admit = (entries: { outRef: Buffer; output: Buffer }[]) =>
+      admitCompleteCanonicalReplayPredecessor({
+        ledgerAt: singleLedgerAt(predecessor.headerHash, entries),
+        currentEvidence,
+      });
+    await expect(
+      admit([{ outRef, output: output(2_000_000n) }]),
+    ).resolves.toMatchObject({
+      schemaVersion: COMPLETE_CANONICAL_REPLAY_PREDECESSOR,
+      headerHash: predecessor.headerHash,
+      utxosRoot: predecessor.header.utxosRoot,
+    });
+    // One wrong entry is refused at the root check.
+    await expect(
+      admit([{ outRef, output: output(2_000_001n) }]),
+    ).rejects.toBeInstanceOf(LedgerRootMismatchError);
+    // A source without the ledger after prev_header_hash is refused.
+    await expect(
+      admitCompleteCanonicalReplayPredecessor({
+        ledgerAt: singleLedgerAt(current.headerHash, []),
+        currentEvidence,
+      }),
+    ).rejects.toThrow("is unavailable");
   });
 
   it("detects absent spend and reference inputs against the committed empty genesis ledger", async () => {
