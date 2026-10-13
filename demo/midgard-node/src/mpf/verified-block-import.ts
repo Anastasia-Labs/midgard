@@ -1,7 +1,12 @@
 import { MidgardCekProgramMaterialMissingRootError } from "@al-ft/midgard-core/cek-proof";
+import {
+  type BlockReplayContext,
+  replayBlockEvents,
+} from "@al-ft/midgard-fault-proofs/block-replay";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data, Effect } from "effect";
 
+import * as Ledger from "../database/utils/ledger.js";
 import {
   computeDaPayloadRoots,
   headerCounts,
@@ -9,10 +14,22 @@ import {
   rootMismatches,
 } from "../workers/commit-block-header/da-payload.compute-da-payload-roots.js";
 import { computeLedgerMpfRootFromLedgerEntries } from "./ledger-hydration.js";
-import {
-  type ImportedBlockReplayContext,
-  replayImportedBlockEvents,
-} from "./verified-block-import.replay-events.js";
+
+/** The shared block replay's context over the node's ledger rows. */
+export type ImportedBlockReplayContext = Omit<
+  BlockReplayContext,
+  "parentEntries" | "ledgerRoot"
+> & {
+  readonly parentEntries: readonly Ledger.MinimalEntry[];
+};
+
+const ledgerRows = (
+  entries: readonly { readonly outRef: Buffer; readonly output: Buffer }[],
+): Ledger.MinimalEntry[] =>
+  entries.map(({ outRef, output }) => ({
+    [Ledger.Columns.OUTREF]: outRef,
+    [Ledger.Columns.OUTPUT]: output,
+  }));
 
 /**
  * - `missing`: material the block needs is not available yet;
@@ -145,13 +162,21 @@ export const verifyAndImportBlock = (
         "invalid",
         `foreign DA commitment mismatch: ${mismatches.join(",")}`,
       );
-    const entries = yield* replayImportedBlockEvents({
-      ...input,
-      payload,
-      replayUserEvent: (event) => passThrough(input.replayUserEvent(event)),
-      verifyForcedSource: (source) =>
-        passThrough(input.verifyForcedSource(source)),
-    });
+    const entries = ledgerRows(
+      yield* replayBlockEvents({
+        ...input,
+        parentEntries: input.parentEntries.map((entry) => ({
+          outRef: entry[Ledger.Columns.OUTREF],
+          output: entry[Ledger.Columns.OUTPUT],
+        })),
+        ledgerRoot: (ledger) =>
+          computeLedgerMpfRootFromLedgerEntries(ledgerRows(ledger)),
+        payload,
+        replayUserEvent: (event) => passThrough(input.replayUserEvent(event)),
+        verifyForcedSource: (source) =>
+          passThrough(input.verifyForcedSource(source)),
+      }),
+    );
     const replayRoot = yield* computeLedgerMpfRootFromLedgerEntries(entries);
     if (replayRoot !== input.header.utxosRoot)
       return yield* fail("invalid", "foreign replay UTxO root mismatch");

@@ -60,6 +60,8 @@ export const buildNativeTx = (opts?: {
   readonly version?: bigint;
   readonly spendInputOutRefs?: readonly Buffer[];
   readonly referenceInputOutRefs?: readonly Buffer[];
+  readonly validityIntervalStart?: bigint;
+  readonly validityIntervalEnd?: bigint;
 }): {
   tx: MidgardNativeTxFull;
   txId: Buffer;
@@ -135,8 +137,9 @@ export const buildNativeTx = (opts?: {
     referenceInputsPreimageCbor,
     outputsPreimageCbor,
     fee: 0n,
-    validityIntervalStart: MIDGARD_POSIX_TIME_NONE,
-    validityIntervalEnd: MIDGARD_POSIX_TIME_NONE,
+    validityIntervalStart:
+      opts?.validityIntervalStart ?? MIDGARD_POSIX_TIME_NONE,
+    validityIntervalEnd: opts?.validityIntervalEnd ?? MIDGARD_POSIX_TIME_NONE,
     requiredObserversPreimageCbor,
     requiredSignersPreimageCbor,
     mintPreimageCbor,

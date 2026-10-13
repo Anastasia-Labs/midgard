@@ -45,9 +45,9 @@ import {
 } from "../lucid-time.js";
 import {
   ForeignBlockVerificationError,
+  type ImportedBlockReplayContext,
   verifyAndImportBlock,
 } from "../mpf/verified-block-import.js";
-import type { ImportedBlockReplayContext } from "../mpf/verified-block-import.replay-events.js";
 import { NodeConfig } from "../services/config.js";
 import { withFollowerWrite } from "../services/follower-write-gate.js";
 import { Lucid } from "../services/lucid.js";

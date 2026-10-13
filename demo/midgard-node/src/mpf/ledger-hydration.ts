@@ -3,21 +3,8 @@
  */
 
 import { encodeMidgardTxOutput, outRefToCbor } from "@al-ft/lucid-midgard";
-import {
-  computeMidgardNativeTxId,
-  decodeMidgardNativeTxFullFromCanonicalCbor,
-  deriveMidgardNativeTxProofSourceFromCanonicalCbor,
-} from "@al-ft/midgard-core/codec";
-import {
-  isMidgardConsensusProfile,
-  MIDGARD_CONSENSUS_PROFILE,
-  type MidgardConsensusProfile,
-} from "@al-ft/midgard-core/consensus-profile";
-import { validateMidgardConsensusTxCbor } from "@al-ft/midgard-core/consensus-validation";
-import { aikenSerialisedPlutusDataCbor } from "@al-ft/midgard-core/plutus-data-cbor";
 import * as SDK from "@al-ft/midgard-sdk";
 import type { UTxO } from "@lucid-evolution/lucid";
-import { Data as LucidData } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import * as FS from "fs";
 
@@ -32,38 +19,7 @@ import {
 import { MidgardMpf } from "./store.js";
 import { type MpfInsertBatchOp } from "./types.js";
 
-export const encodeTransactionRootValue = (
-  txCanonicalCbor: Buffer,
-  consensusProfile: MidgardConsensusProfile = MIDGARD_CONSENSUS_PROFILE,
-): Buffer => {
-  if (!isMidgardConsensusProfile(consensusProfile)) {
-    throw new Error("Refusing transaction under a non-V1 consensus profile");
-  }
-  const violation = validateMidgardConsensusTxCbor(txCanonicalCbor);
-  if (violation !== null) {
-    throw new Error(
-      `Refusing transaction outside the exact canonical V1 consensus profile: ${violation.code} ${violation.featureId} ${violation.detail}`,
-    );
-  }
-  const source =
-    deriveMidgardNativeTxProofSourceFromCanonicalCbor(txCanonicalCbor);
-  const transactionId = computeMidgardNativeTxId(
-    decodeMidgardNativeTxFullFromCanonicalCbor(txCanonicalCbor),
-  );
-  const value: SDK.L2TransactionSource = {
-    tx_id: transactionId.toString("hex"),
-    source: {
-      compact_cbor: source.compactCbor.toString("hex"),
-      witness_set_compact_cbor: source.witnessSetCompactCbor.toString("hex"),
-      field_preimage_lengths_cbor:
-        source.fieldPreimageLengthsCbor.toString("hex"),
-    },
-  };
-  return Buffer.from(
-    aikenSerialisedPlutusDataCbor(LucidData.to(value, SDK.L2TransactionSource)),
-    "hex",
-  );
-};
+export { encodeTransactionRootValue } from "@al-ft/midgard-fault-proofs/block-replay";
 
 export const computeLedgerMpfRootFromLedgerEntries = (
   entries: readonly Ledger.MinimalEntry[],

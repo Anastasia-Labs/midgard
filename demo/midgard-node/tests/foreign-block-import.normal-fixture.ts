@@ -93,8 +93,13 @@ const plutusSpend = () => {
       {
         tag: MidgardRedeemerTag.Spend,
         index: 0n,
-        // Within the per-transaction execution cap.
-        exUnits: [10_000_000n, 1_000_000_000n],
+        exUnits: [
+          BigInt(
+            MIDGARD_CONSENSUS_PROFILE.limits
+              .minSupportedTransactionExecutionMemoryUnits,
+          ),
+          1_000_000_000n,
+        ],
       },
     ]),
   });

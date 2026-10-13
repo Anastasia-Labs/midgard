@@ -6,7 +6,9 @@ describe("normal foreign event identity", () => {
   it("imports an honest signed normal transfer", async () => {
     const f = await normalFixture();
     expect(f.sourceKey).toBe(f.transactionId);
-    expect((await f.imported())._tag).toBe("Right");
+    const result = await f.imported();
+    if (result._tag === "Left") throw result.left;
+    expect(result._tag).toBe("Right");
   });
   it("imports a PlutusV3 spend under its placeholder descriptor with no retained witnesses", async () => {
     const f = await normalFixture(false, "plutus");

@@ -1,4 +1,4 @@
-import type { FactStore, FollowStatus } from "@al-ft/midgard-l1-follower";
+import type { FactStore } from "@al-ft/midgard-l1-follower";
 
 import type { WatcherAvailabilityRuntime } from "../availability/runtime.js";
 import {
@@ -15,7 +15,19 @@ import {
   type WatcherObservationAuthority,
   type WatcherObservationRead,
 } from "../l1-follower/observation.js";
+import {
+  advanceWatcherReplayCheckpoint,
+  type WatcherReplayCheckpointDriver,
+} from "./watcher-runtime.advance-replayed-ledger.js";
 import { decisionFailure } from "./watcher-runtime.decision-failure.js";
+import {
+  WATCHER_DECISION_PASS_FAILED,
+  WATCHER_FOLLOWER_NOT_STARTED,
+  WATCHER_RELEASE_OBSERVATION_PENDING,
+  WATCHER_RETIREMENT_RESET_FAILED,
+  WATCHER_RETIREMENT_RESET_PENDING,
+  type WatcherDecisionReadiness,
+} from "./watcher-runtime.decision-readiness.js";
 
 /**
  * The watcher's decision driver (ticket W1, with W3's rollback handling):
@@ -60,41 +72,15 @@ import { decisionFailure } from "./watcher-runtime.decision-failure.js";
  * on the L1 source and the store a running watcher rides out, so they have
  * no deadline.
  */
-
-/** A pass failed; the detail names the failure. */
-export const WATCHER_DECISION_PASS_FAILED = "watcher_decision_pass_failed";
-/** The release-depth observation is not available yet (for example a short chain). */
-export const WATCHER_RELEASE_OBSERVATION_PENDING =
-  "release_observation_pending";
-/**
- * The follower in this process has not finished its store start yet. The
- * start may reset the store (a tracked-set addition), so the facts before it
- * may be incomplete for this process's tracked set: no pass reads them.
- */
-export const WATCHER_FOLLOWER_NOT_STARTED = "l1_follower_not_started";
-/**
- * The replay-transcript retirement reset a rewind started failed; the
- * detail names the failure. The handled-generation marker waits for it, and
- * the next pass retries it.
- */
-export const WATCHER_RETIREMENT_RESET_FAILED =
-  "watcher_retirement_reset_failed";
-/**
- * The replay-transcript retirement reset a rewind started has not settled
- * within the pass's wait. The handled-generation marker waits for it.
- */
-export const WATCHER_RETIREMENT_RESET_PENDING =
-  "watcher_retirement_reset_pending";
-
-/** The driver's `started` gate: the follower published a status with a cursor. */
-export const watcherFollowerStarted = (
-  status: Pick<FollowStatus, "cursor"> | null | undefined,
-): boolean => (status?.cursor ?? null) !== null;
-
-export type WatcherDecisionReadiness = Readonly<{
-  reason: string;
-  detail: string;
-}>;
+export type { WatcherDecisionReadiness } from "./watcher-runtime.decision-readiness.js";
+export {
+  WATCHER_DECISION_PASS_FAILED,
+  WATCHER_FOLLOWER_NOT_STARTED,
+  WATCHER_RELEASE_OBSERVATION_PENDING,
+  WATCHER_RETIREMENT_RESET_FAILED,
+  WATCHER_RETIREMENT_RESET_PENDING,
+  watcherFollowerStarted,
+} from "./watcher-runtime.decision-readiness.js";
 
 export type WatcherDecisionDriverInput = Readonly<{
   store: Pick<
@@ -118,6 +104,8 @@ export type WatcherDecisionDriverInput = Readonly<{
     WatcherAvailabilityRuntime,
     "reconcile" | "invalidateForRollback"
   >;
+  /** A durable ledger head beyond the follower's rollback limit. */
+  replayedLedger?: WatcherReplayCheckpointDriver;
   /** Replay-transcript retirement at release-final observations. */
   retirement?: Readonly<{
     /** No proof work is pending or running: retirement may sweep. */
@@ -386,6 +374,14 @@ export const createWatcherDecisionDriver = (
         reason: WATCHER_RELEASE_OBSERVATION_PENDING,
         detail: `${release.reason}: ${release.detail}`,
       });
+    reasons.push(
+      ...(await advanceWatcherReplayCheckpoint(
+        input,
+        release,
+        observe,
+        scheduleRetry,
+      )),
+    );
     if (recoveryPending) {
       recoveryPending = false;
       try {

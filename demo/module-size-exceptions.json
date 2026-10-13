@@ -1241,8 +1241,8 @@
   },
   {
     "file": "midgard-watcher/src/fault-proofs/fault-proof-application.create-application.ts",
-    "max": 607,
-    "reason": "createApplication is the dominant indivisible declaration (734 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. W3V (+32): a validationTraceDispute decision whose pre-follower transcript already started a proof is held by name (validation_transcript_pre_follower) instead of re-keyed; the held decisions share the capture map's lifetime, generation checks and pruning in this closure. DUPDEL (-23): the cross-block duplicate-event family was deleted; repeated deposit and withdrawal events are convicted by the fabricated-event families. VR (+5): the header classifier takes the manifest's L1 slot mapping, checked against the watcher's Lucid. P1 integration recount: record the exact committed source size after forced-admission and block-time changes; no source behavior is changed. P1 composition (+2): the merged curated catalogue and observe-and-prepare wiring."
+    "max": 577,
+    "reason": "createApplication is the dominant indivisible declaration (734 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. W3V (+32): a validationTraceDispute decision whose pre-follower transcript already started a proof is held by name (validation_transcript_pre_follower) instead of re-keyed; the held decisions share the capture map's lifetime, generation checks and pruning in this closure. DUPDEL (-23): the cross-block duplicate-event family was deleted; repeated deposit and withdrawal events are convicted by the fabricated-event families. VR (+5): the header classifier takes the manifest's L1 slot mapping, checked against the watcher's Lucid. P1 integration recount: record the exact committed source size after forced-admission and block-time changes; no source behavior is changed. P1 composition (+2): the merged curated catalogue and observe-and-prepare wiring. DS3: replay classification and checkpoint advancement share a dedicated module; cap reduced to the final measured composition."
   },
   {
     "file": "midgard-watcher/src/fault-proofs/fault-proof-execution.ts",
@@ -1276,8 +1276,8 @@
   },
   {
     "file": "midgard-watcher/src/runtime/watcher-runtime.create-watcher-runtime.ts",
-    "max": 506,
-    "reason": "createWatcherRuntime is the composition root: it allocates and wires follower, workflows, funding, supervisor, observability, availability and driver in one ordered sequence that shares cleanup state. C1 (+11): wires observe-and-prepare for keys the allow-lists omit."
+    "max": 505,
+    "reason": "createWatcherRuntime is the composition root: it allocates and wires follower, workflows, funding, supervisor, observability, availability and driver in one ordered sequence that shares cleanup state. C1 (+11): wires observe-and-prepare for keys the allow-lists omit. DS3: dedicated replay host owns origin retention, follower material, keeper construction and cleanup; cap reduced to the final measured composition."
   },
   {
     "file": "midgard-watcher/tests/availability/concurrent-challenges.test.ts",
@@ -1301,8 +1301,8 @@
   },
   {
     "file": "midgard-watcher/tests/fault-proofs/fault-proof-application.test.ts",
-    "max": 699,
-    "reason": "Retained test registration “watcher production fault-proof application V1” (600 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor. W1 (+11): the application is built over the follower-backed L1 source. B1-rest (-16): retained-witness consumers deleted; cap reduced to the measured count. Pins installed recovery subsets and excluded-category refusal."
+    "max": 698,
+    "reason": "Retained test registration “watcher production fault-proof application V1” (600 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor. W1 (+11): the application is built over the follower-backed L1 source. B1-rest (-16): retained-witness consumers deleted; cap reduced to the measured count. Pins installed recovery subsets and excluded-category refusal. C1/DS3 composition: remove the retired MinAda predecessor expectation; the actual eight required replay-context families still refuse missing context."
   },
   {
     "file": "midgard-watcher/tests/fault-proofs/fault-proof-objective-progress.test.ts",

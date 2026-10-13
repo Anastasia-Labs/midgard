@@ -1,5 +1,8 @@
 import { daRetentionPruneDecision } from "@al-ft/midgard-core";
-import { isRetainedDaPayloadUnavailableError } from "@al-ft/midgard-fault-proofs";
+import {
+  isFraudProofL1WaitError,
+  isRetainedDaPayloadUnavailableError,
+} from "@al-ft/midgard-fault-proofs";
 import { StateQueueNode } from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 
@@ -115,7 +118,7 @@ export const classificationMissRecorder = (
     // snapshot was read (see `isWatcherL1TransientFailure`); or this
     // watcher's own DA node is not up, so no source was asked. Either way
     // the read is incomplete, which says nothing about the header.
-    if (isWatcherL1TransientFailure(error)) {
+    if (isWatcherL1TransientFailure(error) || isFraudProofL1WaitError(error)) {
       if (subjectDigest !== null)
         verification.record(subjectDigest, "pending_l1");
       warnOnce({

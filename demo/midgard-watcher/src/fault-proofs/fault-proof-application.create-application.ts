@@ -6,19 +6,16 @@ import {
 import {
   bindFraudProofTerminalDeployment,
   bindFraudProofWorkflowDeployment,
-  classifyHeader as classifyProductionHeaderV1,
   type CompleteCanonicalReplayContext,
   createCatalogueCompleteCanonicalReplay,
   createHeaderClassifier,
   FAMILY_APPLICATION_REGISTRY,
   FraudProofL1CheckpointChangedError,
-  type HeaderDecision,
   headerDecisionReplayContext,
   installWorkflowApplicationRegistry,
   journalJsonDigest,
   normalizeJournalJson,
   resolveFamilyApplicationReferences,
-  retainedPayloadReplaySource,
   runFraudProofWorkflowCli,
   type WorkflowAdapterRunner,
 } from "@al-ft/midgard-fault-proofs";
@@ -31,7 +28,7 @@ import {
   FabricatedWithdrawalStep04Datum,
   FraudProofComputationThreadStepDatum,
 } from "@al-ft/midgard-sdk";
-import { EMPTY_MERKLE_TREE_ROOT, Header } from "@al-ft/midgard-sdk";
+import { Header } from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 
 import {
@@ -72,10 +69,13 @@ import {
   WATCHER_FAULT_PROOF_APPLICATION,
   WATCHER_FAULT_PROOF_STARTUP_READINESS,
   WATCHER_INSTALLED_WORKFLOW_CATEGORIES,
-  WATCHER_PREDECESSOR_AUTHORITY_CATEGORIES,
   type WatcherFaultProofApplication,
   type WatcherInstalledWorkflowCategory,
 } from "./fault-proof-application.production-dependencies.js";
+import {
+  classifyWatcherReplayedHeader,
+  watcherReplayCheckpointAdvance,
+} from "./fault-proof-application.replayed-ledger.js";
 
 export function createApplication(
   input: ApplicationConstruction &
@@ -106,6 +106,9 @@ export function createApplication({
   const l1 = options.l1;
   const deploymentAuthority = options.deploymentAuthority;
   const replayTranscriptStore = options.replayTranscriptStore;
+  const replayedLedger = options.replayedLedger;
+  if (allowExecution && replayedLedger === undefined)
+    throw new Error("watcher execution requires a durable replay ledger");
   if (allowExecution) {
     if (
       deploymentAuthority === undefined ||
@@ -346,6 +349,12 @@ export function createApplication({
     return classifierPromise;
   };
   const methods: WatcherFaultProofApplication = {
+    advanceReplayedLedger: watcherReplayCheckpointAdvance({
+      replayedLedger,
+      retainedDaOwner,
+      deploymentIdentity,
+      isAdmitted: () => admittedApplications.has(application),
+    }),
     close: async () => {
       admittedApplications.delete(application);
       authorityGeneration += 1;
@@ -409,53 +418,14 @@ export function createApplication({
       } catch {
         throw new Error("watcher runtime configuration is not JSON");
       }
-      const retainedDa = await retainedDaOwner.createRuntime(watcherConfig);
-      let completedDecision: HeaderDecision;
-      try {
-        if (
-          retainedDa.deploymentFingerprint !== deploymentIdentity.manifestId
-        ) {
-          throw new Error(
-            "watcher retained-DA runtime changed deployment identity",
-          );
-        }
-        const replaySource = retainedPayloadReplaySource({
-          sources: retainedDa.sources,
-          retries: input.retries,
-        });
-        const decision = await classifyProductionHeaderV1({
-          classifier: await loadClassifier(
-            watcherConfig,
-            input.observation.headerHash,
-          ),
-          observation: input.observation,
-          authenticatedObservationDigest: input.authenticatedObservationDigest,
-          // No predecessor ledger source until the watcher keeps its own
-          // replayed ledger: a family that needs one classifies as
-          // unprovable (predecessor_context_unavailable).
-          sources: replaySource.sources,
-          ...(input.retries === undefined ? {} : { retries: input.retries }),
-        });
-        const replayContext = headerDecisionReplayContext(decision);
-        // A header committing a non-empty previous ledger can only be proved
-        // against that ledger; a header committing the empty one is proved
-        // against the empty ledger.
-        if (
-          decision.decision === "fault_detected" &&
-          (
-            WATCHER_PREDECESSOR_AUTHORITY_CATEGORIES as readonly string[]
-          ).includes(decision.category) &&
-          input.observation.header.prevUtxosRoot !== EMPTY_MERKLE_TREE_ROOT &&
-          replayContext?.predecessor === undefined
-        ) {
-          throw new Error(
-            `${decision.category} classifier decision omitted the authenticated predecessor ledger`,
-          );
-        }
-        completedDecision = decision;
-      } finally {
-        await retainedDa.close();
-      }
+      const completedDecision = await classifyWatcherReplayedHeader({
+        request: input,
+        watcherConfig,
+        deploymentIdentity,
+        retainedDaOwner,
+        replayedLedger,
+        loadClassifier,
+      });
       if (generation !== authorityGeneration) {
         throw new Error(
           "decision authority was invalidated during classification",

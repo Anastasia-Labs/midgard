@@ -39,11 +39,13 @@ import {
 import type { WatcherConfig } from "../runtime/config.js";
 import { type VerifiedWatcherDeploymentAuthority } from "../runtime/deployment-authority.js";
 import { type VerifiedWatcherDeploymentIdentity } from "../runtime/deployment-identity.js";
+import type { WatcherDecisionReadiness } from "../runtime/watcher-runtime.decision-driver.js";
 import type { WatcherReplayTranscriptStore } from "../storage/replay-transcript-store.js";
 import {
   type WatcherRetainedDaRuntimeOptions,
   type WatcherRetainedDaTransportStatus,
 } from "../storage/retained-da-runtime.js";
+import type { WatcherReplayedLedger } from "./replayed-ledger.js";
 
 export const WATCHER_FAULT_PROOF_APPLICATION =
   "midgard-watcher-fault-proof-production-application-v1" as const;
@@ -145,6 +147,7 @@ export type WatcherFaultProofL1 = Readonly<{
 
 export type WatcherFaultProofApplicationOptions = Readonly<{
   l1: WatcherFaultProofL1;
+  replayedLedger: WatcherReplayedLedger;
   deploymentAuthority: VerifiedWatcherDeploymentAuthority;
   replayTranscriptStore: WatcherReplayTranscriptStore;
   infrastructure: WatcherFaultProofInfrastructureAuthority;
@@ -153,10 +156,14 @@ export type WatcherFaultProofApplicationOptions = Readonly<{
 
 export type WatcherFaultProofApplicationConstructionOptions = Omit<
   WatcherFaultProofApplicationOptions,
-  "fundingProfileOverlay" | "deploymentAuthority" | "replayTranscriptStore"
+  | "fundingProfileOverlay"
+  | "replayedLedger"
+  | "deploymentAuthority"
+  | "replayTranscriptStore"
 > &
   Readonly<{
     deploymentIdentity: VerifiedWatcherDeploymentIdentity;
+    replayedLedger?: WatcherReplayedLedger;
     deploymentAuthority?: VerifiedWatcherDeploymentAuthority;
     replayTranscriptStore?: WatcherReplayTranscriptStore;
     fundingProfileOverlay?: WatcherWorkflowFundingProfileOverlay;
@@ -207,6 +214,12 @@ export type WatcherFaultProofApplication = Readonly<{
   classifyHeader(
     input: WatcherFaultProofHeaderClassificationInput,
   ): Promise<HeaderDecision>;
+  advanceReplayedLedger(
+    input: Readonly<{
+      runtimeConfigPath: string;
+      observation: WatcherAuthenticatedStateQueueObservation;
+    }>,
+  ): Promise<readonly WatcherDecisionReadiness[]>;
   /** Retire private replay authority after target selection or invalidation. */
   retainDecisionAuthorities(decisionDigest: string | null): void;
   assertStartupReady(

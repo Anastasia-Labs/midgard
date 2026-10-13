@@ -8,6 +8,7 @@ import {
   type WatcherFaultProofL1,
   type WatcherFaultProofStartupReadiness,
 } from "../fault-proofs/fault-proof-application.js";
+import type { WatcherReplayedLedger } from "../fault-proofs/replayed-ledger.js";
 import { type WatcherFollowerRuntime } from "../l1-follower/follower-runtime.js";
 import { type WatcherProcessConfig } from "./process-config.js";
 import {
@@ -53,6 +54,7 @@ export const prepareWatcherRuntimeWorkflows = async (
   > &
     Readonly<{
       startup: ReturnType<typeof createWatcherStartupProgress>;
+      replayedLedger: WatcherReplayedLedger;
       follower: Pick<WatcherFollowerRuntime, "status" | "readiness">;
       l1: WatcherFaultProofL1;
       onAllocated: (application: WatcherFaultProofApplication) => void;
@@ -64,6 +66,7 @@ export const prepareWatcherRuntimeWorkflows = async (
     sqlite,
     fundingProfileOverlay,
     startup,
+    replayedLedger,
     follower,
     l1,
     onAllocated,
@@ -72,6 +75,7 @@ export const prepareWatcherRuntimeWorkflows = async (
   return await startup("workflow_readiness", async ({ retryL1Read }) => {
     const faultProofApplication = createWatcherFaultProofApplication({
       l1,
+      replayedLedger,
       deploymentAuthority,
       replayTranscriptStore: sqlite.replayTranscripts,
       infrastructure: input.config.faultProofInfrastructure,

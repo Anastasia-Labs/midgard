@@ -1,4 +1,5 @@
 import {
+  FraudProofL1RefusedError,
   RetainedDaPayloadUnavailableError,
   TransitionTraceChallengerError,
 } from "@al-ft/midgard-fault-proofs";
@@ -315,4 +316,41 @@ describe("fault decision bridge public-DA deferral", () => {
       }),
     ]);
   });
+});
+
+it("defers unavailable follower replay facts and retries the same header when they return", async () => {
+  const current = observation([headerFixture("01")], "Idle", [ATTESTED]);
+  const header = current.finalizedHeaders[0]!;
+  let available = false;
+  let clock = 0;
+  const h = harness({
+    current,
+    categoryByHeader: { [header.headerHash]: "transitionTrace" },
+    monotonicNowMs: () => clock,
+    classifyOverride: (fresh) => {
+      if (!available)
+        throw new FraudProofL1RefusedError(
+          "point_beyond_retention",
+          "replay admission is unavailable",
+        );
+      return {
+        ...fresh,
+        decision: "healthy",
+        payloadEnvelopeSha256: HEALTHY_ENVELOPE,
+      };
+    },
+  });
+  expect(
+    (await h.bridge.reconcileAndDispatch(current)).decisionDigests,
+  ).toEqual([]);
+  expect(h.appended).toEqual([]);
+  expect(h.enqueued).toEqual([]);
+  available = true;
+  clock += 10_000;
+  expect(
+    (await h.bridge.reconcileAndDispatch(current)).decisionDigests,
+  ).toHaveLength(1);
+  expect(h.appended).toEqual([]);
+  expect(h.enqueued).toEqual([]);
+  expect(h.application.classifyHeader).toHaveBeenCalledTimes(2);
 });
