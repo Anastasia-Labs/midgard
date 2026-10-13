@@ -1,19 +1,28 @@
 /**
  * A forced order the chain admitted is screened at intake with the
  * off-chain twin of the tx-order mint's admission check. A refusal is an
- * alarm only: one `ForcedAdmissionDivergence` error event and a bounded
- * `/readyz` detail `forced_admission_divergence:<orderIdHex>:<refusalCode>`.
- * The order is still ingested and classified to a verdict leaf, and the
- * node stays ready. An order the screen admits raises nothing.
+ * alarm only: one `ForcedAdmissionDivergence` error event, one increment of
+ * `forced_admission_divergence_total`, and a `/readyz` detail
+ * `forced_admission_divergence:<orderIdHex>:<refusalCode>` among the latest
+ * distinct orders observed. The order is still ingested and classified to a
+ * verdict leaf, and the node stays ready. An order the screen admits raises
+ * nothing. A transaction the screen cannot read is a divergence too, never
+ * an ingestion failure.
  */
 import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
 import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
-import { Effect, HashMap, Logger } from "effect";
+import { Effect, HashMap, Logger, Metric } from "effect";
 import { describe, expect, it } from "vitest";
 
 import { ForcedTransactionsDB } from "../src/database/index.js";
+import {
+  ENVELOPE_UNDECODABLE,
+  forcedAdmissionDivergenceCounter,
+  forcedAdmissionRefusal,
+  SCREEN_FAILED,
+} from "../src/forced-orders/admission-divergence.js";
 import {
   FORCED_ADMISSION_DIVERGENCES_REPORTED,
   forcedAdmissionDivergences,
@@ -41,10 +50,19 @@ import { runningFollower } from "./readiness-l1-follower.fixture.js";
 
 const follow = nodeFollowerLifecycle();
 
-type LoggedError = Readonly<{
-  message: string;
-  annotations: Record<string, unknown>;
-}>;
+type LoggedError = Readonly<{ annotations: Record<string, unknown> }>;
+
+/** How many divergent orders the node has counted under `refusalCode`. */
+const divergenceCount = (refusalCode: string) =>
+  Effect.runPromise(
+    Metric.value(
+      Metric.tagged(
+        forcedAdmissionDivergenceCounter,
+        "refusal_code",
+        refusalCode,
+      ),
+    ),
+  ).then((state) => BigInt(state.count));
 
 /** The intake hook with a divergence register, its error events captured. */
 const intake = (
@@ -53,12 +71,9 @@ const intake = (
   const errors: LoggedError[] = [];
   const capture = Logger.replace(
     Logger.defaultLogger,
-    Logger.make(({ logLevel, message, annotations }) => {
+    Logger.make(({ logLevel, annotations }) => {
       if (logLevel._tag === "Error")
         errors.push({
-          message: (Array.isArray(message) ? message : [message])
-            .map(String)
-            .join(" "),
           annotations: Object.fromEntries(HashMap.toEntries(annotations)),
         });
     }),
@@ -121,15 +136,16 @@ describe("the forced-order intake's admission screen", () => {
     // An order with no spend input: the screen refuses it.
     await chain.forward([inlineOrder(chain.chain, honest())]);
     const { hook, errors, readiness } = intake(store);
+    const counted = await divergenceCount("has_a_spend_input(body)");
     expect(await hook(UNCHANGED)).toBeUndefined();
     const [row] = await rows();
     const orderId = Buffer.from(row!.tx_order_id).toString("hex");
     const detail = `forced_admission_divergence:${orderId}:has_a_spend_input(body)`;
     expect(readiness().reasons).toEqual([]);
     expect(readiness().details).toEqual([detail]);
+    expect(await divergenceCount("has_a_spend_input(body)")).toBe(counted + 1n);
     expect(errors).toEqual([
       {
-        message: "ForcedAdmissionDivergence",
         annotations: expect.objectContaining({
           event: "ForcedAdmissionDivergence",
           orderId,
@@ -142,6 +158,7 @@ describe("the forced-order intake's admission screen", () => {
     // A later run raises nothing again for the same order.
     expect(await hook(UNCHANGED)).toBeUndefined();
     expect(errors).toHaveLength(1);
+    expect(await divergenceCount("has_a_spend_input(body)")).toBe(counted + 1n);
     expect(readiness().details).toEqual([detail]);
   });
 
@@ -155,6 +172,19 @@ describe("the forced-order intake's admission screen", () => {
     expect(await rows()).toHaveLength(1);
     expect(readiness()).toMatchObject({ reasons: [], details: [] });
     expect(errors).toEqual([]);
+  });
+
+  it("refuses a transaction whose envelope does not decode, and one the screen throws on, without throwing", () => {
+    const admitted = spendingTransactionCbor([0x22]);
+    expect(forcedAdmissionRefusal(admitted)).toBeNull();
+    expect(forcedAdmissionRefusal(Buffer.from([0x00]))).toMatchObject({
+      refusalCode: ENVELOPE_UNDECODABLE,
+    });
+    expect(
+      forcedAdmissionRefusal(admitted, () => {
+        throw new RangeError("out of bounds");
+      }),
+    ).toMatchObject({ refusalCode: SCREEN_FAILED });
   });
 
   it("names only the latest distinct divergent orders", () => {
