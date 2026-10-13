@@ -217,7 +217,7 @@ export const buildNativeTransactionTrace = async (
                       maximumDescriptorRedeemer ??
                       Buffer.from(Data.void(), "hex"),
                     executionUnits: {
-                      memory: 1_000_000_000n,
+                      memory: 5_000_000n,
                       steps: 1_000_000_000n,
                     },
                   },
@@ -230,7 +230,7 @@ export const buildNativeTransactionTrace = async (
                     index: 0n,
                     redeemerCbor: Buffer.from(Data.void(), "hex"),
                     executionUnits: {
-                      memory: 1_000_000_000n,
+                      memory: 5_000_000n,
                       steps: 1_000_000_000n,
                     },
                   },
@@ -244,7 +244,7 @@ export const buildNativeTransactionTrace = async (
                 redeemerDataCbor ??
                 Buffer.from(Data.void(), "hex"),
               executionUnits: {
-                memory: 1_000_000_000n,
+                memory: 5_000_000n,
                 steps: cekBlsFinal ? 10_000_000_000n : 1_000_000_000n,
               },
             },

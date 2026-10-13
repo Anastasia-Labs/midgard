@@ -9,3 +9,4 @@ import "./validation-fixtures.js";
 import "./phase-a.outref-projection.js";
 import "./phase-a.phase-a-validation.js";
 import "./phase-a.cek-program-material.js";
+import "./phase-a.tx-ex-units-cap.js";

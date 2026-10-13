@@ -130,7 +130,7 @@ export const makeRedeemersPreimageCbor = (
       index: item.index,
       redeemerCbor: Buffer.from(item.data ?? EMPTY_REDEEMER_DATA),
       executionUnits: {
-        memory: item.exUnits?.[0] ?? 1_000_000_000n,
+        memory: item.exUnits?.[0] ?? 4_000_000n,
         steps: item.exUnits?.[1] ?? 1_000_000_000n,
       },
     })),

@@ -1180,7 +1180,7 @@ describe("native transaction integration", () => {
           {
             tag: CML.RedeemerTag.Spend,
             index: 0n,
-            exUnits: [1_000_000_000n, 1_000_000_000n],
+            exUnits: [5_000_000n, 1_000_000_000n],
           },
         ]),
       },
@@ -2206,7 +2206,7 @@ describe("native transaction integration", () => {
           tag: MidgardRedeemerTag.Spend,
           index: 0n,
           data: makePlutusDataBytes(42n),
-          exUnits: [1_000_000_000n, 1_000_000_000n],
+          exUnits: [5_000_000n, 1_000_000_000n],
         },
       ]),
       scriptLanguages: ["MidgardV1"],

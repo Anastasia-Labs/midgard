@@ -20,7 +20,8 @@ export const WATCHER_PHASE_A_VERIFIER_SCHEMA_VERSION =
  * `E_MISSING_REQUIRED_WITNESS` (:331), `E_INVALID_SIGNATURE` (:313),
  * `E_NATIVE_SCRIPT_INVALID` (:358), `E_INVALID_VALIDITY_INTERVAL_FORMAT`
  * (:268, :277), `E_NETWORK_ID_MISMATCH` (:502), `E_TX_VERSION` (:447 for a
- * non-V1 consensus profile), `E_CEK_PROGRAM_MATERIAL` (:456, :487).
+ * non-V1 consensus profile), `E_CEK_PROGRAM_MATERIAL` (:456, :487),
+ * `E_TX_EX_UNITS` (the per-tx declared ex-units cap, normal transactions).
  */
 export const WATCHER_PHASE_A_DIRECT_REJECT_CODES = Object.freeze([
   RejectCodes.CborDeserialization,
@@ -37,6 +38,7 @@ export const WATCHER_PHASE_A_DIRECT_REJECT_CODES = Object.freeze([
   RejectCodes.NetworkIdMismatch,
   RejectCodes.TxVersion,
   RejectCodes.CekProgramMaterial,
+  RejectCodes.TxExUnits,
 ] as const);
 
 /**
@@ -77,7 +79,7 @@ export const REACHABLE_SET: ReadonlySet<string> = new Set<string>([
 ]);
 
 /**
- * The 31 canonical codes Phase A can produce, in `RejectCodes` declaration
+ * The 32 canonical codes Phase A can produce, in `RejectCodes` declaration
  * order so the published table and every emitted list are stable.
  */
 export const WATCHER_PHASE_A_REACHABLE_REJECT_CODES = Object.freeze(
@@ -94,7 +96,7 @@ export const WATCHER_PHASE_A_EXCLUDED_REJECT_CODES = Object.freeze(
 );
 
 /**
- * The 20 reachable codes the W24 suite pins with a deterministic
+ * The 21 reachable codes the W24 suite pins with a deterministic
  * rejection-evidence case, in `RejectCodes` declaration order.
  *
  * The suite asserts this list equals the set of codes its evidence corpus
@@ -121,6 +123,7 @@ export const WATCHER_PHASE_A_EVIDENCED_REJECT_CODES = Object.freeze([
   RejectCodes.FieldPreimageSize,
   RejectCodes.ScriptProgramEncoding,
   RejectCodes.CekProgramMaterial,
+  RejectCodes.TxExUnits,
 ] as const);
 
 const EVIDENCED_SET: ReadonlySet<string> = new Set<string>(

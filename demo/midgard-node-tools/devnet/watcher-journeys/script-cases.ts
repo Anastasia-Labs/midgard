@@ -70,7 +70,7 @@ export const buildJourneyScriptTransaction = (input: {
     purpose: "Mint",
     index: 0n,
     redeemerCbor: Buffer.from("00", "hex"),
-    executionUnits: { memory: 1_000_000_000n, steps: 1_000_000_000n },
+    executionUnits: { memory: 5_000_000n, steps: 1_000_000_000n },
   });
   const scriptOutput = {
     ...output,

@@ -278,7 +278,7 @@ describe("rejection codes without an arm", () => {
     expect([...FORCED_REJECTION_NO_ARM_CODES].sort()).toStrictEqual(
       [...derived].sort(),
     );
-    expect(FORCED_REJECTION_NO_ARM_CODES).toHaveLength(31);
+    expect(FORCED_REJECTION_NO_ARM_CODES).toHaveLength(32);
   });
 
   it("stops every unsupported code without writing a guessed verdict", () => {

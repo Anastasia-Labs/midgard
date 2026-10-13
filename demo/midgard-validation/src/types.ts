@@ -73,6 +73,7 @@ export const RejectCodes = {
   ReferenceInputForbidden: "E_REFERENCE_INPUT_FORBIDDEN",
   ScriptFeatureForbidden: "E_SCRIPT_FEATURE_FORBIDDEN",
   CekProgramMaterial: "E_CEK_PROGRAM_MATERIAL",
+  TxExUnits: "E_TX_EX_UNITS",
 } as const;
 
 export type RejectCode = (typeof RejectCodes)[keyof typeof RejectCodes];

@@ -181,7 +181,7 @@ export const WATCHER_BLOCK_REPLAY_DOMINATED_REJECT_CODE_JUSTIFICATIONS =
   } as const);
 
 /**
- * The 26 canonical codes W24's Phase A verifier owns.
+ * The 27 canonical codes W24's Phase A verifier owns.
  *
  * Group justification, which is the same for every member and is why they are
  * published as a group rather than with 26 near-identical lines: a transaction
@@ -216,6 +216,7 @@ export const WATCHER_BLOCK_REPLAY_PHASE_A_OWNED_REJECT_CODES = Object.freeze([
   RejectCodes.ScriptProgramEncoding,
   RejectCodes.NativeScriptDepth,
   RejectCodes.NativeScriptNodeCount,
+  RejectCodes.TxExUnits,
 ] as const);
 
 export const WATCHER_BLOCK_REPLAY_PHASE_A_OWNED_JUSTIFICATION =
@@ -224,7 +225,7 @@ export const WATCHER_BLOCK_REPLAY_PHASE_A_OWNED_JUSTIFICATION =
 /**
  * The 10 canonical codes neither W24 nor W25 claims, each with the reason no
  * canonical call site in either pipeline can emit it. Together with the two
- * reachable sets and the Phase-A-owned set these exhaust the 50-member
+ * reachable sets and the Phase-A-owned set these exhaust the 51-member
  * vocabulary, which is what makes the W24 + W25 union total.
  */
 export const WATCHER_BLOCK_REPLAY_UNCLAIMED_REJECT_CODE_JUSTIFICATIONS =

@@ -423,7 +423,7 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
         {
           tag: MidgardRedeemerTag.Spend,
           index: 0n,
-          exUnits: [1_000_000_000n, 1_000_000_000n],
+          exUnits: [5_000_000n, 1_000_000_000n],
         },
       ]),
       scriptLanguages: ["PlutusV3"],
@@ -834,7 +834,7 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
         {
           tag: MidgardRedeemerTag.Spend,
           index: 0n,
-          exUnits: [1_000_000_000n, 1_000_000_000n],
+          exUnits: [5_000_000n, 1_000_000_000n],
         },
       ]),
       scriptLanguages: ["PlutusV3"],
@@ -963,7 +963,7 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
           {
             tag: MidgardRedeemerTag.Mint,
             index: 0n,
-            exUnits: [1_000_000_000n, 1_000_000_000n],
+            exUnits: [5_000_000n, 1_000_000_000n],
           },
         ]),
         scriptLanguages: ["PlutusV3"],
@@ -1052,7 +1052,7 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
         {
           tag: MidgardRedeemerTag.Receiving,
           index: 0n,
-          exUnits: [1_000_000_000n, 1_000_000_000n],
+          exUnits: [5_000_000n, 1_000_000_000n],
         },
       ]),
       scriptLanguages: ["MidgardV1"],
@@ -1151,7 +1151,7 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
         {
           tag: MidgardRedeemerTag.Reward,
           index: 0n,
-          exUnits: [1_000_000_000n, 1_000_000_000n],
+          exUnits: [5_000_000n, 1_000_000_000n],
         },
       ]),
       scriptLanguages: ["PlutusV3"],

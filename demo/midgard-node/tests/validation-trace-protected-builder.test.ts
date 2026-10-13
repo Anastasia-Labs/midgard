@@ -58,7 +58,7 @@ const fixture = async () => {
       {
         tag: MidgardRedeemerTag.Spend,
         index: 0n,
-        exUnits: [1_000_000_000n, 1_000_000_000n],
+        exUnits: [5_000_000n, 1_000_000_000n],
       },
     ]),
   });
