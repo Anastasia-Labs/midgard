@@ -174,6 +174,17 @@ export type MempoolLedgerRevertedNotice = {
 };
 
 /**
+ * Posted by the commit worker ahead of its output: a commit stage held the
+ * build (`held`), or its rejections reached the build's limit and it left the
+ * rest pending (`breaker`). The parent names it on `/readyz`.
+ */
+export type CommitBuildAlarmNotice = {
+  readonly type: "CommitBuildAlarmNotice";
+  readonly alarm: "held" | "breaker";
+  readonly stage: string;
+};
+
+/**
  * Posted by the commit worker ahead of its output when its intent journal
  * refused a submission and the refusal hold's write to the node database
  * has not landed (I1-H1). The worker's journal ends with the thread, so the

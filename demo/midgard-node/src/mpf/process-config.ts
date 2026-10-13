@@ -40,6 +40,21 @@ export type ProcessMpfsConfig = {
   readonly recordCorpusPath?: string;
   /** Runs once a commit-stage rejection's mempool_ledger revert commits. */
   readonly onMempoolLedgerReverted?: Effect.Effect<void>;
+  /** Runs when a commit stage holds the build, and once per commit stage
+   * whose rejections reach the build's limit. */
+  readonly onCommitBuildAlarm?: (
+    alarm: "held" | "breaker",
+    stage: string,
+  ) => Effect.Effect<void>;
+  /**
+   * Normal transactions a later commit stage could not take, keyed by
+   * transaction id hex: they are rejected with the given code before
+   * validation, so the block is built without them.
+   */
+  readonly commitEvictions?: ReadonlyMap<
+    string,
+    { readonly code: string; readonly detail: string }
+  >;
   /** The native owner generation every commit builds its ledger root on. */
   readonly nativeMpf: NativeMpfBuildContext;
   /**

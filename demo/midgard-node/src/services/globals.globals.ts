@@ -9,6 +9,10 @@ import {
   type FollowerWriteGateLocal,
   initialFollowerWriteGateLocal,
 } from "./follower-write-gate.local.js";
+import {
+  type CommitBuildAlarms,
+  NO_COMMIT_BUILD_ALARMS,
+} from "./globals.commit-build-alarms.js";
 import type { IdleBackoffState } from "./globals.idle-backoff.js";
 import {
   initialL1ControlPlaneActivity,
@@ -64,6 +68,12 @@ export class Globals extends Effect.Service<Globals>()("Globals", {
     // unmeasured/idle, not evidence that the ledger has zero frame pressure.
     const COMMIT_DA_FRAME_PRESSURE =
       yield* Ref.make<CommitDaFramePressureSnapshot | null>(null);
+
+    // The commit stage the last held build stopped at, and the stages whose
+    // rejections reached a build's limit; see globals.commit-build-alarms.ts.
+    const COMMIT_BUILD_ALARMS = yield* Ref.make<CommitBuildAlarms>(
+      NO_COMMIT_BUILD_ALARMS,
+    );
 
     // Serializes pre-worker scheduler alignment with actual mutation workers.
     // COMMIT_WORKER_ACTIVE intentionally remains true only for the worker phase.
@@ -241,6 +251,7 @@ export class Globals extends Effect.Service<Globals>()("Globals", {
       OPERATOR_SET,
       COMMIT_WORKER_ACTIVE,
       COMMIT_DA_FRAME_PRESSURE,
+      COMMIT_BUILD_ALARMS,
       COMMIT_PIPELINE_PHASE,
       L1_CONTROL_PLANE,
       SETTLEMENT_HEALTH,

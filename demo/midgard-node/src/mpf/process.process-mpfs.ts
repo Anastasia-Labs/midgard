@@ -10,7 +10,7 @@ import {
   type PhaseAValidatedTx,
   runPhaseAValidation,
 } from "@al-ft/midgard-validation";
-import { Effect, Fiber, Metric } from "effect";
+import { type Cause, Effect, Fiber, Metric } from "effect";
 import * as FS from "fs";
 
 import * as ConfirmedLedgerDB from "../database/confirmedLedger.js";
@@ -34,6 +34,17 @@ import {
   indexSelectedLedgerOutputs,
 } from "../workers/utils/mpf/withdrawal-classification.js";
 import {
+  attempt,
+  causeError,
+  confirmTransactionFailure,
+  evaluateEvictingUncommittable,
+  heldBuildError,
+  heldBuildStage,
+  inBlockDescendants,
+  makeCommitStageRejectionBreaker,
+  traceUnavailableRejection,
+} from "./commit-rejection.evict-uncommittable-normal-txs.js";
+import {
   COMMIT_REJECT_CODE_FORCED_TRANSACTION_INPUT,
   COMMIT_REJECT_CODE_SAME_BLOCK_DEPOSIT_INPUT,
   COMMIT_REJECT_CODE_WITHDRAWN_REFERENCE_INPUT,
@@ -42,6 +53,7 @@ import {
   commitTxDeltaFallbackDecodedCounter,
   resolveTxDeltaForCommit,
 } from "./commit-rejection.js";
+import { normalProgramCoverageCheck } from "./commit-rejection.normal-program-coverage-check.js";
 import { settleCommitStageRejections } from "./commit-rejection.persist-commit-stage-rejected-transactions.js";
 import { buildDepositSourceEvents } from "./deposit-source-events.js";
 import { MpfError } from "./errors.js";
@@ -496,9 +508,62 @@ export const processMpfs = (
     const proofNormalLedgerOpsByTxId = new Map<string, readonly MpfBatchOp[]>();
     const proofNormalProgramMaterialByTxId = new Map<string, Buffer>();
 
+    const validationTraceBuilder =
+      config.validationTraceBuilder ?? buildPlaceholderValidationTraceMembers;
+    const rejectNormalTx = (
+      rejection: TxRejectionsDB.EntryNoTimestamp,
+    ): Effect.Effect<void> => {
+      rejectedTxHashes.push(
+        Buffer.from(rejection[TxRejectionsDB.Columns.TX_ID]),
+      );
+      rejectionEntries.push(rejection);
+      return Effect.logWarning(
+        `Rejecting mempool tx ${rejection[TxRejectionsDB.Columns.TX_ID].toString("hex")} at commit: ${rejection[TxRejectionsDB.Columns.REJECT_CODE]}`,
+      );
+    };
+    const commitStageBreaker = makeCommitStageRejectionBreaker((stage) =>
+      config.onCommitBuildAlarm === undefined
+        ? Effect.void
+        : config.onCommitBuildAlarm("breaker", stage),
+    );
+    // Normal transactions the breaker left pending, by id hex.
+    const breakerDeferredTxIds = new Set<string>();
+    // Rejects a normal transaction a commit stage failed on, once `rerun`
+    // shows the failure is the transaction's own, or defers it past the
+    // breaker's limit; any other failure holds the build.
+    const rejectOwnFailure = <E, E2>(
+      txId: Uint8Array,
+      stage: string,
+      cause: Cause.Cause<E>,
+      rerun: Effect.Effect<unknown, E2>,
+    ) =>
+      Effect.gen(function* () {
+        const reproduced = yield* confirmTransactionFailure(
+          stage,
+          cause,
+          rerun,
+        );
+        if ((yield* commitStageBreaker(stage, txId)) === "defer") {
+          breakerDeferredTxIds.add(Buffer.from(txId).toString("hex"));
+          return;
+        }
+        yield* rejectNormalTx(
+          traceUnavailableRejection(txId, stage, causeError(reproduced)),
+        );
+      });
+    const transactionRootValues = new Map<string, Buffer>();
+
     yield* Effect.forEach(decodedMempoolTxs, (decoded) =>
       Effect.gen(function* () {
         const txHashHex = decoded.txHash.toString("hex");
+        const eviction = config.commitEvictions?.get(txHashHex);
+        if (eviction !== undefined) {
+          return yield* rejectNormalTx({
+            [TxRejectionsDB.Columns.TX_ID]: Buffer.from(decoded.txHash),
+            [TxRejectionsDB.Columns.REJECT_CODE]: eviction.code,
+            [TxRejectionsDB.Columns.REJECT_DETAIL]: eviction.detail,
+          });
+        }
         const withdrawnOutRef = decoded.spent.find((outRef) =>
           withdrawnOutRefHexes.has(outRef.toString("hex")),
         );
@@ -557,19 +622,29 @@ export const processMpfs = (
           return;
         }
 
+        // The block's transaction root value is derived from the
+        // transaction alone; one that cannot be derived leaves the block
+        // here. Its validation descriptor commits to the transaction's
+        // hashes only, so it fails only on a node fault, which holds the
+        // build where the block derives it.
+        const rootValue = () =>
+          Effect.try(() =>
+            encodeTransactionRootValue(decoded.txCbor, consensusProfile),
+          );
+        const committable = yield* attempt(rootValue());
+        if (!committable.ok) {
+          return yield* rejectOwnFailure(
+            decoded.txHash,
+            "Transaction root derivation",
+            committable.cause,
+            rootValue(),
+          );
+        }
+        transactionRootValues.set(txHashHex, committable.value);
+
         mempoolTxHashes.push(decoded.txHash);
         processedMempoolTxs.push(decoded.entry);
         sizeOfProcessedTxs += decoded.txCbor.length;
-        const transactionInsertOp = {
-          type: "insert",
-          key: decoded.txHash,
-          value: encodeTransactionRootValue(
-            decoded.txCbor,
-            config.consensusProfile ?? MIDGARD_CONSENSUS_PROFILE,
-          ),
-        } as const satisfies MpfInsertBatchOp;
-        transactionOps.push(transactionInsertOp);
-        transactionSourceOps.push(transactionInsertOp);
       }),
     );
 
@@ -610,24 +685,26 @@ export const processMpfs = (
           Buffer.from(material.sidecarCbor),
         );
       }
-      if (
-        proofNormalProgramMaterialByTxId.size !== processedMempoolTxs.length ||
-        processedMempoolTxs.some(
-          (entry) =>
-            !proofNormalProgramMaterialByTxId.has(
-              entry[Tx.Columns.TX_ID].toString("hex"),
-            ),
-        )
-      ) {
+      // Validation needs one durable canonical CEK material sidecar per
+      // normal transaction. Admission stores it before the transaction
+      // enters the mempool, so a missing one is the store's fault.
+      const withoutMaterial = processedMempoolTxs.find(
+        (entry) =>
+          !proofNormalProgramMaterialByTxId.has(
+            entry[Tx.Columns.TX_ID].toString("hex"),
+          ),
+      );
+      if (withoutMaterial !== undefined) {
         return yield* Effect.fail(
-          new DatabaseError({
+          heldBuildError("Program material sidecar", {
             table: TxAdmissionsDB.payloadTableName,
             message:
-              "V1 validation requires one durable canonical CEK material sidecar per normal transaction",
-            cause: `transactions=${processedMempoolTxs.length.toString()},sidecars=${proofNormalProgramMaterialByTxId.size.toString()}`,
+              "Holding the block build: a selected normal transaction has no durable canonical CEK material sidecar",
+            cause: `tx_id=${withoutMaterial[Tx.Columns.TX_ID].toString("hex")}`,
           }),
         );
       }
+      const phaseAInputs = processedMempoolTxs;
       const proofPreState = new Map(
         initialLedgerEntries.map((entry) => [
           entry[Ledger.Columns.OUTREF].toString("hex"),
@@ -647,34 +724,49 @@ export const processMpfs = (
         }
       }
 
-      const proofPhaseA = yield* runPhaseAValidation(
-        processedMempoolTxs.map((entry, index) => ({
-          txId: entry[Tx.Columns.TX_ID],
-          txCbor: entry[Tx.Columns.TX],
-          arrivalSeq: BigInt(index),
-          createdAt: entry[Tx.Columns.TIMESTAMPTZ],
-          programMaterialSidecarCbor: proofNormalProgramMaterialByTxId.get(
-            entry[Tx.Columns.TX_ID].toString("hex"),
-          )!,
-        })),
-        {
-          expectedNetworkId: validation.expectedNetworkId,
-          minFeeA: validation.minFeeA,
-          minFeeB: validation.minFeeB,
-          concurrency: 1,
-          strictnessProfile: "phase1_midgard",
-          consensusProfile,
-        },
-      ).pipe(
-        Effect.mapError(
-          (cause) =>
-            new DatabaseError({
-              table: MempoolDB.tableName,
-              message: "V1 normal transaction Phase A failed",
-              cause,
-            }),
-        ),
-      );
+      // Phase A is per transaction, so a transaction it cannot process is
+      // rejected on its own.
+      const proofPhaseA: {
+        accepted: PhaseAValidatedTx[];
+        rejected: { txId: Uint8Array; code: string; detail: string | null }[];
+      } = { accepted: [], rejected: [] };
+      for (const [index, entry] of phaseAInputs.entries()) {
+        const validate = () =>
+          runPhaseAValidation(
+            [
+              {
+                txId: entry[Tx.Columns.TX_ID],
+                txCbor: entry[Tx.Columns.TX],
+                arrivalSeq: BigInt(index),
+                createdAt: entry[Tx.Columns.TIMESTAMPTZ],
+                programMaterialSidecarCbor:
+                  proofNormalProgramMaterialByTxId.get(
+                    entry[Tx.Columns.TX_ID].toString("hex"),
+                  )!,
+              },
+            ],
+            {
+              expectedNetworkId: validation.expectedNetworkId,
+              minFeeA: validation.minFeeA,
+              minFeeB: validation.minFeeB,
+              concurrency: 1,
+              strictnessProfile: "phase1_midgard",
+              consensusProfile,
+            },
+          );
+        const validated = yield* attempt(validate());
+        if (!validated.ok) {
+          yield* rejectOwnFailure(
+            entry[Tx.Columns.TX_ID],
+            "Phase A",
+            validated.cause,
+            validate(),
+          );
+          continue;
+        }
+        proofPhaseA.accepted.push(...validated.value.accepted);
+        proofPhaseA.rejected.push(...validated.value.rejected);
+      }
       for (const rejected of proofPhaseA.rejected) {
         rejectedTxHashes.push(Buffer.from(rejected.txId));
         rejectionEntries.push({
@@ -683,16 +775,41 @@ export const processMpfs = (
           [TxRejectionsDB.Columns.REJECT_DETAIL]: rejected.detail,
         });
       }
+      // A transaction the breaker left pending takes its in-block
+      // descendants with it.
+      const leftPending = inBlockDescendants(
+        decodedMempoolTxs.flatMap((decoded) =>
+          breakerDeferredTxIds.has(decoded.txHash.toString("hex"))
+            ? decoded.produced.map((row) => hexOf(row[Ledger.Columns.OUTREF]))
+            : [],
+        ),
+        proofPhaseA.accepted,
+      );
+      if (breakerDeferredTxIds.size > 0)
+        yield* Effect.logWarning(
+          `Leaving ${(breakerDeferredTxIds.size + leftPending.size).toString()} normal transaction(s) pending for a later block: past the commit-stage rejection limit.`,
+        );
       const proofPhaseB = yield* settleCommitStageRejections({
-        candidates: proofPhaseA.accepted,
+        candidates: proofPhaseA.accepted.filter(
+          (accepted) => !leftPending.has(accepted),
+        ),
         evaluate: (candidates) =>
-          evaluateNormalBlockCandidates({
+          evaluateEvictingUncommittable({
             candidates,
-            state: proofPreState,
-            blockSlot: validation.slotForUnixTime(effectiveEndTime!.getTime()),
-            l1SlotConfig: validation.l1SlotConfig,
-            bucketConcurrency: validation.bucketConcurrency,
-            consensusProfile,
+            stage: "Phase B",
+            breaker: commitStageBreaker,
+            evaluate: (evaluated) =>
+              evaluateNormalBlockCandidates({
+                candidates: evaluated,
+                state: proofPreState,
+                blockSlot: validation.slotForUnixTime(
+                  effectiveEndTime!.getTime(),
+                ),
+                l1SlotConfig: validation.l1SlotConfig,
+                bucketConcurrency: validation.bucketConcurrency,
+                consensusProfile,
+              }),
+            blockCheck: normalProgramCoverageCheck(proofPreState),
           }),
         rejectionEntries,
         resolveInputPostState: commitPostState,
@@ -756,7 +873,7 @@ export const processMpfs = (
         const transactionInsertOp = {
           type: "insert",
           key: Buffer.from(decoded.txHash),
-          value: encodeTransactionRootValue(decoded.txCbor, consensusProfile),
+          value: transactionRootValues.get(txIdHex)!,
         } as const satisfies MpfInsertBatchOp;
         transactionOps.push(transactionInsertOp);
         transactionSourceOps.push(transactionInsertOp);
@@ -1032,9 +1149,6 @@ export const processMpfs = (
             validationTraceCount: 0,
           };
         }
-        const validationTraceBuilder =
-          config.validationTraceBuilder ??
-          buildPlaceholderValidationTraceMembers;
         const traceByEventKey = new Map<
           string,
           RetainedTransitionTraceMember
@@ -1319,4 +1433,11 @@ export const processMpfs = (
       nativeMpfReplay,
       nativeMpfHandle: nativeMpf.handle,
     };
-  });
+  }).pipe(
+    Effect.tapError((error) => {
+      const stage = heldBuildStage(error);
+      return stage === undefined || config.onCommitBuildAlarm === undefined
+        ? Effect.void
+        : config.onCommitBuildAlarm("held", stage);
+    }),
+  );

@@ -29,6 +29,7 @@ import { buildUnsignedCommitTx } from "./commit-block-header/build-unsigned-tx.j
 import { fetchLatestCommittedBlockLocal } from "./commit-block-header/state-queue.js";
 import { makeEventCommitments } from "./commit-block-header/transition-commitments.js";
 import {
+  type CommitBuildAlarmNotice,
   type IntentRefusalHoldsNotice,
   type MempoolLedgerRevertedNotice,
   type RegisteredDueWorkOutput,
@@ -308,7 +309,8 @@ export type NotifyCommitWorkerParent = (
     | SuccessfulLocalFinalizationRecoveryOutput
     | MempoolLedgerRevertedNotice
     | CommitDaFrameNotice
-    | IntentRefusalHoldsNotice,
+    | IntentRefusalHoldsNotice
+    | CommitBuildAlarmNotice,
 ) => Effect.Effect<void>;
 
 export const MEMPOOL_LEDGER_REVERTED_NOTICE: MempoolLedgerRevertedNotice = {

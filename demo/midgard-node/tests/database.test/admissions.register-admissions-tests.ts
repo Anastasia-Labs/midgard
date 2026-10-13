@@ -895,6 +895,17 @@ export const registerAdmissionsTests = () => {
                 attempt.envelope,
               ]),
             ).toEqual([attempt.material]);
+            // The commit reads the accepted transaction's whole sidecar back.
+            expect(
+              yield* TxAdmissionsDB.retrieveProgramMaterialSidecars([
+                attempt.txId,
+              ]),
+            ).toEqual([
+              {
+                txId: attempt.txId,
+                sidecarCbor: Buffer.from(attempt.sidecarCbor),
+              },
+            ]);
             expect(yield* readCekProgramMaterialStoreStats).toMatchObject({
               entry_count: "1",
               membership_count: "1",

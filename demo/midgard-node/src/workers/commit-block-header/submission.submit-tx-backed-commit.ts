@@ -42,6 +42,7 @@ import {
   skippedSubmissionProgram,
 } from "../utils/commit-submission.js";
 import { buildUnsignedCommitTx } from "./build-unsigned-tx.js";
+import { attributeDaFrameRefusal } from "./commit-da-oversize-eviction.js";
 import {
   resolveDepositsRoot,
   resolveForcedTransactionsRoot,
@@ -385,7 +386,16 @@ export const submitTxBackedCommit = ({
                   eventToStepMembers,
                   validationTraceMembers,
                   cekProgramMaterial,
-                });
+                }).pipe(
+                  Effect.catchTag("DatabaseError", (error) =>
+                    attributeDaFrameRefusal(error, {
+                      processedMempoolTxs,
+                      includedDepositEntries,
+                      includedForcedTransactionEntries,
+                      includedWithdrawalEntries,
+                    }),
+                  ),
+                );
                 yield* afterDaFrameAccepted ?? Effect.void;
                 yield* assertCommitInputsWithinBlockEndTime({
                   blockEndTimeMs,

@@ -195,6 +195,9 @@ const daPayloadInnerBytes = (
 ) =>
   commitDaPayloadForSizing(content).pipe(Effect.map(SDK.daPayloadEncodedSize));
 
+export const DA_FRAME_REFUSAL_MESSAGE =
+  "Refusing to prepare or submit a block whose DA payload cannot fit the V1 submit frame";
+
 export const assertPreSubmitDaPayloadSize = ({
   headerHash,
   header,
@@ -227,8 +230,7 @@ export const assertPreSubmitDaPayloadSize = ({
       return yield* Effect.fail(
         new DatabaseError({
           table: PendingBlockFinalizationsDB.tableName,
-          message:
-            "Refusing to prepare or submit a block whose DA payload cannot fit the V1 submit frame",
+          message: DA_FRAME_REFUSAL_MESSAGE,
           cause: `header_hash=${headerHash},envelope_mode=${envelopeMode},inner_bytes=${encodedBytes.toString()},stored_bytes_upper_bound=${projection.storedBytesUpperBound.toString()},request_bytes_upper_bound=${projection.requestBytesUpperBound.toString()},effective_inner_limit=${effectiveInnerLimit.toString()},max_frame_bytes=${DA_TRANSPORT_LIMITS.maxPayloadBytes.toString()},frame_utilisation=${utilisation}`,
         }),
       );

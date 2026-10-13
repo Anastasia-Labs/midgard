@@ -8,6 +8,7 @@ import { describe, expect, it, vi } from "vitest";
 import { DepositsDB } from "../src/database/index.js";
 import { commitDaFrameStageGauge } from "../src/fibers/block-commitment.commit-da-frame-readiness.js";
 import { takeCommitWorkerOutput } from "../src/fibers/block-commitment.js";
+import { NO_COMMIT_BUILD_ALARMS } from "../src/services/globals.commit-build-alarms.js";
 import type { Globals } from "../src/services/globals.js";
 import { initialL1ControlPlaneActivity } from "../src/services/globals.l1-control-plane.js";
 import {
@@ -116,6 +117,7 @@ const node = () =>
   ({
     LIVENESS_REASONS: Ref.unsafeMake<ReadonlyMap<string, string>>(new Map()),
     COMMIT_DA_FRAME_PRESSURE: Ref.unsafeMake(null),
+    COMMIT_BUILD_ALARMS: Ref.unsafeMake(NO_COMMIT_BUILD_ALARMS),
     L1_CONTROL_PLANE_ACTIVITY: Ref.unsafeMake(initialL1ControlPlaneActivity()),
   }) as unknown as Globals;
 

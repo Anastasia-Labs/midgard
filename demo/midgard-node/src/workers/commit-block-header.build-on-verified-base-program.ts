@@ -52,6 +52,7 @@ import {
 } from "./commit-block-header.pending-user-event-counts-up-to.js";
 import { recordSuccessfulBuildCalibration as recordBuildCalibration } from "./commit-block-header.record-successful-build-calibration.js";
 import { resolveCommitBaseLedgerEntries } from "./commit-block-header.resolve-commit-base-ledger-entries.js";
+import type { CommitEviction } from "./commit-block-header/commit-da-oversize-eviction.js";
 import * as DaPrefix from "./commit-block-header/commit-da-prefix-search.js";
 import {
   getLatestBlockDatumEndTime,
@@ -110,6 +111,8 @@ export const buildOnVerifiedCommitBaseProgram = (
       }
     | undefined,
   acquireCommitLucid: CommitLucidFactory,
+  /** Normal transactions this build rejects before validation. */
+  commitEvictions?: ReadonlyMap<string, CommitEviction>,
 ): Effect.Effect<
   WorkerOutput,
   unknown,
@@ -616,7 +619,11 @@ export const buildOnVerifiedCommitBaseProgram = (
           onMempoolLedgerReverted: notifyParent?.(
             MEMPOOL_LEDGER_REVERTED_NOTICE,
           ),
+          onCommitBuildAlarm: (alarm, stage) =>
+            notifyParent?.({ type: "CommitBuildAlarmNotice", alarm, stage }) ??
+            Effect.void,
           nativeMpf: nativeMpfContext,
+          commitEvictions,
         }).pipe(
           Effect.tap((built) =>
             Effect.sync(() => {
