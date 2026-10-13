@@ -6,9 +6,17 @@ import {
   decodeMidgardDatum,
   driveMidgardCekDataTraverse,
   isCanonicalMidgardCekData,
+  isCanonicalMidgardDataStream,
   isUnreadableMidgardCekDataTraverse,
+  MIDGARD_DATA_STREAM_EMPTY_STACK_ROOT,
+  type MidgardDataStreamFrame,
+  midgardDataStreamStackRoot,
+  runMidgardDataStream,
 } from "../src/index.js";
 import { vectors } from "./fixtures/cek-data-canonical-corpus-v1.vectors.mjs";
+
+const STACK_ROOT_GOLDEN =
+  "04366e7a83b284987e4d689293ab1ae13e11a503371f30218af912b12e65c9c8";
 
 const nodeAdmitsDatum = (source: Buffer): boolean => {
   try {
@@ -16,6 +24,57 @@ const nodeAdmitsDatum = (source: Buffer): boolean => {
     return true;
   } catch {
     return false;
+  }
+};
+
+/**
+ * The resumable reader driven the way `data-stream-driver.ak` drives it: the
+ * span sits at offset 1 of a carrier, each call reads two `chunk`-byte chunks
+ * from the chunk holding the cursor, runs `budget` nodes and reveals only the
+ * top open container, so every resume goes through the stored hash chain.
+ */
+const streamResumed = (source: Buffer, chunk = 68, budget = 1): boolean => {
+  const carrier = Buffer.concat([
+    Buffer.from([0x5a]),
+    source,
+    Buffer.from([0xa5]),
+  ]);
+  const start = 1;
+  const end = start + source.length;
+  let cursor = start;
+  let stack: readonly MidgardDataStreamFrame[] = [];
+  for (;;) {
+    const base =
+      Math.floor(Math.min(cursor, carrier.length - 1) / chunk) * chunk;
+    const windowEnd = Math.min(base + 2 * chunk, carrier.length);
+    const full = windowEnd >= end;
+    const revealed = stack.slice(0, 1);
+    const hidden = stack.slice(1);
+    const tailRoot = midgardDataStreamStackRoot(
+      hidden,
+      MIDGARD_DATA_STREAM_EMPTY_STACK_ROOT,
+    );
+    const outcome = runMidgardDataStream({
+      bytes: carrier.subarray(base, full ? end : windowEnd),
+      full,
+      rootStart: start - base,
+      offset: cursor - base,
+      frames: revealed,
+      tailRoot,
+      budget,
+    });
+    if (outcome.kind === "canonical") return true;
+    if (outcome.kind === "nonCanonical") return false;
+    if (outcome.nodes === 0) throw new Error("resumed read made no progress");
+    // A resume rebuilds the stack the chain commits to.
+    expect(midgardDataStreamStackRoot(outcome.frames, tailRoot)).toEqual(
+      midgardDataStreamStackRoot(
+        [...outcome.frames, ...hidden],
+        MIDGARD_DATA_STREAM_EMPTY_STACK_ROOT,
+      ),
+    );
+    cursor = base + outcome.offset;
+    stack = [...outcome.frames, ...hidden];
   }
 };
 
@@ -56,6 +115,11 @@ describe("canonical Data corpus V1 through the TypeScript traverse twin", () => 
       expect(isCanonicalMidgardCekData(source)).toBe(
         vector.verdict === "accepted",
       );
+      // The resumable reader the datum canonicity proof replays on chain.
+      expect(isCanonicalMidgardDataStream(source)).toBe(
+        vector.verdict === "accepted",
+      );
+      expect(streamResumed(source)).toBe(vector.verdict === "accepted");
       // Node admission keeps its own single-pass gate in P1 (DC ruling F3);
       // it must take exactly the corpus's accepted spans.
       expect(nodeAdmitsDatum(source)).toBe(vector.verdict === "accepted");
@@ -134,12 +198,37 @@ describe("canonical Data corpus V1 through the TypeScript traverse twin", () => 
       if (source.length > 0) cases.push(source);
     }
     const disagreements = cases
-      .filter(
-        (source) =>
-          nodeAdmitsDatum(source) !== isCanonicalMidgardCekData(source),
-      )
+      .filter((source) => {
+        const verdict = isCanonicalMidgardCekData(source);
+        return (
+          nodeAdmitsDatum(source) !== verdict ||
+          isCanonicalMidgardDataStream(source) !== verdict ||
+          streamResumed(source) !== verdict
+        );
+      })
       .map((source) => source.toString("hex"));
     expect(disagreements).toEqual([]);
     expect(cases.filter(nodeAdmitsDatum).length).toBeGreaterThan(200);
   }, 120_000);
+
+  // The same constant is pinned against `stack_root_v1` in
+  // canonical-plutus-data-stream-v1.test.ak, so both readers hash every
+  // frame kind, a bignum map count and a multi-byte chunk count alike.
+  it("hashes the open-container stack as the on-chain reader does", () => {
+    const frames: MidgardDataStreamFrame[] = [
+      { kind: "list", started: true },
+      { kind: "list", started: false },
+      { kind: "map", remaining: 0n },
+      { kind: "map", remaining: (1n << 65n) - 2n },
+      { kind: "map", remaining: 300n },
+      { kind: "chunks", seen: 0, leading: true },
+      { kind: "chunks", seen: 255, leading: false },
+    ];
+    expect(
+      midgardDataStreamStackRoot(
+        frames,
+        MIDGARD_DATA_STREAM_EMPTY_STACK_ROOT,
+      ).toString("hex"),
+    ).toBe(STACK_ROOT_GOLDEN);
+  });
 });

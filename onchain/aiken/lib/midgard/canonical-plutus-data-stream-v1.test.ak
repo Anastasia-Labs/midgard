@@ -2,6 +2,8 @@ use aiken/cbor
 use aiken/collection/list
 use aiken/fuzz
 use aiken/primitive/bytearray
+use midgard/canonical_plutus_data_stream_v1.{ChunksFrame,
+  ListFrame, MapFrame} as stream
 use midgard/canonical_plutus_data_v1
 use midgard/validation_machine_tests/data_stream_driver.{stream_verdict_v1}
 
@@ -90,4 +92,24 @@ test stream_agrees_with_one_shot_on_mutated_data(
     bytearray.push(bytearray.drop(source, index + 1), byte),
   )
   agree_unknown(mutated)
+}
+
+/// The TypeScript twin pins the same root (`cek-data-canonical-corpus.test.ts`),
+/// so both readers hash every frame kind, a bignum map count and a multi-byte
+/// chunk count alike.
+test stack_root_matches_the_typescript_twin() {
+  let frames = [
+    ListFrame { started: True },
+    ListFrame { started: False },
+    MapFrame { remaining: 0 },
+    MapFrame { remaining: 36893488147419103230 },
+    MapFrame { remaining: 300 },
+    ChunksFrame { seen: 0, leading: True },
+    ChunksFrame { seen: 255, leading: False },
+  ]
+  and {
+    cbor.serialise(MapFrame { remaining: 36893488147419103230 }) == #"d87a9fc24901fffffffffffffffeff",
+    cbor.serialise(ChunksFrame { seen: 255, leading: False }) == #"d87b9f18ffd87980ff",
+    stream.stack_root_v1(frames, stream.empty_stack_root) == #"04366e7a83b284987e4d689293ab1ae13e11a503371f30218af912b12e65c9c8",
+  }
 }
