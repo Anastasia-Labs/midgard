@@ -257,7 +257,8 @@ describe("W22 per-root mismatch determinism", () => {
     (typeof WATCHER_HEADER_ROOT_FIELDS)[number],
     keyof SDK.Header,
   ][] = [
-    ["utxos_root", "utxosRoot"],
+    // utxos_root is not reconstructed from DA: the payload carries no UTxO
+    // set, so the header's root is taken as the post-state root.
     ["withdrawals_root", "withdrawalsRoot"],
     ["forced_transactions_root", "forcedTransactionsRoot"],
     ["transactions_root", "transactionsRoot"],
@@ -288,9 +289,9 @@ describe("W22 per-root mismatch determinism", () => {
     },
   );
 
-  it("covers every declared root field exactly once", () => {
-    expect(rootMutations.map(([field]) => field)).toStrictEqual([
-      ...WATCHER_HEADER_ROOT_FIELDS,
-    ]);
+  it("covers every DA-reconstructed root field exactly once", () => {
+    expect(rootMutations.map(([field]) => field)).toStrictEqual(
+      WATCHER_HEADER_ROOT_FIELDS.filter((field) => field !== "utxos_root"),
+    );
   });
 });

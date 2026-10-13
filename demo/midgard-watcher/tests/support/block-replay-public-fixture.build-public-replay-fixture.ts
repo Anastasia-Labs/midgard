@@ -159,10 +159,6 @@ export const buildPublicReplayFixture = async (input: {
       ),
     ],
   );
-  const utxoEntries: SDK.DaPayloadEntry[] = input.postState.map((entry) => [
-    entry.outRef,
-    entry.outputCbor,
-  ]);
   const countedRoot = async (
     domain: SDK.RootDomain,
     values: readonly SDK.DaPayloadEntry[],
@@ -229,7 +225,6 @@ export const buildPublicReplayFixture = async (input: {
     block_body: {
       header_hash: headerHash,
       header,
-      utxos: sortEntries(utxoEntries),
       withdrawals: sortEntries(withdrawalEntries),
       forced_transactions: sortEntries(forcedEntries),
       transactions: sortEntries(transactionEntries),

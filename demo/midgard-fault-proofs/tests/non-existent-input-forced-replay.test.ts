@@ -219,7 +219,6 @@ const fixture = async (present: boolean, index: bigint, consumed = false) => {
       header,
       header_hash: headerHash,
       counts,
-      utxos: consumed ? [] : predecessorFixture.payload.block_body.utxos,
       forced_transactions: entries,
       forced_transaction_preimages: preimages,
       transition_trace: traces,

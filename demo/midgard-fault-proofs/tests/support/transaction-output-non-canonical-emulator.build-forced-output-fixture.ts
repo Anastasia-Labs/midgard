@@ -29,6 +29,7 @@ import {
 } from "../../src/transition-trace/phas.js";
 import { reconstructDaPayload } from "../../src/transition-trace/reconstruct.js";
 import { makeNativeTx } from "./emulator/native-tx.js";
+import { recordFixtureLedger } from "./fixture-ledger.js";
 import {
   outputReferenceCbor,
   sortedDaEntries,
@@ -181,6 +182,7 @@ export const buildForcedOutputFixture = async ({
     transitionStepCount: 1n,
     validationTraceCount: 1n,
   };
+  recordFixtureLedger(finalRoot.root, [finalUtxo]);
   const header = {
     ...makeHeader(operatorVkey, now),
     utxosRoot: finalRoot.root,
@@ -197,7 +199,6 @@ export const buildForcedOutputFixture = async ({
       block_body: {
         header_hash: headerHash,
         header,
-        utxos: sortedDaEntries([finalUtxo]),
         withdrawals: [],
         forced_transactions: sortedDaEntries(forcedEntries),
         transactions: [],

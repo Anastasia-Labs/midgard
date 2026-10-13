@@ -19,6 +19,10 @@
       "midgard-source": "./tests/helpers/transition-history-fixture.ts",
       "types": "./tests/helpers/transition-history-fixture.ts"
     },
+    "./test-support/fixture-ledger": {
+      "midgard-source": "./tests/support/fixture-ledger.ts",
+      "types": "./tests/support/fixture-ledger.ts"
+    },
     "./test-support/predecessor-ledger": {
       "midgard-source": "./tests/support/predecessor-ledger.ts",
       "types": "./tests/support/predecessor-ledger.ts"

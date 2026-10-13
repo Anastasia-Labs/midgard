@@ -3,16 +3,11 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 
 import { transitionTraceError } from "./errors.js";
-import {
-  type CountedRoot,
-  type KeyValuePhasEntry,
-  type KeyValuePhasRoot,
-} from "./phas.js";
+import { type CountedRoot } from "./phas.js";
 
 export type DataSchema = Parameters<typeof Data.Nullable>[0];
 
 export type PayloadRootSet = {
-  readonly utxosRoot: string;
   readonly withdrawalsRoot: string;
   readonly forcedTransactionsRoot: string;
   readonly transactionsRoot: string;
@@ -91,7 +86,6 @@ export type TransitionTraceReconstruction = {
   readonly headerHash: string;
   readonly roots: PayloadRootSet;
   readonly counts: PayloadCountSet;
-  readonly utxos: readonly KeyValuePhasEntry[];
   readonly withdrawals: readonly DecodedRootEntry<
     SDK.OutputReference,
     SDK.WithdrawalInfo
@@ -121,7 +115,6 @@ export type TransitionTraceReconstruction = {
     DecodedRootEntry<SDK.EventKey, SDK.EventToStepValue>
   >;
   readonly rootData: {
-    readonly utxos: KeyValuePhasRoot;
     readonly withdrawals: CountedRoot;
     readonly forcedTransactions: CountedRoot;
     readonly transactions: CountedRoot;

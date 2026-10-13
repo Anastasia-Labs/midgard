@@ -8,7 +8,6 @@ import {
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
-import { retainedPayloadLedgerAt } from "../src/retained-payload-ledger-at.js";
 import type { RetainedDaPayloadSource } from "../src/transition-trace/fetch.js";
 import {
   requireTransitionTraceL1Events,
@@ -44,6 +43,7 @@ import {
   reencodeFixturePayload,
 } from "./helpers/canonical-block-evidence-fixture.js";
 import { TRANSITION_HISTORY_FIXTURE_PARAMETERS } from "./helpers/transition-history-fixture.js";
+import { fixtureLedgerAt } from "./support/fixture-ledger.js";
 import {
   buildRetainedPlutusIdentityFixture,
   captureRetainedPlutusIdentityOrigins,
@@ -247,7 +247,7 @@ const classify = async ({
     sources,
     ...(installed
       ? {
-          predecessorLedgerAt: retainedPayloadLedgerAt({ sources }),
+          predecessorLedgerAt: fixtureLedgerAt({ sources }),
         }
       : {}),
     authenticatedObservationDigest:

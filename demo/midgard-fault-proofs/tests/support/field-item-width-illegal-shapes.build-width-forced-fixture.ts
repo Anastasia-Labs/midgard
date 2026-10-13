@@ -30,6 +30,7 @@ import {
 } from "../../src/transition-trace/phas.js";
 import { reconstructDaPayload } from "../../src/transition-trace/reconstruct.js";
 import { h32, makeHeader } from "./emulator/header-fixtures.js";
+import { recordFixtureLedger } from "./fixture-ledger.js";
 import {
   outputReferenceCbor,
   sortedDaEntries,
@@ -81,6 +82,7 @@ export const buildWidthForcedFixture = async ({
   const finalRoot = await keyValuePhasRootWithCount([
     { key: Buffer.from(finalUtxo[0], "hex"), value: descriptor },
   ]);
+  recordFixtureLedger(finalRoot.root, [finalUtxo]);
   const source = deriveMidgardForcedTxProofSource(
     materializeMidgardForcedTxFromCanonical(nativeTx),
   );
@@ -189,7 +191,6 @@ export const buildWidthForcedFixture = async ({
       block_body: {
         header_hash: headerHash,
         header,
-        utxos: sortedDaEntries([finalUtxo]),
         withdrawals: [],
         forced_transactions: sortedDaEntries(forcedEntries),
         transactions: [],

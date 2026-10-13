@@ -43,6 +43,7 @@ import {
   keyValuePhasRootWithCount,
 } from "../../src/transition-trace/phas.js";
 import { buildCanonicalBlockFixture } from "../helpers/canonical-block-evidence-fixture.js";
+import { recordFixtureLedger } from "./fixture-ledger.js";
 import { buildDecodingBlockFixture } from "./native-script-decoding-emulator.js";
 
 /** Retains existing machine states under the operator's exact claimed verdict. */
@@ -258,6 +259,14 @@ export const buildRetainedValidationBlockFixture = async ({
     transitionTraceRoot: transitionRoot.root,
     ...(postLedger === undefined ? {} : { utxosRoot: postLedger.root }),
   };
+  if (postLedger !== undefined && postLedgerEntries !== undefined)
+    recordFixtureLedger(
+      postLedger.root,
+      postLedgerEntries.map(({ outRef, output }) => ({
+        key: outRef,
+        value: output,
+      })),
+    );
   const headerHash = await Effect.runPromise(hashBlockHeader(header));
   const entries = (
     values: readonly { key: Buffer; value: Buffer }[],
@@ -279,16 +288,6 @@ export const buildRetainedValidationBlockFixture = async ({
         : {
             cek_program_material: [...programMaterialEntries].sort(
               ([left], [right]) => left.localeCompare(right),
-            ),
-          }),
-      ...(postLedgerEntries === undefined
-        ? {}
-        : {
-            utxos: entries(
-              postLedgerEntries.map(({ outRef, output }) => ({
-                key: outRef,
-                value: output,
-              })),
             ),
           }),
       counts: {

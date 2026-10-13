@@ -35,6 +35,7 @@ import {
   keyValuePhasRootWithCount,
   reconstructDaPayload,
 } from "../../src/index.js";
+import { recordFixtureLedger } from "./fixture-ledger.js";
 import {
   sortedDaEntries,
   transitionTraceRawEntry,
@@ -117,6 +118,7 @@ const buildForcedTransitionTraceFixture = async ({
       value: finalDescriptor,
     },
   ]);
+  recordFixtureLedger(finalUtxosRoot.root, [finalUtxo]);
   const forcedNativeTx = makeNativeTx({
     spendInputCbors: [],
     fee: 0n,
@@ -304,7 +306,6 @@ const buildForcedTransitionTraceFixture = async ({
       block_body: {
         header_hash: headerHash,
         header,
-        utxos: sortedDaEntries([finalUtxo]),
         withdrawals: [],
         forced_transactions: sortedDaEntries(forcedEntries),
         transactions: [],

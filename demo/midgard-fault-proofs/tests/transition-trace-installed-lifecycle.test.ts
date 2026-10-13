@@ -20,7 +20,6 @@ import {
 } from "@lucid-evolution/lucid";
 import { afterAll, describe, expect, it, vi } from "vitest";
 
-import { retainedPayloadLedgerAt } from "../src/retained-payload-ledger-at.js";
 import { TRANSITION_TRACE_COMPLETE_CANONICAL_REPLAY } from "../src/workflow/complete-replay.js";
 import {
   authenticatedStateQueueObservationDigest,
@@ -104,6 +103,7 @@ import {
   submitSecondHeaderTx,
   submitSetupTx,
 } from "./support/emulator/setup-tx.js";
+import { fixtureLedgerAt } from "./support/fixture-ledger.js";
 import { installedWorkflowEmulatorClock } from "./support/installed-workflow.advance-emulator-observation.js";
 import {
   readBlueprintIdentity,
@@ -699,7 +699,7 @@ describe("transition trace installed retained-history workflow", () => {
               minimumConfirmationDepth: finalityPolicy.confirmationDepth,
             }),
           sources,
-          predecessorLedgerAt: retainedPayloadLedgerAt({ sources }),
+          predecessorLedgerAt: fixtureLedgerAt({ sources }),
         });
         expect(decision.decision).toBe(honest ? "healthy" : "fault_detected");
         if (!honest)

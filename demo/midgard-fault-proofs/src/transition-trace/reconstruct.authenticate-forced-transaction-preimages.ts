@@ -167,7 +167,6 @@ export const headerCounts = (header: SDK.Header): PayloadCountSet => ({
 });
 
 export const headerRoots = (header: SDK.Header): PayloadRootSet => ({
-  utxosRoot: header.utxosRoot,
   withdrawalsRoot: header.withdrawalsRoot,
   forcedTransactionsRoot: header.forcedTransactionsRoot,
   transactionsRoot: header.transactionsRoot,
@@ -182,7 +181,6 @@ export const rootMismatches = (
   actual: PayloadRootSet,
 ): readonly string[] =>
   [
-    expected.utxosRoot === actual.utxosRoot ? null : "utxos_root",
     expected.withdrawalsRoot === actual.withdrawalsRoot
       ? null
       : "withdrawals_root",

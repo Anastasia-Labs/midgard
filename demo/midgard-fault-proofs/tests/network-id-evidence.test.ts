@@ -43,6 +43,7 @@ import {
   buildCanonicalBlockFixture,
   type FixtureTransaction,
 } from "./helpers/canonical-block-evidence-fixture.js";
+import { recordFixtureLedger } from "./support/fixture-ledger.js";
 import {
   checkedLedgerAfter,
   ledgerEntriesAfter,
@@ -191,6 +192,7 @@ const evidenceWithUtxo = async ({
     outputCbor: output,
   }).descriptorCbor;
   const post = await keyValuePhasRootWithCount([{ key, value: descriptor }]);
+  recordFixtureLedger(post.root, [{ key, value: output }]);
   return {
     evidence: {
       ...base,
@@ -200,10 +202,6 @@ const evidenceWithUtxo = async ({
         ...(prevHeaderHash === undefined ? {} : { prevHeaderHash }),
         prevUtxosRoot,
         utxosRoot: post.root,
-      },
-      reconstruction: {
-        ...base.reconstruction,
-        utxos: [{ key, value: output }],
       },
     },
     outRef: { transactionId: "55".repeat(32), outputIndex: 0n },
@@ -410,10 +408,7 @@ describe("Q35 network-id DA-first evidence", () => {
       outputNetworkId: 2,
     });
     const prepared = await prepareNetworkIdPostUtxoFromCanonicalEvidence({
-      evidence: {
-        ...evidence,
-        reconstruction: { ...evidence.reconstruction, utxos: [] },
-      },
+      evidence,
       postLedger: await checkedLedgerAfter(evidence),
       expectedNetworkId: 0n,
       outRef,

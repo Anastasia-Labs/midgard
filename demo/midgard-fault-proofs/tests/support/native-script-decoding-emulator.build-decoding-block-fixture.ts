@@ -321,7 +321,6 @@ export const buildDecodingBlockFixture = async ({
     block_body: {
       header_hash: headerHash,
       header,
-      utxos: [],
       withdrawals: [],
       forced_transactions: sorted(forcedTransactions),
       transactions: sorted(transactions),

@@ -170,7 +170,6 @@ export const buildBlock = async (input: {
     block_body: {
       header_hash: headerHash,
       header,
-      utxos: [],
       withdrawals: [],
       forced_transactions: [],
       transactions: sortEntries(transactionEntries),

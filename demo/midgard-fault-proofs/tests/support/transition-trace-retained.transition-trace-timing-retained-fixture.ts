@@ -2,6 +2,7 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { type Assets, Data } from "@lucid-evolution/lucid";
 
 import { buildCountedRoot } from "../../src/transition-trace/phas.js";
+import { fixtureLedgerAfter } from "./fixture-ledger.js";
 import {
   depositEventsRetainedBlock,
   sealDepositPayload,
@@ -37,7 +38,7 @@ export const transitionTraceTimingRetainedFixture = async (input: {
     blockSlot: 10n,
     prevHeaderHash: predecessor.headerHash,
     prevUtxosRoot: predecessor.header.utxosRoot,
-    priorLedger: predecessor.payload.block_body.utxos,
+    priorLedger: fixtureLedgerAfter(predecessor.header),
     events:
       !input.omitted && "DepositPayload" in input.payload
         ? [
