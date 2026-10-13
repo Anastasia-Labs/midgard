@@ -1,3 +1,5 @@
+import { isDeepStrictEqual } from "node:util";
+
 import {
   aikenSerialisedPlutusDataCborPreservingMapOrder,
   plutusConstrFieldCbor,
@@ -56,10 +58,14 @@ export const reopenTransitionDeposit = (
     );
   const event = opening.payload.DepositPayload.event;
   const infoCbor = plutusConstrFieldCbor(retained.openingCbor, [0, 0, 1]);
+  // The raw leaf decides; the typed view must be its decoded view. Neither
+  // side is re-encoded: user datum Data need not survive a typed encoder.
   if (
     source.valueCbor !== undefined &&
-    Data.to(Data.from(source.valueCbor, SDK.DepositInfo), SDK.DepositInfo) !==
-      Data.to(source.value, SDK.DepositInfo)
+    !isDeepStrictEqual(
+      Data.from(source.valueCbor, SDK.DepositInfo),
+      source.value,
+    )
   )
     throw new Error(
       "Transition deposit source view differs from its raw bytes",

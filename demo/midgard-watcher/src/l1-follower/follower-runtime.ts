@@ -389,6 +389,14 @@ export const openWatcherFollowerRuntime = (
     reasons.push(...proofRetention.readiness());
     try {
       reasons.push(...(await txInputs.assess()).readiness);
+      // An admitted order the follower refused is a node/chain disagreement,
+      // never a user fault (event-refusals.ts).
+      if (input.eventProjection !== undefined)
+        for (const refused of await store.transaction(
+          "read",
+          eventRefusalDegradationsIn,
+        ))
+          reasons.push({ reason: refused.reason, detail: refused.detail });
       const cursor = await store.cursor();
       if (cursor !== null) {
         const view = await store.transaction("read", (tx) =>

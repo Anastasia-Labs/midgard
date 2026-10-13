@@ -19,7 +19,10 @@ describe("event history applied bounds in deployment identity", () => {
   };
   it("requires explicit canonical integers and a total bound covering inline data", () => {
     expect(parseDeploymentManifestEventHistoryBounds(bounds)).toEqual(bounds);
+    const largest = { ...bounds, maxPayloadNodes: "1024" };
+    expect(parseDeploymentManifestEventHistoryBounds(largest)).toEqual(largest);
     for (const invalid of [
+      { ...bounds, maxPayloadNodes: "1025" },
       undefined,
       {},
       { ...bounds, inlineLimitBytes: 512 },

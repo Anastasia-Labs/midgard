@@ -15,6 +15,7 @@ export {
   type DeploymentManifestFraudProofCatalogueIdentity,
 } from "./deployment-manifest-identity/catalogue-roles.js";
 export {
+  DEPLOYMENT_MANIFEST_MAX_PAYLOAD_NODES,
   type DeploymentManifestEventHistoryRecipe,
   type DeploymentManifestEventHistoryRetentionAddresses,
   parseDeploymentManifestEventHistoryBounds,

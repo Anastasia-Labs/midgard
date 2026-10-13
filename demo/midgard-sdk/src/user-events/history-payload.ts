@@ -6,7 +6,11 @@ import {
 import { Constr, Data, datumToHash } from "@lucid-evolution/lucid";
 
 import { type CredentialD, OutputReference } from "../common.js";
-import { EventHistoryPayload, type EventHistoryRecipe } from "./history.js";
+import {
+  EventHistoryNode,
+  EventHistoryPayload,
+  type EventHistoryRecipe,
+} from "./history.js";
 import { encodeEventHistoryData, EventHistoryData } from "./history-data.js";
 
 export type EventHistoryPayloadBounds = Pick<
@@ -119,3 +123,31 @@ export const prepareEventHistoryPayload = (
     reclaimAuth,
     bounds,
   );
+
+/** An Order node's datum. An inline payload is user Data, so its bytes come
+ * from the plan, never from the typed node: a typed encoder cannot write every
+ * constructor index or keep repeated map keys. */
+export const encodeEventHistoryOrderNode = (
+  node: EventHistoryNode,
+  plan: Pick<EventHistoryPayloadPlan, "kind" | "payloadCbor">,
+): string => {
+  if (plan.kind === "External") return Data.to(node, EventHistoryNode);
+  if (node.payload === "RootContent" || !("Order" in node.payload))
+    throw new Error("An inline payload belongs to an Order node");
+  const framed: EventHistoryNode = {
+    ...node,
+    payload: {
+      Order: {
+        facts: {
+          ...node.payload.Order.facts,
+          location: { External: { storage_datum_hash: "00".repeat(32) } },
+        },
+      },
+    },
+  };
+  return replacePlutusConstrFieldCbor(
+    Data.to(framed, EventHistoryNode),
+    [3, 0, 2],
+    `d8799f${plan.payloadCbor}ff`,
+  );
+};

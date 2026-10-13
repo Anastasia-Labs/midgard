@@ -62,11 +62,30 @@ const retained = transitionDepositOpening({
 });
 const source = { key: id, value: info };
 
+/** Deposit datums a typed Data codec cannot carry, as `serialiseData` writes
+ * them. The node's admission corpus holds the same values. */
+const RAW_DATUMS: readonly (readonly [
+  string,
+  string,
+  /** What the typed view's encoding of the committed leaf does. */
+  "differs" | "throws" | "same",
+])[] = [
+  ["repeated-map", "a3020a010b020c", "differs"],
+  ["largest-constructor", "d866821bffffffffffffffff80", "throws"],
+  ["2^512-bignum", `c25f5840${"01".padEnd(128, "0")}4100ff`, "same"],
+  ["small-bignum", "05", "same"],
+  ["constructor-0", "d87980", "same"],
+  ["repeated-key", "a201020103", "differs"],
+];
+
 describe("transition deposit retained opening", () => {
-  it.each([true, false])(
-    "reconstructs and replays an exact repeated-map deposit; honest=%s",
-    async (honest) => {
-      const rawDatum = "a3020a010b020c";
+  it.each(
+    RAW_DATUMS.flatMap(([name, datum, typed]) =>
+      [true, false].map((honest) => [name, honest, datum, typed] as const),
+    ),
+  )(
+    "reconstructs and replays an exact %s deposit; honest=%s",
+    async (_name, honest, rawDatum, typed) => {
       const eventCbor = aikenSerialisedPlutusDataCborPreservingMapOrder(
         replacePlutusConstrFieldCbor(
           Data.to({ id, info }, SDK.DepositEvent),
@@ -110,9 +129,13 @@ describe("transition deposit retained opening", () => {
       expect(current.deposits[0]!.valueBytes.toString("hex")).toBe(
         plutusConstrFieldCbor(eventCbor, [1]),
       );
-      expect(current.deposits[0]!.valueBytes.toString("hex")).not.toBe(
-        SDK.committedDepositValueBytes(current.deposits[0]!.value),
-      );
+      const typedView = () =>
+        SDK.committedDepositValueBytes(current.deposits[0]!.value);
+      if (typed === "throws") expect(typedView).toThrow();
+      else if (typed === "differs")
+        expect(current.deposits[0]!.valueBytes.toString("hex")).not.toBe(
+          typedView(),
+        );
       const replay = await deriveTransitionTraceReplayEvidence({
         current,
         predecessor,
@@ -161,9 +184,16 @@ describe("transition deposit retained opening", () => {
         expect(source?.valueCbor).toBe(
           current.deposits[0]!.valueBytes.toString("hex"),
         );
-        expect(transitionTraceProofChunks(material)).not.toEqual(
-          transitionTraceProofChunks(finding.proof),
-        );
+        // The material carries the committed leaf, which the typed proof's
+        // encoding loses or cannot write.
+        const typedChunks = () => transitionTraceProofChunks(finding.proof);
+        if (typed === "throws") expect(typedChunks).toThrow();
+        else if (typed === "differs")
+          expect(transitionTraceProofChunks(material)).not.toEqual(
+            typedChunks(),
+          );
+        else
+          expect(transitionTraceProofChunks(material)).toEqual(typedChunks());
         expect(
           initialTransitionTraceState(material).proof_commitment.hash,
         ).toBe(transitionTraceProofChunks(material).hash);

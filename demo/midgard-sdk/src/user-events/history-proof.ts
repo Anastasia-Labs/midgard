@@ -1,7 +1,6 @@
 import {
   aikenSerialisedPlutusDataCborPreservingMapOrder,
   plutusConstrFieldCbor,
-  replacePlutusConstrFieldCbor,
 } from "@al-ft/midgard-core/plutus-data-cbor";
 import { type Assets, Data, datumToHash } from "@lucid-evolution/lucid";
 
@@ -11,7 +10,6 @@ import {
   type EventHistoryCommitment,
   type EventHistoryFacts,
   EventHistoryNode,
-  EventHistoryOpening,
   EventHistoryPayload,
 } from "./history.js";
 import { EventHistoryData, type EventHistoryKind } from "./history-data.js";
@@ -117,6 +115,23 @@ export const opensEventHistoryCommitmentCbor = (
   );
 };
 
+/** `EventHistoryOpening { payload, original_assets }` written from the exact
+ * field bytes in a two-field constructor 0, as the typed encoder frames it. The
+ * payload is user Data and is never re-encoded: a typed encoder cannot write
+ * every constructor index or keep repeated map keys. */
+export const eventHistoryOpeningCbor = (
+  payloadCbor: string,
+  originalAssetsCbor: string,
+): string => {
+  const opening = `d8799f${payloadCbor}${originalAssetsCbor}ff`;
+  if (
+    plutusConstrFieldCbor(opening, [0]) !== payloadCbor ||
+    plutusConstrFieldCbor(opening, [1]) !== originalAssetsCbor
+  )
+    throw new Error("History opening fields are not single Data items");
+  return opening;
+};
+
 /** Preserve original deposit assets separately from list NFT and structural ADA.
  * The transaction must reference this exact authenticated witness on chain. */
 export const captureEventHistoryWitness = (
@@ -183,11 +198,7 @@ export const captureEventHistoryWitness = (
     )
   )
     throw new Error("History payload kind or identity differs from its Order");
-  const openingCbor = replacePlutusConstrFieldCbor(
-    Data.to({ payload, original_assets: originalAssets }, EventHistoryOpening),
-    [0],
-    payloadCbor,
-  );
+  const openingCbor = eventHistoryOpeningCbor(payloadCbor, originalAssetsCbor);
   return {
     commitment,
     payload,

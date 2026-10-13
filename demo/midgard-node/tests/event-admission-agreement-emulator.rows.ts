@@ -13,6 +13,8 @@ export type Row = Readonly<{
   admitted: boolean;
   /** Field replacements in the payload, by constructor-field path. */
   fields?: readonly (readonly [readonly number[], string])[];
+  /** The deposit `l2_datum` the SDK writes into the payload it builds. */
+  l2Datum?: string;
   /** The external payload's reclamation credential. */
   reclaimAuth?: SDK.CredentialD;
   /** Withdrawal fields the SDK writes into the payload it funds. */
@@ -55,9 +57,20 @@ const pointerAddress = Data.to(
   SDK.AddressData,
 );
 
+/** Deposit datums a typed Data codec cannot carry: the exact bytes must
+ * reach the node's ledger output. Each value is the `l2_datum` option. */
+export const RAW_DEPOSIT_DATUMS: readonly (readonly [string, string])[] = [
+  ["the largest constructor index", "d87981d866821bffffffffffffffff80"],
+  ["a 2^512 bignum", `d87981c25f5840${"01".padEnd(128, "0")}4100ff`],
+  ["a tagged small bignum", "d87981c24105"],
+  ["a general-form constructor 0", "d87981d866820080"],
+  ["a map with a repeated key", "d87981a201020103"],
+];
+
 // Payload paths. Deposit: payload.event.info.l2_address = [0, 1, 0].
 // Withdrawal: payload.event.info.body = [0, 1, 0]; refund_address = [1].
 const L2_ADDRESS = [0, 1, 0];
+const L2_DATUM = [0, 1, 2];
 const BODY = [0, 1, 0];
 const L2_VALUE = [...BODY, 2];
 const L1_ADDRESS = [...BODY, 3];
@@ -79,6 +92,14 @@ export const ROWS: readonly Row[] = [
     admitted: true,
     fields: [[[...L2_ADDRESS, 1], noStake]],
   },
+  ...RAW_DEPOSIT_DATUMS.map(
+    ([name, datum]): Row => ({
+      group: "deposit",
+      name: `a datum with ${name}`,
+      admitted: true,
+      fields: [[L2_DATUM, datum]],
+    }),
+  ),
   {
     group: "deposit",
     name: "a 27-byte payment key hash",

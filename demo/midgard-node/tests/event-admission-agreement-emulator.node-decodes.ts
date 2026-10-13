@@ -1,4 +1,6 @@
 /** The node's decode of an admitted event-history order. */
+import { decodeMidgardTxOutput } from "@al-ft/midgard-core/codec";
+import { plutusConstrFieldCbor } from "@al-ft/midgard-core/plutus-data-cbor";
 import {
   type EventListConfig,
   openOrder,
@@ -60,6 +62,16 @@ export const nodeDecodes = (
       location: at,
     };
     const entry = userEventEntry(projected, network);
+    if (entry.kind === "deposit") {
+      // The ledger output carries the deposit's datum bytes exactly.
+      const option = plutusConstrFieldCbor(event.payloadCbor, [0, 1, 2]);
+      const datum = decodeMidgardTxOutput(
+        Buffer.from(entry.entry.ledgerOutput, "hex"),
+      ).datum;
+      const expected =
+        option === "d87a80" ? undefined : plutusConstrFieldCbor(option, [0]);
+      if (datum?.cbor.toString("hex") !== expected) return false;
+    }
     if (entry.kind === "withdrawal") {
       addressDataToBech32(
         network,

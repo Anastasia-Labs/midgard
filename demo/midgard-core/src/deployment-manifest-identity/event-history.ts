@@ -9,6 +9,11 @@ import {
 } from "./primitives.js";
 import { type DeploymentManifestEventHistoryBounds } from "./types.js";
 
+/** The largest Data-node bound a deployment may set. Admission still
+ * refuses a payload whose walk exceeds the transaction budget, so a payload
+ * within this bound is not always admitted. */
+export const DEPLOYMENT_MANIFEST_MAX_PAYLOAD_NODES = 1_024n;
+
 export const parseDeploymentManifestEventHistoryBounds = (
   value: unknown,
   field = "eventHistoryBounds",
@@ -37,6 +42,10 @@ export const parseDeploymentManifestEventHistoryBounds = (
     maxPayloadBytes: integer("maxPayloadBytes"),
     maxPayloadNodes: integer("maxPayloadNodes"),
   };
+  if (BigInt(bounds.maxPayloadNodes) > DEPLOYMENT_MANIFEST_MAX_PAYLOAD_NODES)
+    throw new Error(
+      `Deployment manifest ${field}.maxPayloadNodes exceeds ${DEPLOYMENT_MANIFEST_MAX_PAYLOAD_NODES.toString()}`,
+    );
   if (BigInt(bounds.inlineLimitBytes) > BigInt(bounds.maxPayloadBytes))
     throw new Error(
       `Deployment manifest ${field} inline bound exceeds total payload bound`,
