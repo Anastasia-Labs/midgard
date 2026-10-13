@@ -13,6 +13,9 @@
     "./tests/validation-fixtures": {
       "midgard-source": "./tests/validation-fixtures.ts"
     },
+    "./tests/placeholder-validation-trace-descriptor-v1.vectors": {
+      "midgard-source": "./tests/placeholder-validation-trace-descriptor-v1.vectors.ts"
+    },
     ".": {
       "midgard-source": "./src/index.ts",
       "types": "./dist/index.d.ts",

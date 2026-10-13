@@ -34,6 +34,11 @@ export {
 } from "./ledger-mutation.js";
 export { type ValidationMachineNativeScriptFrame } from "./native-script-frame.js";
 export {
+  placeholderValidationTraceDescriptorV1,
+  type PlaceholderValidationTraceEventV1,
+  validationTransactionCommitmentV1,
+} from "./placeholder-trace-descriptor.js";
+export {
   type MidgardPurposeKind,
   type MidgardRedeemerPurposeTag,
   purposeKindForRedeemerTag,
