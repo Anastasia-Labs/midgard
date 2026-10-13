@@ -20,6 +20,7 @@ import {
 import { Effect } from "effect";
 import { beforeAll, describe, expect, it, vi } from "vitest";
 
+import { mintReferenceOnlyOrder } from "./support/emulator/reference-only-order.js";
 import { publishForcedOrderCarriage } from "./support/forced-order-settlement.js";
 import {
   alignUnixTimeToEmulatorSlotBoundary,
@@ -213,6 +214,20 @@ describe("forced-tx admission at the real tx-order mint", () => {
     const signed = await built.tx.sign.withWallet().complete();
     await lucid.awaitTx(await signed.submit());
   };
+
+  it.each([false, true])(
+    "authenticates one reference-only order with independent policy=%s",
+    async (independentPolicy) => {
+      await mintReferenceOnlyOrder(() => {}, false, independentPolicy);
+    },
+    300_000,
+  );
+
+  it("refuses a second own-policy order NFT at the mint", async () => {
+    await expect(mintReferenceOnlyOrder(() => {}, true)).rejects.toThrow(
+      /failed script execution Mint\[\d+\]/u,
+    );
+  }, 300_000);
 
   it.each(ADMITTED)(
     "%s mints",
