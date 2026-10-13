@@ -103,7 +103,13 @@ export const commitAvailabilityBlock = async (
     ...SDK.EMPTY_HEADER_TRANSITION_COMMITMENTS,
     startTime: anchor.endTime,
     endTime: BigInt(validTo - 1),
-    blockSlot: 0n,
+    // block_time is validTo - 1, the last millisecond of the slot before
+    // validTo under the deployment's mapping.
+    blockSlot:
+      BigInt(f.l1SlotConfig.zeroSlot) +
+      (BigInt(validTo) - BigInt(f.l1SlotConfig.zeroTime)) /
+        BigInt(f.l1SlotConfig.slotLength) -
+      1n,
     expectedNetworkId: 0n,
     minFeeA: 44n,
     minFeeB: 155381n,

@@ -382,6 +382,7 @@ fn capture(tx: Transaction) -> order_facts.Commitment {
     Deposit,
     nonce,
     60_500,
+    60_500,
     1000,
     15000,
     1024,

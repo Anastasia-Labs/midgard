@@ -25,6 +25,8 @@ import {
 import { CML, Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
+import { fixtureBlockSlot } from "./support/emulator/header-fixtures.js";
+
 /** The program material of the fixture's one PlutusV3 script. */
 export const programMaterialSidecarCbor = Buffer.from(
   "82018282582072c078cab22fca41a65b75e6dfcff21d6258a743068e190836bd227ad35dd99d47830100438200008258207d068efad94d2953eefe63951671327af75e08c963cd1f232b08966e6026bf5e582983010058248202582072c078cab22fca41a65b75e6dfcff21d6258a743068e190836bd227ad35dd99d",
@@ -110,7 +112,7 @@ export const buildDataRefusalTrace = async (
     expectedNetworkId: 0n,
     minFeeA: 0n,
     minFeeB: 0n,
-    blockSlot: 0n,
+    blockSlot: fixtureBlockSlot(BigInt(now + 1_000), 0n),
     transactionId: transaction.txId,
     canonicalTransactionCbor: encodeMidgardForcedTxCanonical(
       decodeMidgardNativeTxFullFromCanonicalCbor(transaction.txCbor),

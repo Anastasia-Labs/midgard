@@ -88,6 +88,7 @@ import {
   alignUnixTimeToEmulatorSlotBoundary,
   buildRemovalDeploymentInfo,
   captureEmulatorSubmission,
+  commitSlotForBlockTime,
   type CompleteSignedTransactionMeasurement,
   EXECUTION_RESERVE_FRACTION,
   expectProofFit,
@@ -718,7 +719,10 @@ describe("fault-proof maximum proof fit", () => {
         emulator.now() + 120_000,
       ) - 1;
     const fixture = await buildInvalidRangeTransactionInclusionFixture({
-      blockSlot: 0n,
+      blockSlot: commitSlotForBlockTime(
+        contracts.l1SlotConfig,
+        BigInt(headerStartTime + 1_000),
+      ),
       adversarialBranchLevels: branchLevels,
     });
     expect(fixture.violationReason).toBe("starts-after-block-slot");

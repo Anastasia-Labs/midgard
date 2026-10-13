@@ -13,6 +13,7 @@ import { type Assets, Data } from "@lucid-evolution/lucid";
 
 import { buildCountedRoot } from "../../src/transition-trace/phas.js";
 import { buildCanonicalBlockFixture } from "../helpers/canonical-block-evidence-fixture.js";
+import { fixtureBlockSlot } from "./emulator/header-fixtures.js";
 
 export const sealDepositPayload = async (payload: SDK.DaPayload) => {
   const header = payload.block_body.header;
@@ -167,7 +168,7 @@ export const depositEventsRetainedBlock = async (input: {
     ...base.header,
     ...counts,
     operatorVkey: input.operatorVkey,
-    blockSlot: input.blockSlot,
+    blockSlot: fixtureBlockSlot(input.endTime, input.blockSlot),
     depositsRoot: await root(SDK.ROOT_DOMAINS.deposits, entries.deposits),
     eventToStepRoot: await root(
       SDK.ROOT_DOMAINS.eventToStep,

@@ -11,6 +11,7 @@ import {
   buildCanonicalBlockFixture,
   reencodeFixturePayload,
 } from "../helpers/canonical-block-evidence-fixture.js";
+import { fixtureBlockSlot } from "./emulator/header-fixtures.js";
 import { ledgerAtAfter } from "./predecessor-ledger.js";
 import {
   buildWithdrawalMistagEvidenceMaterial,
@@ -67,7 +68,7 @@ export const withdrawalMistagRetainedFixture = async ({
     ...predecessorBase.header,
     operatorVkey,
     prevHeaderHash: SDK.GENESIS_HEADER_HASH,
-    blockSlot: 9n,
+    blockSlot: fixtureBlockSlot(BigInt(now + 1000), 9n),
   };
   const predecessorHash = computeHash28(
     SDK.encodeHeaderCbor(predecessorHeader),
@@ -111,7 +112,7 @@ export const withdrawalMistagRetainedFixture = async ({
     ...base.header,
     ...counts,
     operatorVkey,
-    blockSlot: 10n,
+    blockSlot: fixtureBlockSlot(base.header.endTime, 10n),
     withdrawalsRoot: material.source.root,
     eventToStepRoot: material.event.root,
     transitionTraceRoot: material.trace.root,

@@ -5,6 +5,7 @@ import {
   phasMembershipWithdrawalScriptFromBlueprint,
 } from "@al-ft/midgard-sdk";
 import {
+  type Emulator,
   type EmulatorAccount,
   generateEmulatorAccount,
   getAddressDetails,
@@ -17,6 +18,17 @@ import { expect } from "vitest";
 
 import { resolveProverSigner } from "../../../src/index.js";
 import { type Blueprint, getCompiledScript, network } from "./blueprints.js";
+
+/**
+ * Starts `emulator` on a whole second, so its slot boundaries fall on those of
+ * the emulator deployments' slot mapping (Preprod's;
+ * `EMULATOR_DEPLOYMENT_L1_SLOT_CONFIG`) and a header's block_slot can name its
+ * commit time under that mapping. Call it before creating any Lucid instance
+ * on `emulator`: Lucid reads the emulator's slot mapping at creation.
+ */
+export const alignEmulatorToWholeSecond = (emulator: Emulator): void => {
+  emulator.time = Math.ceil(emulator.time / 1_000) * 1_000;
+};
 
 export const alignUnixTimeToEmulatorSlotBoundary = (
   lucid: Awaited<ReturnType<typeof Lucid>>,

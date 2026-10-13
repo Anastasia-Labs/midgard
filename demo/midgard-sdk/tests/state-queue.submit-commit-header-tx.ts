@@ -85,6 +85,8 @@ export const submitCommitHeaderTx = async ({
   commitYield,
   activeOperatorInput,
   headerNodeLovelace,
+  validTo = header.endTime + 1n,
+  blockTime,
 }: {
   readonly emulator: Emulator;
   readonly lucid: Awaited<ReturnType<typeof Lucid>>;
@@ -98,6 +100,10 @@ export const submitCommitHeaderTx = async ({
   readonly commitYield: UTxO;
   readonly activeOperatorInput: UTxO;
   readonly headerNodeLovelace?: bigint;
+  /** The commit's validity upper bound; defaults to `header.endTime + 1`. */
+  readonly validTo?: bigint;
+  /** The node's `block_time`; the builder defaults it to `validTo - 1`. */
+  readonly blockTime?: bigint;
 }): Promise<{
   readonly block: StateQueueUTxO;
   readonly activeOperatorInput: UTxO;
@@ -144,7 +150,8 @@ export const submitCommitHeaderTx = async ({
         additionalRefInputs: [hubOracle],
         activeOperatorInput,
         validFrom: BigInt(lucid.slotToUnixTime(validityStartSlot)),
-        validTo: header.endTime + 1n,
+        validTo,
+        blockTime,
         activeOperatorSpendRedeemer: makeCommitActiveOperatorRedeemer({
           contracts,
           operator,

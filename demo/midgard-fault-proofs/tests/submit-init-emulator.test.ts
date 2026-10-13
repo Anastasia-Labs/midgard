@@ -116,7 +116,7 @@ describe("fault-proof emulator integration", () => {
       ),
       transactionInclusion.l2TransactionCount,
     );
-    const fraudulentHeader = {
+    const requestedFraudulentHeader = {
       ...baseFraudulentHeader,
       endTime:
         baseFraudulentHeader.startTime +
@@ -127,8 +127,9 @@ describe("fault-proof emulator integration", () => {
       contracts,
       nonceUtxo,
       catalogue,
-      header: fraudulentHeader,
+      header: requestedFraudulentHeader,
     });
+    const fraudulentHeader = setup.header;
     const { headerHash } = setup;
     const successorStart = emulatorSuccessorHeaderStart({
       predecessorEndTime: fraudulentHeader.endTime,

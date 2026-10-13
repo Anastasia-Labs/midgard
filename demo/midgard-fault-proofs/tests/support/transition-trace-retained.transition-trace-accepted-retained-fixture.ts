@@ -12,6 +12,7 @@ import {
   buildCanonicalBlockFixture,
   buildFixtureTransaction,
 } from "../helpers/canonical-block-evidence-fixture.js";
+import { fixtureBlockSlot } from "./emulator/header-fixtures.js";
 import { buildAcceptedClaimTransitionFixture } from "./transition-trace-final-fixtures.js";
 
 export const transitionTraceAcceptedRetainedFixture = async ({
@@ -50,7 +51,11 @@ export const transitionTraceAcceptedRetainedFixture = async ({
     ...first.payload,
     block_body: {
       ...first.payload.block_body,
-      header: { ...first.header, operatorVkey, blockSlot: 9n },
+      header: {
+        ...first.header,
+        operatorVkey,
+        blockSlot: fixtureBlockSlot(first.header.endTime, 9n),
+      },
     },
   });
   const output = Buffer.from(
@@ -83,7 +88,7 @@ export const transitionTraceAcceptedRetainedFixture = async ({
     now: now + 60000,
     honest,
     endTime: BigInt(now + 120000),
-    blockSlot: 10n,
+    blockSlot: fixtureBlockSlot(BigInt(now + 120000), 10n),
   });
   if (!("AcceptedTransactionTransitionMismatch" in claimFixture.proof.fault))
     throw new Error("Missing accepted claim fixture");
@@ -183,7 +188,7 @@ export const transitionTraceAcceptedRetainedFixture = async ({
   const header = {
     ...base.header,
     operatorVkey,
-    blockSlot: 10n,
+    blockSlot: fixtureBlockSlot(base.header.endTime, 10n),
     transitionStepCount: 1n,
     transitionTraceRoot: await root(SDK.ROOT_DOMAINS.transitionTrace, traces),
     validationTracesRoot: await root(

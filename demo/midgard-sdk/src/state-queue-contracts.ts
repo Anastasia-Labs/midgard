@@ -1,3 +1,4 @@
+import { type L1SlotConfig } from "@al-ft/midgard-core/l1-slot-config";
 import { Address, Data, Network } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
@@ -16,6 +17,7 @@ import {
   makeWithdrawalValidator,
   tryBuild,
 } from "./fraud-proof/contracts/blueprint.js";
+import { l1SlotConfigParameterData } from "./fraud-proof/contracts/cek-context.js";
 
 export const CORRECTION_LOCK_SCRIPT_TITLES = {
   spend: "correction_lock.spend.spend",
@@ -67,6 +69,12 @@ export type BuildStateQueueValidatorParams = {
   readonly daAttestationPolicyId: string;
   readonly availabilityChallengePolicyId: string;
   readonly referenceScriptAuthPolicyId: string;
+  /**
+   * The deployment's L1 slot mapping (the manifest's `l1SlotConfig`). It is
+   * the commit yield's last parameter: the commit rule binds the header's
+   * `block_slot` to the node's `block_time` through it.
+   */
+  readonly l1SlotConfig: L1SlotConfig;
 };
 
 /** Build the authenticated state queue and every associated yield from one deployment. */
@@ -127,6 +135,10 @@ export const buildStateQueueValidator = (
           applyBlueprintParams(blueprint, title, parameters),
         ),
       );
+    const l1SlotConfig = yield* tryBuild(
+      "Failed to encode the L1 slot config for the state-queue commit yield",
+      () => l1SlotConfigParameterData(params.l1SlotConfig),
+    );
     return {
       ...minting,
       ...makeSpendingValidator(network, spendingScriptCBOR),
@@ -139,6 +151,7 @@ export const buildStateQueueValidator = (
           activeOperatorsAddress,
           params.schedulerPolicyId,
           params.daAttestationPolicyId,
+          l1SlotConfig,
         ]),
         unattestedTimeout: yield* buildYield(
           STATE_QUEUE_SCRIPT_TITLES.unattestedTimeoutYield,

@@ -118,6 +118,7 @@ pub fn terminal(
   let header_hash = utils.serialise_and_hash_28(header)
   let node = state_queue.StateQueueNode {
     header,
+    block_time: header.end_time,
     da_attestation: state_queue.no_da_attestation,
     proven_fraud: Some(proof_asset),
   }

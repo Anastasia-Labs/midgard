@@ -25,6 +25,7 @@ import {
   submitRemoveFraudulentBlock,
   submitTransitionTraceProof,
 } from "../src/index.js";
+import { alignEmulatorToWholeSecond } from "./support/emulator/emulator-context.js";
 import { createReferenceScriptPublisher } from "./support/emulator/reference-script-publisher.js";
 import {
   publishFaultProofWitnessReferenceScripts,
@@ -64,6 +65,7 @@ describe("fault-proof emulator integration", () => {
       [funder, prover],
       EMULATOR_PROTOCOL_PARAMETERS,
     );
+    alignEmulatorToWholeSecond(emulator);
     const funderLucid = await Lucid(emulator, "Custom");
     const proverLucid = await Lucid(emulator, "Custom");
     funderLucid.selectWallet.fromSeed(funder.seedPhrase);

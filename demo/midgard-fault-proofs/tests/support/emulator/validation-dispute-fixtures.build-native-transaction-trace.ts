@@ -31,6 +31,7 @@ import { encodeData } from "../../../src/index.js";
 import { cekBuiltinFailureProgram } from "./cek-builtin-failure-program.js";
 import { cekSelectionProgram } from "./cek-selection-program.js";
 import { transitionTraceOutRef } from "./header-fixtures.js";
+import { fixtureBlockSlot } from "./header-fixtures.js";
 import { honestTraceFor, spendingKeyFor } from "./native-trace-memo.js";
 import { makeNativeTx } from "./native-tx.js";
 import { outRefCbor } from "./validation-dispute-fixtures.build-forced-validation-dispute-commitments.js";
@@ -316,8 +317,9 @@ export const buildNativeTransactionTrace = async (
             ["PlutusV3"],
           ),
         };
+  const blockSlot = fixtureBlockSlot(BigInt(now + 1_000), 0n);
   const rejectionFields = rejectAfterPreconditions
-    ? { validityIntervalStart: 1n }
+    ? { validityIntervalStart: blockSlot + 1n }
     : preconditionsRejection === "missingIntegrity"
       ? { scriptIntegrityHash: EMPTY_NULL_ROOT }
       : preconditionsRejection === "untaggedObservers"
@@ -445,7 +447,7 @@ export const buildNativeTransactionTrace = async (
     expectedNetworkId: 0n,
     minFeeA: 0n,
     minFeeB: 0n,
-    blockSlot: 0n,
+    blockSlot,
     transactionId,
     canonicalTransactionCbor: forcedCanonicalCbor,
     priorUtxosRoot: preUtxosRoot,

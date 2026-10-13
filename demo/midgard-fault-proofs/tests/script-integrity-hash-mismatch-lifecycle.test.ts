@@ -534,7 +534,7 @@ describe("scriptIntegrityHashMismatch concrete Lucid lifecycle", () => {
                 },
               },
       });
-      const header = {
+      const requestedHeader = {
         ...block.header,
         validationTracesRoot: authentication.validationTracesRoot,
         validationTraceCount: authentication.validationTraceCount,
@@ -561,10 +561,10 @@ describe("scriptIntegrityHashMismatch concrete Lucid lifecycle", () => {
           txMembershipProof: Data.from(deep.proofCbor, SDK.Proof),
           txMembershipProofCbor: deep.proofCbor,
         };
-        header.transactionsRoot = await commitCountedRoot({
+        requestedHeader.transactionsRoot = await commitCountedRoot({
           domain: SDK.ROOT_DOMAINS.transactionsV1,
           phasRoot: deep.transactionsPhasRoot,
-          count: header.l2TransactionCount,
+          count: requestedHeader.l2TransactionCount,
         });
       }
       if (maximum && forcedMembership !== undefined) {
@@ -596,15 +596,16 @@ describe("scriptIntegrityHashMismatch concrete Lucid lifecycle", () => {
           phas_root: deep.transactionsPhasRoot,
           proof: Data.from(deep.proofCbor, SDK.Proof),
         };
-        header.forcedTransactionsRoot = root;
+        requestedHeader.forcedTransactionsRoot = root;
       }
       const setup = await submitSetupTx({
         lucid: harness.funderLucid,
         contracts: harness.contracts,
         nonceUtxo: harness.nonceUtxo,
         catalogue,
-        header,
+        header: requestedHeader,
       });
+      const header = setup.header;
       if (direction === "accepted" && txInclusion === null)
         throw new Error("accepted inclusion absent");
       const prefix = `${direction}-bitmap-${bitmap}-honest-${honest}`;

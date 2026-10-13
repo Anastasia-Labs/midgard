@@ -166,7 +166,7 @@ export const setupFraudulentBlock = async ({
     ),
     fixture.l2TransactionCount,
   );
-  const fraudulentHeader = {
+  const requestedFraudulentHeader = {
     ...baseHeader,
     ...(fixture.headerDurationMs === undefined
       ? {}
@@ -185,7 +185,8 @@ export const setupFraudulentBlock = async ({
     contracts,
     nonceUtxo: (await funderLucid.wallet().getUtxos())[0]!,
     catalogue,
-    header: fraudulentHeader,
+    header: requestedFraudulentHeader,
   });
+  const fraudulentHeader = setup.header;
   return { ...setup, header: fraudulentHeader };
 };

@@ -27,6 +27,7 @@ use midgard/operator_directory.{SlashOperatorForBadState}
 use midgard/operator_directory/active_operators
 use midgard/operator_directory/retired_operators
 use midgard/scheduler
+use midgard/script_context_v1.{L1SlotConfigV1}
 use midgard/settlement
 use midgard/state_queue.{
   AttachDaAttestation, AttestationTimeoutRemovalApproach,
@@ -48,18 +49,18 @@ use midgard/state_queue.{
 use midgard/state_queue_yield
 
 /// Pure CommitBlockHeader structural seam. The full validator authenticates
-/// the linked-list output before reaching this predicate.
+/// the linked-list output before reaching this predicate; the covered
+/// interval is checked with the commit time
+/// (`commit_bound_header_time_is_valid`).
 pub fn commit_block_header_output_is_valid_v1(header: HeaderV1) -> Bool {
-  and {
-    header.start_time < header.end_time,
-    header_v1_is_valid(header),
-  }
+  header_v1_is_valid(header)
 }
 
-/// Exclusive upper bound (2^64) on the committed header's `block_slot`,
-/// `min_fee_a` and `min_fee_b`. No honest header reaches it: a Cardano slot
-/// number is a 64-bit word, and the ledger fee coefficients are 64-bit coin
-/// amounts. Below it a non-negative Int's CBOR encoding is at most 9 bytes.
+/// Exclusive upper bound (2^64) on the committed header's `min_fee_a` and
+/// `min_fee_b`. No honest header reaches it: the ledger fee coefficients are
+/// 64-bit coin amounts. Below it a non-negative Int's CBOR encoding is at most
+/// 9 bytes. `block_slot` needs no bound here: the commit rule ties it to the
+/// ledger-validated commit time, so it is a 64-bit slot number.
 pub const commit_header_int_exclusive_bound_v1: Int = 18_446_744_073_709_551_616
 
 /// Commit-time width bound on every header field that nothing else bounds, so
@@ -67,17 +68,17 @@ pub const commit_header_int_exclusive_bound_v1: Int = 18_446_744_073_709_551_616
 /// `state_queue_node_min_lovelace_v1` can cover it. `header_v1_is_valid` bounds
 /// the count-tied roots to 32 bytes (or the empty root), the counts to their
 /// V1 maxima, `expected_network_id` to 0 or 1 and `protocol_version` to V1, but
-/// not `utxos_root` and only the lower end of the three Ints below. The rest of
+/// not `utxos_root` and only the lower end of the two Ints below. The rest of
 /// the header is bounded by carry-over or equality in the commit arm:
 /// `prev_utxos_root`, `prev_header_hash` and `start_time` equal fields of the
-/// anchor (itself bounded by this rule or by genesis), `end_time` is the
-/// ledger-validated validity upper bound, and `operator_vkey` is a required
+/// anchor (itself bounded by this rule or by genesis), `end_time` is at most
+/// the ledger-validated validity upper bound, `block_slot` is that bound's
+/// slot, and `operator_vkey` is a required
 /// signer (a 28-byte key hash). This lives here, not in `header_v1_is_valid`,
 /// so the TypeScript twin and the fraud-proof goldens do not move.
 pub fn commit_block_header_width_is_bounded_v1(header: HeaderV1) -> Bool {
   and {
     bytearray.length(header.utxos_root) == 32,
-    header.block_slot < commit_header_int_exclusive_bound_v1,
     header.min_fee_a < commit_header_int_exclusive_bound_v1,
     header.min_fee_b < commit_header_int_exclusive_bound_v1,
   }
@@ -148,7 +149,7 @@ pub fn state_queue_head_allows_append_v1(
     head.proven_fraud == None,
     when head.da_attestation is {
       availability.Unattested ->
-        inclusive_tx_upper_bound < header.end_time + da_attestation_timeout_v1
+        inclusive_tx_upper_bound < head.block_time + da_attestation_timeout_v1
       availability.Attested { .. } -> True
       availability.Challenged { .. } -> False
       availability.Published { .. } -> True
@@ -449,6 +450,7 @@ fn merge_to_confirmed_state(
     expect
         StateQueueNode {
           header: input_header_data,
+          block_time: input_block_time,
           da_attestation,
           proven_fraud,
         }: StateQueueNode
@@ -470,7 +472,7 @@ fn merge_to_confirmed_state(
       validity_range,
     )
     expect
-      inclusive_tx_lower_bound >= input_header.end_time + block_maturity_duration_v1
+      inclusive_tx_lower_bound >= input_block_time + block_maturity_duration_v1
 
     expect
         ConfirmedState {
@@ -770,7 +772,7 @@ pub fn unattested_block_timeout_elapsed_v1(
     ),
     node.da_attestation == no_da_attestation,
     header_v1_is_valid(header),
-    inclusive_tx_lower_bound >= header.end_time + da_attestation_timeout_v1,
+    inclusive_tx_lower_bound >= node.block_time + da_attestation_timeout_v1,
   }
 }
 
@@ -1068,6 +1070,7 @@ pub fn validate_commit_block_header_v1(
   active_operators_redeemer_index: Int,
   m_confirmed_state_ref_input_index: Option<Int>,
   m_head_state_queue_node_ref_input_index: Option<Int>,
+  l1_slot_config: L1SlotConfigV1,
 ) -> Bool {
   let correction_lock_address = from_script(correction_lock_script_hash)
   let
@@ -1143,6 +1146,7 @@ pub fn validate_commit_block_header_v1(
     expect
         StateQueueNode {
           header: output_header_data,
+          block_time: output_block_time,
           da_attestation,
           proven_fraud,
         }: StateQueueNode
@@ -1157,15 +1161,17 @@ pub fn validate_commit_block_header_v1(
     )
     expect output_header_key == output_header_hash
 
-    // 5. New element's data must be `HeaderV1` with a valid time range.
+    // 5. New element's data must be `HeaderV1` with a valid time range,
+    //    bound to the commit time.
     let output_header = decode_header_view(output_header_data)
     let output_operator_vkey = output_header.operator_vkey
     expect commit_block_header_output_is_valid_v1(output_header)
     expect commit_block_header_width_is_bounded_v1(output_header)
     expect
       commit_bound_header_time_is_valid(
-        output_header.start_time,
-        output_header.end_time,
+        output_header,
+        output_block_time,
+        l1_slot_config,
         validity_range,
       )
 
@@ -1888,16 +1894,10 @@ fn q49_header_fixture() -> HeaderV1 {
   }
 }
 
-test q49_l295_header_shape_control_and_interval_mutations() {
+test q49_l295_header_shape_control_and_protocol_mutations() {
   let control = q49_header_fixture()
   and {
     commit_block_header_output_is_valid_v1(control),
-    !commit_block_header_output_is_valid_v1(
-      HeaderV1 { ..control, start_time: control.end_time },
-    ),
-    !commit_block_header_output_is_valid_v1(
-      HeaderV1 { ..control, start_time: control.end_time + 1 },
-    ),
     !commit_block_header_output_is_valid_v1(
       HeaderV1 { ..control, protocol_version: 0 },
     ),
@@ -1919,9 +1919,6 @@ test q49_l295_validation_context_scalar_control_and_mutations() {
   and {
     commit_block_header_output_is_valid_v1(control),
     commit_block_header_output_is_valid_v1(supported_network_and_runtime_values),
-    !commit_block_header_output_is_valid_v1(
-      HeaderV1 { ..control, block_slot: -1 },
-    ),
     !commit_block_header_output_is_valid_v1(
       HeaderV1 { ..control, expected_network_id: -1 },
     ),

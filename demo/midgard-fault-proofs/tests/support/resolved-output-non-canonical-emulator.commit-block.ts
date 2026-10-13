@@ -290,7 +290,7 @@ export const commitBlock = async ({
   return {
     fraudulentBlockOutRef: target.successorOutRef,
     headerHash: target.successorHeaderHash,
-    header,
+    header: target.header,
     nativeTx,
     nativeTxId,
     canonicalCbor,

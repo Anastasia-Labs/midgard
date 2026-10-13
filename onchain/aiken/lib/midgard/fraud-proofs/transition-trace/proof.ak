@@ -1367,6 +1367,9 @@ pub fn validate_valid_deposit_transition(
     order_facts.Deposit,
     source_membership.key,
     header.end_time,
+    // This thread does not carry the node's block_time; its clock stays on the
+    // covered end.
+    header.end_time,
     evidence.history_data.inline_limit,
     evidence.history_data.max_payload_bytes,
     evidence.history_data.max_payload_nodes,

@@ -21,7 +21,7 @@ pub const small_response_window_ms_v1: Int = env.small_response_window_ms_v1
 
 pub const full_response_window_ms_v1: Int = env.full_response_window_ms_v1
 
-/// An open must land before `header.end_time + da_challenge_window_ms_v1` of
+/// An open must land before `block_time + da_challenge_window_ms_v1` of
 /// the node it challenges.
 pub const da_challenge_window_ms_v1: Int = env.da_challenge_window_ms_v1
 

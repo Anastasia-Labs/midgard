@@ -33,6 +33,7 @@ import {
   parseOutRef,
   requireSingletonUtxo,
 } from "../../src/runtime.js";
+import { withCommitSlot } from "./emulator/header-fixtures.js";
 import { findStateQueueYieldReferenceScript } from "./emulator/reference-scripts.js";
 import {
   makeFaultProofEmulatorHarness,
@@ -79,18 +80,21 @@ export type ValueNotPreservedHarness = Awaited<
 export const commitHeaderAfterAnchorBlock = async ({
   harness,
   anchorBlockOutRef,
-  header,
+  header: requestedHeader,
 }: {
   readonly harness: ValueNotPreservedHarness;
   readonly anchorBlockOutRef: string;
+  /** Stamped with its commit slot; use the returned `header`. */
   readonly header: Header;
 }): Promise<{
+  readonly header: Header;
   readonly headerHash: string;
   readonly blockOutRef: string;
   readonly stateQueueBlockUnit: string;
 }> => {
   const lucid = harness.funderLucid;
   const { contracts } = harness;
+  const header = withCommitSlot(contracts.l1SlotConfig, requestedHeader);
   const headerHash = await Effect.runPromise(hashBlockHeader(header));
   const anchorUtxo = await fetchUtxoByOutRef({
     lucid,
@@ -274,6 +278,7 @@ export const commitHeaderAfterAnchorBlock = async ({
     );
   }
   return {
+    header,
     headerHash,
     blockOutRef: `${blockUtxo.txHash}#${blockUtxo.outputIndex.toString()}`,
     stateQueueBlockUnit,

@@ -152,7 +152,7 @@ pub fn verify_challenged_header_v1(
   hub_ref_input_index: Int,
   state_queue_node_ref_input_index: Int,
   reference_inputs: List<Input>,
-  return: fn(ledger_state.HeaderV1, ledger_state.HeaderHash, hub.Datum) ->
+  return: fn(ledger_state.HeaderV1, Int, ledger_state.HeaderHash, hub.Datum) ->
     result,
 ) -> result {
   // 1. The thread token must belong to this family's catalogue category. A
@@ -169,13 +169,14 @@ pub fn verify_challenged_header_v1(
     hub_ref_input_index,
   )
 
-  // 2. The header comes from the authentic state-queue node, whose linked-list
-  //    key is its own header hash.
-  let header, header_hash <- state_queue.get_block_datum_v1(
+  // 2. The header and the block's commit time come from the authentic
+  //    state-queue node, whose linked-list key is its own header hash.
+  let node, header_hash <- state_queue.get_state_queue_node(
     reference_inputs,
     hub_datum.state_queue,
     state_queue_node_ref_input_index,
   )
+  let header = state_queue.decode_header_view(node.header)
 
   // 3. The node must be the block the thread token names.
   expect
@@ -183,7 +184,7 @@ pub fn verify_challenged_header_v1(
       computation_thread_token_asset_name,
     )
 
-  return(header, header_hash, hub_datum)
+  return(header, node.block_time, header_hash, hub_datum)
 }
 
 // ## Committed withdrawal-source membership

@@ -108,7 +108,7 @@ const retireOperator = async (
 ) => {
   const { contracts, emulator } = fixture;
   const lifecycle = (
-    contracts as SDK.MidgardValidators & {
+    contracts as typeof contracts & {
       readonly operatorLifecycleReferenceScripts: OperatorLifecycleReferenceScripts;
     }
   ).operatorLifecycleReferenceScripts;
@@ -221,8 +221,8 @@ it("refuses unrelated active retired and absent operators and prunes active and 
         activeOperatorNodeUnit: rotated.activeNodeUnit,
         validFrom: BigInt(emulator.now()) - 1_000n,
       });
-      successors.push({ ...successor, header });
-      predecessor = header;
+      successors.push(successor);
+      predecessor = successor.header;
       anchorBlockUnit = successor.successorBlockUnit;
     }
     const honest = await enrollSuccessor(fixture, rotated.keyHash);

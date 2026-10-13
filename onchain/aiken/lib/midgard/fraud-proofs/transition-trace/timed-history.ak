@@ -42,6 +42,9 @@ fn capture(
     kind,
     target,
     header_end,
+    // This thread does not carry the node's block_time; its clock stays on
+    // the covered end.
+    header_end,
     parameters.data.inline_limit,
     parameters.data.max_payload_bytes,
     parameters.data.max_payload_nodes,

@@ -100,7 +100,7 @@ export const makeStage = async (
           },
   });
   expect(block.nativeTxId).toBe(fixture.subject.transaction_id);
-  const header = {
+  const requestedHeader = {
     ...block.header,
     endTime: block.header.endTime + 60_000n,
     validationTracesRoot: fixture.validationTracesRoot,
@@ -111,8 +111,9 @@ export const makeStage = async (
     contracts: harness.contracts,
     nonceUtxo: harness.nonceUtxo,
     catalogue,
-    header,
+    header: requestedHeader,
   });
+  const header = setup.header;
   const successorStart = emulatorSuccessorHeaderStart({
     predecessorEndTime: header.endTime,
     emulator: harness.emulator,

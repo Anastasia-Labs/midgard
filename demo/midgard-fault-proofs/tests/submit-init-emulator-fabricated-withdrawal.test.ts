@@ -75,6 +75,7 @@ import {
   publishRemovalReferenceScripts,
   submitFabricatedFamilyInit,
   submitSetupTx,
+  withCommitSlot,
 } from "./support/submit-init-emulator-shared.js";
 
 const historyRecords: unknown[] = [];
@@ -298,7 +299,7 @@ const setupChallengedBlockOnEmulator = async (
   // whenever that count is non-zero. Reusing the withdrawals counted root
   // keeps the header committable without touching validation traces (no
   // forced or L2 transactions in this block).
-  const header: SDK.Header = {
+  const header = withCommitSlot(contracts.l1SlotConfig, {
     ...makeHeader(funderKeyHash, headerStartTime),
     withdrawalsRoot: counted.root,
     withdrawalCount: counted.count,
@@ -306,7 +307,7 @@ const setupChallengedBlockOnEmulator = async (
     transitionStepCount: counted.count,
     transitionTraceRoot: counted.root,
     eventToStepRoot: counted.root,
-  };
+  });
   const legacy = Data.from(
     DATUM_AUTHENTIC_WITHDRAWAL_EVENT,
     SDK.WithdrawalOrderDatum,
@@ -470,6 +471,7 @@ describe("fabricated-withdrawal fault-proof emulator lifecycle", () => {
     const step01Handoff = await deriveFabricatedWithdrawalStep01Handoff({
       stateQueuePolicyId: "15".repeat(28),
       header: block.header,
+      blockTime: block.header.endTime,
       headerHash: block.headerHash,
       inclusion: parseSubmitFabricatedWithdrawalInclusion(
         plan.withdrawalInclusion,
@@ -709,9 +711,17 @@ describe("fabricated-withdrawal fault-proof emulator lifecycle", () => {
       const inclusion = parseSubmitFabricatedWithdrawalInclusion(
         plan.withdrawalInclusion,
       );
+      const fraudulentNode = await Effect.runPromise(
+        SDK.utxoToStateQueueUTxO(
+          await funderLucid.utxoByUnit(setup.stateQueueBlockUnit),
+          contracts.stateQueue.policyId,
+        ),
+      );
       const expectedHandoff = await deriveFabricatedWithdrawalStep01Handoff({
         stateQueuePolicyId: contracts.stateQueue.policyId,
         header,
+        blockTime: Data.castFrom(fraudulentNode.datum.data, SDK.StateQueueNode)
+          .block_time,
         headerHash,
         inclusion,
       });

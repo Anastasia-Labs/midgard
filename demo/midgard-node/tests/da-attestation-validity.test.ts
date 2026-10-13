@@ -187,6 +187,78 @@ describe("DA apply validity at production cadence", () => {
   );
 });
 
+// Every in-place status transition carries the node's commit time unchanged,
+// since the maturity, timeout and challenge clocks all run from it.
+describe("DA apply carries the node's block_time", () => {
+  it("refuses an apply that rewrites block_time and lands the one that keeps it", async () => {
+    const f = await createAvailabilityFixture(1, 0, HEADER_END_TIME_LEAD_MS);
+    const attestation = await thresholdAttestation(f);
+    const currentTime = BigInt(f.emulator.now());
+    const config = {
+      daParamsUtxo: f.daParamsUtxo,
+      daParamsDatum: f.daParamsDatum,
+      attestation,
+      target: f.target,
+      referenceScripts: f.daReferences,
+      validityRange: {
+        validFrom: currentTime - 60_000n,
+        validTo: currentTime + 60_000n,
+      },
+      availabilityParameters: TEST_AVAILABILITY_PARAMETERS,
+    };
+    const blockTime = f.target.stateQueueNode.block_time;
+    for (const rewritten of [blockTime - 1n, blockTime + 1n]) {
+      const builder = await Effect.runPromise(
+        SDK.incompleteApplyDaAttestationToStateQueueTxProgram(
+          f.lucid,
+          f.contracts,
+          {
+            ...config,
+            target: {
+              ...f.target,
+              stateQueueNode: {
+                ...f.target.stateQueueNode,
+                block_time: rewritten,
+              },
+            },
+          },
+        ),
+      );
+      // The DA policy's attachment check reads the status transition.
+      await expect(builder.complete({ localUPLCEval: true })).rejects.toThrow(
+        new RegExp(
+          `failed: Error evaluated\\nscript: ${f.contracts.daAttestation.policyId}`,
+        ),
+      );
+    }
+    const honest = await (
+      await (
+        await Effect.runPromise(
+          SDK.incompleteApplyDaAttestationToStateQueueTxProgram(
+            f.lucid,
+            f.contracts,
+            config,
+          ),
+        )
+      ).complete({ localUPLCEval: true })
+    ).sign
+      .withWallet()
+      .complete();
+    await honest.submit();
+    f.emulator.awaitBlock(1);
+    const [queue] = await f.lucid.utxosAtWithUnit(
+      f.contracts.stateQueue.spendingScriptAddress,
+      f.queueUnit,
+    );
+    const node = Data.castFrom(
+      (await Effect.runPromise(SDK.getLinkedListNodeViewFromUTxO(queue!))).data,
+      SDK.StateQueueNode,
+    );
+    expect(node.da_attestation).toHaveProperty("Attested");
+    expect(node.block_time).toBe(blockTime);
+  }, 180_000);
+});
+
 // A live L1 tip trails the wall clock by seconds, and the ledger checks the
 // validity interval against the tip. The emulator's slot is the tip here, and
 // the committee submitter's injected clock runs ahead of it the way a

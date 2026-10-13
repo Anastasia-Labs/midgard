@@ -259,7 +259,7 @@ pub fn validate_open_challenge(
     response_deadline,
   }
   let expected_record_data: Data = expected_record
-  let node_end_time = state_queue.validate_da_challenge_open_transition_v1(
+  let node_block_time = state_queue.validate_da_challenge_open_transition_v1(
     tx.inputs,
     tx.outputs,
     hub_datum.state_queue,
@@ -313,7 +313,7 @@ pub fn validate_open_challenge(
     first_tranche_output_index + descriptor_count <= list.length(tx.outputs),
     availability.commitment_is_canonical_v1(commitment, parameters),
     commitment.deployment_identity == hub_oracle_policy_id,
-    inclusive_upper_bound < node_end_time + availability.da_challenge_window_ms_v1,
+    inclusive_upper_bound < node_block_time + availability.da_challenge_window_ms_v1,
     utils.has_signed(challenger, tx.extra_signatories),
     challenger_input.output.address == from_verification_key(challenger),
     challenger_input.output.value == assets.from_lovelace(

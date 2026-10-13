@@ -55,9 +55,8 @@ describe("transition-trace forced order validity interval", () => {
         operator,
         await alignedHeaderStart(harness),
       );
-      const blockSlot = BigInt(
-        harness.funderLucid.unixTimeToSlot(Number(baseHeader.endTime)),
-      );
+      // makeHeader stamps the slot the header's commit lands in.
+      const blockSlot = baseHeader.blockSlot;
       const id = transitionTraceOutRef("92");
       const submitted = makeNativeTx({
         spendInputCbors: [],
@@ -94,10 +93,9 @@ describe("transition-trace forced order validity interval", () => {
       );
       const header: SDK.Header =
         scenario === "omission"
-          ? { ...baseHeader, blockSlot }
+          ? baseHeader
           : {
               ...baseHeader,
-              blockSlot,
               forcedTransactionsRoot: root.root,
               forcedTransactionCount: 1n,
               totalEventCount: 1n,

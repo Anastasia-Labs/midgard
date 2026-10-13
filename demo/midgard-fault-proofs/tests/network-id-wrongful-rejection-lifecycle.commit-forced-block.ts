@@ -173,7 +173,7 @@ export const commitForcedBlock = async (
         ),
       })) as never,
     );
-  const header = {
+  const requestedHeader = {
     ...base.header,
     forcedTransactionsRoot: root.root,
     forcedTransactionCount: BigInt(leaves.length),
@@ -183,8 +183,9 @@ export const commitForcedBlock = async (
     contracts: harness.contracts,
     nonceUtxo: harness.nonceUtxo,
     catalogue: harness.catalogue,
-    header,
+    header: requestedHeader,
   });
+  const header = setup.header;
   return { base, header, setup, root, memberships };
 };
 

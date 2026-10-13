@@ -90,6 +90,7 @@ fn capture(
     order_facts.Deposit,
     deposit.authentic_deposit_id_v1(),
     20,
+    20,
     params.inline_limit,
     params.max_payload_bytes,
     params.max_payload_nodes,

@@ -2,7 +2,7 @@ import { replacePlutusConstrFieldCbor } from "@al-ft/midgard-core/plutus-data-cb
 import {
   FabricatedDepositStep01SpendRedeemer,
   FabricatedDepositStep02Datum,
-  getHeaderFromStateQueueDatum,
+  getStateQueueNodeFromStateQueueDatum,
   getLinkedListNodeViewFromUTxO,
   HUB_ORACLE_ASSET_NAME,
   requireInputIndex,
@@ -134,13 +134,15 @@ export const submitFabricatedDepositStep01 = async ({
   const stateQueueNodeView = await Effect.runPromise(
     getLinkedListNodeViewFromUTxO(stateQueueBlockUtxo),
   );
-  const header = await Effect.runPromise(
-    getHeaderFromStateQueueDatum(stateQueueNodeView),
+  const stateQueueNode = await Effect.runPromise(
+    getStateQueueNodeFromStateQueueDatum(stateQueueNodeView),
   );
+  const header = stateQueueNode.header;
   const { committedDeposit, step02State } =
     await deriveFabricatedDepositStep01Handoff({
       stateQueuePolicyId: contracts.stateQueuePolicyId,
       header,
+      blockTime: stateQueueNode.block_time,
       headerHash: stateQueueHeaderHash,
       inclusion: depositInclusion,
     });

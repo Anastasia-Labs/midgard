@@ -29,6 +29,8 @@ import {
 import {
   buildTestContracts,
   buildTransactionsRoot,
+  commitBlockSlot,
+  emulatorL1SlotConfig,
   TWO_TRANSACTION_HEADER_COMMITMENTS,
 } from "./state-queue.build-test-contracts.js";
 import {
@@ -49,7 +51,11 @@ describe("state-queue emulator builders", () => {
     const lucid = await Lucid(emulator, "Custom");
     lucid.selectWallet.fromSeed(funder.seedPhrase);
 
-    const contracts = await buildTestContracts(realBlueprint, alwaysBlueprint);
+    const contracts = await buildTestContracts(
+      realBlueprint,
+      alwaysBlueprint,
+      emulatorL1SlotConfig(lucid),
+    );
     // This is a state-queue-focused smoke test. Non-state-queue contracts are
     // scaffolded with always-succeeds scripts, while the state-queue validator
     // still reads their datums/assets/redeemers through its real checks.
@@ -77,7 +83,7 @@ describe("state-queue emulator builders", () => {
       depositsRoot: EMPTY_MERKLE_TREE_ROOT,
       startTime: genesisTime,
       endTime: genesisTime + 1_000n,
-      blockSlot: 0n,
+      blockSlot: commitBlockSlot(lucid, genesisTime + 1_000n),
       expectedNetworkId: 0n,
       minFeeA: 0n,
       minFeeB: 0n,
@@ -240,7 +246,11 @@ describe("state-queue emulator builders", () => {
     const lucid = await Lucid(emulator, "Custom");
     lucid.selectWallet.fromSeed(funder.seedPhrase);
 
-    const contracts = await buildTestContracts(realBlueprint, alwaysBlueprint);
+    const contracts = await buildTestContracts(
+      realBlueprint,
+      alwaysBlueprint,
+      emulatorL1SlotConfig(lucid),
+    );
     const funderAddress = await lucid.wallet().address();
     const paymentCredential =
       getAddressDetails(funderAddress).paymentCredential;
@@ -264,7 +274,7 @@ describe("state-queue emulator builders", () => {
       depositsRoot: EMPTY_MERKLE_TREE_ROOT,
       startTime: genesisTime,
       endTime: genesisTime + 1_000n,
-      blockSlot: 0n,
+      blockSlot: commitBlockSlot(lucid, genesisTime + 1_000n),
       expectedNetworkId: 0n,
       minFeeA: 0n,
       minFeeB: 0n,
@@ -311,6 +321,7 @@ describe("state-queue emulator builders", () => {
       prevUtxosRoot: firstHeader.utxosRoot,
       startTime: firstHeader.endTime,
       endTime: firstHeader.endTime + 1_000n,
+      blockSlot: commitBlockSlot(lucid, firstHeader.endTime + 1_000n),
       prevHeaderHash: firstHeaderHash,
     };
     const secondHeaderHash = await Effect.runPromise(

@@ -80,6 +80,9 @@ validator projection(
         order_facts.Deposit,
         source.key,
         header.end_time,
+        // This thread does not carry the node's block_time; its clock stays
+        // on the covered end.
+        header.end_time,
         inline_limit,
         max_payload_bytes,
         max_payload_nodes,

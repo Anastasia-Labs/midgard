@@ -105,6 +105,7 @@ import {
   funderPaymentKeyHash,
   publishRemovalReferenceScripts,
   registerChunkedVerifyRewardAccount,
+  withCommitSlot,
 } from "./support/submit-init-emulator-shared.js";
 
 const journalDirectory = mkdtempSync(
@@ -565,11 +566,11 @@ describe("distinctAssetAccumulationLimit concrete Lucid lifecycle", () => {
             },
         mutationWasPresent: false,
       });
-      const header = {
+      const header = withCommitSlot(harness.contracts.l1SlotConfig, {
         ...block.header,
         validationTracesRoot: traceRoot.root,
         validationTraceCount: traceRoot.count,
-      };
+      });
       const replayBlock = {
         headerHash: block.headerHash,
         header,

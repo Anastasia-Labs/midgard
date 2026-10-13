@@ -4,7 +4,9 @@
  * Keep one fitting item and an over-limit item separated by a full 64-byte
  * datum chunk, then assert measured transaction sizes and automatic fallback.
  * The old adjacent-item pin (14,059 -> 16,385) is no longer reproducible:
- * that item can sign at 16,370 bytes.
+ * that item can sign at 16,370 bytes. Carrying the commit slot in the block
+ * header widened the observe transaction, so the 14,058-byte item now projects
+ * 16,387 bytes and serves as the over-limit item.
  */
 
 import { MIDGARD_CONSENSUS_LIMITS } from "@al-ft/midgard-core/consensus-profile";
@@ -24,8 +26,8 @@ import {
 
 const MAX_L1_TX_BYTES = PROTOCOL_PARAMETERS_DEFAULT.maxTxSize;
 
-const FITTING_ITEM_BYTES = 14_058;
-const FITTING_PAYLOAD_BYTES = 13_582;
+const FITTING_ITEM_BYTES = 13_992;
+const FITTING_PAYLOAD_BYTES = 13_518;
 // A 64-byte payload increase adds one two-byte CBOR byte-string chunk header.
 const FALLBACK_ITEM_BYTES = FITTING_ITEM_BYTES + 66;
 const FALLBACK_PAYLOAD_BYTES = FITTING_PAYLOAD_BYTES + 64;
@@ -93,7 +95,7 @@ describe("inline proof-item transaction envelope", () => {
       proofItemDelivery: "inline",
     });
     printRouteFreedomCampaignTable(
-      "fitting inline item 14,058",
+      "fitting inline item 13,992",
       journey,
       semantic,
     );
@@ -115,7 +117,7 @@ describe("inline proof-item transaction envelope", () => {
 
     const award = await journey.submitAward(result.nextThreadOutRef);
     expectWholeJourneyProofFit(
-      "fitting inline item 14,058",
+      "fitting inline item 13,992",
       journey,
       semantic.measurements,
       award.measurement,
@@ -138,7 +140,7 @@ describe("inline proof-item transaction envelope", () => {
       proofItemDelivery: "inline",
     });
     printRouteFreedomCampaignTable(
-      "over-limit inline item 14,124",
+      "over-limit inline item 14,058",
       journey,
       semantic,
     );
@@ -178,7 +180,7 @@ describe("inline proof-item transaction envelope", () => {
 
     const award = await journey.submitAward(result.nextThreadOutRef);
     expectWholeJourneyProofFit(
-      "over-limit inline item 14,124",
+      "over-limit inline item 14,058",
       journey,
       semantic.measurements,
       award.measurement,

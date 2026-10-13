@@ -352,6 +352,7 @@ pub fn capture(
   kind: Kind,
   target: OutputReference,
   authenticated_header_end: Int,
+  authenticated_block_time: Int,
   inline_limit: Int,
   max_payload_bytes: Int,
   max_payload_nodes: Int,
@@ -366,6 +367,7 @@ pub fn capture(
     kind,
     target,
     authenticated_header_end,
+    authenticated_block_time,
     inline_limit,
     max_payload_bytes,
     max_payload_nodes,
@@ -386,6 +388,7 @@ pub fn capture_payload(
   kind: Kind,
   target: OutputReference,
   authenticated_header_end: Int,
+  authenticated_block_time: Int,
   inline_limit: Int,
   max_payload_bytes: Int,
   max_payload_nodes: Int,
@@ -395,7 +398,13 @@ pub fn capture_payload(
   let (lower, upper) = utils.get_inclusive_bounds_of_a_short_validity_range(
     tx.validity_range,
   )
-  expect horizon.capture_permitted(authenticated_header_end, lower, upper)
+  expect
+    horizon.capture_permitted(
+      authenticated_header_end,
+      authenticated_block_time,
+      lower,
+      upper,
+    )
   expect Some(input) = list.at(tx.reference_inputs, node_reference_index)
   expect
     !list.any(
@@ -429,6 +438,7 @@ pub fn capture_open(
   kind: Kind,
   target: OutputReference,
   authenticated_header_end: Int,
+  authenticated_block_time: Int,
   inline_limit: Int,
   max_payload_bytes: Int,
   max_payload_nodes: Int,
@@ -443,6 +453,7 @@ pub fn capture_open(
     kind,
     target,
     authenticated_header_end,
+    authenticated_block_time,
     inline_limit,
     max_payload_bytes,
     max_payload_nodes,

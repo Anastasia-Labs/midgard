@@ -1,6 +1,7 @@
 import { MIDGARD_PROTOCOL_VERSION } from "@al-ft/midgard-core";
 import { DEPLOYMENT_MANIFEST_ECONOMICS_BY_PROFILE } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
+import { type L1SlotConfig } from "@al-ft/midgard-core/l1-slot-config";
 import {
   EMPTY_HEADER_TRANSITION_COMMITMENTS,
   EMPTY_MERKLE_TREE_ROOT,
@@ -37,6 +38,61 @@ export const deploymentManifest = (
   contracts,
 });
 
+/**
+ * The slot whose last millisecond is `blockTime` under the slot mapping the
+ * deployment's commit yield was built with, as the commit requires of
+ * `block_slot`. Refuses a `blockTime` that is not a slot's last millisecond
+ * under that mapping.
+ */
+export const commitSlotForBlockTime = (
+  l1SlotConfig: L1SlotConfig,
+  blockTime: bigint,
+): bigint => {
+  const slotLength = BigInt(l1SlotConfig.slotLength);
+  const elapsed = blockTime + 1n - BigInt(l1SlotConfig.zeroTime);
+  if (elapsed <= 0n || elapsed % slotLength !== 0n)
+    throw new Error(
+      `block time ${blockTime.toString()} is not the last millisecond of a slot`,
+    );
+  return BigInt(l1SlotConfig.zeroSlot) + elapsed / slotLength - 1n;
+};
+
+/**
+ * The slot mapping of the fault-proofs emulator deployments: their synthetic
+ * network is Preprod, and each emulator starts on a whole second
+ * (`alignEmulatorToWholeSecond`) so its slot boundaries fall on Preprod's.
+ */
+export const EMULATOR_DEPLOYMENT_L1_SLOT_CONFIG: L1SlotConfig =
+  NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod;
+
+/**
+ * The block_slot a fixture header ending at `endTime` commits with on an
+ * emulator deployment (block_time = endTime). A fixture whose `endTime` is not
+ * a slot's last millisecond never commits and keeps `uncommittedSlot`.
+ */
+export const fixtureBlockSlot = (
+  endTime: bigint,
+  uncommittedSlot = 0n,
+): bigint => {
+  const config = EMULATOR_DEPLOYMENT_L1_SLOT_CONFIG;
+  const elapsed = endTime + 1n - BigInt(config.zeroTime);
+  return elapsed > 0n && elapsed % BigInt(config.slotLength) === 0n
+    ? commitSlotForBlockTime(config, endTime)
+    : uncommittedSlot;
+};
+
+/**
+ * `header` as committed at block_time = endTime: its block_slot is the slot
+ * whose last millisecond is endTime under the deployment's mapping.
+ */
+export const withCommitSlot = (
+  l1SlotConfig: L1SlotConfig,
+  header: Header,
+): Header => ({
+  ...header,
+  blockSlot: commitSlotForBlockTime(l1SlotConfig, header.endTime),
+});
+
 export const makeHeader = (
   operatorVkey: string,
   now: number,
@@ -67,7 +123,7 @@ export const makeHeader = (
     depositsRoot: EMPTY_MERKLE_TREE_ROOT,
     startTime: BigInt(now),
     endTime: BigInt(now + 1_000),
-    blockSlot: 0n,
+    blockSlot: fixtureBlockSlot(BigInt(now + 1_000)),
     expectedNetworkId: 0n,
     minFeeA: 0n,
     minFeeB: 0n,

@@ -1,3 +1,4 @@
+import type { L1SlotConfig } from "@al-ft/midgard-core/l1-slot-config";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Network } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
@@ -11,6 +12,7 @@ export const buildRealStateQueueValidator = (
   network: Network,
   contracts: SDK.MidgardValidators,
   referenceScriptAuthPolicyId: string,
+  l1SlotConfig: L1SlotConfig,
 ): Effect.Effect<SDK.StateQueueValidator, Error> =>
   Effect.gen(function* () {
     const blueprint = yield* loadRealBlueprint();
@@ -28,6 +30,7 @@ export const buildRealStateQueueValidator = (
       daAttestationPolicyId: contracts.daAttestation.policyId,
       availabilityChallengePolicyId: contracts.availabilityChallenge.policyId,
       referenceScriptAuthPolicyId,
+      l1SlotConfig,
     });
   });
 

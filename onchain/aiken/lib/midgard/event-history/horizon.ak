@@ -13,14 +13,24 @@ pub fn eligible(inclusion_time: Int, start_time: Int, end_time: Int) -> Bool {
   }
 }
 
-/// Capture after the entire accused interval and before its earliest merge.
-/// The finite inclusive bounds must be derived from the actual transaction.
-pub fn capture_permitted(header_end: Int, lower: Int, upper: Int) -> Bool {
+/// Capture after the entire accused interval and before the block's earliest
+/// merge. The coverage half reads the header's `end_time` (what the block
+/// covers); the clock half reads the node's commit time `block_time`, from
+/// which merge maturity runs, so a catch-up block whose interval ended long
+/// before its commit stays provable for the whole maturity period. Every
+/// committed node has `end_time <= block_time`. The finite inclusive bounds
+/// must be derived from the actual transaction.
+pub fn capture_permitted(
+  header_end: Int,
+  block_time: Int,
+  lower: Int,
+  upper: Int,
+) -> Bool {
   and {
     header_end >= 0,
     header_end < lower,
     lower <= upper,
-    upper < header_end + block_maturity_duration_v1,
+    upper < block_time + block_maturity_duration_v1,
   }
 }
 

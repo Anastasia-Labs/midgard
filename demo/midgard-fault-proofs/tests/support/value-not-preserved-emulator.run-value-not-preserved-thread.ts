@@ -89,7 +89,7 @@ export const setupValueNotPreservedScenario = async ({
     1;
   const funderKeyHash = await funderPaymentKeyHash(funderLucid);
   const baseAnchorHeader = makeHeader(funderKeyHash, headerStartTime);
-  const anchorHeader = {
+  const requestedAnchorHeader = {
     ...baseAnchorHeader,
     endTime:
       baseAnchorHeader.startTime + BigInt(EMULATOR_HEADER_CLOCK_HEADROOM_MS),
@@ -100,8 +100,9 @@ export const setupValueNotPreservedScenario = async ({
     contracts,
     nonceUtxo,
     catalogue,
-    header: anchorHeader,
+    header: requestedAnchorHeader,
   });
+  const anchorHeader = anchorSetup.header;
   const successorStart = emulatorSuccessorHeaderStart({
     predecessorEndTime: anchorHeader.endTime,
     emulator,
@@ -134,7 +135,7 @@ export const setupValueNotPreservedScenario = async ({
     anchorBlockUnit: anchorSetup.stateQueueBlockUnit,
     witnessReferenceScripts,
   };
-  return { header, anchorHeader, setup };
+  return { header: commit.header, anchorHeader: anchorSetup.header, setup };
 };
 
 /**

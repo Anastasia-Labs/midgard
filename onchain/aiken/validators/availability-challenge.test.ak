@@ -211,6 +211,7 @@ fn node_output(status: availability.StateQueueStatusV1) -> Output {
     data: linked_list.Node(
       state_queue.StateQueueNode {
         header: header(),
+        block_time: header().end_time,
         da_attestation: status,
         proven_fraud: None,
       },

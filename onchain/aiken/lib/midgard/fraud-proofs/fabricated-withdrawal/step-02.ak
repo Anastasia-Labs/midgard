@@ -27,6 +27,7 @@ pub type State {
   challenged_header_hash: ledger_state.HeaderHash,
   header_start_time: PosixTime,
   header_end_time: PosixTime,
+  header_block_time: PosixTime,
   committed_withdrawal_id: ledger_state.WithdrawalId,
   committed_withdrawal_content_hash: step_01.WithdrawalContentHash,
 }
@@ -89,6 +90,7 @@ pub fn verify_withdrawal_evidence_v1(
           authority.withdrawal_addr,
           state.committed_withdrawal_id,
           state.header_end_time,
+          state.header_block_time,
           history_ref_input_index,
         )
       WithdrawalIdentityAbsent
@@ -106,6 +108,7 @@ pub fn verify_withdrawal_evidence_v1(
           order_facts.Withdrawal,
           state.committed_withdrawal_id,
           state.header_end_time,
+          state.header_block_time,
           params,
           event_ref_input_index,
           external_ref_input_index,
@@ -157,6 +160,8 @@ pub fn fixture_state_v1(block: step_01.FabricatedWithdrawalBlockV1) -> State {
     challenged_header_hash: block.block.header_hash,
     header_start_time: block.block.header.start_time,
     header_end_time: block.block.header.end_time,
+    // The fixture node records its block_time at the covered end.
+    header_block_time: block.block.header.end_time,
     committed_withdrawal_id: block.committed_withdrawal_id,
     committed_withdrawal_content_hash: step_01.committed_withdrawal_content_hash_v1(
       step_01.committed_withdrawal_membership_v1(block),

@@ -235,6 +235,7 @@ export const fiStep03State: SDK.FabricatedWithdrawalStep03State = {
   challenged_header_hash: FI_HEADER_HASH,
   header_start_time: HEADER_START_TIME,
   header_end_time: HEADER_END_TIME,
+  header_block_time: HEADER_END_TIME,
   committed_withdrawal_id: FABRICATED_WITHDRAWAL_ID,
   committed_withdrawal_content_hash: HASH_AUTHENTIC_WITHDRAWAL_CONTENT,
   verdict: "WithdrawalIdentityAbsent",
@@ -245,6 +246,7 @@ export const mmStep03State: SDK.FabricatedWithdrawalStep03State = {
   challenged_header_hash: MM_HEADER_HASH,
   header_start_time: HEADER_START_TIME,
   header_end_time: HEADER_END_TIME,
+  header_block_time: HEADER_END_TIME,
   committed_withdrawal_id: AUTHENTIC_WITHDRAWAL_ID,
   committed_withdrawal_content_hash: HASH_DIVERTED_WITHDRAWAL_CONTENT,
   verdict: {

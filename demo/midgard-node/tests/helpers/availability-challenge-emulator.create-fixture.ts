@@ -1,3 +1,4 @@
+import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import * as SDK from "@al-ft/midgard-sdk";
 import { h32 } from "@al-ft/midgard-test-support/hex";
 import {
@@ -149,9 +150,12 @@ export const createFixture = async (
     preliminary.now(),
   );
   const hubOneShot = { txHash: "00".repeat(32), outputIndex: 0 };
+  const l1SlotConfig = NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod;
   const contracts = await loadRealMidgardContractsForTest(
     hubOneShot,
     authPolicy,
+    undefined,
+    l1SlotConfig,
   );
   const scriptNames = availabilityScriptNames(contracts);
   registeredScriptNames = scriptNames;
@@ -385,6 +389,10 @@ export const createFixture = async (
     ],
     AVAILABILITY_EMULATOR_PARAMETERS,
   );
+  // The contracts are a Preprod deployment, so the commit yield names a
+  // block's slot under Preprod's mapping. Starting the emulator on a whole
+  // second puts its slot boundaries on Preprod's.
+  emulator.time = Math.ceil(emulator.time / 1_000) * 1_000;
   // Created at emulator genesis, so zeroTime is genesis time and zeroSlot 0:
   // never create another Lucid mid-test (its zeroTime would be "now").
   const lucid = await createAvailabilityEmulatorLucid(emulator);
@@ -756,6 +764,7 @@ export const createFixture = async (
     emulator,
     lucid,
     contracts,
+    l1SlotConfig,
     parameters,
     timing: AVAILABILITY_TIMING,
     scriptNames,

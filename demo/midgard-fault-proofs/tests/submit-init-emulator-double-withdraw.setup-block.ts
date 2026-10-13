@@ -105,7 +105,7 @@ export const setupBlock = async ({
       harness.funderLucid,
       harness.emulator.now() + 120_000,
     ) - 1;
-  const header: SDK.Header = {
+  const requestedHeader: SDK.Header = {
     ...makeHeader(operatorVkey, start),
     withdrawalsRoot: counted.root,
     withdrawalCount: counted.count,
@@ -119,8 +119,9 @@ export const setupBlock = async ({
     contracts: harness.contracts,
     nonceUtxo: harness.nonceUtxo,
     catalogue: harness.catalogue,
-    header,
+    header: requestedHeader,
   });
+  const header = setup.header;
   return { entries, counted, header, setup };
 };
 

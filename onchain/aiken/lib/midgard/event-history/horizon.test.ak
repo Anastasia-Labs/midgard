@@ -14,19 +14,19 @@ test eligibility_is_open_at_start_closed_at_end() {
 
 test evidence_must_be_captured_after_accused_interval() {
   and {
-    !horizon.capture_permitted(20, 19, 21),
-    !horizon.capture_permitted(20, 20, 21),
-    horizon.capture_permitted(20, 21, 22),
-    !horizon.capture_permitted(20, 22, 21),
+    !horizon.capture_permitted(20, 20, 19, 21),
+    !horizon.capture_permitted(20, 20, 20, 21),
+    horizon.capture_permitted(20, 20, 21, 22),
+    !horizon.capture_permitted(20, 20, 22, 21),
   }
 }
 
 test earliest_merge_is_excluded_from_capture_and_completion() {
   let merge = 20 + block_maturity_duration_v1
   and {
-    horizon.capture_permitted(20, merge - 2, merge - 1),
+    horizon.capture_permitted(20, 20, merge - 2, merge - 1),
     horizon.completion_permitted(20, merge - 1),
-    !horizon.capture_permitted(20, merge - 1, merge),
+    !horizon.capture_permitted(20, 20, merge - 1, merge),
     !horizon.completion_permitted(20, merge),
     !horizon.completion_permitted(20, merge + 1),
   }
@@ -35,8 +35,27 @@ test earliest_merge_is_excluded_from_capture_and_completion() {
 test stale_thread_does_not_extend_deadline_when_queue_stalls() {
   let terminal_time = 20 + block_maturity_duration_v1 + 1
   and {
-    horizon.capture_permitted(20, 21, 22),
+    horizon.capture_permitted(20, 20, 21, 22),
     !horizon.completion_permitted(20, terminal_time),
+  }
+}
+
+// A catch-up block covers (10, 20] but was committed at 1_000: coverage stays
+// on the header end, the merge clock runs from the commit time.
+test catch_up_capture_runs_coverage_from_end_and_clock_from_block_time() {
+  let block_time = 1_000
+  let merge = block_time + block_maturity_duration_v1
+  and {
+    !horizon.capture_permitted(20, block_time, 20, 21),
+    horizon.capture_permitted(20, block_time, 21, 22),
+    horizon.capture_permitted(
+      20,
+      block_time,
+      20 + block_maturity_duration_v1,
+      20 + block_maturity_duration_v1,
+    ),
+    horizon.capture_permitted(20, block_time, merge - 2, merge - 1),
+    !horizon.capture_permitted(20, block_time, merge - 1, merge),
   }
 }
 

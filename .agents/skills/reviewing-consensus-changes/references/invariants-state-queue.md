@@ -16,19 +16,36 @@ status:
 Line numbers are as of the commit this skill was written against; re-find the
 symbol if they drift.
 
-## SQ1. A header's end time is the commit's inclusive upper bound
+## SQ1. A node's block time is the commit's inclusive upper bound
 
 Status: VERIFIED.
 
-Rule: a committed header's `end_time` equals the inclusive upper bound of the
-commit transaction's validity range, and `start_time < end_time`.
+Rule: a committed node's `block_time` equals the inclusive upper bound of the
+commit transaction's validity range, and the header's interval ends no later:
+
+- R1: `block_time` equals the inclusive upper bound, and
+  `start_time < end_time <= block_time`;
+- R2: a header with L2 transactions has `end_time == block_time`; an
+  event-only catch-up block may end earlier;
+- R3: `slot_to_posix_time_v1(block_slot) + slot_length - 1 == block_time`,
+  under the slot mapping the commit yield is parameterised with, so the
+  hashed header names its commit time.
+
+`block_time` is fixed at commit: every arm that continues a node pins it.
+Maturity, the attestation timeout and the fraud-record window run from
+`block_time`, not `end_time`.
 
 Enforced: `commit_bound_header_time_is_valid`
-(`lib/midgard/state-queue.ak:60`), called from the commit arm
-(`validators/state-queue.ak:1113-1119`)
+(`lib/midgard/state-queue.ak:82`), called from the commit arm
+(`validators/state-queue.ak:1171-1176`)
 `[aiken-test: midgard/state-queue.test/]`. The boundary tests at
-`lib/midgard/state-queue.test.ak:245-322` refuse one millisecond above the
-bound, an end strictly inside the window, and every value past or inside it.
+`lib/midgard/state-queue.test.ak:197-330` accept a normal block and an
+event-only catch-up block, and refuse a backdated or future `block_time`, an
+end after `block_time`, a non-advancing interval, an L2 block ending before
+`block_time`, a `block_slot` that disagrees and a `block_time` inside a slot.
+The commit arm refuses a backdated `block_time` (`:1289`), an L2 block ending
+before it (`:1302`), a disagreeing `block_slot` (`:1329`) and a re-commit of a
+header at a later time (`:1349`) `[aiken-test: state-queue-commit.test/]`.
 
 Provenance: `18c3c56ba` (#400) and `bdded5380` set the bound. `c07ac1326`
 ("Queue Block Submission in `midgard-node`", #424, 2026-04-07), an off-chain
@@ -36,7 +53,8 @@ PR, deleted the on-chain equality without replacement
 (`git log -S'output_end_time == inclusive_tx_upper_bound'`). `66d2d5d54`
 (2026-07-29) restored it. `df2f149b5` then found the Q60 tests had been
 selected with an `-m` filter that collected nothing, and `b02b25cd1` killed a
-surviving interval mutant.
+surviving interval mutant. `94bce78c1` moved the bound from the header's
+`end_time` to the node's `block_time` and added R2 and R3.
 
 Recurrence: 5 (wrong sign, silent deletion, vacuous selector, surviving
 mutant, original missing bound).
@@ -304,18 +322,18 @@ Continuation, per arm that continues an element:
 - the DA core used by Apply, Open and Close: value equality
   (`lib/midgard/state-queue.ak:521`, DA6 in [invariants-da.md](invariants-da.md)).
 
-Width: `commit_block_header_width_is_bounded_v1` (`validators/state-queue.ak:77`,
-called at `:1163`) requires a 32-byte `utxos_root` and `block_slot`,
-`min_fee_a`, `min_fee_b` below `commit_header_int_exclusive_bound_v1` (2^64,
-`:63`). Tests `[aiken-test: state-queue-commit.test/]`: the constant pinned at
+Width: `commit_block_header_width_is_bounded_v1` (`validators/state-queue.ak:79`,
+called at `:1169`) requires a 32-byte `utxos_root` and `min_fee_a`,
+`min_fee_b` below `commit_header_int_exclusive_bound_v1` (2^64, `:63`).
+`block_slot` is bounded by R3 instead (SQ1): it must name the commit's slot. Tests `[aiken-test: state-queue-commit.test/]`: the constant pinned at
 5 ADA `:969` and the bound at 2^64 `:974`; fixtures at exactly the floor
 `:980`; above the floor accepted `:999`; floor − 1 refused on a root anchor
 `:1012` and a node anchor `:1025`; a root anchor losing one lovelace `:1038`,
 a node anchor losing one `:1052` and a tail anchor gaining one `:1066`, all
 refused; a root anchor topped up after a drain accepted `:1083`; every bounded
-Int at 2^64 − 1 accepted `:1109`; a 33- and a 31-byte `utxos_root` `:1127`,
-`:1140` and `block_slot`, `min_fee_a`, `min_fee_b` at the bound `:1153`,
-`:1169`, `:1185`, all refused. Removals `[aiken-test: state-queue-removal.test/]`:
+Int at 2^64 − 1 accepted `:1164`; a 33- and a 31-byte `utxos_root` `:1181`,
+`:1194` and `min_fee_a`, `min_fee_b` at the bound `:1207`, `:1223`, all
+refused. Removals `[aiken-test: state-queue-removal.test/]`:
 fraud link and last gains accepted and losses refused (`:1955-1974`),
 unattested and unavailable prune loss and gain refused (`:1981-2002`). The
 SDK codec test `demo/midgard-sdk/tests/state-queue-node-min-lovelace.test.ts`
@@ -342,7 +360,7 @@ allows it. The head's header must be valid and carry no proven fraud, and its
 DA status decides the rest:
 
 - `Unattested`: the commit's inclusive upper bound must be strictly before
-  `header.end_time + da_attestation_timeout_v1`. Append is refused once the
+  `head.block_time + da_attestation_timeout_v1`. Append is refused once the
   head is past its attestation timeout.
 - `Attested` or `Published`: append is allowed.
 - `Challenged`: append is refused.

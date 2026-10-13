@@ -123,11 +123,14 @@ export type FabricatedWithdrawalStep01Handoff = {
 export const deriveFabricatedWithdrawalStep01Handoff = async ({
   stateQueuePolicyId,
   header,
+  blockTime,
   headerHash,
   inclusion,
 }: {
   readonly stateQueuePolicyId: string;
   readonly header: Header;
+  /** The challenged state-queue node's `block_time`. */
+  readonly blockTime: bigint;
   readonly headerHash: string;
   readonly inclusion: SubmitFabricatedWithdrawalInclusion;
 }): Promise<FabricatedWithdrawalStep01Handoff> => {
@@ -181,6 +184,7 @@ export const deriveFabricatedWithdrawalStep01Handoff = async ({
     challenged_header_hash: headerHash,
     header_start_time: header.startTime,
     header_end_time: header.endTime,
+    header_block_time: blockTime,
     committed_withdrawal_id: key,
     committed_withdrawal_content_hash: await Effect.runPromise(
       withdrawalContentCommitmentCbor(inclusion.committedWithdrawalInfoCbor),

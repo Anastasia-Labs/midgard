@@ -332,14 +332,18 @@ describe("zeroInput wrongful-rejection real lifecycle", () => {
       value: forcedTransaction,
       proof: Data.from(membershipProof.toCBOR().toString("hex"), Proof),
     };
-    const header = { ...baseFixture.header, forcedTransactionsRoot: root.root };
+    const requestedHeader = {
+      ...baseFixture.header,
+      forcedTransactionsRoot: root.root,
+    };
     const setup = await submitSetupTx({
       lucid: harness.funderLucid,
       contracts: harness.contracts,
       nonceUtxo: harness.nonceUtxo,
       catalogue,
-      header,
+      header: requestedHeader,
     });
+    const header = setup.header;
     const evidence = prepareZeroInputEvidence({
       finding: {
         subject: forcedVerdictSubject({

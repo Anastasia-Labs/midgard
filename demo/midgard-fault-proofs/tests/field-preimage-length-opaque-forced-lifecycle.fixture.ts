@@ -24,6 +24,7 @@ export const opaqueForcedLifecycleDaFixture: NonNullable<
     protocolVersion: admission.protocolVersion,
     startTime: admission.startTime,
     endTime: admission.endTime,
+    blockSlot: admission.blockSlot,
   };
   const headerHash = await Effect.runPromise(SDK.hashBlockHeader(header));
   const payload = {

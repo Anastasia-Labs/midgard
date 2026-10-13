@@ -1085,7 +1085,7 @@ describe("mintDeclaredAssetLimit registered-chain lifecycle", () => {
     });
     const membershipA = await membershipOf(keyA, a.leaf, leaves[0]!);
     const membershipB = await membershipOf(keyB, b.leaf, leaves[1]!);
-    const header = {
+    const requestedHeader = {
       ...baseFixture.header,
       forcedTransactionsRoot: root.root,
       forcedTransactionCount: root.count,
@@ -1095,8 +1095,9 @@ describe("mintDeclaredAssetLimit registered-chain lifecycle", () => {
       contracts: harness.contracts,
       nonceUtxo: harness.nonceUtxo,
       catalogue,
-      header,
+      header: requestedHeader,
     });
+    const header = setup.header;
     expect(setup.headerHash).toBe(
       await Effect.runPromise(hashBlockHeader(header)),
     );

@@ -288,7 +288,7 @@ export const makeWithdrawnInputEmulatorScenario = async (
       harness.funderLucid,
       harness.emulator.now() + 120_000,
     ) - 1;
-  const header = makeHeader(
+  const requestedHeader = makeHeader(
     operatorKeyHash,
     startTime,
     fixture.committedTransactionsRoot,
@@ -301,8 +301,9 @@ export const makeWithdrawnInputEmulatorScenario = async (
     contracts: harness.contracts,
     nonceUtxo: (await harness.funderLucid.wallet().getUtxos())[0]!,
     catalogue: harness.catalogue,
-    header,
+    header: requestedHeader,
   });
+  const header = setup.header;
   const explicitCategory: WithdrawnInputCatalogueCategory = {
     categoryId: FRAUD_PROOF_CATALOGUE_CATEGORY_IDS.withdrawnInput,
     scriptHash: contracts.steps[0].spendingScriptHash,

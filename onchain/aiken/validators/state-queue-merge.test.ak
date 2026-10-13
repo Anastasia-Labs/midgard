@@ -459,11 +459,24 @@ fn merge_head_key() -> ByteArray {
   crypto.blake2b_224(builtin.serialise_data(empty_material_header()))
 }
 
+/// The head was committed in catch-up mode, an hour after its covered
+/// interval ends, so merge maturity read from `block_time` and from
+/// `end_time` disagree.
+fn merge_head_block_time() -> Int {
+  empty_material_header().end_time + 3_600_000
+}
+
+/// The earliest merge: `block_time + block_maturity_duration_v1`.
+fn merge_maturity() -> Int {
+  merge_head_block_time() + ledger_state.block_maturity_duration_v1
+}
+
 fn merge_head_input(da_attestation: availability.StateQueueStatusV1) -> Input {
   let datum: state_queue.Datum = linked_list.Element {
     data: linked_list.Node(
       state_queue.StateQueueNode {
         header: empty_material_header(),
+        block_time: merge_head_block_time(),
         da_attestation,
         proven_fraud: None,
       },
@@ -516,10 +529,18 @@ fn run_merge_with_root_continuation(
   da_attestation: availability.StateQueueStatusV1,
   rewrite_root: fn(Output) -> Output,
 ) -> Bool {
+  run_merge_from(da_attestation, rewrite_root, merge_maturity())
+}
+
+/// The merge with its validity window opening at `lower_bound`.
+fn run_merge_from(
+  da_attestation: availability.StateQueueStatusV1,
+  rewrite_root: fn(Output) -> Output,
+  lower_bound: Int,
+) -> Bool {
   let header = empty_material_header()
   let head_key = merge_head_key()
   let confirmed_state = merge_confirmed_state()
-  let maturity = header.end_time + ledger_state.block_maturity_duration_v1
   let tx = Transaction {
     ..transaction.placeholder,
     inputs: [
@@ -550,7 +571,7 @@ fn run_merge_with_root_continuation(
       bytearray.concat(state_queue.block_asset_name_prefix, head_key),
       -1,
     ),
-    validity_range: between(maturity, maturity + 1_000),
+    validity_range: between(lower_bound, lower_bound + 1_000),
   }
   state_queue_validator.validate_merge_v1(
     merge_hub_oracle_policy,
@@ -621,5 +642,34 @@ test merge_rejects_continued_root_reference_script() fail {
     fn(output) {
       Output { ..output, reference_script: Some(merge_probe_reference_script) }
     },
+  )
+}
+
+// ## Merge maturity runs from `block_time` (C2)
+//
+// The head is a catch-up block: `block_time` is an hour after `end_time`. The
+// confirmed state still chains on `end_time` (what the block covers); only the
+// maturity clock reads `block_time`. The control is
+// `merge_da_gate_accepts_attested_head`, which opens exactly at
+// `block_time + block_maturity_duration_v1`.
+
+/// Refused by `inclusive_tx_lower_bound >= input_block_time +
+/// block_maturity_duration_v1` in `merge_to_confirmed_state`: one millisecond
+/// before maturity measured from `block_time`.
+test merge_rejects_one_millisecond_before_block_time_maturity() fail {
+  run_merge_from(
+    availability.Attested { commitment_hash: merge_commitment_hash },
+    fn(output) { output },
+    merge_maturity() - 1,
+  )
+}
+
+/// Refused by the same check: maturity measured from `end_time` is an hour
+/// early for a catch-up block.
+test merge_rejects_maturity_measured_from_end_time() fail {
+  run_merge_from(
+    availability.Attested { commitment_hash: merge_commitment_hash },
+    fn(output) { output },
+    empty_material_header().end_time + ledger_state.block_maturity_duration_v1,
   )
 }

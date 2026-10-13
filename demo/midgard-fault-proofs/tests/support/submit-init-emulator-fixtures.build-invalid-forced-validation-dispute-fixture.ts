@@ -27,6 +27,7 @@ import {
 import { Effect } from "effect";
 
 import { encodeData } from "../../src/index.js";
+import { fixtureBlockSlot } from "./emulator/header-fixtures.js";
 import { largeFittingOutputCbor } from "./submit-init-emulator-fixtures.expect-state-queue-header-order.js";
 import {
   buildForcedValidationDisputeCommitments,
@@ -91,7 +92,7 @@ export const buildInvalidForcedValidationDisputeFixture = async ({
       expectedNetworkId: 0n,
       minFeeA: 0n,
       minFeeB: 0n,
-      blockSlot: 0n,
+      blockSlot: fixtureBlockSlot(BigInt(now + 1_000), 0n),
       transactionId,
       canonicalTransactionCbor: forcedCanonicalCbor,
       priorUtxosRoot: EMPTY_MERKLE_TREE_ROOT,

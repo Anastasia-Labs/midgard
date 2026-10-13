@@ -1406,15 +1406,33 @@ pub fn state_queue_reference_input(fixture: NativeBlockFixtureV1) -> Input {
   state_queue_reference_input_with_policy(fixture, state_queue_policy_id)
 }
 
+/// State-queue node reference input committed at `block_time` rather than at
+/// the header's covered end (a catch-up block).
+pub fn state_queue_reference_input_at(
+  fixture: NativeBlockFixtureV1,
+  block_time: Int,
+) -> Input {
+  state_queue_reference_input_with(fixture, state_queue_policy_id, block_time)
+}
+
 /// State-queue node reference input whose authenticating NFT is minted under
 /// an arbitrary policy (block-registry substitution negatives).
 pub fn state_queue_reference_input_with_policy(
   fixture: NativeBlockFixtureV1,
   nft_policy: ByteArray,
 ) -> Input {
+  state_queue_reference_input_with(fixture, nft_policy, fixture.header.end_time)
+}
+
+fn state_queue_reference_input_with(
+  fixture: NativeBlockFixtureV1,
+  nft_policy: ByteArray,
+  block_time: Int,
+) -> Input {
   let node = state_queue.StateQueueNode {
     proven_fraud: None,
     header: fixture.header,
+    block_time,
     da_attestation: state_queue.no_da_attestation,
   }
   let element: linked_list.Element<Data, state_queue.StateQueueNode> = linked_list.Element {
