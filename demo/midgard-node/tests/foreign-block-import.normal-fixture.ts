@@ -172,7 +172,11 @@ export const normalFixture = async (
       "validationTracesRoot",
     ].map((key) => [key, SDK.EMPTY_MERKLE_TREE_ROOT]),
   ) as Parameters<typeof headerFor>[0];
-  const header = { ...headerFor(roots, counts), prevUtxosRoot: prior };
+  const header = {
+    ...headerFor(roots, counts),
+    prevUtxosRoot: prior,
+    utxosRoot: post,
+  };
   const payload: SDK.DaPayload = {
     version: 1n,
     block_body: {
