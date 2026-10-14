@@ -1495,7 +1495,6 @@ export const buildValidationTraceDisputeChain = ({
             [
               boundary.spendingScriptHash,
               timeout.spendingScriptHash,
-              resolverHashesData,
               computationThread.policyId,
             ],
           ),

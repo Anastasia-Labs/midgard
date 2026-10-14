@@ -123,7 +123,6 @@ describe("validation resolver production-builder parameter application", () => {
       [
         dispute.boundary.spendingScriptHash,
         dispute.timeout.spendingScriptHash,
-        dispute.resolvers.map(({ spendingScriptHash }) => spendingScriptHash),
         contracts.computationThread.policyId,
       ],
     );

@@ -1,4 +1,3 @@
-use aiken/crypto.{VerificationKeyHash}
 use midgard/ledger_state
 use midgard/validation_claim_v1
 use midgard/validation_dispute_v1
@@ -17,6 +16,5 @@ pub type PendingValidationClaimV1 {
 
 pub type ValidationGameStateV1 {
   challenged_header_hash: ByteArray,
-  operator_vkey: VerificationKeyHash,
   dispute: validation_dispute_v1.ValidationDisputeV1,
 }

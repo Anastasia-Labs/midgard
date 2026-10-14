@@ -143,7 +143,6 @@ validator main(
                     Some(low_hash) -> {
                       let expected_state: Data = validation_game_v1.ValidationGameStateV1 {
                         challenged_header_hash: state.challenged_header_hash,
-                        operator_vkey: state.challenged_header.operator_vkey,
                         dispute: validation_dispute_v1.open_after_source_verification(
                           descriptor,
                           state.challenger_descriptor,

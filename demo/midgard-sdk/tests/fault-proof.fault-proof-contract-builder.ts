@@ -1112,7 +1112,6 @@ describe("fault-proof contract builder", () => {
       [
         spendingScriptHash(expectedBoundaryCbor),
         spendingScriptHash(expectedTimeoutCbor),
-        resolverHashesData,
         contracts.computationThread.policyId,
       ],
     );

@@ -132,22 +132,6 @@ pub fn state_is_well_formed(state: ValidationResolutionStateV1) -> Bool {
   }
 }
 
-pub fn challenger_uniquely_wins(
-  state: ValidationResolutionStateV1,
-  operator_successor: validation_trace_v1.ValidationMachineStateV1,
-  challenger_successor: validation_trace_v1.ValidationMachineStateV1,
-  operator_transition_is_valid: Bool,
-  challenger_transition_is_valid: Bool,
-) -> Bool {
-  and {
-    state_is_well_formed(state),
-    validation_trace_v1.hash_machine_state(operator_successor) == state.operator_successor_hash,
-    validation_trace_v1.hash_machine_state(challenger_successor) == state.challenger_successor_hash,
-    !operator_transition_is_valid,
-    challenger_transition_is_valid,
-  }
-}
-
 pub fn prepare_semantic_resolution(
   state: ValidationResolutionStateV1,
   transition: vm_machine_types.ValidationOneStepWitnessV1,

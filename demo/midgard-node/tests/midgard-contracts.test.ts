@@ -144,7 +144,7 @@ describe("midgard contracts registry", () => {
       // post-UTxO minimum-Ada mode, the streamed redeemer and datum Data
       // verdict steps, one-pass history node count, trace movers, the clock
       // and the protocol treasury script in the profile, and the bond-locked
-      // source verification (bond script and amount parameters, Gap B).
+      // source verification (bond script and amount, Gap B) and the I3 deletions.
       expect
         .soft(
           createHash("sha256")
@@ -154,7 +154,7 @@ describe("midgard contracts registry", () => {
             .digest("hex"),
         )
         .toBe(
-          "10d3d5cc83246abe6362f2ed09ea265268db84c941ba4786e160ead7610a9847",
+          "a26d506e07434d4a2beefb39ce3064d33338abbb2aa93b96815f100d64a9b360",
         );
       // The queue/correction subset is pinned independently of the full registry.
       // Includes every applied CBOR, hash, policy id, address, and queue yield.

@@ -787,57 +787,6 @@ test malformed_resolution_states_fail_closed() {
   }
 }
 
-test challenger_resolution_requires_exact_hashes_and_a_unique_valid_successor() {
-  let pre = fixture_pre_state()
-  let operator = validation_trace_v1.ValidationMachineStateV1 {
-    ..pre,
-    program_counter: 1,
-    work_root: h_b,
-  }
-  let challenger = validation_trace_v1.ValidationMachineStateV1 {
-    ..operator,
-    work_root: h_c,
-  }
-  let state = validation_resolution_v1.ValidationResolutionStateV1 {
-    version: validation_resolution_v1.resolution_version,
-    pre_state: pre,
-    operator_successor_hash: validation_trace_v1.hash_machine_state(operator),
-    challenger_successor_hash: validation_trace_v1.hash_machine_state(
-      challenger,
-    ),
-  }
-  and {
-    validation_resolution_v1.challenger_uniquely_wins(
-      state,
-      operator,
-      challenger,
-      False,
-      True,
-    ),
-    !validation_resolution_v1.challenger_uniquely_wins(
-      state,
-      operator,
-      challenger,
-      True,
-      True,
-    ),
-    !validation_resolution_v1.challenger_uniquely_wins(
-      state,
-      operator,
-      challenger,
-      False,
-      False,
-    ),
-    !validation_resolution_v1.challenger_uniquely_wins(
-      state,
-      challenger,
-      operator,
-      False,
-      True,
-    ),
-  }
-}
-
 fn terminal_padding_fixture() -> (
   validation_dispute_v1.ValidationDisputeV1,
   validation_trace_v1.ValidationMachineStateV1,

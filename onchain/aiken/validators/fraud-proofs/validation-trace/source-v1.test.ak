@@ -568,7 +568,6 @@ fn opened_at(
 ) -> Data {
   let game: Data = validation_game_v1.ValidationGameStateV1 {
     challenged_header_hash: header_hash,
-    operator_vkey: h28_a,
     dispute: validation_dispute_v1.open(
       state.claim.descriptor_membership.value,
       state.challenger_descriptor,

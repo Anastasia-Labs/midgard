@@ -151,7 +151,6 @@ export const ValidationDispute = asDataType<ValidationDispute>(
 
 export const ValidationDisputeStateSchema = Data.Object({
   challenged_header_hash: Data.Bytes({ minLength: 28, maxLength: 28 }),
-  operator_vkey: PubKeyHashSchema,
   dispute: ValidationDisputeSchema,
 });
 

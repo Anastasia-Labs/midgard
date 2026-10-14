@@ -262,17 +262,6 @@ export const ValidationDisputeOpenSpendRedeemer =
     ValidationDisputeOpenSpendRedeemerSchema,
   );
 
-export const CommittedValidationStepEvidenceSchema = Data.Object({
-  pre_state: ValidationMachineStateSchema,
-  pre_proof: ValidationTraceProofSchema,
-  post_proof: ValidationTraceProofSchema,
-  challenger_successor_hash: H32Schema,
-});
-
-export type CommittedValidationStepEvidence = Data.Static<
-  typeof CommittedValidationStepEvidenceSchema
->;
-
 export const ValidationSourceActionSchema = Data.Object({
   input_index: Data.Integer(),
   output_index: Data.Integer(),
@@ -325,14 +314,6 @@ export const ValidationGameActionSchema = Data.Enum([
     EnterChallengerTimeout: Data.Object({
       input_index: Data.Integer(),
       output_index: Data.Integer(),
-    }),
-  }),
-  Data.Object({
-    DirectCommittedStep: Data.Object({
-      input_index: Data.Integer(),
-      output_index: Data.Integer(),
-      resolver_index: Data.Integer(),
-      evidence: CommittedValidationStepEvidenceSchema,
     }),
   }),
 ]);
