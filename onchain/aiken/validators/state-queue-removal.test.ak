@@ -9,6 +9,7 @@ use cardano/transaction.{
   InlineDatum, Input, Mint, Output, OutputReference, ScriptPurpose,
 }
 use midgard/availability_challenge as availability
+use midgard/fraud_proof
 use midgard/ledger_state.{ConfirmedState, HeaderV1, protocol_version_v1}
 use midgard/state_queue
 use state_queue as state_queue_validator
@@ -1353,6 +1354,14 @@ fn completed_fraud_tx() -> transaction.Transaction {
 }
 
 fn record_completed_fraud(tx: transaction.Transaction) -> Bool {
+  record_completed_fraud_with(tx, completed_fraud_asset(), None)
+}
+
+fn record_completed_fraud_with(
+  tx: transaction.Transaction,
+  fraud_proof_asset_name: ByteArray,
+  m_fraud_proof_ref_input_index: Option<Int>,
+) -> Bool {
   state_queue_validator.spend.spend(
     state_queue_policy,
     da_attestation_policy,
@@ -1362,7 +1371,8 @@ fn record_completed_fraud(tx: transaction.Transaction) -> Bool {
     state_queue.RecordCompletedFraud {
       state_queue_input_index: 0,
       state_queue_output_index: 0,
-      fraud_proof_asset_name: completed_fraud_asset(),
+      fraud_proof_asset_name,
+      m_fraud_proof_ref_input_index,
     },
     out_ref(0),
     tx,
@@ -1540,6 +1550,257 @@ test completed_fraud_marker_rejects_redirected_spending_index() fail {
       inputs: [Input { ..input, output_reference: out_ref(1) }],
     },
   )
+}
+
+// ## Recording an already-minted proof token by reference
+
+const completed_fraud_prover =
+  #"34343434343434343434343434343434343434343434343434343434"
+
+const other_completed_fraud_prover =
+  #"35353535353535353535353535353535353535353535353535353535"
+
+/// A permanent proof output as finalize leaves it: exactly one token of
+/// `policy` under `asset_name` and the prover in its inline datum.
+fn completed_fraud_token_input(
+  output_index: Int,
+  policy: ByteArray,
+  asset_name: ByteArray,
+  quantity: Int,
+  prover: ByteArray,
+) -> Input {
+  let datum = fraud_proof.Datum { fraud_prover: prover }
+  Input {
+    output_reference: OutputReference {
+      transaction_id: #"dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+      output_index,
+    },
+    output: Output {
+      address: address.from_script(completed_fraud_policy),
+      value: assets.from_lovelace(2_000_000)
+        |> assets.add(policy, asset_name, quantity),
+      datum: InlineDatum(datum),
+      reference_script: None,
+    },
+  }
+}
+
+fn unrelated_reference_input() -> Input {
+  Input {
+    output_reference: out_ref(7),
+    output: Output {
+      address: address.from_script(availability_policy),
+      value: assets.from_lovelace(5_000_000),
+      datum: InlineDatum(
+        fraud_proof.Datum { fraud_prover: completed_fraud_prover },
+      ),
+      reference_script: None,
+    },
+  }
+}
+
+/// The same pre-state as `completed_fraud_tx`, except that nothing is minted
+/// and the proof token sits in `reference_inputs[1]`.
+fn completed_fraud_by_reference_tx(token: Input) -> transaction.Transaction {
+  let tx = completed_fraud_tx()
+  transaction.Transaction {
+    ..tx,
+    mint: assets.zero,
+    reference_inputs: [unrelated_reference_input(), token],
+  }
+}
+
+fn completed_fraud_token() -> Input {
+  completed_fraud_token_input(
+    0,
+    completed_fraud_policy,
+    completed_fraud_asset(),
+    1,
+    completed_fraud_prover,
+  )
+}
+
+fn record_completed_fraud_by_reference(tx: transaction.Transaction) -> Bool {
+  record_completed_fraud_with(tx, completed_fraud_asset(), Some(1))
+}
+
+test completed_fraud_by_reference_marks_exact_header() {
+  record_completed_fraud_by_reference(
+    completed_fraud_by_reference_tx(completed_fraud_token()),
+  )
+}
+
+/// One pre-state, two successors: the continuation naming the referenced
+/// token verifies; the one naming another category for the same header does
+/// not, although both are well-formed markers for this header.
+test completed_fraud_by_reference_binds_marker_to_referenced_token() {
+  let tx = completed_fraud_by_reference_tx(completed_fraud_token())
+  expect [output] = tx.outputs
+  let other_asset = #"00000002"
+    |> bytearray.concat(
+        hash_header(header(faulty_operator, parent_header_hash)),
+      )
+  let other_successor = transaction.Transaction {
+    ..tx,
+    outputs: [marked_output(output, Some(other_asset))],
+  }
+  and {
+    record_completed_fraud_by_reference(tx),
+    !record_completed_fraud_with(other_successor, other_asset, Some(1)),
+  }
+}
+
+test completed_fraud_by_reference_rejects_input_without_token() fail {
+  record_completed_fraud_with(
+    completed_fraud_by_reference_tx(completed_fraud_token()),
+    completed_fraud_asset(),
+    Some(0),
+  )
+}
+
+test completed_fraud_by_reference_rejects_missing_reference_index() fail {
+  record_completed_fraud_with(
+    completed_fraud_by_reference_tx(completed_fraud_token()),
+    completed_fraud_asset(),
+    Some(2),
+  )
+}
+
+test completed_fraud_by_reference_rejects_foreign_policy_with_same_name() fail {
+  record_completed_fraud_by_reference(
+    completed_fraud_by_reference_tx(
+      completed_fraud_token_input(
+        0,
+        availability_policy,
+        completed_fraud_asset(),
+        1,
+        completed_fraud_prover,
+      ),
+    ),
+  )
+}
+
+test completed_fraud_by_reference_rejects_token_for_another_header() {
+  let other_header_asset = #"00000001"
+    |> bytearray.concat(descendant_header_hash)
+  !record_completed_fraud_by_reference(
+    completed_fraud_by_reference_tx(
+      completed_fraud_token_input(
+        0,
+        completed_fraud_policy,
+        other_header_asset,
+        1,
+        completed_fraud_prover,
+      ),
+    ),
+  )
+}
+
+test completed_fraud_by_reference_rejects_redeemer_naming_another_header() {
+  let tx = completed_fraud_by_reference_tx(completed_fraud_token())
+  expect [output] = tx.outputs
+  let other_header_asset = #"00000001"
+    |> bytearray.concat(descendant_header_hash)
+  !record_completed_fraud_with(
+    transaction.Transaction {
+      ..tx,
+      outputs: [marked_output(output, Some(other_header_asset))],
+    },
+    other_header_asset,
+    Some(1),
+  )
+}
+
+test completed_fraud_by_reference_rejects_non_unit_token() fail {
+  record_completed_fraud_by_reference(
+    completed_fraud_by_reference_tx(
+      completed_fraud_token_input(
+        0,
+        completed_fraud_policy,
+        completed_fraud_asset(),
+        2,
+        completed_fraud_prover,
+      ),
+    ),
+  )
+}
+
+test completed_fraud_by_reference_rejects_upper_bound_at_maturity() {
+  let tx = completed_fraud_by_reference_tx(completed_fraud_token())
+  let boundary = 2_000 + ledger_state.block_maturity_duration_v1
+  and {
+    record_completed_fraud_by_reference(
+      transaction.Transaction {
+        ..tx,
+        validity_range: between(boundary - 1_000, boundary - 1),
+      },
+    ),
+    !record_completed_fraud_by_reference(
+      transaction.Transaction {
+        ..tx,
+        validity_range: between(boundary - 1_000, boundary),
+      },
+    ),
+  }
+}
+
+test completed_fraud_by_reference_rejects_repeated_write() {
+  let tx = completed_fraud_by_reference_tx(completed_fraud_token())
+  expect [input] = tx.inputs
+  expect [output] = tx.outputs
+  !record_completed_fraud_by_reference(
+    transaction.Transaction { ..tx, inputs: [Input { ..input, output }] },
+  )
+}
+
+test completed_fraud_by_reference_rejects_simultaneous_queue_mutation() {
+  let tx = completed_fraud_by_reference_tx(completed_fraud_token())
+  !record_completed_fraud_by_reference(
+    transaction.Transaction {
+      ..tx,
+      mint: assets.from_asset(
+        state_queue_policy,
+        node_asset_name(descendant_header_hash),
+        -1,
+      ),
+    },
+  )
+}
+
+/// `None` keeps the same-transaction mint requirement: a referenced token
+/// does not stand in for it.
+test completed_fraud_minted_here_ignores_referenced_token() {
+  !record_completed_fraud(
+    completed_fraud_by_reference_tx(completed_fraud_token()),
+  )
+}
+
+/// A second token of the same unit, held by another prover's output, changes
+/// nothing: either authentic output can be named, and the recorded node is
+/// identical.
+test completed_fraud_by_reference_ignores_second_token_of_same_unit() {
+  let second = completed_fraud_token_input(
+    1,
+    completed_fraud_policy,
+    completed_fraud_asset(),
+    1,
+    other_completed_fraud_prover,
+  )
+  let tx = completed_fraud_by_reference_tx(completed_fraud_token())
+  let with_second = transaction.Transaction {
+    ..tx,
+    reference_inputs: [second, ..tx.reference_inputs],
+  }
+  and {
+    record_completed_fraud_with(with_second, completed_fraud_asset(), Some(0)),
+    record_completed_fraud_with(with_second, completed_fraud_asset(), Some(2)),
+    record_completed_fraud(
+      transaction.Transaction {
+        ..completed_fraud_tx(),
+        reference_inputs: [second],
+      },
+    ),
+  }
 }
 
 test completed_fraud_marked_head_cannot_append() {

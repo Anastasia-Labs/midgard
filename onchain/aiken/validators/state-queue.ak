@@ -594,6 +594,7 @@ validator spend(
         state_queue_input_index,
         state_queue_output_index,
         fraud_proof_asset_name,
+        m_fraud_proof_ref_input_index,
       } -> {
         expect Some(input) = list.at(tx.inputs, state_queue_input_index)
         expect input.output_reference == own_ref
@@ -604,6 +605,7 @@ validator spend(
           state_queue_input_index,
           state_queue_output_index,
           fraud_proof_asset_name,
+          m_fraud_proof_ref_input_index,
         )
       }
     }

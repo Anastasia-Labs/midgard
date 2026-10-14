@@ -300,6 +300,8 @@ export const StateQueueSpendRedeemerSchema = Data.Enum([
       state_queue_input_index: Data.Integer(),
       state_queue_output_index: Data.Integer(),
       fraud_proof_asset_name: Data.Bytes({ minLength: 32, maxLength: 32 }),
+      /** `null`: minted in this tx; else the reference-input index holding it. */
+      m_fraud_proof_ref_input_index: Data.Nullable(Data.Integer()),
     }),
   }),
 ]);

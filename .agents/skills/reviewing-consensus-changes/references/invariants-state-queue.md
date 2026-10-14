@@ -209,9 +209,13 @@ Provenance: #603.
 
 Status: VERIFIED.
 
-Rule: `proven_fraud` is set once, from `None`, in the same transaction that
-mints the proof, and a head carrying it can neither be appended to nor
-merged.
+Rule: `proven_fraud` is set once, from `None`, in a transaction that either
+mints the proof or cites an authenticated proof token for the same header by
+reference (`m_fraud_proof_ref_input_index`), and a head carrying it can
+neither be appended to nor merged. The by-reference record is pinned by
+`completed_fraud_by_reference_*` `[aiken-test: state-queue-removal.test/]` and
+by the emulator suite
+`demo/midgard-fault-proofs/tests/submit-init-emulator-record-completed-fraud-by-reference.test.ts`.
 
 Enforced: `validate_completed_fraud_record`
 (`lib/midgard/state-queue.ak:470-512`, which requires `None` before and

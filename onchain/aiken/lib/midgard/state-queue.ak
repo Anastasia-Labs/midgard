@@ -147,10 +147,14 @@ pub type SpendRedeemer {
     state_queue_output_index: Int,
     availability_mint_redeemer_index: Int,
   }
+  /// `m_fraud_proof_ref_input_index` is `None` when the completed proof token
+  /// is minted by this transaction, or `Some(i)` when `reference_inputs[i]`
+  /// holds an already-minted token of the fraud-proof policy.
   RecordCompletedFraud {
     state_queue_input_index: Int,
     state_queue_output_index: Int,
     fraud_proof_asset_name: AssetName,
+    m_fraud_proof_ref_input_index: Option<Int>,
   }
 }
 
@@ -566,9 +570,13 @@ fn da_availability_status_transition(
   return(input_block.block_time)
 }
 
-/// Consume the challenged node in the terminal proof transaction. A prepared
-/// merge loses its input; a refreshed merge rejects the permanent marker.
+/// Consume the challenged node, either in the terminal proof transaction or
+/// in a later standalone record. A prepared merge loses its input; a
+/// refreshed merge rejects the permanent marker.
 /// Different headers need not contend on the global correction singleton.
+/// The proof token is either minted by this transaction or held by an
+/// authenticated reference input, so a proof finalized on its own can still
+/// be recorded before the node matures.
 pub fn validate_completed_fraud_record(
   tx: Transaction,
   state_queue_policy: PolicyId,
@@ -576,6 +584,7 @@ pub fn validate_completed_fraud_record(
   input_index: Int,
   output_index: Int,
   proof_asset: AssetName,
+  m_fraud_proof_ref_input_index: Option<Int>,
 ) -> Bool {
   expect Some(input) = list.at(tx.inputs, input_index)
   expect Some(output) = list.at(tx.outputs, output_index)
@@ -598,7 +607,18 @@ pub fn validate_completed_fraud_record(
     before.proven_fraud == None,
     before.block_time < lower,
     upper < before.block_time + block_maturity_duration_v1,
-    assets.quantity_of(tx.mint, fraud_proof_policy, proof_asset) == 1,
+    when m_fraud_proof_ref_input_index is {
+      None -> assets.quantity_of(tx.mint, fraud_proof_policy, proof_asset) == 1
+      Some(fraud_proof_ref_input_index) ->
+        fraud_proof.get_proven_fraud_record_with_identity(
+          tx.reference_inputs,
+          fraud_proof_policy,
+          fraud_proof_ref_input_index,
+          fn(_header_hash, _fraud_prover, asset_name) {
+            asset_name == proof_asset
+          },
+        )
+    },
     assets.tokens(tx.mint, state_queue_policy) == assets.tokens(
       assets.zero,
       state_queue_policy,

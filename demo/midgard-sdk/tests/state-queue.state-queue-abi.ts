@@ -163,4 +163,29 @@ describe("state-queue ABI", () => {
       rewardlessRetiredSlash,
     );
   });
+
+  it("encodes RecordCompletedFraud with its optional proof reference input", () => {
+    const record = (index: bigint | null) =>
+      ({
+        RecordCompletedFraud: {
+          state_queue_input_index: 1n,
+          state_queue_output_index: 2n,
+          fraud_proof_asset_name: "ab".repeat(32),
+          m_fraud_proof_ref_input_index: index,
+        },
+      }) as const;
+    const prefix = "d87c9f01025820" + "ab".repeat(32);
+    expect(Data.to(record(null), StateQueueSpendRedeemer)).toBe(
+      prefix + "d87a80ff",
+    );
+    expect(Data.to(record(5n), StateQueueSpendRedeemer)).toBe(
+      prefix + "d8799f05ff" + "ff",
+    );
+    expect(roundTrip(record(null), StateQueueSpendRedeemer)).toEqual(
+      record(null),
+    );
+    expect(roundTrip(record(5n), StateQueueSpendRedeemer)).toEqual(record(5n));
+    // The three-field shape without the option is not a valid redeemer.
+    expect(() => Data.from(prefix + "ff", StateQueueSpendRedeemer)).toThrow();
+  });
 });
