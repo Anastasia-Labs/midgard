@@ -10,7 +10,7 @@ x-logging: &logging
 
 services:
   cardano-node:
-    image: ghcr.io/intersectmbo/cardano-node:11.1.0@sha256:7b36384afd9d78e787c02f9b9a0868ed74b28a04b7d447325a68b1f397ddb43a
+    image: ghcr.io/intersectmbo/cardano-node:11.1.0@sha256:78a3a5113b5989115a21bba74b8a990799aa43e5f9165641b9f0c062c266b58a
     entrypoint: ["entrypoint"]
     environment:
       CARDANO_BLOCK_PRODUCER: ${MIDGARD_PHASE4_BLOCK_PRODUCER:-true}
@@ -80,7 +80,7 @@ services:
     logging: *logging
 
   kupo:
-    image: cardanosolutions/kupo:v2.11.0@sha256:0a8cd8b5e373103e9e0a68b162d82c69a6f76042bb073c31912724034e51ca9e
+    image: cardanosolutions/kupo:v2.11.0@sha256:e7671142cfea29f43faf1a549c85cf2b28938e77bceddbf0f0b5cca07d493465
     command:
       - --ogmios-host
       - ogmios
@@ -112,7 +112,7 @@ services:
     logging: *logging
 
   postgres:
-    image: postgres:15.15-alpine@sha256:d4c38e1c60871a1e8fe5d05b639980ac7827c9e6920a5df663a16f86f398aca6
+    image: postgres:15.15-alpine@sha256:1d1095b0503145be79c79239372aefadfacf6b7c33c9245bbf99ce4b6b89c737
     environment:
       POSTGRES_USER: ${MIDGARD_PHASE4_POSTGRES_USER:-midgard_phase4_process}
       POSTGRES_PASSWORD: ${MIDGARD_PHASE4_POSTGRES_PASSWORD:?MIDGARD_PHASE4_POSTGRES_PASSWORD is required}

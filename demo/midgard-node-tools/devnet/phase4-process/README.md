@@ -135,9 +135,11 @@ existing canonical identity, checkpoint, registration and post-resume progress
 checks still apply. There is no 72-hour matched-snapshot reuse contract.
 
 Cardano-node 11.1.0, Ogmios v7.0.0, Kupo v2.11.0, and Postgres 15.15 are
-fixed to official immutable image digests. The node pin includes the genesis
-cost-model override fix. The generated run records the effective image IDs;
-reset refuses any image or artifact drift.
+fixed to official immutable image lists. Docker selects the host's native
+ARM64 or AMD64 image. The node pin includes the genesis cost-model override
+fix. The generated run records the effective image IDs; reset refuses any
+image or artifact drift. After changing image pins or host architecture, use
+a fresh run directory; existing snapshots remain tied to their original images.
 
 The workspace uses Lucid Evolution 0.6, whose provider package natively
 supports Ogmios v7's canonical `maxReferenceScriptsSizePerTransaction`
