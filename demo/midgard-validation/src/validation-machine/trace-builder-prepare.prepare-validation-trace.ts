@@ -75,6 +75,7 @@ import {
   decodeMidgardForcedTxCompact,
   deriveMidgardForcedTxProofSourceFromCanonicalCbor,
 } from "@al-ft/midgard-core/codec/forced";
+import { type MidgardRejectionReasonV1 } from "@al-ft/midgard-core/validation-trace";
 import { CML } from "@lucid-evolution/lucid";
 import { blake2b } from "@noble/hashes/blake2.js";
 import { Effect } from "effect";
@@ -90,6 +91,7 @@ import {
 import { decodeMidgardRedeemers } from "../midgard-redeemers.js";
 import { validatePhaseASingle } from "../phase-a.js";
 import { runPhaseBValidationWithPatch } from "../phase-b.js";
+import { UNSET_REASON_COORDINATE } from "../rejection-reason.js";
 import type { LocalScriptEvaluation } from "../types.js";
 import type { QueuedTx, RejectCode, RejectedTx } from "../types.js";
 import { RejectCodes } from "../types.js";
@@ -797,7 +799,7 @@ export const prepareValidationTrace = (input: ValidationMachineReplayInput) =>
         control.previousSignerHash,
         BigInt(control.signerFrontier.count),
         encodeFrontierPeaks(control.signerFrontier),
-        BigInt(control.invalidSignatureSeen),
+        BigInt(control.firstInvalidWitnessIndex),
       ]);
     const initialSignatureScanControl: SignatureScanControl = {
       stage: 0,
@@ -808,7 +810,7 @@ export const prepareValidationTrace = (input: ValidationMachineReplayInput) =>
       previousOrderKey: Buffer.alloc(0),
       previousSignerHash: Buffer.alloc(0),
       signerFrontier: emptyValidationFrontier,
-      invalidSignatureSeen: 0,
+      firstInvalidWitnessIndex: -1,
     };
     const phaseANativeScriptsScanWitnessCbor = (
       control: PhaseANativeScriptsScanControl,
@@ -833,6 +835,8 @@ export const prepareValidationTrace = (input: ValidationMachineReplayInput) =>
         BigInt(control.result),
         BigInt(signerFrontier.count),
         [encodeFrontierPeaks(signerFrontier), continuationCbor],
+        control.purposeKind,
+        control.purposeIndex,
       ]);
     const resetPhaseANativeScriptsScanControl = (input: {
       readonly scriptCount: number;
@@ -850,6 +854,8 @@ export const prepareValidationTrace = (input: ValidationMachineReplayInput) =>
       stackDepth: 0,
       nodeCount: 0,
       result: -1,
+      purposeKind: -1n,
+      purposeIndex: -1n,
     });
     const initialPhaseANativeScriptsScanControl =
       resetPhaseANativeScriptsScanControl({
@@ -1210,6 +1216,9 @@ export const prepareValidationTrace = (input: ValidationMachineReplayInput) =>
       macroAuxiliaryByPhase.get(phase) ?? null;
 
     let stoppedAtRejection = false;
+    // The exact reason the machine binds where this builder stops on a rule
+    // whose coordinates it holds; null where it stops on a macro phase.
+    let stopReason: MidgardRejectionReasonV1 | null = null;
     let authenticatedNativeScriptsWitnessCbor: Buffer | null = null;
     let authenticatedNativeScriptsBaseFields: unknown[] | null = null;
     for (const field of fieldPreimages) {
@@ -1283,6 +1292,12 @@ export const prepareValidationTrace = (input: ValidationMachineReplayInput) =>
                   "canonical item bound disagrees with authoritative rejection",
                 ),
               );
+            stopReason = {
+              FieldItemWidthIllegal: {
+                field_index: BigInt(field.fieldIndex),
+                item_index: BigInt(item.itemIndex),
+              },
+            };
             stoppedAtRejection = true;
             break;
           }
@@ -1370,6 +1385,7 @@ export const prepareValidationTrace = (input: ValidationMachineReplayInput) =>
             ),
           );
         }
+        stopReason = "EmptyInputs";
         stoppedAtRejection = true;
       } else {
         for (let index = inputSetScanItems.length - 1; index >= 0; index -= 1) {
@@ -1395,6 +1411,14 @@ export const prepareValidationTrace = (input: ValidationMachineReplayInput) =>
                 ),
               );
             }
+            stopReason = {
+              DuplicateInput: {
+                first_field_index: UNSET_REASON_COORDINATE,
+                first_item_index: UNSET_REASON_COORDINATE,
+                second_field_index: UNSET_REASON_COORDINATE,
+                second_item_index: UNSET_REASON_COORDINATE,
+              },
+            };
             stoppedAtRejection = true;
             break;
           }
@@ -1447,6 +1471,7 @@ export const prepareValidationTrace = (input: ValidationMachineReplayInput) =>
                 ),
               );
             }
+            stopReason = "ValidityIntervalMalformed";
             stoppedAtRejection = true;
           }
         }
@@ -1533,11 +1558,11 @@ export const prepareValidationTrace = (input: ValidationMachineReplayInput) =>
                   previousOrderKey: Buffer.alloc(0),
                   previousSignerHash: Buffer.alloc(0),
                   signerFrontier,
-                  invalidSignatureSeen:
-                    signatureControl.invalidSignatureSeen === 1 ||
+                  firstInvalidWitnessIndex:
+                    signatureControl.firstInvalidWitnessIndex === -1 &&
                     !signatureIsValid
-                      ? 1
-                      : 0,
+                      ? scan.item.itemIndex
+                      : signatureControl.firstInvalidWitnessIndex,
                 }
               : {
                   ...signatureControl,
@@ -1546,11 +1571,11 @@ export const prepareValidationTrace = (input: ValidationMachineReplayInput) =>
                   previousOrderKey: scan.orderKey,
                   previousSignerHash: scan.decoded.signerHash,
                   signerFrontier,
-                  invalidSignatureSeen:
-                    signatureControl.invalidSignatureSeen === 1 ||
+                  firstInvalidWitnessIndex:
+                    signatureControl.firstInvalidWitnessIndex === -1 &&
                     !signatureIsValid
-                      ? 1
-                      : 0,
+                      ? scan.item.itemIndex
+                      : signatureControl.firstInvalidWitnessIndex,
                 };
         }
       }
@@ -1561,7 +1586,7 @@ export const prepareValidationTrace = (input: ValidationMachineReplayInput) =>
       }
       if (signatureControl.requiredCount === 0) {
         pushSignatureWitness();
-        if (signatureControl.invalidSignatureSeen === 1) {
+        if (signatureControl.firstInvalidWitnessIndex >= 0) {
           if (
             terminalPhase !== "signatures" ||
             rejectionCode !== RejectCodes.InvalidSignature
@@ -1572,6 +1597,11 @@ export const prepareValidationTrace = (input: ValidationMachineReplayInput) =>
               ),
             );
           }
+          stopReason = {
+            AddressWitnessSignatureInvalid: {
+              witness_index: BigInt(signatureControl.firstInvalidWitnessIndex),
+            },
+          };
           stoppedAtRejection = true;
         } else {
           signatureControl = { ...signatureControl, stage: 2 };
@@ -1603,6 +1633,11 @@ export const prepareValidationTrace = (input: ValidationMachineReplayInput) =>
                 ),
               );
             }
+            stopReason = {
+              RequiredSignerUnsigned: {
+                signer_index: BigInt(signatureControl.requiredSeen),
+              },
+            };
             stoppedAtRejection = true;
             break;
           }
@@ -1618,7 +1653,7 @@ export const prepareValidationTrace = (input: ValidationMachineReplayInput) =>
           };
           if (
             requiredSeen === requiredCount &&
-            signatureControl.invalidSignatureSeen === 1
+            signatureControl.firstInvalidWitnessIndex >= 0
           ) {
             if (
               terminalPhase !== "signatures" ||
@@ -1630,6 +1665,13 @@ export const prepareValidationTrace = (input: ValidationMachineReplayInput) =>
                 ),
               );
             }
+            stopReason = {
+              AddressWitnessSignatureInvalid: {
+                witness_index: BigInt(
+                  signatureControl.firstInvalidWitnessIndex,
+                ),
+              },
+            };
             stoppedAtRejection = true;
             break;
           }
@@ -1704,6 +1746,11 @@ export const prepareValidationTrace = (input: ValidationMachineReplayInput) =>
                 RejectCodes.InvalidFieldType,
               );
             }
+            stopReason = {
+              WitnessScriptHeaderMalformed: {
+                script_index: BigInt(phaseANativeControl.scriptSeen),
+              },
+            };
             stoppedAtRejection = true;
             break;
           }
@@ -1766,6 +1813,11 @@ export const prepareValidationTrace = (input: ValidationMachineReplayInput) =>
                     RejectCodes.InvalidFieldType,
                   );
                 }
+                stopReason = {
+                  WitnessNativeScriptMalformed: {
+                    script_index: BigInt(phaseANativeControl.scriptSeen),
+                  },
+                };
                 stoppedAtRejection = true;
                 break;
               }
@@ -1781,6 +1833,11 @@ export const prepareValidationTrace = (input: ValidationMachineReplayInput) =>
                     RejectCodes.NativeScriptNodeCount,
                   );
                 }
+                stopReason = {
+                  WitnessNativeScriptNodeLimit: {
+                    script_index: BigInt(phaseANativeControl.scriptSeen),
+                  },
+                };
                 stoppedAtRejection = true;
                 break;
               }
@@ -1850,6 +1907,11 @@ export const prepareValidationTrace = (input: ValidationMachineReplayInput) =>
                     ),
                   );
                 }
+                stopReason = {
+                  WitnessNativeScriptMalformed: {
+                    script_index: BigInt(phaseANativeControl.scriptSeen),
+                  },
+                };
                 stoppedAtRejection = true;
                 break;
               }
@@ -1866,6 +1928,11 @@ export const prepareValidationTrace = (input: ValidationMachineReplayInput) =>
                       RejectCodes.NativeScriptDepth,
                     );
                   }
+                  stopReason = {
+                    WitnessNativeScriptDepthLimit: {
+                      script_index: BigInt(phaseANativeControl.scriptSeen),
+                    },
+                  };
                   stoppedAtRejection = true;
                   break;
                 }
@@ -1967,6 +2034,11 @@ export const prepareValidationTrace = (input: ValidationMachineReplayInput) =>
                   RejectCodes.InvalidFieldType,
                 );
               }
+              stopReason = {
+                WitnessNativeScriptMalformed: {
+                  script_index: BigInt(phaseANativeControl.scriptSeen),
+                },
+              };
               stoppedAtRejection = true;
               break;
             }
@@ -1978,6 +2050,11 @@ export const prepareValidationTrace = (input: ValidationMachineReplayInput) =>
                   RejectCodes.NativeScriptInvalid,
                 );
               }
+              stopReason = {
+                WitnessNativeScriptFalse: {
+                  script_index: BigInt(phaseANativeControl.scriptSeen),
+                },
+              };
               stoppedAtRejection = true;
               break;
             }
@@ -2039,6 +2116,9 @@ export const prepareValidationTrace = (input: ValidationMachineReplayInput) =>
               ),
             );
           }
+          stopReason = {
+            ObserverOrderInvalid: { observer_index: BigInt(observerSeen) },
+          };
           stoppedAtRejection = true;
           break;
         }
@@ -2106,6 +2186,7 @@ export const prepareValidationTrace = (input: ValidationMachineReplayInput) =>
         terminalPhase === "resolveInputs" &&
         rejectionCode === RejectCodes.ValidityIntervalMismatch
       ) {
+        stopReason = "ValidityIntervalExcludesBlockSlot";
         stoppedAtRejection = true;
       } else {
         resolutionCursor = 1;
@@ -2146,6 +2227,12 @@ export const prepareValidationTrace = (input: ValidationMachineReplayInput) =>
                 ),
               );
             }
+            stopReason = {
+              InputNotFound: {
+                source_kind: item.sourceKind === "spend" ? 0n : 1n,
+                input_index: UNSET_REASON_COORDINATE,
+              },
+            };
             stoppedAtRejection = true;
             break;
           }
@@ -2226,6 +2313,9 @@ export const prepareValidationTrace = (input: ValidationMachineReplayInput) =>
             item.sourceKind === "spend" &&
             signerProof.kind !== "membership"
           ) {
+            stopReason = {
+              SpendInputSignerMissing: { input_index: UNSET_REASON_COORDINATE },
+            };
             stoppedAtRejection = true;
             break;
           }
@@ -2527,6 +2617,9 @@ export const prepareValidationTrace = (input: ValidationMachineReplayInput) =>
                   witness: refusal.witness,
                 },
               );
+              stopReason = {
+                RedeemerMalformed: { redeemer_index: BigInt(item.itemIndex) },
+              };
               stoppedAtRejection = true;
               break;
             }
@@ -3011,6 +3104,7 @@ export const prepareValidationTrace = (input: ValidationMachineReplayInput) =>
                   outputNetworkRejection &&
                   BigInt(address.networkId) !== input.expectedNetworkId
                 ) {
+                  stopReason = "NetworkIdMismatch";
                   stoppedAtRejection = true;
                   break;
                 }
@@ -3020,6 +3114,11 @@ export const prepareValidationTrace = (input: ValidationMachineReplayInput) =>
                   address.paymentCredential.kind === "PubKey" &&
                   signerProof.kind !== "membership"
                 ) {
+                  stopReason = {
+                    ProtectedOutputSignerMissing: {
+                      output_index: BigInt(outputCursor),
+                    },
+                  };
                   stoppedAtRejection = true;
                   break;
                 }
@@ -3596,6 +3695,12 @@ export const prepareValidationTrace = (input: ValidationMachineReplayInput) =>
                           ),
                         );
                       }
+                      stopReason = {
+                        ScriptSourceMissing: {
+                          purpose_kind: BigInt(discovery.currentPurposeKind),
+                          purpose_index: BigInt(discovery.currentPurposeIndex),
+                        },
+                      };
                       stoppedAtRejection = true;
                       break;
                     }
@@ -3747,6 +3852,12 @@ export const prepareValidationTrace = (input: ValidationMachineReplayInput) =>
                           ),
                         );
                       }
+                      stopReason = {
+                        RedeemerMissing: {
+                          purpose_kind: BigInt(discovery.currentPurposeKind),
+                          purpose_index: BigInt(discovery.currentPurposeIndex),
+                        },
+                      };
                       stoppedAtRejection = true;
                       break;
                     }
@@ -3799,6 +3910,11 @@ export const prepareValidationTrace = (input: ValidationMachineReplayInput) =>
                             ),
                           );
                         }
+                        stopReason = {
+                          UnusedScriptWitness: {
+                            script_index: BigInt(sourceIndex),
+                          },
+                        };
                         stoppedAtRejection = true;
                         break;
                       }
@@ -3890,6 +4006,11 @@ export const prepareValidationTrace = (input: ValidationMachineReplayInput) =>
                             ),
                           );
                         }
+                        stopReason = {
+                          UnusedRedeemer: {
+                            redeemer_index: BigInt(redeemerIndex),
+                          },
+                        };
                         stoppedAtRejection = true;
                         break;
                       }
@@ -3961,6 +4082,7 @@ export const prepareValidationTrace = (input: ValidationMachineReplayInput) =>
     }
     return {
       stoppedAtRejection,
+      stopReason,
       authenticatedNativeScriptsBaseFields,
       authenticatedNativeScriptsWitnessCbor,
       resolutionScheduleHash,

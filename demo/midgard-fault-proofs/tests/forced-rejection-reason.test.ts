@@ -2,6 +2,8 @@ import * as SDK from "@al-ft/midgard-sdk";
 import {
   type RejectCode,
   RejectCodes,
+  REJECTION_REASON_ARMS_BY_CODE,
+  rejectionReasonArmName,
   type RejectSubject,
 } from "@al-ft/midgard-validation";
 import { describe, expect, it } from "vitest";
@@ -15,17 +17,16 @@ import {
   forcedVerdictForRejection,
 } from "../src/workflow/forced-rejection-reason.js";
 
-/** The descriptor-code bytes of a node reject code, as `rejection_code_of` returns them. */
-const codeHex = (code: string): string =>
-  Buffer.from(code, "ascii").toString("hex");
-
-const DESCRIPTOR_CODE_HEXES = new Set<string>(
-  Object.values(SDK.RejectionCodes),
-);
 const ALL_CODES = Object.values(RejectCodes) as readonly RejectCode[];
 const ARM_CODES = ALL_CODES.filter((code) =>
-  DESCRIPTOR_CODE_HEXES.has(codeHex(code)),
+  REJECTION_REASON_ARMS_BY_CODE.has(code),
 );
+
+/** Whether the machine can end a `code` rejection in `reason`'s arm. */
+const armOfCode = (code: RejectCode, reason: SDK.RejectionReason): boolean =>
+  REJECTION_REASON_ARMS_BY_CODE.get(code)?.includes(
+    rejectionReasonArmName(reason),
+  ) ?? false;
 
 /** One subject per `RejectSubject` arm, each at a non-zero ordinal, with its code. */
 const SUBJECT_CASES: readonly (readonly [
@@ -136,18 +137,24 @@ const SUBJECT_CASES: readonly (readonly [
   ],
   [
     RejectCodes.NativeScriptInvalid,
-    { arm: "ExecutionNativeScriptFalse", index: 12n },
-    { ExecutionNativeScriptFalse: { execution_index: 12n } },
+    { arm: "ExecutionNativeScriptFalse", purposeKind: 0n, purposeIndex: 12n },
+    { ExecutionNativeScriptFalse: { purpose_kind: 0n, purpose_index: 12n } },
   ],
   [
     RejectCodes.PlutusScriptInvalid,
-    { arm: "ReceivePurposePlutusV3Forbidden", index: 13n },
-    { ReceivePurposePlutusV3Forbidden: { execution_index: 13n } },
+    {
+      arm: "ReceivePurposePlutusV3Forbidden",
+      purposeKind: 3n,
+      purposeIndex: 13n,
+    },
+    {
+      ReceivePurposePlutusV3Forbidden: { purpose_kind: 3n, purpose_index: 13n },
+    },
   ],
   [
     RejectCodes.PlutusScriptInvalid,
-    { arm: "PlutusExecutionFailed", index: 14n },
-    { PlutusExecutionFailed: { execution_index: 14n } },
+    { arm: "PlutusExecutionFailed", purposeKind: 1n, purposeIndex: 14n },
+    { PlutusExecutionFailed: { purpose_kind: 1n, purpose_index: 14n } },
   ],
   [
     RejectCodes.InvalidFieldType,
@@ -197,18 +204,16 @@ const LOCATED_CODES = ARM_CODES.filter(
 );
 
 describe("forced rejection reason", () => {
-  it("round-trips the rejection code of every code an arm covers", () => {
+  it("writes an arm of the rejection's own code for every code an arm covers", () => {
     expect(ARM_CODES).toHaveLength(19);
     for (const [code] of SIMPLE_FAULTS) {
-      expect(SDK.rejectionCodeOf(forcedRejectionReason({ code })), code).toBe(
-        codeHex(code),
-      );
+      expect(armOfCode(code, forcedRejectionReason({ code })), code).toBe(true);
     }
     for (const [code, subject] of SUBJECT_CASES) {
       expect(
-        SDK.rejectionCodeOf(forcedRejectionReason({ code, subject })),
+        armOfCode(code, forcedRejectionReason({ code, subject })),
         subject.arm,
-      ).toBe(codeHex(code));
+      ).toBe(true);
     }
   });
 
@@ -271,9 +276,9 @@ describe("forced rejection reason", () => {
 });
 
 describe("rejection codes without an arm", () => {
-  it("are exactly the node codes outside the descriptor code set", () => {
+  it("are exactly the node codes no machine arm covers", () => {
     const derived = ALL_CODES.filter(
-      (code) => !DESCRIPTOR_CODE_HEXES.has(codeHex(code)),
+      (code) => !REJECTION_REASON_ARMS_BY_CODE.has(code),
     );
     expect([...FORCED_REJECTION_NO_ARM_CODES].sort()).toStrictEqual(
       [...derived].sort(),
@@ -308,7 +313,7 @@ describe("rejection codes without an arm", () => {
           SIMPLE_FAULTS.some(([simple]) => simple === code),
           code,
         ).toBe(true);
-        expect(SDK.rejectionCodeOf(reason), code).toBe(codeHex(code));
+        expect(armOfCode(code, reason), code).toBe(true);
       } catch (error) {
         expect(error, code).toBeInstanceOf(ForcedRejectionStopped);
         expect((error as ForcedRejectionStopped).code, code).toBe(code);

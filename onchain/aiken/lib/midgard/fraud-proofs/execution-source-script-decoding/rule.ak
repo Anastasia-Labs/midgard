@@ -83,18 +83,9 @@ pub fn bind_execution_v1(
   expect execution_index >= 0
   let accused_class = if subject.direction == substrate.direction_wrongful_rejection {
     when substrate.rejection_reason_of_v1(subject) is {
-      ExecutionNativeScriptMalformed { execution_index: actual } -> {
-        expect actual == execution_index
-        result_malformed
-      }
-      ExecutionNativeScriptNodeLimit { execution_index: actual } -> {
-        expect actual == execution_index
-        result_node_limit
-      }
-      ExecutionNativeScriptDepthLimit { execution_index: actual } -> {
-        expect actual == execution_index
-        result_depth_limit
-      }
+      ExecutionNativeScriptMalformed { .. } -> result_malformed
+      ExecutionNativeScriptNodeLimit { .. } -> result_node_limit
+      ExecutionNativeScriptDepthLimit { .. } -> result_depth_limit
       _ -> fail @"reason outside execution-source-script-decoding"
     }
   } else {
@@ -126,27 +117,21 @@ fn event_key_matches_subject(
   }
 }
 
-// Step 01 binds this exact reason and coordinate into the authenticated thread.
-// Keep the canonical subject check while avoiding the unrelated catalogue arms.
-fn bound_rejection_code(bound: BoundExecutionV1) -> ByteArray {
-  when substrate.rejection_reason_of_v1(bound.subject) is {
-    ExecutionNativeScriptMalformed { execution_index } -> {
-      expect execution_index == bound.execution_index
-      expect bound.accused_class == result_malformed
-      rejection_reason_v1.reject_invalid_field_type
-    }
-    ExecutionNativeScriptNodeLimit { execution_index } -> {
-      expect execution_index == bound.execution_index
-      expect bound.accused_class == result_node_limit
-      rejection_reason_v1.reject_native_script_node_count
-    }
-    ExecutionNativeScriptDepthLimit { execution_index } -> {
-      expect execution_index == bound.execution_index
-      expect bound.accused_class == result_depth_limit
-      rejection_reason_v1.reject_native_script_depth
-    }
+// Step 01 binds this exact reason into the authenticated thread. The reason is
+// the rejection-code preimage, its arm must match the accused scan class, and
+// its purpose key must name the purpose leaf opened at the bound execution.
+fn bound_rejection_reason(
+  bound: BoundExecutionV1,
+) -> rejection_reason_v1.RejectionReasonV1 {
+  let reason = substrate.rejection_reason_of_v1(bound.subject)
+  let class = when reason is {
+    ExecutionNativeScriptMalformed { .. } -> result_malformed
+    ExecutionNativeScriptNodeLimit { .. } -> result_node_limit
+    ExecutionNativeScriptDepthLimit { .. } -> result_depth_limit
     _ -> fail @"reason outside execution-source-script-decoding"
   }
+  expect bound.accused_class == class
+  reason
 }
 
 pub fn authenticate_execution_source_v1(
@@ -217,10 +202,16 @@ pub fn authenticate_execution_source_v1(
       if bound.subject.direction == substrate.direction_wrongful_acceptance {
         descriptor.verdict == validation_trace_v1.Accepted
       } else {
+        let reason = bound_rejection_reason(bound)
         and {
           descriptor.verdict == validation_trace_v1.Rejected,
           descriptor.rejection_code_hash == validation_trace_v1.hash_rejection_code(
-            bound_rejection_code(bound),
+            reason,
+          ),
+          rejection_reason_v1.names_execution_purpose(
+            reason,
+            purpose_kind,
+            purpose_index,
           ),
         }
       },
@@ -466,12 +457,11 @@ pub fn encode_scan_state_v1(value: ExecutionSourceScanStateV1) -> ByteArray {
   cbor.serialise(value)
 }
 
-// The publication optimization is equivalent to the catalogue mapping on every
-// reason/index the authenticated Step 01 continuation can produce. Deliberately
-// forged intermediate subjects are refused instead of widening that domain.
+// The bound reason is the exact rejection-code preimage the authenticated Step 01
+// continuation carries. Deliberately forged intermediate subjects are refused
+// instead of widening that domain.
 fn publication_test_bound(
   reason: rejection_reason_v1.RejectionReasonV1,
-  execution_index: Int,
 ) -> BoundExecutionV1 {
   bind_execution_v1(
     substrate.VerdictSubjectV1 {
@@ -484,69 +474,82 @@ fn publication_test_bound(
     },
     #"0000000000000000000000000000000000000000000000000000000000000000",
     1,
-    execution_index,
+    0,
   )
 }
 
-test publication_reason_mapping_matches_catalogue_on_bound_domain() {
+test bound_reason_is_the_subject_reason() {
   list.all(
-    [0, 1, 255, 65_536],
-    fn(execution_index) {
+    [Pair(0, 0), Pair(1, 1), Pair(2, 255), Pair(3, 65_536)],
+    fn(coordinate) {
+      let Pair(purpose_kind, purpose_index) = coordinate
       let reasons = [
-        ExecutionNativeScriptMalformed { execution_index },
-        ExecutionNativeScriptNodeLimit { execution_index },
-        ExecutionNativeScriptDepthLimit { execution_index },
+        ExecutionNativeScriptMalformed { purpose_kind, purpose_index },
+        ExecutionNativeScriptNodeLimit { purpose_kind, purpose_index },
+        ExecutionNativeScriptDepthLimit { purpose_kind, purpose_index },
       ]
       list.all(
         reasons,
         fn(reason) {
-          bound_rejection_code(publication_test_bound(reason, execution_index)) == rejection_reason_v1.rejection_code_of(
-            reason,
-          )
+          bound_rejection_reason(publication_test_bound(reason)) == reason
         },
       )
     },
   )
 }
 
+test bound_reason_names_only_its_own_purpose() {
+  let reason = ExecutionNativeScriptNodeLimit {
+    purpose_kind: 1,
+    purpose_index: 2,
+  }
+  and {
+    rejection_reason_v1.names_execution_purpose(reason, 1, 2),
+    !rejection_reason_v1.names_execution_purpose(reason, 1, 1),
+    !rejection_reason_v1.names_execution_purpose(reason, 0, 2),
+    !rejection_reason_v1.names_execution_purpose(
+      rejection_reason_v1.EmptyInputs,
+      1,
+      2,
+    ),
+  }
+}
+
 fn publication_test_valid_bound() -> BoundExecutionV1 {
   publication_test_bound(
-    rejection_reason_v1.ExecutionNativeScriptMalformed { execution_index: 0 },
-    0,
+    rejection_reason_v1.ExecutionNativeScriptMalformed {
+      purpose_kind: 0,
+      purpose_index: 0,
+    },
   )
 }
 
-test publication_reason_mapping_refuses_noncanonical_subject() fail {
+test bound_reason_refuses_noncanonical_subject() fail {
   let bound = publication_test_valid_bound()
   let subject = bound.subject
-  bound_rejection_code(
+  bound_rejection_reason(
     BoundExecutionV1 {
       ..bound,
       subject: substrate.VerdictSubjectV1 { ..subject, version: 0 },
     },
-  ) != #""
+  ) != rejection_reason_v1.EmptyInputs
 }
 
-test publication_reason_mapping_refuses_missing_reason() fail {
+test bound_reason_refuses_missing_reason() fail {
   let bound = publication_test_valid_bound()
   let subject = bound.subject
-  bound_rejection_code(
+  bound_rejection_reason(
     BoundExecutionV1 {
       ..bound,
       subject: substrate.VerdictSubjectV1 { ..subject, rejection_reason: None },
     },
-  ) != #""
+  ) != rejection_reason_v1.EmptyInputs
 }
 
-test publication_reason_mapping_refuses_another_execution_index() fail {
-  let bound = publication_test_valid_bound()
-  bound_rejection_code(BoundExecutionV1 { ..bound, execution_index: 1 }) != #""
-}
-
-test publication_reason_mapping_refuses_another_family_reason() fail {
+test bound_reason_refuses_another_family_reason() fail {
   let bound = publication_test_valid_bound()
   let subject = bound.subject
-  bound_rejection_code(
+  bound_rejection_reason(
     BoundExecutionV1 {
       ..bound,
       subject: substrate.VerdictSubjectV1 {
@@ -554,10 +557,10 @@ test publication_reason_mapping_refuses_another_family_reason() fail {
         rejection_reason: Some(rejection_reason_v1.EmptyInputs),
       },
     },
-  ) != #""
+  ) != rejection_reason_v1.EmptyInputs
 }
 
-test publication_reason_mapping_refuses_another_accused_class() fail {
+test bound_reason_refuses_another_accused_class() fail {
   let bound = publication_test_valid_bound()
-  bound_rejection_code(BoundExecutionV1 { ..bound, accused_class: 17 }) != #""
+  bound_rejection_reason(BoundExecutionV1 { ..bound, accused_class: 17 }) != rejection_reason_v1.EmptyInputs
 }

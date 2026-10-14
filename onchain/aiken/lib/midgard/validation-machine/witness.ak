@@ -164,6 +164,8 @@ pub fn encode_phase_a_native_scripts_scan_witness(
   signer_count: Int,
   signer_peaks: List<validation_merkle_v1.FrontierPeak>,
   continuation_cbor: ByteArray,
+  purpose_kind: Int,
+  purpose_index: Int,
 ) -> ByteArray {
   expect bytearray.length(resolution_schedule_hash) == 32
   expect stage >= 0
@@ -208,6 +210,8 @@ pub fn encode_phase_a_native_scripts_scan_witness(
     |> bytearray.concat(encode_definite_array_header(2))
     |> bytearray.concat(validation_merkle_v1.encode_frontier(signer_peaks))
     |> bytearray.concat(cbor.serialise(builtin.b_data(continuation_cbor)))
+    |> bytearray.concat(cbor.serialise(purpose_kind))
+    |> bytearray.concat(cbor.serialise(purpose_index))
     |> bytearray.concat(#"ff")
 }
 
@@ -226,7 +230,7 @@ pub fn encode_signatures_scan_witness(
   previous_signer_hash: ByteArray,
   signer_count: Int,
   signer_peaks: List<validation_merkle_v1.FrontierPeak>,
-  invalid_signature_seen: Int,
+  first_invalid_witness_index: Int,
 ) -> ByteArray {
   expect bytearray.length(resolution_schedule_hash) == 32
   expect stage >= 0
@@ -242,7 +246,7 @@ pub fn encode_signatures_scan_witness(
   expect signer_count >= 0
   expect
     validation_merkle_v1.frontier_is_well_formed(signer_count, signer_peaks)
-  expect invalid_signature_seen == 0 || invalid_signature_seen == 1
+  expect first_invalid_witness_index >= -1
   encode_definite_array_header(15)
     |> bytearray.concat(encode_definite_bytes(compact_cbor))
     |> bytearray.concat(encode_definite_bytes(witness_set_compact_cbor))
@@ -258,7 +262,7 @@ pub fn encode_signatures_scan_witness(
     |> bytearray.concat(encode_definite_bytes(previous_signer_hash))
     |> bytearray.concat(cbor.serialise(signer_count))
     |> bytearray.concat(validation_merkle_v1.encode_frontier(signer_peaks))
-    |> bytearray.concat(cbor.serialise(invalid_signature_seen))
+    |> bytearray.concat(cbor.serialise(first_invalid_witness_index))
 }
 
 pub fn encode_phase_a_script_preconditions_witness(
@@ -844,7 +848,7 @@ pub fn signatures_control_from_witness(
         resolution_schedule_hash_data, stage_data, address_count_data,
         required_count_data, address_seen_data, required_seen_data,
         previous_order_key_data, previous_signer_hash_data, signer_count_data,
-        signer_peaks_data, invalid_signature_seen_data,
+        signer_peaks_data, first_invalid_witness_index_data,
       ]
     = builtin.un_list_data(data)
   SignaturesControlV1 {
@@ -864,7 +868,9 @@ pub fn signatures_control_from_witness(
     previous_signer_hash: builtin.un_b_data(previous_signer_hash_data),
     signer_count: builtin.un_i_data(signer_count_data),
     signer_peaks: decode_frontier_peaks(signer_peaks_data),
-    invalid_signature_seen: builtin.un_i_data(invalid_signature_seen_data),
+    first_invalid_witness_index: builtin.un_i_data(
+      first_invalid_witness_index_data,
+    ),
   }
 }
 
@@ -923,8 +929,8 @@ pub fn signatures_control_is_bound(
       control.signer_count,
       control.signer_peaks,
     ),
-    control.invalid_signature_seen == 0 || control.invalid_signature_seen == 1,
-    control.invalid_signature_seen <= control.address_seen,
+    control.first_invalid_witness_index >= -1,
+    control.address_seen > 0 || control.first_invalid_witness_index == -1,
     if control.stage == 0 {
       and {
         control.required_seen == 0,
@@ -969,7 +975,7 @@ pub fn signatures_control_is_bound(
       control.previous_signer_hash,
       control.signer_count,
       control.signer_peaks,
-      control.invalid_signature_seen,
+      control.first_invalid_witness_index,
     ),
   }
 }
@@ -986,7 +992,7 @@ pub fn phase_a_native_control_from_witness(
         script_seen_data, contains_non_native_script_data, item_length_data,
         item_commitment_data, cursor_data, stack_root_data, stack_depth_data,
         node_count_data, result_data, signer_count_data,
-        signer_continuation_data,
+        signer_continuation_data, purpose_kind_data, purpose_index_data,
       ]
     = builtin.un_list_data(data)
   expect [signer_peaks_data,
@@ -1015,6 +1021,8 @@ pub fn phase_a_native_control_from_witness(
     signer_count: builtin.un_i_data(signer_count_data),
     signer_peaks: decode_frontier_peaks(signer_peaks_data),
     continuation_cbor: builtin.un_b_data(continuation_cbor_data),
+    purpose_kind: builtin.un_i_data(purpose_kind_data),
+    purpose_index: builtin.un_i_data(purpose_index_data),
   }
 }
 
@@ -1145,6 +1153,8 @@ pub fn phase_a_native_control_is_bound(
       control.signer_count,
       control.signer_peaks,
       control.continuation_cbor,
+      control.purpose_kind,
+      control.purpose_index,
     ),
   }
 }
@@ -1258,6 +1268,8 @@ pub fn phase_a_native_control_is_bound_carried(
       control.signer_count,
       control.signer_peaks,
       control.continuation_cbor,
+      control.purpose_kind,
+      control.purpose_index,
     ),
   }
 }
@@ -1337,6 +1349,8 @@ pub fn phase_a_native_payload_control_is_bound(
       control.signer_count,
       control.signer_peaks,
       control.continuation_cbor,
+      control.purpose_kind,
+      control.purpose_index,
     ),
   }
 }
@@ -3657,6 +3671,8 @@ pub fn encode_cek_witness_v1(
   execution_cpu_limit: Int,
   execution_memory_limit: Int,
   program_envelope_hash: ByteArray,
+  purpose_kind: Int,
+  purpose_index: Int,
 ) -> ByteArray {
   expect execution_cursor >= 0
   expect execution_cursor <= native_control.execution_count
@@ -3675,8 +3691,8 @@ pub fn encode_cek_witness_v1(
   // The witness must never end with a possibly-empty bytestring:
   // `aiken/cbor.deserialise` rejects a zero-length final item at an
   // exhausted cursor, so `program_envelope_hash` (empty before program
-  // selection) sits before the two integer limits.
-  #"89"
+  // selection) sits before the two integer limits and the purpose key.
+  #"8b"
     |> bytearray.concat(
         encode_definite_bytes(encode_native_scripts_control_v1(native_control)),
       )
@@ -3688,6 +3704,8 @@ pub fn encode_cek_witness_v1(
     |> bytearray.concat(encode_definite_bytes(program_envelope_hash))
     |> bytearray.concat(cbor.serialise(execution_cpu_limit))
     |> bytearray.concat(cbor.serialise(execution_memory_limit))
+    |> bytearray.concat(cbor.serialise(purpose_kind))
+    |> bytearray.concat(cbor.serialise(purpose_index))
 }
 
 pub fn encode_value_accumulator_v1(accumulator: ValueAccumulatorV1) -> ByteArray {
@@ -4028,7 +4046,8 @@ pub fn cek_witness_control_v1(
         native_control_cbor_data, context_control_cbor_data,
         execution_cursor_data, completed_cpu_data, completed_memory_data,
         active_state_hash_data, program_envelope_hash_data,
-        execution_cpu_limit_data, execution_memory_limit_data,
+        execution_cpu_limit_data, execution_memory_limit_data, purpose_kind_data,
+        purpose_index_data,
       ]
     = builtin.un_list_data(data)
   CekWitnessControlV1 {
@@ -4043,6 +4062,8 @@ pub fn cek_witness_control_v1(
     program_envelope_hash: builtin.un_b_data(program_envelope_hash_data),
     execution_cpu_limit: builtin.un_i_data(execution_cpu_limit_data),
     execution_memory_limit: builtin.un_i_data(execution_memory_limit_data),
+    purpose_kind: builtin.un_i_data(purpose_kind_data),
+    purpose_index: builtin.un_i_data(purpose_index_data),
   }
 }
 
@@ -4084,6 +4105,8 @@ pub fn cek_witness_is_well_formed_v1(
       cek.execution_cpu_limit,
       cek.execution_memory_limit,
       cek.program_envelope_hash,
+      cek.purpose_kind,
+      cek.purpose_index,
     ),
   }
 }

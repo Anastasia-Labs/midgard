@@ -529,7 +529,10 @@ fn forced_tx(
 
 fn verdict_plutus_failed() -> rejection_reason_v1.OperatorVerdictV1 {
   rejection_reason_v1.ForcedTxInvalid {
-    reason: rejection_reason_v1.PlutusExecutionFailed { execution_index: 0 },
+    reason: rejection_reason_v1.PlutusExecutionFailed {
+      purpose_kind: 0,
+      purpose_index: 0,
+    },
   }
 }
 
@@ -3736,7 +3739,8 @@ fn late_rejected_forced_source_is_valid(
           validity_override: if mutate_reason {
             rejection_reason_v1.ForcedTxInvalid {
               reason: rejection_reason_v1.PlutusExecutionFailed {
-                execution_index: 1,
+                purpose_kind: 0,
+                purpose_index: 1,
               },
             }
           } else {

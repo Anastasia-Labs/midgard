@@ -27,7 +27,7 @@ import { RejectCodes } from "./types.js";
 import { mintDeltaToScriptMintValue } from "./value-accounting.js";
 
 /** `purpose_kind` coordinate of a script purpose (0 spend .. 3 receive). */
-const PURPOSE_KIND: Record<MidgardScriptPurpose["kind"], bigint> = {
+export const PURPOSE_KIND: Record<MidgardScriptPurpose["kind"], bigint> = {
   spend: 0n,
   mint: 1n,
   observe: 2n,

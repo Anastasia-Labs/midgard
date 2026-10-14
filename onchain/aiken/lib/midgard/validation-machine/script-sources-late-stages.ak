@@ -12,7 +12,8 @@ use midgard/ledger_output_v1
 use midgard/native_tx_field_access_v1
 use midgard/redeemer_item_proof_v1
 use midgard/rejection_reason_v1.{
-  reject_invalid_field_type, reject_missing_required_witness,
+  ObserverOrderInvalid, RedeemerMissing, ScriptSourceMissing, UnusedRedeemer,
+  UnusedScriptWitness,
 }
 use midgard/script_proof_v1
 use midgard/script_sources_descriptor as descriptor_claim
@@ -239,7 +240,7 @@ pub fn script_sources_stage_seven_with_observer_commitment(
         rejected_successor_is_exact(
           pre,
           witness.claimed_successor,
-          reject_invalid_field_type,
+          ObserverOrderInvalid { observer_index: control.observer_scan.seen },
         )
       } else {
         script_sources_control_successor_is_exact(
@@ -679,7 +680,7 @@ pub fn verify_script_sources_stage_seven_observer_semantics_v1(
     rejected_successor_is_exact(
       pre,
       witness.claimed_successor,
-      reject_invalid_field_type,
+      ObserverOrderInvalid { observer_index: observer_scan.seen },
     )
   } else {
     and {
@@ -777,7 +778,7 @@ pub fn verify_script_sources_stage_seven_observer_bound_semantics_v1(
     rejected_successor_is_exact(
       pre,
       witness.claimed_successor,
-      reject_invalid_field_type,
+      ObserverOrderInvalid { observer_index: observer_scan.seen },
     )
   } else {
     and {
@@ -1122,7 +1123,10 @@ pub fn script_sources_stage_nine(
       rejected_successor_is_exact(
         pre,
         witness.claimed_successor,
-        reject_missing_required_witness,
+        ScriptSourceMissing {
+          purpose_kind: discovery.current_purpose_kind,
+          purpose_index: discovery.current_purpose_index,
+        },
       ),
     }
   } else {
@@ -1505,7 +1509,10 @@ pub fn verify_script_sources_stage_nine_missing_semantics_v1(
     rejected_successor_is_exact(
       pre,
       witness.claimed_successor,
-      reject_missing_required_witness,
+      ScriptSourceMissing {
+        purpose_kind: control.discovery.current_purpose_kind,
+        purpose_index: control.discovery.current_purpose_index,
+      },
     ),
   }
 }
@@ -1536,7 +1543,10 @@ pub fn script_sources_stage_ten(
       rejected_successor_is_exact(
         pre,
         witness.claimed_successor,
-        reject_missing_required_witness,
+        RedeemerMissing {
+          purpose_kind: discovery.current_purpose_kind,
+          purpose_index: discovery.current_purpose_index,
+        },
       ),
     }
   } else if discovery.redeemer_item_control_hash == #"" {
@@ -1757,7 +1767,10 @@ pub fn verify_script_sources_stage_ten_missing_semantics_v1(
     rejected_successor_is_exact(
       pre,
       witness.claimed_successor,
-      reject_missing_required_witness,
+      RedeemerMissing {
+        purpose_kind: control.discovery.current_purpose_kind,
+        purpose_index: control.discovery.current_purpose_index,
+      },
     ),
   }
 }
@@ -1818,7 +1831,7 @@ pub fn script_sources_stage_eleven(
         rejected_successor_is_exact(
           pre,
           witness.claimed_successor,
-          reject_invalid_field_type,
+          UnusedScriptWitness { script_index: source_index },
         )
       } else {
         script_discovery_successor_is_exact(
@@ -1952,7 +1965,7 @@ pub fn verify_script_sources_stage_eleven_source_semantics_v1(
       rejected_successor_is_exact(
         pre,
         witness.claimed_successor,
-        reject_invalid_field_type,
+        UnusedScriptWitness { script_index: source_index },
       )
     } else {
       script_discovery_successor_is_exact(
@@ -2064,7 +2077,7 @@ pub fn script_sources_stage_twelve(
                   rejected_successor_is_exact(
                     pre,
                     witness.claimed_successor,
-                    reject_invalid_field_type,
+                    UnusedRedeemer { redeemer_index: descriptor.item_index },
                   )
                 } else {
                   script_discovery_successor_is_exact(
@@ -2323,7 +2336,7 @@ pub fn verify_descriptor_used(
       rejected_successor_is_exact(
         pre,
         witness.claimed_successor,
-        reject_invalid_field_type,
+        UnusedRedeemer { redeemer_index: next.item_index },
       )
     } else {
       let after = if terminal {

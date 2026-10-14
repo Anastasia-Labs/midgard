@@ -10,7 +10,7 @@ import {
   hashMidgardValidationLedgerDelta,
   hashMidgardValidationLedgerDeltaOperation,
   hashMidgardValidationMachineState,
-  hashMidgardValidationRejectionCode,
+  hashMidgardValidationRejectionReasonV1,
   hashMidgardValidationWorkWitness,
   MIDGARD_VALIDATION_MACHINE_VERSION,
   MIDGARD_VALIDATION_NO_REJECTION_CODE_HASH,
@@ -156,7 +156,7 @@ describe("validation trace commitments", () => {
 
   it("round-trips exact terminal descriptors", () => {
     const rejectionCodeHash =
-      hashMidgardValidationRejectionCode("E_FEE_TOO_LOW");
+      hashMidgardValidationRejectionReasonV1("FeeBelowMinimum");
     const tree = buildMidgardValidationTraceTree(
       [hash(10), hash(11)],
       "rejected",
@@ -258,8 +258,9 @@ describe("validation trace commitments", () => {
   });
 
   it("binds terminal rejection codes to rejected verdicts", () => {
-    const rejectionCodeHash =
-      hashMidgardValidationRejectionCode("E_FAILED_SCRIPT");
+    const rejectionCodeHash = hashMidgardValidationRejectionReasonV1({
+      PlutusExecutionFailed: { purpose_kind: 0n, purpose_index: 0n },
+    });
     expect(rejectionCodeHash).toHaveLength(32);
     expect(() =>
       buildMidgardValidationTraceTree(

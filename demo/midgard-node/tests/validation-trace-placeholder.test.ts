@@ -34,7 +34,7 @@ describe("node validation-trace members", () => {
           ),
           sourceKind: vector.transaction!.sourceKind,
           verdict: vector.verdict,
-          rejectionCode: vector.rejectionCode as never,
+          rejectionReason: vector.rejectionReason,
         })),
       }),
     );
@@ -61,7 +61,7 @@ describe("node validation-trace members", () => {
               canonicalTransactionCbor: Buffer.from("00", "hex"),
               sourceKind: "normal",
               verdict: "accepted",
-              rejectionCode: null,
+              rejectionReason: null,
             },
           ],
         }),

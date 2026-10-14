@@ -16,8 +16,9 @@ import {
 import {
   buildMidgardValidationTraceTree,
   hashMidgardValidationEventKey,
-  hashMidgardValidationRejectionCode,
+  hashMidgardValidationRejectionReasonV1,
   MIDGARD_VALIDATION_NO_REJECTION_CODE_HASH,
+  type MidgardRejectionReasonV1,
   type MidgardValidationTraceDescriptor,
   MidgardValidationVerdict,
 } from "@al-ft/midgard-core/validation-trace";
@@ -88,24 +89,25 @@ export const validationTransactionCommitmentV1 = ({
  * `trace_root = branch(leaf(init), leaf(term))`, `step_count = 1`.
  *
  * `verdict` is the one-byte validation verdict code. An accepted verdict
- * carries no rejection code (its hash is the all-zero hash); a rejected one
- * must carry its frozen `E_*` code.
+ * carries no rejection reason (its hash is the all-zero hash); a rejected one
+ * carries its exact `RejectionReasonV1`, hashed as the machine's terminal
+ * state hashes it.
  */
 export const placeholderValidationTraceDescriptorV1 = (
   event: PlaceholderValidationTraceEventV1,
   verdict: "accepted" | "rejected",
-  rejectionCode: string | null,
+  rejectionReason: MidgardRejectionReasonV1 | null,
 ): MidgardValidationTraceDescriptor => {
-  if ((verdict === "accepted") !== (rejectionCode === null)) {
+  if ((verdict === "accepted") !== (rejectionReason === null)) {
     throw new Error(
-      "placeholder validation descriptor verdict and rejection code disagree",
+      "placeholder validation descriptor verdict and rejection reason disagree",
     );
   }
   const eventKeyHash = hashMidgardValidationEventKey(event.eventKeyCbor);
   const rejectionCodeHash =
-    rejectionCode === null
+    rejectionReason === null
       ? MIDGARD_VALIDATION_NO_REJECTION_CODE_HASH
-      : hashMidgardValidationRejectionCode(rejectionCode);
+      : hashMidgardValidationRejectionReasonV1(rejectionReason);
   const initialStateHash = hash32(
     PLACEHOLDER_INITIAL_STATE_DOMAIN,
     eventKeyHash,

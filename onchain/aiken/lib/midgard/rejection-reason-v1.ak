@@ -11,7 +11,7 @@
 //// in-band extension point).
 ////
 //// The constructor tag IS the rejection reason; payloads carry **only**
-//// subject coordinates (field/item/witness/output/redeemer/execution
+//// subject coordinates (field/item/witness/output/redeemer/purpose
 //// ordinals) — never expected values, hashes, or recomputable arguments
 //// (catalogue design note 4).
 ////
@@ -21,16 +21,16 @@
 ////     sequence (wire order, not visitation order);
 ////   - source kind: 0 = spend (field 0), 1 = reference (field 1);
 ////   - purpose coordinate: (purpose_kind, purpose_index), kind 0 = spend,
-////     1 = mint, 2 = observer, 3 = receive, index 0-based within that
-////     kind's canonical enumeration order;
-////   - execution ordinal: 0-based position in the execution frontier
-////     (discovery completion order).
+////     1 = mint, 2 = observer, 3 = receive; purpose_index is the redeemer
+////     pointer index, the 0-based position among the transaction's sorted
+////     spent inputs, mint policies, observers or receive hashes (for
+////     receive: the sorted distinct-hash ordinal, not an output position).
 ////
-//// This module also hosts the canonical `pub` definitions of the machine's
-//// 19 `E_*` rejection-code byte constants; `validation_machine_v1` imports
-//// them (identical byte values — the machine's encodings are unchanged), and
-//// `rejection_code_of` is the total 47 → 19 bridge back to the frozen
-//// descriptor format via `hash_rejection_code`.
+//// The reason itself is the rejection preimage: the machine's terminal
+//// rejection binds `validation_trace_v1.hash_rejection_code(reason)`, the
+//// domain-separated blake2b-256 of the reason's Plutus Data CBOR, and the
+//// forced-verdict check compares that hash with the descriptor's
+//// `rejection_code_hash` directly.
 ////
 //// A reserved family, not populated in V1: `GuardrailExceeded { guardrail,
 //// field_index, item_index }` — kept unpopulated per the 2026-08-24 owner
@@ -38,87 +38,6 @@
 //// excludes guardrail-violating preimages (catalogue §4.3 resolution,
 //// design note 6); enacting it would be a format revision like any other
 //// arm addition.
-
-// ── The 19 `E_*` rejection-code constants (canonical definitions) ──────
-// ASCII of the label named in each comment; values identical to the
-// machine's historical private copies — the descriptor bridge
-// (`hash_rejection_code`) is frozen on these bytes.
-
-/// `E_FIELD_PREIMAGE_SIZE`
-pub const reject_field_preimage_size =
-  #"455f4649454c445f505245494d4147455f53495a45"
-
-/// `E_ASSET_COUNT`
-pub const reject_asset_count = #"455f41535345545f434f554e54"
-
-/// `E_INVALID_FIELD_TYPE`
-pub const reject_invalid_field_type =
-  #"455f494e56414c49445f4649454c445f54595045"
-
-/// `E_NATIVE_SCRIPT_DEPTH`
-pub const reject_native_script_depth =
-  #"455f4e41544956455f5343524950545f4445505448"
-
-/// `E_NATIVE_SCRIPT_NODE_COUNT`
-pub const reject_native_script_node_count =
-  #"455f4e41544956455f5343524950545f4e4f44455f434f554e54"
-
-/// `E_MIN_ADA` (#618 ruling 1, R8; decision 0003 Q27). The stable rejection
-/// code the parameterized minimum-Ada floor binds to. Raised by the ValueAndMint
-/// stage-3 output-descriptor step when the authenticated descriptor of one
-/// transaction output does not fund
-/// `min_ada_lovelace_v1(env.coins_per_utxo_byte, descriptor.total_length)` --
-/// the MIN-ADA-TX violation shape of technical-spec §5. MIN-ADA-UTXO, the
-/// post-block UTxO-set shape of the same floor, is Q27's own membership shape
-/// and is not raised here.
-pub const reject_min_ada = #"455f4d494e5f414441"
-
-/// `E_EMPTY_INPUTS`
-pub const reject_empty_inputs = #"455f454d5054595f494e50555453"
-
-/// `E_DUPLICATE_INPUT_IN_TX`
-pub const reject_duplicate_input =
-  #"455f4455504c49434154455f494e5055545f494e5f5458"
-
-/// `E_NETWORK_ID_MISMATCH`
-pub const reject_network_id_mismatch =
-  #"455f4e4554574f524b5f49445f4d49534d41544348"
-
-/// `E_MIN_FEE`
-pub const reject_min_fee = #"455f4d494e5f464545"
-
-/// `E_INVALID_VALIDITY_INTERVAL_FORMAT`
-pub const reject_invalid_validity_interval_format =
-  #"455f494e56414c49445f56414c49444954595f494e54455256414c5f464f524d4154"
-
-/// `E_MISSING_REQUIRED_WITNESS`
-pub const reject_missing_required_witness =
-  #"455f4d495353494e475f52455155495245445f5749544e455353"
-
-/// `E_INVALID_SIGNATURE`
-pub const reject_invalid_signature = #"455f494e56414c49445f5349474e4154555245"
-
-/// `E_NATIVE_SCRIPT_INVALID`
-pub const reject_native_script_invalid =
-  #"455f4e41544956455f5343524950545f494e56414c4944"
-
-/// `E_PLUTUS_SCRIPT_INVALID`
-pub const reject_plutus_script_invalid =
-  #"455f504c555455535f5343524950545f494e56414c4944"
-
-/// `E_VALIDITY_INTERVAL_MISMATCH`
-pub const reject_validity_interval_mismatch =
-  #"455f56414c49444954595f494e54455256414c5f4d49534d41544348"
-
-/// `E_INPUT_NOT_FOUND`
-pub const reject_input_not_found = #"455f494e5055545f4e4f545f464f554e44"
-
-/// `E_INVALID_OUTPUT`
-pub const reject_invalid_output = #"455f494e56414c49445f4f5554505554"
-
-/// `E_VALUE_NOT_PRESERVED`
-pub const reject_value_not_preserved =
-  #"455f56414c55455f4e4f545f505245534552564544"
 
 /// The operator's recorded verdict on a forced-inclusion transaction, as the
 /// forced leaf carries it. The sum's collapse deliberately makes "valid with
@@ -128,9 +47,10 @@ pub type OperatorVerdictV1 {
   ForcedTxInvalid { reason: RejectionReasonV1 }
 }
 
-/// The full space of operator rejection reasons — 47 constructors from the
-/// machine's 19 raw codes, one per (reason, subject-space) pair. Declaration
-/// order is wire-normative (catalogue §5/§6).
+/// The full space of operator rejection reasons — 48 constructors (arms
+/// 0–47), one per (reason, subject-space) pair. Declaration order is
+/// wire-normative (catalogue §5/§6); arm 47 `MintItemMalformed` is the first
+/// arm of the T238 wave and new arms only ever append.
 pub type RejectionReasonV1 {
   // ── CanonicalDecode ────────────────────────────────────────────────
   /// Declared field preimage length ≠ the canonical §5.1 walk length.
@@ -235,14 +155,14 @@ pub type RejectionReasonV1 {
 
   // ── NativeScripts / Phase-B executions ─────────────────────────────
   /// Execution's native source fails the structural scan.
-  /// execution_index: execution-frontier ordinal.
-  ExecutionNativeScriptMalformed { execution_index: Int }
+  /// Purpose coordinate of the execution (kind 0–3 × per-kind ordinal).
+  ExecutionNativeScriptMalformed { purpose_kind: Int, purpose_index: Int }
   /// That scan exceeds the node bound.
-  ExecutionNativeScriptNodeLimit { execution_index: Int }
+  ExecutionNativeScriptNodeLimit { purpose_kind: Int, purpose_index: Int }
   /// That scan exceeds the depth bound.
-  ExecutionNativeScriptDepthLimit { execution_index: Int }
+  ExecutionNativeScriptDepthLimit { purpose_kind: Int, purpose_index: Int }
   /// Phase-B evaluation of the execution's native script is false.
-  ExecutionNativeScriptFalse { execution_index: Int }
+  ExecutionNativeScriptFalse { purpose_kind: Int, purpose_index: Int }
 
   // ── ScriptIntegrity ────────────────────────────────────────────────
   /// Body's script_integrity_hash ≠ recomputed language-views hash. Tx-global.
@@ -250,10 +170,12 @@ pub type RejectionReasonV1 {
 
   // ── Cek ────────────────────────────────────────────────────────────
   /// Static: PlutusV3 (tag 3) bound to a receive purpose (kind 3).
-  ReceivePurposePlutusV3Forbidden { execution_index: Int }
+  /// Purpose coordinate of the execution.
+  ReceivePurposePlutusV3Forbidden { purpose_kind: Int, purpose_index: Int }
   /// CEK halted in error, or exceeded the redeemer's declared ExUnits.
   /// INTERACTIVE-DOMAIN: not single-party refutable (architecture.md §2).
-  PlutusExecutionFailed { execution_index: Int }
+  /// Purpose coordinate of the execution.
+  PlutusExecutionFailed { purpose_kind: Int, purpose_index: Int }
 
   // ── ValueAndMint ───────────────────────────────────────────────────
   /// Distinct-asset accumulator overflow while folding an input asset.
@@ -268,61 +190,57 @@ pub type RejectionReasonV1 {
   OutputBelowMinAda { output_index: Int }
   /// Lovelace delta ≠ fee, or a nonzero net asset remains. Tx-global.
   ValueNotPreserved
+
+  // ── ScriptSources mint items ───────────────────────────────────────
+  /// Field-5 mint item is non-canonical (policy or asset-name misorder).
+  /// policy_index: field-5 item ordinal of the offending policy.
+  MintItemMalformed { policy_index: Int }
 }
 
-/// The total, non-injective 47 → 19 bridge back to the frozen descriptor
-/// codes: every arm returns exactly the legacy `E_*` code it was split from
-/// (catalogue §5.1). The descriptor bridge is
-/// `hash_rejection_code(rejection_code_of(reason)) ==
-/// descriptor.rejection_code_hash`.
-pub fn rejection_code_of(reason: RejectionReasonV1) -> ByteArray {
+/// True when `reason` is an execution-scoped arm (35–38, 40, 41) whose purpose
+/// coordinate is exactly `(purpose_kind, purpose_index)`. Execution families
+/// use it to tie a bound rejection to the purpose leaf they open.
+pub fn names_execution_purpose(
+  reason: RejectionReasonV1,
+  purpose_kind: Int,
+  purpose_index: Int,
+) -> Bool {
+  let coordinate_matches = fn(reason_kind: Int, reason_index: Int) {
+    and {
+      reason_kind == purpose_kind,
+      reason_index == purpose_index,
+    }
+  }
   when reason is {
-    FieldPreimageLengthMismatch { .. } -> reject_field_preimage_size
-    FieldItemWidthIllegal { .. } -> reject_invalid_field_type
-    EmptyInputs -> reject_empty_inputs
-    DuplicateInput { .. } -> reject_duplicate_input
-    ValidityIntervalMalformed -> reject_invalid_validity_interval_format
-    NetworkIdMismatch -> reject_network_id_mismatch
-    FeeBelowMinimum -> reject_min_fee
-    AddressWitnessSignatureInvalid { .. } -> reject_invalid_signature
-    RequiredSignerUnsigned { .. } -> reject_missing_required_witness
-    WitnessScriptHeaderMalformed { .. } -> reject_invalid_field_type
-    WitnessNativeScriptMalformed { .. } -> reject_invalid_field_type
-    WitnessNativeScriptNodeLimit { .. } -> reject_native_script_node_count
-    WitnessNativeScriptDepthLimit { .. } -> reject_native_script_depth
-    WitnessNativeScriptFalse { .. } -> reject_native_script_invalid
-    ScriptIntegrityHashMissing -> reject_invalid_field_type
-    ObserversForbiddenOnUntaggedNetwork -> reject_invalid_field_type
-    ObserverOrderInvalid { .. } -> reject_invalid_field_type
-    ValidityIntervalExcludesBlockSlot -> reject_validity_interval_mismatch
-    InputNotFound { .. } -> reject_input_not_found
-    InputSpentOutputNonCanonical { .. } -> reject_invalid_output
-    ResolvedReferenceScriptMalformed { .. } -> reject_invalid_field_type
-    ResolvedReferenceScriptNodeLimit { .. } -> reject_native_script_node_count
-    ResolvedReferenceScriptDepthLimit { .. } -> reject_native_script_depth
-    SpendInputSignerMissing { .. } -> reject_missing_required_witness
-    RedeemerMalformed { .. } -> reject_invalid_field_type
-    OutputNonCanonical { .. } -> reject_invalid_output
-    OutputReferenceScriptMalformed { .. } -> reject_invalid_field_type
-    OutputReferenceScriptNodeLimit { .. } -> reject_native_script_node_count
-    OutputReferenceScriptDepthLimit { .. } -> reject_native_script_depth
-    ProtectedOutputSignerMissing { .. } -> reject_missing_required_witness
-    MintDeclaredAssetLimit { .. } -> reject_asset_count
-    ScriptSourceMissing { .. } -> reject_missing_required_witness
-    RedeemerMissing { .. } -> reject_missing_required_witness
-    UnusedScriptWitness { .. } -> reject_invalid_field_type
-    UnusedRedeemer { .. } -> reject_invalid_field_type
-    ExecutionNativeScriptMalformed { .. } -> reject_invalid_field_type
-    ExecutionNativeScriptNodeLimit { .. } -> reject_native_script_node_count
-    ExecutionNativeScriptDepthLimit { .. } -> reject_native_script_depth
-    ExecutionNativeScriptFalse { .. } -> reject_native_script_invalid
-    ScriptIntegrityHashMismatch -> reject_invalid_field_type
-    ReceivePurposePlutusV3Forbidden { .. } -> reject_plutus_script_invalid
-    PlutusExecutionFailed { .. } -> reject_plutus_script_invalid
-    InputAssetAccumulationLimit { .. } -> reject_asset_count
-    OutputAssetAccumulationLimit { .. } -> reject_asset_count
-    MintAssetAccumulationLimit { .. } -> reject_asset_count
-    OutputBelowMinAda { .. } -> reject_min_ada
-    ValueNotPreserved -> reject_value_not_preserved
+    ExecutionNativeScriptMalformed { purpose_kind: k, purpose_index: i } ->
+      coordinate_matches(k, i)
+    ExecutionNativeScriptNodeLimit { purpose_kind: k, purpose_index: i } ->
+      coordinate_matches(k, i)
+    ExecutionNativeScriptDepthLimit { purpose_kind: k, purpose_index: i } ->
+      coordinate_matches(k, i)
+    ExecutionNativeScriptFalse { purpose_kind: k, purpose_index: i } ->
+      coordinate_matches(k, i)
+    ReceivePurposePlutusV3Forbidden { purpose_kind: k, purpose_index: i } ->
+      coordinate_matches(k, i)
+    PlutusExecutionFailed { purpose_kind: k, purpose_index: i } ->
+      coordinate_matches(k, i)
+    _ -> False
+  }
+}
+
+/// The `DuplicateInput` reason for a duplicate pair the InputSets scan found.
+/// `first` is the earlier-scanned position and `second` the later one; the
+/// caller fixes that order, and this only maps the pair onto the arm.
+pub fn reject_duplicate_input(
+  first_field: Int,
+  first_item: Int,
+  second_field: Int,
+  second_item: Int,
+) -> RejectionReasonV1 {
+  DuplicateInput {
+    first_field_index: first_field,
+    first_item_index: first_item,
+    second_field_index: second_field,
+    second_item_index: second_item,
   }
 }

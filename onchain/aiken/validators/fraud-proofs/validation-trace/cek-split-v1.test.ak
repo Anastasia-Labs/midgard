@@ -261,6 +261,8 @@ fn cek_state(
     execution_cpu_limit,
     execution_memory_limit,
     program_envelope_hash,
+    -1,
+    -1,
   )
   Pair(
     validation_trace_v1.ValidationMachineStateV1 {
@@ -1885,11 +1887,12 @@ test finish_validator_refuses_a_foreign_transaction_commitment() fail {
 /// `encode_cek_witness_v1` refuses to *encode* an out-of-bound cursor, so an
 /// honest encode cannot produce the witness, and the well-formedness guard
 /// refuses to *accept* one. The vector is therefore the honest hand-off
-/// witness with its encoded cursor byte bumped by hand -- the last seven
+/// witness with its encoded cursor byte bumped by hand -- the last nine
 /// bytes of a hand-off witness are `cursor, completed_cpu,
 /// completed_memory, active_state_hash, program_envelope_hash,
-/// execution_cpu_limit, execution_memory_limit`, all empty or zero, so the
-/// cursor is the byte at `length - 7`. The positive below pins that layout;
+/// execution_cpu_limit, execution_memory_limit, purpose_kind,
+/// purpose_index`, all empty or zero except the `-1, -1` purpose key, so
+/// the cursor is the byte at `length - 9`. The positive below pins that layout;
 /// without it the negative could start bumping some other byte and still
 /// look like a refusal.
 ///
@@ -1901,16 +1904,16 @@ test finish_validator_refuses_a_foreign_transaction_commitment() fail {
 test finish_witness_tail_layout_is_pinned() {
   let witness_cbor = finish_fixture().transition.work_witness_cbor
   let length = bytearray.length(witness_cbor)
-  bytearray.slice(witness_cbor, length - 7, length - 1) == #"00000040400000"
+  bytearray.slice(witness_cbor, length - 9, length - 1) == #"000000404000002020"
 }
 
 fn witness_with_cursor_past_the_execution_count(
   witness_cbor: ByteArray,
 ) -> ByteArray {
   let length = bytearray.length(witness_cbor)
-  bytearray.take(witness_cbor, length - 7)
+  bytearray.take(witness_cbor, length - 9)
     |> bytearray.concat(#"01")
-    |> bytearray.concat(bytearray.drop(witness_cbor, length - 6))
+    |> bytearray.concat(bytearray.drop(witness_cbor, length - 8))
 }
 
 test finish_validator_refuses_a_cek_cursor_past_the_execution_count() fail {
@@ -2941,7 +2944,7 @@ test bounded_context_binding_wire_matches_sdk() {
       staged_data,
     ],
   )
-  blake2b_256(cbor.serialise(vector)) == #"fde5213b570b4d1b49fd4abcf5b491dc11665d9cfd7e01bfe588dbd4d1098aee"
+  blake2b_256(cbor.serialise(vector)) == #"a0941f466a25f523e9650c28f2ee5d038b3093d7e6065ffe799fe4335bb6bd95"
 }
 
 fn ordered_mint_fixture() -> Pair<CekContextControlV1, CekMintHead> {

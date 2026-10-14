@@ -203,11 +203,10 @@ fn verify_event_to_step_membership(
   )
 }
 
-/// The §2.4.2(c) bridge from the forced leaf's verdict to the FROZEN
-/// descriptor format: an accepting leaf demands an accepting descriptor; a
-/// rejecting leaf demands a rejecting descriptor whose committed
-/// `rejection_code_hash` is exactly the hash of the legacy `E_*` code the
-/// leaf's reason maps back to (`rejection_code_of`, the total 47 → 19 map).
+/// The §2.4.2(c) bridge from the forced leaf's verdict to the descriptor: an
+/// accepting leaf demands an accepting descriptor; a rejecting leaf demands a
+/// rejecting descriptor whose committed `rejection_code_hash` is exactly the
+/// hash of the leaf's reason (arm and coordinates).
 ///
 /// Exported so the #640 gate-5 tests can drive the bridge directly; the only
 /// production caller remains `source_binding_is_exact` in this module.
@@ -219,9 +218,7 @@ pub fn forced_verdict_matches(
     ForcedTxValid -> descriptor.verdict == validation_trace_v1.Accepted
     ForcedTxInvalid { reason } -> and {
         descriptor.verdict == validation_trace_v1.Rejected,
-        validation_trace_v1.hash_rejection_code(
-          rejection_reason_v1.rejection_code_of(reason),
-        ) == descriptor.rejection_code_hash,
+        validation_trace_v1.hash_rejection_code(reason) == descriptor.rejection_code_hash,
       }
   }
 }

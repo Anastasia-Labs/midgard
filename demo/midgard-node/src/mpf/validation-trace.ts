@@ -60,7 +60,7 @@ export const buildPlaceholderValidationTraceMembers = (
                 }),
               },
               transaction.verdict,
-              transaction.rejectionCode,
+              transaction.rejectionReason,
             ),
           ),
         catch: (cause) =>

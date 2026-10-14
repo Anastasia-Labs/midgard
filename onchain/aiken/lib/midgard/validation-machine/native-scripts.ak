@@ -178,6 +178,8 @@ fn verify_native_execution_descriptor_step(
             control.signer_count,
             signer_peaks,
             continuation_cbor,
+            purpose_kind,
+            purpose_index,
           ),
         ),
       }
@@ -529,6 +531,8 @@ pub fn verify_native_scripts_native_descriptor(
             control.signer_count,
             signer_peaks,
             continuation_cbor,
+            purpose_kind,
+            purpose_index,
           ),
         ),
       }

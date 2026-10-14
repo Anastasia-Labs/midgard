@@ -3,7 +3,7 @@
 //// Concludes the proof that the transaction carried through step-01 pays a
 //// fee below the network minimum the disputed block's own header declares:
 //// `fee < min_fee_a * canonical_tx_size + min_fee_b` (the validation
-//// machine's `reject_min_fee` rule, shared through
+//// machine's `FeeBelowMinimum` rule, shared through
 //// `compact.min_fee_lovelace_v1`).
 ////
 //// The canonical size is the machine's `ledger_tx_size_v1` over

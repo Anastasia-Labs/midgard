@@ -3,7 +3,7 @@
 //// Binds an operator-ACCEPTED committed transaction whose intra-transaction
 //// input sets step-02 will show to violate uniqueness/disjointness — the
 //// single-party conversion of the validation machine's InputSets rule
-//// (`reject_duplicate_input`, validation-machine-v1.ak).
+//// (`DuplicateInput`, validation-machine-v1.ak).
 ////
 //// The bound leaf must be an **acceptance**: §2.4.3(d), a leaf of the counted
 //// `transactions_root` is an acceptance verdict only when its own embedded

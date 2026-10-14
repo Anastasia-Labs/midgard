@@ -43,6 +43,8 @@ validator main(
             initial_state_hash: next_context,
             execution_cpu_limit: staged.context.execution_cpu_limit,
             execution_memory_limit: staged.context.execution_memory_limit,
+            purpose_kind: staged.context.purpose_kind,
+            purpose_index: staged.context.purpose_index,
           },
         }
         continue(

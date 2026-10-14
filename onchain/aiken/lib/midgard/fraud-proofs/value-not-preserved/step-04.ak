@@ -10,7 +10,7 @@
 ////
 //// and the machine's stage five accepts the transaction only if every such
 //// delta is zero. `final_delta != 0` therefore reproduces
-//// `reject_value_not_preserved` for the claimed unit — an accepted
+//// `ValueNotPreserved` for the claimed unit — an accepted
 //// transaction whose fold ends non-zero is one the machine would have
 //// rejected, and a block that accepted it is fraudulent.
 ////

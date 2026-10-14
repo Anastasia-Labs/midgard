@@ -148,7 +148,7 @@ fn refusal_evidence(data: ByteArray) {
         work_witness_cbor,
         claimed_successor: exact_rejection_post(
           pre,
-          rejection_reason_v1.reject_invalid_field_type,
+          rejection_reason_v1.RedeemerMalformed { redeemer_index: 0 },
         ),
       },
       auxiliary,
@@ -173,7 +173,7 @@ test constructor_data_refusal_has_one_exact_rejected_successor() {
           ..evidence.transition,
           claimed_successor: exact_rejection_post(
             pre,
-            rejection_reason_v1.reject_missing_required_witness,
+            rejection_reason_v1.RedeemerMalformed { redeemer_index: 1 },
           ),
         },
       },
@@ -337,7 +337,10 @@ fn exact_malformed_successor(data: ByteArray, offset: Int, stage: Int) -> Bool {
           ..evidence.transition,
           claimed_successor: exact_rejection_post(
             pre,
-            rejection_reason_v1.reject_missing_required_witness,
+            rejection_reason_v1.RedeemerMissing {
+              purpose_kind: 0,
+              purpose_index: 0,
+            },
           ),
         },
       },

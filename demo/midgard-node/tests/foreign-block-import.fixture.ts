@@ -7,7 +7,6 @@ import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile
 import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import { forcedVerdictForRejection } from "@al-ft/midgard-fault-proofs";
 import * as SDK from "@al-ft/midgard-sdk";
-import { type RejectCode, RejectCodes } from "@al-ft/midgard-validation";
 import { buildMidgardCanonicalCekProgram } from "@al-ft/midgard-validation/cek-program";
 import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
@@ -34,7 +33,6 @@ export const fixture = async (
     readonly forced?: {
       readonly cbor: Buffer;
       readonly reason: SDK.RejectionReason;
-      readonly rejectionCode: RejectCode;
     };
   } = {},
 ) => {
@@ -56,8 +54,6 @@ export const fixture = async (
   const cbor =
     options.forced?.cbor ?? encodeMidgardForcedTxCanonical(transaction);
   const reason = options.forced?.reason ?? "EmptyInputs";
-  const rejectionCode =
-    options.forced?.rejectionCode ?? RejectCodes.EmptyInputs;
   const { encodeForcedInclusionValueV1 } = await import(
     "../src/database/forcedTransactions.js"
   );
@@ -102,7 +98,7 @@ export const fixture = async (
           canonicalTransactionCbor: cbor,
           sourceKind: "forced",
           verdict: "rejected",
-          rejectionCode,
+          rejectionReason: reason,
         },
       ],
     }),

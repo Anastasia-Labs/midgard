@@ -3,6 +3,7 @@ use aiken/cbor
 use aiken/collection/list
 use aiken/crypto.{blake2b_256}
 use aiken/primitive/bytearray
+use midgard/rejection_reason_v1.{RejectionReasonV1}
 
 pub const machine_version: Int = 1
 
@@ -237,9 +238,12 @@ pub fn hash_work_witness(
     |> blake2b_256
 }
 
-pub fn hash_rejection_code(rejection_code: ByteArray) -> ByteArray {
+/// The rejection preimage: the domain-separated blake2b-256 of the reason's
+/// Plutus Data CBOR. The machine's terminal rejection and the forced-verdict
+/// check both bind this hash.
+pub fn hash_rejection_code(reason: RejectionReasonV1) -> ByteArray {
   rejection_code_domain
-    |> bytearray.concat(rejection_code)
+    |> bytearray.concat(cbor.serialise(reason))
     |> blake2b_256
 }
 

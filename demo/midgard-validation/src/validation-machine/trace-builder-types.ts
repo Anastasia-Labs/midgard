@@ -18,6 +18,12 @@ export type PhaseANativeScriptsScanControl = {
   readonly stackDepth: number;
   readonly nodeCount: number;
   readonly result: -1 | 0 | 1;
+  /**
+   * Purpose key of the execution whose native source an execution-mode scan
+   * walks; `-1, -1` for a witness-mode scan.
+   */
+  readonly purposeKind: bigint;
+  readonly purposeIndex: bigint;
 };
 export type ScriptExecutionProofEntry = {
   readonly purpose: ScriptPurposeProofEntry;
@@ -61,7 +67,11 @@ export type SignatureScanControl = {
   readonly previousOrderKey: Buffer;
   readonly previousSignerHash: Buffer;
   readonly signerFrontier: MidgardValidationMerkleFrontier;
-  readonly invalidSignatureSeen: 0 | 1;
+  /**
+   * Field-7 item index of the first address witness whose signature fails,
+   * or -1 while every scanned signature verifies.
+   */
+  readonly firstInvalidWitnessIndex: number;
 };
 export type MintFoldTraceControl = {
   readonly policyCount: number;

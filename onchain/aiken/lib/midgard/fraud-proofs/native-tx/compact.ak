@@ -298,7 +298,7 @@ pub fn ledger_tx_size_v1(
 /// schedule: `min_fee_a * canonical_tx_size + min_fee_b`.
 ///
 /// The one source of the formula. The validation machine's static-rules phase
-/// (`reject_min_fee`) and the standalone `min-fee` fault-proof family both
+/// (`FeeBelowMinimum`) and the standalone `min-fee` fault-proof family both
 /// adjudicate the same ledger rule, so both call this function and cannot
 /// drift apart.
 pub fn min_fee_lovelace_v1(
