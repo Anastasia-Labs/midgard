@@ -884,6 +884,7 @@ export const completeValidationTrace = (
                       input.consensusProfile.limits
                         .maxValidationMachineStepCount,
                     executionBudget: evaluation.executionBudget,
+                    wallDeadlineMs: recording.wallDeadlineMs,
                   })
                 : null;
             const initialCekState =

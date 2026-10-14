@@ -106,6 +106,11 @@ export interface ValidationTraceSink {
 export type ValidationTraceRecording = {
   readonly mode: "proof" | "commit";
   readonly open: (frame: ValidationTraceStateFrame) => ValidationTraceSink;
+  /**
+   * `Date.now()` time past which every script run of the build stops and
+   * the build fails as unavailable. A node-local limit; none when undefined.
+   */
+  readonly wallDeadlineMs?: number;
 };
 
 /** The proof build's sink: every witness and budget, in order. */

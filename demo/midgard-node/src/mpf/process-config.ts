@@ -55,6 +55,13 @@ export type ProcessMpfsConfig = {
     string,
     { readonly code: string; readonly detail: string }
   >;
+  /**
+   * The per-transaction wall cap, in milliseconds, on the normal
+   * transactions' script runs at commit. A transaction past it is evicted
+   * through the commit-stage rejection path; forced transactions are never
+   * capped. No cap when unset.
+   */
+  readonly commitScriptWallCapMs?: number;
   /** The native owner generation every commit builds its ledger root on. */
   readonly nativeMpf: NativeMpfBuildContext;
   /**

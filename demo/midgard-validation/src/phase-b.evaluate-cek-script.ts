@@ -10,6 +10,7 @@ import {
   type MidgardCekExecutionGraph,
   type MidgardCekExecutionMode,
   type MidgardCekStructuralExecution,
+  MidgardCekWallCapExceeded,
 } from "./cek-executor.js";
 import { type LocalScriptEvalResult } from "./types.js";
 
@@ -23,7 +24,32 @@ export type MidgardCekScriptRun = {
   };
   readonly executionIndex: bigint;
   readonly maxSteps: number;
+  /**
+   * `Date.now()` time past which the run stops as `wall_cap_exceeded`. An
+   * absolute time, so a run moved to another thread keeps the same deadline.
+   */
+  readonly wallDeadlineMs?: number;
 };
+
+/**
+ * A transaction whose script runs passed the caller's wall-clock cap
+ * (`PhaseBConfig.scriptWallCapMs`). It is the node's local resource limit,
+ * not the transaction's verdict: admission refuses the transaction and a
+ * commit evicts it, and neither records a script failure.
+ */
+export class ScriptWallCapExceededError extends Error {
+  readonly _tag = "ScriptWallCapExceeded";
+  constructor(
+    readonly txId: Buffer,
+    readonly wallCapMs: number,
+    detail: string,
+  ) {
+    super(
+      `transaction ${txId.toString("hex")} passed the ${wallCapMs.toString(10)} ms script wall cap: ${detail}`,
+    );
+    this.name = "ScriptWallCapExceededError";
+  }
+}
 
 /**
  * A verdict-mode run as it crosses a thread boundary: the transaction's
@@ -35,7 +61,8 @@ export type MidgardCekVerdictRequest = MidgardCekScriptRun & {
 
 /**
  * Runs one Phase B script on the structural CEK executor. Every failure,
- * thrown or halted, is a `script_invalid` verdict. A budget stop is
+ * thrown or halted, is a `script_invalid` verdict, except a run that passes
+ * its wall-clock deadline, which is `wall_cap_exceeded`. A budget stop is
  * reported as accepted with the spent budget; the caller compares it with
  * the declared ex-units.
  */
@@ -60,6 +87,7 @@ export const evaluateMidgardCekScript = (
       maxSteps: run.maxSteps,
       executionBudget: run.executionBudget,
       mode,
+      wallDeadlineMs: run.wallDeadlineMs,
     });
     return {
       graph,
@@ -82,6 +110,13 @@ export const evaluateMidgardCekScript = (
             },
     };
   } catch (cause) {
+    if (cause instanceof MidgardCekWallCapExceeded) {
+      return {
+        graph,
+        execution: null,
+        result: { kind: "wall_cap_exceeded", detail: cause.message },
+      };
+    }
     return {
       graph,
       execution: null,

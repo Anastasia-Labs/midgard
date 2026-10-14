@@ -2,8 +2,9 @@ import {
   type PhaseAResult,
   type PhaseAValidatedTx,
   runPhaseBValidationWithPatch,
+  ScriptWallCapExceededError,
 } from "@al-ft/midgard-validation";
-import { Effect, Metric } from "effect";
+import { Effect, Either, Metric } from "effect";
 
 import { TxAdmissionsDB } from "../database/index.js";
 
@@ -199,10 +200,65 @@ export const refusePendingWithdrawalInputs = (
   return { accepted, rejected };
 };
 
+export const ADMISSION_REJECT_CODE_SCRIPT_WALL_CAP =
+  "E_ADMISSION_SCRIPT_WALL_CAP";
+
+export const validationSubmitWallCapRefusalCounter = Metric.counter(
+  "validation_submit_wall_cap_refusal_count",
+  {
+    description:
+      "Total number of txs refused at admission because their script runs passed the submit wall cap",
+    bigint: true,
+    incremental: true,
+  },
+);
+
+/**
+ * Runs Phase B, refusing each candidate whose script runs pass the submit
+ * wall cap (`scriptWallCapMs`) and running the rest again without it. The
+ * refusal is the node's own, under its own code: it records no script
+ * verdict, and the transaction may be submitted again. Every other Phase B
+ * failure fails the batch as before.
+ */
+export const runPhaseBRefusingWallCapBreaches = (
+  candidates: readonly PhaseAValidatedTx[],
+  ledgerState: Parameters<typeof runPhaseBValidationWithPatch>[1],
+  phaseBConfig: Parameters<typeof runPhaseBValidationWithPatch>[2],
+) =>
+  Effect.gen(function* () {
+    let remaining = candidates;
+    const refused: TxAdmissionsDB.AdmissionRejection[] = [];
+    for (;;) {
+      const run = yield* Effect.either(
+        runPhaseBValidationWithPatch(remaining, ledgerState, phaseBConfig),
+      );
+      if (Either.isRight(run)) return { phaseB: run.right, refused };
+      const breach = run.left;
+      if (!(breach instanceof ScriptWallCapExceededError)) {
+        return yield* Effect.fail(breach);
+      }
+      const culprit = remaining.find((candidate) =>
+        candidate.ledgerTx.txId.equals(breach.txId),
+      );
+      if (culprit === undefined) return yield* Effect.fail(breach);
+      yield* Effect.logWarning(
+        `Refusing tx ${breach.txId.toString("hex")} at admission: ${breach.message}`,
+      );
+      yield* Metric.increment(validationSubmitWallCapRefusalCounter);
+      refused.push({
+        txId: Buffer.from(breach.txId),
+        code: ADMISSION_REJECT_CODE_SCRIPT_WALL_CAP,
+        detail: breach.message,
+      });
+      remaining = remaining.filter((candidate) => candidate !== culprit);
+    }
+  });
+
 /**
  * Decides one admission batch against the ledger state: Phase-A survivors
  * that spend an outref named by a pending withdrawal are refused, and the rest
- * run Phase B. Returns Phase B's result and every rejection of the batch.
+ * run Phase B, which refuses any whose scripts pass the submit wall cap.
+ * Returns Phase B's result and every rejection of the batch.
  */
 export const decideAdmissionBatch = ({
   phaseA,
@@ -220,7 +276,7 @@ export const decideAdmissionBatch = ({
       phaseA.accepted,
       pendingWithdrawalOutRefHexes,
     );
-    const phaseB = yield* runPhaseBValidationWithPatch(
+    const { phaseB, refused } = yield* runPhaseBRefusingWallCapBreaches(
       admissible.accepted,
       ledgerState,
       phaseBConfig,
@@ -228,6 +284,7 @@ export const decideAdmissionBatch = ({
     const allRejected: readonly TxAdmissionsDB.AdmissionRejection[] = [
       ...phaseA.rejected,
       ...admissible.rejected,
+      ...refused,
       ...phaseB.rejected,
     ];
     return { phaseB, allRejected };

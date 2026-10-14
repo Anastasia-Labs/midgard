@@ -242,6 +242,7 @@ export const txQueueProcessorAction = (
                       bucketConcurrency:
                         nodeConfig.VALIDATION_G4_BUCKET_CONCURRENCY,
                       enforceScriptBudget: true,
+                      scriptWallCapMs: nodeConfig.VALIDATION_SUBMIT_WALL_CAP_MS,
                       evaluateCekVerdict:
                         pooledCekVerdictEvaluator(validationPool),
                     },

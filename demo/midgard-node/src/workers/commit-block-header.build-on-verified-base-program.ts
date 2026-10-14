@@ -624,6 +624,7 @@ export const buildOnVerifiedCommitBaseProgram = (
             Effect.void,
           nativeMpf: nativeMpfContext,
           commitEvictions,
+          commitScriptWallCapMs: nodeConfig.VALIDATION_COMMIT_WALL_CAP_MS,
         }).pipe(
           Effect.tap((built) =>
             Effect.sync(() => {

@@ -30,6 +30,11 @@ type ExecuteMidgardCekStructuralProgramInput = {
     readonly cpu: bigint;
     readonly memory: bigint;
   };
+  /**
+   * `Date.now()` time past which the run throws `MidgardCekWallCapExceeded`.
+   * A node-local limit: it never changes a verdict, a step or a budget.
+   */
+  readonly wallDeadlineMs?: number;
   /** Defaults to `proof`. See `MidgardCekExecutionMode`. */
   readonly mode?: MidgardCekExecutionMode;
 };
@@ -58,7 +63,12 @@ export function executeMidgardCekStructuralProgram(
     input.material,
     input.executionIndex ?? 0n,
     input.constantWitnesses,
-    new MidgardCekStepRecorder(input.mode ?? "proof", input.maxSteps),
+    new MidgardCekStepRecorder(
+      input.mode ?? "proof",
+      input.maxSteps,
+      undefined,
+      input.wallDeadlineMs,
+    ),
   ).run(input.executionBudget);
 }
 
@@ -93,8 +103,11 @@ export const startMidgardCekObservedRun = (
     input.material,
     input.executionIndex ?? 0n,
     input.constantWitnesses,
-    new MidgardCekStepRecorder("verdict", input.maxSteps, (pre, post) =>
-      observer!(pre, post),
+    new MidgardCekStepRecorder(
+      "verdict",
+      input.maxSteps,
+      (pre, post) => observer!(pre, post),
+      input.wallDeadlineMs,
     ),
   );
   return {

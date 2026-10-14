@@ -238,7 +238,12 @@ export type LocalScriptEvalResult =
         readonly memory: bigint;
       };
     }
-  | { readonly kind: "script_invalid"; readonly detail: string };
+  | { readonly kind: "script_invalid"; readonly detail: string }
+  /**
+   * The run passed its wall-clock deadline (`PhaseBConfig.scriptWallCapMs`).
+   * Not a verdict: the caller refuses or evicts the transaction locally.
+   */
+  | { readonly kind: "wall_cap_exceeded"; readonly detail: string };
 
 /**
  * Configuration knobs for phase-B validation.
@@ -254,6 +259,14 @@ export type PhaseBConfig = {
   readonly bucketConcurrency: number;
   readonly enforceScriptBudget?: boolean;
   readonly maxScriptExecutionSteps?: number;
+  /**
+   * A node-local wall-clock cap, in milliseconds, on the script runs of one
+   * transaction. A transaction whose runs pass it makes Phase B fail with
+   * `ScriptWallCapExceededError`, never a rejection, so the caller refuses or
+   * evicts it locally. Unset (no cap) wherever the verdict is consensus: forced
+   * transactions and the verification of other operators' blocks.
+   */
+  readonly scriptWallCapMs?: number;
   /**
    * `verdict` (the default) runs CEK scripts without per-step verification or
    * retention, so each `onScriptEvaluated` report has `execution: null`. A

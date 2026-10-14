@@ -51,8 +51,25 @@ export class MidgardCekObservedStop extends Error {
 }
 
 /**
- * Owns the step bound and the per-step evidence policy of one structural
- * CEK run. The executor reports every transition here; this decides whether
+ * Unwinds a run that passed its wall-clock deadline. The deadline is a
+ * node-local resource limit, never part of a verdict: a caller reports it as
+ * its own refusal, distinct from every script outcome.
+ */
+export class MidgardCekWallCapExceeded extends Error {
+  constructor(readonly stepCount: number) {
+    super(
+      `CEK execution passed its wall-clock deadline after ${stepCount.toString(10)} steps`,
+    );
+    this.name = "MidgardCekWallCapExceeded";
+  }
+}
+
+/** Steps between two reads of the clock against a wall-clock deadline. */
+const WALL_CLOCK_CHECK_INTERVAL = 1024;
+
+/**
+ * Owns the step bound, the optional wall-clock deadline and the per-step
+ * evidence policy of one structural CEK run. The executor reports every transition here; this decides whether
  * it is verified and kept.
  */
 export class MidgardCekStepRecorder {
@@ -63,6 +80,8 @@ export class MidgardCekStepRecorder {
     private readonly mode: MidgardCekExecutionMode,
     private readonly maxSteps: number,
     private readonly observer?: MidgardCekStepObserver,
+    /** `Date.now()` time past which the run stops; none when undefined. */
+    private readonly wallDeadlineMs?: number,
   ) {
     if (observer !== undefined && mode !== "verdict") {
       throw new Error("a CEK step observer runs only without retained steps");
@@ -95,6 +114,13 @@ export class MidgardCekStepRecorder {
       this.steps.push(Object.freeze({ pre, post, witness }));
     }
     this.count += 1;
+    if (
+      this.wallDeadlineMs !== undefined &&
+      this.count % WALL_CLOCK_CHECK_INTERVAL === 0 &&
+      Date.now() > this.wallDeadlineMs
+    ) {
+      throw new MidgardCekWallCapExceeded(this.count);
+    }
     if (this.observer !== undefined && !this.observer(pre, post)) {
       throw new MidgardCekObservedStop(post, this.count);
     }
