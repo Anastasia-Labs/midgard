@@ -351,14 +351,6 @@ pub fn authenticate_resolved_sources_v1(
   }
 }
 
-fn expected_location(state: AuthenticatedResolvedSourcesV1, index: Int) -> Int {
-  if index < state.transaction_source_count {
-    source_location_witness
-  } else {
-    source_location_resolved_reference
-  }
-}
-
 fn descriptor_leaf(descriptor: SourceDescriptorV1) -> ByteArray {
   script_proof_v1.source_descriptor_leaf_hash(
     if descriptor.location_kind == source_location_witness {
@@ -416,61 +408,18 @@ pub fn state_is_authentic_v1(state: SourceScanStateV1) -> Bool {
   }
 }
 
-pub fn scan_source_v1(
-  state: SourceScanStateV1,
-  descriptor: SourceDescriptorV1,
-  next_script_hash: ByteArray,
-) -> SourceScanStateV1 {
-  expect and {
-      state_is_authentic_v1(state),
-      state.cursor < state.authenticated.purpose.scan_limit,
-      descriptor.source_index == state.cursor,
-      descriptor.location_kind == expected_location(
-        state.authenticated,
-        state.cursor,
-      ),
-      descriptor.total_length > 0,
-      bytearray.length(descriptor.script_hash) == 28,
-      bytearray.length(descriptor.item_commitment) == 32,
-      validation_merkle_v1.verify_membership(
-        state.authenticated.purpose.source_count,
-        state.authenticated.purpose.source_peaks,
-        descriptor.source_index,
-        descriptor_leaf(descriptor),
-        descriptor.siblings,
-      ),
-    }
-  let cursor = state.cursor + 1
-  let found = or {
-    state.found,
-    descriptor.script_hash == state.authenticated.purpose.required_script_hash,
-  }
-  SourceScanStateV1 {
-    ..state,
-    cursor,
-    found,
-    next_expected_script_hash: next_script_hash,
-    checkpoint_hash: checkpoint_v1(
-      state.authenticated,
-      cursor,
-      found,
-      next_script_hash,
-    ),
-  }
-}
-
 /// Advances the scan over one batch in frontier order. The hash the state
 /// expects next is the finalizer's exactly when the batch reaches the
 /// authenticated scan limit. A wrongful-rejection prefix ends at the matching
 /// source, before the complete frontier, so the limit and never the frontier
 /// count decides the successor.
 ///
-/// The batch is `scan_source_v1` applied once per source. Only the input state
-/// comes from outside, so only it is checked with `state_is_authentic_v1`;
-/// each later state of the batch is one this function builds from an
-/// authentic state, and only the last one is written out with its checkpoint.
-/// An intermediate state's successor hash is `scan_script_hash`, which the
-/// step-05 validator binds to the input state's 28-byte successor hash.
+/// Each source must be the one at the cursor, at its frontier position's
+/// location, and a member of the authenticated source frontier. Only the input
+/// state comes from outside, so only it is checked with
+/// `state_is_authentic_v1`; the cursor and found flag are carried through the
+/// batch and only the last state is written out with its checkpoint. An empty
+/// batch returns the input state, whose authenticity `scan_complete_v1` checks.
 pub fn advance_scan_v1(
   state: SourceScanStateV1,
   sources: List<SourceDescriptorV1>,
@@ -514,7 +463,7 @@ pub fn advance_scan_v1(
   }
 }
 
-/// The per-source checks of `scan_source_v1`, over the fields of the batch's
+/// The per-source checks of `advance_scan_v1`, over the fields of the batch's
 /// authenticated purpose read once.
 fn scan_sources_v1(
   sources: List<SourceDescriptorV1>,

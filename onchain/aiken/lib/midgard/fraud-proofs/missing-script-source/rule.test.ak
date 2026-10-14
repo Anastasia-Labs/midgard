@@ -194,40 +194,12 @@ fn descriptors(
 
 fn complete(direction: Int, hashes: List<ByteArray>) -> rule.SourceScanStateV1 {
   let Pair(state, leaves) = initial(direction, hashes)
-  scan_all(state, hashes, leaves, list.length(hashes))
-}
-
-fn scan_all(
-  state: rule.SourceScanStateV1,
-  hashes: List<ByteArray>,
-  leaves: List<ByteArray>,
-  total: Int,
-) -> rule.SourceScanStateV1 {
-  when hashes is {
-    [] -> state
-    [hash, ..rest] -> {
-      let index = state.cursor
-      let next = rule.scan_source_v1(
-        state,
-        descriptor(
-          leaves,
-          index,
-          if index == 0 {
-            0
-          } else {
-            1
-          },
-          hash,
-        ),
-        if index + 1 == total {
-          final_hash
-        } else {
-          scan_hash
-        },
-      )
-      scan_all(next, rest, leaves, total)
-    }
-  }
+  rule.advance_scan_v1(
+    state,
+    descriptors(leaves, hashes, list.length(hashes)),
+    scan_hash,
+    final_hash,
+  )
 }
 
 test binds_all_purpose_kinds() {
@@ -295,18 +267,14 @@ test honest_rejection_absence_refuses() fail {
   rule.terminal_contradiction_v1(complete(1, [h28b, h28b, h28b]))
 }
 
-test batch_advance_over_the_complete_frontier_agrees_with_source_scan() {
+test batch_advance_over_the_complete_frontier_finalizes() {
   let hashes = [h28b, h28b, h28b]
-  let Pair(state, leaves) = initial(0, hashes)
-  let advanced = rule.advance_scan_v1(
-    state,
-    descriptors(leaves, hashes, 3),
-    scan_hash,
-    final_hash,
-  )
+  let advanced = complete(0, hashes)
   and {
-    advanced == complete(0, hashes),
+    advanced.cursor == 3,
+    !advanced.found,
     advanced.next_expected_script_hash == final_hash,
+    rule.scan_complete_v1(advanced),
     rule.terminal_contradiction_v1(advanced),
   }
 }
@@ -366,26 +334,53 @@ test partial_scan_cannot_finalize() fail {
 
 test substituted_source_membership_refuses() fail {
   let Pair(state, leaves) = initial(0, [h28b, h28b, h28b])
-  rule.scan_source_v1(state, descriptor(leaves, 0, 0, h28a), scan_hash).cursor == 1
-}
-
-test alternate_source_index_refuses() fail {
-  let Pair(state, leaves) = initial(0, [h28b, h28b, h28b])
-  rule.scan_source_v1(state, descriptor(leaves, 1, 1, h28b), scan_hash).cursor == 1
+  rule.advance_scan_v1(
+    state,
+    [descriptor(leaves, 0, 0, h28a)],
+    scan_hash,
+    final_hash,
+  ).cursor == 1
 }
 
 test alternate_source_location_refuses() fail {
   let Pair(state, leaves) = initial(0, [h28b, h28b, h28b])
-  rule.scan_source_v1(state, descriptor(leaves, 0, 1, h28b), scan_hash).cursor == 1
+  rule.advance_scan_v1(
+    state,
+    [descriptor(leaves, 0, 1, h28b)],
+    scan_hash,
+    final_hash,
+  ).cursor == 1
 }
 
-test malformed_checkpoint_refuses() fail {
-  let Pair(state, leaves) = initial(0, [h28b, h28b, h28b])
-  rule.scan_source_v1(
-    rule.SourceScanStateV1 { ..state, checkpoint_hash: h32 },
-    descriptor(leaves, 0, 0, h28b),
+test batch_refuses_a_skipped_source_index() fail {
+  // At cursor 1 the batch presents source 2, a genuine member at the same
+  // location kind, skipping source 1.
+  let hashes = [h28b, h28a, h28b]
+  let Pair(state, leaves) = initial(0, hashes)
+  let advanced = rule.advance_scan_v1(
+    state,
+    [descriptor(leaves, 0, 0, h28b), descriptor(leaves, 2, 1, h28b)],
     scan_hash,
-  ).cursor == 1
+    final_hash,
+  )
+  advanced.cursor == 2 && !advanced.found
+}
+
+test empty_batch_completes_an_authentic_complete_state() {
+  let state = complete(0, [h28b])
+  rule.scan_complete_v1(rule.advance_scan_v1(state, [], scan_hash, final_hash))
+}
+
+test empty_batch_cannot_complete_a_forged_state() {
+  let state = complete(0, [h28b])
+  !rule.scan_complete_v1(
+    rule.advance_scan_v1(
+      rule.SourceScanStateV1 { ..state, checkpoint_hash: h32 },
+      [],
+      scan_hash,
+      final_hash,
+    ),
+  )
 }
 
 test batch_refuses_a_substituted_later_source() fail {
@@ -426,7 +421,7 @@ test batch_refuses_a_malformed_checkpoint() fail {
   ).cursor == 2
 }
 
-test batch_advance_over_a_prefix_agrees_with_source_scan() {
+test batch_advance_over_a_prefix_agrees_with_split_batches() {
   let hashes = [h28b, h28a, h28b]
   let Pair(state, leaves) = initial(1, hashes)
   let advanced = rule.advance_scan_v1(
@@ -435,12 +430,18 @@ test batch_advance_over_a_prefix_agrees_with_source_scan() {
     scan_hash,
     final_hash,
   )
-  let stepped = rule.scan_source_v1(
-    rule.scan_source_v1(state, descriptor(leaves, 0, 0, h28b), scan_hash),
-    descriptor(leaves, 1, 1, h28a),
+  let split = rule.advance_scan_v1(
+    rule.advance_scan_v1(
+      state,
+      [descriptor(leaves, 0, 0, h28b)],
+      scan_hash,
+      final_hash,
+    ),
+    [descriptor(leaves, 1, 1, h28a)],
     scan_hash,
+    final_hash,
   )
-  advanced == stepped && advanced.found
+  advanced == split && advanced.found
 }
 
 fn trace_authenticated_purpose(
@@ -613,9 +614,10 @@ test honest_canonical_header_with_present_source_refuses_conviction() fail {
   let staged = rule.authenticate_transaction_sources_v1(purpose, 1)
   let universe = rule.authenticate_resolved_sources_v1(staged, 0)
   let source_hashes = [source_leaf(0, 0, h28a)]
-  let scanned = rule.scan_source_v1(
+  let scanned = rule.advance_scan_v1(
     rule.initial_scan_v1(universe, scan_hash),
-    descriptor(source_hashes, 0, 0, h28a),
+    [descriptor(source_hashes, 0, 0, h28a)],
+    scan_hash,
     final_hash,
   )
   rule.terminal_contradiction_v1(scanned)
