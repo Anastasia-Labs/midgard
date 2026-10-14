@@ -68,7 +68,7 @@ const ROLE_BY_CONTRACT = new Map(
 // step-04 (in the manifest, the publication order and the node-runtime
 // command) reproduced every previous digest of every generation.
 const PRE_HISTORY_MANIFEST_ROLE_ORDER_DIGEST =
-  "f7f12e6e8643ccdb37da750f9518c84c1689580a8634749e09023e91bcc053b3";
+  "39109fc22dc15fe2583fc34ee93cc1425b24ad0e2792e566f5c43954972cd9c2";
 const PRE_HISTORY_REAL_PUBLICATION_ORDER_DIGEST =
   "d679c1ee58ca7e6934d85ebf806a1f19f5f0dd50cb9b86b461a8f9422d82b1e2";
 const PRE_HISTORY_REAL_COMMAND_ORDER_DIGEST =
@@ -87,7 +87,7 @@ const PRE_HISTORY_PLACEHOLDER_COMMAND_ORDER_DIGEST =
 // the older contract-name pins are dropped: the older role pins still fix
 // every published entry, and the current contract-name pin fixes the rest.
 const PRE_POOL_MANIFEST_ROLE_ORDER_DIGEST =
-  "048e25232866bbe9743e039edb3304ea2591c6aaebe47cc18af6783aa2b9c5ee";
+  "2b95e3a2e9422f9eb1bacf2430ef9c1fae88a78b52ee6d4eacfb86851347c225";
 const PRE_POOL_REAL_PUBLICATION_ORDER_DIGEST =
   "6f980ec4e56ea776b65f7e3b7b51ecb694ca50e47f1354dc3f589b81025c29c4";
 const PRE_POOL_REAL_COMMAND_ORDER_DIGEST =
@@ -101,9 +101,9 @@ const PRE_POOL_PLACEHOLDER_COMMAND_ORDER_DIGEST =
 // (with the retired bond yield restored) reproduces every pre-pool published
 // order digest and the pre-pool 534/527 counts.
 const PRE_DATA_CANONICITY_MANIFEST_CONTRACT_ORDER_DIGEST =
-  "e5d591ed95134fd67fc0b49b4212651d1f3b2513f869b0e91ba45f4e279e2752";
+  "33d96c0a774c3b21188c2381b3def67d60ad2d8a89659fe2cc4d961351070967";
 const PRE_DATA_CANONICITY_MANIFEST_ROLE_ORDER_DIGEST =
-  "e27cfbfa4ff7cd90274a2bdcac4d1798c5751467b53a88db85fa2e159e2f5d05";
+  "65a9a07a55d8b124b30d8080d8288d472bde0020bfb3ff872da3cea1e5176966";
 const PRE_DATA_CANONICITY_REAL_PUBLICATION_ORDER_DIGEST =
   "61d40b971a4405f28ef3881150ceb47d3f72fd8288df19aa54483c4f3ff717a6";
 const PRE_DATA_CANONICITY_REAL_COMMAND_ORDER_DIGEST =
@@ -113,13 +113,13 @@ const PRE_DATA_CANONICITY_PLACEHOLDER_PUBLICATION_ORDER_DIGEST =
 const PRE_DATA_CANONICITY_PLACEHOLDER_COMMAND_ORDER_DIGEST =
   "993c9f270b936ead6e61caec004a371abaeeff1258c20fa66e2dfa484f04a7af";
 
-// New pins are derived only after projecting out exactly the four
-// data-canonicity entries reproduces every pre-data-canonicity order digest
-// and its 516/509 counts.
+// Projecting out all four data-canonicity additions leaves 514/509 entries.
+// The retired escape-hatch manifest fields had two null roles; restoring them
+// reconstructs every earlier order pin without moving surviving entries.
 const MANIFEST_CONTRACT_ORDER_DIGEST =
-  "6a4c88bfb38fdc67303ec9799124d2e8ef7b89998ffac584e06a2df069266299";
+  "fb7a7b663af3595cfe5a1974a258ac64cee7b8982d6c71d852fbd0a42beb48db";
 const MANIFEST_ROLE_ORDER_DIGEST =
-  "6f349f824547523e55e2e6845568e9473c1f44d637e8e7e0b770048dcd7ce61b";
+  "b36abb652d83bf0d7de86beaa0d4c9ecfb746a0744b160afa7b37654683c4fa4";
 const REAL_PUBLICATION_ORDER_DIGEST =
   "642e00d786931c6a649fabd7006200f25d2c4624767851f32a2d7bc451d264b7";
 const REAL_COMMAND_ORDER_DIGEST =
@@ -169,7 +169,7 @@ describe("deployable-script catalogue", () => {
   it("pins the manifest order of contracts and roles", () => {
     for (const contracts of [real, placeholder]) {
       const manifest = manifestDeployableScripts(contracts);
-      expect(manifest).toHaveLength(520);
+      expect(manifest).toHaveLength(518);
       expect(orderDigest(manifest.map(({ contract }) => contract))).toEqual(
         MANIFEST_CONTRACT_ORDER_DIGEST,
       );
@@ -210,7 +210,7 @@ describe("deployable-script catalogue", () => {
       const manifest = manifestDeployableScripts(contracts).filter(
         ({ contract }) => !dataCanonicityContracts.has(contract),
       );
-      expect(manifest).toHaveLength(516);
+      expect(manifest).toHaveLength(514);
       expect(orderDigest(manifest.map(({ contract }) => contract))).toEqual(
         PRE_DATA_CANONICITY_MANIFEST_CONTRACT_ORDER_DIGEST,
       );
@@ -255,7 +255,7 @@ describe("deployable-script catalogue", () => {
       const roles = withRetiredBondRole(
         manifest.map(({ role }) => role ?? null),
       );
-      expect(roles).toHaveLength(509);
+      expect(roles).toHaveLength(507);
       expect(orderDigest(roles)).toEqual(
         PRE_HISTORY_MANIFEST_ROLE_ORDER_DIGEST,
       );
@@ -310,7 +310,7 @@ describe("deployable-script catalogue", () => {
       const roles = withRetiredBondRole(
         manifest.map(({ role }) => role ?? null),
       );
-      expect(roles).toHaveLength(515);
+      expect(roles).toHaveLength(513);
       expect(orderDigest(roles)).toEqual(PRE_POOL_MANIFEST_ROLE_ORDER_DIGEST);
       const targets = withRetiredBondRole(
         nodeRuntimeReferenceScriptTargets(contracts)

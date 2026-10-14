@@ -12,6 +12,11 @@ import "./blueprint.parse-fault-proof-blueprint.js";
 import "./blueprint.get-unapplied-script.js";
 
 import { encodeCborArrayRaw, readCborBytes } from "@al-ft/midgard-core/codec";
+import { computeDeploymentManifestJsonDigest } from "@al-ft/midgard-core/deployment-manifest-identity";
+import {
+  releaseRecord,
+  releaseString,
+} from "@al-ft/midgard-core/deployment-release";
 import {
   applyDoubleCborEncoding,
   Data,
@@ -36,6 +41,11 @@ import {
   type FaultProofBlueprint,
   getBlueprintValidator,
 } from "./blueprint.parse-fault-proof-blueprint.js";
+import {
+  type BlueprintDeploymentScript,
+  buildBlueprintDeploymentRegistry,
+  recordBlueprintApplication,
+} from "./blueprint-applications.js";
 
 /**
  * The single place this package turns a blueprint entry into a deployable
@@ -76,10 +86,22 @@ export const applyBlueprintParams = (
   const cacheKey = appliedScriptCacheKey(validator.compiledCode, params);
   const cached = appliedScriptCache.get(cacheKey);
   if (cached !== undefined) {
+    recordBlueprintApplication(
+      blueprint,
+      title,
+      params.map((param) => Data.to(param)),
+      cached,
+    );
     return cached;
   }
   const applied = applyParamsToScriptExactly(validator.compiledCode, params);
   appliedScriptCache.set(cacheKey, applied);
+  recordBlueprintApplication(
+    blueprint,
+    title,
+    params.map((param) => Data.to(param)),
+    applied,
+  );
   return applied;
 };
 
@@ -154,3 +176,169 @@ export {
   getBlueprintValidator,
   parseFaultProofBlueprint,
 } from "./blueprint.parse-fault-proof-blueprint.js";
+export {
+  type BlueprintApplicationRecord,
+  blueprintApplicationRecords,
+  type BlueprintDeploymentScript,
+  buildBlueprintDeploymentRegistry,
+} from "./blueprint-applications.js";
+
+/** Independently reapplies every retained parameter record before a release signs it. */
+export const verifyBlueprintDeploymentRegistry = (
+  blueprint: FaultProofBlueprint,
+  value: unknown,
+) => {
+  const registry = releaseRecord(value, "$.deploymentRegistry", [
+    "schemaVersion",
+    "validators",
+    "contracts",
+  ]);
+  if (
+    registry.schemaVersion !== "midgard-blueprint-deployment-registry-v1" ||
+    !Array.isArray(registry.validators) ||
+    !Array.isArray(registry.contracts)
+  )
+    throw new Error("Invalid blueprint deployment registry");
+  const nonDeployed: Record<string, string> = Object.create(null) as Record<
+    string,
+    string
+  >;
+  registry.validators.forEach((value, index) => {
+    const path = `$.deploymentRegistry.validators[${index.toString()}]`;
+    const entry = releaseRecord(
+      value,
+      path,
+      ["title", "disposition"],
+      ["contracts", "reason"],
+    );
+    const title = releaseString(entry.title, `${path}.title`, /^.+$/u);
+    if (entry.disposition === "not_deployed") {
+      nonDeployed[title] = releaseString(
+        entry.reason,
+        `${path}.reason`,
+        /^.+$/u,
+      );
+    } else if (entry.disposition !== "deployed")
+      throw new Error("Invalid blueprint validator disposition");
+  });
+  const scripts: BlueprintDeploymentScript[] = registry.contracts.map(
+    (value, index) => {
+      const path = `$.deploymentRegistry.contracts[${index.toString()}]`;
+      const entry = releaseRecord(value, path, [
+        "contract",
+        "purpose",
+        "script",
+        "scriptHash",
+        "referenceScriptRole",
+        "application",
+      ]);
+      const script = releaseRecord(entry.script, `${path}.script`, [
+        "type",
+        "script",
+      ]);
+      if (script.type !== "PlutusV3" && script.type !== "Native")
+        throw new Error("Invalid deployment registry script language");
+      if (
+        entry.purpose !== "spend" &&
+        entry.purpose !== "mint" &&
+        entry.purpose !== "withdraw"
+      )
+        throw new Error("Invalid deployment registry purpose");
+      const scriptCbor = releaseString(
+        script.script,
+        `${path}.script.script`,
+        /^(?:[0-9a-f]{2})+$/u,
+      );
+      if (script.type === "Native") {
+        if (entry.application !== null)
+          throw new Error("Native deployment script has Plutus parameters");
+      } else {
+        const application = releaseRecord(
+          entry.application,
+          `${path}.application`,
+          ["validatorTitle", "parameters", "appliedScriptCborHex"],
+        );
+        const title = releaseString(
+          application.validatorTitle,
+          `${path}.application.validatorTitle`,
+          /^.+$/u,
+        );
+        if (!Array.isArray(application.parameters))
+          throw new Error("Deployment parameters must be ordered");
+        const validator = getBlueprintValidator(blueprint, title);
+        const parameters = application.parameters.map(
+          (value, parameterIndex) => {
+            const parameterPath = `${path}.application.parameters[${parameterIndex.toString()}]`;
+            const parameter = releaseRecord(
+              value,
+              parameterPath,
+              ["title", "cborHex"],
+              ["schemaRef"],
+            );
+            const declared = declaredParameters(validator)[parameterIndex];
+            if (
+              declared === undefined ||
+              parameter.title !== declared.title ||
+              parameter.schemaRef !== declared.schemaRef
+            )
+              throw new Error(
+                "Retained parameter declaration differs from raw blueprint",
+              );
+            const cbor = releaseString(
+              parameter.cborHex,
+              `${parameterPath}.cborHex`,
+              /^(?:[0-9a-f]{2})+$/u,
+            );
+            const decoded = Data.from(cbor);
+            if (Data.to(decoded) !== cbor)
+              throw new Error("Deployment parameter CBOR is not canonical");
+            return decoded;
+          },
+        );
+        const applied = applyBlueprintParams(blueprint, title, parameters);
+        if (
+          applied !== applyDoubleCborEncoding(scriptCbor) ||
+          applied !== application.appliedScriptCborHex
+        )
+          throw new Error(
+            "Retained parameters do not produce the deployed script",
+          );
+      }
+      return {
+        contract: releaseString(
+          entry.contract,
+          `${path}.contract`,
+          /^[a-z][A-Za-z0-9]*$/u,
+        ),
+        purpose: entry.purpose,
+        script: { type: script.type, script: scriptCbor },
+        scriptHash: releaseString(
+          entry.scriptHash,
+          `${path}.scriptHash`,
+          /^[0-9a-f]{56}$/u,
+        ),
+        referenceScriptRole:
+          entry.referenceScriptRole === null
+            ? null
+            : releaseString(
+                entry.referenceScriptRole,
+                `${path}.referenceScriptRole`,
+                /^.+$/u,
+              ),
+      };
+    },
+  );
+  const rebuilt = buildBlueprintDeploymentRegistry(
+    blueprint,
+    scripts,
+    nonDeployed,
+  );
+  if (
+    computeDeploymentManifestJsonDigest(rebuilt) !==
+    computeDeploymentManifestJsonDigest(registry)
+  )
+    throw new Error(
+      "Retained deployment registry differs from its reconstructed census",
+    );
+  return rebuilt;
+};

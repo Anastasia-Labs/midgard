@@ -49,7 +49,6 @@ export const normalizeHubOracleOneShotOutRef = (
  */
 export const buildRealHubOracleValidator = (
   network: Network,
-  fallbackSpendingValidator: SDK.SpendingValidator,
   oneShotOutRef: HubOracleOneShotOutRef,
 ): Effect.Effect<SDK.AuthenticatedValidator, Error> =>
   Effect.gen(function* () {
@@ -61,10 +60,10 @@ export const buildRealHubOracleValidator = (
         new Error("Failed to derive hub-oracle minting validator", { cause }),
     });
     return {
-      spendingScriptCBOR: fallbackSpendingValidator.spendingScriptCBOR,
-      spendingScript: fallbackSpendingValidator.spendingScript,
-      // The canonical Aiken tree only ships the one-shot mint policy. The
-      // witness UTxO lives at the script credential derived from that policy id.
+      // The witness credential already uses this mint policy's hash. Its
+      // else handler fails for spending, so the hub witness stays immutable.
+      spendingScriptCBOR: mintingScriptCBOR,
+      spendingScript: mintingScript,
       spendingScriptHash: policyId,
       spendingScriptAddress: credentialToAddress(
         network,

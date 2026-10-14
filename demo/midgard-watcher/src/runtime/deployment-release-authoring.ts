@@ -11,6 +11,7 @@ import {
   verifyFinalizedDeploymentManifest,
 } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { deploymentFraudProofCatalogueCategories } from "@al-ft/midgard-core/deployment-profile";
+import { parseDeploymentReleaseProvenance } from "@al-ft/midgard-core/deployment-release";
 import { computeFraudProofReleaseEconomicsPolicyDigest } from "@al-ft/midgard-fault-proofs";
 
 import {
@@ -29,6 +30,7 @@ import {
   WATCHER_SIGNED_DEPLOYMENT_IDENTITY_SCHEMA_VERSION,
   type WatcherDeploymentIdentityPolicy,
 } from "./deployment-identity.js";
+import { verifyDeploymentReleaseParameterRegistry } from "./deployment-release-parameter-registry.js";
 
 /** Where a release's artifacts live; the watcher process config names them. */
 export type WatcherDeploymentReleasePaths = Readonly<{
@@ -39,6 +41,9 @@ export type WatcherDeploymentReleasePaths = Readonly<{
   blueprint: string;
   /** Contract deployment info: the finalized manifest, as the node writes it. */
   deploymentInfo: string;
+  /** Required for a public release: metadata signed by the same authority. */
+  provenance?: string;
+  parameterRegistry?: string;
 }>;
 
 /** Durable file writes; `create` fails with EEXIST instead of replacing. */
@@ -93,6 +98,8 @@ export const authorWatcherDeploymentRelease = async ({
   fundingProfiles,
   fundingPaymentKeyHash,
   signingKey,
+  releaseProvenance,
+  deploymentParameterRegistry,
   paths,
   existingAuthority,
   writer,
@@ -103,11 +110,61 @@ export const authorWatcherDeploymentRelease = async ({
   readonly fundingProfiles: readonly WatcherWorkflowFundingProfileBody[];
   readonly fundingPaymentKeyHash: string;
   readonly signingKey: KeyObject;
+  readonly releaseProvenance?: unknown;
+  readonly deploymentParameterRegistry?: unknown;
   readonly paths: WatcherDeploymentReleasePaths;
   readonly existingAuthority: WatcherExistingAuthorityPolicy;
   readonly writer: WatcherDeploymentReleaseWriter;
 }) => {
   const manifest = verifyFinalizedDeploymentManifest(manifestValue);
+  if (signingKey.asymmetricKeyType !== "ed25519")
+    throw new Error("Release signing key must be ed25519");
+  const publicProfile =
+    manifest.deploymentProfile.name === "preprod-public" ||
+    manifest.deploymentProfile.name === "mainnet";
+  if (publicProfile && releaseProvenance === undefined)
+    throw new Error("Public release requires source and image provenance");
+  const provenance =
+    releaseProvenance === undefined
+      ? undefined
+      : parseDeploymentReleaseProvenance(releaseProvenance);
+  if (
+    provenance !== undefined &&
+    (paths.provenance === undefined ||
+      provenance.deploymentProfileName !== manifest.deploymentProfile.name ||
+      provenance.deploymentProfileDigest !== manifest.deploymentProfileDigest ||
+      provenance.blueprintHash !== manifest.artifacts.blueprintHash)
+  )
+    throw new Error(
+      "Release provenance differs from deployment or has no durable path",
+    );
+  const releaseProvenanceDigest =
+    provenance === undefined
+      ? undefined
+      : computeDeploymentManifestJsonDigest(provenance);
+
+  if (publicProfile && deploymentParameterRegistry === undefined)
+    throw new Error(
+      "Public release requires the complete deployment parameter registry",
+    );
+  const parameterRegistry =
+    deploymentParameterRegistry === undefined
+      ? undefined
+      : verifyDeploymentReleaseParameterRegistry(
+          deploymentParameterRegistry,
+          blueprintJson,
+          manifest,
+        );
+  if (
+    provenance !== undefined &&
+    (parameterRegistry === undefined ||
+      paths.parameterRegistry === undefined ||
+      provenance.evidence.parameterRegistryDigest !==
+        computeDeploymentManifestJsonDigest(parameterRegistry))
+  )
+    throw new Error(
+      "Signed provenance differs from complete deployment parameter registry or its durable path",
+    );
   const blueprintHash = createHash("sha256")
     .update(blueprintJson)
     .digest("hex");
@@ -151,6 +208,23 @@ export const authorWatcherDeploymentRelease = async ({
   const funding = createWatcherWorkflowFundingProfileBundle({
     profiles: fundingProfiles,
   });
+  if (publicProfile) {
+    const measuredCategories = new Set(
+      fundingProfiles.flatMap((profile) =>
+        profile.scope.kind === "fraud_proof_category"
+          ? [profile.scope.category]
+          : [],
+      ),
+    );
+    if (
+      deploymentFraudProofCatalogueCategories(manifest.deploymentProfile).some(
+        (category) => !measuredCategories.has(category),
+      )
+    )
+      throw new Error(
+        "Public release requires measured funding profiles for every installed catalogue category",
+      );
+  }
   const catalogue =
     manifest.contracts.fraudProofCatalogueMint?.fraudProofCatalogue;
   if (catalogue === undefined)
@@ -185,11 +259,29 @@ export const authorWatcherDeploymentRelease = async ({
       identity.ruleBundleCommitment !== ruleBundleCommitment ||
       identity.fundingProfileBundleDigest !==
         funding.fundingProfileBundleDigest ||
-      identity.trustRootId !== trustRootId
+      identity.trustRootId !== trustRootId ||
+      identity.releaseProvenanceDigest !== releaseProvenanceDigest
     )
       throw new Error(
         "Saved watcher authority differs from the requested deployment or release",
       );
+    if (provenance !== undefined && parameterRegistry !== undefined) {
+      const retainedProvenance = JSON.parse(
+        await readFile(paths.provenance!, "utf8"),
+      );
+      const retainedParameters = JSON.parse(
+        await readFile(paths.parameterRegistry!, "utf8"),
+      );
+      if (
+        computeDeploymentManifestJsonDigest(retainedProvenance) !==
+          releaseProvenanceDigest ||
+        computeDeploymentManifestJsonDigest(retainedParameters) !==
+          provenance.evidence.parameterRegistryDigest
+      )
+        throw new Error(
+          "Saved public release artifacts differ from signed provenance",
+        );
+    }
     return {
       authority: (await readSavedAuthority(paths.authority))!,
       deploymentAuthority,
@@ -226,7 +318,12 @@ export const authorWatcherDeploymentRelease = async ({
       mode: "authenticated_committee_v1",
       identityDigest: computeDeploymentManifestJsonDigest(manifest.da),
     },
-    artifacts: { blueprintHash },
+    artifacts: {
+      blueprintHash,
+      ...(releaseProvenanceDigest === undefined
+        ? {}
+        : { releaseProvenanceDigest }),
+    },
   };
   const signedIdentity = {
     schemaVersion: WATCHER_SIGNED_DEPLOYMENT_IDENTITY_SCHEMA_VERSION,
@@ -291,6 +388,10 @@ export const authorWatcherDeploymentRelease = async ({
   await writer.replace(paths.blueprint, blueprintJson);
   // Funding bundles require canonical bytes, including no trailing newline.
   await writer.replace(paths.funding, funding.fundingProfileBundleBytes);
+  if (parameterRegistry !== undefined)
+    await writer.replace(paths.parameterRegistry!, json(parameterRegistry));
+  if (provenance !== undefined)
+    await writer.replace(paths.provenance!, json(provenance));
   // Publish the signed authority only after every bound artifact is durable.
   await writer.create(
     paths.authority,
