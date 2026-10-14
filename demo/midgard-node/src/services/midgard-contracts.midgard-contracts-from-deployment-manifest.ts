@@ -137,6 +137,16 @@ export const midgardContractsFromDeploymentManifest = (
         sourcePath,
         "fraudProofTransitionTraceAcceptedTransactionL2OpenWithdraw",
       ),
+      l2Delete: withdrawalValidatorFromManifest(
+        manifest,
+        sourcePath,
+        "fraudProofTransitionTraceAcceptedTransactionL2DeleteWithdraw",
+      ),
+      l2Outputs: withdrawalValidatorFromManifest(
+        manifest,
+        sourcePath,
+        "fraudProofTransitionTraceAcceptedTransactionL2OutputsWithdraw",
+      ),
       l2Summaries: withdrawalValidatorFromManifest(
         manifest,
         sourcePath,

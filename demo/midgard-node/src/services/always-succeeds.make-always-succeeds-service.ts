@@ -370,6 +370,8 @@ export const makeAlwaysSucceedsService: Effect.Effect<SDK.MidgardValidators> =
         steps: [transitionTrace, ...transitionTraceFinals],
         yields: {
           l2Open: stateQueueYield,
+          l2Delete: stateQueueYield,
+          l2Outputs: stateQueueYield,
           l2Summaries: stateQueueYield,
           l2Replay: stateQueueYield,
           claimStructure: stateQueueYield,

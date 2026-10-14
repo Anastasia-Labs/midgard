@@ -680,6 +680,10 @@ export const DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE =
 
     "V1 fraud-proof transition-trace final-4 L2 open yield":
       "fraudProofTransitionTraceAcceptedTransactionL2OpenWithdraw",
+    "V1 fraud-proof transition-trace final-4 L2 delete yield":
+      "fraudProofTransitionTraceAcceptedTransactionL2DeleteWithdraw",
+    "V1 fraud-proof transition-trace final-4 L2 outputs yield":
+      "fraudProofTransitionTraceAcceptedTransactionL2OutputsWithdraw",
     "V1 fraud-proof transition-trace final-4 L2 summaries yield":
       "fraudProofTransitionTraceAcceptedTransactionL2SummariesWithdraw",
     "V1 fraud-proof transition-trace final-4 L2 replay yield":

@@ -56,6 +56,10 @@ export const TRANSITION_TRACE_YIELD_TITLES = {
 
   l2Open:
     "fraud_proofs/transition_trace/accepted_transaction_yields.l2_open.withdraw",
+  l2Delete:
+    "fraud_proofs/transition_trace/accepted_transaction_yields.l2_delete.withdraw",
+  l2Outputs:
+    "fraud_proofs/transition_trace/accepted_transaction_yields.l2_outputs.withdraw",
   l2Summaries:
     "fraud_proofs/transition_trace/output_summaries.summaries.withdraw",
   l2Assembly: "fraud_proofs/transition_trace/output_assembly.assembly.withdraw",
@@ -129,9 +133,11 @@ export const buildTransitionTraceChain = ({
   computationThread,
   fraudProof,
   fraudProofTokenAddressData,
+  fieldPreimageCertificatePolicyId,
   eventHistoryBounds,
 }: {
   readonly eventHistoryBounds: EventHistoryPayloadBounds;
+  readonly fieldPreimageCertificatePolicyId: string;
   readonly blueprint: FaultProofBlueprint;
   readonly network: Network;
   readonly hubOraclePolicyId: string;
@@ -282,7 +288,18 @@ export const buildTransitionTraceChain = ({
       );
     const acceptedHash = finals[4].spendingScriptHash;
     const depositHash = finals[5].spendingScriptHash;
-    const l2Open = yield* buildYield("l2Open", [acceptedHash]);
+    const l2Open = yield* buildYield("l2Open", [
+      acceptedHash,
+      fieldPreimageCertificatePolicyId,
+    ]);
+    const l2Delete = yield* buildYield("l2Delete", [
+      acceptedHash,
+      fieldPreimageCertificatePolicyId,
+    ]);
+    const l2Outputs = yield* buildYield("l2Outputs", [
+      acceptedHash,
+      fieldPreimageCertificatePolicyId,
+    ]);
     const depositProjection = yield* buildYield("depositProjection", [
       depositHash,
       hubOraclePolicyId,
@@ -317,6 +334,8 @@ export const buildTransitionTraceChain = ({
       depositValue: yield* buildYield("depositValue", [depositHash]),
 
       l2Open,
+      l2Delete,
+      l2Outputs,
       l2Summaries,
       l2Assembly: yield* buildYield("l2Assembly", [acceptedHash]),
       l2Replay: yield* buildYield("l2Replay", [acceptedHash]),

@@ -11,7 +11,7 @@ use midgard/event_history/order_facts
 use midgard/fraud_proofs/native_tx/components
 use midgard/fraud_proofs/transition_trace/deposit_source
 use midgard/fraud_proofs/transition_trace/final_yield.{
-  OpenedOutputs, dispatched, one_step_witness,
+  dispatched, one_step_witness,
 }
 use midgard/fraud_proofs/transition_trace/final_yield as delegation
 use midgard/fraud_proofs/transition_trace/proof
@@ -27,7 +27,7 @@ validator projection(
   max_payload_bytes: Int,
   max_payload_nodes: Int,
 ) {
-  withdraw(opened: OpenedOutputs, _credential: Credential, tx: Transaction) {
+  withdraw(output_hash: ByteArray, _credential: Credential, tx: Transaction) {
     let (datum, args) = delegation.dispatch(dispatcher, tx.inputs, tx.redeemers)
     expect Some(state) = datum.data
     expect state.kind == 1
@@ -106,15 +106,14 @@ validator projection(
         event.id == source.key,
         cbor.serialise(event.info) == source.value,
         projected.key == proof.ledger_outref_key(source.key),
-        opened.spend_input_keys == [],
-        list.length(opened.output_hashes) == 1,
         delegation.advance(
           datum,
           args,
           tx.outputs,
           delegation.State {
             ..state,
-            opened,
+            output_hash,
+            output_count: 1,
             phase: 2,
             deposit_source_cbor: cbor.serialise(commitment),
             deposit_asset_count: count,

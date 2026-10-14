@@ -8,7 +8,7 @@ use cardano/transaction.{
 }
 use midgard/cek_data_v1.{DataSummaryV1}
 use midgard/computation_thread as ct
-use midgard/fraud_proofs/native_tx/types.{MidgardTxOutput}
+use midgard/fraud_proofs/field_opening_v1.{FieldOpeningV1}
 use midgard/fraud_proofs/transition_trace/proof_carriage
 use midgard/ledger_output_scan_v1 as scan
 
@@ -30,6 +30,10 @@ pub const deposit_assembly_role = "V1FpTtF5AssemblyYield"
 
 pub const l2_replay_role = "V1FpTtF4L2ReplayYield"
 
+pub const l2_delete_role = "V1FpTtF4L2DeleteYield"
+
+pub const l2_outputs_role = "V1FpTtF4L2OutputsYield"
+
 pub const claim_structure_role = "V1FpTtF4ClaimStructYield"
 
 pub const claim_source_role = "V1FpTtF4ClaimSourceYield"
@@ -49,8 +53,18 @@ pub type State {
   kind: Int,
   phase: Int,
   proof_commitment: proof_carriage.Commitment,
-  opened: OpenedOutputs,
-  input_index: Int,
+  /// The disputed L2 transaction, anchored once by phase 0 from the committed
+  /// source leaf. Every field walk re-opens against it.
+  tx_id: ByteArray,
+  /// `field_walk_checkpoint_hash` of the spend-inputs (field 0) walk.
+  inputs_walk: ByteArray,
+  /// The outputs (field 2) position: a grammar checkpoint hash during phase
+  /// 10, then the certified field walk's checkpoint hash.
+  outputs_walk: ByteArray,
+  /// The certified number of outputs the replay inserts.
+  output_count: Int,
+  /// `blake2b_256` of the output being replayed.
+  output_hash: ByteArray,
   output_index: Int,
   current_root: ByteArray,
   summaries: OutputSummaries,
@@ -78,8 +92,11 @@ pub fn initial(kind: Int, commitment: proof_carriage.Commitment) -> State {
       0
     },
     proof_commitment: commitment,
-    opened: OpenedOutputs { spend_input_keys: [], output_hashes: [] },
-    input_index: 0,
+    tx_id: #"",
+    inputs_walk: #"",
+    outputs_walk: #"",
+    output_count: 0,
+    output_hash: #"",
     output_index: 0,
     current_root: #"",
     summaries: OutputSummaries { summaries: [] },
@@ -116,9 +133,11 @@ pub type Args {
 pub type SpendRedeemer =
   ct.StepRedeemer<Args>
 
-pub type OpenedOutputs {
-  spend_input_keys: List<ByteArray>,
-  output_hashes: List<ByteArray>,
+/// One resumed field-walk step: the redeemer half of `resume_opened_field_walk`
+/// and its grammar counterpart. The committed half is thread state.
+pub type WalkStep {
+  opening: FieldOpeningV1,
+  checkpoint_bytes: ByteArray,
 }
 
 pub type OutputSummaries {
@@ -206,11 +225,7 @@ pub fn output_bytes(
   references: List<Input>,
 ) -> ByteArray {
   let bytes = proof_carriage.chunks(args.output_ref_indices, references)
-  expect
-    blake2b_256(bytes) == list.expect_at(
-      state.opened.output_hashes,
-      state.output_index,
-    )
+  expect blake2b_256(bytes) == state.output_hash
   bytes
 }
 

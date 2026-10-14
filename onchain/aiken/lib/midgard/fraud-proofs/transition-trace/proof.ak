@@ -18,11 +18,6 @@ use midgard/event_history/horizon
 use midgard/event_history/order_facts
 use midgard/event_history/proof_evidence
 use midgard/fraud_proof_catalogue
-use midgard/fraud_proofs/field_opening_v1.{
-  AnchoredNativeTxV1, BodyAnchor, BodyTxOpening, anchored_field_walk,
-  anchored_native_tx, anchored_native_tx_version, fold_opened_field,
-  outputs_field_index, spend_inputs_field_index, unanchored_validity_code_of,
-}
 use midgard/fraud_proofs/native_tx/components as native_components
 use midgard/fraud_proofs/native_tx/types as native_types
 use midgard/fraud_proofs/transition_trace/timed_history
@@ -31,7 +26,6 @@ use midgard/ledger_output_descriptor_v1
 use midgard/ledger_state
 use midgard/mpf_prefix_fixture as prefix_fixture
 use midgard/mpf_proof_v1 as canonical_mpf
-use midgard/native_tx_field_access_v1
 use midgard/rejection_reason_v1
 use midgard/transition_trace
 use midgard/user_events
@@ -239,10 +233,6 @@ pub type InvalidOneStepTransitionWitness {
       ByteArray,
       ByteArray,
     >,
-    spend_inputs_preimage: ByteArray,
-    outputs_preimage: ByteArray,
-    spent_utxos: List<LedgerDeleteWitness>,
-    produced_utxos: List<LedgerInsertWitness>,
   }
 }
 
@@ -1194,78 +1184,6 @@ pub fn validate_l2_one_step_binding(
   }
 }
 
-fn apply_l2_spends(
-  root: ByteArray,
-  spend_inputs: List<native_types.MidgardTxInput>,
-  witnesses: List<LedgerDeleteWitness>,
-) -> ByteArray {
-  when spend_inputs is {
-    [] -> {
-      expect witnesses == []
-      root
-    }
-    [spend_input, ..rest] -> {
-      expect [witness, ..remaining_witnesses] = witnesses
-      let expected_key = native_components.encode_midgard_tx_input(spend_input)
-      expect witness.key == expected_key
-      apply_l2_spends(
-        apply_delete_witness(root, witness),
-        rest,
-        remaining_witnesses,
-      )
-    }
-  }
-}
-
-/// Replays the inserts one L2 transaction makes into `utxos_root`.
-///
-/// The inserted value is the output's `LedgerOutputCommitmentV1` descriptor,
-/// never the full output bytes. Spec section 5.3 fixes the descriptor as the
-/// MPT value ("recomputed with that descriptor as the MPT value, not with the
-/// full output bytes") and every other producer of the ledger trie -- the node,
-/// the validation machine, the watcher's block replay and DA reconstruction --
-/// commits the descriptor. Replaying the full output bytes here would recompute
-/// a root that an honest descriptor-built block can never equal, and the fault
-/// condition is a root mismatch, so the arm would mint against honest blocks
-/// and could never prove a real one.
-///
-/// The descriptor is derived from the output rather than taken from the
-/// witness. A challenger who could name the inserted value could name the post
-/// root, which is the whole fault.
-fn apply_l2_outputs(
-  root: ByteArray,
-  tx_id: ByteArray,
-  output_index: Int,
-  outputs: List<native_types.MidgardTxOutput>,
-  witnesses: List<LedgerInsertWitness>,
-) -> ByteArray {
-  when outputs is {
-    [] -> {
-      expect witnesses == []
-      root
-    }
-    [output, ..rest] -> {
-      expect [witness, ..remaining_witnesses] = witnesses
-      let expected_key = native_components.encode_midgard_tx_input(
-        native_types.MidgardTxInput { tx_id, output_index },
-      )
-      expect Some(expected_value) = ledger_output_descriptor_v1.ledger_value_v1(
-        output_index,
-        native_components.encode_midgard_tx_output(output),
-      )
-      expect witness.key == expected_key
-      expect witness.value == expected_value
-      apply_l2_outputs(
-        apply_insert_witness(root, witness),
-        tx_id,
-        output_index + 1,
-        rest,
-        remaining_witnesses,
-      )
-    }
-  }
-}
-
 fn validate_valid_withdrawal_transition(
   header: ledger_state.HeaderV1,
   trace_proof: transition_trace.IndexedTraceProof,
@@ -1412,161 +1330,6 @@ pub fn validate_valid_deposit_transition(
   }
 }
 
-/// Authenticate one **body** field of the disputed transaction through the §8.8
-/// door and walk it into a decoded item list, in order, exactly once.
-///
-/// This replaces the retired pair of `decode_<field>_preimage_cbor` followed by
-/// a `field_commitment_from_items` re-hash of the reproduced item list. Where
-/// that idiom re-encoded every item to re-derive a commitment it then compared
-/// against a free-standing hash, the door hashes the preimage **once** (§7.1
-/// authenticate-once) against the commitment it extracts positionally from the
-/// tx-id-verified compact structures (§4), and the items fall out of a single
-/// §10 walk over the bytes that hash already authenticated.
-///
-/// Not an equivalent rewrite, and the difference is the point of §4. The old
-/// check was against the canonical *re-encoding* of whatever the prover's bytes
-/// decoded to; this one is against the prover's bytes themselves. So the door is
-/// narrower where the retired decoder was lax — a non-minimal item wrapper the
-/// old path silently canonicalised is refused by `item_header_at`, and the §5.4
-/// aggregate length cap now applies — and wider in the one case where the block
-/// committed a non-canonically spelled preimage, which the re-hash could never
-/// match and exact bytes do. That widening cannot frame an honest operator: the
-/// commitment still pins the bytes, and an honest operator commits canonical
-/// ones. It is the direction §4 chose deliberately — the commitment is over raw
-/// bytes, so raw bytes are what a dispute must be held to.
-///
-/// It goes through `midgard/fraud_proofs/field_opening_v1` rather than reaching
-/// `authenticated_field_view` directly, and the reason is the part that is easy
-/// to skip: that module owns the §2.5 body/witness pairing. Building the
-/// door's arguments here instead would mean spelling the unread witness set
-/// out locally — a second copy of the one value #575 deliberately made
-/// unreachable from a redeemer. Both fields this family opens are body fields,
-/// so the guard has nothing to refuse today; routing through the bridge is
-/// what keeps that true of a later edit to this file rather than a property of
-/// the two call sites below. (Until #606 the bridge also carried the
-/// fields-6–8 tier-3 refusal, `carriage_reaches_the_anchor`; the repair's
-/// welded-hash equality lives behind the door itself, so every entry point
-/// inherits it.)
-///
-/// The anchor arrives **already paid for**, as an `AnchoredNativeTxV1` the
-/// caller built once from `BodyAnchor { tx_id }` over the MPF-committed
-/// `source_membership.key` — never a redeemer value. Taking the handle rather
-/// than the id and the bytes is what makes this family's two openings cost one
-/// transaction-id derivation instead of two: the bridge still re-runs the §2.5
-/// pairing and the tier check for each field, and only the anchor is shared.
-/// `field_index` remains a literal at each call site (§4 removed field-index
-/// domain separation, so the index is the only thing distinguishing field 0's
-/// commitment from field 1's).
-///
-/// The carriage is likewise a literal: this family carries its preimages inline
-/// in the fault witness (§8.1 tier 1), so tiers 2 and 3 are unreachable from
-/// here and the two arguments only those tiers consult — the reference-input
-/// list and the §8.6 certificate policy id — are provably never read. They are
-/// passed empty rather than plumbed through, which is also why this rebind adds
-/// no validator parameter and leaves the family's applied hashes to #579.
-pub fn door_body_field_items(
-  anchored: AnchoredNativeTxV1,
-  field_index: Int,
-  preimage: ByteArray,
-  decode_item: fn(ByteArray) -> a,
-) -> List<a> {
-  let reversed_items = fold_opened_field(
-    anchored_field_walk(
-      anchored,
-      field_index,
-      native_tx_field_access_v1.Inline { preimage },
-      [],
-      #"",
-    ),
-    [],
-    fn(acc, _index, item) { [decode_item(item), ..acc] },
-  )
-  list.reverse(reversed_items)
-}
-
-pub fn validate_l2_transaction_transition(
-  header: ledger_state.HeaderV1,
-  trace_proof: transition_trace.IndexedTraceProof,
-  event_to_step: transition_trace.RootMembershipProof<
-    ledger_state.EventKey,
-    ledger_state.EventToStepValue,
-  >,
-  source_membership: transition_trace.RootMembershipProof<ByteArray, ByteArray>,
-  spend_inputs_preimage: ByteArray,
-  outputs_preimage: ByteArray,
-  spent_utxos: List<LedgerDeleteWitness>,
-  produced_utxos: List<LedgerInsertWitness>,
-) -> Bool {
-  // 1. The committed source leaf must be well-formed CBOR.
-  expect Some(source_data) = cbor.deserialise(source_membership.value)
-  // 2. Those bytes must decode as an `L2TransactionSourceV1`.
-  expect source: ledger_state.L2TransactionSourceV1 = source_data
-  // §4/§8.8: the transaction id is the anchor and the compact bytes re-derive
-  // to it. This replaces the retired `verify_native_tx_proof_source_v1` over the
-  // proof-source triple; the witness-set-compact and field-preimage-lengths
-  // members that triple carried are not consulted for a body-field dispute.
-  //
-  // Derived **once** for the whole step. This rule reads three things off the
-  // one transaction — its scalar `validity_code`, field 0 and field 2 — and
-  // re-deriving the id for each cost ~211k memory units apiece; the anchored
-  // handle pays it once without giving up the §2.5 pairing or the tier check,
-  // both of which the bridge re-runs per field opened.
-  let anchored = anchored_native_tx(
-    BodyTxOpening { native_tx_compact_cbor: source.source.compact_cbor },
-    BodyAnchor { tx_id: source_membership.key, source_kind: 0 },
-  )
-  // 3. The transaction's §2.5 `validity_code` must be `TxIsValid` (0), because
-  //    this rule is about a transaction the block declared valid. The accessor is
-  //    named `unanchored_` because the *handle* cannot vouch for that value —
-  //    §3's id preimage is the body alone — and at this call site it does not
-  //    have to. `source.source.compact_cbor` is not the prover's own bytes: it
-  //    comes out of the `transactions_root` leaf, and the exact leaf bytes are
-  //    re-checked below (`cbor.serialise(source) == source_membership.value`,
-  //    over the membership `validate_l2_one_step_binding` verifies), so the code
-  //    read here is the one the block committed.
-  expect unanchored_validity_code_of(anchored) == 0
-  // §8.8 door: field 0 (spend inputs) and field 2 (outputs) are authenticated
-  // once against their flat commitments and walked into item lists. The field
-  // indices are literals here, not witness values, so no prover can steer a
-  // field-0 read onto field 1's identically-shaped commitment (§4).
-  let spend_inputs = door_body_field_items(
-    anchored,
-    spend_inputs_field_index,
-    spend_inputs_preimage,
-    native_components.decode_midgard_tx_input_cbor,
-  )
-  let outputs = door_body_field_items(
-    anchored,
-    outputs_field_index,
-    outputs_preimage,
-    native_components.decode_midgard_tx_output_cbor,
-  )
-  let after_spends = apply_l2_spends(
-    trace_proof.value.pre_utxos_root,
-    spend_inputs,
-    spent_utxos,
-  )
-  let expected_post_root = apply_l2_outputs(
-    after_spends,
-    source_membership.key,
-    0,
-    outputs,
-    produced_utxos,
-  )
-  and {
-    validate_l2_one_step_binding(
-      header,
-      trace_proof,
-      event_to_step,
-      source_membership,
-    ),
-    cbor.serialise(source) == source_membership.value,
-    source.tx_id == source_membership.key,
-    anchored_native_tx_version(anchored) == 1,
-    expected_post_root != trace_proof.value.post_utxos_root,
-  }
-}
-
 fn validate_invalid_one_step_transition(
   header: ledger_state.HeaderV1,
   hub_datum: hub.Datum,
@@ -1628,25 +1391,9 @@ fn validate_invalid_one_step_transition(
         projected_utxo,
       )
     }
-    L2TransactionTransition {
-      trace_proof,
-      event_to_step,
-      source_membership,
-      spend_inputs_preimage,
-      outputs_preimage,
-      spent_utxos,
-      produced_utxos,
-    } ->
-      validate_l2_transaction_transition(
-        header,
-        trace_proof,
-        event_to_step,
-        source_membership,
-        spend_inputs_preimage,
-        outputs_preimage,
-        spent_utxos,
-        produced_utxos,
-      )
+    // Replayed only by the streamed accepted-transaction final, whose ledger
+    // witnesses arrive one step at a time and are never part of the proof.
+    L2TransactionTransition { .. } -> False
   }
 }
 
@@ -2064,25 +1811,6 @@ pub fn validate_accepted_transaction_fault_proof(
     when proof.fault is {
       AcceptedTransactionTransitionMismatch { witness } ->
         validate_accepted_transaction_transition_mismatch(proof.header, witness)
-      InvalidOneStepTransition{witness: L2TransactionTransition {
-        trace_proof,
-        event_to_step,
-        source_membership,
-        spend_inputs_preimage,
-        outputs_preimage,
-        spent_utxos,
-        produced_utxos,
-      }} ->
-        validate_l2_transaction_transition(
-          proof.header,
-          trace_proof,
-          event_to_step,
-          source_membership,
-          spend_inputs_preimage,
-          outputs_preimage,
-          spent_utxos,
-          produced_utxos,
-        )
       _ -> False
     },
   }

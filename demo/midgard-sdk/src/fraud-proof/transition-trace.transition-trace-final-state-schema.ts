@@ -7,6 +7,7 @@ import {
   type EventToStepProof,
   type IndexedTraceProof,
 } from "../transition-trace.js";
+import { FieldOpeningSchema } from "./field-opening.js";
 import {
   type FaultProofStepCancel,
   faultProofStepDatumSchema,
@@ -15,6 +16,10 @@ import {
 import {
   SourceMembershipMismatchWitness,
   TraceBoundarySide,
+} from "./transition-trace.invalid-one-step-transition-witness-schema.js";
+import {
+  type LedgerDeleteWitness,
+  LedgerDeleteWitnessSchema,
 } from "./transition-trace.invalid-one-step-transition-witness-schema.js";
 import {
   CountFaultWitness,
@@ -149,17 +154,44 @@ export const TransitionTraceYieldFinalSpendRedeemer =
     TransitionTraceYieldFinalSpendRedeemerSchema,
   );
 
-export const TransitionTraceOpenedOutputsSchema = Data.Object({
-  spend_input_keys: Data.Array(Data.Bytes()),
-  output_hashes: Data.Array(Data.Bytes()),
+/**
+ * One resumed field-walk step of the accepted-transaction final (on-chain
+ * `final_yield.WalkStep`): the field opening and the 53-byte walk or 87-byte
+ * grammar checkpoint the thread's committed hash names (`""` when the grammar
+ * opens).
+ */
+export const TransitionTraceWalkStepSchema = Data.Object({
+  opening: FieldOpeningSchema,
+  checkpoint_bytes: Data.Bytes(),
 });
 
-export type TransitionTraceOpenedOutputs = Data.Static<
-  typeof TransitionTraceOpenedOutputsSchema
+export type TransitionTraceWalkStep = Data.Static<
+  typeof TransitionTraceWalkStepSchema
 >;
 
-export const TransitionTraceOpenedOutputs =
-  asDataType<TransitionTraceOpenedOutputs>(TransitionTraceOpenedOutputsSchema);
+export const TransitionTraceWalkStep = asDataType<TransitionTraceWalkStep>(
+  TransitionTraceWalkStepSchema,
+);
+
+/**
+ * One phase-1 delete step (on-chain `accepted_transaction_yields.DeleteStep`):
+ * the resumed spend-inputs walk and one delete witness per input it visits.
+ */
+export const TransitionTraceDeleteStepSchema = Data.Object({
+  opening: FieldOpeningSchema,
+  checkpoint_bytes: Data.Bytes(),
+  witnesses: Data.Array(LedgerDeleteWitnessSchema),
+});
+
+export type TransitionTraceDeleteStep = {
+  readonly opening: TransitionTraceWalkStep["opening"];
+  readonly checkpoint_bytes: string;
+  readonly witnesses: readonly LedgerDeleteWitness[];
+};
+
+export const TransitionTraceDeleteStep = asDataType<TransitionTraceDeleteStep>(
+  TransitionTraceDeleteStepSchema,
+);
 
 const TransitionTraceDataSummarySchema = Data.Object({
   root: Data.Bytes(),
@@ -190,8 +222,11 @@ export const TransitionTraceFinalStateSchema = Data.Object({
   kind: Data.Integer(),
   phase: Data.Integer(),
   proof_commitment: Data.Object({ hash: Data.Bytes() }),
-  opened: TransitionTraceOpenedOutputsSchema,
-  input_index: Data.Integer(),
+  tx_id: Data.Bytes(),
+  inputs_walk: Data.Bytes(),
+  outputs_walk: Data.Bytes(),
+  output_count: Data.Integer(),
+  output_hash: Data.Bytes(),
   output_index: Data.Integer(),
   current_root: Data.Bytes(),
   summaries: TransitionTraceOutputSummariesSchema,

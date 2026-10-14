@@ -59,7 +59,11 @@ validator assembly(dispatcher: ScriptHash) {
       tx.outputs,
       delegation.State {
         ..state,
-        phase: 9,
+        phase: if state.kind == 0 {
+          4
+        } else {
+          9
+        },
         descriptor_cbor: ledger_output_commitment_v1.encode(descriptor),
       },
     )

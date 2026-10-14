@@ -12,6 +12,14 @@ export const TRANSITION_TRACE_YIELD_REFERENCES = {
     entry: "fraudProofTransitionTraceAcceptedTransactionL2OpenWithdraw",
     role: "V1 fraud-proof transition-trace final-4 L2 open yield",
   },
+  l2Delete: {
+    entry: "fraudProofTransitionTraceAcceptedTransactionL2DeleteWithdraw",
+    role: "V1 fraud-proof transition-trace final-4 L2 delete yield",
+  },
+  l2Outputs: {
+    entry: "fraudProofTransitionTraceAcceptedTransactionL2OutputsWithdraw",
+    role: "V1 fraud-proof transition-trace final-4 L2 outputs yield",
+  },
   l2Summaries: {
     entry: "fraudProofTransitionTraceAcceptedTransactionL2SummariesWithdraw",
     role: "V1 fraud-proof transition-trace final-4 L2 summaries yield",

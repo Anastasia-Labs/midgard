@@ -375,10 +375,6 @@ export const InvalidOneStepTransitionWitnessSchema = Data.Enum([
       trace_proof: TransitionTraceMembershipProofSchema,
       event_to_step: EventToStepMembershipProofSchema,
       source_membership: L2TransactionSourceMembershipProofSchema,
-      spend_inputs_preimage: Data.Bytes(),
-      outputs_preimage: Data.Bytes(),
-      spent_utxos: Data.Array(LedgerDeleteWitnessSchema),
-      produced_utxos: Data.Array(LedgerInsertWitnessSchema),
     }),
   }),
 ]);

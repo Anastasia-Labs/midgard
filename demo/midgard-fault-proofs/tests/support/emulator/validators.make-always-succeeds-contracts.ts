@@ -99,6 +99,12 @@ export const makeAlwaysSucceedsContracts = (
         l2Open: makeWithdrawalValidator(
           transitionTraceFirstStep.spendingScriptCBOR,
         ),
+        l2Delete: makeWithdrawalValidator(
+          transitionTraceFirstStep.spendingScriptCBOR,
+        ),
+        l2Outputs: makeWithdrawalValidator(
+          transitionTraceFirstStep.spendingScriptCBOR,
+        ),
         l2Summaries: makeWithdrawalValidator(
           transitionTraceFirstStep.spendingScriptCBOR,
         ),

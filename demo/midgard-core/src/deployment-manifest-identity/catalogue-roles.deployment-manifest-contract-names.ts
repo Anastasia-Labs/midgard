@@ -403,6 +403,8 @@ export const DEPLOYMENT_MANIFEST_CONTRACT_NAMES = Object.freeze([
   "fraudProofTransitionTraceDepositValueWithdraw",
 
   "fraudProofTransitionTraceAcceptedTransactionL2OpenWithdraw",
+  "fraudProofTransitionTraceAcceptedTransactionL2DeleteWithdraw",
+  "fraudProofTransitionTraceAcceptedTransactionL2OutputsWithdraw",
   "fraudProofTransitionTraceAcceptedTransactionL2SummariesWithdraw",
   "fraudProofTransitionTraceAcceptedTransactionL2ReplayWithdraw",
   "fraudProofTransitionTraceAcceptedTransactionClaimStructureWithdraw",

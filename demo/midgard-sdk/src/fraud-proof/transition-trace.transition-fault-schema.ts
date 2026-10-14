@@ -86,10 +86,6 @@ export type InvalidOneStepTransitionWitness =
         readonly trace_proof: IndexedTraceProof;
         readonly event_to_step: EventToStepMembershipProof;
         readonly source_membership: L2TransactionSourceMembershipProof;
-        readonly spend_inputs_preimage: string;
-        readonly outputs_preimage: string;
-        readonly spent_utxos: readonly LedgerDeleteWitness[];
-        readonly produced_utxos: readonly LedgerInsertWitness[];
       };
     };
 

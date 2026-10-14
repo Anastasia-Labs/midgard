@@ -117,12 +117,13 @@ validator main(
               } else {
                 when state.phase is {
                   0 -> delegation.l2_open_role
-                  1 -> delegation.l2_replay_role
+                  1 -> delegation.l2_delete_role
+                  10 -> delegation.l2_outputs_role
+                  11 -> delegation.l2_outputs_role
                   2 -> delegation.l2_scan_role
                   7 -> delegation.l2_value_role
                   8 -> delegation.l2_summaries_role
                   3 -> delegation.l2_assembly_role
-                  9 -> delegation.l2_replay_role
                   4 -> delegation.l2_replay_role
                   _ -> fail
                 }
@@ -148,8 +149,7 @@ validator main(
               expect header: ledger_state.HeaderV1 = header_data
               expect [trace_data,
                     event_data,
-                    source_data,
-                    _, _, _, _] = delegation.one_step_witness(fault, 4)
+                    source_data] = delegation.one_step_witness(fault, 4)
               expect trace_proof: IndexedTraceProof = trace_data
               expect
                   event: RootMembershipProof<

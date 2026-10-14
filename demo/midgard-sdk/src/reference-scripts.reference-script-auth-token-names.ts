@@ -523,6 +523,10 @@ export const REFERENCE_SCRIPT_AUTH_TOKEN_NAMES = {
 
   "V1 fraud-proof transition-trace final-4 L2 open yield":
     "V1FpTtF4L2OpenYield",
+  "V1 fraud-proof transition-trace final-4 L2 delete yield":
+    "V1FpTtF4L2DeleteYield",
+  "V1 fraud-proof transition-trace final-4 L2 outputs yield":
+    "V1FpTtF4L2OutputsYield",
   "V1 fraud-proof transition-trace final-4 L2 summaries yield":
     "V1FpTtF4L2SummariesYield",
   "V1 fraud-proof transition-trace final-4 L2 replay yield":
