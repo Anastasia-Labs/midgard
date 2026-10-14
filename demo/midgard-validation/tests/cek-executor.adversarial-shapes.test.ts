@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  MIDGARD_CEK_ADVERSARIAL_HALF_CAP_SIZES as HALF_CAP_SIZES,
   MIDGARD_CEK_ADVERSARIAL_SHAPES,
   prepareMidgardCekShape,
 } from "./helpers/cek-adversarial-shapes.js";
@@ -26,23 +27,6 @@ import {
 const MAX_RATIO = 2.3;
 const MAX_AT_CAP_MS = 10_000;
 const ATTEMPTS = 3;
-
-/** `n` per shape; `2n` is near the budget cap. */
-const HALF_CAP_SIZES: Readonly<Record<string, number>> = {
-  "mkCons list growth": 2_162,
-  "headList/tailList walk of a grown list": 1_086,
-  "constrData nesting": 1_938,
-  "listData nesting": 2_036,
-  "mapData nesting": 1_836,
-  "constrData nesting unwrapped by unConstrData": 965,
-  "listData nesting unwrapped by unListData": 1_044,
-  "constrData widening": 1_594,
-  "listData widening": 1_660,
-  "mapData widening": 1_938,
-  "appendByteString doubling chains": 395,
-  "serialiseData of a grown structure": 1_196,
-  "deep continuation stack": 2_493,
-};
 
 type Timed = {
   readonly ms: number;

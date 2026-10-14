@@ -245,6 +245,29 @@ export const MIDGARD_CEK_ADVERSARIAL_SHAPES: readonly MidgardCekAdversarialShape
   ];
 
 /**
+ * `n` per gated shape: the shape at `2n` spends at least 90% of the
+ * per-transaction execution budget in memory or CPU. The deep environment is
+ * not gated: the test Flat encoder cannot author it near the cap.
+ */
+export const MIDGARD_CEK_ADVERSARIAL_HALF_CAP_SIZES: Readonly<
+  Record<string, number>
+> = {
+  "mkCons list growth": 2_162,
+  "headList/tailList walk of a grown list": 1_086,
+  "constrData nesting": 1_938,
+  "listData nesting": 2_036,
+  "mapData nesting": 1_836,
+  "constrData nesting unwrapped by unConstrData": 965,
+  "listData nesting unwrapped by unListData": 1_044,
+  "constrData widening": 1_594,
+  "listData widening": 1_660,
+  "mapData widening": 1_938,
+  "appendByteString doubling chains": 395,
+  "serialiseData of a grown structure": 1_196,
+  "deep continuation stack": 2_493,
+};
+
+/**
  * The script context every shape receives. No shape contains this constant,
  * so the context's semantic witness never shares a value root with a source
  * constant.
