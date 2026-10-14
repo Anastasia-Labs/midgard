@@ -106,3 +106,13 @@ pub const operator_allow_list: Option<List<ByteArray>> = None
 pub const fraud_prover_allow_list: Option<List<ByteArray>> = None
 
 pub const da_challenger_allow_list: Option<List<ByteArray>> = None
+
+pub const protocol_treasury_native_script_cbor: ByteArray =
+  #"830302838200581c706c616365686f6c6465723a747265730000000000000000000000018200581c706c616365686f6c6465723a747265730000000000000000000000028200581c706c616365686f6c6465723a74726573000000000000000000000003"
+
+/// The forfeit destination of the validation-dispute bond: the hash of
+/// `protocol_treasury_native_script_cbor`, never passed.
+pub const protocol_treasury_script_hash: ScriptHash =
+  builtin.blake2b_224(
+    builtin.cons_bytearray(0, protocol_treasury_native_script_cbor),
+  )

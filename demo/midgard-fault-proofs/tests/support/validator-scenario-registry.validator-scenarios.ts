@@ -316,4 +316,34 @@ export const VALIDATOR_SCENARIOS: Readonly<
       },
     ],
   },
+  "fraud_proofs/validation_trace/dispute_bond_v1.main": {
+    passing: [
+      {
+        file: "demo/midgard-fault-proofs/tests/dispute-bond-emulator.test.ts",
+        test: "refunds a bond to the prover on conviction, the lone bond paying its fee",
+      },
+      {
+        file: "demo/midgard-fault-proofs/tests/dispute-bond-emulator.test.ts",
+        test: "refuses two bonds that each pay the fee, and accepts the batch when a wallet pays it",
+      },
+      {
+        file: "demo/midgard-fault-proofs/tests/dispute-bond-emulator.test.ts",
+        test: "forfeits a bond to the treasury after forfeit_after, even on a convicted block",
+      },
+    ],
+    failing: [
+      {
+        file: "demo/midgard-fault-proofs/tests/dispute-bond-emulator.test.ts",
+        test: "refuses a refund without the conviction of the challenged block, or paying another address",
+      },
+      {
+        file: "demo/midgard-fault-proofs/tests/dispute-bond-emulator.test.ts",
+        test: "refuses two bonds that each pay the fee, and accepts the batch when a wallet pays it",
+      },
+      {
+        file: "demo/midgard-fault-proofs/tests/dispute-bond-emulator.test.ts",
+        test: "refuses a forfeit before forfeit_after, or to any address but the treasury",
+      },
+    ],
+  },
 };

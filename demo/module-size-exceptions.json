@@ -496,8 +496,8 @@
   },
   {
     "file": "midgard-fault-proofs/tests/support/emulator/validators.make-always-succeeds-contracts.ts",
-    "max": 502,
-    "reason": "makeAlwaysSucceedsContracts is the dominant indivisible declaration (493 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. Canonical production binding: Explicit canonicalDecodePrepare member aliases the existing canonical prepare validator. Exact formatter-final line count; no transaction budget changes. DUPDEL (-1): the cross-block duplicate-event family was deleted; repeated deposit and withdrawal events are convicted by the fabricated-event families."
+    "max": 503,
+    "reason": "makeAlwaysSucceedsContracts is the dominant indivisible declaration (493 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. Canonical production binding: Explicit canonicalDecodePrepare member aliases the existing canonical prepare validator. Exact formatter-final line count; no transaction budget changes. DUPDEL (-1): the cross-block duplicate-event family was deleted; repeated deposit and withdrawal events are convicted by the fabricated-event families. I3 (+1): the dispute bond."
   },
   {
     "file": "midgard-fault-proofs/tests/support/invalid-signature-wrongful-emulator.run-invalid-signature-wrongful-rejection-scenario.ts",
@@ -1016,8 +1016,8 @@
   },
   {
     "file": "midgard-node/tests/midgard-contracts.test.ts",
-    "max": 558,
-    "reason": "Retained test registration “midgard contracts registry” (487 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor. VR (+7): script contexts carry POSIX-ms validity bounds, so the phase-B, trace, classifier and contract-builder inputs here name the deployment's L1 slot mapping, and the registry digest's re-pin history names the txInfo stage's mapping parameter. P1 composition (+3): the pinned registry digests name the composed tree in their re-pin reasons. Streamed Data verdicts (+4): the registry digests name the streamed redeemer and datum Data verdict steps in their re-pin reasons."
+    "max": 559,
+    "reason": "Retained test registration “midgard contracts registry” (487 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor. VR (+7): script contexts carry POSIX-ms validity bounds, so the phase-B, trace, classifier and contract-builder inputs here name the deployment's L1 slot mapping, and the registry digest's re-pin history names the txInfo stage's mapping parameter. P1 composition (+3): the pinned registry digests name the composed tree in their re-pin reasons. Streamed Data verdicts (+4): the registry digests name the streamed redeemer and datum Data verdict steps in their re-pin reasons. I3 (+1): the treasury script re-pin note."
   },
   {
     "file": "midgard-node/tests/midgard-local-script-eval.test.ts",
@@ -1121,8 +1121,8 @@
   },
   {
     "file": "midgard-sdk/src/fraud-proof/contracts/families/validation-trace-dispute.build-validation-trace-dispute-chain.ts",
-    "max": 1624,
-    "reason": "buildValidationTraceDisputeChain is the dominant indivisible declaration (1577 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. Direct committed-step ABI: the game receives the ordered prepare-resolver hash list as its third parameter. The cap records the exact final line count. Root combined integration preserves prior terminal/builtin behavior; cap records the resulting source count. Canonical production binding: Explicit canonicalDecodePrepare member aliases the existing canonical prepare validator. Exact formatter-final line count; no transaction budget changes. VR (+4): the txInfo step validator is applied with the deployment's L1 slot mapping."
+    "max": 1638,
+    "reason": "buildValidationTraceDisputeChain is the dominant indivisible declaration (1577 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. Direct committed-step ABI: the game receives the ordered prepare-resolver hash list as its third parameter. The cap records the exact final line count. Root combined integration preserves prior terminal/builtin behavior; cap records the resulting source count. Canonical production binding: Explicit canonicalDecodePrepare member aliases the existing canonical prepare validator. Exact formatter-final line count; no transaction budget changes. VR (+4): the txInfo step validator is applied with the deployment's L1 slot mapping. I3 (+14): the dispute bond validator, applied to the fraud-proof policy."
   },
   {
     "file": "midgard-sdk/src/reference-scripts.reference-script-auth-token-names.ts",
@@ -1371,13 +1371,13 @@
   },
   {
     "file": "scripts/deployment-profiles.mjs",
-    "max": 595,
-    "reason": "validateProfile is the dominant indivisible declaration (273 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. C1 (+80): the stage-0 allow-lists (validation, placeholder marker, Option<List<ByteArray>> rendering) and the excluded fraud-proof categories; canonicalJson keeps arrays as arrays. C1 adds the curated emulator-only profile. Profile identity extraction (-15) moved the identity helpers out. Deployment budget arithmetic extraction (-95) moved the budget calculations out."
+    "max": 597,
+    "reason": "validateProfile is the dominant indivisible declaration (273 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. C1 (+80): the stage-0 allow-lists (validation, placeholder marker, Option<List<ByteArray>> rendering) and the excluded fraud-proof categories; canonicalJson keeps arrays as arrays. C1 adds the curated emulator-only profile. Profile identity extraction (-15) moved the identity helpers out. Deployment budget arithmetic extraction (-95) moved the budget calculations out. I3 (+2): the protocol treasury native script key and its deep freeze."
   },
   {
     "file": "scripts/deployment-profiles.test.mjs",
-    "max": 990,
-    "reason": "Retained test registration “every profile carries the pooled DA bond amounts and timing, rendered into env” (71 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor. C1 (+118): allow-list and excluded-category validation and rendering tests. C1 adds the curated emulator profile checks. R2 (+6): the public profile rejects placeholder keys while mainnet retains its undeployed stand-ins."
+    "max": 1022,
+    "reason": "Retained test registration “every profile carries the pooled DA bond amounts and timing, rendered into env” (71 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor. C1 (+118): allow-list and excluded-category validation and rendering tests. C1 adds the curated emulator profile checks. R2 (+6): the public profile rejects placeholder keys while mainnet retains its undeployed stand-ins. I3 (+32): the treasury native-script encoder vectors."
   },
   {
     "file": "scripts/verify-canonical-v1-cg1-control-publication-fit.mjs",
@@ -1388,5 +1388,10 @@
     "file": "midgard-node/tests/commit-stage-eviction.test.ts",
     "max": 745,
     "reason": "One commit-stage eviction family over real processMpfs and Postgres, sharing one hoisted fixture that reduces Phase A, Phase B, the root value and program collection to injectable effects that its vi.mock factories close over. B2-8 review: each stage is covered in both polarities (the transaction's own failure rejects it; a node fault or a non-reproducing failure holds), plus coverage deferral and rejection. B2-8 round 2 (+77): the breaker rejects four confirmed failures and leaves the rest pending with their descendants, a reproducing stack overflow is rejected while any other RangeError holds, and each hold names its stage. B2-8 round 3 (+52): a coverage node fault holds naming its stage, the Phase B breaker defers past four failures, and a transaction re-asked across the passes that settle a build counts once towards the breaker; the keep/defer cases of the coverage check moved to commit-program-coverage.test.ts."
+  },
+  {
+    "file": "midgard-core/src/generated-deployment-profiles.ts",
+    "max": 576,
+    "reason": "Generated by scripts/deployment-profiles.mjs from config/deployments: one frozen literal per deployment profile, so it grows with the profile schema rather than with logic. I3 (+114): each profile's protocol_treasury_native_script (pd-design §6.4), the forfeit destination of the validation-dispute bond."
   }
 ]

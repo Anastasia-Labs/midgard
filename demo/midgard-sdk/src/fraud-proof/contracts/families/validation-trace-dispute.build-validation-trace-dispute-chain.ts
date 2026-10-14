@@ -89,6 +89,19 @@ export const buildValidationTraceDisputeChain = ({
         ),
     );
 
+    const disputeBond = yield* tryBuild(
+      "Failed to build validation-dispute bond validator",
+      () =>
+        makeSpendingValidator(
+          network,
+          applyBlueprintParams(
+            blueprint,
+            VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.disputeBond,
+            [fraudProof.policyId],
+          ),
+        ),
+    );
+
     const cekCoreStages = yield* tryBuild(
       "Failed to build bounded CEK core stages",
       () =>
@@ -1556,6 +1569,7 @@ export const buildValidationTraceDisputeChain = ({
       boundary,
       timeout,
       award,
+      disputeBond,
       proofItem,
       cekProgramMaterial,
       cekMaterialTraversal,

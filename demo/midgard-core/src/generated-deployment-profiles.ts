@@ -51,6 +51,24 @@ export const DEPLOYMENT_PROFILES = {
       fraudProverRewardLovelace: 75000000000,
       proverCollateralFloorLovelace: 5000000,
     },
+    protocol_treasury_native_script: {
+      type: "atLeast",
+      required: 2,
+      scripts: [
+        {
+          type: "sig",
+          keyHash: "706c616365686f6c6465723a74726573000000000000000000000001",
+        },
+        {
+          type: "sig",
+          keyHash: "706c616365686f6c6465723a74726573000000000000000000000002",
+        },
+        {
+          type: "sig",
+          keyHash: "706c616365686f6c6465723a74726573000000000000000000000003",
+        },
+      ],
+    },
     allow_lists: {
       operators: ["706c616365686f6c6465723a6f706572000000000000000000000001"],
       fraud_provers: [
@@ -124,6 +142,24 @@ export const DEPLOYMENT_PROFILES = {
       inactivitySlashingPenaltyLovelace: 10000000000,
       fraudProverRewardLovelace: 75000000000,
       proverCollateralFloorLovelace: 5000000,
+    },
+    protocol_treasury_native_script: {
+      type: "atLeast",
+      required: 2,
+      scripts: [
+        {
+          type: "sig",
+          keyHash: "706c616365686f6c6465723a74726573000000000000000000000001",
+        },
+        {
+          type: "sig",
+          keyHash: "706c616365686f6c6465723a74726573000000000000000000000002",
+        },
+        {
+          type: "sig",
+          keyHash: "706c616365686f6c6465723a74726573000000000000000000000003",
+        },
+      ],
     },
     allow_lists: {
       operators: [
@@ -202,6 +238,24 @@ export const DEPLOYMENT_PROFILES = {
       fraudProverRewardLovelace: 400000000,
       proverCollateralFloorLovelace: 5000000,
     },
+    protocol_treasury_native_script: {
+      type: "atLeast",
+      required: 2,
+      scripts: [
+        {
+          type: "sig",
+          keyHash: "706c616365686f6c6465723a74726573000000000000000000000001",
+        },
+        {
+          type: "sig",
+          keyHash: "706c616365686f6c6465723a74726573000000000000000000000002",
+        },
+        {
+          type: "sig",
+          keyHash: "706c616365686f6c6465723a74726573000000000000000000000003",
+        },
+      ],
+    },
     allow_lists: {
       operators: null,
       fraud_provers: null,
@@ -260,6 +314,24 @@ export const DEPLOYMENT_PROFILES = {
       inactivitySlashingPenaltyLovelace: 100000000,
       fraudProverRewardLovelace: 400000000,
       proverCollateralFloorLovelace: 5000000,
+    },
+    protocol_treasury_native_script: {
+      type: "atLeast",
+      required: 2,
+      scripts: [
+        {
+          type: "sig",
+          keyHash: "706c616365686f6c6465723a74726573000000000000000000000001",
+        },
+        {
+          type: "sig",
+          keyHash: "706c616365686f6c6465723a74726573000000000000000000000002",
+        },
+        {
+          type: "sig",
+          keyHash: "706c616365686f6c6465723a74726573000000000000000000000003",
+        },
+      ],
     },
     allow_lists: {
       operators: null,
@@ -320,6 +392,24 @@ export const DEPLOYMENT_PROFILES = {
       fraudProverRewardLovelace: 400000000,
       proverCollateralFloorLovelace: 5000000,
     },
+    protocol_treasury_native_script: {
+      type: "atLeast",
+      required: 2,
+      scripts: [
+        {
+          type: "sig",
+          keyHash: "706c616365686f6c6465723a74726573000000000000000000000001",
+        },
+        {
+          type: "sig",
+          keyHash: "706c616365686f6c6465723a74726573000000000000000000000002",
+        },
+        {
+          type: "sig",
+          keyHash: "706c616365686f6c6465723a74726573000000000000000000000003",
+        },
+      ],
+    },
     allow_lists: {
       operators: null,
       fraud_provers: null,
@@ -379,6 +469,24 @@ export const DEPLOYMENT_PROFILES = {
       fraudProverRewardLovelace: 400000000,
       proverCollateralFloorLovelace: 5000000,
     },
+    protocol_treasury_native_script: {
+      type: "atLeast",
+      required: 2,
+      scripts: [
+        {
+          type: "sig",
+          keyHash: "706c616365686f6c6465723a74726573000000000000000000000001",
+        },
+        {
+          type: "sig",
+          keyHash: "706c616365686f6c6465723a74726573000000000000000000000002",
+        },
+        {
+          type: "sig",
+          keyHash: "706c616365686f6c6465723a74726573000000000000000000000003",
+        },
+      ],
+    },
     allow_lists: {
       operators: ["8372d26e23e36568f931b8e3a418ca29dc545054f017548733c78198"],
       fraud_provers: [
@@ -404,17 +512,17 @@ export const DEPLOYMENT_PROFILES = {
 } as const;
 
 export const DEPLOYMENT_PROFILE_DIGESTS = {
-  mainnet: "8a45013438ae82ae813f5db957aa86d5cbc6293edd873b180f266bc595d459c4",
+  mainnet: "044406b9464921ec0c7deab82943d37385c64ad9fbaf5c80187a69a7a75d0da4",
   "preprod-public":
-    "7ae11fe4d3d1a9ad2dc67ce406279a469a740ca900c35448516372dfec749dcc",
+    "5a7f63fb1225d639e113d67e4d2c67cc8e210dffe7c7683d8692e7e15077683b",
   "preprod-testing":
-    "4953b63667441af570157327412059b69f7ac855b737f3b5595d7c47aa0fbabf",
+    "cb943304680811f0445059d901cd967f011abfdb36623511900c7bea779176d3",
   "local-devnet-testing":
-    "06b8fee0e026785aabb69600094b40c4dc63f64fa32c8791194ae8fd82159050",
+    "800570446eff7e5194fa6d1cce5602afda21ba1f7563f567ad68ea8a0e3e6ce3",
   "preprod-emulator-testing":
-    "a86845ebe010dd07d8fc32881d416fc8919d581490e3b05879144cbf6853fc82",
+    "c50e859737b9bf0166a456c7dc149d9ef62069929a6cb422dbc97e54ebff9b91",
   "preprod-emulator-curated":
-    "450ae92a925f9b24a4b0ea1f8f4ea54fe37df02dec866b53d965bad0e6255926",
+    "9c01ebcdd7432ee1073ae515f1f5661f006c4a0d26e9923c532de67f9b4d49e0",
 } as const;
 
 export const DEPLOYMENT_MANIFEST_ECONOMICS_BY_PROFILE = {
@@ -443,12 +551,18 @@ export const SELECTED_DEPLOYMENT_PROFILE =
   DEPLOYMENT_PROFILES["preprod-testing"];
 export const SELECTED_DEPLOYMENT_PROFILE_DIGEST =
   DEPLOYMENT_PROFILE_DIGESTS["preprod-testing"];
+const freezeNativeScript = (script: object): void => {
+  for (const child of Object.values(script) as unknown[])
+    if (typeof child === "object" && child !== null) freezeNativeScript(child);
+  Object.freeze(script);
+};
 for (const profile of Object.values(DEPLOYMENT_PROFILES)) {
   Object.freeze(profile.l1_finality);
   Object.freeze(profile.timing);
   Object.freeze(profile.da_bond);
   Object.freeze(profile.limits);
   Object.freeze(profile.economics);
+  freezeNativeScript(profile.protocol_treasury_native_script);
   for (const keys of Object.values(profile.allow_lists))
     if (keys !== null) Object.freeze(keys);
   Object.freeze(profile.allow_lists);

@@ -225,6 +225,7 @@ export const validationTraceDisputeFromManifest = (
       "prepare resolvers",
     ),
     resolvers: unrecordedValidationTraceMember(sourcePath, "resolvers"),
+    disputeBond: unrecordedValidationTraceMember(sourcePath, "dispute bond"),
   });
   return chain as unknown as SDK.FaultProofContractChains["validationTraceDispute"];
 };

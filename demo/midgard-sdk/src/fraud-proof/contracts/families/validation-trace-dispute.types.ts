@@ -30,6 +30,12 @@ export type ValidationTraceDisputeFaultProofContracts = {
     readonly boundary: SpendingValidator;
     readonly timeout: SpendingValidator;
     readonly award: SpendingValidator;
+    /**
+     * Holds each challenger's dispute bond apart from the thread: refunded on
+     * a conviction of the block, forfeited to the treasury after
+     * `forfeit_after`. Not a step.
+     */
+    readonly disputeBond: SpendingValidator;
     readonly proofItem: SpendingValidator;
     readonly canonicalDecodeItemStages: {
       readonly source: SpendingValidator;

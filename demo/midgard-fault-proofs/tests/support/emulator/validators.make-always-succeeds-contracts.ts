@@ -184,6 +184,7 @@ export const makeAlwaysSucceedsContracts = (
         cekSelectionMaterialProgram: reserve,
         cekSelectionMaterialData: reserve,
       },
+      disputeBond: alwaysValidationTraceDispute,
       cekProgramMaterial: alwaysValidationTraceDispute,
       cekMaterialTraversal: alwaysValidationTraceDispute,
       cekContextStages: {

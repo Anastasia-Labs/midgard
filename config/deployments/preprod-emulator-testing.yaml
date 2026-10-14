@@ -62,6 +62,20 @@ economics:
   inactivitySlashingPenaltyLovelace: 100000000
   fraudProverRewardLovelace: 400000000
   proverCollateralFloorLovelace: 5000000
+# Forfeited validation-dispute bonds go to the protocol treasury
+# (pd-design §6.4): an owner-quorum native script in the cardano-cli JSON
+# form, separate from the reserve. Its hash is derived by the generator.
+# PROJECTED: "placeholder:" keys stand in until the owner quorum is supplied.
+protocol_treasury_native_script:
+  type: atLeast
+  required: 2
+  scripts:
+    - type: sig
+      keyHash: "706c616365686f6c6465723a74726573000000000000000000000001"
+    - type: sig
+      keyHash: "706c616365686f6c6465723a74726573000000000000000000000002"
+    - type: sig
+      keyHash: "706c616365686f6c6465723a74726573000000000000000000000003"
 allow_lists:
   # Testing admits every key.
   operators: null

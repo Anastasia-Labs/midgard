@@ -8,6 +8,15 @@ import "./validation-dispute.validation-machine-phase-schema.js";
 import "./validation-dispute.validation-game-action-schema.js";
 import "./validation-dispute.validation-machine-state-data-from-core.js";
 import "./validation-dispute.validation-dispute-core-from-data.js";
+import "./validation-dispute.dispute-bond-schema.js";
+export {
+  DisputeBond,
+  DisputeBondSchema,
+  DisputeBondSpendRedeemer,
+  DisputeBondSpendRedeemerSchema,
+  protocolTreasuryAddress,
+  protocolTreasuryScriptHash,
+} from "./validation-dispute.dispute-bond-schema.js";
 export {
   validationDisputeCoreFromData,
   validationDisputeDataFromCore,
