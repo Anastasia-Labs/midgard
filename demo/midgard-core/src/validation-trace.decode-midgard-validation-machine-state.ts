@@ -4,7 +4,6 @@ import {
   asBytes,
   decodeSingleCbor,
   encodeCbor,
-  encodeCborArrayRaw,
 } from "./codec/cbor.js";
 import { ensureHash32, type Hash32 } from "./codec/hash.js";
 import {
@@ -16,7 +15,6 @@ import {
   encodeMidgardMpfProofDescriptor,
   type MidgardMpfProofDescriptor,
 } from "./mpf-proof-fold.js";
-import { aikenSerialisedPlutusDataCborPreservingMapOrder } from "./plutus-data-cbor.js";
 import {
   buildMidgardValidationMerkleFrontier,
   commitMidgardValidationMerkleFrontier,
@@ -24,23 +22,18 @@ import {
 } from "./validation-merkle.js";
 import {
   asBoundedUint,
-  encodeMidgardValidationMachineState,
   exactCode,
   fail,
   hashDomain,
   LEDGER_DELTA_DOMAIN,
   type MidgardValidationMachineState,
-  MidgardValidationPhase,
-  type MidgardValidationPhaseName,
   type MidgardValidationTraceDescriptor,
   MidgardValidationVerdict,
   phaseNames,
   sourceKindNames,
-  STATE_HASH_DOMAIN,
   validateVerdictRejectionBinding,
   VALIDATION_CONTEXT_DOMAIN,
   verdictNames,
-  WORK_WITNESS_DOMAIN,
   ZERO_HASH32,
 } from "./validation-trace.encode-midgard-validation-machine-state.js";
 
@@ -119,10 +112,10 @@ export const decodeMidgardValidationMachineState = (
   };
 };
 
-export const hashMidgardValidationMachineState = (
-  state: MidgardValidationMachineState,
-): Hash32 =>
-  hashDomain(STATE_HASH_DOMAIN, encodeMidgardValidationMachineState(state));
+export {
+  hashMidgardValidationMachineState,
+  hashMidgardValidationWorkWitness,
+} from "./validation-trace.hash-midgard-validation-step.js";
 
 export const encodeMidgardValidationTraceDescriptor = (
   descriptor: MidgardValidationTraceDescriptor,
@@ -223,42 +216,6 @@ export const decodeMidgardValidationTraceDescriptor = (
     rejectionCodeHash,
   };
 };
-
-/**
- * Commits the canonical witness consumed by one validation-machine
- * transition. The phase and program counter are inside the commitment so the
- * same bytes cannot be replayed as a different instruction.
- */
-export const hashMidgardValidationWorkWitness = ({
-  phase,
-  programCounter,
-  witnessCbor,
-}: {
-  readonly phase: MidgardValidationPhaseName;
-  readonly programCounter: number;
-  readonly witnessCbor: Uint8Array;
-}): Hash32 =>
-  hashDomain(
-    WORK_WITNESS_DOMAIN,
-    encodeCborArrayRaw([
-      encodeCbor(BigInt(MidgardValidationPhase[phase])),
-      encodeCbor(
-        BigInt(
-          asBoundedUint(
-            programCounter,
-            "work_witness.program_counter",
-            MIDGARD_CONSENSUS_LIMITS.maxValidationMachineStepCount,
-          ),
-        ),
-      ),
-      Buffer.from(
-        aikenSerialisedPlutusDataCborPreservingMapOrder(
-          encodeCbor(Buffer.from(witnessCbor)).toString("hex"),
-        ),
-        "hex",
-      ),
-    ]),
-  );
 
 export const hashMidgardValidationContext = (
   canonicalContextCbor: Uint8Array,
