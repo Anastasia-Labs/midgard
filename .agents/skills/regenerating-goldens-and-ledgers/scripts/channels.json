@@ -1264,6 +1264,10 @@
     {
       "path": "scripts/release/check-image-inputs.mjs",
       "why": "Writes the verified public image build-input identity inside the isolated image build; nothing it writes is committed."
+    },
+    {
+      "path": "demo/midgard-node-tools/src/funding-measurements.ts",
+      "why": "Declared F04 runtime producer writes genuine signed workflow transaction measurements to a caller-chosen new private evidence file; no tracked output or automatic complete-release profile is produced."
     }
   ]
 }
