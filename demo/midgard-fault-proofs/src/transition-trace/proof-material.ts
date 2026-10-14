@@ -11,9 +11,29 @@ import { Data } from "@lucid-evolution/lucid";
 import { mpfProofFromWitness, normalizedMpfRoot } from "./detect.js";
 import type { TransitionTraceReconstruction } from "./reconstruct.js";
 
+/**
+ * The ledger replay an accepted-transaction proof steps through. The proof
+ * commits only the transaction's source leaf; the two field preimages and the
+ * ledger witnesses travel beside it, and the thread authenticates each piece
+ * against its committed field or root as it is used.
+ */
+export type TransitionL2ReplayMaterial = Readonly<{
+  /** The spend-inputs field (§2.5 field 0) items, in field order. */
+  spendInputCbors: readonly string[];
+  /** The outputs field (§2.5 field 2) items, in field order. */
+  outputCbors: readonly string[];
+  /** One delete witness per spend input, in field order. */
+  spentUtxos: readonly SDK.LedgerDeleteWitness[];
+  /** One insert witness per output, in field order. */
+  producedUtxos: readonly SDK.LedgerInsertWitness[];
+}>;
+
 /** A serialization source, not an authority token. Installed workflows create
  * this from freshly admitted reconstruction and rederive it on resume. */
-export type TransitionProofMaterial = Readonly<{ proofCbor: string }>;
+export type TransitionProofMaterial = Readonly<{
+  proofCbor: string;
+  l2Replay?: TransitionL2ReplayMaterial;
+}>;
 
 /** Typed callers author new Data; material callers retain already committed
  * Data. A typed view cannot recover a raw leaf's map order or repeated pairs. */
@@ -26,6 +46,12 @@ export const transitionProofCbor = (input: TransitionProofInput): string => {
   Data.from(input.proofCbor, SDK.TransitionFaultProof);
   return input.proofCbor;
 };
+
+/** The accepted-transaction replay material beside `input`, if it has any. */
+export const transitionL2Replay = (
+  input: TransitionProofInput,
+): TransitionL2ReplayMaterial | undefined =>
+  "proofCbor" in input ? input.l2Replay : undefined;
 
 export const readTransitionProof = (
   input: TransitionProofInput,
@@ -144,6 +170,7 @@ export const transitionProofHistorySource = (input: TransitionProofInput) => {
 export const makeTransitionProofMaterial = (
   reconstruction: TransitionTraceReconstruction,
   proof: SDK.TransitionFaultProof,
+  l2Replay?: TransitionL2ReplayMaterial,
 ): TransitionProofMaterial => {
   if (
     proof.challenged_header_hash !== reconstruction.headerHash ||
@@ -213,5 +240,8 @@ export const makeTransitionProofMaterial = (
         valueCbor,
       );
   }
-  return Object.freeze({ proofCbor });
+  return Object.freeze({
+    proofCbor,
+    ...(l2Replay === undefined ? {} : { l2Replay }),
+  });
 };

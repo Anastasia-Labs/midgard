@@ -56,6 +56,8 @@ export const makeAlwaysSucceedsContracts = (
   const appendedFamilyFallback = makeSpendingValidator(
     alwaysScript(blueprint, "fraud_proofs", "double_spend", "spend"),
   );
+  const transitionTraceYield = () =>
+    makeWithdrawalValidator(transitionTraceFirstStep.spendingScriptCBOR);
   const fraudProofContracts: FaultProofContractChains = {
     doubleSpend: scaffoldChain(appendedFamilyFallback, 4),
     nonExistentInput: scaffoldChain(nonExistentInputFirstStep, 4),
@@ -75,54 +77,25 @@ export const makeAlwaysSucceedsContracts = (
       route: transitionTraceFirstStep,
       finals: repeatValidator(transitionTraceFirstStep, 8),
       yields: {
-        l2Assembly: makeWithdrawalValidator(
-          transitionTraceFirstStep.spendingScriptCBOR,
-        ),
-        l2Scan: makeWithdrawalValidator(
-          transitionTraceFirstStep.spendingScriptCBOR,
-        ),
-        l2Value: makeWithdrawalValidator(
-          transitionTraceFirstStep.spendingScriptCBOR,
-        ),
-        depositReplay: makeWithdrawalValidator(
-          transitionTraceFirstStep.spendingScriptCBOR,
-        ),
-        depositAssembly: makeWithdrawalValidator(
-          transitionTraceFirstStep.spendingScriptCBOR,
-        ),
-        depositScan: makeWithdrawalValidator(
-          transitionTraceFirstStep.spendingScriptCBOR,
-        ),
-        depositValue: makeWithdrawalValidator(
-          transitionTraceFirstStep.spendingScriptCBOR,
-        ),
-        l2Open: makeWithdrawalValidator(
-          transitionTraceFirstStep.spendingScriptCBOR,
-        ),
-        l2Delete: makeWithdrawalValidator(
-          transitionTraceFirstStep.spendingScriptCBOR,
-        ),
-        l2Outputs: makeWithdrawalValidator(
-          transitionTraceFirstStep.spendingScriptCBOR,
-        ),
-        l2Summaries: makeWithdrawalValidator(
-          transitionTraceFirstStep.spendingScriptCBOR,
-        ),
-        l2Replay: makeWithdrawalValidator(
-          transitionTraceFirstStep.spendingScriptCBOR,
-        ),
-        depositProjection: makeWithdrawalValidator(
-          transitionTraceFirstStep.spendingScriptCBOR,
-        ),
-        l1Event: makeWithdrawalValidator(
-          transitionTraceFirstStep.spendingScriptCBOR,
-        ),
-        forcedTiming: makeWithdrawalValidator(
-          transitionTraceFirstStep.spendingScriptCBOR,
-        ),
-        depositSummaries: makeWithdrawalValidator(
-          transitionTraceFirstStep.spendingScriptCBOR,
-        ),
+        l2Assembly: transitionTraceYield(),
+        l2Scan: transitionTraceYield(),
+        l2Value: transitionTraceYield(),
+        depositReplay: transitionTraceYield(),
+        depositAssembly: transitionTraceYield(),
+        depositScan: transitionTraceYield(),
+        depositValue: transitionTraceYield(),
+        l2Open: transitionTraceYield(),
+        l2Delete: transitionTraceYield(),
+        l2Outputs: transitionTraceYield(),
+        l2OutputStep: transitionTraceYield(),
+        l2OutputDescriptor: transitionTraceYield(),
+        l2OutputSummary: transitionTraceYield(),
+        l2Summaries: transitionTraceYield(),
+        l2Replay: transitionTraceYield(),
+        depositProjection: transitionTraceYield(),
+        l1Event: transitionTraceYield(),
+        forcedTiming: transitionTraceYield(),
+        depositSummaries: transitionTraceYield(),
       },
     },
     zeroInput: scaffoldChain(zeroInputFirstStep, 2),

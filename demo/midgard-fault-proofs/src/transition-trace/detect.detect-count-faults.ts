@@ -1,6 +1,7 @@
 import * as SDK from "@al-ft/midgard-sdk";
 
 import { TransitionTraceChallengerError } from "./errors.js";
+import { type TransitionL2ReplayMaterial } from "./proof-material.js";
 import {
   eventKeyFingerprint,
   type SourceEventRecord,
@@ -47,6 +48,8 @@ export type TransitionTraceDetection =
       readonly diagnostic: string;
       readonly fault: SDK.TransitionFault;
       readonly proof: SDK.TransitionFaultProof;
+      /** An accepted-transaction replay's field items and ledger witnesses. */
+      readonly l2Replay?: TransitionL2ReplayMaterial;
     }
   | {
       readonly buildable: false;
@@ -82,12 +85,14 @@ export const detection = ({
   invariant,
   diagnostic,
   fault,
+  l2Replay,
 }: {
   readonly reconstruction: TransitionTraceReconstruction;
   readonly kind: TransitionTraceFaultKind;
   readonly invariant: string;
   readonly diagnostic: string;
   readonly fault: SDK.TransitionFault;
+  readonly l2Replay?: TransitionL2ReplayMaterial;
 }): TransitionTraceDetection => ({
   buildable: true,
   kind,
@@ -95,6 +100,7 @@ export const detection = ({
   diagnostic,
   fault,
   proof: buildTransitionFaultProof({ reconstruction, fault }),
+  ...(l2Replay === undefined ? {} : { l2Replay }),
 });
 
 const unsupportedDetection = ({

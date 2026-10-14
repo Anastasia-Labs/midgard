@@ -139,6 +139,18 @@ export const TRANSITION_TRACE_YIELD_CONTRACT_NAMES = [
     "fraudProofTransitionTraceAcceptedTransactionL2OutputsWithdraw",
   ],
   [
+    "l2OutputStep",
+    "fraudProofTransitionTraceAcceptedTransactionL2OutputStepWithdraw",
+  ],
+  [
+    "l2OutputDescriptor",
+    "fraudProofTransitionTraceAcceptedTransactionL2OutputDescriptorWithdraw",
+  ],
+  [
+    "l2OutputSummary",
+    "fraudProofTransitionTraceAcceptedTransactionL2OutputSummaryWithdraw",
+  ],
+  [
     "l2Summaries",
     "fraudProofTransitionTraceAcceptedTransactionL2SummariesWithdraw",
   ],

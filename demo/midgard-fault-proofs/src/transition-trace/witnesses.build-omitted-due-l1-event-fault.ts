@@ -13,7 +13,6 @@ import {
 } from "./witnesses.build-source-membership-proof.js";
 import {
   buildSourceNonMembershipProof,
-  type L2TransactionTransitionEvidence,
   type ValidDepositTransitionEvidence,
 } from "./witnesses.build-source-non-membership-proof.js";
 
@@ -89,11 +88,9 @@ export const buildValidDepositTransitionWitness = async ({
 export const buildL2TransactionTransitionWitness = async ({
   reconstruction,
   stepIndex,
-  evidence,
 }: {
   readonly reconstruction: TransitionTraceReconstruction;
   readonly stepIndex: bigint;
-  readonly evidence: L2TransactionTransitionEvidence;
 }): Promise<SDK.InvalidOneStepTransitionWitness> => {
   const trace = requireTraceEntry(reconstruction, stepIndex);
   const source = sourceEventOrThrow(reconstruction, trace.value.event_key);
@@ -120,10 +117,6 @@ export const buildL2TransactionTransitionWitness = async ({
         reconstruction,
         txId: source.entry.txId,
       }),
-      spend_inputs_preimage: source.entry.spendInputsPreimage.toString("hex"),
-      outputs_preimage: source.entry.outputsPreimage.toString("hex"),
-      spent_utxos: evidence.spentUtxos,
-      produced_utxos: evidence.producedUtxos,
     },
   };
 };

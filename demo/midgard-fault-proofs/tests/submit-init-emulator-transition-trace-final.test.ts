@@ -8,10 +8,12 @@ registerTransitionTraceFinalCases([
   { assetCount: 0, outputCount: 1, datumBytes: 12000, outputBytes: 16384 },
   { assetCount: 0, outputCount: 1, datumBytes: 15841 },
   // A constructor over a list and a byte string: one walk step per
-  // transaction, with each restore forged.
+  // transaction, with each restore forged. The output is over the whole-replay
+  // bound, so its datum is walked in phase 8.
   {
     assetCount: 0,
     outputCount: 1,
+    outputBytes: 256,
     datumCbor: "d8799f9f010203ff4100ff",
     corruptWalk: true,
   },
@@ -30,7 +32,7 @@ registerTransitionTraceFinalCases([
     corruptSourceReference: true,
   },
   { assetCount: 0, outputCount: 1, kind: "deposit", datumBytes: 12000 },
-  { assetCount: 0, outputCount: 1, cancelAt: 2 },
+  { assetCount: 0, outputCount: 1, cancelAt: 11 },
   { assetCount: 0, outputCount: 1, kind: "deposit", cancelAt: 2 },
   { assetCount: 0, outputCount: 16 },
   { assetCount: 0, outputCount: 1, outputBytes: 16384 },

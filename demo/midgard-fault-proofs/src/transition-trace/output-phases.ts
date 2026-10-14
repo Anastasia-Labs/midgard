@@ -5,8 +5,8 @@ import {
   encodeMidgardLedgerOutputValueControl,
   MidgardLedgerOutputScanStages,
 } from "@al-ft/midgard-core";
-import type * as SDK from "@al-ft/midgard-sdk";
-import { Data } from "@lucid-evolution/lucid";
+import * as SDK from "@al-ft/midgard-sdk";
+import { Constr, Data } from "@lucid-evolution/lucid";
 
 import {
   dataSummaryWalkData,
@@ -67,6 +67,15 @@ const outputTrace = (bytes: Buffer) => {
   };
   return cached;
 };
+const valueTrace = (trace: NonNullable<typeof cached>) =>
+  trace.value ??
+  (trace.value = buildMidgardLedgerOutputValueTrace({
+    assets: trace.scan.steps.flatMap((step) =>
+      step.asset === null ? [] : [step.asset],
+    ),
+    lovelace: trace.scan.terminal.lovelace,
+  }));
+
 export const nextTransitionOutputPhase = (
   state: SDK.TransitionTraceFinalState,
   outputCbor: string,
@@ -117,14 +126,7 @@ export const nextTransitionOutputPhase = (
   }
   if (state.phase !== 7n)
     throw new Error("Transition output phase is not a bounded fold");
-  const value =
-    cachedTrace.value ??
-    (cachedTrace.value = buildMidgardLedgerOutputValueTrace({
-      assets: scan.steps.flatMap((step) =>
-        step.asset === null ? [] : [step.asset],
-      ),
-      lovelace: scan.terminal.lovelace,
-    }));
+  const value = valueTrace(cachedTrace);
   const offset =
     state.value_cbor === ""
       ? 0
@@ -144,33 +146,7 @@ export const nextTransitionOutputPhase = (
   const last = selected.at(-1);
   if (last === undefined)
     throw new Error("Transition value fold has no successor");
-  const witnesses: ValueWitness[] = selected.map(({ witness }) =>
-    witness === null
-      ? "LedgerOutputValueNoWitness"
-      : {
-          LedgerOutputValueAsset: {
-            asset_index: BigInt(witness.assetIndex),
-            policy_id: hex(witness.policyId),
-            asset_name: hex(witness.assetName),
-            quantity: witness.quantity,
-            siblings: witness.siblings.map(hex),
-            previous:
-              witness.previous === null
-                ? null
-                : {
-                    asset_name: hex(witness.previous.assetName),
-                    quantity: witness.previous.quantity,
-                    tail: {
-                      root: hex(witness.previous.tail.root),
-                      length: witness.previous.tail.length,
-                      payload_cbor_length:
-                        witness.previous.tail.payloadCborLength,
-                      memory: witness.previous.tail.memory,
-                    },
-                  },
-          },
-        },
-  );
+  const witnesses = selected.map(({ witness }) => valueWitness(witness));
   const summary = last.next.result;
   return {
     state: {
@@ -206,6 +182,37 @@ export const nextTransitionOutputPhase = (
         : Data.to(witnesses, ValueWitnesses),
   };
 };
+
+const valueWitness = (
+  witness: ReturnType<
+    typeof buildMidgardLedgerOutputValueTrace
+  >["steps"][number]["witness"],
+): ValueWitness =>
+  witness === null
+    ? "LedgerOutputValueNoWitness"
+    : {
+        LedgerOutputValueAsset: {
+          asset_index: BigInt(witness.assetIndex),
+          policy_id: hex(witness.policyId),
+          asset_name: hex(witness.assetName),
+          quantity: witness.quantity,
+          siblings: witness.siblings.map(hex),
+          previous:
+            witness.previous === null
+              ? null
+              : {
+                  asset_name: hex(witness.previous.assetName),
+                  quantity: witness.previous.quantity,
+                  tail: {
+                    root: hex(witness.previous.tail.root),
+                    length: witness.previous.tail.length,
+                    payload_cbor_length:
+                      witness.previous.tail.payloadCborLength,
+                    memory: witness.previous.tail.memory,
+                  },
+                },
+        },
+      };
 
 /** The phase-8 datum walk could not summarise an output's inline datum. */
 export class TransitionDatumUnreadableError extends Error {
@@ -285,5 +292,91 @@ export const nextTransitionDatumPhase = (
       datum_walk: dataSummaryWalkData(trace.points[from + transaction.steps]!),
     },
     redeemer,
+  };
+};
+
+/**
+ * The redeemers of the two output-step verifiers for the output at `index`
+ * whose committed bytes are `outputCbor`: its whole scan, value fold and datum
+ * walk, run in the one transaction that replays it.
+ */
+export const transitionOutputStepClaims = ({
+  index,
+  outputCbor,
+  summaries,
+  descriptorCbor,
+}: {
+  readonly index: bigint;
+  readonly outputCbor: string;
+  readonly summaries: SDK.TransitionTraceOutputSummaries["summaries"][number];
+  readonly descriptorCbor: string;
+}): { readonly descriptor: string; readonly summary: string } => {
+  const bytes = Buffer.from(outputCbor, "hex");
+  const trace = outputTrace(bytes);
+  // The terminal facts as the record Data the verifiers compare: the encoded
+  // control is the same 23 fields as a list, its peaks as pairs.
+  const fields = Data.from(
+    hex(encodeMidgardLedgerOutputScanControl(trace.scan.terminal)),
+  ) as Data[];
+  const facts = new Constr(
+    0,
+    fields.map((field, position) =>
+      position === 15
+        ? (field as Data[][]).map((peak) => new Constr(0, peak))
+        : field,
+    ),
+  );
+  const summary = summaries.map(
+    (item) => new Constr(0, [item.root, item.cbor_length, item.memory]),
+  );
+  let datum: Data;
+  if (trace.scan.terminal.datumOffset === -1)
+    datum = dataSummaryWalkWitnessData({
+      steps: 1,
+      restore: [],
+      base: Buffer.alloc(0),
+    });
+  else {
+    const walk = datumWalk(bytes).trace;
+    if (walk.outcome.kind === "unreadable")
+      throw new TransitionDatumUnreadableError();
+    const whole = planDataSummaryWalkTransaction(walk, 0, {
+      memory: Number.MAX_SAFE_INTEGER,
+      cpu: Number.MAX_SAFE_INTEGER,
+      restoreBytes: Number.MAX_SAFE_INTEGER,
+    });
+    if (!whole.final)
+      throw new Error("Transition output datum walk did not finish");
+    datum = dataSummaryWalkWitnessData(whole);
+  }
+  return {
+    descriptor: Data.to(
+      {
+        index,
+        bytes: outputCbor,
+        descriptor: descriptorCbor,
+        facts,
+        summary: summaries,
+      },
+      SDK.TransitionTraceOutputDescriptorClaim,
+    ),
+    summary: Data.to(
+      {
+        bytes: outputCbor,
+        facts,
+        summary,
+        value_witnesses: valueTrace(trace).steps.map(
+          ({ witness }) =>
+            Data.from(
+              Data.to(
+                valueWitness(witness),
+                ValueWitnessSchema as unknown as ValueWitness,
+              ),
+            ) as Data,
+        ),
+        datum,
+      },
+      SDK.TransitionTraceOutputSummaryClaim,
+    ),
   };
 };

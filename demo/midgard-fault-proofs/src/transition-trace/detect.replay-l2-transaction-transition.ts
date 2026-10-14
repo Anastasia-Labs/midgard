@@ -21,20 +21,44 @@ import {
   verifyProofRoot,
 } from "./detect.mpf-proof-from-witness.js";
 import { transitionTraceError } from "./errors.js";
+import { type TransitionL2ReplayMaterial } from "./proof-material.js";
 import { type TransitionTraceReconstruction } from "./reconstruct.js";
+import {
+  requireTraceEntry,
+  sourceEventOrThrow,
+} from "./witnesses.build-source-membership-proof.js";
 import {
   buildL2TransactionTransitionWitness,
   type L2TransactionTransitionEvidence,
 } from "./witnesses.js";
 
-const replayL2TransactionTransition = (
-  witness: Extract<
+/**
+ * Replay an L2 transaction's ledger mutation from its authenticated field
+ * preimages (read from the reconstruction, not carried by the witness) and
+ * the challenger's delete and insert witnesses. Returns the replayed root and
+ * the replay material the on-chain field walks and output steps consume.
+ */
+const replayL2TransactionTransition = ({
+  witness,
+  spendInputsPreimage,
+  outputsPreimage,
+  spentUtxos,
+  producedUtxos,
+}: {
+  readonly witness: Extract<
     SDK.InvalidOneStepTransitionWitness,
     { readonly L2TransactionTransition: unknown }
-  >["L2TransactionTransition"],
-): string => {
+  >["L2TransactionTransition"];
+  readonly spendInputsPreimage: string;
+  readonly outputsPreimage: string;
+  readonly spentUtxos: readonly SDK.LedgerDeleteWitness[];
+  readonly producedUtxos: readonly SDK.LedgerInsertWitness[];
+}): {
+  readonly root: string;
+  readonly l2Replay: TransitionL2ReplayMaterial;
+} => {
   const spendInputs = nativePreimageItems(
-    witness.spend_inputs_preimage,
+    spendInputsPreimage,
     "L2 transaction spend-input preimage",
   ).map((bytes, index) =>
     canonicalNativeSpendInput(
@@ -43,7 +67,7 @@ const replayL2TransactionTransition = (
     ),
   );
   const outputs = nativePreimageItems(
-    witness.outputs_preimage,
+    outputsPreimage,
     "L2 transaction output preimage",
   ).map((bytes, index) =>
     canonicalNativeOutput(
@@ -64,13 +88,13 @@ const replayL2TransactionTransition = (
     expectedCommitment: compact.transactionBody.outputsHash,
     label: "L2 transaction output preimage",
   });
-  if (witness.spent_utxos.length !== spendInputs.length) {
+  if (spentUtxos.length !== spendInputs.length) {
     throw transitionTraceError(
       "missingWitnessData",
       "L2 transaction delete witnesses must match the authenticated input count exactly.",
     );
   }
-  if (witness.produced_utxos.length !== outputs.length) {
+  if (producedUtxos.length !== outputs.length) {
     throw transitionTraceError(
       "missingWitnessData",
       "L2 transaction insert witnesses must match the authenticated output count exactly.",
@@ -78,7 +102,7 @@ const replayL2TransactionTransition = (
   }
 
   let root = witness.trace_proof.value.pre_utxos_root;
-  for (const [index, item] of witness.spent_utxos.entries()) {
+  for (const [index, item] of spentUtxos.entries()) {
     const label = `L2 transaction delete witness ${index.toString()}`;
     const key = exactHexBytes(item.key, `${label}.key`);
     const value = exactHexBytes(item.value, `${label}.value`);
@@ -119,7 +143,7 @@ const replayL2TransactionTransition = (
     }
   }
 
-  for (const [index, item] of witness.produced_utxos.entries()) {
+  for (const [index, item] of producedUtxos.entries()) {
     const label = `L2 transaction insert witness ${index.toString()}`;
     if (index > 65_535) {
       throw transitionTraceError(
@@ -197,7 +221,15 @@ const replayL2TransactionTransition = (
       );
     }
   }
-  return root;
+  return {
+    root,
+    l2Replay: {
+      spendInputCbors: spendInputs.map((item) => item.toString("hex")),
+      outputCbors: outputs.map((item) => item.toString("hex")),
+      spentUtxos,
+      producedUtxos,
+    },
+  };
 };
 
 export const detectL2TransactionTransitions = async (
@@ -211,7 +243,6 @@ export const detectL2TransactionTransitions = async (
     const witness = await buildL2TransactionTransitionWitness({
       reconstruction,
       stepIndex: item.stepIndex,
-      evidence: item,
     });
     if (!("L2TransactionTransition" in witness)) {
       throw transitionTraceError(
@@ -219,9 +250,21 @@ export const detectL2TransactionTransitions = async (
         "L2 transaction evidence did not build an L2 transaction witness.",
       );
     }
-    const replayedPostRoot = replayL2TransactionTransition(
-      witness.L2TransactionTransition,
-    );
+    const trace = requireTraceEntry(reconstruction, item.stepIndex);
+    const source = sourceEventOrThrow(reconstruction, trace.value.event_key);
+    if (source.phase !== "L2Transaction") {
+      throw transitionTraceError(
+        "missingWitnessData",
+        `Trace step ${item.stepIndex.toString()} is not an L2-transaction step.`,
+      );
+    }
+    const { root: replayedPostRoot, l2Replay } = replayL2TransactionTransition({
+      witness: witness.L2TransactionTransition,
+      spendInputsPreimage: source.entry.spendInputsPreimage.toString("hex"),
+      outputsPreimage: source.entry.outputsPreimage.toString("hex"),
+      spentUtxos: item.spentUtxos,
+      producedUtxos: item.producedUtxos,
+    });
     if (
       replayedPostRoot ===
       witness.L2TransactionTransition.trace_proof.value.post_utxos_root
@@ -235,6 +278,7 @@ export const detectL2TransactionTransitions = async (
         invariant: "l2_transaction_transition_matches_authenticated_replay",
         diagnostic: `L2 transaction trace step ${item.stepIndex.toString()} has authenticated ledger mutation evidence whose replay disagrees with the committed post-state root.`,
         fault: SDK.invalidOneStepTransitionFault(witness),
+        l2Replay,
       }),
     );
   }

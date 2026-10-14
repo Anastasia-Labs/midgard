@@ -46,6 +46,7 @@ import {
   resolveTransitionTraceByteCarriage,
   transitionTraceByteChunks,
 } from "../../src/transition-trace/proof-carriage.js";
+import { type TransitionProofInput } from "../../src/transition-trace/proof-material.js";
 import * as yieldDataModule from "../../src/transition-trace/yield-data.js";
 import { captureLocallyEvaluatedTransaction } from "../../src/workflow/transaction-boundary.js";
 import { alignEmulatorToWholeSecond } from "./emulator/emulator-context.js";
@@ -75,6 +76,10 @@ import {
   registerPhasMembershipRewardAccount,
   submitSetupTx,
 } from "./submit-init-emulator-shared.js";
+import {
+  publishTransitionFieldCarriages,
+  publishTransitionFieldCertificateReference,
+} from "./transition-trace-field-carriage.js";
 import { proveAfterForgedWalk } from "./transition-trace-final-cases.forged-walk.js";
 import { type TransitionTraceFinalCase } from "./transition-trace-final-cases.types.js";
 import {
@@ -299,6 +304,11 @@ export const registerTransitionTraceFinalCases = (
           proverLucid,
           contracts,
         );
+        const fieldCertificateReferenceScript =
+          await publishTransitionFieldCertificateReference(
+            proverLucid,
+            contracts.fieldPreimageCertificate,
+          );
         const funderPaymentCredential = getAddressDetails(
           await funderLucid.wallet().address(),
         ).paymentCredential;
@@ -372,10 +382,11 @@ export const registerTransitionTraceFinalCases = (
             fieldBytes,
           );
         }
-        let traceFixture: Pick<
-          Awaited<ReturnType<typeof buildAcceptedTransitionFixture>>,
-          "header" | "headerHash" | "proof"
-        > = await buildAcceptedTransitionFixture({
+        let traceFixture: Readonly<{
+          header: SDK.Header;
+          headerHash: string;
+          proof: TransitionProofInput;
+        }> = await buildAcceptedTransitionFixture({
           outputCbors,
           honest,
           depth,
@@ -624,6 +635,14 @@ export const registerTransitionTraceFinalCases = (
               chunks: transitionTraceByteChunks(bytes.toString("hex")),
               publish: true,
             });
+          await publishTransitionFieldCarriages({
+            lucid: proverLucid,
+            network,
+            signer: proverSigner,
+            proof: traceFixture.proof,
+            certificate: contracts.fieldPreimageCertificate,
+            certificateReference: fieldCertificateReferenceScript,
+          });
           let checkpoint = (
             await proverLucid.utxosByOutRef([
               {
@@ -651,6 +670,7 @@ export const registerTransitionTraceFinalCases = (
                   additionalReferenceInputs,
                   depositOpening,
                   witnessReferenceScripts,
+                  fieldCertificateReferenceScript,
                   preSubmitBoundary: boundary,
                 }),
             );
@@ -730,6 +750,7 @@ export const registerTransitionTraceFinalCases = (
             additionalReferenceInputs,
             depositOpening,
             witnessReferenceScripts,
+            fieldCertificateReferenceScript,
             awaitConfirmation: true,
           });
         if (corruptWalk) {
@@ -748,6 +769,7 @@ export const registerTransitionTraceFinalCases = (
                 additionalReferenceInputs,
                 depositOpening,
                 witnessReferenceScripts,
+                fieldCertificateReferenceScript,
               }),
             threadUnit: initResult.computationThreadUnit,
             fraudProofAddress: contracts.fraudProof.spendingScriptAddress,

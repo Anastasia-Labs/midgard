@@ -3,7 +3,6 @@ import {
   buildMidgardMpfDeletionOpening,
   computeMidgardNativeTxId,
   deriveMidgardNativeTxProofSource,
-  encodeMidgardFieldPreimage,
   encodeMidgardSpendInputItem,
   parseMidgardMpfProofJson,
 } from "@al-ft/midgard-core";
@@ -16,6 +15,7 @@ import {
   buildCountedRoot,
   commitCountedRoot,
 } from "../../src/transition-trace/phas.js";
+import { type TransitionProofMaterial } from "../../src/transition-trace/proof-material.js";
 import { makeHeader } from "./emulator/header-fixtures.js";
 import { makeNativeTx } from "./emulator/native-tx.js";
 import { syntheticDeepMembershipProof } from "./synthetic-deep-proof.js";
@@ -266,18 +266,21 @@ export const buildAcceptedTransitionFixture = async ({
               value: encodedSource,
               proof: deep === null ? [] : Data.from(deep.proofCbor, SDK.Proof),
             },
-            spend_inputs_preimage:
-              encodeMidgardFieldPreimage(spendInputCbors).toString("hex"),
-            outputs_preimage:
-              encodeMidgardFieldPreimage(txOutputCbors).toString("hex"),
-            spent_utxos: spent,
-            produced_utxos: produced,
           },
         },
       },
     },
   };
-  return { header, headerHash, proof, drainedEntry };
+  const material: TransitionProofMaterial = {
+    proofCbor: Data.to(proof, SDK.TransitionFaultProof),
+    l2Replay: {
+      spendInputCbors: spendInputCbors.map((item) => item.toString("hex")),
+      outputCbors: txOutputCbors.map((item) => item.toString("hex")),
+      spentUtxos: spent,
+      producedUtxos: produced,
+    },
+  };
+  return { header, headerHash, proof: material, drainedEntry };
 };
 
 export const buildDepositTransitionFixture = async ({

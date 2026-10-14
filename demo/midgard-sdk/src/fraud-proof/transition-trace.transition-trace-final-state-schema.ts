@@ -20,6 +20,8 @@ import {
 import {
   type LedgerDeleteWitness,
   LedgerDeleteWitnessSchema,
+  type LedgerInsertWitness,
+  LedgerInsertWitnessSchema,
 } from "./transition-trace.invalid-one-step-transition-witness-schema.js";
 import {
   CountFaultWitness,
@@ -197,6 +199,76 @@ const TransitionTraceDataSummarySchema = Data.Object({
   cbor_length: Data.Integer(),
   memory: Data.Integer(),
 });
+
+/**
+ * One phase-11 output step (on-chain `accepted_transaction_yields.OutputStep`):
+ * the resumed outputs walk and, for an output replayed whole, its ledger
+ * insert witness.
+ */
+export const TransitionTraceOutputStepSchema = Data.Object({
+  walk: TransitionTraceWalkStepSchema,
+  insert: LedgerInsertWitnessSchema,
+});
+
+export type TransitionTraceOutputStep = {
+  readonly walk: TransitionTraceWalkStep;
+  readonly insert: LedgerInsertWitness;
+};
+
+export const TransitionTraceOutputStep = asDataType<TransitionTraceOutputStep>(
+  TransitionTraceOutputStepSchema,
+);
+
+const TransitionTraceSummaryTripleSchema = Data.Tuple([
+  TransitionTraceDataSummarySchema,
+  TransitionTraceDataSummarySchema,
+  TransitionTraceDataSummarySchema,
+]);
+
+/**
+ * The redeemer of the output-step descriptor verifier (on-chain
+ * `output_pipeline.OutputDescriptorClaim`). `facts` is the Data of the output's
+ * terminal scan facts.
+ */
+export const TransitionTraceOutputDescriptorClaimSchema = Data.Object({
+  index: Data.Integer(),
+  bytes: Data.Bytes(),
+  descriptor: Data.Bytes(),
+  facts: Data.Any(),
+  summary: TransitionTraceSummaryTripleSchema,
+});
+
+export type TransitionTraceOutputDescriptorClaim = Data.Static<
+  typeof TransitionTraceOutputDescriptorClaimSchema
+>;
+
+export const TransitionTraceOutputDescriptorClaim =
+  asDataType<TransitionTraceOutputDescriptorClaim>(
+    TransitionTraceOutputDescriptorClaimSchema,
+  );
+
+/**
+ * The redeemer of the output-step summary verifier (on-chain
+ * `output_pipeline.OutputSummaryClaim`): the output's bytes and scan facts,
+ * the Data of its three summaries, the value fold's asset witnesses and the
+ * datum walk witness.
+ */
+export const TransitionTraceOutputSummaryClaimSchema = Data.Object({
+  bytes: Data.Bytes(),
+  facts: Data.Any(),
+  summary: Data.Any(),
+  value_witnesses: Data.Array(Data.Any()),
+  datum: Data.Any(),
+});
+
+export type TransitionTraceOutputSummaryClaim = Data.Static<
+  typeof TransitionTraceOutputSummaryClaimSchema
+>;
+
+export const TransitionTraceOutputSummaryClaim =
+  asDataType<TransitionTraceOutputSummaryClaim>(
+    TransitionTraceOutputSummaryClaimSchema,
+  );
 
 export const TransitionTraceOutputSummariesSchema = Data.Object({
   summaries: Data.Array(
