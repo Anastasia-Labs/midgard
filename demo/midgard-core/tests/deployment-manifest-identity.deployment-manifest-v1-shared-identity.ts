@@ -80,13 +80,11 @@ describe("DeploymentManifestV1 shared identity", () => {
     const tokenNames = Object.values(tokenNameByRole);
     expect(new Set(tokenNames).size).toBe(tokenNames.length);
     // The only registered contracts without a reference-script role are the
-    // seven core validators the deployment applies directly; every fraud-proof
+    // five core validators the deployment applies directly; every fraud-proof
     // validator must be published.
     expect(
       contractNames.filter((name) => !publishedContracts.includes(name)),
     ).toEqual([
-      "escapeHatchSpend",
-      "escapeHatchMint",
       "fraudProofCatalogueSpend",
       "fraudProofSpend",
       "txOrderSpend",

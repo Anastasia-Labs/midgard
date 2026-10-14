@@ -154,6 +154,11 @@ export const verifyWatcherDeploymentIdentity = (input: {
     trustRootId,
     blueprintHash: policy.blueprintHash,
     fundingProfileBundleDigest: policy.fundingProfileBundleDigest,
+    ...(bindings.artifacts.releaseProvenanceDigest === undefined
+      ? {}
+      : {
+          releaseProvenanceDigest: bindings.artifacts.releaseProvenanceDigest,
+        }),
     ruleBundleCommitment: policy.ruleBundleCommitment,
     programCommitments: policy.programCommitments,
     durableMarker: expectedMarker,

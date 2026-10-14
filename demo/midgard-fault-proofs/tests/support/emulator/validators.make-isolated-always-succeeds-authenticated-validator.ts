@@ -91,3 +91,12 @@ export const alwaysAuthenticated = (
     alwaysScript(blueprint, "midgard", baseName, "mint"),
     alwaysScript(blueprint, "midgard", baseName, "spend"),
   );
+
+// Test-only availability policy, mirroring the SDK state-queue harness. These
+// emulator flows never open a challenge; the parameter supplies a distinct id.
+export const dummyAvailabilityChallengePolicyId = (
+  blueprint: Blueprint,
+): string =>
+  makeMintingValidator(
+    alwaysScript(blueprint, "midgard", "escape_hatch", "mint"),
+  ).policyId;
