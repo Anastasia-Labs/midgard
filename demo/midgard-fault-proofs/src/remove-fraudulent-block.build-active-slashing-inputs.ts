@@ -35,6 +35,8 @@ import {
   type OperatorListEntry,
   type OperatorListRemovalPlan,
   type OperatorSlashingLayoutContext,
+  removalExemptsRemovedOperator,
+  type RemoveTransactionKind,
   type SchedulerRemovalPlan,
 } from "./remove-fraudulent-block.remove-fraudulent-block-explicit-category.js";
 import {
@@ -64,7 +66,8 @@ export type OperatorSlashingPlan =
       readonly approach: "OperatorAlreadySlashed";
       readonly activeWitness: OperatorListEntry;
       readonly retiredWitness: OperatorListEntry;
-    };
+    }
+  | { readonly approach: "DescendantOfValidationTraceConviction" };
 
 export const resolveOperatorSlashingPlan = async ({
   lucid,
@@ -305,3 +308,18 @@ export const buildActiveSlashingInputs = ({
     ],
   };
 };
+
+/** The slashing plan for one removal transaction: the validation-trace
+ * descendant exemption needs no operator-directory lookup at all. */
+export const resolveRemovalSlashingPlan = async ({
+  kind,
+  ...params
+}: Parameters<typeof resolveOperatorSlashingPlan>[0] & {
+  readonly kind: RemoveTransactionKind;
+}): Promise<OperatorSlashingPlan> =>
+  removalExemptsRemovedOperator({
+    kind,
+    fraudCategoryId: params.contracts.fraudCategoryId,
+  })
+    ? { approach: "DescendantOfValidationTraceConviction" }
+    : resolveOperatorSlashingPlan(params);

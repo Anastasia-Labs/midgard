@@ -1,4 +1,5 @@
 use aiken/builtin
+use aiken/collection/list
 use aiken/crypto
 use aiken/interval.{between}
 use aiken/primitive/bytearray
@@ -10,7 +11,9 @@ use cardano/transaction.{
 }
 use midgard/availability_challenge as availability
 use midgard/fraud_proof
+use midgard/fraud_proof_catalogue as catalogue
 use midgard/ledger_state.{ConfirmedState, HeaderV1, protocol_version_v1}
+use midgard/operator_directory
 use midgard/state_queue
 use state_queue as state_queue_validator
 
@@ -2499,4 +2502,136 @@ test completed_fraud_terminal_runs_its_deadline_from_block_time() {
 test completed_fraud_terminal_rejects_a_terminal_at_block_time_maturity() {
   let deadline = 2_000 + ledger_state.block_maturity_duration_v1 / 2 + ledger_state.block_maturity_duration_v1
   !late_committed_terminal(deadline - 1_000, deadline)
+}
+
+// Validation-trace descendant exemption (pd §6.9 B).
+
+fn proof_asset(category_id: ByteArray) -> ByteArray {
+  bytearray.concat(category_id, faulty_header_hash)
+}
+
+fn link_removal() -> state_queue.BlockRemovalApproach {
+  state_queue.RemoveFraudulentBlocksLink {
+    fraudulent_node_input_outref: out_ref(0),
+    fraudulent_node_output_index: 0,
+  }
+}
+
+fn last_removal() -> state_queue.BlockRemovalApproach {
+  state_queue.RemoveLastFraudulentBlock {
+    anchor_element_input_outref: out_ref(0),
+    anchor_element_output_index: 0,
+  }
+}
+
+fn slash_active() -> state_queue.SlashingApproach {
+  state_queue.SlashActiveOperator {
+    active_operators_redeemer_index: 0,
+    m_fraud_prover_reward_output_index: Some(0),
+  }
+}
+
+fn slash_retired() -> state_queue.SlashingApproach {
+  state_queue.SlashRetiredOperator {
+    retired_operators_redeemer_index: 0,
+    m_fraud_prover_reward_output_index: Some(0),
+  }
+}
+
+fn already_slashed() -> state_queue.SlashingApproach {
+  state_queue.OperatorAlreadySlashed {
+    active_operators_element_ref_input_index: 0,
+    retired_operators_element_ref_input_index: 1,
+  }
+}
+
+/// The admitted arms, in constructor order: active, retired, already
+/// slashed, exemption.
+fn admitted_arms(
+  block_removal_approach: state_queue.BlockRemovalApproach,
+  fraud_proof_asset_name: ByteArray,
+) -> List<Bool> {
+  [
+    slash_active(),
+    slash_retired(),
+    already_slashed(),
+    state_queue.DescendantOfValidationTraceConviction,
+  ]
+    |> list.map(
+        fn(approach) {
+          state_queue.slashing_approach_admits_removal_v1(
+            approach,
+            block_removal_approach,
+            fraud_proof_asset_name,
+          )
+        },
+      )
+}
+
+test validation_trace_prefix_is_read_from_the_first_four_bytes() {
+  and {
+    catalogue.is_validation_trace_dispute(proof_asset(#"00000006")),
+    !catalogue.is_validation_trace_dispute(proof_asset(#"00000001")),
+    !catalogue.is_validation_trace_dispute(proof_asset(#"00000016")),
+    !catalogue.is_validation_trace_dispute(proof_asset(#"06000000")),
+    // The category bytes inside the header suffix do not count.
+    !catalogue.is_validation_trace_dispute(
+      bytearray.concat(#"00000001", bytearray.concat(#"00000006", #"ff")),
+    ),
+    !catalogue.is_validation_trace_dispute(#"000000"),
+    !catalogue.is_validation_trace_dispute(#""),
+  }
+}
+
+test descendant_of_validation_trace_conviction_must_use_the_exemption() {
+  admitted_arms(link_removal(), proof_asset(#"00000006")) == [
+    False, False, True, True,
+  ]
+}
+
+test descendant_of_other_conviction_refuses_the_exemption() {
+  and {
+    admitted_arms(link_removal(), proof_asset(#"00000001")) == [
+      True, True, True, False,
+    ],
+    admitted_arms(link_removal(), proof_asset(#"00000005")) == [
+      True, True, True, False,
+    ],
+  }
+}
+
+test convicted_block_refuses_the_exemption_under_every_category() {
+  and {
+    admitted_arms(last_removal(), proof_asset(#"00000006")) == [
+      True, True, True, False,
+    ],
+    admitted_arms(last_removal(), proof_asset(#"00000001")) == [
+      True, True, True, False,
+    ],
+  }
+}
+
+test bad_state_directory_slash_requires_its_own_slash_arm() {
+  let matches = fn(approach, directory) {
+    operator_directory.bad_state_slashing_approach_matches_directory(
+      approach,
+      directory,
+    )
+  }
+  and {
+    matches(slash_active(), operator_directory.ActiveOperatorsDirectory),
+    !matches(slash_active(), operator_directory.RetiredOperatorsDirectory),
+    matches(slash_retired(), operator_directory.RetiredOperatorsDirectory),
+    !matches(slash_retired(), operator_directory.ActiveOperatorsDirectory),
+    !matches(already_slashed(), operator_directory.ActiveOperatorsDirectory),
+    !matches(already_slashed(), operator_directory.RetiredOperatorsDirectory),
+    !matches(
+      state_queue.DescendantOfValidationTraceConviction,
+      operator_directory.ActiveOperatorsDirectory,
+    ),
+    !matches(
+      state_queue.DescendantOfValidationTraceConviction,
+      operator_directory.RetiredOperatorsDirectory,
+    ),
+  }
 }

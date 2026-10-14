@@ -141,8 +141,8 @@ describe("midgard contracts registry", () => {
       // the output proof's datum step and the split Data refusal executor, and
       // the composed P1 tree (allow-lists, the datum canonicity step, the
       // non-empty block rule, one event NFT per user-event mint), the retired
-      // post-UTxO minimum-Ada mode, the streamed redeemer and datum Data
-      // verdict steps, and the one-pass history payload node count.
+      // post-UTxO minimum-Ada mode, streamed redeemer/datum Data verdicts, the
+      // one-pass node count, and the queue's proof reference and exemption.
       expect
         .soft(
           createHash("sha256")
@@ -152,7 +152,7 @@ describe("midgard contracts registry", () => {
             .digest("hex"),
         )
         .toBe(
-          "7883b65d70b4903847e247a40e538098a77123ff34a05aa86fac9e33d10d81c2",
+          "1cff5ca73b3971ba88cc97a7ff88c969d3edff6d9c0027813e934031aaf3a3b7",
         );
       // Includes current streamed Data/W1 metadata plus escape-hatch field
       // retirement and the hub witness's paired script bytes. The independently
@@ -166,7 +166,7 @@ describe("midgard contracts registry", () => {
       // the scheduler and active-operator scripts), the lock ADA top-up, and
       // the composed P1 tree (allow-lists, the non-empty block rule, T302), and
       // the fault-proof scripts the state queue is applied over (the retired
-      // post-UTxO minimum-Ada mode, the streamed Data verdict steps).
+      // post-UTxO minimum-Ada mode, streamed Data verdicts), proof ref, exemption.
       expect
         .soft(
           createHash("sha256")
@@ -179,7 +179,7 @@ describe("midgard contracts registry", () => {
             .digest("hex"),
         )
         .toBe(
-          "6666a02a09da771adf4ae0061002758562764b086a23410646f9256d6dadc8cf",
+          "c43504821ebdf673b485108305061ace39def48c865fc78bc1a6ac4667656eaf",
         );
       // The always-succeeds stand-in is a real hazard here: it satisfies every
       // spend, so a role that silently kept it would pass any behavioural test

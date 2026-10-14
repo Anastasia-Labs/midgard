@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   encodeStateQueueYieldRedeemer,
+  SlashingApproach,
   StateQueueRedeemer,
   StateQueueSpendRedeemer,
 } from "../src/index.js";
@@ -162,6 +163,41 @@ describe("state-queue ABI", () => {
     expect(roundTrip(rewardlessRetiredSlash, StateQueueRedeemer)).toEqual(
       rewardlessRetiredSlash,
     );
+  });
+
+  it("encodes the validation-trace descendant exemption as fieldless constructor 3", () => {
+    expect(
+      Data.to("DescendantOfValidationTraceConviction", SlashingApproach),
+    ).toBe("d87c80");
+    const exemptLink = {
+      RemoveFraudulentBlockHeader: {
+        yield_to_ref_input_index: 0n,
+        fraudulent_operator: "22".repeat(28),
+        fraudulent_blocks_header_hash: "33".repeat(28),
+        slashing_approach: "DescendantOfValidationTraceConviction",
+        fraud_proof_ref_input_index: 3n,
+        block_removal_approach: {
+          RemoveFraudulentBlocksLink: {
+            fraudulent_node_input_outref: outputReference,
+            fraudulent_node_output_index: 7n,
+          },
+        },
+      },
+    } as const;
+    expect(roundTrip(exemptLink, StateQueueRedeemer)).toEqual(exemptLink);
+    // The earlier constructors keep their indices.
+    expect(
+      Data.to(
+        {
+          OperatorAlreadySlashed: {
+            active_operators_element_ref_input_index: 0n,
+            retired_operators_element_ref_input_index: 1n,
+          },
+        },
+        SlashingApproach,
+      ),
+    ).toBe("d87b9f0001ff");
+    expect(() => Data.from("d87d80", SlashingApproach)).toThrow();
   });
 
   it("encodes RecordCompletedFraud with its optional proof reference input", () => {

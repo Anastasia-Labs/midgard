@@ -160,6 +160,16 @@ export const buildSlashingInputs = ({
       });
     case "OperatorAlreadySlashed":
       return buildAlreadySlashedInputs({ plan });
+    case "DescendantOfValidationTraceConviction":
+      return {
+        approach: "DescendantOfValidationTraceConviction",
+        removedOperatorNodeOutRef: null,
+        registeredOperatorsElementOutRef: null,
+        buildSlashing: () => ({
+          kind: "descendantOfValidationTraceConviction",
+        }),
+        additionalRefInputs: [],
+      };
   }
 };
 
@@ -176,6 +186,11 @@ export const resolveStateQueueSlashingApproach = ({
   readonly layout: Partial<RemoveFraudulentBlockLayout>;
 } => {
   switch (slashing.kind) {
+    case "descendantOfValidationTraceConviction":
+      return {
+        slashingApproach: "DescendantOfValidationTraceConviction",
+        layout: {},
+      };
     case "slashActiveOperator": {
       const activeOperatorsRedeemerTxInfoIndex = requireMintRedeemerIndex(
         ctx,

@@ -66,6 +66,11 @@ export const encodeActiveOperatorSpendRedeemer = (
  * economics, which F04 §2.5 assigns to Q53. `OperatorAlreadySlashed` consumes
  * no bond and so cannot name a reward output at all: that is the type-level
  * half of the D4 exclusivity ruling.
+ *
+ * `DescendantOfValidationTraceConviction` (constructor 3, no fields) is the
+ * mandatory arm for removing a descendant (`RemoveFraudulentBlocksLink`) of a
+ * block convicted under the validation-trace category `00000006`: the
+ * descendant's operator is not slashed and no reward is paid.
  */
 export const SlashingApproachSchema = Data.Enum([
   Data.Object({
@@ -86,6 +91,7 @@ export const SlashingApproachSchema = Data.Enum([
       retired_operators_element_ref_input_index: Data.Integer(),
     }),
   }),
+  Data.Literal("DescendantOfValidationTraceConviction"),
 ]);
 
 export type SlashingApproach = Data.Static<typeof SlashingApproachSchema>;

@@ -13,7 +13,7 @@ use midgard/common/utils
 use midgard/hub_oracle as hub
 use midgard/ledger_state
 use midgard/operator_directory.{
-  deinit, init, slash_fraudulent_operator_and_get_info,
+  ActiveOperatorsDirectory, deinit, init, slash_fraudulent_operator_and_get_info,
   validate_transferred_operator_insertion,
 }
 use midgard/operator_directory/active_operators.{
@@ -547,6 +547,7 @@ validator mint(
               redeemers
             <- slash_fraudulent_operator_and_get_info(
             hub_oracle_script_hash,
+            ActiveOperatorsDirectory,
             slashing_arguments,
             self,
           )

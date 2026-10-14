@@ -395,6 +395,59 @@ the code is authoritative. Review
 action: a change to the DA status type must give every new status an explicit
 arm here `[review]`.
 
+## SQ13. A validation-trace conviction prunes its descendants without slashing them
+
+Status: PARTIAL (code and tests read at the cited lines; the emulator pairs
+below are the refusing transactions; the double-conviction residual is
+open, see C-18 in the lane status).
+
+Rule: when the authenticated fraud-proof token's 4-byte category prefix is
+`00000006` (validation-trace dispute), every descendant removed with
+`RemoveFraudulentBlocksLink` takes `DescendantOfValidationTraceConviction`.
+The arm consumes no bond, burns no directory node and pays no reward. The
+exemption is mandatory: under that prefix the link refuses
+`SlashActiveOperator` and `SlashRetiredOperator`; `OperatorAlreadySlashed`
+stays valid. Every other category refuses the exemption, and
+`RemoveLastFraudulentBlock` refuses it under every category, so the convicted
+block's own operator is always slashed.
+
+Enforced:
+
+- `slashing_approach_admits_removal_v1` (`lib/midgard/state-queue.ak:224`),
+  called from `validate_remove_fraudulent_v1`
+  (`validators/state-queue.ak:1482`) after the header equality. The prefix is
+  read only from the asset name of the token under the fraud-proof policy
+  parameter (`get_proven_fraud_record_with_identity`), by
+  `is_validation_trace_dispute` (`lib/midgard/fraud-proof-catalogue.ak:18`).
+  The arm itself checks `no_output_pays_fraud_prover_reward_v1`
+  (`validators/state-queue.ak:1598`).
+- The operator directory's `SlashOperatorForBadState` reads the state-queue
+  redeemer's `slashing_approach` and requires its own slash arm
+  (`bad_state_slashing_approach_matches_directory`,
+  `lib/midgard/operator-directory.ak:34`, called at `:388`), so a directory
+  slash is never paired with a removal whose arm slashes nothing.
+- Refused `[aiken-test: state-queue-removal.test/]`:
+  `descendant_of_validation_trace_conviction_must_use_the_exemption` `:2586`,
+  `descendant_of_other_conviction_refuses_the_exemption` `:2592`,
+  `convicted_block_refuses_the_exemption_under_every_category` `:2603`,
+  `bad_state_directory_slash_requires_its_own_slash_arm` `:2614`, and the
+  prefix read `validation_trace_prefix_is_read_from_the_first_four_bytes`
+  `:2571`.
+- Refused in built transactions `[runtime: expectOnchainRefusal]`:
+  `demo/midgard-fault-proofs/tests/submit-init-emulator-validation-trace-descendant-exemption.test.ts`,
+  each refusal paired with the transaction that verifies from the same
+  queue state. Red-checked on scratch builds: removing the admission call
+  turns B4 and B2 red, admitting the exemption on the convicted block turns
+  B6 red, and removing the directory call turns B5 red.
+
+Provenance: owner ruling R6 (pd-design rev 3 §6.9 B), lane SQ.
+
+Recurrence: 0.
+
+Review action: a new `SlashingApproach` arm, or a new directory caller of
+`slash_fraudulent_operator_and_get_info`, must say which removals it admits
+and which directory it matches `[review]`.
+
 ## Miss patterns in this subtree
 
 - A check present in one arm and missing from its sibling (SQ5, SQ9).

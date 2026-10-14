@@ -10,6 +10,7 @@ use env
 use midgard/availability_challenge as availability
 use midgard/common/utils
 use midgard/fraud_proof
+use midgard/fraud_proof_catalogue as catalogue
 use midgard/ledger_state.{
   ConfirmedState, DepositsRoot, EventToStepRoot, ForcedTransactionsRoot,
   HeaderHash, HeaderV1, MidgardTxsRoot, TransitionTraceRoot,
@@ -192,6 +193,11 @@ pub type SlashingApproach {
     active_operators_element_ref_input_index: Int,
     retired_operators_element_ref_input_index: Int,
   }
+  /// The removed block is a descendant (`RemoveFraudulentBlocksLink`) of a
+  /// block convicted under the validation-trace category. Its operator is not
+  /// slashed and no reward is paid. This is the only arm such a removal
+  /// accepts; the convicted block itself is always removed with a slash arm.
+  DescendantOfValidationTraceConviction
 }
 
 pub type BlockRemovalApproach {
@@ -202,6 +208,34 @@ pub type BlockRemovalApproach {
   RemoveFraudulentBlocksLink {
     fraudulent_node_input_outref: OutputReference,
     fraudulent_node_output_index: Int,
+  }
+}
+
+/// Whether a fraud removal may use `slashing_approach`, given how it removes
+/// the block and the authenticated fraud-proof asset name it cites.
+///
+/// A link removal (`RemoveFraudulentBlocksLink`) under a validation-trace
+/// conviction removes a descendant whose operator is exempt: it must use
+/// `DescendantOfValidationTraceConviction` or `OperatorAlreadySlashed`, never a
+/// slash arm. The exemption is mandatory because the submitter chooses the
+/// arm. Every other removal, including the convicted block's own
+/// (`RemoveLastFraudulentBlock`) under any category, accepts the three slash
+/// arms and never the exemption.
+pub fn slashing_approach_admits_removal_v1(
+  slashing_approach: SlashingApproach,
+  block_removal_approach: BlockRemovalApproach,
+  fraud_proof_asset_name: AssetName,
+) -> Bool {
+  let exempt_descendant = when block_removal_approach is {
+    RemoveFraudulentBlocksLink { .. } ->
+      catalogue.is_validation_trace_dispute(fraud_proof_asset_name)
+    RemoveLastFraudulentBlock { .. } -> False
+  }
+  when slashing_approach is {
+    SlashActiveOperator { .. } -> !exempt_descendant
+    SlashRetiredOperator { .. } -> !exempt_descendant
+    OperatorAlreadySlashed { .. } -> True
+    DescendantOfValidationTraceConviction -> exempt_descendant
   }
 }
 

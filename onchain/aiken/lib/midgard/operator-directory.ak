@@ -21,6 +21,29 @@ pub type SlashingReason {
   }
 }
 
+/// The operator directory whose minting policy is slashing.
+pub type SlashingDirectory {
+  ActiveOperatorsDirectory
+  RetiredOperatorsDirectory
+}
+
+/// Whether the state queue's slashing approach agrees with the directory that
+/// slashes for bad state: an active-operators slash must be
+/// `SlashActiveOperator`, a retired-operators slash `SlashRetiredOperator`.
+/// The approaches that slash nothing never authorize a directory slash.
+pub fn bad_state_slashing_approach_matches_directory(
+  slashing_approach: state_queue.SlashingApproach,
+  slashing_directory: SlashingDirectory,
+) -> Bool {
+  when slashing_approach is {
+    state_queue.SlashActiveOperator { .. } ->
+      slashing_directory == ActiveOperatorsDirectory
+    state_queue.SlashRetiredOperator { .. } ->
+      slashing_directory == RetiredOperatorsDirectory
+    _ -> False
+  }
+}
+
 pub type SlashingArguments {
   slashed_operator: VerificationKeyHash,
   hub_oracle_ref_input_index: Int,
@@ -240,6 +263,7 @@ pub fn validate_transferred_operator_insertion(
 /// removal, and script context (`tx`).
 pub fn slash_fraudulent_operator_and_get_info(
   hub_oracle_script_hash: PolicyId,
+  slashing_directory: SlashingDirectory,
   slashing_arguments: SlashingArguments,
   tx: Transaction,
   further_validations: fn(
@@ -345,14 +369,26 @@ pub fn slash_fraudulent_operator_and_get_info(
       // 8a. State queue minting script must be invoked via the
       //     `RemoveFraudulentBlockHeader` redeemer, and the operator specified
       //     there must agree with the `slashed_operator` redeemer argument
-      //     here.
-      expect state_queue.RemoveFraudulentBlockHeader { fraudulent_operator, .. }
+      //     here. Its slashing approach must be the slash arm for this
+      //     directory, so a removal that slashes nothing cannot be paired
+      //     with a directory slash.
+      expect
+          state_queue.RemoveFraudulentBlockHeader {
+            fraudulent_operator,
+            slashing_approach,
+            ..
+          }
         = redeemers
         |> utils.get_redeemer_at(
             expected_purpose: Mint(hub_datum.state_queue),
             redeemer_index: state_queue_redeemer_index,
           )
       expect fraudulent_operator == slashed_operator
+      expect
+        bad_state_slashing_approach_matches_directory(
+          slashing_approach,
+          slashing_directory,
+        )
 
       // Done.
       True
