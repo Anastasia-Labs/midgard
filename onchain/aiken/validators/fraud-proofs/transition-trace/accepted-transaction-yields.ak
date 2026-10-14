@@ -5,7 +5,6 @@ use cardano/address.{Credential}
 use cardano/assets.{PolicyId}
 use cardano/transaction.{Transaction}
 use midgard/cbor_deserialise
-use midgard/data_summary_walk_v1.{Summarised} as datum_walk
 use midgard/fraud_proofs/field_opening_v1.{
   BodyAnchor, BodyTxOpening, FieldOpeningV1, NativeTxAnchorV1,
   anchored_field_walk, anchored_native_tx, anchored_native_tx_version,
@@ -19,10 +18,8 @@ use midgard/fraud_proofs/transition_trace/final_yield.{
 }
 use midgard/fraud_proofs/transition_trace/final_yield as delegation
 use midgard/fraud_proofs/transition_trace/output_pipeline as pipeline
-use midgard/fraud_proofs/transition_trace/output_summaries.{WalkWitness}
 use midgard/fraud_proofs/transition_trace/proof
 use midgard/fraud_proofs/transition_trace/proof_carriage
-use midgard/ledger_output_value_v1 as value
 use midgard/ledger_state
 use midgard/native_tx_field_access_v1.{FieldCarriageV1}
 use midgard/native_tx_machine_walk_v1 as walk
@@ -50,12 +47,9 @@ pub type DeleteStep {
 }
 
 /// One phase-11 step: the resumed outputs walk and, for an output replayed
-/// whole, the value fold's asset witnesses, the datum walk witness and the
-/// ledger insert witness. A staged output reads only `walk`.
+/// whole, its ledger insert witness. A staged output reads only `walk`.
 pub type OutputStep {
   walk: WalkStep,
-  value_witnesses: List<value.LedgerOutputValueWitnessV1>,
-  datum: WalkWitness,
   insert: proof.LedgerInsertWitness,
 }
 
@@ -272,14 +266,20 @@ validator l2_outputs(
 /// at `output_index`, so the insert key built from the same index names the
 /// output whose bytes were walked.
 ///
-/// An output of at most `output_step_bytes` is replayed whole here: scan,
-/// value fold, summaries and descriptor over the walked bytes, then its
-/// insert, and the step moves on to the next output (or phase 5 after the
-/// last). A longer output records its hash for the staged phases, which
-/// read its bytes from published chunks, and moves to phase 2.
+/// An output of at most `output_step_bytes` is replayed whole here and the
+/// step moves on to the next output (or phase 5 after the last). Its scan,
+/// value fold, summaries and descriptor are checked by the two withdraw-zero
+/// verifiers of `output_step`, whose exact credentials are parameters: the
+/// descriptor verifier's claim must name `output_index` and the walked bytes,
+/// the summary verifier's claim must repeat the same bytes, scan facts and
+/// summaries, and the descriptor it checked is the value inserted. A longer
+/// output records its hash for the staged phases, which read its bytes from
+/// published chunks, and moves to phase 2.
 validator l2_output_step(
   dispatcher: ScriptHash,
   field_preimage_certificate_policy_id: PolicyId,
+  descriptor_verifier: ScriptHash,
+  summary_verifier: ScriptHash,
 ) {
   withdraw(step: OutputStep, _credential: Credential, tx: Transaction) {
     let (datum, args) = delegation.dispatch(dispatcher, tx.inputs, tx.redeemers)
@@ -305,39 +305,12 @@ validator l2_output_step(
         output_hash: blake2b_256(item),
       }
     } else {
-      let (facts, value_start) = pipeline.scan_whole(item)
-      expect Some(value_summary) = value.finalize_v1(
-        pipeline.value_batch(
-          value.initial_control_v1(facts.asset_count),
-          facts,
-          step.value_witnesses,
-        ),
-      )
-      let datum_summary = if facts.datum_offset == -1 {
-        None
-      } else {
-        expect Summarised(summary) = output_summaries.resume_datum(
-          facts,
-          item,
-          datum_walk.start(facts.datum_offset),
-          step.datum,
-        )
-        Some(summary)
-      }
-      let (s1, s2, s3) = output_summaries.summary_of(
-        facts,
-        item,
-        value_summary,
-        datum_summary,
-      )
-      let descriptor = pipeline.descriptor_cbor(
+      let descriptor = pipeline.verified_descriptor(
+        tx,
+        descriptor_verifier,
+        summary_verifier,
         state.output_index,
         item,
-        facts,
-        value_start,
-        s1,
-        s2,
-        s3,
       )
       let next_index = state.output_index + 1
       delegation.State {

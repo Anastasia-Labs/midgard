@@ -4,9 +4,16 @@
 //// and keep their progress in thread state; the accepted-transaction output
 //// step runs the whole pipeline for one small output in one transaction.
 
+use aiken/builtin
+use aiken/collection/pairs
+use aiken/crypto.{ScriptHash}
 use aiken/primitive/bytearray
+use cardano/address.{Script}
+use cardano/transaction.{Transaction}
 use midgard/cek_data_v1.{DataSummaryV1}
+use midgard/common/utils
 use midgard/fraud_proofs/native_tx/components
+use midgard/fraud_proofs/transition_trace/output_summaries.{WalkWitness}
 use midgard/ledger_output_commitment_v1
 use midgard/ledger_output_descriptor_v1
 use midgard/ledger_output_scan_v1 as scan
@@ -179,4 +186,66 @@ pub fn descriptor_cbor(
   }
   expect ledger_output_commitment_v1.descriptor_is_well_formed(descriptor)
   ledger_output_commitment_v1.encode(descriptor)
+}
+
+/// The redeemer of the output-step descriptor verifier: `descriptor` is the
+/// encoded ledger descriptor of the output at `index` whose committed bytes
+/// are `bytes`, given its three summaries. `facts` is the Data of the bytes'
+/// terminal scan facts, which the summary verifier's claim must repeat.
+pub type OutputDescriptorClaim {
+  index: Int,
+  bytes: ByteArray,
+  descriptor: ByteArray,
+  facts: Data,
+  summary: (DataSummaryV1, DataSummaryV1, DataSummaryV1),
+}
+
+/// The redeemer of the output-step summary verifier: `summary` is the Data of
+/// the three summaries of the output whose committed bytes are `bytes` and
+/// whose terminal scan facts are `facts`, under the value fold's asset
+/// witnesses and the datum walk witness.
+pub type OutputSummaryClaim {
+  bytes: ByteArray,
+  facts: scan.LedgerOutputScanControlV1,
+  summary: Data,
+  value_witnesses: List<value.LedgerOutputValueWitnessV1>,
+  datum: WalkWitness,
+}
+
+/// The fields of the redeemer the withdraw-zero script `verifier` runs with in
+/// `tx`. Its withdrawal must be present and its redeemer unique under that
+/// exact purpose.
+fn verifier_claim(tx: Transaction, verifier: ScriptHash) -> List<Data> {
+  expect pairs.has_key(tx.withdrawals, Script(verifier))
+  builtin.unconstr_fields(
+    utils.get_unique_withdraw_redeemer(tx.redeemers, verifier),
+  )
+}
+
+/// The descriptor of the output at `index` whose committed bytes are `item`,
+/// as checked in `tx` by the two output-step verifiers. The descriptor
+/// verifier's claim must name `index` and `item`; the summary verifier's
+/// claim must repeat its bytes, scan facts and summaries, so the summaries
+/// the descriptor was assembled from are the ones derived from `item`.
+pub fn verified_descriptor(
+  tx: Transaction,
+  descriptor_verifier: ScriptHash,
+  summary_verifier: ScriptHash,
+  index: Int,
+  item: ByteArray,
+) -> ByteArray {
+  expect [claimed_index,
+        bytes,
+        descriptor, facts, summary] = verifier_claim(tx, descriptor_verifier)
+  expect [summary_bytes,
+        summary_facts,
+        summary_summary, _, _] = verifier_claim(tx, summary_verifier)
+  expect and {
+      builtin.un_i_data(claimed_index) == index,
+      builtin.un_b_data(bytes) == item,
+      summary_bytes == bytes,
+      summary_facts == facts,
+      summary_summary == summary,
+    }
+  builtin.un_b_data(descriptor)
 }
