@@ -107,6 +107,7 @@ export const buildUnsignedCommitTx = (
   _consensusProfile: ContractDeploymentIdentityValue["consensusProfile"],
   endDate: Date,
   maximumEndTimeMs?: number,
+  fixedBlockTimeMs?: number,
 ): Effect.Effect<
   CommitBuildResult,
   | SDK.StateQueueError
@@ -163,6 +164,25 @@ export const buildUnsignedCommitTx = (
       );
     }
 
+    if (
+      fixedBlockTimeMs !== undefined &&
+      (!Number.isSafeInteger(fixedBlockTimeMs) ||
+        candidateEndTimeMs > fixedBlockTimeMs ||
+        (transitionCommitments.l2TransactionCount > 0n &&
+          candidateEndTimeMs !== fixedBlockTimeMs))
+    )
+      return yield* Effect.fail(
+        new SDK.StateQueueError({
+          message:
+            "Selected coverage or normal transactions disagree with the fixed commit clock",
+          cause: {
+            candidateEndTimeMs,
+            fixedBlockTimeMs,
+            l2TransactionCount: transitionCommitments.l2TransactionCount,
+          },
+        }),
+      );
+
     // The worker's Lucid service starts without a selected wallet. Select the
     // operator wallet before any scheduler refresh or witness lookup that
     // depends on wallet address or spendable operator inputs.
@@ -172,15 +192,14 @@ export const buildUnsignedCommitTx = (
       resolveAlignedCommitEndTime({
         lucid: lucid.api,
         latestEndTime,
-        candidateEndTime: candidateEndTimeMs,
+        candidateEndTime: fixedBlockTimeMs ?? candidateEndTimeMs,
         nowMs: commitValidityResolutionNow,
         minimumFutureBufferMs: ownedWindow
           ? HISTORY_COMMIT_MINIMUM_FUTURE_BUFFER_MS
           : COMMIT_MINIMUM_FUTURE_BUFFER_MS,
       });
-    const fixedHistoryEnd = Option.isSome(history)
-      ? candidateEndTimeMs
-      : undefined;
+    const fixedHistoryEnd =
+      fixedBlockTimeMs ?? (ownedWindow ? candidateEndTimeMs : undefined);
     const finalEndTimeCap =
       fixedHistoryEnd === undefined
         ? maximumEndTimeMs
@@ -288,8 +307,9 @@ export const buildUnsignedCommitTx = (
           submitSlotSnapshot: initialSubmitSlotSnapshot,
           validToMs: txValidToMs,
         });
-      // A normal block covers the window up to its block time.
-      const blockEndTimeMs = blockTimeMs;
+      // The selected event window is fixed independently of transaction validity.
+      const blockEndTimeMs =
+        fixedBlockTimeMs === undefined ? blockTimeMs : candidateEndTimeMs;
       if (txValidToMs !== alignedCandidateEndTime) {
         yield* Effect.logWarning(
           `Adjusted commit transaction validity and bound the committed header to its inclusive upper bound (candidate_end=${candidateEndTimeMs},header_end=${blockEndTimeMs},candidate_valid_to=${alignedCandidateEndTime},minimum=${minimumMonotonicEndTime},selected_valid_from=${txValidFromMs},selected_valid_to=${txValidToMs},latest_block_end=${latestEndTime}).`,

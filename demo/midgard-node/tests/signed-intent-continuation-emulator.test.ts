@@ -12,7 +12,7 @@ import { Database } from "../src/services/database.js";
 import { HISTORY_COMMIT_MINIMUM_FUTURE_BUFFER_MS } from "../src/services/history-commit-window.js";
 import {
   COMMIT_MINIMUM_FUTURE_BUFFER_MS,
-  resolveHistoryCommitEndTime,
+  resolveHistoryCommitBlockTime,
 } from "../src/workers/utils/commit-end-time.js";
 import { resolveCurrentOperatorSchedulerWindow } from "../src/workers/utils/scheduler-refresh.js";
 import {
@@ -326,14 +326,12 @@ it("retains the original signed intent through an accepted queue pointer continu
       throw new Error("The operator has no current scheduler window");
     const childSlot = fixture.emulator.slot;
     const parentEndTimeMs = Number(accepted.header.endTime);
-    const childEndTime = resolveHistoryCommitEndTime({
+    const childEndTime = resolveHistoryCommitBlockTime({
       lucid,
       currentSlot: childSlot,
       latestEndTime: parentEndTimeMs,
       nowMs: fixture.emulator.now(),
       minimumFutureBufferMs: HISTORY_COMMIT_MINIMUM_FUTURE_BUFFER_MS,
-      eventEndTimeMs:
-        lucid.slotToUnixTime(childSlot) + SDK.EVENT_WAIT_DURATION_MS - 1,
       schedulerWindowEndTimeMs: childWindow.endTimeMs,
       appendFenceEndTimeMs:
         parentEndTimeMs + Number(SDK.DA_ATTESTATION_TIMEOUT_MS) - 1,

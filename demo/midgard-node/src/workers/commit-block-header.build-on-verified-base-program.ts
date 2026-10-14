@@ -7,7 +7,6 @@ import {
   CommitBuildCalibrationDB,
   MempoolDB,
   MpfEngineStateDB,
-  PendingBlockFinalizationsDB,
   ProcessedMempoolDB,
 } from "../database/index.js";
 import {
@@ -40,30 +39,30 @@ import {
   alignCommitMpfsToBase,
   MEMPOOL_LEDGER_REVERTED_NOTICE,
   type NotifyCommitWorkerParent,
-  shouldPreserveCommitMpfRoots,
   shouldShortCircuitIdleCommitAttempt,
   workerPreIngestionDueWorkOutputFromPlan,
 } from "./commit-block-header.commit-explicit-block-header-program.js";
+import { notifyCommitPlanningSelection } from "./commit-block-header.notify-planning-selection.js";
 import {
   type CommitLucidFactory,
   CommitWorkerInvariantError,
-  pendingUserEventCountsUpTo,
   shouldHydrateCommitBaseEntries,
 } from "./commit-block-header.pending-user-event-counts-up-to.js";
+import { planAdditiveCommitDa } from "./commit-block-header.plan-additive-da.js";
+import { planHistoryCommitEventWindow } from "./commit-block-header.plan-event-window.js";
 import { recordSuccessfulBuildCalibration as recordBuildCalibration } from "./commit-block-header.record-successful-build-calibration.js";
 import { resolveCommitBaseLedgerEntries } from "./commit-block-header.resolve-commit-base-ledger-entries.js";
+import { verifyAdditiveCommitDaFrame } from "./commit-block-header.verify-additive-da.js";
 import type { CommitEviction } from "./commit-block-header/commit-da-oversize-eviction.js";
 import * as DaPrefix from "./commit-block-header/commit-da-prefix-search.js";
-import {
-  getLatestBlockDatumEndTime,
-  resolveCommitAppendFenceEndTimeCapLocal,
-} from "./commit-block-header/state-queue.js";
+import { getLatestBlockDatumEndTime } from "./commit-block-header/state-queue.js";
 import {
   deferProcessedCommitPayloadUntilConfirmation,
   recoverLocalFinalizationAgainstConfirmedBlock,
   submitDepositOnlyCommit,
   submitTxBackedCommit,
 } from "./commit-block-header/submission.js";
+import { COMMIT_PLANNING_STARTED_NOTICE } from "./commit-planning-notice.js";
 import {
   type CommitCandidateRoots,
   deserializeStateQueueUTxO,
@@ -75,6 +74,7 @@ import {
   nothingToCommitWithNoWork,
 } from "./utils/commit-block-planner.commit-da-frame-notice.js";
 import {
+  buildCommitTxCandidateSelection,
   calibratedCommitBuildMsPerTx,
   type CommitSchedulerStateQueueEvidence,
   type CurrentOperatorSchedulerWindow,
@@ -86,12 +86,10 @@ import {
   selectCommitTxCandidates,
   shouldDeferCommitSubmission,
   shouldSkipIdleCommitBehindUnmergedTail,
-  stepDownCommitSelectionToDaFrame,
 } from "./utils/commit-block-planner.js";
 import {
   COMMIT_MINIMUM_FUTURE_BUFFER_MS,
   resolveCommitEndTimeFit,
-  resolveHistoryCommitEndTime,
   resolveLatestFeasibleCommitEndTime,
 } from "./utils/commit-end-time.js";
 import {
@@ -136,6 +134,8 @@ export const buildOnVerifiedCommitBaseProgram = (
         : Effect.succeed(acquiredCommitLucid),
     );
     yield* assertFollowerWrite(workerInput.history);
+    if (notifyParent !== undefined)
+      yield* notifyParent(COMMIT_PLANNING_STARTED_NOTICE);
     const workerStartedAtMs = Date.now();
     const nodeConfig = yield* NodeConfig;
     const deploymentIdentity = yield* ContractDeploymentIdentity;
@@ -259,8 +259,6 @@ export const buildOnVerifiedCommitBaseProgram = (
       return { type: "NothingToCommitOutput" } satisfies WorkerOutput;
     }
     const { horizonMs: eventHorizonMs, anchor: commitAnchor } = eventHorizon;
-    const historyEndTime =
-      workerInput.history === undefined ? undefined : new Date(eventHorizonMs);
     const depositIngestionBarrierTime = new Date(eventHorizonMs);
     const withdrawalIngestionBarrierTime = depositIngestionBarrierTime;
     const userEventOnlyEndTime = depositIngestionBarrierTime;
@@ -377,64 +375,6 @@ export const buildOnVerifiedCommitBaseProgram = (
     );
     const effectiveUserEventOnlyEndTime =
       schedulerAwareCommitSelection.userEventOnlyEndTime;
-    // A source-owned block takes the latest end every cap admits. When the
-    // floors exceed the caps, the resolved end stays at the cap and the build
-    // refuses it exactly as it refused an over-cap end before.
-    const historyCommitEndTimeFit =
-      historyEndTime === undefined
-        ? undefined
-        : yield* Effect.gen(function* () {
-            const lucid = yield* acquireCommitLucidOnce;
-            const contracts = yield* MidgardContracts;
-            const submitSlot = yield* lucid.submitSlotSnapshot().pipe(
-              Effect.mapError(
-                (cause) =>
-                  new SDK.LucidError({
-                    message:
-                      "Failed to acquire the submit-slot snapshot for the history commit end",
-                    cause,
-                  }),
-              ),
-            );
-            // The fence reads the landed state queue, the first queue read of
-            // this candidate build; a lost submit response is reconciled
-            // first, exactly as every submit attempt requires.
-            yield* PendingBlockFinalizationsDB.assertNoUnreconciledSignedSubmission;
-            const appendFenceEndTimeMs =
-              yield* resolveCommitAppendFenceEndTimeCapLocal(lucid.api, {
-                stateQueueAddress: contracts.stateQueue.spendingScriptAddress,
-                stateQueuePolicyId: contracts.stateQueue.policyId,
-              });
-            return resolveHistoryCommitEndTime({
-              lucid: lucid.api,
-              currentSlot: submitSlot.currentSlot,
-              latestEndTime:
-                latestEndTimeMsForSchedulerPlanning ??
-                currentBlockStartTime.getTime(),
-              nowMs: schedulerPlanningNowMs,
-              minimumFutureBufferMs: HISTORY_COMMIT_MINIMUM_FUTURE_BUFFER_MS,
-              eventEndTimeMs: Math.min(
-                historyEndTime.getTime(),
-                effectiveUserEventOnlyEndTime.getTime(),
-              ),
-              schedulerWindowEndTimeMs:
-                schedulerAwareCommitSelection.blockEndTimeCapMs,
-              appendFenceEndTimeMs,
-            });
-          });
-    if (historyCommitEndTimeFit?.status === "exceeds_cap") {
-      yield* Effect.logInfo(
-        `🔹 History commit floors exceed its end-time caps (${historyCommitEndTimeFit.reason}).`,
-      );
-    }
-    const blockEndTimeCapMs =
-      historyCommitEndTimeFit === undefined
-        ? schedulerAwareCommitSelection.blockEndTimeCapMs
-        : historyCommitEndTimeFit.maximumEndTimeMs;
-    let fixedHistoryEndTime =
-      historyCommitEndTimeFit === undefined
-        ? undefined
-        : new Date(historyCommitEndTimeFit.resolvedEndTime - 1);
     if (
       shouldDeferCommitSubmission({
         localFinalizationPending: workerInput.data.localFinalizationPending,
@@ -470,11 +410,47 @@ export const buildOnVerifiedCommitBaseProgram = (
       }).pipe(Effect.provideService(Lucid, lucid));
     }
 
-    // Events after a source-owned block's fixed end are not work for it; an
-    // event horizon far past that end must not drive empty commits.
-    const pendingUserEventCounts = yield* pendingUserEventCountsUpTo(
-      fixedHistoryEndTime ?? effectiveUserEventOnlyEndTime,
-    );
+    const lucidForEventPlan = yield* acquireCommitLucidOnce;
+    const limits = deploymentIdentity.consensusProfile.limits;
+    const eventPlan = yield* planHistoryCommitEventWindow({
+      latestEndTime:
+        latestEndTimeMsForSchedulerPlanning ?? currentBlockStartTime.getTime(),
+      nowMs: schedulerPlanningNowMs,
+      horizonMs: Math.min(
+        eventHorizonMs,
+        effectiveUserEventOnlyEndTime.getTime(),
+      ),
+      schedulerWindowEndTimeMs: schedulerAwareCommitSelection.blockEndTimeCapMs,
+      limits: {
+        deposits: limits.maxDepositCount,
+        forcedTransactions: limits.maxForcedTransactionCount,
+        withdrawals: limits.maxWithdrawalCount,
+        totalEvents: limits.maxTotalEventCount,
+      },
+    }).pipe(Effect.provideService(Lucid, lucidForEventPlan));
+    if (eventPlan.kind === "clock_hold") {
+      yield* Effect.logInfo(
+        `Commit clock cannot clear the selected scheduler or append fence: ${eventPlan.clockFit.reason}`,
+      );
+      return { type: "NothingToCommitOutput" } satisfies WorkerOutput;
+    }
+    if (eventPlan.window.mode === "instant_exceeds_cap")
+      return yield* Effect.fail(
+        new CommitWorkerInvariantError({
+          message: `catch_up_instant_exceeds_cap inclusion_time_ms=${eventPlan.window.inclusionTimeMs}`,
+        }),
+      );
+    if (eventPlan.window.mode === "empty")
+      return yield* nothingToCommitWithNoWork(notifyParent);
+    const blockTimeMs = eventPlan.blockTimeMs;
+    const blockEndTimeCapMs = eventPlan.clockFit.maximumEndTimeMs;
+    let fixedHistoryEndTime = new Date(eventPlan.window.endTimeMs);
+    if (eventPlan.window.mode === "catch_up")
+      candidateSelection = buildCommitTxCandidateSelection(
+        [],
+        candidateSelection.sourceTable,
+      );
+    const pendingUserEventCounts = eventPlan.window.counts;
     const pendingUserEventCount =
       pendingUserEventCounts.deposits +
       pendingUserEventCounts.forcedTransactions +
@@ -545,7 +521,7 @@ export const buildOnVerifiedCommitBaseProgram = (
       }
       return context;
     });
-    let nativeMpfContext = yield* forkNativeMpfContext;
+    const nativeMpfContext = yield* forkNativeMpfContext;
     yield* Effect.logInfo(
       `🔹 Commit base hydration phase completed duration_ms=${Math.max(
         0,
@@ -573,91 +549,119 @@ export const buildOnVerifiedCommitBaseProgram = (
       limits: commitBatchBudgetLimits,
     });
     yield* DaPrefix.logDaPrefixPreselection(daFramePlan);
-    const daFrameBuild = yield* stepDownCommitSelectionToDaFrame({
-      candidateSelection: daFramePlan.candidateSelection,
+    const additivePlan = yield* planAdditiveCommitDa({
+      window: eventPlan.window,
+      base: initialLedgerEntries,
+      candidates: daFramePlan.candidateSelection.candidateTxs,
+      profile: deploymentIdentity.consensusProfile,
       maxInnerBytes: daFrameInnerLimit,
-      notify: notifyParent,
-      process: (selection) => {
-        mpfProcessingStartedAtMs = Date.now();
-        return processMpfs(transactionsMpf, selection.candidateTxs, {
-          fixedBlockEndTime: fixedHistoryEndTime,
-          currentBlockStartTime: canBuildOnConfirmedBlock
-            ? currentBlockStartTime
-            : undefined,
-          processedOnlyEndTime:
-            selection.sourceTable === ProcessedMempoolDB.tableName
-              ? selection.candidateTxs[0]?.[TxColumns.TIMESTAMPTZ]
-              : undefined,
-          depositVisibilityBarrierTime: canBuildOnConfirmedBlock
-            ? depositIngestionBarrierTime
-            : undefined,
-          withdrawalVisibilityBarrierTime: canBuildOnConfirmedBlock
-            ? withdrawalIngestionBarrierTime
-            : undefined,
-          txOrderVisibilityBarrierTime: canBuildOnConfirmedBlock
-            ? depositIngestionBarrierTime
-            : undefined,
-          depositOnlyEndTime: canBuildOnConfirmedBlock
-            ? effectiveUserEventOnlyEndTime
-            : undefined,
-          initialLedgerEntries,
-          consensusProfile: deploymentIdentity.consensusProfile,
-          forcedValidation: {
-            expectedNetworkId: nodeConfig.NETWORK === "Mainnet" ? 1n : 0n,
-            minFeeA: nodeConfig.MIN_FEE_A,
-            minFeeB: nodeConfig.MIN_FEE_B,
-            bucketConcurrency: nodeConfig.VALIDATION_G4_BUCKET_CONCURRENCY,
-            slotForUnixTime: (unixTimeMs) =>
-              BigInt(
-                unixTimeToSlotForConfig(unixTimeMs, proofValidationSlotConfig),
-              ),
-            l1SlotConfig: proofValidationSlotConfig,
-          },
-          selectedBaseUtxoRoot: commitBase.root,
-          payloadRootCheck: nodeConfig.MPF_PAYLOAD_ROOT_CHECK,
-          recordCorpusPath: nodeConfig.MPF_RECORD_CORPUS,
-          onMempoolLedgerReverted: notifyParent?.(
-            MEMPOOL_LEDGER_REVERTED_NOTICE,
-          ),
-          onCommitBuildAlarm: (alarm, stage) =>
-            notifyParent?.({ type: "CommitBuildAlarmNotice", alarm, stage }) ??
-            Effect.void,
-          nativeMpf: nativeMpfContext,
-          commitEvictions,
-        }).pipe(
-          Effect.tap((built) =>
-            Effect.sync(() => {
-              fixedHistoryEndTime ??= built.effectiveBlockEndTime;
-            }),
-          ),
-        );
-      },
-      measure: (built) =>
-        DaPrefix.measureBuiltCommitDaPrefixes(
-          built,
-          commitBase.root,
-          deploymentIdentity.consensusProfile,
-          nodeConfig,
-        ),
-      // A superseded pass's ledger fork and transactions trie never reach
-      // commit; the next pass rebuilds both from the same base.
-      rebase: Effect.gen(function* () {
-        const superseded = nativeMpfContext.handle;
-        if (nativeMpfState !== undefined) nativeMpfState.context = undefined;
-        yield* Effect.tryPromise({
-          try: () => nativeMpfClient.discard(superseded),
-          catch: (cause) =>
-            new CommitWorkerInvariantError({
-              message: `Architecture G discard failed: ${String(cause)}`,
-            }),
-        });
-        yield* transactionsMpf.resetToEmpty();
-        nativeMpfContext = yield* forkNativeMpfContext;
-      }),
     });
-    yield* DaPrefix.assertCompleteDaPrefixSearch(daFrameBuild.outcome);
-    const processed = daFrameBuild.processed;
-    candidateSelection = daFrameBuild.candidateSelection;
+    if (additivePlan.kind === "frame_hold") {
+      if (notifyParent !== undefined)
+        yield* notifyParent({
+          type: "CommitDaFrameNotice",
+          status: "events_overflow",
+          detail: additivePlan.reason,
+        });
+      yield* Effect.logError(additivePlan.reason).pipe(
+        Effect.annotateLogs({ alarm: "catch_up_da_frame_hold" }),
+      );
+      return yield* Effect.fail(
+        new CommitWorkerInvariantError({ message: additivePlan.reason }),
+      );
+    }
+    yield* notifyCommitPlanningSelection({
+      notify: notifyParent,
+      workerInput,
+      parent: latestBlockForSchedulerPlanning,
+      identity: deploymentIdentity,
+      baseRoot: commitBase.root,
+      startTimeMs:
+        latestEndTimeMsForSchedulerPlanning ?? currentBlockStartTime.getTime(),
+      blockTimeMs,
+      canonicalHorizonMs: eventHorizonMs,
+      eligibleCutoffMs: Math.min(
+        eventHorizonMs,
+        effectiveUserEventOnlyEndTime.getTime(),
+        blockTimeMs,
+      ),
+      groups: eventPlan.groups,
+      plan: additivePlan,
+    });
+    fixedHistoryEndTime = new Date(additivePlan.window.endTimeMs);
+    candidateSelection = buildCommitTxCandidateSelection(
+      daFramePlan.candidateSelection.candidateTxs.slice(
+        0,
+        additivePlan.candidateCount,
+      ),
+      daFramePlan.candidateSelection.sourceTable,
+    );
+    // Exactly one native build. No failed frame can restart a descending replay
+    // against this fixed commit clock; an underestimate is a visible bound defect.
+    mpfProcessingStartedAtMs = Date.now();
+    const processed = yield* processMpfs(
+      transactionsMpf,
+      candidateSelection.candidateTxs,
+      {
+        fixedBlockEndTime: fixedHistoryEndTime,
+        fixedBlockTime: new Date(blockTimeMs),
+        currentBlockStartTime: canBuildOnConfirmedBlock
+          ? currentBlockStartTime
+          : undefined,
+        processedOnlyEndTime:
+          candidateSelection.sourceTable === ProcessedMempoolDB.tableName
+            ? candidateSelection.candidateTxs[0]?.[TxColumns.TIMESTAMPTZ]
+            : undefined,
+        depositVisibilityBarrierTime: canBuildOnConfirmedBlock
+          ? depositIngestionBarrierTime
+          : undefined,
+        withdrawalVisibilityBarrierTime: canBuildOnConfirmedBlock
+          ? withdrawalIngestionBarrierTime
+          : undefined,
+        txOrderVisibilityBarrierTime: canBuildOnConfirmedBlock
+          ? depositIngestionBarrierTime
+          : undefined,
+        depositOnlyEndTime: canBuildOnConfirmedBlock
+          ? effectiveUserEventOnlyEndTime
+          : undefined,
+        initialLedgerEntries,
+        consensusProfile: deploymentIdentity.consensusProfile,
+        forcedValidation: {
+          expectedNetworkId: nodeConfig.NETWORK === "Mainnet" ? 1n : 0n,
+          minFeeA: nodeConfig.MIN_FEE_A,
+          minFeeB: nodeConfig.MIN_FEE_B,
+          bucketConcurrency: nodeConfig.VALIDATION_G4_BUCKET_CONCURRENCY,
+          slotForUnixTime: (unixTimeMs) =>
+            BigInt(
+              unixTimeToSlotForConfig(unixTimeMs, proofValidationSlotConfig),
+            ),
+          l1SlotConfig: proofValidationSlotConfig,
+        },
+        selectedBaseUtxoRoot: commitBase.root,
+        payloadRootCheck: nodeConfig.MPF_PAYLOAD_ROOT_CHECK,
+        recordCorpusPath: nodeConfig.MPF_RECORD_CORPUS,
+        onMempoolLedgerReverted: notifyParent?.(MEMPOOL_LEDGER_REVERTED_NOTICE),
+        onCommitBuildAlarm: (alarm, stage) =>
+          notifyParent?.({ type: "CommitBuildAlarmNotice", alarm, stage }) ??
+          Effect.void,
+        commitEvictions,
+        nativeMpf: nativeMpfContext,
+      },
+    );
+    yield* verifyAdditiveCommitDaFrame({
+      processed,
+      baseRoot: commitBase.root,
+      profile: deploymentIdentity.consensusProfile,
+      nodeConfig,
+      additivePlan,
+      latestBlockForSchedulerPlanning,
+      lucid: lucidForEventPlan,
+      fixedHistoryEndTime,
+      blockTimeMs,
+      proofValidationSlotConfig,
+      daFrameInnerLimit,
+      notifyParent,
+    });
     const mpfProcessingFinishedAtMs = yield* DaPrefix.logMpfProcessingFinished(
       mpfProcessingStartedAtMs,
     );
@@ -715,20 +719,15 @@ export const buildOnVerifiedCommitBaseProgram = (
           ? MempoolDB.tableName
           : "none";
     const recordSuccessfulBuildCalibration = (output: WorkerOutput) =>
-      Effect.gen(function* () {
-        if (
-          calibration === undefined ||
-          processedMempoolTxs.length === 0 ||
-          !shouldPreserveCommitMpfRoots(output)
-        ) {
-          return;
-        }
-        yield* recordBuildCalibration(
-          calibration,
-          processedMempoolTxs.length,
-          Math.max(0, mpfProcessingFinishedAtMs - mpfProcessingStartedAtMs),
-          nodeConfig.COMMIT_BUILD_EWMA_ALPHA,
-        );
+      recordBuildCalibration({
+        calibration,
+        processedTxCount: processedMempoolTxs.length,
+        measuredBuildMs: Math.max(
+          0,
+          mpfProcessingFinishedAtMs - mpfProcessingStartedAtMs,
+        ),
+        alpha: nodeConfig.COMMIT_BUILD_EWMA_ALPHA,
+        output,
       });
     if (candidateSelection.sourceTable === "processed_mempool") {
       yield* Effect.logWarning(
@@ -762,11 +761,8 @@ export const buildOnVerifiedCommitBaseProgram = (
     const submissionContracts = yield* MidgardContracts;
     const submissionLucid = yield* acquireCommitLucidOnce;
     if (availableConfirmedBlock === "") {
-      // The tx confirmation worker has not yet confirmed a previously
-      // submitted tx, so the root we have found can not be used yet.
-      // However, it is stored on disk in our LevelDB mempool. Therefore,
-      // the processed txs must be transferred to `ProcessedMempoolDB` from
-      // `MempoolDB`.
+      // Confirmation is pending; preserve this validated ordinary payload
+      // for the next attempt.
       const candidate = {
         endTimeMs: (
           fixedHistoryEndTime ??
@@ -825,7 +821,8 @@ export const buildOnVerifiedCommitBaseProgram = (
           consensusProfile: deploymentIdentity.consensusProfile,
           deploymentMarker,
           latestBlock,
-          endTime: fixedHistoryEndTime ?? effectiveUserEventOnlyEndTime,
+          endTime: fixedHistoryEndTime,
+          blockTimeMs,
           includedDepositEntries,
           includedDepositEventIds,
           includedForcedTransactionEntries,
@@ -857,7 +854,7 @@ export const buildOnVerifiedCommitBaseProgram = (
         // One or more transactions found in either `ProcessedMempoolDB` or
         // `MempoolDB`. Use the shared max-candidate timestamp rule as the upper
         // bound of the block we are about to submit.
-        const endTime = fixedHistoryEndTime ?? optEndTime.value;
+        const endTime = fixedHistoryEndTime;
 
         yield* Effect.logInfo("🔹 Checking for user events...");
         const output = yield* submitTxBackedCommit({
@@ -866,6 +863,7 @@ export const buildOnVerifiedCommitBaseProgram = (
           deploymentMarker,
           latestBlock,
           endTime,
+          blockTimeMs,
           includedDepositEntries,
           includedDepositEventIds,
           includedForcedTransactionEntries,

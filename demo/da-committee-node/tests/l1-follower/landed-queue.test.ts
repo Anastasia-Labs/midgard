@@ -19,6 +19,7 @@ const row = (
   headerHash: kind === "root" ? "00".repeat(28) : nodeKey,
   daStatus: kind === "node" ? "Unattested" : null,
   endTimeMs: kind === "node" ? 1_000n : null,
+  blockTimeMs: kind === "node" ? 1_000n : null,
   problems: [],
   datumHex: null,
   createdSlot: 1,

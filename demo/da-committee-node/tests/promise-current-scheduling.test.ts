@@ -9,7 +9,7 @@ import type { StateQueueHeaderRecord } from "../src/domain.js";
 import { makePayloadFixture } from "./helpers.js";
 import { followerBoundary } from "./helpers/follower-boundary.js";
 
-const fixture = async () => {
+const fixture = async (commitClockOffsetMs = 0) => {
   const payload = await makePayloadFixture(1);
   const policy = "ab".repeat(28),
     identity = "cd".repeat(28);
@@ -52,7 +52,7 @@ const fixture = async () => {
     address: string,
     unit: string,
     datum: string,
-  ): UTxO => ({
+  ): UTxO & { readonly datum: string } => ({
     txHash: "56".repeat(32),
     outputIndex: index,
     address,
@@ -79,7 +79,7 @@ const fixture = async () => {
       data: Data.castTo(
         {
           header: payload.header,
-          block_time: payload.header.endTime,
+          block_time: payload.header.endTime + BigInt(commitClockOffsetMs),
           da_attestation: status,
           proven_fraud: null,
         },
@@ -99,6 +99,7 @@ const fixture = async () => {
     stateQueueOutRef: `${node.txHash}#1`,
     blockAssetName: SDK.STATE_QUEUE_NODE_ASSET_NAME_PREFIX + payload.headerHash,
     header: payload.header,
+    rawStateQueueDatumCbor: node.datum,
     computedHeaderHash: payload.headerHash,
     daAttestation: status,
     observedChainPoint: {
@@ -146,6 +147,11 @@ describe("current timing scheduling versus protected restoration", () => {
     });
     expect(f.args.liabilities).toHaveLength(1);
     expect(f.args.liabilities[0]!.commitmentDigest).toBe(f.digest);
+  });
+  it("keeps current scheduling until the authenticated catch-up clock cutoff", async () => {
+    const f = await fixture(6 * 60 * 60_000);
+    expect(await currentPromiseScheduling(f.args)).toEqual(new Set([f.digest]));
+    expect(f.args.readCanonicalPoint).not.toHaveBeenCalled();
   });
   it("does not infer absence from missing root, filtered discovery or incomplete raw coverage", async () => {
     const f = await fixture();

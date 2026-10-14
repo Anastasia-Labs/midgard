@@ -336,46 +336,46 @@ export const resolveLatestFeasibleCommitEndTime = ({
   return { ...resolution, status: "fits", maximumEndTimeMs };
 };
 
-/**
- * Chooses a source-owned history commit's fixed header end. The authenticated
- * history horizon is a cap, never a floor: the end is the latest one that
- * every cap admits, namely the event horizon and ingestion barriers, the
- * submit-slot validity cap, the operator's current scheduler window when the
- * planner selected it, and Q61's append fence while any pending node is
- * unattested.
- */
-export const resolveHistoryCommitEndTime = ({
+/** Prefer a normal clock within safe coverage when it clears the submission floors.
+ * Otherwise use the current ledger/scheduler/fence clock for event-only catch-up. */
+export const resolveHistoryCommitBlockTime = ({
   lucid,
   currentSlot,
   latestEndTime,
   nowMs,
   minimumFutureBufferMs,
-  eventEndTimeMs,
   schedulerWindowEndTimeMs,
   appendFenceEndTimeMs,
+  coverageHorizonMs,
 }: {
   readonly lucid: LucidEvolution;
   readonly currentSlot: number;
   readonly latestEndTime: number;
   readonly nowMs: number;
   readonly minimumFutureBufferMs: number;
-  readonly eventEndTimeMs: number;
   readonly schedulerWindowEndTimeMs?: number;
   readonly appendFenceEndTimeMs?: number;
+  readonly coverageHorizonMs?: number;
 }): CommitEndTimeFit => {
   const capsMs = [
-    eventEndTimeMs,
     commitValidityEndTimeCapMs(lucid, currentSlot),
     schedulerWindowEndTimeMs,
     appendFenceEndTimeMs,
   ].filter((capMs): capMs is number => capMs !== undefined);
-  return resolveLatestFeasibleCommitEndTime({
-    lucid,
-    latestEndTime,
-    nowMs,
-    minimumFutureBufferMs,
-    maximumEndTimeMs: Math.min(...capsMs),
-  });
+  const currentCapMs = Math.min(...capsMs);
+  const fitAt = (maximumEndTimeMs: number) =>
+    resolveLatestFeasibleCommitEndTime({
+      lucid,
+      latestEndTime,
+      nowMs,
+      minimumFutureBufferMs,
+      maximumEndTimeMs,
+    });
+  if (coverageHorizonMs !== undefined) {
+    const normalFit = fitAt(Math.min(currentCapMs, coverageHorizonMs));
+    if (normalFit.status === "fits") return normalFit;
+  }
+  return fitAt(currentCapMs);
 };
 
 export const minimumCommitBudgetMs = (

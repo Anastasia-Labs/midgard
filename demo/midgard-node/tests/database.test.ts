@@ -6,6 +6,7 @@ import { registerHistoryTests } from "./database.test/history.js";
 import { registerInitializationTests } from "./database.test/initialization.js";
 import { registerLedgerTests } from "./database.test/ledger.js";
 import { registerMpfTests } from "./database.test/mpf.js";
+import { registerPendingInstantCountCase } from "./database.test/pending-instant-counts.js";
 import { registerRetainedScriptMaterialTests } from "./database.test/retained-script-material.js";
 import { registerWalletViewTests } from "./database.test/wallet-view.js";
 import { registerWithdrawalRecoveryTests } from "./database.test/withdrawal-recovery.js";
@@ -21,3 +22,5 @@ registerMpfTests();
 registerWalletViewTests();
 registerWithdrawalRecoveryTests();
 registerRetainedScriptMaterialTests();
+
+registerPendingInstantCountCase();

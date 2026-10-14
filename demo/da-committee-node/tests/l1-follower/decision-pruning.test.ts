@@ -29,6 +29,7 @@ import {
   factStoreDialects,
   reconcilerFor,
 } from "./committee-harness.js";
+import { registerCatchUpPruningCase } from "./decision-pruning.catch-up-case.js";
 import type { QueueChainNode } from "./queue-chain.js";
 import { SIM_DEPTHS, SIM_SLOT_TIME } from "./queue-sim.js";
 
@@ -406,7 +407,7 @@ describe("decisionsToPrune", () => {
     obligations,
     signed: obligations.map(({ headerHash }) => ({
       headerHash,
-      endTimeMs: 1_000n,
+      blockTimeMs: 1_000n,
     })),
     live: new Set(),
     finalQueue: [],
@@ -467,6 +468,8 @@ describe("decisionsToPrune", () => {
     );
     expect(decisionsToPrune(inputs(final, { signed: [] }))).toEqual([]);
   });
+
+  registerCatchUpPruningCase({ inputs, obligation, hash });
 
   it("prunes at most one batch per tick", () => {
     const many = Array.from({ length: DECISION_PRUNE_BATCH + 5 }, (_, n) =>

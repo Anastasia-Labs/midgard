@@ -159,6 +159,8 @@ export const toPendingWorkerInput = (
         ) ?? null,
       blockEndTimeMs:
         record[PendingBlockFinalizationsDB.Columns.BLOCK_END_TIME].getTime(),
+      blockTimeMs:
+        record[PendingBlockFinalizationsDB.Columns.BLOCK_TIME].getTime(),
       updatedAtMs:
         record[PendingBlockFinalizationsDB.Columns.UPDATED_AT].getTime(),
     }),

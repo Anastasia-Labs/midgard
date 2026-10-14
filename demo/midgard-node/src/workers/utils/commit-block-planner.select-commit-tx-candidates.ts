@@ -1,3 +1,8 @@
+import { planCommitDaFrameStepDown } from "./commit-block-planner.da-frame-decision.js";
+export {
+  commitDaFrameStepDownPassBound,
+  planCommitDaFrameStepDown,
+} from "./commit-block-planner.da-frame-decision.js";
 import { canonicalCborArgumentSize } from "@al-ft/midgard-core/da-payload-sizing";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Effect } from "effect";
@@ -15,7 +20,6 @@ import {
   type CommitBatchPlan,
   type CommitBatchStopReason,
   type CommitDaFrameMeasurement,
-  type CommitDaFrameStepDown,
   type CommitTxCandidateSelection,
   type CommitTxSourceTable,
   DEFAULT_COMMIT_BATCH_BUDGET_LIMITS,
@@ -301,57 +305,8 @@ export const planCommitBatchBudgets = ({
   };
 };
 
-/** Preserves the existing conservative event-work budget. The complete-prefix
- * search now needs at most two processing passes, below this bound. */
-export const commitDaFrameStepDownPassBound = (txCount: number): number => {
-  let passes = 2;
-  for (let reach = 1; reach < txCount; reach *= 2) passes += 1;
-  return txCount <= 0 ? 1 : passes;
-};
-
-export const planCommitDaFrameStepDown = ({
-  measurement,
-  maxInnerBytes,
-}: {
-  readonly measurement: CommitDaFrameMeasurement;
-  readonly maxInnerBytes: number;
-}): CommitDaFrameStepDown => {
-  const n = measurement.acceptedTxCount;
-  if (
-    !Number.isSafeInteger(n) ||
-    n < 0 ||
-    measurement.acceptedTxIds.length !== n ||
-    new Set(measurement.acceptedTxIds.map((id) => id.toString("hex"))).size !==
-      n ||
-    measurement.prefixes.length !== n + 1 ||
-    measurement.prefixes.some(
-      (prefix) =>
-        !Number.isSafeInteger(prefix.innerBytesUpperBound) ||
-        prefix.innerBytesUpperBound < 0 ||
-        !/^[0-9a-f]{64}$/.test(prefix.materialDigest),
-    ) ||
-    measurement.prefixes[n]?.innerBytesUpperBound !==
-      measurement.innerBytesUpperBound
-  )
-    return { status: "incomplete" };
-  const first = measurement.hasMandatoryWork ? 0 : 1;
-  if (first > n) return { status: "exact_check_required" };
-  let minimum = first;
-  let fitting: number | undefined;
-  for (let prefix = first; prefix <= n; prefix += 1) {
-    const bytes = measurement.prefixes[prefix]!.innerBytesUpperBound;
-    if (bytes <= maxInnerBytes) fitting = prefix;
-    if (bytes <= measurement.prefixes[minimum]!.innerBytesUpperBound)
-      minimum = prefix;
-  }
-  const chosen = fitting ?? minimum;
-  return chosen === n
-    ? { status: fitting === undefined ? "exact_check_required" : "fits" }
-    : { status: "step_down", nextTxCount: chosen };
-};
-
-/** Enumerates all accepted prefixes once, then rebuilds at most one chosen
- * prefix from actual accepted order. Changed material is held before signing. */
+/** Bounds ordinary accepted-transaction prefix rebuilds. */
+/** Enumerates accepted prefixes and rebuilds one; changed material holds before signing. */
 export const stepDownCommitSelectionToDaFrame = <P, E, R, E2, R2>({
   candidateSelection,
   maxInnerBytes,
@@ -375,6 +330,7 @@ export const stepDownCommitSelectionToDaFrame = <P, E, R, E2, R2>({
     readonly processed: P;
     readonly candidateSelection: CommitTxCandidateSelection;
     readonly passes: number;
+    readonly measurement?: CommitDaFrameMeasurement;
     readonly outcome:
       | "fits"
       | "exact_check_required"
@@ -462,5 +418,11 @@ export const stepDownCommitSelectionToDaFrame = <P, E, R, E2, R2>({
       maxInnerBytes,
     });
     if (notice !== undefined && notify !== undefined) yield* notify(notice);
-    return { processed, candidateSelection: selection, passes, outcome };
+    return {
+      processed,
+      candidateSelection: selection,
+      passes,
+      outcome,
+      measurement,
+    };
   });

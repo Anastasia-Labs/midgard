@@ -32,24 +32,30 @@ export type DecisionPruneInputs = Readonly<{
  * - The header is in no queue the committee still reads: not live at the
  *   tip, nor at the latest final block.
  * - `cannot_land` and `beyond_retention`: no commit of the header is on the
- *   chain, and a final block is past its end time, so none can land.
+ *   chain, and a final block is past its commit time, so none can land.
  * - `final`: the commit is final, and so is the header's exit from the queue
  *   (its stored record is terminal, `terminalRecordOf`). The release clock
- *   must be past the header's end time too: a commit lands only in a block
- *   no later than its end time, so the header can never be observed again.
+ *   must be past the header's commit time too: a commit lands only in a block
+ *   no later than its commit time, so the header can never be observed again.
  *
  * A decision that is deleted is therefore never re-signed. The batch is
  * capped at `DECISION_PRUNE_BATCH`, in header-hash order.
  */
 export const decisionsToPrune = (inputs: DecisionPruneInputs): string[] => {
-  const endTimes = new Map(
-    inputs.signed.map(({ headerHash, endTimeMs }) => [headerHash, endTimeMs]),
+  const blockTimes = new Map(
+    inputs.signed.map(({ headerHash, blockTimeMs }) => [
+      headerHash,
+      blockTimeMs,
+    ]),
   );
   const clock = inputs.finalBlockTimeMs;
-  const pastEnd = (headerHash: string): boolean => {
-    const endTimeMs = endTimes.get(headerHash);
+  const pastCommitTime = (headerHash: string): boolean => {
+    const blockTimeMs = blockTimes.get(headerHash);
     return (
-      clock !== null && endTimeMs !== undefined && BigInt(clock) > endTimeMs
+      clock !== null &&
+      blockTimeMs !== undefined &&
+      blockTimeMs !== null &&
+      BigInt(clock) > blockTimeMs
     );
   };
   const held = new Set([...inputs.live, ...inputs.finalQueue]);
@@ -62,7 +68,7 @@ export const decisionsToPrune = (inputs: DecisionPruneInputs): string[] => {
       state === "cannot_land" ||
       state === "beyond_retention" ||
       (state === "final" && !inputs.unsettled.has(headerHash));
-    if (exited && pastEnd(headerHash)) out.push(headerHash);
+    if (exited && pastCommitTime(headerHash)) out.push(headerHash);
   }
   return out;
 };

@@ -2,6 +2,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 
+import { MIDGARD_RETENTION_WINDOW } from "@al-ft/midgard-core";
 import {
   assertWorkflowActuationPermitIdentity,
   createWorkflowActuationPermitController,
@@ -49,6 +50,32 @@ const setup = async (unsigned = false) => {
 };
 
 describe("supervisor historical progress authority", () => {
+  it("starts the proof deadline at an authenticated catch-up node's commit time", async () => {
+    const test = await setup();
+    const header = test.fixture.fixture.header;
+    const blockTimeMs = header.endTime + 6n * 60n * 60_000n;
+    const observation = progressObservation({
+      deploymentFingerprint: deploymentIdentity.manifestId,
+      header: { header, headerHash: test.fixture.fresh.headerHash },
+      blockTimeMs,
+    });
+    expect(
+      watcherFaultProofDeadline(observation.finalizedHeaders[0]!),
+    ).toMatchObject({
+      headerBlockTimeMs: blockTimeMs.toString(),
+      maturityAtMs: (
+        blockTimeMs + BigInt(MIDGARD_RETENTION_WINDOW.maturityMs)
+      ).toString(),
+      latestSafeStartAtMs: (
+        blockTimeMs +
+        BigInt(
+          MIDGARD_RETENTION_WINDOW.maturityMs -
+            MIDGARD_RETENTION_WINDOW.worstCaseProofTimeBoundMs,
+        )
+      ).toString(),
+    });
+  });
+
   it("indexes once, wakes historical work only for changed observations, and evicts acknowledged completion", async () => {
     const test = await setup();
     const load = vi.spyOn(

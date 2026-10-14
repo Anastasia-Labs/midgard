@@ -7,6 +7,7 @@ import {
   parseDeploymentManifestEventHistoryRetentionAddress,
   parseDeploymentManifestEventHistoryRetentionAddresses,
 } from "@al-ft/midgard-core/deployment-manifest-identity";
+import { deploymentFraudProofCatalogueCategories } from "@al-ft/midgard-core/deployment-profile";
 import {
   FRAUD_PROOF_CATALOGUE_CATEGORY_IDS,
   FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER,
@@ -32,21 +33,23 @@ const catalogueKeySchema = Data.Bytes({
 export const buildCanonicalFraudProofCatalogueFixture = async (
   scriptHashes: Readonly<Record<FraudProofCatalogueCategoryName, string>>,
 ): Promise<FraudProofCatalogueDeploymentInfo> => {
-  const categories = Object.fromEntries(
-    FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER.map((categoryName) => [
-      categoryName,
-      {
+  const categoryEntries = deploymentFraudProofCatalogueCategories().map(
+    (categoryName) => {
+      const category = {
         categoryId: FRAUD_PROOF_CATALOGUE_CATEGORY_IDS[categoryName],
         scriptHash: scriptHashes[categoryName],
         membershipProofCbor: "",
-      },
-    ]),
+      };
+      return [categoryName, category] as const;
+    },
+  );
+  const categories = Object.fromEntries(
+    categoryEntries,
   ) as FraudProofCatalogueDeploymentInfo["categories"];
   const store = new Store(undefined);
   await store.ready();
   const trie = new Trie(store);
-  for (const categoryName of FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER) {
-    const category = categories[categoryName];
+  for (const [, category] of categoryEntries) {
     await trie.insert(
       Buffer.from(
         Data.to(category.categoryId as never, catalogueKeySchema),
@@ -58,27 +61,14 @@ export const buildCanonicalFraudProofCatalogueFixture = async (
       ),
     );
   }
-  for (const categoryName of FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER) {
-    const category = categories[categoryName];
+  for (const [, category] of categoryEntries) {
     const proof = await trie.prove(
       Buffer.from(
         Data.to(category.categoryId as never, catalogueKeySchema),
         "hex",
       ),
     );
-    (
-      categories as Record<
-        string,
-        {
-          categoryId: string;
-          scriptHash: string;
-          membershipProofCbor: string;
-        }
-      >
-    )[categoryName] = {
-      ...category,
-      membershipProofCbor: proof.toCBOR().toString("hex"),
-    };
+    category.membershipProofCbor = proof.toCBOR().toString("hex");
   }
   if (trie.hash === null) {
     throw new Error(

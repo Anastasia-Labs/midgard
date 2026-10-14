@@ -12,6 +12,7 @@ import {
   commitmentFor,
   signatureRecord,
 } from "./peer-coordinator.signature-record.js";
+import { seed } from "./store-retention.header-record.js";
 
 const sourceState: L1SourceState = {
   schemaVersion: 1,
@@ -58,11 +59,18 @@ const signed = async (args: {
 };
 
 describe("signed decisions (class B) for the obligations projection", () => {
-  it("records each header this member signed with its end time and ignores peer signatures", async () => {
+  it("records the authenticated catch-up commit time and ignores peer signatures", async () => {
     const first = await openTestCommitteeStore();
     await first.saveL1SourceState(sourceState);
     const localHeader = "a1".repeat(28);
     const peerHeader = "b2".repeat(28);
+    await seed(first, [
+      {
+        headerHash: localHeader,
+        endTimeMs: 1760000000123,
+        blockTimeMs: 1760021600123,
+      },
+    ]);
     await first.saveDaSignature(
       await signed({
         headerHash: localHeader,
@@ -92,7 +100,7 @@ describe("signed decisions (class B) for the obligations projection", () => {
       }),
     );
     await expect(first.listSignedDecisions()).resolves.toEqual([
-      { headerHash: localHeader, endTimeMs: 1760000000123n },
+      { headerHash: localHeader, blockTimeMs: 1760021600123n },
     ]);
   });
 
@@ -114,11 +122,14 @@ describe("signed decisions (class B) for the obligations projection", () => {
     await expect(store.listDaSignatures(headerHash)).resolves.toEqual([]);
   });
 
-  it("backfills the end time of a signature stored before the column existed when the store reopens", async () => {
+  it("recovers a legacy signed commit clock from its authenticated retained node when the store reopens", async () => {
     const database = await testStoreDatabase();
     const before = await openTestCommitteeStore(database);
     await before.saveL1SourceState(sourceState);
     const headerHash = "d4".repeat(28);
+    await seed(before, [
+      { headerHash, endTimeMs: 1760000000789, blockTimeMs: 1760021600789 },
+    ]);
     await before.saveDaSignature(
       await signed({
         headerHash,
@@ -133,14 +144,70 @@ describe("signed decisions (class B) for the obligations projection", () => {
     await client.connect();
     try {
       await client.query(
-        "UPDATE committee_da_signatures SET end_time_ms = NULL",
+        "UPDATE committee_da_signatures SET end_time_ms = NULL, block_time_ms = NULL",
       );
     } finally {
       await client.end();
     }
     const after = await openTestCommitteeStore(database);
     await expect(after.listSignedDecisions()).resolves.toEqual([
-      { headerHash, endTimeMs: 1760000000789n },
+      { headerHash, blockTimeMs: 1760021600789n },
+    ]);
+  });
+  it("retains a known commit clock when an older signature row has no clock and the header has been pruned", async () => {
+    const database = await testStoreDatabase();
+    const store = await openTestCommitteeStore(database);
+    await store.saveL1SourceState(sourceState);
+    const headerHash = "f6".repeat(28);
+    await store.saveDaSignature(
+      await signed({
+        headerHash,
+        signerIndex: 0,
+        endTime: "1760000000123",
+        source: "local",
+      }),
+    );
+    await seed(store, [
+      { headerHash, endTimeMs: 1760000000123, blockTimeMs: 1760021600123 },
+    ]);
+    await store.saveDaSignature(
+      await signed({
+        headerHash,
+        signerIndex: 0,
+        endTime: "1760000000123",
+        source: "local",
+        payloadCborHex: "ccdd",
+      }),
+    );
+    const client = new Client({ connectionString: database.url });
+    await client.connect();
+    try {
+      await client.query(
+        "DELETE FROM committee_state_queue_headers WHERE header_hash = $1",
+        [headerHash],
+      );
+    } finally {
+      await client.end();
+    }
+    expect(await store.listSignedDecisions()).toEqual([
+      { headerHash, blockTimeMs: 1760021600123n },
+    ]);
+  });
+
+  it("retains unknown legacy clocks without substituting coverage end", async () => {
+    const store = await openTestCommitteeStore();
+    await store.saveL1SourceState(sourceState);
+    const headerHash = "e5".repeat(28);
+    await store.saveDaSignature(
+      await signed({
+        headerHash,
+        signerIndex: 0,
+        endTime: "1760000000123",
+        source: "local",
+      }),
+    );
+    expect(await store.listSignedDecisions()).toEqual([
+      { headerHash, blockTimeMs: null },
     ]);
   });
 });
