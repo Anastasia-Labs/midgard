@@ -12,6 +12,7 @@ import {
   directWitnessPayloadBytes,
   hashMidgardCekRuntimeArguments,
   matchesKind,
+  type MidgardCekConstantTypeReader,
   type MidgardCekDirectValueWitness,
   type MidgardCekRuntimeValueWitness,
   mkConsIsWellTyped,
@@ -30,10 +31,15 @@ import {
   normalizeMidgardCekBitwiseCostSizes,
 } from "./cek-cost.js";
 
-export const verifyMidgardCekBuiltinTypeFailure = (
+/**
+ * Whether a saturated builtin's arguments fail its argument kinds, so that
+ * applying it is a builtin type failure. Arguments whose revealed payloads
+ * together exceed one direct payload are never judged here.
+ */
+export const midgardCekBuiltinArgumentsAreIllTyped = (
   tag: bigint,
-  builtinValueRoot: Bytes,
   arguments_: readonly MidgardCekRuntimeValueWitness[],
+  typeOf?: MidgardCekConstantTypeReader,
 ): boolean => {
   try {
     if (
@@ -52,28 +58,36 @@ export const verifyMidgardCekBuiltinTypeFailure = (
     ) {
       return false;
     }
-    const { root, count } = hashMidgardCekRuntimeArguments(arguments_);
-    if (
-      !sameBytes(
-        builtinValueRoot,
-        hashMidgardCekValueNode({
-          kind: "builtin",
-          tag,
-          forcesRemaining: 0n,
-          argumentsCount: count,
-          argumentsRoot: root,
-        }),
-      )
-    ) {
-      return false;
-    }
     const wellTyped =
       numericTag === 32
-        ? mkConsIsWellTyped(arguments_)
+        ? mkConsIsWellTyped(arguments_, typeOf)
         : arguments_.every((argument, index) =>
-            matchesKind(argument, kinds[index]),
+            matchesKind(argument, kinds[index], typeOf),
           );
     return !wellTyped;
+  } catch {
+    return false;
+  }
+};
+
+export const verifyMidgardCekBuiltinTypeFailure = (
+  tag: bigint,
+  builtinValueRoot: Bytes,
+  arguments_: readonly MidgardCekRuntimeValueWitness[],
+): boolean => {
+  if (!midgardCekBuiltinArgumentsAreIllTyped(tag, arguments_)) return false;
+  try {
+    const { root, count } = hashMidgardCekRuntimeArguments(arguments_);
+    return sameBytes(
+      builtinValueRoot,
+      hashMidgardCekValueNode({
+        kind: "builtin",
+        tag,
+        forcesRemaining: 0n,
+        argumentsCount: count,
+        argumentsRoot: root,
+      }),
+    );
   } catch {
     return false;
   }
@@ -134,7 +148,27 @@ const decodedDirectConstant = (value: MidgardCekDirectValueWitness) => {
   return decodeMidgardCekConstantWitness(value.witness);
 };
 
-const directValueMemorySize = (value: MidgardCekDirectValueWitness): bigint => {
+/**
+ * The memory size of a revealed constant. The default decodes its witness;
+ * a caller that already holds the constant's committed value node may pass
+ * a reader of the size that node records.
+ */
+export type MidgardCekRevealedConstantMemory = (
+  witness: Extract<
+    MidgardCekDirectValueWitness,
+    { readonly kind: "constant" }
+  >["witness"],
+) => bigint;
+
+const decodedConstantMemory: MidgardCekRevealedConstantMemory = (witness) => {
+  const decoded = decodeMidgardCekConstantWitness(witness);
+  return midgardCekConstantMemorySize(decoded.type, decoded.payload);
+};
+
+const directValueMemorySize = (
+  value: MidgardCekDirectValueWitness,
+  memoryOf: MidgardCekRevealedConstantMemory = decodedConstantMemory,
+): bigint => {
   // An opaque value has no committed size. The only builtin positions that
   // admit one are the polymorphic branches of tags 26, 27, 28, 31 and 36,
   // which midgardCekDirectBuiltinCostSizes sizes without reading them.
@@ -150,8 +184,7 @@ const directValueMemorySize = (value: MidgardCekDirectValueWitness): bigint => {
   if (value.kind === "semanticConstant") {
     return value.witness.memory;
   }
-  const decoded = decodeMidgardCekConstantWitness(value.witness);
-  return midgardCekConstantMemorySize(decoded.type, decoded.payload);
+  return memoryOf(value.witness);
 };
 
 const directBoolean = (value: MidgardCekDirectValueWitness): boolean => {
@@ -178,6 +211,7 @@ export const directByteLength = (
 export const midgardCekDirectBuiltinCostSizes = (
   tag: bigint,
   arguments_: readonly MidgardCekDirectValueWitness[],
+  memoryOf?: MidgardCekRevealedConstantMemory,
 ): readonly bigint[] => {
   if (tag === 21n) {
     // Match Cardano ByteString ExMemoryUsage without changing rooted constants.
@@ -219,14 +253,18 @@ export const midgardCekDirectBuiltinCostSizes = (
     if (arguments_.length !== 3) {
       throw new Error("chooseList requires three arguments");
     }
-    return Object.freeze([directValueMemorySize(arguments_[0]!), 1n, 1n]);
+    return Object.freeze([
+      directValueMemorySize(arguments_[0]!, memoryOf),
+      1n,
+      1n,
+    ]);
   }
   if (tag === 36n) {
     if (arguments_.length !== 6) {
       throw new Error("chooseData requires six arguments");
     }
     return Object.freeze([
-      directValueMemorySize(arguments_[0]!),
+      directValueMemorySize(arguments_[0]!, memoryOf),
       1n,
       1n,
       1n,
@@ -240,16 +278,19 @@ export const midgardCekDirectBuiltinCostSizes = (
     }
     return normalizeMidgardCekBitwiseCostSizes(
       directBoolean(arguments_[0]!),
-      directValueMemorySize(arguments_[1]!),
-      directValueMemorySize(arguments_[2]!),
+      directValueMemorySize(arguments_[1]!, memoryOf),
+      directValueMemorySize(arguments_[2]!, memoryOf),
     );
   }
-  return Object.freeze(arguments_.map(directValueMemorySize));
+  return Object.freeze(
+    arguments_.map((argument) => directValueMemorySize(argument, memoryOf)),
+  );
 };
 
 export const midgardCekDirectBuiltinBudget = (
   tag: bigint,
   arguments_: readonly MidgardCekDirectValueWitness[],
+  memoryOf?: MidgardCekRevealedConstantMemory,
 ): MidgardCekBuiltinBudget => {
   if (
     tag < 0n ||
@@ -260,7 +301,7 @@ export const midgardCekDirectBuiltinBudget = (
   }
   return computeMidgardCekBuiltinBudget(
     Number(tag),
-    midgardCekDirectBuiltinCostSizes(tag, arguments_),
+    midgardCekDirectBuiltinCostSizes(tag, arguments_, memoryOf),
   );
 };
 

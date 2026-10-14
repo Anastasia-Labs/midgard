@@ -12,6 +12,7 @@ import "./cek-builtin.verify-midgard-cek-bls-final.js";
 export {
   hashMidgardCekRuntimeArguments,
   hashMidgardCekRuntimeValueWitness,
+  type MidgardCekConstantTypeReader,
   type MidgardCekConstantValueWitness,
   type MidgardCekDirectValueWitness,
   type MidgardCekRuntimeValueWitness,
@@ -20,9 +21,11 @@ export { evaluateMidgardCekDirectBuiltin } from "./cek-builtin.evaluate-referenc
 export {
   hashMidgardCekDirectArguments,
   hashMidgardCekDirectValueWitness,
+  midgardCekBuiltinArgumentsAreIllTyped,
   midgardCekDirectBuiltinBudget,
   midgardCekDirectBuiltinCostSizes,
   type MidgardCekDirectBuiltinEvaluation,
+  type MidgardCekRevealedConstantMemory,
   verifyMidgardCekBuiltinTypeFailure,
 } from "./cek-builtin.selected-control-result.js";
 export {

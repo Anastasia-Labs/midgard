@@ -1,0 +1,1666 @@
+{
+  "shape mkCons list growth n=3": {
+    "proof": {
+      "throws": false,
+      "steps": 325,
+      "stopReason": "halted",
+      "terminal": "7050b96018f403c7ea1910bbe4fc462d4463cf1440d2abb79c67a098155e6fbe",
+      "digest": "1d24f24a320d337cc931b604e133e480049403529295d0d5bb78adb935e960f5"
+    },
+    "verdict": {
+      "throws": false,
+      "steps": 325,
+      "stopReason": "halted",
+      "terminal": "7050b96018f403c7ea1910bbe4fc462d4463cf1440d2abb79c67a098155e6fbe",
+      "digest": "6c1774cd787efe49ba0a1acf981bb82fab80596a5342b4b2bfac51f8617695c9"
+    }
+  },
+  "shape mkCons list growth n=9": {
+    "proof": {
+      "throws": false,
+      "steps": 847,
+      "stopReason": "halted",
+      "terminal": "3e43b976f19633ea654aeeb6b99bbbcf511353bd9d752d01c3f3e8ffaf4cbcbe",
+      "digest": "8662a605ed6dae3fb0df6790fab5b9fd51e7d69b913b3e1b62ee8dc2d3c697b7"
+    },
+    "verdict": {
+      "throws": false,
+      "steps": 847,
+      "stopReason": "halted",
+      "terminal": "3e43b976f19633ea654aeeb6b99bbbcf511353bd9d752d01c3f3e8ffaf4cbcbe",
+      "digest": "e4794ef12ea6f63a5223ef02156c4323974033e34a2b03dc4ae1fe4d5e87362b"
+    }
+  },
+  "shape headList/tailList walk of a grown list n=3": {
+    "proof": {
+      "throws": false,
+      "steps": 622,
+      "stopReason": "halted",
+      "terminal": "785f8e0cc5d73fd070be428425fcb11f7c6bba4996cc7e31998bc661af11aff6",
+      "digest": "f81002be3a6d1faeff03720ad38c0d693b3a4e969e6bf0bc645b46ec8dd41731"
+    },
+    "verdict": {
+      "throws": false,
+      "steps": 622,
+      "stopReason": "halted",
+      "terminal": "785f8e0cc5d73fd070be428425fcb11f7c6bba4996cc7e31998bc661af11aff6",
+      "digest": "c1b2b8f4c1d8f217f068bf6952052eeb3433b85055991be019b108ab554e9138"
+    }
+  },
+  "shape headList/tailList walk of a grown list n=9": {
+    "proof": {
+      "throws": false,
+      "steps": 1642,
+      "stopReason": "halted",
+      "terminal": "0e89e66f50609b9f0c66044ea8a885201db8aa3ee04e40885829a700b786be3f",
+      "digest": "af13b1698d632d68f877e29d2c96dc7ec661ab76c28c7d3fb7c7f92badbae768"
+    },
+    "verdict": {
+      "throws": false,
+      "steps": 1642,
+      "stopReason": "halted",
+      "terminal": "0e89e66f50609b9f0c66044ea8a885201db8aa3ee04e40885829a700b786be3f",
+      "digest": "a9c2a8d1b9188c684d5150a102e0635bd82c40fe03c568463b62c3c436862d1d"
+    }
+  },
+  "shape constrData nesting n=3": {
+    "proof": {
+      "throws": false,
+      "steps": 352,
+      "stopReason": "halted",
+      "terminal": "4e2e49228572fe5d6195fcedfba6edfddf7a9fe4b483a7ce0ca606eff7d63ce8",
+      "digest": "5ff8e95218f33f30df1f41712bf6180fb30d91f67bfc27da67d21a39dbb19869"
+    },
+    "verdict": {
+      "throws": false,
+      "steps": 352,
+      "stopReason": "halted",
+      "terminal": "4e2e49228572fe5d6195fcedfba6edfddf7a9fe4b483a7ce0ca606eff7d63ce8",
+      "digest": "0670a976eb222c7af36fc205d7dc24cb7f5a6fcb1f89a6b05c35dd6b232d564e"
+    }
+  },
+  "shape constrData nesting n=9": {
+    "proof": {
+      "throws": false,
+      "steps": 928,
+      "stopReason": "halted",
+      "terminal": "61a1801cbe32df811d998f1030ee4c9df7b69cecaed2e9c139b0d4e04117f0c1",
+      "digest": "50580f1bfec4ef281be274f240a2d025287e85fa3985bcc0258acd9e8ade7daf"
+    },
+    "verdict": {
+      "throws": false,
+      "steps": 928,
+      "stopReason": "halted",
+      "terminal": "61a1801cbe32df811d998f1030ee4c9df7b69cecaed2e9c139b0d4e04117f0c1",
+      "digest": "7fbf6042cefc01f162c553746a6c8c6c38768d8bcf96b5cb731436553d8f2389"
+    }
+  },
+  "shape listData nesting n=3": {
+    "proof": {
+      "throws": false,
+      "steps": 340,
+      "stopReason": "halted",
+      "terminal": "616bda8fefbec56f221643534ae3de84a5bc3c37a59ebf7ef877a61f1f318d61",
+      "digest": "3ef37b9ae94b4496e1537b1a745a18e3871f774d1f70436e9d56a9dcf6415cd9"
+    },
+    "verdict": {
+      "throws": false,
+      "steps": 340,
+      "stopReason": "halted",
+      "terminal": "616bda8fefbec56f221643534ae3de84a5bc3c37a59ebf7ef877a61f1f318d61",
+      "digest": "f8e55bb89ae14eddb73f4dc9f146e13db6c88205b2926915103ba678aba5f968"
+    }
+  },
+  "shape listData nesting n=9": {
+    "proof": {
+      "throws": false,
+      "steps": 892,
+      "stopReason": "halted",
+      "terminal": "adb3812b79bcb827c156b94cb9e059035404e76a1e20f487e06798b34c3bd40c",
+      "digest": "f663215fc96725b62774ff0fee7acbd84522d7a7ef5d9894f8131fc9f1c14716"
+    },
+    "verdict": {
+      "throws": false,
+      "steps": 892,
+      "stopReason": "halted",
+      "terminal": "adb3812b79bcb827c156b94cb9e059035404e76a1e20f487e06798b34c3bd40c",
+      "digest": "3819abeec145387e714953d5b3e2892364d177705718b8b2e3df36ba916179ba"
+    }
+  },
+  "shape mapData nesting n=3": {
+    "proof": {
+      "throws": false,
+      "steps": 373,
+      "stopReason": "halted",
+      "terminal": "5f0b9e93a0e4406cbfdd587b1d4e0a41331a1dfbe7e38516f029be251730896c",
+      "digest": "00dcf54bf166e2de4cb11099d6434fec5ec74a71f3d13f0e51b159d17e26eed5"
+    },
+    "verdict": {
+      "throws": false,
+      "steps": 373,
+      "stopReason": "halted",
+      "terminal": "5f0b9e93a0e4406cbfdd587b1d4e0a41331a1dfbe7e38516f029be251730896c",
+      "digest": "582e6f360e9347549b5ea0def648c4d9e1549b330137255242b4d4a25b3d905d"
+    }
+  },
+  "shape mapData nesting n=9": {
+    "proof": {
+      "throws": false,
+      "steps": 991,
+      "stopReason": "halted",
+      "terminal": "62bba23d549db55400b9c01abd905c4a94c5f439e759fc0fea3e2ac534301a50",
+      "digest": "98be11df97aa7b2223930653930cd155d3898d13035ecfa6db79005f56a9be7d"
+    },
+    "verdict": {
+      "throws": false,
+      "steps": 991,
+      "stopReason": "halted",
+      "terminal": "62bba23d549db55400b9c01abd905c4a94c5f439e759fc0fea3e2ac534301a50",
+      "digest": "89fb7d81ea109a71d4d407a4c87c8061e1593422ba9538402550a7c1ce21dd03"
+    }
+  },
+  "shape constrData nesting unwrapped by unConstrData n=3": {
+    "proof": {
+      "throws": false,
+      "steps": 700,
+      "stopReason": "halted",
+      "terminal": "2d12c6ed54d117835dc1f2b82694fd8a9b00ffbd0743dd0cc21edafe9b0285a2",
+      "digest": "295b511d6e8f451bbe9292070dd29415dbb1160f1d769f591da240fe7c5c94ca"
+    },
+    "verdict": {
+      "throws": false,
+      "steps": 700,
+      "stopReason": "halted",
+      "terminal": "2d12c6ed54d117835dc1f2b82694fd8a9b00ffbd0743dd0cc21edafe9b0285a2",
+      "digest": "f655fec84be8da17f5b9da6f4c5f4e4cdfb8f7a607b1ed4e0ec5abeb801d2bc6"
+    }
+  },
+  "shape constrData nesting unwrapped by unConstrData n=9": {
+    "proof": {
+      "throws": false,
+      "steps": 1858,
+      "stopReason": "halted",
+      "terminal": "4522e81f754ed783ecf1f02522d2f20abe9f6a6e70860384047e227e967906b6",
+      "digest": "06da23a84a8a614e5f0b4dbde2fd92f75316f79dd8cddbe5c6e9249f3855cd05"
+    },
+    "verdict": {
+      "throws": false,
+      "steps": 1858,
+      "stopReason": "halted",
+      "terminal": "4522e81f754ed783ecf1f02522d2f20abe9f6a6e70860384047e227e967906b6",
+      "digest": "a3c6ba37aae35e29c38303e3119f6c42f5430ea0c9820f3d11a7b56f90e6e34d"
+    }
+  },
+  "shape listData nesting unwrapped by unListData n=3": {
+    "proof": {
+      "throws": false,
+      "steps": 661,
+      "stopReason": "halted",
+      "terminal": "fb10be0b951d2a0daa622a4cc3df2a6c2b22e58c7ea1d91d095c4bf1662d44a9",
+      "digest": "0175f5633afac528f5a7bfd8a296be52553f1e7c794ab73a27c18cb37a23bb31"
+    },
+    "verdict": {
+      "throws": false,
+      "steps": 661,
+      "stopReason": "halted",
+      "terminal": "fb10be0b951d2a0daa622a4cc3df2a6c2b22e58c7ea1d91d095c4bf1662d44a9",
+      "digest": "4b28ebb3e77fea98070699b59cf846d108f2941f32de0bdcd1ffc82977a8c5a4"
+    }
+  },
+  "shape listData nesting unwrapped by unListData n=9": {
+    "proof": {
+      "throws": false,
+      "steps": 1741,
+      "stopReason": "halted",
+      "terminal": "2467ea878a79f45d51e086d52787debb64f91de2fe5decfb2ba6da9276c80baa",
+      "digest": "0d47da8e2ffd6dabc06deb8291ef7032b3501951789030d837995c7848d3f409"
+    },
+    "verdict": {
+      "throws": false,
+      "steps": 1741,
+      "stopReason": "halted",
+      "terminal": "2467ea878a79f45d51e086d52787debb64f91de2fe5decfb2ba6da9276c80baa",
+      "digest": "e1f0091d04116abde64799c837e242d7c393c4ed679725709abce971161f44fa"
+    }
+  },
+  "shape constrData widening n=3": {
+    "proof": {
+      "throws": false,
+      "steps": 409,
+      "stopReason": "halted",
+      "terminal": "7ffbac237a558af33dd4380d4075b94f6de7185bc4dd1ee6a9a7a3ac53db9c36",
+      "digest": "0a6beb6e90a8710ba46700a61ad30005ebfcfbe4c4703c5bdc563fe91aa2d7cf"
+    },
+    "verdict": {
+      "throws": false,
+      "steps": 409,
+      "stopReason": "halted",
+      "terminal": "7ffbac237a558af33dd4380d4075b94f6de7185bc4dd1ee6a9a7a3ac53db9c36",
+      "digest": "615b94e83843ddb2f276f98943fbcc5b29f65fc27946401a9c2cf6a3e3771bee"
+    }
+  },
+  "shape constrData widening n=9": {
+    "proof": {
+      "throws": false,
+      "steps": 1099,
+      "stopReason": "halted",
+      "terminal": "9e5f1ffc5b46cb8526228cf5e202b9d686d748bd4b1247ac8cb050c820fc2d7d",
+      "digest": "bc1d073260428938ad4d5332d65595697b71e71dd3a7da1d0bae3f2a266914f6"
+    },
+    "verdict": {
+      "throws": false,
+      "steps": 1099,
+      "stopReason": "halted",
+      "terminal": "9e5f1ffc5b46cb8526228cf5e202b9d686d748bd4b1247ac8cb050c820fc2d7d",
+      "digest": "b6fc01481ab5edf4a6796ef1c0bf79873dd2122c320f02752376c578d923a0d0"
+    }
+  },
+  "shape listData widening n=3": {
+    "proof": {
+      "throws": false,
+      "steps": 397,
+      "stopReason": "halted",
+      "terminal": "378e35e4d80559ebdfec18dbadf76bdfa2dbd0dd64cc4078d8b6f942fcba23af",
+      "digest": "9773b07efb9087ea3c2b7cbf805f7bd3b95d2a965a7b295db65ab79e0cba876b"
+    },
+    "verdict": {
+      "throws": false,
+      "steps": 397,
+      "stopReason": "halted",
+      "terminal": "378e35e4d80559ebdfec18dbadf76bdfa2dbd0dd64cc4078d8b6f942fcba23af",
+      "digest": "56269194ee7e1563026e516028c225ba6b28239778edb89abb4072dfd9ccfad8"
+    }
+  },
+  "shape listData widening n=9": {
+    "proof": {
+      "throws": false,
+      "steps": 1063,
+      "stopReason": "halted",
+      "terminal": "764bf92289929e901d0a274a0d6b583e7961ec458a6e6a30ec21ece7c01e65eb",
+      "digest": "fb4d50ec33a55d51c1ae82a292f25d8ce3caccb538add3164982fc7ce93f7ace"
+    },
+    "verdict": {
+      "throws": false,
+      "steps": 1063,
+      "stopReason": "halted",
+      "terminal": "764bf92289929e901d0a274a0d6b583e7961ec458a6e6a30ec21ece7c01e65eb",
+      "digest": "94d98d8e6701f519db9a2828a617c40c6fcc0c2d73636451cae7286f2d1ec13b"
+    }
+  },
+  "shape mapData widening n=3": {
+    "proof": {
+      "throws": false,
+      "steps": 370,
+      "stopReason": "halted",
+      "terminal": "edbabbb1f600f3677393ddd879079be318dd74516166d6de3f0353c4732cf4f4",
+      "digest": "4cc58f39ebe99b01b72a071e9a51f2a092e3d5100010fafa1f3fa17976e6d033"
+    },
+    "verdict": {
+      "throws": false,
+      "steps": 370,
+      "stopReason": "halted",
+      "terminal": "edbabbb1f600f3677393ddd879079be318dd74516166d6de3f0353c4732cf4f4",
+      "digest": "ae89086330980c6aa6ceb1b209585fce7e1f2421df5de90d54f6807db9e72663"
+    }
+  },
+  "shape mapData widening n=9": {
+    "proof": {
+      "throws": false,
+      "steps": 958,
+      "stopReason": "halted",
+      "terminal": "b4fb4cd7208b9e32906f69004ab7956f2de596a7bffeef339d342c09f81d53fa",
+      "digest": "b22b0cf47ce8bc1ed5060e40d248f6eb2acb4ffb8728e1e34353cc5b6d3101fa"
+    },
+    "verdict": {
+      "throws": false,
+      "steps": 958,
+      "stopReason": "halted",
+      "terminal": "b4fb4cd7208b9e32906f69004ab7956f2de596a7bffeef339d342c09f81d53fa",
+      "digest": "69a9d496e2e962ec80b73bc7760c6dfd1917fb7eb3176fbd3f22144d6f997f88"
+    }
+  },
+  "shape appendByteString doubling chains n=3": {
+    "proof": {
+      "throws": false,
+      "steps": 904,
+      "stopReason": "halted",
+      "terminal": "c56f416682747df79b7e02d1fb6d80edadca0be2b2fa5358f3804a52aac495fd",
+      "digest": "e0cb1ba29e3c8e4576a4d033684c6120a9f4589d61a5dd5c6674e53278451ad4"
+    },
+    "verdict": {
+      "throws": false,
+      "steps": 904,
+      "stopReason": "halted",
+      "terminal": "c56f416682747df79b7e02d1fb6d80edadca0be2b2fa5358f3804a52aac495fd",
+      "digest": "15c35e5efb4eca76228c838acfb051d24a382a31b8875b387f93f64ff0fc5b18"
+    }
+  },
+  "shape appendByteString doubling chains n=9": {
+    "proof": {
+      "throws": false,
+      "steps": 2584,
+      "stopReason": "halted",
+      "terminal": "482635bbdc27249eb091ad1dbdf19cb9bb04c21ed103a84825b76fcf83c7a879",
+      "digest": "4af47f5af95f810d2323098e8cede58fdd37a884b3b3d292bce0b7b2cc97ed49"
+    },
+    "verdict": {
+      "throws": false,
+      "steps": 2584,
+      "stopReason": "halted",
+      "terminal": "482635bbdc27249eb091ad1dbdf19cb9bb04c21ed103a84825b76fcf83c7a879",
+      "digest": "afd0aba7838b0070a60e7546c164c726439541772c9eb39ee1c3dcf363fea5cf"
+    }
+  },
+  "shape serialiseData of a grown structure n=3": {
+    "proof": {
+      "throws": false,
+      "steps": 377,
+      "stopReason": "halted",
+      "terminal": "65908feee4be8513650a10fa33d89b5457868fec5e82aac235a3744e3a0286a8",
+      "digest": "64e477c2e9c1351548643e92d7a75a96752efb24fdb80415cfb46b56839ef13b"
+    },
+    "verdict": {
+      "throws": false,
+      "steps": 377,
+      "stopReason": "halted",
+      "terminal": "65908feee4be8513650a10fa33d89b5457868fec5e82aac235a3744e3a0286a8",
+      "digest": "7e91b7ac0a277e32d57510431f876e3c5c7762f0d335ed7117b1575f666ace54"
+    }
+  },
+  "shape serialiseData of a grown structure n=9": {
+    "proof": {
+      "throws": false,
+      "steps": 899,
+      "stopReason": "halted",
+      "terminal": "cbaf3239361340b86f5a2ca6fe3c55474095e8db3e7a588f2b3ff9da20715671",
+      "digest": "0fe9eb945829acc52f8b14578efbd026f5f42b09b64d1333b49aff058c52d22b"
+    },
+    "verdict": {
+      "throws": false,
+      "steps": 899,
+      "stopReason": "halted",
+      "terminal": "cbaf3239361340b86f5a2ca6fe3c55474095e8db3e7a588f2b3ff9da20715671",
+      "digest": "1ae5b34516259c4ce50d0be529b1b477c7795d3e7a18326423ac9307b1dc33ff"
+    }
+  },
+  "shape deep environment n=3": {
+    "proof": {
+      "throws": false,
+      "steps": 49,
+      "stopReason": "halted",
+      "terminal": "a1a8fcc0ad2c0bba76f8bf1651d717bd922b6f26cf3058aefeb0e873fc7351c9",
+      "digest": "d98dc253a071dae03749ef8c30d02349d4b73d8fab2f70a87bc9f2d054d7ec19"
+    },
+    "verdict": {
+      "throws": false,
+      "steps": 49,
+      "stopReason": "halted",
+      "terminal": "a1a8fcc0ad2c0bba76f8bf1651d717bd922b6f26cf3058aefeb0e873fc7351c9",
+      "digest": "9aa70d2c2e62fae80654fb6bf372253a70dd8377237e3e1fcd18c4dea4ad17e5"
+    }
+  },
+  "shape deep environment n=9": {
+    "proof": {
+      "throws": false,
+      "steps": 97,
+      "stopReason": "halted",
+      "terminal": "6de568c22728c72c313535d0e42a03c0ad00b4153bfd4ea26c2b5e56a8eaf6b6",
+      "digest": "7d3a35a9f4b72f4b9f654819acc0589b706d14f9c754d912bae5e167d32fae9f"
+    },
+    "verdict": {
+      "throws": false,
+      "steps": 97,
+      "stopReason": "halted",
+      "terminal": "6de568c22728c72c313535d0e42a03c0ad00b4153bfd4ea26c2b5e56a8eaf6b6",
+      "digest": "a44c2330b962c732946142772c88e267c9c5634106673b00986280eb056e8f9b"
+    }
+  },
+  "shape deep continuation stack n=3": {
+    "proof": {
+      "throws": false,
+      "steps": 285,
+      "stopReason": "halted",
+      "terminal": "c49264930bf62910ac5dfadf524a4973cd6a15c3a70ccea553a9d7693fd16d00",
+      "digest": "76b444b9b2179231cae1d2242fb57c95e85e60230221e0bb720d6222d7eef2c7"
+    },
+    "verdict": {
+      "throws": false,
+      "steps": 285,
+      "stopReason": "halted",
+      "terminal": "c49264930bf62910ac5dfadf524a4973cd6a15c3a70ccea553a9d7693fd16d00",
+      "digest": "14d8d0f0b7723d2697625f28e2cb5b9b0c377dbc4e9f62c21a4656cffb6a1a2f"
+    }
+  },
+  "shape deep continuation stack n=9": {
+    "proof": {
+      "throws": false,
+      "steps": 741,
+      "stopReason": "halted",
+      "terminal": "0bd09661ce3270dac1abebf7e76d23fcfee910d211b089f8f408c4ee0cf330c8",
+      "digest": "2ce2a572c353859ce8c98f8d7c3df2b2a8047a6ad16c69b7375061733e0171f7"
+    },
+    "verdict": {
+      "throws": false,
+      "steps": 741,
+      "stopReason": "halted",
+      "terminal": "0bd09661ce3270dac1abebf7e76d23fcfee910d211b089f8f408c4ee0cf330c8",
+      "digest": "054543f0a05e15814fe61029162f3f1e256f213d06d58fc383c2b690af60dde9"
+    }
+  },
+  "list at 9212 bytes": {
+    "proof": {
+      "throws": false,
+      "steps": 10968,
+      "stopReason": "halted",
+      "terminal": "a3c81b3a628af19e264cb523086c2082893d805465dbf4d6d5a0c51316988311",
+      "digest": "6ad7bbfb6272b2abf92241c92048f49c499f6ffeb86d0293c62ea3221bd6aeb4"
+    },
+    "verdict": {
+      "throws": false,
+      "steps": 10968,
+      "stopReason": "halted",
+      "terminal": "a3c81b3a628af19e264cb523086c2082893d805465dbf4d6d5a0c51316988311",
+      "digest": "4dc7bac35d8d572a5747b0121ab006f2a6d092006d38bf4c43352545078f3b48"
+    }
+  },
+  "serialiseData of a list at 9212 bytes": {
+    "proof": {
+      "throws": false,
+      "steps": 28,
+      "stopReason": "halted",
+      "terminal": "d000fa2fe1f7bd88292fbba7b8c2d94e051153c4e5046e979dbb749ca9dea4df",
+      "digest": "a4caa15508a117c2b3f84bd1e001babc1ecf1ba4688685735d766f23a6288ec8"
+    },
+    "verdict": {
+      "throws": false,
+      "steps": 28,
+      "stopReason": "halted",
+      "terminal": "d000fa2fe1f7bd88292fbba7b8c2d94e051153c4e5046e979dbb749ca9dea4df",
+      "digest": "88f7e8d5ad74b830a9b99d13f8f62be5cf28b674cfc6a41676025399d757cc40"
+    }
+  },
+  "serialiseData of a constructor at 9214 bytes": {
+    "proof": {
+      "throws": false,
+      "steps": 32,
+      "stopReason": "halted",
+      "terminal": "d48a7d22cea692c8c4f7b60c0adec8e3bb15cf90dcdf33a0b163f717fa00fb95",
+      "digest": "966fb35360590cadd1f3fdf5fa880ae616eba9e9421024efeb0c0d4135bad4e2"
+    },
+    "verdict": {
+      "throws": false,
+      "steps": 32,
+      "stopReason": "halted",
+      "terminal": "d48a7d22cea692c8c4f7b60c0adec8e3bb15cf90dcdf33a0b163f717fa00fb95",
+      "digest": "30fa0ea2bb5fd5bae12c290965998ec283b3f058b5b43a3dcfdc568f828fa93c"
+    }
+  },
+  "pair list at 9212 bytes": {
+    "proof": {
+      "throws": false,
+      "steps": 10856,
+      "stopReason": "halted",
+      "terminal": "a666f5a1089ad566dbed9a965a7f7d195c155e71f6de5b50fa328018167b9653",
+      "digest": "92c6247d92c674c2967dcecb69cfacdfe67251dcffe5fd90a079c90a1c6ccfa0"
+    },
+    "verdict": {
+      "throws": false,
+      "steps": 10856,
+      "stopReason": "halted",
+      "terminal": "a666f5a1089ad566dbed9a965a7f7d195c155e71f6de5b50fa328018167b9653",
+      "digest": "1b2a1bdb1edf2ea711a2be14787b835561bcf78e41f41201551dc99bf633dcd6"
+    }
+  },
+  "list at 9213 bytes": {
+    "proof": {
+      "throws": false,
+      "steps": 10885,
+      "stopReason": "halted",
+      "terminal": "ff1704ad617911442f2591c06e031e93a0ddbdd2aa23ec57e3ceda34e1645076",
+      "digest": "5eb7727021abb5fea8b9d40221974d0b449e7ce1dd843fff8e1228170e46c16b"
+    },
+    "verdict": {
+      "throws": false,
+      "steps": 10885,
+      "stopReason": "halted",
+      "terminal": "ff1704ad617911442f2591c06e031e93a0ddbdd2aa23ec57e3ceda34e1645076",
+      "digest": "82cbbd6241fbf058fa37da2180c8ae09722af70aa8977110d2600a6a60fbb4d9"
+    }
+  },
+  "serialiseData of a list at 9213 bytes": {
+    "proof": {
+      "throws": false,
+      "steps": 28,
+      "stopReason": "halted",
+      "terminal": "3c3bfb711cf61a676387f87e5744c7c5169fe7ea6c854617d6d719609f32b924",
+      "digest": "671da88dc977ed9c1563ae81bf50e00f3eff7294fcd18320afa55d54f4af9e1f"
+    },
+    "verdict": {
+      "throws": false,
+      "steps": 28,
+      "stopReason": "halted",
+      "terminal": "3c3bfb711cf61a676387f87e5744c7c5169fe7ea6c854617d6d719609f32b924",
+      "digest": "17b2a2d37e2eecb1dd766e9e5b7eb10f5626e0a13333d73367a4c32952dbc0fc"
+    }
+  },
+  "serialiseData of a constructor at 9215 bytes": {
+    "proof": {
+      "throws": false,
+      "steps": 32,
+      "stopReason": "halted",
+      "terminal": "2b9faa3c3841ccd253e89525aa32f970fed4d19c2b73a7a16cff7397c1bb9917",
+      "digest": "1e89106702289c2b9e48a7c8626e312e78d65a8660d3789239a8f5215c1380fd"
+    },
+    "verdict": {
+      "throws": false,
+      "steps": 32,
+      "stopReason": "halted",
+      "terminal": "2b9faa3c3841ccd253e89525aa32f970fed4d19c2b73a7a16cff7397c1bb9917",
+      "digest": "c24733501255eb448335f867a5f77cf5d775ebc7535f94f5695a6e262e5adcec"
+    }
+  },
+  "pair list at 9213 bytes": {
+    "proof": {
+      "throws": false,
+      "steps": 10770,
+      "stopReason": "halted",
+      "terminal": "cd047d314a2cc1cbebf848ffc2825144a7e39961872e5b861e24569dda0b4ba3",
+      "digest": "0e2a97b8af52566ea79b4c728a9e3fb628e3d74da953d4293ebaa77643b81681"
+    },
+    "verdict": {
+      "throws": false,
+      "steps": 10770,
+      "stopReason": "halted",
+      "terminal": "cd047d314a2cc1cbebf848ffc2825144a7e39961872e5b861e24569dda0b4ba3",
+      "digest": "ca30d091057ef55f8aad093dd792cb1315c4f3524922153717de17eedb84b982"
+    }
+  },
+  "list at 9214 bytes": {
+    "proof": {
+      "throws": false,
+      "steps": 10885,
+      "stopReason": "halted",
+      "terminal": "61666e907de55fadaeb3727461901949ee94846658f3bdad84a7e692dc583ce0",
+      "digest": "52f82d6865b57fde21fc784f3198ca0f7f277e3a1c83e30dc81b018ff88e2c17"
+    },
+    "verdict": {
+      "throws": false,
+      "steps": 10885,
+      "stopReason": "halted",
+      "terminal": "61666e907de55fadaeb3727461901949ee94846658f3bdad84a7e692dc583ce0",
+      "digest": "5a9d42c14a84c368ffd144e4a308f75d6d75d7161ca927435053912d257f788d"
+    }
+  },
+  "serialiseData of a list at 9214 bytes": {
+    "proof": {
+      "throws": false,
+      "steps": 28,
+      "stopReason": "halted",
+      "terminal": "b60eb8a94fc180c7e76dce6979ff8316a6daedd0945b00c80c7266216d9551f6",
+      "digest": "d579c5e12d9052ad0bfabb67c7331c3304a0736751c2dbdb33a4434bb0fc4d34"
+    },
+    "verdict": {
+      "throws": false,
+      "steps": 28,
+      "stopReason": "halted",
+      "terminal": "b60eb8a94fc180c7e76dce6979ff8316a6daedd0945b00c80c7266216d9551f6",
+      "digest": "596851be390ad84f41b126471f82b152a65b828009996c277ed77904b0bed3ef"
+    }
+  },
+  "serialiseData of a constructor at 9216 bytes": {
+    "proof": {
+      "throws": true
+    },
+    "verdict": {
+      "throws": true
+    }
+  },
+  "pair list at 9214 bytes": {
+    "proof": {
+      "throws": false,
+      "steps": 10770,
+      "stopReason": "halted",
+      "terminal": "d72ba331494878c4be40caae088c181a7d21bf457184d18e0e202ebb4ad76274",
+      "digest": "12672e130a45237183606c9b3f1086c635e139116f4dc72c82c079c7e1d84d46"
+    },
+    "verdict": {
+      "throws": false,
+      "steps": 10770,
+      "stopReason": "halted",
+      "terminal": "d72ba331494878c4be40caae088c181a7d21bf457184d18e0e202ebb4ad76274",
+      "digest": "70d267ea3c23e712197b6bbf8fc7f5decb290204f46d54114fd369bc625e411b"
+    }
+  },
+  "list at 9215 bytes": {
+    "proof": {
+      "throws": false,
+      "steps": 10885,
+      "stopReason": "halted",
+      "terminal": "59f7d8ff27872cd5ab4e4ca228fbbbf7ebf2685bdabee40473417ecfcd32e28b",
+      "digest": "c3423004507d46e54efd3061c6fd1f09f8a3a78e2a30ba1ae320e87c21c640ac"
+    },
+    "verdict": {
+      "throws": false,
+      "steps": 10885,
+      "stopReason": "halted",
+      "terminal": "59f7d8ff27872cd5ab4e4ca228fbbbf7ebf2685bdabee40473417ecfcd32e28b",
+      "digest": "ad0a861e5ca400d6afa108da1c5ab7dfa586448a19161b2f5378156c818dc876"
+    }
+  },
+  "serialiseData of a list at 9215 bytes": {
+    "proof": {
+      "throws": false,
+      "steps": 28,
+      "stopReason": "halted",
+      "terminal": "2d11c48df5dae17b84d104b6900b61e128e0536fc68163f192ca2b0122fc8ec3",
+      "digest": "62900ad3832a399e861b9c1bd00f5ad924bc2c4d021ec990fa953cd5252f906a"
+    },
+    "verdict": {
+      "throws": false,
+      "steps": 28,
+      "stopReason": "halted",
+      "terminal": "2d11c48df5dae17b84d104b6900b61e128e0536fc68163f192ca2b0122fc8ec3",
+      "digest": "560a8142aa49472e85c19dd3bb879d1cc47bed1e642a5d2d8e32f67a2350d2bf"
+    }
+  },
+  "serialiseData of a constructor at 9217 bytes": {
+    "proof": {
+      "throws": true
+    },
+    "verdict": {
+      "throws": true
+    }
+  },
+  "pair list at 9215 bytes": {
+    "proof": {
+      "throws": false,
+      "steps": 10770,
+      "stopReason": "halted",
+      "terminal": "3ae044d8db4cb22152d96fd83df9cff80dcfee07a8a4cf31c389f64651a7a433",
+      "digest": "d04135a1ada3a1634774fe6729f7ef55a9fc89ad465356f2517c82e100e7f625"
+    },
+    "verdict": {
+      "throws": false,
+      "steps": 10770,
+      "stopReason": "halted",
+      "terminal": "3ae044d8db4cb22152d96fd83df9cff80dcfee07a8a4cf31c389f64651a7a433",
+      "digest": "de704d6073792fa0970311db4949144d1ca259c6556d1928e03fd2c0c4def031"
+    }
+  },
+  "list at 9216 bytes": {
+    "proof": {
+      "throws": false,
+      "steps": 10885,
+      "stopReason": "halted",
+      "terminal": "92d27e17bad54c052837cde081dd0ac24ee5e90e8d23b80e4be793baef06525e",
+      "digest": "1ae6b7ee5851ca7e0d681ddedbac321099129d8125de65e52da94bb887a8cbe3"
+    },
+    "verdict": {
+      "throws": false,
+      "steps": 10885,
+      "stopReason": "halted",
+      "terminal": "92d27e17bad54c052837cde081dd0ac24ee5e90e8d23b80e4be793baef06525e",
+      "digest": "64f9d4ae1cf6344cfb32da935b15fd8335c11dffd3d3d61582189257a46c9acc"
+    }
+  },
+  "serialiseData of a list at 9216 bytes": {
+    "proof": {
+      "throws": true
+    },
+    "verdict": {
+      "throws": true
+    }
+  },
+  "serialiseData of a constructor at 9218 bytes": {
+    "proof": {
+      "throws": true
+    },
+    "verdict": {
+      "throws": true
+    }
+  },
+  "pair list at 9216 bytes": {
+    "proof": {
+      "throws": false,
+      "steps": 10770,
+      "stopReason": "halted",
+      "terminal": "06df6a296597e52072a5dcce5206b2897ae8109f1c81833dd5eae4db2adbacd4",
+      "digest": "67e41d66dab10c1e2243accbe044a5fe93c5287825c2b7545eff95b6ea5c861c"
+    },
+    "verdict": {
+      "throws": false,
+      "steps": 10770,
+      "stopReason": "halted",
+      "terminal": "06df6a296597e52072a5dcce5206b2897ae8109f1c81833dd5eae4db2adbacd4",
+      "digest": "7ba3830480ca5afc9372e582c067d8866a72be91363b836c79ae907f78aaac76"
+    }
+  },
+  "list at 9217 bytes": {
+    "proof": {
+      "throws": false,
+      "steps": 10885,
+      "stopReason": "halted",
+      "terminal": "2041728f92bda11416e18a829b1fd9bb9bdf37bfa662b2d628eb9aa506843201",
+      "digest": "b4ca4f4ec6467a3b8afd7a15bc89aa7d56478a7d9f2404348645f6b586d70add"
+    },
+    "verdict": {
+      "throws": false,
+      "steps": 10885,
+      "stopReason": "halted",
+      "terminal": "2041728f92bda11416e18a829b1fd9bb9bdf37bfa662b2d628eb9aa506843201",
+      "digest": "0e6ea6322a58eeb6cec0dd0bd1a59002caf72970cfff9aef8634b761ca7227bf"
+    }
+  },
+  "serialiseData of a list at 9217 bytes": {
+    "proof": {
+      "throws": true
+    },
+    "verdict": {
+      "throws": true
+    }
+  },
+  "serialiseData of a constructor at 9219 bytes": {
+    "proof": {
+      "throws": true
+    },
+    "verdict": {
+      "throws": true
+    }
+  },
+  "pair list at 9217 bytes": {
+    "proof": {
+      "throws": false,
+      "steps": 10770,
+      "stopReason": "halted",
+      "terminal": "ac78867829474c0e99ccb67d5f5e52cc494b72d7591efdd20d90e05f3038bbcc",
+      "digest": "7bc642a3eaaa4d0d784cbe450466fbb64e27faf8c7f61d746563cc5c306ffa19"
+    },
+    "verdict": {
+      "throws": false,
+      "steps": 10770,
+      "stopReason": "halted",
+      "terminal": "ac78867829474c0e99ccb67d5f5e52cc494b72d7591efdd20d90e05f3038bbcc",
+      "digest": "aa603b97c9103817428ea5a1270d0179a8ce1fe7ee24cfa92095e8379a4994e4"
+    }
+  },
+  "list at 9218 bytes": {
+    "proof": {
+      "throws": false,
+      "steps": 10885,
+      "stopReason": "halted",
+      "terminal": "9d513d018b37e5cd18ba08bdaff52181894afed9e92c4b1039ff18c638708661",
+      "digest": "0bf79da7a16a58b25e8ec7dc51ce6dded97543a2ed1d14a4c78dc9ba25f5961c"
+    },
+    "verdict": {
+      "throws": false,
+      "steps": 10885,
+      "stopReason": "halted",
+      "terminal": "9d513d018b37e5cd18ba08bdaff52181894afed9e92c4b1039ff18c638708661",
+      "digest": "76e9b2256784f5b04e29178f1e7b4cf9aeb1911f31dd007d69f0772d29f0ec0a"
+    }
+  },
+  "serialiseData of a list at 9218 bytes": {
+    "proof": {
+      "throws": true
+    },
+    "verdict": {
+      "throws": true
+    }
+  },
+  "serialiseData of a constructor at 9220 bytes": {
+    "proof": {
+      "throws": true
+    },
+    "verdict": {
+      "throws": true
+    }
+  },
+  "pair list at 9218 bytes": {
+    "proof": {
+      "throws": false,
+      "steps": 10770,
+      "stopReason": "halted",
+      "terminal": "930d2904994a5943cc0660f3e029abc822c18a195ffb7b7493d263a9c389397c",
+      "digest": "552198c34e235a1f9842c5dea545782d5afe7c8df2a022f28c0a345ce2001e73"
+    },
+    "verdict": {
+      "throws": false,
+      "steps": 10770,
+      "stopReason": "halted",
+      "terminal": "930d2904994a5943cc0660f3e029abc822c18a195ffb7b7493d263a9c389397c",
+      "digest": "283ece57837e18fe5510d524906ecfcb0b257950780f6bd180fb2b3077d04a41"
+    }
+  },
+  "list at 9220 bytes": {
+    "proof": {
+      "throws": false,
+      "steps": 10885,
+      "stopReason": "halted",
+      "terminal": "7a1b25cfff825eea318403f2d46e3e70480e95e485ae02e86c02d5c559184b2a",
+      "digest": "b74097435668754791b37b74baa19ea3ddd9f4f07eccbaabd6be03d2ced096e7"
+    },
+    "verdict": {
+      "throws": false,
+      "steps": 10885,
+      "stopReason": "halted",
+      "terminal": "7a1b25cfff825eea318403f2d46e3e70480e95e485ae02e86c02d5c559184b2a",
+      "digest": "bccb4977f1ea7dc073c4bc5acfd5527a82893827652c7d7fa95f7573c9e87caa"
+    }
+  },
+  "serialiseData of a list at 9220 bytes": {
+    "proof": {
+      "throws": true
+    },
+    "verdict": {
+      "throws": true
+    }
+  },
+  "serialiseData of a constructor at 9222 bytes": {
+    "proof": {
+      "throws": true
+    },
+    "verdict": {
+      "throws": true
+    }
+  },
+  "pair list at 9220 bytes": {
+    "proof": {
+      "throws": false,
+      "steps": 10770,
+      "stopReason": "halted",
+      "terminal": "22e369d3a2345e81dbfd4f3174b50b223f0e95f4789a096ccf8facdecff65cc6",
+      "digest": "9c5ebe0a8acc9167e4c643472f60dd4cfcc6bddda550e078e2370785b6e829ef"
+    },
+    "verdict": {
+      "throws": false,
+      "steps": 10770,
+      "stopReason": "halted",
+      "terminal": "22e369d3a2345e81dbfd4f3174b50b223f0e95f4789a096ccf8facdecff65cc6",
+      "digest": "025f15cbf4dbec601569e3fe117a938d055c075b946476b53e383a1d618e153b"
+    }
+  },
+  "Data list grown past the bound at runtime": {
+    "proof": {
+      "throws": false,
+      "steps": 26845,
+      "stopReason": "halted",
+      "terminal": "60f608a8469f8c444757848d28195d2bfc4604dc3d02e1d5053fde6f75c88096",
+      "digest": "1ddab915b7773fbc9367d75301eb39f7f7e89519ca6856dc48dc65dc17f1e258"
+    },
+    "verdict": {
+      "throws": false,
+      "steps": 26845,
+      "stopReason": "halted",
+      "terminal": "60f608a8469f8c444757848d28195d2bfc4604dc3d02e1d5053fde6f75c88096",
+      "digest": "a758878c57847035904fa46261b46e687fef97eafbace262693fb3c870f58fb6"
+    }
+  },
+  "list of integer lists grown past the bound at runtime": {
+    "proof": {
+      "throws": false,
+      "steps": 7885,
+      "stopReason": "halted",
+      "terminal": "9f8fa5001ee8db87bb0b48bde36760db3161838c78087e6856c8f5e3eb8d23c5",
+      "digest": "bba6604d3fe26c03fce998ea79e2d6d0390e68782fb7966a8040066a0ee3a430"
+    },
+    "verdict": {
+      "throws": false,
+      "steps": 7885,
+      "stopReason": "halted",
+      "terminal": "9f8fa5001ee8db87bb0b48bde36760db3161838c78087e6856c8f5e3eb8d23c5",
+      "digest": "ce21c8ed4ed461e658e040e58e19f3bf227d005e7c8e3dd93e4b8f9f951dfb24"
+    }
+  },
+  "large Data list context": {
+    "proof": {
+      "throws": false,
+      "steps": 15259,
+      "stopReason": "halted",
+      "terminal": "582db091014271fd70de9b1906e1bb150fa13f76b0b46c41278cde7bb3307934",
+      "digest": "a669ed8d0cf0a24074b2759253cc9511360255f1bea3999e304577cf78eadd36"
+    },
+    "verdict": {
+      "throws": false,
+      "steps": 15259,
+      "stopReason": "halted",
+      "terminal": "582db091014271fd70de9b1906e1bb150fa13f76b0b46c41278cde7bb3307934",
+      "digest": "6775bd579c12976fd6390ebcd4684271aacbb13ac3595d7627750516188fecf8"
+    }
+  },
+  "serialiseData of a large list context": {
+    "proof": {
+      "throws": true
+    },
+    "verdict": {
+      "throws": true
+    }
+  },
+  "large constructor context": {
+    "proof": {
+      "throws": false,
+      "steps": 15262,
+      "stopReason": "halted",
+      "terminal": "93fb3c587e6f820b3ae1c635a2b0e0fbbc7433d74c43c8f964ae7bc3e879bb63",
+      "digest": "dc77f6a0029ba14a8fc0f17304ef988b75187ae02134aec52f25b7611a05302a"
+    },
+    "verdict": {
+      "throws": false,
+      "steps": 15262,
+      "stopReason": "halted",
+      "terminal": "93fb3c587e6f820b3ae1c635a2b0e0fbbc7433d74c43c8f964ae7bc3e879bb63",
+      "digest": "d905558f777566e363484117eb6be51185b872f9fd3bcebb4247f7789d206eac"
+    }
+  },
+  "large map context": {
+    "proof": {
+      "throws": false,
+      "steps": 12657,
+      "stopReason": "halted",
+      "terminal": "0fc5124b68f9958ff5146d7de842ae2a8a5a90568a4b71314f7d5fb4bc1bb8e6",
+      "digest": "f2489d41d80f82352d0587644d470330dac6e419513e8e9eb3c7838111dd41f1"
+    },
+    "verdict": {
+      "throws": false,
+      "steps": 12657,
+      "stopReason": "halted",
+      "terminal": "0fc5124b68f9958ff5146d7de842ae2a8a5a90568a4b71314f7d5fb4bc1bb8e6",
+      "digest": "ac8679505a9dde8971cea7adc8491925178fbeec5df8f3186a9826e80a304b9f"
+    }
+  },
+  "large script context": {
+    "proof": {
+      "throws": false,
+      "steps": 15731,
+      "stopReason": "halted",
+      "terminal": "ccefd578442ee27ea7444ac8a1ce033910a95cb74951381dcc8d6a9ff3ba39ad",
+      "digest": "b5fe3d7f87d09e684698e8d0a2ffb32f8508f25e44ec0cda66f53569967471a7"
+    },
+    "verdict": {
+      "throws": false,
+      "steps": 15731,
+      "stopReason": "halted",
+      "terminal": "ccefd578442ee27ea7444ac8a1ce033910a95cb74951381dcc8d6a9ff3ba39ad",
+      "digest": "dcf2ee3eac02f4e9a9d97e5cba994a4fcbec807d98ab355e1339294ebe3b58bd"
+    }
+  },
+  "map inside a large script context": {
+    "proof": {
+      "throws": false,
+      "steps": 341,
+      "stopReason": "halted",
+      "terminal": "2bf3f20e73c78a35255bbe78cc991333a9668016a3a2b2beda00d9a9058cadcf",
+      "digest": "30c21143e9a8f66b6226057354a5987dc136576d12bbf70da3d37637f51fb5b5"
+    },
+    "verdict": {
+      "throws": false,
+      "steps": 341,
+      "stopReason": "halted",
+      "terminal": "2bf3f20e73c78a35255bbe78cc991333a9668016a3a2b2beda00d9a9058cadcf",
+      "digest": "de053b94f9a13e527a63a4a905c8f99f311a9bb4c9f9dcdd837bbae3e99de53f"
+    }
+  },
+  "serialiseData of a large script context": {
+    "proof": {
+      "throws": true
+    },
+    "verdict": {
+      "throws": true
+    }
+  },
+  "small script context": {
+    "proof": {
+      "throws": false,
+      "steps": 1093,
+      "stopReason": "halted",
+      "terminal": "fc7e0b37784e265c6334820a71e975ef971caf324c735035916295d78d56ff75",
+      "digest": "20e05a758902a1c21665db62cc99a730d23a270c29f5c544500333cfdccca318"
+    },
+    "verdict": {
+      "throws": false,
+      "steps": 1093,
+      "stopReason": "halted",
+      "terminal": "fc7e0b37784e265c6334820a71e975ef971caf324c735035916295d78d56ff75",
+      "digest": "2f46fc0d2a990c9165f68db84738aac017e93934b7ee2d66e2f043b316cf6f67"
+    }
+  },
+  "byte strings at the chunking edge": {
+    "proof": {
+      "throws": false,
+      "steps": 1030,
+      "stopReason": "halted",
+      "terminal": "2d9b083c466ae5432dd19a5d0dcc520031501b95157731961b442e76aa56e888",
+      "digest": "de6928b04593281b7025797836464928bce88275bf897f59d1f106f552067acc"
+    },
+    "verdict": {
+      "throws": false,
+      "steps": 1030,
+      "stopReason": "halted",
+      "terminal": "2d9b083c466ae5432dd19a5d0dcc520031501b95157731961b442e76aa56e888",
+      "digest": "9f0dd960554860c8e717b031ecf70355765243c6698e42c78be2aba1d7ef8359"
+    }
+  },
+  "integers at the bignum edge": {
+    "proof": {
+      "throws": false,
+      "steps": 1075,
+      "stopReason": "halted",
+      "terminal": "dbad8aaecf174f3c042a00a75f6bf9e8b2785a30e479993cf6a3bc78aae868a0",
+      "digest": "ec3261e4c121e2aa94b9cc655d4aa8b769b7961d2e254a2a1725981dab1cd965"
+    },
+    "verdict": {
+      "throws": false,
+      "steps": 1075,
+      "stopReason": "halted",
+      "terminal": "dbad8aaecf174f3c042a00a75f6bf9e8b2785a30e479993cf6a3bc78aae868a0",
+      "digest": "aaf134ceef2c67990a669a7d2335db3cf3d5057daa6a30c3b80aa8c7a3f9edb3"
+    }
+  },
+  "constructor index 0": {
+    "proof": {
+      "throws": false,
+      "steps": 129,
+      "stopReason": "halted",
+      "terminal": "ca64a7419e4908d0651eb69f7c6bc2fc3824fc6c8bedabc4d67c72a3c17acb41",
+      "digest": "c02d0440333a327301eae28b491ef69fa4e0ebd85207ee4d7fbbb07a8cdd0bbe"
+    },
+    "verdict": {
+      "throws": false,
+      "steps": 129,
+      "stopReason": "halted",
+      "terminal": "ca64a7419e4908d0651eb69f7c6bc2fc3824fc6c8bedabc4d67c72a3c17acb41",
+      "digest": "e515267d1bfcc88586016921ccf65d3603929e8b71ba3b9997569825a47eb6ed"
+    }
+  },
+  "constructor index 6": {
+    "proof": {
+      "throws": false,
+      "steps": 129,
+      "stopReason": "halted",
+      "terminal": "b217cf5152b3e7c47a3e997d31df3af8e70b9d7c2cdedfb540fc8e62a138b3fa",
+      "digest": "1482566d808b3e8338076a58092e83395f63acceee2238c0adf8eeef256e9bde"
+    },
+    "verdict": {
+      "throws": false,
+      "steps": 129,
+      "stopReason": "halted",
+      "terminal": "b217cf5152b3e7c47a3e997d31df3af8e70b9d7c2cdedfb540fc8e62a138b3fa",
+      "digest": "a46afe18d9e1969bba16b377902a395c7c6d8e99920d593e1f1347fa1543fe00"
+    }
+  },
+  "constructor index 7": {
+    "proof": {
+      "throws": false,
+      "steps": 129,
+      "stopReason": "halted",
+      "terminal": "2435547e1cc04f945c002d4ea8c53b3d04764a5968e2979879c5d2d33e5226b2",
+      "digest": "7c729c567351dc526121f6de396ca848024fc377cdd1017f4f3d89361a133641"
+    },
+    "verdict": {
+      "throws": false,
+      "steps": 129,
+      "stopReason": "halted",
+      "terminal": "2435547e1cc04f945c002d4ea8c53b3d04764a5968e2979879c5d2d33e5226b2",
+      "digest": "4ee65fec4d99dbac86ff6d096f803fe02ba43bc3d62fdd08933d3e7979a2d581"
+    }
+  },
+  "constructor index 127": {
+    "proof": {
+      "throws": false,
+      "steps": 129,
+      "stopReason": "halted",
+      "terminal": "64cedae90eed7322f2a26cc53c50135175c0dc04e8893ecf202f631367f60c52",
+      "digest": "f88abac0e6336b5fa1fa99ccbcd444f26804a4c62c971d2198ebadbd48eb7a67"
+    },
+    "verdict": {
+      "throws": false,
+      "steps": 129,
+      "stopReason": "halted",
+      "terminal": "64cedae90eed7322f2a26cc53c50135175c0dc04e8893ecf202f631367f60c52",
+      "digest": "4fc44210c4e52f662ca97b9f279f2493fcd93982ed55e23c924b6d5de6a98f13"
+    }
+  },
+  "constructor index 128": {
+    "proof": {
+      "throws": false,
+      "steps": 129,
+      "stopReason": "halted",
+      "terminal": "946d22641715907722e866829117aeec51c0f7cef0f094b0a122c6b0f07b560e",
+      "digest": "c0b38dbebd19dd87bdcf54e110e2a79e967bdfddd983659f740fca9d9c3bcaef"
+    },
+    "verdict": {
+      "throws": false,
+      "steps": 129,
+      "stopReason": "halted",
+      "terminal": "946d22641715907722e866829117aeec51c0f7cef0f094b0a122c6b0f07b560e",
+      "digest": "651317d20289331ec363eade09a43a8e143a7619d45e2d59686f6ad167d910c3"
+    }
+  },
+  "constructor index 200": {
+    "proof": {
+      "throws": false,
+      "steps": 129,
+      "stopReason": "halted",
+      "terminal": "e983f39422685eea3bdb424e77db3f22eb2e8bc91295cc989284cd2d2383ebe9",
+      "digest": "b8ad760ec208ba59478c64fa86ea91564dd9b35a9adf089ddab884f36dbbe93e"
+    },
+    "verdict": {
+      "throws": false,
+      "steps": 129,
+      "stopReason": "halted",
+      "terminal": "e983f39422685eea3bdb424e77db3f22eb2e8bc91295cc989284cd2d2383ebe9",
+      "digest": "a2c32ebeebc8c59d875effd961c946c20b81b02915668c0ea13f86b08c13136e"
+    }
+  },
+  "constructor index 18446744073709551615": {
+    "proof": {
+      "throws": false,
+      "steps": 129,
+      "stopReason": "halted",
+      "terminal": "2a3adfaf72b541c87e073662bda9a97d165b82e50462d775d006ae345554b4ac",
+      "digest": "28ef3881fe1620f5e175e517d0bc40bd82f9b3663bb85634eca2ee3572f869f1"
+    },
+    "verdict": {
+      "throws": false,
+      "steps": 129,
+      "stopReason": "halted",
+      "terminal": "2a3adfaf72b541c87e073662bda9a97d165b82e50462d775d006ae345554b4ac",
+      "digest": "447b5702f93626d5c7478307bab9d6d944dccfb0eec754b32e69ec05f2c1b7c1"
+    }
+  },
+  "constructor index 18446744073709551616": {
+    "proof": {
+      "throws": false,
+      "steps": 129,
+      "stopReason": "halted",
+      "terminal": "eefdece5315ba340975a7febc0046753d3b72146ccac6fe876e05d614e7fe6d7",
+      "digest": "10844614ad610645a22fe59eb31e148444971603969513472f84733134c811ee"
+    },
+    "verdict": {
+      "throws": false,
+      "steps": 129,
+      "stopReason": "halted",
+      "terminal": "eefdece5315ba340975a7febc0046753d3b72146ccac6fe876e05d614e7fe6d7",
+      "digest": "0a53115728fe5c13e84360b7ef8134ad65ec6503c488fc5ac9ecce29b74ee8e7"
+    }
+  },
+  "constructor index 4149515568880992958512407863691161151012446232242436899995657329690652811412908146399707048947103794288197886611300789182395151075411775307886874834113963687061181803401509523685376": {
+    "proof": {
+      "throws": true
+    },
+    "verdict": {
+      "throws": false,
+      "steps": 129,
+      "stopReason": "halted",
+      "terminal": "154de4de57794b612eaa8586062725b6713a11c3a13ed5a30bf7c57cd389c599",
+      "digest": "3cf1ddd351d5961f3c0fac39be6e2bb5e15a3e7237a40a744992a955532408d7"
+    }
+  },
+  "constructor source constants": {
+    "proof": {
+      "throws": false,
+      "steps": 267,
+      "stopReason": "halted",
+      "terminal": "a4bf0cfd3d374b522802eae712d36f270cbf7ab51b2247949f47ed4cd3bbb09b",
+      "digest": "0c4db32154018b249cbee85e03af098053a2811863b09e159840fd7cbb83b9fc"
+    },
+    "verdict": {
+      "throws": false,
+      "steps": 267,
+      "stopReason": "halted",
+      "terminal": "a4bf0cfd3d374b522802eae712d36f270cbf7ab51b2247949f47ed4cd3bbb09b",
+      "digest": "2020b0f8bfc248c1bc0f6e98eb88b4d4818fbf8c80e9f790fed9cbec6dc3a9b8"
+    }
+  },
+  "map with duplicate keys": {
+    "proof": {
+      "throws": false,
+      "steps": 520,
+      "stopReason": "halted",
+      "terminal": "757da58b5f91cf8407cf0f75f619035edbbca30d8c6aa1b74bb79867459f734e",
+      "digest": "986ebcf69d84ca6967bfe6a1635b1565476162011cd50d96e156ce8e93c55dc1"
+    },
+    "verdict": {
+      "throws": false,
+      "steps": 520,
+      "stopReason": "halted",
+      "terminal": "757da58b5f91cf8407cf0f75f619035edbbca30d8c6aa1b74bb79867459f734e",
+      "digest": "025fb258b0b5e583ea9ce7645d1e3c7af2efe0283b815e3f44ac8883a85407c8"
+    }
+  },
+  "nested lists": {
+    "proof": {
+      "throws": false,
+      "steps": 453,
+      "stopReason": "halted",
+      "terminal": "53af012c9b9d652fd493a7d4e2d089fe31c7606531f8b9322ffe31154e9817cf",
+      "digest": "78554b52877b6fe8ae2d7c0745157bc90b1fdc278cba6dd68002157b57732dcc"
+    },
+    "verdict": {
+      "throws": false,
+      "steps": 453,
+      "stopReason": "halted",
+      "terminal": "53af012c9b9d652fd493a7d4e2d089fe31c7606531f8b9322ffe31154e9817cf",
+      "digest": "9bf8060d03fe948db068271c65c07c2645d1a81046808e5daa800347d6365980"
+    }
+  },
+  "empty lists and nil builtins": {
+    "proof": {
+      "throws": false,
+      "steps": 209,
+      "stopReason": "halted",
+      "terminal": "c3ca81f146bf153454bd8414a38621c7c1d50fa6c08b3bdf1ffe6dee6f08d0ec",
+      "digest": "55dc71d0195154c7bf09d67e61388df5a1c4b7bf318ed9c646e7ba72c3ed4c66"
+    },
+    "verdict": {
+      "throws": false,
+      "steps": 209,
+      "stopReason": "halted",
+      "terminal": "c3ca81f146bf153454bd8414a38621c7c1d50fa6c08b3bdf1ffe6dee6f08d0ec",
+      "digest": "ef2443136b2ebef53a7dcedd70c1dcde8b095732a2c2de840e92606ca9d2e863"
+    }
+  },
+  "integer list": {
+    "proof": {
+      "throws": false,
+      "steps": 533,
+      "stopReason": "halted",
+      "terminal": "45b8b9be5765aab162433c159f8c58df299e3311f9f933ef168b196fe747b99a",
+      "digest": "aca188723bb93308221a61448b38506a44b091c29ba993d2afe8029364dba40e"
+    },
+    "verdict": {
+      "throws": false,
+      "steps": 533,
+      "stopReason": "halted",
+      "terminal": "45b8b9be5765aab162433c159f8c58df299e3311f9f933ef168b196fe747b99a",
+      "digest": "664444596acc9109a8ec4ccbca660ab02ac850948df41d629257d3c49a9d6a6d"
+    }
+  },
+  "byte string list": {
+    "proof": {
+      "throws": false,
+      "steps": 450,
+      "stopReason": "halted",
+      "terminal": "f3e6cc22fbb4b867c4e89f1ac815148db430dc7a9ff1a5bdedf9c3b180d1b7ad",
+      "digest": "db0a50cf160c6cec419d4efb260a30d5654b2a44a42daa62787d7f5ceab8ebcd"
+    },
+    "verdict": {
+      "throws": false,
+      "steps": 450,
+      "stopReason": "halted",
+      "terminal": "f3e6cc22fbb4b867c4e89f1ac815148db430dc7a9ff1a5bdedf9c3b180d1b7ad",
+      "digest": "1dd0ac606ad2df1fc14deb93dc7430fccdc94c0ee4b00a0121437579c4bee737"
+    }
+  },
+  "string list": {
+    "proof": {
+      "throws": false,
+      "steps": 450,
+      "stopReason": "halted",
+      "terminal": "f3e6cc22fbb4b867c4e89f1ac815148db430dc7a9ff1a5bdedf9c3b180d1b7ad",
+      "digest": "65f6ba1b46b9db722e50c16e733b26f7e0c077b88fbdbaeebc6519f6ee3a82ad"
+    },
+    "verdict": {
+      "throws": false,
+      "steps": 450,
+      "stopReason": "halted",
+      "terminal": "f3e6cc22fbb4b867c4e89f1ac815148db430dc7a9ff1a5bdedf9c3b180d1b7ad",
+      "digest": "51a29862aafc4ceae13e20f289f4ce5c96eb7df6df06a4d1fd44b3af5de63528"
+    }
+  },
+  "boolean list": {
+    "proof": {
+      "throws": false,
+      "steps": 472,
+      "stopReason": "halted",
+      "terminal": "96cd614d836888bdee1cbe8574c810046f28e95f364267276d46709abb17b880",
+      "digest": "cb2d1b9d7f4bccbd132225b0b3b8bb6e740d07d93d70f04f0423316f23468024"
+    },
+    "verdict": {
+      "throws": false,
+      "steps": 472,
+      "stopReason": "halted",
+      "terminal": "96cd614d836888bdee1cbe8574c810046f28e95f364267276d46709abb17b880",
+      "digest": "73e510a0dfe4d99cf2db1033957cc4bf409e1f18f33acc3d1e3ba1cb6c6e500d"
+    }
+  },
+  "unit list": {
+    "proof": {
+      "throws": false,
+      "steps": 378,
+      "stopReason": "halted",
+      "terminal": "c8401a2cf6cb787c3d71c0decc723deffd64e275ae59d6cd017049f261079a74",
+      "digest": "44395319f0eb26ebe4f105a9491c3caaf9e421389d44ff23afd9eace5bf075d8"
+    },
+    "verdict": {
+      "throws": false,
+      "steps": 378,
+      "stopReason": "halted",
+      "terminal": "c8401a2cf6cb787c3d71c0decc723deffd64e275ae59d6cd017049f261079a74",
+      "digest": "69dc33fc0699123b20010cd243c7e75c15c77aec514ce427523368b694425414"
+    }
+  },
+  "pair list": {
+    "proof": {
+      "throws": false,
+      "steps": 233,
+      "stopReason": "halted",
+      "terminal": "c8fdbf25ce4b939c3bfa8f4cd088a822e4ff625147a9354b91feb5637cef2dca",
+      "digest": "ad8e078068c54f7e1db9a321cf0aac4e77c1e9e61160c0a93165e062854d78cd"
+    },
+    "verdict": {
+      "throws": false,
+      "steps": 233,
+      "stopReason": "halted",
+      "terminal": "c8fdbf25ce4b939c3bfa8f4cd088a822e4ff625147a9354b91feb5637cef2dca",
+      "digest": "9fa1dd8a863d9f47c79413a194d408a5e6c6629a93d9fef4cd656a57e2ac11cf"
+    }
+  },
+  "headList of an empty list": {
+    "proof": {
+      "throws": false,
+      "steps": 13,
+      "stopReason": "halted",
+      "terminal": "90fb4fe2ff6c0ac07ff31a8e9f64e64e43682ddda9c2d0424d0a42c330954177",
+      "digest": "13480877129c2f9a6fe3962059e1fd59805f2518cb51a558d56db0a6b3b99256"
+    },
+    "verdict": {
+      "throws": false,
+      "steps": 13,
+      "stopReason": "halted",
+      "terminal": "90fb4fe2ff6c0ac07ff31a8e9f64e64e43682ddda9c2d0424d0a42c330954177",
+      "digest": "0c10b9380ead1e32ca32c4eb9c9839e5915257bc0cb7b717e613ff99cfb68e1b"
+    }
+  },
+  "tailList of an empty list": {
+    "proof": {
+      "throws": false,
+      "steps": 13,
+      "stopReason": "halted",
+      "terminal": "90fb4fe2ff6c0ac07ff31a8e9f64e64e43682ddda9c2d0424d0a42c330954177",
+      "digest": "e2c3eca03efd410fe93139629119b94c5ecd74d607731f43505874967841be16"
+    },
+    "verdict": {
+      "throws": false,
+      "steps": 13,
+      "stopReason": "halted",
+      "terminal": "90fb4fe2ff6c0ac07ff31a8e9f64e64e43682ddda9c2d0424d0a42c330954177",
+      "digest": "85d5700e782c7b251cb660f2be2cdda972da9bbf04c8eda5487dff624f789f80"
+    }
+  },
+  "headList of an integer": {
+    "proof": {
+      "throws": false,
+      "steps": 13,
+      "stopReason": "halted",
+      "terminal": "90fb4fe2ff6c0ac07ff31a8e9f64e64e43682ddda9c2d0424d0a42c330954177",
+      "digest": "25916ea14dd65c48370b01da4a12e34822da17e66f3a11692f6f9c616185b541"
+    },
+    "verdict": {
+      "throws": false,
+      "steps": 13,
+      "stopReason": "halted",
+      "terminal": "90fb4fe2ff6c0ac07ff31a8e9f64e64e43682ddda9c2d0424d0a42c330954177",
+      "digest": "ecd7fc0e5d0d9bf9f29cdbd79a11f612b28424c0ae80ec4831a49892a383c1a2"
+    }
+  },
+  "unConstrData of an integer": {
+    "proof": {
+      "throws": false,
+      "steps": 11,
+      "stopReason": "halted",
+      "terminal": "a127a9aaec7d74e149db40ce903cc1f754d233c234c4b450c7c657ebdab01154",
+      "digest": "34115c57df2dc946e642925151f785e929bd2ddd3ed2c8a5b223cf16fac80c0d"
+    },
+    "verdict": {
+      "throws": false,
+      "steps": 11,
+      "stopReason": "halted",
+      "terminal": "a127a9aaec7d74e149db40ce903cc1f754d233c234c4b450c7c657ebdab01154",
+      "digest": "b95923ec5776a1b1a2c7c112c39367c5bde999d2de665b89a1c8953814787c38"
+    }
+  },
+  "unConstrData of a large list": {
+    "proof": {
+      "throws": false,
+      "steps": 12,
+      "stopReason": "halted",
+      "terminal": "a127a9aaec7d74e149db40ce903cc1f754d233c234c4b450c7c657ebdab01154",
+      "digest": "5ad2b96d6a34a70e032466a6bb1f1c875515e987c0f7958eb94798653875ece7"
+    },
+    "verdict": {
+      "throws": false,
+      "steps": 12,
+      "stopReason": "halted",
+      "terminal": "a127a9aaec7d74e149db40ce903cc1f754d233c234c4b450c7c657ebdab01154",
+      "digest": "272e8afa4e9cedbb55aaff1119bfd32deb42c725e6e9f50ba9105e87c2111dd9"
+    }
+  },
+  "unMapData of an integer": {
+    "proof": {
+      "throws": false,
+      "steps": 11,
+      "stopReason": "halted",
+      "terminal": "a127a9aaec7d74e149db40ce903cc1f754d233c234c4b450c7c657ebdab01154",
+      "digest": "179fe235606fba90d223327351ad50492e160b201a329d2b5b2842ae3d021316"
+    },
+    "verdict": {
+      "throws": false,
+      "steps": 11,
+      "stopReason": "halted",
+      "terminal": "a127a9aaec7d74e149db40ce903cc1f754d233c234c4b450c7c657ebdab01154",
+      "digest": "e8d55e55390a4bfd9dcfdb00ba54685617b1b5a7e0321831a2a0dfdc2193243e"
+    }
+  },
+  "unMapData of a large list": {
+    "proof": {
+      "throws": false,
+      "steps": 12,
+      "stopReason": "halted",
+      "terminal": "a127a9aaec7d74e149db40ce903cc1f754d233c234c4b450c7c657ebdab01154",
+      "digest": "1cc033b01d0e7f689f545aa4f760a440a84f0bb167c306af07968bdd8f2745ac"
+    },
+    "verdict": {
+      "throws": false,
+      "steps": 12,
+      "stopReason": "halted",
+      "terminal": "a127a9aaec7d74e149db40ce903cc1f754d233c234c4b450c7c657ebdab01154",
+      "digest": "0caae2d3e50d05f7d0c7d9172290fe9f004c8942c87b21e8c91a34591142d6f1"
+    }
+  },
+  "unListData of a map": {
+    "proof": {
+      "throws": false,
+      "steps": 11,
+      "stopReason": "halted",
+      "terminal": "a127a9aaec7d74e149db40ce903cc1f754d233c234c4b450c7c657ebdab01154",
+      "digest": "6aceb121e78dce402019909f8bccb8e5df635d8940064aaefb8670388a2c41f8"
+    },
+    "verdict": {
+      "throws": false,
+      "steps": 11,
+      "stopReason": "halted",
+      "terminal": "a127a9aaec7d74e149db40ce903cc1f754d233c234c4b450c7c657ebdab01154",
+      "digest": "56e22201136c1c971ceced55dcf32351960ff039259c59d068923c88549aa2b9"
+    }
+  },
+  "unIData of a byte string": {
+    "proof": {
+      "throws": false,
+      "steps": 11,
+      "stopReason": "halted",
+      "terminal": "a127a9aaec7d74e149db40ce903cc1f754d233c234c4b450c7c657ebdab01154",
+      "digest": "9aca3ea15c8ae07396e8db52c0213cb3c2431ccf94cc55d075d49ae31abd15f7"
+    },
+    "verdict": {
+      "throws": false,
+      "steps": 11,
+      "stopReason": "halted",
+      "terminal": "a127a9aaec7d74e149db40ce903cc1f754d233c234c4b450c7c657ebdab01154",
+      "digest": "8d9d2e1ba35a105391d0de9cdd3ac214cc28117f6c8cfd9dc3fd913a64d8d57b"
+    }
+  },
+  "unBData of an integer": {
+    "proof": {
+      "throws": false,
+      "steps": 11,
+      "stopReason": "halted",
+      "terminal": "a127a9aaec7d74e149db40ce903cc1f754d233c234c4b450c7c657ebdab01154",
+      "digest": "8716083125125aebcfffcc564285730432a0d9e05e9140e93827b59c94ab9c92"
+    },
+    "verdict": {
+      "throws": false,
+      "steps": 11,
+      "stopReason": "halted",
+      "terminal": "a127a9aaec7d74e149db40ce903cc1f754d233c234c4b450c7c657ebdab01154",
+      "digest": "04d0078052b861326b3563e8248ecf6651a4ac0ddde2e1da82759e2e2501fff9"
+    }
+  },
+  "mkCons of an integer onto a Data list": {
+    "proof": {
+      "throws": false,
+      "steps": 17,
+      "stopReason": "halted",
+      "terminal": "fce6161943dcbe338c9ff0437bb0aed78a0963d5c8485aa37285e8c661432a0e",
+      "digest": "7bd7b6f7f02cb705f164de15b74ac25c0cf20dffd1d400d0f511b3018ebb0129"
+    },
+    "verdict": {
+      "throws": false,
+      "steps": 17,
+      "stopReason": "halted",
+      "terminal": "fce6161943dcbe338c9ff0437bb0aed78a0963d5c8485aa37285e8c661432a0e",
+      "digest": "13712acf373b55cf76ae9436e7540dae22aa92f65b9786575d1b32f41252c565"
+    }
+  },
+  "mkCons of Data onto an integer list": {
+    "proof": {
+      "throws": false,
+      "steps": 17,
+      "stopReason": "halted",
+      "terminal": "fce6161943dcbe338c9ff0437bb0aed78a0963d5c8485aa37285e8c661432a0e",
+      "digest": "002d2f3a6878c639409fb2f7004d974d7c0b81457be2d2b064c238f8ff68a1e9"
+    },
+    "verdict": {
+      "throws": false,
+      "steps": 17,
+      "stopReason": "halted",
+      "terminal": "fce6161943dcbe338c9ff0437bb0aed78a0963d5c8485aa37285e8c661432a0e",
+      "digest": "1ca22dfd68991843874db165e973a394eb0705ea1a1e6cbce5251700c0ca8187"
+    }
+  },
+  "mkCons onto a large Data list with a wrong item": {
+    "proof": {
+      "throws": false,
+      "steps": 23,
+      "stopReason": "halted",
+      "terminal": "5913a4f7cae480eb2b2d5c66229d36f1e6c391fd6b01504bcc9ff151bf363ba9",
+      "digest": "943386168235f7c2b6dbcb53034b75a09420530d888b4260ec8062c8ffd7c303"
+    },
+    "verdict": {
+      "throws": false,
+      "steps": 23,
+      "stopReason": "halted",
+      "terminal": "5913a4f7cae480eb2b2d5c66229d36f1e6c391fd6b01504bcc9ff151bf363ba9",
+      "digest": "c9a2eee0c21c8c3dd553ecad48fc606cd6422d352c5c0728fae6b8b8b64e67a1"
+    }
+  },
+  "mkCons of a byte string onto a near-bound Data list": {
+    "proof": {
+      "throws": true
+    },
+    "verdict": {
+      "throws": false,
+      "steps": 18,
+      "stopReason": "halted",
+      "terminal": "cd2f0bd3ee2c03ee0de127aff02fc3a8ce4b1017c99b6653db3eb8fbb9326782",
+      "digest": "a579bf19b6eb811ccea490edf6ae68a75d01154a234622a9cd60d1d37d4e19d4"
+    }
+  },
+  "constrData with a negative index": {
+    "proof": {
+      "throws": true
+    },
+    "verdict": {
+      "throws": true
+    }
+  },
+  "constrData of an integer list": {
+    "proof": {
+      "throws": false,
+      "steps": 15,
+      "stopReason": "halted",
+      "terminal": "ca1b94cb44defab256da18ae4369ff9035a6a059bb2430308f38352c54411782",
+      "digest": "8d75a61753c9a91bc14891c3d57d6637e881ebd544bbc06fbe5b1658daffef4b"
+    },
+    "verdict": {
+      "throws": false,
+      "steps": 15,
+      "stopReason": "halted",
+      "terminal": "ca1b94cb44defab256da18ae4369ff9035a6a059bb2430308f38352c54411782",
+      "digest": "f8dee57dab96b4cd5010f22b7e08f5813185882f9923d454b579a7644fe302a5"
+    }
+  },
+  "fstPair of an integer": {
+    "proof": {
+      "throws": false,
+      "steps": 15,
+      "stopReason": "halted",
+      "terminal": "ca1b94cb44defab256da18ae4369ff9035a6a059bb2430308f38352c54411782",
+      "digest": "568fa0fdaa0718bf34509d12770525772a9cc30fcaebe8a55a239cf2237fb9d5"
+    },
+    "verdict": {
+      "throws": false,
+      "steps": 15,
+      "stopReason": "halted",
+      "terminal": "ca1b94cb44defab256da18ae4369ff9035a6a059bb2430308f38352c54411782",
+      "digest": "d8be0e82a949b05e9b623fece5b040344432eb41fec1995cb3f1d8af1651a2c0"
+    }
+  },
+  "chooseList of an integer": {
+    "proof": {
+      "throws": false,
+      "steps": 23,
+      "stopReason": "halted",
+      "terminal": "d042db011a3d84ecccf03186301f7432de805f6e8c6d8f4a0e0b848dc5615449",
+      "digest": "7558dc1e322d9831b484aa492c1031ab36a740f3bee4b80e212ce9467f27bfe0"
+    },
+    "verdict": {
+      "throws": false,
+      "steps": 23,
+      "stopReason": "halted",
+      "terminal": "d042db011a3d84ecccf03186301f7432de805f6e8c6d8f4a0e0b848dc5615449",
+      "digest": "1778afd13d900c7e5925f3bb1d68b8a77ad0edc1ac4b2a0b84640d1e811ecd65"
+    }
+  },
+  "mapData of a Data list": {
+    "proof": {
+      "throws": false,
+      "steps": 11,
+      "stopReason": "halted",
+      "terminal": "a127a9aaec7d74e149db40ce903cc1f754d233c234c4b450c7c657ebdab01154",
+      "digest": "7fde827dbca218815ea0a3ce6f3409969c9905b53e6c7bdfe80b7cd44b0ad2c0"
+    },
+    "verdict": {
+      "throws": false,
+      "steps": 11,
+      "stopReason": "halted",
+      "terminal": "a127a9aaec7d74e149db40ce903cc1f754d233c234c4b450c7c657ebdab01154",
+      "digest": "8a10616d953d8b6f2a02d4232de32752f6d4f91b8aeda0622bb99fdd4fc55f2b"
+    }
+  },
+  "listData of an integer": {
+    "proof": {
+      "throws": false,
+      "steps": 11,
+      "stopReason": "halted",
+      "terminal": "a127a9aaec7d74e149db40ce903cc1f754d233c234c4b450c7c657ebdab01154",
+      "digest": "a0b769514ff0a5101fa2e183ac05262dcc36d7c0814d52364e528d93217e84f2"
+    },
+    "verdict": {
+      "throws": false,
+      "steps": 11,
+      "stopReason": "halted",
+      "terminal": "a127a9aaec7d74e149db40ce903cc1f754d233c234c4b450c7c657ebdab01154",
+      "digest": "135a780dc3df13c12b1f1a5305bb95abf721749940e1c6bc68ef50facaa18356"
+    }
+  }
+}
