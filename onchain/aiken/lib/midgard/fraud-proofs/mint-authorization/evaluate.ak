@@ -501,3 +501,24 @@ test changed_signer_carriage_refused() fail {
   expect _ = authenticate_payload(state, [raw |> bytearray.concat(#"00")])
   True
 }
+
+test payload_prefix_of_the_committed_chunks_refused() fail {
+  // The parts authenticate as the first committed chunk and match the claimed
+  // raw length, but a committed chunk is left over.
+  let state = State {
+    ..fixture(#"0102"),
+    preimage_chunk_hashes: [blake2b_256(#"0102"), blake2b_256(#"03")],
+  }
+  expect _ = authenticate_payload(state, [#"0102"])
+  True
+}
+
+test signer_past_the_count_with_a_carried_witness_refused() fail {
+  // A second witness follows the first, so the slice at the next signer
+  // offset reads `58 65`; only the count bound refuses the extra signer.
+  let Pair(state, raw) = signer_fixture()
+  let witness = builtin.slice_bytearray(state.signer_start, 103, raw)
+  let two = raw |> bytearray.concat(witness)
+  expect _ = advance(state, two, [Signer, Signer])
+  True
+}
