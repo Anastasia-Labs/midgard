@@ -87,7 +87,11 @@ import { publishTransitionTraceYields } from "./transition-trace-yields.js";
 /** Each test file registers its own suite, measurement rows and module spies. */
 export const registerTransitionTraceFinalCases = (
   cases: readonly TransitionTraceFinalCase[],
-  fitLedgerSuffix?: "many-assets" | "deep-deposit" | "drained",
+  fitLedgerSuffix?:
+    | "many-assets"
+    | "deep-deposit"
+    | "drained"
+    | "maximum-shape",
 ): void => {
   const fitRows: VanRossemFitMeasurement[] = [];
   const records: unknown[] = [];
@@ -151,6 +155,8 @@ export const registerTransitionTraceFinalCases = (
         datumBytes = 0,
         datumCbor,
         drained = false,
+        spentCount = 0,
+        ledgerFill = 0,
       }) => {
         const realBlueprint = readBlueprint(realBlueprintPath);
         const alwaysBlueprint = readBlueprint(alwaysSucceedsBlueprintPath);
@@ -183,12 +189,11 @@ export const registerTransitionTraceFinalCases = (
         emulator.submitTx = async (cbor) => {
           const result = await submit(cbor);
           const m = measureCompleteSignedTransaction(cbor);
-          expect(m.executionMemory).toBeLessThanOrEqual(13_200_000n);
           const outputs = CML.Transaction.from_cbor_hex(cbor).body().outputs();
           let publication = false;
           for (let i = 0; i < outputs.len(); i++)
             if (outputs.get(i).script_ref() != null) publication = true;
-          const shape = `assets-${assetCount}-outputs-${outputCount}-bytes-${outputBytes}-field-${fieldBytes}-honest-${honest}-depth-${depth}-kind-${kind}-cancel-${cancelAt}-datum-${datumCbor === undefined ? datumBytes : `cbor-${datumCbor.length / 2}`}-corrupt-index-${corruptAssetIndex}-corrupt-walk-${corruptWalk}-corrupt-source-${corruptSourceReference}`;
+          const shape = `assets-${assetCount}-outputs-${outputCount}-bytes-${outputBytes}-field-${fieldBytes}-honest-${honest}-depth-${depth}-kind-${kind}-cancel-${cancelAt}-datum-${datumCbor === undefined ? datumBytes : `cbor-${datumCbor.length / 2}`}-corrupt-index-${corruptAssetIndex}-corrupt-walk-${corruptWalk}-corrupt-source-${corruptSourceReference}${spentCount > 0 ? `-spent-${spentCount}` : ""}${ledgerFill > 0 ? `-fill-${ledgerFill}` : ""}`;
           records.push({
             label: `${shape}/tx-${measuredIndex}`,
             txHash: result,
@@ -204,6 +209,7 @@ export const registerTransitionTraceFinalCases = (
             memoryUnits: m.executionMemory,
             cpuUnits: m.executionSteps,
           });
+          expect(m.executionMemory).toBeLessThanOrEqual(13_200_000n);
           if (
             process.env.TRANSITION_TRACE_FIT_PROGRESS === "1" &&
             measuredIndex % 100 === 0
@@ -375,6 +381,8 @@ export const registerTransitionTraceFinalCases = (
           honest,
           depth,
           drained,
+          spentCount,
+          ledgerFill,
           operatorVkey: funderPaymentCredential.hash,
           now: headerStartTime,
         });

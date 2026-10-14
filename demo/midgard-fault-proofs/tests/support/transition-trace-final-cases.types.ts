@@ -15,4 +15,8 @@ export type TransitionTraceFinalCase = Readonly<{
   /** An output datum's CBOR, in place of a `datumBytes` byte string. */
   datumCbor?: string;
   drained?: boolean;
+  /** Ledger entries the transaction spends besides any drained entry. */
+  spentCount?: number;
+  /** Unrelated ledger entries that deepen every MPF proof. */
+  ledgerFill?: number;
 }>;

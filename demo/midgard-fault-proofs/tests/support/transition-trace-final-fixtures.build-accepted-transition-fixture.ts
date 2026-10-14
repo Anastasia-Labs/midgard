@@ -1,9 +1,11 @@
 import { Trie } from "@aiken-lang/merkle-patricia-forestry";
 import {
+  buildMidgardMpfDeletionOpening,
   computeMidgardNativeTxId,
   deriveMidgardNativeTxProofSource,
   encodeMidgardFieldPreimage,
   encodeMidgardSpendInputItem,
+  parseMidgardMpfProofJson,
 } from "@al-ft/midgard-core";
 import * as SDK from "@al-ft/midgard-sdk";
 import { buildCanonicalMidgardLedgerOutputMaterial } from "@al-ft/midgard-validation";
@@ -31,6 +33,8 @@ export const buildAcceptedTransitionFixture = async ({
   honest = false,
   depth = 0,
   drained = false,
+  spentCount = 0,
+  ledgerFill = 0,
   outputCbors = [
     Buffer.from("a200581d60" + "aa".repeat(28) + "01821a001e8480a0", "hex"),
   ],
@@ -40,6 +44,10 @@ export const buildAcceptedTransitionFixture = async ({
   honest?: boolean;
   depth?: number;
   drained?: boolean;
+  /** Spend this many ledger entries (each holding the first output) as well. */
+  spentCount?: number;
+  /** Unrelated ledger entries, so MPF proofs have a realistic depth. */
+  ledgerFill?: number;
   outputCbors?: Buffer[];
 }) => {
   const drainedEntry = drained
@@ -61,8 +69,31 @@ export const buildAcceptedTransitionFixture = async ({
           }).descriptorCbor,
         );
   const txOutputCbors = drained ? [] : outputCbors;
+  const extraSpent = Array.from({ length: spentCount }, (_, outputIndex) => ({
+    outRef: encodeMidgardSpendInputItem({
+      txId: Buffer.alloc(32, 0xed),
+      outputIndex,
+    }),
+    value: Buffer.from(
+      buildCanonicalMidgardLedgerOutputMaterial({
+        outputIndex,
+        outputCbor: outputCbors[0]!,
+      }).descriptorCbor,
+    ),
+  }));
+  const fill = Array.from({ length: ledgerFill }, (_, index) => ({
+    key: encodeMidgardSpendInputItem({
+      txId: Buffer.alloc(32, 0xec),
+      outputIndex: index,
+    }),
+    value: Buffer.alloc(32, 0x01),
+  }));
+  const spendInputCbors = [
+    ...(drainedEntry === null ? [] : [drainedEntry.outRef]),
+    ...extraSpent.map(({ outRef }) => outRef),
+  ];
   const native = makeNativeTx({
-    spendInputCbors: drainedEntry === null ? [] : [drainedEntry.outRef],
+    spendInputCbors,
     fee: drained ? 2_000_000n : 0n,
     outputCbors: txOutputCbors,
   });
@@ -80,13 +111,15 @@ export const buildAcceptedTransitionFixture = async ({
     },
     SDK.L2TransactionSource,
   );
-  const ledger = await Trie.fromList(
-    drainedEntry === null
+  const ledger = await Trie.fromList([
+    ...(drainedEntry === null
       ? []
-      : [{ key: drainedEntry.outRef, value: drainedValue! }],
-  );
+      : [{ key: drainedEntry.outRef, value: drainedValue! }]),
+    ...extraSpent.map(({ outRef, value }) => ({ key: outRef, value })),
+    ...fill,
+  ]);
   const preUtxosRoot =
-    drainedEntry === null
+    ledger.hash === null
       ? SDK.EMPTY_MERKLE_TREE_ROOT
       : ledger.hash.toString("hex");
   const spent: SDK.LedgerDeleteWitness[] = [];
@@ -101,6 +134,21 @@ export const buildAcceptedTransitionFixture = async ({
       ),
     });
     await ledger.delete(drainedEntry.outRef);
+  }
+  for (const { outRef, value } of extraSpent) {
+    const proved = await ledger.prove(outRef);
+    const opening = await buildMidgardMpfDeletionOpening(
+      ledger,
+      outRef,
+      parseMidgardMpfProofJson(proved.toJSON()),
+    );
+    spent.push({
+      key: outRef.toString("hex"),
+      value: value.toString("hex"),
+      opening: opening.toString("hex"),
+      delete_proof: Data.from(proved.toCBOR().toString("hex"), SDK.Proof),
+    });
+    await ledger.delete(outRef);
   }
   const produced: SDK.LedgerInsertWitness[] = [];
   for (const [index, bytes] of txOutputCbors.entries()) {
@@ -219,9 +267,8 @@ export const buildAcceptedTransitionFixture = async ({
               value: encodedSource,
               proof: deep === null ? [] : Data.from(deep.proofCbor, SDK.Proof),
             },
-            spend_inputs_preimage: encodeMidgardFieldPreimage(
-              drainedEntry === null ? [] : [drainedEntry.outRef],
-            ).toString("hex"),
+            spend_inputs_preimage:
+              encodeMidgardFieldPreimage(spendInputCbors).toString("hex"),
             outputs_preimage:
               encodeMidgardFieldPreimage(txOutputCbors).toString("hex"),
             spent_utxos: spent,
