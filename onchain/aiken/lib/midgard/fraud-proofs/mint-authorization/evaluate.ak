@@ -69,8 +69,9 @@ fn chunks_bounded(
   reference_inputs: List<Input>,
   maximum: Int,
 ) -> List<ByteArray> {
-  expect list.length(indices) > 0
-  expect list.length(indices) <= maximum
+  let count = list.length(indices)
+  expect count > 0
+  expect count <= maximum
   list.map(
     indices,
     fn(index) {
@@ -88,116 +89,256 @@ pub fn payload(parts: List<ByteArray>) -> ByteArray {
   list.foldl(parts, #"", fn(part, acc) { bytearray.concat(acc, part) })
 }
 
+/// Concatenates the chunks in order while checking each against its committed
+/// hash, in one pass. Both lists must end together, so the chunk list equals
+/// the committed hash list element by element and in length.
+fn authenticated_payload(
+  parts: List<ByteArray>,
+  hashes: List<ByteArray>,
+  acc: ByteArray,
+) -> ByteArray {
+  when parts is {
+    [] -> {
+      expect [] = hashes
+      acc
+    }
+    [part, ..rest] -> {
+      expect [hash, ..hashes] = hashes
+      expect blake2b_256(part) == hash
+      authenticated_payload(rest, hashes, bytearray.concat(acc, part))
+    }
+  }
+}
+
 pub fn authenticate_payload(state: State, parts: List<ByteArray>) -> ByteArray {
-  expect list.map(parts, blake2b_256) == state.preimage_chunk_hashes
-  let bytes = payload(parts)
+  let bytes = authenticated_payload(parts, state.preimage_chunk_hashes, #"")
   expect bytearray.length(bytes) == state.raw_length
   bytes
 }
 
-pub fn token(state: State, bytes: ByteArray) -> State {
-  expect state.signer_index == state.signer_count
-  expect state.result == -1
-  expect state.cursor < state.script_length
-  expect Some(token) = scan.token_at_v1(bytes, state.cursor, state.cursor)
-  expect token.next_offset <= state.script_length
-  let node_count = state.node_count + 1
-  expect node_count <= scan.max_native_script_nodes
-  if token.kind >= scan.all_node && token.kind <= scan.at_least_node && token.child_count > 0 {
-    expect Some(frame) = scan.frame_for_token_v1(token, state.stack_root)
-    let depth = state.stack_depth + 1
-    expect depth <= scan.max_native_script_depth
-    State {
-      ..state,
-      cursor: token.next_offset,
-      node_count,
-      stack_root: scan.hash_frame_v1(frame),
-      stack_depth: depth,
-    }
-  } else {
-    let valid = if token.kind == scan.signature_node {
-      list.has(state.signer_hashes, token.key_hash)
-    } else if token.kind == scan.after_node {
-      state.validity_interval_start >= 0 && state.validity_interval_start >= token.slot
-    } else if
-    token.kind == scan.before_node {
-      state.validity_interval_end >= 0 && state.validity_interval_end <= token.slot
-    } else {
-      expect Some(valid) = scan.empty_container_result_v1(token)
-      valid
-    }
-    State {
-      ..state,
-      cursor: token.next_offset,
-      node_count,
-      result: if valid {
-        1
-      } else {
-        0
-      },
-    }
-  }
-}
-
-pub fn frame(state: State, frame: scan.NativeScriptFrameV1) -> State {
-  expect state.signer_index == state.signer_count
-  expect state.result == 0 || state.result == 1
-  expect state.stack_depth > 0
-  expect scan.hash_frame_v1(frame) == state.stack_root
-  expect Some(applied) = scan.apply_child_v1(frame, state.result == 1)
-  when applied is {
-    scan.NativeFramePending { frame: next } ->
-      State { ..state, stack_root: scan.hash_frame_v1(next), result: -1 }
-    scan.NativeFrameComplete { tail, valid } ->
-      State {
-        ..state,
-        stack_root: tail,
-        stack_depth: state.stack_depth - 1,
-        result: if valid {
-          1
-        } else {
-          0
-        },
-      }
-  }
-}
-
-pub fn signer(state: State, bytes: ByteArray) -> State {
-  expect state.signer_index < state.signer_count
-  expect state.cursor == 0 && state.node_count == 0 && state.result == -1
-  let offset = state.signer_start + state.signer_index * 103
-  expect builtin.slice_bytearray(offset, 2, bytes) == #"5865"
-  let witness = decode_midgard_address_witness_cbor(
-    builtin.slice_bytearray(offset + 2, 101, bytes),
-  )
-  State {
-    ..state,
-    signer_index: state.signer_index + 1,
-    signer_hashes: [
-      utils.get_verification_key_hash(witness.verification_key),
-      ..state.signer_hashes
-    ],
-  }
-}
-
+/// Applies one batch of operations. The state record is read once and the
+/// fields an operation can change travel as loop arguments, so each operation
+/// neither rebuilds the record nor re-reads it; the record is rebuilt once at
+/// the end of the batch.
 pub fn advance(
   state: State,
   bytes: ByteArray,
   operations: List<Operation>,
 ) -> State {
-  expect list.length(operations) > 0
-  expect list.length(operations) <= 16
-  list.foldl(
+  let count = list.length(operations)
+  expect count > 0
+  expect count <= 16
+  let
+      State {
+        script_length,
+        signer_start,
+        signer_count,
+        signer_index,
+        signer_hashes,
+        validity_interval_start,
+        validity_interval_end,
+        cursor,
+        node_count,
+        stack_root,
+        stack_depth,
+        result,
+        ..
+      }
+    = state
+  run(
     operations,
     state,
-    fn(operation, current) {
-      when operation is {
-        Signer -> signer(current, bytes)
-        Token -> token(current, bytes)
-        Frame { frame: parent } -> frame(current, parent)
-      }
-    },
+    bytes,
+    script_length,
+    signer_start,
+    signer_count,
+    validity_interval_start,
+    validity_interval_end,
+    signer_index,
+    signer_hashes,
+    cursor,
+    node_count,
+    stack_root,
+    stack_depth,
+    result,
   )
+}
+
+fn run(
+  operations: List<Operation>,
+  state: State,
+  bytes: ByteArray,
+  script_length: Int,
+  signer_start: Int,
+  signer_count: Int,
+  validity_interval_start: Int,
+  validity_interval_end: Int,
+  signer_index: Int,
+  signer_hashes: List<ByteArray>,
+  cursor: Int,
+  node_count: Int,
+  stack_root: ByteArray,
+  stack_depth: Int,
+  result: Int,
+) -> State {
+  when operations is {
+    [] ->
+      State {
+        ..state,
+        signer_index,
+        signer_hashes,
+        cursor,
+        node_count,
+        stack_root,
+        stack_depth,
+        result,
+      }
+    [operation, ..rest] ->
+      when operation is {
+        Signer -> {
+          expect signer_index < signer_count
+          expect cursor == 0 && node_count == 0 && result == -1
+          let offset = signer_start + signer_index * 103
+          expect builtin.slice_bytearray(offset, 2, bytes) == #"5865"
+          let witness = decode_midgard_address_witness_cbor(
+            builtin.slice_bytearray(offset + 2, 101, bytes),
+          )
+          run(
+            rest,
+            state,
+            bytes,
+            script_length,
+            signer_start,
+            signer_count,
+            validity_interval_start,
+            validity_interval_end,
+            signer_index + 1,
+            [
+              utils.get_verification_key_hash(witness.verification_key),
+              ..signer_hashes
+            ],
+            cursor,
+            node_count,
+            stack_root,
+            stack_depth,
+            result,
+          )
+        }
+        Token -> {
+          expect signer_index == signer_count
+          expect result == -1
+          expect cursor < script_length
+          expect Some(token) = scan.token_at_v1(bytes, cursor, cursor)
+          expect token.next_offset <= script_length
+          let node_count = node_count + 1
+          expect node_count <= scan.max_native_script_nodes
+          if token.kind >= scan.all_node && token.kind <= scan.at_least_node && token.child_count > 0 {
+            expect Some(frame) = scan.frame_for_token_v1(token, stack_root)
+            let depth = stack_depth + 1
+            expect depth <= scan.max_native_script_depth
+            run(
+              rest,
+              state,
+              bytes,
+              script_length,
+              signer_start,
+              signer_count,
+              validity_interval_start,
+              validity_interval_end,
+              signer_index,
+              signer_hashes,
+              token.next_offset,
+              node_count,
+              scan.hash_frame_v1(frame),
+              depth,
+              result,
+            )
+          } else {
+            let valid = if token.kind == scan.signature_node {
+              list.has(signer_hashes, token.key_hash)
+            } else if token.kind == scan.after_node {
+              validity_interval_start >= 0 && validity_interval_start >= token.slot
+            } else if
+            token.kind == scan.before_node {
+              validity_interval_end >= 0 && validity_interval_end <= token.slot
+            } else {
+              expect Some(valid) = scan.empty_container_result_v1(token)
+              valid
+            }
+            run(
+              rest,
+              state,
+              bytes,
+              script_length,
+              signer_start,
+              signer_count,
+              validity_interval_start,
+              validity_interval_end,
+              signer_index,
+              signer_hashes,
+              token.next_offset,
+              node_count,
+              stack_root,
+              stack_depth,
+              if valid {
+                1
+              } else {
+                0
+              },
+            )
+          }
+        }
+        Frame { frame: parent } -> {
+          expect signer_index == signer_count
+          expect result == 0 || result == 1
+          expect stack_depth > 0
+          expect scan.hash_frame_v1(parent) == stack_root
+          expect Some(applied) = scan.apply_child_v1(parent, result == 1)
+          when applied is {
+            scan.NativeFramePending { frame: next } ->
+              run(
+                rest,
+                state,
+                bytes,
+                script_length,
+                signer_start,
+                signer_count,
+                validity_interval_start,
+                validity_interval_end,
+                signer_index,
+                signer_hashes,
+                cursor,
+                node_count,
+                scan.hash_frame_v1(next),
+                stack_depth,
+                -1,
+              )
+            scan.NativeFrameComplete { tail, valid } ->
+              run(
+                rest,
+                state,
+                bytes,
+                script_length,
+                signer_start,
+                signer_count,
+                validity_interval_start,
+                validity_interval_end,
+                signer_index,
+                signer_hashes,
+                cursor,
+                node_count,
+                tail,
+                stack_depth - 1,
+                if valid {
+                  1
+                } else {
+                  0
+                },
+              )
+          }
+        }
+      }
+  }
 }
 
 fn fixture(bytes: ByteArray) -> State {
@@ -281,7 +422,7 @@ test batch_empty_refused() fail {
 }
 
 test token_noncanonical_refused() fail {
-  expect _ = token(fixture(#"82180280"), #"82180280")
+  expect _ = advance(fixture(#"82180280"), #"82180280", [Token])
   True
 }
 
@@ -298,10 +439,10 @@ test timelock_start_exact_and_adjacent() {
   let bytes = #"82041864"
   let initial = fixture(bytes)
   and {
-    token(State { ..initial, validity_interval_start: 99 }, bytes).result == 0,
-    token(State { ..initial, validity_interval_start: 100 }, bytes).result == 1,
-    token(State { ..initial, validity_interval_start: 101 }, bytes).result == 1,
-    token(initial, bytes).result == 0,
+    advance(State { ..initial, validity_interval_start: 99 }, bytes, [Token]).result == 0,
+    advance(State { ..initial, validity_interval_start: 100 }, bytes, [Token]).result == 1,
+    advance(State { ..initial, validity_interval_start: 101 }, bytes, [Token]).result == 1,
+    advance(initial, bytes, [Token]).result == 0,
   }
 }
 
@@ -309,10 +450,10 @@ test timelock_end_exact_and_adjacent() {
   let bytes = #"82051864"
   let initial = fixture(bytes)
   and {
-    token(State { ..initial, validity_interval_end: 99 }, bytes).result == 1,
-    token(State { ..initial, validity_interval_end: 100 }, bytes).result == 1,
-    token(State { ..initial, validity_interval_end: 101 }, bytes).result == 0,
-    token(initial, bytes).result == 0,
+    advance(State { ..initial, validity_interval_end: 99 }, bytes, [Token]).result == 1,
+    advance(State { ..initial, validity_interval_end: 100 }, bytes, [Token]).result == 1,
+    advance(State { ..initial, validity_interval_end: 101 }, bytes, [Token]).result == 0,
+    advance(initial, bytes, [Token]).result == 0,
   }
 }
 
