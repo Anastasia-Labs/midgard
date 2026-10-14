@@ -344,6 +344,7 @@ export const resolveHistoryCommitBlockTime = ({
   latestEndTime,
   nowMs,
   minimumFutureBufferMs,
+  schedulerWindowStartTimeMs,
   schedulerWindowEndTimeMs,
   appendFenceEndTimeMs,
   coverageHorizonMs,
@@ -353,6 +354,7 @@ export const resolveHistoryCommitBlockTime = ({
   readonly latestEndTime: number;
   readonly nowMs: number;
   readonly minimumFutureBufferMs: number;
+  readonly schedulerWindowStartTimeMs?: number;
   readonly schedulerWindowEndTimeMs?: number;
   readonly appendFenceEndTimeMs?: number;
   readonly coverageHorizonMs?: number;
@@ -366,7 +368,10 @@ export const resolveHistoryCommitBlockTime = ({
   const fitAt = (maximumEndTimeMs: number) =>
     resolveLatestFeasibleCommitEndTime({
       lucid,
-      latestEndTime,
+      latestEndTime:
+        schedulerWindowStartTimeMs === undefined
+          ? latestEndTime
+          : Math.max(latestEndTime, schedulerWindowStartTimeMs - 1),
       nowMs,
       minimumFutureBufferMs,
       maximumEndTimeMs,
