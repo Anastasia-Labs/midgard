@@ -12,6 +12,10 @@ import {
   type MidgardCekStructuralExecution,
   MidgardCekWallCapExceeded,
 } from "./cek-executor.js";
+import {
+  type MidgardCekGatedSet,
+  MidgardCekOutsideGatedSet,
+} from "./cek-gated-set.js";
 import { type LocalScriptEvalResult } from "./types.js";
 
 /** One Phase B script execution: its program, context and limits. */
@@ -29,6 +33,11 @@ export type MidgardCekScriptRun = {
    * absolute time, so a run moved to another thread keeps the same deadline.
    */
   readonly wallDeadlineMs?: number;
+  /**
+   * Stops the run as `outside_gated_set` at its first step outside this set.
+   * Plain data, so it crosses a thread boundary with the run.
+   */
+  readonly gatedSet?: MidgardCekGatedSet;
 };
 
 /**
@@ -52,6 +61,23 @@ export class ScriptWallCapExceededError extends Error {
 }
 
 /**
+ * A transaction whose script runs touch a builtin or machine arm outside the
+ * caller's gated set (`PhaseBConfig.cekGatedSet`). Local admission policy,
+ * not the transaction's verdict: admission refuses the transaction and
+ * records no script failure.
+ */
+export class ScriptOutsideGatedSetError extends Error {
+  readonly _tag = "ScriptOutsideGatedSet";
+  constructor(
+    readonly txId: Buffer,
+    detail: string,
+  ) {
+    super(`transaction ${txId.toString("hex")}: ${detail}`);
+    this.name = "ScriptOutsideGatedSetError";
+  }
+}
+
+/**
  * A verdict-mode run as it crosses a thread boundary: the transaction's
  * program-material sidecar travels as its canonical bytes.
  */
@@ -62,7 +88,8 @@ export type MidgardCekVerdictRequest = MidgardCekScriptRun & {
 /**
  * Runs one Phase B script on the structural CEK executor. Every failure,
  * thrown or halted, is a `script_invalid` verdict, except a run that passes
- * its wall-clock deadline, which is `wall_cap_exceeded`. A budget stop is
+ * its wall-clock deadline, which is `wall_cap_exceeded`, and a run stopped
+ * outside its gated set, which is `outside_gated_set`. A budget stop is
  * reported as accepted with the spent budget; the caller compares it with
  * the declared ex-units.
  */
@@ -88,6 +115,7 @@ export const evaluateMidgardCekScript = (
       executionBudget: run.executionBudget,
       mode,
       wallDeadlineMs: run.wallDeadlineMs,
+      gatedSet: run.gatedSet,
     });
     return {
       graph,
@@ -115,6 +143,13 @@ export const evaluateMidgardCekScript = (
         graph,
         execution: null,
         result: { kind: "wall_cap_exceeded", detail: cause.message },
+      };
+    }
+    if (cause instanceof MidgardCekOutsideGatedSet) {
+      return {
+        graph,
+        execution: null,
+        result: { kind: "outside_gated_set", detail: cause.message },
       };
     }
     return {

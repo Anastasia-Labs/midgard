@@ -11,7 +11,10 @@ import { Effect } from "effect";
 
 import { findRedeemerByPointer } from "./midgard-redeemers.js";
 import { discoverLocalScriptExecutions } from "./phase-b.discover-local-script-executions.js";
-import { ScriptWallCapExceededError } from "./phase-b.evaluate-cek-script.js";
+import {
+  ScriptOutsideGatedSetError,
+  ScriptWallCapExceededError,
+} from "./phase-b.evaluate-cek-script.js";
 import {
   type CandidateNode,
   collectInlineScriptSources,
@@ -200,6 +203,7 @@ export const runLocalScriptEvaluation = (
             config.maxScriptExecutionSteps ??
             MIDGARD_CONSENSUS_LIMITS.maxValidationMachineStepCount,
           wallDeadlineMs,
+          gatedSet: config.cekGatedSet,
         },
         candidate.submission.programMaterialSidecarCbor,
         proofProgramMaterial,
@@ -219,6 +223,14 @@ export const runLocalScriptEvaluation = (
           new ScriptWallCapExceededError(
             candidate.ledgerTx.txId,
             config.scriptWallCapMs!,
+            `${execution.purpose.kind} ${execution.purpose.scriptHash}: ${result.detail}`,
+          ),
+        );
+      }
+      if (result.kind === "outside_gated_set") {
+        return yield* Effect.fail(
+          new ScriptOutsideGatedSetError(
+            candidate.ledgerTx.txId,
             `${execution.purpose.kind} ${execution.purpose.scriptHash}: ${result.detail}`,
           ),
         );

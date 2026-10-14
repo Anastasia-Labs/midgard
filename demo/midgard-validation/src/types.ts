@@ -9,6 +9,7 @@ import type {
   MidgardCekExecutionMode,
   MidgardCekStructuralExecution,
 } from "./cek-executor.js";
+import type { MidgardCekGatedSet } from "./cek-gated-set.js";
 import type { LedgerEntry } from "./ledger.js";
 import type {
   MidgardLedgerTx,
@@ -243,7 +244,13 @@ export type LocalScriptEvalResult =
    * The run passed its wall-clock deadline (`PhaseBConfig.scriptWallCapMs`).
    * Not a verdict: the caller refuses or evicts the transaction locally.
    */
-  | { readonly kind: "wall_cap_exceeded"; readonly detail: string };
+  | { readonly kind: "wall_cap_exceeded"; readonly detail: string }
+  /**
+   * The run reached a builtin or machine arm outside the caller's gated set
+   * (`PhaseBConfig.cekGatedSet`). Not a verdict: the caller refuses the
+   * transaction locally.
+   */
+  | { readonly kind: "outside_gated_set"; readonly detail: string };
 
 /**
  * Configuration knobs for phase-B validation.
@@ -267,6 +274,15 @@ export type PhaseBConfig = {
    * transactions and the verification of other operators' blocks.
    */
   readonly scriptWallCapMs?: number;
+  /**
+   * A node-local screen for submissions: a transaction whose CEK script runs
+   * reach a builtin or machine arm outside this set makes Phase B fail with
+   * `ScriptOutsideGatedSetError`, never a rejection, so the caller refuses it
+   * locally. Unset everywhere but submission: never at the commit of an
+   * admitted transaction, for forced transactions, or in the verification of
+   * other operators' blocks.
+   */
+  readonly cekGatedSet?: MidgardCekGatedSet;
   /**
    * `verdict` (the default) runs CEK scripts without per-step verification or
    * retention, so each `onScriptEvaluated` report has `execution: null`. A

@@ -2,6 +2,7 @@ import {
   type PhaseAResult,
   type PhaseAValidatedTx,
   runPhaseBValidationWithPatch,
+  ScriptOutsideGatedSetError,
   ScriptWallCapExceededError,
 } from "@al-ft/midgard-validation";
 import { Effect, Either, Metric } from "effect";
@@ -213,14 +214,46 @@ export const validationSubmitWallCapRefusalCounter = Metric.counter(
   },
 );
 
+export const ADMISSION_REJECT_CODE_SCRIPT_OUTSIDE_GATED_SET =
+  "E_ADMISSION_SCRIPT_OUTSIDE_GATED_SET";
+
+export const validationSubmitOutsideGatedSetRefusalCounter = Metric.counter(
+  "validation_submit_outside_gated_set_refusal_count",
+  {
+    description:
+      "Total number of txs refused at admission because their script runs reached a builtin or machine arm outside the gated set",
+    bigint: true,
+    incremental: true,
+  },
+);
+
+/** The admission code and counter of a node-local Phase B refusal. */
+const localRefusalOf = (failure: unknown) => {
+  if (failure instanceof ScriptWallCapExceededError) {
+    return {
+      txId: failure.txId,
+      code: ADMISSION_REJECT_CODE_SCRIPT_WALL_CAP,
+      counter: validationSubmitWallCapRefusalCounter,
+    };
+  }
+  if (failure instanceof ScriptOutsideGatedSetError) {
+    return {
+      txId: failure.txId,
+      code: ADMISSION_REJECT_CODE_SCRIPT_OUTSIDE_GATED_SET,
+      counter: validationSubmitOutsideGatedSetRefusalCounter,
+    };
+  }
+  return null;
+};
+
 /**
  * Runs Phase B, refusing each candidate whose script runs pass the submit
- * wall cap (`scriptWallCapMs`) and running the rest again without it. The
- * refusal is the node's own, under its own code: it records no script
- * verdict, and the transaction may be submitted again. Every other Phase B
- * failure fails the batch as before.
+ * wall cap (`scriptWallCapMs`) or leave the gated set (`cekGatedSet`), and
+ * running the rest again. The refusal is the node's own, under its own code:
+ * it records no script verdict, and the transaction may be submitted again.
+ * Every other Phase B failure fails the batch as before.
  */
-export const runPhaseBRefusingWallCapBreaches = (
+export const runPhaseBRefusingLocalBreaches = (
   candidates: readonly PhaseAValidatedTx[],
   ledgerState: Parameters<typeof runPhaseBValidationWithPatch>[1],
   phaseBConfig: Parameters<typeof runPhaseBValidationWithPatch>[2],
@@ -234,20 +267,19 @@ export const runPhaseBRefusingWallCapBreaches = (
       );
       if (Either.isRight(run)) return { phaseB: run.right, refused };
       const breach = run.left;
-      if (!(breach instanceof ScriptWallCapExceededError)) {
-        return yield* Effect.fail(breach);
-      }
+      const refusal = localRefusalOf(breach);
+      if (refusal === null) return yield* Effect.fail(breach);
       const culprit = remaining.find((candidate) =>
-        candidate.ledgerTx.txId.equals(breach.txId),
+        candidate.ledgerTx.txId.equals(refusal.txId),
       );
       if (culprit === undefined) return yield* Effect.fail(breach);
       yield* Effect.logWarning(
-        `Refusing tx ${breach.txId.toString("hex")} at admission: ${breach.message}`,
+        `Refusing tx ${refusal.txId.toString("hex")} at admission: ${breach.message}`,
       );
-      yield* Metric.increment(validationSubmitWallCapRefusalCounter);
+      yield* Metric.increment(refusal.counter);
       refused.push({
-        txId: Buffer.from(breach.txId),
-        code: ADMISSION_REJECT_CODE_SCRIPT_WALL_CAP,
+        txId: Buffer.from(refusal.txId),
+        code: refusal.code,
         detail: breach.message,
       });
       remaining = remaining.filter((candidate) => candidate !== culprit);
@@ -257,7 +289,8 @@ export const runPhaseBRefusingWallCapBreaches = (
 /**
  * Decides one admission batch against the ledger state: Phase-A survivors
  * that spend an outref named by a pending withdrawal are refused, and the rest
- * run Phase B, which refuses any whose scripts pass the submit wall cap.
+ * run Phase B, which refuses any whose scripts pass the submit wall cap or
+ * leave the gated set.
  * Returns Phase B's result and every rejection of the batch.
  */
 export const decideAdmissionBatch = ({
@@ -276,7 +309,7 @@ export const decideAdmissionBatch = ({
       phaseA.accepted,
       pendingWithdrawalOutRefHexes,
     );
-    const { phaseB, refused } = yield* runPhaseBRefusingWallCapBreaches(
+    const { phaseB, refused } = yield* runPhaseBRefusingLocalBreaches(
       admissible.accepted,
       ledgerState,
       phaseBConfig,

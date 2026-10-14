@@ -8,6 +8,7 @@ export * from "./cek-data.js";
 export * from "./cek-data-scan.js";
 export * from "./cek-data-tree.js";
 export * from "./cek-executor.js";
+export * from "./cek-gated-set.js";
 export * from "./cek-machine.js";
 export * from "./cek-program.js";
 export * from "./ledger.js";

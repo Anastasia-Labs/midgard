@@ -1,4 +1,7 @@
-import { processedTxFromValidatedTx } from "@al-ft/midgard-validation";
+import {
+  MIDGARD_CEK_GATED_SET_V1,
+  processedTxFromValidatedTx,
+} from "@al-ft/midgard-validation";
 import { SqlClient } from "@effect/sql/SqlClient";
 import { Duration, Effect, Exit, Metric, Ref } from "effect";
 
@@ -243,6 +246,7 @@ export const txQueueProcessorAction = (
                         nodeConfig.VALIDATION_G4_BUCKET_CONCURRENCY,
                       enforceScriptBudget: true,
                       scriptWallCapMs: nodeConfig.VALIDATION_SUBMIT_WALL_CAP_MS,
+                      cekGatedSet: MIDGARD_CEK_GATED_SET_V1,
                       evaluateCekVerdict:
                         pooledCekVerdictEvaluator(validationPool),
                     },

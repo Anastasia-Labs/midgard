@@ -4,6 +4,7 @@ import {
   type MidgardCekExecutionStep,
   type MidgardCekStructuralExecution,
 } from "./cek-executor.build-midgard-cek-execution-graph.js";
+import { type MidgardCekStepScreen } from "./cek-gated-set.js";
 import {
   type MidgardCekCoreStepWitness,
   verifyMidgardCekCoreStep,
@@ -68,9 +69,10 @@ export class MidgardCekWallCapExceeded extends Error {
 const WALL_CLOCK_CHECK_INTERVAL = 1024;
 
 /**
- * Owns the step bound, the optional wall-clock deadline and the per-step
- * evidence policy of one structural CEK run. The executor reports every transition here; this decides whether
- * it is verified and kept.
+ * Owns the step bound, the optional wall-clock deadline, the optional
+ * gated-set screen and the per-step evidence policy of one structural CEK
+ * run. The executor reports every transition here; this decides whether it
+ * is verified and kept.
  */
 export class MidgardCekStepRecorder {
   private readonly steps: MidgardCekExecutionStep[] = [];
@@ -82,6 +84,8 @@ export class MidgardCekStepRecorder {
     private readonly observer?: MidgardCekStepObserver,
     /** `Date.now()` time past which the run stops; none when undefined. */
     private readonly wallDeadlineMs?: number,
+    /** Stops the run at a step outside a gated set; none when undefined. */
+    private readonly screen?: MidgardCekStepScreen,
   ) {
     if (observer !== undefined && mode !== "verdict") {
       throw new Error("a CEK step observer runs only without retained steps");
@@ -105,6 +109,7 @@ export class MidgardCekStepRecorder {
     post: MidgardCekMachineState,
     witness: MidgardCekCoreStepWitness,
   ): void {
+    this.screen?.(witness);
     if (this.mode === "proof") {
       if (!verifyMidgardCekCoreStep(pre, post, witness)) {
         throw new Error(
