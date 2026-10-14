@@ -1,9 +1,9 @@
 import { computeHash32 } from "@al-ft/midgard-core";
 
 import {
+  canonicalDataStreamFrameData,
   type CanonicalDataStreamPlan,
   type CanonicalDataStreamStep,
-  canonicalDataStreamFrameData,
   planCanonicalDataStream,
 } from "../canonical-data-stream-plan.js";
 
