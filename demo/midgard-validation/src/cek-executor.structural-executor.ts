@@ -190,6 +190,11 @@ export class StructuralExecutor {
     });
   }
 
+  /** The machine state the next transition starts from. */
+  public get machineState(): MidgardCekMachineState {
+    return this.state;
+  }
+
   public run(executionBudget?: {
     readonly cpu: bigint;
     readonly memory: bigint;

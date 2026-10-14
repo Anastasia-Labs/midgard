@@ -21,6 +21,16 @@ import {
  */
 export type MidgardCekExecutionMode = "proof" | "verdict";
 
+/**
+ * Observes each transition of a run that keeps no per-step evidence (the
+ * streaming commit mode). Returning `false` stops the run after this
+ * transition; the run then ends with the observed post-state.
+ */
+export type MidgardCekStepObserver = (
+  pre: MidgardCekMachineState,
+  post: MidgardCekMachineState,
+) => boolean;
+
 /** A `verdict`-mode run: the terminal outcome without per-step evidence. */
 export type MidgardCekStructuralVerdict = Omit<
   MidgardCekStructuralExecution,
@@ -28,6 +38,17 @@ export type MidgardCekStructuralVerdict = Omit<
 > & {
   readonly stepCount: number;
 };
+
+/** Unwinds a run whose observer asked it to stop. */
+export class MidgardCekObservedStop extends Error {
+  constructor(
+    readonly state: MidgardCekMachineState,
+    readonly stepCount: number,
+  ) {
+    super("CEK run stopped by its step observer");
+    this.name = "MidgardCekObservedStop";
+  }
+}
 
 /**
  * Owns the step bound and the per-step evidence policy of one structural
@@ -41,7 +62,11 @@ export class MidgardCekStepRecorder {
   constructor(
     private readonly mode: MidgardCekExecutionMode,
     private readonly maxSteps: number,
+    private readonly observer?: MidgardCekStepObserver,
   ) {
+    if (observer !== undefined && mode !== "verdict") {
+      throw new Error("a CEK step observer runs only without retained steps");
+    }
     if (!Number.isSafeInteger(maxSteps) || maxSteps <= 0) {
       throw new Error("CEK maxSteps must be a positive safe integer");
     }
@@ -70,6 +95,9 @@ export class MidgardCekStepRecorder {
       this.steps.push(Object.freeze({ pre, post, witness }));
     }
     this.count += 1;
+    if (this.observer !== undefined && !this.observer(pre, post)) {
+      throw new MidgardCekObservedStop(post, this.count);
+    }
   }
 
   public finish(

@@ -9,7 +9,6 @@ import {
   buildMidgardRedeemerItemProofTrace,
   buildMidgardValidationMerkleFrontier,
   buildMidgardValidationMerkleMembership,
-  buildMidgardValidationTraceTree,
   commitMidgardValidationMerkleFrontier,
   decodeMidgardCekProgramEnvelope,
   decodeMidgardLedgerOutputCommitment,
@@ -22,17 +21,14 @@ import {
   hashMidgardRedeemerItemProofControl,
   hashMidgardResolvedContextItemLeaf,
   hashMidgardValidationLedgerDeltaOperation,
-  hashMidgardValidationMachineState,
   hashMidgardValidationRejectionCode,
-  hashMidgardValidationWorkWitness,
   MIDGARD_BOUNDED_ITEM_CHUNK_BYTES,
-  MIDGARD_VALIDATION_MACHINE_VERSION,
   MIDGARD_VALIDATION_NO_REJECTION_CODE_HASH,
   midgardBoundedItemChunkCount,
+  type MidgardCekMachineState,
   type MidgardMpfProofFoldTrace,
   MidgardRedeemerItemProofModes,
   MidgardRedeemerItemProofStages,
-  type MidgardValidationMachineState,
 } from "@al-ft/midgard-core";
 import {
   decodeMidgardTxOutput,
@@ -61,6 +57,7 @@ import {
   summarizeMidgardCekLucidData,
   validateMidgardCekObserverCollection,
 } from "../cek-context.js";
+import { startMidgardCekObservedRun } from "../cek-executor.js";
 import {
   cardanoScriptPurposeData,
   type DecodedMidgardRedeemer,
@@ -84,7 +81,6 @@ import {
   emptyMidgardInputResolutionSchedule,
   hash32,
   initialMidgardResolvedInputsAccumulator,
-  ZERO_32,
 } from "./input-resolution.js";
 import { ledgerDeltaProofFrameAuxiliary } from "./ledger-mutation.js";
 import {
@@ -121,9 +117,22 @@ import {
   midgardValueContributions,
   type ValidationValueContribution,
 } from "./value-mutation.js";
+/**
+ * What a completed replay leaves besides the states it pushed to its sink:
+ * the trace's verdict and the bytes a full trace carries.
+ */
+export type CompletedValidationTrace = Pick<
+  DeterministicValidationMachineTrace,
+  | "validationContextCbor"
+  | "programMaterialSidecarCbor"
+  | "verdict"
+  | "rejectionCode"
+  | "ledgerOps"
+> & { readonly rejectionCodeHash: Buffer };
+
 export const completeValidationTrace = (
   context: Effect.Effect.Success<ReturnType<typeof prepareValidationTrace>>,
-): Effect.Effect<DeterministicValidationMachineTrace, Error> =>
+): Effect.Effect<CompletedValidationTrace, Error> =>
   Effect.gen(function* () {
     let { stoppedAtRejection } = context;
     const {
@@ -169,11 +178,9 @@ export const completeValidationTrace = (
       authenticatedLedgerOps,
       postLedgerRoot,
       ledgerDeltaRoot,
-      witnesses,
+      traceSink,
+      recording,
       ledgerDeltaFrontier,
-      witnessExecutionBudgets,
-      transactionCommitment,
-      validationContextHash,
       verdict,
       contextCbor,
       canonicalProgramMaterialSidecarCbor,
@@ -859,11 +866,28 @@ export const completeValidationTrace = (
             }
             const selected = selectedRedeemer(executionEntry);
             const exactExecution = evaluation.execution;
-            if (exactExecution === null) {
+            if (exactExecution === null && recording.mode === "proof") {
               throw new Error(
                 "CEK trace is missing the evaluator's captured execution",
               );
             }
+            // A commit build re-executes the script and streams its steps;
+            // nothing is verified or retained.
+            const observedRun =
+              exactExecution === null
+                ? startMidgardCekObservedRun({
+                    root: evaluation.graph.root,
+                    material: evaluation.graph.material.values(),
+                    constantWitnesses: evaluation.graph.constantWitnesses,
+                    executionIndex: evaluation.executionIndex,
+                    maxSteps:
+                      input.consensusProfile.limits
+                        .maxValidationMachineStepCount,
+                    executionBudget: evaluation.executionBudget,
+                  })
+                : null;
+            const initialCekState =
+              exactExecution?.initialState ?? observedRun!.initialState;
             const programEnvelope = decodeMidgardCekProgramEnvelope(
               executionEntry.source.script.scriptBytes,
             );
@@ -1829,11 +1853,10 @@ export const completeValidationTrace = (
               Buffer.from(evaluation.graph.contextValueRoot).toString("hex"),
             );
             if (
-              !Buffer.from(exactExecution.initialState.focusRoot).equals(
+              !Buffer.from(initialCekState.focusRoot).equals(
                 Buffer.from(evaluation.graph.root),
               ) ||
-              exactExecution.initialState.executionIndex !==
-                BigInt(executionIndex) ||
+              initialCekState.executionIndex !== BigInt(executionIndex) ||
               contextWitness?.kind !== "semanticConstant" ||
               !sameSummary(
                 contextWitness.witness.payload,
@@ -1846,7 +1869,11 @@ export const completeValidationTrace = (
               );
             }
 
-            for (const step of exactExecution.steps) {
+            const coreStep = (
+              pre: MidgardCekMachineState,
+              post: MidgardCekMachineState,
+              auxiliary: ValidationMachineWorkWitness["auxiliary"],
+            ): boolean => {
               pushWitness(
                 "cek",
                 cekWitness({
@@ -1854,19 +1881,19 @@ export const completeValidationTrace = (
                   executionCursor: executionIndex,
                   completedCpu,
                   completedMemory,
-                  activeStateHash: hashMidgardCekMachineState(step.pre),
+                  activeStateHash: hashMidgardCekMachineState(pre),
                   executionCpuLimit: selected.value.exUnits.steps,
                   executionMemoryLimit: selected.value.exUnits.memory,
                   programEnvelopeHash: contextControl.programEnvelopeHash,
                 }),
-                { kind: "cekCoreStep", step },
+                auxiliary,
               );
-              executionBudget.cpu = completedCpu + step.post.cpu;
-              executionBudget.memory = completedMemory + step.post.memory;
+              executionBudget.cpu = completedCpu + post.cpu;
+              executionBudget.memory = completedMemory + post.memory;
               const budgetExceeded =
-                step.post.cpu > selected.value.exUnits.steps ||
-                step.post.memory > selected.value.exUnits.memory;
-              if (budgetExceeded || step.post.mode === "haltError") {
+                post.cpu > selected.value.exUnits.steps ||
+                post.memory > selected.value.exUnits.memory;
+              if (budgetExceeded || post.mode === "haltError") {
                 if (
                   rejection === null ||
                   terminalPhase !== "cek" ||
@@ -1879,12 +1906,28 @@ export const completeValidationTrace = (
                   );
                 }
                 stoppedAtRejection = true;
-                break;
+                return false;
               }
+              return true;
+            };
+            let terminalCekState: MidgardCekMachineState | null;
+            if (exactExecution !== null) {
+              for (const step of exactExecution.steps) {
+                if (
+                  !coreStep(step.pre, step.post, { kind: "cekCoreStep", step })
+                ) {
+                  break;
+                }
+              }
+              terminalCekState = exactExecution.terminalState;
+            } else {
+              terminalCekState =
+                observedRun!.run((pre, post) => coreStep(pre, post, null))
+                  ?.terminalState ?? null;
             }
             if (stoppedAtRejection) break;
             if (
-              exactExecution.terminalState.mode !== "haltSuccess" ||
+              terminalCekState?.mode !== "haltSuccess" ||
               evaluation.result.kind !== "accepted"
             ) {
               throw new ValidationTraceStopped(
@@ -2796,80 +2839,32 @@ export const completeValidationTrace = (
       );
     }
 
-    const terminalWitness: ValidationMachineWorkWitness = {
-      phase: "terminal",
-      programCounter: witnesses.length,
-      cbor: encodeValidationTerminalWitnessCbor(
-        rejectionCode === null
-          ? { verdict: "accepted", postLedgerRoot, ledgerDeltaFrontier }
-          : { verdict: "rejected", rejectionCode, priorLedgerRoot },
-      ),
-      auxiliary: null,
-    };
-    witnesses.push(terminalWitness);
-    witnessExecutionBudgets.push({
-      cpu: executionBudget.cpu,
-      memory: executionBudget.memory,
-    });
-
-    const eventKeyHash = hash32(input.eventKeyCbor);
     const rejectionCodeHash =
       rejectionCode === null
         ? MIDGARD_VALIDATION_NO_REJECTION_CODE_HASH
         : hashMidgardValidationRejectionCode(rejectionCode);
-    const states = witnesses.map((witness, index) => {
-      const terminal = index === witnesses.length - 1;
-      const budget = witnessExecutionBudgets[index]!;
-      return {
-        machineVersion: MIDGARD_VALIDATION_MACHINE_VERSION,
-        eventKeyHash,
-        transactionId: Buffer.from(input.transactionId),
-        transactionCommitment,
-        validationContextHash,
-        sourceKind: input.sourceKind,
-        priorLedgerRoot,
-        phase: witness.phase,
-        programCounter: witness.programCounter,
-        workRoot: hashMidgardValidationWorkWitness({
-          phase: witness.phase,
-          programCounter: witness.programCounter,
-          witnessCbor: witness.cbor,
-        }),
-        executionCpu: budget.cpu,
-        executionMemory: budget.memory,
-        verdict: terminal ? verdict : ("pending" as const),
-        rejectionCodeHash: terminal
-          ? rejectionCodeHash
-          : MIDGARD_VALIDATION_NO_REJECTION_CODE_HASH,
-        ledgerDeltaRoot,
-      } satisfies MidgardValidationMachineState;
-    });
-    if (states.length === 0) {
-      return yield* Effect.fail(new Error("validation trace has no states"));
-    }
-    const tree = buildMidgardValidationTraceTree(
-      states.map(hashMidgardValidationMachineState),
-      verdict,
-      rejectionCodeHash,
+    traceSink.push(
+      {
+        phase: "terminal",
+        programCounter: traceSink.length,
+        cbor: encodeValidationTerminalWitnessCbor(
+          rejectionCode === null
+            ? { verdict: "accepted", postLedgerRoot, ledgerDeltaFrontier }
+            : { verdict: "rejected", rejectionCode, priorLedgerRoot },
+        ),
+        auxiliary: null,
+      },
+      executionBudget,
+      { verdict, rejectionCodeHash },
     );
-    if (
-      tree.descriptor.initialStateHash.equals(ZERO_32) ||
-      tree.descriptor.terminalStateHash.equals(ZERO_32)
-    ) {
-      return yield* Effect.fail(
-        new Error("validation trace endpoint hash must not be zero"),
-      );
-    }
     return {
       validationContextCbor: contextCbor,
       programMaterialSidecarCbor: Buffer.from(
         canonicalProgramMaterialSidecarCbor,
       ),
-      states,
-      witnesses,
-      tree,
       verdict,
       rejectionCode,
+      rejectionCodeHash,
       ledgerOps,
-    };
+    } satisfies CompletedValidationTrace;
   });

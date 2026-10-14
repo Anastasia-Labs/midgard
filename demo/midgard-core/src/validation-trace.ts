@@ -9,6 +9,7 @@ import "./validation-merkle.js";
 import "./validation-trace.encode-midgard-validation-machine-state.js";
 import "./validation-trace.decode-midgard-validation-machine-state.js";
 import "./validation-trace.build-midgard-validation-trace-tree.js";
+import "./validation-trace.trace-frontier.js";
 export {
   buildMidgardValidationTraceTree,
   validationTraceDepthForStepCount,
@@ -44,3 +45,9 @@ export {
   MidgardValidationVerdict,
   type MidgardValidationVerdictName,
 } from "./validation-trace.encode-midgard-validation-machine-state.js";
+export {
+  midgardValidationTraceBranchHash,
+  MidgardValidationTraceFrontier,
+  midgardValidationTraceLeafHash,
+  MidgardValidationTracePadding,
+} from "./validation-trace.trace-frontier.js";

@@ -30,7 +30,6 @@ import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
 import {
-  buildDeterministicValidationMachineTrace,
   buildMidgardCanonicalCekProgram,
   buildMidgardScriptContext,
   buildPlutusV3ScriptContext,
@@ -42,6 +41,7 @@ import {
   runPhaseBValidationWithPatch,
   scriptContextTxOutData,
 } from "../src/index.js";
+import { buildDeterministicValidationMachineTrace } from "./helpers/trace-commit-golden.js";
 import {
   orderingView,
   redeemerMapEntries,
