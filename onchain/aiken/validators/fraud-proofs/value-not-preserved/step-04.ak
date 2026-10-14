@@ -89,7 +89,7 @@ validator main(
 
         // 3. The decisive inequality: the completed fold is unbalanced in the
         //    claimed direction. This is the machine's
-        //    `reject_value_not_preserved` for the claimed unit — a balanced
+        //    `ValueNotPreserved` for the claimed unit — a balanced
         //    fold, whatever the route here, mints nothing.
         expect value_not_preserved_fault_is_established_v1(state)
 

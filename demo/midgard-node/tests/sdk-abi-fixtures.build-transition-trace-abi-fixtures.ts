@@ -279,7 +279,9 @@ export const buildTransitionTraceAbiFixtures = (): Record<
         event_asset_name: "cc",
         validity_override: {
           ForcedTxInvalid: {
-            reason: { PlutusExecutionFailed: { execution_index: 0n } },
+            reason: {
+              PlutusExecutionFailed: { purpose_kind: 0n, purpose_index: 0n },
+            },
           },
         },
         source_non_membership: forcedSourceNonMembership,
@@ -306,7 +308,9 @@ export const buildTransitionTraceAbiFixtures = (): Record<
         event_asset_name: "cc",
         validity_override: {
           ForcedTxInvalid: {
-            reason: { PlutusExecutionFailed: { execution_index: 0n } },
+            reason: {
+              PlutusExecutionFailed: { purpose_kind: 0n, purpose_index: 0n },
+            },
           },
         },
         source_membership: forcedSourceMembership,

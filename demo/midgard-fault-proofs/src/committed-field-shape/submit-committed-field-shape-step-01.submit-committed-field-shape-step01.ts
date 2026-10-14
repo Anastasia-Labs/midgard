@@ -1,4 +1,6 @@
+import { planMidgardFieldCarriage } from "@al-ft/midgard-core";
 import {
+  type CommittedFieldClaim,
   committedFieldShapeEvidenceFromCommittedField,
   CommittedFieldShapeStep01SpendRedeemer,
   CommittedFieldShapeStep02Datum,
@@ -24,6 +26,7 @@ import {
   type UTxO,
 } from "@lucid-evolution/lucid";
 
+import { faultProofRawFieldCarriage } from "../field-opening.js";
 import {
   chunkedMembershipClaimRedeemer,
   chunkedVerifyWithdrawalScript,
@@ -63,10 +66,10 @@ import {
 import type { CommittedFieldShapeContracts } from "./contracts.js";
 import type { PreparedCommittedFieldShape } from "./prepare-committed-field-shape.js";
 import {
-  committedFieldShapeInlineClaimDetails,
+  committedFieldShapeClaimDetails,
   STEP_LABEL,
   type SubmitCommittedFieldShapeStep01Result,
-} from "./submit-committed-field-shape-step-01.committed-field-shape-inline-claim-details.js";
+} from "./submit-committed-field-shape-step-01.committed-field-shape-claim-details.js";
 import {
   committedFieldShapeSubmitError,
   requireCommittedFieldShapeReferenceScript,
@@ -90,6 +93,8 @@ export const submitCommittedFieldShapeStep01 = async ({
   txInclusion,
   prepared,
   publishedProofChunks,
+  publishedFieldCarriageUtxos,
+  fieldCertificateUtxo,
   referenceScriptUtxo,
   witnessReferenceScripts,
   preSubmitBoundary,
@@ -109,6 +114,10 @@ export const submitCommittedFieldShapeStep01 = async ({
     "claim" | "evidence" | "step02State"
   >;
   readonly publishedProofChunks?: readonly PublishedProofChunk[];
+  /** Authenticated §8.7 raw field publications, in deterministic plan order. */
+  readonly publishedFieldCarriageUtxos?: readonly UTxO[];
+  /** Authenticated §8.6 certificate for a tier-3 committed field. */
+  readonly fieldCertificateUtxo?: UTxO;
   readonly referenceScriptUtxo: UTxO;
   readonly witnessReferenceScripts: FaultProofWitnessReferenceScripts;
   readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
@@ -149,8 +158,12 @@ export const submitCommittedFieldShapeStep01 = async ({
     );
   }
   requireNativeTxMatchesCompactCbor(txInclusion);
-  const { fieldIndex, preimage, witnessSetHash } =
-    committedFieldShapeInlineClaimDetails(prepared.claim);
+  const { fieldIndex, inlinePreimage, witnessSetHash } =
+    committedFieldShapeClaimDetails(prepared.claim);
+  // Tier-2/3 claims name no bytes; the prepared evidence carries them and the
+  // verdict re-derivation below rejects any disagreement.
+  const preimage =
+    inlinePreimage ?? Buffer.from(prepared.evidence.committedPreimage, "hex");
   if (
     witnessSetHash !== undefined &&
     witnessSetHash !== txInclusion.nativeTx.witness_set_hash
@@ -229,13 +242,51 @@ export const submitCommittedFieldShapeStep01 = async ({
       : witnessReferenceScripts?.phasMembershipWithdraw,
     label: `${STEP_LABEL} ${carriedByChunks ? "chunked verify" : "PHAS membership"}`,
   });
+  const fieldPlan = planMidgardFieldCarriage({
+    owner: Buffer.from(signer.paymentKeyHash, "hex"),
+    txId: Buffer.from(txInclusion.nativeTxId, "hex"),
+    fieldIndex,
+    preimage,
+  });
+  const fieldPublications = publishedFieldCarriageUtxos ?? [];
+  if (fieldPublications.length !== fieldPlan.publications.length) {
+    throw committedFieldShapeSubmitError(
+      `${fieldPlan.tier} carriage requires exactly ${fieldPlan.publications.length.toString()} authenticated publication UTxOs, received ${fieldPublications.length.toString()}.`,
+    );
+  }
+  if (
+    (fieldPlan.tier === "Certified") !==
+    (fieldCertificateUtxo !== undefined)
+  ) {
+    throw committedFieldShapeSubmitError(
+      "only a Certified carriage may carry the exact field certificate UTxO.",
+    );
+  }
+  // The complete reference-input set must stand before any positional index
+  // derives from it; a partial set makes ref_input_index a per-run coin flip.
   const referenceInputs = [
     hubOracleUtxo,
     stateQueueBlockUtxo,
     ...chunks.map((chunk) => chunk.utxo),
+    ...fieldPublications,
+    ...(fieldCertificateUtxo === undefined ? [] : [fieldCertificateUtxo]),
     validatedStepReference,
     ...membershipCarriage.referenceInputs,
   ];
+  const carriage = faultProofRawFieldCarriage({
+    plan: fieldPlan,
+    referenceInputs,
+    ...(fieldPlan.tier === "Certified"
+      ? { certificatePolicyId: contracts.fieldPreimageCertificatePolicyId }
+      : {}),
+    label: `${STEP_LABEL} committed field`,
+  });
+  const claim: CommittedFieldClaim =
+    "BodyFieldClaim" in prepared.claim
+      ? { BodyFieldClaim: { ...prepared.claim.BodyFieldClaim, carriage } }
+      : {
+          WitnessFieldClaim: { ...prepared.claim.WitnessFieldClaim, carriage },
+        };
   const resolvedChunkIndices = derivedChunkReferenceIndices({
     referenceInputs,
     chunks,
@@ -311,7 +362,7 @@ export const submitCommittedFieldShapeStep01 = async ({
           ],
         };
     return Data.to(
-      { Continue: [{ inclusion, claim: prepared.claim }] },
+      { Continue: [{ inclusion, claim }] },
       CommittedFieldShapeStep01SpendRedeemer,
     );
   }) satisfies BuildTxWithRedeemer;

@@ -40,7 +40,7 @@ pub fn signatures_handoff_with_claimed_result(result: Int) -> Bool {
     #"",
     #"",
     signer_frontier,
-    0,
+    -1,
   )
   let handoff_pre = validation_trace_v1.ValidationMachineStateV1 {
     ..pre,
@@ -74,6 +74,8 @@ pub fn signatures_handoff_with_claimed_result(result: Int) -> Bool {
     signer_frontier.count,
     signer_frontier.peaks,
     #"",
+    -1,
+    -1,
   )
   let post = validation_trace_v1.ValidationMachineStateV1 {
     ..handoff_pre,

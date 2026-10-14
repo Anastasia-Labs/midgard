@@ -12,6 +12,7 @@ use midgard/fraud_proofs/native_tx/types.{
   MidgardVersionedScript, PlutusV3Script, native_tx_version_v1,
 }
 use midgard/native_tx_field_access_v1
+use midgard/rejection_reason_v1
 use midgard/validation_machine/canonical_decode as vm_canonical_decode
 use midgard/validation_machine/machine_types as vm_machine_types
 use midgard/validation_machine/one_step as vm_one_step
@@ -379,7 +380,9 @@ test canonical_decode_rejects_a_wrong_claimed_successor() {
     work_witness_cbor,
     validation_trace_v1.hash_ledger_delta(#"80"),
   )
-  let rejection_code = #"455f4649454c445f505245494d4147455f53495a45"
+  let rejection_code = rejection_reason_v1.FieldPreimageLengthMismatch {
+    field_index: 6,
+  }
   let terminal = validation_trace_v1.ValidationMachineStateV1 {
     ..pre,
     phase: validation_trace_v1.Terminal,
@@ -611,7 +614,7 @@ test static_rules_prove_a_network_mismatch_is_an_exact_no_op() {
     proof_source.field_preimage_lengths_cbor,
     validation_context_cbor,
   )
-  let rejection_code = #"455f4e4554574f524b5f49445f4d49534d41544348"
+  let rejection_code = rejection_reason_v1.NetworkIdMismatch
   let pre = forced_pending_state(
     tx_id,
     tx,

@@ -4,7 +4,10 @@ import {
 } from "@al-ft/midgard-core/codec";
 import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
 import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
-import { forcedVerdictForRejection } from "@al-ft/midgard-fault-proofs";
+import {
+  forcedRejectionReason,
+  forcedVerdictForRejection,
+} from "@al-ft/midgard-fault-proofs";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
   placeholderValidationTraceDescriptorV1,
@@ -110,7 +113,7 @@ it("replays a catch-up forced verdict at its authenticated commit clock instead 
         }),
       },
       "rejected",
-      commitVerdict.rejection.code,
+      forcedRejectionReason(commitVerdict.rejection),
     ),
   );
   const encoded = await Effect.runPromise(

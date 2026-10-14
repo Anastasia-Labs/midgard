@@ -82,7 +82,7 @@ describe("transition trace retained descriptor mutations", () => {
           }),
         },
         "rejected",
-        "E_EMPTY_INPUTS",
+        "EmptyInputs",
       ),
     );
     const current = await reconstruct(

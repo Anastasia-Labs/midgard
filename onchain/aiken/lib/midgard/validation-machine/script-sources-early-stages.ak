@@ -15,7 +15,9 @@ use midgard/fraud_proofs/native_tx/compact.{
 use midgard/native_script_scan_v1
 use midgard/native_tx_field_access_v1
 use midgard/redeemer_item_proof_v1
-use midgard/rejection_reason_v1.{reject_invalid_field_type}
+use midgard/rejection_reason_v1.{
+  RedeemerMalformed, WitnessScriptHeaderMalformed,
+}
 use midgard/script_proof_v1
 use midgard/script_sources_raw_frame_v1 as raw_frame
 use midgard/validation_machine/machine_types.{
@@ -493,7 +495,7 @@ pub fn verify_script_sources_stage_zero_begin_semantics_v1(
         rejected_successor_is_exact(
           pre,
           witness.claimed_successor,
-          reject_invalid_field_type,
+          WitnessScriptHeaderMalformed { script_index: item_index },
         )
       Some(item_header) -> {
         let pending_source_cbor = encode_inline_source_hash_control_v1(
@@ -816,7 +818,7 @@ pub fn script_sources_stage_zero(
           rejected_successor_is_exact(
             pre,
             witness.claimed_successor,
-            reject_invalid_field_type,
+            WitnessScriptHeaderMalformed { script_index: item_index },
           )
         Some(item_header) ->
           script_sources_control_successor_is_exact(
@@ -1148,7 +1150,7 @@ pub fn script_sources_stage_one(
           rejected_successor_is_exact(
             pre,
             witness.claimed_successor,
-            reject_invalid_field_type,
+            RedeemerMalformed { redeemer_index: control.redeemer_count },
           ),
         }
       Some(redeemer_item_proof_v1.RedeemerItemProofAdvanced { control: next }) ->

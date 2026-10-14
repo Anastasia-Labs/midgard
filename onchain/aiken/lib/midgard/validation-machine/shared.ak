@@ -13,6 +13,7 @@ use midgard/fraud_proofs/native_tx/types.{
   ScriptCredential, TxCompactView,
 }
 use midgard/mpf_proof_fold_v1
+use midgard/rejection_reason_v1.{RejectionReasonV1}
 use midgard/script_proof_v1
 use midgard/validation_machine/machine_types.{
   EmptySignerSetProof, InputSignerAuthorizationV1, InputSignerAuthorized,
@@ -149,13 +150,15 @@ pub fn structural_transition_is_valid(
   }
 }
 
+/// The rejecting terminal's work witness: `[2, reason, prior_ledger_root,
+/// h'80']`, with the reason embedded as its own Plutus Data CBOR item.
 pub fn encode_terminal_rejection_witness(
-  rejection_code: ByteArray,
+  reason: RejectionReasonV1,
   prior_ledger_root: ByteArray,
 ) -> ByteArray {
   #"84"
     |> bytearray.concat(cbor.serialise(2))
-    |> bytearray.concat(encode_definite_bytes(rejection_code))
+    |> bytearray.concat(cbor.serialise(reason))
     |> bytearray.concat(encode_definite_bytes(prior_ledger_root))
     |> bytearray.concat(encode_definite_bytes(#"80"))
 }
@@ -342,7 +345,7 @@ pub fn decode_validation_context(context_cbor: ByteArray) -> ValidationContextV1
 // `value_and_mint_stage_three` below: the ValueAndMint output-descriptor step
 // evaluates `output_meets_min_ada_v1` over the descriptor it has just
 // authenticated and, on failure, takes the exact rejecting terminal carrying
-// `reject_min_ada` (`E_MIN_ADA`). The rate is a compiled deployment constant,
+// `OutputBelowMinAda { output_index }`. The rate is a compiled deployment constant,
 // not an operator-declared field, per the owner ruling on #627 (option B): a
 // rate change is a redeploy event.
 pub const min_ada_output_overhead_bytes = 160
@@ -364,17 +367,28 @@ pub fn output_meets_min_ada_v1(
   lovelace >= min_ada_lovelace_v1(coins_per_utxo_byte, serialized_output_bytes)
 }
 
+/// A rejection-reason coordinate the machine does not carry yet: the four
+/// DuplicateInput coordinates (arm 3) and the `input_index` of arms 18–23
+/// and of `InputAssetAccumulationLimit`. Sites that emit it write this fixed
+/// sentinel, and the off-chain trace builder and forced-leaf writer write the
+/// same value for those arms.
+///
+/// The sentinel is interim. It is sound only while no reader compares a
+/// machine-emitted reason with an independently written one at these arms:
+/// the validation-trace dispute category (00000006) stays excluded, and the
+/// trace-relative families that read arms 3 and 18–23 stay excluded, until
+/// the machine carries the real coordinates.
+pub const unset_reason_coordinate: Int = -1
+
 pub fn rejected_successor_is_exact(
   pre: validation_trace_v1.ValidationMachineStateV1,
   post: validation_trace_v1.ValidationMachineStateV1,
-  rejection_code: ByteArray,
+  reason: RejectionReasonV1,
 ) -> Bool {
   and {
     post.phase == validation_trace_v1.Terminal,
     post.verdict == validation_trace_v1.Rejected,
-    post.rejection_code_hash == validation_trace_v1.hash_rejection_code(
-      rejection_code,
-    ),
+    post.rejection_code_hash == validation_trace_v1.hash_rejection_code(reason),
     // NOTE: there is deliberately NO clause clearing `post.ledger_delta_root`
     // here, and one must not be re-introduced. `ledger_delta_root` is the
     // operator's immutable claimed delta commitment for the transaction under
@@ -394,7 +408,7 @@ pub fn rejected_successor_is_exact(
     post.work_root == validation_trace_v1.hash_work_witness(
       validation_trace_v1.Terminal,
       pre.program_counter + 1,
-      encode_terminal_rejection_witness(rejection_code, pre.prior_ledger_root),
+      encode_terminal_rejection_witness(reason, pre.prior_ledger_root),
     ),
   }
 }

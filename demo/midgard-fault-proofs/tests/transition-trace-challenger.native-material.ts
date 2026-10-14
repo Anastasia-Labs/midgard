@@ -132,11 +132,11 @@ export const nativeMaterial = (
 /**
  * The #640 verdict standing in for the pre-format `FailedScript` arm: a
  * forced transaction the operator rejected for a failed Plutus execution at
- * execution index 0.
+ * purpose (spend, 0).
  */
 export const forcedTxInvalidPlutus: SDK.OperatorVerdict = {
   ForcedTxInvalid: {
-    reason: { PlutusExecutionFailed: { execution_index: 0n } },
+    reason: { PlutusExecutionFailed: { purpose_kind: 0n, purpose_index: 0n } },
   },
 };
 

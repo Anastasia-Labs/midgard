@@ -28,6 +28,8 @@ pub type ContextSuccessor {
     initial_state_hash: ByteArray,
     execution_cpu_limit: Int,
     execution_memory_limit: Int,
+    purpose_kind: Int,
+    purpose_index: Int,
   }
 }
 

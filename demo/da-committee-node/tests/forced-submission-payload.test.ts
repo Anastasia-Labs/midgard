@@ -60,7 +60,7 @@ const fixture = async (verdict: SDK.OperatorVerdict = "ForcedTxValid") => {
     eventKey,
     leaf.tx_id,
     verdict === "ForcedTxValid" ? "accepted" : "rejected",
-    verdict === "ForcedTxValid" ? null : "E_EMPTY_INPUTS",
+    verdict === "ForcedTxValid" ? null : verdict.ForcedTxInvalid.reason,
   );
   const payload: SDK.DaPayload = {
     ...base.payload,

@@ -7,7 +7,7 @@ use midgard/fraud_proofs/proof_thread_substrate_v1 as substrate
 use midgard/fraud_proofs/receive_purpose_language/rule
 use midgard/ledger_state
 use midgard/rejection_reason_v1.{
-  OutputNonCanonical, ReceivePurposePlutusV3Forbidden,
+  OutputNonCanonical, ReceivePurposePlutusV3Forbidden, RejectionReasonV1,
 }
 use midgard/script_proof_v1
 use midgard/transition_trace
@@ -32,13 +32,13 @@ const forced_order_id =
     output_index: 0,
   }
 
-fn reason(execution_index: Int) {
-  ReceivePurposePlutusV3Forbidden { execution_index }
+fn reason(purpose_index: Int) -> RejectionReasonV1 {
+  ReceivePurposePlutusV3Forbidden { purpose_kind: 3, purpose_index }
 }
 
-fn subject_at(
+fn subject_with(
   direction: Int,
-  execution_index: Int,
+  rejection: RejectionReasonV1,
 ) -> substrate.VerdictSubjectV1 {
   substrate.VerdictSubjectV1 {
     version: substrate.version,
@@ -57,13 +57,13 @@ fn subject_at(
     rejection_reason: if direction == substrate.direction_wrongful_acceptance {
       None
     } else {
-      Some(reason(execution_index))
+      Some(rejection)
     },
   }
 }
 
 fn subject(direction: Int) -> substrate.VerdictSubjectV1 {
-  subject_at(direction, 2)
+  subject_with(direction, reason(2))
 }
 
 fn authenticated(
@@ -122,15 +122,6 @@ test receive_midgard_v1_refuses_wrongful_acceptance() fail {
   rule.terminal_contradiction_v1(
     authenticated(substrate.direction_wrongful_acceptance, 128),
   )
-}
-
-test receive_reason_coordinate_substitution_refuses() fail {
-  rule.bind_execution_v1(
-    subject(substrate.direction_wrongful_rejection),
-    #"000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
-    1,
-    1,
-  ).execution_index == 1
 }
 
 test receive_reason_constructor_substitution_refuses() fail {
@@ -194,6 +185,9 @@ type Case {
   /// The execution index the bound state carries (and the leaf index of the
   /// committed purpose/execution leaves is always 0).
   bound_execution_index: Int,
+  /// The reason the forced subject names; its purpose key must name the
+  /// committed purpose leaf.
+  subject_reason: RejectionReasonV1,
   /// Number of committed purpose/execution leaves; the accused leaf sits at 0.
   leaf_count: Int,
   claimed_verdict: validation_trace_v1.ValidationVerdict,
@@ -211,6 +205,7 @@ fn accepted_case() -> Case {
     committed_language: 3,
     supplied_language: 3,
     bound_execution_index: 0,
+    subject_reason: reason(0),
     leaf_count: 1,
     claimed_verdict: validation_trace_v1.Accepted,
     claimed_code_hash: zero32,
@@ -226,9 +221,7 @@ fn forced_case(language: Int) -> Case {
     committed_language: language,
     supplied_language: language,
     claimed_verdict: validation_trace_v1.Rejected,
-    claimed_code_hash: validation_trace_v1.hash_rejection_code(
-      rejection_reason_v1.rejection_code_of(reason(0)),
-    ),
+    claimed_code_hash: validation_trace_v1.hash_rejection_code(reason(0)),
   }
 }
 
@@ -377,7 +370,7 @@ fn authenticate_case(case: Case) -> rule.AuthenticatedReceiveLanguageV1 {
   }
   rule.authenticate_receive_language_v1(
     rule.bind_execution_v1(
-      subject_at(case.direction, case.bound_execution_index),
+      subject_with(case.direction, case.subject_reason),
       bound_root,
       1,
       case.bound_execution_index,
@@ -552,9 +545,7 @@ test receive_accepted_direction_refuses_rejected_descriptor() fail {
     Case {
       ..accepted_case(),
       claimed_verdict: validation_trace_v1.Rejected,
-      claimed_code_hash: validation_trace_v1.hash_rejection_code(
-        rejection_reason_v1.rejection_code_of(reason(0)),
-      ),
+      claimed_code_hash: validation_trace_v1.hash_rejection_code(reason(0)),
     },
   ).language_tag == 3
 }
@@ -574,10 +565,41 @@ test receive_forced_rejection_code_substitution_refuses() fail {
     Case {
       ..forced_case(0),
       claimed_code_hash: validation_trace_v1.hash_rejection_code(
-        rejection_reason_v1.rejection_code_of(
-          OutputNonCanonical { output_index: 0 },
-        ),
+        OutputNonCanonical { output_index: 0 },
       ),
+    },
+  ).language_tag == 0
+}
+
+fn forced_case_naming(rejection: RejectionReasonV1) -> Case {
+  Case {
+    ..forced_case(0),
+    subject_reason: rejection,
+    claimed_code_hash: validation_trace_v1.hash_rejection_code(rejection),
+  }
+}
+
+test receive_forced_rejection_names_the_committed_purpose() {
+  authenticate_case(forced_case_naming(reason(0))).language_tag == 0
+}
+
+test receive_forced_rejection_refuses_another_purpose_index() fail {
+  authenticate_case(forced_case_naming(reason(1))).language_tag == 0
+}
+
+test receive_forced_rejection_refuses_another_purpose_kind() fail {
+  authenticate_case(
+    forced_case_naming(
+      ReceivePurposePlutusV3Forbidden { purpose_kind: 0, purpose_index: 0 },
+    ),
+  ).language_tag == 0
+}
+
+test receive_forced_rejection_refuses_a_code_hash_for_another_coordinate() fail {
+  authenticate_case(
+    Case {
+      ..forced_case(0),
+      claimed_code_hash: validation_trace_v1.hash_rejection_code(reason(1)),
     },
   ).language_tag == 0
 }
@@ -744,7 +766,7 @@ fn authenticate_wide(top: Int) -> rule.AuthenticatedReceiveLanguageV1 {
   }
   rule.authenticate_receive_language_v1(
     rule.bind_execution_v1(
-      subject_at(substrate.direction_wrongful_acceptance, 0),
+      subject_with(substrate.direction_wrongful_acceptance, reason(0)),
       membership.root,
       1,
       0,
@@ -816,5 +838,5 @@ test receive_authenticated_accepted_golden_vector() {
 }
 
 test receive_authenticated_forced_golden_vector() {
-  cbor.serialise(authenticated(substrate.direction_wrongful_rejection, 0)) == #"d8799fd8799fd8799f0101015820000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f5827d8799f5820444444444444444444444444444444444444444444444444444444444444444400ffd8799fd905219f02ffffff5820000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f0102ff5820101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f03020000410000581c000102030405060708090a0b0c0d0e0f101112131415161718191a1bff"
+  cbor.serialise(authenticated(substrate.direction_wrongful_rejection, 0)) == #"d8799fd8799fd8799f0101015820000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f5827d8799f5820444444444444444444444444444444444444444444444444444444444444444400ffd8799fd905219f0302ffffff5820000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f0102ff5820101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f03020000410000581c000102030405060708090a0b0c0d0e0f101112131415161718191a1bff"
 }

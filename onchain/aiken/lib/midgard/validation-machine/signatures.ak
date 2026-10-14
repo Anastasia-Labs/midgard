@@ -9,7 +9,7 @@ use midgard/fraud_proofs/native_tx/components.{
 }
 use midgard/native_tx_field_access_v1
 use midgard/rejection_reason_v1.{
-  reject_invalid_signature, reject_missing_required_witness,
+  AddressWitnessSignatureInvalid, RequiredSignerUnsigned,
 }
 use midgard/script_proof_v1
 use midgard/validation_machine/machine_types.{
@@ -54,7 +54,7 @@ fn signatures_successor_is_exact(
         control.previous_signer_hash,
         control.signer_count,
         control.signer_peaks,
-        control.invalid_signature_seen,
+        control.first_invalid_witness_index,
       ),
     ),
   }
@@ -65,8 +65,14 @@ fn signatures_after_required_successor_is_exact(
   post: validation_trace_v1.ValidationMachineStateV1,
   control: SignaturesControlV1,
 ) -> Bool {
-  if control.invalid_signature_seen == 1 {
-    rejected_successor_is_exact(pre, post, reject_invalid_signature)
+  if control.first_invalid_witness_index >= 0 {
+    rejected_successor_is_exact(
+      pre,
+      post,
+      AddressWitnessSignatureInvalid {
+        witness_index: control.first_invalid_witness_index,
+      },
+    )
   } else {
     signatures_successor_is_exact(
       pre,
@@ -266,17 +272,17 @@ fn verify_signature_address_item(
   } else {
     control.signer_peaks
   }
-  let next_invalid_signature_seen = if and {
-    control.invalid_signature_seen == 0,
+  let next_first_invalid_witness_index = if and {
+    control.first_invalid_witness_index == -1,
     !verify_ed25519_signature(
       address_witness.verification_key,
       pre.transaction_id,
       address_witness.signature,
     ),
   } {
-    1
+    item_index
   } else {
-    control.invalid_signature_seen
+    control.first_invalid_witness_index
   }
   let next_address_seen = control.address_seen + 1
   let next_control = if next_address_seen == active_count {
@@ -289,7 +295,7 @@ fn verify_signature_address_item(
       previous_signer_hash: #"",
       signer_count: next_signer_count,
       signer_peaks: next_signer_peaks,
-      invalid_signature_seen: next_invalid_signature_seen,
+      first_invalid_witness_index: next_first_invalid_witness_index,
     }
   } else {
     SignaturesControlV1 {
@@ -300,7 +306,7 @@ fn verify_signature_address_item(
       previous_signer_hash: signer_hash,
       signer_count: next_signer_count,
       signer_peaks: next_signer_peaks,
-      invalid_signature_seen: next_invalid_signature_seen,
+      first_invalid_witness_index: next_first_invalid_witness_index,
     }
   }
   and {
@@ -488,7 +494,7 @@ fn verify_required_signer_item(
       rejected_successor_is_exact(
         pre,
         witness.claimed_successor,
-        reject_missing_required_witness,
+        RequiredSignerUnsigned { signer_index: control.required_seen },
       )
     } else if present {
       if next_required_seen == active_count {
@@ -564,6 +570,10 @@ fn verify_signatures_handoff(
         control.signer_count,
         control.signer_peaks,
         #"",
+        // purpose_kind, purpose_index: the witness-mode sentinel. Only the
+        // native execution entry writes a purpose key.
+        -1,
+        -1,
       ),
     ),
   }

@@ -49,7 +49,10 @@ import {
   shouldHydrateCommitBaseEntries,
 } from "./commit-block-header.pending-user-event-counts-up-to.js";
 import { planAdditiveCommitDa } from "./commit-block-header.plan-additive-da.js";
-import { planHistoryCommitEventWindow } from "./commit-block-header.plan-event-window.js";
+import {
+  commitEventLimitsFromConsensusProfile,
+  planHistoryCommitEventWindow,
+} from "./commit-block-header.plan-event-window.js";
 import { recordSuccessfulBuildCalibration as recordBuildCalibration } from "./commit-block-header.record-successful-build-calibration.js";
 import { resolveCommitBaseLedgerEntries } from "./commit-block-header.resolve-commit-base-ledger-entries.js";
 import { verifyAdditiveCommitDaFrame } from "./commit-block-header.verify-additive-da.js";
@@ -411,7 +414,6 @@ export const buildOnVerifiedCommitBaseProgram = (
     }
 
     const lucidForEventPlan = yield* acquireCommitLucidOnce;
-    const limits = deploymentIdentity.consensusProfile.limits;
     const eventPlan = yield* planHistoryCommitEventWindow({
       latestEndTime:
         latestEndTimeMsForSchedulerPlanning ?? currentBlockStartTime.getTime(),
@@ -420,13 +422,11 @@ export const buildOnVerifiedCommitBaseProgram = (
         eventHorizonMs,
         effectiveUserEventOnlyEndTime.getTime(),
       ),
+      schedulerWindowStartTimeMs: currentSchedulerWindow?.startTimeMs,
       schedulerWindowEndTimeMs: schedulerAwareCommitSelection.blockEndTimeCapMs,
-      limits: {
-        deposits: limits.maxDepositCount,
-        forcedTransactions: limits.maxForcedTransactionCount,
-        withdrawals: limits.maxWithdrawalCount,
-        totalEvents: limits.maxTotalEventCount,
-      },
+      limits: commitEventLimitsFromConsensusProfile(
+        deploymentIdentity.consensusProfile,
+      ),
     }).pipe(Effect.provideService(Lucid, lucidForEventPlan));
     if (eventPlan.kind === "clock_hold") {
       yield* Effect.logInfo(

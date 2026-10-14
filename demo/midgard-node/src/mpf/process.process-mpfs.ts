@@ -1199,7 +1199,7 @@ export const processMpfs = (
                   classified.rejectionCode === null
                     ? ("accepted" as const)
                     : ("rejected" as const),
-                rejectionCode: classified.rejectionCode,
+                rejectionReason: classified.rejectionReason,
               };
             }),
         );
@@ -1208,7 +1208,7 @@ export const processMpfs = (
           canonicalTransactionCbor: Buffer.from(entry[Tx.Columns.TX]),
           sourceKind: "normal" as const,
           verdict: "accepted" as const,
-          rejectionCode: null,
+          rejectionReason: null,
         }));
         const validationInputs = [
           ...forcedValidationInputs,

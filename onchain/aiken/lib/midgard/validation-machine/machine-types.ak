@@ -532,7 +532,7 @@ pub type SignaturesControlV1 {
   previous_signer_hash: ByteArray,
   signer_count: Int,
   signer_peaks: List<validation_merkle_v1.FrontierPeak>,
-  invalid_signature_seen: Int,
+  first_invalid_witness_index: Int,
 }
 
 pub type PhaseANativeScriptsControlV1 {
@@ -555,6 +555,12 @@ pub type PhaseANativeScriptsControlV1 {
   signer_count: Int,
   signer_peaks: List<validation_merkle_v1.FrontierPeak>,
   continuation_cbor: ByteArray,
+  /// The purpose key of the execution under evaluation, written at the native
+  /// execution entry from the purpose leaf it authenticates and carried
+  /// unchanged by every scan step. Witness-mode scans carry -1 for both,
+  /// bound at the phase-A start.
+  purpose_kind: Int,
+  purpose_index: Int,
 }
 
 pub type NativeChunkWindowV1 {
@@ -841,6 +847,13 @@ pub type CekWitnessControlV1 {
   program_envelope_hash: ByteArray,
   execution_cpu_limit: Int,
   execution_memory_limit: Int,
+  /// Purpose key `(purpose_kind, purpose_index)` of the running execution.
+  /// Written at the context-to-core handoff from the authenticated
+  /// `CekContextControlV1`, preserved by every core step, and `-1, -1` at
+  /// selection, context and finish steps. A core-step
+  /// `PlutusExecutionFailed` rejection names this key.
+  purpose_kind: Int,
+  purpose_index: Int,
 }
 
 pub type CekMintHead {

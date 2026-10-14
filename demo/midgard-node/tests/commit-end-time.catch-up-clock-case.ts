@@ -58,4 +58,40 @@ export const registerCatchUpCommitClockCase = (
       slotStartMs + COMMIT_MINIMUM_FUTURE_BUFFER_MS - 1,
     );
   });
+  it("keeps the selected commit clock inside a future authenticated scheduler window", async () => {
+    const lucid = await makeLucid();
+    const currentSlot = lucid.currentSlot();
+    const slotStartMs = lucid.slotToUnixTime(currentSlot);
+    const schedulerWindowStartTimeMs = slotStartMs + 350_000 - 1;
+    const coverageHorizonMs = slotStartMs + 299_000 - 1;
+    const fit = resolveHistoryCommitBlockTime({
+      lucid,
+      currentSlot,
+      latestEndTime: slotStartMs - 60_000,
+      nowMs: slotStartMs + 250,
+      minimumFutureBufferMs: 30_000,
+      coverageHorizonMs,
+      schedulerWindowStartTimeMs,
+    });
+    expect(fit.status).toBe("fits");
+    expect(fit.resolvedEndTime - 1).toBeGreaterThanOrEqual(
+      schedulerWindowStartTimeMs,
+    );
+    expect(fit.resolvedEndTime - 1).toBeGreaterThan(coverageHorizonMs);
+  });
+  it("holds when the authenticated scheduler starts beyond the commit clock cap", async () => {
+    const lucid = await makeLucid();
+    const currentSlot = lucid.currentSlot();
+    const slotStartMs = lucid.slotToUnixTime(currentSlot);
+    const fit = resolveHistoryCommitBlockTime({
+      lucid,
+      currentSlot,
+      latestEndTime: slotStartMs - 60_000,
+      nowMs: slotStartMs + 250,
+      minimumFutureBufferMs: 30_000,
+      coverageHorizonMs: slotStartMs + 299_000 - 1,
+      schedulerWindowStartTimeMs: slotStartMs + 500_000 - 1,
+    });
+    expect(fit.status).toBe("exceeds_cap");
+  });
 };

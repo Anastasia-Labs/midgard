@@ -1,5 +1,5 @@
 import {
-  rejectionCodeOf,
+  isRejectionReasonArm,
   type RejectionReason,
   rejectionReasonArmOf,
   Value,
@@ -145,20 +145,15 @@ export const WATCHER_FORCED_TX_VALID = "ForcedTxValid" as const;
 
 /**
  * Membership test for {@link WatcherForcedOperatorVerdict}: the accepting
- * literal, or any constructor tag the canonical `RejectionReason` bridge
- * knows (delegating keeps the watcher vocabulary in lockstep with the SDK).
+ * literal, or any `RejectionReasonV1` arm name the SDK knows (delegating
+ * keeps the watcher vocabulary in lockstep with the SDK).
  */
 export const isWatcherForcedOperatorVerdict = (
   value: unknown,
 ): value is WatcherForcedOperatorVerdict => {
   if (typeof value !== "string") return false;
   if (value === WATCHER_FORCED_TX_VALID) return true;
-  try {
-    rejectionCodeOf(value as RejectionReason);
-    return true;
-  } catch {
-    return false;
-  }
+  return isRejectionReasonArm(value);
 };
 
 /**

@@ -50,20 +50,6 @@ pub const target_snapshot_coins_per_utxo_byte = env.coins_per_utxo_byte
 pub const target_snapshot_validation_context_cbor =
   #"8701546d6964676172642d636f6e73656e7375732d7631186400182c1a00025ef51864"
 
-pub const reject_min_fee_code = #"455f4d494e5f464545"
-
-// `E_MIN_ADA` in ASCII (#618 ruling 1). Written out here independently of the
-// validator's private `reject_min_ada` constant, so the wiring vectors below
-// pin the wire bytes a fraud proof must carry rather than echoing whatever the
-// validator happens to hold.
-pub const reject_min_ada_code = #"455f4d494e5f414441"
-
-pub const reject_value_not_preserved_code =
-  #"455f56414c55455f4e4f545f505245534552564544"
-
-pub const network_mismatch_rejection_code: ByteArray =
-  #"455f4e4554574f524b5f49445f4d49534d41544348"
-
 pub const maximum_input_schedule_last_key =
   #"82582000000000000000000000000000000000000000000000000000000000000000001901b1"
 
@@ -310,14 +296,6 @@ pub const maximum_mint_terminal_post_work_root =
 /// admits, so the min-Ada floor derived from it is the largest this scan can
 /// demand.
 pub const value_output_descriptor_total_length: Int = 16384
-
-/// `E_MISSING_REQUIRED_WITNESS`.
-pub const differential_missing_witness_code: ByteArray =
-  #"455f4d495353494e475f52455155495245445f5749544e455353"
-
-/// `E_INVALID_FIELD_TYPE` -- used only as a wrong-code mutation.
-pub const differential_invalid_field_type_code: ByteArray =
-  #"455f494e56414c49445f4649454c445f54595045"
 
 /// The replayed input every stage-2 fixture below resolves: a spend input
 /// (`source_kind == 0`) whose descriptor carries `asset_count` assets of

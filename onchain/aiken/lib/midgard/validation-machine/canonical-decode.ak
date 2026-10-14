@@ -6,7 +6,7 @@ use midgard/fraud_proofs/native_tx/compact.{
 }
 use midgard/native_tx_field_access_v1
 use midgard/rejection_reason_v1.{
-  reject_field_preimage_size, reject_invalid_field_type,
+  FieldItemWidthIllegal, FieldPreimageLengthMismatch,
 }
 use midgard/validation_machine/machine_types.{
   CanonicalDecodeControlV1, CanonicalDecodeItemObservationV1,
@@ -138,7 +138,7 @@ fn verify_canonical_decode_empty(
       rejected_successor_is_exact(
         pre,
         witness.claimed_successor,
-        reject_field_preimage_size,
+        FieldPreimageLengthMismatch { field_index: control.field_index },
       )
     } else {
       canonical_scan_field_successor_is_exact(
@@ -265,7 +265,10 @@ fn verify_canonical_decode_chunk(
           rejected_successor_is_exact(
             pre,
             witness.claimed_successor,
-            reject_invalid_field_type,
+            FieldItemWidthIllegal {
+              field_index: control.field_index,
+              item_index: control.item_index,
+            },
           )
         Some(item_encoded_length) -> {
           let next_encoded_length = length_before_item + item_encoded_length
@@ -287,7 +290,7 @@ fn verify_canonical_decode_chunk(
             rejected_successor_is_exact(
               pre,
               witness.claimed_successor,
-              reject_field_preimage_size,
+              FieldPreimageLengthMismatch { field_index: control.field_index },
             )
           } else {
             canonical_scan_field_successor_is_exact(
@@ -537,7 +540,10 @@ pub fn verify_canonical_decode_item_successor_v1(
     rejected_successor_is_exact(
       pre,
       witness.claimed_successor,
-      reject_invalid_field_type,
+      FieldItemWidthIllegal {
+        field_index: control.field_index,
+        item_index: control.item_index,
+      },
     )
   } else if control.item_index + 1 < proof.active_item_count {
     canonical_scan_successor_is_exact(
@@ -557,7 +563,7 @@ pub fn verify_canonical_decode_item_successor_v1(
     rejected_successor_is_exact(
       pre,
       witness.claimed_successor,
-      reject_field_preimage_size,
+      FieldPreimageLengthMismatch { field_index: control.field_index },
     )
   } else {
     canonical_scan_field_successor_is_exact(

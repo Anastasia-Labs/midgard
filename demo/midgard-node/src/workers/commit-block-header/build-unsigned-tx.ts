@@ -1,9 +1,8 @@
 import * as SDK from "@al-ft/midgard-sdk";
 import type { SqlClient } from "@effect/sql";
 import { Data as LucidData } from "@lucid-evolution/lucid";
-import { Effect, Option } from "effect";
+import { Effect } from "effect";
 
-import { FollowerWrite } from "../../services/follower-write-gate.js";
 import {
   HISTORY_COMMIT_MINIMUM_FUTURE_BUFFER_MS,
   historyCommitTimingBudget,
@@ -126,8 +125,9 @@ export const buildUnsignedCommitTx = (
     // read of `latestBlock` precedes it; that tail is the commit's input, so
     // the commit lands only on a chain that holds it.
     const plan = yield* journal.openPlan;
-    const history = yield* Effect.serviceOption(FollowerWrite);
-    const ownedWindow = Option.isSome(history);
+    // The selected fixed clock crosses the worker boundary; an ambient
+    // follower service does not determine this attempt's timing policy.
+    const ownedWindow = fixedBlockTimeMs !== undefined;
     const checkTimingBudget = ownedWindow
       ? historyCommitTimingBudget
       : commitTimingBudget;
@@ -198,8 +198,7 @@ export const buildUnsignedCommitTx = (
           ? HISTORY_COMMIT_MINIMUM_FUTURE_BUFFER_MS
           : COMMIT_MINIMUM_FUTURE_BUFFER_MS,
       });
-    const fixedHistoryEnd =
-      fixedBlockTimeMs ?? (ownedWindow ? candidateEndTimeMs : undefined);
+    const fixedHistoryEnd = fixedBlockTimeMs;
     const finalEndTimeCap =
       fixedHistoryEnd === undefined
         ? maximumEndTimeMs

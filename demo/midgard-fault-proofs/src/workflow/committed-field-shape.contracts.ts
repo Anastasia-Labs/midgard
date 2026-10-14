@@ -9,6 +9,7 @@ import {
   type BoundCommittedFieldShapeTransactionsConfig,
   type CommittedFieldShapeBuilderSet,
   createBoundTransactionPort,
+  fieldCarriageRequirementForAction,
   type ManifestBoundCommittedFieldShapeWorkflow,
   type ManifestBoundCommittedFieldShapeWorkflowConfig,
   productionBuilders,
@@ -16,6 +17,7 @@ import {
 } from "./committed-field-shape.create-bound-transaction-port.js";
 import { COMMITTED_FIELD_SHAPE_COMPLETE_CANONICAL_REPLAY } from "./complete-replay.js";
 import { defineLinearFamily } from "./family-definition.js";
+import { createAuthenticatedFieldCarriagePrerequisitePort } from "./field-carriage-prerequisite.js";
 import { type LinearFamilyTransactionPort } from "./linear-family-adapter.js";
 import {
   assembleManifestBoundFamilyWorkflow,
@@ -23,10 +25,9 @@ import {
 } from "./manifest-bound-family-assembly.js";
 
 /**
- * The step-02 verdict binds the field-preimage certificate policy id, so the
- * manifest must publish the policy; the family never executes the minting
- * script, so it does not bind that reference script and the definition does
- * not require the certificate.
+ * The step-02 verdict binds the field-preimage certificate policy id, and a
+ * step-01 slot above the tier-1 frontier is carried by §8.6 certified chunks,
+ * so the family binds both the policy and its minting reference script.
  */
 const contracts = (context: AssemblyContext): CommittedFieldShapeContracts => {
   const { binding } = context;
@@ -58,6 +59,24 @@ const contracts = (context: AssemblyContext): CommittedFieldShapeContracts => {
   });
 };
 
+/**
+ * The transaction port resolves the authenticated field carriage before it
+ * builds step-01, from the same requirement the assembly decorates the
+ * adapter with.
+ */
+const fieldCarriagePort = (context: AssemblyContext) =>
+  createAuthenticatedFieldCarriagePrerequisitePort({
+    category: "committedFieldShape",
+    lucid: context.lucid,
+    network: context.binding.network,
+    signer: context.signer,
+    publications: context.l1.publications,
+    requirementForAction: (input) =>
+      fieldCarriageRequirementForAction(context, input),
+    transactionConfirmed: async ({ headerHash, txHash }) =>
+      await context.l1.transactionConfirmed({ headerHash, txHash }),
+  });
+
 export const COMMITTED_FIELD_SHAPE_FAMILY_DEFINITION = defineLinearFamily({
   category: "committedFieldShape",
   stepDatumSchemas: [
@@ -65,7 +84,7 @@ export const COMMITTED_FIELD_SHAPE_FAMILY_DEFINITION = defineLinearFamily({
     CommittedFieldShapeStep02Datum,
   ],
   witnessRoles: WITNESS_ROLES,
-  fieldPreimageCertificate: false,
+  fieldPreimageCertificate: true,
   replayer: () => COMMITTED_FIELD_SHAPE_COMPLETE_CANONICAL_REPLAY,
   adapter: {
     kind: "linear",
@@ -81,6 +100,7 @@ export const COMMITTED_FIELD_SHAPE_FAMILY_DEFINITION = defineLinearFamily({
           category: context.binding.resolvedContracts.category,
           catalogue: context.binding.catalogue,
           referenceScripts: context.references,
+          fieldCarriage: fieldCarriagePort(context),
           stateQueueMutationLeaseCoordinator:
             context.stateQueueMutationLeaseCoordinator,
           fraudProverRewardLovelace: BigInt(
@@ -91,6 +111,7 @@ export const COMMITTED_FIELD_SHAPE_FAMILY_DEFINITION = defineLinearFamily({
         builders: productionBuilders,
       }),
   },
+  fieldCarriage: [{ requirementForAction: fieldCarriageRequirementForAction }],
 });
 
 export const createManifestBoundCommittedFieldShapeWorkflow = (

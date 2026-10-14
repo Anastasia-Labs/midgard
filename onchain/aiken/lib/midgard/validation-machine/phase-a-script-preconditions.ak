@@ -2,7 +2,10 @@ use aiken/primitive/bytearray
 use midgard/fraud_proofs/native_tx/compact.{verify_tx_proof_source_v1}
 use midgard/fraud_proofs/native_tx/types.{VerifiedTxSourceView}
 use midgard/native_tx_field_access_v1
-use midgard/rejection_reason_v1.{reject_invalid_field_type}
+use midgard/rejection_reason_v1.{
+  ObserverOrderInvalid, ObserversForbiddenOnUntaggedNetwork, RejectionReasonV1,
+  ScriptIntegrityHashMissing,
+}
 use midgard/script_language_views_v1.{empty_script_integrity_hash}
 use midgard/validation_machine/machine_types.{
   NoAuxiliaryWitness, PhaseAScriptPreconditionsControlV1,
@@ -27,7 +30,7 @@ fn phase_a_script_preconditions_rejection(
   contains_non_native_script: Bool,
   script_integrity_hash: ByteArray,
   network_id: Int,
-) -> Option<ByteArray> {
+) -> Option<RejectionReasonV1> {
   let requires_plutus_evaluation = or {
     contains_non_native_script,
     has_redeemers,
@@ -36,12 +39,12 @@ fn phase_a_script_preconditions_rejection(
   if !requires_plutus_evaluation {
     None
   } else if script_integrity_hash == empty_script_integrity_hash {
-    Some(reject_invalid_field_type)
+    Some(ScriptIntegrityHashMissing)
   } else if and {
     observer_count > 0,
     network_id == 255,
   } {
-    Some(reject_invalid_field_type)
+    Some(ObserversForbiddenOnUntaggedNetwork)
   } else {
     None
   }
@@ -91,12 +94,8 @@ fn phase_a_script_preconditions_finalize(
       verified_source.tx_compact.body.network_id,
     )
   is {
-    Some(rejection_code) ->
-      rejected_successor_is_exact(
-        pre,
-        witness.claimed_successor,
-        rejection_code,
-      )
+    Some(reason) ->
+      rejected_successor_is_exact(pre, witness.claimed_successor, reason)
     None -> and {
         witness.claimed_successor.phase == validation_trace_v1.ResolveInputs,
         witness.claimed_successor.work_root == validation_trace_v1.hash_work_witness(
@@ -202,7 +201,7 @@ pub fn verify_phase_a_script_preconditions(
           rejected_successor_is_exact(
             pre,
             witness.claimed_successor,
-            reject_invalid_field_type,
+            ObserverOrderInvalid { observer_index: control.observer_seen },
           )
         } else {
           phase_a_script_preconditions_successor_is_exact(
@@ -334,7 +333,7 @@ pub fn verify_phase_a_script_preconditions_item_semantics_v1(
           rejected_successor_is_exact(
             pre,
             witness.claimed_successor,
-            reject_invalid_field_type,
+            ObserverOrderInvalid { observer_index: control.observer_seen },
           )
         } else {
           phase_a_script_preconditions_successor_is_exact(
