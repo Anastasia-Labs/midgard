@@ -3,7 +3,8 @@ import { readFile } from "node:fs/promises";
 import { basename, join, resolve } from "node:path";
 
 import { verifyFinalizedDeploymentManifest } from "@al-ft/midgard-core/deployment-manifest-identity";
-import { FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER } from "@al-ft/midgard-sdk";
+import { deploymentFraudProofCatalogueCategories } from "@al-ft/midgard-core/deployment-profile";
+import { parseDeploymentReleaseProvenance } from "@al-ft/midgard-core/deployment-release";
 import { paymentCredentialOf, walletFromSeed } from "@lucid-evolution/lucid";
 import {
   writeTextFileAtomic,
@@ -24,6 +25,8 @@ import type { StackProcesses } from "./process.js";
 
 type ReleaseInput = {
   signingKeyFile: string;
+  provenanceFile?: string;
+  parameterRegistryFile?: string;
   programCommitments: Record<string, string>;
   fundingProfiles: WatcherWorkflowFundingProfileBody[];
 };
@@ -31,8 +34,16 @@ export async function readReleaseInput(path: string) {
   const input = (await readJsonIfPresent(path)) as ReleaseInput;
   if (
     !input ||
-    Object.keys(input).sort().join() !==
-      "fundingProfiles,programCommitments,signingKeyFile" ||
+    Object.keys(input)
+      .filter(
+        (key) => key !== "provenanceFile" && key !== "parameterRegistryFile",
+      )
+      .sort()
+      .join() !== "fundingProfiles,programCommitments,signingKeyFile" ||
+    (Object.prototype.hasOwnProperty.call(input, "provenanceFile") &&
+      !input.provenanceFile?.startsWith("/")) ||
+    (Object.prototype.hasOwnProperty.call(input, "parameterRegistryFile") &&
+      !input.parameterRegistryFile?.startsWith("/")) ||
     !input.signingKeyFile?.startsWith("/") ||
     !Array.isArray(input.fundingProfiles)
   )
@@ -47,14 +58,29 @@ export async function readReleaseInput(path: string) {
     profile.scope.kind === "fraud_proof_category" ? profile.scope.category : "",
   );
   if (
-    FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER.some(
+    deploymentFraudProofCatalogueCategories().some(
       (category) => !categories.includes(category),
     )
   )
     throw new Error(
       "Release inputs need measured funding profiles for every launch category",
     );
-  return { input, key };
+  const releaseProvenance =
+    input.provenanceFile === undefined
+      ? undefined
+      : parseDeploymentReleaseProvenance(
+          await readJsonIfPresent(input.provenanceFile),
+        );
+  const deploymentParameterRegistry =
+    input.parameterRegistryFile === undefined
+      ? undefined
+      : await readJsonIfPresent(input.parameterRegistryFile);
+  if (
+    input.parameterRegistryFile !== undefined &&
+    deploymentParameterRegistry === undefined
+  )
+    throw new Error("Release parameter registry file is missing");
+  return { input, key, releaseProvenance, deploymentParameterRegistry };
 }
 export async function releasePaths(processes: StackProcesses) {
   const template = parseWatcherProcessConfig(
@@ -73,6 +99,8 @@ export async function releasePaths(processes: StackProcesses) {
       directory,
       basename(template.faultProofInfrastructure.blueprintPath),
     ),
+    provenance: join(directory, "release-provenance.json"),
+    parameterRegistry: join(directory, "deployment-parameters.json"),
     deploymentInfo: join(
       directory,
       basename(template.faultProofInfrastructure.deploymentInfoPath),
@@ -84,7 +112,7 @@ function assertLaunchCategoryProfiles(overlay: {
   profiles: Readonly<Record<string, unknown>>;
 }) {
   if (
-    FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER.some(
+    deploymentFraudProofCatalogueCategories().some(
       (category) => !overlay.profiles[category],
     )
   )
@@ -127,9 +155,8 @@ export async function prepareStackRelease(processes: StackProcesses) {
       );
     return verifyStackRelease(processes);
   }
-  const { input, key } = await readReleaseInput(
-    processes.config.watcher.releaseInput,
-  );
+  const { input, key, releaseProvenance, deploymentParameterRegistry } =
+    await readReleaseInput(processes.config.watcher.releaseInput);
   // A saved authority is reopened only when it attests exactly this release.
   const { deploymentAuthority, fundingProfileOverlay } =
     await authorWatcherDeploymentRelease({
@@ -138,6 +165,10 @@ export async function prepareStackRelease(processes: StackProcesses) {
         resolve(processes.config.nodeRoot, "../../onchain/aiken/plutus.json"),
       ),
       programCommitments: input.programCommitments,
+      ...(releaseProvenance === undefined ? {} : { releaseProvenance }),
+      ...(deploymentParameterRegistry === undefined
+        ? {}
+        : { deploymentParameterRegistry }),
       fundingProfiles: input.fundingProfiles,
       fundingPaymentKeyHash: paymentCredentialOf(
         walletFromSeed(
