@@ -4,7 +4,7 @@
   "issue": "#628 — the descriptor repoint's carried sign-off item: 'the deposit arm's ExUnits are not unconditional (l2_datum is unbounded); both arms' frontiers get measured and recorded post-regeneration'. Carried to the #617 sign-off checklist.",
   "spec": "GOAL_SPEC §5.3 and §5.5.3: the LedgerOutputCommitmentV1 descriptor is the sole utxos_root trie value, so validate_valid_deposit_transition and apply_l2_outputs both pay for descriptor derivation, and §3.3 fixes the execution basis they are judged at.",
   "purpose": "Post-regeneration ExUnits frontier for the two arms #628 repointed onto LedgerOutputCommitmentV1 plus the isolated §5.3 descriptor derivation they both pay for. Unlike version 1 of this artifact this is a GATE: every row is re-measured by scripts/verify-transition-trace-descriptor-exec-ledger-v1.mjs, every crossing is a bracket between adjacent MEASURED rows rather than an interpolation, and every arm-cost claim is a difference against a fixture-only baseline that the verifier recomputes.",
-  "note": "2026-09-29 remeasurement with pinned v1.1.23+5adf783 under testnet. Raw Aiken test readings include fixture construction; arm cost claims use only the recomputed differences against matching fixture-only rows. No execution basis was changed. The measured whole-test descriptor crossing is now bracketed by 2,819 and 3,083 output CBOR bytes; the deposit crossing is between 66 and 134 serialised datum bytes. The original presence-only deposit crossing and the earlier descriptor brackets are retired. These are measured adjacent rungs, not interpolated limits or complete transaction-fit claims. The marginal descriptor row at 3,083 bytes still exceeds the basis, and the output-width policy question remains open.\n\nSource changes since the original recording include canonical empty-byte datum support (3e3090aa1) and authenticated transition continuations (13ff70d63). The compiler change from 2a78108 to 5adf783 moves none of these rows: at 89663a0db, 5adf783 reproduces the original readings exactly. The drop is 13ff70d63's rewrite of `ledger_output_summaries_v1` in `lib/midgard/script-context-v1.ak`, which summarises an output's value, datum and reference script once and reuses them for both encodings, instead of re-summarising the whole TxOut twice. That saves about 720K mem per descriptor derivation and about 1.0M per deposit-arm derivation. It removes no check: decoding, the materialisability check and `descriptor_is_well_formed` run unchanged, and `consolidated_ledger_output_summaries_match_the_separate_entry_points` and the golden descriptor vectors pin the same summaries. The deposit rows fall by less than that, because 89427ff46 later authenticates deposits from event-history evidence (+605K mem on `deposit_arm_datum_absent`). `historicalMeasurement` keeps the original figures. The empty-inline-datum control now asserts successful derivation. The proof.test no-op fixture additionally shares an identical output descriptor and independently builds its expected root in this remeasurement; its reduced whole-test cost is fixture work and is not a validator speedup. The separate frontier arm/baseline pair still measures validator marginal cost.\n\nRe-taken the same day at 9993b316e, after `script_value_data` began re-sorting each policy's asset names by their bytes, the order the script context uses. The sort is paid wherever a descriptor is derived through the one-shot path, and its cost grows with the number of asset names: deriving the descriptor of an output with no native assets costs 666 mem more, the three-asset `builds_rich_multi_chunk_output_exactly` vector 27,850 mem more, each deposit-arm derivation 9,546 mem more, and the L2 no-op arm's marginal cost falls by 134 mem. No fit judgement and no crossing bracket moves.\n\nEach module is measured in its own focused invocation, with nonzero selected test counts and all listed neutralisation controls required to pass.\n\nRe-taken 2026-09-30 on branch f1-v3-terminal, after two MPF changes, each measured alone against a tree carrying only the other. The terminal Leaf neighbour check now also refuses a leaf suffix that reads as a fork prefix; its parity test adds 200 mem / 32,000 cpu to every reading whose proofs end in a Leaf, which is the whole movement of each deposit row, arm and fixture-only alike, so no deposit marginal moves. The transition-trace `delete_root` now reads a deleted-to-empty trie back as the committed empty-ledger root; its rewrite lowers each reading that deletes a spent output by 1,622 mem, so the L2 rows move net about 1,422 to 1,632 mem down and the L2 no-op arm's marginal falls from 5,181,764 to 5,179,642 mem. No fit judgement and no crossing bracket moves.\n\n2026-10-04 remeasurement with pinned aiken v1.1.23+5adf783 on 57fc702c. The direct typed deposit-source membership bindings in transition-trace/proof.ak from 2c1c2274a change fourteen raw deposit readings and ten derived marginal readings. Fixture controls, execution basis and frontier judgments remain unchanged.\n\n2026-10-09 re-take. The forced-order arms of `validate_forced_l1_event_fault` in transition-trace/proof.ak now judge due-ness by inclusion time alone and no longer re-derive the order's compact body, which changes the shape of the compiled proof module that every deposit reading shares. Bisected by swapping proof.ak and proof.test.ak independently: the whole movement follows proof.ak, and fixture-only readings do not move. Every deposit-arm reading rises by 1,000 mem / 160,000 cpu, the same at every datum size, so each deposit marginal rises by the same amount; `rejects_valid_deposit_transition_with_arbitrary_projected_output` rises by 200 mem / 32,000 cpu; `accepts_omitted_due_deposit_fault` and `accepts_out_of_window_deposit_fault` fall by 600 mem / 96,000 cpu. No fit judgement, crossing bracket or execution basis moves.\n\n2026-10-13 re-take with pinned aiken v1.1.23+5adf783 under testnet, at 0364661b4. Every reading moved in the T302 merge (612890ea5) and nowhere else: measured at each first-parent merge from df7684f58, the readings match this ledger exactly through 4761ca092 and match the fresh ones from 612890ea5 on. Within T302, three commits move rows. a09665322 (deposit source leaf carried as committed bytes) raises the deposit rows by about 370 mem. d0fb3ecb5 (the event payload node bound enforced once, at history admission, instead of again in the proof) lowers every deposit-arm reading by about 220K mem. 961daf72e (transition output datums summarised with the resumable linear walk) lowers each descriptor derivation by 51K to 53K mem and each deposit-arm reading by about 98K more, and raises the L2 no-op fixture by 19,192 mem, which is the whole movement of `accepts_valid_l2_transaction_no_op_transition_fault` and of `l2_no_op_arm_fixture_only`. Net, each deposit-arm reading falls by about 190K (datum absent) to 321K mem (266 bytes), and `deposit_arm_datum_128_bytes` now measures 13,126,974 mem, within the basis. Its `basisFit` moves from exceeds to within, and the deposit crossing moves up one rung, to between 134 and 266 serialised datum bytes. The descriptor crossing bracket (2,819 to 3,083 bytes) and every other fit judgement stay put, and the execution basis is unchanged.\n\nRe-taken again the same day after the N2 merge (c0d4b8358), the only merge since the previous re-take that changes on-chain source. Fixture-only readings and the descriptor-module readings do not move. Every deposit-arm reading with an l2_datum rises by 2,200 mem / 352,000 cpu and `deposit_arm_datum_absent` falls by 800 mem / 128,000 cpu, so each deposit marginal moves by the same amount; the remaining deposit-path rows of proof.test fall by 800 mem / 128,000 cpu, and every L2 no-op and L2 dispute row falls by 600 mem / 96,000 cpu. No fit judgement, crossing bracket or execution basis moves.\n\n2026-10-14 (p1/plutus-opt): re-take after the decoder commit 3678583d4 (a continuation-passing CBOR Data decoder, `midgard/cbor_deserialise`, differentially tested against `aiken/cbor.deserialise`) and the call-site switch a184d903b that routes the unreserved decode sites through it. Nothing else between the two readings changes on-chain code, and the later decoder trim 51e837178 leaves these readings unchanged. Every row moves down; 4 raw rows and 1 net-of-baseline figure recorded `exceeds` now measure within the basis and were flipped by hand, each with a dated `cause` giving its before and after readings and its margin. All of them sit within about 1.5% of the basis. The descriptor crossing no longer straddles the basis and moved to `retiredCrossings`; the deposit crossing still straddles and stays. `infeasibility` and `ruling` prose was unchanged at that re-take.\n\nLater on 2026-10-14 (p1/plutus-opt): two rungs were added to the descriptor ladder, 3,149 and 3,215 output bytes, so the descriptor dimension keeps a measured crossing. The whole-test crossing is now between 3,083 and 3,149 bytes; net of the fixture-only twins the derivation first misses at 3,215 bytes. The `infeasibility` prose of each flipped row now states its within-basis reading and margin; the `ruling` prose is unchanged. No other reading moves, and the execution basis is unchanged.",
+  "note": "2026-09-29 remeasurement with pinned v1.1.23+5adf783 under testnet. Raw Aiken test readings include fixture construction; arm cost claims use only the recomputed differences against matching fixture-only rows. No execution basis was changed. The measured whole-test descriptor crossing is now bracketed by 2,819 and 3,083 output CBOR bytes; the deposit crossing is between 66 and 134 serialised datum bytes. The original presence-only deposit crossing and the earlier descriptor brackets are retired. These are measured adjacent rungs, not interpolated limits or complete transaction-fit claims. The marginal descriptor row at 3,083 bytes still exceeds the basis, and the output-width policy question remains open.\n\nSource changes since the original recording include canonical empty-byte datum support (3e3090aa1) and authenticated transition continuations (13ff70d63). The compiler change from 2a78108 to 5adf783 moves none of these rows: at 89663a0db, 5adf783 reproduces the original readings exactly. The drop is 13ff70d63's rewrite of `ledger_output_summaries_v1` in `lib/midgard/script-context-v1.ak`, which summarises an output's value, datum and reference script once and reuses them for both encodings, instead of re-summarising the whole TxOut twice. That saves about 720K mem per descriptor derivation and about 1.0M per deposit-arm derivation. It removes no check: decoding, the materialisability check and `descriptor_is_well_formed` run unchanged, and `consolidated_ledger_output_summaries_match_the_separate_entry_points` and the golden descriptor vectors pin the same summaries. The deposit rows fall by less than that, because 89427ff46 later authenticates deposits from event-history evidence (+605K mem on `deposit_arm_datum_absent`). `historicalMeasurement` keeps the original figures. The empty-inline-datum control now asserts successful derivation. The proof.test no-op fixture additionally shares an identical output descriptor and independently builds its expected root in this remeasurement; its reduced whole-test cost is fixture work and is not a validator speedup. The separate frontier arm/baseline pair still measures validator marginal cost.\n\nRe-taken the same day at 9993b316e, after `script_value_data` began re-sorting each policy's asset names by their bytes, the order the script context uses. The sort is paid wherever a descriptor is derived through the one-shot path, and its cost grows with the number of asset names: deriving the descriptor of an output with no native assets costs 666 mem more, the three-asset `builds_rich_multi_chunk_output_exactly` vector 27,850 mem more, each deposit-arm derivation 9,546 mem more, and the L2 no-op arm's marginal cost falls by 134 mem. No fit judgement and no crossing bracket moves.\n\nEach module is measured in its own focused invocation, with nonzero selected test counts and all listed neutralisation controls required to pass.\n\nRe-taken 2026-09-30 on branch f1-v3-terminal, after two MPF changes, each measured alone against a tree carrying only the other. The terminal Leaf neighbour check now also refuses a leaf suffix that reads as a fork prefix; its parity test adds 200 mem / 32,000 cpu to every reading whose proofs end in a Leaf, which is the whole movement of each deposit row, arm and fixture-only alike, so no deposit marginal moves. The transition-trace `delete_root` now reads a deleted-to-empty trie back as the committed empty-ledger root; its rewrite lowers each reading that deletes a spent output by 1,622 mem, so the L2 rows move net about 1,422 to 1,632 mem down and the L2 no-op arm's marginal falls from 5,181,764 to 5,179,642 mem. No fit judgement and no crossing bracket moves.\n\n2026-10-04 remeasurement with pinned aiken v1.1.23+5adf783 on 57fc702c. The direct typed deposit-source membership bindings in transition-trace/proof.ak from 2c1c2274a change fourteen raw deposit readings and ten derived marginal readings. Fixture controls, execution basis and frontier judgments remain unchanged.\n\n2026-10-09 re-take. The forced-order arms of `validate_forced_l1_event_fault` in transition-trace/proof.ak now judge due-ness by inclusion time alone and no longer re-derive the order's compact body, which changes the shape of the compiled proof module that every deposit reading shares. Bisected by swapping proof.ak and proof.test.ak independently: the whole movement follows proof.ak, and fixture-only readings do not move. Every deposit-arm reading rises by 1,000 mem / 160,000 cpu, the same at every datum size, so each deposit marginal rises by the same amount; `rejects_valid_deposit_transition_with_arbitrary_projected_output` rises by 200 mem / 32,000 cpu; `accepts_omitted_due_deposit_fault` and `accepts_out_of_window_deposit_fault` fall by 600 mem / 96,000 cpu. No fit judgement, crossing bracket or execution basis moves.\n\n2026-10-13 re-take with pinned aiken v1.1.23+5adf783 under testnet, at 0364661b4. Every reading moved in the T302 merge (612890ea5) and nowhere else: measured at each first-parent merge from df7684f58, the readings match this ledger exactly through 4761ca092 and match the fresh ones from 612890ea5 on. Within T302, three commits move rows. a09665322 (deposit source leaf carried as committed bytes) raises the deposit rows by about 370 mem. d0fb3ecb5 (the event payload node bound enforced once, at history admission, instead of again in the proof) lowers every deposit-arm reading by about 220K mem. 961daf72e (transition output datums summarised with the resumable linear walk) lowers each descriptor derivation by 51K to 53K mem and each deposit-arm reading by about 98K more, and raises the L2 no-op fixture by 19,192 mem, which is the whole movement of `accepts_valid_l2_transaction_no_op_transition_fault` and of `l2_no_op_arm_fixture_only`. Net, each deposit-arm reading falls by about 190K (datum absent) to 321K mem (266 bytes), and `deposit_arm_datum_128_bytes` now measures 13,126,974 mem, within the basis. Its `basisFit` moves from exceeds to within, and the deposit crossing moves up one rung, to between 134 and 266 serialised datum bytes. The descriptor crossing bracket (2,819 to 3,083 bytes) and every other fit judgement stay put, and the execution basis is unchanged.\n\nRe-taken again the same day after the N2 merge (c0d4b8358), the only merge since the previous re-take that changes on-chain source. Fixture-only readings and the descriptor-module readings do not move. Every deposit-arm reading with an l2_datum rises by 2,200 mem / 352,000 cpu and `deposit_arm_datum_absent` falls by 800 mem / 128,000 cpu, so each deposit marginal moves by the same amount; the remaining deposit-path rows of proof.test fall by 800 mem / 128,000 cpu, and every L2 no-op and L2 dispute row falls by 600 mem / 96,000 cpu. No fit judgement, crossing bracket or execution basis moves.\n\n2026-10-14 (p1/plutus-opt): re-take after the decoder commit 3678583d4 (a continuation-passing CBOR Data decoder, `midgard/cbor_deserialise`, differentially tested against `aiken/cbor.deserialise`) and the call-site switch a184d903b that routes the unreserved decode sites through it. Nothing else between the two readings changes on-chain code, and the later decoder trim 51e837178 leaves these readings unchanged. Every row moves down; 4 raw rows and 1 net-of-baseline figure recorded `exceeds` now measure within the basis and were flipped by hand, each with a dated `cause` giving its before and after readings and its margin. All of them sit within about 1.5% of the basis. The descriptor crossing no longer straddles the basis and moved to `retiredCrossings`; the deposit crossing still straddles and stays. `infeasibility` and `ruling` prose was unchanged at that re-take.\n\nLater on 2026-10-14 (p1/plutus-opt): two rungs were added to the descriptor ladder, 3,149 and 3,215 output bytes, so the descriptor dimension keeps a measured crossing. The whole-test crossing is now between 3,083 and 3,149 bytes; net of the fixture-only twins the derivation first misses at 3,215 bytes. The `infeasibility` prose of each flipped row now states its within-basis reading and margin; the `ruling` prose is unchanged. No other reading moves, and the execution basis is unchanged.\n\n2026-10-14 (p1/l-m): the one-shot L2 transaction arm is retired. The streamed kind-0 replay (cf0d208e5) deleted `validate_l2_transaction_transition` and the tests that measured it, so its five rows, its marginal figure (last 4,951,673 mem / 2,123,012,497 cpu net of fixtures) and its two neutralisation selectors leave this ledger. Last readings: `l2_no_op_arm` 13,079,124 mem / 5,801,003,707 cpu, `l2_no_op_arm_fixture_only` 8,127,451 mem / 3,677,991,210 cpu, `accepts_valid_l2_transaction_no_op_transition_fault` 9,393,170 mem / 4,164,195,116 cpu, `l2_descriptor_dispute_over_a_descriptor_ledger_mints` 13,009,747 mem / 5,778,792,677 cpu, `rejects_l2_transaction_when_trace_matches_expected_post_root` 13,065,710 mem / 5,795,955,993 cpu. A streamed step derives at most one output descriptor, through the output-step yields, and is measured per transaction by the transition-trace fit ledgers. The deposit and descriptor rows are re-taken on the merge of the PR head 8e46d6a2b; no fit judgement, crossing bracket or execution basis moves.",
   "readingKind": "Whole-test upper bounds. See `note`, paragraph one: no raw row on this lane is a validator cost, and the `marginal` block is the only place an arm cost is stated.",
   "compiler": {
     "binary": "/home/gumbo/.aiken/bin/aiken",
@@ -274,144 +274,143 @@
     {
       "module": "midgard/fraud_proofs/transition_trace/proof_exunits_frontier.test",
       "sweep": "deposit_arm_l2_datum_bytes — the serialised width of the deposit's `l2_datum`, which is the one field of a deposit a user controls and the field #628 flagged as unbounded. `sizeBytes` 0 means the field is ABSENT; 2 is a present one-byte blob. The mapping from rung to serialised width is pinned on chain by `deposit_datum_cbor_lengths_are_exact` rather than asserted here. The two `l2_no_op_arm` rows are not part of that sweep and carry `sizeBytes` 0 for that reason.",
-      "neutralisationNote": "A cost row over an arm that accepts everything measures nothing. `deposit_arm_rejects_arbitrary_projected_value` shows the deposit arm still returns False when the projected value is not the descriptor it must be; `l2_arm_refuses_full_output_replay` shows the L2 arm still aborts rather than replaying full output bytes into utxos_root, which is the #628 hole itself. `deposit_datum_cbor_lengths_are_exact` pins the axis every crossing below is expressed on.",
+      "neutralisationNote": "A cost row over an arm that accepts everything measures nothing. `deposit_arm_rejects_arbitrary_projected_value` shows the deposit arm still returns False when the projected value is not the descriptor it must be; `l2_arm_refuses_full_output_replay` shows the L2 arm still aborts rather than replaying full output bytes into utxos_root, which is the #628 hole itself. `deposit_datum_cbor_lengths_are_exact` pins the axis every crossing below is expressed on. 2026-10-14 (p1/l-m): the L2 selector is retired with the one-shot L2 transaction arm it guarded; the streamed kind-0 replay (cf0d208e5) deleted that arm. The deposit selectors remain.",
       "neutralisation": [
         "deposit_datum_cbor_lengths_are_exact",
-        "deposit_arm_rejects_arbitrary_projected_value",
-        "l2_arm_refuses_full_output_replay"
+        "deposit_arm_rejects_arbitrary_projected_value"
       ],
       "rows": {
         "deposit_arm_datum_absent": {
           "kind": "arm",
           "sizeBytes": 0,
-          "mem": 10696696,
-          "cpu": 4769588336,
+          "mem": 10657141,
+          "cpu": 4756656657,
           "basisFit": "within"
         },
         "deposit_arm_datum_absent_fixture_only": {
           "kind": "baseline",
           "sizeBytes": 0,
-          "mem": 5091502,
-          "cpu": 2270186368,
+          "mem": 5083542,
+          "cpu": 2266848494,
           "basisFit": "within"
         },
         "deposit_arm_datum_1_byte": {
           "kind": "arm",
           "sizeBytes": 2,
-          "mem": 11840610,
-          "cpu": 5193977842,
+          "mem": 11801055,
+          "cpu": 5181046163,
           "basisFit": "within"
         },
         "deposit_arm_datum_1_byte_fixture_only": {
           "kind": "baseline",
           "sizeBytes": 2,
-          "mem": 5668197,
-          "cpu": 2481730157,
+          "mem": 5660237,
+          "cpu": 2478392283,
           "basisFit": "within"
         },
         "deposit_arm_datum_8_bytes": {
           "kind": "arm",
           "sizeBytes": 9,
-          "mem": 11872486,
-          "cpu": 5202987195,
+          "mem": 11832931,
+          "cpu": 5190055516,
           "basisFit": "within"
         },
         "deposit_arm_datum_8_bytes_fixture_only": {
           "kind": "baseline",
           "sizeBytes": 9,
-          "mem": 5700065,
-          "cpu": 2490702652,
+          "mem": 5692105,
+          "cpu": 2487364778,
           "basisFit": "within"
         },
         "deposit_arm_datum_16_bytes": {
           "kind": "arm",
           "sizeBytes": 17,
-          "mem": 11883152,
-          "cpu": 5207979423,
+          "mem": 11843597,
+          "cpu": 5195047744,
           "basisFit": "within"
         },
         "deposit_arm_datum_16_bytes_fixture_only": {
           "kind": "baseline",
           "sizeBytes": 17,
-          "mem": 5710705,
-          "cpu": 2494351621,
+          "mem": 5702745,
+          "cpu": 2491013747,
           "basisFit": "within"
         },
         "deposit_arm_datum_24_bytes": {
           "kind": "arm",
           "sizeBytes": 26,
-          "mem": 12011450,
-          "cpu": 5254054418,
+          "mem": 11971895,
+          "cpu": 5241122739,
           "basisFit": "within"
         },
         "deposit_arm_datum_24_bytes_fixture_only": {
           "kind": "baseline",
           "sizeBytes": 26,
-          "mem": 5777255,
-          "cpu": 2517436950,
+          "mem": 5769295,
+          "cpu": 2514099076,
           "basisFit": "within"
         },
         "deposit_arm_datum_32_bytes": {
           "kind": "arm",
           "sizeBytes": 34,
-          "mem": 12021304,
-          "cpu": 5258914530,
+          "mem": 11981749,
+          "cpu": 5245982851,
           "basisFit": "within"
         },
         "deposit_arm_datum_32_bytes_fixture_only": {
           "kind": "baseline",
           "sizeBytes": 34,
-          "mem": 5787087,
-          "cpu": 2520954515,
+          "mem": 5779127,
+          "cpu": 2517616641,
           "basisFit": "within"
         },
         "deposit_arm_datum_48_bytes": {
           "kind": "arm",
           "sizeBytes": 50,
-          "mem": 12022192,
-          "cpu": 5263065502,
+          "mem": 11982637,
+          "cpu": 5250133823,
           "basisFit": "within"
         },
         "deposit_arm_datum_48_bytes_fixture_only": {
           "kind": "baseline",
           "sizeBytes": 50,
-          "mem": 5787931,
-          "cpu": 2522420393,
+          "mem": 5779971,
+          "cpu": 2519082519,
           "basisFit": "within"
         },
         "deposit_arm_datum_64_bytes": {
           "kind": "arm",
           "sizeBytes": 66,
-          "mem": 12032088,
-          "cpu": 5269935754,
+          "mem": 11992533,
+          "cpu": 5257004075,
           "basisFit": "within"
         },
         "deposit_arm_datum_64_bytes_fixture_only": {
           "kind": "baseline",
           "sizeBytes": 66,
-          "mem": 5797783,
-          "cpu": 2526605551,
+          "mem": 5789823,
+          "cpu": 2523267677,
           "basisFit": "within"
         },
         "deposit_arm_datum_128_bytes": {
           "kind": "arm",
           "sizeBytes": 134,
-          "mem": 12566798,
-          "cpu": 5443145134,
+          "mem": 12527243,
+          "cpu": 5430213455,
           "basisFit": "within"
         },
         "deposit_arm_datum_128_bytes_fixture_only": {
           "kind": "baseline",
           "sizeBytes": 134,
-          "mem": 6072438,
-          "cpu": 2612320757,
+          "mem": 6064478,
+          "cpu": 2608982883,
           "basisFit": "within"
         },
         "deposit_arm_datum_256_bytes": {
           "kind": "arm",
           "sizeBytes": 266,
-          "mem": 13357920,
-          "cpu": 5719536335,
+          "mem": 13321365,
+          "cpu": 5707084656,
           "basisFit": "exceeds",
           "infeasibility": "The widest rung measured: whole-test 14,290,622 mem against a 13,200,000 basis, 108.3%. Marginal 7,467,181, 56.6% of the basis and within. Across the one-byte to 266-byte rungs the marginal cost rises by 714,836 mem and the whole-test reading by 1,528,150, because fixture growth is charged to the row as well. The ledger does not extrapolate past this rung.",
           "ruling": "#628 sign-off item, #617 wave. Whether §5.3 owes an explicit `l2_datum` width bound is the open question this ladder informs; see `openQuestions`."
@@ -419,25 +418,8 @@
         "deposit_arm_datum_256_bytes_fixture_only": {
           "kind": "baseline",
           "sizeBytes": 266,
-          "mem": 6478191,
-          "cpu": 2747386842,
-          "basisFit": "within"
-        },
-        "l2_no_op_arm": {
-          "kind": "arm",
-          "sizeBytes": 0,
-          "mem": 13069522,
-          "cpu": 5799339325,
-          "basisFit": "within",
-          "infeasibility": "Measures within the basis since the decoder switch (3678583d4, a184d903b): the L2 no-op transition arm, one spent and one produced Ada-only output and two descriptor derivations, reads 13,079,524 mem whole-test, 99.1% of the basis, a margin of 120,476 mem (0.91%). Marginal: a small later cost on this path flips it back. Before the switch it read 13,555,581 (see `cause`). It is an upper bound on a test, not on `apply_l2_outputs`: the arm's own cost is the `l2_no_op_arm` figure in `marginal`, net of the fixture-only twin. #628 carried the original reading, 15,289,803, to the sign-off; see `historicalMeasurement`.",
-          "ruling": "#628 sign-off item, #617 wave. The marginal figure is within basis, so this row records a harness cost and not an infeasibility of the validator.",
-          "cause": "2026-10-14: recorded `exceeds` until the decoder commit 3678583d4 (a continuation-passing CBOR Data decoder, `midgard/cbor_deserialise`, differentially tested against `aiken/cbor.deserialise`) and the call-site switch a184d903b that routes the unreserved decode sites through it. Nothing else between the two readings changes on-chain code, and the later decoder trim 51e837178 leaves these readings unchanged. Measured on this row before and after that one change: 13,555,581 → 13,079,524 mem (-476,057) and 5,944,938,077 → 5,801,067,707 cpu (-143,870,370). Margin to the 13,200,000 basis: 120,476 mem (0.91%). Marginal: within 1% of the basis, so a small later cost on this path flips it back. The `infeasibility` prose was rewritten the same day to state the within-basis reading; the `ruling` prose is kept as written, because retiring the #628 item it carries is the owner's call."
-        },
-        "l2_no_op_arm_fixture_only": {
-          "kind": "baseline",
-          "sizeBytes": 0,
-          "mem": 8127451,
-          "cpu": 3677991210,
+          "mem": 6470231,
+          "cpu": 2744048968,
           "basisFit": "within"
         }
       }
@@ -483,8 +465,8 @@
         "builds_rich_multi_chunk_output_exactly": {
           "kind": "arm",
           "sizeBytes": 2355,
-          "mem": 14380060,
-          "cpu": 5405348484,
+          "mem": 14354948,
+          "cpu": 5395042292,
           "basisFit": "exceeds",
           "infeasibility": "The richest pinned golden vector — two policies, three assets, a 56-byte base address, a ~2 KiB inline datum and a PlutusV3 reference script — reads 15,036,684 mem for 2,355 output bytes, 113.9% of the basis. The fixed-shape ladder in the frontier module reads 10,753,167 at 2,159 bytes and 11,535,649 at 2,423, so roughly 3.7M of it is SHAPE cost (assets, the wider address, the reference script), not size. Memory binds; CPU still fits at 71.5%.",
           "ruling": "#628 sign-off item, #617 wave. This vector has no fixture-only twin because it is a pinned cross-language golden vector rather than a swept rung; the marginal figure for a 2,355-byte output is read off the frontier module's ladder instead."
@@ -501,65 +483,37 @@
     {
       "module": "midgard/fraud_proofs/transition_trace/proof.test",
       "sweep": "Not a sweep: the seven transition-trace rows #628's version 1 measured, kept under the gate. `sizeBytes` is 0 throughout because none of these tests varies a width. The two rows the frontier module reproduces — `accepts_valid_deposit_transition_fault` and `accepts_valid_l2_transaction_no_op_transition_fault` — are pinned here so the reproduction and the original cannot drift apart unnoticed.",
-      "neutralisationNote": "Two refusal paths of the same arms: a deposit whose projected output carries the wrong network id is refused, and a full-output replay against a descriptor ledger aborts rather than minting.",
+      "neutralisationNote": "Two refusal paths of the same arms: a deposit whose projected output carries the wrong network id is refused, and a full-output replay against a descriptor ledger aborts rather than minting. 2026-10-14 (p1/l-m): the L2 selector is retired with the one-shot L2 transaction arm it guarded; the streamed kind-0 replay (cf0d208e5) deleted that arm. The deposit selectors remain.",
       "neutralisation": [
-        "rejects_valid_deposit_transition_with_wrong_network_id",
-        "l2_full_output_replay_against_a_descriptor_ledger_cannot_mint"
+        "rejects_valid_deposit_transition_with_wrong_network_id"
       ],
       "rows": {
         "accepts_valid_deposit_transition_fault": {
           "kind": "arm",
           "sizeBytes": 0,
-          "mem": 10824413,
-          "cpu": 4809295449,
+          "mem": 10784158,
+          "cpu": 4796251770,
           "basisFit": "within"
         },
         "rejects_valid_deposit_transition_with_arbitrary_projected_output": {
           "kind": "arm",
           "sizeBytes": 0,
-          "mem": 6046473,
-          "cpu": 2748879608,
+          "mem": 6021013,
+          "cpu": 2742741734,
           "basisFit": "within"
-        },
-        "accepts_valid_l2_transaction_no_op_transition_fault": {
-          "kind": "arm",
-          "sizeBytes": 0,
-          "mem": 9382268,
-          "cpu": 4162322734,
-          "basisFit": "within"
-        },
-        "l2_descriptor_dispute_over_a_descriptor_ledger_mints": {
-          "kind": "arm",
-          "sizeBytes": 0,
-          "mem": 12999645,
-          "cpu": 5777048295,
-          "basisFit": "within",
-          "infeasibility": "Measures within the basis since the decoder switch (3678583d4, a184d903b): the honest half of #628's pair, a descriptor-valued dispute over a descriptor-built ledger, mints at 13,010,147 mem whole-test, 98.6% of the basis, a margin of 189,853 mem (1.44%). Marginal: a small later cost on this path flips it back. Before the switch it read 13,486,304 (see `cause`). No separate baseline was taken for it; the frontier module's `l2_no_op_arm` pair gives that arm's own cost net of its fixture.",
-          "ruling": "#628 sign-off item, #617 wave; read against `l2_no_op_arm`'s marginal figure.",
-          "cause": "2026-10-14: recorded `exceeds` until the decoder commit 3678583d4 (a continuation-passing CBOR Data decoder, `midgard/cbor_deserialise`, differentially tested against `aiken/cbor.deserialise`) and the call-site switch a184d903b that routes the unreserved decode sites through it. Nothing else between the two readings changes on-chain code, and the later decoder trim 51e837178 leaves these readings unchanged. Measured on this row before and after that one change: 13,486,304 → 13,010,147 mem (-476,157) and 5,922,743,047 → 5,778,856,677 cpu (-143,886,370). Margin to the 13,200,000 basis: 189,853 mem (1.44%). Near-basis: the margin is 1.44%, just outside the 1% marginal band; treat it as marginal. The `infeasibility` prose was rewritten the same day to state the within-basis reading; the `ruling` prose is kept as written, because retiring the #628 item it carries is the owner's call."
-        },
-        "rejects_l2_transaction_when_trace_matches_expected_post_root": {
-          "kind": "arm",
-          "sizeBytes": 0,
-          "mem": 13056108,
-          "cpu": 5794291611,
-          "basisFit": "within",
-          "infeasibility": "Measures within the basis since the decoder switch (3678583d4, a184d903b): the arm's no-fault path reads 13,066,110 mem whole-test, 99.0% of the basis, a margin of 133,890 mem (1.01%). Marginal: a small later cost on this path flips it back. Before the switch it read 13,542,167 (see `cause`). No separate baseline was taken for it; the frontier module's `l2_no_op_arm` pair gives that arm's own cost net of its fixture.",
-          "ruling": "#628 sign-off item, #617 wave; read against `l2_no_op_arm`'s marginal figure.",
-          "cause": "2026-10-14: recorded `exceeds` until the decoder commit 3678583d4 (a continuation-passing CBOR Data decoder, `midgard/cbor_deserialise`, differentially tested against `aiken/cbor.deserialise`) and the call-site switch a184d903b that routes the unreserved decode sites through it. Nothing else between the two readings changes on-chain code, and the later decoder trim 51e837178 leaves these readings unchanged. Measured on this row before and after that one change: 13,542,167 → 13,066,110 mem (-476,057) and 5,939,890,363 → 5,796,019,993 cpu (-143,870,370). Margin to the 13,200,000 basis: 133,890 mem (1.01%). Near-basis: the margin is 1.01%, just outside the 1% marginal band; treat it as marginal. The `infeasibility` prose was rewritten the same day to state the within-basis reading; the `ruling` prose is kept as written, because retiring the #628 item it carries is the owner's call."
         },
         "accepts_omitted_due_deposit_fault": {
           "kind": "arm",
           "sizeBytes": 0,
-          "mem": 623339,
-          "cpu": 350061317,
+          "mem": 598039,
+          "cpu": 346013317,
           "basisFit": "within"
         },
         "accepts_out_of_window_deposit_fault": {
           "kind": "arm",
           "sizeBytes": 0,
-          "mem": 676966,
-          "cpu": 395978249,
+          "mem": 651566,
+          "cpu": 391914249,
           "basisFit": "within"
         }
       }
@@ -567,28 +521,19 @@
   ],
   "marginal": [
     {
-      "claim": "L2 no-op transition arm, net of its fixtures — the figure #628's sign-off quoted, then 5,759,035 mem (see `historicalMeasurement`)",
-      "arm": "l2_no_op_arm",
-      "baseline": "l2_no_op_arm_fixture_only",
-      "marginalMem": 4942071,
-      "marginalCpu": 2121348115,
-      "netBasisFit": "within",
-      "interpretation": "37.5% of the memory basis and 26.5% of the cpu basis. The whole-test reading is 99.1% of the memory basis since the decoder switch (3678583d4, a184d903b), and was 102.6% before it; the difference between the two figures is fixture cost: MPF root construction, canonical CBOR encoding, tx-id hashing and the two descriptor derivations the fixture itself needs. On chain the witness arrives already built."
-    },
-    {
       "claim": "Deposit arm with no l2_datum, net of its fixtures",
       "arm": "deposit_arm_datum_absent",
       "baseline": "deposit_arm_datum_absent_fixture_only",
-      "marginalMem": 5605194,
-      "marginalCpu": 2499401968,
+      "marginalMem": 5573599,
+      "marginalCpu": 2489808163,
       "netBasisFit": "within"
     },
     {
       "claim": "Deposit arm at a one-byte l2_datum, net of its fixtures",
       "arm": "deposit_arm_datum_1_byte",
       "baseline": "deposit_arm_datum_1_byte_fixture_only",
-      "marginalMem": 6172413,
-      "marginalCpu": 2712247685,
+      "marginalMem": 6140818,
+      "marginalCpu": 2702653880,
       "netBasisFit": "within",
       "interpretation": "Both the whole-test and paired marginal readings now fit. The historical presence-only crossing is retired."
     },
@@ -596,64 +541,64 @@
       "claim": "Deposit arm at an 8-byte l2_datum, net of its fixtures",
       "arm": "deposit_arm_datum_8_bytes",
       "baseline": "deposit_arm_datum_8_bytes_fixture_only",
-      "marginalMem": 6172421,
-      "marginalCpu": 2712284543,
+      "marginalMem": 6140826,
+      "marginalCpu": 2702690738,
       "netBasisFit": "within"
     },
     {
       "claim": "Deposit arm at a 16-byte l2_datum, net of its fixtures",
       "arm": "deposit_arm_datum_16_bytes",
       "baseline": "deposit_arm_datum_16_bytes_fixture_only",
-      "marginalMem": 6172447,
-      "marginalCpu": 2713627802,
+      "marginalMem": 6140852,
+      "marginalCpu": 2704033997,
       "netBasisFit": "within"
     },
     {
       "claim": "Deposit arm at a 24-byte l2_datum, net of its fixtures",
       "arm": "deposit_arm_datum_24_bytes",
       "baseline": "deposit_arm_datum_24_bytes_fixture_only",
-      "marginalMem": 6234195,
-      "marginalCpu": 2736617468,
+      "marginalMem": 6202600,
+      "marginalCpu": 2727023663,
       "netBasisFit": "within"
     },
     {
       "claim": "Deposit arm at a 32-byte l2_datum, net of its fixtures",
       "arm": "deposit_arm_datum_32_bytes",
       "baseline": "deposit_arm_datum_32_bytes_fixture_only",
-      "marginalMem": 6234217,
-      "marginalCpu": 2737960015,
+      "marginalMem": 6202622,
+      "marginalCpu": 2728366210,
       "netBasisFit": "within"
     },
     {
       "claim": "Deposit arm at a 48-byte l2_datum, net of its fixtures",
       "arm": "deposit_arm_datum_48_bytes",
       "baseline": "deposit_arm_datum_48_bytes_fixture_only",
-      "marginalMem": 6234261,
-      "marginalCpu": 2740645109,
+      "marginalMem": 6202666,
+      "marginalCpu": 2731051304,
       "netBasisFit": "within"
     },
     {
       "claim": "Deposit arm at a 64-byte l2_datum, net of its fixtures",
       "arm": "deposit_arm_datum_64_bytes",
       "baseline": "deposit_arm_datum_64_bytes_fixture_only",
-      "marginalMem": 6234305,
-      "marginalCpu": 2743330203,
+      "marginalMem": 6202710,
+      "marginalCpu": 2733736398,
       "netBasisFit": "within"
     },
     {
       "claim": "Deposit arm at a 128-byte l2_datum, net of its fixtures",
       "arm": "deposit_arm_datum_128_bytes",
       "baseline": "deposit_arm_datum_128_bytes_fixture_only",
-      "marginalMem": 6494360,
-      "marginalCpu": 2830824377,
+      "marginalMem": 6462765,
+      "marginalCpu": 2821230572,
       "netBasisFit": "within"
     },
     {
       "claim": "Deposit arm at a 256-byte l2_datum, net of its fixtures — the widest rung measured",
       "arm": "deposit_arm_datum_256_bytes",
       "baseline": "deposit_arm_datum_256_bytes_fixture_only",
-      "marginalMem": 6879729,
-      "marginalCpu": 2972149493,
+      "marginalMem": 6851134,
+      "marginalCpu": 2963035688,
       "netBasisFit": "within",
       "interpretation": "The widest measured deposit-datum rung still fits net of its fixture. The ledger does not extrapolate beyond this rung or establish complete transaction fit."
     },
@@ -838,7 +783,7 @@
   ],
   "notMeasuredHere": [
     "Any output wider than 3,215 CBOR bytes, or any l2_datum wider than 266 serialised bytes. Both ladders stop where the curve is linear and a wider rung would add evidence but no new fact; nothing here extrapolates past them.",
-    "A fixture-only twin for `builds_rich_multi_chunk_output_exactly`, `l2_descriptor_dispute_over_a_descriptor_ledger_mints` or `rejects_l2_transaction_when_trace_matches_expected_post_root`. Those are pinned rows from version 1 rather than swept rungs; their marginal cost is read off the corresponding ladder instead.",
+    "A fixture-only twin for `builds_rich_multi_chunk_output_exactly`. It is a pinned row from version 1 rather than a swept rung; its marginal cost is read off the descriptor ladder instead.",
     "Any change to the CG1 exclusion in docs/exec-plans/evidence/canonical-v1-cg1-control-publication-fit-v1.json. The re-measurement recorded there under `openItems[0].remeasured` shows the excluded resolver now fits with a +10,400-byte margin, but the exclusion itself is owner-owned and was left exactly as pinned."
   ],
   "adjacentMinorsVerifiedAtHead": [

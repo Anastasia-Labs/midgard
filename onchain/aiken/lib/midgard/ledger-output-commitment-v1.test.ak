@@ -160,3 +160,13 @@ test cardano_value_above_mainnet_bound_fails_closed() fail {
     },
   ) == #""
 }
+
+test asset_leaf_hash_rejects_a_27_byte_policy_id() fail {
+  // The leaf prefix fixes the 28-byte policy-id head, so a shorter policy id
+  // must be refused rather than read on into the asset name.
+  ledger_output_commitment_v1.asset_leaf_hash(
+    builtin.replicate_byte(27, 85),
+    #"0102",
+    42,
+  ) != #""
+}
