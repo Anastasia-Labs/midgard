@@ -666,13 +666,13 @@
   },
   {
     "file": "midgard-node-tools/devnet/watcher-journeys/staging-recovery.test.ts",
-    "max": 847,
-    "reason": "Hoisted or module-scoped Vitest mocks own this test file’s import/evaluation boundary. Moving registrations between modules changes mock timing; retain the suite with its mocks and local fixtures. DUPDEL (+15): the cross-block duplicate-event family was deleted; repeated deposit and withdrawal events are convicted by the fabricated-event families. C2a (-1): the staged node datum carries block_time."
+    "max": 831,
+    "reason": "Hoisted or module-scoped Vitest mocks own this test file’s import/evaluation boundary. Moving registrations between modules changes mock timing; retain the suite with its mocks and local fixtures. DUPDEL (+15): the cross-block duplicate-event family was deleted; repeated deposit and withdrawal events are convicted by the fabricated-event families. C2a (-1): the staged node datum carries block_time. DS1 (-16): authenticated construction moves into the dedicated fixture helper."
   },
   {
     "file": "midgard-node-tools/devnet/watcher-journeys/staging.stage-journey.ts",
-    "max": 744,
-    "reason": "stageJourney is the dominant indivisible declaration (712 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. DUPDEL (-21): the cross-block duplicate-event family was deleted; repeated deposit and withdrawal events are convicted by the fabricated-event families."
+    "max": 742,
+    "reason": "stageJourney is the dominant indivisible declaration (712 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. DUPDEL (-21): the cross-block duplicate-event family was deleted; repeated deposit and withdrawal events are convicted by the fabricated-event families. DS1 (-2): predecessor state comes from the separately checked replay ledger."
   },
   {
     "file": "midgard-node-tools/scripts/verify-phase4-journal-kill-recovery-summary.mjs",
@@ -1361,8 +1361,8 @@
   },
   {
     "file": "midgard-watcher/tests/support/published-deposit-trace.stage-published-deposit-trace.ts",
-    "max": 828,
-    "reason": "stagePublishedDepositTrace is the dominant indivisible declaration (774 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. I1 (+1): its operator activation runs without a follower, so it is given the journal that records nothing. Fresh-deployment hold (+9): its deposit holds on the ledger clock while the new deposit-history root is still protected. Ended blocks (+8): a block whose end has passed is rebuilt before its commit is built."
+    "max": 813,
+    "reason": "stagePublishedDepositTrace is the dominant indivisible declaration (774 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. I1 (+1): its operator activation runs without a follower, so it is given the journal that records nothing. Fresh-deployment hold (+9): its deposit holds on the ledger clock while the new deposit-history root is still protected. Ended blocks (+8): a block whose end has passed is rebuilt before its commit is built. DS1 (-15): funded predecessor construction moves into its dedicated helper."
   },
   {
     "file": "midgard-watcher/tests/support/user-event-origin-fixture.create-synthetic-user-event-origin-fixture.ts",

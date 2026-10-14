@@ -141,6 +141,7 @@ export const runJourney = async (
       context,
       directory,
       retain,
+      ledgerAt: session.ledgerAt,
       readConfirmedTransaction: native.transaction,
       onHealthyPredecessor: async () => {
         // Binding and launch are awaited; the process then catches up while

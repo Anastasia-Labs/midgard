@@ -6,8 +6,8 @@ import {
   createHeaderClassifier,
   FRAUD_PROOF_RELEASE_FINALITY_AUTHORITY,
   headerDecisionCanonicalEvidence,
+  type LedgerAt,
   type RetainedDaPayloadSource,
-  retainedPayloadLedgerAt,
 } from "@al-ft/midgard-fault-proofs";
 import { authenticatedHeaderObservation } from "@al-ft/midgard-fault-proofs/test-support/canonical-block-evidence-fixture";
 import { unsafeCreateTransitionTraceEventAuthorityFromRawForTest } from "@al-ft/midgard-fault-proofs/test-support/transition-trace-l1-events";
@@ -74,6 +74,7 @@ export const classifyLocalHistoryEventFixture = async (input: {
   stage: LocalHistoryEventStage;
   block: VerifiableJourneyBlock;
   predecessor: VerifiableJourneyBlock;
+  ledgerAt: LedgerAt;
   history?: readonly VerifiableJourneyBlock[];
   /** Restrict the launch scope; the full installed catalogue by default. */
   replayer?: CompleteCanonicalReplay;
@@ -146,7 +147,7 @@ export const classifyLocalHistoryEventFixture = async (input: {
   const decision = await classifyHeader({
     classifier,
     observation,
-    predecessorLedgerAt: retainedPayloadLedgerAt({ sources }),
+    predecessorLedgerAt: input.ledgerAt,
     sources,
     authenticatedObservationDigest:
       await authenticatedStateQueueObservationDigest({
