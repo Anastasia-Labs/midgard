@@ -242,7 +242,9 @@ describe("transition-trace omitted/out-of-window/count subvariant lifecycle", ()
           submitted_source: sourceData(rejectedSource),
           verdict: {
             ForcedTxInvalid: {
-              reason: { PlutusExecutionFailed: { execution_index: 0n } },
+              reason: {
+                PlutusExecutionFailed: { purpose_kind: 0n, purpose_index: 0n },
+              },
             },
           },
         };
@@ -341,7 +343,10 @@ describe("transition-trace omitted/out-of-window/count subvariant lifecycle", ()
                     ? {
                         ForcedTxInvalid: {
                           reason: {
-                            PlutusExecutionFailed: { execution_index: 1n },
+                            PlutusExecutionFailed: {
+                              purpose_kind: 0n,
+                              purpose_index: 1n,
+                            },
                           },
                         },
                       }

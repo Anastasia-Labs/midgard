@@ -11,7 +11,7 @@ export const fixtureValidationTrace = (
   eventKey: SDK.EventKey,
   transactionId: string,
   verdict: "accepted" | "rejected" = "accepted",
-  rejectionCode: string | null = null,
+  rejectionReason: SDK.RejectionReason | null = null,
 ): { readonly entry: SDK.DaPayloadEntry } => {
   const key = Data.to(eventKey, SDK.EventKey);
   const descriptor = SDK.validationTraceDescriptorDataFromCore(
@@ -21,7 +21,7 @@ export const fixtureValidationTrace = (
         transactionCommitment: Buffer.from(transactionId, "hex"),
       },
       verdict,
-      rejectionCode,
+      rejectionReason,
     ),
   );
   return { entry: [key, Data.to(descriptor, SDK.ValidationTraceDescriptor)] };

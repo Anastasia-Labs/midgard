@@ -29,6 +29,8 @@ export type ClassifiedForcedTransaction = {
   readonly ledgerWitnessEntries: readonly ValidationMachineLedgerEntry[];
   readonly ledgerMutationSteps: readonly ValidationMachineLedgerMutationStep[];
   readonly rejectionCode: RejectCode | null;
+  /** The exact reason the forced leaf's verdict records; null when valid. */
+  readonly rejectionReason: SDK.RejectionReason | null;
   readonly programMaterialSidecarCbor: Buffer;
 };
 

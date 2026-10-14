@@ -62,7 +62,7 @@ export const deriveCekContextBinding = (input: {
   readonly workWitnessCbor: string;
   readonly auxiliary: Data;
 }) => {
-  const cek = cborArray(input.workWitnessCbor, 9);
+  const cek = cborArray(input.workWitnessCbor, 11);
   const native = cborArray(cek[0]!, 26);
   for (const index of [7, 11, 13, 15, 17, 18, 20, 22]) {
     const peaks = native[index];

@@ -515,7 +515,7 @@ fn forced_seam() -> Seam {
     supplied_hash: h28a,
     verdict: validation_trace_v1.Rejected,
     code_hash: validation_trace_v1.hash_rejection_code(
-      rejection_reason_v1.reject_invalid_field_type,
+      UnusedScriptWitness { script_index: 1 },
     ),
     event_key: ledger_state.ForcedTransactionEventKey {
       tx_order_id: order_key(),
@@ -749,6 +749,18 @@ test refuses_forced_descriptor_with_accepted_verdict() fail {
 
 test refuses_forced_rejection_code_substitution() fail {
   let exact = authenticate_seam(Seam { ..forced_seam(), code_hash: zero32 })
+  exact.source_count == 2
+}
+
+test refuses_forced_rejection_coordinate_substitution() fail {
+  let exact = authenticate_seam(
+    Seam {
+      ..forced_seam(),
+      code_hash: validation_trace_v1.hash_rejection_code(
+        UnusedScriptWitness { script_index: 0 },
+      ),
+    },
+  )
   exact.source_count == 2
 }
 

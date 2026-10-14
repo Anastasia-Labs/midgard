@@ -19,6 +19,7 @@ export * from "./phase-a.js";
 export * from "./phase-b.js";
 export * from "./plutus-data.js";
 export * from "./reject-subject.js";
+export * from "./rejection-reason.js";
 export * from "./script-context.js";
 export * from "./script-context-proof.js";
 export * from "./script-source.js";

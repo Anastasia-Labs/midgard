@@ -2110,10 +2110,11 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
       buildDeterministicValidationMachineTrace(input),
     );
     expect(trace.verdict).toBe("rejected");
-    // Definite [2, h'E_EMPTY_INPUTS', prior root, h'80']: the final bytes
-    // encode an empty operation list, not an accepted-delta frontier.
+    // Definite [2, EmptyInputs, prior root, h'80']: the reason is the
+    // RejectionReasonV1 Plutus Data (constructor 2, no fields), and the final
+    // bytes encode an empty operation list, not an accepted-delta frontier.
     expect(trace.witnesses.at(-1)!.cbor.toString("hex")).toBe(
-      "84024e455f454d5054595f494e505554535820" + "03".repeat(32) + "4180",
+      "8402d87b805820" + "03".repeat(32) + "4180",
     );
 
     await expect(

@@ -23,6 +23,7 @@ const pendingBlock = (
   expectedHeaderHash: "aa".repeat(32),
   submittedTxHash,
   blockEndTimeMs: Date.now() + 60_000,
+  blockTimeMs: Date.now() + 60_000,
   updatedAtMs: Date.now(),
 });
 
@@ -204,14 +205,14 @@ describe("confirm-block-commitments utilities", () => {
     expect(
       shouldDeferUnsubmittedPendingBlockRecovery({
         pendingBlock: block,
-        nowMs: block.blockEndTimeMs + recoveryGraceMs,
+        nowMs: block.blockTimeMs + recoveryGraceMs,
         recoveryGraceMs,
       }),
     ).toBe(true);
     expect(
       shouldDeferUnsubmittedPendingBlockRecovery({
         pendingBlock: block,
-        nowMs: block.blockEndTimeMs + recoveryGraceMs + 1,
+        nowMs: block.blockTimeMs + recoveryGraceMs + 1,
         recoveryGraceMs,
       }),
     ).toBe(false);
@@ -225,7 +226,7 @@ describe("confirm-block-commitments utilities", () => {
       decideUnsubmittedPendingBlockRecovery({
         canonicalMatchFound: true,
         pendingBlock: block,
-        nowMs: block.blockEndTimeMs + recoveryGraceMs + 1,
+        nowMs: block.blockTimeMs + recoveryGraceMs + 1,
         recoveryGraceMs,
       }),
     ).toBe("recover_canonical");
@@ -233,7 +234,7 @@ describe("confirm-block-commitments utilities", () => {
       decideUnsubmittedPendingBlockRecovery({
         canonicalMatchFound: false,
         pendingBlock: block,
-        nowMs: block.blockEndTimeMs + recoveryGraceMs,
+        nowMs: block.blockTimeMs + recoveryGraceMs,
         recoveryGraceMs,
       }),
     ).toBe("defer");
@@ -241,7 +242,7 @@ describe("confirm-block-commitments utilities", () => {
       decideUnsubmittedPendingBlockRecovery({
         canonicalMatchFound: false,
         pendingBlock: block,
-        nowMs: block.blockEndTimeMs + recoveryGraceMs + 1,
+        nowMs: block.blockTimeMs + recoveryGraceMs + 1,
         recoveryGraceMs,
       }),
     ).toBe("recover_stale");
@@ -268,4 +269,33 @@ it("retains an unresolved durable signed intent past expiry and looks up its exa
       recoveryGraceMs: 30_000,
     }),
   ).toBe("recover_canonical");
+});
+
+it("does not expire a catch-up commit at its coverage end", () => {
+  const pending = {
+    ...pendingBlock(""),
+    blockEndTimeMs: 1_000,
+    blockTimeMs: 20_000,
+  };
+  expect(
+    shouldDeferUnsubmittedPendingBlockRecovery({
+      pendingBlock: pending,
+      nowMs: 10_000,
+      recoveryGraceMs: 0,
+    }),
+  ).toBe(true);
+  expect(
+    shouldDeferUnsubmittedPendingBlockRecovery({
+      pendingBlock: pending,
+      nowMs: 20_000,
+      recoveryGraceMs: 0,
+    }),
+  ).toBe(true);
+  expect(
+    shouldDeferUnsubmittedPendingBlockRecovery({
+      pendingBlock: pending,
+      nowMs: 20_001,
+      recoveryGraceMs: 0,
+    }),
+  ).toBe(false);
 });

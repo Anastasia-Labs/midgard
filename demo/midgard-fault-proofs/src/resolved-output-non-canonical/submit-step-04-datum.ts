@@ -16,8 +16,8 @@ import {
 } from "@lucid-evolution/lucid";
 
 import {
-  type CanonicalDataStreamStep,
   canonicalDataStreamFrameData,
+  type CanonicalDataStreamStep,
 } from "../canonical-data-stream-plan.js";
 import {
   requireLinearFaultReferenceScript,

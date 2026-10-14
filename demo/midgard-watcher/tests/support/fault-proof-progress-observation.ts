@@ -9,6 +9,7 @@ export const progressObservation = (input: {
   deploymentFingerprint: string;
   header?: { header: Header; headerHash: string };
   revision?: number;
+  blockTimeMs?: bigint;
 }) => {
   const revision = input.revision ?? 1;
   const point = {
@@ -29,7 +30,7 @@ export const progressObservation = (input: {
             {
               proven_fraud: null,
               header: input.header.header,
-              block_time: input.header.header.endTime,
+              block_time: input.blockTimeMs ?? input.header.header.endTime,
               da_attestation: "Unattested",
             },
             StateQueueNode,

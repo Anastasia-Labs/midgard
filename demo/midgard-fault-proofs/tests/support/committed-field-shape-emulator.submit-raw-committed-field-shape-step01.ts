@@ -77,13 +77,22 @@ export const submitRawCommittedFieldShapeStep01 = async ({
   claim,
   forwardedState,
   referenceScriptUtxo,
+  carriageReferenceInputs = [],
 }: {
   readonly harness: CommittedFieldShapeEmulatorHarness;
   readonly threadOutRef: string;
   readonly scenario: CommittedFieldShapeScenario;
-  readonly claim: CommittedFieldClaim;
+  /**
+   * A tier-2/3 claim indexes the complete reference-input set, so it may be
+   * spelled from that set once the builder has assembled it.
+   */
+  readonly claim:
+    | CommittedFieldClaim
+    | ((referenceInputs: readonly UTxO[]) => CommittedFieldClaim);
   readonly forwardedState: CommittedFieldShapeStep02State;
   readonly referenceScriptUtxo: UTxO;
+  /** Published §8 field carriage (chunks and certificate) the claim reads. */
+  readonly carriageReferenceInputs?: readonly UTxO[];
 }): Promise<{ readonly txHash: string; readonly nextThreadOutRef: string }> => {
   const { threadUtxo, threadToken } =
     await requireCommittedFieldShapeThreadUtxo({
@@ -152,6 +161,15 @@ export const submitRawCommittedFieldShapeStep01 = async ({
     datum: step02Datum,
     unit: threadToken.unit,
   });
+  const referenceInputs = [
+    hubOracleUtxo,
+    stateQueueBlockUtxo,
+    ...carriageReferenceInputs,
+    referenceScriptUtxo,
+    ...phasCarriage.referenceInputs,
+  ];
+  const resolvedClaim =
+    typeof claim === "function" ? claim(referenceInputs) : claim;
   let outputIndex: bigint | undefined;
   const redeemer = ((ctx) => {
     requireOwnSpendPurpose(
@@ -203,7 +221,7 @@ export const submitRawCommittedFieldShapeStep01 = async ({
                 },
               ],
             },
-            claim,
+            claim: resolvedClaim,
           },
         ],
       },
@@ -214,12 +232,7 @@ export const submitRawCommittedFieldShapeStep01 = async ({
     .newTx()
     .collectFrom([feeInput])
     .collectFrom([threadUtxo], redeemer)
-    .readFrom([
-      hubOracleUtxo,
-      stateQueueBlockUtxo,
-      referenceScriptUtxo,
-      ...phasCarriage.referenceInputs,
-    ])
+    .readFrom(referenceInputs)
     .withdraw(
       phasAddress,
       0n,

@@ -1,5 +1,4 @@
 import * as SDK from "@al-ft/midgard-sdk";
-import { RejectCodes } from "@al-ft/midgard-validation";
 import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
@@ -34,10 +33,6 @@ describe("complete foreign block import", () => {
         forced: {
           cbor: bytes(),
           reason,
-          rejectionCode:
-            typeof reason === "object" && "OutputNonCanonical" in reason
-              ? RejectCodes.InvalidOutput
-              : RejectCodes.InvalidFieldType,
         },
       });
       const result = await verdict(payload);
@@ -71,7 +66,6 @@ describe("complete foreign block import", () => {
       forced: {
         cbor: bytes(),
         reason,
-        rejectionCode: RejectCodes.InvalidOutput,
       },
     });
     const body = second.block_body;

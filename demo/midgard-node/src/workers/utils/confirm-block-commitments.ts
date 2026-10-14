@@ -14,6 +14,8 @@ export type PendingBlockConfirmation = {
   submittedTxHash: "" | TxHash;
   intendedTxHash?: TxHash | null;
   blockEndTimeMs: number;
+  /** The signed commit validity upper bound, independent of coverage end. */
+  blockTimeMs: number;
   updatedAtMs: number;
 };
 
@@ -94,7 +96,7 @@ export const shouldDeferUnsubmittedPendingBlockRecovery = ({
   readonly pendingBlock: PendingBlockConfirmation;
   readonly nowMs: number;
   readonly recoveryGraceMs: number;
-}): boolean => nowMs <= pendingBlock.blockEndTimeMs + recoveryGraceMs;
+}): boolean => nowMs <= pendingBlock.blockTimeMs + recoveryGraceMs;
 
 export type UnsubmittedPendingBlockRecoveryDecision =
   | "recover_canonical"

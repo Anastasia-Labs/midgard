@@ -8,7 +8,6 @@ import {
   type EventKey,
   EventKeySchema,
   hashBlockHeader,
-  rejectionCodeOf,
   type RejectionReason,
   ROOT_DOMAINS,
   TransitionStep,
@@ -62,9 +61,7 @@ export const placeholderValidationTraceEntries = ({
       }),
     },
     claim.verdict,
-    claim.verdict === "accepted"
-      ? null
-      : Buffer.from(rejectionCodeOf(claim.reason), "hex").toString("ascii"),
+    claim.verdict === "accepted" ? null : claim.reason,
   );
   return {
     descriptorEntries: [

@@ -94,6 +94,7 @@ export const buildDeterministicValidationMachineTrace = (
       tree,
       verdict: completed.verdict,
       rejectionCode: completed.rejectionCode,
+      rejectionReason: completed.rejectionReason,
       ledgerOps: completed.ledgerOps,
     };
   }).pipe(classifyValidationTraceFailure(input));

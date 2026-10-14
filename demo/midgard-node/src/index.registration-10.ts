@@ -1,5 +1,6 @@
 import "./index.registration-9.js";
 
+import { SELECTED_DEPLOYMENT_PROFILE } from "@al-ft/midgard-core/deployment-profile";
 import { Effect, pipe } from "effect";
 
 import {
@@ -23,6 +24,7 @@ import {
   resolveWalletSeedPhrase,
 } from "./commands/command-utils.js";
 import * as EventSettlementProofCommand from "./commands/event-settlement-proof.js";
+import { isPublicDeploymentProfile } from "./commands/listen-public-http.js";
 import * as ReservePayoutCommand from "./commands/reserve-payout.js";
 import * as SubmitL2Transfer from "./commands/submit-l2-transfer.js";
 import * as SubmitWithdrawalCommand from "./commands/submit-withdrawal.js";
@@ -52,8 +54,12 @@ program
     "Amount to send, expressed as a positive integer number of lovelace",
   )
   .option(
-    "--wallet-seed-phrase <seedPhrase>",
-    "Optional seed phrase used directly for the signing wallet instead of reading from an environment variable",
+    isPublicDeploymentProfile(SELECTED_DEPLOYMENT_PROFILE.name)
+      ? "--wallet-seed-phrase-file <path>"
+      : "--wallet-seed-phrase <seedPhrase>",
+    isPublicDeploymentProfile(SELECTED_DEPLOYMENT_PROFILE.name)
+      ? "Private mounted BIP-39 file for the user signing wallet"
+      : "Seed phrase for an explicit testing profile",
   )
   .option(
     "--wallet-seed-phrase-env <envVar>",
@@ -84,6 +90,7 @@ program
         readonly l2Address: string;
         readonly lovelace: string;
         readonly walletSeedPhrase?: string;
+        readonly walletSeedPhraseFile?: string;
         readonly walletSeedPhraseEnv: string;
         readonly endpoint: string;
         readonly excludeOutRef: readonly string[];
@@ -120,6 +127,7 @@ program
         });
         resolvedWalletSeedPhrase = resolveWalletSeedPhrase({
           walletSeedPhrase: options.walletSeedPhrase,
+          walletSeedPhraseFile: options.walletSeedPhraseFile,
           walletSeedPhraseEnv: options.walletSeedPhraseEnv,
         });
       } catch (error) {
@@ -182,8 +190,12 @@ program
     "Cardano L1 address that should receive the payout",
   )
   .option(
-    "--wallet-seed-phrase <seedPhrase>",
-    "Optional seed phrase used directly for the withdrawal signer",
+    isPublicDeploymentProfile(SELECTED_DEPLOYMENT_PROFILE.name)
+      ? "--wallet-seed-phrase-file <path>"
+      : "--wallet-seed-phrase <seedPhrase>",
+    isPublicDeploymentProfile(SELECTED_DEPLOYMENT_PROFILE.name)
+      ? "Private mounted BIP-39 file for the withdrawal signer"
+      : "Seed phrase for an explicit testing profile",
   )
   .option(
     "--wallet-seed-phrase-env <envVar>",
@@ -219,6 +231,7 @@ program
           config: {
             submissionId: opts.submissionId,
             walletSeedPhrase: opts.walletSeedPhrase,
+            walletSeedPhraseFile: opts.walletSeedPhraseFile,
             walletSeedPhraseEnv: opts.walletSeedPhraseEnv,
             l2OutRef: opts.l2OutRef,
             l1Address: opts.l1Address,

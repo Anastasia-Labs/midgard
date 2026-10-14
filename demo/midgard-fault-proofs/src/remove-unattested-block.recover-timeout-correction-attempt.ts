@@ -180,8 +180,8 @@ export type SubmitUnattestedTimeoutCorrectionParams = {
 /**
  * The validity range of a timeout-correction transaction built at `nowMs`.
  *
- * The validator requires `inclusive lower bound >= header.end_time +
- * da_attestation_timeout`. Block end times usually end in 999 ms, and the
+ * The validator requires `inclusive lower bound >= node.block_time +
+ * da_attestation_timeout`. Commit times usually end in 999 ms, and the
  * ledger presents the lower bound as the start of its slot, so the deadline
  * itself is rounded up to the next slot boundary before it is used as the
  * earliest admissible lower bound. The lower bound is otherwise backdated to

@@ -112,7 +112,28 @@ export type CommittedFieldShapeScenarioKind =
   | "honest"
   | "field-item-width-illegal"
   | "redeemer-canonicity"
-  | "non-envelope";
+  | "non-envelope"
+  | "max-wrong-stride"
+  | "max-honest";
+
+/**
+ * §5.4's slot-0 item count at the 32,768-byte aggregate field bound: an
+ * 819-item header (`99 03 33`) and 40-byte spend items reach 32,763 bytes.
+ */
+export const MAX_SLOT0_ITEM_COUNT = 819;
+
+/**
+ * Slot-0 items at the field bound. The convicting shape widens the last item
+ * by five payload bytes so the field is exactly 32,768 bytes and off-stride;
+ * the honest shape is the largest stride-correct slot-0 field.
+ */
+const maxSlot0Items = (convicting: boolean): Buffer[] =>
+  Array.from({ length: MAX_SLOT0_ITEM_COUNT }, (_, index) => {
+    const wide = convicting && index === MAX_SLOT0_ITEM_COUNT - 1;
+    const item = Buffer.alloc(wide ? 43 : 38, 0xa5);
+    item.writeUInt16BE(index, 0);
+    return item;
+  });
 
 export type CommittedFieldShapeScenario = {
   readonly kind: CommittedFieldShapeScenarioKind;
@@ -262,11 +283,13 @@ export const committedFieldShapeScenarioMaterial = (
       ),
     };
   }
-  const spendItem =
+  const spendItems =
     kind === "wrong-stride"
-      ? Buffer.from("deadbeef", "hex")
-      : Buffer.alloc(38, 0xa5);
-  const fullTx = makeNativeTx({ spendInputCbors: [spendItem], fee: 7n });
+      ? [Buffer.from("deadbeef", "hex")]
+      : kind === "honest"
+        ? [Buffer.alloc(38, 0xa5)]
+        : maxSlot0Items(kind === "max-wrong-stride");
+  const fullTx = makeNativeTx({ spendInputCbors: spendItems, fee: 7n });
   return {
     canonicalTx: fullTx,
     fullTx,
@@ -331,7 +354,11 @@ export const setupCommittedFieldShapeScenario = async ({
     fixture: {
       transactionsRoot,
       l2TransactionCount: 1n,
-      ...(kind === "redeemer-canonicity" ? { headerDurationMs: 60_000 } : {}),
+      ...(kind === "redeemer-canonicity" ||
+      kind === "max-wrong-stride" ||
+      kind === "max-honest"
+        ? { headerDurationMs: 60_000 }
+        : {}),
     },
   });
   return {

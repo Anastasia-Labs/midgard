@@ -21,6 +21,7 @@ const DATABASE_POOL_ROLES = [
   "admission",
   "batch",
   "worker",
+  "http-read",
 ] as const satisfies readonly DatabasePoolRole[];
 type UncoveredPoolRole = Exclude<
   DatabasePoolRole,

@@ -8,8 +8,7 @@ use midgard/fraud_proofs/native_tx/types.{
 }
 use midgard/native_tx_field_access_v1
 use midgard/rejection_reason_v1.{
-  reject_duplicate_input, reject_empty_inputs,
-  reject_invalid_validity_interval_format,
+  DuplicateInput, EmptyInputs, ValidityIntervalMalformed,
 }
 use midgard/validation_machine/machine_types.{
   InputSetsControlV1, NoAuxiliaryWitness, TransactionFieldChunkWitness,
@@ -17,7 +16,8 @@ use midgard/validation_machine/machine_types.{
 }
 use midgard/validation_machine/shared.{
   max_tx_size_derived_collection_item_count, rejected_successor_is_exact,
-  transaction_field_commitment, validity_interval_is_malformed,
+  transaction_field_commitment, unset_reason_coordinate,
+  validity_interval_is_malformed,
 }
 use midgard/validation_machine/witness.{
   encode_input_sets_scan_witness, encode_signatures_scan_witness,
@@ -44,11 +44,7 @@ fn verify_input_sets_empty(
     control.spend_count == 0,
     control.spend_seen == 0,
     control.reference_seen == 0,
-    rejected_successor_is_exact(
-      pre,
-      witness.claimed_successor,
-      reject_empty_inputs,
-    ),
+    rejected_successor_is_exact(pre, witness.claimed_successor, EmptyInputs),
   }
 }
 
@@ -77,11 +73,7 @@ fn input_sets_item_successor_is_exact(
       body.validity_interval_end,
     )
     if malformed_validity_interval {
-      rejected_successor_is_exact(
-        pre,
-        post,
-        reject_invalid_validity_interval_format,
-      )
+      rejected_successor_is_exact(pre, post, ValidityIntervalMalformed)
     } else {
       let address_count = if witness_set.addr_tx_wits_hash == native_tx_field_access_v1.empty_field_commitment {
         0
@@ -113,7 +105,7 @@ fn input_sets_item_successor_is_exact(
             #"",
             0,
             [],
-            0,
+            -1,
           ),
         ),
       }
@@ -250,7 +242,12 @@ fn verify_input_sets_item(
       rejected_successor_is_exact(
         pre,
         witness.claimed_successor,
-        reject_duplicate_input,
+        DuplicateInput {
+          first_field_index: unset_reason_coordinate,
+          first_item_index: unset_reason_coordinate,
+          second_field_index: unset_reason_coordinate,
+          second_item_index: unset_reason_coordinate,
+        },
       )
     } else {
       and {

@@ -1,361 +1,376 @@
-//// #640 gates 3 and 4 for `midgard/rejection_reason_v1`.
+//// Frozen vectors for the rejection-code preimage.
 ////
-//// Gate 3 — totality and value of `rejection_code_of`: every one of the 47
-//// constructors is enumerated and its code compared against the **imported**
-//// `reject_*` constant (never a retyped literal), so a drifted constant or a
-//// mis-mapped arm fails here even if both sides drift together elsewhere.
-//// The constants themselves are frozen separately against their normative
-//// hex (the ASCII `E_*` labels) in
-//// `rejection_code_constants_are_the_frozen_bytes`.
-////
-//// Gate 4 — per-arm bridge identity: for every arm,
-//// `hash_rejection_code(rejection_code_of(reason))` equals the frozen
-//// descriptor `rejection_code_hash` for the `E_*` code that arm maps to.
-//// The 19 expected hashes are pinned as hex computed **independently**
-//// (blake2b-256 over `"MidgardValidationRejectCodeV1" || code`, off-chain),
-//// so this pins the whole leaf → descriptor bridge, not just its Aiken
-//// composition.
+//// The rejection code of a reason is
+//// `blake2b_256("MidgardValidationRejectCodeV1" || cbor.serialise(reason))`.
+//// Every one of the 48 arms is pinned here twice: its Plutus Data CBOR (the
+//// constructor tag is 121 + i for i <= 6 and 1280 + (i - 7) above, so a
+//// reordered or inserted arm moves a tag) and its domain-separated hash. Each
+//// arm carries distinct coordinates, so a dropped or swapped field also moves
+//// the bytes. The vectors were computed off-chain, independently of this
+//// codebase, and the same vectors pin the TypeScript encoder.
 
+use aiken/cbor
 use midgard/rejection_reason_v1.{
   AddressWitnessSignatureInvalid, DuplicateInput, EmptyInputs,
   ExecutionNativeScriptDepthLimit, ExecutionNativeScriptFalse,
   ExecutionNativeScriptMalformed, ExecutionNativeScriptNodeLimit,
   FeeBelowMinimum, FieldItemWidthIllegal, FieldPreimageLengthMismatch,
   InputAssetAccumulationLimit, InputNotFound, InputSpentOutputNonCanonical,
-  MintAssetAccumulationLimit, MintDeclaredAssetLimit, NetworkIdMismatch,
-  ObserverOrderInvalid, ObserversForbiddenOnUntaggedNetwork,
+  MintAssetAccumulationLimit, MintDeclaredAssetLimit, MintItemMalformed,
+  NetworkIdMismatch, ObserverOrderInvalid, ObserversForbiddenOnUntaggedNetwork,
   OutputAssetAccumulationLimit, OutputBelowMinAda, OutputNonCanonical,
   OutputReferenceScriptDepthLimit, OutputReferenceScriptMalformed,
   OutputReferenceScriptNodeLimit, PlutusExecutionFailed,
   ProtectedOutputSignerMissing, ReceivePurposePlutusV3Forbidden,
-  RedeemerMalformed, RedeemerMissing, RequiredSignerUnsigned,
+  RedeemerMalformed, RedeemerMissing, RejectionReasonV1, RequiredSignerUnsigned,
   ResolvedReferenceScriptDepthLimit, ResolvedReferenceScriptMalformed,
   ResolvedReferenceScriptNodeLimit, ScriptIntegrityHashMismatch,
   ScriptIntegrityHashMissing, ScriptSourceMissing, SpendInputSignerMissing,
   UnusedRedeemer, UnusedScriptWitness, ValidityIntervalExcludesBlockSlot,
   ValidityIntervalMalformed, ValueNotPreserved, WitnessNativeScriptDepthLimit,
   WitnessNativeScriptFalse, WitnessNativeScriptMalformed,
-  WitnessNativeScriptNodeLimit, WitnessScriptHeaderMalformed, rejection_code_of,
+  WitnessNativeScriptNodeLimit, WitnessScriptHeaderMalformed,
+  reject_duplicate_input,
 }
 use midgard/validation_trace_v1.{hash_rejection_code}
 
-// The 19 frozen descriptor hashes, one per `E_*` code: blake2b-256 over
-// `"MidgardValidationRejectCodeV1" || code`, computed off-chain.
-const h_field_preimage_size =
-  #"f6ecc827e4b524dd12e9ac63922f7383e015ded70a5e3fa6acae766fa4fe9b20"
-
-const h_asset_count =
-  #"d4994d00dbdb66963e0a7ede81198fa5426e40075df9b5b1c1c44c56e79f159a"
-
-const h_invalid_field_type =
-  #"75fa486cb63f3fafa27429f66f4abd86359f96fd8cc3902fd3439d26edb5a1d3"
-
-const h_native_script_depth =
-  #"ba802de85a3d98baab831ab3155478fd90711b696c3ce1479729e2271dceebdc"
-
-const h_native_script_node_count =
-  #"9320e8acd64f25974da633a482366f8e44d727807e270102179db897d551f377"
-
-const h_min_ada =
-  #"1e4cdaa8212d75203665a9900b617b98a563e84639a67a5d314d4eb33829c796"
-
-const h_empty_inputs =
-  #"fb4133ff04336d3ef299bf76f6e6b4267be9a7931285e4fbc9f848e66c3624d8"
-
-const h_duplicate_input =
-  #"2ab509665609f1128b035b5e1468031ccb68de72c06813e01b81c65c29225bf6"
-
-const h_network_id_mismatch =
-  #"8504914f12c9176501e7227c82b24b59c1b7195c5214b361624c0d99a547da42"
-
-const h_min_fee =
-  #"46055c0fdb633167ed024b753cfe257f68a4845f3843ffca361e865cbdfc2809"
-
-const h_invalid_validity_interval_format =
-  #"dd5343586670b495f5627816ac45da3b4ecbee9c430ec1ba123d17a1c0ae3513"
-
-const h_missing_required_witness =
-  #"fa3d8e6273d90770a92ff701d086e80a071676e27f73dc39aba35890e4dd813e"
-
-const h_invalid_signature =
-  #"fd5ed3d40dcfcd4b987a07c17e5ba0812d898baf6b0aab8d7f9e832532a6b63a"
-
-const h_native_script_invalid =
-  #"2774df21b393d196d960a12b5ae7efb94bf49a1e5614745f676b8658b115a0fb"
-
-const h_plutus_script_invalid =
-  #"be811cb18fca768be5bc6cc1db0961972ac0b11275caae25be36feee95bdcdc8"
-
-const h_validity_interval_mismatch =
-  #"d6c7845e4be6c2bfb721e10ce8f6fdf1f717c62c6fa0e69396858280e6a03c2a"
-
-const h_input_not_found =
-  #"7010e02d40fd5e53e846ed857627684cd0eb66ea6bc07979257063505807a187"
-
-const h_invalid_output =
-  #"3ba0dc74796540d3744f8aae143290b166c051584ba241bfe9a71c29c5bd049d"
-
-const h_value_not_preserved =
-  #"f1084e1e7329699cf7acc4a57b07331de262749506b45d023fdcc69a7c975d71"
-
-/// The frozen byte values of the 19 canonical `E_*` constants — the ASCII of
-/// each label, pinned as hex. The descriptor bridge is frozen on these bytes;
-/// any drift is a consensus break, not a refactor.
-test rejection_code_constants_are_the_frozen_bytes() {
+fn pinned(reason: RejectionReasonV1, cbor_hex: ByteArray, hash: ByteArray) {
   and {
-    rejection_reason_v1.reject_field_preimage_size == #"455f4649454c445f505245494d4147455f53495a45",
-    rejection_reason_v1.reject_asset_count == #"455f41535345545f434f554e54",
-    rejection_reason_v1.reject_invalid_field_type == #"455f494e56414c49445f4649454c445f54595045",
-    rejection_reason_v1.reject_native_script_depth == #"455f4e41544956455f5343524950545f4445505448",
-    rejection_reason_v1.reject_native_script_node_count == #"455f4e41544956455f5343524950545f4e4f44455f434f554e54",
-    rejection_reason_v1.reject_min_ada == #"455f4d494e5f414441",
-    rejection_reason_v1.reject_empty_inputs == #"455f454d5054595f494e50555453",
-    rejection_reason_v1.reject_duplicate_input == #"455f4455504c49434154455f494e5055545f494e5f5458",
-    rejection_reason_v1.reject_network_id_mismatch == #"455f4e4554574f524b5f49445f4d49534d41544348",
-    rejection_reason_v1.reject_min_fee == #"455f4d494e5f464545",
-    rejection_reason_v1.reject_invalid_validity_interval_format == #"455f494e56414c49445f56414c49444954595f494e54455256414c5f464f524d4154",
-    rejection_reason_v1.reject_missing_required_witness == #"455f4d495353494e475f52455155495245445f5749544e455353",
-    rejection_reason_v1.reject_invalid_signature == #"455f494e56414c49445f5349474e4154555245",
-    rejection_reason_v1.reject_native_script_invalid == #"455f4e41544956455f5343524950545f494e56414c4944",
-    rejection_reason_v1.reject_plutus_script_invalid == #"455f504c555455535f5343524950545f494e56414c4944",
-    rejection_reason_v1.reject_validity_interval_mismatch == #"455f56414c49444954595f494e54455256414c5f4d49534d41544348",
-    rejection_reason_v1.reject_input_not_found == #"455f494e5055545f4e4f545f464f554e44",
-    rejection_reason_v1.reject_invalid_output == #"455f494e56414c49445f4f5554505554",
-    rejection_reason_v1.reject_value_not_preserved == #"455f56414c55455f4e4f545f505245534552564544",
+    cbor.serialise(reason) == cbor_hex,
+    hash_rejection_code(reason) == hash,
   }
 }
 
-/// Gate 3, arms 1–24 (CanonicalDecode through ResolveInputs): the code of
-/// every arm equals the imported constant the catalogue §5.1 row names.
-test rejection_code_of_is_exact_for_decode_through_resolve_arms() {
+test reason_vectors_arms_0_to_11() {
   and {
-    rejection_code_of(FieldPreimageLengthMismatch { field_index: 3 }) == rejection_reason_v1.reject_field_preimage_size,
-    rejection_code_of(FieldItemWidthIllegal { field_index: 5, item_index: 2 }) == rejection_reason_v1.reject_invalid_field_type,
-    rejection_code_of(EmptyInputs) == rejection_reason_v1.reject_empty_inputs,
-    rejection_code_of(
+    pinned(
+      FieldPreimageLengthMismatch { field_index: 0 },
+      #"d8799f00ff",
+      #"bc594a430a54f68413833f9c54bb976d86523fe5d3c4ee8bcc1e170b810a926c",
+    ),
+    pinned(
+      FieldItemWidthIllegal { field_index: 1, item_index: 2 },
+      #"d87a9f0102ff",
+      #"f1788a1be1dc8659c3fb3a6eb11da8e1349157cbaec1aea818e6ae477e4fcf48",
+    ),
+    pinned(
+      EmptyInputs,
+      #"d87b80",
+      #"9c71cc54543951c53a94a959911cab6c8c2586f22a9f87c81479eae5b6d8a5a1",
+    ),
+    pinned(
       DuplicateInput {
-        first_field_index: 0,
-        first_item_index: 1,
-        second_field_index: 1,
-        second_item_index: 0,
+        first_field_index: 3,
+        first_item_index: 4,
+        second_field_index: 5,
+        second_item_index: 6,
       },
-    ) == rejection_reason_v1.reject_duplicate_input,
-    rejection_code_of(ValidityIntervalMalformed) == rejection_reason_v1.reject_invalid_validity_interval_format,
-    rejection_code_of(NetworkIdMismatch) == rejection_reason_v1.reject_network_id_mismatch,
-    rejection_code_of(FeeBelowMinimum) == rejection_reason_v1.reject_min_fee,
-    rejection_code_of(AddressWitnessSignatureInvalid { witness_index: 4 }) == rejection_reason_v1.reject_invalid_signature,
-    rejection_code_of(RequiredSignerUnsigned { signer_index: 1 }) == rejection_reason_v1.reject_missing_required_witness,
-    rejection_code_of(WitnessScriptHeaderMalformed { script_index: 0 }) == rejection_reason_v1.reject_invalid_field_type,
-    rejection_code_of(WitnessNativeScriptMalformed { script_index: 1 }) == rejection_reason_v1.reject_invalid_field_type,
-    rejection_code_of(WitnessNativeScriptNodeLimit { script_index: 2 }) == rejection_reason_v1.reject_native_script_node_count,
-    rejection_code_of(WitnessNativeScriptDepthLimit { script_index: 3 }) == rejection_reason_v1.reject_native_script_depth,
-    rejection_code_of(WitnessNativeScriptFalse { script_index: 4 }) == rejection_reason_v1.reject_native_script_invalid,
-    rejection_code_of(ScriptIntegrityHashMissing) == rejection_reason_v1.reject_invalid_field_type,
-    rejection_code_of(ObserversForbiddenOnUntaggedNetwork) == rejection_reason_v1.reject_invalid_field_type,
-    rejection_code_of(ObserverOrderInvalid { observer_index: 2 }) == rejection_reason_v1.reject_invalid_field_type,
-    rejection_code_of(ValidityIntervalExcludesBlockSlot) == rejection_reason_v1.reject_validity_interval_mismatch,
-    rejection_code_of(InputNotFound { source_kind: 0, input_index: 3 }) == rejection_reason_v1.reject_input_not_found,
-    rejection_code_of(
-      InputSpentOutputNonCanonical { source_kind: 1, input_index: 0 },
-    ) == rejection_reason_v1.reject_invalid_output,
-    rejection_code_of(
-      ResolvedReferenceScriptMalformed { source_kind: 0, input_index: 1 },
-    ) == rejection_reason_v1.reject_invalid_field_type,
-    rejection_code_of(
-      ResolvedReferenceScriptNodeLimit { source_kind: 1, input_index: 2 },
-    ) == rejection_reason_v1.reject_native_script_node_count,
-    rejection_code_of(
-      ResolvedReferenceScriptDepthLimit { source_kind: 0, input_index: 0 },
-    ) == rejection_reason_v1.reject_native_script_depth,
-    rejection_code_of(SpendInputSignerMissing { input_index: 2 }) == rejection_reason_v1.reject_missing_required_witness,
+      #"d87c9f03040506ff",
+      #"44cf51a9c10b394c3f61d1ec5cc49b29582b5c9942f31bd052da25876b68b1f1",
+    ),
+    pinned(
+      ValidityIntervalMalformed,
+      #"d87d80",
+      #"301c0832c101922e51a6233a42ccebb09450154f40dc30d5a350d32fecc5f9b2",
+    ),
+    pinned(
+      NetworkIdMismatch,
+      #"d87e80",
+      #"748ffda500eba98ba9ea9cc8d84358fbb888fdb54c71bba46b2987616e8210ab",
+    ),
+    pinned(
+      FeeBelowMinimum,
+      #"d87f80",
+      #"1c58e368280379bf2a43565907240d90e71114cc8fc3422c0f9b1fdc58bd7bef",
+    ),
+    pinned(
+      AddressWitnessSignatureInvalid { witness_index: 7 },
+      #"d905009f07ff",
+      #"8efca108e0ab132150ba9228f84436e0db12ddd2bccd7f684b36c99a3422c439",
+    ),
+    pinned(
+      RequiredSignerUnsigned { signer_index: 8 },
+      #"d905019f08ff",
+      #"69083b93d2fa1bbfc8fc061ecb097301fb670bfd022cfa9e818e607091bbf6e1",
+    ),
+    pinned(
+      WitnessScriptHeaderMalformed { script_index: 9 },
+      #"d905029f09ff",
+      #"820f18f0c555155ea0b92903d618228ee5d5c2897e7066426acef1d3e0b710dd",
+    ),
+    pinned(
+      WitnessNativeScriptMalformed { script_index: 10 },
+      #"d905039f0aff",
+      #"55c364c32f54655213377ad500b93b55a8e718eeff3521a102d86d5de9de1757",
+    ),
+    pinned(
+      WitnessNativeScriptNodeLimit { script_index: 11 },
+      #"d905049f0bff",
+      #"39d4cdbff1ddffe9382922fd369acea3ac1df521f322adfcb900d4189217b26b",
+    ),
   }
 }
 
-/// Gate 3, arms 25–47 (ScriptSources through ValueAndMint).
-test rejection_code_of_is_exact_for_script_through_value_arms() {
+test reason_vectors_arms_12_to_23() {
   and {
-    rejection_code_of(RedeemerMalformed { redeemer_index: 0 }) == rejection_reason_v1.reject_invalid_field_type,
-    rejection_code_of(OutputNonCanonical { output_index: 1 }) == rejection_reason_v1.reject_invalid_output,
-    rejection_code_of(OutputReferenceScriptMalformed { output_index: 2 }) == rejection_reason_v1.reject_invalid_field_type,
-    rejection_code_of(OutputReferenceScriptNodeLimit { output_index: 3 }) == rejection_reason_v1.reject_native_script_node_count,
-    rejection_code_of(OutputReferenceScriptDepthLimit { output_index: 4 }) == rejection_reason_v1.reject_native_script_depth,
-    rejection_code_of(ProtectedOutputSignerMissing { output_index: 5 }) == rejection_reason_v1.reject_missing_required_witness,
-    rejection_code_of(MintDeclaredAssetLimit { policy_index: 0 }) == rejection_reason_v1.reject_asset_count,
-    rejection_code_of(ScriptSourceMissing { purpose_kind: 1, purpose_index: 0 }) == rejection_reason_v1.reject_missing_required_witness,
-    rejection_code_of(RedeemerMissing { purpose_kind: 3, purpose_index: 1 }) == rejection_reason_v1.reject_missing_required_witness,
-    rejection_code_of(UnusedScriptWitness { script_index: 5 }) == rejection_reason_v1.reject_invalid_field_type,
-    rejection_code_of(UnusedRedeemer { redeemer_index: 1 }) == rejection_reason_v1.reject_invalid_field_type,
-    rejection_code_of(ExecutionNativeScriptMalformed { execution_index: 0 }) == rejection_reason_v1.reject_invalid_field_type,
-    rejection_code_of(ExecutionNativeScriptNodeLimit { execution_index: 1 }) == rejection_reason_v1.reject_native_script_node_count,
-    rejection_code_of(ExecutionNativeScriptDepthLimit { execution_index: 2 }) == rejection_reason_v1.reject_native_script_depth,
-    rejection_code_of(ExecutionNativeScriptFalse { execution_index: 3 }) == rejection_reason_v1.reject_native_script_invalid,
-    rejection_code_of(ScriptIntegrityHashMismatch) == rejection_reason_v1.reject_invalid_field_type,
-    rejection_code_of(ReceivePurposePlutusV3Forbidden { execution_index: 4 }) == rejection_reason_v1.reject_plutus_script_invalid,
-    rejection_code_of(PlutusExecutionFailed { execution_index: 5 }) == rejection_reason_v1.reject_plutus_script_invalid,
-    rejection_code_of(
-      InputAssetAccumulationLimit { input_index: 0, asset_index: 7 },
-    ) == rejection_reason_v1.reject_asset_count,
-    rejection_code_of(
-      OutputAssetAccumulationLimit { output_index: 1, asset_index: 8 },
-    ) == rejection_reason_v1.reject_asset_count,
-    rejection_code_of(MintAssetAccumulationLimit { mint_index: 2 }) == rejection_reason_v1.reject_asset_count,
-    rejection_code_of(OutputBelowMinAda { output_index: 0 }) == rejection_reason_v1.reject_min_ada,
-    rejection_code_of(ValueNotPreserved) == rejection_reason_v1.reject_value_not_preserved,
+    pinned(
+      WitnessNativeScriptDepthLimit { script_index: 12 },
+      #"d905059f0cff",
+      #"a17f7e11eb02ad3488c799d37bf62a7bafd77bed49e329835999d70fc626c744",
+    ),
+    pinned(
+      WitnessNativeScriptFalse { script_index: 13 },
+      #"d905069f0dff",
+      #"d4274cca7a0e9e0b812d7c72312d817ca55029d4ef6bef35eef0840f66a874b7",
+    ),
+    pinned(
+      ScriptIntegrityHashMissing,
+      #"d9050780",
+      #"f344e698a16976323bd7a8b3e5623d2d576447cca002adb97621bbed58a70170",
+    ),
+    pinned(
+      ObserversForbiddenOnUntaggedNetwork,
+      #"d9050880",
+      #"87405a3291b4ccc221964a2aeaec8db3786df37be06d316ab6d476fda4da932f",
+    ),
+    pinned(
+      ObserverOrderInvalid { observer_index: 16 },
+      #"d905099f10ff",
+      #"4d6f0c4a802256327906b09fe80765248b5be645a3bfc4830c8123240267ad9a",
+    ),
+    pinned(
+      ValidityIntervalExcludesBlockSlot,
+      #"d9050a80",
+      #"977035a610d3f71f60c1521bb1c75c6b64e30e96eeccc23115fd037f7f341087",
+    ),
+    pinned(
+      InputNotFound { source_kind: 18, input_index: 19 },
+      #"d9050b9f1213ff",
+      #"360b7276c87e7f2c7cff4243f33a3ca9cfdfba2500bc5dde2fca43ebbf2cbb74",
+    ),
+    pinned(
+      InputSpentOutputNonCanonical { source_kind: 19, input_index: 20 },
+      #"d9050c9f1314ff",
+      #"8c11e5498240aa0baaacf9515618c7525ea60f25a9692bab7a6b7bb0cfff5cd7",
+    ),
+    pinned(
+      ResolvedReferenceScriptMalformed { source_kind: 20, input_index: 21 },
+      #"d9050d9f1415ff",
+      #"787ba5ea9260dc7e8c71ea92a61841cb1b2f16bdf5b8247f4a4178acbb5216f9",
+    ),
+    pinned(
+      ResolvedReferenceScriptNodeLimit { source_kind: 21, input_index: 22 },
+      #"d9050e9f1516ff",
+      #"aea165f9c787f481b7f4a91ec3be48458efd15964be3671387201789bee773c7",
+    ),
+    pinned(
+      ResolvedReferenceScriptDepthLimit { source_kind: 22, input_index: 23 },
+      #"d9050f9f1617ff",
+      #"7eab051742f629fd163465b00ca523b0a553ec911379fc561ff4157b64a400a1",
+    ),
+    pinned(
+      SpendInputSignerMissing { input_index: 23 },
+      #"d905109f17ff",
+      #"a0ed7b09f5311cc7cf4f5d279636d39bbe54bd953b39d0610dc013ba7d7399d2",
+    ),
   }
 }
 
-/// Gate 4, arms 1–24: `hash_rejection_code(rejection_code_of(reason))` is the
-/// frozen descriptor hash for that arm's `E_*` code, per arm, against
-/// independently computed pins.
-test bridge_hash_is_frozen_for_decode_through_resolve_arms() {
+test reason_vectors_arms_24_to_35() {
   and {
-    hash_rejection_code(
-      rejection_code_of(FieldPreimageLengthMismatch { field_index: 0 }),
-    ) == h_field_preimage_size,
-    hash_rejection_code(
-      rejection_code_of(FieldItemWidthIllegal { field_index: 5, item_index: 2 }),
-    ) == h_invalid_field_type,
-    hash_rejection_code(rejection_code_of(EmptyInputs)) == h_empty_inputs,
-    hash_rejection_code(
-      rejection_code_of(
-        DuplicateInput {
-          first_field_index: 0,
-          first_item_index: 1,
-          second_field_index: 1,
-          second_item_index: 0,
-        },
-      ),
-    ) == h_duplicate_input,
-    hash_rejection_code(rejection_code_of(ValidityIntervalMalformed)) == h_invalid_validity_interval_format,
-    hash_rejection_code(rejection_code_of(NetworkIdMismatch)) == h_network_id_mismatch,
-    hash_rejection_code(rejection_code_of(FeeBelowMinimum)) == h_min_fee,
-    hash_rejection_code(
-      rejection_code_of(AddressWitnessSignatureInvalid { witness_index: 0 }),
-    ) == h_invalid_signature,
-    hash_rejection_code(
-      rejection_code_of(RequiredSignerUnsigned { signer_index: 0 }),
-    ) == h_missing_required_witness,
-    hash_rejection_code(
-      rejection_code_of(WitnessScriptHeaderMalformed { script_index: 0 }),
-    ) == h_invalid_field_type,
-    hash_rejection_code(
-      rejection_code_of(WitnessNativeScriptMalformed { script_index: 1 }),
-    ) == h_invalid_field_type,
-    hash_rejection_code(
-      rejection_code_of(WitnessNativeScriptNodeLimit { script_index: 2 }),
-    ) == h_native_script_node_count,
-    hash_rejection_code(
-      rejection_code_of(WitnessNativeScriptDepthLimit { script_index: 3 }),
-    ) == h_native_script_depth,
-    hash_rejection_code(
-      rejection_code_of(WitnessNativeScriptFalse { script_index: 4 }),
-    ) == h_native_script_invalid,
-    hash_rejection_code(rejection_code_of(ScriptIntegrityHashMissing)) == h_invalid_field_type,
-    hash_rejection_code(rejection_code_of(ObserversForbiddenOnUntaggedNetwork)) == h_invalid_field_type,
-    hash_rejection_code(
-      rejection_code_of(ObserverOrderInvalid { observer_index: 1 }),
-    ) == h_invalid_field_type,
-    hash_rejection_code(rejection_code_of(ValidityIntervalExcludesBlockSlot)) == h_validity_interval_mismatch,
-    hash_rejection_code(
-      rejection_code_of(InputNotFound { source_kind: 0, input_index: 0 }),
-    ) == h_input_not_found,
-    hash_rejection_code(
-      rejection_code_of(
-        InputSpentOutputNonCanonical { source_kind: 1, input_index: 1 },
-      ),
-    ) == h_invalid_output,
-    hash_rejection_code(
-      rejection_code_of(
-        ResolvedReferenceScriptMalformed { source_kind: 0, input_index: 2 },
-      ),
-    ) == h_invalid_field_type,
-    hash_rejection_code(
-      rejection_code_of(
-        ResolvedReferenceScriptNodeLimit { source_kind: 1, input_index: 3 },
-      ),
-    ) == h_native_script_node_count,
-    hash_rejection_code(
-      rejection_code_of(
-        ResolvedReferenceScriptDepthLimit { source_kind: 0, input_index: 4 },
-      ),
-    ) == h_native_script_depth,
-    hash_rejection_code(
-      rejection_code_of(SpendInputSignerMissing { input_index: 5 }),
-    ) == h_missing_required_witness,
+    pinned(
+      RedeemerMalformed { redeemer_index: 24 },
+      #"d905119f1818ff",
+      #"c6d2615d85198275e528325d3b3bdb9996f64276014747f7ef0fac8f873c584f",
+    ),
+    pinned(
+      OutputNonCanonical { output_index: 25 },
+      #"d905129f1819ff",
+      #"a20f0ce92b04fde70e1cea53571dde27cf8c825aab93a85128afd55721a55bac",
+    ),
+    pinned(
+      OutputReferenceScriptMalformed { output_index: 26 },
+      #"d905139f181aff",
+      #"bd75607c79c80dc28ff656f3417d7ef7b14a9dbc44a553c7286ca59fa6b28b12",
+    ),
+    pinned(
+      OutputReferenceScriptNodeLimit { output_index: 27 },
+      #"d905149f181bff",
+      #"c24376f2b2ed4bda97d8f06789c315d3ba8ff569059a30de31cb9ae9bd86c30a",
+    ),
+    pinned(
+      OutputReferenceScriptDepthLimit { output_index: 28 },
+      #"d905159f181cff",
+      #"5ee0d0d1a34340095582d43fc1ab8c0ca277c5d9ddf43bf53a8a8d39652515ce",
+    ),
+    pinned(
+      ProtectedOutputSignerMissing { output_index: 29 },
+      #"d905169f181dff",
+      #"3beea3ec18ccab5a62424a69ffb15c70a0b8a99cc14c2597557aba1c2b1fa1f0",
+    ),
+    pinned(
+      MintDeclaredAssetLimit { policy_index: 30 },
+      #"d905179f181eff",
+      #"24d971db4fba7fde03874327763beaf3d8d26b4ca667b17937a3e9dfe82a482e",
+    ),
+    pinned(
+      ScriptSourceMissing { purpose_kind: 31, purpose_index: 32 },
+      #"d905189f181f1820ff",
+      #"c30e56fb0dbaf1e7428e934ff1a6301cc556d14d23e98fc99e86f4710e712933",
+    ),
+    pinned(
+      RedeemerMissing { purpose_kind: 32, purpose_index: 33 },
+      #"d905199f18201821ff",
+      #"3d52ad10c0bf7af648753abce156495f263c8050738b355da60f0ffd883a9ef5",
+    ),
+    pinned(
+      UnusedScriptWitness { script_index: 33 },
+      #"d9051a9f1821ff",
+      #"129728be3cc3f3df13fe503cdb434f44283a2d4bbdb567687baa5c9d0f016527",
+    ),
+    pinned(
+      UnusedRedeemer { redeemer_index: 34 },
+      #"d9051b9f1822ff",
+      #"4d85c48f6e3d82dabb9d56cd1f939d3c6d64d4b310a0d78ac2d569103af819d4",
+    ),
+    pinned(
+      ExecutionNativeScriptMalformed { purpose_kind: 35, purpose_index: 36 },
+      #"d9051c9f18231824ff",
+      #"f3609cd0586c95ec46a0b9a933e11b2e91b30ff8e49b443ccb8de2ea32cf8328",
+    ),
   }
 }
 
-/// Gate 4, arms 25–47.
-test bridge_hash_is_frozen_for_script_through_value_arms() {
+test reason_vectors_arms_36_to_47() {
   and {
+    pinned(
+      ExecutionNativeScriptNodeLimit { purpose_kind: 36, purpose_index: 37 },
+      #"d9051d9f18241825ff",
+      #"f694991059500f501a3daedc22696d1bde1f7107f3a772d265313813637f0743",
+    ),
+    pinned(
+      ExecutionNativeScriptDepthLimit { purpose_kind: 37, purpose_index: 38 },
+      #"d9051e9f18251826ff",
+      #"56208a49a59345290853c7db1475a102903552fb43b81c3f71efddf04f02600b",
+    ),
+    pinned(
+      ExecutionNativeScriptFalse { purpose_kind: 38, purpose_index: 39 },
+      #"d9051f9f18261827ff",
+      #"89a7ebfca4f3da3b4c7c95c3d0d5fb17b38a04484865abdb366f08f2a5e41e5a",
+    ),
+    pinned(
+      ScriptIntegrityHashMismatch,
+      #"d9052080",
+      #"800b4eb07dcdb39a9617f27e213bc60f0612e16138ebfadc876485ebd33720c8",
+    ),
+    pinned(
+      ReceivePurposePlutusV3Forbidden { purpose_kind: 40, purpose_index: 41 },
+      #"d905219f18281829ff",
+      #"3112b34d078800cefa88946fb87a615b6a31f57ee8891b4c37b610fa861ecc7e",
+    ),
+    pinned(
+      PlutusExecutionFailed { purpose_kind: 41, purpose_index: 42 },
+      #"d905229f1829182aff",
+      #"248e3bf957b996ce34e7e5ce5b0cb11012d9ab04e897fb67f15d0537dbe96369",
+    ),
+    pinned(
+      InputAssetAccumulationLimit { input_index: 42, asset_index: 43 },
+      #"d905239f182a182bff",
+      #"19657af2b499b060b75b8a871b0c6ebf104e742c72ee550fce36cf94b6d27979",
+    ),
+    pinned(
+      OutputAssetAccumulationLimit { output_index: 43, asset_index: 44 },
+      #"d905249f182b182cff",
+      #"ca0eb3741e01475d9012369039f63ec479f4897d91a584eff3c7cc79af906316",
+    ),
+    pinned(
+      MintAssetAccumulationLimit { mint_index: 44 },
+      #"d905259f182cff",
+      #"8e6a9aa075f8b4a8bf207e737995a084133854792ff4abe22b64cd7093594ac3",
+    ),
+    pinned(
+      OutputBelowMinAda { output_index: 45 },
+      #"d905269f182dff",
+      #"47efd554e1a3c3b8d0612f5580100384669633d9c23afd7d195eba9cb7218573",
+    ),
+    pinned(
+      ValueNotPreserved,
+      #"d9052780",
+      #"84e558e4cb39753af892fe35f097d3a3d528fe341a76662b628d891b8b5675b7",
+    ),
+    pinned(
+      MintItemMalformed { policy_index: 47 },
+      #"d905289f182fff",
+      #"ea475757f825e41acf1cd6d3de55252c715db6cbcbac0a5e8286baa38bc6f191",
+    ),
+  }
+}
+
+/// The interim sentinel coordinate (-1), a two-byte coordinate, and the
+/// P1 mint-item arm at its smallest coordinate.
+test reason_vectors_sentinel_and_width() {
+  and {
+    pinned(
+      DuplicateInput {
+        first_field_index: -1,
+        first_item_index: -1,
+        second_field_index: -1,
+        second_item_index: -1,
+      },
+      #"d87c9f20202020ff",
+      #"96e7f93cbb70c6db8dfc2a93ace1adbb2ec5dec7600b422aef738c86d50937ca",
+    ),
+    pinned(
+      InputNotFound { source_kind: 0, input_index: -1 },
+      #"d9050b9f0020ff",
+      #"92540c0ddc1150a85e4f87ce8be9affe086dd2c235dc5ddf3da712ae43bda343",
+    ),
+    pinned(
+      PlutusExecutionFailed { purpose_kind: 3, purpose_index: 300 },
+      #"d905229f0319012cff",
+      #"ce9e5d97c13b80dd5090bc19165e7796680e43663281cb2bd0508a088737146a",
+    ),
+    pinned(
+      MintItemMalformed { policy_index: 0 },
+      #"d905289f00ff",
+      #"f280ed3127a64fb8cb31fecb28c993f21ec05b890003c993d96570e723c255ba",
+    ),
+  }
+}
+
+/// Two reasons of one arm differing only in a coordinate commit to different
+/// codes: the code names the exact site, not only the arm.
+test reason_code_separates_coordinates() {
+  and {
+    hash_rejection_code(OutputBelowMinAda { output_index: 0 }) != hash_rejection_code(
+      OutputBelowMinAda { output_index: 1 },
+    ),
     hash_rejection_code(
-      rejection_code_of(RedeemerMalformed { redeemer_index: 0 }),
-    ) == h_invalid_field_type,
-    hash_rejection_code(
-      rejection_code_of(OutputNonCanonical { output_index: 1 }),
-    ) == h_invalid_output,
-    hash_rejection_code(
-      rejection_code_of(OutputReferenceScriptMalformed { output_index: 2 }),
-    ) == h_invalid_field_type,
-    hash_rejection_code(
-      rejection_code_of(OutputReferenceScriptNodeLimit { output_index: 3 }),
-    ) == h_native_script_node_count,
-    hash_rejection_code(
-      rejection_code_of(OutputReferenceScriptDepthLimit { output_index: 4 }),
-    ) == h_native_script_depth,
-    hash_rejection_code(
-      rejection_code_of(ProtectedOutputSignerMissing { output_index: 5 }),
-    ) == h_missing_required_witness,
-    hash_rejection_code(
-      rejection_code_of(MintDeclaredAssetLimit { policy_index: 6 }),
-    ) == h_asset_count,
-    hash_rejection_code(
-      rejection_code_of(
-        ScriptSourceMissing { purpose_kind: 0, purpose_index: 0 },
-      ),
-    ) == h_missing_required_witness,
-    hash_rejection_code(
-      rejection_code_of(RedeemerMissing { purpose_kind: 2, purpose_index: 1 }),
-    ) == h_missing_required_witness,
-    hash_rejection_code(
-      rejection_code_of(UnusedScriptWitness { script_index: 0 }),
-    ) == h_invalid_field_type,
-    hash_rejection_code(rejection_code_of(UnusedRedeemer { redeemer_index: 1 })) == h_invalid_field_type,
-    hash_rejection_code(
-      rejection_code_of(ExecutionNativeScriptMalformed { execution_index: 0 }),
-    ) == h_invalid_field_type,
-    hash_rejection_code(
-      rejection_code_of(ExecutionNativeScriptNodeLimit { execution_index: 1 }),
-    ) == h_native_script_node_count,
-    hash_rejection_code(
-      rejection_code_of(ExecutionNativeScriptDepthLimit { execution_index: 2 }),
-    ) == h_native_script_depth,
-    hash_rejection_code(
-      rejection_code_of(ExecutionNativeScriptFalse { execution_index: 3 }),
-    ) == h_native_script_invalid,
-    hash_rejection_code(rejection_code_of(ScriptIntegrityHashMismatch)) == h_invalid_field_type,
-    hash_rejection_code(
-      rejection_code_of(ReceivePurposePlutusV3Forbidden { execution_index: 4 }),
-    ) == h_plutus_script_invalid,
-    hash_rejection_code(
-      rejection_code_of(PlutusExecutionFailed { execution_index: 5 }),
-    ) == h_plutus_script_invalid,
-    hash_rejection_code(
-      rejection_code_of(
-        InputAssetAccumulationLimit { input_index: 0, asset_index: 1 },
-      ),
-    ) == h_asset_count,
-    hash_rejection_code(
-      rejection_code_of(
-        OutputAssetAccumulationLimit { output_index: 2, asset_index: 3 },
-      ),
-    ) == h_asset_count,
-    hash_rejection_code(
-      rejection_code_of(MintAssetAccumulationLimit { mint_index: 4 }),
-    ) == h_asset_count,
-    hash_rejection_code(
-      rejection_code_of(OutputBelowMinAda { output_index: 6 }),
-    ) == h_min_ada,
-    hash_rejection_code(rejection_code_of(ValueNotPreserved)) == h_value_not_preserved,
+      PlutusExecutionFailed { purpose_kind: 0, purpose_index: 1 },
+    ) != hash_rejection_code(
+      PlutusExecutionFailed { purpose_kind: 1, purpose_index: 0 },
+    ),
+  }
+}
+
+/// The duplicate-pair constructor maps its four arguments positionally onto
+/// `DuplicateInput`: first (earlier-scanned) pair, then second pair.
+test reject_duplicate_input_maps_the_pair_positionally() {
+  let reason = reject_duplicate_input(0, 3, 1, 0)
+  and {
+    pinned(
+      reason,
+      #"d87c9f00030100ff",
+      #"be6b664e5a0ebfa2ebf8da29c959e7d84d0c6631980897bc8efa9801dec9b2c6",
+    ),
+    reason == DuplicateInput {
+      first_field_index: 0,
+      first_item_index: 3,
+      second_field_index: 1,
+      second_item_index: 0,
+    },
+    hash_rejection_code(reason) != hash_rejection_code(
+      reject_duplicate_input(1, 0, 0, 3),
+    ),
   }
 }

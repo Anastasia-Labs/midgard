@@ -215,6 +215,8 @@ BEGIN
 END $$;
 ALTER TABLE committee_da_signatures
   ADD COLUMN IF NOT EXISTS end_time_ms bigint CHECK (end_time_ms >= 0);
+ALTER TABLE committee_da_signatures
+  ADD COLUMN IF NOT EXISTS block_time_ms bigint CHECK (block_time_ms >= 0);
 UPDATE committee_da_signatures
   SET end_time_ms = (record->'validation'->'l1Header'->>'endTime')::bigint
   WHERE end_time_ms IS NULL

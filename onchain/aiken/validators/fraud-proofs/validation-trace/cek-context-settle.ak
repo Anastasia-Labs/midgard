@@ -54,11 +54,15 @@ validator main(
               0,
               0,
               next.program_envelope_hash,
+              -1,
+              -1,
             )
           chain.StartExecution {
             initial_state_hash,
             execution_cpu_limit,
             execution_memory_limit,
+            purpose_kind,
+            purpose_index,
           } ->
             witness.encode_cek_witness_v1(
               cek.control,
@@ -70,6 +74,8 @@ validator main(
               execution_cpu_limit,
               execution_memory_limit,
               cek.program_envelope_hash,
+              purpose_kind,
+              purpose_index,
             )
         }
         let pre = prepared.resolution.pre_state

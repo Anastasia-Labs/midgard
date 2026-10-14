@@ -78,7 +78,6 @@ const PROTOCOL_SPENDING_VALIDATORS = [
   "registeredOperators",
   "activeOperators",
   "retiredOperators",
-  "escapeHatch",
   "fraudProofCatalogue",
   "fraudProof",
   "deposit",

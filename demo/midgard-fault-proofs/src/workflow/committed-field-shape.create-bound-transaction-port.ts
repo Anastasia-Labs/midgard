@@ -32,10 +32,16 @@ import {
 import type { FraudProofWorkflowDeploymentBinding } from "./deployment-manifest-binding.js";
 import {
   type LinearFamilyAssemblyContext,
+  type LinearFamilyPrerequisiteInput,
   type LinearFamilyReferenceScripts,
   type ManifestBoundLinearFamilyWorkflow,
   type ManifestBoundLinearFamilyWorkflowConfig,
 } from "./family-definition.js";
+import {
+  createRawCommittedFieldCarriagePlan,
+  type FieldCarriagePrerequisitePort,
+  type PreimageCarriageRequirement,
+} from "./field-carriage-prerequisite.js";
 import { normalizeJournalJson } from "./journal.js";
 import {
   LINEAR_FAMILY_TRANSACTION_PORT,
@@ -126,13 +132,13 @@ export type CommittedFieldShapeWorkflowReferenceScripts =
   LinearFamilyReferenceScripts<
     "committedFieldShape",
     (typeof WITNESS_ROLES)[number],
-    false
+    true
   >;
 
 export type AssemblyContext = LinearFamilyAssemblyContext<
   "committedFieldShape",
   (typeof WITNESS_ROLES)[number],
-  false
+  true
 >;
 
 export type BoundCommittedFieldShapeTransactionsConfig = Readonly<{
@@ -145,6 +151,8 @@ export type BoundCommittedFieldShapeTransactionsConfig = Readonly<{
   category: FraudProofWorkflowDeploymentBinding<"committedFieldShape">["resolvedContracts"]["category"];
   catalogue: FraudProofWorkflowDeploymentBinding<"committedFieldShape">["catalogue"];
   referenceScripts: CommittedFieldShapeWorkflowReferenceScripts;
+  /** Resolves the authenticated §8 carriage of the selected committed slot. */
+  fieldCarriage: FieldCarriagePrerequisitePort<"committedFieldShape">;
   stateQueueMutationLeaseCoordinator: StateQueueMutationLeaseCoordinator;
   fraudProverRewardLovelace: bigint;
   deploymentInfo: unknown;
@@ -230,6 +238,16 @@ export const createBoundTransactionPort = ({
       return Object.freeze({ transaction });
     }
     if (input.stage === "step_01") {
+      const field = await config.fieldCarriage.resolveAuthenticated({
+        headerHash: config.headerHash,
+        action,
+        artifact,
+      });
+      if (field.requirement === null) {
+        throw new Error(
+          "committed-field-shape field carriage disappeared before step-01",
+        );
+      }
       const transaction = await captureLocallyEvaluatedTransaction(
         async (preSubmitBoundary) => {
           await builders.step01({
@@ -243,6 +261,10 @@ export const createBoundTransactionPort = ({
             stateQueueBlockOutRef: stringField(input, "stateQueueBlockOutRef"),
             txInclusion: admitted.txInclusion,
             prepared: admitted.prepared,
+            publishedFieldCarriageUtxos: field.publications,
+            ...(field.certificate === undefined
+              ? {}
+              : { fieldCertificateUtxo: field.certificate }),
             referenceScriptUtxo: config.referenceScripts.steps[0],
             witnessReferenceScripts: config.referenceScripts.witnesses,
             preSubmitBoundary,
@@ -334,8 +356,36 @@ export type ManifestBoundCommittedFieldShapeWorkflowConfig =
   ManifestBoundLinearFamilyWorkflowConfig<
     "committedFieldShape",
     (typeof WITNESS_ROLES)[number],
-    false
+    true
   >;
 
 export type ManifestBoundCommittedFieldShapeWorkflow =
-  ManifestBoundLinearFamilyWorkflow<"committedFieldShape", false>;
+  ManifestBoundLinearFamilyWorkflow<"committedFieldShape", true>;
+
+/** Step-01 carries the selected committed slot as raw bytes. */
+export const fieldCarriageRequirementForAction = async (
+  context: AssemblyContext,
+  { action, artifact }: LinearFamilyPrerequisiteInput,
+): Promise<PreimageCarriageRequirement | null> => {
+  if (action.input.stage !== "step_01") return null;
+  const admitted = await admitCommittedFieldShapeArtifact(artifact);
+  return Object.freeze({
+    planned: createRawCommittedFieldCarriagePlan({
+      sourceKind: 0n,
+      owner: context.signer.paymentKeyHash,
+      nativeTxId: admitted.txInclusion.nativeTxId,
+      fieldIndex: admitted.artifact.selectedFieldIndex,
+      preimage: Buffer.from(
+        admitted.prepared.evidence.committedPreimage,
+        "hex",
+      ),
+    }),
+    compactCbor: admitted.txInclusion.nativeTxCompactCbor,
+    witnessSetCompactCbor: admitted.witnessSetCompactCbor,
+    certificate: Object.freeze({
+      policyId: context.certificate.policyId,
+      mintingScript: context.certificate.mintingScript,
+      referenceScriptUtxo: context.references.fieldPreimageCertificateMint,
+    }),
+  });
+};

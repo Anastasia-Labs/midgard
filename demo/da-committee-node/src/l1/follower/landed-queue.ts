@@ -22,6 +22,7 @@ export type QueueRow = Readonly<{
   headerHash: string | null;
   daStatus: string | null;
   endTimeMs: bigint | null;
+  blockTimeMs: bigint | null;
   problems: readonly QueueOutputProblem[];
   datumHex: string | null;
   createdSlot: number;
@@ -70,6 +71,7 @@ const toRow = (row: SqlRow): QueueRow => {
     headerHash: asText(row.header_hash),
     daStatus: asText(row.da_status),
     endTimeMs: asBigInt(row.end_time_ms),
+    blockTimeMs: asBigInt(row.block_time_ms),
     problems:
       problems === "" ? [] : (problems.split(",") as QueueOutputProblem[]),
     datumHex: asBytes(row.datum)?.toString("hex") ?? null,
@@ -84,7 +86,7 @@ const toRow = (row: SqlRow): QueueRow => {
 };
 
 const COLUMNS =
-  "tx_hash, output_index, kind, asset_name, node_key, next_key, header_hash, da_status, end_time_ms, problems, datum, created_slot, created_height, created_tx_index, spent_slot";
+  "tx_hash, output_index, kind, asset_name, node_key, next_key, header_hash, da_status, end_time_ms, block_time_ms, problems, datum, created_slot, created_height, created_tx_index, spent_slot";
 
 /**
  * The queue outputs live at the cursor: every row still open. Ordered by
@@ -141,6 +143,7 @@ export type LandedQueueNode = Readonly<{
   daStatus: string;
   problems: readonly QueueOutputProblem[];
   endTimeMs: bigint;
+  blockTimeMs: bigint | null;
   createdSlot: number;
   createdHeight: number;
   datumHex: string;
@@ -181,6 +184,7 @@ const toNode = (row: QueueRow): LandedQueueNode => ({
   daStatus: row.daStatus ?? "",
   problems: row.problems,
   endTimeMs: row.endTimeMs ?? 0n,
+  blockTimeMs: row.blockTimeMs,
   createdSlot: row.createdSlot,
   createdHeight: row.createdHeight,
   datumHex: row.datumHex ?? "",
@@ -290,6 +294,7 @@ export type AwaitingHeader = Readonly<{
   headerHash: string;
   outRef: string;
   endTimeMs: bigint;
+  blockTimeMs: bigint | null;
   /** Of the node's current output (plan §9: the tip block has depth 1). */
   depth: number;
   level: ChainLevel | null;
@@ -319,6 +324,7 @@ export const headersAwaitingAttestation = (
         headerHash: node.headerHash,
         outRef: node.outRef,
         endTimeMs: node.endTimeMs,
+        blockTimeMs: node.blockTimeMs,
         depth: atDepth,
         level: levelAtDepth(atDepth, parameters),
         signable: queue.healthy && isSafe(atDepth, parameters),

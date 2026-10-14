@@ -6,7 +6,7 @@ use midgard/fraud_proofs/missing_redeemer/rule
 use midgard/fraud_proofs/native_tx/compact.{tx_proof_commitment_v1}
 use midgard/fraud_proofs/proof_thread_substrate_v1 as substrate
 use midgard/ledger_state
-use midgard/rejection_reason_v1.{RedeemerMissing, rejection_code_of}
+use midgard/rejection_reason_v1.{RedeemerMissing}
 use midgard/script_proof_v1
 use midgard/transition_trace
 use midgard/validation_machine/machine_types as vm_machine_types
@@ -330,12 +330,15 @@ fn stage_ten_authentication(
       correct_verdict
     },
     rejection_code_hash: if wrong_rejection_hash {
-      h32
+      // The same arm at another purpose coordinate.
+      validation_trace_v1.hash_rejection_code(
+        RedeemerMissing { purpose_kind: 0, purpose_index: 8 },
+      )
     } else if direction == substrate.direction_wrongful_acceptance {
       zero
     } else {
       validation_trace_v1.hash_rejection_code(
-        rejection_code_of(RedeemerMissing { purpose_kind: 0, purpose_index: 7 }),
+        RedeemerMissing { purpose_kind: 0, purpose_index: 7 },
       )
     },
   }

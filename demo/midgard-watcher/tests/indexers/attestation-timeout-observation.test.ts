@@ -11,7 +11,7 @@ import {
 const emptyRoot =
   "0e5751c026e543b2e8ab2eb06099daa1d1e5df47778f7787faab45cdf12fe3a8";
 
-const snapshot = (daAttestationPolicyId: string | null) => {
+const snapshot = (daAttestationPolicyId: string | null, blockTime = "2000") => {
   const confirmedState = {
     headerHash: h28(0x11),
     prevHeaderHash: h28(0x00),
@@ -41,6 +41,7 @@ const snapshot = (daAttestationPolicyId: string | null) => {
     transitionStepCount: "0",
     validationTraceCount: "0",
     startTime: confirmedState.endTime,
+    blockTime,
     endTime: "2000",
     blockSlot: "1",
     expectedNetworkId: "0",
@@ -102,6 +103,32 @@ describe("watcher attestation-timeout observation", () => {
     ).toBe("timed_out");
   });
 
+  it("waits for the catch-up commit clock and binds it in the snapshot digest", () => {
+    const value = snapshot(null, "50000");
+    expect(
+      deriveWatcherAttestationTimeoutObservation({
+        snapshot: value,
+        nowMs: 2_000n + DA_ATTESTATION_TIMEOUT_MS,
+        alertLeadMs: 1n,
+      }),
+    ).toMatchObject({
+      status: "waiting",
+      headerEndTimeMs: "2000",
+      headerBlockTimeMs: "50000",
+      deadlineMs: (50_000n + DA_ATTESTATION_TIMEOUT_MS).toString(),
+    });
+    expect(
+      deriveWatcherAttestationTimeoutObservation({
+        snapshot: {
+          ...value,
+          queue: [{ ...value.queue[0]!, blockTime: "2000" }],
+        },
+        nowMs: 2_000n + DA_ATTESTATION_TIMEOUT_MS,
+        alertLeadMs: 1n,
+      }),
+    ).toBeNull();
+  });
+
   it("uses the applied attestation marker and never emits a timeout for it", () => {
     expect(
       deriveWatcherAttestationTimeoutObservation({
@@ -136,6 +163,7 @@ it("observes an expired unattested suffix behind an attested head", () => {
     prevHeaderHash: first.headerHash,
     prevUtxosRoot: first.utxosRoot,
     startTime: first.endTime,
+    blockTime: "3000",
     endTime: "3000",
     blockSlot: "2",
     daAttestationPolicyId: null,

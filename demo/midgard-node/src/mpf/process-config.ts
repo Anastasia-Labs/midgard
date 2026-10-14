@@ -27,8 +27,10 @@ export type ProcessMpfsConfig = {
     readonly l1SlotConfig: L1SlotConfig;
   };
   readonly currentBlockStartTime?: Date;
-  /** Fixed source-owned header end, shared by event selection and validation. */
+  /** Fixed source-owned coverage end; event selection never moves beyond it. */
   readonly fixedBlockEndTime?: Date;
+  /** Fixed commit clock used by validity verdicts and the authenticated block slot. */
+  readonly fixedBlockTime?: Date;
   readonly processedOnlyEndTime?: Date;
   readonly depositOnlyEndTime?: Date;
   readonly depositVisibilityBarrierTime?: Date;

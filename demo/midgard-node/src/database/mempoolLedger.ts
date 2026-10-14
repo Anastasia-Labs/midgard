@@ -183,7 +183,7 @@ export const retrieve: Effect.Effect<
  * whose admission left the chain (an orphan) projects no spendable output,
  * so admission rejects a spend of it as a missing input.
  */
-const spendablePredicate = (sql: SqlClient.SqlClient) => sql`
+export const spendablePredicate = (sql: SqlClient.SqlClient) => sql`
   (${sql(tableName)}.${sql(Columns.SOURCE_EVENT_ID)} IS NULL
     OR (${sql(DepositsDB.tableName)}.${sql(
       DepositsDB.Columns.PROJECTED_HEADER_HASH,

@@ -10,6 +10,7 @@ import {
   type UTxO,
 } from "@lucid-evolution/lucid";
 
+import { canonicalDataStreamFrameData } from "../canonical-data-stream-plan.js";
 import {
   requireLinearFaultReferenceScript,
   requireLinearFaultStepState,
@@ -20,7 +21,6 @@ import type { ResolvedProverSigner } from "../runtime.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
 import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary.js";
 import type { TransactionOutputNonCanonicalContracts } from "./contracts.js";
-import { canonicalDataStreamFrameData } from "../canonical-data-stream-plan.js";
 import type { TransactionOutputDatumStep } from "./datum-plan.js";
 import {
   TransactionOutputScanStateSchema,

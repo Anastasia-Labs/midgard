@@ -16,6 +16,10 @@
     },
     "./*": {
       "midgard-source": "./src/*.ts"
+    },
+    "./funding-measurements": {
+      "midgard-source": "./src/funding-measurements.ts",
+      "import": "./dist/funding-measurements.js"
     }
   },
   "scripts": {

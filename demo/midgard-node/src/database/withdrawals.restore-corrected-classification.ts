@@ -1,7 +1,4 @@
-import { outRefToCbor } from "@al-ft/lucid-midgard";
-import * as SDK from "@al-ft/midgard-sdk";
 import { SqlClient } from "@effect/sql";
-import { Data as LucidData } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
 import { Database } from "../services/database.js";
@@ -11,6 +8,7 @@ import {
   DatabaseError,
   sqlErrorToDatabaseError,
 } from "./utils/common.js";
+import { decodeWithdrawalLedgerOutRef } from "./withdrawal-ledger-outref.decode.js";
 import {
   Columns,
   type Entry,
@@ -144,18 +142,7 @@ export const toLedgerOutRef = (
   entry: Pick<Entry, Columns.L2_OUTREF>,
 ): Effect.Effect<Buffer, DatabaseError, never> =>
   Effect.try({
-    try: () => {
-      const outRef = LucidData.from(
-        entry[Columns.L2_OUTREF].toString("hex"),
-        SDK.OutputReference,
-      );
-      // The ledger key is the §5.3 field-0/1 item encoding, matching on-chain
-      // `ledger_outref_key` — never CML's minimal-index TransactionInput CBOR.
-      return outRefToCbor({
-        txHash: outRef.transactionId,
-        outputIndex: Number(outRef.outputIndex),
-      });
-    },
+    try: () => decodeWithdrawalLedgerOutRef(entry[Columns.L2_OUTREF]),
     catch: (cause) =>
       new DatabaseError({
         table: tableName,

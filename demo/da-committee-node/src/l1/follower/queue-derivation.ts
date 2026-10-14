@@ -37,6 +37,7 @@ export type DecodedQueueOutput = Readonly<{
   /** A node's DA status identity (`daAvailabilityStateQueueStatusIdentity`). */
   daStatus: string | null;
   endTimeMs: bigint | null;
+  blockTimeMs: bigint | null;
   problems: readonly QueueOutputProblem[];
 }>;
 
@@ -51,6 +52,7 @@ const invalid = (
   headerHash: null,
   daStatus: null,
   endTimeMs: null,
+  blockTimeMs: null,
   problems: [problem],
 });
 
@@ -156,6 +158,7 @@ export const decodeQueueOutput = (
       headerHash: root.headerHash,
       daStatus: null,
       endTimeMs: root.endTime,
+      blockTimeMs: null,
       problems: [],
     };
   }
@@ -179,6 +182,7 @@ export const decodeQueueOutput = (
     headerHash,
     daStatus: SDK.daAvailabilityStateQueueStatusIdentity(node.da_attestation),
     endTimeMs: node.header.endTime,
+    blockTimeMs: node.block_time,
     problems,
   };
 };
@@ -216,7 +220,7 @@ export const committeeQueueDerivation = (
         );
         if (decoded === null) continue;
         await tx.query(
-          `INSERT INTO ${COMMITTEE_QUEUE_TABLE} (tx_hash, output_index, kind, asset_name, node_key, next_key, header_hash, da_status, end_time_ms, problems, datum, created_slot, created_height, created_tx_index, spent_slot) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)`,
+          `INSERT INTO ${COMMITTEE_QUEUE_TABLE} (tx_hash, output_index, kind, asset_name, node_key, next_key, header_hash, da_status, end_time_ms, block_time_ms, problems, datum, created_slot, created_height, created_tx_index, spent_slot) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)`,
           [
             outRef.txHash,
             outRef.index,
@@ -227,6 +231,7 @@ export const committeeQueueDerivation = (
             decoded.headerHash,
             decoded.daStatus,
             decoded.endTimeMs,
+            decoded.blockTimeMs,
             decoded.problems.join(","),
             output.datum,
             slot,

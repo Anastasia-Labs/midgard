@@ -119,11 +119,13 @@ const VERDICTS = {
   PlutusExecutionFailed: {
     sdk: {
       ForcedTxInvalid: {
-        reason: { PlutusExecutionFailed: { execution_index: 0n } },
+        reason: {
+          PlutusExecutionFailed: { purpose_kind: 0n, purpose_index: 0n },
+        },
       },
     },
     aiken:
-      "rejection_reason_v1.ForcedTxInvalid {\n      reason: rejection_reason_v1.PlutusExecutionFailed { execution_index: 0 },\n    }",
+      "rejection_reason_v1.ForcedTxInvalid {\n      reason: rejection_reason_v1.PlutusExecutionFailed {\n        purpose_kind: 0,\n        purpose_index: 0,\n      },\n    }",
   },
   FeeBelowMinimum: {
     sdk: { ForcedTxInvalid: { reason: "FeeBelowMinimum" } },

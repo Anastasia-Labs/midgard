@@ -5,7 +5,7 @@ import {
   buildMidgardValidationTraceTree,
   encodeCbor,
   hashMidgardValidationMachineState,
-  hashMidgardValidationRejectionCode,
+  hashMidgardValidationRejectionReasonV1,
   MIDGARD_CONSENSUS_PROFILE,
   MIDGARD_VALIDATION_NO_REJECTION_CODE_HASH,
   type MidgardValidationVerdictName,
@@ -95,10 +95,11 @@ const falsifyTerminalVerdict = (
   verdict: Exclude<MidgardValidationVerdictName, "pending">,
 ): DeterministicValidationMachineTrace => {
   const rejectionCode = verdict === "accepted" ? null : RejectCodes.EmptyInputs;
+  const rejectionReason = verdict === "accepted" ? null : "EmptyInputs";
   const rejectionCodeHash =
-    rejectionCode === null
+    rejectionReason === null
       ? MIDGARD_VALIDATION_NO_REJECTION_CODE_HASH
-      : hashMidgardValidationRejectionCode(rejectionCode);
+      : hashMidgardValidationRejectionReasonV1(rejectionReason);
   const states = trace.states.map((state, index) =>
     index === trace.states.length - 1
       ? {
@@ -119,6 +120,7 @@ const falsifyTerminalVerdict = (
     tree,
     verdict,
     rejectionCode,
+    rejectionReason,
   };
 };
 

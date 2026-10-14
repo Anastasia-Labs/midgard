@@ -35,7 +35,6 @@ import {
   type MidgardValidationTraceDescriptor,
   MidgardValidationVerdict,
   phaseNames,
-  REJECTION_CODE_DOMAIN,
   sourceKindNames,
   STATE_HASH_DOMAIN,
   validateVerdictRejectionBinding,
@@ -223,18 +222,6 @@ export const decodeMidgardValidationTraceDescriptor = (
     verdict,
     rejectionCodeHash,
   };
-};
-
-export const hashMidgardValidationRejectionCode = (
-  rejectCode: string,
-): Hash32 => {
-  if (!/^E_[A-Z0-9_]+$/u.test(rejectCode)) {
-    return fail(
-      "Validation rejection code must use the frozen E_[A-Z0-9_]+ form",
-      rejectCode,
-    );
-  }
-  return hashDomain(REJECTION_CODE_DOMAIN, Buffer.from(rejectCode, "ascii"));
 };
 
 /**

@@ -28,6 +28,7 @@ import {
   type AdmissionWriterShutdownError,
 } from "../services/index.js";
 import { NodeConfig } from "../services/index.js";
+import { publicSubmissionDiagnostic } from "./listen-public-error-presentation.js";
 import { failWith500 } from "./listen-response.js";
 import {
   readSubmitBodyWithProtocolLimit,
@@ -200,7 +201,12 @@ export const postSubmitHandler = <R>(
             yield* Effect.logInfo(`▫️ Submit rejected: ${validation.error}`);
             yield* recordLatency();
             return HttpServerResponse.json(
-              { error: validation.error },
+              {
+                error: publicSubmissionDiagnostic(
+                  validation.error,
+                  "E_INVALID_CANONICAL_TX",
+                ),
+              },
               { status: validation.status },
             );
           }
@@ -216,7 +222,12 @@ export const postSubmitHandler = <R>(
             yield* Effect.logInfo(`▫️ ${normalized.detail}`);
             yield* recordLatency();
             return HttpServerResponse.json(
-              { error: normalized.error },
+              {
+                error: publicSubmissionDiagnostic(
+                  normalized.error,
+                  "E_INVALID_NATIVE_TX",
+                ),
+              },
               { status: 400 },
             );
           }
@@ -387,7 +398,10 @@ export const postSubmitHandler = <R>(
           return yield* HttpServerResponse.json(
             {
               error: "E_TX_ID_BYTES_CONFLICT",
-              message: e.message,
+              message: publicSubmissionDiagnostic(
+                e.message,
+                "E_TX_ID_BYTES_CONFLICT",
+              ),
               txId: e.txIdHex,
             },
             { status: 409 },
@@ -425,7 +439,10 @@ export const postSubmitHandler = <R>(
           return yield* HttpServerResponse.json(
             {
               error: "Durable submission admission writer is unavailable",
-              message: e.message,
+              message: publicSubmissionDiagnostic(
+                e.message,
+                "E_ADMISSION_WRITER_UNAVAILABLE",
+              ),
             },
             SUBMIT_UNAVAILABLE,
           );

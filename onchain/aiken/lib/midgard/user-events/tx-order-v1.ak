@@ -221,7 +221,7 @@ fn authenticate_material_fields(
       // The declared §2.4 length and the authenticated preimage's own length are
       // two independently committed statements about the same field, and §4's
       // flat hash does not collapse them — the same disagreement the validation
-      // machine renders as `reject_field_preimage_size`. Here it is the order
+      // machine renders as `FieldPreimageLengthMismatch`. Here it is the order
       // creator's own payload contradicting itself, so it fails closed instead.
       expect
         native_tx_field_access_v1.field_total_length(view) == declared_length

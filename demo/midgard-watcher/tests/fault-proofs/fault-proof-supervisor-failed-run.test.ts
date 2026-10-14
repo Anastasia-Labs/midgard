@@ -51,7 +51,7 @@ const deploymentIdentity = makeWatcherDeploymentAuthorityFixture().result;
 const QUEUE_KEY = Uint8Array.from({ length: 32 }, () => 0x5a);
 const ROLLBACK_GENERATION = "3";
 const deadline = Object.freeze({
-  headerEndTimeMs: "0",
+  headerBlockTimeMs: "0",
   maturityAtMs: MIDGARD_RETENTION_WINDOW.maturityMs.toString(),
   latestSafeStartAtMs: (
     MIDGARD_RETENTION_WINDOW.maturityMs -

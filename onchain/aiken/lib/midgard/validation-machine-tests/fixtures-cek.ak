@@ -23,6 +23,7 @@ use midgard/fraud_proofs/native_tx/types.{
 }
 use midgard/ledger_output_commitment_v1
 use midgard/native_tx_field_access_v1
+use midgard/rejection_reason_v1
 use midgard/script_context_v1
 use midgard/script_proof_v1
 use midgard/validation_machine/canonical_decode as vm_canonical_decode
@@ -229,6 +230,8 @@ pub fn maximum_program_envelope_selection_fixture() -> CekSelectionFixtureV1 {
         0,
         0,
         maximum_program_envelope_hash,
+        -1,
+        -1,
       ),
     ),
   }
@@ -252,6 +255,8 @@ pub fn maximum_program_envelope_selection_fixture() -> CekSelectionFixtureV1 {
         0,
         0,
         h_b,
+        -1,
+        -1,
       ),
     ),
   }
@@ -494,9 +499,9 @@ pub fn verify_maximum_field_terminal_fixture_v1(
       terminal_fixture_carriage(fixture),
     ),
     // A declared §5.1 length that disagrees with the authenticated preimage's own
-    // length renders `reject_field_preimage_size` rather than authenticating —
+    // length renders `FieldPreimageLengthMismatch` rather than authenticating —
     // one of the two `CanonicalDecode` verdicts the door leaves reachable (the
-    // other being `reject_invalid_field_type`; committed bytes that are not a
+    // other being `FieldItemWidthIllegal`; committed bytes that are not a
     // §5.1 envelope at all are #596's).
     vm_canonical_decode.verify_canonical_decode_chunk_semantics_v1(
       alternate_length_pre,
@@ -506,7 +511,9 @@ pub fn verify_maximum_field_terminal_fixture_v1(
         ),
         claimed_successor: exact_rejection_post(
           alternate_length_pre,
-          #"455f4649454c445f505245494d4147455f53495a45",
+          rejection_reason_v1.FieldPreimageLengthMismatch {
+            field_index: fixture.field_index,
+          },
         ),
       },
       inline_field_door(),
@@ -888,6 +895,36 @@ pub fn cek_active_core_step_fixture() -> Pair<
   validation_trace_v1.ValidationMachineStateV1,
   vm_machine_types.ValidationOneStepEvidenceV1,
 > {
+  let fixture = cek_keyed_core_step_fixture(-1, -1, 1000000)
+  Pair(
+    fixture.pre,
+    one_step_evidence(
+      fixture.work_witness_cbor,
+      fixture.continued,
+      vm_machine_types.CekCoreStepWitness { step: fixture.step },
+    ),
+  )
+}
+
+/// The active core step of `cek_active_core_step_fixture` under the purpose
+/// key `(purpose_kind, purpose_index)` and the execution CPU limit
+/// `cpu_limit`. The step's machine post-state spends 16010 CPU, so a limit
+/// below that ends the execution in `PlutusExecutionFailed`.
+pub type CekKeyedCoreStepV1 {
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  work_witness_cbor: ByteArray,
+  step: cek_machine_v1.CoreStepEvidenceV1,
+  /// The continuing successor carrying the same purpose key.
+  continued: validation_trace_v1.ValidationMachineStateV1,
+  /// The continuing successor with the purpose index moved by one.
+  rekeyed_continued: validation_trace_v1.ValidationMachineStateV1,
+}
+
+pub fn cek_keyed_core_step_fixture(
+  purpose_kind: Int,
+  purpose_index: Int,
+  cpu_limit: Int,
+) -> CekKeyedCoreStepV1 {
   let tx = empty_v1_transaction()
   let purpose_frontier = validation_merkle_v1.build_frontier([h_a])
   let execution_frontier = validation_merkle_v1.build_frontier([h_b])
@@ -950,9 +987,11 @@ pub fn cek_active_core_step_fixture() -> Pair<
     0,
     0,
     active_pre_hash,
-    1000000,
+    cpu_limit,
     1000000,
     h_b,
+    purpose_kind,
+    purpose_index,
   )
   let compact = midgard_transaction_to_compact(tx)
   let tx_id = native_tx_id_for_version(
@@ -972,40 +1011,43 @@ pub fn cek_active_core_step_fixture() -> Pair<
     execution_cpu: 10,
     execution_memory: 11,
   }
-  let post = validation_trace_v1.ValidationMachineStateV1 {
-    ..pre,
-    program_counter: 41,
-    work_root: validation_trace_v1.hash_work_witness(
-      validation_trace_v1.Cek,
-      41,
-      vm_witness.encode_cek_witness_v1(
-        control,
-        #"",
-        0,
-        0,
-        0,
-        active_post_hash,
-        1000000,
-        1000000,
-        h_b,
+  let post_with = fn(kind, index) {
+    validation_trace_v1.ValidationMachineStateV1 {
+      ..pre,
+      program_counter: 41,
+      work_root: validation_trace_v1.hash_work_witness(
+        validation_trace_v1.Cek,
+        41,
+        vm_witness.encode_cek_witness_v1(
+          control,
+          #"",
+          0,
+          0,
+          0,
+          active_post_hash,
+          cpu_limit,
+          1000000,
+          h_b,
+          kind,
+          index,
+        ),
       ),
-    ),
-    execution_cpu: 16010,
-    execution_memory: 111,
+      execution_cpu: 16010,
+      execution_memory: 111,
+    }
   }
-  let evidence = one_step_evidence(
+  CekKeyedCoreStepV1 {
+    pre,
     work_witness_cbor,
-    post,
-    vm_machine_types.CekCoreStepWitness {
-      step: cek_machine_v1.CoreStepEvidenceV1 {
-        pre: machine_pre,
-        post: machine_post,
-        witness: cek_machine_v1.ComputeApplication {
-          function: h_a,
-          argument: h_b,
-        },
+    step: cek_machine_v1.CoreStepEvidenceV1 {
+      pre: machine_pre,
+      post: machine_post,
+      witness: cek_machine_v1.ComputeApplication {
+        function: h_a,
+        argument: h_b,
       },
     },
-  )
-  Pair(pre, evidence)
+    continued: post_with(purpose_kind, purpose_index),
+    rekeyed_continued: post_with(purpose_kind, purpose_index + 1),
+  }
 }

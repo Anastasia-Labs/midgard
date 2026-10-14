@@ -170,6 +170,7 @@ export type NodeConfigDep = {
   MIN_FEE_B: bigint;
   RUN_GENESIS_ON_STARTUP: boolean;
   ADMIN_API_KEY: string;
+  HTTP_TRUSTED_PROXY_PEERS: readonly string[];
   MAX_DURABLE_ADMISSION_BACKLOG: number;
   MAX_DURABLE_ADMISSION_BACKLOG_BYTES: number;
   SUBMIT_INGRESS_MAX_CONCURRENCY: number;

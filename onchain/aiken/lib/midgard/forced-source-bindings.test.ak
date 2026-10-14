@@ -124,12 +124,12 @@ test forced_source_rejects_foreign_witnesses() {
 test forced_source_binds_reason_subject() {
   let value = leaf(
     reason.ForcedTxInvalid {
-      reason: reason.PlutusExecutionFailed { execution_index: 0 },
+      reason: reason.PlutusExecutionFailed { purpose_kind: 0, purpose_index: 0 },
     },
   )
   let changed = leaf(
     reason.ForcedTxInvalid {
-      reason: reason.PlutusExecutionFailed { execution_index: 1 },
+      reason: reason.PlutusExecutionFailed { purpose_kind: 0, purpose_index: 1 },
     },
   )
   and {
@@ -165,12 +165,12 @@ test forced_source_rejection_preserves_claimed_delta() {
     phase: vt.Terminal,
     program_counter: 1,
     verdict: vt.Rejected,
-    rejection_code_hash: vt.hash_rejection_code(reason.reject_min_fee),
+    rejection_code_hash: vt.hash_rejection_code(reason.FeeBelowMinimum),
     work_root: vt.hash_work_witness(
       vt.Terminal,
       1,
       shared.encode_terminal_rejection_witness(
-        reason.reject_min_fee,
+        reason.FeeBelowMinimum,
         pre.prior_ledger_root,
       ),
     ),
@@ -181,7 +181,7 @@ test forced_source_rejection_preserves_claimed_delta() {
   }
   and {
     shared.structural_transition_is_valid(pre, witness),
-    shared.rejected_successor_is_exact(pre, post, reason.reject_min_fee),
+    shared.rejected_successor_is_exact(pre, post, reason.FeeBelowMinimum),
     !shared.structural_transition_is_valid(
       pre,
       machine_types.ValidationOneStepWitnessV1 {

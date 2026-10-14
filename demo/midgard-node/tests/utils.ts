@@ -17,7 +17,11 @@ import {
   makeAdmissionWriterWithOptions,
 } from "../src/services/admission-writer.js";
 import { NodeConfig } from "../src/services/config.js";
-import { AdmissionSql, Database } from "../src/services/database.js";
+import {
+  AdmissionSql,
+  Database,
+  HttpReadSqlLive,
+} from "../src/services/database.js";
 import { FollowerWriteFixture } from "../src/services/follower-write-gate.js";
 import { WriteBehindLive } from "../src/services/write-behind.js";
 import { applyMidgardNodeTestEnv, testDatabaseName } from "./test-env.js";
@@ -56,6 +60,7 @@ export const provideDatabaseLayers = <A, E, R>(eff: Effect.Effect<A, E, R>) =>
   eff.pipe(
     Effect.provideService(FollowerWriteFixture, true),
     Effect.provide(WriteBehindLive),
+    Effect.provide(HttpReadSqlLive),
     Effect.provide(admissionWriterLayer),
     Effect.provide(Database.layer),
     Effect.provide(NodeConfig.layer),

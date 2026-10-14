@@ -5,6 +5,7 @@ import {
   DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE,
   verifyFinalizedDeploymentManifest,
 } from "@al-ft/midgard-core/deployment-manifest-identity";
+import { deploymentFraudProofCatalogueCategories } from "@al-ft/midgard-core/deployment-profile";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -159,7 +160,15 @@ describe("DA deployment fixture", () => {
       ],
     ] as const;
 
+    const enabled = new Set(deploymentFraudProofCatalogueCategories());
+    expect(Object.keys(catalogue.categories).sort()).toEqual(
+      [...enabled].sort(),
+    );
     for (const [categoryName, categoryId, contractName] of appendedCategories) {
+      if (!enabled.has(categoryName)) {
+        expect(catalogue.categories[categoryName]).toBeUndefined();
+        continue;
+      }
       expect(catalogue.categories[categoryName]).toMatchObject({
         categoryId,
         scriptHash: contracts[contractName]!.scriptHash,

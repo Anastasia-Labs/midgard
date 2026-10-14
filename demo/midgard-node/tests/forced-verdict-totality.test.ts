@@ -398,7 +398,7 @@ const leafOf = (
           canonicalTransactionCbor: nativeTxCbor,
           sourceKind: "forced",
           verdict: leaf.verdict === "ForcedTxValid" ? "accepted" : "rejected",
-          rejectionCode: classified!.rejectionCode,
+          rejectionReason: classified!.rejectionReason,
         },
       ],
     });

@@ -4,8 +4,11 @@ use midgard/fraud_proofs/native_tx/compact.{verify_tx_proof_source_v1}
 use midgard/native_script_scan_v1
 use midgard/native_tx_field_access_v1
 use midgard/rejection_reason_v1.{
-  reject_invalid_field_type, reject_native_script_depth,
-  reject_native_script_invalid, reject_native_script_node_count,
+  ExecutionNativeScriptDepthLimit, ExecutionNativeScriptFalse,
+  ExecutionNativeScriptMalformed, ExecutionNativeScriptNodeLimit,
+  RejectionReasonV1, WitnessNativeScriptDepthLimit, WitnessNativeScriptFalse,
+  WitnessNativeScriptMalformed, WitnessNativeScriptNodeLimit,
+  WitnessScriptHeaderMalformed,
 }
 use midgard/validation_machine/machine_types.{
   AuthenticatedNativeScriptWindowV1, NativeChunkWindowV1,
@@ -60,6 +63,8 @@ fn phase_a_native_successor_is_exact(
         control.signer_count,
         control.signer_peaks,
         control.continuation_cbor,
+        control.purpose_kind,
+        control.purpose_index,
       ),
     ),
   }
@@ -92,6 +97,66 @@ fn phase_a_native_to_preconditions_is_exact(
         #"",
       ),
     ),
+  }
+}
+
+/// The token scan serves two modes. A witness-mode scan (empty continuation)
+/// walks a field-6 witness script and names it by its field-6 ordinal; an
+/// execution-mode scan walks the native source of one execution and names it
+/// by the purpose key the native execution entry wrote into the control.
+fn is_execution_mode(control: PhaseANativeScriptsControlV1) -> Bool {
+  control.continuation_cbor != #""
+}
+
+fn native_script_malformed_reason(
+  control: PhaseANativeScriptsControlV1,
+) -> RejectionReasonV1 {
+  if is_execution_mode(control) {
+    ExecutionNativeScriptMalformed {
+      purpose_kind: control.purpose_kind,
+      purpose_index: control.purpose_index,
+    }
+  } else {
+    WitnessNativeScriptMalformed { script_index: control.script_seen }
+  }
+}
+
+fn native_script_node_limit_reason(
+  control: PhaseANativeScriptsControlV1,
+) -> RejectionReasonV1 {
+  if is_execution_mode(control) {
+    ExecutionNativeScriptNodeLimit {
+      purpose_kind: control.purpose_kind,
+      purpose_index: control.purpose_index,
+    }
+  } else {
+    WitnessNativeScriptNodeLimit { script_index: control.script_seen }
+  }
+}
+
+fn native_script_depth_limit_reason(
+  control: PhaseANativeScriptsControlV1,
+) -> RejectionReasonV1 {
+  if is_execution_mode(control) {
+    ExecutionNativeScriptDepthLimit {
+      purpose_kind: control.purpose_kind,
+      purpose_index: control.purpose_index,
+    }
+  } else {
+    WitnessNativeScriptDepthLimit { script_index: control.script_seen }
+  }
+}
+
+fn native_script_false_reason(
+  control: PhaseANativeScriptsControlV1,
+) -> RejectionReasonV1 {
+  if is_execution_mode(control) {
+    ExecutionNativeScriptFalse {
+      purpose_kind: control.purpose_kind,
+      purpose_index: control.purpose_index,
+    }
+  } else {
+    WitnessNativeScriptFalse { script_index: control.script_seen }
   }
 }
 
@@ -233,7 +298,7 @@ fn verify_phase_a_native_item_scan(
         rejected_successor_is_exact(
           pre,
           witness.claimed_successor,
-          reject_invalid_field_type,
+          WitnessScriptHeaderMalformed { script_index: control.script_seen },
         )
       Some(item_header) ->
         if item_header.language_tag == 0 {
@@ -338,7 +403,7 @@ pub fn verify_phase_a_native_item_native_payload_v1(
         rejected_successor_is_exact(
           pre,
           witness.claimed_successor,
-          reject_invalid_field_type,
+          WitnessScriptHeaderMalformed { script_index: control.script_seen },
         )
       Some(item_header) -> and {
           item_header.language_tag == 0,
@@ -420,7 +485,7 @@ pub fn verify_phase_a_native_item_foreign_payload_v1(
 ///
 /// Every stage that reads a token calls this window, and each parser returns
 /// `None` on an empty window, so every one of them takes its
-/// `reject_invalid_field_type` arm there. End of item therefore yields the
+/// native-script-malformed arm there. End of item therefore yields the
 /// empty window and never opens a chunk: when `item_length` is a multiple of
 /// `chunk_bytes`, the chunk `cursor / chunk_bytes` does not exist, and
 /// demanding it left the end-of-item state with no successor at all. At any
@@ -603,13 +668,13 @@ fn verify_phase_a_native_finalize_scan(
       rejected_successor_is_exact(
         pre,
         witness.claimed_successor,
-        reject_invalid_field_type,
+        native_script_malformed_reason(control),
       )
     } else if control.result == 0 {
       rejected_successor_is_exact(
         pre,
         witness.claimed_successor,
-        reject_native_script_invalid,
+        native_script_false_reason(control),
       )
     } else {
       phase_a_native_complete_script_is_exact(
@@ -853,14 +918,14 @@ fn verify_phase_a_native_token_head_scan_v1(
           rejected_successor_is_exact(
             pre,
             witness.claimed_successor,
-            reject_invalid_field_type,
+            native_script_malformed_reason(control),
           )
         Some(head) ->
           if !native_script_scan_v1.token_head_is_well_formed_v1(head) {
             rejected_successor_is_exact(
               pre,
               witness.claimed_successor,
-              reject_invalid_field_type,
+              native_script_malformed_reason(control),
             )
           } else {
             let next_node_count = control.node_count + 1
@@ -869,7 +934,7 @@ fn verify_phase_a_native_token_head_scan_v1(
               rejected_successor_is_exact(
                 pre,
                 witness.claimed_successor,
-                reject_native_script_node_count,
+                native_script_node_limit_reason(control),
               )
             } else {
               and {
@@ -910,7 +975,7 @@ fn phase_a_native_container_frame_payload_successor_is_exact_v1(
           rejected_successor_is_exact(
             pre,
             witness.claimed_successor,
-            reject_native_script_depth,
+            native_script_depth_limit_reason(control),
           )
         } else {
           and {
@@ -1058,7 +1123,7 @@ fn verify_phase_a_native_all_or_any_container_frame_payload_scan_v1(
       rejected_successor_is_exact(
         pre,
         witness.claimed_successor,
-        reject_invalid_field_type,
+        native_script_malformed_reason(control),
       )
     Some(Some(token)) ->
       phase_a_native_container_frame_payload_successor_is_exact_v1(
@@ -1091,7 +1156,7 @@ fn verify_phase_a_native_all_or_any_empty_container_payload_scan_v1(
       rejected_successor_is_exact(
         pre,
         witness.claimed_successor,
-        reject_invalid_field_type,
+        native_script_malformed_reason(control),
       )
     Some(Some(token)) ->
       phase_a_native_empty_container_payload_successor_is_exact_v1(
@@ -1124,7 +1189,7 @@ fn verify_phase_a_native_at_least_container_frame_payload_scan_v1(
       rejected_successor_is_exact(
         pre,
         witness.claimed_successor,
-        reject_invalid_field_type,
+        native_script_malformed_reason(control),
       )
     Some(Some(token)) ->
       phase_a_native_container_frame_payload_successor_is_exact_v1(
@@ -1157,7 +1222,7 @@ fn verify_phase_a_native_at_least_empty_container_payload_scan_v1(
       rejected_successor_is_exact(
         pre,
         witness.claimed_successor,
-        reject_invalid_field_type,
+        native_script_malformed_reason(control),
       )
     Some(Some(token)) ->
       phase_a_native_empty_container_payload_successor_is_exact_v1(
@@ -1205,7 +1270,7 @@ fn verify_phase_a_native_timelock_payload_scan_v1(
             rejected_successor_is_exact(
               pre,
               witness.claimed_successor,
-              reject_invalid_field_type,
+              native_script_malformed_reason(control),
             )
           Some(token) -> {
             let valid = if token.kind == native_script_scan_v1.after_node {
@@ -1277,7 +1342,7 @@ fn verify_phase_a_native_signature_payload_with_v1(
             rejected_successor_is_exact(
               pre,
               witness.claimed_successor,
-              reject_invalid_field_type,
+              native_script_malformed_reason(control),
             )
           Some(token) ->
             when signer_result(token.key_hash, control) is {

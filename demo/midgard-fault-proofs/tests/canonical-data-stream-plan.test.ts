@@ -76,5 +76,8 @@ describe("canonical Data step planner", () => {
           );
       }
     },
+    // Maximum-size shapes take seconds of pure planning; loaded CI shards
+    // exceed the default 5 s.
+    30_000,
   );
 });

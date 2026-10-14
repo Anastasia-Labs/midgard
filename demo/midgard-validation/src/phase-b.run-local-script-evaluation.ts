@@ -10,7 +10,10 @@ import { MIDGARD_CONSENSUS_LIMITS } from "@al-ft/midgard-core/consensus-profile"
 import { Effect } from "effect";
 
 import { findRedeemerByPointer } from "./midgard-redeemers.js";
-import { discoverLocalScriptExecutions } from "./phase-b.discover-local-script-executions.js";
+import {
+  discoverLocalScriptExecutions,
+  PURPOSE_KIND,
+} from "./phase-b.discover-local-script-executions.js";
 import {
   ScriptOutsideGatedSetError,
   ScriptWallCapExceededError,
@@ -103,6 +106,14 @@ export const runLocalScriptEvaluation = (
         BigInt(index),
       ]),
     );
+    // A rejected execution is cited by its purpose key: the purpose kind and
+    // the redeemer pointer index of that purpose.
+    const purposeKeyOf = (
+      execution: (typeof discovered.executions)[number],
+    ): { readonly purposeKind: bigint; readonly purposeIndex: bigint } => ({
+      purposeKind: PURPOSE_KIND[execution.purpose.kind],
+      purposeIndex: execution.pointer.index,
+    });
     for (const execution of discovered.executions) {
       if (execution.resolved.version !== "NativeCardano") {
         continue;
@@ -122,7 +133,7 @@ export const runLocalScriptEvaluation = (
           consensusPhase: "nativeScripts",
           subject: {
             arm: "ExecutionNativeScriptFalse",
-            index: executionIndexOf.get(execution)!,
+            ...purposeKeyOf(execution),
           },
         };
       }
@@ -171,7 +182,7 @@ export const runLocalScriptEvaluation = (
           consensusPhase: "cek",
           subject: {
             arm: "ReceivePurposePlutusV3Forbidden",
-            index: executionIndexOf.get(execution)!,
+            ...purposeKeyOf(execution),
           },
         };
       }
@@ -243,7 +254,7 @@ export const runLocalScriptEvaluation = (
           consensusPhase: "cek",
           subject: {
             arm: "PlutusExecutionFailed",
-            index: executionIndexOf.get(execution)!,
+            ...purposeKeyOf(execution),
           },
         };
       }
@@ -259,7 +270,7 @@ export const runLocalScriptEvaluation = (
           consensusPhase: "cek",
           subject: {
             arm: "PlutusExecutionFailed",
-            index: executionIndexOf.get(execution)!,
+            ...purposeKeyOf(execution),
           },
         };
       }

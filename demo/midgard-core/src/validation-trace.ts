@@ -10,6 +10,7 @@ import "./validation-trace.encode-midgard-validation-machine-state.js";
 import "./validation-trace.decode-midgard-validation-machine-state.js";
 import "./validation-trace.build-midgard-validation-trace-tree.js";
 import "./validation-trace.trace-frontier.js";
+import "./validation-trace.rejection-reason-v1.js";
 export {
   buildMidgardValidationTraceTree,
   validationTraceDepthForStepCount,
@@ -25,7 +26,6 @@ export {
   hashMidgardValidationLedgerDeltaCbor,
   hashMidgardValidationLedgerDeltaOperation,
   hashMidgardValidationMachineState,
-  hashMidgardValidationRejectionCode,
   hashMidgardValidationWorkWitness,
   MIDGARD_VALIDATION_NO_REJECTION_CODE_HASH,
   type MidgardValidationAuthenticatedLedgerDeltaOperation,
@@ -45,6 +45,15 @@ export {
   MidgardValidationVerdict,
   type MidgardValidationVerdictName,
 } from "./validation-trace.encode-midgard-validation-machine-state.js";
+export {
+  decodeMidgardRejectionReasonV1Cbor,
+  encodeMidgardRejectionReasonV1Cbor,
+  hashMidgardValidationRejectionReasonV1,
+  MIDGARD_REJECTION_REASON_V1_ARMS,
+  type MidgardRejectionReasonV1,
+  type MidgardRejectionReasonV1ArmName,
+  midgardRejectionReasonV1Parts,
+} from "./validation-trace.rejection-reason-v1.js";
 export {
   midgardValidationTraceBranchHash,
   MidgardValidationTraceFrontier,

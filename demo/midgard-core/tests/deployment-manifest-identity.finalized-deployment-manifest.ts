@@ -75,6 +75,15 @@ describe("finalized deployment manifest", () => {
       /contracts\.availabilityChallengeExtraWithdraw is unexpected/,
     ],
     [
+      "retired unsupported escape-hatch scaffold",
+      (manifest: ReturnType<typeof finalizedManifest>) => {
+        manifest.contracts.escapeHatchSpend = {
+          ...manifest.contracts.txOrderSpend!,
+        };
+      },
+      /contracts\.escapeHatchSpend is unexpected/,
+    ],
+    [
       "reference publication",
       (manifest: ReturnType<typeof finalizedManifest>) => {
         manifest.referenceScripts["hub-oracle minting"].status = "pending";

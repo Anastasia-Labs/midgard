@@ -1,4 +1,8 @@
-import { decodeMidgardNativeTxFullFromCanonicalCbor } from "@al-ft/midgard-core";
+import {
+  decodeMidgardNativeTxFullFromCanonicalCbor,
+  deriveMidgardNativeTxWitnessSetCompact,
+  encodeMidgardNativeTxWitnessSetCompact,
+} from "@al-ft/midgard-core";
 import { COMMITTED_FIELD_SHAPE_VIOLATION_ID } from "@al-ft/midgard-sdk";
 
 import {
@@ -193,6 +197,8 @@ type AdmittedCommittedFieldShapeArtifact = Readonly<{
   artifact: CommittedFieldShapeArtifact;
   prepared: PreparedCommittedFieldShape;
   txInclusion: ReturnType<typeof parseSubmitStep01TxInclusion>;
+  /** Compact witness set the §8.6 certificate policy binds for every field. */
+  witnessSetCompactCbor: string;
 }>;
 
 /** Strictly reopens every source leaf and reproduces the selected proof. */
@@ -253,7 +259,14 @@ export const admitCommittedFieldShapeArtifact = async (
     transactionsPhasRoot: trie.root,
     txMembershipProofCbor: proof,
   });
-  return Object.freeze({ artifact, prepared, txInclusion });
+  return Object.freeze({
+    artifact,
+    prepared,
+    txInclusion,
+    witnessSetCompactCbor: encodeMidgardNativeTxWitnessSetCompact(
+      deriveMidgardNativeTxWitnessSetCompact(canonical.witnessSet),
+    ).toString("hex"),
+  });
 };
 
 export const fieldIndexFromClassification = ({

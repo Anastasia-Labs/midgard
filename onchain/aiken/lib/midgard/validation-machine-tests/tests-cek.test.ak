@@ -33,7 +33,7 @@ use midgard/fraud_proofs/native_tx/types.{
 }
 use midgard/native_tx_field_access_v1
 use midgard/redeemer_item_proof_v1
-use midgard/rejection_reason_v1.{reject_plutus_script_invalid}
+use midgard/rejection_reason_v1
 use midgard/script_context_v1
 use midgard/script_proof_v1
 use midgard/validation_machine/cek as vm_cek
@@ -54,8 +54,8 @@ use midgard/validation_machine_tests/constants.{
   validation_context_cbor, zero,
 }
 use midgard/validation_machine_tests/fixtures_cek.{
-  cek_active_core_step_fixture, exact_output_descriptor_fixture,
-  maximum_mint_field_terminal_fixture_v1,
+  cek_active_core_step_fixture, cek_keyed_core_step_fixture,
+  exact_output_descriptor_fixture, maximum_mint_field_terminal_fixture_v1,
   maximum_observer_field_terminal_fixture_v1,
   maximum_output_field_terminal_fixture_v1,
   maximum_program_envelope_selection_is_exact,
@@ -157,6 +157,8 @@ test native_scripts_stream_an_authenticated_execution_and_return_on_l1() {
     payload_offset,
     0,
     -1,
+    0,
+    0,
   )
   let entry_pre = validation_trace_v1.ValidationMachineStateV1 {
     ..pre,
@@ -177,6 +179,8 @@ test native_scripts_stream_an_authenticated_execution_and_return_on_l1() {
     payload_offset + 2,
     1,
     -1,
+    0,
+    0,
   )
   let payload_pre = next_phase_a_native_state(
     entry_pre,
@@ -191,6 +195,8 @@ test native_scripts_stream_an_authenticated_execution_and_return_on_l1() {
     bytearray.length(script_cbor),
     1,
     1,
+    0,
+    0,
   )
   let finalize_pre = next_phase_a_native_state(
     payload_pre,
@@ -383,6 +389,8 @@ test script_integrity_is_recomputed_before_cek() {
         0,
         0,
         #"",
+        -1,
+        -1,
       ),
     ),
   }
@@ -432,7 +440,7 @@ test script_integrity_is_recomputed_before_cek() {
       invalid_finalize_witness_cbor,
     ),
   }
-  let rejection_code = #"455f494e56414c49445f4649454c445f54595045"
+  let rejection_code = rejection_reason_v1.ScriptIntegrityHashMismatch
   let terminal = validation_trace_v1.ValidationMachineStateV1 {
     ..invalid_pre,
     phase: validation_trace_v1.Terminal,
@@ -871,7 +879,10 @@ test plutus_v3_receive_selection_rejects_with_an_exact_noop() {
     language_bitmap: 1,
   }
   let Pair(pre, work_witness_cbor) = cek_state_fixture(tx, control, #"", 0, 40)
-  let rejection_code = #"455f504c555455535f5343524950545f494e56414c4944"
+  let rejection_code = rejection_reason_v1.ReceivePurposePlutusV3Forbidden {
+    purpose_kind: 3,
+    purpose_index: 0,
+  }
   // Canonical exact-rejection successor: it carries the pre-state's non-empty
   // claimed delta forward. See the note on
   // `static_rules_prove_a_network_mismatch_is_an_exact_no_op`.
@@ -2525,6 +2536,23 @@ test cek_spend_finalize_authenticates_descriptor_datum_summary() {
 }
 
 test cek_context_seed_fits_one_step() {
+  cek_context_seed_admits(None)
+}
+
+/// The context-to-core handoff writes the authenticated purpose key of the
+/// context control into the CEK control: a seed naming another index, or the
+/// `-1, -1` sentinel, is refused.
+test cek_context_seed_refuses_a_purpose_key_mismatch() {
+  and {
+    !cek_context_seed_admits(Some(Pair(1, 1))),
+    !cek_context_seed_admits(Some(Pair(-1, -1))),
+    !cek_context_seed_admits(Some(Pair(0, 0))),
+  }
+}
+
+/// The seed step of a mint execution at purpose `(1, 0)`. `written_key`
+/// overrides the purpose key the successor's CEK control carries.
+fn cek_context_seed_admits(written_key: Option<Pair<Int, Int>>) -> Bool {
   let tx = empty_v1_transaction()
   let native_control = cek_context_native_control_fixture(tx)
   let empty_items = cek_data_v1.empty_data_list_summary_v1()
@@ -2606,6 +2634,10 @@ test cek_context_seed_fits_one_step() {
     cpu: 0,
     memory: 0,
   }
+  let Pair(written_kind, written_index) = when written_key is {
+    Some(key) -> key
+    None -> Pair(context_control.purpose_kind, context_control.purpose_index)
+  }
   let post_work = vm_witness.encode_cek_witness_v1(
     native_control,
     #"",
@@ -2616,6 +2648,8 @@ test cek_context_seed_fits_one_step() {
     context_control.execution_cpu_limit,
     context_control.execution_memory_limit,
     context_control.program_envelope_hash,
+    written_kind,
+    written_index,
   )
   let post = validation_trace_v1.ValidationMachineStateV1 {
     ..pre,
@@ -3052,6 +3086,8 @@ test mk_cons_of_well_typed_values_has_one_one_step_successor() {
     1000000,
     1000000,
     h_b,
+    0,
+    0,
   )
   let compact = midgard_transaction_to_compact(tx)
   let tx_id = native_tx_id_for_version(
@@ -3087,13 +3123,21 @@ test mk_cons_of_well_typed_values_has_one_one_step_successor() {
         1000000,
         1000000,
         h_b,
+        0,
+        0,
       ),
     ),
     execution_cpu: machine_success.cpu,
     execution_memory: machine_success.memory,
   }
   let failure_successor = validation_trace_v1.ValidationMachineStateV1 {
-    ..exact_rejection_post(pre, reject_plutus_script_invalid),
+    ..exact_rejection_post(
+      pre,
+      rejection_reason_v1.PlutusExecutionFailed {
+        purpose_kind: 0,
+        purpose_index: 0,
+      },
+    ),
     execution_cpu: machine_failure.cpu,
     execution_memory: machine_failure.memory,
   }
@@ -3137,5 +3181,82 @@ test mk_cons_of_well_typed_values_has_one_one_step_successor() {
       inline_field_door(),
       test_l1_slot_config,
     ),
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Purpose key carriage through CEK core steps
+//
+// The context-to-core handoff writes the authenticated purpose key into the
+// CEK control, every core step carries it unchanged, and a core-step
+// `PlutusExecutionFailed` names it. A mint purpose at pointer index 2 keeps
+// the key distinct from the zero defaults and the `-1, -1` sentinel.
+// ---------------------------------------------------------------------------
+
+fn keyed_core_step_admits(
+  fixture: fixtures_cek.CekKeyedCoreStepV1,
+  successor: validation_trace_v1.ValidationMachineStateV1,
+) -> Bool {
+  vm_one_step.verify_one_step_evidence(
+    fixture.pre,
+    one_step_evidence(
+      fixture.work_witness_cbor,
+      successor,
+      vm_machine_types.CekCoreStepWitness { step: fixture.step },
+    ),
+    inline_field_door(),
+    test_l1_slot_config,
+  )
+}
+
+/// A continuing core step carries the key unchanged.
+test cek_core_step_refuses_a_rekeyed_successor() {
+  let fixture = cek_keyed_core_step_fixture(1, 2, 1000000)
+  and {
+    keyed_core_step_admits(fixture, fixture.continued),
+    !keyed_core_step_admits(fixture, fixture.rekeyed_continued),
+  }
+}
+
+/// A core step that exceeds the execution budget rejects with
+/// `PlutusExecutionFailed` at exactly the carried key.
+test cek_core_step_failure_names_the_carried_purpose_key() {
+  let fixture = cek_keyed_core_step_fixture(1, 2, 1000)
+  let rejected = fn(reason) {
+    validation_trace_v1.ValidationMachineStateV1 {
+      ..exact_rejection_post(fixture.pre, reason),
+      execution_cpu: 16010,
+      execution_memory: 111,
+    }
+  }
+  and {
+    keyed_core_step_admits(
+      fixture,
+      rejected(
+        rejection_reason_v1.PlutusExecutionFailed {
+          purpose_kind: 1,
+          purpose_index: 2,
+        },
+      ),
+    ),
+    !keyed_core_step_admits(
+      fixture,
+      rejected(
+        rejection_reason_v1.PlutusExecutionFailed {
+          purpose_kind: 1,
+          purpose_index: 3,
+        },
+      ),
+    ),
+    !keyed_core_step_admits(
+      fixture,
+      rejected(
+        rejection_reason_v1.PlutusExecutionFailed {
+          purpose_kind: -1,
+          purpose_index: -1,
+        },
+      ),
+    ),
+    !keyed_core_step_admits(fixture, fixture.continued),
   }
 }

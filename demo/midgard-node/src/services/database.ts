@@ -41,7 +41,12 @@ export class BatchSql extends Context.Tag("BatchSql")<
   SqlClient.SqlClient
 >() {}
 
-export type DatabasePoolRole = "admission" | "batch" | "worker";
+export class HttpReadSql extends Context.Tag("HttpReadSql")<
+  HttpReadSql,
+  SqlClient.SqlClient
+>() {}
+
+export type DatabasePoolRole = "admission" | "batch" | "worker" | "http-read";
 
 /** How long a new database connection may take to establish. */
 export const DATABASE_CONNECT_TIMEOUT = Duration.seconds(10);
@@ -53,6 +58,7 @@ export const databaseConnectTimeout = (
     case "admission":
     case "batch":
     case "worker":
+    case "http-read":
       return DATABASE_CONNECT_TIMEOUT;
   }
 };
@@ -220,6 +226,14 @@ const WorkerSqlClientLive: Layer.Layer<
   NodeConfig
 > = Layer.unwrapEffect(
   createPgLayerEffect("worker", (config) => config.POSTGRES_WORKER_POOL_SIZE),
+);
+
+/** Listen-only pool: public read traffic never borrows admission or batch connections. */
+export const HttpReadSqlLive = Layer.effect(
+  HttpReadSql,
+  SqlClient.SqlClient,
+).pipe(
+  Layer.provide(Layer.unwrapEffect(createPgLayerEffect("http-read", () => 4))),
 );
 
 const BatchSqlAliasLive = Layer.effect(BatchSql, SqlClient.SqlClient);

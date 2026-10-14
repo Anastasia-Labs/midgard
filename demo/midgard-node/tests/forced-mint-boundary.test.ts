@@ -5,7 +5,7 @@ import {
 } from "@al-ft/midgard-core";
 import { encodeMidgardCekProgramMaterialSidecar } from "@al-ft/midgard-core/cek-proof";
 import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
-import { hashMidgardValidationRejectionCode } from "@al-ft/midgard-core/validation-trace";
+import { hashMidgardValidationRejectionReasonV1 } from "@al-ft/midgard-core/validation-trace";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
   RejectCodes,
@@ -151,13 +151,15 @@ describe("forced admission at the tx-order mint", () => {
               canonicalTransactionCbor: tx,
               sourceKind: "forced",
               verdict: "rejected",
-              rejectionCode: code,
+              rejectionReason: result.rejectionReason,
             },
           ],
         }),
       );
       expect(member!.value.rejection_code_hash).toBe(
-        hashMidgardValidationRejectionCode(code).toString("hex"),
+        hashMidgardValidationRejectionReasonV1(
+          result.rejectionReason!,
+        ).toString("hex"),
       );
 
       const counts = {
