@@ -5,7 +5,7 @@ use cardano/transaction.{OutputReference, Transaction}
 use midgard/common/utils
 use midgard/computation_thread as ct
 use midgard/fraud_proof_catalogue
-use midgard/fraud_proofs/common.{cancel, continue}
+use midgard/fraud_proofs/common.{ProverOnly, cancel, continue_validation_trace}
 use midgard/hub_oracle as hub
 use midgard/ledger_state
 use midgard/state_queue
@@ -63,16 +63,7 @@ validator main(
         claim,
         challenger_descriptor,
       }) -> {
-        let
-            Transaction {
-              inputs,
-              outputs,
-              reference_inputs,
-              extra_signatories,
-              validity_range,
-              ..
-            }
-          = tx
+        let Transaction { reference_inputs, validity_range, .. } = tx
         let (_, current_time_upper) = utils.get_inclusive_bounds_of_a_short_validity_range(
           validity_range,
         )
@@ -82,24 +73,23 @@ validator main(
           hub_ref_input_index,
         )
         expect Some(step_datum) = datum
-        continue(
+        continue_validation_trace(
           computation_thread_token_policy_id,
           step_datum,
           input_index,
           output_index,
           own_out_ref,
-          inputs,
-          outputs,
+          tx,
+          ProverOnly,
           fn(
             _input_script_hash,
             computation_thread_token_asset_name,
-            fraud_prover,
+            _fraud_prover,
             input_state,
             output_script_hash,
             output_state,
           ) {
             expect None = input_state
-            expect fraud_prover |> utils.has_signed(extra_signatories)
             state_queue.get_block_datum_v1(
               reference_inputs,
               state_queue_policy,

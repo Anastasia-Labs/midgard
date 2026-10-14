@@ -64,6 +64,16 @@ use midgard/validation_resolution_v1.{
 }
 use midgard/validation_trace_v1
 
+/// The mid-step continue transaction as the thread's fraud prover submits it:
+/// prover-only moves need the prover's signature, and the moves anyone may
+/// make accept it too.
+fn prover_continue_tx(asset_name: ByteArray, output_state: Data) -> Transaction {
+  Transaction {
+    ..fixture.continue_mid_step_l1_tx_v1(asset_name, output_state),
+    extra_signatories: [fixture.fraud_prover_key_hash],
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Shared fixture: one genuine complete-item step over field 6, item 0
 // ---------------------------------------------------------------------------
@@ -629,7 +639,7 @@ fn run_prepare(
       },
     ),
     fixture.own_out_ref(),
-    fixture.continue_mid_step_l1_tx_v1(ct_asset, output_state),
+    prover_continue_tx(ct_asset, output_state),
   )
 }
 
@@ -783,7 +793,7 @@ test prepare_refuses_a_non_canonical_decode_phase() fail {
       },
     ),
     fixture.own_out_ref(),
-    fixture.continue_mid_step_l1_tx_v1(ct_asset, foreign_output),
+    prover_continue_tx(ct_asset, foreign_output),
   )
 }
 
@@ -818,7 +828,7 @@ test prepare_refuses_a_degenerate_resolution_state() fail {
       },
     ),
     fixture.own_out_ref(),
-    fixture.continue_mid_step_l1_tx_v1(ct_asset, degenerate_output),
+    prover_continue_tx(ct_asset, degenerate_output),
   )
 }
 
@@ -843,7 +853,7 @@ fn run_authenticate(
       },
     ),
     fixture.own_out_ref(),
-    fixture.continue_mid_step_l1_tx_v1(ct_asset, output_state),
+    prover_continue_tx(ct_asset, output_state),
   )
 }
 
@@ -927,7 +937,7 @@ fn run_observe(
   reference_inputs: List<Input>,
   output_state: Data,
 ) -> Bool {
-  let base_tx = fixture.continue_mid_step_l1_tx_v1(ct_asset, output_state)
+  let base_tx = prover_continue_tx(ct_asset, output_state)
   observe_validator.main.spend(
     fixture.next_step_script_hash,
     fixture.computation_thread_policy_id,
@@ -1250,6 +1260,6 @@ test observe_refuses_a_wrong_output_script() fail {
       },
     ),
     fixture.own_out_ref(),
-    fixture.continue_mid_step_l1_tx_v1(ct_asset, observed_output(f, f.base)),
+    prover_continue_tx(ct_asset, observed_output(f, f.base)),
   )
 }

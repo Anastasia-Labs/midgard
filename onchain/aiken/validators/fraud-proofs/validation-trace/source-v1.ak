@@ -3,7 +3,7 @@ use cardano/assets.{PolicyId}
 use cardano/transaction.{OutputReference, Transaction}
 use midgard/common/utils
 use midgard/computation_thread as ct
-use midgard/fraud_proofs/common.{cancel, continue}
+use midgard/fraud_proofs/common.{Anyone, cancel, continue_validation_trace}
 use midgard/ledger_state
 use midgard/validation_claim_v1
 use midgard/validation_dispute_v1
@@ -44,19 +44,19 @@ validator main(
           tx,
         )
       ct.Continue(VerifySource { input_index, output_index }) -> {
-        let Transaction { inputs, outputs, validity_range, .. } = tx
+        let Transaction { validity_range, .. } = tx
         let (_, source_time_upper) = utils.get_inclusive_bounds_of_a_short_validity_range(
           validity_range,
         )
         expect Some(step_datum) = datum
-        continue(
+        continue_validation_trace(
           computation_thread_token_policy_id,
           step_datum,
           input_index,
           output_index,
           own_out_ref,
-          inputs,
-          outputs,
+          tx,
+          Anyone,
           fn(
             _input_script_hash,
             _computation_thread_token_asset_name,

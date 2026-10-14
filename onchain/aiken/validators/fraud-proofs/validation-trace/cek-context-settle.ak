@@ -4,7 +4,7 @@ use cardano/assets.{PolicyId}
 use cardano/transaction.{OutputReference, Transaction}
 use midgard/cek_context_chain as chain
 use midgard/computation_thread as ct
-use midgard/fraud_proofs/common.{cancel, continue}
+use midgard/fraud_proofs/common.{Anyone, cancel, continue_validation_trace}
 use midgard/validation_machine/machine_types.{CekWitnessControlV1}
 use midgard/validation_machine/witness as witness
 use midgard/validation_resolution_v1 as resolution
@@ -85,14 +85,14 @@ validator main(
             ),
           }
         let award: Data = resolution.winning_resolution()
-        continue(
+        continue_validation_trace(
           computation_thread_policy_id,
           step,
           action.input_index,
           action.output_index,
           own_out_ref,
-          tx.inputs,
-          tx.outputs,
+          tx,
+          Anyone,
           fn(_, _, _, _, hash, state) {
             hash == award_script_hash && state == award
           },

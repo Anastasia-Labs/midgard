@@ -82,6 +82,19 @@ use midgard/validation_resolution_v1.{
 use midgard/validation_resolver_v1.{PrepareSelected}
 use midgard/validation_trace_v1
 
+/// The mid-step continue transaction as the thread's fraud prover submits it:
+/// prover-only moves need the prover's signature, and the moves anyone may
+/// make accept it too.
+fn prover_continue_tx(
+  asset_name: ByteArray,
+  output_state: Data,
+) -> l1.Transaction {
+  l1.Transaction {
+    ..fixture.continue_mid_step_l1_tx_v1(asset_name, output_state),
+    extra_signatories: [fixture.fraud_prover_key_hash],
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Shared identities
 // ---------------------------------------------------------------------------
@@ -736,7 +749,7 @@ fn finalize_tx(
   let raw_redeemer: Data = redeemer
   let raw_datum: Data = semantic_datum(f)
   let input = fixture.ct_thread_input(ct_asset)
-  let template = fixture.continue_mid_step_l1_tx_v1(ct_asset, winning_output())
+  let template = prover_continue_tx(ct_asset, winning_output())
   l1.Transaction {
     ..template,
     inputs: [
@@ -957,7 +970,7 @@ test prepare_routes_output_proof_finalize_to_slot_three() {
         },
       ),
       fixture.own_out_ref(),
-      fixture.continue_mid_step_l1_tx_v1(ct_asset, output),
+      prover_continue_tx(ct_asset, output),
     ),
   }
 }

@@ -4,7 +4,9 @@ use cardano/assets.{PolicyId}
 use cardano/transaction.{OutputReference, Transaction}
 use midgard/common/utils
 use midgard/computation_thread as ct
-use midgard/fraud_proofs/common.{cancel, continue}
+use midgard/fraud_proofs/common.{
+  Anyone, ProverOnly, cancel, continue_validation_trace,
+}
 use midgard/validation_direct_step_v1
 use midgard/validation_dispute_v1
 use midgard/validation_game_v1
@@ -61,17 +63,9 @@ validator main(
           tx,
         )
       ct.Continue(action) -> {
-        let
-            Transaction {
-              inputs,
-              outputs,
-              extra_signatories,
-              validity_range,
-              ..
-            }
-          = tx
+        let Transaction { extra_signatories, validity_range, .. } = tx
         expect Some(step_datum) = datum
-        continue(
+        continue_validation_trace(
           computation_thread_token_policy_id,
           step_datum,
           when action is {
@@ -89,8 +83,13 @@ validator main(
             DirectCommittedStep { output_index, .. } -> output_index
           },
           own_out_ref,
-          inputs,
-          outputs,
+          tx,
+          when action is {
+            EnterResolution { .. } | DirectCommittedStep { .. } -> ProverOnly
+            RevealOperator { .. } |
+            RevealChallenger { .. } |
+            EnterChallengerTimeout { .. } -> Anyone
+          },
           fn(
             input_script_hash,
             _computation_thread_token_asset_name,

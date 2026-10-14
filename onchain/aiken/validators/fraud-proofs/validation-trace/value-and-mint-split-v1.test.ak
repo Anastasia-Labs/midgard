@@ -94,6 +94,16 @@ use midgard/validation_resolution_v1.{
 use midgard/validation_resolver_v1.{PrepareSelected}
 use midgard/validation_trace_v1
 
+/// The mid-step continue transaction as the thread's fraud prover submits it:
+/// prover-only moves need the prover's signature, and the moves anyone may
+/// make accept it too.
+fn prover_continue_tx(asset_name: ByteArray, output_state: Data) -> Transaction {
+  Transaction {
+    ..fixture.continue_mid_step_l1_tx_v1(asset_name, output_state),
+    extra_signatories: [fixture.fraud_prover_key_hash],
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Shared fixtures
 // ---------------------------------------------------------------------------
@@ -1254,7 +1264,7 @@ fn run_prepare(
       },
     ),
     fixture.own_out_ref(),
-    fixture.continue_mid_step_l1_tx_v1(ct_asset, output_state),
+    prover_continue_tx(ct_asset, output_state),
   )
 }
 
@@ -1378,7 +1388,7 @@ fn run_begin(
       },
     ),
     fixture.own_out_ref(),
-    fixture.continue_mid_step_l1_tx_v1(ct_asset, winning_output()),
+    prover_continue_tx(ct_asset, winning_output()),
   )
 }
 
@@ -1398,7 +1408,7 @@ fn run_replay_begin(
       },
     ),
     fixture.own_out_ref(),
-    fixture.continue_mid_step_l1_tx_v1(ct_asset, winning_output()),
+    prover_continue_tx(ct_asset, winning_output()),
   )
 }
 
@@ -1426,7 +1436,7 @@ fn run_replay_input(
       },
     ),
     fixture.own_out_ref(),
-    fixture.continue_mid_step_l1_tx_v1(ct_asset, winning_output()),
+    prover_continue_tx(ct_asset, winning_output()),
   )
 }
 
@@ -1494,7 +1504,7 @@ fn run_replay_finish(
       },
     ),
     fixture.own_out_ref(),
-    fixture.continue_mid_step_l1_tx_v1(ct_asset, winning_output()),
+    prover_continue_tx(ct_asset, winning_output()),
   )
 }
 
@@ -1521,7 +1531,7 @@ fn run_output_descriptor(
       },
     ),
     fixture.own_out_ref(),
-    fixture.continue_mid_step_l1_tx_v1(ct_asset, winning_output()),
+    prover_continue_tx(ct_asset, winning_output()),
   )
 }
 
@@ -1585,7 +1595,7 @@ fn run_output_finish(
       },
     ),
     fixture.own_out_ref(),
-    fixture.continue_mid_step_l1_tx_v1(ct_asset, winning_output()),
+    prover_continue_tx(ct_asset, winning_output()),
   )
 }
 
@@ -1647,7 +1657,7 @@ fn run_mint_finish(
       },
     ),
     fixture.own_out_ref(),
-    fixture.continue_mid_step_l1_tx_v1(ct_asset, winning_output()),
+    prover_continue_tx(ct_asset, winning_output()),
   )
 }
 
@@ -1667,7 +1677,7 @@ fn run_finalize(
       },
     ),
     fixture.own_out_ref(),
-    fixture.continue_mid_step_l1_tx_v1(ct_asset, winning_output()),
+    prover_continue_tx(ct_asset, winning_output()),
   )
 }
 
@@ -1909,7 +1919,7 @@ test begin_validator_refuses_a_wrong_award_output() fail {
       },
     ),
     fixture.own_out_ref(),
-    fixture.continue_mid_step_l1_tx_v1(ct_asset, not_winning),
+    prover_continue_tx(ct_asset, not_winning),
   )
 }
 
@@ -2066,7 +2076,7 @@ fn asset_claim(
 }
 
 fn asset_fold_tx(redeemer: Data) -> Transaction {
-  let tx = fixture.continue_mid_step_l1_tx_v1(ct_asset, winning_output())
+  let tx = prover_continue_tx(ct_asset, winning_output())
   expect [input] = tx.inputs
   let reference_output = Output {
     ..input.output,

@@ -115,6 +115,19 @@ use midgard/validation_resolver_v1.{
 use midgard/validation_semantic_v1 as semantic
 use midgard/validation_trace_v1
 
+/// The mid-step continue transaction as the thread's fraud prover submits it:
+/// prover-only moves need the prover's signature, and the moves anyone may
+/// make accept it too.
+fn prover_continue_tx(
+  asset_name: ByteArray,
+  output_state: Data,
+) -> l1.Transaction {
+  l1.Transaction {
+    ..fixture.continue_mid_step_l1_tx_v1(asset_name, output_state),
+    extra_signatories: [fixture.fraud_prover_key_hash],
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Shared fixtures
 // ---------------------------------------------------------------------------
@@ -1200,7 +1213,7 @@ fn run_prepare(
       },
     ),
     fixture.own_out_ref(),
-    fixture.continue_mid_step_l1_tx_v1(ct_asset, output_state),
+    prover_continue_tx(ct_asset, output_state),
   )
 }
 
@@ -1298,7 +1311,7 @@ fn run_finish(
       },
     ),
     fixture.own_out_ref(),
-    fixture.continue_mid_step_l1_tx_v1(ct_asset, winning_output()),
+    prover_continue_tx(ct_asset, winning_output()),
   )
 }
 
@@ -1392,7 +1405,7 @@ fn run_selection(
   let datum = semantic_datum(base)
   let raw_datum: Data = datum
   let input = fixture.ct_thread_input(ct_asset)
-  let template = fixture.continue_mid_step_l1_tx_v1(ct_asset, winning_output())
+  let template = prover_continue_tx(ct_asset, winning_output())
   let roles = selection_roles(native)
   let reward_redeemer: Data = 0
   let tx = l1.Transaction {
@@ -1486,7 +1499,7 @@ fn run_context_step(
   transition: ValidationOneStepWitnessV1,
   auxiliary: ValidationAuxiliaryWitnessV1,
 ) -> Bool {
-  let tx = fixture.continue_mid_step_l1_tx_v1(ct_asset, winning_output())
+  let tx = prover_continue_tx(ct_asset, winning_output())
   let auxiliary_data: Data = auxiliary
   semantic.continue_winning(
     validation_trace_v1.Cek,
@@ -1545,7 +1558,7 @@ fn run_core_step(
         },
       ),
       fixture.own_out_ref(),
-      fixture.continue_mid_step_l1_tx_v1(ct_asset, next),
+      prover_continue_tx(ct_asset, next),
     ),
     run_core_compute_chain(bound, witness_data),
     core_settle.main.spend(
@@ -1567,7 +1580,7 @@ fn run_core_step(
         },
       ),
       fixture.own_out_ref(),
-      fixture.continue_mid_step_l1_tx_v1(ct_asset, winning_output()),
+      prover_continue_tx(ct_asset, winning_output()),
     ),
   }
 }
@@ -1727,7 +1740,7 @@ test finish_validator_refuses_a_wrong_award_output() fail {
       },
     ),
     fixture.own_out_ref(),
-    fixture.continue_mid_step_l1_tx_v1(ct_asset, not_winning),
+    prover_continue_tx(ct_asset, not_winning),
   )
 }
 
@@ -2023,7 +2036,7 @@ fn run_core_compute_chain(
       },
     ),
     fixture.own_out_ref(),
-    fixture.continue_mid_step_l1_tx_v1(ct_asset, next),
+    prover_continue_tx(ct_asset, next),
   )
 }
 
@@ -2053,7 +2066,7 @@ test bounded_core_compute_chain_agrees_with_the_original() {
         },
       ),
       fixture.own_out_ref(),
-      fixture.continue_mid_step_l1_tx_v1(ct_asset, next),
+      prover_continue_tx(ct_asset, next),
     ),
     run_core_compute_chain(bound, witness_data),
     core_settle.main.spend(
@@ -2075,7 +2088,7 @@ test bounded_core_compute_chain_agrees_with_the_original() {
         },
       ),
       fixture.own_out_ref(),
-      fixture.continue_mid_step_l1_tx_v1(ct_asset, winning_output()),
+      prover_continue_tx(ct_asset, winning_output()),
     ),
   }
 }
@@ -2109,7 +2122,7 @@ test bounded_core_settle_refuses_omitted_arm() fail {
         },
       ),
       fixture.own_out_ref(),
-      fixture.continue_mid_step_l1_tx_v1(ct_asset, winning_output()),
+      prover_continue_tx(ct_asset, winning_output()),
     )
 }
 
@@ -2169,7 +2182,7 @@ test bounded_context_mint_chain_agrees_with_original() {
       Some(semantic_datum(prepared(f))),
       action,
       fixture.own_out_ref(),
-      fixture.continue_mid_step_l1_tx_v1(ct_asset, bound_data),
+      prover_continue_tx(ct_asset, bound_data),
     ),
     context_control.main.spend(
       [
@@ -2185,7 +2198,7 @@ test bounded_context_mint_chain_agrees_with_original() {
       ),
       action,
       fixture.own_out_ref(),
-      fixture.continue_mid_step_l1_tx_v1(ct_asset, staged_data),
+      prover_continue_tx(ct_asset, staged_data),
     ),
     context_mint_init.main.spend(
       next_hash,
@@ -2198,7 +2211,7 @@ test bounded_context_mint_chain_agrees_with_original() {
       ),
       action,
       fixture.own_out_ref(),
-      fixture.continue_mid_step_l1_tx_v1(ct_asset, verified_data),
+      prover_continue_tx(ct_asset, verified_data),
     ),
     context_settle.main.spend(
       next_hash,
@@ -2211,7 +2224,7 @@ test bounded_context_mint_chain_agrees_with_original() {
       ),
       action,
       fixture.own_out_ref(),
-      fixture.continue_mid_step_l1_tx_v1(ct_asset, winning_output()),
+      prover_continue_tx(ct_asset, winning_output()),
     ),
   }
 }
@@ -2235,7 +2248,7 @@ test bounded_context_mint_refuses_substituted_auxiliary() fail {
       ),
       ct.Continue(action),
       fixture.own_out_ref(),
-      fixture.continue_mid_step_l1_tx_v1(ct_asset, winning_output()),
+      prover_continue_tx(ct_asset, winning_output()),
     )
 }
 
@@ -2294,7 +2307,7 @@ test bounded_context_refuses_an_honest_operator_successor() fail {
       ),
       ct.Continue(context_chain_action(f)),
       fixture.own_out_ref(),
-      fixture.continue_mid_step_l1_tx_v1(ct_asset, winning_output()),
+      prover_continue_tx(ct_asset, winning_output()),
     )
 }
 
@@ -2315,7 +2328,7 @@ test bounded_context_refuses_substituted_source_transaction() fail {
       Some(semantic_datum(prepared(f))),
       ct.Continue(context_chain_action(f)),
       fixture.own_out_ref(),
-      fixture.continue_mid_step_l1_tx_v1(ct_asset, bound_data),
+      prover_continue_tx(ct_asset, bound_data),
     )
 }
 
@@ -2387,7 +2400,7 @@ fn run_empty_context_chain(stage: Int) -> Bool {
       data: Some(staged),
     },
   )
-  let tx_leaf = fixture.continue_mid_step_l1_tx_v1(ct_asset, verified_data)
+  let tx_leaf = prover_continue_tx(ct_asset, verified_data)
   let leaf = when stage is {
     1 ->
       context_reference.main.spend(
@@ -2439,7 +2452,7 @@ fn run_empty_context_chain(stage: Int) -> Bool {
           datum,
           action,
           fixture.own_out_ref(),
-          fixture.continue_mid_step_l1_tx_v1(ct_asset, pending_data),
+          prover_continue_tx(ct_asset, pending_data),
         ),
         context_observer_fold.main.spend(
           next_hash,
@@ -2466,7 +2479,7 @@ fn run_empty_context_chain(stage: Int) -> Bool {
       Some(semantic_datum(prepared(f))),
       action,
       fixture.own_out_ref(),
-      fixture.continue_mid_step_l1_tx_v1(ct_asset, bound_data),
+      prover_continue_tx(ct_asset, bound_data),
     ),
     context_control.main.spend(
       list.repeat(next_hash, 14),
@@ -2479,7 +2492,7 @@ fn run_empty_context_chain(stage: Int) -> Bool {
       ),
       action,
       fixture.own_out_ref(),
-      fixture.continue_mid_step_l1_tx_v1(ct_asset, staged_data),
+      prover_continue_tx(ct_asset, staged_data),
     ),
     leaf,
     context_settle.main.spend(
@@ -2493,7 +2506,7 @@ fn run_empty_context_chain(stage: Int) -> Bool {
       ),
       action,
       fixture.own_out_ref(),
-      fixture.continue_mid_step_l1_tx_v1(ct_asset, winning_output()),
+      prover_continue_tx(ct_asset, winning_output()),
     ),
   }
 }
@@ -2677,7 +2690,7 @@ fn run_context_descriptor_handoff(finish: Bool) -> Bool {
       verified_datum,
       action,
       fixture.own_out_ref(),
-      fixture.continue_mid_step_l1_tx_v1(ct_asset, context_verified_data),
+      prover_continue_tx(ct_asset, context_verified_data),
     )
   } else {
     let result = context_item.ItemHashResult {
@@ -2692,7 +2705,7 @@ fn run_context_descriptor_handoff(finish: Bool) -> Bool {
         verified_datum,
         action,
         fixture.own_out_ref(),
-        fixture.continue_mid_step_l1_tx_v1(ct_asset, result_data),
+        prover_continue_tx(ct_asset, result_data),
       ),
       context_item_selection_continue.main.spend(
         next_hash,
@@ -2705,7 +2718,7 @@ fn run_context_descriptor_handoff(finish: Bool) -> Bool {
         ),
         action,
         fixture.own_out_ref(),
-        fixture.continue_mid_step_l1_tx_v1(ct_asset, context_verified_data),
+        prover_continue_tx(ct_asset, context_verified_data),
       ),
     }
   }
@@ -2730,7 +2743,7 @@ fn run_context_descriptor_handoff(finish: Bool) -> Bool {
         },
       ),
       fixture.own_out_ref(),
-      fixture.continue_mid_step_l1_tx_v1(ct_asset, pending_data),
+      prover_continue_tx(ct_asset, pending_data),
     ),
     context_item_return.main.spend(
       list.repeat(next_hash, 5),
@@ -2738,7 +2751,7 @@ fn run_context_descriptor_handoff(finish: Bool) -> Bool {
       verified_datum,
       action,
       fixture.own_out_ref(),
-      fixture.continue_mid_step_l1_tx_v1(ct_asset, verified_data),
+      prover_continue_tx(ct_asset, verified_data),
     ),
     return_path,
     context_settle.main.spend(
@@ -2752,7 +2765,7 @@ fn run_context_descriptor_handoff(finish: Bool) -> Bool {
       ),
       action,
       fixture.own_out_ref(),
-      fixture.continue_mid_step_l1_tx_v1(ct_asset, winning_output()),
+      prover_continue_tx(ct_asset, winning_output()),
     ),
   }
 }
@@ -2889,7 +2902,7 @@ fn run_stage9_item_bind(
       },
     ),
     fixture.own_out_ref(),
-    fixture.continue_mid_step_l1_tx_v1(ct_asset, pending),
+    prover_continue_tx(ct_asset, pending),
   )
 }
 
@@ -3219,7 +3232,7 @@ fn run_mint_item_hop(f: CekStepFixtureV1, output_state: Data) -> Bool {
     ),
     ct.Continue(context_chain_action(f)),
     fixture.own_out_ref(),
-    fixture.continue_mid_step_l1_tx_v1(ct_asset, output_state),
+    prover_continue_tx(ct_asset, output_state),
   )
 }
 
@@ -3253,7 +3266,7 @@ test context_mint_item_validator_wins_the_permuted_membership_step() {
       Some(semantic_datum(prepared(f))),
       action,
       fixture.own_out_ref(),
-      fixture.continue_mid_step_l1_tx_v1(ct_asset, bound_data),
+      prover_continue_tx(ct_asset, bound_data),
     ),
     context_control.main.spend(
       [
@@ -3269,7 +3282,7 @@ test context_mint_item_validator_wins_the_permuted_membership_step() {
       ),
       action,
       fixture.own_out_ref(),
-      fixture.continue_mid_step_l1_tx_v1(ct_asset, staged_data),
+      prover_continue_tx(ct_asset, staged_data),
     ),
     run_mint_item_hop(f, verified_data),
     context_settle.main.spend(
@@ -3283,7 +3296,7 @@ test context_mint_item_validator_wins_the_permuted_membership_step() {
       ),
       action,
       fixture.own_out_ref(),
-      fixture.continue_mid_step_l1_tx_v1(ct_asset, winning_output()),
+      prover_continue_tx(ct_asset, winning_output()),
     ),
   }
 }
@@ -3450,7 +3463,7 @@ test context_mint_item_refuses_a_forged_successor_at_settlement() fail {
       ),
       ct.Continue(context_chain_action(f)),
       fixture.own_out_ref(),
-      fixture.continue_mid_step_l1_tx_v1(ct_asset, winning_output()),
+      prover_continue_tx(ct_asset, winning_output()),
     )
 }
 
@@ -3767,7 +3780,7 @@ fn run_redeemer_select_authenticate(
     ),
     redeemer_select_action(auxiliary),
     fixture.own_out_ref(),
-    fixture.continue_mid_step_l1_tx_v1(ct_asset, pending),
+    prover_continue_tx(ct_asset, pending),
   )
 }
 
@@ -3820,7 +3833,7 @@ fn run_redeemer_skip_authenticate(
     ),
     redeemer_select_action(auxiliary),
     fixture.own_out_ref(),
-    fixture.continue_mid_step_l1_tx_v1(ct_asset, verified),
+    prover_continue_tx(ct_asset, verified),
   )
 }
 
@@ -4018,7 +4031,7 @@ test redeemer_skip_split_agrees_with_original() {
       Some(semantic_datum(prepared(f))),
       action,
       fixture.own_out_ref(),
-      fixture.continue_mid_step_l1_tx_v1(ct_asset, bound_data),
+      prover_continue_tx(ct_asset, bound_data),
     ),
     context_control.main.spend(
       [
@@ -4034,7 +4047,7 @@ test redeemer_skip_split_agrees_with_original() {
       ),
       action,
       fixture.own_out_ref(),
-      fixture.continue_mid_step_l1_tx_v1(ct_asset, staged_data),
+      prover_continue_tx(ct_asset, staged_data),
     ),
     redeemer_select_authenticate.main.spend(
       redeemer_select_other_hash,
@@ -4048,7 +4061,7 @@ test redeemer_skip_split_agrees_with_original() {
       ),
       action,
       fixture.own_out_ref(),
-      fixture.continue_mid_step_l1_tx_v1(ct_asset, verified_data),
+      prover_continue_tx(ct_asset, verified_data),
     ),
     context_settle.main.spend(
       next_hash,
@@ -4061,7 +4074,7 @@ test redeemer_skip_split_agrees_with_original() {
       ),
       action,
       fixture.own_out_ref(),
-      fixture.continue_mid_step_l1_tx_v1(ct_asset, winning_output()),
+      prover_continue_tx(ct_asset, winning_output()),
     ),
   }
 }
@@ -4101,7 +4114,7 @@ fn run_redeemer_select_finish(next_bound: Int) -> Bool {
     ),
     redeemer_select_action(auxiliary),
     fixture.own_out_ref(),
-    fixture.continue_mid_step_l1_tx_v1(ct_asset, next),
+    prover_continue_tx(ct_asset, next),
   )
 }
 

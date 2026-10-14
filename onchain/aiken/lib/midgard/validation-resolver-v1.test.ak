@@ -925,6 +925,8 @@ fn prepare_transaction(
   }
   Transaction {
     ..transaction.placeholder,
+    // Preparing a resolution is a prover-only move.
+    extra_signatories: [fraud_prover],
     inputs: [
       transaction.Input {
         output_reference: own_out_ref,
@@ -1153,6 +1155,42 @@ test production_prepare_rejects_a_wrong_output_script_hash() {
     prepare_redeemer(1, transition, auxiliary),
     own_out_ref,
     prepare_transaction(state, transition, auxiliary, wrong_output_script_hash),
+  )
+}
+
+/// The same prepare the routing tests accept, submitted without the fraud
+/// prover's signature, is refused: only the prover chooses the resolver.
+test production_prepare_refuses_a_third_party() fail {
+  let work_witness_cbor = #"80"
+  let pre = pre_state(
+    validation_trace_v1.PhaseAScriptPreconditions,
+    work_witness_cbor,
+  )
+  let transition = vm_machine_types.ValidationOneStepWitnessV1 {
+    work_witness_cbor,
+    claimed_successor: successor_state(pre, h_b),
+  }
+  let state = resolution_state(pre, transition)
+  let auxiliary = no_auxiliary_data()
+  let group = phase_a_script_precondition_resolvers()
+  let count = validation_resolver_v1.phase_a_script_preconditions_semantic_resolver_count
+  validation_resolver_v1.prepare_selected(
+    validation_trace_v1.PhaseAScriptPreconditions,
+    group,
+    count,
+    computation_thread_policy,
+    Some(step_datum(state)),
+    prepare_redeemer(0, transition, auxiliary),
+    own_out_ref,
+    Transaction {
+      ..prepare_transaction(
+        state,
+        transition,
+        auxiliary,
+        resolver_at(group, count, 0),
+      ),
+      extra_signatories: [],
+    },
   )
 }
 

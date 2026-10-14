@@ -3,7 +3,7 @@ use aiken/crypto.{ScriptHash}
 use cardano/assets.{PolicyId}
 use cardano/transaction.{OutputReference, Transaction}
 use midgard/computation_thread as ct
-use midgard/fraud_proofs/common.{cancel, continue}
+use midgard/fraud_proofs/common.{ProverOnly, cancel, continue_validation_trace}
 use midgard/validation_game_v1
 use midgard/validation_resolution_v1
 use midgard/validation_trace_v1
@@ -50,9 +50,8 @@ validator main(
           tx,
         )
       ct.Continue(action) -> {
-        let Transaction { inputs, outputs, .. } = tx
         expect Some(step_datum) = datum
-        continue(
+        continue_validation_trace(
           computation_thread_token_policy_id,
           step_datum,
           when action is {
@@ -64,8 +63,8 @@ validator main(
             AwardTerminalPadding { output_index, .. } -> output_index
           },
           own_out_ref,
-          inputs,
-          outputs,
+          tx,
+          ProverOnly,
           fn(
             _input_script_hash,
             _computation_thread_token_asset_name,

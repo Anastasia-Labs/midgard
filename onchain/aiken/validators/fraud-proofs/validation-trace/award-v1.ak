@@ -2,7 +2,7 @@ use cardano/address.{Address}
 use cardano/assets.{PolicyId}
 use cardano/transaction.{OutputReference, Transaction}
 use midgard/computation_thread as ct
-use midgard/fraud_proofs/common.{cancel, finalize}
+use midgard/fraud_proofs/common.{cancel, finalize_validation_trace}
 use midgard/validation_award_v1.{Args, Datum, SpendRedeemer}
 use midgard/validation_resolution_v1
 
@@ -32,9 +32,8 @@ validator main(
         output_index,
         fraud_proof_mint_redeemer_index,
       }) -> {
-        let Transaction { inputs, outputs, redeemers, .. } = tx
         expect Some(step_datum) = datum
-        finalize(
+        finalize_validation_trace(
           computation_thread_policy_id,
           fraud_proof_policy_id,
           fraud_proof_address,
@@ -43,9 +42,7 @@ validator main(
           output_index,
           fraud_proof_mint_redeemer_index,
           own_out_ref,
-          inputs,
-          outputs,
-          redeemers,
+          tx,
           fn(
             _input_script_hash,
             _computation_thread_token_asset_name,
