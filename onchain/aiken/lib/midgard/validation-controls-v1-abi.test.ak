@@ -2,6 +2,7 @@ use aiken/builtin
 use aiken/cbor
 use aiken/collection/list
 use aiken/crypto.{blake2b_256}
+use midgard/cbor_deserialise
 use midgard/cek_data_v1
 use midgard/validation_auxiliary_witness_v1_abi_generated as auxiliary_fixture
 use midgard/validation_machine/machine_types as vm_machine_types
@@ -258,7 +259,7 @@ test canonical_validation_controls_v1_typescript_abi_vectors() {
 // invoke the generated `ValidationAuxiliaryWitnessV1` decoder directly,
 // copying the sound sibling in validation-tail-controls-v1-abi.test.ak.
 test validation_auxiliary_v1_rejects_adjacent_tag_37() fail {
-  expect Some(data) = cbor.deserialise(#"d9051e80")
+  let data <- cbor_deserialise.expect_deserialise(#"d9051e80")
   expect _: vm_machine_types.ValidationAuxiliaryWitnessV1 = data
   True
 }
@@ -280,7 +281,7 @@ test validation_auxiliary_v1_accepts_the_canonical_constructor_zero() {
 
 /// Tag 36 is the last constructor: the redeemer fold's native-execution skip.
 test validation_auxiliary_v1_accepts_the_redeemer_context_skip_at_tag_36() {
-  expect Some(data) = cbor.deserialise(
+  let data <- cbor_deserialise.expect_deserialise(
     #"d9051d9fd8799f00d8799f5820bbcb3bff6f87a2005a336b6cb5fe5fbea093815716945279140f31aec8cbaba2000000ff4040d8799f400000ffd8799f400000ff01ff58202e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e58202f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f80ff",
   )
   expect decoded: vm_machine_types.ValidationAuxiliaryWitnessV1 = data

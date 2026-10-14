@@ -1,7 +1,7 @@
 {
   "schemaVersion": "midgard-van-rossem-fit-ledger-v1",
   "category": "transactionOutputNonCanonical:00000029:testnet",
-  "blueprintSha256": "d4b6e92eae9a257143e03e6ed187e6201c40fc397f965e6822cfc52087365f90",
+  "blueprintSha256": "a92dd35732f65d08a7e77586fe535ef42b7e0700214b0d57c451a10a80eef97a",
   "compilerVersion": "aiken v1.1.23+5adf783",
   "entries": [
     {
@@ -9,11 +9,11 @@
       "kind": "lifecycle",
       "maximumShape": "16,384-byte malformed selected output in a 32,768-byte Certified field, rejected at the first window",
       "signedBytes": 611,
-      "memoryUnits": "125408",
-      "cpuUnits": "42548566",
+      "memoryUnits": "125708",
+      "cpuUnits": "42596566",
       "signedByteMargin": 15773,
-      "memoryUnitMargin": "16374592",
-      "cpuUnitMargin": "9957451434",
+      "memoryUnitMargin": "16374292",
+      "cpuUnitMargin": "9957403434",
       "publicationReserveMargin": null
     },
     {
@@ -57,11 +57,11 @@
       "kind": "lifecycle",
       "maximumShape": "16,384-byte canonical selected output scanned to its exact terminal through 8,190-byte windows",
       "signedBytes": 1345,
-      "memoryUnits": "877460",
-      "cpuUnits": "373623747",
+      "memoryUnits": "886064",
+      "cpuUnits": "376300488",
       "signedByteMargin": 15039,
-      "memoryUnitMargin": "15622540",
-      "cpuUnitMargin": "9626376253",
+      "memoryUnitMargin": "15613936",
+      "cpuUnitMargin": "9623699512",
       "publicationReserveMargin": null
     },
     {
@@ -201,11 +201,11 @@
       "kind": "lifecycle",
       "maximumShape": "16,384-byte malformed selected output in a 32,768-byte Certified field, rejected at the first window",
       "signedBytes": 2030,
-      "memoryUnits": "3012888",
-      "cpuUnits": "1025295151",
+      "memoryUnits": "3018005",
+      "cpuUnits": "1024501681",
       "signedByteMargin": 14354,
-      "memoryUnitMargin": "13487112",
-      "cpuUnitMargin": "8974704849",
+      "memoryUnitMargin": "13481995",
+      "cpuUnitMargin": "8975498319",
       "publicationReserveMargin": null
     },
     {
@@ -213,11 +213,11 @@
       "kind": "lifecycle",
       "maximumShape": "16,384-byte malformed selected output in a 32,768-byte Certified field, rejected at the first window",
       "signedBytes": 2263,
-      "memoryUnits": "1370556",
-      "cpuUnits": "446850382",
+      "memoryUnits": "1259273",
+      "cpuUnits": "416603697",
       "signedByteMargin": 14121,
-      "memoryUnitMargin": "15129444",
-      "cpuUnitMargin": "9553149618",
+      "memoryUnitMargin": "15240727",
+      "cpuUnitMargin": "9583396303",
       "publicationReserveMargin": null
     },
     {
@@ -225,11 +225,11 @@
       "kind": "lifecycle",
       "maximumShape": "16,384-byte malformed selected output in a 32,768-byte Certified field, rejected at the first window",
       "signedBytes": 1382,
-      "memoryUnits": "928568",
-      "cpuUnits": "404029303",
+      "memoryUnits": "925700",
+      "cpuUnits": "403137056",
       "signedByteMargin": 15002,
-      "memoryUnitMargin": "15571432",
-      "cpuUnitMargin": "9595970697",
+      "memoryUnitMargin": "15574300",
+      "cpuUnitMargin": "9596862944",
       "publicationReserveMargin": null
     },
     {
@@ -249,11 +249,11 @@
       "kind": "lifecycle",
       "maximumShape": "16,384-byte malformed selected output in a 32,768-byte Certified field, rejected at the first window",
       "signedBytes": 917,
-      "memoryUnits": "547356",
-      "cpuUnits": "204077595",
+      "memoryUnits": "542532",
+      "cpuUnits": "202676750",
       "signedByteMargin": 15467,
-      "memoryUnitMargin": "15952644",
-      "cpuUnitMargin": "9795922405",
+      "memoryUnitMargin": "15957468",
+      "cpuUnitMargin": "9797323250",
       "publicationReserveMargin": null
     },
     {
@@ -308,12 +308,12 @@
       "name": "dense-generic-constructors-datum-final",
       "kind": "lifecycle",
       "maximumShape": "16,339-byte inline datum of nested generic constructors with eight-byte alternatives filling a 16,384-byte output",
-      "signedBytes": 5516,
-      "memoryUnits": "1589452",
-      "cpuUnits": "646219189",
-      "signedByteMargin": 10868,
-      "memoryUnitMargin": "14910548",
-      "cpuUnitMargin": "9353780811",
+      "signedBytes": 5528,
+      "memoryUnits": "1643748",
+      "cpuUnits": "668579445",
+      "signedByteMargin": 10856,
+      "memoryUnitMargin": "14856252",
+      "cpuUnitMargin": "9331420555",
       "publicationReserveMargin": null
     },
     {
@@ -332,12 +332,12 @@
       "name": "dense-map-chain-datum-final",
       "kind": "lifecycle",
       "maximumShape": "16,339-byte inline datum of one-entry maps nested to the end filling a 16,384-byte output",
-      "signedBytes": 2743,
-      "memoryUnits": "9381569",
-      "cpuUnits": "4092204935",
-      "signedByteMargin": 13641,
-      "memoryUnitMargin": "7118431",
-      "cpuUnitMargin": "5907795065",
+      "signedBytes": 2803,
+      "memoryUnits": "9696224",
+      "cpuUnits": "4230058190",
+      "signedByteMargin": 13581,
+      "memoryUnitMargin": "6803776",
+      "cpuUnitMargin": "5769941810",
       "publicationReserveMargin": null
     },
     {
@@ -405,11 +405,11 @@
       "kind": "lifecycle",
       "maximumShape": "canonical inline datum ending at the output's last byte on its third chunk boundary",
       "signedBytes": 2030,
-      "memoryUnits": "3023483",
-      "cpuUnits": "1027290321",
+      "memoryUnits": "3094677",
+      "cpuUnits": "1050109049",
       "signedByteMargin": 14354,
-      "memoryUnitMargin": "13476517",
-      "cpuUnitMargin": "8972709679",
+      "memoryUnitMargin": "13405323",
+      "cpuUnitMargin": "8949890951",
       "publicationReserveMargin": null
     },
     {
@@ -453,11 +453,11 @@
       "kind": "lifecycle",
       "maximumShape": "16,384-byte canonical selected output scanned to its exact terminal through 8,190-byte windows",
       "signedBytes": 1498,
-      "memoryUnits": "682215",
-      "cpuUnits": "233542835",
+      "memoryUnits": "679147",
+      "cpuUnits": "232618588",
       "signedByteMargin": 14886,
-      "memoryUnitMargin": "15817785",
-      "cpuUnitMargin": "9766457165",
+      "memoryUnitMargin": "15820853",
+      "cpuUnitMargin": "9767381412",
       "publicationReserveMargin": null
     },
     {
@@ -465,11 +465,11 @@
       "kind": "lifecycle",
       "maximumShape": "16,384-byte canonical selected output scanned to its exact terminal through 8,190-byte windows",
       "signedBytes": 2030,
-      "memoryUnits": "3007086",
-      "cpuUnits": "1021641075",
+      "memoryUnits": "3042433",
+      "cpuUnits": "1033368815",
       "signedByteMargin": 14354,
-      "memoryUnitMargin": "13492914",
-      "cpuUnitMargin": "8978358925",
+      "memoryUnitMargin": "13457567",
+      "cpuUnitMargin": "8966631185",
       "publicationReserveMargin": null
     },
     {
@@ -477,11 +477,11 @@
       "kind": "lifecycle",
       "maximumShape": "16,384-byte canonical selected output scanned to its exact terminal through 8,190-byte windows",
       "signedBytes": 1730,
-      "memoryUnits": "718387",
-      "cpuUnits": "305985728",
+      "memoryUnits": "717887",
+      "cpuUnits": "305905728",
       "signedByteMargin": 14654,
-      "memoryUnitMargin": "15781613",
-      "cpuUnitMargin": "9694014272",
+      "memoryUnitMargin": "15782113",
+      "cpuUnitMargin": "9694094272",
       "publicationReserveMargin": null
     },
     {
@@ -489,11 +489,11 @@
       "kind": "lifecycle",
       "maximumShape": "16,384-byte canonical selected output scanned to its exact terminal through 8,190-byte windows",
       "signedBytes": 1391,
-      "memoryUnits": "871026",
-      "cpuUnits": "372757807",
+      "memoryUnits": "873894",
+      "cpuUnits": "373650054",
       "signedByteMargin": 14993,
-      "memoryUnitMargin": "15628974",
-      "cpuUnitMargin": "9627242193",
+      "memoryUnitMargin": "15626106",
+      "cpuUnitMargin": "9626349946",
       "publicationReserveMargin": null
     },
     {
@@ -608,13 +608,13 @@
       "name": "step01-reference-publication",
       "kind": "publication",
       "maximumShape": "fully applied testnet validator",
-      "signedBytes": 15031,
+      "signedBytes": 15133,
       "memoryUnits": "0",
       "cpuUnits": "0",
-      "signedByteMargin": 1353,
+      "signedByteMargin": 1251,
       "memoryUnitMargin": "16500000",
       "cpuUnitMargin": "10000000000",
-      "publicationReserveMargin": 841
+      "publicationReserveMargin": 739
     },
     {
       "name": "step02-reference-publication",
@@ -665,5 +665,5 @@
       "publicationReserveMargin": 10522
     }
   ],
-  "ledgerSha256": "82d8e9e9866d8eb220a398ed01e37ffd1ddd9b913ba346e9b59247cb51f9447f"
+  "ledgerSha256": "a4bbfd05b3d6404157422834a17d6366953d6bf4115ba13e5245fb46311746b0"
 }

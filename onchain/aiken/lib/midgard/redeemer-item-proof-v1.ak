@@ -4,6 +4,7 @@ use aiken/crypto.{blake2b_256}
 use aiken/primitive/bytearray
 use midgard/bounded_item_v1
 use midgard/canonical_cbor_scan_v1
+use midgard/cbor_deserialise
 use midgard/cek_data_traverse_v1
 use midgard/cek_data_v1
 use midgard/fraud_proofs/native_tx/codec.{
@@ -417,7 +418,7 @@ fn optional_traversal_from_data(
 }
 
 pub fn decode_control_v1(control_cbor: ByteArray) -> RedeemerItemProofControlV1 {
-  expect Some(data) = cbor.deserialise(control_cbor)
+  let data <- cbor_deserialise.expect_deserialise(control_cbor)
   expect
       [
         version_data, mode_data, stage_data, item_index_data, item_count_data,

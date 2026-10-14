@@ -1,6 +1,7 @@
 use aiken/builtin
 use aiken/cbor
 use aiken/primitive/bytearray
+use midgard/cbor_deserialise
 use midgard/fraud_proofs/native_tx/codec.{encode_definite_bytes}
 use midgard/fraud_proofs/native_tx/compact.{tx_proof_commitment_v1}
 use midgard/fraud_proofs/native_tx/components.{decode_midgard_tx_input_cbor}
@@ -27,7 +28,7 @@ pub type ResolveInputsControlRawV1 {
 pub fn control_raw_from_witness(
   witness_cbor: ByteArray,
 ) -> ResolveInputsControlRawV1 {
-  expect Some(data) = cbor.deserialise(witness_cbor)
+  let data <- cbor_deserialise.expect_deserialise(witness_cbor)
   expect
       [
         compact_cbor_data, witness_set_compact_cbor_data,
@@ -142,7 +143,7 @@ pub type PendingRawV1 {
 
 pub fn pending_raw_from_cbor(pending_cbor: ByteArray) -> PendingRawV1 {
   expect pending_cbor != #"00"
-  expect Some(data) = cbor.deserialise(pending_cbor)
+  let data <- cbor_deserialise.expect_deserialise(pending_cbor)
   expect
       [
         source_kind_data, key_data, next_schedule_hash_data,

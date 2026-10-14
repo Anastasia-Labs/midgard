@@ -10,6 +10,7 @@ use cardano/transaction.{
   Transaction,
 }
 use env
+use midgard/cbor_deserialise
 use midgard/common/types.{Proof}
 use midgard/common/utils.{
   get_redeemer_at, get_single_asset_from_value_apart_from_ada, has_signed,
@@ -851,7 +852,9 @@ pub fn verify_native_tx_in_state_queue_node_with(
   membership_check: fn(ByteArray, ByteArray, ByteArray) -> Bool,
   return: fn(ByteArray, HeaderV1, VerifiedTxSourceView) -> result,
 ) -> result {
-  expect Some(source_data) = cbor.deserialise(l2_transaction_source_cbor)
+  let source_data <- cbor_deserialise.expect_deserialise(
+    l2_transaction_source_cbor,
+  )
   expect source: L2TransactionSourceV1 = source_data
   // Exact leaf grammar: no alternate/trailing CBOR spelling and no key/value
   // disagreement can reach either the direct or published proof route.

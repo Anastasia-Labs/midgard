@@ -2,6 +2,7 @@ use aiken/builtin
 use aiken/cbor
 use aiken/collection/list
 use aiken/primitive/bytearray
+use midgard/cbor_deserialise
 use midgard/fraud_proofs/native_tx/codec.{encode_definite_array_header}
 
 pub const version: Int = 1
@@ -390,7 +391,7 @@ pub fn control_from_data_v1(data: Data) -> Blake2b224TraceControlV1 {
 }
 
 pub fn decode_control_v1(control_cbor: ByteArray) -> Blake2b224TraceControlV1 {
-  expect Some(data) = cbor.deserialise(control_cbor)
+  let data <- cbor_deserialise.expect_deserialise(control_cbor)
   let control = control_from_data_v1(data)
   expect encode_control_v1(control) == control_cbor
   control

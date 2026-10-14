@@ -3,6 +3,7 @@ use aiken/collection/list
 use aiken/crypto.{ScriptHash, blake2b_256}
 use cardano/address.{Credential}
 use cardano/transaction.{Transaction}
+use midgard/cbor_deserialise
 use midgard/common/utils
 use midgard/fraud_proofs/field_opening_v1.{
   BodyAnchor, BodyTxOpening, anchored_native_tx, anchored_native_tx_version,
@@ -38,7 +39,9 @@ validator l2_open(dispatcher: ScriptHash) {
     expect source_membership: RootMembershipProof<ByteArray, ByteArray> = source_data
     expect inputs_preimage: ByteArray = inputs_data
     expect outputs_preimage: ByteArray = outputs_data
-    expect Some(source_data) = cbor.deserialise(source_membership.value)
+    let source_data <- cbor_deserialise.expect_deserialise(
+      source_membership.value,
+    )
     expect source: ledger_state.L2TransactionSourceV1 = source_data
     let anchored = anchored_native_tx(
       BodyTxOpening { native_tx_compact_cbor: source.source.compact_cbor },

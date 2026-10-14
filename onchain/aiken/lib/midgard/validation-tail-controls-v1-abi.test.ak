@@ -5,6 +5,7 @@ use aiken/crypto.{blake2b_256}
 use aiken/primitive/bytearray
 use cardano/transaction.{OutputReference}
 use midgard/bounded_item_v1
+use midgard/cbor_deserialise
 use midgard/ledger_state
 use midgard/rejection_reason_v1
 use midgard/transition_trace
@@ -327,13 +328,13 @@ test validation_source_membership_v1_typescript_vectors_are_exact() {
 }
 
 test validation_tail_auxiliary_v1_rejects_adjacent_tag_37() fail {
-  expect Some(data) = cbor.deserialise(#"d9051e80")
+  let data <- cbor_deserialise.expect_deserialise(#"d9051e80")
   expect _: vm_machine_types.ValidationAuxiliaryWitnessV1 = data
   True
 }
 
 test validation_tail_auxiliary_v1_rejects_wrong_arity() fail {
-  expect Some(data) = cbor.deserialise(#"d905139f00ff")
+  let data <- cbor_deserialise.expect_deserialise(#"d905139f00ff")
   expect _: vm_machine_types.ValidationAuxiliaryWitnessV1 = data
   True
 }

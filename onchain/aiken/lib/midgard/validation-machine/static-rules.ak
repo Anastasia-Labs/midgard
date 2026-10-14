@@ -1,5 +1,5 @@
 use aiken/builtin
-use aiken/cbor
+use midgard/cbor_deserialise
 use midgard/fraud_proofs/native_tx/compact.{
   decode_native_tx_field_preimage_lengths_v1, ledger_tx_size_v1,
   min_fee_lovelace_v1, tx_proof_commitment_v1, verify_tx_proof_source_v1,
@@ -46,7 +46,7 @@ pub fn verify_static_rules(
   pre: validation_trace_v1.ValidationMachineStateV1,
   witness: ValidationOneStepWitnessV1,
 ) -> Bool {
-  expect Some(data) = cbor.deserialise(witness.work_witness_cbor)
+  let data <- cbor_deserialise.expect_deserialise(witness.work_witness_cbor)
   expect
       [
         compact_cbor_data, witness_set_compact_cbor_data,

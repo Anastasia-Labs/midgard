@@ -1,9 +1,9 @@
 use aiken/builtin
-use aiken/cbor
 use aiken/collection/list
 use aiken/crypto.{blake2b_256}
 use aiken/primitive/bytearray
 use midgard/bounded_item_v1
+use midgard/cbor_deserialise
 use midgard/fraud_proofs/native_tx/compact.{
   tx_proof_commitment_v1, verify_tx_proof_source_v1,
 }
@@ -25,7 +25,7 @@ use midgard/validation_trace_v1
 pub fn script_integrity_control_and_stage(
   work_witness_cbor: ByteArray,
 ) -> Pair<NativeScriptsControlV1, Int> {
-  expect Some(data) = cbor.deserialise(work_witness_cbor)
+  let data <- cbor_deserialise.expect_deserialise(work_witness_cbor)
   let fields = builtin.un_list_data(data)
   expect Some(native_control_cbor_data) = list.at(fields, 0)
   expect Some(stage_data) = list.at(fields, 1)

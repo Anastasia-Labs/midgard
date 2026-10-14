@@ -1,6 +1,7 @@
 use aiken/builtin
 use aiken/cbor
 use aiken/crypto.{blake2b_256}
+use midgard/cbor_deserialise
 use midgard/fraud_proofs/native_tx/compact.{
   forced_tx_proof_commitment_v1, native_tx_proof_commitment_v1,
   verify_forced_tx_proof_source_v1, verify_native_tx_proof_source_v1,
@@ -60,7 +61,7 @@ fn validation_context_is_exact(
   context_cbor: ByteArray,
   initial: validation_trace_v1.ValidationMachineStateV1,
 ) -> Bool {
-  expect Some(context_data) = cbor.deserialise(context_cbor)
+  let context_data <- cbor_deserialise.expect_deserialise(context_cbor)
   expect
       [
         version_data, profile_id_data, block_end_time_data,
