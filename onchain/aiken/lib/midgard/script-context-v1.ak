@@ -310,27 +310,29 @@ pub fn ledger_output_summaries_of_authenticated_parts_v1(
   let reference_script = cek_data_v1.semantic_data_summary_v1(
     reference_script_data(output),
   )
-  let tx_out_summary = fn(midgard_encoding: Bool) {
+  let tx_out_summary = fn(address: Data) {
     small_constr_summary(
       0,
       [
-        cek_data_v1.semantic_data_summary_v1(
-          address_data(output, midgard_encoding),
-        ),
+        cek_data_v1.semantic_data_summary_v1(address),
         value,
         datum_field,
         reference_script,
       ],
     )
   }
-  let cardano_tx_out = tx_out_summary(False)
+  let cardano_tx_out = tx_out_summary(address_data(output, False))
   // `address_data` reads `midgard_encoding` only for a protected address, so
   // an unprotected output has one `TxOut` in both encodings.
-  if output.address.protected {
-    (cardano_tx_out, tx_out_summary(True), spend_datum)
-  } else {
-    (cardano_tx_out, cardano_tx_out, spend_datum)
-  }
+  (
+    cardano_tx_out,
+    if output.address.protected {
+      tx_out_summary(address_data(output, True))
+    } else {
+      cardano_tx_out
+    },
+    spend_datum,
+  )
 }
 
 fn tx_out_ref_data(input: MidgardTxInput) -> Data {
