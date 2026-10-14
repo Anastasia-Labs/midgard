@@ -36,6 +36,8 @@ export const limitConstants = {
   max_bisection_rounds: "max_bisection_rounds",
   max_inactivity_strikes: "max_inactivity_strikes",
   coins_per_utxo_byte: "coins_per_utxo_byte",
+  max_dispute_move_fee_lovelace: "max_dispute_move_fee_lovelace",
+  fraud_proof_output_lovelace: "fraud_proof_output_lovelace",
 };
 // Stage-0 allow-lists (P1). Each is null (every key admitted) or the
 // verification key hashes the deployment admits, fixed for its life. They

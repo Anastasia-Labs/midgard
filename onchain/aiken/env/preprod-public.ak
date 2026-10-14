@@ -81,6 +81,10 @@ pub const max_inactivity_strikes: Int = 1_000_000
 
 pub const coins_per_utxo_byte: Int = 4_310
 
+pub const max_dispute_move_fee_lovelace: Int = 1_200_000
+
+pub const fraud_proof_output_lovelace: Int = 2_000_000
+
 pub const required_bond: Int = 100_000_000_000
 
 pub const slashing_penalty: Int = 25_000_000_000

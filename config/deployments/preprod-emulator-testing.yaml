@@ -42,6 +42,13 @@ limits:
   max_bisection_rounds: 32
   max_inactivity_strikes: 5
   coins_per_utxo_byte: 4310
+  # Most a validation-trace move may take from its thread for the fee
+  # (pd-design 6.5). PROJECTED: twice the projected largest-move fee, to be
+  # re-measured on the fit rows.
+  max_dispute_move_fee_lovelace: 1200000
+  # Least lovelace of a validation-trace fraud-proof output. PROJECTED: above
+  # the min-UTxO of that fixed-shape output, to be re-measured.
+  fraud_proof_output_lovelace: 2000000
 economics:
   profile: bounded-acceptance-v1
   requiredBondLovelace: 900000000

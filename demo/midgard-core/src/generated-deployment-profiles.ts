@@ -37,6 +37,8 @@ export const DEPLOYMENT_PROFILES = {
       max_bisection_rounds: 32,
       max_inactivity_strikes: 5,
       coins_per_utxo_byte: 4310,
+      max_dispute_move_fee_lovelace: 1200000,
+      fraud_proof_output_lovelace: 2000000,
     },
     economics: {
       profile: "public-preprod-launch-v1",
@@ -106,6 +108,8 @@ export const DEPLOYMENT_PROFILES = {
       max_bisection_rounds: 32,
       max_inactivity_strikes: 1000000,
       coins_per_utxo_byte: 4310,
+      max_dispute_move_fee_lovelace: 1200000,
+      fraud_proof_output_lovelace: 2000000,
     },
     economics: {
       profile: "public-preprod-launch-v1",
@@ -178,6 +182,8 @@ export const DEPLOYMENT_PROFILES = {
       max_bisection_rounds: 32,
       max_inactivity_strikes: 5,
       coins_per_utxo_byte: 4310,
+      max_dispute_move_fee_lovelace: 1200000,
+      fraud_proof_output_lovelace: 2000000,
     },
     economics: {
       profile: "bounded-acceptance-v1",
@@ -232,6 +238,8 @@ export const DEPLOYMENT_PROFILES = {
       max_bisection_rounds: 32,
       max_inactivity_strikes: 5,
       coins_per_utxo_byte: 4310,
+      max_dispute_move_fee_lovelace: 1200000,
+      fraud_proof_output_lovelace: 2000000,
     },
     economics: {
       profile: "bounded-acceptance-v1",
@@ -286,6 +294,8 @@ export const DEPLOYMENT_PROFILES = {
       max_bisection_rounds: 32,
       max_inactivity_strikes: 5,
       coins_per_utxo_byte: 4310,
+      max_dispute_move_fee_lovelace: 1200000,
+      fraud_proof_output_lovelace: 2000000,
     },
     economics: {
       profile: "bounded-acceptance-v1",
@@ -340,6 +350,8 @@ export const DEPLOYMENT_PROFILES = {
       max_bisection_rounds: 32,
       max_inactivity_strikes: 5,
       coins_per_utxo_byte: 4310,
+      max_dispute_move_fee_lovelace: 1200000,
+      fraud_proof_output_lovelace: 2000000,
     },
     economics: {
       profile: "bounded-acceptance-v1",
@@ -374,17 +386,17 @@ export const DEPLOYMENT_PROFILES = {
 } as const;
 
 export const DEPLOYMENT_PROFILE_DIGESTS = {
-  mainnet: "8228a2d0552be07669710ff433b980772ae1506cf2bb3c7160782a6a59366912",
+  mainnet: "2da189a14fc8a9cef249d3823b1e3fd097611d25a567d35270381e3888f25496",
   "preprod-public":
-    "8bd688e6ca826e9ccbdf290a6df6fa0da2badd462d6f3b9ed601ee7938bda0f5",
+    "9f6ebbc5abe49911c777eadff39a90dace1574b682b8d50a5bfc084c0f4a6ce5",
   "preprod-testing":
-    "30d117db4ca0852fc22f80a4c687b3c118e5eeb6eb3cf360f02c2e2d13ad2b70",
+    "0265a09ca7bc54e70c52c11c3afc3d16e5b8485a6232b5f161db064842752f09",
   "local-devnet-testing":
-    "15441a106087154f16c6052eb984260fe4bbb2c9b168fa7f15e2ab17082eda29",
+    "694ad45334152fce9bd5a80030e34b4f9151d14fc5a7971884226df336f59315",
   "preprod-emulator-testing":
-    "4a3edd7153f17f26fc115b61a63721848ed6979e92a16e96789fabf629192789",
+    "ffc1f052d02729e26e7c361bd43b44fded404fa94e6a63260648eb9c507252cc",
   "preprod-emulator-curated":
-    "e4b118c838a4b968f6b77a1a71fd30c63b4489852d83ca5779ff0bd96ade6eb9",
+    "0e58cceae07da737c0ae6a8ed19deee158270e486c955ecedb4b454764eff74d",
 } as const;
 
 export const DEPLOYMENT_MANIFEST_ECONOMICS_BY_PROFILE = {

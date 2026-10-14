@@ -5,9 +5,13 @@
 //// and valid-block-rejection properties independently of any single family.
 
 use aiken/cbor
-use cardano/address
+use aiken/collection/list
+use cardano/address.{Address, VerificationKey}
 use cardano/assets
-use cardano/transaction.{InlineDatum, Output, Transaction}
+use cardano/transaction.{
+  InlineDatum, Input, Output, OutputReference, Transaction,
+}
+use env
 use midgard/computation_thread as ct
 use midgard/fraud_proof
 use midgard/fraud_proofs/common
@@ -611,6 +615,7 @@ test common_native_binding_rejects_forged_source_field_lengths() fail {
 test common_native_binding_rejects_malformed_source_data() fail {
   run_committed_source(#"ff")
 }
+
 // ## 6. Witness-set binding at the shared layer
 //
 // Retired by #575. The two selectors that lived here exercised
@@ -623,3 +628,332 @@ test common_native_binding_rejects_malformed_source_data() fail {
 // per-family both-sides forgery selectors — and they are strictly stronger,
 // because the helper here could only ever catch a witness set forged on one
 // side.
+
+// ## Validation-trace value rule (pd-design 3.5, 6.5)
+//
+// `continue_validation_trace` lets a lone thread input pay its own fee, up to
+// `env.max_dispute_move_fee_lovelace`; `finalize_validation_trace` bounds the
+// fraud-proof output and returns the rest to the prover. Each negative below
+// breaks exactly one conjunct of a transaction the matching positive accepts.
+
+const thread_lovelace = 100_000_000
+
+fn thread_value(asset_name: ByteArray, lovelace: Int) {
+  assets.from_lovelace(lovelace)
+    |> assets.add(fixture.computation_thread_policy_id, asset_name, 1)
+}
+
+/// A single-input move whose thread pays `paid` lovelace of a `fee` fee.
+fn fee_paying_move(paid: Int, fee: Int) -> Transaction {
+  let asset_name = fixture.ct_token_asset_name(valid_block())
+  let tx = fixture.continue_mid_step_l1_tx_v1(asset_name, sample_state())
+  Transaction {
+    ..tx,
+    inputs: [
+      fixture.step_input_with_value(thread_value(asset_name, thread_lovelace)),
+    ],
+    outputs: [
+      fixture.step_output_with_value(
+        thread_value(asset_name, thread_lovelace - paid),
+        sample_state(),
+      ),
+    ],
+    fee,
+  }
+}
+
+fn wallet_input() -> Input {
+  Input {
+    output_reference: OutputReference {
+      transaction_id: #"0000000000000000000000000000000000000000000000000000000000000077",
+      output_index: 3,
+    },
+    output: Output {
+      address: address.from_verification_key(fixture.fraud_prover_key_hash),
+      value: assets.from_lovelace(10_000_000),
+      datum: transaction.NoDatum,
+      reference_script: None,
+    },
+  }
+}
+
+fn with_wallet_input(tx: Transaction) -> Transaction {
+  Transaction { ..tx, inputs: list.concat(tx.inputs, [wallet_input()]) }
+}
+
+fn signed_by_prover(tx: Transaction) -> Transaction {
+  Transaction { ..tx, extra_signatories: [fixture.fraud_prover_key_hash] }
+}
+
+fn run_trace_continue(l1_tx: Transaction, mover: common.Mover) -> Bool {
+  let
+      _own_script_hash,
+      _asset_name,
+      _fraud_prover,
+      _m_input_state_data,
+      _output_script_hash,
+      output_state_data
+    <- common.continue_validation_trace(
+    fixture.computation_thread_policy_id,
+    fixture.step_datum_without_state(),
+    0,
+    0,
+    fixture.own_out_ref(),
+    l1_tx,
+    mover,
+  )
+  output_state_data == sample_state()
+}
+
+test trace_continue_accepts_single_input_fee_within_cap() {
+  run_trace_continue(
+    fee_paying_move(
+      env.max_dispute_move_fee_lovelace,
+      env.max_dispute_move_fee_lovelace,
+    ),
+    common.Anyone,
+  )
+}
+
+test trace_continue_refuses_more_than_the_fee() fail {
+  run_trace_continue(
+    fee_paying_move(
+      env.max_dispute_move_fee_lovelace,
+      env.max_dispute_move_fee_lovelace - 1,
+    ),
+    common.Anyone,
+  )
+}
+
+test trace_continue_refuses_more_than_the_cap() fail {
+  run_trace_continue(
+    fee_paying_move(
+      env.max_dispute_move_fee_lovelace + 1,
+      env.max_dispute_move_fee_lovelace + 1,
+    ),
+    common.Anyone,
+  )
+}
+
+test trace_continue_accepts_two_input_move_preserving_the_thread() {
+  run_trace_continue(
+    with_wallet_input(fee_paying_move(0, 300_000)),
+    common.Anyone,
+  )
+}
+
+test trace_continue_refuses_two_input_skim() fail {
+  run_trace_continue(
+    with_wallet_input(fee_paying_move(1, 300_000)),
+    common.Anyone,
+  )
+}
+
+/// The plain `continue` keeps `out >= in`: the same fee-paying move fails it.
+test plain_continue_refuses_the_fee_paying_move() fail {
+  run_continue(fee_paying_move(1, 300_000))
+}
+
+test trace_continue_accepts_prover_signed_prover_only_move() {
+  run_trace_continue(
+    signed_by_prover(fee_paying_move(200_000, 300_000)),
+    common.ProverOnly,
+  )
+}
+
+test trace_continue_refuses_unsigned_prover_only_move() fail {
+  run_trace_continue(fee_paying_move(200_000, 300_000), common.ProverOnly)
+}
+
+test trace_continue_refuses_prover_only_move_signed_by_another_key() fail {
+  run_trace_continue(
+    Transaction {
+      ..fee_paying_move(200_000, 300_000),
+      extra_signatories: [other_policy],
+    },
+    common.ProverOnly,
+  )
+}
+
+// ### Finalize
+
+fn prover_remainder(lovelace: Int, tag: OutputReference) -> Output {
+  let tag_data: Data = tag
+  Output {
+    address: Address {
+      payment_credential: VerificationKey(fixture.fraud_prover_key_hash),
+      stake_credential: None,
+    },
+    value: assets.from_lovelace(lovelace),
+    datum: InlineDatum(tag_data),
+    reference_script: None,
+  }
+}
+
+/// A single-input finalize: the fraud-proof output holds `fp`, the thread pays
+/// `paid` of a `fee` fee, and the remainder output carries the rest.
+fn trace_finalize_tx(fp: Int, paid: Int, fee: Int) -> Transaction {
+  let asset_name = fixture.ct_token_asset_name(valid_block())
+  let tx = fixture.finalize_step_l1_tx_v1(asset_name)
+  expect [record] = tx.outputs
+  Transaction {
+    ..tx,
+    inputs: [
+      fixture.step_input_with_value(thread_value(asset_name, thread_lovelace)),
+    ],
+    outputs: [
+      Output {
+        ..record,
+        value: assets.from_lovelace(fp)
+          |> assets.add(fixture.fraud_proof_policy_id, asset_name, 1),
+      },
+      prover_remainder(thread_lovelace - fp - paid, fixture.own_out_ref()),
+    ],
+    fee,
+  }
+}
+
+fn with_outputs(tx: Transaction, outputs: List<Output>) -> Transaction {
+  Transaction { ..tx, outputs }
+}
+
+fn run_trace_finalize(l1_tx: Transaction) -> Bool {
+  let terminal_datum: ct.StepDatum<Data> = ct.StepDatum {
+    fraud_prover: fixture.fraud_prover_key_hash,
+    data: Some(sample_state()),
+  }
+  let _own_script_hash, _asset_name, _fraud_prover, m_input_state_data <- common.finalize_validation_trace(
+    fixture.computation_thread_policy_id,
+    fixture.fraud_proof_policy_id,
+    fixture.fraud_proof_token_address(),
+    terminal_datum,
+    0,
+    0,
+    0,
+    fixture.own_out_ref(),
+    l1_tx,
+  )
+  expect Some(state) = m_input_state_data
+  state == sample_state()
+}
+
+test trace_finalize_accepts_lower_bound_with_remainder() {
+  run_trace_finalize(
+    trace_finalize_tx(
+      env.fraud_proof_output_lovelace,
+      env.max_dispute_move_fee_lovelace,
+      env.max_dispute_move_fee_lovelace,
+    ),
+  )
+}
+
+test trace_finalize_accepts_upper_bound_with_remainder() {
+  run_trace_finalize(
+    trace_finalize_tx(
+      env.fraud_proof_output_lovelace + env.max_dispute_move_fee_lovelace,
+      300_000,
+      300_000,
+    ),
+  )
+}
+
+test trace_finalize_refuses_fraud_proof_output_below_range() fail {
+  run_trace_finalize(
+    trace_finalize_tx(env.fraud_proof_output_lovelace - 1, 300_000, 300_000),
+  )
+}
+
+test trace_finalize_refuses_fraud_proof_output_above_range() fail {
+  run_trace_finalize(
+    trace_finalize_tx(
+      env.fraud_proof_output_lovelace + env.max_dispute_move_fee_lovelace + 1,
+      300_000,
+      300_000,
+    ),
+  )
+}
+
+test trace_finalize_refuses_remainder_short_of_the_fee() fail {
+  run_trace_finalize(
+    trace_finalize_tx(env.fraud_proof_output_lovelace, 300_001, 300_000),
+  )
+}
+
+test trace_finalize_refuses_remainder_short_of_the_cap() fail {
+  run_trace_finalize(
+    trace_finalize_tx(
+      env.fraud_proof_output_lovelace,
+      env.max_dispute_move_fee_lovelace + 1,
+      env.max_dispute_move_fee_lovelace + 1,
+    ),
+  )
+}
+
+test trace_finalize_refuses_missing_remainder() fail {
+  let tx = trace_finalize_tx(env.fraud_proof_output_lovelace, 300_000, 300_000)
+  expect [record, _] = tx.outputs
+  run_trace_finalize(with_outputs(tx, [record]))
+}
+
+test trace_finalize_refuses_remainder_with_another_tag() fail {
+  let tx = trace_finalize_tx(env.fraud_proof_output_lovelace, 300_000, 300_000)
+  expect [record, remainder] = tx.outputs
+  let other_tag = OutputReference { ..fixture.own_out_ref(), output_index: 1 }
+  run_trace_finalize(
+    with_outputs(
+      tx,
+      [record, prover_remainder(assets.lovelace_of(remainder.value), other_tag)],
+    ),
+  )
+}
+
+test trace_finalize_refuses_remainder_to_another_key() fail {
+  let tx = trace_finalize_tx(env.fraud_proof_output_lovelace, 300_000, 300_000)
+  expect [record, remainder] = tx.outputs
+  run_trace_finalize(
+    with_outputs(
+      tx,
+      [
+        record,
+        Output {
+          ..remainder,
+          address: address.from_verification_key(other_policy),
+        },
+      ],
+    ),
+  )
+}
+
+test trace_finalize_refuses_remainder_with_a_stake_credential() fail {
+  let tx = trace_finalize_tx(env.fraud_proof_output_lovelace, 300_000, 300_000)
+  expect [record, remainder] = tx.outputs
+  run_trace_finalize(
+    with_outputs(
+      tx,
+      [
+        record,
+        Output {
+          ..remainder,
+          address: address.from_verification_key(fixture.fraud_prover_key_hash)
+            |> address.with_delegation_key(other_policy),
+        },
+      ],
+    ),
+  )
+}
+
+test trace_finalize_accepts_two_input_remainder_of_the_whole_rest() {
+  run_trace_finalize(
+    with_wallet_input(
+      trace_finalize_tx(env.fraud_proof_output_lovelace, 0, 300_000),
+    ),
+  )
+}
+
+test trace_finalize_refuses_two_input_remainder_that_pays_the_fee() fail {
+  run_trace_finalize(
+    with_wallet_input(
+      trace_finalize_tx(env.fraud_proof_output_lovelace, 1, 300_000),
+    ),
+  )
+}
