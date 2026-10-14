@@ -23,6 +23,7 @@ use midgard/fraud_proofs/native_tx/types.{
 }
 use midgard/mpf_proof_fold_v1
 use midgard/native_tx_field_access_v1
+use midgard/rejection_reason_v1
 use midgard/script_proof_v1
 use midgard/validation_machine/ledger_delta as vm_ledger_delta
 use midgard/validation_machine/machine_types as vm_machine_types
@@ -30,8 +31,7 @@ use midgard/validation_machine/one_step as vm_one_step
 use midgard/validation_machine/shared as vm_shared
 use midgard/validation_machine/witness as vm_witness
 use midgard/validation_machine_tests/constants.{
-  h_28_a, h_28_b, h_a, h_b, h_c, reject_min_ada_code,
-  reject_value_not_preserved_code, target_snapshot_coins_per_utxo_byte,
+  h_28_a, h_28_b, h_a, h_b, h_c, target_snapshot_coins_per_utxo_byte,
   target_snapshot_min_fee_a, target_snapshot_min_fee_b, test_l1_slot_config,
   validation_context_cbor, value_output_descriptor_total_length, zero,
 }
@@ -535,7 +535,7 @@ test value_and_mint_final_equation_is_enforced_on_l1() {
     // rejection proof, so it must carry the realistic non-empty claimed delta.
     ledger_delta_root: non_empty_claimed_delta_root(),
   }
-  let rejection_code = #"455f56414c55455f4e4f545f505245534552564544"
+  let rejection_code = rejection_reason_v1.ValueNotPreserved
   let terminal = validation_trace_v1.ValidationMachineStateV1 {
     ..invalid_pre,
     phase: validation_trace_v1.Terminal,
@@ -1016,7 +1016,10 @@ test value_and_mint_output_descriptor_admits_exact_min_ada_floor() {
     ),
     !vm_one_step.verify_one_step_evidence(
       f.pre,
-      value_output_descriptor_rejection_evidence(f, reject_min_ada_code),
+      value_output_descriptor_rejection_evidence(
+        f,
+        rejection_reason_v1.OutputBelowMinAda { output_index: 0 },
+      ),
       inline_field_door(),
       test_l1_slot_config,
     ),
@@ -1034,7 +1037,10 @@ test value_and_mint_output_descriptor_rejects_min_ada_short_by_one_lovelace() {
   and {
     vm_one_step.verify_one_step_evidence(
       f.pre,
-      value_output_descriptor_rejection_evidence(f, reject_min_ada_code),
+      value_output_descriptor_rejection_evidence(
+        f,
+        rejection_reason_v1.OutputBelowMinAda { output_index: 0 },
+      ),
       inline_field_door(),
       test_l1_slot_config,
     ),
@@ -1055,7 +1061,10 @@ test value_and_mint_output_descriptor_rejects_zero_lovelace_output() {
   and {
     vm_one_step.verify_one_step_evidence(
       f.pre,
-      value_output_descriptor_rejection_evidence(f, reject_min_ada_code),
+      value_output_descriptor_rejection_evidence(
+        f,
+        rejection_reason_v1.OutputBelowMinAda { output_index: 0 },
+      ),
       inline_field_door(),
       test_l1_slot_config,
     ),
@@ -1081,7 +1090,7 @@ test value_and_mint_output_descriptor_min_ada_code_is_not_interchangeable() {
     f.pre,
     value_output_descriptor_rejection_evidence(
       f,
-      reject_value_not_preserved_code,
+      rejection_reason_v1.ValueNotPreserved,
     ),
     inline_field_door(),
     test_l1_slot_config,

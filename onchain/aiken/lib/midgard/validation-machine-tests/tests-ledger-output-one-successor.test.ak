@@ -228,9 +228,6 @@ fn split_accepts(
   let unused: Data = 0
   shared.attest(
     shared.Claim {
-      pre_program_counter: 0,
-      pre_prior_ledger_root: #"",
-      claimed_successor: unused,
       witness: witness_data,
       control: lraw.open(lop.encode_control_v1(before)),
       next_control_cbor: lop.encode_control_v1(after),

@@ -117,6 +117,12 @@ export const encodeMidgardCekValidationWitness = (input: {
   readonly executionCpuLimit: bigint;
   readonly executionMemoryLimit: bigint;
   readonly programEnvelopeHash: Uint8Array | null;
+  /**
+   * Purpose key of the running execution: the context control's key on a
+   * core step, `-1, -1` on selection, context and finish steps.
+   */
+  readonly purposeKind: bigint;
+  readonly purposeIndex: bigint;
 }): Buffer =>
   // The witness must never end with a possibly-empty bytestring: the Aiken
   // `cbor.deserialise` consumer rejects a zero-length final item at an
@@ -138,6 +144,8 @@ export const encodeMidgardCekValidationWitness = (input: {
       : bytes(input.programEnvelopeHash),
     input.executionCpuLimit,
     input.executionMemoryLimit,
+    input.purposeKind,
+    input.purposeIndex,
   ]);
 
 export type MidgardCekDecodedContext = {

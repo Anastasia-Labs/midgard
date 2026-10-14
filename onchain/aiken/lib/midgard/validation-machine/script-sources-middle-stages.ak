@@ -17,9 +17,9 @@ use midgard/ledger_output_v1
 use midgard/mint_order
 use midgard/native_tx_field_access_v1
 use midgard/rejection_reason_v1.{
-  reject_asset_count, reject_invalid_field_type, reject_invalid_output,
-  reject_missing_required_witness, reject_native_script_depth,
-  reject_native_script_node_count, reject_network_id_mismatch,
+  MintDeclaredAssetLimit, NetworkIdMismatch, OutputNonCanonical,
+  OutputReferenceScriptDepthLimit, OutputReferenceScriptMalformed,
+  OutputReferenceScriptNodeLimit, ProtectedOutputSignerMissing,
 }
 use midgard/script_proof_v1
 use midgard/validation_machine/machine_types.{
@@ -499,25 +499,31 @@ pub fn script_sources_output_proof_step(
           rejected_successor_is_exact(
             pre,
             witness.claimed_successor,
-            reject_invalid_output,
+            OutputNonCanonical { output_index: control.output_cursor },
           )
         ledger_output_proof_v1.LedgerOutputProofInvalidReferenceScript ->
           rejected_successor_is_exact(
             pre,
             witness.claimed_successor,
-            reject_invalid_field_type,
+            OutputReferenceScriptMalformed {
+              output_index: control.output_cursor,
+            },
           )
         ledger_output_proof_v1.LedgerOutputProofNativeScriptNodeLimit ->
           rejected_successor_is_exact(
             pre,
             witness.claimed_successor,
-            reject_native_script_node_count,
+            OutputReferenceScriptNodeLimit {
+              output_index: control.output_cursor,
+            },
           )
         ledger_output_proof_v1.LedgerOutputProofNativeScriptDepthLimit ->
           rejected_successor_is_exact(
             pre,
             witness.claimed_successor,
-            reject_native_script_depth,
+            OutputReferenceScriptDepthLimit {
+              output_index: control.output_cursor,
+            },
           )
       }
   }
@@ -570,7 +576,7 @@ pub fn script_sources_output_proof_finalize(
       rejected_successor_is_exact(
         pre,
         witness.claimed_successor,
-        reject_network_id_mismatch,
+        NetworkIdMismatch,
       )
     } else {
       when
@@ -585,7 +591,7 @@ pub fn script_sources_output_proof_finalize(
           rejected_successor_is_exact(
             pre,
             witness.claimed_successor,
-            reject_missing_required_witness,
+            ProtectedOutputSignerMissing { output_index: control.output_cursor },
           )
         InputSignerProofMalformed -> False
         InputSignerAuthorized ->
@@ -834,7 +840,7 @@ pub fn script_sources_begin_mint_policy_with_successor(
     rejected_successor_is_exact(
       pre,
       witness.claimed_successor,
-      reject_asset_count,
+      MintDeclaredAssetLimit { policy_index: fold.policy_cursor },
     )
   } else {
     and {

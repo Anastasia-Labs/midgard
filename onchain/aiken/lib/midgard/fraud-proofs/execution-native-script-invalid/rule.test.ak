@@ -2,6 +2,7 @@ use aiken/cbor
 use aiken/crypto.{blake2b_256}
 use aiken/merkle_patricia_forestry as mpf
 use aiken/primitive/bytearray
+use cardano/transaction.{OutputReference}
 use midgard/bounded_item_v1
 use midgard/fraud_proofs/execution_native_script_invalid/rule
 use midgard/fraud_proofs/native_binding_fixture_v1 as native_fixture
@@ -53,9 +54,13 @@ fn forced_subject(reason: RejectionReasonV1) -> substrate.VerdictSubjectV1 {
     direction: substrate.direction_wrongful_rejection,
     source_kind: substrate.source_kind_forced,
     transaction_id: tx_id(),
-    source_key: #"00",
+    source_key: cbor.serialise(forced_order()),
     rejection_reason: Some(reason),
   }
+}
+
+fn forced_order() -> OutputReference {
+  OutputReference { transaction_id: h32, output_index: 0 }
 }
 
 fn item_proof(item: ByteArray) -> bounded_item_v1.ChunkProofV1 {
@@ -163,6 +168,13 @@ fn control_for(
 }
 
 fn authenticated_source() -> rule.AuthenticatedExecutionSourceV1 {
+  authenticated_source_for(accepted_subject())
+}
+
+fn authenticated_source_for(
+  subject: substrate.VerdictSubjectV1,
+) -> rule.AuthenticatedExecutionSourceV1 {
+  let forced = subject.source_kind == substrate.source_kind_forced
   let item = fixture.signature_script_item_v1()
   let item_commitment = bounded_item_v1.from_bytes(6, 0, item)
   let purpose_leaf = script_proof_v1.purpose_leaf_hash(0, 0, h28, #"aa")
@@ -181,14 +193,22 @@ fn authenticated_source() -> rule.AuthenticatedExecutionSourceV1 {
     #"",
   )
   let control = control_for(purpose_leaf, source_leaf, execution_leaf)
-  let event_key = ledger_state.L2TransactionEventKey { tx_id: tx_id() }
+  let event_key = if forced {
+    ledger_state.ForcedTransactionEventKey { tx_order_id: forced_order() }
+  } else {
+    ledger_state.L2TransactionEventKey { tx_id: tx_id() }
+  }
   let state = validation_trace_v1.ValidationMachineStateV1 {
     machine_version: validation_trace_v1.machine_version,
     event_key_hash: blake2b_256(cbor.serialise(event_key)),
     transaction_id: tx_id(),
     transaction_commitment: h32,
     validation_context_hash: h32,
-    source_kind: validation_trace_v1.Normal,
+    source_kind: if forced {
+      validation_trace_v1.Forced
+    } else {
+      validation_trace_v1.Normal
+    },
     prior_ledger_root: h32,
     phase: validation_trace_v1.NativeScripts,
     program_counter: 7,
@@ -215,8 +235,15 @@ fn authenticated_source() -> rule.AuthenticatedExecutionSourceV1 {
     step_count: 1,
     initial_state_hash: state_hash,
     terminal_state_hash: terminal_hash,
-    verdict: validation_trace_v1.Accepted,
-    rejection_code_hash: #"0000000000000000000000000000000000000000000000000000000000000000",
+    verdict: when subject.rejection_reason is {
+      Some(_) -> validation_trace_v1.Rejected
+      None -> validation_trace_v1.Accepted
+    },
+    rejection_code_hash: when subject.rejection_reason is {
+      Some(reason) -> validation_trace_v1.hash_rejection_code(reason)
+      None ->
+        #"0000000000000000000000000000000000000000000000000000000000000000"
+    },
   }
   let phas_root = mpf.root(
     mpf.insert(
@@ -240,7 +267,7 @@ fn authenticated_source() -> rule.AuthenticatedExecutionSourceV1 {
     proof: [],
   }
   let bound = rule.bind_execution_v1(
-    accepted_subject(),
+    subject,
     membership.root,
     1,
     0,
@@ -287,22 +314,31 @@ test authenticates_the_exact_execution_and_source_frontiers() {
   }
 }
 
-test binds_exact_reason_and_refuses_coordinate_substitution() fail {
-  rule.bind_execution_v1(
-    forced_subject(ExecutionNativeScriptFalse { execution_index: 0 }),
-    h32,
-    1,
-    1,
-    h32,
-    block().compact_cbor,
-  ) == rule.bind_execution_v1(
-    accepted_subject(),
-    h32,
-    1,
-    0,
-    h32,
-    block().compact_cbor,
+test forced_rejection_authenticates_the_named_purpose() {
+  let source = authenticated_source_for(
+    forced_subject(
+      ExecutionNativeScriptFalse { purpose_kind: 0, purpose_index: 0 },
+    ),
   )
+  source.bound.execution_index == 0
+}
+
+test forced_rejection_refuses_another_purpose_index() fail {
+  let source = authenticated_source_for(
+    forced_subject(
+      ExecutionNativeScriptFalse { purpose_kind: 0, purpose_index: 1 },
+    ),
+  )
+  source.bound.execution_index == 0
+}
+
+test forced_rejection_refuses_another_purpose_kind() fail {
+  let source = authenticated_source_for(
+    forced_subject(
+      ExecutionNativeScriptFalse { purpose_kind: 1, purpose_index: 0 },
+    ),
+  )
+  source.bound.execution_index == 0
 }
 
 test header_and_payload_malformed_map_to_the_same_execution_class() {
@@ -474,7 +510,9 @@ test malformed_acceptance_and_decodable_wrongful_rejection_close() {
   let valid_item = fixture.signature_script_item_v1()
   let forced = rule.bind_exact_item_v1(
     direct_source(
-      forced_subject(ExecutionNativeScriptFalse { execution_index: 0 }),
+      forced_subject(
+        ExecutionNativeScriptFalse { purpose_kind: 0, purpose_index: 0 },
+      ),
       valid_item,
     ),
     item_proof(valid_item),
@@ -498,7 +536,9 @@ test honest_results_do_not_convict() {
   let bad_item = fixture.malformed_wrapper_item_v1()
   let forced = rule.bind_exact_item_v1(
     direct_source(
-      forced_subject(ExecutionNativeScriptFalse { execution_index: 0 }),
+      forced_subject(
+        ExecutionNativeScriptFalse { purpose_kind: 0, purpose_index: 0 },
+      ),
       bad_item,
     ),
     item_proof(bad_item),

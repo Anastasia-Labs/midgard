@@ -144,10 +144,11 @@ export const ledgerDeltaControlStatus = (
 export type CekStepKind = "finish" | "selection" | "context" | "core";
 
 /**
- * The cek work witness is the nine-field list
+ * The cek work witness is the eleven-field list
  * `[native_control, context_control, execution_cursor, completed_cpu,
  * completed_memory, active_state_hash, program_envelope_hash,
- * execution_cpu_limit, execution_memory_limit]` that
+ * execution_cpu_limit, execution_memory_limit, purpose_kind,
+ * purpose_index]` that
  * `encodeMidgardCekValidationWitnessV1` writes and the on-chain
  * `cek_witness_control_v1` decodes. The four cek semantic resolvers partition
  * the step space on the control alone, in the order the on-chain
@@ -172,7 +173,7 @@ export type CekStepKind = "finish" | "selection" | "context" | "core";
  */
 export const cekKind = (witness: ValidationMachineWorkWitness): CekStepKind => {
   const control = asArray(decodeSingleCbor(witness.cbor), "cek_witness");
-  if (control.length !== 9) {
+  if (control.length !== 11) {
     throw new Error("cek_witness has an invalid field count");
   }
   const nativeControl = asArray(

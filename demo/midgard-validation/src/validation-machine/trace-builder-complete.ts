@@ -23,7 +23,6 @@ import {
   hashMidgardResolvedContextItemLeaf,
   hashMidgardValidationLedgerDeltaOperation,
   hashMidgardValidationMachineState,
-  hashMidgardValidationRejectionCode,
   hashMidgardValidationWorkWitness,
   MIDGARD_BOUNDED_ITEM_CHUNK_BYTES,
   MIDGARD_VALIDATION_MACHINE_VERSION,
@@ -38,6 +37,11 @@ import {
   decodeMidgardTxOutput,
   encodeMidgardSpendInputItem,
 } from "@al-ft/midgard-core/codec";
+import {
+  encodeMidgardRejectionReasonV1Cbor,
+  hashMidgardValidationRejectionReasonV1,
+  type MidgardRejectionReasonV1,
+} from "@al-ft/midgard-core/validation-trace";
 import { Effect } from "effect";
 
 import {
@@ -67,6 +71,11 @@ import {
   type MidgardScriptPurpose,
   midgardScriptPurposeData,
 } from "../midgard-redeemers.js";
+import {
+  rejectionReasonArmName,
+  resolveRejectionReason,
+  UNSET_REASON_COORDINATE,
+} from "../rejection-reason.js";
 import {
   emptyMidgardCekDataListSummary,
   emptyMidgardCekDataPairSummary,
@@ -126,6 +135,7 @@ export const completeValidationTrace = (
 ): Effect.Effect<DeterministicValidationMachineTrace, Error> =>
   Effect.gen(function* () {
     let { stoppedAtRejection } = context;
+    let stopReason: MidgardRejectionReasonV1 | null = context.stopReason;
     const {
       authenticatedNativeScriptsBaseFields,
       authenticatedNativeScriptsWitnessCbor,
@@ -295,7 +305,22 @@ export const completeValidationTrace = (
             stackDepth: 0,
             nodeCount: 0,
             result: -1,
+            purposeKind: BigInt(execution.purpose.purposeKind),
+            purposeIndex: execution.purpose.purposeIndex,
           };
+          const executionReason = (
+            arm:
+              | "ExecutionNativeScriptMalformed"
+              | "ExecutionNativeScriptNodeLimit"
+              | "ExecutionNativeScriptDepthLimit"
+              | "ExecutionNativeScriptFalse",
+          ): MidgardRejectionReasonV1 =>
+            ({
+              [arm]: {
+                purpose_kind: BigInt(execution.purpose.purposeKind),
+                purpose_index: BigInt(execution.purpose.purposeIndex),
+              },
+            }) as MidgardRejectionReasonV1;
           const nativeScriptFrames: ValidationMachineNativeScriptFrame[] = [];
           const expectedLateRejection = (code: RejectCode): boolean =>
             rejection !== null &&
@@ -351,6 +376,7 @@ export const completeValidationTrace = (
                     RejectCodes.InvalidFieldType,
                   );
                 }
+                stopReason = executionReason("ExecutionNativeScriptMalformed");
                 stoppedAtRejection = true;
                 break;
               }
@@ -361,6 +387,7 @@ export const completeValidationTrace = (
                     RejectCodes.NativeScriptNodeCount,
                   );
                 }
+                stopReason = executionReason("ExecutionNativeScriptNodeLimit");
                 stoppedAtRejection = true;
                 break;
               }
@@ -410,6 +437,7 @@ export const completeValidationTrace = (
                     RejectCodes.InvalidFieldType,
                   );
                 }
+                stopReason = executionReason("ExecutionNativeScriptMalformed");
                 stoppedAtRejection = true;
                 break;
               }
@@ -422,6 +450,9 @@ export const completeValidationTrace = (
                       RejectCodes.NativeScriptDepth,
                     );
                   }
+                  stopReason = executionReason(
+                    "ExecutionNativeScriptDepthLimit",
+                  );
                   stoppedAtRejection = true;
                   break;
                 }
@@ -518,6 +549,7 @@ export const completeValidationTrace = (
                   RejectCodes.InvalidFieldType,
                 );
               }
+              stopReason = executionReason("ExecutionNativeScriptMalformed");
               stoppedAtRejection = true;
               break;
             }
@@ -527,6 +559,7 @@ export const completeValidationTrace = (
                   RejectCodes.NativeScriptInvalid,
                 );
               }
+              stopReason = executionReason("ExecutionNativeScriptFalse");
               stoppedAtRejection = true;
             }
             break;
@@ -582,6 +615,7 @@ export const completeValidationTrace = (
           ]),
         );
         if (rejection !== null && terminalPhase === "scriptIntegrity") {
+          stopReason = "ScriptIntegrityHashMismatch";
           stoppedAtRejection = true;
         } else {
           const sourceLeaves = scriptSourceEntries.map((entry) => entry.leaf);
@@ -696,11 +730,19 @@ export const completeValidationTrace = (
             readonly executionCpuLimit: bigint;
             readonly executionMemoryLimit: bigint;
             readonly programEnvelopeHash: Uint8Array | null;
-          }): Buffer =>
-            encodeMidgardCekValidationWitness({
+            /** The running execution's context control on a core step. */
+            readonly purposeOf?: MidgardCekContextControl;
+          }): Buffer => {
+            const { purposeOf, ...rest } = input;
+            return encodeMidgardCekValidationWitness({
               nativeControlCbor: authenticatedNativeControlCbor,
-              ...input,
+              ...rest,
+              purposeKind:
+                purposeOf === undefined ? -1n : BigInt(purposeOf.purposeKind),
+              purposeIndex:
+                purposeOf === undefined ? -1n : purposeOf.purposeIndex,
             });
+          };
           const cekContextWitness = (input: {
             readonly contextControl: MidgardCekContextControl;
             readonly executionCursor: number;
@@ -838,6 +880,12 @@ export const completeValidationTrace = (
                   "PlutusV3 receive-purpose rejection disagrees with validation",
                 );
               }
+              stopReason = {
+                ReceivePurposePlutusV3Forbidden: {
+                  purpose_kind: BigInt(executionEntry.purpose.purposeKind),
+                  purpose_index: BigInt(executionEntry.purpose.purposeIndex),
+                },
+              };
               stoppedAtRejection = true;
               break;
             }
@@ -1858,6 +1906,7 @@ export const completeValidationTrace = (
                   executionCpuLimit: selected.value.exUnits.steps,
                   executionMemoryLimit: selected.value.exUnits.memory,
                   programEnvelopeHash: contextControl.programEnvelopeHash,
+                  purposeOf: contextControl,
                 }),
                 { kind: "cekCoreStep", step },
               );
@@ -1878,6 +1927,12 @@ export const completeValidationTrace = (
                     "CEK failure transition disagrees with validation",
                   );
                 }
+                stopReason = {
+                  PlutusExecutionFailed: {
+                    purpose_kind: BigInt(contextControl.purposeKind),
+                    purpose_index: BigInt(contextControl.purposeIndex),
+                  },
+                };
                 stoppedAtRejection = true;
                 break;
               }
@@ -2115,6 +2170,12 @@ export const completeValidationTrace = (
                         ),
                       );
                     }
+                    stopReason = {
+                      InputAssetAccumulationLimit: {
+                        input_index: UNSET_REASON_COORDINATE,
+                        asset_index: BigInt(assetIndex),
+                      },
+                    };
                     stoppedAtRejection = true;
                     break;
                   }
@@ -2200,6 +2261,9 @@ export const completeValidationTrace = (
                     ),
                   );
                 }
+                stopReason = {
+                  OutputBelowMinAda: { output_index: BigInt(outputIndex) },
+                };
                 stoppedAtRejection = true;
                 break;
               }
@@ -2261,6 +2325,12 @@ export const completeValidationTrace = (
                         ),
                       );
                     }
+                    stopReason = {
+                      OutputAssetAccumulationLimit: {
+                        output_index: BigInt(outputIndex),
+                        asset_index: BigInt(assetIndex),
+                      },
+                    };
                     stoppedAtRejection = true;
                     break;
                   }
@@ -2335,6 +2405,9 @@ export const completeValidationTrace = (
                     ),
                   );
                 }
+                stopReason = {
+                  MintAssetAccumulationLimit: { mint_index: BigInt(mintIndex) },
+                };
                 stoppedAtRejection = true;
                 break;
               }
@@ -2372,6 +2445,7 @@ export const completeValidationTrace = (
                   new Error("V1 value equation disagrees with validation"),
                 );
               }
+              stopReason = "ValueNotPreserved";
               stoppedAtRejection = true;
             } else {
               if (rejection !== null && terminalPhase === "valueAndMint") {
@@ -2795,6 +2869,40 @@ export const completeValidationTrace = (
         new Error(`V1 trace did not reach rejection phase ${terminalPhase}`),
       );
     }
+    let rejectionReason: MidgardRejectionReasonV1 | null = null;
+    if (rejection !== null) {
+      const resolved = resolveRejectionReason(rejection);
+      if (resolved.kind === "unsupported") {
+        return yield* Effect.fail(
+          new Error(
+            `V1 trace stopped on ${rejection.code}, which no RejectionReasonV1 arm proves`,
+          ),
+        );
+      }
+      if (stopReason !== null) {
+        if (
+          resolved.kind === "reason" &&
+          !encodeMidgardRejectionReasonV1Cbor(resolved.reason).equals(
+            encodeMidgardRejectionReasonV1Cbor(stopReason),
+          )
+        ) {
+          return yield* Effect.fail(
+            new Error(
+              `V1 trace stopped on ${rejectionReasonArmName(stopReason)} but validation recorded ${rejectionReasonArmName(resolved.reason)} with different coordinates`,
+            ),
+          );
+        }
+        rejectionReason = stopReason;
+      } else if (resolved.kind === "reason") {
+        rejectionReason = resolved.reason;
+      } else {
+        return yield* Effect.fail(
+          new Error(
+            `V1 trace stopped on ${rejection.code} without the subject that names its RejectionReasonV1 coordinates`,
+          ),
+        );
+      }
+    }
 
     const terminalWitness: ValidationMachineWorkWitness = {
       phase: "terminal",
@@ -2802,7 +2910,11 @@ export const completeValidationTrace = (
       cbor: encodeValidationTerminalWitnessCbor(
         rejectionCode === null
           ? { verdict: "accepted", postLedgerRoot, ledgerDeltaFrontier }
-          : { verdict: "rejected", rejectionCode, priorLedgerRoot },
+          : {
+              verdict: "rejected",
+              reason: rejectionReason!,
+              priorLedgerRoot,
+            },
       ),
       auxiliary: null,
     };
@@ -2814,9 +2926,9 @@ export const completeValidationTrace = (
 
     const eventKeyHash = hash32(input.eventKeyCbor);
     const rejectionCodeHash =
-      rejectionCode === null
+      rejectionReason === null
         ? MIDGARD_VALIDATION_NO_REJECTION_CODE_HASH
-        : hashMidgardValidationRejectionCode(rejectionCode);
+        : hashMidgardValidationRejectionReasonV1(rejectionReason);
     const states = witnesses.map((witness, index) => {
       const terminal = index === witnesses.length - 1;
       const budget = witnessExecutionBudgets[index]!;
@@ -2870,6 +2982,7 @@ export const completeValidationTrace = (
       tree,
       verdict,
       rejectionCode,
+      rejectionReason,
       ledgerOps,
     };
   });

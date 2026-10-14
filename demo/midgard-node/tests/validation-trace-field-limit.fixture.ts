@@ -131,7 +131,6 @@ export const fixture = async (
   });
   const priorUtxosRoot = ledgerMutationSteps[0]!.preRoot.toString("hex");
   let postUtxosRoot = ledgerMutationSteps.at(-1)!.postRoot.toString("hex");
-  let rejectionCode: typeof RejectCodes.InvalidFieldType | null = null;
   let verdict: SDK.OperatorVerdict = "ForcedTxValid";
   let classifiedEntry: ForcedTransactionsDB.Entry | undefined;
   if (observerCount > 0) {
@@ -195,7 +194,6 @@ export const fixture = async (
         },
       },
     });
-    rejectionCode = RejectCodes.InvalidFieldType;
     ledgerOps = [];
     ledgerMutationSteps = [];
     postUtxosRoot = priorUtxosRoot;
@@ -220,7 +218,8 @@ export const fixture = async (
           canonicalTransactionCbor: forcedBytes,
           sourceKind: "forced",
           verdict: observerCount > 0 ? "rejected" : "accepted",
-          rejectionCode,
+          rejectionReason:
+            verdict === "ForcedTxValid" ? null : verdict.ForcedTxInvalid.reason,
         },
       ],
     }),

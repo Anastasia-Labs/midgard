@@ -116,7 +116,7 @@ export const nativeScanCursor = (
     lucidDataFromCborIterative(witness.cbor),
     "phase_a_native_control",
   );
-  if (control.length !== 18) {
+  if (control.length !== 20) {
     throw new Error("phase-A native control has an invalid field count");
   }
   const exactStage = Number(

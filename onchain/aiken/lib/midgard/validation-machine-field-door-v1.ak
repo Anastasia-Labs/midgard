@@ -110,7 +110,7 @@
 //// answer (§7.3) and it stays. For an *operator-committed* ungrammatical
 //// preimage it means no `CanonicalDecode` step is producible by anyone, so the
 //// two verdicts that phase used to render for that case —
-//// `reject_invalid_field_type` and `reject_field_preimage_size` — no longer
+//// `FieldItemWidthIllegal` and `FieldPreimageLengthMismatch` — no longer
 //// cover it. Under the retired counted scheme the case was not even expressible
 //// (the commitment *was* a root over items, so items always existed).
 ////
@@ -121,9 +121,9 @@
 ////
 ////   * still rendered by `CanonicalDecode`, and reachable — a declared
 ////     `NativeTxFieldPreimageLengthsV1` length that disagrees with the
-////     authenticated preimage's own length (`reject_field_preimage_size`), and
+////     authenticated preimage's own length (`FieldPreimageLengthMismatch`), and
 ////     an item whose §5.1-authenticated width is not a legal encoding for its
-////     field (`reject_invalid_field_type`);
+////     field (`FieldItemWidthIllegal`);
 ////   * **not** rendered here, and #596's — a committed preimage whose §5.1
 ////     envelope does not decode at all. The door aborts; no verdict is emitted.
 

@@ -21,12 +21,18 @@ describe("forced rejection verdict", () => {
       await Effect.runPromise(
         forcedRejectionVerdict({
           ...rejection(RejectCodes.PlutusScriptInvalid),
-          subject: { arm: "PlutusExecutionFailed", index: 7n },
+          subject: {
+            arm: "PlutusExecutionFailed",
+            purposeKind: 1n,
+            purposeIndex: 7n,
+          },
         }),
       ),
     ).toStrictEqual({
       ForcedTxInvalid: {
-        reason: { PlutusExecutionFailed: { execution_index: 7n } },
+        reason: {
+          PlutusExecutionFailed: { purpose_kind: 1n, purpose_index: 7n },
+        },
       },
     });
     const alarms: unknown[] = [];

@@ -17,6 +17,7 @@ use midgard/fraud_proofs/native_tx/types.{
 }
 use midgard/ledger_output_commitment_v1
 use midgard/mpf_proof_fold_v1
+use midgard/rejection_reason_v1
 use midgard/script_proof_v1
 use midgard/validation_machine/ledger_delta as vm_ledger_delta
 use midgard/validation_machine/machine_types as vm_machine_types
@@ -24,8 +25,7 @@ use midgard/validation_machine/one_step as vm_one_step
 use midgard/validation_machine/shared as vm_shared
 use midgard/validation_machine/witness as vm_witness
 use midgard/validation_machine_tests/constants.{
-  h_28_a, h_28_b, h_a, h_b, h_c, reject_min_fee_code,
-  reject_value_not_preserved_code, target_snapshot_validation_context_cbor,
+  h_28_a, h_28_b, h_a, h_b, h_c, target_snapshot_validation_context_cbor,
   test_l1_slot_config, validation_context_cbor,
   value_output_descriptor_total_length, zero,
 }
@@ -585,7 +585,7 @@ pub fn target_snapshot_min_fee_step_is_provable(
       ),
     }
   } else {
-    exact_rejection_post(pre, reject_min_fee_code)
+    exact_rejection_post(pre, rejection_reason_v1.FeeBelowMinimum)
   }
   vm_one_step.verify_one_step(
     pre,
@@ -725,11 +725,11 @@ pub fn value_output_descriptor_advance_evidence(
 /// the min-Ada predicate and nothing else.
 pub fn value_output_descriptor_rejection_evidence(
   f: ValueOutputDescriptorFixture,
-  code: ByteArray,
+  reason: rejection_reason_v1.RejectionReasonV1,
 ) -> vm_machine_types.ValidationOneStepEvidenceV1 {
   one_step_evidence(
     f.initial_work,
-    exact_rejection_post(f.pre, code),
+    exact_rejection_post(f.pre, reason),
     vm_machine_types.ValueOutputDescriptorWitness {
       output_index: 0,
       descriptor_cbor: f.descriptor_cbor,
@@ -923,7 +923,7 @@ pub fn conservation_final_step_is_provable(
       ),
     }
   } else {
-    exact_rejection_post(pre, reject_value_not_preserved_code)
+    exact_rejection_post(pre, rejection_reason_v1.ValueNotPreserved)
   }
   vm_one_step.verify_value_and_mint_one_step_v1(
     pre,

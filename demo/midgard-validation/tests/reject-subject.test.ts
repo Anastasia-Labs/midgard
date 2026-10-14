@@ -347,7 +347,35 @@ describe("phase B rejection subjects", () => {
     );
     expect(rejection.subject).toStrictEqual({
       arm: "ReceivePurposePlutusV3Forbidden",
-      index: 1n,
+      purposeKind: 3n,
+      purposeIndex: 0n,
+    });
+  });
+
+  it("keys a receive purpose by its sorted distinct-hash ordinal, not its output position", async () => {
+    // Outputs pay receive scripts [B, B, A] with A < B. The receive purposes
+    // are the distinct hashes in sorted order, so A is pointer index 0 (its
+    // output is position 2) and B is pointer index 1 (first output 0). A has
+    // an inline native source; B has none, so discovery stops at B.
+    const sourced = nativeScriptWitness({ type: "all", scripts: [] });
+    const hashA = hashScriptWitness(sourced);
+    const hashB = "ff".repeat(28);
+    expect(hashA < hashB).toBe(true);
+    const rejection = await phaseBRejection(
+      makePhaseBCandidate({
+        spent: [a],
+        outputs: [hashB, hashB, hashA].map((hash) =>
+          makeProtectedScriptOutput(hash, FUNDED_OUTPUT_LOVELACE),
+        ),
+        scriptWitnesses: [sourced],
+      }),
+      [[a, funded]],
+      RejectCodes.MissingRequiredWitness,
+    );
+    expect(rejection.subject).toStrictEqual({
+      arm: "ScriptSourceMissing",
+      purposeKind: 3n,
+      purposeIndex: 1n,
     });
   });
 });

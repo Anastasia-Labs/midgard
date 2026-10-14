@@ -188,7 +188,9 @@ export const forcedInclusionTxFixture: SDK.ForcedInclusionTxV1 = {
   },
   verdict: {
     ForcedTxInvalid: {
-      reason: { PlutusExecutionFailed: { execution_index: 0n } },
+      reason: {
+        PlutusExecutionFailed: { purpose_kind: 0n, purpose_index: 0n },
+      },
     },
   },
 };

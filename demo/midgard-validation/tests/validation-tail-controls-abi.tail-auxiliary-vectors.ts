@@ -1,4 +1,5 @@
 import { encodeCbor } from "@al-ft/midgard-core";
+import { encodeMidgardRejectionReasonV1Cbor } from "@al-ft/midgard-core/validation-trace";
 import { fixtureBytes } from "@al-ft/midgard-test-support/hex";
 import { Constr, Data } from "@lucid-evolution/lucid";
 import { blake2b } from "@noble/hashes/blake2.js";
@@ -328,4 +329,5 @@ export const terminalAcceptanceCbor = encodeValidationTerminalWitnessCbor({
   ledgerDeltaFrontier: acceptanceFrontier,
 });
 
-export const rejectionCode = Buffer.from("E_VALUE_NOT_PRESERVED", "ascii");
+export const rejectionReasonCbor =
+  encodeMidgardRejectionReasonV1Cbor("ValueNotPreserved");

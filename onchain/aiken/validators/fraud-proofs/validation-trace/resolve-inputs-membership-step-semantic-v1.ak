@@ -16,8 +16,17 @@ use midgard/fraud_proofs/common.{cancel}
 use midgard/ledger_output_commitment_v1
 use midgard/ledger_output_proof_raw
 use midgard/ledger_output_proof_roles
+use midgard/ledger_output_proof_yield
+use midgard/rejection_reason_v1.{
+  InputSpentOutputNonCanonical, RejectionReasonV1,
+  ResolvedReferenceScriptDepthLimit, ResolvedReferenceScriptMalformed,
+  ResolvedReferenceScriptNodeLimit,
+}
 use midgard/resolve_inputs_control_v1 as carrier
 use midgard/validation_machine/machine_types.{ValidationOneStepWitnessV1}
+use midgard/validation_machine/shared.{
+  rejected_successor_is_exact, unset_reason_coordinate,
+}
 use midgard/validation_semantic_v1.{Datum, continue_winning}
 use midgard/validation_semantic_yield_v1
 use midgard/validation_trace_v1.{ResolveInputs, ValidationMachineStateV1}
@@ -160,27 +169,64 @@ fn successor_is_exact(
   pending: carrier.PendingRawV1,
   next_control_cbor: ByteArray,
 ) -> Bool {
-  if next_control_cbor == #"" {
-    transition.claimed_successor.phase == validation_trace_v1.Terminal
-  } else {
-    and {
-      transition.claimed_successor.phase == ResolveInputs,
-      // `control_raw_is_bound` (a sibling clause of this dispatcher) pins
-      // `transition.work_witness_cbor == encode_control_raw(control)` and
-      // `control.pending_cbor == encode_pending(pending)`, so the tail splice
-      // is byte-identical to re-encoding the successor record whole — without
-      // a second `encode_control_raw`/`encode_pending` walk.
-      transition.claimed_successor.work_root == validation_trace_v1.hash_work_witness(
-        ResolveInputs,
-        pre.program_counter + 1,
-        carrier.splice_pending_successor_v1(
-          transition.work_witness_cbor,
-          control.pending_cbor,
-          pending.output_proof_cbor,
-          next_control_cbor,
+  when ledger_output_proof_yield.rejection_class_of(next_control_cbor) is {
+    Some(class) ->
+      rejected_successor_is_exact(
+        pre,
+        transition.claimed_successor,
+        resolved_output_rejection(class, pending.source_kind),
+      )
+    None -> and {
+        transition.claimed_successor.phase == ResolveInputs,
+        // `control_raw_is_bound` (a sibling clause of this dispatcher) pins
+        // `transition.work_witness_cbor == encode_control_raw(control)` and
+        // `control.pending_cbor == encode_pending(pending)`, so the tail splice
+        // is byte-identical to re-encoding the successor record whole — without
+        // a second `encode_control_raw`/`encode_pending` walk.
+        transition.claimed_successor.work_root == validation_trace_v1.hash_work_witness(
+          ResolveInputs,
+          pre.program_counter + 1,
+          carrier.splice_pending_successor_v1(
+            transition.work_witness_cbor,
+            control.pending_cbor,
+            pending.output_proof_cbor,
+            next_control_cbor,
+          ),
         ),
-      ),
-    }
+      }
+  }
+}
+
+/// The exact reason for the resolved output the yield refused, by the class
+/// the yield attested. The input's field item ordinal is not carried by the
+/// resolution schedule yet.
+pub fn resolved_output_rejection(
+  class: Int,
+  source_kind: Int,
+) -> RejectionReasonV1 {
+  when class is {
+    0 ->
+      InputSpentOutputNonCanonical {
+        source_kind,
+        input_index: unset_reason_coordinate,
+      }
+    1 ->
+      ResolvedReferenceScriptMalformed {
+        source_kind,
+        input_index: unset_reason_coordinate,
+      }
+    2 ->
+      ResolvedReferenceScriptNodeLimit {
+        source_kind,
+        input_index: unset_reason_coordinate,
+      }
+    3 ->
+      ResolvedReferenceScriptDepthLimit {
+        source_kind,
+        input_index: unset_reason_coordinate,
+      }
+    // `rejection_class_of` admits only the four marker classes.
+    _ -> fail
   }
 }
 

@@ -5,13 +5,14 @@
  * TypeScript implementation (plain BLAKE2b-256 over the specified preimages).
  * Vectors are looked up by name.
  */
+import type { MidgardRejectionReasonV1 } from "@al-ft/midgard-core/validation-trace";
 
 export type PlaceholderValidationTraceDescriptorVector = Readonly<{
   name: string;
   eventKeyCbor: string;
   transactionCommitment: string;
   verdict: "accepted" | "rejected";
-  rejectionCode: string | null;
+  rejectionReason: MidgardRejectionReasonV1 | null;
   /**
    * Present when the commitment was taken from a real canonical transaction
    * (by the existing proof-source commitment code), so producers that start
@@ -43,7 +44,7 @@ export const PLACEHOLDER_VALIDATION_TRACE_DESCRIPTOR_VECTORS: readonly Placehold
       transactionCommitment:
         "d94e1ed6628e41483ab52919dde718ced8cb35763a70c008042b7c635fdd3085",
       verdict: "accepted",
-      rejectionCode: null,
+      rejectionReason: null,
       expected: {
         schemaVersion: 1,
         machineVersion: 1,
@@ -72,21 +73,21 @@ export const PLACEHOLDER_VALIDATION_TRACE_DESCRIPTOR_VECTORS: readonly Placehold
       transactionCommitment:
         "b3fc5511490989c1b10bbac7d2a6a23795d7b9130140e0550df3464c10a68680",
       verdict: "rejected",
-      rejectionCode: "E_EMPTY_INPUTS",
+      rejectionReason: "EmptyInputs",
       expected: {
         schemaVersion: 1,
         machineVersion: 1,
         stepCount: 1,
         traceRoot:
-          "5f05ebad9e56f126cd8cb3b3a78fd959010460e3ad9b56393acdcdfbdfbc91a4",
+          "4e5a9937c76f225650f33ed78066c33bca61126ed6d89b8531f29227e00c720b",
         initialStateHash:
           "ea555f67e8abff3c0e2e7c6c15c474af0cb2b5535d4a6b93d3d8a58c2989e531",
         terminalStateHash:
-          "3017eda56a19f1163d42ad9092f10184601be1c73a0e3f6311dec9ad2417c9ed",
+          "d663f7ed22c2fb49c5e423489d91bf45446b3d199db5507383df560427ac80a1",
         rejectionCodeHash:
-          "fb4133ff04336d3ef299bf76f6e6b4267be9a7931285e4fbc9f848e66c3624d8",
+          "9c71cc54543951c53a94a959911cab6c8c2586f22a9f87c81479eae5b6d8a5a1",
         descriptorDataCbor:
-          "d8799f010158205f05ebad9e56f126cd8cb3b3a78fd959010460e3ad9b56393acdcdfbdfbc91a4015820ea555f67e8abff3c0e2e7c6c15c474af0cb2b5535d4a6b93d3d8a58c2989e53158203017eda56a19f1163d42ad9092f10184601be1c73a0e3f6311dec9ad2417c9edd87b805820fb4133ff04336d3ef299bf76f6e6b4267be9a7931285e4fbc9f848e66c3624d8ff",
+          "d8799f010158204e5a9937c76f225650f33ed78066c33bca61126ed6d89b8531f29227e00c720b015820ea555f67e8abff3c0e2e7c6c15c474af0cb2b5535d4a6b93d3d8a58c2989e5315820d663f7ed22c2fb49c5e423489d91bf45446b3d199db5507383df560427ac80a1d87b8058209c71cc54543951c53a94a959911cab6c8c2586f22a9f87c81479eae5b6d8a5a1ff",
       },
       transaction: {
         canonicalTransactionCbor:
@@ -101,7 +102,7 @@ export const PLACEHOLDER_VALIDATION_TRACE_DESCRIPTOR_VECTORS: readonly Placehold
       transactionCommitment:
         "1111111111111111111111111111111111111111111111111111111111111111",
       verdict: "accepted",
-      rejectionCode: null,
+      rejectionReason: null,
       expected: {
         schemaVersion: 1,
         machineVersion: 1,
@@ -125,7 +126,7 @@ export const PLACEHOLDER_VALIDATION_TRACE_DESCRIPTOR_VECTORS: readonly Placehold
       transactionCommitment:
         "2222222222222222222222222222222222222222222222222222222222222222",
       verdict: "accepted",
-      rejectionCode: null,
+      rejectionReason: null,
       expected: {
         schemaVersion: 1,
         machineVersion: 1,
@@ -149,21 +150,21 @@ export const PLACEHOLDER_VALIDATION_TRACE_DESCRIPTOR_VECTORS: readonly Placehold
       transactionCommitment:
         "3333333333333333333333333333333333333333333333333333333333333333",
       verdict: "rejected",
-      rejectionCode: "E_INPUT_NOT_FOUND",
+      rejectionReason: { InputNotFound: { source_kind: 0n, input_index: -1n } },
       expected: {
         schemaVersion: 1,
         machineVersion: 1,
         stepCount: 1,
         traceRoot:
-          "5eead76426c3652decc02747e2edfbeecee117da455c10721681b39133ee4128",
+          "75ef9ef3683a1e50f044d9c1c6c144829593a943b1e4ca0ddf79c52df2073dcd",
         initialStateHash:
           "cc23a018368bed67df51cc11d4efae9a442316c9bcef171cddb4778a739a1f58",
         terminalStateHash:
-          "b88e89c7c559eaa084a6ff897a7083463585fe548def557d29e3f4f8cb8976d8",
+          "0cc7179a4b0cffaa0e7b40ce46443c5869281392897783fd4c0eda0337b55878",
         rejectionCodeHash:
-          "7010e02d40fd5e53e846ed857627684cd0eb66ea6bc07979257063505807a187",
+          "92540c0ddc1150a85e4f87ce8be9affe086dd2c235dc5ddf3da712ae43bda343",
         descriptorDataCbor:
-          "d8799f010158205eead76426c3652decc02747e2edfbeecee117da455c10721681b39133ee4128015820cc23a018368bed67df51cc11d4efae9a442316c9bcef171cddb4778a739a1f585820b88e89c7c559eaa084a6ff897a7083463585fe548def557d29e3f4f8cb8976d8d87b8058207010e02d40fd5e53e846ed857627684cd0eb66ea6bc07979257063505807a187ff",
+          "d8799f0101582075ef9ef3683a1e50f044d9c1c6c144829593a943b1e4ca0ddf79c52df2073dcd015820cc23a018368bed67df51cc11d4efae9a442316c9bcef171cddb4778a739a1f5858200cc7179a4b0cffaa0e7b40ce46443c5869281392897783fd4c0eda0337b55878d87b80582092540c0ddc1150a85e4f87ce8be9affe086dd2c235dc5ddf3da712ae43bda343ff",
       },
     },
     {
@@ -173,21 +174,21 @@ export const PLACEHOLDER_VALIDATION_TRACE_DESCRIPTOR_VECTORS: readonly Placehold
       transactionCommitment:
         "3333333333333333333333333333333333333333333333333333333333333333",
       verdict: "rejected",
-      rejectionCode: "E_MIN_FEE",
+      rejectionReason: "FeeBelowMinimum",
       expected: {
         schemaVersion: 1,
         machineVersion: 1,
         stepCount: 1,
         traceRoot:
-          "043b8baac8e92c3ce25036cb18e2558fbbc74eefa034c51dc6107ecac1857906",
+          "ce67f1fc723b2b46f427c170774bdc7e5c1b63d4f40c2ef34b4d7fb03842a50e",
         initialStateHash:
           "cc23a018368bed67df51cc11d4efae9a442316c9bcef171cddb4778a739a1f58",
         terminalStateHash:
-          "aa9a4d5a53f6e849826785a3685341c6d0927d2e70cbf451bacbfa83d0964812",
+          "de8c02ba02b3b4b6f4de8413678843df7344eb33faf6f34513173e6745434712",
         rejectionCodeHash:
-          "46055c0fdb633167ed024b753cfe257f68a4845f3843ffca361e865cbdfc2809",
+          "1c58e368280379bf2a43565907240d90e71114cc8fc3422c0f9b1fdc58bd7bef",
         descriptorDataCbor:
-          "d8799f01015820043b8baac8e92c3ce25036cb18e2558fbbc74eefa034c51dc6107ecac1857906015820cc23a018368bed67df51cc11d4efae9a442316c9bcef171cddb4778a739a1f585820aa9a4d5a53f6e849826785a3685341c6d0927d2e70cbf451bacbfa83d0964812d87b80582046055c0fdb633167ed024b753cfe257f68a4845f3843ffca361e865cbdfc2809ff",
+          "d8799f01015820ce67f1fc723b2b46f427c170774bdc7e5c1b63d4f40c2ef34b4d7fb03842a50e015820cc23a018368bed67df51cc11d4efae9a442316c9bcef171cddb4778a739a1f585820de8c02ba02b3b4b6f4de8413678843df7344eb33faf6f34513173e6745434712d87b8058201c58e368280379bf2a43565907240d90e71114cc8fc3422c0f9b1fdc58bd7befff",
       },
     },
   ];
