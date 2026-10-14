@@ -18,7 +18,6 @@ import { SerializedStateQueueUTxO } from "../workers/utils/commit-block-header.j
 import { failWith500 } from "./listen-response.js";
 import { OPERATOR_STATUS_ENDPOINT } from "./listen-router.get-state-queue-handler.js";
 import { DEPOSIT_BUILD_ENDPOINT } from "./listen-router.l1-provider-readiness-evidence-is-fresh.js";
-import { errorMessage } from "./listen-router.run-exact-gated-direct-l1-provider-probe.js";
 
 /**
  * `GET /operator/status[?operatorKeyHash=<hex>]` (admin): the same report as
@@ -37,9 +36,9 @@ export const getOperatorStatusHandler = Effect.gen(function* () {
     }
     try {
       operatorKeyHash = parseOperatorKeyHashOption(rawKey);
-    } catch (error) {
+    } catch {
       return yield* HttpServerResponse.json(
-        { error: errorMessage(error) },
+        { error: "Invalid request" },
         { status: 400 },
       );
     }
@@ -49,10 +48,10 @@ export const getOperatorStatusHandler = Effect.gen(function* () {
   );
   if (report._tag === "Left") {
     yield* Effect.logWarning(
-      `GET /${OPERATOR_STATUS_ENDPOINT} failed: ${errorMessage(report.left)}`,
+      `GET /${OPERATOR_STATUS_ENDPOINT} failed: ${"Operator status is unavailable"}`,
     );
     return yield* HttpServerResponse.json(
-      { error: errorMessage(report.left) },
+      { error: "Operator status is unavailable" },
       { status: 500 },
     );
   }
@@ -108,7 +107,7 @@ export const getLogGlobalsHandler = Effect.gen(function* () {
   RESET_IN_PROGRESS ⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅ ${RESET_IN_PROGRESS}
   COMMIT_WORKER_ACTIVE ⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅ ${COMMIT_WORKER_ACTIVE}
   COMMIT_PIPELINE_PHASE ⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅ ${COMMIT_PIPELINE_PHASE}
-  AVAILABLE_CONFIRMED_BLOCK ⋅⋅⋅⋅⋅⋅⋅⋅⋅ ${JSON.stringify(AVAILABLE_CONFIRMED_BLOCK)}
+  AVAILABLE_CONFIRMED_BLOCK ⋅⋅⋅⋅⋅⋅⋅⋅⋅ ${AVAILABLE_CONFIRMED_BLOCK === "" ? "unavailable" : "available"}
   PROCESSED_UNSUBMITTED_TXS_COUNT ⋅⋅⋅ ${PROCESSED_UNSUBMITTED_TXS_COUNT}
   PROCESSED_UNSUBMITTED_TXS_SIZE ⋅⋅⋅⋅ ${PROCESSED_UNSUBMITTED_TXS_SIZE}
   UNCONFIRMED_SUBMITTED_BLOCK_TX_HASH ⋅⋅⋅⋅⋅⋅⋅ ${UNCONFIRMED_SUBMITTED_BLOCK_TX_HASH}
@@ -160,8 +159,8 @@ export const postDepositBuildHandler = Effect.gen(function* () {
     buildRequest = SubmitDeposit.parseBuildDepositRequest(parsedBody.right, {
       expectedNetwork: lucid.api.config().network,
     });
-  } catch (error) {
-    const message = errorMessage(error);
+  } catch {
+    const message = "Invalid request";
     yield* Effect.logInfo(
       `POST /${DEPOSIT_BUILD_ENDPOINT} - invalid request: ${message}`,
     );

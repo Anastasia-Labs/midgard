@@ -10,7 +10,8 @@ use midgard/ledger_output_commitment_v1
 use midgard/ledger_output_v1
 use midgard/mpf_proof_v1
 use midgard/rejection_reason_v1.{
-  reject_asset_count, reject_min_ada, reject_value_not_preserved,
+  InputAssetAccumulationLimit, MintAssetAccumulationLimit,
+  OutputAssetAccumulationLimit, OutputBelowMinAda, ValueNotPreserved,
 }
 use midgard/script_proof_v1
 use midgard/validation_machine/machine_types.{
@@ -22,15 +23,15 @@ use midgard/validation_machine/machine_types.{
   ValueMintAssetWitness, ValueOutputAssetWitness, ValueOutputDescriptorWitness,
 }
 use midgard/validation_machine/shared.{
-  mint_asset_leaf_hash, no_rejection_code_hash, output_meets_min_ada_v1,
-  rejected_successor_is_exact, value_map_maximum_proof_steps,
+  accepted_successor_is_exact, mint_asset_leaf_hash, no_rejection_code_hash,
+  output_meets_min_ada_v1, rejected_successor_is_exact, unset_reason_coordinate,
+  value_map_maximum_proof_steps,
 }
 use midgard/validation_machine/witness.{
-  empty_resolution_schedule_hash, encode_ledger_delta_witness_v1,
-  encode_value_and_mint_control_v1, initial_resolution_accumulator,
-  initial_value_accumulator, native_scripts_control_is_well_formed,
-  resolution_schedule_node_hash, resolved_input_accumulator_successor,
-  value_and_mint_control_from_witness,
+  empty_resolution_schedule_hash, encode_value_and_mint_control_v1,
+  initial_resolution_accumulator, initial_value_accumulator,
+  native_scripts_control_is_well_formed, resolution_schedule_node_hash,
+  resolved_input_accumulator_successor, value_and_mint_control_from_witness,
 }
 use midgard/validation_merkle_v1
 use midgard/validation_trace_v1
@@ -425,7 +426,7 @@ fn value_and_mint_output_descriptor(
     ),
   } {
     let descriptor = ledger_output_commitment_v1.decode(descriptor_cbor)
-    // E_MIN_ADA (#618 ruling 1; R8 of decision 0005; decision 0003 Q27).
+    // OutputBelowMinAda (#618 ruling 1; R8 of decision 0005; decision 0003 Q27).
     // The parameterized minimum-Ada floor, bound to a machine rejection code
     // at the first step that sees the whole output. Both operands are facts
     // of the descriptor the membership conjunct above just authenticated
@@ -456,7 +457,7 @@ fn value_and_mint_output_descriptor(
       rejected_successor_is_exact(
         pre,
         witness.claimed_successor,
-        reject_min_ada,
+        OutputBelowMinAda { output_index: control.output_cursor },
       )
     } else {
       let next_value = ValueAccumulatorV1 {
@@ -638,21 +639,10 @@ fn value_and_mint_stage_five(
       rejected_successor_is_exact(
         pre,
         witness.claimed_successor,
-        reject_value_not_preserved,
+        ValueNotPreserved,
       )
     } else {
-      and {
-        witness.claimed_successor.phase == validation_trace_v1.LedgerDelta,
-        witness.claimed_successor.work_root == validation_trace_v1.hash_work_witness(
-          validation_trace_v1.LedgerDelta,
-          pre.program_counter + 1,
-          encode_ledger_delta_witness_v1(
-            control.native_control,
-            pre.prior_ledger_root,
-            control.replay_schedule_hash,
-          ),
-        ),
-      }
+      accepted_successor_is_exact(pre, witness.claimed_successor)
     },
   }
 }
@@ -1099,7 +1089,10 @@ fn value_and_mint_replay_asset_successor(
       rejected_successor_is_exact(
         pre,
         witness.claimed_successor,
-        reject_asset_count,
+        InputAssetAccumulationLimit {
+          input_index: unset_reason_coordinate,
+          asset_index: control.replay_asset_cursor - 1,
+        },
       )
     ValueAccumulatorMutationInvalid -> False
     ValueAccumulatorUpdated(next_value) -> {
@@ -1136,7 +1129,10 @@ fn value_and_mint_output_asset_successor(
       rejected_successor_is_exact(
         pre,
         witness.claimed_successor,
-        reject_asset_count,
+        OutputAssetAccumulationLimit {
+          output_index: control.output_cursor,
+          asset_index: control.output_asset_cursor - 1,
+        },
       )
     ValueAccumulatorMutationInvalid -> False
     ValueAccumulatorUpdated(next_value) -> {
@@ -1171,7 +1167,7 @@ fn value_and_mint_mint_asset_successor(
       rejected_successor_is_exact(
         pre,
         witness.claimed_successor,
-        reject_asset_count,
+        MintAssetAccumulationLimit { mint_index: control.mint_cursor },
       )
     ValueAccumulatorMutationInvalid -> False
     ValueAccumulatorUpdated(next_value) ->

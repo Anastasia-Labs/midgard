@@ -12,6 +12,7 @@ use midgard/fraud_proofs/native_tx/types.{
   MidgardVersionedScript, PlutusV3Script, native_tx_version_v1,
 }
 use midgard/native_tx_field_access_v1
+use midgard/rejection_reason_v1
 use midgard/validation_machine/canonical_decode as vm_canonical_decode
 use midgard/validation_machine/machine_types as vm_machine_types
 use midgard/validation_machine/one_step as vm_one_step
@@ -23,8 +24,8 @@ use midgard/validation_machine_tests/constants.{
 use midgard/validation_machine_tests/fixtures_phase_a.{
   canonical_step_fixture, empty_v1_transaction, exact_rejection_post,
   forced_pending_state, inline_field_carriage, inline_field_door,
-  non_empty_claimed_delta_root, one_step_evidence,
-  phase_a_script_preconditions_fixture, submitted_commitment, submitted_source,
+  one_step_evidence, phase_a_script_preconditions_fixture, submitted_commitment,
+  submitted_source,
 }
 use midgard/validation_trace_v1
 
@@ -76,7 +77,7 @@ test purpose_kind_to_redeemer_pointer_mapping_is_exact() {
 
 test phase_a_script_preconditions_control_cbor_is_canonical() {
   let tx = empty_v1_transaction()
-  let Pair(_pre, witness_cbor) = phase_a_script_preconditions_fixture(tx, h_a)
+  let Pair(_pre, witness_cbor) = phase_a_script_preconditions_fixture(tx)
   when cbor.deserialise(witness_cbor) is {
     None -> False
     Some(data) -> list.length(builtin.un_list_data(data)) == 11
@@ -150,7 +151,6 @@ test canonical_decode_authenticates_one_bounded_script_item() {
     validation_trace_v1.CanonicalDecode,
     7,
     work_witness_cbor,
-    validation_trace_v1.hash_ledger_delta(#"80"),
   )
   let post = validation_trace_v1.ValidationMachineStateV1 {
     ..pre,
@@ -231,7 +231,6 @@ test canonical_decode_rejects_a_legacy_field_seven_script_proof() {
     validation_trace_v1.CanonicalDecode,
     7,
     work_witness_cbor,
-    validation_trace_v1.hash_ledger_delta(#"80"),
   )
   let post = validation_trace_v1.ValidationMachineStateV1 {
     ..pre,
@@ -377,9 +376,10 @@ test canonical_decode_rejects_a_wrong_claimed_successor() {
     validation_trace_v1.CanonicalDecode,
     7,
     work_witness_cbor,
-    validation_trace_v1.hash_ledger_delta(#"80"),
   )
-  let rejection_code = #"455f4649454c445f505245494d4147455f53495a45"
+  let rejection_code = rejection_reason_v1.FieldPreimageLengthMismatch {
+    field_index: 6,
+  }
   let terminal = validation_trace_v1.ValidationMachineStateV1 {
     ..pre,
     phase: validation_trace_v1.Terminal,
@@ -511,7 +511,6 @@ test compact_binding_is_independently_verified_on_l1() {
     execution_memory: 0,
     verdict: validation_trace_v1.Pending,
     rejection_code_hash: zero,
-    ledger_delta_root: h_a,
   }
   let input_post = validation_trace_v1.ValidationMachineStateV1 {
     ..compact_pre,
@@ -560,7 +559,6 @@ test static_rules_accept_the_exact_proof_context_and_advance_to_input_sets() {
     validation_trace_v1.StaticLedgerRules,
     2,
     work_witness_cbor,
-    h_a,
   )
   let post = validation_trace_v1.ValidationMachineStateV1 {
     ..pre,
@@ -611,7 +609,7 @@ test static_rules_prove_a_network_mismatch_is_an_exact_no_op() {
     proof_source.field_preimage_lengths_cbor,
     validation_context_cbor,
   )
-  let rejection_code = #"455f4e4554574f524b5f49445f4d49534d41544348"
+  let rejection_code = rejection_reason_v1.NetworkIdMismatch
   let pre = forced_pending_state(
     tx_id,
     tx,
@@ -619,21 +617,7 @@ test static_rules_prove_a_network_mismatch_is_an_exact_no_op() {
     validation_trace_v1.StaticLedgerRules,
     2,
     work_witness_cbor,
-    // Deliberately a realistic NON-EMPTY claimed delta root. This test was RED
-    // on a production defect: `rejected_successor_is_exact` demanded
-    // `post.ledger_delta_root == frontier_commitment(0, [])` while
-    // `immutable_context_matches` (reached via `structural_transition_is_valid`,
-    // which the `verify_one_step` entry point applies) demands
-    // `pre.ledger_delta_root == post.ledger_delta_root`. Those were jointly
-    // unsatisfiable for any `pre` whose delta root was not already the empty
-    // commitment -- i.e. for every real transaction. The clearing clause has
-    // been deleted from production. Do NOT make any rejection test green by
-    // setting `pre.ledger_delta_root` to `frontier_commitment(0, [])`: that is
-    // the workaround that hid the defect, and it exercises the one pre-state in
-    // which the defect is invisible.
-    non_empty_claimed_delta_root(),
   )
-  // An exact rejection carries the claimed ledger delta forward unchanged;
   // `exact_rejection_post` is the canonical successor shape.
   let terminal = exact_rejection_post(pre, rejection_code)
   vm_one_step.verify_one_step(

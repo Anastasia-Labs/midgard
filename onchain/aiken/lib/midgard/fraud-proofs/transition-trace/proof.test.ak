@@ -31,9 +31,6 @@ use midgard/rejection_reason_v1
 use midgard/transition_trace
 use midgard/user_events
 use midgard/user_events/tx_order_v1 as tx_order
-use midgard/validation_claim_v1
-use midgard/validation_machine/witness as vm_witness
-use midgard/validation_machine_tests/fixtures_ledger
 use midgard/validation_trace_v1
 
 const h28_a = #"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
@@ -56,9 +53,6 @@ const fraud_category_id = #"00000004"
 
 const zero_hash =
   #"0000000000000000000000000000000000000000000000000000000000000000"
-
-const validation_context_cbor =
-  #"9f01546d6964676172642d636f6e73656e7375732d76311400000000ff"
 
 fn out_ref(ix: Int) -> OutputReference {
   OutputReference { transaction_id: h32_a, output_index: ix }
@@ -327,31 +321,6 @@ fn forced_source_membership(
   }
 }
 
-fn validation_descriptor_membership(
-  event_key: ledger_state.EventKey,
-  descriptor: validation_trace_v1.ValidationTraceDescriptorV1,
-) -> transition_trace.RootMembershipProof<
-  ledger_state.EventKey,
-  validation_trace_v1.ValidationTraceDescriptorV1,
-> {
-  let key_bytes = cbor.serialise(event_key)
-  let value_bytes = cbor.serialise(descriptor)
-  let phas_root = mpf.root(mpf.insert(mpf.empty, key_bytes, value_bytes, []))
-  transition_trace.RootMembershipProof {
-    domain: transition_trace.ValidationTracesRootDomain,
-    root: transition_trace.commit_counted_root(
-      transition_trace.ValidationTracesRootDomain,
-      phas_root,
-      1,
-    ),
-    phas_root,
-    count: 1,
-    key: event_key,
-    value: descriptor,
-    proof: [],
-  }
-}
-
 /// An L2 transaction source committed under the transactions root.
 ///
 /// Under §4's flat reversion the L2 transition authenticates the compact bytes
@@ -529,7 +498,10 @@ fn forced_tx(
 
 fn verdict_plutus_failed() -> rejection_reason_v1.OperatorVerdictV1 {
   rejection_reason_v1.ForcedTxInvalid {
-    reason: rejection_reason_v1.PlutusExecutionFailed { execution_index: 0 },
+    reason: rejection_reason_v1.PlutusExecutionFailed {
+      purpose_kind: 0,
+      purpose_index: 0,
+    },
   }
 }
 
@@ -703,153 +675,6 @@ fn omitted_forced_event_is_valid(inclusion_time: Int) -> Bool {
       header,
       [tx_order_reference_input(inclusion_time, event_asset_name)],
     ),
-  )
-}
-
-fn accepted_forced_transition_case(
-  verdict: rejection_reason_v1.OperatorVerdictV1,
-  phase: ledger_state.TransitionPhase,
-  claimed_post_root: ByteArray,
-  terminal_post_root: ByteArray,
-) -> Pair<
-  ledger_state.HeaderV1,
-  proof.AcceptedTransactionTransitionMismatchWitness,
-> {
-  let event_key = ledger_state.ForcedTransactionEventKey {
-    tx_order_id: out_ref(0),
-  }
-  let source = authenticated_forced_tx(verdict)
-  let source_membership = forced_source_membership(out_ref(0), source)
-  let opened_step = step(0, event_key, phase, h32_a, claimed_post_root)
-  let transition_membership = trace_membership(opened_step)
-  let event_to_step = event_to_step_membership(event_key, 0, phase)
-  let event_key_hash = blake2b_256(cbor.serialise(event_key))
-  let validation_context_hash = validation_trace_v1.hash_validation_context(
-    validation_context_cbor,
-  )
-  let initial_work_witness = vm_witness.encode_transaction_field_scan_witness(
-    source.submitted_source.compact_cbor,
-    source.submitted_source.witness_set_compact_cbor,
-    source.submitted_source.field_preimage_lengths_cbor,
-    validation_context_cbor,
-    0,
-    0,
-    0,
-    -1,
-    0,
-  )
-  let initial_state = validation_trace_v1.ValidationMachineStateV1 {
-    machine_version: validation_trace_v1.machine_version,
-    event_key_hash,
-    transaction_id: source.tx_id,
-    // The §7 proof-source commitment of the source's own triple. Derived here
-    // because `ForcedInclusionTxV1` no longer carries one — which is exactly
-    // what `validation_claim_v1.source_binding_is_exact` now derives too, so a
-    // fixture that hard-coded a value would stop testing the binding.
-    //
-    // Derived from the `source` parameter's own three members rather than from
-    // the transaction `authenticated_forced_tx` happens to build them out of, so
-    // the fixture keeps agreeing with the claim if a caller ever passes a source
-    // assembled some other way.
-    transaction_commitment: native_compact.forced_tx_proof_commitment_v1(
-      source.submitted_source.compact_cbor,
-      source.submitted_source.witness_set_compact_cbor,
-      source.submitted_source.field_preimage_lengths_cbor,
-    ),
-    validation_context_hash,
-    source_kind: validation_trace_v1.Forced,
-    prior_ledger_root: h32_a,
-    phase: validation_trace_v1.CanonicalDecode,
-    program_counter: 0,
-    work_root: validation_trace_v1.hash_work_witness(
-      validation_trace_v1.CanonicalDecode,
-      0,
-      initial_work_witness,
-    ),
-    execution_cpu: 0,
-    execution_memory: 0,
-    verdict: validation_trace_v1.Pending,
-    rejection_code_hash: zero_hash,
-    ledger_delta_root: h32_c,
-  }
-  let terminal_acceptance_witness_cbor = vm_witness.encode_terminal_acceptance_witness_v1(
-    terminal_post_root,
-    0,
-    [],
-  )
-  let terminal_state = validation_trace_v1.ValidationMachineStateV1 {
-    ..initial_state,
-    phase: validation_trace_v1.Terminal,
-    program_counter: 1,
-    work_root: validation_trace_v1.hash_work_witness(
-      validation_trace_v1.Terminal,
-      1,
-      terminal_acceptance_witness_cbor,
-    ),
-    verdict: validation_trace_v1.Accepted,
-  }
-  let initial_state_hash = validation_trace_v1.hash_machine_state(initial_state)
-  let terminal_state_hash = validation_trace_v1.hash_machine_state(
-    terminal_state,
-  )
-  let initial_leaf = validation_trace_v1.trace_leaf_hash(initial_state_hash)
-  let terminal_leaf = validation_trace_v1.trace_leaf_hash(terminal_state_hash)
-  let descriptor = validation_trace_v1.ValidationTraceDescriptorV1 {
-    schema_version: validation_trace_v1.descriptor_version,
-    machine_version: validation_trace_v1.machine_version,
-    trace_root: validation_trace_v1.trace_branch_hash(
-      initial_leaf,
-      terminal_leaf,
-    ),
-    step_count: 1,
-    initial_state_hash,
-    terminal_state_hash,
-    verdict: validation_trace_v1.Accepted,
-    rejection_code_hash: zero_hash,
-  }
-  let descriptor_membership = validation_descriptor_membership(
-    event_key,
-    descriptor,
-  )
-  let header = ledger_state.HeaderV1 {
-    ..base_header(),
-    utxos_root: claimed_post_root,
-    forced_transactions_root: source_membership.root,
-    transition_trace_root: transition_membership.root,
-    event_to_step_root: event_to_step.root,
-    validation_traces_root: descriptor_membership.root,
-    forced_transaction_count: 1,
-    total_event_count: 1,
-    transition_step_count: 1,
-    validation_trace_count: 1,
-  }
-  Pair(
-    header,
-    proof.AcceptedTransactionTransitionMismatchWitness {
-      claim: validation_claim_v1.ValidationClaimWitnessV1 {
-        version: validation_claim_v1.claim_version,
-        descriptor_membership,
-        transition_step_membership: transition_membership,
-        event_to_step_membership: event_to_step,
-        source_membership: validation_claim_v1.ForcedValidationSource {
-          membership: source_membership,
-        },
-        validation_context_cbor,
-        initial_state,
-        terminal_state,
-        initial_state_proof: validation_trace_v1.ValidationTraceProof {
-          state_index: 0,
-          state_hash: initial_state_hash,
-          siblings: [terminal_leaf],
-        },
-        terminal_state_proof: validation_trace_v1.ValidationTraceProof {
-          state_index: 1,
-          state_hash: terminal_state_hash,
-          siblings: [initial_leaf],
-        },
-      },
-      terminal_acceptance_witness_cbor,
-    },
   )
 }
 
@@ -1786,92 +1611,6 @@ test accepts_invalid_forced_transaction_no_op_transition_fault() {
         source_membership,
       },
     },
-  )
-}
-
-test accepts_valid_forced_transaction_wrong_accepted_post_root_fault() {
-  let Pair(header, witness) = accepted_forced_transition_case(
-    rejection_reason_v1.ForcedTxValid,
-    ledger_state.ForcedTransaction,
-    h32_b,
-    h32_c,
-  )
-  proof.validate_accepted_transaction_fault_proof(
-    prove(header, proof.AcceptedTransactionTransitionMismatch { witness }),
-    asset_name_for(header),
-  )
-}
-
-test rejects_valid_forced_transaction_matching_accepted_post_root_fault() {
-  let Pair(header, witness) = accepted_forced_transition_case(
-    rejection_reason_v1.ForcedTxValid,
-    ledger_state.ForcedTransaction,
-    h32_b,
-    h32_b,
-  )
-  !proof.validate_accepted_transaction_fault_proof(
-    prove(header, proof.AcceptedTransactionTransitionMismatch { witness }),
-    asset_name_for(header),
-  )
-}
-
-// An accepted claim over a transaction that deletes the ledger's only entry
-// ends at the terminal root the ledger delta admits for the drain. That root is
-// the committed empty-ledger sentinel, so the claim convicts a block that
-// commits the library's `null_hash` for the drained ledger and does not convict
-// the honest block that commits the sentinel.
-test accepted_claim_names_a_drained_ledger_by_the_committed_sentinel() {
-  let entry = fixtures_ledger.ledger_delta_singleton_entry_root()
-  let admits = fn(root) {
-    fixtures_ledger.ledger_delta_singleton_finalize(0, entry, root)
-  }
-  expect admits(env.empty_merkle_tree_root) != admits(null_hash)
-  let terminal_root = if admits(env.empty_merkle_tree_root) {
-    env.empty_merkle_tree_root
-  } else {
-    null_hash
-  }
-  let convicts = fn(post_root) {
-    let Pair(header, witness) = accepted_forced_transition_case(
-      rejection_reason_v1.ForcedTxValid,
-      ledger_state.ForcedTransaction,
-      post_root,
-      terminal_root,
-    )
-    proof.validate_accepted_transaction_fault_proof(
-      prove(header, proof.AcceptedTransactionTransitionMismatch { witness }),
-      asset_name_for(header),
-    )
-  }
-  and {
-    !convicts(env.empty_merkle_tree_root),
-    convicts(null_hash),
-  }
-}
-
-test rejects_invalid_forced_source_with_accepted_validation_claim() {
-  let Pair(header, witness) = accepted_forced_transition_case(
-    verdict_plutus_failed(),
-    ledger_state.ForcedTransaction,
-    h32_b,
-    h32_c,
-  )
-  !proof.validate_accepted_transaction_fault_proof(
-    prove(header, proof.AcceptedTransactionTransitionMismatch { witness }),
-    asset_name_for(header),
-  )
-}
-
-test rejects_forced_event_with_l2_transition_phase_in_accepted_claim() {
-  let Pair(header, witness) = accepted_forced_transition_case(
-    rejection_reason_v1.ForcedTxValid,
-    ledger_state.L2Transaction,
-    h32_b,
-    h32_c,
-  )
-  !proof.validate_accepted_transaction_fault_proof(
-    prove(header, proof.AcceptedTransactionTransitionMismatch { witness }),
-    asset_name_for(header),
   )
 }
 
@@ -3091,7 +2830,8 @@ fn late_rejected_forced_source_is_valid(
           validity_override: if mutate_reason {
             rejection_reason_v1.ForcedTxInvalid {
               reason: rejection_reason_v1.PlutusExecutionFailed {
-                execution_index: 1,
+                purpose_kind: 0,
+                purpose_index: 1,
               },
             }
           } else {

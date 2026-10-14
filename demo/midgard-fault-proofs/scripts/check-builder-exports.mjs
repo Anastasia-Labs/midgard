@@ -39,11 +39,11 @@ for (const [mode, [core, cbor, validation, sdk]] of Object.entries(loaded)) {
     validation
       .encodeValidationTerminalWitnessCbor({
         verdict: "rejected",
-        rejectionCode: "E_VALUE_NOT_PRESERVED",
+        reason: "ValueNotPreserved",
         priorLedgerRoot: Buffer.alloc(32, 0x73),
       })
       .toString("hex"),
-    "840255455f56414c55455f4e4f545f505245534552564544582073737373737373737373737373737373737373737373737373737373737373734180",
+    "8402d9052780582073737373737373737373737373737373737373737373737373737373737373734180",
   );
   const blueprint = sdk.parseFaultProofBlueprint(rawBlueprint);
   const lockParams = {

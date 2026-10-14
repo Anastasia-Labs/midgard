@@ -1,8 +1,8 @@
 use aiken/builtin
-use aiken/cbor
 use aiken/collection/list
 use aiken/primitive/bytearray
 use midgard/canonical_plutus_data_v1
+use midgard/cbor_deserialise
 use midgard/fraud_proofs/native_tx/components.{encode_midgard_tx_output}
 use midgard/fraud_proofs/native_tx/types.{
   MidgardAddress, MidgardCredential, MidgardTxOutput, MidgardV1Script,
@@ -490,7 +490,7 @@ pub fn decode_canonical_output(
   if bytearray.length(output_cbor) > max_output_canonical_cbor_bytes {
     None
   } else {
-    when cbor.deserialise(output_cbor) is {
+    when cbor_deserialise.deserialise(output_cbor) is {
       None -> None
       Some(data) ->
         when parse_output_data(data) is {

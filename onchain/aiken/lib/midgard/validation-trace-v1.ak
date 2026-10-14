@@ -3,6 +3,7 @@ use aiken/cbor
 use aiken/collection/list
 use aiken/crypto.{blake2b_256}
 use aiken/primitive/bytearray
+use midgard/rejection_reason_v1.{RejectionReasonV1}
 
 pub const machine_version: Int = 1
 
@@ -28,9 +29,6 @@ const rejection_code_domain =
 const validation_context_domain =
   #"4d69646761726456616c69646174696f6e436f6e746578745631"
 
-const ledger_delta_domain =
-  #"4d69646761726456616c69646174696f6e4c656467657244656c74615631"
-
 pub type ValidationPhase {
   CanonicalDecode
   CompactBinding
@@ -45,7 +43,6 @@ pub type ValidationPhase {
   ScriptIntegrity
   Cek
   ValueAndMint
-  LedgerDelta
   Terminal
 }
 
@@ -75,7 +72,6 @@ pub type ValidationMachineStateV1 {
   execution_memory: Int,
   verdict: ValidationVerdict,
   rejection_code_hash: ByteArray,
-  ledger_delta_root: ByteArray,
 }
 
 pub type ValidationTraceDescriptorV1 {
@@ -110,8 +106,7 @@ fn phase_code(phase: ValidationPhase) -> Int {
     ScriptIntegrity -> 10
     Cek -> 11
     ValueAndMint -> 12
-    LedgerDelta -> 13
-    Terminal -> 14
+    Terminal -> 13
   }
 }
 
@@ -161,7 +156,6 @@ pub fn machine_state_is_well_formed(state: ValidationMachineStateV1) -> Bool {
     state.execution_cpu >= 0,
     state.execution_memory >= 0,
     verdict_rejection_binding_is_valid(state.verdict, state.rejection_code_hash),
-    bytearray.length(state.ledger_delta_root) == 32,
   }
 }
 
@@ -198,7 +192,7 @@ pub fn encode_machine_state(state: ValidationMachineStateV1) -> ByteArray {
   expect
     verdict_rejection_binding_is_valid(state.verdict, state.rejection_code_hash)
 
-  #"8f"
+  #"8e"
     |> bytearray.concat(cbor.serialise(state.machine_version))
     |> bytearray.concat(encode_h32(state.event_key_hash))
     |> bytearray.concat(encode_h32(state.transaction_id))
@@ -213,7 +207,6 @@ pub fn encode_machine_state(state: ValidationMachineStateV1) -> ByteArray {
     |> bytearray.concat(cbor.serialise(state.execution_memory))
     |> bytearray.concat(cbor.serialise(verdict_code(state.verdict)))
     |> bytearray.concat(encode_h32(state.rejection_code_hash))
-    |> bytearray.concat(encode_h32(state.ledger_delta_root))
 }
 
 pub fn hash_machine_state(state: ValidationMachineStateV1) -> ByteArray {
@@ -237,21 +230,18 @@ pub fn hash_work_witness(
     |> blake2b_256
 }
 
-pub fn hash_rejection_code(rejection_code: ByteArray) -> ByteArray {
+/// The rejection preimage: the domain-separated blake2b-256 of the reason's
+/// Plutus Data CBOR. The machine's terminal rejection and the forced-verdict
+/// check both bind this hash.
+pub fn hash_rejection_code(reason: RejectionReasonV1) -> ByteArray {
   rejection_code_domain
-    |> bytearray.concat(rejection_code)
+    |> bytearray.concat(cbor.serialise(reason))
     |> blake2b_256
 }
 
 pub fn hash_validation_context(context_cbor: ByteArray) -> ByteArray {
   validation_context_domain
     |> bytearray.concat(context_cbor)
-    |> blake2b_256
-}
-
-pub fn hash_ledger_delta(delta_cbor: ByteArray) -> ByteArray {
-  ledger_delta_domain
-    |> bytearray.concat(delta_cbor)
     |> blake2b_256
 }
 

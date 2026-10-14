@@ -28,18 +28,6 @@ export const TRANSITION_TRACE_YIELD_REFERENCES = {
     entry: "fraudProofTransitionTraceAcceptedTransactionL2ReplayWithdraw",
     role: "V1 fraud-proof transition-trace final-4 L2 replay yield",
   },
-  claimStructure: {
-    entry: "fraudProofTransitionTraceAcceptedTransactionClaimStructureWithdraw",
-    role: "V1 fraud-proof transition-trace final-4 claim structure yield",
-  },
-  claimSource: {
-    entry: "fraudProofTransitionTraceAcceptedTransactionClaimSourceWithdraw",
-    role: "V1 fraud-proof transition-trace final-4 claim source yield",
-  },
-  claimEndpoints: {
-    entry: "fraudProofTransitionTraceAcceptedTransactionClaimEndpointsWithdraw",
-    role: "V1 fraud-proof transition-trace final-4 claim endpoints yield",
-  },
   depositProjection: {
     entry: "fraudProofTransitionTraceDepositProjectionWithdraw",
     role: "V1 fraud-proof transition-trace final-5 projection yield",

@@ -34,12 +34,6 @@ pub const l2_delete_role = "V1FpTtF4L2DeleteYield"
 
 pub const l2_outputs_role = "V1FpTtF4L2OutputsYield"
 
-pub const claim_structure_role = "V1FpTtF4ClaimStructYield"
-
-pub const claim_source_role = "V1FpTtF4ClaimSourceYield"
-
-pub const claim_endpoints_role = "V1FpTtF4ClaimEndsYield"
-
 pub const deposit_projection_role = "V1FpTtF5ProjectionYield"
 
 pub const deposit_replay_role = "V1FpTtF5ReplayYield"
@@ -86,11 +80,7 @@ pub type State {
 pub fn initial(kind: Int, commitment: proof_carriage.Commitment) -> State {
   State {
     kind,
-    phase: if kind != 2 {
-      6
-    } else {
-      0
-    },
+    phase: 6,
     proof_commitment: commitment,
     tx_id: #"",
     inputs_walk: #"",

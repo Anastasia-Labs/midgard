@@ -3,6 +3,7 @@ use aiken/cbor
 use aiken/crypto.{blake2b_256}
 use aiken/primitive/bytearray
 use midgard/bounded_collection_v1
+use midgard/cbor_deserialise
 use midgard/cek_data_v1
 use midgard/cek_machine_v1
 use midgard/cek_proof_v1
@@ -12,7 +13,7 @@ use midgard/fraud_proofs/native_tx/types.{
   NativeTxFieldPreimageLengthsV1, NativeTxWitnessSetCompact, PubKeyCredential,
   ScriptCredential, TxCompactView,
 }
-use midgard/mpf_proof_fold_v1
+use midgard/rejection_reason_v1.{RejectionReasonV1}
 use midgard/script_proof_v1
 use midgard/validation_machine/machine_types.{
   EmptySignerSetProof, InputSignerAuthorizationV1, InputSignerAuthorized,
@@ -36,7 +37,6 @@ fn immutable_context_matches(
     pre.validation_context_hash == post.validation_context_hash,
     pre.source_kind == post.source_kind,
     pre.prior_ledger_root == post.prior_ledger_root,
-    pre.ledger_delta_root == post.ledger_delta_root,
   }
 }
 
@@ -99,12 +99,8 @@ fn phase_successor_is_valid(
             post.phase == validation_trace_v1.Cek,
             post.phase == validation_trace_v1.ValueAndMint,
           }
-        validation_trace_v1.ValueAndMint -> or {
-            post.phase == validation_trace_v1.ValueAndMint,
-            post.phase == validation_trace_v1.LedgerDelta,
-          }
-        validation_trace_v1.LedgerDelta ->
-          post.phase == validation_trace_v1.LedgerDelta
+        validation_trace_v1.ValueAndMint ->
+          post.phase == validation_trace_v1.ValueAndMint
         validation_trace_v1.Terminal -> False
       },
     }
@@ -149,16 +145,21 @@ pub fn structural_transition_is_valid(
   }
 }
 
+/// The rejecting terminal's work witness: `[2, reason, prior_ledger_root,
+/// h'80']`, with the reason embedded as its own Plutus Data CBOR item.
 pub fn encode_terminal_rejection_witness(
-  rejection_code: ByteArray,
+  reason: RejectionReasonV1,
   prior_ledger_root: ByteArray,
 ) -> ByteArray {
   #"84"
     |> bytearray.concat(cbor.serialise(2))
-    |> bytearray.concat(encode_definite_bytes(rejection_code))
+    |> bytearray.concat(cbor.serialise(reason))
     |> bytearray.concat(encode_definite_bytes(prior_ledger_root))
     |> bytearray.concat(encode_definite_bytes(#"80"))
 }
+
+/// The accepting terminal's work witness: `[1, h'']`.
+pub const terminal_acceptance_witness: ByteArray = #"820140"
 
 pub fn canonical_argument_header_size(value: Int) -> Int {
   expect value >= 0
@@ -274,7 +275,7 @@ pub fn transaction_field_item_encoded_length(
 const consensus_profile_v1_id = #"6d6964676172642d636f6e73656e7375732d7631"
 
 pub fn decode_validation_context(context_cbor: ByteArray) -> ValidationContextV1 {
-  expect Some(data) = cbor.deserialise(context_cbor)
+  let data <- cbor_deserialise.expect_deserialise(context_cbor)
   expect
       [
         version_data, profile_id_data, block_end_time_data,
@@ -342,7 +343,7 @@ pub fn decode_validation_context(context_cbor: ByteArray) -> ValidationContextV1
 // `value_and_mint_stage_three` below: the ValueAndMint output-descriptor step
 // evaluates `output_meets_min_ada_v1` over the descriptor it has just
 // authenticated and, on failure, takes the exact rejecting terminal carrying
-// `reject_min_ada` (`E_MIN_ADA`). The rate is a compiled deployment constant,
+// `OutputBelowMinAda { output_index }`. The rate is a compiled deployment constant,
 // not an operator-declared field, per the owner ruling on #627 (option B): a
 // rate change is a redeploy event.
 pub const min_ada_output_overhead_bytes = 160
@@ -364,37 +365,51 @@ pub fn output_meets_min_ada_v1(
   lovelace >= min_ada_lovelace_v1(coins_per_utxo_byte, serialized_output_bytes)
 }
 
+/// A rejection-reason coordinate the machine does not carry yet: the four
+/// DuplicateInput coordinates (arm 3) and the `input_index` of arms 18–23
+/// and of `InputAssetAccumulationLimit`. Sites that emit it write this fixed
+/// sentinel, and the off-chain trace builder and forced-leaf writer write the
+/// same value for those arms.
+///
+/// The sentinel is interim. It is sound only while no reader compares a
+/// machine-emitted reason with an independently written one at these arms:
+/// the validation-trace dispute category (00000006) stays excluded, and the
+/// trace-relative families that read arms 3 and 18–23 stay excluded, until
+/// the machine carries the real coordinates.
+pub const unset_reason_coordinate: Int = -1
+
 pub fn rejected_successor_is_exact(
   pre: validation_trace_v1.ValidationMachineStateV1,
   post: validation_trace_v1.ValidationMachineStateV1,
-  rejection_code: ByteArray,
+  reason: RejectionReasonV1,
 ) -> Bool {
   and {
     post.phase == validation_trace_v1.Terminal,
     post.verdict == validation_trace_v1.Rejected,
-    post.rejection_code_hash == validation_trace_v1.hash_rejection_code(
-      rejection_code,
-    ),
-    // NOTE: there is deliberately NO clause clearing `post.ledger_delta_root`
-    // here, and one must not be re-introduced. `ledger_delta_root` is the
-    // operator's immutable claimed delta commitment for the transaction under
-    // adjudication: it is written by no transition, is read only at
-    // `ledger_delta_operation` membership and at the accepting terminal, and is
-    // pinned pre == post by `immutable_context_matches`. Requiring the
-    // rejecting terminal to *write* the empty commitment contradicted that
-    // immutability, which made every rejection one-step unprovable from any
-    // pre-state whose claimed delta is non-empty -- i.e. from every adversarial
-    // pre-state that matters, since a real transaction always claims a
-    // non-empty delta. The "a rejecting terminal derives no operations" duty is
-    // discharged elsewhere, per `docs/consensus-profile-v1.md` section 8: by
-    // `encode_terminal_rejection_witness` (post root = prior root, empty
-    // operation list), by the `pre_utxos_root == post_utxos_root` clause in
-    // `validation-claim-v1.ak`, and by the unilateral no-op faults in
-    // `fraud-proofs/transition-trace/proof.ak`.
+    post.rejection_code_hash == validation_trace_v1.hash_rejection_code(reason),
     post.work_root == validation_trace_v1.hash_work_witness(
       validation_trace_v1.Terminal,
       pre.program_counter + 1,
-      encode_terminal_rejection_witness(rejection_code, pre.prior_ledger_root),
+      encode_terminal_rejection_witness(reason, pre.prior_ledger_root),
+    ),
+  }
+}
+
+/// The accepting terminal. `structural_transition_is_valid` already binds the
+/// zero rejection hash (well-formedness of a non-rejected state), the program
+/// counter, the unchanged budget and the immutable context, so the phase, the
+/// verdict and the work root are the only free fields left to pin.
+pub fn accepted_successor_is_exact(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  post: validation_trace_v1.ValidationMachineStateV1,
+) -> Bool {
+  and {
+    post.phase == validation_trace_v1.Terminal,
+    post.verdict == validation_trace_v1.Accepted,
+    post.work_root == validation_trace_v1.hash_work_witness(
+      validation_trace_v1.Terminal,
+      pre.program_counter + 1,
+      terminal_acceptance_witness,
     ),
   }
 }
@@ -715,33 +730,6 @@ pub fn mint_asset_leaf_hash(
     |> bytearray.concat(encode_definite_bytes(policy_id))
     |> bytearray.concat(encode_definite_bytes(asset_name))
     |> bytearray.concat(cbor.serialise(quantity))
-    |> blake2b_256
-}
-
-const ledger_delta_operation_domain =
-  #"4d69646761726456616c69646174696f6e4c656467657244656c74614f7065726174696f6e5631"
-
-pub fn ledger_delta_operation_leaf_hash(
-  operation_kind: Int,
-  key: ByteArray,
-  value: ByteArray,
-  descriptor: mpf_proof_fold_v1.ProofDescriptorV1,
-) -> ByteArray {
-  expect operation_kind == 0 || operation_kind == 1
-  expect mpf_proof_fold_v1.descriptor_is_well_formed_v1(descriptor)
-  expect
-    if operation_kind == 0 {
-      value == #""
-    } else {
-      True
-    }
-  ledger_delta_operation_domain
-    |> bytearray.concat(cbor.serialise(operation_kind))
-    |> bytearray.concat(encode_definite_bytes(key))
-    |> bytearray.concat(encode_definite_bytes(value))
-    |> bytearray.concat(
-        mpf_proof_fold_v1.encode_proof_descriptor_v1(descriptor),
-      )
     |> blake2b_256
 }
 

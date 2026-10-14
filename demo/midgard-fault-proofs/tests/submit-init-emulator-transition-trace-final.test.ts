@@ -5,8 +5,6 @@ registerTransitionTraceFinalCases([
   { assetCount: 0, outputCount: 1 },
   { assetCount: 0, outputCount: 1, kind: "deposit" },
   { assetCount: 0, outputCount: 1, kind: "deposit", honest: true },
-  { assetCount: 0, outputCount: 1, kind: "claim" },
-  { assetCount: 0, outputCount: 1, kind: "claim", honest: true },
   { assetCount: 0, outputCount: 1, datumBytes: 12000, outputBytes: 16384 },
   { assetCount: 0, outputCount: 1, datumBytes: 15841 },
   // A constructor over a list and a byte string: one walk step per

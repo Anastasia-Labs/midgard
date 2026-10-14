@@ -1,3 +1,7 @@
+import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
 import {
   encodeMidgardAddressText,
   midgardAddressFromText,
@@ -240,5 +244,35 @@ describe("withdrawal CLI parsers", () => {
       seedPhrase: "direct seed",
       resolvedFrom: "direct-argument",
     });
+  });
+  it("reads a private mounted wallet seed without literal arguments and refuses conflicting or readable secrets", () => {
+    const directory = mkdtempSync(join(tmpdir(), "midgard-r7-wallet-"));
+    const path = join(directory, "wallet");
+    try {
+      writeFileSync(path, seedPhrase, { mode: 0o600 });
+      expect(
+        resolveWalletSeedPhrase({
+          walletSeedPhraseFile: path,
+          walletSeedPhraseEnv: "USER_WALLET",
+          env: {},
+        }),
+      ).toEqual({ seedPhrase, resolvedFrom: "mounted-file" });
+      expect(() =>
+        resolveWalletSeedPhrase({
+          walletSeedPhraseFile: path,
+          walletSeedPhrase: seedPhrase,
+          walletSeedPhraseEnv: "USER_WALLET",
+        }),
+      ).toThrow("one wallet secret source");
+      chmodSync(path, 0o644);
+      expect(() =>
+        resolveWalletSeedPhrase({
+          walletSeedPhraseFile: path,
+          walletSeedPhraseEnv: "USER_WALLET",
+        }),
+      ).toThrow("E_PUBLIC_HTTP_CONFIG");
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
   });
 });

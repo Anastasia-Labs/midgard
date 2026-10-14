@@ -93,9 +93,19 @@ export const userEventForcedOperatorVerdictForClassification = (
         : classification === "WitnessNativeScriptFalse"
           ? { WitnessNativeScriptFalse: { script_index: 0n } }
           : classification === "ExecutionNativeScriptFalse"
-            ? { ExecutionNativeScriptFalse: { execution_index: 0n } }
+            ? {
+                ExecutionNativeScriptFalse: {
+                  purpose_kind: 0n,
+                  purpose_index: 0n,
+                },
+              }
             : classification === "PlutusExecutionFailed"
-              ? { PlutusExecutionFailed: { execution_index: 0n } }
+              ? {
+                  PlutusExecutionFailed: {
+                    purpose_kind: 0n,
+                    purpose_index: 0n,
+                  },
+                }
               : classification === "FeeBelowMinimum"
                 ? "FeeBelowMinimum"
                 : classification === "ValueNotPreserved"

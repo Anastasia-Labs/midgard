@@ -23,6 +23,7 @@ import {
   type ValidationPoolService,
   ValidationWorkerError,
 } from "../src/services/validation-pool.js";
+import { packPhaseAJob } from "../src/workers/utils/validation-pool.js";
 import {
   init,
   workerEntry,
@@ -58,6 +59,64 @@ const REQUESTS = {
 };
 
 describe("validation pool CEK verdicts", () => {
+  it("dispatches one advisory job on two workers while production progresses without waiting", async () => {
+    const pool = new FixedValidationWorkerPool(2, 8, 30_000, workerEntry, init);
+    try {
+      await pool.start();
+      const advisory = pool.trySubmitAdvisory({
+        kind: "cek_verdict",
+        jobId: pool.allocateJobId(),
+        request: REQUESTS.success,
+      });
+      expect(advisory).toBeDefined();
+      for (let index = 0; index < 32; index += 1)
+        expect(
+          pool.trySubmitAdvisory({
+            kind: "cek_verdict",
+            jobId: pool.allocateJobId(),
+            request: REQUESTS.success,
+          }),
+        ).toBeUndefined();
+      expect(pool.capacityWaiters).toHaveLength(0);
+      expect(pool.queue).toHaveLength(0);
+      const production = pool.submit(packPhaseAJob(pool.allocateJobId(), []));
+      expect(pool.stats().busyWorkers).toBe(2);
+      const [advisoryResult, productionResult] = await Promise.all([
+        advisory!,
+        production,
+      ]);
+      expect(advisoryResult.kind).toBe("cek_verdict");
+      if (advisoryResult.kind === "cek_verdict")
+        expect(advisoryResult.result.kind).toBe("accepted");
+      expect(productionResult.kind).toBe("phase_a");
+      expect(pool.capacityWaiters).toHaveLength(0);
+    } finally {
+      await pool.close();
+    }
+  });
+  it.each([0, 1])("refuses advisory work with %i workers", async (size) => {
+    const pool = new FixedValidationWorkerPool(
+      size,
+      8,
+      30_000,
+      workerEntry,
+      init,
+    );
+    try {
+      await pool.start();
+      expect(
+        pool.trySubmitAdvisory({
+          kind: "cek_verdict",
+          jobId: pool.allocateJobId(),
+          request: REQUESTS.success,
+        }),
+      ).toBeUndefined();
+      expect(pool.queue).toHaveLength(0);
+      expect(pool.capacityWaiters).toHaveLength(0);
+    } finally {
+      await pool.close();
+    }
+  });
   it("computes on a worker exactly the verdict Phase B computes in process", async () => {
     const pool = new FixedValidationWorkerPool(2, 8, 30_000, workerEntry, init);
     try {

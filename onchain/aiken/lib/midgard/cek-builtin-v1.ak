@@ -2,6 +2,7 @@ use aiken/builtin
 use aiken/cbor
 use aiken/collection/list
 use aiken/primitive/bytearray
+use midgard/cbor_deserialise
 use midgard/cek_constant_v1
 use midgard/cek_cost_v1
 use midgard/cek_data_scan_v1
@@ -491,7 +492,7 @@ fn canonical_integer_leaf_v1(
     bytearray.length(raw_cbor) <= cek_data_scan_v1.max_revealed_data_leaf_bytes
   expect cbor_root == cek_data_scan_v1.bounded_blob_root_v1(raw_cbor)
   expect cbor_length == bytearray.length(raw_cbor)
-  expect Some(data) = cbor.deserialise(raw_cbor)
+  let data <- cbor_deserialise.expect_deserialise(raw_cbor)
   expect cbor.serialise(data) == raw_cbor
   expect builtin.choose_data(data, False, False, False, True, False)
   expect top_node_matches_v1(summary, node, None, None)
@@ -1291,7 +1292,7 @@ fn verify_semantic_unconstr_data_v1(
           raw_constructor,
         )
       expect constructor_cbor_length == bytearray.length(raw_constructor)
-      expect Some(data) = cbor.deserialise(raw_constructor)
+      let data <- cbor_deserialise.expect_deserialise(raw_constructor)
       expect cbor.serialise(data) == raw_constructor
       expect builtin.choose_data(data, False, False, False, True, False)
       let constructor = builtin.un_i_data(data)
@@ -1636,7 +1637,7 @@ fn verify_semantic_data_v1(
     expect bytearray.length(raw_data) > 0
     expect
       bytearray.length(raw_data) <= cek_data_scan_v1.max_revealed_data_leaf_bytes
-    expect Some(data) = cbor.deserialise(raw_data)
+    let data <- cbor_deserialise.expect_deserialise(raw_data)
     expect cbor.serialise(data) == raw_data
     expect
       cek_data_v1.semantic_data_summary_v1(data) == data_constant_summary_v1(
@@ -3687,7 +3688,7 @@ pub fn verify_semantic_data_misc(
     expect bytearray.length(raw_data) > 0
     expect
       bytearray.length(raw_data) <= cek_data_scan_v1.max_revealed_data_leaf_bytes
-    expect Some(data) = cbor.deserialise(raw_data)
+    let data <- cbor_deserialise.expect_deserialise(raw_data)
     expect cbor.serialise(data) == raw_data
     expect
       cek_data_v1.semantic_data_summary_v1(data) == data_constant_summary_v1(

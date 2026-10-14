@@ -64,12 +64,17 @@ export type RejectSubject =
   | { readonly arm: "UnusedRedeemer"; readonly index: bigint }
   | { readonly arm: "UnusedScriptWitness"; readonly index: bigint }
   | { readonly arm: "ScriptIntegrityHashMismatch" }
+  /**
+   * An execution, by its purpose key: kind (0 spend, 1 mint, 2 observe,
+   * 3 receive) and the redeemer pointer index of that purpose.
+   */
   | {
       readonly arm:
         | "ExecutionNativeScriptFalse"
         | "ReceivePurposePlutusV3Forbidden"
         | "PlutusExecutionFailed";
-      readonly index: bigint;
+      readonly purposeKind: bigint;
+      readonly purposeIndex: bigint;
     }
   | {
       readonly arm: "OutputNonCanonical" | "OutputBelowMinAda";

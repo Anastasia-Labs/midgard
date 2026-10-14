@@ -10,15 +10,13 @@ import "../src/validation-machine-data.js";
 import "./validation-tail-controls-abi.tail-auxiliary-vectors.js";
 import "./validation-tail-controls-abi.decode-exact-terminal-witness.js";
 
+import { hashMidgardValidationWorkWitness } from "@al-ft/midgard-core";
 import {
-  buildMidgardValidationLedgerDeltaFrontier,
-  commitMidgardValidationMerkleFrontier,
-  encodeCbor,
-  hashMidgardValidationLedgerDelta,
-  hashMidgardValidationLedgerDeltaOperation,
-  hashMidgardValidationWorkWitness,
-} from "@al-ft/midgard-core";
-import { decodeSingleCbor } from "@al-ft/midgard-core/codec/cbor";
+  decodeSingleCbor,
+  encodeCborArrayRaw,
+  encodeCborBytes,
+  encodeCborInteger,
+} from "@al-ft/midgard-core/codec/cbor";
 import { fixtureBytes } from "@al-ft/midgard-test-support/hex";
 import { Constr, Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
@@ -33,14 +31,10 @@ import {
   terminalRejectionCbor,
 } from "./validation-tail-controls-abi.decode-exact-terminal-witness.js";
 import {
-  acceptanceFrontierCbor,
   bytes,
   decodeExactTailAuxiliary,
-  descriptor,
   digest,
-  ledgerDeltaControlCbor,
-  pendingMutationCbor,
-  rejectionCode,
+  rejectionReasonCbor,
   tailAuxiliaryVectors,
   terminalAcceptanceCbor,
   valueAccumulatorCbor,
@@ -67,11 +61,11 @@ describe("canonical V1 validation tail controls", () => {
     expect(() => decodeExactTailAuxiliary(Data.to(new Constr(23, [])))).toThrow(
       /tag/u,
     );
-    expect(() => decodeExactTailAuxiliary(Data.to(new Constr(40, [])))).toThrow(
+    expect(() => decodeExactTailAuxiliary(Data.to(new Constr(36, [])))).toThrow(
       /tag/u,
     );
     expect(() =>
-      decodeExactTailAuxiliary(Data.to(new Constr(27, [0n]))),
+      decodeExactTailAuxiliary(Data.to(new Constr(24, [0n]))),
     ).toThrow(/arity/u);
   });
 
@@ -94,52 +88,9 @@ describe("canonical V1 validation tail controls", () => {
     });
   });
 
-  it("freezes V16 pending mutation/control shapes and operation roots", () => {
-    const pending = decodeSingleCbor(pendingMutationCbor);
-    const control = decodeSingleCbor(ledgerDeltaControlCbor);
-    expect(Array.isArray(pending) ? pending.length : -1).toBe(10);
-    expect(Array.isArray(control) ? control.length : -1).toBe(14);
-    expect({
-      pendingMutationCbor: pendingMutationCbor.toString("hex"),
-      ledgerDeltaControlHash: digest(ledgerDeltaControlCbor),
-    }).toEqual({
-      pendingMutationCbor: EXPECTED.pendingMutationCbor,
-      ledgerDeltaControlHash: EXPECTED.ledgerDeltaControlHash,
-    });
-
-    const deletion = {
-      type: "delete" as const,
-      key: bytes("010203"),
-      proofDescriptor: descriptor,
-    };
-    const insertion = {
-      type: "insert" as const,
-      key: bytes("0405"),
-      value: bytes("060708"),
-      proofDescriptor: descriptor,
-    };
-    const frontier = buildMidgardValidationLedgerDeltaFrontier([
-      deletion,
-      insertion,
-    ]);
-    expect(
-      hashMidgardValidationLedgerDeltaOperation(deletion).toString("hex"),
-    ).toBe("d70952a4347195627444cfbb1874f6857de1ad78f095460b76fc826cd267a589");
-    expect(
-      hashMidgardValidationLedgerDeltaOperation(insertion).toString("hex"),
-    ).toBe("f8bc7029f5f58f0436ebdf6cbbb85bd9adac05d5f6dc1b9238c8166a517aa8db");
-    expect(
-      commitMidgardValidationMerkleFrontier(frontier).toString("hex"),
-    ).toBe("b6d017c71f3fc974f620b22764385bf9ad56ee5627009e57dbeb9418e486dcb2");
-    expect(hashMidgardValidationLedgerDelta([deletion, insertion])).toEqual(
-      commitMidgardValidationMerkleFrontier(frontier),
-    );
-  });
-
   it("freezes V17 accepted/rejected witnesses and rejects misclassification", () => {
     expect(decodeExactTerminalWitness(terminalAcceptanceCbor)).toEqual({
       outcome: "accepted",
-      ledgerRoot: fixtureBytes(0x72, 32),
     });
     expect(decodeExactTerminalWitness(terminalRejectionCbor)).toEqual({
       outcome: "rejected",
@@ -165,35 +116,47 @@ describe("canonical V1 validation tail controls", () => {
       terminalRejectionHash: EXPECTED.terminalRejectionHash,
     });
 
-    expect(() =>
+    const terminal = (
+      outcome: bigint,
+      slot: Buffer,
+      ledgerRoot: Buffer,
+      evidence: Buffer,
+    ): Buffer =>
+      encodeCborArrayRaw([
+        encodeCborInteger(outcome),
+        slot,
+        encodeCborBytes(ledgerRoot),
+        encodeCborBytes(evidence),
+      ]);
+    const emptySlot = encodeCborBytes(Buffer.alloc(0));
+    // Each refused witness differs from an exact one in a single position.
+    expect(
       decodeExactTerminalWitness(
-        encodeCbor([
-          1n,
-          rejectionCode,
-          fixtureBytes(0x72, 32),
-          acceptanceFrontierCbor,
-        ]),
+        terminal(2n, rejectionReasonCbor, fixtureBytes(0x73, 32), bytes("80")),
+      ).outcome,
+    ).toBe("rejected");
+    for (const refused of [
+      // An acceptance carrying a rejection reason.
+      encodeCborArrayRaw([encodeCborInteger(1n), rejectionReasonCbor]),
+      // An acceptance in the four-field rejection shape.
+      terminal(1n, emptySlot, fixtureBytes(0x73, 32), bytes("80")),
+      // An acceptance carrying a non-empty payload.
+      encodeCborArrayRaw([encodeCborInteger(1n), encodeCborBytes(bytes("00"))]),
+      // A rejection without a reason.
+      terminal(2n, emptySlot, fixtureBytes(0x73, 32), bytes("80")),
+      // A rejection naming its reason as the legacy label bytes.
+      terminal(
+        2n,
+        encodeCborBytes(Buffer.from("E_VALUE_NOT_PRESERVED", "ascii")),
+        fixtureBytes(0x73, 32),
+        bytes("80"),
       ),
-    ).toThrow(/cannot carry a rejection/u);
-    expect(() =>
-      decodeExactTerminalWitness(
-        encodeCbor([2n, Buffer.alloc(0), fixtureBytes(0x73, 32), bytes("80")]),
-      ),
-    ).toThrow(/misclassified/u);
-    expect(() =>
-      decodeExactTerminalWitness(
-        encodeCbor([
-          2n,
-          rejectionCode,
-          fixtureBytes(0x73, 32),
-          acceptanceFrontierCbor,
-        ]),
-      ),
-    ).toThrow(/misclassified/u);
-    expect(() =>
-      decodeExactTerminalWitness(
-        encodeCbor([3n, Buffer.alloc(0), fixtureBytes(0x73, 32), bytes("80")]),
-      ),
-    ).toThrow(/outcome/u);
+      // A rejection in the two-field acceptance shape.
+      encodeCborArrayRaw([encodeCborInteger(2n), emptySlot]),
+      // An outcome outside V1.
+      terminal(3n, emptySlot, fixtureBytes(0x73, 32), bytes("80")),
+    ]) {
+      expect(() => decodeExactTerminalWitness(refused)).toThrow();
+    }
   });
 });

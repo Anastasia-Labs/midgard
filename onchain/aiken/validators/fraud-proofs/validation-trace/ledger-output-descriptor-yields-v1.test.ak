@@ -60,7 +60,7 @@ use midgard/ledger_output_proof_stages as lop_stages
 use midgard/ledger_output_proof_v1 as proof
 use midgard/ledger_output_v1
 use midgard/rejection_reason_v1.{
-  reject_missing_required_witness, reject_network_id_mismatch,
+  NetworkIdMismatch, ProtectedOutputSignerMissing, RejectionReasonV1,
 }
 use midgard/script_proof_v1
 use midgard/script_sources_raw_frame_v1 as ss_raw
@@ -452,7 +452,6 @@ fn machine_pre(
     execution_memory: 0,
     verdict: validation_trace_v1.Pending,
     rejection_code_hash: zero,
-    ledger_delta_root: validation_trace_v1.hash_ledger_delta(#"80"),
   }
 }
 
@@ -604,7 +603,7 @@ fn rejecting_fixture(
   output: ByteArray,
   context_cbor: ByteArray,
   signer_proof: SignerSetProofV1,
-  rejection_code: ByteArray,
+  rejection_code: RejectionReasonV1,
 ) -> FinalizeFixtureV1 {
   let f = pre_of(output, context_cbor, 3)
   FinalizeFixtureV1 {
@@ -866,7 +865,6 @@ fn golden_transition() -> ValidationOneStepWitnessV1 {
       execution_memory: 0,
       verdict: validation_trace_v1.Pending,
       rejection_code_hash: zero,
-      ledger_delta_root: zero,
     },
   }
 }
@@ -1218,28 +1216,40 @@ test finalize_refuses_forged_receive_scan_splice() fail {
 }
 
 /// An output addressed to the wrong network wins only the exact
-/// `reject_network_id_mismatch` terminal -- with the fact gate still running
+/// `NetworkIdMismatch` terminal -- with the fact gate still running
 /// first over the recorded facts.
 test finalize_emits_network_id_terminal() {
   let f = rejecting_fixture(
     protected_script_plain_output,
     context_network_one,
     NoSignerSetProof,
-    reject_network_id_mismatch,
+    NetworkIdMismatch,
   )
   let redeemer = honest_redeemer(f)
   run_dispatcher(f, redeemer, finalize_tx(f, redeemer, [], []))
 }
 
 /// A protected key-payment output whose signer is provably absent from the
-/// (empty) signer set wins only the exact `reject_missing_required_witness`
-/// terminal.
+/// (empty) signer set wins only the exact `ProtectedOutputSignerMissing`
+/// terminal naming the output at the cursor.
 test finalize_emits_missing_witness_terminal() {
   let f = rejecting_fixture(
     protected_pubkey_output,
     context_network_zero,
     EmptySignerSetProof { peaks: [] },
-    reject_missing_required_witness,
+    ProtectedOutputSignerMissing { output_index: 0 },
+  )
+  let redeemer = honest_redeemer(f)
+  run_dispatcher(f, redeemer, finalize_tx(f, redeemer, [], []))
+}
+
+/// The same terminal naming another output is refused.
+test finalize_refuses_missing_witness_terminal_at_another_output() fail {
+  let f = rejecting_fixture(
+    protected_pubkey_output,
+    context_network_zero,
+    EmptySignerSetProof { peaks: [] },
+    ProtectedOutputSignerMissing { output_index: 1 },
   )
   let redeemer = honest_redeemer(f)
   run_dispatcher(f, redeemer, finalize_tx(f, redeemer, [], []))

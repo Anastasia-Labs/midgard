@@ -62,12 +62,11 @@ pub fn resolver_index(phase: validation_trace_v1.ValidationPhase) -> Int {
     validation_trace_v1.ScriptIntegrity -> 10
     validation_trace_v1.Cek -> 11
     validation_trace_v1.ValueAndMint -> 12
-    validation_trace_v1.LedgerDelta -> 13
     validation_trace_v1.Terminal -> -1
   }
 }
 
-pub const resolver_count: Int = 14
+pub const resolver_count: Int = 13
 
 pub fn one_step_boundary_is_authenticated(
   dispute: validation_dispute_v1.ValidationDisputeV1,

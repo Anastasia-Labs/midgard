@@ -25,6 +25,7 @@ import commitAnchorSql from "./sql/0023_commit_anchor.sql";
 import dropValidationTraceWitnessesSql from "./sql/0024_drop_validation_trace_witnesses.sql";
 import blockTimeSql from "./sql/0025_block_time.sql";
 import dropUtxoPayloadAggregateSql from "./sql/0026_drop_utxo_payload_aggregate.sql";
+import publicHttpReadIndexesSql from "./sql/0027_public_http_read_indexes.sql";
 
 export type Migration = {
   readonly version: number;
@@ -217,6 +218,13 @@ export const MIGRATIONS: readonly Migration[] = [
     sql: dropUtxoPayloadAggregateSql,
     transactional: true,
   },
+  {
+    version: 27,
+    name: "public_http_read_indexes",
+    checksumSha256: sha256Hex(publicHttpReadIndexesSql),
+    sql: publicHttpReadIndexesSql,
+    transactional: true,
+  },
 ] as const;
 
 export const EXPECTED_SCHEMA_VERSION =
@@ -304,6 +312,12 @@ export const APPLICATION_INDEX_NAMES = [
   "settlement_attempts_event",
   "settlement_attempts_open",
   "idx_address_history_created_at",
+  "idx_address_history_address_tx_id",
+  "idx_mempool_ledger_address_outref",
+  "idx_blocks_header_hash_tx_id",
+  "idx_withdrawal_ledger_outref_pending",
+  "idx_withdrawal_ledger_outref_unknown",
+  "idx_withdrawal_ledger_outref_unknown_pending",
   "idx_blocks_header_hash",
   "idx_blocks_tx_id",
   "idx_confirmed_ledger_address",

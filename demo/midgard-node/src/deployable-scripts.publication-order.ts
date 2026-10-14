@@ -10,6 +10,7 @@ import {
   type DeployableScript,
   type PublishedDeployableScript,
 } from "./deployable-scripts.fault-proof-step-contract-names.js";
+import { publicDeploymentBlueprintRegistry } from "./deployment-blueprint-registry.js";
 
 export type DeployableScriptSectionId =
   keyof typeof DEPLOYABLE_SCRIPT_CATALOGUE;
@@ -78,7 +79,6 @@ export const PUBLICATION_ORDER: readonly PublicationStep[] = [
   "correctionLock",
   // Sections with no published script, listed so this order covers every
   // section of the catalogue.
-  "escapeHatch",
   "txOrder",
 ];
 
@@ -140,16 +140,21 @@ const resolveSpec = (spec: DeployableScriptSpec): DeployableScript => ({
 /** Every script the deployment manifest records, in manifest order. */
 export const manifestDeployableScripts = (
   contracts: SDK.MidgardValidators,
-): readonly DeployableScript[] =>
-  MANIFEST_ORDER.flatMap((id) =>
+): readonly DeployableScript[] => {
+  const scripts = MANIFEST_ORDER.flatMap((id) =>
     DEPLOYABLE_SCRIPT_CATALOGUE[id](contracts).map(resolveSpec),
   );
+  publicDeploymentBlueprintRegistry(scripts);
+  return scripts;
+};
 
 /** Every script published as a reference script, in publication order. */
 export const publishedDeployableScripts = (
   contracts: SDK.MidgardValidators,
-): readonly PublishedDeployableScript[] =>
-  PUBLICATION_ORDER.flatMap((step) =>
+): readonly PublishedDeployableScript[] => {
+  // Run the complete census before selecting only the scripts this command publishes.
+  manifestDeployableScripts(contracts);
+  return PUBLICATION_ORDER.flatMap((step) =>
     sectionSpecs(contracts, step).flatMap((spec) => {
       if (!spec.referenceScript || !spec.publishable()) {
         return [];
@@ -160,3 +165,4 @@ export const publishedDeployableScripts = (
         : [{ ...resolved, role: resolved.role }];
     }),
   );
+};

@@ -1,9 +1,9 @@
-use aiken/builtin
 use aiken/cbor
 use aiken/crypto.{ScriptHash, blake2b_256}
 use cardano/address.{Credential}
 use cardano/assets.{PolicyId}
 use cardano/transaction.{Transaction}
+use midgard/cbor_deserialise
 use midgard/fraud_proofs/field_opening_v1.{
   BodyAnchor, BodyTxOpening, FieldOpeningV1, NativeTxAnchorV1,
   anchored_field_walk, anchored_native_tx, anchored_native_tx_version,
@@ -22,7 +22,6 @@ use midgard/ledger_state
 use midgard/native_tx_field_access_v1.{FieldCarriageV1}
 use midgard/native_tx_machine_walk_v1 as walk
 use midgard/transition_trace.{IndexedTraceProof, RootMembershipProof}
-use midgard/validation_claim_v1
 
 /// Spend inputs deleted per phase-1 step. A compiled constant, so the
 /// successor of a phase-1 state is unique: each step deletes exactly
@@ -64,7 +63,9 @@ validator l2_open(
     expect [trace_data, _, source_data] = one_step_witness(fault, 4)
     expect trace_proof: IndexedTraceProof = trace_data
     expect source_membership: RootMembershipProof<ByteArray, ByteArray> = source_data
-    expect Some(source_data) = cbor.deserialise(source_membership.value)
+    let source_data <- cbor_deserialise.expect_deserialise(
+      source_membership.value,
+    )
     expect source: ledger_state.L2TransactionSourceV1 = source_data
     let anchored = anchored_native_tx(
       BodyTxOpening { native_tx_compact_cbor: source.source.compact_cbor },
@@ -346,93 +347,6 @@ validator l2_replay(dispatcher: ScriptHash) {
         },
       )
     }
-  }
-
-  else(_) {
-    fail
-  }
-}
-
-fn claim(
-  dispatcher: ScriptHash,
-  tx: Transaction,
-) -> (ledger_state.HeaderV1, validation_claim_v1.ValidationClaimWitnessV1) {
-  let (header_data, fault, _) = dispatched(
-    dispatcher,
-    tx.inputs,
-    tx.redeemers,
-    tx.reference_inputs,
-  )
-  expect builtin.unconstr_index(fault) == 9
-  expect [witness] = builtin.unconstr_fields(fault)
-  expect [claim_data, _] = builtin.unconstr_fields(witness)
-  expect header: ledger_state.HeaderV1 = header_data
-  expect claim: validation_claim_v1.ValidationClaimWitnessV1 = claim_data
-  (header, claim)
-}
-
-validator claim_structure(dispatcher: ScriptHash) {
-  withdraw(_redeemer: Data, _credential: Credential, tx: Transaction) {
-    let (header, witness) = claim(dispatcher, tx)
-    expect
-      validation_claim_v1.committed_claim_structure_is_valid(header, witness)
-    let (datum, args) = delegation.dispatch(dispatcher, tx.inputs, tx.redeemers)
-    expect Some(state) = datum.data
-    expect state.kind == 2 && state.phase == 0
-    delegation.advance(
-      datum,
-      args,
-      tx.outputs,
-      delegation.State { ..state, phase: 1 },
-    )
-  }
-
-  else(_) {
-    fail
-  }
-}
-
-validator claim_source(dispatcher: ScriptHash) {
-  withdraw(_redeemer: Data, _credential: Credential, tx: Transaction) {
-    let (header, witness) = claim(dispatcher, tx)
-    expect
-      validation_claim_v1.committed_claim_source_is_authenticated(
-        header,
-        witness,
-      )
-    let (datum, args) = delegation.dispatch(dispatcher, tx.inputs, tx.redeemers)
-    expect Some(state) = datum.data
-    expect state.kind == 2 && state.phase == 1
-    delegation.advance(
-      datum,
-      args,
-      tx.outputs,
-      delegation.State { ..state, phase: 2 },
-    )
-  }
-
-  else(_) {
-    fail
-  }
-}
-
-validator claim_endpoints(dispatcher: ScriptHash) {
-  withdraw(_redeemer: Data, _credential: Credential, tx: Transaction) {
-    let (header, witness) = claim(dispatcher, tx)
-    expect
-      validation_claim_v1.committed_claim_endpoints_and_source_are_valid(
-        header,
-        witness,
-      )
-    let (datum, args) = delegation.dispatch(dispatcher, tx.inputs, tx.redeemers)
-    expect Some(state) = datum.data
-    expect state.kind == 2 && state.phase == 2
-    delegation.advance(
-      datum,
-      args,
-      tx.outputs,
-      delegation.State { ..state, phase: 3 },
-    )
   }
 
   else(_) {

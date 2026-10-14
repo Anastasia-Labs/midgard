@@ -74,7 +74,6 @@ export const makeAlwaysSucceedsService: Effect.Effect<SDK.MidgardValidators> =
     const registeredOperators = yield* mkAuthVal("registered_operators");
     const activeOperators = yield* mkAuthVal("active_operators");
     const retiredOperators = yield* mkAuthVal("retired_operators");
-    const escapeHatch = yield* mkAuthVal("escape_hatch");
     const fraudProofCatalogue = yield* mkAuthVal("fraud_proof_catalogue");
     const fraudProof = yield* mkAuthVal("fraud_proof");
     const deposit = yield* mkAuthVal("deposit");
@@ -151,11 +150,11 @@ export const makeAlwaysSucceedsService: Effect.Effect<SDK.MidgardValidators> =
     const invalidSignature = invalidRange;
 
     const validationTraceSemanticResolvers = Array.from(
-      { length: 91 },
+      { length: 83 },
       () => transitionTrace,
     );
     const validationTracePrepareResolvers = Array.from(
-      { length: 14 },
+      { length: 13 },
       () => transitionTrace,
     );
     const validationTraceCanonicalDecodeItemStages = {
@@ -374,9 +373,6 @@ export const makeAlwaysSucceedsService: Effect.Effect<SDK.MidgardValidators> =
           l2Outputs: stateQueueYield,
           l2Summaries: stateQueueYield,
           l2Replay: stateQueueYield,
-          claimStructure: stateQueueYield,
-          claimSource: stateQueueYield,
-          claimEndpoints: stateQueueYield,
           depositProjection: stateQueueYield,
           l1Event: stateQueueYield,
           forcedTiming: stateQueueYield,
@@ -519,7 +515,6 @@ export const makeAlwaysSucceedsService: Effect.Effect<SDK.MidgardValidators> =
       registeredOperators,
       activeOperators,
       retiredOperators,
-      escapeHatch,
       fraudProofCatalogue,
       computationThread: fraudProof,
       fraudProof,

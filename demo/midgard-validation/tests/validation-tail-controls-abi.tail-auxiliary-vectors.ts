@@ -1,4 +1,5 @@
 import { encodeCbor } from "@al-ft/midgard-core";
+import { encodeMidgardRejectionReasonV1Cbor } from "@al-ft/midgard-core/validation-trace";
 import { fixtureBytes } from "@al-ft/midgard-test-support/hex";
 import { Constr, Data } from "@lucid-evolution/lucid";
 import { blake2b } from "@noble/hashes/blake2.js";
@@ -31,41 +32,6 @@ const mutationStep = {
   postNonzeroAssetCount: 1,
 } as const;
 
-export const descriptor = {
-  version: 1,
-  frameCount: 0,
-  terminalCursor: 0,
-  frontier: emptyFrontier,
-} as const;
-
-const foldControl = {
-  nextFrameIndex: 0,
-  expectedNextCursor: 0,
-  includingRoot: fixtureBytes(0x34, 32),
-  excludingRoot: fixtureBytes(0x35, 32),
-} as const;
-
-const mutation = {
-  operation: { type: "delete", key: bytes("01") } as const,
-  preRoot: fixtureBytes(0x36, 32),
-  postRoot: fixtureBytes(0x37, 32),
-  deletionOpening: Buffer.alloc(0),
-  proofFoldTrace: {
-    descriptor,
-    frames: [],
-    initial: foldControl,
-    steps: [],
-    terminal: foldControl,
-  },
-} as const;
-
-const operationMembership = {
-  frontier: emptyFrontier,
-  leafIndex: 0,
-  leafHash: fixtureBytes(0x38, 32),
-  siblings: [],
-} as const;
-
 const chunkProof = {
   version: 1,
   fieldIndex: 5,
@@ -75,14 +41,6 @@ const chunkProof = {
   chunk: bytes("12"),
   frontier: emptyFrontier,
   siblings: [],
-} as const;
-
-const proofFrame = {
-  version: 1,
-  frameIndex: 0,
-  cursor: 0,
-  nextCursor: 1,
-  step: { kind: "branch", skip: 0, neighbors: Buffer.alloc(0) },
 } as const;
 
 const auxiliary = (value: Auxiliary): Auxiliary => value;
@@ -136,50 +94,7 @@ export const tailAuxiliaryVectors = [
     }),
   ],
   [
-    27,
-    4,
-    auxiliary({
-      kind: "ledgerDeltaReplay",
-      sourceKind: "reference",
-      key: bytes("02"),
-      nextScheduleHash: fixtureBytes(0x45, 32),
-      value: bytes("03"),
-    }),
-  ],
-  [
-    28,
-    3,
-    auxiliary({
-      kind: "ledgerDeltaOutput",
-      outputIndex: 3,
-      descriptorCbor: bytes("8100"),
-      siblings: [fixtureBytes(0x46, 32)],
-    }),
-  ],
-  [
     34,
-    3,
-    auxiliary({
-      kind: "ledgerDeltaProofFrame",
-      frame: proofFrame,
-      siblings: [fixtureBytes(0x47, 32)],
-      opening: fixtureBytes(0x48, 32),
-    }),
-  ],
-  [
-    35,
-    4,
-    auxiliary({
-      kind: "ledgerDeltaOperation",
-      operationKind: "delete",
-      key: bytes("01"),
-      value: Buffer.alloc(0),
-      mutationStep: mutation,
-      operationMembership,
-    }),
-  ],
-  [
-    38,
     3,
     auxiliary({
       kind: "valueOutputDescriptor",
@@ -189,7 +104,7 @@ export const tailAuxiliaryVectors = [
     }),
   ],
   [
-    39,
+    35,
     2,
     auxiliary({
       kind: "mintFoldAsset",
@@ -220,14 +135,6 @@ export const decodeExactTailAuxiliary = (cborHex: string): Constr<Data> => {
   }
   return decoded;
 };
-
-const encodeFrontier = (
-  peaks: readonly {
-    readonly height: number;
-    readonly hash: Uint8Array;
-  }[],
-): readonly (readonly [bigint, Buffer])[] =>
-  peaks.map(({ height, hash }) => [BigInt(height), Buffer.from(hash)]);
 
 const nativeControlCbor = encodeCbor([
   bytes("01"),
@@ -280,52 +187,9 @@ export const valueAndMintControlCbor = encodeCbor([
   valueAccumulatorCbor,
 ]);
 
-const proofDescriptorCbor = encodeCbor([1n, 0n, 0n, []]);
-
-export const pendingMutationCbor = encodeCbor([
-  1n,
-  0n,
-  1n,
-  bytes("0102"),
-  bytes("0304"),
-  proofDescriptorCbor,
-  -1n,
-  Buffer.alloc(0),
-  Buffer.alloc(0),
-  0n,
-]);
-
-export const ledgerDeltaControlCbor = encodeCbor([
-  0n,
-  fixtureBytes(0x61, 32),
-  0n,
-  [],
-  1n,
-  fixtureBytes(0x62, 32),
-  0n,
-  fixtureBytes(0x63, 32),
-  fixtureBytes(0x64, 32),
-  fixtureBytes(0x65, 32),
-  0n,
-  0n,
-  pendingMutationCbor,
-  [],
-]);
-
-const acceptanceFrontier = {
-  count: 2,
-  peaks: [{ height: 1, hash: fixtureBytes(0x71, 32) }],
-} as const;
-
-export const acceptanceFrontierCbor = encodeCbor([
-  BigInt(acceptanceFrontier.count),
-  encodeFrontier(acceptanceFrontier.peaks),
-]);
-
 export const terminalAcceptanceCbor = encodeValidationTerminalWitnessCbor({
   verdict: "accepted",
-  postLedgerRoot: fixtureBytes(0x72, 32),
-  ledgerDeltaFrontier: acceptanceFrontier,
 });
 
-export const rejectionCode = Buffer.from("E_VALUE_NOT_PRESERVED", "ascii");
+export const rejectionReasonCbor =
+  encodeMidgardRejectionReasonV1Cbor("ValueNotPreserved");

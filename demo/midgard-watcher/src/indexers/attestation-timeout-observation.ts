@@ -15,6 +15,7 @@ export type WatcherAttestationTimeoutObservation = Readonly<
       snapshotDigest: string;
       headerHash: string;
       headerEndTimeMs: string;
+      headerBlockTimeMs: string;
       daAttestationApplied: true;
     }
   | {
@@ -22,6 +23,7 @@ export type WatcherAttestationTimeoutObservation = Readonly<
       snapshotDigest: string;
       headerHash: string;
       headerEndTimeMs: string;
+      headerBlockTimeMs: string;
       deadlineMs: string;
       remainingMs: string;
       daAttestationApplied: false;
@@ -58,7 +60,7 @@ export const deriveWatcherAttestationTimeoutObservation = ({
       .filter((header) => header.daAttestationPolicyId === null)
       .reduce<
         WatcherStateQueueSnapshot["queue"][number] | undefined
-      >((earliest, header) => (earliest === undefined || BigInt(header.endTime) < BigInt(earliest.endTime) ? header : earliest), undefined) ??
+      >((earliest, header) => (earliest === undefined || BigInt(header.blockTime) < BigInt(earliest.blockTime) ? header : earliest), undefined) ??
     snapshot.queue[0];
   if (head === undefined) {
     return {
@@ -72,10 +74,11 @@ export const deriveWatcherAttestationTimeoutObservation = ({
       snapshotDigest: snapshot.snapshotDigest,
       headerHash: head.headerHash,
       headerEndTimeMs: head.endTime,
+      headerBlockTimeMs: head.blockTime,
       daAttestationApplied: true,
     };
   }
-  const deadlineMs = BigInt(head.endTime) + DA_ATTESTATION_TIMEOUT_MS;
+  const deadlineMs = BigInt(head.blockTime) + DA_ATTESTATION_TIMEOUT_MS;
   const remainingMs = deadlineMs - nowMs;
   return {
     status:
@@ -87,6 +90,7 @@ export const deriveWatcherAttestationTimeoutObservation = ({
     snapshotDigest: snapshot.snapshotDigest,
     headerHash: head.headerHash,
     headerEndTimeMs: head.endTime,
+    headerBlockTimeMs: head.blockTime,
     deadlineMs: deadlineMs.toString(),
     remainingMs: remainingMs.toString(),
     daAttestationApplied: false,

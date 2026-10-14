@@ -298,6 +298,8 @@ export const classifyForcedTransactions = ({
         ledgerWitnessEntries,
         ledgerMutationSteps,
         rejectionCode,
+        rejectionReason:
+          verdict === "ForcedTxValid" ? null : verdict.ForcedTxInvalid.reason,
         programMaterialSidecarCbor,
       });
     }

@@ -124,12 +124,12 @@ test forced_source_rejects_foreign_witnesses() {
 test forced_source_binds_reason_subject() {
   let value = leaf(
     reason.ForcedTxInvalid {
-      reason: reason.PlutusExecutionFailed { execution_index: 0 },
+      reason: reason.PlutusExecutionFailed { purpose_kind: 0, purpose_index: 0 },
     },
   )
   let changed = leaf(
     reason.ForcedTxInvalid {
-      reason: reason.PlutusExecutionFailed { execution_index: 1 },
+      reason: reason.PlutusExecutionFailed { purpose_kind: 0, purpose_index: 1 },
     },
   )
   and {
@@ -142,7 +142,7 @@ test forced_source_kind_is_authenticated() fail {
   expect _view = codec.decode_tx_compact_view_v1(vt.Normal, compact)
 }
 
-test forced_source_rejection_preserves_claimed_delta() {
+test forced_source_rejection_preserves_the_immutable_context() {
   let pre = vt.ValidationMachineStateV1 {
     machine_version: 1,
     event_key_hash: tx_id,
@@ -158,19 +158,18 @@ test forced_source_rejection_preserves_claimed_delta() {
     execution_memory: 0,
     verdict: vt.Pending,
     rejection_code_hash: #"0000000000000000000000000000000000000000000000000000000000000000",
-    ledger_delta_root: commitment,
   }
   let post = vt.ValidationMachineStateV1 {
     ..pre,
     phase: vt.Terminal,
     program_counter: 1,
     verdict: vt.Rejected,
-    rejection_code_hash: vt.hash_rejection_code(reason.reject_min_fee),
+    rejection_code_hash: vt.hash_rejection_code(reason.FeeBelowMinimum),
     work_root: vt.hash_work_witness(
       vt.Terminal,
       1,
       shared.encode_terminal_rejection_witness(
-        reason.reject_min_fee,
+        reason.FeeBelowMinimum,
         pre.prior_ledger_root,
       ),
     ),
@@ -181,14 +180,14 @@ test forced_source_rejection_preserves_claimed_delta() {
   }
   and {
     shared.structural_transition_is_valid(pre, witness),
-    shared.rejected_successor_is_exact(pre, post, reason.reject_min_fee),
+    shared.rejected_successor_is_exact(pre, post, reason.FeeBelowMinimum),
     !shared.structural_transition_is_valid(
       pre,
       machine_types.ValidationOneStepWitnessV1 {
         ..witness,
         claimed_successor: vt.ValidationMachineStateV1 {
           ..post,
-          ledger_delta_root: tx_id,
+          prior_ledger_root: commitment,
         },
       },
     ),

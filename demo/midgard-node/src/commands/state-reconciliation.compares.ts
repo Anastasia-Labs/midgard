@@ -76,7 +76,7 @@ export const COMPARES: Record<CheckId, string> = {
   "ledger-cache":
     "SQL mempool_ledger vs the ledger recomputed at the committed tip (or active journal) plus unincluded projected deposit rows plus the effects of every mempool and processed_mempool transaction",
   "da-attestation":
-    "DA status of every unmerged L1 state-queue header (provider) vs its attestation deadline, header end_time + da_attestation_timeout_ms of the selected deployment profile, at the wall-clock time of the L1 read",
+    "DA status of every unmerged L1 state-queue header (provider) vs its attestation deadline, node block_time + da_attestation_timeout_ms of the selected deployment profile, at the wall-clock time of the L1 read",
 };
 
 // ---------------------------------------------------------------------------
@@ -99,6 +99,7 @@ export type L1QueueHeader = {
   readonly recomputedHeaderHash: string | null;
   readonly prevHeaderHash: string | null;
   readonly endTimeMs: number | null;
+  readonly blockTimeMs: number | null;
   readonly roots: HeaderRoots | null;
   /** The node's on-chain DA status; null when undecodable. */
   readonly daStatus: SDK.DaAvailabilityStateQueueStatusKind | null;

@@ -223,8 +223,7 @@ inputs. It has these ordered phases:
 12. PlutusV3/MidgardV1 context construction and CEK execution for spend, mint,
     receive/protected-output, and observe purposes;
 13. multi-asset input/output/mint/fee accounting;
-14. ledger-delta verification (`LedgerDelta`);
-15. absorbing acceptance or rejection (`Terminal`).
+14. absorbing acceptance or rejection (`Terminal`).
 
 The phase code order above is consensus data. The sole pre-launch machine
 version is `1`; it includes authenticated source constants, a distinct
@@ -234,16 +233,13 @@ accepted deployment versions. See
 [`consensus-profile.ts`](../demo/midgard-core/src/consensus-profile.ts).
 
 Every state commits the phase, program counter, immutable transaction/source
-commitment, prior ledger root, the operator's claimed ledger delta root,
-work-stack roots, accumulated execution units, and current verdict. A terminal
-state is absorbing, which makes Merkle padding unambiguous.
+commitment, prior ledger root, work-stack roots, accumulated execution units,
+and current verdict. A terminal state is absorbing, which makes Merkle padding
+unambiguous.
 
-The claimed ledger delta root is part of the state's immutable context: it is
-supplied once with the initial state and is carried unchanged by every
-transition (`validation-machine/` `immutable_context_matches`) and across
-the committed claim endpoints (`validation-claim-v1.ak`). No instruction writes
-it; the accepting terminal reconstructs the operation frontier independently and
-compares it against the claim.
+The machine state carries no ledger delta commitment. An accepting execution
+moves from multi-asset accounting directly to `Terminal`, whose acceptance work
+witness is the fixed `[1, h'']`.
 
 The same initial-state constructor and machine apply to normal and forced
 transactions. Source authentication differs; transaction semantics do not.
@@ -329,9 +325,7 @@ itself commits `post root = prior root` with an empty operation list
 `pre_utxos_root == post_utxos_root` for a `Rejected` descriptor
 (`validation-claim-v1.ak`); and any actual ledger movement on an invalid
 forced transaction is a unilateral fault
-(`fraud-proofs/transition-trace/proof.ak`). The machine state's claimed ledger
-delta root is immutable context (§5) and is carried forward unchanged by a
-rejecting terminal.
+(`fraud-proofs/transition-trace/proof.ak`).
 
 V1 requires the same accepted-transaction transition witness for valid forced
 transactions as for normal L2 transactions, with forced-source membership and

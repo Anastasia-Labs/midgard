@@ -8,6 +8,7 @@ import { attestationTimeoutCorrectionReadinessBounds } from "../fibers/index.js"
 import { READINESS_L1_PROVIDER_PROBE_TIMEOUT_MS } from "../l1-provider-readiness-probe.js";
 import { submitSlotEvidence } from "../l1-provider-view.js";
 import { deploymentIdentityDigestOf } from "../l1-queue-terminals/index.js";
+import { readFollowerWriteGate } from "../services/follower-write-gate.js";
 import { followerWriteGateReasons } from "../services/follower-write-gate.local.js";
 import { commitBuildAlarmReadiness } from "../services/globals.commit-build-alarms.js";
 import {
@@ -35,7 +36,9 @@ import {
   DEFAULT_MIN_QUEUE_LENGTH_FOR_MERGING,
   planMergePreflight,
 } from "../transactions/state-queue/merge-readiness.js";
+import { commitPlanningReadiness } from "../workers/commit-planning-notice.js";
 import { runL1ProviderPreflight } from "./l1-provider-preflight.js";
+import { publicReadinessPresentation } from "./listen-readiness-public-presentation.js";
 import {
   L1_TRANSPORT_UNREADY,
   l1ProviderReadiness,
@@ -81,13 +84,13 @@ export const getReadinessHandler = Effect.gen(function* () {
   );
   if (databaseState._tag === "Left") {
     return yield* HttpServerResponse.json(
-      {
+      publicReadinessPresentation({
         settlement: yield* Ref.get(globals.SETTLEMENT_HEALTH),
         ready: false,
         reasons: ["db_unhealthy"],
         details: [],
         dbError: readinessDatabaseError(databaseState.left),
-      },
+      }),
       { status: 503 },
     );
   }
@@ -464,10 +467,24 @@ export const getReadinessHandler = Effect.gen(function* () {
     l1Follower: l1Follower.report,
     livenessReasons,
     commitDaFramePressure,
+    commitPlanningProgress: commitPlanningReadiness({
+      snapshot: yield* Ref.get(globals.COMMIT_PLANNING),
+      gate: (yield* Effect.option(readFollowerWriteGate)).pipe(
+        Option.getOrUndefined,
+      ),
+      localEpoch: gateLocal.epoch,
+      recomputing: gateLocal.recomputing,
+      deploymentFingerprint: deploymentIdentity.manifestId,
+      nowMs: nowMillis,
+      maxAgeMs: nodeConfig.READINESS_MAX_HEARTBEAT_AGE_MS,
+    }),
     mergeReadiness,
   };
 
-  return yield* HttpServerResponse.json(readiness, {
-    status: readiness.ready ? 200 : 503,
-  });
+  return yield* HttpServerResponse.json(
+    publicReadinessPresentation(readiness),
+    {
+      status: readiness.ready ? 200 : 503,
+    },
+  );
 });

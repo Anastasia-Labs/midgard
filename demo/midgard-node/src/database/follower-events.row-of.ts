@@ -9,6 +9,7 @@ import type { Network } from "@lucid-evolution/lucid";
 
 import { userEventEntry } from "../l1-events/entries.js";
 import * as Deposits from "./deposits.js";
+import { withdrawalLedgerOutRefColumns } from "./withdrawal-ledger-outref.decode.js";
 import * as Withdrawals from "./withdrawals.js";
 
 /** The 34-byte admission outref: tx hash || u16 big-endian output index. */
@@ -66,6 +67,7 @@ export const rowOf = (
     [Withdrawals.Columns.WITHDRAWAL_L1_OUTPUT_INDEX]: entry.l1OutputIndex,
     [Withdrawals.Columns.ASSET_NAME]: Buffer.from(entry.assetName, "hex"),
     [Withdrawals.Columns.L2_OUTREF]: Buffer.from(entry.l2Outref, "hex"),
+    ...withdrawalLedgerOutRefColumns(Buffer.from(entry.l2Outref, "hex")),
     [Withdrawals.Columns.L2_OWNER]: Buffer.from(entry.l2Owner, "hex"),
     [Withdrawals.Columns.L2_VALUE]: Buffer.from(entry.l2Value, "hex"),
     [Withdrawals.Columns.L1_ADDRESS]: Buffer.from(entry.l1Address, "hex"),

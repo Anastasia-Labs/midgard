@@ -11,9 +11,9 @@ import type { PromiseCapacityPoint } from "../availability/promise-capacity-evid
 import type { StateQueueHeaderRecord } from "../domain.js";
 import { FollowerPointBeyondRetentionError } from "../l1/follower/availability-reads.js";
 import type { CommitteeStore, StoreData } from "../store.committee-store.js";
+import { storedHeaderBlockTimeMs } from "./retention.block-time.js";
 import { mintRetirementCertificate } from "./retirement-certificate.js";
 import {
-  authenticatedHeaderEnd,
   type CommitteeRetirementBinding,
   type CommitteeRetirementFloor,
   type CommitteeRetirementGuard,
@@ -356,7 +356,7 @@ export const committeeRetirementSource = (
       const headers = Object.values(data.stateQueueHeaders);
       const canExpire = headers.some(
         (h) =>
-          authenticatedHeaderEnd(h) + binding.retentionDays * 86400000 < time,
+          storedHeaderBlockTimeMs(h) + binding.retentionDays * 86400000 < time,
       );
       if (!canExpire) {
         await assertCurrent();

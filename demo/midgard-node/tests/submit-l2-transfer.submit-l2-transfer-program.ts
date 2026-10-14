@@ -179,19 +179,21 @@ describe("submit-l2-transfer program", () => {
     let expectedTxId = "";
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
-    fetchMock.mockImplementationOnce(async () => ({
-      ok: true,
-      status: 200,
-      text: async () =>
-        JSON.stringify({
-          utxos: [
-            {
-              outref: senderUtxo.outrefCbor.toString("hex"),
-              outputCbor: senderUtxo.outputCbor.toString("hex"),
-            },
-          ],
-        }),
-    }));
+    fetchMock.mockImplementationOnce(
+      async () =>
+        new Response(
+          JSON.stringify({
+            utxos: [
+              {
+                outref: senderUtxo.outrefCbor.toString("hex"),
+                outputCbor: senderUtxo.outputCbor.toString("hex"),
+              },
+            ],
+            nextCursor: null,
+          }),
+          { status: 200 },
+        ),
+    );
     fetchMock.mockImplementationOnce(
       async (_input: string, init?: RequestInit) => {
         expect(init?.headers).toMatchObject({

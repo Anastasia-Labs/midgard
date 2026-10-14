@@ -429,3 +429,35 @@ describe("watcher Timeout collateral (spec #685 G9)", () => {
     );
   });
 });
+
+it("keeps an accepted catch-up header challengeable after coverage end", () => {
+  const { attested } = fixture();
+  const queue = attested.queue!;
+  const node = Data.castFrom(queue.datum.data, SDK.StateQueueNode);
+  const snapshot = {
+    ...attested,
+    queue: {
+      ...queue,
+      datum: {
+        ...queue.datum,
+        data: Data.castTo({ ...node, block_time: 50_000n }, SDK.StateQueueNode),
+      },
+    },
+  };
+  expect(
+    selectWatcherAvailabilityAction(
+      snapshot,
+      false,
+      20_000n,
+      openWindow(20_000n),
+    ),
+  ).toEqual({ action: "open" });
+  expect(
+    selectWatcherAvailabilityAction(
+      snapshot,
+      false,
+      20_000n,
+      openWindow(51_000n),
+    ),
+  ).toBeNull();
+});

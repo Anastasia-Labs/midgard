@@ -77,6 +77,7 @@ export const utxosOf =
           outref: utxo.outrefCbor.toString("hex"),
           outputCbor: utxo.outputCbor.toString("hex"),
         })),
+        nextCursor: null,
       }),
       { status: 200 },
     );

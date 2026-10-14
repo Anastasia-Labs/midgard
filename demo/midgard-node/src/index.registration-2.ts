@@ -1,3 +1,4 @@
+import { SELECTED_DEPLOYMENT_PROFILE } from "@al-ft/midgard-core/deployment-profile";
 import { Effect } from "effect";
 
 import * as AddressFromSeed from "./commands/address-from-seed.js";
@@ -13,6 +14,10 @@ import * as DaBondFiles from "./commands/da-bond-files.js";
 import * as L1ProviderPreflightCommand from "./commands/l1-provider-preflight.js";
 import * as L1UtxosCommand from "./commands/l1-utxos.js";
 import { runListen } from "./commands/listen.cli-runtime.js";
+import {
+  isPublicDeploymentProfile,
+  readMountedHttpFile,
+} from "./commands/listen-public-http.js";
 import * as MigrationRunner from "./database/migrations/runner.js";
 import {
   daBond,
@@ -238,8 +243,12 @@ program
     "Derive the Cardano address for a seed phrase on an explicit network",
   )
   .requiredOption(
-    "--seed-phrase <seedPhrase>",
-    "Quoted BIP-39 seed phrase used to derive the payment address",
+    isPublicDeploymentProfile(SELECTED_DEPLOYMENT_PROFILE.name)
+      ? "--seed-phrase-file <path>"
+      : "--seed-phrase <seedPhrase>",
+    isPublicDeploymentProfile(SELECTED_DEPLOYMENT_PROFILE.name)
+      ? "Private mounted BIP-39 file used to derive the payment address"
+      : "Quoted BIP-39 seed phrase for an explicit testing profile",
   )
   .option("--network <network>", "Override network; defaults to NETWORK")
   .action(async (_args, options) => {
@@ -248,7 +257,11 @@ program
         network: options.opts().network,
       });
       const address = AddressFromSeed.deriveAddressFromSeedPhrase(
-        options.opts().seedPhrase,
+        isPublicDeploymentProfile(SELECTED_DEPLOYMENT_PROFILE.name)
+          ? readMountedHttpFile(options.opts().seedPhraseFile, true).toString(
+              "utf8",
+            )
+          : options.opts().seedPhrase,
         network,
       );
       process.stdout.write(`${address}\n`);

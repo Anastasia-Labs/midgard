@@ -2,28 +2,20 @@ use aiken/builtin
 use aiken/cbor
 use aiken/collection/list
 use aiken/crypto.{blake2b_256}
-use aiken/merkle_patricia_forestry as mpf
 use aiken/primitive/bytearray
 use cardano/transaction.{OutputReference}
 use midgard/bounded_item_v1
+use midgard/cbor_deserialise
 use midgard/ledger_state
-use midgard/mpf_proof_fold_v1
 use midgard/rejection_reason_v1
 use midgard/transition_trace
 use midgard/validation_claim_v1
 use midgard/validation_machine/machine_types as vm_machine_types
 use midgard/validation_machine/shared as vm_shared
 use midgard/validation_machine/witness as vm_witness
-use midgard/validation_merkle_v1
 use midgard/validation_trace_v1
 
 const h41 = #"4141414141414141414141414141414141414141414141414141414141414141"
-
-const h45 = #"4545454545454545454545454545454545454545454545454545454545454545"
-
-const h46 = #"4646464646464646464646464646464646464646464646464646464646464646"
-
-const h47 = #"4747474747474747474747474747474747474747474747474747474747474747"
 
 const h48 = #"4848484848484848484848484848484848484848484848484848484848484848"
 
@@ -43,36 +35,18 @@ const h57 = #"5757575757575757575757575757575757575757575757575757575757575757"
 
 const h58 = #"5858585858585858585858585858585858585858585858585858585858585858"
 
-const h61 = #"6161616161616161616161616161616161616161616161616161616161616161"
-
-const h62 = #"6262626262626262626262626262626262626262626262626262626262626262"
-
-const h63 = #"6363636363636363636363636363636363636363636363636363636363636363"
-
-const h64 = #"6464646464646464646464646464646464646464646464646464646464646464"
-
-const h65 = #"6565656565656565656565656565656565656565656565656565656565656565"
-
-const h71 = #"7171717171717171717171717171717171717171717171717171717171717171"
-
-const h72 = #"7272727272727272727272727272727272727272727272727272727272727272"
-
 const h73 = #"7373737373737373737373737373737373737373737373737373737373737373"
 
 const expected_value_accumulator_cbor =
   #"8407582054545454545454545454545454545454545454545454545454545454545454540201"
 
-const expected_pending_mutation_cbor =
-  #"8a01000142010242030445840100008020404000"
-
-const expected_terminal_acceptance_cbor =
-  #"840140582072727272727272727272727272727272727272727272727272727272727272725827820281820158207171717171717171717171717171717171717171717171717171717171717171"
+const expected_terminal_acceptance_cbor = #"820140"
 
 const expected_terminal_rejection_cbor =
-  #"840255455f56414c55455f4e4f545f505245534552564544582073737373737373737373737373737373737373737373737373737373737373734180"
+  #"8402d9052780582073737373737373737373737373737373737373737373737373737373737373734180"
 
 const forced_source_membership_cbor =
-  #"d8799fd8799fd87a80582011111111111111111111111111111111111111111111111111111111111111115820121212121212121212121212121212121212121212121212121212121212121201d8799f5820131313131313131313131313131313131313131313131313131313131313131304ffd8799f58201414141414141414141414141414141414141414141414141414141414141414d8799f428101428102428103ffd87a9fd905229f00ffffff80ffff"
+  #"d8799fd8799fd87a80582011111111111111111111111111111111111111111111111111111111111111115820121212121212121212121212121212121212121212121212121212121212121201d8799f5820131313131313131313131313131313131313131313131313131313131313131304ffd8799f58201414141414141414141414141414141414141414141414141414141414141414d8799f428101428102428103ffd87a9fd905229f0000ffffff80ffff"
 
 const normal_source_membership_cbor =
   #"d87a9fd8799fd87b8058202121212121212121212121212121212121212121212121212121212121212121582022222222222222222222222222222222222222222222222222222222222222220158202323232323232323232323232323232323232323232323232323232323232323d8799f58202323232323232323232323232323232323232323232323232323232323232323d8799f43820102428104428105ffff80ffff"
@@ -125,25 +99,6 @@ fn value_mutation() -> vm_machine_types.ValueAssetMutationWitnessV1 {
   }
 }
 
-fn proof_descriptor() -> mpf_proof_fold_v1.ProofDescriptorV1 {
-  mpf_proof_fold_v1.ProofDescriptorV1 {
-    version: 1,
-    frame_count: 0,
-    terminal_cursor: 0,
-    peaks: [],
-  }
-}
-
-fn proof_frame() -> mpf_proof_fold_v1.ProofFrameV1 {
-  mpf_proof_fold_v1.ProofFrameV1 {
-    version: 1,
-    frame_index: 0,
-    cursor: 0,
-    next_cursor: 1,
-    step: mpf.Branch { skip: 0, neighbors: #"" },
-  }
-}
-
 fn chunk_proof() -> bounded_item_v1.ChunkProofV1 {
   bounded_item_v1.ChunkProofV1 {
     version: 1,
@@ -191,34 +146,6 @@ fn tail_auxiliaries() -> List<vm_machine_types.ValidationAuxiliaryWitnessV1> {
       siblings: [],
       mutation: value_mutation(),
     },
-    vm_machine_types.LedgerDeltaReplayWitness {
-      source_kind: 1,
-      key: #"02",
-      next_schedule_hash: h45,
-      value: #"03",
-    },
-    vm_machine_types.LedgerDeltaOutputWitness {
-      output_index: 3,
-      descriptor_cbor: #"8100",
-      siblings: [h46],
-    },
-    vm_machine_types.LedgerDeltaProofFrameWitness {
-      frame: proof_frame(),
-      siblings: [h47],
-      opening: h48,
-    },
-    vm_machine_types.LedgerDeltaOperationWitness {
-      operation_kind: 0,
-      key: #"01",
-      value: #"",
-      operation_proof: vm_machine_types.LedgerDeltaOperationProofV1 {
-        descriptor: proof_descriptor(),
-        operation_count: 0,
-        operation_peaks: [],
-        operation_index: 0,
-        operation_siblings: [],
-      },
-    },
     vm_machine_types.ValueOutputDescriptorWitness {
       output_index: 4,
       descriptor_cbor: #"8101",
@@ -258,12 +185,8 @@ fn constructors_are_exact(
 test validation_tail_auxiliary_v1_typescript_corpus_is_exact() {
   let items = tail_auxiliaries()
   and {
-    constructors_are_exact(
-      items,
-      [24, 25, 26, 27, 28, 34, 35, 38, 39],
-      [11, 9, 6, 4, 3, 3, 4, 3, 2],
-    ),
-    blake2b_256(cbor.serialise(items)) == #"544436205849eb463fb2c0c4d4fcc461ff9d38fd44ad1c55d4107ff8f616f761",
+    constructors_are_exact(items, [24, 25, 26, 34, 35], [11, 9, 6, 3, 2]),
+    blake2b_256(cbor.serialise(items)) == #"3114ba14053a9ef071a2e5953f5d6006fff6bcf7e7482685f88a408e67d58e79",
   }
 }
 
@@ -315,75 +238,10 @@ test value_accumulator_update_and_control_v1_abi_is_exact() {
   }
 }
 
-fn pending_mutation() -> vm_machine_types.LedgerDeltaPendingMutationV1 {
-  vm_machine_types.LedgerDeltaPendingMutationV1 {
-    authorization_stage: 0,
-    operation_kind: 1,
-    key: #"0102",
-    value: #"0304",
-    descriptor: proof_descriptor(),
-    fold_control: mpf_proof_fold_v1.ProofFoldControlV1 {
-      next_frame_index: -1,
-      expected_next_cursor: 0,
-      including_root: #"",
-      excluding_root: #"",
-    },
-  }
-}
-
-test ledger_delta_control_operation_and_frontier_v1_abi_is_exact() {
-  let pending = pending_mutation()
-  let control = vm_machine_types.LedgerDeltaControlV1 {
-    resolved_input_count: 0,
-    resolved_inputs_accumulator: h61,
-    output_count: 0,
-    output_descriptor_peaks: [],
-    stage: 1,
-    replay_schedule_hash: h62,
-    replay_cursor: 0,
-    replay_accumulator: h63,
-    replay_remaining_schedule_hash: h64,
-    current_ledger_root: h65,
-    output_cursor: 0,
-    operation_count: 0,
-    operation_peaks: [],
-    pending_mutation_cbor: expected_pending_mutation_cbor,
-  }
-  let control_cbor = vm_witness.encode_ledger_delta_control_v1(control)
-  let deletion = vm_shared.ledger_delta_operation_leaf_hash(
-    0,
-    #"010203",
-    #"",
-    proof_descriptor(),
-  )
-  let insertion = vm_shared.ledger_delta_operation_leaf_hash(
-    1,
-    #"0405",
-    #"060708",
-    proof_descriptor(),
-  )
-  let frontier = validation_merkle_v1.build_frontier([deletion, insertion])
-  and {
-    vm_witness.encode_ledger_delta_pending_mutation_v1(pending) == expected_pending_mutation_cbor,
-    blake2b_256(control_cbor) == #"92e07c0c935ac73750a521ed638aed060414828d766774495885b56a04f5481b",
-    when cbor.deserialise(control_cbor) is {
-      None -> False
-      Some(data) -> list.length(builtin.un_list_data(data)) == 14
-    },
-    deletion == #"d70952a4347195627444cfbb1874f6857de1ad78f095460b76fc826cd267a589",
-    insertion == #"f8bc7029f5f58f0436ebdf6cbbb85bd9adac05d5f6dc1b9238c8166a517aa8db",
-    validation_merkle_v1.frontier_commitment(frontier.count, frontier.peaks) == #"b6d017c71f3fc974f620b22764385bf9ad56ee5627009e57dbeb9418e486dcb2",
-  }
-}
-
 test terminal_acceptance_and_rejection_v1_typescript_vectors_are_exact() {
-  let acceptance = vm_witness.encode_terminal_acceptance_witness_v1(
-    h72,
-    2,
-    [validation_merkle_v1.FrontierPeak { height: 1, hash: h71 }],
-  )
+  let acceptance = vm_shared.terminal_acceptance_witness
   let rejection = vm_shared.encode_terminal_rejection_witness(
-    #"455f56414c55455f4e4f545f505245534552564544",
+    rejection_reason_v1.ValueNotPreserved,
     h73,
   )
   and {
@@ -393,12 +251,12 @@ test terminal_acceptance_and_rejection_v1_typescript_vectors_are_exact() {
       validation_trace_v1.Terminal,
       9,
       acceptance,
-    ) == #"0b3defd802c8cc6ee1112724ef19532be5b8f61817ab0282a56db645a2b20948",
+    ) == #"a4dff8274189cdb6a72ea715f28b42d5170fe475698db83ad9d84e82545ce981",
     validation_trace_v1.hash_work_witness(
       validation_trace_v1.Terminal,
       9,
       rejection,
-    ) == #"6b15a4122dc6437ca54930248e9df11979d21dc484d5ea373373b43c489f1ce6",
+    ) == #"f7392de043bf5fa859d1162c1c7cd3e8ef24dc252a48970e743b1b8c3b9b10c1",
   }
 }
 
@@ -422,7 +280,8 @@ fn forced_source_membership() -> validation_claim_v1.ValidationSourceMembershipV
         },
         verdict: rejection_reason_v1.ForcedTxInvalid {
           reason: rejection_reason_v1.PlutusExecutionFailed {
-            execution_index: 0,
+            purpose_kind: 0,
+            purpose_index: 0,
           },
         },
       },
@@ -464,18 +323,18 @@ test validation_source_membership_v1_typescript_vectors_are_exact() {
     cbor.serialise(normal) == normal_source_membership_cbor,
     forced_decoded == forced,
     normal_decoded == normal,
-    blake2b_256(cbor.serialise([forced, normal])) == #"b5b9145726bab81ec5920f168df2c176d56b45e64cc00b6cae07dbbcf0f94f3d",
+    blake2b_256(cbor.serialise([forced, normal])) == #"82b5a3db73293f8bfce53cad62e5193ffeae6a3b25f90af6283699744ba7b25b",
   }
 }
 
-test validation_tail_auxiliary_v1_rejects_adjacent_tag_41() fail {
-  expect Some(data) = cbor.deserialise(#"d9052280")
+test validation_tail_auxiliary_v1_rejects_adjacent_tag_37() fail {
+  let data <- cbor_deserialise.expect_deserialise(#"d9051e80")
   expect _: vm_machine_types.ValidationAuxiliaryWitnessV1 = data
   True
 }
 
 test validation_tail_auxiliary_v1_rejects_wrong_arity() fail {
-  expect Some(data) = cbor.deserialise(#"d905149f00ff")
+  let data <- cbor_deserialise.expect_deserialise(#"d905139f00ff")
   expect _: vm_machine_types.ValidationAuxiliaryWitnessV1 = data
   True
 }

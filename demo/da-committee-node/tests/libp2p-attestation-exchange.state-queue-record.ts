@@ -11,6 +11,7 @@ import type {
   StateQueueHeaderRecord,
 } from "../src/domain.js";
 import { type PostgresCommitteeStore } from "../src/store/postgres.js";
+import { stateQueueNodeDatumCbor } from "./helpers.make-payload-fixture.js";
 import {
   openTestCommitteeStore,
   saveHealthyL1SourceState,
@@ -86,6 +87,7 @@ export const stateQueueRecord = ({
   stateQueueOutRef: "state-queue#0",
   blockAssetName: `block-${headerHash}`,
   header,
+  rawStateQueueDatumCbor: stateQueueNodeDatumCbor({ header, headerHash }),
   computedHeaderHash: headerHash,
   daAttestation: SDK.NO_DA_ATTESTATION,
   observedChainPoint: {

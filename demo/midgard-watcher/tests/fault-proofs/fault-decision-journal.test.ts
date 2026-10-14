@@ -191,7 +191,7 @@ describe("production fault decision journal", () => {
           }),
           deadline: Object.freeze({
             headerHash: persisted!.decision.headerHash,
-            headerEndTimeMs: "0",
+            headerBlockTimeMs: "0",
             maturityAtMs: MIDGARD_RETENTION_WINDOW.maturityMs.toString(),
             latestSafeStartAtMs: (
               MIDGARD_RETENTION_WINDOW.maturityMs -

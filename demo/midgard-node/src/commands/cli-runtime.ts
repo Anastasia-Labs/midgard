@@ -13,6 +13,7 @@
  */
 import { constants as osConstants } from "node:os";
 
+import { SELECTED_DEPLOYMENT_PROFILE } from "@al-ft/midgard-core/deployment-profile";
 import { NodeRuntime } from "@effect/platform-node";
 import { getAddressDetails, type Network } from "@lucid-evolution/lucid";
 import { Cause, Effect, Exit, Logger, pipe } from "effect";
@@ -29,6 +30,11 @@ import {
   ToolLucidLive,
   ToolMidgardContractServices,
 } from "./l1-tool-adapter.js";
+import { isPublicDeploymentProfile } from "./listen-public-http.js";
+import {
+  createPublicLogRedactor,
+  redactPublicLogger,
+} from "./listen-public-logging.js";
 import { assertPayerIsNotOperationalWallet } from "./operational-wallet-refusal.js";
 
 export { ToolLucidLive, ToolMidgardContractServices };
@@ -107,7 +113,9 @@ export const parseL1AddressOption = (
 };
 
 export const failCli = (label: string, error: unknown): void => {
-  console.error(`${label}: ${errorMessage(error)}`);
+  console.error(
+    `${label}: ${isPublicDeploymentProfile(SELECTED_DEPLOYMENT_PROFILE.name) ? JSON.stringify(createPublicLogRedactor(process.env).value(error)) : errorMessage(error)}`,
+  );
   process.exitCode = 1;
 };
 
@@ -153,7 +161,11 @@ export const cliExitCode = (
 // its result (`writeJson`), so it can be piped to a parser.
 const stderrLogger = Logger.replace(
   Logger.defaultLogger,
-  Logger.withConsoleError(Logger.stringLogger),
+  Logger.withConsoleError(
+    isPublicDeploymentProfile(SELECTED_DEPLOYMENT_PROFILE.name)
+      ? redactPublicLogger(Logger.stringLogger, process.env)
+      : Logger.stringLogger,
+  ),
 );
 
 export const runCliEffect = <A, E>(

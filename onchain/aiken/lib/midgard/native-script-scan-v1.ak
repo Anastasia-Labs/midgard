@@ -2,6 +2,7 @@ use aiken/builtin
 use aiken/cbor
 use aiken/crypto.{blake2b_256}
 use aiken/primitive/bytearray
+use midgard/cbor_deserialise
 use midgard/fraud_proofs/native_tx/codec.{
   encode_definite_array_header, encode_definite_bytes, slice_len,
 }
@@ -764,7 +765,7 @@ pub fn structure_control_from_data_v1(
 pub fn decode_structure_control_v1(
   control_cbor: ByteArray,
 ) -> NativeScriptStructureControlV1 {
-  expect Some(data) = cbor.deserialise(control_cbor)
+  let data <- cbor_deserialise.expect_deserialise(control_cbor)
   let control = structure_control_from_data_v1(data)
   expect encode_structure_control_v1(control) == control_cbor
   control

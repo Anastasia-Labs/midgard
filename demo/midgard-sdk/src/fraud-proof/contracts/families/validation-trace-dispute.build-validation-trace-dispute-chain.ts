@@ -356,7 +356,7 @@ export const buildValidationTraceDisputeChain = ({
         ),
       );
     }
-    if (builtSemanticResolvers.length !== 90) {
+    if (builtSemanticResolvers.length !== 82) {
       return yield* Effect.fail(
         new Error("Validation-trace semantic resolver set is incomplete"),
       );
@@ -444,14 +444,6 @@ export const buildValidationTraceDisputeChain = ({
       builtSemanticResolvers[79]!,
       builtSemanticResolvers[80]!,
       builtSemanticResolvers[81]!,
-      builtSemanticResolvers[82]!,
-      builtSemanticResolvers[83]!,
-      builtSemanticResolvers[84]!,
-      builtSemanticResolvers[85]!,
-      builtSemanticResolvers[86]!,
-      builtSemanticResolvers[87]!,
-      builtSemanticResolvers[88]!,
-      builtSemanticResolvers[89]!,
     ] as const;
     const semanticResolvers = [
       ...baseSemanticResolvers,
@@ -1280,7 +1272,7 @@ export const buildValidationTraceDisputeChain = ({
         semanticResolvers[57],
         semanticResolvers[58],
         semanticResolvers[59],
-        semanticResolvers[90],
+        semanticResolvers[82],
       ],
       [semanticResolvers[60], semanticResolvers[61], semanticResolvers[62]],
       [
@@ -1307,16 +1299,6 @@ export const buildValidationTraceDisputeChain = ({
         semanticResolvers[79],
         semanticResolvers[80],
         semanticResolvers[81],
-      ],
-      [
-        semanticResolvers[82],
-        semanticResolvers[83],
-        semanticResolvers[84],
-        semanticResolvers[85],
-        semanticResolvers[86],
-        semanticResolvers[87],
-        semanticResolvers[88],
-        semanticResolvers[89],
       ],
     ] as const;
     const semanticResolverHashesSchema = Data.Array(Data.Bytes());
@@ -1388,7 +1370,6 @@ export const buildValidationTraceDisputeChain = ({
       builtPrepareResolvers[10]!,
       builtPrepareResolvers[11]!,
       builtPrepareResolvers[12]!,
-      builtPrepareResolvers[13]!,
     ] as const;
 
     const resolvers = [
@@ -1405,7 +1386,6 @@ export const buildValidationTraceDisputeChain = ({
       prepareResolvers[10],
       prepareResolvers[11],
       prepareResolvers[12],
-      prepareResolvers[13],
     ] as const;
     if (
       new Set(resolvers.map(({ spendingScriptHash }) => spendingScriptHash))

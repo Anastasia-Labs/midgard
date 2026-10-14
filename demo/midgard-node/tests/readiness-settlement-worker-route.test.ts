@@ -61,7 +61,7 @@ const readyz = (health: SettlementHealth, manifestId?: string) =>
             HttpServerRequest.HttpServerRequest,
             HttpServerRequest.fromWeb(
               new Request("http://midgard.test/readyz"),
-            ),
+            ).modify({ remoteAddress: "127.0.0.1" }),
           ),
         )) as HttpServerResponse.HttpServerResponse;
         const body = (yield* Effect.promise(() =>

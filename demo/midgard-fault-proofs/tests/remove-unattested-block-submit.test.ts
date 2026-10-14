@@ -46,7 +46,7 @@ vi.mock("@al-ft/midgard-sdk", async (original) => {
     getStateQueueNodeFromStateQueueDatum: (datum: SDK.LinkedListNodeView) =>
       Effect.succeed({
         proven_fraud: null,
-        header: { endTime: 1n },
+        block_time: 1n,
         da_attestation:
           datum.data === "attested"
             ? { Attested: { commitment_hash: "aa".repeat(32) } }

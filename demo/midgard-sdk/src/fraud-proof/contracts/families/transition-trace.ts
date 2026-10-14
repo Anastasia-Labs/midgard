@@ -69,12 +69,6 @@ export const TRANSITION_TRACE_YIELD_TITLES = {
     "fraud_proofs/transition_trace/output_assembly.assembly.withdraw",
   l2Replay:
     "fraud_proofs/transition_trace/accepted_transaction_yields.l2_replay.withdraw",
-  claimStructure:
-    "fraud_proofs/transition_trace/accepted_transaction_yields.claim_structure.withdraw",
-  claimSource:
-    "fraud_proofs/transition_trace/accepted_transaction_yields.claim_source.withdraw",
-  claimEndpoints:
-    "fraud_proofs/transition_trace/accepted_transaction_yields.claim_endpoints.withdraw",
   depositProjection:
     "fraud_proofs/transition_trace/deposit_yields.projection.withdraw",
   depositSummaries:
@@ -339,9 +333,6 @@ export const buildTransitionTraceChain = ({
       l2Summaries,
       l2Assembly: yield* buildYield("l2Assembly", [acceptedHash]),
       l2Replay: yield* buildYield("l2Replay", [acceptedHash]),
-      claimStructure: yield* buildYield("claimStructure", [acceptedHash]),
-      claimSource: yield* buildYield("claimSource", [acceptedHash]),
-      claimEndpoints: yield* buildYield("claimEndpoints", [acceptedHash]),
       depositProjection,
       depositSummaries,
       depositReplay: yield* buildYield("depositReplay", [depositHash]),

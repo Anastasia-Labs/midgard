@@ -1,6 +1,7 @@
 use aiken/builtin
 use aiken/cbor
 use aiken/crypto.{blake2b_256}
+use midgard/cbor_deserialise
 use midgard/fraud_proofs/native_tx/compact.{
   forced_tx_proof_commitment_v1, native_tx_proof_commitment_v1,
   verify_forced_tx_proof_source_v1, verify_native_tx_proof_source_v1,
@@ -60,7 +61,7 @@ fn validation_context_is_exact(
   context_cbor: ByteArray,
   initial: validation_trace_v1.ValidationMachineStateV1,
 ) -> Bool {
-  expect Some(context_data) = cbor.deserialise(context_cbor)
+  let context_data <- cbor_deserialise.expect_deserialise(context_cbor)
   expect
       [
         version_data, profile_id_data, block_end_time_data,
@@ -142,7 +143,6 @@ fn immutable_context_matches(
     initial.validation_context_hash == terminal.validation_context_hash,
     initial.source_kind == terminal.source_kind,
     initial.prior_ledger_root == terminal.prior_ledger_root,
-    initial.ledger_delta_root == terminal.ledger_delta_root,
   }
 }
 
@@ -203,11 +203,10 @@ fn verify_event_to_step_membership(
   )
 }
 
-/// The §2.4.2(c) bridge from the forced leaf's verdict to the FROZEN
-/// descriptor format: an accepting leaf demands an accepting descriptor; a
-/// rejecting leaf demands a rejecting descriptor whose committed
-/// `rejection_code_hash` is exactly the hash of the legacy `E_*` code the
-/// leaf's reason maps back to (`rejection_code_of`, the total 47 → 19 map).
+/// The §2.4.2(c) bridge from the forced leaf's verdict to the descriptor: an
+/// accepting leaf demands an accepting descriptor; a rejecting leaf demands a
+/// rejecting descriptor whose committed `rejection_code_hash` is exactly the
+/// hash of the leaf's reason (arm and coordinates).
 ///
 /// Exported so the #640 gate-5 tests can drive the bridge directly; the only
 /// production caller remains `source_binding_is_exact` in this module.
@@ -219,9 +218,7 @@ pub fn forced_verdict_matches(
     ForcedTxValid -> descriptor.verdict == validation_trace_v1.Accepted
     ForcedTxInvalid { reason } -> and {
         descriptor.verdict == validation_trace_v1.Rejected,
-        validation_trace_v1.hash_rejection_code(
-          rejection_reason_v1.rejection_code_of(reason),
-        ) == descriptor.rejection_code_hash,
+        validation_trace_v1.hash_rejection_code(reason) == descriptor.rejection_code_hash,
       }
   }
 }

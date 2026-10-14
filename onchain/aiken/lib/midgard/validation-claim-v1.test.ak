@@ -8,6 +8,7 @@
 //// an inert dummy here on purpose.
 
 use aiken/cbor
+use aiken/crypto
 use aiken/merkle_patricia_forestry as mpf
 use cardano/transaction.{OutputReference}
 use env
@@ -63,7 +64,7 @@ test forced_verdict_matches_rejects_valid_leaf_on_rejected_descriptor() {
     descriptor_with(
       validation_trace_v1.Rejected,
       validation_trace_v1.hash_rejection_code(
-        rejection_reason_v1.reject_min_fee,
+        rejection_reason_v1.FeeBelowMinimum,
       ),
     ),
   )
@@ -77,7 +78,7 @@ test forced_verdict_matches_accepts_invalid_leaf_with_matching_code_hash() {
     descriptor_with(
       validation_trace_v1.Rejected,
       validation_trace_v1.hash_rejection_code(
-        rejection_reason_v1.reject_min_fee,
+        rejection_reason_v1.FeeBelowMinimum,
       ),
     ),
   )
@@ -91,7 +92,52 @@ test forced_verdict_matches_rejects_invalid_leaf_with_wrong_code_hash() {
     descriptor_with(
       validation_trace_v1.Rejected,
       validation_trace_v1.hash_rejection_code(
-        rejection_reason_v1.reject_min_ada,
+        rejection_reason_v1.OutputBelowMinAda { output_index: 0 },
+      ),
+    ),
+  )
+}
+
+/// The bridge compares reason hashes only: a descriptor that binds the retired
+/// coarse preimage (the domain followed by the bare code bytes `E_MIN_FEE`)
+/// does not match the forced leaf's reason.
+test forced_verdict_matches_rejects_the_coarse_code_preimage() {
+  !validation_claim_v1.forced_verdict_matches(
+    rejection_reason_v1.ForcedTxInvalid {
+      reason: rejection_reason_v1.FeeBelowMinimum,
+    },
+    descriptor_with(
+      validation_trace_v1.Rejected,
+      crypto.blake2b_256(
+        #"4d69646761726456616c69646174696f6e52656a656374436f64655631455f4d494e5f464545",
+      ),
+    ),
+  )
+}
+
+test forced_verdict_matches_rejects_the_same_arm_at_another_coordinate() {
+  !validation_claim_v1.forced_verdict_matches(
+    rejection_reason_v1.ForcedTxInvalid {
+      reason: rejection_reason_v1.OutputBelowMinAda { output_index: 0 },
+    },
+    descriptor_with(
+      validation_trace_v1.Rejected,
+      validation_trace_v1.hash_rejection_code(
+        rejection_reason_v1.OutputBelowMinAda { output_index: 1 },
+      ),
+    ),
+  )
+}
+
+test forced_verdict_matches_accepts_the_exact_coordinate() {
+  validation_claim_v1.forced_verdict_matches(
+    rejection_reason_v1.ForcedTxInvalid {
+      reason: rejection_reason_v1.OutputBelowMinAda { output_index: 1 },
+    },
+    descriptor_with(
+      validation_trace_v1.Rejected,
+      validation_trace_v1.hash_rejection_code(
+        rejection_reason_v1.OutputBelowMinAda { output_index: 1 },
       ),
     ),
   )
@@ -100,12 +146,18 @@ test forced_verdict_matches_rejects_invalid_leaf_with_wrong_code_hash() {
 test forced_verdict_matches_rejects_invalid_leaf_on_accepted_descriptor() {
   !validation_claim_v1.forced_verdict_matches(
     rejection_reason_v1.ForcedTxInvalid {
-      reason: rejection_reason_v1.PlutusExecutionFailed { execution_index: 0 },
+      reason: rejection_reason_v1.PlutusExecutionFailed {
+        purpose_kind: 0,
+        purpose_index: 0,
+      },
     },
     descriptor_with(
       validation_trace_v1.Accepted,
       validation_trace_v1.hash_rejection_code(
-        rejection_reason_v1.reject_plutus_script_invalid,
+        rejection_reason_v1.PlutusExecutionFailed {
+          purpose_kind: 0,
+          purpose_index: 0,
+        },
       ),
     ),
   )
@@ -305,7 +357,6 @@ fn dummy_machine_state() -> validation_trace_v1.ValidationMachineStateV1 {
     execution_memory: 0,
     verdict: validation_trace_v1.Pending,
     rejection_code_hash: zero_hash,
-    ledger_delta_root: zero_hash,
   }
 }
 
@@ -400,7 +451,10 @@ test forced_source_accepts_invalid_verdict() {
     forced_source(
       native_types.TxIsInvalid,
       rejection_reason_v1.ForcedTxInvalid {
-        reason: rejection_reason_v1.PlutusExecutionFailed { execution_index: 0 },
+        reason: rejection_reason_v1.PlutusExecutionFailed {
+          purpose_kind: 0,
+          purpose_index: 0,
+        },
       },
     ),
   )

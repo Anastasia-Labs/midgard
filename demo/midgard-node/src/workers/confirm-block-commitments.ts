@@ -266,7 +266,7 @@ export const runConfirmBlockCommitmentsWorkerProgram = (
       }
       if (recoveryDecision === "defer") {
         yield* Effect.logWarning(
-          `🔍 Pending block header ${pendingBlock.expectedHeaderHash} has no submitted tx hash and is not canonical yet; deferring stale recovery until the block validity window plus grace has elapsed (age_ms=${pendingAgeMs}, block_end_ms=${pendingBlock.blockEndTimeMs.toString()}, grace_ms=${recoveryGraceMs.toString()}).`,
+          `🔍 Pending block header ${pendingBlock.expectedHeaderHash} has no submitted tx hash and is not canonical yet; deferring stale recovery until the block validity window plus grace has elapsed (age_ms=${pendingAgeMs}, block_time_ms=${pendingBlock.blockTimeMs.toString()}, grace_ms=${recoveryGraceMs.toString()}).`,
         );
         return {
           type: "NoTxForConfirmationOutput",
@@ -289,7 +289,7 @@ export const runConfirmBlockCommitmentsWorkerProgram = (
       30_000,
     );
     const validityExpired =
-      Date.now() > pendingBlock.blockEndTimeMs + expiryRecoveryGraceMs;
+      Date.now() > pendingBlock.blockTimeMs + expiryRecoveryGraceMs;
     if (
       !shouldRunFullStateQueueConfirmationScan({
         targetedTxConfirmed,
@@ -319,7 +319,7 @@ export const runConfirmBlockCommitmentsWorkerProgram = (
       );
       if (
         pendingBlock.intendedTxHash == null &&
-        Date.now() > pendingBlock.blockEndTimeMs + expiryRecoveryGraceMs
+        Date.now() > pendingBlock.blockTimeMs + expiryRecoveryGraceMs
       ) {
         yield* Effect.logWarning(
           `🔍 Pending block header ${pendingBlock.expectedHeaderHash} passed its validity upper bound without confirmation; abandoning expired submission and recovering canonical state_queue tip.`,

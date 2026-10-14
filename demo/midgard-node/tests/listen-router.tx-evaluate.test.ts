@@ -37,7 +37,7 @@ const envelope = (draft: ReturnType<typeof makeEvaluateDraft>) =>
 
 const post = (
   draft: ReturnType<typeof makeEvaluateDraft>,
-  pool: Pick<ValidationPoolService, "poolSize" | "evaluateCekVerdict">,
+  pool: Pick<ValidationPoolService, "poolSize" | "tryEvaluateCekVerdict">,
   contentType = "application/vnd.midgard.v1+cbor",
 ) =>
   Effect.gen(function* () {
@@ -77,12 +77,41 @@ const post = (
     };
   });
 
-const inProcess = {
-  poolSize: 0,
-  evaluateCekVerdict: () => Effect.die("no pool"),
+const idlePool = {
+  poolSize: 2,
+  tryEvaluateCekVerdict: (request: MidgardCekVerdictRequest) =>
+    Effect.sync(() => evaluateMidgardCekVerdict(request)),
 };
 
 describe("POST /tx/evaluate", () => {
+  it.each([0, 1])(
+    "refuses pool size %i without reading or evaluating the draft",
+    async (poolSize) => {
+      let invoked = false;
+      const response = await Effect.runPromise(
+        post(makeEvaluateDraft([0n, 0n]), {
+          poolSize,
+          tryEvaluateCekVerdict: () => {
+            invoked = true;
+            return Effect.die("must not run");
+          },
+        }),
+      );
+      expect(response.status).toBe(503);
+      expect(response.retryAfter).toBe("5");
+      expect(invoked).toBe(false);
+    },
+  );
+  it("refuses an advisory slot rejection without in-process fallback", async () => {
+    const response = await Effect.runPromise(
+      post(makeEvaluateDraft([0n, 0n]), {
+        poolSize: 2,
+        tryEvaluateCekVerdict: () => Effect.succeed(undefined),
+      }),
+    );
+    expect(response.status).toBe(503);
+    expect(response.retryAfter).toBe("5");
+  });
   it("returns the per-redeemer budgets the evaluator computes", async () => {
     const draft = makeEvaluateDraft([0n, 0n]);
     const expected = await Effect.runPromise(
@@ -98,7 +127,7 @@ describe("POST /tx/evaluate", () => {
     );
     if (expected.kind !== "evaluated") throw new Error(expected.detail);
     const [budget] = expected.redeemers;
-    const response = await Effect.runPromise(post(draft, inProcess));
+    const response = await Effect.runPromise(post(draft, idlePool));
     expect(response).toEqual({
       status: 200,
       retryAfter: null,
@@ -117,7 +146,7 @@ describe("POST /tx/evaluate", () => {
 
   it("answers 422 for a failing script", async () => {
     const response = await Effect.runPromise(
-      post(makeEvaluateDraft([0n, 0n], true), inProcess),
+      post(makeEvaluateDraft([0n, 0n], true), idlePool),
     );
     expect(response.status).toBe(422);
     expect(response.body.error).toBe("E_TX_EVALUATION_FAILED");
@@ -125,7 +154,7 @@ describe("POST /tx/evaluate", () => {
 
   it("answers 415 for another media type", async () => {
     const response = await Effect.runPromise(
-      post(makeEvaluateDraft([0n, 0n]), inProcess, "application/json"),
+      post(makeEvaluateDraft([0n, 0n]), idlePool, "application/json"),
     );
     expect(response.status).toBe(415);
   });
@@ -138,7 +167,7 @@ describe("POST /tx/evaluate", () => {
         // Two workers leave evaluation one concurrent request.
         const pool = {
           poolSize: 2,
-          evaluateCekVerdict: (request: MidgardCekVerdictRequest) =>
+          tryEvaluateCekVerdict: (request: MidgardCekVerdictRequest) =>
             Deferred.succeed(entered, undefined).pipe(
               Effect.zipRight(Deferred.await(release)),
               Effect.zipRight(
@@ -157,7 +186,7 @@ describe("POST /tx/evaluate", () => {
         expect(done.status).toBe(200);
         const again = yield* post(draft, {
           poolSize: 2,
-          evaluateCekVerdict: (request) =>
+          tryEvaluateCekVerdict: (request) =>
             Effect.sync(() => evaluateMidgardCekVerdict(request)),
         });
         expect(again.status).toBe(200);
@@ -169,7 +198,7 @@ describe("POST /tx/evaluate", () => {
     const response = await Effect.runPromise(
       post(makeEvaluateDraft([0n, 0n]), {
         poolSize: 2,
-        evaluateCekVerdict: () =>
+        tryEvaluateCekVerdict: () =>
           Effect.fail(new ValidationWorkerError({ message: "worker crashed" })),
       }),
     );

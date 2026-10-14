@@ -24,6 +24,7 @@ import {
   type FaultProofBlueprint,
   getBlueprintValidator,
 } from "./blueprint.parse-fault-proof-blueprint.js";
+import { recordBlueprintApplication } from "./blueprint-applications.js";
 
 /**
  * The same fail-closed reading for validators deployed with no parameters at
@@ -43,6 +44,7 @@ export const getUnappliedScript = (
         "applied, which is an always-succeeds script (#609).",
     );
   }
+  recordBlueprintApplication(blueprint, title, [], validator.compiledCode);
   return validator.compiledCode;
 };
 

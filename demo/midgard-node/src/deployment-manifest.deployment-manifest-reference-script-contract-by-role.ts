@@ -685,12 +685,6 @@ export const DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE =
       "fraudProofTransitionTraceAcceptedTransactionL2SummariesWithdraw",
     "V1 fraud-proof transition-trace final-4 L2 replay yield":
       "fraudProofTransitionTraceAcceptedTransactionL2ReplayWithdraw",
-    "V1 fraud-proof transition-trace final-4 claim structure yield":
-      "fraudProofTransitionTraceAcceptedTransactionClaimStructureWithdraw",
-    "V1 fraud-proof transition-trace final-4 claim source yield":
-      "fraudProofTransitionTraceAcceptedTransactionClaimSourceWithdraw",
-    "V1 fraud-proof transition-trace final-4 claim endpoints yield":
-      "fraudProofTransitionTraceAcceptedTransactionClaimEndpointsWithdraw",
     "V1 fraud-proof transition-trace final-5 projection yield":
       "fraudProofTransitionTraceDepositProjectionWithdraw",
     "V1 fraud-proof transition-trace final-6 L1 event yield":

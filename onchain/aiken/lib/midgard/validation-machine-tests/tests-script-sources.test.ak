@@ -20,6 +20,7 @@ use midgard/fraud_proofs/native_tx/types.{
 }
 use midgard/native_tx_field_access_v1
 use midgard/redeemer_item_proof_v1
+use midgard/rejection_reason_v1
 use midgard/script_proof_v1
 use midgard/validation_machine/machine_types as vm_machine_types
 use midgard/validation_machine/one_step as vm_one_step
@@ -1067,7 +1068,9 @@ test script_sources_rejects_an_unsigned_protected_pubkey_output() {
     material.facts_terminal,
     15,
   )
-  let rejection_code = #"455f4d495353494e475f52455155495245445f5749544e455353"
+  let rejection_code = rejection_reason_v1.ProtectedOutputSignerMissing {
+    output_index: 0,
+  }
   // An exact rejection also clears the ledger delta to the empty frontier
   // commitment; `exact_rejection_post` is the canonical successor shape.
   let terminal = exact_rejection_post(pre, rejection_code)
@@ -2808,7 +2811,7 @@ test script_sources_stage_eleven_rejects_an_unused_inline_source_exactly() {
       work_witness_cbor,
       claimed_successor: exact_rejection_post(
         pre,
-        #"455f494e56414c49445f4649454c445f54595045",
+        rejection_reason_v1.UnusedScriptWitness { script_index: 0 },
       ),
     },
     0,
@@ -3064,7 +3067,10 @@ test script_sources_proves_a_missing_script_source_exactly() {
     discovery,
     24,
   )
-  let rejection_code = #"455f4d495353494e475f52455155495245445f5749544e455353"
+  let rejection_code = rejection_reason_v1.ScriptSourceMissing {
+    purpose_kind: 3,
+    purpose_index: 0,
+  }
   let terminal = validation_trace_v1.ValidationMachineStateV1 {
     ..pre,
     phase: validation_trace_v1.Terminal,

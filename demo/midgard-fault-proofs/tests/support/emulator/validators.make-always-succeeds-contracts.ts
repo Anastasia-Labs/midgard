@@ -111,15 +111,6 @@ export const makeAlwaysSucceedsContracts = (
         l2Replay: makeWithdrawalValidator(
           transitionTraceFirstStep.spendingScriptCBOR,
         ),
-        claimStructure: makeWithdrawalValidator(
-          transitionTraceFirstStep.spendingScriptCBOR,
-        ),
-        claimSource: makeWithdrawalValidator(
-          transitionTraceFirstStep.spendingScriptCBOR,
-        ),
-        claimEndpoints: makeWithdrawalValidator(
-          transitionTraceFirstStep.spendingScriptCBOR,
-        ),
         depositProjection: makeWithdrawalValidator(
           transitionTraceFirstStep.spendingScriptCBOR,
         ),
@@ -299,9 +290,9 @@ export const makeAlwaysSucceedsContracts = (
         finalizeFrameExecutor: alwaysValidationTraceDispute,
         settlement: alwaysValidationTraceDispute,
       },
-      prepareResolvers: repeatValidator(alwaysValidationTraceDispute, 14),
-      semanticResolvers: repeatValidator(alwaysValidationTraceDispute, 91),
-      resolvers: repeatValidator(alwaysValidationTraceDispute, 14),
+      prepareResolvers: repeatValidator(alwaysValidationTraceDispute, 13),
+      semanticResolvers: repeatValidator(alwaysValidationTraceDispute, 83),
+      resolvers: repeatValidator(alwaysValidationTraceDispute, 13),
     },
     daHashPreimage: scaffoldChain(zeroInputFirstStep, 2),
     noReferenceInput: scaffoldChain(nonExistentInputFirstStep, 4),
@@ -484,7 +475,6 @@ export const makeAlwaysSucceedsContracts = (
     registeredOperators: alwaysAuthenticated(blueprint, "registered_operators"),
     activeOperators: alwaysAuthenticated(blueprint, "active_operators"),
     retiredOperators: alwaysAuthenticated(blueprint, "retired_operators"),
-    escapeHatch: alwaysAuthenticated(blueprint, "escape_hatch"),
     fraudProofCatalogue: alwaysAuthenticated(
       blueprint,
       "fraud_proof_catalogue",

@@ -106,7 +106,7 @@ export const submitWithdrawalRefusal = async (
                   ? {}
                   : { body: new Uint8Array(Buffer.concat(chunks)) }),
               }),
-            ),
+            ).modify({ remoteAddress: "127.0.0.1" }),
           ),
         ),
         harness,

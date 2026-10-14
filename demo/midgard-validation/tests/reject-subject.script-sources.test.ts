@@ -250,9 +250,11 @@ describe("phase B execution subjects", () => {
       ],
       RejectCodes.NativeScriptInvalid,
     );
+    // The failing execution is the mint purpose at pointer index 0.
     expect(rejection.subject).toStrictEqual({
       arm: "ExecutionNativeScriptFalse",
-      index: 1n,
+      purposeKind: 1n,
+      purposeIndex: 0n,
     });
   });
 
@@ -277,7 +279,8 @@ describe("phase B execution subjects", () => {
     );
     expect(rejection.subject).toStrictEqual({
       arm: "PlutusExecutionFailed",
-      index: 1n,
+      purposeKind: 1n,
+      purposeIndex: 0n,
     });
   });
 });

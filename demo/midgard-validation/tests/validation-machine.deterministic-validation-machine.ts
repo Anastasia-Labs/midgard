@@ -131,7 +131,6 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
       ...Array<string>(4).fill("scriptIntegrity"),
       "cek",
       ...Array<string>(8).fill("valueAndMint"),
-      ...Array<string>(9).fill("ledgerDelta"),
       "terminal",
     ]);
     const canonicalWitnesses = trace.witnesses.filter(
@@ -804,9 +803,6 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
       phase: "terminal",
       verdict: "rejected",
     });
-    expect(trace.states.some((state) => state.phase === "ledgerDelta")).toBe(
-      false,
-    );
   });
 
   it("executes an authenticated PlutusV3 reference script from a reference input", async () => {
@@ -1016,12 +1012,7 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
       expect([
         ...validateBoundaryAbiAndCollectAuxiliaryKinds(trace).kinds,
       ]).toEqual(
-        expect.arrayContaining([
-          "cekMintContextItem",
-          "valueMintAsset",
-          "ledgerDeltaReplay",
-          "ledgerDeltaOutput",
-        ]),
+        expect.arrayContaining(["cekMintContextItem", "valueMintAsset"]),
       );
     },
     // Measured 15.0 s for the burn case on a 2-core CI runner against the
@@ -1128,7 +1119,6 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
         "nativeExecutionScan",
         "cekOutputContextItem",
         "cekContextFinalize",
-        "ledgerDeltaOutput",
       ]),
     );
   }, 60_000);
@@ -1434,14 +1424,7 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
     expect(trace.verdict).toBe("accepted");
     expect([
       ...validateBoundaryAbiAndCollectAuxiliaryKinds(trace).kinds,
-    ]).toEqual(
-      expect.arrayContaining([
-        "valueOutputAsset",
-        "valueMintAsset",
-        "ledgerDeltaReplay",
-        "ledgerDeltaOutput",
-      ]),
-    );
+    ]).toEqual(expect.arrayContaining(["valueOutputAsset", "valueMintAsset"]));
     // Same CI-timing class as the mint/burn each above: ~6.5 s locally on
     // 32 cores, ~14-15 s on a 2-core runner, i.e. on the 15 s boundary.
   }, 60_000);
@@ -1510,14 +1493,7 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
     expect(trace.verdict).toBe("accepted");
     expect([
       ...validateBoundaryAbiAndCollectAuxiliaryKinds(trace).kinds,
-    ]).toEqual(
-      expect.arrayContaining([
-        "valueInputAsset",
-        "valueMintAsset",
-        "ledgerDeltaReplay",
-        "ledgerDeltaOutput",
-      ]),
-    );
+    ]).toEqual(expect.arrayContaining(["valueInputAsset", "valueMintAsset"]));
     // Same CI-timing class as the mint/burn each above: ~6.5 s locally on
     // 32 cores, ~14-15 s on a 2-core runner, i.e. on the 15 s boundary.
   }, 60_000);
@@ -1618,9 +1594,6 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
       phase: "terminal",
       verdict: "rejected",
     });
-    expect(trace.states.some((state) => state.phase === "ledgerDelta")).toBe(
-      false,
-    );
     expect(
       trace.witnesses
         .filter((witness) => witness.phase === "signatures")
@@ -2110,10 +2083,11 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
       buildDeterministicValidationMachineTrace(input),
     );
     expect(trace.verdict).toBe("rejected");
-    // Definite [2, h'E_EMPTY_INPUTS', prior root, h'80']: the final bytes
-    // encode an empty operation list, not an accepted-delta frontier.
+    // Definite [2, EmptyInputs, prior root, h'80']: the reason is the
+    // RejectionReasonV1 Plutus Data (constructor 2, no fields), and the final
+    // bytes encode an empty operation list, not an accepted-delta frontier.
     expect(trace.witnesses.at(-1)!.cbor.toString("hex")).toBe(
-      "84024e455f454d5054595f494e505554535820" + "03".repeat(32) + "4180",
+      "8402d87b805820" + "03".repeat(32) + "4180",
     );
 
     await expect(

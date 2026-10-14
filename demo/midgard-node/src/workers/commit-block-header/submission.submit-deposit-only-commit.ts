@@ -73,6 +73,7 @@ export const submitDepositOnlyCommit = ({
   deploymentMarker,
   latestBlock,
   endTime,
+  blockTimeMs,
   includedDepositEntries,
   includedDepositEventIds,
   includedForcedTransactionEntries,
@@ -105,6 +106,7 @@ export const submitDepositOnlyCommit = ({
   >;
   readonly latestBlock: SDK.StateQueueUTxO;
   readonly endTime: Date;
+  readonly blockTimeMs?: number;
   readonly includedDepositEntries: readonly DepositsDB.Entry[];
   readonly includedDepositEventIds: readonly Buffer[];
   readonly includedForcedTransactionEntries: readonly ForcedTransactionsDB.Entry[];
@@ -253,6 +255,7 @@ export const submitDepositOnlyCommit = ({
             consensusProfile,
             endTime,
             blockEndTimeCapMs,
+            blockTimeMs,
           ).pipe(
             Effect.flatMap((buildResult) => {
               if ("dueWork" in buildResult) {

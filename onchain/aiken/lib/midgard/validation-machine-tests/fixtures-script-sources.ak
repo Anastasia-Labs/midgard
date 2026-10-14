@@ -20,6 +20,7 @@ use midgard/fraud_proofs/native_tx/types.{
 }
 use midgard/ledger_output_commitment_v1
 use midgard/ledger_output_proof_v1
+use midgard/rejection_reason_v1
 use midgard/script_context_v1
 use midgard/script_proof_v1
 use midgard/validation_machine/machine_types as vm_machine_types
@@ -32,7 +33,7 @@ use midgard/validation_machine/witness as vm_witness
 use midgard/validation_machine_tests/constants.{
   h_28_a, h_a, maximum_input_schedule_last_key,
   maximum_input_schedule_last_value, maximum_mint_policy_item_cbor,
-  network_mismatch_rejection_code, test_l1_slot_config, validation_context_cbor,
+  test_l1_slot_config, validation_context_cbor,
 }
 use midgard/validation_machine_tests/fixture_types.{
   ResolutionScheduleTerminalVectorV1,
@@ -168,7 +169,6 @@ pub fn resolution_schedule_terminal_state(
       validation_trace_v1.ScriptSources,
       program_counter,
       work_witness_cbor,
-      validation_trace_v1.hash_ledger_delta(#"80"),
     ),
     work_witness_cbor,
   )
@@ -964,7 +964,7 @@ pub fn script_sources_rejects_wrong_output_network(
       work_witness_cbor,
       claimed_successor: exact_rejection_post(
         pre,
-        network_mismatch_rejection_code,
+        rejection_reason_v1.NetworkIdMismatch,
       ),
     },
     vm_machine_types.NoSignerSetProof,
@@ -1264,7 +1264,6 @@ pub fn script_sources_state_for_work_witness(
     validation_trace_v1.ScriptSources,
     program_counter,
     work_witness_cbor,
-    validation_trace_v1.hash_ledger_delta(#"80"),
   )
 }
 
@@ -1277,6 +1276,8 @@ pub fn late_phase_a_native_scan_witness(
   cursor: Int,
   node_count: Int,
   result: Int,
+  purpose_kind: Int,
+  purpose_index: Int,
 ) -> ByteArray {
   let proof_source = submitted_source(tx)
   let signer_frontier = signer_frontier_for_tx(tx)
@@ -1300,5 +1301,7 @@ pub fn late_phase_a_native_scan_witness(
     signer_frontier.count,
     signer_frontier.peaks,
     continuation_cbor,
+    purpose_kind,
+    purpose_index,
   )
 }

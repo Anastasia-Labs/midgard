@@ -15,8 +15,15 @@ use midgard/computation_thread as ct
 use midgard/fraud_proofs/common.{cancel}
 use midgard/ledger_output_proof_raw
 use midgard/ledger_output_proof_roles
+use midgard/ledger_output_proof_yield
+use midgard/rejection_reason_v1.{
+  OutputNonCanonical, OutputReferenceScriptDepthLimit,
+  OutputReferenceScriptMalformed, OutputReferenceScriptNodeLimit,
+  RejectionReasonV1,
+}
 use midgard/script_sources_raw_frame_v1 as raw
 use midgard/validation_machine/machine_types.{ValidationOneStepWitnessV1}
+use midgard/validation_machine/shared.{rejected_successor_is_exact}
 use midgard/validation_semantic_v1.{Datum, continue_winning}
 use midgard/validation_semantic_yield_v1
 use midgard/validation_trace_v1.{ScriptSources, ValidationMachineStateV1}
@@ -28,6 +35,10 @@ const output_proof_stage: Int = 5
 const extension_index: Int = 30
 
 const frame_item_count: Int = 31
+
+/// Frame item 20 is the ScriptSources `output_cursor`: the field-2 ordinal of
+/// the output under proof.
+const output_cursor_index: Int = 20
 
 pub type ActionV1 {
   VerifyOutputProofStep {
@@ -95,7 +106,7 @@ validator main(
           input_index,
           output_index,
           transition,
-          builtin.constr_data(32, [proof_witness]),
+          builtin.constr_data(30, [proof_witness]),
           output_proof_step_dispatch(
             datum |> semantic_pre_state,
             transition,
@@ -148,19 +159,40 @@ fn output_proof_step_dispatch(
       yield_ref_input_indices,
     ),
     raw.item_bytes_v1(frame, extension_index) == control_cbor,
-    if next_control_cbor == #"" {
-      transition.claimed_successor.phase == validation_trace_v1.Terminal
-    } else {
-      raw.successor_is_exact_v1(
-        pre,
-        transition,
-        raw.replace_extension_v1(
-          transition.work_witness_cbor,
-          control_cbor,
-          next_control_cbor,
-        ),
-      )
+    when ledger_output_proof_yield.rejection_class_of(next_control_cbor) is {
+      Some(class) ->
+        rejected_successor_is_exact(
+          pre,
+          transition.claimed_successor,
+          own_output_rejection(
+            class,
+            raw.item_int_v1(frame, output_cursor_index),
+          ),
+        )
+      None ->
+        raw.successor_is_exact_v1(
+          pre,
+          transition,
+          raw.replace_extension_v1(
+            transition.work_witness_cbor,
+            control_cbor,
+            next_control_cbor,
+          ),
+        )
     },
+  }
+}
+
+/// The exact reason for the transaction's own output the yield refused, by
+/// the class the yield attested.
+pub fn own_output_rejection(class: Int, output_index: Int) -> RejectionReasonV1 {
+  when class is {
+    0 -> OutputNonCanonical { output_index }
+    1 -> OutputReferenceScriptMalformed { output_index }
+    2 -> OutputReferenceScriptNodeLimit { output_index }
+    3 -> OutputReferenceScriptDepthLimit { output_index }
+    // `rejection_class_of` admits only the four marker classes.
+    _ -> fail
   }
 }
 

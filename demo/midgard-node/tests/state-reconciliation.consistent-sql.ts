@@ -130,6 +130,7 @@ const consistentL1 = (): L1StateView => ({
       headerHash: TIP,
       recomputedHeaderHash: TIP,
       prevHeaderHash: CONFIRMED,
+      blockTimeMs: 3_000,
       endTimeMs: 3_000,
       roots: { utxos: R1, ...ROOTS },
       daStatus: "Attested",

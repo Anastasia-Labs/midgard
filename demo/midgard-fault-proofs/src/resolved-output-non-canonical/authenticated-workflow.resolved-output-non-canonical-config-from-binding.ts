@@ -19,8 +19,8 @@ import {
 import type { ResolvedOutputNonCanonicalContracts } from "./contracts.js";
 import {
   ResolvedOutputStep02DatumSchema,
-  ResolvedOutputStep04DatumDatumSchema,
   ResolvedOutputStep03DatumSchema,
+  ResolvedOutputStep04DatumDatumSchema,
   ResolvedOutputStep04DatumSchema,
   ResolvedOutputStep05DatumSchema,
 } from "./schemas.js";

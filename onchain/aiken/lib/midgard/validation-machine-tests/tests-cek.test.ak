@@ -33,11 +33,10 @@ use midgard/fraud_proofs/native_tx/types.{
 }
 use midgard/native_tx_field_access_v1
 use midgard/redeemer_item_proof_v1
-use midgard/rejection_reason_v1.{reject_plutus_script_invalid}
+use midgard/rejection_reason_v1
 use midgard/script_context_v1
 use midgard/script_proof_v1
 use midgard/validation_machine/cek as vm_cek
-use midgard/validation_machine/ledger_delta as vm_ledger_delta
 use midgard/validation_machine/machine_types as vm_machine_types
 use midgard/validation_machine/native_scripts as vm_native_scripts
 use midgard/validation_machine/one_step as vm_one_step
@@ -54,8 +53,8 @@ use midgard/validation_machine_tests/constants.{
   validation_context_cbor, zero,
 }
 use midgard/validation_machine_tests/fixtures_cek.{
-  cek_active_core_step_fixture, exact_output_descriptor_fixture,
-  maximum_mint_field_terminal_fixture_v1,
+  cek_active_core_step_fixture, cek_keyed_core_step_fixture,
+  exact_output_descriptor_fixture, maximum_mint_field_terminal_fixture_v1,
   maximum_observer_field_terminal_fixture_v1,
   maximum_output_field_terminal_fixture_v1,
   maximum_program_envelope_selection_is_exact,
@@ -70,12 +69,11 @@ use midgard/validation_machine_tests/fixtures_parity.{
 }
 use midgard/validation_machine_tests/fixtures_phase_a.{
   cek_context_native_control_fixture, cek_state_fixture,
-  empty_cek_context_control_fixture, empty_mpf_proof_descriptor,
-  empty_native_control_fixture, empty_v1_transaction, exact_rejection_post,
-  forced_pending_state, inline_field_carriage, inline_field_door,
-  maximum_mint_last_asset_siblings, maximum_mint_preimage_cbor,
-  native_scripts_step_fixture, next_phase_a_native_state,
-  non_empty_claimed_delta_root, observer_field_carriage, observer_hash_at,
+  empty_cek_context_control_fixture, empty_native_control_fixture,
+  empty_v1_transaction, exact_rejection_post, forced_pending_state,
+  inline_field_carriage, inline_field_door, maximum_mint_last_asset_siblings,
+  maximum_mint_preimage_cbor, native_scripts_step_fixture,
+  next_phase_a_native_state, observer_field_carriage, observer_hash_at,
   observer_hashes_from, one_step_evidence, singleton_field_item_chunk_proof,
   submitted_commitment, submitted_source, v1_program_envelope,
   verify_cek_context_source_transition_fixture,
@@ -157,6 +155,8 @@ test native_scripts_stream_an_authenticated_execution_and_return_on_l1() {
     payload_offset,
     0,
     -1,
+    0,
+    0,
   )
   let entry_pre = validation_trace_v1.ValidationMachineStateV1 {
     ..pre,
@@ -177,6 +177,8 @@ test native_scripts_stream_an_authenticated_execution_and_return_on_l1() {
     payload_offset + 2,
     1,
     -1,
+    0,
+    0,
   )
   let payload_pre = next_phase_a_native_state(
     entry_pre,
@@ -191,6 +193,8 @@ test native_scripts_stream_an_authenticated_execution_and_return_on_l1() {
     bytearray.length(script_cbor),
     1,
     1,
+    0,
+    0,
   )
   let finalize_pre = next_phase_a_native_state(
     payload_pre,
@@ -322,9 +326,6 @@ test script_integrity_is_recomputed_before_cek() {
     validation_trace_v1.ScriptIntegrity,
     34,
     authentication_witness_cbor,
-    // Re-based off `frontier_commitment(0, [])`: this fixture backs rejection
-    // proofs, so it must carry the realistic non-empty claimed delta.
-    non_empty_claimed_delta_root(),
   )
   let compact_witness_cbor = vm_witness.encode_script_integrity_compact_witness_v1(
     valid_control,
@@ -383,6 +384,8 @@ test script_integrity_is_recomputed_before_cek() {
         0,
         0,
         #"",
+        -1,
+        -1,
       ),
     ),
   }
@@ -432,7 +435,7 @@ test script_integrity_is_recomputed_before_cek() {
       invalid_finalize_witness_cbor,
     ),
   }
-  let rejection_code = #"455f494e56414c49445f4649454c445f54595045"
+  let rejection_code = rejection_reason_v1.ScriptIntegrityHashMismatch
   let terminal = validation_trace_v1.ValidationMachineStateV1 {
     ..invalid_pre,
     phase: validation_trace_v1.Terminal,
@@ -494,111 +497,6 @@ test mint_asset_leaf_vector_is_stable() {
     #"abcd",
     -7,
   ) == #"4813bd9aad26eea82fa41280aefd50c848041a2a6cf27be416e1873c2876a479"
-}
-
-test ledger_delta_operation_frontier_vectors_are_stable() {
-  let proof_descriptor = empty_mpf_proof_descriptor()
-  let deletion = vm_shared.ledger_delta_operation_leaf_hash(
-    0,
-    #"010203",
-    #"",
-    proof_descriptor,
-  )
-  let insertion = vm_shared.ledger_delta_operation_leaf_hash(
-    1,
-    #"0405",
-    #"060708",
-    proof_descriptor,
-  )
-  let frontier = validation_merkle_v1.build_frontier([deletion, insertion])
-  and {
-    deletion == #"d70952a4347195627444cfbb1874f6857de1ad78f095460b76fc826cd267a589",
-    insertion == #"f8bc7029f5f58f0436ebdf6cbbb85bd9adac05d5f6dc1b9238c8166a517aa8db",
-    validation_merkle_v1.frontier_commitment(frontier.count, frontier.peaks) == #"b6d017c71f3fc974f620b22764385bf9ad56ee5627009e57dbeb9418e486dcb2",
-  }
-}
-
-test ledger_delta_terminal_step_binds_more_than_128_operations() {
-  // This is the off-chain-built frontier for 129 identical authenticated
-  // deletions. Supplying the compact peaks measures only the actual terminal
-  // resolver; constructing 129 leaves inside the test would charge fixture
-  // setup to the transition.
-  let operation_frontier = validation_merkle_v1.BuiltFrontier {
-    count: 129,
-    peaks: [
-      validation_merkle_v1.FrontierPeak {
-        height: 0,
-        hash: #"d70952a4347195627444cfbb1874f6857de1ad78f095460b76fc826cd267a589",
-      },
-      validation_merkle_v1.FrontierPeak {
-        height: 7,
-        hash: #"c4029f40ad899fb153acbf60401c4b0187fc7ce03060d3cbeae09ea32de11cc9",
-      },
-    ],
-  }
-  let control = vm_machine_types.LedgerDeltaControlV1 {
-    resolved_input_count: 0,
-    resolved_inputs_accumulator: vm_witness.initial_resolution_accumulator(),
-    output_count: 0,
-    output_descriptor_peaks: [],
-    stage: 2,
-    replay_schedule_hash: vm_witness.empty_resolution_schedule_hash(),
-    replay_cursor: 0,
-    replay_accumulator: vm_witness.initial_resolution_accumulator(),
-    replay_remaining_schedule_hash: vm_witness.empty_resolution_schedule_hash(),
-    current_ledger_root: h_b,
-    output_cursor: 0,
-    operation_count: operation_frontier.count,
-    operation_peaks: operation_frontier.peaks,
-    pending_mutation_cbor: #"",
-  }
-  let work_witness_cbor = vm_witness.encode_ledger_delta_control_v1(control)
-  let pre = validation_trace_v1.ValidationMachineStateV1 {
-    machine_version: validation_trace_v1.machine_version,
-    event_key_hash: h_a,
-    transaction_id: h_a,
-    transaction_commitment: h_b,
-    validation_context_hash: h_c,
-    source_kind: validation_trace_v1.Forced,
-    prior_ledger_root: h_c,
-    phase: validation_trace_v1.LedgerDelta,
-    program_counter: 46,
-    work_root: validation_trace_v1.hash_work_witness(
-      validation_trace_v1.LedgerDelta,
-      46,
-      work_witness_cbor,
-    ),
-    execution_cpu: 0,
-    execution_memory: 0,
-    verdict: validation_trace_v1.Pending,
-    rejection_code_hash: zero,
-    ledger_delta_root: validation_merkle_v1.frontier_commitment(
-      operation_frontier.count,
-      operation_frontier.peaks,
-    ),
-  }
-  let post = validation_trace_v1.ValidationMachineStateV1 {
-    ..pre,
-    phase: validation_trace_v1.Terminal,
-    program_counter: 47,
-    work_root: validation_trace_v1.hash_work_witness(
-      validation_trace_v1.Terminal,
-      47,
-      vm_witness.encode_terminal_acceptance_witness_v1(
-        h_b,
-        operation_frontier.count,
-        operation_frontier.peaks,
-      ),
-    ),
-    verdict: validation_trace_v1.Accepted,
-  }
-  vm_ledger_delta.verify_ledger_delta_terminal_semantics_v1(
-    pre,
-    vm_machine_types.ValidationOneStepWitnessV1 {
-      work_witness_cbor,
-      claimed_successor: post,
-    },
-  )
 }
 
 test cek_execution_selection_authenticates_program_and_context_subject() {
@@ -871,10 +769,11 @@ test plutus_v3_receive_selection_rejects_with_an_exact_noop() {
     language_bitmap: 1,
   }
   let Pair(pre, work_witness_cbor) = cek_state_fixture(tx, control, #"", 0, 40)
-  let rejection_code = #"455f504c555455535f5343524950545f494e56414c4944"
-  // Canonical exact-rejection successor: it carries the pre-state's non-empty
-  // claimed delta forward. See the note on
-  // `static_rules_prove_a_network_mismatch_is_an_exact_no_op`.
+  let rejection_code = rejection_reason_v1.ReceivePurposePlutusV3Forbidden {
+    purpose_kind: 3,
+    purpose_index: 0,
+  }
+  // Canonical exact-rejection successor.
   let post = exact_rejection_post(pre, rejection_code)
   vm_one_step.verify_one_step_evidence(
     pre,
@@ -2525,6 +2424,23 @@ test cek_spend_finalize_authenticates_descriptor_datum_summary() {
 }
 
 test cek_context_seed_fits_one_step() {
+  cek_context_seed_admits(None)
+}
+
+/// The context-to-core handoff writes the authenticated purpose key of the
+/// context control into the CEK control: a seed naming another index, or the
+/// `-1, -1` sentinel, is refused.
+test cek_context_seed_refuses_a_purpose_key_mismatch() {
+  and {
+    !cek_context_seed_admits(Some(Pair(1, 1))),
+    !cek_context_seed_admits(Some(Pair(-1, -1))),
+    !cek_context_seed_admits(Some(Pair(0, 0))),
+  }
+}
+
+/// The seed step of a mint execution at purpose `(1, 0)`. `written_key`
+/// overrides the purpose key the successor's CEK control carries.
+fn cek_context_seed_admits(written_key: Option<Pair<Int, Int>>) -> Bool {
   let tx = empty_v1_transaction()
   let native_control = cek_context_native_control_fixture(tx)
   let empty_items = cek_data_v1.empty_data_list_summary_v1()
@@ -2606,6 +2522,10 @@ test cek_context_seed_fits_one_step() {
     cpu: 0,
     memory: 0,
   }
+  let Pair(written_kind, written_index) = when written_key is {
+    Some(key) -> key
+    None -> Pair(context_control.purpose_kind, context_control.purpose_index)
+  }
   let post_work = vm_witness.encode_cek_witness_v1(
     native_control,
     #"",
@@ -2616,6 +2536,8 @@ test cek_context_seed_fits_one_step() {
     context_control.execution_cpu_limit,
     context_control.execution_memory_limit,
     context_control.program_envelope_hash,
+    written_kind,
+    written_index,
   )
   let post = validation_trace_v1.ValidationMachineStateV1 {
     ..pre,
@@ -3052,6 +2974,8 @@ test mk_cons_of_well_typed_values_has_one_one_step_successor() {
     1000000,
     1000000,
     h_b,
+    0,
+    0,
   )
   let compact = midgard_transaction_to_compact(tx)
   let tx_id = native_tx_id_for_version(
@@ -3066,7 +2990,6 @@ test mk_cons_of_well_typed_values_has_one_one_step_successor() {
       validation_trace_v1.Cek,
       40,
       work_witness_cbor,
-      validation_trace_v1.hash_ledger_delta(#"80"),
     ),
     execution_cpu: 10,
     execution_memory: 11,
@@ -3087,13 +3010,21 @@ test mk_cons_of_well_typed_values_has_one_one_step_successor() {
         1000000,
         1000000,
         h_b,
+        0,
+        0,
       ),
     ),
     execution_cpu: machine_success.cpu,
     execution_memory: machine_success.memory,
   }
   let failure_successor = validation_trace_v1.ValidationMachineStateV1 {
-    ..exact_rejection_post(pre, reject_plutus_script_invalid),
+    ..exact_rejection_post(
+      pre,
+      rejection_reason_v1.PlutusExecutionFailed {
+        purpose_kind: 0,
+        purpose_index: 0,
+      },
+    ),
     execution_cpu: machine_failure.cpu,
     execution_memory: machine_failure.memory,
   }
@@ -3137,5 +3068,82 @@ test mk_cons_of_well_typed_values_has_one_one_step_successor() {
       inline_field_door(),
       test_l1_slot_config,
     ),
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Purpose key carriage through CEK core steps
+//
+// The context-to-core handoff writes the authenticated purpose key into the
+// CEK control, every core step carries it unchanged, and a core-step
+// `PlutusExecutionFailed` names it. A mint purpose at pointer index 2 keeps
+// the key distinct from the zero defaults and the `-1, -1` sentinel.
+// ---------------------------------------------------------------------------
+
+fn keyed_core_step_admits(
+  fixture: fixtures_cek.CekKeyedCoreStepV1,
+  successor: validation_trace_v1.ValidationMachineStateV1,
+) -> Bool {
+  vm_one_step.verify_one_step_evidence(
+    fixture.pre,
+    one_step_evidence(
+      fixture.work_witness_cbor,
+      successor,
+      vm_machine_types.CekCoreStepWitness { step: fixture.step },
+    ),
+    inline_field_door(),
+    test_l1_slot_config,
+  )
+}
+
+/// A continuing core step carries the key unchanged.
+test cek_core_step_refuses_a_rekeyed_successor() {
+  let fixture = cek_keyed_core_step_fixture(1, 2, 1000000)
+  and {
+    keyed_core_step_admits(fixture, fixture.continued),
+    !keyed_core_step_admits(fixture, fixture.rekeyed_continued),
+  }
+}
+
+/// A core step that exceeds the execution budget rejects with
+/// `PlutusExecutionFailed` at exactly the carried key.
+test cek_core_step_failure_names_the_carried_purpose_key() {
+  let fixture = cek_keyed_core_step_fixture(1, 2, 1000)
+  let rejected = fn(reason) {
+    validation_trace_v1.ValidationMachineStateV1 {
+      ..exact_rejection_post(fixture.pre, reason),
+      execution_cpu: 16010,
+      execution_memory: 111,
+    }
+  }
+  and {
+    keyed_core_step_admits(
+      fixture,
+      rejected(
+        rejection_reason_v1.PlutusExecutionFailed {
+          purpose_kind: 1,
+          purpose_index: 2,
+        },
+      ),
+    ),
+    !keyed_core_step_admits(
+      fixture,
+      rejected(
+        rejection_reason_v1.PlutusExecutionFailed {
+          purpose_kind: 1,
+          purpose_index: 3,
+        },
+      ),
+    ),
+    !keyed_core_step_admits(
+      fixture,
+      rejected(
+        rejection_reason_v1.PlutusExecutionFailed {
+          purpose_kind: -1,
+          purpose_index: -1,
+        },
+      ),
+    ),
+    !keyed_core_step_admits(fixture, fixture.continued),
   }
 }

@@ -50,6 +50,7 @@ const decodeQueueHeader = (node: SDK.StateQueueUTxO) =>
         const recomputed = yield* SDK.hashBlockHeader(header);
         return {
           header,
+          blockTimeMs: Number(stateQueueNode.block_time),
           recomputed,
           daStatus: SDK.daAvailabilityStateQueueStatusKind(
             stateQueueNode.da_attestation,
@@ -64,18 +65,20 @@ const decodeQueueHeader = (node: SDK.StateQueueUTxO) =>
         recomputedHeaderHash: null,
         prevHeaderHash: null,
         endTimeMs: null,
+        blockTimeMs: null,
         roots: null,
         daStatus: null,
         decodeError: describeError(decoded.left),
       } satisfies L1QueueHeader;
     }
-    const { header, recomputed, daStatus } = decoded.right;
+    const { header, blockTimeMs, recomputed, daStatus } = decoded.right;
     return {
       outRef: outRefOf(node.utxo),
       headerHash,
       recomputedHeaderHash: recomputed,
       prevHeaderHash: header.prevHeaderHash,
       endTimeMs: Number(header.endTime),
+      blockTimeMs,
       roots: {
         utxos: header.utxosRoot,
         deposits: header.depositsRoot,

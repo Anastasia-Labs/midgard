@@ -1,4 +1,3 @@
-use aiken/builtin
 use cardano/address.{Address}
 use cardano/assets.{PolicyId}
 use cardano/transaction.{OutputReference, Transaction}
@@ -13,7 +12,6 @@ use midgard/fraud_proofs/transition_trace/proof_carriage
 use midgard/ledger_state
 use midgard/state_queue_yield
 use midgard/transition_trace.{IndexedTraceProof, RootMembershipProof}
-use midgard/validation_trace_v1
 
 validator main(
   computation_thread_token_policy_id: PolicyId,
@@ -40,13 +38,8 @@ validator main(
       ct.Continue(args) -> {
         expect Some(step_datum) = datum
         expect Some(state) = step_datum.data
-        expect state.kind == 0 || state.kind == 2
-        let terminal = if state.kind == 2 {
-          state.phase == 3
-        } else {
-          state.phase == 5
-        }
-        if terminal {
+        expect state.kind == 0
+        if state.phase == 5 {
           let _, _, _, _ <- finalize(
             computation_thread_token_policy_id,
             fraud_proof_token_policy_id,
@@ -60,44 +53,19 @@ validator main(
             tx.outputs,
             tx.redeemers,
           )
-          if state.kind == 2 {
-            expect args.yield_ref_input_indices == []
-            let data = proof_carriage.read(
-              state.proof_commitment,
-              args.proof_ref_indices,
-              tx.reference_inputs,
-            )
-            let (_, fault) = proof_carriage.fields(data)
-            expect [witness_data] = builtin.unconstr_fields(fault)
-            expect witness: proof.AcceptedTransactionTransitionMismatchWitness = witness_data
-            let claim = witness.claim
-            let terminal = claim.terminal_state
-            and {
-              claim.descriptor_membership.value.verdict == validation_trace_v1.Accepted,
-              terminal.work_root == validation_trace_v1.hash_work_witness(
-                validation_trace_v1.Terminal,
-                terminal.program_counter,
-                witness.terminal_acceptance_witness_cbor,
-              ),
-              proof.terminal_acceptance_post_root(
-                witness.terminal_acceptance_witness_cbor,
-              ) != claim.transition_step_membership.value.post_utxos_root,
-            }
-          } else {
-            expect [index] = args.yield_ref_input_indices
-            expect _hash = state_queue_yield.require_authenticated_zero_yield(
-              tx.reference_inputs,
-              tx.withdrawals,
-              tx.redeemers,
-              reference_script_auth_policy_id,
-              delegation.l2_replay_role,
-              index,
-            )
-            True
-          }
+          expect [index] = args.yield_ref_input_indices
+          expect _hash = state_queue_yield.require_authenticated_zero_yield(
+            tx.reference_inputs,
+            tx.withdrawals,
+            tx.redeemers,
+            reference_script_auth_policy_id,
+            delegation.l2_replay_role,
+            index,
+          )
+          True
         } else {
           expect
-            if state.kind == 0 && state.phase == 6 {
+            if state.phase == 6 {
               expect args.yield_ref_input_indices == []
               delegation.advance(
                 step_datum,
@@ -107,26 +75,17 @@ validator main(
               )
             } else {
               expect [index] = args.yield_ref_input_indices
-              let role = if state.kind == 2 {
-                when state.phase is {
-                  0 -> delegation.claim_structure_role
-                  1 -> delegation.claim_source_role
-                  2 -> delegation.claim_endpoints_role
-                  _ -> fail
-                }
-              } else {
-                when state.phase is {
-                  0 -> delegation.l2_open_role
-                  1 -> delegation.l2_delete_role
-                  10 -> delegation.l2_outputs_role
-                  11 -> delegation.l2_outputs_role
-                  2 -> delegation.l2_scan_role
-                  7 -> delegation.l2_value_role
-                  8 -> delegation.l2_summaries_role
-                  3 -> delegation.l2_assembly_role
-                  4 -> delegation.l2_replay_role
-                  _ -> fail
-                }
+              let role = when state.phase is {
+                0 -> delegation.l2_open_role
+                1 -> delegation.l2_delete_role
+                10 -> delegation.l2_outputs_role
+                11 -> delegation.l2_outputs_role
+                2 -> delegation.l2_scan_role
+                7 -> delegation.l2_value_role
+                8 -> delegation.l2_summaries_role
+                3 -> delegation.l2_assembly_role
+                4 -> delegation.l2_replay_role
+                _ -> fail
               }
               expect _hash = state_queue_yield.require_authenticated_zero_yield(
                 tx.reference_inputs,
@@ -139,7 +98,7 @@ validator main(
               True
             }
           expect
-            if state.kind == 0 && state.phase == 6 {
+            if state.phase == 6 {
               let data = proof_carriage.read(
                 state.proof_commitment,
                 args.proof_ref_indices,

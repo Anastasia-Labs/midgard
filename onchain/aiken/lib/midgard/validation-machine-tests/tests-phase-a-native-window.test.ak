@@ -8,287 +8,35 @@
 //// `cursor / 4095` does not exist. Each test below takes one pre-state and
 //// offers several successors, and exactly the derived one is accepted.
 
-use aiken/cbor
 use aiken/collection/list
 use aiken/primitive/bytearray
 use midgard/bounded_item_v1
-use midgard/fraud_proofs/native_tx/components.{
-  encode_midgard_tx_input, encode_midgard_versioned_script,
-}
+use midgard/fraud_proofs/native_tx/components.{encode_midgard_versioned_script}
 use midgard/fraud_proofs/native_tx/types.{
-  MidgardTransaction, MidgardTransactionBody, MidgardTransactionWitnessSet,
-  MidgardTxInput, MidgardVersionedScript, NativeCardanoScript,
+  MidgardTransaction, MidgardTransactionWitnessSet, MidgardVersionedScript,
+  NativeCardanoScript,
 }
 use midgard/native_script_scan_v1
 use midgard/rejection_reason_v1.{
-  reject_invalid_field_type, reject_native_script_invalid,
+  ExecutionNativeScriptFalse, ExecutionNativeScriptMalformed,
+  WitnessNativeScriptFalse, WitnessNativeScriptMalformed,
 }
 use midgard/script_proof_v1
 use midgard/validation_machine/machine_types as mt
 use midgard/validation_machine/native_scripts as vm_native_scripts
 use midgard/validation_machine/one_step as vm_one_step
 use midgard/validation_machine/phase_a_native_scripts as pans
-use midgard/validation_machine_tests/constants.{
-  h_a, h_b, test_l1_slot_config, zero,
+use midgard/validation_machine_tests/constants.{test_l1_slot_config, zero}
+use midgard/validation_machine_tests/fixtures_native_execution.{
+  LateWalk, inline_one, inline_zero, late_walk, late_walk_keyed, reference,
 }
 use midgard/validation_machine_tests/fixtures_phase_a.{
   empty_v1_transaction, exact_rejection_post, inline_field_carriage,
-  inline_field_door, native_scripts_step_fixture, next_phase_a_native_state,
-  phase_a_native_scan_witness, phase_a_native_step_fixture,
-  singleton_field_item_chunk_proof,
-}
-use midgard/validation_machine_tests/fixtures_script_sources.{
-  late_phase_a_native_scan_witness,
+  inline_field_door, next_phase_a_native_state, phase_a_native_scan_witness,
+  phase_a_native_step_fixture, singleton_field_item_chunk_proof,
 }
 use midgard/validation_merkle_v1
 use midgard/validation_trace_v1
-
-// ---------------------------------------------------------------------------
-// Late continuation from any authenticated source coordinate
-// ---------------------------------------------------------------------------
-
-const inline_zero = 0
-
-const inline_one = 1
-
-const reference = 2
-
-/// A genuine one-chunk proof of `bytes` as item `item_index` of `field_index`.
-fn one_chunk_proof(
-  field_index: Int,
-  item_index: Int,
-  bytes: ByteArray,
-) -> bounded_item_v1.ChunkProofV1 {
-  bounded_item_v1.ChunkProofV1 {
-    version: bounded_item_v1.version,
-    field_index,
-    item_index,
-    total_length: bytearray.length(bytes),
-    chunk_index: 0,
-    chunk: bytes,
-    frontier: [
-      validation_merkle_v1.FrontierPeak {
-        height: 0,
-        hash: bounded_item_v1.hash_chunk(field_index, item_index, 0, bytes),
-      },
-    ],
-    siblings: [],
-  }
-}
-
-type LateWalk {
-  pre: validation_trace_v1.ValidationMachineStateV1,
-  work_witness_cbor: ByteArray,
-  descriptor: mt.ValidationAuxiliaryWitnessV1,
-  entry_pre: validation_trace_v1.ValidationMachineStateV1,
-  entry_cbor: ByteArray,
-  payload_pre: validation_trace_v1.ValidationMachineStateV1,
-  payload_cbor: ByteArray,
-  finalize_pre: validation_trace_v1.ValidationMachineStateV1,
-  finalize_cbor: ByteArray,
-  post: validation_trace_v1.ValidationMachineStateV1,
-  /// The target's own chunk at its real coordinate.
-  authentic: bounded_item_v1.ChunkProofV1,
-  /// The target's bytes relabelled to another script coordinate.
-  relabelled: bounded_item_v1.ChunkProofV1,
-  /// A genuine chunk of the other script, `any []`.
-  other_item: bounded_item_v1.ChunkProofV1,
-  /// The successor the other script's bytes would derive at the entry cursor.
-  other_successor: validation_trace_v1.ValidationMachineStateV1,
-}
-
-/// The late phase-A walk of native script `target` (TimelockStart(1)).
-///
-/// `mode` places its source: `inline_zero` as inline item 0 of
-/// `[target, other]`, `inline_one` as inline item 1 of `[other, target]`,
-/// `reference` as the script of reference output 3 with no inline scripts.
-/// `other` is `any []`, whose head derives a different successor.
-fn late_walk(mode: Int) -> LateWalk {
-  let target = MidgardVersionedScript {
-    language: NativeCardanoScript,
-    script_bytes: #"820401",
-  }
-  let other = MidgardVersionedScript {
-    language: NativeCardanoScript,
-    script_bytes: #"820280",
-  }
-  let base = empty_v1_transaction()
-  let tx = MidgardTransaction {
-    ..base,
-    body: MidgardTransactionBody { ..base.body, validity_interval_start: 5 },
-    witness_set: MidgardTransactionWitnessSet {
-      ..base.witness_set,
-      script_tx_wits: if mode == inline_zero {
-        [target, other]
-      } else if mode == inline_one {
-        [other, target]
-      } else {
-        []
-      },
-    },
-  }
-  let target_cbor = encode_midgard_versioned_script(target)
-  let other_cbor = encode_midgard_versioned_script(other)
-  let target_hash = script_proof_v1.versioned_script_hash(target)
-  let length = bytearray.length(target_cbor)
-  let origin_kind = if mode == reference {
-    1
-  } else {
-    0
-  }
-  let source_key = if mode == reference {
-    encode_midgard_tx_input(MidgardTxInput { tx_id: h_b, output_index: 3 })
-  } else {
-    cbor.serialise(mode)
-  }
-  let field = if mode == reference {
-    2
-  } else {
-    6
-  }
-  let item = if mode == reference {
-    3
-  } else {
-    mode
-  }
-  let other_index = if mode == inline_zero {
-    1
-  } else {
-    0
-  }
-  let target_commitment = bounded_item_v1.from_bytes(field, item, target_cbor)
-  let target_source = script_proof_v1.source_descriptor_leaf_hash(
-    origin_kind,
-    source_key,
-    0,
-    target_hash,
-    length,
-    target_commitment,
-  )
-  let other_source = script_proof_v1.inline_source_leaf_hash(
-    other_index,
-    0,
-    script_proof_v1.versioned_script_hash(other),
-    bytearray.length(other_cbor),
-    bounded_item_v1.from_bytes(6, other_index, other_cbor),
-  )
-  let source_index = if mode == inline_one {
-    1
-  } else {
-    0
-  }
-  let source_frontier = validation_merkle_v1.build_frontier(
-    if mode == inline_zero {
-      [target_source, other_source]
-    } else if mode == inline_one {
-      [other_source, target_source]
-    } else {
-      [target_source]
-    },
-  )
-  let empty_frontier = validation_merkle_v1.build_frontier([])
-  let purpose_leaf = script_proof_v1.purpose_leaf_hash(
-    0,
-    0,
-    target_hash,
-    #"0102",
-  )
-  let purpose_frontier = validation_merkle_v1.build_frontier([purpose_leaf])
-  let execution_frontier = validation_merkle_v1.build_frontier(
-    [script_proof_v1.execution_leaf_hash(0, purpose_leaf, target_source, #"")],
-  )
-  let Pair(pre, work_witness_cbor) = native_scripts_step_fixture(
-    tx,
-    source_frontier,
-    empty_frontier,
-    purpose_frontier,
-    execution_frontier,
-    0,
-    0,
-    30,
-  )
-  let Pair(post, _) = native_scripts_step_fixture(
-    tx,
-    source_frontier,
-    empty_frontier,
-    purpose_frontier,
-    execution_frontier,
-    1,
-    0,
-    34,
-  )
-  let payload_offset = length - bytearray.length(target.script_bytes)
-  let authentic = one_chunk_proof(field, item, target_cbor)
-  let late = fn(stage, cursor, node_count, result) {
-    late_phase_a_native_scan_witness(
-      tx,
-      work_witness_cbor,
-      stage,
-      length,
-      target_commitment,
-      cursor,
-      node_count,
-      result,
-    )
-  }
-  let entry_cbor = late(1, payload_offset, 0, -1)
-  let entry_pre = validation_trace_v1.ValidationMachineStateV1 {
-    ..pre,
-    phase: validation_trace_v1.PhaseANativeScripts,
-    program_counter: 31,
-    work_root: validation_trace_v1.hash_work_witness(
-      validation_trace_v1.PhaseANativeScripts,
-      31,
-      entry_cbor,
-    ),
-  }
-  // TimelockStart heads at tag 4, stage 7; `any` heads at tag 2, stage 5.
-  let payload_cbor = late(7, payload_offset + 2, 1, -1)
-  let payload_pre = next_phase_a_native_state(entry_pre, payload_cbor)
-  let finalize_cbor = late(2, length, 1, 1)
-  let finalize_pre = next_phase_a_native_state(payload_pre, finalize_cbor)
-  LateWalk {
-    pre,
-    work_witness_cbor,
-    descriptor: mt.NativeExecutionDescriptorWitness {
-      execution_index: 0,
-      language_tag: 0,
-      purpose_kind: 0,
-      purpose_index: 0,
-      script_hash: target_hash,
-      subject: #"0102",
-      purpose_siblings: [],
-      source_index,
-      origin_kind,
-      source_key,
-      script_total_length: length,
-      script_item_commitment: target_commitment,
-      source_siblings: if mode == reference {
-        []
-      } else {
-        [other_source]
-      },
-      redeemer_leaf: #"",
-      execution_siblings: [],
-      first_chunk_proof: Some(authentic),
-      signer_peaks: [],
-    },
-    entry_pre,
-    entry_cbor,
-    payload_pre,
-    payload_cbor,
-    finalize_pre,
-    finalize_cbor,
-    post,
-    authentic,
-    relabelled: one_chunk_proof(6, other_index, target_cbor),
-    other_item: one_chunk_proof(6, other_index, other_cbor),
-    other_successor: next_phase_a_native_state(
-      entry_pre,
-      late(5, payload_offset + 2, 1, -1),
-    ),
-  }
-}
 
 /// Whether the token head admits `successor` from the late entry state with
 /// `chunk`, through the monolithic dispatcher and the split validator's
@@ -329,9 +77,14 @@ fn late_token_head_admits(
 /// enters it, the token head admits exactly the derived successor, and the
 /// walk returns to NativeScripts with the execution cursor advanced.
 fn late_walk_has_exactly_one_successor(mode: Int) -> Bool {
-  let walk = late_walk(mode)
+  late_walk_keyed_has_exactly_one_successor(late_walk(mode))
+}
+
+fn late_walk_keyed_has_exactly_one_successor(walk: LateWalk) -> Bool {
   expect
       mt.NativeExecutionDescriptorWitness {
+        purpose_kind,
+        purpose_index,
         source_index,
         origin_kind,
         source_key,
@@ -363,8 +116,8 @@ fn late_walk_has_exactly_one_successor(mode: Int) -> Bool {
       walk.pre,
       entry,
       0,
-      0,
-      0,
+      purpose_kind,
+      purpose_index,
       script_proof_v1.versioned_script_hash(
         MidgardVersionedScript {
           language: NativeCardanoScript,
@@ -393,7 +146,10 @@ fn late_walk_has_exactly_one_successor(mode: Int) -> Bool {
     !late_token_head_admits(walk, walk.payload_pre, walk.relabelled),
     !late_token_head_admits(
       walk,
-      exact_rejection_post(walk.entry_pre, reject_invalid_field_type),
+      exact_rejection_post(
+        walk.entry_pre,
+        ExecutionNativeScriptMalformed { purpose_kind, purpose_index },
+      ),
       walk.authentic,
     ),
     !late_token_head_admits(walk, arbitrary, walk.authentic),
@@ -435,6 +191,117 @@ test late_native_reference_source_has_exactly_one_successor() {
 
 test late_native_source_at_inline_index_zero_keeps_exactly_one_successor() {
   late_walk_has_exactly_one_successor(inline_zero)
+}
+
+// ---------------------------------------------------------------------------
+// Purpose key carriage (execution mode)
+//
+// The native execution entry writes the purpose key of the purpose leaf it
+// authenticates into the scan control, every scan step carries it unchanged,
+// and an execution-mode rejection names it. A mint purpose at pointer index 2
+// keeps every coordinate distinct from the zero defaults and the witness-mode
+// sentinel.
+// ---------------------------------------------------------------------------
+
+const keyed_kind = 1
+
+const keyed_index = 2
+
+test late_native_walk_under_a_mint_purpose_key_has_exactly_one_successor() {
+  late_walk_keyed_has_exactly_one_successor(
+    late_walk_keyed(reference, keyed_kind, keyed_index),
+  )
+}
+
+/// The entry successor must carry the authenticated purpose key: another
+/// index, or the witness-mode sentinel, is refused.
+test native_execution_entry_refuses_a_purpose_key_mismatch() {
+  let walk = late_walk_keyed(reference, keyed_kind, keyed_index)
+  let entry_admits = fn(successor) {
+    vm_one_step.verify_one_step_evidence(
+      walk.pre,
+      mt.ValidationOneStepEvidenceV1 {
+        transition: mt.ValidationOneStepWitnessV1 {
+          work_witness_cbor: walk.work_witness_cbor,
+          claimed_successor: successor,
+        },
+        auxiliary: walk.descriptor,
+      },
+      inline_field_door(),
+      test_l1_slot_config,
+    )
+  }
+  and {
+    entry_admits(walk.entry_pre),
+    !entry_admits(walk.rekeyed_entry_pre),
+    !entry_admits(walk.sentinel_entry_pre),
+  }
+}
+
+/// A non-emitting scan step carries the key unchanged.
+test native_scan_step_refuses_a_rekeyed_successor() {
+  let walk = late_walk_keyed(reference, keyed_kind, keyed_index)
+  let payload_admits = fn(successor) {
+    pans.verify_phase_a_native_timelock_payload_semantics_v1(
+      walk.payload_pre,
+      mt.ValidationOneStepWitnessV1 {
+        work_witness_cbor: walk.payload_cbor,
+        claimed_successor: successor,
+      },
+      walk.authentic,
+      None,
+    )
+  }
+  and {
+    payload_admits(walk.finalize_pre),
+    !payload_admits(walk.rekeyed_finalize_pre),
+  }
+}
+
+/// An execution-mode evaluation that ends false rejects with
+/// `ExecutionNativeScriptFalse` at exactly the carried purpose key.
+test native_execution_false_names_the_carried_purpose_key() {
+  let walk = late_walk_keyed(reference, keyed_kind, keyed_index)
+  let finalize_admits = fn(successor) {
+    pans.verify_phase_a_native_advance_semantics_v1(
+      walk.false_finalize_pre,
+      mt.ValidationOneStepWitnessV1 {
+        work_witness_cbor: walk.false_finalize_cbor,
+        claimed_successor: successor,
+      },
+    )
+  }
+  let rejected = fn(reason) {
+    exact_rejection_post(walk.false_finalize_pre, reason)
+  }
+  and {
+    finalize_admits(
+      rejected(
+        ExecutionNativeScriptFalse {
+          purpose_kind: keyed_kind,
+          purpose_index: keyed_index,
+        },
+      ),
+    ),
+    !finalize_admits(
+      rejected(
+        ExecutionNativeScriptFalse {
+          purpose_kind: keyed_kind,
+          purpose_index: keyed_index + 1,
+        },
+      ),
+    ),
+    !finalize_admits(
+      rejected(
+        ExecutionNativeScriptFalse {
+          purpose_kind: 0,
+          purpose_index: keyed_index,
+        },
+      ),
+    ),
+    !finalize_admits(rejected(WitnessNativeScriptFalse { script_index: 0 })),
+    !finalize_admits(walk.post),
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -581,7 +448,7 @@ fn scan_state(
 ) -> ScanState {
   let tx = tx_with(payload)
   let item = item_of(payload)
-  let Pair(pre0, _) = phase_a_native_step_fixture(tx, h_a)
+  let Pair(pre0, _) = phase_a_native_step_fixture(tx)
   let work = scan_witness(tx, item, stage, cursor, f, node_count, result)
   let pc = pre0.program_counter + pc_offset
   ScanState {
@@ -755,7 +622,10 @@ fn wrong_successors(
 ) -> List<validation_trace_v1.ValidationMachineStateV1> {
   let length = bytearray.length(state.item)
   [
-    exact_rejection_post(state.pre, reject_native_script_invalid),
+    exact_rejection_post(
+      state.pre,
+      WitnessNativeScriptFalse { script_index: 0 },
+    ),
     successor_of(state, 2, length, state.frame, state.node_count, 1),
     successor_of(state, 2, length, state.frame, state.node_count, 0),
     successor_of(state, stage, length, state.frame, state.node_count + 1, -1),
@@ -767,7 +637,10 @@ fn wrong_successors(
 /// any other successor.
 fn end_of_item_has_exactly_one_successor(payload: ByteArray, stage: Int) -> Bool {
   let state = end_state(payload, stage)
-  let reject = exact_rejection_post(state.pre, reject_invalid_field_type)
+  let reject = exact_rejection_post(
+    state.pre,
+    WitnessNativeScriptMalformed { script_index: 0 },
+  )
   and {
     token_witnesses(state.item)
       |> list_all(fn(auxiliary) { monolith_admits(state, reject, auxiliary) }),
@@ -856,7 +729,12 @@ fn split_end_of_item_has_exactly_one_successor(
     }
   }
   and {
-    verdicts(exact_rejection_post(state.pre, reject_invalid_field_type))
+    verdicts(
+      exact_rejection_post(
+        state.pre,
+        WitnessNativeScriptMalformed { script_index: 0 },
+      ),
+    )
       |> list_all(fn(admits) { admits }),
     wrong_successors(state, stage)
       |> list_all(

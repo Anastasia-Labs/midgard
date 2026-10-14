@@ -49,7 +49,6 @@ import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile
 import * as SDK from "@al-ft/midgard-sdk";
 import {
   deserializePhaseACandidate,
-  evaluateMidgardCekVerdict,
   type PhaseAResult,
   type QueuedTx,
   runPhaseAValidation,
@@ -101,6 +100,7 @@ import {
 import { packPhaseAJob } from "../../src/workers/utils/validation-pool.js";
 import { projectDepositsToMempoolLedger } from "../helpers/deposit-projection.js";
 import { insertDeposits } from "../helpers/event-rows.js";
+import { testingInlineCekVerdicts } from "../helpers/validation-pool-cek.js";
 import {
   type AdmissionInsert,
   assertGate,
@@ -674,12 +674,11 @@ const drainReplica = async (
   requireBenchmarkDatabaseName(database);
   const phaseAStats = { durationMs: 0, serializationMs: 0 };
   const validationPool: ValidationPoolService = {
+    ...testingInlineCekVerdicts,
     poolSize,
     consensusProfile: MIDGARD_CONSENSUS_PROFILE,
     ready: Effect.void,
     stats: Effect.sync(() => pool.stats()),
-    evaluateCekVerdict: (request) =>
-      Effect.sync(() => evaluateMidgardCekVerdict(request)),
     runPhaseAChunk: (txs) =>
       Effect.tryPromise({
         try: async () => {

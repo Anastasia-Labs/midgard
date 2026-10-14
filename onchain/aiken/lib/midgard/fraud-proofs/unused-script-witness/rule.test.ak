@@ -253,7 +253,6 @@ fn authenticate_exact_witness(
     execution_memory: 0,
     verdict: validation_trace_v1.Pending,
     rejection_code_hash: #"0000000000000000000000000000000000000000000000000000000000000000",
-    ledger_delta_root: h32,
   }
   let state_hash = validation_trace_v1.hash_machine_state(machine_state)
   let terminal_hash = validation_trace_v1.trace_leaf_hash(state_hash)
@@ -515,7 +514,7 @@ fn forced_seam() -> Seam {
     supplied_hash: h28a,
     verdict: validation_trace_v1.Rejected,
     code_hash: validation_trace_v1.hash_rejection_code(
-      rejection_reason_v1.reject_invalid_field_type,
+      UnusedScriptWitness { script_index: 1 },
     ),
     event_key: ledger_state.ForcedTransactionEventKey {
       tx_order_id: order_key(),
@@ -635,7 +634,6 @@ fn authenticate_seam(seam: Seam) -> rule.AuthenticatedWitnessV1 {
     execution_memory: 0,
     verdict: validation_trace_v1.Pending,
     rejection_code_hash: zero32,
-    ledger_delta_root: h32,
   }
   let state_hash = validation_trace_v1.hash_machine_state(machine_state)
   let terminal_hash = validation_trace_v1.trace_leaf_hash(state_hash)
@@ -749,6 +747,18 @@ test refuses_forced_descriptor_with_accepted_verdict() fail {
 
 test refuses_forced_rejection_code_substitution() fail {
   let exact = authenticate_seam(Seam { ..forced_seam(), code_hash: zero32 })
+  exact.source_count == 2
+}
+
+test refuses_forced_rejection_coordinate_substitution() fail {
+  let exact = authenticate_seam(
+    Seam {
+      ..forced_seam(),
+      code_hash: validation_trace_v1.hash_rejection_code(
+        UnusedScriptWitness { script_index: 0 },
+      ),
+    },
+  )
   exact.source_count == 2
 }
 

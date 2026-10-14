@@ -5,7 +5,7 @@ import {
   buildMidgardValidationTraceTree,
   encodeCbor,
   hashMidgardValidationMachineState,
-  hashMidgardValidationRejectionCode,
+  hashMidgardValidationRejectionReasonV1,
   MIDGARD_CONSENSUS_PROFILE,
   MIDGARD_VALIDATION_NO_REJECTION_CODE_HASH,
   type MidgardValidationVerdictName,
@@ -44,7 +44,7 @@ const blueprint = JSON.parse(
 // A regenerated blueprint carries no definition for
 // `midgard/validation_machine/machine_types/ValidationAuxiliaryWitnessV1`:
 // the auxiliary crosses the wire as `Data` into the yield dispatchers'
-// builtin decodes, so its pin is the frozen 41-arm tag/arity corpus
+// builtin decodes, so its pin is the frozen 37-arm tag/arity corpus
 // (`validation-controls-abi.test.ts` freezes the vectors' bytes and digest)
 // plus the cross-language producer vectors in
 // `onchain/aiken/lib/midgard/validation-one-step-cross-language.test.ak`.
@@ -95,10 +95,11 @@ const falsifyTerminalVerdict = (
   verdict: Exclude<MidgardValidationVerdictName, "pending">,
 ): DeterministicValidationMachineTrace => {
   const rejectionCode = verdict === "accepted" ? null : RejectCodes.EmptyInputs;
+  const rejectionReason = verdict === "accepted" ? null : "EmptyInputs";
   const rejectionCodeHash =
-    rejectionCode === null
+    rejectionReason === null
       ? MIDGARD_VALIDATION_NO_REJECTION_CODE_HASH
-      : hashMidgardValidationRejectionCode(rejectionCode);
+      : hashMidgardValidationRejectionReasonV1(rejectionReason);
   const states = trace.states.map((state, index) =>
     index === trace.states.length - 1
       ? {
@@ -119,6 +120,7 @@ const falsifyTerminalVerdict = (
     tree,
     verdict,
     rejectionCode,
+    rejectionReason,
   };
 };
 
@@ -229,7 +231,7 @@ const expectExactBundle = (
   // the hashed `(transition, auxiliary)` preimage, pinned below its envelope.
   expect(bundle.oneStepArgument.evidenceCbor.length).toBeLessThan(16 * 1024);
   expect(bundle.oneStepArgument.resolverIndex).toBeGreaterThanOrEqual(0);
-  expect(bundle.oneStepArgument.resolverIndex).toBeLessThan(14);
+  expect(bundle.oneStepArgument.resolverIndex).toBeLessThan(13);
   // Every index is a prepare + semantic family now: the semantic resolver
   // index is always selected (never null).
   expect(bundle.oneStepArgument.semanticResolverIndex).toBeGreaterThanOrEqual(
@@ -252,8 +254,8 @@ describe("validation dispute evidence construction", () => {
       challengerTrace.states.length - 1,
     );
     expect(bundle.oneStepArgument).toMatchObject({
-      resolverIndex: 13,
-      semanticResolverIndex: 7,
+      resolverIndex: 12,
+      semanticResolverIndex: 10,
     });
   });
 

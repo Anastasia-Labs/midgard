@@ -1,15 +1,19 @@
 import "./listen-router.get-pipeline-status-handler.js";
 
-import { formatUnknownError } from "@al-ft/midgard-core/error-format";
+import { createHash } from "node:crypto";
+
 import * as SDK from "@al-ft/midgard-sdk";
 import { HttpServerResponse } from "@effect/platform";
 import { ParsedSearchParams } from "@effect/platform/HttpServerRequest";
-import { toHex } from "@lucid-evolution/lucid";
+import { SqlClient } from "@effect/sql";
 import { Effect, Ref } from "effect";
 
 import {
-  AddressHistoryDB,
-  BlocksDB,
+  PublicHttpReadLimitError,
+  requirePublicReadPayload,
+} from "../database/http-read-byte-budget.js";
+import { addressHistoryPage } from "../database/http-read-pages.js";
+import {
   MempoolDB,
   MutationJobsDB,
   TxAdmissionsDB,
@@ -31,11 +35,14 @@ import {
   planMergePreflight,
 } from "../transactions/state-queue/merge-readiness.js";
 import { parseAddressArgument } from "./command-utils.js";
+import { publicReadDataLimitResponse } from "./listen-http-read.js";
+import { encodeReadPage, parseReadPage } from "./listen-read-page.js";
 import { failWith500, handleStateQueueGetFailure } from "./listen-response.js";
 import {
   ADDRESS_HISTORY_ENDPOINT,
   MERGE_ENDPOINT,
 } from "./listen-router.l1-provider-readiness-evidence-is-fresh.js";
+import { stateQueueHeaderPage } from "./listen-state-queue-page.js";
 
 /**
  * `GET /merge`: triggers manual merge of the oldest queued block into
@@ -52,21 +59,19 @@ export const getMergeHandler = Effect.gen(function* () {
   if (attempt._tag === "PermitUnavailable") {
     // Nothing ran: the follower-change driver has not published its view.
     // Retry later.
-    const cause = formatUnknownError(attempt.unavailable.cause, {
-      includeCause: true,
-    });
     yield* Effect.logWarning(
-      `GET /${MERGE_ENDPOINT} - ${attempt.unavailable.message}: ${cause}`,
+      `GET /${MERGE_ENDPOINT} - E_MERGE_PRODUCER_UNAVAILABLE`,
     );
     return yield* HttpServerResponse.json(
-      { error: attempt.unavailable.message, cause },
+      {
+        error: "Merge producer is unavailable",
+        error_code: "E_MERGE_PRODUCER_UNAVAILABLE",
+      },
       { status: 503 },
     );
   }
   const { result } = attempt;
-  yield* Effect.logInfo(
-    `GET /${MERGE_ENDPOINT} - Merge result: ${JSON.stringify(result)}`,
-  );
+  yield* Effect.logInfo(`POST /${MERGE_ENDPOINT} - Merge request processed`);
   return yield* HttpServerResponse.json({
     message: "Merge request processed",
     result,
@@ -121,24 +126,34 @@ export const getTxsOfAddressHandler = Effect.gen(function* () {
 
   if (typeof addr !== "string") {
     yield* Effect.logInfo(
-      `GET /${ADDRESS_HISTORY_ENDPOINT} - Invalid address type: ${String(addr)}`,
+      `GET /${ADDRESS_HISTORY_ENDPOINT} - Invalid address type: [redacted]`,
     );
     return yield* HttpServerResponse.json(
-      { error: `Invalid address type: ${String(addr)}` },
+      { error: `Invalid address type: [redacted]` },
       { status: 400 },
     );
   }
   try {
     const address = parseAddressArgument(addr);
-    const cbors = yield* AddressHistoryDB.retrieve(address);
-    yield* Effect.logInfo(`Found ${cbors.length} CBORs with ${addr}`);
+    const rows = yield* addressHistoryPage(address, parseReadPage(params));
+    const page = encodeReadPage(
+      rows,
+      parseReadPage(params),
+      (row) => row.tx_id,
+      (row) => SDK.bufferToHex(requirePublicReadPayload(row.tx)),
+    );
+    const cbors = page.entries;
+    yield* Effect.logInfo(`Found ${cbors.length} CBORs with [redacted]`);
     return yield* HttpServerResponse.json({
-      txs: cbors.map(SDK.bufferToHex),
+      txs: cbors,
+      nextCursor: page.nextCursor,
     });
   } catch (_error) {
-    yield* Effect.logInfo(`Invalid address: ${addr}`);
+    if (_error instanceof PublicHttpReadLimitError)
+      return yield* publicReadDataLimitResponse();
+    yield* Effect.logInfo(`Invalid address: [redacted]`);
     return yield* HttpServerResponse.json(
-      { error: `Invalid address: ${addr}` },
+      { error: `Invalid address: [redacted]` },
       { status: 400 },
     );
   }
@@ -158,7 +173,15 @@ export const getTxsOfAddressHandler = Effect.gen(function* () {
  * `GET /stateQueue`: logs and returns the current ordered state-queue headers.
  */
 export const getStateQueueHandler = Effect.gen(function* () {
-  yield* Effect.logInfo(`✍  Drawing state queue UTxOs...`);
+  const params = yield* ParsedSearchParams;
+  const requestPage = yield* Effect.try(() => parseReadPage(params, 60)).pipe(
+    Effect.either,
+  );
+  if (requestPage._tag === "Left")
+    return yield* HttpServerResponse.json(
+      { error: "Invalid page" },
+      { status: 400 },
+    );
   const globals = yield* Globals;
   const lucid = yield* Lucid;
   const contracts = yield* MidgardContracts;
@@ -179,6 +202,30 @@ export const getStateQueueHandler = Effect.gen(function* () {
   const headers = sortedUTxOs.flatMap((u) =>
     u.datum.key === "Empty" ? [] : [u.datum.key.Key.key],
   );
+  const viewDigest = createHash("sha256")
+    .update(
+      JSON.stringify({
+        generation: landed.view.generation,
+        point: landed.view.point,
+      }),
+    )
+    .digest();
+  const headerPage = stateQueueHeaderPage(
+    headers,
+    requestPage.right,
+    viewDigest,
+  );
+  if (headerPage.kind !== "page")
+    return yield* HttpServerResponse.json(
+      {
+        error: "State queue cursor is invalid or its view changed",
+        error_code:
+          headerPage.kind === "stale"
+            ? "E_HTTP_CURSOR_STALE"
+            : "E_HTTP_CURSOR_INVALID",
+      },
+      { status: headerPage.kind === "stale" ? 409 : 400 },
+    );
   const [
     unconfirmedSubmittedBlockTxHash,
     localFinalizationPending,
@@ -236,31 +283,14 @@ export const getStateQueueHandler = Effect.gen(function* () {
             nowUnixTime: yield* l1NowUnixTimeMs(lucid.api),
           });
         });
-  let drawn = `
----------------------------- STATE QUEUE ----------------------------`;
-  yield* Effect.allSuccesses(
-    sortedUTxOs.map((u) =>
-      Effect.gen(function* () {
-        let info = "";
-        const isHead = u.datum.key === "Empty";
-        const isEnd = u.datum.next === "Empty";
-        const emoji = isHead ? "🚢" : isEnd ? "⚓" : "⛓ ";
-        if (u.datum.key !== "Empty") {
-          const icon = isEnd ? "  " : emoji;
-          info = `
-${icon} ╰─ header: ${u.datum.key.Key.key}`;
-        }
-        drawn = `${drawn}
-${emoji} ${u.utxo.txHash}#${u.utxo.outputIndex}${info}`;
-      }),
-    ),
-  );
-  drawn += `
----------------------------------------------------------------------
-`;
-  yield* Effect.logInfo(drawn);
+  yield* Effect.logInfo("State queue read", {
+    headerCount: headers.length,
+    returnedCount: headerPage.entries.length,
+  });
   return yield* HttpServerResponse.json({
-    headers,
+    headers: headerPage.entries,
+    nextCursor: headerPage.nextCursor,
+    headerCount: headers.length,
     landedQueue: {
       healthy: landed.healthy,
       reason: landed.reason,
@@ -304,42 +334,21 @@ ${emoji} ${u.utxo.txHash}#${u.utxo.outputIndex}${info}`;
  */
 export const getLogBlocksDBHandler = Effect.gen(function* () {
   yield* Effect.logInfo(`✍  Querying BlocksDB...`);
-  const allBlocksData = yield* BlocksDB.retrieve;
-  const keyValues: Record<string, number> = allBlocksData.reduce(
-    (acc: Record<string, number>, entry) => {
-      const bHex = toHex(entry.header_hash);
-      if (!acc[bHex]) {
-        acc[bHex] = 1;
-      } else {
-        acc[bHex] += 1;
-      }
-      return acc;
-    },
-    {} as Record<string, number>,
+  const sql = yield* SqlClient.SqlClient;
+  const rows = yield* sql<{
+    header_hash: Buffer;
+    count: number;
+  }>`SELECT header_hash, COUNT(*)::int AS count
+    FROM (SELECT header_hash FROM blocks ORDER BY height DESC LIMIT 100) AS recent GROUP BY header_hash`;
+  yield* Effect.logInfo(
+    `Recent block-link sample: rows=${rows.reduce((sum, row) => sum + row.count, 0).toString()},headers=${rows.length.toString()}`,
   );
-  let drawn = `
------------------------------- BLOCKS DB ----------------------------`;
-  for (const bHex in keyValues) {
-    drawn = `${drawn}
-${bHex} -──▶ ${keyValues[bHex]} tx(s)`;
-  }
-  drawn += `
----------------------------------------------------------------------
-`;
-  yield* Effect.logInfo(drawn);
   return yield* HttpServerResponse.json({
-    message: `BlocksDB drawn in server logs!`,
+    message: "Recent block-link counts logged",
   });
 }).pipe(
   Effect.catchTag("HttpBodyError", (e) => failWith500("GET", "logBlocksDB", e)),
-  Effect.catchTag("DatabaseError", (e) =>
-    failWith500(
-      "GET",
-      "logBlocksDB",
-      e.cause,
-      `db failure with table ${e.table}`,
-    ),
-  ),
+  Effect.catchTag("SqlError", (e) => failWith500("POST", "logBlocksDB", e)),
 );
 
 /**

@@ -18,6 +18,7 @@ export {
   fixtureHeaderBase,
   makeObservedNode,
   makePayloadFixture,
+  stateQueueNodeDatumCbor,
   tempDir,
 } from "./helpers.make-payload-fixture.js";
 export {

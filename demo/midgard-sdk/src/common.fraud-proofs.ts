@@ -147,7 +147,6 @@ export type MidgardValidators = {
   registeredOperators: AuthenticatedValidator;
   activeOperators: AuthenticatedValidator;
   retiredOperators: AuthenticatedValidator;
-  escapeHatch: AuthenticatedValidator;
   fraudProofCatalogue: AuthenticatedValidator;
   /** Canonical computation-thread policy shared by every fraud-proof family. */
   computationThread: MintingValidator;

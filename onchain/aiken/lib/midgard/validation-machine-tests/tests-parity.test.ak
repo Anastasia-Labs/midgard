@@ -13,6 +13,7 @@ use midgard/fraud_proofs/native_tx/types.{
   MidgardTransactionWitnessSet, MidgardTxInput, MidgardTxOutput, MidgardValue,
   MidgardVersionedScript, NativeCardanoScript, PlutusV3Script, ScriptCredential,
 }
+use midgard/rejection_reason_v1
 use midgard/script_proof_v1
 use midgard/validation_machine/machine_types as vm_machine_types
 use midgard/validation_machine/phase_a_native_scripts as vm_phase_a_native_scripts
@@ -21,10 +22,7 @@ use midgard/validation_machine/script_sources_early_stages as vm_script_sources_
 use midgard/validation_machine/script_sources_late_stages as vm_script_sources_late_stages
 use midgard/validation_machine/shared as vm_shared
 use midgard/validation_machine/witness as vm_witness
-use midgard/validation_machine_tests/constants.{
-  differential_invalid_field_type_code, differential_missing_witness_code,
-  h_28_a, h_a, h_b, zero,
-}
+use midgard/validation_machine_tests/constants.{h_28_a, h_a, h_b, zero}
 use midgard/validation_machine_tests/fixtures_parity.{
   cek_context_step_kind_fixture, cek_core_step_kind_fixture,
   cek_execution_selection_kind_fixture, cek_finish_kind_fixture,
@@ -702,15 +700,21 @@ test stage_differential_nine_missing_routes_agree() {
     work_witness_cbor,
     claimed_successor: exact_rejection_post(
       pre,
-      differential_missing_witness_code,
+      rejection_reason_v1.ScriptSourceMissing {
+        purpose_kind: 3,
+        purpose_index: 0,
+      },
     ),
   }
-  // Mutated successor: a rejection carrying the wrong code.
+  // Mutated successor: a rejection naming another purpose.
   let rejecting = vm_machine_types.ValidationOneStepWitnessV1 {
     work_witness_cbor,
     claimed_successor: exact_rejection_post(
       pre,
-      differential_invalid_field_type_code,
+      rejection_reason_v1.ScriptSourceMissing {
+        purpose_kind: 3,
+        purpose_index: 1,
+      },
     ),
   }
   and {
@@ -747,15 +751,15 @@ test stage_differential_ten_missing_routes_agree() {
     work_witness_cbor,
     claimed_successor: exact_rejection_post(
       pre,
-      differential_missing_witness_code,
+      rejection_reason_v1.RedeemerMissing { purpose_kind: 0, purpose_index: 1 },
     ),
   }
-  // Mutated successor: a rejection carrying the wrong code.
+  // Mutated successor: a rejection naming another purpose.
   let rejecting = vm_machine_types.ValidationOneStepWitnessV1 {
     work_witness_cbor,
     claimed_successor: exact_rejection_post(
       pre,
-      differential_invalid_field_type_code,
+      rejection_reason_v1.RedeemerMissing { purpose_kind: 0, purpose_index: 0 },
     ),
   }
   and {
@@ -973,7 +977,7 @@ test stage_ten_missing_pending_redeemer_hash_divergence_is_unreachable() {
     work_witness_cbor,
     claimed_successor: exact_rejection_post(
       pre,
-      differential_missing_witness_code,
+      rejection_reason_v1.RedeemerMissing { purpose_kind: 0, purpose_index: 1 },
     ),
   }
   narrow_route_is_wider_than_generic(
@@ -1148,7 +1152,7 @@ test phase_a_payload_binding_matches_full_binding(
       ],
     },
   }
-  let Pair(pre, _) = phase_a_native_step_fixture(tx, h_a)
+  let Pair(pre, _) = phase_a_native_step_fixture(tx)
   let work_witness_cbor = phase_a_native_scan_witness(
     tx,
     stage,
@@ -1258,7 +1262,7 @@ test phase_a_item_split_equals_original(choice via fuzz.int_between(0, 7)) {
       script_tx_wits: [script],
     },
   }
-  let Pair(pre, work_witness_cbor) = phase_a_native_step_fixture(tx, h_a)
+  let Pair(pre, work_witness_cbor) = phase_a_native_step_fixture(tx)
   let item_cbor = encode_midgard_versioned_script(script)
   let next_work = phase_a_native_scan_witness(
     tx,
@@ -1336,7 +1340,6 @@ test phase_a_item_split_equals_original(choice via fuzz.int_between(0, 7)) {
 test structural_bounded_phase_routes(choice via fuzz.int_between(0, 7)) {
   let Pair(base, work_witness_cbor) = phase_a_native_step_fixture(
     empty_v1_transaction(),
-    h_a,
   )
   let Pair(before, after) = when choice is {
     0 -> Pair(validation_trace_v1.InputSets, validation_trace_v1.InputSets)

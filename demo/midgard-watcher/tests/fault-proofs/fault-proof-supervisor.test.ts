@@ -26,14 +26,14 @@ const DEPLOYMENT_FINGERPRINT = "dd".repeat(32);
 const latestSafeStartOffsetMs =
   MIDGARD_RETENTION_WINDOW.maturityMs -
   MIDGARD_RETENTION_WINDOW.worstCaseProofTimeBoundMs;
-const deadline = (headerHash: string, headerEndTimeMs: number) =>
+const deadline = (headerHash: string, blockTimeMs: number) =>
   Object.freeze({
     headerHash,
-    headerEndTimeMs: headerEndTimeMs.toString(),
+    headerBlockTimeMs: blockTimeMs.toString(),
     maturityAtMs: (
-      headerEndTimeMs + MIDGARD_RETENTION_WINDOW.maturityMs
+      blockTimeMs + MIDGARD_RETENTION_WINDOW.maturityMs
     ).toString(),
-    latestSafeStartAtMs: (headerEndTimeMs + latestSafeStartOffsetMs).toString(),
+    latestSafeStartAtMs: (blockTimeMs + latestSafeStartOffsetMs).toString(),
   });
 
 const directory = async (): Promise<string> => {

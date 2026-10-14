@@ -94,7 +94,7 @@ it.each([
             canonicalTransactionCbor: fixture.canonicalTransactionCbor,
             sourceKind: "forced",
             verdict: "rejected",
-            rejectionCode: result!.rejectionCode,
+            rejectionReason: result!.rejectionReason,
           },
         ],
       }),

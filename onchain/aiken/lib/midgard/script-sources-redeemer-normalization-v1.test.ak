@@ -413,7 +413,6 @@ fn settlement_pre_state() -> validation_trace_v1.ValidationMachineStateV1 {
     execution_memory: 0,
     verdict: validation_trace_v1.Pending,
     rejection_code_hash: zero,
-    ledger_delta_root: hash_a,
   }
 }
 

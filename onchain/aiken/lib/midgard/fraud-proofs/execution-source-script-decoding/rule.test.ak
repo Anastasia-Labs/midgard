@@ -2,6 +2,7 @@ use aiken/cbor
 use aiken/crypto.{blake2b_256}
 use aiken/merkle_patricia_forestry as mpf
 use aiken/primitive/bytearray
+use cardano/transaction.{OutputReference}
 use midgard/bounded_item_v1
 use midgard/fraud_proofs/execution_source_script_decoding/rule
 use midgard/fraud_proofs/native_script_decoding/engine as scan_engine
@@ -48,9 +49,13 @@ fn forced_subject(reason: RejectionReasonV1) -> substrate.VerdictSubjectV1 {
     direction: substrate.direction_wrongful_rejection,
     source_kind: substrate.source_kind_forced,
     transaction_id: tx_id,
-    source_key: #"00",
+    source_key: cbor.serialise(forced_order()),
     rejection_reason: Some(reason),
   }
+}
+
+fn forced_order() -> OutputReference {
+  OutputReference { transaction_id: h32, output_index: 0 }
 }
 
 fn item_proof(item: ByteArray) -> bounded_item_v1.ChunkProofV1 {
@@ -128,6 +133,13 @@ fn control_for(
 }
 
 fn authenticated_source() -> rule.AuthenticatedExecutionSourceV1 {
+  authenticated_source_for(accepted_subject())
+}
+
+fn authenticated_source_for(
+  subject: substrate.VerdictSubjectV1,
+) -> rule.AuthenticatedExecutionSourceV1 {
+  let forced = subject.source_kind == substrate.source_kind_forced
   let item = fixture.signature_script_item_v1()
   let item_commitment = bounded_item_v1.from_bytes(6, 0, item)
   let purpose_leaf = script_proof_v1.purpose_leaf_hash(0, 0, h28, #"aa")
@@ -146,14 +158,22 @@ fn authenticated_source() -> rule.AuthenticatedExecutionSourceV1 {
     #"",
   )
   let control = control_for(purpose_leaf, source_leaf, execution_leaf)
-  let event_key = ledger_state.L2TransactionEventKey { tx_id }
+  let event_key = if forced {
+    ledger_state.ForcedTransactionEventKey { tx_order_id: forced_order() }
+  } else {
+    ledger_state.L2TransactionEventKey { tx_id }
+  }
   let state = validation_trace_v1.ValidationMachineStateV1 {
     machine_version: validation_trace_v1.machine_version,
     event_key_hash: blake2b_256(cbor.serialise(event_key)),
     transaction_id: tx_id,
     transaction_commitment: h32,
     validation_context_hash: h32,
-    source_kind: validation_trace_v1.Normal,
+    source_kind: if forced {
+      validation_trace_v1.Forced
+    } else {
+      validation_trace_v1.Normal
+    },
     prior_ledger_root: h32,
     phase: validation_trace_v1.NativeScripts,
     program_counter: 7,
@@ -166,7 +186,6 @@ fn authenticated_source() -> rule.AuthenticatedExecutionSourceV1 {
     execution_memory: 0,
     verdict: validation_trace_v1.Pending,
     rejection_code_hash: #"0000000000000000000000000000000000000000000000000000000000000000",
-    ledger_delta_root: h32,
   }
   let state_hash = validation_trace_v1.hash_machine_state(state)
   let terminal_hash = validation_trace_v1.trace_leaf_hash(state_hash)
@@ -180,8 +199,15 @@ fn authenticated_source() -> rule.AuthenticatedExecutionSourceV1 {
     step_count: 1,
     initial_state_hash: state_hash,
     terminal_state_hash: terminal_hash,
-    verdict: validation_trace_v1.Accepted,
-    rejection_code_hash: #"0000000000000000000000000000000000000000000000000000000000000000",
+    verdict: when subject.rejection_reason is {
+      Some(_) -> validation_trace_v1.Rejected
+      None -> validation_trace_v1.Accepted
+    },
+    rejection_code_hash: when subject.rejection_reason is {
+      Some(reason) -> validation_trace_v1.hash_rejection_code(reason)
+      None ->
+        #"0000000000000000000000000000000000000000000000000000000000000000"
+    },
   }
   let phas_root = mpf.root(
     mpf.insert(
@@ -204,7 +230,7 @@ fn authenticated_source() -> rule.AuthenticatedExecutionSourceV1 {
     value: descriptor,
     proof: [],
   }
-  let bound = rule.bind_execution_v1(accepted_subject(), membership.root, 1, 0)
+  let bound = rule.bind_execution_v1(subject, membership.root, 1, 0)
   rule.authenticate_execution_source_v1(
     bound,
     membership,
@@ -245,13 +271,36 @@ test authenticates_the_exact_execution_and_source_frontiers() {
   }
 }
 
-test binds_exact_reason_and_refuses_coordinate_substitution() fail {
-  rule.bind_execution_v1(
-    forced_subject(ExecutionNativeScriptMalformed { execution_index: 0 }),
-    h32,
-    1,
-    1,
-  ) == rule.bind_execution_v1(accepted_subject(), h32, 1, 0)
+fn forced_source(
+  reason: RejectionReasonV1,
+) -> rule.AuthenticatedExecutionSourceV1 {
+  authenticated_source_for(forced_subject(reason))
+}
+
+test forced_rejection_authenticates_the_named_purpose() {
+  and {
+    forced_source(
+      ExecutionNativeScriptMalformed { purpose_kind: 0, purpose_index: 0 },
+    ).bound.execution_index == 0,
+    forced_source(
+      ExecutionNativeScriptNodeLimit { purpose_kind: 0, purpose_index: 0 },
+    ).bound.execution_index == 0,
+    forced_source(
+      ExecutionNativeScriptDepthLimit { purpose_kind: 0, purpose_index: 0 },
+    ).bound.execution_index == 0,
+  }
+}
+
+test forced_malformed_refuses_another_purpose_index() fail {
+  forced_source(
+    ExecutionNativeScriptMalformed { purpose_kind: 0, purpose_index: 1 },
+  ).bound.execution_index == 0
+}
+
+test forced_malformed_refuses_another_purpose_kind() fail {
+  forced_source(
+    ExecutionNativeScriptMalformed { purpose_kind: 1, purpose_index: 0 },
+  ).bound.execution_index == 0
 }
 
 test header_and_payload_malformed_map_to_the_same_execution_class() {
@@ -453,7 +502,9 @@ test malformed_acceptance_and_decodable_wrongful_rejection_close() {
   let valid_item = fixture.signature_script_item_v1()
   let forced = rule.bind_exact_item_v1(
     direct_source(
-      forced_subject(ExecutionNativeScriptMalformed { execution_index: 0 }),
+      forced_subject(
+        ExecutionNativeScriptMalformed { purpose_kind: 0, purpose_index: 0 },
+      ),
       valid_item,
     ),
     item_proof(valid_item),
@@ -477,7 +528,9 @@ test honest_results_do_not_convict() {
   let bad_item = fixture.malformed_wrapper_item_v1()
   let forced = rule.bind_exact_item_v1(
     direct_source(
-      forced_subject(ExecutionNativeScriptMalformed { execution_index: 0 }),
+      forced_subject(
+        ExecutionNativeScriptMalformed { purpose_kind: 0, purpose_index: 0 },
+      ),
       bad_item,
     ),
     item_proof(bad_item),
@@ -559,8 +612,12 @@ test forced_node_and_depth_accusations_convict_on_a_decodable_item() {
     )
       |> rule.closed_state_v1(rule.result_no_fault, final_hash)
   }
-  let node = closed(ExecutionNativeScriptNodeLimit { execution_index: 0 })
-  let depth = closed(ExecutionNativeScriptDepthLimit { execution_index: 0 })
+  let node = closed(
+    ExecutionNativeScriptNodeLimit { purpose_kind: 0, purpose_index: 0 },
+  )
+  let depth = closed(
+    ExecutionNativeScriptDepthLimit { purpose_kind: 0, purpose_index: 0 },
+  )
   and {
     node.source.bound.accused_class == rule.result_node_limit,
     depth.source.bound.accused_class == rule.result_depth_limit,
@@ -582,8 +639,14 @@ test honest_node_and_depth_rejections_do_not_convict() {
     )
       |> rule.closed_state_v1(result, final_hash)
   }
-  let node = ExecutionNativeScriptNodeLimit { execution_index: 0 }
-  let depth = ExecutionNativeScriptDepthLimit { execution_index: 0 }
+  let node = ExecutionNativeScriptNodeLimit {
+    purpose_kind: 0,
+    purpose_index: 0,
+  }
+  let depth = ExecutionNativeScriptDepthLimit {
+    purpose_kind: 0,
+    purpose_index: 0,
+  }
   and {
     !rule.terminal_contradiction_v1(closed(node, rule.result_node_limit)),
     !rule.terminal_contradiction_v1(closed(depth, rule.result_depth_limit)),
@@ -617,32 +680,16 @@ test accepted_node_and_depth_results_convict() {
   }
 }
 
-test binds_node_limit_reason_to_its_exact_execution_coordinate() fail {
-  rule.bind_execution_v1(
-    forced_subject(ExecutionNativeScriptNodeLimit { execution_index: 1 }),
-    h32,
-    1,
-    0,
-  ) == rule.bind_execution_v1(
-    forced_subject(ExecutionNativeScriptNodeLimit { execution_index: 0 }),
-    h32,
-    1,
-    0,
-  )
+test forced_node_limit_refuses_another_purpose_index() fail {
+  forced_source(
+    ExecutionNativeScriptNodeLimit { purpose_kind: 0, purpose_index: 1 },
+  ).bound.execution_index == 0
 }
 
-test binds_depth_limit_reason_to_its_exact_execution_coordinate() fail {
-  rule.bind_execution_v1(
-    forced_subject(ExecutionNativeScriptDepthLimit { execution_index: 1 }),
-    h32,
-    1,
-    0,
-  ) == rule.bind_execution_v1(
-    forced_subject(ExecutionNativeScriptDepthLimit { execution_index: 0 }),
-    h32,
-    1,
-    0,
-  )
+test forced_depth_limit_refuses_another_purpose_index() fail {
+  forced_source(
+    ExecutionNativeScriptDepthLimit { purpose_kind: 0, purpose_index: 1 },
+  ).bound.execution_index == 0
 }
 
 /// A tampered checkpoint is never a terminal: the datum's own hash must

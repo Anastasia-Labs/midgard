@@ -33,8 +33,12 @@ export const canonicalTransaction = (
   } catch {
     throw new Error(`${field} is not a Cardano transaction`);
   }
-  if (transaction.to_canonical_cbor_hex() !== value) {
-    throw new Error(`${field} is not canonical Cardano transaction CBOR`);
+  // Hash and measure the witnessed body exactly as signed. Cardano permits
+  // inline PlutusData encodings whose canonical rewrite changes that body.
+  if (transaction.to_cbor_hex() !== value) {
+    throw new Error(
+      `${field} does not round-trip as exact Cardano transaction CBOR`,
+    );
   }
   const body = transaction.body();
   const bodyHash = CML.hash_transaction(body).to_raw_bytes();
@@ -55,7 +59,7 @@ export const canonicalTransaction = (
       `${field} lacks a valid witness from the authenticated funding credential`,
     );
   }
-  const txBodyCborHex = body.to_canonical_cbor_hex();
+  const txBodyCborHex = body.to_cbor_hex();
   const inputOutRefs: string[] = [];
   const inputs = body.inputs();
   for (let index = 0; index < inputs.len(); index += 1) {
@@ -75,7 +79,7 @@ export const canonicalTransaction = (
   const outputs = body.outputs();
   const outputCborHex: string[] = [];
   for (let index = 0; index < outputs.len(); index += 1) {
-    outputCborHex.push(outputs.get(index).to_canonical_cbor_hex());
+    outputCborHex.push(outputs.get(index).to_cbor_hex());
   }
   if (outputCborHex.length === 0) {
     throw new Error(`${field} transaction has no outputs`);
@@ -145,8 +149,10 @@ export const canonicalOutputCbor = (value: unknown, field: string): string => {
   } catch {
     throw new Error(`${field} is not a Cardano transaction output`);
   }
-  if (output.to_canonical_cbor_hex() !== value) {
-    throw new Error(`${field} is not canonical Cardano output CBOR`);
+  if (output.to_cbor_hex() !== value) {
+    throw new Error(
+      `${field} does not round-trip as exact Cardano output CBOR`,
+    );
   }
   return value;
 };

@@ -9,31 +9,27 @@ import "./validation-merkle.js";
 import "./validation-trace.encode-midgard-validation-machine-state.js";
 import "./validation-trace.decode-midgard-validation-machine-state.js";
 import "./validation-trace.build-midgard-validation-trace-tree.js";
+import "./validation-trace.rejection-reason-v1.js";
 export {
   buildMidgardValidationTraceTree,
   validationTraceDepthForStepCount,
   verifyMidgardValidationTraceProof,
 } from "./validation-trace.build-midgard-validation-trace-tree.js";
 export {
-  buildMidgardValidationLedgerDeltaFrontier,
   decodeMidgardValidationMachineState,
   decodeMidgardValidationTraceDescriptor,
   encodeMidgardValidationTraceDescriptor,
   hashMidgardValidationContext,
-  hashMidgardValidationLedgerDelta,
-  hashMidgardValidationLedgerDeltaCbor,
-  hashMidgardValidationLedgerDeltaOperation,
   hashMidgardValidationMachineState,
-  hashMidgardValidationRejectionCode,
   hashMidgardValidationWorkWitness,
   MIDGARD_VALIDATION_NO_REJECTION_CODE_HASH,
-  type MidgardValidationAuthenticatedLedgerDeltaOperation,
-  type MidgardValidationLedgerDeltaOperation,
 } from "./validation-trace.decode-midgard-validation-machine-state.js";
 export {
   encodeMidgardValidationMachineState,
   hashMidgardValidationEventKey,
+  MIDGARD_VALIDATION_MACHINE_STATE_FIELDS,
   type MidgardValidationMachineState,
+  type MidgardValidationMachineStateFieldName,
   MidgardValidationPhase,
   type MidgardValidationPhaseName,
   MidgardValidationSourceKind,
@@ -44,3 +40,12 @@ export {
   MidgardValidationVerdict,
   type MidgardValidationVerdictName,
 } from "./validation-trace.encode-midgard-validation-machine-state.js";
+export {
+  decodeMidgardRejectionReasonV1Cbor,
+  encodeMidgardRejectionReasonV1Cbor,
+  hashMidgardValidationRejectionReasonV1,
+  MIDGARD_REJECTION_REASON_V1_ARMS,
+  type MidgardRejectionReasonV1,
+  type MidgardRejectionReasonV1ArmName,
+  midgardRejectionReasonV1Parts,
+} from "./validation-trace.rejection-reason-v1.js";

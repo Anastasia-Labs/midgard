@@ -15,6 +15,7 @@ use midgard/fraud_proofs/native_tx/types.{
   NativeCardanoScript, PlutusV3Script,
 }
 use midgard/native_script_scan_v1
+use midgard/rejection_reason_v1
 use midgard/script_proof_v1
 use midgard/validation_machine/input_sets as vm_input_sets
 use midgard/validation_machine/machine_types as vm_machine_types
@@ -25,8 +26,7 @@ use midgard/validation_machine/shared as vm_shared
 use midgard/validation_machine/signatures as vm_signatures
 use midgard/validation_machine/witness as vm_witness
 use midgard/validation_machine_tests/constants.{
-  h_28_a, h_a, h_b, h_c, network_mismatch_rejection_code, test_l1_slot_config,
-  validation_context_cbor, zero,
+  h_28_a, h_a, h_b, h_c, test_l1_slot_config, validation_context_cbor, zero,
 }
 use midgard/validation_machine_tests/fixtures_input_resolution.{
   resolve_inputs_authenticated_membership_step,
@@ -36,111 +36,27 @@ use midgard/validation_machine_tests/fixtures_phase_a.{
   contains_non_native_script, duplicate_observer_field_carriage,
   empty_v1_transaction, exact_rejection_post, initial_signatures_witness,
   inline_field_carriage, inline_field_door, input_sets_pre,
-  input_sets_scan_witness, next_phase_a_native_state,
-  non_empty_claimed_delta_root, one_step_evidence, phase_a_native_scan_witness,
-  phase_a_native_step_fixture, phase_a_script_preconditions_fixture,
-  resolve_inputs_step_fixture, signatures_scan_witness, signatures_step_fixture,
-  signer_frontier_for_tx, singleton_field_item_chunk_proof,
-  static_rules_delta_root_fixture, submitted_source, v1_program_envelope,
+  input_sets_scan_witness, next_phase_a_native_state, one_step_evidence,
+  phase_a_native_scan_witness, phase_a_native_step_fixture,
+  phase_a_script_preconditions_fixture, resolve_inputs_step_fixture,
+  signatures_scan_witness, signatures_step_fixture, signer_frontier_for_tx,
+  singleton_field_item_chunk_proof, static_rules_step_fixture, submitted_source,
+  v1_program_envelope,
 }
 use midgard/validation_merkle_v1
 use midgard/validation_trace_v1
 
-// POSITIVE CONTROL for the restored capability (GOAL_SPEC §3 invariant 9).
-// This is the governing adversarial case: an operator commits an `Accepted`
-// descriptor -- mandatory for every normal L2 source -- over a transaction that
-// truly rejects, and therefore carries a real, NON-EMPTY claimed delta root.
-// Before the fix no challenger could construct any winning rejection successor
-// from such a pre-state, so a dishonest operator won every dispute by default.
-// The test also pins that the claim is carried forward, not cleared.
-test rejection_is_provable_from_a_non_empty_claimed_delta_root() {
-  let claimed = non_empty_claimed_delta_root()
-  let Pair(pre, work_witness_cbor) = static_rules_delta_root_fixture(
-    False,
-    claimed,
-  )
-  let terminal = exact_rejection_post(pre, network_mismatch_rejection_code)
-  and {
-    claimed != validation_merkle_v1.frontier_commitment(0, []),
-    terminal.ledger_delta_root == claimed,
-    vm_one_step.verify_one_step(
-      pre,
-      vm_machine_types.ValidationOneStepWitnessV1 {
-        work_witness_cbor,
-        claimed_successor: terminal,
-      },
-      inline_field_door(),
-      test_l1_slot_config,
-    ),
-  }
-}
-
-// NEGATIVE CONTROL -- mutation (clearing). The old, deleted production clause
-// demanded exactly this successor shape. It must now be REJECTED, because the
-// claimed delta root is immutable context. This is the control that stops
-// anyone "restoring" the clearing clause, or exempting the field from
-// `immutable_context_matches`, without turning a test red.
-test rejection_successor_that_clears_the_claimed_delta_is_rejected() {
-  let Pair(pre, work_witness_cbor) = static_rules_delta_root_fixture(
-    False,
-    non_empty_claimed_delta_root(),
-  )
-  let cleared_terminal = validation_trace_v1.ValidationMachineStateV1 {
-    ..exact_rejection_post(pre, network_mismatch_rejection_code),
-    ledger_delta_root: validation_merkle_v1.frontier_commitment(0, []),
-  }
-  !vm_one_step.verify_one_step(
-    pre,
-    vm_machine_types.ValidationOneStepWitnessV1 {
-      work_witness_cbor,
-      claimed_successor: cleared_terminal,
-    },
-    inline_field_door(),
-    test_l1_slot_config,
-  )
-}
-
-// NEGATIVE CONTROL -- mutation (rewriting). Immutability holds in both
-// directions: the successor may not substitute any other delta root either.
-test rejection_successor_that_rewrites_the_claimed_delta_is_rejected() {
-  let Pair(pre, work_witness_cbor) = static_rules_delta_root_fixture(
-    False,
-    non_empty_claimed_delta_root(),
-  )
-  let rewritten_terminal = validation_trace_v1.ValidationMachineStateV1 {
-    ..exact_rejection_post(pre, network_mismatch_rejection_code),
-    ledger_delta_root: h_b,
-  }
-  !vm_one_step.verify_one_step(
-    pre,
-    vm_machine_types.ValidationOneStepWitnessV1 {
-      work_witness_cbor,
-      claimed_successor: rewritten_terminal,
-    },
-    inline_field_door(),
-    test_l1_slot_config,
-  )
-}
-
-// NEGATIVE CONTROL -- valid-block rejection (GOAL_SPEC §3 invariant 9). THE
-// critical control for the delta-root fix: deleting the clearing clause must
-// not have made honest blocks challengeable. Here the transaction satisfies the
-// static ledger rules, so its true one-step is an advance to `InputSets`; a
-// claimed rejection terminal -- otherwise perfectly well-formed, and carrying
-// the claimed delta forward exactly as the now-passing rejection tests do --
-// must still be unprovable.
-test a_valid_static_rules_transition_cannot_be_proven_rejected() {
-  let Pair(pre, work_witness_cbor) = static_rules_delta_root_fixture(
-    True,
-    non_empty_claimed_delta_root(),
-  )
-  !vm_one_step.verify_one_step(
+// POSITIVE CONTROL: a static-rules rejection is provable with the exact
+// rejecting terminal as the successor.
+test a_static_rules_rejection_is_provable() {
+  let Pair(pre, work_witness_cbor) = static_rules_step_fixture(False)
+  vm_one_step.verify_one_step(
     pre,
     vm_machine_types.ValidationOneStepWitnessV1 {
       work_witness_cbor,
       claimed_successor: exact_rejection_post(
         pre,
-        network_mismatch_rejection_code,
+        rejection_reason_v1.NetworkIdMismatch,
       ),
     },
     inline_field_door(),
@@ -148,33 +64,45 @@ test a_valid_static_rules_transition_cannot_be_proven_rejected() {
   )
 }
 
-// The ONE deliberately-empty claimed-delta case. An honest, self-consistent
-// forced-invalid trace built by the TypeScript reference carries
-// `hashMidgardValidationLedgerDeltaV1([]) == frontier_commitment(0, [])` on
-// every state, so an empty claim is spec-legal in exactly this scenario. It is
-// kept as a single labelled case rather than as the framing for the whole
-// rejection surface: as the only framing it hid the defect, because it is the
-// one pre-state in which the deleted clause was satisfiable.
-test an_honest_forced_invalid_trace_may_carry_an_empty_claimed_delta() {
-  let empty_claim = validation_merkle_v1.frontier_commitment(0, [])
-  let Pair(pre, work_witness_cbor) = static_rules_delta_root_fixture(
-    False,
-    empty_claim,
-  )
-  let terminal = exact_rejection_post(pre, network_mismatch_rejection_code)
+// NEGATIVE CONTROL -- mutation. The rejecting terminal may not rewrite the
+// prior ledger root, which is immutable context.
+test rejection_successor_that_rewrites_the_prior_ledger_root_is_rejected() {
+  let Pair(pre, work_witness_cbor) = static_rules_step_fixture(False)
+  let rewritten_terminal = validation_trace_v1.ValidationMachineStateV1 {
+    ..exact_rejection_post(pre, rejection_reason_v1.NetworkIdMismatch),
+    prior_ledger_root: validation_merkle_v1.frontier_commitment(0, []),
+  }
   and {
-    pre.source_kind == validation_trace_v1.Forced,
-    terminal.ledger_delta_root == empty_claim,
-    vm_one_step.verify_one_step(
+    pre.prior_ledger_root != validation_merkle_v1.frontier_commitment(0, []),
+    !vm_one_step.verify_one_step(
       pre,
       vm_machine_types.ValidationOneStepWitnessV1 {
         work_witness_cbor,
-        claimed_successor: terminal,
+        claimed_successor: rewritten_terminal,
       },
       inline_field_door(),
       test_l1_slot_config,
     ),
   }
+}
+
+// NEGATIVE CONTROL -- valid-block rejection. Here the transaction satisfies
+// the static ledger rules, so its true one-step is an advance to `InputSets`;
+// an otherwise well-formed rejecting terminal must be unprovable.
+test a_valid_static_rules_transition_cannot_be_proven_rejected() {
+  let Pair(pre, work_witness_cbor) = static_rules_step_fixture(True)
+  !vm_one_step.verify_one_step(
+    pre,
+    vm_machine_types.ValidationOneStepWitnessV1 {
+      work_witness_cbor,
+      claimed_successor: exact_rejection_post(
+        pre,
+        rejection_reason_v1.NetworkIdMismatch,
+      ),
+    },
+    inline_field_door(),
+    test_l1_slot_config,
+  )
 }
 
 test input_sets_rejects_a_successor_in_the_wrong_phase() {
@@ -216,7 +144,7 @@ test input_sets_proves_an_empty_input_forced_transaction_is_an_exact_no_op() {
     vm_witness.empty_resolution_schedule_hash(),
   )
   let input_pre = input_sets_pre(tx, 2, work_witness_cbor)
-  let rejection_code = #"455f454d5054595f494e50555453"
+  let rejection_code = rejection_reason_v1.EmptyInputs
   vm_input_sets.verify_input_sets_empty_semantics_v1(
     input_pre,
     vm_machine_types.ValidationOneStepWitnessV1 {
@@ -382,7 +310,12 @@ test input_sets_proves_spend_reference_overlap_unilaterally() {
     0,
     reference_carriage,
   )
-  let rejection_code = #"455f4455504c49434154455f494e5055545f494e5f5458"
+  let rejection_code = rejection_reason_v1.DuplicateInput {
+    first_field_index: -1,
+    first_item_index: -1,
+    second_field_index: -1,
+    second_item_index: -1,
+  }
   and {
     first_is_valid,
     vm_input_sets.verify_input_sets_item_semantics_v1(
@@ -436,7 +369,7 @@ fn input_sets_proves_a_malformed_validity_interval(
   )
   let pre = input_sets_pre(tx, 2, work_witness_cbor)
   let carriage = inline_field_carriage([key])
-  let rejection_code = #"455f494e56414c49445f56414c49444954595f494e54455256414c5f464f524d4154"
+  let rejection_code = rejection_reason_v1.ValidityIntervalMalformed
   vm_input_sets.verify_input_sets_item_semantics_v1(
     pre,
     vm_machine_types.ValidationOneStepWitnessV1 {
@@ -459,7 +392,7 @@ test signatures_accepts_an_empty_required_signer_and_witness_set() {
       inputs: [MidgardTxInput { tx_id: h_a, output_index: 0 }],
     },
   }
-  let Pair(pre, work_witness_cbor) = signatures_step_fixture(tx, h_a)
+  let Pair(pre, work_witness_cbor) = signatures_step_fixture(tx)
   let proof_source = submitted_source(tx)
   let signer_frontier = validation_merkle_v1.build_frontier([])
   let required_witness_cbor = signatures_scan_witness(
@@ -472,7 +405,7 @@ test signatures_accepts_an_empty_required_signer_and_witness_set() {
     #"",
     #"",
     signer_frontier,
-    0,
+    -1,
   )
   let required_pre = validation_trace_v1.ValidationMachineStateV1 {
     ..pre,
@@ -493,7 +426,7 @@ test signatures_accepts_an_empty_required_signer_and_witness_set() {
     #"",
     #"",
     signer_frontier,
-    0,
+    -1,
   )
   let handoff_pre = validation_trace_v1.ValidationMachineStateV1 {
     ..required_pre,
@@ -536,6 +469,8 @@ test signatures_accepts_an_empty_required_signer_and_witness_set() {
     signer_frontier.count,
     signer_frontier.peaks,
     #"",
+    -1,
+    -1,
   )
   let post = validation_trace_v1.ValidationMachineStateV1 {
     ..handoff_pre,
@@ -603,10 +538,7 @@ test signatures_proves_a_missing_required_signer_is_an_exact_no_op() {
       required_signers: [h_28_a],
     },
   }
-  let Pair(pre, work_witness_cbor) = signatures_step_fixture(
-    tx,
-    validation_trace_v1.hash_ledger_delta(#"80"),
-  )
+  let Pair(pre, work_witness_cbor) = signatures_step_fixture(tx)
   let signer_frontier = validation_merkle_v1.build_frontier([])
   let required_witness_cbor = signatures_scan_witness(
     tx,
@@ -618,7 +550,7 @@ test signatures_proves_a_missing_required_signer_is_an_exact_no_op() {
     #"",
     #"",
     signer_frontier,
-    0,
+    -1,
   )
   let required_pre = validation_trace_v1.ValidationMachineStateV1 {
     ..pre,
@@ -629,7 +561,9 @@ test signatures_proves_a_missing_required_signer_is_an_exact_no_op() {
       required_witness_cbor,
     ),
   }
-  let rejection_code = #"455f4d495353494e475f52455155495245445f5749544e455353"
+  let rejection_code = rejection_reason_v1.RequiredSignerUnsigned {
+    signer_index: 0,
+  }
   and {
     vm_signatures.verify_signatures_advance_semantics_v1(
       pre,
@@ -669,10 +603,7 @@ test signatures_proves_an_invalid_address_signature_is_an_exact_no_op() {
       ],
     },
   }
-  let Pair(pre, work_witness_cbor) = signatures_step_fixture(
-    tx,
-    validation_trace_v1.hash_ledger_delta(#"80"),
-  )
+  let Pair(pre, work_witness_cbor) = signatures_step_fixture(tx)
   let address_witness = MidgardAddressWitness {
     verification_key: zero,
     signature: zero |> bytearray.concat(zero),
@@ -692,7 +623,7 @@ test signatures_proves_an_invalid_address_signature_is_an_exact_no_op() {
     #"",
     #"",
     signer_frontier,
-    1,
+    0,
   )
   let required_pre = validation_trace_v1.ValidationMachineStateV1 {
     ..pre,
@@ -704,7 +635,9 @@ test signatures_proves_an_invalid_address_signature_is_an_exact_no_op() {
     ),
   }
   let carriage = inline_field_carriage([address_witness_cbor])
-  let rejection_code = #"455f494e56414c49445f5349474e4154555245"
+  let rejection_code = rejection_reason_v1.AddressWitnessSignatureInvalid {
+    witness_index: 0,
+  }
   and {
     vm_signatures.verify_signature_address_item_semantics_v1(
       pre,
@@ -746,7 +679,7 @@ test phase_a_native_scripts_evaluates_a_valid_timelock_on_l1() {
       ],
     },
   }
-  let Pair(pre, work_witness_cbor) = phase_a_native_step_fixture(tx, h_a)
+  let Pair(pre, work_witness_cbor) = phase_a_native_step_fixture(tx)
   let item_cbor = encode_midgard_versioned_script(
     MidgardVersionedScript {
       language: NativeCardanoScript,
@@ -902,10 +835,7 @@ test phase_a_native_scripts_resolves_a_nested_signature_one_step_at_a_time() {
       script_tx_wits: [script],
     },
   }
-  let Pair(pre, _initial_work_witness_cbor) = phase_a_native_step_fixture(
-    tx,
-    h_a,
-  )
+  let Pair(pre, _initial_work_witness_cbor) = phase_a_native_step_fixture(tx)
   let item_cbor = encode_midgard_versioned_script(script)
   let chunk_proof = singleton_field_item_chunk_proof(6, item_cbor)
   let payload_offset = bytearray.length(item_cbor) - bytearray.length(
@@ -1102,10 +1032,7 @@ test phase_a_native_scripts_proves_an_unsatisfied_script_is_an_exact_no_op() {
       ],
     },
   }
-  let Pair(pre, work_witness_cbor) = phase_a_native_step_fixture(
-    tx,
-    validation_trace_v1.hash_ledger_delta(#"80"),
-  )
+  let Pair(pre, work_witness_cbor) = phase_a_native_step_fixture(tx)
   let item_cbor = encode_midgard_versioned_script(
     MidgardVersionedScript {
       language: NativeCardanoScript,
@@ -1166,7 +1093,9 @@ test phase_a_native_scripts_proves_an_unsatisfied_script_is_an_exact_no_op() {
     payload_pre,
     finalize_work_witness_cbor,
   )
-  let rejection_code = #"455f4e41544956455f5343524950545f494e56414c4944"
+  let rejection_code = rejection_reason_v1.WitnessNativeScriptFalse {
+    script_index: 0,
+  }
   // An exact rejection also clears the ledger delta to the empty frontier
   // commitment; `exact_rejection_post` is the canonical successor shape.
   let terminal = exact_rejection_post(finalize_pre, rejection_code)
@@ -1220,10 +1149,7 @@ test phase_a_script_preconditions_advances_an_empty_bundle_to_resolution() {
       inputs: [MidgardTxInput { tx_id: h_a, output_index: 0 }],
     },
   }
-  let Pair(pre, work_witness_cbor) = phase_a_script_preconditions_fixture(
-    tx,
-    h_a,
-  )
+  let Pair(pre, work_witness_cbor) = phase_a_script_preconditions_fixture(tx)
   let proof_source = submitted_source(tx)
   let signer_frontier = signer_frontier_for_tx(tx)
   let post = validation_trace_v1.ValidationMachineStateV1 {
@@ -1288,10 +1214,7 @@ test phase_a_script_preconditions_proves_duplicate_observers_are_a_no_op() {
       required_observers: [h_28_a, h_28_a],
     },
   }
-  let Pair(pre, work_witness_cbor) = phase_a_script_preconditions_fixture(
-    tx,
-    validation_trace_v1.hash_ledger_delta(#"80"),
-  )
+  let Pair(pre, work_witness_cbor) = phase_a_script_preconditions_fixture(tx)
   let proof_source = submitted_source(tx)
   let signer_frontier = signer_frontier_for_tx(tx)
   let next_work_witness_cbor = vm_witness.encode_phase_a_script_preconditions_witness(
@@ -1323,7 +1246,9 @@ test phase_a_script_preconditions_proves_duplicate_observers_are_a_no_op() {
       next_work_witness_cbor,
     ),
   }
-  let rejection_code = #"455f494e56414c49445f4649454c445f54595045"
+  let rejection_code = rejection_reason_v1.ObserverOrderInvalid {
+    observer_index: 1,
+  }
   let terminal = exact_rejection_post(next, rejection_code)
   // The duplicate is now the field's own §5.1 preimage rather than two
   // openings over one frontier, and which of its two identical items a step
@@ -1401,14 +1326,9 @@ test phase_a_script_preconditions_require_integrity_for_plutus_bytes() {
       ],
     },
   }
-  let Pair(pre, work_witness_cbor) = phase_a_script_preconditions_fixture(
-    tx,
-    non_empty_claimed_delta_root(),
-  )
-  let rejection_code = #"455f494e56414c49445f4649454c445f54595045"
-  // Canonical exact-rejection successor: it carries the non-empty claimed delta
-  // forward. See the note on
-  // `static_rules_prove_a_network_mismatch_is_an_exact_no_op`.
+  let Pair(pre, work_witness_cbor) = phase_a_script_preconditions_fixture(tx)
+  let rejection_code = rejection_reason_v1.ScriptIntegrityHashMissing
+  // Canonical exact-rejection successor.
   let terminal = exact_rejection_post(pre, rejection_code)
   vm_one_step.verify_one_step_evidence(
     pre,
@@ -1558,10 +1478,11 @@ test resolve_inputs_proves_non_membership_as_an_exact_no_op() {
     accumulator,
     8,
   )
-  let rejection_code = #"455f494e5055545f4e4f545f464f554e44"
-  // Canonical exact-rejection successor: it carries the non-empty claimed delta
-  // (supplied by `resolve_inputs_step_fixture`) forward. See the note on
-  // `static_rules_prove_a_network_mismatch_is_an_exact_no_op`.
+  let rejection_code = rejection_reason_v1.InputNotFound {
+    source_kind: 0,
+    input_index: -1,
+  }
+  // Canonical exact-rejection successor.
   let terminal = exact_rejection_post(pre, rejection_code)
   vm_one_step.verify_one_step_evidence(
     pre,
@@ -1612,7 +1533,7 @@ fn resolve_inputs_rejects_the_validity_interval_exactly(
     accumulator,
     7,
   )
-  let rejection_code = #"455f56414c49444954595f494e54455256414c5f4d49534d41544348"
+  let rejection_code = rejection_reason_v1.ValidityIntervalExcludesBlockSlot
   let terminal = validation_trace_v1.ValidationMachineStateV1 {
     ..pre,
     phase: validation_trace_v1.Terminal,
@@ -1728,7 +1649,7 @@ test signatures_refuses_an_alternative_authentic_first_choice() {
       addr_tx_wits: [first, second],
     },
   }
-  let Pair(pre, work_witness_cbor) = signatures_step_fixture(tx, h_a)
+  let Pair(pre, work_witness_cbor) = signatures_step_fixture(tx)
   let bytes = encode_midgard_address_witness(second)
   let signer_hash = blake2b_224(second.verification_key)
   let frontier = validation_merkle_v1.build_frontier(
@@ -1787,7 +1708,7 @@ test signatures_accepts_the_authentic_minimum_at_reordered_physical_index() {
       addr_tx_wits: [first, second],
     },
   }
-  let Pair(pre, work_witness_cbor) = signatures_step_fixture(tx, h_a)
+  let Pair(pre, work_witness_cbor) = signatures_step_fixture(tx)
   let bytes = encode_midgard_address_witness(second)
   let signer_hash = blake2b_224(second.verification_key)
   let frontier = validation_merkle_v1.build_frontier(
@@ -1843,7 +1764,7 @@ fn signatures_accepts_duplicate_index_boundary(count: Int, index: Int) -> Bool {
       addr_tx_wits: addresses,
     },
   }
-  let Pair(initial, _) = signatures_step_fixture(tx, h_a)
+  let Pair(initial, _) = signatures_step_fixture(tx)
   let bytes = encode_midgard_address_witness(address)
   let signer_hash = blake2b_224(address.verification_key)
   let prefix = signer_hash |> bytearray.concat(bytes)
@@ -1860,7 +1781,7 @@ fn signatures_accepts_duplicate_index_boundary(count: Int, index: Int) -> Bool {
     prefix |> bytearray.concat(cbor.serialise(index - 1)),
     signer_hash,
     frontier,
-    1,
+    0,
   )
   let pre = validation_trace_v1.ValidationMachineStateV1 {
     ..initial,
@@ -1880,7 +1801,7 @@ fn signatures_accepts_duplicate_index_boundary(count: Int, index: Int) -> Bool {
     prefix |> bytearray.concat(cbor.serialise(index)),
     signer_hash,
     frontier,
-    1,
+    0,
   )
   let post = validation_trace_v1.ValidationMachineStateV1 {
     ..pre,

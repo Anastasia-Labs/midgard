@@ -56,7 +56,6 @@ describe("validation dispute ABI", () => {
         "ScriptIntegrity",
         "Cek",
         "ValueAndMint",
-        "LedgerDelta",
         "Terminal",
       ].map((value, tag) => ({
         value,
@@ -172,7 +171,6 @@ describe("validation dispute ABI", () => {
       execution_memory: 0n,
       verdict: "Pending",
       rejection_code_hash: "00".repeat(32),
-      ledger_delta_root: "07".repeat(32),
     };
     const terminalAward: ValidationBoundarySpendRedeemerData = {
       Continue: [

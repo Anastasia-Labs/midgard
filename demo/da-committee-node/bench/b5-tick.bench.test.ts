@@ -66,7 +66,8 @@ const signedOf = (queue: QueueChain): SignedHeader[] => {
       : queue.merged.filter(({ mergedAt }) => tip - mergedAt + 1 <= K);
   return [...retained, ...queue.nodes].map((node) => ({
     headerHash: node.hash,
-    endTimeMs: node.header.endTime,
+    // This traffic fixture builds ordinary blocks: coverage equals commit.
+    blockTimeMs: node.header.endTime,
   }));
 };
 
