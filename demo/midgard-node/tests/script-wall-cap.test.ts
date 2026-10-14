@@ -17,15 +17,14 @@ import {
   evaluateEvictingUncommittable,
   makeCommitStageRejectionBreaker,
 } from "../src/mpf/commit-rejection.evict-uncommittable-normal-txs.js";
-import { COMMIT_REJECT_CODE_TRACE_UNAVAILABLE } from "../src/mpf/commit-rejection.js";
 import { evaluateNormalBlockCandidates } from "../src/mpf/process.evaluate-normal-block-candidates.js";
 
 /**
  * The script wall caps are local limits. At admission, a transaction whose
  * scripts pass the submit cap is deferred under the node's own code and the
  * rest of the batch is decided without it. At commit, one past the commit
- * cap is evicted through the commit-stage rejection path, and the block is
- * built from the rest.
+ * cap is left out of the block unrejected, so it stays pending, and the
+ * block is built from the rest.
  */
 
 // Tens of thousands of CEK steps: far longer than a 1 ms cap.
@@ -114,14 +113,9 @@ describe("commit wall cap", () => {
     ).toStrictEqual([hex(plain), hex(slow)]);
   });
 
-  it("evicts the transaction past the cap and commits the rest", async () => {
+  it("leaves the transaction past the cap out of the block unrejected and commits the rest", async () => {
     const built = await build(1);
-    expect(
-      built.rejected.map((rejection) => [
-        Buffer.from(rejection.txId).toString("hex"),
-        rejection.code,
-      ]),
-    ).toStrictEqual([[hex(slow), COMMIT_REJECT_CODE_TRACE_UNAVAILABLE]]);
+    expect(built.rejected).toStrictEqual([]);
     expect(
       built.accepted.map((tx) => tx.ledgerTx.txId.toString("hex")),
     ).toStrictEqual([hex(plain)]);

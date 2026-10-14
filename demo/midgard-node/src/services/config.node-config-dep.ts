@@ -163,7 +163,10 @@ export type NodeConfigDep = {
    * and is retried with the validation retry backoff.
    */
   VALIDATION_SUBMIT_WALL_CAP_MS: number;
-  /** Per-tx wall cap on a commit's script runs; past it the tx is evicted. */
+  /**
+   * Per-tx wall cap on a commit's script runs; past it the tx is left out of
+   * the block, unrejected, and stays pending for a later block.
+   */
   VALIDATION_COMMIT_WALL_CAP_MS: number;
   VALIDATION_WORKER_NODE_ED25519: boolean;
   VALIDATION_DRAIN_LOOPS: number;

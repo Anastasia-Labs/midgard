@@ -269,8 +269,8 @@ export type PhaseBConfig = {
   /**
    * A node-local wall-clock cap, in milliseconds, on the script runs of one
    * transaction. A transaction whose runs pass it makes Phase B fail with
-   * `ScriptWallCapExceededError`, never a rejection, so the caller refuses or
-   * evicts it locally. Unset (no cap) wherever the verdict is consensus: forced
+   * `ScriptWallCapExceededError`, never a rejection, so the caller defers it
+   * locally. Unset (no cap) wherever the verdict is consensus: forced
    * transactions and the verification of other operators' blocks.
    */
   readonly scriptWallCapMs?: number;
@@ -288,7 +288,8 @@ export type PhaseBConfig = {
    * in `localRefusals` instead of failing Phase B. A refused candidate is left
    * undecided together with every candidate that spends or references its
    * outputs, and every other candidate is decided, in its own order, as if
-   * they were absent. Submission only, like the refusals themselves.
+   * they were absent. Only where those refusals apply: submission, and the
+   * commit of admitted transactions.
    */
   readonly reportLocalRefusals?: boolean;
   /**
