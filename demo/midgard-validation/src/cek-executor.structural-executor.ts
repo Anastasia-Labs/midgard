@@ -185,6 +185,13 @@ export class StructuralExecutor {
         );
       }
       this.setConstant(key, witness);
+      // A costly source constant reaches builtins through its semantic tree;
+      // `computeConstant` still reveals its direct witness.
+      const presented =
+        witness.kind === "constant"
+          ? this.store.costlySourcePresentation(root, witness)
+          : null;
+      if (presented !== null) this.constants.set(key, presented);
     }
     this.state = Object.freeze({
       mode: "compute",

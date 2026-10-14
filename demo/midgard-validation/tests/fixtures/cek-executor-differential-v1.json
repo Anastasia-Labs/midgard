@@ -21,7 +21,7 @@
       "steps": 847,
       "stopReason": "halted",
       "terminal": "3e43b976f19633ea654aeeb6b99bbbcf511353bd9d752d01c3f3e8ffaf4cbcbe",
-      "digest": "8662a605ed6dae3fb0df6790fab5b9fd51e7d69b913b3e1b62ee8dc2d3c697b7"
+      "digest": "d6fbd15f9d3651a0ee0ed7437c0862b53b01d90adb41ed73cec93ffe85615152"
     },
     "verdict": {
       "throws": false,
@@ -53,7 +53,7 @@
       "steps": 1642,
       "stopReason": "halted",
       "terminal": "0e89e66f50609b9f0c66044ea8a885201db8aa3ee04e40885829a700b786be3f",
-      "digest": "af13b1698d632d68f877e29d2c96dc7ec661ab76c28c7d3fb7c7f92badbae768"
+      "digest": "ca2a740b79a6d625d8e9bbf58bb06388888f887daee306d0121dbad781da51e8"
     },
     "verdict": {
       "throws": false,
@@ -85,7 +85,7 @@
       "steps": 928,
       "stopReason": "halted",
       "terminal": "61a1801cbe32df811d998f1030ee4c9df7b69cecaed2e9c139b0d4e04117f0c1",
-      "digest": "50580f1bfec4ef281be274f240a2d025287e85fa3985bcc0258acd9e8ade7daf"
+      "digest": "142cafe78df5332a7803249a75408dd0ca0bd333f49a4b9fb8de3ba6886a1c1e"
     },
     "verdict": {
       "throws": false,
@@ -117,7 +117,7 @@
       "steps": 892,
       "stopReason": "halted",
       "terminal": "adb3812b79bcb827c156b94cb9e059035404e76a1e20f487e06798b34c3bd40c",
-      "digest": "f663215fc96725b62774ff0fee7acbd84522d7a7ef5d9894f8131fc9f1c14716"
+      "digest": "8d6a64df8e69d1b297e124c6c166cd7ad05b6dd70c4f74b50ebe3eba82d1ff75"
     },
     "verdict": {
       "throws": false,
@@ -149,7 +149,7 @@
       "steps": 991,
       "stopReason": "halted",
       "terminal": "62bba23d549db55400b9c01abd905c4a94c5f439e759fc0fea3e2ac534301a50",
-      "digest": "98be11df97aa7b2223930653930cd155d3898d13035ecfa6db79005f56a9be7d"
+      "digest": "c6fc24da0e4439b344ece303adcb3dfebe19e2f37acffc2f137e0cfc9865eabb"
     },
     "verdict": {
       "throws": false,
@@ -181,7 +181,7 @@
       "steps": 1858,
       "stopReason": "halted",
       "terminal": "4522e81f754ed783ecf1f02522d2f20abe9f6a6e70860384047e227e967906b6",
-      "digest": "06da23a84a8a614e5f0b4dbde2fd92f75316f79dd8cddbe5c6e9249f3855cd05"
+      "digest": "e70e4a1e609ed0c93fed3b5562be2d12cde16028f932287bb50909f0a5bc9fb1"
     },
     "verdict": {
       "throws": false,
@@ -213,7 +213,7 @@
       "steps": 1741,
       "stopReason": "halted",
       "terminal": "2467ea878a79f45d51e086d52787debb64f91de2fe5decfb2ba6da9276c80baa",
-      "digest": "0d47da8e2ffd6dabc06deb8291ef7032b3501951789030d837995c7848d3f409"
+      "digest": "155f1b2c8aabf2e22a298d93aec9c50bd4a7977bcfc967dbb97d00689c64369d"
     },
     "verdict": {
       "throws": false,
@@ -245,7 +245,7 @@
       "steps": 1099,
       "stopReason": "halted",
       "terminal": "9e5f1ffc5b46cb8526228cf5e202b9d686d748bd4b1247ac8cb050c820fc2d7d",
-      "digest": "bc1d073260428938ad4d5332d65595697b71e71dd3a7da1d0bae3f2a266914f6"
+      "digest": "3e1212b3e3536b8dcc58dca54117f393a1b7c5136b1798efbe090df125832fbf"
     },
     "verdict": {
       "throws": false,
@@ -277,7 +277,7 @@
       "steps": 1063,
       "stopReason": "halted",
       "terminal": "764bf92289929e901d0a274a0d6b583e7961ec458a6e6a30ec21ece7c01e65eb",
-      "digest": "fb4d50ec33a55d51c1ae82a292f25d8ce3caccb538add3164982fc7ce93f7ace"
+      "digest": "11df39cc6278fd39fb8e46fea25634647ed7ca900944449307f65c7345b2c642"
     },
     "verdict": {
       "throws": false,
@@ -293,7 +293,7 @@
       "steps": 370,
       "stopReason": "halted",
       "terminal": "edbabbb1f600f3677393ddd879079be318dd74516166d6de3f0353c4732cf4f4",
-      "digest": "4cc58f39ebe99b01b72a071e9a51f2a092e3d5100010fafa1f3fa17976e6d033"
+      "digest": "5120749a6d20266187df03d485f20e271141555f0ffcd46be139584e58f84230"
     },
     "verdict": {
       "throws": false,
@@ -309,7 +309,7 @@
       "steps": 958,
       "stopReason": "halted",
       "terminal": "b4fb4cd7208b9e32906f69004ab7956f2de596a7bffeef339d342c09f81d53fa",
-      "digest": "b22b0cf47ce8bc1ed5060e40d248f6eb2acb4ffb8728e1e34353cc5b6d3101fa"
+      "digest": "e564d67629fa3ec6919fb163f70336bd54cbb26f1318e18bf4fb1aeb9625f0f6"
     },
     "verdict": {
       "throws": false,
@@ -373,7 +373,7 @@
       "steps": 899,
       "stopReason": "halted",
       "terminal": "cbaf3239361340b86f5a2ca6fe3c55474095e8db3e7a588f2b3ff9da20715671",
-      "digest": "0fe9eb945829acc52f8b14578efbd026f5f42b09b64d1333b49aff058c52d22b"
+      "digest": "ac8891fda48ebcb22c1022a97438f25a14d8a09321ba2ae0b9aed39a81aa7d2e"
     },
     "verdict": {
       "throws": false,
@@ -453,7 +453,7 @@
       "steps": 10968,
       "stopReason": "halted",
       "terminal": "a3c81b3a628af19e264cb523086c2082893d805465dbf4d6d5a0c51316988311",
-      "digest": "6ad7bbfb6272b2abf92241c92048f49c499f6ffeb86d0293c62ea3221bd6aeb4"
+      "digest": "f27d1ac9828af73d11e1ddf67a223b6bc1df6b5acedbb974535287a491050401"
     },
     "verdict": {
       "throws": false,
@@ -469,7 +469,7 @@
       "steps": 28,
       "stopReason": "halted",
       "terminal": "d000fa2fe1f7bd88292fbba7b8c2d94e051153c4e5046e979dbb749ca9dea4df",
-      "digest": "a4caa15508a117c2b3f84bd1e001babc1ecf1ba4688685735d766f23a6288ec8"
+      "digest": "371600b94fd51ee149dff794a400d4faa9d82459872304a086e3b2286acae1f0"
     },
     "verdict": {
       "throws": false,
@@ -485,7 +485,7 @@
       "steps": 32,
       "stopReason": "halted",
       "terminal": "d48a7d22cea692c8c4f7b60c0adec8e3bb15cf90dcdf33a0b163f717fa00fb95",
-      "digest": "966fb35360590cadd1f3fdf5fa880ae616eba9e9421024efeb0c0d4135bad4e2"
+      "digest": "e0f1501c3007765d4162018434721abfadd760cc361a72f416d3212a2e8061d2"
     },
     "verdict": {
       "throws": false,
@@ -501,7 +501,7 @@
       "steps": 10856,
       "stopReason": "halted",
       "terminal": "a666f5a1089ad566dbed9a965a7f7d195c155e71f6de5b50fa328018167b9653",
-      "digest": "92c6247d92c674c2967dcecb69cfacdfe67251dcffe5fd90a079c90a1c6ccfa0"
+      "digest": "e5a2796547bf1472ddbd2aed1347bc741a057f84e7c9bf58bdf022b587c4a292"
     },
     "verdict": {
       "throws": false,
@@ -517,7 +517,7 @@
       "steps": 10885,
       "stopReason": "halted",
       "terminal": "ff1704ad617911442f2591c06e031e93a0ddbdd2aa23ec57e3ceda34e1645076",
-      "digest": "5eb7727021abb5fea8b9d40221974d0b449e7ce1dd843fff8e1228170e46c16b"
+      "digest": "4e35f55a962752e6a3f283a51c6585594042ac5cf59b26db7e42666452740d97"
     },
     "verdict": {
       "throws": false,
@@ -533,7 +533,7 @@
       "steps": 28,
       "stopReason": "halted",
       "terminal": "3c3bfb711cf61a676387f87e5744c7c5169fe7ea6c854617d6d719609f32b924",
-      "digest": "671da88dc977ed9c1563ae81bf50e00f3eff7294fcd18320afa55d54f4af9e1f"
+      "digest": "5f981fba3d1056722e60b0ee119fa97305341560c314127f4262e0622e54ab99"
     },
     "verdict": {
       "throws": false,
@@ -549,7 +549,7 @@
       "steps": 32,
       "stopReason": "halted",
       "terminal": "2b9faa3c3841ccd253e89525aa32f970fed4d19c2b73a7a16cff7397c1bb9917",
-      "digest": "1e89106702289c2b9e48a7c8626e312e78d65a8660d3789239a8f5215c1380fd"
+      "digest": "be8abcc815274fba07c5a3276bf14a2f7e35a7f61e334285cc176f6b77bed517"
     },
     "verdict": {
       "throws": false,
@@ -565,7 +565,7 @@
       "steps": 10770,
       "stopReason": "halted",
       "terminal": "cd047d314a2cc1cbebf848ffc2825144a7e39961872e5b861e24569dda0b4ba3",
-      "digest": "0e2a97b8af52566ea79b4c728a9e3fb628e3d74da953d4293ebaa77643b81681"
+      "digest": "60c88755707ab0cbd40b68c53f6a2dbd24e691f7bce3bab7d01d89781821947b"
     },
     "verdict": {
       "throws": false,
@@ -581,7 +581,7 @@
       "steps": 10885,
       "stopReason": "halted",
       "terminal": "61666e907de55fadaeb3727461901949ee94846658f3bdad84a7e692dc583ce0",
-      "digest": "52f82d6865b57fde21fc784f3198ca0f7f277e3a1c83e30dc81b018ff88e2c17"
+      "digest": "efe340e15587629f1dee0eac37442ec1c2f8dcfc5c6a4d6472b64c0bf89d53fe"
     },
     "verdict": {
       "throws": false,
@@ -597,7 +597,7 @@
       "steps": 28,
       "stopReason": "halted",
       "terminal": "b60eb8a94fc180c7e76dce6979ff8316a6daedd0945b00c80c7266216d9551f6",
-      "digest": "d579c5e12d9052ad0bfabb67c7331c3304a0736751c2dbdb33a4434bb0fc4d34"
+      "digest": "c8141b5a0a6d037b600a0619a7435b3decaaf14b1d3c5d6759550928886bf31a"
     },
     "verdict": {
       "throws": false,
@@ -621,7 +621,7 @@
       "steps": 10770,
       "stopReason": "halted",
       "terminal": "d72ba331494878c4be40caae088c181a7d21bf457184d18e0e202ebb4ad76274",
-      "digest": "12672e130a45237183606c9b3f1086c635e139116f4dc72c82c079c7e1d84d46"
+      "digest": "da19eaa12beebc975ec115171e5e52a2e5782e0f5a84035093195d3f2358344f"
     },
     "verdict": {
       "throws": false,
@@ -637,7 +637,7 @@
       "steps": 10885,
       "stopReason": "halted",
       "terminal": "59f7d8ff27872cd5ab4e4ca228fbbbf7ebf2685bdabee40473417ecfcd32e28b",
-      "digest": "c3423004507d46e54efd3061c6fd1f09f8a3a78e2a30ba1ae320e87c21c640ac"
+      "digest": "678af4cd727a52c11e942c66ff2d05b738f6f3ff0fbddaedc2b520562325f1e0"
     },
     "verdict": {
       "throws": false,
@@ -653,7 +653,7 @@
       "steps": 28,
       "stopReason": "halted",
       "terminal": "2d11c48df5dae17b84d104b6900b61e128e0536fc68163f192ca2b0122fc8ec3",
-      "digest": "62900ad3832a399e861b9c1bd00f5ad924bc2c4d021ec990fa953cd5252f906a"
+      "digest": "99e1597b9b271645713dd1ef5b5e74ebc1761216e55abe283989ed73f2301c36"
     },
     "verdict": {
       "throws": false,
@@ -677,7 +677,7 @@
       "steps": 10770,
       "stopReason": "halted",
       "terminal": "3ae044d8db4cb22152d96fd83df9cff80dcfee07a8a4cf31c389f64651a7a433",
-      "digest": "d04135a1ada3a1634774fe6729f7ef55a9fc89ad465356f2517c82e100e7f625"
+      "digest": "c6c4607c2e2f89bc56b34e11037c96e727721f823d9288d9f37b0940af5fae49"
     },
     "verdict": {
       "throws": false,
@@ -693,7 +693,7 @@
       "steps": 10885,
       "stopReason": "halted",
       "terminal": "92d27e17bad54c052837cde081dd0ac24ee5e90e8d23b80e4be793baef06525e",
-      "digest": "1ae6b7ee5851ca7e0d681ddedbac321099129d8125de65e52da94bb887a8cbe3"
+      "digest": "0b726bc362e3c95373082db0a29eda40af9b14452bbf77cefc28eb5a6a270735"
     },
     "verdict": {
       "throws": false,
@@ -725,7 +725,7 @@
       "steps": 10770,
       "stopReason": "halted",
       "terminal": "06df6a296597e52072a5dcce5206b2897ae8109f1c81833dd5eae4db2adbacd4",
-      "digest": "67e41d66dab10c1e2243accbe044a5fe93c5287825c2b7545eff95b6ea5c861c"
+      "digest": "23ec9ca42f1ffaab72280fa2b2a04559b8053c68ae6922fc1539b156c1a897ff"
     },
     "verdict": {
       "throws": false,
@@ -741,7 +741,7 @@
       "steps": 10885,
       "stopReason": "halted",
       "terminal": "2041728f92bda11416e18a829b1fd9bb9bdf37bfa662b2d628eb9aa506843201",
-      "digest": "b4ca4f4ec6467a3b8afd7a15bc89aa7d56478a7d9f2404348645f6b586d70add"
+      "digest": "589f796dc01cdaf55efc021732cb205a22f2eeb1c92132c853221b8cb6a6aeb1"
     },
     "verdict": {
       "throws": false,
@@ -773,7 +773,7 @@
       "steps": 10770,
       "stopReason": "halted",
       "terminal": "ac78867829474c0e99ccb67d5f5e52cc494b72d7591efdd20d90e05f3038bbcc",
-      "digest": "7bc642a3eaaa4d0d784cbe450466fbb64e27faf8c7f61d746563cc5c306ffa19"
+      "digest": "9d19c566245e177ffea2bfb21bc27365fa8be3173b916a7e9674e3ae7dfc79f5"
     },
     "verdict": {
       "throws": false,
@@ -789,7 +789,7 @@
       "steps": 10885,
       "stopReason": "halted",
       "terminal": "9d513d018b37e5cd18ba08bdaff52181894afed9e92c4b1039ff18c638708661",
-      "digest": "0bf79da7a16a58b25e8ec7dc51ce6dded97543a2ed1d14a4c78dc9ba25f5961c"
+      "digest": "6167db5a40e4ed591f712223c59852e26c8fd5c59126f3ea30149eda021c9caf"
     },
     "verdict": {
       "throws": false,
@@ -821,7 +821,7 @@
       "steps": 10770,
       "stopReason": "halted",
       "terminal": "930d2904994a5943cc0660f3e029abc822c18a195ffb7b7493d263a9c389397c",
-      "digest": "552198c34e235a1f9842c5dea545782d5afe7c8df2a022f28c0a345ce2001e73"
+      "digest": "69c1c44d2da752135c26cf2a083be660b2dba28af5f1f9aca293be7ca258d281"
     },
     "verdict": {
       "throws": false,
@@ -837,7 +837,7 @@
       "steps": 10885,
       "stopReason": "halted",
       "terminal": "7a1b25cfff825eea318403f2d46e3e70480e95e485ae02e86c02d5c559184b2a",
-      "digest": "b74097435668754791b37b74baa19ea3ddd9f4f07eccbaabd6be03d2ced096e7"
+      "digest": "552d03dd4259cf35ff1edc783c17c322896aa22f3b091019d7d957b0c706faf6"
     },
     "verdict": {
       "throws": false,
@@ -869,7 +869,7 @@
       "steps": 10770,
       "stopReason": "halted",
       "terminal": "22e369d3a2345e81dbfd4f3174b50b223f0e95f4789a096ccf8facdecff65cc6",
-      "digest": "9c5ebe0a8acc9167e4c643472f60dd4cfcc6bddda550e078e2370785b6e829ef"
+      "digest": "37f7635fef5c9fe3fb07b90618b26f5fef4d2d48eefb0826a98d9559e4b64497"
     },
     "verdict": {
       "throws": false,
@@ -885,7 +885,7 @@
       "steps": 26845,
       "stopReason": "halted",
       "terminal": "60f608a8469f8c444757848d28195d2bfc4604dc3d02e1d5053fde6f75c88096",
-      "digest": "1ddab915b7773fbc9367d75301eb39f7f7e89519ca6856dc48dc65dc17f1e258"
+      "digest": "b58125a76105d93a3ae14750568b567b152281fbc77e295af438e07213ba687f"
     },
     "verdict": {
       "throws": false,
@@ -917,7 +917,7 @@
       "steps": 15259,
       "stopReason": "halted",
       "terminal": "582db091014271fd70de9b1906e1bb150fa13f76b0b46c41278cde7bb3307934",
-      "digest": "a669ed8d0cf0a24074b2759253cc9511360255f1bea3999e304577cf78eadd36"
+      "digest": "c7a6aabe450a616801e08e6e39e4dd3382a3750e03a87551db4e6002303016bd"
     },
     "verdict": {
       "throws": false,
@@ -941,7 +941,7 @@
       "steps": 15262,
       "stopReason": "halted",
       "terminal": "93fb3c587e6f820b3ae1c635a2b0e0fbbc7433d74c43c8f964ae7bc3e879bb63",
-      "digest": "dc77f6a0029ba14a8fc0f17304ef988b75187ae02134aec52f25b7611a05302a"
+      "digest": "54d555453dd160aadf913ea22c7def6ddebde4a7358c13034e6fa79ebff6b07c"
     },
     "verdict": {
       "throws": false,
@@ -957,7 +957,7 @@
       "steps": 12657,
       "stopReason": "halted",
       "terminal": "0fc5124b68f9958ff5146d7de842ae2a8a5a90568a4b71314f7d5fb4bc1bb8e6",
-      "digest": "f2489d41d80f82352d0587644d470330dac6e419513e8e9eb3c7838111dd41f1"
+      "digest": "f330491fda7baa7c44a1f57dbdcbaedef01a09534af64e9ae18c30f6476d28d7"
     },
     "verdict": {
       "throws": false,
@@ -973,7 +973,7 @@
       "steps": 15731,
       "stopReason": "halted",
       "terminal": "ccefd578442ee27ea7444ac8a1ce033910a95cb74951381dcc8d6a9ff3ba39ad",
-      "digest": "b5fe3d7f87d09e684698e8d0a2ffb32f8508f25e44ec0cda66f53569967471a7"
+      "digest": "77b6824ec6188f7e7045de6a20cc60b0a68694da9574e384848a567e6b8b4919"
     },
     "verdict": {
       "throws": false,
@@ -1217,7 +1217,7 @@
       "steps": 520,
       "stopReason": "halted",
       "terminal": "757da58b5f91cf8407cf0f75f619035edbbca30d8c6aa1b74bb79867459f734e",
-      "digest": "986ebcf69d84ca6967bfe6a1635b1565476162011cd50d96e156ce8e93c55dc1"
+      "digest": "07afdaa5f23dd9be6189329be2259dfd735d6209b1daa2e46f2723b233f45570"
     },
     "verdict": {
       "throws": false,
@@ -1233,7 +1233,7 @@
       "steps": 453,
       "stopReason": "halted",
       "terminal": "53af012c9b9d652fd493a7d4e2d089fe31c7606531f8b9322ffe31154e9817cf",
-      "digest": "78554b52877b6fe8ae2d7c0745157bc90b1fdc278cba6dd68002157b57732dcc"
+      "digest": "31627c8d28c23f4ba64961ddfc37f7c4d890fc848b00f5b51d478d1112ca7df0"
     },
     "verdict": {
       "throws": false,
@@ -1565,14 +1565,18 @@
   },
   "mkCons of a byte string onto a near-bound Data list": {
     "proof": {
-      "throws": true
+      "throws": false,
+      "steps": 17,
+      "stopReason": "halted",
+      "terminal": "fce6161943dcbe338c9ff0437bb0aed78a0963d5c8485aa37285e8c661432a0e",
+      "digest": "6060e83b97c9ea046cdcdbb8ab82e8d22dac585acb5294cb1984c8c3adf53638"
     },
     "verdict": {
       "throws": false,
-      "steps": 18,
+      "steps": 17,
       "stopReason": "halted",
-      "terminal": "cd2f0bd3ee2c03ee0de127aff02fc3a8ce4b1017c99b6653db3eb8fbb9326782",
-      "digest": "a579bf19b6eb811ccea490edf6ae68a75d01154a234622a9cd60d1d37d4e19d4"
+      "terminal": "fce6161943dcbe338c9ff0437bb0aed78a0963d5c8485aa37285e8c661432a0e",
+      "digest": "d38d42035a94816ce1632e36608d7136d8bf8a7cf120adfb402e9b164e89c991"
     }
   },
   "constrData with a negative index": {

@@ -17,6 +17,7 @@ import {
 import { DataI } from "@harmoniclabs/plutus-data";
 
 import {
+  hashMidgardCekDirectValueWitness,
   type MidgardCekConstantValueWitness,
   type MidgardCekDirectValueWitness,
 } from "./cek-builtin.js";
@@ -37,6 +38,7 @@ import {
   type Bytes,
   rootHex,
 } from "./cek-executor.build-midgard-cek-execution-graph.js";
+import { midgardCekRevealIsCostly } from "./cek-executor.reveal-cost.js";
 import { materializeMidgardCekDataBytes } from "./cek-executor.semantic-bytes.js";
 import {
   midgardCekConstantTypeKey,
@@ -290,6 +292,67 @@ export class MidgardCekSemanticStore {
     return info;
   }
 
+  /**
+   * Whether revealing the `type` constant at `dataRoot` in full would cost
+   * the on-chain verifier more than one payload may.
+   */
+  public revealIsCostly(
+    type: MidgardCekConstantType,
+    dataRoot: Bytes,
+  ): boolean {
+    return midgardCekRevealIsCostly(
+      {
+        node: (root) => this.node(root),
+        link: (root) => this.link(root),
+        pairLink: (root) => this.pairLink(root),
+      },
+      type,
+      dataRoot,
+    );
+  }
+
+  /**
+   * The semantic witness a source constant at `root` is presented to
+   * builtins with when revealing it in full would be costly, or null.
+   */
+  public costlySourcePresentation(
+    root: Bytes,
+    value: Extract<MidgardCekConstantValueWitness, { kind: "constant" }>,
+  ): MidgardCekConstantValueWitness | null {
+    const type = this.typeOf(value.witness.typeCbor);
+    if (type.kind !== "data" && type.kind !== "list" && type.kind !== "pair") {
+      return null;
+    }
+    const { dataRoot } = this.constant(root, value);
+    if (!this.revealIsCostly(type, dataRoot)) return null;
+    const node = this.node(dataRoot);
+    const { memory } = this.sizing.sized(type, dataRoot);
+    if (memory === null) {
+      throw new Error("V1 constant payload cannot be sized under its type");
+    }
+    const presented: MidgardCekConstantValueWitness = {
+      kind: "semanticConstant",
+      witness: {
+        typeCbor: Buffer.from(value.witness.typeCbor),
+        payload: {
+          root: Buffer.from(dataRoot),
+          cborLength: node.cborLength,
+          memory: node.memory,
+        },
+        memory,
+      },
+    };
+    if (
+      !Buffer.from(hashMidgardCekDirectValueWitness(presented)).equals(
+        Buffer.from(root),
+      )
+    ) {
+      throw new Error("CEK source constant semantic witness root mismatch");
+    }
+    this.registerWitness(presented.witness, root);
+    return presented;
+  }
+
   /** Exact Data CBOR of an installed node. */
   public bytes(root: Bytes): Buffer {
     const key = rootHex(root);
@@ -334,8 +397,9 @@ export class MidgardCekSemanticStore {
   /**
    * Adds the constant of `type` whose payload is the installed node at
    * `dataRoot`. Its witness reveals the payload bytes directly when they fit
-   * one direct payload, and otherwise commits to the semantic tree. `bytes`
-   * supplies the exact payload bytes from the arguments when they are known.
+   * one direct payload and revealing them is cheap on-chain, and otherwise
+   * commits to the semantic tree. `bytes` supplies the exact payload bytes
+   * from the arguments when they are known.
    */
   public addConstant(
     type: MidgardCekConstantType,
@@ -349,7 +413,9 @@ export class MidgardCekSemanticStore {
     const typeCbor = this.typeCbor(type);
     let payloadCbor: Buffer | undefined;
     if (
-      node.cborLength <= BigInt(MIDGARD_CEK_MAX_DIRECT_CONSTANT_PAYLOAD_BYTES)
+      node.cborLength <=
+        BigInt(MIDGARD_CEK_MAX_DIRECT_CONSTANT_PAYLOAD_BYTES) &&
+      !this.revealIsCostly(type, dataRoot)
     ) {
       payloadCbor = bytes?.() ?? this.bytes(dataRoot);
       if (payloadCbor.length > MIDGARD_CEK_MAX_DIRECT_CONSTANT_PAYLOAD_BYTES) {
