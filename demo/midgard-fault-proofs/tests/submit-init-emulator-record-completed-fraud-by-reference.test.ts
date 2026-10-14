@@ -6,7 +6,6 @@
  * and the real merge yield. */
 import * as SDK from "@al-ft/midgard-sdk";
 import {
-  type BuildTxWithRedeemer,
   CML,
   Data,
   fromText,
@@ -20,10 +19,14 @@ import {
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
-import { excludeUtxo } from "../src/spend-input-witness.js";
 import { buildRecordCompletedFraudByReferenceTx } from "../src/submit/record-completed-fraud.js";
-import { outputWithDatumAndUnitPredicate } from "../src/tx-layout.js";
 import { setupCompletedFraudQueue } from "./support/completed-fraud-queue-harness.js";
+import {
+  buildRawRecord,
+  currentNode,
+  RECORD_REFUSED_AT as AT,
+  refuseRecord,
+} from "./support/completed-fraud-raw-record.js";
 import {
   buildOldestQueueHeaderMerge,
   publishOldestQueueHeaderDa,
@@ -46,15 +49,6 @@ type Queue = Awaited<ReturnType<typeof setupCompletedFraudQueue>>;
 
 const setup = async (previouslyMarked = false) =>
   setupCompletedFraudQueue({ previouslyMarked, records });
-
-const currentNode = async (h: Queue) => {
-  const input = await h.lucid.utxoByUnit(h.unit);
-  const view = await Effect.runPromise(
-    SDK.getLinkedListNodeViewFromUTxO(input),
-  );
-  const node = Effect.runSync(SDK.getStateQueueNodeFromStateQueueDatum(view));
-  return { input, view, node };
-};
 
 const deadlineOf = (h: Queue) =>
   Number(h.node.block_time + SDK.MATURITY_DURATION_MS);
@@ -100,86 +94,6 @@ const mintToken = async (
   const [utxo] = await h.lucid.utxosByOutRef([{ txHash, outputIndex: 0 }]);
   expect(utxo?.assets[unit]).toBe(1n);
   return utxo!;
-};
-
-/** A hand-built record spend of the current node. `cite: null` is the
- * same-transaction path (`None`); otherwise the redeemer names `cite`'s
- * position among the final reference inputs. */
-const buildRawRecord = async (
-  h: Queue,
-  {
-    cite,
-    read = [],
-    proofName = h.proofAsset,
-    mintHere = false,
-    validFrom,
-    validTo,
-  }: {
-    readonly cite: UTxO | null;
-    readonly read?: readonly UTxO[];
-    readonly proofName?: string;
-    readonly mintHere?: boolean;
-    readonly validFrom?: number;
-    readonly validTo?: number;
-  },
-) => {
-  const { input, view, node } = await currentNode(h);
-  const datum = SDK.encodeLinkedListNodeView({
-    ...view,
-    data: SDK.castStateQueueNodeToData({
-      ...node,
-      proven_fraud: proofName,
-    }) as SDK.LinkedListNodeView["data"],
-  });
-  const label = "raw completed fraud record";
-  const matches = outputWithDatumAndUnitPredicate({
-    address: h.address,
-    datum,
-    unit: h.unit,
-  });
-  const redeemer = ((ctx) =>
-    Data.to(
-      {
-        RecordCompletedFraud: {
-          state_queue_input_index: SDK.requireInputIndex(ctx, input, label),
-          state_queue_output_index: SDK.requireUniqueOutputIndex(
-            ctx.outputs,
-            matches,
-            label,
-          ),
-          fraud_proof_asset_name: proofName,
-          m_fraud_proof_ref_input_index:
-            cite === null
-              ? null
-              : SDK.requireReferenceInputIndex(ctx, cite, label),
-        },
-      },
-      SDK.StateQueueSpendRedeemer,
-    )) satisfies BuildTxWithRedeemer;
-  const references = [
-    ...(cite === null ? [] : [cite]),
-    ...read,
-    h.queueReferenceScript,
-  ];
-  const walletUtxos = references.reduce<readonly UTxO[]>(
-    (candidates, excluded) => excludeUtxo(candidates, excluded),
-    await h.lucid.wallet().getUtxos(),
-  );
-  let tx = h.lucid
-    .newTx()
-    .collectFrom([input], redeemer)
-    .readFrom(references)
-    .pay.ToContract(h.address, { kind: "inline", value: datum }, input.assets)
-    .validFrom(validFrom ?? Number(node.block_time) + 1000)
-    .validTo(validTo ?? h.emulator.now() + 120_000);
-  if (mintHere)
-    tx = tx
-      .mintAssets({ [toUnit(h.proofPolicy, proofName)]: 1n })
-      .attach.MintingPolicy(h.proofIssuer);
-  return tx.complete({
-    localUPLCEval: true,
-    presetWalletInputs: [...walletUtxos],
-  });
 };
 
 const buildByReference = (
@@ -249,8 +163,10 @@ describe("record a finalized fraud proof by reference", () => {
     // The ledger's exclusive TTL at the deadline is an inclusive upper bound
     // one millisecond below it; one slot later the inclusive bound is the
     // deadline itself.
-    await expectOnchainRefusal(() =>
-      buildRawRecord(h, { cite: token, validFrom, validTo: deadline + 1000 }),
+    await refuseRecord(
+      h,
+      { cite: token, validFrom, validTo: deadline + 1000 },
+      AT.pastMaturity,
     );
     await buildRawRecord(h, { cite: token, validFrom, validTo: deadline });
     const outcome = await buildByReference(h, token);
@@ -285,9 +201,11 @@ describe("record a finalized fraud proof by reference", () => {
       label: "other-header-token",
       name: otherAsset,
     });
-    await expectOnchainRefusal(() => buildRawRecord(h, { cite: other }));
-    await expectOnchainRefusal(() =>
-      buildRawRecord(h, { cite: other, proofName: otherAsset }),
+    await refuseRecord(h, { cite: other }, AT.citedName);
+    await refuseRecord(
+      h,
+      { cite: other, proofName: otherAsset },
+      AT.recordedHeader,
     );
     await h.submit(
       "record-own-header-token",
@@ -303,7 +221,7 @@ describe("record a finalized fraud proof by reference", () => {
       issuer: "foreign",
     });
     const genuine = await mintToken(h, { label: "genuine-token" });
-    await expectOnchainRefusal(() => buildRawRecord(h, { cite: forged }));
+    await refuseRecord(h, { cite: forged }, AT.citedPolicy);
     await h.submit(
       "record-genuine-token",
       await buildRawRecord(h, { cite: genuine }),
@@ -314,8 +232,10 @@ describe("record a finalized fraud proof by reference", () => {
   it("refuses a cited reference input that does not hold the token", async () => {
     const h = await setup();
     const token = await mintToken(h, { label: "held-token" });
-    await expectOnchainRefusal(() =>
-      buildRawRecord(h, { cite: h.queueReferenceScript, read: [token] }),
+    await refuseRecord(
+      h,
+      { cite: h.queueReferenceScript, read: [token] },
+      AT.citedSingleToken,
     );
     await h.submit(
       "record-citing-holder",
@@ -335,8 +255,10 @@ describe("record a finalized fraud proof by reference", () => {
     // Before the first record the second category's token records too.
     await buildRawRecord(h, { cite: second, proofName: secondAsset });
     await submitBuilt(h, "first-record", await buildByReference(h, first));
-    await expectOnchainRefusal(() =>
-      buildRawRecord(h, { cite: second, proofName: secondAsset }),
+    await refuseRecord(
+      h,
+      { cite: second, proofName: secondAsset },
+      AT.unmarkedNode,
     );
     expect(
       await buildByReference(h, second, { proofAsset: secondAsset }),
@@ -347,9 +269,7 @@ describe("record a finalized fraud proof by reference", () => {
   it("keeps the same-transaction mint path, which ignores referenced tokens", async () => {
     const h = await setup();
     const token = await mintToken(h, { label: "referenced-token" });
-    await expectOnchainRefusal(() =>
-      buildRawRecord(h, { cite: null, read: [token] }),
-    );
+    await refuseRecord(h, { cite: null, read: [token] }, AT.mintedHere);
     await buildRawRecord(h, { cite: token });
     await h.submit(
       "record-minted-here",
@@ -479,7 +399,10 @@ describe("token-only finalize front-run", () => {
           presentedNode: (node) => ({ ...node, proven_fraud: null }),
         });
       if (recorded) {
-        await expectOnchainRefusal(merge);
+        await expectOnchainRefusal(merge, {
+          refusedBy: "state_queue_yields",
+          check: /expect proven_fraud == None/u,
+        });
         expect(await markerOf()).toBe(fixture.step04Result.fraudProofAssetName);
         return;
       }

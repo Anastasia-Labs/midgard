@@ -636,20 +636,21 @@ pub fn validate_completed_fraud_record(
   )
   and {
     bytearray.length(proof_asset) == 32,
-    fraud_proof.asset_name_to_header_hash(proof_asset) == header_hash,
+    (fraud_proof.asset_name_to_header_hash(proof_asset) == header_hash)?,
     header_hash == utils.serialise_and_hash_28(header_data),
-    before.proven_fraud == None,
+    (before.proven_fraud == None)?,
     before.block_time < lower,
-    upper < before.block_time + block_maturity_duration_v1,
+    (upper < before.block_time + block_maturity_duration_v1)?,
     when m_fraud_proof_ref_input_index is {
-      None -> assets.quantity_of(tx.mint, fraud_proof_policy, proof_asset) == 1
+      None ->
+        (assets.quantity_of(tx.mint, fraud_proof_policy, proof_asset) == 1)?
       Some(fraud_proof_ref_input_index) ->
         fraud_proof.get_proven_fraud_record_with_identity(
           tx.reference_inputs,
           fraud_proof_policy,
           fraud_proof_ref_input_index,
           fn(_header_hash, _fraud_prover, asset_name) {
-            asset_name == proof_asset
+            (asset_name == proof_asset)?
           },
         )
     },
