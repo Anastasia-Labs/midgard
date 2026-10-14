@@ -1,5 +1,7 @@
-//// Differential tests: `cbor_deserialise.deserialise` must return exactly what
-//// the standard library's `aiken/cbor.deserialise` returns.
+//// Differential tests against the standard library's `aiken/cbor.deserialise`:
+//// `cbor_deserialise.deserialise` must return exactly what it returns, and
+//// `cbor_deserialise.expect_deserialise` must return the same `data` where it
+//// returns `Some(data)` and fail the script where it returns `None`.
 
 use aiken/builtin
 use aiken/cbor
@@ -8,10 +10,38 @@ use aiken/primitive/bytearray
 use midgard/cbor_deserialise
 
 fn agrees(bytes: ByteArray) -> Bool {
-  cbor_deserialise.deserialise(bytes) == cbor.deserialise(bytes)
+  let expected = cbor.deserialise(bytes)
+  and {
+    cbor_deserialise.deserialise(bytes) == expected,
+    when expected is {
+      Some(data) -> {
+        let decoded <- cbor_deserialise.expect_deserialise(bytes)
+        decoded == data
+      }
+      None -> True
+    },
+  }
 }
 
-// Random inputs avoid three byte patterns, each covered by fixed cases below
+// True whenever `expect_deserialise` returns, so a `fail` test over it fails
+// only when the script fails.
+fn expect_returns(bytes: ByteArray) -> Bool {
+  let data <- cbor_deserialise.expect_deserialise(bytes)
+  builtin.serialise_data(data) != #""
+}
+
+// A `fail` test over this passes when, for every input, the failing variant
+// fails the script or the input is outside the tested domain: unfuzzable, or
+// accepted by the library.
+fn expect_fails_where_refused(bytes: ByteArray) -> Bool {
+  if is_fuzzable(bytes) && cbor.deserialise(bytes) == None {
+    expect_returns(bytes)
+  } else {
+    fail
+  }
+}
+
+// Random inputs avoid four byte patterns, each covered by fixed cases below
 // instead:
 // - 0x5f: a chunk header inside an indefinite byte string is read as
 //   `byte - 64`, so a byte below 0x40 there moves the position back, and both
@@ -20,6 +50,9 @@ fn agrees(bytes: ByteArray) -> Bool {
 //   negative or too wide for the test runner's evaluator.
 // - a byte-string head with an 8-byte width: it overflows the test runner's
 //   slice.
+// - a list or map head with a 4- or 8-byte length: after a failed read the
+//   library still steps through every remaining element, which can take
+//   billions of steps.
 // Both decoders pass the same values to the same builtins, so none of the
 // three can tell them apart.
 fn is_fuzzable(bytes: ByteArray) -> Bool {
@@ -46,6 +79,10 @@ fn is_fuzzable_from(bytes: ByteArray, at: Int, length: Int) -> Bool {
       !small_tag,
       byte != 0x5b,
       byte != 0x7b,
+      byte != 0x9a,
+      byte != 0x9b,
+      byte != 0xba,
+      byte != 0xbb,
       is_fuzzable_from(bytes, at + 1, length),
     }
   }
@@ -257,4 +294,113 @@ test library_fails_the_script_on_a_backward_chunk() fail {
 
 test deserialise_fails_the_script_on_a_backward_chunk() fail {
   cbor_deserialise.deserialise(#"5f0001") == None
+}
+
+// ## The failing variant fails where the library returns `None`.
+
+fn truncations() -> Fuzzer<ByteArray> {
+  fuzz.map(
+    fuzz.tuple(fuzz.data(), fuzz.int_between(0, 4096)),
+    fn((data, cut)) {
+      let bytes = cbor.serialise(data)
+      bytearray.take(bytes, cut % bytearray.length(bytes))
+    },
+  )
+}
+
+fn with_trailing_bytes() -> Fuzzer<ByteArray> {
+  fuzz.map(
+    fuzz.tuple(fuzz.data(), fuzz.bytearray_between(1, 4)),
+    fn((data, tail)) { bytearray.concat(cbor.serialise(data), tail) },
+  )
+}
+
+fn with_one_replaced_byte() -> Fuzzer<ByteArray> {
+  fuzz.map(
+    fuzz.tuple3(fuzz.data(), fuzz.int_between(0, 4096), fuzz.byte()),
+    fn((data, at, byte)) {
+      let bytes = cbor.serialise(data)
+      let at = at % bytearray.length(bytes)
+      bytearray.concat(
+        bytearray.take(bytes, at),
+        bytearray.push(bytearray.drop(bytes, at + 1), byte),
+      )
+    },
+  )
+}
+
+test prop_expect_fails_on_refused_truncations(bytes via truncations()) fail {
+  expect_fails_where_refused(bytes)
+}
+
+test prop_expect_fails_on_refused_trailing_bytes(
+  bytes via with_trailing_bytes(),
+) fail {
+  expect_fails_where_refused(bytes)
+}
+
+test prop_expect_fails_on_refused_replaced_bytes(
+  bytes via with_one_replaced_byte(),
+) fail {
+  expect_fails_where_refused(bytes)
+}
+
+test prop_expect_fails_on_refused_random_bytes(
+  bytes via fuzz.bytearray_between(1, 8),
+) fail {
+  expect_fails_where_refused(bytes)
+}
+
+test prop_expect_fails_on_refused_header_bytes(bytes via header_bytes()) fail {
+  expect_fails_where_refused(bytes)
+}
+
+test expect_fails_on_the_empty_input() fail {
+  expect_returns(#"")
+}
+
+test expect_fails_on_an_empty_byte_string_at_the_end() fail {
+  expect_returns(#"8140")
+}
+
+test expect_fails_on_a_wide_empty_byte_string_at_the_end() fail {
+  expect_returns(#"815800")
+}
+
+test expect_fails_on_a_backward_chunk_at_the_end() fail {
+  expect_returns(#"5f3f")
+}
+
+test expect_fails_on_a_wide_argument_at_the_end() fail {
+  expect_returns(#"8119")
+}
+
+test expect_fails_on_a_short_wide_argument() fail {
+  expect_returns(#"1a0001")
+}
+
+test expect_fails_on_tag_102() fail {
+  expect_returns(#"d8668200")
+}
+
+test expect_fails_on_an_unread_trailing_byte() fail {
+  expect_returns(#"0000")
+}
+
+test expect_fails_on_a_text_string() fail {
+  expect_returns(#"6161")
+}
+
+// The decoding happens where it is bound, so a refused input fails the script
+// even on a path that never uses the decoded value.
+test expect_fails_on_a_path_that_does_not_use_the_value(
+  n via fuzz.int_between(0, 0),
+) fail {
+  let data <- cbor_deserialise.expect_deserialise(#"ff")
+  n == 0 || builtin.serialise_data(data) == #""
+}
+
+test expect_fails_when_the_value_is_unused() fail {
+  let _data <- cbor_deserialise.expect_deserialise(#"8119")
+  True
 }
