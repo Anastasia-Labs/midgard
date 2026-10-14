@@ -818,6 +818,15 @@ fn with_outputs(tx: Transaction, outputs: List<Output>) -> Transaction {
 }
 
 fn run_trace_finalize(l1_tx: Transaction) -> Bool {
+  run_trace_finalize_at(l1_tx, 0, 0, fixture.own_out_ref())
+}
+
+fn run_trace_finalize_at(
+  l1_tx: Transaction,
+  input_index: Int,
+  output_index: Int,
+  own_out_ref: OutputReference,
+) -> Bool {
   let terminal_datum: ct.StepDatum<Data> = ct.StepDatum {
     fraud_prover: fixture.fraud_prover_key_hash,
     data: Some(sample_state()),
@@ -827,10 +836,10 @@ fn run_trace_finalize(l1_tx: Transaction) -> Bool {
     fixture.fraud_proof_policy_id,
     fixture.fraud_proof_token_address(),
     terminal_datum,
+    input_index,
+    output_index,
     0,
-    0,
-    0,
-    fixture.own_out_ref(),
+    own_out_ref,
     l1_tx,
   )
   expect Some(state) = m_input_state_data
@@ -956,4 +965,54 @@ test trace_finalize_refuses_two_input_remainder_that_pays_the_fee() fail {
       trace_finalize_tx(env.fraud_proof_output_lovelace, 1, 300_000),
     ),
   )
+}
+
+// ### Two threads finalizing in one transaction
+//
+// Two threads on one header carry the same thread asset name. Each thread's
+// remainder is told apart only by its `InlineDatum(own_out_ref)` tag, so one
+// remainder output cannot serve both.
+
+fn second_thread_out_ref() -> OutputReference {
+  OutputReference { ..fixture.own_out_ref(), output_index: 1 }
+}
+
+/// Thread A at input 0 and thread B at input 1, fraud-proof outputs 0 and 1,
+/// followed by `remainders`.
+fn two_thread_finalize_tx(remainders: List<Output>) -> Transaction {
+  let tx = trace_finalize_tx(env.fraud_proof_output_lovelace, 300_000, 300_000)
+  expect [thread_a] = tx.inputs
+  expect [record, _] = tx.outputs
+  let thread_b = Input { ..thread_a, output_reference: second_thread_out_ref() }
+  Transaction {
+    ..tx,
+    inputs: [thread_a, thread_b],
+    outputs: list.concat([record, record], remainders),
+  }
+}
+
+fn whole_rest() -> Int {
+  thread_lovelace - env.fraud_proof_output_lovelace
+}
+
+test trace_finalize_accepts_two_threads_with_their_own_remainders() {
+  let tx = two_thread_finalize_tx(
+    [
+      prover_remainder(whole_rest(), fixture.own_out_ref()),
+      prover_remainder(whole_rest(), second_thread_out_ref()),
+    ],
+  )
+  and {
+    run_trace_finalize_at(tx, 0, 0, fixture.own_out_ref()),
+    run_trace_finalize_at(tx, 1, 1, second_thread_out_ref()),
+  }
+}
+
+/// One remainder holding both threads' rest, tagged for thread A, does not
+/// return thread B's.
+test trace_finalize_refuses_a_remainder_shared_between_threads() fail {
+  let tx = two_thread_finalize_tx(
+    [prover_remainder(2 * whole_rest(), fixture.own_out_ref())],
+  )
+  run_trace_finalize_at(tx, 1, 1, second_thread_out_ref())
 }
