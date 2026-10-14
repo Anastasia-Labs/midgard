@@ -346,4 +346,96 @@ export const VALIDATOR_SCENARIOS: Readonly<
       },
     ],
   },
+  "fraud_proofs/validation_trace/award_v1.main": {
+    passing: [
+      {
+        file: "demo/midgard-fault-proofs/tests/validation-game-emulator.test.ts",
+        test: "awards terminal padding only with the fraud prover's signature, and anyone finalizes the award in full",
+      },
+    ],
+    failing: [
+      {
+        file: "demo/midgard-fault-proofs/tests/validation-game-emulator.test.ts",
+        test: "awards terminal padding only with the fraud prover's signature, and anyone finalizes the award in full",
+      },
+    ],
+  },
+  "fraud_proofs/validation_trace/boundary_v1.main": {
+    passing: [
+      {
+        file: "demo/midgard-fault-proofs/tests/validation-game-emulator.test.ts",
+        test: "enters resolution and prepares it only with the fraud prover's signature",
+      },
+      {
+        file: "demo/midgard-fault-proofs/tests/validation-game-emulator.test.ts",
+        test: "awards terminal padding only with the fraud prover's signature, and anyone finalizes the award in full",
+      },
+    ],
+    failing: [
+      {
+        file: "demo/midgard-fault-proofs/tests/validation-game-emulator.test.ts",
+        test: "enters resolution and prepares it only with the fraud prover's signature",
+      },
+      {
+        file: "demo/midgard-fault-proofs/tests/validation-game-emulator.test.ts",
+        test: "awards terminal padding only with the fraud prover's signature, and anyone finalizes the award in full",
+      },
+    ],
+  },
+  "fraud_proofs/validation_trace/game_v1.main": {
+    passing: [
+      {
+        file: "demo/midgard-fault-proofs/tests/validation-game-emulator.test.ts",
+        test: "lets a third party make both reveals, each paying a capped fee from the thread",
+      },
+      {
+        file: "demo/midgard-fault-proofs/tests/validation-game-emulator.test.ts",
+        test: "moves two threads under one CT name only when each redeemer names its own successor",
+      },
+    ],
+    failing: [
+      {
+        file: "demo/midgard-fault-proofs/tests/validation-game-emulator.test.ts",
+        test: "refuses a lone thread input paying more than the cap, and a second input taking thread value",
+      },
+      {
+        file: "demo/midgard-fault-proofs/tests/validation-game-emulator.test.ts",
+        test: "enters resolution and prepares it only with the fraud prover's signature",
+      },
+      {
+        file: "demo/midgard-fault-proofs/tests/validation-game-emulator.test.ts",
+        test: "refuses a challenger timeout until the operator's clock has run out, then anyone finalizes it for at most the cap",
+      },
+      {
+        file: "demo/midgard-fault-proofs/tests/validation-game-emulator.test.ts",
+        test: "charges a long gap inside the clock to the mover, exactly, and convicts no one",
+      },
+      {
+        file: "demo/midgard-fault-proofs/tests/validation-game-emulator.test.ts",
+        test: "charges nothing for a lower bound before the turn start, and charges from the previous upper bound",
+      },
+      {
+        file: "demo/midgard-fault-proofs/tests/validation-game-emulator.test.ts",
+        test: "refuses a validity range longer than the dispute maximum",
+      },
+      {
+        file: "demo/midgard-fault-proofs/tests/validation-game-emulator.test.ts",
+        test: "moves two threads under one CT name only when each redeemer names its own successor",
+      },
+    ],
+  },
+  "fraud_proofs/validation_trace/timeout_v1.main": {
+    passing: [
+      {
+        file: "demo/midgard-fault-proofs/tests/validation-game-emulator.test.ts",
+        test: "refuses a challenger timeout until the operator's clock has run out, then anyone finalizes it for at most the cap",
+      },
+    ],
+    failing: [
+      {
+        file: "demo/midgard-fault-proofs/tests/validation-game-emulator.test.ts",
+        test: "refuses a challenger timeout until the operator's clock has run out, then anyone finalizes it for at most the cap",
+      },
+    ],
+  },
 };

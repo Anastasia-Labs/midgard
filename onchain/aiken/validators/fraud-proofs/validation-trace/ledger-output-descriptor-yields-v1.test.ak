@@ -34,6 +34,7 @@
 //// whose item-24 receive scan was spliced without appending the descriptor
 //// leaf.
 
+use aiken/builtin
 use aiken/cbor
 use aiken/collection/list
 use aiken/primitive/bytearray
@@ -53,6 +54,7 @@ use midgard/cek_data_v1 as summary
 use midgard/computation_thread as ct
 use midgard/fraud_proofs/native_binding_fixture_v1 as fixture
 use midgard/fraud_proofs/native_tx/compact.{forced_tx_proof_commitment_v1}
+use midgard/fraud_proofs/thread_census_fixture_v1 as census
 use midgard/ledger_output_commitment_v1 as commitment
 use midgard/ledger_output_proof_raw as lop_raw
 use midgard/ledger_output_proof_roles as roles
@@ -1534,4 +1536,118 @@ test fact_attach_scan_group_refuses_substituted_datum_claim() {
       honest_datum(other),
     ),
   )
+}
+
+// ---------------------------------------------------------------------------
+// Census: who funds and who signs each move
+// ---------------------------------------------------------------------------
+//
+// A lone thread input pays up to the cap and no more; beside another input the
+// thread keeps its value. The finalize dispatcher only ever awards, so anyone
+// may move it; the ScriptSources prepare is the prover's alone.
+
+fn terminal_shaped(shape: fn(l1.Transaction) -> l1.Transaction) -> Bool {
+  let f = accepting_fixture(protected_script_datum_output)
+  let redeemer = honest_redeemer(f)
+  run_dispatcher(f, redeemer, shape(finalize_tx(f, redeemer, [], [])))
+}
+
+test census_anyone_finalizes_the_output_proof_paying_the_cap_from_the_thread() {
+  terminal_shaped(
+    fn(tx) { census.without_signers(census.lone_input_paying(census.cap)(tx)) },
+  )
+}
+
+test census_the_output_proof_finalize_paying_over_the_cap_is_refused() fail {
+  terminal_shaped(census.lone_input_paying(census.cap + 1))
+}
+
+test census_the_output_proof_finalize_beside_a_wallet_input_keeps_the_thread_value() {
+  terminal_shaped(census.beside_wallet_input(0))
+}
+
+test census_the_output_proof_finalize_beside_a_wallet_input_taking_thread_value_is_refused() fail {
+  terminal_shaped(census.beside_wallet_input(1))
+}
+
+fn prepare_shaped(shape: fn(l1.Transaction) -> l1.Transaction) -> Bool {
+  let f = accepting_fixture(protected_script_datum_output)
+  prepare_selected_at(shape, 3, auxiliary_of(f))
+}
+
+/// The ScriptSources PrepareSelected of the accepting fixture, routed to
+/// semantic slot `slot` with `auxiliary`, its transaction reshaped by `shape`.
+fn prepare_selected_at(
+  shape: fn(l1.Transaction) -> l1.Transaction,
+  slot: Int,
+  auxiliary: Data,
+) -> Bool {
+  let f = accepting_fixture(protected_script_datum_output)
+  let resolver_datum = ct.StepDatum {
+    fraud_prover: fixture.fraud_prover_key_hash,
+    data: Some(resolution_of(f)),
+  }
+  let output: Data = prepare_semantic_resolution(
+    resolution_of(f),
+    f.transition,
+    auxiliary,
+  )
+  prepare_validator.main.spend(
+    group_with_slot(slot),
+    fixture.computation_thread_policy_id,
+    Some(resolver_datum),
+    ct.Continue(
+      PrepareSelected {
+        input_index: 0,
+        output_index: 0,
+        semantic_resolver_index: slot,
+        transition: f.transition,
+        auxiliary,
+      },
+    ),
+    fixture.own_out_ref(),
+    shape(prover_continue_tx(ct_asset, output)),
+  )
+}
+
+test census_the_prover_prepares_selected_paying_the_cap_from_the_thread() {
+  prepare_shaped(census.lone_input_paying(census.cap))
+}
+
+test census_prepare_selected_paying_over_the_cap_is_refused() fail {
+  prepare_shaped(census.lone_input_paying(census.cap + 1))
+}
+
+test census_prepare_selected_beside_a_wallet_input_keeps_the_thread_value() {
+  prepare_shaped(census.beside_wallet_input(0))
+}
+
+test census_prepare_selected_beside_a_wallet_input_taking_thread_value_is_refused() fail {
+  prepare_shaped(census.beside_wallet_input(1))
+}
+
+test census_prepare_selected_unsigned_is_refused() fail {
+  prepare_shaped(census.without_signers)
+}
+
+// The prepare does not judge the selector or the auxiliary: the selected
+// semantic resolver does. Only the fraud prover may pick them, so a third
+// party cannot route the prover's thread to a resolver that cannot win.
+
+test census_the_prover_may_prepare_another_selector() {
+  let f = accepting_fixture(protected_script_datum_output)
+  prepare_selected_at(census.honest, 2, auxiliary_of(f))
+}
+
+test census_another_selector_unsigned_is_refused() fail {
+  let f = accepting_fixture(protected_script_datum_output)
+  prepare_selected_at(census.without_signers, 2, auxiliary_of(f))
+}
+
+test census_the_prover_may_prepare_a_garbage_auxiliary() {
+  prepare_selected_at(census.honest, 3, builtin.i_data(42))
+}
+
+test census_a_garbage_auxiliary_unsigned_is_refused() fail {
+  prepare_selected_at(census.without_signers, 3, builtin.i_data(42))
 }

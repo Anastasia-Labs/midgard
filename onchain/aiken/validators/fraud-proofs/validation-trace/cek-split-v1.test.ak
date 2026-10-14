@@ -81,6 +81,7 @@ use midgard/fraud_proofs/native_tx/types.{
   MidgardVersionedScript, NativeCardanoScript, PlutusV3Script, TxIsValid,
   native_tx_version_v1,
 }
+use midgard/fraud_proofs/thread_census_fixture_v1 as census
 use midgard/redeemer_item_proof_v1 as redeemer_item
 use midgard/script_context_v1
 use midgard/script_proof_v1
@@ -117,6 +118,11 @@ use midgard/validation_trace_v1
 
 /// The mid-step continue transaction as the thread's fraud prover submits it:
 /// prover-only moves need the prover's signature, and the moves anyone may
+/// Every hop's transaction left honest.
+fn honest_at(_hop: ByteArray) -> fn(l1.Transaction) -> l1.Transaction {
+  census.honest
+}
+
 /// make accept it too.
 fn prover_continue_tx(
   asset_name: ByteArray,
@@ -1199,6 +1205,18 @@ fn run_prepare(
   semantic_resolver_index: Int,
   output_state: Data,
 ) -> Bool {
+  shaped_prepare(honest_at, f, group, semantic_resolver_index, output_state)
+}
+
+/// `run_prepare`, each hop's L1 transaction reshaped by `at` (see
+/// `thread_census_fixture_v1`).
+fn shaped_prepare(
+  at: fn(ByteArray) -> fn(l1.Transaction) -> l1.Transaction,
+  f: CekStepFixtureV1,
+  group: List<ByteArray>,
+  semantic_resolver_index: Int,
+  output_state: Data,
+) -> Bool {
   prepare_validator.main.spend(
     group,
     fixture.computation_thread_policy_id,
@@ -1213,7 +1231,7 @@ fn run_prepare(
       },
     ),
     fixture.own_out_ref(),
-    prover_continue_tx(ct_asset, output_state),
+    at("prepare_validator")(prover_continue_tx(ct_asset, output_state)),
   )
 }
 
@@ -1299,6 +1317,16 @@ fn run_finish(
   base: PreparedValidationResolutionStateV1,
   transition: ValidationOneStepWitnessV1,
 ) -> Bool {
+  shaped_finish(honest_at, base, transition)
+}
+
+/// `run_finish`, each hop's L1 transaction reshaped by `at` (see
+/// `thread_census_fixture_v1`).
+fn shaped_finish(
+  at: fn(ByteArray) -> fn(l1.Transaction) -> l1.Transaction,
+  base: PreparedValidationResolutionStateV1,
+  transition: ValidationOneStepWitnessV1,
+) -> Bool {
   finish_validator.main.spend(
     fixture.next_step_script_hash,
     fixture.computation_thread_policy_id,
@@ -1311,7 +1339,7 @@ fn run_finish(
       },
     ),
     fixture.own_out_ref(),
-    prover_continue_tx(ct_asset, winning_output()),
+    at("finish_validator")(prover_continue_tx(ct_asset, winning_output())),
   )
 }
 
@@ -1383,6 +1411,18 @@ fn run_selection(
   auxiliary: ValidationAuxiliaryWitnessV1,
   material_route: CekMaterialRouteV1,
 ) -> Bool {
+  shaped_selection(honest_at, base, transition, auxiliary, material_route)
+}
+
+/// `run_selection`, each hop's L1 transaction reshaped by `at` (see
+/// `thread_census_fixture_v1`).
+fn shaped_selection(
+  at: fn(ByteArray) -> fn(l1.Transaction) -> l1.Transaction,
+  base: PreparedValidationResolutionStateV1,
+  transition: ValidationOneStepWitnessV1,
+  auxiliary: ValidationAuxiliaryWitnessV1,
+  material_route: CekMaterialRouteV1,
+) -> Bool {
   let raw_aux: Data = auxiliary
   let native = selection_yield.selection_language(raw_aux) == 0
   let action = selection_yield.VerifyExecutionSelection {
@@ -1408,43 +1448,48 @@ fn run_selection(
   let template = prover_continue_tx(ct_asset, winning_output())
   let roles = selection_roles(native)
   let reward_redeemer: Data = 0
-  let tx = l1.Transaction {
-    ..template,
-    inputs: [
-      l1.Input {
-        ..input,
-        output: l1.Output { ..input.output, datum: l1.InlineDatum(raw_datum) },
-      },
-    ],
-    reference_inputs: list.map(
-      roles,
-      fn(pair) {
+  let tx = at("selection_validator")(
+    l1.Transaction {
+      ..template,
+      inputs: [
         l1.Input {
           ..input,
-          output: l1.Output {
-            address: address.from_script(pair.2nd),
-            value: assets.from_asset(
-              fixture.test_certificate_policy_id,
-              pair.1st,
-              1,
-            ),
-            datum: l1.NoDatum,
-            reference_script: Some(pair.2nd),
-          },
-        }
-      },
-    ),
-    withdrawals: list.map(roles, fn(pair) { Pair(address.Script(pair.2nd), 0) }),
-    redeemers: [
-      Pair(l1.Spend(fixture.own_out_ref()), raw_redeemer),
-      ..list.map(
+          output: l1.Output { ..input.output, datum: l1.InlineDatum(raw_datum) },
+        },
+      ],
+      reference_inputs: list.map(
         roles,
         fn(pair) {
-          Pair(l1.Withdraw(address.Script(pair.2nd)), reward_redeemer)
+          l1.Input {
+            ..input,
+            output: l1.Output {
+              address: address.from_script(pair.2nd),
+              value: assets.from_asset(
+                fixture.test_certificate_policy_id,
+                pair.1st,
+                1,
+              ),
+              datum: l1.NoDatum,
+              reference_script: Some(pair.2nd),
+            },
+          }
         },
-      )
-    ],
-  }
+      ),
+      withdrawals: list.map(
+        roles,
+        fn(pair) { Pair(address.Script(pair.2nd), 0) },
+      ),
+      redeemers: [
+        Pair(l1.Spend(fixture.own_out_ref()), raw_redeemer),
+        ..list.map(
+          roles,
+          fn(pair) {
+            Pair(l1.Withdraw(address.Script(pair.2nd)), reward_redeemer)
+          },
+        )
+      ],
+    },
+  )
   and {
     selection_validator.main.spend(
       fixture.next_step_script_hash,
@@ -1530,6 +1575,17 @@ fn run_core_step(
   transition: ValidationOneStepWitnessV1,
   step: cek_machine_v1.CoreStepEvidenceV1,
 ) -> Bool {
+  shaped_core_step(honest_at, base, transition, step)
+}
+
+/// `run_core_step`, each hop's L1 transaction reshaped by `at` (see
+/// `thread_census_fixture_v1`).
+fn shaped_core_step(
+  at: fn(ByteArray) -> fn(l1.Transaction) -> l1.Transaction,
+  base: PreparedValidationResolutionStateV1,
+  transition: ValidationOneStepWitnessV1,
+  step: cek_machine_v1.CoreStepEvidenceV1,
+) -> Bool {
   let step_data: Data = step
   let witness_data: Data = step.witness
   let prepared_data: Data = base
@@ -1558,7 +1614,7 @@ fn run_core_step(
         },
       ),
       fixture.own_out_ref(),
-      prover_continue_tx(ct_asset, next),
+      at("core_validator")(prover_continue_tx(ct_asset, next)),
     ),
     run_core_compute_chain(bound, witness_data),
     core_settle.main.spend(
@@ -1580,7 +1636,7 @@ fn run_core_step(
         },
       ),
       fixture.own_out_ref(),
-      prover_continue_tx(ct_asset, winning_output()),
+      at("core_settle")(prover_continue_tx(ct_asset, winning_output())),
     ),
   }
 }
@@ -2018,6 +2074,16 @@ fn run_core_compute_chain(
   bound: core_chain.CoreBound,
   witness_data: Data,
 ) -> Bool {
+  shaped_core_compute_chain(honest_at, bound, witness_data)
+}
+
+/// `run_core_compute_chain`, each hop's L1 transaction reshaped by `at` (see
+/// `thread_census_fixture_v1`).
+fn shaped_core_compute_chain(
+  at: fn(ByteArray) -> fn(l1.Transaction) -> l1.Transaction,
+  bound: core_chain.CoreBound,
+  witness_data: Data,
+) -> Bool {
   let next: Data = core_chain.CoreBound { ..bound, progress: 1 }
   core_compute.main.spend(
     fixture.next_step_script_hash,
@@ -2036,7 +2102,7 @@ fn run_core_compute_chain(
       },
     ),
     fixture.own_out_ref(),
-    prover_continue_tx(ct_asset, next),
+    at("core_compute")(prover_continue_tx(ct_asset, next)),
   )
 }
 
@@ -2156,6 +2222,14 @@ fn context_chain_action(f: CekStepFixtureV1) -> context_chain.ContextAction {
 }
 
 test bounded_context_mint_chain_agrees_with_original() {
+  shaped_context_mint_chain(honest_at)
+}
+
+/// `context_mint_chain`, each hop's L1 transaction reshaped by `at` (see
+/// `thread_census_fixture_v1`).
+fn shaped_context_mint_chain(
+  at: fn(ByteArray) -> fn(l1.Transaction) -> l1.Transaction,
+) -> Bool {
   let f = context_step_fixture()
   let staged = context_staged_fixture(f)
   let bound_data: Data = staged.bound
@@ -2182,7 +2256,7 @@ test bounded_context_mint_chain_agrees_with_original() {
       Some(semantic_datum(prepared(f))),
       action,
       fixture.own_out_ref(),
-      prover_continue_tx(ct_asset, bound_data),
+      at("context_bind")(prover_continue_tx(ct_asset, bound_data)),
     ),
     context_control.main.spend(
       [
@@ -2198,7 +2272,7 @@ test bounded_context_mint_chain_agrees_with_original() {
       ),
       action,
       fixture.own_out_ref(),
-      prover_continue_tx(ct_asset, staged_data),
+      at("context_control")(prover_continue_tx(ct_asset, staged_data)),
     ),
     context_mint_init.main.spend(
       next_hash,
@@ -2211,7 +2285,7 @@ test bounded_context_mint_chain_agrees_with_original() {
       ),
       action,
       fixture.own_out_ref(),
-      prover_continue_tx(ct_asset, verified_data),
+      at("context_mint_init")(prover_continue_tx(ct_asset, verified_data)),
     ),
     context_settle.main.spend(
       next_hash,
@@ -2224,7 +2298,7 @@ test bounded_context_mint_chain_agrees_with_original() {
       ),
       action,
       fixture.own_out_ref(),
-      prover_continue_tx(ct_asset, winning_output()),
+      at("context_settle")(prover_continue_tx(ct_asset, winning_output())),
     ),
   }
 }
@@ -2333,6 +2407,15 @@ test bounded_context_refuses_substituted_source_transaction() fail {
 }
 
 fn run_empty_context_chain(stage: Int) -> Bool {
+  shaped_empty_context_chain(honest_at, stage)
+}
+
+/// `run_empty_context_chain`, each hop's L1 transaction reshaped by `at` (see
+/// `thread_census_fixture_v1`).
+fn shaped_empty_context_chain(
+  at: fn(ByteArray) -> fn(l1.Transaction) -> l1.Transaction,
+  stage: Int,
+) -> Bool {
   let tx = empty_v1_transaction()
   let original = context_staged_fixture(context_step_fixture())
   expect cek: CekWitnessControlV1 = original.bound.control
@@ -2409,7 +2492,7 @@ fn run_empty_context_chain(stage: Int) -> Bool {
         datum,
         action,
         fixture.own_out_ref(),
-        tx_leaf,
+        at("context_reference")(tx_leaf),
       )
     2 ->
       context_spend.main.spend(
@@ -2418,7 +2501,7 @@ fn run_empty_context_chain(stage: Int) -> Bool {
         datum,
         action,
         fixture.own_out_ref(),
-        tx_leaf,
+        at("context_spend")(tx_leaf),
       )
     3 ->
       context_output.main.spend(
@@ -2427,7 +2510,7 @@ fn run_empty_context_chain(stage: Int) -> Bool {
         datum,
         action,
         fixture.own_out_ref(),
-        tx_leaf,
+        at("context_output")(tx_leaf),
       )
     4 ->
       context_signer.main.spend(
@@ -2436,7 +2519,7 @@ fn run_empty_context_chain(stage: Int) -> Bool {
         datum,
         action,
         fixture.own_out_ref(),
-        tx_leaf,
+        at("context_signer")(tx_leaf),
       )
     5 -> {
       let pending = context_observer.ObserverPending {
@@ -2452,7 +2535,9 @@ fn run_empty_context_chain(stage: Int) -> Bool {
           datum,
           action,
           fixture.own_out_ref(),
-          prover_continue_tx(ct_asset, pending_data),
+          at("context_observer_authenticate")(
+            prover_continue_tx(ct_asset, pending_data),
+          ),
         ),
         context_observer_fold.main.spend(
           next_hash,
@@ -2465,7 +2550,7 @@ fn run_empty_context_chain(stage: Int) -> Bool {
           ),
           action,
           fixture.own_out_ref(),
-          tx_leaf,
+          at("context_observer_fold")(tx_leaf),
         ),
       }
     }
@@ -2479,7 +2564,7 @@ fn run_empty_context_chain(stage: Int) -> Bool {
       Some(semantic_datum(prepared(f))),
       action,
       fixture.own_out_ref(),
-      prover_continue_tx(ct_asset, bound_data),
+      at("context_bind")(prover_continue_tx(ct_asset, bound_data)),
     ),
     context_control.main.spend(
       list.repeat(next_hash, 14),
@@ -2492,7 +2577,7 @@ fn run_empty_context_chain(stage: Int) -> Bool {
       ),
       action,
       fixture.own_out_ref(),
-      prover_continue_tx(ct_asset, staged_data),
+      at("context_control")(prover_continue_tx(ct_asset, staged_data)),
     ),
     leaf,
     context_settle.main.spend(
@@ -2506,7 +2591,7 @@ fn run_empty_context_chain(stage: Int) -> Bool {
       ),
       action,
       fixture.own_out_ref(),
-      prover_continue_tx(ct_asset, winning_output()),
+      at("context_settle")(prover_continue_tx(ct_asset, winning_output())),
     ),
   }
 }
@@ -2532,6 +2617,15 @@ test bounded_context_observer_empty_chain() {
 }
 
 fn run_context_descriptor_handoff(finish: Bool) -> Bool {
+  shaped_context_descriptor_handoff(honest_at, finish)
+}
+
+/// `run_context_descriptor_handoff`, each hop's L1 transaction reshaped by `at` (see
+/// `thread_census_fixture_v1`).
+fn shaped_context_descriptor_handoff(
+  at: fn(ByteArray) -> fn(l1.Transaction) -> l1.Transaction,
+  finish: Bool,
+) -> Bool {
   let bytes = #"8400004100820a14"
   let commitment = bounded_item_v1.from_bytes(8, 0, bytes)
   let proof = bounded_item_v1.ChunkProofV1 {
@@ -2690,7 +2784,9 @@ fn run_context_descriptor_handoff(finish: Bool) -> Bool {
       verified_datum,
       action,
       fixture.own_out_ref(),
-      prover_continue_tx(ct_asset, context_verified_data),
+      at("context_item_selection_finish")(
+        prover_continue_tx(ct_asset, context_verified_data),
+      ),
     )
   } else {
     let result = context_item.ItemHashResult {
@@ -2705,7 +2801,7 @@ fn run_context_descriptor_handoff(finish: Bool) -> Bool {
         verified_datum,
         action,
         fixture.own_out_ref(),
-        prover_continue_tx(ct_asset, result_data),
+        at("context_item_hash")(prover_continue_tx(ct_asset, result_data)),
       ),
       context_item_selection_continue.main.spend(
         next_hash,
@@ -2718,7 +2814,9 @@ fn run_context_descriptor_handoff(finish: Bool) -> Bool {
         ),
         action,
         fixture.own_out_ref(),
-        prover_continue_tx(ct_asset, context_verified_data),
+        at("context_item_selection_continue")(
+          prover_continue_tx(ct_asset, context_verified_data),
+        ),
       ),
     }
   }
@@ -2743,7 +2841,7 @@ fn run_context_descriptor_handoff(finish: Bool) -> Bool {
         },
       ),
       fixture.own_out_ref(),
-      prover_continue_tx(ct_asset, pending_data),
+      at("context_item_bind")(prover_continue_tx(ct_asset, pending_data)),
     ),
     context_item_return.main.spend(
       list.repeat(next_hash, 5),
@@ -2751,7 +2849,7 @@ fn run_context_descriptor_handoff(finish: Bool) -> Bool {
       verified_datum,
       action,
       fixture.own_out_ref(),
-      prover_continue_tx(ct_asset, verified_data),
+      at("context_item_return")(prover_continue_tx(ct_asset, verified_data)),
     ),
     return_path,
     context_settle.main.spend(
@@ -2765,7 +2863,7 @@ fn run_context_descriptor_handoff(finish: Bool) -> Bool {
       ),
       action,
       fixture.own_out_ref(),
-      prover_continue_tx(ct_asset, winning_output()),
+      at("context_settle")(prover_continue_tx(ct_asset, winning_output())),
     ),
   }
 }
@@ -3221,6 +3319,16 @@ fn mint_item_claim_data(
 }
 
 fn run_mint_item_hop(f: CekStepFixtureV1, output_state: Data) -> Bool {
+  shaped_mint_item_hop(honest_at, f, output_state)
+}
+
+/// `run_mint_item_hop`, each hop's L1 transaction reshaped by `at` (see
+/// `thread_census_fixture_v1`).
+fn shaped_mint_item_hop(
+  at: fn(ByteArray) -> fn(l1.Transaction) -> l1.Transaction,
+  f: CekStepFixtureV1,
+  output_state: Data,
+) -> Bool {
   context_mint_item.main.spend(
     fixture.next_step_script_hash,
     fixture.computation_thread_policy_id,
@@ -3232,7 +3340,7 @@ fn run_mint_item_hop(f: CekStepFixtureV1, output_state: Data) -> Bool {
     ),
     ct.Continue(context_chain_action(f)),
     fixture.own_out_ref(),
-    prover_continue_tx(ct_asset, output_state),
+    at("context_mint_item")(prover_continue_tx(ct_asset, output_state)),
   )
 }
 
@@ -3754,6 +3862,24 @@ fn run_redeemer_select_authenticate(
   named: Int,
   length_delta: Int,
 ) -> Bool {
+  shaped_redeemer_select_authenticate(
+    honest_at,
+    control,
+    item_index,
+    named,
+    length_delta,
+  )
+}
+
+/// `run_redeemer_select_authenticate`, each hop's L1 transaction reshaped by `at` (see
+/// `thread_census_fixture_v1`).
+fn shaped_redeemer_select_authenticate(
+  at: fn(ByteArray) -> fn(l1.Transaction) -> l1.Transaction,
+  control: CekRedeemerContextControlV1,
+  item_index: Int,
+  named: Int,
+  length_delta: Int,
+) -> Bool {
   let auxiliary = redeemer_select_auxiliary(
     control,
     item_index,
@@ -3780,7 +3906,7 @@ fn run_redeemer_select_authenticate(
     ),
     redeemer_select_action(auxiliary),
     fixture.own_out_ref(),
-    prover_continue_tx(ct_asset, pending),
+    at("redeemer_select_authenticate")(prover_continue_tx(ct_asset, pending)),
   )
 }
 
@@ -4080,6 +4206,15 @@ test redeemer_skip_split_agrees_with_original() {
 }
 
 fn run_redeemer_select_finish(next_bound: Int) -> Bool {
+  shaped_redeemer_select_finish(honest_at, next_bound)
+}
+
+/// `run_redeemer_select_finish`, each hop's L1 transaction reshaped by `at` (see
+/// `thread_census_fixture_v1`).
+fn shaped_redeemer_select_finish(
+  at: fn(ByteArray) -> fn(l1.Transaction) -> l1.Transaction,
+  next_bound: Int,
+) -> Bool {
   let control = vm_witness.initial_cek_redeemer_context_control_v1(2)
   let auxiliary = redeemer_select_auxiliary(control, 0, 1, 0)
   let staged = redeemer_select_staged(False, control, auxiliary)
@@ -4114,7 +4249,7 @@ fn run_redeemer_select_finish(next_bound: Int) -> Bool {
     ),
     redeemer_select_action(auxiliary),
     fixture.own_out_ref(),
-    prover_continue_tx(ct_asset, next),
+    at("redeemer_select_finish")(prover_continue_tx(ct_asset, next)),
   )
 }
 
@@ -4124,4 +4259,757 @@ test redeemer_select_finish_lowers_the_bound_to_the_selected_purpose() {
 
 test redeemer_select_finish_refuses_a_successor_that_keeps_the_bound() fail {
   run_redeemer_select_finish(2)
+}
+
+// ---------------------------------------------------------------------------
+// Census: who funds and who signs each move
+// ---------------------------------------------------------------------------
+//
+// Each hop runs inside its honest chain with only its own transaction
+// reshaped. A lone thread input pays up to the cap and no more; beside another
+// input the thread keeps its value. The award hops (finish, the selection
+// without a traversal, the core and context settles) are open to anyone; every
+// other hop is the prover's alone.
+
+/// Reshapes only `hop`'s transaction.
+fn only(
+  hop: ByteArray,
+  shape: fn(l1.Transaction) -> l1.Transaction,
+) -> fn(ByteArray) -> fn(l1.Transaction) -> l1.Transaction {
+  fn(h) {
+    if h == hop {
+      shape
+    } else {
+      census.honest
+    }
+  }
+}
+
+fn unsigned_paying_the_cap(tx: l1.Transaction) -> l1.Transaction {
+  census.without_signers(census.lone_input_paying(census.cap)(tx))
+}
+
+fn census_prepare(
+  at: fn(ByteArray) -> fn(l1.Transaction) -> l1.Transaction,
+) -> Bool {
+  let f = fixture_of_kind(0)
+  shaped_prepare(at, f, group_with_slot(0), 0, expected_prepared_output(f))
+}
+
+fn census_finish(
+  at: fn(ByteArray) -> fn(l1.Transaction) -> l1.Transaction,
+) -> Bool {
+  let f = finish_fixture()
+  shaped_finish(at, prepared(f), f.transition)
+}
+
+fn census_selection(
+  at: fn(ByteArray) -> fn(l1.Transaction) -> l1.Transaction,
+) -> Bool {
+  let f = selection_fixture()
+  shaped_selection(at, prepared(f), f.transition, f.auxiliary, f.material_route)
+}
+
+fn census_core_step(
+  at: fn(ByteArray) -> fn(l1.Transaction) -> l1.Transaction,
+) -> Bool {
+  let f = core_step_fixture()
+  expect CekCoreStepWitness { step } = f.auxiliary
+  shaped_core_step(at, prepared(f), f.transition, step)
+}
+
+fn census_core_compute(
+  at: fn(ByteArray) -> fn(l1.Transaction) -> l1.Transaction,
+) -> Bool {
+  let f = core_step_fixture()
+  expect CekCoreStepWitness { step } = f.auxiliary
+  shaped_core_compute_chain(at, core_chain_bound(f), step.witness)
+}
+
+fn census_context_mint_chain(
+  at: fn(ByteArray) -> fn(l1.Transaction) -> l1.Transaction,
+) -> Bool {
+  shaped_context_mint_chain(at)
+}
+
+fn census_context_reference(
+  at: fn(ByteArray) -> fn(l1.Transaction) -> l1.Transaction,
+) -> Bool {
+  shaped_empty_context_chain(at, 1)
+}
+
+fn census_context_spend(
+  at: fn(ByteArray) -> fn(l1.Transaction) -> l1.Transaction,
+) -> Bool {
+  shaped_empty_context_chain(at, 2)
+}
+
+fn census_context_output(
+  at: fn(ByteArray) -> fn(l1.Transaction) -> l1.Transaction,
+) -> Bool {
+  shaped_empty_context_chain(at, 3)
+}
+
+fn census_context_signer(
+  at: fn(ByteArray) -> fn(l1.Transaction) -> l1.Transaction,
+) -> Bool {
+  shaped_empty_context_chain(at, 4)
+}
+
+fn census_context_observers(
+  at: fn(ByteArray) -> fn(l1.Transaction) -> l1.Transaction,
+) -> Bool {
+  shaped_empty_context_chain(at, 5)
+}
+
+fn census_descriptor_header(
+  at: fn(ByteArray) -> fn(l1.Transaction) -> l1.Transaction,
+) -> Bool {
+  shaped_context_descriptor_handoff(at, False)
+}
+
+fn census_descriptor_tail(
+  at: fn(ByteArray) -> fn(l1.Transaction) -> l1.Transaction,
+) -> Bool {
+  shaped_context_descriptor_handoff(at, True)
+}
+
+fn census_mint_item(
+  at: fn(ByteArray) -> fn(l1.Transaction) -> l1.Transaction,
+) -> Bool {
+  let f = mint_item_fixture()
+  shaped_mint_item_hop(at, f, mint_item_claim_data(f, #"00", 7))
+}
+
+fn census_redeemer_select_authenticate(
+  at: fn(ByteArray) -> fn(l1.Transaction) -> l1.Transaction,
+) -> Bool {
+  shaped_redeemer_select_authenticate(
+    at,
+    vm_witness.initial_cek_redeemer_context_control_v1(2),
+    0,
+    1,
+    0,
+  )
+}
+
+fn census_redeemer_select_finish(
+  at: fn(ByteArray) -> fn(l1.Transaction) -> l1.Transaction,
+) -> Bool {
+  shaped_redeemer_select_finish(at, 1)
+}
+
+test census_the_prover_moves_prepare_paying_the_cap_or_beside_a_wallet_input() {
+  and {
+    census_prepare(
+      only("prepare_validator", census.lone_input_paying(census.cap)),
+    ),
+    census_prepare(only("prepare_validator", census.beside_wallet_input(0))),
+  }
+}
+
+test census_prepare_unsigned_is_refused() fail {
+  census_prepare(only("prepare_validator", census.without_signers))
+}
+
+test census_prepare_paying_over_the_cap_is_refused() fail {
+  census_prepare(
+    only("prepare_validator", census.lone_input_paying(census.cap + 1)),
+  )
+}
+
+test census_prepare_beside_a_wallet_input_taking_thread_value_is_refused() fail {
+  census_prepare(only("prepare_validator", census.beside_wallet_input(1)))
+}
+
+test census_anyone_moves_finish_paying_the_cap_or_beside_a_wallet_input() {
+  and {
+    census_finish(only("finish_validator", unsigned_paying_the_cap)),
+    census_finish(only("finish_validator", census.beside_wallet_input(0))),
+  }
+}
+
+test census_finish_paying_over_the_cap_is_refused() fail {
+  census_finish(
+    only("finish_validator", census.lone_input_paying(census.cap + 1)),
+  )
+}
+
+test census_finish_beside_a_wallet_input_taking_thread_value_is_refused() fail {
+  census_finish(only("finish_validator", census.beside_wallet_input(1)))
+}
+
+test census_anyone_moves_execution_selection_paying_the_cap_or_beside_a_wallet_input() {
+  and {
+    census_selection(only("selection_validator", unsigned_paying_the_cap)),
+    census_selection(only("selection_validator", census.beside_wallet_input(0))),
+  }
+}
+
+test census_execution_selection_paying_over_the_cap_is_refused() fail {
+  census_selection(
+    only("selection_validator", census.lone_input_paying(census.cap + 1)),
+  )
+}
+
+test census_execution_selection_beside_a_wallet_input_taking_thread_value_is_refused() fail {
+  census_selection(only("selection_validator", census.beside_wallet_input(1)))
+}
+
+test census_the_prover_moves_core_step_paying_the_cap_or_beside_a_wallet_input() {
+  and {
+    census_core_step(
+      only("core_validator", census.lone_input_paying(census.cap)),
+    ),
+    census_core_step(only("core_validator", census.beside_wallet_input(0))),
+  }
+}
+
+test census_core_step_unsigned_is_refused() fail {
+  census_core_step(only("core_validator", census.without_signers))
+}
+
+test census_core_step_paying_over_the_cap_is_refused() fail {
+  census_core_step(
+    only("core_validator", census.lone_input_paying(census.cap + 1)),
+  )
+}
+
+test census_core_step_beside_a_wallet_input_taking_thread_value_is_refused() fail {
+  census_core_step(only("core_validator", census.beside_wallet_input(1)))
+}
+
+test census_anyone_moves_core_settle_paying_the_cap_or_beside_a_wallet_input() {
+  and {
+    census_core_step(only("core_settle", unsigned_paying_the_cap)),
+    census_core_step(only("core_settle", census.beside_wallet_input(0))),
+  }
+}
+
+test census_core_settle_paying_over_the_cap_is_refused() fail {
+  census_core_step(
+    only("core_settle", census.lone_input_paying(census.cap + 1)),
+  )
+}
+
+test census_core_settle_beside_a_wallet_input_taking_thread_value_is_refused() fail {
+  census_core_step(only("core_settle", census.beside_wallet_input(1)))
+}
+
+test census_the_prover_moves_core_compute_paying_the_cap_or_beside_a_wallet_input() {
+  and {
+    census_core_compute(
+      only("core_compute", census.lone_input_paying(census.cap)),
+    ),
+    census_core_compute(only("core_compute", census.beside_wallet_input(0))),
+  }
+}
+
+test census_core_compute_unsigned_is_refused() fail {
+  census_core_compute(only("core_compute", census.without_signers))
+}
+
+test census_core_compute_paying_over_the_cap_is_refused() fail {
+  census_core_compute(
+    only("core_compute", census.lone_input_paying(census.cap + 1)),
+  )
+}
+
+test census_core_compute_beside_a_wallet_input_taking_thread_value_is_refused() fail {
+  census_core_compute(only("core_compute", census.beside_wallet_input(1)))
+}
+
+test census_the_prover_moves_context_bind_paying_the_cap_or_beside_a_wallet_input() {
+  and {
+    census_context_mint_chain(
+      only("context_bind", census.lone_input_paying(census.cap)),
+    ),
+    census_context_mint_chain(
+      only("context_bind", census.beside_wallet_input(0)),
+    ),
+  }
+}
+
+test census_context_bind_unsigned_is_refused() fail {
+  census_context_mint_chain(only("context_bind", census.without_signers))
+}
+
+test census_context_bind_paying_over_the_cap_is_refused() fail {
+  census_context_mint_chain(
+    only("context_bind", census.lone_input_paying(census.cap + 1)),
+  )
+}
+
+test census_context_bind_beside_a_wallet_input_taking_thread_value_is_refused() fail {
+  census_context_mint_chain(only("context_bind", census.beside_wallet_input(1)))
+}
+
+test census_the_prover_moves_context_control_paying_the_cap_or_beside_a_wallet_input() {
+  and {
+    census_context_mint_chain(
+      only("context_control", census.lone_input_paying(census.cap)),
+    ),
+    census_context_mint_chain(
+      only("context_control", census.beside_wallet_input(0)),
+    ),
+  }
+}
+
+test census_context_control_unsigned_is_refused() fail {
+  census_context_mint_chain(only("context_control", census.without_signers))
+}
+
+test census_context_control_paying_over_the_cap_is_refused() fail {
+  census_context_mint_chain(
+    only("context_control", census.lone_input_paying(census.cap + 1)),
+  )
+}
+
+test census_context_control_beside_a_wallet_input_taking_thread_value_is_refused() fail {
+  census_context_mint_chain(
+    only("context_control", census.beside_wallet_input(1)),
+  )
+}
+
+test census_the_prover_moves_context_mint_init_paying_the_cap_or_beside_a_wallet_input() {
+  and {
+    census_context_mint_chain(
+      only("context_mint_init", census.lone_input_paying(census.cap)),
+    ),
+    census_context_mint_chain(
+      only("context_mint_init", census.beside_wallet_input(0)),
+    ),
+  }
+}
+
+test census_context_mint_init_unsigned_is_refused() fail {
+  census_context_mint_chain(only("context_mint_init", census.without_signers))
+}
+
+test census_context_mint_init_paying_over_the_cap_is_refused() fail {
+  census_context_mint_chain(
+    only("context_mint_init", census.lone_input_paying(census.cap + 1)),
+  )
+}
+
+test census_context_mint_init_beside_a_wallet_input_taking_thread_value_is_refused() fail {
+  census_context_mint_chain(
+    only("context_mint_init", census.beside_wallet_input(1)),
+  )
+}
+
+test census_anyone_moves_context_settle_paying_the_cap_or_beside_a_wallet_input() {
+  and {
+    census_context_mint_chain(only("context_settle", unsigned_paying_the_cap)),
+    census_context_mint_chain(
+      only("context_settle", census.beside_wallet_input(0)),
+    ),
+  }
+}
+
+test census_context_settle_paying_over_the_cap_is_refused() fail {
+  census_context_mint_chain(
+    only("context_settle", census.lone_input_paying(census.cap + 1)),
+  )
+}
+
+test census_context_settle_beside_a_wallet_input_taking_thread_value_is_refused() fail {
+  census_context_mint_chain(
+    only("context_settle", census.beside_wallet_input(1)),
+  )
+}
+
+test census_the_prover_moves_context_reference_paying_the_cap_or_beside_a_wallet_input() {
+  and {
+    census_context_reference(
+      only("context_reference", census.lone_input_paying(census.cap)),
+    ),
+    census_context_reference(
+      only("context_reference", census.beside_wallet_input(0)),
+    ),
+  }
+}
+
+test census_context_reference_unsigned_is_refused() fail {
+  census_context_reference(only("context_reference", census.without_signers))
+}
+
+test census_context_reference_paying_over_the_cap_is_refused() fail {
+  census_context_reference(
+    only("context_reference", census.lone_input_paying(census.cap + 1)),
+  )
+}
+
+test census_context_reference_beside_a_wallet_input_taking_thread_value_is_refused() fail {
+  census_context_reference(
+    only("context_reference", census.beside_wallet_input(1)),
+  )
+}
+
+test census_the_prover_moves_context_spend_paying_the_cap_or_beside_a_wallet_input() {
+  and {
+    census_context_spend(
+      only("context_spend", census.lone_input_paying(census.cap)),
+    ),
+    census_context_spend(only("context_spend", census.beside_wallet_input(0))),
+  }
+}
+
+test census_context_spend_unsigned_is_refused() fail {
+  census_context_spend(only("context_spend", census.without_signers))
+}
+
+test census_context_spend_paying_over_the_cap_is_refused() fail {
+  census_context_spend(
+    only("context_spend", census.lone_input_paying(census.cap + 1)),
+  )
+}
+
+test census_context_spend_beside_a_wallet_input_taking_thread_value_is_refused() fail {
+  census_context_spend(only("context_spend", census.beside_wallet_input(1)))
+}
+
+test census_the_prover_moves_context_output_paying_the_cap_or_beside_a_wallet_input() {
+  and {
+    census_context_output(
+      only("context_output", census.lone_input_paying(census.cap)),
+    ),
+    census_context_output(only("context_output", census.beside_wallet_input(0))),
+  }
+}
+
+test census_context_output_unsigned_is_refused() fail {
+  census_context_output(only("context_output", census.without_signers))
+}
+
+test census_context_output_paying_over_the_cap_is_refused() fail {
+  census_context_output(
+    only("context_output", census.lone_input_paying(census.cap + 1)),
+  )
+}
+
+test census_context_output_beside_a_wallet_input_taking_thread_value_is_refused() fail {
+  census_context_output(only("context_output", census.beside_wallet_input(1)))
+}
+
+test census_the_prover_moves_context_signer_paying_the_cap_or_beside_a_wallet_input() {
+  and {
+    census_context_signer(
+      only("context_signer", census.lone_input_paying(census.cap)),
+    ),
+    census_context_signer(only("context_signer", census.beside_wallet_input(0))),
+  }
+}
+
+test census_context_signer_unsigned_is_refused() fail {
+  census_context_signer(only("context_signer", census.without_signers))
+}
+
+test census_context_signer_paying_over_the_cap_is_refused() fail {
+  census_context_signer(
+    only("context_signer", census.lone_input_paying(census.cap + 1)),
+  )
+}
+
+test census_context_signer_beside_a_wallet_input_taking_thread_value_is_refused() fail {
+  census_context_signer(only("context_signer", census.beside_wallet_input(1)))
+}
+
+test census_the_prover_moves_context_observer_authenticate_paying_the_cap_or_beside_a_wallet_input() {
+  and {
+    census_context_observers(
+      only(
+        "context_observer_authenticate",
+        census.lone_input_paying(census.cap),
+      ),
+    ),
+    census_context_observers(
+      only("context_observer_authenticate", census.beside_wallet_input(0)),
+    ),
+  }
+}
+
+test census_context_observer_authenticate_unsigned_is_refused() fail {
+  census_context_observers(
+    only("context_observer_authenticate", census.without_signers),
+  )
+}
+
+test census_context_observer_authenticate_paying_over_the_cap_is_refused() fail {
+  census_context_observers(
+    only(
+      "context_observer_authenticate",
+      census.lone_input_paying(census.cap + 1),
+    ),
+  )
+}
+
+test census_context_observer_authenticate_beside_a_wallet_input_taking_thread_value_is_refused() fail {
+  census_context_observers(
+    only("context_observer_authenticate", census.beside_wallet_input(1)),
+  )
+}
+
+test census_the_prover_moves_context_observer_fold_paying_the_cap_or_beside_a_wallet_input() {
+  and {
+    census_context_observers(
+      only("context_observer_fold", census.lone_input_paying(census.cap)),
+    ),
+    census_context_observers(
+      only("context_observer_fold", census.beside_wallet_input(0)),
+    ),
+  }
+}
+
+test census_context_observer_fold_unsigned_is_refused() fail {
+  census_context_observers(
+    only("context_observer_fold", census.without_signers),
+  )
+}
+
+test census_context_observer_fold_paying_over_the_cap_is_refused() fail {
+  census_context_observers(
+    only("context_observer_fold", census.lone_input_paying(census.cap + 1)),
+  )
+}
+
+test census_context_observer_fold_beside_a_wallet_input_taking_thread_value_is_refused() fail {
+  census_context_observers(
+    only("context_observer_fold", census.beside_wallet_input(1)),
+  )
+}
+
+test census_the_prover_moves_context_item_bind_paying_the_cap_or_beside_a_wallet_input() {
+  and {
+    census_descriptor_header(
+      only("context_item_bind", census.lone_input_paying(census.cap)),
+    ),
+    census_descriptor_header(
+      only("context_item_bind", census.beside_wallet_input(0)),
+    ),
+  }
+}
+
+test census_context_item_bind_unsigned_is_refused() fail {
+  census_descriptor_header(only("context_item_bind", census.without_signers))
+}
+
+test census_context_item_bind_paying_over_the_cap_is_refused() fail {
+  census_descriptor_header(
+    only("context_item_bind", census.lone_input_paying(census.cap + 1)),
+  )
+}
+
+test census_context_item_bind_beside_a_wallet_input_taking_thread_value_is_refused() fail {
+  census_descriptor_header(
+    only("context_item_bind", census.beside_wallet_input(1)),
+  )
+}
+
+test census_the_prover_moves_context_item_return_paying_the_cap_or_beside_a_wallet_input() {
+  and {
+    census_descriptor_header(
+      only("context_item_return", census.lone_input_paying(census.cap)),
+    ),
+    census_descriptor_header(
+      only("context_item_return", census.beside_wallet_input(0)),
+    ),
+  }
+}
+
+test census_context_item_return_unsigned_is_refused() fail {
+  census_descriptor_header(only("context_item_return", census.without_signers))
+}
+
+test census_context_item_return_paying_over_the_cap_is_refused() fail {
+  census_descriptor_header(
+    only("context_item_return", census.lone_input_paying(census.cap + 1)),
+  )
+}
+
+test census_context_item_return_beside_a_wallet_input_taking_thread_value_is_refused() fail {
+  census_descriptor_header(
+    only("context_item_return", census.beside_wallet_input(1)),
+  )
+}
+
+test census_the_prover_moves_context_item_hash_paying_the_cap_or_beside_a_wallet_input() {
+  and {
+    census_descriptor_header(
+      only("context_item_hash", census.lone_input_paying(census.cap)),
+    ),
+    census_descriptor_header(
+      only("context_item_hash", census.beside_wallet_input(0)),
+    ),
+  }
+}
+
+test census_context_item_hash_unsigned_is_refused() fail {
+  census_descriptor_header(only("context_item_hash", census.without_signers))
+}
+
+test census_context_item_hash_paying_over_the_cap_is_refused() fail {
+  census_descriptor_header(
+    only("context_item_hash", census.lone_input_paying(census.cap + 1)),
+  )
+}
+
+test census_context_item_hash_beside_a_wallet_input_taking_thread_value_is_refused() fail {
+  census_descriptor_header(
+    only("context_item_hash", census.beside_wallet_input(1)),
+  )
+}
+
+test census_the_prover_moves_context_item_selection_continue_paying_the_cap_or_beside_a_wallet_input() {
+  and {
+    census_descriptor_header(
+      only(
+        "context_item_selection_continue",
+        census.lone_input_paying(census.cap),
+      ),
+    ),
+    census_descriptor_header(
+      only("context_item_selection_continue", census.beside_wallet_input(0)),
+    ),
+  }
+}
+
+test census_context_item_selection_continue_unsigned_is_refused() fail {
+  census_descriptor_header(
+    only("context_item_selection_continue", census.without_signers),
+  )
+}
+
+test census_context_item_selection_continue_paying_over_the_cap_is_refused() fail {
+  census_descriptor_header(
+    only(
+      "context_item_selection_continue",
+      census.lone_input_paying(census.cap + 1),
+    ),
+  )
+}
+
+test census_context_item_selection_continue_beside_a_wallet_input_taking_thread_value_is_refused() fail {
+  census_descriptor_header(
+    only("context_item_selection_continue", census.beside_wallet_input(1)),
+  )
+}
+
+test census_the_prover_moves_context_item_selection_finish_paying_the_cap_or_beside_a_wallet_input() {
+  and {
+    census_descriptor_tail(
+      only(
+        "context_item_selection_finish",
+        census.lone_input_paying(census.cap),
+      ),
+    ),
+    census_descriptor_tail(
+      only("context_item_selection_finish", census.beside_wallet_input(0)),
+    ),
+  }
+}
+
+test census_context_item_selection_finish_unsigned_is_refused() fail {
+  census_descriptor_tail(
+    only("context_item_selection_finish", census.without_signers),
+  )
+}
+
+test census_context_item_selection_finish_paying_over_the_cap_is_refused() fail {
+  census_descriptor_tail(
+    only(
+      "context_item_selection_finish",
+      census.lone_input_paying(census.cap + 1),
+    ),
+  )
+}
+
+test census_context_item_selection_finish_beside_a_wallet_input_taking_thread_value_is_refused() fail {
+  census_descriptor_tail(
+    only("context_item_selection_finish", census.beside_wallet_input(1)),
+  )
+}
+
+test census_the_prover_moves_context_mint_item_paying_the_cap_or_beside_a_wallet_input() {
+  and {
+    census_mint_item(
+      only("context_mint_item", census.lone_input_paying(census.cap)),
+    ),
+    census_mint_item(only("context_mint_item", census.beside_wallet_input(0))),
+  }
+}
+
+test census_context_mint_item_unsigned_is_refused() fail {
+  census_mint_item(only("context_mint_item", census.without_signers))
+}
+
+test census_context_mint_item_paying_over_the_cap_is_refused() fail {
+  census_mint_item(
+    only("context_mint_item", census.lone_input_paying(census.cap + 1)),
+  )
+}
+
+test census_context_mint_item_beside_a_wallet_input_taking_thread_value_is_refused() fail {
+  census_mint_item(only("context_mint_item", census.beside_wallet_input(1)))
+}
+
+test census_the_prover_moves_redeemer_select_authenticate_paying_the_cap_or_beside_a_wallet_input() {
+  and {
+    census_redeemer_select_authenticate(
+      only("redeemer_select_authenticate", census.lone_input_paying(census.cap)),
+    ),
+    census_redeemer_select_authenticate(
+      only("redeemer_select_authenticate", census.beside_wallet_input(0)),
+    ),
+  }
+}
+
+test census_redeemer_select_authenticate_unsigned_is_refused() fail {
+  census_redeemer_select_authenticate(
+    only("redeemer_select_authenticate", census.without_signers),
+  )
+}
+
+test census_redeemer_select_authenticate_paying_over_the_cap_is_refused() fail {
+  census_redeemer_select_authenticate(
+    only(
+      "redeemer_select_authenticate",
+      census.lone_input_paying(census.cap + 1),
+    ),
+  )
+}
+
+test census_redeemer_select_authenticate_beside_a_wallet_input_taking_thread_value_is_refused() fail {
+  census_redeemer_select_authenticate(
+    only("redeemer_select_authenticate", census.beside_wallet_input(1)),
+  )
+}
+
+test census_the_prover_moves_redeemer_select_finish_paying_the_cap_or_beside_a_wallet_input() {
+  and {
+    census_redeemer_select_finish(
+      only("redeemer_select_finish", census.lone_input_paying(census.cap)),
+    ),
+    census_redeemer_select_finish(
+      only("redeemer_select_finish", census.beside_wallet_input(0)),
+    ),
+  }
+}
+
+test census_redeemer_select_finish_unsigned_is_refused() fail {
+  census_redeemer_select_finish(
+    only("redeemer_select_finish", census.without_signers),
+  )
+}
+
+test census_redeemer_select_finish_paying_over_the_cap_is_refused() fail {
+  census_redeemer_select_finish(
+    only("redeemer_select_finish", census.lone_input_paying(census.cap + 1)),
+  )
+}
+
+test census_redeemer_select_finish_beside_a_wallet_input_taking_thread_value_is_refused() fail {
+  census_redeemer_select_finish(
+    only("redeemer_select_finish", census.beside_wallet_input(1)),
+  )
 }

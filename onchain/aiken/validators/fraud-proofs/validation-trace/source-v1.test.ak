@@ -21,6 +21,7 @@ use midgard/forced_submission_fixture as forced_fixture
 use midgard/fraud_proofs/native_tx/compact as native_compact
 use midgard/fraud_proofs/native_tx/transaction as native_transaction
 use midgard/fraud_proofs/native_tx/types as native_types
+use midgard/fraud_proofs/thread_census_fixture_v1 as census
 use midgard/ledger_state
 use midgard/rejection_reason_v1
 use midgard/transition_trace
@@ -1049,4 +1050,37 @@ test verify_source_refuses_to_open_past_maturity() fail {
       ],
     ),
   )
+}
+
+// ## Census: who funds and who signs VerifySource
+//
+// On its award path VerifySource carries the thread on unchanged, so it is
+// funded like any other move: a lone thread input pays up to the cap and no
+// more, and beside another input the thread keeps its value. Anyone may
+// submit it.
+
+fn award_shaped(shape: fn(Transaction) -> Transaction) -> Bool {
+  let incoherent = validation_trace_v1.ValidationMachineStateV1 {
+    ..terminal_state(validation_trace_v1.Accepted, zero_hash),
+    program_counter: step_count - 1,
+  }
+  verify(gap_b(incoherent, incoherent), shape(tx_at(upper, award_outputs())))
+}
+
+test census_anyone_verifies_the_source_paying_the_cap_from_the_thread() {
+  award_shaped(
+    fn(tx) { census.without_signers(census.lone_input_paying(census.cap)(tx)) },
+  )
+}
+
+test census_verify_source_paying_over_the_cap_is_refused() fail {
+  award_shaped(census.lone_input_paying(census.cap + 1))
+}
+
+test census_verify_source_beside_a_wallet_input_keeps_the_thread_value() {
+  award_shaped(census.beside_wallet_input(0))
+}
+
+test census_verify_source_beside_a_wallet_input_taking_thread_value_is_refused() fail {
+  award_shaped(census.beside_wallet_input(1))
 }

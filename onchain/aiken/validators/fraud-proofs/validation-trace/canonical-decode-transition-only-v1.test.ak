@@ -47,6 +47,7 @@ use midgard/fraud_proofs/native_tx/types.{
   MidgardTransaction, MidgardTransactionWitnessSet, MidgardVersionedScript,
   PlutusV3Script, native_tx_version_v1,
 }
+use midgard/fraud_proofs/thread_census_fixture_v1 as census
 use midgard/native_tx_field_access_v1 as field_access
 use midgard/validation_machine/canonical_decode.{
   bind_canonical_decode_item_source_v1, observe_canonical_decode_item_v1,
@@ -626,6 +627,26 @@ fn run_prepare(
   transition: ValidationOneStepWitnessV1,
   output_state: Data,
 ) -> Bool {
+  shaped_prepare(
+    census.honest,
+    f,
+    resolver_hashes,
+    semantic_resolver_index,
+    transition,
+    output_state,
+  )
+}
+
+/// `run_prepare`, its L1 transaction reshaped by `shape` (see
+/// `thread_census_fixture_v1`).
+fn shaped_prepare(
+  shape: fn(Transaction) -> Transaction,
+  f: OptionBStepFixtureV1,
+  resolver_hashes: List<ByteArray>,
+  semantic_resolver_index: Int,
+  transition: ValidationOneStepWitnessV1,
+  output_state: Data,
+) -> Bool {
   prepare_validator.main.spend(
     resolver_hashes,
     fixture.computation_thread_policy_id,
@@ -639,7 +660,7 @@ fn run_prepare(
       },
     ),
     fixture.own_out_ref(),
-    prover_continue_tx(ct_asset, output_state),
+    shape(prover_continue_tx(ct_asset, output_state)),
   )
 }
 
@@ -841,6 +862,16 @@ fn run_authenticate(
   transition: ValidationOneStepWitnessV1,
   output_state: Data,
 ) -> Bool {
+  shaped_authenticate(census.honest, base, transition, output_state)
+}
+
+/// `run_authenticate`, its L1 transaction reshaped by `shape`.
+fn shaped_authenticate(
+  shape: fn(Transaction) -> Transaction,
+  base: PreparedValidationResolutionStateV1,
+  transition: ValidationOneStepWitnessV1,
+  output_state: Data,
+) -> Bool {
   authenticate_validator.main.spend(
     fixture.next_step_script_hash,
     fixture.computation_thread_policy_id,
@@ -853,7 +884,7 @@ fn run_authenticate(
       },
     ),
     fixture.own_out_ref(),
-    prover_continue_tx(ct_asset, output_state),
+    shape(prover_continue_tx(ct_asset, output_state)),
   )
 }
 
@@ -937,7 +968,19 @@ fn run_observe(
   reference_inputs: List<Input>,
   output_state: Data,
 ) -> Bool {
-  let base_tx = prover_continue_tx(ct_asset, output_state)
+  shaped_observe(census.honest, f, base, action, reference_inputs, output_state)
+}
+
+/// `run_observe`, its L1 transaction reshaped by `shape`.
+fn shaped_observe(
+  shape: fn(Transaction) -> Transaction,
+  f: OptionBStepFixtureV1,
+  base: PreparedValidationResolutionStateV1,
+  action: observe_validator.ActionV1,
+  reference_inputs: List<Input>,
+  output_state: Data,
+) -> Bool {
+  let base_tx = shape(prover_continue_tx(ct_asset, output_state))
   observe_validator.main.spend(
     fixture.next_step_script_hash,
     fixture.computation_thread_policy_id,
@@ -1262,4 +1305,108 @@ test observe_refuses_a_wrong_output_script() fail {
     fixture.own_out_ref(),
     prover_continue_tx(ct_asset, observed_output(f, f.base)),
   )
+}
+
+// ## Census: who funds and who signs each move
+//
+// Prepare, authenticate and observe are the prover's alone. A lone thread
+// input pays up to the cap and no more; beside another input the thread keeps
+// its value.
+
+fn prepare_shaped(shape: fn(Transaction) -> Transaction) -> Bool {
+  let f = small_fixture()
+  shaped_prepare(
+    shape,
+    f,
+    [fixture.step_script_hash, fixture.next_step_script_hash],
+    1,
+    f.transition,
+    expected_prepared_output(f),
+  )
+}
+
+test census_the_prover_prepares_paying_the_cap_from_the_thread() {
+  prepare_shaped(census.lone_input_paying(census.cap))
+}
+
+test census_prepare_paying_over_the_cap_is_refused() fail {
+  prepare_shaped(census.lone_input_paying(census.cap + 1))
+}
+
+test census_prepare_beside_a_wallet_input_keeps_the_thread_value() {
+  prepare_shaped(census.beside_wallet_input(0))
+}
+
+test census_prepare_beside_a_wallet_input_taking_thread_value_is_refused() fail {
+  prepare_shaped(census.beside_wallet_input(1))
+}
+
+test census_prepare_unsigned_is_refused() fail {
+  prepare_shaped(census.without_signers)
+}
+
+fn authenticate_shaped(shape: fn(Transaction) -> Transaction) -> Bool {
+  let f = small_fixture()
+  shaped_authenticate(
+    shape,
+    f.base,
+    f.transition,
+    authenticated_output(f.base, f.transition),
+  )
+}
+
+test census_the_prover_authenticates_paying_the_cap_from_the_thread() {
+  authenticate_shaped(census.lone_input_paying(census.cap))
+}
+
+test census_authenticate_paying_over_the_cap_is_refused() fail {
+  authenticate_shaped(census.lone_input_paying(census.cap + 1))
+}
+
+test census_authenticate_beside_a_wallet_input_keeps_the_thread_value() {
+  authenticate_shaped(census.beside_wallet_input(0))
+}
+
+test census_authenticate_beside_a_wallet_input_taking_thread_value_is_refused() fail {
+  authenticate_shaped(census.beside_wallet_input(1))
+}
+
+test census_authenticate_unsigned_is_refused() fail {
+  authenticate_shaped(census.without_signers)
+}
+
+fn observe_shaped(shape: fn(Transaction) -> Transaction) -> Bool {
+  let f = small_fixture()
+  shaped_observe(
+    shape,
+    f,
+    f.base,
+    observe_validator.Observe {
+      input_index: 0,
+      output_index: 0,
+      carriage: field_access.Inline { preimage: f.field_preimage },
+    },
+    [],
+    observed_output(f, f.base),
+  )
+}
+
+test census_the_prover_observes_paying_the_cap_from_the_thread() {
+  observe_shaped(census.lone_input_paying(census.cap))
+}
+
+test census_observe_paying_over_the_cap_is_refused() fail {
+  observe_shaped(census.lone_input_paying(census.cap + 1))
+}
+
+test census_observe_beside_a_wallet_input_keeps_the_thread_value() {
+  observe_shaped(census.beside_wallet_input(0))
+}
+
+test census_observe_beside_a_wallet_input_taking_thread_value_is_refused() fail {
+  observe_shaped(census.beside_wallet_input(1))
+}
+
+test census_observe_unsigned_is_refused() fail {
+  observe_shaped(census.without_signers)
 }

@@ -10,6 +10,7 @@ use cardano/transaction.{
 }
 use fraud_proofs/validation_trace/game_v1 as game_validator
 use midgard/computation_thread as ct
+use midgard/fraud_proofs/thread_census_fixture_v1 as census
 use midgard/validation_dispute_v1
 use midgard/validation_game_v1
 use midgard/validation_trace_v1
@@ -184,6 +185,29 @@ fn move(
   to_hash: ByteArray,
   to_state: Data,
 ) -> Bool {
+  shaped_move(
+    census.honest,
+    from,
+    action,
+    lower,
+    upper,
+    signers,
+    to_hash,
+    to_state,
+  )
+}
+
+/// `move`, its transaction reshaped by `shape` (see `thread_census_fixture_v1`).
+fn shaped_move(
+  shape: fn(Transaction) -> Transaction,
+  from: validation_dispute_v1.ValidationDisputeV1,
+  action: game_validator.GameActionV1,
+  lower: Int,
+  upper: Int,
+  signers: List<ByteArray>,
+  to_hash: ByteArray,
+  to_state: Data,
+) -> Bool {
   let tx = Transaction {
     ..transaction.placeholder,
     inputs: [
@@ -197,6 +221,7 @@ fn move(
     validity_range: interval.between(lower, upper),
     extra_signatories: signers,
   }
+    |> shape
   game_validator.main.spend(
     boundary_hash,
     timeout_hash,
@@ -334,4 +359,125 @@ test a_third_party_cannot_enter_resolution() fail {
     boundary_hash,
     resolution_successor(),
   )
+}
+
+// ## Census: who funds and who signs each move
+//
+// A lone thread input pays up to the cap and no more; beside another input the
+// thread keeps its value; reveals and the challenger timeout are open to
+// anyone, and EnterResolution needs the prover.
+
+fn reveal_shaped(shape: fn(Transaction) -> Transaction) -> Bool {
+  shaped_move(
+    shape,
+    opened(),
+    reveal_operator(operator_first_proof()),
+    1_100,
+    1_200,
+    [],
+    game_hash,
+    game(after_operator_first()),
+  )
+}
+
+test census_a_reveal_pays_the_cap_from_the_thread() {
+  reveal_shaped(census.lone_input_paying(census.cap))
+}
+
+test census_a_reveal_paying_over_the_cap_is_refused() fail {
+  reveal_shaped(census.lone_input_paying(census.cap + 1))
+}
+
+test census_a_reveal_beside_a_wallet_input_keeps_the_thread_value() {
+  reveal_shaped(census.beside_wallet_input(0))
+}
+
+test census_a_reveal_beside_a_wallet_input_taking_thread_value_is_refused() fail {
+  reveal_shaped(census.beside_wallet_input(1))
+}
+
+fn resolution_shaped(
+  shape: fn(Transaction) -> Transaction,
+  signers: List<ByteArray>,
+) -> Bool {
+  shaped_move(
+    shape,
+    ready(),
+    enter_resolution(),
+    1_900,
+    2_000,
+    signers,
+    boundary_hash,
+    resolution_successor(),
+  )
+}
+
+test census_the_prover_enters_resolution_paying_the_cap_from_the_thread() {
+  resolution_shaped(census.lone_input_paying(census.cap), [fraud_prover])
+}
+
+test census_entering_resolution_paying_over_the_cap_is_refused() fail {
+  resolution_shaped(census.lone_input_paying(census.cap + 1), [fraud_prover])
+}
+
+test census_entering_resolution_beside_a_wallet_input_keeps_the_thread_value() {
+  resolution_shaped(census.beside_wallet_input(0), [fraud_prover])
+}
+
+test census_entering_resolution_beside_a_wallet_input_taking_thread_value_is_refused() fail {
+  resolution_shaped(census.beside_wallet_input(1), [fraud_prover])
+}
+
+test census_entering_resolution_unsigned_is_refused() fail {
+  resolution_shaped(census.lone_input_paying(census.cap), [])
+}
+
+/// The opened game awaits the operator; one millisecond past its clock the
+/// challenger may take the thread to the timeout validator, unchanged.
+fn challenger_timeout_shaped(
+  shape: fn(Transaction) -> Transaction,
+  lower: Int,
+) -> Bool {
+  shaped_move(
+    shape,
+    opened(),
+    game_validator.EnterChallengerTimeout { input_index: 0, output_index: 0 },
+    lower,
+    lower + 1_000,
+    [],
+    timeout_hash,
+    game(opened()),
+  )
+}
+
+const operator_lapsed_at =
+  opened_at + validation_dispute_v1.dispute_side_clock_milliseconds + 1
+
+test census_anyone_enters_the_challenger_timeout_paying_the_cap() {
+  challenger_timeout_shaped(
+    census.lone_input_paying(census.cap),
+    operator_lapsed_at,
+  )
+}
+
+test census_the_challenger_timeout_before_the_operator_clock_lapses_is_refused() fail {
+  challenger_timeout_shaped(
+    census.lone_input_paying(census.cap),
+    operator_lapsed_at - 1,
+  )
+}
+
+test census_the_challenger_timeout_paying_over_the_cap_is_refused() fail {
+  challenger_timeout_shaped(
+    census.lone_input_paying(census.cap + 1),
+    operator_lapsed_at,
+  )
+}
+
+test census_the_challenger_timeout_beside_a_wallet_input_keeps_the_thread_value() {
+  challenger_timeout_shaped(census.beside_wallet_input(0), operator_lapsed_at)
+}
+
+test census_the_challenger_timeout_beside_a_wallet_input_taking_thread_value_is_refused() fail {
+  challenger_timeout_shaped(census.beside_wallet_input(1), operator_lapsed_at)
 }

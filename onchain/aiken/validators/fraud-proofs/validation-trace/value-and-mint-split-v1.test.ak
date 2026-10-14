@@ -70,6 +70,7 @@ use midgard/fraud_proofs/native_tx/types.{
   MidgardTransaction, MidgardTransactionBody, MidgardTransactionWitnessSet,
   TxIsValid, native_tx_version_v1,
 }
+use midgard/fraud_proofs/thread_census_fixture_v1 as census
 use midgard/ledger_output_commitment_v1
 use midgard/script_proof_v1
 use midgard/validation_asset_fold.{asset_fold_role}
@@ -1250,6 +1251,17 @@ fn run_prepare(
   semantic_resolver_index: Int,
   output_state: Data,
 ) -> Bool {
+  shaped_prepare(census.honest, f, group, semantic_resolver_index, output_state)
+}
+
+/// `run_prepare`, its L1 transaction reshaped by `shape`.
+fn shaped_prepare(
+  shape: fn(Transaction) -> Transaction,
+  f: StepFixtureV1,
+  group: List<ByteArray>,
+  semantic_resolver_index: Int,
+  output_state: Data,
+) -> Bool {
   prepare_validator.main.spend(
     group,
     fixture.computation_thread_policy_id,
@@ -1264,7 +1276,7 @@ fn run_prepare(
       },
     ),
     fixture.own_out_ref(),
-    prover_continue_tx(ct_asset, output_state),
+    shape(prover_continue_tx(ct_asset, output_state)),
   )
 }
 
@@ -1376,6 +1388,15 @@ fn run_begin(
   base: PreparedValidationResolutionStateV1,
   transition: ValidationOneStepWitnessV1,
 ) -> Bool {
+  shaped_begin(census.honest, base, transition)
+}
+
+/// `run_begin`, its L1 transaction reshaped by `shape`.
+fn shaped_begin(
+  shape: fn(Transaction) -> Transaction,
+  base: PreparedValidationResolutionStateV1,
+  transition: ValidationOneStepWitnessV1,
+) -> Bool {
   begin_validator.main.spend(
     fixture.next_step_script_hash,
     fixture.computation_thread_policy_id,
@@ -1388,11 +1409,20 @@ fn run_begin(
       },
     ),
     fixture.own_out_ref(),
-    prover_continue_tx(ct_asset, winning_output()),
+    shape(prover_continue_tx(ct_asset, winning_output())),
   )
 }
 
 fn run_replay_begin(
+  base: PreparedValidationResolutionStateV1,
+  transition: ValidationOneStepWitnessV1,
+) -> Bool {
+  shaped_replay_begin(census.honest, base, transition)
+}
+
+/// `run_replay_begin`, its L1 transaction reshaped by `shape`.
+fn shaped_replay_begin(
+  shape: fn(Transaction) -> Transaction,
   base: PreparedValidationResolutionStateV1,
   transition: ValidationOneStepWitnessV1,
 ) -> Bool {
@@ -1408,11 +1438,21 @@ fn run_replay_begin(
       },
     ),
     fixture.own_out_ref(),
-    prover_continue_tx(ct_asset, winning_output()),
+    shape(prover_continue_tx(ct_asset, winning_output())),
   )
 }
 
 fn run_replay_input(
+  base: PreparedValidationResolutionStateV1,
+  transition: ValidationOneStepWitnessV1,
+  auxiliary: ValidationAuxiliaryWitnessV1,
+) -> Bool {
+  shaped_replay_input(census.honest, base, transition, auxiliary)
+}
+
+/// `run_replay_input`, its L1 transaction reshaped by `shape`.
+fn shaped_replay_input(
+  shape: fn(Transaction) -> Transaction,
   base: PreparedValidationResolutionStateV1,
   transition: ValidationOneStepWitnessV1,
   auxiliary: ValidationAuxiliaryWitnessV1,
@@ -1436,11 +1476,21 @@ fn run_replay_input(
       },
     ),
     fixture.own_out_ref(),
-    prover_continue_tx(ct_asset, winning_output()),
+    shape(prover_continue_tx(ct_asset, winning_output())),
   )
 }
 
 fn run_replay_asset(
+  base: PreparedValidationResolutionStateV1,
+  transition: ValidationOneStepWitnessV1,
+  auxiliary: ValidationAuxiliaryWitnessV1,
+) -> Bool {
+  shaped_replay_asset(census.honest, base, transition, auxiliary)
+}
+
+/// `run_replay_asset`, its L1 transaction reshaped by `shape`.
+fn shaped_replay_asset(
+  shape: fn(Transaction) -> Transaction,
   base: PreparedValidationResolutionStateV1,
   transition: ValidationOneStepWitnessV1,
   auxiliary: ValidationAuxiliaryWitnessV1,
@@ -1473,7 +1523,7 @@ fn run_replay_asset(
     },
   )
   let redeemer_data: Data = redeemer
-  let tx = asset_fold_tx(redeemer_data)
+  let tx = shape(asset_fold_tx(redeemer_data))
   and {
     replay_asset_validator.main.spend(
       fixture.next_step_script_hash,
@@ -1492,6 +1542,15 @@ fn run_replay_finish(
   base: PreparedValidationResolutionStateV1,
   transition: ValidationOneStepWitnessV1,
 ) -> Bool {
+  shaped_replay_finish(census.honest, base, transition)
+}
+
+/// `run_replay_finish`, its L1 transaction reshaped by `shape`.
+fn shaped_replay_finish(
+  shape: fn(Transaction) -> Transaction,
+  base: PreparedValidationResolutionStateV1,
+  transition: ValidationOneStepWitnessV1,
+) -> Bool {
   replay_finish_validator.main.spend(
     fixture.next_step_script_hash,
     fixture.computation_thread_policy_id,
@@ -1504,11 +1563,21 @@ fn run_replay_finish(
       },
     ),
     fixture.own_out_ref(),
-    prover_continue_tx(ct_asset, winning_output()),
+    shape(prover_continue_tx(ct_asset, winning_output())),
   )
 }
 
 fn run_output_descriptor(
+  base: PreparedValidationResolutionStateV1,
+  transition: ValidationOneStepWitnessV1,
+  auxiliary: ValidationAuxiliaryWitnessV1,
+) -> Bool {
+  shaped_output_descriptor(census.honest, base, transition, auxiliary)
+}
+
+/// `run_output_descriptor`, its L1 transaction reshaped by `shape`.
+fn shaped_output_descriptor(
+  shape: fn(Transaction) -> Transaction,
   base: PreparedValidationResolutionStateV1,
   transition: ValidationOneStepWitnessV1,
   auxiliary: ValidationAuxiliaryWitnessV1,
@@ -1531,11 +1600,21 @@ fn run_output_descriptor(
       },
     ),
     fixture.own_out_ref(),
-    prover_continue_tx(ct_asset, winning_output()),
+    shape(prover_continue_tx(ct_asset, winning_output())),
   )
 }
 
 fn run_output_asset(
+  base: PreparedValidationResolutionStateV1,
+  transition: ValidationOneStepWitnessV1,
+  auxiliary: ValidationAuxiliaryWitnessV1,
+) -> Bool {
+  shaped_output_asset(census.honest, base, transition, auxiliary)
+}
+
+/// `run_output_asset`, its L1 transaction reshaped by `shape`.
+fn shaped_output_asset(
+  shape: fn(Transaction) -> Transaction,
   base: PreparedValidationResolutionStateV1,
   transition: ValidationOneStepWitnessV1,
   auxiliary: ValidationAuxiliaryWitnessV1,
@@ -1564,7 +1643,7 @@ fn run_output_asset(
     },
   )
   let redeemer_data: Data = redeemer
-  let tx = asset_fold_tx(redeemer_data)
+  let tx = shape(asset_fold_tx(redeemer_data))
   and {
     output_asset_validator.main.spend(
       fixture.next_step_script_hash,
@@ -1583,6 +1662,15 @@ fn run_output_finish(
   base: PreparedValidationResolutionStateV1,
   transition: ValidationOneStepWitnessV1,
 ) -> Bool {
+  shaped_output_finish(census.honest, base, transition)
+}
+
+/// `run_output_finish`, its L1 transaction reshaped by `shape`.
+fn shaped_output_finish(
+  shape: fn(Transaction) -> Transaction,
+  base: PreparedValidationResolutionStateV1,
+  transition: ValidationOneStepWitnessV1,
+) -> Bool {
   output_finish_validator.main.spend(
     fixture.next_step_script_hash,
     fixture.computation_thread_policy_id,
@@ -1595,11 +1683,21 @@ fn run_output_finish(
       },
     ),
     fixture.own_out_ref(),
-    prover_continue_tx(ct_asset, winning_output()),
+    shape(prover_continue_tx(ct_asset, winning_output())),
   )
 }
 
 fn run_mint_asset(
+  base: PreparedValidationResolutionStateV1,
+  transition: ValidationOneStepWitnessV1,
+  auxiliary: ValidationAuxiliaryWitnessV1,
+) -> Bool {
+  shaped_mint_asset(census.honest, base, transition, auxiliary)
+}
+
+/// `run_mint_asset`, its L1 transaction reshaped by `shape`.
+fn shaped_mint_asset(
+  shape: fn(Transaction) -> Transaction,
   base: PreparedValidationResolutionStateV1,
   transition: ValidationOneStepWitnessV1,
   auxiliary: ValidationAuxiliaryWitnessV1,
@@ -1626,7 +1724,7 @@ fn run_mint_asset(
     },
   )
   let redeemer_data: Data = redeemer
-  let tx = asset_fold_tx(redeemer_data)
+  let tx = shape(asset_fold_tx(redeemer_data))
   and {
     mint_asset_validator.main.spend(
       fixture.next_step_script_hash,
@@ -1645,6 +1743,15 @@ fn run_mint_finish(
   base: PreparedValidationResolutionStateV1,
   transition: ValidationOneStepWitnessV1,
 ) -> Bool {
+  shaped_mint_finish(census.honest, base, transition)
+}
+
+/// `run_mint_finish`, its L1 transaction reshaped by `shape`.
+fn shaped_mint_finish(
+  shape: fn(Transaction) -> Transaction,
+  base: PreparedValidationResolutionStateV1,
+  transition: ValidationOneStepWitnessV1,
+) -> Bool {
   mint_finish_validator.main.spend(
     fixture.next_step_script_hash,
     fixture.computation_thread_policy_id,
@@ -1657,11 +1764,20 @@ fn run_mint_finish(
       },
     ),
     fixture.own_out_ref(),
-    prover_continue_tx(ct_asset, winning_output()),
+    shape(prover_continue_tx(ct_asset, winning_output())),
   )
 }
 
 fn run_finalize(
+  base: PreparedValidationResolutionStateV1,
+  transition: ValidationOneStepWitnessV1,
+) -> Bool {
+  shaped_finalize(census.honest, base, transition)
+}
+
+/// `run_finalize`, its L1 transaction reshaped by `shape`.
+fn shaped_finalize(
+  shape: fn(Transaction) -> Transaction,
   base: PreparedValidationResolutionStateV1,
   transition: ValidationOneStepWitnessV1,
 ) -> Bool {
@@ -1677,7 +1793,7 @@ fn run_finalize(
       },
     ),
     fixture.own_out_ref(),
-    prover_continue_tx(ct_asset, winning_output()),
+    shape(prover_continue_tx(ct_asset, winning_output())),
   )
 }
 
@@ -1685,6 +1801,15 @@ fn run_finalize(
 /// transition of fixture `f`, with the action fields kind `kind` carries
 /// (taken from the kind's own honest fixture when `f` is of another kind).
 fn run_kind(kind: Int, f: StepFixtureV1) -> Bool {
+  shaped_kind(census.honest, kind, f)
+}
+
+/// `run_kind`, its L1 transaction reshaped by `shape`.
+fn shaped_kind(
+  shape: fn(Transaction) -> Transaction,
+  kind: Int,
+  f: StepFixtureV1,
+) -> Bool {
   let own = if f.kind == kind {
     f
   } else {
@@ -1692,27 +1817,27 @@ fn run_kind(kind: Int, f: StepFixtureV1) -> Bool {
   }
   let base = prepared(f)
   if kind == 0 {
-    run_begin(base, f.transition)
+    shaped_begin(shape, base, f.transition)
   } else if kind == 1 {
-    run_replay_begin(base, f.transition)
+    shaped_replay_begin(shape, base, f.transition)
   } else if kind == 2 {
-    run_replay_input(base, f.transition, own.auxiliary)
+    shaped_replay_input(shape, base, f.transition, own.auxiliary)
   } else if kind == 3 {
-    run_replay_asset(base, f.transition, own.auxiliary)
+    shaped_replay_asset(shape, base, f.transition, own.auxiliary)
   } else if kind == 4 {
-    run_replay_finish(base, f.transition)
+    shaped_replay_finish(shape, base, f.transition)
   } else if kind == 5 {
-    run_output_descriptor(base, f.transition, own.auxiliary)
+    shaped_output_descriptor(shape, base, f.transition, own.auxiliary)
   } else if kind == 6 {
-    run_output_asset(base, f.transition, own.auxiliary)
+    shaped_output_asset(shape, base, f.transition, own.auxiliary)
   } else if kind == 7 {
-    run_output_finish(base, f.transition)
+    shaped_output_finish(shape, base, f.transition)
   } else if kind == 8 {
-    run_mint_asset(base, f.transition, own.auxiliary)
+    shaped_mint_asset(shape, base, f.transition, own.auxiliary)
   } else if kind == 9 {
-    run_mint_finish(base, f.transition)
+    shaped_mint_finish(shape, base, f.transition)
   } else {
-    run_finalize(base, f.transition)
+    shaped_finalize(shape, base, f.transition)
   }
 }
 
@@ -2446,4 +2571,227 @@ test asset_yield_split_agrees_with_aggregate_for_mutated_quantities_and_deltas(
       aggregate == split
     },
   )
+}
+
+// ---------------------------------------------------------------------------
+// Census: who funds and who signs each move
+// ---------------------------------------------------------------------------
+//
+// Every semantic validator only ever awards, so anyone may move it; the
+// prepare is the prover's alone. A lone thread input pays up to the cap and no
+// more; beside another input the thread keeps its value.
+
+fn kind_shaped(kind: Int, shape: fn(Transaction) -> Transaction) -> Bool {
+  shaped_kind(shape, kind, fixture_of_kind(kind))
+}
+
+fn unsigned_paying_the_cap(tx: Transaction) -> Transaction {
+  census.without_signers(census.lone_input_paying(census.cap)(tx))
+}
+
+test census_anyone_moves_begin_paying_the_cap_from_the_thread() {
+  kind_shaped(0, unsigned_paying_the_cap)
+}
+
+test census_begin_paying_over_the_cap_is_refused() fail {
+  kind_shaped(0, census.lone_input_paying(census.cap + 1))
+}
+
+test census_begin_beside_a_wallet_input_keeps_the_thread_value() {
+  kind_shaped(0, census.beside_wallet_input(0))
+}
+
+test census_begin_beside_a_wallet_input_taking_thread_value_is_refused() fail {
+  kind_shaped(0, census.beside_wallet_input(1))
+}
+
+test census_anyone_moves_replay_begin_paying_the_cap_from_the_thread() {
+  kind_shaped(1, unsigned_paying_the_cap)
+}
+
+test census_replay_begin_paying_over_the_cap_is_refused() fail {
+  kind_shaped(1, census.lone_input_paying(census.cap + 1))
+}
+
+test census_replay_begin_beside_a_wallet_input_keeps_the_thread_value() {
+  kind_shaped(1, census.beside_wallet_input(0))
+}
+
+test census_replay_begin_beside_a_wallet_input_taking_thread_value_is_refused() fail {
+  kind_shaped(1, census.beside_wallet_input(1))
+}
+
+test census_anyone_moves_replay_input_paying_the_cap_from_the_thread() {
+  kind_shaped(2, unsigned_paying_the_cap)
+}
+
+test census_replay_input_paying_over_the_cap_is_refused() fail {
+  kind_shaped(2, census.lone_input_paying(census.cap + 1))
+}
+
+test census_replay_input_beside_a_wallet_input_keeps_the_thread_value() {
+  kind_shaped(2, census.beside_wallet_input(0))
+}
+
+test census_replay_input_beside_a_wallet_input_taking_thread_value_is_refused() fail {
+  kind_shaped(2, census.beside_wallet_input(1))
+}
+
+test census_anyone_moves_replay_asset_paying_the_cap_from_the_thread() {
+  kind_shaped(3, unsigned_paying_the_cap)
+}
+
+test census_replay_asset_paying_over_the_cap_is_refused() fail {
+  kind_shaped(3, census.lone_input_paying(census.cap + 1))
+}
+
+test census_replay_asset_beside_a_wallet_input_keeps_the_thread_value() {
+  kind_shaped(3, census.beside_wallet_input(0))
+}
+
+test census_replay_asset_beside_a_wallet_input_taking_thread_value_is_refused() fail {
+  kind_shaped(3, census.beside_wallet_input(1))
+}
+
+test census_anyone_moves_replay_finish_paying_the_cap_from_the_thread() {
+  kind_shaped(4, unsigned_paying_the_cap)
+}
+
+test census_replay_finish_paying_over_the_cap_is_refused() fail {
+  kind_shaped(4, census.lone_input_paying(census.cap + 1))
+}
+
+test census_replay_finish_beside_a_wallet_input_keeps_the_thread_value() {
+  kind_shaped(4, census.beside_wallet_input(0))
+}
+
+test census_replay_finish_beside_a_wallet_input_taking_thread_value_is_refused() fail {
+  kind_shaped(4, census.beside_wallet_input(1))
+}
+
+test census_anyone_moves_output_descriptor_paying_the_cap_from_the_thread() {
+  kind_shaped(5, unsigned_paying_the_cap)
+}
+
+test census_output_descriptor_paying_over_the_cap_is_refused() fail {
+  kind_shaped(5, census.lone_input_paying(census.cap + 1))
+}
+
+test census_output_descriptor_beside_a_wallet_input_keeps_the_thread_value() {
+  kind_shaped(5, census.beside_wallet_input(0))
+}
+
+test census_output_descriptor_beside_a_wallet_input_taking_thread_value_is_refused() fail {
+  kind_shaped(5, census.beside_wallet_input(1))
+}
+
+test census_anyone_moves_output_asset_paying_the_cap_from_the_thread() {
+  kind_shaped(6, unsigned_paying_the_cap)
+}
+
+test census_output_asset_paying_over_the_cap_is_refused() fail {
+  kind_shaped(6, census.lone_input_paying(census.cap + 1))
+}
+
+test census_output_asset_beside_a_wallet_input_keeps_the_thread_value() {
+  kind_shaped(6, census.beside_wallet_input(0))
+}
+
+test census_output_asset_beside_a_wallet_input_taking_thread_value_is_refused() fail {
+  kind_shaped(6, census.beside_wallet_input(1))
+}
+
+test census_anyone_moves_output_finish_paying_the_cap_from_the_thread() {
+  kind_shaped(7, unsigned_paying_the_cap)
+}
+
+test census_output_finish_paying_over_the_cap_is_refused() fail {
+  kind_shaped(7, census.lone_input_paying(census.cap + 1))
+}
+
+test census_output_finish_beside_a_wallet_input_keeps_the_thread_value() {
+  kind_shaped(7, census.beside_wallet_input(0))
+}
+
+test census_output_finish_beside_a_wallet_input_taking_thread_value_is_refused() fail {
+  kind_shaped(7, census.beside_wallet_input(1))
+}
+
+test census_anyone_moves_mint_asset_paying_the_cap_from_the_thread() {
+  kind_shaped(8, unsigned_paying_the_cap)
+}
+
+test census_mint_asset_paying_over_the_cap_is_refused() fail {
+  kind_shaped(8, census.lone_input_paying(census.cap + 1))
+}
+
+test census_mint_asset_beside_a_wallet_input_keeps_the_thread_value() {
+  kind_shaped(8, census.beside_wallet_input(0))
+}
+
+test census_mint_asset_beside_a_wallet_input_taking_thread_value_is_refused() fail {
+  kind_shaped(8, census.beside_wallet_input(1))
+}
+
+test census_anyone_moves_mint_finish_paying_the_cap_from_the_thread() {
+  kind_shaped(9, unsigned_paying_the_cap)
+}
+
+test census_mint_finish_paying_over_the_cap_is_refused() fail {
+  kind_shaped(9, census.lone_input_paying(census.cap + 1))
+}
+
+test census_mint_finish_beside_a_wallet_input_keeps_the_thread_value() {
+  kind_shaped(9, census.beside_wallet_input(0))
+}
+
+test census_mint_finish_beside_a_wallet_input_taking_thread_value_is_refused() fail {
+  kind_shaped(9, census.beside_wallet_input(1))
+}
+
+test census_anyone_moves_finalize_paying_the_cap_from_the_thread() {
+  kind_shaped(10, unsigned_paying_the_cap)
+}
+
+test census_finalize_paying_over_the_cap_is_refused() fail {
+  kind_shaped(10, census.lone_input_paying(census.cap + 1))
+}
+
+test census_finalize_beside_a_wallet_input_keeps_the_thread_value() {
+  kind_shaped(10, census.beside_wallet_input(0))
+}
+
+test census_finalize_beside_a_wallet_input_taking_thread_value_is_refused() fail {
+  kind_shaped(10, census.beside_wallet_input(1))
+}
+
+fn prepare_shaped(shape: fn(Transaction) -> Transaction) -> Bool {
+  let f = fixture_of_kind(0)
+  shaped_prepare(
+    shape,
+    f,
+    group_with_slot(0, kind_count),
+    0,
+    expected_prepared_output(f),
+  )
+}
+
+test census_the_prover_prepares_paying_the_cap_from_the_thread() {
+  prepare_shaped(census.lone_input_paying(census.cap))
+}
+
+test census_prepare_paying_over_the_cap_is_refused() fail {
+  prepare_shaped(census.lone_input_paying(census.cap + 1))
+}
+
+test census_prepare_beside_a_wallet_input_keeps_the_thread_value() {
+  prepare_shaped(census.beside_wallet_input(0))
+}
+
+test census_prepare_beside_a_wallet_input_taking_thread_value_is_refused() fail {
+  prepare_shaped(census.beside_wallet_input(1))
+}
+
+test census_prepare_unsigned_is_refused() fail {
+  prepare_shaped(census.without_signers)
 }
