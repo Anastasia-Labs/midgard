@@ -31,6 +31,10 @@ export type ValidationPoolService = {
   readonly evaluateCekVerdict: (
     request: MidgardCekVerdictRequest,
   ) => Effect.Effect<LocalScriptEvalResult, ValidationWorkerError>;
+  /** HTTP advisory evaluation refuses when no reserved idle worker is available. */
+  readonly tryEvaluateCekVerdict: (
+    request: MidgardCekVerdictRequest,
+  ) => Effect.Effect<LocalScriptEvalResult | undefined, ValidationWorkerError>;
   readonly ready: Effect.Effect<void, ValidationWorkerError>;
   readonly stats: Effect.Effect<{
     readonly busyWorkers: number;

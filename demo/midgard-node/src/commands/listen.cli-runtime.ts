@@ -9,6 +9,7 @@ import {
 } from "../services/intent-journal.js";
 import { runNode } from "./listen.run-node.js";
 import { withStartupHttpServer } from "./listen.startup-http.js";
+import { publicHttpTransport } from "./listen-public-http.js";
 
 /**
  * The node's runtime services, its Lucid service over its follower
@@ -21,6 +22,7 @@ const provideListenRuntimeServices = <A, E>(
     A,
     E,
     | Services.NodeConfig
+    | Services.HttpReadSql
     | Services.Database
     | Services.AdmissionWriter
     | Services.AdmissionSql
@@ -42,6 +44,7 @@ const provideListenRuntimeServices = <A, E>(
     Effect.provide(IntentJournalWithoutFollower),
     Effect.provide(Services.AdmissionWriterLive),
     Effect.provide(Services.WriteBehindLive),
+    Effect.provide(Services.HttpReadSqlLive),
     Effect.provide(Services.NodeConfig.layer),
     Effect.provide(Services.Database.layer),
     Effect.provide(Services.FollowerMidgardContractServices),
@@ -57,14 +60,18 @@ const provideListenRuntimeServices = <A, E>(
 export const runListen = (withMonitoring?: boolean) =>
   Effect.gen(function* () {
     const config = yield* NodeConfig;
-    return yield* withStartupHttpServer(config.PORT, (startup) =>
-      provideListenRuntimeServices(
-        Effect.flatMap(Globals, (globals) =>
-          Effect.raceFirst(
-            runNode(startup, withMonitoring),
-            Deferred.await(globals.TRANSIENT_EXHAUSTION),
+    const transport = yield* Effect.try(() => publicHttpTransport(config));
+    return yield* withStartupHttpServer(
+      config.PORT,
+      (startup) =>
+        provideListenRuntimeServices(
+          Effect.flatMap(Globals, (globals) =>
+            Effect.raceFirst(
+              runNode(startup, withMonitoring),
+              Deferred.await(globals.TRANSIENT_EXHAUSTION),
+            ),
           ),
         ),
-      ),
+      transport,
     );
   }).pipe(Effect.provide(NodeConfig.layer));

@@ -6,8 +6,8 @@ import { ParsedSearchParams } from "@effect/platform/HttpServerRequest";
 import { SqlClient } from "@effect/sql/SqlClient";
 import { Effect, Ref } from "effect";
 
+import { blockTransactionPage } from "../database/http-read-pages.js";
 import {
-  BlocksDB,
   MutationJobsDB,
   PendingBlockFinalizationsDB,
   StateQueueMutationLeasesDB,
@@ -26,6 +26,8 @@ import {
 } from "../services/index.js";
 import { readLandedStateQueue } from "../services/landed-state-queue.js";
 import * as Initialization from "../transactions/initialization.js";
+import { encodeReadPage, parseReadPage } from "./listen-read-page.js";
+import { publicReadinessPresentation } from "./listen-readiness-public-presentation.js";
 import { failWith500 } from "./listen-response.js";
 import { parseFixedHexParam } from "./listen-router.get-tx-handler.js";
 import {
@@ -169,50 +171,52 @@ export const getPipelineStatusHandler = Effect.gen(function* () {
     globals.UNCONFIRMED_SUBMITTED_BLOCK_SINCE_MS,
   );
   const oldestActive = oldestActiveRows[0];
-  return yield* HttpServerResponse.json({
-    status: "ok",
-    now: now.toISOString(),
-    finalityVocabulary: {
-      txStatusCommittedMeaning:
-        "immutable_db_inclusion_not_confirmed_ledger_merge",
-      confirmedDrainMeaning:
-        "containing state-queue header merged to confirmed ledger and locally finalized after L1 confirmation",
-    },
-    durableAdmission: {
-      backlog: durableAdmissionBacklog.toString(),
-    },
-    localResidue: {
-      mempoolTxCount: bigintString(mempoolTxCountRows[0]?.count ?? 0),
-      processedMempoolTxCount: bigintString(
-        processedMempoolTxCountRows[0]?.count ?? 0,
-      ),
-    },
-    pendingBlockFinalizations: {
-      countsByStatus: Object.fromEntries(
-        pendingCounts.map((row) => [row.status, bigintString(row.count)]),
-      ),
-      oldestActive: encodePipelineStatusOldestActive(oldestActive, now),
-    },
-    stateQueue: {
-      queueLength,
-      unconfirmedSubmittedBlockTxHash:
-        unconfirmedSubmittedBlockTxHash === ""
-          ? null
-          : unconfirmedSubmittedBlockTxHash,
-      unconfirmedSubmittedBlockAgeMs:
-        unconfirmedSubmittedBlockTxHash === "" ||
-        unconfirmedSubmittedBlockSinceMs <= 0
-          ? 0
-          : Math.max(0, now.getTime() - unconfirmedSubmittedBlockSinceMs),
-      localFinalizationPending,
-    },
-    stateQueueMutationLease:
-      StateQueueMutationLeasesDB.encodeInspectionJson(leaseInspection),
-    localMutationJobs: {
-      unfinished: unfinishedMutationJobs.toString(),
-    },
-    settlement: encodePipelineStatusSettlement(settlementBacklog),
-  });
+  return yield* HttpServerResponse.json(
+    publicReadinessPresentation({
+      status: "ok",
+      now: now.toISOString(),
+      finalityVocabulary: {
+        txStatusCommittedMeaning:
+          "immutable_db_inclusion_not_confirmed_ledger_merge",
+        confirmedDrainMeaning:
+          "containing state-queue header merged to confirmed ledger and locally finalized after L1 confirmation",
+      },
+      durableAdmission: {
+        backlog: durableAdmissionBacklog.toString(),
+      },
+      localResidue: {
+        mempoolTxCount: bigintString(mempoolTxCountRows[0]?.count ?? 0),
+        processedMempoolTxCount: bigintString(
+          processedMempoolTxCountRows[0]?.count ?? 0,
+        ),
+      },
+      pendingBlockFinalizations: {
+        countsByStatus: Object.fromEntries(
+          pendingCounts.map((row) => [row.status, bigintString(row.count)]),
+        ),
+        oldestActive: encodePipelineStatusOldestActive(oldestActive, now),
+      },
+      stateQueue: {
+        queueLength,
+        unconfirmedSubmittedBlockTxHash:
+          unconfirmedSubmittedBlockTxHash === ""
+            ? null
+            : unconfirmedSubmittedBlockTxHash,
+        unconfirmedSubmittedBlockAgeMs:
+          unconfirmedSubmittedBlockTxHash === "" ||
+          unconfirmedSubmittedBlockSinceMs <= 0
+            ? 0
+            : Math.max(0, now.getTime() - unconfirmedSubmittedBlockSinceMs),
+        localFinalizationPending,
+      },
+      stateQueueMutationLease:
+        StateQueueMutationLeasesDB.encodeInspectionJson(leaseInspection),
+      localMutationJobs: {
+        unfinished: unfinishedMutationJobs.toString(),
+      },
+      settlement: encodePipelineStatusSettlement(settlementBacklog),
+    }),
+  );
 }).pipe(
   Effect.catchTag("HttpBodyError", (e) =>
     failWith500("GET", PIPELINE_STATUS_ENDPOINT, e),
@@ -255,25 +259,40 @@ export const getBlockHandler = Effect.gen(function* () {
   const params = yield* ParsedSearchParams;
   const hdrHash = params["header_hash"];
   yield* Effect.logInfo(
-    `GET /block - Request received for header_hash: ${String(hdrHash)}`,
+    `GET /block - Request received for header_hash: [redacted]`,
   );
 
   const headerHash = parseFixedHexParam(hdrHash, 28);
   if (headerHash === null) {
     yield* Effect.logInfo(
-      `GET /${BLOCK_ENDPOINT} - Invalid block hash: ${String(hdrHash)}`,
+      `GET /${BLOCK_ENDPOINT} - Invalid block hash: [redacted]`,
     );
     return yield* HttpServerResponse.json(
-      { error: `Invalid block hash: ${String(hdrHash)}` },
+      { error: `Invalid block hash: [redacted]` },
       { status: 400 },
     );
   }
-  const hashes = yield* BlocksDB.retrieveTxHashesByHeaderHash(headerHash);
+  const parsedPage = yield* Effect.try(() => parseReadPage(params)).pipe(
+    Effect.either,
+  );
+  if (parsedPage._tag === "Left")
+    return yield* HttpServerResponse.json(
+      { error: "Invalid page" },
+      { status: 400 },
+    );
+  const hashes = yield* blockTransactionPage(headerHash, parsedPage.right);
+  const page = encodeReadPage(
+    hashes,
+    parsedPage.right,
+    (hash) => hash,
+    SDK.bufferToHex,
+  );
   yield* Effect.logInfo(
-    `GET /${BLOCK_ENDPOINT} - Found ${hashes.length} txs for block: ${String(hdrHash)}`,
+    `GET /${BLOCK_ENDPOINT} - Found ${hashes.length} txs for block: [redacted]`,
   );
   return yield* HttpServerResponse.json({
-    hashes: hashes.map(SDK.bufferToHex),
+    hashes: page.entries,
+    nextCursor: page.nextCursor,
   });
 }).pipe(
   Effect.catchTag("HttpBodyError", (e) =>

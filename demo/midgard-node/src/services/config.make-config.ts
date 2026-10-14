@@ -18,6 +18,7 @@ import {
 } from "../da/local-signers.js";
 import { validateRetentionDays } from "../database/retention-policy.js";
 import { blockExUnitsBudgetConfig } from "./config.block-ex-units-budget.js";
+import { httpIngressConfig } from "./config.http-proxy-peers.js";
 import { hubOracleOriginConfig } from "./config.hub-oracle-origin.js";
 import { l1ContentSourcesConfig } from "./config.l1-content-sources.js";
 import { nodeBehindConfig } from "./config.node-behind.js";
@@ -296,9 +297,7 @@ const makeConfig = Effect.gen(function* () {
     Config.withDefault("false"),
     Config.map((value) => value.trim().toLowerCase() === "true"),
   );
-  const adminApiKey = yield* Config.string("ADMIN_API_KEY").pipe(
-    Config.withDefault(""),
-  );
+  const httpIngress = yield* httpIngressConfig;
   const maxDurableAdmissionBacklog = yield* Config.integer(
     "MAX_DURABLE_ADMISSION_BACKLOG",
   ).pipe(Config.withDefault(10_000));
@@ -925,7 +924,7 @@ const makeConfig = Effect.gen(function* () {
     MIN_FEE_A: minFeeA,
     MIN_FEE_B: minFeeB,
     RUN_GENESIS_ON_STARTUP: runGenesisOnStartup,
-    ADMIN_API_KEY: adminApiKey,
+    ...httpIngress,
     MAX_DURABLE_ADMISSION_BACKLOG: maxDurableAdmissionBacklog,
     MAX_DURABLE_ADMISSION_BACKLOG_BYTES: maxDurableAdmissionBacklogBytes,
     SUBMIT_INGRESS_MAX_CONCURRENCY: submitIngressMaxConcurrency,

@@ -60,6 +60,8 @@ export const parseTxOutRefsRequest = (body: unknown): readonly Buffer[] => {
     );
   }
 
+  if (body.length === 0 || body.length > 100)
+    throw new Error("txOutRefs must contain 1 to 100 references");
   const seen = new Set<string>();
   return body.map((item, index) => {
     const outRef = parseTxOutRefLabel(

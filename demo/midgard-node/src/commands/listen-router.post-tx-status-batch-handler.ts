@@ -5,6 +5,10 @@ import { Effect, Ref } from "effect";
 
 import { Globals } from "../services/index.js";
 import * as DepositStatusCommand from "./deposit-status.js";
+import {
+  includePrivateHttpDiagnosticDetails,
+  publicTxStatusPresentation,
+} from "./listen-public-error-presentation.js";
 import { failWith500 } from "./listen-response.js";
 import { parseFixedHexParam } from "./listen-router.get-tx-handler.js";
 import {
@@ -14,7 +18,6 @@ import {
 } from "./listen-router.get-tx-status-handler.js";
 import {
   DEPOSIT_STATUS_ENDPOINT,
-  errorMessage,
   HEALTH_ENDPOINT,
   TX_STATUS_ENDPOINT,
 } from "./listen-router.run-exact-gated-direct-l1-provider-probe.js";
@@ -41,9 +44,9 @@ export const postTxStatusBatchHandler = Effect.gen(function* () {
       { status: 400 },
     );
   }
-  if (txHashes.length === 0 || txHashes.length > 1000) {
+  if (txHashes.length === 0 || txHashes.length > 100) {
     return yield* HttpServerResponse.json(
-      { error: "txHashes must contain 1 to 1000 transaction hashes." },
+      { error: "txHashes must contain 1 to 100 transaction hashes." },
       { status: 400 },
     );
   }
@@ -52,7 +55,7 @@ export const postTxStatusBatchHandler = Effect.gen(function* () {
   const invalidIndex = txIdBytes.findIndex((txId) => txId === null);
   if (invalidIndex >= 0) {
     return yield* HttpServerResponse.json(
-      { error: `Invalid transaction hash: ${txHashes[invalidIndex]}` },
+      { error: `Invalid transaction hash: [redacted]` },
       { status: 400 },
     );
   }
@@ -71,7 +74,7 @@ export const postTxStatusBatchHandler = Effect.gen(function* () {
       sql<TxStatusBatchRejectionRow>`SELECT DISTINCT ON (tx_id)
           encode(tx_id, 'hex') AS tx_hash,
           reject_code,
-          reject_detail,
+          CASE WHEN ${includePrivateHttpDiagnosticDetails()} THEN reject_detail END AS reject_detail,
           created_at
         FROM tx_rejections
         WHERE ${sql.in("tx_id", txIds)}
@@ -95,7 +98,7 @@ export const postTxStatusBatchHandler = Effect.gen(function* () {
         WHERE ${sql.in("tx_id", txIds)} AND included_by IS NULL`,
       readTxStatusMergeEvidence(txIds),
     ],
-    { concurrency: "unbounded" },
+    { concurrency: 2 },
   );
   const rejectionsByTxId = new Map(
     rejectionRows.map((row) => [
@@ -127,7 +130,9 @@ export const postTxStatusBatchHandler = Effect.gen(function* () {
     ),
     headerEvidenceByTxId,
   });
-  return yield* HttpServerResponse.json({ results });
+  return yield* HttpServerResponse.json({
+    results: results.map((status) => publicTxStatusPresentation(status)),
+  });
 }).pipe(
   Effect.catchTag("HttpBodyError", (e) =>
     failWith500("POST", TX_STATUS_ENDPOINT, e),
@@ -152,8 +157,8 @@ export const getDepositStatusHandler = Effect.gen(function* () {
   let lookup: DepositStatusCommand.DepositStatusLookup;
   try {
     lookup = DepositStatusCommand.parseDepositStatusLookup(params);
-  } catch (error) {
-    const message = errorMessage(error);
+  } catch {
+    const message = "Invalid request";
     yield* Effect.logInfo(
       `GET /${DEPOSIT_STATUS_ENDPOINT} - invalid request: ${message}`,
     );

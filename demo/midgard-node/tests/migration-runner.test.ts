@@ -1,4 +1,5 @@
 import "./utils.js";
+import "./migration-runner.public-read-indexes.js";
 
 import { createHash } from "node:crypto";
 
@@ -99,6 +100,7 @@ describe("splitSqlStatements", () => {
       [24, "drop_validation_trace_witnesses", true],
       [25, "block_time", true],
       [26, "drop_utxo_payload_aggregate", true],
+      [27, "public_http_read_indexes", true],
     ]);
   });
 
