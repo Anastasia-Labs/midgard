@@ -223,15 +223,40 @@ fn output_core_matches_with_signature_v1(
   )
 }
 
+/// `cbor.serialise(info)`, reusing `body_cbor = cbor.serialise(info.body)`
+/// instead of serialising the body a second time. A `WithdrawalInfo` is
+/// `Constr 0 [body, signature, validity]`, which `serialiseData` encodes as
+/// tag 121 (`d879`), an indefinite-length list (`9f`), each field's own
+/// encoding in order, and a break (`ff`). Any other shape is serialised whole.
+pub fn serialise_withdrawal_info_v1(
+  info: ledger_state.WithdrawalInfo,
+  body_cbor: ByteArray,
+) -> ByteArray {
+  let data: Data = info
+  when builtin.unconstr_fields(data) is {
+    [_, signature, validity] ->
+      if builtin.unconstr_index(data) == 0 {
+        #"d8799f"
+          |> bytearray.concat(body_cbor)
+          |> bytearray.concat(cbor.serialise(signature))
+          |> bytearray.concat(cbor.serialise(validity))
+          |> bytearray.concat(#"ff")
+      } else {
+        cbor.serialise(data)
+      }
+    _ -> cbor.serialise(data)
+  }
+}
+
 pub fn classify_ledger_evidence_v1(
   input_state: step_02.State,
   withdrawal_info: ledger_state.WithdrawalInfo,
   evidence: LedgerEvidenceV1,
 ) -> State {
-  expect
-    utils.serialise_and_hash_32(withdrawal_info) == input_state.withdrawal_info_hash
-  let key = ledger_outref_key(withdrawal_info.body.l2_outref)
   let body_cbor = cbor.serialise(withdrawal_info.body)
+  expect
+    blake2b_256(serialise_withdrawal_info_v1(withdrawal_info, body_cbor)) == input_state.withdrawal_info_hash
+  let key = ledger_outref_key(withdrawal_info.body.l2_outref)
   let withdrawal_body_hash = blake2b_256(body_cbor)
   when evidence is {
     AbsentLedgerOutput { non_membership_proof } -> {
