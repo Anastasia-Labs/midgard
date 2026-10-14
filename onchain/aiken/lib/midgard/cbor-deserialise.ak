@@ -489,7 +489,10 @@ fn maybe_sized_entries(
 //   position only moves back after a chunk header, which is itself a read.
 // - The library also refuses a byte string that starts at the end of the input
 //   when its width is 0 or less. That case reads nothing, so it keeps an
-//   explicit check.
+//   explicit check, and builds the empty byte string that such a slice gives.
+// - A text string (major type 3) is read as a byte string header, and a float
+//   or simple value (major type 7) as a tag header. Both headers are 28 or
+//   more, which `argument` refuses, so neither needs a range check of its own.
 
 /// Continues with the `data` that `expect Some(data) = cbor.deserialise(bytes)`
 /// binds; fails wherever that `expect` fails. Use it with backpassing,
@@ -548,15 +551,13 @@ fn item(bytes: ByteArray, offset: Int, return: fn(Data, Int) -> Data) -> Data {
       byte_string(bytes, offset + 1, index_bytearray(bytes, offset), return)
     } else if next == token_begin_bytes {
       chunks(bytes, offset, return)
-    } else if next < 0x60 {
+    } else {
       argument(
         bytes,
         offset,
         next - 0x40,
         fn(width, offset) { byte_string(bytes, offset, width, return) },
       )
-    } else {
-      fail
     }
   } else if next < 0xc0 {
     if next < 0xa0 {
@@ -608,15 +609,13 @@ fn item(bytes: ByteArray, offset: Int, return: fn(Data, Int) -> Data) -> Data {
     }
   } else if next == 0xd8 {
     constr(item, bytes, offset + 1, index_bytearray(bytes, offset), return)
-  } else if next < 0xe0 {
+  } else {
     argument(
       bytes,
       offset,
       next - 0xc0,
       fn(tag, offset) { constr(item, bytes, offset, tag, return) },
     )
-  } else {
-    fail
   }
 }
 
@@ -702,7 +701,7 @@ fn byte_string(
     return(b_data(slice_bytearray(offset, width, bytes)), offset + width)
   } else {
     expect offset < length_of_bytearray(bytes)
-    return(b_data(slice_bytearray(offset, width, bytes)), offset + width)
+    return(b_data(""), offset + width)
   }
 }
 

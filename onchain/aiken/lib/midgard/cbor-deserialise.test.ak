@@ -260,9 +260,15 @@ test agrees_on_indefinite_byte_strings() {
 test agrees_on_rejected_major_types() {
   and {
     agrees(#"60"),
+    agrees(#"780161"),
     agrees(#"f6"),
     agrees(#"e0"),
+    agrees(#"fb3ff0000000000000"),
   }
+}
+
+test agrees_on_empty_byte_strings_before_the_end() {
+  agrees(#"82405f40ff")
 }
 
 test agrees_on_a_large_serialised_value() {
@@ -389,6 +395,23 @@ test expect_fails_on_an_unread_trailing_byte() fail {
 
 test expect_fails_on_a_text_string() fail {
   expect_returns(#"6161")
+}
+
+test expect_fails_on_a_wide_text_string() fail {
+  expect_returns(#"780161")
+}
+
+test expect_fails_on_a_simple_value() fail {
+  expect_returns(#"f6")
+}
+
+test expect_fails_on_a_float() fail {
+  expect_returns(#"fb3ff0000000000000")
+}
+
+test expect_decodes_empty_byte_strings_before_the_end() {
+  let data <- cbor_deserialise.expect_deserialise(#"82405f40ff")
+  data == builtin.list_data([builtin.b_data(#""), builtin.b_data(#"")])
 }
 
 // The decoding happens where it is bound, so a refused input fails the script
