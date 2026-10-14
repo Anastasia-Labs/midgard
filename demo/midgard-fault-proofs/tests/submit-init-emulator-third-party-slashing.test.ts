@@ -5,11 +5,8 @@ import {
   Data,
   generateEmulatorAccount,
   Lucid,
-  paymentCredentialOf,
-  toUnit,
   type TxSigned,
 } from "@lucid-evolution/lucid";
-import { Effect } from "effect";
 import { expect, it } from "vitest";
 
 import {
@@ -17,99 +14,19 @@ import {
   workflowTransactionInputOutRefs,
 } from "../src/index.js";
 import { captureEmulatorSubmission } from "./support/emulator/measurement.js";
-import type { OperatorLifecycleReferenceScripts } from "./support/emulator/reference-scripts.js";
 import { preparePermissionlessSlashSqlite } from "./support/permissionless-slash-sqlite.js";
+import {
+  commitSuccessorsBy,
+  enrollSuccessor,
+  liveSchedulerOf,
+  retireOperator,
+} from "./support/rotated-successor-operator.js";
 import {
   buildProvedDoubleSpendFixture,
   expectStateQueueHeaderOrder,
-  type ProvedDoubleSpendFixture,
   submitRemovalForFixture,
-  submitSuccessorBlockTx,
-  type SuccessorBlockFixture,
 } from "./support/submit-init-emulator-fixtures.js";
-import {
-  network,
-  onboardEmulatorOperator,
-} from "./support/submit-init-emulator-shared.js";
-
-const enrollSuccessor = async (
-  fixture: ProvedDoubleSpendFixture,
-  lowerKey: string,
-) => {
-  let account = generateEmulatorAccount({ lovelace: 0n });
-  while (paymentCredentialOf(account.address).hash <= lowerKey)
-    account = generateEmulatorAccount({ lovelace: 0n });
-  const keyHash = paymentCredentialOf(account.address).hash;
-  const funding = await fixture.funderLucid
-    .newTx()
-    .pay.ToAddress(account.address, { lovelace: 3_000_000_000n })
-    .complete();
-  await fixture.funderLucid.awaitTx(
-    await (await funding.sign.withWallet().complete()).submit(),
-  );
-  const lucid = await Lucid(fixture.emulator, "Custom");
-  lucid.selectWallet.fromSeed(account.seedPhrase);
-  const nodes = await onboardEmulatorOperator({
-    lucid,
-    contracts: fixture.contracts,
-    operatorKeyHash: keyHash,
-    registrationSlots: 2,
-    awaitActivation: (activationTime) => {
-      while (BigInt(fixture.emulator.now()) <= activationTime)
-        fixture.emulator.awaitSlot(1);
-    },
-  });
-  return { lucid, keyHash, ...nodes };
-};
-
-const retireOperator = async (
-  fixture: ProvedDoubleSpendFixture,
-  operatorKeyHash: string,
-  lucid: Awaited<ReturnType<typeof Lucid>>,
-) => {
-  const { contracts, emulator } = fixture;
-  const lifecycle = (
-    contracts as typeof contracts & {
-      readonly operatorLifecycleReferenceScripts: OperatorLifecycleReferenceScripts;
-    }
-  ).operatorLifecycleReferenceScripts;
-  const refs = fixture.removalReferenceScriptPublications.published;
-  const snapshot = await Effect.runPromise(
-    SDK.fetchOperatorDirectorySnapshotProgram(lucid, contracts),
-  );
-  const validFrom = BigInt(emulator.now()) - 1_000n;
-  const validTo = BigInt(emulator.now()) + 60_000n;
-  const retirement = SDK.deriveRetireOperatorWitnesses({
-    snapshot,
-    contracts,
-    operatorKeyHash,
-    validTo,
-    schedulerSpendingScriptRef: refs.schedulerSpend,
-  });
-  const { tx } = await Effect.runPromise(
-    SDK.buildUnsignedRetireOperatorTxProgram({
-      lucid,
-      contracts,
-      operatorKeyHash,
-      activeOperatorScriptRefs: lifecycle.active,
-      retiredOperatorScriptRefs: [
-        {
-          name: "retired-operators spending",
-          utxo: refs.retiredOperatorsSpend,
-        },
-        { name: "retired-operators minting", utxo: refs.retiredOperatorsMint },
-      ],
-      hubOracleRefInput: snapshot.hubOracle.utxo,
-      ...retirement,
-      retiredNodeLovelace: retirement.activeNode.utxo.assets.lovelace!,
-      mode: "voluntary",
-      validFrom,
-      validTo,
-    }),
-  );
-  await lucid.awaitTx(await (await tx.sign.withWallet().complete()).submit());
-  return retirement;
-};
+import { network } from "./support/submit-init-emulator-shared.js";
 
 it("a distinct caller prunes active and retired rotated descendants and pays the authenticated prover without their signature", async () => {
   for (const descendantStatus of ["active", "retired"] as const) {
@@ -133,66 +50,13 @@ it("a distinct caller prunes active and retired rotated descendants and pays the
       fixture.fraudulentHeader.operatorVkey,
       funderLucid,
     );
-    const snapshot = await Effect.runPromise(
-      SDK.fetchOperatorDirectorySnapshotProgram(funderLucid, contracts),
-    );
-    const schedulerUnit = toUnit(
-      contracts.scheduler.policyId,
-      SDK.SCHEDULER_ASSET_NAME,
-    );
-    const liveScheduler = async () =>
-      (
-        await funderLucid.utxosAtWithUnit(
-          contracts.scheduler.spendingScriptAddress,
-          schedulerUnit,
-        )
-      )[0]!;
+    const liveScheduler = liveSchedulerOf(fixture);
     expect(
       Data.from((await liveScheduler()).datum!, SDK.SchedulerDatum),
     ).toEqual({
       ActiveOperator: expect.objectContaining({ operator: rotated.keyHash }),
     });
-    let predecessor = fixture.fraudulentHeader;
-    let anchorBlockUnit = fixture.setup.stateQueueBlockUnit;
-    const successors: SuccessorBlockFixture[] = [];
-    for (let index = 0; index < 2; index += 1) {
-      const endTime = BigInt(emulator.now() + 60_000) - 1n;
-      const header: SDK.Header = {
-        ...fixture.fraudulentHeader,
-        operatorVkey: rotated.keyHash,
-        prevHeaderHash:
-          index === 0
-            ? fixture.headerHash
-            : successors[index - 1]!.successorHeaderHash,
-        prevUtxosRoot: predecessor.utxosRoot,
-        startTime: predecessor.endTime,
-        endTime:
-          endTime > predecessor.endTime
-            ? endTime
-            : predecessor.endTime + 60_000n,
-      };
-      const [activeOperatorNode] = await funderLucid.utxosAtWithUnit(
-        contracts.activeOperators.spendingScriptAddress,
-        rotated.activeNodeUnit,
-      );
-      if (activeOperatorNode === undefined)
-        throw new Error("rotated active node missing");
-      const successor = await submitSuccessorBlockTx({
-        lucid: rotated.lucid,
-        emulator,
-        contracts,
-        anchorBlockUnit,
-        header,
-        hubOracle: snapshot.hubOracle.utxo,
-        scheduler: await liveScheduler(),
-        activeOperatorNode,
-        activeOperatorNodeUnit: rotated.activeNodeUnit,
-        validFrom: BigInt(emulator.now()) - 1_000n,
-      });
-      successors.push(successor);
-      predecessor = successor.header;
-      anchorBlockUnit = successor.successorBlockUnit;
-    }
+    const successors = await commitSuccessorsBy(fixture, rotated, 2);
     const honest = await enrollSuccessor(fixture, rotated.keyHash);
     if (descendantStatus === "retired")
       await retireOperator(fixture, rotated.keyHash, rotated.lucid);
