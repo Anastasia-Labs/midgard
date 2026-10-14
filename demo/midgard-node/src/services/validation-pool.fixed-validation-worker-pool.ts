@@ -207,6 +207,35 @@ export class FixedValidationWorkerPool {
     });
   }
 
+  /** Advisory work dispatches only to an idle slot and never enters either production queue. */
+  trySubmitAdvisory(
+    request: ValidationJobRequest,
+  ): Promise<ValidationWorkerResponse> | undefined {
+    if (
+      !this.started ||
+      this.closed ||
+      this.size < 2 ||
+      this.queue.length > 0 ||
+      this.capacityWaiters.length > 0
+    )
+      return undefined;
+    const idle = this.slots.filter(
+      (slot) =>
+        slot.inFlight === null && !slot.restarting && slot.worker.threadId >= 0,
+    );
+    if (idle.length <= Math.ceil(this.size / 2)) return undefined;
+    const slot = idle[0]!;
+    return new Promise<ValidationWorkerResponse>((resolve, reject) => {
+      const job: PendingJob = { request, transferList: [], resolve, reject };
+      try {
+        this.dispatchToSlot(slot, job);
+      } catch (cause) {
+        this.failSlot(slot, cause);
+        void slot.worker.terminate();
+      }
+    });
+  }
+
   async close(): Promise<void> {
     if (this.closed) return;
     this.closed = true;
@@ -267,20 +296,24 @@ export class FixedValidationWorkerPool {
       const job = this.queue.shift();
       if (job === undefined) break;
       this.capacityWaiters.shift()?.();
-      slot.inFlight = job;
-      slot.inFlightStartedAt = Date.now();
-      slot.timeout = setTimeout(() => {
-        void Metric.increment(timeoutCounter).pipe(Effect.runPromise);
-        this.failSlot(
-          slot,
-          new Error(
-            `validation job ${job.request.jobId} timed out after ${this.timeoutMs}ms`,
-          ),
-        );
-        void slot.worker.terminate();
-      }, this.timeoutMs);
-      slot.worker.postMessage(job.request, [...job.transferList]);
+      this.dispatchToSlot(slot, job);
     }
+  }
+
+  private dispatchToSlot(slot: WorkerSlot, job: PendingJob): void {
+    slot.inFlight = job;
+    slot.inFlightStartedAt = Date.now();
+    slot.timeout = setTimeout(() => {
+      void Metric.increment(timeoutCounter).pipe(Effect.runPromise);
+      this.failSlot(
+        slot,
+        new Error(
+          `validation job ${job.request.jobId} timed out after ${this.timeoutMs}ms`,
+        ),
+      );
+      void slot.worker.terminate();
+    }, this.timeoutMs);
+    slot.worker.postMessage(job.request, [...job.transferList]);
   }
 
   private handleResponse(

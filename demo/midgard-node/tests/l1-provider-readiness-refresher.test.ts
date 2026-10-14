@@ -68,7 +68,9 @@ type ProviderReadiness = {
 const readyz = buildListenRouter().pipe(
   Effect.provideService(
     HttpServerRequest.HttpServerRequest,
-    HttpServerRequest.fromWeb(new Request("http://midgard.test/readyz")),
+    HttpServerRequest.fromWeb(new Request("http://midgard.test/readyz")).modify(
+      { remoteAddress: "127.0.0.1" },
+    ),
   ),
   Effect.flatMap((response) =>
     Effect.promise(() =>

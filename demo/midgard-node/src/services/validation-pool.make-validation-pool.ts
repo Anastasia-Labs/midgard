@@ -42,6 +42,7 @@ const makeValidationPool = Effect.gen(function* () {
         Effect.fail(
           new ValidationWorkerError({ message: "validation pool is disabled" }),
         ),
+      tryEvaluateCekVerdict: () => Effect.succeed(undefined),
       ready: Effect.void,
       stats: Effect.succeed({
         busyWorkers: 0,
@@ -125,6 +126,34 @@ const makeValidationPool = Effect.gen(function* () {
               ),
         ),
       ),
+    tryEvaluateCekVerdict: (request) =>
+      Effect.suspend(() => {
+        const pending = pool.trySubmitAdvisory({
+          kind: "cek_verdict",
+          jobId: pool.allocateJobId(),
+          request,
+        });
+        if (pending === undefined) return Effect.succeed(undefined);
+        return Effect.tryPromise({
+          try: () => pending,
+          catch: (cause) =>
+            new ValidationWorkerError({
+              message: "advisory evaluation worker failed",
+              cause,
+            }),
+        }).pipe(
+          Effect.flatMap((response) =>
+            response.kind === "cek_verdict"
+              ? Effect.succeed(response.result)
+              : Effect.fail(
+                  new ValidationWorkerError({
+                    message: "unexpected advisory evaluation response",
+                  }),
+                ),
+          ),
+          Effect.ensuring(reportStats),
+        );
+      }),
     runPhaseAChunk: (txs) => {
       const serializeStartedAt = Date.now();
       const request = packPhaseAJob(pool.allocateJobId(), txs);

@@ -3,25 +3,28 @@ import { ParsedSearchParams } from "@effect/platform/HttpServerRequest";
 import { Effect, Ref } from "effect";
 
 import {
-  ImmutableDB,
-  MempoolDB,
-  MempoolLedgerDB,
-  ProcessedMempoolDB,
-  TxAdmissionsDB,
-  TxRejectionsDB,
-} from "../database/index.js";
+  PublicHttpReadLimitError,
+  requirePublicReadPayload,
+} from "../database/http-read-byte-budget.js";
+import { publicUtxosByOutRefs } from "../database/http-read-lookups.js";
+import { spendableUtxoPage } from "../database/http-read-pages.js";
+import { readHttpTxStatusFacts } from "../database/http-tx-status-facts.js";
+import { TxAdmissionsDB } from "../database/index.js";
 import { Globals } from "../services/index.js";
 import { parseAddressArgument, parseTxOutRefCborHex } from "./command-utils.js";
+import { publicReadDataLimitResponse } from "./listen-http-read.js";
+import {
+  includePrivateHttpDiagnosticDetails,
+  publicTxStatusPresentation,
+} from "./listen-public-error-presentation.js";
+import { encodeReadPage, parseReadPage } from "./listen-read-page.js";
 import { failWith500 } from "./listen-response.js";
 import { parseFixedHexParam } from "./listen-router.get-tx-handler.js";
 import {
   UTXO_ENDPOINT,
   UTXOS_ENDPOINT,
 } from "./listen-router.l1-provider-readiness-evidence-is-fresh.js";
-import {
-  errorMessage,
-  TX_STATUS_ENDPOINT,
-} from "./listen-router.run-exact-gated-direct-l1-provider-probe.js";
+import { TX_STATUS_ENDPOINT } from "./listen-router.run-exact-gated-direct-l1-provider-probe.js";
 import { resolveTxStatus } from "./tx-status.js";
 import { readTxStatusMergeEvidence } from "./tx-status-merge-evidence.js";
 import * as UtxosCommand from "./utxos.js";
@@ -36,28 +39,43 @@ export const getUtxosHandler = Effect.gen(function* () {
 
   if (typeof addr !== "string") {
     yield* Effect.logInfo(
-      `GET /${UTXOS_ENDPOINT} - Invalid address type: ${String(addr)}`,
+      `GET /${UTXOS_ENDPOINT} - Invalid address type: [redacted]`,
     );
     return yield* HttpServerResponse.json(
-      { error: `Invalid address type: ${String(addr)}` },
+      { error: `Invalid address type: [redacted]` },
       { status: 400 },
     );
   }
   try {
     const address = parseAddressArgument(addr);
 
-    const utxosWithAddress =
-      yield* MempoolLedgerDB.retrieveSpendableByAddress(address);
-    const response = UtxosCommand.encodeStoredUtxos(utxosWithAddress);
+    const utxosWithAddress = yield* spendableUtxoPage(
+      address,
+      parseReadPage(params, 38),
+    );
+    const page = encodeReadPage(
+      utxosWithAddress,
+      parseReadPage(params, 38),
+      (row) => row.outref,
+      (row) =>
+        UtxosCommand.encodeStoredUtxo({
+          outref: row.outref,
+          output: requirePublicReadPayload(row.output),
+        }),
+    );
+    const response = page.entries;
 
-    yield* Effect.logInfo(`Found ${response.length} UTxOs for ${addr}`);
+    yield* Effect.logInfo(`Found ${response.length} UTxOs for [redacted]`);
     return yield* HttpServerResponse.json({
       utxos: response,
+      nextCursor: page.nextCursor,
     });
   } catch (_error) {
-    yield* Effect.logInfo(`Invalid address: ${addr}`);
+    if (_error instanceof PublicHttpReadLimitError)
+      return yield* publicReadDataLimitResponse();
+    yield* Effect.logInfo(`Invalid address: [redacted]`);
     return yield* HttpServerResponse.json(
-      { error: `Invalid address: ${addr}` },
+      { error: `Invalid address: [redacted]` },
       { status: 400 },
     );
   }
@@ -66,12 +84,15 @@ export const getUtxosHandler = Effect.gen(function* () {
     failWith500("GET", UTXOS_ENDPOINT, e),
   ),
   Effect.catchTag("DatabaseError", (e) =>
-    failWith500(
-      "GET",
-      UTXOS_ENDPOINT,
-      e.cause,
-      `db failure with table ${e.table}`,
-    ),
+    e.message === "E_PUBLIC_READ_MIGRATING"
+      ? HttpServerResponse.json(
+          {
+            error: "Pending withdrawal read authority is being populated",
+            error_code: "E_PUBLIC_READ_MIGRATING",
+          },
+          { status: 503, headers: { "retry-after": "5" } },
+        )
+      : failWith500("GET", UTXOS_ENDPOINT, e),
   ),
 );
 
@@ -86,18 +107,18 @@ export const getUtxoHandler = Effect.gen(function* () {
   let txOutRef: Buffer;
   try {
     txOutRef = parseTxOutRefCborHex(rawTxOutRef, "txOutRef");
-  } catch (error) {
-    const message = errorMessage(error);
+  } catch {
+    const message = "Invalid request";
     yield* Effect.logInfo(
       `GET /${UTXO_ENDPOINT} - invalid txOutRef: ${message}`,
     );
     return yield* HttpServerResponse.json({ error: message }, { status: 400 });
   }
 
-  const matched = yield* UtxosCommand.utxosByTxOutRefsProgram([txOutRef]);
+  const matched = yield* publicUtxosByOutRefs([txOutRef]);
   if (matched.length === 0) {
     return yield* HttpServerResponse.json(
-      { error: `UTxO not found for txOutRef ${txOutRef.toString("hex")}` },
+      { error: `UTxO not found for txOutRef [redacted]` },
       { status: 404 },
     );
   }
@@ -106,6 +127,7 @@ export const getUtxoHandler = Effect.gen(function* () {
     utxo: UtxosCommand.encodeStoredUtxo(matched[0]),
   });
 }).pipe(
+  Effect.catchTag("PublicHttpReadLimitError", publicReadDataLimitResponse),
   Effect.catchTag("HttpBodyError", (e) => failWith500("GET", UTXO_ENDPOINT, e)),
   Effect.catchTag("DatabaseError", (e) =>
     failWith500(
@@ -127,8 +149,8 @@ export const postUtxosByTxOutRefsHandler = Effect.gen(function* () {
 
   try {
     UtxosCommand.requireByOutRefsSelector(params);
-  } catch (error) {
-    const message = errorMessage(error);
+  } catch {
+    const message = "Invalid request";
     yield* Effect.logInfo(
       `POST /${UTXOS_ENDPOINT} - missing selector: ${message}`,
     );
@@ -149,19 +171,20 @@ export const postUtxosByTxOutRefsHandler = Effect.gen(function* () {
   let txOutRefs: readonly Buffer[];
   try {
     txOutRefs = UtxosCommand.parseTxOutRefsRequest(parsedBody.right);
-  } catch (error) {
-    const message = errorMessage(error);
+  } catch {
+    const message = "Invalid request";
     yield* Effect.logInfo(
       `POST /${UTXOS_ENDPOINT} - invalid request: ${message}`,
     );
     return yield* HttpServerResponse.json({ error: message }, { status: 400 });
   }
 
-  const matched = yield* UtxosCommand.utxosByTxOutRefsProgram(txOutRefs);
+  const matched = yield* publicUtxosByOutRefs(txOutRefs);
   return yield* HttpServerResponse.json({
     utxos: UtxosCommand.encodeStoredUtxos(matched),
   });
 }).pipe(
+  Effect.catchTag("PublicHttpReadLimitError", publicReadDataLimitResponse),
   Effect.catchTag("HttpBodyError", (e) =>
     failWith500("POST", UTXOS_ENDPOINT, e),
   ),
@@ -184,46 +207,46 @@ export const getTxStatusHandler = Effect.gen(function* () {
   const txHashBytes = parseFixedHexParam(txHashParam, 32);
   if (txHashBytes === null) {
     return yield* HttpServerResponse.json(
-      { error: `Invalid transaction hash: ${String(txHashParam)}` },
+      { error: `Invalid transaction hash: [redacted]` },
       { status: 400 },
     );
   }
 
   const globals = yield* Globals;
-  const rejected = yield* TxRejectionsDB.retrieveByTxId(txHashBytes);
-  const admission = yield* TxAdmissionsDB.getByTxId(txHashBytes);
-  const inImmutable = yield* ImmutableDB.retrieveTxCborsByHashes([txHashBytes]);
-  const inMempool = yield* MempoolDB.retrieveTxCborsByHashes([txHashBytes]);
-  const inProcessedMempool = yield* ProcessedMempoolDB.retrieveTxCborsByHashes([
+  const facts = yield* readHttpTxStatusFacts(
     txHashBytes,
-  ]);
+    includePrivateHttpDiagnosticDetails(),
+  );
 
   const headerEvidence = yield* readTxStatusMergeEvidence([txHashBytes]);
   const resolved = resolveTxStatus({
     txIdHex: txHashParam as string,
     ...headerEvidence.get(txHashBytes.toString("hex")),
     rejection:
-      rejected.length > 0
+      facts.reject_code !== null && facts.created_at !== null
         ? {
-            rejectCode: rejected[0].reject_code,
-            rejectDetail: rejected[0].reject_detail,
-            createdAtIso: rejected[0].created_at.toISOString(),
+            rejectCode: facts.reject_code,
+            rejectDetail: facts.reject_detail,
+            createdAtIso: facts.created_at.toISOString(),
           }
         : null,
-    admissionStatus: admission?.status ?? null,
-    inImmutable: inImmutable.length > 0,
-    inMempool: inMempool.length > 0,
-    inProcessedMempool: inProcessedMempool.length > 0,
+    admissionStatus: facts.admission_status,
+    inImmutable: facts.in_immutable,
+    inMempool: facts.in_mempool,
+    inProcessedMempool: facts.in_processed_mempool,
     localFinalizationPending: yield* Ref.get(
       globals.LOCAL_FINALIZATION_PENDING,
     ),
   });
 
   if (resolved.status === "not_found") {
-    return yield* HttpServerResponse.json(resolved, { status: 404 });
+    return yield* HttpServerResponse.json(
+      publicTxStatusPresentation(resolved),
+      { status: 404 },
+    );
   }
 
-  return yield* HttpServerResponse.json(resolved);
+  return yield* HttpServerResponse.json(publicTxStatusPresentation(resolved));
 }).pipe(
   Effect.catchTag("HttpBodyError", (e) =>
     failWith500("GET", TX_STATUS_ENDPOINT, e),
@@ -234,14 +257,6 @@ export const getTxStatusHandler = Effect.gen(function* () {
       TX_STATUS_ENDPOINT,
       e.cause,
       "merge evidence query failed",
-    ),
-  ),
-  Effect.catchTag("DatabaseError", (e) =>
-    failWith500(
-      "GET",
-      TX_STATUS_ENDPOINT,
-      e.cause,
-      `db failure with table ${e.table}`,
     ),
   ),
 );

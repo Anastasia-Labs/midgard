@@ -1,3 +1,5 @@
+import { timingSafeEqual } from "node:crypto";
+
 import { decodeMidgardSubmittedTxFromCanonicalCbor } from "@al-ft/midgard-validation";
 
 /**
@@ -11,6 +13,7 @@ export const ADMIN_ROUTE_PATHS: ReadonlySet<string> = new Set([
   "/logBlocksDB",
   "/logGlobals",
   "/operator/status",
+  "/admin/session",
 ]);
 
 /**
@@ -52,7 +55,11 @@ export const authorizeAdminRoute = (
       error: "Admin endpoints are disabled",
     };
   }
-  if (providedAdminKey !== expected) {
+  if (
+    providedAdminKey === undefined ||
+    Buffer.byteLength(providedAdminKey) !== Buffer.byteLength(expected) ||
+    !timingSafeEqual(Buffer.from(providedAdminKey), Buffer.from(expected))
+  ) {
     return {
       authorized: false,
       status: 401,
@@ -145,11 +152,11 @@ export const normalizeSubmitTxCanonicalCborToNative = (
       txCanonicalCbor: submittedTx.txCbor,
       source: "native",
     };
-  } catch (nativeDecodeError) {
+  } catch {
     return {
       ok: false,
       error: "Invalid canonical transaction CBOR payload",
-      detail: `canonical native transaction decode failed: ${String(nativeDecodeError)}`,
+      detail: "canonical native transaction decode failed",
     };
   }
 };

@@ -99,7 +99,7 @@ const route = (path: string): Promise<Response> =>
               HttpServerRequest.HttpServerRequest,
               HttpServerRequest.fromWeb(
                 new Request(`http://midgard.test${path}`),
-              ),
+              ).modify({ remoteAddress: "127.0.0.1" }),
             ),
           )) as HttpServerResponse.HttpServerResponse,
         );

@@ -20,6 +20,8 @@ export enum Columns {
   WITHDRAWAL_L1_OUTPUT_INDEX = "withdrawal_l1_output_index",
   ASSET_NAME = "asset_name",
   L2_OUTREF = "l2_outref",
+  L2_LEDGER_OUTREF = "l2_ledger_outref",
+  L2_LEDGER_OUTREF_STATE = "l2_ledger_outref_state",
   L2_OWNER = "l2_owner",
   L2_VALUE = "l2_value",
   L1_ADDRESS = "l1_address",

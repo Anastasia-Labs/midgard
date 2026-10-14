@@ -806,8 +806,8 @@
   },
   {
     "file": "midgard-node/src/services/config.make-config.ts",
-    "max": 1040,
-    "reason": "makeConfig is the dominant indivisible declaration (1022 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. U3 (+3, since replaced): read the horizon lag d from the environment. I5 (+3): reads the node-behind bound L1_NODE_BEHIND_MAX_MS from config.node-behind.ts, which refuses a non-positive or fractional value at startup. N4 (-15): the deleted correction observer's STATE_QUEUE_CORRECTION_FINALITY_DEPTH is no longer read. N1-close (-10): the deleted Ogmios and Kupo endpoint keys are no longer read. FIXN (-5): STARTUP_PROTOCOL_STATUS_QUERY_MAX_ATTEMPTS is no longer read; the startup deployment-status read retries with no attempt bound. DEPTH (-1): the commit-event depth d is read from the deployment manifest, whose profile build refuses a d that could cause a strike. FIXRT (+5): STARTUP_PROTOCOL_STATUS_QUERY_MAX_ATTEMPTS is read again; the startup deployment-status read retries a transient failure under that attempt budget and then fails startup by name. P (+3): reads the per-block ex-units budget from config.block-ex-units-budget.ts."
+    "max": 1039,
+    "reason": "makeConfig is the dominant indivisible declaration (1022 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. U3 (+3, since replaced): read the horizon lag d from the environment. I5 (+3): reads the node-behind bound L1_NODE_BEHIND_MAX_MS from config.node-behind.ts, which refuses a non-positive or fractional value at startup. N4 (-15): the deleted correction observer's STATE_QUEUE_CORRECTION_FINALITY_DEPTH is no longer read. N1-close (-10): the deleted Ogmios and Kupo endpoint keys are no longer read. FIXN (-5): STARTUP_PROTOCOL_STATUS_QUERY_MAX_ATTEMPTS is no longer read; the startup deployment-status read retries with no attempt bound. DEPTH (-1): the commit-event depth d is read from the deployment manifest, whose profile build refuses a d that could cause a strike. FIXRT (+5): STARTUP_PROTOCOL_STATUS_QUERY_MAX_ATTEMPTS is read again; the startup deployment-status read retries a transient failure under that attempt budget and then fails startup by name. P (+3): reads the per-block ex-units budget from config.block-ex-units-budget.ts. R7 receiving composition (-1)."
   },
   {
     "file": "midgard-node/src/services/midgard-contracts.midgard-contracts-from-deployment-manifest.ts",
@@ -886,8 +886,8 @@
   },
   {
     "file": "midgard-node/tests/benchmarks/validation-stage-b.bench.ts",
-    "max": 1504,
-    "reason": "Retained test registration “Phase 2 sustained real-Postgres Stage B operator benchmark” (522 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor. P (+3): the benchmark pool stub evaluates CEK verdicts in process."
+    "max": 1503,
+    "reason": "Retained test registration “Phase 2 sustained real-Postgres Stage B operator benchmark” (522 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor. P (+3): the benchmark pool stub evaluates CEK verdicts in process. R7 receiving composition (-1)."
   },
   {
     "file": "midgard-node/tests/benchmarks/validation-worker-isolation.bench.ts",
@@ -941,8 +941,8 @@
   },
   {
     "file": "midgard-node/tests/database.test/admissions.register-admissions-tests.ts",
-    "max": 3470,
-    "reason": "registerAdmissionsTests is the dominant indivisible declaration (3341 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. Integrated DA correctness branches; exact final source line count. VR (+7): the pool-isolation drain's stub Lucid reports the L1 slot mapping the processor builds script contexts in. P (+3): the admission pool stub evaluates CEK verdicts in process; the backlog-full case asserts Retry-After (+1). B2-8 (+11): the promotion case reads the accepted transaction's sidecar back as the commit does."
+    "max": 3469,
+    "reason": "registerAdmissionsTests is the dominant indivisible declaration (3341 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. Integrated DA correctness branches; exact final source line count. VR (+7): the pool-isolation drain's stub Lucid reports the L1 slot mapping the processor builds script contexts in. P (+3): the admission pool stub evaluates CEK verdicts in process; the backlog-full case asserts Retry-After (+1). B2-8 (+11): the promotion case reads the accepted transaction's sidecar back as the commit does. R7 receiving composition (-1)."
   },
   {
     "file": "midgard-node/tests/database.test/availability.ts",
