@@ -9,7 +9,7 @@ const endTimeMs = 1_600_000_009_999n;
 /** The obligation of one signed header absent from the current chain. */
 const absent = (finalBlockTimeMs: number | null, pruned = false) =>
   obligations({
-    signed: [{ headerHash, endTimeMs }],
+    signed: [{ headerHash, blockTimeMs: endTimeMs }],
     presence: [],
     tipHeight: 100,
     finalBlockTimeMs,
@@ -51,4 +51,42 @@ describe("the obligation of a signed header absent from the current chain", () =
       state: "pending",
     });
   });
+});
+
+it("retains a disappeared catch-up decision until its commit time has passed", () => {
+  const signed = [{ headerHash, endTimeMs: 1_000n, blockTimeMs: 20_000n }];
+  const at = (finalBlockTimeMs: number) =>
+    obligations({
+      signed,
+      presence: [],
+      tipHeight: 100,
+      finalBlockTimeMs,
+      pruned: false,
+      parameters: SIM_DEPTHS,
+    })[0];
+  expect(at(10_000)).toMatchObject({
+    state: "pending",
+    decisionDeletable: false,
+  });
+  expect(at(20_000)).toMatchObject({
+    state: "pending",
+    decisionDeletable: false,
+  });
+  expect(at(20_001)).toMatchObject({
+    state: "cannot_land",
+    decisionDeletable: true,
+  });
+});
+
+it("retains an old signed decision whose commit clock is unknown", () => {
+  expect(
+    obligations({
+      signed: [{ headerHash, blockTimeMs: null }],
+      presence: [],
+      tipHeight: 100,
+      finalBlockTimeMs: 50_000,
+      pruned: false,
+      parameters: SIM_DEPTHS,
+    })[0],
+  ).toMatchObject({ state: "pending", decisionDeletable: false });
 });

@@ -6,6 +6,7 @@ import type { PromiseCapacityPoint } from "../availability/promise-capacity-evid
 import type { StateQueueHeaderRecord } from "../domain.js";
 import type { StoreData } from "../store.committee-store.js";
 import { jsonReplacer } from "../store.parse-stored-record-map.js";
+import { storedHeaderBlockTimeMs } from "./retention.block-time.js";
 import { finalityHeldHeaderHashes } from "./retention.js";
 import {
   authenticatedHeaderEnd,
@@ -309,7 +310,9 @@ export const planRetirement = (
         !["merged", "removed"].includes(header.status) ||
         header.observedChainPoint.providerSource !==
           "authenticated_state_queue_transition_v1" ||
-        facts.horizonTimeMs <= time + facts.binding.retentionDays * 86400000
+        facts.horizonTimeMs <=
+          storedHeaderBlockTimeMs(header) +
+            facts.binding.retentionDays * 86400000
       ) {
         eligible = false;
         break;

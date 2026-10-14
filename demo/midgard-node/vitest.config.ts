@@ -45,6 +45,7 @@ import { parsePositiveInteger, testMaxForks } from "./tests/test-env.js";
  *   tests/orphan-funded-transfer-repair-emulator.test.ts
  *   tests/working-ledger-rebuild-order.test.ts
  *   tests/node-instance-lock.test.ts
+ *   tests/commit-planning-notice.test.ts
  *   tests/follower-driver-recompute.test.ts
  *   tests/database.test.ts
  *   tests/da-bond-pool-bootstrap-emulator.test.ts

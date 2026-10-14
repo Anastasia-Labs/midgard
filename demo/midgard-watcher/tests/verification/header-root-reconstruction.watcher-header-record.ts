@@ -171,6 +171,7 @@ export const watcherHeaderRecord = (
   validationTraceCount: header.validationTraceCount.toString(),
   startTime: header.startTime.toString(),
   endTime: header.endTime.toString(),
+  blockTime: header.endTime.toString(),
   blockSlot: header.blockSlot.toString(),
   expectedNetworkId: header.expectedNetworkId.toString(),
   minFeeA: header.minFeeA.toString(),

@@ -63,7 +63,7 @@ const recover = async (completed: boolean, rounds = 1) => {
             controller.permit,
             Object.freeze({
               headerHash: decision.headerHash,
-              headerEndTimeMs: "0",
+              headerBlockTimeMs: "0",
               maturityAtMs: MIDGARD_RETENTION_WINDOW.maturityMs.toString(),
               latestSafeStartAtMs: (
                 MIDGARD_RETENTION_WINDOW.maturityMs -
@@ -131,7 +131,7 @@ describe("fault-proof supervisor over a completed execution", () => {
         controller.permit,
         {
           headerHash: decision.headerHash,
-          headerEndTimeMs: "0",
+          headerBlockTimeMs: "0",
           maturityAtMs: MIDGARD_RETENTION_WINDOW.maturityMs.toString(),
           latestSafeStartAtMs: (
             MIDGARD_RETENTION_WINDOW.maturityMs -

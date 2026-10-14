@@ -30,6 +30,7 @@ import {
 } from "./helpers/commit-da-frame-fixtures.js";
 import {
   deploymentIdentity,
+  fakeSelectedEventPlan,
   fakeSql,
   nodeConfig,
   workerInput,
@@ -41,6 +42,7 @@ import { withoutFollowerJournal } from "./helpers/intent-journal.js";
 const seams = vi.hoisted(() => ({
   candidates: [] as unknown[],
   owner: [] as string[],
+  catchUp: false,
 }));
 
 vi.mock("../src/database/index.js", async () => {
@@ -105,6 +107,32 @@ vi.mock("../src/database/index.js", async () => {
     },
   };
 });
+// The catch-up clock fixture supplies a modeled complete source instant. The
+// real source encoding/budget and material-prefix counterexamples are tested in
+// commit-additive-da-material; normal worker fixtures use the production planner.
+vi.mock(
+  "../src/workers/commit-block-header.plan-additive-da.js",
+  async (importOriginal) => {
+    const actual =
+      await importOriginal<
+        typeof import("../src/workers/commit-block-header.plan-additive-da.js")
+      >();
+    return {
+      ...actual,
+      planAdditiveCommitDa: (
+        input: Parameters<typeof actual.planAdditiveCommitDa>[0],
+      ) =>
+        seams.catchUp
+          ? Effect.succeed({
+              kind: "selected",
+              window: input.window,
+              candidateCount: 0,
+              upperBoundBytes: BigInt(input.maxInnerBytes),
+            } as const)
+          : actual.planAdditiveCommitDa(input),
+    };
+  },
+);
 // The commit anchor caps no planned end time.
 vi.mock("../src/services/history-commit-window.js", async (importOriginal) => ({
   ...(await importOriginal<
@@ -115,6 +143,11 @@ vi.mock("../src/services/history-commit-window.js", async (importOriginal) => ({
       horizonMs: Number.MAX_SAFE_INTEGER,
       anchor: { hash: Buffer.alloc(32), height: 0, slot: 0 },
     }),
+}));
+// The worker composition fixture supplies an independent selected clock/window;
+// real clock resolution and grouped SQL counts have their own causal suites.
+vi.mock("../src/workers/commit-block-header.plan-event-window.js", () => ({
+  planHistoryCommitEventWindow: () => fakeSelectedEventPlan(seams.catchUp),
 }));
 vi.mock("../src/forced-orders/horizon.js", () => ({
   forcedOrderHorizon: Effect.succeed(null),
@@ -176,13 +209,16 @@ const runWorker = async (
   txCount: number,
   shape: BlockShape,
   invalidateOnRebuild = false,
+  catchUp = false,
 ) => {
   seams.candidates = Array.from({ length: txCount }, (_, index) =>
     candidateTx(index + 1),
   );
   seams.owner = [];
+  seams.catchUp = catchUp;
   const builds: string[][] = [];
   const sourceWindows: (number | undefined)[] = [];
+  const commitClocks: (number | undefined)[] = [];
   vi.mocked(processMpfs).mockReset();
   vi.mocked(processMpfs).mockImplementation(((
     _transactionsMpf: unknown,
@@ -190,10 +226,12 @@ const runWorker = async (
     config: {
       readonly nativeMpf?: NativeMpfBuildContext;
       readonly fixedBlockEndTime?: Date;
+      readonly fixedBlockTime?: Date;
     },
   ) =>
     Effect.sync(() => {
       sourceWindows.push(config.fixedBlockEndTime?.getTime());
+      commitClocks.push(config.fixedBlockTime?.getTime());
       const handle = config.nativeMpf?.handle as unknown as { id: number };
       seams.owner.push(`build:${handle.id.toString()}`);
       builds.push(
@@ -209,6 +247,7 @@ const runWorker = async (
               }
             : {}),
         }),
+        effectiveBlockTime: config.fixedBlockTime,
         effectiveBlockEndTime:
           config.fixedBlockEndTime ??
           txs[txs.length - 1]?.[TxTable.Columns.TIMESTAMPTZ],
@@ -271,6 +310,7 @@ const runWorker = async (
     owner: seams.owner,
     daFrameNotices,
     sourceWindows,
+    commitClocks,
   };
 };
 
@@ -278,41 +318,25 @@ const runWorker = async (
 const HEAVY_TRANSFER: BlockShape = { descriptorBytes: 896_000 };
 
 describe("commit worker DA frame step-down", () => {
-  it("rebuilds an overflowing block once from a fresh fork and hands on the smaller one", async () => {
+  it("keeps the commit clock current when catch-up removes normal transactions", async () => {
+    const run = await runWorker(3, { eventBytes: 100 }, false, true);
+    expect(run.builds).toEqual([[]]);
+    expect(run.sourceWindows).toEqual([BLOCK_TIME - 299_000]);
+    expect(run.commitClocks).toEqual([BLOCK_TIME + 1_000]);
+    expect(run.commitClocks[0]).toBeGreaterThan(run.sourceWindows[0]!);
+  });
+
+  it("holds and alarms an underestimated source after one build without descending replay", async () => {
     const run = await runWorker(100, HEAVY_TRANSFER);
-    expect(run.output).toMatchObject({ type: "SkippedSubmissionOutput" });
-    expect(run.builds).toHaveLength(2);
-    expect(run.sourceWindows[0]).toBeUndefined();
-    expect(run.sourceWindows[1]).toBe(BLOCK_TIME + 100);
-    const [first, second] = run.builds;
-    expect(first).toHaveLength(100);
-    expect(second!.length).toBeGreaterThan(0);
-    expect(second!.length).toBeLessThan(100);
-    expect(second).toEqual(first!.slice(0, second!.length));
-    // The superseded fork is discarded before the rebuild forks again, and
-    // the rebuild runs on the new fork.
-    expect(run.owner.slice(0, 5)).toEqual([
+    expect(run.output).toMatchObject({ type: "FailureOutput" });
+    expect(run.builds).toHaveLength(1);
+    expect(run.deferredTxCounts).toEqual([]);
+    expect(run.owner.filter((event) => event.startsWith("fork:"))).toEqual([
       "fork:1",
-      "build:1",
-      "discard:1",
-      "fork:2",
-      "build:2",
     ]);
-    expect(run.deferredTxCounts).toEqual([second!.length]);
-    expect(run.daFrameNotices[0]?.pressure).toMatchObject({
-      passes: 2,
-      requiredWorkInnerBytesUpperBound: null,
-    });
-    expect(
-      run.daFrameNotices[0]?.pressure?.initialCandidateInnerBytesUpperBound,
-    ).toBeGreaterThan(
-      maxDaPayloadInnerBytes(readDaHardeningConfig().envelopeMode),
-    );
-    expect(
-      run.daFrameNotices[0]?.pressure?.candidateInnerBytesUpperBound,
-    ).toBeLessThanOrEqual(
-      maxDaPayloadInnerBytes(readDaHardeningConfig().envelopeMode),
-    );
+    expect(run.daFrameNotices.map((notice) => notice.status)).toEqual([
+      "incomplete",
+    ]);
   });
 
   it("builds a block that fits once", async () => {
@@ -344,46 +368,10 @@ describe("commit worker DA frame notices", () => {
     ]);
   });
 
-  it("posts provisional exact_check_required when mandatory event upper bounds overflow", async () => {
-    const mode = readDaHardeningConfig().envelopeMode;
-    const run = await runWorker(3, {
-      eventBytes: maxDaPayloadInnerBytes(mode),
-    });
-    expect(run.builds.at(-1)).toEqual([]);
-    expect(run.daFrameNotices.map((notice) => notice.status)).toEqual([
-      "exact_check_required",
-    ]);
-    expect(run.daFrameNotices[0]?.detail).toContain(
-      `effective_inner_limit=${maxDaPayloadInnerBytes(mode).toString()}`,
-    );
-    expect(run.daFrameNotices[0]?.pressure).toMatchObject({
-      acceptedTxCount: 0,
-      requiredWorkStagePercent: 90,
-    });
-    expect(
-      run.daFrameNotices[0]?.pressure?.requiredWorkInnerBytesUpperBound,
-    ).toBe(run.daFrameNotices[0]?.pressure?.candidateInnerBytesUpperBound);
-  });
-
   it("posts the idle notice from a tick with no transaction or user event pending", async () => {
     const run = await runWorker(0, {});
     expect(run.output).toEqual({ type: "NothingToCommitOutput" });
     expect(run.builds).toEqual([]);
     expect(run.daFrameNotices).toEqual([COMMIT_DA_FRAME_IDLE_NOTICE]);
   });
-});
-
-// A changed rebuild must fail the worker before any block is deferred.
-it("fails the production worker and discards its forks when rebuilt validation material changes", async () => {
-  const run = await runWorker(100, HEAVY_TRANSFER, true);
-  expect(run.output).toMatchObject({ type: "FailureOutput" });
-  expect(run.builds).toHaveLength(2);
-  expect(run.deferredTxCounts).toEqual([]);
-  expect(run.daFrameNotices.map((notice) => notice.status)).toEqual([
-    "incomplete",
-  ]);
-  expect(run.owner.filter((entry) => entry.startsWith("discard:"))).toEqual([
-    "discard:1",
-    "discard:2",
-  ]);
 });

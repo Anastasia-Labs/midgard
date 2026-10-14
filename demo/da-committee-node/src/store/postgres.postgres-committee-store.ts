@@ -66,6 +66,7 @@ import {
   initializeCommitteeSchema,
   UNSETTLED_HEADER_PREDICATE,
 } from "./postgres.schema.js";
+import { readSignedDecisionClocks } from "./postgres.signed-decision-clocks.js";
 import { readCommitteeL1PinTargets } from "./postgres.stored-l1-points.js";
 import * as capacity from "./promise-capacity-postgres.js";
 import { postgresPromiseResources } from "./promise-resource-usage.js";
@@ -534,20 +535,7 @@ export class PostgresCommitteeStore implements CommitteeStore {
   }
 
   async listSignedDecisions(): Promise<readonly SignedHeader[]> {
-    const result = await this.pool.query<{
-      readonly header_hash: string;
-      readonly end_time_ms: string;
-    }>(
-      `SELECT DISTINCT ON (header_hash)
-              header_hash, end_time_ms::text AS end_time_ms
-       FROM committee_da_signatures
-       WHERE end_time_ms IS NOT NULL
-       ORDER BY header_hash`,
-    );
-    return result.rows.map((row) => ({
-      headerHash: row.header_hash,
-      endTimeMs: BigInt(row.end_time_ms),
-    }));
+    return readSignedDecisionClocks(this.pool);
   }
 
   async getStateQueueHeader(

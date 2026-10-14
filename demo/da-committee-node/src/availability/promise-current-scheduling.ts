@@ -6,6 +6,7 @@ import { Effect } from "effect";
 
 import type { StateQueueHeaderRecord } from "../domain.js";
 import { headerHashOf } from "../l1/follower/queue-derivation.js";
+import { storedHeaderBlockTimeMs } from "../store/retention.block-time.js";
 import type { PromiseCapacityPoint } from "./promise-capacity-evidence.js";
 import type { PromiseCanonicalPointReader } from "./promise-cutoff-source.js";
 
@@ -169,7 +170,8 @@ export const currentPromiseScheduling = async (
         SDK.daAvailabilityCommitmentHash(commitment)
     )
       throw new Error("Scheduling node attests another commitment");
-    const cutoff = header.header.endTime + BigInt(args.openWindowMs);
+    const cutoff =
+      BigInt(storedHeaderBlockTimeMs(header)) + BigInt(args.openWindowMs);
     if (cutoff < 0n || cutoff > BigInt(Number.MAX_SAFE_INTEGER))
       throw new Error("Scheduling cutoff is out of range");
     if (

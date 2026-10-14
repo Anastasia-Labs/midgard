@@ -25,7 +25,7 @@ export const watcherAvailabilityAuthenticatedOpenDeadline = (
   header: WatcherAuthenticatedStateQueueObservation["finalizedHeaders"][number],
 ): number => {
   const node = Data.from(header.stateQueueNodeCborHex, SDK.StateQueueNode);
-  const cutoff = node.header.endTime + DA_CHALLENGE_WINDOW_MS;
+  const cutoff = node.block_time + DA_CHALLENGE_WINDOW_MS;
   if (cutoff < 0n || cutoff > BigInt(Number.MAX_SAFE_INTEGER))
     throw new Error("Authenticated Open cutoff is outside the clock range");
   return Number(cutoff);

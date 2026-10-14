@@ -174,7 +174,7 @@ export const selectTimeoutCorrectionTarget = async (
         throw new Error("Locked timeout target is already attested.");
       continue;
     }
-    const deadline = node.header.endTime + DA_ATTESTATION_TIMEOUT_MS;
+    const deadline = node.block_time + DA_ATTESTATION_TIMEOUT_MS;
     if (deadline <= nowMs) return { target, deadline };
     if (lockedTarget !== undefined)
       throw new Error("Locked timeout target has not reached its deadline.");

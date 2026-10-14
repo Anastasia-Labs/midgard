@@ -38,6 +38,7 @@ export {
   retrieveByEventIds,
   retrieveByProjectedHeaderHash,
   retrievePendingHeaderEntriesUpTo,
+  retrievePendingHeaderInstantCounts,
   retrieveProjectedPendingHeaderEntries,
   setSettlementInfoForEventIds,
 } from "./withdrawals.set-settlement-info-for-event-ids.js";

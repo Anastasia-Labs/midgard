@@ -128,5 +128,9 @@ export const committeeMigrations = (dialect: DialectName): MigrationSet => ({
       id: "0002_committee_retention_pins",
       sql: retentionPinsMigrationSql(dialect),
     },
+    {
+      id: "0003_committee_queue_block_time",
+      sql: `ALTER TABLE ${COMMITTEE_QUEUE_TABLE} ADD COLUMN block_time_ms ${dialect === "postgres" ? "bigint" : "INTEGER"};`,
+    },
   ],
 });

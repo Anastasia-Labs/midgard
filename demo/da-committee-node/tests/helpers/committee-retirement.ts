@@ -211,6 +211,19 @@ export const retentionFixture = async (
       stateQueueOutRef: `${"66".repeat(32)}#${end}`,
       blockAssetName: headerHash,
       header: h,
+      rawStateQueueDatumCbor: SDK.encodeLinkedListNodeView({
+        key: { Key: { key: headerHash } },
+        next: "Empty",
+        data: Data.castTo(
+          {
+            header: h,
+            block_time: BigInt(end),
+            da_attestation: SDK.NO_DA_ATTESTATION,
+            proven_fraud: null,
+          },
+          SDK.StateQueueNode,
+        ),
+      }),
       computedHeaderHash: headerHash,
       daAttestation: SDK.NO_DA_ATTESTATION,
       observedChainPoint: {

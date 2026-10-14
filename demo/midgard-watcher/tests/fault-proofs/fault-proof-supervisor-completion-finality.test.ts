@@ -111,7 +111,7 @@ const complete = async (confirmationDepth: number, rounds: number) => {
         controller.permit,
         Object.freeze({
           headerHash: decision.headerHash,
-          headerEndTimeMs: "0",
+          headerBlockTimeMs: "0",
           maturityAtMs: MIDGARD_RETENTION_WINDOW.maturityMs.toString(),
           latestSafeStartAtMs: (
             MIDGARD_RETENTION_WINDOW.maturityMs -

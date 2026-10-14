@@ -450,7 +450,7 @@ export const createBridge = (input: {
       selected.decisionDigest === target.decisionDigest &&
       selectedDeadline !== null &&
       targetDeadline !== null &&
-      selectedDeadline.headerEndTimeMs === targetDeadline.headerEndTimeMs &&
+      selectedDeadline.headerBlockTimeMs === targetDeadline.headerBlockTimeMs &&
       selectedDeadline.maturityAtMs === targetDeadline.maturityAtMs &&
       selectedDeadline.latestSafeStartAtMs ===
         targetDeadline.latestSafeStartAtMs &&

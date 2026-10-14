@@ -95,7 +95,7 @@ export const registerRetentionFinalityTests = () => {
 
     // The commit obligation is done with: final, its record released.
     const [obligation] = obligations({
-      signed: [{ headerHash, endTimeMs: header.endTime }],
+      signed: [{ headerHash, blockTimeMs: header.endTime }],
       presence: [
         {
           headerHash,
