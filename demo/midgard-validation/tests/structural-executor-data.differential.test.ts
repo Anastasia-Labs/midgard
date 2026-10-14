@@ -2,7 +2,10 @@
  * The iterative semantic Data and blob readers against the recursive ones
  * they replace (vendored in `structural-executor-data.legacy.ts`), over
  * committed material and tampered copies of it: the same value when both
- * accept, and the same error message when both reject.
+ * accept, and the same error message when both reject. The legacy reader
+ * decodes integer and constructor blobs with harmonic, which also accepts
+ * CBOR the Cardano decoder refuses (trailing bytes, for example); the
+ * current reader refuses those, and that is the one divergence allowed.
  */
 import {
   decodeMidgardCekProgramBlobPreimage,
@@ -32,6 +35,7 @@ import {
   readMidgardCekSemanticBlob,
   readMidgardCekSemanticData,
 } from "../src/cek-executor.structural-executor-data.js";
+import { plutusDataFromCborIterative } from "../src/plutus-data-iterative.decode.js";
 import { harmonicDataDifference } from "./plutus-data-iterative.recursive-oracles.js";
 import { legacySemanticReaders } from "./structural-executor-data.legacy.js";
 
@@ -88,7 +92,27 @@ const attempt = <T>(read: () => T): Outcome<T> => {
  */
 const READER_MESSAGE = /^(CEK |missing authenticated |cyclic )/u;
 
-/** Compares both readers on one root; returns whether they accepted. */
+/** Whether some integer or constructor blob is CBOR the Cardano decoder refuses. */
+const holdsANonCardanoScalar = (material: Material): boolean =>
+  [...material.dataNodes.values()].some((node) => {
+    const blobRoot =
+      node.kind === "integer"
+        ? node.cborRoot
+        : node.kind === "constrLarge"
+          ? node.constructorCborRoot
+          : undefined;
+    if (blobRoot === undefined) return false;
+    const bytes = attempt(() =>
+      readMidgardCekSemanticBlob(material.blobs, blobRoot),
+    );
+    return (
+      bytes.ok && !attempt(() => plutusDataFromCborIterative(bytes.value)).ok
+    );
+  });
+
+let nonCardanoScalarRefusals = 0;
+
+/** Compares both readers on one root; returns whether the current one accepted. */
 const compareReaders = (
   material: Material,
   root: Buffer,
@@ -96,13 +120,24 @@ const compareReaders = (
 ): boolean => {
   const legacy = attempt(() => legacySemanticReaders(material).dataValue(root));
   const current = attempt(() => readMidgardCekSemanticData(material, root));
-  expect(current.ok, label).toBe(legacy.ok);
+  if (legacy.ok && !current.ok) {
+    expect(READER_MESSAGE.test(current.message), label).toBe(false);
+    expect(holdsANonCardanoScalar(material), label).toBe(true);
+    nonCardanoScalarRefusals += 1;
+  } else {
+    expect(current.ok, label).toBe(legacy.ok);
+  }
   if (legacy.ok && current.ok) {
     expect(harmonicDataDifference(legacy.value, current.value), label).toBe(
       undefined,
     );
   } else if (!legacy.ok && !current.ok && READER_MESSAGE.test(legacy.message)) {
-    expect(current.message, label).toBe(legacy.message);
+    if (
+      READER_MESSAGE.test(current.message) ||
+      !holdsANonCardanoScalar(material)
+    ) {
+      expect(current.message, label).toBe(legacy.message);
+    }
   }
   for (const [key, node] of material.dataNodes) {
     const blobRoot =
@@ -122,7 +157,7 @@ const compareReaders = (
     );
     expect(newBlob, `${label} blob of ${key}`).toEqual(oldBlob);
   }
-  return legacy.ok;
+  return current.ok;
 };
 
 const randomBytes = (rng: FuzzRng, length: number): Buffer =>
@@ -260,6 +295,7 @@ describe("readMidgardCekSemanticData vs the recursive reader", () => {
     "refuses 6,000 seeded tamperings with the same error",
     () => {
       let refused = 0;
+      nonCardanoScalarRefusals = 0;
       for (let seed = 1; seed <= 6_000; seed += 1) {
         const rng = makeFuzzRng(seed ^ 0x7a3e);
         const value = randomDataTree(rng, builders(rng), {
@@ -273,6 +309,7 @@ describe("readMidgardCekSemanticData vs the recursive reader", () => {
         }
       }
       expect(refused).toBeGreaterThan(2_000);
+      expect(nonCardanoScalarRefusals).toBeGreaterThan(0);
     },
     DIFFERENTIAL_TIMEOUT_MS,
   );

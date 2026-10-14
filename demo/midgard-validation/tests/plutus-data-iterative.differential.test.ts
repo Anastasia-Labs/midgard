@@ -1,11 +1,17 @@
 /**
- * Differential tests for the iterative Plutus Data reader, writer and memory
- * size against the code they replace: the pinned harmonic `dataFromCbor` for the
- * reader (same accept/reject decision and the same value, byte-string array
- * class included) and the old recursive encoder and memory function, vendored
- * in `plutus-data-iterative.recursive-oracles.ts`, for the other two
+ * The iterative Plutus Data reader against the Cardano ledger's decoder
+ * (`decodeData` in plutus-core 1.66 `PlutusCore/Data.hs`, run over the whole
+ * input), and the iterative writer and memory size against the recursive
+ * code they replace, vendored in `plutus-data-iterative.recursive-oracles.ts`
  * (byte-identical output, equal sizes).
+ *
+ * The expected decoder outcomes were produced by that plutus-core decoder and
+ * are pinned here, so this test needs no Haskell toolchain: each edge vector's
+ * value (rendered by `render`) or refusal, and for the seeded inputs the
+ * accepted count and a SHA-256 over every rendered outcome.
  */
+import { createHash } from "node:crypto";
+
 import {
   makeFuzzRng,
   PLUTUS_DATA_EDGE_INTEGERS,
@@ -16,7 +22,6 @@ import {
   type Data,
   DataB,
   DataConstr,
-  dataFromCbor,
   DataI,
   DataList,
   DataMap,
@@ -27,7 +32,6 @@ import { plutusDataFromCborIterative } from "../src/plutus-data-iterative.decode
 import { encodeMidgardCekPlutusData } from "../src/plutus-data-iterative.encode.js";
 import { midgardCekDataMemorySize } from "../src/plutus-data-iterative.memory.js";
 import {
-  harmonicDataDifference,
   recursiveEncodeMidgardCekPlutusData,
   recursiveMidgardCekDataMemorySize,
 } from "./plutus-data-iterative.recursive-oracles.js";
@@ -49,22 +53,23 @@ const SEEDED_TIMEOUT_MS = 120_000;
 
 const hex = (bytes: Uint8Array): string => Buffer.from(bytes).toString("hex");
 
-/** Checks one input as a Uint8Array and as a Buffer; returns the verdict. */
-const compareDecoders = (bytes: Uint8Array): boolean => {
-  let accepted = false;
-  for (const input of [Uint8Array.from(bytes), Buffer.from(bytes)]) {
-    const expected = attempt(() => dataFromCbor(input));
-    const actual = attempt(() => plutusDataFromCborIterative(input));
-    const label = `${hex(bytes)} as ${input.constructor.name}`;
-    expect(actual.accepted, label).toBe(expected.accepted);
-    if (expected.accepted && actual.accepted) {
-      expect(harmonicDataDifference(expected.value, actual.value), label).toBe(
-        undefined,
-      );
-      accepted = true;
-    }
+/** The rendering the pinned plutus-core outcomes use. */
+const render = (value: Data): string => {
+  if (value instanceof DataI) return `I ${value.int.toString()}`;
+  if (value instanceof DataB) return `B ${hex(value.bytes)}`;
+  if (value instanceof DataList)
+    return `L[${value.list.map(render).join(",")}]`;
+  if (value instanceof DataMap) {
+    return `M[${value.map
+      .map(
+        (entry) => `${render(entry.fst as Data)}=${render(entry.snd as Data)}`,
+      )
+      .join(",")}]`;
   }
-  return accepted;
+  if (value instanceof DataConstr) {
+    return `C ${value.constr.toString()}[${value.fields.map(render).join(",")}]`;
+  }
+  throw new Error("unknown Data value");
 };
 
 /** The encoder, memory and value checks for one harmonic value. */
@@ -77,142 +82,185 @@ const compareWriters = (value: Data, label: string): void => {
   );
 };
 
-const EDGE_VECTORS: readonly string[] = [
-  // Scalars, non-minimal heads, reserved and indefinite additional info.
-  "00",
-  "17",
-  "1818",
-  "1800",
-  "190000",
-  "1a00000001",
-  "1b0000000000000001",
-  "1bffffffffffffffff",
-  "3bffffffffffffffff",
-  "20",
-  "1c",
-  "1d",
-  "1e",
-  "1f",
-  "3f",
-  "5c",
-  "9c",
-  "bc",
-  "dc",
-  // Bignums: tag 2/3 over bytes, empty, chunked, below -2^64, over non-bytes.
-  "c249010000000000000000",
-  "c349010000000000000000",
-  "c349ffffffffffffffffff",
-  "c240",
-  "c340",
-  "c25f4101ff",
-  "c25f41014102ff",
-  "c200",
-  "c280",
-  "c2c249010000000000000000",
-  // Byte strings: definite, empty, indefinite with 0, 1, 2 chunks, nested.
-  "40",
-  "4401020304",
-  "5f",
-  "5fff",
-  "5f41aaff",
-  "5f41aa42bbccff",
-  "5f5f41aaffff",
-  "5f5fff41aaff",
-  "5f00ff",
-  "5f80ff",
-  "5f60ff",
-  // Text, simple and float items anywhere.
-  "60",
-  "6161",
-  "8160",
-  "a16000",
-  "f4",
-  "f6",
-  "f7",
-  "f93c00",
-  "fa3f800000",
-  "fb3ff0000000000000",
-  "81f5",
-  "d87981f6",
-  // Lists and maps: definite, indefinite, empty, duplicate and unsorted keys.
-  "80",
-  "9fff",
-  "9f00ff",
-  "8200",
-  "83000102",
-  "a0",
-  "bfff",
-  "bf0000ff",
-  "bf00ff",
-  "a2000000000",
-  "a200000001",
-  "a201000000",
-  "a20100000001",
-  "a1400041aa01",
-  "bf8000a000ff",
-  // Constructors: compact, general, tag 102, tag 1375, over non-arrays.
-  "d87980",
-  "d8799fff",
-  "d87f80",
-  "d9050080",
-  "d9050080",
-  "d9057880",
-  "d9057980",
-  "d8668218668080",
-  "d866820080",
-  "d866821a0000000180",
-  "d8668201",
-  "d86683000080",
-  "d8669f0080ff",
-  "d866820180ff",
-  "d9055f80",
-  "d95f80",
-  "d8790",
-  "d87900",
-  "d87940",
-  "d879a0",
-  "d87a9f00ff",
-  // Unknown and nested tags are transparent.
-  "c000",
-  "d81800",
-  "d9ffff00",
-  "da0001000000",
-  "dbffffffffffffffff00",
-  "c0c000",
-  "d879d87980",
-  // Truncations and trailing bytes.
-  "",
-  "18",
-  "19ff",
-  "41",
-  "81",
-  "9f",
-  "9f00",
-  "a1",
-  "a100",
-  "d879",
-  "0000",
-  "00ff",
-  "80ff",
-  "d87980ff00",
-  "ff",
-  "1f00",
+const REFUSED = "refused";
+
+/** The outcome of one input, as a Uint8Array and as a Buffer alike. */
+const outcomeOf = (bytes: Uint8Array): string => {
+  const outcomes = [Uint8Array.from(bytes), Buffer.from(bytes)].map((input) => {
+    const outcome = attempt(() => plutusDataFromCborIterative(input));
+    return outcome.accepted ? render(outcome.value) : REFUSED;
+  });
+  expect(outcomes[1], hex(bytes)).toBe(outcomes[0]);
+  return outcomes[0]!;
+};
+
+const AB64 = "ab".repeat(64);
+const AB65 = "ab".repeat(65);
+
+/** Input hex and the plutus-core outcome. */
+const EDGE_VECTORS: readonly (readonly [string, string])[] = [
+  ["00", "I 0"],
+  ["17", "I 23"],
+  ["1818", "I 24"],
+  ["1800", "I 0"],
+  ["190000", "I 0"],
+  ["1a00000001", "I 1"],
+  ["1b0000000000000001", "I 1"],
+  ["1bffffffffffffffff", "I 18446744073709551615"],
+  ["3bffffffffffffffff", "I -18446744073709551616"],
+  ["20", "I -1"],
+  ["1c", REFUSED],
+  ["1d", REFUSED],
+  ["1e", REFUSED],
+  ["1f", REFUSED],
+  ["3f", REFUSED],
+  ["5c", REFUSED],
+  ["9c", REFUSED],
+  ["bc", REFUSED],
+  ["dc", REFUSED],
+  ["c249010000000000000000", "I 18446744073709551616"],
+  ["c349010000000000000000", "I -18446744073709551617"],
+  ["c349ffffffffffffffffff", "I -4722366482869645213696"],
+  ["c240", "I 0"],
+  ["c340", "I -1"],
+  ["c25f4101ff", "I 1"],
+  ["c25f41014102ff", "I 258"],
+  ["c200", REFUSED],
+  ["c280", REFUSED],
+  ["c2c249010000000000000000", REFUSED],
+  ["40", "B "],
+  ["4401020304", "B 01020304"],
+  ["5f", REFUSED],
+  ["5fff", "B "],
+  ["5f41aaff", "B aa"],
+  ["5f41aa42bbccff", "B aabbcc"],
+  ["5f5f41aaffff", REFUSED],
+  ["5f5fff41aaff", REFUSED],
+  ["5f00ff", REFUSED],
+  ["5f80ff", REFUSED],
+  ["5f60ff", REFUSED],
+  ["60", REFUSED],
+  ["6161", REFUSED],
+  ["8160", REFUSED],
+  ["a16000", REFUSED],
+  ["f4", REFUSED],
+  ["f6", REFUSED],
+  ["f7", REFUSED],
+  ["f93c00", REFUSED],
+  ["fa3f800000", REFUSED],
+  ["fb3ff0000000000000", REFUSED],
+  ["81f5", REFUSED],
+  ["d87981f6", REFUSED],
+  ["80", "L[]"],
+  ["9fff", "L[]"],
+  ["9f00ff", "L[I 0]"],
+  ["8200", REFUSED],
+  ["83000102", "L[I 0,I 1,I 2]"],
+  ["a0", "M[]"],
+  ["bfff", "M[]"],
+  ["bf0000ff", "M[I 0=I 0]"],
+  ["bf00ff", REFUSED],
+  ["a200000001", "M[I 0=I 0,I 0=I 1]"],
+  ["a201000000", "M[I 1=I 0,I 0=I 0]"],
+  ["a20100000001", REFUSED],
+  ["a1400041aa01", REFUSED],
+  ["bf8000a000ff", "M[L[]=I 0,M[]=I 0]"],
+  ["d87980", "C 0[]"],
+  ["d8799fff", "C 0[]"],
+  ["d87f80", "C 6[]"],
+  ["d9050080", "C 7[]"],
+  ["d9050080", "C 7[]"],
+  ["d9057880", "C 127[]"],
+  ["d9057980", REFUSED],
+  ["d8668218668080", REFUSED],
+  ["d866820080", "C 0[]"],
+  ["d866821a0000000180", "C 1[]"],
+  ["d8668201", REFUSED],
+  ["d86683000080", REFUSED],
+  ["d8669f0080ff", "C 0[]"],
+  ["d866820180ff", REFUSED],
+  ["d9055f80", "C 102[]"],
+  ["d95f80", REFUSED],
+  ["d87900", REFUSED],
+  ["d87940", REFUSED],
+  ["d879a0", REFUSED],
+  ["d87a9f00ff", "C 1[I 0]"],
+  ["c000", REFUSED],
+  ["d81800", REFUSED],
+  ["d9ffff00", REFUSED],
+  ["da0001000000", REFUSED],
+  ["dbffffffffffffffff00", REFUSED],
+  ["c0c000", REFUSED],
+  ["d879d87980", REFUSED],
+  ["", REFUSED],
+  ["18", REFUSED],
+  ["19ff", REFUSED],
+  ["41", REFUSED],
+  ["81", REFUSED],
+  ["9f", REFUSED],
+  ["9f00", REFUSED],
+  ["a1", REFUSED],
+  ["a100", REFUSED],
+  ["d879", REFUSED],
+  ["0000", REFUSED],
+  ["00ff", REFUSED],
+  ["80ff", REFUSED],
+  ["d87980ff00", REFUSED],
+  ["ff", REFUSED],
+  ["1f00", REFUSED],
+  ["", REFUSED],
+  [`5840${AB64}`, `B ${AB64}`],
+  [`5841${AB65}`, REFUSED],
+  [`5f5840${AB64}41abff`, `B ${AB65}`],
+  [`5f5841${AB65}ff`, REFUSED],
+  [`5f5840${AB64}5840${AB64}ff`, `B ${"ab".repeat(128)}`],
+  [`c25840${AB64}`, `I ${BigInt(`0x${AB64}`).toString()}`],
+  [`c25841${AB65}`, REFUSED],
+  [`c25f5841${AB65}ff`, REFUSED],
+  ["c25f4101410000ff", REFUSED],
+  ["c3484000000000000000", "I -4611686018427387905"],
+  ["d86682188080", "C 128[]"],
+  ["d866821903e880", "C 1000[]"],
+  ["d866821bffffffffffffffff80", "C 18446744073709551615[]"],
+  ["d86682c24901000000000000000080", REFUSED],
+  ["d86682c2410180", REFUSED],
+  ["d866823880", REFUSED],
+  ["d8669f187f80ff", "C 127[]"],
+  ["d8669f18809f00ffff", "C 128[I 0]"],
+  ["d8669f008000ff", REFUSED],
+  ["d866820083", REFUSED],
+  ["8140", "L[B ]"],
+  ["a10040", "M[I 0=B ]"],
+  ["a14000", "M[B =I 0]"],
+  ["d87a8140", "C 1[B ]"],
+  ["8240d87980", "L[B ,C 0[]]"],
+  ["81d86682188080", "L[C 128[]]"],
+  ["a1d8668218808000", "M[C 128[]=I 0]"],
+  ["a100d866821903e880", "M[I 0=C 1000[]]"],
+  ["d8024101", REFUSED],
+  ["d8034101", REFUSED],
+  ["d9000241ff", REFUSED],
+  ["d87981d866821b000000010000000080", "C 0[C 4294967296[]]"],
 ];
 
-describe("plutusDataFromCborIterative vs harmonic dataFromCbor", () => {
+describe("plutusDataFromCborIterative vs the plutus-core decoder", () => {
   it("agrees on the edge vectors", () => {
-    for (const vector of EDGE_VECTORS) {
-      compareDecoders(Buffer.from(vector, "hex"));
+    for (const [vector, expected] of EDGE_VECTORS) {
+      expect(outcomeOf(Buffer.from(vector, "hex")), vector).toBe(expected);
     }
+  });
+
+  it("round-trips the edge integers through the canonical writer", () => {
     for (const value of PLUTUS_DATA_EDGE_INTEGERS) {
-      compareDecoders(recursiveEncodeMidgardCekPlutusData(new DataI(value)));
+      const cbor = recursiveEncodeMidgardCekPlutusData(new DataI(value));
+      expect(outcomeOf(cbor), value.toString()).toBe(`I ${value.toString()}`);
     }
   });
 
   it(
     "agrees on 20,000 seeded inputs, malformed ones included",
     () => {
-      let accepted = 0;
+      const outcomes: string[] = [];
       for (let seed = 1; seed <= 20_000; seed += 1) {
         const rng = makeFuzzRng(seed);
         const bytes = randomPlutusDataCbor(rng, {
@@ -220,11 +268,22 @@ describe("plutusDataFromCborIterative vs harmonic dataFromCbor", () => {
           maxWidth: 1 + rng.int(5),
           malformedRate: seed % 2 === 0 ? 0 : 0.05,
         });
-        if (compareDecoders(bytes)) accepted += 1;
+        outcomes.push(outcomeOf(bytes));
       }
-      // Both decisions are exercised in volume.
-      expect(accepted).toBeGreaterThan(5_000);
-      expect(accepted).toBeLessThan(20_000);
+      expect(outcomes.filter((outcome) => outcome !== REFUSED).length).toBe(
+        12_911,
+      );
+      expect(
+        createHash("sha256")
+          .update(
+            outcomes
+              .map((outcome) => (outcome === REFUSED ? "ERR" : `OK ${outcome}`))
+              .join("\n"),
+          )
+          .digest("hex"),
+      ).toBe(
+        "5a8bb54ad69a16ada4048bbbf821c4ce6753ef9132b63b98c5c65f0bb77a0af1",
+      );
     },
     SEEDED_TIMEOUT_MS,
   );

@@ -134,7 +134,7 @@ describe("Cardano integer layout in Data CBOR", () => {
     const singleBlock = Buffer.from(`c25841${hexRange(1, 65)}`, "hex");
     expect(singleBlock.length).toBe(68);
     expect(() => buildMidgardCekDataScanTrace(singleBlock)).toThrow(
-      "V1 Data scan source is not canonical Data CBOR",
+      "CBOR Plutus Data byte string exceeds 64 bytes",
     );
   });
 
