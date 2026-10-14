@@ -36,7 +36,6 @@ use midgard/rejection_reason_v1
 use midgard/transition_trace
 use midgard/user_events
 use midgard/user_events/tx_order_v1 as tx_order
-use midgard/validation_claim_v1
 use midgard/validation_trace_v1
 
 pub type TransitionFaultProof {
@@ -69,9 +68,6 @@ pub type TransitionFault {
   }
   OutOfWindowSourceEvent { witness: OutOfWindowSourceEventWitness }
   CountFault { witness: CountFaultWitness }
-  AcceptedTransactionTransitionMismatch {
-    witness: AcceptedTransactionTransitionMismatchWitness,
-  }
 }
 
 /// Tag-3 source membership opens only the key and its value digest. The
@@ -244,11 +240,6 @@ pub type InvalidOneStepTransitionWitness {
     spent_utxos: List<LedgerDeleteWitness>,
     produced_utxos: List<LedgerInsertWitness>,
   }
-}
-
-pub type AcceptedTransactionTransitionMismatchWitness {
-  claim: validation_claim_v1.ValidationClaimWitnessV1,
-  terminal_acceptance_witness_cbor: ByteArray,
 }
 
 pub type OmittedDueL1EventWitness {
@@ -1650,39 +1641,6 @@ fn validate_invalid_one_step_transition(
   }
 }
 
-pub fn terminal_acceptance_post_root(witness_cbor: ByteArray) -> ByteArray {
-  expect Some(data) = cbor.deserialise(witness_cbor)
-  expect [version_data,
-        tag_data, root_data, _frontier_data] = builtin.un_list_data(data)
-  expect builtin.un_i_data(version_data) == 1
-  expect builtin.un_b_data(tag_data) == #""
-  let root = builtin.un_b_data(root_data)
-  expect bytearray.length(root) == 32
-  root
-}
-
-pub fn validate_accepted_transaction_transition_mismatch(
-  header: ledger_state.HeaderV1,
-  witness: AcceptedTransactionTransitionMismatchWitness,
-) -> Bool {
-  let claim = witness.claim
-  let descriptor = claim.descriptor_membership.value
-  let terminal = claim.terminal_state
-  let post_root = terminal_acceptance_post_root(
-    witness.terminal_acceptance_witness_cbor,
-  )
-  and {
-    validation_claim_v1.committed_claim_is_valid(header, claim),
-    descriptor.verdict == validation_trace_v1.Accepted,
-    terminal.work_root == validation_trace_v1.hash_work_witness(
-      validation_trace_v1.Terminal,
-      terminal.program_counter,
-      witness.terminal_acceptance_witness_cbor,
-    ),
-    post_root != claim.transition_step_membership.value.post_utxos_root,
-  }
-}
-
 fn get_tx_order_datum_with_nft(
   reference_inputs: List<Input>,
   tx_order_policy_id: ByteArray,
@@ -1900,8 +1858,6 @@ fn validate_transition_fault(
       validate_l1_event_fault(header, fault, hub_datum, evidence)
     }
     CountFault { witness } -> validate_count_fault(header, witness)
-    AcceptedTransactionTransitionMismatch { witness } ->
-      validate_accepted_transaction_transition_mismatch(header, witness)
   }
 }
 
@@ -2062,8 +2018,6 @@ pub fn validate_accepted_transaction_fault_proof(
       computation_thread_token_asset_name,
     ),
     when proof.fault is {
-      AcceptedTransactionTransitionMismatch { witness } ->
-        validate_accepted_transaction_transition_mismatch(proof.header, witness)
       InvalidOneStepTransition{witness: L2TransactionTransition {
         trace_proof,
         event_to_step,

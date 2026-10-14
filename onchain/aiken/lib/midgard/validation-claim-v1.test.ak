@@ -357,7 +357,6 @@ fn dummy_machine_state() -> validation_trace_v1.ValidationMachineStateV1 {
     execution_memory: 0,
     verdict: validation_trace_v1.Pending,
     rejection_code_hash: zero_hash,
-    ledger_delta_root: zero_hash,
   }
 }
 

@@ -188,7 +188,6 @@ fn initial_signatures_witness(tx: MidgardTransaction) -> ByteArray {
 
 fn signatures_step_fixture(
   tx: MidgardTransaction,
-  ledger_delta_root: ByteArray,
 ) -> Pair<validation_trace_v1.ValidationMachineStateV1, ByteArray> {
   let compact = midgard_transaction_to_compact(tx)
   let tx_id = native_tx_id_for_version(
@@ -220,7 +219,6 @@ fn signatures_step_fixture(
       execution_memory: 0,
       verdict: validation_trace_v1.Pending,
       rejection_code_hash: zero,
-      ledger_delta_root,
     },
     work_witness_cbor,
   )
@@ -228,11 +226,9 @@ fn signatures_step_fixture(
 
 fn phase_a_native_step_fixture(
   tx: MidgardTransaction,
-  ledger_delta_root: ByteArray,
 ) -> Pair<validation_trace_v1.ValidationMachineStateV1, ByteArray> {
   let Pair(signature_pre, _signature_work_witness_cbor) = signatures_step_fixture(
     tx,
-    ledger_delta_root,
   )
   let proof_source = forced_fixture.from_native_transaction(tx)
   let signer_frontier = signer_frontier_for_tx(tx)
@@ -370,7 +366,7 @@ fn native_item_yield_transaction(mutation: Int) -> Bool {
       script_tx_wits: [script],
     },
   }
-  let Pair(pre, work_witness_cbor) = phase_a_native_step_fixture(tx, h_a)
+  let Pair(pre, work_witness_cbor) = phase_a_native_step_fixture(tx)
   let item_cbor = encode_midgard_versioned_script(script)
   let next_work = phase_a_native_scan_witness(
     tx,

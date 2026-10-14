@@ -62,11 +62,6 @@ const deriveTransitionTraceYieldData = ({
         redeemer: Data.void(),
       },
     ];
-  if ("AcceptedTransactionTransitionMismatch" in proof.fault)
-    return ["claimStructure", "claimSource", "claimEndpoints"].map((key) => ({
-      key: key as YieldKey,
-      redeemer: Data.void(),
-    }));
   if (!("InvalidOneStepTransition" in proof.fault)) return [];
   const witness = proof.fault.InvalidOneStepTransition.witness;
   let outputCbors: Buffer[];

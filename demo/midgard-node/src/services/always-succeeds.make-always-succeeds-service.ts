@@ -150,11 +150,11 @@ export const makeAlwaysSucceedsService: Effect.Effect<SDK.MidgardValidators> =
     const invalidSignature = invalidRange;
 
     const validationTraceSemanticResolvers = Array.from(
-      { length: 91 },
+      { length: 83 },
       () => transitionTrace,
     );
     const validationTracePrepareResolvers = Array.from(
-      { length: 14 },
+      { length: 13 },
       () => transitionTrace,
     );
     const validationTraceCanonicalDecodeItemStages = {
@@ -371,9 +371,6 @@ export const makeAlwaysSucceedsService: Effect.Effect<SDK.MidgardValidators> =
           l2Open: stateQueueYield,
           l2Summaries: stateQueueYield,
           l2Replay: stateQueueYield,
-          claimStructure: stateQueueYield,
-          claimSource: stateQueueYield,
-          claimEndpoints: stateQueueYield,
           depositProjection: stateQueueYield,
           l1Event: stateQueueYield,
           forcedTiming: stateQueueYield,

@@ -167,7 +167,6 @@ fn step_fixture(script_bytes: ByteArray) -> OptionBStepFixtureV1 {
     execution_memory: 0,
     verdict: validation_trace_v1.Pending,
     rejection_code_hash: zero,
-    ledger_delta_root: h_c,
   }
   let post = validation_trace_v1.ValidationMachineStateV1 {
     ..pre,
@@ -396,7 +395,6 @@ fn golden_state() -> validation_trace_v1.ValidationMachineStateV1 {
     execution_memory: 0,
     verdict: validation_trace_v1.Pending,
     rejection_code_hash: zero,
-    ledger_delta_root: zero,
   }
 }
 

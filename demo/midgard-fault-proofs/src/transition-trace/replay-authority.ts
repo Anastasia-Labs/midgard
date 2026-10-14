@@ -460,12 +460,6 @@ export const provenTransitionEventKeyCbor = (
             };
     return Data.to(eventKey, SDK.EventKey);
   }
-  if ("AcceptedTransactionTransitionMismatch" in fault)
-    return Data.to(
-      fault.AcceptedTransactionTransitionMismatch.witness.claim
-        .transition_step_membership.value.event_key,
-      SDK.EventKey,
-    );
   if (!("InvalidOneStepTransition" in fault)) return undefined;
   const witness = fault.InvalidOneStepTransition.witness;
   const step =

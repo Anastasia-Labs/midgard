@@ -9,7 +9,6 @@ import {
   buildMidgardLedgerOutputProofTrace,
   buildMidgardRedeemerDataUnreadableTrace,
   buildMidgardRedeemerItemProofTrace,
-  buildMidgardValidationLedgerDeltaFrontier,
   buildMidgardValidationMerkleFrontier,
   buildMidgardValidationMerkleMembership,
   commitMidgardValidationMerkleFrontier,
@@ -36,8 +35,6 @@ import {
   hashMidgardScriptSourceLeaf,
   hashMidgardSignerLeaf,
   hashMidgardValidationContext,
-  hashMidgardValidationLedgerDelta,
-  hashMidgardValidationLedgerDeltaOperation,
   inspectMidgardRedeemerData,
   MIDGARD_BOUNDED_ITEM_CHUNK_BYTES,
   MIDGARD_CONSENSUS_LIMITS,
@@ -51,7 +48,6 @@ import {
   MidgardRedeemerItemProofModes,
   MidgardRedeemerItemProofStages,
   type MidgardValidationMerkleFrontier,
-  type MidgardValidationMerkleMembership,
   type MidgardValidationPhaseName,
 } from "@al-ft/midgard-core";
 import {
@@ -433,28 +429,6 @@ export const prepareValidationTrace = (input: ValidationMachineReplayInput) =>
       );
     }
 
-    const authenticatedLedgerOps = input.ledgerMutationSteps.map(
-      ({ operation, proofFoldTrace }) => ({
-        ...operation,
-        proofDescriptor: proofFoldTrace.descriptor,
-      }),
-    );
-    const ledgerDeltaFrontier = buildMidgardValidationLedgerDeltaFrontier(
-      authenticatedLedgerOps,
-    );
-    const ledgerDeltaRoot = hashMidgardValidationLedgerDelta(
-      authenticatedLedgerOps,
-    );
-    const ledgerDeltaOperationLeafHashes = authenticatedLedgerOps.map(
-      hashMidgardValidationLedgerDeltaOperation,
-    );
-    const ledgerDeltaOperationMembership = (
-      operationIndex: number,
-    ): MidgardValidationMerkleMembership =>
-      buildMidgardValidationMerkleMembership(
-        ledgerDeltaOperationLeafHashes,
-        operationIndex,
-      );
     // Exact submitted bytes bind the source independently of the operator's verdict.
     const proofSource = (
       input.sourceKind === "forced"
@@ -1165,7 +1139,6 @@ export const prepareValidationTrace = (input: ValidationMachineReplayInput) =>
       ["nativeScripts", transactionContextWitnessCbor],
       ["scriptIntegrity", transactionContextWitnessCbor],
       ["cek", transactionContextWitnessCbor],
-      ["ledgerDelta", transactionContextWitnessCbor],
     ]);
     const macroAuxiliaryByPhase = new Map<
       MidgardValidationPhaseName,
@@ -1173,7 +1146,7 @@ export const prepareValidationTrace = (input: ValidationMachineReplayInput) =>
     >([]);
 
     const terminalPhase =
-      rejection === null ? "ledgerDelta" : rejectionPhase(rejection);
+      rejection === null ? "valueAndMint" : rejectionPhase(rejection);
     const stopIndex = orderedPhases.indexOf(terminalPhase);
     if (stopIndex < 0) {
       return yield* Effect.fail(
@@ -4119,14 +4092,7 @@ export const prepareValidationTrace = (input: ValidationMachineReplayInput) =>
       ledgerState,
       outputCbors,
       priorLedgerRoot,
-      resolutionItems,
-      encodeFrontierPeaks,
-      ledgerDeltaOperationMembership,
-      authenticatedLedgerOps,
-      postLedgerRoot,
-      ledgerDeltaRoot,
       witnesses,
-      ledgerDeltaFrontier,
       witnessExecutionBudgets,
       transactionCommitment,
       validationContextHash,

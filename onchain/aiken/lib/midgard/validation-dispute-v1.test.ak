@@ -91,7 +91,6 @@ fn fixture_pre_state() -> validation_trace_v1.ValidationMachineStateV1 {
     execution_memory: 0,
     verdict: validation_trace_v1.Pending,
     rejection_code_hash: zero,
-    ledger_delta_root: h_a,
   }
 }
 
@@ -342,9 +341,8 @@ test resolver_routing_is_total_for_nonterminal_phases_and_rejects_terminal() {
     validation_resolution_v1.resolver_index(validation_trace_v1.ScriptIntegrity) == 10,
     validation_resolution_v1.resolver_index(validation_trace_v1.Cek) == 11,
     validation_resolution_v1.resolver_index(validation_trace_v1.ValueAndMint) == 12,
-    validation_resolution_v1.resolver_index(validation_trace_v1.LedgerDelta) == 13,
     validation_resolution_v1.resolver_index(validation_trace_v1.Terminal) == -1,
-    validation_resolution_v1.resolver_count == 14,
+    validation_resolution_v1.resolver_count == 13,
   }
 }
 
@@ -502,7 +500,7 @@ test padding_refuses_a_nonterminal_authenticated_boundary() {
   let (ready, terminal) = terminal_padding_fixture()
   let nonterminal = validation_trace_v1.ValidationMachineStateV1 {
     ..terminal,
-    phase: validation_trace_v1.LedgerDelta,
+    phase: validation_trace_v1.ValueAndMint,
   }
   let honest = validation_dispute_v1.ValidationDisputeV1 {
     ..ready,

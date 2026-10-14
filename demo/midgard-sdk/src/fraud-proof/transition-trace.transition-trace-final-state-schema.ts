@@ -25,7 +25,6 @@ import {
   TransitionFaultProof,
   TransitionFaultProofSchema,
 } from "./transition-trace.transition-fault-schema.js";
-import { type ValidationClaimWitness } from "./validation-dispute.js";
 
 export const TransitionTraceRouteArgsSchema = Data.Object({
   input_index: Data.Integer(),
@@ -314,21 +313,6 @@ export const outOfWindowSourceEventFault = (
 
 export const countFault = (witness: CountFaultWitness): TransitionFault => ({
   CountFault: { witness },
-});
-
-export const acceptedTransactionTransitionMismatchFault = ({
-  claim,
-  terminalAcceptanceWitnessCbor,
-}: {
-  readonly claim: ValidationClaimWitness;
-  readonly terminalAcceptanceWitnessCbor: string;
-}): TransitionFault => ({
-  AcceptedTransactionTransitionMismatch: {
-    witness: {
-      claim,
-      terminal_acceptance_witness_cbor: terminalAcceptanceWitnessCbor,
-    },
-  },
 });
 
 export type TransitionTraceFaultProofFixture = {

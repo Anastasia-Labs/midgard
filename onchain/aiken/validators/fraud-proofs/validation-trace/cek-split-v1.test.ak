@@ -288,7 +288,6 @@ fn cek_state(
       execution_memory,
       verdict: validation_trace_v1.Pending,
       rejection_code_hash: zero,
-      ledger_delta_root: validation_trace_v1.hash_ledger_delta(#"80"),
     },
     work_witness_cbor,
   )
@@ -993,7 +992,6 @@ fn golden_state() -> validation_trace_v1.ValidationMachineStateV1 {
     execution_memory: 0,
     verdict: validation_trace_v1.Pending,
     rejection_code_hash: zero,
-    ledger_delta_root: zero,
   }
 }
 
@@ -2944,7 +2942,7 @@ test bounded_context_binding_wire_matches_sdk() {
       staged_data,
     ],
   )
-  blake2b_256(cbor.serialise(vector)) == #"a0941f466a25f523e9650c28f2ee5d038b3093d7e6065ffe799fe4335bb6bd95"
+  blake2b_256(cbor.serialise(vector)) == #"43af4831f31bcf8837ddbb2c11f7539bc4f0b33a8ebc27237f752d33c92de882"
 }
 
 fn ordered_mint_fixture() -> Pair<CekContextControlV1, CekMintHead> {

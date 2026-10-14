@@ -16,24 +16,20 @@ export {
   verifyMidgardValidationTraceProof,
 } from "./validation-trace.build-midgard-validation-trace-tree.js";
 export {
-  buildMidgardValidationLedgerDeltaFrontier,
   decodeMidgardValidationMachineState,
   decodeMidgardValidationTraceDescriptor,
   encodeMidgardValidationTraceDescriptor,
   hashMidgardValidationContext,
-  hashMidgardValidationLedgerDelta,
-  hashMidgardValidationLedgerDeltaCbor,
-  hashMidgardValidationLedgerDeltaOperation,
   hashMidgardValidationMachineState,
   hashMidgardValidationWorkWitness,
   MIDGARD_VALIDATION_NO_REJECTION_CODE_HASH,
-  type MidgardValidationAuthenticatedLedgerDeltaOperation,
-  type MidgardValidationLedgerDeltaOperation,
 } from "./validation-trace.decode-midgard-validation-machine-state.js";
 export {
   encodeMidgardValidationMachineState,
   hashMidgardValidationEventKey,
+  MIDGARD_VALIDATION_MACHINE_STATE_FIELDS,
   type MidgardValidationMachineState,
+  type MidgardValidationMachineStateFieldName,
   MidgardValidationPhase,
   type MidgardValidationPhaseName,
   MidgardValidationSourceKind,

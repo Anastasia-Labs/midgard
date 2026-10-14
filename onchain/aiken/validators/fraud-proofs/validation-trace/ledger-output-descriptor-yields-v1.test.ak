@@ -452,7 +452,6 @@ fn machine_pre(
     execution_memory: 0,
     verdict: validation_trace_v1.Pending,
     rejection_code_hash: zero,
-    ledger_delta_root: validation_trace_v1.hash_ledger_delta(#"80"),
   }
 }
 
@@ -866,7 +865,6 @@ fn golden_transition() -> ValidationOneStepWitnessV1 {
       execution_memory: 0,
       verdict: validation_trace_v1.Pending,
       rejection_code_hash: zero,
-      ledger_delta_root: zero,
     },
   }
 }

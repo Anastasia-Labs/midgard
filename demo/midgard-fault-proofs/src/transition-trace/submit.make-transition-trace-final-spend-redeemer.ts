@@ -223,9 +223,6 @@ export const transitionTraceFinalIndex = (
     }
     return unreachableTransitionVariant(witness);
   }
-  if ("AcceptedTransactionTransitionMismatch" in fault) {
-    return 4;
-  }
   if ("OmittedDueL1Event" in fault || "OutOfWindowSourceEvent" in fault) {
     return 6;
   }

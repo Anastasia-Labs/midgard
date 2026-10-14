@@ -10,13 +10,7 @@ import "../src/validation-machine-data.js";
 import "./validation-tail-controls-abi.tail-auxiliary-vectors.js";
 import "./validation-tail-controls-abi.decode-exact-terminal-witness.js";
 
-import {
-  buildMidgardValidationLedgerDeltaFrontier,
-  commitMidgardValidationMerkleFrontier,
-  hashMidgardValidationLedgerDelta,
-  hashMidgardValidationLedgerDeltaOperation,
-  hashMidgardValidationWorkWitness,
-} from "@al-ft/midgard-core";
+import { hashMidgardValidationWorkWitness } from "@al-ft/midgard-core";
 import {
   decodeSingleCbor,
   encodeCborArrayRaw,
@@ -37,13 +31,9 @@ import {
   terminalRejectionCbor,
 } from "./validation-tail-controls-abi.decode-exact-terminal-witness.js";
 import {
-  acceptanceFrontierCbor,
   bytes,
   decodeExactTailAuxiliary,
-  descriptor,
   digest,
-  ledgerDeltaControlCbor,
-  pendingMutationCbor,
   rejectionReasonCbor,
   tailAuxiliaryVectors,
   terminalAcceptanceCbor,
@@ -71,11 +61,11 @@ describe("canonical V1 validation tail controls", () => {
     expect(() => decodeExactTailAuxiliary(Data.to(new Constr(23, [])))).toThrow(
       /tag/u,
     );
-    expect(() => decodeExactTailAuxiliary(Data.to(new Constr(40, [])))).toThrow(
+    expect(() => decodeExactTailAuxiliary(Data.to(new Constr(36, [])))).toThrow(
       /tag/u,
     );
     expect(() =>
-      decodeExactTailAuxiliary(Data.to(new Constr(27, [0n]))),
+      decodeExactTailAuxiliary(Data.to(new Constr(24, [0n]))),
     ).toThrow(/arity/u);
   });
 
@@ -98,52 +88,9 @@ describe("canonical V1 validation tail controls", () => {
     });
   });
 
-  it("freezes V16 pending mutation/control shapes and operation roots", () => {
-    const pending = decodeSingleCbor(pendingMutationCbor);
-    const control = decodeSingleCbor(ledgerDeltaControlCbor);
-    expect(Array.isArray(pending) ? pending.length : -1).toBe(10);
-    expect(Array.isArray(control) ? control.length : -1).toBe(14);
-    expect({
-      pendingMutationCbor: pendingMutationCbor.toString("hex"),
-      ledgerDeltaControlHash: digest(ledgerDeltaControlCbor),
-    }).toEqual({
-      pendingMutationCbor: EXPECTED.pendingMutationCbor,
-      ledgerDeltaControlHash: EXPECTED.ledgerDeltaControlHash,
-    });
-
-    const deletion = {
-      type: "delete" as const,
-      key: bytes("010203"),
-      proofDescriptor: descriptor,
-    };
-    const insertion = {
-      type: "insert" as const,
-      key: bytes("0405"),
-      value: bytes("060708"),
-      proofDescriptor: descriptor,
-    };
-    const frontier = buildMidgardValidationLedgerDeltaFrontier([
-      deletion,
-      insertion,
-    ]);
-    expect(
-      hashMidgardValidationLedgerDeltaOperation(deletion).toString("hex"),
-    ).toBe("d70952a4347195627444cfbb1874f6857de1ad78f095460b76fc826cd267a589");
-    expect(
-      hashMidgardValidationLedgerDeltaOperation(insertion).toString("hex"),
-    ).toBe("f8bc7029f5f58f0436ebdf6cbbb85bd9adac05d5f6dc1b9238c8166a517aa8db");
-    expect(
-      commitMidgardValidationMerkleFrontier(frontier).toString("hex"),
-    ).toBe("b6d017c71f3fc974f620b22764385bf9ad56ee5627009e57dbeb9418e486dcb2");
-    expect(hashMidgardValidationLedgerDelta([deletion, insertion])).toEqual(
-      commitMidgardValidationMerkleFrontier(frontier),
-    );
-  });
-
   it("freezes V17 accepted/rejected witnesses and rejects misclassification", () => {
     expect(decodeExactTerminalWitness(terminalAcceptanceCbor)).toEqual({
       outcome: "accepted",
-      ledgerRoot: fixtureBytes(0x72, 32),
     });
     expect(decodeExactTerminalWitness(terminalRejectionCbor)).toEqual({
       outcome: "rejected",
@@ -190,12 +137,11 @@ describe("canonical V1 validation tail controls", () => {
     ).toBe("rejected");
     for (const refused of [
       // An acceptance carrying a rejection reason.
-      terminal(
-        1n,
-        rejectionReasonCbor,
-        fixtureBytes(0x72, 32),
-        acceptanceFrontierCbor,
-      ),
+      encodeCborArrayRaw([encodeCborInteger(1n), rejectionReasonCbor]),
+      // An acceptance in the four-field rejection shape.
+      terminal(1n, emptySlot, fixtureBytes(0x73, 32), bytes("80")),
+      // An acceptance carrying a non-empty payload.
+      encodeCborArrayRaw([encodeCborInteger(1n), encodeCborBytes(bytes("00"))]),
       // A rejection without a reason.
       terminal(2n, emptySlot, fixtureBytes(0x73, 32), bytes("80")),
       // A rejection naming its reason as the legacy label bytes.
@@ -205,13 +151,8 @@ describe("canonical V1 validation tail controls", () => {
         fixtureBytes(0x73, 32),
         bytes("80"),
       ),
-      // A rejection carrying an acceptance frontier.
-      terminal(
-        2n,
-        rejectionReasonCbor,
-        fixtureBytes(0x73, 32),
-        acceptanceFrontierCbor,
-      ),
+      // A rejection in the two-field acceptance shape.
+      encodeCborArrayRaw([encodeCborInteger(2n), emptySlot]),
       // An outcome outside V1.
       terminal(3n, emptySlot, fixtureBytes(0x73, 32), bytes("80")),
     ]) {

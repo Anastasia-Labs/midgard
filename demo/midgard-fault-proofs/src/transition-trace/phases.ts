@@ -20,14 +20,11 @@ export const initialTransitionTraceState = (
   const proof = readTransitionProof(proofInput);
   return {
     kind:
-      "AcceptedTransactionTransitionMismatch" in proof.fault
-        ? 2n
-        : "InvalidOneStepTransition" in proof.fault &&
-            "ValidDepositTransition" in
-              proof.fault.InvalidOneStepTransition.witness
-          ? 1n
-          : 0n,
-    phase: "AcceptedTransactionTransitionMismatch" in proof.fault ? 0n : 6n,
+      "InvalidOneStepTransition" in proof.fault &&
+      "ValidDepositTransition" in proof.fault.InvalidOneStepTransition.witness
+        ? 1n
+        : 0n,
+    phase: 6n,
     proof_commitment: { hash: transitionTraceProofChunks(proofInput).hash },
     opened: { spend_input_keys: [], output_hashes: [] },
     input_index: 0n,
@@ -48,22 +45,17 @@ export const initialTransitionTraceState = (
 };
 export const transitionTracePhaseIsTerminal = (
   state: SDK.TransitionTraceFinalState,
-) => state.phase === (state.kind === 2n ? 3n : 5n);
+) => state.phase === 5n;
 export const transitionTracePhaseYield = (
   state: SDK.TransitionTraceFinalState,
 ): keyof typeof TRANSITION_TRACE_YIELD_REFERENCES | null => {
   if (state.kind === 1n && state.phase === 10n) return "depositProjection";
-  if (state.kind !== 2n && state.phase === 6n) return null;
-  if (state.kind !== 2n && state.phase === 9n)
+  if (state.phase === 6n) return null;
+  if (state.phase === 9n)
     return state.kind === 0n ? "l2Replay" : "depositReplay";
-  if (state.kind !== 2n && state.phase === 7n)
-    return state.kind === 0n ? "l2Value" : "depositValue";
-  if (state.kind !== 2n && state.phase === 8n)
+  if (state.phase === 7n) return state.kind === 0n ? "l2Value" : "depositValue";
+  if (state.phase === 8n)
     return state.kind === 0n ? "l2Summaries" : "depositSummaries";
-  if (state.kind === 2n)
-    return ["claimStructure", "claimSource", "claimEndpoints", null][
-      Number(state.phase)
-    ] as "claimStructure" | "claimSource" | "claimEndpoints" | null;
   const keys =
     state.kind === 0n
       ? ([
@@ -97,10 +89,7 @@ export const nextTransitionTracePhase = ({
   yields: ReturnType<typeof transitionTraceYieldData>;
 }): { state: SDK.TransitionTraceFinalState; redeemer: string } => {
   const proof = readTransitionProof(proofInput);
-  if (
-    state.kind !== 2n &&
-    (state.phase === 2n || state.phase === 7n || state.phase === 8n)
-  ) {
+  if (state.phase === 2n || state.phase === 7n || state.phase === 8n) {
     const opened = yields.find((item) => item.outputCbors !== undefined);
     const output = opened?.outputCbors?.[Number(state.output_index)];
     if (output === undefined)
@@ -121,8 +110,6 @@ export const nextTransitionTracePhase = ({
   const selected = transitionTracePhaseYield(state);
   const redeemer =
     yields.find((item) => item.key === selected)?.redeemer ?? Data.void();
-  if (state.kind === 2n)
-    return { state: { ...state, phase: state.phase + 1n }, redeemer };
   if (!("InvalidOneStepTransition" in proof.fault))
     throw new Error("transition-trace state disagrees with proof");
   const witness = proof.fault.InvalidOneStepTransition.witness;

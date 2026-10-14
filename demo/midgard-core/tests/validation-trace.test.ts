@@ -7,8 +7,6 @@ import {
   encodeCbor,
   encodeMidgardValidationMachineState,
   encodeMidgardValidationTraceDescriptor,
-  hashMidgardValidationLedgerDelta,
-  hashMidgardValidationLedgerDeltaOperation,
   hashMidgardValidationMachineState,
   hashMidgardValidationRejectionReasonV1,
   hashMidgardValidationWorkWitness,
@@ -39,7 +37,6 @@ const state = (
   executionMemory: 0n,
   verdict: "pending",
   rejectionCodeHash: MIDGARD_VALIDATION_NO_REJECTION_CODE_HASH,
-  ledgerDeltaRoot: hash(7),
   ...overrides,
 });
 
@@ -61,35 +58,6 @@ describe("validation trace commitments", () => {
     ).toBe("c0e76d5f16d1f18c9e27ce0744c2e02e84a00ef55af81ce392137b2fdc9b8a53");
   });
 
-  it("matches the L1 ledger-delta operation frontier vectors", () => {
-    const proofDescriptor = {
-      version: 1 as const,
-      frameCount: 0,
-      terminalCursor: 0,
-      frontier: { count: 0, peaks: [] },
-    };
-    const deletion = {
-      type: "delete" as const,
-      key: Buffer.from("010203", "hex"),
-      proofDescriptor,
-    };
-    const insertion = {
-      type: "insert" as const,
-      key: Buffer.from("0405", "hex"),
-      value: Buffer.from("060708", "hex"),
-      proofDescriptor,
-    };
-    expect(
-      hashMidgardValidationLedgerDeltaOperation(deletion).toString("hex"),
-    ).toBe("d70952a4347195627444cfbb1874f6857de1ad78f095460b76fc826cd267a589");
-    expect(
-      hashMidgardValidationLedgerDeltaOperation(insertion).toString("hex"),
-    ).toBe("f8bc7029f5f58f0436ebdf6cbbb85bd9adac05d5f6dc1b9238c8166a517aa8db");
-    expect(
-      hashMidgardValidationLedgerDelta([deletion, insertion]).toString("hex"),
-    ).toBe("b6d017c71f3fc974f620b22764385bf9ad56ee5627009e57dbeb9418e486dcb2");
-  });
-
   it("round-trips and hashes exact machine states", () => {
     const expected = state({
       sourceKind: "forced",
@@ -100,11 +68,11 @@ describe("validation trace commitments", () => {
     });
     const encoded = encodeMidgardValidationMachineState(expected);
     expect(encoded.toString("hex")).toBe(
-      "8f015820010101010101010101010101010101010101010101010101010101010101010158200202020202020202020202020202020202020202020202020202020202020202582003030303030303030303030303030303030303030303030303030303030303035820040404040404040404040404040404040404040404040404040404040404040401582005050505050505050505050505050505050505050505050505050505050505050b1158200606060606060606060606060606060606060606060606060606060606060606187b182d005820000000000000000000000000000000000000000000000000000000000000000058200707070707070707070707070707070707070707070707070707070707070707",
+      "8e015820010101010101010101010101010101010101010101010101010101010101010158200202020202020202020202020202020202020202020202020202020202020202582003030303030303030303030303030303030303030303030303030303030303035820040404040404040404040404040404040404040404040404040404040404040401582005050505050505050505050505050505050505050505050505050505050505050b1158200606060606060606060606060606060606060606060606060606060606060606187b182d0058200000000000000000000000000000000000000000000000000000000000000000",
     );
     expect(decodeMidgardValidationMachineState(encoded)).toEqual(expected);
     expect(hashMidgardValidationMachineState(expected).toString("hex")).toBe(
-      "fa9598fae21355bd529770b1c2c750ace65d721ada641bec6bd5f87a22c18088",
+      "fae79f2d6059b1b07f78119d37a1a6a8004db1fb66faa5224f99a5581c2eb104",
     );
     expect(
       hashMidgardValidationMachineState({
@@ -173,12 +141,12 @@ describe("validation trace commitments", () => {
         schemaVersion: MIDGARD_VALIDATION_TRACE_DESCRIPTOR_VERSION,
         machineVersion: MIDGARD_VALIDATION_MACHINE_VERSION,
         traceRoot: Buffer.from(
-          "c6760a9266746c67578026b6d44e533ae8390264d227a9649e6558a3d70970eb",
+          "434f72181d374538569f6b5ac8ae5c587a993cf00a9fda7330333b5fb4ddb9d7",
           "hex",
         ),
         stepCount: 1,
         initialStateHash: Buffer.from(
-          "fa9598fae21355bd529770b1c2c750ace65d721ada641bec6bd5f87a22c18088",
+          "fae79f2d6059b1b07f78119d37a1a6a8004db1fb66faa5224f99a5581c2eb104",
           "hex",
         ),
         terminalStateHash: hash(9),
@@ -186,7 +154,7 @@ describe("validation trace commitments", () => {
         rejectionCodeHash: hash(8),
       }).toString("hex"),
     ).toBe(
-      "8801015820c6760a9266746c67578026b6d44e533ae8390264d227a9649e6558a3d70970eb015820fa9598fae21355bd529770b1c2c750ace65d721ada641bec6bd5f87a22c18088582009090909090909090909090909090909090909090909090909090909090909090258200808080808080808080808080808080808080808080808080808080808080808",
+      "8801015820434f72181d374538569f6b5ac8ae5c587a993cf00a9fda7330333b5fb4ddb9d7015820fae79f2d6059b1b07f78119d37a1a6a8004db1fb66faa5224f99a5581c2eb104582009090909090909090909090909090909090909090909090909090909090909090258200808080808080808080808080808080808080808080808080808080808080808",
     );
   });
 
@@ -206,7 +174,6 @@ describe("validation trace commitments", () => {
       0n,
       0n,
       MIDGARD_VALIDATION_NO_REJECTION_CODE_HASH,
-      hash(7),
     ];
     expect(() =>
       decodeMidgardValidationMachineState(encodeCbor(encodedState)),
@@ -220,7 +187,7 @@ describe("validation trace commitments", () => {
       decodeMidgardValidationMachineState(
         encodeCbor(encodedState.slice(0, -1)),
       ),
-    ).toThrow(/exactly 15 fields/u);
+    ).toThrow(/exactly 14 fields/u);
 
     const tree = buildMidgardValidationTraceTree([hash(1)], "accepted");
     const descriptor = [

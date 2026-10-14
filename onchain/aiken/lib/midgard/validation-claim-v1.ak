@@ -142,7 +142,6 @@ fn immutable_context_matches(
     initial.validation_context_hash == terminal.validation_context_hash,
     initial.source_kind == terminal.source_kind,
     initial.prior_ledger_root == terminal.prior_ledger_root,
-    initial.ledger_delta_root == terminal.ledger_delta_root,
   }
 }
 

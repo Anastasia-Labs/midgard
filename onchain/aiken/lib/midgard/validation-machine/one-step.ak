@@ -4,7 +4,6 @@ use midgard/validation_machine/canonical_decode.{
 }
 use midgard/validation_machine/cek.{verify_cek}
 use midgard/validation_machine/input_sets.{verify_input_sets}
-use midgard/validation_machine/ledger_delta.{verify_ledger_delta}
 use midgard/validation_machine/machine_types.{
   NoAuxiliaryWitness, ValidationAuxiliaryWitnessV1, ValidationOneStepEvidenceV1,
   ValidationOneStepWitnessV1,
@@ -73,8 +72,6 @@ fn verify_one_step_with_auxiliary(
         verify_script_integrity(pre, witness, auxiliary)
       validation_trace_v1.Cek ->
         verify_cek(pre, witness, auxiliary, door, slot_config)
-      validation_trace_v1.LedgerDelta ->
-        verify_ledger_delta(pre, witness, auxiliary)
       validation_trace_v1.Terminal -> False
     },
   }

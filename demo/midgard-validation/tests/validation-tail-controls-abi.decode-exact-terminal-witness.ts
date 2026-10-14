@@ -1,5 +1,4 @@
 import {
-  decodeSingleCbor,
   encodeCborArrayRaw,
   encodeCborBytes,
   encodeCborInteger,
@@ -20,44 +19,45 @@ export const terminalRejectionCbor = encodeValidationTerminalWitnessCbor({
 });
 
 /**
- * Independent decoder for the V1 terminal witness
- * `[outcome, reason_or_empty, ledger_root, delta_evidence]`: element 1 is
- * the empty byte string on acceptance and the Plutus Data `RejectionReasonV1`
- * on rejection, so it is read structurally rather than as a byte string.
+ * Independent decoder for the V1 terminal witness. Acceptance is exactly
+ * `[1, h'']`; rejection is `[2, reason, prior_ledger_root, h'80']`, where
+ * element 1 is the Plutus Data `RejectionReasonV1` and so is read
+ * structurally rather than as a byte string.
  */
 export const decodeExactTerminalWitness = (
   input: Uint8Array,
-): {
-  readonly outcome: "accepted" | "rejected";
-  readonly ledgerRoot: Buffer;
-} => {
+):
+  | { readonly outcome: "accepted" }
+  | { readonly outcome: "rejected"; readonly ledgerRoot: Buffer } => {
   const encoded = Buffer.from(input);
   const header = readCborArrayHeader(encoded, 0, "terminal witness");
-  if (header.length !== 4) {
-    throw new Error("terminal witness must contain exactly four fields");
-  }
   const outcome = readCborInteger(encoded, header.nextOffset, "outcome");
-  const elementOneOffset = outcome.nextOffset;
-  let rootOffset: number;
-  let reasonItem: Buffer;
   if (outcome.value === 1n) {
-    const empty = readCborBytes(encoded, elementOneOffset, "rejection slot");
-    if (empty.value.length !== 0) {
-      throw new Error("accepted terminal witness cannot carry a rejection");
+    if (header.length !== 2) {
+      throw new Error("accepted terminal witness must contain two fields");
     }
-    rootOffset = empty.nextOffset;
-    reasonItem = encodeCborBytes(Buffer.alloc(0));
-  } else if (outcome.value === 2n) {
-    const reason = decodeMidgardRejectionReasonV1Cbor(
-      encoded,
-      elementOneOffset,
-    );
-    rootOffset = reason.nextOffset;
-    reasonItem = encoded.subarray(elementOneOffset, reason.nextOffset);
-  } else {
+    const empty = readCborBytes(encoded, outcome.nextOffset, "acceptance slot");
+    if (empty.value.length !== 0) {
+      throw new Error("accepted terminal witness cannot carry a payload");
+    }
+    if (empty.nextOffset !== encoded.length) {
+      throw new Error("terminal witness has trailing bytes");
+    }
+    if (!bytes("820140").equals(encoded)) {
+      throw new Error("terminal witness CBOR is not canonical");
+    }
+    return { outcome: "accepted" };
+  }
+  if (outcome.value !== 2n) {
     throw new Error("terminal witness outcome is not canonical V1");
   }
-  const ledgerRoot = readCborBytes(encoded, rootOffset, "ledger root");
+  if (header.length !== 4) {
+    throw new Error("rejected terminal witness must contain four fields");
+  }
+  const elementOneOffset = outcome.nextOffset;
+  const reason = decodeMidgardRejectionReasonV1Cbor(encoded, elementOneOffset);
+  const reasonItem = encoded.subarray(elementOneOffset, reason.nextOffset);
+  const ledgerRoot = readCborBytes(encoded, reason.nextOffset, "ledger root");
   if (ledgerRoot.value.length !== 32) {
     throw new Error("terminal witness ledger root must contain 32 bytes");
   }
@@ -66,17 +66,7 @@ export const decodeExactTerminalWitness = (
     throw new Error("terminal witness has trailing bytes");
   }
   const exactEvidence = Buffer.from(evidence.value);
-  if (outcome.value === 1n) {
-    const frontier = decodeSingleCbor(exactEvidence);
-    if (
-      !Array.isArray(frontier) ||
-      frontier.length !== 2 ||
-      (typeof frontier[0] !== "bigint" && typeof frontier[0] !== "number") ||
-      !Array.isArray(frontier[1])
-    ) {
-      throw new Error("accepted terminal witness frontier is malformed");
-    }
-  } else if (!exactEvidence.equals(bytes("80"))) {
+  if (!exactEvidence.equals(bytes("80"))) {
     throw new Error("rejected terminal witness is misclassified");
   }
   const exactRoot = Buffer.from(ledgerRoot.value);
@@ -89,30 +79,23 @@ export const decodeExactTerminalWitness = (
   if (!canonical.equals(encoded)) {
     throw new Error("terminal witness CBOR is not canonical");
   }
-  return {
-    outcome: outcome.value === 1n ? "accepted" : "rejected",
-    ledgerRoot: exactRoot,
-  };
+  return { outcome: "rejected", ledgerRoot: exactRoot };
 };
 
 export const EXPECTED = {
   auxiliaryCorpusHash:
-    "544436205849eb463fb2c0c4d4fcc461ff9d38fd44ad1c55d4107ff8f616f761",
+    "3114ba14053a9ef071a2e5953f5d6006fff6bcf7e7482685f88a408e67d58e79",
   valueAccumulatorCbor:
     "8407582054545454545454545454545454545454545454545454545454545454545454540201",
   valueAndMintControlHash:
     "d30dfeaa4f1f3323bf2824a1051ef943fee27a31779e171678abe4c05ba2b2e0",
-  pendingMutationCbor: "8a01000142010242030445840100008020404000",
-  ledgerDeltaControlHash:
-    "92e07c0c935ac73750a521ed638aed060414828d766774495885b56a04f5481b",
   // Independent Aiken vectors: validation-tail-controls-v1-abi.test.ak,
   // terminal_acceptance_and_rejection_v1_typescript_vectors_are_exact.
-  terminalAcceptanceCbor:
-    "840140582072727272727272727272727272727272727272727272727272727272727272725827820281820158207171717171717171717171717171717171717171717171717171717171717171",
+  terminalAcceptanceCbor: "820140",
   terminalAcceptanceHash:
-    "0b3defd802c8cc6ee1112724ef19532be5b8f61817ab0282a56db645a2b20948",
+    "a4dff8274189cdb6a72ea715f28b42d5170fe475698db83ad9d84e82545ce981",
   terminalRejectionCbor:
     "8402d9052780582073737373737373737373737373737373737373737373737373737373737373734180",
   terminalRejectionHash:
-    "02d93f94e5c0247ed5c22e07812312ea6537ee4dd080a639361b1818d3e746d8",
+    "f7392de043bf5fa859d1162c1c7cd3e8ef24dc252a48970e743b1b8c3b9b10c1",
 } as const;

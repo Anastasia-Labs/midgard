@@ -21,20 +21,18 @@ use midgard/fraud_proofs/native_tx/types.{
 use midgard/ledger_output_commitment_v1
 use midgard/ledger_output_proof_v1
 use midgard/ledger_output_v1
-use midgard/mpf_proof_fold_v1
 use midgard/native_script_scan_v1
 use midgard/native_tx_field_access_v1
 use midgard/validation_machine/machine_types.{
   CanonicalDecodeControlV1, CekContextControlV1, CekContextPartsControlV1,
   CekFinalContextControlV1, CekRedeemerContextControlV1,
   CekTxInfoAssemblyControlV1, CekWitnessControlV1, InlineSourceHashControlV1,
-  InputSetsControlV1, LedgerDeltaControlV1, LedgerDeltaPendingMutationV1,
-  MintFoldControlV1, NativeScriptsControlV1, ObserverPurposeScanControlV1,
-  PhaseANativeScriptsControlV1, PhaseAScriptPreconditionsControlV1,
-  ReceivePurposeScanControlV1, ResolveInputOutputProofV1, ResolveInputsControlV1,
-  ScheduledInputV1, ScriptDiscoveryControlV1, ScriptSourcesControlV1,
-  SignaturesControlV1, ValidationOneStepWitnessV1, ValueAccumulatorV1,
-  ValueAndMintControlV1,
+  InputSetsControlV1, MintFoldControlV1, NativeScriptsControlV1,
+  ObserverPurposeScanControlV1, PhaseANativeScriptsControlV1,
+  PhaseAScriptPreconditionsControlV1, ReceivePurposeScanControlV1,
+  ResolveInputOutputProofV1, ResolveInputsControlV1, ScheduledInputV1,
+  ScriptDiscoveryControlV1, ScriptSourcesControlV1, SignaturesControlV1,
+  ValidationOneStepWitnessV1, ValueAccumulatorV1, ValueAndMintControlV1,
 }
 use midgard/validation_machine/shared.{
   finalize_cek_observer_items_v1, max_aggregate_field_preimage_bytes,
@@ -3835,208 +3833,6 @@ pub fn encode_value_and_mint_witness_v1(
   )
 }
 
-fn ledger_delta_proof_descriptor_from_cbor(
-  descriptor_cbor: ByteArray,
-) -> mpf_proof_fold_v1.ProofDescriptorV1 {
-  expect Some(data) = cbor.deserialise(descriptor_cbor)
-  expect
-      [
-        version_data, frame_count_data, terminal_cursor_data,
-        operation_peaks_data,
-      ]
-    = builtin.un_list_data(data)
-  let descriptor = mpf_proof_fold_v1.ProofDescriptorV1 {
-    version: builtin.un_i_data(version_data),
-    frame_count: builtin.un_i_data(frame_count_data),
-    terminal_cursor: builtin.un_i_data(terminal_cursor_data),
-    peaks: decode_frontier_peaks(operation_peaks_data),
-  }
-  expect
-    descriptor_cbor == mpf_proof_fold_v1.encode_proof_descriptor_v1(descriptor)
-  descriptor
-}
-
-pub fn encode_ledger_delta_pending_mutation_v1(
-  pending: LedgerDeltaPendingMutationV1,
-) -> ByteArray {
-  encode_definite_array_header(10)
-    |> bytearray.concat(cbor.serialise(1))
-    |> bytearray.concat(cbor.serialise(pending.authorization_stage))
-    |> bytearray.concat(cbor.serialise(pending.operation_kind))
-    |> bytearray.concat(encode_definite_bytes(pending.key))
-    |> bytearray.concat(encode_definite_bytes(pending.value))
-    |> bytearray.concat(
-        encode_definite_bytes(
-          mpf_proof_fold_v1.encode_proof_descriptor_v1(pending.descriptor),
-        ),
-      )
-    |> bytearray.concat(cbor.serialise(pending.fold_control.next_frame_index))
-    |> bytearray.concat(
-        encode_definite_bytes(pending.fold_control.including_root),
-      )
-    |> bytearray.concat(
-        encode_definite_bytes(pending.fold_control.excluding_root),
-      )
-    |> bytearray.concat(
-        cbor.serialise(pending.fold_control.expected_next_cursor),
-      )
-}
-
-pub fn ledger_delta_pending_mutation_from_cbor(
-  pending_cbor: ByteArray,
-) -> LedgerDeltaPendingMutationV1 {
-  expect Some(data) = cbor.deserialise(pending_cbor)
-  expect
-      [
-        version_data, authorization_stage_data, operation_kind_data, key_data,
-        value_data, descriptor_cbor_data, next_frame_index_data,
-        including_root_data, excluding_root_data, expected_next_cursor_data,
-      ]
-    = builtin.un_list_data(data)
-  expect builtin.un_i_data(version_data) == 1
-  let pending = LedgerDeltaPendingMutationV1 {
-    authorization_stage: builtin.un_i_data(authorization_stage_data),
-    operation_kind: builtin.un_i_data(operation_kind_data),
-    key: builtin.un_b_data(key_data),
-    value: builtin.un_b_data(value_data),
-    descriptor: ledger_delta_proof_descriptor_from_cbor(
-      builtin.un_b_data(descriptor_cbor_data),
-    ),
-    fold_control: mpf_proof_fold_v1.ProofFoldControlV1 {
-      next_frame_index: builtin.un_i_data(next_frame_index_data),
-      expected_next_cursor: builtin.un_i_data(expected_next_cursor_data),
-      including_root: builtin.un_b_data(including_root_data),
-      excluding_root: builtin.un_b_data(excluding_root_data),
-    },
-  }
-  expect
-    if pending.authorization_stage == 0 {
-      and {
-        pending.fold_control.next_frame_index == -1,
-        pending.fold_control.expected_next_cursor == 0,
-        pending.fold_control.including_root == #"",
-        pending.fold_control.excluding_root == #"",
-      }
-    } else {
-      pending.authorization_stage == 1
-    }
-  expect pending.operation_kind == 0 || pending.operation_kind == 1
-  expect pending_cbor == encode_ledger_delta_pending_mutation_v1(pending)
-  pending
-}
-
-pub fn encode_ledger_delta_control_v1(
-  control: LedgerDeltaControlV1,
-) -> ByteArray {
-  encode_definite_array_header(14)
-    |> bytearray.concat(cbor.serialise(control.resolved_input_count))
-    |> bytearray.concat(
-        encode_definite_bytes(control.resolved_inputs_accumulator),
-      )
-    |> bytearray.concat(cbor.serialise(control.output_count))
-    |> bytearray.concat(
-        validation_merkle_v1.encode_frontier(control.output_descriptor_peaks),
-      )
-    |> bytearray.concat(cbor.serialise(control.stage))
-    |> bytearray.concat(encode_definite_bytes(control.replay_schedule_hash))
-    |> bytearray.concat(cbor.serialise(control.replay_cursor))
-    |> bytearray.concat(encode_definite_bytes(control.replay_accumulator))
-    |> bytearray.concat(
-        encode_definite_bytes(control.replay_remaining_schedule_hash),
-      )
-    |> bytearray.concat(encode_definite_bytes(control.current_ledger_root))
-    |> bytearray.concat(cbor.serialise(control.output_cursor))
-    |> bytearray.concat(cbor.serialise(control.operation_count))
-    |> bytearray.concat(encode_definite_bytes(control.pending_mutation_cbor))
-    |> bytearray.concat(
-        validation_merkle_v1.encode_frontier(control.operation_peaks),
-      )
-}
-
-pub fn ledger_delta_control_from_witness(
-  work_witness_cbor: ByteArray,
-) -> LedgerDeltaControlV1 {
-  expect Some(data) = cbor.deserialise(work_witness_cbor)
-  expect
-      [
-        resolved_input_count_data, resolved_inputs_accumulator_data,
-        output_count_data, output_descriptor_peaks_data, stage_data,
-        replay_schedule_hash_data, replay_cursor_data, replay_accumulator_data,
-        replay_remaining_schedule_hash_data, current_ledger_root_data,
-        output_cursor_data, operation_count_data, pending_mutation_cbor_data,
-        operation_peaks_data,
-      ]
-    = builtin.un_list_data(data)
-  LedgerDeltaControlV1 {
-    resolved_input_count: builtin.un_i_data(resolved_input_count_data),
-    resolved_inputs_accumulator: builtin.un_b_data(
-      resolved_inputs_accumulator_data,
-    ),
-    output_count: builtin.un_i_data(output_count_data),
-    output_descriptor_peaks: decode_frontier_peaks(output_descriptor_peaks_data),
-    stage: builtin.un_i_data(stage_data),
-    replay_schedule_hash: builtin.un_b_data(replay_schedule_hash_data),
-    replay_cursor: builtin.un_i_data(replay_cursor_data),
-    replay_accumulator: builtin.un_b_data(replay_accumulator_data),
-    replay_remaining_schedule_hash: builtin.un_b_data(
-      replay_remaining_schedule_hash_data,
-    ),
-    current_ledger_root: builtin.un_b_data(current_ledger_root_data),
-    output_cursor: builtin.un_i_data(output_cursor_data),
-    operation_count: builtin.un_i_data(operation_count_data),
-    operation_peaks: decode_frontier_peaks(operation_peaks_data),
-    pending_mutation_cbor: builtin.un_b_data(pending_mutation_cbor_data),
-  }
-}
-
-pub fn encode_ledger_delta_witness_v1(
-  native_control: NativeScriptsControlV1,
-  prior_ledger_root: ByteArray,
-  replay_schedule_hash: ByteArray,
-) -> ByteArray {
-  expect bytearray.length(prior_ledger_root) == 32
-  expect bytearray.length(replay_schedule_hash) == 32
-  encode_ledger_delta_control_v1(
-    LedgerDeltaControlV1 {
-      resolved_input_count: native_control.resolved_input_count,
-      resolved_inputs_accumulator: native_control.resolved_inputs_accumulator,
-      output_count: native_control.output_count,
-      output_descriptor_peaks: native_control.output_descriptor_peaks,
-      stage: 0,
-      replay_schedule_hash,
-      replay_cursor: 0,
-      replay_accumulator: initial_resolution_accumulator(),
-      replay_remaining_schedule_hash: replay_schedule_hash,
-      current_ledger_root: prior_ledger_root,
-      output_cursor: 0,
-      operation_count: 0,
-      operation_peaks: [],
-      pending_mutation_cbor: #"",
-    },
-  )
-}
-
-pub fn encode_terminal_acceptance_witness_v1(
-  post_ledger_root: ByteArray,
-  operation_count: Int,
-  operation_peaks: List<validation_merkle_v1.FrontierPeak>,
-) -> ByteArray {
-  expect bytearray.length(post_ledger_root) == 32
-  expect
-    validation_merkle_v1.frontier_is_well_formed(
-      operation_count,
-      operation_peaks,
-    )
-  let frontier_cbor = #"82"
-    |> bytearray.concat(cbor.serialise(operation_count))
-    |> bytearray.concat(validation_merkle_v1.encode_frontier(operation_peaks))
-  #"84"
-    |> bytearray.concat(cbor.serialise(1))
-    |> bytearray.concat(encode_definite_bytes(#""))
-    |> bytearray.concat(encode_definite_bytes(post_ledger_root))
-    |> bytearray.concat(encode_definite_bytes(frontier_cbor))
-}
-
 pub fn cek_witness_control_v1(
   witness: ValidationOneStepWitnessV1,
 ) -> CekWitnessControlV1 {
@@ -4148,38 +3944,4 @@ pub fn cek_control_is_context_step_v1(cek: CekWitnessControlV1) -> Bool {
 
 pub fn cek_control_is_core_step_v1(cek: CekWitnessControlV1) -> Bool {
   cek.active_state_hash != #""
-}
-
-pub fn ledger_delta_control_is_well_formed(
-  witness: ValidationOneStepWitnessV1,
-  control: LedgerDeltaControlV1,
-) -> Bool {
-  and {
-    control.resolved_input_count >= 0,
-    control.resolved_input_count <= max_tx_size_derived_collection_item_count,
-    bytearray.length(control.resolved_inputs_accumulator) == 32,
-    control.output_count >= 0,
-    control.output_count <= max_tx_size_derived_collection_item_count,
-    validation_merkle_v1.frontier_is_well_formed(
-      control.output_count,
-      control.output_descriptor_peaks,
-    ),
-    bytearray.length(control.replay_schedule_hash) == 32,
-    bytearray.length(control.replay_accumulator) == 32,
-    bytearray.length(control.replay_remaining_schedule_hash) == 32,
-    bytearray.length(control.current_ledger_root) == 32,
-    control.replay_cursor >= 0,
-    control.replay_cursor <= control.resolved_input_count,
-    control.output_cursor >= 0,
-    control.output_cursor <= control.output_count,
-    control.operation_count >= 0,
-    control.operation_count <= max_tx_size_derived_collection_item_count,
-    validation_merkle_v1.frontier_is_well_formed(
-      control.operation_count,
-      control.operation_peaks,
-    ),
-    control.stage >= 0,
-    control.stage <= 2,
-    witness.work_witness_cbor == encode_ledger_delta_control_v1(control),
-  }
 }

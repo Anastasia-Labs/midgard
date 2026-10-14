@@ -66,7 +66,6 @@ fn pre(compact: ByteArray) -> validation_trace.ValidationMachineStateV1 {
     execution_memory: 0,
     verdict: validation_trace.Pending,
     rejection_code_hash: h,
-    ledger_delta_root: h,
   }
 }
 

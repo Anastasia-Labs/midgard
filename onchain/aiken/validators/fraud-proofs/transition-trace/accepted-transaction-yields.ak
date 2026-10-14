@@ -1,4 +1,3 @@
-use aiken/builtin
 use aiken/cbor
 use aiken/collection/list
 use aiken/crypto.{ScriptHash, blake2b_256}
@@ -19,7 +18,6 @@ use midgard/fraud_proofs/transition_trace/proof
 use midgard/fraud_proofs/transition_trace/proof_carriage
 use midgard/ledger_state
 use midgard/transition_trace.{IndexedTraceProof, RootMembershipProof}
-use midgard/validation_claim_v1
 
 validator l2_open(dispatcher: ScriptHash) {
   withdraw(opened: OpenedOutputs, _credential: Credential, tx: Transaction) {
@@ -200,93 +198,6 @@ validator l2_replay(dispatcher: ScriptHash) {
         },
       )
     }
-  }
-
-  else(_) {
-    fail
-  }
-}
-
-fn claim(
-  dispatcher: ScriptHash,
-  tx: Transaction,
-) -> (ledger_state.HeaderV1, validation_claim_v1.ValidationClaimWitnessV1) {
-  let (header_data, fault, _) = dispatched(
-    dispatcher,
-    tx.inputs,
-    tx.redeemers,
-    tx.reference_inputs,
-  )
-  expect builtin.unconstr_index(fault) == 9
-  expect [witness] = builtin.unconstr_fields(fault)
-  expect [claim_data, _] = builtin.unconstr_fields(witness)
-  expect header: ledger_state.HeaderV1 = header_data
-  expect claim: validation_claim_v1.ValidationClaimWitnessV1 = claim_data
-  (header, claim)
-}
-
-validator claim_structure(dispatcher: ScriptHash) {
-  withdraw(_redeemer: Data, _credential: Credential, tx: Transaction) {
-    let (header, witness) = claim(dispatcher, tx)
-    expect
-      validation_claim_v1.committed_claim_structure_is_valid(header, witness)
-    let (datum, args) = delegation.dispatch(dispatcher, tx.inputs, tx.redeemers)
-    expect Some(state) = datum.data
-    expect state.kind == 2 && state.phase == 0
-    delegation.advance(
-      datum,
-      args,
-      tx.outputs,
-      delegation.State { ..state, phase: 1 },
-    )
-  }
-
-  else(_) {
-    fail
-  }
-}
-
-validator claim_source(dispatcher: ScriptHash) {
-  withdraw(_redeemer: Data, _credential: Credential, tx: Transaction) {
-    let (header, witness) = claim(dispatcher, tx)
-    expect
-      validation_claim_v1.committed_claim_source_is_authenticated(
-        header,
-        witness,
-      )
-    let (datum, args) = delegation.dispatch(dispatcher, tx.inputs, tx.redeemers)
-    expect Some(state) = datum.data
-    expect state.kind == 2 && state.phase == 1
-    delegation.advance(
-      datum,
-      args,
-      tx.outputs,
-      delegation.State { ..state, phase: 2 },
-    )
-  }
-
-  else(_) {
-    fail
-  }
-}
-
-validator claim_endpoints(dispatcher: ScriptHash) {
-  withdraw(_redeemer: Data, _credential: Credential, tx: Transaction) {
-    let (header, witness) = claim(dispatcher, tx)
-    expect
-      validation_claim_v1.committed_claim_endpoints_and_source_are_valid(
-        header,
-        witness,
-      )
-    let (datum, args) = delegation.dispatch(dispatcher, tx.inputs, tx.redeemers)
-    expect Some(state) = datum.data
-    expect state.kind == 2 && state.phase == 2
-    delegation.advance(
-      datum,
-      args,
-      tx.outputs,
-      delegation.State { ..state, phase: 3 },
-    )
   }
 
   else(_) {

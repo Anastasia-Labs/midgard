@@ -78,7 +78,6 @@ import {
 import { proveAfterForgedWalk } from "./transition-trace-final-cases.forged-walk.js";
 import { type TransitionTraceFinalCase } from "./transition-trace-final-cases.types.js";
 import {
-  buildAcceptedClaimTransitionFixture,
   buildAcceptedTransitionFixture,
   buildDepositTransitionFixture,
 } from "./transition-trace-final-fixtures.js";
@@ -378,13 +377,6 @@ export const registerTransitionTraceFinalCases = (
           operatorVkey: funderPaymentCredential.hash,
           now: headerStartTime,
         });
-        if (kind === "claim")
-          traceFixture = await buildAcceptedClaimTransitionFixture({
-            operatorVkey: funderPaymentCredential.hash,
-            now: headerStartTime,
-            honest,
-            drained,
-          });
         const additionalReferenceInputs: UTxO[] = [];
         let depositOpening: TransitionDepositOpening | undefined;
         if (kind === "deposit") {

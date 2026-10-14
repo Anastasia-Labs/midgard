@@ -51,7 +51,6 @@ export {
   TransitionTraceStepDatumSchema,
 } from "./transition-trace.transition-fault-schema.js";
 export {
-  acceptedTransactionTransitionMismatchFault,
   countFault,
   duplicateTraceEventFault,
   eventToStepMismatchFault,

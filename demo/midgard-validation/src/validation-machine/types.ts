@@ -6,12 +6,10 @@ import {
   type MidgardBoundedItemChunkProof,
   type MidgardConsensusProfile,
   type MidgardLedgerOutputProofWitness,
-  type MidgardMpfProofFrame,
   type MidgardRedeemerItemProofControl,
   type MidgardRedeemerItemProofWitness,
   type MidgardValidationMachineState,
   type MidgardValidationMerkleFrontier,
-  type MidgardValidationMerkleMembership,
   type MidgardValidationPhaseName,
   type MidgardValidationTraceTree,
 } from "@al-ft/midgard-core";
@@ -393,34 +391,6 @@ export type ValidationMachineWorkWitness = {
         readonly quantity: bigint;
         readonly siblings: readonly Buffer[];
         readonly mutationStep: ValidationMachineValueMutationStep;
-      }
-    | {
-        readonly kind: "ledgerDeltaOperation";
-        readonly operationKind: "delete" | "insert";
-        readonly key: Buffer;
-        readonly value: Buffer;
-        readonly mutationStep: ValidationMachineLedgerMutationStep;
-        readonly operationMembership: MidgardValidationMerkleMembership;
-      }
-    | {
-        readonly kind: "ledgerDeltaReplay";
-        readonly sourceKind: "spend" | "reference";
-        readonly key: Buffer;
-        readonly nextScheduleHash: Buffer;
-        readonly value: Buffer;
-      }
-    | {
-        readonly kind: "ledgerDeltaOutput";
-        readonly outputIndex: number;
-        readonly descriptorCbor: Buffer;
-        readonly siblings: readonly Buffer[];
-      }
-    | {
-        readonly kind: "ledgerDeltaProofFrame";
-        readonly frame: MidgardMpfProofFrame;
-        readonly siblings: readonly Buffer[];
-        /** A deletion's terminal-Branch group opening, else empty. */
-        readonly opening: Buffer;
       }
     | {
         readonly kind: "cekRedeemerContextSkip";

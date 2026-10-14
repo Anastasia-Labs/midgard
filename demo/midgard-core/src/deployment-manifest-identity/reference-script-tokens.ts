@@ -526,12 +526,6 @@ export const DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_TOKEN_NAMES = Object.freeze({
     "V1FpTtF4L2SummariesYield",
   "V1 fraud-proof transition-trace final-4 L2 replay yield":
     "V1FpTtF4L2ReplayYield",
-  "V1 fraud-proof transition-trace final-4 claim structure yield":
-    "V1FpTtF4ClaimStructYield",
-  "V1 fraud-proof transition-trace final-4 claim source yield":
-    "V1FpTtF4ClaimSourceYield",
-  "V1 fraud-proof transition-trace final-4 claim endpoints yield":
-    "V1FpTtF4ClaimEndsYield",
   "V1 fraud-proof transition-trace final-5 projection yield":
     "V1FpTtF5ProjectionYield",
   "V1 fraud-proof transition-trace final-6 L1 event yield":
