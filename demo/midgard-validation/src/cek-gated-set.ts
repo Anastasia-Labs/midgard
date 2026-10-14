@@ -1,11 +1,16 @@
 import {
   type Data,
+  DataB,
   DataConstr,
   DataI,
   DataList,
 } from "@harmoniclabs/plutus-data";
 
-import { type MidgardCekConstantWitness } from "./cek-constant.js";
+import { type MidgardCekDirectValueWitness } from "./cek-builtin.argument-kinds.js";
+import {
+  decodeMidgardCekConstantWitness,
+  type MidgardCekConstantWitness,
+} from "./cek-constant.js";
 import { type MidgardCekCoreStepWitness } from "./cek-machine.js";
 import { plutusDataFromCborIterative } from "./plutus-data-iterative.decode.js";
 import { isPlutusDataMap } from "./plutus-data-narrowing.js";
@@ -145,13 +150,108 @@ const payloadIsDecodable = (payloadCbor: Uint8Array): boolean => {
   return true;
 };
 
+/**
+ * A failure step the on-chain verifier cannot prove. Refused like a step
+ * outside the gated set.
+ */
+export class MidgardCekUnprovableBuiltinFailure extends MidgardCekOutsideGatedSet {
+  constructor(gatedSetVersion: number, builtin: number) {
+    super(gatedSetVersion, "executeBuiltinFailure", builtin);
+    this.message = `CEK builtin ${builtin.toString(10)} failure is outside what the on-chain verifier proves`;
+    this.name = "MidgardCekUnprovableBuiltinFailure";
+  }
+}
+
+const G1_UNCOMPRESS_TAG = 60;
+const G2_UNCOMPRESS_TAG = 67;
+const BLS12_381_FIELD_PRIME =
+  0x1a0111ea397fe69a4b1ba7b6434bacd764774b84f38512bf6730d2a0f6b0f6241eabfffeb153ffffb9feffffffffaaabn;
+
+const bigEndian = (bytes: Uint8Array): bigint =>
+  bytes.reduce((value, byte) => (value << 8n) | BigInt(byte), 0n);
+
+const modularPower = (base: bigint, exponent: bigint, modulus: bigint) => {
+  let result = 1n;
+  let square = base % modulus;
+  for (let rest = exponent; rest > 0n; rest >>= 1n) {
+    if ((rest & 1n) === 1n) result = (result * square) % modulus;
+    square = (square * square) % modulus;
+  }
+  return result;
+};
+
+/**
+ * Whether a compressed encoding's flags or coordinates are invalid, as the
+ * on-chain failure proof reads them.
+ */
+const blsHeaderIsInvalid = (encoded: Uint8Array): boolean => {
+  const first = encoded[0] ?? 0;
+  const firstCoordinate = bigEndian(
+    Uint8Array.of(first % 32, ...encoded.subarray(1, 48)),
+  );
+  const secondCoordinate = bigEndian(encoded.subarray(48, 96));
+  if (first < 128) return true;
+  if (first % 128 >= 64) {
+    return (
+      first % 64 >= 32 || firstCoordinate !== 0n || secondCoordinate !== 0n
+    );
+  }
+  return (
+    firstCoordinate >= BLS12_381_FIELD_PRIME ||
+    secondCoordinate >= BLS12_381_FIELD_PRIME
+  );
+};
+
+/** Whether a G1 encoding's x has no point on the curve y^2 = x^3 + 4. */
+const blsG1IsOffCurve = (encoded: Uint8Array): boolean => {
+  const first = encoded[0] ?? 0;
+  if (first % 128 >= 64) return false;
+  const x = bigEndian(Uint8Array.of(first % 32, ...encoded.subarray(1, 48)));
+  const ySquared = (x * x * x + 4n) % BLS12_381_FIELD_PRIME;
+  return (
+    ySquared !== 0n &&
+    modularPower(
+      ySquared,
+      (BLS12_381_FIELD_PRIME - 1n) / 2n,
+      BLS12_381_FIELD_PRIME,
+    ) !== 1n
+  );
+};
+
+/**
+ * Whether the on-chain verifier proves a BLS uncompress failure on
+ * `argument`: for G1 a wrong length, an invalid header or a point off the
+ * curve; for G2 a wrong length or an invalid header. Every other builtin
+ * failure is outside this screen.
+ */
+const builtinFailureIsProvable = (
+  tag: number,
+  arguments_: readonly MidgardCekDirectValueWitness[],
+): boolean => {
+  if (tag !== G1_UNCOMPRESS_TAG && tag !== G2_UNCOMPRESS_TAG) return true;
+  const [argument] = arguments_;
+  if (arguments_.length !== 1 || argument?.kind !== "constant") return false;
+  const { payload } = decodeMidgardCekConstantWitness(argument.witness);
+  if (!(payload instanceof DataB)) return false;
+  const encoded = payload.bytes;
+  if (tag === G1_UNCOMPRESS_TAG) {
+    return (
+      encoded.length !== 48 ||
+      blsHeaderIsInvalid(encoded) ||
+      blsG1IsOffCurve(encoded)
+    );
+  }
+  return encoded.length !== 96 || blsHeaderIsInvalid(encoded);
+};
+
 /** A gated set prepared for per-step lookups. */
 export type MidgardCekStepScreen = (witness: MidgardCekCoreStepWitness) => void;
 
 /**
- * Throws `MidgardCekOutsideGatedSet` on a step outside `set`, and
+ * Throws `MidgardCekOutsideGatedSet` on a step outside `set`,
  * `MidgardCekUndecodableStepWitness` on a step whose witnesses the on-chain
- * verifier cannot decode.
+ * verifier cannot decode, and `MidgardCekUnprovableBuiltinFailure` on a
+ * builtin failure the on-chain verifier cannot prove.
  */
 export const midgardCekStepScreen = (
   set: MidgardCekGatedSet,
@@ -167,6 +267,15 @@ export const midgardCekStepScreen = (
       (builtin !== null && !builtins.has(builtin))
     ) {
       throw new MidgardCekOutsideGatedSet(set.version, witness.kind, builtin);
+    }
+    if (
+      witness.kind === "executeBuiltinFailure" &&
+      !builtinFailureIsProvable(Number(witness.tag), witness.arguments)
+    ) {
+      throw new MidgardCekUnprovableBuiltinFailure(
+        set.version,
+        Number(witness.tag),
+      );
     }
     for (const { payloadCbor } of revealedConstants(witness)) {
       if (decodable.has(payloadCbor)) continue;
