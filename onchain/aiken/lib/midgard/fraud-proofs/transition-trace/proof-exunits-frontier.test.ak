@@ -278,12 +278,7 @@ fn ledger_insert_witness(
   key: ByteArray,
   value: ByteArray,
 ) -> proof.LedgerInsertWitness {
-  proof.LedgerInsertWitness {
-    key,
-    value,
-    non_membership_proof: [],
-    insert_proof: [],
-  }
+  proof.LedgerInsertWitness { key, value, insert_proof: [] }
 }
 
 fn ledger_delete_witness(

@@ -58,7 +58,6 @@ export const buildTransitionTraceAbiFixtures = (): Record<
   const ledgerInsertWitness: SDK.LedgerInsertWitness = {
     key: "cc",
     value: "dd",
-    non_membership_proof: proof,
     insert_proof: proof,
   };
   const traceProof: SDK.IndexedTraceProof = {
@@ -257,10 +256,6 @@ export const buildTransitionTraceAbiFixtures = (): Record<
           trace_proof: traceProof,
           event_to_step: eventToStepMembership,
           source_membership: l2SourceMembership,
-          spend_inputs_preimage: "80",
-          outputs_preimage: "80",
-          spent_utxos: [ledgerDeleteWitness],
-          produced_utxos: [ledgerInsertWitness],
         },
       }),
     "transition-fault.omitted-deposit": SDK.omittedDueL1EventFault({

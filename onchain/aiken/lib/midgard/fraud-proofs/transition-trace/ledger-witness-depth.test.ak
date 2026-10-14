@@ -5,8 +5,15 @@
 //// ladder is the widest step at every level. These tests apply one delete and
 //// one insert witness at depths up to 64; the roots and proofs are module
 //// constants, so a test's budget is the witness application alone.
+////
+//// An insert witness carries one proof. Its paired fold authenticates the
+//// key's absence from the predecessor root and derives the successor, so the
+//// tests below also pin what that single proof refuses.
 
+use aiken/cbor
 use aiken/crypto.{blake2b_256}
+use aiken/primitive/bytearray
+use env
 use midgard/fraud_proofs/native_binding_fixture_v1 as fixture
 use midgard/fraud_proofs/transition_trace/proof.{
   LedgerDeleteWitness, LedgerInsertWitness, apply_delete_witness,
@@ -64,10 +71,21 @@ fn deleted(root: ByteArray, steps) -> ByteArray {
 fn inserted(root: ByteArray, steps) -> ByteArray {
   apply_insert_witness(
     root,
+    LedgerInsertWitness { key, value, insert_proof: steps },
+  )
+}
+
+fn inserted_as(
+  root: ByteArray,
+  inserted_key: ByteArray,
+  inserted_value: ByteArray,
+  steps,
+) -> ByteArray {
+  apply_insert_witness(
+    root,
     LedgerInsertWitness {
-      key,
-      value,
-      non_membership_proof: steps,
+      key: inserted_key,
+      value: inserted_value,
       insert_proof: steps,
     },
   )
@@ -107,4 +125,76 @@ test insert_at_depth_64() {
 
 test digest_key_paths_are_64_nibbles() {
   blake2b_256(key) != key
+}
+
+const other_key =
+  #"825820bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb190000"
+
+const other_value =
+  #"a2005839016c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c"
+
+// (1) A key already in the ledger cannot be inserted again, neither with the
+// proof of its own membership nor with an absence-shaped proof.
+
+test insert_of_a_present_key_with_its_membership_proof_is_refused() fail {
+  inserted_as(delete_root_4, key, other_value, delete_4) != delete_root_4
+}
+
+test insert_of_a_present_key_with_an_absence_proof_is_refused() fail {
+  inserted_as(delete_root_4, key, value, insert_4) != delete_root_4
+}
+
+test insert_of_a_present_key_at_depth_64_is_refused() fail {
+  inserted_as(delete_root_64, key, value, delete_64) != delete_root_64
+}
+
+// (2) The proof must authenticate the root it is applied to.
+
+test insert_proof_of_another_root_is_refused() fail {
+  inserted(insert_root_4, insert_64) != insert_root_4
+}
+
+test insert_proof_against_a_deeper_root_is_refused() fail {
+  inserted(insert_root_64, insert_32) != insert_root_64
+}
+
+test insert_into_the_empty_ledger_with_a_non_empty_proof_is_refused() fail {
+  inserted(env.empty_merkle_tree_root, insert_4) != env.empty_merkle_tree_root
+}
+
+// (3) One pre-state and one proof: the successor for the proven key verifies,
+// the successor for any other key does not.
+
+test insert_successor_for_the_proven_key_verifies() {
+  let successor = inserted(insert_root_64, insert_64)
+  successor != insert_root_64 && successor == inserted(
+    insert_root_64,
+    insert_64,
+  )
+}
+
+test insert_successor_for_another_key_is_refused() fail {
+  inserted_as(insert_root_64, other_key, value, insert_64) != insert_root_64
+}
+
+test insert_successors_differ_by_value() {
+  inserted_as(insert_root_32, key, value, insert_32) != inserted_as(
+    insert_root_32,
+    key,
+    other_value,
+    insert_32,
+  )
+}
+
+// (4) The depth-64 insert witness, as carried in a step redeemer, and its
+// application budget (`insert_at_depth_64` above).
+
+const insert_witness_64_bytes =
+  bytearray.length(
+    cbor.serialise(LedgerInsertWitness { key, value, insert_proof: insert_64 }),
+  )
+
+test insert_witness_at_depth_64_fits_a_step_transaction() {
+  trace @"insert witness bytes at depth 64": insert_witness_64_bytes
+  insert_witness_64_bytes <= 9_000
 }

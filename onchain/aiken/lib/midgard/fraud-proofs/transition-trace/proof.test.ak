@@ -473,12 +473,7 @@ fn ledger_insert_witness(
   key: ByteArray,
   value: ByteArray,
 ) -> proof.LedgerInsertWitness {
-  proof.LedgerInsertWitness {
-    key,
-    value,
-    non_membership_proof: [],
-    insert_proof: [],
-  }
+  proof.LedgerInsertWitness { key, value, insert_proof: [] }
 }
 
 fn forced_tx(
@@ -2041,7 +2036,6 @@ fn deposit_insert_witness(insert_proof: mpf.Proof) -> proof.LedgerInsertWitness 
   proof.LedgerInsertWitness {
     key: ledger_outref_key(out_ref(0)),
     value: deposit_projected_value(),
-    non_membership_proof: deposit_honest_insert_proof(),
     insert_proof,
   }
 }
@@ -2264,7 +2258,6 @@ fn l2_spend_branch_replay(
     proof.LedgerInsertWitness {
       key: produced_key,
       value: produced_value,
-      non_membership_proof: insert_proof,
       insert_proof,
     },
   )

@@ -165,10 +165,12 @@ pub type LedgerDeleteWitness {
   delete_proof: Proof,
 }
 
+/// One ledger insert: the key and value it adds and the single proof whose
+/// paired fold authenticates the key's absence from the predecessor root and
+/// derives the successor root.
 pub type LedgerInsertWitness {
   key: ByteArray,
   value: ByteArray,
-  non_membership_proof: Proof,
   insert_proof: Proof,
 }
 
@@ -927,15 +929,6 @@ pub fn verify_ledger_membership(
   mpf.has(ledger_trie(root), key, value, proof)
 }
 
-fn verify_ledger_non_membership(
-  root: ByteArray,
-  key: ByteArray,
-  proof: Proof,
-) -> Bool {
-  expect canonical_mpf.does_not_have(mpf.root(ledger_trie(root)), key, proof)
-  True
-}
-
 /// The paired fold in `delete_root` proves `(key, value)` is in `root` (its
 /// including root must equal `root`) and derives the successor, so no
 /// separate membership proof is taken.
@@ -952,16 +945,13 @@ pub fn apply_delete_witness(
   )
 }
 
+/// The paired fold in `insert_root` proves `key` is absent from `root` (its
+/// predecessor root must equal `root`) and derives the successor, so no
+/// separate non-membership proof is taken.
 pub fn apply_insert_witness(
   root: ByteArray,
   witness: LedgerInsertWitness,
 ) -> ByteArray {
-  expect
-    verify_ledger_non_membership(
-      root,
-      witness.key,
-      witness.non_membership_proof,
-    )
   insert_root(root, witness.key, witness.value, witness.insert_proof)
 }
 
@@ -1299,7 +1289,6 @@ pub fn validate_valid_deposit_transition(
   let checked_projected_utxo = LedgerInsertWitness {
     key: expected_key,
     value: expected_value,
-    non_membership_proof: projected_utxo.non_membership_proof,
     insert_proof: projected_utxo.insert_proof,
   }
   let expected_post_root = apply_insert_witness(
@@ -1892,11 +1881,6 @@ pub fn delete_root(
   canonical_mpf.committed_root(next_root)
 }
 
-test canonical_fork_exclusion() {
-  let v = prefix_fixture.fork()
-  verify_ledger_non_membership(v.after, v.key, v.proof)
-}
-
 test canonical_fork_insertion() {
   let v = prefix_fixture.fork()
   insert_root(v.after, v.key, v.value, v.proof) == v.before
@@ -1917,11 +1901,6 @@ test canonical_fork_membership() {
   )
 }
 
-test canonical_leaf_exclusion() {
-  let v = prefix_fixture.leaf()
-  verify_ledger_non_membership(v.after, v.key, v.proof)
-}
-
 test canonical_leaf_insertion() {
   let v = prefix_fixture.leaf()
   insert_root(v.after, v.key, v.value, v.proof) == v.before
@@ -1938,15 +1917,6 @@ test canonical_leaf_membership() {
     v.after,
     v.key,
     v.value,
-    v.proof,
-  )
-}
-
-test canonical_fork_rejects_dropped_prefix_root() fail {
-  let v = prefix_fixture.fork()
-  verify_ledger_non_membership(
-    prefix_fixture.dropped_fork_prefix_root,
-    v.key,
     v.proof,
   )
 }

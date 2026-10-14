@@ -172,23 +172,11 @@ const replayL2TransactionTransition = (
         `${label} is not ordered and bound to its authenticated transaction output.`,
       );
     }
-    const nonMembershipProof = mpfProofFromWitness({
-      key,
-      value: undefined,
-      proof: item.non_membership_proof,
-      label: `${label}.non_membership_proof`,
-    });
     const insertProof = mpfProofFromWitness({
       key,
       value,
       proof: item.insert_proof,
       label: `${label}.insert_proof`,
-    });
-    verifyProofRoot({
-      proof: nonMembershipProof,
-      includingItem: false,
-      expectedRoot: root,
-      label: `${label}.non_membership_proof`,
     });
     verifyProofRoot({
       proof: insertProof,

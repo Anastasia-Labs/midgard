@@ -321,17 +321,19 @@ export const LedgerDeleteWitness = asDataType<LedgerDeleteWitness>(
   LedgerDeleteWitnessSchema,
 );
 
+/**
+ * One ledger insert. The single proof's paired fold authenticates the key's
+ * absence from the predecessor root and derives the successor root.
+ */
 export const LedgerInsertWitnessSchema = Data.Object({
   key: Data.Bytes(),
   value: Data.Bytes(),
-  non_membership_proof: ProofSchema,
   insert_proof: ProofSchema,
 });
 
 export type LedgerInsertWitness = {
   readonly key: string;
   readonly value: string;
-  readonly non_membership_proof: Proof;
   readonly insert_proof: Proof;
 };
 

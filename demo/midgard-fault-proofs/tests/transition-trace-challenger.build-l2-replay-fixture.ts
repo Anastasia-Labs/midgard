@@ -147,7 +147,6 @@ export const buildL2ReplayFixture = async ({
         {
           key: producedKey.toString("hex"),
           value: producedWitnessBytes.toString("hex"),
-          non_membership_proof: encodedInsertProof,
           insert_proof: encodedInsertProof,
         },
       ],

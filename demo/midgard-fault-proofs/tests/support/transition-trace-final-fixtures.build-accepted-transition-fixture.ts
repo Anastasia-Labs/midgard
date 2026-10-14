@@ -170,7 +170,6 @@ export const buildAcceptedTransitionFixture = async ({
     produced.push({
       key: key.toString("hex"),
       value: value.toString("hex"),
-      non_membership_proof: proof,
       insert_proof: proof,
     });
   }
@@ -402,7 +401,6 @@ export const buildDepositTransitionFixture = async ({
             projected_utxo: {
               key: key.toString("hex"),
               value: value.toString("hex"),
-              non_membership_proof: insert,
               insert_proof: insert,
             },
           },

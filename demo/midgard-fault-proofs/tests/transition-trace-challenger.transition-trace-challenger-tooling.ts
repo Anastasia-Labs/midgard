@@ -797,11 +797,7 @@ describe("transition-trace challenger tooling", () => {
     });
     const spent = fixture.evidence.spentUtxos[0]!;
     const produced = fixture.evidence.producedUtxos[0]!;
-    const proofSteps = [
-      ...spent.delete_proof,
-      ...produced.non_membership_proof,
-      ...produced.insert_proof,
-    ];
+    const proofSteps = [...spent.delete_proof, ...produced.insert_proof];
     expect(
       proofSteps.some(
         (step) =>

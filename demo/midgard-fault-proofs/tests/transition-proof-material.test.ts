@@ -221,7 +221,6 @@ beforeAll(async () => {
               projected_utxo: {
                 key: "",
                 value: "",
-                non_membership_proof: [],
                 insert_proof: [],
               },
             },
