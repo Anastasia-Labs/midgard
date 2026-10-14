@@ -323,7 +323,14 @@ pub fn ledger_output_summaries_of_authenticated_parts_v1(
       ],
     )
   }
-  (tx_out_summary(False), tx_out_summary(True), spend_datum)
+  let cardano_tx_out = tx_out_summary(False)
+  // `address_data` reads `midgard_encoding` only for a protected address, so
+  // an unprotected output has one `TxOut` in both encodings.
+  if output.address.protected {
+    (cardano_tx_out, tx_out_summary(True), spend_datum)
+  } else {
+    (cardano_tx_out, cardano_tx_out, spend_datum)
+  }
 }
 
 fn tx_out_ref_data(input: MidgardTxInput) -> Data {
