@@ -41,49 +41,202 @@ fn expect_fails_where_refused(bytes: ByteArray) -> Bool {
   }
 }
 
-// Random inputs avoid four byte patterns, each covered by fixed cases below
-// instead:
-// - 0x5f: a chunk header inside an indefinite byte string is read as
-//   `byte - 64`, so a byte below 0x40 there moves the position back, and both
-//   decoders then fail the script on a read before the start of the input.
-// - a tag below 121 or with an 8-byte argument: the constructor index is then
-//   negative or too wide for the test runner's evaluator.
-// - a byte-string head with an 8-byte width: it overflows the test runner's
-//   slice.
-// - a list or map head with a 4- or 8-byte length: after a failed read the
-//   library still steps through every remaining element, which can take
-//   billions of steps.
-// Both decoders pass the same values to the same builtins, so none of the
-// three can tell them apart.
+// Random inputs are tested unless one of the decoders could reach a path the
+// test runner cannot execute. `scan_item` follows the input the way both
+// decoders read it, up to the first refusal, after which neither reads
+// another byte, and reports a hazard on:
+// - a chunk header below 0x40 inside an indefinite byte string: it moves the
+//   position back, and both decoders then fail the script on a read before
+//   the start of the input, or re-read the same header forever;
+// - a tag below 121 other than the refused 102, or any 8-byte tag: the
+//   constructor index is then negative or too wide for the test runner's
+//   evaluator;
+// - a byte-string or chunk head with an 8-byte width: it overflows the test
+//   runner's slice;
+// - a list, map or field-count head with a 4- or 8-byte length: after a
+//   failed read the library still steps through every remaining declared
+//   element, which can take billions of steps.
+// The same bytes inside a byte string's payload, or after the first refusal,
+// are not read as structure and do not exclude an input. Fixed cases below
+// cover each hazard domain instead.
 fn is_fuzzable(bytes: ByteArray) -> Bool {
-  is_fuzzable_from(bytes, 0, bytearray.length(bytes))
+  scan_item(bytes, 0, bytearray.length(bytes)) != hazard
 }
 
-fn is_fuzzable_from(bytes: ByteArray, at: Int, length: Int) -> Bool {
+// `scan_*` return the offset after what they read, `refused` where both
+// decoders refuse the input, or `hazard`.
+const hazard = -1
+
+const refused = -2
+
+fn scan_item(bytes: ByteArray, at: Int, length: Int) -> Int {
   if at >= length {
-    True
+    refused
   } else {
     let byte = builtin.index_bytearray(bytes, at)
-    let small_tag = if byte == 0xd8 {
-      at + 1 < length && builtin.index_bytearray(bytes, at + 1) < 121
-    } else if byte == 0xd9 {
-      at + 2 < length && builtin.bytearray_to_integer(
-        True,
-        builtin.slice_bytearray(at + 1, 2, bytes),
-      ) < 121
+    let at = at + 1
+    if byte < 0x40 {
+      scan_argument(bytes, at, length, byte % 0x20, fn(_, at) { at })
+    } else if byte == 0x5f {
+      scan_chunks(bytes, at, length)
+    } else if byte < 0x60 {
+      scan_byte_string(bytes, at, length, byte - 0x40)
+    } else if byte < 0x80 {
+      refused
+    } else if byte < 0xa0 {
+      scan_container(bytes, at, length, byte - 0x80, 1)
+    } else if byte < 0xc0 {
+      scan_container(bytes, at, length, byte - 0xa0, 2)
+    } else if byte == 0xdb {
+      hazard
+    } else if byte < 0xe0 {
+      scan_argument(
+        bytes,
+        at,
+        length,
+        byte - 0xc0,
+        fn(tag, at) {
+          if at >= length || tag == 102 {
+            refused
+          } else if tag < 121 {
+            hazard
+          } else {
+            let fields = builtin.index_bytearray(bytes, at)
+            scan_container(bytes, at + 1, length, fields - 0x80, 1)
+          }
+        },
+      )
     } else {
-      byte >= 0xc0 && byte < 0xd8 || byte == 0xda || byte == 0xdb
+      refused
     }
-    and {
-      byte != 0x5f,
-      !small_tag,
-      byte != 0x5b,
-      byte != 0x7b,
-      byte != 0x9a,
-      byte != 0x9b,
-      byte != 0xba,
-      byte != 0xbb,
-      is_fuzzable_from(bytes, at + 1, length),
+  }
+}
+
+fn scan_argument(
+  bytes: ByteArray,
+  at: Int,
+  length: Int,
+  header: Int,
+  return: fn(Int, Int) -> Int,
+) -> Int {
+  if header < 24 {
+    return(header, at)
+  } else if at >= length {
+    refused
+  } else if header == 24 {
+    return(builtin.index_bytearray(bytes, at), at + 1)
+  } else {
+    let width = if header == 25 {
+      2
+    } else if header == 26 {
+      4
+    } else if header == 27 {
+      8
+    } else {
+      0
+    }
+    if width == 0 || at + width > length {
+      refused
+    } else {
+      return(
+        builtin.bytearray_to_integer(
+          True,
+          builtin.slice_bytearray(at, width, bytes),
+        ),
+        at + width,
+      )
+    }
+  }
+}
+
+fn scan_byte_string(bytes: ByteArray, at: Int, length: Int, header: Int) -> Int {
+  if header == 27 {
+    hazard
+  } else {
+    scan_argument(
+      bytes,
+      at,
+      length,
+      header,
+      fn(width, at) {
+        if at >= length || at + width > length {
+          refused
+        } else {
+          at + width
+        }
+      },
+    )
+  }
+}
+
+fn scan_chunks(bytes: ByteArray, at: Int, length: Int) -> Int {
+  if at >= length {
+    refused
+  } else {
+    let byte = builtin.index_bytearray(bytes, at)
+    if byte == 0xff {
+      at + 1
+    } else if byte < 0x40 {
+      hazard
+    } else {
+      let next = scan_byte_string(bytes, at + 1, length, byte - 0x40)
+      if next < 0 {
+        next
+      } else {
+        scan_chunks(bytes, next, length)
+      }
+    }
+  }
+}
+
+// `per` items make one element: 1 for a list or a constructor's fields, 2 for
+// a map.
+fn scan_container(
+  bytes: ByteArray,
+  at: Int,
+  length: Int,
+  header: Int,
+  per: Int,
+) -> Int {
+  if header == 31 {
+    scan_indefinite(bytes, at, length, per)
+  } else if header == 26 || header == 27 {
+    hazard
+  } else {
+    scan_argument(
+      bytes,
+      at,
+      length,
+      header,
+      fn(size, at) { scan_items(bytes, at, length, size * per) },
+    )
+  }
+}
+
+fn scan_items(bytes: ByteArray, at: Int, length: Int, count: Int) -> Int {
+  if count <= 0 {
+    at
+  } else {
+    let next = scan_item(bytes, at, length)
+    if next < 0 {
+      next
+    } else {
+      scan_items(bytes, next, length, count - 1)
+    }
+  }
+}
+
+fn scan_indefinite(bytes: ByteArray, at: Int, length: Int, per: Int) -> Int {
+  if at >= length {
+    refused
+  } else if builtin.index_bytearray(bytes, at) == 0xff {
+    at + 1
+  } else {
+    let next = scan_items(bytes, at, length, per)
+    if next < 0 {
+      next
+    } else {
+      scan_indefinite(bytes, next, length, per)
     }
   }
 }
@@ -302,6 +455,18 @@ test deserialise_fails_the_script_on_a_backward_chunk() fail {
   cbor_deserialise.deserialise(#"5f0001") == None
 }
 
+// A refused input that declares a long list or map: the library steps through
+// every declared element after its first failed read, so on chain it can run
+// out of budget; `deserialise` returns `None` at the first failed read, and
+// `expect_deserialise` fails the script there.
+test deserialise_refuses_a_long_declared_list() {
+  cbor_deserialise.deserialise(#"990fff") == None
+}
+
+test deserialise_refuses_a_long_declared_map() {
+  cbor_deserialise.deserialise(#"b9ffff") == None
+}
+
 // ## The failing variant fails where the library returns `None`.
 
 fn truncations() -> Fuzzer<ByteArray> {
@@ -395,6 +560,14 @@ test expect_fails_on_an_unread_trailing_byte() fail {
 
 test expect_fails_on_a_text_string() fail {
   expect_returns(#"6161")
+}
+
+test expect_fails_on_a_long_declared_list() fail {
+  expect_returns(#"990fff")
+}
+
+test expect_fails_on_a_long_declared_map() fail {
+  expect_returns(#"b9ffff")
 }
 
 test expect_fails_on_a_wide_text_string() fail {

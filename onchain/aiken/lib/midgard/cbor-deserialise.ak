@@ -1,12 +1,29 @@
-//// A cheaper drop-in for the standard library's `aiken/cbor.deserialise`.
+//// A cheaper replacement for the standard library's `aiken/cbor.deserialise`.
 ////
 //// The standard library threads every read through closures that return a
 //// `Pair<Data, Int>`, which costs about 23k memory units per decoded item.
 //// This module performs the same reads, in the same order, with the same
 //// arithmetic, in continuation-passing style, so no pair is built per item.
 ////
-//// Equivalence with `aiken/cbor.deserialise`, which the tests in
-//// `cbor-deserialise.test.ak` check differentially:
+//// How each variant relates to `aiken/cbor.deserialise` (the tests in
+//// `cbor-deserialise.test.ak` and `cbor-deserialise-adversarial.test.ak`
+//// check this differentially):
+////
+//// - `expect_deserialise` fails the script exactly where
+////   `expect Some(data) = cbor.deserialise(bytes)` fails, and otherwise
+////   continues with the same `data`.
+//// - `deserialise` returns the same `Some(data)` wherever the library returns
+////   `Some`, and `None` wherever the library returns `None`. It is not a
+////   drop-in everywhere the library is: after its first failed read the library
+////   still steps through every remaining element that an enclosing definite
+////   list, map or constructor declared, so on a refused input that declares a
+////   long container its cost grows with the declared length and can exhaust
+////   the execution budget. `deserialise` returns `None` at the first failed
+////   read instead, so on such an input it returns `None` where the library
+////   fails the script. It never returns `None` where the library returns
+////   `Some`.
+////
+//// The reads line up as follows:
 ////
 //// - The position is the offset read so far, `length - cursor` in the
 ////   library's terms. "No input left" (`0 >= cursor`) is `offset >= length`,
@@ -42,7 +59,9 @@ const token_break = 0xff
 
 /// `Some(data)` when `bytes` is exactly one item that `aiken/cbor.deserialise`
 /// accepts, with the same `data`; `None` whenever that function returns
-/// `None`.
+/// `None`. Unlike that function, it stops at the first failed read, so a
+/// refused input that declares a long container returns `None` cheaply where
+/// the library can run out of budget (see the module header).
 pub fn deserialise(bytes: ByteArray) -> Option<Data> {
   let length = length_of_bytearray(bytes)
   if length == 0 {
