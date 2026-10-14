@@ -22,7 +22,7 @@ import { evaluateNormalBlockCandidates } from "../src/mpf/process.evaluate-norma
 
 /**
  * The script wall caps are local limits. At admission, a transaction whose
- * scripts pass the submit cap is refused under the node's own code and the
+ * scripts pass the submit cap is deferred under the node's own code and the
  * rest of the batch is decided without it. At commit, one past the commit
  * cap is evicted through the commit-stage rejection path, and the block is
  * built from the rest.
@@ -69,12 +69,13 @@ describe("submit wall cap", () => {
     ).toStrictEqual([hex(slow), hex(plain)].sort());
   });
 
-  it("refuses the transaction past the cap and admits the rest", async () => {
-    const { phaseB, allRejected } = await decide(1);
+  it("defers the transaction past the cap and admits the rest", async () => {
+    const { phaseB, allRejected, deferred } = await decide(1);
+    expect(allRejected).toStrictEqual([]);
     expect(
-      allRejected.map((rejection) => [
-        rejection.txId.toString("hex"),
-        rejection.code,
+      deferred.map((deferral) => [
+        deferral.txId.toString("hex"),
+        deferral.code,
       ]),
     ).toStrictEqual([[hex(slow), ADMISSION_REJECT_CODE_SCRIPT_WALL_CAP]]);
     expect(

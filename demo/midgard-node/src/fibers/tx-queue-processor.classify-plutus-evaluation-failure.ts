@@ -1,4 +1,5 @@
 import {
+  LedgerColumns,
   type PhaseAResult,
   type PhaseAValidatedTx,
   runPhaseBValidationWithPatch,
@@ -208,7 +209,7 @@ export const validationSubmitWallCapRefusalCounter = Metric.counter(
   "validation_submit_wall_cap_refusal_count",
   {
     description:
-      "Total number of txs refused at admission because their script runs passed the submit wall cap",
+      "Total number of txs deferred at admission because their script runs passed the submit wall cap",
     bigint: true,
     incremental: true,
   },
@@ -227,13 +228,20 @@ export const validationSubmitOutsideGatedSetRefusalCounter = Metric.counter(
   },
 );
 
-/** The admission code and counter of a node-local Phase B refusal. */
+/**
+ * The admission code and counter of a node-local Phase B refusal. A wall-cap
+ * refusal is deferred: it depends on this node's load, not on the
+ * transaction, so the transaction stays queued and is decided again later. A
+ * gated-set refusal is terminal: the same script reaches the same arm under
+ * the same gated set.
+ */
 const localRefusalOf = (failure: unknown) => {
   if (failure instanceof ScriptWallCapExceededError) {
     return {
       txId: failure.txId,
       code: ADMISSION_REJECT_CODE_SCRIPT_WALL_CAP,
       counter: validationSubmitWallCapRefusalCounter,
+      deferred: true,
     };
   }
   if (failure instanceof ScriptOutsideGatedSetError) {
@@ -241,16 +249,60 @@ const localRefusalOf = (failure: unknown) => {
       txId: failure.txId,
       code: ADMISSION_REJECT_CODE_SCRIPT_OUTSIDE_GATED_SET,
       counter: validationSubmitOutsideGatedSetRefusalCounter,
+      deferred: false,
     };
   }
   return null;
 };
 
 /**
+ * `culprit` and every candidate that spends or references an output it
+ * produces, directly or through other such candidates.
+ */
+const withDependents = (
+  culprit: PhaseAValidatedTx,
+  candidates: readonly PhaseAValidatedTx[],
+): readonly PhaseAValidatedTx[] => {
+  const group = new Set([culprit]);
+  const produced = new Set<string>();
+  const addProduced = (candidate: PhaseAValidatedTx) => {
+    for (const entry of candidate.graph.produced) {
+      produced.add(entry[LedgerColumns.OUTREF].toString("hex"));
+    }
+  };
+  addProduced(culprit);
+  for (let grew = true; grew; ) {
+    grew = false;
+    for (const candidate of candidates) {
+      if (group.has(candidate)) continue;
+      const { spentOutRefHexes, referenceOutRefHexes } = candidate.graph;
+      if (
+        spentOutRefHexes.some((outRef) => produced.has(outRef)) ||
+        referenceOutRefHexes.some((outRef) => produced.has(outRef))
+      ) {
+        group.add(candidate);
+        addProduced(candidate);
+        grew = true;
+      }
+    }
+  }
+  return candidates.filter((candidate) => group.has(candidate));
+};
+
+/** A transaction left queued, with why, to be decided again later. */
+export type AdmissionDeferral = Readonly<{
+  txId: Buffer;
+  code: string;
+  detail: string;
+}>;
+
+/**
  * Runs Phase B, refusing each candidate whose script runs pass the submit
  * wall cap (`scriptWallCapMs`) or leave the gated set (`cekGatedSet`), and
- * running the rest again. The refusal is the node's own, under its own code:
- * it records no script verdict, and the transaction may be submitted again.
+ * running the rest again. The refusal is the node's own, under its own code,
+ * and records no script verdict. A gated-set refusal is terminal. A wall-cap
+ * refusal is deferred, together with every candidate that depends on the
+ * refused transaction's outputs, so that all of them are decided again later.
  * Every other Phase B failure fails the batch as before.
  */
 export const runPhaseBRefusingLocalBreaches = (
@@ -261,11 +313,12 @@ export const runPhaseBRefusingLocalBreaches = (
   Effect.gen(function* () {
     let remaining = candidates;
     const refused: TxAdmissionsDB.AdmissionRejection[] = [];
+    const deferred: AdmissionDeferral[] = [];
     for (;;) {
       const run = yield* Effect.either(
         runPhaseBValidationWithPatch(remaining, ledgerState, phaseBConfig),
       );
-      if (Either.isRight(run)) return { phaseB: run.right, refused };
+      if (Either.isRight(run)) return { phaseB: run.right, refused, deferred };
       const breach = run.left;
       const refusal = localRefusalOf(breach);
       if (refusal === null) return yield* Effect.fail(breach);
@@ -273,16 +326,22 @@ export const runPhaseBRefusingLocalBreaches = (
         candidate.ledgerTx.txId.equals(refusal.txId),
       );
       if (culprit === undefined) return yield* Effect.fail(breach);
-      yield* Effect.logWarning(
-        `Refusing tx ${refusal.txId.toString("hex")} at admission: ${breach.message}`,
-      );
       yield* Metric.increment(refusal.counter);
-      refused.push({
-        txId: Buffer.from(refusal.txId),
-        code: refusal.code,
-        detail: breach.message,
-      });
-      remaining = remaining.filter((candidate) => candidate !== culprit);
+      const removed = refusal.deferred
+        ? withDependents(culprit, remaining)
+        : [culprit];
+      for (const candidate of removed) {
+        const txId = Buffer.from(candidate.ledgerTx.txId);
+        yield* Effect.logWarning(
+          `${refusal.deferred ? "Deferring" : "Refusing"} tx ${txId.toString("hex")} at admission: ${breach.message}`,
+        );
+        (refusal.deferred ? deferred : refused).push({
+          txId,
+          code: refusal.code,
+          detail: breach.message,
+        });
+      }
+      remaining = remaining.filter((candidate) => !removed.includes(candidate));
     }
   });
 
@@ -291,7 +350,8 @@ export const runPhaseBRefusingLocalBreaches = (
  * that spend an outref named by a pending withdrawal are refused, and the rest
  * run Phase B, which refuses any whose scripts pass the submit wall cap or
  * leave the gated set.
- * Returns Phase B's result and every rejection of the batch.
+ * Returns Phase B's result, every rejection of the batch, and the
+ * transactions deferred to a later batch.
  */
 export const decideAdmissionBatch = ({
   phaseA,
@@ -309,7 +369,7 @@ export const decideAdmissionBatch = ({
       phaseA.accepted,
       pendingWithdrawalOutRefHexes,
     );
-    const { phaseB, refused } = yield* runPhaseBRefusingLocalBreaches(
+    const { phaseB, refused, deferred } = yield* runPhaseBRefusingLocalBreaches(
       admissible.accepted,
       ledgerState,
       phaseBConfig,
@@ -320,7 +380,7 @@ export const decideAdmissionBatch = ({
       ...refused,
       ...phaseB.rejected,
     ];
-    return { phaseB, allRejected };
+    return { phaseB, allRejected, deferred };
   });
 
 /**
