@@ -32,7 +32,7 @@ import {
   hashMidgardCekDirectValueWitness,
   hashMidgardCekRuntimeValueWitness,
   type MidgardCekBlsExpressionWitness,
-  midgardCekBuiltinArgumentsAreIllTyped,
+  midgardCekBuiltinArgumentsFailKinds,
   type MidgardCekConstantValueWitness,
   midgardCekDirectBuiltinBudget,
   type MidgardCekDirectValueWitness,
@@ -1111,13 +1111,10 @@ export class StructuralExecutor {
       builtin.argumentsCount,
     );
     // The builtin value commits to exactly these argument roots, so only the
-    // argument kinds decide a type failure here.
+    // argument kinds decide a type failure here, at any argument size, as on
+    // L1.
     if (
-      midgardCekBuiltinArgumentsAreIllTyped(
-        builtin.tag,
-        arguments_,
-        this.typeOf,
-      )
+      midgardCekBuiltinArgumentsFailKinds(builtin.tag, arguments_, this.typeOf)
     ) {
       this.record(
         {

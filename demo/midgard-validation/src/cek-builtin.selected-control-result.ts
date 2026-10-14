@@ -33,10 +33,9 @@ import {
 
 /**
  * Whether a saturated builtin's arguments fail its argument kinds, so that
- * applying it is a builtin type failure. Arguments whose revealed payloads
- * together exceed one direct payload are never judged here.
+ * applying it is a builtin type failure on L1, whatever their size.
  */
-export const midgardCekBuiltinArgumentsAreIllTyped = (
+export const midgardCekBuiltinArgumentsFailKinds = (
   tag: bigint,
   arguments_: readonly MidgardCekRuntimeValueWitness[],
   typeOf?: MidgardCekConstantTypeReader,
@@ -52,12 +51,6 @@ export const midgardCekBuiltinArgumentsAreIllTyped = (
     const numericTag = Number(tag);
     const kinds = argumentKinds(numericTag);
     if (arguments_.length !== kinds.length) return false;
-    if (
-      directWitnessPayloadBytes(arguments_) >
-      BigInt(MIDGARD_CEK_MAX_DIRECT_CONSTANT_PAYLOAD_BYTES)
-    ) {
-      return false;
-    }
     const wellTyped =
       numericTag === 32
         ? mkConsIsWellTyped(arguments_, typeOf)
@@ -69,6 +62,20 @@ export const midgardCekBuiltinArgumentsAreIllTyped = (
     return false;
   }
 };
+
+/**
+ * Whether the verifier proves a builtin type failure on these arguments:
+ * they fail the builtin's argument kinds and their revealed payloads
+ * together fit one direct payload.
+ */
+export const midgardCekBuiltinArgumentsAreIllTyped = (
+  tag: bigint,
+  arguments_: readonly MidgardCekRuntimeValueWitness[],
+  typeOf?: MidgardCekConstantTypeReader,
+): boolean =>
+  directWitnessPayloadBytes(arguments_) <=
+    BigInt(MIDGARD_CEK_MAX_DIRECT_CONSTANT_PAYLOAD_BYTES) &&
+  midgardCekBuiltinArgumentsFailKinds(tag, arguments_, typeOf);
 
 export const verifyMidgardCekBuiltinTypeFailure = (
   tag: bigint,

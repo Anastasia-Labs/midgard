@@ -22,6 +22,7 @@ export {
   hashMidgardCekDirectArguments,
   hashMidgardCekDirectValueWitness,
   midgardCekBuiltinArgumentsAreIllTyped,
+  midgardCekBuiltinArgumentsFailKinds,
   midgardCekDirectBuiltinBudget,
   midgardCekDirectBuiltinCostSizes,
   type MidgardCekDirectBuiltinEvaluation,

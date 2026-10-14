@@ -25,6 +25,7 @@ import {
   type MidgardCekSemanticStepMaterial,
   midgardCekSemanticTopMaterial,
 } from "./cek-executor.semantic-step.js";
+import { sameConstantType } from "./cek-machine.verify-semantic-builtin-control.js";
 
 /**
  * The structural builtins that build a new Data spine from their arguments:
@@ -70,6 +71,12 @@ export const midgardCekSemanticMkCons = (
     throw new Error("CEK semantic list builtin requires a list");
   }
   const item = step.resolve(0);
+  if (
+    source.type.kind !== "list" ||
+    !sameConstantType(item.type, source.type.element)
+  ) {
+    throw new Error("CEK semantic mkCons requires an item of the list type");
+  }
   const link = buildMidgardCekDataListLink(
     midgardCekNodeSummary(item.root, item.node),
     store.items(source.node.itemsRoot, source.node.itemsCount),
