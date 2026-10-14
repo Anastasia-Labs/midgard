@@ -19,13 +19,13 @@ import {
   transactionOutputDatumScanState,
   transactionOutputDatumStepArgs,
 } from "../src/transaction-output-non-canonical/index.js";
+import { densePlutusData } from "./support/dense-plutus-data.js";
 import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
 import {
   captureEmulatorSubmission,
   type CompleteSignedTransactionMeasurement,
 } from "./support/emulator/measurement.js";
 import { makeNativeTx } from "./support/emulator/native-tx.js";
-import { densePlutusData } from "./support/dense-plutus-data.js";
 import { nodeForcedVerdict } from "./support/emulator/node-forced-verdict.js";
 import { setupFraudulentBlock } from "./support/submit-init-emulator-fixtures.js";
 import {

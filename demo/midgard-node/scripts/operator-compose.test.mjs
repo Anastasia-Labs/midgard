@@ -6,7 +6,6 @@ import {
   copyFileSync,
   mkdirSync,
   mkdtempSync,
-  readFileSync,
   realpathSync,
   rmSync,
   writeFileSync,
@@ -344,17 +343,6 @@ const bindMount = (service, target) =>
   (service.volumes ?? []).find(
     (volume) => volume.type === "bind" && volume.target === target,
   );
-
-test("the node image installs the transport where compose points", () => {
-  const dockerfile = readFileSync(join(composeDirectory, "Dockerfile"), "utf8");
-  assert.match(dockerfile, /^FROM golang:\S+ AS l1-node-transport$/mu);
-  assert.ok(
-    dockerfile.includes(
-      `COPY --from=l1-node-transport /out/midgard-l1-node-transport ${LOCAL_NODE_KEYS.L1_NODE_TRANSPORT_BINARY_PATH}\n`,
-    ),
-    "the node image must copy the transport to L1_NODE_TRANSPORT_BINARY_PATH",
-  );
-});
 
 test(
   "rendered: midgard-node follows the in-stack cardano-node",

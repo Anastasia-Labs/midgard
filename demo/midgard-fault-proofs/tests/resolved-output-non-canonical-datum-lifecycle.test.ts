@@ -10,7 +10,7 @@
  * resolved-output-non-canonical-lifecycle.test.ts; the two files together
  * write the fit ledger.
  */
-import { afterAll, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import {
   beginMeasuredCase,
@@ -236,7 +236,9 @@ describe("resolvedOutputNonCanonical inline-datum verdict", () => {
     passMeasuredCase();
   }, 3_600_000);
 
-  afterAll(() => {
+  // A case, not an afterAll: a run filtered to some cases (the traced-refusal
+  // run) skips it instead of judging coverage the filter left unexercised.
+  it("covers both verdict directions, every datum seam and the datum-step cancel within the measured fit", () => {
     const observed = coverage.snapshot();
     expect(
       observed.successfulDirectionByReason[RESOLVED_OUTPUT_REASON_ARM],

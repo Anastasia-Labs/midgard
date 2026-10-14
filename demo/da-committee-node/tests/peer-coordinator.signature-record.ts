@@ -16,6 +16,7 @@ import {
   deriveExpectedDaAvailabilityCommitment,
 } from "../src/peer/signatures.js";
 import { type PostgresCommitteeStore } from "../src/store/postgres.js";
+import { stateQueueNodeDatumCbor } from "./helpers.make-payload-fixture.js";
 
 export const availabilityCommitmentAuthority: DaAvailabilityCommitmentAuthority =
   {
@@ -179,6 +180,7 @@ const stateQueueRecord = ({
   stateQueueOutRef: "state-queue#0",
   blockAssetName: `block-${headerHash}`,
   header,
+  rawStateQueueDatumCbor: stateQueueNodeDatumCbor({ header, headerHash }),
   computedHeaderHash: headerHash,
   daAttestation: SDK.NO_DA_ATTESTATION,
   observedChainPoint: {
