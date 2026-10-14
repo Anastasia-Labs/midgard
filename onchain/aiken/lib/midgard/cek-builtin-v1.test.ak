@@ -1734,3 +1734,89 @@ test ed25519_charges_message_words_and_keeps_true_false_successes() {
     ),
   }
 }
+
+// serialiseData over Data holding a constructor index of 128 or more and
+// integers outside 64 bits: the semantic arm decodes the argument constant and
+// the revealed serialisation with the Cardano Data decoder.
+fn wide_data() -> Data {
+  builtin.constr_data(
+    0,
+    [
+      builtin.constr_data(128, [builtin.i_data(1)]),
+      builtin.constr_data(18446744073709551615, []),
+      builtin.i_data(18446744073709551616),
+      builtin.i_data(-18446744073709551617),
+    ],
+  )
+}
+
+fn serialise_data_verifies(
+  source: Data,
+  revealed: ByteArray,
+  serialised: ByteArray,
+) -> Bool {
+  let arguments = [constant(#"9f08ff", cbor.serialise(source))]
+  verify_semantic_with_split_parity(
+    51,
+    builtin_root(51, arguments),
+    arguments,
+    bytes(cbor.serialise(builtin.b_data(serialised))),
+    cek_builtin_v1.SemanticBuiltinWitnessV1 {
+      data_nodes: [],
+      list_nodes: [],
+      pair_nodes: [],
+      scalar_preimages: [revealed],
+    },
+  )
+}
+
+test semantic_serialise_data_handles_wide_constructors_and_integers() {
+  let raw = cbor.serialise(wide_data())
+  serialise_data_verifies(wide_data(), raw, raw)
+}
+
+test semantic_serialise_data_refuses_a_different_result() {
+  let raw = cbor.serialise(wide_data())
+  let other = cbor.serialise(builtin.constr_data(0, [builtin.i_data(1)]))
+  !serialise_data_verifies(wide_data(), raw, other)
+}
+
+test semantic_serialise_data_refuses_a_revealed_serialisation_of_other_data() fail {
+  let other = cbor.serialise(builtin.constr_data(0, [builtin.i_data(1)]))
+  serialise_data_verifies(wide_data(), other, other)
+}
+
+fn serialise_data_split_arm(source: Data) -> Bool {
+  let raw = cbor.serialise(source)
+  cek_builtin_v1.verify_semantic_data_misc(
+    51,
+    [constant(#"9f08ff", raw)],
+    bytes(cbor.serialise(builtin.b_data(raw))),
+    cek_builtin_v1.SemanticBuiltinWitnessV1 {
+      data_nodes: [],
+      list_nodes: [],
+      pair_nodes: [],
+      scalar_preimages: [raw],
+    },
+  )
+}
+
+// The production split arm alone, on the wide Data above.
+test semantic_data_misc_serialises_wide_data() {
+  serialise_data_split_arm(wide_data())
+}
+
+// The production split arm alone, on Data of the same shape within 64 bits.
+test semantic_data_misc_serialises_data_within_64_bits() {
+  serialise_data_split_arm(
+    builtin.constr_data(
+      0,
+      [
+        builtin.constr_data(127, [builtin.i_data(1)]),
+        builtin.constr_data(6, []),
+        builtin.i_data(18446744073709551615),
+        builtin.i_data(-18446744073709551616),
+      ],
+    ),
+  )
+}

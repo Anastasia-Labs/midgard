@@ -304,3 +304,29 @@ test complete_program_material_entries_bind_root_counts_and_no_extras() {
     ),
   }
 }
+
+// The empty blob commits as a single chunk whose preimage is `40`, the
+// canonical encoding of the empty byte string.
+test the_empty_blob_chunk_is_program_material() {
+  and {
+    cek_proof_v1.inspect_program_blob_material_v1(3, #"40") == Some(
+      cek_proof_v1.BlobChunk { bytes: #"" },
+    ),
+    cek_proof_v1.bounded_blob_root_v1(#"") == cek_proof_v1.hash_blob_chunk_v1(
+      #"",
+    ),
+  }
+}
+
+test other_spellings_of_the_empty_blob_chunk_are_not_program_material() {
+  and {
+    cek_proof_v1.inspect_program_blob_material_v1(3, #"5800") == None,
+    cek_proof_v1.inspect_program_blob_material_v1(3, #"590000") == None,
+    cek_proof_v1.inspect_program_blob_material_v1(3, #"5fff") == None,
+    cek_proof_v1.inspect_program_blob_material_v1(3, #"5f40ff") == None,
+    cek_proof_v1.inspect_program_blob_material_v1(3, #"4000") == None,
+    cek_proof_v1.inspect_program_blob_material_v1(3, #"c240") == None,
+    cek_proof_v1.inspect_program_blob_material_v1(3, #"") == None,
+    cek_proof_v1.inspect_program_blob_material_v1(4, #"40") == None,
+  }
+}

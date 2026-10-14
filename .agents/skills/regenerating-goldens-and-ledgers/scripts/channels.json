@@ -511,6 +511,38 @@
       }
     },
     {
+      "id": "plutus-data-cbor-decoding-v1",
+      "kind": "golden",
+      "summary": "Plutus Data CBOR decoding, Data entry and envelope entry: JSON fixture plus a generated Aiken module holding midgard/cbor_deserialise to the TypeScript decoder.",
+      "generators": [
+        "demo/midgard-validation/scripts/generate-plutus-data-cbor-decoding-v1-goldens.mjs"
+      ],
+      "packageScripts": [
+        "demo/midgard-validation:fixtures:plutus-data-cbor-decoding-v1:sync",
+        "demo/midgard-validation:fixtures:plutus-data-cbor-decoding-v1:check"
+      ],
+      "producers": ["demo/midgard-validation"],
+      "inputs": [
+        "@golden-channel",
+        "demo/midgard-validation/tests/fixtures/plutus-data-cbor-decoding-v1.vectors.mjs"
+      ],
+      "outputs": [
+        "demo/midgard-validation/tests/fixtures/plutus-data-cbor-decoding-v1.generated.json",
+        "onchain/aiken/lib/midgard/cbor-deserialise-v1-golden.test.ak"
+      ],
+      "aikenImportsOfOutputs": true,
+      "sync": {
+        "run": "pnpm --dir demo/midgard-validation run fixtures:plutus-data-cbor-decoding-v1:sync"
+      },
+      "check": {
+        "run": "pnpm --dir demo/midgard-validation run fixtures:plutus-data-cbor-decoding-v1:check"
+      },
+      "ci": {
+        "workflow": ".github/workflows/midgard-node-ci.yml",
+        "step": "Check Plutus Data CBOR decoding golden vectors"
+      }
+    },
+    {
       "id": "cek-builtin-cardano-v1",
       "kind": "golden",
       "summary": "Every builtin tag evaluated by the pinned Aiken evaluator, values and failures, with the ledger's outcome recorded where the two differ.",

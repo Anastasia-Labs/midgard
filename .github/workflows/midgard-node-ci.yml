@@ -493,6 +493,11 @@ jobs:
       - name: Check V1 CEK core-step golden vectors
         if: ${{ !cancelled() }}
         run: node scripts/preflight.mjs --run golden:cek-core-step-v1
+      # The Plutus Data CBOR decoding channel: both entries of the on-chain
+      # decoder are held to the TypeScript decoder's outcome on every row.
+      - name: Check Plutus Data CBOR decoding golden vectors
+        if: ${{ !cancelled() }}
+        run: node scripts/preflight.mjs --run golden:plutus-data-cbor-decoding-v1
       # The V1 CEK builtin channel: every builtin tag evaluated by the pinned
       # Aiken evaluator, values and failures, with the cases where the ledger
       # and that evaluator differ recorded as overrides beside both outcomes.

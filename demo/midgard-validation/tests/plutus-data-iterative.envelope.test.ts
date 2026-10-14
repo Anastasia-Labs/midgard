@@ -26,9 +26,13 @@ import {
   plutusDataFromCborIterative,
 } from "../src/plutus-data-iterative.decode.js";
 import { encodeMidgardCekPlutusData } from "../src/plutus-data-iterative.encode.js";
+import {
+  ENVELOPE_ONLY_VECTORS,
+  ENVELOPE_REFUSED_VECTORS,
+  REFUSED,
+} from "./fixtures/plutus-data-cbor-decoding-v1.vectors.mjs";
 
 const SEEDED_TIMEOUT_MS = 120_000;
-const REFUSED = "refused";
 
 const hex = (bytes: Uint8Array): string => Buffer.from(bytes).toString("hex");
 
@@ -63,59 +67,16 @@ const envelope = (vector: string): string =>
 const data = (vector: string): string =>
   outcome(plutusDataFromCborIterative, Buffer.from(vector, "hex"));
 
-const AB64 = "ab".repeat(64);
-const AB65 = "ab".repeat(65);
-const AB300 = "ab".repeat(300);
-
 describe("midgardEnvelopeDataFromCborIterative", () => {
   it("accepts byte strings and chunks longer than 64 bytes", () => {
-    const cases: readonly (readonly [string, string])[] = [
-      [`5841${AB65}`, `B ${AB65}`],
-      [`59012c${AB300}`, `B ${AB300}`],
-      [`5f5841${AB65}ff`, `B ${AB65}`],
-      [`5f5841${AB65}5840${AB64}ff`, `B ${AB65}${AB64}`],
-      [`c25841${AB65}`, `I ${BigInt(`0x${AB65}`).toString()}`],
-      [`c35841${AB65}`, `I ${(-1n - BigInt(`0x${AB65}`)).toString()}`],
-      [`d8798159012c${AB300}`, `C 0[B ${AB300}]`],
-      [`a15841${AB65}00`, `M[B ${AB65}=I 0]`],
-    ];
-    for (const [vector, expected] of cases) {
+    for (const [vector, expected] of ENVELOPE_ONLY_VECTORS) {
       expect(data(vector), vector).toBe(REFUSED);
       expect(envelope(vector), vector).toBe(expected);
     }
   });
 
   it("keeps every other refusal of the Data entry", () => {
-    const refused = [
-      "",
-      "0000",
-      `5841${AB65}00`,
-      "5f5f4101ffff",
-      `5f5f5841${AB65}ffff`,
-      "5f6101ff",
-      "61ff",
-      "f6",
-      "f97e00",
-      "1c",
-      "5c",
-      "ff",
-      "d87b4101",
-      "d8024101",
-      "d9000241ff",
-      "c26101",
-      "c280",
-      "d86682c2410180",
-      "d866823880",
-      "d866820083",
-      "d8669f008000ff",
-      "d8664101",
-      "d8798000",
-      "9f00",
-      "a1",
-      "5a00000001",
-      "58",
-    ];
-    for (const vector of refused) {
+    for (const vector of ENVELOPE_REFUSED_VECTORS) {
       expect(envelope(vector), vector).toBe(REFUSED);
     }
   });

@@ -130,8 +130,7 @@ test derivation_refuses_truncated_output_bytes() {
 
 /// `40` is the canonical `serialiseData` image of an empty byte string. Its
 /// materialisation must therefore have the same descriptor coverage as the
-/// neighbouring one-byte datum; an Aiken stdlib decoder gap is not a protocol
-/// capability limit.
+/// neighbouring one-byte datum.
 test derivation_accepts_an_empty_inline_datum() {
   and {
     ledger_output_descriptor_v1.ledger_value_v1(

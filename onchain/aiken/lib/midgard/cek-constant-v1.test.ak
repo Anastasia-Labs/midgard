@@ -1,6 +1,7 @@
 use aiken/builtin
 use aiken/cbor
 use aiken/primitive/bytearray
+use midgard/cbor_deserialise
 use midgard/cek_constant_v1
 
 test canonical_integer_constant_matches_typescript() {
@@ -75,6 +76,26 @@ test noncanonical_payload_fails_closed() fail {
       payload_cbor: #"190017",
     },
   )
+}
+
+// The canonical encoding of the empty byte string is its one-byte head.
+test empty_byte_string_payload_decodes() {
+  and {
+    cek_constant_v1.decode_constant_payload_v1(#"40") == builtin.b_data(#""),
+    cek_constant_v1.constant_payload_v1(
+      cek_constant_v1.ConstantWitnessV1 {
+        type_cbor: #"9f01ff",
+        payload_cbor: #"40",
+      },
+    ) == builtin.b_data(#""),
+  }
+}
+
+// `5800` decodes to the same empty byte string, so only the re-encode check
+// refuses it as a payload.
+test noncanonical_empty_byte_string_payload_fails_closed() fail {
+  expect cbor_deserialise.deserialise(#"5800") == Some(builtin.b_data(#""))
+  cek_constant_v1.decode_constant_payload_v1(#"5800") == builtin.b_data(#"")
 }
 
 test signed_integer_memory_size_matches_reference_cek() {
