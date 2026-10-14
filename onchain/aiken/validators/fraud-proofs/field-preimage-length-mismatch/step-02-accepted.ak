@@ -2,6 +2,7 @@ use aiken/cbor
 use aiken/crypto.{ScriptHash}
 use cardano/assets.{PolicyId}
 use cardano/transaction.{OutputReference, Transaction}
+use midgard/cbor_deserialise
 use midgard/computation_thread as ct
 use midgard/fraud_proofs/common.{cancel, continue}
 use midgard/fraud_proofs/field_preimage_length_mismatch/rule.{
@@ -49,7 +50,7 @@ validator main(
         )
         expect output_script_hash == step_03_validator_script_hash
         expect Some(BoundSource { subject, source_cbor }) = input_state
-        expect Some(source_data) = cbor.deserialise(source_cbor)
+        let source_data <- cbor_deserialise.expect_deserialise(source_cbor)
         expect source: L2TransactionSourceV1 = source_data
         expect cbor.serialise(source) == source_cbor
         expect source.tx_id == subject.transaction_id

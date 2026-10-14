@@ -2,11 +2,11 @@
 //// exact control; unchanged sub-controls are preserved without typed decoding.
 
 use aiken/builtin
-use aiken/cbor
 use aiken/collection/list
 use aiken/primitive/bytearray
 use midgard/blake2b_224_trace_v1 as blake
 use midgard/bounded_item_v1 as bounded
+use midgard/cbor_deserialise
 use midgard/cek_data_v1 as data_summary
 use midgard/ledger_output_proof_raw as raw
 use midgard/ledger_output_proof_v1 as proof
@@ -25,7 +25,7 @@ pub type StepResult {
 }
 
 fn encoded_data(bytes: ByteArray) -> Data {
-  expect Some(data) = cbor.deserialise(bytes)
+  let data <- cbor_deserialise.expect_deserialise(bytes)
   data
 }
 

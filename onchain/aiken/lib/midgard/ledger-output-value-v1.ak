@@ -1,6 +1,7 @@
 use aiken/builtin
 use aiken/cbor
 use aiken/primitive/bytearray
+use midgard/cbor_deserialise
 use midgard/cek_data_v1
 use midgard/fraud_proofs/native_tx/codec.{
   encode_definite_array_header, encode_definite_bytes,
@@ -233,7 +234,7 @@ pub fn control_from_data_v1(data: Data) -> LedgerOutputValueControlV1 {
 }
 
 pub fn decode_control_v1(control_cbor: ByteArray) -> LedgerOutputValueControlV1 {
-  expect Some(data) = cbor.deserialise(control_cbor)
+  let data <- cbor_deserialise.expect_deserialise(control_cbor)
   let control = control_from_data_v1(data)
   expect encode_control_v1(control) == control_cbor
   control

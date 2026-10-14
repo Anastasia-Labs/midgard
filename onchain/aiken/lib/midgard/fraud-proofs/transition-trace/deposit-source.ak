@@ -1,4 +1,4 @@
-use aiken/cbor
+use midgard/cbor_deserialise
 use midgard/event_history/order_facts
 use midgard/fraud_proofs/transition_trace/final_yield.{Args, State}
 use midgard/ledger_state
@@ -12,7 +12,7 @@ pub type Source {
 /// The first projection stage captured these facts from the authenticated list.
 /// Subsequent stages need neither the original out-ref nor any current node.
 pub fn open(state: State, args: Args) -> Source {
-  expect Some(data) = cbor.deserialise(state.deposit_source_cbor)
+  let data <- cbor_deserialise.expect_deserialise(state.deposit_source_cbor)
   expect commitment: order_facts.Commitment = data
   expect commitment.kind == order_facts.Deposit
   expect Some(raw_opening) = args.deposit_opening

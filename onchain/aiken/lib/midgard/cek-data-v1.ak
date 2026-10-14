@@ -1,6 +1,7 @@
 use aiken/builtin
 use aiken/cbor
 use aiken/primitive/bytearray
+use midgard/cbor_deserialise
 use midgard/fraud_proofs/native_tx/codec.{
   encode_definite_array_header, encode_definite_bytes, slice_len,
 }
@@ -324,7 +325,7 @@ fn uint64(value: Int) -> Bool {
 /// Parses one exact canonical data-node preimage. Re-encoding equality makes
 /// indefinite, trailing, reordered, and non-minimal CBOR fail closed.
 pub fn inspect_data_node_preimage_v1(preimage: ByteArray) -> Option<DataNodeV1> {
-  when cbor.deserialise(preimage) is {
+  when cbor_deserialise.deserialise(preimage) is {
     Some(data) ->
       when list_data(data) is {
         Some([
@@ -535,7 +536,7 @@ pub fn data_node_child_roots_v1(node: DataNodeV1) -> List<ByteArray> {
 pub fn inspect_data_list_node_preimage_v1(
   preimage: ByteArray,
 ) -> Option<DataListNodeV1> {
-  when cbor.deserialise(preimage) is {
+  when cbor_deserialise.deserialise(preimage) is {
     Some(data) ->
       when list_data(data) is {
         Some([
@@ -603,7 +604,7 @@ pub fn data_list_node_child_roots_v1(node: DataListNodeV1) -> List<ByteArray> {
 pub fn inspect_data_pair_node_preimage_v1(
   preimage: ByteArray,
 ) -> Option<DataPairNodeV1> {
-  when cbor.deserialise(preimage) is {
+  when cbor_deserialise.deserialise(preimage) is {
     Some(data) ->
       when list_data(data) is {
         Some([

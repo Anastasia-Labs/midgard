@@ -1,7 +1,7 @@
 use aiken/builtin
-use aiken/cbor
 use aiken/crypto.{blake2b_256}
 use aiken/primitive/bytearray
+use midgard/cbor_deserialise
 use midgard/fraud_proofs/native_tx/compact.{
   decode_native_tx_witness_set_compact, tx_proof_commitment_v1,
   verify_tx_compact_cbor_v1,
@@ -91,7 +91,7 @@ pub fn verify_script_integrity_witness_set(
   witness: ValidationOneStepWitnessV1,
   auxiliary: ValidationAuxiliaryWitnessV1,
 ) -> Bool {
-  expect Some(data) = cbor.deserialise(witness.work_witness_cbor)
+  let data <- cbor_deserialise.expect_deserialise(witness.work_witness_cbor)
   expect
       [
         native_control_cbor_data, stage_data, script_integrity_hash_data,
@@ -136,7 +136,7 @@ pub fn verify_script_integrity_finalize(
   witness: ValidationOneStepWitnessV1,
   auxiliary: ValidationAuxiliaryWitnessV1,
 ) -> Bool {
-  expect Some(data) = cbor.deserialise(witness.work_witness_cbor)
+  let data <- cbor_deserialise.expect_deserialise(witness.work_witness_cbor)
   expect
       [
         native_control_cbor_data, stage_data, script_integrity_hash_data,

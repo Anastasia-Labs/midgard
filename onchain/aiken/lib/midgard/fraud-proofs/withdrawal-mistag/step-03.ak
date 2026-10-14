@@ -8,6 +8,7 @@ use cardano/address
 use cardano/assets
 use cardano/transaction.{NoDatum, OutputReference}
 use env
+use midgard/cbor_deserialise
 use midgard/common/types.{H32, Proof}
 use midgard/common/utils
 use midgard/computation_thread as ct
@@ -82,7 +83,7 @@ type AuthenticatedOutputProjectionV1 {
 fn authenticated_output_projection_v1(
   descriptor_cbor: ByteArray,
 ) -> AuthenticatedOutputProjectionV1 {
-  expect Some(data) = cbor.deserialise(descriptor_cbor)
+  let data <- cbor_deserialise.expect_deserialise(descriptor_cbor)
   expect
       [
         version_data, output_index_data, total_length_data, item_commitment_data,

@@ -26,8 +26,6 @@ import "./support/transaction-output-non-canonical-emulator.js";
 import "./transaction-output-non-canonical-lifecycle.registered-contracts.js";
 import "./transaction-output-non-canonical-lifecycle.scan-to-terminal.js";
 
-import { writeFile } from "node:fs/promises";
-
 import {
   acceptedVerdictSubject,
   forcedVerdictSubject,
@@ -71,17 +69,27 @@ import {
   submitOutputStep04Raw,
 } from "./support/transaction-output-non-canonical-emulator.js";
 import {
+  beginMeasuredCase,
+  CANONICAL_SHAPES,
+  expectMeasuredFit,
+  MEASURED_CASES,
+  measureFitPart,
+  passMeasuredCase,
+  recordAll,
+  recordCanonical,
+  recordCarriage,
+  recordMalformed,
+  recordPublication,
+} from "./transaction-output-non-canonical-lifecycle.record-fit.js";
+import {
   committedInclusions,
   coverage,
   type Evidence,
   evidenceOf,
-  fit,
   type Inclusion,
   MAXIMUM_OUTPUT_BYTES,
   type NativeTx,
   network,
-  record,
-  recordAll,
   registeredContracts,
   stepLabel,
   witnessSetCborOf,
@@ -89,7 +97,12 @@ import {
 import { scanToTerminal } from "./transaction-output-non-canonical-lifecycle.scan-to-terminal.js";
 
 describe("transactionOutputNonCanonical registered-chain lifecycle", () => {
+  measureFitPart("lifecycle", [
+    MEASURED_CASES.acceptedMaximum,
+    MEASURED_CASES.forcedMaximum,
+  ]);
   it("convicts an accepted malformed output at the maximum shape, refuses every accepted seam, the honest twin and the adjacent width, cancels every step, then mints and removes", async () => {
+    beginMeasuredCase(MEASURED_CASES.acceptedMaximum);
     const harness = await makeFaultProofEmulatorHarness({
       contractOptions: {
         realTransactionOutputNonCanonical: true,
@@ -145,7 +158,8 @@ describe("transactionOutputNonCanonical registered-chain lifecycle", () => {
         l2TransactionCount: 3n,
       },
     });
-    const certificateReference = await registered.publishReferences();
+    const certificateReference =
+      await registered.publishReferences(recordPublication);
 
     const malformedEvidence = evidenceOf(
       acceptedVerdictSubject(malformedInclusion.nativeTxId),
@@ -202,14 +216,7 @@ describe("transactionOutputNonCanonical registered-chain lifecycle", () => {
       [Buffer.alloc(MAXIMUM_OUTPUT_BYTES), Buffer.alloc(16_377)],
     );
     expect(malformedCarriage.result.planned.plan.tier).toBe("Certified");
-    malformedCarriage.measurements.forEach((measurement, index) => {
-      record(
-        index === malformedCarriage.measurements.length - 1
-          ? "accepted-carriage-certificate"
-          : `accepted-carriage-chunk${(index + 1).toString().padStart(2, "0")}`,
-        measurement,
-      );
-    });
+    recordCarriage("accepted", malformedCarriage.measurements, recordMalformed);
     const canonicalCarriage = (
       await publishCarriage(canonicalInclusion, canonicalTx, [
         canonicalOutputOfLength(MAXIMUM_OUTPUT_BYTES),
@@ -318,8 +325,8 @@ describe("transactionOutputNonCanonical registered-chain lifecycle", () => {
       malformedInclusion,
       malformedEvidence,
     );
-    record("accepted-init", conviction.init.measurement);
-    record("accepted-step01", conviction.bound.measurement);
+    recordMalformed("accepted-init", conviction.init.measurement);
+    recordMalformed("accepted-step01", conviction.bound.measurement);
     const authenticated = await step02(
       conviction.threadOutRef,
       malformedEvidence,
@@ -327,13 +334,13 @@ describe("transactionOutputNonCanonical registered-chain lifecycle", () => {
       malformedTx,
       malformedCarriage.result,
     );
-    record("accepted-step02", authenticated.measurement);
+    recordMalformed("accepted-step02", authenticated.measurement);
     const scanned = await step03(
       authenticated.result.nextThreadOutRef,
       malformedEvidence,
     );
     expect(scanned.result.terminal).toBe(true);
-    record("accepted-step03-scan", scanned.measurement);
+    recordMalformed("accepted-step03-scan", scanned.measurement);
     const minted = await captureEmulatorSubmission(harness.emulator, () =>
       submitTransactionOutputNonCanonicalStep04({
         lucid: harness.proverLucid,
@@ -347,7 +354,7 @@ describe("transactionOutputNonCanonical registered-chain lifecycle", () => {
       }),
     );
     expect(minted.result.fraudProofUnit).toBeTruthy();
-    record("accepted-step04-proof-mint", minted.measurement);
+    recordMalformed("accepted-step04-proof-mint", minted.measurement);
     coverage.reason("OutputNonCanonical", "accepted_invalid");
     coverage.scenario("wrongful_acceptance_success");
 
@@ -396,7 +403,7 @@ describe("transactionOutputNonCanonical registered-chain lifecycle", () => {
         thread = scan.result.nextThreadOutRef;
       }
       const cancelled = await registered.cancel(thread, targetStep);
-      record(
+      recordMalformed(
         `accepted-cancel-step${stepLabel(targetStep)}`,
         cancelled.measurement,
       );
@@ -555,7 +562,10 @@ describe("transactionOutputNonCanonical registered-chain lifecycle", () => {
       canonicalTx,
       canonicalCarriage,
     );
-    record("accepted-canonical-step02", honestAuthenticated.measurement);
+    recordCanonical(
+      "accepted-canonical-step02",
+      honestAuthenticated.measurement,
+    );
     const honestScan = await scanToTerminal({
       registered,
       threadOutRef: honestAuthenticated.result.nextThreadOutRef,
@@ -567,6 +577,7 @@ describe("transactionOutputNonCanonical registered-chain lifecycle", () => {
           0,
         ),
       label: "accepted-canonical-step03",
+      shapes: CANONICAL_SHAPES,
       nativeTxCompactCbor: "",
       witnessSetCompactCbor: "",
     });
@@ -639,11 +650,13 @@ describe("transactionOutputNonCanonical registered-chain lifecycle", () => {
 
     // ## Permanent proof token, then state-queue target and descendant removal.
     const removed = await registered.removal(setup.headerHash);
-    record("accepted-remove-fraudulent-block", removed.measurement);
+    recordMalformed("accepted-remove-fraudulent-block", removed.measurement);
     coverage.scenario("permanent_proof_token_and_descendant_removal");
+    passMeasuredCase();
   }, 900_000);
 
   it("convicts a forced rejection of the maximum canonical output through real checkpoints, refuses every forced seam, then mints and removes", async () => {
+    beginMeasuredCase(MEASURED_CASES.forcedMaximum);
     const harness = await makeFaultProofEmulatorHarness({
       contractOptions: {
         realTransactionOutputNonCanonical: true,
@@ -728,7 +741,7 @@ describe("transactionOutputNonCanonical registered-chain lifecycle", () => {
 
     // ## Wrongful forced rejection at the maximum canonical shape.
     const { init, threadOutRef } = await initThread();
-    record("forced-init", init.measurement);
+    recordCanonical("forced-init", init.measurement);
     const bound = await captureEmulatorSubmission(harness.emulator, () =>
       submitTransactionOutputNonCanonicalStep01Forced({
         lucid: harness.proverLucid,
@@ -741,7 +754,7 @@ describe("transactionOutputNonCanonical registered-chain lifecycle", () => {
         referenceScriptUtxo: references[0]!,
       }),
     );
-    record("forced-step01", bound.measurement);
+    recordCanonical("forced-step01", bound.measurement);
     const authenticated = await captureEmulatorSubmission(
       harness.emulator,
       () =>
@@ -763,6 +776,7 @@ describe("transactionOutputNonCanonical registered-chain lifecycle", () => {
       "forced-step02",
       authenticated.measurements,
       authenticated.result.carriageTier === "Certified",
+      CANONICAL_SHAPES.scan,
     );
     const scanned = await scanToTerminal({
       registered,
@@ -770,6 +784,7 @@ describe("transactionOutputNonCanonical registered-chain lifecycle", () => {
       evidence,
       rederive: () => evidenceOf(subject, forced.nativeTx, 0),
       label: "forced-step03",
+      shapes: CANONICAL_SHAPES,
       nativeTxCompactCbor: forced.transaction.submitted_source.compact_cbor,
       witnessSetCompactCbor:
         forced.transaction.submitted_source.witness_set_compact_cbor,
@@ -788,11 +803,12 @@ describe("transactionOutputNonCanonical registered-chain lifecycle", () => {
       }),
     );
     expect(minted.result.fraudProofUnit).toBeTruthy();
-    record("forced-step04-proof-mint", minted.measurement);
+    recordCanonical("forced-step04-proof-mint", minted.measurement);
     coverage.reason("OutputNonCanonical", "forced_rejection_wrong");
     coverage.scenario("wrongful_forced_rejection_success");
     const removed = await registered.removal(setup.headerHash);
-    record("forced-remove-fraudulent-block", removed.measurement);
+    recordCanonical("forced-remove-fraudulent-block", removed.measurement);
+    passMeasuredCase();
   }, 900_000);
 
   it("refuses to mint against an honest forced rejection: the malformed output reaches its non-canonical terminal and step 04 refuses on chain", async () => {
@@ -923,24 +939,6 @@ describe("transactionOutputNonCanonical registered-chain lifecycle", () => {
       resumable: true,
       hasAdjacentConsensusBound: true,
     });
-    for (const [name, measurement] of fit) {
-      expect(measurement.l1ByteMargin, name).toBeGreaterThan(0);
-    }
-    const output = process.env.MIDGARD_FIT_OUT;
-    if (output !== undefined) {
-      await writeFile(
-        output,
-        JSON.stringify(
-          fit.map(([name, measurement]) => ({
-            name,
-            signedBytes: measurement.completeSignedBytes,
-            memoryUnits: measurement.executionMemory.toString(),
-            cpuUnits: measurement.executionSteps.toString(),
-          })),
-          null,
-          2,
-        ),
-      );
-    }
+    expectMeasuredFit();
   });
 });

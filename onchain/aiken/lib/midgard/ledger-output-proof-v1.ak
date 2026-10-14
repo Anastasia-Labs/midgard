@@ -5,6 +5,7 @@ use aiken/crypto
 use aiken/primitive/bytearray
 use midgard/blake2b_224_trace_v1
 use midgard/bounded_item_v1
+use midgard/cbor_deserialise
 use midgard/cek_data_traverse_v1
 use midgard/cek_data_v1
 use midgard/fraud_proofs/native_tx/codec.{encode_definite_array_header}
@@ -584,7 +585,7 @@ fn optional_fact_from_data(data: Data) -> Option<ByteArray> {
 }
 
 pub fn decode_control_v1(control_cbor: ByteArray) -> LedgerOutputProofControlV1 {
-  expect Some(data) = cbor.deserialise(control_cbor)
+  let data <- cbor_deserialise.expect_deserialise(control_cbor)
   expect
       [
         version_data, stage_data, output_index_data, total_length_data,

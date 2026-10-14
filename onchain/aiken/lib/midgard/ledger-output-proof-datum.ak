@@ -1,8 +1,8 @@
 use aiken/builtin
-use aiken/cbor
 use aiken/collection/list
 use aiken/primitive/bytearray
 use midgard/blake2b_256_trace_v1 as blake256
+use midgard/cbor_deserialise
 use midgard/cek_blob_frontier_v1 as blob_frontier
 use midgard/cek_data_bytes_v1 as bytes_control
 use midgard/cek_data_frame_v1 as frame
@@ -140,7 +140,7 @@ pub fn finalize_frame(
   is {
     None -> None
     Some(transition) -> {
-      expect Some(result_data) = cbor.deserialise(
+      let result_data <- cbor_deserialise.expect_deserialise(
         traverse.encode_optional_summary_v1(transition.next_result),
       )
       let next = list.indexed_map(
@@ -177,7 +177,9 @@ fn next_control(
   when result is {
     None -> None
     Some(next) -> {
-      expect Some(data) = cbor.deserialise(traverse.encode_control_v1(next))
+      let data <- cbor_deserialise.expect_deserialise(
+        traverse.encode_control_v1(next),
+      )
       Some(
         stages.Advanced {
           control: raw.replace(control, 7, builtin.constr_data(0, [data])),
@@ -451,7 +453,7 @@ fn completed_scalar(
     None -> None
     Some(next) -> {
       expect next.integer == None && next.bytes == None
-      expect Some(result_data) = cbor.deserialise(
+      let result_data <- cbor_deserialise.expect_deserialise(
         traverse.encode_optional_summary_v1(next.result),
       )
       let none = builtin.constr_data(1, [])

@@ -3,6 +3,7 @@ use aiken/cbor
 use aiken/crypto.{blake2b_224, blake2b_256}
 use aiken/primitive/bytearray
 use midgard/bounded_item_v1
+use midgard/cbor_deserialise
 use midgard/fraud_proofs/native_tx/codec.{encode_definite_bytes}
 use midgard/fraud_proofs/native_tx/components.{
   decode_midgard_tx_input_cbor, encode_midgard_redeemer_witness,
@@ -123,7 +124,7 @@ pub fn source_leaf_hash(
       origin_kind == 1,
     }
   if origin_kind == 0 {
-    expect Some(source_index_data) = cbor.deserialise(source_key)
+    let source_index_data <- cbor_deserialise.expect_deserialise(source_key)
     let source_index = builtin.un_i_data(source_index_data)
     expect source_index >= 0
     expect cbor.serialise(source_index) == source_key
@@ -200,7 +201,7 @@ pub fn source_descriptor_leaf_hash(
       origin_kind == 1,
     }
   if origin_kind == 0 {
-    expect Some(source_index_data) = cbor.deserialise(source_key)
+    let source_index_data <- cbor_deserialise.expect_deserialise(source_key)
     let source_index = builtin.un_i_data(source_index_data)
     expect source_index >= 0
     expect cbor.serialise(source_index) == source_key

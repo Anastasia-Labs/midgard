@@ -6,6 +6,7 @@ use aiken/builtin
 use aiken/cbor
 use aiken/collection/list
 use aiken/primitive/bytearray
+use midgard/cbor_deserialise
 use midgard/fraud_proofs/native_tx/codec.{
   encode_definite_array_header, encode_definite_bytes,
 }
@@ -52,7 +53,7 @@ pub fn open_frame_v1(
   expected_stage: Int,
 ) -> RawScriptSourcesFrameV1 {
   expect expected_item_count == 30 || expected_item_count == 31
-  expect Some(data) = cbor.deserialise(witness.work_witness_cbor)
+  let data <- cbor_deserialise.expect_deserialise(witness.work_witness_cbor)
   let items = builtin.un_list_data(data)
   expect list.length(items) == expected_item_count
   expect

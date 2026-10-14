@@ -2,6 +2,7 @@ use aiken/builtin
 use aiken/cbor
 use aiken/crypto.{blake2b_256}
 use aiken/primitive/bytearray
+use midgard/cbor_deserialise
 use midgard/cek_data_v1
 use midgard/cek_proof_v1
 use midgard/fraud_proofs/native_tx/codec.{
@@ -150,7 +151,7 @@ fn bool_from_data(data: Data) -> Bool {
 }
 
 pub fn control_from_cbor_v1(control_cbor: ByteArray) -> DataScanControlV1 {
-  expect Some(data) = cbor.deserialise(control_cbor)
+  let data <- cbor_deserialise.expect_deserialise(control_cbor)
   expect
       [
         raw_hash_data, raw_length_data, offset_data, frame_root_data,
@@ -483,7 +484,7 @@ pub fn small_leaf_at_v1(
     next_offset <= bytearray.length(raw_cbor),
     slice_len(raw_cbor, offset, item_length) == item_cbor,
   } {
-    when cbor.deserialise(item_cbor) is {
+    when cbor_deserialise.deserialise(item_cbor) is {
       None -> None
       Some(data) ->
         if and {
@@ -532,7 +533,7 @@ pub fn revealed_leaf_at_v1(
     next_offset <= bytearray.length(raw_cbor),
   } {
     let item_cbor = slice_len(raw_cbor, offset, item_length)
-    when cbor.deserialise(item_cbor) is {
+    when cbor_deserialise.deserialise(item_cbor) is {
       None -> None
       Some(data) ->
         if cbor.serialise(data) != item_cbor {

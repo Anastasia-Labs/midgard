@@ -16,6 +16,7 @@ use aiken/builtin
 use aiken/cbor
 use aiken/crypto.{blake2b_256}
 use aiken/primitive/bytearray
+use midgard/cbor_deserialise
 use midgard/fraud_proofs/native_tx/compact.{
   encode_native_tx_body_compact, encode_native_tx_compact_v1,
   encode_native_tx_field_preimage_lengths_v1,
@@ -85,7 +86,7 @@ fn list_data(data: Data) -> Option<List<Data>> {
 pub fn inspect_source_envelope_v1(
   source_cbor: ByteArray,
 ) -> Option<SourceEnvelopeV1> {
-  when cbor.deserialise(source_cbor) is {
+  when cbor_deserialise.deserialise(source_cbor) is {
     Some(source_data) ->
       when constructor_data(source_data) is {
         Some(Pair(0, [tx_id_data, proof_source_data])) ->
@@ -223,7 +224,7 @@ fn inspect_compact_body_v1(body_data: Data) -> Option<NativeTxBodyCompact> {
 pub fn inspect_compact_v1(
   compact_cbor: ByteArray,
 ) -> Option<CompactInspectionV1> {
-  when cbor.deserialise(compact_cbor) is {
+  when cbor_deserialise.deserialise(compact_cbor) is {
     Some(compact_data) ->
       when list_data(compact_data) is {
         Some([version_data, body_data, witness_set_hash_data, validity_data]) ->
@@ -276,7 +277,7 @@ pub fn inspect_compact_v1(
 }
 
 pub fn witness_set_is_canonical_v1(witness_set_cbor: ByteArray) -> Bool {
-  when cbor.deserialise(witness_set_cbor) is {
+  when cbor_deserialise.deserialise(witness_set_cbor) is {
     Some(witness_set_data) ->
       when list_data(witness_set_data) is {
         Some([address_hash_data, script_hash_data, redeemer_hash_data]) ->
@@ -313,7 +314,7 @@ pub fn witness_set_is_canonical_v1(witness_set_cbor: ByteArray) -> Bool {
 }
 
 pub fn field_lengths_are_canonical_v1(lengths_cbor: ByteArray) -> Bool {
-  when cbor.deserialise(lengths_cbor) is {
+  when cbor_deserialise.deserialise(lengths_cbor) is {
     Some(lengths_data) ->
       when list_data(lengths_data) is {
         Some([
