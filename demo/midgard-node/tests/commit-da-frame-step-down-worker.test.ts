@@ -146,9 +146,15 @@ vi.mock("../src/services/history-commit-window.js", async (importOriginal) => ({
 }));
 // The worker composition fixture supplies an independent selected clock/window;
 // real clock resolution and grouped SQL counts have their own causal suites.
-vi.mock("../src/workers/commit-block-header.plan-event-window.js", () => ({
-  planHistoryCommitEventWindow: () => fakeSelectedEventPlan(seams.catchUp),
-}));
+vi.mock(
+  "../src/workers/commit-block-header.plan-event-window.js",
+  async (importOriginal) => ({
+    ...(await importOriginal<
+      typeof import("../src/workers/commit-block-header.plan-event-window.js")
+    >()),
+    planHistoryCommitEventWindow: () => fakeSelectedEventPlan(seams.catchUp),
+  }),
+);
 vi.mock("../src/forced-orders/horizon.js", () => ({
   forcedOrderHorizon: Effect.succeed(null),
 }));

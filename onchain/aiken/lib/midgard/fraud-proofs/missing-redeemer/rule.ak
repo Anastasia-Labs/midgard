@@ -9,7 +9,7 @@ use midgard/canonical_cbor_scan_v1
 use midgard/fraud_proofs/native_tx/compact.{tx_proof_commitment_v1}
 use midgard/fraud_proofs/proof_thread_substrate_v1 as substrate
 use midgard/ledger_state
-use midgard/rejection_reason_v1.{RedeemerMissing, rejection_code_of}
+use midgard/rejection_reason_v1.{RedeemerMissing}
 use midgard/script_proof_v1
 use midgard/transition_trace
 use midgard/validation_machine/machine_types as vm_machine_types
@@ -155,7 +155,7 @@ fn descriptor_verdict_matches_subject(
     and {
       descriptor.verdict == validation_trace_v1.Rejected,
       descriptor.rejection_code_hash == validation_trace_v1.hash_rejection_code(
-        rejection_code_of(substrate.rejection_reason_of_v1(subject)),
+        substrate.rejection_reason_of_v1(subject),
       ),
     }
   }

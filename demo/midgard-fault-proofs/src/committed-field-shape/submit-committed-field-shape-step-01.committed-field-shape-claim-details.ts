@@ -1,7 +1,4 @@
-import {
-  encodeMidgardNativeTxWitnessSetCompact,
-  MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES,
-} from "@al-ft/midgard-core";
+import { encodeMidgardNativeTxWitnessSetCompact } from "@al-ft/midgard-core";
 import { computeHash32 } from "@al-ft/midgard-core/codec/hash";
 import {
   type CommittedFieldClaim,
@@ -35,11 +32,16 @@ export type SubmitCommittedFieldShapeStep01Result = {
   readonly awaitedConfirmation: boolean;
 };
 
-export const committedFieldShapeInlineClaimDetails = (
+/**
+ * The slot a claim names, its witness-set hash, and — when the claim spells a
+ * tier-1 Inline carriage — the inline bytes. Tier-2/3 carriage names no bytes
+ * in the redeemer; the submitter re-derives the §8 carriage from the plan.
+ */
+export const committedFieldShapeClaimDetails = (
   claim: CommittedFieldClaim,
 ): {
   readonly fieldIndex: number;
-  readonly preimage: Buffer;
+  readonly inlinePreimage?: Buffer;
   readonly witnessSetHash?: string;
 } => {
   const witnessSetHash = (() => {
@@ -104,9 +106,10 @@ export const committedFieldShapeInlineClaimDetails = (
     );
   }
   if (!("Inline" in selected.carriage)) {
-    throw committedFieldShapeSubmitError(
-      "this submitter wave admits only tier-1 Inline claim carriage.",
-    );
+    return {
+      fieldIndex: selected.fieldIndex,
+      ...(witnessSetHash === undefined ? {} : { witnessSetHash }),
+    };
   }
   const preimageHex = selected.carriage.Inline.preimage;
   if (!/^(?:[0-9a-f]{2})*$/u.test(preimageHex)) {
@@ -114,15 +117,9 @@ export const committedFieldShapeInlineClaimDetails = (
       "inline preimage must be canonical lowercase whole-byte hexadecimal.",
     );
   }
-  const preimage = Buffer.from(preimageHex, "hex");
-  if (preimage.length > MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES) {
-    throw committedFieldShapeSubmitError(
-      `inline preimage is ${preimage.length.toString()} bytes, above the tier-1 frontier ${MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES.toString()}; tier-2/3 TypeScript carriage is deferred.`,
-    );
-  }
   return {
     fieldIndex: selected.fieldIndex,
-    preimage,
+    inlinePreimage: Buffer.from(preimageHex, "hex"),
     ...(witnessSetHash === undefined ? {} : { witnessSetHash }),
   };
 };

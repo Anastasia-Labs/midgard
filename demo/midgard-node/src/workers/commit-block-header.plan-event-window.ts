@@ -2,7 +2,11 @@ import { Effect } from "effect";
 
 import { PendingBlockFinalizationsDB } from "../database/index.js";
 import { HISTORY_COMMIT_MINIMUM_FUTURE_BUFFER_MS } from "../services/history-commit-window.js";
-import { Lucid, MidgardContracts } from "../services/index.js";
+import {
+  type ContractDeploymentIdentityValue,
+  Lucid,
+  MidgardContracts,
+} from "../services/index.js";
 import { pendingCommitEventInstants } from "./commit-block-header.pending-event-instants.js";
 import { resolveCommitAppendFenceEndTimeCapLocal } from "./commit-block-header/state-queue.js";
 import {
@@ -11,11 +15,22 @@ import {
 } from "./utils/commit-block-planner.event-window.js";
 import { resolveHistoryCommitBlockTime } from "./utils/commit-end-time.js";
 
+/** The four protocol event caps used by the grouped window planner. */
+export const commitEventLimitsFromConsensusProfile = (
+  profile: ContractDeploymentIdentityValue["consensusProfile"],
+): CommitEventLimits => ({
+  deposits: profile.limits.maxDepositCount,
+  forcedTransactions: profile.limits.maxForcedTransactionCount,
+  withdrawals: profile.limits.maxWithdrawalCount,
+  totalEvents: profile.limits.maxTotalEventCount,
+});
+
 /** One source-owned clock, stable horizon and complete event grouping for every retry. */
 export const planHistoryCommitEventWindow = (input: {
   readonly latestEndTime: number;
   readonly nowMs: number;
   readonly horizonMs: number;
+  readonly schedulerWindowStartTimeMs?: number;
   readonly schedulerWindowEndTimeMs?: number;
   readonly limits: CommitEventLimits;
 }) =>
@@ -37,6 +52,7 @@ export const planHistoryCommitEventWindow = (input: {
       latestEndTime: input.latestEndTime,
       nowMs: input.nowMs,
       minimumFutureBufferMs: HISTORY_COMMIT_MINIMUM_FUTURE_BUFFER_MS,
+      schedulerWindowStartTimeMs: input.schedulerWindowStartTimeMs,
       schedulerWindowEndTimeMs: input.schedulerWindowEndTimeMs,
       appendFenceEndTimeMs,
       coverageHorizonMs: input.horizonMs,

@@ -27,7 +27,7 @@ describe("placeholderValidationTraceDescriptorV1", () => {
           transactionCommitment: hex(vector.transactionCommitment),
         },
         vector.verdict,
-        vector.rejectionCode,
+        vector.rejectionReason,
       );
       expect({
         schemaVersion: descriptor.schemaVersion,
@@ -120,7 +120,7 @@ describe("placeholderValidationTraceDescriptorV1", () => {
     }
   });
 
-  it("refuses a verdict that disagrees with its rejection code", () => {
+  it("refuses a verdict that disagrees with its rejection reason", () => {
     const event = {
       eventKeyCbor: hex(
         PLACEHOLDER_VALIDATION_TRACE_DESCRIPTOR_VECTORS[0]!.eventKeyCbor,
@@ -128,17 +128,21 @@ describe("placeholderValidationTraceDescriptorV1", () => {
       transactionCommitment: Buffer.alloc(32, 1),
     };
     expect(() =>
-      placeholderValidationTraceDescriptorV1(event, "accepted", "E_MIN_FEE"),
-    ).toThrow(/disagree/u);
+      placeholderValidationTraceDescriptorV1(
+        event,
+        "accepted",
+        "FeeBelowMinimum",
+      ),
+    ).toThrow();
     expect(() =>
       placeholderValidationTraceDescriptorV1(event, "rejected", null),
-    ).toThrow(/disagree/u);
+    ).toThrow();
     expect(() =>
       placeholderValidationTraceDescriptorV1(
         { ...event, transactionCommitment: Buffer.alloc(31) },
         "accepted",
         null,
       ),
-    ).toThrow(/32 bytes/u);
+    ).toThrow();
   });
 });

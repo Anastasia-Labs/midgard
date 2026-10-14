@@ -9,7 +9,7 @@ use midgard/fraud_proofs/native_tx/codec.{
 }
 use midgard/fraud_proofs/native_tx/compact.{tx_proof_commitment_v1}
 use midgard/redeemer_item_proof_v1.{RedeemerItemProofControlV1}
-use midgard/rejection_reason_v1.{reject_invalid_field_type}
+use midgard/rejection_reason_v1.{RedeemerMalformed}
 use midgard/script_proof_v1
 use midgard/script_sources_raw_frame_v1 as raw_frame
 use midgard/validation_machine/machine_types.{ValidationOneStepWitnessV1}
@@ -594,7 +594,7 @@ pub fn verify_raw_envelope_v1(
         rejected_successor_is_exact(
           pre,
           transition.claimed_successor,
-          reject_invalid_field_type,
+          RedeemerMalformed { redeemer_index: redeemer_count },
         ),
       }
     } else {

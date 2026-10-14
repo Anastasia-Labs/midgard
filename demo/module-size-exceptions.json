@@ -291,8 +291,8 @@
   },
   {
     "file": "midgard-fault-proofs/tests/bin.test.ts",
-    "max": 804,
-    "reason": "Retained test registration “fault-proof CLI argument parsing” (726 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+    "max": 703,
+    "reason": "Retained test registration “fault-proof CLI argument parsing” (625 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor. The validation-dispute argument case went with its removed flags (-101)."
   },
   {
     "file": "midgard-fault-proofs/tests/custom-transaction-runner-recovery.test.ts",
@@ -476,7 +476,7 @@
   },
   {
     "file": "midgard-fault-proofs/tests/submit-init-emulator-transition-trace-subvariants.test.ts",
-    "max": 637,
+    "max": 642,
     "reason": "Retained test registration “transition-trace omitted/out-of-window/count subvariant lifecycle” (501 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor. C2a (+7): headers are committed with the commit slot as block_slot, and callers use the header the commit returns. C3 (+1): omitting blocks carry an unrelated withdrawal, since a committed block carries at least one event."
   },
   {
@@ -736,7 +736,7 @@
   },
   {
     "file": "midgard-node/scripts/generate-transaction-root-v1-fixture.mjs",
-    "max": 676,
+    "max": 678,
     "reason": "makeAiken is the dominant indivisible declaration (200 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
   },
   {
@@ -1021,8 +1021,8 @@
   },
   {
     "file": "midgard-node/tests/midgard-contracts.test.ts",
-    "max": 552,
-    "reason": "Retained test registration “midgard contracts registry” (487 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor. VR (+7): script contexts carry POSIX-ms validity bounds, so the phase-B, trace, classifier and contract-builder inputs here name the deployment's L1 slot mapping, and the registry digest's re-pin history names the txInfo stage's mapping parameter. P1 composition (+3): the pinned registry digests name the composed tree in their re-pin reasons. Streamed Data verdicts (+4): the registry digests name the streamed redeemer and datum Data verdict steps in their re-pin reasons."
+    "max": 554,
+    "reason": "Retained test registration “midgard contracts registry” (487 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor. VR (+7): script contexts carry POSIX-ms validity bounds, so the phase-B, trace, classifier and contract-builder inputs here name the deployment's L1 slot mapping, and the registry digest's re-pin history names the txInfo stage's mapping parameter. P1 composition (+3): the pinned registry digests name the composed tree in their re-pin reasons. Streamed Data verdicts (+4): the registry digests name the streamed redeemer and datum Data verdict steps in their re-pin reasons. Exact rejection reason (+2): the registry digests name the validation machine's exact rejection reason in their re-pin reasons."
   },
   {
     "file": "midgard-node/tests/midgard-local-script-eval.test.ts",
@@ -1091,7 +1091,7 @@
   },
   {
     "file": "midgard-node/tests/sdk-abi-fixtures.build-transition-trace-abi-fixtures.ts",
-    "max": 523,
+    "max": 527,
     "reason": "buildTransitionTraceAbiFixtures is the dominant indivisible declaration (501 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
   },
   {
@@ -1161,7 +1161,7 @@
   },
   {
     "file": "midgard-sdk/tests/tx-order.test.ts",
-    "max": 665,
+    "max": 669,
     "reason": "Retained test registration “V1 transaction-order datum, §8 field carriage, and CEK program material” (624 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor. P1 integration recount: record the exact committed source size after forced-admission and block-time changes; no source behavior is changed."
   },
   {
@@ -1181,12 +1181,12 @@
   },
   {
     "file": "midgard-validation/src/validation-machine/trace-builder-complete.ts",
-    "max": 2875,
+    "max": 2988,
     "reason": "completeValidationTrace is the dominant indivisible declaration (2717 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. Combined F1/RLO source measured at integration. C5 (-2)."
   },
   {
     "file": "midgard-validation/src/validation-machine/trace-builder-prepare.prepare-validation-trace.ts",
-    "max": 4016,
+    "max": 4138,
     "reason": "prepareValidationTrace is the dominant indivisible declaration (3805 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. Integrated deep-data, exact-reason and canonical-redeemer behavior; cap remeasured on the combined source. Combined F1/RLO source measured at integration. Authenticated forced redeemer refusal integrated; measured after combined formatting. VR (+1): trace preparation threads the deployment's L1 slot mapping into the script contexts it builds."
   },
   {
@@ -1226,7 +1226,7 @@
   },
   {
     "file": "midgard-validation/tests/validation-machine.deterministic-validation-machine.ts",
-    "max": 2486,
+    "max": 2487,
     "reason": "Retained test registration “deterministic validation machine” (2387 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor. VR (+26): script contexts carry POSIX-ms validity bounds, so the phase-B, trace, classifier and contract-builder inputs here name the deployment's L1 slot mapping."
   },
   {

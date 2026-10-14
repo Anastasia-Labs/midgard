@@ -306,3 +306,31 @@ export const makeObservedNode = ({
     providerSource: "fixture",
   },
 });
+
+/**
+ * The raw state-queue node datum a follower stores beside `header`: the
+ * authenticated source of the block's `block_time`, which every retention and
+ * signing clock reads.
+ */
+export const stateQueueNodeDatumCbor = ({
+  header,
+  headerHash,
+  blockTime = header.endTime,
+}: {
+  readonly header: Header;
+  readonly headerHash: string;
+  readonly blockTime?: bigint;
+}): string =>
+  SDK.encodeLinkedListNodeView({
+    key: { Key: { key: headerHash } },
+    next: "Empty",
+    data: LucidData.castTo(
+      {
+        header,
+        block_time: blockTime,
+        da_attestation: SDK.NO_DA_ATTESTATION,
+        proven_fraud: null,
+      },
+      SDK.StateQueueNode,
+    ),
+  });

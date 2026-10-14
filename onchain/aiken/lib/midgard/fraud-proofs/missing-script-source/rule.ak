@@ -171,9 +171,7 @@ pub fn authenticate_trace_state_v1(
           machine_state.source_kind == validation_trace_v1.Forced,
           descriptor.verdict == validation_trace_v1.Rejected,
           descriptor.rejection_code_hash == validation_trace_v1.hash_rejection_code(
-            rejection_reason_v1.rejection_code_of(
-              substrate.rejection_reason_of_v1(bound.subject),
-            ),
+            substrate.rejection_reason_of_v1(bound.subject),
           ),
         }
       },

@@ -27,7 +27,7 @@ use midgard/ledger_output_proof_roles
 use midgard/ledger_output_proof_stages as lop_stages
 use midgard/ledger_output_v1
 use midgard/rejection_reason_v1.{
-  reject_missing_required_witness, reject_network_id_mismatch,
+  NetworkIdMismatch, ProtectedOutputSignerMissing,
 }
 use midgard/script_proof_v1
 use midgard/script_sources_raw_frame_v1 as raw
@@ -268,7 +268,7 @@ fn output_proof_terminal_dispatch(
         rejected_successor_is_exact(
           pre,
           transition.claimed_successor,
-          reject_network_id_mismatch,
+          NetworkIdMismatch,
         )
       } else {
         when
@@ -283,7 +283,7 @@ fn output_proof_terminal_dispatch(
             rejected_successor_is_exact(
               pre,
               transition.claimed_successor,
-              reject_missing_required_witness,
+              ProtectedOutputSignerMissing { output_index: output_cursor },
             )
           InputSignerProofMalformed -> False
           InputSignerAuthorized -> {

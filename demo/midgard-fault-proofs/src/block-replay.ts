@@ -36,6 +36,7 @@ import {
   importedEventProgramSidecar,
   importedProgramMaterial,
 } from "./block-replay.program-material.js";
+import { forcedRejectionReason } from "./workflow/forced-rejection-reason.js";
 
 export {
   encodeEventToStepValueCbor,
@@ -264,7 +265,9 @@ export const replayBlockEvents = (
               }),
             },
             replay.verdict,
-            replay.rejection?.code ?? null,
+            replay.rejection === undefined
+              ? null
+              : forcedRejectionReason(replay.rejection),
           ),
         );
         if (

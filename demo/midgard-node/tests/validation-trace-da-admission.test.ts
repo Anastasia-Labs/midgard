@@ -7,7 +7,6 @@ import {
 } from "@al-ft/midgard-core/codec";
 import { wrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
 import * as SDK from "@al-ft/midgard-sdk";
-import { RejectCodes } from "@al-ft/midgard-validation";
 import { Data } from "@lucid-evolution/lucid";
 import {
   computeDaPayloadRoots,
@@ -58,7 +57,7 @@ const nodeTracedForcedPayload = async () => {
           canonicalTransactionCbor: forcedBytes,
           sourceKind: "forced",
           verdict: "rejected",
-          rejectionCode: RejectCodes.EmptyInputs,
+          rejectionReason: "EmptyInputs",
         },
       ],
     }),
@@ -151,7 +150,7 @@ describe("node-produced validation traces pass DA committee admission", () => {
             ),
             sourceKind: "forced",
             verdict: "accepted",
-            rejectionCode: null,
+            rejectionReason: null,
           },
         ],
       }),

@@ -459,7 +459,7 @@ describe("V1 forced transaction material", () => {
             result.entry[ForcedTransactionsDB.Columns.NATIVE_TX_CBOR]!,
           sourceKind: "forced" as const,
           verdict: "accepted" as const,
-          rejectionCode: null,
+          rejectionReason: null,
         })),
       }),
     );

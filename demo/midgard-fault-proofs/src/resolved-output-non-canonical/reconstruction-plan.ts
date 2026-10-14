@@ -7,12 +7,12 @@ import {
 } from "@al-ft/midgard-core";
 import { Data } from "@lucid-evolution/lucid";
 
+import type { ResolvedOutputDatumPlan } from "./datum-plan.js";
 import {
   RESOLVED_OUTPUT_NON_CANONICAL_CATEGORY,
   type ResolvedOutputEvidence,
   resolvedOutputScanControlData,
 } from "./resolved-output-non-canonical.js";
-import type { ResolvedOutputDatumPlan } from "./datum-plan.js";
 import { ResolvedOutputScanControlSchema } from "./schemas.js";
 
 /** `bounded_item_v1.chunk_bytes`: the on-chain output chunk domain. */

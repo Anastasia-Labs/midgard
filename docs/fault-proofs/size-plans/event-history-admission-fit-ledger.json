@@ -1,7 +1,7 @@
 {
   "schemaVersion": "midgard-van-rossem-fit-ledger-v1",
   "category": "eventHistoryAdmission",
-  "blueprintSha256": "a95a50f61cede21baf6f90f4b964f31c7e7c30550eeb8b8b6a0130d0f6f18536",
+  "blueprintSha256": "629e25c546ed9a266632d8ac6e89fdb41ba28feccfcbb2317620a3a893948c9e",
   "compilerVersion": "aiken v1.1.23+5adf783",
   "entries": [
     {
@@ -9,11 +9,11 @@
       "kind": "lifecycle",
       "maximumShape": "flat list, 1024 payload nodes, 1110 payload bytes",
       "signedBytes": 1202,
-      "memoryUnits": "5298095",
-      "cpuUnits": "3902172978",
+      "memoryUnits": "5291959",
+      "cpuUnits": "3900324484",
       "signedByteMargin": 15182,
-      "memoryUnitMargin": "11201905",
-      "cpuUnitMargin": "6097827022",
+      "memoryUnitMargin": "11208041",
+      "cpuUnitMargin": "6099675516",
       "publicationReserveMargin": null
     },
     {
@@ -21,35 +21,35 @@
       "kind": "lifecycle",
       "maximumShape": "flat list, 426 payload nodes, 512 payload bytes",
       "signedBytes": 1707,
-      "memoryUnits": "3136393",
-      "cpuUnits": "2485470287",
+      "memoryUnits": "3133325",
+      "cpuUnits": "2484546040",
       "signedByteMargin": 14677,
-      "memoryUnitMargin": "13363607",
-      "cpuUnitMargin": "7514529713",
+      "memoryUnitMargin": "13366675",
+      "cpuUnitMargin": "7515453960",
       "publicationReserveMargin": null
     },
     {
       "name": "InsertOrder long bytes at the node bound",
       "kind": "lifecycle",
       "maximumShape": "long bytes, 1024 payload nodes, 14253 payload bytes",
-      "signedBytes": 1266,
-      "memoryUnits": "5295801",
-      "cpuUnits": "4344405625",
-      "signedByteMargin": 15118,
-      "memoryUnitMargin": "11204199",
-      "cpuUnitMargin": "5655594375",
+      "signedBytes": 1202,
+      "memoryUnits": "5301215",
+      "cpuUnits": "4346872834",
+      "signedByteMargin": 15182,
+      "memoryUnitMargin": "11198785",
+      "cpuUnitMargin": "5653127166",
       "publicationReserveMargin": null
     },
     {
       "name": "InsertOrder nested constructors at the node bound",
       "kind": "lifecycle",
       "maximumShape": "nested constructors, 1024 payload nodes, 4144 payload bytes",
-      "signedBytes": 1202,
-      "memoryUnits": "7302111",
-      "cpuUnits": "4081290342",
-      "signedByteMargin": 15182,
-      "memoryUnitMargin": "9197889",
-      "cpuUnitMargin": "5918709658",
+      "signedBytes": 1266,
+      "memoryUnits": "7302833",
+      "cpuUnits": "4080671627",
+      "signedByteMargin": 15118,
+      "memoryUnitMargin": "9197167",
+      "cpuUnitMargin": "5919328373",
       "publicationReserveMargin": null
     },
     {
@@ -57,11 +57,11 @@
       "kind": "lifecycle",
       "maximumShape": "nested lists, 1024 payload nodes, 2120 payload bytes",
       "signedBytes": 1202,
-      "memoryUnits": "7080523",
-      "cpuUnits": "3908500414",
+      "memoryUnits": "7073463",
+      "cpuUnits": "3906306004",
       "signedByteMargin": 15182,
-      "memoryUnitMargin": "9419477",
-      "cpuUnitMargin": "6091499586",
+      "memoryUnitMargin": "9426537",
+      "cpuUnitMargin": "6093693996",
       "publicationReserveMargin": null
     },
     {
@@ -69,11 +69,11 @@
       "kind": "lifecycle",
       "maximumShape": "wide map, 1024 payload nodes, 1112 payload bytes",
       "signedBytes": 1270,
-      "memoryUnits": "7020601",
-      "cpuUnits": "4524132683",
+      "memoryUnits": "7025813",
+      "cpuUnits": "4525635261",
       "signedByteMargin": 15114,
-      "memoryUnitMargin": "9479399",
-      "cpuUnitMargin": "5475867317",
+      "memoryUnitMargin": "9474187",
+      "cpuUnitMargin": "5474364739",
       "publicationReserveMargin": null
     },
     {
@@ -81,11 +81,11 @@
       "kind": "lifecycle",
       "maximumShape": "flat list, 1024 payload nodes, 1110 payload bytes",
       "signedBytes": 983,
-      "memoryUnits": "5175740",
-      "cpuUnits": "3853308969",
+      "memoryUnits": "5163468",
+      "cpuUnits": "3849611981",
       "signedByteMargin": 15401,
-      "memoryUnitMargin": "11324260",
-      "cpuUnitMargin": "6146691031",
+      "memoryUnitMargin": "11336532",
+      "cpuUnitMargin": "6150388019",
       "publicationReserveMargin": null
     },
     {
@@ -93,11 +93,11 @@
       "kind": "lifecycle",
       "maximumShape": "long bytes, 1024 payload nodes, 14253 payload bytes",
       "signedBytes": 983,
-      "memoryUnits": "5176716",
-      "cpuUnits": "4297430494",
+      "memoryUnits": "5182852",
+      "cpuUnits": "4299278988",
       "signedByteMargin": 15401,
-      "memoryUnitMargin": "11323284",
-      "cpuUnitMargin": "5702569506",
+      "memoryUnitMargin": "11317148",
+      "cpuUnitMargin": "5700721012",
       "publicationReserveMargin": null
     },
     {
@@ -105,11 +105,11 @@
       "kind": "lifecycle",
       "maximumShape": "nested constructors, 1024 payload nodes, 4144 payload bytes",
       "signedBytes": 983,
-      "memoryUnits": "7186816",
-      "cpuUnits": "4034620743",
+      "memoryUnits": "7184210",
+      "cpuUnits": "4033869454",
       "signedByteMargin": 15401,
-      "memoryUnitMargin": "9313184",
-      "cpuUnitMargin": "5965379257",
+      "memoryUnitMargin": "9315790",
+      "cpuUnitMargin": "5966130546",
       "publicationReserveMargin": null
     },
     {
@@ -117,11 +117,11 @@
       "kind": "lifecycle",
       "maximumShape": "nested lists, 1024 payload nodes, 2120 payload bytes",
       "signedBytes": 983,
-      "memoryUnits": "6945896",
-      "cpuUnits": "3855939417",
+      "memoryUnits": "6937154",
+      "cpuUnits": "3853339634",
       "signedByteMargin": 15401,
-      "memoryUnitMargin": "9554104",
-      "cpuUnitMargin": "6144060583",
+      "memoryUnitMargin": "9562846",
+      "cpuUnitMargin": "6146660366",
       "publicationReserveMargin": null
     },
     {
@@ -129,13 +129,13 @@
       "kind": "lifecycle",
       "maximumShape": "wide map, 1024 payload nodes, 1112 payload bytes",
       "signedBytes": 987,
-      "memoryUnits": "6898448",
-      "cpuUnits": "4476233305",
+      "memoryUnits": "6892774",
+      "cpuUnits": "4474557769",
       "signedByteMargin": 15397,
-      "memoryUnitMargin": "9601552",
-      "cpuUnitMargin": "5523766695",
+      "memoryUnitMargin": "9607226",
+      "cpuUnitMargin": "5525442231",
       "publicationReserveMargin": null
     }
   ],
-  "ledgerSha256": "9b115dec515973dcb8ad64d3228bbc77ed18117afb74cf99fc8113ebf340586b"
+  "ledgerSha256": "562d51ce8d5a6b21562e3d8fe6f0b337b2a6b11fa3421e49c4dacebe90c3f4fd"
 }

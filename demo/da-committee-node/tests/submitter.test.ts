@@ -799,7 +799,7 @@ describe("L1 submitter helpers", () => {
       probe.findStateQueueHeader = async () => ({
         stateQueueNode: {
           da_attestation: SDK.NO_DA_ATTESTATION,
-          header: { endTime: 1_000_000n },
+          block_time: 1_000_000n,
         },
       });
       probe.fetchCandidateUtxo = async () => ({ utxo: {}, datum: {} });
@@ -842,7 +842,7 @@ describe("L1 submitter helpers", () => {
     probe.findStateQueueHeader = async () => ({
       stateQueueNode: {
         da_attestation: SDK.NO_DA_ATTESTATION,
-        header: { endTime: 1_000_000n },
+        block_time: 1_000_000n,
       },
     });
     probe.fetchCandidateUtxo = async () => ({ utxo: {}, datum: {} });
@@ -894,7 +894,7 @@ describe("L1 submitter helpers", () => {
   ])(
     "refuses apply %s with the typed build error before any further L1 read or submission",
     async (_, elapsedMs) => {
-      const headerEndTime = 1_800_000_000_000n;
+      const blockTime = 1_800_000_000_000n;
       let signCalls = 0;
       let refreshCalls = 0;
       const submitter = new LucidDaAttestationSubmitter({
@@ -904,7 +904,7 @@ describe("L1 submitter helpers", () => {
         referenceScripts: {} as never,
         availabilityParameters,
         currentTime: () =>
-          headerEndTime + SDK.DA_ATTESTATION_TIMEOUT_MS + elapsedMs,
+          blockTime + SDK.DA_ATTESTATION_TIMEOUT_MS + elapsedMs,
         refreshFundingUtxos: async () => {
           refreshCalls += 1;
           return undefined;
@@ -918,7 +918,7 @@ describe("L1 submitter helpers", () => {
       probe.findStateQueueHeader = async () => ({
         stateQueueNode: {
           da_attestation: SDK.NO_DA_ATTESTATION,
-          header: { endTime: headerEndTime },
+          block_time: blockTime,
         },
       });
 
@@ -966,7 +966,7 @@ type SubmitterProbe = {
   findStateQueueHeader(headerHash: string): Promise<{
     readonly stateQueueNode: {
       readonly da_attestation: SDK.DaAvailabilityStateQueueStatus;
-      readonly header?: { readonly endTime: bigint };
+      readonly block_time?: bigint;
     };
   }>;
   waitForApplied(headerHash: string): Promise<void>;
@@ -1466,7 +1466,7 @@ describe("pooled DA bond check", () => {
     probe.findStateQueueHeader = async () => ({
       stateQueueNode: {
         da_attestation: SDK.NO_DA_ATTESTATION,
-        header: { endTime: 1_000_000n },
+        block_time: 1_000_000n,
       },
     });
     probe.fetchCandidateUtxo = async () => ({ utxo: {}, datum: {} });
@@ -1501,7 +1501,7 @@ describe("pooled DA bond check", () => {
     probe.findStateQueueHeader = async () => ({
       stateQueueNode: {
         da_attestation: states.shift() ?? attestedStatus(),
-        header: { endTime: 1_000_000n },
+        block_time: 1_000_000n,
       },
     });
     probe.fetchCandidateUtxo = async () => ({ utxo: {}, datum: {} });

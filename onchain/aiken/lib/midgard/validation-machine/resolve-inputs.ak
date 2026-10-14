@@ -6,9 +6,9 @@ use midgard/ledger_output_proof_v1
 use midgard/ledger_output_v1
 use midgard/mpf_proof_v1
 use midgard/rejection_reason_v1.{
-  reject_input_not_found, reject_invalid_field_type, reject_invalid_output,
-  reject_missing_required_witness, reject_native_script_depth,
-  reject_native_script_node_count, reject_validity_interval_mismatch,
+  InputNotFound, InputSpentOutputNonCanonical, ResolvedReferenceScriptDepthLimit,
+  ResolvedReferenceScriptMalformed, ResolvedReferenceScriptNodeLimit,
+  SpendInputSignerMissing, ValidityIntervalExcludesBlockSlot,
 }
 use midgard/resolve_inputs_control_v1 as raw_control
 use midgard/validation_machine/machine_types.{
@@ -21,7 +21,8 @@ use midgard/validation_machine/machine_types.{
 }
 use midgard/validation_machine/shared.{
   decode_validation_context, input_signer_authorization,
-  rejected_successor_is_exact, validity_interval_contains_slot,
+  rejected_successor_is_exact, unset_reason_coordinate,
+  validity_interval_contains_slot,
 }
 use midgard/validation_machine/witness.{
   empty_mint_fold_control, empty_observer_purpose_scan_control,
@@ -136,25 +137,37 @@ fn resolve_membership_proof_step(
           rejected_successor_is_exact(
             pre,
             witness.claimed_successor,
-            reject_invalid_output,
+            InputSpentOutputNonCanonical {
+              source_kind: pending.source_kind,
+              input_index: unset_reason_coordinate,
+            },
           )
         ledger_output_proof_v1.LedgerOutputProofInvalidReferenceScript ->
           rejected_successor_is_exact(
             pre,
             witness.claimed_successor,
-            reject_invalid_field_type,
+            ResolvedReferenceScriptMalformed {
+              source_kind: pending.source_kind,
+              input_index: unset_reason_coordinate,
+            },
           )
         ledger_output_proof_v1.LedgerOutputProofNativeScriptNodeLimit ->
           rejected_successor_is_exact(
             pre,
             witness.claimed_successor,
-            reject_native_script_node_count,
+            ResolvedReferenceScriptNodeLimit {
+              source_kind: pending.source_kind,
+              input_index: unset_reason_coordinate,
+            },
           )
         ledger_output_proof_v1.LedgerOutputProofNativeScriptDepthLimit ->
           rejected_successor_is_exact(
             pre,
             witness.claimed_successor,
-            reject_native_script_depth,
+            ResolvedReferenceScriptDepthLimit {
+              source_kind: pending.source_kind,
+              input_index: unset_reason_coordinate,
+            },
           )
       }
   }
@@ -222,7 +235,7 @@ fn resolve_membership_proof_finalize(
         rejected_successor_is_exact(
           pre,
           witness.claimed_successor,
-          reject_missing_required_witness,
+          SpendInputSignerMissing { input_index: unset_reason_coordinate },
         )
       InputSignerProofMalformed -> False
       InputSignerAuthorized ->
@@ -263,7 +276,7 @@ fn resolve_non_membership_step(
     rejected_successor_is_exact(
       pre,
       witness.claimed_successor,
-      reject_input_not_found,
+      InputNotFound { source_kind, input_index: unset_reason_coordinate },
     ),
   }
 }
@@ -389,7 +402,7 @@ pub fn verify_resolve_inputs(
           rejected_successor_is_exact(
             pre,
             witness.claimed_successor,
-            reject_validity_interval_mismatch,
+            ValidityIntervalExcludesBlockSlot,
           )
         },
       }
@@ -481,7 +494,7 @@ pub fn verify_resolve_inputs_initial_semantics_v1(
       rejected_successor_is_exact(
         pre,
         witness.claimed_successor,
-        reject_validity_interval_mismatch,
+        ValidityIntervalExcludesBlockSlot,
       )
     },
   }
@@ -649,7 +662,7 @@ pub fn verify_resolve_inputs_non_membership_semantics_v1(
     rejected_successor_is_exact(
       pre,
       witness.claimed_successor,
-      reject_input_not_found,
+      InputNotFound { source_kind, input_index: unset_reason_coordinate },
     ),
   }
 }
