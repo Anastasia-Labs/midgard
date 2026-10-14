@@ -67,10 +67,6 @@ export const LEDGERS_WITHOUT_SUITE_WRITER = new Map([
     MEASURED_FRAGMENTS_ONLY,
   ],
   ["redeemer-canonicity-v1-fit-ledger.json", MEASURED_FRAGMENTS_ONLY],
-  [
-    "transaction-output-non-canonical-v1-fit-ledger.json",
-    MEASURED_FRAGMENTS_ONLY,
-  ],
   ["zero-input-wrongful-rejection-v1-fit-ledger.json", MEASURED_FRAGMENTS_ONLY],
 ]);
 

@@ -1,5 +1,3 @@
-import { basename } from "node:path";
-
 import { Store, Trie } from "@aiken-lang/merkle-patricia-forestry";
 import {
   computeMidgardNativeTxId,
@@ -45,7 +43,6 @@ import {
 } from "./support/emulator/registered-chain.js";
 import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.js";
 import { createLifecycleCoverageRecorder } from "./support/lifecycle-coverage.js";
-import { createMeasuredFitRecorder } from "./support/measured-fit-ledger.js";
 import { publishRemovalReferenceScripts } from "./support/submit-init-emulator-shared.js";
 import { type Common } from "./support/transaction-output-non-canonical-emulator.js";
 
@@ -56,52 +53,6 @@ const CATEGORY_ID = "00000029";
 export const MAXIMUM_OUTPUT_BYTES = 16_384;
 
 export const coverage = createLifecycleCoverageRecorder();
-
-// Each importing suite records its own fragment, named for its file.
-const measuredFit = createMeasuredFitRecorder(
-  "transaction-output-non-canonical",
-  basename(expect.getState().testPath ?? "lifecycle", ".test.ts").replace(
-    /^transaction-output-non-canonical-/u,
-    "",
-  ),
-  "16,384-byte selected output in a 32,768-byte certified field, both directions and canonical terminal scan",
-);
-
-/** Every complete signed transaction the suite measures, in submission order. */
-export const fit: [string, CompleteSignedTransactionMeasurement][] = [];
-
-export const record = (
-  name: string,
-  measurement: CompleteSignedTransactionMeasurement,
-): void => {
-  expect(measurement.l1ByteMargin, name).toBeGreaterThan(0);
-  fit.push([name, measurement]);
-  measuredFit.record(
-    name,
-    measurement,
-    measurement.executionMemory === 0n ? "publication" : "lifecycle",
-  );
-};
-
-/** Labels the chunk, certificate and step transactions one builder call submitted. */
-export const recordAll = (
-  prefix: string,
-  measurements: readonly CompleteSignedTransactionMeasurement[],
-  certified: boolean,
-): void => {
-  const stepIndex = measurements.length - 1;
-  const certificateIndex = certified ? stepIndex - 1 : -1;
-  measurements.forEach((measurement, index) => {
-    if (index === stepIndex) record(prefix, measurement);
-    else if (index === certificateIndex)
-      record(`${prefix}-carriage-certificate`, measurement);
-    else
-      record(
-        `${prefix}-carriage-chunk${(index + 1).toString().padStart(2, "0")}`,
-        measurement,
-      );
-  });
-};
 
 /** Physical step positions: step 01, 02, 03, the datum step, step 04. */
 export type StepIndex = 0 | 1 | 2 | 3 | 4;
@@ -162,17 +113,22 @@ export const registeredContracts = async (harness: Harness) => {
   // Published only after the fraudulent block is set up: setup consumes the
   // harness nonce, which reference publication must not spend first.
   const references: UTxO[] = [];
-  const publishReferences = async (): Promise<UTxO> => {
+  const publishReferences = async (
+    onPublication?: (
+      stepIndex: StepIndex,
+      measurement: CompleteSignedTransactionMeasurement,
+    ) => void,
+  ): Promise<UTxO> => {
     for (const [index, step] of steps.entries()) {
-      references.push(
-        (
-          await publishPlainReferenceScriptUtxo({
-            lucid: harness.funderLucid,
-            script: step.spendingScript,
-            label: `transaction-output-non-canonical-${index.toString()}`,
-          })
-        ).utxo,
+      const published = await captureEmulatorSubmission(harness.emulator, () =>
+        publishPlainReferenceScriptUtxo({
+          lucid: harness.funderLucid,
+          script: step.spendingScript,
+          label: `transaction-output-non-canonical-${index.toString()}`,
+        }),
       );
+      references.push(published.result.utxo);
+      onPublication?.(index as StepIndex, published.measurement);
     }
     return (
       await publishPlainReferenceScriptUtxo({
