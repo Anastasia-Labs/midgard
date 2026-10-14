@@ -186,8 +186,8 @@
   },
   {
     "file": "midgard-fault-proofs/src/inspect-contracts.inspect-contracts.ts",
-    "max": 580,
-    "reason": "inspectContracts is the dominant indivisible declaration (549 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. VR (+2): the validation-trace chain is derived with the deployment's recorded L1 slot mapping."
+    "max": 583,
+    "reason": "inspectContracts is the dominant indivisible declaration (549 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. VR (+2): the validation-trace chain is derived with the deployment's recorded L1 slot mapping. I3 (+3): the inspected chain is built with the deployment's dispute bond amount."
   },
   {
     "file": "midgard-fault-proofs/src/mint-item-non-canonical/central-journal.create-mint-item-non-canonical-central-journal-adapter.ts",
@@ -486,13 +486,13 @@
   },
   {
     "file": "midgard-fault-proofs/tests/submit-init.fault-proof-deployment-contract-resolution.ts",
-    "max": 529,
-    "reason": "Retained test registration “fault-proof deployment contract resolution” (590 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor. VR (+7): script contexts carry POSIX-ms validity bounds, so the phase-B, trace, classifier and contract-builder inputs here name the deployment's L1 slot mapping. B1-rest (-104): retained-witness consumers deleted; cap reduced to the measured count."
+    "max": 534,
+    "reason": "Retained test registration “fault-proof deployment contract resolution” (590 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor. VR (+7): script contexts carry POSIX-ms validity bounds, so the phase-B, trace, classifier and contract-builder inputs here name the deployment's L1 slot mapping. B1-rest (-104): retained-witness consumers deleted; cap reduced to the measured count. I3 (+5): the resolved validation-trace contracts include the dispute bond validator and amount."
   },
   {
     "file": "midgard-fault-proofs/tests/support/emulator/contracts.build-minimal-fault-proof-contracts.ts",
-    "max": 1112,
-    "reason": "buildMinimalFaultProofContracts is the dominant indivisible declaration (1114 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. DUPDEL (-30): the cross-block duplicate-event family was deleted; repeated deposit and withdrawal events are convicted by the fabricated-event families. VR (+3): script contexts carry POSIX-ms validity bounds, so the phase-B, trace, classifier and contract-builder inputs here name the deployment's L1 slot mapping. B1-rest (-53): retained-witness consumers deleted; cap reduced to the measured count. Composed with the integrated commit-slot fixture changes."
+    "max": 1114,
+    "reason": "buildMinimalFaultProofContracts is the dominant indivisible declaration (1114 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. DUPDEL (-30): the cross-block duplicate-event family was deleted; repeated deposit and withdrawal events are convicted by the fabricated-event families. VR (+3): script contexts carry POSIX-ms validity bounds, so the phase-B, trace, classifier and contract-builder inputs here name the deployment's L1 slot mapping. B1-rest (-53): retained-witness consumers deleted; cap reduced to the measured count. Composed with the integrated commit-slot fixture changes. I3 (+2): the minimal contracts carry the dispute bond amount."
   },
   {
     "file": "midgard-fault-proofs/tests/support/emulator/validators.make-always-succeeds-contracts.ts",
@@ -1016,8 +1016,8 @@
   },
   {
     "file": "midgard-node/tests/midgard-contracts.test.ts",
-    "max": 559,
-    "reason": "Retained test registration “midgard contracts registry” (487 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor. VR (+7): script contexts carry POSIX-ms validity bounds, so the phase-B, trace, classifier and contract-builder inputs here name the deployment's L1 slot mapping, and the registry digest's re-pin history names the txInfo stage's mapping parameter. P1 composition (+3): the pinned registry digests name the composed tree in their re-pin reasons. Streamed Data verdicts (+4): the registry digests name the streamed redeemer and datum Data verdict steps in their re-pin reasons. I3 (+1): the treasury script re-pin note."
+    "max": 560,
+    "reason": "Retained test registration “midgard contracts registry” (487 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor. VR (+7): script contexts carry POSIX-ms validity bounds, so the phase-B, trace, classifier and contract-builder inputs here name the deployment's L1 slot mapping, and the registry digest's re-pin history names the txInfo stage's mapping parameter. P1 composition (+3): the pinned registry digests name the composed tree in their re-pin reasons. Streamed Data verdicts (+4): the registry digests name the streamed redeemer and datum Data verdict steps in their re-pin reasons. I3 (+1): the treasury script re-pin note. I3 (+1): the bond-locked source verification re-pin note."
   },
   {
     "file": "midgard-node/tests/midgard-local-script-eval.test.ts",
@@ -1121,8 +1121,8 @@
   },
   {
     "file": "midgard-sdk/src/fraud-proof/contracts/families/validation-trace-dispute.build-validation-trace-dispute-chain.ts",
-    "max": 1638,
-    "reason": "buildValidationTraceDisputeChain is the dominant indivisible declaration (1577 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. Direct committed-step ABI: the game receives the ordered prepare-resolver hash list as its third parameter. The cap records the exact final line count. Root combined integration preserves prior terminal/builtin behavior; cap records the resulting source count. Canonical production binding: Explicit canonicalDecodePrepare member aliases the existing canonical prepare validator. Exact formatter-final line count; no transaction budget changes. VR (+4): the txInfo step validator is applied with the deployment's L1 slot mapping. I3 (+14): the dispute bond validator, applied to the fraud-proof policy."
+    "max": 1642,
+    "reason": "buildValidationTraceDisputeChain is the dominant indivisible declaration (1577 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. Direct committed-step ABI: the game receives the ordered prepare-resolver hash list as its third parameter. The cap records the exact final line count. Root combined integration preserves prior terminal/builtin behavior; cap records the resulting source count. Canonical production binding: Explicit canonicalDecodePrepare member aliases the existing canonical prepare validator. Exact formatter-final line count; no transaction budget changes. VR (+4): the txInfo step validator is applied with the deployment's L1 slot mapping. I3 (+14): the dispute bond validator, applied to the fraud-proof policy. I3 (+4): the source validator is applied over the dispute bond script hash and bond amount."
   },
   {
     "file": "midgard-sdk/src/reference-scripts.reference-script-auth-token-names.ts",
@@ -1151,8 +1151,8 @@
   },
   {
     "file": "midgard-sdk/tests/fault-proof.fault-proof-contract-builder.ts",
-    "max": 1229,
-    "reason": "Retained test registration “fault-proof contract builder” (1186 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor. Direct committed-step expectations and canonical test encoding: fully applies the boundary award hash and game resolver-hash list in their declared parameter order. Recomputes expected bindings with the pinned WASM API in the shared independent test oracle, avoiding the legacy encoder CBOR-major incompatibility. Root combined integration preserves prior terminal/builtin behavior; cap records the resulting source count. DUPDEL (-1): the cross-block duplicate-event family was deleted; repeated deposit and withdrawal events are convicted by the fabricated-event families. VR (+3): script contexts carry POSIX-ms validity bounds, so the phase-B, trace, classifier and contract-builder inputs here name the deployment's L1 slot mapping. DC (+1): the redeemer Data refusal executor is split by traverse stage under the reference-script size limit, adding the scalar invalid-data executor role."
+    "max": 1244,
+    "reason": "Retained test registration “fault-proof contract builder” (1186 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor. Direct committed-step expectations and canonical test encoding: fully applies the boundary award hash and game resolver-hash list in their declared parameter order. Recomputes expected bindings with the pinned WASM API in the shared independent test oracle, avoiding the legacy encoder CBOR-major incompatibility. Root combined integration preserves prior terminal/builtin behavior; cap records the resulting source count. DUPDEL (-1): the cross-block duplicate-event family was deleted; repeated deposit and withdrawal events are convicted by the fabricated-event families. VR (+3): script contexts carry POSIX-ms validity bounds, so the phase-B, trace, classifier and contract-builder inputs here name the deployment's L1 slot mapping. DC (+1): the redeemer Data refusal executor is split by traverse stage under the reference-script size limit, adding the scalar invalid-data executor role. I3 (+15): the expected source parameters include the applied dispute bond hash and bond amount, and the bond script is size-checked."
   },
   {
     "file": "midgard-sdk/tests/tx-order.test.ts",
@@ -1166,8 +1166,8 @@
   },
   {
     "file": "midgard-validation/scripts/generate-validation-one-step-aiken-fixture.mjs",
-    "max": 865,
-    "reason": "generated is the dominant indivisible declaration (251 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. VR (+3): the generated traces' script contexts carry POSIX-ms validity bounds through the Preprod L1 slot mapping. Clock (+2): the fixture dispute carries the turn start and both side clocks in place of the response deadline."
+    "max": 863,
+    "reason": "generated is the dominant indivisible declaration (251 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. VR (+3): the generated traces' script contexts carry POSIX-ms validity bounds through the Preprod L1 slot mapping. Clock (+2): the fixture dispute carries the turn start and both side clocks in place of the response deadline. I3 (-2): the one-step boundary check no longer takes the two post states."
   },
   {
     "file": "midgard-validation/src/cek-executor.structural-executor.ts",

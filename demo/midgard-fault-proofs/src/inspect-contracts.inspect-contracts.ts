@@ -20,6 +20,7 @@ import {
   expectScriptHash,
   inspectEmbeddedDeploymentScriptIdentity,
   optionalDeploymentScriptHash,
+  parseContractDeploymentDisputeBondLovelace,
   parseContractDeploymentL1SlotConfig,
   parseContractDeploymentReferenceScriptAuthPolicyId,
   requireDeploymentScriptHash,
@@ -141,6 +142,8 @@ export const inspectContracts = ({
           "V1 fraud-proof min-ada step-02",
         ),
       l1SlotConfig: parseContractDeploymentL1SlotConfig(deploymentInfo),
+      disputeBondLovelace:
+        parseContractDeploymentDisputeBondLovelace(deploymentInfo),
     });
 
     for (const [category, entry] of [

@@ -48,6 +48,7 @@ export const buildValidationTraceDisputeChain = ({
   fieldPreimageCertificatePolicyId,
   referenceScriptAuthPolicyId,
   l1SlotConfig,
+  disputeBondLovelace,
 }: {
   readonly blueprint: FaultProofBlueprint;
   readonly network: Network;
@@ -59,6 +60,7 @@ export const buildValidationTraceDisputeChain = ({
   readonly fieldPreimageCertificatePolicyId: string;
   readonly referenceScriptAuthPolicyId: string;
   readonly l1SlotConfig: L1SlotConfig;
+  readonly disputeBondLovelace: bigint;
 }): Effect.Effect<
   ValidationTraceDisputeFaultProofContracts["validationTraceDispute"],
   Error
@@ -1510,6 +1512,8 @@ export const buildValidationTraceDisputeChain = ({
             [
               game.spendingScriptHash,
               award.spendingScriptHash,
+              disputeBond.spendingScriptHash,
+              disputeBondLovelace,
               computationThread.policyId,
             ],
           ),

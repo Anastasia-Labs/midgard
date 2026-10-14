@@ -25,6 +25,7 @@ pub type OpenActionV1 {
     state_queue_node_ref_input_index: Int,
     claim: validation_claim_v1.ValidationClaimWitnessV1,
     challenger_descriptor: validation_trace_v1.ValidationTraceDescriptorV1,
+    terminal_state: Option<validation_trace_v1.ValidationMachineStateV1>,
   }
 }
 
@@ -62,6 +63,7 @@ validator main(
         state_queue_node_ref_input_index,
         claim,
         challenger_descriptor,
+        terminal_state,
       }) -> {
         let Transaction { reference_inputs, validity_range, .. } = tx
         let (_, current_time_upper) = utils.get_inclusive_bounds_of_a_short_validity_range(
@@ -101,6 +103,7 @@ validator main(
                   claim,
                   challenger_descriptor,
                   open_time_upper: current_time_upper,
+                  terminal_state,
                 }
                 and {
                   output_script_hash == source_validator_script_hash,
@@ -111,6 +114,10 @@ validator main(
                   validation_claim_v1.committed_claim_structure_is_valid(
                     header,
                     claim,
+                  ),
+                  validation_dispute_v1.descriptors_can_dispute(
+                    claim.descriptor_membership.value,
+                    challenger_descriptor,
                   ),
                   validation_dispute_v1.can_open_before_maturity(
                     current_time_upper,

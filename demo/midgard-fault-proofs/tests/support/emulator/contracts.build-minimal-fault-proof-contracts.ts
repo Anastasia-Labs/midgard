@@ -412,6 +412,7 @@ export const buildMinimalFaultProofContracts = async (
         maxPayloadNodes: bigint;
       };
       readonly l1SlotConfig: typeof NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod;
+      readonly disputeBondLovelace: bigint;
     }) => Effect.Effect<T, E>,
   ): Promise<T | undefined> => {
     if (!enabled) {
@@ -421,6 +422,7 @@ export const buildMinimalFaultProofContracts = async (
       build({
         eventHistoryBounds,
         l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
+        disputeBondLovelace: 10_000_000_000n,
         blueprint: parseFaultProofBlueprint(cloneBlueprint(realBlueprint)),
         network,
         hubOraclePolicyId: hubOracle.policyId,

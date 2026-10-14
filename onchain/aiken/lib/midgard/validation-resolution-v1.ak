@@ -22,10 +22,10 @@ pub type ValidationResolutionStateV1 {
   challenger_successor_hash: ByteArray,
 }
 
+/// The state both sides agree on at `low_index`. The two successor hashes are
+/// not evidence: the game already holds them as the dispute's high hashes.
 pub type ValidationBoundaryEvidenceV1 {
   pre_state: validation_trace_v1.ValidationMachineStateV1,
-  operator_post: validation_trace_v1.ValidationTraceProof,
-  challenger_post: validation_trace_v1.ValidationTraceProof,
 }
 
 pub type PreparedValidationResolutionStateV1 {
@@ -69,11 +69,12 @@ pub fn resolver_index(phase: validation_trace_v1.ValidationPhase) -> Int {
 
 pub const resolver_count: Int = 14
 
+/// The one-step boundary: the game is at ReadyForOneStep and `pre_state` is
+/// the agreed state at `low_index`. The bisection already authenticated both
+/// high hashes against their descriptors, so no trace proof is re-checked.
 pub fn one_step_boundary_is_authenticated(
   dispute: validation_dispute_v1.ValidationDisputeV1,
   pre_state: validation_trace_v1.ValidationMachineStateV1,
-  operator_post: validation_trace_v1.ValidationTraceProof,
-  challenger_post: validation_trace_v1.ValidationTraceProof,
 ) -> Bool {
   and {
     dispute.version == validation_dispute_v1.dispute_version,
@@ -82,18 +83,6 @@ pub fn one_step_boundary_is_authenticated(
     resolver_index(pre_state.phase) >= 0,
     validation_trace_v1.machine_state_is_well_formed(pre_state),
     validation_trace_v1.hash_machine_state(pre_state) == dispute.agreed_low_hash,
-    operator_post.state_index == dispute.high_index,
-    challenger_post.state_index == dispute.high_index,
-    validation_trace_v1.verify_trace_proof(
-      dispute.operator_descriptor,
-      operator_post,
-    ),
-    validation_trace_v1.verify_trace_proof(
-      dispute.challenger_descriptor,
-      challenger_post,
-    ),
-    operator_post.state_hash == dispute.operator_high_hash,
-    challenger_post.state_hash == dispute.challenger_high_hash,
   }
 }
 
@@ -117,24 +106,18 @@ pub fn terminal_padding_is_authenticated(
   }
 }
 
+/// The resolver's state: the agreed pre-state and the two successor hashes,
+/// taken from the dispute datum only.
 pub fn prepare(
   dispute: validation_dispute_v1.ValidationDisputeV1,
   pre_state: validation_trace_v1.ValidationMachineStateV1,
-  operator_post: validation_trace_v1.ValidationTraceProof,
-  challenger_post: validation_trace_v1.ValidationTraceProof,
 ) -> ValidationResolutionStateV1 {
-  expect
-    one_step_boundary_is_authenticated(
-      dispute,
-      pre_state,
-      operator_post,
-      challenger_post,
-    )
+  expect one_step_boundary_is_authenticated(dispute, pre_state)
   ValidationResolutionStateV1 {
     version: resolution_version,
     pre_state,
-    operator_successor_hash: operator_post.state_hash,
-    challenger_successor_hash: challenger_post.state_hash,
+    operator_successor_hash: dispute.operator_high_hash,
+    challenger_successor_hash: dispute.challenger_high_hash,
   }
 }
 

@@ -607,22 +607,7 @@ test one_step_boundary_is_authenticated_before_resolver_handoff() {
     operator.initial_state_hash,
     100,
   )
-  let operator_post = validation_trace_v1.ValidationTraceProof {
-    state_index: 1,
-    state_hash: operator_post_hash,
-    siblings: [validation_trace_v1.trace_leaf_hash(pre_hash)],
-  }
-  let challenger_post = validation_trace_v1.ValidationTraceProof {
-    state_index: 1,
-    state_hash: challenger_post_hash,
-    siblings: [validation_trace_v1.trace_leaf_hash(pre_hash)],
-  }
-  let resolution = validation_resolution_v1.prepare(
-    ready,
-    pre,
-    operator_post,
-    challenger_post,
-  )
+  let resolution = validation_resolution_v1.prepare(ready, pre)
   and {
     resolution.version == validation_resolution_v1.resolution_version,
     resolution.pre_state == pre,
@@ -631,6 +616,108 @@ test one_step_boundary_is_authenticated_before_resolver_handoff() {
     validation_resolution_v1.resolver_index(pre.phase) == 1,
     validation_resolution_v1.state_is_well_formed(resolution),
   }
+}
+
+/// A ReadyForOneStep dispute on `pre` whose two high hashes are the given
+/// successors (Gap A tests).
+fn ready_for_one_step(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  operator_successor_hash: ByteArray,
+  challenger_successor_hash: ByteArray,
+) -> validation_dispute_v1.ValidationDisputeV1 {
+  let pre_hash = validation_trace_v1.hash_machine_state(pre)
+  validation_dispute_v1.open(
+    descriptor2(pre_hash, operator_successor_hash),
+    descriptor2(pre_hash, challenger_successor_hash),
+    pre_hash,
+    100,
+  )
+}
+
+fn compact_binding_pre_state() -> validation_trace_v1.ValidationMachineStateV1 {
+  validation_trace_v1.ValidationMachineStateV1 {
+    ..fixture_pre_state(),
+    phase: validation_trace_v1.CompactBinding,
+  }
+}
+
+test gap_a_successor_hashes_come_from_the_dispute_datum() {
+  let resolution = validation_resolution_v1.prepare(
+    ready_for_one_step(compact_binding_pre_state(), h_c, h_d),
+    compact_binding_pre_state(),
+  )
+  and {
+    resolution.operator_successor_hash == h_c,
+    resolution.challenger_successor_hash == h_d,
+  }
+}
+
+test gap_a_one_pre_state_two_dispute_hash_pairs_each_prepare_their_own() {
+  let pre = compact_binding_pre_state()
+  let first = validation_resolution_v1.prepare(
+    ready_for_one_step(pre, h_c, h_d),
+    pre,
+  )
+  let second = validation_resolution_v1.prepare(
+    ready_for_one_step(pre, h_e, h_f),
+    pre,
+  )
+  and {
+    first.pre_state == second.pre_state,
+    first.operator_successor_hash == h_c,
+    second.operator_successor_hash == h_e,
+    first != second,
+  }
+}
+
+test gap_a_refuses_a_pre_state_that_is_not_the_agreed_low_state() fail {
+  let pre = compact_binding_pre_state()
+  let other = validation_trace_v1.ValidationMachineStateV1 {
+    ..pre,
+    work_root: h_e,
+  }
+  validation_resolution_v1.prepare(ready_for_one_step(pre, h_c, h_d), other) == validation_resolution_v1.prepare(
+    ready_for_one_step(pre, h_c, h_d),
+    pre,
+  )
+}
+
+test gap_a_refuses_a_dispute_still_bisecting() fail {
+  let pre = compact_binding_pre_state()
+  let pre_hash = validation_trace_v1.hash_machine_state(pre)
+  let bisecting = validation_dispute_v1.open(
+    descriptor4(pre_hash, h_b, h_c, h_d),
+    descriptor4(pre_hash, h_b, h_c, h_e),
+    pre_hash,
+    100,
+  )
+  validation_resolution_v1.prepare(bisecting, pre).version == validation_resolution_v1.resolution_version
+}
+
+test gap_a_refuses_a_terminal_pre_state() fail {
+  let pre = validation_trace_v1.ValidationMachineStateV1 {
+    ..fixture_pre_state(),
+    phase: validation_trace_v1.Terminal,
+    verdict: validation_trace_v1.Accepted,
+  }
+  validation_resolution_v1.prepare(ready_for_one_step(pre, h_c, h_d), pre).version == validation_resolution_v1.resolution_version
+}
+
+test descriptors_with_different_initial_hashes_can_dispute() {
+  validation_dispute_v1.descriptors_can_dispute(
+    descriptor2(h_a, h_c),
+    descriptor2(h_b, h_d),
+  )
+}
+
+test descriptors_agreeing_on_the_terminal_claim_cannot_dispute_whatever_their_initial_hashes() {
+  !validation_dispute_v1.descriptors_can_dispute(
+    descriptor2(h_a, h_c),
+    validation_trace_v1.ValidationTraceDescriptorV1 {
+      ..descriptor2(h_b, h_c),
+      trace_root: descriptor2(h_a, h_c).trace_root,
+    },
+  )
 }
 
 test resolver_routing_is_total_for_nonterminal_phases_and_rejects_terminal() {

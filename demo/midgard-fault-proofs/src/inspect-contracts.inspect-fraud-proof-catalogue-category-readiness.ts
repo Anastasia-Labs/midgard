@@ -1,4 +1,5 @@
 import { Store, Trie } from "@aiken-lang/merkle-patricia-forestry";
+import { parseDeploymentManifestAvailabilityChallenge } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { deploymentFraudProofCatalogueCategories } from "@al-ft/midgard-core/deployment-profile";
 import { formatUnknownError } from "@al-ft/midgard-core/error-format";
 import {
@@ -42,6 +43,19 @@ export const parseContractDeploymentL1SlotConfig = (
   parseL1SlotConfig(
     requireRecord(value, "Contract deployment info").l1SlotConfig,
     "Contract deployment info.l1SlotConfig",
+  );
+
+/**
+ * The validation-dispute bond the validation-trace source validator was
+ * applied with: the manifest's `availabilityChallenge.challengerBondLovelace`.
+ */
+export const parseContractDeploymentDisputeBondLovelace = (
+  value: unknown,
+): bigint =>
+  BigInt(
+    parseDeploymentManifestAvailabilityChallenge(
+      requireRecord(value, "Contract deployment info").availabilityChallenge,
+    ).challengerBondLovelace,
   );
 
 export const parseContractDeploymentReferenceScriptAuthPolicyId = (

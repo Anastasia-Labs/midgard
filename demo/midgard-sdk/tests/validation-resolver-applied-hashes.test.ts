@@ -76,6 +76,7 @@ describe("validation resolver production-builder parameter application", () => {
     const contracts = await Effect.runPromise(
       buildFaultProofContracts({
         l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
+        disputeBondLovelace: 10_000_000_000n,
         eventHistoryBounds: {
           inlineLimitBytes: 512n,
           maxPayloadBytes: 5000n,

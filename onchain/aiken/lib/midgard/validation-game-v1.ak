@@ -10,6 +10,9 @@ pub type PendingValidationClaimV1 {
   claim: validation_claim_v1.ValidationClaimWitnessV1,
   challenger_descriptor: validation_trace_v1.ValidationTraceDescriptorV1,
   open_time_upper: Int,
+  /// Gap B: the operator's terminal state, supplied at Open exactly when both
+  /// descriptors commit to the same terminal state hash.
+  terminal_state: Option<validation_trace_v1.ValidationMachineStateV1>,
 }
 
 pub type ValidationGameStateV1 {

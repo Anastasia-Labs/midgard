@@ -204,6 +204,7 @@ it("builds registered ScriptSources and CEK carriers with one identical shared e
   const contracts = await Effect.runPromise(
     buildValidationTraceDisputeFaultProofContracts({
       l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
+      disputeBondLovelace: 10_000_000_000n,
       blueprint,
       network,
       hubOraclePolicyId: "82".repeat(28),

@@ -25,6 +25,7 @@ import {
   buildFraudProofCatalogueDeploymentInfo,
   fraudProofsToIndexedValidators,
 } from "../src/transactions/initialization.js";
+import { TEST_AVAILABILITY_CHALLENGE } from "./helpers/availability-challenge.js";
 import { loadRealMidgardContractsForTest } from "./helpers/real-midgard-contracts.js";
 
 const moduleDir = dirname(fileURLToPath(import.meta.url));
@@ -55,8 +56,9 @@ const buildInspectionFixture = async () => {
   );
   // This is the production output before reference publication. The inspector
   // reports identities; live publication admission is tested separately. The
-  // manifest wrapping it records the L1 slot mapping the contracts were applied
-  // with (Preprod's).
+  // manifest wrapping it records the L1 slot mapping and the availability
+  // challenge (whose challenger bond the validation-trace source applies) the
+  // contracts were applied with.
   const deploymentInfo = {
     ...buildContractDeploymentInfoFromContracts(
       appliedContracts,
@@ -64,6 +66,7 @@ const buildInspectionFixture = async () => {
       undefined,
       fraudProofCatalogue,
     ),
+    availabilityChallenge: TEST_AVAILABILITY_CHALLENGE,
     l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
   };
   return {

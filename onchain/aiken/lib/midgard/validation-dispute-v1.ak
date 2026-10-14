@@ -25,6 +25,11 @@ pub const max_bisection_rounds: Int = env.max_bisection_rounds
 pub const max_dispute_duration_milliseconds: Int =
   2 * dispute_side_clock_milliseconds + 2 * ( 2 * max_bisection_rounds + 2 ) * dispute_max_validity_range_milliseconds + dispute_resolution_allowance_milliseconds
 
+/// The lovelace VerifySource adds to the thread so that it can pay the fee of
+/// every move the game can charge, each at the per-move cap.
+pub const thread_fee_reserve_lovelace: Int =
+  ( 2 * max_bisection_rounds + 2 ) * env.max_dispute_move_fee_lovelace
+
 /// A dispute may open only while the entire worst-case alternating response
 /// schedule still fits inside the challenged block's V1 maturity
 /// horizon. The boundary is inclusive: a dispute that uses the final
@@ -75,6 +80,9 @@ fn midpoint(low: Int, high: Int) -> Int {
   low + ( high - low ) / 2
 }
 
+/// Both descriptors start from the one initial state VerifySource fixes as
+/// `agreed_low_hash`, so neither descriptor's own initial hash is compared.
+/// Well-formedness pins both machine versions to the one supported version.
 pub fn descriptors_can_dispute(
   operator: validation_trace_v1.ValidationTraceDescriptorV1,
   challenger: validation_trace_v1.ValidationTraceDescriptorV1,
@@ -82,9 +90,7 @@ pub fn descriptors_can_dispute(
   and {
     validation_trace_v1.descriptor_is_well_formed(operator),
     validation_trace_v1.descriptor_is_well_formed(challenger),
-    operator.machine_version == challenger.machine_version,
     operator.step_count == challenger.step_count,
-    operator.initial_state_hash == challenger.initial_state_hash,
     or {
       operator.terminal_state_hash != challenger.terminal_state_hash,
       operator.verdict != challenger.verdict,

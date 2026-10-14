@@ -143,7 +143,8 @@ describe("midgard contracts registry", () => {
       // non-empty block rule, one event NFT per user-event mint), the retired
       // post-UTxO minimum-Ada mode, the streamed redeemer and datum Data
       // verdict steps, one-pass history node count, trace movers, the clock
-      // and the protocol treasury script in the profile.
+      // and the protocol treasury script in the profile, and the bond-locked
+      // source verification (bond script and amount parameters, Gap B).
       expect
         .soft(
           createHash("sha256")
@@ -153,7 +154,7 @@ describe("midgard contracts registry", () => {
             .digest("hex"),
         )
         .toBe(
-          "b50a5ac34338b3e21e841262bd0658e5d7a129d7539e2a91c4fe4341a1791d48",
+          "10d3d5cc83246abe6362f2ed09ea265268db84c941ba4786e160ead7610a9847",
         );
       // The queue/correction subset is pinned independently of the full registry.
       // Includes every applied CBOR, hash, policy id, address, and queue yield.

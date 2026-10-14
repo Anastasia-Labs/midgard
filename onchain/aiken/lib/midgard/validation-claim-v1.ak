@@ -5,7 +5,9 @@ use midgard/fraud_proofs/native_tx/compact.{
   forced_tx_proof_commitment_v1, native_tx_proof_commitment_v1,
   verify_forced_tx_proof_source_v1, verify_native_tx_proof_source_v1,
 }
+use midgard/fraud_proofs/native_tx/types.{NativeTxWitnessSetCompact}
 use midgard/ledger_state
+use midgard/native_tx_field_access_v1
 use midgard/rejection_reason_v1.{ForcedTxInvalid, ForcedTxValid}
 use midgard/transition_trace
 use midgard/validation_machine/witness as vm_witness
@@ -226,21 +228,23 @@ pub fn forced_verdict_matches(
   }
 }
 
-fn verify_source_authentication(
+/// The source's compact witness set when the source is authenticated under the
+/// header, `None` otherwise.
+fn authenticated_source_witness_set(
   header: ledger_state.HeaderV1,
   event_key: ledger_state.EventKey,
   source: ValidationSourceMembershipV1,
-) -> Bool {
+) -> Option<NativeTxWitnessSetCompact> {
   when source is {
     ForcedValidationSource { membership } -> {
       expect ledger_state.ForcedTransactionEventKey { tx_order_id } = event_key
-      let Pair(verified, _witness_set) = verify_forced_tx_proof_source_v1(
+      let Pair(verified, witness_set) = verify_forced_tx_proof_source_v1(
         membership.value.tx_id,
         membership.value.submitted_source.compact_cbor,
         membership.value.submitted_source.witness_set_compact_cbor,
         membership.value.submitted_source.field_preimage_lengths_cbor,
       )
-      and {
+      let authenticated = and {
         transition_trace.verify_root_membership_with_bytes(
           membership,
           transition_trace.ForcedTransactionsV1RootDomain,
@@ -252,17 +256,22 @@ fn verify_source_authentication(
         membership.key == tx_order_id,
         verified.version == 1,
       }
+      if authenticated {
+        Some(witness_set)
+      } else {
+        None
+      }
     }
 
     NormalValidationSource { membership } -> {
       expect ledger_state.L2TransactionEventKey { tx_id } = event_key
-      let Pair(verified, _witness_set) = verify_native_tx_proof_source_v1(
+      let Pair(verified, witness_set) = verify_native_tx_proof_source_v1(
         tx_id,
         membership.value.source.compact_cbor,
         membership.value.source.witness_set_compact_cbor,
         membership.value.source.field_preimage_lengths_cbor,
       )
-      and {
+      let authenticated = and {
         transition_trace.verify_root_membership_with_bytes(
           membership,
           transition_trace.TransactionsV1RootDomain,
@@ -278,6 +287,11 @@ fn verify_source_authentication(
         // `transactions_root` IS an acceptance verdict — its embedded
         // validity scalar must claim `TxIsValid` (0).
         verified.tx_compact.validity_code == Some(0),
+      }
+      if authenticated {
+        Some(witness_set)
+      } else {
+        None
       }
     }
   }
@@ -298,8 +312,9 @@ fn verify_source_authentication(
 /// leaf of two block-committed roots and checked back against its own
 /// derivation.
 ///
-/// Derived here rather than in `verify_source_authentication` — which is where
-/// the retired equality check lived — because this is the only consumer. Both
+/// Derived here rather than in `authenticated_source_witness_set` — which is
+/// where the retired equality check lived — because this is the only consumer.
+/// Both
 /// functions run on every claim, so no work is duplicated by the move and none
 /// is added: exactly one `native_tx_proof_commitment_v1` per claim, as before.
 fn source_proof_commitment(
@@ -312,8 +327,9 @@ fn source_proof_commitment(
   )
 }
 
-fn source_binding_is_exact(
-  descriptor: validation_trace_v1.ValidationTraceDescriptorV1,
+/// The committed initial state names this source: its transaction id, its
+/// proof-source commitment and its kind.
+fn source_binds_initial_state(
   initial_state: validation_trace_v1.ValidationMachineStateV1,
   source: ValidationSourceMembershipV1,
 ) -> Bool {
@@ -322,14 +338,42 @@ fn source_binding_is_exact(
         membership.value.tx_id == initial_state.transaction_id,
         forced_source_proof_commitment(membership.value.submitted_source) == initial_state.transaction_commitment,
         initial_state.source_kind == validation_trace_v1.Forced,
-        forced_verdict_matches(membership.value.verdict, descriptor),
       }
     NormalValidationSource { membership } -> and {
         membership.value.tx_id == initial_state.transaction_id,
         source_proof_commitment(membership.value.source) == initial_state.transaction_commitment,
         initial_state.source_kind == validation_trace_v1.Normal,
-        descriptor.verdict == validation_trace_v1.Accepted,
       }
+  }
+}
+
+/// Check 3, one-sided descriptor-verdict consistency: the committed descriptor
+/// carries the verdict its authenticated source already fixes. A normal leaf
+/// under `transactions_root` is an acceptance, so its descriptor must be
+/// Accepted (a well-formed Accepted descriptor carries the no-rejection hash);
+/// a forced leaf's descriptor must match the leaf's own verdict. It reads only
+/// the descriptor and the source, so it decides on its own whatever the
+/// terminal states are.
+pub fn descriptor_matches_source_verdict(
+  descriptor: validation_trace_v1.ValidationTraceDescriptorV1,
+  source: ValidationSourceMembershipV1,
+) -> Bool {
+  when source is {
+    ForcedValidationSource { membership } ->
+      forced_verdict_matches(membership.value.verdict, descriptor)
+    NormalValidationSource { .. } ->
+      descriptor.verdict == validation_trace_v1.Accepted
+  }
+}
+
+fn source_binding_is_exact(
+  descriptor: validation_trace_v1.ValidationTraceDescriptorV1,
+  initial_state: validation_trace_v1.ValidationMachineStateV1,
+  source: ValidationSourceMembershipV1,
+) -> Bool {
+  and {
+    source_binds_initial_state(initial_state, source),
+    descriptor_matches_source_verdict(descriptor, source),
   }
 }
 
@@ -396,15 +440,91 @@ pub fn committed_claim_structure_is_valid(
   }
 }
 
-pub fn committed_claim_source_is_authenticated(
+/// The authenticated source's compact witness set, or `None` when the source
+/// is not authenticated under the header.
+pub fn committed_claim_source_witness_set(
   header: ledger_state.HeaderV1,
   witness: ValidationClaimWitnessV1,
-) -> Bool {
-  verify_source_authentication(
+) -> Option<NativeTxWitnessSetCompact> {
+  authenticated_source_witness_set(
     header,
     witness.descriptor_membership.key,
     witness.source_membership,
   )
+}
+
+pub fn committed_claim_source_is_authenticated(
+  header: ledger_state.HeaderV1,
+  witness: ValidationClaimWitnessV1,
+) -> Bool {
+  when committed_claim_source_witness_set(header, witness) is {
+    Some(_) -> True
+    None -> False
+  }
+}
+
+/// Rule R-DESC: only a normal transaction with a non-empty redeemer field
+/// (witness-set field 8) runs Plutus, so only it has a real trace to dispute.
+/// Decided from the authenticated source bytes, never from the descriptor.
+pub fn source_requires_trace(
+  source: ValidationSourceMembershipV1,
+  witness_set: NativeTxWitnessSetCompact,
+) -> Bool {
+  when source is {
+    ForcedValidationSource { .. } -> False
+    NormalValidationSource { .. } ->
+      witness_set.redeemer_tx_wits_hash != native_tx_field_access_v1.empty_field_commitment
+  }
+}
+
+/// Gap B: a terminal state whose hash both descriptors commit to is coherent
+/// with the operator's descriptor when it is a well-formed Terminal state at
+/// exactly `step_count` carrying the descriptor's verdict and rejection hash.
+pub fn terminal_is_coherent(
+  descriptor: validation_trace_v1.ValidationTraceDescriptorV1,
+  terminal_state: validation_trace_v1.ValidationMachineStateV1,
+) -> Bool {
+  and {
+    validation_trace_v1.machine_state_is_well_formed(terminal_state),
+    terminal_state.phase == validation_trace_v1.Terminal,
+    terminal_state.program_counter == descriptor.step_count,
+    terminal_state.verdict == descriptor.verdict,
+    terminal_state.rejection_code_hash == descriptor.rejection_code_hash,
+  }
+}
+
+/// SEAM (FW-R): until the initial state is derived on chain, the operator's
+/// committed initial state must be exactly the one the derivation will build
+/// from the header, the event key, the source and the step's pre-UTxO root.
+/// FW-R deletes this with the committed initial state.
+pub fn committed_initial_state_is_derived(
+  header: ledger_state.HeaderV1,
+  witness: ValidationClaimWitnessV1,
+) -> Bool {
+  let initial = witness.initial_state
+  and {
+    validation_trace_v1.machine_state_is_well_formed(initial),
+    initial.event_key_hash == blake2b_256(
+      cbor.serialise(witness.descriptor_membership.key),
+    ),
+    initial.prior_ledger_root == witness.transition_step_membership.value.pre_utxos_root,
+    initial.phase == validation_trace_v1.CanonicalDecode,
+    initial.program_counter == 0,
+    initial.execution_cpu == 0,
+    initial.execution_memory == 0,
+    initial.verdict == validation_trace_v1.Pending,
+    validation_context_is_exact(
+      header,
+      witness.validation_context_cbor,
+      initial,
+    ),
+    initial_work_root_is_exact(
+      initial,
+      witness.validation_context_cbor,
+      witness.source_membership,
+    ),
+    source_binds_initial_state(initial, witness.source_membership),
+  }
 }
 
 pub fn committed_claim_endpoints_and_source_are_valid(

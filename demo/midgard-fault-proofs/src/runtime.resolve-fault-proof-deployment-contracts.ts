@@ -8,6 +8,7 @@ import { type Network } from "@lucid-evolution/lucid";
 import {
   assertFraudProofCatalogueCategoryReady,
   type ContractDeploymentInfo,
+  parseContractDeploymentDisputeBondLovelace,
   parseContractDeploymentInfo,
   parseContractDeploymentL1SlotConfig,
   parseContractDeploymentReferenceScriptAuthPolicyId,
@@ -109,7 +110,11 @@ export const resolveFaultProofDeploymentContracts = async ({
     referenceScriptAuthPolicyId,
     categoryName,
     ...(categoryName === "validationTraceDispute"
-      ? { l1SlotConfig: parseContractDeploymentL1SlotConfig(deploymentInfo) }
+      ? {
+          l1SlotConfig: parseContractDeploymentL1SlotConfig(deploymentInfo),
+          disputeBondLovelace:
+            parseContractDeploymentDisputeBondLovelace(deploymentInfo),
+        }
       : {}),
   });
   const categoryContracts = contracts[categoryName];

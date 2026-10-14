@@ -73,6 +73,12 @@ export const buildFaultProofContracts = (
     readonly eventHistoryBounds: EventHistoryPayloadBounds;
     /** The deployment's L1 slot mapping (validation-trace txInfo stage). */
     readonly l1SlotConfig: L1SlotConfig;
+    /**
+     * The validation-dispute bond VerifySource locks at `dispute_bond_v1`, in
+     * lovelace: the deployment's `MIDGARD_DA_AVAILABILITY_CHALLENGER_BOND_LOVELACE`.
+     * A parameter of the source validator.
+     */
+    readonly disputeBondLovelace: bigint;
   },
 ): Effect.Effect<FaultProofContracts, Error> =>
   Effect.gen(function* () {

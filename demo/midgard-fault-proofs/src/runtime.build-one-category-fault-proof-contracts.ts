@@ -74,6 +74,16 @@ const requireL1SlotConfig = (
   return l1SlotConfig;
 };
 
+const requireDisputeBondLovelace = (
+  disputeBondLovelace: bigint | undefined,
+): bigint => {
+  if (disputeBondLovelace === undefined)
+    throw new Error(
+      "The validation-trace dispute chain requires the deployment's dispute bond.",
+    );
+  return disputeBondLovelace;
+};
+
 export const buildOneCategoryFaultProofContracts = async ({
   blueprint,
   network,
@@ -83,6 +93,7 @@ export const buildOneCategoryFaultProofContracts = async ({
   categoryName,
   deploymentInfo,
   l1SlotConfig,
+  disputeBondLovelace,
 }: {
   readonly blueprint: ReturnType<typeof parseFaultProofBlueprint>;
   readonly network: Network;
@@ -93,6 +104,8 @@ export const buildOneCategoryFaultProofContracts = async ({
   readonly categoryName: SupportedFaultProofCategoryName;
   /** Required to derive the validation-trace dispute chain. */
   readonly l1SlotConfig?: L1SlotConfig;
+  /** Required to derive the validation-trace dispute chain. */
+  readonly disputeBondLovelace?: bigint;
 }): Promise<OneCategoryFaultProofContracts> => {
   const params = {
     blueprint,
@@ -135,6 +148,7 @@ export const buildOneCategoryFaultProofContracts = async ({
         buildValidationTraceDisputeFaultProofContracts({
           ...params,
           l1SlotConfig: requireL1SlotConfig(l1SlotConfig),
+          disputeBondLovelace: requireDisputeBondLovelace(disputeBondLovelace),
         }),
       );
     case "daHashPreimage":

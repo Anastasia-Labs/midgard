@@ -65,6 +65,11 @@ export const validationDisputeData = (
         : new Constr(2, []),
   ]);
 
+/**
+ * `ValidationBoundaryEvidenceV1 { pre_state }`: the agreed state at the
+ * one-step boundary. The successor hashes are the dispute datum's own
+ * `operator_high_hash` and `challenger_high_hash`, so no post proof is carried.
+ */
 export const buildValidationBoundaryEvidenceData = ({
   dispute,
   operatorTrace,
@@ -82,29 +87,19 @@ export const buildValidationBoundaryEvidenceData = ({
   }
   const pre = operatorTrace.states[dispute.lowIndex];
   const challengerPre = challengerTrace.states[dispute.lowIndex];
-  const operatorPost = operatorTrace.tree.proofs[dispute.highIndex];
-  const challengerPost = challengerTrace.tree.proofs[dispute.highIndex];
   if (
     pre === undefined ||
     challengerPre === undefined ||
-    operatorPost === undefined ||
-    challengerPost === undefined ||
     !hashMidgardValidationMachineState(pre).equals(dispute.agreedLowHash) ||
     !hashMidgardValidationMachineState(challengerPre).equals(
       dispute.agreedLowHash,
-    ) ||
-    !operatorPost.stateHash.equals(dispute.operatorHighHash) ||
-    !challengerPost.stateHash.equals(dispute.challengerHighHash)
+    )
   ) {
     throw new Error(
       "validation traces do not open the authenticated one-step boundary",
     );
   }
-  return new Constr(0, [
-    validationMachineStateData(pre),
-    validationTraceProofData(operatorPost),
-    validationTraceProofData(challengerPost),
-  ]);
+  return new Constr(0, [validationMachineStateData(pre)]);
 };
 
 export const encodeValidationTraceDescriptorDataCbor = (

@@ -58,6 +58,7 @@ describe("fault-proof contract builder", () => {
     const contracts = await Effect.runPromise(
       buildFaultProofContracts({
         l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
+        disputeBondLovelace: 10_000_000_000n,
         eventHistoryBounds: {
           inlineLimitBytes: 512n,
           maxPayloadBytes: 5000n,
@@ -746,6 +747,7 @@ describe("fault-proof contract builder", () => {
     const contracts = await Effect.runPromise(
       buildValidationTraceDisputeFaultProofContracts({
         l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
+        disputeBondLovelace: 10_000_000_000n,
         blueprint,
         network: "Preprod",
         hubOraclePolicyId: h28b,
@@ -1114,6 +1116,13 @@ describe("fault-proof contract builder", () => {
         contracts.computationThread.policyId,
       ],
     );
+    const expectedDisputeBondCbor = applyExpectedScriptParams(
+      compiledScript(
+        blueprint,
+        VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.disputeBond,
+      ),
+      [contracts.fraudProof.policyId],
+    );
     const expectedSourceCbor = applyExpectedScriptParams(
       compiledScript(
         blueprint,
@@ -1122,6 +1131,8 @@ describe("fault-proof contract builder", () => {
       [
         spendingScriptHash(expectedGameCbor),
         spendingScriptHash(expectedAward),
+        spendingScriptHash(expectedDisputeBondCbor),
+        10_000_000_000n,
         contracts.computationThread.policyId,
       ],
     );
@@ -1139,6 +1150,7 @@ describe("fault-proof contract builder", () => {
     for (const [label, cbor] of [
       ["opener", expectedCbor],
       ["source", expectedSourceCbor],
+      ["dispute bond", expectedDisputeBondCbor],
       ["game", expectedGameCbor],
       ["boundary", expectedBoundaryCbor],
       ["timeout", expectedTimeoutCbor],
@@ -1213,6 +1225,9 @@ describe("fault-proof contract builder", () => {
     expect(contracts.validationTraceDispute.game.spendingScriptCBOR).toBe(
       expectedGameCbor,
     );
+    expect(
+      contracts.validationTraceDispute.disputeBond.spendingScriptCBOR,
+    ).toBe(expectedDisputeBondCbor);
     expect(contracts.validationTraceDispute.source.spendingScriptCBOR).toBe(
       expectedSourceCbor,
     );

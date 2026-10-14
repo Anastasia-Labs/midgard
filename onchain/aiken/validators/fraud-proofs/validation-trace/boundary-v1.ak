@@ -83,8 +83,6 @@ validator main(
                 let expected_resolution_state: Data = validation_resolution_v1.prepare(
                   state.dispute,
                   evidence.pre_state,
-                  evidence.operator_post,
-                  evidence.challenger_post,
                 )
                 and {
                   resolver_index == validation_resolution_v1.resolver_index(

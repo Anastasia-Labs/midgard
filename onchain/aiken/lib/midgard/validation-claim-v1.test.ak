@@ -426,3 +426,216 @@ test normal_source_accepts_validity_code_zero() {
 test normal_source_rejects_validity_code_one() {
   !source_is_authenticated(normal_source(native_types.TxIsInvalid))
 }
+
+// ## Check 3: `descriptor_matches_source_verdict`
+
+test check_3_normal_source_matches_an_accepted_descriptor() {
+  validation_claim_v1.descriptor_matches_source_verdict(
+    descriptor_with(validation_trace_v1.Accepted, zero_hash),
+    normal_source(native_types.TxIsValid),
+  )
+}
+
+test check_3_normal_source_convicts_a_rejected_descriptor() {
+  !validation_claim_v1.descriptor_matches_source_verdict(
+    descriptor_with(validation_trace_v1.Rejected, h32_a),
+    normal_source(native_types.TxIsValid),
+  )
+}
+
+test check_3_forced_valid_leaf_matches_an_accepted_descriptor() {
+  validation_claim_v1.descriptor_matches_source_verdict(
+    descriptor_with(validation_trace_v1.Accepted, zero_hash),
+    forced_source(native_types.TxIsValid, rejection_reason_v1.ForcedTxValid),
+  )
+}
+
+test check_3_forced_valid_leaf_convicts_a_rejected_descriptor() {
+  !validation_claim_v1.descriptor_matches_source_verdict(
+    descriptor_with(validation_trace_v1.Rejected, h32_a),
+    forced_source(native_types.TxIsValid, rejection_reason_v1.ForcedTxValid),
+  )
+}
+
+test check_3_forced_invalid_leaf_convicts_an_accepted_descriptor() {
+  !validation_claim_v1.descriptor_matches_source_verdict(
+    descriptor_with(validation_trace_v1.Accepted, zero_hash),
+    forced_source(
+      native_types.TxIsInvalid,
+      rejection_reason_v1.ForcedTxInvalid {
+        reason: rejection_reason_v1.FeeBelowMinimum,
+      },
+    ),
+  )
+}
+
+// ## The authenticated witness set and rule R-DESC
+
+fn with_one_redeemer(
+  tx: native_types.MidgardTransaction,
+) -> native_types.MidgardTransaction {
+  native_types.MidgardTransaction {
+    ..tx,
+    witness_set: native_types.MidgardTransactionWitnessSet {
+      ..tx.witness_set,
+      redeemer_tx_wits: [
+        native_types.MidgardRedeemerWitness {
+          purpose: native_types.SpendRedeemer,
+          index: 0,
+          redeemer_cbor: cbor.serialise(42),
+          execution_units: native_types.MidgardExecutionUnits {
+            memory: 10,
+            steps: 20,
+          },
+        },
+      ],
+    },
+  }
+}
+
+fn normal_source_of_tx(
+  tx: native_types.MidgardTransaction,
+) -> validation_claim_v1.ValidationSourceMembershipV1 {
+  let tx_id = native_tx_id_of(tx)
+  let source = ledger_state.L2TransactionSourceV1 {
+    tx_id,
+    source: proof_source_of(tx),
+  }
+  let phas_root = mpf.root(
+    mpf.insert(mpf.empty, tx_id, cbor.serialise(source), []),
+  )
+  validation_claim_v1.NormalValidationSource {
+    membership: transition_trace.RootMembershipProof {
+      domain: transition_trace.TransactionsV1RootDomain,
+      root: transition_trace.commit_counted_root(
+        transition_trace.TransactionsV1RootDomain,
+        phas_root,
+        1,
+      ),
+      phas_root,
+      count: 1,
+      key: tx_id,
+      value: source,
+      proof: [],
+    },
+  }
+}
+
+fn requires_trace(
+  source: validation_claim_v1.ValidationSourceMembershipV1,
+) -> Bool {
+  expect Some(witness_set) = validation_claim_v1.committed_claim_source_witness_set(
+    header_for(source),
+    witness_for(source),
+  )
+  validation_claim_v1.source_requires_trace(source, witness_set)
+}
+
+test r_desc_a_normal_source_with_a_redeemer_has_a_trace() {
+  requires_trace(
+    normal_source_of_tx(
+      with_one_redeemer(native_tx_with(native_types.TxIsValid)),
+    ),
+  )
+}
+
+test r_desc_a_normal_source_without_redeemers_has_no_trace() {
+  !requires_trace(normal_source(native_types.TxIsValid))
+}
+
+test r_desc_a_forced_source_has_no_trace() {
+  !requires_trace(
+    forced_source(native_types.TxIsValid, rejection_reason_v1.ForcedTxValid),
+  )
+}
+
+test witness_set_is_none_for_a_source_under_another_root() {
+  let source = normal_source(native_types.TxIsValid)
+  let header = ledger_state.HeaderV1 {
+    ..header_for(source),
+    transactions_root: env.empty_merkle_tree_root,
+  }
+  validation_claim_v1.committed_claim_source_witness_set(
+    header,
+    witness_for(source),
+  ) == None
+}
+
+test witness_set_is_none_for_an_invalid_normal_source() {
+  let source = normal_source(native_types.TxIsInvalid)
+  validation_claim_v1.committed_claim_source_witness_set(
+    header_for(source),
+    witness_for(source),
+  ) == None
+}
+
+// ## Gap B: `terminal_is_coherent`
+
+fn coherent_terminal() -> validation_trace_v1.ValidationMachineStateV1 {
+  validation_trace_v1.ValidationMachineStateV1 {
+    ..dummy_machine_state(),
+    phase: validation_trace_v1.Terminal,
+    program_counter: 1,
+    verdict: validation_trace_v1.Accepted,
+  }
+}
+
+test terminal_is_coherent_with_the_descriptor() {
+  validation_claim_v1.terminal_is_coherent(
+    descriptor_with(validation_trace_v1.Accepted, zero_hash),
+    coherent_terminal(),
+  )
+}
+
+test terminal_is_incoherent_when_ill_formed() {
+  !validation_claim_v1.terminal_is_coherent(
+    descriptor_with(validation_trace_v1.Accepted, zero_hash),
+    validation_trace_v1.ValidationMachineStateV1 {
+      ..coherent_terminal(),
+      work_root: #"00",
+    },
+  )
+}
+
+test terminal_is_incoherent_when_not_terminal() {
+  !validation_claim_v1.terminal_is_coherent(
+    descriptor_with(validation_trace_v1.Accepted, zero_hash),
+    validation_trace_v1.ValidationMachineStateV1 {
+      ..coherent_terminal(),
+      phase: validation_trace_v1.CanonicalDecode,
+    },
+  )
+}
+
+test terminal_is_incoherent_off_step_count() {
+  !validation_claim_v1.terminal_is_coherent(
+    descriptor_with(validation_trace_v1.Accepted, zero_hash),
+    validation_trace_v1.ValidationMachineStateV1 {
+      ..coherent_terminal(),
+      program_counter: 2,
+    },
+  )
+}
+
+// Pending binds the same no-rejection hash as Accepted, so only the verdict
+// conjunct differs.
+test terminal_is_incoherent_with_another_verdict() {
+  !validation_claim_v1.terminal_is_coherent(
+    descriptor_with(validation_trace_v1.Accepted, zero_hash),
+    validation_trace_v1.ValidationMachineStateV1 {
+      ..coherent_terminal(),
+      verdict: validation_trace_v1.Pending,
+    },
+  )
+}
+
+test terminal_is_incoherent_with_another_rejection_hash() {
+  !validation_claim_v1.terminal_is_coherent(
+    descriptor_with(validation_trace_v1.Rejected, h32_a),
+    validation_trace_v1.ValidationMachineStateV1 {
+      ..coherent_terminal(),
+      verdict: validation_trace_v1.Rejected,
+      rejection_code_hash: h32_b,
+    },
+  )
+}

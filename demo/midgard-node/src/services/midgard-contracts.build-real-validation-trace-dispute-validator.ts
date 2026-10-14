@@ -49,12 +49,14 @@ export const buildRealFaultProofContracts = (
   fraudProof: SDK.AuthenticatedValidator,
   eventHistoryBounds: SDK.EventHistoryPayloadBounds,
   l1SlotConfig: L1SlotConfig,
+  disputeBondLovelace: bigint,
 ): Effect.Effect<SDK.FaultProofContractChains, Error> =>
   Effect.gen(function* () {
     const blueprint = yield* loadRealBlueprint();
     const derived = yield* SDK.buildFaultProofContracts({
       eventHistoryBounds,
       l1SlotConfig,
+      disputeBondLovelace,
       blueprint,
       network,
       hubOraclePolicyId: contracts.hubOracle.policyId,

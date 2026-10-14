@@ -242,4 +242,10 @@ export type BuildValidationTraceDisputeFaultProofContractsParams =
      * recorded in the deployment manifest.
      */
     readonly l1SlotConfig: L1SlotConfig;
+    /**
+     * The validation-dispute bond VerifySource locks at `dispute_bond_v1`, in
+     * lovelace: the deployment's `MIDGARD_DA_AVAILABILITY_CHALLENGER_BOND_LOVELACE`.
+     * A parameter of the source validator.
+     */
+    readonly disputeBondLovelace: bigint;
   };

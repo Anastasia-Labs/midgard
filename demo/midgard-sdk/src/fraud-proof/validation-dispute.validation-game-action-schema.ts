@@ -194,6 +194,9 @@ export const PendingValidationClaimSchema = Data.Object({
   claim: ValidationClaimWitnessSchema,
   challenger_descriptor: ValidationTraceDescriptorSchema,
   open_time_upper: Data.Integer(),
+  // Gap B: the operator's terminal state, present exactly when both
+  // descriptors commit to the same terminal state hash.
+  terminal_state: Data.Nullable(ValidationMachineStateSchema),
 });
 
 export type PendingValidationClaim = Data.Static<
@@ -233,6 +236,7 @@ export const ValidationDisputeOpenActionSchema = Data.Object({
   state_queue_node_ref_input_index: Data.Integer(),
   claim: ValidationClaimWitnessSchema,
   challenger_descriptor: ValidationTraceDescriptorSchema,
+  terminal_state: Data.Nullable(ValidationMachineStateSchema),
 });
 
 export type ValidationDisputeOpenAction = Data.Static<
@@ -353,10 +357,10 @@ export type ValidationGameSpendRedeemer = Data.Static<
 export const ValidationGameSpendRedeemer =
   asDataType<ValidationGameSpendRedeemer>(ValidationGameSpendRedeemerSchema);
 
+// Gap A: the successor hashes come from the dispute datum, so the evidence is
+// the agreed pre-state alone.
 export const ValidationBoundaryEvidenceSchema = Data.Object({
   pre_state: ValidationMachineStateSchema,
-  operator_post: ValidationTraceProofSchema,
-  challenger_post: ValidationTraceProofSchema,
 });
 
 export type ValidationBoundaryEvidence = Data.Static<

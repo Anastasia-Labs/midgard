@@ -634,8 +634,6 @@ test typescript_generated_one_step_boundary_is_authenticated() {
     validation_resolution_v1.one_step_boundary_is_authenticated(
       dispute,
       boundary_evidence.pre_state,
-      boundary_evidence.operator_post,
-      boundary_evidence.challenger_post,
     ),
   }
 }
