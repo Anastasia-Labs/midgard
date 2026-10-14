@@ -1,7 +1,7 @@
-use aiken/crypto.{ScriptHash}
+use aiken/cbor
+use aiken/crypto.{ScriptHash, blake2b_256}
 use cardano/assets.{PolicyId}
 use cardano/transaction.{OutputReference, Transaction}
-use midgard/common/utils
 use midgard/computation_thread as ct
 use midgard/fraud_proofs/common.{cancel, continue}
 use midgard/fraud_proofs/fabricated_withdrawal/step_01 as source
@@ -60,18 +60,22 @@ validator main(
           args.state_queue_node_ref_input_index,
         )
         expect header_hash == step_01.challenged_header_hash_of_v1(asset_name)
+        // Serialised once: the membership leaf and `withdrawal_info_hash`
+        // below are both over these bytes.
+        let withdrawal_info_bytes = cbor.serialise(
+          payload.committed_withdrawal.value,
+        )
         expect
-          source.verify_committed_withdrawal_membership_v1(
+          source.verify_committed_withdrawal_membership_with_value_bytes_v1(
             header,
             payload.committed_withdrawal,
+            withdrawal_info_bytes,
           )
         expect output_script_hash == step_02_validator_script_hash
         let expected: Data = step_01.State {
           challenged_header_hash: header_hash,
           withdrawal_id: payload.committed_withdrawal.key,
-          withdrawal_info_hash: utils.serialise_and_hash_32(
-            payload.committed_withdrawal.value,
-          ),
+          withdrawal_info_hash: blake2b_256(withdrawal_info_bytes),
           claimed_valid: payload.committed_withdrawal.value.validity == ledger_state.WithdrawalIsValid,
           event_to_step_root: header.event_to_step_root,
           total_event_count: header.total_event_count,

@@ -140,13 +140,13 @@
       ],
       "rows": {
         "bind_descriptor_authenticates_and_starts_the_machine": {
-          "mem": 3492511,
-          "cpu": 1436625009,
+          "mem": 3490309,
+          "cpu": 1436153123,
           "basisFit": "within"
         },
         "bind_descriptor_closes_a_non_native_direction_b_descriptor": {
-          "mem": 2565231,
-          "cpu": 1061277854,
+          "mem": 2563831,
+          "cpu": 1061053854,
           "basisFit": "within"
         }
       }
@@ -161,18 +161,18 @@
       ],
       "rows": {
         "advance_or_close_commits_a_partial_advance": {
-          "mem": 3633485,
-          "cpu": 1517630698,
+          "mem": 3631283,
+          "cpu": 1517158812,
           "basisFit": "within"
         },
         "advance_or_close_closes_direction_b_at_the_exact_terminal": {
-          "mem": 3883337,
-          "cpu": 1587509702,
+          "mem": 3881135,
+          "cpu": 1587037816,
           "basisFit": "within"
         },
         "advance_or_close_closes_a_direction_a_refusal": {
-          "mem": 3011901,
-          "cpu": 1268168270,
+          "mem": 3009699,
+          "cpu": 1267696384,
           "basisFit": "within"
         }
       }
