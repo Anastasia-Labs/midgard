@@ -972,7 +972,7 @@ test cek_redeemer_selection_binds_the_data_scan_initial_state() {
     chunk_proof: Some(redeemer_chunk_proof),
     next_chunk_proof: None,
   }
-  expect  
+  expect
       Some(redeemer_item_proof_v1.RedeemerItemProofAdvanced {
         control: tail_control,
       })

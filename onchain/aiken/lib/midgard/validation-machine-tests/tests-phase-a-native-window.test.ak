@@ -81,7 +81,7 @@ fn late_walk_has_exactly_one_successor(mode: Int) -> Bool {
 }
 
 fn late_walk_keyed_has_exactly_one_successor(walk: LateWalk) -> Bool {
-  expect  
+  expect
       mt.NativeExecutionDescriptorWitness {
         purpose_kind,
         purpose_index,
