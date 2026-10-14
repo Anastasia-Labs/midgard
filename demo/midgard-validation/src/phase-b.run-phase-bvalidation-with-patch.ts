@@ -2,6 +2,10 @@ import { Effect } from "effect";
 
 import { LedgerColumns } from "./ledger.js";
 import {
+  ScriptOutsideGatedSetError,
+  ScriptWallCapExceededError,
+} from "./phase-b.evaluate-cek-script.js";
+import {
   buildState,
   type CandidateDecision,
   type CandidateNode,
@@ -9,6 +13,8 @@ import {
   getStateValue,
   makeEmptyStatePatch,
   materializeStatePatch,
+  type PhaseBLocalRefusal,
+  type PhaseBLocalRefusalError,
   type PhaseBResultWithPatch,
   type PreState,
   reject,
@@ -30,6 +36,35 @@ import {
   RejectedTx,
 } from "./types.js";
 
+const isLocalRefusal = (error: Error): error is PhaseBLocalRefusalError =>
+  error instanceof ScriptWallCapExceededError ||
+  error instanceof ScriptOutsideGatedSetError;
+
+/**
+ * Marks `root` and every pending candidate that spends or references its
+ * outputs, directly or through others, as refused; returns those dependents
+ * in candidate order.
+ */
+const setAsideWithDescendants = (
+  nodes: readonly CandidateNode[],
+  root: number,
+  statusByIndex: CandidateStatus[],
+): readonly PhaseAValidatedTx[] => {
+  statusByIndex[root] = "refused";
+  const dependents: number[] = [];
+  const queue = [...nodes[root].children];
+  while (queue.length > 0) {
+    const child = queue.shift()!;
+    if (statusByIndex[child] !== "pending") continue;
+    statusByIndex[child] = "refused";
+    dependents.push(child);
+    queue.push(...nodes[child].children);
+  }
+  return dependents
+    .sort((left, right) => left - right)
+    .map((index) => nodes[index].candidate);
+};
+
 /**
  * Validates candidates sequentially, as Cardano applies a block: every spent
  * and reference input resolves against the ledger state immediately before
@@ -40,6 +75,10 @@ import {
  *
  * `accepted` is returned in exactly that application order, so a block that
  * commits `accepted` in order replays to the same verdicts.
+ *
+ * With `config.reportLocalRefusals`, a candidate refused under the node's
+ * wall cap or gated set is reported in `localRefusals` with its dependents
+ * instead of failing the run; no other candidate's script runs again.
  */
 export const runPhaseBValidationWithPatch = (
   phaseACandidates: readonly PhaseAValidatedTx[],
@@ -49,14 +88,17 @@ export const runPhaseBValidationWithPatch = (
   Effect.gen(function* () {
     const accepted: PhaseAValidatedTx[] = [];
     const rejected: RejectedTx[] = [];
+    const localRefusals: PhaseBLocalRefusal[] = [];
     const statePatch = makeEmptyStatePatch();
+    const result = (): PhaseBResultWithPatch => ({
+      accepted,
+      rejected,
+      statePatch: materializeStatePatch(statePatch),
+      ...(config.reportLocalRefusals === true ? { localRefusals } : {}),
+    });
 
     if (phaseACandidates.length === 0) {
-      return {
-        accepted,
-        rejected,
-        statePatch: materializeStatePatch(statePatch),
-      };
+      return result();
     }
 
     const nodes = buildNodes(phaseACandidates);
@@ -141,6 +183,18 @@ export const runPhaseBValidationWithPatch = (
                 componentStateValue,
                 componentSpent,
                 config,
+              ).pipe(
+                Effect.catchIf(
+                  (error): error is PhaseBLocalRefusalError =>
+                    config.reportLocalRefusals === true &&
+                    isLocalRefusal(error),
+                  (localRefusal) =>
+                    Effect.succeed<CandidateDecision>({
+                      index: node.index,
+                      accepted: false,
+                      localRefusal,
+                    }),
+                ),
               );
               decisions.push(decision);
               if (decision.accepted) {
@@ -165,6 +219,19 @@ export const runPhaseBValidationWithPatch = (
       for (const decision of decisions) {
         const node = nodes[decision.index];
         if (statusByIndex[node.index] !== "pending") {
+          continue;
+        }
+
+        if (decision.localRefusal !== undefined) {
+          localRefusals.push({
+            refusal: decision.localRefusal,
+            candidate: node.candidate,
+            dependents: setAsideWithDescendants(
+              nodes,
+              node.index,
+              statusByIndex,
+            ),
+          });
           continue;
         }
 
@@ -223,9 +290,5 @@ export const runPhaseBValidationWithPatch = (
       }
     }
 
-    return {
-      accepted,
-      rejected,
-      statePatch: materializeStatePatch(statePatch),
-    };
+    return result();
   });

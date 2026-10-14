@@ -35,6 +35,8 @@ export {
 } from "./phase-b.evaluate-tx-redeemers.js";
 export {
   applyUTxOStatePatch,
+  type PhaseBLocalRefusal,
+  type PhaseBLocalRefusalError,
   type PhaseBResultWithPatch,
   type UTxOStatePatch,
 } from "./phase-b.resolve-reference-inputs.js";

@@ -17,19 +17,21 @@ import {
   plutusV3ScriptWitness,
 } from "./validation-fixtures.js";
 
-/** A PlutusV3 program that counts down from `iterations`, then returns unit. */
-export const countdownProgram = (iterations: number) =>
+/**
+ * A PlutusV3 program that counts down from `iterations`, applying `step` to
+ * an accumulator at each count, then returns unit.
+ */
+export const countdownProgram = (
+  iterations: number,
+  step: Builtin = Builtin.addInteger,
+) =>
   buildMidgardCanonicalCekProgram(
     encodeMidgardCekCardanoFlatProgram(
       new UPLCProgram(
         [1, 1, 0],
         lam(
           seq(
-            countdown(
-              iterations,
-              int(0),
-              app(Builtin.addInteger, v(0), int(1)),
-            ),
+            countdown(iterations, int(0), app(step, v(0), int(1))),
             UPLCConst.unit,
           ),
         ),
@@ -45,25 +47,39 @@ export type WallCapCandidate = {
 
 /**
  * A normal transaction that spends one output locked by a PlutusV3 script
- * counting down from `iterations`, declaring the per-transaction ex-units
- * cap. Its script is accepted whenever it runs to the end.
+ * counting down from `iterations` (applying `step`, `addInteger` by default),
+ * plus the plain outputs the candidates in `alsoSpending` spend, declaring the
+ * per-transaction ex-units cap. Its script is accepted whenever it runs to
+ * the end.
  */
 export const plutusCountdownSpend = (
   seed: number,
   iterations: number,
+  {
+    step,
+    alsoSpending = [],
+  }: {
+    readonly step?: Builtin;
+    readonly alsoSpending?: readonly WallCapCandidate[];
+  } = {},
 ): WallCapCandidate => {
-  const program = countdownProgram(iterations);
+  const program = countdownProgram(iterations, step);
   const script = plutusV3ScriptWitness(program.envelopeCbor);
-  const spent = outRefFromByte(seed);
+  const locked = outRefFromByte(seed);
+  const plainPreState = alsoSpending.flatMap((entry) => entry.preState);
+  const spent = [
+    locked,
+    ...plainPreState.map(([outRefHex]) => Buffer.from(outRefHex, "hex")),
+  ].sort(Buffer.compare);
   return {
     candidate: makePhaseBCandidate({
-      spent: [spent],
-      outputs: [makeOutput(FUNDED_OUTPUT_LOVELACE)],
+      spent,
+      outputs: [makeOutput(FUNDED_OUTPUT_LOVELACE * BigInt(spent.length))],
       scriptWitnesses: [script],
       redeemerTxWitsPreimageCbor: makeRedeemersCbor([
         {
           tag: MidgardRedeemerTag.Spend,
-          index: 0n,
+          index: BigInt(spent.indexOf(locked)),
           exUnits: [
             MIDGARD_TX_EX_UNITS_CAP.memory,
             MIDGARD_TX_EX_UNITS_CAP.steps,
@@ -77,12 +93,13 @@ export const plutusCountdownSpend = (
     }),
     preState: [
       [
-        spent.toString("hex"),
+        locked.toString("hex"),
         makeProtectedScriptOutput(
           hashScriptWitness(script),
           FUNDED_OUTPUT_LOVELACE,
         ),
       ],
+      ...plainPreState,
     ],
   };
 };

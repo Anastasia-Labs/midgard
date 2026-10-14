@@ -1,12 +1,12 @@
 import {
-  LedgerColumns,
   type PhaseAResult,
   type PhaseAValidatedTx,
+  type PhaseBLocalRefusalError,
+  RejectCodes,
   runPhaseBValidationWithPatch,
-  ScriptOutsideGatedSetError,
   ScriptWallCapExceededError,
 } from "@al-ft/midgard-validation";
-import { Effect, Either, Metric } from "effect";
+import { Effect, Metric } from "effect";
 
 import { TxAdmissionsDB } from "../database/index.js";
 
@@ -235,59 +235,18 @@ export const validationSubmitOutsideGatedSetRefusalCounter = Metric.counter(
  * gated-set refusal is terminal: the same script reaches the same arm under
  * the same gated set.
  */
-const localRefusalOf = (failure: unknown) => {
-  if (failure instanceof ScriptWallCapExceededError) {
-    return {
-      txId: failure.txId,
-      code: ADMISSION_REJECT_CODE_SCRIPT_WALL_CAP,
-      counter: validationSubmitWallCapRefusalCounter,
-      deferred: true,
-    };
-  }
-  if (failure instanceof ScriptOutsideGatedSetError) {
-    return {
-      txId: failure.txId,
-      code: ADMISSION_REJECT_CODE_SCRIPT_OUTSIDE_GATED_SET,
-      counter: validationSubmitOutsideGatedSetRefusalCounter,
-      deferred: false,
-    };
-  }
-  return null;
-};
-
-/**
- * `culprit` and every candidate that spends or references an output it
- * produces, directly or through other such candidates.
- */
-const withDependents = (
-  culprit: PhaseAValidatedTx,
-  candidates: readonly PhaseAValidatedTx[],
-): readonly PhaseAValidatedTx[] => {
-  const group = new Set([culprit]);
-  const produced = new Set<string>();
-  const addProduced = (candidate: PhaseAValidatedTx) => {
-    for (const entry of candidate.graph.produced) {
-      produced.add(entry[LedgerColumns.OUTREF].toString("hex"));
-    }
-  };
-  addProduced(culprit);
-  for (let grew = true; grew; ) {
-    grew = false;
-    for (const candidate of candidates) {
-      if (group.has(candidate)) continue;
-      const { spentOutRefHexes, referenceOutRefHexes } = candidate.graph;
-      if (
-        spentOutRefHexes.some((outRef) => produced.has(outRef)) ||
-        referenceOutRefHexes.some((outRef) => produced.has(outRef))
-      ) {
-        group.add(candidate);
-        addProduced(candidate);
-        grew = true;
+const localRefusalOf = (failure: PhaseBLocalRefusalError) =>
+  failure instanceof ScriptWallCapExceededError
+    ? {
+        code: ADMISSION_REJECT_CODE_SCRIPT_WALL_CAP,
+        counter: validationSubmitWallCapRefusalCounter,
+        deferred: true,
       }
-    }
-  }
-  return candidates.filter((candidate) => group.has(candidate));
-};
+    : {
+        code: ADMISSION_REJECT_CODE_SCRIPT_OUTSIDE_GATED_SET,
+        counter: validationSubmitOutsideGatedSetRefusalCounter,
+        deferred: false,
+      };
 
 /** A transaction left queued, with why, to be decided again later. */
 export type AdmissionDeferral = Readonly<{
@@ -297,13 +256,14 @@ export type AdmissionDeferral = Readonly<{
 }>;
 
 /**
- * Runs Phase B, refusing each candidate whose script runs pass the submit
- * wall cap (`scriptWallCapMs`) or leave the gated set (`cekGatedSet`), and
- * running the rest again. The refusal is the node's own, under its own code,
- * and records no script verdict. A gated-set refusal is terminal. A wall-cap
- * refusal is deferred, together with every candidate that depends on the
- * refused transaction's outputs, so that all of them are decided again later.
- * Every other Phase B failure fails the batch as before.
+ * Runs Phase B once, refusing each candidate whose script runs pass the
+ * submit wall cap (`scriptWallCapMs`) or leave the gated set (`cekGatedSet`)
+ * and deciding the rest as if the refused ones were absent. The refusal is
+ * the node's own, under its own code, and records no script verdict. A
+ * gated-set refusal is terminal, and every candidate that depends on the
+ * refused transaction's outputs is rejected as depending on it. A wall-cap
+ * refusal is deferred together with those dependents, so that all of them are
+ * decided again later. Every other Phase B failure fails the batch as before.
  */
 export const runPhaseBRefusingLocalBreaches = (
   candidates: readonly PhaseAValidatedTx[],
@@ -311,38 +271,48 @@ export const runPhaseBRefusingLocalBreaches = (
   phaseBConfig: Parameters<typeof runPhaseBValidationWithPatch>[2],
 ) =>
   Effect.gen(function* () {
-    let remaining = candidates;
+    const phaseB = yield* runPhaseBValidationWithPatch(
+      candidates,
+      ledgerState,
+      { ...phaseBConfig, reportLocalRefusals: true },
+    );
     const refused: TxAdmissionsDB.AdmissionRejection[] = [];
     const deferred: AdmissionDeferral[] = [];
-    for (;;) {
-      const run = yield* Effect.either(
-        runPhaseBValidationWithPatch(remaining, ledgerState, phaseBConfig),
-      );
-      if (Either.isRight(run)) return { phaseB: run.right, refused, deferred };
-      const breach = run.left;
+    for (const {
+      refusal: breach,
+      candidate,
+      dependents,
+    } of phaseB.localRefusals ?? []) {
       const refusal = localRefusalOf(breach);
-      if (refusal === null) return yield* Effect.fail(breach);
-      const culprit = remaining.find((candidate) =>
-        candidate.ledgerTx.txId.equals(refusal.txId),
-      );
-      if (culprit === undefined) return yield* Effect.fail(breach);
+      const txId = Buffer.from(candidate.ledgerTx.txId);
+      const txIdHex = txId.toString("hex");
       yield* Metric.increment(refusal.counter);
-      const removed = refusal.deferred
-        ? withDependents(culprit, remaining)
-        : [culprit];
-      for (const candidate of removed) {
-        const txId = Buffer.from(candidate.ledgerTx.txId);
-        yield* Effect.logWarning(
-          `${refusal.deferred ? "Deferring" : "Refusing"} tx ${txId.toString("hex")} at admission: ${breach.message}`,
-        );
-        (refusal.deferred ? deferred : refused).push({
-          txId,
-          code: refusal.code,
-          detail: breach.message,
-        });
+      yield* Effect.logWarning(
+        `${refusal.deferred ? "Deferring" : "Refusing"} tx ${txIdHex} at admission: ${breach.message}`,
+      );
+      (refusal.deferred ? deferred : refused).push({
+        txId,
+        code: refusal.code,
+        detail: breach.message,
+      });
+      for (const dependent of dependents) {
+        const dependentTxId = Buffer.from(dependent.ledgerTx.txId);
+        if (refusal.deferred) {
+          const detail = `depends on deferred tx ${txIdHex}`;
+          yield* Effect.logWarning(
+            `Deferring tx ${dependentTxId.toString("hex")} at admission: ${detail}`,
+          );
+          deferred.push({ txId: dependentTxId, code: refusal.code, detail });
+        } else {
+          refused.push({
+            txId: dependentTxId,
+            code: RejectCodes.DependsOnRejectedTx,
+            detail: `depends on refused tx ${txIdHex}`,
+          });
+        }
       }
-      remaining = remaining.filter((candidate) => !removed.includes(candidate));
     }
+    return { phaseB, refused, deferred };
   });
 
 /**

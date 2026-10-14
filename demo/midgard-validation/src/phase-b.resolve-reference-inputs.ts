@@ -20,6 +20,10 @@ import {
   MidgardRedeemerPointer,
   MidgardScriptPurpose,
 } from "./midgard-redeemers.js";
+import type {
+  ScriptOutsideGatedSetError,
+  ScriptWallCapExceededError,
+} from "./phase-b.evaluate-cek-script.js";
 import {
   inputOrdinalOf,
   REJECT_SOURCE_KIND_REFERENCE,
@@ -51,12 +55,31 @@ export type CandidateNode = {
   readonly children: Set<number>;
 };
 
-export type CandidateStatus = "pending" | "accepted" | "rejected";
+/** `refused`: left undecided by a local refusal (`reportLocalRefusals`). */
+export type CandidateStatus = "pending" | "accepted" | "rejected" | "refused";
 
 export type CandidateDecision = {
   readonly index: number;
   readonly accepted: boolean;
   readonly rejection?: RejectedTx;
+  readonly localRefusal?: PhaseBLocalRefusalError;
+};
+
+/** A node-local refusal of one candidate's script runs. Not a verdict. */
+export type PhaseBLocalRefusalError =
+  | ScriptWallCapExceededError
+  | ScriptOutsideGatedSetError;
+
+/**
+ * A candidate refused for the node's own reasons rather than decided
+ * (`PhaseBConfig.reportLocalRefusals`), with every candidate of the batch
+ * that spends or references its outputs, directly or through others, in
+ * candidate order.
+ */
+export type PhaseBLocalRefusal = {
+  readonly refusal: PhaseBLocalRefusalError;
+  readonly candidate: PhaseAValidatedTx;
+  readonly dependents: readonly PhaseAValidatedTx[];
 };
 
 export type ResolvedReferenceInput = {
@@ -77,6 +100,8 @@ export type UTxOStatePatch = {
 
 export type PhaseBResultWithPatch = PhaseBResult & {
   readonly statePatch: UTxOStatePatch;
+  /** Set when `PhaseBConfig.reportLocalRefusals` is. */
+  readonly localRefusals?: readonly PhaseBLocalRefusal[];
 };
 
 type MutableStatePatch = {

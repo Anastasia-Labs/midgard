@@ -284,6 +284,14 @@ export type PhaseBConfig = {
    */
   readonly cekGatedSet?: MidgardCekGatedSet;
   /**
+   * Reports each candidate refused under `scriptWallCapMs` or `cekGatedSet`
+   * in `localRefusals` instead of failing Phase B. A refused candidate is left
+   * undecided together with every candidate that spends or references its
+   * outputs, and every other candidate is decided, in its own order, as if
+   * they were absent. Submission only, like the refusals themselves.
+   */
+  readonly reportLocalRefusals?: boolean;
+  /**
    * `verdict` (the default) runs CEK scripts without per-step verification or
    * retention, so each `onScriptEvaluated` report has `execution: null`. A
    * caller that builds a validation trace from the reported executions must
