@@ -1,9 +1,11 @@
 use aiken/cbor
 use aiken/crypto.{ScriptHash, blake2b_256}
+use aiken/primitive/bytearray
 use cardano/address.{Credential}
 use cardano/assets.{PolicyId}
 use cardano/transaction.{Transaction}
 use midgard/cbor_deserialise
+use midgard/data_summary_walk_v1.{Summarised} as datum_walk
 use midgard/fraud_proofs/field_opening_v1.{
   BodyAnchor, BodyTxOpening, FieldOpeningV1, NativeTxAnchorV1,
   anchored_field_walk, anchored_native_tx, anchored_native_tx_version,
@@ -16,8 +18,11 @@ use midgard/fraud_proofs/transition_trace/final_yield.{
   WalkStep, dispatched, one_step_witness,
 }
 use midgard/fraud_proofs/transition_trace/final_yield as delegation
+use midgard/fraud_proofs/transition_trace/output_pipeline as pipeline
+use midgard/fraud_proofs/transition_trace/output_summaries.{WalkWitness}
 use midgard/fraud_proofs/transition_trace/proof
 use midgard/fraud_proofs/transition_trace/proof_carriage
+use midgard/ledger_output_value_v1 as value
 use midgard/ledger_state
 use midgard/native_tx_field_access_v1.{FieldCarriageV1}
 use midgard/native_tx_machine_walk_v1 as walk
@@ -31,12 +36,42 @@ pub const delete_batch = 1
 /// Output envelopes certified per phase-10 step.
 pub const outputs_grammar_batch = 32
 
+/// Outputs whose canonical bytes are at most this long are replayed whole by
+/// their phase-11 step. Longer outputs leave phase 11 for the staged phases 2,
+/// 7, 8, 3 and 4. A compiled constant, so every output has exactly one path.
+pub const output_step_bytes = 128
+
 /// One phase-1 step: the resumed field-0 walk and exactly one delete witness
 /// per input it visits, in field order.
 pub type DeleteStep {
   opening: FieldOpeningV1,
   checkpoint_bytes: ByteArray,
   witnesses: List<proof.LedgerDeleteWitness>,
+}
+
+/// One phase-11 step: the resumed outputs walk and, for an output replayed
+/// whole, the value fold's asset witnesses, the datum walk witness and the
+/// ledger insert witness. A staged output reads only `walk`.
+pub type OutputStep {
+  walk: WalkStep,
+  value_witnesses: List<value.LedgerOutputValueWitnessV1>,
+  datum: WalkWitness,
+  insert: proof.LedgerInsertWitness,
+}
+
+/// Insert the output at `state.output_index` into the ledger. The witness is
+/// keyed by the produced output reference and carries `descriptor`.
+fn insert_output(
+  state: delegation.State,
+  witness: proof.LedgerInsertWitness,
+  descriptor: ByteArray,
+) -> ByteArray {
+  expect
+    witness.key == components.encode_midgard_tx_input(
+      MidgardTxInput { tx_id: state.tx_id, output_index: state.output_index },
+    )
+  expect witness.value == descriptor
+  proof.apply_insert_witness(state.current_root, witness)
 }
 
 fn body_anchor(state: delegation.State) -> NativeTxAnchorV1 {
@@ -165,16 +200,9 @@ validator l2_delete(
   }
 }
 
-/// Phases 10 and 11 of the outputs walk.
-///
-/// Phase 10 certifies the outputs field's envelopes, `outputs_grammar_batch`
+/// Phase 10: certify the outputs field's envelopes, `outputs_grammar_batch`
 /// per step. The step that completes certification opens the certified walk
 /// and records the output count it authenticates.
-///
-/// Phase 11 takes the next output off that walk. The walk must stand at
-/// `output_index`, so phase 4's key, built from the same index, names the
-/// output whose bytes were walked; the item's hash becomes the `output_hash`
-/// every later phase of this output checks its bytes against.
 validator l2_outputs(
   dispatcher: ScriptHash,
   field_preimage_certificate_policy_id: PolicyId,
@@ -182,10 +210,19 @@ validator l2_outputs(
   withdraw(step: WalkStep, _credential: Credential, tx: Transaction) {
     let (datum, args) = delegation.dispatch(dispatcher, tx.inputs, tx.redeemers)
     expect Some(state) = datum.data
-    expect state.kind == 0
+    expect state.kind == 0 && state.phase == 10
     let anchor = body_anchor(state)
-    let successor = if state.phase == 11 {
-      let Pair(view, prior) = opening.resume_opened_field_walk(
+    let Pair(view, prior) = if state.outputs_walk == #"" {
+      expect step.checkpoint_bytes == #""
+      opening.opened_field_grammar_certification(
+        step.opening,
+        anchor,
+        outputs_field_index,
+        tx.reference_inputs,
+        field_preimage_certificate_policy_id,
+      )
+    } else {
+      opening.resume_opened_field_grammar_certification(
         step.opening,
         anchor,
         outputs_field_index,
@@ -194,63 +231,125 @@ validator l2_outputs(
         tx.reference_inputs,
         field_preimage_certificate_policy_id,
       )
-      expect walk.walk_next_item_index(prior) == state.output_index
-      let Pair(item, next) = walk.walk_next(view, prior)
+    }
+    let next = walk.certify_field_grammar(view, prior, outputs_grammar_batch)
+    let successor = if walk.field_grammar_is_complete(next) {
+      let Pair(_, start) = opening.opened_certified_field_walk_from_grammar(
+        step.opening,
+        anchor,
+        outputs_field_index,
+        walk.field_grammar_checkpoint_hash(next),
+        walk.encode_field_grammar_checkpoint(next),
+        tx.reference_inputs,
+        field_preimage_certificate_policy_id,
+      )
+      let count = walk.walk_remaining(start)
+      delegation.State {
+        ..state,
+        phase: if count == 0 {
+          5
+        } else {
+          11
+        },
+        outputs_walk: walk.field_walk_checkpoint_hash(start),
+        output_count: count,
+      }
+    } else {
+      delegation.State {
+        ..state,
+        outputs_walk: walk.field_grammar_checkpoint_hash(next),
+      }
+    }
+    delegation.advance(datum, args, tx.outputs, successor)
+  }
+
+  else(_) {
+    fail
+  }
+}
+
+/// Phase 11: take the next output off the certified walk, which must stand
+/// at `output_index`, so the insert key built from the same index names the
+/// output whose bytes were walked.
+///
+/// An output of at most `output_step_bytes` is replayed whole here: scan,
+/// value fold, summaries and descriptor over the walked bytes, then its
+/// insert, and the step moves on to the next output (or phase 5 after the
+/// last). A longer output records its hash for the staged phases, which
+/// read its bytes from published chunks, and moves to phase 2.
+validator l2_output_step(
+  dispatcher: ScriptHash,
+  field_preimage_certificate_policy_id: PolicyId,
+) {
+  withdraw(step: OutputStep, _credential: Credential, tx: Transaction) {
+    let (datum, args) = delegation.dispatch(dispatcher, tx.inputs, tx.redeemers)
+    expect Some(state) = datum.data
+    expect state.kind == 0 && state.phase == 11
+    let Pair(view, prior) = opening.resume_opened_field_walk(
+      step.walk.opening,
+      body_anchor(state),
+      outputs_field_index,
+      state.outputs_walk,
+      step.walk.checkpoint_bytes,
+      tx.reference_inputs,
+      field_preimage_certificate_policy_id,
+    )
+    expect walk.walk_next_item_index(prior) == state.output_index
+    let Pair(item, next) = walk.walk_next(view, prior)
+    let outputs_walk = walk.field_walk_checkpoint_hash(next)
+    let successor = if bytearray.length(item) > output_step_bytes {
       delegation.State {
         ..state,
         phase: 2,
-        outputs_walk: walk.field_walk_checkpoint_hash(next),
+        outputs_walk,
         output_hash: blake2b_256(item),
       }
     } else {
-      expect state.phase == 10
-      let Pair(view, prior) = if state.outputs_walk == #"" {
-        expect step.checkpoint_bytes == #""
-        opening.opened_field_grammar_certification(
-          step.opening,
-          anchor,
-          outputs_field_index,
-          tx.reference_inputs,
-          field_preimage_certificate_policy_id,
-        )
+      let (facts, value_start) = pipeline.scan_whole(item)
+      expect Some(value_summary) = value.finalize_v1(
+        pipeline.value_batch(
+          value.initial_control_v1(facts.asset_count),
+          facts,
+          step.value_witnesses,
+        ),
+      )
+      let datum_summary = if facts.datum_offset == -1 {
+        None
       } else {
-        opening.resume_opened_field_grammar_certification(
-          step.opening,
-          anchor,
-          outputs_field_index,
-          state.outputs_walk,
-          step.checkpoint_bytes,
-          tx.reference_inputs,
-          field_preimage_certificate_policy_id,
+        expect Summarised(summary) = output_summaries.resume_datum(
+          facts,
+          item,
+          datum_walk.start(facts.datum_offset),
+          step.datum,
         )
+        Some(summary)
       }
-      let next = walk.certify_field_grammar(view, prior, outputs_grammar_batch)
-      if walk.field_grammar_is_complete(next) {
-        let Pair(_, start) = opening.opened_certified_field_walk_from_grammar(
-          step.opening,
-          anchor,
-          outputs_field_index,
-          walk.field_grammar_checkpoint_hash(next),
-          walk.encode_field_grammar_checkpoint(next),
-          tx.reference_inputs,
-          field_preimage_certificate_policy_id,
-        )
-        let count = walk.walk_remaining(start)
-        delegation.State {
-          ..state,
-          phase: if count == 0 {
-            5
-          } else {
-            11
-          },
-          outputs_walk: walk.field_walk_checkpoint_hash(start),
-          output_count: count,
-        }
-      } else {
-        delegation.State {
-          ..state,
-          outputs_walk: walk.field_grammar_checkpoint_hash(next),
-        }
+      let (s1, s2, s3) = output_summaries.summary_of(
+        facts,
+        item,
+        value_summary,
+        datum_summary,
+      )
+      let descriptor = pipeline.descriptor_cbor(
+        state.output_index,
+        item,
+        facts,
+        value_start,
+        s1,
+        s2,
+        s3,
+      )
+      let next_index = state.output_index + 1
+      delegation.State {
+        ..state,
+        phase: if next_index == state.output_count {
+          5
+        } else {
+          11
+        },
+        outputs_walk,
+        output_index: next_index,
+        current_root: insert_output(state, step.insert, descriptor),
       }
     }
     delegation.advance(datum, args, tx.outputs, successor)
@@ -304,24 +403,15 @@ validator l2_replay(dispatcher: ScriptHash) {
       )
     } else {
       expect state.phase == 4
-      let witness = if state.kind == 0 {
+      let root = if state.kind == 0 {
         expect witness: proof.LedgerInsertWitness = redeemer
-        expect
-          witness.key == components.encode_midgard_tx_input(
-            MidgardTxInput {
-              tx_id: state.tx_id,
-              output_index: state.output_index,
-            },
-          )
-        expect witness.value == state.descriptor_cbor
-        witness
+        insert_output(state, witness, state.descriptor_cbor)
       } else {
         expect state.kind == 1
         expect [_, _, _, projected_data] = one_step_witness(committed(), 3)
         expect witness: proof.LedgerInsertWitness = projected_data
-        witness
+        proof.apply_insert_witness(state.current_root, witness)
       }
-      let root = proof.apply_insert_witness(state.current_root, witness)
       let next_index = state.output_index + 1
       delegation.advance(
         datum,

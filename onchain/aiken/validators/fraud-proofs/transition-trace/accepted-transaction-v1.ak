@@ -79,7 +79,7 @@ validator main(
                 0 -> delegation.l2_open_role
                 1 -> delegation.l2_delete_role
                 10 -> delegation.l2_outputs_role
-                11 -> delegation.l2_outputs_role
+                11 -> delegation.l2_output_step_role
                 2 -> delegation.l2_scan_role
                 7 -> delegation.l2_value_role
                 8 -> delegation.l2_summaries_role

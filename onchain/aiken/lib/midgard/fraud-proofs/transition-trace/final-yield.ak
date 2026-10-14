@@ -10,7 +10,6 @@ use midgard/cek_data_v1.{DataSummaryV1}
 use midgard/computation_thread as ct
 use midgard/fraud_proofs/field_opening_v1.{FieldOpeningV1}
 use midgard/fraud_proofs/transition_trace/proof_carriage
-use midgard/ledger_output_scan_v1 as scan
 
 pub const l2_scan_role = "V1FpTtF4ScanYield"
 
@@ -33,6 +32,8 @@ pub const l2_replay_role = "V1FpTtF4L2ReplayYield"
 pub const l2_delete_role = "V1FpTtF4L2DeleteYield"
 
 pub const l2_outputs_role = "V1FpTtF4L2OutputsYield"
+
+pub const l2_output_step_role = "V1FpTtF4L2OutputStepYield"
 
 pub const deposit_projection_role = "V1FpTtF5ProjectionYield"
 
@@ -217,27 +218,4 @@ pub fn output_bytes(
   let bytes = proof_carriage.chunks(args.output_ref_indices, references)
   expect blake2b_256(bytes) == state.output_hash
   bytes
-}
-
-/// Value and datum semantics have already been frozen independently.
-pub fn output_metadata_skeleton(state: State, bytes: ByteArray) -> ByteArray {
-  let facts = scan.decode_control_v1(state.scan_cbor)
-  let prefix = if facts.reference_script_item_offset == -1 {
-    #"a2"
-  } else {
-    #"a3"
-  }
-    |> bytearray.concat(
-        bytearray.drop(bytearray.take(bytes, state.value_start), 1),
-      )
-    |> bytearray.concat(#"018200a0")
-  if facts.reference_script_item_offset == -1 {
-    prefix
-  } else {
-    prefix
-      |> bytearray.concat(#"03")
-      |> bytearray.concat(
-          bytearray.drop(bytes, facts.reference_script_item_offset),
-        )
-  }
 }

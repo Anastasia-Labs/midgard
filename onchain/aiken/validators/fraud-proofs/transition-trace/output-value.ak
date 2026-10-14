@@ -3,28 +3,9 @@ use aiken/crypto.{ScriptHash}
 use cardano/address.{Credential}
 use cardano/transaction.{Transaction}
 use midgard/fraud_proofs/transition_trace/final_yield as delegation
+use midgard/fraud_proofs/transition_trace/output_pipeline as pipeline
 use midgard/ledger_output_scan_v1 as scan
 use midgard/ledger_output_value_v1 as value
-
-fn batch(
-  control: value.LedgerOutputValueControlV1,
-  facts: scan.LedgerOutputScanControlV1,
-  witnesses: List<value.LedgerOutputValueWitnessV1>,
-) -> value.LedgerOutputValueControlV1 {
-  when witnesses is {
-    [] -> control
-    [witness, ..rest] -> {
-      expect Some(next) = value.step_v1(
-        control,
-        facts.asset_count,
-        facts.asset_peaks,
-        facts.lovelace,
-        witness,
-      )
-      batch(next, facts, rest)
-    }
-  }
-}
 
 validator value_output(dispatcher: ScriptHash) {
   withdraw(
@@ -42,7 +23,7 @@ validator value_output(dispatcher: ScriptHash) {
     } else {
       value.decode_control_v1(state.value_cbor)
     }
-    let next = batch(control, facts, witnesses)
+    let next = pipeline.value_batch(control, facts, witnesses)
     delegation.advance(
       datum,
       args,
