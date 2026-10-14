@@ -2,6 +2,7 @@ use aiken/builtin
 use aiken/cbor
 use aiken/primitive/bytearray
 use midgard/bounded_item_v1
+use midgard/cbor_deserialise
 use midgard/cek_constant_v1
 use midgard/cek_data_v1
 use midgard/cek_machine_v1
@@ -433,7 +434,7 @@ fn first_source_chunk_identity_matches(
   proof: bounded_item_v1.ChunkProofV1,
 ) -> Bool {
   if origin_kind == 0 {
-    expect Some(source_index_data) = cbor.deserialise(source_key)
+    let source_index_data <- cbor_deserialise.expect_deserialise(source_key)
     let source_index = builtin.un_i_data(source_index_data)
     and {
       source_index >= 0,
@@ -442,7 +443,7 @@ fn first_source_chunk_identity_matches(
       proof.item_index == source_index,
     }
   } else if origin_kind == 1 {
-    expect Some(source_key_data) = cbor.deserialise(source_key)
+    let source_key_data <- cbor_deserialise.expect_deserialise(source_key)
     expect [_, output_index_data] = builtin.un_list_data(source_key_data)
     let output_index = builtin.un_i_data(output_index_data)
     and {

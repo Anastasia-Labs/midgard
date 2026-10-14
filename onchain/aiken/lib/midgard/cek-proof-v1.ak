@@ -4,6 +4,7 @@ use aiken/collection/list
 use aiken/crypto.{blake2b_256}
 use aiken/option
 use aiken/primitive/bytearray
+use midgard/cbor_deserialise
 use midgard/cek_data_v1
 use midgard/fraud_proofs/native_tx/codec.{
   encode_definite_array_header, encode_definite_bytes, slice_len,
@@ -756,7 +757,7 @@ fn encode_program_blob_material_v1(value: ProgramBlobMaterialV1) -> ByteArray {
 pub fn inspect_program_term_material_v1(
   preimage: ByteArray,
 ) -> Option<ProgramTermMaterialV1> {
-  when cbor.deserialise(preimage) is {
+  when cbor_deserialise.deserialise(preimage) is {
     Some(data) ->
       when list_data(data) is {
         Some([tag_data, index_data]) ->
@@ -886,7 +887,7 @@ pub fn program_term_child_roots_v1(
 pub fn inspect_program_value_material_v1(
   preimage: ByteArray,
 ) -> Option<ProgramValueMaterialV1> {
-  when cbor.deserialise(preimage) is {
+  when cbor_deserialise.deserialise(preimage) is {
     Some(data) ->
       when list_data(data) is {
         Some([
@@ -955,7 +956,7 @@ pub fn inspect_program_value_material_v1(
 pub fn inspect_program_sequence_material_v1(
   preimage: ByteArray,
 ) -> Option<ProgramSequenceMaterialV1> {
-  when cbor.deserialise(preimage) is {
+  when cbor_deserialise.deserialise(preimage) is {
     Some(data) ->
       when list_data(data) is {
         Some([tag_data, head_data, tail_data, length_data]) ->
@@ -995,7 +996,7 @@ pub fn inspect_program_blob_material_v1(
   preimage: ByteArray,
 ) -> Option<ProgramBlobMaterialV1> {
   if kind == 3 {
-    when cbor.deserialise(preimage) is {
+    when cbor_deserialise.deserialise(preimage) is {
       Some(data) ->
         if data_is_bytes(data) {
           let bytes = builtin.un_b_data(data)
@@ -1012,7 +1013,7 @@ pub fn inspect_program_blob_material_v1(
       _ -> None
     }
   } else if kind == 4 {
-    when cbor.deserialise(preimage) is {
+    when cbor_deserialise.deserialise(preimage) is {
       Some(data) ->
         when list_data(data) is {
           Some([left_data, right_data, length_data]) ->
@@ -1086,7 +1087,7 @@ fn inspect_program_material_entry_data_v1(
       when data_hash(root_data) is {
         Some(root) -> {
           let decoded_value = if data_is_bytes(value_data) {
-            cbor.deserialise(builtin.un_b_data(value_data))
+            cbor_deserialise.deserialise(builtin.un_b_data(value_data))
           } else {
             None
           }
@@ -1155,7 +1156,7 @@ fn strictly_sorted_material_roots_v1(
 pub fn inspect_complete_program_material_sidecar_v1(
   sidecar_cbor: ByteArray,
 ) -> Option<List<CekProgramMaterialDatumV1>> {
-  when cbor.deserialise(sidecar_cbor) is {
+  when cbor_deserialise.deserialise(sidecar_cbor) is {
     Some(data) ->
       when list_data(data) is {
         Some([version_data, entries_data]) ->
@@ -1593,7 +1594,7 @@ pub fn inspect_program_envelope_v1(
   if bytearray.length(envelope_cbor) > max_program_envelope_cbor_bytes {
     None
   } else {
-    when cbor.deserialise(envelope_cbor) is {
+    when cbor_deserialise.deserialise(envelope_cbor) is {
       None -> None
       Some(data) ->
         when list_data(data) is {

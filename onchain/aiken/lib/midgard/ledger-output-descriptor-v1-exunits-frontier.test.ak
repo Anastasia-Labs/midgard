@@ -269,3 +269,19 @@ test descriptor_3083_bytes_derives() {
 test descriptor_3083_bytes_fixture_only() {
   fixture_only(2944, 3083)
 }
+
+test descriptor_3149_bytes_derives() {
+  derives(3008, 3149)
+}
+
+test descriptor_3149_bytes_fixture_only() {
+  fixture_only(3008, 3149)
+}
+
+test descriptor_3215_bytes_derives() {
+  derives(3072, 3215)
+}
+
+test descriptor_3215_bytes_fixture_only() {
+  fixture_only(3072, 3215)
+}
