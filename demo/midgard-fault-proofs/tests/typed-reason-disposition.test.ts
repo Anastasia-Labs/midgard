@@ -34,7 +34,7 @@ const schemaArms = (): readonly string[] => {
 describe("typed rejection-reason disposition", () => {
   it("covers every RejectionReason constructor exactly once", () => {
     const arms = schemaArms();
-    expect(arms).toHaveLength(47);
+    expect(arms).toHaveLength(48);
     expect([...TYPED_REASON_ARMS].sort()).toEqual([...arms].sort());
   });
 
@@ -62,7 +62,7 @@ describe("typed rejection-reason disposition", () => {
         expect(registered.has(category), `${arm} -> ${category}`).toBe(true);
       }
     }
-    expect(NON_INTERACTIVE_DIRECT_CATEGORIES).toHaveLength(35);
+    expect(NON_INTERACTIVE_DIRECT_CATEGORIES).toHaveLength(36);
   });
 
   it("keeps excluded global routes explicit and closes every supported direct route", () => {

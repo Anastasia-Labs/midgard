@@ -93,6 +93,7 @@ export const TYPED_REASON_DISPOSITIONS = Object.freeze({
   MintAssetAccumulationLimit: direct("distinctAssetAccumulationLimit"),
   OutputBelowMinAda: direct("minAda"),
   ValueNotPreserved: direct("valueNotPreserved"),
+  MintItemMalformed: direct("mintItemNonCanonical"),
 }) satisfies Readonly<Record<string, TypedReasonDisposition>>;
 
 export type TypedReasonArm = keyof typeof TYPED_REASON_DISPOSITIONS;
