@@ -3,6 +3,7 @@ use aiken/cbor
 use aiken/crypto.{blake2b_256}
 use aiken/primitive/bytearray
 use midgard/bounded_collection_v1
+use midgard/cbor_deserialise
 use midgard/cek_data_v1
 use midgard/cek_machine_v1
 use midgard/cek_proof_v1
@@ -277,7 +278,7 @@ pub fn transaction_field_item_encoded_length(
 const consensus_profile_v1_id = #"6d6964676172642d636f6e73656e7375732d7631"
 
 pub fn decode_validation_context(context_cbor: ByteArray) -> ValidationContextV1 {
-  expect Some(data) = cbor.deserialise(context_cbor)
+  let data <- cbor_deserialise.expect_deserialise(context_cbor)
   expect
       [
         version_data, profile_id_data, block_end_time_data,

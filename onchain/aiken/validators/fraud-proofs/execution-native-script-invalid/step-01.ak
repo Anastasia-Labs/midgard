@@ -1,7 +1,7 @@
-use aiken/cbor
 use aiken/crypto.{ScriptHash}
 use cardano/assets.{PolicyId}
 use cardano/transaction.{OutputReference, Transaction}
+use midgard/cbor_deserialise
 use midgard/computation_thread as ct
 use midgard/fraud_proofs/common.{
   PublishedChunkInclusion, RedeemerCarriedInclusion, cancel, continue,
@@ -54,7 +54,7 @@ validator main(
           RedeemerCarriedInclusion(args) -> args.l2_transaction_source_cbor
           PublishedChunkInclusion(args) -> args.l2_transaction_source_cbor
         }
-        expect Some(source_data) = cbor.deserialise(source_cbor)
+        let source_data <- cbor_deserialise.expect_deserialise(source_cbor)
         expect source: L2TransactionSourceV1 = source_data
         let expected: Data = bind_execution_v1(
           substrate.bind_accepted_subject_v1(verified),

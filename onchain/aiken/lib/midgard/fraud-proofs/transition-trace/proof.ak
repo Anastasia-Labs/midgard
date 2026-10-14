@@ -12,6 +12,7 @@ use cardano/transaction.{
 }
 use env
 use midgard/canonical_cbor_scan_v1 as key_cbor
+use midgard/cbor_deserialise
 use midgard/common/types.{Proof}
 use midgard/common/utils
 use midgard/event_history/horizon
@@ -1498,7 +1499,9 @@ pub fn validate_l2_transaction_transition(
   produced_utxos: List<LedgerInsertWitness>,
 ) -> Bool {
   // 1. The committed source leaf must be well-formed CBOR.
-  expect Some(source_data) = cbor.deserialise(source_membership.value)
+  let source_data <- cbor_deserialise.expect_deserialise(
+    source_membership.value,
+  )
   // 2. Those bytes must decode as an `L2TransactionSourceV1`.
   expect source: ledger_state.L2TransactionSourceV1 = source_data
   // §4/§8.8: the transaction id is the anchor and the compact bytes re-derive
@@ -1651,7 +1654,7 @@ fn validate_invalid_one_step_transition(
 }
 
 pub fn terminal_acceptance_post_root(witness_cbor: ByteArray) -> ByteArray {
-  expect Some(data) = cbor.deserialise(witness_cbor)
+  let data <- cbor_deserialise.expect_deserialise(witness_cbor)
   expect [version_data,
         tag_data, root_data, _frontier_data] = builtin.un_list_data(data)
   expect builtin.un_i_data(version_data) == 1

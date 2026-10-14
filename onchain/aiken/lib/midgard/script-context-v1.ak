@@ -1,9 +1,9 @@
 use aiken/builtin
-use aiken/cbor
 use aiken/collection/list
 use aiken/primitive/bytearray
 use midgard/bounded_collection_v1
 use midgard/canonical_plutus_data_v1
+use midgard/cbor_deserialise
 use midgard/cek_data_v1
 use midgard/fraud_proofs/native_tx/components.{
   decode_midgard_tx_input_cbor, encode_midgard_tx_input,
@@ -133,7 +133,7 @@ fn materialise_datum(datum_cbor: ByteArray) -> Option<Data> {
   } else if canonical_plutus_data_v1.is_materialisable_plutus_data_v1(
     datum_cbor,
   ) {
-    cbor.deserialise(datum_cbor)
+    cbor_deserialise.deserialise(datum_cbor)
   } else {
     None
   }
@@ -171,7 +171,7 @@ pub fn tx_out_data_v1(
   when ledger_output_v1.decode_canonical_output(output_cbor) is {
     None -> None
     Some(output) ->
-      when cbor.deserialise(output_cbor) is {
+      when cbor_deserialise.deserialise(output_cbor) is {
         None -> None
         Some(output_data) ->
           when output_value_data(output_data) is {
@@ -250,7 +250,7 @@ pub fn ledger_output_summaries_v1(
   when ledger_output_v1.decode_canonical_output(output_cbor) is {
     None -> None
     Some(output) ->
-      when cbor.deserialise(output_cbor) is {
+      when cbor_deserialise.deserialise(output_cbor) is {
         None -> None
         Some(output_data) ->
           when output_value_data(output_data) is {

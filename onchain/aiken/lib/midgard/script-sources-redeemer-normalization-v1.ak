@@ -3,6 +3,7 @@ use aiken/cbor
 use aiken/collection/list
 use aiken/crypto.{ScriptHash, blake2b_256}
 use aiken/primitive/bytearray
+use midgard/cbor_deserialise
 use midgard/cek_data_traverse_v1
 use midgard/fraud_proofs/native_tx/codec.{
   encode_definite_array_header, encode_definite_bytes,
@@ -425,7 +426,9 @@ pub fn verify_raw_envelope_v1(
   expected_next_item_control_hash: ByteArray,
   action_family: Int,
 ) -> Option<ScriptSourcesRedeemerEnvelopeFactsV1> {
-  expect Some(control_data) = cbor.deserialise(transition.work_witness_cbor)
+  let control_data <- cbor_deserialise.expect_deserialise(
+    transition.work_witness_cbor,
+  )
   expect
       [
         compact_cbor_data, witness_set_compact_cbor_data,

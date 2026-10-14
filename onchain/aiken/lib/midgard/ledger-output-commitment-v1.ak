@@ -4,6 +4,7 @@ use aiken/crypto.{blake2b_256}
 use aiken/primitive/bytearray
 use midgard/bounded_item_v1
 use midgard/canonical_cbor_scan_v1.{CborBytesV1, CborHeadV1, head_at_v1}
+use midgard/cbor_deserialise
 use midgard/cek_data_v1
 use midgard/fraud_proofs/native_tx/codec.{
   encode_definite_array_header, encode_definite_bytes,
@@ -175,7 +176,7 @@ pub fn encode(descriptor: LedgerOutputCommitmentV1) -> ByteArray {
 }
 
 pub fn decode(descriptor_cbor: ByteArray) -> LedgerOutputCommitmentV1 {
-  expect Some(data) = cbor.deserialise(descriptor_cbor)
+  let data <- cbor_deserialise.expect_deserialise(descriptor_cbor)
   expect
       [
         version_data, output_index_data, total_length_data, item_commitment_data,

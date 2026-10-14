@@ -5,6 +5,7 @@ use aiken/builtin
 use aiken/cbor
 use aiken/collection/list
 use aiken/primitive/bytearray
+use midgard/cbor_deserialise
 use midgard/fraud_proofs/native_tx/codec.{encode_definite_array_header}
 
 pub opaque type Frame {
@@ -54,7 +55,7 @@ pub const span_window_index: Int = 12
 pub const first_fact_index: Int = 13
 
 pub fn open(control_cbor: ByteArray) -> Frame {
-  expect Some(data) = cbor.deserialise(control_cbor)
+  let data <- cbor_deserialise.expect_deserialise(control_cbor)
   let items = builtin.un_list_data(data)
   expect list.length(items) == item_count
   let frame = Frame { items }
