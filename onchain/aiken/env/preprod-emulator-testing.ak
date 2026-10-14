@@ -39,6 +39,12 @@ pub const block_maturity_duration_v1: Int = 14_400_000
 
 pub const response_window_milliseconds: Int = 60_000
 
+pub const dispute_side_clock_milliseconds: Int = 3_600_000
+
+pub const dispute_max_validity_range_milliseconds: Int = 20_000
+
+pub const dispute_resolution_allowance_milliseconds: Int = 900_000
+
 pub const shift_duration: Int = 1_800_000
 
 pub const registration_duration: Int = 30_000

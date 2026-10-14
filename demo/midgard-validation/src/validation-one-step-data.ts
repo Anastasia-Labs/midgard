@@ -52,7 +52,9 @@ export const validationDisputeData = (
     bytes(dispute.operatorHighHash),
     bytes(dispute.challengerHighHash),
     int(dispute.round),
-    int(dispute.responseDeadline),
+    int(dispute.turnStartedAt),
+    int(dispute.operatorClockMs),
+    int(dispute.challengerClockMs),
     dispute.turn.type === "awaitingOperator"
       ? new Constr(0, [int(dispute.turn.midpoint)])
       : dispute.turn.type === "awaitingChallenger"

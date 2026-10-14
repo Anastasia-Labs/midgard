@@ -48,8 +48,9 @@ validator main(
         fraud_proof_mint_redeemer_index,
       }) -> {
         let Transaction { validity_range, .. } = tx
-        let (current_time_lower, _) = utils.get_inclusive_bounds_of_a_short_validity_range(
+        let (current_time_lower, _) = utils.get_inclusive_bounds_of_a_bounded_validity_range(
           validity_range,
+          validation_dispute_v1.dispute_max_validity_range_milliseconds,
         )
         expect Some(step_datum) = datum
         finalize_validation_trace(

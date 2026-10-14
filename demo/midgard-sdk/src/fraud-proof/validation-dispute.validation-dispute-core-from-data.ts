@@ -24,7 +24,9 @@ export const validationDisputeDataFromCore = (
   operator_high_hash: bytesHex(dispute.operatorHighHash),
   challenger_high_hash: bytesHex(dispute.challengerHighHash),
   round: BigInt(dispute.round),
-  response_deadline: BigInt(dispute.responseDeadline),
+  turn_started_at: BigInt(dispute.turnStartedAt),
+  operator_clock_ms: BigInt(dispute.operatorClockMs),
+  challenger_clock_ms: BigInt(dispute.challengerClockMs),
   turn:
     dispute.turn.type === "awaitingOperator"
       ? {
@@ -61,9 +63,14 @@ export const validationDisputeCoreFromData = (
   operatorHighHash: Buffer.from(dispute.operator_high_hash, "hex"),
   challengerHighHash: Buffer.from(dispute.challenger_high_hash, "hex"),
   round: safeNumber(dispute.round, "dispute.round"),
-  responseDeadline: safeNumber(
-    dispute.response_deadline,
-    "dispute.response_deadline",
+  turnStartedAt: safeNumber(dispute.turn_started_at, "dispute.turn_started_at"),
+  operatorClockMs: safeNumber(
+    dispute.operator_clock_ms,
+    "dispute.operator_clock_ms",
+  ),
+  challengerClockMs: safeNumber(
+    dispute.challenger_clock_ms,
+    "dispute.challenger_clock_ms",
   ),
   turn:
     dispute.turn === "ReadyForOneStep"

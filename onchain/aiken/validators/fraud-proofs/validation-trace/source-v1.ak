@@ -20,6 +20,16 @@ pub type VerifySourceActionV1 {
 pub type SpendRedeemer =
   ct.StepRedeemer<VerifySourceActionV1>
 
+/// SEAM (FW-R): the state both sides agree the trace starts from. Until the
+/// machine's initial state can be derived on chain it is the operator
+/// descriptor's committed initial state hash; afterwards it is the hash of the
+/// state derived from the header, event key, source and pre-UTxO root.
+fn agreed_low_hash(
+  state: validation_game_v1.PendingValidationClaimV1,
+) -> ByteArray {
+  state.claim.descriptor_membership.value.initial_state_hash
+}
+
 /// Verifies the transaction source/commitment after the opener has
 /// authenticated the block, transition roots, and trace endpoints.
 validator main(
@@ -45,8 +55,9 @@ validator main(
         )
       ct.Continue(VerifySource { input_index, output_index }) -> {
         let Transaction { validity_range, .. } = tx
-        let (_, source_time_upper) = utils.get_inclusive_bounds_of_a_short_validity_range(
+        let (_, source_time_upper) = utils.get_inclusive_bounds_of_a_bounded_validity_range(
           validity_range,
+          validation_dispute_v1.dispute_max_validity_range_milliseconds,
         )
         expect Some(step_datum) = datum
         continue_validation_trace(
@@ -79,6 +90,7 @@ validator main(
                 let expected_dispute = validation_dispute_v1.open_after_source_verification(
                   state.claim.descriptor_membership.value,
                   state.challenger_descriptor,
+                  agreed_low_hash(state),
                   state.open_time_upper,
                   source_time_upper,
                   state.challenged_header.end_time,

@@ -137,7 +137,9 @@ export const ValidationDisputeSchema = Data.Object({
   operator_high_hash: H32Schema,
   challenger_high_hash: H32Schema,
   round: Data.Integer(),
-  response_deadline: Data.Integer(),
+  turn_started_at: Data.Integer(),
+  operator_clock_ms: Data.Integer(),
+  challenger_clock_ms: Data.Integer(),
   turn: ValidationDisputeTurnSchema,
 });
 

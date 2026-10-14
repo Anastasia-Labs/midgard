@@ -3,12 +3,27 @@ use midgard/validation_trace_v1
 
 pub const dispute_version: Int = 1
 
-pub const response_window_milliseconds: Int = env.response_window_milliseconds
+/// C: each side's cumulative move budget (the chess clock).
+pub const dispute_side_clock_milliseconds: Int =
+  env.dispute_side_clock_milliseconds
+
+/// L_d: the longest validity range any dispute move may carry.
+pub const dispute_max_validity_range_milliseconds: Int =
+  env.dispute_max_validity_range_milliseconds
+
+/// R: the slack for everything after the game leaves ReadyForOneStep.
+pub const dispute_resolution_allowance_milliseconds: Int =
+  env.dispute_resolution_allowance_milliseconds
 
 pub const max_bisection_rounds: Int = env.max_bisection_rounds
 
+/// The game charges at most `2 * max_bisection_rounds + 2` moves (every reveal,
+/// the ReadyForOneStep exit and the late landing of the last move), and each can
+/// be undercharged by at most two validity ranges. Both clocks, that slack and
+/// the resolution allowance bound a game from its opening `upper` to its last
+/// move.
 pub const max_dispute_duration_milliseconds: Int =
-  ( 2 * max_bisection_rounds + 2 ) * response_window_milliseconds
+  2 * dispute_side_clock_milliseconds + 2 * ( 2 * max_bisection_rounds + 2 ) * dispute_max_validity_range_milliseconds + dispute_resolution_allowance_milliseconds
 
 /// A dispute may open only while the entire worst-case alternating response
 /// schedule still fits inside the challenged block's V1 maturity
@@ -44,7 +59,9 @@ pub type ValidationDisputeV1 {
   operator_high_hash: ByteArray,
   challenger_high_hash: ByteArray,
   round: Int,
-  response_deadline: Int,
+  turn_started_at: Int,
+  operator_clock_ms: Int,
+  challenger_clock_ms: Int,
   turn: DisputeTurn,
 }
 
@@ -87,9 +104,10 @@ fn next_turn(low: Int, high: Int) -> DisputeTurn {
 pub fn open(
   operator: validation_trace_v1.ValidationTraceDescriptorV1,
   challenger: validation_trace_v1.ValidationTraceDescriptorV1,
-  current_slot: Int,
+  agreed_low_hash: ByteArray,
+  source_time_upper: Int,
 ) -> ValidationDisputeV1 {
-  expect current_slot >= 0
+  expect source_time_upper >= 0
   expect descriptors_can_dispute(operator, challenger)
   ValidationDisputeV1 {
     version: dispute_version,
@@ -97,22 +115,25 @@ pub fn open(
     challenger_descriptor: challenger,
     low_index: 0,
     high_index: operator.step_count,
-    agreed_low_hash: operator.initial_state_hash,
+    agreed_low_hash,
     operator_high_hash: operator.terminal_state_hash,
     challenger_high_hash: challenger.terminal_state_hash,
     round: 0,
-    response_deadline: current_slot + response_window_milliseconds,
+    turn_started_at: source_time_upper,
+    operator_clock_ms: dispute_side_clock_milliseconds,
+    challenger_clock_ms: dispute_side_clock_milliseconds,
     turn: next_turn(0, operator.step_count),
   }
 }
 
-/// Starts the response clock only after the source-verification transaction
+/// Starts both clocks only after the source-verification transaction
 /// authenticates the committed claim. The source hop cannot travel backwards
 /// relative to the opener, and it must still leave the complete worst-case
-/// dispute schedule inside the challenged block's maturity horizon.
+/// dispute inside the challenged block's maturity horizon.
 pub fn open_after_source_verification(
   operator: validation_trace_v1.ValidationTraceDescriptorV1,
   challenger: validation_trace_v1.ValidationTraceDescriptorV1,
+  agreed_low_hash: ByteArray,
   open_time_upper: Int,
   source_time_upper: Int,
   challenged_block_end_time: Int,
@@ -126,24 +147,42 @@ pub fn open_after_source_verification(
       challenged_block_end_time,
       maturity_duration,
     )
-  open(operator, challenger, source_time_upper)
+  open(operator, challenger, agreed_low_hash, source_time_upper)
+}
+
+/// The mover's clock after this move. A move is charged the time since the
+/// turn started, read from its validity lower bound; a lower bound before the
+/// turn start is charged nothing, so no move ever credits a clock. The move
+/// must fit in what is left.
+fn charge(clock: Int, turn_started_at: Int, current_time_lower: Int) -> Int {
+  let elapsed = if current_time_lower > turn_started_at {
+    current_time_lower - turn_started_at
+  } else {
+    0
+  }
+  expect elapsed <= clock
+  clock - elapsed
 }
 
 pub fn reveal_operator_midpoint(
   dispute: ValidationDisputeV1,
   proof: validation_trace_v1.ValidationTraceProof,
-  current_slot: Int,
+  current_time_lower: Int,
+  current_time_upper: Int,
 ) -> ValidationDisputeV1 {
   expect dispute.version == dispute_version
-  expect current_slot >= 0
-  expect current_slot <= dispute.response_deadline
   expect AwaitingOperator { midpoint } = dispute.turn
   expect proof.state_index == midpoint
   expect
     validation_trace_v1.verify_trace_proof(dispute.operator_descriptor, proof)
   ValidationDisputeV1 {
     ..dispute,
-    response_deadline: current_slot + response_window_milliseconds,
+    turn_started_at: current_time_upper,
+    operator_clock_ms: charge(
+      dispute.operator_clock_ms,
+      dispute.turn_started_at,
+      current_time_lower,
+    ),
     turn: AwaitingChallenger {
       midpoint,
       operator_midpoint_hash: proof.state_hash,
@@ -154,11 +193,10 @@ pub fn reveal_operator_midpoint(
 pub fn reveal_challenger_midpoint(
   dispute: ValidationDisputeV1,
   proof: validation_trace_v1.ValidationTraceProof,
-  current_slot: Int,
+  current_time_lower: Int,
+  current_time_upper: Int,
 ) -> ValidationDisputeV1 {
   expect dispute.version == dispute_version
-  expect current_slot >= 0
-  expect current_slot <= dispute.response_deadline
   expect AwaitingChallenger { midpoint, operator_midpoint_hash } = dispute.turn
   expect proof.state_index == midpoint
   expect
@@ -197,20 +235,60 @@ pub fn reveal_challenger_midpoint(
       proof.state_hash
     },
     round: next_round,
-    response_deadline: current_slot + response_window_milliseconds,
+    turn_started_at: current_time_upper,
+    challenger_clock_ms: charge(
+      dispute.challenger_clock_ms,
+      dispute.turn_started_at,
+      current_time_lower,
+    ),
     turn: next_turn(next_low, next_high),
   }
 }
 
+/// The only exit from ReadyForOneStep. It is the challenger's move, so it is
+/// charged to the challenger's clock; everything after it runs on the
+/// resolution allowance.
+pub fn enter_resolution(
+  dispute: ValidationDisputeV1,
+  current_time_lower: Int,
+  current_time_upper: Int,
+) -> ValidationDisputeV1 {
+  expect dispute.version == dispute_version
+  expect ReadyForOneStep = dispute.turn
+  ValidationDisputeV1 {
+    ..dispute,
+    turn_started_at: current_time_upper,
+    challenger_clock_ms: charge(
+      dispute.challenger_clock_ms,
+      dispute.turn_started_at,
+      current_time_lower,
+    ),
+  }
+}
+
+/// The side to move loses once its whole remaining clock has passed since
+/// the turn started, read from the validity lower bound so that a timeout can
+/// never land before the real deadline.
 pub fn timeout_winner(
   dispute: ValidationDisputeV1,
-  current_slot: Int,
+  current_time_lower: Int,
 ) -> DisputeWinner {
   expect dispute.version == dispute_version
-  expect current_slot > dispute.response_deadline
   when dispute.turn is {
-    AwaitingOperator { .. } -> ChallengerWins
-    AwaitingChallenger { .. } -> OperatorWins
-    ReadyForOneStep -> NeitherClaimValid
+    AwaitingOperator { .. } -> {
+      expect
+        current_time_lower > dispute.turn_started_at + dispute.operator_clock_ms
+      ChallengerWins
+    }
+    AwaitingChallenger { .. } -> {
+      expect
+        current_time_lower > dispute.turn_started_at + dispute.challenger_clock_ms
+      OperatorWins
+    }
+    ReadyForOneStep -> {
+      expect
+        current_time_lower > dispute.turn_started_at + dispute.challenger_clock_ms
+      NeitherClaimValid
+    }
   }
 }

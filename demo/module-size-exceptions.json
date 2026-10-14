@@ -1166,8 +1166,8 @@
   },
   {
     "file": "midgard-validation/scripts/generate-validation-one-step-aiken-fixture.mjs",
-    "max": 863,
-    "reason": "generated is the dominant indivisible declaration (251 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. VR (+3): the generated traces' script contexts carry POSIX-ms validity bounds through the Preprod L1 slot mapping."
+    "max": 865,
+    "reason": "generated is the dominant indivisible declaration (251 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. VR (+3): the generated traces' script contexts carry POSIX-ms validity bounds through the Preprod L1 slot mapping. Clock (+2): the fixture dispute carries the turn start and both side clocks in place of the response deadline."
   },
   {
     "file": "midgard-validation/src/cek-executor.structural-executor.ts",

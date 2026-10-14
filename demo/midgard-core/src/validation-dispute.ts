@@ -2,6 +2,7 @@ import {
   MIDGARD_CONSENSUS_LIMITS,
   MIDGARD_VALIDATION_DISPUTE_VERSION,
 } from "./consensus-profile.js";
+import { SELECTED_DEPLOYMENT_PROFILE } from "./deployment-profile.js";
 import {
   encodeMidgardValidationTraceDescriptor,
   type MidgardValidationTraceDescriptor,
@@ -9,13 +10,24 @@ import {
   verifyMidgardValidationTraceProof,
 } from "./validation-trace.js";
 
-export const MIDGARD_VALIDATION_DISPUTE_RESPONSE_WINDOW_MS =
-  MIDGARD_CONSENSUS_LIMITS.validationDisputeResponseWindowMs;
+/** C: each side's cumulative move budget (the chess clock). */
+export const MIDGARD_VALIDATION_DISPUTE_SIDE_CLOCK_MS =
+  SELECTED_DEPLOYMENT_PROFILE.timing.dispute_side_clock_ms;
+/** L_d: the longest validity range any dispute move may carry. */
+export const MIDGARD_VALIDATION_DISPUTE_MAX_VALIDITY_RANGE_MS =
+  SELECTED_DEPLOYMENT_PROFILE.timing.dispute_max_validity_range_ms;
+/** R: the allowance for everything after the game leaves ReadyForOneStep. */
+export const MIDGARD_VALIDATION_DISPUTE_RESOLUTION_ALLOWANCE_MS =
+  SELECTED_DEPLOYMENT_PROFILE.timing.dispute_resolution_allowance_ms;
 export const MIDGARD_VALIDATION_DISPUTE_MAX_BISECTION_ROUNDS =
   MIDGARD_CONSENSUS_LIMITS.maxValidationBisectionRounds;
+/** `2C + 2(2·rounds + 2)·L_d + R`, mirroring the validator's bound. */
 export const MIDGARD_VALIDATION_DISPUTE_MAX_DURATION_MS =
-  (2 * MIDGARD_VALIDATION_DISPUTE_MAX_BISECTION_ROUNDS + 2) *
-  MIDGARD_VALIDATION_DISPUTE_RESPONSE_WINDOW_MS;
+  2 * MIDGARD_VALIDATION_DISPUTE_SIDE_CLOCK_MS +
+  2 *
+    (2 * MIDGARD_VALIDATION_DISPUTE_MAX_BISECTION_ROUNDS + 2) *
+    MIDGARD_VALIDATION_DISPUTE_MAX_VALIDITY_RANGE_MS +
+  MIDGARD_VALIDATION_DISPUTE_RESOLUTION_ALLOWANCE_MS;
 
 export type MidgardValidationDisputeTurn =
   | {
@@ -41,7 +53,9 @@ export type MidgardValidationDispute = {
   readonly operatorHighHash: Buffer;
   readonly challengerHighHash: Buffer;
   readonly round: number;
-  readonly responseDeadline: number;
+  readonly turnStartedAt: number;
+  readonly operatorClockMs: number;
+  readonly challengerClockMs: number;
   readonly turn: MidgardValidationDisputeTurn;
 };
 
@@ -83,18 +97,49 @@ const nextTurn = (low: number, high: number): MidgardValidationDisputeTurn =>
     ? { type: "readyForOneStep" }
     : { type: "awaitingOperator", midpoint: midpoint(low, high) };
 
-const requireLiveDispute = (
-  dispute: MidgardValidationDispute,
-  currentTime: number,
-): void => {
+/** A move's validity range: lower and upper bounds, at most L_d apart. */
+export type MidgardValidationDisputeMoveTime = {
+  readonly currentTimeLower: number;
+  readonly currentTimeUpper: number;
+};
+
+const requireVersion = (dispute: MidgardValidationDispute): void => {
   if (dispute.version !== MIDGARD_VALIDATION_DISPUTE_VERSION) {
     throw new Error("Unsupported validation dispute version");
   }
-  requireSafeUnsigned(currentTime, "currentTime");
-  requireSafeUnsigned(dispute.responseDeadline, "responseDeadline");
-  if (currentTime > dispute.responseDeadline) {
-    throw new Error("Validation dispute response deadline has passed");
+};
+
+const requireMoveTime = ({
+  currentTimeLower,
+  currentTimeUpper,
+}: MidgardValidationDisputeMoveTime): void => {
+  requireSafeUnsigned(currentTimeLower, "currentTimeLower");
+  requireSafeUnsigned(currentTimeUpper, "currentTimeUpper");
+  if (currentTimeUpper < currentTimeLower) {
+    throw new Error("Validation dispute move range is inverted");
   }
+  if (
+    currentTimeUpper - currentTimeLower >
+    MIDGARD_VALIDATION_DISPUTE_MAX_VALIDITY_RANGE_MS
+  ) {
+    throw new Error("Validation dispute move range exceeds L_d");
+  }
+};
+
+/**
+ * The mover's clock after a move: the move is charged the time since the turn
+ * started, read from its lower bound, and never credited.
+ */
+const charge = (
+  clock: number,
+  turnStartedAt: number,
+  currentTimeLower: number,
+): number => {
+  const elapsed = Math.max(0, currentTimeLower - turnStartedAt);
+  if (elapsed > clock) {
+    throw new Error("Validation dispute mover's clock has run out");
+  }
+  return clock - elapsed;
 };
 
 export const midgardValidationDescriptorsCanDispute = (
@@ -143,13 +188,17 @@ export const canOpenMidgardValidationDisputeBeforeMaturity = ({
 export const openMidgardValidationDispute = ({
   operatorDescriptor,
   challengerDescriptor,
-  currentTime,
+  agreedLowHash = operatorDescriptor.initialStateHash,
+  sourceTimeUpper,
 }: {
   readonly operatorDescriptor: MidgardValidationTraceDescriptor;
   readonly challengerDescriptor: MidgardValidationTraceDescriptor;
-  readonly currentTime: number;
+  /** Defaults to the operator descriptor's initial state hash. */
+  readonly agreedLowHash?: Buffer;
+  /** The upper bound of the VerifySource transaction that starts the game. */
+  readonly sourceTimeUpper: number;
 }): MidgardValidationDispute => {
-  requireSafeUnsigned(currentTime, "currentTime");
+  requireSafeUnsigned(sourceTimeUpper, "sourceTimeUpper");
   if (
     !midgardValidationDescriptorsCanDispute(
       operatorDescriptor,
@@ -161,20 +210,19 @@ export const openMidgardValidationDispute = ({
   if (operatorDescriptor.stepCount <= 0) {
     throw new Error("Validation dispute requires at least one transition");
   }
-  const responseDeadline =
-    currentTime + MIDGARD_VALIDATION_DISPUTE_RESPONSE_WINDOW_MS;
-  requireSafeUnsigned(responseDeadline, "responseDeadline");
   return {
     version: MIDGARD_VALIDATION_DISPUTE_VERSION,
     operatorDescriptor,
     challengerDescriptor,
     lowIndex: 0,
     highIndex: operatorDescriptor.stepCount,
-    agreedLowHash: operatorDescriptor.initialStateHash,
+    agreedLowHash,
     operatorHighHash: operatorDescriptor.terminalStateHash,
     challengerHighHash: challengerDescriptor.terminalStateHash,
     round: 0,
-    responseDeadline,
+    turnStartedAt: sourceTimeUpper,
+    operatorClockMs: MIDGARD_VALIDATION_DISPUTE_SIDE_CLOCK_MS,
+    challengerClockMs: MIDGARD_VALIDATION_DISPUTE_SIDE_CLOCK_MS,
     turn: nextTurn(0, operatorDescriptor.stepCount),
   };
 };
@@ -182,13 +230,13 @@ export const openMidgardValidationDispute = ({
 export const revealMidgardValidationOperatorMidpoint = ({
   dispute,
   proof,
-  currentTime,
+  ...time
 }: {
   readonly dispute: MidgardValidationDispute;
   readonly proof: MidgardValidationTraceProof;
-  readonly currentTime: number;
-}): MidgardValidationDispute => {
-  requireLiveDispute(dispute, currentTime);
+} & MidgardValidationDisputeMoveTime): MidgardValidationDispute => {
+  requireVersion(dispute);
+  requireMoveTime(time);
   if (dispute.turn.type !== "awaitingOperator") {
     throw new Error("Validation dispute is not awaiting the operator");
   }
@@ -203,8 +251,12 @@ export const revealMidgardValidationOperatorMidpoint = ({
   }
   return {
     ...dispute,
-    responseDeadline:
-      currentTime + MIDGARD_VALIDATION_DISPUTE_RESPONSE_WINDOW_MS,
+    turnStartedAt: time.currentTimeUpper,
+    operatorClockMs: charge(
+      dispute.operatorClockMs,
+      dispute.turnStartedAt,
+      time.currentTimeLower,
+    ),
     turn: {
       type: "awaitingChallenger",
       midpoint: dispute.turn.midpoint,
@@ -216,13 +268,13 @@ export const revealMidgardValidationOperatorMidpoint = ({
 export const revealMidgardValidationChallengerMidpoint = ({
   dispute,
   proof,
-  currentTime,
+  ...time
 }: {
   readonly dispute: MidgardValidationDispute;
   readonly proof: MidgardValidationTraceProof;
-  readonly currentTime: number;
-}): MidgardValidationDispute => {
-  requireLiveDispute(dispute, currentTime);
+} & MidgardValidationDisputeMoveTime): MidgardValidationDispute => {
+  requireVersion(dispute);
+  requireMoveTime(time);
   if (dispute.turn.type !== "awaitingChallenger") {
     throw new Error("Validation dispute is not awaiting the challenger");
   }
@@ -260,25 +312,61 @@ export const revealMidgardValidationChallengerMidpoint = ({
       ? dispute.challengerHighHash
       : proof.stateHash,
     round,
-    responseDeadline:
-      currentTime + MIDGARD_VALIDATION_DISPUTE_RESPONSE_WINDOW_MS,
+    turnStartedAt: time.currentTimeUpper,
+    challengerClockMs: charge(
+      dispute.challengerClockMs,
+      dispute.turnStartedAt,
+      time.currentTimeLower,
+    ),
     turn: nextTurn(nextLow, nextHigh),
   };
 };
 
-export const timeoutMidgardValidationDispute = ({
+/**
+ * The only exit from ReadyForOneStep: the challenger's move, charged to the
+ * challenger's clock. The game state is otherwise unchanged.
+ */
+export const enterMidgardValidationDisputeResolution = ({
   dispute,
-  currentTime,
+  ...time
 }: {
   readonly dispute: MidgardValidationDispute;
-  readonly currentTime: number;
-}): MidgardValidationDisputeWinner => {
-  if (dispute.version !== MIDGARD_VALIDATION_DISPUTE_VERSION) {
-    throw new Error("Unsupported validation dispute version");
+} & MidgardValidationDisputeMoveTime): MidgardValidationDispute => {
+  requireVersion(dispute);
+  requireMoveTime(time);
+  if (dispute.turn.type !== "readyForOneStep") {
+    throw new Error("Validation dispute is not ready for one-step resolution");
   }
-  requireSafeUnsigned(currentTime, "currentTime");
-  if (currentTime <= dispute.responseDeadline) {
-    throw new Error("Validation dispute response deadline has not passed");
+  return {
+    ...dispute,
+    turnStartedAt: time.currentTimeUpper,
+    challengerClockMs: charge(
+      dispute.challengerClockMs,
+      dispute.turnStartedAt,
+      time.currentTimeLower,
+    ),
+  };
+};
+
+/**
+ * The side to move loses once its whole remaining clock has passed since the
+ * turn started, read from the timeout transaction's lower bound.
+ */
+export const timeoutMidgardValidationDispute = ({
+  dispute,
+  currentTimeLower,
+}: {
+  readonly dispute: MidgardValidationDispute;
+  readonly currentTimeLower: number;
+}): MidgardValidationDisputeWinner => {
+  requireVersion(dispute);
+  requireSafeUnsigned(currentTimeLower, "currentTimeLower");
+  const moverClock =
+    dispute.turn.type === "awaitingOperator"
+      ? dispute.operatorClockMs
+      : dispute.challengerClockMs;
+  if (currentTimeLower <= dispute.turnStartedAt + moverClock) {
+    throw new Error("Validation dispute mover's clock has not run out");
   }
   switch (dispute.turn.type) {
     case "awaitingOperator":

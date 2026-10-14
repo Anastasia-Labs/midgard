@@ -3,8 +3,11 @@ import { describe, expect, it } from "vitest";
 import {
   buildMidgardValidationTraceTree,
   canOpenMidgardValidationDisputeBeforeMaturity,
+  enterMidgardValidationDisputeResolution,
   MIDGARD_CONSENSUS_LIMITS,
   MIDGARD_VALIDATION_DISPUTE_MAX_DURATION_MS,
+  MIDGARD_VALIDATION_DISPUTE_MAX_VALIDITY_RANGE_MS,
+  MIDGARD_VALIDATION_DISPUTE_SIDE_CLOCK_MS,
   MIDGARD_VALIDATION_NO_REJECTION_CODE_HASH,
   openMidgardValidationDispute,
   revealMidgardValidationChallengerMidpoint,
@@ -32,7 +35,7 @@ describe("validation dispute orchestration", () => {
     const opened = openMidgardValidationDispute({
       operatorDescriptor: operator.descriptor,
       challengerDescriptor: challenger.descriptor,
-      currentTime: 100,
+      sourceTimeUpper: 100,
     });
     expect(opened.turn).toEqual({ type: "awaitingOperator", midpoint: 1 });
 
@@ -46,7 +49,8 @@ describe("validation dispute orchestration", () => {
     const awaitingChallenger = revealMidgardValidationOperatorMidpoint({
       dispute: opened,
       proof: operatorMove.proof,
-      currentTime: 101,
+      currentTimeLower: 101,
+      currentTimeUpper: 101,
     });
     const challengerMove = selectMidgardValidationDisputeReveal({
       dispute: awaitingChallenger,
@@ -60,7 +64,8 @@ describe("validation dispute orchestration", () => {
     const secondRound = revealMidgardValidationChallengerMidpoint({
       dispute: awaitingChallenger,
       proof: challengerMove.proof,
-      currentTime: 102,
+      currentTimeLower: 102,
+      currentTimeUpper: 102,
     });
     expect(secondRound).toMatchObject({
       lowIndex: 1,
@@ -72,12 +77,14 @@ describe("validation dispute orchestration", () => {
     const withOperatorDifference = revealMidgardValidationOperatorMidpoint({
       dispute: secondRound,
       proof: operator.proofs[2]!,
-      currentTime: 103,
+      currentTimeLower: 103,
+      currentTimeUpper: 103,
     });
     const ready = revealMidgardValidationChallengerMidpoint({
       dispute: withOperatorDifference,
       proof: challenger.proofs[2]!,
-      currentTime: 104,
+      currentTimeLower: 104,
+      currentTimeUpper: 104,
     });
     expect(ready).toMatchObject({
       lowIndex: 1,
@@ -95,23 +102,27 @@ describe("validation dispute orchestration", () => {
     const opened = openMidgardValidationDispute({
       operatorDescriptor: operator.descriptor,
       challengerDescriptor: challenger.descriptor,
-      currentTime: 100,
+      sourceTimeUpper: 100,
     });
     expect(
       timeoutMidgardValidationDispute({
         dispute: opened,
-        currentTime: opened.responseDeadline + 1,
+        currentTimeLower: opened.turnStartedAt + opened.operatorClockMs + 1,
       }),
     ).toBe("challenger");
     const awaitingChallenger = revealMidgardValidationOperatorMidpoint({
       dispute: opened,
       proof: operator.proofs[1]!,
-      currentTime: 101,
+      currentTimeLower: 101,
+      currentTimeUpper: 101,
     });
     expect(
       timeoutMidgardValidationDispute({
         dispute: awaitingChallenger,
-        currentTime: awaitingChallenger.responseDeadline + 1,
+        currentTimeLower:
+          awaitingChallenger.turnStartedAt +
+          awaitingChallenger.challengerClockMs +
+          1,
       }),
     ).toBe("operator");
   });
@@ -166,14 +177,14 @@ describe("validation dispute orchestration", () => {
           ...operator.descriptor,
           rejectionCodeHash: MIDGARD_VALIDATION_NO_REJECTION_CODE_HASH,
         },
-        currentTime: 0,
+        sourceTimeUpper: 0,
       }),
     ).toThrow(/cannot be disputed/u);
 
     const opened = openMidgardValidationDispute({
       operatorDescriptor: operator.descriptor,
       challengerDescriptor: challenger.descriptor,
-      currentTime: 100,
+      sourceTimeUpper: 100,
     });
     expect(() =>
       selectMidgardValidationDisputeReveal({
@@ -186,15 +197,118 @@ describe("validation dispute orchestration", () => {
       revealMidgardValidationOperatorMidpoint({
         dispute: opened,
         proof: { ...operator.proofs[1]!, stateHash: hash(99) },
-        currentTime: 101,
+        currentTimeLower: 101,
+        currentTimeUpper: 101,
       }),
     ).toThrow(/Invalid operator midpoint proof/u);
     expect(() =>
       revealMidgardValidationOperatorMidpoint({
         dispute: opened,
         proof: operator.proofs[1]!,
-        currentTime: opened.responseDeadline + 1,
+        currentTimeLower: opened.turnStartedAt + opened.operatorClockMs + 1,
+        currentTimeUpper: opened.turnStartedAt + opened.operatorClockMs + 1,
       }),
-    ).toThrow(/deadline has passed/u);
+    ).toThrow(/clock has run out/u);
+  });
+
+  it("charges each side the time from the turn start to its move's lower bound", () => {
+    const { operator, challenger } = trees();
+    const opened = openMidgardValidationDispute({
+      operatorDescriptor: operator.descriptor,
+      challengerDescriptor: challenger.descriptor,
+      sourceTimeUpper: 1_000,
+    });
+    expect(opened).toMatchObject({
+      turnStartedAt: 1_000,
+      operatorClockMs: MIDGARD_VALIDATION_DISPUTE_SIDE_CLOCK_MS,
+      challengerClockMs: MIDGARD_VALIDATION_DISPUTE_SIDE_CLOCK_MS,
+    });
+    const awaitingChallenger = revealMidgardValidationOperatorMidpoint({
+      dispute: opened,
+      proof: operator.proofs[1]!,
+      currentTimeLower: 1_100,
+      currentTimeUpper:
+        1_100 + MIDGARD_VALIDATION_DISPUTE_MAX_VALIDITY_RANGE_MS,
+    });
+    expect(awaitingChallenger).toMatchObject({
+      turnStartedAt: 1_100 + MIDGARD_VALIDATION_DISPUTE_MAX_VALIDITY_RANGE_MS,
+      operatorClockMs: MIDGARD_VALIDATION_DISPUTE_SIDE_CLOCK_MS - 100,
+      challengerClockMs: MIDGARD_VALIDATION_DISPUTE_SIDE_CLOCK_MS,
+    });
+    // A lower bound before the turn start is charged nothing.
+    const secondRound = revealMidgardValidationChallengerMidpoint({
+      dispute: awaitingChallenger,
+      proof: challenger.proofs[1]!,
+      currentTimeLower: 1_100,
+      currentTimeUpper: 1_200,
+    });
+    expect(secondRound.challengerClockMs).toBe(
+      MIDGARD_VALIDATION_DISPUTE_SIDE_CLOCK_MS,
+    );
+    expect(() =>
+      revealMidgardValidationOperatorMidpoint({
+        dispute: secondRound,
+        proof: operator.proofs[2]!,
+        currentTimeLower: 1_300,
+        currentTimeUpper:
+          1_301 + MIDGARD_VALIDATION_DISPUTE_MAX_VALIDITY_RANGE_MS,
+      }),
+    ).toThrow(/exceeds L_d/u);
+  });
+
+  it("charges EnterResolution to the challenger and refuses it mid-bisection", () => {
+    const { operator, challenger } = trees();
+    const opened = openMidgardValidationDispute({
+      operatorDescriptor: operator.descriptor,
+      challengerDescriptor: {
+        ...challenger.descriptor,
+      },
+      sourceTimeUpper: 0,
+    });
+    expect(() =>
+      enterMidgardValidationDisputeResolution({
+        dispute: opened,
+        currentTimeLower: 0,
+        currentTimeUpper: 0,
+      }),
+    ).toThrow(/not ready/u);
+    const ready = revealMidgardValidationChallengerMidpoint({
+      dispute: revealMidgardValidationOperatorMidpoint({
+        dispute: revealMidgardValidationChallengerMidpoint({
+          dispute: revealMidgardValidationOperatorMidpoint({
+            dispute: opened,
+            proof: operator.proofs[1]!,
+            currentTimeLower: 0,
+            currentTimeUpper: 0,
+          }),
+          proof: challenger.proofs[1]!,
+          currentTimeLower: 0,
+          currentTimeUpper: 0,
+        }),
+        proof: operator.proofs[2]!,
+        currentTimeLower: 0,
+        currentTimeUpper: 0,
+      }),
+      proof: challenger.proofs[2]!,
+      currentTimeLower: 0,
+      currentTimeUpper: 10,
+    });
+    const entered = enterMidgardValidationDisputeResolution({
+      dispute: ready,
+      currentTimeLower: 60,
+      currentTimeUpper: 70,
+    });
+    expect(entered).toMatchObject({
+      turnStartedAt: 70,
+      operatorClockMs: MIDGARD_VALIDATION_DISPUTE_SIDE_CLOCK_MS,
+      challengerClockMs: MIDGARD_VALIDATION_DISPUTE_SIDE_CLOCK_MS - 50,
+      turn: { type: "readyForOneStep" },
+    });
+    expect(() =>
+      timeoutMidgardValidationDispute({
+        dispute: entered,
+        currentTimeLower: 70 + entered.challengerClockMs,
+      }),
+    ).toThrow(/has not run out/u);
   });
 });

@@ -2,6 +2,9 @@
 export const timingConstants = {
   block_maturity_ms: "block_maturity_duration_v1",
   dispute_response_window_ms: "response_window_milliseconds",
+  dispute_side_clock_ms: "dispute_side_clock_milliseconds",
+  dispute_max_validity_range_ms: "dispute_max_validity_range_milliseconds",
+  dispute_resolution_allowance_ms: "dispute_resolution_allowance_milliseconds",
   operator_shift_ms: "shift_duration",
   registration_ms: "registration_duration",
   event_wait_ms: "event_wait_duration",

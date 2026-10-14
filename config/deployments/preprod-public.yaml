@@ -12,6 +12,12 @@ l1_finality:
 timing:
   block_maturity_ms: 604800000
   dispute_response_window_ms: 300000
+  # Validation-trace chess clock (pd-design §6.3). Each side's cumulative budget C,
+  # the longest dispute-move validity range L_d, and the resolution allowance R.
+  # PROJECTED: provisional values until the deployment checks fix them.
+  dispute_side_clock_ms: 86400000
+  dispute_max_validity_range_ms: 120000
+  dispute_resolution_allowance_ms: 21600000
   operator_shift_ms: 3600000
   registration_ms: 30000
   event_wait_ms: 1800000 # worst case for 30 blocks = 3N/f slots = 3*30/0.05 s (30 min)

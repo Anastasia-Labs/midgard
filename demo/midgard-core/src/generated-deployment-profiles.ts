@@ -12,6 +12,9 @@ export const DEPLOYMENT_PROFILES = {
     timing: {
       block_maturity_ms: 604800000,
       dispute_response_window_ms: 300000,
+      dispute_side_clock_ms: 86400000,
+      dispute_max_validity_range_ms: 120000,
+      dispute_resolution_allowance_ms: 21600000,
       operator_shift_ms: 3600000,
       registration_ms: 30,
       event_wait_ms: 130080000,
@@ -83,6 +86,9 @@ export const DEPLOYMENT_PROFILES = {
     timing: {
       block_maturity_ms: 604800000,
       dispute_response_window_ms: 300000,
+      dispute_side_clock_ms: 86400000,
+      dispute_max_validity_range_ms: 120000,
+      dispute_resolution_allowance_ms: 21600000,
       operator_shift_ms: 3600000,
       registration_ms: 30000,
       event_wait_ms: 1800000,
@@ -157,6 +163,9 @@ export const DEPLOYMENT_PROFILES = {
     timing: {
       block_maturity_ms: 900000,
       dispute_response_window_ms: 60000,
+      dispute_side_clock_ms: 3600000,
+      dispute_max_validity_range_ms: 20000,
+      dispute_resolution_allowance_ms: 900000,
       operator_shift_ms: 1800000,
       registration_ms: 30000,
       event_wait_ms: 300000,
@@ -213,6 +222,9 @@ export const DEPLOYMENT_PROFILES = {
     timing: {
       block_maturity_ms: 900000,
       dispute_response_window_ms: 60000,
+      dispute_side_clock_ms: 3600000,
+      dispute_max_validity_range_ms: 20000,
+      dispute_resolution_allowance_ms: 900000,
       operator_shift_ms: 1800000,
       registration_ms: 30000,
       event_wait_ms: 300000,
@@ -269,6 +281,9 @@ export const DEPLOYMENT_PROFILES = {
     timing: {
       block_maturity_ms: 14400000,
       dispute_response_window_ms: 60000,
+      dispute_side_clock_ms: 3600000,
+      dispute_max_validity_range_ms: 20000,
+      dispute_resolution_allowance_ms: 900000,
       operator_shift_ms: 1800000,
       registration_ms: 30000,
       event_wait_ms: 600000,
@@ -325,6 +340,9 @@ export const DEPLOYMENT_PROFILES = {
     timing: {
       block_maturity_ms: 14400000,
       dispute_response_window_ms: 60000,
+      dispute_side_clock_ms: 3600000,
+      dispute_max_validity_range_ms: 20000,
+      dispute_resolution_allowance_ms: 900000,
       operator_shift_ms: 1800000,
       registration_ms: 30000,
       event_wait_ms: 600000,
@@ -386,17 +404,17 @@ export const DEPLOYMENT_PROFILES = {
 } as const;
 
 export const DEPLOYMENT_PROFILE_DIGESTS = {
-  mainnet: "2da189a14fc8a9cef249d3823b1e3fd097611d25a567d35270381e3888f25496",
+  mainnet: "8a45013438ae82ae813f5db957aa86d5cbc6293edd873b180f266bc595d459c4",
   "preprod-public":
-    "9f6ebbc5abe49911c777eadff39a90dace1574b682b8d50a5bfc084c0f4a6ce5",
+    "7ae11fe4d3d1a9ad2dc67ce406279a469a740ca900c35448516372dfec749dcc",
   "preprod-testing":
-    "0265a09ca7bc54e70c52c11c3afc3d16e5b8485a6232b5f161db064842752f09",
+    "4953b63667441af570157327412059b69f7ac855b737f3b5595d7c47aa0fbabf",
   "local-devnet-testing":
-    "694ad45334152fce9bd5a80030e34b4f9151d14fc5a7971884226df336f59315",
+    "06b8fee0e026785aabb69600094b40c4dc63f64fa32c8791194ae8fd82159050",
   "preprod-emulator-testing":
-    "ffc1f052d02729e26e7c361bd43b44fded404fa94e6a63260648eb9c507252cc",
+    "a86845ebe010dd07d8fc32881d416fc8919d581490e3b05879144cbf6853fc82",
   "preprod-emulator-curated":
-    "0e58cceae07da737c0ae6a8ed19deee158270e486c955ecedb4b454764eff74d",
+    "450ae92a925f9b24a4b0ea1f8f4ea54fe37df02dec866b53d965bad0e6255926",
 } as const;
 
 export const DEPLOYMENT_MANIFEST_ECONOMICS_BY_PROFILE = {

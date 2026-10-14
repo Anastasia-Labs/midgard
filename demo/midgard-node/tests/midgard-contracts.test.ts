@@ -142,7 +142,7 @@ describe("midgard contracts registry", () => {
       // the composed P1 tree (allow-lists, the datum canonicity step, the
       // non-empty block rule, one event NFT per user-event mint), the retired
       // post-UTxO minimum-Ada mode, the streamed redeemer and datum Data
-      // verdict steps, the one-pass history node count, and the trace movers.
+      // verdict steps, one-pass history node count, trace movers and the clock.
       expect
         .soft(
           createHash("sha256")
@@ -152,7 +152,7 @@ describe("midgard contracts registry", () => {
             .digest("hex"),
         )
         .toBe(
-          "1e028f30f03f760579c115e4f10b08ed4e7a6a1e3ee656a2296b0c9030140496",
+          "255e78a4edacdbc7528909f5666f8cb4dabfba507659bd017662ee953b6ed5fd",
         );
       // The queue/correction subset is pinned independently of the full registry.
       // Includes every applied CBOR, hash, policy id, address, and queue yield.

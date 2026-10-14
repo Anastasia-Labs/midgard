@@ -1,4 +1,6 @@
 use aiken/cbor
+use aiken/interval
+use midgard/common/utils
 use midgard/validation_dispute_v1
 use midgard/validation_resolution_v1
 use midgard/validation_trace_v1
@@ -114,7 +116,12 @@ test dispute_turn_and_winner_tags_match_typescript() {
 test bisection_keeps_the_equal_left_boundary_and_first_different_right_boundary() {
   let operator = descriptor4(h_a, h_b, h_c, h_d)
   let challenger = descriptor4(h_a, h_b, h_e, h_f)
-  let opened = validation_dispute_v1.open(operator, challenger, 100)
+  let opened = validation_dispute_v1.open(
+    operator,
+    challenger,
+    operator.initial_state_hash,
+    100,
+  )
   let operator_right = validation_trace_v1.trace_branch_hash(
     validation_trace_v1.trace_leaf_hash(h_c),
     validation_trace_v1.trace_leaf_hash(h_d),
@@ -127,10 +134,12 @@ test bisection_keeps_the_equal_left_boundary_and_first_different_right_boundary(
     opened,
     proof4(1, h_b, h_a, operator_right),
     101,
+    101,
   )
   let after_equal_1 = validation_dispute_v1.reveal_challenger_midpoint(
     with_operator_1,
     proof4(1, h_b, h_a, challenger_right),
+    102,
     102,
   )
   let operator_left = validation_trace_v1.trace_branch_hash(
@@ -141,10 +150,12 @@ test bisection_keeps_the_equal_left_boundary_and_first_different_right_boundary(
     after_equal_1,
     proof4(2, h_c, h_d, operator_left),
     103,
+    103,
   )
   let ready = validation_dispute_v1.reveal_challenger_midpoint(
     with_operator_2,
     proof4(2, h_e, h_f, operator_left),
+    104,
     104,
   )
   and {
@@ -159,9 +170,15 @@ test bisection_keeps_the_equal_left_boundary_and_first_different_right_boundary(
 }
 
 test timeout_assigns_loss_to_the_party_that_owes_the_move() {
+  let clock = validation_dispute_v1.dispute_side_clock_milliseconds
   let operator = descriptor4(h_a, h_b, h_c, h_d)
   let challenger = descriptor4(h_a, h_b, h_e, h_f)
-  let opened = validation_dispute_v1.open(operator, challenger, 100)
+  let opened = validation_dispute_v1.open(
+    operator,
+    challenger,
+    operator.initial_state_hash,
+    100,
+  )
   let operator_right = validation_trace_v1.trace_branch_hash(
     validation_trace_v1.trace_leaf_hash(h_c),
     validation_trace_v1.trace_leaf_hash(h_d),
@@ -170,11 +187,295 @@ test timeout_assigns_loss_to_the_party_that_owes_the_move() {
     opened,
     proof4(1, h_b, h_a, operator_right),
     101,
+    101,
   )
   and {
-    validation_dispute_v1.timeout_winner(opened, 300_101) == validation_dispute_v1.ChallengerWins,
-    validation_dispute_v1.timeout_winner(awaiting_challenger, 300_102) == validation_dispute_v1.OperatorWins,
+    validation_dispute_v1.timeout_winner(opened, 100 + clock + 1) == validation_dispute_v1.ChallengerWins,
+    validation_dispute_v1.timeout_winner(awaiting_challenger, 101 + clock + 1) == validation_dispute_v1.OperatorWins,
   }
+}
+
+const clock = validation_dispute_v1.dispute_side_clock_milliseconds
+
+const l_d = validation_dispute_v1.dispute_max_validity_range_milliseconds
+
+const opened_at = 1_000
+
+fn clock_fixture() -> validation_dispute_v1.ValidationDisputeV1 {
+  validation_dispute_v1.open(
+    descriptor4(h_a, h_b, h_c, h_d),
+    descriptor4(h_a, h_b, h_e, h_f),
+    h_a,
+    opened_at,
+  )
+}
+
+fn operator_first_proof() -> validation_trace_v1.ValidationTraceProof {
+  proof4(
+    1,
+    h_b,
+    h_a,
+    validation_trace_v1.trace_branch_hash(
+      validation_trace_v1.trace_leaf_hash(h_c),
+      validation_trace_v1.trace_leaf_hash(h_d),
+    ),
+  )
+}
+
+fn challenger_first_proof() -> validation_trace_v1.ValidationTraceProof {
+  proof4(
+    1,
+    h_b,
+    h_a,
+    validation_trace_v1.trace_branch_hash(
+      validation_trace_v1.trace_leaf_hash(h_e),
+      validation_trace_v1.trace_leaf_hash(h_f),
+    ),
+  )
+}
+
+fn left_pair_root() -> ByteArray {
+  validation_trace_v1.trace_branch_hash(
+    validation_trace_v1.trace_leaf_hash(h_a),
+    validation_trace_v1.trace_leaf_hash(h_b),
+  )
+}
+
+fn operator_second_proof() -> validation_trace_v1.ValidationTraceProof {
+  proof4(2, h_c, h_d, left_pair_root())
+}
+
+fn challenger_second_proof() -> validation_trace_v1.ValidationTraceProof {
+  proof4(2, h_e, h_f, left_pair_root())
+}
+
+/// Operator reveal at `lower`/`upper`, then challenger reveal at the given
+/// bounds: the first round of the fixture, agreeing at index 1.
+fn first_round(
+  operator_lower: Int,
+  operator_upper: Int,
+  challenger_lower: Int,
+  challenger_upper: Int,
+) -> validation_dispute_v1.ValidationDisputeV1 {
+  validation_dispute_v1.reveal_challenger_midpoint(
+    validation_dispute_v1.reveal_operator_midpoint(
+      clock_fixture(),
+      operator_first_proof(),
+      operator_lower,
+      operator_upper,
+    ),
+    challenger_first_proof(),
+    challenger_lower,
+    challenger_upper,
+  )
+}
+
+fn ready_fixture() -> validation_dispute_v1.ValidationDisputeV1 {
+  let after_first = first_round(1_100, 1_200, 1_300, 1_400)
+  validation_dispute_v1.reveal_challenger_midpoint(
+    validation_dispute_v1.reveal_operator_midpoint(
+      after_first,
+      operator_second_proof(),
+      1_500,
+      1_600,
+    ),
+    challenger_second_proof(),
+    1_700,
+    1_800,
+  )
+}
+
+test opening_starts_both_clocks_full_at_the_source_upper_bound() {
+  let opened = clock_fixture()
+  and {
+    opened.turn_started_at == opened_at,
+    opened.operator_clock_ms == clock,
+    opened.challenger_clock_ms == clock,
+  }
+}
+
+test a_reveal_is_charged_the_time_since_the_turn_started_to_its_lower_bound() {
+  let moved = validation_dispute_v1.reveal_operator_midpoint(
+    clock_fixture(),
+    operator_first_proof(),
+    opened_at + 5_000,
+    opened_at + 5_000 + l_d,
+  )
+  and {
+    moved.operator_clock_ms == clock - 5_000,
+    moved.challenger_clock_ms == clock,
+    moved.turn_started_at == opened_at + 5_000 + l_d,
+  }
+}
+
+test clock_debits_accumulate_per_side_across_moves() {
+  let after_first = first_round(1_100, 1_200, 1_350, 1_400)
+  let moved = validation_dispute_v1.reveal_operator_midpoint(
+    after_first,
+    operator_second_proof(),
+    1_470,
+    1_480,
+  )
+  and {
+    moved.operator_clock_ms == clock - 100 - 70,
+    moved.challenger_clock_ms == clock - 150,
+    moved.turn_started_at == 1_480,
+  }
+}
+
+test a_side_may_spend_its_clock_to_the_last_millisecond_over_several_moves() {
+  let after_first = first_round(
+    opened_at + clock - 10,
+    opened_at + clock,
+    opened_at + clock,
+    opened_at + clock,
+  )
+  let moved = validation_dispute_v1.reveal_operator_midpoint(
+    after_first,
+    operator_second_proof(),
+    opened_at + clock + 10,
+    opened_at + clock + 10,
+  )
+  moved.operator_clock_ms == 0
+}
+
+test a_side_that_overdraws_its_clock_over_several_moves_is_refused() fail {
+  let after_first = first_round(
+    opened_at + clock - 10,
+    opened_at + clock,
+    opened_at + clock,
+    opened_at + clock,
+  )
+  expect _moved = validation_dispute_v1.reveal_operator_midpoint(
+    after_first,
+    operator_second_proof(),
+    opened_at + clock + 11,
+    opened_at + clock + 11,
+  )
+}
+
+test one_long_gap_within_the_clock_is_accepted() {
+  let moved = validation_dispute_v1.reveal_operator_midpoint(
+    clock_fixture(),
+    operator_first_proof(),
+    opened_at + clock,
+    opened_at + clock,
+  )
+  moved.operator_clock_ms == 0
+}
+
+test one_gap_longer_than_the_clock_is_refused() fail {
+  expect _moved = validation_dispute_v1.reveal_operator_midpoint(
+    clock_fixture(),
+    operator_first_proof(),
+    opened_at + clock + 1,
+    opened_at + clock + 1,
+  )
+}
+
+test a_lower_bound_before_the_turn_start_is_charged_nothing() {
+  let moved = validation_dispute_v1.reveal_operator_midpoint(
+    clock_fixture(),
+    operator_first_proof(),
+    opened_at - 500,
+    opened_at + 10,
+  )
+  and {
+    moved.operator_clock_ms == clock,
+    moved.turn_started_at == opened_at + 10,
+  }
+}
+
+test a_movers_upper_bound_never_overcharges_either_side() {
+  let narrow = validation_dispute_v1.reveal_operator_midpoint(
+    clock_fixture(),
+    operator_first_proof(),
+    opened_at + 100,
+    opened_at + 100,
+  )
+  let wide = validation_dispute_v1.reveal_operator_midpoint(
+    clock_fixture(),
+    operator_first_proof(),
+    opened_at + 100,
+    opened_at + 100 + l_d,
+  )
+  // The opponent's next move may land anywhere inside the stretched range and
+  // is charged only from the stretched turn start.
+  let answered = validation_dispute_v1.reveal_challenger_midpoint(
+    wide,
+    challenger_first_proof(),
+    opened_at + 100 + l_d - 1,
+    opened_at + 100 + l_d,
+  )
+  and {
+    narrow.operator_clock_ms == wide.operator_clock_ms,
+    answered.challenger_clock_ms == clock,
+  }
+}
+
+test enter_resolution_charges_the_challenger_and_restarts_the_turn() {
+  let ready = ready_fixture()
+  let entered = validation_dispute_v1.enter_resolution(ready, 1_900, 1_950)
+  and {
+    ready.turn == validation_dispute_v1.ReadyForOneStep,
+    entered.challenger_clock_ms == ready.challenger_clock_ms - 100,
+    entered.operator_clock_ms == ready.operator_clock_ms,
+    entered.turn_started_at == 1_950,
+    entered.turn == validation_dispute_v1.ReadyForOneStep,
+  }
+}
+
+test enter_resolution_refuses_a_game_still_bisecting() fail {
+  expect _entered = validation_dispute_v1.enter_resolution(
+    clock_fixture(),
+    opened_at,
+    opened_at,
+  )
+}
+
+test enter_resolution_refuses_a_challenger_with_no_clock_left() fail {
+  let ready = ready_fixture()
+  expect _entered = validation_dispute_v1.enter_resolution(
+    ready,
+    1_800 + ready.challenger_clock_ms + 1,
+    1_800 + ready.challenger_clock_ms + 1,
+  )
+}
+
+test timeout_lands_one_millisecond_after_the_movers_clock_runs_out() {
+  let ready = ready_fixture()
+  and {
+    validation_dispute_v1.timeout_winner(clock_fixture(), opened_at + clock + 1) == validation_dispute_v1.ChallengerWins,
+    validation_dispute_v1.timeout_winner(
+      ready,
+      1_800 + ready.challenger_clock_ms + 1,
+    ) == validation_dispute_v1.NeitherClaimValid,
+  }
+}
+
+test timeout_is_refused_while_the_mover_still_has_clock() fail {
+  expect _winner = validation_dispute_v1.timeout_winner(
+    clock_fixture(),
+    opened_at + clock,
+  )
+}
+
+test a_dispute_move_range_of_exactly_l_d_is_accepted() {
+  let (lower, upper) = utils.get_inclusive_bounds_of_a_bounded_validity_range(
+    interval.between(0, l_d),
+    l_d,
+  )
+  and {
+    lower == 0,
+    upper == l_d,
+  }
+}
+
+test a_dispute_move_range_longer_than_l_d_is_refused() fail {
+  expect _bounds = utils.get_inclusive_bounds_of_a_bounded_validity_range(
+    interval.between(0, l_d + 1),
+    l_d,
+  )
 }
 
 test dispute_open_maturity_boundary_is_exact_and_fails_closed() {
@@ -212,14 +513,17 @@ test delayed_source_verification_starts_a_fresh_bounded_operator_turn() {
   let dispute = validation_dispute_v1.open_after_source_verification(
     descriptor4(h_a, h_b, h_c, h_d),
     descriptor4(h_a, h_b, h_e, h_f),
+    h_a,
     100,
     source_time_upper,
     challenged_block_end_time,
     maturity_duration,
   )
   and {
-    dispute.response_deadline == source_time_upper + validation_dispute_v1.response_window_milliseconds,
-    dispute.response_deadline != 100 + validation_dispute_v1.response_window_milliseconds,
+    dispute.turn_started_at == source_time_upper,
+    dispute.operator_clock_ms == validation_dispute_v1.dispute_side_clock_milliseconds,
+    dispute.challenger_clock_ms == validation_dispute_v1.dispute_side_clock_milliseconds,
+    dispute.agreed_low_hash == h_a,
   }
 }
 
@@ -230,12 +534,13 @@ test final_maturity_source_verification_boundary_remains_resolvable() {
   let dispute = validation_dispute_v1.open_after_source_verification(
     descriptor4(h_a, h_b, h_c, h_d),
     descriptor4(h_a, h_b, h_e, h_f),
+    h_a,
     100,
     final_source_time,
     challenged_block_end_time,
     maturity_duration,
   )
-  dispute.response_deadline == final_source_time + validation_dispute_v1.response_window_milliseconds
+  dispute.turn_started_at == final_source_time
 }
 
 test stale_source_verification_after_maturity_boundary_fails_closed() fail {
@@ -245,6 +550,7 @@ test stale_source_verification_after_maturity_boundary_fails_closed() fail {
   expect _dispute = validation_dispute_v1.open_after_source_verification(
     descriptor4(h_a, h_b, h_c, h_d),
     descriptor4(h_a, h_b, h_e, h_f),
+    h_a,
     100,
     final_source_time + 1,
     challenged_block_end_time,
@@ -256,6 +562,7 @@ test source_verification_cannot_predate_authenticated_open_time() fail {
   expect _dispute = validation_dispute_v1.open_after_source_verification(
     descriptor4(h_a, h_b, h_c, h_d),
     descriptor4(h_a, h_b, h_e, h_f),
+    h_a,
     100,
     99,
     1_000_000,
@@ -294,7 +601,12 @@ test one_step_boundary_is_authenticated_before_resolver_handoff() {
   )
   let operator = descriptor2(pre_hash, operator_post_hash)
   let challenger = descriptor2(pre_hash, challenger_post_hash)
-  let ready = validation_dispute_v1.open(operator, challenger, 100)
+  let ready = validation_dispute_v1.open(
+    operator,
+    challenger,
+    operator.initial_state_hash,
+    100,
+  )
   let operator_post = validation_trace_v1.ValidationTraceProof {
     state_index: 1,
     state_hash: operator_post_hash,
@@ -453,7 +765,12 @@ fn terminal_padding_fixture() -> (
   let hash = validation_trace_v1.hash_machine_state(terminal)
   let operator = descriptor4(h_a, h_b, hash, h_d)
   let challenger = descriptor4(h_a, h_b, hash, h_f)
-  let opened = validation_dispute_v1.open(operator, challenger, 100)
+  let opened = validation_dispute_v1.open(
+    operator,
+    challenger,
+    operator.initial_state_hash,
+    100,
+  )
   let right = validation_trace_v1.trace_branch_hash(
     validation_trace_v1.trace_leaf_hash(hash),
     validation_trace_v1.trace_leaf_hash(h_d),
@@ -461,6 +778,7 @@ fn terminal_padding_fixture() -> (
   let operator_first = validation_dispute_v1.reveal_operator_midpoint(
     opened,
     proof4(1, h_b, h_a, right),
+    101,
     101,
   )
   let challenger_right = validation_trace_v1.trace_branch_hash(
@@ -471,6 +789,7 @@ fn terminal_padding_fixture() -> (
     operator_first,
     proof4(1, h_b, h_a, challenger_right),
     102,
+    102,
   )
   let left = validation_trace_v1.trace_branch_hash(
     validation_trace_v1.trace_leaf_hash(h_a),
@@ -480,10 +799,12 @@ fn terminal_padding_fixture() -> (
     agreed_first,
     proof4(2, hash, h_d, left),
     103,
+    103,
   )
   let ready = validation_dispute_v1.reveal_challenger_midpoint(
     operator_second,
     proof4(2, hash, h_f, left),
+    104,
     104,
   )
   (ready, terminal)

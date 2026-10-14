@@ -458,7 +458,9 @@ const dispute = {
   operatorHighHash: trace.tree.proofs[highIndex].stateHash,
   challengerHighHash: challengerTree.proofs[highIndex].stateHash,
   round: 1,
-  responseDeadline: 1_800_000_000_000,
+  turnStartedAt: 1_800_000_000_000,
+  operatorClockMs: 86_400_000,
+  challengerClockMs: 86_400_000,
   turn: { type: "readyForOneStep" },
 };
 const boundaryEvidenceCbor = encodeValidationBoundaryEvidenceCbor({

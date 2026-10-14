@@ -121,7 +121,7 @@ describe("validation dispute ABI", () => {
     const dispute = openMidgardValidationDispute({
       operatorDescriptor: operator.descriptor,
       challengerDescriptor: challenger.descriptor,
-      currentTime: 1_000,
+      sourceTimeUpper: 1_000,
     });
     const disputeData = validationDisputeDataFromCore(dispute);
     expect(

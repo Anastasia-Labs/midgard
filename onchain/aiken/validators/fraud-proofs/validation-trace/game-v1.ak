@@ -1,7 +1,7 @@
 use aiken/collection/list
 use aiken/crypto.{ScriptHash}
 use cardano/assets.{PolicyId}
-use cardano/transaction.{OutputReference, Transaction}
+use cardano/transaction.{OutputReference, Transaction, ValidityRange}
 use midgard/common/utils
 use midgard/computation_thread as ct
 use midgard/fraud_proofs/common.{
@@ -39,6 +39,15 @@ pub type GameActionV1 {
 
 pub type SpendRedeemer =
   ct.StepRedeemer<GameActionV1>
+
+/// Every game move carries a validity range no longer than L_d, so the charge
+/// read from its lower bound is exact to within that range.
+fn dispute_move_bounds(validity_range: ValidityRange) -> (Int, Int) {
+  utils.get_inclusive_bounds_of_a_bounded_validity_range(
+    validity_range,
+    validation_dispute_v1.dispute_max_validity_range_milliseconds,
+  )
+}
 
 validator main(
   boundary_validator_script_hash: ScriptHash,
@@ -120,7 +129,7 @@ validator main(
                 }
               }
               RevealOperator { proof, .. } -> {
-                let (_, current_time_upper) = utils.get_inclusive_bounds_of_a_short_validity_range(
+                let (current_time_lower, current_time_upper) = dispute_move_bounds(
                   validity_range,
                 )
                 expect
@@ -128,6 +137,7 @@ validator main(
                 let next_dispute = validation_dispute_v1.reveal_operator_midpoint(
                   state.dispute,
                   proof,
+                  current_time_lower,
                   current_time_upper,
                 )
                 let expected_state: Data = validation_game_v1.ValidationGameStateV1 {
@@ -140,13 +150,14 @@ validator main(
                 }
               }
               RevealChallenger { proof, .. } -> {
-                let (_, current_time_upper) = utils.get_inclusive_bounds_of_a_short_validity_range(
+                let (current_time_lower, current_time_upper) = dispute_move_bounds(
                   validity_range,
                 )
                 expect fraud_prover |> utils.has_signed(extra_signatories)
                 let next_dispute = validation_dispute_v1.reveal_challenger_midpoint(
                   state.dispute,
                   proof,
+                  current_time_lower,
                   current_time_upper,
                 )
                 let expected_state: Data = validation_game_v1.ValidationGameStateV1 {
@@ -158,13 +169,25 @@ validator main(
                   output_state == expected_state,
                 }
               }
-              EnterResolution { .. } -> and {
-                  state.dispute.turn == validation_dispute_v1.ReadyForOneStep,
-                  output_script_hash == boundary_validator_script_hash,
-                  output_state == same_state,
+              EnterResolution { .. } -> {
+                let (current_time_lower, current_time_upper) = dispute_move_bounds(
+                  validity_range,
+                )
+                let expected_state: Data = validation_game_v1.ValidationGameStateV1 {
+                  ..state,
+                  dispute: validation_dispute_v1.enter_resolution(
+                    state.dispute,
+                    current_time_lower,
+                    current_time_upper,
+                  ),
                 }
+                and {
+                  output_script_hash == boundary_validator_script_hash,
+                  output_state == expected_state,
+                }
+              }
               EnterChallengerTimeout { .. } -> {
-                let (current_time_lower, _) = utils.get_inclusive_bounds_of_a_short_validity_range(
+                let (current_time_lower, _) = dispute_move_bounds(
                   validity_range,
                 )
                 and {
