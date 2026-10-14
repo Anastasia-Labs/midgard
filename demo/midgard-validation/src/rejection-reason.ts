@@ -17,18 +17,42 @@ import { type RejectCode, RejectCodes, type RejectedTx } from "./types.js";
  * reason built here hashes to the one the machine's terminal state binds.
  *
  * Interim: it holds only while the families that reopen those coordinates
- * against the trace stay excluded from the deployment.
+ * against the trace stay excluded from the deployment. A forced leaf never
+ * carries it: the operator's forced verdict names the exact subject
+ * coordinates, which the forced-leaf families reopen by field position.
  */
 export const UNSET_REASON_COORDINATE = -1n;
 
 /**
- * The `RejectionReasonV1` the validation machine emits for the rule that
- * recorded `subject`, coordinates included. Coordinates the machine does not
- * carry yet are written as {@link UNSET_REASON_COORDINATE}.
+ * Whose coordinates a reason carries. `machine`: the validation machine's
+ * terminal reason, with {@link UNSET_REASON_COORDINATE} where its state has no
+ * exact ordinal yet. `subject`: every coordinate exactly as the failing rule
+ * recorded it, as a forced leaf's verdict names it.
  */
-export const machineRejectionReasonOfSubject = (
+export type RejectionReasonCoordinates = "machine" | "subject";
+
+/**
+ * The `RejectionReasonV1` for the rule that recorded `subject`, coordinates
+ * included, under the given coordinate convention.
+ */
+export const rejectionReasonOfSubject = (
   subject: RejectSubject,
+  coordinates: RejectionReasonCoordinates,
 ): MidgardRejectionReasonV1 => {
+  const interim = (exact: bigint): bigint => {
+    switch (coordinates) {
+      case "machine":
+        return UNSET_REASON_COORDINATE;
+      case "subject":
+        return exact;
+      default: {
+        const unreachable: never = coordinates;
+        throw new Error(
+          `rejectionReasonOfSubject: unknown coordinate convention ${String(unreachable)}`,
+        );
+      }
+    }
+  };
   switch (subject.arm) {
     case "FieldItemWidthIllegal":
       return {
@@ -40,10 +64,10 @@ export const machineRejectionReasonOfSubject = (
     case "DuplicateInput":
       return {
         DuplicateInput: {
-          first_field_index: UNSET_REASON_COORDINATE,
-          first_item_index: UNSET_REASON_COORDINATE,
-          second_field_index: UNSET_REASON_COORDINATE,
-          second_item_index: UNSET_REASON_COORDINATE,
+          first_field_index: interim(subject.first.fieldIndex),
+          first_item_index: interim(subject.first.itemIndex),
+          second_field_index: interim(subject.second.fieldIndex),
+          second_item_index: interim(subject.second.itemIndex),
         },
       };
     case "AddressWitnessSignatureInvalid":
@@ -68,19 +92,19 @@ export const machineRejectionReasonOfSubject = (
       return {
         InputNotFound: {
           source_kind: subject.sourceKind,
-          input_index: UNSET_REASON_COORDINATE,
+          input_index: interim(subject.index),
         },
       };
     case "InputSpentOutputNonCanonical":
       return {
         InputSpentOutputNonCanonical: {
           source_kind: subject.sourceKind,
-          input_index: UNSET_REASON_COORDINATE,
+          input_index: interim(subject.index),
         },
       };
     case "SpendInputSignerMissing":
       return {
-        SpendInputSignerMissing: { input_index: UNSET_REASON_COORDINATE },
+        SpendInputSignerMissing: { input_index: interim(subject.index) },
       };
     case "ProtectedOutputSignerMissing":
       return { ProtectedOutputSignerMissing: { output_index: subject.index } };
@@ -132,7 +156,7 @@ export const machineRejectionReasonOfSubject = (
     case "InputAssetAccumulationLimit":
       return {
         InputAssetAccumulationLimit: {
-          input_index: UNSET_REASON_COORDINATE,
+          input_index: interim(subject.index),
           asset_index: subject.assetIndex,
         },
       };
@@ -148,7 +172,7 @@ export const machineRejectionReasonOfSubject = (
     default: {
       const unreachable: never = subject;
       throw new Error(
-        `machineRejectionReasonOfSubject: unknown subject ${JSON.stringify(unreachable)}`,
+        `rejectionReasonOfSubject: unknown subject ${JSON.stringify(unreachable)}`,
       );
     }
   }
@@ -273,13 +297,15 @@ export type RejectionReasonResolution =
   | { readonly kind: "subjectMissing" };
 
 /**
- * The exact `RejectionReasonV1` the validation machine emits for a Phase A/B
- * rejection: a field-less code's single arm, otherwise the arm and
- * coordinates of the subject the failing rule recorded. A subject whose arm
- * the code cannot end in is never written.
+ * The exact `RejectionReasonV1` for a Phase A/B rejection: a field-less
+ * code's single arm, otherwise the arm and coordinates of the subject the
+ * failing rule recorded, under `coordinates` (the machine's terminal reason,
+ * or the forced leaf's). A subject whose arm the code cannot end in is never
+ * written.
  */
 export const resolveRejectionReason = (
   rejection: Pick<RejectedTx, "code" | "subject">,
+  coordinates: RejectionReasonCoordinates,
 ): RejectionReasonResolution => {
   const arms = REJECTION_REASON_ARMS_BY_CODE.get(rejection.code);
   if (arms === undefined) return { kind: "unsupported" };
@@ -292,7 +318,7 @@ export const resolveRejectionReason = (
   )
     return { kind: "reason", reason: onlyArm as MidgardRejectionReasonV1 };
   if (rejection.subject === undefined) return { kind: "subjectMissing" };
-  const reason = machineRejectionReasonOfSubject(rejection.subject);
+  const reason = rejectionReasonOfSubject(rejection.subject, coordinates);
   return arms.includes(rejectionReasonArmName(reason))
     ? { kind: "reason", reason }
     : { kind: "subjectMissing" };

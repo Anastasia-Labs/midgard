@@ -2871,7 +2871,7 @@ export const completeValidationTrace = (
     }
     let rejectionReason: MidgardRejectionReasonV1 | null = null;
     if (rejection !== null) {
-      const resolved = resolveRejectionReason(rejection);
+      const resolved = resolveRejectionReason(rejection, "machine");
       if (resolved.kind === "unsupported") {
         return yield* Effect.fail(
           new Error(

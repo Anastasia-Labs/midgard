@@ -5,7 +5,6 @@ import {
   REJECTION_REASON_ARMS_BY_CODE,
   rejectionReasonArmName,
   type RejectSubject,
-  UNSET_REASON_COORDINATE,
 } from "@al-ft/midgard-validation";
 import { describe, expect, it } from "vitest";
 
@@ -47,13 +46,12 @@ const SUBJECT_CASES: readonly (readonly [
       first: { fieldIndex: 0n, itemIndex: 1n },
       second: { fieldIndex: 1n, itemIndex: 2n },
     },
-    // The machine carries no duplicate coordinates yet: every one is unset.
     {
       DuplicateInput: {
-        first_field_index: UNSET_REASON_COORDINATE,
-        first_item_index: UNSET_REASON_COORDINATE,
-        second_field_index: UNSET_REASON_COORDINATE,
-        second_item_index: UNSET_REASON_COORDINATE,
+        first_field_index: 0n,
+        first_item_index: 1n,
+        second_field_index: 1n,
+        second_item_index: 2n,
       },
     },
   ],
@@ -90,27 +88,17 @@ const SUBJECT_CASES: readonly (readonly [
   [
     RejectCodes.InputNotFound,
     { arm: "InputNotFound", sourceKind: 1n, index: 6n },
-    {
-      InputNotFound: {
-        source_kind: 1n,
-        input_index: UNSET_REASON_COORDINATE,
-      },
-    },
+    { InputNotFound: { source_kind: 1n, input_index: 6n } },
   ],
   [
     RejectCodes.InvalidOutput,
     { arm: "InputSpentOutputNonCanonical", sourceKind: 0n, index: 7n },
-    {
-      InputSpentOutputNonCanonical: {
-        source_kind: 0n,
-        input_index: UNSET_REASON_COORDINATE,
-      },
-    },
+    { InputSpentOutputNonCanonical: { source_kind: 0n, input_index: 7n } },
   ],
   [
     RejectCodes.MissingRequiredWitness,
     { arm: "SpendInputSignerMissing", index: 8n },
-    { SpendInputSignerMissing: { input_index: UNSET_REASON_COORDINATE } },
+    { SpendInputSignerMissing: { input_index: 8n } },
   ],
   [
     RejectCodes.MissingRequiredWitness,
@@ -186,12 +174,7 @@ const SUBJECT_CASES: readonly (readonly [
   [
     RejectCodes.AssetCount,
     { arm: "InputAssetAccumulationLimit", index: 18n, assetIndex: 19n },
-    {
-      InputAssetAccumulationLimit: {
-        input_index: UNSET_REASON_COORDINATE,
-        asset_index: 19n,
-      },
-    },
+    { InputAssetAccumulationLimit: { input_index: 18n, asset_index: 19n } },
   ],
   [
     RejectCodes.AssetCount,

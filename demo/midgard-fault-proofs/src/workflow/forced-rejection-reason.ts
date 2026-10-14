@@ -96,19 +96,21 @@ export const FORCED_REJECTION_NO_ARM_CODES = Object.freeze([
 
 /**
  * The exact `RejectionReasonV1` a forced leaf records for a Phase A/B
- * rejection: the arm and coordinates the validation machine binds into its
- * terminal state for the rule that failed (`resolveRejectionReason`).
+ * rejection: the arm the validation machine ends in for the rule that failed,
+ * with every coordinate exactly as that rule recorded it
+ * (`resolveRejectionReason` under the `subject` convention).
  *
- * The chain binds the verdict to the replayed rejection through that exact
- * reason, so a reason with another arm or other coordinates is disproved
- * outright. A code with coordinate-carrying arms is written only from a
- * subject of that code, and a rejection without one throws
- * {@link ForcedRejectionSubjectMissing}.
+ * The forced-leaf families reopen those coordinates by field position, so a
+ * reason with another arm or other coordinates is disproved outright. Where
+ * the machine's terminal reason does not carry an exact ordinal yet
+ * (`UNSET_REASON_COORDINATE`), the leaf still names the exact one. A code
+ * with coordinate-carrying arms is written only from a subject of that code,
+ * and a rejection without one throws {@link ForcedRejectionSubjectMissing}.
  */
 export const forcedRejectionReason = (
   rejection: ForcedRejection,
 ): SDK.RejectionReason => {
-  const resolved = resolveRejectionReason(rejection);
+  const resolved = resolveRejectionReason(rejection, "subject");
   if (resolved.kind === "unsupported")
     throw new ForcedRejectionUnsupported(rejection);
   if (resolved.kind === "subjectMissing")

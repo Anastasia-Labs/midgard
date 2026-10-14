@@ -9,8 +9,8 @@ import {
 } from "../src/index.js";
 
 /**
- * The exact `RejectionReasonV1` the validation machine emits for a rejection
- * code and the subject the failing rule recorded. Every expected reason is
+ * The exact `RejectionReasonV1` the validation machine emits (the `machine`
+ * convention) for a rejection code and the subject the failing rule recorded. Every expected reason is
  * written out by hand: the machine's coordinate convention, including the -1
  * it writes where its state carries no exact ordinal yet (every
  * `DuplicateInput` coordinate, the `input_index` of the input-resolution
@@ -173,14 +173,78 @@ const LOCATED: readonly (readonly [
   ],
 ];
 
+/**
+ * The arms whose machine coordinates are interim, with the reason a forced
+ * leaf records for the same subject: every coordinate exactly as recorded.
+ */
+const INTERIM: readonly (readonly [
+  string,
+  RejectCode,
+  RejectSubject,
+  unknown,
+])[] = [
+  [
+    "duplicate input",
+    RejectCodes.DuplicateInputInTx,
+    {
+      arm: "DuplicateInput",
+      first: { fieldIndex: 0n, itemIndex: 1n },
+      second: { fieldIndex: 1n, itemIndex: 3n },
+    },
+    {
+      DuplicateInput: {
+        first_field_index: 0n,
+        first_item_index: 1n,
+        second_field_index: 1n,
+        second_item_index: 3n,
+      },
+    },
+  ],
+  [
+    "missing reference input",
+    RejectCodes.InputNotFound,
+    { arm: "InputNotFound", sourceKind: 1n, index: 4n },
+    { InputNotFound: { source_kind: 1n, input_index: 4n } },
+  ],
+  [
+    "non-canonical spent output",
+    RejectCodes.InvalidOutput,
+    { arm: "InputSpentOutputNonCanonical", sourceKind: 0n, index: 2n },
+    { InputSpentOutputNonCanonical: { source_kind: 0n, input_index: 2n } },
+  ],
+  [
+    "spend input signer",
+    RejectCodes.MissingRequiredWitness,
+    { arm: "SpendInputSignerMissing", index: 3n },
+    { SpendInputSignerMissing: { input_index: 3n } },
+  ],
+  [
+    "input asset accumulation",
+    RejectCodes.AssetCount,
+    { arm: "InputAssetAccumulationLimit", index: 3n, assetIndex: 9n },
+    { InputAssetAccumulationLimit: { input_index: 3n, asset_index: 9n } },
+  ],
+];
+
 describe("resolveRejectionReason", () => {
   it.each(LOCATED)(
     "writes the machine reason for a %s",
     (_name, code, subject, expected) => {
-      expect(resolveRejectionReason({ code, subject })).toStrictEqual({
+      expect(
+        resolveRejectionReason({ code, subject }, "machine"),
+      ).toStrictEqual({
         kind: "reason",
         reason: expected,
       });
+    },
+  );
+
+  it.each(INTERIM)(
+    "keeps every recorded coordinate of a %s under the forced leaf's convention",
+    (_name, code, subject, expected) => {
+      expect(
+        resolveRejectionReason({ code, subject }, "subject"),
+      ).toStrictEqual({ kind: "reason", reason: expected });
     },
   );
 
@@ -194,7 +258,7 @@ describe("resolveRejectionReason", () => {
   ] as const)(
     "writes the single field-less arm of %s without a subject",
     (code, reason) => {
-      expect(resolveRejectionReason({ code })).toStrictEqual({
+      expect(resolveRejectionReason({ code }, "machine")).toStrictEqual({
         kind: "reason",
         reason,
       });
@@ -203,16 +267,22 @@ describe("resolveRejectionReason", () => {
 
   it("needs a subject for a code whose arms carry coordinates", () => {
     expect(
-      resolveRejectionReason({ code: RejectCodes.PlutusScriptInvalid }),
+      resolveRejectionReason(
+        { code: RejectCodes.PlutusScriptInvalid },
+        "machine",
+      ),
     ).toStrictEqual({ kind: "subjectMissing" });
   });
 
   it("never writes a subject whose arm the code cannot end in", () => {
     expect(
-      resolveRejectionReason({
-        code: RejectCodes.InvalidSignature,
-        subject: { arm: "RequiredSignerUnsigned", index: 0n },
-      }),
+      resolveRejectionReason(
+        {
+          code: RejectCodes.InvalidSignature,
+          subject: { arm: "RequiredSignerUnsigned", index: 0n },
+        },
+        "subject",
+      ),
     ).toStrictEqual({ kind: "subjectMissing" });
   });
 
@@ -220,7 +290,7 @@ describe("resolveRejectionReason", () => {
     RejectCodes.AuxDataForbidden,
     RejectCodes.PlutusEvaluationUnavailable,
   ])("has no machine reason for %s", (code) => {
-    expect(resolveRejectionReason({ code })).toStrictEqual({
+    expect(resolveRejectionReason({ code }, "subject")).toStrictEqual({
       kind: "unsupported",
     });
   });
