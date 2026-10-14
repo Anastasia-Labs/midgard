@@ -464,6 +464,13 @@ pub fn scan_source_v1(
 /// authenticated scan limit. A wrongful-rejection prefix ends at the matching
 /// source, before the complete frontier, so the limit and never the frontier
 /// count decides the successor.
+///
+/// The batch is `scan_source_v1` applied once per source. Only the input state
+/// comes from outside, so only it is checked with `state_is_authentic_v1`;
+/// each later state of the batch is one this function builds from an
+/// authentic state, and only the last one is written out with its checkpoint.
+/// An intermediate state's successor hash is `scan_script_hash`, which the
+/// step-05 validator binds to the input state's 28-byte successor hash.
 pub fn advance_scan_v1(
   state: SourceScanStateV1,
   sources: List<SourceDescriptorV1>,
@@ -472,18 +479,84 @@ pub fn advance_scan_v1(
 ) -> SourceScanStateV1 {
   when sources is {
     [] -> state
-    [source, ..rest] -> {
-      let next_cursor = state.cursor + 1
-      let next_hash = if next_cursor == state.authenticated.purpose.scan_limit {
+    _ -> {
+      expect state_is_authentic_v1(state)
+      let SourceScanStateV1 { authenticated, cursor, found, .. } = state
+      let purpose = authenticated.purpose
+      let Pair(cursor, found) = scan_sources_v1(
+        sources,
+        cursor,
+        found,
+        purpose.scan_limit,
+        authenticated.transaction_source_count,
+        purpose.source_count,
+        purpose.source_peaks,
+        purpose.required_script_hash,
+      )
+      let next_expected_script_hash = if cursor == purpose.scan_limit {
         final_script_hash
       } else {
         scan_script_hash
       }
-      advance_scan_v1(
-        scan_source_v1(state, source, next_hash),
+      SourceScanStateV1 {
+        authenticated,
+        cursor,
+        found,
+        next_expected_script_hash,
+        checkpoint_hash: checkpoint_v1(
+          authenticated,
+          cursor,
+          found,
+          next_expected_script_hash,
+        ),
+      }
+    }
+  }
+}
+
+/// The per-source checks of `scan_source_v1`, over the fields of the batch's
+/// authenticated purpose read once.
+fn scan_sources_v1(
+  sources: List<SourceDescriptorV1>,
+  cursor: Int,
+  found: Bool,
+  scan_limit: Int,
+  transaction_source_count: Int,
+  source_count: Int,
+  source_peaks: List<validation_merkle_v1.FrontierPeak>,
+  required_script_hash: ByteArray,
+) -> Pair<Int, Bool> {
+  when sources is {
+    [] -> Pair(cursor, found)
+    [descriptor, ..rest] -> {
+      expect and {
+          cursor < scan_limit,
+          descriptor.source_index == cursor,
+          descriptor.location_kind == if cursor < transaction_source_count {
+            source_location_witness
+          } else {
+            source_location_resolved_reference
+          },
+          descriptor.total_length > 0,
+          bytearray.length(descriptor.script_hash) == 28,
+          bytearray.length(descriptor.item_commitment) == 32,
+          validation_merkle_v1.verify_membership(
+            source_count,
+            source_peaks,
+            descriptor.source_index,
+            descriptor_leaf(descriptor),
+            descriptor.siblings,
+          ),
+        }
+      scan_sources_v1(
         rest,
-        scan_script_hash,
-        final_script_hash,
+        cursor + 1,
+        found || descriptor.script_hash == required_script_hash,
+        scan_limit,
+        transaction_source_count,
+        source_count,
+        source_peaks,
+        required_script_hash,
       )
     }
   }

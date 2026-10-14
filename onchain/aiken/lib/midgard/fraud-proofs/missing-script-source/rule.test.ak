@@ -388,6 +388,61 @@ test malformed_checkpoint_refuses() fail {
   ).cursor == 1
 }
 
+test batch_refuses_a_substituted_later_source() fail {
+  // The batch checks every source, not only the first.
+  let hashes = [h28b, h28b, h28b]
+  let Pair(state, leaves) = initial(0, hashes)
+  rule.advance_scan_v1(
+    state,
+    [
+      descriptor(leaves, 0, 0, h28b),
+      descriptor(leaves, 1, 1, h28a),
+      descriptor(leaves, 2, 1, h28b),
+    ],
+    scan_hash,
+    final_hash,
+  ).cursor == 3
+}
+
+test batch_refuses_a_repeated_source_index() fail {
+  let hashes = [h28b, h28b, h28b]
+  let Pair(state, leaves) = initial(0, hashes)
+  rule.advance_scan_v1(
+    state,
+    [descriptor(leaves, 0, 0, h28b), descriptor(leaves, 0, 0, h28b)],
+    scan_hash,
+    final_hash,
+  ).cursor == 2
+}
+
+test batch_refuses_a_malformed_checkpoint() fail {
+  let hashes = [h28b, h28b, h28b]
+  let Pair(state, leaves) = initial(0, hashes)
+  rule.advance_scan_v1(
+    rule.SourceScanStateV1 { ..state, checkpoint_hash: h32 },
+    descriptors(leaves, hashes, 2),
+    scan_hash,
+    final_hash,
+  ).cursor == 2
+}
+
+test batch_advance_over_a_prefix_agrees_with_source_scan() {
+  let hashes = [h28b, h28a, h28b]
+  let Pair(state, leaves) = initial(1, hashes)
+  let advanced = rule.advance_scan_v1(
+    state,
+    descriptors(leaves, hashes, 2),
+    scan_hash,
+    final_hash,
+  )
+  let stepped = rule.scan_source_v1(
+    rule.scan_source_v1(state, descriptor(leaves, 0, 0, h28b), scan_hash),
+    descriptor(leaves, 1, 1, h28a),
+    scan_hash,
+  )
+  advanced == stepped && advanced.found
+}
+
 fn trace_authenticated_purpose(
   substitute_source_frontier: Bool,
 ) -> rule.AuthenticatedPurposeV1 {

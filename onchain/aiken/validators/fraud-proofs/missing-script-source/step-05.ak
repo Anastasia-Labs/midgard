@@ -5,7 +5,7 @@ use cardano/transaction.{OutputReference, Transaction}
 use midgard/computation_thread as ct
 use midgard/fraud_proofs/common.{cancel, continue}
 use midgard/fraud_proofs/missing_script_source/rule.{
-  advance_scan_v1, scan_complete_v1, staged_source_budget, state_is_authentic_v1,
+  advance_scan_v1, scan_complete_v1, staged_source_budget,
 }
 use midgard/fraud_proofs/missing_script_source/step_05.{
   Args, Datum, SpendRedeemer,
@@ -49,10 +49,10 @@ validator main(
           outputs,
         )
         expect Some(state) = input_state
-        expect and {
-            state_is_authentic_v1(state),
-            state.next_expected_script_hash == own_hash,
-          }
+        // `advance_scan_v1` checks `state_is_authentic_v1(state)` for a
+        // non-empty batch, and `scan_complete_v1` below checks it for an
+        // empty one, whose advanced state is `state` itself.
+        expect state.next_expected_script_hash == own_hash
         let advanced = advance_scan_v1(
           state,
           sources,
