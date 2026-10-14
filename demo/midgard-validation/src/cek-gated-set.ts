@@ -1,4 +1,14 @@
+import {
+  type Data,
+  DataConstr,
+  DataI,
+  DataList,
+} from "@harmoniclabs/plutus-data";
+
+import { type MidgardCekConstantWitness } from "./cek-constant.js";
 import { type MidgardCekCoreStepWitness } from "./cek-machine.js";
+import { plutusDataFromCborIterative } from "./plutus-data-iterative.decode.js";
+import { isPlutusDataMap } from "./plutus-data-narrowing.js";
 
 /**
  * The equivalence-gated set: the builtins and CEK machine arms on which the
@@ -75,15 +85,81 @@ export class MidgardCekOutsideGatedSet extends Error {
   }
 }
 
+/**
+ * A step whose witnesses the on-chain verifier cannot decode. Refused like a
+ * step outside the gated set.
+ */
+export class MidgardCekUndecodableStepWitness extends MidgardCekOutsideGatedSet {
+  constructor(
+    gatedSetVersion: number,
+    arm: MidgardCekCoreStepWitness["kind"],
+    builtin: number | null,
+  ) {
+    super(gatedSetVersion, arm, builtin);
+    this.message = `CEK ${arm} step witness is outside what the on-chain verifier decodes`;
+    this.name = "MidgardCekUndecodableStepWitness";
+  }
+}
+
+/** The constant payloads a step reveals in full. */
+const revealedConstants = (
+  witness: MidgardCekCoreStepWitness,
+): MidgardCekConstantWitness[] => {
+  if (witness.kind === "computeConstant") return [witness.value];
+  const values = [
+    ...("arguments" in witness ? witness.arguments : []),
+    ...("result" in witness ? [witness.result] : []),
+  ];
+  return values.flatMap((value) =>
+    value.kind === "constant" ? [value.witness] : [],
+  );
+};
+
+/** The integers the on-chain payload decoder reads: one CBOR head. */
+const MIN_DECODABLE_INTEGER = -(2n ** 64n);
+const MAX_DECODABLE_INTEGER = 2n ** 64n - 1n;
+/** The largest constructor index with a compact CBOR tag. */
+const MAX_DECODABLE_CONSTR_INDEX = 127n;
+
+/** Whether the on-chain payload decoder reads `payloadCbor`. */
+const payloadIsDecodable = (payloadCbor: Uint8Array): boolean => {
+  let pending: Data[];
+  try {
+    pending = [plutusDataFromCborIterative(payloadCbor)];
+  } catch {
+    return false;
+  }
+  for (let item = pending.pop(); item !== undefined; item = pending.pop()) {
+    if (item instanceof DataI) {
+      if (item.int < MIN_DECODABLE_INTEGER || item.int > MAX_DECODABLE_INTEGER)
+        return false;
+    } else if (item instanceof DataConstr) {
+      if (item.constr > MAX_DECODABLE_CONSTR_INDEX) return false;
+      for (const field of item.fields) pending.push(field);
+    } else if (item instanceof DataList) {
+      for (const element of item.list) pending.push(element);
+    } else if (isPlutusDataMap(item)) {
+      for (const entry of item.map) pending.push(entry.fst, entry.snd);
+    }
+  }
+  return true;
+};
+
 /** A gated set prepared for per-step lookups. */
 export type MidgardCekStepScreen = (witness: MidgardCekCoreStepWitness) => void;
 
-/** Throws `MidgardCekOutsideGatedSet` on a step outside `set`. */
+/**
+ * Throws `MidgardCekOutsideGatedSet` on a step outside `set`, and
+ * `MidgardCekUndecodableStepWitness` on a step whose witnesses the on-chain
+ * verifier cannot decode.
+ */
 export const midgardCekStepScreen = (
   set: MidgardCekGatedSet,
 ): MidgardCekStepScreen => {
   const builtins = new Set(set.builtins);
   const arms = new Set<string>(set.arms);
+  // A run reveals the same payload many times; each is decoded once.
+  const decodable = new WeakSet<Uint8Array>();
   return (witness) => {
     const builtin = midgardCekBuiltinTouchedBy(witness);
     if (
@@ -91,6 +167,17 @@ export const midgardCekStepScreen = (
       (builtin !== null && !builtins.has(builtin))
     ) {
       throw new MidgardCekOutsideGatedSet(set.version, witness.kind, builtin);
+    }
+    for (const { payloadCbor } of revealedConstants(witness)) {
+      if (decodable.has(payloadCbor)) continue;
+      if (!payloadIsDecodable(payloadCbor)) {
+        throw new MidgardCekUndecodableStepWitness(
+          set.version,
+          witness.kind,
+          builtin,
+        );
+      }
+      decodable.add(payloadCbor);
     }
   };
 };
