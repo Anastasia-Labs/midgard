@@ -24,9 +24,13 @@ import {
 type ExecuteMidgardCekStructuralProgramInput = {
   readonly root: Bytes;
   readonly material: Iterable<MidgardCekProgramMaterialEntry>;
-  readonly constantWitnesses: ReadonlyMap<
-    string,
-    MidgardCekConstantValueWitness
+  /**
+   * Value root (hex) and witness of every constant the run starts with. A
+   * root may repeat with a witness of the other kind; see
+   * `MidgardCekExecutionGraph.constantWitnesses`.
+   */
+  readonly constantWitnesses: Iterable<
+    readonly [string, MidgardCekConstantValueWitness]
   >;
   readonly executionIndex?: bigint;
   readonly maxSteps: number;

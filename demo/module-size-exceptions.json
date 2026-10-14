@@ -1176,13 +1176,13 @@
   },
   {
     "file": "midgard-validation/src/cek-executor.structural-executor.ts",
-    "max": 1762,
-    "reason": "StructuralExecutor is one state owner: its methods share private state and lifecycle invariants. Further extraction would redesign ownership rather than separate independent declarations; surrounding helpers have been extracted. P (-24): step verification and retention moved to cek-executor.step-recorder.ts. N (-667): semantic Data material, constant sizing and the structural builtins moved to the cek-executor.semantic-* and map-conversion modules. I5 (+5): the executor exposes its current machine state to a step-observed run."
+    "max": 1771,
+    "reason": "StructuralExecutor is one state owner: its methods share private state and lifecycle invariants. Further extraction would redesign ownership rather than separate independent declarations; surrounding helpers have been extracted. P (-24): step verification and retention moved to cek-executor.step-recorder.ts. N (-667): semantic Data material, constant sizing and the structural builtins moved to the cek-executor.semantic-* and map-conversion modules. I5 (+5): the executor exposes its current machine state to a step-observed run. (+9): a value root keeps a source constant's direct witness beside a semantic witness of the same value."
   },
   {
     "file": "midgard-validation/src/validation-machine/trace-builder-complete.ts",
-    "max": 2985,
-    "reason": "completeValidationTrace is the dominant indivisible declaration (2717 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. Combined F1/RLO source measured at integration. C5 (-2). I5 (-5): state assembly moved to validation-machine/trace-sink.ts; the CEK phase also runs step-observed for streaming commits. Wall caps (+1): the step-observed CEK re-run takes the build's wall-clock deadline. N2 with I5 (-3): the terminal state binds the exact rejection reason through the trace sink."
+    "max": 2982,
+    "reason": "completeValidationTrace is the dominant indivisible declaration (2717 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. Combined F1/RLO source measured at integration. C5 (-2). I5 (-5): state assembly moved to validation-machine/trace-sink.ts; the CEK phase also runs step-observed for streaming commits. Wall caps (+1): the step-observed CEK re-run takes the build's wall-clock deadline. N2 with I5 (-3): the terminal state binds the exact rejection reason through the trace sink. (-3): the context witness is read from the execution graph's own field."
   },
   {
     "file": "midgard-validation/src/validation-machine/trace-builder-prepare.prepare-validation-trace.ts",

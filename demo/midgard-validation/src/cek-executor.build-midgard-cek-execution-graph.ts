@@ -100,11 +100,31 @@ export type MidgardCekExecutionGraph = {
   readonly contextTermRoot: Hash32;
   readonly contextValueRoot: Hash32;
   readonly material: ReadonlyMap<string, MidgardCekProgramMaterialEntry>;
-  readonly constantWitnesses: ReadonlyMap<
-    string,
-    MidgardCekConstantValueWitness
+  /**
+   * The witness of every constant the run starts with, keyed by value root.
+   * Equal values share a root, so a root can appear twice: once with a source
+   * constant's direct witness and once with the script context's semantic
+   * one. Later entries are the ones a runtime value read returns.
+   */
+  readonly constantWitnesses: readonly MidgardCekConstantWitnessEntry[];
+  /** The script context's semantic witness, at `contextValueRoot`. */
+  readonly contextWitness: Extract<
+    MidgardCekConstantValueWitness,
+    { readonly kind: "semanticConstant" }
   >;
 };
+
+/** A constant witness that reveals the constant's own bytes. */
+export type MidgardCekSourceConstantWitness = Extract<
+  MidgardCekConstantValueWitness,
+  { readonly kind: "constant" }
+>;
+
+/** A constant's value root (hex) and one witness of it. */
+export type MidgardCekConstantWitnessEntry = readonly [
+  string,
+  MidgardCekConstantValueWitness,
+];
 
 export type MidgardCekExecutionStep = {
   readonly pre: MidgardCekMachineState;
@@ -136,7 +156,7 @@ export const buildMidgardCekExecutionGraph = (
   });
 
   const material = new Map<string, MidgardCekProgramMaterialEntry>();
-  const constantWitnesses = new Map<string, MidgardCekConstantValueWitness>(
+  const constantWitnesses: MidgardCekConstantWitnessEntry[] =
     verifiedSource.constants.map((constant) => {
       if (constant.payloadCbor.length <= 9_215) {
         return [
@@ -172,8 +192,7 @@ export const buildMidgardCekExecutionGraph = (
           }),
         }),
       ];
-    }),
-  );
+    });
   const addEntry = (entry: MidgardCekProgramMaterialEntry): void => {
     const exact = decodeMidgardCekProgramMaterialEntry(
       encodeMidgardCekProgramMaterialEntry(entry),
@@ -272,21 +291,21 @@ export const buildMidgardCekExecutionGraph = (
     semanticRoot: contextSemantic.root,
     memory: midgardCekConstantMemorySize(context.type, contextPayload),
   });
-  constantWitnesses.set(
-    rootHex(contextValueRoot),
-    Object.freeze({
-      kind: "semanticConstant",
-      witness: Object.freeze({
-        typeCbor: context.typeCbor,
-        payload: Object.freeze({
-          root: contextSemantic.root,
-          cborLength: contextSemantic.cborLength,
-          memory: contextSemantic.memory,
-        }),
-        memory: midgardCekConstantMemorySize(context.type, contextPayload),
+  const contextWitness = Object.freeze({
+    kind: "semanticConstant" as const,
+    witness: Object.freeze({
+      typeCbor: context.typeCbor,
+      payload: Object.freeze({
+        root: contextSemantic.root,
+        cborLength: contextSemantic.cborLength,
+        memory: contextSemantic.memory,
       }),
+      memory: midgardCekConstantMemorySize(context.type, contextPayload),
     }),
-  );
+  });
+  // Appended after the source constants: a source constant equal to the
+  // context keeps its own direct witness beside this one.
+  constantWitnesses.push([rootHex(contextValueRoot), contextWitness]);
   const contextTermRoot = addTerm({
     kind: "contextConstant",
     value: contextValueRoot,
@@ -301,6 +320,7 @@ export const buildMidgardCekExecutionGraph = (
     contextTermRoot,
     contextValueRoot,
     material,
-    constantWitnesses,
+    constantWitnesses: Object.freeze(constantWitnesses),
+    contextWitness,
   });
 };

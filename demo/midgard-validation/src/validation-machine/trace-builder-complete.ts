@@ -1899,15 +1899,12 @@ export const completeValidationTrace = (
               }),
               { kind: "cekContextSeed", control: finalControl },
             );
-            const contextWitness = evaluation.graph.constantWitnesses.get(
-              Buffer.from(evaluation.graph.contextValueRoot).toString("hex"),
-            );
+            const contextWitness = evaluation.graph.contextWitness;
             if (
               !Buffer.from(initialCekState.focusRoot).equals(
                 Buffer.from(evaluation.graph.root),
               ) ||
               initialCekState.executionIndex !== BigInt(executionIndex) ||
-              contextWitness?.kind !== "semanticConstant" ||
               !sameSummary(
                 contextWitness.witness.payload,
                 contextParts.context,

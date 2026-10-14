@@ -51,6 +51,8 @@ import {
   errorSuccessor,
   exactComputeSuccessor,
   exactState,
+  type MidgardCekConstantWitnessEntry,
+  type MidgardCekSourceConstantWitness,
   type MidgardCekStructuralExecution,
   rootHex,
   sameBytes,
@@ -86,9 +88,15 @@ export class StructuralExecutor {
   private state: MidgardCekMachineState;
   private readonly material = new Map<string, MidgardCekProgramMaterialEntry>();
   private readonly values = new Map<string, MidgardCekValueNode>();
+  /** The witness last recorded per value root: what a value read returns. */
   private readonly constants = new Map<
     string,
     MidgardCekConstantValueWitness
+  >();
+  /** The direct witness per value root, kept beside a semantic one. */
+  private readonly directConstants = new Map<
+    string,
+    MidgardCekSourceConstantWitness
   >();
   private readonly blsExpressions = new Map<
     string,
@@ -113,7 +121,7 @@ export class StructuralExecutor {
     root: Bytes,
     material: Iterable<MidgardCekProgramMaterialEntry>,
     executionIndex: bigint,
-    constantWitnesses: ReadonlyMap<string, MidgardCekConstantValueWitness>,
+    constantWitnesses: Iterable<MidgardCekConstantWitnessEntry>,
     private readonly recorder: MidgardCekStepRecorder,
   ) {
     for (const entry of material) {
@@ -287,6 +295,7 @@ export class StructuralExecutor {
     witness: MidgardCekConstantValueWitness,
   ): void {
     this.constants.set(key, witness);
+    if (witness.kind === "constant") this.directConstants.set(key, witness);
     this.store.registerWitness(witness.witness, Buffer.from(key, "hex"));
   }
 
@@ -482,8 +491,8 @@ export class StructuralExecutor {
       case "constant":
         this.value(term.value);
         {
-          const value = this.constants.get(rootHex(term.value));
-          if (value?.kind !== "constant") {
+          const value = this.directConstants.get(rootHex(term.value));
+          if (value === undefined) {
             throw new Error(
               "source CEK constant is missing its exact bounded direct witness",
             );
