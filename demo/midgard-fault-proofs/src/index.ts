@@ -105,5 +105,6 @@ export * from "./withdrawn-input/index.js";
 export * from "./withdrawn-reference-input/index.js";
 export * from "./witness-reference-scripts.js";
 export * from "./witness-script-decoding/index.js";
+export * from "./workflow/funding-measurements.js";
 export * from "./workflow/index.js";
 export * from "./zero-input/index.js";

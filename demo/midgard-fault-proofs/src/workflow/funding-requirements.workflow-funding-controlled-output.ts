@@ -94,7 +94,7 @@ export type WorkflowFundingControlledOutput = Readonly<{
 export type WorkflowFundingActionMeasurement = Readonly<{
   /** Stable semantic action, never a run-specific transaction/out-ref ID. */
   actionKind: string;
-  /** Exact canonical signed Cardano transaction used for the measurement. */
+  /** Exact signed Cardano transaction used for the measurement. */
   signedTransactionCborHex: string;
   /** Exact resolved values for inputs whose capital belongs to the prover. */
   fundingControlledInputs: readonly WorkflowFundingControlledInput[];
@@ -124,7 +124,7 @@ export type WorkflowFundingAction = WorkflowFundingActionMeasurement &
       memory: string;
       steps: string;
     }>;
-    /** Exact canonical outputs; consumers must use CML min_ada_required. */
+    /** Exact output bytes, preserving inline data; use CML min_ada_required. */
     outputCborHex: readonly string[];
   }>;
 

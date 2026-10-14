@@ -1,7 +1,10 @@
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 
-import { DEPLOYMENT_MANIFEST_ECONOMICS_BY_PROFILE } from "@al-ft/midgard-core/deployment-manifest-identity";
+import {
+  DEPLOYMENT_MANIFEST_ECONOMICS_BY_PROFILE,
+  type DeploymentManifest,
+} from "@al-ft/midgard-core/deployment-manifest-identity";
 import { SELECTED_DEPLOYMENT_PROFILE } from "@al-ft/midgard-core/deployment-profile";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
@@ -29,16 +32,21 @@ import { loadRealMidgardContractsForTest } from "./real-midgard-contracts.js";
 
 /** Genuine current applied scripts/parameters; publication references remain
  * deterministic codec fixtures, never evidence of a live deployment. */
-export const makeGenuineDeploymentRegistryForTest = async () => {
+export const makeGenuineDeploymentRegistryForTest = async (published?: {
+  readonly contracts: SDK.MidgardValidators;
+  readonly manifest: DeploymentManifest;
+}) => {
   const mintingScript = { type: "Native" as const, script: "820500" };
-  const contracts = await loadRealMidgardContractsForTest(
-    { txHash: "ab".repeat(32), outputIndex: 0 },
-    {
-      mintingScript,
-      mintingScriptCBOR: mintingScript.script,
-      policyId: validatorToScriptHash(mintingScript),
-    },
-  );
+  const contracts =
+    published?.contracts ??
+    (await loadRealMidgardContractsForTest(
+      { txHash: "ab".repeat(32), outputIndex: 0 },
+      {
+        mintingScript,
+        mintingScriptCBOR: mintingScript.script,
+        policyId: validatorToScriptHash(mintingScript),
+      },
+    ));
   const blueprint = await Effect.runPromise(loadRealBlueprint());
   const scripts = manifestDeployableScripts(contracts).map((entry) => {
     if (entry.script.type !== "PlutusV3" && entry.script.type !== "Native")
@@ -107,34 +115,38 @@ export const makeGenuineDeploymentRegistryForTest = async () => {
   if (cachedRealBlueprint === undefined)
     throw new Error("Missing authenticated blueprint context");
   const blueprintJson = readFileSync(cachedRealBlueprint.path, "utf8");
-  const manifest = buildDeploymentManifest(
-    await Effect.runPromise(
-      buildFinalizedContractDeploymentInfo(
-        contracts,
-        testReferenceScriptAuthPolicy(
-          contracts.referenceScriptAuth.policyId,
-          contracts.referenceScriptAuth.mintingScriptCBOR,
+  const manifest =
+    published?.manifest ??
+    buildDeploymentManifest(
+      await Effect.runPromise(
+        buildFinalizedContractDeploymentInfo(
+          contracts,
+          testReferenceScriptAuthPolicy(
+            contracts.referenceScriptAuth.policyId,
+            contracts.referenceScriptAuth.mintingScriptCBOR,
+          ),
         ),
       ),
-    ),
-    {
-      ...TEST_FINALIZED_MANIFEST_BUILD_CONTEXT,
-      economics:
-        DEPLOYMENT_MANIFEST_ECONOMICS_BY_PROFILE[
-          SELECTED_DEPLOYMENT_PROFILE.economics.profile
-        ],
-      da: {
-        ...TEST_FINALIZED_MANIFEST_BUILD_CONTEXT.da,
-        transportProfile: deploymentDaTransportProfile({
-          MIDGARD_DA_PAYLOAD_ENVELOPE: "identity",
-          MIDGARD_DA_ZSTD_LEVEL: 3,
-        }),
+      {
+        ...TEST_FINALIZED_MANIFEST_BUILD_CONTEXT,
+        economics:
+          DEPLOYMENT_MANIFEST_ECONOMICS_BY_PROFILE[
+            SELECTED_DEPLOYMENT_PROFILE.economics.profile
+          ],
+        da: {
+          ...TEST_FINALIZED_MANIFEST_BUILD_CONTEXT.da,
+          transportProfile: deploymentDaTransportProfile({
+            MIDGARD_DA_PAYLOAD_ENVELOPE: "identity",
+            MIDGARD_DA_ZSTD_LEVEL: 3,
+          }),
+        },
+        artifacts: {
+          blueprintHash: createHash("sha256")
+            .update(blueprintJson)
+            .digest("hex"),
+        },
       },
-      artifacts: {
-        blueprintHash: createHash("sha256").update(blueprintJson).digest("hex"),
-      },
-    },
-  );
+    );
   const retained = {
     schemaVersion: "midgard-deployment-parameter-registry-v1",
     manifestId: manifest.manifestId,
