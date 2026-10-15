@@ -55,6 +55,16 @@ export type BlockReplayLedgerEntry = {
   readonly output: Buffer;
 };
 
+/** An L2 transaction a replay applied by its committed verdict. */
+export type CommittedTransaction = Readonly<{
+  transactionId: Buffer;
+  canonicalTransactionCbor: Buffer;
+  programMaterialSidecarCbor: Buffer;
+  /** The ledger the transaction was replayed on, keyed by out-ref CBOR hex;
+   * it changes as the replay goes on. */
+  ledger: ReadonlyMap<string, Buffer>;
+}>;
+
 export type BlockReplayContext = {
   readonly header: SDK.Header;
   readonly parentEntries: readonly BlockReplayLedgerEntry[];
@@ -90,14 +100,16 @@ export type BlockReplayContext = {
   >;
   /**
    * Set: every L2 transaction is replayed by its committed Accepted verdict
-   * and runs no script; each script run is handed here, with the
-   * transaction's id, for a check after the replay. Unset: every script runs
-   * in the replay. Forced transactions always replay in full.
+   * and runs no script. Each script run is handed to `onScriptRun` as the
+   * replay builds it (the callee need not keep it), then the accepted
+   * transaction to `onTransaction`, for a check after the replay. Unset:
+   * every script runs in the replay. Forced transactions always replay in
+   * full.
    */
-  readonly onCommittedScriptRun?: (
-    transactionId: Buffer,
-    request: MidgardCekVerdictRequest,
-  ) => void;
+  readonly committedVerdicts?: Readonly<{
+    onScriptRun: (request: MidgardCekVerdictRequest) => void;
+    onTransaction: (transaction: CommittedTransaction) => void;
+  }>;
   readonly verifyForcedSource: (input: {
     readonly source: SDK.DaPayloadEntry;
     readonly canonicalTransactionCbor: Buffer;
@@ -229,17 +241,19 @@ export const replayBlockEvents = (
           }),
         );
         const sourceKind = step.phase === "L2Transaction" ? "normal" : "forced";
-        const committedRuns: MidgardCekVerdictRequest[] = [];
+        const committed =
+          step.phase === "L2Transaction" ? input.committedVerdicts : undefined;
+        const programMaterialSidecarCbor = importedEventProgramSidecar({
+          cbor,
+          sourceKind,
+          ledger,
+          material,
+          reached,
+        });
         const replay = yield* replayValidationVerdictEvent({
           consensusProfile: MIDGARD_CONSENSUS_PROFILE,
           canonicalTransactionCbor: cbor,
-          programMaterialSidecarCbor: importedEventProgramSidecar({
-            cbor,
-            sourceKind,
-            ledger,
-            material,
-            reached,
-          }),
+          programMaterialSidecarCbor,
           ledgerWitnessEntries: witnessEntries,
           blockTimeMs: input.blockTimeMs,
           expectedNetworkId: input.expectedNetworkId,
@@ -248,13 +262,9 @@ export const replayBlockEvents = (
           blockSlot: input.blockSlot,
           l1SlotConfig: input.l1SlotConfig,
           sourceKind,
-          ...(step.phase === "L2Transaction" &&
-          input.onCommittedScriptRun !== undefined
-            ? {
-                committedScriptRun: (request: MidgardCekVerdictRequest) =>
-                  committedRuns.push(request),
-              }
-            : {}),
+          ...(committed === undefined
+            ? {}
+            : { committedScriptRun: committed.onScriptRun }),
         });
         if (
           step.phase === "L2Transaction" &&
@@ -265,8 +275,12 @@ export const replayBlockEvents = (
           );
         if (step.phase === "L2Transaction" && replay.verdict !== "accepted")
           throw new Error("foreign normal transaction was rejected by replay");
-        for (const run of committedRuns)
-          input.onCommittedScriptRun?.(replay.transactionId, run);
+        committed?.onTransaction({
+          transactionId: replay.transactionId,
+          canonicalTransactionCbor: cbor,
+          programMaterialSidecarCbor,
+          ledger,
+        });
         if (step.phase === "ForcedTransaction")
           yield* input.verifyForcedSource({
             source: source.source,

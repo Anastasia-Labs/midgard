@@ -58,6 +58,13 @@ export type ValidationVerdictEventInput = Readonly<{
    * in a full replay. Only for verdict mode.
    */
   committedScriptRun?: (request: MidgardCekVerdictRequest) => void;
+  /**
+   * Runs each script run through this hook instead of the in-process
+   * executor; a failure of the hook fails the replay. Every other check runs
+   * as in a full replay. Only for verdict mode, and not with
+   * `committedScriptRun`.
+   */
+  evaluateScriptRun?: NonNullable<PhaseBConfig["evaluateCekVerdict"]>;
 }>;
 
 export type ValidationVerdictEvent = Readonly<{
@@ -127,12 +134,31 @@ export const replayValidationVerdictEvent = (
     );
     const scriptEvaluations: LocalScriptEvaluation[] = [];
     const committedScriptRun = input.committedScriptRun;
+    const evaluateScriptRun =
+      committedScriptRun === undefined
+        ? input.evaluateScriptRun
+        : (request: MidgardCekVerdictRequest) =>
+            Effect.sync(() => {
+              committedScriptRun(request);
+              return {
+                kind: "accepted" as const,
+                budget: { cpu: 0n, memory: 0n },
+              };
+            });
     if (
       committedScriptRun !== undefined &&
+      input.evaluateScriptRun !== undefined
+    ) {
+      return yield* Effect.fail(
+        new Error("a replay takes one script-run hook at most"),
+      );
+    }
+    if (
+      evaluateScriptRun !== undefined &&
       (input.cekExecutionMode ?? "verdict") !== "verdict"
     ) {
       return yield* Effect.fail(
-        new Error("a committed-verdict replay runs in verdict mode only"),
+        new Error("a script-run hook runs in verdict mode only"),
       );
     }
     if ("code" in phaseA) {
@@ -162,21 +188,12 @@ export const replayValidationVerdictEvent = (
           : { cekExecutionMode: input.cekExecutionMode }),
         maxScriptExecutionSteps:
           snapshot.consensusProfile.limits.maxValidationMachineStepCount,
-        ...(committedScriptRun === undefined
+        ...(evaluateScriptRun === undefined
           ? {
               onScriptEvaluated: (_txId, evaluation) =>
                 scriptEvaluations.push(evaluation),
             }
-          : {
-              evaluateCekVerdict: (request) =>
-                Effect.sync(() => {
-                  committedScriptRun(request);
-                  return {
-                    kind: "accepted" as const,
-                    budget: { cpu: 0n, memory: 0n },
-                  };
-                }),
-            }),
+          : { evaluateCekVerdict: evaluateScriptRun }),
       },
     );
     if (phaseB.accepted.length + phaseB.rejected.length !== 1) {
