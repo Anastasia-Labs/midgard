@@ -7,31 +7,28 @@
  * again. The cache is in memory: a restart empties it, so every script is
  * probed again.
  */
-import { createHash } from "node:crypto";
-
-import { type MidgardCekVerdictRequest } from "@al-ft/midgard-validation";
 import { Clock, Effect } from "effect";
 
 /** The most scripts held; past it, the oldest entry leaves first. */
 export const NEGATIVE_CACHE_MAX_ENTRIES = 100_000;
 
 export type NegativeCache = Readonly<{
-  /** Whether `run`'s script is cached now. */
-  holds: (run: MidgardCekVerdictRequest) => Effect.Effect<boolean>;
-  /** Caches `run`'s script until `ttlMs` from now. */
-  add: (run: MidgardCekVerdictRequest) => Effect.Effect<void>;
+  /** Whether the script hashing to `scriptHash` (sha256) is cached now. */
+  holds: (scriptHash: Uint8Array) => Effect.Effect<boolean>;
+  /** Caches the script hashing to `scriptHash` until `ttlMs` from now. */
+  add: (scriptHash: Uint8Array) => Effect.Effect<void>;
 }>;
 
-const scriptKey = (run: MidgardCekVerdictRequest) =>
-  createHash("sha256").update(run.scriptBytes).digest("hex");
+const keyOf = (scriptHash: Uint8Array) =>
+  Buffer.from(scriptHash).toString("hex");
 
 export const makeNegativeCache = (ttlMs: number): NegativeCache => {
   const expiries = new Map<string, number>();
   return {
-    holds: (run) =>
+    holds: (scriptHash) =>
       Clock.currentTimeMillis.pipe(
         Effect.map((now) => {
-          const key = scriptKey(run);
+          const key = keyOf(scriptHash);
           const expiresAt = expiries.get(key);
           if (expiresAt === undefined) return false;
           if (now < expiresAt) return true;
@@ -39,10 +36,10 @@ export const makeNegativeCache = (ttlMs: number): NegativeCache => {
           return false;
         }),
       ),
-    add: (run) =>
+    add: (scriptHash) =>
       Clock.currentTimeMillis.pipe(
         Effect.map((now) => {
-          const key = scriptKey(run);
+          const key = keyOf(scriptHash);
           expiries.delete(key);
           expiries.set(key, now + ttlMs);
           if (expiries.size > NEGATIVE_CACHE_MAX_ENTRIES)

@@ -10,11 +10,13 @@
  * - `import_check_cap`: the block's checker time ran out; its unstarted
  *   transactions stay in the set as skipped, for the backlog lane;
  * - `unverified_near_deadline`: the backlog's projected completion of the
- *   entries due by a deadline runs past that deadline minus the opener's
- *   margin; raised once per deadline;
- * - `unverified_deadline_missed`: an entry with no local verdict reached its
- *   deadline and left the set. An entry of a removed block, or a rejected
- *   one, leaves at its deadline with no alarm.
+ *   unrun entries due by a deadline runs past that deadline minus the
+ *   opener's margin; raised once per deadline;
+ * - `unverified_deadline_missed`: an entry reached its deadline with no
+ *   local verdict, raised once per entry: when it leaves the set, or while
+ *   it is still being checked (its verdict, when it comes, applies as
+ *   usual). An entry of a removed block, or a rejected one, leaves at its
+ *   deadline with no alarm.
  *
  * Each alarm logs one `ImportCheckAlarm` error event and increments
  * `import_check_alarm_total`, tagged `alarm`.

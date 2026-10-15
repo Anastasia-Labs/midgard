@@ -1,13 +1,22 @@
+import { createHash } from "node:crypto";
+
 import { MidgardCekProgramMaterialMissingRootError } from "@al-ft/midgard-core/cek-proof";
+import { type L1SlotConfig } from "@al-ft/midgard-core/l1-slot-config";
 import {
   type BlockReplayContext,
+  type CommittedTransaction,
   replayBlockEvents,
 } from "@al-ft/midgard-fault-proofs/block-replay";
 import * as SDK from "@al-ft/midgard-sdk";
-import { type MidgardCekVerdictRequest } from "@al-ft/midgard-validation";
+import {
+  decodeMidgardLedgerTxFromCanonicalCbor,
+  type MidgardCekVerdictRequest,
+  midgardOutRefToCborHex,
+} from "@al-ft/midgard-validation";
 import { Data, Effect } from "effect";
 
 import * as Ledger from "../database/utils/ledger.js";
+import { importCheckRunBytes } from "../import-check/kill.js";
 import {
   computeDaPayloadRoots,
   headerCounts,
@@ -19,7 +28,7 @@ import { computeLedgerMpfRootFromLedgerEntries } from "./ledger-hydration.js";
 /** The shared block replay's context over the node's ledger rows. */
 export type ImportedBlockReplayContext = Omit<
   BlockReplayContext,
-  "parentEntries" | "ledgerRoot" | "onCommittedScriptRun"
+  "parentEntries" | "ledgerRoot" | "committedVerdicts"
 > & {
   readonly parentEntries: readonly Ledger.MinimalEntry[];
 };
@@ -52,16 +61,93 @@ export class ForeignBlockVerificationError extends Data.TaggedError(
 }> {}
 
 /**
- * One imported L2 transaction's script runs, which the import did not
+ * One imported L2 transaction with script runs, which the import did not
  * evaluate: the transaction is applied by its committed verdict, and its
- * runs are checked after the import. `position` is the transaction's order
- * among the block's transactions with script runs.
+ * runs are checked after the import, rebuilt from the transaction, its
+ * sidecar and the outputs it resolves. `position` is the transaction's order
+ * among the block's transactions with script runs. The rest summarizes its
+ * runs: their count, declared cpu, bytes (script, context and sidecar per
+ * run) and distinct scripts (sha256).
  */
 export type ImportScriptCheck = Readonly<{
   transactionId: Buffer;
   position: number;
-  runs: readonly MidgardCekVerdictRequest[];
+  transactionCbor: Buffer;
+  programMaterialSidecarCbor: Buffer;
+  runs: number;
+  cpu: bigint;
+  runBytes: number;
+  scriptHashes: readonly Buffer[];
 }>;
+
+/** What a check's runs are rebuilt with: the block's validation context. */
+export type ImportCheckContext = Readonly<{
+  blockTimeMs: number;
+  blockSlot: bigint;
+  expectedNetworkId: bigint;
+  minFeeA: bigint;
+  minFeeB: bigint;
+  l1SlotConfig: L1SlotConfig;
+}>;
+
+/**
+ * A block's checks: each transaction once, and each output a check spends
+ * or references once, by out-ref (CBOR hex). Nothing grows with a
+ * transaction's runs.
+ */
+export type ImportBlockChecks = Readonly<{
+  context: ImportCheckContext;
+  checks: readonly ImportScriptCheck[];
+  outputs: ReadonlyMap<string, Buffer>;
+}>;
+
+/** The block's checks, built one transaction at a time as the replay goes. */
+const blockChecksCollector = (context: ImportCheckContext) => {
+  const checks: ImportScriptCheck[] = [];
+  const outputs = new Map<string, Buffer>();
+  let runs = 0;
+  let cpu = 0n;
+  let runBytes = 0;
+  const scripts = new Map<string, Buffer>();
+  return {
+    committedVerdicts: {
+      onScriptRun: (request: MidgardCekVerdictRequest) => {
+        runs += 1;
+        cpu += request.executionBudget?.cpu ?? 0n;
+        runBytes += importCheckRunBytes(request);
+        const hash = createHash("sha256").update(request.scriptBytes).digest();
+        scripts.set(hash.toString("hex"), hash);
+      },
+      onTransaction: (transaction: CommittedTransaction) => {
+        if (runs > 0) {
+          const tx = decodeMidgardLedgerTxFromCanonicalCbor(
+            transaction.canonicalTransactionCbor,
+          );
+          for (const outRef of [...tx.spendInputs, ...tx.referenceInputs]) {
+            const key = midgardOutRefToCborHex(outRef);
+            const output = transaction.ledger.get(key);
+            if (output !== undefined) outputs.set(key, output);
+          }
+          checks.push({
+            transactionId: transaction.transactionId,
+            position: checks.length,
+            transactionCbor: transaction.canonicalTransactionCbor,
+            programMaterialSidecarCbor: transaction.programMaterialSidecarCbor,
+            runs,
+            cpu,
+            runBytes,
+            scriptHashes: [...scripts.values()],
+          });
+        }
+        runs = 0;
+        cpu = 0n;
+        runBytes = 0;
+        scripts.clear();
+      },
+    },
+    result: (): ImportBlockChecks => ({ context, checks, outputs }),
+  };
+};
 
 /** A caller callback's failure, passed through the import unchanged. */
 class CallbackFailure {
@@ -76,8 +162,8 @@ const passThrough = <A>(effect: Effect.Effect<A, unknown>) =>
  * substitute for replay. No successful result is cached across observations.
  *
  * Every L2 transaction is applied by its committed verdict: the import runs
- * no script, and returns each transaction's script runs as `scriptChecks`
- * for the import checker. Every other check runs in full.
+ * no script, and returns the transactions with script runs as
+ * `scriptChecks` for the import checker. Every other check runs in full.
  *
  * Failures: the caller's callbacks' pass through unchanged (their verdicts
  * are the caller's); a defect (the payload checks throw) is `invalid`, a
@@ -179,10 +265,14 @@ export const verifyAndImportBlock = (
         "invalid",
         `foreign DA commitment mismatch: ${mismatches.join(",")}`,
       );
-    const checks = new Map<
-      string,
-      { transactionId: Buffer; runs: MidgardCekVerdictRequest[] }
-    >();
+    const collector = blockChecksCollector({
+      blockTimeMs: input.blockTimeMs,
+      blockSlot: input.blockSlot,
+      expectedNetworkId: input.expectedNetworkId,
+      minFeeA: input.minFeeA,
+      minFeeB: input.minFeeB,
+      l1SlotConfig: input.l1SlotConfig,
+    });
     const entries = ledgerRows(
       yield* replayBlockEvents({
         ...input,
@@ -196,12 +286,7 @@ export const verifyAndImportBlock = (
         replayUserEvent: (event) => passThrough(input.replayUserEvent(event)),
         verifyForcedSource: (source) =>
           passThrough(input.verifyForcedSource(source)),
-        onCommittedScriptRun: (transactionId, request) => {
-          const key = transactionId.toString("hex");
-          const check = checks.get(key) ?? { transactionId, runs: [] };
-          check.runs.push(request);
-          checks.set(key, check);
-        },
+        committedVerdicts: collector.committedVerdicts,
       }),
     );
     const replayRoot = yield* computeLedgerMpfRootFromLedgerEntries(entries);
@@ -209,14 +294,11 @@ export const verifyAndImportBlock = (
       return yield* fail("invalid", "foreign replay UTxO root mismatch");
     // Replay compares every transition, mapping and validation descriptor by its
     // canonical bytes, independently of the payload's internally consistent roots.
-    const scriptChecks: ImportScriptCheck[] = [...checks.values()].map(
-      (check, position) => ({ ...check, position }),
-    );
     return {
       headerHash: input.headerHash,
       root: replayRoot,
       entries,
-      scriptChecks,
+      scriptChecks: collector.result(),
     };
   }).pipe(
     Effect.catchAllDefect((cause) =>

@@ -1,6 +1,6 @@
 import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
 
-import type { ImportScriptCheck } from "../mpf/verified-block-import.js";
+import type { ImportBlockChecks } from "../mpf/verified-block-import.js";
 
 /**
  * The open deadline of an imported transaction's check: its block's end
@@ -11,17 +11,17 @@ export const importCheckDeadlineMs = (blockEndTime: bigint): number =>
   Number(blockEndTime) +
   Math.floor(MIDGARD_CONSENSUS_PROFILE.limits.blockMaturityMs / 2);
 
-/** A foreign block's script runs its import applied by their committed
+/** A foreign block's transactions its import applied by their committed
  * verdicts, and the deadline of their checks. */
 export type ImportChecks = Readonly<{
   deadlineMs: number;
-  checks: readonly ImportScriptCheck[];
+  checks: ImportBlockChecks;
 }>;
 
 /** The checks a foreign block ending at `blockEndTime` leaves. */
 export const importChecks = (
   blockEndTime: bigint,
-  checks: readonly ImportScriptCheck[],
+  checks: ImportBlockChecks,
 ): ImportChecks => ({
   deadlineMs: importCheckDeadlineMs(blockEndTime),
   checks,

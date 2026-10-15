@@ -313,8 +313,9 @@ export const APPLICATION_TABLE_NAMES = [
   "intent_refusal_holds",
   "node_follower_write_gate",
   "node_deployment",
+  "node_import_check_blocks",
   "node_import_checks",
-  "node_import_check_runs",
+  "node_import_check_outputs",
 ] as const;
 
 export const APPLICATION_INDEX_NAMES = [
@@ -371,6 +372,7 @@ export const APPLICATION_INDEX_NAMES = [
   "idx_processed_mempool_included_by",
   "idx_node_confirmed_merges_merge_slot",
   "idx_node_import_checks_deadline",
+  "idx_node_import_checks_state_deadline",
 ] as const;
 
 export const migrationByVersion = new Map(

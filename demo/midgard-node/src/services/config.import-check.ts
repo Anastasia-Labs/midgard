@@ -14,30 +14,47 @@ import { boundedValidationInteger } from "./config.node-config-dep.js";
  * - `killMsPerGigaCpu`: a, in milliseconds per 10^9 declared cpu units;
  * - `killUsPerKib`: b, in microseconds per KiB.
  *
- * The defaults are four times the values measured on the pool's
- * import-check lane with the TypeScript verdict evaluator
- * (`tests/benchmarks/import-check-kill.bench.ts`, 2026-10-15, Node 22):
- * - floor: p99.9 of 20,000 minimal runs 6.0 ms (p50 1.2 ms, max 11.5 ms);
- * - a: the slope of a machine-step loop, 207 ms per 10^9 cpu (a chain of
- *   hashing builtins measures 95 ms); the slowest loop sample, 1,153 ms at
- *   3 * 10^9 cpu, sits under half its kill;
- * - b: the slope over the run's bytes, 110 us per KiB.
+ * The defaults are the ruled values 24 ms, 840 ms per 10^9 cpu and 440 us
+ * per KiB. Against the pool's import-check lane with the TypeScript verdict
+ * evaluator (`tests/benchmarks/import-check-kill.bench.ts`, 2026-10-15,
+ * Node 22, a machine shared with other work) they are:
+ * - floor: 1.7 times the slowest of 20,000 minimal runs (13.9 ms; p99.9
+ *   4.9 ms, p50 1.5 ms);
+ * - a: 3.1 times the slope of a machine-step loop (273 ms per 10^9 cpu; a
+ *   chain of hashing builtins measures 117 ms). At 3 * 10^9 cpu the kill,
+ *   2,545 ms, is 2.2 times the slowest sample seen (1,153 ms);
+ * - b: 2.8 times the slope over the run's bytes (155 us per KiB).
  *
- * `blockCapMs` is the checker's wall time per block: the transactions not
- * started within it are recorded as skipped (`import_check_cap`). It covers
- * a block at twice the per-transaction cpu limit (2 * 10^10 cpu, 4.2 s) plus
- * 10,000 minimal runs at their median (12 s).
+ * `blockCapMs` bounds the import pass's time on one block: no run starts
+ * after it (a run still waiting for a worker then is cancelled), and the
+ * block's entries not yet run wait as skipped (`import_check_cap`) for the
+ * backlog lane. A run started within the cap keeps its whole kill, so the
+ * pass holds a block for at most `blockCapMs` plus the longest kill of a
+ * run it started. A fault's fresh retry is a run like any other: one not
+ * started within the cap is cancelled, and its entry waits as skipped (on
+ * a two-worker pool the retry waits for the killed worker's replacement,
+ * the lanes' one worker). For example, at
+ * the defaults a run at the per-transaction cpu limit (10^10, 8.4 s) with
+ * 16 MiB of bytes (7.2 s) is killed 15.6 s after its start, so a block
+ * started with it is held 35.6 s at most. The cap never makes an entry
+ * unrunnable: the backlog lane runs it under the same kill.
  *
  * `negativeCacheTtlMs` is how long a script whose run faulted twice skips
  * its import-time runs; at most half the block maturity M (the default).
  *
- * `backlogWorkers` is the validation pool's share reserved for the
- * backlog lane (at least one worker, at most the pool).
+ * `backlogWorkers` is the share of the validation pool reserved for the
+ * backlog lane, clamped to 1 to `size - 1` workers: the import and backlog
+ * lanes together hold at most `size - 1`, so admission always keeps a
+ * worker. A single-worker pool reserves none: both lanes run only while
+ * admission is idle (a warning is logged).
  *
  * `openerMarginMs` is the time a challenge opener needs before an entry's
  * deadline: its two transactions, each within the dispute response window
  * (the default). `unverified_near_deadline` fires when the backlog's
- * projected completion runs past a deadline minus this margin.
+ * projected completion of the unrun entries runs past a deadline minus this
+ * margin, over the pool's clamped backlog share (with none, at every
+ * deadline). Faulted entries are not projected: each already raised
+ * `uplc_import_fault`.
  */
 export type ImportCheckConfig = Readonly<{
   killFloorMs: number;
