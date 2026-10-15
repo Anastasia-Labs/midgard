@@ -9,8 +9,14 @@ import {
   type ValidationWorkerResponse,
 } from "../workers/utils/validation-pool.js";
 import {
+  idleSlot,
+  isIdle,
+  takeBackgroundJob,
+} from "./validation-pool.background-lanes.js";
+import {
   type BackgroundJob,
   BUNDLED_WORKER_EXEC_ARGV,
+  type ImportCheckLane,
   type PendingJob,
   restartCounter,
   timeoutCounter,
@@ -21,8 +27,10 @@ import {
 export class FixedValidationWorkerPool {
   readonly slots: WorkerSlot[] = [];
   readonly queue: PendingJob[] = [];
-  /** Import-check jobs: dispatched only when `queue` is empty. */
+  /** Import-check jobs, both lanes, in submission order. */
   readonly backgroundQueue: BackgroundJob[] = [];
+  /** Workers reserved for the backlog lane: at least one, at most `size`. */
+  readonly backlogShare: number;
   readonly capacityWaiters: Array<() => void> = [];
   readonly restartTimers = new Set<NodeJS.Timeout>();
   nextJobId = 1;
@@ -43,7 +51,10 @@ export class FixedValidationWorkerPool {
     readonly timeoutMs: number,
     readonly entry: URL,
     readonly init: ValidationWorkerInit,
-  ) {}
+    backlogShare = 1,
+  ) {
+    this.backlogShare = Math.max(1, Math.min(size, backlogShare));
+  }
 
   start(): Promise<void> {
     if (this.started) return Promise.resolve();
@@ -211,17 +222,15 @@ export class FixedValidationWorkerPool {
   }
 
   /**
-   * An import-check job: it runs below every other job (only when no other
-   * job waits, on an idle worker, at most `size - 1` at once, one on a
-   * single-worker pool), and its worker is terminated `killMs` after the job
-   * starts; a worker not yet started is started first. With `fresh`, an idle worker is replaced first and the job
-   * runs once the new worker has started, so the kill never counts the
-   * worker's start.
+   * An import-check job, scheduled by its lane (`takeBackgroundJob`). Its
+   * worker is terminated `killMs` after the job starts; a worker not yet
+   * started is started first. With `fresh`, an idle worker is replaced and
+   * the job runs once the new worker has started, so the kill never counts
+   * the worker's start.
    */
   submitBackground(
     request: ValidationJobRequest,
-    killMs: number,
-    fresh: boolean,
+    options: Pick<BackgroundJob, "killMs" | "fresh" | "lane">,
   ): Promise<ValidationWorkerResponse> {
     if (this.closed || !this.started) {
       return Promise.reject(
@@ -236,8 +245,7 @@ export class FixedValidationWorkerPool {
         transferList: [],
         resolve,
         reject,
-        killMs,
-        fresh,
+        ...options,
       });
       this.dispatch();
     });
@@ -315,7 +323,7 @@ export class FixedValidationWorkerPool {
       restarting: false,
       inFlightStartedAt: 0,
       started: false,
-      background: false,
+      lane: null,
       reservedFor: null,
     };
     worker.on("message", (response: ValidationWorkerResponse) =>
@@ -335,48 +343,42 @@ export class FixedValidationWorkerPool {
   }
 
   private dispatch(): void {
+    this.dispatchBackground(false);
     for (const slot of this.slots) {
-      if (slot.inFlight !== null || slot.restarting) continue;
+      if (!isIdle(slot)) continue;
       const job = this.queue.shift();
       if (job === undefined) break;
       this.capacityWaiters.shift()?.();
       this.dispatchToSlot(slot, job);
     }
-    this.dispatchBackground();
+    this.dispatchBackground(
+      this.queue.length === 0 && this.capacityWaiters.length === 0,
+    );
   }
 
-  private dispatchBackground(): void {
-    const limit = Math.max(1, this.size - 1);
-    while (
-      this.backgroundQueue.length > 0 &&
-      this.queue.length === 0 &&
-      this.capacityWaiters.length === 0
-    ) {
-      const running = this.slots.filter(
-        (slot) => slot.background || slot.reservedFor !== null,
-      ).length;
-      if (running >= limit) return;
-      const idle = this.slots.filter(
-        (candidate) =>
-          candidate.inFlight === null &&
-          !candidate.restarting &&
-          candidate.reservedFor === null,
-      );
-      const slot = idle.find((candidate) => candidate.started) ?? idle.at(0);
-      if (slot === undefined) return;
-      const job = this.backgroundQueue.shift()!;
-      if (job.fresh) {
-        // The exit handler respawns the slot; the replacement starts with a
-        // warm-up job and then runs `job`.
-        slot.reservedFor = job;
-        slot.restarting = true;
-        void slot.worker.terminate();
-      } else if (!slot.started) {
-        // A respawned worker that has not yet started: warm it up first.
-        this.warmUpFor(slot, job);
-      } else {
-        this.dispatchToSlot(slot, job, job.killMs, true);
-      }
+  /** Import-check jobs on idle workers: only the backlog lane's reserved
+   * share unless `open` (`takeBackgroundJob`). */
+  private dispatchBackground(open: boolean): void {
+    for (;;) {
+      const slot = idleSlot(this.slots);
+      const job = slot && takeBackgroundJob(this, open);
+      if (slot === undefined || job === undefined) return;
+      this.startBackground(slot, job);
+    }
+  }
+
+  private startBackground(slot: WorkerSlot, job: BackgroundJob): void {
+    if (job.fresh) {
+      // The exit handler respawns the slot; the replacement starts with a
+      // warm-up job and then runs `job`.
+      slot.reservedFor = job;
+      slot.restarting = true;
+      void slot.worker.terminate();
+    } else if (!slot.started) {
+      // A respawned worker that has not yet started: warm it up first.
+      this.warmUpFor(slot, job);
+    } else {
+      this.dispatchToSlot(slot, job, job.killMs, job.lane);
     }
   }
 
@@ -396,10 +398,10 @@ export class FixedValidationWorkerPool {
     slot: WorkerSlot,
     job: PendingJob,
     timeoutMs = this.timeoutMs,
-    background = false,
+    lane: ImportCheckLane | null = null,
   ): void {
     slot.inFlight = job;
-    slot.background = background;
+    slot.lane = lane;
     slot.inFlightStartedAt = Date.now();
     slot.timeout = setTimeout(() => {
       void Metric.increment(timeoutCounter).pipe(Effect.runPromise);
@@ -443,13 +445,13 @@ export class FixedValidationWorkerPool {
     if (slot.timeout !== null) clearTimeout(slot.timeout);
     slot.timeout = null;
     slot.inFlight = null;
-    slot.background = false;
+    slot.lane = null;
     slot.inFlightStartedAt = 0;
     slot.restartAttempt = 0;
     const reserved = slot.reservedFor;
     if (reserved !== null) {
       slot.reservedFor = null;
-      this.dispatchToSlot(slot, reserved, reserved.killMs, true);
+      this.dispatchToSlot(slot, reserved, reserved.killMs, reserved.lane);
       return;
     }
     this.dispatch();
@@ -468,7 +470,7 @@ export class FixedValidationWorkerPool {
     slot.reservedFor?.reject(error);
     slot.inFlight = null;
     slot.reservedFor = null;
-    slot.background = false;
+    slot.lane = null;
     slot.inFlightStartedAt = 0;
   }
 

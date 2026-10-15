@@ -3,14 +3,18 @@
  * followed whatever its checks find, and the node stays ready.
  *
  * - `import_check_rejected`: a run the local evaluator rejects (the
- *   transaction was committed Accepted);
+ *   transaction was committed Accepted); the entry stays as `rejected`;
  * - `uplc_import_fault`: a run that faulted (killed, crashed, or failed to
  *   evaluate) twice, the second time on a fresh instance; it stays in the
- *   set;
+ *   set as `faulted`, and its script enters the negative cache;
  * - `import_check_cap`: the block's checker time ran out; its unstarted
- *   transactions stay in the set as skipped;
- * - `unverified_deadline_missed`: an entry reached its deadline with no
- *   local verdict and left the set.
+ *   transactions stay in the set as skipped, for the backlog lane;
+ * - `unverified_near_deadline`: the backlog's projected completion of the
+ *   entries due by a deadline runs past that deadline minus the opener's
+ *   margin; raised once per deadline;
+ * - `unverified_deadline_missed`: an entry with no local verdict reached its
+ *   deadline and left the set. An entry of a removed block, or a rejected
+ *   one, leaves at its deadline with no alarm.
  *
  * Each alarm logs one `ImportCheckAlarm` error event and increments
  * `import_check_alarm_total`, tagged `alarm`.
@@ -32,6 +36,13 @@ export type ImportCheckAlarm =
       alarm: "import_check_cap";
       headerHash: string;
       skipped: number;
+    }>
+  | Readonly<{
+      alarm: "unverified_near_deadline";
+      deadlineMs: number;
+      /** The entries due by the deadline. */
+      entries: number;
+      projectedMs: number;
     }>
   | Readonly<{
       alarm: "unverified_deadline_missed";

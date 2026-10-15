@@ -1,13 +1,15 @@
--- class: D; retention: an entry leaves on its local verdict, its block's removal, or its deadline (block end + M/2)
+-- class: D; retention: an entry leaves on an accepting local verdict, its block's removal, or its deadline (block end + M/2)
 -- The import checker's durable set: each Plutus transaction of an imported
--- foreign block, applied by its committed verdict, until its script runs get
--- a local verdict, its block is removed, or its deadline passes.
+-- foreign block, applied by its committed verdict, until its script runs are
+-- accepted locally, its block is removed, or its deadline passes. A locally
+-- rejected entry stays, as `rejected`, until its deadline.
 CREATE TABLE node_import_checks (
   header_hash BYTEA NOT NULL,
   tx_id BYTEA NOT NULL CHECK (octet_length(tx_id) = 32),
   block_position INTEGER NOT NULL CHECK (block_position >= 0),
   deadline_ms BIGINT NOT NULL,
-  state TEXT NOT NULL CHECK (state IN ('pending', 'cap_skipped', 'faulted')),
+  state TEXT NOT NULL CHECK (state IN ('pending', 'cap_skipped', 'cache_skipped',
+    'faulted', 'rejected')),
   program_material_sidecar BYTEA,
   recorded_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   PRIMARY KEY (header_hash, tx_id)

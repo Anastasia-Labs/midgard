@@ -5,10 +5,12 @@ import "../fibers/resolve-worker-entry.js";
 import "../workers/utils/validation-pool.js";
 import "./config.js";
 import "./midgard-contracts.js";
+import "./validation-pool.background-lanes.js";
 import "./validation-pool.bundled-worker-exec-argv.js";
 import "./validation-pool.fixed-validation-worker-pool.js";
 import "./validation-pool.make-validation-pool.js";
 export {
+  type ImportCheckLane,
   ValidationPool,
   type ValidationPoolService,
   ValidationWorkerError,

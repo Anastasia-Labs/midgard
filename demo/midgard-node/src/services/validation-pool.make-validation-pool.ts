@@ -31,13 +31,12 @@ export const evaluateImportCheckOn =
   (
     pool: FixedValidationWorkerPool,
   ): NonNullable<ValidationPoolService["evaluateImportCheck"]> =>
-  (request, { killMs, fresh }) =>
+  (request, options) =>
     Effect.tryPromise({
       try: () =>
         pool.submitBackground(
           { kind: "cek_verdict", jobId: pool.allocateJobId(), request },
-          killMs,
-          fresh,
+          options,
         ),
       catch: (cause) =>
         cause instanceof ValidationWorkerError
@@ -102,6 +101,7 @@ const makeValidationPool = Effect.gen(function* () {
       },
       signatureVerifier: config.VALIDATION_WORKER_NODE_ED25519 ? "node" : "cml",
     },
+    config.IMPORT_CHECK.backlogWorkers,
   );
 
   const reportStats = Effect.sync(() => pool.stats()).pipe(

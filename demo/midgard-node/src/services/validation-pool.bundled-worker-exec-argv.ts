@@ -32,18 +32,25 @@ export type ValidationPoolService = {
     request: MidgardCekVerdictRequest,
   ) => Effect.Effect<LocalScriptEvalResult, ValidationWorkerError>;
   /**
-   * Runs one verdict-mode script for the import checker, below every other
-   * job: it starts only when no other job waits and a worker is idle, and
-   * at most `size - 1` run at once (one on a single-worker pool). The worker
-   * is started first if it has not, and is terminated after `killMs` from
-   * the job's start; with
-   * `fresh`, an idle worker is replaced and started before the job runs. A
-   * kill, crash or worker error fails the effect. Absent when the pool is
-   * disabled.
+   * Runs one verdict-mode script for the import checker, in `lane`:
+   * - `import`: below every other job. It starts only when no other job
+   *   waits and a worker is idle, and import-check jobs hold at most
+   *   `size - 1` workers (one on a single-worker pool);
+   * - `backlog`: on the pool's reserved backlog share (at least one worker)
+   *   ahead of every other job, so admission load cannot starve it; past
+   *   the share, as an `import` job.
+   * The worker is started first if it has not, and is terminated `killMs`
+   * after the job starts; with `fresh`, an idle worker is replaced and
+   * started before the job runs. A kill, crash or worker error fails the
+   * effect. Absent when the pool is disabled.
    */
   readonly evaluateImportCheck?: (
     request: MidgardCekVerdictRequest,
-    options: { readonly killMs: number; readonly fresh: boolean },
+    options: {
+      readonly killMs: number;
+      readonly fresh: boolean;
+      readonly lane: ImportCheckLane;
+    },
   ) => Effect.Effect<LocalScriptEvalResult, ValidationWorkerError>;
   /** HTTP advisory evaluation refuses when no reserved idle worker is available. */
   readonly tryEvaluateCekVerdict: (
@@ -71,10 +78,14 @@ export type PendingJob = {
   readonly reject: (error: ValidationWorkerError) => void;
 };
 
-/** An import-check job: below every other job, with its own kill. */
+/** The import checker's lanes on the pool (`evaluateImportCheck`). */
+export type ImportCheckLane = "import" | "backlog";
+
+/** An import-check job, with its own kill. */
 export type BackgroundJob = PendingJob & {
   readonly killMs: number;
   readonly fresh: boolean;
+  readonly lane: ImportCheckLane;
 };
 
 export type WorkerSlot = {
@@ -87,8 +98,8 @@ export type WorkerSlot = {
   inFlightStartedAt: number;
   /** The worker answered a job, so it has started. */
   started: boolean;
-  /** Whether the in-flight job is an import-check job. */
-  background: boolean;
+  /** The lane of the in-flight import-check job; null for any other job. */
+  lane: ImportCheckLane | null;
   /** The import-check job this slot was replaced for, run once it starts. */
   reservedFor: BackgroundJob | null;
 };

@@ -9,8 +9,12 @@ import { formatUnknownError } from "@al-ft/midgard-core/error-format";
 import { type MidgardCekVerdictRequest } from "@al-ft/midgard-validation";
 import { Effect } from "effect";
 
+import { type ImportCheckLoad } from "../database/importChecks.js";
 import { type ImportCheckConfig } from "../services/config.import-check.js";
-import { type ValidationPoolService } from "../services/validation-pool.js";
+import {
+  type ImportCheckLane,
+  type ValidationPoolService,
+} from "../services/validation-pool.js";
 
 export type ImportCheckOutcome =
   | Readonly<{ kind: "accepted" }>
@@ -19,12 +23,17 @@ export type ImportCheckOutcome =
 
 export type ImportCheckEvaluator = Readonly<{
   /**
-   * Runs `run`, killed `killMs` after it starts; with `fresh`, on a newly
-   * started evaluator instance. Never fails: a failure is a `fault`.
+   * Runs `run` in `lane`, killed `killMs` after it starts; with `fresh`, on
+   * a newly started evaluator instance. Never fails: a failure is a
+   * `fault`.
    */
   evaluate: (
     run: MidgardCekVerdictRequest,
-    options: Readonly<{ killMs: number; fresh: boolean }>,
+    options: Readonly<{
+      killMs: number;
+      fresh: boolean;
+      lane: ImportCheckLane;
+    }>,
   ) => Effect.Effect<ImportCheckOutcome>;
 }>;
 
@@ -44,6 +53,15 @@ export const importCheckKillMs = (
       (Number(run.executionBudget?.cpu ?? 0n) * config.killMsPerGigaCpu) / 1e9 +
       (importCheckRunBytes(run) * config.killUsPerKib) / 1024 / 1000,
   );
+
+/** An upper bound on the kills of an entry's runs, from its load. */
+export const importCheckLoadKillMs = (
+  load: ImportCheckLoad,
+  config: ImportCheckConfig,
+): number =>
+  load.runs * (config.killFloorMs + 1) +
+  (load.cpu * config.killMsPerGigaCpu) / 1e9 +
+  (load.bytes * config.killUsPerKib) / 1024 / 1000;
 
 /**
  * The validation pool's evaluator, below admission; undefined when the pool
