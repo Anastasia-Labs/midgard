@@ -1471,9 +1471,10 @@ export const commitConfirmRecoverAndMerge = async ({
   expect(sortedStateQueueBeforeMerge.length).toBeGreaterThanOrEqual(2);
   const queuedBlockBeforeMerge =
     sortedStateQueueBeforeMerge[sortedStateQueueBeforeMerge.length - 1]!;
-  const queuedHeaderBeforeMerge = await Effect.runPromise(
-    SDK.getHeaderFromStateQueueDatum(queuedBlockBeforeMerge.datum),
-  );
+  const { header: queuedHeaderBeforeMerge, block_time: queuedBlockTime } =
+    await Effect.runPromise(
+      SDK.getStateQueueNodeFromStateQueueDatum(queuedBlockBeforeMerge.datum),
+    );
   const queuedHeaderHash = await Effect.runPromise(
     SDK.hashBlockHeader(queuedHeaderBeforeMerge),
   );
@@ -1501,10 +1502,8 @@ export const commitConfirmRecoverAndMerge = async ({
 
   await advanceEmulatorPastUnixTime(
     fixture,
-    mergeMaturityWindow(
-      fixture.operatorLucid,
-      Number(queuedHeaderBeforeMerge.endTime),
-    ).readyAfterUnixTime,
+    mergeMaturityWindow(fixture.operatorLucid, Number(queuedBlockTime))
+      .readyAfterUnixTime,
   );
   vi.setSystemTime(new Date(fixture.emulator.now()));
 
