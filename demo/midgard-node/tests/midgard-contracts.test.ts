@@ -144,7 +144,7 @@ describe("midgard contracts registry", () => {
       // post-UTxO minimum-Ada mode, streamed redeemer/datum Data verdicts, the
       // one-pass node count, the exact rejection reason, script optimisations,
       // bounty claimants, the queue's proof reference and exemption, slashing a
-      // node above the bond, and the timeout's operator-directory separation.
+      // node above the bond, the timeout's directory split, output-scan size.
       expect
         .soft(
           createHash("sha256")
@@ -154,7 +154,7 @@ describe("midgard contracts registry", () => {
             .digest("hex"),
         )
         .toBe(
-          "9f38858e9a9c7345d9003acf876a8dce97e56663f7503061913119d918ba73fd",
+          "99518fc10988a1c9aba0c2032d0b3208d920939ec26a5f40a60526fe3a797515",
         );
       // Includes current streamed Data/W1 metadata plus escape-hatch field
       // retirement and the hub witness's paired script bytes. The independently

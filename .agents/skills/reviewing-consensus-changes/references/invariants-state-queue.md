@@ -140,12 +140,12 @@ What the code does:
   (`validators/state-queue.ak:637-675`) takes no operator and discards the
   anchor's own node data (`_fraudulent_header_data`).
 - `fraudulent_operator` is a redeemer field
-  (`validate_remove_fraudulent_v1`, `:1376`). The slashing arms
-  (`:1420-1530`) only require the operator-directory redeemer's
+  (`validate_remove_fraudulent_v1`, `:1327`). The slashing arms
+  (`:1393-1518`) only require the operator-directory redeemer's
   `slashed_operator` to equal it (`cross_validate_slashing_reason`,
-  `lib/midgard/operator-directory.ak:381`), and the directory's
+  `lib/midgard/operator-directory.ak:531`), and the directory's
   `SlashOperatorForBadState` arm only checks the same equality back
-  (`:343-356`). Neither directory validator reads the state queue.
+  (`:473-491`). Neither directory validator reads the state queue.
 
 Consequence if the reading is right: with a valid fraud proof for a block
 that still has a descendant, the link-removal transaction can name any
