@@ -1,5 +1,6 @@
 use aiken/builtin
 use aiken/cbor
+use aiken/math
 use aiken/primitive/bytearray
 use midgard/cbor_deserialise
 use midgard/cek_constant_v1
@@ -124,4 +125,144 @@ test data_memory_adds_four_words_per_node() {
       [Pair(builtin.i_data(1), builtin.list_data([builtin.b_data(#"0000")]))],
     ),
   ) == 19
+}
+
+// Integer constants on both sides of the 64-bit head boundary. The payload is
+// the ledger's own serialisation and decodes to the same integer. Values are
+// compared as integers: the pinned evaluator's Data equality does not separate
+// -2^64 from -2^64 - 1.
+fn integer_payload_decodes(value: Int, payload_cbor: ByteArray) -> Bool {
+  expect cbor.serialise(builtin.i_data(value)) == payload_cbor
+  and {
+    builtin.un_i_data(cek_constant_v1.decode_constant_payload_v1(payload_cbor)) == value,
+    builtin.un_i_data(
+      cek_constant_v1.constant_payload_v1(
+        cek_constant_v1.ConstantWitnessV1 { type_cbor: #"9f00ff", payload_cbor },
+      ),
+    ) == value,
+  }
+}
+
+test integer_constant_with_largest_unsigned_head_decodes() {
+  integer_payload_decodes(18446744073709551615, #"1bffffffffffffffff")
+}
+
+test integer_constant_with_smallest_positive_bignum_decodes() {
+  integer_payload_decodes(18446744073709551616, #"c249010000000000000000")
+}
+
+test integer_constant_with_largest_negative_head_decodes() {
+  integer_payload_decodes(-18446744073709551616, #"3bffffffffffffffff")
+}
+
+test integer_constant_with_smallest_negative_bignum_decodes() {
+  integer_payload_decodes(-18446744073709551617, #"c349010000000000000000")
+}
+
+// Constructor 127 is the last compact tag (1400); 128 uses tag 102.
+fn data_payload_decodes(data: Data, payload_cbor: ByteArray) -> Bool {
+  expect cbor.serialise(data) == payload_cbor
+  and {
+    cek_constant_v1.decode_constant_payload_v1(payload_cbor) == data,
+    cek_constant_v1.constant_payload_v1(
+      cek_constant_v1.ConstantWitnessV1 { type_cbor: #"9f08ff", payload_cbor },
+    ) == data,
+  }
+}
+
+test constructor_127_constant_payload_decodes() {
+  and {
+    data_payload_decodes(builtin.constr_data(127, []), #"d9057880"),
+    data_payload_decodes(
+      builtin.constr_data(127, [builtin.i_data(1)]),
+      #"d905789f01ff",
+    ),
+  }
+}
+
+test constructor_128_constant_payload_decodes() {
+  and {
+    data_payload_decodes(builtin.constr_data(128, []), #"d86682188080"),
+    data_payload_decodes(
+      builtin.constr_data(128, [builtin.i_data(1)]),
+      #"d8668218809f01ff",
+    ),
+  }
+}
+
+// Byte strings behind a two-byte tag 2/3 head, and tag 102 with a negative or
+// bignum index, are not Plutus Data.
+test long_tag_heads_and_signed_constructor_indexes_do_not_decode() {
+  and {
+    cbor_deserialise.deserialise(#"d80249010000000000000000") == None,
+    cbor_deserialise.deserialise(#"d80349010000000000000000") == None,
+    cbor_deserialise.deserialise(#"d866822080") == None,
+    cbor_deserialise.deserialise(#"d86682c2410180") == None,
+  }
+}
+
+test long_tag_2_head_payload_fails_closed() fail {
+  cek_constant_v1.decode_constant_payload_v1(#"d80249010000000000000000") == builtin.i_data(
+    18446744073709551616,
+  )
+}
+
+test long_tag_3_head_payload_fails_closed() fail {
+  cek_constant_v1.decode_constant_payload_v1(#"d80349010000000000000000") == builtin.i_data(
+    -18446744073709551617,
+  )
+}
+
+test constructor_102_with_negative_index_payload_fails_closed() fail {
+  cek_constant_v1.decode_constant_payload_v1(#"d866822080") == builtin.constr_data(
+    0,
+    [],
+  )
+}
+
+test constructor_102_with_bignum_index_payload_fails_closed() fail {
+  cek_constant_v1.decode_constant_payload_v1(#"d86682c2410180") == builtin.constr_data(
+    1,
+    [],
+  )
+}
+
+// The direct payload bound (9,215 bytes) admits integers of up to 8,932
+// magnitude bytes: a tag 2 or 3 head over an indefinite byte string of 139
+// full 64-byte chunks and one 36-byte chunk.
+test largest_integers_within_the_direct_payload_bound_decode() {
+  let largest = math.pow2(71456) - 1
+  let positive = cbor.serialise(builtin.i_data(largest))
+  let negative = cbor.serialise(builtin.i_data(-largest - 1))
+  and {
+    bytearray.length(positive) == 9215,
+    bytearray.length(negative) == 9215,
+    cek_constant_v1.decode_constant_payload_v1(positive) == builtin.i_data(
+      largest,
+    ),
+    cek_constant_v1.decode_constant_payload_v1(negative) == builtin.i_data(
+      -largest - 1,
+    ),
+  }
+}
+
+// One more magnitude byte is still an integer the decoder reads; its payload
+// is over the bound, which refuses it before decoding.
+test integers_beyond_the_direct_payload_bound_still_decode() {
+  let beyond = math.pow2(71456)
+  let positive = cbor.serialise(builtin.i_data(beyond))
+  let negative = cbor.serialise(builtin.i_data(-beyond - 1))
+  and {
+    bytearray.length(positive) == 9216,
+    bytearray.length(negative) == 9216,
+    cbor_deserialise.deserialise(positive) == Some(builtin.i_data(beyond)),
+    cbor_deserialise.deserialise(negative) == Some(builtin.i_data(-beyond - 1)),
+  }
+}
+
+test integer_beyond_the_direct_payload_bound_fails_closed() fail {
+  let beyond = math.pow2(71456)
+  cek_constant_v1.decode_constant_payload_v1(
+    cbor.serialise(builtin.i_data(beyond)),
+  ) == builtin.i_data(beyond)
 }
