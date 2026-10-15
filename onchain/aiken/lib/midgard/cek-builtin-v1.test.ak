@@ -2142,3 +2142,55 @@ test bls_g1_compress_is_refused_at_the_library_tag() fail {
     compressed,
   )
 }
+
+// Variant E bounds a CInteger argument to [-2^262143, 2^262143 - 1] and a
+// CByteString argument to 65,536 B; out of bound, Cardano fails the call. Every
+// success arm of a bounded builtin reads its operands from revealed payloads
+// under the 9,215 B cap, so one past either bound is refused at that cap and
+// never certified. An arm that admits operands beyond the cap must bound them
+// itself. The roots are left empty: the cap is checked before them, and a
+// bignum payload cannot be decoded by today's reader.
+
+// integerToByteString stops at 8,192 B, so longer zero runs are appended.
+fn zero_run(length: Int) -> ByteArray {
+  if length <= 8192 {
+    bytearray.from_int_big_endian(0, length)
+  } else {
+    bytearray.concat(
+      bytearray.from_int_big_endian(0, 8192),
+      zero_run(length - 8192),
+    )
+  }
+}
+
+// 0x80 followed by 32,767 zero bytes: 2^(8 * 32767 + 7) = 2^262143.
+fn power_of_two_262143() -> Int {
+  bytearray.to_int_big_endian(bytearray.push(zero_run(32767), 128))
+}
+
+fn out_of_bound_integer_addition(operand: Int) -> Bool {
+  let arguments = [
+    integer(cbor.serialise(builtin.i_data(operand))),
+    integer(cbor.serialise(builtin.i_data(0))),
+  ]
+  cek_builtin_v1.verify_direct_builtin_v1(
+    0,
+    #"",
+    arguments,
+    integer(cbor.serialise(builtin.i_data(operand))),
+  )
+}
+
+test add_integer_success_is_refused_one_past_the_upper_bound() fail {
+  out_of_bound_integer_addition(power_of_two_262143())
+}
+
+test add_integer_success_is_refused_one_past_the_lower_bound() fail {
+  out_of_bound_integer_addition(-power_of_two_262143() - 1)
+}
+
+test append_bytes_success_is_refused_one_past_the_bound() fail {
+  let left = cbor.serialise(builtin.b_data(zero_run(65537)))
+  let arguments = [bytes(left), bytes(cbor.serialise(builtin.b_data(#"")))]
+  cek_builtin_v1.verify_direct_builtin_v1(10, #"", arguments, bytes(left))
+}

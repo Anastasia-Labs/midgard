@@ -2498,6 +2498,10 @@ pub fn verify_direct_bls_final_roots_v1(
   )
 }
 
+/// A proof limit, not a Cardano rule: over it a success or failure arm aborts.
+/// It also keeps every variant E out-of-bound argument (an integer outside
+/// [-2^262143, 2^262143 - 1], a byte string over 65,536 B) out of the success
+/// arms, so an arm that admits operands past it must check those bounds itself.
 pub const max_direct_builtin_revealed_payload_bytes = 9215
 
 fn revealed_constant_payload_bytes_v1(value: ValueWitnessV1) -> Int {
