@@ -4,6 +4,7 @@ import {
   type MidgardCekDataIntegerControl,
   MidgardCekDataIntegerStages,
 } from "./cek-data-integer.js";
+import { midgardCekBytesMemoryWords } from "./cek-memory-size.js";
 import {
   initialMidgardCekSourceBlobControl,
   type MidgardCekSourceBlobSpan,
@@ -22,21 +23,30 @@ export const measuredMagnitudeLength = (
   return null;
 };
 
-export const parseChunkedMagnitudeSyntax = (
+/** The widest measured chunk: a two-byte head and 64 bytes. */
+export const MIDGARD_CEK_DATA_INTEGER_MEASURE_BYTES = 66;
+
+const isAllOnes = (bytes: Uint8Array): boolean =>
+  bytes.every((byte) => byte === 0xff);
+
+/**
+ * Head check for an indefinite magnitude: the extent decodes to more than 64
+ * bytes and the first chunk is a full 64-byte chunk with a nonzero leading
+ * byte. Its memory comes from the measure stage, chunk by chunk.
+ */
+export const isCanonicalChunkedMagnitudeHead = (
   syntaxBytes: Uint8Array,
   sourceLength: number,
-): bigint | null => {
+): boolean => {
   const length = measuredMagnitudeLength(sourceLength - 1);
-  if (
-    length === null ||
-    length <= 64 ||
-    syntaxBytes[2] !== 0x58 ||
-    syntaxBytes[3] !== 64 ||
-    syntaxBytes[4] === undefined ||
-    syntaxBytes[4] === 0
-  )
-    return null;
-  return 4n + BigInt(length) + (syntaxBytes[4] >= 128 ? 1n : 0n);
+  return (
+    length !== null &&
+    length > 64 &&
+    syntaxBytes[2] === 0x58 &&
+    syntaxBytes[3] === 64 &&
+    syntaxBytes[4] !== undefined &&
+    syntaxBytes[4] !== 0
+  );
 };
 
 /** A measuring step consumes one authenticated header window. */
@@ -57,10 +67,17 @@ export const advanceChunkedMagnitude = (
     const magnitudeLength = measuredMagnitudeLength(control.sourceLength);
     if (magnitudeLength === null || magnitudeLength <= 64) return null;
     const sourceLength = control.sourceLength + 1;
+    // While a tag 3 magnitude stays all one bits, |n| = magnitude + 1 gains a
+    // word exactly when the magnitude fills whole words.
+    const carry = control.memory - 4n - BigInt(magnitudeLength);
     return {
       ...control,
       stage: MidgardCekDataIntegerStages.Blob,
       sourceLength,
+      memory:
+        4n +
+        midgardCekBytesMemoryWords(magnitudeLength) +
+        (carry === 1n && magnitudeLength % 8 === 0 ? 1n : 0n),
       blob: initialMidgardCekSourceBlobControl({
         sourceStart: control.sourceStart,
         sourceLength,
@@ -85,27 +102,35 @@ export const advanceChunkedMagnitude = (
     (isFirst && (length !== 64 || span.length < 3 || sourceBytes[2] === 0))
   )
     return null;
+  const measured = BigInt(Math.floor((control.sourceLength - 2) / 66) * 64);
+  const carry = isFirst ? control.memory : control.memory - 4n - measured;
+  const stillOnes =
+    carry === 1n &&
+    isAllOnes(sourceBytes.subarray(headerLength, headerLength + length));
   return {
     ...control,
     sourceLength: control.sourceLength + headerLength + length,
-    memory: isFirst
-      ? 4n + BigInt(length) + (sourceBytes[2]! >= 128 ? 1n : 0n)
-      : control.memory + BigInt(length),
+    memory: 4n + measured + BigInt(length) + (stillOnes ? 1n : 0n),
   };
 };
 
-/** The tag/opener have already been authenticated by the enclosing head. */
+/**
+ * The tag/opener have already been authenticated by the enclosing head.
+ * Before the first chunk the memory field holds the sign (1 for tag 3).
+ */
 export const initialMidgardCekDataIntegerMeasureControl = ({
   sourceStart,
+  negative,
 }: {
   readonly sourceStart: number;
+  readonly negative: boolean;
 }): MidgardCekDataIntegerControl => {
   const control = {
     version: MIDGARD_CEK_DATA_INTEGER_VERSION,
     stage: MidgardCekDataIntegerStages.Measure,
     sourceStart,
     sourceLength: 2,
-    memory: 0n,
+    memory: negative ? 1n : 0n,
     blob: null,
   } satisfies MidgardCekDataIntegerControl;
   if (!isWellFormedMidgardCekDataIntegerControl(control))
@@ -119,6 +144,12 @@ export const chunkedMagnitudeSpan = (
 ): MidgardCekSourceBlobSpan | null => {
   const absoluteStart = control.sourceStart + control.sourceLength;
   return absoluteStart < sourceEnd
-    ? { absoluteStart, length: Math.min(3, sourceEnd - absoluteStart) }
+    ? {
+        absoluteStart,
+        length: Math.min(
+          MIDGARD_CEK_DATA_INTEGER_MEASURE_BYTES,
+          sourceEnd - absoluteStart,
+        ),
+      }
     : null;
 };

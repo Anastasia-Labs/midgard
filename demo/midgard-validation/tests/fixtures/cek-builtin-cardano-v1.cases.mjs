@@ -175,25 +175,27 @@ const randomArguments = (tag, rng) => {
     case 54:
     case 57:
       return [g1(), g1()];
+    // BLS tags are Cardano's flat numbers (Plutus `Builtins.hs`): 58/65
+    // compress, 59/66 uncompress, 60/67 hashToGroup.
     case 55:
-    case 59:
+    case 58:
       return [g1()];
     case 56:
       return [integer(), g1()];
-    case 58:
-    case 65:
-      return [bytes(), bs(dst(rng))];
     case 60:
+    case 67:
+      return [bytes(), bs(dst(rng))];
+    case 59:
       return [bs(compressedCase(rng, G1_POOL, 48))];
     case 61:
     case 64:
       return [g2(), g2()];
     case 62:
-    case 66:
+    case 65:
       return [g2()];
     case 63:
       return [integer(), g2()];
-    case 67:
+    case 66:
       return [bs(compressedCase(rng, G2_POOL, 96))];
     case 68:
     case 69:

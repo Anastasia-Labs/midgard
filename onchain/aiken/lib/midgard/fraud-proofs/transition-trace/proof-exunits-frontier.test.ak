@@ -553,6 +553,14 @@ test deposit_arm_datum_256_bytes_fixture_only() {
   deposit_baseline(256)
 }
 
+test deposit_arm_datum_384_bytes() {
+  deposit_arm(384)
+}
+
+test deposit_arm_datum_384_bytes_fixture_only() {
+  deposit_baseline(384)
+}
+
 // ---------------------------------------------------------------------------
 // Neutralisation selectors
 //
@@ -588,6 +596,7 @@ test deposit_datum_cbor_lengths_are_exact() {
     sweep_datum_cbor_length(64) == 66,
     sweep_datum_cbor_length(128) == 134,
     sweep_datum_cbor_length(256) == 266,
+    sweep_datum_cbor_length(384) == 398,
   }
 }
 

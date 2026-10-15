@@ -23,6 +23,7 @@ import {
 } from "@harmoniclabs/uplc";
 import { describe, expect, it } from "vitest";
 
+import { MIDGARD_CEK_CARDANO_BLS_TAGS } from "../src/cek-builtin.cardano-tags.js";
 import {
   decodeMidgardCekConstantWitness,
   encodeMidgardCekPlutusData,
@@ -35,10 +36,22 @@ import { verifyMidgardCekCoreStep } from "../src/cek-machine.js";
 import { encodeMidgardCekCardanoFlatProgram } from "../src/cek-program.cardano-flat.js";
 import { buildMidgardCanonicalCekProgram } from "../src/cek-program.js";
 
-const compileIdentity = (): Buffer => compile(new Lambda(new UPLCVar(0)));
+// The identity script returns its context, a non-Unit value.
+const compileIdentity = (): Buffer =>
+  encodeMidgardCekCardanoFlatProgram(
+    new UPLCProgram([1, 1, 0], new Lambda(new UPLCVar(0))),
+  );
 
+// V3 scripts must return Unit, so each script's value is discarded for Unit.
+const toUnit = (term: UPLCTerm): UPLCTerm =>
+  new Application(new Lambda(UPLCConst.unit), term);
 const compile = (term: UPLCTerm): Buffer =>
-  encodeMidgardCekCardanoFlatProgram(new UPLCProgram([1, 1, 0], term));
+  encodeMidgardCekCardanoFlatProgram(
+    new UPLCProgram(
+      [1, 1, 0],
+      term instanceof Lambda ? new Lambda(toUnit(term.body)) : toUnit(term),
+    ),
+  );
 
 describe("V1 CEK trace generator", () => {
   it("derives the script-context application and proves every structural step", () => {
@@ -56,8 +69,9 @@ describe("V1 CEK trace generator", () => {
       maxSteps: 32,
     });
 
-    expect(execution.terminalState.mode).toBe("haltSuccess");
-    expect(execution.terminalState.focusRoot).toEqual(graph.contextValueRoot);
+    // Returning the context is a non-Unit halt: a provable error, code 8.
+    expect(execution.terminalState.mode).toBe("haltError");
+    expect(execution.terminalState.auxiliary).toBe(8n);
     expect(execution.steps.map((step) => step.witness.kind)).toEqual([
       "computeApplication",
       "computeLambda",
@@ -73,8 +87,8 @@ describe("V1 CEK trace generator", () => {
         verifyMidgardCekCoreStep(step.pre, step.post, step.witness),
       ),
     ).toBe(true);
-    expect(execution.terminalState.cpu).toBe(4n * 16_000n);
-    expect(execution.terminalState.memory).toBe(4n * 100n);
+    expect(execution.terminalState.cpu).toBe(100n + 4n * 16_000n);
+    expect(execution.terminalState.memory).toBe(100n + 4n * 100n);
   });
 
   it("fails closed at the declared trace-step bound", () => {
@@ -787,9 +801,15 @@ describe("V1 CEK trace generator", () => {
       new Application(
         new Application(
           Builtin.bls12_381_millerLoop,
-          new Application(Builtin.bls12_381_G1_uncompress, g1Bytes),
+          new Application(
+            new Builtin(MIDGARD_CEK_CARDANO_BLS_TAGS.g1Uncompress),
+            g1Bytes,
+          ),
         ),
-        new Application(Builtin.bls12_381_G2_uncompress, g2Bytes),
+        new Application(
+          new Builtin(MIDGARD_CEK_CARDANO_BLS_TAGS.g2Uncompress),
+          g2Bytes,
+        ),
       );
     const program = buildMidgardCanonicalCekProgram(
       compile(

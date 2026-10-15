@@ -124,12 +124,12 @@ test offchain_tx_out_semantic_roots_match() {
   expect Some(cardano) = script_context_v1.tx_out_summary_v1(output_cbor, False)
   expect Some(midgard) = script_context_v1.tx_out_summary_v1(output_cbor, True)
   and {
-    cardano.root == #"e1649a619efea4d8319405dae3455e5add966785c25f269e83fd0f15352693a7",
+    cardano.root == #"9a798cedaf0cebe75f5254e541a33d035eb24d281a387c878b60bdbc41c53c98",
     cardano.cbor_length == 133,
-    cardano.memory == 169,
-    midgard.root == #"65951e5653516caf350b2cd750bab349fbd1a48811a4c278859dd825868c2d32",
+    cardano.memory == 94,
+    midgard.root == #"83ec6cf75d0b365e4ffb51c25ee65faf7da53b7d6d21381c97aa651bba903085",
     midgard.cbor_length == 133,
-    midgard.memory == 169,
+    midgard.memory == 94,
   }
 }
 
@@ -149,20 +149,20 @@ test offchain_tx_in_info_semantic_roots_match() {
     True,
   )
   and {
-    cardano.root == #"66b39a3f329165f6ab15f249df38d5e8bc99230853ce5c16976b4780af1ed029",
+    cardano.root == #"a2be4f66f683151c175713c30809198758c71485bbd424f4acf903e692b733fa",
     cardano.cbor_length == 176,
-    cardano.memory == 218,
-    midgard.root == #"097c6693964ba9a7448e88f4e73fcaff44b7e41663d4cd3ba2b52ff3afbc3f8f",
+    cardano.memory == 115,
+    midgard.root == #"23ef033204c588b0f8c3903697e3790624a900fa373260b71497a61dbda7c970",
     midgard.cbor_length == 176,
-    midgard.memory == 218,
+    midgard.memory == 115,
   }
 }
 
 test authenticated_item_is_prepended_in_reverse_index_order() {
   let item = cek_data_v1.DataSummaryV1 {
-    root: #"66b39a3f329165f6ab15f249df38d5e8bc99230853ce5c16976b4780af1ed029",
+    root: #"a2be4f66f683151c175713c30809198758c71485bbd424f4acf903e692b733fa",
     cbor_length: 176,
-    memory: 218,
+    memory: 115,
   }
   let item_leaf = script_proof_v1.context_item_leaf_hash(
     0,
@@ -182,14 +182,14 @@ test authenticated_item_is_prepended_in_reverse_index_order() {
   )
   let list_summary = cek_data_v1.list_data_summary_v1(sequence)
   and {
-    item_leaf == #"d2b8985450e215893013635f7403ff16d8ee18a991747ca8428bfcf2ddb22546",
-    sequence.root == #"f5df83aaebfb31fabe0c3758026af9b87655bdfe0b07fe4755a47e8dd345cbca",
+    item_leaf == #"b6395a6f474de951d2adc3e426a469bf29cc68ac453d5a2cd04d0c02fe0b87f3",
+    sequence.root == #"2596fe839ffcf001f41e440fac793bda76c208bdae73571e979bc234a59e0572",
     sequence.length == 1,
     sequence.payload_cbor_length == 176,
-    sequence.memory == 218,
-    list_summary.root == #"7f0329cc3ab6a71c6452a353ca7328124ef675be5ec1f035856943453baa732e",
+    sequence.memory == 115,
+    list_summary.root == #"0fdf2dab6e580ecbeb984f90ce815506b825c57e6af1b250c2c471134a8d7b6f",
     list_summary.cbor_length == 178,
-    list_summary.memory == 222,
+    list_summary.memory == 119,
   }
 }
 
@@ -214,8 +214,8 @@ test raw_resolved_input_is_converted_and_prepended_in_one_bounded_step() {
   )
   let list_summary = cek_data_v1.list_data_summary_v1(sequence)
   and {
-    sequence.root == #"f5df83aaebfb31fabe0c3758026af9b87655bdfe0b07fe4755a47e8dd345cbca",
-    list_summary.root == #"7f0329cc3ab6a71c6452a353ca7328124ef675be5ec1f035856943453baa732e",
+    sequence.root == #"2596fe839ffcf001f41e440fac793bda76c208bdae73571e979bc234a59e0572",
+    list_summary.root == #"0fdf2dab6e580ecbeb984f90ce815506b825c57e6af1b250c2c471134a8d7b6f",
     script_context_v1.prepend_resolved_tx_in_info_v1(
       1,
       [validation_merkle_v1.FrontierPeak { height: 0, hash: leaf }],
@@ -246,9 +246,9 @@ test authenticated_output_is_converted_and_prepended_in_one_bounded_step() {
   and {
     sequence.length == 1,
     sequence.payload_cbor_length == 133,
-    sequence.memory == 169,
+    sequence.memory == 94,
     item.cbor_length == 135,
-    item.memory == 173,
+    item.memory == 98,
   }
 }
 

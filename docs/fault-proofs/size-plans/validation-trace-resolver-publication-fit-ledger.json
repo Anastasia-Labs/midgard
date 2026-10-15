@@ -1,7 +1,7 @@
 {
   "schemaVersion": "midgard-van-rossem-fit-ledger-v1",
   "category": "validationTraceDispute/semantic resolver publication",
-  "blueprintSha256": "6560354f6c85ea2318d496ee17f3f9305e6bf0187b5c0fa9052c6ad2932d79a8",
+  "blueprintSha256": "860d67c1f3dae577be9155c17edc17e9a26d6515c1a706ab6186f478b9fe0b56",
   "compilerVersion": "v1.1.23+5adf783",
   "entries": [
     {
@@ -440,13 +440,13 @@
       "name": "scriptIntegrityFinalize",
       "kind": "publication",
       "maximumShape": "parameterized semantic resolver publication",
-      "signedBytes": 11980,
+      "signedBytes": 12585,
       "memoryUnits": "0",
       "cpuUnits": "0",
-      "signedByteMargin": 4404,
+      "signedByteMargin": 3799,
       "memoryUnitMargin": "16500000",
       "cpuUnitMargin": "10000000000",
-      "publicationReserveMargin": 3892
+      "publicationReserveMargin": 3287
     },
     {
       "name": "scriptIntegrityWitnessSet",
@@ -1001,5 +1001,5 @@
       "publicationReserveMargin": 1490
     }
   ],
-  "ledgerSha256": "7a90219fa8c1af600f6ac7e8a02fc06ec066a8f340c4b84dd1999491b23aa92a"
+  "ledgerSha256": "83d787c47b43ef887e234daf3c54df65c6b7fbf414af7a24fd4c2b417794e515"
 }

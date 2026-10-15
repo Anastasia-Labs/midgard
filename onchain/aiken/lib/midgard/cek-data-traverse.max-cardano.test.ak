@@ -12,25 +12,25 @@ use midgard/validation_merkle_v1
 /// whose `--check` run is a required CI job. Do not hand-edit them; run
 /// `pnpm --dir demo/midgard-validation run fixtures:nested-boundary-aiken:sync`.
 const maximum_cardano_nested_data_pre_control =
-  #"8901061831193f2b193f2b5820b7a5df388bb7d14628a7a812e27842ee93277f25fec365aeeb9ff1d0b15215a3d87a80d87a80d87a80"
+  #"8901061831193f2b193f2b5820e5603cd0703a2ed101d2e1be2301f32d80eeb91eb35e711ea2325f60ca92fd87d87a80d87a80d87a80"
 
 const maximum_cardano_nested_data_post_control =
-  #"8901071831193f2b193f2b40d87a80d87a80d8799f83582077156535ea7ff621233f808b4995b94294f504a0dd78455593440e3d03ad2b6f193f2b19bd6bff"
+  #"8901071831193f2b193f2b40d87a80d87a80d8799f8358209280e07de3c5bc286b0265b75e826d68a05514ff2cb8d65fd141d077fbf85a5a193f2b19bd6bff"
 
 const maximum_cardano_nested_redeemer_pre_control =
-  #"89010600193e6e193e6e58209deb1e806bf050f95842da59778bfcae5b0e5450e319deca83c1417e98751e8cd87a80d87a80d87a80"
+  #"89010600193e6e193e6e582038f720bdc2c9479aa1ed2f4d6f1a14c334ed6d922a85c3e12a73d4ea2a1fc559d87a80d87a80d87a80"
 
 const maximum_cardano_nested_redeemer_post_control =
-  #"89010700193e6e193e6e40d87a80d87a80d8799f83582026ef420c9e803ba9d74f048b521bff6c99e6a6b4d8aefd077c300a8e31a4dc20193e6e19bb34ff"
+  #"89010700193e6e193e6e40d87a80d87a80d8799f835820fe754cfb63ff7759738576a50b4685d60350bfa5db47b65181658325dbcdb6cf193e6e19bb34ff"
 
 const maximum_cardano_nested_data_terminal_frame_child =
   #"f64559d8fa739e5dec6e218602ff2ebd0d24b477421f38b1872a2274454f84c7"
 
 const maximum_cardano_nested_data_terminal_frame =
-  #"8b010058203ba6e86f178af94b2662ab108e98320a100ccd6b2c517f0eee2ab72a2c562fcf020640000181820058209f62b20d5db17ead31389c3864fb7ea3a2f68726b21ef48452c670dab47a8a6601845820f64559d8fa739e5dec6e218602ff2ebd0d24b477421f38b1872a2274454f84c701193f2419bd67"
+  #"8b010058203ba6e86f178af94b2662ab108e98320a100ccd6b2c517f0eee2ab72a2c562fcf020540000181820058209f62b20d5db17ead31389c3864fb7ea3a2f68726b21ef48452c670dab47a8a6601845820f64559d8fa739e5dec6e218602ff2ebd0d24b477421f38b1872a2274454f84c701193f2419bd67"
 
 const maximum_cardano_nested_data_root =
-  #"77156535ea7ff621233f808b4995b94294f504a0dd78455593440e3d03ad2b6f"
+  #"9280e07de3c5bc286b0265b75e826d68a05514ff2cb8d65fd141d077fbf85a5a"
 
 const maximum_cardano_nested_data_cbor_length = 16171
 
@@ -40,10 +40,10 @@ const maximum_cardano_nested_redeemer_terminal_frame_child =
   #"0f7bb776751d400f727bf81b02cd7ed66457e144209eb5f9f90e2c6500fe1496"
 
 const maximum_cardano_nested_redeemer_terminal_frame =
-  #"8b010058203ba6e86f178af94b2662ab108e98320a100ccd6b2c517f0eee2ab72a2c562fcf0206400001818200582020de66bc0f1322c9c61884ce582d6698c9075e35c183a4264c6c7c27fbf1401b018458200f7bb776751d400f727bf81b02cd7ed66457e144209eb5f9f90e2c6500fe149601193e6719bb30"
+  #"8b010058203ba6e86f178af94b2662ab108e98320a100ccd6b2c517f0eee2ab72a2c562fcf0205400001818200582020de66bc0f1322c9c61884ce582d6698c9075e35c183a4264c6c7c27fbf1401b018458200f7bb776751d400f727bf81b02cd7ed66457e144209eb5f9f90e2c6500fe149601193e6719bb30"
 
 const maximum_cardano_nested_redeemer_root =
-  #"26ef420c9e803ba9d74f048b521bff6c99e6a6b4d8aefd077c300a8e31a4dc20"
+  #"fe754cfb63ff7759738576a50b4685d60350bfa5db47b65181658325dbcdb6cf"
 
 const maximum_cardano_nested_redeemer_cbor_length = 15982
 
@@ -153,7 +153,7 @@ fn terminal_frame(sequence_root: ByteArray) -> cek_data_frame_v1.DataFrameV1 {
     constructor: 0,
     constructor_cbor_root: #"3ba6e86f178af94b2662ab108e98320a100ccd6b2c517f0eee2ab72a2c562fcf",
     constructor_cbor_length: 2,
-    constructor_memory: 6,
+    constructor_memory: 5,
     tail: #"",
     expected_children: 0,
     child_count: 1,
@@ -181,7 +181,7 @@ fn redeemer_terminal_frame(
     constructor: 0,
     constructor_cbor_root: #"3ba6e86f178af94b2662ab108e98320a100ccd6b2c517f0eee2ab72a2c562fcf",
     constructor_cbor_length: 2,
-    constructor_memory: 6,
+    constructor_memory: 5,
     tail: #"",
     expected_children: 0,
     child_count: 1,

@@ -271,7 +271,10 @@ export const stepHeadScalar = ({
     return advanced({
       ...control,
       stage: MidgardCekDataTraverseStages.Integer,
-      integer: initialMidgardCekDataIntegerMeasureControl({ sourceStart }),
+      integer: initialMidgardCekDataIntegerMeasureControl({
+        sourceStart,
+        negative: first === 0xc3,
+      }),
     });
   }
   const itemLength = integerItemLength(bytes, 0);

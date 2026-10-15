@@ -1,7 +1,7 @@
 {
   "schemaVersion": "midgard-van-rossem-fit-ledger-v1",
   "category": "validationTraceDispute/CEK material tasks",
-  "blueprintSha256": "3ddd74900b586e3b471e2c668a70dc46e1e864566e3fc5f620d98b274bf5f463",
+  "blueprintSha256": "860d67c1f3dae577be9155c17edc17e9a26d6515c1a706ab6186f478b9fe0b56",
   "compilerVersion": "v1.1.23+5adf783",
   "entries": [
     {
@@ -9,11 +9,11 @@
       "kind": "lifecycle",
       "maximumShape": "data",
       "signedBytes": 9980,
-      "memoryUnits": "7679311",
-      "cpuUnits": "2360765283",
+      "memoryUnits": "7525713",
+      "cpuUnits": "2324435071",
       "signedByteMargin": 6404,
-      "memoryUnitMargin": "8820689",
-      "cpuUnitMargin": "7639234717",
+      "memoryUnitMargin": "8974287",
+      "cpuUnitMargin": "7675564929",
       "publicationReserveMargin": null
     },
     {
@@ -21,61 +21,61 @@
       "kind": "lifecycle",
       "maximumShape": "program",
       "signedBytes": 14052,
-      "memoryUnits": "6877123",
-      "cpuUnits": "2058441056",
+      "memoryUnits": "6751557",
+      "cpuUnits": "2032673814",
       "signedByteMargin": 2332,
-      "memoryUnitMargin": "9622877",
-      "cpuUnitMargin": "7941558944",
+      "memoryUnitMargin": "9748443",
+      "cpuUnitMargin": "7967326186",
       "publicationReserveMargin": null
     },
     {
       "name": "data/spend-publication",
       "kind": "publication",
       "maximumShape": "data",
-      "signedBytes": 7802,
+      "signedBytes": 8078,
       "memoryUnits": "0",
       "cpuUnits": "0",
-      "signedByteMargin": 8582,
+      "signedByteMargin": 8306,
       "memoryUnitMargin": "16500000",
       "cpuUnitMargin": "10000000000",
-      "publicationReserveMargin": 8070
+      "publicationReserveMargin": 7794
     },
     {
       "name": "data/yield-publication",
       "kind": "publication",
       "maximumShape": "data",
-      "signedBytes": 8270,
+      "signedBytes": 8450,
       "memoryUnits": "0",
       "cpuUnits": "0",
-      "signedByteMargin": 8114,
+      "signedByteMargin": 7934,
       "memoryUnitMargin": "16500000",
       "cpuUnitMargin": "10000000000",
-      "publicationReserveMargin": 7602
+      "publicationReserveMargin": 7422
     },
     {
       "name": "program/spend-publication",
       "kind": "publication",
       "maximumShape": "program",
-      "signedBytes": 7805,
+      "signedBytes": 8081,
       "memoryUnits": "0",
       "cpuUnits": "0",
-      "signedByteMargin": 8579,
+      "signedByteMargin": 8303,
       "memoryUnitMargin": "16500000",
       "cpuUnitMargin": "10000000000",
-      "publicationReserveMargin": 8067
+      "publicationReserveMargin": 7791
     },
     {
       "name": "program/yield-publication",
       "kind": "publication",
       "maximumShape": "program",
-      "signedBytes": 7797,
+      "signedBytes": 7977,
       "memoryUnits": "0",
       "cpuUnits": "0",
-      "signedByteMargin": 8587,
+      "signedByteMargin": 8407,
       "memoryUnitMargin": "16500000",
       "cpuUnitMargin": "10000000000",
-      "publicationReserveMargin": 8075
+      "publicationReserveMargin": 7895
     }
   ],
-  "ledgerSha256": "dad6de718ae4c8d45db3caf93988f730e98e570a096d73f886d2498478c8b635"
+  "ledgerSha256": "138229a4ce1d7ca816bc25d5cb94ebdfe6e34849a3cc9077d5cf42b3bbbcfcee"
 }

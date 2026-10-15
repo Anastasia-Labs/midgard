@@ -1,19 +1,19 @@
 {
   "schemaVersion": "midgard-van-rossem-fit-ledger-v1",
   "category": "eventHistoryAdmission",
-  "blueprintSha256": "16c62e69f25019514f5286fc50a08bf367ee379f680455455e99140e3d450ecd",
+  "blueprintSha256": "860d67c1f3dae577be9155c17edc17e9a26d6515c1a706ab6186f478b9fe0b56",
   "compilerVersion": "aiken v1.1.23+5adf783",
   "entries": [
     {
       "name": "InsertOrder flat list at the node bound",
       "kind": "lifecycle",
       "maximumShape": "flat list, 1024 payload nodes, 1110 payload bytes",
-      "signedBytes": 1202,
-      "memoryUnits": "5298095",
-      "cpuUnits": "3902172978",
-      "signedByteMargin": 15182,
-      "memoryUnitMargin": "11201905",
-      "cpuUnitMargin": "6097827022",
+      "signedBytes": 1266,
+      "memoryUnits": "5288689",
+      "cpuUnits": "3898435606",
+      "signedByteMargin": 15118,
+      "memoryUnitMargin": "11211311",
+      "cpuUnitMargin": "6101564394",
       "publicationReserveMargin": null
     },
     {
@@ -33,11 +33,11 @@
       "kind": "lifecycle",
       "maximumShape": "long bytes, 1024 payload nodes, 14253 payload bytes",
       "signedBytes": 1266,
-      "memoryUnits": "5294877",
-      "cpuUnits": "4344059709",
+      "memoryUnits": "5295801",
+      "cpuUnits": "4344405625",
       "signedByteMargin": 15118,
-      "memoryUnitMargin": "11205123",
-      "cpuUnitMargin": "5655940291",
+      "memoryUnitMargin": "11204199",
+      "cpuUnitMargin": "5655594375",
       "publicationReserveMargin": null
     },
     {
@@ -45,11 +45,11 @@
       "kind": "lifecycle",
       "maximumShape": "nested constructors, 1024 payload nodes, 4144 payload bytes",
       "signedBytes": 1266,
-      "memoryUnits": "7293629",
-      "cpuUnits": "4077898886",
+      "memoryUnits": "7295773",
+      "cpuUnits": "4078477217",
       "signedByteMargin": 15118,
-      "memoryUnitMargin": "9206371",
-      "cpuUnitMargin": "5922101114",
+      "memoryUnitMargin": "9204227",
+      "cpuUnitMargin": "5921522783",
       "publicationReserveMargin": null
     },
     {
@@ -57,23 +57,23 @@
       "kind": "lifecycle",
       "maximumShape": "nested lists, 1024 payload nodes, 2120 payload bytes",
       "signedBytes": 1266,
-      "memoryUnits": "7071117",
-      "cpuUnits": "3904763042",
+      "memoryUnits": "7068049",
+      "cpuUnits": "3903838795",
       "signedByteMargin": 15118,
-      "memoryUnitMargin": "9428883",
-      "cpuUnitMargin": "6095236958",
+      "memoryUnitMargin": "9431951",
+      "cpuUnitMargin": "6096161205",
       "publicationReserveMargin": null
     },
     {
       "name": "InsertOrder wide map at the node bound",
       "kind": "lifecycle",
       "maximumShape": "wide map, 1024 payload nodes, 1112 payload bytes",
-      "signedBytes": 1206,
-      "memoryUnits": "7026939",
-      "cpuUnits": "4526945808",
-      "signedByteMargin": 15178,
-      "memoryUnitMargin": "9473061",
-      "cpuUnitMargin": "5473054192",
+      "signedBytes": 1270,
+      "memoryUnits": "7025813",
+      "cpuUnits": "4525635261",
+      "signedByteMargin": 15114,
+      "memoryUnitMargin": "9474187",
+      "cpuUnitMargin": "5474364739",
       "publicationReserveMargin": null
     },
     {
@@ -81,11 +81,11 @@
       "kind": "lifecycle",
       "maximumShape": "flat list, 1024 payload nodes, 1110 payload bytes",
       "signedBytes": 983,
-      "memoryUnits": "5163930",
-      "cpuUnits": "3849784939",
+      "memoryUnits": "5163468",
+      "cpuUnits": "3849611981",
       "signedByteMargin": 15401,
-      "memoryUnitMargin": "11336070",
-      "cpuUnitMargin": "6150215061",
+      "memoryUnitMargin": "11336532",
+      "cpuUnitMargin": "6150388019",
       "publicationReserveMargin": null
     },
     {
@@ -93,11 +93,11 @@
       "kind": "lifecycle",
       "maximumShape": "long bytes, 1024 payload nodes, 14253 payload bytes",
       "signedBytes": 983,
-      "memoryUnits": "5167974",
-      "cpuUnits": "4294830711",
+      "memoryUnits": "5167512",
+      "cpuUnits": "4294657753",
       "signedByteMargin": 15401,
-      "memoryUnitMargin": "11332026",
-      "cpuUnitMargin": "5705169289",
+      "memoryUnitMargin": "11332488",
+      "cpuUnitMargin": "5705342247",
       "publicationReserveMargin": null
     },
     {
@@ -105,11 +105,11 @@
       "kind": "lifecycle",
       "maximumShape": "nested constructors, 1024 payload nodes, 4144 payload bytes",
       "signedBytes": 983,
-      "memoryUnits": "7174544",
-      "cpuUnits": "4030923755",
+      "memoryUnits": "7193414",
+      "cpuUnits": "4036642195",
       "signedByteMargin": 15401,
-      "memoryUnitMargin": "9325456",
-      "cpuUnitMargin": "5969076245",
+      "memoryUnitMargin": "9306586",
+      "cpuUnitMargin": "5963357805",
       "publicationReserveMargin": null
     },
     {
@@ -117,11 +117,11 @@
       "kind": "lifecycle",
       "maximumShape": "nested lists, 1024 payload nodes, 2120 payload bytes",
       "signedBytes": 983,
-      "memoryUnits": "6949426",
-      "cpuUnits": "3857036622",
+      "memoryUnits": "6946358",
+      "cpuUnits": "3856112375",
       "signedByteMargin": 15401,
-      "memoryUnitMargin": "9550574",
-      "cpuUnitMargin": "6142963378",
+      "memoryUnitMargin": "9553642",
+      "cpuUnitMargin": "6143887625",
       "publicationReserveMargin": null
     },
     {
@@ -129,13 +129,13 @@
       "kind": "lifecycle",
       "maximumShape": "wide map, 1024 payload nodes, 1112 payload bytes",
       "signedBytes": 987,
-      "memoryUnits": "6913788",
-      "cpuUnits": "4480854540",
+      "memoryUnits": "6907652",
+      "cpuUnits": "4479006046",
       "signedByteMargin": 15397,
-      "memoryUnitMargin": "9586212",
-      "cpuUnitMargin": "5519145460",
+      "memoryUnitMargin": "9592348",
+      "cpuUnitMargin": "5520993954",
       "publicationReserveMargin": null
     }
   ],
-  "ledgerSha256": "c7cd688a85e39d1530ce3cf880faf9de64b74aef10d8e93436b077c2df02aa4f"
+  "ledgerSha256": "dfca118fcfb8825fe889b213c09729d31ea9fce3c15173be0b3f2fa704982b21"
 }

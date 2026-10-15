@@ -67,7 +67,7 @@ import {
   stepFieldPreimage,
 } from "./validation-machine.v1-purpose-kind-to-redeemer-pointer-mapping.js";
 import {
-  buildAcceptingIdentityProgram,
+  buildAcceptingUnitProgram,
   buildNonterminatingSelfApplicationProgram,
   context,
   validateBoundaryAbiAndCollectAuxiliaryKinds,
@@ -405,7 +405,7 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
 
   it("emits the exact incremental context and CEK trace for PlutusV3", async () => {
     const spent = outRefFromByte(0x1d);
-    const program = buildAcceptingIdentityProgram();
+    const program = buildAcceptingUnitProgram();
     const script = plutusV3ScriptWitness(program.envelopeCbor);
     const scriptHash = hashScriptWitness(script);
     const spentOutput = makeProtectedScriptOutput(
@@ -808,7 +808,7 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
   it("executes an authenticated PlutusV3 reference script from a reference input", async () => {
     const spent = outRefFromByte(0x1e);
     const reference = outRefFromByte(0x1f);
-    const program = buildAcceptingIdentityProgram();
+    const program = buildAcceptingUnitProgram();
     const script = plutusV3ScriptWitness(program.envelopeCbor);
     const scriptHash = hashScriptWitness(script);
     const spentOutput = makeProtectedScriptOutput(
@@ -931,7 +931,7 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
     "executes scripted $operation through the exact mint context and CEK trace",
     async ({ quantity }) => {
       const spent = outRefFromByte(quantity > 0n ? 0x31 : 0x32);
-      const program = buildAcceptingIdentityProgram();
+      const program = buildAcceptingUnitProgram();
       const script = plutusV3ScriptWitness(program.envelopeCbor);
       const policyId = Buffer.from(hashScriptWitness(script), "hex");
       const assetName = Buffer.from("aced", "hex");
@@ -1024,7 +1024,7 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
   it("executes a MidgardV1 protected-output receiving script", async () => {
     const spent = outRefFromByte(0x33);
     const spentOutput = makeOutput(FUNDED_OUTPUT_LOVELACE);
-    const program = buildAcceptingIdentityProgram();
+    const program = buildAcceptingUnitProgram();
     const script = {
       language: "MidgardV1" as const,
       scriptBytes: program.envelopeCbor,
@@ -1127,7 +1127,7 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
     const spent = outRefFromByte(0x34);
     const spentOutput = makeOutput(FUNDED_OUTPUT_LOVELACE);
     const output = makeOutput(FUNDED_OUTPUT_LOVELACE);
-    const program = buildAcceptingIdentityProgram();
+    const program = buildAcceptingUnitProgram();
     const script = plutusV3ScriptWitness(program.envelopeCbor);
     const observerHash = Buffer.from(hashScriptWitness(script), "hex");
     const transaction = makeNativeTx({

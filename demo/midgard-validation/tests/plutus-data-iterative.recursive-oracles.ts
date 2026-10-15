@@ -1,6 +1,6 @@
 /**
  * The recursive functions the iterative Plutus Data code replaced, kept here
- * verbatim as differential oracles (and nowhere in production source), plus
+ * as differential oracles (and nowhere in production source), plus
  * an explicit-stack structural comparison for harmonic `Data`.
  */
 import {
@@ -17,7 +17,6 @@ import {
   encodeCardanoInteger,
   encodeSmallCborArgument,
 } from "../src/cek-constant.semantic-data.js";
-import { midgardCekIntegerMemorySize } from "../src/plutus-data-iterative.memory.js";
 import { isPlutusDataMap } from "../src/plutus-data-narrowing.js";
 
 const encodeCardanoList = (items: readonly Buffer[]): Buffer =>
@@ -73,10 +72,22 @@ export const recursiveEncodeMidgardCekPlutusData = (data: Data): Buffer => {
   throw new Error("V1 constant contains unknown Plutus Data");
 };
 
-const byteLengthOrOne = (bytes: Uint8Array): bigint =>
-  BigInt(Math.max(1, bytes.length));
+// Cardano's ExMemory sizes, written out independently of production: a byte
+// string is its 8-byte words and an integer its 64-bit magnitude words, each
+// at least one.
+const byteStringWords = (bytes: Uint8Array): bigint =>
+  bytes.length === 0 ? 1n : BigInt(Math.floor((bytes.length - 1) / 8) + 1);
 
-/** The recursive `midgardCekDataMemorySize` before the iterative rewrite. */
+const integerWords = (value: bigint): bigint => {
+  const magnitude = value < 0n ? -value : value;
+  if (magnitude === 0n) return 1n;
+  return BigInt(Math.floor((magnitude.toString(2).length - 1) / 64) + 1);
+};
+
+/**
+ * The recursive `midgardCekDataMemorySize` before the iterative rewrite, with
+ * leaf sizes in Cardano's words.
+ */
 export const recursiveMidgardCekDataMemorySize = (value: Data): bigint => {
   if (value instanceof DataConstr) {
     return (
@@ -109,10 +120,10 @@ export const recursiveMidgardCekDataMemorySize = (value: Data): bigint => {
     );
   }
   if (value instanceof DataI) {
-    return 4n + midgardCekIntegerMemorySize(value.int);
+    return 4n + integerWords(value.int);
   }
   if (value instanceof DataB) {
-    return 4n + byteLengthOrOne(value.bytes);
+    return 4n + byteStringWords(value.bytes);
   }
   throw new Error("V1 data constant has an unknown node");
 };

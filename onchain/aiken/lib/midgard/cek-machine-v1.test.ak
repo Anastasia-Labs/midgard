@@ -36,7 +36,8 @@ test canonical_machine_mode_and_error_tags_match_typescript() {
       cek_machine_v1.error_invalid_case_scrutinee,
       cek_machine_v1.error_case_branch_missing,
       cek_machine_v1.error_builtin_failure,
-    ] == [0, 1, 2, 3, 4, 5, 6, 7],
+      cek_machine_v1.error_non_unit_halt,
+    ] == [0, 1, 2, 3, 4, 5, 6, 7, 8],
   }
 }
 
@@ -569,8 +570,8 @@ test direct_builtin_executes_with_exact_semantics_and_budget() {
     cek_proof_v1.empty_environment_root_v1,
     cek_proof_v1.empty_continuation_root_v1,
     0,
-    101728,
-    103,
+    101308,
+    102,
   )
   and {
     cek_machine_v1.verify_core_step_v1(
@@ -886,6 +887,108 @@ test nonconstant_empty_stack_halts_as_error() {
         body: h_01,
         environment: cek_proof_v1.empty_environment_root_v1,
       },
+    },
+  )
+}
+
+fn halting_constant(
+  type_cbor: ByteArray,
+) -> cek_machine_v1.MachineValueWitnessV1 {
+  cek_machine_v1.ConstantValue {
+    type_root: cek_proof_v1.hash_blob_chunk_v1(type_cbor),
+    payload_root: h_02,
+    payload_length: 1,
+    semantic_root: h_03,
+    memory: 1,
+  }
+}
+
+fn halting_constant_root(type_cbor: ByteArray) -> ByteArray {
+  cek_proof_v1.hash_constant_value_v1(
+    cek_proof_v1.hash_blob_chunk_v1(type_cbor),
+    h_02,
+    1,
+    h_03,
+    1,
+  )
+}
+
+fn empty_stack(focus_root: ByteArray) -> cek_machine_v1.MachineStateV1 {
+  state(
+    cek_machine_v1.mode_return,
+    focus_root,
+    cek_proof_v1.empty_environment_root_v1,
+    cek_proof_v1.empty_continuation_root_v1,
+    0,
+    16100,
+    200,
+  )
+}
+
+fn halted(
+  mode: Int,
+  focus_root: ByteArray,
+  auxiliary: Int,
+) -> cek_machine_v1.MachineStateV1 {
+  state(
+    mode,
+    focus_root,
+    cek_proof_v1.empty_environment_root_v1,
+    cek_proof_v1.empty_continuation_root_v1,
+    auxiliary,
+    16100,
+    200,
+  )
+}
+
+test unit_constant_on_empty_stack_halts_successfully() {
+  let root = halting_constant_root(#"9f03ff")
+  cek_machine_v1.verify_core_step_v1(
+    empty_stack(root),
+    halted(cek_machine_v1.mode_halt_success, root, 0),
+    cek_machine_v1.ReturnEmptyContinuation {
+      value: halting_constant(#"9f03ff"),
+    },
+  )
+}
+
+test non_unit_constant_on_empty_stack_halts_as_error() {
+  let root = halting_constant_root(#"9f00ff")
+  cek_machine_v1.verify_core_step_v1(
+    empty_stack(root),
+    halted(
+      cek_machine_v1.mode_halt_error,
+      cek_proof_v1.hash_error_term_v1(),
+      cek_machine_v1.error_non_unit_halt,
+    ),
+    cek_machine_v1.ReturnEmptyContinuation {
+      value: halting_constant(#"9f00ff"),
+    },
+  )
+}
+
+test non_unit_constant_cannot_claim_success() fail {
+  let root = halting_constant_root(#"9f04ff")
+  cek_machine_v1.verify_core_step_v1(
+    empty_stack(root),
+    halted(cek_machine_v1.mode_halt_success, root, 0),
+    cek_machine_v1.ReturnEmptyContinuation {
+      value: halting_constant(#"9f04ff"),
+    },
+  )
+}
+
+test unit_constant_cannot_claim_failure() fail {
+  let root = halting_constant_root(#"9f03ff")
+  cek_machine_v1.verify_core_step_v1(
+    empty_stack(root),
+    halted(
+      cek_machine_v1.mode_halt_error,
+      cek_proof_v1.hash_error_term_v1(),
+      cek_machine_v1.error_non_unit_halt,
+    ),
+    cek_machine_v1.ReturnEmptyContinuation {
+      value: halting_constant(#"9f03ff"),
     },
   )
 }
@@ -1324,16 +1427,16 @@ const empty_map_step_pre =
   #"18ce67eb56a8d08bd9ebf5ead6c90b938a0f129ac35d67cf234a3da6c25106ff"
 
 const narrow_unmap_step_cbor =
-  #"d8799fd8799f03005820ad578ff37b0e0997b877836bce3bb95a585307f584ee4283515e74bfa1c11ec158200b986961db44e461e897c3b03109b7f23a5270e9de71c608e518a153d57a24a758206ea68031c2800dfd45b3732e9fd615f19c97b062659999d3ad6ba181af284ddb001a0001f400190320ffd8799f0800582016bcaac883d2e351622eaf95064d6225d2ba65ec2c9244c8216eae6123a3327658200b986961db44e461e897c3b03109b7f23a5270e9de71c608e518a153d57a24a758206ea68031c2800dfd45b3732e9fd615f19c97b062659999d3ad6ba181af284ddb001a0001f400190320ffd905199f182b9fd8799fd8799f439f08ff4fa2014a2a2a2a2a2a2a2a2a2a2a0203ffffffd8799fd8799f469f05060808ff58189fd8799f014a2a2a2a2a2a2a2a2a2a2affd8799f0203ffffffffd8799fd87b9f0258207f0b53a382ba4d740072bd848b43ba84da5a9378251525b023c19ffd2fc034ec0f1821ffd87a80d8799fd8799f58206102804ee42d85218a31c7dda323bccc1ad4b31a9f3f3880449bdfca06a307dc010558206a157bf5ce93d07c5a59dce62821eba629fb8e3575c5d8ad9a4ee13342b9af250b0e58205770570155d35aedd507d7c4daa9303465bbbf69b8e9a0b604a9c0ee6dcdab61020e181dffffd87c9f025820bd51d81d895064134d8646595d0d2fed86beec8533146d3bc0c74c7211c6f1e218181829ffd8799fd8799f582027b5c54b5b7982aa9796d5b64906da1b91aa41077e3f976625245f9dda2f1635101758208d0163902197d2399d06cd3a2ec5b0a22f6b5b3c67cff731eaa39663f9cc487802161825ffffd87a80ffffff"
+  #"d8799fd8799f0300582016504e44a288afd8002a5b8b44b9191097d237e03b10de09b14ebe8e9d228e8058200b986961db44e461e897c3b03109b7f23a5270e9de71c608e518a153d57a24a758206ea68031c2800dfd45b3732e9fd615f19c97b062659999d3ad6ba181af284ddb001a0001f400190320ffd8799f080058204a8ab8ae31836f4239f5d018d81125cfb214e857b1e6ee0326b99460105acabf58200b986961db44e461e897c3b03109b7f23a5270e9de71c608e518a153d57a24a758206ea68031c2800dfd45b3732e9fd615f19c97b062659999d3ad6ba181af284ddb001a0001f400190320ffd905199f182b9fd8799fd8799f439f08ff4fa2014a2a2a2a2a2a2a2a2a2a2a0203ffffffd8799fd8799f469f05060808ff58189fd8799f014a2a2a2a2a2a2a2a2a2a2affd8799f0203ffffffffd8799fd87b9f025820ac1cd89458558012f90892d3d43b92fbd3f610974a3108e081934f831f4c425a0f1819ffd87a80d8799fd8799f58206102804ee42d85218a31c7dda323bccc1ad4b31a9f3f3880449bdfca06a307dc01055820e0bba82d0b2ad96a5efad29ab9763fbf0a3276fcb73c8b288c5270dd2fa96af10b0658205770570155d35aedd507d7c4daa9303465bbbf69b8e9a0b604a9c0ee6dcdab61020e15ffffd87c9f025820f47d771f1eb7ab91761289df5560ab8bb7ebefe249f5c15c5d27e1aaf919a13d18181821ffd8799fd8799f5820e7cb0281b7ad475f49d3ee60f57e4abca072907fd0a93158d085e8c5bd59f130100f58208d0163902197d2399d06cd3a2ec5b0a22f6b5b3c67cff731eaa39663f9cc48780216181dffffd87a80ffffff"
 
 const narrow_unmap_step_pre =
-  #"9a07040d5c1117e72eb7205713aed14e80a2b2c041f15ccbf9fe6da620f4a6c4"
+  #"f2310335249c4f7af4acd3e6b51c3b224f7c01560e0ea5b1b1909fc95de4bdc8"
 
 const narrow_map_step_cbor =
-  #"d8799fd8799f0300582093bdef27562393576c7d08a738ea3f21bbb37a5e2541bdb304451c456c22b0d458200b986961db44e461e897c3b03109b7f23a5270e9de71c608e518a153d57a24a7582053163c160dcec15695dabe0bccf6afc7f0e12db206392865db2feb0497ac838b001a0002542f190340ffd8799f080058204df8c150dca87799f4c14e096b03eaf1d409287b51d3e04ea1fb11d6fa53fe1f58200b986961db44e461e897c3b03109b7f23a5270e9de71c608e518a153d57a24a7582053163c160dcec15695dabe0bccf6afc7f0e12db206392865db2feb0497ac838b001a0002542f190340ffd905199f18269fd8799fd8799f469f05060808ff58189fd8799f014a2a2a2a2a2a2a2a2a2a2affd8799f0203ffffffffffd8799fd8799f439f08ff4fa2014a2a2a2a2a2a2a2a2a2a2a0203ffffd8799fd87c9f025820bd51d81d895064134d8646595d0d2fed86beec8533146d3bc0c74c7211c6f1e218181829ffd8799fd8799f582027b5c54b5b7982aa9796d5b64906da1b91aa41077e3f976625245f9dda2f1635101758208d0163902197d2399d06cd3a2ec5b0a22f6b5b3c67cff731eaa39663f9cc487802161825ffffd87a80d87b9f0258207f0b53a382ba4d740072bd848b43ba84da5a9378251525b023c19ffd2fc034ec0f1821ffd87a80d8799fd8799f58206102804ee42d85218a31c7dda323bccc1ad4b31a9f3f3880449bdfca06a307dc010558206a157bf5ce93d07c5a59dce62821eba629fb8e3575c5d8ad9a4ee13342b9af250b0e58205770570155d35aedd507d7c4daa9303465bbbf69b8e9a0b604a9c0ee6dcdab61020e181dffffffffff"
+  #"d8799fd8799f03005820fcd7490abda56e39d50d02d8250e8da7af469a6eef1d847733bd1278a17e67a058200b986961db44e461e897c3b03109b7f23a5270e9de71c608e518a153d57a24a7582053163c160dcec15695dabe0bccf6afc7f0e12db206392865db2feb0497ac838b001a0002542f190340ffd8799f08005820ead2bc9eba8700b988b17be81d4e26443fcf2a95b5ec5d3f75af3449e95fb74b58200b986961db44e461e897c3b03109b7f23a5270e9de71c608e518a153d57a24a7582053163c160dcec15695dabe0bccf6afc7f0e12db206392865db2feb0497ac838b001a0002542f190340ffd905199f18269fd8799fd8799f469f05060808ff58189fd8799f014a2a2a2a2a2a2a2a2a2a2affd8799f0203ffffffffffd8799fd8799f439f08ff4fa2014a2a2a2a2a2a2a2a2a2a2a0203ffffd8799fd87c9f025820f47d771f1eb7ab91761289df5560ab8bb7ebefe249f5c15c5d27e1aaf919a13d18181821ffd8799fd8799f5820e7cb0281b7ad475f49d3ee60f57e4abca072907fd0a93158d085e8c5bd59f130100f58208d0163902197d2399d06cd3a2ec5b0a22f6b5b3c67cff731eaa39663f9cc48780216181dffffd87a80d87b9f025820ac1cd89458558012f90892d3d43b92fbd3f610974a3108e081934f831f4c425a0f1819ffd87a80d8799fd8799f58206102804ee42d85218a31c7dda323bccc1ad4b31a9f3f3880449bdfca06a307dc01055820e0bba82d0b2ad96a5efad29ab9763fbf0a3276fcb73c8b288c5270dd2fa96af10b0658205770570155d35aedd507d7c4daa9303465bbbf69b8e9a0b604a9c0ee6dcdab61020e15ffffffffff"
 
 const narrow_map_step_pre =
-  #"eb3fc40544dd958605634539161030268cfcbce4cf7ad5fd24df6a2a1e5eff95"
+  #"0540191233e968cc14f6c079b436508bc513737d52de2241ed5dff8e0fa3f70c"
 
 fn decode_core_step(
   evidence_cbor: ByteArray,
@@ -1558,8 +1661,8 @@ test ill_typed_division_by_zero_is_a_type_failure_step() {
     type_failure_step(4, bytes_dividend_by_zero()),
     type_failure_step(5, bytes_dividend_by_zero()),
     type_failure_step(6, bytes_dividend_by_zero()),
-    type_failure_step(58, integer_message_hash_to_group()),
-    type_failure_step(65, integer_message_hash_to_group()),
+    type_failure_step(60, integer_message_hash_to_group()),
+    type_failure_step(67, integer_message_hash_to_group()),
   }
 }
 
@@ -1576,11 +1679,11 @@ test ill_typed_mod_by_zero_is_not_a_known_failure_step() fail {
 }
 
 test ill_typed_g1_hash_to_group_is_not_a_known_failure_step() fail {
-  charged_known_failure_step(58, integer_message_hash_to_group())
+  charged_known_failure_step(60, integer_message_hash_to_group())
 }
 
 test ill_typed_g2_hash_to_group_is_not_a_known_failure_step() fail {
-  charged_known_failure_step(65, integer_message_hash_to_group())
+  charged_known_failure_step(67, integer_message_hash_to_group())
 }
 
 fn wide_message_hash_to_group() -> List<cek_constant_v1.ConstantWitnessV1> {
@@ -1593,8 +1696,8 @@ fn one_word_message_budget() -> cek_cost_v1.BuiltinBudgetV1 {
     wide_message_hash_to_group(),
     cek_builtin_v1.ConstantValue,
   )
-  expect [_, dst_size] = cek_builtin_v1.builtin_cost_sizes_v1(58, direct)
-  cek_cost_v1.builtin_budget_v1(58, [1, dst_size])
+  expect [_, dst_size] = cek_builtin_v1.builtin_cost_sizes_v1(60, direct)
+  cek_cost_v1.builtin_budget_v1(60, [1, dst_size])
 }
 
 // The revealed message is wider than one word; that is the size the failure
@@ -1604,12 +1707,12 @@ test revealed_hash_to_group_failure_pays_the_revealed_size() {
     wide_message_hash_to_group(),
     cek_builtin_v1.ConstantValue,
   )
-  let charged = cek_builtin_v1.direct_builtin_budget_v1(58, direct)
-  expect [message_size, _] = cek_builtin_v1.builtin_cost_sizes_v1(58, direct)
+  let charged = cek_builtin_v1.direct_builtin_budget_v1(60, direct)
+  expect [message_size, _] = cek_builtin_v1.builtin_cost_sizes_v1(60, direct)
   and {
     message_size > 1,
     charged != one_word_message_budget(),
-    known_failure_step(58, wide_message_hash_to_group(), direct, charged),
+    known_failure_step(60, wide_message_hash_to_group(), direct, charged),
   }
 }
 
@@ -1617,7 +1720,7 @@ test revealed_hash_to_group_failure_pays_the_revealed_size() {
 test opaque_hash_to_group_failure_is_not_a_known_failure_step() fail {
   expect [message, dst] = wide_message_hash_to_group()
   known_failure_step(
-    58,
+    60,
     wide_message_hash_to_group(),
     [
       cek_builtin_v1.OpaqueValue(cek_constant_v1.constant_root_v1(message)),

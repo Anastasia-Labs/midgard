@@ -16,7 +16,14 @@ export {
   type MidgardCekDirectValueWitness,
   type MidgardCekRuntimeValueWitness,
 } from "./cek-builtin.argument-kinds.js";
-export { evaluateMidgardCekDirectBuiltin } from "./cek-builtin.evaluate-reference-builtin.js";
+export {
+  harmonicBuiltinTag,
+  MIDGARD_CEK_CARDANO_BLS_TAGS,
+} from "./cek-builtin.cardano-tags.js";
+export {
+  evaluateMidgardCekDirectBuiltin,
+  semanticizeMidgardCekDirectConstant,
+} from "./cek-builtin.evaluate-reference-builtin.js";
 export {
   hashMidgardCekDirectArguments,
   hashMidgardCekDirectValueWitness,

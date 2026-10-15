@@ -1858,15 +1858,17 @@ export const completeValidationTrace = (
               }),
               { kind: "cekContextSeed", control: finalControl },
             );
+            const start = exactExecution.initialState; // spends startup cost
+            executionBudget.cpu = completedCpu + start.cpu;
+            executionBudget.memory = completedMemory + start.memory;
             const contextWitness = evaluation.graph.constantWitnesses.get(
               Buffer.from(evaluation.graph.contextValueRoot).toString("hex"),
             );
             if (
-              !Buffer.from(exactExecution.initialState.focusRoot).equals(
+              !Buffer.from(start.focusRoot).equals(
                 Buffer.from(evaluation.graph.root),
               ) ||
-              exactExecution.initialState.executionIndex !==
-                BigInt(executionIndex) ||
+              start.executionIndex !== BigInt(executionIndex) ||
               contextWitness?.kind !== "semanticConstant" ||
               !sameSummary(
                 contextWitness.witness.payload,
