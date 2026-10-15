@@ -25,11 +25,15 @@
           packages = [
             toolchainPkgs.nodejs_22
             toolchainPkgs.pnpm_9
+            toolchainPkgs.cargo
+            toolchainPkgs.rustc
             pinnedGo
           ];
           shellHook = ''
             echo "node `${toolchainPkgs.nodejs_22}/bin/node --version`"
             echo "pnpm `${toolchainPkgs.pnpm_9}/bin/pnpm --version`"
+            ${toolchainPkgs.cargo}/bin/cargo --version
+            ${toolchainPkgs.rustc}/bin/rustc --version
             test "$(go version | awk '{print $3}')" = "go1.26.5"
             echo "go `go version`"
           '';
