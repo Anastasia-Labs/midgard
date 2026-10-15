@@ -1031,8 +1031,8 @@
   },
   {
     "file": "midgard-node/tests/mpf-audit-merge-permit-emulator.test.ts",
-    "max": 870,
-    "reason": "Hoisted or module-scoped Vitest mocks own this test file’s import/evaluation boundary. Moving registrations between modules changes mock timing; retain the suite with its mocks and local fixtures. I1 (+2): its node programs run under the journal of a process with no follower. N5 (+2): a merge folds only a journal bound to its landed header's parent, so the second block's journal is bound again before its merge. N1H (-11): a driver recompute holding the follower write gate replaces the history owner's recovery and its lease expiry. N1U (+2): the suite installs the emulator follower host first."
+    "max": 877,
+    "reason": "Hoisted or module-scoped Vitest mocks own this test file’s import/evaluation boundary. Moving registrations between modules changes mock timing; retain the suite with its mocks and local fixtures. I1 (+2): its node programs run under the journal of a process with no follower. N5 (+2): a merge folds only a journal bound to its landed header's parent, so the second block's journal is bound again before its merge. N1H (-11): a driver recompute holding the follower write gate replaces the history owner's recovery and its lease expiry. N1U (+2): the suite installs the emulator follower host first. BT (+7): merge maturity reads the committed node block time from the state-queue tail."
   },
   {
     "file": "midgard-node/tests/mpf-commit-candidate-probe-artifacts.test.ts",
