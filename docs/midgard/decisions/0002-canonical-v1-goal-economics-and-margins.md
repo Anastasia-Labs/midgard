@@ -75,11 +75,13 @@ The operator-directory node holds one slashable bond tranche. It is the sole
 source of the protocol reward and penalty; wallet balancing, change, or the
 submitting wallet is not a reward-routing rule. Registration and every transfer
 between directory lists create a node holding exactly `required_bond`, or
-`required_bond - inactivity_slashing_penalty` after a forced retirement. An
-operator may add lovelace to its own node afterwards, so a fraud slash accepts
+`required_bond - inactivity_slashing_penalty` after a forced retirement. Later
+directory updates may leave more lovelace in a node, so a fraud slash accepts
 any node holding at least `required_bond - inactivity_slashing_penalty`.
 Every deployment profile sets `required_bond` to
-`slashing_penalty + fraud_prover_reward`.
+`slashing_penalty + fraud_prover_reward`, with
+`inactivity_slashing_penalty < slashing_penalty`. Each transaction carries at
+most one operator slash, and no availability-challenge timeout.
 
 - The successful fraud-slash transaction pays exactly `fraud_prover_reward` as
   an ADA-only output to the enterprise address whose payment credential is the
@@ -92,9 +94,8 @@ Every deployment profile sets `required_bond` to
   `required_bond - inactivity_slashing_penalty` and pays a fee of exactly
   `slashing_penalty - inactivity_slashing_penalty`. Across the two slash
   transactions, the total penalty is therefore exactly `slashing_penalty`.
-  Lovelace the operator added to that node raises the fee, up to
-  `slashing_penalty`, so the total exceeds `slashing_penalty` only by lovelace
-  the operator added itself.
+  Lovelace added to that node raises the fee, up to `slashing_penalty`, so
+  the total exceeds `slashing_penalty` only by lovelace added to the node.
 - Whatever the node holds beyond the fee and the reward is unconstrained
   change; the SDK returns it to the continued directory anchor. The cap keeps
   the collateral a slasher posts, which grows with the fee, independent of
