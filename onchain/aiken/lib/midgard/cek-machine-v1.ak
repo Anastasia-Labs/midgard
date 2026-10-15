@@ -705,16 +705,21 @@ pub fn verify_compute_step(
   witness: CoreStepWitnessV1,
 ) -> Bool {
   when witness is {
+    // The lookup walks `index - 1` environment nodes; index 0 is never bound.
     ComputeVariable { index } -> and {
         pre.focus_root == cek_proof_v1.hash_variable_term_v1(index),
-        post == exact_compute_successor(
-          pre,
-          mode_lookup,
-          pre.environment_root,
-          pre.environment_root,
-          pre.continuation_root,
-          index,
-        ),
+        post == if index == 0 {
+          error_successor(pre, error_unbound_variable)
+        } else {
+          exact_compute_successor(
+            pre,
+            mode_lookup,
+            pre.environment_root,
+            pre.environment_root,
+            pre.continuation_root,
+            index - 1,
+          )
+        },
       }
     ComputeConstant { value } -> {
       let value_root = cek_constant_v1.constant_root_v1(value)

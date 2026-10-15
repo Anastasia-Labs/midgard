@@ -503,13 +503,15 @@ export class StructuralExecutor {
       case "variable":
         this.record(
           { kind: "computeVariable", index: term.index },
-          exactComputeSuccessor(pre, {
-            mode: "lookup",
-            focusRoot: pre.environmentRoot,
-            environmentRoot: pre.environmentRoot,
-            continuationRoot: pre.continuationRoot,
-            auxiliary: term.index,
-          }),
+          term.index === 0n // Cardano index 0 is never bound
+            ? errorSuccessor(pre, MidgardCekErrorCodes.UnboundVariable)
+            : exactComputeSuccessor(pre, {
+                mode: "lookup",
+                focusRoot: pre.environmentRoot,
+                environmentRoot: pre.environmentRoot,
+                continuationRoot: pre.continuationRoot,
+                auxiliary: term.index - 1n,
+              }),
         );
         return;
       case "constant":

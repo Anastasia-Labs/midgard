@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import {
   decodeMidgardCekProgramMaterialSidecar,
   encodeMidgardCekProgramMaterialSidecar,
+  hashMidgardCekTermNode,
   hashMidgardVersionedScript,
   verifyMidgardCekProgramMaterialBundle,
 } from "@al-ft/midgard-core";
@@ -128,11 +129,18 @@ describe("canonical V1 CEK programs", () => {
     expect(first.envelope.materialByteLength).toBeLessThanOrEqual(
       BigInt(MIDGARD_CEK_MAX_PROGRAM_MATERIAL_BYTES),
     );
+    // The innermost bound variable is Cardano's flat index 1.
+    const variableRoot = (index: bigint): string =>
+      Buffer.from(hashMidgardCekTermNode({ kind: "variable", index })).toString(
+        "hex",
+      );
+    expect(first.material.has(variableRoot(1n))).toBe(true);
+    expect(first.material.has(variableRoot(0n))).toBe(false);
     expect(Buffer.from(first.envelope.termRoot).toString("hex")).toBe(
-      "f4906930d1dd9b7010019a55cf5c3eafacd451473a633aeb28d836cab4410ba3",
+      "450a63254c66d0c6c79ebcdd458b77410fd0ad65f43280d7e6461c136f96644c",
     );
     expect(Buffer.from(first.envelopeHash).toString("hex")).toBe(
-      "0dfd4adfb26d0a893123a345ed89b4dfb0dbb8fb5fb3a4db5585d9ff31934cca",
+      "d0945d0668aac4a4b757212ecae7a1e49cbeb52903a873086afc68db30b78c1a",
     );
   });
 

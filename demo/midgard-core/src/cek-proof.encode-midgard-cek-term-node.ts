@@ -267,7 +267,7 @@ export const encodeMidgardCekTermNode = (node: MidgardCekTermNode): Buffer => {
     case "variable":
       return encodeCbor([
         MidgardCekTermTags.Variable,
-        uint32(node.index, "cek_term.variable.index"),
+        uint64(node.index, "cek_term.variable.index"),
       ]);
     case "delay":
       return encodeCbor([

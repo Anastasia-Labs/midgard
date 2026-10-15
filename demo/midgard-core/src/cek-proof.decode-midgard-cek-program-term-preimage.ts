@@ -33,7 +33,7 @@ export const decodeMidgardCekProgramTermPreimage = (
         tag.nextOffset,
         "cek_program_term.variable.index",
       );
-      uint32(index.value, "cek_program_term.variable.index");
+      uint64(index.value, "cek_program_term.variable.index");
       assertPreimageConsumed(preimage, index.nextOffset, "CEK variable term");
       return { kind: "variable", index: index.value };
     }

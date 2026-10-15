@@ -250,7 +250,12 @@ export const buildMidgardCanonicalCekProgram = (
 
   const addTerm = (term: UPLCTerm): Hash32 => {
     if (term instanceof UPLCVar) {
-      return addTermNode({ kind: "variable", index: BigInt(term.deBruijn) });
+      // harmonic stores Cardano's flat index minus one; the material carries
+      // Cardano's index, where 0 is never bound.
+      return addTermNode({
+        kind: "variable",
+        index: BigInt(term.deBruijn) + 1n,
+      });
     }
     if (term instanceof Delay) {
       return addTermNode({

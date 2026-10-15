@@ -143,11 +143,13 @@ fn hash_term_preimage(preimage: ByteArray) -> ByteArray {
     |> blake2b_256
 }
 
+/// `index` is Cardano's flat de Bruijn index, a `Word64`; index 0 is never
+/// bound.
 pub fn hash_variable_term_v1(index: Int) -> ByteArray {
   hash_term_preimage(
     #"82"
       |> bytearray.concat(cbor.serialise(0))
-      |> bytearray.concat(cbor.serialise(expect_uint32(index))),
+      |> bytearray.concat(cbor.serialise(expect_uint64(index))),
   )
 }
 
@@ -767,7 +769,7 @@ pub fn inspect_program_term_material_v1(
           if data_is_integer(tag_data) && data_is_integer(index_data) {
             let tag = builtin.un_i_data(tag_data)
             let index = builtin.un_i_data(index_data)
-            if tag == 0 && index >= 0 && index <= 4294967295 && encode_program_term_material_v1(
+            if tag == 0 && index >= 0 && index <= 18446744073709551615 && encode_program_term_material_v1(
               VariableTerm { index },
             ) == preimage {
               Some(VariableTerm { index })
