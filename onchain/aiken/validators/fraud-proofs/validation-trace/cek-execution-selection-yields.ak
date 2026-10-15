@@ -4,6 +4,7 @@ use cardano/assets.{PolicyId}
 use cardano/transaction.{Transaction}
 use midgard/cek_selection_witness.{decode_selection_auxiliary}
 use midgard/cek_selection_yield as selection
+use midgard/script_decode_v1
 use midgard/validation_machine/cek.{
   authenticate_cek_execution_selection, verify_cek_execution_selection_successor,
 }
@@ -46,17 +47,11 @@ validator successor(
     let cek = cek_witness_control_v1(action.transition)
     // A native selection, and a PlutusV3 receive purpose (refused before
     // any program is read), name no record: index -1.
-    let record = if action.record_reference_input_index < 0 {
-      None
-    } else {
-      Some(
-        selection.decode_record_at(
-          tx.reference_inputs,
-          action.record_reference_input_index,
-          script_decode_policy_id,
-        ),
-      )
-    }
+    let record = script_decode_v1.record_at_v1(
+      tx.reference_inputs,
+      action.record_reference_input_index,
+      script_decode_policy_id,
+    )
     verify_cek_execution_selection_successor(
       state.resolution.pre_state,
       action.transition,

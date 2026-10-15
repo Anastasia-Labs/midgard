@@ -16,8 +16,10 @@
 use aiken/builtin
 use aiken/cbor
 use aiken/collection/list
-use aiken/crypto.{blake2b_256}
+use aiken/crypto.{blake2b_224, blake2b_256}
 use aiken/primitive/bytearray
+use cardano/assets.{PolicyId}
+use cardano/transaction.{InlineDatum, Input, Output}
 use midgard/cek_constant_v1.{
   ArrayConstant, BlsG1Constant, BlsG2Constant, BlsMillerLoopResultConstant,
   BooleanConstant, ByteStringConstant, ConstantTypeV1, DataConstant,
@@ -100,6 +102,65 @@ pub type ScriptDecodeRecordV1 {
     phase2_class: Int,
   }
   Refused { script_hash: ByteArray, language: Int, class: Int, bit_offset: Int }
+}
+
+/// The decode record at reference input `index`, or None for a negative
+/// index. The record token of this family is named by the script hash the
+/// record is for, and the family only mints it onto an unspendable output
+/// carrying that record, so holding the token named by the record's own hash
+/// authenticates the record.
+pub fn record_at_v1(
+  reference_inputs: List<Input>,
+  index: Int,
+  script_decode_policy_id: PolicyId,
+) -> Option<ScriptDecodeRecordV1> {
+  if index < 0 {
+    None
+  } else {
+    expect
+        Some(Input {
+          output: Output { datum: InlineDatum(raw_record), value, .. },
+          ..
+        })
+      = list.at(reference_inputs, index)
+    expect record: ScriptDecodeRecordV1 = raw_record
+    expect
+      assets.quantity_of(
+        value,
+        script_decode_policy_id,
+        record_script_hash_v1(record),
+      ) == 1
+    Some(record)
+  }
+}
+
+/// The script hash a record is for.
+pub fn record_script_hash_v1(record: ScriptDecodeRecordV1) -> ByteArray {
+  when record is {
+    Decoded { script_hash, .. } -> script_hash
+    Refused { script_hash, .. } -> script_hash
+  }
+}
+
+/// The class the decode record gives a Plutus script item: 0 when the record
+/// is `Decoded`, its refusal class when `Refused`. The record must be the one
+/// for the item's script hash, the hash of the language tag and the payload
+/// running from `payload_offset` to the item end.
+pub fn item_record_class_v1(
+  item: ByteArray,
+  payload_offset: Int,
+  language_tag: Int,
+  record: Option<ScriptDecodeRecordV1>,
+) -> Int {
+  expect Some(found) = record
+  expect
+    record_script_hash_v1(found) == blake2b_224(
+      bytearray.push(bytearray.drop(item, payload_offset), language_tag),
+    )
+  when found is {
+    Decoded { .. } -> 0
+    Refused { class, .. } -> class
+  }
 }
 
 // ## Stack frames

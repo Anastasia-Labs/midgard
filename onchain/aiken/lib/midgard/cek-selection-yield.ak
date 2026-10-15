@@ -2,12 +2,10 @@ use aiken/builtin
 use aiken/collection/list
 use aiken/crypto.{ScriptHash}
 use cardano/address.{Script}
-use cardano/assets.{PolicyId}
 use cardano/transaction.{
   InlineDatum, Input, Output, OutputReference, Redeemer, ScriptPurpose, Spend,
 }
 use midgard/computation_thread as ct
-use midgard/script_decode_v1.{Decoded, Refused, ScriptDecodeRecordV1}
 use midgard/validation_machine/machine_types.{ValidationOneStepWitnessV1}
 use midgard/validation_semantic_v1.{Datum}
 
@@ -64,28 +62,4 @@ pub fn unique_dispatch(
   expect redeemer: SpendRedeemer = raw_redeemer
   expect ct.Continue(action) = redeemer
   (datum, action, output_reference)
-}
-
-/// The decode record at a reference input. The record token of the decode
-/// family is named by the script hash the record is for, and the family only
-/// mints it onto an unspendable output carrying that record, so holding the
-/// token named by the record's own hash authenticates the record.
-pub fn decode_record_at(
-  reference_inputs: List<Input>,
-  index: Int,
-  script_decode_policy_id: PolicyId,
-) -> ScriptDecodeRecordV1 {
-  expect
-      Some(Input {
-        output: Output { datum: InlineDatum(raw_record), value, .. },
-        ..
-      })
-    = list.at(reference_inputs, index)
-  expect record: ScriptDecodeRecordV1 = raw_record
-  let script_hash = when record is {
-    Decoded { script_hash, .. } -> script_hash
-    Refused { script_hash, .. } -> script_hash
-  }
-  expect assets.quantity_of(value, script_decode_policy_id, script_hash) == 1
-  record
 }

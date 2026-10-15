@@ -11,11 +11,13 @@ use midgard/fraud_proofs/output_reference_script_decoding/step_04.{
   Args, Datum, SpendRedeemer,
 }
 use midgard/native_tx_field_access_v1.{field_item_at}
+use midgard/script_decode_v1.{record_at_v1}
 
 validator main(
   step_05_hash: ScriptHash,
   computation_thread_policy: PolicyId,
   certificate_policy: PolicyId,
+  script_decode_policy: PolicyId,
 ) {
   spend(
     datum: Option<Datum>,
@@ -33,7 +35,12 @@ validator main(
           computation_thread_mint_redeemer_index,
           tx,
         )
-      ct.Continue(Args { input_index, output_index, opening }) -> {
+      ct.Continue(Args {
+        input_index,
+        output_index,
+        opening,
+        record_reference_input_index,
+      }) -> {
         let Transaction { inputs, outputs, reference_inputs, .. } = tx
         expect Some(step_datum) = datum
         let _own_hash, _name, _prover, input_state, next_hash, next_state <- continue(
@@ -61,6 +68,11 @@ validator main(
           state,
           field_item_at(view, state.bound.output_index),
           step_05_hash,
+          record_at_v1(
+            reference_inputs,
+            record_reference_input_index,
+            script_decode_policy,
+          ),
         )
         let expected: Data = scan
         and {
