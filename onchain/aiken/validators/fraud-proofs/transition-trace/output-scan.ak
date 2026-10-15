@@ -10,7 +10,7 @@ validator scan_output(dispatcher: ScriptHash) {
   withdraw(_redeemer: Data, _credential: Credential, tx: Transaction) {
     let (datum, args) = delegation.dispatch(dispatcher, tx.inputs, tx.redeemers)
     expect Some(state) = datum.data
-    expect state.phase == 2 && state.kind != 2
+    expect state.phase == 2
     let bytes = delegation.output_bytes(state, args, tx.reference_inputs)
     let control = if state.scan_cbor == #"" {
       scan.initial_control_v1()

@@ -17,6 +17,7 @@
  * every other publication-fit suite uses, asserts the real 512-byte reserve on
  * each, and — under `MIDGARD_WRITE_FIT_LEDGER=1` — pins the measurements to
  * `docs/fault-proofs/size-plans/validation-trace-resolver-publication-fit-ledger.json`.
+ * Every run checks that the checked-in ledger names exactly these resolvers.
  * `buildVanRossemFitLedger` throws on any row without a positive Van Rossem
  * margin and on any publication row past the 15,872-byte target, so a
  * regression fails a test instead of surviving to delivery.
@@ -136,5 +137,12 @@ describe("validation-trace resolver publication", () => {
     if (process.env.MIDGARD_WRITE_FIT_LEDGER === "1") {
       await writeVanRossemFitLedger(ledgerPath, ledger);
     }
+    // The checked-in ledger names exactly the resolvers measured here.
+    const checkedIn = JSON.parse(readFileSync(ledgerPath, "utf8")) as {
+      entries: readonly { name: string }[];
+    };
+    expect(checkedIn.entries.map(({ name }) => name).sort()).toEqual(
+      [...SEMANTIC_RESOLVER_NAMES].sort(),
+    );
   }, 1_800_000);
 });

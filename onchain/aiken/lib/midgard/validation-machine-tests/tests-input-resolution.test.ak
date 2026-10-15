@@ -1096,8 +1096,8 @@ test phase_a_native_scripts_proves_an_unsatisfied_script_is_an_exact_no_op() {
   let rejection_code = rejection_reason_v1.WitnessNativeScriptFalse {
     script_index: 0,
   }
-  // An exact rejection also clears the ledger delta to the empty frontier
-  // commitment; `exact_rejection_post` is the canonical successor shape.
+  // An exact rejection ends the machine with the rejected verdict and its
+  // reason's code; `exact_rejection_post` is the canonical successor shape.
   let terminal = exact_rejection_post(finalize_pre, rejection_code)
   and {
     vm_phase_a_native_scripts.verify_phase_a_native_item_semantics_v1(

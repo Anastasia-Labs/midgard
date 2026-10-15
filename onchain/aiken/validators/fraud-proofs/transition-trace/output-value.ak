@@ -15,7 +15,7 @@ validator value_output(dispatcher: ScriptHash) {
   ) {
     let (datum, args) = delegation.dispatch(dispatcher, tx.inputs, tx.redeemers)
     expect Some(state) = datum.data
-    expect state.phase == 7 && state.kind != 2
+    expect state.phase == 7
     expect !list.is_empty(witnesses) && list.length(witnesses) <= 8
     let facts = scan.decode_control_v1(state.scan_cbor)
     let control = if state.value_cbor == #"" {
