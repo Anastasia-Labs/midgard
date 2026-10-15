@@ -168,6 +168,8 @@
     "fixtures:plutus-data-cbor-decoding-v1:check": "pnpm run build && node scripts/generate-plutus-data-cbor-decoding-v1-goldens.mjs --check",
     "fixtures:cek-program-large-integer:sync": "pnpm run build && node scripts/generate-cek-program-large-integer-fixture.mjs",
     "fixtures:cek-program-large-integer:check": "pnpm run build && node scripts/generate-cek-program-large-integer-fixture.mjs --check",
+    "fixtures:cek-cost-v1-aiken:sync": "pnpm run build && node scripts/generate-cek-cost-v1-aiken-goldens.mjs",
+    "fixtures:cek-cost-v1-aiken:check": "pnpm run build && node scripts/generate-cek-cost-v1-aiken-goldens.mjs --check",
     "fixtures:cek-builtin-cardano-v1:sync": "node scripts/generate-cek-builtin-cardano-v1-goldens.mjs",
     "fixtures:cek-builtin-cardano-v1:check": "node scripts/generate-cek-builtin-cardano-v1-goldens.mjs --check",
     "test": "vitest run",
