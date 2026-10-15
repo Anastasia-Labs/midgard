@@ -233,11 +233,13 @@ describe("independent validation event replay", () => {
       // again when the CEK witness began carrying its execution's purpose key,
       // when the program began returning Unit (PV 11 halt rule), when each
       // execution began with Cardano's 100 cpu / 100 memory startup cost, and
-      // when the term material began carrying Cardano's 1-based variable index.
+      // when the term material began carrying Cardano's 1-based variable index,
+      // and when the CEK witness and context control began naming the program
+      // by its script hash.
       const expectedTraceHash =
         executionCount === 1
-          ? "1a269ae2cec6a1e57ac8e7b250d544f540d080d96ebeb67cf139a3c83015b734"
-          : "fd8c1e4a4c610e0b3caa8a7529ce9424aac38a862036503f277544d6e0dafc06";
+          ? "e7363a84f8fe6779762b715442545bbcb72fee3aa889c5716257cd0269c13f17"
+          : "2281685a9ec447163708a2321172fd920865bdbba4df4570de0c86c1c062d884";
       expect(createHash("sha256").update(traceBytes).digest("hex")).toBe(
         expectedTraceHash,
       );

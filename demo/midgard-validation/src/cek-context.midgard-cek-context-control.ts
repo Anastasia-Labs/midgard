@@ -51,6 +51,14 @@ export const requiredHash32 = (field: string, value: Uint8Array): Buffer => {
   return exact;
 };
 
+export const requiredScriptHash = (value: Uint8Array): Buffer => {
+  const exact = bytes(value);
+  if (exact.length !== 28) {
+    throw new Error("CEK program script hash must be exactly 28 bytes");
+  }
+  return exact;
+};
+
 export const emptyMidgardCekDataSummary = (): MidgardCekDataSummary => ({
   root: Buffer.alloc(0),
   cborLength: 0n,
@@ -325,7 +333,6 @@ export type MidgardCekContextControl = {
   readonly stage: number;
   readonly languageTag: 3 | 128;
   readonly programTermRoot: Buffer;
-  readonly programEnvelopeHash: Buffer;
   readonly purposeKind: 0 | 1 | 2 | 3;
   readonly purposeIndex: bigint;
   readonly scriptHash: Buffer;
