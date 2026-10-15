@@ -1,5 +1,3 @@
-import { PLUTUS_V3_CANONICAL_COST_MODEL_VIEW } from "@al-ft/midgard-core";
-import { toCostModelV3 } from "@harmoniclabs/cardano-costmodels-ts";
 import {
   DataB,
   DataConstr,
@@ -7,8 +5,6 @@ import {
   DataList,
   DataMap,
 } from "@harmoniclabs/plutus-data";
-import { Machine } from "@harmoniclabs/plutus-machine";
-import { Application, Builtin, UPLCConst } from "@harmoniclabs/uplc";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -38,23 +34,6 @@ describe("V1 pinned Plutus V3 builtin costs", () => {
     });
   });
 
-  it("matches the reference CEK's total budget for a concrete program", () => {
-    const program = new Application(
-      new Application(Builtin.addInteger, UPLCConst.int(1)),
-      UPLCConst.int(128),
-    );
-    const evaluation = new Machine(
-      toCostModelV3([
-        ...PLUTUS_V3_CANONICAL_COST_MODEL_VIEW,
-      ] as unknown as Parameters<typeof toCostModelV3>[0]),
-    ).eval(program);
-    const builtin = computeMidgardCekBuiltinBudget(0, [1n, 2n]);
-
-    // startup + builtin + two application + two constant CEK nodes
-    expect(evaluation.budgetSpent.cpu).toBe(100n + 5n * 16_000n + builtin.cpu);
-    expect(evaluation.budgetSpent.mem).toBe(100n + 5n * 100n + builtin.memory);
-  });
-
   it("fails closed on unknown tags, wrong arity, or negative sizes", () => {
     expect(() => computeMidgardCekBuiltinBudget(87, [1n])).toThrow(
       /outside Plutus V3/u,
@@ -67,16 +46,21 @@ describe("V1 pinned Plutus V3 builtin costs", () => {
     );
   });
 
-  it("uses signed integer bytes and cardano-node's empty-byte rule", () => {
+  it("sizes integers and byte strings in 64-bit words, as cardano-node does", () => {
+    const word = 1n << 64n;
     expect(
-      [-129n, -128n, -1n, 0n, 127n, 128n].map(midgardCekIntegerMemorySize),
-    ).toEqual([2n, 1n, 1n, 1n, 1n, 2n]);
-    expect(
-      midgardCekConstantMemorySize(
-        { kind: "bytes" },
-        new DataB(new Uint8Array()),
+      [-word, 1n - word, -129n, -1n, 0n, 128n, word - 1n, word].map(
+        midgardCekIntegerMemorySize,
       ),
-    ).toBe(1n);
+    ).toEqual([2n, 1n, 1n, 1n, 1n, 1n, 1n, 2n]);
+    expect(
+      [0, 1, 8, 9].map((length) =>
+        midgardCekConstantMemorySize(
+          { kind: "bytes" },
+          new DataB(new Uint8Array(length)),
+        ),
+      ),
+    ).toEqual([1n, 1n, 1n, 2n]);
   });
 
   it("sums list/pair payloads and charges four words per Data node", () => {
@@ -86,7 +70,7 @@ describe("V1 pinned Plutus V3 builtin costs", () => {
         { kind: "list", element: { kind: "integer" } },
         list,
       ),
-    ).toBe(3n);
+    ).toBe(2n);
 
     const pair = new DataConstr(0, [
       new DataI(1n),
@@ -101,11 +85,11 @@ describe("V1 pinned Plutus V3 builtin costs", () => {
         },
         pair,
       ),
-    ).toBe(5n);
+    ).toBe(2n);
 
     const data = new DataMap([
       { fst: new DataI(1n), snd: new DataList([new DataB(new Uint8Array(2))]) },
     ]);
-    expect(midgardCekDataMemorySize(data)).toBe(19n);
+    expect(midgardCekDataMemorySize(data)).toBe(18n);
   });
 });

@@ -1191,8 +1191,8 @@
   },
   {
     "file": "midgard-validation/tests/cek-executor.test.ts",
-    "max": 824,
-    "reason": "Retained test registration “V1 CEK trace generator” (783 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+    "max": 837,
+    "reason": "Retained test registration “V1 CEK trace generator” (783 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor. PV 11 halt rule (+13): compiled fixtures halt with Unit and the bare identity pins error 8."
   },
   {
     "file": "midgard-validation/tests/data-breadth-boundary.test.ts",
@@ -1216,8 +1216,8 @@
   },
   {
     "file": "midgard-validation/tests/phase-b.test.ts",
-    "max": 897,
-    "reason": "Retained test registration “phase B validation” (712 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor. T161 (+143): adds Phase B input-resolution cases to the retained registration (a referencer before a later spender of its reference, accepted order equal to applied order, a producer before its referencer, a reference/spend cycle). Integrated DA correctness branches; exact final source line count. Combined F1/RLO source measured at integration."
+    "max": 903,
+    "reason": "Retained test registration “phase B validation” (712 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor. T161 (+143): adds Phase B input-resolution cases to the retained registration (a referencer before a later spender of its reference, accepted order equal to applied order, a producer before its referencer, a reference/spend cycle). Integrated DA correctness branches; exact final source line count. Combined F1/RLO source measured at integration. PV 11 halt rule (+6): the V1 envelope program halts with Unit."
   },
   {
     "file": "midgard-validation/tests/plutus-data-unary-depth-boundary.test.ts",
