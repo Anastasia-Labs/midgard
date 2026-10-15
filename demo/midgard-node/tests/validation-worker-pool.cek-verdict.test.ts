@@ -7,8 +7,10 @@ import {
 import { encodeMidgardCekPlutusData } from "@al-ft/midgard-validation/cek-constant";
 import { DataI } from "@harmoniclabs/plutus-data";
 import {
+  Application,
   ErrorUPLC,
   Lambda,
+  UPLCConst,
   UPLCEncoder,
   UPLCProgram,
   type UPLCTerm,
@@ -48,8 +50,12 @@ const request = (
   };
 };
 
+/** `(lam ctx [(lam _ ()) ctx])`: a Plutus V3 script must return Unit. */
+const unitProgram = () =>
+  new Lambda(new Application(new Lambda(UPLCConst.unit), new UPLCVar(0)));
+
 const REQUESTS = {
-  success: request(new Lambda(new UPLCVar(0))),
+  success: request(unitProgram()),
   halt_error: request(new Lambda(new ErrorUPLC())),
   budget_stop: request(new Lambda(new UPLCVar(0)), { cpu: 1n, memory: 1n }),
   malformed: {
