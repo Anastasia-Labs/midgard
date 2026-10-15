@@ -500,6 +500,12 @@ jobs:
       - name: Check V1 CEK builtin golden vectors
         if: ${{ !cancelled() }}
         run: node scripts/preflight.mjs --run golden:cek-builtin-cardano-v1
+      # The V1 CEK builtin cost channel: every builtin's budget at a spread of
+      # argument sizes, from the pinned 350-entry cost vector, run against the
+      # on-chain cost table as a generated Aiken module.
+      - name: Check V1 CEK builtin cost golden vectors
+        if: ${{ !cancelled() }}
+        run: node scripts/preflight.mjs --run golden:cek-cost-v1-aiken
       # The V1 validation-auxiliary-witness ABI channel. Its generator emits
       # both `tests/fixtures/validation-auxiliary-witness-v1.generated.json` —
       # which `demo/midgard-sdk/tests/validation-auxiliary-witness.test.ts`

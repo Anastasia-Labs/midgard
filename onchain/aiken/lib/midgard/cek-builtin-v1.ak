@@ -4181,7 +4181,9 @@ pub fn authenticated_builtin_failure_budget(
     expect [source] = arguments
     bytearray.length(bytes_v1(source)) == 96
   } else if tag == 73 {
-    // The reference CEK refuses an out-of-range width before charging.
+    // Cardano charges integerToByteString before its width check fails. A
+    // width outside 0..8,192 is charged nothing here: a failure's cost is
+    // never verdict-relevant, and the TypeScript twin charges the same.
     expect [_, width, _] = arguments
     let width_value = integer_v1(width)
     width_value >= 0 && width_value <= 8192

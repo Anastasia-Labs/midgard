@@ -2312,8 +2312,17 @@ fn schnorr_signed_100() -> Pair<ByteArray, ByteArray> {
   )
 }
 
+/// 1,000 bytes of 0x99, signed with the vectors' secret key and an all-zero
+/// aux_rand.
+fn schnorr_signed_1000() -> Pair<ByteArray, ByteArray> {
+  Pair(
+    repeated_byte(153, 1000),
+    #"f1d320d7de4d5ff365a8ce6cf0ad580b9358f96f46dfbe141e22128b75919c3e47b4420db40806ad1cf6bf0fcade8a2d51634dedb7e118e9ae896dd4d6a504bb",
+  )
+}
+
 /// Vectors 15 to 18 (messages of 0, 1, 17 and 100 bytes) and signatures over
-/// 31 and 33 bytes.
+/// 31, 33 and 1,000 bytes.
 fn schnorr_signed_messages() -> List<Pair<ByteArray, ByteArray>> {
   [
     schnorr_signed_empty(),
@@ -2328,6 +2337,7 @@ fn schnorr_signed_messages() -> List<Pair<ByteArray, ByteArray>> {
     schnorr_signed_31(),
     schnorr_signed_33(),
     schnorr_signed_100(),
+    schnorr_signed_1000(),
   ]
 }
 
@@ -2385,9 +2395,44 @@ test schnorr_signature_over_another_message_returns_false() {
   }
 }
 
+test schnorr_1000_byte_message_under_another_signature_returns_false() {
+  let arguments = schnorr_arguments(
+    schnorr_key,
+    schnorr_signed_1000().1st,
+    schnorr_signed_100().2nd,
+  )
+  and {
+    cek_builtin_v1.verify_direct_scalar_semantics(
+      53,
+      arguments,
+      boolean(#"d87980"),
+    ),
+    !cek_builtin_v1.verify_direct_scalar_semantics(
+      53,
+      arguments,
+      boolean(#"d87a80"),
+    ),
+    !cek_builtin_v1.verify_direct_builtin_failure_v1(
+      53,
+      builtin_root(53, arguments),
+      arguments,
+    ),
+  }
+}
+
+test schnorr_1000_byte_message_cannot_claim_false() fail {
+  let Pair(message, signature) = schnorr_signed_1000()
+  cek_builtin_v1.verify_direct_scalar_semantics(
+    53,
+    schnorr_arguments(schnorr_key, message, signature),
+    boolean(#"d87980"),
+  )
+}
+
 test schnorr_charges_message_words() {
   let Pair(empty, empty_signature) = schnorr_signed_empty()
   let Pair(hundred, hundred_signature) = schnorr_signed_100()
+  let Pair(thousand, thousand_signature) = schnorr_signed_1000()
   and {
     cek_builtin_v1.direct_builtin_budget_v1(
       53,
@@ -2397,6 +2442,10 @@ test schnorr_charges_message_words() {
       53,
       schnorr_arguments(schnorr_key, hundred, hundred_signature),
     ) == cek_cost_v1.BuiltinBudgetV1 { cpu: 43916287, memory: 10 },
+    cek_builtin_v1.direct_builtin_budget_v1(
+      53,
+      schnorr_arguments(schnorr_key, thousand, thousand_signature),
+    ) == cek_cost_v1.BuiltinBudgetV1 { cpu: 46862783, memory: 10 },
   }
 }
 
