@@ -1201,9 +1201,8 @@ both readers.
    requires, and §11.5 is that table; their cost claims are established from
    runner measurements exactly as item 4 requires, using the suites and controls named in §11.4,
    including the controls that show what each mechanism is an alternative to.
-   Two §11-specific conditions join them: a §11.2 implementation MUST keep
-   canonicity and materialisability as separate predicates, so that the §6.2
-   forms stay canonical while the materialisation path declines them; and a
+   Two §11-specific conditions join them: a §11.2 implementation MUST
+   materialise every datum §6.2 accepts, declining none of the §6.2 forms; and a
    §11.1 implementation MUST NOT answer "absent" without both halves of §11.1's
    evidence — the structural pass and the monotone floor — in place.
 7. §12's fault statements are held to items 4, 5 and 6 on the same terms:
@@ -1677,35 +1676,16 @@ every read.
 
 The acceptor is the recursive companion to §6.2's predicate. §6.2 decides
 **canonicity** — is this a byte form `serialiseData` emits. The acceptor adds
-the second question §6.2's re-pin created, and the interior access that makes
-the answer usable.
+the interior access that makes the answer usable.
 
-**Canonicity and materialisability are different questions.** §6.2 re-pinned
-two forms as canonical that the Aiken-stdlib `cbor.deserialise` path cannot
-produce `Data` from:
-
-- **tag-2/3 bignums** (`i ≥ 2⁶⁴` or `i < −2⁶⁴`). The stdlib's major-6 arm computes
-  `constr_data(tag − 121, …)` with no tag-range guard, so `c2`/`c3` yield a
-  negative alternative. Under the pinned PlutusV3 builtin semantics variant E, that alternative is a
-  `Word64`, so a negative one **fails the machine**. Asking is an
-  abort, not a decline.
-- **tag-102 constructors** (alternatives ≥ 128), which the stdlib declines
-  outright.
-
-`is_materialisable_plutus_data_v1` is canonicity **and** the absence of either
-form at any depth, decided in the same walk. Every materialisation entry point
-MUST screen with it before calling `deserialise`; a datum that fails the screen
-is **declined**, and declining to materialise is **not** declaring
-non-canonical. §6.2 still accepts these bytes and MUST continue to — that
-acceptance is the L1 parity the re-pin exists to restore, and an implementation
-that made bignums non-canonical to make them convenient would have given it
-back.
-
-**The screen is recursive, and that is the point.** The head-byte screen this
-replaces read byte zero only, so a bignum nested inside an otherwise ordinary
-canonical datum still reached the decoder and still aborted. That residual is
-closed here: the flag is set at every tag site the walk passes, so depth is not
-a way around it, and the materialisation path is total on canonical input.
+**Every canonical datum materialises.** The two forms §6.2 re-pinned as
+canonical — **tag-2/3 bignums** (`i ≥ 2⁶⁴` or `i < −2⁶⁴`) and **tag-102
+constructors** (alternatives ≥ 128) — are Plutus Data CBOR the Cardano ledger
+accepts, and the Data entry of `midgard/cbor_deserialise` decodes exactly the
+Plutus Data CBOR the Cardano ledger accepts. A materialisation entry point
+therefore decodes a canonical datum directly, at any depth, and no canonical
+datum is declined. §6.2 still accepts these bytes and MUST continue to — that
+acceptance is the L1 parity the re-pin exists to restore.
 
 **Interior access.** A rule reaches a datum's child by **path**: a list of
 indices, each an index into the item at the current position counted in reading
@@ -1722,8 +1702,8 @@ Three typed leaf readers accompany it, and each reads a form the `Data` route
 cannot: the **integer** reader covers majors 0/1 _and_ canonical tag-2/3
 bignums, definite or 64-byte chunked; the **byte-string** reader covers
 definite and chunked payloads; the **alternative** reader covers all three §6.2
-constructor spellings including tag 102. Between them a rule about a datum the
-materialisation path declines is still a rule that can be stated.
+constructor spellings including tag 102. Between them a rule about a datum can
+be stated without materialising it.
 
 **What the acceptor is for.** Not speed. §11.4 measures interior access as
 _more_ expensive than `cbor.deserialise` on every datum the builtin can take,

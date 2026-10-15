@@ -633,10 +633,8 @@ test datum_predicates_agree_on_ordinary_datums() {
 }
 
 /// `40` is the canonical `serialiseData` image of an empty byte string. The
-/// stdlib decoder declines it, but that decoder gap must not make a canonical
-/// L2 output impossible to describe. The materialisation gate reconstructs
-/// precisely this one Data value; neighbouring ordinary byte strings continue
-/// through the general path.
+/// retired round trip refused it; the gate reads it like any other canonical
+/// datum, as it does its non-empty neighbours.
 test empty_byte_string_datum_is_materialised() {
   and {
     is_canonical_plutus_data_v1(#"40"),
@@ -718,18 +716,53 @@ test datum_predicates_diverge_on_high_constructor_alternatives() {
   }
 }
 
-/// What that divergence does *not* do: change this gate's verdict. Canonicity
-/// and materialisability are separate questions now, and the stdlib decoder
-/// still declines tag 102, so the gate declines at the second step instead of
-/// the first. Recording it is what keeps the deferral honest — these datums
-/// become spendable when the Canonical-Data Acceptor lands (spec §11, issue
-/// 571), and not before.
-test high_alternative_datums_are_still_declined_by_this_gate() {
+/// The `TxOut` datum field (`OutputDatum`) the gate reconstructs for an
+/// output carrying the given inline datum, in both context encodings, and
+/// the spend datum summary it commits to. `None` when either declines.
+fn reconstructed_datum(datum_cbor: ByteArray) -> Option<Data> {
+  let output = output_with_datum(datum_cbor)
+  when
+    (
+      script_context_v1.tx_out_data_v1(output, False),
+      script_context_v1.tx_out_data_v1(output, True),
+      script_context_v1.spend_datum_summary_v1(output),
+    )
+  is {
+    (Some(cardano_tx_out), Some(midgard_tx_out), Some(spend_datum)) -> {
+      expect [_, _, cardano_datum, _] = builtin.unconstr_fields(cardano_tx_out)
+      expect [_, _, midgard_datum, _] = builtin.unconstr_fields(midgard_tx_out)
+      expect [datum] = builtin.unconstr_fields(cardano_datum)
+      if and {
+        cardano_datum == midgard_datum,
+        spend_datum == cek_data_v1.semantic_data_summary_v1(
+          builtin.constr_data(0, [datum]),
+        ),
+      } {
+        Some(cardano_datum)
+      } else {
+        None
+      }
+    }
+    _ -> None
+  }
+}
+
+/// Canonicity and the gate now agree on this class too: a tag-102 constructor
+/// datum is admitted, and the datum the gate reconstructs is the constructor
+/// the Cardano ledger reads from those bytes.
+test high_alternative_datums_are_admitted_by_this_gate() {
   and {
-    is_canonical_plutus_data_v1(#"d86682188080"),
-    !datum_gate_admits(#"d86682188080"),
-    is_canonical_plutus_data_v1(#"d8668219ffff80"),
-    !datum_gate_admits(#"d8668219ffff80"),
+    datum_gate_admits(#"d86682188080"),
+    reconstructed_datum(#"d86682188080") == Some(
+      builtin.constr_data(2, [builtin.constr_data(128, [])]),
+    ),
+    datum_gate_admits(#"d8668219ffff80"),
+    reconstructed_datum(#"d8668219ffff80") == Some(
+      builtin.constr_data(2, [builtin.constr_data(65535, [])]),
+    ),
+    reconstructed_datum(#"d8668218809f00ff") == Some(
+      builtin.constr_data(2, [builtin.constr_data(128, [builtin.i_data(0)])]),
+    ),
   }
 }
 
@@ -754,11 +787,7 @@ test high_alternative_datums_are_still_declined_by_this_gate() {
 /// belongs. It is not a Midgard failure, and the *verdict* it delivers (script
 /// fails) is the one mainnet delivers at PV11.
 ///
-/// The third column moved: `spend_datum_summary_v1` and `tx_out_data_v1` now
-/// screen the head byte and decline, which is what
-/// `bignum_datums_are_declined_by_the_materialisation_path` below pins. Full
-/// materialisation still waits on the Canonical-Data Acceptor (spec §11, issue
-/// 571).
+/// The third column is `bignum_datums_are_materialised` below.
 test bignum_datums_are_canonical_and_reach_the_output_decoder() {
   and {
     is_canonical_plutus_data_v1(#"c249010000000000000000"),
@@ -772,34 +801,26 @@ test bignum_datums_are_canonical_and_reach_the_output_decoder() {
   }
 }
 
-/// The head-byte screen, proved. Before it this test could not be written at
-/// all: every call below reached `constr_data(2 - 121, ..)` and failed the
-/// machine, so there was no verdict to assert — only an abort. Both
-/// materialisation entry points now answer `None`.
-///
-/// The first conjunct is the distinction the screen must not blur.
-/// `is_canonical_plutus_data_v1` still accepts these bytes, as AC4 requires;
-/// declining to materialise a datum is not declaring it non-canonical.
-test bignum_datums_are_declined_by_the_materialisation_path() {
-  let declines = fn(datum_cbor: ByteArray) -> Bool {
-    let output = output_with_datum(datum_cbor)
-    and {
-      is_canonical_plutus_data_v1(datum_cbor),
-      !datum_gate_admits(datum_cbor),
-      script_context_v1.tx_out_data_v1(output, False) == None,
-      script_context_v1.tx_out_data_v1(output, True) == None,
-    }
-  }
+/// A canonical bignum datum is admitted, and the datum the gate reconstructs
+/// is the integer the Cardano ledger reads from those bytes: `2^64` for the
+/// tag-2 spelling and `-2^64 - 1` for the tag-3 one.
+test bignum_datums_are_materialised() {
   and {
-    declines(#"c249010000000000000000"),
-    declines(#"c349010000000000000000"),
+    datum_gate_admits(#"c249010000000000000000"),
+    reconstructed_datum(#"c249010000000000000000") == Some(
+      builtin.constr_data(2, [builtin.i_data(18446744073709551616)]),
+    ),
+    datum_gate_admits(#"c349010000000000000000"),
+    reconstructed_datum(#"c349010000000000000000") == Some(
+      builtin.constr_data(2, [builtin.i_data(-18446744073709551617)]),
+    ),
   }
 }
 
 /// The consolidated entry point is not a second statement of the three
 /// summaries, it is the same three. Proved over every output shape the module
-/// pins -- no datum and no script, datum only, script only, both -- plus the
-/// two declining shapes, so a future divergence in either direction is a red
+/// pins -- no datum and no script, datum only, script only, both -- plus a
+/// bignum datum and a declining shape, so a future divergence in either direction is a red
 /// test rather than a silently different ledger value.
 test consolidated_ledger_output_summaries_match_the_separate_entry_points() {
   let agrees = fn(candidate_output_cbor: ByteArray) -> Bool {
@@ -828,7 +849,7 @@ test consolidated_ledger_output_summaries_match_the_separate_entry_points() {
     agrees(datum_output_cbor),
     agrees(reference_output_cbor),
     agrees(output_cbor),
-    // A canonical datum in a section 6.2 re-pinned form: all four decline.
+    // A canonical bignum datum.
     agrees(output_with_datum(#"c249010000000000000000")),
     // Not a canonical output at all.
     agrees(#"00"),

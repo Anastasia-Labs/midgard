@@ -1,19 +1,22 @@
 // Differential regression for the source-final publication optimization. The
-// reference is the predecessor's total canonicality screen and Data decoder.
+// reference is the canonicality predicate and the Data entry of
+// `cbor_deserialise`, with the output index held to the 64-bit CBOR integer
+// range (major types 0 and 1) the predecessor's screen allowed.
 use aiken/builtin
 use aiken/cbor
 use aiken/collection/list
 use aiken/primitive/bytearray
 use cardano/transaction.{OutputReference}
 use midgard/canonical_plutus_data_v1
+use midgard/cbor_deserialise
 use midgard/fraud_proofs/transition_trace/proof
 use midgard/ledger_state
 
 fn previous_key_decoder(bytes: ByteArray) -> Pair<Int, ByteArray> {
-  if !canonical_plutus_data_v1.is_materialisable_plutus_data_v1(bytes) {
+  if !canonical_plutus_data_v1.is_canonical_plutus_data_v1(bytes) {
     Pair(0, #"")
   } else {
-    when cbor.deserialise(bytes) is {
+    when cbor_deserialise.deserialise(bytes) is {
       None -> Pair(0, #"")
       Some(data) ->
         if builtin.choose_data(data, True, False, False, False, False) {
@@ -58,6 +61,8 @@ fn previous_key_decoder(bytes: ByteArray) -> Pair<Int, ByteArray> {
                         True,
                         False,
                       ),
+                      builtin.un_i_data(index) >= -18446744073709551616,
+                      builtin.un_i_data(index) <= 18446744073709551615,
                     } {
                       Pair(1, cbor.serialise(item))
                     } else {

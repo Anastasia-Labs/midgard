@@ -1,6 +1,5 @@
 use midgard/ledger_output_commitment_v1
 use midgard/ledger_output_descriptor_v1
-use midgard/ledger_output_v1
 
 // Cross-language descriptor vectors. Every pair below is the exact output
 // preimage and the exact `utxos_root` value the off-chain encoder
@@ -57,6 +56,22 @@ const rich_multi_chunk_output_cbor =
 const rich_multi_chunk_output_descriptor =
   #"90010719093358201d44e4026471138e8ee55364b7f5edfb548bbcb418ef6158fb2234dc604aebf758390011111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111a007a120003582008059de11e25e694627ded37fc07251446b431d0b0f01ad7988b50fae7b37cd2187703581c22c0e1c50c8393c705226fd7578a859b9049b24e0c9eb6c1a5f7b2bb18685820fa4940294dd31f0806fb59218d53fe245a6717649bf8785e8eba6e7fddf755fc8358205f721c66e18ad314fbda580939ed42add1cd7476d78918ff074a579a441407341909041908f78358205f721c66e18ad314fbda580939ed42add1cd7476d78918ff074a579a441407341909041908f7835820b0396a03f113d1587164a43e74652ff1f1054dd2e54d8c6ab7628031346a65a21908151907d8"
 
+// An inline datum that is a tag-102 constructor: canonical §6.1 output bytes
+// whose datum the Cardano ledger reads as `Constr 255 []`.
+const tag_102_datum_output_cbor =
+  #"a300581d7811111111111111111111111111111111111111111111111111111111018200a00246d8668218ff80"
+
+const tag_102_datum_output_descriptor =
+  #"900100182d5820f5aed67107cfebc6df05594c7a0c97dfdd0919374ea2c9944df10a5b8403b02a581d781111111111111111111111111111111111111111111111111111111100005820b6575c6c81264fc5d6802905bc4cb01d26fcca7c75412712fd4d4b7e5a23d6cd0120400040835820de9624fffa53af91fbcd302fe1269a5f632447eda71a3b484626cef7f84462a7183b18408358207dd6aeaa06f97bd586948a6b0dced89bba19a0207aaf3d97fe7985b8c45a4479183b1840835820a3c873a5407941826b385302b5011294daf75acdeb2b117c90d88f699281148b0a08"
+
+// An inline datum carrying an integer beyond 64 bits: `Constr 2 [I 2^64]`,
+// the integer spelled as a tag-2 bignum.
+const bignum_datum_output_cbor =
+  #"a300581d7811111111111111111111111111111111111111111111111111111111018200a0024fd87a9fc249010000000000000000ff"
+
+const bignum_datum_output_descriptor =
+  #"90010018365820fb3a658f598730b27bebee7ce7958425f5892b82bee0e1f7a7889fe10ba73270581d781111111111111111111111111111111111111111111111111111111100005820b6575c6c81264fc5d6802905bc4cb01d26fcca7c75412712fd4d4b7e5a23d6cd0120400040835820688ccf8d2d6f13f19af5446821e8d84973ea425353f8ed312a839bd3968573fd1844184d835820829542f60b014bda165f0c7ea6aab52e44eee5af7b897b27da1b5331ff0290c11844184d835820f6ec88436da1c1000ab9ed787f609f6102a8e25d569352df4dd0de8e7b76e2b81315"
+
 test builds_no_reference_output_exactly() {
   ledger_output_descriptor_v1.ledger_value_v1(0, no_reference_output_cbor) == Some(
     no_reference_output_descriptor,
@@ -88,6 +103,18 @@ test builds_rich_multi_chunk_output_exactly() {
   )
 }
 
+test builds_tag_102_datum_output_exactly() {
+  ledger_output_descriptor_v1.ledger_value_v1(0, tag_102_datum_output_cbor) == Some(
+    tag_102_datum_output_descriptor,
+  )
+}
+
+test builds_bignum_datum_output_exactly() {
+  ledger_output_descriptor_v1.ledger_value_v1(0, bignum_datum_output_cbor) == Some(
+    bignum_datum_output_descriptor,
+  )
+}
+
 /// The pinned descriptors are the *only* thing the on-chain decoder accepts
 /// back, so the channel is closed in both directions rather than only proving
 /// that the builder emits some canonical bytes.
@@ -110,6 +137,12 @@ test every_pinned_descriptor_round_trips_through_the_decoder() {
     ledger_output_commitment_v1.encode(
       ledger_output_commitment_v1.decode(rich_multi_chunk_output_descriptor),
     ) == rich_multi_chunk_output_descriptor,
+    ledger_output_commitment_v1.encode(
+      ledger_output_commitment_v1.decode(tag_102_datum_output_descriptor),
+    ) == tag_102_datum_output_descriptor,
+    ledger_output_commitment_v1.encode(
+      ledger_output_commitment_v1.decode(bignum_datum_output_descriptor),
+    ) == bignum_datum_output_descriptor,
   }
 }
 
@@ -140,18 +173,4 @@ test non_canonical_output_bytes_have_no_value() {
     0,
     #"b80200581d7811111111111111111111111111111111111111111111111111111111018200a0",
   ) == None
-}
-
-/// A canonical output whose datum is a §6.2 re-pinned form -- here a tag-102
-/// constructor -- is canonical but not materialisable, so no `TxOut` summary
-/// exists for it and neither does a descriptor. This is the one shape where
-/// the builder declines an output the §6.1 decoder accepts, and the assertion
-/// is stated as that pair so it cannot quietly become a second non-canonical
-/// case.
-test an_unmaterialisable_canonical_datum_has_no_value() {
-  let output_cbor = #"a300581d7811111111111111111111111111111111111111111111111111111111018200a00246d8668218ff80"
-  and {
-    ledger_output_v1.decode_canonical_output(output_cbor) != None,
-    ledger_output_descriptor_v1.ledger_value_v1(0, output_cbor) == None,
-  }
 }

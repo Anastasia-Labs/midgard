@@ -445,11 +445,10 @@
     {
       "module": "midgard/ledger_output_descriptor_v1.test",
       "sweep": "Not a sweep: the five cross-language golden vectors #628's version 1 measured, kept under the gate so the headline figures that lane published cannot drift unnoticed. `sizeBytes` is each vector's pinned output CBOR length. No crossing is published on this module — the vectors differ in shape as well as size, which is exactly why version 1's interpolation across them was wrong.",
-      "neutralisationNote": "The three declining paths of the same builder, run alongside the vectors: an out-of-domain index, non-canonical bytes and a canonical-but-unmaterialisable datum all yield no value.",
+      "neutralisationNote": "The two declining paths of the same builder, run alongside the vectors: an out-of-domain index and non-canonical bytes both yield no value.",
       "neutralisation": [
         "an_out_of_domain_output_index_has_no_value",
-        "non_canonical_output_bytes_have_no_value",
-        "an_unmaterialisable_canonical_datum_has_no_value"
+        "non_canonical_output_bytes_have_no_value"
       ],
       "rows": {
         "builds_no_reference_output_exactly": {
