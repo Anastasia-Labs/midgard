@@ -1,4 +1,7 @@
-import { commitMidgardCekBlob } from "@al-ft/midgard-core";
+import {
+  commitMidgardCekBlob,
+  midgardCekBytesMemoryWords,
+} from "@al-ft/midgard-core";
 import { DataB, DataConstr, DataI } from "@harmoniclabs/plutus-data";
 
 import { constrIndexIsOutOfRange } from "./cek-builtin.constr-data-index.js";
@@ -173,7 +176,7 @@ export const verifySemanticData = (
       result,
       { kind: "bytes" },
       payload,
-      BigInt(Math.max(1, raw.length)),
+      midgardCekBytesMemoryWords(raw.length),
     );
   }
   if (tag === 37n || tag === 39n) {

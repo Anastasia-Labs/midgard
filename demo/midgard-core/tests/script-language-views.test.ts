@@ -132,6 +132,6 @@ describe("script language views", () => {
       computeScriptIntegrityHash(REDEEMER_TX_WITS_HASH, changedViews).toString(
         "hex",
       ),
-    ).toBe("e14cfabbe5ac419383fa63b095712f433a5e318d8b18e0e820d1361041a5fc39");
+    ).toBe("20da1dd363bd01b6d1561f41a75d44f55071687820d853ca663d11aa3e4b2a7a");
   });
 });

@@ -8,6 +8,7 @@
  */
 import { Data as LucidData } from "@lucid-evolution/lucid";
 
+import { midgardCekBytesMemoryWords } from "../src/cek-memory-size.js";
 import { semanticIntegerMemory } from "../src/cek-proof.commit-semantic-data.js";
 import { commitMidgardCekBlob } from "../src/cek-proof.encode-midgard-cek-continuation-frame.js";
 import { MIDGARD_CEK_MAX_SOURCE_CONSTANT_PAYLOAD_BYTES } from "../src/cek-proof.encode-midgard-cek-term-node.js";
@@ -189,7 +190,7 @@ export const legacyCommitSemanticData = (
       bytesRoot: commitMidgardCekBlob(bytes).root,
       bytesLength: BigInt(bytes.length),
       cborLength: midgardCekDataBytesCborLength(BigInt(bytes.length)),
-      memory: 4n + BigInt(Math.max(1, bytes.length)),
+      memory: 4n + midgardCekBytesMemoryWords(bytes.length),
     };
   } else if (Array.isArray(value)) {
     const items = commitList(value);
