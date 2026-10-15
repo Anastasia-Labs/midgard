@@ -8,6 +8,7 @@
  */
 
 import type * as codecModule from "../../src/index.js";
+import type { MidgardValidationSourceV1 } from "../../src/index.js";
 
 type CodecModule = typeof codecModule;
 
@@ -21,9 +22,21 @@ export type ValidationInitialStateHeaderV1 = {
   readonly contextCbor: string;
 };
 
+/** Which `ValidationSourceMembershipV1` variant carries the transaction. */
+export type ValidationInitialStateSourceKindV1 = "normal" | "forced";
+
+/** `ledger_state.TxOrderId` of a forced vector, in hex. */
+export type ValidationInitialStateTxOrderIdV1 = {
+  readonly transactionId: string;
+  readonly outputIndex: number;
+};
+
 export type ValidationInitialStateTransactionV1 = {
   readonly label: string;
   readonly provisional: boolean;
+  readonly source: ValidationInitialStateSourceKindV1;
+  /** Present exactly when `source` is `forced`. */
+  readonly txOrderId?: ValidationInitialStateTxOrderIdV1;
   readonly canonicalTransactionCbor: string;
   readonly transactionId: string;
   readonly redeemersPreimageBytes: number;
@@ -36,6 +49,7 @@ export type ValidationInitialStateVectorV1 = {
   readonly label: string;
   readonly provisional: boolean;
   readonly transaction: string;
+  readonly source: ValidationInitialStateSourceKindV1;
   readonly header: string;
   readonly eventKeyCbor: string;
   readonly preUtxosRoot: string;
@@ -57,6 +71,16 @@ export type ValidationInitialStateGoldenV1 = {
 export declare const l2TransactionEventKeyCbor: (
   transactionId: Uint8Array,
 ) => Buffer;
+
+export declare const forcedTransactionEventKeyCbor: (txOrderId: {
+  readonly transactionId: Uint8Array;
+  readonly outputIndex: number;
+}) => Buffer;
+
+export declare const validationSourceOf: (
+  kind: ValidationInitialStateSourceKindV1,
+  canonicalTransactionCbor: Uint8Array,
+) => MidgardValidationSourceV1;
 
 export declare const deriveValidationInitialStateVectorsV1: (
   codec: CodecModule,

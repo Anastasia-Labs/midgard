@@ -16,7 +16,7 @@
  * same definitions through `src/` and checks the result against the checked-in
  * fixture.
  *
- * Three transactions × two headers:
+ * Four transactions × two headers:
  *
  *   * `minimal_spend` — one key-locked input, one output, one signature;
  *   * `multi_redeemer` — two script inputs and a mint, each with its redeemer,
@@ -24,7 +24,14 @@
  *     bytes, so its compact form, transaction id and commitment move with any
  *     change to how a script's identity is committed;
  *   * `max_redeemers_field` — a field-8 (redeemer witnesses) preimage of exactly
- *     the consensus profile's `maxRedeemersPreimageBytes`, and no scripts.
+ *     the consensus profile's `maxRedeemersPreimageBytes`, and no scripts;
+ *   * `forced_spend` — a forced submission (no validity tag) with one key-locked
+ *     input, one output and one signature, under a `ForcedTransactionEventKey`.
+ *     Its source is the forced variant, so its start state is `Forced`.
+ *
+ * The first three are normal sources under an `L2TransactionEventKey`; their
+ * start state is `Normal`. The source kind is never an input of the twin: it
+ * follows from which source variant is passed, as in the claim.
  *
  * The two headers differ in every context entry, and within each header the
  * context entries are pairwise distinct, so a context element read from the
@@ -215,13 +222,48 @@ const maxRedeemersField = (codec) => {
   throw new Error(`no redeemer data fills field 8 to ${target} bytes`);
 };
 
+/** A forced submission: user-authored material, so it carries no validity tag. */
+const forcedSpend = (codec) => {
+  const { validity: _validity, ...forced } = canonicalOf(codec, {
+    body: {
+      spendInputsPreimageCbor: field(codec, 0, [input(15, 2)]),
+      outputsPreimageCbor: field(codec, 2, [
+        { address: keyAddress(16), value: value(4_000_000n) },
+      ]),
+      fee: 190_000n,
+    },
+    witnessSet: {
+      addrTxWitsPreimageCbor: field(codec, 7, [addressWitness(17)]),
+    },
+  });
+  return forced;
+};
+
 export const VALIDATION_INITIAL_STATE_TRANSACTIONS_V1 = [
-  { label: "minimal_spend", provisional: false, canonical: minimalSpend },
-  { label: "multi_redeemer", provisional: true, canonical: multiRedeemer },
+  {
+    label: "minimal_spend",
+    provisional: false,
+    source: "normal",
+    canonical: minimalSpend,
+  },
+  {
+    label: "multi_redeemer",
+    provisional: true,
+    source: "normal",
+    canonical: multiRedeemer,
+  },
   {
     label: "max_redeemers_field",
     provisional: false,
+    source: "normal",
     canonical: maxRedeemersField,
+  },
+  {
+    label: "forced_spend",
+    provisional: false,
+    source: "forced",
+    canonical: forcedSpend,
+    txOrderId: { transactionIdSeed: 18, outputIndex: 3 },
   },
 ];
 
@@ -239,21 +281,71 @@ export const l2TransactionEventKeyCbor = (transactionId) =>
   ]);
 
 /**
+ * `ledger_state.ForcedTransactionEventKey { tx_order_id }` as Aiken serialises
+ * it: constructor 1 (tag 122) over an indefinite list holding the
+ * `OutputReference` (constructor 0, tag 121) of the 32-byte transaction id and
+ * the output index, which must be below 24 to stay a one-byte integer here.
+ */
+export const forcedTransactionEventKeyCbor = ({
+  transactionId,
+  outputIndex,
+}) => {
+  if (!Number.isInteger(outputIndex) || outputIndex < 0 || outputIndex > 23) {
+    throw new Error(`output index ${outputIndex} is not a one-byte integer`);
+  }
+  return Buffer.concat([
+    Buffer.from("d87a9fd8799f5820", "hex"),
+    Buffer.from(transactionId),
+    Buffer.from([outputIndex, 0xff, 0xff]),
+  ]);
+};
+
+/** The source variant the twin takes, carrying the canonical bytes. */
+export const validationSourceOf = (kind, canonicalTransactionCbor) =>
+  kind === "forced"
+    ? { forced: { canonicalTransactionCbor } }
+    : { normal: { canonicalTransactionCbor } };
+
+const eventKeyOf = (transaction) =>
+  transaction.source === "forced"
+    ? forcedTransactionEventKeyCbor({
+        transactionId: Buffer.from(transaction.txOrderId.transactionId, "hex"),
+        outputIndex: transaction.txOrderId.outputIndex,
+      })
+    : l2TransactionEventKeyCbor(Buffer.from(transaction.transactionId, "hex"));
+
+/**
  * Everything the golden pins, computed through whichever build of the codec is
  * passed in. The JSON fixture is exactly this object.
  */
 export const deriveValidationInitialStateVectorsV1 = (codec) => {
   const transactions = VALIDATION_INITIAL_STATE_TRANSACTIONS_V1.map(
-    ({ label, provisional, canonical }) => {
-      const tx = codec.materializeMidgardNativeTxFromCanonical(
-        canonical(codec),
-      );
-      const source = codec.deriveMidgardNativeTxProofSource(tx);
+    ({ label, provisional, source: kind, canonical, txOrderId }) => {
+      const forced = kind === "forced";
+      const tx = forced
+        ? codec.materializeMidgardForcedTxFromCanonical(canonical(codec))
+        : codec.materializeMidgardNativeTxFromCanonical(canonical(codec));
+      const source = forced
+        ? codec.deriveMidgardForcedTxProofSource(tx)
+        : codec.deriveMidgardNativeTxProofSource(tx);
       return {
         label,
         provisional,
-        canonicalTransactionCbor: hex(codec.encodeMidgardNativeTxCanonical(tx)),
-        transactionId: hex(codec.computeMidgardNativeTxId(tx)),
+        source: kind,
+        ...(txOrderId === undefined
+          ? {}
+          : {
+              txOrderId: {
+                transactionId: hex(filler(32, txOrderId.transactionIdSeed)),
+                outputIndex: txOrderId.outputIndex,
+              },
+            }),
+        canonicalTransactionCbor: hex(
+          forced
+            ? codec.encodeMidgardForcedTxCanonical(tx)
+            : codec.encodeMidgardNativeTxCanonical(tx),
+        ),
+        transactionId: hex(codec.computeMidgardNativeTxId(tx.compact)),
         redeemersPreimageBytes: tx.witnessSet.redeemerTxWitsPreimageCbor.length,
         compactCbor: hex(source.compactCbor),
         witnessSetCompactCbor: hex(source.witnessSetCompactCbor),
@@ -275,15 +367,14 @@ export const deriveValidationInitialStateVectorsV1 = (codec) => {
   const vectors = transactions.flatMap((transaction, txIndex) =>
     VALIDATION_INITIAL_STATE_HEADERS_V1.map(
       ({ label, ...header }, headerIndex) => {
-        const transactionId = Buffer.from(transaction.transactionId, "hex");
-        const eventKeyCbor = l2TransactionEventKeyCbor(transactionId);
+        const eventKeyCbor = eventKeyOf(transaction);
         const preUtxosRoot = filler(32, 40 + txIndex * 2 + headerIndex);
         const state = codec.deriveMidgardValidationInitialStateV1({
           ...header,
           eventKeyCbor,
-          canonicalTransactionCbor: Buffer.from(
-            transaction.canonicalTransactionCbor,
-            "hex",
+          source: validationSourceOf(
+            transaction.source,
+            Buffer.from(transaction.canonicalTransactionCbor, "hex"),
           ),
           preUtxosRoot,
         });
@@ -291,6 +382,7 @@ export const deriveValidationInitialStateVectorsV1 = (codec) => {
           label: `${transaction.label}_${label}`,
           provisional: transaction.provisional,
           transaction: transaction.label,
+          source: transaction.source,
           header: label,
           eventKeyCbor: hex(eventKeyCbor),
           preUtxosRoot: hex(preUtxosRoot),

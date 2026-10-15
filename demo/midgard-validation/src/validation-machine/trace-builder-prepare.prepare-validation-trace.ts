@@ -437,12 +437,15 @@ export const prepareValidationTrace = (input: ValidationMachineReplayInput) =>
       proofSource.witnessSetCompactCbor,
     );
     // State 0 is the claim's derivation, not a builder construction.
+    const { canonicalTransactionCbor } = input;
     const initialState = deriveMidgardValidationInitialStateV1({
       ...contextHeader,
       eventKeyCbor: input.eventKeyCbor,
-      canonicalTransactionCbor: input.canonicalTransactionCbor,
+      source:
+        input.sourceKind === "forced"
+          ? { forced: { canonicalTransactionCbor } }
+          : { normal: { canonicalTransactionCbor } },
       preUtxosRoot: priorLedgerRoot,
-      sourceKind: input.sourceKind,
     });
     if (!initialState.transactionId.equals(input.transactionId)) {
       return yield* Effect.fail(

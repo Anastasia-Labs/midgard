@@ -4,12 +4,16 @@
 //// `deriveMidgardValidationInitialStateV1`.
 ////
 //// State 0 of a validation trace, derived from the header's context, the event
-//// key, the source triple and the step's pre-state root. Vectors marked
+//// key, the source variant and the step's pre-state root. A normal source
+//// starts a Normal trace and a forced one a Forced trace. Vectors marked
 //// PROVISIONAL carry script bytes and regenerate with any change to how a
 //// script's identity is committed.
 
 use aiken/cbor
+use cardano/transaction.{OutputReference}
+use midgard/fraud_proofs/native_tx/compact
 use midgard/ledger_state
+use midgard/rejection_reason_v1
 use midgard/transition_trace
 use midgard/validation_claim_v1
 use midgard/validation_trace_v1
@@ -52,28 +56,13 @@ fn header_with(
 
 fn derives(
   header: ledger_state.HeaderV1,
-  transaction_id: ByteArray,
-  source: ledger_state.NativeTxProofSourceV1,
+  event_key: ledger_state.EventKey,
+  membership: validation_claim_v1.ValidationSourceMembershipV1,
   pre_utxos_root: ByteArray,
   event_key_cbor: ByteArray,
   state_cbor: ByteArray,
   state_hash: ByteArray,
 ) -> Bool {
-  let event_key = ledger_state.L2TransactionEventKey { tx_id: transaction_id }
-  let membership = validation_claim_v1.NormalValidationSource {
-    membership: transition_trace.RootMembershipProof {
-      domain: transition_trace.TransactionsV1RootDomain,
-      root: #"",
-      phas_root: #"",
-      count: 1,
-      key: transaction_id,
-      value: ledger_state.L2TransactionSourceV1 {
-        tx_id: transaction_id,
-        source,
-      },
-      proof: [],
-    },
-  }
   let state = validation_claim_v1.derive_initial_state(
     header,
     event_key,
@@ -84,6 +73,92 @@ fn derives(
     cbor.serialise(event_key) == event_key_cbor,
     validation_trace_v1.encode_machine_state(state) == state_cbor,
     validation_trace_v1.hash_machine_state(state) == state_hash,
+  }
+}
+
+fn derives_normal(
+  header: ledger_state.HeaderV1,
+  transaction_id: ByteArray,
+  source: ledger_state.NativeTxProofSourceV1,
+  pre_utxos_root: ByteArray,
+  event_key_cbor: ByteArray,
+  state_cbor: ByteArray,
+  state_hash: ByteArray,
+) -> Bool {
+  let Pair(verified, _) = compact.verify_native_tx_proof_source_v1(
+    transaction_id,
+    source.compact_cbor,
+    source.witness_set_compact_cbor,
+    source.field_preimage_lengths_cbor,
+  )
+  and {
+    verified.tx_id == transaction_id,
+    derives(
+      header,
+      ledger_state.L2TransactionEventKey { tx_id: transaction_id },
+      validation_claim_v1.NormalValidationSource {
+        membership: transition_trace.RootMembershipProof {
+          domain: transition_trace.TransactionsV1RootDomain,
+          root: #"",
+          phas_root: #"",
+          count: 1,
+          key: transaction_id,
+          value: ledger_state.L2TransactionSourceV1 {
+            tx_id: transaction_id,
+            source,
+          },
+          proof: [],
+        },
+      },
+      pre_utxos_root,
+      event_key_cbor,
+      state_cbor,
+      state_hash,
+    ),
+  }
+}
+
+fn derives_forced(
+  header: ledger_state.HeaderV1,
+  tx_order_id: OutputReference,
+  transaction_id: ByteArray,
+  source: ledger_state.ForcedTxProofSourceV1,
+  pre_utxos_root: ByteArray,
+  event_key_cbor: ByteArray,
+  state_cbor: ByteArray,
+  state_hash: ByteArray,
+) -> Bool {
+  let Pair(verified, _) = compact.verify_forced_tx_proof_source_v1(
+    transaction_id,
+    source.compact_cbor,
+    source.witness_set_compact_cbor,
+    source.field_preimage_lengths_cbor,
+  )
+  and {
+    verified.tx_id == transaction_id,
+    derives(
+      header,
+      ledger_state.ForcedTransactionEventKey { tx_order_id },
+      validation_claim_v1.ForcedValidationSource {
+        membership: transition_trace.RootMembershipProof {
+          domain: transition_trace.ForcedTransactionsV1RootDomain,
+          root: #"",
+          phas_root: #"",
+          count: 1,
+          key: tx_order_id,
+          value: ledger_state.ForcedInclusionTxV1 {
+            tx_id: transaction_id,
+            submitted_source: source,
+            verdict: rejection_reason_v1.ForcedTxValid,
+          },
+          proof: [],
+        },
+      },
+      pre_utxos_root,
+      event_key_cbor,
+      state_cbor,
+      state_hash,
+    ),
   }
 }
 
@@ -134,8 +209,24 @@ const max_redeemers_field_source =
     field_preimage_lengths_cbor: #"89182901182c010101011868198000",
   }
 
+const forced_spend_tx_id =
+  #"b4c9a74bcd143185c3495b4601ec6b2a9e8d6d71385a37a5f9309bfdfaf81f8c"
+
+const forced_spend_tx_order_id =
+  OutputReference {
+    transaction_id: #"31383f464d545b626970777e858c939aa1a8afb6bdc4cbd2d9e0e7eef5fc030a",
+    output_index: 3,
+  }
+
+const forced_spend_source =
+  ledger_state.ForcedTxProofSourceV1 {
+    compact_cbor: #"83018c582004cb77461062b5223ef6dd30f68ee4aa2919b77c5aa2b556ee0c7f1f60dd817a582045b0cfc220ceec5b7c1c62c4d4193d38e4eba48e8815729ce75f9c0ab0e4c1c058205693e4b563bbed40ead85291bcc83c4d9b723ccff08263fadadbf4e1cafb9da41a0002e6302020582045b0cfc220ceec5b7c1c62c4d4193d38e4eba48e8815729ce75f9c0ab0e4c1c0582045b0cfc220ceec5b7c1c62c4d4193d38e4eba48e8815729ce75f9c0ab0e4c1c0582045b0cfc220ceec5b7c1c62c4d4193d38e4eba48e8815729ce75f9c0ab0e4c1c0582001f4b788593d4f70de2a45c2e1e87088bfbdfa29577ae1b62aba60e095e3ab53582001f4b788593d4f70de2a45c2e1e87088bfbdfa29577ae1b62aba60e095e3ab530058207d39fc0e1e3ddacdbee01fd5277aa6b43fb51edad520410ca23c3ea5694d8112",
+    witness_set_compact_cbor: #"835820453ca913fd9dd5d6acef62fbfdc70a22571e916190fa26780358907712ed5c44582045b0cfc220ceec5b7c1c62c4d4193d38e4eba48e8815729ce75f9c0ab0e4c1c0582045b0cfc220ceec5b7c1c62c4d4193d38e4eba48e8815729ce75f9c0ab0e4c1c0",
+    field_preimage_lengths_cbor: #"89182901182c01010101186801",
+  }
+
 test minimal_spend_a() {
-  derives(
+  derives_normal(
     header_a(),
     minimal_spend_tx_id,
     minimal_spend_source,
@@ -147,7 +238,7 @@ test minimal_spend_a() {
 }
 
 test minimal_spend_b() {
-  derives(
+  derives_normal(
     header_b(),
     minimal_spend_tx_id,
     minimal_spend_source,
@@ -160,7 +251,7 @@ test minimal_spend_b() {
 
 // PROVISIONAL: carries script bytes.
 test multi_redeemer_a() {
-  derives(
+  derives_normal(
     header_a(),
     multi_redeemer_tx_id,
     multi_redeemer_source,
@@ -173,7 +264,7 @@ test multi_redeemer_a() {
 
 // PROVISIONAL: carries script bytes.
 test multi_redeemer_b() {
-  derives(
+  derives_normal(
     header_b(),
     multi_redeemer_tx_id,
     multi_redeemer_source,
@@ -185,7 +276,7 @@ test multi_redeemer_b() {
 }
 
 test max_redeemers_field_a() {
-  derives(
+  derives_normal(
     header_a(),
     max_redeemers_field_tx_id,
     max_redeemers_field_source,
@@ -197,7 +288,7 @@ test max_redeemers_field_a() {
 }
 
 test max_redeemers_field_b() {
-  derives(
+  derives_normal(
     header_b(),
     max_redeemers_field_tx_id,
     max_redeemers_field_source,
@@ -205,5 +296,31 @@ test max_redeemers_field_b() {
     #"d87b9f58204d6291bd4bec3144850f3c06430ab02209b65eff6e0bb19f36867d5b7570d59aff",
     #"8e0158201904fc7db012c36f991b2624d947b7a0b978066b1c8a5ecd1cf70b0f2e042d8958204d6291bd4bec3144850f3c06430ab02209b65eff6e0bb19f36867d5b7570d59a582085575be5d3ca8b41511a1a57e85a64c2cdfce33b8a9985d1dce71823acc40ca4582035f46221a8f38b4b37cde1837e2308c8c32019034fd17e7ba42680b767874172005820767d848b9299a0a7aeb5bcc3cad1d8dfe6edf4fb020910171e252c333a41484f000058205453d2b805e6093eeaee2f7b0f1858ed996992b595edf2cdbbf9d9552c1a2fac00000058200000000000000000000000000000000000000000000000000000000000000000",
     #"8a5f7bc43a4166d5b4f45b8d95b164794c84a8dbb0f269033aaf97e3c95c3ab1",
+  )
+}
+
+test forced_spend_a() {
+  derives_forced(
+    header_a(),
+    forced_spend_tx_order_id,
+    forced_spend_tx_id,
+    forced_spend_source,
+    #"959ca3aab1b8bfc6cdd4dbe2e9f0f7fe050c131a21282f363d444b525960676e",
+    #"d87a9fd8799f582031383f464d545b626970777e858c939aa1a8afb6bdc4cbd2d9e0e7eef5fc030a03ffff",
+    #"8e015820fc9a15867c56d2468ed639a93f89c87839cf72294b548cdf4205795983917dd35820b4c9a74bcd143185c3495b4601ec6b2a9e8d6d71385a37a5f9309bfdfaf81f8c5820aee2deb974473ca4cd0006b47697bd13f7407d7906a2aedef4dcbc977f07751958207cf785c458f82e2885d499081d55828fe6f3f3e4319020f70a4f6194f0c45c8e015820959ca3aab1b8bfc6cdd4dbe2e9f0f7fe050c131a21282f363d444b525960676e000058201e59e42ad18570695ba10c809678c59ae1ab95bd67447e5b2f6c03fb816fce7800000058200000000000000000000000000000000000000000000000000000000000000000",
+    #"98c8ed18f6283fb3a9813809133ef706eaaae4c3e5ae3da3907e676977b0f16d",
+  )
+}
+
+test forced_spend_b() {
+  derives_forced(
+    header_b(),
+    forced_spend_tx_order_id,
+    forced_spend_tx_id,
+    forced_spend_source,
+    #"b4bbc2c9d0d7dee5ecf3fa01080f161d242b323940474e555c636a71787f868d",
+    #"d87a9fd8799f582031383f464d545b626970777e858c939aa1a8afb6bdc4cbd2d9e0e7eef5fc030a03ffff",
+    #"8e015820fc9a15867c56d2468ed639a93f89c87839cf72294b548cdf4205795983917dd35820b4c9a74bcd143185c3495b4601ec6b2a9e8d6d71385a37a5f9309bfdfaf81f8c5820aee2deb974473ca4cd0006b47697bd13f7407d7906a2aedef4dcbc977f077519582035f46221a8f38b4b37cde1837e2308c8c32019034fd17e7ba42680b767874172015820b4bbc2c9d0d7dee5ecf3fa01080f161d242b323940474e555c636a71787f868d00005820572e3ec9724cb25d82c7b34a44215a7eb0434a4df09037a910b37e7bdf9ea35f00000058200000000000000000000000000000000000000000000000000000000000000000",
+    #"399b91bf3e6541d26238db5087784badfd693bc3f6d77483c42cf38daf1e764b",
   )
 }

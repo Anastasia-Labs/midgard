@@ -10,6 +10,7 @@ import {
   computeMidgardNativeTxProofCommitment,
   decodeMidgardNativeTxCompact,
   deriveMidgardNativeTxProofSourceFromCanonicalCbor,
+  type MidgardNativeTxProofSource,
 } from "./codec/native.js";
 import {
   MIDGARD_CONSENSUS_PROFILE_ID,
@@ -39,14 +40,77 @@ export type MidgardValidationContextHeaderV1 = {
   readonly minFeeB: bigint;
 };
 
+/** The canonical transaction bytes a source variant carries. */
+export type MidgardValidationSourceTransactionV1 = {
+  readonly canonicalTransactionCbor: Uint8Array;
+};
+
+/**
+ * The twin of `validation_claim_v1.ValidationSourceMembershipV1`: exactly one
+ * of a forced source (`ForcedValidationSource`, a forced submission) or a
+ * normal one (`NormalValidationSource`, an L2 transaction). The state's source
+ * kind follows from the variant, as in the claim; it is never an input.
+ */
+export type MidgardValidationSourceV1 =
+  | {
+      readonly forced: MidgardValidationSourceTransactionV1;
+      readonly normal?: never;
+    }
+  | {
+      readonly normal: MidgardValidationSourceTransactionV1;
+      readonly forced?: never;
+    };
+
 export type MidgardValidationInitialStateInputV1 =
   MidgardValidationContextHeaderV1 & {
     readonly eventKeyCbor: Uint8Array;
-    readonly canonicalTransactionCbor: Uint8Array;
+    readonly source: MidgardValidationSourceV1;
     readonly preUtxosRoot: Uint8Array;
-    /** The source membership the claim authenticates; `normal` by default. */
-    readonly sourceKind?: MidgardValidationSourceKindName;
   };
+
+type DerivedSourceV1 = {
+  readonly sourceKind: MidgardValidationSourceKindName;
+  readonly proofSource: MidgardNativeTxProofSource;
+  readonly transactionId: Buffer;
+  readonly transactionCommitment: Buffer;
+};
+
+/**
+ * The source kind, triple, transaction id and commitment of whichever variant
+ * `source` is; the forced variant takes the forced codec and commitment.
+ */
+const deriveSourceV1 = (source: MidgardValidationSourceV1): DerivedSourceV1 => {
+  const { forced, normal } = source;
+  if (forced !== undefined && normal === undefined) {
+    const proofSource = deriveMidgardForcedTxProofSourceFromCanonicalCbor(
+      forced.canonicalTransactionCbor,
+    );
+    return {
+      sourceKind: "forced",
+      proofSource,
+      transactionId: computeMidgardNativeTxId(
+        decodeMidgardForcedTxCompact(proofSource.compactCbor),
+      ),
+      transactionCommitment: computeMidgardForcedTxProofCommitment(proofSource),
+    };
+  }
+  if (normal !== undefined && forced === undefined) {
+    const proofSource = deriveMidgardNativeTxProofSourceFromCanonicalCbor(
+      normal.canonicalTransactionCbor,
+    );
+    return {
+      sourceKind: "normal",
+      proofSource,
+      transactionId: computeMidgardNativeTxId(
+        decodeMidgardNativeTxCompact(proofSource.compactCbor),
+      ),
+      transactionCommitment: computeMidgardNativeTxProofCommitment(proofSource),
+    };
+  }
+  throw new Error(
+    "validation source must be exactly one of the forced or normal variants",
+  );
+};
 
 /**
  * The twin of `validation_claim_v1.derive_validation_context_cbor`: the
@@ -74,34 +138,18 @@ export const deriveMidgardValidationContextCborV1 = (
 /**
  * The twin of `validation_claim_v1.derive_initial_state`: state 0 of a
  * transaction's validation trace, built from the header context, the event
- * key, the canonical transaction and the step's pre-state root alone.
+ * key, the source variant and the step's pre-state root alone.
  */
 export const deriveMidgardValidationInitialStateV1 = (
   input: MidgardValidationInitialStateInputV1,
 ): MidgardValidationMachineState => {
-  const sourceKind = input.sourceKind ?? "normal";
   const contextCbor = deriveMidgardValidationContextCborV1(input);
-  const forced = sourceKind === "forced";
-  const proofSource = (
-    forced
-      ? deriveMidgardForcedTxProofSourceFromCanonicalCbor
-      : deriveMidgardNativeTxProofSourceFromCanonicalCbor
-  )(input.canonicalTransactionCbor);
-  const compact = (
-    forced ? decodeMidgardForcedTxCompact : decodeMidgardNativeTxCompact
-  )(proofSource.compactCbor);
-  const transactionCommitment = (
-    forced
-      ? computeMidgardForcedTxProofCommitment
-      : computeMidgardNativeTxProofCommitment
-  )(proofSource);
+  const { sourceKind, proofSource, transactionId, transactionCommitment } =
+    deriveSourceV1(input.source);
   return {
     machineVersion: MIDGARD_VALIDATION_MACHINE_VERSION,
     eventKeyHash: hashMidgardValidationEventKey(input.eventKeyCbor),
-    transactionId: ensureHash32(
-      computeMidgardNativeTxId(compact),
-      "transaction_id",
-    ),
+    transactionId: ensureHash32(transactionId, "transaction_id"),
     transactionCommitment: ensureHash32(
       transactionCommitment,
       "transaction_commitment",

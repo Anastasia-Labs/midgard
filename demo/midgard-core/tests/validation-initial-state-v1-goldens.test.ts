@@ -8,10 +8,12 @@ import {
   deriveMidgardValidationInitialStateV1,
   hashMidgardValidationMachineState,
   MIDGARD_CONSENSUS_LIMITS,
+  type MidgardValidationSourceV1,
 } from "../src/index.js";
 import {
   deriveValidationInitialStateVectorsV1,
   type ValidationInitialStateGoldenV1,
+  validationSourceOf,
 } from "./fixtures/validation-initial-state-v1.vectors.mjs";
 
 /**
@@ -31,39 +33,122 @@ const golden = JSON.parse(
 
 const bytes = (hex: string): Buffer => Buffer.from(hex, "hex");
 
+const headerOf = (label: string) => {
+  const header = golden.headers.find((entry) => entry.label === label)!;
+  return {
+    endTimeMs: BigInt(header.endTimeMs),
+    blockSlot: BigInt(header.blockSlot),
+    expectedNetworkId: BigInt(header.expectedNetworkId),
+    minFeeA: BigInt(header.minFeeA),
+    minFeeB: BigInt(header.minFeeB),
+  };
+};
+
+const transactionOf = (label: string) =>
+  golden.transactions.find((entry) => entry.label === label)!;
+
+const vectorOf = (label: string) =>
+  golden.vectors.find((entry) => entry.label === label)!;
+
 describe("validation-initial-state-v1 golden", () => {
   it("recomputes every vector through the source twin", () => {
     expect(deriveValidationInitialStateVectorsV1(codec)).toEqual(golden);
   });
 
-  it("covers three transactions under two headers, one of them at the field-8 bound", () => {
-    expect(golden.vectors).toHaveLength(6);
+  it("covers four transactions under two headers, one forced and one at the field-8 bound", () => {
+    expect(golden.vectors).toHaveLength(8);
     expect(
       golden.transactions.map(
         ({ redeemersPreimageBytes }) => redeemersPreimageBytes,
       ),
     ).toContain(MIDGARD_CONSENSUS_LIMITS.maxRedeemersPreimageBytes);
+    expect(golden.vectors.map(({ source }) => source)).toEqual([
+      ...Array<string>(6).fill("normal"),
+      "forced",
+      "forced",
+    ]);
     expect(new Set(golden.vectors.map(({ stateHash }) => stateHash)).size).toBe(
-      6,
+      8,
     );
+  });
+
+  it("starts a forced source in a Forced state, the one the claim derives", () => {
+    const transaction = transactionOf("forced_spend");
+    const vector = vectorOf("forced_spend_a");
+    const state = deriveMidgardValidationInitialStateV1({
+      ...headerOf("a"),
+      eventKeyCbor: bytes(vector.eventKeyCbor),
+      source: {
+        forced: {
+          canonicalTransactionCbor: bytes(transaction.canonicalTransactionCbor),
+        },
+      },
+      preUtxosRoot: bytes(vector.preUtxosRoot),
+    });
+    expect(state.sourceKind).toBe("forced");
+    expect(
+      decodeMidgardValidationMachineState(bytes(vector.stateCbor)).sourceKind,
+    ).toBe("forced");
+    expect(hashMidgardValidationMachineState(state).toString("hex")).toBe(
+      vector.stateHash,
+    );
+  });
+
+  it("starts a normal source in a Normal state, the one the claim derives", () => {
+    const transaction = transactionOf("minimal_spend");
+    const vector = vectorOf("minimal_spend_a");
+    const state = deriveMidgardValidationInitialStateV1({
+      ...headerOf("a"),
+      eventKeyCbor: bytes(vector.eventKeyCbor),
+      source: {
+        normal: {
+          canonicalTransactionCbor: bytes(transaction.canonicalTransactionCbor),
+        },
+      },
+      preUtxosRoot: bytes(vector.preUtxosRoot),
+    });
+    expect(state.sourceKind).toBe("normal");
+    expect(
+      decodeMidgardValidationMachineState(bytes(vector.stateCbor)).sourceKind,
+    ).toBe("normal");
+    expect(hashMidgardValidationMachineState(state).toString("hex")).toBe(
+      vector.stateHash,
+    );
+  });
+
+  it("refuses a source that is not exactly one variant", () => {
+    const canonicalTransactionCbor = bytes(
+      transactionOf("minimal_spend").canonicalTransactionCbor,
+    );
+    const vector = vectorOf("minimal_spend_a");
+    for (const source of [
+      {},
+      {
+        normal: { canonicalTransactionCbor },
+        forced: { canonicalTransactionCbor },
+      },
+    ]) {
+      expect(() =>
+        deriveMidgardValidationInitialStateV1({
+          ...headerOf("a"),
+          eventKeyCbor: bytes(vector.eventKeyCbor),
+          source: source as unknown as MidgardValidationSourceV1,
+          preUtxosRoot: bytes(vector.preUtxosRoot),
+        }),
+      ).toThrow();
+    }
   });
 
   it("pins the start state the twin derives for each vector", () => {
     for (const vector of golden.vectors) {
-      const header = golden.headers.find(
-        ({ label }) => label === vector.header,
-      )!;
-      const transaction = golden.transactions.find(
-        ({ label }) => label === vector.transaction,
-      )!;
+      const transaction = transactionOf(vector.transaction);
       const state = deriveMidgardValidationInitialStateV1({
-        endTimeMs: BigInt(header.endTimeMs),
-        blockSlot: BigInt(header.blockSlot),
-        expectedNetworkId: BigInt(header.expectedNetworkId),
-        minFeeA: BigInt(header.minFeeA),
-        minFeeB: BigInt(header.minFeeB),
+        ...headerOf(vector.header),
         eventKeyCbor: bytes(vector.eventKeyCbor),
-        canonicalTransactionCbor: bytes(transaction.canonicalTransactionCbor),
+        source: validationSourceOf(
+          transaction.source,
+          bytes(transaction.canonicalTransactionCbor),
+        ),
         preUtxosRoot: bytes(vector.preUtxosRoot),
       });
       expect(
@@ -78,7 +163,7 @@ describe("validation-initial-state-v1 golden", () => {
         executionCpu: 0n,
         executionMemory: 0n,
         verdict: "pending",
-        sourceKind: "normal",
+        sourceKind: transaction.source,
       });
       expect(state.transactionId.toString("hex")).toBe(
         transaction.transactionId,

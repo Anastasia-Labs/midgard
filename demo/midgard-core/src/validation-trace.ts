@@ -30,6 +30,8 @@ export {
   deriveMidgardValidationInitialStateV1,
   type MidgardValidationContextHeaderV1,
   type MidgardValidationInitialStateInputV1,
+  type MidgardValidationSourceTransactionV1,
+  type MidgardValidationSourceV1,
 } from "./validation-trace.derive-midgard-validation-initial-state-v1.js";
 export {
   encodeMidgardValidationMachineState,
