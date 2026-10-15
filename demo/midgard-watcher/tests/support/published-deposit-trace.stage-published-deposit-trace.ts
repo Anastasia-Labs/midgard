@@ -34,6 +34,10 @@ import {
   readPublishedDepositHistory,
 } from "./published-deposit-history.js";
 import {
+  buildPublishedDepositBlock,
+  preparePredecessorDeposits,
+} from "./published-deposit-trace.predecessor-deposits.js";
+import {
   DEPOSIT_BLOCK_INTERVAL_MS,
   EMPTY_PREDECESSOR_INTERVAL_MS,
   type Published,
@@ -219,6 +223,7 @@ export const stagePublishedDepositTrace = async (
       );
     return order;
   };
+  let preparedPriorDeposits: PublishedDepositTraceCheckpoint["priorDeposits"];
   const buildDepositedBlock = async ({
     empty,
     history,
@@ -231,41 +236,51 @@ export const stagePublishedDepositTrace = async (
     endTime: bigint;
   }) => {
     const order = await readMatchingDeposit(history, metadata);
-    return depositEventsRetainedBlock({
+    return buildPublishedDepositBlock({
+      predecessor: empty,
+      priorDeposits: preparedPriorDeposits,
       operatorVkey,
-      prevHeaderHash: empty.headerHash,
-      prevUtxosRoot: empty.header.utxosRoot,
-      startTime: empty.header.endTime,
       endTime,
       blockSlot: BigInt(lucid.unixTimeToSlot(Number(endTime))),
-      events: [
-        {
-          event: order.event,
-          originalAssets: order.originalAssets,
-          honest,
-        },
-      ],
+      event: order,
+      honest,
     });
   };
-  const readPriorDeposits = async () => {
-    const orders = await readDeposits();
-    const deposits: NonNullable<
-      PublishedDepositTraceCheckpoint["priorDeposits"]
-    > = orders.map((order) => ({
-      event: order.utxo,
-      history: capturePublishedDepositHistory(
-        order,
-        contracts.deposit.policyId,
-      ),
-      metadata: {
-        depositAuthUnit: contracts.deposit.policyId + order.assetName,
-        depositAssetName: order.assetName,
-        inclusionTime: Number(order.facts.inclusion_time),
-      },
-    }));
-    return { orders, deposits };
-  };
-  const publishDeposit = async (stage: string) => {
+  const prepare = async () => {
+    await removeAbandonedHeaders();
+    // Validate the ledger before publishing another transaction.
+    await depositEventsRetainedBlock({
+      operatorVkey,
+      startTime: genesis.data.endTime,
+      endTime: genesis.data.endTime + 1n,
+      blockSlot: BigInt(lucid.currentSlot()),
+      prevHeaderHash: genesis.data.headerHash,
+      prevUtxosRoot: genesis.data.utxoRoot,
+      priorLedger: [],
+      events: [],
+    });
+    const { priorOrders, priorDeposits } = await preparePredecessorDeposits({
+      deployment,
+      lucid,
+      operatorVkey,
+      onStage,
+    });
+    await onboardOperator();
+    // The successor registers only after correction. A registration that
+    // matures while proof construction runs prevents the last-operator rewind.
+    // Genesis itself closes a real protocol interval. Faster onboarding must
+    // not let the first header end before that confirmed-state cutoff.
+    await chain.awaitLedgerTime(Number(genesis.data.endTime) + 1);
+    // Retained deposits of a stopped run become eligible at their own
+    // inclusion times; the honest predecessor must close after every one.
+    const latestPriorInclusion = Math.max(
+      0,
+      ...priorDeposits.map((prior) => prior.metadata.inclusionTime),
+    );
+    if (priorDeposits.length > 0)
+      await chain.awaitLedgerTime(
+        latestPriorInclusion - EMPTY_PREDECESSOR_INTERVAL_MS + 1_000,
+      );
     const l2Address = credentialToAddress("Preprod", {
       type: "Key",
       hash: operatorVkey,
@@ -284,55 +299,10 @@ export const stagePublishedDepositTrace = async (
         ),
       ledgerClock(chain),
     );
-    onStage(stage);
+    onStage("deposit publication");
     const signedDeposit = await deposit.tx.sign.withWallet().complete();
     const depositTxHash = await signedDeposit.submit();
     await awaitConfirmed(depositTxHash);
-    return deposit;
-  };
-  const prepare = async () => {
-    await removeAbandonedHeaders();
-    // A stopped preparation may have published an event before its block was
-    // checkpointed. Recover every real pending deposit from the isolated chain.
-    let { orders: priorOrders, deposits: priorDeposits } =
-      await readPriorDeposits();
-    // Validate the ledger before publishing another transaction.
-    await depositEventsRetainedBlock({
-      operatorVkey,
-      startTime: genesis.data.endTime,
-      endTime: genesis.data.endTime + 1n,
-      blockSlot: BigInt(lucid.currentSlot()),
-      prevHeaderHash: genesis.data.headerHash,
-      prevUtxosRoot: genesis.data.utxoRoot,
-      priorLedger: [],
-      events: [],
-    });
-    await onboardOperator();
-    // The successor registers only after correction. A registration that
-    // matures while proof construction runs prevents the last-operator rewind.
-    // Genesis itself closes a real protocol interval. Faster onboarding must
-    // not let the first header end before that confirmed-state cutoff.
-    await chain.awaitLedgerTime(Number(genesis.data.endTime) + 1);
-    // A committed block carries at least one event. With no pending deposit
-    // to recover, publish one for the predecessor to carry.
-    if (priorOrders.length === 0) {
-      await publishDeposit("predecessor deposit publication");
-      ({ orders: priorOrders, deposits: priorDeposits } =
-        await readPriorDeposits());
-      if (priorOrders.length !== 1)
-        throw new Error("Expected exactly the predecessor deposit");
-    }
-    // Retained deposits of a stopped run become eligible at their own
-    // inclusion times; the empty predecessor must close after every one.
-    const latestPriorInclusion = Math.max(
-      0,
-      ...priorDeposits.map((prior) => prior.metadata.inclusionTime),
-    );
-    if (priorDeposits.length > 0)
-      await chain.awaitLedgerTime(
-        latestPriorInclusion - EMPTY_PREDECESSOR_INTERVAL_MS + 1_000,
-      );
-    const deposit = await publishDeposit("deposit publication");
     const admitted = (await readDeposits()).find(
       (order) => order.assetName === deposit.metadata.depositAssetName,
     );
@@ -351,7 +321,7 @@ export const stagePublishedDepositTrace = async (
     );
     if (emptyEnd >= BigInt(deposit.metadata.inclusionTime))
       throw new Error(
-        "Ordinary deposit must become eligible after the empty predecessor",
+        "Ordinary deposit must become eligible after the honest predecessor",
       );
     for (const prior of priorDeposits) {
       if (
@@ -378,6 +348,7 @@ export const stagePublishedDepositTrace = async (
         honest: true,
       })),
     });
+    preparedPriorDeposits = priorDeposits;
     const deposited = await buildDepositedBlock({
       empty,
       history: depositHistory,
@@ -407,6 +378,7 @@ export const stagePublishedDepositTrace = async (
               resume.predecessor.header.endTime)
         ? await prepare()
         : resume;
+  preparedPriorDeposits = prepared.priorDeposits;
   let {
     predecessor: empty,
     current: deposited,
@@ -557,7 +529,7 @@ export const stagePublishedDepositTrace = async (
           if (!(error instanceof PublishedTransactionExpiredError)) throw error;
           // The deposit is due right after the empty interval, so a fresh
           // interval needs a fresh deposit; the unspent one becomes retained
-          // prior history of the new empty predecessor.
+          // prior history of the new honest predecessor.
           onStage(`${error.label} expired unminted; republishing the deposit`);
           const again = await prepare();
           ({
@@ -573,6 +545,7 @@ export const stagePublishedDepositTrace = async (
           checkpoint.depositHistory = depositHistory;
           checkpoint.depositMetadata = depositMetadata;
           checkpoint.priorDeposits = again.priorDeposits;
+          preparedPriorDeposits = again.priorDeposits;
           anchor = await one(
             contracts.stateQueue.spendingScriptAddress,
             rootUnit,
@@ -771,20 +744,14 @@ export const stagePublishedDepositTrace = async (
           throw new Error(
             "The unspent ordinary deposit is not due in the corrected successor interval",
           );
-        const built = await depositEventsRetainedBlock({
+        const built = await buildPublishedDepositBlock({
+          predecessor: empty,
+          priorDeposits: checkpoint.priorDeposits,
           operatorVkey,
-          prevHeaderHash: empty.headerHash,
-          prevUtxosRoot: predecessor.utxosRoot,
-          startTime: predecessor.endTime,
           endTime,
           blockSlot: BigInt(lucid.unixTimeToSlot(Number(endTime))),
-          events: [
-            {
-              event: actualDeposit.event,
-              originalAssets: actualDeposit.originalAssets,
-              honest: true,
-            },
-          ],
+          event: actualDeposit,
+          honest: true,
         });
         return {
           header: built.header,

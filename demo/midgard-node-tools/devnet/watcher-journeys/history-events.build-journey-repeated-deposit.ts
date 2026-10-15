@@ -10,6 +10,10 @@ import {
   type HistoryEventBlockInput,
   retainJourneyWithdrawals,
 } from "./history-events.retain-journey-withdrawals.js";
+import {
+  checkedJourneyConstruction,
+  journeyLedgerPairs,
+} from "./journey-ledger.js";
 
 /**
  * Repeat a deposit from an actual settled ancestor. The caller must stage and
@@ -29,7 +33,7 @@ export const buildJourneyRepeatedDeposit = async (
     throw new Error("Duplicate-event history is newer than the predecessor");
   const base = await buildCanonicalBlockFixture({
     transactions: [],
-    utxos: input.predecessor.payload.block_body.utxos.map(([key, value]) => ({
+    utxos: journeyLedgerPairs(input.predecessor.ledger).map(([key, value]) => ({
       key: Buffer.from(key, "hex"),
       value: Buffer.from(value, "hex"),
     })),
@@ -112,14 +116,17 @@ export const buildJourneyRepeatedDeposit = async (
       transition_trace: transitions,
     },
   };
-  return {
-    header,
-    headerHash,
-    payload,
-    payloadEnvelopeCbor: await wrapDaPayload(SDK.encodeDaPayload(payload), {
-      mode: "identity",
-    }),
-  };
+  return checkedJourneyConstruction(
+    {
+      header,
+      headerHash,
+      payload,
+      payloadEnvelopeCbor: await wrapDaPayload(SDK.encodeDaPayload(payload), {
+        mode: "identity",
+      }),
+    },
+    input.predecessor.ledger.entries,
+  );
 };
 
 /** Deliberately repeat the unchanged withdrawal leaf from an earlier settled block. */

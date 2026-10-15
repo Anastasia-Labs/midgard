@@ -157,5 +157,9 @@ export const retainedTransactionFixture = async (input: {
     ...block,
     payload: SDK.decodeDaPayload(Buffer.from(envelope.innerBytes)),
     replay,
+    postLedgerEntries: [...postLedger].map(([outRef, output]) => ({
+      outRef: Buffer.from(outRef, "hex"),
+      output: Buffer.from(output),
+    })),
   };
 };

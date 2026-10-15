@@ -31,3 +31,7 @@ export {
   type WatcherUserEventIdentity,
   type WatcherUserEventScripts,
 } from "./l1-follower/user-events.js";
+export {
+  readWatcherUserEventScriptBinding,
+  verifyWatcherUserEventScriptBinding,
+} from "./runtime/deployment-identity.js";

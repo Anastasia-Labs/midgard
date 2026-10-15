@@ -2,15 +2,28 @@ import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 
+import { encodeMidgardTxOutput } from "@al-ft/midgard-core";
 import * as FaultProofs from "@al-ft/midgard-fault-proofs";
-import { depositEventsRetainedBlock } from "@al-ft/midgard-fault-proofs/test-support/transition-trace-retained";
+import {
+  buildCanonicalBlockFixture,
+  outRefCbor,
+} from "@al-ft/midgard-fault-proofs/test-support/canonical-block-evidence-fixture";
+import {
+  CML,
+  generateEmulatorAccount,
+  walletFromSeed,
+} from "@lucid-evolution/lucid";
 import { readPublishedDepositHistory } from "midgard-watcher/tests/support/published-deposit-history";
 import type { PublishedDepositTraceCheckpoint } from "midgard-watcher/tests/support/published-deposit-trace";
 import { beforeAll, describe, expect, it } from "vitest";
 
 import { readJourneyArtifact } from "./artifacts.js";
-import { verifyJourneyFixture } from "./fixture-verification.js";
-import { classifyFullCatalogueTransactionFixture } from "./full-catalogue-verification.js";
+import { readCheckpointJourneyLedgerBlock } from "./journey-checkpoint-ledger.test-support.js";
+import { verifyJourneyFixture } from "./journey-classification.test-support.js";
+import { classifyFullCatalogueTransactionFixture } from "./journey-classification.test-support.js";
+import { checkedFixtureBlock } from "./journey-fixture-ledger.test-support.js";
+import { depositEventsRetainedBlock } from "./journey-fixture-ledger.test-support.js";
+import { journeyLedgerPairs } from "./journey-ledger.js";
 import {
   buildJourneyTransactionControl,
   buildJourneyTransactionFault,
@@ -110,7 +123,14 @@ describe.skipIf(stagedPath === undefined || !existsSync(stagedPath))(
         blockSlot: staged.current.header.blockSlot,
         prevHeaderHash: staged.predecessor.headerHash,
         prevUtxosRoot: staged.predecessor.header.utxosRoot,
-        priorLedger: staged.predecessor.payload.block_body.utxos,
+        priorLedger: journeyLedgerPairs(
+          (
+            await readCheckpointJourneyLedgerBlock(
+              runDirectory!,
+              staged.predecessor,
+            )
+          ).ledger,
+        ),
         events: [
           {
             event: deposit.event,
@@ -320,5 +340,43 @@ describe.skipIf(stagedPath === undefined || !existsSync(stagedPath))(
         });
       },
     );
+  },
+);
+
+it.each([0n, 44n])(
+  "builds an accepted event-bearing recovery transaction under minFeeA=%s",
+  async (minFeeA) => {
+    const account = generateEmulatorAccount({ lovelace: 100_000_000n });
+    const wallet = walletFromSeed(account.seedPhrase, { network: "Custom" });
+    const owner = CML.PrivateKey.from_bech32(wallet.paymentKey)
+      .to_public()
+      .hash()
+      .to_raw_bytes();
+    const predecessor = await checkedFixtureBlock(
+      await buildCanonicalBlockFixture({
+        transactions: [],
+        minFeeA,
+        minFeeB: 155_381n,
+        utxos: [
+          {
+            key: outRefCbor(0x81, 0n),
+            value: encodeMidgardTxOutput({
+              address: Buffer.concat([Buffer.from([0x60]), Buffer.from(owner)]),
+              value: { lovelace: 100_000_000n, assets: new Map() },
+            }),
+          },
+        ],
+      }),
+    );
+    const block = await buildJourneyTransactionControl({
+      predecessor,
+      ledgerOwnerSeedPhrase: account.seedPhrase,
+      operatorVkey: "82".repeat(28),
+      endTime: predecessor.header.endTime + 40_000n,
+      blockSlot: predecessor.header.blockSlot + 40n,
+    });
+    expect(block.replay.trace.verdict).toBe("accepted");
+    expect(block.header.totalEventCount).toBe(1n);
+    expect(block.payload.block_body.transaction_preimages).toHaveLength(1);
   },
 );

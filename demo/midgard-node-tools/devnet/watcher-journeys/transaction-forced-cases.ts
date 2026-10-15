@@ -44,12 +44,7 @@ export const buildJourneyForcedTransaction = async (
     canonicalTransactionCbor: material.transaction.canonicalCbor,
     programMaterial: material.programMaterial,
     predecessor: input.predecessor,
-    ledgerEntries: input.predecessor.payload.block_body.utxos.map(
-      ([key, value]) => ({
-        outRef: Buffer.from(key, "hex"),
-        output: Buffer.from(value, "hex"),
-      }),
-    ),
+    ledgerEntries: input.predecessor.ledger.entries,
     operatorVkey: input.operatorVkey,
     endTime: input.endTime,
     blockSlot: input.blockSlot,
