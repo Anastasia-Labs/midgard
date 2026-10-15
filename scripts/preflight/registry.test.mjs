@@ -123,6 +123,19 @@ test("derived goldens read Aiken sources or the pinned builtin evaluator", () =>
       }
       continue;
     }
+    // This fixture is TypeScript program material that only a vitest suite
+    // decodes and executes; no Aiken module reads it.
+    if (check.id === "golden:cek-program-large-integer") {
+      for (const path of [
+        "demo/midgard-validation/scripts/generate-cek-program-large-integer-fixture.mjs",
+        "demo/midgard-validation/tests/fixtures/cek-program-large-integer.json",
+        "demo/midgard-core/src/**",
+        "demo/midgard-validation/src/**",
+      ]) {
+        assert.ok(check.triggers.includes(path), `${check.id}: ${path}`);
+      }
+      continue;
+    }
     assert.ok(
       check.triggers.some((path) => path.endsWith(".ak")),
       `${check.id} names no .ak file, so an Aiken edit cannot select it`,
@@ -513,7 +526,7 @@ test("golden output manifests select every split Aiken artifact", () => {
   const outputs = channel.triggers.filter((path) =>
     path.startsWith("onchain/aiken/lib/midgard/cek-core-step-goldens/"),
   );
-  assert.equal(outputs.length, 26);
+  assert.equal(outputs.length, 27);
   for (const path of outputs) {
     assert.ok(existsSync(resolve(root, path)), path);
     assert.ok(selectedIds([path]).includes(channel.id), path);

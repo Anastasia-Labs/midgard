@@ -17,7 +17,7 @@
  * (run `pnpm run build` first; it reads `dist`).
  */
 
-import { dirname, resolve } from "node:path";
+import { basename, dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import {
@@ -40,12 +40,11 @@ import {
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
 const packageRoot = resolve(scriptDirectory, "..");
 const repositoryRoot = resolve(packageRoot, "../..");
-const aikenFileName = "cek-cost-v1-golden.test.ak";
 const generatedAikenPath = resolve(
   repositoryRoot,
-  "onchain/aiken/lib/midgard",
-  aikenFileName,
+  "onchain/aiken/lib/midgard/cek-cost-v1-golden.test.ak",
 );
+const aikenFileName = basename(generatedAikenPath);
 
 const { checkOnly } = parseGoldenChannelArguments(
   "usage: node scripts/generate-cek-cost-v1-aiken-goldens.mjs [--check]",
