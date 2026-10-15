@@ -1775,6 +1775,285 @@ fn semantic_pair_components_v1(
   )
 }
 
+/// Where `case` sends a constant scrutinee under the protocol version 11
+/// rules: a branch and the values it is applied to, a missing branch, or a
+/// type that `case` does not accept.
+pub type CaseConstantSelectionV1 {
+  CaseConstantBranch { tag: Int, values_count: Int, values_root: ByteArray }
+  CaseConstantMissing
+  CaseConstantUnsupported
+}
+
+fn case_constant_root_v1(
+  type_cbor: ByteArray,
+  summary: cek_data_v1.DataSummaryV1,
+  memory: Int,
+) -> ByteArray {
+  cek_proof_v1.hash_constant_value_v1(
+    cek_proof_v1.hash_blob_chunk_v1(type_cbor),
+    summary.root,
+    summary.cbor_length,
+    summary.root,
+    memory,
+  )
+}
+
+fn case_constant_tag_v1(tag: Int) -> CaseConstantSelectionV1 {
+  CaseConstantBranch {
+    tag,
+    values_count: 0,
+    values_root: cek_proof_v1.empty_sequence_root_v1,
+  }
+}
+
+// The case-apply step applies the deepest value first, so `first` is pushed
+// below `second`, exactly as a constructor's fields are.
+fn case_constant_values_v1(
+  first: ByteArray,
+  second: ByteArray,
+) -> CaseConstantSelectionV1 {
+  CaseConstantBranch {
+    tag: 0,
+    values_count: 2,
+    values_root: cek_proof_v1.hash_sequence_node_v1(
+      second,
+      cek_proof_v1.hash_sequence_node_v1(
+        first,
+        cek_proof_v1.empty_sequence_root_v1,
+        1,
+      ),
+      2,
+    ),
+  }
+}
+
+fn direct_case_constant_v1(
+  witness: cek_constant_v1.ConstantWitnessV1,
+  branches_count: Int,
+) -> Pair<ByteArray, CaseConstantSelectionV1> {
+  let type_cbor = witness.type_cbor
+  let Pair(constant_type, payload) = cek_constant_v1.decode_constant_witness_v1(
+    witness,
+  )
+  let memory = cek_constant_v1.semantic_memory_size_v1(constant_type, payload)
+  let root = fn(summary) { case_constant_root_v1(type_cbor, summary, memory) }
+  let whole = fn(selection) {
+    Pair(root(cek_data_v1.semantic_data_summary_v1(payload)), selection)
+  }
+  when constant_type is {
+    cek_constant_v1.UnitConstant ->
+      whole(
+        if branches_count == 1 {
+          case_constant_tag_v1(0)
+        } else {
+          CaseConstantMissing
+        },
+      )
+    cek_constant_v1.BooleanConstant ->
+      whole(
+        if builtin.un_constr_data(payload).1st == 1 {
+          if branches_count == 2 {
+            case_constant_tag_v1(1)
+          } else {
+            CaseConstantMissing
+          }
+        } else if branches_count == 1 || branches_count == 2 {
+          case_constant_tag_v1(0)
+        } else {
+          CaseConstantMissing
+        },
+      )
+    cek_constant_v1.IntegerConstant -> {
+      let value = builtin.un_i_data(payload)
+      whole(
+        if value >= 0 && value < branches_count {
+          case_constant_tag_v1(value)
+        } else {
+          CaseConstantMissing
+        },
+      )
+    }
+    cek_constant_v1.ListConstant { element } ->
+      when builtin.un_list_data(payload) is {
+        [] ->
+          whole(
+            if branches_count == 2 {
+              case_constant_tag_v1(1)
+            } else {
+              CaseConstantMissing
+            },
+          )
+        [head, ..tail] ->
+          if branches_count == 1 || branches_count == 2 {
+            // The list is committed from its head and tail, so neither is
+            // walked twice.
+            let head_summary = cek_data_v1.semantic_data_summary_v1(head)
+            let tail_items = cek_data_v1.commit_data_list(tail)
+            let head_memory = cek_constant_v1.semantic_memory_size_v1(
+              element,
+              head,
+            )
+            Pair(
+              root(
+                cek_data_v1.list_data_summary_v1(
+                  cek_data_v1.prepend_data_list_summary_v1(
+                    head_summary,
+                    tail_items,
+                  ),
+                ),
+              ),
+              case_constant_values_v1(
+                case_constant_root_v1(
+                  cek_constant_v1.encode_constant_type_v1(element),
+                  head_summary,
+                  head_memory,
+                ),
+                case_constant_root_v1(
+                  type_cbor,
+                  cek_data_v1.list_data_summary_v1(tail_items),
+                  memory - head_memory,
+                ),
+              ),
+            )
+          } else {
+            whole(CaseConstantMissing)
+          }
+      }
+    cek_constant_v1.PairConstant { first, second } ->
+      if branches_count == 1 {
+        expect [first_payload,
+              second_payload] = builtin.un_constr_data(payload).2nd
+        let first_summary = cek_data_v1.semantic_data_summary_v1(first_payload)
+        let second_summary = cek_data_v1.semantic_data_summary_v1(
+          second_payload,
+        )
+        let first_memory = cek_constant_v1.semantic_memory_size_v1(
+          first,
+          first_payload,
+        )
+        Pair(
+          root(
+            cek_data_v1.small_constr_data_summary_v1(
+              0,
+              cek_data_v1.prepend_data_list_summary_v1(
+                first_summary,
+                cek_data_v1.prepend_data_list_summary_v1(
+                  second_summary,
+                  cek_data_v1.empty_data_list_summary_v1(),
+                ),
+              ),
+            ),
+          ),
+          case_constant_values_v1(
+            case_constant_root_v1(
+              cek_constant_v1.encode_constant_type_v1(first),
+              first_summary,
+              first_memory,
+            ),
+            case_constant_root_v1(
+              cek_constant_v1.encode_constant_type_v1(second),
+              second_summary,
+              memory - first_memory,
+            ),
+          ),
+        )
+      } else {
+        whole(CaseConstantMissing)
+      }
+    _ -> whole(CaseConstantUnsupported)
+  }
+}
+
+fn semantic_case_constant_v1(
+  scrutinee: ValueWitnessV1,
+  type_cbor: ByteArray,
+  payload: cek_data_v1.DataSummaryV1,
+  memory: Int,
+  material: SemanticBuiltinWitnessV1,
+  branches_count: Int,
+) -> CaseConstantSelectionV1 {
+  when cek_constant_v1.decode_constant_type_v1(type_cbor) is {
+    cek_constant_v1.UnitConstant -> fail @"semantic unit scrutinee"
+    cek_constant_v1.BooleanConstant -> fail @"semantic boolean scrutinee"
+    // A committed integer of two or more words has magnitude at least 2^64,
+    // past every branch index a term can hold.
+    cek_constant_v1.IntegerConstant -> {
+      expect memory >= 2
+      CaseConstantMissing
+    }
+    cek_constant_v1.ListConstant { .. } ->
+      if branches_count == 1 || branches_count == 2 {
+        let Pair(element, Pair(head, tail)) = semantic_list_head_and_tail_v1(
+          scrutinee,
+          material,
+        )
+        case_constant_values_v1(
+          case_constant_root_v1(
+            cek_constant_v1.encode_constant_type_v1(element),
+            head.1st,
+            head.2nd,
+          ),
+          case_constant_root_v1(
+            type_cbor,
+            cek_data_v1.list_data_summary_v1(tail.1st),
+            tail.2nd,
+          ),
+        )
+      } else {
+        CaseConstantMissing
+      }
+    cek_constant_v1.PairConstant { .. } ->
+      if branches_count == 1 {
+        let Pair(types, values) = semantic_pair_components_v1(
+          scrutinee,
+          material,
+        )
+        case_constant_values_v1(
+          case_constant_root_v1(
+            cek_constant_v1.encode_constant_type_v1(types.1st),
+            values.1st.1st,
+            values.1st.2nd,
+          ),
+          case_constant_root_v1(
+            cek_constant_v1.encode_constant_type_v1(types.2nd),
+            values.2nd.1st,
+            values.2nd.2nd,
+          ),
+        )
+      } else {
+        CaseConstantMissing
+      }
+    _ -> CaseConstantUnsupported
+  }
+}
+
+/// The committed root of a constant scrutinee and where `case` sends it. An
+/// inline constant is read whole; a semantic one through its list or pair
+/// material.
+pub fn case_constant_selection_v1(
+  scrutinee: ValueWitnessV1,
+  material: SemanticBuiltinWitnessV1,
+  branches_count: Int,
+) -> Pair<ByteArray, CaseConstantSelectionV1> {
+  when scrutinee is {
+    ConstantValue(witness) -> direct_case_constant_v1(witness, branches_count)
+    SemanticConstantValue { type_cbor, payload, memory } ->
+      Pair(
+        case_constant_root_v1(type_cbor, payload, memory),
+        semantic_case_constant_v1(
+          scrutinee,
+          type_cbor,
+          payload,
+          memory,
+          material,
+          branches_count,
+        ),
+      )
+    OpaqueValue(_) -> fail @"opaque case scrutinee"
+    BlsMillerLoopValue(_) -> fail @"Miller-loop case scrutinee"
+  }
+}
+
 pub fn verify_semantic_pair_v1(
   tag: Int,
   arguments: List<ValueWitnessV1>,

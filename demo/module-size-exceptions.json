@@ -1176,8 +1176,8 @@
   },
   {
     "file": "midgard-validation/src/cek-executor.structural-executor.ts",
-    "max": 2424,
-    "reason": "StructuralExecutor is one state owner: its methods share private state and lifecycle invariants. Further extraction would redesign ownership rather than separate independent declarations; surrounding helpers have been extracted. P (-24): step verification and retention moved to cek-executor.step-recorder.ts."
+    "max": 2449,
+    "reason": "StructuralExecutor is one state owner: its methods share private state and lifecycle invariants. Further extraction would redesign ownership rather than separate independent declarations; surrounding helpers have been extracted. P (-24): step verification and retention moved to cek-executor.step-recorder.ts. C13a (+25): case on a constant delegates to cek-executor.case-constant.ts through a host of executor closures, and the branch walk accepts any branch before the last."
   },
   {
     "file": "midgard-validation/src/validation-machine/trace-builder-complete.ts",

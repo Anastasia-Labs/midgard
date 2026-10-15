@@ -79,7 +79,7 @@ pub fn core_group(mode: Int, witness: Data) -> Int {
     expect arm == 11 || arm == 12
     1
   } else if mode == machine.mode_return {
-    expect arm >= 13 && arm <= 27
+    expect arm >= 13 && arm <= 27 || arm == 41
     1
   } else if mode == machine.mode_case_select {
     expect arm == 28

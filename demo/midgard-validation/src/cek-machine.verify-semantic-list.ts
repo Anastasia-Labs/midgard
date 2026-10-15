@@ -25,6 +25,7 @@ import {
   constantParts,
   dataNodeSummary,
   type DataSequenceSummary,
+  type DataSummary,
   listSequenceFromNode,
 } from "./cek-machine.verify-case-select.js";
 import { dataListLinkMatches } from "./cek-machine.verify-map-conversion-start.js";
@@ -130,13 +131,46 @@ export const verifySemanticList = (
       item.memory + source.memory,
     );
   }
+  if ((tag !== 33n && tag !== 34n) || arguments_.length !== 1) return false;
+  const opened = semanticListHeadAndTail(arguments_[0]!, material);
+  if (opened === null) return false;
+  return tag === 33n
+    ? resultMatchesParts(
+        result,
+        opened.element,
+        opened.head.summary,
+        opened.head.memory,
+      )
+    : resultMatchesParts(
+        result,
+        { kind: "list", element: opened.element },
+        listDataSummary(opened.tail.sequence),
+        opened.tail.memory,
+      );
+};
+
+/**
+ * Opens a non-empty list constant into its head and tail from the head
+ * material, as `headList`/`tailList` and `case` on a list read it.
+ */
+export const semanticListHeadAndTail = (
+  source: MidgardCekDirectValueWitness,
+  material: MidgardCekSemanticBuiltinWitness,
+): {
+  readonly element: MidgardCekConstantType;
+  readonly head: { readonly summary: DataSummary; readonly memory: bigint };
+  readonly tail: {
+    readonly sequence: DataSequenceSummary;
+    readonly memory: bigint;
+  };
+} | null => {
   if (
-    (tag !== 33n && tag !== 34n) ||
-    arguments_.length !== 1 ||
+    material.pairNodes.length !== 0 ||
+    material.scalarPreimages.length !== 0 ||
     material.dataNodes.length !== 2 ||
     (material.listNodes.length !== 1 && material.listNodes.length !== 2)
   ) {
-    return false;
+    return null;
   }
   const [sourceNode, headNode] = material.dataNodes;
   const [firstLink, tailLink] = material.listNodes;
@@ -147,12 +181,12 @@ export const verifySemanticList = (
     firstLink.length <= 0n ||
     (firstLink.length === 1n) !== (tailLink === undefined)
   ) {
-    return false;
+    return null;
   }
-  const source = semanticListSource(arguments_[0]!, sourceNode, [firstLink]);
+  const opened = semanticListSource(source, sourceNode, [firstLink]);
   let headMemory: bigint | null;
-  if (arguments_[0]?.kind === "constant" && source !== null) {
-    const decoded = decodeMidgardCekConstantWitness(arguments_[0].witness);
+  if (source.kind === "constant" && opened !== null) {
+    const decoded = decodeMidgardCekConstantWitness(source.witness);
     if (
       !(decoded.payload instanceof DataList) ||
       decoded.payload.list.length === 0 ||
@@ -161,46 +195,40 @@ export const verifySemanticList = (
         dataNodeSummary(headNode),
       )
     ) {
-      return false;
+      return null;
     }
     headMemory = midgardCekConstantMemorySize(
-      source.element,
+      opened.element,
       decoded.payload.list[0]!,
     );
   } else {
     headMemory = constantMemoryFromPayloadNode(
-      source?.element ?? { kind: "data" },
+      opened?.element ?? { kind: "data" },
       headNode,
     );
   }
   if (
-    source === null ||
+    opened === null ||
     headMemory === null ||
-    firstLink.length !== source.sequence.length ||
+    firstLink.length !== opened.sequence.length ||
     !dataListLinkMatches(firstLink, headNode, tailLink ?? null)
   ) {
-    return false;
+    return null;
   }
-  if (tag === 33n) {
-    return resultMatchesParts(
-      result,
-      source.element,
-      dataNodeSummary(headNode),
-      headMemory,
-    );
-  }
-  const tail: DataSequenceSummary = {
-    root: firstLink.tail,
-    length: firstLink.length - 1n,
-    payloadCborLength: firstLink.payloadCborLength - firstLink.headCborLength,
-    memory: firstLink.memory - firstLink.headMemory,
+  return {
+    element: opened.element,
+    head: { summary: dataNodeSummary(headNode), memory: headMemory },
+    tail: {
+      sequence: {
+        root: firstLink.tail,
+        length: firstLink.length - 1n,
+        payloadCborLength:
+          firstLink.payloadCborLength - firstLink.headCborLength,
+        memory: firstLink.memory - firstLink.headMemory,
+      },
+      memory: opened.memory - headMemory,
+    },
   };
-  return resultMatchesParts(
-    result,
-    { kind: "list", element: source.element },
-    listDataSummary(tail),
-    source.memory - headMemory,
-  );
 };
 
 export const verifySemanticChooseData = (

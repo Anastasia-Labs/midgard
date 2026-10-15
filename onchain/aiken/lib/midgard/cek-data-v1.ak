@@ -1250,7 +1250,7 @@ pub fn bytes_data_summary_v1(
   }
 }
 
-fn commit_data_list(items: List<Data>) -> DataSequenceSummaryV1 {
+pub fn commit_data_list(items: List<Data>) -> DataSequenceSummaryV1 {
   when items is {
     [] -> empty_data_list_summary_v1()
     [head, ..tail] -> {

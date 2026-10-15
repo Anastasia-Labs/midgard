@@ -81,6 +81,10 @@ import {
   type SequenceNode,
 } from "./cek-executor.build-midgard-cek-execution-graph.js";
 import {
+  type CaseConstantHost,
+  returnCaseConstant,
+} from "./cek-executor.case-constant.js";
+import {
   type MidgardCekStepRecorder,
   type MidgardCekStructuralVerdict,
 } from "./cek-executor.step-recorder.js";
@@ -126,6 +130,18 @@ export class StructuralExecutor {
     string,
     MidgardCekContinuationFrame
   >();
+
+  private readonly caseConstantHost: CaseConstantHost = {
+    constant: (root) => this.constants.get(rootHex(root)),
+    resolve: (value) => this.resolvedConstant(value),
+    top: (tree) => this.topSemanticMaterial(tree),
+    dataNode: (root) => this.dataNodes.get(rootHex(root)),
+    dataList: (root) => this.dataLists.get(rootHex(root)),
+    addResult: (type, payload) => this.addSemanticResult(type, payload).root,
+    addSequence: (node) => this.addSequence(node),
+    addContinuation: (frame) => this.addContinuation(frame),
+    record: (witness, post) => this.record(witness, post),
+  };
 
   constructor(
     root: Bytes,
@@ -2250,6 +2266,10 @@ export class StructuralExecutor {
         return;
       }
       case "case": {
+        if (value.kind === "constant") {
+          returnCaseConstant(this.caseConstantHost, pre, frame);
+          return;
+        }
         if (value.kind !== "constr") {
           this.record(
             {
@@ -2319,7 +2339,12 @@ export class StructuralExecutor {
     if (frame?.kind !== "caseSelect") {
       throw new Error("CEK case-select state has the wrong continuation");
     }
-    const branch = this.sequence(pre.focusRoot, pre.auxiliary + 1n);
+    // The branch walk starts at the head of all the branches, so the node
+    // only has to be longer than the steps still to take.
+    const branch = this.sequences.get(rootHex(pre.focusRoot));
+    if (branch === undefined || branch.length <= pre.auxiliary) {
+      throw new Error(`missing CEK case branch ${rootHex(pre.focusRoot)}`);
+    }
     const witness: MidgardCekCoreStepWitness = {
       kind: "selectCaseBranch",
       branch: branch.head,

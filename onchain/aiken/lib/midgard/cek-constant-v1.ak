@@ -74,6 +74,39 @@ pub fn decode_constant_type_v1(type_cbor: ByteArray) -> ConstantTypeV1 {
   constant_type
 }
 
+fn constant_type_tags_v1(constant_type: ConstantTypeV1) -> ByteArray {
+  when constant_type is {
+    IntegerConstant -> #[0]
+    ByteStringConstant -> #[1]
+    StringConstant -> #[2]
+    UnitConstant -> #[3]
+    BooleanConstant -> #[4]
+    ListConstant { element } ->
+      bytearray.push(constant_type_tags_v1(element), 5)
+    PairConstant { first, second } ->
+      bytearray.push(
+        bytearray.concat(
+          constant_type_tags_v1(first),
+          constant_type_tags_v1(second),
+        ),
+        6,
+      )
+    DataConstant -> #[8]
+    BlsG1Constant -> #[9]
+    BlsG2Constant -> #[10]
+    BlsMillerLoopResultConstant -> #[11]
+  }
+}
+
+/// The canonical type CBOR `decode_constant_type_v1` accepts: an indefinite
+/// list of one-byte tags.
+pub fn encode_constant_type_v1(constant_type: ConstantTypeV1) -> ByteArray {
+  bytearray.push(
+    bytearray.concat(constant_type_tags_v1(constant_type), #[0xff]),
+    0x9f,
+  )
+}
+
 pub fn constant_type_is_known_v1(type_cbor: ByteArray) -> Bool {
   when decode_constant_type_v1(type_cbor) is {
     IntegerConstant -> True
@@ -213,6 +246,16 @@ pub fn constant_semantic_projection(
   )
 }
 
+/// Decodes an inline constant once, with its payload checked against its type.
+pub fn decode_constant_witness_v1(
+  witness: ConstantWitnessV1,
+) -> Pair<ConstantTypeV1, Data> {
+  let constant_type = decode_constant_type_v1(witness.type_cbor)
+  let payload = decode_constant_payload_v1(witness.payload_cbor)
+  expect payload_matches_type(constant_type, payload)
+  Pair(constant_type, payload)
+}
+
 pub fn constant_root_v1(witness: ConstantWitnessV1) -> ByteArray {
   let constant_type = decode_constant_type_v1(witness.type_cbor)
   let payload = decode_constant_payload_v1(witness.payload_cbor)
@@ -335,7 +378,10 @@ fn semantic_items_memory_size_v1(
   }
 }
 
-fn semantic_memory_size_v1(constant_type: ConstantTypeV1, payload: Data) -> Int {
+pub fn semantic_memory_size_v1(
+  constant_type: ConstantTypeV1,
+  payload: Data,
+) -> Int {
   when constant_type is {
     IntegerConstant -> integer_memory_size_v1(builtin.un_i_data(payload))
     ByteStringConstant -> bytearray_memory_size_v1(builtin.un_b_data(payload))
