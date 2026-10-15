@@ -34,6 +34,7 @@ import {
   Application,
   ErrorUPLC,
   Lambda,
+  UPLCConst,
   UPLCEncoder,
   UPLCProgram,
   type UPLCTerm,
@@ -51,19 +52,37 @@ import {
 import { countsFromLengths, headerFor } from "./da-payload.record.js";
 import { rebind, verdict } from "./foreign-block-import.fixture.js";
 
-/** A script body: accepts, fails, or loops until its budget is spent. */
-export type ScriptBody = "accept" | "reject" | "loop";
+/** A script body: accepts, fails, loops until its budget is spent, or
+ * accepts carrying `LARGE_SCRIPT_BYTES` of unused constants. */
+export type ScriptBody = "accept" | "reject" | "loop" | "large";
+
+/** The unused constants a "large" script carries, in 8 KiB constants. */
+export const LARGE_SCRIPT_BYTES = 64 * 1024;
 
 const omega = new Lambda(
   new Application(new UPLCVar(0), new UPLCVar(0)),
 ) as UPLCTerm;
+
+/** `\ctx -> (\_ -> ... ctx) #c1 ... #ck`: unused constants. */
+const carrying = (bytes: number): UPLCTerm => {
+  const pieces = Math.ceil(bytes / 8_192);
+  let body: UPLCTerm = new UPLCVar(pieces);
+  for (let index = 0; index < pieces; index += 1)
+    body = new Application(
+      new Lambda(body),
+      UPLCConst.byteString(new Uint8Array(8_192).fill(index + 1)),
+    );
+  return new Lambda(body);
+};
 
 const term = (body: ScriptBody): UPLCTerm =>
   body === "accept"
     ? new Lambda(new UPLCVar(0))
     : body === "reject"
       ? new Lambda(new ErrorUPLC())
-      : new Lambda(new Application(omega, omega));
+      : body === "large"
+        ? carrying(LARGE_SCRIPT_BYTES)
+        : new Lambda(new Application(omega, omega));
 
 /** A PlutusV3 program, its witness, and its unprotected script address. */
 export const scriptOf = (body: ScriptBody) => {
@@ -89,10 +108,11 @@ export const scriptOf = (body: ScriptBody) => {
 
 export type LedgerEntry = Readonly<{ outRef: Buffer; output: Buffer }>;
 
-/** One spend: `input` is locked by `body`'s script; its one output is
- * locked by `next`'s script. */
+/** One spend: `input` (and each of `extra`, each a run of its own) is
+ * locked by `body`'s script; its one output is locked by `next`'s script. */
 export type Spend = Readonly<{
   input: Buffer;
+  extra?: readonly Buffer[];
   body: ScriptBody;
   next: ScriptBody;
   /** Declared cpu units (default 10^9). */
@@ -107,25 +127,32 @@ export const fundedBy = (byte: number, body: ScriptBody): LedgerEntry => ({
 
 const buildSpend = (spend: Spend) => {
   const script = scriptOf(spend.body);
+  const inputs = [spend.input, ...(spend.extra ?? [])];
   const tx = makeNativeTx({
-    spendInputs: [spend.input],
-    outputs: [makeOutput(FUNDED_OUTPUT_LOVELACE, scriptOf(spend.next).address)],
+    spendInputs: inputs,
+    outputs: [
+      makeOutput(
+        FUNDED_OUTPUT_LOVELACE * BigInt(inputs.length),
+        scriptOf(spend.next).address,
+      ),
+    ],
     omitVkeyWitness: true,
     scriptWitnesses: [script.witness],
     scriptLanguages: ["PlutusV3"],
-    redeemerTxWitsPreimageCbor: makeRedeemersCbor([
-      {
+    redeemerTxWitsPreimageCbor: makeRedeemersCbor(
+      inputs.map((_, index) => ({
         tag: MidgardRedeemerTag.Spend,
-        index: 0n,
+        index: BigInt(index),
+        // The per-transaction memory cap, shared between the redeemers.
         exUnits: [
           BigInt(
             MIDGARD_CONSENSUS_PROFILE.limits
               .minSupportedTransactionExecutionMemoryUnits,
-          ),
+          ) / BigInt(inputs.length),
           spend.cpu ?? 1_000_000_000n,
         ],
-      },
-    ]),
+      })),
+    ),
   });
   return { tx, material: script.material };
 };
@@ -173,16 +200,17 @@ export const committedBlock = async (
   for (const [index, { tx, material: own }] of built.entries()) {
     for (const entry of own)
       material.set(Buffer.from(entry.root).toString("hex"), entry);
-    const spent = spends[index]!.input;
+    const spent = [spends[index]!.input, ...(spends[index]!.extra ?? [])];
     const replay = await Effect.runPromise(
       replayValidationVerdictEvent({
         l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
         consensusProfile: MIDGARD_CONSENSUS_PROFILE,
         canonicalTransactionCbor: tx.txCbor,
         programMaterialSidecarCbor: encodeMidgardCekProgramMaterialSidecar(own),
-        ledgerWitnessEntries: [
-          { outRef: spent, output: ledger.get(spent.toString("hex"))! },
-        ],
+        ledgerWitnessEntries: spent.map((outRef) => ({
+          outRef,
+          output: ledger.get(outRef.toString("hex"))!,
+        })),
         blockTimeMs: 2,
         expectedNetworkId: 0n,
         minFeeA: 0n,
