@@ -1,3 +1,5 @@
+import { type TransitionTraceForgedStep } from "./transition-trace-final-cases.forged-step.js";
+
 export type TransitionTraceFinalCase = Readonly<{
   assetCount: number;
   outputCount: number;
@@ -10,6 +12,8 @@ export type TransitionTraceFinalCase = Readonly<{
   corruptAssetIndex?: boolean;
   /** Forge the restored stack entries of the output datum walk. */
   corruptWalk?: boolean;
+  /** Forge one streamed step so that exactly one withdraw-zero script refuses. */
+  forgeStep?: TransitionTraceForgedStep;
   corruptSourceReference?: boolean;
   datumBytes?: number;
   /** An output datum's CBOR, in place of a `datumBytes` byte string. */

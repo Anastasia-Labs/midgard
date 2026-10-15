@@ -5,6 +5,19 @@ export type ValidatorScenarioPair = Readonly<{
   failing: readonly ValidatorScenario[];
 }>;
 
+const streamedReplayStep = (failing: string): ValidatorScenarioPair => ({
+  passing: [
+    {
+      file: STREAMED_REPLAY_FILE,
+      test: "convicts a wrong transition root with every streamed step honest",
+    },
+  ],
+  failing: [{ file: STREAMED_REPLAY_FILE, test: failing }],
+});
+
+const STREAMED_REPLAY_FILE =
+  "demo/midgard-fault-proofs/tests/submit-init-emulator-transition-trace-final-forged-steps.test.ts";
+
 export const VALIDATOR_SCENARIOS: Readonly<
   Record<string, ValidatorScenarioPair>
 > = {
@@ -316,4 +329,22 @@ export const VALIDATOR_SCENARIOS: Readonly<
       },
     ],
   },
+  "fraud_proofs/transition_trace/accepted_transaction_yields.l2_delete":
+    streamedReplayStep(
+      "refuses an input delete step claiming a post-root its witness does not give",
+    ),
+  "fraud_proofs/transition_trace/accepted_transaction_yields.l2_outputs":
+    streamedReplayStep(
+      "refuses an outputs certification step claiming one output more than the field holds",
+    ),
+  "fraud_proofs/transition_trace/accepted_transaction_yields.l2_output_step":
+    streamedReplayStep(
+      "refuses an output step claiming a post-root its insert does not give",
+    ),
+  "fraud_proofs/transition_trace/output_step.descriptor": streamedReplayStep(
+    "refuses an output step inserting a descriptor its output does not derive",
+  ),
+  "fraud_proofs/transition_trace/output_step.summary": streamedReplayStep(
+    "refuses an output step whose summaries and descriptor are forged together",
+  ),
 };
