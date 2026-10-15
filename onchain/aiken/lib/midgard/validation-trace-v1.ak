@@ -349,6 +349,30 @@ pub fn verify_trace_proof(
   }
 }
 
+/// A trace proof against a bare trace root over states `0..step_count`: leaf
+/// `proof.state_index` holds `proof.state_hash`. A validation case commits
+/// each side to a root and its step count rather than to a descriptor.
+pub fn verify_trace_proof_against_root(
+  trace_root: ByteArray,
+  step_count: Int,
+  proof: ValidationTraceProof,
+) -> Bool {
+  and {
+    step_count >= 1,
+    step_count <= max_machine_step_count,
+    bytearray.length(trace_root) == 32,
+    proof.state_index >= 0,
+    proof.state_index <= step_count,
+    bytearray.length(proof.state_hash) == 32,
+    list.length(proof.siblings) == trace_depth(step_count),
+    fold_trace_path(
+      proof.siblings,
+      proof.state_index,
+      trace_leaf_hash(proof.state_hash),
+    ) == trace_root,
+  }
+}
+
 /// The canonical V1 descriptor has 145 fixed bytes plus a 1/2/3/5-byte
 /// positive uint32 step count. Match that exact wire shape without invoking
 /// the general Data decoder on arbitrary leaf bytes. This keeps the source
