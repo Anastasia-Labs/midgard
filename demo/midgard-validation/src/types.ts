@@ -250,7 +250,17 @@ export type LocalScriptEvalResult =
    * (`PhaseBConfig.cekGatedSet`). Not a verdict: the caller refuses the
    * transaction locally.
    */
-  | { readonly kind: "outside_gated_set"; readonly detail: string };
+  | { readonly kind: "outside_gated_set"; readonly detail: string }
+  /**
+   * The evaluator itself failed: a throw, one of its own bounds, or a
+   * self-check. Not a verdict: Phase B fails with
+   * `ScriptEvaluationIndeterminateError` carrying `cause`.
+   */
+  | {
+      readonly kind: "indeterminate";
+      readonly detail: string;
+      readonly cause?: unknown;
+    };
 
 /**
  * Configuration knobs for phase-B validation.

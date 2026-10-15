@@ -95,7 +95,11 @@ export class MidgardCekStepRecorder {
     }
   }
 
-  /** Fails closed before a transition that would exceed the step bound. */
+  /**
+   * Fails closed before a transition that would exceed the step bound. The
+   * bound is the evaluator's own (the budget stops every honest run long
+   * before it), so a caller reports it as no verdict, never a rejection.
+   */
   public assertWithinBound(): void {
     if (this.count >= this.maxSteps) {
       throw new Error(
@@ -111,6 +115,8 @@ export class MidgardCekStepRecorder {
   ): void {
     this.screen?.(witness);
     if (this.mode === "proof") {
+      // A generated transition the verifier refuses is the generator's
+      // fault, so the run has no verdict.
       if (!verifyMidgardCekCoreStep(pre, post, witness)) {
         throw new Error(
           `generated CEK ${witness.kind} transition does not pass the consensus verifier`,

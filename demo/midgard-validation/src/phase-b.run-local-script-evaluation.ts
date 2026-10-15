@@ -15,6 +15,7 @@ import {
   PURPOSE_KIND,
 } from "./phase-b.discover-local-script-executions.js";
 import {
+  ScriptEvaluationIndeterminateError,
   ScriptOutsideGatedSetError,
   ScriptWallCapExceededError,
 } from "./phase-b.evaluate-cek-script.js";
@@ -243,6 +244,15 @@ export const runLocalScriptEvaluation = (
           new ScriptOutsideGatedSetError(
             candidate.ledgerTx.txId,
             `${execution.purpose.kind} ${execution.purpose.scriptHash}: ${result.detail}`,
+          ),
+        );
+      }
+      if (result.kind === "indeterminate") {
+        return yield* Effect.fail(
+          new ScriptEvaluationIndeterminateError(
+            candidate.ledgerTx.txId,
+            `${execution.purpose.kind} ${execution.purpose.scriptHash}: ${result.detail}`,
+            { cause: result.cause },
           ),
         );
       }

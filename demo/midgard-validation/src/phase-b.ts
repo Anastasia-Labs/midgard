@@ -25,6 +25,7 @@ export {
   evaluateMidgardCekVerdict,
   type MidgardCekScriptRun,
   type MidgardCekVerdictRequest,
+  ScriptEvaluationIndeterminateError,
   ScriptOutsideGatedSetError,
   ScriptWallCapExceededError,
 } from "./phase-b.evaluate-cek-script.js";
