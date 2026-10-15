@@ -2903,14 +2903,17 @@ test bounded_context_stage9_item_bind_refuses_another_item() fail {
   run_stage9_item_bind(fn(_) { stage9_item_control(1) })
 }
 
-test bounded_context_binding_wire_matches_sdk() {
-  let f = context_step_fixture()
+/// The context-binding wire the SDK binder is checked against: prepared, work
+/// witness, transaction ID, auxiliary, bound and staged. The SDK fixtures
+/// `cek-context-binding.json` (normal) and `cek-context-binding-forced.json`
+/// hold these exact bytes.
+fn context_binding_wire(f: CekStepFixtureV1) -> Data {
   let staged = context_staged_fixture(f)
   let prepared_data: Data = prepared(f)
   let auxiliary: Data = f.auxiliary
   let bound_data: Data = staged.bound
   let staged_data: Data = staged
-  let vector = builtin.constr_data(
+  builtin.constr_data(
     0,
     [
       prepared_data,
@@ -2921,7 +2924,25 @@ test bounded_context_binding_wire_matches_sdk() {
       staged_data,
     ],
   )
+}
+
+test bounded_context_binding_wire_matches_sdk() {
+  let vector = context_binding_wire(context_step_fixture())
   blake2b_256(cbor.serialise(vector)) == #"c50c9f3b65e946458c1022d81065c0e3a8a95eb34ee64b0d98d2a84fda392bdf"
+}
+
+test bounded_context_binding_wire_matches_sdk_for_a_normal_source() {
+  let f = context_step_fixture()
+  let vector = context_binding_wire(
+    CekStepFixtureV1 {
+      ..f,
+      pre: validation_trace_v1.ValidationMachineStateV1 {
+        ..f.pre,
+        source_kind: validation_trace_v1.Normal,
+      },
+    },
+  )
+  blake2b_256(cbor.serialise(vector)) == #"1ef67519967d68f169b34de529a6ba6a4ab064fc7a3c1a5a6c4d6986aadef6c1"
 }
 
 fn ordered_mint_fixture() -> Pair<CekContextControlV1, CekMintHead> {
