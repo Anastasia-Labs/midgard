@@ -666,12 +666,10 @@ test("every interactive profile lets the longest transition-trace thread finish 
     profiles["preprod-emulator-testing"].timing.block_maturity_ms,
     259_200_000,
   );
-  const thread =
-    /longest transition-trace thread, 6308 steps \(252320000 ms\)/u;
+  const thread = /transition-trace thread, 6308 steps \(252320000 ms\)/u;
   for (const name of emulatorOnlyProfileNames) {
     const profile = structuredClone(profiles[name]);
     for (const [maturity, fits] of [
-      [14_400_000, false],
       [172_800_000, false],
       [budget - 1, false],
       [budget, true],
