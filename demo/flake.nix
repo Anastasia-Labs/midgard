@@ -6,7 +6,7 @@
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
     nodeToolchain.url = "github:NixOS/nixpkgs/eef00dfd8a712b34af845f9350bac681b1228bd1";
-    # Go 1.26.5 from 26.05 retains support for x86_64-darwin.
+    # Pin nixpkgs 26.05 for Go 1.26.5; nixpkgs 26.11 dropped Intel Mac support.
     goToolchain.url = "github:NixOS/nixpkgs/2f108b9d935fcdfa7aed10e4055dc36765379d8a";
     flake-utils.url = "github:numtide/flake-utils";
   };
