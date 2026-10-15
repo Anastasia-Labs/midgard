@@ -17,6 +17,8 @@ import {
   largestFeasibleCommitEventDepth,
   largestNoStrikeCommitEventDepth,
   largestProductionCommitEventDepth,
+  maximumTransitionTraceThreadBudgetMs,
+  maximumTransitionTraceThreadSteps,
   minimumDaResponseBudgetMs,
   minimumPublicEventWaitMs,
   minimumPublicOpenAfterApplyMarginMs,
@@ -632,7 +634,7 @@ test("every profile carries the pooled DA bond amounts and timing, rendered into
           timing: {
             da_challenge_window_ms: 1_800_000,
             da_slash_grace_ms: 300_000,
-            da_bond_withdraw_delay_ms: 15_180_000,
+            da_bond_withdraw_delay_ms: 173_580_000,
           },
         }
       : expected[publicProfiles.includes(name) ? "public" : "testing"];
@@ -649,6 +651,33 @@ test("every profile carries the pooled DA bond amounts and timing, rendered into
         ),
         `${name} renders ${envNames[key]}`,
       );
+    }
+  }
+});
+
+test("every interactive profile lets the longest transition-trace thread finish before block maturity, exactly", () => {
+  assert.equal(maximumTransitionTraceThreadSteps(), 1_608);
+  const budget = maximumTransitionTraceThreadBudgetMs();
+  assert.equal(budget, 1_608 * 2 * 20_000);
+  const profiles = readProfiles();
+  for (const name of [...publicProfiles, ...emulatorOnlyProfileNames])
+    assert.ok(profiles[name].timing.block_maturity_ms >= budget, name);
+  assert.equal(
+    profiles["preprod-emulator-testing"].timing.block_maturity_ms,
+    172_800_000,
+  );
+  const thread = /longest transition-trace thread, 1608 steps \(64320000 ms\)/u;
+  for (const name of emulatorOnlyProfileNames) {
+    const profile = structuredClone(profiles[name]);
+    for (const [maturity, fits] of [
+      [14_400_000, false],
+      [budget - 1, false],
+      [budget, true],
+    ]) {
+      profile.timing.block_maturity_ms = maturity;
+      withDelayAtFloor(profile);
+      if (fits) validateProfile(profile, name);
+      else assert.throws(() => validateProfile(profile, name), thread);
     }
   }
 });
@@ -692,10 +721,13 @@ test("every profile's withdrawal delay meets the spec relation and the head-remo
     // 480,000 + 720,000 + 880,000 + 300,000; the challenge path dominates
     // the 900,000 maturity, so the two forms coincide.
     testing: { spec: 2_380_000, enforced: 2_380_000 },
+    // 480,000 + 1,800,000 + 840,000 + 300,000 (spec) and
+    // 480,000 + max(2,640,000, 172,800,000) + 300,000 (enforced).
+    emulator: { spec: 3_420_000, enforced: 173_580_000 },
   };
   for (const [name, original] of Object.entries(profiles)) {
     const want = emulatorOnlyProfileNames.includes(name)
-      ? { spec: 3_420_000, enforced: 15_180_000 }
+      ? floors.emulator
       : floors[publicProfiles.includes(name) ? "public" : "testing"];
     const profile = structuredClone(original);
     assert.equal(specDaBondWithdrawDelayFloorMs(profile.timing), want.spec);

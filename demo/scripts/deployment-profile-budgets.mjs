@@ -145,3 +145,32 @@ export const daBondWithdrawDelayFloorMs = (timing) =>
     timing.block_maturity_ms,
   ) +
   timing.da_slash_grace_ms;
+
+// The longest fault-proof thread: a transition-trace proof against the
+// consensus-maximum accepted L2 transaction (kind 0). Each step spends the
+// thread output the previous one made, so the steps land one per L1 block.
+// Both replayed fields fill to the per-field bound
+// (MIDGARD_MAX_TRANSACTION_AGGREGATE_FIELD_BYTES) after a 3-byte list header,
+// with 40-byte spend inputs and 43-byte minimal outputs. The thread is a
+// route, a binding, an open, one delete per input, one certification per 32
+// outputs, one step per output and a terminal comparison. The copies are
+// pinned by midgard-fault-proofs
+// tests/submit-init-emulator-transition-trace-final-maximum-lifecycle.test.ts,
+// which runs this thread on the emulator.
+const MAXIMUM_TRANSACTION_FIELD_BYTES = 32_768;
+export const MAXIMUM_TRANSITION_TRACE_SHAPE = Object.freeze({
+  spendInputs: Math.floor((MAXIMUM_TRANSACTION_FIELD_BYTES - 3) / 40),
+  outputs: Math.floor((MAXIMUM_TRANSACTION_FIELD_BYTES - 3) / 43),
+  outputsCertifiedPerStep: 32,
+});
+
+export const maximumTransitionTraceThreadSteps = () => {
+  const { spendInputs, outputs, outputsCertifiedPerStep } =
+    MAXIMUM_TRANSITION_TRACE_SHAPE;
+  return (
+    3 + spendInputs + Math.ceil(outputs / outputsCertifiedPerStep) + outputs + 1
+  );
+};
+
+export const maximumTransitionTraceThreadBudgetMs = () =>
+  l1BlocksBudgetMs(maximumTransitionTraceThreadSteps());

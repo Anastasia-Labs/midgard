@@ -4,6 +4,8 @@
  * item under the 32,768-byte field bound. Its fault proof runs from Init
  * through conviction and removal in one thread of 1,608 steps, and the honest
  * operator's root at the same shape is refused at the terminal comparison.
+ * The emulator deployment profiles size block maturity for this thread
+ * (demo/scripts/deployment-profile-budgets.mjs), so its shape is pinned here.
  */
 import {
   encodeMidgardSpendInputItem,
@@ -15,6 +17,7 @@ import {
 } from "@al-ft/midgard-core/codec";
 import { describe, expect, it } from "vitest";
 
+import { TRANSITION_OUTPUTS_GRAMMAR_BATCH } from "../src/transition-trace/phases.js";
 import { transitionTraceFinalCaseRunner } from "./support/transition-trace-final-cases.js";
 
 const MAXIMUM = { assetCount: 0, spentCount: 819, outputCount: 761 } as const;
@@ -28,6 +31,13 @@ const output = encodeMidgardTxOutput({
   address: Buffer.from(`60${"aa".repeat(28)}`, "hex"),
   value: { lovelace: 2_000_000n, assets: new Map() },
 });
+type ProfileBudgets = Readonly<{
+  MAXIMUM_TRANSITION_TRACE_SHAPE: Readonly<Record<string, number>>;
+  maximumTransitionTraceThreadSteps: () => number;
+}>;
+const budgets = (await import(
+  new URL("../../scripts/deployment-profile-budgets.mjs", import.meta.url).href
+)) as ProfileBudgets;
 const fieldBytes = (count: number, item: (index: number) => Buffer) =>
   encodeMidgardFieldPreimage(Array.from({ length: count }, (_, i) => item(i)))
     .length;
@@ -43,6 +53,23 @@ describe("consensus-maximum accepted transaction", () => {
     );
     expect(fieldBytes(MAXIMUM.outputCount + 1, () => output)).toBeGreaterThan(
       MIDGARD_MAX_TRANSACTION_AGGREGATE_FIELD_BYTES,
+    );
+  });
+
+  it("is the thread the deployment profiles size block maturity for", () => {
+    expect(budgets.MAXIMUM_TRANSITION_TRACE_SHAPE).toEqual({
+      spendInputs: MAXIMUM.spentCount,
+      outputs: MAXIMUM.outputCount,
+      outputsCertifiedPerStep: TRANSITION_OUTPUTS_GRAMMAR_BATCH,
+    });
+    // Route, binding and open; a delete per input; a certification per batch
+    // of outputs; a step per output; the terminal comparison.
+    expect(budgets.maximumTransitionTraceThreadSteps()).toBe(
+      3 +
+        MAXIMUM.spentCount +
+        Math.ceil(MAXIMUM.outputCount / TRANSITION_OUTPUTS_GRAMMAR_BATCH) +
+        MAXIMUM.outputCount +
+        1,
     );
   });
 
