@@ -2194,3 +2194,71 @@ test append_bytes_success_is_refused_one_past_the_bound() fail {
   let arguments = [bytes(left), bytes(cbor.serialise(builtin.b_data(#"")))]
   cek_builtin_v1.verify_direct_builtin_v1(10, #"", arguments, bytes(left))
 }
+
+// ECDSA takes a 33 B key, a 32 B message and a 64 B signature; any other
+// length fails the call (PV 11 leaves secp256k1 unchanged). The failure arm
+// certifies each such call, and the success arm aborts on it.
+fn ecdsa_with_lengths(
+  key: ByteArray,
+  message: ByteArray,
+  signature: ByteArray,
+) -> List<cek_builtin_v1.ValueWitnessV1> {
+  [
+    bytes(cbor.serialise(builtin.b_data(key))),
+    bytes(cbor.serialise(builtin.b_data(message))),
+    bytes(cbor.serialise(builtin.b_data(signature))),
+  ]
+}
+
+const ecdsa_x =
+  #"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798"
+
+fn ecdsa_message() -> ByteArray {
+  bytearray.from_int_big_endian(0, 32)
+}
+
+fn ecdsa_signature() -> ByteArray {
+  bytearray.concat(
+    builtin.integer_to_bytearray(True, 32, 1),
+    builtin.integer_to_bytearray(True, 32, 1),
+  )
+}
+
+fn uncompressed_key_arguments() -> List<cek_builtin_v1.ValueWitnessV1> {
+  let y = #"483ada7726a3c4655da4fbfc0e1108a8fd17b448a68554199c47d08ffb10d4b8"
+  ecdsa_with_lengths(
+    bytearray.push(bytearray.concat(ecdsa_x, y), 4),
+    ecdsa_message(),
+    ecdsa_signature(),
+  )
+}
+
+test ecdsa_length_edges_are_certified_failures() {
+  let key = bytearray.push(ecdsa_x, 2)
+  let message = ecdsa_message()
+  let signature = ecdsa_signature()
+  list.all(
+    [
+      uncompressed_key_arguments(),
+      ecdsa_with_lengths(key, bytearray.drop(message, 1), signature),
+      ecdsa_with_lengths(key, bytearray.push(message, 0), signature),
+      ecdsa_with_lengths(key, message, bytearray.drop(signature, 1)),
+      ecdsa_with_lengths(key, message, bytearray.push(signature, 0)),
+    ],
+    fn(arguments) {
+      cek_builtin_v1.verify_direct_builtin_failure_v1(
+        52,
+        builtin_root(52, arguments),
+        arguments,
+      )
+    },
+  )
+}
+
+test ecdsa_uncompressed_key_success_aborts() fail {
+  cek_builtin_v1.verify_direct_scalar_semantics(
+    52,
+    uncompressed_key_arguments(),
+    boolean(#"d87980"),
+  )
+}
