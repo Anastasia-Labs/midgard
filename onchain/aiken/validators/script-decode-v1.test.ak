@@ -588,6 +588,236 @@ test script_decode_family_walk_rejects_a_run_without_its_token() fail {
   spend(redeemer, bare, Transaction { ..tx, inputs: [bare, fee_input()] })
 }
 
+// ## Walks over several transactions
+
+/// `pattern` repeated `n` times.
+fn repeat_bytes(pattern: ByteArray, n: Int) -> ByteArray {
+  if n == 0 {
+    #""
+  } else if n % 2 == 0 {
+    let half = repeat_bytes(pattern, n / 2)
+    bytearray.concat(half, half)
+  } else {
+    bytearray.concat(pattern, repeat_bytes(pattern, n - 1))
+  }
+}
+
+/// `(program 1.1.0 (constr 0 [(builtin 1), ...]))` with `n` fields, `n` even
+/// and at least 2. Each field is 12 bits, so two fields are three bytes.
+fn dense_script(n: Int) -> ByteArray {
+  wrap(
+    #"010100800b81b8"
+      |> bytearray.concat(repeat_bytes(#"1b81b8", n / 2 - 1))
+      |> bytearray.concat(#"11"),
+  )
+}
+
+/// `bytes` as Flat byte-string chunks of up to 255 bytes, then the
+/// terminating empty chunk.
+fn flat_chunks(bytes: ByteArray) -> ByteArray {
+  let length = bytearray.length(bytes)
+  if length == 0 {
+    #"00"
+  } else if length <= 255 {
+    bytearray.push(bytes, length) |> bytearray.concat(#"00")
+  } else {
+    bytearray.push(bytearray.take(bytes, 255), 255)
+      |> bytearray.concat(flat_chunks(bytearray.drop(bytes, 255)))
+  }
+}
+
+/// `(program 1.1.0 (con data (List [I 0, ...])))` with `n` items, as an
+/// indefinite CBOR list.
+fn data_script(n: Int) -> ByteArray {
+  wrap(
+    #"0101004c01"
+      |> bytearray.concat(
+          flat_chunks(
+            #"9f"
+              |> bytearray.concat(builtin.replicate_byte(n, 0))
+              |> bytearray.concat(#"ff"),
+          ),
+        )
+      |> bytearray.concat(#"01"),
+  )
+}
+
+/// The record a single unbounded step reaches.
+fn one_shot(script: ByteArray) -> ScriptDecodeRecordV1 {
+  expect Some(record) = record_of_v1(finished(script))
+  record
+}
+
+/// Walks `script` to its end over staged chunks of `chunk_size`, checking
+/// every step's transaction against the spend handler.
+fn walk_staged(
+  script: ByteArray,
+  run: ScriptDecodeRunV1,
+  frames: List<Frame>,
+  fuel: Int,
+  visible: Int,
+  chunk_size: Int,
+  steps: Int,
+) -> (ScriptDecodeRunV1, Int) {
+  if is_terminal(run.machine.control) {
+    (run, steps)
+  } else {
+    let (machine, after) = step_with_frames_v1(
+      decode_env_v1(script, run),
+      run.machine,
+      frames,
+      visible,
+      fuel,
+    )
+    let next = ScriptDecodeRunV1 { ..run, machine }
+    let (tx, staging) = walk_tx(script, run, next, chunk_size)
+    expect
+      spend(
+        Walk {
+          staging,
+          reveals: list.take(frames, visible),
+          base: stack_root_of(list.drop(frames, visible), empty_stack_root()),
+          fuel,
+          run_output: 0,
+        },
+        run_input(run),
+        tx,
+      )
+    walk_staged(script, next, after, fuel, visible, chunk_size, steps + 1)
+  }
+}
+
+/// The run and whole stack after `count` honest steps, without transactions.
+fn advance(
+  script: ByteArray,
+  run: ScriptDecodeRunV1,
+  frames: List<Frame>,
+  fuel: Int,
+  visible: Int,
+  count: Int,
+) -> (ScriptDecodeRunV1, List<Frame>) {
+  if count == 0 {
+    (run, frames)
+  } else {
+    let (machine, after) = step_with_frames_v1(
+      decode_env_v1(script, run),
+      run.machine,
+      frames,
+      visible,
+      fuel,
+    )
+    advance(
+      script,
+      ScriptDecodeRunV1 { ..run, machine },
+      after,
+      fuel,
+      visible,
+      count - 1,
+    )
+  }
+}
+
+test script_decode_family_walk_dense_shape_over_several_txs() {
+  let script = dense_script(1024)
+  let (run, steps) = walk_staged(script, opened(script), [], 80, 3, 255, 0)
+  expect Some(record) = record_of_v1(run)
+  expect Decoded { phase2_class: 0, program_version: 1, .. } = record
+  and {
+    steps > 10,
+    record == one_shot(script),
+  }
+}
+
+test script_decode_family_walk_dense_refusal_over_several_txs() {
+  let script = dense_script(1026)
+  let (run, steps) = walk_staged(script, opened(script), [], 80, 3, 255, 0)
+  expect Some(record) = record_of_v1(run)
+  expect Refused { class: 9, .. } = record
+  and {
+    steps > 10,
+    record == one_shot(script),
+  }
+}
+
+test script_decode_family_walk_deep_shape_over_several_txs() {
+  let script = nested_script(300)
+  let (run, steps) = walk_staged(script, opened(script), [], 80, 4, 255, 0)
+  expect Some(record) = record_of_v1(run)
+  and {
+    steps > 5,
+    record == Decoded {
+      script_hash: script_hash_v1(3, script),
+      language: 3,
+      program_version: 1,
+      term_root: nested_root(300),
+      phase2_class: 0,
+    },
+  }
+}
+
+test script_decode_family_walk_data_shape_over_several_txs() {
+  let script = data_script(600)
+  let (run, steps) = walk_staged(script, opened(script), [], 80, 3, 255, 0)
+  expect Some(record) = record_of_v1(run)
+  expect Decoded { phase2_class: 0, .. } = record
+  and {
+    steps > 5,
+    record == one_shot(script),
+  }
+}
+
+/// The honest walk transaction at step `count` of the deep shape, with its
+/// redeemer and the frames the step hides.
+fn deep_mid_walk(
+  count: Int,
+) -> (Transaction, ScriptDecodeSpendRedeemerV1, ScriptDecodeRunV1, List<Frame>) {
+  let script = nested_script(40)
+  let (run, frames) = advance(script, opened(script), [], 6, 2, count)
+  let (machine, _) = step_with_frames_v1(
+    decode_env_v1(script, run),
+    run.machine,
+    frames,
+    2,
+    6,
+  )
+  let (tx, staging) = walk_tx(
+    script,
+    run,
+    ScriptDecodeRunV1 { ..run, machine },
+    255,
+  )
+  (
+    tx,
+    Walk {
+      staging,
+      reveals: list.take(frames, 2),
+      base: stack_root_of(list.drop(frames, 2), empty_stack_root()),
+      fuel: 6,
+      run_output: 0,
+    },
+    run,
+    list.drop(frames, 2),
+  )
+}
+
+test script_decode_family_walk_mid_walk_step_is_accepted() {
+  let (tx, redeemer, run, hidden) = deep_mid_walk(8)
+  and {
+    hidden != [],
+    spend(redeemer, run_input(run), tx),
+  }
+}
+
+test script_decode_family_walk_mid_walk_rejects_a_hidden_stack_dropped() fail {
+  let (tx, redeemer, run, _) = deep_mid_walk(8)
+  expect Walk { staging, reveals, fuel, run_output, .. } = redeemer
+  spend(
+    Walk { staging, reveals, base: empty_stack_root(), fuel, run_output },
+    run_input(run),
+    tx,
+  )
+}
+
 // ## Finish
 
 fn finish_tx(
