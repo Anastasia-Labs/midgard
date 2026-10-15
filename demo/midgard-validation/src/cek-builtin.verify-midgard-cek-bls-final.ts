@@ -35,6 +35,7 @@ import {
   MIDGARD_CEK_MAX_DIRECT_CONSTANT_PAYLOAD_BYTES,
   type MidgardCekConstantWitness,
 } from "./cek-constant.js";
+import { midgardCekVariantEBuiltinFailure } from "./cek-builtin.variant-e.js";
 import { type MidgardCekBuiltinBudget } from "./cek-cost.js";
 
 export const verifyMidgardCekDirectBuiltin = (
@@ -108,6 +109,9 @@ export const verifyMidgardCekDirectBuiltinFailure = (
     ) {
       return false;
     }
+    // C14 has not installed the on-chain failure arms for these Variant E
+    // bounds. Verdict evaluation fails, but a proof must still refuse them.
+    if (midgardCekVariantEBuiltinFailure(tag, arguments_)) return false;
     // A known failure applies only to well-typed arguments; an ill-typed
     // application fails through the type-failure arm instead.
     if (!directArgumentsMatchKinds(Number(tag), arguments_)) return false;

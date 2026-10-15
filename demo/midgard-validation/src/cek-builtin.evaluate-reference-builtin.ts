@@ -44,6 +44,7 @@ import {
   midgardCekConstantWitnessToUplc,
 } from "./cek-constant.js";
 import { MIDGARD_CEK_PINNED_PLUTUS_V3_BUILTIN_COSTS } from "./cek-cost.js";
+import { midgardCekVariantEBuiltinFailure } from "./cek-builtin.variant-e.js";
 import { commitMidgardCekDataTree } from "./cek-data-tree.js";
 import { plutusDataFromCborIterative } from "./plutus-data-iterative.decode.js";
 
@@ -230,6 +231,7 @@ const evaluateReferenceBuiltin = (
 ): MidgardCekDirectValueWitness | "failure" => {
   const control = selectedControlResult(tag, arguments_);
   if (control !== null) return control;
+  if (midgardCekVariantEBuiltinFailure(tag, arguments_)) return "failure";
   if (tag === 68n) {
     if (arguments_.length !== 2) {
       throw new Error("BLS millerLoop requires two arguments");
@@ -332,6 +334,7 @@ const directFailureIsCharged = (
   arguments_: readonly MidgardCekDirectValueWitness[],
 ): boolean =>
   [4n, 5n, 6n, 21n, 52n, 53n, 60n, 67n].includes(tag) ||
+  midgardCekVariantEBuiltinFailure(tag, arguments_) ||
   // The reference CEK refuses an out-of-range width before charging.
   (tag === 73n &&
     directInteger(arguments_[1]!) >= 0n &&
