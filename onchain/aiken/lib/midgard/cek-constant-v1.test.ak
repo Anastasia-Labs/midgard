@@ -266,3 +266,118 @@ test integer_beyond_the_direct_payload_bound_fails_closed() fail {
     cbor.serialise(builtin.i_data(beyond)),
   ) == builtin.i_data(beyond)
 }
+
+// A script's Flat may spell a Data constant in any form the ledger's Data
+// decoder accepts; the off-chain builder commits the value through its
+// canonical payload. The roots below are the TypeScript builder's roots for
+// these Data constants (cek-program.data-constant-spelling.test.ts).
+const data_one_root =
+  #"e057a14e2548433aa820c2162b36ac98168db657696f4a94fc20b450cc533a1b"
+
+const data_minus_one_root =
+  #"0c4d51014e8455817589ef43a949c3502f7acc38c36d8b3c6cdbee77d380ef9e"
+
+const data_constructor_0_root =
+  #"2fdea9c423cf4307f98d4a2c6079d1313105e5f7697b297e811d14345cdea3bb"
+
+const data_constructor_7_root =
+  #"ca0f5832b69d147c495db22b97da258a94e69268bea11bebb21b068e5e224472"
+
+const data_two_pow_64_root =
+  #"f3f49964ea5ee398bd5f7fec6f8b88285310fd4701a2b84593a90ac9824ba3c3"
+
+fn data_witness(payload_cbor: ByteArray) -> cek_constant_v1.ConstantWitnessV1 {
+  cek_constant_v1.ConstantWitnessV1 { type_cbor: #"9f08ff", payload_cbor }
+}
+
+test canonical_data_constant_witnesses_match_typescript() {
+  and {
+    cek_constant_v1.verify_constant_witness_v1(
+      data_one_root,
+      data_witness(#"01"),
+    ),
+    cek_constant_v1.verify_constant_witness_v1(
+      data_minus_one_root,
+      data_witness(#"20"),
+    ),
+    cek_constant_v1.verify_constant_witness_v1(
+      data_constructor_0_root,
+      data_witness(#"d87980"),
+    ),
+    cek_constant_v1.verify_constant_witness_v1(
+      data_constructor_7_root,
+      data_witness(#"d9050080"),
+    ),
+    cek_constant_v1.verify_constant_witness_v1(
+      data_two_pow_64_root,
+      data_witness(#"c249010000000000000000"),
+    ),
+  }
+}
+
+// Each spelling decodes to the committed value but is not its serialisation,
+// so a witness carrying it is refused only by the canonical re-encode check.
+fn spelling_of(value: Data, canonical: ByteArray, spelling: ByteArray) -> Bool {
+  and {
+    cbor_deserialise.deserialise(spelling) == Some(value),
+    cbor.serialise(value) == canonical,
+    spelling != canonical,
+  }
+}
+
+test noncanonical_data_spellings_decode_to_the_committed_values() {
+  and {
+    spelling_of(builtin.i_data(1), #"01", #"c24101"),
+    spelling_of(builtin.i_data(1), #"01", #"1801"),
+    spelling_of(builtin.i_data(-1), #"20", #"c34100"),
+    spelling_of(builtin.constr_data(0, []), #"d87980", #"d866820080"),
+    spelling_of(builtin.constr_data(7, []), #"d9050080", #"d866820780"),
+    spelling_of(
+      builtin.i_data(18446744073709551616),
+      #"c249010000000000000000",
+      #"c24a00010000000000000000",
+    ),
+  }
+}
+
+test data_witness_with_c2_bignum_spelling_fails_closed() fail {
+  cek_constant_v1.verify_constant_witness_v1(
+    data_one_root,
+    data_witness(#"c24101"),
+  )
+}
+
+test data_witness_with_nonminimal_head_spelling_fails_closed() fail {
+  cek_constant_v1.verify_constant_witness_v1(
+    data_one_root,
+    data_witness(#"1801"),
+  )
+}
+
+test data_witness_with_c3_bignum_spelling_fails_closed() fail {
+  cek_constant_v1.verify_constant_witness_v1(
+    data_minus_one_root,
+    data_witness(#"c34100"),
+  )
+}
+
+test data_witness_with_tag_102_constructor_0_spelling_fails_closed() fail {
+  cek_constant_v1.verify_constant_witness_v1(
+    data_constructor_0_root,
+    data_witness(#"d866820080"),
+  )
+}
+
+test data_witness_with_tag_102_constructor_7_spelling_fails_closed() fail {
+  cek_constant_v1.verify_constant_witness_v1(
+    data_constructor_7_root,
+    data_witness(#"d866820780"),
+  )
+}
+
+test data_witness_with_padded_bignum_spelling_fails_closed() fail {
+  cek_constant_v1.verify_constant_witness_v1(
+    data_two_pow_64_root,
+    data_witness(#"c24a00010000000000000000"),
+  )
+}
