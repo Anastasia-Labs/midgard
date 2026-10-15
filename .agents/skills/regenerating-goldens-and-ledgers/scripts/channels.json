@@ -511,6 +511,32 @@
       }
     },
     {
+      "id": "cek-cost-v1-aiken",
+      "kind": "golden",
+      "summary": "Every builtin's cpu and memory budget at a spread of argument sizes, from the pinned 350-entry Plutus V3 cost vector through the TypeScript cost twin: a whole generated Aiken module run against the on-chain cost table.",
+      "generators": [
+        "demo/midgard-validation/scripts/generate-cek-cost-v1-aiken-goldens.mjs"
+      ],
+      "packageScripts": [
+        "demo/midgard-validation:fixtures:cek-cost-v1-aiken:sync",
+        "demo/midgard-validation:fixtures:cek-cost-v1-aiken:check"
+      ],
+      "producers": ["demo/midgard-validation"],
+      "inputs": ["@golden-channel"],
+      "outputs": ["onchain/aiken/lib/midgard/cek-cost-v1-golden.test.ak"],
+      "aikenImportsOfOutputs": true,
+      "sync": {
+        "run": "pnpm --dir demo/midgard-validation run fixtures:cek-cost-v1-aiken:sync"
+      },
+      "check": {
+        "run": "pnpm --dir demo/midgard-validation run fixtures:cek-cost-v1-aiken:check"
+      },
+      "ci": {
+        "workflow": ".github/workflows/midgard-node-ci.yml",
+        "step": "Check V1 CEK builtin cost golden vectors"
+      }
+    },
+    {
       "id": "cek-builtin-cardano-v1",
       "kind": "golden",
       "summary": "Every builtin tag evaluated by the pinned Aiken evaluator, values and failures, with the ledger's outcome recorded where the two differ.",
