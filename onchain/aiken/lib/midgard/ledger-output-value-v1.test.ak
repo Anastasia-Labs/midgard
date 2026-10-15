@@ -17,19 +17,19 @@ const terminal_control =
 /// whose `--check` run is a required CI job. Do not hand-edit them; run
 /// `pnpm --dir demo/midgard-validation run fixtures:nested-boundary-aiken:sync`.
 const typescript_maximum_value_terminal_control =
-  #"8701020040845820bbcb3bff6f87a2005a336b6cb5fe5fbea093815716945279140f31aec8cbaba2000000845820bbcb3bff6f87a2005a336b6cb5fe5fbea093815716945279140f31aec8cbaba2000000d8799f83582035df7dc7ebdd5dba96f45ab79dbf23ba6a6325fc3b51f99b7c0cf62c8a31efb419138a193f46ff"
+  #"8701020040845820bbcb3bff6f87a2005a336b6cb5fe5fbea093815716945279140f31aec8cbaba2000000845820bbcb3bff6f87a2005a336b6cb5fe5fbea093815716945279140f31aec8cbaba2000000d8799f83582098f2dd618837f4c61150ee34ed36bfe3e9503f75601c0efdb8c4212914ec5fb619138a193e9bff"
 
 /// Pre-terminal (finalize-stage) control for the same maximum Value, so the
 /// agreement covers the last real transition and not only the fixed point.
 const typescript_maximum_value_pre_terminal_control =
-  #"87010100581c1111111111111111111111111111111111111111111111111111111184582018a9e6706a9c0f115695a7d384af88baa135d31fa409e78ee3ab09ca6fe4cf8f18e41902ab1908e8845820ae48ba80db2f915cc4653c8bfd3a3394d4fe56f340dbe7cf66225478a2a93a65061910b6193620d87a80"
+  #"87010100581c1111111111111111111111111111111111111111111111111111111184582018a9e6706a9c0f115695a7d384af88baa135d31fa409e78ee3ab09ca6fe4cf8f18e41902ab1908e8845820b2ccb22904f13353b7fd9d21b42f971fe61eda32228b552b5a39d9901dd061b5061910b6193590d87a80"
 
 const typescript_maximum_value_root =
-  #"35df7dc7ebdd5dba96f45ab79dbf23ba6a6325fc3b51f99b7c0cf62c8a31efb4"
+  #"98f2dd618837f4c61150ee34ed36bfe3e9503f75601c0efdb8c4212914ec5fb6"
 
 const typescript_maximum_value_cbor_length = 5002
 
-const typescript_maximum_value_memory = 16198
+const typescript_maximum_value_memory = 16027
 
 const typescript_maximum_value_asset_count = 1592
 
