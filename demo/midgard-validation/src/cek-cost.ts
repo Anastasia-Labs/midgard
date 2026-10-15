@@ -86,6 +86,20 @@ export const MIDGARD_CEK_PINNED_PLUTUS_V3_BUILTIN_COSTS = <
   if (division !== undefined) {
     return { ...costs, cpu: division } as unknown as BuiltinCostsOf<Tag>;
   }
+  if (tag === UPLCBuiltinTag.multiplyInteger) {
+    // Plutus V3 (variant E) costs multiplyInteger cpu over the product of
+    // the sizes. The reference library uses their sum.
+    const intercept = BigInt(
+      pinnedCostModel["multiplyInteger-cpu-arguments-intercept"],
+    );
+    const slope = BigInt(
+      pinnedCostModel["multiplyInteger-cpu-arguments-slope"],
+    );
+    return {
+      ...costs,
+      cpu: { at: (x: bigint, y: bigint): bigint => intercept + slope * x * y },
+    } as unknown as BuiltinCostsOf<Tag>;
+  }
   if (tag === UPLCBuiltinTag.verifyEd25519Signature) {
     // Plutus costs Ed25519 linearly in the message (second argument).
     // The reference library incorrectly selects the signature instead.

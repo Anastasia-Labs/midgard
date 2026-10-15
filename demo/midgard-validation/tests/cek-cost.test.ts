@@ -34,6 +34,17 @@ describe("V1 pinned Plutus V3 builtin costs", () => {
     });
   });
 
+  it("costs multiplyInteger cpu over the product of the argument sizes", () => {
+    expect(computeMidgardCekBuiltinBudget(2, [4n, 3n])).toEqual({
+      cpu: 96_662n,
+      memory: 7n,
+    });
+    expect(computeMidgardCekBuiltinBudget(2, [1n, 1n])).toEqual({
+      cpu: 90_953n,
+      memory: 2n,
+    });
+  });
+
   it("fails closed on unknown tags, wrong arity, or negative sizes", () => {
     expect(() => computeMidgardCekBuiltinBudget(87, [1n])).toThrow(
       /outside Plutus V3/u,

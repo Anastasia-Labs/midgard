@@ -56,6 +56,11 @@ fn linear2_add(quote: Int, slope: Int, sizes: List<Int>) -> Int {
   quote + ( x + y ) * slope
 }
 
+fn linear2_mul(quote: Int, slope: Int, sizes: List<Int>) -> Int {
+  let Pair(x, y) = two(sizes)
+  quote + x * y * slope
+}
+
 fn linear2_sub(quote: Int, slope: Int, minimum: Int, sizes: List<Int>) -> Int {
   let Pair(x, y) = two(sizes)
   quote + max(minimum, x - y) * slope
@@ -214,7 +219,7 @@ fn cpu_cost_v1(tag: Int, sizes: List<Int>) -> Int {
   } {
     linear2_max(100788, 420, sizes)
   } else if tag == 2 {
-    linear2_add(90434, 519, sizes)
+    linear2_mul(90434, 519, sizes)
   } else if and {
     tag >= 3,
     tag <= 6,

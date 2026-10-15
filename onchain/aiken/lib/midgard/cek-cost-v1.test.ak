@@ -55,6 +55,21 @@ test division_budgets_follow_the_pv11_rows_on_both_sides_of_the_diagonal() {
   }
 }
 
+// multiplyInteger costs cpu over the product of the word sizes and memory
+// over their sum.
+test multiply_integer_budget_follows_the_product_of_the_sizes() {
+  and {
+    cek_cost_v1.builtin_budget_v1(2, [4, 3]) == cek_cost_v1.BuiltinBudgetV1 {
+      cpu: 96662,
+      memory: 7,
+    },
+    cek_cost_v1.builtin_budget_v1(2, [1, 1]) == cek_cost_v1.BuiltinBudgetV1 {
+      cpu: 90953,
+      memory: 2,
+    },
+  }
+}
+
 // equalsByteString is linear on the diagonal and constant off it.
 test equals_bytestring_budget_follows_the_pv11_row() {
   and {
