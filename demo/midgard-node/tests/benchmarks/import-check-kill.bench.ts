@@ -12,6 +12,10 @@
  *   context and program material), for an accepting script carrying an
  *   unused constant.
  *
+ * It also reports each cpu point's coverage under the default kill: the kill
+ * for that run with its declared cpu set to the cpu it spent (an honest
+ * transaction's tightest budget), over its measured latency.
+ *
  * Run from demo/midgard-node after `pnpm run build`:
  *   NODE_ENV=emulator npx vitest run --config vitest.bench.config.ts \
  *     tests/benchmarks/import-check-kill.bench.ts --disableConsoleIntercept
@@ -36,7 +40,11 @@ import {
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
-import { importCheckRunBytes } from "../../src/import-check/evaluator.js";
+import {
+  importCheckKillMs,
+  importCheckRunBytes,
+} from "../../src/import-check/evaluator.js";
+import { DEFAULT_IMPORT_CHECK_CONFIG } from "../../src/services/config.import-check.js";
 import {
   evaluateImportCheckOn,
   FixedValidationWorkerPool,
@@ -132,7 +140,7 @@ describe("import checker kill parameters", () => {
     const timed = async (run: MidgardCekVerdictRequest) => {
       const startedAt = performance.now();
       const result = await Effect.runPromise(
-        evaluate(run, { killMs: 600_000, fresh: false }),
+        evaluate(run, { killMs: 600_000, fresh: false, lane: "import" }),
       );
       return { ms: performance.now() - startedAt, result };
     };
@@ -146,7 +154,14 @@ describe("import checker kill parameters", () => {
       }
       latencies.sort((a, b) => a - b);
 
+      const coverage: {
+        family: string;
+        cpu: number;
+        ms: number;
+        killMs: number;
+      }[] = [];
       const cpuPoints = async (
+        family: string,
         make: (step: number) => UPLCTerm,
         steps: number[],
         cpu: (step: number) => bigint,
@@ -154,20 +169,34 @@ describe("import checker kill parameters", () => {
         const points: [number, number][] = [];
         for (const step of steps)
           for (let rep = 0; rep < 3; rep += 1) {
-            const { ms, result } = await timed(
-              withProgram(minimal, make(step), cpu(step)),
-            );
+            const run = withProgram(minimal, make(step), cpu(step));
+            const { ms, result } = await timed(run);
             if (result.kind !== "accepted") throw new Error(result.detail);
             points.push([Number(result.budget.cpu) / 1e9, ms]);
+            const killMs = importCheckKillMs(
+              {
+                ...run,
+                executionBudget: { cpu: result.budget.cpu, memory: 10n ** 12n },
+              },
+              DEFAULT_IMPORT_CHECK_CONFIG,
+            );
+            coverage.push({
+              family,
+              cpu: Number(result.budget.cpu),
+              ms,
+              killMs,
+            });
           }
         return points;
       };
       const loopPoints = await cpuPoints(
+        "loop",
         () => loop,
         [1e8, 1e9, 3e9, 1e10],
         (step) => BigInt(step),
       );
       const hashPoints = await cpuPoints(
+        "hashChain",
         hashChain,
         [100, 400, 1_600, 3_200],
         () => 10n ** 11n,
@@ -198,6 +227,13 @@ describe("import checker kill parameters", () => {
           hashPoints,
         },
         usPerKib: { slope: slope(bytePoints) * 1000, bytePoints },
+        defaultKillCoverage: {
+          min: Math.min(...coverage.map((point) => point.killMs / point.ms)),
+          points: coverage.map((point) => ({
+            ...point,
+            ratio: point.killMs / point.ms,
+          })),
+        },
       };
       console.log(JSON.stringify(report, null, 2));
     } finally {
