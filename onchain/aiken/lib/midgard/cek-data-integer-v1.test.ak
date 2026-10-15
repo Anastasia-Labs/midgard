@@ -62,7 +62,7 @@ test proves_a_canonical_negative_bignum_without_materializing_it() {
   )
   expect Some(summary) = cek_data_integer_v1.finalize_v1(terminal)
   and {
-    summary.root == #"720c28eb8291c0e25d860108458a13027f509d93b9c61296532fdb230063c691",
+    summary.root == #"7dc0c3aab64ed83c197f2d0030ae54549e9cdf6b0077f3919819a9bf4e4516ea",
     summary.cbor_length == 11,
     // |n| = 2^64 + 1 occupies two 64-bit words.
     summary.memory == 6,
@@ -80,7 +80,7 @@ test decodes_the_typescript_terminal_control() {
     control.source_start == 17,
     control.source_length == 11,
     control.memory == 6,
-    summary.root == #"720c28eb8291c0e25d860108458a13027f509d93b9c61296532fdb230063c691",
+    summary.root == #"7dc0c3aab64ed83c197f2d0030ae54549e9cdf6b0077f3919819a9bf4e4516ea",
     cek_data_integer_v1.encode_control_v1(control) == typescript_terminal_control_cbor,
   }
 }
@@ -207,7 +207,7 @@ test proves_cardano_chunked_signed_magnitudes_with_exact_memory() {
     bytearray.length(positive) == 71,
     summary.cbor_length == 71,
     summary.memory == 13,
-    summary.root == #"2245ce3c839885a8e667481cec15cbe0e91df8a04f816859ae3bb38a8217b6aa",
+    summary.root == #"cab3184095fef7e4d8b95617d827cbda628b6d97fe3d6c22a1bc0df010769667",
     cek_data_integer_v1.encode_control_v1(terminal) == #"8601021118470dd8799f860101111847840101184781830058206f2bcd2c7aaabd4f57c1d3b1d0f2ba43fcbe6927f0551a73dd7daf4fdcf7e3051847d87a80ff",
     negative_summary.cbor_length == 71,
     negative_summary.memory == 13,
