@@ -166,7 +166,7 @@ pub fn case_nft_name(
   event_key: EventKey,
   opener_out_ref: OutputReference,
 ) -> AssetName {
-  expect bytearray.length(block_header_hash) == 32
+  expect bytearray.length(block_header_hash) == 28
   block_header_hash
     |> bytearray.concat(cbor.serialise(event_key))
     |> bytearray.concat(cbor.serialise(opener_out_ref))
@@ -260,7 +260,7 @@ pub fn open_case(
   agreed_initial_hash: ByteArray,
   source_time_upper: Int,
 ) -> CaseV1 {
-  expect bytearray.length(block_header_hash) == 32
+  expect bytearray.length(block_header_hash) == 28
   expect bytearray.length(challenger_root) == 32
   expect step_count >= 1
   expect step_count <= validation_trace_v1.max_machine_step_count
