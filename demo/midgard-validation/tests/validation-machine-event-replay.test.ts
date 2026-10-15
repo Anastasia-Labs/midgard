@@ -231,12 +231,14 @@ describe("independent validation event replay", () => {
       // Phase A steps are independently checked by the Aiken one-step predicate.
       // Re-pinned when the declared ex-units moved under the per-tx cap, and
       // again when the CEK witness began carrying its execution's purpose key,
-      // when the program began returning Unit (PV 11 halt rule), and when
-      // each execution began with Cardano's 100 cpu / 100 memory startup cost.
+      // when the program began returning Unit (PV 11 halt rule), when each
+      // execution began with Cardano's 100 cpu / 100 memory startup cost, and
+      // when the ledger-delta phase and the state's ledger-delta root were
+      // removed, so acceptance follows multi-asset accounting directly.
       const expectedTraceHash =
         executionCount === 1
-          ? "d0e8915db6ad30ab2cf4f8d58f0656269f73b0451fc3146b3fa9c0ba8aaed4c1"
-          : "fd7c4ba656a974442a59b4e4c9c48684e299321bbe56b870040a4ad908b26a49";
+          ? "275a8a02a1300071cfeeb9f5eaf8b71ae91ec277dd37700165427c2b6f494084"
+          : "e3c6aae68868fd7d52e535b058df1df67cfaa517d4a9f289143ef57d83b4b246";
       expect(createHash("sha256").update(traceBytes).digest("hex")).toBe(
         expectedTraceHash,
       );
