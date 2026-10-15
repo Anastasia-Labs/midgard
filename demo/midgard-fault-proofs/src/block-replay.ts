@@ -15,6 +15,7 @@ import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile
 import { type L1SlotConfig } from "@al-ft/midgard-core/l1-slot-config";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
+  type MidgardCekVerdictRequest,
   placeholderValidationTraceDescriptorV1,
   type RejectedTx,
   replayValidationVerdictEvent,
@@ -87,6 +88,16 @@ export type BlockReplayContext = {
     readonly { readonly key: string; readonly output: Buffer | null }[],
     unknown
   >;
+  /**
+   * Set: every L2 transaction is replayed by its committed Accepted verdict
+   * and runs no script; each script run is handed here, with the
+   * transaction's id, for a check after the replay. Unset: every script runs
+   * in the replay. Forced transactions always replay in full.
+   */
+  readonly onCommittedScriptRun?: (
+    transactionId: Buffer,
+    request: MidgardCekVerdictRequest,
+  ) => void;
   readonly verifyForcedSource: (input: {
     readonly source: SDK.DaPayloadEntry;
     readonly canonicalTransactionCbor: Buffer;
@@ -218,6 +229,7 @@ export const replayBlockEvents = (
           }),
         );
         const sourceKind = step.phase === "L2Transaction" ? "normal" : "forced";
+        const committedRuns: MidgardCekVerdictRequest[] = [];
         const replay = yield* replayValidationVerdictEvent({
           consensusProfile: MIDGARD_CONSENSUS_PROFILE,
           canonicalTransactionCbor: cbor,
@@ -236,6 +248,13 @@ export const replayBlockEvents = (
           blockSlot: input.blockSlot,
           l1SlotConfig: input.l1SlotConfig,
           sourceKind,
+          ...(step.phase === "L2Transaction" &&
+          input.onCommittedScriptRun !== undefined
+            ? {
+                committedScriptRun: (request: MidgardCekVerdictRequest) =>
+                  committedRuns.push(request),
+              }
+            : {}),
         });
         if (
           step.phase === "L2Transaction" &&
@@ -246,6 +265,8 @@ export const replayBlockEvents = (
           );
         if (step.phase === "L2Transaction" && replay.verdict !== "accepted")
           throw new Error("foreign normal transaction was rejected by replay");
+        for (const run of committedRuns)
+          input.onCommittedScriptRun?.(replay.transactionId, run);
         if (step.phase === "ForcedTransaction")
           yield* input.verifyForcedSource({
             source: source.source,

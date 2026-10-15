@@ -15,6 +15,7 @@ import { Effect } from "effect";
 
 import { validatePhaseASingle } from "../phase-a.js";
 import {
+  type MidgardCekVerdictRequest,
   runPhaseBValidationWithPatch,
   type UTxOStatePatch,
 } from "../phase-b.js";
@@ -50,6 +51,13 @@ export type ValidationVerdictEventInput = Readonly<{
   /** "proof" captures every CEK step for a validation-machine trace;
    * verdict-only callers leave the default. */
   cekExecutionMode?: PhaseBConfig["cekExecutionMode"];
+  /**
+   * Replays the transaction by its committed Accepted verdict: no script is
+   * run. Each script run is handed here instead (for a later check), and
+   * counts as accepted within its declared budget. Every other check runs as
+   * in a full replay. Only for verdict mode.
+   */
+  committedScriptRun?: (request: MidgardCekVerdictRequest) => void;
 }>;
 
 export type ValidationVerdictEvent = Readonly<{
@@ -118,6 +126,15 @@ export const replayValidationVerdictEvent = (
       }),
     );
     const scriptEvaluations: LocalScriptEvaluation[] = [];
+    const committedScriptRun = input.committedScriptRun;
+    if (
+      committedScriptRun !== undefined &&
+      (input.cekExecutionMode ?? "verdict") !== "verdict"
+    ) {
+      return yield* Effect.fail(
+        new Error("a committed-verdict replay runs in verdict mode only"),
+      );
+    }
     if ("code" in phaseA) {
       return {
         transactionId: snapshot.transactionId,
@@ -145,8 +162,21 @@ export const replayValidationVerdictEvent = (
           : { cekExecutionMode: input.cekExecutionMode }),
         maxScriptExecutionSteps:
           snapshot.consensusProfile.limits.maxValidationMachineStepCount,
-        onScriptEvaluated: (_txId, evaluation) =>
-          scriptEvaluations.push(evaluation),
+        ...(committedScriptRun === undefined
+          ? {
+              onScriptEvaluated: (_txId, evaluation) =>
+                scriptEvaluations.push(evaluation),
+            }
+          : {
+              evaluateCekVerdict: (request) =>
+                Effect.sync(() => {
+                  committedScriptRun(request);
+                  return {
+                    kind: "accepted" as const,
+                    budget: { cpu: 0n, memory: 0n },
+                  };
+                }),
+            }),
       },
     );
     if (phaseB.accepted.length + phaseB.rejected.length !== 1) {
