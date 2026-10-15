@@ -247,14 +247,11 @@ export const stagePublishedDepositTrace = async (
       ],
     });
   };
-  const prepare = async () => {
-    await removeAbandonedHeaders();
-    // A stopped preparation may have published an event before its block was
-    // checkpointed. Recover every real pending deposit from the isolated chain.
-    const priorOrders = await readDeposits();
-    const priorDeposits: NonNullable<
+  const readPriorDeposits = async () => {
+    const orders = await readDeposits();
+    const deposits: NonNullable<
       PublishedDepositTraceCheckpoint["priorDeposits"]
-    > = priorOrders.map((order) => ({
+    > = orders.map((order) => ({
       event: order.utxo,
       history: capturePublishedDepositHistory(
         order,
@@ -266,33 +263,9 @@ export const stagePublishedDepositTrace = async (
         inclusionTime: Number(order.facts.inclusion_time),
       },
     }));
-    // Validate the ledger before publishing another transaction.
-    await depositEventsRetainedBlock({
-      operatorVkey,
-      startTime: genesis.data.endTime,
-      endTime: genesis.data.endTime + 1n,
-      blockSlot: BigInt(lucid.currentSlot()),
-      prevHeaderHash: genesis.data.headerHash,
-      prevUtxosRoot: genesis.data.utxoRoot,
-      priorLedger: [],
-      events: [],
-    });
-    await onboardOperator();
-    // The successor registers only after correction. A registration that
-    // matures while proof construction runs prevents the last-operator rewind.
-    // Genesis itself closes a real protocol interval. Faster onboarding must
-    // not let the first header end before that confirmed-state cutoff.
-    await chain.awaitLedgerTime(Number(genesis.data.endTime) + 1);
-    // Retained deposits of a stopped run become eligible at their own
-    // inclusion times; the empty predecessor must close after every one.
-    const latestPriorInclusion = Math.max(
-      0,
-      ...priorDeposits.map((prior) => prior.metadata.inclusionTime),
-    );
-    if (priorDeposits.length > 0)
-      await chain.awaitLedgerTime(
-        latestPriorInclusion - EMPTY_PREDECESSOR_INTERVAL_MS + 1_000,
-      );
+    return { orders, deposits };
+  };
+  const publishDeposit = async (stage: string) => {
     const l2Address = credentialToAddress("Preprod", {
       type: "Key",
       hash: operatorVkey,
@@ -311,10 +284,55 @@ export const stagePublishedDepositTrace = async (
         ),
       ledgerClock(chain),
     );
-    onStage("deposit publication");
+    onStage(stage);
     const signedDeposit = await deposit.tx.sign.withWallet().complete();
     const depositTxHash = await signedDeposit.submit();
     await awaitConfirmed(depositTxHash);
+    return deposit;
+  };
+  const prepare = async () => {
+    await removeAbandonedHeaders();
+    // A stopped preparation may have published an event before its block was
+    // checkpointed. Recover every real pending deposit from the isolated chain.
+    let { orders: priorOrders, deposits: priorDeposits } =
+      await readPriorDeposits();
+    // Validate the ledger before publishing another transaction.
+    await depositEventsRetainedBlock({
+      operatorVkey,
+      startTime: genesis.data.endTime,
+      endTime: genesis.data.endTime + 1n,
+      blockSlot: BigInt(lucid.currentSlot()),
+      prevHeaderHash: genesis.data.headerHash,
+      prevUtxosRoot: genesis.data.utxoRoot,
+      priorLedger: [],
+      events: [],
+    });
+    await onboardOperator();
+    // The successor registers only after correction. A registration that
+    // matures while proof construction runs prevents the last-operator rewind.
+    // Genesis itself closes a real protocol interval. Faster onboarding must
+    // not let the first header end before that confirmed-state cutoff.
+    await chain.awaitLedgerTime(Number(genesis.data.endTime) + 1);
+    // A committed block carries at least one event. With no pending deposit
+    // to recover, publish one for the predecessor to carry.
+    if (priorOrders.length === 0) {
+      await publishDeposit("predecessor deposit publication");
+      ({ orders: priorOrders, deposits: priorDeposits } =
+        await readPriorDeposits());
+      if (priorOrders.length !== 1)
+        throw new Error("Expected exactly the predecessor deposit");
+    }
+    // Retained deposits of a stopped run become eligible at their own
+    // inclusion times; the empty predecessor must close after every one.
+    const latestPriorInclusion = Math.max(
+      0,
+      ...priorDeposits.map((prior) => prior.metadata.inclusionTime),
+    );
+    if (priorDeposits.length > 0)
+      await chain.awaitLedgerTime(
+        latestPriorInclusion - EMPTY_PREDECESSOR_INTERVAL_MS + 1_000,
+      );
+    const deposit = await publishDeposit("deposit publication");
     const admitted = (await readDeposits()).find(
       (order) => order.assetName === deposit.metadata.depositAssetName,
     );
