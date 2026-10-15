@@ -11,7 +11,7 @@ use midgard/validation_case_v1.{
   NoValidClaim,
 }
 use midgard/validation_dispute_v1.{
-  AwaitingOperator, ChallengerWins, NeitherClaimValid, OperatorWins,
+  AwaitingOperator, ChallengerWins, DefenderWins, NeitherClaimValid,
   ReadyForOneStep,
 }
 use midgard/validation_trace_v1.{ValidationMachineStateV1, ValidationTraceProof}
@@ -475,7 +475,7 @@ test bond_hold_after_defense_never_shortens_a_hold() {
 
 test close_thread_counts_down_and_records_the_outcome() {
   let case = defended_twice(case_with(4, h_d))
-  let won = validation_case_v1.close_thread(case, OperatorWins)
+  let won = validation_case_v1.close_thread(case, DefenderWins)
   let lost = validation_case_v1.close_thread(case, ChallengerWins)
   let neither = validation_case_v1.close_thread(case, NeitherClaimValid)
   and {
@@ -494,7 +494,7 @@ test lost_defense_receipt_only_for_a_lost_thread() {
   let case = defended(case_with(4, h_d), vkh_1)
   let thread = thread_of(case)
   and {
-    validation_case_v1.lost_defense_receipt(case, thread, OperatorWins) == None,
+    validation_case_v1.lost_defense_receipt(case, thread, DefenderWins) == None,
     validation_case_v1.lost_defense_receipt(case, thread, ChallengerWins) == Some(
       LostDefenseReceiptV1 {
         case_id: h_d,
@@ -518,7 +518,7 @@ test thread_leftover_goes_to_the_winner_or_the_treasury() {
   let case = defended(case_with(4, h_d), vkh_1)
   let thread = thread_of(case)
   and {
-    validation_case_v1.thread_leftover_address(case, thread, OperatorWins) == from_verification_key(
+    validation_case_v1.thread_leftover_address(case, thread, DefenderWins) == from_verification_key(
       vkh_1,
     ),
     validation_case_v1.thread_leftover_address(case, thread, ChallengerWins) == from_verification_key(
@@ -541,7 +541,7 @@ test case_close_waits_for_every_thread() {
 test case_close_after_a_defender_win_needs_no_wait() {
   let case = validation_case_v1.close_thread(
     defended(case_with(4, h_d), vkh_1),
-    OperatorWins,
+    DefenderWins,
   )
   validation_case_v1.case_can_close(case, started)
 }
@@ -569,7 +569,7 @@ test case_outcome_rows() {
   )
   let neither_and_won = validation_case_v1.close_thread(
     validation_case_v1.close_thread(two, NeitherClaimValid),
-    OperatorWins,
+    DefenderWins,
   )
   and {
     validation_case_v1.case_outcome(case) == Convicted,

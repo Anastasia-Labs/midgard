@@ -147,7 +147,8 @@ describe("midgard contracts registry", () => {
       // source verification (bond script and amount, Gap B), the I3 deletions,
       // the exact rejection reason, script optimisations, bounty claimants, the
       // queue's proof reference and exemption, slashing a node above the bond,
-      // the timeout's directory split, output-scan size, the case open guard.
+      // the timeout's directory split, output-scan size, the case open guard,
+      // the defender's one-step timeout.
       expect
         .soft(
           createHash("sha256")
@@ -157,7 +158,7 @@ describe("midgard contracts registry", () => {
             .digest("hex"),
         )
         .toBe(
-          "8a2a9ce6104aa6375069b82b19d6739ada4260e19079920b4f5ee051ba9bf09f",
+          "8abc47f99fa7ede816a35ee9927e436635a9e7be0e9b3f33665545abbf95b180",
         );
       // Includes current streamed Data/W1 metadata plus escape-hatch field
       // retirement and the hub witness's paired script bytes. The independently

@@ -108,7 +108,7 @@ test dispute_turn_and_winner_tags_match_typescript() {
       },
     ) == #"d87a9f015820aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaff",
     cbor.serialise(validation_dispute_v1.ReadyForOneStep) == #"d87b80",
-    cbor.serialise(validation_dispute_v1.OperatorWins) == #"d87980",
+    cbor.serialise(validation_dispute_v1.DefenderWins) == #"d87980",
     cbor.serialise(validation_dispute_v1.ChallengerWins) == #"d87a80",
     cbor.serialise(validation_dispute_v1.NeitherClaimValid) == #"d87b80",
   }
@@ -192,7 +192,7 @@ test timeout_assigns_loss_to_the_party_that_owes_the_move() {
   )
   and {
     validation_dispute_v1.timeout_winner(opened, 100 + clock + 1) == validation_dispute_v1.ChallengerWins,
-    validation_dispute_v1.timeout_winner(awaiting_challenger, 101 + clock + 1) == validation_dispute_v1.OperatorWins,
+    validation_dispute_v1.timeout_winner(awaiting_challenger, 101 + clock + 1) == validation_dispute_v1.DefenderWins,
   }
 }
 
@@ -450,7 +450,22 @@ test timeout_lands_one_millisecond_after_the_movers_clock_runs_out() {
     validation_dispute_v1.timeout_winner(
       ready,
       1_800 + ready.challenger_clock_ms + 1,
-    ) == validation_dispute_v1.NeitherClaimValid,
+    ) == validation_dispute_v1.DefenderWins,
+  }
+}
+
+test a_ready_for_one_step_timeout_is_refused_while_the_challenger_still_has_clock() fail {
+  let ready = ready_fixture()
+  validation_dispute_v1.timeout_winner(ready, 1_800 + ready.challenger_clock_ms) == validation_dispute_v1.DefenderWins
+}
+
+test a_thread_charges_at_most_two_moves_per_round_and_three_more() {
+  let cap = env.max_dispute_move_fee_lovelace
+  and {
+    validation_dispute_v1.max_bisection_rounds == 32,
+    validation_dispute_v1.max_thread_charged_moves == 67,
+    validation_dispute_v1.max_dispute_duration_milliseconds == 2 * clock + 134 * l_d + validation_dispute_v1.dispute_resolution_allowance_milliseconds,
+    validation_dispute_v1.thread_fee_reserve_lovelace == 67 * cap,
   }
 }
 

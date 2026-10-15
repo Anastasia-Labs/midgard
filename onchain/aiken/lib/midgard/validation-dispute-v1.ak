@@ -17,19 +17,22 @@ pub const dispute_resolution_allowance_milliseconds: Int =
 
 pub const max_bisection_rounds: Int = env.max_bisection_rounds
 
-/// The game charges at most `2 * max_bisection_rounds + 2` moves (every reveal,
-/// the ReadyForOneStep exit and the late landing of the last move), and each can
-/// be undercharged by at most two validity ranges. Both clocks, that slack and
-/// the resolution allowance bound a game from its opening `upper` to its last
-/// move.
-pub const max_dispute_duration_milliseconds: Int =
-  2 * dispute_side_clock_milliseconds + 2 * ( 2 * max_bisection_rounds + 2 ) * dispute_max_validity_range_milliseconds + dispute_resolution_allowance_milliseconds
+/// The most clock-charged moves a thread can make: the defense post, every
+/// reveal on both sides, the ReadyForOneStep exit and the late landing of the
+/// last timeout or exit.
+pub const max_thread_charged_moves: Int = 2 * max_bisection_rounds + 3
 
-/// The fee reserve a thread carries so that it can pay the fee of every move
-/// the game can charge, each at the per-move cap. It is the defender's, posted
-/// per thread with the defense; VerifySource adds none.
+/// D_case. Each charged move can be undercharged by at most two validity
+/// ranges, so both clocks, that slack and the resolution allowance bound every
+/// thread from its case's `started_at` to its last move.
+pub const max_dispute_duration_milliseconds: Int =
+  2 * dispute_side_clock_milliseconds + 2 * max_thread_charged_moves * dispute_max_validity_range_milliseconds + dispute_resolution_allowance_milliseconds
+
+/// The fee reserve a thread carries so that it can pay the fee of every
+/// charged move, each at the per-move cap. It is the defender's, posted per
+/// thread with the defense; VerifySource adds none.
 pub const thread_fee_reserve_lovelace: Int =
-  ( 2 * max_bisection_rounds + 2 ) * env.max_dispute_move_fee_lovelace
+  max_thread_charged_moves * env.max_dispute_move_fee_lovelace
 
 /// M/2: how long after the challenged block's commit time a case may still
 /// open.
@@ -67,7 +70,7 @@ pub type ValidationDisputeV1 {
 }
 
 pub type DisputeWinner {
-  OperatorWins
+  DefenderWins
   ChallengerWins
   NeitherClaimValid
 }
@@ -246,7 +249,9 @@ pub fn enter_resolution(
 
 /// The side to move loses once its whole remaining clock has passed since
 /// the turn started, read from the validity lower bound so that a timeout can
-/// never land before the real deadline.
+/// never land before the real deadline. ReadyForOneStep is the challenger's
+/// turn, since only the challenger can exit it, so its timeout is the
+/// defender's win.
 pub fn timeout_winner(
   dispute: ValidationDisputeV1,
   current_time_lower: Int,
@@ -258,15 +263,10 @@ pub fn timeout_winner(
         current_time_lower > dispute.turn_started_at + dispute.operator_clock_ms
       ChallengerWins
     }
-    AwaitingChallenger { .. } -> {
+    AwaitingChallenger { .. } | ReadyForOneStep -> {
       expect
         current_time_lower > dispute.turn_started_at + dispute.challenger_clock_ms
-      OperatorWins
-    }
-    ReadyForOneStep -> {
-      expect
-        current_time_lower > dispute.turn_started_at + dispute.challenger_clock_ms
-      NeitherClaimValid
+      DefenderWins
     }
   }
 }

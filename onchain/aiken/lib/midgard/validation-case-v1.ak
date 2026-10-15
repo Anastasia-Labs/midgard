@@ -35,8 +35,8 @@ use env
 use midgard/ledger_state.{EventKey, HeaderHash}
 use midgard/mpf_proof_v1
 use midgard/validation_dispute_v1.{
-  AwaitingOperator, ChallengerWins, DisputeTurn, DisputeWinner,
-  NeitherClaimValid, OperatorWins, ReadyForOneStep,
+  AwaitingOperator, ChallengerWins, DefenderWins, DisputeTurn, DisputeWinner,
+  NeitherClaimValid, ReadyForOneStep,
 }
 use midgard/validation_trace_v1.{
   Accepted, Terminal, ValidationMachineStateV1, ValidationTraceProof,
@@ -395,7 +395,7 @@ pub fn close_thread(case: CaseV1, outcome: DisputeWinner) -> CaseV1 {
   expect case.open_threads >= 1
   let open_threads = case.open_threads - 1
   when outcome is {
-    OperatorWins -> CaseV1 { ..case, open_threads, defender_won: True }
+    DefenderWins -> CaseV1 { ..case, open_threads, defender_won: True }
     ChallengerWins -> CaseV1 { ..case, open_threads }
     NeitherClaimValid ->
       CaseV1 { ..case, open_threads, neither_claim_valid: True }
@@ -409,7 +409,7 @@ pub fn lost_defense_receipt(
   outcome: DisputeWinner,
 ) -> Option<LostDefenseReceiptV1> {
   when outcome is {
-    OperatorWins -> None
+    DefenderWins -> None
     _ ->
       Some(
         LostDefenseReceiptV1 {
@@ -438,7 +438,7 @@ pub fn thread_leftover_address(
   outcome: DisputeWinner,
 ) -> Address {
   when outcome is {
-    OperatorWins -> from_verification_key(thread.defender_vkh)
+    DefenderWins -> from_verification_key(thread.defender_vkh)
     ChallengerWins -> from_verification_key(case.bounty_claimant)
     NeitherClaimValid -> treasury_address
   }
