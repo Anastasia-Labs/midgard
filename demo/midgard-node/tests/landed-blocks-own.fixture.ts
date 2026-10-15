@@ -211,6 +211,7 @@ export const ports = (state: Harness): LandedBlockPorts<never> => ({
         withdrawals: [],
         forcedIds: [],
         txIds: [],
+        scriptChecks: [],
       } as const;
     }),
   ownJournal: (headerHash) => Effect.succeed(state.journals.get(headerHash)),

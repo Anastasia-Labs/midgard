@@ -374,6 +374,7 @@ export const replayForeignBlock = (deps: {
           Buffer.from(key, "hex"),
         ),
         txIds: body.transactions.map(([key]) => Buffer.from(key, "hex")),
+        scriptChecks: imported.scriptChecks,
       } satisfies ReplayOutcome;
     }).pipe(
       Effect.catchAll((error) =>

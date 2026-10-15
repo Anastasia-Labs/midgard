@@ -4,6 +4,7 @@ import {
   replayBlockEvents,
 } from "@al-ft/midgard-fault-proofs/block-replay";
 import * as SDK from "@al-ft/midgard-sdk";
+import { type MidgardCekVerdictRequest } from "@al-ft/midgard-validation";
 import { Data, Effect } from "effect";
 
 import * as Ledger from "../database/utils/ledger.js";
@@ -18,7 +19,7 @@ import { computeLedgerMpfRootFromLedgerEntries } from "./ledger-hydration.js";
 /** The shared block replay's context over the node's ledger rows. */
 export type ImportedBlockReplayContext = Omit<
   BlockReplayContext,
-  "parentEntries" | "ledgerRoot"
+  "parentEntries" | "ledgerRoot" | "onCommittedScriptRun"
 > & {
   readonly parentEntries: readonly Ledger.MinimalEntry[];
 };
@@ -50,6 +51,18 @@ export class ForeignBlockVerificationError extends Data.TaggedError(
   readonly detail: string;
 }> {}
 
+/**
+ * One imported L2 transaction's script runs, which the import did not
+ * evaluate: the transaction is applied by its committed verdict, and its
+ * runs are checked after the import. `position` is the transaction's order
+ * among the block's transactions with script runs.
+ */
+export type ImportScriptCheck = Readonly<{
+  transactionId: Buffer;
+  position: number;
+  runs: readonly MidgardCekVerdictRequest[];
+}>;
+
 /** A caller callback's failure, passed through the import unchanged. */
 class CallbackFailure {
   constructor(readonly cause: unknown) {}
@@ -61,6 +74,10 @@ const passThrough = <A>(effect: Effect.Effect<A, unknown>) =>
 /** Full import authentication. A caller must supply the exact canonical parent
  * and deployment observation; matching ledger roots or DA signatures do not
  * substitute for replay. No successful result is cached across observations.
+ *
+ * Every L2 transaction is applied by its committed verdict: the import runs
+ * no script, and returns each transaction's script runs as `scriptChecks`
+ * for the import checker. Every other check runs in full.
  *
  * Failures: the caller's callbacks' pass through unchanged (their verdicts
  * are the caller's); a defect (the payload checks throw) is `invalid`, a
@@ -162,6 +179,10 @@ export const verifyAndImportBlock = (
         "invalid",
         `foreign DA commitment mismatch: ${mismatches.join(",")}`,
       );
+    const checks = new Map<
+      string,
+      { transactionId: Buffer; runs: MidgardCekVerdictRequest[] }
+    >();
     const entries = ledgerRows(
       yield* replayBlockEvents({
         ...input,
@@ -175,6 +196,12 @@ export const verifyAndImportBlock = (
         replayUserEvent: (event) => passThrough(input.replayUserEvent(event)),
         verifyForcedSource: (source) =>
           passThrough(input.verifyForcedSource(source)),
+        onCommittedScriptRun: (transactionId, request) => {
+          const key = transactionId.toString("hex");
+          const check = checks.get(key) ?? { transactionId, runs: [] };
+          check.runs.push(request);
+          checks.set(key, check);
+        },
       }),
     );
     const replayRoot = yield* computeLedgerMpfRootFromLedgerEntries(entries);
@@ -182,7 +209,15 @@ export const verifyAndImportBlock = (
       return yield* fail("invalid", "foreign replay UTxO root mismatch");
     // Replay compares every transition, mapping and validation descriptor by its
     // canonical bytes, independently of the payload's internally consistent roots.
-    return { headerHash: input.headerHash, root: replayRoot, entries };
+    const scriptChecks: ImportScriptCheck[] = [...checks.values()].map(
+      (check, position) => ({ ...check, position }),
+    );
+    return {
+      headerHash: input.headerHash,
+      root: replayRoot,
+      entries,
+      scriptChecks,
+    };
   }).pipe(
     Effect.catchAllDefect((cause) =>
       Effect.fail(

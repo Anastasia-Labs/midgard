@@ -11,6 +11,7 @@ import type { View } from "@al-ft/midgard-l1-follower";
 import type * as SDK from "@al-ft/midgard-sdk";
 
 import type * as Ledger from "../database/utils/ledger.js";
+import type { ImportScriptCheck } from "../mpf/verified-block-import.js";
 import type { WithdrawalMembership } from "./store.js";
 
 export type ReplayInput = Readonly<{
@@ -33,6 +34,9 @@ export type Replayed = Readonly<{
   withdrawals: readonly WithdrawalMembership[];
   forcedIds: readonly Buffer[];
   txIds: readonly Buffer[];
+  /** The script runs the replay applied by their committed verdicts, for
+   * the import checker. */
+  scriptChecks: readonly ImportScriptCheck[];
 }>;
 
 /**

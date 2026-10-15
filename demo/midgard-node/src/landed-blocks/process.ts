@@ -49,6 +49,7 @@ import type { View } from "@al-ft/midgard-l1-follower";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Effect } from "effect";
 
+import { type ImportChecks, importChecks } from "../import-check/deadline.js";
 import { type DriverHold, notRetried } from "../l1-events/driver.js";
 import type { LandedStateQueue } from "../l1-state-queue/index.js";
 import { computeLedgerMpfRootFromLedgerEntries } from "../mpf/ledger-hydration.js";
@@ -179,7 +180,7 @@ export const replayOutcomeHold = (
     : hold(HOLD_OF[kind], detail);
 
 type Step =
-  | Readonly<{ kind: "row"; row: LandedBlockRow }>
+  | Readonly<{ kind: "row"; row: LandedBlockRow; due?: ImportChecks }>
   | Readonly<{ kind: "held"; hold: DriverHold }>;
 
 /** The row a new node makes, or the hold that stops processing at it. */
@@ -300,6 +301,7 @@ const newRow = <R>(
         forcedIds: replayed.forcedIds,
         txIds: replayed.txIds,
       },
+      due: importChecks(node.header.endTime, replayed.scriptChecks),
     } satisfies Step;
   });
 
@@ -447,7 +449,7 @@ const run = <R>(
           holds.push(step.hold);
           break;
         }
-        yield* viewChecked(ports, queue.view, processRow(step.row));
+        yield* viewChecked(ports, queue.view, processRow(step.row, step.due));
         applyDelta(ledger, step.row);
         parent = {
           headerHash: step.row.headerHash,

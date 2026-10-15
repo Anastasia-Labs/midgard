@@ -293,6 +293,7 @@ export const simPorts = (
         withdrawals: [],
         forcedIds: [],
         txIds,
+        scriptChecks: [],
       } as const;
     }),
   ownJournal,
