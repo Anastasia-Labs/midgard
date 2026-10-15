@@ -125,7 +125,8 @@ describe("streamed accepted-transaction steps", () => {
           expectOnchainRefusal(submit, {
             refusedBy:
               "fraud_proofs/transition_trace/accepted_transaction_yields",
-            check: /Validator returned false/u,
+            check:
+              /delegation\.advance\(datum, args, tx\.outputs, successor\) \? False/u,
           }),
       }),
     TIMEOUT,

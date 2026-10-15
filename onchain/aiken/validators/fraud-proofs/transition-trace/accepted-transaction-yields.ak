@@ -354,7 +354,7 @@ validator l2_output_step(
         current_root: insert_output(state, step.insert, descriptor),
       }
     }
-    delegation.advance(datum, args, tx.outputs, successor)
+    delegation.advance(datum, args, tx.outputs, successor)?
   }
 
   else(_) {
