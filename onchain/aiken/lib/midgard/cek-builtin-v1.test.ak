@@ -1208,6 +1208,151 @@ test bls_root_hop_refuses_twelve_leaves() {
   !cek_builtin_v1.verify_bls_expression_roots(expression, expression, #"", #"")
 }
 
+// The MlResult leaf cap is a proof limit, not a Cardano rule: eleven leaves
+// fail the root hop (the validator expects it, so nothing is certified) and
+// abort the final-verify arm, which has no failure successor to fall into.
+test bls_root_hop_refuses_eleven_leaves() {
+  let left = six_miller_loop_expression()
+  let right = five_miller_loop_expression()
+  !cek_builtin_v1.verify_bls_expression_roots(left, right, #"", #"")
+}
+
+fn bls_expression_root(
+  expression: cek_builtin_v1.BlsExpressionWitnessV1,
+) -> ByteArray {
+  when expression is {
+    cek_builtin_v1.BlsMillerLoopExpression { g1, g2 } ->
+      cek_proof_v1.hash_bls_miller_loop_expression_v1(
+        cek_constant_v1.constant_root_v1(g1),
+        cek_constant_v1.constant_root_v1(g2),
+      )
+    cek_builtin_v1.BlsMultiplyExpression { left, right } ->
+      cek_proof_v1.hash_bls_multiply_expression_v1(
+        bls_expression_root(left),
+        bls_expression_root(right),
+      )
+  }
+}
+
+fn unequal_final_verify(
+  left: cek_builtin_v1.BlsExpressionWitnessV1,
+  right: cek_builtin_v1.BlsExpressionWitnessV1,
+) -> Bool {
+  let arguments = [
+    cek_builtin_v1.BlsMillerLoopValue(bls_expression_root(left)),
+    cek_builtin_v1.BlsMillerLoopValue(bls_expression_root(right)),
+  ]
+  cek_builtin_v1.verify_direct_bls_final_v1(
+    builtin_root(70, arguments),
+    left,
+    right,
+    boolean(#"d87980"),
+  )
+}
+
+test nine_leaf_unequal_final_verify_is_certified() {
+  unequal_final_verify(
+    five_miller_loop_expression(),
+    cek_builtin_v1.BlsMultiplyExpression {
+      left: double_miller_loop_expression(),
+      right: double_miller_loop_expression(),
+    },
+  )
+}
+
+test eleven_leaf_unequal_final_verify_aborts() fail {
+  unequal_final_verify(
+    six_miller_loop_expression(),
+    five_miller_loop_expression(),
+  )
+}
+
+// The 9,215 B revealed-payload cap is a proof limit, not a Cardano rule. At
+// the cap each arm certifies; one byte over, the success arms, the known
+// failure arm and the type failure arm all abort, so the limit never becomes
+// a failure successor. Plutus CBOR chunks a byte string above 64 B, so a
+// payload of L bytes is L + 2 * ceil(L / 64) + 2 bytes.
+fn zero_bytes_constant(length: Int) -> ByteArray {
+  let half = length / 2
+  cbor.serialise(
+    builtin.b_data(
+      bytearray.concat(
+        bytearray.from_int_big_endian(0, half),
+        bytearray.from_int_big_endian(0, length - half),
+      ),
+    ),
+  )
+}
+
+fn length_of_bytes_at(length: Int) -> Bool {
+  let payload = zero_bytes_constant(length)
+  let result = integer(cbor.serialise(builtin.i_data(length)))
+  let arguments = [bytes(payload)]
+  verify_direct_with_split_parity(
+    13,
+    builtin_root(13, arguments),
+    arguments,
+    result,
+  )
+}
+
+fn negative_index_failure_at(length: Int) -> Bool {
+  let arguments = [bytes(zero_bytes_constant(length)), integer(#"20")]
+  cek_builtin_v1.verify_direct_builtin_failure_v1(
+    14,
+    builtin_root(14, arguments),
+    arguments,
+  )
+}
+
+fn add_integer_type_failure_at(length: Int) -> Bool {
+  let arguments = [
+    runtime_constant(#"9f01ff", zero_bytes_constant(length)),
+    runtime_constant(#"9f00ff", #"01"),
+  ]
+  cek_builtin_v1.verify_builtin_type_failure_v1(
+    0,
+    runtime_builtin_root(0, arguments),
+    arguments,
+  )
+}
+
+test direct_arms_certify_at_the_revealed_payload_cap() {
+  // lengthOfByteString: 9,210 B argument + 3 B result.
+  expect bytearray.length(zero_bytes_constant(8930)) == 9212
+  // indexByteString and the addInteger type failure: 9,214 B + 1 B.
+  expect bytearray.length(zero_bytes_constant(8932)) == 9214
+  and {
+    length_of_bytes_at(8930),
+    negative_index_failure_at(8932),
+    add_integer_type_failure_at(8932),
+  }
+}
+
+test direct_success_one_byte_over_the_cap_aborts() fail {
+  expect bytearray.length(zero_bytes_constant(8931)) == 9213
+  length_of_bytes_at(8931)
+}
+
+test direct_scalar_semantics_one_byte_over_the_cap_aborts() fail {
+  let arguments = [bytes(zero_bytes_constant(8931))]
+  cek_builtin_v1.verify_direct_scalar_semantics(
+    13,
+    arguments,
+    integer(cbor.serialise(builtin.i_data(8931))),
+  )
+}
+
+test known_failure_one_byte_over_the_cap_aborts() fail {
+  expect bytearray.length(zero_bytes_constant(8933)) == 9215
+  negative_index_failure_at(8933)
+}
+
+test type_failure_one_byte_over_the_cap_aborts() fail {
+  expect bytearray.length(zero_bytes_constant(8933)) == 9215
+  add_integer_type_failure_at(8933)
+}
+
 fn repeated_byte(byte: Int, count: Int) -> ByteArray {
   if count == 0 {
     #""
