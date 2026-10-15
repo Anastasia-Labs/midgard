@@ -13,9 +13,12 @@ import {
   EMPTY_NULL_ROOT,
   encodeCbor,
   encodeMidgardForcedTxCanonical,
+  encodeMidgardNativeScript,
   encodeMidgardSpendInputItem,
   encodeMidgardTxOutput,
+  encodeMidgardVersionedScript,
   hashMidgardValidationMachineState,
+  hashMidgardVersionedScript,
   MIDGARD_NATIVE_NETWORK_ID_NONE,
   MIDGARD_NATIVE_TX_VERSION,
   MIDGARD_POSIX_TIME_NONE,
@@ -176,79 +179,75 @@ const trace = await Effect.runPromise(
 );
 
 /**
- * The same transaction shape as above with one output sized to `itemBytes`, so
- * field 2's §5.1 preimage lands wherever §8.4's partition puts it (#600).
+ * An accepted spend whose field-6 script witness has exactly `itemBytes` bytes.
+ * Output items always take the complete-item route; script items above the
+ * publication limit still exercise canonical decoding through field chunks.
  */
-const buildTraceForOutputItem = async (itemBytes) => {
-  const encodeBoundedChunk = (payload) =>
-    payload.length < 24
-      ? Buffer.concat([Buffer.from([0x40 + payload.length]), payload])
-      : Buffer.concat([Buffer.from([0x58, payload.length]), payload]);
-  const datumFiller = (payloadBytes) => {
-    if (payloadBytes <= 64) {
-      return encodeBoundedChunk(Buffer.alloc(payloadBytes, 0xa5));
-    }
-    const items = [];
-    let remaining = payloadBytes;
-    while (remaining > 0) {
-      const take = Math.min(remaining, 64);
-      items.push(encodeBoundedChunk(Buffer.alloc(take, 0xa5)));
-      remaining -= take;
-    }
-    return Buffer.concat([Buffer.from([0x9f]), ...items, Buffer.from([0xff])]);
+const buildTraceForScriptItem = async (itemBytes) => {
+  const signature = {
+    type: "sig",
+    keyHash: Buffer.from(publicKey.hash().to_raw_bytes()),
   };
-  const probe = (payloadBytes) =>
-    encodeMidgardTxOutput({
-      address,
-      value: { lovelace: 100_000_000n, assets: new Map() },
-      datum: { kind: "inline", cbor: datumFiller(payloadBytes) },
-    });
-  let payload = Math.max(0, itemBytes - probe(0).length);
-  let sizedOutput = null;
-  for (let attempt = 0; attempt < 12; attempt += 1) {
-    const candidate = probe(payload);
-    if (candidate.length === itemBytes) {
-      sizedOutput = candidate;
-      break;
+  const signatureBytes = encodeMidgardNativeScript(signature).length;
+  let script = null;
+  let scriptItem = null;
+  // Signature clauses and empty conjunctions are both true for this spend.
+  // Their different encoded widths let the producer hit each exact item size.
+  for (
+    let signatureCount = Math.floor(itemBytes / signatureBytes);
+    signatureCount >= 0 && scriptItem === null;
+    signatureCount -= 1
+  ) {
+    const scripts = Array.from({ length: signatureCount }, () => signature);
+    for (let padding = 0; padding < signatureBytes; padding += 1) {
+      const nativeScript = { type: "all", scripts };
+      const candidate = {
+        language: "NativeCardano",
+        nativeScript,
+        scriptBytes: encodeMidgardNativeScript(nativeScript),
+      };
+      const encoded = encodeMidgardVersionedScript(candidate);
+      if (encoded.length === itemBytes) {
+        script = candidate;
+        scriptItem = encoded;
+        break;
+      }
+      if (encoded.length > itemBytes) break;
+      scripts.push({ type: "all", scripts: [] });
     }
-    payload += itemBytes - candidate.length;
   }
-  if (sizedOutput === null) {
+  if (script === null || scriptItem === null) {
     throw new Error(
-      `could not converge on an exact ${itemBytes.toString()}-byte output item`,
+      `could not construct an exact ${itemBytes.toString()}-byte script item`,
     );
   }
-  const vectorBody = {
-    ...body,
-    outputsPreimageCbor: encodeByteList([sizedOutput]),
-  };
-  const vectorBodyHash = computeMidgardNativeTxId({
-    version: MIDGARD_NATIVE_TX_VERSION,
-    transactionBody: deriveMidgardNativeTxBodyCompact(vectorBody),
-    transactionWitnessSetHash: Buffer.alloc(32),
-    validity: "TxIsValid",
+  const scriptAddress = Buffer.from(
+    CML.EnterpriseAddress.new(
+      0,
+      CML.Credential.new_script(
+        CML.ScriptHash.from_hex(hashMidgardVersionedScript(script)),
+      ),
+    )
+      .to_address()
+      .to_raw_bytes(),
+  );
+  const vectorSpentOutput = encodeMidgardTxOutput({
+    address: scriptAddress,
+    value: { lovelace: 100_000_000n, assets: new Map() },
   });
+  // The body is unchanged, so its existing key witness signs this native spend.
   const vectorWitnessSet = {
     ...witnessSet,
-    addrTxWitsPreimageCbor: encodeByteList([
-      Buffer.from(
-        CML.make_vkey_witness(
-          CML.TransactionHash.from_raw_bytes(vectorBodyHash),
-          privateKey,
-        ).to_cbor_bytes(),
-      ),
-    ]),
+    scriptTxWitsPreimageCbor: encodeByteList([scriptItem]),
   };
   const vectorTransaction = {
-    version: MIDGARD_NATIVE_TX_VERSION,
-    validity: "TxIsValid",
+    ...transaction,
     compact: deriveMidgardNativeTxCompact(
-      vectorBody,
+      body,
       vectorWitnessSet,
       "TxIsValid",
       MIDGARD_NATIVE_TX_VERSION,
     ),
-    body: vectorBody,
     witnessSet: vectorWitnessSet,
   };
   const vectorTransactionId = computeMidgardNativeTxId(vectorTransaction);
@@ -259,11 +258,11 @@ const buildTraceForOutputItem = async (itemBytes) => {
         txId: vectorTransactionId,
         outputIndex: 0,
       }),
-      outputCbor: sizedOutput,
+      outputCbor: output,
     }),
   ];
   const vectorSteps = await buildValidationMachineLedgerMutationSteps({
-    initialEntries: [{ outRef: spent, output }],
+    initialEntries: [{ outRef: spent, output: vectorSpentOutput }],
     operations: vectorOps,
   });
   return Effect.runPromise(
@@ -282,7 +281,7 @@ const buildTraceForOutputItem = async (itemBytes) => {
         encodeMidgardForcedTxCanonical(vectorTransaction),
       priorUtxosRoot: vectorSteps[0].preRoot.toString("hex"),
       postUtxosRoot: vectorSteps.at(-1).postRoot.toString("hex"),
-      ledgerWitnessEntries: [{ outRef: spent, output }],
+      ledgerWitnessEntries: [{ outRef: spent, output: vectorSpentOutput }],
       expectedLedgerOps: vectorOps,
       ledgerMutationSteps: vectorSteps,
       expectedVerdict: "accepted",
@@ -333,7 +332,7 @@ if (selectMidgardFieldCarriageTier(fieldChunkPreimage.length) !== "Inline") {
 // reference-input set, so the auxiliary carries positional indices instead of
 // the preimage, and it is those bytes the Aiken door has to decode.
 //
-// Everything is producer-emitted. The preimage is a real field-2 §5.1 envelope
+// Everything is producer-emitted. The preimage is a real field-6 §5.1 envelope
 // out of a real trace; `planMidgardFieldCarriage` picks the tier by §8.4's
 // partition over its length; the publication datums are
 // `fieldPreimagePublicationDatumCbor`'s bytes and the manifest is
@@ -357,15 +356,16 @@ const decoyReferenceInput = {
   datum: "d87980",
 };
 const tierVector = async (itemBytes, expectedTier) => {
-  const vectorTrace = await buildTraceForOutputItem(itemBytes);
+  const vectorTrace = await buildTraceForScriptItem(itemBytes);
   const stateIndex = vectorTrace.witnesses.findIndex(
     (witness) =>
+      witness.phase === "canonicalDecode" &&
       witness.auxiliary?.kind === "transactionFieldChunk" &&
-      witness.auxiliary.fieldIndex === 2,
+      witness.auxiliary.fieldIndex === 6,
   );
   if (stateIndex < 0) {
     throw new Error(
-      `generated ${expectedTier} trace has no field-2 transactionFieldChunk transition`,
+      `generated ${expectedTier} trace has no field-6 canonical transactionFieldChunk transition`,
     );
   }
   const planInput = vectorTrace.witnesses[stateIndex].auxiliary;
@@ -430,7 +430,7 @@ const tierVector = async (itemBytes, expectedTier) => {
     carriage,
   };
 };
-// A field-2 preimage is four bytes wider than its single item, so these two
+// A field-6 preimage is four bytes wider than its single item, so these two
 // item sizes land either side of `chunk_bytes_k` (15,148) and select tier 2 and
 // tier 3 respectively.
 const rawUtxoVector = await tierVector(14_774, "RawUtxo");
@@ -701,13 +701,13 @@ test typescript_generated_field_chunk_auxiliary_is_exact() {
 }
 
 /// #600. The same emitted constructor at tier 2, where §8.4's partition puts a
-/// ${rawUtxoVector.preimageBytes.toString()}-byte field-2 preimage.
+/// ${rawUtxoVector.preimageBytes.toString()}-byte field-6 preimage.
 ///
 /// This is the vector the trace producer could not build before: the tier is
 /// resolved at evidence commitment against a concrete transaction's
 /// canonically-sorted reference-input set, so the auxiliary names a **positional
 /// reference-input index** and carries no preimage at all. That is what makes
-/// stage-4 evidence O(1) in output size — the property
+/// stage-4 evidence O(1) in field size — the property
 /// \`validation_machine_v1.ak:9189-9192\` states and C21-STAGE4 protects — and it
 /// is checked here as a byte length rather than asserted: ${rawUtxoVector.auxiliaryCbor.length.toString()} bytes for a
 /// field of ${rawUtxoVector.preimageBytes.toString()}.
@@ -736,7 +736,7 @@ test typescript_generated_raw_utxo_carriage_auxiliary_is_exact() {
 }
 
 /// #600. The same emitted constructor at tier 3, where §8.4's partition puts a
-/// ${certifiedVector.preimageBytes.toString()}-byte field-2 preimage — above \`chunk_bytes_k\`, so the preimage is
+/// ${certifiedVector.preimageBytes.toString()}-byte field-6 preimage — above \`chunk_bytes_k\`, so the preimage is
 /// split into ${certifiedVector.carriage.chunkRefInputIndices.length.toString()} deterministic chunks with one §8.6 digest manifest.
 ///
 /// \`chunk_ref_input_indices\` is all-chunks-positional and its **order** is the
