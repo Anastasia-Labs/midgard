@@ -379,4 +379,13 @@ export const InvalidOneStepTransitionWitnessSchema = Data.Enum([
       source_membership: L2TransactionSourceMembershipProofSchema,
     }),
   }),
+  // The forced leaf is opened over its raw key (`TxOrderId` CBOR) and value
+  // (`ForcedInclusionTxV1` CBOR) bytes.
+  Data.Object({
+    ValidForcedTransactionTransition: Data.Object({
+      trace_proof: TransitionTraceMembershipProofSchema,
+      event_to_step: EventToStepMembershipProofSchema,
+      source_membership: RawRootMembershipProofSchema,
+    }),
+  }),
 ]);

@@ -85,7 +85,10 @@ import {
 } from "./transition-trace-field-carriage.js";
 import { proveAfterForgedStep } from "./transition-trace-final-cases.forged-step.js";
 import { proveAfterForgedWalk } from "./transition-trace-final-cases.forged-walk.js";
-import { expectRefusedAtTerminal } from "./transition-trace-final-cases.honest-terminal.js";
+import {
+  expectRefusedAtForcedOpen,
+  expectRefusedAtTerminal,
+} from "./transition-trace-final-cases.honest-terminal.js";
 import { type TransitionTraceFinalCase } from "./transition-trace-final-cases.types.js";
 import {
   buildAcceptedTransitionFixture,
@@ -98,7 +101,8 @@ type FitLedgerSuffix =
   | "deep-deposit"
   | "drained"
   | "maximum-shape"
-  | "output-step";
+  | "output-step"
+  | "forced";
 
 /**
  * One case's run, recording its measurement rows into the file's fit ledger
@@ -172,6 +176,7 @@ export const transitionTraceFinalCaseRunner = (
     spentCount = 0,
     ledgerFill = 0,
     ledgerDepth = 0,
+    forced,
   }: TransitionTraceFinalCase) => {
     const realBlueprint = readBlueprint(realBlueprintPath);
     const alwaysBlueprint = readBlueprint(alwaysSucceedsBlueprintPath);
@@ -208,7 +213,7 @@ export const transitionTraceFinalCaseRunner = (
       let publication = false;
       for (let i = 0; i < outputs.len(); i++)
         if (outputs.get(i).script_ref() != null) publication = true;
-      const shape = `assets-${assetCount}-outputs-${outputCount}-bytes-${outputBytes}-field-${fieldBytes}-honest-${honest}-depth-${depth}-kind-${kind}-cancel-${cancelAt}-datum-${datumCbor === undefined ? datumBytes : `cbor-${datumCbor.length / 2}`}${exactOutput === undefined ? "" : `-output-${exactOutput.slice(0, 16)}-${exactOutput.length / 2}`}-corrupt-index-${corruptAssetIndex}-corrupt-walk-${corruptWalk}-corrupt-source-${corruptSourceReference}${spentCount > 0 ? `-spent-${spentCount}` : ""}${ledgerFill > 0 ? `-fill-${ledgerFill}` : ""}${ledgerDepth > 0 ? `-ledger-depth-${ledgerDepth}` : ""}${forgeStep === undefined ? "" : `-forge-${forgeStep}`}`;
+      const shape = `assets-${assetCount}-outputs-${outputCount}-bytes-${outputBytes}-field-${fieldBytes}-honest-${honest}-depth-${depth}-kind-${kind}-cancel-${cancelAt}-datum-${datumCbor === undefined ? datumBytes : `cbor-${datumCbor.length / 2}`}${exactOutput === undefined ? "" : `-output-${exactOutput.slice(0, 16)}-${exactOutput.length / 2}`}-corrupt-index-${corruptAssetIndex}-corrupt-walk-${corruptWalk}-corrupt-source-${corruptSourceReference}${spentCount > 0 ? `-spent-${spentCount}` : ""}${ledgerFill > 0 ? `-fill-${ledgerFill}` : ""}${ledgerDepth > 0 ? `-ledger-depth-${ledgerDepth}` : ""}${forced === undefined ? "" : `-forced-${forced}`}${forgeStep === undefined ? "" : `-forge-${forgeStep}`}`;
       records.push({
         label: `${shape}/tx-${measuredIndex}`,
         txHash: result,
@@ -396,6 +401,7 @@ export const transitionTraceFinalCaseRunner = (
       spentCount,
       ledgerFill,
       ledgerDepth,
+      forced,
       operatorVkey: funderPaymentCredential.hash,
       now: headerStartTime,
     });
@@ -835,6 +841,10 @@ export const transitionTraceFinalCaseRunner = (
       await expectProofRefused(replacement);
       return;
     }
+    if (forced === "invalid") {
+      await expectRefusedAtForcedOpen(forged);
+      return;
+    }
     if (honest) {
       await expectRefusedAtTerminal({ ...forged, proof: traceFixture.proof });
       return;
@@ -924,7 +934,7 @@ export const registerTransitionTraceFinalCases = (
   const run = transitionTraceFinalCaseRunner(fitLedgerSuffix);
   describe("fault-proof emulator integration", () => {
     it.each(cases)(
-      "publishes accepted semantic yields and removes a wrong transition root assets=$assetCount outputs=$outputCount bytes=$outputBytes field=$fieldBytes honest=$honest depth=$depth kind=$kind cancel=$cancelAt datum=$datumBytes corruptIndex=$corruptAssetIndex corruptWalk=$corruptWalk corruptSource=$corruptSourceReference drained=$drained forge=$forgeStep",
+      "publishes accepted semantic yields and removes a wrong transition root assets=$assetCount outputs=$outputCount bytes=$outputBytes field=$fieldBytes honest=$honest depth=$depth kind=$kind cancel=$cancelAt datum=$datumBytes corruptIndex=$corruptAssetIndex corruptWalk=$corruptWalk corruptSource=$corruptSourceReference drained=$drained forced=$forced forge=$forgeStep",
       run,
       1_800_000,
     );

@@ -29,4 +29,6 @@ export type TransitionTraceFinalCase = Readonly<{
   ledgerFill?: number;
   /** Insert the single output at this MPF depth into a synthesised ledger. */
   ledgerDepth?: number;
+  /** Commit the transaction as a forced leaf with this verdict. */
+  forced?: "valid" | "invalid";
 }>;

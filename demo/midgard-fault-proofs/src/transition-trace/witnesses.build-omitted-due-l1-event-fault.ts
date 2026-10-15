@@ -6,6 +6,7 @@ import {
   buildEventToStepMembershipProof,
   buildIndexedTraceProof,
   buildRawL2TransactionSourceMembershipProof,
+  leafKeyMembershipProof,
   leafMembershipProof,
   membershipProof,
   requireTraceEntry,
@@ -116,6 +117,42 @@ export const buildL2TransactionTransitionWitness = async ({
       source_membership: await buildRawL2TransactionSourceMembershipProof({
         reconstruction,
         txId: source.entry.txId,
+      }),
+    },
+  };
+};
+
+export const buildValidForcedTransactionTransitionWitness = async ({
+  reconstruction,
+  stepIndex,
+}: {
+  readonly reconstruction: TransitionTraceReconstruction;
+  readonly stepIndex: bigint;
+}): Promise<SDK.InvalidOneStepTransitionWitness> => {
+  const trace = requireTraceEntry(reconstruction, stepIndex);
+  const source = sourceEventOrThrow(reconstruction, trace.value.event_key);
+  if (source.phase !== "ForcedTransaction") {
+    throw transitionTraceError(
+      "missingWitnessData",
+      `Trace step ${stepIndex.toString()} is not a forced-transaction step.`,
+    );
+  }
+  if (source.entry.value.verdict !== "ForcedTxValid") {
+    throw transitionTraceError(
+      "missingWitnessData",
+      "ValidForcedTransactionTransition requires a forced source classified as ForcedTxValid.",
+    );
+  }
+  return {
+    ValidForcedTransactionTransition: {
+      trace_proof: await buildIndexedTraceProof({ reconstruction, stepIndex }),
+      event_to_step: await buildEventToStepMembershipProof({
+        reconstruction,
+        eventKey: trace.value.event_key,
+      }),
+      source_membership: await leafKeyMembershipProof({
+        root: reconstruction.rootData.forcedTransactions,
+        entry: source.entry,
       }),
     },
   };

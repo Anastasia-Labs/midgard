@@ -23,6 +23,7 @@ import {
   readTransitionProof,
   transitionL2Replay,
   type TransitionProofInput,
+  transitionReplayedTransaction,
 } from "./proof-material.js";
 import type { transitionTraceYieldData } from "./yield-data.js";
 import type { TRANSITION_TRACE_YIELD_REFERENCES } from "./yield-references.js";
@@ -42,7 +43,11 @@ export const initialTransitionTraceState = (
       "InvalidOneStepTransition" in proof.fault &&
       "ValidDepositTransition" in proof.fault.InvalidOneStepTransition.witness
         ? 1n
-        : 0n,
+        : "InvalidOneStepTransition" in proof.fault &&
+            "ValidForcedTransactionTransition" in
+              proof.fault.InvalidOneStepTransition.witness
+          ? 2n
+          : 0n,
     phase: 6n,
     proof_commitment: { hash: transitionTraceProofChunks(proofInput).hash },
     tx_id: "",
@@ -102,18 +107,21 @@ export const transitionTracePhaseYield = (
 ): keyof typeof TRANSITION_TRACE_YIELD_REFERENCES | null => {
   if (state.phase === 6n) return null;
   const key = (
-    state.kind === 0n ? ACCEPTED_PHASE_YIELDS : DEPOSIT_PHASE_YIELDS
+    state.kind === 1n ? DEPOSIT_PHASE_YIELDS : ACCEPTED_PHASE_YIELDS
   )[state.phase.toString()];
   if (key === undefined)
     throw new Error("transition-trace checkpoint phase invalid");
   return key;
 };
 
-/** The field a kind-0 phase opens through the field-opening door, if any. */
+/**
+ * The field a kind-0 or kind-2 phase opens through the field-opening door, if
+ * any. Kind 2 (an accepted forced transaction) takes kind 0's phases.
+ */
 export const transitionTracePhaseField = (
   state: SDK.TransitionTraceFinalState,
 ): TransitionTraceField | null =>
-  state.kind !== 0n
+  state.kind === 1n
     ? null
     : state.phase === 0n || state.phase === 1n
       ? 0
@@ -121,12 +129,12 @@ export const transitionTracePhaseField = (
         ? 2
         : null;
 
-/** Whether a kind-0 phase-11 step replays its output whole. */
+/** Whether a kind-0 or kind-2 phase-11 step replays its output whole. */
 export const transitionTraceOutputStepIsWhole = (
   state: SDK.TransitionTraceFinalState,
   outputCbors: readonly string[] | undefined,
 ): boolean => {
-  if (state.kind !== 0n || state.phase !== 11n) return false;
+  if (state.kind === 1n || state.phase !== 11n) return false;
   const output = outputCbors?.[Number(state.output_index)];
   if (output === undefined) throw new Error("Transition output bytes missing");
   return transitionOutputIsWhole(output);
@@ -205,10 +213,7 @@ export const nextTransitionTracePhase = ({
   if (!("InvalidOneStepTransition" in proof.fault))
     throw new Error("transition-trace state disagrees with proof");
   const witness = proof.fault.InvalidOneStepTransition.witness;
-  const l2 =
-    "L2TransactionTransition" in witness
-      ? witness.L2TransactionTransition
-      : null;
+  const l2 = transitionReplayedTransaction(witness);
   const deposit =
     "ValidDepositTransition" in witness ? witness.ValidDepositTransition : null;
   const replayMaterial = transitionL2Replay(proofInput);
@@ -219,7 +224,7 @@ export const nextTransitionTracePhase = ({
   const produced =
     replayMaterial?.producedUtxos ??
     (deposit === null ? [] : [deposit.projected_utxo]);
-  const trace = l2?.trace_proof ?? deposit?.trace_proof;
+  const trace = l2?.traceProof ?? deposit?.trace_proof;
   if (trace === undefined)
     throw new Error("transition-trace proof has no ledger replay");
   const replay = (
@@ -247,11 +252,11 @@ export const nextTransitionTracePhase = ({
     const items =
       field === 0 ? replayMaterial.spendInputCbors : replayMaterial.outputCbors;
     return {
-      layout: fieldLayout(l2.source_membership.key, field, items),
+      layout: fieldLayout(l2.txId, field, items),
       count: items.length,
     };
   };
-  if (state.kind === 0n)
+  if (state.kind !== 1n)
     switch (state.phase) {
       case 6n:
         return { state: { ...state, phase: 0n }, redeemer };
@@ -261,7 +266,7 @@ export const nextTransitionTracePhase = ({
           state: {
             ...state,
             phase: count === 0 ? 10n : 1n,
-            tx_id: l2!.source_membership.key,
+            tx_id: l2!.txId,
             inputs_walk: hashTransitionWalkCheckpoint(layout, 0),
             current_root: trace.value.pre_utxos_root,
           },
@@ -440,7 +445,7 @@ export const nextTransitionTracePhase = ({
       return {
         state: {
           ...state,
-          phase: state.kind === 0n ? 4n : 9n,
+          phase: state.kind === 1n ? 9n : 4n,
           descriptor_cbor: descriptor,
         },
         redeemer,
@@ -467,7 +472,7 @@ export const nextTransitionTracePhase = ({
           descriptor_cbor: "",
         },
         redeemer:
-          state.kind === 0n ? Data.to(item, SDK.LedgerInsertWitness) : redeemer,
+          state.kind === 1n ? redeemer : Data.to(item, SDK.LedgerInsertWitness),
       };
     }
     default:

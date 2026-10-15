@@ -22,6 +22,7 @@ import {
   type ForcedTransactionSourceMembershipProof,
   ForcedTransactionSourceMembershipProofSchema,
   type IndexedTraceProof,
+  type RawRootMembershipProof,
   type RootCountProof,
   RootCountProofSchema,
   TransitionTraceMembershipProofSchema,
@@ -82,6 +83,13 @@ export type InvalidOneStepTransitionWitness =
         readonly trace_proof: IndexedTraceProof;
         readonly event_to_step: EventToStepMembershipProof;
         readonly source_membership: L2TransactionSourceMembershipProof;
+      };
+    }
+  | {
+      readonly ValidForcedTransactionTransition: {
+        readonly trace_proof: IndexedTraceProof;
+        readonly event_to_step: EventToStepMembershipProof;
+        readonly source_membership: RawRootMembershipProof;
       };
     };
 

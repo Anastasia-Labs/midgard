@@ -13,7 +13,7 @@ use midgard/fraud_proofs/transition_trace/proof.{
   InvalidWithdrawalNoOpTransition, L2TransactionTransition, OmittedDueL1Event,
   OutOfWindowSourceEvent, SourceMembershipMismatch, TraceBoundaryFault,
   TraceLinkFault, TransitionFaultProof, ValidDepositTransition,
-  ValidWithdrawalTransition,
+  ValidForcedTransactionTransition, ValidWithdrawalTransition,
 }
 use midgard/fraud_proofs/transition_trace/proof_carriage
 use midgard/ledger_state
@@ -44,6 +44,7 @@ fn route_index(proof: TransitionFaultProof) -> Int {
         InvalidWithdrawalNoOpTransition { .. } -> 2
         InvalidForcedTransactionNoOpTransition { .. } -> 3
         L2TransactionTransition { .. } -> 4
+        ValidForcedTransactionTransition { .. } -> 4
         ValidDepositTransition { .. } -> 5
       }
     OmittedDueL1Event { .. } -> 6
@@ -144,6 +145,7 @@ validator main(
                   let kind = when builtin.unconstr_index(witness) is {
                     3 -> 1
                     4 -> 0
+                    5 -> 2
                     _ -> fail
                   }
                   let index = if kind == 1 {

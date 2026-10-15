@@ -59,3 +59,37 @@ export const expectRefusedAtTerminal = async ({
     lucid.utxosAtWithUnit(fraudProofAddress, fraudProofUnit),
   ).resolves.toHaveLength(0);
 };
+
+/**
+ * A forced leaf whose verdict is not ForcedTxValid: the thread binds the step,
+ * then the open step refuses the leaf and no fraud-proof token is minted.
+ */
+export const expectRefusedAtForcedOpen = async ({
+  lucid,
+  submitProof,
+  threadUnit,
+  fraudProofAddress,
+  fraudProofUnit,
+}: {
+  lucid: LucidEvolution;
+  submitProof: () => Promise<unknown>;
+  threadUnit: string;
+  fraudProofAddress: string;
+  fraudProofUnit: string;
+}) => {
+  const refusal = await submitProof().then(
+    () => undefined,
+    (cause: unknown) => cause,
+  );
+  expect(refusal).toBeInstanceOf(Error);
+  const stopped = await lucid.utxoByUnit(threadUnit);
+  const state = Data.from(
+    stopped.datum!,
+    SDK.TransitionTraceProofCommitmentDatum,
+  ).data!;
+  expect(state.kind).toBe(2n);
+  expect(state.phase).toBe(0n);
+  await expect(
+    lucid.utxosAtWithUnit(fraudProofAddress, fraudProofUnit),
+  ).resolves.toHaveLength(0);
+};

@@ -10,10 +10,10 @@ validator assembly(dispatcher: ScriptHash) {
     let (datum, args) = delegation.dispatch(dispatcher, tx.inputs, tx.redeemers)
     expect Some(state) = datum.data
     expect state.phase == 3
-    let index = if state.kind == 0 {
-      state.output_index
-    } else {
+    let index = if state.kind == 1 {
       state.deposit_index
+    } else {
+      state.output_index
     }
     let bytes = delegation.output_bytes(state, args, tx.reference_inputs)
     expect [(s1, s2, s3)] = state.summaries.summaries
@@ -32,10 +32,10 @@ validator assembly(dispatcher: ScriptHash) {
       tx.outputs,
       delegation.State {
         ..state,
-        phase: if state.kind == 0 {
-          4
-        } else {
+        phase: if state.kind == 1 {
           9
+        } else {
+          4
         },
         descriptor_cbor,
       },

@@ -113,6 +113,14 @@ export const buildTransitionTraceAbiFixtures = (): Record<
     value: forcedInclusionTxFixture,
     proof,
   };
+  const forcedRawSourceMembership: SDK.RawRootMembershipProof = {
+    ...forcedSourceMembership,
+    key: Data.to(outputReference, SDK.OutputReference),
+    value: Data.to(
+      { ...forcedInclusionTxFixture, verdict: "ForcedTxValid" },
+      SDK.ForcedInclusionTxV1,
+    ),
+  };
   const l2SourceMembership: SDK.L2TransactionSourceMembershipProof = {
     domain: SDK.ROOT_DOMAINS.transactionsV1,
     root: headerFixture.transactionsRoot,
@@ -256,6 +264,14 @@ export const buildTransitionTraceAbiFixtures = (): Record<
           trace_proof: traceProof,
           event_to_step: eventToStepMembership,
           source_membership: l2SourceMembership,
+        },
+      }),
+    "transition-fault.valid-forced-transaction-transition":
+      SDK.invalidOneStepTransitionFault({
+        ValidForcedTransactionTransition: {
+          trace_proof: traceProof,
+          event_to_step: eventToStepMembership,
+          source_membership: forcedRawSourceMembership,
         },
       }),
     "transition-fault.omitted-deposit": SDK.omittedDueL1EventFault({

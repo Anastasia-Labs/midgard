@@ -38,7 +38,7 @@ validator main(
       ct.Continue(args) -> {
         expect Some(step_datum) = datum
         expect Some(state) = step_datum.data
-        expect state.kind == 0
+        expect state.kind == 0 || state.kind == 2
         if state.phase == 5 {
           let _, _, _, _ <- finalize(
             computation_thread_token_policy_id,
@@ -106,9 +106,17 @@ validator main(
               )
               let (header_data, fault) = proof_carriage.fields(data)
               expect header: ledger_state.HeaderV1 = header_data
+              let forced = state.kind == 2
               expect [trace_data,
                     event_data,
-                    source_data] = delegation.one_step_witness(fault, 4)
+                    source_data] = delegation.one_step_witness(
+                fault,
+                if forced {
+                  5
+                } else {
+                  4
+                },
+              )
               expect trace_proof: IndexedTraceProof = trace_data
               expect
                   event: RootMembershipProof<
@@ -117,12 +125,21 @@ validator main(
                   >
                 = event_data
               expect source: RootMembershipProof<ByteArray, ByteArray> = source_data
-              proof.validate_l2_one_step_binding(
-                header,
-                trace_proof,
-                event,
-                source,
-              )
+              if forced {
+                proof.validate_forced_valid_one_step_binding(
+                  header,
+                  trace_proof,
+                  event,
+                  source,
+                )
+              } else {
+                proof.validate_l2_one_step_binding(
+                  header,
+                  trace_proof,
+                  event,
+                  source,
+                )
+              }
             } else {
               True
             }

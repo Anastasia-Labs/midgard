@@ -75,7 +75,10 @@ const deriveTransitionTraceYieldData = ({
   let depositAssetCount: number | undefined;
   let depositAssetIndexes: Record<string, number> | undefined;
   let openKey: YieldKey;
-  if ("L2TransactionTransition" in witness) {
+  if (
+    "L2TransactionTransition" in witness ||
+    "ValidForcedTransactionTransition" in witness
+  ) {
     const replay = transitionL2Replay(proofInput);
     if (replay === undefined)
       throw new Error(

@@ -69,10 +69,11 @@ export type TransitionTraceDetectionEvidence = {
   readonly omittedDueL1Events?: readonly OmittedDueL1EventEvidence[];
   readonly outOfWindowSourceEvents?: readonly OutOfWindowSourceEventEvidence[];
   /**
-   * Authenticated ledger mutation witnesses for L2 steps whose committed
-   * post-root is disputed. Retained DA authenticates the transaction and its
-   * field preimages, but does not contain the predecessor ledger tree needed
-   * to derive these proofs automatically.
+   * Authenticated ledger mutation witnesses for L2 and accepted forced
+   * transaction steps whose committed post-root is disputed. Retained DA
+   * authenticates the transaction and its field preimages, but does not
+   * contain the predecessor ledger tree needed to derive these proofs
+   * automatically.
    */
   readonly l2TransactionTransitions?: readonly (L2TransactionTransitionEvidence & {
     readonly stepIndex: bigint;

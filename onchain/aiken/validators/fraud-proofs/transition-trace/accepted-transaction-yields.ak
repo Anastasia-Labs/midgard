@@ -97,12 +97,31 @@ fn insert_output(
   proof.apply_insert_witness(state.current_root, witness)
 }
 
+/// Kind 0 replays an L2 transaction and kind 2 an accepted forced transaction;
+/// both take the same phases.
+fn replays_transaction(state: delegation.State) -> Bool {
+  state.kind == 0 || state.kind == 2
+}
+
+/// The source kind the anchor re-derives the transaction id under: normal for
+/// an L2 transaction, forced for an accepted forced transaction.
+fn source_kind(state: delegation.State) -> Int {
+  if state.kind == 2 {
+    1
+  } else {
+    0
+  }
+}
+
 fn body_anchor(state: delegation.State) -> NativeTxAnchorV1 {
-  BodyAnchor { tx_id: state.tx_id, source_kind: 0 }
+  BodyAnchor { tx_id: state.tx_id, source_kind: source_kind(state) }
 }
 
 /// Phase 0: authenticate the committed source leaf, anchor the transaction and
-/// open its spend-inputs walk at the derived start.
+/// open its spend-inputs walk at the derived start. An L2 source is the
+/// `transactions_root` leaf, keyed by its transaction id; an accepted forced
+/// source is the `forced_transactions_root` leaf, which carries the id and
+/// must carry `ForcedTxValid`.
 validator l2_open(
   dispatcher: ScriptHash,
   field_preimage_certificate_policy_id: PolicyId,
@@ -110,7 +129,9 @@ validator l2_open(
   withdraw(carriage: FieldCarriageV1, _credential: Credential, tx: Transaction) {
     let (datum, args) = delegation.dispatch(dispatcher, tx.inputs, tx.redeemers)
     expect Some(state) = datum.data
-    expect state.kind == 0 && state.phase == 0
+    expect state.phase == 0
+    let forced = state.kind == 2
+    expect forced || state.kind == 0
     let (_, fault) = proof_carriage.fields(
       proof_carriage.read(
         state.proof_commitment,
@@ -118,18 +139,44 @@ validator l2_open(
         tx.reference_inputs,
       ),
     )
-    expect [trace_data, _, source_data] = one_step_witness(fault, 4)
+    expect [trace_data,
+          _,
+          source_data] = one_step_witness(
+      fault,
+      if forced {
+        5
+      } else {
+        4
+      },
+    )
     expect trace_proof: IndexedTraceProof = trace_data
     expect source_membership: RootMembershipProof<ByteArray, ByteArray> = source_data
-    let source_data <- cbor_deserialise.expect_deserialise(
-      source_membership.value,
-    )
-    expect source: ledger_state.L2TransactionSourceV1 = source_data
+    let (tx_id, compact_cbor) = if forced {
+      let leaf = proof.accepted_forced_leaf(source_membership.value)
+      (leaf.tx_id, leaf.submitted_source.compact_cbor)
+    } else {
+      let source_data <- cbor_deserialise.expect_deserialise(
+        source_membership.value,
+      )
+      expect source: ledger_state.L2TransactionSourceV1 = source_data
+      expect cbor.serialise(source) == source_membership.value
+      expect source.tx_id == source_membership.key
+      (source_membership.key, source.source.compact_cbor)
+    }
     let anchored = anchored_native_tx(
-      BodyTxOpening { native_tx_compact_cbor: source.source.compact_cbor },
-      BodyAnchor { tx_id: source_membership.key, source_kind: 0 },
+      BodyTxOpening { native_tx_compact_cbor: compact_cbor },
+      BodyAnchor {
+        tx_id,
+        source_kind: if forced {
+          1
+        } else {
+          0
+        },
+      },
     )
-    expect unanchored_validity_code_of(anchored) == 0
+    // A forced compact structure carries no validity code: its acceptance is
+    // the leaf's `ForcedTxValid`, read above.
+    expect forced || unanchored_validity_code_of(anchored) == 0
     let Pair(_, start) = anchored_field_walk(
       anchored,
       spend_inputs_field_index,
@@ -138,8 +185,6 @@ validator l2_open(
       field_preimage_certificate_policy_id,
     )
     and {
-      cbor.serialise(source) == source_membership.value,
-      source.tx_id == source_membership.key,
       anchored_native_tx_version(anchored) == 1,
       delegation.advance(
         datum,
@@ -152,7 +197,7 @@ validator l2_open(
           } else {
             1
           },
-          tx_id: source_membership.key,
+          tx_id,
           inputs_walk: walk.field_walk_checkpoint_hash(start),
           current_root: trace_proof.value.pre_utxos_root,
         },
@@ -175,7 +220,7 @@ validator l2_delete(
   withdraw(step: DeleteStep, _credential: Credential, tx: Transaction) {
     let (datum, args) = delegation.dispatch(dispatcher, tx.inputs, tx.redeemers)
     expect Some(state) = datum.data
-    expect state.kind == 0 && state.phase == 1
+    expect replays_transaction(state) && state.phase == 1
     let Pair(view, prior) = opening.resume_opened_field_walk(
       step.opening,
       body_anchor(state),
@@ -233,7 +278,7 @@ validator l2_outputs(
   withdraw(step: WalkStep, _credential: Credential, tx: Transaction) {
     let (datum, args) = delegation.dispatch(dispatcher, tx.inputs, tx.redeemers)
     expect Some(state) = datum.data
-    expect state.kind == 0 && state.phase == 10
+    expect replays_transaction(state) && state.phase == 10
     let anchor = body_anchor(state)
     let Pair(view, prior) = if state.outputs_walk == #"" {
       expect step.checkpoint_bytes == #""
@@ -314,7 +359,7 @@ validator l2_output_step(
   withdraw(step: OutputStep, _credential: Credential, tx: Transaction) {
     let (datum, args) = delegation.dispatch(dispatcher, tx.inputs, tx.redeemers)
     expect Some(state) = datum.data
-    expect state.kind == 0 && state.phase == 11
+    expect replays_transaction(state) && state.phase == 11
     let Pair(view, prior) = opening.resume_opened_field_walk(
       step.walk.opening,
       body_anchor(state),
@@ -380,11 +425,13 @@ validator l2_replay(dispatcher: ScriptHash) {
     }
     if state.phase == 5 {
       let fault = committed()
-      let tag = if state.kind == 0 {
-        4
-      } else {
-        expect state.kind == 1
-        3
+      let tag = when state.kind is {
+        0 -> 4
+        2 -> 5
+        _ -> {
+          expect state.kind == 1
+          3
+        }
       }
       expect [trace_data, ..] = one_step_witness(fault, tag)
       expect trace_proof: IndexedTraceProof = trace_data
@@ -405,7 +452,7 @@ validator l2_replay(dispatcher: ScriptHash) {
       )
     } else {
       expect state.phase == 4
-      let root = if state.kind == 0 {
+      let root = if replays_transaction(state) {
         expect witness: proof.LedgerInsertWitness = redeemer
         insert_output(state, witness, state.descriptor_cbor)
       } else {

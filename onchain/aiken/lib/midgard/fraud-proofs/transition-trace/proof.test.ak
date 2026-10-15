@@ -11,6 +11,7 @@ use cardano/address.{Address}
 use cardano/assets
 use cardano/transaction.{InlineDatum, Input, NoDatum, Output, OutputReference}
 use env
+use midgard/cbor_deserialise
 use midgard/common/utils
 use midgard/event_history/order_facts
 use midgard/event_history/proof_fixture as history
@@ -3385,4 +3386,226 @@ test n2_fixed_descriptor_wire_refuses_nonminimal_count_spellings() {
       )
     },
   )
+}
+
+// Accepted forced transaction: the streamed accepted-transaction final replays
+// it as it replays an L2 transaction. Its leaf is opened over raw bytes under
+// the forced-transactions root and must carry `ForcedTxValid`.
+
+fn raw_forced_source_membership(
+  tx_order_id: ledger_state.TxOrderId,
+  leaf: ledger_state.ForcedInclusionTxV1,
+) -> transition_trace.RootMembershipProof<ByteArray, ByteArray> {
+  let key_bytes = cbor.serialise(tx_order_id)
+  let value_bytes = cbor.serialise(leaf)
+  let phas_root = mpf.root(mpf.insert(mpf.empty, key_bytes, value_bytes, []))
+  transition_trace.RootMembershipProof {
+    domain: transition_trace.ForcedTransactionsV1RootDomain,
+    root: transition_trace.commit_counted_root(
+      transition_trace.ForcedTransactionsV1RootDomain,
+      phas_root,
+      1,
+    ),
+    phas_root,
+    count: 1,
+    key: key_bytes,
+    value: value_bytes,
+    proof: [],
+  }
+}
+
+fn forced_valid_binding(
+  event_key: ledger_state.EventKey,
+  phase: ledger_state.TransitionPhase,
+  source: transition_trace.RootMembershipProof<ByteArray, ByteArray>,
+  forced_transactions_root: ByteArray,
+) -> Bool {
+  let trace_proof = trace_membership(step(0, event_key, phase, h32_a, h32_b))
+  let event_to_step = event_to_step_membership(event_key, 0, phase)
+  let header = ledger_state.HeaderV1 {
+    ..base_header(),
+    forced_transactions_root,
+    transition_trace_root: trace_proof.root,
+    event_to_step_root: event_to_step.root,
+    forced_transaction_count: 1,
+    total_event_count: 1,
+    transition_step_count: 1,
+  }
+  proof.validate_forced_valid_one_step_binding(
+    header,
+    trace_proof,
+    event_to_step,
+    source,
+  )
+}
+
+fn forced_valid_source() -> transition_trace.RootMembershipProof<
+  ByteArray,
+  ByteArray,
+> {
+  raw_forced_source_membership(
+    out_ref(0),
+    authenticated_forced_tx(rejection_reason_v1.ForcedTxValid),
+  )
+}
+
+fn forced_event_key(ix: Int) -> ledger_state.EventKey {
+  ledger_state.ForcedTransactionEventKey { tx_order_id: out_ref(ix) }
+}
+
+test forced_valid_binding_opens_the_committed_leaf() {
+  let source = forced_valid_source()
+  forced_valid_binding(
+    forced_event_key(0),
+    ledger_state.ForcedTransaction,
+    source,
+    source.root,
+  )
+}
+
+test forced_valid_binding_refuses_another_order() {
+  let source = forced_valid_source()
+  !forced_valid_binding(
+    forced_event_key(1),
+    ledger_state.ForcedTransaction,
+    source,
+    source.root,
+  )
+}
+
+test forced_valid_binding_refuses_the_l2_phase() {
+  let source = forced_valid_source()
+  !forced_valid_binding(
+    forced_event_key(0),
+    ledger_state.L2Transaction,
+    source,
+    source.root,
+  )
+}
+
+test forced_valid_binding_refuses_an_uncommitted_leaf() {
+  !forced_valid_binding(
+    forced_event_key(0),
+    ledger_state.ForcedTransaction,
+    forced_valid_source(),
+    h32_c,
+  )
+}
+
+test forced_valid_binding_refuses_a_transactions_root_leaf() {
+  let source = raw_l2_source_membership(h32_a, #"d87980")
+  !forced_valid_binding(
+    forced_event_key(0),
+    ledger_state.ForcedTransaction,
+    transition_trace.RootMembershipProof {
+      ..source,
+      key: cbor.serialise(out_ref(0)),
+    },
+    source.root,
+  )
+}
+
+test forced_valid_binding_refuses_an_l2_event_key() fail {
+  let source = forced_valid_source()
+  forced_valid_binding(
+    ledger_state.L2TransactionEventKey { tx_id: h32_a },
+    ledger_state.ForcedTransaction,
+    source,
+    source.root,
+  )
+}
+
+test accepted_forced_leaf_opens_a_valid_leaf() {
+  let leaf = authenticated_forced_tx(rejection_reason_v1.ForcedTxValid)
+  proof.accepted_forced_leaf(cbor.serialise(leaf)) == leaf
+}
+
+test accepted_forced_leaf_refuses_an_invalid_verdict() fail {
+  proof.accepted_forced_leaf(
+    cbor.serialise(authenticated_forced_tx(verdict_plutus_failed())),
+  ).tx_id != #""
+}
+
+test accepted_forced_leaf_refuses_a_fee_verdict() fail {
+  proof.accepted_forced_leaf(
+    cbor.serialise(
+      authenticated_forced_tx(
+        rejection_reason_v1.ForcedTxInvalid {
+          reason: rejection_reason_v1.FeeBelowMinimum,
+        },
+      ),
+    ),
+  ).tx_id != #""
+}
+
+test accepted_forced_leaf_refuses_non_canonical_bytes() fail {
+  let bytes = cbor.serialise(
+    authenticated_forced_tx(rejection_reason_v1.ForcedTxValid),
+  )
+  let definite = bytearray.concat(
+    #"d87983",
+    builtin.slice_bytearray(3, builtin.length_of_bytearray(bytes) - 4, bytes),
+  )
+  proof.accepted_forced_leaf(definite).tx_id != #""
+}
+
+// The definite spelling decodes to the leaf, so the refusal above is the
+// exact-bytes check, not the decoder.
+test accepted_forced_leaf_non_canonical_bytes_decode_to_the_leaf() {
+  let leaf = authenticated_forced_tx(rejection_reason_v1.ForcedTxValid)
+  let bytes = cbor.serialise(leaf)
+  let definite = bytearray.concat(
+    #"d87983",
+    builtin.slice_bytearray(3, builtin.length_of_bytearray(bytes) - 4, bytes),
+  )
+  let leaf_data: Data = leaf
+  cbor_deserialise.deserialise(definite) == Some(leaf_data)
+}
+
+// The L2 binding is unchanged: it opens the transactions root under an
+// L2TransactionEventKey only.
+test l2_binding_opens_the_committed_source() {
+  let source = raw_l2_source_membership(h32_a, #"d87980")
+  let event_key = ledger_state.L2TransactionEventKey { tx_id: h32_a }
+  let trace_proof = trace_membership(
+    step(0, event_key, ledger_state.L2Transaction, h32_a, h32_b),
+  )
+  let event_to_step = event_to_step_membership(
+    event_key,
+    0,
+    ledger_state.L2Transaction,
+  )
+  let header = ledger_state.HeaderV1 {
+    ..base_header(),
+    transactions_root: source.root,
+    transition_trace_root: trace_proof.root,
+    event_to_step_root: event_to_step.root,
+    l2_transaction_count: 1,
+    total_event_count: 1,
+    transition_step_count: 1,
+  }
+  proof.validate_l2_one_step_binding(header, trace_proof, event_to_step, source)
+}
+
+test l2_binding_refuses_a_forced_event_key() fail {
+  let source = forced_valid_source()
+  let event_key = forced_event_key(0)
+  let trace_proof = trace_membership(
+    step(0, event_key, ledger_state.ForcedTransaction, h32_a, h32_b),
+  )
+  let event_to_step = event_to_step_membership(
+    event_key,
+    0,
+    ledger_state.ForcedTransaction,
+  )
+  let header = ledger_state.HeaderV1 {
+    ..base_header(),
+    transactions_root: source.root,
+    transition_trace_root: trace_proof.root,
+    event_to_step_root: event_to_step.root,
+    l2_transaction_count: 1,
+    total_event_count: 1,
+    transition_step_count: 1,
+  }
+  proof.validate_l2_one_step_binding(header, trace_proof, event_to_step, source)
 }

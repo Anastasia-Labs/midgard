@@ -465,12 +465,14 @@ export const provenTransitionEventKeyCbor = (
   const step =
     "L2TransactionTransition" in witness
       ? witness.L2TransactionTransition.trace_proof
-      : "ValidDepositTransition" in witness
-        ? witness.ValidDepositTransition.trace_proof
-        : "ValidWithdrawalTransition" in witness
-          ? witness.ValidWithdrawalTransition.trace_proof
-          : "InvalidWithdrawalNoOpTransition" in witness
-            ? witness.InvalidWithdrawalNoOpTransition.trace_proof
-            : witness.InvalidForcedTransactionNoOpTransition.trace_proof;
+      : "ValidForcedTransactionTransition" in witness
+        ? witness.ValidForcedTransactionTransition.trace_proof
+        : "ValidDepositTransition" in witness
+          ? witness.ValidDepositTransition.trace_proof
+          : "ValidWithdrawalTransition" in witness
+            ? witness.ValidWithdrawalTransition.trace_proof
+            : "InvalidWithdrawalNoOpTransition" in witness
+              ? witness.InvalidWithdrawalNoOpTransition.trace_proof
+              : witness.InvalidForcedTransactionNoOpTransition.trace_proof;
   return Data.to(step.value.event_key, SDK.EventKey);
 };

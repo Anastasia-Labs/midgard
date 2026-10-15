@@ -12,6 +12,7 @@ use cardano/transaction.{
 }
 use env
 use midgard/canonical_cbor_scan_v1 as key_cbor
+use midgard/cbor_deserialise
 use midgard/common/types.{Proof}
 use midgard/common/utils
 use midgard/event_history/horizon
@@ -222,6 +223,20 @@ pub type InvalidOneStepTransitionWitness {
     projected_utxo: LedgerInsertWitness,
   }
   L2TransactionTransition {
+    trace_proof: transition_trace.IndexedTraceProof,
+    event_to_step: transition_trace.RootMembershipProof<
+      ledger_state.EventKey,
+      ledger_state.EventToStepValue,
+    >,
+    source_membership: transition_trace.RootMembershipProof<
+      ByteArray,
+      ByteArray,
+    >,
+  }
+  /// An accepted forced transaction, replayed by the streamed
+  /// accepted-transaction final exactly as `L2TransactionTransition` is. The
+  /// forced leaf is opened over its raw key and value bytes.
+  ValidForcedTransactionTransition {
     trace_proof: transition_trace.IndexedTraceProof,
     event_to_step: transition_trace.RootMembershipProof<
       ledger_state.EventKey,
@@ -1165,6 +1180,49 @@ pub fn validate_l2_one_step_binding(
   }
 }
 
+/// The accepted forced transaction's binding: its step is the forced phase
+/// under its own event key, and the raw leaf is committed under the counted
+/// forced-transactions root at that key. The leaf's verdict is read by phase 0
+/// of the replay, through `accepted_forced_leaf`.
+pub fn validate_forced_valid_one_step_binding(
+  header: ledger_state.HeaderV1,
+  trace_proof: transition_trace.IndexedTraceProof,
+  event_to_step: transition_trace.RootMembershipProof<
+    ledger_state.EventKey,
+    ledger_state.EventToStepValue,
+  >,
+  source_membership: transition_trace.RootMembershipProof<ByteArray, ByteArray>,
+) -> Bool {
+  expect ledger_state.ForcedTransactionEventKey { tx_order_id } = trace_proof.value.event_key
+  and {
+    verify_trace_binding_to_event_to_step(header, trace_proof, event_to_step),
+    transition_trace.verify_root_membership_with_bytes(
+      source_membership,
+      transition_trace.ForcedTransactionsV1RootDomain,
+      header.forced_transactions_root,
+      header.forced_transaction_count,
+      source_membership.key,
+      source_membership.value,
+    ),
+    source_membership.key == cbor.serialise(tx_order_id),
+    trace_proof.value.phase == ledger_state.ForcedTransaction,
+  }
+}
+
+/// Decode a committed forced leaf that the operator accepted. Fails unless the
+/// bytes are the leaf's exact serialisation and its verdict is `ForcedTxValid`:
+/// a forced transaction the operator rejected is a no-op, and its step is
+/// checked by `InvalidForcedTransactionNoOpTransition` instead.
+pub fn accepted_forced_leaf(
+  value: ByteArray,
+) -> ledger_state.ForcedInclusionTxV1 {
+  let data <- cbor_deserialise.expect_deserialise(value)
+  expect leaf: ledger_state.ForcedInclusionTxV1 = data
+  expect rejection_reason_v1.ForcedTxValid = leaf.verdict
+  expect cbor.serialise(leaf) == value
+  leaf
+}
+
 fn validate_valid_withdrawal_transition(
   header: ledger_state.HeaderV1,
   trace_proof: transition_trace.IndexedTraceProof,
@@ -1374,6 +1432,7 @@ fn validate_invalid_one_step_transition(
     // Replayed only by the streamed accepted-transaction final, whose ledger
     // witnesses arrive one step at a time and are never part of the proof.
     L2TransactionTransition { .. } -> False
+    ValidForcedTransactionTransition { .. } -> False
   }
 }
 

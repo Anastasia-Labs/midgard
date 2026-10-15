@@ -7,7 +7,6 @@
 import type { TransitionTraceFaultProofContracts } from "@al-ft/midgard-sdk";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
-  Data,
   type LucidEvolution,
   type Network,
   type Script,
@@ -41,6 +40,7 @@ import {
   readTransitionProof,
   transitionL2Replay,
   type TransitionProofInput,
+  transitionReplayedTransaction,
 } from "./proof-material.js";
 import { TRANSITION_TRACE_YIELD_REFERENCES } from "./yield-references.js";
 
@@ -79,25 +79,26 @@ export const prepareTransitionFieldCarriage = async ({
 }): Promise<TransitionFieldCarriage> => {
   const proof = readTransitionProof(proofInput);
   const replay = transitionL2Replay(proofInput);
-  if (
-    !("InvalidOneStepTransition" in proof.fault) ||
-    !("L2TransactionTransition" in proof.fault.InvalidOneStepTransition.witness)
-  )
-    throw new Error("transition field carriage requires an L2 transaction");
+  const replayed =
+    "InvalidOneStepTransition" in proof.fault
+      ? transitionReplayedTransaction(
+          proof.fault.InvalidOneStepTransition.witness,
+        )
+      : null;
+  if (replayed === null)
+    throw new Error(
+      "transition field carriage requires an accepted transaction",
+    );
   if (replay === undefined)
     throw new Error(
       "Transition L2 replay requires its field items and ledger witnesses",
     );
-  const membership =
-    proof.fault.InvalidOneStepTransition.witness.L2TransactionTransition
-      .source_membership;
-  const { compact_cbor: compactCbor, witness_set_compact_cbor: witnessSet } =
-    Data.from(membership.value, SDK.L2TransactionSource).source;
+  const { compactCbor, witnessSetCompactCbor: witnessSet } = replayed;
   const label = `transition-trace field ${field.toString()}`;
   const planned = planFaultProofFieldOpening({
-    anchorSourceKind: 0n,
+    anchorSourceKind: replayed.sourceKind,
     fieldIndex: field,
-    anchorTxId: membership.key,
+    anchorTxId: replayed.txId,
     nativeTxCompactCbor: compactCbor,
     itemCbors: (field === 0 ? replay.spendInputCbors : replay.outputCbors).map(
       (item) => Buffer.from(item, "hex"),

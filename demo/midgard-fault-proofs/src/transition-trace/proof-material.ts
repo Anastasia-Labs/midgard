@@ -53,6 +53,59 @@ export const transitionL2Replay = (
 ): TransitionL2ReplayMaterial | undefined =>
   "proofCbor" in input ? input.l2Replay : undefined;
 
+/**
+ * The transaction an accepted-transaction proof replays. Kind 0 is an L2
+ * transaction, opened from its `transactions_root` leaf; kind 2 is an accepted
+ * forced transaction, opened from its `forced_transactions_root` leaf, whose
+ * id and compact structure the leaf carries. Both take the same phases.
+ */
+export type TransitionReplayedTransaction = Readonly<{
+  /** The final-state kind. */
+  kind: 0n | 2n;
+  /** The source kind the anchor re-derives the id under: normal or forced. */
+  sourceKind: 0n | 1n;
+  traceProof: SDK.IndexedTraceProof;
+  txId: string;
+  compactCbor: string;
+  witnessSetCompactCbor: string;
+}>;
+
+export const transitionReplayedTransaction = (
+  witness: SDK.InvalidOneStepTransitionWitness,
+): TransitionReplayedTransaction | null => {
+  if ("L2TransactionTransition" in witness) {
+    const { trace_proof, source_membership } = witness.L2TransactionTransition;
+    const { source } = Data.from(
+      source_membership.value,
+      SDK.L2TransactionSource,
+    );
+    return {
+      kind: 0n,
+      sourceKind: 0n,
+      traceProof: trace_proof,
+      txId: source_membership.key,
+      compactCbor: source.compact_cbor,
+      witnessSetCompactCbor: source.witness_set_compact_cbor,
+    };
+  }
+  if ("ValidForcedTransactionTransition" in witness) {
+    const { trace_proof, source_membership } =
+      witness.ValidForcedTransactionTransition;
+    // The leaf's verdict is the thread's to check (phase 0 refuses anything
+    // but ForcedTxValid); the witness builder selects only accepted leaves.
+    const leaf = Data.from(source_membership.value, SDK.ForcedInclusionTxV1);
+    return {
+      kind: 2n,
+      sourceKind: 1n,
+      traceProof: trace_proof,
+      txId: leaf.tx_id,
+      compactCbor: leaf.submitted_source.compact_cbor,
+      witnessSetCompactCbor: leaf.submitted_source.witness_set_compact_cbor,
+    };
+  }
+  return null;
+};
+
 export const readTransitionProof = (
   input: TransitionProofInput,
 ): SDK.TransitionFaultProof =>
