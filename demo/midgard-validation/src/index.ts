@@ -20,6 +20,7 @@ export * from "./reject-subject.js";
 export * from "./rejection-reason.js";
 export * from "./script-context.js";
 export * from "./script-context-proof.js";
+export * from "./script-decode.step.js";
 export * from "./script-source.js";
 export * from "./transition-effect.js";
 export * from "./tx-out-ref.js";
