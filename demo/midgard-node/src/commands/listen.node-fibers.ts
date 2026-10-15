@@ -17,6 +17,7 @@ import {
   txQueueProcessorFiber,
 } from "../fibers/index.js";
 import { settlementFiber } from "../fibers/settlement.js";
+import { importCheckFiber } from "../import-check/fiber.js";
 import { Globals } from "../services/globals.js";
 import { type NodeConfigDep, writeBehindFiber } from "../services/index.js";
 import { onL1HeadChange } from "../services/l1-head-trigger.js";
@@ -157,6 +158,7 @@ export const nodeFibers = ({
   txQueueProcessor: txQueueProcessorFiber(
     mkSchedule(nodeConfig.TX_QUEUE_POLL_INTERVAL_MS),
   ),
+  importCheck: importCheckFiber,
 });
 
 /**
