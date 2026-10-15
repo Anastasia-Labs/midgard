@@ -21,13 +21,15 @@ import type * as SDK from "@al-ft/midgard-sdk";
 import { buildMidgardCanonicalCekProgram } from "@al-ft/midgard-validation";
 import { CML, walletFromSeed } from "@lucid-evolution/lucid";
 
+import type { JourneyLedgerPredecessor } from "./journey-ledger.js";
+
 const identityProgram = buildMidgardCanonicalCekProgram(
   Buffer.from("010100200101", "hex"),
 );
 
 /** An executable, signed transaction for real forced-order verdict disputes. */
 export const buildJourneyScriptTransaction = (input: {
-  predecessor: { header: SDK.Header; payload: SDK.DaPayload };
+  predecessor: JourneyLedgerPredecessor;
   ledgerOwnerSeedPhrase: string;
   variant?: "plutusMint" | "nativeMint";
   outputReferenceScript?: boolean;
@@ -37,9 +39,9 @@ export const buildJourneyScriptTransaction = (input: {
   });
   const key = CML.PrivateKey.from_bech32(wallet.paymentKey);
   const owner = Buffer.from(key.to_public().hash().to_raw_bytes());
-  const spent = input.predecessor.payload.block_body.utxos.find(([, bytes]) => {
+  const spent = input.predecessor.ledger.entries.find(({ output: bytes }) => {
     const credential = decodeMidgardAddressBytes(
-      decodeMidgardTxOutput(Buffer.from(bytes, "hex")).address,
+      decodeMidgardTxOutput(bytes).address,
     ).paymentCredential;
     return (
       credential.kind === "PubKey" && Buffer.from(credential.hash).equals(owner)
@@ -47,7 +49,7 @@ export const buildJourneyScriptTransaction = (input: {
   });
   if (spent === undefined)
     throw new Error("Script journey needs a retained ledger input");
-  const output = decodeMidgardTxOutput(Buffer.from(spent[1], "hex"));
+  const output = decodeMidgardTxOutput(spent.output);
   const variant = input.variant ?? "plutusMint";
   const script =
     variant === "plutusMint"
@@ -80,7 +82,7 @@ export const buildJourneyScriptTransaction = (input: {
   };
   const outputs = [encodeMidgardTxOutput(scriptOutput)];
   const transactionInput: FixtureTransactionInput = {
-    spendInputs: [Buffer.from(spent[0], "hex")],
+    spendInputs: [spent.outRef],
     outputs,
     fee: 0n,
     networkId: input.predecessor.header.expectedNetworkId,
@@ -144,7 +146,7 @@ export const JOURNEY_SCRIPT_FORCED_CATEGORIES = Object.keys(
 
 export const prepareJourneyScriptForcedTransaction = (input: {
   category: JourneyScriptForcedCategory;
-  predecessor: { header: SDK.Header; payload: SDK.DaPayload };
+  predecessor: JourneyLedgerPredecessor;
   ledgerOwnerSeedPhrase: string;
 }) =>
   buildJourneyScriptTransaction({
@@ -158,11 +160,7 @@ export const prepareJourneyScriptForcedTransaction = (input: {
 
 export type JourneyScriptFixtureInput = {
   category: JourneyScriptForcedCategory;
-  predecessor: {
-    header: SDK.Header;
-    headerHash: string;
-    payload: SDK.DaPayload;
-  };
+  predecessor: JourneyLedgerPredecessor;
   ledgerOwnerSeedPhrase: string;
   operatorVkey: string;
   endTime: bigint;
@@ -179,12 +177,7 @@ export const buildJourneyScriptForcedFault = async (
     canonicalTransactionCbor: material.transaction.canonicalCbor,
     programMaterial: material.programMaterial,
     predecessor: input.predecessor,
-    ledgerEntries: input.predecessor.payload.block_body.utxos.map(
-      ([key, value]) => ({
-        outRef: Buffer.from(key, "hex"),
-        output: Buffer.from(value, "hex"),
-      }),
-    ),
+    ledgerEntries: input.predecessor.ledger.entries,
     operatorVkey: input.operatorVkey,
     endTime: input.endTime,
     blockSlot: input.blockSlot,
@@ -218,12 +211,7 @@ export const buildJourneyScriptForcedSuccessor = async (
     canonicalTransactionCbor: material.transaction.canonicalCbor,
     programMaterial: material.programMaterial,
     predecessor: input.predecessor,
-    ledgerEntries: input.predecessor.payload.block_body.utxos.map(
-      ([key, value]) => ({
-        outRef: Buffer.from(key, "hex"),
-        output: Buffer.from(value, "hex"),
-      }),
-    ),
+    ledgerEntries: input.predecessor.ledger.entries,
     operatorVkey: input.operatorVkey,
     endTime: input.endTime,
     blockSlot: input.blockSlot,

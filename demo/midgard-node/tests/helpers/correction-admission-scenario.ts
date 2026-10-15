@@ -33,6 +33,7 @@ import {
   ensureSeparateCollateralUtxo,
   fetchLatestCommittedBlock,
   runBlockConfirmation,
+  runCommitWorker,
   runCommitWorkerUntilSubmitted,
   runLocalFinalizationRecoveryWorker,
   SDK,
@@ -144,6 +145,20 @@ export const finalizeLocally = async (h: Lifecycle, headerHash: string) => {
     throw new Error("The block must be applied locally");
   expect(finalized.finalizedHeaderHash).toBe(headerHash);
   await synchronizeBounded(h);
+};
+
+/** One production commit attempt on the landed tail, after synchronizing. */
+export const attemptAppend = async (h: Lifecycle) => {
+  const { fixture, lucidService, globals, production } = h;
+  await h.synchronize();
+  return await runCommitWorker(
+    fixture.contracts,
+    lucidService,
+    await fetchLatestCommittedBlock(fixture.operatorLucid, fixture.contracts),
+    production.nodeConfig,
+    fixture.runtimeOverrides!.deploymentIdentity,
+    { ...production, globals },
+  );
 };
 
 /** Commit the next block on the landed tail with the production commit

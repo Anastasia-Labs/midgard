@@ -13,6 +13,7 @@ const state = vi.hoisted(() => ({
   failBinding: false,
   failNativeClose: false,
   sessionSources: [] as string[],
+  replayCheckpointDirectories: [] as string[],
 }));
 vi.mock("../../../../scripts/lib/source-facets.mjs", () => ({
   sourceFacetPaths: () => state.sessionSources,
@@ -41,6 +42,9 @@ vi.mock("./live-context.js", async (original) => ({
 }));
 vi.mock("midgard-watcher", async (original) => ({
   ...(await original<typeof import("midgard-watcher")>()),
+  loadWatcherVerifiedDeploymentAuthority: async () => ({
+    deploymentIdentity: { manifestId: "ab".repeat(32) },
+  }),
   parseWatcherConfig: (value: unknown) => value,
   parseWatcherProcessConfig: (value: unknown) => value,
   watcherDeploymentReleaseFinalityAuthority: () => ({
@@ -143,6 +147,31 @@ vi.mock("./workflow-binding-preflight.js", () => ({
         },
       ],
       sourceIdentity: { files: [] },
+    };
+  },
+}));
+
+vi.mock("./replayed-ledger.js", () => ({
+  openJourneyReplayedLedger: async (input: {
+    checkpointDirectory: string;
+    authority: { deploymentIdentity: { manifestId: string } };
+  }) => {
+    state.replayCheckpointDirectories.push(input.checkpointDirectory);
+    const { fileLedgerCheckpointStore } = await import(
+      "@al-ft/midgard-fault-proofs"
+    );
+    const checkpoints = fileLedgerCheckpointStore(
+      join(
+        input.checkpointDirectory,
+        `replayed-ledger-${input.authority.deploymentIdentity.manifestId}.json`,
+      ),
+    );
+    return {
+      ledgerAt: async (headerHash: string) => {
+        await checkpoints.write({ headerHash, entries: [] });
+        return [];
+      },
+      close: async () => {},
     };
   },
 }));

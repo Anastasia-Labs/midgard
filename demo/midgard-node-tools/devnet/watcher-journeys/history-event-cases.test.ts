@@ -25,7 +25,6 @@ import {
   checkFreshEligibleFamilyRefusal,
   runRetiredFamilyProof,
 } from "@al-ft/midgard-fault-proofs/test-support/retired-family-proof";
-import { depositEventsRetainedBlock } from "@al-ft/midgard-fault-proofs/test-support/transition-trace-retained";
 import { measureCompleteSignedTransaction } from "@al-ft/midgard-fault-proofs/testing/installed-workflow";
 import * as SDK from "@al-ft/midgard-sdk";
 import { CML, Data } from "@lucid-evolution/lucid";
@@ -38,7 +37,6 @@ import {
   openLocalHistoryEventStage,
   type StagedLocalHistoryEvent,
 } from "./history-event-local-staging.js";
-import { classifyLocalHistoryEventFixture } from "./history-event-verification.js";
 import {
   buildJourneyFabricatedDeposit,
   buildJourneyRepeatedDeposit,
@@ -46,8 +44,11 @@ import {
   buildJourneyWithdrawalEvent,
   buildJourneyWithdrawnTransaction,
   captureStagedHistoryEvent,
+  type HistoryEventBlockInput,
   journeyWithdrawalBody,
 } from "./history-events.js";
+import { classifyLocalHistoryEventFixture } from "./journey-classification.test-support.js";
+import { depositEventsRetainedBlock } from "./journey-fixture-ledger.test-support.js";
 
 const rawEventCbor = (event: StagedLocalHistoryEvent) =>
   canonical(
@@ -100,10 +101,9 @@ const openSynchronizedStage = async () => {
 };
 
 /**
- * Open one family's window pair: an empty genesis ancestor, then a predecessor
- * which absorbs `deposits` real published deposit events so the retained ledger
- * owns actual deposited outputs. Block intervals are placed around the exact
- * inclusion times the published event datums authenticate.
+ * Open an empty genesis ancestor and a predecessor absorbing real deposits.
+ * Its separately checked ledger owns those outputs; intervals use the exact
+ * inclusion times authenticated by the published event datums.
  */
 const openFamilyWindow = async (deposits: number) => {
   stage = await openSynchronizedStage();
@@ -133,7 +133,7 @@ const openFamilyWindow = async (deposits: number) => {
     blockSlot: blockSlot++,
     prevHeaderHash: genesis.headerHash,
     prevUtxosRoot: genesis.header.utxosRoot,
-    priorLedger: genesis.payload.block_body.utxos,
+    priorLedger: [],
     events: staged.map((event) => {
       const { order } = event;
       if (order.kind !== "Deposit")
@@ -561,7 +561,7 @@ it.each(["Deposit", "Withdrawal"] as const)(
         };
       }),
     });
-    let source: VerifiableJourneyBlock & { payload: SDK.DaPayload } = deposited;
+    let source: HistoryEventBlockInput["predecessor"] = deposited;
     let settlement = await stage.settle(source);
     let retired = deposits[0]!;
     const history: VerifiableJourneyBlock[] = [];
