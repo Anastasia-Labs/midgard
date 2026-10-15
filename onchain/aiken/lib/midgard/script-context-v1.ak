@@ -2,7 +2,6 @@ use aiken/builtin
 use aiken/collection/list
 use aiken/primitive/bytearray
 use midgard/bounded_collection_v1
-use midgard/canonical_plutus_data_v1
 use midgard/cbor_deserialise
 use midgard/cek_data_v1
 use midgard/fraud_proofs/native_tx/components.{
@@ -80,70 +79,15 @@ fn script_value_data(value_data: Data) -> Data {
   }
 }
 
-/// The one place the canonicity/materialisability split is visible. Since the
-/// spec section 6.2 re-pin a canonical datum can carry a bignum (tags 2/3) or a
-/// tag-102 constructor. Both are canonical and both reach the output decoder,
-/// but neither survives the stdlib decoder: tag 102 it declines outright, so
-/// `deserialise` answers `None`; tags 2/3 it does not decline at all. Its
-/// major-6 arm computes `constr_data(tag - 121, ..)` with no tag-range guard,
-/// so tag 2 or 3 yields a negative alternative, and under PlutusV3 builtin
-/// semantics variant E -- mainnet protocol major version 11 -- that alternative
-/// is a `Word64`, so a negative one fails the machine on real L1, not merely in
-/// the test runner. Asking is therefore an abort, and the screen has to run
-/// first.
-///
-/// The screen is the Canonical-Data Acceptor's `is_materialisable_plutus_data_v1`
-/// (spec section 11.2, issue 571). It is recursive, which is what the head-byte
-/// screen it replaces (issue 567) could not be: that one read byte zero, so a
-/// bignum nested at any depth inside an otherwise ordinary canonical datum
-/// still reached the decoder and still aborted. This one reaches every tag site
-/// the datum contains, so depth is not a way around it and this function is
-/// total on canonical input.
-///
-/// Declining to materialise is not declaring non-canonical. The section 6.2
-/// predicate still accepts these bytes, and issue 567's AC4 requires that it
-/// does.
-///
-/// A behaviour change worth stating, because it is wider than the acceptance
-/// criteria that produced it: before issue 571 this function screened the head
-/// byte only -- issue 567's `datum_head_is_bignum`, which this change removes,
-/// declined a `c2`/`c3` at byte zero and let a bignum nested at any depth reach
-/// `deserialise` and abort. The recursive screen strictly subsumes it, since
-/// `is_materialisable_plutus_data_v1` implies the absence of a bignum head, so
-/// swapping them can only narrow what materialises. The narrowing is empty on
-/// the path that reaches this function: `tx_out_data_v1` and
-/// `spend_datum_summary_v1` both obtain their `MidgardTxOutput` from
-/// `ledger_output_v1.decode_canonical_output`, which has already required
-/// `is_canonical_plutus_data_v1` of the datum. So the only datums this now
-/// declines are the section 6.2 re-pinned forms, and those did not previously
-/// succeed -- tag 102 was already `None`, and a bignum was an abort rather than
-/// a value. No datum that materialised before this change fails to materialise
-/// after it.
-///
-/// The exact CBOR encoding `40` is the one total exception to asking the
-/// stdlib decoder to materialise the datum. It is canonical Plutus Data -- the
-/// `serialiseData` image of an empty byte string -- but this Aiken stdlib
-/// decoder answers `None` for it. Reconstructing that one Data value directly
-/// preserves the specified inverse without admitting another spelling: no
-/// other input takes this branch, and the canonical/materialisability screen
-/// remains load-bearing for every other datum.
-fn materialise_datum(datum_cbor: ByteArray) -> Option<Data> {
-  if datum_cbor == #"40" {
-    Some(builtin.b_data(#""))
-  } else if canonical_plutus_data_v1.is_materialisable_plutus_data_v1(
-    datum_cbor,
-  ) {
-    cbor_deserialise.deserialise(datum_cbor)
-  } else {
-    None
-  }
-}
-
+/// An inline datum's Data value. Every caller has the output from
+/// `ledger_output_v1.decode_canonical_output`, which requires the datum to be
+/// canonical, so the Data entry of `cbor_deserialise` reads every such datum,
+/// bignums and tag-102 constructors included.
 fn datum_data(output: MidgardTxOutput) -> Option<Data> {
   when output.datum_cbor is {
     None -> Some(builtin.constr_data(0, []))
     Some(datum_cbor) ->
-      when materialise_datum(datum_cbor) is {
+      when cbor_deserialise.deserialise(datum_cbor) is {
         None -> None
         Some(datum) -> Some(builtin.constr_data(2, [datum]))
       }
@@ -164,6 +108,9 @@ fn reference_script_data(output: MidgardTxOutput) -> Data {
 /// Reconstructs the exact `TxOut` Data subtree exposed to a PlutusV3 or
 /// MidgardV1 program from one independently bounded canonical ledger output.
 /// The only context-language difference is the protected-address constructor.
+/// The output bytes are read as Midgard output wire (the envelope entry, as in
+/// `ledger_output_v1.decode_canonical_output`); the datum inside them is read
+/// through the Data entry.
 pub fn tx_out_data_v1(
   output_cbor: ByteArray,
   midgard_encoding: Bool,
@@ -171,7 +118,7 @@ pub fn tx_out_data_v1(
   when ledger_output_v1.decode_canonical_output(output_cbor) is {
     None -> None
     Some(output) ->
-      when cbor_deserialise.deserialise(output_cbor) is {
+      when cbor_deserialise.deserialise_envelope(output_cbor) is {
         None -> None
         Some(output_data) ->
           when output_value_data(output_data) is {
@@ -226,18 +173,15 @@ fn datum_field_summaries(
 /// PlutusV3 spend `ScriptInfo` datum -- from a single canonical decode.
 ///
 /// Identical, value for value, to calling `tx_out_summary_v1` twice and
-/// `spend_datum_summary_v1` once: the same decode, the same section 6.2
-/// materialisability screen and the same three commitments, arranged so the
-/// output is decoded once instead of three times and the datum materialised
-/// once instead of twice. A one-step rule that has to derive a ledger MPF value
+/// `spend_datum_summary_v1` once: the same decode and the same three
+/// commitments, arranged so the output is decoded once instead of three times
+/// and the datum once instead of twice. A one-step rule that has to derive a ledger MPF value
 /// inside a single transaction pays for the whole descriptor at once, so the
 /// duplicated preludes are the difference between an arm that fits its
 /// execution budget and one that does not; the staged admission machine keeps
 /// the separate entry points because it reaches them from separate steps.
 ///
-/// `None` exactly where those three are `None`: non-canonical output bytes, or
-/// a canonical datum in a section 6.2 re-pinned form that cannot be
-/// materialised.
+/// `None` exactly where those three are `None`: non-canonical output bytes.
 pub fn ledger_output_summaries_v1(
   output_cbor: ByteArray,
 ) -> Option<
@@ -250,7 +194,7 @@ pub fn ledger_output_summaries_v1(
   when ledger_output_v1.decode_canonical_output(output_cbor) is {
     None -> None
     Some(output) ->
-      when cbor_deserialise.deserialise(output_cbor) is {
+      when cbor_deserialise.deserialise_envelope(output_cbor) is {
         None -> None
         Some(output_data) ->
           when output_value_data(output_data) is {
@@ -259,7 +203,7 @@ pub fn ledger_output_summaries_v1(
               let datum = when output.datum_cbor is {
                 None -> Some(None)
                 Some(datum_cbor) ->
-                  when materialise_datum(datum_cbor) is {
+                  when cbor_deserialise.deserialise(datum_cbor) is {
                     None -> None
                     Some(data) ->
                       Some(Some(cek_data_v1.semantic_data_summary_v1(data)))
@@ -1012,15 +956,7 @@ pub fn spend_datum_summary_v1(
       when output.datum_cbor is {
         None -> Some(none_summary())
         Some(datum_cbor) ->
-          // Two questions, one walk. The section 6.2 predicate decides
-          // canonicity and is the gate; materialisability decides whether the
-          // stdlib decoder can be asked at all. A canonical bignum or tag-102
-          // datum passes the first and fails the second, and declines here
-          // rather than aborting -- see datum_data above. The acceptor answers
-          // both from a single scan, so screening recursively costs less than
-          // the head-byte screen it replaces, which ran beside a separate
-          // canonicity walk.
-          when materialise_datum(datum_cbor) is {
+          when cbor_deserialise.deserialise(datum_cbor) is {
             None -> None
             Some(datum) ->
               Some(

@@ -25,7 +25,6 @@ import {
   midgardCekConstantWitnessFromUplc,
   midgardCekIntegerMemorySize,
 } from "../src/cek-constant.js";
-import { buildMidgardCekDataScanTrace } from "../src/cek-data-scan.js";
 import {
   commitMidgardCekDataTree,
   encodeMidgardCekDataTreeInteger,
@@ -126,18 +125,6 @@ describe("Cardano integer layout in Data CBOR", () => {
     );
   });
 
-  it("the Data scan accepts the chunked form and refuses one block", () => {
-    const chunked = Buffer.from(AIKEN_SERIALISE_DATA.positive65, "hex");
-    const trace = buildMidgardCekDataScanTrace(chunked);
-    expect(trace.terminal.offset).toBe(chunked.length);
-
-    const singleBlock = Buffer.from(`c25841${hexRange(1, 65)}`, "hex");
-    expect(singleBlock.length).toBe(68);
-    expect(() => buildMidgardCekDataScanTrace(singleBlock)).toThrow(
-      "V1 Data scan source is not canonical Data CBOR",
-    );
-  });
-
   it.each(CASES)(
     "commits %s with Cardano integer leaf bytes",
     (name, value) => {
@@ -170,5 +157,76 @@ describe("Cardano integer layout in Data CBOR", () => {
         direct(UPLCConst.data(new DataB(Buffer.alloc(65, 7)))),
       ]),
     ).toEqual({ cpu: 3_728_562n, memory: 26n });
+  });
+});
+
+// The ledger's serialisation either side of the 64-bit head boundary and of
+// constructor 128, as `cbor.serialise` pins it in
+// onchain/aiken/lib/midgard/cek-constant-v1.test.ak.
+const BOUNDARY_INTEGERS = [
+  [(1n << 64n) - 1n, "1bffffffffffffffff"],
+  [1n << 64n, "c249010000000000000000"],
+  [-(1n << 64n), "3bffffffffffffffff"],
+  [-(1n << 64n) - 1n, "c349010000000000000000"],
+] as const;
+
+const BOUNDARY_CONSTRUCTORS = [
+  [127n, "d9057880"],
+  [128n, "d86682188080"],
+] as const;
+
+describe("Cardano layout at the 64-bit and constructor-128 boundaries", () => {
+  it.each(BOUNDARY_INTEGERS)("every writer writes %s as %s", (value, hex) => {
+    const raw = Buffer.from(hex, "hex");
+    expect(encodeMidgardCekPlutusData(new DataI(value))).toEqual(raw);
+    expect(
+      encodeMidgardCekCanonicalConstant(UPLCConst.int(value)).payloadCbor,
+    ).toEqual(raw);
+    expect(
+      encodeMidgardCekCanonicalConstant(UPLCConst.data(new DataI(value)))
+        .payloadCbor,
+    ).toEqual(raw);
+    expect(encodeMidgardCekDataTreeInteger(value)).toEqual(raw);
+    expect(commitMidgardCekDataTree(new DataI(value)).root).toEqual(
+      hashMidgardCekDataNode({
+        kind: "integer",
+        cborRoot: commitMidgardCekBlob(raw).root,
+        cborLength: BigInt(raw.length),
+        memory: 4n + midgardCekIntegerMemorySize(value),
+      }),
+    );
+  });
+
+  it.each(BOUNDARY_CONSTRUCTORS)(
+    "every writer writes constructor %s as %s",
+    (index, hex) => {
+      const raw = Buffer.from(hex, "hex");
+      expect(encodeMidgardCekPlutusData(new DataConstr(index, []))).toEqual(
+        raw,
+      );
+      expect(
+        encodeMidgardCekCanonicalConstant(
+          UPLCConst.data(new DataConstr(index, [])),
+        ).payloadCbor,
+      ).toEqual(raw);
+    },
+  );
+
+  it("writes the constructor-128 leaf as the integer 128", () => {
+    expect(encodeMidgardCekDataTreeInteger(128n).toString("hex")).toBe("1880");
+  });
+
+  it.each([
+    "d80249010000000000000000",
+    "d80349010000000000000000",
+    "d866822080",
+    "d86682c2410180",
+  ])("refuses %s as a Data constant payload", (hex) => {
+    expect(() =>
+      decodeMidgardCekConstantWitness({
+        typeCbor: Buffer.from("9f08ff", "hex"),
+        payloadCbor: Buffer.from(hex, "hex"),
+      }),
+    ).toThrow();
   });
 });

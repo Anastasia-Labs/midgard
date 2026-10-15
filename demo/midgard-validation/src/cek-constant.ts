@@ -45,6 +45,10 @@ export {
   MIDGARD_CEK_MIN_VALUE_QUANTITY,
   midgardCekValueEntryCount,
 } from "./cek-constant.value.js";
+export {
+  midgardEnvelopeDataFromCborIterative,
+  plutusDataFromCborIterative,
+} from "./plutus-data-iterative.decode.js";
 export { encodeMidgardCekPlutusData } from "./plutus-data-iterative.encode.js";
 export {
   midgardCekByteStringMemorySize,

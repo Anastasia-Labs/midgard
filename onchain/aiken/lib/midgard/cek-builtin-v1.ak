@@ -5,7 +5,6 @@ use aiken/primitive/bytearray
 use midgard/cbor_deserialise
 use midgard/cek_constant_v1
 use midgard/cek_cost_v1
-use midgard/cek_data_scan_v1
 use midgard/cek_data_v1
 use midgard/cek_proof_v1
 
@@ -498,9 +497,8 @@ fn canonical_integer_leaf_v1(
 ) -> Int {
   expect cek_data_v1.IntegerData { cbor_root, cbor_length, memory: _ } = node
   expect bytearray.length(raw_cbor) > 0
-  expect
-    bytearray.length(raw_cbor) <= cek_data_scan_v1.max_revealed_data_leaf_bytes
-  expect cbor_root == cek_data_scan_v1.bounded_blob_root_v1(raw_cbor)
+  expect bytearray.length(raw_cbor) <= cek_proof_v1.max_bounded_blob_bytes
+  expect cbor_root == cek_proof_v1.bounded_blob_root_v1(raw_cbor)
   expect cbor_length == bytearray.length(raw_cbor)
   let data <- cbor_deserialise.expect_deserialise(raw_cbor)
   expect cbor.serialise(data) == raw_cbor
@@ -522,9 +520,8 @@ fn canonical_bytes_leaf_v1(
         memory: _,
       }
     = node
-  expect
-    bytearray.length(bytes) <= cek_data_scan_v1.max_revealed_data_leaf_bytes
-  expect bytes_root == cek_data_scan_v1.bounded_blob_root_v1(bytes)
+  expect bytearray.length(bytes) <= cek_proof_v1.max_bounded_blob_bytes
+  expect bytes_root == cek_proof_v1.bounded_blob_root_v1(bytes)
   expect bytes_length == bytearray.length(bytes)
   expect top_node_matches_v1(summary, node, None, None)
   bytes
@@ -1296,9 +1293,9 @@ fn verify_semantic_unconstr_data_v1(
     } -> {
       expect [raw_constructor] = witness.scalar_preimages
       expect
-        bytearray.length(raw_constructor) <= cek_data_scan_v1.max_revealed_data_leaf_bytes
+        bytearray.length(raw_constructor) <= cek_proof_v1.max_bounded_blob_bytes
       expect
-        constructor_cbor_root == cek_data_scan_v1.bounded_blob_root_v1(
+        constructor_cbor_root == cek_proof_v1.bounded_blob_root_v1(
           raw_constructor,
         )
       expect constructor_cbor_length == bytearray.length(raw_constructor)
@@ -1332,7 +1329,7 @@ fn verify_semantic_unconstr_data_v1(
   let constructor_cbor = cbor.serialise(builtin.i_data(constructor))
   let constructor_summary = cek_data_v1.integer_data_summary_v1(
     constructor,
-    cek_data_scan_v1.bounded_blob_root_v1(constructor_cbor),
+    cek_proof_v1.bounded_blob_root_v1(constructor_cbor),
   )
   let fields_summary = cek_data_v1.list_data_summary_v1(fields)
   let pair_payload = cek_data_v1.small_constr_data_summary_v1(
@@ -1533,7 +1530,7 @@ fn verify_semantic_mkconstr_data_v1(
     let raw_constructor = cbor.serialise(builtin.i_data(constructor))
     cek_data_v1.large_constr_data_summary_v1(
       constructor,
-      cek_data_scan_v1.bounded_blob_root_v1(raw_constructor),
+      cek_proof_v1.bounded_blob_root_v1(raw_constructor),
       fields,
     )
   }
@@ -1645,8 +1642,7 @@ fn verify_semantic_data_v1(
     expect witness.pair_nodes == []
     expect [raw_data] = witness.scalar_preimages
     expect bytearray.length(raw_data) > 0
-    expect
-      bytearray.length(raw_data) <= cek_data_scan_v1.max_revealed_data_leaf_bytes
+    expect bytearray.length(raw_data) <= cek_proof_v1.max_bounded_blob_bytes
     let data <- cbor_deserialise.expect_deserialise(raw_data)
     expect cbor.serialise(data) == raw_data
     expect
@@ -3792,8 +3788,7 @@ pub fn verify_semantic_data_misc(
     expect witness.pair_nodes == []
     expect [raw_data] = witness.scalar_preimages
     expect bytearray.length(raw_data) > 0
-    expect
-      bytearray.length(raw_data) <= cek_data_scan_v1.max_revealed_data_leaf_bytes
+    expect bytearray.length(raw_data) <= cek_proof_v1.max_bounded_blob_bytes
     let data <- cbor_deserialise.expect_deserialise(raw_data)
     expect cbor.serialise(data) == raw_data
     expect

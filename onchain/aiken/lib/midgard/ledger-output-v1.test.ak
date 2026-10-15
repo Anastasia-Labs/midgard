@@ -1,3 +1,5 @@
+use aiken/builtin
+use aiken/cbor
 use aiken/primitive/bytearray
 use midgard/fraud_proofs/native_tx/components.{encode_midgard_tx_output}
 use midgard/fraud_proofs/native_tx/types.{
@@ -90,4 +92,61 @@ test ledger_output_v1_rejects_noncanonical_embedded_datum() {
 test ledger_output_v1_rejects_unknown_reference_script_language() {
   let output_cbor = #"a300581d60aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa018200a00382184140"
   ledger_output_v1.decode_canonical_output(output_cbor) == None
+}
+
+/// `n` bytes of `0xab`.
+fn payload(n: Int) -> ByteArray {
+  if n <= 0 {
+    #""
+  } else {
+    bytearray.push(payload(n - 1), 171)
+  }
+}
+
+/// A datum over 64 bytes is canonical in its chunked spelling. The output
+/// wire carries the whole datum as one definite byte string, which the output
+/// decoder reads as Midgard's own encoding rather than as Plutus Data.
+test ledger_output_v1_accepts_a_chunked_datum_over_64_bytes() {
+  let output = MidgardTxOutput {
+    ..simple_output(),
+    datum_cbor: Some(cbor.serialise(builtin.b_data(payload(100)))),
+  }
+  ledger_output_v1.decode_canonical_output(encode_midgard_tx_output(output)) == Some(
+    output,
+  )
+}
+
+test ledger_output_v1_accepts_a_reference_script_over_64_bytes() {
+  let output = MidgardTxOutput {
+    ..simple_output(),
+    script_ref: Some(
+      MidgardVersionedScript {
+        language: MidgardV1Script,
+        script_bytes: payload(100),
+      },
+    ),
+  }
+  ledger_output_v1.decode_canonical_output(encode_midgard_tx_output(output)) == Some(
+    output,
+  )
+}
+
+/// Inside the datum the Plutus Data rules still hold: a byte string over 64
+/// bytes must be chunked, at the top level and nested alike.
+test ledger_output_v1_rejects_an_unchunked_datum_byte_string_over_64_bytes() {
+  let rejects = fn(datum_cbor: ByteArray) -> Bool {
+    ledger_output_v1.decode_canonical_output(
+      encode_midgard_tx_output(
+        MidgardTxOutput { ..simple_output(), datum_cbor: Some(datum_cbor) },
+      ),
+    ) == None
+  }
+  and {
+    rejects(bytearray.concat(#"5841", payload(65))),
+    rejects(
+      #"d8799f5841"
+        |> bytearray.concat(payload(65))
+        |> bytearray.concat(#"ff"),
+    ),
+  }
 }

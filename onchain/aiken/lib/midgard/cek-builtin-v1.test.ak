@@ -2,11 +2,11 @@ use aiken/builtin
 use aiken/cbor
 use aiken/collection/list
 use aiken/fuzz
+use aiken/math
 use aiken/primitive/bytearray
 use midgard/cek_builtin_v1
 use midgard/cek_constant_v1
 use midgard/cek_cost_v1
-use midgard/cek_data_scan_v1
 use midgard/cek_data_v1
 use midgard/cek_proof_v1
 
@@ -700,10 +700,10 @@ fn large_semantic_constructor_fixture() -> LargeSemanticConstructorFixture {
   )
   let child = cek_data_v1.bytes_data_summary_v1(
     9000,
-    cek_data_scan_v1.bounded_blob_root_v1(bytes),
+    cek_proof_v1.bounded_blob_root_v1(bytes),
   )
   let child_node = cek_data_v1.BytesData {
-    bytes_root: cek_data_scan_v1.bounded_blob_root_v1(bytes),
+    bytes_root: cek_proof_v1.bounded_blob_root_v1(bytes),
     bytes_length: 9000,
     cbor_length: child.cbor_length,
     memory: child.memory,
@@ -772,7 +772,7 @@ test semantic_unconstr_data_returns_the_exact_large_typed_pair() {
   let constructor_cbor = cbor.serialise(builtin.i_data(0))
   let constructor = cek_data_v1.integer_data_summary_v1(
     0,
-    cek_data_scan_v1.bounded_blob_root_v1(constructor_cbor),
+    cek_proof_v1.bounded_blob_root_v1(constructor_cbor),
   )
   let fields = cek_data_v1.list_data_summary_v1(fixture.fields)
   let result_payload = cek_data_v1.small_constr_data_summary_v1(
@@ -810,10 +810,10 @@ test semantic_fst_pair_extracts_the_constructor_without_the_large_field() {
   let constructor_cbor = cbor.serialise(builtin.i_data(0))
   let constructor = cek_data_v1.integer_data_summary_v1(
     0,
-    cek_data_scan_v1.bounded_blob_root_v1(constructor_cbor),
+    cek_proof_v1.bounded_blob_root_v1(constructor_cbor),
   )
   let constructor_node = cek_data_v1.IntegerData {
-    cbor_root: cek_data_scan_v1.bounded_blob_root_v1(constructor_cbor),
+    cbor_root: cek_proof_v1.bounded_blob_root_v1(constructor_cbor),
     cbor_length: constructor.cbor_length,
     memory: constructor.memory,
   }
@@ -975,7 +975,7 @@ fn direct_integer(value: Int) -> cek_builtin_v1.ValueWitnessV1 {
 fn semantic_integer_node(value: Int) -> cek_data_v1.DataNodeV1 {
   let raw = cbor.serialise(builtin.i_data(value))
   cek_data_v1.IntegerData {
-    cbor_root: cek_data_scan_v1.bounded_blob_root_v1(raw),
+    cbor_root: cek_proof_v1.bounded_blob_root_v1(raw),
     cbor_length: bytearray.length(raw),
     memory: 4 + cek_data_v1.integer_memory_size_v1(value),
   }
@@ -985,7 +985,7 @@ fn semantic_integer(value: Int) -> cek_builtin_v1.ValueWitnessV1 {
   let raw = cbor.serialise(builtin.i_data(value))
   let summary = cek_data_v1.integer_data_summary_v1(
     value,
-    cek_data_scan_v1.bounded_blob_root_v1(raw),
+    cek_proof_v1.bounded_blob_root_v1(raw),
   )
   cek_builtin_v1.SemanticConstantValue {
     type_cbor: #"9f00ff",
@@ -997,7 +997,7 @@ fn semantic_integer(value: Int) -> cek_builtin_v1.ValueWitnessV1 {
 fn constr_data_result(index: Int) -> cek_builtin_v1.ValueWitnessV1 {
   let raw = cbor.serialise(builtin.i_data(index))
   let summary = cek_data_v1.large_constr_data_summary_from_cbor_v1(
-    cek_data_scan_v1.bounded_blob_root_v1(raw),
+    cek_proof_v1.bounded_blob_root_v1(raw),
     bytearray.length(raw),
     4 + cek_data_v1.integer_memory_size_v1(index),
     cek_data_v1.empty_data_list_summary_v1(),
@@ -2042,6 +2042,368 @@ test ed25519_charges_message_words_and_keeps_true_false_successes() {
           ),
         }
       },
+    ),
+  }
+}
+
+// serialiseData over Data holding a constructor index of 128 or more and
+// integers outside 64 bits: the semantic arm decodes the argument constant and
+// the revealed serialisation with the Cardano Data decoder.
+fn wide_data() -> Data {
+  builtin.constr_data(
+    0,
+    [
+      builtin.constr_data(128, [builtin.i_data(1)]),
+      builtin.constr_data(18446744073709551615, []),
+      builtin.i_data(18446744073709551616),
+      builtin.i_data(-18446744073709551617),
+    ],
+  )
+}
+
+fn serialise_data_verifies(
+  source: Data,
+  revealed: ByteArray,
+  serialised: ByteArray,
+) -> Bool {
+  let arguments = [constant(#"9f08ff", cbor.serialise(source))]
+  verify_semantic_with_split_parity(
+    51,
+    builtin_root(51, arguments),
+    arguments,
+    bytes(cbor.serialise(builtin.b_data(serialised))),
+    cek_builtin_v1.SemanticBuiltinWitnessV1 {
+      data_nodes: [],
+      list_nodes: [],
+      pair_nodes: [],
+      scalar_preimages: [revealed],
+    },
+  )
+}
+
+test semantic_serialise_data_handles_wide_constructors_and_integers() {
+  let raw = cbor.serialise(wide_data())
+  serialise_data_verifies(wide_data(), raw, raw)
+}
+
+test semantic_serialise_data_refuses_a_different_result() {
+  let raw = cbor.serialise(wide_data())
+  let other = cbor.serialise(builtin.constr_data(0, [builtin.i_data(1)]))
+  !serialise_data_verifies(wide_data(), raw, other)
+}
+
+test semantic_serialise_data_refuses_a_revealed_serialisation_of_other_data() fail {
+  let other = cbor.serialise(builtin.constr_data(0, [builtin.i_data(1)]))
+  serialise_data_verifies(wide_data(), other, other)
+}
+
+fn serialise_data_split_arm(source: Data) -> Bool {
+  let raw = cbor.serialise(source)
+  cek_builtin_v1.verify_semantic_data_misc(
+    51,
+    [constant(#"9f08ff", raw)],
+    bytes(cbor.serialise(builtin.b_data(raw))),
+    cek_builtin_v1.SemanticBuiltinWitnessV1 {
+      data_nodes: [],
+      list_nodes: [],
+      pair_nodes: [],
+      scalar_preimages: [raw],
+    },
+  )
+}
+
+// The production split arm alone, on the wide Data above.
+test semantic_data_misc_serialises_wide_data() {
+  serialise_data_split_arm(wide_data())
+}
+
+// The production split arm alone, on Data of the same shape within 64 bits.
+test semantic_data_misc_serialises_data_within_64_bits() {
+  serialise_data_split_arm(
+    builtin.constr_data(
+      0,
+      [
+        builtin.constr_data(127, [builtin.i_data(1)]),
+        builtin.constr_data(6, []),
+        builtin.i_data(18446744073709551615),
+        builtin.i_data(-18446744073709551616),
+      ],
+    ),
+  )
+}
+
+// Integer constants on both sides of the 64-bit head boundary, read by the
+// direct addInteger arm. Each sum crosses from a major-type head to a bignum.
+fn add_integer_verifies(left: Int, right: Int, sum: Int) -> Bool {
+  let arguments = [integer_value(left), integer_value(right)]
+  verify_direct_with_split_parity(
+    0,
+    builtin_root(0, arguments),
+    arguments,
+    integer_value(sum),
+  )
+}
+
+test add_integer_reads_constants_across_the_64_bit_boundary() {
+  expect
+    cbor.serialise(builtin.i_data(18446744073709551615)) == #"1bffffffffffffffff"
+  expect
+    cbor.serialise(builtin.i_data(18446744073709551616)) == #"c249010000000000000000"
+  expect
+    cbor.serialise(builtin.i_data(-18446744073709551616)) == #"3bffffffffffffffff"
+  expect
+    cbor.serialise(builtin.i_data(-18446744073709551617)) == #"c349010000000000000000"
+  and {
+    add_integer_verifies(18446744073709551615, 1, 18446744073709551616),
+    add_integer_verifies(18446744073709551616, -1, 18446744073709551615),
+    add_integer_verifies(-18446744073709551616, -1, -18446744073709551617),
+    add_integer_verifies(-18446744073709551617, 1, -18446744073709551616),
+  }
+}
+
+// No claimed sum pairs -2^64 with -2^64 - 1: the pinned evaluator's Data
+// equality does not separate them.
+test add_integer_refuses_a_wrong_sum_across_the_64_bit_boundary() {
+  and {
+    !add_integer_verifies(18446744073709551615, 1, 18446744073709551615),
+    !add_integer_verifies(18446744073709551616, -1, 18446744073709551616),
+    !add_integer_verifies(-18446744073709551616, -1, -18446744073709551618),
+    !add_integer_verifies(-18446744073709551617, 1, -18446744073709551615),
+  }
+}
+
+// An IntegerData leaf revealed by its raw CBOR.
+fn integer_leaf_node(memory: Int, raw: ByteArray) -> cek_data_v1.DataNodeV1 {
+  cek_data_v1.IntegerData {
+    cbor_root: cek_proof_v1.bounded_blob_root_v1(raw),
+    cbor_length: bytearray.length(raw),
+    memory,
+  }
+}
+
+fn node_summary(node: cek_data_v1.DataNodeV1) -> cek_data_v1.DataSummaryV1 {
+  cek_data_v1.DataSummaryV1 {
+    root: cek_data_v1.hash_data_node_v1(node),
+    cbor_length: cek_data_v1.data_node_cbor_length_v1(node),
+    memory: cek_data_v1.data_node_memory_v1(node),
+  }
+}
+
+fn leaf_witness(
+  node: cek_data_v1.DataNodeV1,
+  raw: ByteArray,
+) -> cek_builtin_v1.SemanticBuiltinWitnessV1 {
+  cek_builtin_v1.SemanticBuiltinWitnessV1 {
+    data_nodes: [node],
+    list_nodes: [],
+    pair_nodes: [],
+    scalar_preimages: [raw],
+  }
+}
+
+// unIData over a semantic Data value whose only node is the leaf.
+fn un_i_data_leaf_verifies(value: Int, raw: ByteArray) -> Bool {
+  un_i_data_leaf_with_memory_verifies(
+    4 + cek_constant_v1.integer_memory_size_v1(value),
+    raw,
+  )
+}
+
+fn un_i_data_leaf_with_memory_verifies(memory: Int, raw: ByteArray) -> Bool {
+  let node = integer_leaf_node(memory, raw)
+  let summary = node_summary(node)
+  let source = cek_builtin_v1.SemanticConstantValue {
+    type_cbor: #"9f08ff",
+    payload: summary,
+    memory: summary.memory,
+  }
+  let result = cek_builtin_v1.SemanticConstantValue {
+    type_cbor: #"9f00ff",
+    payload: summary,
+    memory: summary.memory - 4,
+  }
+  verify_semantic_with_split_parity(
+    45,
+    builtin_root(45, [source]),
+    [source],
+    result,
+    leaf_witness(node, raw),
+  )
+}
+
+// iData from an integer constant: the leaf must reveal that integer.
+fn i_data_leaf_verifies(value: Int, raw: ByteArray) -> Bool {
+  let argument = integer_value(value)
+  let payload = cek_data_v1.integer_data_summary_v1(
+    value,
+    cek_proof_v1.bounded_blob_root_v1(raw),
+  )
+  let node = integer_leaf_node(
+    4 + cek_constant_v1.integer_memory_size_v1(value),
+    raw,
+  )
+  verify_semantic_with_split_parity(
+    40,
+    builtin_root(40, [argument]),
+    [argument],
+    cek_builtin_v1.SemanticConstantValue {
+      type_cbor: #"9f08ff",
+      payload,
+      memory: payload.memory,
+    },
+    leaf_witness(node, raw),
+  )
+}
+
+fn integer_leaf_verifies(value: Int, raw: ByteArray) -> Bool {
+  expect cbor.serialise(builtin.i_data(value)) == raw
+  and {
+    un_i_data_leaf_verifies(value, raw),
+    i_data_leaf_verifies(value, raw),
+  }
+}
+
+test integer_leaf_with_largest_unsigned_head_verifies() {
+  integer_leaf_verifies(18446744073709551615, #"1bffffffffffffffff")
+}
+
+test integer_leaf_with_smallest_positive_bignum_verifies() {
+  integer_leaf_verifies(18446744073709551616, #"c249010000000000000000")
+}
+
+test integer_leaf_with_largest_negative_head_verifies() {
+  integer_leaf_verifies(-18446744073709551616, #"3bffffffffffffffff")
+}
+
+test integer_leaf_with_smallest_negative_bignum_verifies() {
+  integer_leaf_verifies(-18446744073709551617, #"c349010000000000000000")
+}
+
+// The revealed leaf must be the integer constant's own serialisation.
+test integer_leaf_for_a_different_integer_fails_closed() fail {
+  i_data_leaf_verifies(18446744073709551616, #"c349010000000000000000")
+}
+
+test integer_leaf_behind_a_long_tag_2_head_fails_closed() fail {
+  un_i_data_leaf_verifies(18446744073709551616, #"d80249010000000000000000")
+}
+
+test integer_leaf_behind_a_long_tag_3_head_fails_closed() fail {
+  un_i_data_leaf_verifies(-18446744073709551617, #"d80349010000000000000000")
+}
+
+// serialiseData over constructor 127 (tag 1400) and 128 (tag 102), through the
+// production split arm.
+test semantic_data_misc_serialises_constructor_127() {
+  expect cbor.serialise(builtin.constr_data(127, [])) == #"d9057880"
+  serialise_data_split_arm(builtin.constr_data(127, []))
+}
+
+test semantic_data_misc_serialises_constructor_128() {
+  expect cbor.serialise(builtin.constr_data(128, [])) == #"d86682188080"
+  serialise_data_split_arm(builtin.constr_data(128, []))
+}
+
+fn serialise_data_split_arm_reveals(source: Data, revealed: ByteArray) -> Bool {
+  cek_builtin_v1.verify_semantic_data_misc(
+    51,
+    [constant(#"9f08ff", cbor.serialise(source))],
+    bytes(cbor.serialise(builtin.b_data(revealed))),
+    cek_builtin_v1.SemanticBuiltinWitnessV1 {
+      data_nodes: [],
+      list_nodes: [],
+      pair_nodes: [],
+      scalar_preimages: [revealed],
+    },
+  )
+}
+
+test semantic_data_misc_refuses_a_long_tag_2_head() fail {
+  serialise_data_split_arm_reveals(
+    builtin.i_data(18446744073709551616),
+    #"d80249010000000000000000",
+  )
+}
+
+test semantic_data_misc_refuses_constructor_102_with_a_negative_index() fail {
+  serialise_data_split_arm_reveals(builtin.constr_data(0, []), #"d866822080")
+}
+
+test semantic_data_misc_refuses_constructor_102_with_a_bignum_index() fail {
+  serialise_data_split_arm_reveals(
+    builtin.constr_data(1, []),
+    #"d86682c2410180",
+  )
+}
+
+// The revealed-leaf bound (9,215 bytes) admits the same integers as the
+// direct payload bound: up to 8,932 magnitude bytes (memory 4 + 8,933).
+test integer_leaf_at_the_revealed_leaf_bound_verifies() {
+  let largest = math.pow2(71456) - 1
+  let positive = cbor.serialise(builtin.i_data(largest))
+  let negative = cbor.serialise(builtin.i_data(-largest - 1))
+  expect bytearray.length(positive) == 9215
+  expect bytearray.length(negative) == 9215
+  and {
+    un_i_data_leaf_with_memory_verifies(8937, positive),
+    un_i_data_leaf_with_memory_verifies(8937, negative),
+  }
+}
+
+// One magnitude byte more cannot be committed as a bounded leaf at all.
+test integer_leaf_beyond_the_revealed_leaf_bound_has_no_leaf_root() fail {
+  let raw = cbor.serialise(builtin.i_data(math.pow2(71456)))
+  bytearray.length(cek_proof_v1.bounded_blob_root_v1(raw)) == 32
+}
+
+// equalsData compares Data by value. -6 is 25 and -5 is 24.
+fn equals_data_verifies(
+  left: ByteArray,
+  right: ByteArray,
+  claimed: ByteArray,
+) -> Bool {
+  let arguments = [constant(#"9f08ff", left), constant(#"9f08ff", right)]
+  verify_semantic_with_split_parity(
+    47,
+    builtin_root(47, arguments),
+    arguments,
+    boolean(claimed),
+    cek_builtin_v1.SemanticBuiltinWitnessV1 {
+      data_nodes: [],
+      list_nodes: [],
+      pair_nodes: [],
+      scalar_preimages: [],
+    },
+  )
+}
+
+test equals_data_matches_an_integer_with_itself() {
+  equals_data_verifies(#"25", #"25", #"d87a80")
+}
+
+test equals_data_separates_minus_six_from_minus_five() {
+  equals_data_verifies(#"25", #"24", #"d87980")
+}
+
+test equals_data_refuses_a_wrong_verdict() {
+  and {
+    !equals_data_verifies(#"25", #"25", #"d87980"),
+    !equals_data_verifies(#"25", #"24", #"d87a80"),
+  }
+}
+
+// The step compares Data by value on both sides of the 64-bit head boundary.
+test equals_data_separates_minus_two_to_the_64_from_its_predecessor() {
+  and {
+    equals_data_verifies(
+      #"3bffffffffffffffff",
+      #"c349010000000000000000",
+      #"d87980",
+    ),
+    !equals_data_verifies(
+      #"3bffffffffffffffff",
+      #"c349010000000000000000",
+      #"d87a80",
     ),
   }
 }

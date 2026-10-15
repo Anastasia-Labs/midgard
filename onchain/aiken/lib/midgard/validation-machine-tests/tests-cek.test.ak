@@ -7,7 +7,6 @@ use aiken/primitive/bytearray
 use midgard/bounded_item_v1
 use midgard/cek_builtin_v1
 use midgard/cek_constant_v1
-use midgard/cek_data_scan_v1
 use midgard/cek_data_v1
 use midgard/cek_machine_v1
 use midgard/cek_proof_v1
@@ -2071,7 +2070,7 @@ test cek_context_mint_is_authenticated_and_folded_incrementally() {
   }
 }
 
-test cek_context_redeemer_scalar_scan_is_content_addressed() {
+test cek_context_redeemer_scalar_item_completes_the_redeemer_map() {
   let redeemer = MidgardRedeemerWitness {
     purpose: SpendRedeemer,
     index: 0,
@@ -2099,16 +2098,17 @@ test cek_context_redeemer_scalar_scan_is_content_addressed() {
     redeemer_peaks: redeemer_frontier.peaks,
     purpose_peaks: purpose_frontier.peaks,
   }
-  let raw = cbor.serialise(builtin.i_data(0))
-  let scan = cek_data_scan_v1.initial_control_v1(
-    blake2b_256(raw),
-    bytearray.length(raw),
-  )
-  expect Some(completed_scan) = cek_data_scan_v1.reveal_leaf_control_step_v1(
-    scan,
-    raw,
-    None,
-    bytearray.length(raw),
+  let redeemer_summary = cek_data_v1.semantic_data_summary_v1(builtin.i_data(0))
+  let redeemer_item_cbor = encode_midgard_redeemer_witness(redeemer)
+  expect Some(redeemer_tag) = vm_shared.redeemer_tag_for_purpose_kind_v1(0)
+  let item_control = redeemer_item_proof_v1.initial_control_v1(
+    redeemer_item_proof_v1.mode_data,
+    0,
+    1,
+    bytearray.length(redeemer_item_cbor),
+    bounded_item_v1.from_bytes(8, 0, redeemer_item_cbor),
+    redeemer_tag,
+    0,
   )
   expect Some(observer_summary) = script_context_v1.observer_collection_summary_v1(
     [],
@@ -2125,7 +2125,7 @@ test cek_context_redeemer_scalar_scan_is_content_addressed() {
   )
   let active_redeemers = vm_machine_types.CekRedeemerContextControlV1 {
     ..vm_witness.initial_cek_redeemer_context_control_v1(1),
-    active_scan_hash: cek_data_scan_v1.hash_control_v1(scan),
+    active_scan_hash: redeemer_item_proof_v1.hash_control_v1(item_control),
     active_redeemer_leaf: redeemer_leaf,
     active_purpose: purpose_summary,
     purpose_bound: 0,
@@ -2142,7 +2142,7 @@ test cek_context_redeemer_scalar_scan_is_content_addressed() {
   }
   let map_items = cek_data_v1.prepend_data_pair_summary_v1(
     purpose_summary,
-    completed_scan.result,
+    redeemer_summary,
     cek_data_v1.empty_data_pair_summary_v1(),
   )
   let completed_redeemers = vm_machine_types.CekRedeemerContextControlV1 {
@@ -2150,8 +2150,12 @@ test cek_context_redeemer_scalar_scan_is_content_addressed() {
     map_items,
     active_scan_hash: #"",
     active_redeemer_leaf: #"",
-    active_purpose: cek_data_scan_v1.empty_result_v1(),
-    current_redeemer: completed_scan.result,
+    active_purpose: cek_data_v1.DataSummaryV1 {
+      root: #"",
+      cbor_length: 0,
+      memory: 0,
+    },
+    current_redeemer: redeemer_summary,
     purpose_bound: 0,
   }
   let next_control = vm_machine_types.CekContextControlV1 {
@@ -2217,13 +2221,11 @@ test cek_context_redeemer_map_selection_authenticates_purpose_and_redeemer() {
   let initial_redeemers = vm_witness.initial_cek_redeemer_context_control_v1(
     native_control.purpose_count,
   )
-  // The active redeemer scan is a bounded `redeemer_item_proof_v1` control, not
-  // the superseded free-standing `cek_data_scan_v1` control:
+  // The active redeemer scan is a bounded `redeemer_item_proof_v1` control:
   // `verify_cek_redeemer_data_step` seeds `active_scan_hash` with
   // `redeemer_item_proof_v1.hash_control_v1` of a fresh `mode_data` item control
   // (validation-machine-v1.ak:15818-15839) and the follow-on
   // `RedeemerItemStepWitness` branch re-derives exactly that hash (:15868).
-  // `validation-machine-v1.ak` no longer references `cek_data_scan_v1` at all.
   let redeemer_item_cbor = encode_midgard_redeemer_witness(redeemer)
   let redeemer_item_commitment = bounded_item_v1.from_bytes(
     8,
@@ -2362,7 +2364,11 @@ fn cek_context_finalize_with_redeemer_count(redeemer_count: Int) -> Bool {
     map_items: redeemer_items,
     active_scan_hash: #"",
     active_redeemer_leaf: #"",
-    active_purpose: cek_data_scan_v1.empty_result_v1(),
+    active_purpose: cek_data_v1.DataSummaryV1 {
+      root: #"",
+      cbor_length: 0,
+      memory: 0,
+    },
     current_redeemer: redeemer_summary,
     purpose_bound: 0,
   }

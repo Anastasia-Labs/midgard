@@ -61,7 +61,7 @@ describe("a CEK Data constant with a duplicate map key", () => {
     );
   });
 
-  it("refuses the generic encoder's indefinite map without normalizing it", () => {
+  it("builds the generic encoder's indefinite map like the definite one", () => {
     const source = Buffer.from(
       UPLCEncoder.compile(
         new UPLCProgram(
@@ -71,11 +71,21 @@ describe("a CEK Data constant with a duplicate map key", () => {
       ),
     );
     expect(source.toString("hex")).toBe("0101004c0106bf01020103ff0001");
-    expect(() =>
+    const build = (flat: Buffer) =>
       buildMidgardCanonicalScriptArtifact({
         language: "PlutusV3",
-        sourceRawFlatProgramBytes: source,
-      }),
-    ).toThrow("V1 requires canonical Flat bytes");
+        sourceRawFlatProgramBytes: flat,
+      });
+    const indefinite = build(source);
+    const definite = build(Buffer.from(DUPLICATE_KEY_MAP_FLAT, "hex"));
+    expect(Buffer.from(indefinite.canonicalProgram.envelopeCbor)).toEqual(
+      Buffer.from(definite.canonicalProgram.envelopeCbor),
+    );
+    expect(Buffer.from(indefinite.canonicalMaterialSidecarCbor)).toEqual(
+      Buffer.from(definite.canonicalMaterialSidecarCbor),
+    );
+    expect(indefinite.canonicalMidgardCredentialScriptHash).toEqual(
+      definite.canonicalMidgardCredentialScriptHash,
+    );
   });
 });

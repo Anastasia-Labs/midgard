@@ -1135,7 +1135,7 @@ pub fn payload_structure_is_canonical_at_bounds_v1(
 /// `scripts/native-script-scan-exec-ledger-v1.json` and
 /// `scripts/verify-native-script-scan-exec-ledger-v1.mjs`. No cheaper faithful
 /// driver rescues it: `native_script_v1.inspect_native_script`, the alternative
-/// A3 names, exhausts the same basis at about 100 nodes, and even a bare
+/// A3 names, exhausts the same basis at 106 nodes, and even a bare
 /// `cbor.deserialise` of the payload exhausts it at about 250.
 ///
 /// *Blast radius if wired anyway.* Measured by wiring it and diffing a scratch

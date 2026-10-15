@@ -163,16 +163,9 @@ fn items_hold_bls_value(element: ConstantTypeV1, payload: Data) -> Bool {
 
 pub fn decode_constant_payload_v1(payload_cbor: ByteArray) -> Data {
   expect bytearray.length(payload_cbor) <= max_direct_payload_bytes
-  // stdlib's streaming CBOR decoder rejects a top-level zero-length byte
-  // string because no cursor remains after its header. Preserve the canonical
-  // ledger encoding explicitly instead of excluding valid empty constants.
-  if payload_cbor == #"40" {
-    builtin.b_data(#"")
-  } else {
-    let payload <- cbor_deserialise.expect_deserialise(payload_cbor)
-    expect cbor.serialise(payload) == payload_cbor
-    payload
-  }
+  let payload <- cbor_deserialise.expect_deserialise(payload_cbor)
+  expect cbor.serialise(payload) == payload_cbor
+  payload
 }
 
 fn is_data_constr(data: Data) -> Bool {

@@ -1654,7 +1654,7 @@ fn validate_invalid_one_step_transition(
 }
 
 pub fn terminal_acceptance_post_root(witness_cbor: ByteArray) -> ByteArray {
-  let data <- cbor_deserialise.expect_deserialise(witness_cbor)
+  let data <- cbor_deserialise.expect_deserialise_envelope(witness_cbor)
   expect [version_data,
         tag_data, root_data, _frontier_data] = builtin.un_list_data(data)
   expect builtin.un_i_data(version_data) == 1

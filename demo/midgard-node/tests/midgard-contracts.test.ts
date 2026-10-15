@@ -142,8 +142,8 @@ describe("midgard contracts registry", () => {
       // the composed P1 tree (allow-lists, the datum canonicity step, the
       // non-empty block rule, one event NFT per user-event mint), the retired
       // post-UTxO minimum-Ada mode, the streamed redeemer and datum Data
-      // verdict steps, the one-pass history payload node count, the exact
-      // rejection reason binding, and the fault-proof script optimisations.
+      // verdict steps, the one-pass history node count, the exact rejection
+      // reason, fault-proof/Data decoder optimisations, the proof blob root.
       expect
         .soft(
           createHash("sha256")
@@ -153,7 +153,7 @@ describe("midgard contracts registry", () => {
             .digest("hex"),
         )
         .toBe(
-          "979da7ebc8ef9756fb0742265cbf6bc186ca1e397190f7b4adcb6f94503322cd",
+          "da70fe287e7b68135b2a540ae39960a48bad32c50127c1d991bba9a910e07c29",
         );
       // Includes current streamed Data/W1 metadata plus escape-hatch field
       // retirement and the hub witness's paired script bytes. The independently

@@ -9,56 +9,63 @@ import {
 } from "@harmoniclabs/plutus-data";
 
 /**
- * CBOR -> harmonic `Data` without recursion.
+ * CBOR -> harmonic `Data` without recursion, decoding exactly as the Cardano
+ * ledger decodes Plutus Data (`decodeData` in plutus-core
+ * `PlutusCore/Data.hs`, over cborg's token reader), and requiring the whole
+ * input to be that one item. Its own frame stack lets any byte-cap-legal
+ * nesting depth decode.
  *
- * This reader accepts and rejects exactly the inputs the pinned harmonic
- * `dataFromCbor` (`Cbor.parse` from `@harmoniclabs/cbor` followed by
- * `dataFromCborObj`) accepts and rejects, and builds the same `Data` value, but
- * keeps its own frame stack so any byte-cap-legal nesting depth decodes. The
- * behaviour it reproduces, pinned by the differential test:
+ * One reader serves two entries, which differ in one parameter only:
  *
- * - bytes after the first complete item are ignored;
- * - non-minimal heads are accepted; additional information 28-30 is refused,
- *   and 31 (indefinite) is refused for majors 0, 1 and 7;
- * - text (major 3) and simple/float (major 7) items are refused wherever they
- *   appear, because the harmonic conversion has no Data node for them;
- * - indefinite bytes take chunks that are themselves major-2 items (definite
- *   or indefinite), concatenated;
- * - tag 2 / tag 3 directly over a bytes item is a bignum (empty bytes are
- *   refused); tags 121-127 and 1280-1400 over an array are constructors, and
- *   tag 102 over `[uint, array]` is a constructor while tag 1375 is
- *   constructor 102 over its array; every other tag, and every recognised tag
- *   over a non-array, is transparent;
- * - map entries keep their order, duplicate keys included;
- * - a byte string is a copy of the class harmonic returns: the input's class
- *   (a Buffer input gives Buffers) for a definite string or an indefinite one
- *   with a single chunk, a plain `Uint8Array` otherwise.
+ * - `plutusDataFromCborIterative` decodes exactly the Plutus Data CBOR the
+ *   Cardano ledger accepts. Use it for anything claimed to be Plutus Data:
+ *   datums, redeemers, script contexts, CEK constants and Data nodes.
+ * - `midgardEnvelopeDataFromCborIterative` applies the same rules except the
+ *   64-byte bound on a definite byte string and on each chunk of an
+ *   indefinite one. Use it only for Midgard-internal wire (work witnesses,
+ *   controls, proof carriage, discovery bitmaps), whose writers emit long
+ *   byte strings definite.
+ *
+ * The rules:
+ *
+ * - the input is exactly one item: trailing bytes are refused;
+ * - heads may be non-minimal; additional information 28-30 is refused, and
+ *   31 (indefinite) is accepted only for byte strings, lists and maps;
+ * - an integer is a major-0 or major-1 head (at most 64 bits), or a bignum:
+ *   the one-byte tag head `c2` (positive) or `c3` (negative) over a byte
+ *   string, big-endian, where the empty string is 0 (`c2`) or -1 (`c3`);
+ *   tags 2 and 3 written with a longer head are unknown tags;
+ * - a byte string is definite, or indefinite with chunks that are each a
+ *   definite byte string; under the Data entry a definite string and every
+ *   chunk is at most 64 bytes (bignum magnitudes included);
+ * - lists and maps are definite (any head width) or indefinite; map entries
+ *   keep their order, duplicate keys included;
+ * - a constructor is tag 121-127 (index 0-6) or 1280-1400 (index 7-127) over
+ *   a list, or tag 102 over a two-element array, definite or indefinite,
+ *   holding a major-0 index (up to 2^64 - 1, small ones included) and a
+ *   list of fields; any other tag, and any of these tags over something else,
+ *   is refused;
+ * - text strings, simple values, floats and a misplaced break are refused.
+ *
+ * A byte string is a copy with the input's class (a Buffer input gives
+ * Buffers) when it is definite or has a single chunk, and a plain
+ * `Uint8Array` otherwise.
  */
 
-const enum Kind {
-  UInt = 0,
-  NegInt = 1,
-  Bytes = 2,
-  Array = 4,
-  Map = 5,
-  Tag = 6,
-}
+/** Cardano's bound on a definite byte string or one indefinite chunk. */
+export const CARDANO_PLUTUS_DATA_BYTES_CHUNK_LIMIT = 64n;
 
-type Item = {
-  readonly kind: Kind;
-  /** Undefined only for a bytes item before it is placed in a Data parent. */
-  data: Data | undefined;
-  /** Raw payload of a bytes item. */
-  readonly raw?: Uint8Array;
-  /** Kinds of the first two elements of an array item of length two. */
-  readonly firstKinds?: readonly Kind[];
+type Constructor = {
+  readonly index: bigint;
+  /** Tag 102 in an indefinite array: a break must follow the fields. */
+  readonly breakAfter: boolean;
 };
 
-type ArrayFrame = {
-  readonly type: "array";
+type ListFrame = {
+  readonly type: "list";
   readonly length: bigint;
   readonly values: Data[];
-  readonly kinds: Kind[];
+  readonly constructor: Constructor | undefined;
 };
 
 type MapFrame = {
@@ -68,32 +75,35 @@ type MapFrame = {
   key: Data | undefined;
 };
 
-type TagFrame = { readonly type: "tag"; readonly tag: bigint };
+type BytesFrame = {
+  readonly type: "bytes";
+  readonly chunks: Uint8Array[];
+  /** Set when the byte string is a bignum's magnitude. */
+  readonly bignum: "positive" | "negative" | undefined;
+};
 
-type BytesFrame = { readonly type: "bytes"; readonly chunks: Uint8Array[] };
+type Frame = ListFrame | MapFrame | BytesFrame;
 
-type Frame = ArrayFrame | MapFrame | TagFrame | BytesFrame;
+type Head = {
+  readonly major: number;
+  /** The argument; `INDEFINITE` for additional information 31. */
+  readonly argument: bigint;
+  /** Additional information, the low five bits of the initial byte. */
+  readonly additional: number;
+};
 
 const INDEFINITE = -1n;
 
+const BREAK = 0xff;
+
 /**
  * A copy of `bytes` of the same class (a Buffer stays a Buffer), as
- * harmonic's `Uint8Array.prototype.slice.call` produces.
+ * `Uint8Array.prototype.slice.call` produces.
  */
 const copyOf = (bytes: Uint8Array): Uint8Array =>
   Uint8Array.prototype.slice.call(bytes);
 
-const itemData = (item: Item): Data => {
-  if (item.data === undefined) {
-    item.data = new DataB(copyOf(item.raw!));
-  }
-  return item.data;
-};
-
-/**
- * Harmonic `concatUint8Array`: a lone chunk is copied with its class, and no
- * chunk or several chunks give a plain `Uint8Array`.
- */
+/** A lone chunk keeps its class; no chunk or several give a `Uint8Array`. */
 const concatChunks = (chunks: readonly Uint8Array[]): Uint8Array => {
   if (chunks.length === 1) return copyOf(chunks[0]!);
   let length = 0;
@@ -107,93 +117,30 @@ const concatChunks = (chunks: readonly Uint8Array[]): Uint8Array => {
   return out;
 };
 
-/** Harmonic's `cborTagToConstrNumber`: a negative result means "ignore". */
-const constrNumberOfTag = (tag: bigint): bigint => {
-  if (tag < 0n) return tag;
+/** A big-endian magnitude; the empty string is 0. */
+const magnitudeOf = (raw: Uint8Array): bigint =>
+  raw.length === 0 ? 0n : BigInt(`0x${Buffer.from(raw).toString("hex")}`);
+
+const bignumData = (sign: "positive" | "negative", raw: Uint8Array): DataI => {
+  const magnitude = magnitudeOf(raw);
+  return new DataI(sign === "positive" ? magnitude : -1n - magnitude);
+};
+
+/** The constructor index of a compact tag, or undefined if it is not one. */
+const compactConstructorIndex = (tag: bigint): bigint | undefined => {
   if (tag >= 121n && tag <= 127n) return tag - 121n;
   if (tag >= 1280n && tag <= 1400n) return tag - 1273n;
-  if (tag === 102n) return tag;
-  return -1n;
+  return undefined;
 };
 
-const bignumOf = (raw: Uint8Array): bigint => {
-  if (raw.length === 0) {
-    throw new SyntaxError("CBOR bignum has no magnitude bytes");
-  }
-  return BigInt(`0x${Buffer.from(raw).toString("hex")}`);
-};
-
-const arrayItem = (frame: ArrayFrame): Item => ({
-  kind: Kind.Array,
-  data: new DataList(frame.values),
-  firstKinds: frame.values.length === 2 ? frame.kinds : undefined,
-});
-
-const mapItem = (frame: MapFrame): Item => ({
-  kind: Kind.Map,
-  data: new DataMap(frame.pairs),
-});
-
-const closeItem = (frame: Frame): Item => {
-  switch (frame.type) {
-    case "bytes":
-      return {
-        kind: Kind.Bytes,
-        data: undefined,
-        raw: concatChunks(frame.chunks),
-      };
-    case "array":
-      return arrayItem(frame);
-    case "map":
-      return mapItem(frame);
-    case "tag":
-      throw new Error("a CBOR tag cannot close without its item");
-  }
-};
-
-/** Whether `frame` is open to a CBOR break (0xff) at this point. */
-const acceptsBreak = (frame: Frame | undefined): frame is Frame =>
-  frame !== undefined &&
-  (frame.type === "bytes" ||
-    (frame.type === "array" && frame.length === INDEFINITE) ||
-    (frame.type === "map" &&
-      frame.length === INDEFINITE &&
-      frame.key === undefined));
-
-const completeTag = (tag: bigint, child: Item): Item => {
-  if ((tag === 2n || tag === 3n) && child.kind === Kind.Bytes) {
-    const magnitude = bignumOf(child.raw!);
-    return tag === 2n
-      ? { kind: Kind.UInt, data: new DataI(magnitude) }
-      : { kind: Kind.NegInt, data: new DataI(-1n - magnitude) };
-  }
-  const constr = constrNumberOfTag(tag);
-  if (constr < 0n || child.kind !== Kind.Array) {
-    return { kind: Kind.Tag, data: itemData(child) };
-  }
-  const values = (child.data as DataList).list;
-  if (constr === 102n && tag !== 1375n) {
-    const kinds = child.firstKinds;
-    if (
-      values.length !== 2 ||
-      kinds === undefined ||
-      kinds[0] !== Kind.UInt ||
-      kinds[1] !== Kind.Array
-    ) {
-      throw new Error("invalid fields for CBOR tag 102 Plutus Data");
-    }
-    return {
-      kind: Kind.Tag,
-      data: new DataConstr(
-        (values[0] as DataI).int,
-        (values[1] as DataList).list,
-      ),
-    };
-  }
-  return { kind: Kind.Tag, data: new DataConstr(constr, values) };
-};
-
-export const plutusDataFromCborIterative = (bytes: Uint8Array): Data => {
+/**
+ * The one reader behind both entries. `bytesChunkLimit` bounds a definite
+ * byte string and each indefinite chunk; `undefined` leaves them unbounded.
+ */
+const decodePlutusDataCbor = (
+  bytes: Uint8Array,
+  bytesChunkLimit: bigint | undefined,
+): Data => {
   let offset = 0;
   const byteAt = (at: number): number => {
     if (at >= bytes.length) {
@@ -201,16 +148,15 @@ export const plutusDataFromCborIterative = (bytes: Uint8Array): Data => {
     }
     return bytes[at]!;
   };
-  const take = (length: number): Uint8Array => {
-    if (bytes.length < offset + length) {
-      throw new RangeError("CBOR Plutus Data ends before its item does");
+  const readHead = (): Head => {
+    const initial = byteAt(offset);
+    offset += 1;
+    const major = initial >> 5;
+    const additional = initial & 0x1f;
+    if (additional < 24) {
+      return { major, argument: BigInt(additional), additional };
     }
-    offset += length;
-    return bytes.subarray(offset - length, offset);
-  };
-  const argument = (additional: number): bigint => {
-    if (additional < 24) return BigInt(additional);
-    if (additional === 31) return INDEFINITE;
+    if (additional === 31) return { major, argument: INDEFINITE, additional };
     const width =
       additional === 24
         ? 1
@@ -222,119 +168,238 @@ export const plutusDataFromCborIterative = (bytes: Uint8Array): Data => {
               ? 8
               : 0;
     if (width === 0) {
-      throw new Error("invalid CBOR length encoding in Plutus Data");
+      throw new Error("invalid CBOR additional information in Plutus Data");
     }
-    let value = 0n;
-    for (const byte of take(width)) value = (value << 8n) | BigInt(byte);
-    return value;
+    let argument = 0n;
+    for (let index = 0; index < width; index += 1) {
+      argument = (argument << 8n) | BigInt(byteAt(offset + index));
+    }
+    offset += width;
+    return { major, argument, additional };
+  };
+  /** The payload of a definite byte string whose head was just read. */
+  const definiteBytes = (length: bigint): Uint8Array => {
+    if (bytesChunkLimit !== undefined && length > bytesChunkLimit) {
+      throw new Error("CBOR Plutus Data byte string exceeds 64 bytes");
+    }
+    if (length > BigInt(bytes.length - offset)) {
+      throw new RangeError("CBOR Plutus Data ends before its item does");
+    }
+    const end = offset + Number(length);
+    const raw = bytes.subarray(offset, end);
+    offset = end;
+    return raw;
+  };
+  /** Checks that a definite container's length can fit the input left. */
+  const checkLength = (length: bigint): void => {
+    if (length !== INDEFINITE && length > BigInt(bytes.length - offset)) {
+      throw new RangeError("CBOR Plutus Data container exceeds its input");
+    }
   };
 
   const stack: Frame[] = [];
-  for (;;) {
-    let item: Item | undefined;
-    const top = stack.at(-1);
-    if (acceptsBreak(top) && byteAt(offset) === 0xff) {
-      offset += 1;
-      stack.pop();
-      item = closeItem(top);
-    } else {
-      const head = byteAt(offset);
-      offset += 1;
-      const major = head >> 5;
-      if (major === 3 || major === 7) {
-        throw new Error("invalid CBOR major type for Plutus Data");
-      }
-      const length = argument(head & 0x1f);
-      if (length === INDEFINITE && major < 2) {
-        throw new Error("unexpected indefinite length CBOR element");
-      }
-      if (top?.type === "bytes" && major !== 2) {
-        throw new Error("indefinite CBOR bytes contain a non-bytes chunk");
-      }
-      switch (major) {
-        case 0:
-          item = { kind: Kind.UInt, data: new DataI(length) };
-          break;
-        case 1:
-          item = { kind: Kind.NegInt, data: new DataI(-1n - length) };
-          break;
-        case 2:
-          if (length === INDEFINITE) {
-            stack.push({ type: "bytes", chunks: [] });
-          } else {
-            item = {
-              kind: Kind.Bytes,
-              data: undefined,
-              raw: take(Number(length)),
-            };
-          }
-          break;
-        case 4:
-          if (length > BigInt(bytes.length - offset)) {
-            throw new RangeError("CBOR Plutus Data array exceeds its input");
-          }
-          stack.push({ type: "array", length, values: [], kinds: [] });
-          break;
-        case 5:
-          if (length > BigInt(bytes.length - offset)) {
-            throw new RangeError("CBOR Plutus Data map exceeds its input");
-          }
-          stack.push({ type: "map", length, pairs: [], key: undefined });
-          break;
-        default:
-          stack.push({
-            type: "tag",
-            tag: length === INDEFINITE ? INDEFINITE : BigInt(Number(length)),
-          });
-      }
+
+  /** Opens a list (a constructor's fields when `constructor` is set). */
+  const openList = (
+    head: Head,
+    constructor: Constructor | undefined,
+  ): Data | undefined => {
+    if (head.major !== 4) {
+      throw new Error("CBOR Plutus Data constructor fields are not a list");
     }
-    // Close every definite container that is now full, then deliver the item
-    // to its parents until one of them needs more input.
-    for (;;) {
-      const parent = stack.at(-1);
-      if (item === undefined) {
-        if (
-          parent !== undefined &&
-          (parent.type === "array" || parent.type === "map") &&
-          parent.length === 0n
-        ) {
-          stack.pop();
-          item = closeItem(parent);
-          continue;
+    checkLength(head.argument);
+    const frame: ListFrame = {
+      type: "list",
+      length: head.argument,
+      values: [],
+      constructor,
+    };
+    if (head.argument === 0n) return closeList(frame);
+    stack.push(frame);
+    return undefined;
+  };
+
+  const closeList = (frame: ListFrame): Data => {
+    const { constructor } = frame;
+    if (constructor === undefined) return new DataList(frame.values);
+    if (constructor.breakAfter) {
+      if (byteAt(offset) !== BREAK) {
+        throw new Error("CBOR tag 102 Plutus Data has more than two elements");
+      }
+      offset += 1;
+    }
+    return new DataConstr(constructor.index, frame.values);
+  };
+
+  /** Reads the item after a tag head; undefined when it opened a frame. */
+  const readTagged = (head: Head): Data | undefined => {
+    if (head.argument === INDEFINITE) {
+      throw new Error("invalid indefinite CBOR tag in Plutus Data");
+    }
+    if (head.additional === 2 || head.additional === 3) {
+      const sign = head.additional === 2 ? "positive" : "negative";
+      const payload = readHead();
+      if (payload.major !== 2) {
+        throw new Error("CBOR Plutus Data bignum is not over a byte string");
+      }
+      if (payload.argument === INDEFINITE) {
+        stack.push({ type: "bytes", chunks: [], bignum: sign });
+        return undefined;
+      }
+      return bignumData(sign, definiteBytes(payload.argument));
+    }
+    const tag = head.argument;
+    if (tag === 102n) {
+      const outer = readHead();
+      if (
+        outer.major !== 4 ||
+        (outer.argument !== INDEFINITE && outer.argument !== 2n)
+      ) {
+        throw new Error("CBOR tag 102 Plutus Data is not a two-element array");
+      }
+      const index = readHead();
+      if (index.major !== 0 || index.argument === INDEFINITE) {
+        throw new Error("CBOR tag 102 Plutus Data index is not a word64");
+      }
+      return openList(readHead(), {
+        index: index.argument,
+        breakAfter: outer.argument === INDEFINITE,
+      });
+    }
+    const index = compactConstructorIndex(tag);
+    if (index === undefined) {
+      throw new Error(`unknown CBOR tag ${tag.toString()} in Plutus Data`);
+    }
+    return openList(readHead(), { index, breakAfter: false });
+  };
+
+  /** Reads one item at a value position; undefined when it opened a frame. */
+  const readItem = (): Data | undefined => {
+    const head = readHead();
+    switch (head.major) {
+      case 0:
+      case 1:
+        if (head.argument === INDEFINITE) {
+          throw new Error("invalid indefinite CBOR integer in Plutus Data");
         }
-        break;
+        return new DataI(
+          head.major === 0 ? head.argument : -1n - head.argument,
+        );
+      case 2:
+        if (head.argument === INDEFINITE) {
+          stack.push({ type: "bytes", chunks: [], bignum: undefined });
+          return undefined;
+        }
+        return new DataB(copyOf(definiteBytes(head.argument)));
+      case 4:
+        return openList(head, undefined);
+      case 5: {
+        checkLength(head.argument);
+        if (head.argument === 0n) return new DataMap([]);
+        stack.push({
+          type: "map",
+          length: head.argument,
+          pairs: [],
+          key: undefined,
+        });
+        return undefined;
       }
-      if (parent === undefined) return itemData(item);
-      if (parent.type === "tag") {
-        stack.pop();
-        item = completeTag(parent.tag, item);
-        continue;
+      case 6:
+        return readTagged(head);
+      default:
+        throw new Error("invalid CBOR major type for Plutus Data");
+    }
+  };
+
+  /** Reads one chunk of an indefinite byte string into `frame`. */
+  const readChunk = (frame: BytesFrame): void => {
+    const head = readHead();
+    if (head.major !== 2 || head.argument === INDEFINITE) {
+      throw new Error("indefinite CBOR bytes contain a non-definite chunk");
+    }
+    frame.chunks.push(definiteBytes(head.argument));
+  };
+
+  /** Closes the top frame at a break. */
+  const closeAtBreak = (frame: Frame | undefined): Data => {
+    if (frame === undefined) {
+      throw new Error("unexpected CBOR break in Plutus Data");
+    }
+    switch (frame.type) {
+      case "bytes": {
+        const raw = concatChunks(frame.chunks);
+        return frame.bignum === undefined
+          ? new DataB(raw)
+          : bignumData(frame.bignum, raw);
       }
-      if (parent.type === "bytes") {
-        parent.chunks.push(item.raw!);
-        item = undefined;
-        break;
-      }
-      if (parent.type === "array") {
-        if (parent.values.length < 2) parent.kinds.push(item.kind);
-        parent.values.push(itemData(item));
-        item = undefined;
-        if (BigInt(parent.values.length) !== parent.length) break;
-        stack.pop();
-        item = arrayItem(parent);
-        continue;
-      }
-      if (parent.key === undefined) {
-        parent.key = itemData(item);
-        item = undefined;
-        break;
-      }
-      parent.pairs.push({ fst: parent.key, snd: itemData(item) });
-      parent.key = undefined;
-      item = undefined;
-      if (BigInt(parent.pairs.length) !== parent.length) break;
+      case "list":
+        if (frame.length !== INDEFINITE) break;
+        return closeList(frame);
+      case "map":
+        if (frame.length !== INDEFINITE || frame.key !== undefined) break;
+        return new DataMap(frame.pairs);
+    }
+    throw new Error("unexpected CBOR break in Plutus Data");
+  };
+
+  for (;;) {
+    let item: Data | undefined;
+    const top = stack.at(-1);
+    if (byteAt(offset) === BREAK) {
+      offset += 1;
       stack.pop();
-      item = mapItem(parent);
+      item = closeAtBreak(top);
+    } else if (top?.type === "bytes") {
+      readChunk(top);
+    } else {
+      item = readItem();
+    }
+    // Deliver the item to its parents until one of them needs more input.
+    while (item !== undefined) {
+      const parent = stack.at(-1);
+      if (parent === undefined) {
+        if (offset !== bytes.length) {
+          throw new Error("trailing bytes after CBOR Plutus Data");
+        }
+        return item;
+      }
+      if (parent.type === "list") {
+        parent.values.push(item);
+        item = undefined;
+        if (BigInt(parent.values.length) === parent.length) {
+          stack.pop();
+          item = closeList(parent);
+        }
+      } else if (parent.type === "map") {
+        if (parent.key === undefined) {
+          parent.key = item;
+          item = undefined;
+        } else {
+          parent.pairs.push({ fst: parent.key, snd: item });
+          parent.key = undefined;
+          item = undefined;
+          if (BigInt(parent.pairs.length) === parent.length) {
+            stack.pop();
+            item = new DataMap(parent.pairs);
+          }
+        }
+      } else {
+        throw new Error("a CBOR byte string chunk is not a Plutus Data item");
+      }
     }
   }
 };
+
+/**
+ * Decodes `bytes` exactly as the Cardano ledger decodes Plutus Data. Use it
+ * for anything claimed to be Plutus Data.
+ */
+export const plutusDataFromCborIterative = (bytes: Uint8Array): Data =>
+  decodePlutusDataCbor(bytes, CARDANO_PLUTUS_DATA_BYTES_CHUNK_LIMIT);
+
+/**
+ * Decodes Midgard-internal wire: the rules of `plutusDataFromCborIterative`
+ * without the 64-byte bound on a byte string or chunk.
+ */
+export const midgardEnvelopeDataFromCborIterative = (bytes: Uint8Array): Data =>
+  decodePlutusDataCbor(bytes, undefined);

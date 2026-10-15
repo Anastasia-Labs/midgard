@@ -109,3 +109,9 @@ test builtin_value_hash_refuses_an_unresolved_tag() fail {
     cek_proof_v1.empty_sequence_root_v1,
   ) != #""
 }
+
+// The empty blob commits as a single chunk whose preimage is `40`, the
+// canonical encoding of the empty byte string.
+test the_empty_blob_root_is_one_chunk() {
+  cek_proof_v1.bounded_blob_root_v1(#"") == cek_proof_v1.hash_blob_chunk_v1(#"")
+}

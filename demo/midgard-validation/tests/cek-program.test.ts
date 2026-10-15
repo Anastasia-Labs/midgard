@@ -155,7 +155,7 @@ describe("canonical V1 CEK programs", () => {
       UPLCEncoder.compile(new UPLCProgram([1, 0, 0], new Constr(0, []))),
     );
     expect(() => buildMidgardCanonicalCekProgram(constrUnder100)).toThrow(
-      /1\.0\.0 does not admit constr or case/u,
+      /constrOrCaseBeforeV110/u,
     );
     expect(
       buildMidgardCanonicalCekProgram(
@@ -196,7 +196,7 @@ describe("canonical V1 CEK programs", () => {
     // A polymorphic builtin with too few or too many forces directly around
     // it is not the canonical UPLC 1.1.0 encoding.
     expect(() =>
-      buildMidgardCanonicalCekProgram(Buffer.from("0101007430", "hex")),
+      buildMidgardCanonicalCekProgram(Buffer.from("0101007421", "hex")),
     ).toThrow(/exactly the builtin forces/u);
     expect(() =>
       buildMidgardCanonicalCekProgram(Buffer.from("010100557421", "hex")),
