@@ -153,7 +153,7 @@ describe("midgard contracts registry", () => {
             .digest("hex"),
         )
         .toBe(
-          "f62cceca257103254f5eb4bed2c6c725682b561be8dc1265b0ed893545af0089",
+          "ccad268d5303c037a09712950eb09a86a0a7e51fcce0168eb5103a8cb5675fde",
         );
       // Includes current streamed Data/W1 metadata plus escape-hatch field
       // retirement and the hub witness's paired script bytes. The independently
