@@ -990,9 +990,9 @@ fn verify_signature_v1(
     builtin.verify_ecdsa_secp256k1_signature(key, message, signature)
   } else {
     expect tag == 53
+    // BIP-340 signs a message of any length.
     expect and {
         bytearray.length(key) == 32,
-        bytearray.length(message) == 32,
         bytearray.length(signature) == 64,
       }
     builtin.verify_schnorr_secp256k1_signature(key, message, signature)
@@ -3365,43 +3365,57 @@ fn outside_int64_v1(value: Int) -> Bool {
   }
 }
 
+/// The form `bytes_v1` reads: an inline byte-string constant.
+fn is_inline_bytes_v1(value: ValueWitnessV1) -> Bool {
+  when value is {
+    ConstantValue(witness) -> and {
+        cek_constant_v1.constant_type_v1(witness) == cek_constant_v1.ByteStringConstant,
+        data_is_bytes(cek_constant_v1.constant_payload_v1(witness)),
+      }
+    _ -> False
+  }
+}
+
 fn malformed_signature_lengths_v1(
   tag: Int,
   arguments: List<ValueWitnessV1>,
 ) -> Bool {
   expect [key_value, message_value, signature_value] = arguments
   let key_length = bytearray.length(bytes_v1(key_value))
-  let message_length = bytearray.length(bytes_v1(message_value))
   let signature_length = bytearray.length(bytes_v1(signature_value))
-  if tag == 21 {
-    or {
-      key_length != 32,
-      signature_length != 64,
-    }
-  } else if tag == 52 {
-    if or {
-      key_length != 33,
-      message_length != 32,
-      signature_length != 64,
-    } {
-      True
-    } else {
+  // Every message is a byte string; only ECDSA fixes its length (BIP-340
+  // and Ed25519 sign messages of any length).
+  and {
+    is_inline_bytes_v1(message_value),
+    if tag == 21 {
       or {
-        !secp256k1_public_key_is_valid_v1(tag, bytes_v1(key_value)),
-        ecdsa_signature_scalar_overflows_v1(bytes_v1(signature_value)),
+        key_length != 32,
+        signature_length != 64,
       }
-    }
-  } else {
-    expect tag == 53
-    if or {
-      key_length != 32,
-      message_length != 32,
-      signature_length != 64,
-    } {
-      True
+    } else if tag == 52 {
+      if or {
+        key_length != 33,
+        bytearray.length(bytes_v1(message_value)) != 32,
+        signature_length != 64,
+      } {
+        True
+      } else {
+        or {
+          !secp256k1_public_key_is_valid_v1(tag, bytes_v1(key_value)),
+          ecdsa_signature_scalar_overflows_v1(bytes_v1(signature_value)),
+        }
+      }
     } else {
-      !secp256k1_public_key_is_valid_v1(tag, bytes_v1(key_value))
-    }
+      expect tag == 53
+      if or {
+        key_length != 32,
+        signature_length != 64,
+      } {
+        True
+      } else {
+        !secp256k1_public_key_is_valid_v1(tag, bytes_v1(key_value))
+      }
+    },
   }
 }
 

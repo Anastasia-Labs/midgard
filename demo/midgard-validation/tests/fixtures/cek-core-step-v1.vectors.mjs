@@ -116,6 +116,24 @@ const millerLoop = () =>
     new Application(g2Uncompress(), g2Compressed()),
   );
 
+/**
+ * BIP-340 test vector 17 (bitcoin/bips bip-0340/test-vectors.csv): a valid
+ * signature over a 17-byte message. BIP-340 signs a message of any length.
+ */
+const schnorrVerify17ByteMessage = () =>
+  [
+    "778caa53b4393ac467774d09497a87224bf9fab6f6e68b23086497324d6fd117",
+    "0102030405060708090a0b0c0d0e0f1011",
+    "5130f39a4059b43bc7cac09a19ece52b5d8699d1a71e3c52da9afdb6b50ac370c4a482b77bf960f8681540e25b6771ece1e5a37fd80e5a51897c5566a97ea5a5",
+  ].reduce(
+    (term, argument) =>
+      new Application(
+        term,
+        UPLCConst.byteString(new DataB(Buffer.from(argument, "hex")).bytes),
+      ),
+    Builtin.verifySchnorrSecp256k1Signature,
+  );
+
 const selfApplication = () =>
   new Lambda(new Application(new UPLCVar(0), new UPLCVar(0)));
 
@@ -271,6 +289,13 @@ export const CEK_CORE_STEP_PROGRAMS = [
           UPLCConst.int(0),
         ),
       ),
+    context: EMPTY_CONTEXT,
+    maxSteps: 64,
+  },
+  {
+    label: "schnorr_message_17_bytes",
+    note: "executeBuiltinDirect on verifySchnorrSecp256k1Signature over a 17-byte message",
+    term: () => new Lambda(schnorrVerify17ByteMessage()),
     context: EMPTY_CONTEXT,
     maxSteps: 64,
   },
