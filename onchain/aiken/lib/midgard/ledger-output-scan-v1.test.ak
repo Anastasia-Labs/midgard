@@ -282,6 +282,19 @@ fn terminal_control() -> ledger_output_scan_v1.LedgerOutputScanControlV1 {
   ledger_output_scan_v1.decode_control_v1(cross_language_terminal_control_cbor)
 }
 
+/// Well formedness does not require the reference-script span to reach the
+/// output boundary; the terminal predicate must still enforce that equality.
+test terminal_refuses_a_reference_script_span_short_of_the_output() {
+  let terminal = terminal_control()
+  expect ledger_output_scan_v1.terminal_is_exact_v1(terminal, 11249)
+  let shortened = ledger_output_scan_v1.LedgerOutputScanControlV1 {
+    ..terminal,
+    reference_script_length: terminal.reference_script_length - 1,
+  }
+  expect ledger_output_scan_v1.control_is_well_formed(shortened)
+  !ledger_output_scan_v1.terminal_is_exact_v1(shortened, 11249)
+}
+
 /// `terminal_is_exact_v1` leaves to `control_is_well_formed` every condition
 /// that predicate decides, so each malformed terminal control below must be
 /// refused through it.
