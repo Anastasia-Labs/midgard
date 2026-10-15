@@ -1,12 +1,17 @@
 import { describe, expect, it } from "vitest";
 
+import { SELECTED_DEPLOYMENT_PROFILE } from "../src/deployment-profile.js";
 import {
   buildMidgardValidationTraceTree,
   canOpenMidgardValidationCase,
   enterMidgardValidationDisputeResolution,
   MIDGARD_CONSENSUS_LIMITS,
+  MIDGARD_VALIDATION_DISPUTE_MAX_DURATION_MS,
+  MIDGARD_VALIDATION_DISPUTE_MAX_THREAD_CHARGED_MOVES,
   MIDGARD_VALIDATION_DISPUTE_MAX_VALIDITY_RANGE_MS,
+  MIDGARD_VALIDATION_DISPUTE_RESOLUTION_ALLOWANCE_MS,
   MIDGARD_VALIDATION_DISPUTE_SIDE_CLOCK_MS,
+  MIDGARD_VALIDATION_DISPUTE_THREAD_FEE_RESERVE_LOVELACE,
   MIDGARD_VALIDATION_NO_REJECTION_CODE_HASH,
   openMidgardValidationDispute,
   revealMidgardValidationChallengerMidpoint,
@@ -123,7 +128,23 @@ describe("validation dispute orchestration", () => {
           awaitingChallenger.challengerClockMs +
           1,
       }),
-    ).toBe("operator");
+    ).toBe("defender");
+  });
+
+  it("charges a thread at most 2·rounds + 3 moves, which size D_case and the reserve", () => {
+    expect(MIDGARD_CONSENSUS_LIMITS.maxValidationBisectionRounds).toBe(32);
+    expect(MIDGARD_VALIDATION_DISPUTE_MAX_THREAD_CHARGED_MOVES).toBe(67);
+    expect(MIDGARD_VALIDATION_DISPUTE_MAX_DURATION_MS).toBe(
+      2 * MIDGARD_VALIDATION_DISPUTE_SIDE_CLOCK_MS +
+        134 * MIDGARD_VALIDATION_DISPUTE_MAX_VALIDITY_RANGE_MS +
+        MIDGARD_VALIDATION_DISPUTE_RESOLUTION_ALLOWANCE_MS,
+    );
+    expect(MIDGARD_VALIDATION_DISPUTE_THREAD_FEE_RESERVE_LOVELACE).toBe(
+      67n *
+        BigInt(
+          SELECTED_DEPLOYMENT_PROFILE.limits.max_dispute_move_fee_lovelace,
+        ),
+    );
   });
 
   it("opens a case up to block_end + M/2 inclusive", () => {
@@ -283,5 +304,11 @@ describe("validation dispute orchestration", () => {
         currentTimeLower: 70 + entered.challengerClockMs,
       }),
     ).toThrow(/has not run out/u);
+    expect(
+      timeoutMidgardValidationDispute({
+        dispute: entered,
+        currentTimeLower: 70 + entered.challengerClockMs + 1,
+      }),
+    ).toBe("defender");
   });
 });

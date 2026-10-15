@@ -21,13 +21,27 @@ export const MIDGARD_VALIDATION_DISPUTE_RESOLUTION_ALLOWANCE_MS =
   SELECTED_DEPLOYMENT_PROFILE.timing.dispute_resolution_allowance_ms;
 export const MIDGARD_VALIDATION_DISPUTE_MAX_BISECTION_ROUNDS =
   MIDGARD_CONSENSUS_LIMITS.maxValidationBisectionRounds;
-/** `2C + 2(2·rounds + 2)·L_d + R`, mirroring the validator's bound. */
+/**
+ * The most clock-charged moves a thread can make: the defense post, every
+ * reveal on both sides, the ReadyForOneStep exit and the late landing of the
+ * last timeout or exit (`2·rounds + 3`).
+ */
+export const MIDGARD_VALIDATION_DISPUTE_MAX_THREAD_CHARGED_MOVES =
+  2 * MIDGARD_VALIDATION_DISPUTE_MAX_BISECTION_ROUNDS + 3;
+/** D_case = `2C + 2(2·rounds + 3)·L_d + R`, mirroring the validator's bound. */
 export const MIDGARD_VALIDATION_DISPUTE_MAX_DURATION_MS =
   2 * MIDGARD_VALIDATION_DISPUTE_SIDE_CLOCK_MS +
   2 *
-    (2 * MIDGARD_VALIDATION_DISPUTE_MAX_BISECTION_ROUNDS + 2) *
+    MIDGARD_VALIDATION_DISPUTE_MAX_THREAD_CHARGED_MOVES *
     MIDGARD_VALIDATION_DISPUTE_MAX_VALIDITY_RANGE_MS +
   MIDGARD_VALIDATION_DISPUTE_RESOLUTION_ALLOWANCE_MS;
+/**
+ * The fee reserve the defender posts with each thread: every charged move at
+ * the per-move cap, mirroring the validator's `thread_fee_reserve_lovelace`.
+ */
+export const MIDGARD_VALIDATION_DISPUTE_THREAD_FEE_RESERVE_LOVELACE =
+  BigInt(MIDGARD_VALIDATION_DISPUTE_MAX_THREAD_CHARGED_MOVES) *
+  BigInt(SELECTED_DEPLOYMENT_PROFILE.limits.max_dispute_move_fee_lovelace);
 
 export type MidgardValidationDisputeTurn =
   | {
@@ -60,7 +74,7 @@ export type MidgardValidationDispute = {
 };
 
 export type MidgardValidationDisputeWinner =
-  | "operator"
+  | "defender"
   | "challenger"
   | "neither";
 
@@ -356,6 +370,8 @@ export const enterMidgardValidationDisputeResolution = ({
 /**
  * The side to move loses once its whole remaining clock has passed since the
  * turn started, read from the timeout transaction's lower bound.
+ * ReadyForOneStep is the challenger's turn, since only the challenger can exit
+ * it, so its timeout is the defender's win.
  */
 export const timeoutMidgardValidationDispute = ({
   dispute,
@@ -377,9 +393,8 @@ export const timeoutMidgardValidationDispute = ({
     case "awaitingOperator":
       return "challenger";
     case "awaitingChallenger":
-      return "operator";
     case "readyForOneStep":
-      return "neither";
+      return "defender";
   }
 };
 

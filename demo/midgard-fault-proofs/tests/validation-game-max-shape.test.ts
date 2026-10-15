@@ -14,33 +14,30 @@ import {
   hashMidgardValidationMachineState,
   MIDGARD_VALIDATION_DISPUTE_MAX_DURATION_MS,
   MIDGARD_VALIDATION_DISPUTE_MAX_VALIDITY_RANGE_MS,
-  type MidgardValidationDispute,
 } from "@al-ft/midgard-core";
 import { SELECTED_DEPLOYMENT_PROFILE } from "@al-ft/midgard-core/deployment-profile";
-import {
-  DisputeBond,
-  DisputeBondSpendRedeemer,
-  protocolTreasuryAddress,
-} from "@al-ft/midgard-sdk";
-import {
-  Data,
-  mintingPolicyToId,
-  type TxSignBuilder,
-  type UTxO,
-} from "@lucid-evolution/lucid";
+import { DisputeBondSpendRedeemer } from "@al-ft/midgard-sdk";
+import { Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
+import { expectOnchainRefusal } from "./support/submit-init-emulator-shared.js";
 import {
-  expectOnchainRefusal,
-  measureCompleteSignedTransaction,
-  network,
-} from "./support/submit-init-emulator-shared.js";
-import {
-  sparseTrace,
-  type DeepGameTraces,
   deepDivergentTraces,
   deepTerminalPaddingTraces,
+  sparseTrace,
 } from "./support/validation-game-deep-traces.js";
+import {
+  bondLovelace,
+  bondSpend,
+  lovelaceOf,
+  playReveals,
+  report,
+  setUpMaxShape,
+  spendWholeClock,
+  submitBuilt,
+  threadLovelace,
+  treasuryAddress,
+} from "./support/validation-game-max-shape-scene.js";
 import {
   awardFinalizeMove,
   awardTerminalPaddingMove,
@@ -50,214 +47,23 @@ import {
   enterResolution,
   nextReveal,
   options,
-  type Thread,
 } from "./support/validation-game-play.js";
 import {
   buildMove,
   cap,
   createdAt,
-  deploy,
   fraudProofOutputLovelace,
   gameDatum,
-  type GameScene,
   type Move,
-  seedThreads,
-  setUpGameScene,
   tagOf,
 } from "./support/validation-game-scene.js";
 import {
   machineState,
-  openGame,
   type TraceSide,
 } from "./support/validation-game-traces.js";
 
-const BOND_TITLE = "fraud_proofs/validation_trace/dispute_bond_v1.main.spend";
-const bondLovelace = 10_000_000_000n;
-const timing = SELECTED_DEPLOYMENT_PROFILE.timing;
 const maxBisectionRounds =
   SELECTED_DEPLOYMENT_PROFILE.limits.max_bisection_rounds;
-
-/** Every move the game reserve pays for: all reveals, entry, the boundary. */
-const reservedMoves = BigInt(2 * maxBisectionRounds + 2);
-
-/** What VerifySource leaves on the thread: the record, the reserve, change. */
-const threadLovelace =
-  fraudProofOutputLovelace + reservedMoves * cap + 3_000_000n;
-
-const lovelaceOf = (utxo: UTxO) => BigInt(utxo.assets.lovelace ?? 0n);
-
-type Budget = ReturnType<typeof measureCompleteSignedTransaction>;
-
-type MaxShapeScene = GameScene & {
-  readonly thread: Thread;
-  readonly bond: UTxO;
-  readonly bondScript: GameScene["game"];
-  readonly forfeitAfter: number;
-};
-
-/**
- * The game thread VerifySource opens, and the bond it locks, for `traces`.
- * The challenged block ends when the scene starts, so the bond's
- * `forfeit_after` is that instant plus maturity, both clocks and the
- * resolution allowance.
- */
-const setUpMaxShape = async (
-  traces: DeepGameTraces,
-): Promise<MaxShapeScene> => {
-  const scene = await setUpGameScene();
-  const blockEnd = scene.emulator.now();
-  const forfeitAfter =
-    blockEnd +
-    timing.block_maturity_ms +
-    2 * timing.dispute_side_clock_ms +
-    timing.dispute_resolution_allowance_ms;
-  const bondScript = deploy(BOND_TITLE, [
-    mintingPolicyToId(scene.fraudProofPolicy),
-  ]);
-  const dispute = openGame(traces, scene.emulator.now());
-  const [threadUtxo] = await seedThreads(
-    scene,
-    scene.game.address,
-    [gameDatum(scene, dispute)],
-    threadLovelace,
-  );
-  const bondTx = await scene.lucid
-    .newTx()
-    .pay.ToContract(
-      bondScript.address,
-      {
-        kind: "inline",
-        value: Data.to(
-          {
-            challenged_header_hash: "aa".repeat(28),
-            fraud_prover: scene.proverKey,
-            forfeit_after: BigInt(forfeitAfter),
-          },
-          DisputeBond,
-        ),
-      },
-      { lovelace: bondLovelace },
-    )
-    .complete();
-  const bondHash = await (await bondTx.sign.withWallet().complete()).submit();
-  await scene.lucid.awaitTx(bondHash);
-  const bond = (await scene.lucid.utxosAt(bondScript.address))[0]!;
-  return {
-    ...scene,
-    thread: { utxo: threadUtxo!, dispute },
-    bond,
-    bondScript,
-    forfeitAfter,
-  };
-};
-
-/** Signs with the wallet (and the prover when named), submits, measures. */
-const submitBuilt = async (
-  scene: GameScene,
-  built: TxSignBuilder,
-  proverSigns: boolean,
-): Promise<{ readonly hash: string; readonly budget: Budget }> => {
-  let signing = built.sign.withWallet();
-  if (proverSigns)
-    signing = signing.sign.withPrivateKey(scene.proverSigningKey);
-  const signed = await signing.complete();
-  const budget = measureCompleteSignedTransaction(signed.toCBOR());
-  const hash = await signed.submit();
-  await scene.lucid.awaitTx(hash);
-  return { hash, budget };
-};
-
-/** The move with the larger CPU budget. */
-const heavier = (left: Budget | undefined, right: Budget) =>
-  left === undefined || right.executionSteps > left.executionSteps
-    ? right
-    : left;
-
-/**
- * Plays honest reveals by a third party, each paying the capped fee from
- * the thread, until `stop` holds for the next honest successor. `wait` runs
- * before each move and may advance the clock.
- */
-const playReveals = async (
-  scene: GameScene,
-  traces: DeepGameTraces,
-  opened: Thread,
-  stop: (next: MidgardValidationDispute) => boolean,
-  wait: (dispute: MidgardValidationDispute) => void = () => undefined,
-): Promise<{ readonly thread: Thread; readonly heaviest?: Budget }> => {
-  let thread = opened;
-  let heaviest: Budget | undefined;
-  for (;;) {
-    wait(thread.dispute);
-    const from = scene.emulator.now();
-    const { action, next } = nextReveal(traces, thread.dispute, from);
-    if (stop(next)) return { thread, heaviest };
-    const built = await buildMove(
-      scene,
-      gameMove(scene, thread.utxo, action, next, options(from)),
-    );
-    const { hash, budget } = await submitBuilt(scene, built, false);
-    heaviest = heavier(heaviest, budget);
-    thread = { utxo: await createdAt(scene, hash, 0), dispute: next };
-    if (next.turn.type === "readyForOneStep") return { thread, heaviest };
-  }
-};
-
-const bondSpend = (
-  scene: MaxShapeScene,
-  redeemer: string,
-  destination: string,
-  references: readonly UTxO[],
-  validFrom?: number,
-) => {
-  let tx = scene.lucid.newTx();
-  if (references.length > 0) tx = tx.readFrom([...references]);
-  tx = tx
-    .collectFrom([scene.bond], redeemer)
-    .pay.ToAddressWithData(
-      destination,
-      { kind: "inline", value: tagOf(scene.bond) },
-      { lovelace: lovelaceOf(scene.bond) - cap },
-    );
-  if (validFrom !== undefined) tx = tx.validFrom(validFrom);
-  // The lone bond pays exactly the cap: no change output; the wallet only
-  // supplies collateral.
-  return tx.attach
-    .SpendingValidator(scene.bondScript.script)
-    .setMinFee(cap)
-    .complete({ coinSelection: false, localUPLCEval: true });
-};
-
-const treasuryAddress = () =>
-  protocolTreasuryAddress(
-    network,
-    SELECTED_DEPLOYMENT_PROFILE.protocol_treasury_native_script,
-  );
-
-/**
- * Makes each side's first move as late as its clock allows while keeping one
- * slot for the rest: a prompt move lands one slot-step after the previous
- * move's upper bound and is charged that millisecond.
- */
-const spendWholeClock =
-  (scene: GameScene) => (dispute: MidgardValidationDispute) => {
-    if (dispute.round !== 0) return;
-    const clock =
-      dispute.turn.type === "awaitingOperator"
-        ? dispute.operatorClockMs
-        : dispute.challengerClockMs;
-    const slots =
-      Math.floor(
-        (dispute.turnStartedAt + clock - scene.emulator.now()) / 1000,
-      ) - 1;
-    if (slots > 0) scene.emulator.awaitSlot(slots);
-  };
-
-const report = (label: string, depth: number, budget: Budget | undefined) =>
-  console.log(
-    `max-shape ${label} depth=${depth} bytes=${budget?.completeSignedBytes} ` +
-      `mem=${budget?.executionMemory} steps=${budget?.executionSteps}`,
-  );
 
 describe("sparse trace", () => {
   it("commits exactly what the core trace tree commits, for every index", () => {
