@@ -19,12 +19,19 @@ import {
   MidgardCekErrorCodes,
   verifyMidgardCekCoreStep,
 } from "../src/cek-machine.js";
-import { encodeMidgardCekCardanoFlatProgram } from "../src/cek-program.cardano-flat.js";
+import {
+  CardanoFlatRefusal,
+  encodeMidgardCekCardanoFlatProgram,
+} from "../src/cek-program.cardano-flat.js";
 import {
   buildMidgardCanonicalCekProgram,
   buildMidgardCanonicalScriptArtifact,
 } from "../src/cek-program.js";
 import { plutusDataFromCborIterative } from "../src/plutus-data-iterative.decode.js";
+import {
+  DATA_DECODER_ACCEPTED,
+  DATA_DECODER_REFUSED,
+} from "./cek-program.data-constant-spelling.vectors.js";
 
 /**
  * The Cardano ledger reads a Data constant inside a script's Flat bytes with
@@ -95,11 +102,23 @@ const programView = (flat: Buffer) => {
   };
 };
 
+/** The detail of the `invalidData` refusal building the program raises. */
+const invalidDataRefusal = (flat: Buffer): string => {
+  try {
+    buildMidgardCanonicalCekProgram(flat);
+  } catch (error) {
+    expect(error).toBeInstanceOf(CardanoFlatRefusal);
+    expect((error as CardanoFlatRefusal).refusal).toBe("invalidData");
+    return `${(error as CardanoFlatRefusal).bitOffset}: ${(error as CardanoFlatRefusal).detail}`;
+  }
+  throw new Error("the program was accepted");
+};
+
 /**
  * Runs the program in proof mode and checks every recorded step. Each program
  * returns its builtin's result rather than unit, so the machine charges the
  * whole run and then halts with the non-unit error a PlutusV3 script fails
- * with; the result is read from the builtin step.
+ * with; the result is read from the last builtin step.
  */
 const prove = (flat: Buffer) => {
   const { program } = programView(flat);
@@ -118,11 +137,13 @@ const prove = (flat: Buffer) => {
       verifyMidgardCekCoreStep(step.pre, step.post, step.witness),
     ),
   ).toBe(true);
-  const builtinStep = execution.steps.find(
-    (step) =>
-      step.witness.kind === "executeBuiltinDirect" ||
-      step.witness.kind === "executeBuiltinSemantic",
-  );
+  const builtinStep = [...execution.steps]
+    .reverse()
+    .find(
+      (step) =>
+        step.witness.kind === "executeBuiltinDirect" ||
+        step.witness.kind === "executeBuiltinSemantic",
+    );
   let result: unknown;
   if (
     builtinStep !== undefined &&
@@ -201,20 +222,27 @@ describe("Data constants spelled as the Cardano ledger accepts them", () => {
     expect(run).toEqual(prove(spelledFlat(equalsDataTerm(), ["20", "20"])));
   });
 
-  it("refuses every spelling the Plutus Data decoder refuses", () => {
-    for (const refused of [
-      "6161", // a text string
-      "d80241" + "01", // tag 2 under a one-byte-extended head
-      "5841" + "00".repeat(65), // a definite byte string over 64 bytes
-      "0100", // trailing bytes
-    ]) {
-      expect(() =>
-        buildMidgardCanonicalCekProgram(
-          spelledFlat(serialiseDataTerm(), [refused]),
-        ),
-      ).toThrow();
-    }
-  });
+  it.each([
+    ["a text string", "6161", "invalid CBOR major type for Plutus Data"],
+    [
+      "tag 2 under a one-byte-extended head",
+      "d80241" + "01",
+      "unknown CBOR tag 2 in Plutus Data",
+    ],
+    [
+      "a definite byte string over 64 bytes",
+      "5841" + "00".repeat(65),
+      "CBOR Plutus Data byte string exceeds 64 bytes",
+    ],
+    ["trailing bytes", "0100", "trailing bytes after CBOR Plutus Data"],
+  ])(
+    "refuses %s as the Plutus Data decoder does",
+    (_label, refused, detail) => {
+      expect(
+        invalidDataRefusal(spelledFlat(serialiseDataTerm(), [refused])),
+      ).toBe(`49: ${detail}`);
+    },
+  );
 
   it("refuses a constant witness that carries a non-canonical spelling", () => {
     const spelled = programView(spelledFlat(serialiseDataTerm(), ["c24101"]));
@@ -426,6 +454,24 @@ describe("raw Flat programs the Cardano evaluator accepted", () => {
       const run = prove(bytes(flat));
       expect(cardanoResult(run.result)).toBe(result);
       expect(`${run.cpu}/${run.memory}`).toBe(budget);
+    },
+  );
+});
+
+describe("Data decoder boundaries the Cardano evaluator drew", () => {
+  it.each(DATA_DECODER_ACCEPTED)(
+    "%s gives Cardano's result and budget",
+    (_label, flat, result, budget) => {
+      const run = prove(bytes(flat));
+      expect(cardanoResult(run.result)).toBe(result);
+      expect(`${run.cpu}/${run.memory}`).toBe(budget);
+    },
+  );
+
+  it.each(DATA_DECODER_REFUSED)(
+    "%s is refused as Cardano refuses it",
+    (_label, flat, _cardano, bitOffset, detail) => {
+      expect(invalidDataRefusal(bytes(flat))).toBe(`${bitOffset}: ${detail}`);
     },
   );
 });
