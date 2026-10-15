@@ -6,6 +6,7 @@ import "./cek-data-tree.js";
 import "./plutus-data-narrowing.js";
 import "./cek-constant.semantic-data.js";
 import "./cek-constant.value.js";
+import "./cek-constant.pv11-classes.js";
 import "./cek-constant.payload-matches-type.js";
 import "./cek-constant.semantic-uplc-constant.js";
 export {
@@ -14,6 +15,10 @@ export {
   encodeMidgardCekConstantTypeCbor,
   midgardCekConstantTypeFlatSize,
 } from "./cek-constant.payload-matches-type.js";
+export {
+  MIDGARD_CEK_MAX_CONSTANT_TYPE_FLAT_SIZE,
+  midgardCekConstantHoldsBlsValue,
+} from "./cek-constant.pv11-classes.js";
 export {
   MIDGARD_CEK_MAX_DIRECT_CONSTANT_PAYLOAD_BYTES,
   type MidgardCekCanonicalConstant,

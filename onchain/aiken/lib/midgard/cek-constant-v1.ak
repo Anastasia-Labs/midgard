@@ -119,6 +119,48 @@ pub fn constant_type_flat_size_v1(constant_type: ConstantTypeV1) -> Int {
   }
 }
 
+/// Cardano's PV 11 bound on a constant type's flat size (`mbHeader`).
+pub const max_constant_type_flat_size = 32
+
+/// True when a program constant holds a BLS value that Cardano's flat decoder
+/// would have to read: a BLS constant, a BLS pair component, or an element of
+/// a non-empty list or array, at any nesting. An empty BLS-typed list holds
+/// none, because the decoder never reads its element type's values.
+pub fn constant_holds_bls_value_v1(
+  constant_type: ConstantTypeV1,
+  payload: Data,
+) -> Bool {
+  when constant_type is {
+    BlsG1Constant -> True
+    BlsG2Constant -> True
+    BlsMillerLoopResultConstant -> True
+    ListConstant { element } -> items_hold_bls_value(element, payload)
+    ArrayConstant { element } -> items_hold_bls_value(element, payload)
+    PairConstant { first, second } ->
+      if is_data_constr(payload) {
+        when builtin.un_constr_data(payload).2nd is {
+          [first_value, second_value] -> or {
+              constant_holds_bls_value_v1(first, first_value),
+              constant_holds_bls_value_v1(second, second_value),
+            }
+          _ -> False
+        }
+      } else {
+        False
+      }
+    _ -> False
+  }
+}
+
+fn items_hold_bls_value(element: ConstantTypeV1, payload: Data) -> Bool {
+  if is_data_list(payload) {
+    builtin.un_list_data(payload)
+      |> list.any(fn(item) { constant_holds_bls_value_v1(element, item) })
+  } else {
+    False
+  }
+}
+
 pub fn decode_constant_payload_v1(payload_cbor: ByteArray) -> Data {
   expect bytearray.length(payload_cbor) <= max_direct_payload_bytes
   // stdlib's streaming CBOR decoder rejects a top-level zero-length byte

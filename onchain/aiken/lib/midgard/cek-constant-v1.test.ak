@@ -281,3 +281,93 @@ test constant_type_flat_size_counts_type_application_tags() {
 test value_and_array_type_tags_decode_and_tag_14_does_not() fail {
   cek_constant_v1.constant_type_is_known_v1(#"9f0eff")
 }
+
+const g1_point =
+  builtin.b_data(
+    #"c00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+  )
+
+fn pair_of(first: Data, second: Data) -> Data {
+  builtin.constr_data(0, [first, second])
+}
+
+test constant_type_flat_size_bound_is_32() {
+  let list_of = fn(element) { cek_constant_v1.ListConstant { element } }
+  let deep = list.foldl(
+    list.range(1, 15),
+    cek_constant_v1.IntegerConstant,
+    fn(_, element) { list_of(element) },
+  )
+  and {
+    cek_constant_v1.max_constant_type_flat_size == 32,
+    cek_constant_v1.constant_type_flat_size_v1(deep) == 31,
+    cek_constant_v1.constant_type_flat_size_v1(list_of(deep)) == 33,
+  }
+}
+
+test bls_values_are_found_at_any_nesting() {
+  let g1 = cek_constant_v1.BlsG1Constant
+  let int = cek_constant_v1.IntegerConstant
+  let one = builtin.i_data(1)
+  let empty = builtin.list_data([])
+  and {
+    cek_constant_v1.constant_holds_bls_value_v1(g1, g1_point),
+    cek_constant_v1.constant_holds_bls_value_v1(
+      cek_constant_v1.PairConstant { first: int, second: g1 },
+      pair_of(one, g1_point),
+    ),
+    cek_constant_v1.constant_holds_bls_value_v1(
+      cek_constant_v1.ListConstant { element: g1 },
+      builtin.list_data([g1_point]),
+    ),
+    cek_constant_v1.constant_holds_bls_value_v1(
+      cek_constant_v1.ArrayConstant { element: g1 },
+      builtin.list_data([g1_point]),
+    ),
+    cek_constant_v1.constant_holds_bls_value_v1(
+      cek_constant_v1.ListConstant {
+        element: cek_constant_v1.ListConstant { element: g1 },
+      },
+      builtin.list_data([empty, builtin.list_data([g1_point])]),
+    ),
+    cek_constant_v1.constant_holds_bls_value_v1(
+      cek_constant_v1.ListConstant {
+        element: cek_constant_v1.PairConstant { first: g1, second: int },
+      },
+      builtin.list_data([pair_of(g1_point, one)]),
+    ),
+  }
+}
+
+test empty_bls_lists_hold_no_bls_value() {
+  let g1 = cek_constant_v1.BlsG1Constant
+  let int = cek_constant_v1.IntegerConstant
+  let empty = builtin.list_data([])
+  and {
+    !cek_constant_v1.constant_holds_bls_value_v1(
+      cek_constant_v1.ListConstant { element: g1 },
+      empty,
+    ),
+    !cek_constant_v1.constant_holds_bls_value_v1(
+      cek_constant_v1.ArrayConstant { element: cek_constant_v1.BlsG2Constant },
+      empty,
+    ),
+    !cek_constant_v1.constant_holds_bls_value_v1(
+      cek_constant_v1.ListConstant {
+        element: cek_constant_v1.ListConstant { element: g1 },
+      },
+      builtin.list_data([empty, empty]),
+    ),
+    !cek_constant_v1.constant_holds_bls_value_v1(
+      cek_constant_v1.PairConstant {
+        first: cek_constant_v1.ListConstant { element: g1 },
+        second: int,
+      },
+      pair_of(empty, builtin.i_data(1)),
+    ),
+    !cek_constant_v1.constant_holds_bls_value_v1(
+      cek_constant_v1.ListConstant { element: int },
+      builtin.list_data([builtin.i_data(1)]),
+    ),
+  }
+}
