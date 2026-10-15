@@ -286,16 +286,6 @@ describe("V1 CEK commitments", () => {
     expect(() =>
       decodeMidgardCekProgramEnvelope(
         encodeMidgardCekProgramEnvelope({
-          uplcVersion: [1n, 0n, 0n],
-          termRoot: hash(1),
-          nodeCount: 3n,
-          materialByteLength: 144n,
-        }),
-      ),
-    ).toThrow(/only UPLC 1.1.0/u);
-    expect(() =>
-      decodeMidgardCekProgramEnvelope(
-        encodeMidgardCekProgramEnvelope({
           uplcVersion: [1n, 1n, 0n],
           termRoot: hash(1),
           nodeCount: MIDGARD_CEK_MAX_PROGRAM_NODE_COUNT + 1n,

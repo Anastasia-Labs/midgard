@@ -112,10 +112,26 @@ use midgard/validation_merkle_v1
 use midgard/validation_trace_v1
 
 pub fn maximum_program_envelope_selection_fixture() -> CekSelectionFixtureV1 {
+  let f = program_envelope_selection_fixture(1, h_b)
+  expect
+    f.envelope_hash == #"6f25a78e8bbffffce7c062e1281984afa4b5fae7a479db7f191c56ebe4fd1260"
+  CekSelectionFixtureV1 {
+    pre: f.pre,
+    evidence: f.evidence,
+    tampered_post: f.tampered_post,
+  }
+}
+
+/// A selection of the maximum envelope at program version `1.version_minor.0`;
+/// `tampered_hash` replaces the committed envelope hash in the tampered post.
+pub fn program_envelope_selection_fixture(
+  version_minor: Int,
+  tampered_hash: ByteArray,
+) -> VersionedCekSelectionFixtureV1 {
   let tx = empty_v1_transaction()
   let maximum_program_envelope = cek_proof_v1.encode_program_envelope_v1(
     1,
-    1,
+    version_minor,
     0,
     h_a,
     cek_proof_v1.max_program_node_count,
@@ -123,7 +139,7 @@ pub fn maximum_program_envelope_selection_fixture() -> CekSelectionFixtureV1 {
   )
   let maximum_program_envelope_hash = cek_proof_v1.hash_program_envelope_v1(
     1,
-    1,
+    version_minor,
     0,
     h_a,
     cek_proof_v1.max_program_node_count,
@@ -245,7 +261,7 @@ pub fn maximum_program_envelope_selection_fixture() -> CekSelectionFixtureV1 {
         vm_witness.encode_cek_context_control_v1(
           vm_machine_types.CekContextControlV1 {
             ..context_control,
-            program_envelope_hash: h_b,
+            program_envelope_hash: tampered_hash,
           },
         ),
         0,
@@ -254,7 +270,7 @@ pub fn maximum_program_envelope_selection_fixture() -> CekSelectionFixtureV1 {
         #"",
         0,
         0,
-        h_b,
+        tampered_hash,
         -1,
         -1,
       ),
@@ -282,15 +298,50 @@ pub fn maximum_program_envelope_selection_fixture() -> CekSelectionFixtureV1 {
       first_chunk_proof,
     },
   )
-  expect and {
-      bytearray.length(maximum_program_envelope) == 50,
-      maximum_program_envelope_hash == #"6f25a78e8bbffffce7c062e1281984afa4b5fae7a479db7f191c56ebe4fd1260",
-    }
-  CekSelectionFixtureV1 { pre, evidence, tampered_post }
+  expect bytearray.length(maximum_program_envelope) == 50
+  VersionedCekSelectionFixtureV1 {
+    pre,
+    evidence,
+    tampered_post,
+    envelope_hash: maximum_program_envelope_hash,
+  }
+}
+
+pub type VersionedCekSelectionFixtureV1 {
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  evidence: vm_machine_types.ValidationOneStepEvidenceV1,
+  tampered_post: validation_trace_v1.ValidationMachineStateV1,
+  envelope_hash: ByteArray,
 }
 
 pub fn maximum_program_envelope_selection_is_exact() -> Bool {
-  let f = maximum_program_envelope_selection_fixture()
+  selection_fixture_is_exact(maximum_program_envelope_selection_fixture())
+}
+
+/// The 1.0.0 envelope selects with its own envelope hash, and a successor that
+/// commits the 1.1.0 hash of the same term is refused.
+pub fn program_version_1_0_0_selection_is_exact() -> Bool {
+  let f = program_envelope_selection_fixture(
+    0,
+    cek_proof_v1.hash_program_envelope_v1(
+      1,
+      1,
+      0,
+      h_a,
+      cek_proof_v1.max_program_node_count,
+      cek_proof_v1.max_program_material_byte_length,
+    ),
+  )
+  selection_fixture_is_exact(
+    CekSelectionFixtureV1 {
+      pre: f.pre,
+      evidence: f.evidence,
+      tampered_post: f.tampered_post,
+    },
+  )
+}
+
+fn selection_fixture_is_exact(f: CekSelectionFixtureV1) -> Bool {
   and {
     bytearray.length(cbor.serialise(f.evidence)) < 16_384,
     vm_one_step.verify_one_step_evidence(

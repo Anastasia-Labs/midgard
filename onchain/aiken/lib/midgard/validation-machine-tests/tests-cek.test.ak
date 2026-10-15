@@ -62,6 +62,7 @@ use midgard/validation_machine_tests/fixtures_cek.{
   maximum_reference_input_field_terminal_fixture_v1,
   maximum_required_signer_field_terminal_fixture_v1,
   maximum_spend_input_field_terminal_fixture_v1,
+  program_version_1_0_0_selection_is_exact,
   verify_maximum_field_terminal_fixture_v1,
   verify_maximum_mint_field_terminal_fixture_v1,
 }
@@ -611,6 +612,10 @@ test ledger_delta_terminal_step_binds_more_than_128_operations() {
 
 test cek_execution_selection_authenticates_program_and_context_subject() {
   maximum_program_envelope_selection_is_exact()
+}
+
+test cek_execution_selection_binds_program_version_1_0_0() {
+  program_version_1_0_0_selection_is_exact()
 }
 
 test cek_effectful_selection_rejects_a_51_byte_program_envelope() {

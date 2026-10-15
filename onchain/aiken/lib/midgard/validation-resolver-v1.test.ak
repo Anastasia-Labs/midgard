@@ -1342,3 +1342,55 @@ test semantic_handoff_rejects_cross_family_action_substitution() {
     ),
   }
 }
+
+/// A 1.0.0 envelope binds a publication datum that commits the 1.0.0 envelope
+/// hash, and not one that commits the 1.1.0 hash of the same term.
+test cek_single_publication_route_binds_the_committed_program_version() {
+  let root = cek_proof_v1.hash_error_term_v1()
+  let envelope = cek_proof_v1.encode_program_envelope_v1(1, 0, 0, root, 1, 2)
+  let sidecar = #"820181825820"
+    |> bytearray.concat(root)
+    |> bytearray.concat(#"46830100428106")
+  let committed: Data = validation_resolver_v1.CekSinglePublicationDatumV1 {
+    version: 1,
+    program_envelope_hash: cek_proof_v1.hash_program_envelope_v1(
+      1,
+      0,
+      0,
+      root,
+      1,
+      2,
+    ),
+    sidecar_cbor: sidecar,
+  }
+  let other_version: Data = validation_resolver_v1.CekSinglePublicationDatumV1 {
+    version: 1,
+    program_envelope_hash: cek_proof_v1.hash_program_envelope_v1(
+      1,
+      1,
+      0,
+      root,
+      1,
+      2,
+    ),
+    sidecar_cbor: sidecar,
+  }
+  let route = validation_resolver_v1.SinglePublicationCekMaterial {
+    envelope_cbor: envelope,
+    reference_input_index: 0,
+  }
+  and {
+    validation_resolver_v1.verify_cek_material_route_for_selected_envelope_v1(
+      envelope,
+      route,
+      [material_reference_input(committed, material_script_hash)],
+      material_script_hash,
+    ),
+    !validation_resolver_v1.verify_cek_material_route_for_selected_envelope_v1(
+      envelope,
+      route,
+      [material_reference_input(other_version, material_script_hash)],
+      material_script_hash,
+    ),
+  }
+}

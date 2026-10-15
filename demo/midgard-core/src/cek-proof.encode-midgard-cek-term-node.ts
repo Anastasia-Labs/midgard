@@ -60,7 +60,17 @@ export const MIDGARD_CEK_BLOB_CHUNK_BYTES = 4_095;
 
 export const MIDGARD_CEK_MAX_BUILTIN_TAG = 86n;
 
-export const MIDGARD_CEK_PROGRAM_UPLC_VERSION = [1n, 1n, 0n] as const;
+/** The admitted program versions: 1.0.0 (no constr or case) and 1.1.0. */
+export const MIDGARD_CEK_PROGRAM_UPLC_VERSIONS = Object.freeze([
+  Object.freeze([1n, 0n, 0n] as const),
+  Object.freeze([1n, 1n, 0n] as const),
+]);
+
+export const isMidgardCekProgramUplcVersion = (
+  major: bigint,
+  minor: bigint,
+  patch: bigint,
+): boolean => major === 1n && (minor === 0n || minor === 1n) && patch === 0n;
 
 /**
  * The canonical V1 DA envelope is the only aggregate program-size budget. The

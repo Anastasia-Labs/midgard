@@ -9,6 +9,7 @@ import {
 import {
   Application,
   Builtin,
+  Constr,
   ErrorUPLC,
   Force,
   Lambda,
@@ -135,10 +136,38 @@ describe("canonical V1 CEK programs", () => {
     );
   });
 
-  it("fails closed on an unpinned UPLC version without a stale raw-byte cap", () => {
-    expect(() => buildMidgardCanonicalCekProgram(compile([1, 0, 0]))).toThrow(
-      /only UPLC 1\.1\.0/u,
+  it("admits UPLC 1.0.0 and 1.1.0 and commits the program version", () => {
+    const v100 = buildMidgardCanonicalCekProgram(compile([1, 0, 0]));
+    const v110 = buildMidgardCanonicalCekProgram(compile([1, 1, 0]));
+    expect(v100.envelope.uplcVersion).toEqual([1n, 0n, 0n]);
+    expect(v110.envelope.uplcVersion).toEqual([1n, 1n, 0n]);
+    expect(v100.envelope.termRoot).toEqual(v110.envelope.termRoot);
+    expect(v100.envelopeHash).not.toEqual(v110.envelopeHash);
+    const constrUnder100 = Buffer.from(
+      UPLCEncoder.compile(new UPLCProgram([1, 0, 0], new Constr(0, []))),
     );
+    expect(() => buildMidgardCanonicalCekProgram(constrUnder100)).toThrow(
+      /1\.0\.0 does not admit constr or case/u,
+    );
+    expect(
+      buildMidgardCanonicalCekProgram(
+        Buffer.from(
+          UPLCEncoder.compile(new UPLCProgram([1, 1, 0], new Constr(0, []))),
+        ),
+      ).envelope.uplcVersion,
+    ).toEqual([1n, 1n, 0n]);
+  });
+
+  it("fails closed on an unpinned UPLC version without a stale raw-byte cap", () => {
+    for (const version of [
+      [2, 0, 0],
+      [1, 2, 0],
+      [1, 1, 1],
+    ] as const) {
+      expect(() => buildMidgardCanonicalCekProgram(compile(version))).toThrow(
+        /only UPLC 1\.0\.0 and 1\.1\.0/u,
+      );
+    }
     const raw = compileLargeString(7_000);
     expect(raw.length).toBeGreaterThan(6_911);
     const canonical = buildMidgardCanonicalCekProgram(raw);

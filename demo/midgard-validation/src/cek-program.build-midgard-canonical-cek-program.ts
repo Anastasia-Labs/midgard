@@ -9,6 +9,7 @@ import {
   hashMidgardCekSequenceNode,
   hashMidgardCekTermNode,
   hashMidgardCekValueNode,
+  isMidgardCekProgramUplcVersion,
   MIDGARD_CEK_EMPTY_SEQUENCE_ROOT,
   type MidgardCekProgramEnvelope,
   type MidgardCekProgramMaterialEntry,
@@ -112,14 +113,17 @@ export const buildMidgardCanonicalCekProgram = (
     );
   }
   if (
-    program.version.major !== 1 ||
-    program.version.minor !== 1 ||
-    program.version.patch !== 0
+    !isMidgardCekProgramUplcVersion(
+      BigInt(program.version.major),
+      BigInt(program.version.minor),
+      BigInt(program.version.patch),
+    )
   ) {
     throw new Error(
-      `V1 supports only UPLC 1.1.0, received ${program.version.toString()}`,
+      `V1 supports only UPLC 1.0.0 and 1.1.0, received ${program.version.toString()}`,
     );
   }
+  const constrAndCaseAdmitted = program.version.minor !== 0;
 
   const material = new Map<string, MidgardCekProgramMaterialNode>();
   const constantWitnesses = new Map<string, MidgardCekConstantValueWitness>();
@@ -286,6 +290,12 @@ export const buildMidgardCanonicalCekProgram = (
         kind: "builtin",
         tag: BigInt(term.builtinTag),
       });
+    }
+    if (
+      !constrAndCaseAdmitted &&
+      (term instanceof Constr || term instanceof Case)
+    ) {
+      throw new Error("UPLC 1.0.0 does not admit constr or case terms");
     }
     if (term instanceof Constr) {
       return addTermNode({

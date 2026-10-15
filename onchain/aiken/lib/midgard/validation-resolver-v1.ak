@@ -85,17 +85,7 @@ pub fn cek_selection_envelope_cbor_v1(
 
 fn cek_envelope_hash_v1(envelope_cbor: ByteArray) -> Option<ByteArray> {
   when cek_proof_v1.inspect_program_envelope_v1(envelope_cbor) is {
-    Some(envelope) ->
-      Some(
-        cek_proof_v1.hash_program_envelope_v1(
-          1,
-          1,
-          0,
-          envelope.term_root,
-          envelope.node_count,
-          envelope.material_byte_length,
-        ),
-      )
+    Some(_) -> Some(cek_proof_v1.hash_program_envelope_cbor_v1(envelope_cbor))
     None -> None
   }
 }

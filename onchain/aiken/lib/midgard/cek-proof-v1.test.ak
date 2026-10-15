@@ -120,6 +120,36 @@ test canonical_program_envelope_decodes_with_exact_bounds() {
   }
 }
 
+test program_versions_1_0_0_and_1_1_0_decode_with_their_own_hash() {
+  let v100 = cek_proof_v1.encode_program_envelope_v1(1, 0, 0, h_01, 3, 144)
+  let v110 = cek_proof_v1.encode_program_envelope_v1(1, 1, 0, h_01, 3, 144)
+  expect Some(decoded_100) = cek_proof_v1.inspect_program_envelope_v1(v100)
+  expect Some(decoded_110) = cek_proof_v1.inspect_program_envelope_v1(v110)
+  and {
+    decoded_100.version_minor == 0,
+    decoded_110.version_minor == 1,
+    cek_proof_v1.hash_program_envelope_cbor_v1(v100) == cek_proof_v1.hash_program_envelope_v1(
+      1,
+      0,
+      0,
+      h_01,
+      3,
+      144,
+    ),
+    cek_proof_v1.hash_program_envelope_cbor_v1(v110) == cek_proof_v1.hash_program_envelope_v1(
+      1,
+      1,
+      0,
+      h_01,
+      3,
+      144,
+    ),
+    cek_proof_v1.hash_program_envelope_cbor_v1(v100) != cek_proof_v1.hash_program_envelope_cbor_v1(
+      v110,
+    ),
+  }
+}
+
 test small_canonical_program_envelope_decodes() {
   cek_proof_v1.inspect_program_envelope_v1(
     cek_proof_v1.encode_program_envelope_v1(1, 1, 0, h_01, 3, 144),
@@ -140,7 +170,16 @@ test program_envelope_rejects_noncanonical_and_out_of_bounds_claims() {
     cek_proof_v1.inspect_program_envelope_v1(unsupported_version) == None,
     cek_proof_v1.inspect_program_envelope_v1(trailing) == None,
     cek_proof_v1.inspect_program_envelope_v1(
-      cek_proof_v1.encode_program_envelope_v1(1, 0, 0, h_01, 3, 144),
+      cek_proof_v1.encode_program_envelope_v1(2, 0, 0, h_01, 3, 144),
+    ) == None,
+    cek_proof_v1.inspect_program_envelope_v1(
+      cek_proof_v1.encode_program_envelope_v1(1, 2, 0, h_01, 3, 144),
+    ) == None,
+    cek_proof_v1.inspect_program_envelope_v1(
+      cek_proof_v1.encode_program_envelope_v1(1, 1, 1, h_01, 3, 144),
+    ) == None,
+    cek_proof_v1.inspect_program_envelope_v1(
+      cek_proof_v1.encode_program_envelope_v1(1, 0, 1, h_01, 3, 144),
     ) == None,
     cek_proof_v1.inspect_program_envelope_v1(
       cek_proof_v1.encode_program_envelope_v1(

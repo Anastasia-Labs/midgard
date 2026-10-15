@@ -648,14 +648,7 @@ pub fn verify_cek_execution_selection_successor(
           subject,
           redeemer_leaf,
           envelope.term_root,
-          cek_proof_v1.hash_program_envelope_v1(
-            1,
-            1,
-            0,
-            envelope.term_root,
-            envelope.node_count,
-            envelope.material_byte_length,
-          ),
+          cek_proof_v1.hash_program_envelope_cbor_v1(envelope_cbor),
         )
     }
   } else {

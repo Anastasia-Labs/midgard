@@ -52,7 +52,10 @@ pub const max_program_node_count = 1597819
 /// Structural DA upper bound after the exact 447-byte fixed V1 framing.
 pub const max_program_material_byte_length = 67108417
 
+/// The committed program version is `1.version_minor.0`; minor 0 (1.0.0) and
+/// minor 1 (1.1.0) are the admitted versions.
 pub type ProgramEnvelopeV1 {
+  version_minor: Int,
   term_root: ByteArray,
   node_count: Int,
   material_byte_length: Int,
@@ -1627,7 +1630,8 @@ pub fn inspect_program_envelope_v1(
                   if and {
                     envelope_version == program_envelope_version,
                     major == 1,
-                    minor == 1,
+                    minor >= 0,
+                    minor <= 1,
                     patch == 0,
                     bytearray.length(term_root) == 32,
                     node_count > 0,
@@ -1645,6 +1649,7 @@ pub fn inspect_program_envelope_v1(
                   } {
                     Some(
                       ProgramEnvelopeV1 {
+                        version_minor: minor,
                         term_root,
                         node_count,
                         material_byte_length,
@@ -1667,6 +1672,14 @@ pub fn inspect_program_envelope_v1(
 pub fn decode_program_envelope_v1(envelope_cbor: ByteArray) -> ProgramEnvelopeV1 {
   expect Some(envelope) = inspect_program_envelope_v1(envelope_cbor)
   envelope
+}
+
+/// Hash of an envelope already accepted by `inspect_program_envelope_v1`,
+/// whose bytes are its exact canonical encoding.
+pub fn hash_program_envelope_cbor_v1(envelope_cbor: ByteArray) -> ByteArray {
+  program_envelope_domain
+    |> bytearray.concat(envelope_cbor)
+    |> blake2b_256
 }
 
 pub fn hash_program_envelope_v1(
