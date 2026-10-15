@@ -14,7 +14,7 @@ import {
 } from "@harmoniclabs/uplc";
 
 import type { CardanoFlatReader } from "./cek-program.cardano-flat.reader.js";
-import { plutusDataFromCborIterative } from "./plutus-data-iterative.decode.js";
+import { plutusDataFirstItemFromCborIterative } from "./plutus-data-iterative.decode.js";
 
 /** `mbHeader` at protocol version 11 (Versions.hs:397-401). */
 const MAX_CONSTANT_TYPE_TAGS = 32;
@@ -254,12 +254,13 @@ const readValue = (reader: CardanoFlatReader, type: ValueType): unknown => {
       return reader.bit();
     case "data": {
       // Cardano reads the first CBOR item and ignores any bytes after it
-      // (`deserialiseOrFail`, serialise 0.2.6.1 Codec/Serialise.hs:134-143);
-      // this reader refuses them, as the replaced decoder did.
+      // (`deserialiseOrFail`, serialise 0.2.6.1 Codec/Serialise.hs:134-143).
+      // The constant is that item's value, so its witness and the term root
+      // commit the value's canonical encoding, not these bytes.
       const bytes = reader.byteString();
       let data: Data;
       try {
-        data = plutusDataFromCborIterative(bytes);
+        data = plutusDataFirstItemFromCborIterative(bytes);
       } catch (error) {
         return reader.refuse(
           "invalidData",

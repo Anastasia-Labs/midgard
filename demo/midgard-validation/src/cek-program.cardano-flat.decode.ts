@@ -4,8 +4,7 @@
  * SerialisedScript.hs:194-239, after the CBOR wrapper is removed). Every
  * program Cardano decodes is read to the program Cardano read, and every
  * program it refuses is refused, with the class and bit offset of the
- * refusal, with one exception: a Data constant with bytes after its CBOR item
- * (see `readValue` in cek-program.cardano-flat.constant.ts). The term is read
+ * refusal. The term is read
  * with explicit stacks, so input nesting never deepens the JavaScript stack.
  */
 import {
