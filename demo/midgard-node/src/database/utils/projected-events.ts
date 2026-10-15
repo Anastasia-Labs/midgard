@@ -94,6 +94,63 @@ export const retrievePendingHeaderEntriesUpTo = <Entry extends object>(
       )} ASC`;
   });
 
+/** Complete groups, never row pages: even the last returned instant includes every event. */
+export const retrievePendingHeaderInstantCounts = (
+  config: ProjectedEventTable,
+  endTime: Date,
+  limit: number,
+  statuses: readonly string[] = [],
+): Effect.Effect<
+  readonly { readonly inclusionTimeMs: number; readonly count: number }[],
+  ProjectedEventError,
+  Database
+> =>
+  Effect.gen(function* () {
+    if (
+      !Number.isSafeInteger(limit) ||
+      limit <= 0 ||
+      !Number.isSafeInteger(endTime.getTime())
+    )
+      return yield* Effect.fail(
+        new DatabaseError({
+          table: config.tableName,
+          message: "Invalid pending event instant query bound",
+          cause: { limit, endTime },
+        }),
+      );
+    const sql = yield* SqlClient.SqlClient;
+    const rows =
+      statuses.length > 0
+        ? yield* sql<{
+            inclusion_time: Date;
+            count: string;
+          }>`SELECT ${sql(config.inclusionTimeColumn)} AS inclusion_time, COUNT(*)::text AS count FROM ${sql(config.tableName)}
+          WHERE ${sql(config.statusColumn)} IN ${sql.in(statuses)} AND ${sql(config.projectedHeaderHashColumn)} IS NULL AND ${sql(config.inclusionTimeColumn)} <= ${endTime}
+          GROUP BY ${sql(config.inclusionTimeColumn)} ORDER BY ${sql(config.inclusionTimeColumn)} ASC LIMIT ${limit}`
+        : yield* sql<{
+            inclusion_time: Date;
+            count: string;
+          }>`SELECT ${sql(config.inclusionTimeColumn)} AS inclusion_time, COUNT(*)::text AS count FROM ${sql(config.tableName)}
+          WHERE ${sql(config.projectedHeaderHashColumn)} IS NULL AND ${sql(config.inclusionTimeColumn)} <= ${endTime}
+          GROUP BY ${sql(config.inclusionTimeColumn)} ORDER BY ${sql(config.inclusionTimeColumn)} ASC LIMIT ${limit}`;
+    return yield* Effect.forEach(rows, (row) => {
+      const inclusionTimeMs = row.inclusion_time.getTime();
+      const count = Number(row.count);
+      return Number.isSafeInteger(inclusionTimeMs) &&
+        Number.isSafeInteger(count) &&
+        count > 0
+        ? Effect.succeed({ inclusionTimeMs, count })
+        : Effect.fail(
+            new DatabaseError({
+              table: config.tableName,
+              message:
+                "Pending event instant count is not a safe positive integer",
+              cause: row,
+            }),
+          );
+    });
+  });
+
 export const retrieveProjectedPendingHeaderEntries = <Entry extends object>(
   config: ProjectedEventTable,
   statuses: readonly string[],
@@ -348,6 +405,18 @@ export const makeProjectedEventAdapter = <Entry extends object>({
       sqlErrorToDatabaseError(
         config.tableName,
         messages.retrievePendingHeaderEntriesUpTo,
+      ),
+    ),
+  retrievePendingHeaderInstantCounts: (endTime: Date, limit: number) =>
+    retrievePendingHeaderInstantCounts(
+      config,
+      endTime,
+      limit,
+      pendingHeaderStatuses,
+    ).pipe(
+      sqlErrorToDatabaseError(
+        config.tableName,
+        "Failed to retrieve complete pending event instant counts",
       ),
     ),
   retrieveProjectedPendingHeaderEntries: (): Effect.Effect<

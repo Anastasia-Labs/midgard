@@ -35,6 +35,8 @@ import {
   type OperatorListEntry,
   type OperatorListRemovalPlan,
   type OperatorSlashingLayoutContext,
+  removalExemptsRemovedOperator,
+  type RemoveTransactionKind,
   type SchedulerRemovalPlan,
 } from "./remove-fraudulent-block.remove-fraudulent-block-explicit-category.js";
 import {
@@ -64,7 +66,8 @@ export type OperatorSlashingPlan =
       readonly approach: "OperatorAlreadySlashed";
       readonly activeWitness: OperatorListEntry;
       readonly retiredWitness: OperatorListEntry;
-    };
+    }
+  | { readonly approach: "DescendantOfValidationTraceConviction" };
 
 export const resolveOperatorSlashingPlan = async ({
   lucid,
@@ -165,6 +168,20 @@ export const resolveOperatorSlashingPlan = async ({
   };
 };
 
+/**
+ * The slashed node's directory anchor continued past it, holding what the
+ * node held beyond the slash fee and the reward. The anchor may only gain
+ * lovelace, so this is the one output that takes any amount of excess without
+ * a wallet input or change.
+ */
+export const continuedSlashAnchorAssets = (
+  anchor: UTxO,
+  bondExcessLovelace: bigint,
+): UTxO["assets"] => ({
+  ...anchor.assets,
+  lovelace: (anchor.assets.lovelace ?? 0n) + bondExcessLovelace,
+});
+
 export const buildActiveSlashingInputs = ({
   plan,
   operator,
@@ -172,6 +189,7 @@ export const buildActiveSlashingInputs = ({
   hubOracleUtxo,
   registeredOperatorsElementUtxo,
   fraudProverReward,
+  bondExcessLovelace = 0n,
 }: {
   readonly plan: Extract<
     OperatorSlashingPlan,
@@ -182,6 +200,8 @@ export const buildActiveSlashingInputs = ({
   readonly hubOracleUtxo: UTxO;
   readonly registeredOperatorsElementUtxo?: UTxO;
   readonly fraudProverReward?: FraudProverRewardPlan;
+  /** What the slashed node holds beyond the slash fee and the reward. */
+  readonly bondExcessLovelace?: bigint;
 }): SlashingTxPlan => {
   const schedulerUnit = toUnit(
     contracts.schedulerPolicyId,
@@ -288,7 +308,10 @@ export const buildActiveSlashingInputs = ({
             ...plan.removalPlan.anchor.view,
             next: plan.removalPlan.node.view.next,
           }),
-          assets: plan.removalPlan.anchor.utxo.assets,
+          assets: continuedSlashAnchorAssets(
+            plan.removalPlan.anchor.utxo,
+            bondExcessLovelace,
+          ),
         },
         ...(schedulerSpend === undefined ? {} : { schedulerSpend }),
       };
@@ -305,3 +328,18 @@ export const buildActiveSlashingInputs = ({
     ],
   };
 };
+
+/** The slashing plan for one removal transaction: the validation-trace
+ * descendant exemption needs no operator-directory lookup at all. */
+export const resolveRemovalSlashingPlan = async ({
+  kind,
+  ...params
+}: Parameters<typeof resolveOperatorSlashingPlan>[0] & {
+  readonly kind: RemoveTransactionKind;
+}): Promise<OperatorSlashingPlan> =>
+  removalExemptsRemovedOperator({
+    kind,
+    fraudCategoryId: params.contracts.fraudCategoryId,
+  })
+    ? { approach: "DescendantOfValidationTraceConviction" }
+    : resolveOperatorSlashingPlan(params);

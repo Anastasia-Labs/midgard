@@ -128,10 +128,6 @@ export const DEPLOYABLE_SCRIPT_CATALOGUE = {
       commands: ["protocol-init", "retired-operators"],
     }),
   ),
-  escapeHatch: entries(
-    spend("escapeHatchSpend", (c) => c.escapeHatch, NOT_PUBLISHED),
-    mint("escapeHatchMint", (c) => c.escapeHatch, NOT_PUBLISHED),
-  ),
   fraudProofCatalogue: entries(
     spend(
       "fraudProofCatalogueSpend",

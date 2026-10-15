@@ -11,6 +11,7 @@ use cardano/transaction.{
 }
 use cardano/transaction as tx
 use env
+use midgard/cbor_deserialise
 use midgard/common/utils
 use midgard/hub_oracle as hub
 use midgard/ledger_state
@@ -499,7 +500,7 @@ test withdrawal_refund_tx_settlement_decodes() {
 }
 
 test settlement_sdk_fixture_decodes() {
-  expect Some(settlement_datum_data) = cbor.deserialise(
+  let settlement_datum_data <- cbor_deserialise.expect_deserialise(
     #"d8799f58209199f6a06dd054c176b03f971663fb08eab680f330c53f03a7c2a7a4f7e2deb35820a0a6bfacf243dca6d2adbae4e8846841e74c90f17d7602cefc2375dad3ae56eb58200e5751c026e543b2e8ab2eb06099daa1d1e5df47778f7787faab45cdf12fe3a858207777777777777777777777777777777777777777777777777777777777777777d87a80ff",
   )
   expect decoded: settlement.Datum = settlement_datum_data
@@ -513,7 +514,7 @@ test settlement_sdk_fixture_decodes() {
 }
 
 test settlement_sdk_fixture_get_datum_decodes() {
-  expect Some(settlement_datum_data) = cbor.deserialise(
+  let settlement_datum_data <- cbor_deserialise.expect_deserialise(
     #"d8799f58209199f6a06dd054c176b03f971663fb08eab680f330c53f03a7c2a7a4f7e2deb35820a0a6bfacf243dca6d2adbae4e8846841e74c90f17d7602cefc2375dad3ae56eb58200e5751c026e543b2e8ab2eb06099daa1d1e5df47778f7787faab45cdf12fe3a858207777777777777777777777777777777777777777777777777777777777777777d87a80ff",
   )
   let settlement_policy = #"7079358dfbe98ea1a3b7afac27d1d99d140979eaa28dac13"

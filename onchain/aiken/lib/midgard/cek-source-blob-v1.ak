@@ -2,6 +2,7 @@ use aiken/builtin
 use aiken/cbor
 use aiken/primitive/bytearray
 use midgard/blake2b_256_trace_v1
+use midgard/cbor_deserialise
 use midgard/cek_blob_frontier_v1
 use midgard/cek_proof_v1
 use midgard/fraud_proofs/native_tx/codec.{
@@ -260,7 +261,7 @@ pub fn control_from_data_v1(data: Data) -> CekSourceBlobControlV1 {
 }
 
 pub fn decode_control_v1(control_cbor: ByteArray) -> CekSourceBlobControlV1 {
-  expect Some(data) = cbor.deserialise(control_cbor)
+  let data <- cbor_deserialise.expect_deserialise(control_cbor)
   let control = control_from_data_v1(data)
   expect encode_control_v1(control) == control_cbor
   control

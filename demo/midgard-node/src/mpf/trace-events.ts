@@ -3,7 +3,6 @@
  */
 
 import * as SDK from "@al-ft/midgard-sdk";
-import { type RejectCode } from "@al-ft/midgard-validation";
 import { Data as LucidData } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
@@ -39,7 +38,8 @@ export type ValidationTraceTransactionInput = {
   readonly canonicalTransactionCbor: Buffer;
   readonly sourceKind: "normal" | "forced";
   readonly verdict: "accepted" | "rejected";
-  readonly rejectionCode: RejectCode | null;
+  /** The exact reason the transaction's verdict records; null when accepted. */
+  readonly rejectionReason: SDK.RejectionReason | null;
 };
 
 const outputReferenceFromCbor = (

@@ -5,7 +5,7 @@ import {
   type WorkflowActuationPermit,
   type WorkflowActuationRevokedError,
 } from "@al-ft/midgard-fault-proofs";
-import { Header } from "@al-ft/midgard-sdk";
+import { Header, StateQueueNode } from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 
 import {
@@ -37,7 +37,7 @@ export const MAX_RECOVERABLE_WORKFLOWS = 2_048;
 
 export type WatcherFaultProofDeadline = Readonly<{
   headerHash: string;
-  headerEndTimeMs: string;
+  headerBlockTimeMs: string;
   maturityAtMs: string;
   latestSafeStartAtMs: string;
 }>;
@@ -45,7 +45,7 @@ export type WatcherFaultProofDeadline = Readonly<{
 const admittedDeadlines = new WeakSet<object>();
 
 /**
- * Derives W04/W34 timing authority from an authenticated Header. The
+ * Derives W04/W34 timing authority from the authenticated queue node. The
  * complete correction path owns the canonical half-maturity budget, so the
  * latest safe start is exactly maturity minus that bound.
  */
@@ -57,14 +57,20 @@ export const watcherFaultProofDeadline = (
   if (Data.to(decoded, Header) !== header.headerCborHex) {
     throw new Error("fault-proof deadline HeaderV1 CBOR is noncanonical");
   }
-  const headerEndTimeMs = decoded.endTime;
+  const node = Data.from(header.stateQueueNodeCborHex, StateQueueNode);
+  if (Data.to(node.header, Header) !== header.headerCborHex) {
+    throw new Error(
+      "fault-proof deadline node does not carry its authenticated HeaderV1",
+    );
+  }
+  const headerBlockTimeMs = node.block_time;
   const maturityAtMs =
-    headerEndTimeMs + BigInt(MIDGARD_RETENTION_WINDOW.maturityMs);
+    headerBlockTimeMs + BigInt(MIDGARD_RETENTION_WINDOW.maturityMs);
   const latestSafeStartAtMs =
     maturityAtMs - BigInt(MIDGARD_RETENTION_WINDOW.worstCaseProofTimeBoundMs);
   const deadline = Object.freeze({
     headerHash: header.headerHash,
-    headerEndTimeMs: headerEndTimeMs.toString(),
+    headerBlockTimeMs: headerBlockTimeMs.toString(),
     maturityAtMs: maturityAtMs.toString(),
     latestSafeStartAtMs: latestSafeStartAtMs.toString(),
   });
@@ -254,7 +260,7 @@ export const validateJob = (
     job.deadline ??
     Object.freeze({
       headerHash: job.headerHash,
-      headerEndTimeMs: "0",
+      headerBlockTimeMs: "0",
       maturityAtMs: MIDGARD_RETENTION_WINDOW.maturityMs.toString(),
       latestSafeStartAtMs:
         MIDGARD_RETENTION_WINDOW.worstCaseProofTimeBoundMs.toString(),
@@ -266,19 +272,19 @@ export const validateJob = (
     !DEPLOYMENT_FINGERPRINT.test(job.decisionDigest) ||
     !CANONICAL_NATURAL.test(job.rollbackGeneration) ||
     deadline.headerHash !== job.headerHash ||
-    !CANONICAL_NATURAL.test(deadline.headerEndTimeMs) ||
+    !CANONICAL_NATURAL.test(deadline.headerBlockTimeMs) ||
     !CANONICAL_NATURAL.test(deadline.maturityAtMs) ||
     !CANONICAL_NATURAL.test(deadline.latestSafeStartAtMs) ||
     (requireAdmittedDeadline && !admittedDeadlines.has(deadline))
   ) {
     throw new Error("watcher fault-proof supervisor job is invalid");
   }
-  const headerEndTimeMs = BigInt(deadline.headerEndTimeMs);
+  const headerBlockTimeMs = BigInt(deadline.headerBlockTimeMs);
   const maturityAtMs = BigInt(deadline.maturityAtMs);
   const latestSafeStartAtMs = BigInt(deadline.latestSafeStartAtMs);
   if (
     maturityAtMs !==
-      headerEndTimeMs + BigInt(MIDGARD_RETENTION_WINDOW.maturityMs) ||
+      headerBlockTimeMs + BigInt(MIDGARD_RETENTION_WINDOW.maturityMs) ||
     latestSafeStartAtMs !==
       maturityAtMs - BigInt(MIDGARD_RETENTION_WINDOW.worstCaseProofTimeBoundMs)
   ) {

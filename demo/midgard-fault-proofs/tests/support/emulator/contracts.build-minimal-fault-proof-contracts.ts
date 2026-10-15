@@ -104,6 +104,7 @@ import {
   makeSpendingValidator,
   makeWithdrawalValidator,
 } from "./validators.js";
+import { dummyAvailabilityChallengePolicyId } from "./validators.make-isolated-always-succeeds-authenticated-validator.js";
 
 export const buildMinimalFaultProofContracts = async (
   realBlueprint: Blueprint,
@@ -632,10 +633,8 @@ export const buildMinimalFaultProofContracts = async (
     ...withActiveOperators,
     scheduler,
   };
-  // The availability-challenge policy is a stand-in here, mirroring the sdk
-  // state-queue harness: these emulator flows never open a challenge, the
-  // parameter only has to be a distinct policy id.
-  const availabilityChallengePolicyId = base.escapeHatch.policyId;
+  const availabilityChallengePolicyId =
+    dummyAvailabilityChallengePolicyId(alwaysBlueprint);
   const parsedBlueprint = parseFaultProofBlueprint(realBlueprint);
   const correctionLock = await Effect.runPromise(
     buildCorrectionLockValidator({

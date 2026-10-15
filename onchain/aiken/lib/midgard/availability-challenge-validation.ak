@@ -807,6 +807,9 @@ fn timeout_node_status_matches(
 /// - The one challenger output carries
 ///   `remaining - c + challenge_record_lovelace + payout` (refund and payout
 ///   merged, so a payout below min-UTxO never makes the timeout unbuildable).
+/// - Nothing mints or burns under the registered-, active- or
+///   retired-operators policy the hub datum names: an operator directory
+///   change goes in its own transaction.
 pub fn validate_timeout_challenge(
   hub_oracle_policy_id: PolicyId,
   da_bond_pool_policy_id: PolicyId,
@@ -909,6 +912,16 @@ pub fn validate_timeout_challenge(
     terminal_datum.response_deadline == response_deadline,
     terminal_datum.challenger == challenger,
     mint_pairs(tx.mint, own_policy_id) == expected_burn_pairs,
+    list.all(
+      assets.to_pairs(tx.mint),
+      fn(Pair(policy, _)) {
+        and {
+          policy != hub_datum.registered_operators,
+          policy != hub_datum.active_operators,
+          policy != hub_datum.retired_operators,
+        }
+      },
+    ),
     validate_state_queue_timeout_binding(
       tx,
       hub_datum.state_queue,

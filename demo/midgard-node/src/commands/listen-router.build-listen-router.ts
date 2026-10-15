@@ -9,13 +9,14 @@ import {
 } from "@effect/platform";
 import type { HttpBodyError } from "@effect/platform/HttpBody";
 import { SqlClient } from "@effect/sql/SqlClient";
-import { Cause, Effect } from "effect";
+import { Effect } from "effect";
 
 import { requestTxQueueProcessorWakeup } from "../fibers/index.js";
 import {
   AdmissionWriter,
   BatchSql,
   Database,
+  HttpReadSql,
   MempoolLedgerCache,
   ValidationPool,
   WriteBehind,
@@ -28,6 +29,9 @@ import {
   NodeConfig,
 } from "../services/index.js";
 import type { IntentJournal } from "../services/intent-journal.js";
+import { getAdminSessionHandler } from "./listen-admin-access.js";
+import { withHttpIngress } from "./listen-http-ingress.js";
+import { withHttpReadSql } from "./listen-http-read.js";
 import { failWith500 } from "./listen-response.js";
 import {
   getBlockHandler,
@@ -115,6 +119,7 @@ export const buildSubmitRouter = <R>(
         ),
       ),
     ),
+    withHttpIngress,
   );
 
 /**
@@ -126,6 +131,7 @@ export const buildListenRouter = (
   HttpServerResponse.HttpServerResponse,
   HttpBodyError,
   | Database
+  | HttpReadSql
   | AdmissionWriter
   | BatchSql
   | WriteBehind
@@ -143,49 +149,83 @@ export const buildListenRouter = (
   HttpRouter.empty
     .pipe(
       HttpRouter.get(`/${HEALTH_ENDPOINT}`, getHealthHandler),
-      HttpRouter.get(`/${READINESS_ENDPOINT}`, getReadinessHandler),
-      HttpRouter.get(`/${PIPELINE_STATUS_ENDPOINT}`, getPipelineStatusHandler),
+      HttpRouter.get(
+        `/${READINESS_ENDPOINT}`,
+        withHttpReadSql(getReadinessHandler),
+      ),
+      HttpRouter.get(
+        `/${PIPELINE_STATUS_ENDPOINT}`,
+        withHttpReadSql(getPipelineStatusHandler),
+      ),
       HttpRouter.get(`/${PROTOCOL_INFO_ENDPOINT}`, getProtocolInfoHandler),
-      HttpRouter.get(`/${TX_ENDPOINT}`, getTxHandler),
-      HttpRouter.get(`/${TX_STATUS_ENDPOINT}`, getTxStatusHandler),
-      HttpRouter.post(`/${TX_STATUS_ENDPOINT}`, postTxStatusBatchHandler),
-      HttpRouter.get(`/${DEPOSIT_STATUS_ENDPOINT}`, getDepositStatusHandler),
-      HttpRouter.get(`/${ADDRESS_HISTORY_ENDPOINT}`, getTxsOfAddressHandler),
-      HttpRouter.get(`/${UTXO_ENDPOINT}`, getUtxoHandler),
-      HttpRouter.get(`/${UTXOS_ENDPOINT}`, getUtxosHandler),
-      HttpRouter.get(`/${BLOCK_ENDPOINT}`, getBlockHandler),
+      HttpRouter.get(`/${TX_ENDPOINT}`, withHttpReadSql(getTxHandler)),
+      HttpRouter.get(
+        `/${TX_STATUS_ENDPOINT}`,
+        withHttpReadSql(getTxStatusHandler),
+      ),
+      HttpRouter.post(
+        `/${TX_STATUS_ENDPOINT}`,
+        withHttpReadSql(postTxStatusBatchHandler),
+      ),
+      HttpRouter.get(
+        `/${DEPOSIT_STATUS_ENDPOINT}`,
+        withHttpReadSql(getDepositStatusHandler),
+      ),
+      HttpRouter.get(
+        `/${ADDRESS_HISTORY_ENDPOINT}`,
+        withHttpReadSql(getTxsOfAddressHandler),
+      ),
+      HttpRouter.get(`/${UTXO_ENDPOINT}`, withHttpReadSql(getUtxoHandler)),
+      HttpRouter.get(`/${UTXOS_ENDPOINT}`, withHttpReadSql(getUtxosHandler)),
+      HttpRouter.get(`/${BLOCK_ENDPOINT}`, withHttpReadSql(getBlockHandler)),
     )
     .pipe(
-      HttpRouter.get(
+      HttpRouter.post(
         `/${INIT_ENDPOINT}`,
         withAdminAccess(INIT_ENDPOINT, getInitHandler),
       ),
-      HttpRouter.get(
+      HttpRouter.post(
         `/${COMMIT_ENDPOINT}`,
         withAdminAccess(COMMIT_ENDPOINT, getCommitEndpoint),
       ),
-      HttpRouter.get(
+      HttpRouter.post(
         `/${MERGE_ENDPOINT}`,
         withAdminAccess(MERGE_ENDPOINT, getMergeHandler),
       ),
       HttpRouter.get(
+        "/admin/session",
+        withAdminAccess("admin/session", getAdminSessionHandler),
+      ),
+      HttpRouter.get(
         `/${STATE_QUEUE_ENDPOINT}`,
-        withAdminAccess(STATE_QUEUE_ENDPOINT, getStateQueueHandler),
+        withAdminAccess(
+          STATE_QUEUE_ENDPOINT,
+          withHttpReadSql(getStateQueueHandler),
+        ),
       ),
-      HttpRouter.get(
+      HttpRouter.post(
         `/logBlocksDB`,
-        withAdminAccess("logBlocksDB", getLogBlocksDBHandler),
+        withAdminAccess("logBlocksDB", withHttpReadSql(getLogBlocksDBHandler)),
       ),
-      HttpRouter.get(
+      HttpRouter.post(
         `/logGlobals`,
         withAdminAccess("logGlobals", getLogGlobalsHandler),
       ),
       HttpRouter.get(
         `/${OPERATOR_STATUS_ENDPOINT}`,
-        withAdminAccess(OPERATOR_STATUS_ENDPOINT, getOperatorStatusHandler),
+        withAdminAccess(
+          OPERATOR_STATUS_ENDPOINT,
+          withHttpReadSql(getOperatorStatusHandler, 10_000),
+        ),
       ),
-      HttpRouter.post(`/${UTXOS_ENDPOINT}`, postUtxosByTxOutRefsHandler),
-      HttpRouter.post(`/${DEPOSIT_BUILD_ENDPOINT}`, postDepositBuildHandler),
+      HttpRouter.post(
+        `/${UTXOS_ENDPOINT}`,
+        withHttpReadSql(postUtxosByTxOutRefsHandler),
+      ),
+      HttpRouter.post(
+        `/${DEPOSIT_BUILD_ENDPOINT}`,
+        withHttpReadSql(postDepositBuildHandler, 10_000),
+      ),
       HttpRouter.post(
         `/${SUBMIT_ENDPOINT}`,
         postSubmitHandler(withMonitoring, requestTxQueueProcessorWakeup),
@@ -193,7 +233,6 @@ export const buildListenRouter = (
       HttpRouter.post(`/${TX_EVALUATE_ENDPOINT}`, postTxEvaluateHandler),
     )
     .pipe(
-      Effect.catchAllCause((cause) =>
-        failWith500("GET", "router", Cause.pretty(cause), "unknown endpoint"),
-      ),
+      Effect.catchAllCause((cause) => failWith500("GET", "router", cause)),
+      withHttpIngress,
     );

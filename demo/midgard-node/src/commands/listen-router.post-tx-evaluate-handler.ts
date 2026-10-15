@@ -17,6 +17,7 @@ import {
   NodeConfig,
   ValidationPool,
   type ValidationPoolService,
+  ValidationWorkerError,
 } from "../services/index.js";
 import {
   readSubmitBodyWithProtocolLimit,
@@ -34,12 +35,11 @@ const UNAVAILABLE = {
 };
 
 /**
- * Evaluations run at most half the validation pool at once (one without a
- * pool), so admission verdicts always keep pool capacity. A request beyond
- * that is refused at once rather than queued.
+ * Evaluations use at most half the pool and only idle slots. Pools smaller
+ * than two workers cannot reserve admission capacity and refuse advisory work.
  */
 export const txEvaluateMaxConcurrency = (poolSize: number): number =>
-  Math.max(1, Math.floor(poolSize / 2));
+  Math.max(0, Math.floor(poolSize / 2));
 
 const evaluatePermits = new Map<number, Effect.Semaphore>();
 const evaluatePermit = (poolSize: number): Effect.Semaphore => {
@@ -53,8 +53,20 @@ const evaluatePermit = (poolSize: number): Effect.Semaphore => {
 };
 
 /** Pool failures are not retried in process: evaluation is advisory. */
-const poolEvaluator = (pool: ValidationPoolService) =>
-  pool.poolSize === 0 ? undefined : pool.evaluateCekVerdict;
+const poolEvaluator =
+  (pool: ValidationPoolService) =>
+  (request: Parameters<ValidationPoolService["evaluateCekVerdict"]>[0]) =>
+    pool.tryEvaluateCekVerdict(request).pipe(
+      Effect.flatMap((result) =>
+        result === undefined
+          ? Effect.fail(
+              new ValidationWorkerError({
+                message: "advisory evaluation capacity is full",
+              }),
+            )
+          : Effect.succeed(result),
+      ),
+    );
 
 const evaluationBody = (evaluation: MidgardTxRedeemerEvaluation) =>
   evaluation.kind === "evaluated"
@@ -66,7 +78,10 @@ const evaluationBody = (evaluation: MidgardTxRedeemerEvaluation) =>
           steps: redeemer.steps.toString(10),
         })),
       }
-    : { error: "E_TX_EVALUATION_FAILED", detail: evaluation.detail };
+    : {
+        error: "E_TX_EVALUATION_FAILED",
+        detail: "Transaction scripts could not be evaluated",
+      };
 
 /**
  * `POST /tx/evaluate`: the per-redeemer ex-units a draft transaction's
@@ -95,6 +110,11 @@ export const postTxEvaluateHandler = Effect.gen(function* () {
     );
   }
   const pool = yield* ValidationPool;
+  if (pool.poolSize < 2)
+    return yield* HttpServerResponse.json(
+      { error: "Transaction evaluation requires reserved worker capacity" },
+      UNAVAILABLE,
+    );
   const permitted = yield* evaluatePermit(pool.poolSize).withPermitsIfAvailable(
     1,
   )(
@@ -152,7 +172,7 @@ export const postTxEvaluateHandler = Effect.gen(function* () {
       );
       if (evaluation._tag === "Left") {
         yield* Effect.logWarning(
-          `tx evaluation unavailable: ${String(evaluation.left)}`,
+          "tx evaluation unavailable: E_TX_EVALUATION_UNAVAILABLE",
         );
         return yield* HttpServerResponse.json(
           { error: "Transaction evaluation is unavailable" },

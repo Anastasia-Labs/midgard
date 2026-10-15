@@ -26,11 +26,11 @@ import {
   describeExpectation,
 } from "./availability-challenge-emulator.availability-redeemer-script.js";
 import {
-  AVAILABILITY_COLLATERAL_COIN_LOVELACE,
-  AVAILABILITY_DEFAULT_POOL_LOVELACE,
   AVAILABILITY_EMULATOR_PARAMETERS,
   AVAILABILITY_QUEUE_NODE_LOVELACE,
   AVAILABILITY_TIMING,
+  availabilityCollateralCoinLovelace,
+  availabilityDefaultPoolLovelace,
   type AvailabilityMeasurement,
   type AvailabilityRefusal,
   type AvailabilityRefusalExpectation,
@@ -144,7 +144,8 @@ export const createFixture = async (
 ) => {
   if (emptyQueue && descendantCount !== 0)
     throw new Error("An empty-queue fixture seeds no descendants");
-  const parameters = TEST_AVAILABILITY_PARAMETERS;
+  const parameters = options.parameters ?? TEST_AVAILABILITY_PARAMETERS;
+  const collateralCoinLovelace = availabilityCollateralCoinLovelace(parameters);
   const oneShotHolder = generateEmulatorAccountFromPrivateKey({
     lovelace: 2_000_000_000n,
   });
@@ -175,6 +176,7 @@ export const createFixture = async (
     authPolicy,
     undefined,
     l1SlotConfig,
+    parameters,
   );
   const scriptNames = availabilityScriptNames(contracts);
   registeredScriptNames = scriptNames;
@@ -300,7 +302,8 @@ export const createFixture = async (
       ? undefined
       : {
           lovelace:
-            options.seedPool?.lovelace ?? AVAILABILITY_DEFAULT_POOL_LOVELACE,
+            options.seedPool?.lovelace ??
+            availabilityDefaultPoolLovelace(parameters),
           datum: options.seedPool?.datum ?? ("Bonded" as const),
         };
   const emulator = new Emulator(
@@ -310,12 +313,8 @@ export const createFixture = async (
       responder,
       challenger,
       publisher,
-      genesis(responder.address, {
-        lovelace: AVAILABILITY_COLLATERAL_COIN_LOVELACE,
-      }),
-      genesis(challenger.address, {
-        lovelace: AVAILABILITY_COLLATERAL_COIN_LOVELACE,
-      }),
+      genesis(responder.address, { lovelace: collateralCoinLovelace }),
+      genesis(challenger.address, { lovelace: collateralCoinLovelace }),
       genesis(
         contracts.hubOracle.spendingScriptAddress,
         { lovelace: 20_000_000n, [hubUnit]: 1n },
@@ -405,6 +404,7 @@ export const createFixture = async (
             ),
           ]
         : []),
+      ...(options.genesis?.(contracts) ?? []),
     ],
     AVAILABILITY_EMULATOR_PARAMETERS,
   );
@@ -470,6 +470,7 @@ export const createFixture = async (
   for (const target of [
     ...availabilityReferenceScriptTargets(contracts),
     ...(emptyQueue ? availabilityCommitReferenceScriptTargets(contracts) : []),
+    ...(options.referenceScriptTargets?.(contracts) ?? []),
   ]) {
     const { tx, layout } = await Effect.runPromise(
       SDK.completeReferenceScriptPublicationTxProgram({
@@ -633,7 +634,7 @@ export const createFixture = async (
    * `Bonded` datum. Only meaningful in a `seedPool: false` fixture.
    */
   const initPoolReal = async (
-    lovelace: bigint = AVAILABILITY_DEFAULT_POOL_LOVELACE,
+    lovelace: bigint = availabilityDefaultPoolLovelace(parameters),
   ): Promise<UTxO> =>
     asWallet(oneShotHolder.privateKey, async () => {
       const tx = await Effect.runPromise(
@@ -765,7 +766,7 @@ export const createFixture = async (
   ): Promise<UTxO[]> => {
     const coins = (await lucid.wallet().getUtxos()).filter(
       (u) =>
-        u.assets.lovelace === AVAILABILITY_COLLATERAL_COIN_LOVELACE &&
+        u.assets.lovelace === collateralCoinLovelace &&
         Object.keys(u.assets).length === 1 &&
         !u.datum &&
         !u.datumHash &&
@@ -774,7 +775,7 @@ export const createFixture = async (
     );
     if (coins.length === 0)
       throw new Error(
-        `The selected wallet holds no ${AVAILABILITY_COLLATERAL_COIN_LOVELACE}-lovelace collateral coin`,
+        `The selected wallet holds no ${collateralCoinLovelace}-lovelace collateral coin`,
       );
     return coins;
   };

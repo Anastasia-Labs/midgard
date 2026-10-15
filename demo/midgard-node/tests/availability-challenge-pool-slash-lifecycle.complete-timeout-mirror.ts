@@ -14,26 +14,36 @@ import {
 import { TEST_AVAILABILITY_PARAMETERS as parameters } from "./helpers/availability-challenge.js";
 import { type AvailabilityFixture } from "./helpers/availability-challenge-emulator.js";
 
+/** Further inputs, references and policies a composed transaction adds. */
+export type MirrorBundle = Partial<Layout>;
+
+/** The challenger output and, when present, the pool's continuing output. */
+export type MirrorArithmetic = {
+  readonly challengerOutputLovelace: bigint;
+} & (
+  | { readonly pool: UTxO; readonly poolOutputLovelace: bigint }
+  | { readonly pool?: undefined }
+);
+
+const sameOutRef = (a: UTxO, b: UTxO) =>
+  a.txHash === b.txHash && a.outputIndex === b.outputIndex;
+
 /**
  * A hand-built mirror of the timeout (record, terminal, head, root, Idle lock,
  * pool) with free arithmetic, so a negative can break exactly one relation
  * the production builder never lets through. Outputs: root (0), Idle lock
- * (1), the ONE challenger output (2), the pool (3, when present), rent (last).
- * The fee is exactly `feeLovelace`: the inputs pay the outputs and it, and no
- * change output exists, so it completes here with coin selection off.
+ * (1), the ONE challenger output (2), the pool (3, when present), rent (4),
+ * then whatever a composed transaction pays. Its redeemer indices count the
+ * `bundle`'s inputs, references and policies, so another builder can be
+ * composed after it. The caller pins the fee where it completes.
  */
-export const completeTimeoutMirror = (
+export const buildTimeoutMirror = (
   f: AvailabilityFixture,
   s: SDK.DaAvailabilityChallengeSnapshot,
   terminal: UTxO,
-  arithmetic: {
-    readonly feeLovelace: bigint;
-    readonly challengerOutputLovelace: bigint;
-  } & (
-    | { readonly pool: UTxO; readonly poolOutputLovelace: bigint }
-    | { readonly pool?: undefined }
-  ),
-): ReturnType<TxBuilder["complete"]> => {
+  arithmetic: MirrorArithmetic,
+  bundle: MirrorBundle = {},
+): TxBuilder => {
   const record = s.record!;
   const queue = s.queue!.utxo;
   const root = s.confirmedState.utxo;
@@ -42,7 +52,7 @@ export const completeTimeoutMirror = (
   const challengeAssetName = recordOf(s).challenge_asset_name;
   const ap = f.contracts.availabilityChallenge.policyId;
   const qp = f.contracts.stateQueue.policyId;
-  const layout: Layout = {
+  const own: Layout = {
     inputs: [record, terminal, queue, root, lock, ...(pool ? [pool] : [])],
     policies: [ap, qp],
     references: [
@@ -57,6 +67,16 @@ export const completeTimeoutMirror = (
       ...(pool ? [f.reference("da-bond-pool spending")] : []),
     ],
   };
+  const layout: Layout = {
+    inputs: [...own.inputs, ...(bundle.inputs ?? [])],
+    policies: [...own.policies, ...(bundle.policies ?? [])],
+    references: [
+      ...own.references,
+      ...(bundle.references ?? []).filter(
+        (u) => !own.references.some((r) => sameOutRef(r, u)),
+      ),
+    ],
+  };
   const lower = BigInt(f.emulator.now());
   const coordinate = Data.to(
     { Coordinate: { mint_redeemer_index: mintIndex(layout, ap) } },
@@ -64,7 +84,6 @@ export const completeTimeoutMirror = (
   );
   let tx = f.lucid
     .newTx()
-    .setMinFee(arithmetic.feeLovelace)
     .validFrom(Number(lower))
     .validTo(Number(lower + 60_000n))
     .collectFrom([record, terminal], coordinate)
@@ -174,9 +193,23 @@ export const completeTimeoutMirror = (
   return tx.pay
     .ToAddress(f.responder.address, { lovelace: queue.assets.lovelace })
     .withdraw(unavailableTimeoutYield(f), 0n, Data.void())
-    .withdraw(timeoutYield(f), 0n, Data.void())
-    .complete({ coinSelection: false, localUPLCEval: true });
+    .withdraw(timeoutYield(f), 0n, Data.void());
 };
+
+/**
+ * The mirror alone. The fee is exactly `feeLovelace`: the inputs pay the
+ * outputs and it, and no change output exists, so it completes here with coin
+ * selection off.
+ */
+export const completeTimeoutMirror = (
+  f: AvailabilityFixture,
+  s: SDK.DaAvailabilityChallengeSnapshot,
+  terminal: UTxO,
+  arithmetic: MirrorArithmetic & { readonly feeLovelace: bigint },
+): ReturnType<TxBuilder["complete"]> =>
+  buildTimeoutMirror(f, s, terminal, arithmetic)
+    .setMinFee(arithmetic.feeLovelace)
+    .complete({ coinSelection: false, localUPLCEval: true });
 
 /**
  * A hand-built resume step that removes the head on the `Locked` lock a

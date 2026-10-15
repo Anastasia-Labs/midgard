@@ -21,6 +21,7 @@ export {
   type CommittedFieldShapeScenarioKind,
   committedFieldShapeScenarioMaterial,
   makeCommittedFieldShapeEmulatorHarness,
+  MAX_SLOT0_ITEM_COUNT,
   publishCommittedFieldShapeReferenceScripts,
   setupCommittedFieldShapeScenario,
 } from "./committed-field-shape-emulator.committed-field-shape-scenario-material.js";

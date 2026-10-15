@@ -47,10 +47,12 @@ import {
   ACTIVE_OPERATOR_DATUM,
   activeOperatorData,
   ADDRESS,
+  BAD_SETTLEMENT_SLASHING_REASON,
   DEPOSIT_DATUM,
   EMPTY_VALUE,
   emptyOperatorRootData,
   H28_A,
+  H28_B,
   H32_A,
   H32_B,
   OUTPUT_REFERENCE,
@@ -187,13 +189,8 @@ export const vectors: readonly Vector[] = [
     schema: SlashingReason,
   },
   {
-    label: "slashing reason settlement tag1/2",
-    value: {
-      SlashOperatorForBadSettlement: {
-        settlement_input_index: 1n,
-        settlement_redeemer_index: 2n,
-      },
-    },
+    label: "slashing reason settlement tag1/3",
+    value: BAD_SETTLEMENT_SLASHING_REASON,
     schema: SlashingReason,
   },
   {
@@ -424,7 +421,7 @@ export const vectors: readonly Vector[] = [
     schema: RegisteredOperatorMintRedeemer,
   },
   {
-    label: "registered operator mint slash duplicate tag5/5",
+    label: "registered operator mint slash duplicate tag5/6",
     value: {
       SlashDuplicateOperator: {
         duplicate_operator: H28_A,
@@ -436,6 +433,7 @@ export const vectors: readonly Vector[] = [
             hub_oracle_ref_input_index: 3n,
           },
         },
+        bounty_claimant: H28_B,
       },
     },
     schema: RegisteredOperatorMintRedeemer,

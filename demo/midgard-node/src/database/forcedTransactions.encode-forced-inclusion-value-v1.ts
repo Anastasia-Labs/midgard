@@ -273,6 +273,11 @@ export const retrieveByTxOrderId = (
     ),
   );
 
+export const retrievePendingHeaderInstantCounts = (
+  endTime: Date,
+  limit: number,
+) => projectedEventAdapter.retrievePendingHeaderInstantCounts(endTime, limit);
+
 export const retrievePendingHeaderEntriesUpTo = (
   endTime: Date,
 ): Effect.Effect<readonly Entry[], DatabaseError, Database> =>

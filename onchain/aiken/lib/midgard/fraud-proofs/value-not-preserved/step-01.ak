@@ -7,7 +7,7 @@
 //// (descriptor lovelace, authenticated asset-leaf quantities), outputs
 //// subtract, the mint field adds — and stage five rejects the transaction
 //// unless `lovelace_delta - body.fee == 0` and every per-asset delta is zero
-//// (`reject_value_not_preserved`). A block whose operator committed and
+//// (`ValueNotPreserved`). A block whose operator committed and
 //// **accepted** a transaction that violates this conservation rule has stolen
 //// or destroyed funds, and this family converts that machine-covered rule into
 //// a standalone L1 fault proof (execution-plan W-C14 single-party conversion).

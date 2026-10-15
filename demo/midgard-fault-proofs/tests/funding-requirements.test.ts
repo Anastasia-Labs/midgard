@@ -21,6 +21,7 @@ import {
   fundingAddress,
   fundingInputCbor,
   input,
+  inputWithInlineDatum,
   lockedAddress,
   protocolFundedInput,
 } from "./funding-requirements.input.js";
@@ -122,6 +123,45 @@ describe("production workflow funding requirements V1", () => {
     expect(admitWorkflowFundingRequirements(profile)).toEqual(profile);
     expect(Object.isFrozen(profile.actions[0]!.outputCborHex)).toBe(true);
   });
+
+  it.each(["9f182aff", "1800"])(
+    "preserves signed inline-datum bytes %s without rewriting the witnessed body",
+    (datumCbor) => {
+      const fixture = inputWithInlineDatum(datumCbor);
+      const raw = fixture.actions[0]!.signedTransactionCborHex;
+      const transaction = CML.Transaction.from_cbor_hex(raw);
+      const rewritten = transaction.to_canonical_cbor_hex();
+      expect(rewritten).not.toBe(raw);
+      const profile = createWorkflowFundingRequirements(fixture);
+      expect(profile.actions[0]!.signedTransactionCborHex).toBe(raw);
+      expect(profile.actions[0]!.transactionHash).toBe(
+        CML.hash_transaction(transaction.body()).to_hex(),
+      );
+      expect(profile.actions[0]!.txBodyCborHex).toBe(
+        transaction.body().to_cbor_hex(),
+      );
+      expect(profile.actions[0]!.outputCborHex[0]).toBe(
+        transaction.body().outputs().get(0).to_cbor_hex(),
+      );
+      expect(admitWorkflowFundingRequirements(profile)).toEqual(profile);
+      expect(() =>
+        createWorkflowFundingRequirements({
+          ...fixture,
+          actions: [
+            { ...fixture.actions[0]!, signedTransactionCborHex: rewritten },
+          ],
+        }),
+      ).toThrow("valid witness");
+      expect(() =>
+        createWorkflowFundingRequirements({
+          ...fixture,
+          actions: [
+            { ...fixture.actions[0]!, signedTransactionCborHex: raw + "00" },
+          ],
+        }),
+      ).toThrow();
+    },
+  );
 
   it("rejects digest, deployment, derived measurement, and transaction substitution", () => {
     const profile = createWorkflowFundingRequirements(input());

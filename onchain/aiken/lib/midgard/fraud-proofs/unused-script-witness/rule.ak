@@ -4,6 +4,7 @@ use aiken/builtin
 use aiken/cbor
 use aiken/crypto.{blake2b_256}
 use aiken/primitive/bytearray
+use midgard/cbor_deserialise
 use midgard/fraud_proofs/native_tx/compact.{tx_proof_commitment_v1}
 use midgard/fraud_proofs/proof_thread_substrate_v1 as substrate
 use midgard/ledger_state
@@ -112,7 +113,7 @@ fn decode_frontier(items: List<Data>) -> List<validation_merkle_v1.FrontierPeak>
 fn decode_terminal_control(
   witness: TerminalScriptSourcesWitnessV1,
 ) -> TerminalScriptSourcesControlV1 {
-  expect Some(data) = cbor.deserialise(witness.witness_cbor)
+  let data <- cbor_deserialise.expect_deserialise(witness.witness_cbor)
   expect
       [
         compact_cbor, witness_set_compact_cbor, field_preimage_lengths_cbor,
@@ -122,7 +123,7 @@ fn decode_terminal_control(
         discovery_cbor,
       ]
     = builtin.un_list_data(data)
-  expect Some(discovery_data) = cbor.deserialise(
+  let discovery_data <- cbor_deserialise.expect_deserialise(
     builtin.un_b_data(discovery_cbor),
   )
   expect
@@ -262,9 +263,7 @@ pub fn authenticate_witness_v1(
           machine_state.source_kind == validation_trace_v1.Forced,
           descriptor.verdict == validation_trace_v1.Rejected,
           descriptor.rejection_code_hash == validation_trace_v1.hash_rejection_code(
-            rejection_reason_v1.rejection_code_of(
-              substrate.rejection_reason_of_v1(bound.subject),
-            ),
+            substrate.rejection_reason_of_v1(bound.subject),
           ),
         }
       },

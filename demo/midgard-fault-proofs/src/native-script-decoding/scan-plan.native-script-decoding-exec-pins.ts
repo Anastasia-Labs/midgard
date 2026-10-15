@@ -42,13 +42,13 @@ export const NATIVE_SCRIPT_DECODING_EXEC_PINS = {
    * CPU envelope: the pinned direction-B terminal close — a complete fixture
    * step including its own fold, so conservative for the shorter partial row.
    */
-  scanStepEnvelopeCpuUnits: 1_603_151_566,
+  scanStepEnvelopeCpuUnits: 1_587_037_816,
   /** `advance_or_close_closes_a_direction_a_refusal`. */
-  verdictWrongfulAcceptance: { mem: 3_066_513, cpu: 1_283_847_718 },
+  verdictWrongfulAcceptance: { mem: 3_009_699, cpu: 1_267_696_384 },
   /** `advance_or_close_closes_direction_b_at_the_exact_terminal`. */
-  verdictWrongfulRejection: { mem: 3_937_849, cpu: 1_603_151_566 },
+  verdictWrongfulRejection: { mem: 3_881_135, cpu: 1_587_037_816 },
   /** `bind_descriptor_closes_a_non_native_direction_b_descriptor`. */
-  descriptorContradictionClose: { mem: 2_756_124, cpu: 1_115_203_566 },
+  descriptorContradictionClose: { mem: 2_563_831, cpu: 1_061_053_854 },
 } as const;
 
 /**

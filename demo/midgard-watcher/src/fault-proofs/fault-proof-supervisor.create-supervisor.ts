@@ -844,7 +844,7 @@ export const createSupervisor = (input: {
             if (decision === null) {
               const unsafeDeadline = Object.freeze({
                 headerHash: "",
-                headerEndTimeMs: "0",
+                headerBlockTimeMs: "0",
                 maturityAtMs: MIDGARD_RETENTION_WINDOW.maturityMs.toString(),
                 latestSafeStartAtMs:
                   MIDGARD_RETENTION_WINDOW.worstCaseProofTimeBoundMs.toString(),

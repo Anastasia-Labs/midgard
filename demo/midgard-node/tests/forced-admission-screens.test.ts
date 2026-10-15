@@ -17,7 +17,7 @@ import {
   validateMidgardConsensusTxCbor,
 } from "@al-ft/midgard-core/consensus-validation";
 import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
-import { hashMidgardValidationRejectionCode } from "@al-ft/midgard-core/validation-trace";
+import { hashMidgardValidationRejectionReasonV1 } from "@al-ft/midgard-core/validation-trace";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
   RejectCodes,
@@ -238,7 +238,7 @@ describe("forced admission screens", () => {
               canonicalTransactionCbor: transaction.canonicalCbor,
               sourceKind: "forced",
               verdict: accepts ? "accepted" : "rejected",
-              rejectionCode: expectedCode,
+              rejectionReason: result.rejectionReason,
             },
           ],
         }),
@@ -247,7 +247,9 @@ describe("forced admission screens", () => {
       expect(member!.value.rejection_code_hash).toBe(
         accepts
           ? "00".repeat(32)
-          : hashMidgardValidationRejectionCode(expectedCode!).toString("hex"),
+          : hashMidgardValidationRejectionReasonV1(
+              result.rejectionReason!,
+            ).toString("hex"),
       );
       const eventCbor = Data.to(eventKey, SDK.EventKey);
       const counts = {

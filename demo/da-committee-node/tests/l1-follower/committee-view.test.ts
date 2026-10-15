@@ -149,7 +149,7 @@ describe.each([
           // Headers never committed: only the release clock decides them.
           signed: endTimesMs.map((endTimeMs, i) => ({
             headerHash: (i + 1).toString(16).padStart(56, "0"),
-            endTimeMs,
+            blockTimeMs: endTimeMs,
           })),
         });
       const first = await read([]);

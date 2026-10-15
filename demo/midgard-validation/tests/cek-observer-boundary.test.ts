@@ -106,6 +106,8 @@ describe("bounded CEK observer context", () => {
       executionCpuLimit: 17n,
       executionMemoryLimit: 19n,
       programEnvelopeHash: control.programEnvelopeHash,
+      purposeKind: 2n,
+      purposeIndex: 5n,
     });
     const inactiveWitness = encodeMidgardCekValidationWitness({
       nativeControlCbor: Buffer.from([0x80]),
@@ -117,23 +119,28 @@ describe("bounded CEK observer context", () => {
       executionCpuLimit: 0n,
       executionMemoryLimit: 0n,
       programEnvelopeHash: null,
+      purposeKind: -1n,
+      purposeIndex: -1n,
     });
 
     expect(contextCbor.subarray(0, 2)).toEqual(Buffer.from([0x98, 0x19]));
     expect(contextCbor.subarray(38, 72)).toEqual(
       Buffer.concat([Buffer.from([0x58, 0x20]), Buffer.alloc(32, 0xdd)]),
     );
-    expect(activeWitness[0]).toBe(0x89);
-    // The possibly-empty program envelope hash sits before the two integer
-    // limits so the witness never ends with a zero-length bytestring, which
-    // the Aiken `cbor.deserialise` consumer rejects at an exhausted cursor.
-    expect(activeWitness.subarray(-36, -2)).toEqual(
+    expect(activeWitness[0]).toBe(0x8b);
+    // The possibly-empty program envelope hash sits before the integer
+    // limits and purpose key so the witness never ends with a zero-length
+    // bytestring, which the Aiken `cbor.deserialise` consumer rejects at an
+    // exhausted cursor.
+    expect(activeWitness.subarray(-38, -4)).toEqual(
       Buffer.concat([Buffer.from([0x58, 0x20]), Buffer.alloc(32, 0xdd)]),
     );
-    expect(activeWitness.subarray(-2)).toEqual(Buffer.from([0x11, 0x13]));
-    expect(inactiveWitness[0]).toBe(0x89);
-    expect(inactiveWitness.subarray(-3)).toEqual(
-      Buffer.from([0x40, 0x00, 0x00]),
+    expect(activeWitness.subarray(-4)).toEqual(
+      Buffer.from([0x11, 0x13, 0x02, 0x05]),
+    );
+    expect(inactiveWitness[0]).toBe(0x8b);
+    expect(inactiveWitness.subarray(-5)).toEqual(
+      Buffer.from([0x40, 0x00, 0x00, 0x20, 0x20]),
     );
   });
 

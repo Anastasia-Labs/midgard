@@ -16,6 +16,7 @@ import {
   type MidgardValidationTraceTree,
 } from "@al-ft/midgard-core";
 import type { L1SlotConfig } from "@al-ft/midgard-core/l1-slot-config";
+import type { MidgardRejectionReasonV1 } from "@al-ft/midgard-core/validation-trace";
 
 import {
   type MidgardCekContextPartsControl,
@@ -474,5 +475,7 @@ export type DeterministicValidationMachineTrace = {
   readonly tree: MidgardValidationTraceTree;
   readonly verdict: "accepted" | "rejected";
   readonly rejectionCode: RejectCode | null;
+  /** The exact `RejectionReasonV1` the terminal state binds; null on acceptance. */
+  readonly rejectionReason: MidgardRejectionReasonV1 | null;
   readonly ledgerOps: readonly ValidationMachineLedgerOp[];
 };

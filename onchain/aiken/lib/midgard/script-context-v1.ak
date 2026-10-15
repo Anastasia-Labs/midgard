@@ -1,9 +1,9 @@
 use aiken/builtin
-use aiken/cbor
 use aiken/collection/list
 use aiken/primitive/bytearray
 use midgard/bounded_collection_v1
 use midgard/canonical_plutus_data_v1
+use midgard/cbor_deserialise
 use midgard/cek_data_v1
 use midgard/fraud_proofs/native_tx/components.{
   decode_midgard_tx_input_cbor, encode_midgard_tx_input,
@@ -133,7 +133,7 @@ fn materialise_datum(datum_cbor: ByteArray) -> Option<Data> {
   } else if canonical_plutus_data_v1.is_materialisable_plutus_data_v1(
     datum_cbor,
   ) {
-    cbor.deserialise(datum_cbor)
+    cbor_deserialise.deserialise(datum_cbor)
   } else {
     None
   }
@@ -171,7 +171,7 @@ pub fn tx_out_data_v1(
   when ledger_output_v1.decode_canonical_output(output_cbor) is {
     None -> None
     Some(output) ->
-      when cbor.deserialise(output_cbor) is {
+      when cbor_deserialise.deserialise(output_cbor) is {
         None -> None
         Some(output_data) ->
           when output_value_data(output_data) is {
@@ -250,7 +250,7 @@ pub fn ledger_output_summaries_v1(
   when ledger_output_v1.decode_canonical_output(output_cbor) is {
     None -> None
     Some(output) ->
-      when cbor.deserialise(output_cbor) is {
+      when cbor_deserialise.deserialise(output_cbor) is {
         None -> None
         Some(output_data) ->
           when output_value_data(output_data) is {
@@ -310,20 +310,29 @@ pub fn ledger_output_summaries_of_authenticated_parts_v1(
   let reference_script = cek_data_v1.semantic_data_summary_v1(
     reference_script_data(output),
   )
-  let tx_out_summary = fn(midgard_encoding: Bool) {
+  let tx_out_summary = fn(address: Data) {
     small_constr_summary(
       0,
       [
-        cek_data_v1.semantic_data_summary_v1(
-          address_data(output, midgard_encoding),
-        ),
+        cek_data_v1.semantic_data_summary_v1(address),
         value,
         datum_field,
         reference_script,
       ],
     )
   }
-  (tx_out_summary(False), tx_out_summary(True), spend_datum)
+  let cardano_tx_out = tx_out_summary(address_data(output, False))
+  // `address_data` reads `midgard_encoding` only for a protected address, so
+  // an unprotected output has one `TxOut` in both encodings.
+  (
+    cardano_tx_out,
+    if output.address.protected {
+      tx_out_summary(address_data(output, True))
+    } else {
+      cardano_tx_out
+    },
+    spend_datum,
+  )
 }
 
 fn tx_out_ref_data(input: MidgardTxInput) -> Data {

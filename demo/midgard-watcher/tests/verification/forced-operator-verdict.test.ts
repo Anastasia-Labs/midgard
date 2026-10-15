@@ -65,8 +65,8 @@ const FIXTURE_VERDICT_CBOR = Object.freeze({
   InputNotFound: "d87a9fd9050b9f0000ffff",
   AddressWitnessSignatureInvalid: "d87a9fd905009f00ffff",
   WitnessNativeScriptFalse: "d87a9fd905069f00ffff",
-  ExecutionNativeScriptFalse: "d87a9fd9051f9f00ffff",
-  PlutusExecutionFailed: "d87a9fd905229f00ffff",
+  ExecutionNativeScriptFalse: "d87a9fd9051f9f0000ffff",
+  PlutusExecutionFailed: "d87a9fd905229f0000ffff",
   FeeBelowMinimum: "d87a9fd87f80ff",
   ValueNotPreserved: "d87a9fd9052780ff",
 } as const);
@@ -226,7 +226,11 @@ describe("forced operator verdict vocabulary", () => {
     expect(
       canonicalRejectionArm({
         code: RejectCodes.PlutusScriptInvalid,
-        subject: { arm: "PlutusExecutionFailed", index: 7n },
+        subject: {
+          arm: "PlutusExecutionFailed",
+          purposeKind: 1n,
+          purposeIndex: 7n,
+        },
         consensusPhase: "cek",
       }),
     ).toBe("PlutusExecutionFailed");

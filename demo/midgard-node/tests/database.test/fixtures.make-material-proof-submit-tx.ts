@@ -33,7 +33,7 @@ import { SqlClient } from "@effect/sql";
 import { Effect } from "effect";
 import { expect } from "vitest";
 
-import { buildSubmitRouter } from "../../src/commands/listen-router.js";
+import { postSubmitHandler } from "../../src/commands/listen-router.post-submit-handler.js";
 import {
   CekProgramMaterialDB,
   MempoolDB,
@@ -45,6 +45,7 @@ import { BatchSql } from "../../src/services/database.js";
 import { Globals } from "../../src/services/globals.js";
 import { Lucid } from "../../src/services/lucid.js";
 import { MempoolLedgerCache } from "../../src/services/mempool-ledger-cache.js";
+import { ContractDeploymentIdentity } from "../../src/services/midgard-contracts.js";
 import { ValidationPool } from "../../src/services/validation-pool.js";
 import { WriteBehind } from "../../src/services/write-behind.js";
 import { makeCardanoSignedMapOutputTxBytes } from ".././helpers/cardano-native-fixtures.js";
@@ -94,11 +95,20 @@ export const submitThroughRouter = <R>(
   R | SqlClient.SqlClient | NodeConfig | Globals | AdmissionWriter
 > =>
   Effect.gen(function* () {
-    const response = yield* buildSubmitRouter(
-      wakeTxQueueProcessor,
+    // This fixture isolates the real durable-admission handler contract. It
+    // does not claim the transport quota layer, which real socket suites cover.
+    const response = yield* postSubmitHandler(
       undefined,
-      options.consensusProfile ?? MIDGARD_CONSENSUS_PROFILE,
+      wakeTxQueueProcessor,
     ).pipe(
+      Effect.provideService(
+        ContractDeploymentIdentity,
+        ContractDeploymentIdentity.make({
+          kind: "derived",
+          consensusProfile:
+            options.consensusProfile ?? MIDGARD_CONSENSUS_PROFILE,
+        }),
+      ),
       Effect.provideService(
         HttpServerRequest.HttpServerRequest,
         HttpServerRequest.fromWeb(
@@ -111,7 +121,7 @@ export const submitThroughRouter = <R>(
             },
             body: new Uint8Array(requestBody),
           }),
-        ),
+        ).modify({ remoteAddress: "127.0.0.1" }),
       ),
     );
     const webResponse = HttpServerResponse.toWeb(response);

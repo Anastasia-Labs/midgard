@@ -3,13 +3,14 @@ use aiken/cbor
 use aiken/collection/list
 use aiken/crypto.{ScriptHash, blake2b_256}
 use aiken/primitive/bytearray
+use midgard/cbor_deserialise
 use midgard/cek_data_traverse_v1
 use midgard/fraud_proofs/native_tx/codec.{
   encode_definite_array_header, encode_definite_bytes,
 }
 use midgard/fraud_proofs/native_tx/compact.{tx_proof_commitment_v1}
 use midgard/redeemer_item_proof_v1.{RedeemerItemProofControlV1}
-use midgard/rejection_reason_v1.{reject_invalid_field_type}
+use midgard/rejection_reason_v1.{RedeemerMalformed}
 use midgard/script_proof_v1
 use midgard/script_sources_raw_frame_v1 as raw_frame
 use midgard/validation_machine/machine_types.{ValidationOneStepWitnessV1}
@@ -425,7 +426,9 @@ pub fn verify_raw_envelope_v1(
   expected_next_item_control_hash: ByteArray,
   action_family: Int,
 ) -> Option<ScriptSourcesRedeemerEnvelopeFactsV1> {
-  expect Some(control_data) = cbor.deserialise(transition.work_witness_cbor)
+  let control_data <- cbor_deserialise.expect_deserialise(
+    transition.work_witness_cbor,
+  )
   expect
       [
         compact_cbor_data, witness_set_compact_cbor_data,
@@ -594,7 +597,7 @@ pub fn verify_raw_envelope_v1(
         rejected_successor_is_exact(
           pre,
           transition.claimed_successor,
-          reject_invalid_field_type,
+          RedeemerMalformed { redeemer_index: redeemer_count },
         ),
       }
     } else {

@@ -139,7 +139,7 @@ fn signatures_scan_witness(
   previous_order_key: ByteArray,
   previous_signer_hash: ByteArray,
   signer_frontier: validation_merkle_v1.BuiltFrontier,
-  invalid_signature_seen: Int,
+  first_invalid_witness_index: Int,
 ) -> ByteArray {
   let proof_source = forced_fixture.from_native_transaction(tx)
   vm_witness.encode_signatures_scan_witness(
@@ -160,7 +160,7 @@ fn signatures_scan_witness(
     previous_signer_hash,
     signer_frontier.count,
     signer_frontier.peaks,
-    invalid_signature_seen,
+    first_invalid_witness_index,
   )
 }
 
@@ -183,7 +183,7 @@ fn initial_signatures_witness(tx: MidgardTransaction) -> ByteArray {
     #"",
     #"",
     validation_merkle_v1.build_frontier([]),
-    0,
+    -1,
   )
 }
 
@@ -265,6 +265,8 @@ fn phase_a_native_step_fixture(
     signer_frontier.count,
     signer_frontier.peaks,
     #"",
+    -1,
+    -1,
   )
   Pair(
     validation_trace_v1.ValidationMachineStateV1 {
@@ -320,6 +322,8 @@ fn phase_a_native_scan_witness(
     signer_frontier.count,
     signer_frontier.peaks,
     #"",
+    -1,
+    -1,
   )
 }
 

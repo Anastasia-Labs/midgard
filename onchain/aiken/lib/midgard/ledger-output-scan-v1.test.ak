@@ -275,3 +275,135 @@ test initial_control_encoding_is_pinned() {
     ledger_output_scan_v1.initial_control_v1(),
   ) == ledger_output_scan_v1.initial_control_cbor_v1
 }
+
+/// The TypeScript terminal control: an output of 11,249 bytes with an inline
+/// datum and a PlutusV3 reference script.
+fn terminal_control() -> ledger_output_scan_v1.LedgerOutputScanControlV1 {
+  ledger_output_scan_v1.decode_control_v1(cross_language_terminal_control_cbor)
+}
+
+/// `terminal_is_exact_v1` leaves to `control_is_well_formed` every condition
+/// that predicate decides, so each malformed terminal control below must be
+/// refused through it.
+test terminal_refuses_a_control_that_is_not_well_formed() {
+  let control = terminal_control()
+  let refused = fn(candidate) {
+    !ledger_output_scan_v1.terminal_is_exact_v1(candidate, 11249)
+  }
+  and {
+    ledger_output_scan_v1.terminal_is_exact_v1(control, 11249),
+    refused(
+      ledger_output_scan_v1.LedgerOutputScanControlV1 {
+        ..control,
+        lovelace: -1,
+      },
+    ),
+    refused(
+      ledger_output_scan_v1.LedgerOutputScanControlV1 {
+        ..control,
+        asset_peaks: [],
+      },
+    ),
+    refused(
+      ledger_output_scan_v1.LedgerOutputScanControlV1 {
+        ..control,
+        datum_offset: -2,
+      },
+    ),
+    refused(
+      ledger_output_scan_v1.LedgerOutputScanControlV1 {
+        ..control,
+        reference_script_language: 2,
+      },
+    ),
+    refused(
+      ledger_output_scan_v1.LedgerOutputScanControlV1 {
+        ..control,
+        reference_script_item_offset: -1,
+      },
+    ),
+    refused(
+      ledger_output_scan_v1.LedgerOutputScanControlV1 {
+        ..control,
+        reference_script_item_offset: 5249,
+      },
+    ),
+    refused(
+      ledger_output_scan_v1.LedgerOutputScanControlV1 {
+        ..control,
+        reference_script_language: -1,
+      },
+    ),
+  }
+}
+
+/// A terminal control of an output with neither datum nor reference script
+/// must still record an empty datum span.
+test terminal_refuses_a_datum_length_without_a_datum() {
+  let total_length = bytearray.length(output_without_optional_fields)
+  let initial = ledger_output_scan_v1.initial_control_v1()
+  expect Some(value_control) = ledger_output_scan_v1.step_v1(
+    initial,
+    total_length,
+    output_without_optional_fields,
+    0,
+  )
+  expect Some(optional_control) = ledger_output_scan_v1.step_v1(
+    value_control,
+    total_length,
+    output_without_optional_fields,
+    value_control.cursor,
+  )
+  expect Some(terminal) = ledger_output_scan_v1.finish_v1(
+    optional_control,
+    total_length,
+  )
+  and {
+    ledger_output_scan_v1.terminal_is_exact_v1(terminal, total_length),
+    !ledger_output_scan_v1.terminal_is_exact_v1(
+      ledger_output_scan_v1.LedgerOutputScanControlV1 {
+        ..terminal,
+        datum_length: 1,
+      },
+      total_length,
+    ),
+  }
+}
+
+/// A control is only ever written well formed, which is what lets a thread
+/// read its own control back without re-checking it.
+test encoding_refuses_a_malformed_control() fail {
+  let malformed = ledger_output_scan_v1.LedgerOutputScanControlV1 {
+    ..ledger_output_scan_v1.initial_control_v1(),
+    asset_count: 1,
+  }
+  ledger_output_scan_v1.encode_control_v1(malformed) != #""
+}
+
+/// A control written by `encode_control_v1` reads back unchanged without the
+/// checks `decode_control_v1` repeats.
+test written_control_reads_back_unchanged() {
+  let control = terminal_control()
+  ledger_output_scan_v1.decode_written_control_v1(
+    ledger_output_scan_v1.encode_control_v1(control),
+  ) == control
+}
+
+/// A step that would leave a control malformed is refused even when the
+/// control it starts from is well formed: a run of steps checks each control
+/// only as a step's result. This control is well formed but records no output
+/// map yet already counts two optional fields, so reading one more inline
+/// datum would count a third.
+test step_refuses_a_result_that_is_not_well_formed() {
+  let control = ledger_output_scan_v1.LedgerOutputScanControlV1 {
+    ..ledger_output_scan_v1.initial_control_v1(),
+    stage: ledger_output_scan_v1.stage_optional_field,
+    optional_field_count: 2,
+  }
+  let window = #"024100"
+  and {
+    ledger_output_scan_v1.control_is_well_formed(control),
+    ledger_output_scan_v1.step_well_formed_v1(control, 3, window, 0) == None,
+    ledger_output_scan_v1.step_v1(control, 3, window, 0) == None,
+  }
+}

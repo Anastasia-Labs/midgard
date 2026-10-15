@@ -43,24 +43,35 @@ export const AVAILABILITY_TIMING = Object.freeze({
   ),
 });
 
+type AvailabilityParameters = typeof TEST_AVAILABILITY_PARAMETERS;
+
 /**
  * The largest exact fee a DA availability builder sets is the timeout's:
  * `min(penalty, taken) + c <= da_slash_penalty + max_timeout_fee`. The ledger
  * holds `collateralPercentage` of it as collateral (G9, H1).
  */
-export const AVAILABILITY_REQUIRED_COLLATERAL_LOVELACE =
-  ((TEST_AVAILABILITY_PARAMETERS.da_slash_penalty_lovelace +
-    TEST_AVAILABILITY_PARAMETERS.max_timeout_fee_lovelace) *
+export const availabilityRequiredCollateralLovelace = (
+  parameters: AvailabilityParameters,
+): bigint =>
+  ((parameters.da_slash_penalty_lovelace +
+    parameters.max_timeout_fee_lovelace) *
     BigInt(AVAILABILITY_EMULATOR_PARAMETERS.collateralPercentage) +
     99n) /
   100n;
+
+export const AVAILABILITY_REQUIRED_COLLATERAL_LOVELACE =
+  availabilityRequiredCollateralLovelace(TEST_AVAILABILITY_PARAMETERS);
 
 /**
  * One plain-ADA collateral coin covers the largest collateral alone and
  * leaves a collateral return above min-UTxO.
  */
+export const availabilityCollateralCoinLovelace = (
+  parameters: AvailabilityParameters,
+): bigint => availabilityRequiredCollateralLovelace(parameters) + 5_000_000n;
+
 export const AVAILABILITY_COLLATERAL_COIN_LOVELACE =
-  AVAILABILITY_REQUIRED_COLLATERAL_LOVELACE + 5_000_000n;
+  availabilityCollateralCoinLovelace(TEST_AVAILABILITY_PARAMETERS);
 
 /**
  * P3: queue nodes carry at least this much, so an Apply or Open output that
@@ -75,9 +86,13 @@ export const AVAILABILITY_QUEUE_NODE_LOVELACE = 5_000_000n;
 export const AVAILABILITY_ATTESTATION_OUTPUT_LOVELACE = 25_000_000n;
 
 /** `floor + 2 * da_bond`: backs two attestations and one full slash. */
+export const availabilityDefaultPoolLovelace = (
+  parameters: AvailabilityParameters,
+): bigint =>
+  parameters.da_bond_pool_floor_lovelace + 2n * parameters.da_bond_lovelace;
+
 export const AVAILABILITY_DEFAULT_POOL_LOVELACE =
-  TEST_AVAILABILITY_PARAMETERS.da_bond_pool_floor_lovelace +
-  2n * TEST_AVAILABILITY_PARAMETERS.da_bond_lovelace;
+  availabilityDefaultPoolLovelace(TEST_AVAILABILITY_PARAMETERS);
 
 export type AvailabilityMeasurement = {
   name: string;

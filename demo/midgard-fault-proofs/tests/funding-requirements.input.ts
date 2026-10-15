@@ -39,7 +39,7 @@ export const fundingInputCbor = (lovelace = 1_003_170_000n): string => {
   ).to_canonical_cbor_hex();
 };
 
-const transactionCbor = (): string => {
+const transactionCbor = (inlineDatum?: string): string => {
   const inputs = CML.TransactionInputList.new();
   inputs.add(
     CML.TransactionInput.new(CML.TransactionHash.from_hex("66".repeat(32)), 0n),
@@ -49,6 +49,9 @@ const transactionCbor = (): string => {
     CML.TransactionOutput.new(
       CML.Address.from_bech32(fundingAddress),
       CML.Value.from_coin(3_000_000n),
+      inlineDatum === undefined
+        ? undefined
+        : CML.DatumOption.new_datum(CML.PlutusData.from_cbor_hex(inlineDatum)),
     ),
   );
   const bondAssets = CML.MultiAsset.new();
@@ -87,12 +90,10 @@ const transactionCbor = (): string => {
     ),
   );
   witnesses.set_vkeywitnesses(vkeys);
-  return CML.Transaction.new(
-    body,
-    witnesses,
-    true,
-    undefined,
-  ).to_canonical_cbor_hex();
+  const transaction = CML.Transaction.new(body, witnesses, true, undefined);
+  return inlineDatum === undefined
+    ? transaction.to_canonical_cbor_hex()
+    : transaction.to_cbor_hex();
 };
 
 export const input = () => ({
@@ -249,4 +250,11 @@ export const protocolFundedInput = (): WorkflowFundingRequirementsInput => {
       },
     ],
   };
+};
+
+/** Signed consumer codec vector; it is not a genuine workflow measurement. */
+export const inputWithInlineDatum = (datumCbor: string) => {
+  const fixture = input();
+  fixture.actions[0]!.signedTransactionCborHex = transactionCbor(datumCbor);
+  return fixture;
 };

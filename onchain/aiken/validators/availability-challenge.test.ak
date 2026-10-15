@@ -39,6 +39,16 @@ const da_bond_pool_policy =
 const miscellaneous_policy =
   #"44444444444444444444444444444444444444444444444444444444"
 
+/// The operator directory policies the hub datum names.
+const registered_operators_policy =
+  #"41414141414141414141414141414141414141414141414141414141"
+
+const active_operators_policy =
+  #"42424242424242424242424242424242424242424242424242424242"
+
+const retired_operators_policy =
+  #"43434343434343434343434343434343434343434343434343434343"
+
 /// The block operator, and the non-challenger key the negatives use.
 const operator = #"55555555555555555555555555555555555555555555555555555555"
 
@@ -1391,9 +1401,9 @@ fn maximum_challenger_component_lovelace() -> Int {
 fn hub_reference_input() -> Input {
   let script_address = address.from_script(miscellaneous_policy)
   let datum: hub.Datum = hub.Datum {
-    registered_operators: miscellaneous_policy,
-    active_operators: miscellaneous_policy,
-    retired_operators: miscellaneous_policy,
+    registered_operators: registered_operators_policy,
+    active_operators: active_operators_policy,
+    retired_operators: retired_operators_policy,
     scheduler: miscellaneous_policy,
     state_queue: state_queue_policy,
     fraud_proof_catalogue: miscellaneous_policy,
@@ -2400,6 +2410,39 @@ test q58_timeout_rejects_second_challenger_output() fail {
       outputs: list.concat(base.outputs, [enterprise_output(challenger, 1)]),
     },
   )
+}
+
+/// A Timeout whose transaction also mints or burns under `policy`.
+fn timeout_with_mint_under(policy: ByteArray) -> Transaction {
+  let base = honest_timeout()
+  Transaction { ..base, mint: assets.add(base.mint, policy, "node", -1) }
+}
+
+/// A Timeout transaction leaves the operator directories alone: a burn under
+/// any one of the three directory policies is refused by the timeout yield's
+/// directory conditions.
+test q58_timeout_rejects_registered_operators_mint() fail {
+  validates_honest_timeout_redeemer(
+    timeout_with_mint_under(registered_operators_policy),
+  )
+}
+
+test q58_timeout_rejects_active_operators_mint() fail {
+  validates_honest_timeout_redeemer(
+    timeout_with_mint_under(active_operators_policy),
+  )
+}
+
+test q58_timeout_rejects_retired_operators_mint() fail {
+  validates_honest_timeout_redeemer(
+    timeout_with_mint_under(retired_operators_policy),
+  )
+}
+
+/// Positive control for the three refusals above: a burn under a policy
+/// outside the operator directories leaves the Timeout accepted.
+test q58_timeout_accepts_mint_outside_the_operator_directories() {
+  timeout_is_accepted(timeout_with_mint_under(miscellaneous_policy))
 }
 
 test q58_maximum_16_tranche_final_close_applied_topology_fits() {

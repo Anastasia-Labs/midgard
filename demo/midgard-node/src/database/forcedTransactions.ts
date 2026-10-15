@@ -23,6 +23,7 @@ export {
   retrieveByProjectedHeaderHash,
   retrieveByTxOrderId,
   retrievePendingHeaderEntriesUpTo,
+  retrievePendingHeaderInstantCounts,
   setProofClassifications,
 } from "./forcedTransactions.encode-forced-inclusion-value-v1.js";
 export {

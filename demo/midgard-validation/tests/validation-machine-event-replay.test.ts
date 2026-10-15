@@ -217,11 +217,12 @@ describe("independent validation event replay", () => {
       // Byte pin after uniform §5.1 byte-string item counting and the Cardano
       // `validRange` (an absent upper bound is an inclusive PosInf); emitted
       // Phase A steps are independently checked by the Aiken one-step predicate.
-      // Re-pinned when the declared ex-units moved under the per-tx cap.
+      // Re-pinned when the declared ex-units moved under the per-tx cap, and
+      // again when the CEK witness began carrying its execution's purpose key.
       const expectedTraceHash =
         executionCount === 1
-          ? "03ea3ccec540f4f0927b0a1bc2c632f866b1b5b3bb28ddbdeded9b4e5bb1f5b8"
-          : "9b64ca0218cef402d841ffb2c280cc9d084020caed5546ae883992e36ec377d6";
+          ? "d075330cdabf38f1752fb4d968efaf8a6c168a8d0ec3b31c3032dab074176f09"
+          : "70dae19939e9004be92441fd8eaf12483ffddb4da160efe7063a24f4077b2eee";
       expect(createHash("sha256").update(traceBytes).digest("hex")).toBe(
         expectedTraceHash,
       );

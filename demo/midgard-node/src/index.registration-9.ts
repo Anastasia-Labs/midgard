@@ -33,7 +33,7 @@ import { commitExplicitBlockHeaderProgram } from "./workers/commit-block-header.
 program
   .command("slash-duplicate-operator")
   .description(
-    "Remove a duplicate registered node for an operator that is already registered, active, or retired; the slashing penalty is paid from its bond and the rest goes to the submitter",
+    "Remove a duplicate registered node for an operator that is already registered, active, or retired; the slashing penalty is paid from its bond as the fee and the bounty goes to the enterprise address of this node's wallet key",
   )
   .requiredOption(
     "--operator-key-hash <hex>",

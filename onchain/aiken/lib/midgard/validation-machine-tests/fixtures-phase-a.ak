@@ -28,6 +28,7 @@ use midgard/ledger_output_proof_v1
 use midgard/ledger_state.{ForcedTxProofSourceV1, NativeTxProofSourceV1}
 use midgard/mpf_proof_fold_v1
 use midgard/native_tx_field_access_v1
+use midgard/rejection_reason_v1.{RejectionReasonV1}
 use midgard/script_proof_v1
 use midgard/validation_machine/cek as vm_cek
 use midgard/validation_machine/machine_types as vm_machine_types
@@ -260,7 +261,7 @@ pub fn signatures_scan_witness(
   previous_order_key: ByteArray,
   previous_signer_hash: ByteArray,
   signer_frontier: validation_merkle_v1.BuiltFrontier,
-  invalid_signature_seen: Int,
+  first_invalid_witness_index: Int,
 ) -> ByteArray {
   let proof_source = submitted_source(tx)
   vm_witness.encode_signatures_scan_witness(
@@ -281,7 +282,7 @@ pub fn signatures_scan_witness(
     previous_signer_hash,
     signer_frontier.count,
     signer_frontier.peaks,
-    invalid_signature_seen,
+    first_invalid_witness_index,
   )
 }
 
@@ -304,7 +305,7 @@ pub fn initial_signatures_witness(tx: MidgardTransaction) -> ByteArray {
     #"",
     #"",
     validation_merkle_v1.build_frontier([]),
-    0,
+    -1,
   )
 }
 
@@ -370,6 +371,8 @@ pub fn phase_a_native_step_fixture(
     signer_frontier.count,
     signer_frontier.peaks,
     #"",
+    -1,
+    -1,
   )
   Pair(
     validation_trace_v1.ValidationMachineStateV1 {
@@ -425,6 +428,8 @@ pub fn phase_a_native_scan_witness(
     signer_frontier.count,
     signer_frontier.peaks,
     #"",
+    -1,
+    -1,
   )
 }
 
@@ -587,7 +592,7 @@ pub fn input_sets_pre(
 // root) and in the claim layer, not in this field.
 pub fn exact_rejection_post(
   pre: validation_trace_v1.ValidationMachineStateV1,
-  rejection_code: ByteArray,
+  reason: RejectionReasonV1,
 ) -> validation_trace_v1.ValidationMachineStateV1 {
   validation_trace_v1.ValidationMachineStateV1 {
     ..pre,
@@ -596,13 +601,10 @@ pub fn exact_rejection_post(
     work_root: validation_trace_v1.hash_work_witness(
       validation_trace_v1.Terminal,
       pre.program_counter + 1,
-      vm_shared.encode_terminal_rejection_witness(
-        rejection_code,
-        pre.prior_ledger_root,
-      ),
+      vm_shared.encode_terminal_rejection_witness(reason, pre.prior_ledger_root),
     ),
     verdict: validation_trace_v1.Rejected,
-    rejection_code_hash: validation_trace_v1.hash_rejection_code(rejection_code),
+    rejection_code_hash: validation_trace_v1.hash_rejection_code(reason),
   }
 }
 
@@ -1585,6 +1587,8 @@ pub fn cek_state_fixture(
     0,
     0,
     program_envelope_hash,
+    -1,
+    -1,
   )
   Pair(
     forced_pending_state(

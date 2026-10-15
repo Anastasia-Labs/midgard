@@ -12,7 +12,14 @@ export {
   makeSpendingValidator,
   makeWithdrawalValidator,
   parseFaultProofBlueprint,
+  verifyBlueprintDeploymentRegistry,
 } from "./blueprint.js";
+export {
+  type BlueprintApplicationRecord,
+  blueprintApplicationRecords,
+  type BlueprintDeploymentScript,
+  buildBlueprintDeploymentRegistry,
+} from "./blueprint-applications.js";
 export {
   buildFaultProofContracts,
   fraudProofContractsToFirstSteps,

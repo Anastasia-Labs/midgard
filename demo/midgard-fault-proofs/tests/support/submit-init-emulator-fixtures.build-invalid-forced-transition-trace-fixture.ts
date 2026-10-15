@@ -180,7 +180,12 @@ const buildForcedTransitionTraceFixture = async ({
                         },
                       }
                     : fieldPreimageLengthMismatchIndex === undefined
-                      ? { PlutusExecutionFailed: { execution_index: 0n } }
+                      ? {
+                          PlutusExecutionFailed: {
+                            purpose_kind: 0n,
+                            purpose_index: 0n,
+                          },
+                        }
                       : {
                           FieldPreimageLengthMismatch: {
                             field_index: BigInt(

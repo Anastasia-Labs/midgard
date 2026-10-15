@@ -141,11 +141,11 @@ describe("DA attestation transaction builders", () => {
 });
 
 describe("DA attestation apply validity range", () => {
-  const HEADER_END_TIME = 1_800_000_000_000n;
-  const DEADLINE = HEADER_END_TIME + SDK.DA_ATTESTATION_TIMEOUT_MS;
+  const BLOCK_TIME = 1_800_000_000_000n;
+  const DEADLINE = BLOCK_TIME + SDK.DA_ATTESTATION_TIMEOUT_MS;
   const rangeAt = (currentTime: bigint) =>
     daAttestationApplyValidityRange({
-      target: applyTarget(HEADER_END_TIME),
+      target: applyTarget(BLOCK_TIME),
       currentTime,
     });
 
@@ -399,10 +399,10 @@ class InitTxBuilder {
   }
 }
 
-const applyTarget = (headerEndTime: bigint): DaAttestationTarget =>
+const applyTarget = (blockTime: bigint): DaAttestationTarget =>
   ({
     headerHash: HEADER_HASH,
-    stateQueueNode: { header: { endTime: headerEndTime } },
+    stateQueueNode: { block_time: blockTime },
   }) as unknown as DaAttestationTarget;
 
 const HEADER_HASH = "01".repeat(28);

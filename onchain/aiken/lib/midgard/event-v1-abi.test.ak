@@ -230,8 +230,9 @@ test canonical_operator_directory_v1_typescript_abi_vectors() {
       operator_directory.SlashOperatorForBadSettlement {
         settlement_input_index: 1,
         settlement_redeemer_index: 2,
+        bounty_claimant: h28_b,
       },
-    ) == #"d87a9f0102ff",
+    ) == #"d87a9f0102581c22222222222222222222222222222222222222222222222222222222ff",
     cbor.serialise(slashing_arguments()) == #"d8799f581c1111111111111111111111111111111111111111111111111111111101d8799f5820333333333333333333333333333333333333333333333333333333333333333301ff02d8799f03ffff",
     cbor.serialise(
       active.ShowOperatorIsInactive { scheduler_ref_input_index: 1 },
@@ -370,8 +371,9 @@ test canonical_operator_directory_v1_typescript_abi_vectors() {
         duplicate_operator_status: registered.DuplicateIsActive {
           hub_oracle_ref_input_index: 3,
         },
+        bounty_claimant: h28_b,
       },
-    ) == #"d87e9f581c11111111111111111111111111111111111111111111111111111111d8799f5820333333333333333333333333333333333333333333333333333333333333333301ff0102d87a9f03ffff",
+    ) == #"d87e9f581c11111111111111111111111111111111111111111111111111111111d8799f5820333333333333333333333333333333333333333333333333333333333333333301ff0102d87a9f03ff581c22222222222222222222222222222222222222222222222222222222ff",
     cbor.serialise(
       linked_list.Element {
         data: linked_list.Node { data: registered.NodeData { operator: h28_a } },

@@ -8,7 +8,7 @@ use midgard/ledger_state
 use midgard/mpf_proof_v1
 use midgard/rejection_reason_v1.{
   InputAssetAccumulationLimit, MintAssetAccumulationLimit,
-  OutputAssetAccumulationLimit, reject_asset_count,
+  OutputAssetAccumulationLimit,
 }
 use midgard/transition_trace
 use midgard/validation_machine/machine_types.{
@@ -211,7 +211,7 @@ fn trace_pre_is_authenticated(
         pre.source_kind == validation_trace_v1.Forced,
         descriptor.verdict == validation_trace_v1.Rejected,
         descriptor.rejection_code_hash == validation_trace_v1.hash_rejection_code(
-          reject_asset_count,
+          substrate.rejection_reason_of_v1(bound.subject),
         ),
       }
     },

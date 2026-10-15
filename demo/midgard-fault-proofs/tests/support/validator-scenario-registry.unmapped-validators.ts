@@ -543,7 +543,6 @@ export const UNMAPPED_VALIDATORS: readonly Readonly<{
       "settlement.mint",
       "settlement.spend",
       "state_queue.mint",
-      "state_queue.spend",
       "state_queue_yields.commit",
       "state_queue_yields.merge",
       "state_queue_yields.remove_fraudulent",

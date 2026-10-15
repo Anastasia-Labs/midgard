@@ -58,7 +58,6 @@ export const withRealStateQueueAndOperatorContracts = (
 
     const realHubOracle = yield* buildRealHubOracleValidator(
       network,
-      baseContracts.hubOracle,
       normalizedOneShotOutRef,
     );
     // Build order: DA params governor -> DA bond pool -> availability

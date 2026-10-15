@@ -1,7 +1,6 @@
 import {
   encodeCbor,
   materializeMidgardNativeTxFromCanonical,
-  MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES,
   MIDGARD_MAX_TRANSACTION_AGGREGATE_FIELD_BYTES,
   type MidgardNativeTxCanonical,
 } from "@al-ft/midgard-core";
@@ -21,7 +20,6 @@ import { describe, expect, it } from "vitest";
 import { COMMITTED_FIELD_SHAPE_CATEGORY_LABEL } from "../src/committed-field-shape/contracts.js";
 import {
   classifyCommittedFieldShapeFields,
-  committedFieldShapeInlineClaimDetails,
   prepareCommittedFieldShapeFromCanonicalTx,
   submitCommittedFieldShapeInit,
   submitCommittedFieldShapeStep01,
@@ -148,30 +146,6 @@ describe("committed-field-shape constraint space", () => {
     expect(isCommittedFieldShapeViolation({ fieldIndex: 0, verdict: 4 })).toBe(
       false,
     );
-
-    const tier1Frontier = sizedMidgardFieldEnvelope(
-      MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES,
-      0x6a,
-    );
-    expect(
-      committedFieldShapeInlineClaimDetails(
-        committedFieldShapeInlineClaim({
-          fieldIndex: 0,
-          preimage: tier1Frontier,
-        }),
-      ).preimage,
-    ).toHaveLength(MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES);
-    expect(() =>
-      committedFieldShapeInlineClaimDetails(
-        committedFieldShapeInlineClaim({
-          fieldIndex: 0,
-          preimage: sizedMidgardFieldEnvelope(
-            MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES + 1,
-            0x6b,
-          ),
-        }),
-      ),
-    ).toThrow(/above the tier-1 frontier/u);
   });
 
   it("refuses honest pinned slots and picks the first violation deterministically", () => {

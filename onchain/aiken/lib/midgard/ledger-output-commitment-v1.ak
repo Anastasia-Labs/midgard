@@ -4,6 +4,7 @@ use aiken/crypto.{blake2b_256}
 use aiken/primitive/bytearray
 use midgard/bounded_item_v1
 use midgard/canonical_cbor_scan_v1.{CborBytesV1, CborHeadV1, head_at_v1}
+use midgard/cbor_deserialise
 use midgard/cek_data_v1
 use midgard/fraud_proofs/native_tx/codec.{
   encode_definite_array_header, encode_definite_bytes,
@@ -23,8 +24,11 @@ pub const max_cardano_value_cbor_bytes: Int = 5000
 
 const uint64_max = 18446744073709551615
 
-const asset_leaf_domain =
-  #"4d6964676172644c65646765724f757470757441737365744c6561665631"
+/// The asset-leaf domain followed by the leaf's fixed CBOR prefix: the definite
+/// 3-element array header `#"83"` and the 28-byte string head `#"581c"` of
+/// its policy id.
+const asset_leaf_prefix =
+  #"4d6964676172644c65646765724f757470757441737365744c656166563183581c"
 
 /// Compact ledger MPF value. Complete output bytes remain in DA and
 /// persistence; this descriptor binds them to the independently foldable
@@ -175,7 +179,7 @@ pub fn encode(descriptor: LedgerOutputCommitmentV1) -> ByteArray {
 }
 
 pub fn decode(descriptor_cbor: ByteArray) -> LedgerOutputCommitmentV1 {
-  expect Some(data) = cbor.deserialise(descriptor_cbor)
+  let data <- cbor_deserialise.expect_deserialise(descriptor_cbor)
   expect
       [
         version_data, output_index_data, total_length_data, item_commitment_data,
@@ -364,13 +368,12 @@ pub fn asset_leaf_hash(
   expect bytearray.length(policy_id) == 28
   expect bytearray.length(asset_name) <= 32
   expect quantity > 0
-  asset_leaf_domain
-    |> bytearray.concat(
-        encode_definite_array_header(3)
-          |> bytearray.concat(encode_definite_bytes(policy_id))
-          |> bytearray.concat(encode_definite_bytes(asset_name))
-          |> bytearray.concat(cbor.serialise(quantity)),
-      )
+  // `asset_leaf_prefix` ends with the heads that `encode_definite_array_header(3)`
+  // and `encode_definite_bytes` emit here for the 28-byte policy id checked above.
+  asset_leaf_prefix
+    |> bytearray.concat(policy_id)
+    |> bytearray.concat(encode_definite_bytes(asset_name))
+    |> bytearray.concat(cbor.serialise(quantity))
     |> blake2b_256
 }
 

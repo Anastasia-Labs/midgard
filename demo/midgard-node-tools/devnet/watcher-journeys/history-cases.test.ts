@@ -21,18 +21,20 @@ import {
   checkedLedgerAfter,
   payloadLedgerAt,
 } from "@al-ft/midgard-fault-proofs/test-support/predecessor-ledger";
-import { depositEventsRetainedBlock } from "@al-ft/midgard-fault-proofs/test-support/transition-trace-retained";
 import { readPublishedDepositHistory } from "midgard-watcher/tests/support/published-deposit-history";
 import type { PublishedDepositTraceCheckpoint } from "midgard-watcher/tests/support/published-deposit-trace";
 import { expect, it } from "vitest";
 
 import { readJourneyArtifact } from "./artifacts.js";
-import { verifyJourneyFixture } from "./fixture-verification.js";
-import { classifyFullCatalogueTransactionFixture } from "./full-catalogue-verification.js";
 import {
   buildJourneyHistoryTransaction,
   JOURNEY_HISTORY_TRANSACTION_CATEGORIES,
 } from "./history-cases.js";
+import { readCheckpointJourneyLedgerBlock } from "./journey-checkpoint-ledger.test-support.js";
+import { verifyJourneyFixture } from "./journey-classification.test-support.js";
+import { classifyFullCatalogueTransactionFixture } from "./journey-classification.test-support.js";
+import { depositEventsRetainedBlock } from "./journey-fixture-ledger.test-support.js";
+import { journeyLedgerPairs } from "./journey-ledger.js";
 
 const runDirectory = process.env.MIDGARD_WATCHER_JOURNEY_RUN_DIR;
 const stagedPath =
@@ -77,7 +79,14 @@ it
       blockSlot: staged.current.header.blockSlot,
       prevHeaderHash: staged.predecessor.headerHash,
       prevUtxosRoot: staged.predecessor.header.utxosRoot,
-      priorLedger: staged.predecessor.payload.block_body.utxos,
+      priorLedger: journeyLedgerPairs(
+        (
+          await readCheckpointJourneyLedgerBlock(
+            runDirectory!,
+            staged.predecessor,
+          )
+        ).ledger,
+      ),
       events: [
         {
           event: deposit.event,

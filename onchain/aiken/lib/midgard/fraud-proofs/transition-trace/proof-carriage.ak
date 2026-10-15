@@ -1,9 +1,9 @@
 use aiken/builtin
-use aiken/cbor
 use aiken/collection/list
 use aiken/crypto.{blake2b_256}
 use aiken/primitive/bytearray
 use cardano/transaction.{InlineDatum, Input}
+use midgard/cbor_deserialise
 
 pub const chunk_bytes = 4096
 
@@ -28,7 +28,7 @@ pub fn chunks(indices: List<Int>, references: List<Input>) -> ByteArray {
 
 pub fn open(indices: List<Int>, references: List<Input>) -> (Commitment, Data) {
   let bytes = chunks(indices, references)
-  expect Some(data) = cbor.deserialise(bytes)
+  let data <- cbor_deserialise.expect_deserialise(bytes)
   // This is reference-byte transport, not a consensus serialiseData preimage.
   // Its exact bytes are frozen by the thread commitment; native preimages
   // contained within it still pass their canonical field/output doors.

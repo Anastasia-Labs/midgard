@@ -2,6 +2,7 @@ use aiken/builtin
 use aiken/cbor
 use aiken/primitive/bytearray
 use midgard/bounded_item_v1
+use midgard/cbor_deserialise
 use midgard/cek_constant_v1
 use midgard/cek_data_v1
 use midgard/cek_machine_v1
@@ -13,7 +14,9 @@ use midgard/fraud_proofs/native_tx/compact.{
 use midgard/native_script_scan_v1
 use midgard/native_tx_field_access_v1
 use midgard/redeemer_item_proof_v1
-use midgard/rejection_reason_v1.{reject_plutus_script_invalid}
+use midgard/rejection_reason_v1.{
+  PlutusExecutionFailed, ReceivePurposePlutusV3Forbidden,
+}
 use midgard/script_context_v1
 use midgard/script_proof_v1
 use midgard/validation_machine/machine_types.{
@@ -103,7 +106,10 @@ pub fn verify_cek_core_successor(
       rejected_successor_is_exact(
         pre,
         witness.claimed_successor,
-        reject_plutus_script_invalid,
+        PlutusExecutionFailed {
+          purpose_kind: cek.purpose_kind,
+          purpose_index: cek.purpose_index,
+        },
       ),
     }
   } else if post.mode == cek_machine_v1.mode_halt_success {
@@ -138,6 +144,8 @@ pub fn verify_cek_core_successor(
               0,
               0,
               #"",
+              -1,
+              -1,
             ),
           ),
         }
@@ -161,6 +169,8 @@ pub fn verify_cek_core_successor(
           execution_cpu_limit,
           execution_memory_limit,
           program_envelope_hash,
+          cek.purpose_kind,
+          cek.purpose_index,
         ),
       ),
     }
@@ -179,6 +189,8 @@ fn verify_cek_core_step(
   execution_cpu_limit: Int,
   execution_memory_limit: Int,
   program_envelope_hash: ByteArray,
+  purpose_kind: Int,
+  purpose_index: Int,
 ) -> Bool {
   when auxiliary is {
     CekCoreStepWitness { step } -> {
@@ -210,7 +222,7 @@ fn verify_cek_core_step(
             rejected_successor_is_exact(
               pre,
               witness.claimed_successor,
-              reject_plutus_script_invalid,
+              PlutusExecutionFailed { purpose_kind, purpose_index },
             ),
           }
         } else if step.post.mode == cek_machine_v1.mode_halt_success {
@@ -245,6 +257,8 @@ fn verify_cek_core_step(
                     0,
                     0,
                     #"",
+                    -1,
+                    -1,
                   ),
                 ),
               }
@@ -268,6 +282,8 @@ fn verify_cek_core_step(
                 execution_cpu_limit,
                 execution_memory_limit,
                 program_envelope_hash,
+                purpose_kind,
+                purpose_index,
               ),
             ),
           }
@@ -304,6 +320,8 @@ fn cek_context_successor_is_exact(
         0,
         0,
         context_control.program_envelope_hash,
+        -1,
+        -1,
       ),
     ),
   }
@@ -332,7 +350,7 @@ fn cek_selection_successor_is_exact(
     rejected_successor_is_exact(
       pre,
       witness.claimed_successor,
-      reject_plutus_script_invalid,
+      ReceivePurposePlutusV3Forbidden { purpose_kind, purpose_index },
     )
   } else if language_tag == 0 {
     let next_cursor = execution_cursor + 1
@@ -365,6 +383,8 @@ fn cek_selection_successor_is_exact(
             0,
             0,
             #"",
+            -1,
+            -1,
           ),
         ),
       }
@@ -414,7 +434,7 @@ fn first_source_chunk_identity_matches(
   proof: bounded_item_v1.ChunkProofV1,
 ) -> Bool {
   if origin_kind == 0 {
-    expect Some(source_index_data) = cbor.deserialise(source_key)
+    let source_index_data <- cbor_deserialise.expect_deserialise(source_key)
     let source_index = builtin.un_i_data(source_index_data)
     and {
       source_index >= 0,
@@ -423,7 +443,7 @@ fn first_source_chunk_identity_matches(
       proof.item_index == source_index,
     }
   } else if origin_kind == 1 {
-    expect Some(source_key_data) = cbor.deserialise(source_key)
+    let source_key_data <- cbor_deserialise.expect_deserialise(source_key)
     expect [_, output_index_data] = builtin.un_list_data(source_key_data)
     let output_index = builtin.un_i_data(output_index_data)
     and {
@@ -1659,6 +1679,8 @@ fn cek_context_execution_successor_is_exact(
         context_control.execution_cpu_limit,
         context_control.execution_memory_limit,
         context_control.program_envelope_hash,
+        context_control.purpose_kind,
+        context_control.purpose_index,
       ),
     ),
   }
@@ -2166,6 +2188,8 @@ fn cek_core_v1(
       cek.execution_cpu_limit,
       cek.execution_memory_limit,
       cek.program_envelope_hash,
+      cek.purpose_kind,
+      cek.purpose_index,
     ),
   }
 }

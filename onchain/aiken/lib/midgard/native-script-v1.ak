@@ -2,6 +2,7 @@ use aiken/builtin
 use aiken/cbor
 use aiken/collection/list
 use aiken/primitive/bytearray
+use midgard/cbor_deserialise
 use midgard/fraud_proofs/native_tx/codec.{
   encode_definite_array_header, encode_definite_bytes,
 }
@@ -305,7 +306,7 @@ pub fn inspect_native_script(
   validity_interval_end: Int,
   witness_signers: List<ByteArray>,
 ) -> Option<NativeScriptProofV1> {
-  when cbor.deserialise(script_cbor) is {
+  when cbor_deserialise.deserialise(script_cbor) is {
     None -> None
     Some(data) ->
       when

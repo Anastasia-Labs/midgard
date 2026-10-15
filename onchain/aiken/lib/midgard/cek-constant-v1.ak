@@ -2,6 +2,7 @@ use aiken/builtin
 use aiken/cbor
 use aiken/collection/list
 use aiken/primitive/bytearray
+use midgard/cbor_deserialise
 use midgard/cek_data_v1
 use midgard/cek_proof_v1
 
@@ -65,7 +66,7 @@ fn decode_type_items(items: List<Data>) -> Pair<ConstantTypeV1, List<Data>> {
 
 pub fn decode_constant_type_v1(type_cbor: ByteArray) -> ConstantTypeV1 {
   expect bytearray.length(type_cbor) <= max_type_cbor_bytes
-  expect Some(type_data) = cbor.deserialise(type_cbor)
+  let type_data <- cbor_deserialise.expect_deserialise(type_cbor)
   expect cbor.serialise(type_data) == type_cbor
   let items = builtin.un_list_data(type_data)
   let Pair(constant_type, remaining) = decode_type_items(items)
@@ -97,7 +98,7 @@ pub fn decode_constant_payload_v1(payload_cbor: ByteArray) -> Data {
   if payload_cbor == #"40" {
     builtin.b_data(#"")
   } else {
-    expect Some(payload) = cbor.deserialise(payload_cbor)
+    let payload <- cbor_deserialise.expect_deserialise(payload_cbor)
     expect cbor.serialise(payload) == payload_cbor
     payload
   }

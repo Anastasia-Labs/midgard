@@ -589,3 +589,32 @@ test empty_value_map_is_supported() {
     cek_data_v1.semantic_data_summary_v1(builtin.map_data([])),
   )
 }
+
+/// A control is only ever written well formed, which is what lets a thread
+/// read its own control back without re-checking it.
+test encoding_refuses_a_malformed_control() fail {
+  let malformed = ledger_output_value_v1.LedgerOutputValueControlV1 {
+    ..ledger_output_value_v1.initial_control_v1(0),
+    current_policy: #"00",
+  }
+  ledger_output_value_v1.encode_control_v1(malformed) != #""
+}
+
+/// Controls written by `encode_control_v1`, with and without a result, read
+/// back unchanged without the checks `decode_control_v1` repeats.
+test written_control_reads_back_unchanged() {
+  let reads_back = fn(cbor) {
+    ledger_output_value_v1.decode_written_control_v1(cbor) == ledger_output_value_v1.decode_control_v1(
+      cbor,
+    )
+  }
+  and {
+    reads_back(terminal_control),
+    reads_back(typescript_maximum_value_pre_terminal_control),
+    reads_back(
+      ledger_output_value_v1.encode_control_v1(
+        ledger_output_value_v1.initial_control_v1(3),
+      ),
+    ),
+  }
+}

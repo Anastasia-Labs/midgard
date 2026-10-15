@@ -801,6 +801,7 @@ fn bad_settlement_reason() -> operator_directory.SlashingReason {
   operator_directory.SlashOperatorForBadSettlement {
     settlement_input_index: 0,
     settlement_redeemer_index: 0,
+    bounty_claimant: other_operator_vkey,
   }
 }
 

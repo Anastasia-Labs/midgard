@@ -195,9 +195,10 @@ describe(
         ),
       );
       expect(queue).toHaveLength(2);
-      const queuedHeader = await Effect.runPromise(
-        SDK.getHeaderFromStateQueueDatum(queue[1]!.datum),
+      const queuedNode = await Effect.runPromise(
+        SDK.getStateQueueNodeFromStateQueueDatum(queue[1]!.datum),
       );
+      const queuedHeader = queuedNode.header;
       const headerHash = await Effect.runPromise(
         SDK.hashBlockHeader(queuedHeader),
       );
@@ -215,9 +216,9 @@ describe(
       ).toContain(`header ${headerHash}`);
 
       // da-attestation: the same Unattested header read after its deadline
-      // (end_time + the deployment profile's da_attestation_timeout_ms).
+      // (block_time + the deployment profile's da_attestation_timeout_ms).
       const daDeadlineMs = Number(
-        queuedHeader.endTime + SDK.DA_ATTESTATION_TIMEOUT_MS,
+        queuedNode.block_time + SDK.DA_ATTESTATION_TIMEOUT_MS,
       );
       vi.setSystemTime(new Date(daDeadlineMs + 1_000));
       const lateReport = await reconcile(harness);
@@ -438,8 +439,10 @@ describe(
       expect(attestedCheck?.notes).toEqual([]);
       await advanceEmulatorPastUnixTime(
         fixture,
-        mergeMaturityWindow(fixture.operatorLucid, Number(queuedHeader.endTime))
-          .readyAfterUnixTime,
+        mergeMaturityWindow(
+          fixture.operatorLucid,
+          Number(queuedNode.block_time),
+        ).readyAfterUnixTime,
       );
       vi.setSystemTime(new Date(fixture.emulator.now()));
       await runMergeUntilMerged({ fixture, lucidService, globals });

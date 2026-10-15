@@ -72,6 +72,7 @@ use midgard/fraud_proofs/native_tx/types.{
 }
 use midgard/fraud_proofs/thread_census_fixture_v1 as census
 use midgard/ledger_output_commitment_v1
+use midgard/rejection_reason_v1.{OutputBelowMinAda, RejectionReasonV1}
 use midgard/script_proof_v1
 use midgard/validation_asset_fold.{asset_fold_role}
 use midgard/validation_machine/machine_types.{
@@ -317,10 +318,11 @@ fn empty_summary() -> cek_data_v1.DataSummaryV1 {
   cek_data_v1.DataSummaryV1 { root: h_a, cbor_length: 0, memory: 0 }
 }
 
-/// `E_MIN_ADA` in ASCII (#618 ruling 1). Written out here rather than read off
-/// the validator, so the rejection vector below pins the wire bytes a fraud
-/// proof has to carry.
-const reject_min_ada_code: ByteArray = #"455f4d494e5f414441"
+/// The min-ADA rejection naming the descriptor's output (cursor 0). Written out
+/// here rather than read off the validator, so the rejection vector below pins
+/// the exact reason a fraud proof has to carry.
+const reject_min_ada_reason: RejectionReasonV1 =
+  OutputBelowMinAda { output_index: 0 }
 
 /// The serialized canonical length every descriptor fixture in this module
 /// declares, and the exact minimum-Ada floor for it at the production rate.
@@ -643,7 +645,7 @@ fn output_descriptor_fixture() -> StepFixtureV1 {
 /// forward (via `..pre`): the claimed delta commitment is immutable context.
 fn exact_rejection_post(
   pre: validation_trace_v1.ValidationMachineStateV1,
-  rejection_code: ByteArray,
+  rejection_code: RejectionReasonV1,
 ) -> validation_trace_v1.ValidationMachineStateV1 {
   validation_trace_v1.ValidationMachineStateV1 {
     ..pre,
@@ -678,7 +680,7 @@ fn output_descriptor_min_ada_rejection_fixture() -> StepFixtureV1 {
     pre,
     transition: ValidationOneStepWitnessV1 {
       work_witness_cbor,
-      claimed_successor: exact_rejection_post(pre, reject_min_ada_code),
+      claimed_successor: exact_rejection_post(pre, reject_min_ada_reason),
     },
     auxiliary: ValueOutputDescriptorWitness {
       output_index: 0,

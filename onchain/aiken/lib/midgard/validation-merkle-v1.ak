@@ -30,6 +30,12 @@ pub type BuiltFrontier {
 pub fn hash_branch(left: ByteArray, right: ByteArray) -> ByteArray {
   expect bytearray.length(left) == 32
   expect bytearray.length(right) == 32
+  hash_children(left, right)
+}
+
+/// `hash_branch` for children whose 32-byte length a caller has already
+/// established. Each call site below cites the check that proves it.
+fn hash_children(left: ByteArray, right: ByteArray) -> ByteArray {
   branch_domain
     |> bytearray.concat(left)
     |> bytearray.concat(right)
@@ -104,7 +110,16 @@ fn append_carry(
   } else {
     expect [left, ..rest] = peaks
     expect left.height == height
-    append_carry(old_count / 2, height + 1, hash_branch(left.hash, carry), rest)
+    // Both children are 32 bytes. `carry` is a leaf whose length `append_leaf`
+    // or `append_all` checked, or a hash. `left` is a peak of a frontier that
+    // `append_leaf` checked with `frontier_is_well_formed`, or, in
+    // `append_all`, a leaf it checked or a hash.
+    append_carry(
+      old_count / 2,
+      height + 1,
+      hash_children(left.hash, carry),
+      rest,
+    )
   }
 }
 
@@ -143,43 +158,43 @@ pub fn build_frontier(leaves: List<ByteArray>) -> BuiltFrontier {
   append_all(leaves, 0, empty_frontier())
 }
 
-fn power_of_two(exponent: Int) -> Int {
-  if exponent <= 0 {
-    1
-  } else {
-    2 * power_of_two(exponent - 1)
-  }
-}
-
-fn highest_bit(value: Int, height: Int) -> Int {
-  if value < 2 {
-    height
-  } else {
-    highest_bit(value / 2, height + 1)
-  }
-}
-
 type PeakLocation {
   height: Int,
   local_index: Int,
+}
+
+/// Walks down from the highest set bit of `count`. `size` is `2^height`
+/// while `height >= 0`, halved at each level instead of recomputed.
+fn locate_from_top(
+  count: Int,
+  leaf_index: Int,
+  value: Int,
+  height: Int,
+  size: Int,
+) -> PeakLocation {
+  if value < 2 {
+    locate_peak(count, leaf_index, height, size, 0)
+  } else {
+    locate_from_top(count, leaf_index, value / 2, height + 1, size * 2)
+  }
 }
 
 fn locate_peak(
   count: Int,
   leaf_index: Int,
   height: Int,
+  size: Int,
   offset: Int,
 ) -> PeakLocation {
   expect height >= 0
-  let size = power_of_two(height)
   if count / size % 2 == 1 {
     if leaf_index < offset + size {
       PeakLocation { height, local_index: leaf_index - offset }
     } else {
-      locate_peak(count, leaf_index, height - 1, offset + size)
+      locate_peak(count, leaf_index, height - 1, size / 2, offset + size)
     }
   } else {
-    locate_peak(count, leaf_index, height - 1, offset)
+    locate_peak(count, leaf_index, height - 1, size / 2, offset)
   }
 }
 
@@ -201,10 +216,12 @@ fn fold_membership_path(
     [] -> current
     [sibling, ..rest] -> {
       expect bytearray.length(sibling) == 32
+      // `current` is the leaf whose length `verify_membership` checked, or a
+      // hash; `sibling` was checked just above.
       let parent = if local_index % 2 == 0 {
-        hash_branch(current, sibling)
+        hash_children(current, sibling)
       } else {
-        hash_branch(sibling, current)
+        hash_children(sibling, current)
       }
       fold_membership_path(local_index / 2, parent, rest)
     }
@@ -224,7 +241,7 @@ pub fn verify_membership(
     leaf_index < count,
     bytearray.length(leaf_hash) == 32,
   } {
-    let location = locate_peak(count, leaf_index, highest_bit(count, 0), 0)
+    let location = locate_from_top(count, leaf_index, count, 0, 1)
     and {
       list.length(siblings) == location.height,
       fold_membership_path(location.local_index, leaf_hash, siblings) == peak_hash_at(

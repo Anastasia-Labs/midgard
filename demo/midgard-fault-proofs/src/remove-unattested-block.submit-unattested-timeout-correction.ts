@@ -358,7 +358,7 @@ export const submitUnattestedTimeoutCorrection = async ({
       );
       if (
         targetNode.da_attestation !== NO_DA_ATTESTATION ||
-        targetNode.header.endTime + DA_ATTESTATION_TIMEOUT_MS !== deadline
+        targetNode.block_time + DA_ATTESTATION_TIMEOUT_MS !== deadline
       )
         throw new Error(
           "Timeout target attestation or immutable deadline changed before signing.",

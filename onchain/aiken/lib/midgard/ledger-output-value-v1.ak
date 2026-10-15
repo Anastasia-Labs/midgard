@@ -1,6 +1,7 @@
 use aiken/builtin
 use aiken/cbor
 use aiken/primitive/bytearray
+use midgard/cbor_deserialise
 use midgard/cek_data_v1
 use midgard/fraud_proofs/native_tx/codec.{
   encode_definite_array_header, encode_definite_bytes,
@@ -233,10 +234,64 @@ pub fn control_from_data_v1(data: Data) -> LedgerOutputValueControlV1 {
 }
 
 pub fn decode_control_v1(control_cbor: ByteArray) -> LedgerOutputValueControlV1 {
-  expect Some(data) = cbor.deserialise(control_cbor)
+  let data <- cbor_deserialise.expect_deserialise(control_cbor)
   let control = control_from_data_v1(data)
   expect encode_control_v1(control) == control_cbor
   control
+}
+
+fn written_sequence(data: Data) -> cek_data_v1.DataSequenceSummaryV1 {
+  expect [root_data,
+        length_data, payload_data, memory_data] = builtin.un_list_data(data)
+  cek_data_v1.DataSequenceSummaryV1 {
+    root: builtin.un_b_data(root_data),
+    length: builtin.un_i_data(length_data),
+    payload_cbor_length: builtin.un_i_data(payload_data),
+    memory: builtin.un_i_data(memory_data),
+  }
+}
+
+fn written_optional_summary(data: Data) -> Option<cek_data_v1.DataSummaryV1> {
+  let Pair(index, fields) = builtin.un_constr_data(data)
+  if index == 1 {
+    None
+  } else {
+    expect [summary_data] = fields
+    expect [root_data,
+          cbor_length_data, memory_data] = builtin.un_list_data(summary_data)
+    Some(
+      cek_data_v1.DataSummaryV1 {
+        root: builtin.un_b_data(root_data),
+        cbor_length: builtin.un_i_data(cbor_length_data),
+        memory: builtin.un_i_data(memory_data),
+      },
+    )
+  }
+}
+
+/// Reads back a control that `encode_control_v1` wrote, without repeating
+/// its checks: for bytes that a computation thread carries between its own
+/// steps, the writing step's `encode_control_v1` already proved the control
+/// well formed and its bytes canonical, and the thread admits no other writer.
+pub fn decode_written_control_v1(
+  control_cbor: ByteArray,
+) -> LedgerOutputValueControlV1 {
+  let data <- cbor_deserialise.expect_deserialise(control_cbor)
+  expect
+      [
+        version_data, stage_data, asset_remaining_data, current_policy_data,
+        current_assets_data, value_entries_data, result_data,
+      ]
+    = builtin.un_list_data(data)
+  LedgerOutputValueControlV1 {
+    version: builtin.un_i_data(version_data),
+    stage: builtin.un_i_data(stage_data),
+    asset_remaining: builtin.un_i_data(asset_remaining_data),
+    current_policy: builtin.un_b_data(current_policy_data),
+    current_assets: written_sequence(current_assets_data),
+    value_entries: written_sequence(value_entries_data),
+    result: written_optional_summary(result_data),
+  }
 }
 
 fn bounded_integer_summary(integer: Int) -> cek_data_v1.DataSummaryV1 {

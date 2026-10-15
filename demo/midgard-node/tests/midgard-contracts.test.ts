@@ -143,8 +143,11 @@ describe("midgard contracts registry", () => {
       // non-empty block rule, one event NFT per user-event mint), the retired
       // post-UTxO minimum-Ada mode, the streamed redeemer and datum Data
       // verdict steps, one-pass history node count, trace movers, the clock
-      // and the protocol treasury script in the profile, and the bond-locked
-      // source verification (bond script and amount, Gap B) and the I3 deletions.
+      // and the protocol treasury script in the profile, the bond-locked
+      // source verification (bond script and amount, Gap B), the I3 deletions,
+      // the exact rejection reason, script optimisations, bounty claimants, the
+      // queue's proof reference and exemption, slashing a node above the bond,
+      // the timeout's directory split, and output-scan size.
       expect
         .soft(
           createHash("sha256")
@@ -154,8 +157,11 @@ describe("midgard contracts registry", () => {
             .digest("hex"),
         )
         .toBe(
-          "a26d506e07434d4a2beefb39ce3064d33338abbb2aa93b96815f100d64a9b360",
+          "94f9d41cf1d65e3f73f193acedb0b8bdff4447f270ddf1e06e2d71a91eb34f1d",
         );
+      // Includes current streamed Data/W1 metadata plus escape-hatch field
+      // retirement and the hub witness's paired script bytes. The independently
+      // pinned queue fingerprint stays unchanged by that metadata correction.
       // The queue/correction subset is pinned independently of the full registry.
       // Includes every applied CBOR, hash, policy id, address, and queue yield.
       // Re-pinned by #689: the state queue and correction lock are applied over
@@ -165,7 +171,9 @@ describe("midgard contracts registry", () => {
       // the scheduler and active-operator scripts), the lock ADA top-up, and
       // the composed P1 tree (allow-lists, the non-empty block rule, T302), and
       // the fault-proof scripts the state queue is applied over (the retired
-      // post-UTxO minimum-Ada mode, the streamed Data verdict steps).
+      // post-UTxO minimum-Ada mode, streamed Data verdicts, exact rejection
+      // reason, optimisations), shared bounty routing, proof ref, exemption,
+      // slashing above the bond, and the timeout's operator-directory split.
       expect
         .soft(
           createHash("sha256")
@@ -178,7 +186,7 @@ describe("midgard contracts registry", () => {
             .digest("hex"),
         )
         .toBe(
-          "6666a02a09da771adf4ae0061002758562764b086a23410646f9256d6dadc8cf",
+          "d20a073a4842c3101835f2b160775ec41e8205a03780c559c75cf054866549eb",
         );
       // The always-succeeds stand-in is a real hazard here: it satisfies every
       // spend, so a role that silently kept it would pass any behavioural test
@@ -197,19 +205,13 @@ describe("midgard contracts registry", () => {
        *
        * - `referenceScriptAuth:minting` is the stand-in this call site passes
        *   in itself (a real deployment supplies the timelocked native policy).
-       * - `escapeHatch` has no compiled validator yet.
-       * - `hubOracle:spending` is not a script at all: the hub oracle UTxO
-       *   lives at the mint policy's own address, so the spending slot carries
-       *   the stand-in bytes and the real policy id (see the exception below).
+       * The unsupported escape hatch has no deployment entry. The immutable
+       * hub witness carries its mint program's real bytes at that same hash;
+       * the mint-only validator's else handler refuses spending.
        *
        * Every other role must resolve to a real applied validator.
        */
-      const EXPECTED_STAND_INS = [
-        "escapeHatch:minting",
-        "escapeHatch:spending",
-        "hubOracle:spending",
-        "referenceScriptAuth:minting",
-      ];
+      const EXPECTED_STAND_INS = ["referenceScriptAuth:minting"];
       expect(
         inventory
           .filter(({ cbor }) => placeholderCbors.has(cbor))
@@ -217,14 +219,11 @@ describe("midgard contracts registry", () => {
           .sort(),
       ).toEqual(EXPECTED_STAND_INS);
 
-      // Script and declared hash must be the same script. `hubOracle:spending`
-      // is the one documented exception: it deliberately declares the mint
-      // policy id beside the stand-in bytes.
+      // Every declared hash must describe the exact script bytes.
       expect(
         inventory
           .filter(
             (entry) =>
-              scriptInventoryId(entry) !== "hubOracle:spending" &&
               validatorToScriptHash(entry.script) !== entry.declaredHash,
           )
           .map(scriptInventoryId),

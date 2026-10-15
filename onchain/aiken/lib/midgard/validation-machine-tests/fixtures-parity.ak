@@ -1131,6 +1131,8 @@ pub fn verify_bounded_context_parity(
         context.execution_cpu_limit,
         context.execution_memory_limit,
         cek.program_envelope_hash,
+        context.purpose_kind,
+        context.purpose_index,
       )
     } else {
       let next = when context.stage is {
@@ -1162,6 +1164,8 @@ pub fn verify_bounded_context_parity(
         0,
         0,
         next.program_envelope_hash,
+        -1,
+        -1,
       )
     }
     evidence.transition.claimed_successor.work_root == validation_trace_v1.hash_work_witness(

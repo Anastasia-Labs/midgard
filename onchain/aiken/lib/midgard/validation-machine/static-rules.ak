@@ -1,12 +1,14 @@
 use aiken/builtin
-use aiken/cbor
+use midgard/cbor_deserialise
 use midgard/fraud_proofs/native_tx/compact.{
   decode_native_tx_field_preimage_lengths_v1, ledger_tx_size_v1,
   min_fee_lovelace_v1, tx_proof_commitment_v1, verify_tx_proof_source_v1,
 }
 use midgard/fraud_proofs/native_tx/types.{NativeTxBodyCompact}
 use midgard/native_tx_field_access_v1
-use midgard/rejection_reason_v1.{reject_min_fee, reject_network_id_mismatch}
+use midgard/rejection_reason_v1.{
+  FeeBelowMinimum, NetworkIdMismatch, RejectionReasonV1,
+}
 use midgard/validation_machine/machine_types.{
   ValidationContextV1, ValidationOneStepWitnessV1,
 }
@@ -23,18 +25,18 @@ fn static_rules_rejection(
   body: NativeTxBodyCompact,
   canonical_tx_size: Int,
   context: ValidationContextV1,
-) -> Option<ByteArray> {
+) -> Option<RejectionReasonV1> {
   if and {
     body.network_id != 255,
     body.network_id != context.expected_network_id,
   } {
-    Some(reject_network_id_mismatch)
+    Some(NetworkIdMismatch)
   } else if body.fee < min_fee_lovelace_v1(
     context.min_fee_a,
     context.min_fee_b,
     canonical_tx_size,
   ) {
-    Some(reject_min_fee)
+    Some(FeeBelowMinimum)
   } else {
     None
   }
@@ -44,7 +46,7 @@ pub fn verify_static_rules(
   pre: validation_trace_v1.ValidationMachineStateV1,
   witness: ValidationOneStepWitnessV1,
 ) -> Bool {
-  expect Some(data) = cbor.deserialise(witness.work_witness_cbor)
+  let data <- cbor_deserialise.expect_deserialise(witness.work_witness_cbor)
   expect
       [
         compact_cbor_data, witness_set_compact_cbor_data,
@@ -91,12 +93,8 @@ pub fn verify_static_rules(
         context,
       )
     is {
-      Some(rejection_code) ->
-        rejected_successor_is_exact(
-          pre,
-          witness.claimed_successor,
-          rejection_code,
-        )
+      Some(reason) ->
+        rejected_successor_is_exact(pre, witness.claimed_successor, reason)
       None -> {
         let body = verified.tx_compact.body
         let spend_count = if body.spend_inputs_hash == native_tx_field_access_v1.empty_field_commitment {

@@ -102,7 +102,7 @@ const getPipelineStatus = Effect.gen(function* () {
       HttpServerRequest.HttpServerRequest,
       HttpServerRequest.fromWeb(
         new Request("http://midgard.test/pipeline-status"),
-      ),
+      ).modify({ remoteAddress: "127.0.0.1" }),
     ),
   )) as HttpServerResponse.HttpServerResponse;
   const webResponse = HttpServerResponse.toWeb(response);

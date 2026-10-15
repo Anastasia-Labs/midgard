@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   encodeStateQueueYieldRedeemer,
+  SlashingApproach,
   StateQueueRedeemer,
   StateQueueSpendRedeemer,
 } from "../src/index.js";
@@ -121,7 +122,6 @@ describe("state-queue ABI", () => {
             slashing_approach: {
               SlashActiveOperator: {
                 active_operators_redeemer_index: 6n,
-                m_fraud_prover_reward_output_index: 8n,
               },
             },
             block_removal_approach: {
@@ -139,28 +139,83 @@ describe("state-queue ABI", () => {
         slashing_approach: {
           SlashActiveOperator: {
             active_operators_redeemer_index: 6n,
-            m_fraud_prover_reward_output_index: 8n,
           },
         },
       },
     });
 
-    // D3: a bond-consuming slash that routes no reward encodes the index as
-    // `null`, which the on-chain guard accepts only while the compiled
-    // `env.fraud_prover_reward` is zero.
-    const rewardlessRetiredSlash = {
+    // D3: a bond-consuming slash names no reward output; the validator finds
+    // the one output to the fraud prover itself.
+    const retiredSlash = {
       RemoveFraudulentBlockHeader: {
         ...removeRedeemer.RemoveFraudulentBlockHeader,
         slashing_approach: {
           SlashRetiredOperator: {
             retired_operators_redeemer_index: 9n,
-            m_fraud_prover_reward_output_index: null,
           },
         },
       },
     };
-    expect(roundTrip(rewardlessRetiredSlash, StateQueueRedeemer)).toEqual(
-      rewardlessRetiredSlash,
+    expect(roundTrip(retiredSlash, StateQueueRedeemer)).toEqual(retiredSlash);
+  });
+
+  it("encodes the validation-trace descendant exemption as fieldless constructor 3", () => {
+    expect(
+      Data.to("DescendantOfValidationTraceConviction", SlashingApproach),
+    ).toBe("d87c80");
+    const exemptLink = {
+      RemoveFraudulentBlockHeader: {
+        yield_to_ref_input_index: 0n,
+        fraudulent_operator: "22".repeat(28),
+        fraudulent_blocks_header_hash: "33".repeat(28),
+        slashing_approach: "DescendantOfValidationTraceConviction",
+        fraud_proof_ref_input_index: 3n,
+        block_removal_approach: {
+          RemoveFraudulentBlocksLink: {
+            fraudulent_node_input_outref: outputReference,
+            fraudulent_node_output_index: 7n,
+          },
+        },
+      },
+    } as const;
+    expect(roundTrip(exemptLink, StateQueueRedeemer)).toEqual(exemptLink);
+    // The earlier constructors keep their indices.
+    expect(
+      Data.to(
+        {
+          OperatorAlreadySlashed: {
+            active_operators_element_ref_input_index: 0n,
+            retired_operators_element_ref_input_index: 1n,
+          },
+        },
+        SlashingApproach,
+      ),
+    ).toBe("d87b9f0001ff");
+    expect(() => Data.from("d87d80", SlashingApproach)).toThrow();
+  });
+
+  it("encodes RecordCompletedFraud with its optional proof reference input", () => {
+    const record = (index: bigint | null) =>
+      ({
+        RecordCompletedFraud: {
+          state_queue_input_index: 1n,
+          state_queue_output_index: 2n,
+          fraud_proof_asset_name: "ab".repeat(32),
+          m_fraud_proof_ref_input_index: index,
+        },
+      }) as const;
+    const prefix = "d87c9f01025820" + "ab".repeat(32);
+    expect(Data.to(record(null), StateQueueSpendRedeemer)).toBe(
+      prefix + "d87a80ff",
     );
+    expect(Data.to(record(5n), StateQueueSpendRedeemer)).toBe(
+      prefix + "d8799f05ff" + "ff",
+    );
+    expect(roundTrip(record(null), StateQueueSpendRedeemer)).toEqual(
+      record(null),
+    );
+    expect(roundTrip(record(5n), StateQueueSpendRedeemer)).toEqual(record(5n));
+    // The three-field shape without the option is not a valid redeemer.
+    expect(() => Data.from(prefix + "ff", StateQueueSpendRedeemer)).toThrow();
   });
 });

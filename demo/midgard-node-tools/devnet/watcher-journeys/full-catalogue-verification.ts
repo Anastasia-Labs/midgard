@@ -19,8 +19,8 @@ import {
   type FraudProofRawL1SnapshotAuthority,
   headerDecisionCanonicalEvidence,
   headerDecisionReplayContext,
+  type LedgerAt,
   type RetainedDaPayloadSource,
-  retainedPayloadLedgerAt,
 } from "@al-ft/midgard-fault-proofs";
 import { authenticatedHeaderObservation } from "@al-ft/midgard-fault-proofs/test-support/canonical-block-evidence-fixture";
 import { captureRetainedPlutusIdentityOrigins } from "@al-ft/midgard-fault-proofs/test-support/retained-reason-classifier";
@@ -47,6 +47,7 @@ import type { VerifiableJourneyBlock } from "./fixture-verification.js";
 export const classifyFullCatalogueTransactionFixture = async (input: {
   block: VerifiableJourneyBlock;
   predecessor: VerifiableJourneyBlock;
+  ledgerAt: LedgerAt;
   history: readonly VerifiableJourneyBlock[];
   /** Only the synthetic empty-event hub seed uses this valid control transaction. */
   originTransaction?: Parameters<
@@ -263,7 +264,7 @@ export const classifyFullCatalogueTransactionFixture = async (input: {
   const decision = await classifyHeader({
     classifier,
     observation,
-    predecessorLedgerAt: retainedPayloadLedgerAt({ sources }),
+    predecessorLedgerAt: input.ledgerAt,
     sources,
     authenticatedObservationDigest:
       await authenticatedStateQueueObservationDigest({

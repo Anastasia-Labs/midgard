@@ -26,6 +26,7 @@ import {
   buildJourneyWithdrawalEvent,
   captureStagedHistoryEvent,
 } from "./history-events.js";
+import { checkedFixtureBlock } from "./journey-fixture-ledger.test-support.js";
 
 // Pure content fixtures: these checks do not claim a deployed chain, a new L1
 // observation, or live journey acceptance. Both carriage modes use the shared reader.
@@ -145,11 +146,13 @@ const fixture = async (external: boolean, rawDatum?: string) => {
       deployment,
     ),
   );
-  const predecessor = await buildCanonicalBlockFixture({
-    transactions: [],
-    startTime: 0n,
-    endTime: 100n,
-  });
+  const predecessor = await checkedFixtureBlock(
+    await buildCanonicalBlockFixture({
+      transactions: [],
+      startTime: 0n,
+      endTime: 100n,
+    }),
+  );
   const scriptAddress = await Effect.runPromise(
     SDK.addressDataFromBech32(address),
   );
@@ -313,8 +316,8 @@ it.each([false, true])(
       f.order.infoCbor.toString("hex"),
     );
     expect(
-      block.payload.block_body.utxos.some(([, output]) =>
-        output.includes(rawDatum),
+      block.ledger.entries.some(({ output }) =>
+        output.toString("hex").includes(rawDatum),
       ),
     ).toBe(true);
     expect(() =>

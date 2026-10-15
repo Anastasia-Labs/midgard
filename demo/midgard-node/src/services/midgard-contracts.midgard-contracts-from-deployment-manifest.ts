@@ -656,13 +656,6 @@ export const midgardContractsFromDeploymentManifest = (
       "retiredOperatorsSpend",
       "retiredOperatorsMint",
     ),
-    escapeHatch: authenticatedValidatorFromManifest(
-      network,
-      manifest,
-      sourcePath,
-      "escapeHatchSpend",
-      "escapeHatchMint",
-    ),
     fraudProofCatalogue: authenticatedValidatorFromManifest(
       network,
       manifest,

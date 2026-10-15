@@ -1,5 +1,10 @@
 import { unwrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
 import { DA_TRANSPORT_LIMITS } from "@al-ft/midgard-core/da-transport";
+import {
+  type CheckedLedger,
+  ledgerAfter,
+  type LedgerAt,
+} from "@al-ft/midgard-fault-proofs";
 import * as SDK from "@al-ft/midgard-sdk";
 import type {
   PublishedDaTargetCorrection,
@@ -12,7 +17,10 @@ import type {
   JourneySuccessor,
 } from "./fixture.js";
 
-export type JourneyRetainedBlock = JourneyBlock & { payload: SDK.DaPayload };
+export type JourneyRetainedBlock = JourneyBlock & {
+  payload: SDK.DaPayload;
+  ledger: CheckedLedger;
+};
 
 export type JourneyFaultBuildInput = {
   predecessor: JourneyRetainedBlock;
@@ -54,6 +62,7 @@ export type StagingCheckpoint = {
 
 export const decodeJourneyRetainedBlock = async (
   block: JourneyBlock,
+  ledgerAt: LedgerAt,
 ): Promise<JourneyRetainedBlock> => {
   const envelope = await unwrapDaPayload(
     Buffer.from(block.payloadEnvelopeCbor),
@@ -64,6 +73,12 @@ export const decodeJourneyRetainedBlock = async (
   return {
     ...block,
     payload: SDK.decodeDaPayload(Buffer.from(envelope.innerBytes)),
+    ledger: await ledgerAfter({
+      ledgerAt,
+      headerHash: block.headerHash,
+      utxosRoot: block.header.utxosRoot,
+      label: "journey retained predecessor",
+    }),
   };
 };
 

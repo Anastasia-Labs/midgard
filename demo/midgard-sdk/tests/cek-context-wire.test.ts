@@ -58,10 +58,10 @@ const readVector = (
   };
 };
 
-/** The 9-field authenticated work witness, decoded so a case can perturb one field. */
+/** The 11-field authenticated work witness, decoded so a case can perturb one field. */
 const decodeWorkWitness = (workWitnessCbor: string): unknown[] => {
   const fields = decodeSingleCbor(Buffer.from(workWitnessCbor, "hex"));
-  if (!Array.isArray(fields) || fields.length !== 9)
+  if (!Array.isArray(fields) || fields.length !== 11)
     throw new Error("Invalid work witness golden");
   return [...(fields as unknown[])];
 };
@@ -180,9 +180,9 @@ describe.each([
     expect(() =>
       deriveCekContextBinding({
         ...vector,
-        workWitnessCbor: encodeWorkWitness(fields.slice(0, 8)),
+        workWitnessCbor: encodeWorkWitness(fields.slice(0, 10)),
       }),
-    ).toThrow("Expected exact CEK context array of 9 fields");
+    ).toThrow("Expected exact CEK context array of 11 fields");
 
     // Field 0 carries the 26-field native view as nested CBOR bytes; index 15 of
     // that view is one of the frontier peak lists, whose entries are exactly

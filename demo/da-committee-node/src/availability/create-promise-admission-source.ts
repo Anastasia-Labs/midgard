@@ -7,6 +7,7 @@ import type { LucidEvolution } from "@lucid-evolution/lucid";
 import type { CommitteeL1ClientConfig } from "../config.js";
 import type { CommitteeAvailabilityReads } from "../l1/follower/availability-reads.js";
 import type { CommitteeStore } from "../store.js";
+import { storedHeaderBlockTimeMs } from "../store/retention.block-time.js";
 import { terminalRecoveryFinal } from "../store/retention.js";
 import type { CommitteeRetirementPort } from "../store/retirement-model.js";
 import type { availabilityResponderOperations } from "./factory.availability-responder-operations.js";
@@ -254,7 +255,7 @@ export const createCommitteePromiseAdmissionSource = (args: {
           commitmentDigest: digest,
         });
         const cutoff =
-          header.header.endTime +
+          BigInt(storedHeaderBlockTimeMs(header)) +
           BigInt(SELECTED_DEPLOYMENT_PROFILE.timing.da_challenge_window_ms);
         if (cutoff < 0n || cutoff > BigInt(Number.MAX_SAFE_INTEGER))
           throw new Error("Promise cutoff time is out of range");

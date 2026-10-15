@@ -86,6 +86,10 @@
     "./test-support/transition-trace-reconstruct": {
       "midgard-source": "./src/transition-trace/reconstruct.ts",
       "types": "./src/transition-trace/reconstruct.ts"
+    },
+    "./test-support/funding-measurement": {
+      "midgard-source": "./tests/support/funding-measurement.ts",
+      "types": "./tests/support/funding-measurement.ts"
     }
   },
   "type": "module",

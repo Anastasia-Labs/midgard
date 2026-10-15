@@ -23,6 +23,7 @@ export const measureBuiltCommitDaPrefixes = (
       JSON.stringify([
         baseRoot,
         built.effectiveBlockEndTime?.getTime(),
+        built.effectiveBlockTime?.getTime(),
         consensusProfile,
         config.NETWORK,
         config.MIN_FEE_A.toString(),

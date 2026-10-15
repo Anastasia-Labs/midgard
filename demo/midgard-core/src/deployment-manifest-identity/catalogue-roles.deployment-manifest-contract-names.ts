@@ -17,8 +17,6 @@ export const DEPLOYMENT_MANIFEST_CONTRACT_NAMES = Object.freeze([
   "activeOperatorsMint",
   "retiredOperatorsSpend",
   "retiredOperatorsMint",
-  "escapeHatchSpend",
-  "escapeHatchMint",
   "fraudProofCatalogueSpend",
   "fraudProofCatalogueMint",
   "fraudProofSpend",

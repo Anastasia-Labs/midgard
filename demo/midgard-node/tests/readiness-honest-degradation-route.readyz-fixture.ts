@@ -1,3 +1,7 @@
+import { once } from "node:events";
+import { createServer } from "node:http";
+import type { AddressInfo } from "node:net";
+
 /**
  * The /readyz and /healthz request the readiness route tests make: the real
  * listen router over the test database, with the settings, provider
@@ -6,12 +10,14 @@
 import type { TransportReadiness } from "@al-ft/l1-node-transport";
 import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
 import { HttpServerRequest, HttpServerResponse } from "@effect/platform";
+import { NodeHttpServer } from "@effect/platform-node";
 import { SqlClient } from "@effect/sql";
 import type { SlotConfig } from "@lucid-evolution/lucid";
 import { Effect, Ref } from "effect";
 
 import { buildListenRouter } from "../src/commands/listen-router.js";
 import { NodeConfig } from "../src/services/config.js";
+import { HttpReadSql } from "../src/services/database.js";
 import {
   Globals,
   nextL1ProviderHealthEvidence,
@@ -124,6 +130,11 @@ export const readyz = ({
   provider = SUCCESS_NOW,
   databaseDown = false,
   journal = Effect.void,
+  globalsSetup = () => Effect.void,
+  providerError,
+  nativeDiagnosticsError,
+  settlementDetail,
+  useHttpTransport = false,
   nodeBehindMaxMs,
   l1Access,
   forceProviderProbe = false,
@@ -132,7 +143,12 @@ export const readyz = ({
 }: {
   readonly provider?: readonly ProviderObservation[];
   readonly databaseDown?: boolean;
-  readonly journal?: Effect.Effect<void, unknown, never>;
+  readonly journal?: Effect.Effect<void, unknown, SqlClient.SqlClient>;
+  readonly globalsSetup?: (globals: Globals) => Effect.Effect<void, unknown>;
+  readonly providerError?: string;
+  readonly nativeDiagnosticsError?: string;
+  readonly settlementDetail?: string;
+  readonly useHttpTransport?: boolean;
   /** `L1_NODE_BEHIND_MAX_MS`; unset reads as the flat readiness bound. */
   readonly nodeBehindMaxMs?: number;
   /** The Lucid service's L1 access; none reads as an access not yet open. */
@@ -146,6 +162,7 @@ export const readyz = ({
     provideDatabaseLayers(
       Effect.gen(function* () {
         const sql = yield* SqlClient.SqlClient;
+        const readSql = yield* HttpReadSql;
         // Reset before and after: the handler reads journal ages, jobs and
         // leases from the real tables, so a row another file left would turn
         // a ready answer unready, and one left here would leak into the next.
@@ -154,6 +171,7 @@ export const readyz = ({
         return yield* Effect.gen(function* () {
           yield* journal;
           const globals = yield* Globals;
+          yield* globalsSetup(globals);
           yield* seedCaughtUpL1Follower(globals, l1Follower);
           for (const observation of provider)
             yield* Ref.update(globals.L1_PROVIDER_HEALTH, (current) =>
@@ -162,31 +180,79 @@ export const readyz = ({
                 healthy: observation.healthy,
                 ...(observation.healthy
                   ? {}
-                  : { error: "HubOracle query failed: fetch failed" }),
+                  : {
+                      error:
+                        providerError ?? "HubOracle query failed: fetch failed",
+                    }),
                 observedAtMs: Date.now() - observation.agoMs,
                 successKind: "exact",
               }),
             );
-          yield* Ref.set(globals.NATIVE_MPF_OWNER, responsiveOwner);
+          yield* Ref.set(
+            globals.NATIVE_MPF_OWNER,
+            nativeDiagnosticsError === undefined
+              ? responsiveOwner
+              : {
+                  ...responsiveOwner,
+                  diagnostics: () =>
+                    Promise.reject(new Error(nativeDiagnosticsError)),
+                },
+          );
+          if (settlementDetail !== undefined)
+            yield* Ref.update(globals.SETTLEMENT_HEALTH, (health) => ({
+              ...health,
+              detail: settlementDetail,
+            }));
           // A serving node has authenticated its own active membership.
           yield* Ref.set(globals.OPERATOR_MEMBERSHIP, "active");
-          const request = buildListenRouter().pipe(
-            Effect.provideService(
-              HttpServerRequest.HttpServerRequest,
-              HttpServerRequest.fromWeb(
-                new Request(`http://midgard.test/${path}`),
-              ),
-            ),
-          );
-          const response = (yield* databaseDown
+          const router = buildListenRouter();
+          const request = useHttpTransport
+            ? router
+            : router.pipe(
+                Effect.provideService(
+                  HttpServerRequest.HttpServerRequest,
+                  HttpServerRequest.fromWeb(
+                    new Request(`http://midgard.test/${path}`),
+                  ).modify({ remoteAddress: "127.0.0.1" }),
+                ),
+              );
+          const responseEffect = databaseDown
             ? request.pipe(
                 Effect.provideService(
                   SqlClient.SqlClient,
                   withFailingStatements(sql, () => true),
                 ),
+                Effect.provideService(
+                  HttpReadSql,
+                  withFailingStatements(readSql, () => true),
+                ),
               )
-            : request) as HttpServerResponse.HttpServerResponse;
-          const web = HttpServerResponse.toWeb(response);
+            : request;
+          const web = useHttpTransport
+            ? yield* Effect.gen(function* () {
+                const handler =
+                  yield* NodeHttpServer.makeHandler(responseEffect);
+                const server = createServer(handler);
+                server.listen(0, "127.0.0.1");
+                yield* Effect.promise(() => once(server, "listening"));
+                yield* Effect.addFinalizer(() =>
+                  Effect.promise(async () => {
+                    server.closeAllConnections();
+                    await new Promise<void>((resolve) =>
+                      server.close(() => resolve()),
+                    );
+                  }),
+                );
+                return yield* Effect.promise(() =>
+                  fetch(
+                    `http://127.0.0.1:${(server.address() as AddressInfo).port}/${path}`,
+                    { signal: AbortSignal.timeout(5_000) },
+                  ),
+                );
+              })
+            : HttpServerResponse.toWeb(
+                (yield* responseEffect) as HttpServerResponse.HttpServerResponse,
+              );
           const body = (yield* Effect.promise(() => web.json())) as Omit<
             Readyz,
             "status"
@@ -194,6 +260,7 @@ export const readyz = ({
           return { ...body, status: web.status };
         }).pipe(Effect.ensuring(Effect.orDie(clear)));
       }).pipe(
+        Effect.scoped,
         Effect.provideService(NodeConfig, {
           ...nodeConfig,
           ...(nodeBehindMaxMs === undefined

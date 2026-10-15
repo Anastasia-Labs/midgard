@@ -1,12 +1,12 @@
 use aiken/builtin
-use aiken/cbor
 use aiken/crypto.{blake2b_256}
 use aiken/primitive/bytearray
+use midgard/cbor_deserialise
 use midgard/fraud_proofs/native_tx/compact.{
   decode_native_tx_witness_set_compact, tx_proof_commitment_v1,
   verify_tx_compact_cbor_v1,
 }
-use midgard/rejection_reason_v1.{reject_invalid_field_type}
+use midgard/rejection_reason_v1.{ScriptIntegrityHashMismatch}
 use midgard/script_language_views_v1
 use midgard/validation_machine/machine_types.{
   NoAuxiliaryWitness, ValidationAuxiliaryWitnessV1, ValidationOneStepWitnessV1,
@@ -91,7 +91,7 @@ pub fn verify_script_integrity_witness_set(
   witness: ValidationOneStepWitnessV1,
   auxiliary: ValidationAuxiliaryWitnessV1,
 ) -> Bool {
-  expect Some(data) = cbor.deserialise(witness.work_witness_cbor)
+  let data <- cbor_deserialise.expect_deserialise(witness.work_witness_cbor)
   expect
       [
         native_control_cbor_data, stage_data, script_integrity_hash_data,
@@ -136,7 +136,7 @@ pub fn verify_script_integrity_finalize(
   witness: ValidationOneStepWitnessV1,
   auxiliary: ValidationAuxiliaryWitnessV1,
 ) -> Bool {
-  expect Some(data) = cbor.deserialise(witness.work_witness_cbor)
+  let data <- cbor_deserialise.expect_deserialise(witness.work_witness_cbor)
   expect
       [
         native_control_cbor_data, stage_data, script_integrity_hash_data,
@@ -167,7 +167,7 @@ pub fn verify_script_integrity_finalize(
       rejected_successor_is_exact(
         pre,
         witness.claimed_successor,
-        reject_invalid_field_type,
+        ScriptIntegrityHashMismatch,
       )
     } else {
       and {
@@ -175,7 +175,7 @@ pub fn verify_script_integrity_finalize(
         witness.claimed_successor.work_root == validation_trace_v1.hash_work_witness(
           validation_trace_v1.Cek,
           pre.program_counter + 1,
-          encode_cek_witness_v1(control, #"", 0, 0, 0, #"", 0, 0, #""),
+          encode_cek_witness_v1(control, #"", 0, 0, 0, #"", 0, 0, #"", -1, -1),
         ),
       }
     },

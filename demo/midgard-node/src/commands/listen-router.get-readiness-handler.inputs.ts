@@ -1,3 +1,4 @@
+import { SELECTED_DEPLOYMENT_PROFILE } from "@al-ft/midgard-core/deployment-profile";
 import { SqlClient } from "@effect/sql/SqlClient";
 import { Effect } from "effect";
 
@@ -64,8 +65,50 @@ export const ownLandedForcedOrphanDetail = (
     ? `${L1_OWN_BLOCK_FORCED_ORDER_ORPHANED}:${count.toString()}`
     : undefined;
 
-/** The first line of a database failure, for the public body. */
-export const readinessDatabaseError = (error: unknown): string => {
+const publicDatabaseReasons: Readonly<Record<string, string>> = {
+  "08001": "connection_unavailable",
+  "08003": "connection_unavailable",
+  "08006": "connection_unavailable",
+  "57P01": "connection_unavailable",
+  "57P02": "connection_unavailable",
+  "57P03": "connection_unavailable",
+  "53300": "capacity_unavailable",
+  "55P03": "lock_unavailable",
+  "57014": "query_cancelled",
+  "42P01": "schema_unavailable",
+  "42703": "schema_unavailable",
+};
+
+/** Publish controlled database reasons; upstream messages remain private diagnostics. */
+export const readinessDatabaseError = (
+  error: unknown,
+  profileName: string = SELECTED_DEPLOYMENT_PROFILE.name,
+): string => {
+  if (profileName === "mainnet" || profileName === "preprod-public") {
+    let current = error;
+    for (let depth = 0; depth < 4; depth += 1) {
+      if (typeof current !== "object" || current === null) break;
+      try {
+        const descriptors = Object.getOwnPropertyDescriptors(current);
+        const code = descriptors.code;
+        if (
+          code !== undefined &&
+          "value" in code &&
+          typeof code.value === "string"
+        ) {
+          const reason = publicDatabaseReasons[code.value];
+          if (typeof reason === "string")
+            return `E_READINESS_DATABASE_UNAVAILABLE:${reason}`;
+        }
+        const cause = descriptors.cause;
+        current =
+          cause !== undefined && "value" in cause ? cause.value : undefined;
+      } catch {
+        break;
+      }
+    }
+    return "E_READINESS_DATABASE_UNAVAILABLE";
+  }
   const message =
     error instanceof Error
       ? error.message

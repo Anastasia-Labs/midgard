@@ -4,6 +4,7 @@ import {
   type LucidEvolution,
   paymentCredentialOf,
   type TxSignBuilder,
+  type UTxO,
 } from "@lucid-evolution/lucid";
 
 import {
@@ -63,6 +64,24 @@ export const walletLovelace = async (lucid: LucidEvolution): Promise<bigint> =>
     0n,
   );
 
+/** The enterprise address of `keyHash`, where bounties are paid. */
+export const bountyAddress = (
+  lucid: LucidEvolution,
+  keyHash: string,
+): string => {
+  const network = lucid.config().network;
+  if (network === undefined) {
+    throw new Error("Expected a network to derive the bounty address");
+  }
+  return SDK.bountyClaimantAddress(network, keyHash);
+};
+
+/** What the bounty address of `keyHash` holds. */
+export const bountyAddressUtxos = (
+  lucid: LucidEvolution,
+  keyHash: string,
+): Promise<readonly UTxO[]> => lucid.utxosAt(bountyAddress(lucid, keyHash));
+
 /** `alignUnixTimeToSlotBoundary` works in numbers; every builder here in ms. */
 export const alignMs = (lucid: LucidEvolution, posixMs: bigint): bigint =>
   BigInt(alignUnixTimeToSlotBoundary(lucid, Number(posixMs)));
@@ -72,7 +91,7 @@ export const alignMs = (lucid: LucidEvolution, posixMs: bigint): bigint =>
  * instance created from the emulator takes the slot of its creation as slot
  * zero, so the lower bound never reaches before that instance's zero time.
  */
-const exitValidityWindow = (
+export const exitValidityWindow = (
   lucid: LucidEvolution,
   emulator: Emulator,
 ): { readonly validFrom: bigint; readonly validTo: bigint } => {

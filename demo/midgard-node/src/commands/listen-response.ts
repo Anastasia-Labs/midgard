@@ -3,13 +3,19 @@
  * Keeping response shaping here prevents route handlers from each inventing
  * their own failure formatting and status-code behavior.
  */
-import { formatUnknownError } from "@al-ft/midgard-core/error-format";
 import * as SDK from "@al-ft/midgard-sdk";
 import { HttpServerResponse } from "@effect/platform";
 import type { HttpBodyError } from "@effect/platform/HttpBody";
 import { Effect } from "effect";
 
-const MERGE_ERROR_CODE_PATTERN = /^(E_MERGE_[A-Z0-9_]+):/;
+const MERGE_ERROR_CODES: ReadonlySet<string> = new Set([
+  "E_MERGE_BLOCK_TX_DECODE_FAILED",
+  "E_MERGE_MISSING_BLOCK_TXS",
+  "E_MERGE_LAYOUT_DERIVATION_FAILED",
+  "E_MERGE_REDEEMER_INDEX_MISMATCH",
+  "E_MERGE_UPLC_EVAL_FAILED",
+  "E_MERGE_PRODUCER_UNAVAILABLE",
+]);
 
 /**
  * Extracts a structured merge/state-queue error code when present.
@@ -24,27 +30,30 @@ export const extractStateQueueErrorCode = (
     "error_code" in cause &&
     typeof (cause as { error_code?: unknown }).error_code === "string"
   ) {
-    return (cause as { error_code: string }).error_code;
+    const code = (cause as { error_code: string }).error_code;
+    return MERGE_ERROR_CODES.has(code) ? code : undefined;
   }
-  const match = MERGE_ERROR_CODE_PATTERN.exec(e.message);
-  return match?.[1];
+  return [...MERGE_ERROR_CODES].find((code) =>
+    e.message.startsWith(`${code}:`),
+  );
 };
 
 /**
  * Emits a 500 JSON response for a failed route.
  */
 export const failWith500 = (
-  method: "GET" | "POST",
-  endpoint: string,
-  error: unknown,
-  msgOverride?: string,
+  _method: "GET" | "POST",
+  _endpoint: string,
+  _error: unknown,
+  _msgOverride?: string,
 ): Effect.Effect<HttpServerResponse.HttpServerResponse, HttpBodyError, never> =>
   Effect.gen(function* () {
-    yield* Effect.logInfo(
-      `${method} /${endpoint} - failure: ${formatUnknownError(error)}`,
-    );
+    yield* Effect.logInfo({ error_code: "E_HTTP_INTERNAL" });
     return yield* HttpServerResponse.json(
-      { error: msgOverride ?? "Something went wrong" },
+      {
+        error: "Request could not be completed",
+        error_code: "E_HTTP_INTERNAL",
+      },
       { status: 500 },
     );
   });
@@ -54,19 +63,21 @@ export const failWith500 = (
  * error code when available.
  */
 export const handleStateQueueGetFailure = (
-  endpoint: string,
+  _endpoint: string,
   e: SDK.StateQueueError,
 ) =>
   Effect.gen(function* () {
     const errorCode = extractStateQueueErrorCode(e);
-    const cause = formatUnknownError(e.cause);
-    yield* Effect.logInfo(
-      `GET /${endpoint} - state queue failure: message=${e.message},code=${errorCode ?? "unknown"},cause=${cause}`,
-    );
+    yield* Effect.logInfo({
+      error_code: errorCode ?? "E_STATE_QUEUE_UNAVAILABLE",
+    });
     return yield* HttpServerResponse.json(
       errorCode === undefined
-        ? { error: e.message }
-        : { error: e.message, error_code: errorCode },
+        ? {
+            error: "State queue is unavailable",
+            error_code: "E_STATE_QUEUE_UNAVAILABLE",
+          }
+        : { error: "State queue is unavailable", error_code: errorCode },
       { status: 500 },
     );
   });

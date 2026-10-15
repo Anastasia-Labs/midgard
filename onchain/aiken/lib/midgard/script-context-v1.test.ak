@@ -835,6 +835,55 @@ test consolidated_ledger_output_summaries_match_the_separate_entry_points() {
   }
 }
 
+fn output_at(protected: Bool) -> ByteArray {
+  encode_midgard_tx_output(
+    MidgardTxOutput {
+      address: MidgardAddress {
+        protected,
+        network_id: 0,
+        payment_credential: PubKeyCredential(builtin.replicate_byte(28, 170)),
+        stake_credential: None,
+      },
+      value: MidgardValue { lovelace: 2000000, assets: [] },
+      datum_cbor: None,
+      script_ref: None,
+    },
+  )
+}
+
+/// The `TxOut` summaries of `ledger_output_summaries_v1` against the
+/// separate per-encoding entry points, and whether the two encodings agree.
+fn summaries_agree(raw_output_cbor: ByteArray, encodings_agree: Bool) -> Bool {
+  expect Some(cardano_tx_out) = script_context_v1.tx_out_summary_v1(
+    raw_output_cbor,
+    False,
+  )
+  expect Some(midgard_tx_out) = script_context_v1.tx_out_summary_v1(
+    raw_output_cbor,
+    True,
+  )
+  expect Some(spend_datum) = script_context_v1.spend_datum_summary_v1(
+    raw_output_cbor,
+  )
+  and {
+    cardano_tx_out == midgard_tx_out == encodings_agree,
+    script_context_v1.ledger_output_summaries_v1(raw_output_cbor) == Some(
+      (cardano_tx_out, midgard_tx_out, spend_datum),
+    ),
+  }
+}
+
+/// A protected address is a different `Address` constructor in the Midgard
+/// encoding, so its two `TxOut` summaries differ and each must be its own.
+test protected_output_has_a_distinct_midgard_tx_out() {
+  summaries_agree(output_at(True), False)
+}
+
+/// An unprotected address encodes the same in both, so one `TxOut` serves both.
+test unprotected_output_has_one_tx_out_for_both_encodings() {
+  summaries_agree(output_at(False), True)
+}
+
 // The PlutusV3 `validRange` of a committed slot interval, against
 // `transValidityInterval` in cardano-ledger-conway: POSIX milliseconds, an
 // inclusive finite lower bound, a strict finite upper bound, and absent bounds

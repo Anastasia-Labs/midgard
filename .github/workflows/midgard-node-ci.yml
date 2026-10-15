@@ -1167,6 +1167,7 @@ jobs:
             watcher-journeys/history-event-cases.test.ts \
             watcher-journeys/history-events.test.ts \
             watcher-journeys/journey-lucid.test.ts \
+            watcher-journeys/journey-replay-lifetime.test.ts \
             watcher-journeys/journey-session.test.ts \
             watcher-journeys/journey-timing.test.ts \
             watcher-journeys/kupo-consumption.test.ts \
@@ -1180,11 +1181,14 @@ jobs:
             watcher-journeys/public-da-preflight.test.ts \
             watcher-journeys/readiness-evidence.test.ts \
             watcher-journeys/readiness.test.ts \
+            watcher-journeys/replayed-ledger.test.ts \
             watcher-journeys/signed-commit-reconciliation.test.ts \
             watcher-journeys/signed-transaction-recovery.test.ts \
             watcher-journeys/stage-timing.test.ts \
             watcher-journeys/staged-checkpoint.test.ts \
             watcher-journeys/staging-recovery.test.ts \
+            watcher-journeys/staging.decode-journey-retained-block.test.ts \
+            watcher-journeys/transaction-cases.test.ts \
             watcher-journeys/verified-headers.test.ts
 
   da-e2e:

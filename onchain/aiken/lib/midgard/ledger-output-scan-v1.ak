@@ -2,6 +2,7 @@ use aiken/builtin
 use aiken/cbor
 use aiken/primitive/bytearray
 use midgard/canonical_cbor_scan_v1
+use midgard/cbor_deserialise
 use midgard/fraud_proofs/native_tx/codec.{
   encode_definite_array_header, encode_definite_bytes,
 }
@@ -199,7 +200,7 @@ pub fn encode_control_v1(control: LedgerOutputScanControlV1) -> ByteArray {
     |> bytearray.concat(cbor.serialise(control.reference_script_length))
 }
 
-pub fn control_from_data_v1(data: Data) -> LedgerOutputScanControlV1 {
+fn control_fields_v1(data: Data) -> LedgerOutputScanControlV1 {
   expect
       [
         version_data, stage_data, cursor_data, map_entry_count_data,
@@ -212,7 +213,7 @@ pub fn control_from_data_v1(data: Data) -> LedgerOutputScanControlV1 {
         reference_script_offset_data, reference_script_length_data,
       ]
     = builtin.un_list_data(data)
-  let control = LedgerOutputScanControlV1 {
+  LedgerOutputScanControlV1 {
     version: builtin.un_i_data(version_data),
     stage: builtin.un_i_data(stage_data),
     cursor: builtin.un_i_data(cursor_data),
@@ -241,15 +242,30 @@ pub fn control_from_data_v1(data: Data) -> LedgerOutputScanControlV1 {
     reference_script_offset: builtin.un_i_data(reference_script_offset_data),
     reference_script_length: builtin.un_i_data(reference_script_length_data),
   }
+}
+
+pub fn control_from_data_v1(data: Data) -> LedgerOutputScanControlV1 {
+  let control = control_fields_v1(data)
   expect control_is_well_formed(control)
   control
 }
 
 pub fn decode_control_v1(control_cbor: ByteArray) -> LedgerOutputScanControlV1 {
-  expect Some(data) = cbor.deserialise(control_cbor)
+  let data <- cbor_deserialise.expect_deserialise(control_cbor)
   let control = control_from_data_v1(data)
   expect encode_control_v1(control) == control_cbor
   control
+}
+
+/// Reads back a control that `encode_control_v1` wrote, without repeating
+/// its checks: for bytes that a computation thread carries between its own
+/// steps, the writing step's `encode_control_v1` already proved the control
+/// well formed and its bytes canonical, and the thread admits no other writer.
+pub fn decode_written_control_v1(
+  control_cbor: ByteArray,
+) -> LedgerOutputScanControlV1 {
+  let data <- cbor_deserialise.expect_deserialise(control_cbor)
+  control_fields_v1(data)
 }
 
 fn absolute_offset(
@@ -760,8 +776,24 @@ pub fn step_v1(
   window: ByteArray,
   window_offset: Int,
 ) -> Option<LedgerOutputScanControlV1> {
+  if control_is_well_formed(control) {
+    step_well_formed_v1(control, total_length, window, window_offset)
+  } else {
+    None
+  }
+}
+
+/// `step_v1` of a control already known to be well formed: a result of
+/// `step_v1`, `step_well_formed_v1` or `finish_well_formed_v1`, or a control
+/// read back from bytes `encode_control_v1` wrote. Every result is checked
+/// well formed, so a run of steps proves each control once.
+pub fn step_well_formed_v1(
+  control: LedgerOutputScanControlV1,
+  total_length: Int,
+  window: ByteArray,
+  window_offset: Int,
+) -> Option<LedgerOutputScanControlV1> {
   if and {
-    control_is_well_formed(control),
     control.cursor >= 0,
     control.cursor <= total_length,
     window_offset >= 0,
@@ -813,8 +845,21 @@ pub fn finish_v1(
   control: LedgerOutputScanControlV1,
   total_length: Int,
 ) -> Option<LedgerOutputScanControlV1> {
+  if control_is_well_formed(control) {
+    finish_well_formed_v1(control, total_length)
+  } else {
+    None
+  }
+}
+
+/// `finish_v1` of a control already known to be well formed. Its result
+/// differs only in `stage`, set to the in-range `stage_terminal`, so it is
+/// well formed too.
+pub fn finish_well_formed_v1(
+  control: LedgerOutputScanControlV1,
+  total_length: Int,
+) -> Option<LedgerOutputScanControlV1> {
   if and {
-    control_is_well_formed(control),
     control.stage == stage_optional_field,
     optional_fields_are_complete(control),
     control.cursor == total_length,
@@ -830,54 +875,45 @@ pub fn terminal_is_exact_v1(
   control: LedgerOutputScanControlV1,
   total_length: Int,
 ) -> Bool {
+  control_is_well_formed(control) && terminal_is_exact_well_formed_v1(
+    control,
+    total_length,
+  )
+}
+
+/// `terminal_is_exact_v1` of a control already known to be well formed. It
+/// omits the conjuncts `control_is_well_formed` already decides: the asset
+/// frontier, the non-negative lovelace and reference-script length, the datum
+/// span's sign, and the reference-script language and offsets.
+pub fn terminal_is_exact_well_formed_v1(
+  control: LedgerOutputScanControlV1,
+  total_length: Int,
+) -> Bool {
   and {
-    control_is_well_formed(control),
     control.stage == stage_terminal,
     control.cursor == total_length,
     control.map_entry_count >= 2,
-    control.map_entry_count <= 4,
     optional_fields_are_complete(control),
     bytearray.length(control.address) == 29 || bytearray.length(control.address) == 57,
-    control.lovelace >= 0,
     control.cardano_value_size > 0,
     control.policy_remaining == 0,
     control.asset_remaining == 0,
     control.policy_asset_cursor == 0,
     control.current_policy == #"",
     control.previous_asset_name == #"",
-    validation_merkle_v1.frontier_is_well_formed(
-      control.asset_count,
-      control.asset_peaks,
-    ),
     control.payload_remaining == 0,
     if control.datum_offset == -1 {
-      control.datum_length == 0
+      True
     } else {
       and {
-        control.datum_offset >= 0,
         control.datum_length > 0,
         control.datum_offset + control.datum_length <= total_length,
       }
     },
     if control.reference_script_language == -1 {
-      and {
-        control.reference_script_item_offset == -1,
-        control.reference_script_offset == -1,
-        control.reference_script_length == 0,
-      }
+      True
     } else {
-      and {
-        or {
-          control.reference_script_language == 0,
-          control.reference_script_language == 3,
-          control.reference_script_language == 128,
-        },
-        control.reference_script_item_offset >= 0,
-        control.reference_script_item_offset < control.reference_script_offset,
-        control.reference_script_offset >= 0,
-        control.reference_script_length >= 0,
-        control.reference_script_offset + control.reference_script_length == total_length,
-      }
+      control.reference_script_offset + control.reference_script_length == total_length
     },
   }
 }

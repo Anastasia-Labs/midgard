@@ -19,11 +19,11 @@ import {
   buildForcedOutputFixture,
   TRANSACTION_OUTPUT_SCAN_CHUNK_BYTES,
 } from "./support/transaction-output-non-canonical-emulator.js";
+import { record } from "./transaction-output-non-canonical-lifecycle.record-fit.js";
 import {
   type Evidence,
   evidenceOf,
   type NativeTx,
-  record,
   type Registered,
   registeredContracts,
 } from "./transaction-output-non-canonical-lifecycle.registered-contracts.js";
@@ -142,7 +142,7 @@ export const forcedDatumScenario = async (transaction: NativeTx) => {
     witnessSetCompactCbor:
       forced.transaction.submitted_source.witness_set_compact_cbor,
   };
-  const bindToDatum = async (label?: string) => {
+  const bindToDatum = async (measured?: MeasuredScan) => {
     const init = await registered.init(setup.fraudulentBlockOutRef);
     const bound = await submitTransactionOutputNonCanonicalStep01Forced({
       ...stepCommon(registered),
@@ -163,7 +163,7 @@ export const forcedDatumScenario = async (transaction: NativeTx) => {
       registered,
       authenticated.nextThreadOutRef,
       evidence,
-      label,
+      measured,
     );
   };
   return { harness, registered, setup, evidence, bindToDatum };
@@ -176,12 +176,18 @@ export const stepCommon = (registered: Registered) => ({
   signer: registered.harness.proverSigner,
 });
 
+/** Names the terminal scan's fit row and its maximum shape. */
+export type MeasuredScan = {
+  readonly label: string;
+  readonly maximumShape: string;
+};
+
 /** Runs the envelope scan; the canonical envelope opens the datum step. */
 export const scanToDatum = async (
   registered: Registered,
   threadOutRef: string,
   evidence: Evidence,
-  label?: string,
+  measured?: MeasuredScan,
 ): Promise<string> => {
   let current = threadOutRef;
   for (;;) {
@@ -200,8 +206,12 @@ export const scanToDatum = async (
     current = scanned.result.nextThreadOutRef;
     if (scanned.result.terminal) {
       expect(scanned.result.nextStage).toBe("step03Datum");
-      if (label !== undefined)
-        record(`${label}-scan-to-datum`, scanned.measurement);
+      if (measured !== undefined)
+        record(
+          `${measured.label}-scan-to-datum`,
+          scanned.measurement,
+          measured.maximumShape,
+        );
       return current;
     }
   }

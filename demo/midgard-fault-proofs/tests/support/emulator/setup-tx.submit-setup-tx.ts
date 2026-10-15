@@ -44,6 +44,7 @@ export const submitSetupTx = async ({
   header: requestedHeader,
   blockTime,
   beforeHeaderCommit,
+  bondPaddingLovelace,
 }: {
   readonly lucid: SetupLucid;
   readonly contracts: SetupContracts;
@@ -58,6 +59,8 @@ export const submitSetupTx = async ({
   readonly blockTime?: bigint;
   /** Run actual event admission after hub creation, before committing this header. */
   readonly beforeHeaderCommit?: (hubOracle: UTxO) => Promise<void>;
+  /** Lovelace the operator adds to its active node at this header's commit. */
+  readonly bondPaddingLovelace?: bigint;
 }): Promise<{
   readonly header: Header;
   readonly fraudulentBlockOutRef: string;
@@ -175,6 +178,7 @@ export const submitSetupTx = async ({
       appointedSchedulerUtxo,
       activeOperatorNode,
       blockTime,
+      bondPaddingLovelace,
     });
 
   return {

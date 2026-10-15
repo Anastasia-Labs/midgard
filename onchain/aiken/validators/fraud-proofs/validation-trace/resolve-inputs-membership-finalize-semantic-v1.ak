@@ -22,7 +22,7 @@ use midgard/ledger_output_proof_raw
 use midgard/ledger_output_proof_roles
 use midgard/ledger_output_proof_stages as lop_stages
 use midgard/ledger_output_v1
-use midgard/rejection_reason_v1.{reject_missing_required_witness}
+use midgard/rejection_reason_v1.{SpendInputSignerMissing}
 use midgard/resolve_inputs_control_v1 as carrier
 use midgard/validation_machine/machine_types.{
   InputSignerAuthorized, InputSignerMissing, InputSignerProofMalformed,
@@ -30,6 +30,7 @@ use midgard/validation_machine/machine_types.{
 }
 use midgard/validation_machine/shared.{
   input_signer_authorization, rejected_successor_is_exact,
+  unset_reason_coordinate,
 }
 use midgard/validation_machine/witness.{resolved_input_accumulator_successor}
 use midgard/validation_semantic_v1.{Datum, continue_winning}
@@ -257,7 +258,7 @@ fn membership_terminal_dispatch(
           rejected_successor_is_exact(
             pre,
             transition.claimed_successor,
-            reject_missing_required_witness,
+            SpendInputSignerMissing { input_index: unset_reason_coordinate },
           )
         InputSignerProofMalformed -> False
         InputSignerAuthorized -> and {
