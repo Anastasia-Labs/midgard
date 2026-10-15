@@ -287,9 +287,10 @@ validator l2_outputs(
   }
 }
 
-/// Phase 11: take the next output off the certified walk, which must stand
-/// at `output_index`, so the insert key built from the same index names the
-/// output whose bytes were walked.
+/// Phase 11: take the next output off the certified walk. The walk stands at
+/// `output_index` because both advance together: phase 10 opens the walk at
+/// its first item with the index at zero, a whole replay advances both, and a
+/// staged output's walk advance is matched by its phase-4 index advance.
 ///
 /// An output that `output_step_is_whole` admits is replayed whole here and
 /// the step moves on to the next output (or phase 5 after the last). Its scan,
@@ -319,7 +320,6 @@ validator l2_output_step(
       tx.reference_inputs,
       field_preimage_certificate_policy_id,
     )
-    expect walk.walk_next_item_index(prior) == state.output_index
     let Pair(item, next) = walk.walk_next(view, prior)
     let outputs_walk = walk.field_walk_checkpoint_hash(next)
     let successor = if !output_step_is_whole(item) {

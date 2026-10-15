@@ -14,6 +14,8 @@ export type TransitionTraceFinalCase = Readonly<{
   corruptWalk?: boolean;
   /** Forge one streamed step so that exactly one withdraw-zero script refuses. */
   forgeStep?: TransitionTraceForgedStep;
+  /** Asserts the forged step's refusal, given the submission it refuses. */
+  forgedStepRefusal?: (submit: () => Promise<unknown>) => Promise<string>;
   corruptSourceReference?: boolean;
   datumBytes?: number;
   /** The produced output's exact canonical CBOR, in place of a built one. */

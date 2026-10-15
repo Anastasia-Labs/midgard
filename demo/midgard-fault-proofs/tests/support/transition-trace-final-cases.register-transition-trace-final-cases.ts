@@ -163,6 +163,7 @@ export const transitionTraceFinalCaseRunner = (
     corruptAssetIndex = false,
     corruptWalk = false,
     forgeStep,
+    forgedStepRefusal,
     corruptSourceReference = false,
     datumBytes = 0,
     datumCbor,
@@ -773,6 +774,8 @@ export const transitionTraceFinalCaseRunner = (
       await proveAfterForgedStep({
         ...forged,
         forge: forgeStep,
+        proof: traceFixture.proof,
+        refusal: forgedStepRefusal,
         yields: contracts.fraudProofContracts.transitionTrace.yields,
         capture: (threadOutRef) =>
           captureLocallyEvaluatedTransaction((boundary) =>
