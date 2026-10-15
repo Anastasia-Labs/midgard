@@ -138,10 +138,6 @@ const ABI_MAPPINGS = [
   // Aiken definitions are still in the frozen blueprint and go with it when #579
   // regenerates; a mapping kept for them would assert a retired surface rather
   // than measure a stale one.
-  [
-    "CekProgramMaterialDatumSchema",
-    "midgard/ledger_state/CekProgramMaterialDatumV1",
-  ],
   ["TxOrderDatumSchema", "midgard/user_events/tx_order_v1/Datum"],
   [
     "TxOrderSpendRedeemerSchema",

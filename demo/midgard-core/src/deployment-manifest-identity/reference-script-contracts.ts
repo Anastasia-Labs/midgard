@@ -47,7 +47,8 @@ export const DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE =
     // performed.
     "V1 field-preimage certificate": "fieldPreimageCertificateSpend",
     "V1 field-preimage certificate minting": "fieldPreimageCertificateMint",
-    "V1 immutable CEK program-material publication": "cekProgramMaterialSpend",
+    "V1 script decode": "scriptDecodeSpend",
+    "V1 script decode minting": "scriptDecodeMint",
     "V1 validation-trace dispute": "validationTraceDispute",
     "V1 validation-trace source": "validationTraceDisputeSource",
     "V1 validation-trace game": "validationTraceDisputeGame",
@@ -509,8 +510,6 @@ export const DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE =
       "validationTraceDisputePhaseANativeItemNativeWithdraw",
     "V1 validation-trace phase-A native item foreign yield":
       "validationTraceDisputePhaseANativeItemForeignWithdraw",
-    "V1 validation-trace CEK material traversal":
-      "validationTraceDisputeCekMaterialTraversal",
     "V1 validation-trace CEK context settle":
       "validationTraceDisputeCekContextSettle",
     "V1 validation-trace CEK context control":
@@ -648,18 +647,10 @@ export const DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE =
     "V1 validation-trace CEK core type failure roots":
       "validationTraceDisputeCekCoreTypeFailureRoots",
 
-    "V1 validation-trace CEK material program task yield":
-      "validationTraceDisputeCekMaterialProgramTaskWithdraw",
-    "V1 validation-trace CEK material Data task yield":
-      "validationTraceDisputeCekMaterialDataTaskWithdraw",
     "V1 validation-trace CEK selection authenticate yield":
       "validationTraceDisputeCekSelectionAuthenticateWithdraw",
     "V1 validation-trace CEK selection successor yield":
       "validationTraceDisputeCekSelectionSuccessorWithdraw",
-    "V1 validation-trace CEK selection material program yield":
-      "validationTraceDisputeCekSelectionMaterialProgramWithdraw",
-    "V1 validation-trace CEK selection material data yield":
-      "validationTraceDisputeCekSelectionMaterialDataWithdraw",
 
     "V1 fraud-proof transition-trace final-5 replay yield":
       "fraudProofTransitionTraceDepositReplayWithdraw",

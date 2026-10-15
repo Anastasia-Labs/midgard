@@ -52,7 +52,7 @@ export const PUBLICATION_ORDER: readonly PublicationStep[] = [
   "payout",
   "availabilityChallenge",
   "fieldPreimageCertificate",
-  "cekProgramMaterial",
+  "scriptDecode",
   "validationTraceDisputeControl",
   "validationTraceCanonical",
   // Each legacy family publishes step 01 followed by its later steps.
@@ -73,7 +73,7 @@ export const PUBLICATION_ORDER: readonly PublicationStep[] = [
   "validationTraceScriptSourcesYields",
   "validationTracePhaseASemantics",
   "validationTraceCekContext",
-  "validationTraceCekMaterial",
+  "validationTraceCekYields",
   "transitionTraceYields",
   "minAdaYields",
   "correctionLock",

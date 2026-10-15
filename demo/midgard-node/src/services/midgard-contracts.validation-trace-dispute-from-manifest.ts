@@ -116,7 +116,6 @@ export const validationTraceDisputeFromManifest = (
   network: Network,
   manifest: DeploymentManifest,
   sourcePath: string,
-  cekProgramMaterial: SDK.SpendingValidator,
 ): SDK.FaultProofContractChains["validationTraceDispute"] => {
   const spend = (contract: string) =>
     spendingValidatorFromManifest(network, manifest, sourcePath, contract);
@@ -172,8 +171,6 @@ export const validationTraceDisputeFromManifest = (
     boundary: spend("validationTraceDisputeBoundary"),
     timeout: spend("validationTraceDisputeTimeout"),
     award: spend("validationTraceDisputeAward"),
-    cekProgramMaterial,
-    cekMaterialTraversal: spend("validationTraceDisputeCekMaterialTraversal"),
     cekCoreStages: byReference(SDK.CEK_CORE_STAGE_REFERENCES),
     cekContextStages: byReference(SDK.CEK_CONTEXT_STAGE_REFERENCES),
     cekContextItemStages: {

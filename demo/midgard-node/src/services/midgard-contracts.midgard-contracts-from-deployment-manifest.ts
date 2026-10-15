@@ -93,11 +93,12 @@ export const midgardContractsFromDeploymentManifest = (
       "fieldPreimageCertificateMint",
     ),
   };
-  const cekProgramMaterial = spendingValidatorFromManifest(
+  const scriptDecode = authenticatedValidatorFromManifest(
     network,
     manifest,
     sourcePath,
-    "cekProgramMaterialSpend",
+    "scriptDecodeSpend",
+    "scriptDecodeMint",
   );
   const transitionTraceRoute = spendingValidatorFromManifest(
     network,
@@ -223,7 +224,6 @@ export const midgardContractsFromDeploymentManifest = (
     network,
     manifest,
     sourcePath,
-    cekProgramMaterial,
   );
   const fraudProofContracts: SDK.FaultProofContractChains = {
     doubleSpend: legacyFaultProofChainFromManifest(
@@ -690,7 +690,7 @@ export const midgardContractsFromDeploymentManifest = (
     withdrawal: eventHistory.withdrawal.list,
     txOrder,
     fieldPreimageCertificate,
-    cekProgramMaterial,
+    scriptDecode,
     settlement: authenticatedValidatorFromManifest(
       network,
       manifest,

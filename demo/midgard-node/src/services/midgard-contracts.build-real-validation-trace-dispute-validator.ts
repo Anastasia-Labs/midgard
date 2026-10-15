@@ -49,7 +49,10 @@ export const buildRealFaultProofContracts = (
   fraudProof: SDK.AuthenticatedValidator,
   eventHistoryBounds: SDK.EventHistoryPayloadBounds,
   l1SlotConfig: L1SlotConfig,
-): Effect.Effect<SDK.FaultProofContractChains, Error> =>
+): Effect.Effect<
+  SDK.FaultProofContractChains & Pick<SDK.FaultProofContracts, "scriptDecode">,
+  Error
+> =>
   Effect.gen(function* () {
     const blueprint = yield* loadRealBlueprint();
     const derived = yield* SDK.buildFaultProofContracts({

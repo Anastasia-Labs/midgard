@@ -128,13 +128,17 @@ export const withRealStateQueueAndOperatorContracts = (
       deploymentParameters.eventHistoryBounds,
       deploymentParameters.l1SlotConfig,
     );
+    // The script-decode validator is not a proof chain: it is carried at the
+    // top level, as a deployment manifest restores it.
+    const { scriptDecode, ...realFaultProofChains } = realFaultProofContracts;
     const withRealFraudProof: SDK.MidgardValidators = {
       ...withRealFraudProofCatalogue,
       computationThread: realComputationThread,
       fraudProof: realFraudProof,
       ...realFraudProofSharedWithdrawals,
-      fraudProofContracts: realFaultProofContracts,
-      fraudProofs: SDK.fraudProofContractsToFirstSteps(realFaultProofContracts),
+      scriptDecode,
+      fraudProofContracts: realFaultProofChains,
+      fraudProofs: SDK.fraudProofContractsToFirstSteps(realFaultProofChains),
     };
 
     const realRetiredOperators = yield* buildRealRetiredOperatorsValidator(
@@ -199,7 +203,6 @@ export const withRealStateQueueAndOperatorContracts = (
       // mint above is parameterized by THIS policy id, so a set that reported
       // the stand-in would describe a door the deployed script does not consult.
       fieldPreimageCertificate: realTxOrderContracts.fieldPreimageCertificate,
-      cekProgramMaterial: realTxOrderContracts.cekProgramMaterial,
     };
 
     const withRealUserEvents = withRealHubOracleDepositAndTxOrder;

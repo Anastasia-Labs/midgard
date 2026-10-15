@@ -9,7 +9,7 @@ import {
   type Section,
   spend,
   TRANSITION_TRACE_YIELD_CONTRACT_NAMES,
-  VALIDATION_TRACE_CEK_MATERIAL_YIELD_KEYS,
+  VALIDATION_TRACE_CEK_YIELD_KEYS,
   VALIDATION_TRACE_PHASE_A_SEMANTIC_PREFIXES,
   VALIDATION_TRACE_REDEEMER_NORMALIZATION_SEMANTIC_CONTRACT,
   VALIDATION_TRACE_REDEEMER_NORMALIZATION_SEMANTIC_INDEX,
@@ -188,15 +188,9 @@ export const DEPLOYABLE_SCRIPT_CATALOGUE = {
     spend("fieldPreimageCertificateSpend", (c) => c.fieldPreimageCertificate),
     mint("fieldPreimageCertificateMint", (c) => c.fieldPreimageCertificate),
   ),
-  cekProgramMaterial: entries(
-    spend("cekProgramMaterialSpend", (c) => c.cekProgramMaterial, {
-      // Under the always-succeeds contract set the CEK validator is the
-      // tx-order spend script. Do not publish that stand-in as a distinct
-      // deployed script.
-      publishWhen: (c) =>
-        c.cekProgramMaterial.spendingScriptHash !==
-        c.txOrder.spendingScriptHash,
-    }),
+  scriptDecode: entries(
+    spend("scriptDecodeSpend", (c) => c.scriptDecode),
+    mint("scriptDecodeMint", (c) => c.scriptDecode),
   ),
   settlement: entries(
     spend("settlementSpend", (c) => c.settlement, NOT_PUBLISHED),
@@ -386,16 +380,9 @@ export const DEPLOYABLE_SCRIPT_CATALOGUE = {
         vtd(contracts).cekCoreStages[stage],
       ),
     ),
-  validationTraceCekMaterial: (contracts) => [
-    spendStep(
-      contracts,
-      "validationTraceDisputeCekMaterialTraversal",
-      vtd(contracts).cekMaterialTraversal,
-    ),
-    ...validationTraceYields(VALIDATION_TRACE_CEK_MATERIAL_YIELD_KEYS)(
-      contracts,
-    ),
-  ],
+  validationTraceCekYields: validationTraceYields(
+    VALIDATION_TRACE_CEK_YIELD_KEYS,
+  ),
   transitionTraceYields: (contracts) =>
     TRANSITION_TRACE_YIELD_CONTRACT_NAMES.map(([key, contract]) =>
       withdrawStep(

@@ -67,14 +67,10 @@ export const VALIDATION_TRACE_SCRIPT_SOURCES_YIELD_KEYS = (
   (key) => key.startsWith("scriptSources") || key.startsWith("ledgerOutput"),
 );
 
-/** CEK material and selection yields, in manifest order (not title order). */
-export const VALIDATION_TRACE_CEK_MATERIAL_YIELD_KEYS = [
-  "cekMaterialProgramTask",
-  "cekMaterialDataTask",
+/** CEK selection and trailing yields, in manifest order (not title order). */
+export const VALIDATION_TRACE_CEK_YIELD_KEYS = [
   "cekSelectionAuthenticate",
   "cekSelectionSuccessor",
-  "cekSelectionMaterialProgram",
-  "cekSelectionMaterialData",
   "phaseANativeItemNative",
   "phaseANativeItemForeign",
   "valueAndMintAssetFold",
@@ -88,7 +84,7 @@ export const validationTraceYieldContractName = (
 export const VALIDATION_TRACE_RECORDED_YIELD_KEYS: readonly ValidationTraceYieldKey[] =
   [
     ...VALIDATION_TRACE_SCRIPT_SOURCES_YIELD_KEYS,
-    ...VALIDATION_TRACE_CEK_MATERIAL_YIELD_KEYS,
+    ...VALIDATION_TRACE_CEK_YIELD_KEYS,
   ];
 
 /**
