@@ -16,6 +16,7 @@ import {
   collectAcceptedProgramEnvelopes,
   decideAdmissionBatch,
 } from "../src/fibers/tx-queue-processor.js";
+import { HttpReadSql } from "../src/services/database.js";
 import { FollowerWriteFixture } from "../src/services/follower-write-gate.js";
 import {
   Database,
@@ -93,6 +94,9 @@ export const submitWithdrawalRefusal = async (
       for await (const chunk of request) chunks.push(chunk as Buffer);
       const routed = await runNodeCommandProgram(
         buildListenRouter().pipe(
+          // The listen router serves public reads from its own pool; here the
+          // fixture database's client stands in for it.
+          Effect.provideServiceEffect(HttpReadSql, SqlClient.SqlClient),
           Effect.provideService(
             HttpServerRequest.HttpServerRequest,
             HttpServerRequest.fromWeb(
