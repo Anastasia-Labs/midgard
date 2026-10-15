@@ -1,7 +1,7 @@
 use aiken/builtin
 use aiken/cbor
 use aiken/crypto.{blake2b_256}
-use midgard/cbor_deserialise
+use aiken/primitive/bytearray
 use midgard/fraud_proofs/native_tx/compact.{
   forced_tx_proof_commitment_v1, native_tx_proof_commitment_v1,
   verify_forced_tx_proof_source_v1, verify_native_tx_proof_source_v1,
@@ -44,11 +44,6 @@ pub type ValidationClaimWitnessV1 {
     ledger_state.EventToStepValue,
   >,
   source_membership: ValidationSourceMembershipV1,
-  validation_context_cbor: ByteArray,
-  initial_state: validation_trace_v1.ValidationMachineStateV1,
-  terminal_state: validation_trace_v1.ValidationMachineStateV1,
-  initial_state_proof: validation_trace_v1.ValidationTraceProof,
-  terminal_state_proof: validation_trace_v1.ValidationTraceProof,
 }
 
 const validation_context_version_v1: Int = 1
@@ -56,94 +51,120 @@ const validation_context_version_v1: Int = 1
 const validation_context_profile_id_v1: ByteArray =
   #"6d6964676172642d636f6e73656e7375732d7631"
 
-fn validation_context_is_exact(
+/// The validation context every state of the trace commits to: the CBOR of
+/// the Plutus Data list `[version, profile_id, end_time, expected_network_id,
+/// min_fee_a, min_fee_b, block_slot]`. A disputable block carries L2
+/// transactions, so state-queue R2 makes its `end_time` its commit time.
+pub fn derive_validation_context_cbor(
   header: ledger_state.HeaderV1,
-  context_cbor: ByteArray,
-  initial: validation_trace_v1.ValidationMachineStateV1,
-) -> Bool {
-  let context_data <- cbor_deserialise.expect_deserialise(context_cbor)
-  expect
+) -> ByteArray {
+  builtin.serialise_data(
+    builtin.list_data(
       [
-        version_data, profile_id_data, block_end_time_data,
-        expected_network_id_data, min_fee_a_data, min_fee_b_data,
-        block_slot_data,
-      ]
-    = builtin.un_list_data(context_data)
-  let version = builtin.un_i_data(version_data)
-  let profile_id = builtin.un_b_data(profile_id_data)
-  let block_end_time = builtin.un_i_data(block_end_time_data)
-  let expected_network_id = builtin.un_i_data(expected_network_id_data)
-  let min_fee_a = builtin.un_i_data(min_fee_a_data)
-  let min_fee_b = builtin.un_i_data(min_fee_b_data)
-  let block_slot = builtin.un_i_data(block_slot_data)
-  and {
-    cbor.serialise(context_data) == context_cbor,
-    version == validation_context_version_v1,
-    profile_id == validation_context_profile_id_v1,
-    block_end_time == header.end_time,
-    expected_network_id == header.expected_network_id,
-    expected_network_id == 0 || expected_network_id == 1,
-    min_fee_a == header.min_fee_a,
-    min_fee_a >= 0,
-    min_fee_b == header.min_fee_b,
-    min_fee_b >= 0,
-    block_slot == header.block_slot,
-    block_slot >= 0,
-    validation_trace_v1.hash_validation_context(context_cbor) == initial.validation_context_hash,
-  }
-}
-
-fn initial_work_root_is_exact(
-  initial: validation_trace_v1.ValidationMachineStateV1,
-  context_cbor: ByteArray,
-  source: ValidationSourceMembershipV1,
-) -> Bool {
-  let first_work_witness = when source is {
-    ForcedValidationSource { membership } ->
-      vm_witness.encode_transaction_field_scan_witness(
-        membership.value.submitted_source.compact_cbor,
-        membership.value.submitted_source.witness_set_compact_cbor,
-        membership.value.submitted_source.field_preimage_lengths_cbor,
-        context_cbor,
-        0,
-        0,
-        0,
-        -1,
-        0,
-      )
-    NormalValidationSource { membership } ->
-      vm_witness.encode_transaction_field_scan_witness(
-        membership.value.source.compact_cbor,
-        membership.value.source.witness_set_compact_cbor,
-        membership.value.source.field_preimage_lengths_cbor,
-        context_cbor,
-        0,
-        0,
-        0,
-        -1,
-        0,
-      )
-  }
-  initial.work_root == validation_trace_v1.hash_work_witness(
-    validation_trace_v1.CanonicalDecode,
-    0,
-    first_work_witness,
+        builtin.i_data(validation_context_version_v1),
+        builtin.b_data(validation_context_profile_id_v1),
+        builtin.i_data(header.end_time),
+        builtin.i_data(header.expected_network_id),
+        builtin.i_data(header.min_fee_a),
+        builtin.i_data(header.min_fee_b),
+        builtin.i_data(header.block_slot),
+      ],
+    ),
   )
 }
 
-fn immutable_context_matches(
-  initial: validation_trace_v1.ValidationMachineStateV1,
-  terminal: validation_trace_v1.ValidationMachineStateV1,
-) -> Bool {
-  and {
-    initial.machine_version == terminal.machine_version,
-    initial.event_key_hash == terminal.event_key_hash,
-    initial.transaction_id == terminal.transaction_id,
-    initial.transaction_commitment == terminal.transaction_commitment,
-    initial.validation_context_hash == terminal.validation_context_hash,
-    initial.source_kind == terminal.source_kind,
-    initial.prior_ledger_root == terminal.prior_ledger_root,
+/// State 0 of the transaction's validation trace, built from committed data
+/// alone: the header's context, the event key, the authenticated source and
+/// the step's pre-state root. Every other field is the machine's start value.
+pub fn derive_initial_state(
+  header: ledger_state.HeaderV1,
+  event_key: ledger_state.EventKey,
+  source: ValidationSourceMembershipV1,
+  pre_utxos_root: ByteArray,
+) -> validation_trace_v1.ValidationMachineStateV1 {
+  let context_cbor = derive_validation_context_cbor(header)
+  let (transaction_id, transaction_commitment, source_kind, first_work_witness)
+    = when source is {
+    ForcedValidationSource { membership } -> {
+      let triple = membership.value.submitted_source
+      (
+        membership.value.tx_id,
+        forced_tx_proof_commitment_v1(
+          triple.compact_cbor,
+          triple.witness_set_compact_cbor,
+          triple.field_preimage_lengths_cbor,
+        ),
+        validation_trace_v1.Forced,
+        first_field_scan_witness(
+          triple.compact_cbor,
+          triple.witness_set_compact_cbor,
+          triple.field_preimage_lengths_cbor,
+          context_cbor,
+        ),
+      )
+    }
+    NormalValidationSource { membership } -> {
+      let triple = membership.value.source
+      (
+        membership.value.tx_id,
+        native_tx_proof_commitment_v1(
+          triple.compact_cbor,
+          triple.witness_set_compact_cbor,
+          triple.field_preimage_lengths_cbor,
+        ),
+        validation_trace_v1.Normal,
+        first_field_scan_witness(
+          triple.compact_cbor,
+          triple.witness_set_compact_cbor,
+          triple.field_preimage_lengths_cbor,
+          context_cbor,
+        ),
+      )
+    }
   }
+  validation_trace_v1.ValidationMachineStateV1 {
+    machine_version: validation_trace_v1.machine_version,
+    event_key_hash: blake2b_256(cbor.serialise(event_key)),
+    transaction_id,
+    transaction_commitment,
+    validation_context_hash: validation_trace_v1.hash_validation_context(
+      context_cbor,
+    ),
+    source_kind,
+    prior_ledger_root: pre_utxos_root,
+    phase: validation_trace_v1.CanonicalDecode,
+    program_counter: 0,
+    work_root: validation_trace_v1.hash_work_witness(
+      validation_trace_v1.CanonicalDecode,
+      0,
+      first_work_witness,
+    ),
+    execution_cpu: 0,
+    execution_memory: 0,
+    verdict: validation_trace_v1.Pending,
+    rejection_code_hash: validation_trace_v1.no_rejection_code_hash,
+  }
+}
+
+/// The machine's first work witness: the field scan at field 0, item 0, chunk
+/// 0, before any item has been counted.
+fn first_field_scan_witness(
+  compact_cbor: ByteArray,
+  witness_set_compact_cbor: ByteArray,
+  field_preimage_lengths_cbor: ByteArray,
+  context_cbor: ByteArray,
+) -> ByteArray {
+  vm_witness.encode_transaction_field_scan_witness(
+    compact_cbor,
+    witness_set_compact_cbor,
+    field_preimage_lengths_cbor,
+    context_cbor,
+    0,
+    0,
+    0,
+    -1,
+    0,
+  )
 }
 
 fn verify_descriptor_membership(
@@ -209,7 +230,7 @@ fn verify_event_to_step_membership(
 /// hash of the leaf's reason (arm and coordinates).
 ///
 /// Exported so the #640 gate-5 tests can drive the bridge directly; the only
-/// production caller remains `source_binding_is_exact` in this module.
+/// production caller remains `descriptor_matches_source_verdict` in this module.
 pub fn forced_verdict_matches(
   leaf_verdict: rejection_reason_v1.OperatorVerdictV1,
   descriptor: validation_trace_v1.ValidationTraceDescriptorV1,
@@ -280,53 +301,19 @@ fn verify_source_authentication(
   }
 }
 
-/// What the machine's `transaction_commitment` is anchored to, now that the
-/// committed source no longer carries one.
-///
-/// §4's flat reversion left `L2TransactionSourceV1.transaction_commitment` and
-/// its `ForcedInclusionTxV1` twin with exactly one reader — this file — and that
-/// reader used the carried value twice over: once to assert it equalled
-/// `native_tx_proof_commitment_v1` of the very triple it sat beside, and once to
-/// bind it to the machine state. The first assertion made the second one's
-/// subject the derivation rather than the field, so retiring the field changes
-/// nothing about what is anchored: the machine's `transaction_commitment` is
-/// still the §7 proof-source commitment of the source membership's own triple.
-/// It is now derived at the one place it is used instead of carried on every
-/// leaf of two block-committed roots and checked back against its own
-/// derivation.
-///
-/// Derived here rather than in `verify_source_authentication` — which is where
-/// the retired equality check lived — because this is the only consumer. Both
-/// functions run on every claim, so no work is duplicated by the move and none
-/// is added: exactly one `native_tx_proof_commitment_v1` per claim, as before.
-fn source_proof_commitment(
-  source: ledger_state.NativeTxProofSourceV1,
-) -> ByteArray {
-  native_tx_proof_commitment_v1(
-    source.compact_cbor,
-    source.witness_set_compact_cbor,
-    source.field_preimage_lengths_cbor,
-  )
-}
-
-fn source_binding_is_exact(
+/// The committed descriptor carries the verdict its authenticated source
+/// already fixes. A normal leaf under `transactions_root` is an acceptance, so
+/// its descriptor must be Accepted; a forced leaf's descriptor must match the
+/// leaf's own verdict.
+pub fn descriptor_matches_source_verdict(
   descriptor: validation_trace_v1.ValidationTraceDescriptorV1,
-  initial_state: validation_trace_v1.ValidationMachineStateV1,
   source: ValidationSourceMembershipV1,
 ) -> Bool {
   when source is {
-    ForcedValidationSource { membership } -> and {
-        membership.value.tx_id == initial_state.transaction_id,
-        forced_source_proof_commitment(membership.value.submitted_source) == initial_state.transaction_commitment,
-        initial_state.source_kind == validation_trace_v1.Forced,
-        forced_verdict_matches(membership.value.verdict, descriptor),
-      }
-    NormalValidationSource { membership } -> and {
-        membership.value.tx_id == initial_state.transaction_id,
-        source_proof_commitment(membership.value.source) == initial_state.transaction_commitment,
-        initial_state.source_kind == validation_trace_v1.Normal,
-        descriptor.verdict == validation_trace_v1.Accepted,
-      }
+    ForcedValidationSource { membership } ->
+      forced_verdict_matches(membership.value.verdict, descriptor)
+    NormalValidationSource { .. } ->
+      descriptor.verdict == validation_trace_v1.Accepted
   }
 }
 
@@ -342,21 +329,18 @@ fn phase_for_event_key(
   }
 }
 
-/// Authenticates the block-owned roots, descriptor endpoints, and transition
-/// location only. Normative endpoint/source checks deliberately happen in the
-/// following source step so a malformed committed initial or terminal state is
+/// Authenticates the block-owned roots and the transition location only. The
+/// initial-state and verdict checks deliberately happen in the following
+/// source step, so a committed initial state that is not the derived one is
 /// itself a unilateral fault instead of making an honest challenge impossible
 /// to open.
 pub fn committed_claim_structure_is_valid(
   header: ledger_state.HeaderV1,
   witness: ValidationClaimWitnessV1,
 ) -> Bool {
-  let descriptor = witness.descriptor_membership.value
   let event_key = witness.descriptor_membership.key
   let transition_step = witness.transition_step_membership.value
   let event_to_step = witness.event_to_step_membership.value
-  let initial = witness.initial_state
-  let terminal = witness.terminal_state
 
   and {
     witness.version == claim_version,
@@ -372,24 +356,6 @@ pub fn committed_claim_structure_is_valid(
     transition_step.event_key == event_key,
     transition_step.phase == phase_for_event_key(event_key),
     transition_step.phase == event_to_step.phase,
-    witness.initial_state_proof.state_index == 0,
-    witness.initial_state_proof.state_hash == validation_trace_v1.hash_machine_state(
-      initial,
-    ),
-    validation_trace_v1.verify_trace_proof(
-      descriptor,
-      witness.initial_state_proof,
-    ),
-    witness.terminal_state_proof.state_index == descriptor.step_count,
-    witness.terminal_state_proof.state_hash == validation_trace_v1.hash_machine_state(
-      terminal,
-    ),
-    validation_trace_v1.verify_trace_proof(
-      descriptor,
-      witness.terminal_state_proof,
-    ),
-    descriptor.initial_state_hash == witness.initial_state_proof.state_hash,
-    descriptor.terminal_state_hash == witness.terminal_state_proof.state_hash,
   }
 }
 
@@ -404,41 +370,45 @@ pub fn committed_claim_source_is_authenticated(
   )
 }
 
+/// The operator descriptor's committed initial state is the derived one, so
+/// the dispute's agreed low state (the descriptor's `initial_state_hash`) is
+/// the derived state's hash.
+///
+/// The header and step guards come first: they keep a context or root the
+/// machine cannot represent a refusal (the challenger wins) rather than a
+/// failure inside the state encoder. `block_slot` needs no guard (state-queue
+/// R3 bounds it to the slot domain), and the source's `tx_id` is 32 bytes once
+/// `committed_claim_source_is_authenticated` holds.
+pub fn committed_initial_state_is_derived(
+  header: ledger_state.HeaderV1,
+  witness: ValidationClaimWitnessV1,
+) -> Bool {
+  let transition_step = witness.transition_step_membership.value
+  and {
+    header.expected_network_id == 0 || header.expected_network_id == 1,
+    header.min_fee_a >= 0,
+    header.min_fee_b >= 0,
+    bytearray.length(transition_step.pre_utxos_root) == 32,
+    witness.descriptor_membership.value.initial_state_hash == validation_trace_v1.hash_machine_state(
+      derive_initial_state(
+        header,
+        transition_step.event_key,
+        witness.source_membership,
+        transition_step.pre_utxos_root,
+      ),
+    ),
+  }
+}
+
 pub fn committed_claim_endpoints_and_source_are_valid(
   header: ledger_state.HeaderV1,
   witness: ValidationClaimWitnessV1,
 ) -> Bool {
   let descriptor = witness.descriptor_membership.value
-  let event_key = witness.descriptor_membership.key
   let transition_step = witness.transition_step_membership.value
-  let initial = witness.initial_state
-  let terminal = witness.terminal_state
   and {
-    validation_trace_v1.machine_state_is_well_formed(initial),
-    validation_trace_v1.machine_state_is_well_formed(terminal),
-    initial.event_key_hash == blake2b_256(cbor.serialise(event_key)),
-    initial.prior_ledger_root == transition_step.pre_utxos_root,
-    initial.phase == validation_trace_v1.CanonicalDecode,
-    initial.program_counter == 0,
-    initial.execution_cpu == 0,
-    initial.execution_memory == 0,
-    initial.verdict == validation_trace_v1.Pending,
-    validation_context_is_exact(
-      header,
-      witness.validation_context_cbor,
-      initial,
-    ),
-    initial_work_root_is_exact(
-      initial,
-      witness.validation_context_cbor,
-      witness.source_membership,
-    ),
-    terminal.phase == validation_trace_v1.Terminal,
-    terminal.program_counter == descriptor.step_count,
-    terminal.verdict == descriptor.verdict,
-    terminal.rejection_code_hash == descriptor.rejection_code_hash,
-    immutable_context_matches(initial, terminal),
-    source_binding_is_exact(descriptor, initial, witness.source_membership),
+    committed_initial_state_is_derived(header, witness),
+    descriptor_matches_source_verdict(descriptor, witness.source_membership),
     if descriptor.verdict == validation_trace_v1.Rejected {
       transition_step.pre_utxos_root == transition_step.post_utxos_root
     } else {
@@ -456,14 +426,4 @@ pub fn committed_claim_is_valid(
     committed_claim_source_is_authenticated(header, witness),
     committed_claim_endpoints_and_source_are_valid(header, witness),
   }
-}
-
-fn forced_source_proof_commitment(
-  source: ledger_state.ForcedTxProofSourceV1,
-) -> ByteArray {
-  forced_tx_proof_commitment_v1(
-    source.compact_cbor,
-    source.witness_set_compact_cbor,
-    source.field_preimage_lengths_cbor,
-  )
 }

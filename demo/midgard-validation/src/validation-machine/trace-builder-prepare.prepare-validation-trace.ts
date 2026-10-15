@@ -1,6 +1,5 @@
 import { Store, Trie } from "@aiken-lang/merkle-patricia-forestry";
 import {
-  aikenSerialisedPlutusDataCbor,
   appendMidgardValidationMerkleLeaf,
   attachMidgardLedgerOutputProofFacts,
   buildMidgardBlake2b224Trace,
@@ -12,10 +11,11 @@ import {
   buildMidgardValidationMerkleFrontier,
   buildMidgardValidationMerkleMembership,
   commitMidgardValidationMerkleFrontier,
-  computeMidgardNativeTxProofCommitment,
   decodeMidgardCekProgramMaterialSidecar,
   deriveMidgardNativeTxProofSourceFromCanonicalCbor,
   deriveMidgardTxFieldPreimages,
+  deriveMidgardValidationContextCborV1,
+  deriveMidgardValidationInitialStateV1,
   encodeCbor,
   encodeMidgardBlake2b224TraceControl,
   encodeMidgardCekProgramMaterialSidecar,
@@ -34,7 +34,6 @@ import {
   hashMidgardScriptPurposeLeaf,
   hashMidgardScriptSourceLeaf,
   hashMidgardSignerLeaf,
-  hashMidgardValidationContext,
   inspectMidgardRedeemerData,
   MIDGARD_BOUNDED_ITEM_CHUNK_BYTES,
   MIDGARD_CONSENSUS_LIMITS,
@@ -67,7 +66,6 @@ import {
   readCborMapHeader,
 } from "@al-ft/midgard-core/codec/cbor";
 import {
-  computeMidgardForcedTxProofCommitment,
   decodeMidgardForcedTxCompact,
   deriveMidgardForcedTxProofSourceFromCanonicalCbor,
 } from "@al-ft/midgard-core/codec/forced";
@@ -155,21 +153,16 @@ import {
 
 export const prepareValidationTrace = (input: ValidationMachineReplayInput) =>
   Effect.gen(function* () {
-    const contextCbor = Buffer.from(
-      aikenSerialisedPlutusDataCbor(
-        encodeCbor([
-          1n,
-          Buffer.from(input.consensusProfile.profileId, "ascii"),
-          safeBlockTime(input.blockTimeMs),
-          input.expectedNetworkId,
-          input.minFeeA,
-          input.minFeeB,
-          input.blockSlot,
-        ]).toString("hex"),
-      ),
-      "hex",
-    );
-    const validationContextHash = hashMidgardValidationContext(contextCbor);
+    // The claim derives this context from the header; its time element is
+    // `header.end_time` (see `ValidationMachineReplayInput.blockTimeMs`).
+    const contextHeader = {
+      endTimeMs: safeBlockTime(input.blockTimeMs),
+      blockSlot: input.blockSlot,
+      expectedNetworkId: input.expectedNetworkId,
+      minFeeA: input.minFeeA,
+      minFeeB: input.minFeeB,
+    };
+    const contextCbor = deriveMidgardValidationContextCborV1(contextHeader);
     const priorLedgerRoot = exactHash32(input.priorUtxosRoot, "priorUtxosRoot");
     const postLedgerRoot = exactHash32(input.postUtxosRoot, "postUtxosRoot");
     if (input.transactionId.length !== 32) {
@@ -443,11 +436,19 @@ export const prepareValidationTrace = (input: ValidationMachineReplayInput) =>
     const compactProofWitnessSet = decodeMidgardNativeTxWitnessSetCompact(
       proofSource.witnessSetCompactCbor,
     );
-    const transactionCommitment = (
-      input.sourceKind === "forced"
-        ? computeMidgardForcedTxProofCommitment
-        : computeMidgardNativeTxProofCommitment
-    )(proofSource);
+    // State 0 is the claim's derivation, not a builder construction.
+    const initialState = deriveMidgardValidationInitialStateV1({
+      ...contextHeader,
+      eventKeyCbor: input.eventKeyCbor,
+      canonicalTransactionCbor: input.canonicalTransactionCbor,
+      preUtxosRoot: priorLedgerRoot,
+      sourceKind: input.sourceKind,
+    });
+    if (!initialState.transactionId.equals(input.transactionId)) {
+      return yield* Effect.fail(
+        new Error("transactionId is not the canonical transaction's id"),
+      );
+    }
     const fieldPreimages = deriveMidgardTxFieldPreimages(
       input.canonicalTransactionCbor,
       input.sourceKind,
@@ -1127,7 +1128,7 @@ export const prepareValidationTrace = (input: ValidationMachineReplayInput) =>
         "compactBinding",
         encodeCbor([
           input.transactionId,
-          transactionCommitment,
+          initialState.transactionCommitment,
           proofSource.compactCbor,
           proofSource.witnessSetCompactCbor,
           proofSource.fieldPreimageLengthsCbor,
@@ -4094,8 +4095,7 @@ export const prepareValidationTrace = (input: ValidationMachineReplayInput) =>
       priorLedgerRoot,
       witnesses,
       witnessExecutionBudgets,
-      transactionCommitment,
-      validationContextHash,
+      initialState,
       verdict,
       contextCbor,
       canonicalProgramMaterialSidecarCbor,

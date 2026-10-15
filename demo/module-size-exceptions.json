@@ -1171,8 +1171,8 @@
   },
   {
     "file": "midgard-validation/src/validation-machine/trace-builder-complete.ts",
-    "max": 2570,
-    "reason": "completeValidationTrace is the dominant indivisible declaration (2717 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. Combined F1/RLO source measured at integration. C5 (-2). Ledger-delta phase deleted (-420). Startup cost (+2): the context seed spends Cardano's startup budget before the first step."
+    "max": 2575,
+    "reason": "completeValidationTrace is the dominant indivisible declaration (2717 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. Combined F1/RLO source measured at integration. C5 (-2). Ledger-delta phase deleted (-420). Startup cost (+2): the context seed spends Cardano's startup budget before the first step. N5 (+5): state 0 is the claim's derived initial state, checked against the first witness."
   },
   {
     "file": "midgard-validation/src/validation-machine/trace-builder-prepare.prepare-validation-trace.ts",

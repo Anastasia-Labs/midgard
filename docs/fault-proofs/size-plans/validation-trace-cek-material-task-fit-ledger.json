@@ -1,7 +1,7 @@
 {
   "schemaVersion": "midgard-van-rossem-fit-ledger-v1",
   "category": "validationTraceDispute/CEK material tasks",
-  "blueprintSha256": "860d67c1f3dae577be9155c17edc17e9a26d6515c1a706ab6186f478b9fe0b56",
+  "blueprintSha256": "a2cbdbe1195f2f4868366813f3f44537b385891f1a8291a5db15d2d137a206aa",
   "compilerVersion": "v1.1.23+5adf783",
   "entries": [
     {
@@ -9,11 +9,11 @@
       "kind": "lifecycle",
       "maximumShape": "data",
       "signedBytes": 9980,
-      "memoryUnits": "7525713",
-      "cpuUnits": "2324435071",
+      "memoryUnits": "7528581",
+      "cpuUnits": "2325327318",
       "signedByteMargin": 6404,
-      "memoryUnitMargin": "8974287",
-      "cpuUnitMargin": "7675564929",
+      "memoryUnitMargin": "8971419",
+      "cpuUnitMargin": "7674672682",
       "publicationReserveMargin": null
     },
     {
@@ -21,11 +21,11 @@
       "kind": "lifecycle",
       "maximumShape": "program",
       "signedBytes": 14052,
-      "memoryUnits": "6751557",
-      "cpuUnits": "2032673814",
+      "memoryUnits": "6748689",
+      "cpuUnits": "2031781567",
       "signedByteMargin": 2332,
-      "memoryUnitMargin": "9748443",
-      "cpuUnitMargin": "7967326186",
+      "memoryUnitMargin": "9751311",
+      "cpuUnitMargin": "7968218433",
       "publicationReserveMargin": null
     },
     {
@@ -77,5 +77,5 @@
       "publicationReserveMargin": 7895
     }
   ],
-  "ledgerSha256": "138229a4ce1d7ca816bc25d5cb94ebdfe6e34849a3cc9077d5cf42b3bbbcfcee"
+  "ledgerSha256": "664c30be30ddcf5ce27531e3ac556e1226822e63c96bb3b4f405f6315ae09820"
 }

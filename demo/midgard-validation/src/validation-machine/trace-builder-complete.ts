@@ -22,7 +22,6 @@ import {
   hashMidgardValidationMachineState,
   hashMidgardValidationWorkWitness,
   MIDGARD_BOUNDED_ITEM_CHUNK_BYTES,
-  MIDGARD_VALIDATION_MACHINE_VERSION,
   MIDGARD_VALIDATION_NO_REJECTION_CODE_HASH,
   midgardBoundedItemChunkCount,
   MidgardRedeemerItemProofModes,
@@ -167,8 +166,7 @@ export const completeValidationTrace = (
       priorLedgerRoot,
       witnesses,
       witnessExecutionBudgets,
-      transactionCommitment,
-      validationContextHash,
+      initialState,
       verdict,
       contextCbor,
       canonicalProgramMaterialSidecarCbor,
@@ -2507,22 +2505,32 @@ export const completeValidationTrace = (
       memory: executionBudget.memory,
     });
 
-    const eventKeyHash = hash32(input.eventKeyCbor);
     const rejectionCodeHash =
       rejectionReason === null
         ? MIDGARD_VALIDATION_NO_REJECTION_CODE_HASH
         : hashMidgardValidationRejectionReasonV1(rejectionReason);
+    // State 0 is the claim's derived state; witness 0 must be the one it commits.
+    const firstWitness = witnesses[0];
+    if (
+      firstWitness === undefined ||
+      !hashMidgardValidationWorkWitness({
+        phase: firstWitness.phase,
+        programCounter: firstWitness.programCounter,
+        witnessCbor: firstWitness.cbor,
+      }).equals(initialState.workRoot)
+    ) {
+      return yield* Effect.fail(
+        new Error(
+          "validation trace does not start from the derived initial state",
+        ),
+      );
+    }
     const states = witnesses.map((witness, index) => {
+      if (index === 0) return initialState;
       const terminal = index === witnesses.length - 1;
       const budget = witnessExecutionBudgets[index]!;
       return {
-        machineVersion: MIDGARD_VALIDATION_MACHINE_VERSION,
-        eventKeyHash,
-        transactionId: Buffer.from(input.transactionId),
-        transactionCommitment,
-        validationContextHash,
-        sourceKind: input.sourceKind,
-        priorLedgerRoot,
+        ...initialState,
         phase: witness.phase,
         programCounter: witness.programCounter,
         workRoot: hashMidgardValidationWorkWitness({
@@ -2538,9 +2546,6 @@ export const completeValidationTrace = (
           : MIDGARD_VALIDATION_NO_REJECTION_CODE_HASH,
       } satisfies MidgardValidationMachineState;
     });
-    if (states.length === 0) {
-      return yield* Effect.fail(new Error("validation trace has no states"));
-    }
     const tree = buildMidgardValidationTraceTree(
       states.map(hashMidgardValidationMachineState),
       verdict,

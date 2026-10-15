@@ -173,11 +173,6 @@ export const ValidationClaimWitnessSchema = Data.Object({
   transition_step_membership: ValidationTransitionStepMembershipSchema,
   event_to_step_membership: ValidationEventToStepMembershipSchema,
   source_membership: ValidationSourceMembershipSchema,
-  validation_context_cbor: Data.Bytes(),
-  initial_state: ValidationMachineStateSchema,
-  terminal_state: ValidationMachineStateSchema,
-  initial_state_proof: ValidationTraceProofSchema,
-  terminal_state_proof: ValidationTraceProofSchema,
 });
 
 export type ValidationClaimWitness = Data.Static<

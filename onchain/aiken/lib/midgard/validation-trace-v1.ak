@@ -125,7 +125,7 @@ fn source_kind_code(source_kind: ValidationSourceKind) -> Int {
   }
 }
 
-const no_rejection_code_hash =
+pub const no_rejection_code_hash =
   #"0000000000000000000000000000000000000000000000000000000000000000"
 
 fn verdict_rejection_binding_is_valid(

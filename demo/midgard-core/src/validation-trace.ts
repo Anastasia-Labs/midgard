@@ -10,6 +10,7 @@ import "./validation-trace.encode-midgard-validation-machine-state.js";
 import "./validation-trace.decode-midgard-validation-machine-state.js";
 import "./validation-trace.build-midgard-validation-trace-tree.js";
 import "./validation-trace.rejection-reason-v1.js";
+import "./validation-trace.derive-midgard-validation-initial-state-v1.js";
 export {
   buildMidgardValidationTraceTree,
   validationTraceDepthForStepCount,
@@ -24,6 +25,12 @@ export {
   hashMidgardValidationWorkWitness,
   MIDGARD_VALIDATION_NO_REJECTION_CODE_HASH,
 } from "./validation-trace.decode-midgard-validation-machine-state.js";
+export {
+  deriveMidgardValidationContextCborV1,
+  deriveMidgardValidationInitialStateV1,
+  type MidgardValidationContextHeaderV1,
+  type MidgardValidationInitialStateInputV1,
+} from "./validation-trace.derive-midgard-validation-initial-state-v1.js";
 export {
   encodeMidgardValidationMachineState,
   hashMidgardValidationEventKey,
