@@ -85,6 +85,7 @@ import {
 } from "./transition-trace-field-carriage.js";
 import { proveAfterForgedStep } from "./transition-trace-final-cases.forged-step.js";
 import { proveAfterForgedWalk } from "./transition-trace-final-cases.forged-walk.js";
+import { expectRefusedAtTerminal } from "./transition-trace-final-cases.honest-terminal.js";
 import { type TransitionTraceFinalCase } from "./transition-trace-final-cases.types.js";
 import {
   buildAcceptedTransitionFixture,
@@ -760,10 +761,7 @@ export const transitionTraceFinalCaseRunner = (
         replacement?.mockRestore();
       }
     };
-    if (corruptWalk) {
-      await proveAfterForgedWalk(forged);
-      return;
-    }
+    if (corruptWalk) return await proveAfterForgedWalk(forged);
     if (forgeStep !== undefined) {
       await proveAfterForgedStep({
         ...forged,
@@ -828,7 +826,7 @@ export const transitionTraceFinalCaseRunner = (
       return;
     }
     if (honest) {
-      await expectProofRefused();
+      await expectRefusedAtTerminal({ ...forged, proof: traceFixture.proof });
       return;
     }
     const proofResult = await submitProof();
