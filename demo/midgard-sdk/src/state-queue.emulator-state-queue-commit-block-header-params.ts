@@ -125,7 +125,7 @@ export type FraudProverRewardPlan = {
 
 type SlashActiveOperatorRemoveParams = {
   readonly kind: "slashActiveOperator";
-  /** Reward routing; omit only while `env.fraud_prover_reward` is zero. */
+  /** Reward routing; a slash planned without it is refused before submission. */
   readonly fraudProverReward?: FraudProverRewardPlan;
   /**
    * Supports the active-operators `SlashOperator` mint path. For full
@@ -158,7 +158,7 @@ type SlashActiveOperatorRemoveParams = {
 
 type SlashRetiredOperatorRemoveParams = {
   readonly kind: "slashRetiredOperator";
-  /** Reward routing; omit only while `env.fraud_prover_reward` is zero. */
+  /** Reward routing; a slash planned without it is refused before submission. */
   readonly fraudProverReward?: FraudProverRewardPlan;
   readonly retiredOperatorsAssetsToBurn: Assets;
   readonly retiredOperatorsMintRedeemer: BuildTxWithRedeemer;

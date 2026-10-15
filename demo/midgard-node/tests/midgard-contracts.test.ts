@@ -153,7 +153,7 @@ describe("midgard contracts registry", () => {
             .digest("hex"),
         )
         .toBe(
-          "a69c6e303b02b841f5a4c91bf659a9a22192cd3abbefab56d1689cd1422b9d75",
+          "b371c36b5810fe390cd666e16b89dabb777bf33654a79d157c4f472e4c3dddb8",
         );
       // Includes current streamed Data/W1 metadata plus escape-hatch field
       // retirement and the hub witness's paired script bytes. The independently
@@ -181,7 +181,7 @@ describe("midgard contracts registry", () => {
             .digest("hex"),
         )
         .toBe(
-          "3d99196cef75b97a37b93bfd31efdf6ecb5b1d3b7e4de476ab2c6ed4fe4db7dc",
+          "deba1d99eb25c76cff8dc06bf8b3a496fa8e3a5699511748a29b9bfbc5332912",
         );
       // The always-succeeds stand-in is a real hazard here: it satisfies every
       // spend, so a role that silently kept it would pass any behavioural test

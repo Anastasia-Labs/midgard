@@ -27,15 +27,23 @@
 ////     -> `reference_script == None`
 ////   a second output to the claimant
 ////     -> `list.is_empty(other_claimant_outputs)`
+////
+//// The section "One operator slash per transaction" runs every directory
+//// handler of a transaction that carries two bond-consuming directory
+//// actions under different policies. Each slash alone is accepted, and each
+//// pair is refused by the slash handler that holds the other policy as a
+//// script parameter
+////     -> `other_directory_is_untouched_v1`
 
+use aiken/collection/list
 use aiken/crypto.{ScriptHash, VerificationKeyHash}
 use aiken/primitive/bytearray
 use aiken_design_patterns/linked_list
 use cardano/address.{Address, from_verification_key, with_delegation_key}
 use cardano/assets.{AssetName, Lovelace, PolicyId, Value}
 use cardano/transaction.{
-  InlineDatum, Input, Mint, NoDatum, Output, OutputReference, Redeemer, Spend,
-  Transaction,
+  InlineDatum, Input, Mint, NoDatum, Output, OutputReference, Redeemer,
+  ScriptPurpose, Spend, Transaction,
 }
 use env
 use midgard/hub_oracle as hub
@@ -45,6 +53,7 @@ use midgard/operator_directory/registered_operators
 use midgard/operator_directory/retired_operators
 use midgard/scheduler
 use midgard/settlement
+use midgard/state_queue
 use midgard/transition_trace
 use operator_directory/active_operators as active_operators_validator
 use operator_directory/registered_operators as registered_operators_validator
@@ -258,8 +267,11 @@ fn hub_ref_input() -> Input {
 // Bad-settlement slash (active and retired operators)
 // ---------------------------------------------------------------------------
 
-fn settlement_outref() -> OutputReference {
-  outref(#"1111111111111111111111111111111111111111111111111111111111111111", 0)
+fn settlement_outref(index: Int) -> OutputReference {
+  outref(
+    #"1111111111111111111111111111111111111111111111111111111111111111",
+    index,
+  )
 }
 
 fn directory_root_outref() -> OutputReference {
@@ -270,11 +282,11 @@ fn slashed_node_outref() -> OutputReference {
   outref(#"2222222222222222222222222222222222222222222222222222222222222222", 1)
 }
 
-/// The settlement being disproved. The directory handlers read only its
-/// address and its spending redeemer.
-fn settlement_input() -> Input {
+/// A settlement being disproved. The directory handlers read only its address
+/// and its spending redeemer.
+fn settlement_input(index: Int) -> Input {
   Input {
-    output_reference: settlement_outref(),
+    output_reference: settlement_outref(index),
     output: Output {
       address: script_address(settlement_policy),
       value: element_value(element_lovelace, settlement_policy, #"c0"),
@@ -284,13 +296,13 @@ fn settlement_input() -> Input {
   }
 }
 
-fn disprove_redeemer() -> Redeemer {
+fn disprove_redeemer(operator: VerificationKeyHash) -> Redeemer {
   let redeemer: settlement.SpendRedeemer = settlement.DisproveResolutionClaim {
     settlement_input_index: 0,
     settlement_output_index: 0,
     hub_ref_input_index: 0,
     operators_redeemer_index: 0,
-    operator: operator_vkey,
+    operator,
     operator_is_active: True,
     unresolved_event_ref_input_index: 1,
     unresolved_event_asset_name: #"c1",
@@ -363,7 +375,7 @@ fn bad_settlement_tx(
   Transaction {
     ..transaction.placeholder,
     inputs: [
-      settlement_input(),
+      settlement_input(0),
       Input {
         output_reference: directory_root_outref(),
         output: directory_root(policy, root_asset_name, Some(operator_vkey)),
@@ -387,7 +399,7 @@ fn bad_settlement_tx(
     mint: assets.from_asset(policy, node_asset_name, -1),
     redeemers: [
       Pair(Mint(policy), own_redeemer),
-      Pair(Spend(settlement_outref()), disprove_redeemer()),
+      Pair(Spend(settlement_outref(0)), disprove_redeemer(operator_vkey)),
     ],
     extra_signatories: bounty_signatories(bounty),
   }
@@ -500,11 +512,12 @@ fn registered_node_name(registration_key: ByteArray) -> AssetName {
   )
 }
 
-fn registered_node(registration_key: ByteArray) -> Output {
+fn registered_node(
+  operator: VerificationKeyHash,
+  registration_key: ByteArray,
+) -> Output {
   let datum: registered_operators.Datum = linked_list.Element {
-    data: linked_list.Node(
-      registered_operators.NodeData { operator: operator_vkey },
-    ),
+    data: linked_list.Node(registered_operators.NodeData { operator }),
     link: None,
   }
   Output {
@@ -549,7 +562,7 @@ fn duplicate_slash_tx(bounty: Bounty) -> Transaction {
       },
       Input {
         output_reference: slashed_node_outref(),
-        output: registered_node(duplicate_registration_key),
+        output: registered_node(operator_vkey, duplicate_registration_key),
       },
     ],
     reference_inputs: [
@@ -558,7 +571,7 @@ fn duplicate_slash_tx(bounty: Bounty) -> Transaction {
           #"5555555555555555555555555555555555555555555555555555555555555555",
           0,
         ),
-        output: registered_node(proof_registration_key),
+        output: registered_node(operator_vkey, proof_registration_key),
       },
     ],
     outputs: [
@@ -799,4 +812,584 @@ test penalised_retired_bad_settlement_slash_refuses_missing_reward_output() fail
 
 test penalised_retired_bad_settlement_slash_refuses_second_claimant_output() fail {
   run_retired_bad_settlement_slash(True, SecondClaimantOutput)
+}
+
+// ---------------------------------------------------------------------------
+// One operator slash per transaction
+// ---------------------------------------------------------------------------
+//
+// `directory_actions_tx` places one or two operator-directory actions in a
+// single transaction with one fee of `env.slashing_penalty` and one bounty
+// output. Action `p` continues its directory root at output `p` and has its
+// own minting redeemer at index `p`; settlement inputs come first, and each
+// action's settlement spend, state queue removal or retired-set insertion
+// follows all the directory minting redeemers. A duplicate-registration slash
+// is always placed first, so its operator is `operator_vkey`.
+
+/// An operator-directory action placed by `directory_actions_tx`.
+type DirectoryAction {
+  DuplicateRegistrationSlash
+  ActiveBadSettlementSlash
+  RetiredBadSettlementSlash
+  ActiveBadStateSlash
+  RetiredBadStateSlash
+  /// A forced retirement after too many inactivity strikes: the active node
+  /// is burnt and a retired node is minted for the bond less the inactivity
+  /// penalty.
+  PenalisedRetirement
+}
+
+const second_operator_vkey: VerificationKeyHash =
+  #"b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4"
+
+fn action_operator(position: Int) -> VerificationKeyHash {
+  if position == 0 {
+    operator_vkey
+  } else {
+    second_operator_vkey
+  }
+}
+
+fn action_at(actions: List<DirectoryAction>, position: Int) -> DirectoryAction {
+  expect Some(action) = list.at(actions, position)
+  action
+}
+
+fn action_policy(action: DirectoryAction) -> PolicyId {
+  when action is {
+    DuplicateRegistrationSlash -> registered_operators_policy
+    ActiveBadSettlementSlash | ActiveBadStateSlash | PenalisedRetirement ->
+      active_operators_policy
+    RetiredBadSettlementSlash | RetiredBadStateSlash -> retired_operators_policy
+  }
+}
+
+fn action_root_asset_name(action: DirectoryAction) -> AssetName {
+  when action is {
+    DuplicateRegistrationSlash -> registered_operators.root_asset_name
+    ActiveBadSettlementSlash | ActiveBadStateSlash | PenalisedRetirement ->
+      active_operators.root_asset_name
+    RetiredBadSettlementSlash | RetiredBadStateSlash ->
+      retired_operators.root_asset_name
+  }
+}
+
+/// The root and node of each directory are spent from a transaction named
+/// after the directory policy.
+fn directory_outref(policy: PolicyId, index: Int) -> OutputReference {
+  outref(bytearray.concat(policy, #"00000000"), index)
+}
+
+fn action_node_key(action: DirectoryAction, position: Int) -> ByteArray {
+  when action is {
+    DuplicateRegistrationSlash -> duplicate_registration_key
+    _ -> action_operator(position)
+  }
+}
+
+fn action_node_name(action: DirectoryAction, position: Int) -> AssetName {
+  let operator = action_operator(position)
+  when action is {
+    DuplicateRegistrationSlash ->
+      registered_node_name(duplicate_registration_key)
+    ActiveBadSettlementSlash | ActiveBadStateSlash | PenalisedRetirement ->
+      bytearray.concat(active_operators.node_asset_name_prefix, operator)
+    RetiredBadSettlementSlash | RetiredBadStateSlash ->
+      bytearray.concat(retired_operators.node_asset_name_prefix, operator)
+  }
+}
+
+fn directory_node(
+  policy: PolicyId,
+  node_asset_name: AssetName,
+  node_data: Data,
+  node_lovelace: Lovelace,
+  link: Option<ByteArray>,
+) -> Output {
+  let datum: operator_directory.Datum<Data> = linked_list.Element {
+    data: linked_list.Node(node_data),
+    link,
+  }
+  Output {
+    address: script_address(policy),
+    value: element_value(node_lovelace, policy, node_asset_name),
+    datum: InlineDatum(datum),
+    reference_script: None,
+  }
+}
+
+fn action_node(action: DirectoryAction, position: Int) -> Output {
+  let policy = action_policy(action)
+  let name = action_node_name(action, position)
+  when action is {
+    DuplicateRegistrationSlash ->
+      registered_node(operator_vkey, duplicate_registration_key)
+    ActiveBadSettlementSlash | ActiveBadStateSlash | PenalisedRetirement -> {
+      let node_data: Data = active_operators.NodeData {
+        bond_unlock_time: None,
+        inactivity_strikes: if action == PenalisedRetirement {
+          env.max_inactivity_strikes
+        } else {
+          0
+        },
+      }
+      directory_node(policy, name, node_data, env.required_bond, None)
+    }
+    RetiredBadSettlementSlash | RetiredBadStateSlash -> {
+      let node_data: Data = retired_operators.NodeData {
+        bond_unlock_time: None,
+      }
+      directory_node(policy, name, node_data, env.required_bond, None)
+    }
+  }
+}
+
+fn action_directory_inputs(
+  action: DirectoryAction,
+  position: Int,
+) -> List<Input> {
+  let policy = action_policy(action)
+  let root_name = action_root_asset_name(action)
+  let own_inputs = [
+    Input {
+      output_reference: directory_outref(policy, 0),
+      output: directory_root(
+        policy,
+        root_name,
+        Some(action_node_key(action, position)),
+      ),
+    },
+    Input {
+      output_reference: directory_outref(policy, 1),
+      output: action_node(action, position),
+    },
+  ]
+  when action is {
+    PenalisedRetirement ->
+      [
+        Input {
+          output_reference: directory_outref(retired_operators_policy, 0),
+          output: directory_root(
+            retired_operators_policy,
+            retired_operators.root_asset_name,
+            None,
+          ),
+        },
+        ..own_inputs
+      ]
+    _ -> own_inputs
+  }
+}
+
+fn settles(action: DirectoryAction) -> Bool {
+  when action is {
+    ActiveBadSettlementSlash | RetiredBadSettlementSlash -> True
+    _ -> False
+  }
+}
+
+fn has_follow_up_redeemer(action: DirectoryAction) -> Bool {
+  action != DuplicateRegistrationSlash
+}
+
+/// Index of the settlement input that action `position` disproves.
+fn settlement_input_index(actions: List<DirectoryAction>, position: Int) -> Int {
+  list.count(list.take(actions, position), settles)
+}
+
+/// Index of the redeemer that follows action `position`'s minting redeemer.
+fn follow_up_redeemer_index(
+  actions: List<DirectoryAction>,
+  position: Int,
+) -> Int {
+  list.length(actions) + list.count(
+    list.take(actions, position),
+    has_follow_up_redeemer,
+  )
+}
+
+fn action_slashing_arguments(
+  actions: List<DirectoryAction>,
+  position: Int,
+) -> operator_directory.SlashingArguments {
+  let action = action_at(actions, position)
+  operator_directory.SlashingArguments {
+    slashed_operator: action_operator(position),
+    hub_oracle_ref_input_index: 0,
+    slashed_operator_anchor_element_input_outref: directory_outref(
+      action_policy(action),
+      0,
+    ),
+    slashed_operator_anchor_element_output_index: position,
+    slashing_reason: when action is {
+      ActiveBadStateSlash | RetiredBadStateSlash ->
+        operator_directory.SlashOperatorForBadState {
+          state_queue_redeemer_index: follow_up_redeemer_index(
+            actions,
+            position,
+          ),
+        }
+      _ ->
+        operator_directory.SlashOperatorForBadSettlement {
+          settlement_input_index: settlement_input_index(actions, position),
+          settlement_redeemer_index: follow_up_redeemer_index(actions, position),
+          bounty_claimant: claimant_vkey,
+        }
+    },
+  }
+}
+
+fn scheduler_shows_operator_is_inactive() -> active_operators.OperatorRemovalSchedulerSync {
+  active_operators.ShowOperatorIsInactive { scheduler_ref_input_index: 1 }
+}
+
+fn registered_action_redeemer(
+  position: Int,
+) -> registered_operators.MintRedeemer {
+  registered_operators.SlashDuplicateOperator {
+    duplicate_operator: operator_vkey,
+    anchor_element_input_outref: directory_outref(
+      registered_operators_policy,
+      0,
+    ),
+    anchor_element_output_index: position,
+    duplicate_node_ref_input_index: 2,
+    duplicate_operator_status: registered_operators.DuplicateIsRegistered,
+    bounty_claimant: claimant_vkey,
+  }
+}
+
+fn active_action_redeemer(
+  actions: List<DirectoryAction>,
+  position: Int,
+) -> active_operators.MintRedeemer {
+  when action_at(actions, position) is {
+    PenalisedRetirement ->
+      active_operators.RetireOperator {
+        active_operator_key: action_operator(position),
+        hub_oracle_ref_input_index: 0,
+        active_operator_anchor_element_input_outref: directory_outref(
+          active_operators_policy,
+          0,
+        ),
+        active_operator_anchor_element_output_index: position,
+        retired_operators_redeemer_index: follow_up_redeemer_index(
+          actions,
+          position,
+        ),
+        penalize_for_inactivity: True,
+        operator_removal_scheduler_sync: scheduler_shows_operator_is_inactive(),
+      }
+    _ ->
+      active_operators.SlashOperator {
+        slashing_arguments: action_slashing_arguments(actions, position),
+        operator_removal_scheduler_sync: scheduler_shows_operator_is_inactive(),
+      }
+  }
+}
+
+fn retired_action_redeemer(
+  actions: List<DirectoryAction>,
+  position: Int,
+) -> retired_operators.MintRedeemer {
+  retired_operators.SlashOperator {
+    slashing_arguments: action_slashing_arguments(actions, position),
+  }
+}
+
+fn action_redeemer(actions: List<DirectoryAction>, position: Int) -> Redeemer {
+  when action_at(actions, position) is {
+    DuplicateRegistrationSlash -> {
+      let redeemer: Data = registered_action_redeemer(position)
+      redeemer
+    }
+    ActiveBadSettlementSlash | ActiveBadStateSlash | PenalisedRetirement -> {
+      let redeemer: Data = active_action_redeemer(actions, position)
+      redeemer
+    }
+    RetiredBadSettlementSlash | RetiredBadStateSlash -> {
+      let redeemer: Data = retired_action_redeemer(actions, position)
+      redeemer
+    }
+  }
+}
+
+/// The state queue removal that a bad-state slash at `position` answers.
+fn state_queue_removal_redeemer(
+  action: DirectoryAction,
+  position: Int,
+) -> Redeemer {
+  let redeemer: state_queue.MintRedeemer = state_queue.RemoveFraudulentBlockHeader {
+    yield_to_ref_input_index: 0,
+    fraudulent_operator: action_operator(position),
+    fraudulent_blocks_header_hash: #"",
+    slashing_approach: if action == ActiveBadStateSlash {
+      state_queue.SlashActiveOperator {
+        active_operators_redeemer_index: position,
+      }
+    } else {
+      state_queue.SlashRetiredOperator {
+        retired_operators_redeemer_index: position,
+      }
+    },
+    fraud_proof_ref_input_index: 0,
+    block_removal_approach: state_queue.RemoveLastFraudulentBlock {
+      anchor_element_input_outref: outref(
+        #"8888888888888888888888888888888888888888888888888888888888888888",
+        0,
+      ),
+      anchor_element_output_index: 0,
+    },
+  }
+  let redeemer_data: Data = redeemer
+  redeemer_data
+}
+
+/// The retired-set insertion of a forced retirement at `position`.
+fn retired_insertion_redeemer(
+  actions: List<DirectoryAction>,
+  position: Int,
+) -> Redeemer {
+  let redeemer: retired_operators.MintRedeemer = retired_operators.RetireOperator {
+    new_retired_operator_key: action_operator(position),
+    bond_unlock_time: None,
+    hub_oracle_ref_input_index: 0,
+    retired_operator_anchor_element_output_index: list.length(actions) + 1,
+    retired_operator_inserted_node_output_index: list.length(actions) + 2,
+    active_operators_redeemer_index: position,
+  }
+  let redeemer_data: Data = redeemer
+  redeemer_data
+}
+
+fn follow_up_redeemer(
+  actions: List<DirectoryAction>,
+  position: Int,
+) -> Option<Pair<ScriptPurpose, Redeemer>> {
+  let action = action_at(actions, position)
+  when action is {
+    DuplicateRegistrationSlash -> None
+    ActiveBadSettlementSlash | RetiredBadSettlementSlash ->
+      Some(
+        Pair(
+          Spend(settlement_outref(settlement_input_index(actions, position))),
+          disprove_redeemer(action_operator(position)),
+        ),
+      )
+    ActiveBadStateSlash | RetiredBadStateSlash ->
+      Some(
+        Pair(Mint(misc_policy), state_queue_removal_redeemer(action, position)),
+      )
+    PenalisedRetirement ->
+      Some(
+        Pair(
+          Mint(retired_operators_policy),
+          retired_insertion_redeemer(actions, position),
+        ),
+      )
+  }
+}
+
+fn action_mint(action: DirectoryAction, position: Int) -> Value {
+  let burnt = assets.from_asset(
+    action_policy(action),
+    action_node_name(action, position),
+    -1,
+  )
+  when action is {
+    PenalisedRetirement ->
+      burnt
+        |> assets.add(
+            retired_operators_policy,
+            bytearray.concat(
+              retired_operators.node_asset_name_prefix,
+              action_operator(position),
+            ),
+            1,
+          )
+    _ -> burnt
+  }
+}
+
+/// Outputs a forced retirement at `position` adds after the bounty: the
+/// retired root linked to the new retired node, and that node.
+fn retired_insertion_outputs(
+  action: DirectoryAction,
+  position: Int,
+) -> List<Output> {
+  when action is {
+    PenalisedRetirement -> {
+      let operator = action_operator(position)
+      let node_data: Data = retired_operators.NodeData {
+        bond_unlock_time: None,
+      }
+      [
+        directory_root(
+          retired_operators_policy,
+          retired_operators.root_asset_name,
+          Some(operator),
+        ),
+        directory_node(
+          retired_operators_policy,
+          bytearray.concat(retired_operators.node_asset_name_prefix, operator),
+          node_data,
+          env.required_bond - env.inactivity_slashing_penalty,
+          None,
+        ),
+      ]
+    }
+    _ -> []
+  }
+}
+
+fn directory_actions_tx(actions: List<DirectoryAction>) -> Transaction {
+  let settlement_inputs = list.filter(actions, settles)
+    |> list.indexed_map(fn(index, _) { settlement_input(index) })
+  let directory_inputs = actions
+    |> list.indexed_map(
+        fn(position, action) { action_directory_inputs(action, position) },
+      )
+    |> list.foldr([], list.concat)
+  let continued_roots = actions
+    |> list.indexed_map(
+        fn(_, action) {
+          directory_root(
+            action_policy(action),
+            action_root_asset_name(action),
+            None,
+          )
+        },
+      )
+  let insertion_outputs = actions
+    |> list.indexed_map(
+        fn(position, action) { retired_insertion_outputs(action, position) },
+      )
+    |> list.foldr([], list.concat)
+  let mint = actions
+    |> list.indexed_map(fn(position, action) { action_mint(action, position) })
+    |> list.foldl(assets.zero, assets.merge)
+  let own_redeemers = actions
+    |> list.indexed_map(
+        fn(position, action) {
+          Pair(Mint(action_policy(action)), action_redeemer(actions, position))
+        },
+      )
+  let follow_up_redeemers = actions
+    |> list.indexed_map(
+        fn(position, _) { follow_up_redeemer(actions, position) },
+      )
+    |> list.filter_map(fn(redeemer) { redeemer })
+  Transaction {
+    ..transaction.placeholder,
+    inputs: list.concat(settlement_inputs, directory_inputs),
+    reference_inputs: [
+      hub_ref_input(),
+      scheduler_ref_input(),
+      Input {
+        output_reference: outref(
+          #"5555555555555555555555555555555555555555555555555555555555555555",
+          0,
+        ),
+        output: registered_node(operator_vkey, proof_registration_key),
+      },
+    ],
+    outputs: list.concat(
+      continued_roots,
+      [reward_output(), ..insertion_outputs],
+    ),
+    fee: env.slashing_penalty,
+    mint,
+    redeemers: list.concat(own_redeemers, follow_up_redeemers),
+    extra_signatories: [claimant_vkey],
+  }
+}
+
+/// Runs the minting handler of action `position` against the transaction that
+/// carries all of `actions`.
+fn run_directory_action(actions: List<DirectoryAction>, position: Int) -> Bool {
+  let tx = directory_actions_tx(actions)
+  when action_at(actions, position) is {
+    DuplicateRegistrationSlash ->
+      registered_operators_validator.mint.mint(
+        retired_operators_policy,
+        hub_oracle_hash,
+        registered_action_redeemer(position),
+        registered_operators_policy,
+        tx,
+      )
+    ActiveBadSettlementSlash | ActiveBadStateSlash | PenalisedRetirement ->
+      active_operators_validator.mint.mint(
+        hub_oracle_hash,
+        registered_operators_policy,
+        retired_operators_policy,
+        active_action_redeemer(actions, position),
+        active_operators_policy,
+        tx,
+      )
+    RetiredBadSettlementSlash | RetiredBadStateSlash ->
+      retired_operators_validator.mint.mint(
+        hub_oracle_hash,
+        retired_action_redeemer(actions, position),
+        retired_operators_policy,
+        tx,
+      )
+  }
+}
+
+test one_slash_per_transaction_accepts_lone_duplicate_registration_slash() {
+  run_directory_action([DuplicateRegistrationSlash], 0)
+}
+
+test one_slash_per_transaction_accepts_lone_active_bad_settlement_slash() {
+  run_directory_action([ActiveBadSettlementSlash], 0)
+}
+
+test one_slash_per_transaction_accepts_lone_retired_bad_settlement_slash() {
+  run_directory_action([RetiredBadSettlementSlash], 0)
+}
+
+test one_slash_per_transaction_accepts_lone_active_bad_state_slash() {
+  run_directory_action([ActiveBadStateSlash], 0)
+}
+
+test one_slash_per_transaction_accepts_lone_retired_bad_state_slash() {
+  run_directory_action([RetiredBadStateSlash], 0)
+}
+
+test active_slash_refuses_retired_slash_in_same_transaction() fail {
+  run_directory_action([ActiveBadSettlementSlash, RetiredBadSettlementSlash], 0)
+}
+
+test active_bad_state_slash_refuses_retired_slash_in_same_transaction() fail {
+  run_directory_action([ActiveBadStateSlash, RetiredBadSettlementSlash], 0)
+}
+
+test active_slash_refuses_retired_bad_state_slash_in_same_transaction() fail {
+  run_directory_action([RetiredBadStateSlash, ActiveBadSettlementSlash], 1)
+}
+
+test active_slash_refuses_duplicate_registration_slash_in_same_transaction() fail {
+  run_directory_action(
+    [DuplicateRegistrationSlash, ActiveBadSettlementSlash],
+    1,
+  )
+}
+
+test active_bad_state_slash_refuses_duplicate_registration_slash_in_same_transaction() fail {
+  run_directory_action([DuplicateRegistrationSlash, ActiveBadStateSlash], 1)
+}
+
+test duplicate_slash_refuses_retired_slash_in_same_transaction() fail {
+  run_directory_action(
+    [DuplicateRegistrationSlash, RetiredBadSettlementSlash],
+    0,
+  )
+}
+
+test duplicate_slash_refuses_retired_bad_state_slash_in_same_transaction() fail {
+  run_directory_action([DuplicateRegistrationSlash, RetiredBadStateSlash], 0)
+}
+
+test duplicate_slash_refuses_penalised_retirement_in_same_transaction() fail {
+  run_directory_action([DuplicateRegistrationSlash, PenalisedRetirement], 0)
 }

@@ -12,6 +12,7 @@ use midgard/common/utils
 use midgard/hub_oracle as hub
 use midgard/operator_directory.{
   bounty_routing_is_exact_v1, deinit, init, operator_is_not_a_member,
+  other_directory_is_untouched_v1,
 }
 use midgard/operator_directory/active_operators
 use midgard/operator_directory/registered_operators.{
@@ -326,13 +327,22 @@ validator mint(
         expect bounty_claimant |> utils.has_signed(extra_signatories)
 
         // 1b. The rest of the removed bond, exactly `env.fraud_prover_reward`,
-        //     must reach the claimant (F04 §2.3). With the fee above this
-        //     conserves the registered bond tranche.
+        //     must reach the claimant (F04 §2.3).
         expect
           bounty_routing_is_exact_v1(
             outputs,
             bounty_claimant,
             env.fraud_prover_reward,
+          )
+
+        // 1c. Allow one operator slash per transaction: the retired-operators
+        //     policy may not mint or burn alongside this slash, and an
+        //     active-operators slash refuses this one. With 1 and 1b, the fee
+        //     and the bounty then account for this registered bond alone.
+        expect
+          other_directory_is_untouched_v1(
+            mint,
+            retired_operators_mint_script_hash,
           )
 
         // 2. Removal of the duplicate operator's node from the registered

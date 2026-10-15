@@ -121,15 +121,19 @@ const requireSingleNonAdaPolicyId = (
 
 /**
  * Checks the fraud prover's reward the way the on-chain guard will, so a
- * builder that pays the wrong shape fails here rather than on-chain. Nothing
- * is checked while no reward is routed (the compiled reward is zero).
+ * builder that pays the wrong shape fails here rather than on-chain. A
+ * bond-consuming slash always pays the reward, so a plan without one is
+ * refused.
  */
 export const requireFraudProverRewardRouting = (
   ctx: Parameters<BuildTxWithRedeemer>[0],
   reward: FraudProverRewardPlan | undefined,
   label: string,
 ): void => {
-  if (reward === undefined) return;
+  if (reward === undefined)
+    throw new Error(
+      `${label}: a bond-consuming slash must route the fraud-prover reward.`,
+    );
   requireExactBountyRouting(
     ctx.outputs,
     {

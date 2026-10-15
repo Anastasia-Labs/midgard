@@ -9,11 +9,15 @@ use cardano/assets
 use cardano/transaction.{
   InlineDatum, Input, Mint, Output, OutputReference, ScriptPurpose,
 }
+use env
 use midgard/availability_challenge as availability
+use midgard/correction_lock
 use midgard/fraud_proof
 use midgard/fraud_proof_catalogue as catalogue
 use midgard/ledger_state.{ConfirmedState, HeaderV1, protocol_version_v1}
 use midgard/operator_directory
+use midgard/operator_directory/active_operators
+use midgard/operator_directory/retired_operators
 use midgard/state_queue
 use state_queue as state_queue_validator
 
@@ -2628,4 +2632,220 @@ test bad_state_directory_slash_requires_its_own_slash_arm() {
       operator_directory.RetiredOperatorsDirectory,
     ),
   }
+}
+
+// Bad-state reward routing through `validate_remove_fraudulent_v1`. A
+// `SlashActiveOperator` or `SlashRetiredOperator` removal consumes the
+// operator's bond, so exactly `env.fraud_prover_reward` must reach the prover
+// named by the fraud-proof datum. Each refusal below is the accepted
+// transaction with only its reward outputs changed, and is refused by the
+// arm's `bounty_routing_is_exact_v1` call.
+
+const removal_hub_oracle_policy =
+  #"61616161616161616161616161616161616161616161616161616161"
+
+const removal_correction_lock_script =
+  #"62626262626262626262626262626262626262626262626262626262"
+
+const removal_active_operators_policy =
+  #"63636363636363636363636363636363636363636363636363636363"
+
+const removal_retired_operators_policy =
+  #"64646464646464646464646464646464646464646464646464646464"
+
+const removal_foreign_policy =
+  #"65656565656565656565656565656565656565656565656565656565"
+
+fn removal_correction_lock_input() -> Input {
+  Input {
+    output_reference: out_ref(2),
+    output: Output {
+      address: address.from_script(removal_correction_lock_script),
+      value: assets.from_lovelace(2_000_000)
+        |> assets.add(removal_hub_oracle_policy, correction_lock.asset_name, 1),
+      datum: InlineDatum(
+        correction_lock.Locked {
+          target_header_hash: faulty_header_hash,
+          correction_identity: correction_lock.FraudProof {
+            fraud_proof_asset_name: proof_asset(#"00000001"),
+          },
+        },
+      ),
+      reference_script: None,
+    },
+  }
+}
+
+/// The directory redeemer a bad-state slash of `faulty_operator` presents
+/// under the policy that `slashing_approach` names.
+fn bad_state_directory_redeemer(
+  slashing_approach: state_queue.SlashingApproach,
+) -> Pair<ScriptPurpose, Data> {
+  let slashing_arguments = operator_directory.SlashingArguments {
+    slashed_operator: faulty_operator,
+    hub_oracle_ref_input_index: 0,
+    slashed_operator_anchor_element_input_outref: out_ref(3),
+    slashed_operator_anchor_element_output_index: 1,
+    slashing_reason: operator_directory.SlashOperatorForBadState {
+      state_queue_redeemer_index: 1,
+    },
+  }
+  when slashing_approach is {
+    state_queue.SlashActiveOperator { .. } -> {
+      let redeemer: Data = active_operators.SlashOperator {
+        slashing_arguments,
+        operator_removal_scheduler_sync: active_operators.ShowOperatorIsInactive {
+          scheduler_ref_input_index: 1,
+        },
+      }
+      Pair(Mint(removal_active_operators_policy), redeemer)
+    }
+    _ -> {
+      let redeemer: Data = retired_operators.SlashOperator {
+        slashing_arguments,
+      }
+      Pair(Mint(removal_retired_operators_policy), redeemer)
+    }
+  }
+}
+
+fn prover_reward_output(lovelace: Int) -> Output {
+  Output {
+    address: address.from_verification_key(completed_fraud_prover),
+    value: assets.from_lovelace(lovelace),
+    datum: transaction.NoDatum,
+    reference_script: None,
+  }
+}
+
+/// `fraud_last_removal` as a whole `RemoveFraudulentBlockHeader` transaction
+/// that slashes `faulty_operator` through `slashing_approach`, with
+/// `reward_outputs` after the continued parent and no signatory.
+fn bad_state_removal(
+  slashing_approach: state_queue.SlashingApproach,
+  reward_outputs: List<Output>,
+) -> Bool {
+  let parent = node_input(
+    0,
+    parent_header_hash,
+    header(rotated_operator, intermediate_header_hash),
+    Some(faulty_header_hash),
+  )
+  let fraudulent_tail = node_input(
+    1,
+    faulty_header_hash,
+    header(faulty_operator, parent_header_hash),
+    None,
+  )
+  let proof_token = completed_fraud_token_input(
+    0,
+    completed_fraud_policy,
+    proof_asset(#"00000001"),
+    1,
+    completed_fraud_prover,
+  )
+  state_queue_validator.validate_remove_fraudulent_v1(
+    removal_hub_oracle_policy,
+    removal_correction_lock_script,
+    removal_active_operators_policy,
+    removal_retired_operators_policy,
+    completed_fraud_policy,
+    state_queue_policy,
+    transaction.Transaction {
+      ..transaction.placeholder,
+      inputs: [parent, fraudulent_tail, removal_correction_lock_input()],
+      outputs: [continue_node(parent, None), ..reward_outputs],
+      reference_inputs: [proof_token],
+      mint: burn_node(faulty_header_hash),
+      redeemers: [bad_state_directory_redeemer(slashing_approach)],
+      extra_signatories: [],
+    },
+    faulty_operator,
+    faulty_header_hash,
+    slashing_approach,
+    0,
+    last_removal(),
+  )
+}
+
+/// Control for every bad-state routing refusal below. The fraud prover does
+/// not sign: the reward is routed by the transaction's outputs alone.
+test bad_state_reward_routing_does_not_require_the_prover_signature() {
+  let exact_reward = [prover_reward_output(env.fraud_prover_reward)]
+  and {
+    bad_state_removal(slash_active(), exact_reward),
+    bad_state_removal(slash_retired(), exact_reward),
+  }
+}
+
+test bad_state_active_slash_rejects_missing_reward_output() fail {
+  bad_state_removal(slash_active(), [])
+}
+
+test bad_state_retired_slash_rejects_missing_reward_output() fail {
+  bad_state_removal(slash_retired(), [])
+}
+
+test bad_state_active_slash_rejects_reward_one_lovelace_over() fail {
+  bad_state_removal(
+    slash_active(),
+    [prover_reward_output(env.fraud_prover_reward + 1)],
+  )
+}
+
+test bad_state_retired_slash_rejects_reward_one_lovelace_over() fail {
+  bad_state_removal(
+    slash_retired(),
+    [prover_reward_output(env.fraud_prover_reward + 1)],
+  )
+}
+
+test bad_state_active_slash_rejects_reward_one_lovelace_under() fail {
+  bad_state_removal(
+    slash_active(),
+    [prover_reward_output(env.fraud_prover_reward - 1)],
+  )
+}
+
+test bad_state_retired_slash_rejects_reward_one_lovelace_under() fail {
+  bad_state_removal(
+    slash_retired(),
+    [prover_reward_output(env.fraud_prover_reward - 1)],
+  )
+}
+
+test bad_state_active_slash_rejects_second_prover_output() fail {
+  bad_state_removal(
+    slash_active(),
+    [
+      prover_reward_output(env.fraud_prover_reward),
+      prover_reward_output(env.fraud_prover_reward),
+    ],
+  )
+}
+
+test bad_state_retired_slash_rejects_second_prover_output() fail {
+  bad_state_removal(
+    slash_retired(),
+    [
+      prover_reward_output(env.fraud_prover_reward),
+      prover_reward_output(env.fraud_prover_reward),
+    ],
+  )
+}
+
+fn prover_reward_output_with_token() -> Output {
+  let reward = prover_reward_output(env.fraud_prover_reward)
+  Output {
+    ..reward,
+    value: reward.value |> assets.add(removal_foreign_policy, "token", 1),
+  }
+}
+
+test bad_state_active_slash_rejects_reward_carrying_a_token() fail {
+  bad_state_removal(slash_active(), [prover_reward_output_with_token()])
+}
+
+test bad_state_retired_slash_rejects_reward_carrying_a_token() fail {
+  bad_state_removal(slash_retired(), [prover_reward_output_with_token()])
 }

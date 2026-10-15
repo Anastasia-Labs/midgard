@@ -176,19 +176,22 @@ Rule: the arm that consumes an operator bond pays exactly
 already-slashed arm and the validation-trace descendant exemption pay nothing.
 
 Enforced: the shared `operator_directory.bounty_routing_is_exact_v1`
-(`lib/midgard/operator-directory.ak:166-222`, also used by the
+(`lib/midgard/operator-directory.ak:167-224`, also used by the
 duplicate-registration and bad-settlement slashes) on the bond-consuming arms
 of `validators/state-queue.ak` (`:1442`, `:1468`), and
 `no_output_pays_fraud_prover_reward_v1` (`:219`) on the already-slashed arm
 (`:1487`) and the exemption arm (`:1513`) `[aiken-test: state-queue/]`
 (`d3_reward_output_exactness_control_and_mutations` `:2180`,
 `d3_reward_routing_control_and_mutations` `:2243`,
-`d4_reward_exclusivity_control_and_double_claim` `:2303`,
-`d3_reward_routing_does_not_require_the_prover_signature` `:2327`); SDK side
+`d4_reward_exclusivity_control_and_double_claim` `:2303`; through the whole
+handler in `validators/state-queue-removal.test.ak`,
+`bad_state_reward_routing_does_not_require_the_prover_signature` and the
+`bad_state_{active,retired}_slash_rejects_*` refusals); SDK side
 `demo/midgard-sdk/tests/state-queue.state-queue-operator-funding-inputs.ts`.
 
 Provenance: `573a536fc` (#603). #643 item 1 (OPEN) records that the prover
-signature binding from #603 was removed; the test at `:2327` pins the
+signature binding from #603 was removed; the handler-level
+`bad_state_reward_routing_does_not_require_the_prover_signature` pins the
 current behaviour.
 
 Recurrence: 1.
@@ -431,7 +434,7 @@ Enforced:
 - The operator directory's `SlashOperatorForBadState` reads the state-queue
   redeemer's `slashing_approach` and requires its own slash arm
   (`bad_state_slashing_approach_matches_directory`,
-  `lib/midgard/operator-directory.ak:37`, called at `:451`), so a directory
+  `lib/midgard/operator-directory.ak:38`, called at `:478`), so a directory
   slash is never paired with a removal whose arm slashes nothing.
 - Refused `[aiken-test: state-queue-removal.test/]`:
   `descendant_of_validation_trace_conviction_must_use_the_exemption` `:2584`,

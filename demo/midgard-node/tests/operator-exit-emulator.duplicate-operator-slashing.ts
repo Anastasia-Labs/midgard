@@ -17,6 +17,7 @@ import {
 } from "./operator-exit-emulator.build-operator-exit-snapshot.js";
 import {
   appointFirstOperator,
+  bountyAddress,
   bountyAddressUtxos,
   fetchDirectorySnapshot,
   keyHashOf,
@@ -29,6 +30,7 @@ import {
   forceActivateOperator,
   forceRegisterOperator,
   slashDuplicateOperator,
+  slashingPenaltyFeePlan,
 } from "./operator-exit-emulator.force-activate-operator.js";
 import {
   addActivatedOperator,
@@ -352,6 +354,23 @@ describe("duplicate operator slashing", () => {
     await expect(
       attempt({ bountyClaimantKeyHash: otherKeyHash }),
     ).rejects.toThrow(`Missing vkey witness. Key hash: ${otherKeyHash}`);
+
+    // The named claimant signs, but the reward goes to another key: the
+    // ledger accepts the witnesses and the registered-operators policy, the
+    // only mint, refuses the routing.
+    const redirected = await expectOnChainRefusal(async () =>
+      attempt({
+        fraudProverRewardLovelace: 0n,
+        exactFeePlan: await slashingPenaltyFeePlan({
+          submitterLucid: slasher,
+          remainderAddress: bountyAddress(slasher, otherKeyHash),
+          remainderLovelace: FRAUD_PROVER_REWARD_LOVELACE,
+          declaredOutputCount: 1,
+        }),
+      }),
+    );
+    expect(redirected).toContain("duplicate-operator slashing tx");
+    expect(redirected).toContain("Mint[0]");
 
     // One lovelace either way: the validator reads the compiled reward, so the
     // builder's own figure cannot move it. The registered-operators policy is

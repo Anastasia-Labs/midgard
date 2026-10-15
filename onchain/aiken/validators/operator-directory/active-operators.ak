@@ -13,7 +13,8 @@ use midgard/common/utils
 use midgard/hub_oracle as hub
 use midgard/ledger_state
 use midgard/operator_directory.{
-  ActiveOperatorsDirectory, deinit, init, slash_fraudulent_operator_and_get_info,
+  ActiveOperatorsDirectory, deinit, init, other_directory_is_untouched_v1,
+  slash_fraudulent_operator_and_get_info,
   validate_transferred_operator_insertion,
 }
 use midgard/operator_directory/active_operators.{
@@ -535,7 +536,18 @@ validator mint(
         }
           |> finalize_linked_list(own_policy_id)
       }
-      SlashOperator { slashing_arguments, operator_removal_scheduler_sync } ->
+      SlashOperator { slashing_arguments, operator_removal_scheduler_sync } -> {
+        // 0. Allow one operator slash per transaction: no other operator
+        //    directory may mint or burn alongside this one.
+        let mint = self.mint
+        expect and {
+            other_directory_is_untouched_v1(
+              mint,
+              registered_operators_policy_id,
+            ),
+            other_directory_is_untouched_v1(mint, retired_operators_policy_id),
+          }
+
         {
           let
               slashed_operator_from_redeemer,
@@ -571,6 +583,7 @@ validator mint(
           True
         }
           |> finalize_linked_list(own_policy_id)
+      }
     }
   }
 

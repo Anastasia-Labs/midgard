@@ -2319,23 +2319,3 @@ test d4_reward_exclusivity_control_and_double_claim() {
     ),
   }
 }
-
-/// D3 permissionless reward routing: after the prover identity is frozen by
-/// thread Init, reward validity depends only on the transaction's outputs,
-/// never on its signatories. A missing reward output remains valid only for an
-/// exact zero-reward profile.
-test d3_reward_routing_does_not_require_the_prover_signature() {
-  let outputs = [d3_unrelated_output(), d3_reward_output(d3_reward)]
-  and {
-    operator_directory.bounty_routing_is_exact_v1(
-      outputs,
-      d3_fraud_prover,
-      d3_reward,
-    ),
-    operator_directory.bounty_routing_is_exact_v1(
-      [d3_unrelated_output()],
-      d3_fraud_prover,
-      0,
-    ),
-  }
-}

@@ -1,4 +1,5 @@
 use aiken/collection/list
+use aiken/collection/pairs
 use aiken/crypto.{VerificationKeyHash}
 use aiken/primitive/bytearray
 use aiken_design_patterns/linked_list
@@ -201,8 +202,9 @@ pub fn bounty_output_is_exact_v1(
 /// output is exactly `expected_reward` lovelace, ADA only, with no datum and
 /// no reference script. The bond tranche is conserved by this output plus the
 /// fee that `slash_fraudulent_operator_and_get_info` (or the duplicate slash)
-/// pins, so one lovelace either way is taken from the treasury's share of the
-/// bond or from the claimant's.
+/// pins, given that the slash is the only one in its transaction
+/// (`other_directory_is_untouched_v1`), so one lovelace either way is taken
+/// from the treasury's share of the bond or from the claimant's.
 ///
 /// No output to the claimant is accepted only while `expected_reward` is zero.
 /// Every release profile compiles a nonzero reward.
@@ -219,6 +221,29 @@ pub fn bounty_routing_is_exact_v1(
         bounty_payload_is_exact(reward_output, expected_reward),
       }
   }
+}
+
+/// Allow one operator slash per transaction. A slash that consumes an
+/// operator's bond pins the whole transaction fee to its own penalty and pays
+/// one bounty, so it must be the only bond-consuming action of the operator
+/// directories in its transaction. A slash handler calls this for each other
+/// directory policy it holds as a script parameter, and none of them may mint
+/// or burn:
+///
+/// - an active-operators slash: the registered- and retired-operators
+///   policies;
+/// - a duplicate-registration slash: the retired-operators policy.
+///
+/// A retired-operators slash needs no call of its own: next to an
+/// active-operators slash the active handler refuses, and next to a
+/// duplicate-registration slash the registered handler refuses. Two slashes
+/// under one directory cannot share a transaction, because a policy runs once
+/// with one redeemer and a removal burns exactly one node.
+pub fn other_directory_is_untouched_v1(
+  mint: Value,
+  other_directory_policy: PolicyId,
+) -> Bool {
+  !pairs.has_key(assets.to_pairs(mint), other_directory_policy)
 }
 
 /// Helper for validating transfer of operators from one set to another.
@@ -408,7 +433,9 @@ pub fn slash_fraudulent_operator_and_get_info(
   //    `env.fraud_prover_reward` to the bounty claimant, is checked per
   //    slashing reason in step 8: by the state queue's
   //    `RemoveFraudulentBlockHeader` handler for a bad state, and here for a
-  //    bad settlement.
+  //    bad settlement. Fee and bounty belong to this slash alone because a
+  //    transaction carries one operator slash (see
+  //    `other_directory_is_untouched_v1`).
   expect
     fraudulent_operator_slash_economics_are_exact_v1(
       slashed_operator_node_lovelace,
@@ -540,6 +567,23 @@ test q53_fraud_slash_fee_and_tranche_are_exact() {
     !fraudulent_operator_slash_economics_are_exact_v1(
       env.required_bond - env.inactivity_slashing_penalty - 2,
       partial_fee,
+    ),
+  }
+}
+
+test other_directory_is_untouched_only_without_its_mint_or_burn() {
+  let own_policy = #"01"
+  let other_policy = #"02"
+  let own_burn = assets.from_asset(own_policy, "node", -1)
+  and {
+    other_directory_is_untouched_v1(own_burn, other_policy),
+    !other_directory_is_untouched_v1(
+      own_burn |> assets.add(other_policy, "node", -1),
+      other_policy,
+    ),
+    !other_directory_is_untouched_v1(
+      own_burn |> assets.add(other_policy, "node", 1),
+      other_policy,
     ),
   }
 }

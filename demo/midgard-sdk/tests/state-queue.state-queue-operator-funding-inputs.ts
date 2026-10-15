@@ -73,6 +73,16 @@ describe("fraud-prover reward builder exactness", () => {
     ).not.toThrow();
   });
 
+  it("rejects a bond-consuming slash planned without a reward", () => {
+    expect(() =>
+      requireFraudProverRewardRouting(
+        context([output()]),
+        undefined,
+        "Q53 reward",
+      ),
+    ).toThrow(/Q53 reward: a bond-consuming slash must route/);
+  });
+
   it("rejects a slash that pays the prover nothing", () => {
     expect(() =>
       requireFraudProverRewardRouting(
