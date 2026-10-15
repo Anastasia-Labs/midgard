@@ -32,11 +32,11 @@ use midgard/settlement
 use midgard/state_queue.{
   AttachDaAttestation, AttestationTimeoutRemovalApproach,
   AvailabilityStatusUpdate, BlockRemovalApproach, CommitBlockHeader, Deinit,
-  HeaderView, InitV1, LinkedListMutation, MergeToConfirmedStateV1, MintRedeemer,
-  OperatorAlreadySlashed, PruneTimedOutBlockDescendant,
-  PruneUnattestedBlockDescendant, RemoveFraudulentBlockHeader,
-  RemoveFraudulentBlocksLink, RemoveLastFraudulentBlock,
-  RemoveLastUnattestedBlock, RemoveTimedOutHead,
+  DescendantOfValidationTraceConviction, HeaderView, InitV1, LinkedListMutation,
+  MergeToConfirmedStateV1, MintRedeemer, OperatorAlreadySlashed,
+  PruneTimedOutBlockDescendant, PruneUnattestedBlockDescendant,
+  RemoveFraudulentBlockHeader, RemoveFraudulentBlocksLink,
+  RemoveLastFraudulentBlock, RemoveLastUnattestedBlock, RemoveTimedOutHead,
   RemoveUnattestedBlockAfterTimeout, RemoveUnavailableBlockAfterTimeout,
   SlashActiveOperator, SlashRetiredOperator, SlashingApproach, SpendRedeemer,
   StateQueueNode, UnattestedTimeoutRemovalApproach,
@@ -208,10 +208,11 @@ pub fn authenticated_queue_head_for_append_v1(
 
 /// D4 exclusivity (2026-08-11 owner ruling 7): within
 /// `RemoveFraudulentBlockHeader`, the reward is payable only by the
-/// bond-consuming arms. Every other shape of that transaction, in practice the
-/// `OperatorAlreadySlashed` arm that a second claim against an
-/// already-forfeited bond must use, has to carry no reward-shaped payment at
-/// all, so a duplicate fraud-proof token for the same header stays
+/// bond-consuming arms. Every other shape of that transaction has to carry no
+/// reward-shaped payment at all: the `OperatorAlreadySlashed` arm, which a
+/// second claim against an already-forfeited bond must use, and the
+/// `DescendantOfValidationTraceConviction` arm, which slashes nothing. So a
+/// duplicate fraud-proof token for the same header stays
 /// harmless-but-unrewarded rather than funding a second claim. This covers a
 /// second bad-state claim only; each other slashing reason pays its own bounty
 /// from the bond its slash consumes.
@@ -491,6 +492,7 @@ validator spend(
         state_queue_input_index,
         state_queue_output_index,
         fraud_proof_asset_name,
+        m_fraud_proof_ref_input_index,
       } -> {
         expect Some(input) = list.at(tx.inputs, state_queue_input_index)
         expect input.output_reference == own_ref
@@ -501,6 +503,7 @@ validator spend(
           state_queue_input_index,
           state_queue_output_index,
           fraud_proof_asset_name,
+          m_fraud_proof_ref_input_index,
         )
       }
     }
@@ -1358,12 +1361,23 @@ pub fn validate_remove_fraudulent_v1(
   //    because the prover it also yields is what the slashing arms route
   //    the reward to, and the fraud-proof datum is where F04 §2.3 says
   //    that identity lives.
-  let referenced_fraudulent_header_hash, fraud_prover <- fraud_proof.get_proven_fraud_record(
+  let referenced_fraudulent_header_hash, fraud_prover, fraud_proof_asset_name <- fraud_proof.get_proven_fraud_record_with_identity(
     reference_inputs,
     fraud_proof_script_hash,
     fraud_proof_ref_input_index,
   )
   expect referenced_fraudulent_header_hash == fraudulent_blocks_header_hash
+
+  // A descendant of a block convicted under the validation-trace category is
+  // removed without slashing its operator, and such a removal accepts no
+  // slash arm. The category is the prefix of the authenticated token's asset
+  // name read above, never a redeemer field.
+  expect
+    state_queue.slashing_approach_admits_removal_v1(
+      slashing_approach,
+      block_removal_approach,
+      fraud_proof_asset_name,
+    )
 
   expect _correction_lock_input = correction_lock.unique_input(
     inputs,
@@ -1420,7 +1434,11 @@ pub fn validate_remove_fraudulent_v1(
         //       most one reward from an operator's slashable bond"): the
         //       singleton directory node is consumed exactly once, so one
         //       reward is payable however many proof tokens exist for the
-        //       header.
+        //       header. Under a validation-trace conviction the pruning
+        //       transactions use `DescendantOfValidationTraceConviction`
+        //       instead and slash nothing, so the convicted operator's bond,
+        //       and with it the reward, is consumed by the target's own
+        //       `RemoveLastFraudulentBlock`.
         operator_directory.bounty_routing_is_exact_v1(
           outputs,
           fraud_prover,
@@ -1488,6 +1506,15 @@ pub fn validate_remove_fraudulent_v1(
                 nft_policy_id: retired_operators_script_hash,
               ),
         }
+      DescendantOfValidationTraceConviction ->
+        // 2d. The removed block descends from a block convicted under the
+        //     validation-trace category (admitted above): no directory
+        //     input, no slash, and so no reward.
+        no_output_pays_fraud_prover_reward_v1(
+          outputs,
+          fraud_prover,
+          env.fraud_prover_reward,
+        )
     }
 
   // Remove fraudulent block or its link from the state queue:

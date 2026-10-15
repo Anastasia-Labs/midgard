@@ -166,8 +166,23 @@ export const fraudRemovalUsesWalletCoinSelection = (
   approach:
     | "SlashActiveOperator"
     | "SlashRetiredOperator"
-    | "OperatorAlreadySlashed",
-): boolean => approach === "OperatorAlreadySlashed";
+    | "OperatorAlreadySlashed"
+    | "DescendantOfValidationTraceConviction",
+): boolean =>
+  approach === "OperatorAlreadySlashed" ||
+  approach === "DescendantOfValidationTraceConviction";
+
+/** The removal consumes an operator bond (a slash arm). */
+export type BondConsumingSlashing = Extract<
+  EmulatorStateQueueRemoveSlashingParams,
+  { readonly kind: "slashActiveOperator" | "slashRetiredOperator" }
+>;
+
+export const isBondConsumingSlashing = (
+  slashing: EmulatorStateQueueRemoveSlashingParams,
+): slashing is BondConsumingSlashing =>
+  slashing.kind === "slashActiveOperator" ||
+  slashing.kind === "slashRetiredOperator";
 
 const utxoLovelace = (utxo: UTxO): bigint => utxo.assets.lovelace ?? 0n;
 
@@ -182,10 +197,7 @@ export const assertExactFraudSlashLovelaceConservation = ({
 }: {
   readonly stateQueueAnchor: StateQueueUTxO;
   readonly removedStateQueueNode: StateQueueUTxO;
-  readonly slashing: Exclude<
-    EmulatorStateQueueRemoveSlashingParams,
-    { readonly kind: "operatorAlreadySlashed" }
-  >;
+  readonly slashing: BondConsumingSlashing;
   readonly economics: ReturnType<typeof resolveFraudSlashEconomics>;
 }): void => {
   const stateQueueInputLovelace =

@@ -64,6 +64,12 @@ export const encodeActiveOperatorSpendRedeemer = (
  * the one output to the prover's enterprise address itself, so the redeemer
  * names no output index. `OperatorAlreadySlashed` consumes no bond, and the
  * validator refuses any exact reward output on that path.
+ *
+ * `DescendantOfValidationTraceConviction` (constructor 3, no fields) is the
+ * mandatory arm for removing a descendant (`RemoveFraudulentBlocksLink`) of a
+ * block convicted under the validation-trace category `00000006`: the
+ * descendant's operator is not slashed, and the validator refuses any exact
+ * reward output on that path too.
  */
 export const SlashingApproachSchema = Data.Enum([
   Data.Object({
@@ -82,6 +88,7 @@ export const SlashingApproachSchema = Data.Enum([
       retired_operators_element_ref_input_index: Data.Integer(),
     }),
   }),
+  Data.Literal("DescendantOfValidationTraceConviction"),
 ]);
 
 export type SlashingApproach = Data.Static<typeof SlashingApproachSchema>;
@@ -296,6 +303,8 @@ export const StateQueueSpendRedeemerSchema = Data.Enum([
       state_queue_input_index: Data.Integer(),
       state_queue_output_index: Data.Integer(),
       fraud_proof_asset_name: Data.Bytes({ minLength: 32, maxLength: 32 }),
+      /** `null`: minted in this tx; else the reference-input index holding it. */
+      m_fraud_proof_ref_input_index: Data.Nullable(Data.Integer()),
     }),
   }),
 ]);

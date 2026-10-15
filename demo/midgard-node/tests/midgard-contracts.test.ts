@@ -141,9 +141,9 @@ describe("midgard contracts registry", () => {
       // the output proof's datum step and the split Data refusal executor, and
       // the composed P1 tree (allow-lists, the datum canonicity step, the
       // non-empty block rule, one event NFT per user-event mint), the retired
-      // post-UTxO minimum-Ada mode, the streamed redeemer and datum Data
-      // verdict steps, the one-pass history payload node count, the exact
-      // rejection reason binding, script optimisations and bounty claimants.
+      // post-UTxO minimum-Ada mode, streamed redeemer/datum Data verdicts, the
+      // one-pass node count, the exact rejection reason, script optimisations,
+      // bounty claimants, and the queue's proof reference and exemption.
       expect
         .soft(
           createHash("sha256")
@@ -153,7 +153,7 @@ describe("midgard contracts registry", () => {
             .digest("hex"),
         )
         .toBe(
-          "be75650fcbf8e3d5198643e23633018abdb7113e9cfc7a9c07a7d013997de73d",
+          "a69c6e303b02b841f5a4c91bf659a9a22192cd3abbefab56d1689cd1422b9d75",
         );
       // Includes current streamed Data/W1 metadata plus escape-hatch field
       // retirement and the hub witness's paired script bytes. The independently
@@ -167,8 +167,8 @@ describe("midgard contracts registry", () => {
       // the scheduler and active-operator scripts), the lock ADA top-up, and
       // the composed P1 tree (allow-lists, the non-empty block rule, T302), and
       // the fault-proof scripts the state queue is applied over (the retired
-      // post-UTxO minimum-Ada mode, the streamed Data verdict steps, the exact
-      // rejection reason, the size and cost optimisations, shared bounty routing).
+      // post-UTxO minimum-Ada mode, streamed Data verdicts, exact rejection
+      // reason, optimisations), shared bounty routing, proof ref, exemption.
       expect
         .soft(
           createHash("sha256")
@@ -181,7 +181,7 @@ describe("midgard contracts registry", () => {
             .digest("hex"),
         )
         .toBe(
-          "2182cd036de79c2ecaf657628e089f3910762f485b359715b83f0168c7e2e3ea",
+          "3d99196cef75b97a37b93bfd31efdf6ecb5b1d3b7e4de476ab2c6ed4fe4db7dc",
         );
       // The always-succeeds stand-in is a real hazard here: it satisfies every
       // spend, so a role that silently kept it would pass any behavioural test

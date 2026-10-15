@@ -1,4 +1,5 @@
 import {
+  FRAUD_PROOF_CATALOGUE_CATEGORY_IDS,
   incompleteRemoveLastFraudulentBlockHeaderTxProgram,
   type LinkedListNodeView,
   requireUniqueOutputIndex,
@@ -57,6 +58,22 @@ export type StateQueueTopology = {
 
 export type RemoveTransactionKind = "remove-successor" | "remove-target";
 
+/**
+ * Whether a removal takes the mandatory validation-trace descendant
+ * exemption: it removes a successor of a block convicted under category
+ * `00000006`, so its operator is not slashed. The convicted block itself is
+ * always removed with a slash, and other categories keep descendant slashing.
+ */
+export const removalExemptsRemovedOperator = ({
+  kind,
+  fraudCategoryId,
+}: {
+  readonly kind: RemoveTransactionKind;
+  readonly fraudCategoryId: string;
+}): boolean =>
+  kind === "remove-successor" &&
+  fraudCategoryId === FRAUD_PROOF_CATALOGUE_CATEGORY_IDS.validationTraceDispute;
+
 export type RemoveTransactionResult = {
   readonly kind: RemoveTransactionKind;
   readonly txHash: string;
@@ -68,7 +85,8 @@ export type RemoveTransactionResult = {
   readonly slashingApproach:
     | "SlashActiveOperator"
     | "SlashRetiredOperator"
-    | "OperatorAlreadySlashed";
+    | "OperatorAlreadySlashed"
+    | "DescendantOfValidationTraceConviction";
   readonly layout: Record<keyof RemoveFraudulentBlockLayout, string | null>;
 };
 

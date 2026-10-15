@@ -141,9 +141,9 @@ transaction fee. The fee is an equality, so an SDK builder that lets Lucid
 add a change output overshoots it and the honest transaction is refused.
 
 Enforced: `fraudulent_operator_slash_economics_are_exact_v1`
-(`lib/midgard/operator-directory.ak:124-137`, called at `:326`)
+(`lib/midgard/operator-directory.ak:150-164`, called at `:413`)
 `[aiken-test: midgard/operator-directory/]`
-(`q53_fraud_slash_fee_and_tranche_are_exact`, `:416`); SDK exact-fee
+(`q53_fraud_slash_fee_and_tranche_are_exact`, `:525`); SDK exact-fee
 completion for operator exit in
 `demo/midgard-sdk/src/operator-lifecycle/exact-fee.ts` `[review]`.
 

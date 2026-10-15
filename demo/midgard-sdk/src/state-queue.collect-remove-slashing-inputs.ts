@@ -145,6 +145,8 @@ export const resolveRemoveSlashingApproach = (
   slashing: EmulatorStateQueueRemoveSlashingParams,
 ): SlashingApproach => {
   switch (slashing.kind) {
+    case "descendantOfValidationTraceConviction":
+      return "DescendantOfValidationTraceConviction";
     case "operatorAlreadySlashed":
       return {
         OperatorAlreadySlashed: {
@@ -202,7 +204,8 @@ export const resolveRemoveSlashingApproach = (
 export const removeSlashingFraudProverReward = (
   slashing: EmulatorStateQueueRemoveSlashingParams,
 ): FraudProverRewardPlan | undefined =>
-  slashing.kind === "operatorAlreadySlashed"
+  slashing.kind === "operatorAlreadySlashed" ||
+  slashing.kind === "descendantOfValidationTraceConviction"
     ? undefined
     : slashing.fraudProverReward;
 
@@ -221,7 +224,10 @@ export const collectRemoveSlashingInputs = (
   slashing: EmulatorStateQueueRemoveSlashingParams,
   referenceScripts: StateQueueRemoveReferenceScriptUTxOs | undefined,
 ): TxBuilder => {
-  if (slashing.kind === "operatorAlreadySlashed") {
+  if (
+    slashing.kind === "operatorAlreadySlashed" ||
+    slashing.kind === "descendantOfValidationTraceConviction"
+  ) {
     return tx;
   }
 

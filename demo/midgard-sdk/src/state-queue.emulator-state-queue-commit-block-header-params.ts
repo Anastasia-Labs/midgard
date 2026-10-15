@@ -173,10 +173,20 @@ type SlashRetiredOperatorRemoveParams = {
   };
 };
 
+/**
+ * The mandatory arm for removing a descendant (`RemoveFraudulentBlocksLink`)
+ * of a block convicted under the validation-trace category: no directory
+ * input, no slash, no reward, and no extra reference inputs.
+ */
+type DescendantOfValidationTraceConvictionRemoveParams = {
+  readonly kind: "descendantOfValidationTraceConviction";
+};
+
 export type EmulatorStateQueueRemoveSlashingParams =
   | AlreadySlashedRemoveParams
   | SlashActiveOperatorRemoveParams
-  | SlashRetiredOperatorRemoveParams;
+  | SlashRetiredOperatorRemoveParams
+  | DescendantOfValidationTraceConvictionRemoveParams;
 
 /**
  * Emulator/test helper for RemoveFraudulentBlockHeader +

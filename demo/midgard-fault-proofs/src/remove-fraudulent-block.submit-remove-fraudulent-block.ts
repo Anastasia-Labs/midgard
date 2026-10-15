@@ -37,6 +37,7 @@ import {
   fraudRemovalUsesWalletCoinSelection,
   fraudSlashEconomicsFromDeploymentManifest,
   fraudSlashFundingProofSource,
+  isBondConsumingSlashing,
   readFraudSlashFundingAuthority,
   type RemoveFraudulentBlockFraudCategory,
   type RemoveFraudulentBlockLayout,
@@ -45,7 +46,7 @@ import {
   STATE_QUEUE_REMOVAL_VALIDITY_BACKDATE_MS,
   STATE_QUEUE_REMOVAL_VALIDITY_WINDOW_MS,
 } from "./remove-fraudulent-block.assert-exact-fraud-slash-lovelace-conservation.js";
-import { resolveOperatorSlashingPlan } from "./remove-fraudulent-block.build-active-slashing-inputs.js";
+import { resolveRemovalSlashingPlan } from "./remove-fraudulent-block.build-active-slashing-inputs.js";
 import {
   loadStateQueueTopology,
   referenceScriptOutRefs,
@@ -342,7 +343,8 @@ export const submitRemoveFraudulentBlock = async ({
       label: "scheduler",
     });
     let txLayout: RemoveFraudulentBlockLayout | undefined;
-    const operatorSlashingPlan = await resolveOperatorSlashingPlan({
+    const operatorSlashingPlan = await resolveRemovalSlashingPlan({
+      kind,
       lucid,
       contracts,
       operator: fraudulentOperator,
@@ -350,13 +352,12 @@ export const submitRemoveFraudulentBlock = async ({
       activeOperatorsRootUnit,
       retiredOperatorsRootUnit,
     });
-    const slashEconomics =
-      operatorSlashingPlan.approach === "OperatorAlreadySlashed"
-        ? null
-        : resolveFraudSlashEconomics(
-            deploymentEconomics,
-            operatorSlashingPlan.removalPlan.node.utxo.assets.lovelace ?? 0n,
-          );
+    const slashEconomics = !("removalPlan" in operatorSlashingPlan)
+      ? null
+      : resolveFraudSlashEconomics(
+          deploymentEconomics,
+          operatorSlashingPlan.removalPlan.node.utxo.assets.lovelace ?? 0n,
+        );
     const { txValidFrom, txValidTo } = txValidityWindow();
     // The scheduler compares the new shift against the ledger's inclusive
     // upper bound, after Lucid converts validTo to an exclusive slot bound.
@@ -391,17 +392,17 @@ export const submitRemoveFraudulentBlock = async ({
     // A legal operator bond tranche is exactly reward + slash fee.  Do not
     // add a wallet fee input to that branch: its change would be an unrelated
     // second payment to the prover whenever the submitter uses the prover's
-    // enterprise wallet.  OperatorAlreadySlashed has no bond and still needs
-    // an ordinary fee input for descendant cleanup transactions.
+    // enterprise wallet.  The bondless arms (OperatorAlreadySlashed and the
+    // validation-trace exemption) still need an ordinary fee input.
     const additionalInputs =
       slashEconomics === null
         ? [selectFeeInput(await lucid.wallet().getUtxos())]
         : [];
     const slashing = slashingPlan.buildSlashing(schedulerStartTime);
     if (slashEconomics !== null) {
-      if (slashing.kind === "operatorAlreadySlashed") {
+      if (!isBondConsumingSlashing(slashing)) {
         throw new Error(
-          "Bond-backed fraud slash unexpectedly resolved to OperatorAlreadySlashed.",
+          "Bond-backed fraud slash unexpectedly resolved to a bondless arm.",
         );
       }
       assertExactFraudSlashLovelaceConservation({
@@ -506,7 +507,7 @@ export const submitRemoveFraudulentBlock = async ({
     }
     const signed = await unsigned.sign.withWallet().complete();
     if (canonicalManifest !== null && slashEconomics !== null) {
-      if (operatorSlashingPlan.approach === "OperatorAlreadySlashed") {
+      if (!("removalPlan" in operatorSlashingPlan)) {
         throw new Error(
           "fraud slash funding authority omitted its operator bond",
         );

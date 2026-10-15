@@ -173,22 +173,22 @@ Status: VERIFIED (subject to SQ5).
 
 Rule: the arm that consumes an operator bond pays exactly
 `env.fraud_prover_reward` to the prover named in the fraud-proof datum. The
-already-slashed arm pays nothing.
+already-slashed arm and the validation-trace descendant exemption pay nothing.
 
 Enforced: the shared `operator_directory.bounty_routing_is_exact_v1`
-(`lib/midgard/operator-directory.ak:146-200`, also used by the
+(`lib/midgard/operator-directory.ak:166-222`, also used by the
 duplicate-registration and bad-settlement slashes) on the bond-consuming arms
-of `validators/state-queue.ak` (`:1424`, `:1450`), and
-`no_output_pays_fraud_prover_reward_v1` (`:218`) on the already-slashed arm
-(`:1469`) `[aiken-test: state-queue/]`
-(`d3_reward_output_exactness_control_and_mutations` `:2153`,
-`d3_reward_routing_control_and_mutations` `:2216`,
-`d4_reward_exclusivity_control_and_double_claim` `:2276`,
-`d3_reward_routing_does_not_require_the_prover_signature` `:2300`); SDK side
+of `validators/state-queue.ak` (`:1442`, `:1468`), and
+`no_output_pays_fraud_prover_reward_v1` (`:219`) on the already-slashed arm
+(`:1487`) and the exemption arm (`:1513`) `[aiken-test: state-queue/]`
+(`d3_reward_output_exactness_control_and_mutations` `:2180`,
+`d3_reward_routing_control_and_mutations` `:2243`,
+`d4_reward_exclusivity_control_and_double_claim` `:2303`,
+`d3_reward_routing_does_not_require_the_prover_signature` `:2327`); SDK side
 `demo/midgard-sdk/tests/state-queue.state-queue-operator-funding-inputs.ts`.
 
 Provenance: `573a536fc` (#603). #643 item 1 (OPEN) records that the prover
-signature binding from #603 was removed; the test at `:2300` pins the
+signature binding from #603 was removed; the test at `:2327` pins the
 current behaviour.
 
 Recurrence: 1.
@@ -211,9 +211,13 @@ Provenance: #603.
 
 Status: VERIFIED.
 
-Rule: `proven_fraud` is set once, from `None`, in the same transaction that
-mints the proof, and a head carrying it can neither be appended to nor
-merged.
+Rule: `proven_fraud` is set once, from `None`, in a transaction that either
+mints the proof or cites an authenticated proof token for the same header by
+reference (`m_fraud_proof_ref_input_index`), and a head carrying it can
+neither be appended to nor merged. The by-reference record is pinned by
+`completed_fraud_by_reference_*` `[aiken-test: state-queue-removal.test/]` and
+by the emulator suite
+`demo/midgard-fault-proofs/tests/submit-init-emulator-record-completed-fraud-by-reference.test.ts`.
 
 Enforced: `validate_completed_fraud_record`
 (`lib/midgard/state-queue.ak:470-512`, which requires `None` before and
@@ -392,6 +396,75 @@ replaced the status shapes (decision C7). #692 recorded this entry. Spec
 the code is authoritative. Review
 action: a change to the DA status type must give every new status an explicit
 arm here `[review]`.
+
+## SQ13. A validation-trace conviction prunes its descendants without slashing them
+
+Status: PARTIAL (code and tests read at the cited lines; the emulator pairs
+below are the refusing transactions; the double-conviction residual is
+open, see C-18 in the lane status).
+
+Rule: when the authenticated fraud-proof token's 4-byte category prefix is
+`00000006` (validation-trace dispute), every descendant removed with
+`RemoveFraudulentBlocksLink` takes `DescendantOfValidationTraceConviction`.
+The arm consumes no bond, burns no directory node and pays no reward. The
+exemption is mandatory: under that prefix the link refuses
+`SlashActiveOperator` and `SlashRetiredOperator`; `OperatorAlreadySlashed`
+stays valid. Every other category refuses the exemption, and
+`RemoveLastFraudulentBlock` refuses it under every category, so the convicted
+block's own operator is always slashed.
+
+Enforced:
+
+- `slashing_approach_admits_removal_v1` (`lib/midgard/state-queue.ak:214`),
+  called from `validate_remove_fraudulent_v1`
+  (`validators/state-queue.ak:1376`) after the header equality. The prefix is
+  read only from the asset name of the token under the fraud-proof policy
+  parameter (`get_proven_fraud_record_with_identity`), by
+  `is_validation_trace_dispute` (`lib/midgard/fraud-proof-catalogue.ak:18`).
+  The arm itself checks `no_output_pays_fraud_prover_reward_v1`
+  (`validators/state-queue.ak:1513`), as `OperatorAlreadySlashed` does
+  (`:1487`). The check stays although neither arm consumes a bond: a
+  directory spend in the same transaction that releases a bond
+  (`SlashDuplicateOperator` and `SlashOperatorForBadSettlement`, which pay
+  their own claimant, or `RecoverOperatorBond`) could otherwise fund an
+  output of the reward's exact shape to the prover.
+- The operator directory's `SlashOperatorForBadState` reads the state-queue
+  redeemer's `slashing_approach` and requires its own slash arm
+  (`bad_state_slashing_approach_matches_directory`,
+  `lib/midgard/operator-directory.ak:37`, called at `:451`), so a directory
+  slash is never paired with a removal whose arm slashes nothing.
+- Refused `[aiken-test: state-queue-removal.test/]`:
+  `descendant_of_validation_trace_conviction_must_use_the_exemption` `:2584`,
+  `descendant_of_other_conviction_refuses_the_exemption` `:2590`,
+  `convicted_block_refuses_the_exemption_under_every_category` `:2601`,
+  `bad_state_directory_slash_requires_its_own_slash_arm` `:2612`, and the
+  prefix read `validation_trace_prefix_is_read_from_the_first_four_bytes`
+  `:2569`.
+- Refused in built transactions `[runtime: expectOnchainRefusal]`:
+  `demo/midgard-fault-proofs/tests/submit-init-emulator-validation-trace-descendant-exemption.test.ts`,
+  each refusal paired with the transaction that verifies from the same
+  queue state. Red-checked on scratch builds: removing the admission call
+  turns B4 and B2 red, admitting the exemption on the convicted block turns
+  B6 red, and removing the directory call turns B5 red. B8 and the
+  already-slashed removal add an exact reward-shaped output to an exempt
+  prune and to an `OperatorAlreadySlashed` removal; both are refused at
+  `no_output_pays_fraud_prover_reward_v1`, and both go red on a scratch
+  build without that check in arms 2c and 2d.
+- Exemption keyed on the removed header's operator
+  `[runtime: expectOnchainRefusal]`:
+  `demo/midgard-fault-proofs/tests/submit-init-emulator-validation-trace-rotated-descendants.test.ts`.
+  Successors committed by a second operator after the scheduler rotated
+  are pruned unslashed with that operator's node and bond intact, slashing
+  them is refused, and the convicted block's removal slashes its own
+  operator and pays the prover.
+
+Provenance: owner ruling R6 (pd-design rev 3 §6.9 B), lane SQ.
+
+Recurrence: 0.
+
+Review action: a new `SlashingApproach` arm, or a new directory caller of
+`slash_fraudulent_operator_and_get_info`, must say which removals it admits
+and which directory it matches `[review]`.
 
 ## Miss patterns in this subtree
 
