@@ -1060,6 +1060,195 @@ test script_decode_value_refusals() {
   }
 }
 
+// ## Cardano differential rows (E3)
+//
+// Raw Flat programs with the result the Plutus V3 evaluator (plutus-core
+// 1.71, protocol version 11) gives them through `deserialiseScript`, each
+// wrapped in one CBOR byte string. These are the rows of the off-chain
+// reader's vectors, `cek-program.cardano-flat.vectors.ts`.
+
+/// Programs Cardano reads, each with the canonical Flat of the program it
+/// read. Both decode, with no phase-2 class, to the same term root.
+const cardano_accepted: List<(ByteArray, ByteArray)> =
+  [
+    // a Data filler running through a zero byte
+    (#"0101004c000101000001", #"0101004c0101000001"),
+    // serialiseData over a Data filler running through a zero byte
+    (#"010100376698000101000001", #"0101003766980101000001"),
+    // a byte-string filler running through a zero byte
+    (#"0101004880010200550001", #"01010048810200550001"),
+    // a byte-string filler with an extra zero byte
+    (#"01010048800101aa0001", #"010100488101aa0001"),
+    // a Data filler with an extra zero byte
+    (#"010100376698000103c241010001", #"0101003766980101010001"),
+    // Data bytes split into chunks of 1 and 2
+    (#"0101003766980102c24101010001", #"0101003766980101010001"),
+    // Data bytes split into chunks of 1, 1 and 1
+    (#"0101003766980101c2014101010001", #"0101003766980101010001"),
+    // a final pad of 0001
+    (#"0101003766980103c24101000001", #"0101003766980101010001"),
+    // a version number with a zero continuation group
+    (#"810001004981", #"0101004981"),
+    // builtin tag 100
+    (#"0101007c81", #"0101007c81"),
+    // builtin tag 33
+    (#"0101007421", #"0101007421"),
+    // constr in 1.1.0
+    (#"0101008001", #"0101008001"),
+    // constr tag 2^64 - 1
+    (#"0101008ffffffffffffffffff011", #"0101008ffffffffffffffffff011"),
+    // a bound variable
+    (#"010100200101", #"010100200101"),
+    // an empty integer list
+    (#"0101004bd601", #"0101004bd601"),
+    // a constant type of 31 tags
+    (
+      #"0101004bd6f5bd6f5bd6f5bd6f5bd6f5bd6f5bd6f5bd6001",
+      #"0101004bd6f5bd6f5bd6f5bd6f5bd6f5bd6f5bd6f5bd6001",
+    ),
+    // an empty list of BLS12-381 G1 elements
+    (#"0101004bd721", #"0101004bd721"),
+    // a string starting with a byte-order mark
+    (#"010100490104efbbbf610001", #"010100490104efbbbf610001"),
+    // an integer and bool pair
+    (#"0101004bded0a017", #"0101004bded0a017"),
+  ]
+
+/// Programs Cardano refuses to decode, with this decoder's class.
+const cardano_refused: List<(ByteArray, Int)> =
+  [
+    // a 00 byte after the final pad
+    (#"0101003766980103c24101000100", 4),
+    // an ff byte after the final pad
+    (#"0101003766980103c241010001ff", 4),
+    // a final pad of 03
+    (#"0101003766980103c241010003", 4),
+    // a final pad of ff
+    (#"0101003766980103c2410100ff", 4),
+    // a final pad of 80
+    (#"0101003766980103c241010080", 4),
+    // a final pad ending inside a byte
+    (#"0101007430", 4),
+    // no final pad
+    (#"0101003766980103c2410100", 3),
+    // a byte-string filler ending in an early 1 bit
+    (#"010100488401aa0001", 4),
+    // term tag 10
+    (#"010100a1", 6),
+    // an unknown term tag after an unbound variable
+    (#"01010032000b01", 6),
+    // builtin tag 101
+    (#"0101007ca1", 8),
+    // builtin tag 105
+    (#"0101007d21", 8),
+    // builtin tag 106
+    (#"0101007d41", 8),
+    // constr in 1.0.0
+    (#"0100008001", 7),
+    // case in 1.0.0
+    (#"010000980001", 7),
+    // a constr tag over 64 bits
+    (#"0101008ffffffffffffffffff021", 10),
+    // a constr tag of 11 groups
+    (#"010100880808080808080808081001", 10),
+    // a variable index over 64 bits
+    (#"01010020ffffffffffffffffff0201", 10),
+    // a constant without type tags
+    (#"01010041", 12),
+    // a protoList constant
+    (#"0101004a81", 12),
+    // a type tag left over
+    (#"010100484005", 12),
+    // type tag 14
+    (#"0101004f01", 12),
+    // list applied to list
+    (#"0101004bd6a1", 12),
+    // a constant type of 33 tags
+    (#"0101004bd6f5bd6f5bd6f5bd6f5bd6f5bd6f5bd6f5bd6f5801", 13),
+    // a BLS12-381 G1 constant
+    (
+      #"0101004c81300000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001",
+      14,
+    ),
+    // a string of ff
+    (#"010100490101ff0001", 15),
+    // a Data constant of ff
+    (#"0101004c0101ff0001", 16),
+    // a Value with a zero quantity
+    (#"0101004ea10081000001", 17),
+    // a Value with a 33-byte key
+    (
+      #"0101004ea1210000000000000000000000000000000000000000000000000000000000000000000001",
+      17,
+    ),
+    // an integer array before a trailing byte
+    (#"0101004bf20100", 4),
+  ]
+
+test script_decode_cardano_accepted_rows() {
+  list.all(
+    cardano_accepted,
+    fn(row) {
+      let (raw, twin) = row
+      expect Decoded { term_root, phase2_class: 0, .. } = decode(raw)
+      term_root == root_of(twin)
+    },
+  )
+}
+
+test script_decode_cardano_accepted_constr_of_1024_fields() {
+  // `constr 0` over 1,024 unit constants is read; over 1,025 it is refused.
+  let units = fn(count) { list.repeat(con([3], v_unit()), count) }
+  and {
+    root_of(program(1, constr(0, units(1024)))) != #"",
+    class_of(program(1, constr(0, units(1025)))) == 9,
+  }
+}
+
+test script_decode_cardano_refused_rows() {
+  list.all(
+    cardano_refused,
+    fn(row) {
+      let (raw, class) = row
+      class_of(raw) == class
+    },
+  )
+}
+
+test script_decode_cardano_phase_two_rows() {
+  and {
+    // Cardano: DeBruijnError (FreeIndex 0) when the script runs.
+    phase2_of(#"010100200001") == 11,
+    // Cardano: PlutusCoreLanguageNotAvailableError when the script runs.
+    phase2_of(#"8002000061") == 5,
+    // Cardano runs these: an empty integer array, an empty Value and a
+    // Value of one.
+    phase2_of(#"0101004bf201") == 0,
+    phase2_of(#"0101004e81") == 0,
+    phase2_of(#"0101004ea10081000201") == 0,
+  }
+}
+
+/// `(program 1.0.0 (con integer 1))` = `010000480081` with framing faults.
+/// uplc at cfe16666e and Haskell agree on each row.
+test script_decode_uplc_framing_rows() {
+  and {
+    class_of(#"01000048008100") == 4,
+    class_of(#"010000480081ff") == 4,
+    class_of(#"0100004800810000") == 4,
+    class_of(#"01000048008103") == 4,
+    class_of(#"01000048008180") == 4,
+    class_of(#"010000480083") == 4,
+    class_of(#"0100004800bf") == 4,
+    class_of(#"0100004800a0") == 4,
+    phase2_of(#"01000048008001") == 0,
+    class_of(#"010000480080") == 3,
+    class_of(#"0100004bd61001") == 12,
+    class_of(#"0100004bded084000001") == 12,
+    phase2_of(#"0100004bd601") == 0,
+  }
+}
+
 // ## Multi-step walks
 
 fn mixed_program() -> ByteArray {
