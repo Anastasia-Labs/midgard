@@ -892,11 +892,7 @@ export const runCommitWorkerUntilSubmitted = async ({
       await alignCommitSchedulerBeforeTestWorker({
         fixture,
         lucidService,
-        targetEndTimeMs:
-          Date.now() +
-          (production === undefined
-            ? COMMIT_MINIMUM_FUTURE_BUFFER_MS
-            : HISTORY_COMMIT_MINIMUM_FUTURE_BUFFER_MS),
+        targetEndTimeMs: Date.now() + HISTORY_COMMIT_MINIMUM_FUTURE_BUFFER_MS,
       });
     await production?.synchronize();
     // Without an owner, the driver's ingestion runs under the fixture gate;
