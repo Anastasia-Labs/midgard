@@ -22,6 +22,7 @@ import {
 } from "./remove-fraudulent-block.assert-exact-fraud-slash-lovelace-conservation.js";
 import {
   buildActiveSlashingInputs,
+  continuedSlashAnchorAssets,
   type OperatorSlashingPlan,
 } from "./remove-fraudulent-block.build-active-slashing-inputs.js";
 import {
@@ -41,6 +42,7 @@ const buildRetiredSlashingInputs = ({
   contracts,
   hubOracleUtxo,
   fraudProverReward,
+  bondExcessLovelace,
 }: {
   readonly plan: Extract<
     OperatorSlashingPlan,
@@ -50,6 +52,7 @@ const buildRetiredSlashingInputs = ({
   readonly contracts: RemoveFraudulentBlockContracts;
   readonly hubOracleUtxo: UTxO;
   readonly fraudProverReward?: FraudProverRewardPlan;
+  readonly bondExcessLovelace: bigint;
 }): SlashingTxPlan => ({
   approach: "SlashRetiredOperator",
   removedOperatorNodeOutRef: outRefLabel(plan.removalPlan.node.utxo),
@@ -95,7 +98,10 @@ const buildRetiredSlashingInputs = ({
           ...plan.removalPlan.anchor.view,
           next: plan.removalPlan.node.view.next,
         }),
-        assets: plan.removalPlan.anchor.utxo.assets,
+        assets: continuedSlashAnchorAssets(
+          plan.removalPlan.anchor.utxo,
+          bondExcessLovelace,
+        ),
       },
     };
   },
@@ -128,6 +134,7 @@ export const buildSlashingInputs = ({
   hubOracleUtxo,
   registeredOperatorsElementUtxo,
   fraudProverReward,
+  bondExcessLovelace = 0n,
 }: {
   readonly plan: OperatorSlashingPlan;
   readonly operator: string;
@@ -140,6 +147,11 @@ export const buildSlashingInputs = ({
    * D4 exclusivity ruling expressed in the redeemer's own shape.
    */
   readonly fraudProverReward?: FraudProverRewardPlan;
+  /**
+   * What a bond-consuming slash's node holds beyond its fee and the reward
+   * (`resolveFraudSlashEconomics`); the continued directory anchor keeps it.
+   */
+  readonly bondExcessLovelace?: bigint;
 }): SlashingTxPlan => {
   switch (plan.approach) {
     case "SlashActiveOperator":
@@ -150,6 +162,7 @@ export const buildSlashingInputs = ({
         hubOracleUtxo,
         registeredOperatorsElementUtxo,
         ...(fraudProverReward === undefined ? {} : { fraudProverReward }),
+        bondExcessLovelace,
       });
     case "SlashRetiredOperator":
       return buildRetiredSlashingInputs({
@@ -158,6 +171,7 @@ export const buildSlashingInputs = ({
         contracts,
         hubOracleUtxo,
         ...(fraudProverReward === undefined ? {} : { fraudProverReward }),
+        bondExcessLovelace,
       });
     case "OperatorAlreadySlashed":
       return buildAlreadySlashedInputs({ plan });

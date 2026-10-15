@@ -2174,8 +2174,8 @@ fn d3_unrelated_output() -> Output {
 
 /// D3 exactness: the reward reaches the fraud prover's enterprise address and
 /// nowhere else, at exactly the ruled amount. Over- and under-payment are
-/// refused symmetrically because the bond tranche is conserved by this output
-/// plus the transaction fee, so a lovelace either way is taken from the
+/// refused symmetrically because the slashed node pays this output and the
+/// pinned transaction fee, so a lovelace either way is taken from the
 /// treasury's share or from the prover's.
 test d3_reward_output_exactness_control_and_mutations() {
   let control = d3_reward_output(d3_reward)
@@ -2296,10 +2296,10 @@ test d3_reward_routing_control_and_mutations() {
 /// against an already-forfeited bond (the only shape a duplicate fraud-proof
 /// token for the same header can take) cannot carry the payout.
 ///
-/// The third row states the guard's exact reach rather than implying more: it
-/// pins reward-*shaped* payments, so an amount that is not the reward is not
-/// caught. Nothing is lost by that — such a payment can only come from the
-/// submitter's own inputs, since this arm consumes no operator-directory node.
+/// The third row states the guard's exact reach: only reward-*shaped*
+/// payments are refused, so any other amount passes. The guard states D4 and
+/// protects no bond; a directory spend bundled into the same transaction
+/// answers to its own validator for its lovelace.
 test d4_reward_exclusivity_control_and_double_claim() {
   and {
     no_output_pays_fraud_prover_reward_v1(
@@ -2314,6 +2314,38 @@ test d4_reward_exclusivity_control_and_double_claim() {
     ),
     no_output_pays_fraud_prover_reward_v1(
       [d3_reward_output(d3_reward + 1)],
+      d3_fraud_prover,
+      d3_reward,
+    ),
+  }
+}
+
+/// A duplicate-registration or bad-settlement slash pays its bounty claimant
+/// exactly the reward. Bundled with an already-slashed or exempt removal whose
+/// fraud prover is that claimant, the bounty is reward-shaped and the removal
+/// refuses the transaction; with another claimant it does not. The slash and
+/// the removal go through as separate transactions.
+test d4_refuses_a_bundled_slash_bounty_to_the_fraud_prover() {
+  let bounty_to_prover = d3_reward_output(d3_reward)
+  let bounty_to_other = d3_unrelated_output()
+  and {
+    operator_directory.bounty_routing_is_exact_v1(
+      [bounty_to_prover],
+      d3_fraud_prover,
+      d3_reward,
+    ),
+    !no_output_pays_fraud_prover_reward_v1(
+      [bounty_to_prover],
+      d3_fraud_prover,
+      d3_reward,
+    ),
+    operator_directory.bounty_routing_is_exact_v1(
+      [bounty_to_other],
+      d3_other_key,
+      d3_reward,
+    ),
+    no_output_pays_fraud_prover_reward_v1(
+      [bounty_to_other],
       d3_fraud_prover,
       d3_reward,
     ),

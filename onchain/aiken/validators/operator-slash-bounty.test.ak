@@ -34,6 +34,11 @@
 //// pair is refused by the slash handler that holds the other policy as a
 //// script parameter
 ////     -> `other_directory_is_untouched_v1`
+////
+//// The section "Slashed node holding more than its tranche" slashes active and
+//// retired nodes, for a bad state and a bad settlement, holding more than the
+//// tranche they were created with
+////     -> `fraudulent_operator_slash_economics_are_exact_v1`
 
 use aiken/collection/list
 use aiken/crypto.{ScriptHash, VerificationKeyHash}
@@ -416,14 +421,28 @@ fn retired_slash_redeemer() -> retired_operators.MintRedeemer {
 /// `penalised` selects the tranche: the full bond, or the bond less the
 /// inactivity penalty already taken at a forced retirement.
 fn run_retired_bad_settlement_slash(penalised: Bool, bounty: Bounty) -> Bool {
-  let (node_lovelace, fee) = if penalised {
-    (
+  if penalised {
+    slash_retired_for_bad_settlement(
       env.required_bond - env.inactivity_slashing_penalty,
       env.slashing_penalty - env.inactivity_slashing_penalty,
+      bounty,
     )
   } else {
-    (env.required_bond, env.slashing_penalty)
+    slash_retired_for_bad_settlement(
+      env.required_bond,
+      env.slashing_penalty,
+      bounty,
+    )
   }
+}
+
+/// The bad-settlement slash of a retired node holding `node_lovelace`, paying
+/// `fee`.
+fn slash_retired_for_bad_settlement(
+  node_lovelace: Lovelace,
+  fee: Lovelace,
+  bounty: Bounty,
+) -> Bool {
   let node_data: Data = retired_operators.NodeData { bond_unlock_time: None }
   let own_redeemer: Data = retired_slash_redeemer()
   retired_operators_validator.mint.mint(
@@ -476,6 +495,20 @@ fn active_slash_redeemer() -> active_operators.MintRedeemer {
 }
 
 fn run_active_bad_settlement_slash(bounty: Bounty) -> Bool {
+  slash_active_for_bad_settlement(
+    env.required_bond,
+    env.slashing_penalty,
+    bounty,
+  )
+}
+
+/// The bad-settlement slash of an active node holding `node_lovelace`, paying
+/// `fee`.
+fn slash_active_for_bad_settlement(
+  node_lovelace: Lovelace,
+  fee: Lovelace,
+  bounty: Bounty,
+) -> Bool {
   let node_data: Data = active_operators.NodeData {
     bond_unlock_time: None,
     inactivity_strikes: 0,
@@ -492,8 +525,8 @@ fn run_active_bad_settlement_slash(bounty: Bounty) -> Bool {
       active_operators.root_asset_name,
       bytearray.concat(active_operators.node_asset_name_prefix, operator_vkey),
       node_data,
-      env.required_bond,
-      env.slashing_penalty,
+      node_lovelace,
+      fee,
       [hub_ref_input(), scheduler_ref_input()],
       own_redeemer,
       bounty,
@@ -1307,7 +1340,15 @@ fn directory_actions_tx(actions: List<DirectoryAction>) -> Transaction {
 /// Runs the minting handler of action `position` against the transaction that
 /// carries all of `actions`.
 fn run_directory_action(actions: List<DirectoryAction>, position: Int) -> Bool {
-  let tx = directory_actions_tx(actions)
+  run_directory_action_in(directory_actions_tx(actions), actions, position)
+}
+
+/// Runs the minting handler of action `position` of `actions` against `tx`.
+fn run_directory_action_in(
+  tx: Transaction,
+  actions: List<DirectoryAction>,
+  position: Int,
+) -> Bool {
   when action_at(actions, position) is {
     DuplicateRegistrationSlash ->
       registered_operators_validator.mint.mint(
@@ -1392,4 +1433,314 @@ test duplicate_slash_refuses_retired_bad_state_slash_in_same_transaction() fail 
 
 test duplicate_slash_refuses_penalised_retirement_in_same_transaction() fail {
   run_directory_action([DuplicateRegistrationSlash, PenalisedRetirement], 0)
+}
+
+// ---------------------------------------------------------------------------
+// Slashed node holding more than its tranche
+// ---------------------------------------------------------------------------
+//
+// A node keeps any lovelace added to it while it stays in its directory, so a
+// slash accepts a node holding at least the bond less the inactivity penalty.
+// The fee is the penalty of the tranche the node holds, raised by any excess
+// up to `env.slashing_penalty`; the reward stays exactly
+// `env.fraud_prover_reward`, and what is left of the node is unconstrained
+// change. Every fee or node refusal below fails
+//     -> `fraudulent_operator_slash_economics_are_exact_v1`
+// and the reward refusals fail
+//     -> `assets.lovelace_of(value) == expected_reward`
+
+/// A pad as large as a whole bond.
+const large_padding: Lovelace = env.required_bond
+
+fn inactivity_tranche() -> Lovelace {
+  env.required_bond - env.inactivity_slashing_penalty
+}
+
+fn inactivity_tranche_fee() -> Lovelace {
+  env.slashing_penalty - env.inactivity_slashing_penalty
+}
+
+fn with_lovelace(value: Value, lovelace: Lovelace) -> Value {
+  assets.add(
+    value,
+    assets.ada_policy_id,
+    assets.ada_asset_name,
+    lovelace - assets.lovelace_of(value),
+  )
+}
+
+/// The lone bad-state slash of `action` with its node holding `node_lovelace`
+/// and the transaction paying `fee`.
+fn slash_alone_for_bad_state(
+  action: DirectoryAction,
+  node_lovelace: Lovelace,
+  fee: Lovelace,
+) -> Bool {
+  let tx = directory_actions_tx([action])
+  let policy = action_policy(action)
+  let node_name = action_node_name(action, 0)
+  run_directory_action_in(
+    Transaction {
+      ..tx,
+      fee,
+      inputs: list.map(
+        tx.inputs,
+        fn(input) {
+          if assets.quantity_of(input.output.value, policy, node_name) == 1 {
+            Input {
+              ..input,
+              output: Output {
+                ..input.output,
+                value: with_lovelace(input.output.value, node_lovelace),
+              },
+            }
+          } else {
+            input
+          }
+        },
+      ),
+    },
+    [action],
+    0,
+  )
+}
+
+// ### Bad settlement, active operator
+
+test active_bad_settlement_slash_accepts_node_one_lovelace_over_bond() {
+  slash_active_for_bad_settlement(
+    env.required_bond + 1,
+    env.slashing_penalty,
+    Honest,
+  )
+}
+
+test active_bad_settlement_slash_accepts_node_far_over_bond() {
+  slash_active_for_bad_settlement(
+    env.required_bond + large_padding,
+    env.slashing_penalty,
+    Honest,
+  )
+}
+
+test active_bad_settlement_slash_refuses_padded_node_fee_one_over_penalty() fail {
+  slash_active_for_bad_settlement(
+    env.required_bond + 1,
+    env.slashing_penalty + 1,
+    Honest,
+  )
+}
+
+test active_bad_settlement_slash_refuses_padded_node_fee_one_under_penalty() fail {
+  slash_active_for_bad_settlement(
+    env.required_bond + 1,
+    env.slashing_penalty - 1,
+    Honest,
+  )
+}
+
+test active_bad_settlement_slash_refuses_padded_node_reward_one_lovelace_over() fail {
+  slash_active_for_bad_settlement(
+    env.required_bond + 1,
+    env.slashing_penalty,
+    RewardOneLovelaceOver,
+  )
+}
+
+test active_bad_settlement_slash_refuses_node_under_inactivity_tranche() fail {
+  slash_active_for_bad_settlement(
+    inactivity_tranche() - 1,
+    inactivity_tranche_fee() - 1,
+    Honest,
+  )
+}
+
+// ### Bad settlement, retired operator
+
+test retired_bad_settlement_slash_accepts_node_one_lovelace_over_bond() {
+  slash_retired_for_bad_settlement(
+    env.required_bond + 1,
+    env.slashing_penalty,
+    Honest,
+  )
+}
+
+test retired_bad_settlement_slash_accepts_node_far_over_bond() {
+  slash_retired_for_bad_settlement(
+    env.required_bond + large_padding,
+    env.slashing_penalty,
+    Honest,
+  )
+}
+
+test retired_bad_settlement_slash_accepts_inactivity_tranche_one_lovelace_over() {
+  slash_retired_for_bad_settlement(
+    inactivity_tranche() + 1,
+    inactivity_tranche_fee() + 1,
+    Honest,
+  )
+}
+
+test retired_bad_settlement_slash_accepts_inactivity_tranche_far_over() {
+  slash_retired_for_bad_settlement(
+    inactivity_tranche() + large_padding,
+    env.slashing_penalty,
+    Honest,
+  )
+}
+
+test retired_bad_settlement_slash_refuses_padded_node_fee_one_over_penalty() fail {
+  slash_retired_for_bad_settlement(
+    env.required_bond + 1,
+    env.slashing_penalty + 1,
+    Honest,
+  )
+}
+
+test retired_bad_settlement_slash_refuses_padded_node_fee_one_under_penalty() fail {
+  slash_retired_for_bad_settlement(
+    env.required_bond + 1,
+    env.slashing_penalty - 1,
+    Honest,
+  )
+}
+
+test retired_bad_settlement_slash_refuses_padded_inactivity_tranche_at_its_unpadded_fee() fail {
+  slash_retired_for_bad_settlement(
+    inactivity_tranche() + 1,
+    inactivity_tranche_fee(),
+    Honest,
+  )
+}
+
+test retired_bad_settlement_slash_refuses_padded_inactivity_tranche_fee_one_over() fail {
+  slash_retired_for_bad_settlement(
+    inactivity_tranche() + 1,
+    inactivity_tranche_fee() + 2,
+    Honest,
+  )
+}
+
+test retired_bad_settlement_slash_refuses_padded_node_reward_one_lovelace_under() fail {
+  slash_retired_for_bad_settlement(
+    env.required_bond + 1,
+    env.slashing_penalty,
+    RewardOneLovelaceUnder,
+  )
+}
+
+test retired_bad_settlement_slash_refuses_node_under_inactivity_tranche() fail {
+  slash_retired_for_bad_settlement(
+    inactivity_tranche() - 1,
+    inactivity_tranche_fee() - 1,
+    Honest,
+  )
+}
+
+// ### Bad state, active operator
+
+test active_bad_state_slash_accepts_node_one_lovelace_over_bond() {
+  slash_alone_for_bad_state(
+    ActiveBadStateSlash,
+    env.required_bond + 1,
+    env.slashing_penalty,
+  )
+}
+
+test active_bad_state_slash_accepts_node_far_over_bond() {
+  slash_alone_for_bad_state(
+    ActiveBadStateSlash,
+    env.required_bond + large_padding,
+    env.slashing_penalty,
+  )
+}
+
+test active_bad_state_slash_refuses_padded_node_fee_one_over_penalty() fail {
+  slash_alone_for_bad_state(
+    ActiveBadStateSlash,
+    env.required_bond + 1,
+    env.slashing_penalty + 1,
+  )
+}
+
+test active_bad_state_slash_refuses_padded_node_fee_one_under_penalty() fail {
+  slash_alone_for_bad_state(
+    ActiveBadStateSlash,
+    env.required_bond + 1,
+    env.slashing_penalty - 1,
+  )
+}
+
+test active_bad_state_slash_refuses_node_under_inactivity_tranche() fail {
+  slash_alone_for_bad_state(
+    ActiveBadStateSlash,
+    inactivity_tranche() - 1,
+    inactivity_tranche_fee() - 1,
+  )
+}
+
+// ### Bad state, retired operator
+
+test retired_bad_state_slash_accepts_node_one_lovelace_over_bond() {
+  slash_alone_for_bad_state(
+    RetiredBadStateSlash,
+    env.required_bond + 1,
+    env.slashing_penalty,
+  )
+}
+
+test retired_bad_state_slash_accepts_node_far_over_bond() {
+  slash_alone_for_bad_state(
+    RetiredBadStateSlash,
+    env.required_bond + large_padding,
+    env.slashing_penalty,
+  )
+}
+
+test retired_bad_state_slash_accepts_inactivity_tranche() {
+  slash_alone_for_bad_state(
+    RetiredBadStateSlash,
+    inactivity_tranche(),
+    inactivity_tranche_fee(),
+  )
+}
+
+test retired_bad_state_slash_accepts_inactivity_tranche_one_lovelace_over() {
+  slash_alone_for_bad_state(
+    RetiredBadStateSlash,
+    inactivity_tranche() + 1,
+    inactivity_tranche_fee() + 1,
+  )
+}
+
+test retired_bad_state_slash_refuses_padded_node_fee_one_over_penalty() fail {
+  slash_alone_for_bad_state(
+    RetiredBadStateSlash,
+    env.required_bond + 1,
+    env.slashing_penalty + 1,
+  )
+}
+
+test retired_bad_state_slash_refuses_padded_node_fee_one_under_penalty() fail {
+  slash_alone_for_bad_state(
+    RetiredBadStateSlash,
+    env.required_bond + 1,
+    env.slashing_penalty - 1,
+  )
+}
+
+test retired_bad_state_slash_refuses_padded_inactivity_tranche_at_its_unpadded_fee() fail {
+  slash_alone_for_bad_state(
+    RetiredBadStateSlash,
+    inactivity_tranche() + 1,
+    inactivity_tranche_fee(),
+  )
+}
+
+test retired_bad_state_slash_refuses_node_under_inactivity_tranche() fail {
+  slash_alone_for_bad_state(
+    RetiredBadStateSlash,
+    inactivity_tranche() - 1,
+    inactivity_tranche_fee() - 1,
+  )
 }

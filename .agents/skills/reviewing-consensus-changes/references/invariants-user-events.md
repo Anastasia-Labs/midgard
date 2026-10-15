@@ -135,24 +135,43 @@ Provenance: the #627 ruling on the on-chain source of `coins_per_utxo_byte`.
 Status: PARTIAL (the on-chain equality is tested; one SDK builder is not
 exact).
 
-Rule: a slash spends a bond tranche of exactly `required_bond` (or the
-inactivity-reduced tranche) and pays exactly the matching penalty as the
-transaction fee. The fee is an equality, so an SDK builder that lets Lucid
-add a change output overshoots it and the honest transaction is refused.
+Rule: a fraud slash spends a node holding at least `required_bond -
+inactivity_slashing_penalty` and pays as the transaction fee exactly what the
+node holds beyond the reward, capped at `slashing_penalty`: the full penalty
+for a node holding `required_bond` or more, `slashing_penalty -
+inactivity_slashing_penalty` for the exact inactivity-reduced tranche. The
+reward stays exact, and anything the node holds beyond fee and reward is
+unconstrained change, because an operator can add lovelace to its own node,
+and a node it padded stays slashable. The fee cap keeps the collateral a
+slasher posts independent of the node. The fee is an equality, so an SDK
+builder that lets Lucid add a change output overshoots it and the honest
+transaction is refused. Node-preserving paths keep `lovelace_change >= 0`;
+the tolerant slash makes an equality there redundant.
 
 Enforced: `fraudulent_operator_slash_economics_are_exact_v1`
-(`lib/midgard/operator-directory.ak:151-165`, called at `:440`)
+(`lib/midgard/operator-directory.ak:167-180`, called at `:455`)
 `[aiken-test: midgard/operator-directory/]`
-(`q53_fraud_slash_fee_and_tranche_are_exact`, `:552`); one operator slash
-per transaction (`other_directory_is_untouched_v1`, `:242`, called by the
-active-operators slash for the registered and retired policies and by the
-duplicate-registration slash for the retired policy; the bundles are
-refused in `validators/operator-slash-bounty.test.ak`); SDK exact-fee
-completion for operator exit in
+(`q53_fraud_slash_fee_is_the_held_tranche_penalty_up_to_the_full_penalty`,
+`:567`); through the whole handler in
+`validators/operator-slash-bounty.test.ak` ("Slashed node holding more than
+its tranche", `:1439`: active and retired, bad-state and bad-settlement,
+padded nodes accepted at the capped fee and refused one lovelace either side
+of it or below the smaller tranche); built transaction in
+`demo/midgard-fault-proofs/tests/submit-init-emulator-held-bond-slash.test.ts`
+(an operator adds one lovelace at its commit; the bad-state removal slashes
+it and the directory anchor keeps the excess); off-chain twin
+`fraudSlashFeeLovelace` in
+`demo/midgard-fault-proofs/src/remove-fraudulent-block.assert-exact-fraud-slash-lovelace-conservation.ts`.
+One operator slash per transaction (`other_directory_is_untouched_v1`,
+`:257`, called by the active-operators slash for the registered and retired
+policies and by the duplicate-registration slash for the retired policy; the
+bundles are refused in `validators/operator-slash-bounty.test.ak`); SDK
+exact-fee completion for operator exit in
 `demo/midgard-sdk/src/operator-lifecycle/exact-fee.ts` `[review]`.
 
 Provenance: the exact-fee builders arrived with `32d4a2c48` (2026-09-16); the
-file header explains why a change output makes the fee inexact.
+file header explains why a change output makes the fee inexact. The capped
+fee replaced an exact equality on the node's lovelace on 2026-10-15.
 
 Open recurrence (from reading; not executed): the bad-settlement slash
 builder in `demo/midgard-sdk/src/settlement.ts:744` still uses a bare

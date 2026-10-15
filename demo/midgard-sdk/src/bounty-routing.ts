@@ -7,6 +7,11 @@ import {
 /**
  * Where a slash pays its bounty: the claimant's enterprise address and the
  * exact reward in lovelace.
+ *
+ * The bounty has the fraud-prover reward's exact shape. A state-queue removal
+ * that consumes no bond (`OperatorAlreadySlashed`, or an exempt descendant)
+ * refuses any such payment to its fraud prover, so a slash whose claimant is
+ * that prover goes in a transaction of its own, not bundled with the removal.
  */
 export type BountyRoutingPlan = {
   readonly claimantAddress: string;

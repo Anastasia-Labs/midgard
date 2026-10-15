@@ -42,7 +42,6 @@ export type FraudSlashFundingAuthority = Readonly<{
   removedStateQueueOutRef: string;
   operatorOutRef: string;
   operatorBondLovelace: string;
-  tranche: "full" | "partially-inactivity-slashed";
   exactFeeLovelace: string;
   rewardLovelace: string;
   rewardAddress: string;
@@ -118,6 +117,44 @@ export const fraudSlashEconomicsFromDeploymentManifest = (
   };
 };
 
+/** The lovelace terms of the fraud-slash fee, as bigints or decimal strings. */
+export type FraudSlashFeeTerms = Readonly<
+  Record<
+    | "requiredBondLovelace"
+    | "slashingPenaltyLovelace"
+    | "inactivitySlashingPenaltyLovelace"
+    | "fraudProverRewardLovelace",
+    bigint | string
+  >
+>;
+
+/**
+ * The fee of a slash that consumes an operator node holding `nodeLovelace`;
+ * the twin of Aiken's `fraudulent_operator_slash_economics_are_exact_v1`. A
+ * node holds at least the bond less the inactivity penalty and keeps any
+ * lovelace later added to it. The fee is what it holds beyond the reward,
+ * capped at the slashing penalty; `null` for a node below that floor.
+ */
+export const fraudSlashFeeLovelace = (
+  terms: FraudSlashFeeTerms,
+  nodeLovelace: bigint,
+): bigint | null => {
+  if (
+    nodeLovelace <
+    BigInt(terms.requiredBondLovelace) -
+      BigInt(terms.inactivitySlashingPenaltyLovelace)
+  )
+    return null;
+  const beyondReward = nodeLovelace - BigInt(terms.fraudProverRewardLovelace);
+  const penalty = BigInt(terms.slashingPenaltyLovelace);
+  return beyondReward < penalty ? beyondReward : penalty;
+};
+
+/**
+ * The economics of a slash that consumes an operator node holding
+ * `operatorNodeLovelace` (`fraudSlashFeeLovelace`). `excessLovelace` is what
+ * the node holds beyond fee and reward.
+ */
 export const resolveFraudSlashEconomics = (
   economics: FraudSlashEconomicsPolicy,
   operatorNodeLovelace: bigint,
@@ -125,11 +162,8 @@ export const resolveFraudSlashEconomics = (
   requiredBondLovelace: bigint;
   fraudProverRewardLovelace: bigint;
   exactFeeLovelace: bigint;
-  tranche: "full" | "partially-inactivity-slashed";
+  excessLovelace: bigint;
 }> => {
-  const partialBond =
-    economics.requiredBondLovelace -
-    economics.inactivitySlashingPenaltyLovelace;
   if (
     economics.requiredBondLovelace !==
       economics.slashingPenaltyLovelace + economics.fraudProverRewardLovelace ||
@@ -139,27 +173,27 @@ export const resolveFraudSlashEconomics = (
   ) {
     throw new Error("Deployment economics violate F04 slash relations.");
   }
-  if (operatorNodeLovelace === economics.requiredBondLovelace) {
-    return {
-      requiredBondLovelace: economics.requiredBondLovelace,
-      fraudProverRewardLovelace: economics.fraudProverRewardLovelace,
-      exactFeeLovelace: economics.slashingPenaltyLovelace,
-      tranche: "full",
-    };
-  }
-  if (operatorNodeLovelace === partialBond) {
-    return {
-      requiredBondLovelace: economics.requiredBondLovelace,
-      fraudProverRewardLovelace: economics.fraudProverRewardLovelace,
-      exactFeeLovelace:
-        economics.slashingPenaltyLovelace -
-        economics.inactivitySlashingPenaltyLovelace,
-      tranche: "partially-inactivity-slashed",
-    };
-  }
-  throw new Error(
-    `Operator bond must be exactly ${economics.requiredBondLovelace.toString()} or ${partialBond.toString()} lovelace; found ${operatorNodeLovelace.toString()}.`,
+  const exactFeeLovelace = fraudSlashFeeLovelace(
+    economics,
+    operatorNodeLovelace,
   );
+  if (exactFeeLovelace === null) {
+    throw new Error(
+      `Operator bond must be at least ${(
+        economics.requiredBondLovelace -
+        economics.inactivitySlashingPenaltyLovelace
+      ).toString()} lovelace; found ${operatorNodeLovelace.toString()}.`,
+    );
+  }
+  return {
+    requiredBondLovelace: economics.requiredBondLovelace,
+    fraudProverRewardLovelace: economics.fraudProverRewardLovelace,
+    exactFeeLovelace,
+    excessLovelace:
+      operatorNodeLovelace -
+      economics.fraudProverRewardLovelace -
+      exactFeeLovelace,
+  };
 };
 
 export const fraudRemovalUsesWalletCoinSelection = (

@@ -148,19 +148,34 @@ pub fn transferred_operator_bond_tranche_is_exact_v1(
   }
 }
 
+/// The fee of a slash that consumes an operator node holding `node_lovelace`
+/// (F04 §2.3). A node is created holding exactly `env.required_bond`, or that
+/// less `env.inactivity_slashing_penalty` after a forced retirement, and keeps
+/// any lovelace later added to it, so any node holding at least the smaller
+/// tranche is slashable. Every profile sets `env.required_bond` to
+/// `env.slashing_penalty + env.fraud_prover_reward`, so the fee is what the
+/// node holds beyond the reward, capped at `env.slashing_penalty`:
+///
+/// - `env.slashing_penalty` for a node holding the full bond or more;
+/// - `env.slashing_penalty - env.inactivity_slashing_penalty` for a node
+///   holding exactly the smaller tranche, raised by any excess up to
+///   `env.slashing_penalty`.
+///
+/// The reward stays exactly `env.fraud_prover_reward` and any excess beyond
+/// fee and reward is unconstrained change. The cap keeps the collateral a
+/// slasher posts, which grows with the fee, independent of the node.
 pub fn fraudulent_operator_slash_economics_are_exact_v1(
   node_lovelace: Int,
   fee: Int,
 ) -> Bool {
-  or {
+  let beyond_reward = node_lovelace - env.fraud_prover_reward
+  if beyond_reward < env.slashing_penalty {
     and {
-      node_lovelace == env.required_bond,
-      fee == env.slashing_penalty,
-    },
-    and {
-      node_lovelace == env.required_bond - env.inactivity_slashing_penalty,
-      fee == env.slashing_penalty - env.inactivity_slashing_penalty,
-    },
+      beyond_reward >= env.slashing_penalty - env.inactivity_slashing_penalty,
+      fee == beyond_reward,
+    }
+  } else {
+    fee == env.slashing_penalty
   }
 }
 
@@ -200,9 +215,9 @@ pub fn bounty_output_is_exact_v1(
 /// Exact bounty routing for a slash that consumes an operator's bond (F04
 /// §2.3): exactly one output pays the claimant's bounty address, and that
 /// output is exactly `expected_reward` lovelace, ADA only, with no datum and
-/// no reference script. The bond tranche is conserved by this output plus the
-/// fee that `slash_fraudulent_operator_and_get_info` (or the duplicate slash)
-/// pins, given that the slash is the only one in its transaction
+/// no reference script. The slashed node pays this output and the fee that
+/// `slash_fraudulent_operator_and_get_info` (or the duplicate slash) pins,
+/// given that the slash is the only one in its transaction
 /// (`other_directory_is_untouched_v1`), so one lovelace either way is taken
 /// from the treasury's share of the bond or from the claimant's.
 ///
@@ -427,9 +442,9 @@ pub fn slash_fraudulent_operator_and_get_info(
   expect slashed_operator_node_key == slashed_operator
 
   // 6. The transaction fee is the pinned destination of the penalty (F04
-  //    §2.3: the penalty is paid to the Cardano treasury as fee, and "the
-  //    reward output and exact fee conserve the complete designated bond
-  //    tranche"). The complementary half, an output paying exactly
+  //    §2.3: the penalty is paid to the Cardano treasury as fee): what the
+  //    node holds beyond the reward, capped at the penalty, with anything
+  //    more left as change. The complementary half, an output paying exactly
   //    `env.fraud_prover_reward` to the bounty claimant, is checked per
   //    slashing reason in step 8: by the state queue's
   //    `RemoveFraudulentBlockHeader` handler for a bad state, and here for a
@@ -549,25 +564,35 @@ test q53_operator_bond_tranches_are_exact() {
   }
 }
 
-test q53_fraud_slash_fee_and_tranche_are_exact() {
+test q53_fraud_slash_fee_is_the_held_tranche_penalty_up_to_the_full_penalty() {
   let full = env.required_bond
   let partial = env.required_bond - env.inactivity_slashing_penalty
   let full_fee = env.slashing_penalty
   let partial_fee = env.slashing_penalty - env.inactivity_slashing_penalty
+  let slash_fee_is = fraudulent_operator_slash_economics_are_exact_v1
   and {
-    fraudulent_operator_slash_economics_are_exact_v1(full, full_fee),
-    fraudulent_operator_slash_economics_are_exact_v1(partial, partial_fee),
-    !fraudulent_operator_slash_economics_are_exact_v1(full, full_fee - 1),
-    !fraudulent_operator_slash_economics_are_exact_v1(full, full_fee + 1),
-    !fraudulent_operator_slash_economics_are_exact_v1(partial, partial_fee - 1),
-    !fraudulent_operator_slash_economics_are_exact_v1(partial, partial_fee + 1),
-    !fraudulent_operator_slash_economics_are_exact_v1(full - 1, full_fee),
-    !fraudulent_operator_slash_economics_are_exact_v1(full + 1, full_fee),
-    !fraudulent_operator_slash_economics_are_exact_v1(partial - 1, partial_fee),
-    !fraudulent_operator_slash_economics_are_exact_v1(
-      env.required_bond - env.inactivity_slashing_penalty - 2,
-      partial_fee,
-    ),
+    // Every profile splits the bond into the penalty and the reward.
+    env.required_bond == env.slashing_penalty + env.fraud_prover_reward,
+    // The two tranches a node is created with.
+    slash_fee_is(full, full_fee),
+    slash_fee_is(partial, partial_fee),
+    !slash_fee_is(full, full_fee - 1),
+    !slash_fee_is(full, full_fee + 1),
+    !slash_fee_is(partial, partial_fee - 1),
+    !slash_fee_is(partial, partial_fee + 1),
+    // Excess raises the fee up to the full penalty.
+    slash_fee_is(partial + 1, partial_fee + 1),
+    !slash_fee_is(partial + 1, partial_fee),
+    !slash_fee_is(partial + 1, partial_fee + 2),
+    slash_fee_is(full + 1, full_fee),
+    !slash_fee_is(full + 1, full_fee + 1),
+    !slash_fee_is(full + 1, full_fee - 1),
+    slash_fee_is(full + full, full_fee),
+    !slash_fee_is(full + full, full + full - env.fraud_prover_reward),
+    // No node below the inactivity tranche is slashable.
+    !slash_fee_is(partial - 1, partial_fee - 1),
+    !slash_fee_is(partial - 1, partial_fee),
+    !slash_fee_is(0, 0),
   }
 }
 

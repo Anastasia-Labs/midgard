@@ -388,12 +388,12 @@ export const submitRemoveFraudulentBlock = async ({
       ...(fraudProverRewardPlan === undefined
         ? {}
         : { fraudProverReward: fraudProverRewardPlan }),
+      bondExcessLovelace: slashEconomics?.excessLovelace ?? 0n,
     });
-    // A legal operator bond tranche is exactly reward + slash fee.  Do not
-    // add a wallet fee input to that branch: its change would be an unrelated
-    // second payment to the prover whenever the submitter uses the prover's
-    // enterprise wallet.  The bondless arms (OperatorAlreadySlashed and the
-    // validation-trace exemption) still need an ordinary fee input.
+    // A bond-backed slash is balanced by its fee, the reward and the continued
+    // directory anchor (which keeps any excess). A wallet fee input's change
+    // would be an unrelated second payment to the prover's enterprise wallet;
+    // only the bondless arms (OperatorAlreadySlashed, validation-trace) add one.
     const additionalInputs =
       slashEconomics === null
         ? [selectFeeInput(await lucid.wallet().getUtxos())]
@@ -572,7 +572,6 @@ export const submitRemoveFraudulentBlock = async ({
           operatorBondLovelace: (
             operatorSlashingPlan.removalPlan.node.utxo.assets.lovelace ?? 0n
           ).toString(),
-          tranche: slashEconomics.tranche,
           exactFeeLovelace: slashEconomics.exactFeeLovelace.toString(),
           rewardLovelace: slashEconomics.fraudProverRewardLovelace.toString(),
           rewardAddress: fraudProverRewardPlan.proverEnterpriseAddress,

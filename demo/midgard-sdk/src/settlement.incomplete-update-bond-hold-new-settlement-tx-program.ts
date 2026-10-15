@@ -304,11 +304,13 @@ export type DisproveResolutionClaimParams = {
 
 /**
  * Bad-settlement slashing pays the fee and the bounty exactly (F04 §2.3): the
- * fee is the slashing penalty (less the inactivity penalty already taken from
- * a forced-retired operator), and exactly `fraud_prover_reward` goes, ADA
- * only, to the enterprise address of the `bounty_claimant` the slashing
- * reason names, who must sign. The 60% bond remainder rule is gone for good:
- * F04 §2.5 records it as a non-authority that "must not be revived".
+ * fee is what the slashed node holds beyond the reward, capped at the
+ * slashing penalty (the penalty for a full bond, less the inactivity penalty
+ * for a forced-retired operator's exact tranche), and exactly
+ * `fraud_prover_reward` goes, ADA only, to the enterprise address of the
+ * `bounty_claimant` the slashing reason names, who must sign. The 60% bond
+ * remainder rule is gone for good: F04 §2.5 records it as a non-authority
+ * that "must not be revived".
  *
  * The slashing redeemer builder here is not implemented yet
  * (`createSlashedOperatorMintRedeemerCBOR` refuses), so this route cannot be

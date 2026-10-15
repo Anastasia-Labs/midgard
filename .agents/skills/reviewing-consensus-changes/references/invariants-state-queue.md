@@ -176,7 +176,7 @@ Rule: the arm that consumes an operator bond pays exactly
 already-slashed arm and the validation-trace descendant exemption pay nothing.
 
 Enforced: the shared `operator_directory.bounty_routing_is_exact_v1`
-(`lib/midgard/operator-directory.ak:167-224`, also used by the
+(`lib/midgard/operator-directory.ak:182-239`, also used by the
 duplicate-registration and bad-settlement slashes) on the bond-consuming arms
 of `validators/state-queue.ak` (`:1442`, `:1468`), and
 `no_output_pays_fraud_prover_reward_v1` (`:219`) on the already-slashed arm
@@ -430,11 +430,19 @@ Enforced:
   directory spend in the same transaction that releases a bond
   (`SlashDuplicateOperator` and `SlashOperatorForBadSettlement`, which pay
   their own claimant, or `RecoverOperatorBond`) could otherwise fund an
-  output of the reward's exact shape to the prover.
+  output of the reward's exact shape to the prover. The guard refuses only
+  that exact shape: such a spend can still move lovelace to the prover in any
+  other shape (one lovelace more than the reward, or change), so the guard
+  states D4 and protects no bond. Because those slashes pay their claimant an
+  exact reward-shaped bounty, one whose claimant is the fraud prover cannot
+  share a transaction with a 2c or 2d removal; the two go through as separate
+  transactions `[aiken-test: state-queue/]`
+  (`d4_refuses_a_bundled_slash_bounty_to_the_fraud_prover`,
+  `validators/state-queue.ak:2328`).
 - The operator directory's `SlashOperatorForBadState` reads the state-queue
   redeemer's `slashing_approach` and requires its own slash arm
   (`bad_state_slashing_approach_matches_directory`,
-  `lib/midgard/operator-directory.ak:38`, called at `:478`), so a directory
+  `lib/midgard/operator-directory.ak:38`, called at `:493`), so a directory
   slash is never paired with a removal whose arm slashes nothing.
 - Refused `[aiken-test: state-queue-removal.test/]`:
   `descendant_of_validation_trace_conviction_must_use_the_exemption` `:2584`,

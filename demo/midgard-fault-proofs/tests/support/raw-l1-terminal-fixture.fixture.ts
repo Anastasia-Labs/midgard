@@ -65,6 +65,8 @@ export const fixture = async ({
   descendant = false,
   descendantOperatorCredential,
   partial = false,
+  bondPadding = 0n,
+  feeDelta = 0n,
   duplicateReward = false,
   bondStatus = "active",
   burnBond = true,
@@ -81,6 +83,10 @@ export const fixture = async ({
   descendant?: boolean;
   descendantOperatorCredential?: string;
   partial?: boolean;
+  /** Lovelace the operator added to its bond node. */
+  bondPadding?: bigint;
+  /** Lovelace added to the slash fee the bond's holding implies. */
+  feeDelta?: bigint;
   duplicateReward?: boolean;
   bondStatus?: "active" | "retired";
   burnBond?: boolean;
@@ -167,15 +173,19 @@ export const fixture = async ({
       datum: targetDatum,
     }),
   );
+  const economics = verifiedEconomics.policy;
+  const bondLovelace =
+    BigInt(economics.requiredBondLovelace) -
+    (partial ? BigInt(economics.inactivitySlashingPenaltyLovelace) : 0n) +
+    bondPadding;
+  const reward = BigInt(economics.fraudProverRewardLovelace);
+  const penalty = BigInt(economics.slashingPenaltyLovelace);
   const bond = raw(
     bondOutRef,
     output({
       address: bondStatus === "active" ? activeAddress : retiredAddress,
       assets: {
-        lovelace: partial
-          ? BigInt(verifiedEconomics.policy.requiredBondLovelace) -
-            BigInt(verifiedEconomics.policy.inactivitySlashingPenaltyLovelace)
-          : BigInt(verifiedEconomics.policy.requiredBondLovelace),
+        lovelace: bondLovelace,
         [bondUnit]: 1n,
       },
       datum: Data.to("" as never, Data.Bytes()),
@@ -231,10 +241,8 @@ export const fixture = async ({
   const slashBody = CML.TransactionBody.new(
     inputs,
     slashOutputs,
-    partial
-      ? BigInt(verifiedEconomics.policy.slashingPenaltyLovelace) -
-          BigInt(verifiedEconomics.policy.inactivitySlashingPenaltyLovelace)
-      : BigInt(verifiedEconomics.policy.slashingPenaltyLovelace),
+    (bondLovelace - reward < penalty ? bondLovelace - reward : penalty) +
+      feeDelta,
   );
   const references = CML.TransactionInputList.new();
   references.add(input(proofOutRef));

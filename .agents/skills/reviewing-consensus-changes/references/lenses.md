@@ -134,10 +134,10 @@ The fraud-prover reward is paid to the prover's enterprise address, ADA only,
 with no datum or reference script, and over- and under-payment are refused
 alike
 `[aiken-test: state-queue/]` (predicate `bounty_routing_is_exact_v1`,
-`onchain/aiken/lib/midgard/operator-directory.ak:211`). The duplicate-registration
+`onchain/aiken/lib/midgard/operator-directory.ak:226`). The duplicate-registration
 and bad-settlement slashes pay their bounty through the same predicate. A
 transaction carries one operator slash (`other_directory_is_untouched_v1`,
-`:242`), so one pinned fee and one bounty account for one bond.
+`:257`), so one pinned fee and one bounty account for one bond.
 
 Ask:
 
