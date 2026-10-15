@@ -1,10 +1,10 @@
 import {
   encodeLinkedListNodeView,
   type FraudProverRewardPlan,
+  requireFraudProverRewardRouting,
   requireMintRedeemerIndex,
   requireOwnMintPurpose,
   requireReferenceInputIndex,
-  resolveFraudProverRewardOutputIndex,
   RETIRED_OPERATOR_NODE_ASSET_NAME_PREFIX,
   RetiredOperatorMintRedeemer,
   type SlashingApproach as SlashingApproachData,
@@ -175,6 +175,13 @@ export const resolveStateQueueSlashingApproach = ({
   readonly slashingApproach: SlashingApproachData;
   readonly layout: Partial<RemoveFraudulentBlockLayout>;
 } => {
+  if (slashing.kind !== "operatorAlreadySlashed") {
+    requireFraudProverRewardRouting(
+      ctx,
+      slashing.fraudProverReward,
+      `remove-fraudulent-block ${slashing.kind === "slashActiveOperator" ? "active" : "retired"}-operator fraud-prover reward`,
+    );
+  }
   switch (slashing.kind) {
     case "slashActiveOperator": {
       const activeOperatorsRedeemerTxInfoIndex = requireMintRedeemerIndex(
@@ -186,12 +193,6 @@ export const resolveStateQueueSlashingApproach = ({
         slashingApproach: {
           SlashActiveOperator: {
             active_operators_redeemer_index: activeOperatorsRedeemerTxInfoIndex,
-            m_fraud_prover_reward_output_index:
-              resolveFraudProverRewardOutputIndex(
-                ctx,
-                slashing.fraudProverReward,
-                "remove-fraudulent-block active-operator fraud-prover reward",
-              ),
           },
         },
         layout: { activeOperatorsRedeemerTxInfoIndex },
@@ -208,12 +209,6 @@ export const resolveStateQueueSlashingApproach = ({
           SlashRetiredOperator: {
             retired_operators_redeemer_index:
               retiredOperatorsRedeemerTxInfoIndex,
-            m_fraud_prover_reward_output_index:
-              resolveFraudProverRewardOutputIndex(
-                ctx,
-                slashing.fraudProverReward,
-                "remove-fraudulent-block retired-operator fraud-prover reward",
-              ),
           },
         },
         layout: { retiredOperatorsRedeemerTxInfoIndex },

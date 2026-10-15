@@ -4,6 +4,7 @@ import {
   type LucidEvolution,
   paymentCredentialOf,
   type TxSignBuilder,
+  type UTxO,
 } from "@lucid-evolution/lucid";
 
 import {
@@ -62,6 +63,18 @@ export const walletLovelace = async (lucid: LucidEvolution): Promise<bigint> =>
     (total, utxo) => total + (utxo.assets["lovelace"] ?? 0n),
     0n,
   );
+
+/** What the enterprise address of `keyHash`, where bounties are paid, holds. */
+export const bountyAddressUtxos = async (
+  lucid: LucidEvolution,
+  keyHash: string,
+): Promise<readonly UTxO[]> => {
+  const network = lucid.config().network;
+  if (network === undefined) {
+    throw new Error("Expected a network to derive the bounty address");
+  }
+  return lucid.utxosAt(SDK.bountyClaimantAddress(network, keyHash));
+};
 
 /** `alignUnixTimeToSlotBoundary` works in numbers; every builder here in ms. */
 export const alignMs = (lucid: LucidEvolution, posixMs: bigint): bigint =>

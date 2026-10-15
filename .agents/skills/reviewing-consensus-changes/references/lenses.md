@@ -133,8 +133,9 @@ Every lovelace and token a transaction moves must be accounted for exactly.
 The fraud-prover reward is paid to the prover's enterprise address, ADA only,
 with no datum or reference script, and over- and under-payment are refused
 alike
-`[aiken-test: state-queue/]` (predicate `fraud_prover_reward_output_is_exact_v1`,
-`onchain/aiken/validators/state-queue.ak:189`).
+`[aiken-test: state-queue/]` (predicate `bounty_routing_is_exact_v1`,
+`onchain/aiken/lib/midgard/operator-directory.ak:186`). The duplicate-registration
+and bad-settlement slashes pay their bounty through the same predicate.
 
 Ask:
 

@@ -2,9 +2,11 @@ use aiken/collection/list
 use aiken/crypto.{VerificationKeyHash}
 use aiken/primitive/bytearray
 use aiken_design_patterns/linked_list
-use cardano/assets.{AssetName, PolicyId, Value}
+use cardano/address.{Address, from_verification_key}
+use cardano/assets.{AssetName, Lovelace, PolicyId, Value}
 use cardano/transaction.{
-  Input, Mint, Output, OutputReference, Redeemer, ScriptPurpose, Transaction,
+  Input, Mint, NoDatum, Output, OutputReference, Redeemer, ScriptPurpose,
+  Transaction,
 }
 use env
 use midgard/common/types.{Empty}
@@ -18,6 +20,7 @@ pub type SlashingReason {
   SlashOperatorForBadSettlement {
     settlement_input_index: Int,
     settlement_redeemer_index: Int,
+    bounty_claimant: VerificationKeyHash,
   }
 }
 
@@ -137,6 +140,64 @@ pub fn fraudulent_operator_slash_economics_are_exact_v1(
   }
 }
 
+/// The address a bounty for `claimant` is paid to: the enterprise address
+/// whose payment credential is the claimant key (F04 §2.3). This is the only
+/// place the bounty address rule is stated.
+fn pays_bounty_claimant(claimant: VerificationKeyHash) -> fn(Address) -> Bool {
+  let claimant_address = from_verification_key(claimant)
+  fn(address) { address == claimant_address }
+}
+
+/// The value and attachments of a bounty output: exactly `expected_reward`
+/// lovelace and nothing else, with no datum and no reference script.
+fn bounty_payload_is_exact(output: Output, expected_reward: Lovelace) -> Bool {
+  let Output { value, datum, reference_script, .. } = output
+  and {
+    (assets.lovelace_of(value) == expected_reward)?,
+    (assets.without_lovelace(value) == assets.zero)?,
+    (datum == NoDatum)?,
+    (reference_script == None)?,
+  }
+}
+
+/// Whether `output` is a bounty payment of exactly `expected_reward` to
+/// `claimant`.
+pub fn bounty_output_is_exact_v1(
+  output: Output,
+  claimant: VerificationKeyHash,
+  expected_reward: Lovelace,
+) -> Bool {
+  and {
+    pays_bounty_claimant(claimant)(output.address),
+    bounty_payload_is_exact(output, expected_reward),
+  }
+}
+
+/// Exact bounty routing for a slash that consumes an operator's bond (F04
+/// §2.3): exactly one output pays the claimant's bounty address, and that
+/// output is exactly `expected_reward` lovelace, ADA only, with no datum and
+/// no reference script. The bond tranche is conserved by this output plus the
+/// fee that `slash_fraudulent_operator_and_get_info` (or the duplicate slash)
+/// pins, so one lovelace either way is taken from the treasury's share of the
+/// bond or from the claimant's.
+///
+/// No output to the claimant is accepted only while `expected_reward` is zero.
+/// Every release profile compiles a nonzero reward.
+pub fn bounty_routing_is_exact_v1(
+  outputs: List<Output>,
+  claimant: VerificationKeyHash,
+  expected_reward: Lovelace,
+) -> Bool {
+  let pays_claimant = pays_bounty_claimant(claimant)
+  when list.filter(outputs, fn(output) { pays_claimant(output.address) }) is {
+    [] -> (expected_reward == 0)?
+    [reward_output, ..other_claimant_outputs] -> and {
+        list.is_empty(other_claimant_outputs)?,
+        bounty_payload_is_exact(reward_output, expected_reward),
+      }
+  }
+}
+
 /// Helper for validating transfer of operators from one set to another.
 /// Currently this only consists of:
 /// - From registered to active set
@@ -234,7 +295,8 @@ pub fn validate_transferred_operator_insertion(
 /// - Removal of the list node.
 /// - Correctness of the operator PKH against the removed node key.
 /// - Depending on slashing reason, cross validates with state queue or
-///   settlement contract.
+///   settlement contract. A bad-settlement slash also requires the bounty
+///   claimant's signature and pays it exactly the fraud-prover reward.
 ///
 /// Returns various info extracted from the slashing arguments, list node
 /// removal, and script context (`tx`).
@@ -271,6 +333,7 @@ pub fn slash_fraudulent_operator_and_get_info(
         mint,
         fee,
         redeemers,
+        extra_signatories,
         ..
       }
     = tx
@@ -314,14 +377,14 @@ pub fn slash_fraudulent_operator_and_get_info(
   //    of the removed node.
   expect slashed_operator_node_key == slashed_operator
 
-  // 6. The transaction fee is the pinned destination of the residual bond
-  //    (F04 §2.3: the penalty is paid to the Cardano treasury as fee, and
-  //    "the reward output and exact fee conserve the complete designated bond
-  //    tranche"). The complementary half — routing exactly
-  //    `env.fraud_prover_reward` to the fraud prover instead of letting the
-  //    submitter keep it as change — is enforced by the state queue's
-  //    `RemoveFraudulentBlockHeader` handler, which is the only endpoint that
-  //    may pay the reward (2026-08-11 owner ruling 7, D3/D4).
+  // 6. The transaction fee is the pinned destination of the penalty (F04
+  //    §2.3: the penalty is paid to the Cardano treasury as fee, and "the
+  //    reward output and exact fee conserve the complete designated bond
+  //    tranche"). The complementary half, an output paying exactly
+  //    `env.fraud_prover_reward` to the bounty claimant, is checked per
+  //    slashing reason in step 8: by the state queue's
+  //    `RemoveFraudulentBlockHeader` handler for a bad state, and here for a
+  //    bad settlement.
   expect
     fraudulent_operator_slash_economics_are_exact_v1(
       slashed_operator_node_lovelace,
@@ -360,6 +423,7 @@ pub fn slash_fraudulent_operator_and_get_info(
     SlashOperatorForBadSettlement {
       settlement_input_index,
       settlement_redeemer_index,
+      bounty_claimant,
     } -> {
       // 8b. A settlement UTxO must be getting spent via the
       //     `DisproveResolutionClaim` redeemer.
@@ -372,8 +436,16 @@ pub fn slash_fraudulent_operator_and_get_info(
       )
       expect operator == slashed_operator
 
-      // Done.
-      True
+      // 8b-i. The bounty claimant named in the slashing reason must sign: no
+      //       earlier step of a settlement disproof authenticates it.
+      expect bounty_claimant |> utils.has_signed(extra_signatories)
+
+      // 8b-ii. Exactly `env.fraud_prover_reward` must reach the claimant.
+      bounty_routing_is_exact_v1(
+        outputs,
+        bounty_claimant,
+        env.fraud_prover_reward,
+      )
     }
   }
 }

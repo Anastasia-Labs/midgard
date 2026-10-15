@@ -165,25 +165,15 @@ pub type CompletedFraudWitness {
 /// How the fraudulent operator's bond is reached by a
 /// `RemoveFraudulentBlockHeader` transaction.
 ///
-/// The two bond-consuming constructors — and only they — name the output that
-/// carries the fraud prover's reward. `OperatorAlreadySlashed` consumes no
-/// operator-directory node, so it has no bond to route and cannot even express
-/// a reward destination: that is the type-level half of the D4 exclusivity
-/// ruling (2026-08-11 owner ruling 7), and the handler enforces the other half
-/// by refusing any reward-shaped output on that arm.
-///
-/// `m_fraud_prover_reward_output_index` is `None` only for a deployment whose
-/// compiled reward is zero. Both release profiles compile a nonzero reward, so
-/// their bond-consuming arms must name the exact reward output.
+/// The two bond-consuming constructors, and only they, pay the fraud prover's
+/// reward; the handler locates it as the single output at the prover's bounty
+/// address (`operator_directory.bounty_routing_is_exact_v1`).
+/// `OperatorAlreadySlashed` consumes no operator-directory node, so it has no
+/// bond to route, and the handler refuses any reward-shaped output on that arm
+/// (D4, 2026-08-11 owner ruling 7).
 pub type SlashingApproach {
-  SlashActiveOperator {
-    active_operators_redeemer_index: Int,
-    m_fraud_prover_reward_output_index: Option<Int>,
-  }
-  SlashRetiredOperator {
-    retired_operators_redeemer_index: Int,
-    m_fraud_prover_reward_output_index: Option<Int>,
-  }
+  SlashActiveOperator { active_operators_redeemer_index: Int }
+  SlashRetiredOperator { retired_operators_redeemer_index: Int }
   OperatorAlreadySlashed {
     active_operators_element_ref_input_index: Int,
     retired_operators_element_ref_input_index: Int,

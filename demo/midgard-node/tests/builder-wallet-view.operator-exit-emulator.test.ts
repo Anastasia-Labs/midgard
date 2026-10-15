@@ -15,7 +15,10 @@
 import "./helpers/follower-emulator-installed.js";
 
 import * as SDK from "@al-ft/midgard-sdk";
-import { generateEmulatorAccount } from "@lucid-evolution/lucid";
+import {
+  generateEmulatorAccount,
+  paymentCredentialOf,
+} from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { afterAll, afterEach, describe, expect, it } from "vitest";
 
@@ -62,6 +65,7 @@ const ECONOMICS: OperatorEconomics = {
   requiredBondLovelace: 900_000_000n,
   slashingPenaltyLovelace: 500_000_000n,
   inactivitySlashingPenaltyLovelace: 100_000_000n,
+  fraudProverRewardLovelace: 400_000_000n,
 };
 
 const databases = testDatabases();
@@ -331,6 +335,10 @@ describe("operator exits funded from the node wallet view", () => {
     );
     if (slashed._tag === "Left") throw slashed.left;
     expect(slashed.right.feeLovelace).toBe(500_000_000n);
+    expect(slashed.right.bountyLovelace).toBe(400_000_000n);
+    expect(slashed.right.bountyClaimantKeyHash).toBe(
+      paymentCredentialOf(slasher.address)?.hash,
+    );
     expectUntouched(env, refOf(held));
     expect(collateralsOf(lastAccepted(env))).toContain(refOf(spare));
     await expectLanded(env, slashed.right.txHash);

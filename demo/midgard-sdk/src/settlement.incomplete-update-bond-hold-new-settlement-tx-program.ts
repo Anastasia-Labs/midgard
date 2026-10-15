@@ -303,15 +303,16 @@ export type DisproveResolutionClaimParams = {
 };
 
 /**
- * Bad-settlement slashing carries no fraud-prover payout.
+ * Bad-settlement slashing pays the fee and the bounty exactly (F04 §2.3): the
+ * fee is the slashing penalty (less the inactivity penalty already taken from
+ * a forced-retired operator), and exactly `fraud_prover_reward` goes, ADA
+ * only, to the enterprise address of the `bounty_claimant` the slashing
+ * reason names, who must sign. The 60% bond remainder rule is gone for good:
+ * F04 §2.5 records it as a non-authority that "must not be revived".
  *
- * The 2026-08-11 owner ruling 7 (D4) routes the `fraud_prover_reward`
- * exclusively through the once-per-header `RemoveFraudulentBlockHeader`
- * transaction, so this route pays no reward and therefore needs no prover
- * destination. The former `fraudProverAddress`/`fraudProverDatum` fields and
- * the 60% bond remainder they were paid with are deleted, not relocated: F04
- * §2.5 records that remainder rule as a non-authority that "must not be
- * revived".
+ * The slashing redeemer builder here is not implemented yet
+ * (`createSlashedOperatorMintRedeemerCBOR` refuses), so this route cannot be
+ * built from the SDK.
  */
 export type RemoveOperatorBadSettlementParams = {
   slashedOperatorKey: string;

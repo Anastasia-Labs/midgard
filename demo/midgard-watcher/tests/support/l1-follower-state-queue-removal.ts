@@ -64,7 +64,6 @@ export const removeTailTx = (
         slashing_approach: {
           SlashActiveOperator: {
             active_operators_redeemer_index: 0n,
-            m_fraud_prover_reward_output_index: null,
           },
         },
         fraud_proof_ref_input_index: 0n,

@@ -175,18 +175,20 @@ Rule: the arm that consumes an operator bond pays exactly
 `env.fraud_prover_reward` to the prover named in the fraud-proof datum. The
 already-slashed arm pays nothing.
 
-Enforced: `fraud_prover_reward_output_is_exact_v1` and routing at
-`validators/state-queue.ak:189-302`; arms at `:1455-1460`, `:1488-1493`,
-`:1508-1512` `[aiken-test: state-queue/]`
-(`d3_reward_output_exactness_control_and_mutations` `:2115`,
-`d3_reward_routing_control_and_mutations` `:2174`,
-`d3_reward_routing_rejects_out_of_range_index` `:2207`,
-`d4_reward_exclusivity_control_and_double_claim` `:2225`,
-`d3_reward_routing_does_not_require_the_prover_signature` `:2249`); SDK side
-`demo/midgard-sdk/tests/state-queue.test.ts:112-162`.
+Enforced: the shared `operator_directory.bounty_routing_is_exact_v1`
+(`lib/midgard/operator-directory.ak:146-200`, also used by the
+duplicate-registration and bad-settlement slashes) on the bond-consuming arms
+of `validators/state-queue.ak` (`:1424`, `:1450`), and
+`no_output_pays_fraud_prover_reward_v1` (`:218`) on the already-slashed arm
+(`:1469`) `[aiken-test: state-queue/]`
+(`d3_reward_output_exactness_control_and_mutations` `:2153`,
+`d3_reward_routing_control_and_mutations` `:2216`,
+`d4_reward_exclusivity_control_and_double_claim` `:2276`,
+`d3_reward_routing_does_not_require_the_prover_signature` `:2300`); SDK side
+`demo/midgard-sdk/tests/state-queue.state-queue-operator-funding-inputs.ts`.
 
 Provenance: `573a536fc` (#603). #643 item 1 (OPEN) records that the prover
-signature binding from #603 was removed; the test at `:2249` pins the
+signature binding from #603 was removed; the test at `:2300` pins the
 current behaviour.
 
 Recurrence: 1.

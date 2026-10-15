@@ -35,6 +35,7 @@ export const SlashingReasonSchema = Data.Enum([
     SlashOperatorForBadSettlement: Data.Object({
       settlement_input_index: Data.Integer(),
       settlement_redeemer_index: Data.Integer(),
+      bounty_claimant: Data.Bytes({ minLength: 28, maxLength: 28 }),
     }),
   }),
 ]);

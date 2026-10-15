@@ -189,7 +189,7 @@ export const planExactFee = (input: {
   readonly label: string;
   readonly feeLovelace: bigint;
   readonly scriptInputs: readonly UTxO[];
-  readonly declaredOutputs: readonly ContractOutput[];
+  readonly declaredOutputs: readonly ExactFeeOutputPlan[];
   readonly walletInputs?: readonly UTxO[];
 }): Effect.Effect<ExactFeeBalancePlan, OperatorExitError> =>
   Effect.gen(function* () {

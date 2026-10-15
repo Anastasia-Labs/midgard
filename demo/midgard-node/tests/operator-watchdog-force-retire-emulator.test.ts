@@ -75,6 +75,7 @@ vi.mock("../src/transactions/operators/exit.js", async (importOriginal) => {
       requiredBondLovelace: 900_000_000n,
       slashingPenaltyLovelace: 500_000_000n,
       inactivitySlashingPenaltyLovelace: 100_000_000n,
+      fraudProverRewardLovelace: 400_000_000n,
     }),
   };
 });
@@ -85,6 +86,7 @@ const ECONOMICS = {
   requiredBondLovelace: 900_000_000n,
   slashingPenaltyLovelace: 500_000_000n,
   inactivitySlashingPenaltyLovelace: 100_000_000n,
+  fraudProverRewardLovelace: 400_000_000n,
 };
 
 type Fixture = OperatorInactivityFixture;

@@ -1146,7 +1146,7 @@
   },
   {
     "file": "midgard-sdk/tests/event-abi.vectors.ts",
-    "max": 735,
+    "max": 733,
     "reason": "vectors: a single declarative catalogue/map keeps its complete role-to-entry relationship reviewable. Independent helpers were extracted; fragmenting the literal adds assembly indirection without a new concern."
   },
   {

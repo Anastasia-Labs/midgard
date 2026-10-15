@@ -87,6 +87,15 @@ export const SLASHING_ARGUMENTS = {
   },
 };
 
+/** Names `H28_B` as the bounty claimant. */
+export const BAD_SETTLEMENT_SLASHING_REASON = {
+  SlashOperatorForBadSettlement: {
+    settlement_input_index: 1n,
+    settlement_redeemer_index: 2n,
+    bounty_claimant: H28_B,
+  },
+};
+
 export const ACTIVE_OPERATOR_DATUM = {
   bond_unlock_time: null,
   inactivity_strikes: 1n,

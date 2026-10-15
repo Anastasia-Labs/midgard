@@ -5,6 +5,7 @@ import { expect } from "vitest";
 import {
   BOND_LOVELACE,
   describeFailure,
+  FRAUD_PROVER_REWARD_LOVELACE,
   type OperatorExitFixture,
   REGISTRATION_DURATION_MS,
   runProgram,
@@ -14,6 +15,7 @@ import {
   alignMs,
   completeTx,
   fetchDirectorySnapshot,
+  keyHashOf,
   submitSigned,
 } from "./operator-exit-emulator.build-retire-tx.js";
 
@@ -246,6 +248,8 @@ export const slashDuplicateOperator = async ({
       ),
       duplicateProof,
       slashingPenaltyLovelace: SLASHING_PENALTY_LOVELACE,
+      bountyClaimantKeyHash: await keyHashOf(submitterLucid),
+      fraudProverRewardLovelace: FRAUD_PROVER_REWARD_LOVELACE,
       ...overrides,
     }),
   );
