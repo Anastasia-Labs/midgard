@@ -16,6 +16,8 @@ export type TransitionTraceFinalCase = Readonly<{
   forgeStep?: TransitionTraceForgedStep;
   corruptSourceReference?: boolean;
   datumBytes?: number;
+  /** The produced output's exact canonical CBOR, in place of a built one. */
+  outputCbor?: string;
   /** An output datum's CBOR, in place of a `datumBytes` byte string. */
   datumCbor?: string;
   drained?: boolean;
@@ -23,4 +25,6 @@ export type TransitionTraceFinalCase = Readonly<{
   spentCount?: number;
   /** Unrelated ledger entries that deepen every MPF proof. */
   ledgerFill?: number;
+  /** Insert the single output at this MPF depth into a synthesised ledger. */
+  ledgerDepth?: number;
 }>;

@@ -33,10 +33,35 @@ pub const delete_batch = 1
 /// Output envelopes certified per phase-10 step.
 pub const outputs_grammar_batch = 32
 
-/// Outputs whose canonical bytes are at most this long are replayed whole by
-/// their phase-11 step. Longer outputs leave phase 11 for the staged phases 2,
-/// 7, 8, 3 and 4. A compiled constant, so every output has exactly one path.
-pub const output_step_bytes = 128
+/// The longest output a phase-11 step replays whole: an address of 57 bytes
+/// and a Value of lovelace alone, its coin in a 9-byte head.
+pub const output_step_bytes = 73
+
+/// Whether the phase-11 step replays `item` whole: at most
+/// `output_step_bytes` long and of the shape `{0: address, 1: [coin, {}]}`,
+/// with no inline datum, no reference script and no native assets, so its
+/// replay cost is bounded by its length. Every other output leaves phase 11
+/// for the staged phases 2, 7, 8, 3 and 4. The answer depends on the bytes
+/// alone, so every output has exactly one path.
+///
+/// In canonical bytes the address is a byte string with a one-byte length
+/// head, `58 n`, so the coin's head stands at `6 + n` and the asset map's head
+/// right after the coin, whose head is 1, 2, 3, 5 or 9 bytes long; `a0` is the
+/// empty map.
+pub fn output_step_is_whole(item: ByteArray) -> Bool {
+  if bytearray.length(item) > output_step_bytes || bytearray.at(item, 0) != 0xa2 {
+    False
+  } else {
+    let coin = 6 + bytearray.at(item, 3)
+    let head = bytearray.at(item, coin)
+    let assets = coin + if head < 24 {
+      1
+    } else {
+      bytearray.at(#"02030509", head - 24)
+    }
+    bytearray.at(item, assets) == 0xa0
+  }
+}
 
 /// One phase-1 step: the resumed field-0 walk and exactly one delete witness
 /// per input it visits, in field order.
@@ -266,13 +291,13 @@ validator l2_outputs(
 /// at `output_index`, so the insert key built from the same index names the
 /// output whose bytes were walked.
 ///
-/// An output of at most `output_step_bytes` is replayed whole here and the
-/// step moves on to the next output (or phase 5 after the last). Its scan,
+/// An output that `output_step_is_whole` admits is replayed whole here and
+/// the step moves on to the next output (or phase 5 after the last). Its scan,
 /// value fold, summaries and descriptor are checked by the two withdraw-zero
 /// verifiers of `output_step`, whose exact credentials are parameters: the
 /// descriptor verifier's claim must name `output_index` and the walked bytes,
 /// the summary verifier's claim must repeat the same bytes, scan facts and
-/// summaries, and the descriptor it checked is the value inserted. A longer
+/// summaries, and the descriptor it checked is the value inserted. Any other
 /// output records its hash for the staged phases, which read its bytes from
 /// published chunks, and moves to phase 2.
 validator l2_output_step(
@@ -297,7 +322,7 @@ validator l2_output_step(
     expect walk.walk_next_item_index(prior) == state.output_index
     let Pair(item, next) = walk.walk_next(view, prior)
     let outputs_walk = walk.field_walk_checkpoint_hash(next)
-    let successor = if bytearray.length(item) > output_step_bytes {
+    let successor = if !output_step_is_whole(item) {
       delegation.State {
         ..state,
         phase: 2,

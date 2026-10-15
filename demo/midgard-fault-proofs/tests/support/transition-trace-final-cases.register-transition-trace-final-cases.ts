@@ -97,7 +97,8 @@ type FitLedgerSuffix =
   | "many-assets"
   | "deep-deposit"
   | "drained"
-  | "maximum-shape";
+  | "maximum-shape"
+  | "output-step";
 
 /**
  * One case's run, recording its measurement rows into the file's fit ledger
@@ -165,9 +166,11 @@ export const transitionTraceFinalCaseRunner = (
     corruptSourceReference = false,
     datumBytes = 0,
     datumCbor,
+    outputCbor: exactOutput,
     drained = false,
     spentCount = 0,
     ledgerFill = 0,
+    ledgerDepth = 0,
   }: TransitionTraceFinalCase) => {
     const realBlueprint = readBlueprint(realBlueprintPath);
     const alwaysBlueprint = readBlueprint(alwaysSucceedsBlueprintPath);
@@ -204,7 +207,7 @@ export const transitionTraceFinalCaseRunner = (
       let publication = false;
       for (let i = 0; i < outputs.len(); i++)
         if (outputs.get(i).script_ref() != null) publication = true;
-      const shape = `assets-${assetCount}-outputs-${outputCount}-bytes-${outputBytes}-field-${fieldBytes}-honest-${honest}-depth-${depth}-kind-${kind}-cancel-${cancelAt}-datum-${datumCbor === undefined ? datumBytes : `cbor-${datumCbor.length / 2}`}-corrupt-index-${corruptAssetIndex}-corrupt-walk-${corruptWalk}-corrupt-source-${corruptSourceReference}${spentCount > 0 ? `-spent-${spentCount}` : ""}${ledgerFill > 0 ? `-fill-${ledgerFill}` : ""}${forgeStep === undefined ? "" : `-forge-${forgeStep}`}`;
+      const shape = `assets-${assetCount}-outputs-${outputCount}-bytes-${outputBytes}-field-${fieldBytes}-honest-${honest}-depth-${depth}-kind-${kind}-cancel-${cancelAt}-datum-${datumCbor === undefined ? datumBytes : `cbor-${datumCbor.length / 2}`}${exactOutput === undefined ? "" : `-output-${exactOutput.slice(0, 16)}-${exactOutput.length / 2}`}-corrupt-index-${corruptAssetIndex}-corrupt-walk-${corruptWalk}-corrupt-source-${corruptSourceReference}${spentCount > 0 ? `-spent-${spentCount}` : ""}${ledgerFill > 0 ? `-fill-${ledgerFill}` : ""}${ledgerDepth > 0 ? `-ledger-depth-${ledgerDepth}` : ""}${forgeStep === undefined ? "" : `-forge-${forgeStep}`}`;
       records.push({
         label: `${shape}/tx-${measuredIndex}`,
         txHash: result,
@@ -363,7 +366,10 @@ export const transitionTraceFinalCaseRunner = (
     let padding = 0;
     while (outputBytes > 0 && makeOutput(padding, true).length < outputBytes)
       padding++;
-    const outputCbor = makeOutput(padding, outputBytes > 0);
+    const outputCbor =
+      exactOutput === undefined
+        ? makeOutput(padding, outputBytes > 0)
+        : Buffer.from(exactOutput, "hex");
     if (outputBytes > 0) expect(outputCbor.length).toBe(outputBytes);
     if (datumBytes === 15841) expect(outputCbor.length).toBe(16384);
     let outputCbors = Array.from({ length: outputCount }, () => outputCbor);
@@ -388,6 +394,7 @@ export const transitionTraceFinalCaseRunner = (
       drained,
       spentCount,
       ledgerFill,
+      ledgerDepth,
       operatorVkey: funderPaymentCredential.hash,
       now: headerStartTime,
     });

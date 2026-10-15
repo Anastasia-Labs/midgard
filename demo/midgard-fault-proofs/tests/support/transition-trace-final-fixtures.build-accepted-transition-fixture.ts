@@ -18,7 +18,10 @@ import {
 import { type TransitionProofMaterial } from "../../src/transition-trace/proof-material.js";
 import { makeHeader } from "./emulator/header-fixtures.js";
 import { makeNativeTx } from "./emulator/native-tx.js";
-import { syntheticDeepMembershipProof } from "./synthetic-deep-proof.js";
+import {
+  syntheticDeepInsertProof,
+  syntheticDeepMembershipProof,
+} from "./synthetic-deep-proof.js";
 
 /**
  * One L2 transaction over an otherwise empty ledger. By default it spends
@@ -35,6 +38,7 @@ export const buildAcceptedTransitionFixture = async ({
   drained = false,
   spentCount = 0,
   ledgerFill = 0,
+  ledgerDepth = 0,
   outputCbors = [
     Buffer.from("a200581d60" + "aa".repeat(28) + "01821a001e8480a0", "hex"),
   ],
@@ -48,8 +52,18 @@ export const buildAcceptedTransitionFixture = async ({
   spentCount?: number;
   /** Unrelated ledger entries, so MPF proofs have a realistic depth. */
   ledgerFill?: number;
+  /**
+   * Insert the single output at this MPF depth (64 is the deepest a path
+   * allows) into a synthesised ledger, in place of an otherwise empty one.
+   */
+  ledgerDepth?: number;
   outputCbors?: Buffer[];
 }) => {
+  if (
+    ledgerDepth > 0 &&
+    (drained || spentCount > 0 || ledgerFill > 0 || outputCbors.length !== 1)
+  )
+    throw new Error("ledgerDepth needs exactly one output and nothing spent.");
   const drainedEntry = drained
     ? {
         outRef: encodeMidgardSpendInputItem({
@@ -118,7 +132,7 @@ export const buildAcceptedTransitionFixture = async ({
     ...extraSpent.map(({ outRef, value }) => ({ key: outRef, value })),
     ...fill,
   ]);
-  const preUtxosRoot =
+  let preUtxosRoot =
     ledger.hash === null
       ? SDK.EMPTY_MERKLE_TREE_ROOT
       : ledger.hash.toString("hex");
@@ -162,9 +176,15 @@ export const buildAcceptedTransitionFixture = async ({
         outputCbor: bytes,
       }).descriptorCbor,
     );
-    await ledger.insert(key, value);
+    const deepInsert =
+      ledgerDepth === 0
+        ? null
+        : syntheticDeepInsertProof({ key, value, branchLevels: ledgerDepth });
+    if (deepInsert === null) await ledger.insert(key, value);
+    else preUtxosRoot = deepInsert.preRoot;
     const proof = Data.from(
-      (await ledger.prove(key)).toCBOR().toString("hex"),
+      deepInsert?.proofCbor ??
+        (await ledger.prove(key)).toCBOR().toString("hex"),
       SDK.Proof,
     );
     produced.push({
@@ -182,9 +202,15 @@ export const buildAcceptedTransitionFixture = async ({
     pre_utxos_root: preUtxosRoot,
     post_utxos_root: !honest
       ? dishonest
-      : ledger.hash === null
-        ? SDK.EMPTY_MERKLE_TREE_ROOT
-        : ledger.hash.toString("hex"),
+      : ledgerDepth > 0
+        ? syntheticDeepInsertProof({
+            key: Buffer.from(produced[0]!.key, "hex"),
+            value: Buffer.from(produced[0]!.value, "hex"),
+            branchLevels: ledgerDepth,
+          }).postRoot
+        : ledger.hash === null
+          ? SDK.EMPTY_MERKLE_TREE_ROOT
+          : ledger.hash.toString("hex"),
   };
   const event = { step_index: 0n, phase: "L2Transaction" as const };
   const roots = await Promise.all([

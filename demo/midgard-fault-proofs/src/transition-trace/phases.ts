@@ -15,6 +15,7 @@ import {
 import {
   nextTransitionDatumPhase,
   nextTransitionOutputPhase,
+  transitionOutputIsWhole,
   transitionOutputStepClaims,
 } from "./output-phases.js";
 import { transitionTraceProofChunks } from "./proof-carriage.js";
@@ -28,13 +29,6 @@ import type { TRANSITION_TRACE_YIELD_REFERENCES } from "./yield-references.js";
 
 /** The accepted-transaction field a phase opens: spend inputs or outputs. */
 export type TransitionTraceField = 0 | 2;
-
-/**
- * Mirrors `accepted_transaction_yields.output_step_bytes`: an output whose
- * canonical bytes are at most this long is replayed whole in its phase-11
- * step; a longer one takes the staged phases.
- */
-export const TRANSITION_OUTPUT_STEP_BYTES = 128;
 
 /** Mirrors `accepted_transaction_yields.outputs_grammar_batch`. */
 export const TRANSITION_OUTPUTS_GRAMMAR_BATCH = 32;
@@ -135,7 +129,7 @@ export const transitionTraceOutputStepIsWhole = (
   if (state.kind !== 0n || state.phase !== 11n) return false;
   const output = outputCbors?.[Number(state.output_index)];
   if (output === undefined) throw new Error("Transition output bytes missing");
-  return output.length / 2 <= TRANSITION_OUTPUT_STEP_BYTES;
+  return transitionOutputIsWhole(output);
 };
 
 // One layout per field for the dispute's duration: every step re-derives its

@@ -16,6 +16,37 @@ import {
   traceDataSummaryWalk,
 } from "./data-summary-walk.js";
 
+/** Mirrors `accepted_transaction_yields.output_step_bytes`. */
+export const TRANSITION_OUTPUT_STEP_BYTES = 73;
+
+/**
+ * Mirrors `accepted_transaction_yields.output_step_is_whole`: an output of at
+ * most `TRANSITION_OUTPUT_STEP_BYTES` canonical bytes of the shape
+ * `{0: address, 1: [coin, {}]}` is replayed whole in its phase-11 step; every
+ * other output takes the staged phases. Read from the bytes alone, as the
+ * yield reads them.
+ */
+export const transitionOutputIsWhole = (outputCbor: string): boolean => {
+  const bytes = Buffer.from(outputCbor, "hex");
+  const at = (index: number): number => {
+    const byte = bytes[index];
+    if (byte === undefined) throw new Error("Transition output is truncated");
+    return byte;
+  };
+  if (bytes.length > TRANSITION_OUTPUT_STEP_BYTES || at(0) !== 0xa2)
+    return false;
+  const coinHeads = (index: number): number => {
+    const size = [2, 3, 5, 9][index];
+    if (size === undefined)
+      throw new Error("Transition output coin is not a uint");
+    return size;
+  };
+  const coin = 6 + at(3);
+  const head = at(coin);
+  const assets = coin + (head < 24 ? 1 : coinHeads(head - 24));
+  return at(assets) === 0xa0;
+};
+
 const ValueHeadSchema = Data.Object({
   asset_name: Data.Bytes(),
   quantity: Data.Integer(),
