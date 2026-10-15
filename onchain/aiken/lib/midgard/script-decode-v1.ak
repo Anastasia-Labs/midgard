@@ -187,13 +187,15 @@ pub type Source {
 
 /// The CBOR reader inside a Data constant. `DBytes` and `DBignum` copy
 /// `remaining` bytes of a definite string or chunk; with `remaining` at 0 an
-/// indefinite one reads its next chunk head or its break.
+/// indefinite one reads its next chunk head or its break. `DTrail` steps over
+/// the Flat chunks after the first item and then returns its value.
 pub type DataMode {
   DItem
   DBytes { sink: BlobSink, remaining: Int, indefinite: Bool }
   DBignum { magnitude: MagSink, remaining: Int, indefinite: Bool }
   DFold { fold: Fold, next: DataFoldNext }
   DSkim
+  DTrail { summary: DataSummaryV1 }
 }
 
 pub type Control {
@@ -1817,7 +1819,10 @@ fn bytes_done(
 // The Flat byte string is read in place, chunk by chunk, as the CBOR of one
 // Plutus Data item under Cardano's `decodeData` rules. A CBOR failure skims to
 // the end of the Flat byte string, so a truncated byte string still reports
-// truncation; otherwise every failure is `InvalidData` at that end.
+// truncation; otherwise every failure is `InvalidData` at that end. As in
+// Cardano, the constant is the value of the FIRST item: the bytes after it
+// are stepped over undecoded, whatever they hold. (Stand-alone Data, such as
+// datums and redeemers, is decoded elsewhere and still refuses them.)
 
 type Got<a> {
   Got { value: a, source: Source }
@@ -1959,6 +1964,37 @@ fn skim_from(env: DecodeEnv, ex: Exec, p: Int, budget: Int) -> Option<Exec> {
   }
 }
 
+/// Steps over the rest of the Flat byte string from the chunk head at `p`,
+/// then returns `summary` as the constant's value.
+fn trail_from(
+  env: DecodeEnv,
+  ex: Exec,
+  p: Int,
+  summary: DataSummaryV1,
+  budget: Int,
+) -> Option<Exec> {
+  if budget == 0 {
+    to(
+      ex,
+      CData {
+        source: Source { position: p, left: 0 },
+        mode: DTrail { summary },
+      },
+    )
+  } else if p >= env.flat_length {
+    refuse(env, ex, class_flat_truncated, 8 * p)
+  } else {
+    let n = byte(env, p)
+    if n == 0 {
+      at(ex, 8 * ( p + 1 ), CValueReturn { summary, memory: summary.memory })
+    } else if p + 1 + n > env.flat_length {
+      refuse(env, ex, class_flat_truncated, 8 * p)
+    } else {
+      trail_from(env, ex, p + 1 + n, summary, budget - 1)
+    }
+  }
+}
+
 fn constr_summary(
   constructor: Int,
   fields: DataSequenceSummaryV1,
@@ -1980,7 +2016,6 @@ fn constr_summary(
 fn deliver(
   env: DecodeEnv,
   ex: Exec,
-  origin: Source,
   source: Source,
   summary: DataSummaryV1,
 ) -> Option<Exec> {
@@ -1989,22 +2024,13 @@ fn deliver(
     Some((frame, popped)) ->
       when frame is {
         FDataRoot ->
-          if source.left > 0 {
-            skim(ex, origin)
-          } else {
-            let p = source.position
-            if p >= env.flat_length {
-              refuse(env, ex, class_flat_truncated, 8 * p)
-            } else if byte(env, p) == 0 {
-              at(
-                popped,
-                8 * ( p + 1 ),
-                CValueReturn { summary, memory: summary.memory },
-              )
-            } else {
-              skim(ex, origin)
-            }
-          }
+          trail_from(
+            env,
+            popped,
+            source.position + source.left,
+            summary,
+            skim_chunks_per_tick,
+          )
         FDataList { remaining, count, constructor, break_after } -> {
           let pushed = push(popped, FValueItem { summary })
           if remaining == count + 1 {
@@ -2088,12 +2114,12 @@ fn close_list(
   break_after: Bool,
 ) -> Option<Exec> {
   if !break_after {
-    deliver(env, ex, origin, source, summary)
+    deliver(env, ex, source, summary)
   } else {
     when take_byte(env, source) is {
       Got { value, source: s } ->
         if value == cbor_break {
-          deliver(env, ex, origin, s, summary)
+          deliver(env, ex, s, summary)
         } else {
           skim(ex, origin)
         }
@@ -2228,7 +2254,6 @@ fn data_head(
       deliver(
         env,
         ex,
-        origin,
         source,
         bits.integer_summary(
           if major == 0 {
@@ -2266,7 +2291,6 @@ fn data_head(
       deliver(
         env,
         ex,
-        origin,
         source,
         cek_data_v1.map_data_summary_v1(
           cek_data_v1.empty_data_pair_summary_v1(),
@@ -2423,7 +2447,6 @@ fn tick_data(
           deliver(
             env,
             ex,
-            source,
             s,
             bits.bytes_summary(bits.sink_length(sink), bits.sink_root(sink)),
           )
@@ -2468,7 +2491,7 @@ fn tick_data(
       } else {
         let finish = fn(s) {
           let (summary, _) = bits.mag_finish(magnitude)
-          deliver(env, ex, source, s, summary)
+          deliver(env, ex, s, summary)
         }
         if indefinite {
           next_chunk(
@@ -2523,12 +2546,13 @@ fn tick_data(
               env,
               ex,
               source,
-              source,
               cek_data_v1.map_data_summary_v1(fold.sequence),
             )
         }
       }
     DSkim ->
       skim_from(env, ex, source.position + source.left, skim_chunks_per_tick)
+    DTrail { summary } ->
+      trail_from(env, ex, source.position, summary, skim_chunks_per_tick)
   }
 }

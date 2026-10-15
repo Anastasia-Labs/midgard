@@ -3,6 +3,7 @@ use aiken/cbor
 use aiken/collection/list
 use aiken/math
 use aiken/primitive/bytearray
+use midgard/cbor_deserialise
 use midgard/cek_constant_v1.{ConstantWitnessV1}
 use midgard/cek_data_v1
 use midgard/cek_proof_v1
@@ -932,7 +933,6 @@ test script_decode_data_refusals() {
   and {
     invalid(#""),
     invalid(#"6161"),
-    invalid(#"0101"),
     invalid(#"ff"),
     invalid(#"f6"),
     invalid(#"1c"),
@@ -960,6 +960,40 @@ test script_decode_data_refusals() {
     invalid(bytearray.concat(#"c25841", builtin.replicate_byte(65, 1))),
     invalid(#"8301"),
   }
+}
+
+/// A Data constant is the value of its first CBOR item; the bytes after it
+/// are not decoded, valid CBOR or not. Cardano evaluates both programs below
+/// to `(con data (I 0))`.
+test script_decode_data_constant_is_its_first_item() {
+  let zero = data_root(builtin.i_data(0))
+  and {
+    root_of(#"0101004c01020000000001") == zero,
+    root_of(#"0101004c010200ff0001") == zero,
+    root_of(data_flat(#"0101")) == data_root(builtin.i_data(1)),
+    root_of(data_flat(#"d87980d87980")) == data_root(builtin.constr_data(0, [])),
+    // The trailing bytes span several Flat chunks.
+    root_of(
+      data_flat(bytearray.concat(#"00", builtin.replicate_byte(600, 255))),
+    ) == zero,
+  }
+}
+
+/// Stand-alone Data (datums, redeemers) still refuses bytes after the item.
+test script_decode_standalone_data_still_refuses_trailing_bytes() {
+  and {
+    cbor_deserialise.deserialise(#"0000") == None,
+    cbor_deserialise.deserialise(#"00ff") == None,
+    cbor_deserialise.deserialise(#"00") == Some(builtin.i_data(0)),
+  }
+}
+
+/// The trailing chunks are still Flat: a chunk that overruns the input is
+/// truncation.
+test script_decode_data_trailing_chunks_are_still_framed() {
+  let head = (0, 0) |> nat(1) |> nat(0) |> nat(0)
+  let w = type_tags(put(head, 4, 4), [8])
+  class_of(to_bytes(raw(filler(w), [1, 0, 5, 1]))) == 3
 }
 
 test script_decode_data_truncation_beats_invalid_data() {
