@@ -143,7 +143,8 @@ describe("midgard contracts registry", () => {
       // non-empty block rule, one event NFT per user-event mint), the retired
       // post-UTxO minimum-Ada mode, streamed redeemer/datum Data verdicts, the
       // one-pass node count, the exact rejection reason, script optimisations,
-      // bounty claimants, and the queue's proof reference and exemption.
+      // bounty claimants, the queue's proof reference and exemption, slashing a
+      // node above the bond, and the timeout's operator-directory separation.
       expect
         .soft(
           createHash("sha256")
@@ -153,7 +154,7 @@ describe("midgard contracts registry", () => {
             .digest("hex"),
         )
         .toBe(
-          "b371c36b5810fe390cd666e16b89dabb777bf33654a79d157c4f472e4c3dddb8",
+          "9f38858e9a9c7345d9003acf876a8dce97e56663f7503061913119d918ba73fd",
         );
       // Includes current streamed Data/W1 metadata plus escape-hatch field
       // retirement and the hub witness's paired script bytes. The independently
@@ -168,7 +169,8 @@ describe("midgard contracts registry", () => {
       // the composed P1 tree (allow-lists, the non-empty block rule, T302), and
       // the fault-proof scripts the state queue is applied over (the retired
       // post-UTxO minimum-Ada mode, streamed Data verdicts, exact rejection
-      // reason, optimisations), shared bounty routing, proof ref, exemption.
+      // reason, optimisations), shared bounty routing, proof ref, exemption,
+      // slashing above the bond, and the timeout's operator-directory split.
       expect
         .soft(
           createHash("sha256")
@@ -181,7 +183,7 @@ describe("midgard contracts registry", () => {
             .digest("hex"),
         )
         .toBe(
-          "deba1d99eb25c76cff8dc06bf8b3a496fa8e3a5699511748a29b9bfbc5332912",
+          "d20a073a4842c3101835f2b160775ec41e8205a03780c559c75cf054866549eb",
         );
       // The always-succeeds stand-in is a real hazard here: it satisfies every
       // spend, so a role that silently kept it would pass any behavioural test
