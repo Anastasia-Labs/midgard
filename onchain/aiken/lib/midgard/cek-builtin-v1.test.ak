@@ -2475,3 +2475,151 @@ test ed25519_ill_typed_message_is_not_a_known_failure() fail {
     arguments,
   )
 }
+
+// Variant E also bounds three operands the 9,215 B cap leaves open: a writeBits
+// input at 4,096 B, a shift or rotate amount at Int64 (the bound the failure
+// arm proves), and a BLS12-381 scalarMul scalar at [-2^4095, 2^4095 - 1]. Each
+// success arm certifies at its bound and is refused one past it, with a result
+// that would be right if the operand were not refused.
+
+// Setting bit 0 of `length` zero bytes, written out without writeBits.
+fn write_bit_zero_succeeds_at(length: Int) -> Bool {
+  let source = cbor.serialise(builtin.b_data(zero_run(length)))
+  let indices = cbor.serialise(builtin.list_data([builtin.i_data(0)]))
+  let arguments = [
+    bytes(source),
+    constant(#"9f0500ff", indices),
+    boolean(#"d87a80"),
+  ]
+  let written = bytearray.concat(zero_run(length - 1), #"01")
+  cek_builtin_v1.verify_direct_builtin_v1(
+    80,
+    builtin_root(80, arguments),
+    arguments,
+    bytes(cbor.serialise(builtin.b_data(written))),
+  )
+}
+
+test write_bits_success_certifies_a_4096_byte_input() {
+  write_bit_zero_succeeds_at(4096)
+}
+
+test write_bits_success_is_refused_one_past_4096_bytes() fail {
+  write_bit_zero_succeeds_at(4097)
+}
+
+// Shifting one byte by eight bits or more leaves zero; rotating 0xff leaves it.
+fn shift_or_rotate_succeeds(tag: Int, amount: Int) -> Bool {
+  let source = if tag == 82 {
+    #"01"
+  } else {
+    #"ff"
+  }
+  let shifted = if tag == 82 {
+    #"00"
+  } else {
+    #"ff"
+  }
+  let arguments = [
+    bytes(cbor.serialise(builtin.b_data(source))),
+    integer(cbor.serialise(builtin.i_data(amount))),
+  ]
+  cek_builtin_v1.verify_direct_builtin_v1(
+    tag,
+    builtin_root(tag, arguments),
+    arguments,
+    bytes(cbor.serialise(builtin.b_data(shifted))),
+  )
+}
+
+test shift_and_rotate_success_certifies_int64_amounts() {
+  and {
+    shift_or_rotate_succeeds(82, 9223372036854775807),
+    shift_or_rotate_succeeds(82, -9223372036854775808),
+    shift_or_rotate_succeeds(83, 9223372036854775807),
+    shift_or_rotate_succeeds(83, -9223372036854775808),
+  }
+}
+
+test shift_success_is_refused_one_past_int64_max() fail {
+  shift_or_rotate_succeeds(82, 9223372036854775808)
+}
+
+test shift_success_is_refused_one_past_int64_min() fail {
+  shift_or_rotate_succeeds(82, -9223372036854775809)
+}
+
+test rotate_success_is_refused_one_past_int64_max() fail {
+  shift_or_rotate_succeeds(83, 9223372036854775808)
+}
+
+test rotate_success_is_refused_one_past_int64_min() fail {
+  shift_or_rotate_succeeds(83, -9223372036854775809)
+}
+
+// 0x80 followed by 511 zero bytes: 2^(8 * 511 + 7) = 2^4095.
+fn power_of_two_4095() -> Int {
+  bytearray.to_int_big_endian(bytearray.push(zero_run(511), 128))
+}
+
+test bls_scalar_bound_is_variant_e_bound() {
+  and {
+    cek_builtin_v1.bls_scalar_in_bound_v1(power_of_two_4095() - 1),
+    cek_builtin_v1.bls_scalar_in_bound_v1(-power_of_two_4095()),
+    !cek_builtin_v1.bls_scalar_in_bound_v1(power_of_two_4095()),
+    !cek_builtin_v1.bls_scalar_in_bound_v1(-power_of_two_4095() - 1),
+  }
+}
+
+// A scalar past 64 bits is a CBOR bignum, which today's constant reader cannot
+// decode (the pinned evaluator aborts on it), so the arm is driven here with
+// small scalars only; the bound itself is pinned above.
+fn scalar_mul_succeeds(tag: Int, scalar: Int) -> Bool {
+  let Pair(point, product) = if tag == 56 {
+    let generator = g1_generator()
+    Pair(
+      generator,
+      builtin.bls12_381_g1_scalar_mul(
+        scalar,
+        builtin.un_b_data(cbor_payload(generator.payload_cbor))
+          |> builtin.bls12_381_g1_uncompress,
+      )
+        |> builtin.bls12_381_g1_compress,
+    )
+  } else {
+    let generator = g2_generator()
+    Pair(
+      generator,
+      builtin.bls12_381_g2_scalar_mul(
+        scalar,
+        builtin.un_b_data(cbor_payload(generator.payload_cbor))
+          |> builtin.bls12_381_g2_uncompress,
+      )
+        |> builtin.bls12_381_g2_compress,
+    )
+  }
+  let arguments = [
+    integer(cbor.serialise(builtin.i_data(scalar))),
+    cek_builtin_v1.ConstantValue(point),
+  ]
+  cek_builtin_v1.verify_direct_builtin_v1(
+    tag,
+    builtin_root(tag, arguments),
+    arguments,
+    constant(point.type_cbor, cbor.serialise(builtin.b_data(product))),
+  )
+}
+
+fn cbor_payload(payload_cbor: ByteArray) -> Data {
+  expect Some(payload) = cbor.deserialise(payload_cbor)
+  payload
+}
+
+test scalar_mul_success_certifies_in_bound_scalars() {
+  and {
+    scalar_mul_succeeds(56, 7),
+    scalar_mul_succeeds(56, -7),
+    scalar_mul_succeeds(63, 7),
+    scalar_mul_succeeds(63, -7),
+  }
+}

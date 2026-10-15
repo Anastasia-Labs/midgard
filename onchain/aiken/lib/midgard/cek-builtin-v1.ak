@@ -2062,6 +2062,8 @@ fn verify_v3_bytes_v1(
   } else if tag == 80 {
     expect [source_value, indices_value, bit_value] = arguments
     let source = bytes_v1(source_value)
+    // Variant E fails writeBits on an input over 4,096 bytes.
+    expect bytearray.length(source) <= 4096
     let Pair(element_type, index_payloads) = list_payload_v1(indices_value)
     expect element_type == cek_constant_v1.IntegerConstant
     let indices = semantic_integers_v1(index_payloads)
@@ -2087,6 +2089,8 @@ fn verify_v3_bytes_v1(
     )
   } else if tag == 82 {
     expect [source, offset] = arguments
+    // An amount outside Int64 fails, as the failure arm proves.
+    expect !outside_int64_v1(integer_v1(offset))
     result_is_constant_v1(
       result,
       cek_constant_v1.ByteStringConstant,
@@ -2097,6 +2101,7 @@ fn verify_v3_bytes_v1(
   } else {
     expect tag == 83
     expect [source, offset] = arguments
+    expect !outside_int64_v1(integer_v1(offset))
     result_is_constant_v1(
       result,
       cek_constant_v1.ByteStringConstant,
@@ -2140,6 +2145,7 @@ fn verify_bls_g1_v1(
     )
   } else if tag == 56 {
     expect [scalar, source] = arguments
+    expect bls_scalar_in_bound_v1(integer_v1(scalar))
     result_is_constant_v1(
       result,
       cek_constant_v1.BlsG1Constant,
@@ -2231,6 +2237,7 @@ fn verify_bls_g2_v1(
     )
   } else if tag == 63 {
     expect [scalar, source] = arguments
+    expect bls_scalar_in_bound_v1(integer_v1(scalar))
     result_is_constant_v1(
       result,
       cek_constant_v1.BlsG2Constant,
@@ -3355,6 +3362,20 @@ fn ecdsa_signature_scalar_overflows_v1(signature: ByteArray) -> Bool {
       True,
       builtin.slice_bytearray(32, 32, signature),
     ) >= secp256k1_group_order,
+  }
+}
+
+/// Variant E fails a BLS12-381 scalarMul whose scalar is outside
+/// [-2^4095, 2^4095 - 1]. The bound is built at run time, not stored as a
+/// 512-byte literal: 0x80 then 511 zero bytes, read big-endian, is 2^4095.
+pub fn bls_scalar_in_bound_v1(scalar: Int) -> Bool {
+  let bound = builtin.bytearray_to_integer(
+    True,
+    builtin.cons_bytearray(128, builtin.replicate_byte(511, 0)),
+  )
+  and {
+    scalar >= -bound,
+    scalar < bound,
   }
 }
 
