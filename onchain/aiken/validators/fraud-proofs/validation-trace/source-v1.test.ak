@@ -1,6 +1,6 @@
 //// VerifySource, driven through the deployed validator: the C1 order (source
 //// authenticated, R-DESC, the challenger's claim, N5, the open guard, the
-//// bond), each in both polarities.
+//// bond), each in both polarities, and the case output it starts.
 
 use aiken/builtin
 use aiken/cbor
@@ -24,16 +24,14 @@ use midgard/fraud_proofs/thread_census_fixture_v1 as census
 use midgard/ledger_state
 use midgard/rejection_reason_v1
 use midgard/transition_trace
+use midgard/validation_case_v1
 use midgard/validation_claim_v1
 use midgard/validation_dispute_v1
 use midgard/validation_game_v1
 use midgard/validation_machine/witness as vm_witness
-use midgard/validation_resolution_v1
 use midgard/validation_trace_v1
 
-const game_hash = #"01010101010101010101010101010101010101010101010101010101"
-
-const award_hash = #"02020202020202020202020202020202020202020202020202020202"
+const case_hash = #"01010101010101010101010101010101010101010101010101010101"
 
 const bond_hash = #"03030303030303030303030303030303030303030303030303030303"
 
@@ -358,9 +356,6 @@ fn terminal_state(
 
 fn descriptor(
   initial_state_hash: ByteArray,
-  terminal_state_hash: ByteArray,
-  verdict: validation_trace_v1.ValidationVerdict,
-  rejection_code_hash: ByteArray,
 ) -> validation_trace_v1.ValidationTraceDescriptorV1 {
   validation_trace_v1.ValidationTraceDescriptorV1 {
     schema_version: validation_trace_v1.descriptor_version,
@@ -368,9 +363,9 @@ fn descriptor(
     trace_root: h32_c,
     step_count,
     initial_state_hash,
-    terminal_state_hash,
-    verdict,
-    rejection_code_hash,
+    terminal_state_hash: h32_b,
+    verdict: validation_trace_v1.Accepted,
+    rejection_code_hash: zero_hash,
   }
 }
 
@@ -384,7 +379,6 @@ fn proof() -> validation_trace_v1.ValidationTraceProof {
 
 fn claim(
   source: validation_claim_v1.ValidationSourceMembershipV1,
-  operator: validation_trace_v1.ValidationTraceDescriptorV1,
   initial_state: validation_trace_v1.ValidationMachineStateV1,
 ) -> validation_claim_v1.ValidationClaimWitnessV1 {
   let event_key = event_key_for(source)
@@ -396,7 +390,7 @@ fn claim(
       phas_root: zero_hash,
       count: 1,
       key: event_key,
-      value: operator,
+      value: descriptor(validation_trace_v1.hash_machine_state(initial_state)),
       proof: [],
     },
     transition_step_membership: transition_trace.RootMembershipProof {
@@ -438,21 +432,21 @@ fn claim(
 
 fn pending(
   source: validation_claim_v1.ValidationSourceMembershipV1,
-  operator: validation_trace_v1.ValidationTraceDescriptorV1,
   initial_state: validation_trace_v1.ValidationMachineStateV1,
-  challenger: validation_trace_v1.ValidationTraceDescriptorV1,
+  challenger_root: ByteArray,
 ) -> validation_game_v1.PendingValidationClaimV1 {
   validation_game_v1.PendingValidationClaimV1 {
     challenged_header_hash: header_hash,
     challenged_header: header_for(source),
-    claim: claim(source, operator, initial_state),
-    challenger_descriptor: challenger,
+    claim: claim(source, initial_state),
+    challenger_root,
+    step_count,
     block_end,
   }
 }
 
-// The honest dispute: a normal Plutus source, the operator's derived initial
-// state, an Accepted operator descriptor and a challenger claiming rejection.
+// The honest case: a normal Plutus source, its derived initial state and a
+// challenger claiming rejection at S.
 
 fn honest_source() -> validation_claim_v1.ValidationSourceMembershipV1 {
   normal_source(1)
@@ -462,19 +456,14 @@ fn honest_initial() -> validation_trace_v1.ValidationMachineStateV1 {
   derived_initial_state(honest_source())
 }
 
-fn honest_operator() -> validation_trace_v1.ValidationTraceDescriptorV1 {
-  descriptor(
-    validation_trace_v1.hash_machine_state(honest_initial()),
-    h32_b,
-    validation_trace_v1.Accepted,
-    zero_hash,
-  )
-}
-
 // ## The challenger's claim: a Terminal Rejected state at S, proven as leaf S
 
 fn claimed_terminal() -> validation_trace_v1.ValidationMachineStateV1 {
   terminal_state(validation_trace_v1.Rejected, h32_a)
+}
+
+fn claimed_terminal_hash() -> ByteArray {
+  validation_trace_v1.hash_machine_state(claimed_terminal())
 }
 
 /// A fixed sibling path of the trace depth for `step_count`.
@@ -518,44 +507,19 @@ fn proof_of(
   }
 }
 
-/// The challenger descriptor committing to `terminal_hash` at S, under a root
-/// whose leaf `leaf_index` holds `leaf_hash`.
-fn challenger_with(
-  terminal_hash: ByteArray,
-  leaf_index: Int,
-  leaf_hash: ByteArray,
-) -> validation_trace_v1.ValidationTraceDescriptorV1 {
-  validation_trace_v1.ValidationTraceDescriptorV1 {
-    ..descriptor(
-      validation_trace_v1.hash_machine_state(honest_initial()),
-      terminal_hash,
-      validation_trace_v1.Rejected,
-      h32_a,
-    ),
-    trace_root: root_with(leaf_index, leaf_hash),
-  }
-}
-
-/// The challenger descriptor for a claimed `terminal` proven at S.
-fn challenger_for(
+/// The pending claim of a challenger whose root holds `terminal` at S.
+fn claiming(
   terminal: validation_trace_v1.ValidationMachineStateV1,
-) -> validation_trace_v1.ValidationTraceDescriptorV1 {
-  let terminal_hash = validation_trace_v1.hash_machine_state(terminal)
-  challenger_with(terminal_hash, step_count, terminal_hash)
-}
-
-fn honest_challenger() -> validation_trace_v1.ValidationTraceDescriptorV1 {
-  challenger_for(claimed_terminal())
+) -> validation_game_v1.PendingValidationClaimV1 {
+  pending(
+    honest_source(),
+    honest_initial(),
+    root_with(step_count, validation_trace_v1.hash_machine_state(terminal)),
+  )
 }
 
 fn honest_pending() -> validation_game_v1.PendingValidationClaimV1 {
-  with_challenger(honest_challenger())
-}
-
-fn with_challenger(
-  challenger: validation_trace_v1.ValidationTraceDescriptorV1,
-) -> validation_game_v1.PendingValidationClaimV1 {
-  pending(honest_source(), honest_operator(), honest_initial(), challenger)
+  claiming(claimed_terminal())
 }
 
 // ## The transaction
@@ -568,23 +532,97 @@ fn thread_value(lovelace: Int) -> assets.Value {
   assets.from_lovelace(lovelace) |> assets.add(thread_policy, thread_name, 1)
 }
 
-fn thread_output(script_hash: ByteArray, lovelace: Int, state: Data) -> Output {
+fn opener_input(
+  out_ref: OutputReference,
+  state: validation_game_v1.PendingValidationClaimV1,
+  name: ByteArray,
+) -> Input {
   let datum: Data = ct.StepDatum { fraud_prover, data: Some(state) }
+  Input {
+    output_reference: out_ref,
+    output: Output {
+      address: address.from_script(source_hash),
+      value: assets.from_lovelace(thread_lovelace)
+        |> assets.add(thread_policy, name, 1),
+      datum: InlineDatum(datum),
+      reference_script: None,
+    },
+  }
+}
+
+fn case_id_of(
+  state: validation_game_v1.PendingValidationClaimV1,
+  out_ref: OutputReference,
+) -> ByteArray {
+  validation_case_v1.case_nft_name(
+    header_hash,
+    state.claim.descriptor_membership.key,
+    out_ref,
+  )
+}
+
+fn honest_case_id() -> ByteArray {
+  case_id_of(honest_pending(), own_out_ref())
+}
+
+/// The case VerifySource at `upper` starts, agreeing on `initial_hash`.
+fn case_datum(
+  state: validation_game_v1.PendingValidationClaimV1,
+  initial_hash: ByteArray,
+  upper: Int,
+) -> Data {
+  let case: Data = validation_case_v1.open_case(
+    header_hash,
+    state.claim.descriptor_membership.key,
+    state.challenger_root,
+    step_count,
+    claimed_terminal_hash(),
+    fraud_prover,
+    initial_hash,
+    upper,
+  )
+  case
+}
+
+fn case_value(case_id: ByteArray, lovelace: Int) -> assets.Value {
+  thread_value(lovelace) |> assets.add(case_hash, case_id, 1)
+}
+
+fn case_output_with(datum: Data, value: assets.Value) -> Output {
   Output {
-    address: address.from_script(script_hash),
-    value: thread_value(lovelace),
+    address: address.from_script(case_hash),
+    value,
     datum: InlineDatum(datum),
     reference_script: None,
   }
 }
 
-fn bond_datum() -> Data {
+fn honest_initial_hash() -> ByteArray {
+  validation_trace_v1.hash_machine_state(honest_initial())
+}
+
+fn case_output_at(upper: Int) -> Output {
+  case_output_with(
+    case_datum(honest_pending(), honest_initial_hash(), upper),
+    case_value(honest_case_id(), thread_lovelace),
+  )
+}
+
+fn bond_datum_for(
+  header: ByteArray,
+  prover: ByteArray,
+  case_id: ByteArray,
+) -> Data {
   let datum: Data = DisputeBondV1 {
-    challenged_header_hash: header_hash,
-    fraud_prover,
-    forfeit_after: dispute_bond_v1.forfeit_after(end_time),
+    challenged_header_hash: header,
+    fraud_prover: prover,
+    case_id,
   }
   datum
+}
+
+fn bond_datum() -> Data {
+  bond_datum_for(header_hash, fraud_prover, honest_case_id())
 }
 
 fn bond_output(lovelace: Int, datum: Data) -> Output {
@@ -596,24 +634,14 @@ fn bond_output(lovelace: Int, datum: Data) -> Output {
   }
 }
 
-fn tx_at(upper: Int, outputs: List<Output>) -> Transaction {
-  let input_datum: Data = ct.StepDatum {
-    fraud_prover,
-    data: Some(honest_pending()),
-  }
+fn tx_with(
+  state: validation_game_v1.PendingValidationClaimV1,
+  upper: Int,
+  outputs: List<Output>,
+) -> Transaction {
   Transaction {
     ..transaction.placeholder,
-    inputs: [
-      Input {
-        output_reference: own_out_ref(),
-        output: Output {
-          address: address.from_script(source_hash),
-          value: thread_value(thread_lovelace),
-          datum: InlineDatum(input_datum),
-          reference_script: None,
-        },
-      },
-    ],
+    inputs: [opener_input(own_out_ref(), state, thread_name)],
     outputs,
     fee,
     validity_range: interval.between(
@@ -623,58 +651,15 @@ fn tx_at(upper: Int, outputs: List<Output>) -> Transaction {
   }
 }
 
-/// The game a VerifySource at `upper` opens, agreeing on `low_hash`. Built
-/// with `open`, which does not check the open guard, so a late refusal is the
-/// validator's alone.
-fn opened_at(
-  state: validation_game_v1.PendingValidationClaimV1,
-  low_hash: ByteArray,
-  upper: Int,
-) -> Data {
-  let game: Data = validation_game_v1.ValidationGameStateV1 {
-    challenged_header_hash: header_hash,
-    dispute: validation_dispute_v1.open(
-      state.claim.descriptor_membership.value,
-      state.challenger_descriptor,
-      low_hash,
-      upper,
-    ),
-  }
-  game
-}
-
-fn opened(
-  state: validation_game_v1.PendingValidationClaimV1,
-  upper: Int,
-) -> Data {
-  opened_at(
-    state,
-    state.claim.descriptor_membership.value.initial_state_hash,
-    upper,
-  )
-}
-
-fn open_outputs(
-  state: validation_game_v1.PendingValidationClaimV1,
-  upper: Int,
-) -> List<Output> {
-  [
-    thread_output(game_hash, thread_lovelace, opened(state, upper)),
-    bond_output(bond_lovelace, bond_datum()),
-  ]
-}
-
-fn award_outputs() -> List<Output> {
-  [
-    thread_output(
-      award_hash,
-      thread_lovelace,
-      validation_resolution_v1.winning_resolution(),
-    ),
-  ]
+fn tx_at(upper: Int, outputs: List<Output>) -> Transaction {
+  tx_with(honest_pending(), upper, outputs)
 }
 
 const upper = end_time + 60_000
+
+fn open_outputs(upper: Int) -> List<Output> {
+  [case_output_at(upper), bond_output(bond_lovelace, bond_datum())]
+}
 
 fn verify_claiming(
   state: validation_game_v1.PendingValidationClaimV1,
@@ -683,8 +668,7 @@ fn verify_claiming(
   tx: Transaction,
 ) -> Bool {
   source_validator.main.spend(
-    game_hash,
-    award_hash,
+    case_hash,
     bond_hash,
     bond_lovelace,
     thread_policy,
@@ -706,41 +690,157 @@ fn verify(
   state: validation_game_v1.PendingValidationClaimV1,
   tx: Transaction,
 ) -> Bool {
-  let terminal = claimed_terminal()
   verify_claiming(
     state,
-    terminal,
-    proof_of(step_count, validation_trace_v1.hash_machine_state(terminal)),
+    claimed_terminal(),
+    proof_of(step_count, claimed_terminal_hash()),
     tx,
   )
 }
 
-// ## 5. The honest open
-
-test verify_source_opens_the_game_with_the_bond() {
-  verify(honest_pending(), tx_at(upper, open_outputs(honest_pending(), upper)))
+fn with_outputs(outputs: List<Output>) -> Bool {
+  verify(honest_pending(), tx_at(upper, outputs))
 }
 
-test verify_source_open_is_not_an_award() fail {
-  verify(honest_pending(), tx_at(upper, award_outputs()))
+fn with_case_output(case_output: Output) -> Bool {
+  with_outputs([case_output, bond_output(bond_lovelace, bond_datum())])
 }
 
-test verify_source_refuses_another_agreed_low_hash() fail {
-  let state = honest_pending()
+// ## The honest open
+
+test verify_source_starts_the_case_with_the_bond() {
+  with_outputs(open_outputs(upper))
+}
+
+test verify_source_with_a_fraud_prover_signature_absent_is_accepted() {
   verify(
-    state,
-    tx_at(
-      upper,
-      [
-        thread_output(
-          game_hash,
-          thread_lovelace,
-          opened_at(state, h32_a, upper),
-        ),
-        bond_output(bond_lovelace, bond_datum()),
-      ],
+    honest_pending(),
+    census.without_signers(tx_at(upper, open_outputs(upper))),
+  )
+}
+
+// ## The case output
+
+test case_another_agreed_initial_hash_is_refused() fail {
+  with_case_output(
+    case_output_with(
+      case_datum(honest_pending(), h32_a, upper),
+      case_value(honest_case_id(), thread_lovelace),
     ),
   )
+}
+
+test case_another_start_time_is_refused() fail {
+  with_case_output(
+    case_output_with(
+      case_datum(honest_pending(), honest_initial_hash(), upper - 1),
+      case_value(honest_case_id(), thread_lovelace),
+    ),
+  )
+}
+
+test case_at_another_address_is_refused() fail {
+  with_case_output(
+    Output { ..case_output_at(upper), address: address.from_script(bond_hash) },
+  )
+}
+
+test case_with_a_stake_credential_is_refused() fail {
+  with_case_output(
+    Output {
+      ..case_output_at(upper),
+      address: address.from_script(case_hash)
+        |> address.with_delegation_key(h28_a),
+    },
+  )
+}
+
+test case_without_the_case_nft_is_refused() fail {
+  with_case_output(
+    Output { ..case_output_at(upper), value: thread_value(thread_lovelace) },
+  )
+}
+
+test case_without_the_thread_token_is_refused() fail {
+  with_case_output(
+    Output {
+      ..case_output_at(upper),
+      value: assets.from_lovelace(thread_lovelace)
+        |> assets.add(case_hash, honest_case_id(), 1),
+    },
+  )
+}
+
+test case_with_another_token_is_refused() fail {
+  with_case_output(
+    Output {
+      ..case_output_at(upper),
+      value: case_value(honest_case_id(), thread_lovelace)
+        |> assets.add(h28_a, thread_name, 1),
+    },
+  )
+}
+
+test case_nft_named_from_another_opener_is_refused() fail {
+  let other = case_id_of(
+    honest_pending(),
+    OutputReference { transaction_id: h32_c, output_index: 1 },
+  )
+  with_case_output(
+    Output {
+      ..case_output_at(upper),
+      value: case_value(other, thread_lovelace),
+    },
+  )
+}
+
+test case_below_the_opener_lovelace_is_refused() fail {
+  with_case_output(
+    Output {
+      ..case_output_at(upper),
+      value: case_value(honest_case_id(), thread_lovelace - 1),
+    },
+  )
+}
+
+test case_above_the_opener_lovelace_is_accepted() {
+  with_case_output(
+    Output {
+      ..case_output_at(upper),
+      value: case_value(honest_case_id(), thread_lovelace + 1),
+    },
+  )
+}
+
+/// An opener holding less than the case floor still opens a case holding the
+/// floor, and no less.
+fn small_opener_opens_with(case_lovelace: Int) -> Bool {
+  let base = tx_at(upper, open_outputs(upper))
+  expect [opener] = base.inputs
+  let small = Input {
+    ..opener,
+    output: Output {
+      ..opener.output,
+      value: thread_value(validation_case_v1.case_floor_lovelace - 1_000),
+    },
+  }
+  let case_output = Output {
+    ..case_output_at(upper),
+    value: case_value(honest_case_id(), case_lovelace),
+  }
+  expect [_, bond] = base.outputs
+  verify(
+    honest_pending(),
+    Transaction { ..base, inputs: [small], outputs: [case_output, bond] },
+  )
+}
+
+test case_at_the_case_floor_is_accepted() {
+  small_opener_opens_with(validation_case_v1.case_floor_lovelace)
+}
+
+test case_below_the_case_floor_is_refused() fail {
+  small_opener_opens_with(validation_case_v1.case_floor_lovelace - 1)
 }
 
 // ## 1. The source must be authenticated
@@ -754,10 +854,57 @@ test verify_source_refuses_an_unauthenticated_source() fail {
       transactions_root: h32_a,
     },
   }
-  verify(unauthenticated, tx_at(upper, award_outputs()))
+  verify(unauthenticated, tx_with(unauthenticated, upper, open_outputs(upper)))
 }
 
-// ## 2. The challenger's claim
+// ## 2. R-DESC
+
+fn opens_pending(state: validation_game_v1.PendingValidationClaimV1) -> Bool {
+  let case_output = case_output_with(
+    case_datum(
+      state,
+      validation_trace_v1.hash_machine_state(state.claim.initial_state),
+      upper,
+    ),
+    case_value(case_id_of(state, own_out_ref()), thread_lovelace),
+  )
+  let bond = bond_datum_for(
+    header_hash,
+    fraud_prover,
+    case_id_of(state, own_out_ref()),
+  )
+  verify(
+    state,
+    tx_with(state, upper, [case_output, bond_output(bond_lovelace, bond)]),
+  )
+}
+
+fn root_for_terminal() -> ByteArray {
+  root_with(step_count, claimed_terminal_hash())
+}
+
+test r_desc_a_normal_source_with_redeemers_opens() {
+  opens_pending(honest_pending())
+}
+
+test r_desc_a_normal_source_without_redeemers_cannot_open() fail {
+  let source = normal_source(0)
+  opens_pending(
+    pending(source, derived_initial_state(source), root_for_terminal()),
+  )
+}
+
+test r_desc_a_consistent_forced_source_cannot_open() fail {
+  opens_pending(
+    pending(
+      forced_source(rejection_reason_v1.ForcedTxValid),
+      placeholder_state(),
+      root_for_terminal(),
+    ),
+  )
+}
+
+// ## 3. The challenger's claim
 
 /// The open, claiming `terminal` with `proof` against `state`.
 fn opens_claiming(
@@ -765,23 +912,40 @@ fn opens_claiming(
   terminal: validation_trace_v1.ValidationMachineStateV1,
   proof: validation_trace_v1.ValidationTraceProof,
 ) -> Bool {
+  let terminal_hash = validation_trace_v1.hash_machine_state(terminal)
+  let case: Data = validation_case_v1.open_case(
+    header_hash,
+    state.claim.descriptor_membership.key,
+    state.challenger_root,
+    step_count,
+    terminal_hash,
+    fraud_prover,
+    honest_initial_hash(),
+    upper,
+  )
   verify_claiming(
     state,
     terminal,
     proof,
-    tx_at(upper, open_outputs(state, upper)),
+    tx_with(
+      state,
+      upper,
+      [
+        case_output_with(case, case_value(honest_case_id(), thread_lovelace)),
+        bond_output(bond_lovelace, bond_datum()),
+      ],
+    ),
   )
 }
 
-/// Opens with `terminal` proven at S under a matching challenger descriptor.
+/// Opens with `terminal` proven at S under the challenger's root.
 fn opens_with_terminal(
   terminal: validation_trace_v1.ValidationMachineStateV1,
 ) -> Bool {
-  let terminal_hash = validation_trace_v1.hash_machine_state(terminal)
   opens_claiming(
-    with_challenger(challenger_for(terminal)),
+    claiming(terminal),
     terminal,
-    proof_of(step_count, terminal_hash),
+    proof_of(step_count, validation_trace_v1.hash_machine_state(terminal)),
   )
 }
 
@@ -811,274 +975,62 @@ test claim_an_accepted_terminal_is_refused() fail {
 /// The proof is valid for leaf S - 1 of the challenger's root, and the state
 /// is the claimed one: only the leaf index is wrong.
 test claim_a_proof_of_another_leaf_is_refused() fail {
-  let terminal_hash = validation_trace_v1.hash_machine_state(claimed_terminal())
   opens_claiming(
-    with_challenger(
-      challenger_with(terminal_hash, step_count - 1, terminal_hash),
+    pending(
+      honest_source(),
+      honest_initial(),
+      root_with(step_count - 1, claimed_terminal_hash()),
     ),
     claimed_terminal(),
-    proof_of(step_count - 1, terminal_hash),
+    proof_of(step_count - 1, claimed_terminal_hash()),
   )
 }
 
-/// Leaf S holds another state's hash; the challenger commits to the claimed
-/// state's hash.
+/// Leaf S holds another state's hash.
 test claim_a_proof_of_another_state_is_refused() fail {
-  let terminal_hash = validation_trace_v1.hash_machine_state(claimed_terminal())
   opens_claiming(
-    with_challenger(challenger_with(terminal_hash, step_count, h32_c)),
+    pending(honest_source(), honest_initial(), root_with(step_count, h32_c)),
     claimed_terminal(),
     proof_of(step_count, h32_c),
   )
 }
 
-/// The claimed state is leaf S, but the challenger commits to another
-/// terminal hash, which the game would carry as its high hash.
-test claim_a_terminal_hash_the_challenger_did_not_commit_is_refused() fail {
-  let terminal_hash = validation_trace_v1.hash_machine_state(claimed_terminal())
-  opens_claiming(
-    with_challenger(challenger_with(h32_c, step_count, terminal_hash)),
-    claimed_terminal(),
-    proof_of(step_count, terminal_hash),
-  )
-}
-
 test claim_a_proof_under_another_root_is_refused() fail {
-  let terminal_hash = validation_trace_v1.hash_machine_state(claimed_terminal())
   opens_claiming(
-    with_challenger(
-      validation_trace_v1.ValidationTraceDescriptorV1 {
-        ..honest_challenger(),
-        trace_root: h32_c,
-      },
-    ),
+    pending(honest_source(), honest_initial(), h32_c),
     claimed_terminal(),
-    proof_of(step_count, terminal_hash),
+    proof_of(step_count, claimed_terminal_hash()),
   )
 }
 
-/// The operator commits to the claimed terminal hash itself: nothing is in
-/// dispute, so there is no successor, neither a game nor an award.
-fn operator_agrees() -> validation_game_v1.PendingValidationClaimV1 {
-  let initial_hash = validation_trace_v1.hash_machine_state(honest_initial())
-  pending(
-    honest_source(),
-    descriptor(
-      initial_hash,
-      validation_trace_v1.hash_machine_state(claimed_terminal()),
-      validation_trace_v1.Accepted,
-      zero_hash,
-    ),
-    honest_initial(),
-    honest_challenger(),
-  )
+/// The claim proven at S, with the case recording another step count.
+test claim_at_another_step_count_is_refused() fail {
+  let state = validation_game_v1.PendingValidationClaimV1 {
+    ..honest_pending(),
+    step_count: step_count + 1,
+  }
+  verify(state, tx_with(state, upper, open_outputs(upper)))
 }
 
-test claim_the_operators_own_terminal_cannot_open() fail {
-  verify(
-    operator_agrees(),
-    tx_at(upper, open_outputs(operator_agrees(), upper)),
-  )
-}
+// ## 4. N5: the agreed initial state
 
-test claim_the_operators_own_terminal_is_not_an_award() fail {
-  verify(operator_agrees(), tx_at(upper, award_outputs()))
-}
-
-// ## 3. R-DESC
-
-fn native_only() -> validation_game_v1.PendingValidationClaimV1 {
-  let source = normal_source(0)
-  let initial = derived_initial_state(source)
-  let initial_hash = validation_trace_v1.hash_machine_state(initial)
-  pending(
-    source,
-    descriptor(initial_hash, h32_b, validation_trace_v1.Accepted, zero_hash),
-    initial,
-    honest_challenger(),
-  )
-}
-
-fn consistent_forced() -> validation_game_v1.PendingValidationClaimV1 {
-  pending(
-    forced_source(rejection_reason_v1.ForcedTxValid),
-    honest_operator(),
-    placeholder_state(),
-    honest_challenger(),
-  )
-}
-
-test r_desc_a_normal_source_without_redeemers_cannot_open() fail {
-  verify(native_only(), tx_at(upper, open_outputs(native_only(), upper)))
-}
-
-test r_desc_a_normal_source_without_redeemers_is_not_an_award() fail {
-  verify(native_only(), tx_at(upper, award_outputs()))
-}
-
-test r_desc_a_consistent_forced_source_cannot_open() fail {
-  verify(
-    consistent_forced(),
-    tx_at(upper, open_outputs(consistent_forced(), upper)),
-  )
-}
-
-test r_desc_a_consistent_forced_source_is_not_an_award() fail {
-  verify(consistent_forced(), tx_at(upper, award_outputs()))
-}
-
-// ## S-1: an initial state derivation would not build is the operator's fault
-
-test a_committed_initial_state_that_is_not_derived_goes_to_award() {
+/// An initial state that derivation would not build: no case opens from it.
+test n5_an_initial_state_that_is_not_derived_cannot_open() fail {
   let bogus = validation_trace_v1.ValidationMachineStateV1 {
     ..honest_initial(),
     prior_ledger_root: h32_b,
   }
-  let state = pending(
-    honest_source(),
-    honest_operator(),
-    bogus,
-    honest_challenger(),
-  )
-  verify(state, tx_at(upper, award_outputs()))
+  opens_pending(pending(honest_source(), bogus, root_for_terminal()))
 }
 
-// ## The bond
-
-fn with_outputs(outputs: List<Output>) -> Bool {
-  verify(honest_pending(), tx_at(upper, outputs))
-}
-
-fn game_output() -> Output {
-  thread_output(game_hash, thread_lovelace, opened(honest_pending(), upper))
-}
-
-test bond_missing_is_refused() fail {
-  with_outputs([game_output()])
-}
-
-test bond_twice_is_refused() fail {
-  with_outputs(
-    [
-      game_output(),
-      bond_output(bond_lovelace, bond_datum()),
-      bond_output(bond_lovelace, bond_datum()),
-    ],
-  )
-}
-
-test bond_one_lovelace_short_is_refused() fail {
-  with_outputs([game_output(), bond_output(bond_lovelace - 1, bond_datum())])
-}
-
-test bond_above_the_minimum_is_accepted() {
-  with_outputs([game_output(), bond_output(bond_lovelace + 1, bond_datum())])
-}
-
-test bond_for_another_prover_is_refused() fail {
-  let datum: Data = DisputeBondV1 {
-    challenged_header_hash: header_hash,
-    fraud_prover: h28_a,
-    forfeit_after: dispute_bond_v1.forfeit_after(end_time),
-  }
-  with_outputs([game_output(), bond_output(bond_lovelace, datum)])
-}
-
-test bond_forfeitable_early_is_refused() fail {
-  let datum: Data = DisputeBondV1 {
-    challenged_header_hash: header_hash,
-    fraud_prover,
-    forfeit_after: dispute_bond_v1.forfeit_after(end_time) - 1,
-  }
-  with_outputs([game_output(), bond_output(bond_lovelace, datum)])
-}
-
-test bond_for_another_block_is_refused() fail {
-  let datum: Data = DisputeBondV1 {
-    challenged_header_hash: h28_a,
-    fraud_prover,
-    forfeit_after: dispute_bond_v1.forfeit_after(end_time),
-  }
-  with_outputs([game_output(), bond_output(bond_lovelace, datum)])
-}
-
-/// The honest opening transaction with `extra` spent beside the thread.
-fn with_input_beside_the_thread(extra: Input, outputs: List<Output>) -> Bool {
-  let base = tx_at(
-    upper,
-    list.concat(open_outputs(honest_pending(), upper), outputs),
-  )
-  expect [thread_input] = base.inputs
-  verify(
-    honest_pending(),
-    Transaction { ..base, inputs: [thread_input, extra] },
-  )
-}
-
-test a_wallet_input_beside_the_thread_is_accepted() {
-  with_input_beside_the_thread(
-    Input {
-      output_reference: OutputReference {
-        transaction_id: h32_c,
-        output_index: 1,
-      },
-      output: Output {
-        address: address.from_verification_key(fraud_prover),
-        value: assets.from_lovelace(bond_lovelace),
-        datum: transaction.NoDatum,
-        reference_script: None,
-      },
-    },
-    [],
-  )
-}
-
-/// Two pending threads of one prover on one block cannot open in the same
-/// transaction: each game needs its own bond.
-test one_bond_cannot_open_two_games() fail {
-  let second_thread = thread_name
-  let pending_datum: Data = ct.StepDatum {
-    fraud_prover,
-    data: Some(honest_pending()),
-  }
-  let game_datum: Data = ct.StepDatum {
-    fraud_prover,
-    data: Some(opened(honest_pending(), upper)),
-  }
-  with_input_beside_the_thread(
-    Input {
-      output_reference: OutputReference {
-        transaction_id: h32_c,
-        output_index: 1,
-      },
-      output: Output {
-        address: address.from_script(source_hash),
-        value: assets.from_lovelace(thread_lovelace)
-          |> assets.add(thread_policy, second_thread, 1),
-        datum: InlineDatum(pending_datum),
-        reference_script: None,
-      },
-    },
-    [
-      Output {
-        address: address.from_script(game_hash),
-        value: assets.from_lovelace(thread_lovelace)
-          |> assets.add(thread_policy, second_thread, 1),
-        datum: InlineDatum(game_datum),
-        reference_script: None,
-      },
-    ],
-  )
-}
-
-// ## The open guard: `upper <= block_end + M/2`
+// ## 5. The open guard: `upper <= block_end + M/2`
 
 fn open_deadline() -> Int {
   block_end + ledger_state.block_maturity_duration_v1 / 2
 }
 
 fn opens_at(at: Int) -> Bool {
-  verify(honest_pending(), tx_at(at, open_outputs(honest_pending(), at)))
+  verify(honest_pending(), tx_at(at, open_outputs(at)))
 }
 
 test verify_source_opens_at_the_open_deadline() {
@@ -1095,38 +1047,205 @@ test verify_source_open_guard_reads_the_node_block_time() {
   opens_at(end_time + ledger_state.block_maturity_duration_v1 / 2 + 1)
 }
 
+test verify_source_refuses_a_range_longer_than_l_d() fail {
+  let tx = tx_at(upper, open_outputs(upper))
+  verify(
+    honest_pending(),
+    Transaction {
+      ..tx,
+      validity_range: interval.between(
+        upper - validation_dispute_v1.dispute_max_validity_range_milliseconds - 1,
+        upper,
+      ),
+    },
+  )
+}
+
+// ## 6. The bond
+
+fn case_output() -> Output {
+  case_output_at(upper)
+}
+
+test bond_missing_is_refused() fail {
+  with_outputs([case_output()])
+}
+
+test bond_twice_is_refused() fail {
+  with_outputs(
+    [
+      case_output(),
+      bond_output(bond_lovelace, bond_datum()),
+      bond_output(bond_lovelace, bond_datum()),
+    ],
+  )
+}
+
+test bond_one_lovelace_short_is_refused() fail {
+  with_outputs([case_output(), bond_output(bond_lovelace - 1, bond_datum())])
+}
+
+test bond_above_the_minimum_is_accepted() {
+  with_outputs([case_output(), bond_output(bond_lovelace + 1, bond_datum())])
+}
+
+test bond_for_another_prover_is_refused() fail {
+  with_outputs(
+    [
+      case_output(),
+      bond_output(
+        bond_lovelace,
+        bond_datum_for(header_hash, h28_a, honest_case_id()),
+      ),
+    ],
+  )
+}
+
+test bond_for_another_block_is_refused() fail {
+  with_outputs(
+    [
+      case_output(),
+      bond_output(
+        bond_lovelace,
+        bond_datum_for(h28_a, fraud_prover, honest_case_id()),
+      ),
+    ],
+  )
+}
+
+test bond_for_another_case_is_refused() fail {
+  with_outputs(
+    [
+      case_output(),
+      bond_output(
+        bond_lovelace,
+        bond_datum_for(header_hash, fraud_prover, h32_a),
+      ),
+    ],
+  )
+}
+
+test a_wallet_input_beside_the_opener_is_accepted() {
+  let base = tx_at(upper, open_outputs(upper))
+  verify(
+    honest_pending(),
+    Transaction {
+      ..base,
+      inputs: list.concat(
+        base.inputs,
+        [
+          Input {
+            output_reference: OutputReference {
+              transaction_id: h32_c,
+              output_index: 1,
+            },
+            output: Output {
+              address: address.from_verification_key(fraud_prover),
+              value: assets.from_lovelace(bond_lovelace),
+              datum: transaction.NoDatum,
+              reference_script: None,
+            },
+          },
+        ],
+      ),
+    },
+  )
+}
+
+/// Two openers in one transaction each need their own bond, and the one bond
+/// output there names one case.
+test one_bond_cannot_open_two_cases() fail {
+  let second_ref = OutputReference { transaction_id: h32_c, output_index: 1 }
+  let second_name = #"0607"
+  let second_case_id = case_id_of(honest_pending(), second_ref)
+  let base = tx_at(upper, open_outputs(upper))
+  let tx = Transaction {
+    ..base,
+    inputs: list.concat(
+      base.inputs,
+      [opener_input(second_ref, honest_pending(), second_name)],
+    ),
+    outputs: list.concat(
+      base.outputs,
+      [
+        case_output_with(
+          case_datum(honest_pending(), honest_initial_hash(), upper),
+          assets.from_lovelace(thread_lovelace)
+            |> assets.add(thread_policy, second_name, 1)
+            |> assets.add(case_hash, second_case_id, 1),
+        ),
+      ],
+    ),
+  }
+  source_validator.main.spend(
+    case_hash,
+    bond_hash,
+    bond_lovelace,
+    thread_policy,
+    Some(ct.StepDatum { fraud_prover, data: Some(honest_pending()) }),
+    ct.Continue(
+      source_validator.VerifySource {
+        input_index: 1,
+        output_index: 2,
+        challenger_terminal: claimed_terminal(),
+        challenger_terminal_proof: proof_of(step_count, claimed_terminal_hash()),
+      },
+    ),
+    second_ref,
+    tx,
+  )
+}
+
+// ## The opener's input
+
+test verify_source_at_another_input_index_is_refused() fail {
+  verify_claiming(
+    honest_pending(),
+    claimed_terminal(),
+    proof_of(step_count, claimed_terminal_hash()),
+    Transaction {
+      ..tx_at(upper, open_outputs(upper)),
+      inputs: [
+        Input {
+          output_reference: OutputReference {
+            transaction_id: h32_a,
+            output_index: 0,
+          },
+          output: Output {
+            address: address.from_verification_key(fraud_prover),
+            value: assets.from_lovelace(bond_lovelace),
+            datum: transaction.NoDatum,
+            reference_script: None,
+          },
+        },
+        opener_input(own_out_ref(), honest_pending(), thread_name),
+      ],
+    },
+  )
+}
+
 // ## Census: who funds and who signs VerifySource
 //
-// On its award path VerifySource carries the thread on unchanged, so it is
-// funded like any other move: a lone thread input pays up to the cap and no
-// more, and beside another input the thread keeps its value. Anyone may
-// submit it.
+// Anyone may submit VerifySource. The opener's lovelace moves into the case
+// whole: the transaction fee and the bond come from other inputs.
 
-fn award_shaped(shape: fn(Transaction) -> Transaction) -> Bool {
-  let bogus = validation_trace_v1.ValidationMachineStateV1 {
-    ..honest_initial(),
-    prior_ledger_root: h32_b,
-  }
+test census_verify_source_paying_the_fee_from_the_opener_is_refused() fail {
   verify(
-    pending(honest_source(), honest_operator(), bogus, honest_challenger()),
-    shape(tx_at(upper, award_outputs())),
+    honest_pending(),
+    census.lone_input_paying(census.cap)(tx_at(upper, open_outputs(upper))),
   )
 }
 
-test census_anyone_verifies_the_source_paying_the_cap_from_the_thread() {
-  award_shaped(
-    fn(tx) { census.without_signers(census.lone_input_paying(census.cap)(tx)) },
+test census_verify_source_beside_a_wallet_input_keeps_the_opener_value() {
+  verify(
+    honest_pending(),
+    census.beside_wallet_input(0)(tx_at(upper, open_outputs(upper))),
   )
 }
 
-test census_verify_source_paying_over_the_cap_is_refused() fail {
-  award_shaped(census.lone_input_paying(census.cap + 1))
-}
-
-test census_verify_source_beside_a_wallet_input_keeps_the_thread_value() {
-  award_shaped(census.beside_wallet_input(0))
-}
-
-test census_verify_source_beside_a_wallet_input_taking_thread_value_is_refused() fail {
-  award_shaped(census.beside_wallet_input(1))
+test census_verify_source_beside_a_wallet_input_taking_opener_value_is_refused() fail {
+  verify(
+    honest_pending(),
+    census.beside_wallet_input(1)(tx_at(upper, open_outputs(upper))),
+  )
 }

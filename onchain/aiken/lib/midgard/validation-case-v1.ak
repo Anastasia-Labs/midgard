@@ -21,8 +21,9 @@
 ////
 //// Token custody. The case NFT is minted by VerifySource into the case
 //// output, stays in the case output through every Defend and thread close,
-//// and is burned at the case close. A thread token is minted by Defend into
-//// the thread output and burned by that thread's close.
+//// and is burned at the case close; a convicted close instead locks it for
+//// ever in its own output at the fraud-proof address. A thread token is
+//// minted by Defend into the thread output and burned by that thread's close.
 
 use aiken/cbor
 use aiken/crypto.{VerificationKeyHash, blake2b_256}
@@ -136,7 +137,8 @@ pub type CaseRedeemerV1 {
     outcome: DisputeWinner,
   }
   /// Spends the case and its challenger bond, and burns the case NFT. On a
-  /// conviction the same transaction mints the fraud-proof token.
+  /// conviction the same transaction mints the fraud-proof token, and locks
+  /// the case NFT at the fraud-proof address instead of burning it.
   CaseClose {
     bond_input_index: Int,
     bond_output_index: Int,

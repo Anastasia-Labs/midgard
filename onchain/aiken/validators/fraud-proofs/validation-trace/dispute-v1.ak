@@ -8,9 +8,7 @@ use midgard/fraud_proofs/common.{ProverOnly, cancel, continue_validation_trace}
 use midgard/hub_oracle as hub
 use midgard/state_queue
 use midgard/validation_claim_v1
-use midgard/validation_dispute_v1
 use midgard/validation_game_v1
-use midgard/validation_trace_v1
 
 pub type Datum =
   ct.StepDatum<Data>
@@ -22,7 +20,10 @@ pub type OpenActionV1 {
     hub_ref_input_index: Int,
     state_queue_node_ref_input_index: Int,
     claim: validation_claim_v1.ValidationClaimWitnessV1,
-    challenger_descriptor: validation_trace_v1.ValidationTraceDescriptorV1,
+    /// The challenger's trace root over states `0..step_count`.
+    challenger_root: ByteArray,
+    /// S: the challenger's step count.
+    step_count: Int,
   }
 }
 
@@ -59,7 +60,8 @@ validator main(
         hub_ref_input_index,
         state_queue_node_ref_input_index,
         claim,
-        challenger_descriptor,
+        challenger_root,
+        step_count,
       }) -> {
         let Transaction { reference_inputs, .. } = tx
         let hub.Datum { state_queue: state_queue_policy, .. } = hub.get_datum(
@@ -95,7 +97,8 @@ validator main(
                   challenged_header_hash: header_hash,
                   challenged_header: header,
                   claim,
-                  challenger_descriptor,
+                  challenger_root,
+                  step_count,
                   block_end: node.block_time,
                 }
                 and {
@@ -107,10 +110,6 @@ validator main(
                   validation_claim_v1.committed_claim_structure_is_valid(
                     header,
                     claim,
-                  ),
-                  validation_dispute_v1.descriptors_can_dispute(
-                    claim.descriptor_membership.value,
-                    challenger_descriptor,
                   ),
                   output_state == expected_state,
                 }
