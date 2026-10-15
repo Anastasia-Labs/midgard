@@ -20,6 +20,7 @@ import {
   renderTemplateExports,
   timingConstants,
 } from "./deployment-profile-aiken.mjs";
+import { validateOperatorEconomics } from "./deployment-profile-operator-economics.mjs";
 import {
   canonicalJson,
   profileDigest,
@@ -391,18 +392,7 @@ export const validateProfile = (profile, name) => {
       "DA slash penalty must be smaller than the DA bond, leaving the challenger a reward",
     );
   }
-  const economics = profile.economics;
-  if (
-    BigInt(economics.requiredBondLovelace) !==
-      BigInt(economics.slashingPenaltyLovelace) +
-        BigInt(economics.fraudProverRewardLovelace) ||
-    economics.inactivitySlashingPenaltyLovelace >=
-      economics.slashingPenaltyLovelace
-  ) {
-    throw new Error(
-      "Bond must equal slash plus reward; inactivity penalty must be smaller than slash",
-    );
-  }
+  validateOperatorEconomics(profile.economics);
   // The follower keeps k blocks of history, and the block just above the
   // commit anchor must not be final, so d <= k.
   const securityParameter = profile.l1_finality.security_parameter;
