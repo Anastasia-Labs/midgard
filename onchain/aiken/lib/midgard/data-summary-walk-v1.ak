@@ -216,23 +216,22 @@ fn byte_string(bytes: ByteArray, at: Int, end: Int) -> Option<(ByteArray, Int)> 
   }
 }
 
-/// `4 + integer_memory_size` of an integer whose magnitude (`n` for `n >= 0`,
-/// `-n - 1` for `n < 0`) has the big-endian bytes `magnitude`, without a
-/// leading zero: twice the magnitude takes one more byte exactly when its top
-/// bit is set, and zero takes one byte.
-fn magnitude_memory(magnitude: ByteArray) -> Int {
-  let length = builtin.length_of_bytearray(magnitude)
-  4 + if length == 0 {
-    1
-  } else if builtin.index_bytearray(magnitude, 0) >= 128 {
-    length + 1
+/// `4 +` the word size of a tag 2/3 integer from its magnitude bytes (without
+/// a leading zero): tag 2 holds `|n|` and tag 3 holds `|n| - 1`.
+fn magnitude_memory(tag: Int, magnitude: ByteArray) -> Int {
+  4 + if tag == 2 {
+    cek_data_v1.bytes_memory_size_v1(builtin.length_of_bytearray(magnitude))
   } else {
-    length
+    cek_data_v1.integer_memory_size_v1(
+      builtin.bytearray_to_integer(True, magnitude) + 1,
+    )
   }
 }
 
-fn integer_memory(argument: Int) -> Int {
-  magnitude_memory(bytearray.from_int_big_endian(argument, 0))
+/// `4 +` the word size of a major 0/1 integer with CBOR argument `argument`:
+/// `|n|` is the argument for major 0 and one more for major 1.
+fn integer_memory(major: Int, argument: Int) -> Int {
+  4 + cek_data_v1.integer_memory_size_v1(argument + major)
 }
 
 // ## Node summaries
@@ -293,11 +292,7 @@ fn integer_leaf(cbor: ByteArray, memory: Int) -> DataSummaryV1 {
 
 fn bytes_leaf(content: ByteArray, cbor_length: Int) -> DataSummaryV1 {
   let length = builtin.length_of_bytearray(content)
-  let memory = 4 + if length == 0 {
-    1
-  } else {
-    length
-  }
+  let memory = 4 + cek_data_v1.bytes_memory_size_v1(length)
   data_node(
     [
       builtin.i_data(5),
@@ -612,7 +607,7 @@ fn tagged(
               LargeConstrFields {
                 index_root: cek_data_v1.bounded_blob_root_v1(index_cbor),
                 index_cbor_length: after - next - 1,
-                index_memory: integer_memory(index),
+                index_memory: integer_memory(0, index),
               },
               frame,
               stack,
@@ -636,7 +631,7 @@ fn tagged(
           complete(
             integer_leaf(
               builtin.slice_bytearray(at, after - at, bytes),
-              magnitude_memory(magnitude),
+              magnitude_memory(tag, magnitude),
             ),
             after,
             frame,
@@ -686,7 +681,7 @@ fn read(
             complete(
               integer_leaf(
                 builtin.slice_bytearray(at, next - at, bytes),
-                integer_memory(value),
+                integer_memory(major, value),
               ),
               next,
               frame,

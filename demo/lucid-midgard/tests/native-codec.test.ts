@@ -53,12 +53,12 @@ describe("Midgard native v1 codec", () => {
     );
 
     expect(ScriptLanguageTags.PlutusV3).toBe(2);
-    expect(PLUTUS_V3_CANONICAL_COST_MODEL_VIEW).toHaveLength(297);
+    expect(PLUTUS_V3_CANONICAL_COST_MODEL_VIEW).toHaveLength(350);
     expect(
       computeScriptIntegrityHashForLanguages(redeemerTxWitsHash, [
         "PlutusV3",
       ]).toString("hex"),
-    ).toBe("e2ebd40127c1f2fc48fc46388895edf309bdda534dfc1b1a1c0fceb94a43c60e");
+    ).toBe("2c8dd895d15d14f0197d323f15b153811874ca2d6bc8fcda1fb84e1bfed925f3");
   });
 
   it("round trips canonical transaction CBOR into a materialized full transaction", () => {

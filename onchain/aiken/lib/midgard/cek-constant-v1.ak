@@ -269,31 +269,18 @@ pub fn constant_payload_v1(witness: ConstantWitnessV1) -> Data {
   payload
 }
 
-fn unsigned_byte_size_v1(value: Int) -> Int {
-  if value < 256 {
-    1
-  } else {
-    1 + unsigned_byte_size_v1(value / 256)
-  }
-}
-
 pub fn integer_memory_size_v1(value: Int) -> Int {
-  unsigned_byte_size_v1(
-    if value < 0 {
-      ( -value - 1 ) * 2
-    } else {
-      value * 2
-    },
-  )
+  cek_data_v1.integer_memory_size_v1(value)
 }
 
 pub fn bytearray_memory_size_v1(value: ByteArray) -> Int {
-  let length = bytearray.length(value)
-  if length == 0 {
-    1
-  } else {
-    length
-  }
+  cek_data_v1.bytes_memory_size_v1(bytearray.length(value))
+}
+
+/// Cardano's memory size of a string under the PV 11 builtin semantics: its
+/// UTF-8 bytes in four-byte units, rounded down, so the empty string is zero.
+pub fn string_memory_size_v1(utf8: ByteArray) -> Int {
+  bytearray.length(utf8) / 4
 }
 
 fn data_items_memory_size_v1(items: List<Data>) -> Int {
@@ -314,8 +301,8 @@ fn data_pairs_memory_size_v1(items: List<Pair<Data, Data>>) -> Int {
   }
 }
 
-/// Plutus Data charges four words per node, plus the signed integer or
-/// byte-string size for leaf payloads.
+/// Plutus Data charges four words per node, plus the integer or byte-string
+/// word size for leaf payloads.
 pub fn data_memory_size_v1(value: Data) -> Int {
   builtin.choose_data(
     value,
@@ -345,7 +332,7 @@ fn semantic_memory_size_v1(constant_type: ConstantTypeV1, payload: Data) -> Int 
   when constant_type is {
     IntegerConstant -> integer_memory_size_v1(builtin.un_i_data(payload))
     ByteStringConstant -> bytearray_memory_size_v1(builtin.un_b_data(payload))
-    StringConstant -> bytearray_memory_size_v1(builtin.un_b_data(payload))
+    StringConstant -> string_memory_size_v1(builtin.un_b_data(payload))
     UnitConstant -> 1
     BooleanConstant -> 1
     ListConstant { element } ->
@@ -360,9 +347,9 @@ fn semantic_memory_size_v1(constant_type: ConstantTypeV1, payload: Data) -> Int 
       )
     }
     DataConstant -> data_memory_size_v1(payload)
-    BlsG1Constant -> 48
-    BlsG2Constant -> 96
-    BlsMillerLoopResultConstant -> 192
+    BlsG1Constant -> 18
+    BlsG2Constant -> 36
+    BlsMillerLoopResultConstant -> 72
   }
 }
 

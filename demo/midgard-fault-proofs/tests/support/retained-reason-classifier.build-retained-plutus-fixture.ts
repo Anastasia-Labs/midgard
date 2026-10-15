@@ -242,11 +242,15 @@ const buildRetainedPlutusFixture = async (
   return { block, predecessor, replay, orderKey, transaction };
 };
 
-/** Existing UPLC 1.1.0 lambda(var0) from validation-machine-event-replay.test.ts. */
+/**
+ * The accepting UPLC 1.1.0 program `(lam ctx [(lam _ ()) ctx])` from
+ * validation-machine-event-replay.test.ts. A Plutus V3 script must return
+ * Unit, so the bare identity `(lam ctx ctx)` is not accepted.
+ */
 export const buildRetainedPlutusIdentityFixture = (
   claim: Parameters<typeof placeholderValidationTraceEntries>[0]["claim"],
   options: RetainedPlutusFixtureOptions = {},
-) => buildRetainedPlutusFixture(claim, "010100200101", options);
+) => buildRetainedPlutusFixture(claim, "0101002324980041", options);
 
 /** Exact existing bounded CEK unbound-variable refusal from cek-executor.test.ts. */
 export const buildRetainedPlutusUnboundVariableFixture = (

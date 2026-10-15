@@ -2542,7 +2542,30 @@ test cek_spend_finalize_authenticates_descriptor_datum_summary() {
 }
 
 test cek_context_seed_fits_one_step() {
-  cek_context_seed_admits(None)
+  cek_context_seed_admits(
+    None,
+    cek_machine_v1.startup_cpu,
+    cek_machine_v1.startup_memory,
+  )
+}
+
+/// The seed starts the execution and spends Cardano's startup cost: its initial
+/// state carries 100 cpu and 100 memory, and the execution's running budget
+/// grows by the same. A seed that spends one unit less of either is refused.
+test cek_context_seed_refuses_less_than_the_startup_cost() {
+  and {
+    !cek_context_seed_admits(
+      None,
+      cek_machine_v1.startup_cpu - 1,
+      cek_machine_v1.startup_memory,
+    ),
+    !cek_context_seed_admits(
+      None,
+      cek_machine_v1.startup_cpu,
+      cek_machine_v1.startup_memory - 1,
+    ),
+    !cek_context_seed_admits(None, 0, 0),
+  }
 }
 
 /// The context-to-core handoff writes the authenticated purpose key of the
@@ -2550,15 +2573,33 @@ test cek_context_seed_fits_one_step() {
 /// `-1, -1` sentinel, is refused.
 test cek_context_seed_refuses_a_purpose_key_mismatch() {
   and {
-    !cek_context_seed_admits(Some(Pair(1, 1))),
-    !cek_context_seed_admits(Some(Pair(-1, -1))),
-    !cek_context_seed_admits(Some(Pair(0, 0))),
+    !cek_context_seed_admits(
+      Some(Pair(1, 1)),
+      cek_machine_v1.startup_cpu,
+      cek_machine_v1.startup_memory,
+    ),
+    !cek_context_seed_admits(
+      Some(Pair(-1, -1)),
+      cek_machine_v1.startup_cpu,
+      cek_machine_v1.startup_memory,
+    ),
+    !cek_context_seed_admits(
+      Some(Pair(0, 0)),
+      cek_machine_v1.startup_cpu,
+      cek_machine_v1.startup_memory,
+    ),
   }
 }
 
 /// The seed step of a mint execution at purpose `(1, 0)`. `written_key`
-/// overrides the purpose key the successor's CEK control carries.
-fn cek_context_seed_admits(written_key: Option<Pair<Int, Int>>) -> Bool {
+/// overrides the purpose key the successor's CEK control carries; the seed
+/// spends `startup_cpu` and `startup_memory` in both the initial machine state
+/// and the execution's running budget.
+fn cek_context_seed_admits(
+  written_key: Option<Pair<Int, Int>>,
+  startup_cpu: Int,
+  startup_memory: Int,
+) -> Bool {
   let tx = empty_v1_transaction()
   let native_control = cek_context_native_control_fixture(tx)
   let empty_items = cek_data_v1.empty_data_list_summary_v1()
@@ -2637,8 +2678,8 @@ fn cek_context_seed_admits(written_key: Option<Pair<Int, Int>>) -> Bool {
     environment_root: cek_proof_v1.empty_environment_root_v1,
     continuation_root: cek_proof_v1.empty_continuation_root_v1,
     auxiliary: 0,
-    cpu: 0,
-    memory: 0,
+    cpu: startup_cpu,
+    memory: startup_memory,
   }
   let Pair(written_kind, written_index) = when written_key is {
     Some(key) -> key
@@ -2660,6 +2701,8 @@ fn cek_context_seed_admits(written_key: Option<Pair<Int, Int>>) -> Bool {
   let post = validation_trace_v1.ValidationMachineStateV1 {
     ..pre,
     program_counter: 56,
+    execution_cpu: pre.execution_cpu + startup_cpu,
+    execution_memory: pre.execution_memory + startup_memory,
     work_root: validation_trace_v1.hash_work_witness(
       validation_trace_v1.Cek,
       56,

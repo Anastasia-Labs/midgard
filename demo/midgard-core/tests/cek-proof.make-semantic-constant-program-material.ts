@@ -19,6 +19,7 @@ import {
   type MidgardCekDataNode,
 } from "../src/cek-semantic.js";
 import type { Hash32 } from "../src/codec/hash.js";
+import { byteStringWords } from "./cek-proof.make-nested-list-constant-program-material.js";
 import {
   encodeCanonicalSemanticBytes,
   encodeFixtureHeader,
@@ -132,7 +133,7 @@ export const makeSemanticConstantProgramMaterial = (
         bytesRoot: addBlob(bytes),
         bytesLength: BigInt(bytes.length),
         cborLength: midgardCekDataBytesCborLength(BigInt(bytes.length)),
-        memory: 4n + BigInt(Math.max(1, bytes.length)),
+        memory: 4n + byteStringWords(bytes.length),
       };
     } else if (Array.isArray(value)) {
       const items = commitList(value);

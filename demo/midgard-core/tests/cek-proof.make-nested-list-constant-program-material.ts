@@ -20,6 +20,10 @@ import type { Hash32 } from "../src/codec/hash.js";
 
 export const hash = (fill: number): Buffer => Buffer.alloc(32, fill);
 
+// Cardano sizes a byte string in 8-byte words, with one word when it is empty.
+export const byteStringWords = (length: number): bigint =>
+  length === 0 ? 1n : BigInt(Math.floor((length - 1) / 8) + 1);
+
 export const hex = (bytes: Uint8Array): string =>
   Buffer.from(bytes).toString("hex");
 
@@ -112,7 +116,7 @@ export const makeBytesConstantProgramMaterial = (
     bytesRoot: rawBlob.root,
     bytesLength: BigInt(rawBytes.length),
     cborLength: BigInt(payloadCbor.length),
-    memory: 4n + BigInt(rawBytes.length),
+    memory: 4n + byteStringWords(rawBytes.length),
   } as const;
   const semanticRoot = hashMidgardCekDataNode(semanticNode);
   const valueNode = {
@@ -121,7 +125,7 @@ export const makeBytesConstantProgramMaterial = (
     payloadRoot: semanticRoot,
     payloadLength: BigInt(payloadCbor.length),
     semanticRoot,
-    memory: BigInt(Math.max(1, rawBytes.length)),
+    memory: byteStringWords(rawBytes.length),
   } as const;
   const valueRoot = hashMidgardCekValueNode(valueNode);
   const termNode = { kind: "constant", value: valueRoot } as const;

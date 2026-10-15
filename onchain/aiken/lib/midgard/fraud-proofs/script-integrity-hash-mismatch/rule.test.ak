@@ -67,15 +67,15 @@ test folds_empty_language_view_vector() {
 }
 
 test folds_plutus_v3_language_view_vector() {
-  decision(0, 1, h32).expected_hash == #"d7239eb1bd8b7376dedfbf7e6201815b225c023d11c975cd99d25d5236b199a1"
+  decision(0, 1, h32).expected_hash == #"b37aff1034628d20a78418d2c2cf20796ac08c83467b6f8558e6cea542de4c26"
 }
 
 test folds_midgard_v1_language_view_vector() {
-  decision(0, 2, h32).expected_hash == #"71201d25ea11e4104eda108782a7d67b37b4ae97df6dc3258b06d9c98e58bbcb"
+  decision(0, 2, h32).expected_hash == #"74c606847a40bed5f147cd6cca208fa1b0db6a130f7d86d7c478fd5838d6d878"
 }
 
 test folds_dual_language_view_vector() {
-  decision(0, 3, h32).expected_hash == #"6d49b4f24c60bec1cb34a2538278252059ec0601b7f675ef73fe2b48e24317d8"
+  decision(0, 3, h32).expected_hash == #"ceab70e09654e1f35ddf1566b15861055566fda429e056107de070c58c8b3991"
 }
 
 test mismatch_convicts_wrongful_acceptance() {
@@ -87,7 +87,7 @@ test equality_contradicts_wrongful_rejection() {
     decision(
       1,
       1,
-      #"d7239eb1bd8b7376dedfbf7e6201815b225c023d11c975cd99d25d5236b199a1",
+      #"b37aff1034628d20a78418d2c2cf20796ac08c83467b6f8558e6cea542de4c26",
     ),
   )
 }
@@ -97,7 +97,7 @@ test equality_refuses_wrongful_acceptance() fail {
     decision(
       0,
       2,
-      #"71201d25ea11e4104eda108782a7d67b37b4ae97df6dc3258b06d9c98e58bbcb",
+      #"74c606847a40bed5f147cd6cca208fa1b0db6a130f7d86d7c478fd5838d6d878",
     ),
   )
 }

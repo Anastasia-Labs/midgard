@@ -183,7 +183,10 @@ const firstRedeemerPurposeIs = (tag: number): Buffer =>
 const firstRedeemerIsMint = firstRedeemerPurposeIs(0);
 const firstRedeemerIsSpend = firstRedeemerPurposeIs(1);
 
-const identity = flat(new Lambda(new UPLCVar(0)));
+/** A PlutusV3 script that ignores its context and halts with Unit. */
+const alwaysUnit = flat(
+  new Lambda(new Application(new Lambda(UPLCConst.unit), new UPLCVar(0))),
+);
 
 const scriptOutput = (scriptHash: string, datumHex?: string): Buffer =>
   encodeMidgardTxOutput({
@@ -422,19 +425,19 @@ describe("script context map order", () => {
   it.each([
     {
       name: "an unsorted spent datum",
-      scenario: { program: identity, spentDatum: UNSORTED_MAP },
+      scenario: { program: alwaysUnit, spentDatum: UNSORTED_MAP },
     },
     {
       name: "duplicate keys in a spent datum",
-      scenario: { program: identity, spentDatum: DUPLICATE_KEY_MAP },
+      scenario: { program: alwaysUnit, spentDatum: DUPLICATE_KEY_MAP },
     },
     {
       name: "an unsorted spend redeemer",
-      scenario: { program: identity, spendRedeemer: UNSORTED_MAP },
+      scenario: { program: alwaysUnit, spendRedeemer: UNSORTED_MAP },
     },
     {
       name: "duplicate keys in a spend redeemer",
-      scenario: { program: identity, spendRedeemer: DUPLICATE_KEY_MAP },
+      scenario: { program: alwaysUnit, spendRedeemer: DUPLICATE_KEY_MAP },
     },
   ])(
     "proves the verdict over $name as the node evaluated it",
@@ -485,7 +488,7 @@ describe("script context map order", () => {
         await expect(proofVerdict(scenario, expected)).resolves.toBe(expected);
       }
       await expect(
-        proofVerdict({ program: identity, mint }, "accepted"),
+        proofVerdict({ program: alwaysUnit, mint }, "accepted"),
       ).resolves.toBe("accepted");
     }
   }, 60_000);

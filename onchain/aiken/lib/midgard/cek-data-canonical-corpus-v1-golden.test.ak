@@ -184,16 +184,16 @@ test corpus_int_256() {
   let source = #"190100"
   let expected = data_traverse_driver.DriveAccepted {
     summary: cek_data_v1.DataSummaryV1 {
-      root: #"39acc02cb0d68f825c3a525dab652bcc06cc5fdb70099d98411c2c792384d807",
+      root: #"ce9d5617fa206a1b62cf964640061866834d25168131ba52ad9509c13fd57e5a",
       cbor_length: 3,
-      memory: 6,
+      memory: 5,
     },
   }
   let walked = data_summary_walk_v1.Summarised {
     summary: cek_data_v1.DataSummaryV1 {
-      root: #"39acc02cb0d68f825c3a525dab652bcc06cc5fdb70099d98411c2c792384d807",
+      root: #"ce9d5617fa206a1b62cf964640061866834d25168131ba52ad9509c13fd57e5a",
       cbor_length: 3,
-      memory: 6,
+      memory: 5,
     },
   }
   and {
@@ -241,16 +241,16 @@ test corpus_int_2_pow_32() {
   let source = #"1b0000000100000000"
   let expected = data_traverse_driver.DriveAccepted {
     summary: cek_data_v1.DataSummaryV1 {
-      root: #"caaad13a70a0c6e5ed90e0298a531876338742c03545918e057cf6cea9e1d7fb",
+      root: #"2915584917f470c7d92ba9099a542229bfa095ddeeeb39da5572ec96af2f9988",
       cbor_length: 9,
-      memory: 9,
+      memory: 5,
     },
   }
   let walked = data_summary_walk_v1.Summarised {
     summary: cek_data_v1.DataSummaryV1 {
-      root: #"caaad13a70a0c6e5ed90e0298a531876338742c03545918e057cf6cea9e1d7fb",
+      root: #"2915584917f470c7d92ba9099a542229bfa095ddeeeb39da5572ec96af2f9988",
       cbor_length: 9,
-      memory: 9,
+      memory: 5,
     },
   }
   and {
@@ -298,16 +298,16 @@ test corpus_int_2_pow_64_minus_1() {
   let source = #"1bffffffffffffffff"
   let expected = data_traverse_driver.DriveAccepted {
     summary: cek_data_v1.DataSummaryV1 {
-      root: #"ee634083f127d4d1e32ee7c4f13c98207b757566577621cc789d08a22d2323f1",
+      root: #"40f29979672c876f71d80a474f9143b15057551219c9f582113c1ee739414860",
       cbor_length: 9,
-      memory: 13,
+      memory: 5,
     },
   }
   let walked = data_summary_walk_v1.Summarised {
     summary: cek_data_v1.DataSummaryV1 {
-      root: #"ee634083f127d4d1e32ee7c4f13c98207b757566577621cc789d08a22d2323f1",
+      root: #"40f29979672c876f71d80a474f9143b15057551219c9f582113c1ee739414860",
       cbor_length: 9,
-      memory: 13,
+      memory: 5,
     },
   }
   and {
@@ -412,16 +412,16 @@ test corpus_int_minus_2_pow_64() {
   let source = #"3bffffffffffffffff"
   let expected = data_traverse_driver.DriveAccepted {
     summary: cek_data_v1.DataSummaryV1 {
-      root: #"b00e3755734bee81984165b45b222a64eb921353ba06f94f27ec6bd6b153be3d",
+      root: #"7caff5a7bfd69ce829f43423714295c30717997a87c2a32c7d9294d8661ef528",
       cbor_length: 9,
-      memory: 13,
+      memory: 6,
     },
   }
   let walked = data_summary_walk_v1.Summarised {
     summary: cek_data_v1.DataSummaryV1 {
-      root: #"b00e3755734bee81984165b45b222a64eb921353ba06f94f27ec6bd6b153be3d",
+      root: #"7caff5a7bfd69ce829f43423714295c30717997a87c2a32c7d9294d8661ef528",
       cbor_length: 9,
-      memory: 13,
+      memory: 6,
     },
   }
   and {
@@ -469,16 +469,16 @@ test corpus_bignum_2_pow_64() {
   let source = #"c249010000000000000000"
   let expected = data_traverse_driver.DriveAccepted {
     summary: cek_data_v1.DataSummaryV1 {
-      root: #"2224bfd7ec7c115c2fd76a5957d6d99eba13948fd3bc89e16aed7a7d1e0610ad",
+      root: #"6e65f67a86abb1c9ed214756c902d6d1aee44a6196b36cdc311390875a97b94f",
       cbor_length: 11,
-      memory: 13,
+      memory: 6,
     },
   }
   let walked = data_summary_walk_v1.Summarised {
     summary: cek_data_v1.DataSummaryV1 {
-      root: #"2224bfd7ec7c115c2fd76a5957d6d99eba13948fd3bc89e16aed7a7d1e0610ad",
+      root: #"6e65f67a86abb1c9ed214756c902d6d1aee44a6196b36cdc311390875a97b94f",
       cbor_length: 11,
-      memory: 13,
+      memory: 6,
     },
   }
   and {
@@ -526,16 +526,16 @@ test corpus_bignum_minus_2_pow_64_minus_1() {
   let source = #"c349010000000000000000"
   let expected = data_traverse_driver.DriveAccepted {
     summary: cek_data_v1.DataSummaryV1 {
-      root: #"720c28eb8291c0e25d860108458a13027f509d93b9c61296532fdb230063c691",
+      root: #"7dc0c3aab64ed83c197f2d0030ae54549e9cdf6b0077f3919819a9bf4e4516ea",
       cbor_length: 11,
-      memory: 13,
+      memory: 6,
     },
   }
   let walked = data_summary_walk_v1.Summarised {
     summary: cek_data_v1.DataSummaryV1 {
-      root: #"720c28eb8291c0e25d860108458a13027f509d93b9c61296532fdb230063c691",
+      root: #"7dc0c3aab64ed83c197f2d0030ae54549e9cdf6b0077f3919819a9bf4e4516ea",
       cbor_length: 11,
-      memory: 13,
+      memory: 6,
     },
   }
   and {
@@ -583,16 +583,16 @@ test corpus_bignum_64_byte_magnitude() {
   let source = #"c2584001000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
   let expected = data_traverse_driver.DriveAccepted {
     summary: cek_data_v1.DataSummaryV1 {
-      root: #"a7456893ae91a315f81b31fa59cac06c361a46b16db1a284afc051c6437d856f",
+      root: #"fe8a0011b88bb497d45045766109357bd224c15532923ab0ea4954448f30f092",
       cbor_length: 67,
-      memory: 68,
+      memory: 12,
     },
   }
   let walked = data_summary_walk_v1.Summarised {
     summary: cek_data_v1.DataSummaryV1 {
-      root: #"a7456893ae91a315f81b31fa59cac06c361a46b16db1a284afc051c6437d856f",
+      root: #"fe8a0011b88bb497d45045766109357bd224c15532923ab0ea4954448f30f092",
       cbor_length: 67,
-      memory: 68,
+      memory: 12,
     },
   }
   and {
@@ -640,16 +640,16 @@ test corpus_bignum_65_byte_magnitude_chunked() {
   let source = #"c25f5840010000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000004100ff"
   let expected = data_traverse_driver.DriveAccepted {
     summary: cek_data_v1.DataSummaryV1 {
-      root: #"2245ce3c839885a8e667481cec15cbe0e91df8a04f816859ae3bb38a8217b6aa",
+      root: #"cab3184095fef7e4d8b95617d827cbda628b6d97fe3d6c22a1bc0df010769667",
       cbor_length: 71,
-      memory: 69,
+      memory: 13,
     },
   }
   let walked = data_summary_walk_v1.Summarised {
     summary: cek_data_v1.DataSummaryV1 {
-      root: #"2245ce3c839885a8e667481cec15cbe0e91df8a04f816859ae3bb38a8217b6aa",
+      root: #"cab3184095fef7e4d8b95617d827cbda628b6d97fe3d6c22a1bc0df010769667",
       cbor_length: 71,
-      memory: 69,
+      memory: 13,
     },
   }
   and {
@@ -697,16 +697,16 @@ test corpus_bignum_negative_129_byte_magnitude_chunked() {
   let source = #"c35f5840010000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000005840000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000004100ff"
   let expected = data_traverse_driver.DriveAccepted {
     summary: cek_data_v1.DataSummaryV1 {
-      root: #"df432f362221257fd23edd5cb144aa5ca56853f5e09565a8c2688a23a54118d1",
+      root: #"ffe948d7a8aa4def42f6d919b39ae52257be3431d01b5b26708612535df80341",
       cbor_length: 137,
-      memory: 133,
+      memory: 21,
     },
   }
   let walked = data_summary_walk_v1.Summarised {
     summary: cek_data_v1.DataSummaryV1 {
-      root: #"df432f362221257fd23edd5cb144aa5ca56853f5e09565a8c2688a23a54118d1",
+      root: #"ffe948d7a8aa4def42f6d919b39ae52257be3431d01b5b26708612535df80341",
       cbor_length: 137,
-      memory: 133,
+      memory: 21,
     },
   }
   and {
@@ -1588,16 +1588,16 @@ test corpus_bytes_32() {
   let source = #"5820030a11181f262d343b424950575e656c737a81888f969da4abb2b9c0c7ced5dc"
   let expected = data_traverse_driver.DriveAccepted {
     summary: cek_data_v1.DataSummaryV1 {
-      root: #"32b5965233220be47fc6dd81a2ae5572a84b876cb2722c521849fe40ab8e4c0c",
+      root: #"9bb1d84d3d88ee4e1b17202f117e1fd2b9848518cbf08878c97411b9aeaddb63",
       cbor_length: 34,
-      memory: 36,
+      memory: 8,
     },
   }
   let walked = data_summary_walk_v1.Summarised {
     summary: cek_data_v1.DataSummaryV1 {
-      root: #"32b5965233220be47fc6dd81a2ae5572a84b876cb2722c521849fe40ab8e4c0c",
+      root: #"9bb1d84d3d88ee4e1b17202f117e1fd2b9848518cbf08878c97411b9aeaddb63",
       cbor_length: 34,
-      memory: 36,
+      memory: 8,
     },
   }
   and {
@@ -1645,16 +1645,16 @@ test corpus_bytes_64() {
   let source = #"5840030a11181f262d343b424950575e656c737a81888f969da4abb2b9c0c7ced5dce3eaf1f8ff060d141b222930373e454c535a61686f767d848b9299a0a7aeb5bc"
   let expected = data_traverse_driver.DriveAccepted {
     summary: cek_data_v1.DataSummaryV1 {
-      root: #"4fe7107a8bcc30e8103e4c09a1df1d4df13b263176f2a292ba7f67357fbd407a",
+      root: #"43b01f29269a21524b765e6c49c11885d5a8dbbbff11173878627cd4d76a0afd",
       cbor_length: 66,
-      memory: 68,
+      memory: 12,
     },
   }
   let walked = data_summary_walk_v1.Summarised {
     summary: cek_data_v1.DataSummaryV1 {
-      root: #"4fe7107a8bcc30e8103e4c09a1df1d4df13b263176f2a292ba7f67357fbd407a",
+      root: #"43b01f29269a21524b765e6c49c11885d5a8dbbbff11173878627cd4d76a0afd",
       cbor_length: 66,
-      memory: 68,
+      memory: 12,
     },
   }
   and {
@@ -1702,16 +1702,16 @@ test corpus_bytes_65_chunked() {
   let source = #"5f5840030a11181f262d343b424950575e656c737a81888f969da4abb2b9c0c7ced5dce3eaf1f8ff060d141b222930373e454c535a61686f767d848b9299a0a7aeb5bc4103ff"
   let expected = data_traverse_driver.DriveAccepted {
     summary: cek_data_v1.DataSummaryV1 {
-      root: #"ab4f11d4dbc509016d2050d320d2782553845a24cc30a9041ac58c8c03326829",
+      root: #"b3a09200e99d92de30303d7f4f84ae1a1d7b1961001924c4d30cff83ebecabda",
       cbor_length: 70,
-      memory: 69,
+      memory: 13,
     },
   }
   let walked = data_summary_walk_v1.Summarised {
     summary: cek_data_v1.DataSummaryV1 {
-      root: #"ab4f11d4dbc509016d2050d320d2782553845a24cc30a9041ac58c8c03326829",
+      root: #"b3a09200e99d92de30303d7f4f84ae1a1d7b1961001924c4d30cff83ebecabda",
       cbor_length: 70,
-      memory: 69,
+      memory: 13,
     },
   }
   and {
@@ -1759,16 +1759,16 @@ test corpus_bytes_128_chunked() {
   let source = #"5f5840030a11181f262d343b424950575e656c737a81888f969da4abb2b9c0c7ced5dce3eaf1f8ff060d141b222930373e454c535a61686f767d848b9299a0a7aeb5bc5840030a11181f262d343b424950575e656c737a81888f969da4abb2b9c0c7ced5dce3eaf1f8ff060d141b222930373e454c535a61686f767d848b9299a0a7aeb5bcff"
   let expected = data_traverse_driver.DriveAccepted {
     summary: cek_data_v1.DataSummaryV1 {
-      root: #"f7f45b1deca52121689584670d43ce97a31e1600db308ff0c8f020825ace84b4",
+      root: #"99822c3f49554e4c611db6ed726ce634ca84dec4de79d07e6fea37b5d36d0a92",
       cbor_length: 134,
-      memory: 132,
+      memory: 20,
     },
   }
   let walked = data_summary_walk_v1.Summarised {
     summary: cek_data_v1.DataSummaryV1 {
-      root: #"f7f45b1deca52121689584670d43ce97a31e1600db308ff0c8f020825ace84b4",
+      root: #"99822c3f49554e4c611db6ed726ce634ca84dec4de79d07e6fea37b5d36d0a92",
       cbor_length: 134,
-      memory: 132,
+      memory: 20,
     },
   }
   and {
@@ -1816,16 +1816,16 @@ test corpus_bytes_129_chunked() {
   let source = #"5f5840030a11181f262d343b424950575e656c737a81888f969da4abb2b9c0c7ced5dce3eaf1f8ff060d141b222930373e454c535a61686f767d848b9299a0a7aeb5bc5840030a11181f262d343b424950575e656c737a81888f969da4abb2b9c0c7ced5dce3eaf1f8ff060d141b222930373e454c535a61686f767d848b9299a0a7aeb5bc4103ff"
   let expected = data_traverse_driver.DriveAccepted {
     summary: cek_data_v1.DataSummaryV1 {
-      root: #"4a49a1a5f0bfc1e06e6de328dab55fb4091a793ece2eb54f7410dc9b4c1a6503",
+      root: #"4798d0733b97ca43a66b19da721ef14f06ce9dd4c1ee4bccf57041870be8f916",
       cbor_length: 136,
-      memory: 133,
+      memory: 21,
     },
   }
   let walked = data_summary_walk_v1.Summarised {
     summary: cek_data_v1.DataSummaryV1 {
-      root: #"4a49a1a5f0bfc1e06e6de328dab55fb4091a793ece2eb54f7410dc9b4c1a6503",
+      root: #"4798d0733b97ca43a66b19da721ef14f06ce9dd4c1ee4bccf57041870be8f916",
       cbor_length: 136,
-      memory: 133,
+      memory: 21,
     },
   }
   and {
@@ -2866,16 +2866,16 @@ test corpus_list_of_bytes() {
   let source = #"9f5f5840030a11181f262d343b424950575e656c737a81888f969da4abb2b9c0c7ced5dce3eaf1f8ff060d141b222930373e454c535a61686f767d848b9299a0a7aeb5bc42030aff40ff"
   let expected = data_traverse_driver.DriveAccepted {
     summary: cek_data_v1.DataSummaryV1 {
-      root: #"34d4e75d78226edf5aad789d69fe9890487dd75d69386645ec2aa2e9f84d56e5",
+      root: #"12096601b3626037616820d97fa37c685b79ebd73478ce178528df654ce4d123",
       cbor_length: 74,
-      memory: 79,
+      memory: 22,
     },
   }
   let walked = data_summary_walk_v1.Summarised {
     summary: cek_data_v1.DataSummaryV1 {
-      root: #"34d4e75d78226edf5aad789d69fe9890487dd75d69386645ec2aa2e9f84d56e5",
+      root: #"12096601b3626037616820d97fa37c685b79ebd73478ce178528df654ce4d123",
       cbor_length: 74,
-      memory: 79,
+      memory: 22,
     },
   }
   and {
@@ -3466,16 +3466,16 @@ test corpus_map_nested() {
   let source = #"a143030a11a1009f01ff"
   let expected = data_traverse_driver.DriveAccepted {
     summary: cek_data_v1.DataSummaryV1 {
-      root: #"bd8a574f5d1f0ce7f518c53ca9c34f98b6cc9157407f8994fe744d6d44fa41bc",
+      root: #"8b159f6119a4fcdc07358ed688c83089f6ef69c7809ad3fba2c8be8e29e4a1c2",
       cbor_length: 10,
-      memory: 29,
+      memory: 27,
     },
   }
   let walked = data_summary_walk_v1.Summarised {
     summary: cek_data_v1.DataSummaryV1 {
-      root: #"bd8a574f5d1f0ce7f518c53ca9c34f98b6cc9157407f8994fe744d6d44fa41bc",
+      root: #"8b159f6119a4fcdc07358ed688c83089f6ef69c7809ad3fba2c8be8e29e4a1c2",
       cbor_length: 10,
-      memory: 29,
+      memory: 27,
     },
   }
   and {
@@ -4585,14 +4585,14 @@ test corpus_large_constr_128_empty() {
   let source = #"d86682188080"
   let expected = data_traverse_driver.DriveAccepted {
     summary: cek_data_v1.DataSummaryV1 {
-      root: #"f5c98a10b0ff538b58924f1f150283778dfacc1526ca30741388a3fdf40aeac9",
+      root: #"9a98a661fd2b732fbe500f2d84e4cbd7a7236d02853bb1b39336aade382c48cf",
       cbor_length: 6,
       memory: 4,
     },
   }
   let walked = data_summary_walk_v1.Summarised {
     summary: cek_data_v1.DataSummaryV1 {
-      root: #"f5c98a10b0ff538b58924f1f150283778dfacc1526ca30741388a3fdf40aeac9",
+      root: #"9a98a661fd2b732fbe500f2d84e4cbd7a7236d02853bb1b39336aade382c48cf",
       cbor_length: 6,
       memory: 4,
     },
@@ -4642,14 +4642,14 @@ test corpus_large_constr_128_one() {
   let source = #"d8668218809f00ff"
   let expected = data_traverse_driver.DriveAccepted {
     summary: cek_data_v1.DataSummaryV1 {
-      root: #"681281f22e6b17b52a18651737c30104cccc4e1bb98f91f8db91bcd0450712bc",
+      root: #"48b50f63474e82a09af638837fd23ddec2164e2773b5ffb64a6332eb9e09dfe4",
       cbor_length: 8,
       memory: 9,
     },
   }
   let walked = data_summary_walk_v1.Summarised {
     summary: cek_data_v1.DataSummaryV1 {
-      root: #"681281f22e6b17b52a18651737c30104cccc4e1bb98f91f8db91bcd0450712bc",
+      root: #"48b50f63474e82a09af638837fd23ddec2164e2773b5ffb64a6332eb9e09dfe4",
       cbor_length: 8,
       memory: 9,
     },
@@ -4699,14 +4699,14 @@ test corpus_large_constr_256() {
   let source = #"d8668219010080"
   let expected = data_traverse_driver.DriveAccepted {
     summary: cek_data_v1.DataSummaryV1 {
-      root: #"f6a5daeb9c2286fa599ed4ec9fa964cea78f0edff978dc038539839903aa93d1",
+      root: #"569f5b332edb77a44995f65329779f271da0833d3c6d02886d8787205338a90e",
       cbor_length: 7,
       memory: 4,
     },
   }
   let walked = data_summary_walk_v1.Summarised {
     summary: cek_data_v1.DataSummaryV1 {
-      root: #"f6a5daeb9c2286fa599ed4ec9fa964cea78f0edff978dc038539839903aa93d1",
+      root: #"569f5b332edb77a44995f65329779f271da0833d3c6d02886d8787205338a90e",
       cbor_length: 7,
       memory: 4,
     },
@@ -4756,14 +4756,14 @@ test corpus_large_constr_max_index() {
   let source = #"d866821bffffffffffffffff80"
   let expected = data_traverse_driver.DriveAccepted {
     summary: cek_data_v1.DataSummaryV1 {
-      root: #"2adf0f09b3a40180da3394283faeac95e522ef821bbaef663752a7b03d79888c",
+      root: #"87448060c181e1447369a61c5649f3fdee222f08504f87948271e2fb1d1f67c1",
       cbor_length: 13,
       memory: 4,
     },
   }
   let walked = data_summary_walk_v1.Summarised {
     summary: cek_data_v1.DataSummaryV1 {
-      root: #"2adf0f09b3a40180da3394283faeac95e522ef821bbaef663752a7b03d79888c",
+      root: #"87448060c181e1447369a61c5649f3fdee222f08504f87948271e2fb1d1f67c1",
       cbor_length: 13,
       memory: 4,
     },
@@ -4813,14 +4813,14 @@ test corpus_large_constr_nested() {
   let source = #"d8668218809fd866821901009f01ffff"
   let expected = data_traverse_driver.DriveAccepted {
     summary: cek_data_v1.DataSummaryV1 {
-      root: #"d5e5c157951863e7f6511701a4c0ea0945080116bd4b92efa9b3d9659788d0e2",
+      root: #"7011046045d4a8defbfed113a334800a8e0485f98e5f38c9b474386de1c3fd58",
       cbor_length: 16,
       memory: 13,
     },
   }
   let walked = data_summary_walk_v1.Summarised {
     summary: cek_data_v1.DataSummaryV1 {
-      root: #"d5e5c157951863e7f6511701a4c0ea0945080116bd4b92efa9b3d9659788d0e2",
+      root: #"7011046045d4a8defbfed113a334800a8e0485f98e5f38c9b474386de1c3fd58",
       cbor_length: 16,
       memory: 13,
     },

@@ -6,6 +6,7 @@ import {
   type MidgardCekMachineState,
 } from "@al-ft/midgard-core";
 
+import { constrIndexIsOutOfRange } from "./cek-builtin.constr-data-index.js";
 import {
   evaluateMidgardCekBlsFinal,
   evaluateMidgardCekDirectBuiltin,
@@ -18,6 +19,7 @@ import {
   verifyMidgardCekDirectBuiltinFailure,
 } from "./cek-builtin.js";
 import {
+  canonicalIntegerLeaf,
   exactTopMaterial,
   verifySemanticPair,
 } from "./cek-machine.data-node-topology-matches.js";
@@ -75,12 +77,54 @@ const verifySemanticBuiltin = (
   );
 };
 
+/**
+ * constrData fails on an index outside the unsigned 64-bit range. The index
+ * is read from its revealed leaf or, with no leaf, from its node memory: an
+ * integer of two or more words has magnitude at least 2^64.
+ */
+const constrDataIndexFails = (
+  arguments_: readonly MidgardCekDirectValueWitness[],
+  material: MidgardCekSemanticBuiltinWitness,
+): boolean => {
+  if (
+    arguments_.length !== 2 ||
+    material.dataNodes.length !== 1 ||
+    material.listNodes.length !== 0 ||
+    material.pairNodes.length !== 0
+  ) {
+    return false;
+  }
+  const index = constantParts(arguments_[0]!);
+  const node = material.dataNodes[0]!;
+  if (index === null || index.type.kind !== "integer") return false;
+  if (material.scalarPreimages.length === 0) {
+    return (
+      node.kind === "integer" &&
+      exactTopMaterial(index.payload, node, [], []) &&
+      index.payload.memory >= 6n
+    );
+  }
+  if (material.scalarPreimages.length !== 1) return false;
+  const value = canonicalIntegerLeaf(
+    index.payload,
+    node,
+    material.scalarPreimages[0]!,
+  );
+  return value !== null && constrIndexIsOutOfRange(value);
+};
+
 const verifySemanticBuiltinFailure = (
   tag: bigint,
   pre: MidgardCekMachineState,
   arguments_: readonly MidgardCekDirectValueWitness[],
   material: MidgardCekSemanticBuiltinWitness,
 ): boolean => {
+  if (tag === 37n) {
+    return (
+      builtinRootMatches(pre, tag, arguments_) &&
+      constrDataIndexFails(arguments_, material)
+    );
+  }
   if (
     !builtinRootMatches(pre, tag, arguments_) ||
     arguments_.length !== 1 ||
