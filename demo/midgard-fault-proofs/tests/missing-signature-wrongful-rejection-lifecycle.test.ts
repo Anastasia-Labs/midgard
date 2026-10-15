@@ -5,9 +5,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { midgardFieldCarriageBounds } from "@al-ft/midgard-core";
+import {
+  ledgerEd25519SignatureReady,
+  midgardFieldCarriageBounds,
+} from "@al-ft/midgard-core";
 import { forcedVerdictSubject } from "@al-ft/midgard-sdk";
-import { afterAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import {
   admitMissingSignatureForcedArtifact,
@@ -41,6 +44,10 @@ import {
 } from "./support/missing-signature-forced-scenario.js";
 import { buildMissingSignatureForcedTransaction as transactionFor } from "./support/missing-signature-forced-shapes.js";
 import { realBlueprintPath } from "./support/submit-init-emulator-shared.js";
+
+// The ledger's Ed25519 check is libsodium's, which initialises
+// asynchronously; production entry points await it, and so does this file.
+beforeAll(() => ledgerEd25519SignatureReady);
 const fitMeasurements: VanRossemFitMeasurement[] = [];
 afterAll(async () => {
   if (process.env.MIDGARD_WRITE_FIT_LEDGER !== "1") return;

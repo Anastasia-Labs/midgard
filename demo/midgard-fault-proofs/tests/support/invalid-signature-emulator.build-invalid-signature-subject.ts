@@ -3,6 +3,7 @@ import {
   computeMidgardNativeTxId,
   deriveMidgardNativeTxWitnessSetCompact,
   encodeMidgardNativeTxCompact,
+  ledgerEd25519SignatureReady,
   midgardFieldCarriageBounds,
   type MidgardNativeTxFull,
 } from "@al-ft/midgard-core";
@@ -209,6 +210,9 @@ export const buildInvalidSignatureSubject = async ({
   readonly spendInputByte?: string | null;
   readonly fee?: bigint;
 }): Promise<InvalidSignatureSubject> => {
+  // Callers check these witnesses with the ledger's Ed25519 verifier, which
+  // answers only once libsodium has initialised.
+  await ledgerEd25519SignatureReady;
   const bodyOnly = nativeTxWithWitnesses({
     spendInputByte,
     fee,

@@ -1,14 +1,13 @@
 import { parentPort, threadId, workerData } from "node:worker_threads";
 
+import { ledgerEd25519SignatureReady } from "@al-ft/midgard-core";
 import {
   evaluateMidgardCekVerdict,
   phaseAAddressCacheStats,
-  phaseAPublicKeyCacheStats,
   serializePhaseACandidate,
   validatePhaseASingle,
 } from "@al-ft/midgard-validation";
 
-import { NodeEd25519Verifier } from "./utils/ed25519-verifier.js";
 import type {
   PhaseAJobRequest,
   ValidationJobRequest,
@@ -22,18 +21,6 @@ if (port === null) {
 }
 
 const init = workerData as ValidationWorkerInit;
-if (
-  init.signatureVerifier !== undefined &&
-  init.signatureVerifier !== "node" &&
-  init.signatureVerifier !== "cml"
-) {
-  throw new Error(
-    `unsupported validation signature verifier ${String(init.signatureVerifier)}`,
-  );
-}
-const nodeEd25519Verifier =
-  init.signatureVerifier === "node" ? new NodeEd25519Verifier() : undefined;
-nodeEd25519Verifier?.assertReady();
 
 const runPhaseA = (request: PhaseAJobRequest): ValidationWorkerResponse => {
   const results = request.txs.map((descriptor) => {
@@ -55,18 +42,10 @@ const runPhaseA = (request: PhaseAJobRequest): ValidationWorkerResponse => {
       arrivalSeq: descriptor.arrivalSeq,
       createdAt: new Date(descriptor.createdAtMs),
     };
-    const result = validatePhaseASingle(
-      queued,
-      {
-        ...init.config,
-        concurrency: 1,
-      },
-      nodeEd25519Verifier === undefined
-        ? undefined
-        : {
-            verifyVKeyWitnessSignature: nodeEd25519Verifier.verify,
-          },
-    );
+    const result = validatePhaseASingle(queued, {
+      ...init.config,
+      concurrency: 1,
+    });
     return "ledgerTx" in result
       ? { ok: true as const, candidate: serializePhaseACandidate(result) }
       : {
@@ -84,29 +63,38 @@ const runPhaseA = (request: PhaseAJobRequest): ValidationWorkerResponse => {
     kind: "phase_a",
     jobId: request.jobId,
     workerThreadId: threadId,
-    publicKeyCache: nodeEd25519Verifier?.stats() ?? phaseAPublicKeyCacheStats(),
     addressCache: phaseAAddressCacheStats(),
     results,
   };
 };
 
-port.on("message", (request: ValidationJobRequest) => {
+const failed = (jobId: number, error: unknown): ValidationWorkerResponse => ({
+  kind: "job_failed",
+  jobId,
+  error:
+    error instanceof Error ? (error.stack ?? error.message) : String(error),
+});
+
+const respond = (request: ValidationJobRequest): ValidationWorkerResponse => {
   try {
-    port.postMessage(
-      request.kind === "cek_verdict"
-        ? ({
-            kind: "cek_verdict",
-            jobId: request.jobId,
-            result: evaluateMidgardCekVerdict(request.request),
-          } satisfies ValidationWorkerResponse)
-        : runPhaseA(request),
-    );
+    return request.kind === "cek_verdict"
+      ? {
+          kind: "cek_verdict",
+          jobId: request.jobId,
+          result: evaluateMidgardCekVerdict(request.request),
+        }
+      : runPhaseA(request);
   } catch (error) {
-    port.postMessage({
-      kind: "job_failed",
-      jobId: request.jobId,
-      error:
-        error instanceof Error ? (error.stack ?? error.message) : String(error),
-    } satisfies ValidationWorkerResponse);
+    return failed(request.jobId, error);
   }
+};
+
+// Witness signatures are verified by libsodium, which initialises
+// asynchronously: every job waits for it, in arrival order, and a failed
+// initialisation fails the job instead of answering it.
+port.on("message", (request: ValidationJobRequest) => {
+  void ledgerEd25519SignatureReady.then(
+    () => port.postMessage(respond(request)),
+    (error: unknown) => port.postMessage(failed(request.jobId, error)),
+  );
 });

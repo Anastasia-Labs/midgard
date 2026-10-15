@@ -1,3 +1,4 @@
+import { ledgerEd25519SignatureReady } from "@al-ft/midgard-core";
 import { encodeMidgardForcedTxCanonical } from "@al-ft/midgard-core/codec/forced";
 import { deriveMidgardForcedTxProofSource } from "@al-ft/midgard-core/codec/forced";
 import { materializeMidgardForcedTxFromCanonical } from "@al-ft/midgard-core/codec/forced";
@@ -6,7 +7,7 @@ import {
   forcedVerdictSubject,
   invalidSignatureTerminalContradiction,
 } from "@al-ft/midgard-sdk";
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 
 import {
   invalidSignatureEvidenceFromForcedSource,
@@ -18,6 +19,10 @@ import {
   honestAddressWitness,
   invalidAddressWitness,
 } from "./support/invalid-signature-emulator.js";
+
+// The ledger's Ed25519 check is libsodium's, which initialises
+// asynchronously; production entry points await it, and so does this file.
+beforeAll(() => ledgerEd25519SignatureReady);
 const txId = "11".repeat(32);
 const subject = (index: bigint) =>
   forcedVerdictSubject({

@@ -109,7 +109,6 @@
     "tests/duration-shards.test.ts": 0.4,
     "tests/e2e-env.test.ts": 0.1,
     "tests/economics-config.test.ts": 3.1,
-    "tests/ed25519-verifier.test.ts": 2,
     "tests/emulator-submit-slot-snapshot.test.ts": 1.7,
     "tests/event-history-submission-backstop-emulator.test.ts": 6,
     "tests/event-history-submission-concurrency-emulator.test.ts": 9.5,

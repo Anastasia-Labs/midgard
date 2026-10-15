@@ -1,3 +1,4 @@
+import { ledgerEd25519SignatureReady } from "@al-ft/midgard-core";
 import { LOVELACE_UNIT, normalizeAssets } from "@al-ft/midgard-core/assets";
 import { classifyWithdrawalFromLedger } from "@al-ft/midgard-sdk";
 import { Effect, Option } from "effect";
@@ -85,6 +86,8 @@ export const classifyWithdrawalsInOrder = ({
   readonly baseOutputs: ReadonlyMap<string, Buffer>;
 }): Effect.Effect<readonly ClassifiedWithdrawal[], DatabaseError, never> =>
   Effect.gen(function* () {
+    // Signature checks are libsodium's, which answer only once initialised.
+    yield* Effect.promise(() => ledgerEd25519SignatureReady);
     const drained = new Set<string>();
     const classified: ClassifiedWithdrawal[] = [];
     for (const entry of entries) {

@@ -1,3 +1,4 @@
+import { ledgerEd25519SignatureReady } from "@al-ft/midgard-core";
 import { Cause, Effect } from "effect";
 import { parentPort, workerData } from "worker_threads";
 
@@ -46,6 +47,9 @@ export const runCommitBlockHeaderWorkerProgram = (
   | IntentJournal
 > =>
   Effect.gen(function* () {
+    // Phase A, withdrawal classification and the trace builder verify
+    // signatures with libsodium, which initialises asynchronously.
+    yield* Effect.promise(() => ledgerEd25519SignatureReady);
     yield* Effect.logInfo("🔹 Retrieving all mempool transactions...");
 
     const stateQueueLeaseToken = workerInput.data.stateQueueLeaseToken;

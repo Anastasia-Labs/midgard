@@ -1,20 +1,14 @@
-import type { MidgardValidationPhaseName } from "@al-ft/midgard-core";
+import {
+  type MidgardValidationPhaseName,
+  verifyLedgerEd25519Signature,
+} from "@al-ft/midgard-core";
 import { MidgardTxCodecError } from "@al-ft/midgard-core/codec";
 import { type MidgardConsensusViolationCode } from "@al-ft/midgard-core/consensus-validation";
-import { CML } from "@lucid-evolution/lucid";
 
 import { MidgardLedgerTxDecodeError } from "./ledger-tx/codec.js";
-import type {
-  MidgardLedgerTx,
-  MidgardLedgerVKeyWitness,
-} from "./ledger-tx/types.js";
+import type { MidgardLedgerTx } from "./ledger-tx/types.js";
 import type { RejectSubject } from "./reject-subject.js";
-import {
-  PhaseALocalContext,
-  RejectCode,
-  RejectCodes,
-  RejectedTx,
-} from "./types.js";
+import { RejectCode, RejectCodes, RejectedTx } from "./types.js";
 import { midgardOutRefToCborHex } from "./validation-candidate.js";
 
 export const reject = (
@@ -83,71 +77,6 @@ export const consensusProfileRejectCode = (
 };
 
 const EMPTY_HASH_HEXES: readonly string[] = [];
-
-const DEFAULT_PUBLIC_KEY_CACHE_MAX_ENTRIES = 4_096;
-
-const publicKeyCache = new Map<string, CML.PublicKey>();
-
-let publicKeyCacheMaxEntries = DEFAULT_PUBLIC_KEY_CACHE_MAX_ENTRIES;
-
-let publicKeyCacheHits = 0;
-
-let publicKeyCacheMisses = 0;
-
-let publicKeyCacheEvictions = 0;
-
-export const phaseAPublicKeyCacheStats = (): {
-  readonly size: number;
-  readonly maxEntries: number;
-  readonly hits: number;
-  readonly misses: number;
-  readonly evictions: number;
-} => ({
-  size: publicKeyCache.size,
-  maxEntries: publicKeyCacheMaxEntries,
-  hits: publicKeyCacheHits,
-  misses: publicKeyCacheMisses,
-  evictions: publicKeyCacheEvictions,
-});
-
-/** Test/process-shutdown hook; production validation uses the 4096-key cap. */
-export const resetPhaseAPublicKeyCache = (
-  maxEntries = DEFAULT_PUBLIC_KEY_CACHE_MAX_ENTRIES,
-): void => {
-  for (const publicKey of publicKeyCache.values()) {
-    publicKey.free();
-  }
-  publicKeyCache.clear();
-  publicKeyCacheMaxEntries = Math.max(1, Math.floor(maxEntries));
-  publicKeyCacheHits = 0;
-  publicKeyCacheMisses = 0;
-  publicKeyCacheEvictions = 0;
-};
-
-const cachedPublicKey = (vkey: Buffer): CML.PublicKey => {
-  const cacheKey = vkey.toString("hex");
-  const cached = publicKeyCache.get(cacheKey);
-  if (cached !== undefined) {
-    publicKeyCache.delete(cacheKey);
-    publicKeyCache.set(cacheKey, cached);
-    publicKeyCacheHits += 1;
-    return cached;
-  }
-
-  const publicKey = CML.PublicKey.from_bytes(vkey);
-  publicKeyCacheMisses += 1;
-  if (publicKeyCache.size >= publicKeyCacheMaxEntries) {
-    const oldestKey = publicKeyCache.keys().next().value as string | undefined;
-    if (oldestKey !== undefined) {
-      const evicted = publicKeyCache.get(oldestKey);
-      publicKeyCache.delete(oldestKey);
-      evicted?.free();
-      publicKeyCacheEvictions += 1;
-    }
-  }
-  publicKeyCache.set(cacheKey, publicKey);
-  return publicKey;
-};
 
 export const hashHexes = (hashes: readonly Buffer[]): readonly string[] =>
   hashes.length === 0
@@ -286,27 +215,17 @@ export const validateValidityInterval = (
   return null;
 };
 
-const verifyVKeyWitnessWithCml = (
-  txBodyHash: Buffer,
-  witness: MidgardLedgerVKeyWitness,
-): boolean => {
-  const publicKey = cachedPublicKey(witness.vkey);
-  const signature = CML.Ed25519Signature.from_raw_bytes(witness.signature);
-  try {
-    return publicKey.verify(txBodyHash, signature);
-  } finally {
-    signature.free();
-  }
-};
-
+/**
+ * Reports the first address witness whose signature does not verify, by the
+ * ledger's own Ed25519 check. A failure of the check itself is raised.
+ */
 export const verifyVKeyWitnessSignatures = (
   tx: Pick<MidgardLedgerTx, "txId" | "vkeyWitnesses">,
-  verifySignature: NonNullable<
-    PhaseALocalContext["verifyVKeyWitnessSignature"]
-  > = verifyVKeyWitnessWithCml,
 ): RejectedTx | null => {
   for (const witness of tx.vkeyWitnesses) {
-    if (!verifySignature(tx.txId, witness)) {
+    if (
+      !verifyLedgerEd25519Signature(witness.vkey, tx.txId, witness.signature)
+    ) {
       return reject(
         tx.txId,
         RejectCodes.InvalidSignature,

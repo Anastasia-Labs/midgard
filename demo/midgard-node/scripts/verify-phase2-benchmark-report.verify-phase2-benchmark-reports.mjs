@@ -93,11 +93,6 @@ const verifyChunk128DefaultAuthorization = (reportValues) => {
     chunkAb.reports[0].poolSize,
     "script-heavy poolSize",
   );
-  equal(
-    scriptHeavy.signatureVerifier,
-    chunkAb.reports[0].signatureVerifier,
-    "script-heavy signatureVerifier",
-  );
 
   const candidateGeneratedAt = Date.parse(
     nonEmptyString(scriptHeavy.generatedAtIso, "script-heavy generatedAtIso"),
@@ -407,7 +402,6 @@ export const verifyPhase2BenchmarkReports = (
       equal(report.poolSize, 6, "poolSize");
       equal(report.batchSize, 512, "batchSize");
       equal(report.chunkSize, 64, "chunkSize");
-      equal(report.signatureVerifier, "node", "signatureVerifier");
       equal(report.targetTps, 2_500, "targetTps");
       equal(
         report.steadyStateWarmupMsRequested,

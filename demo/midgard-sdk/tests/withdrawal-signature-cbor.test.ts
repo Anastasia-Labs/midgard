@@ -1,9 +1,10 @@
+import { ledgerEd25519SignatureReady } from "@al-ft/midgard-core";
 import {
   aikenSerialisedPlutusDataCborPreservingMapOrder,
   replacePlutusConstrFieldCbor,
 } from "@al-ft/midgard-core/plutus-data-cbor";
 import { CML, Data } from "@lucid-evolution/lucid";
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 
 import { WithdrawalBody } from "../src/ledger-state.js";
 import {
@@ -13,6 +14,10 @@ import {
   withdrawalSigningMessage,
   withdrawalSigningMessageCbor,
 } from "../src/withdrawal-signature.js";
+
+// The ledger's Ed25519 check is libsodium's, which initialises
+// asynchronously; production entry points await it, and so does this file.
+beforeAll(() => ledgerEd25519SignatureReady);
 
 const key = CML.PrivateKey.from_normal_bytes(new Uint8Array(32).fill(7));
 const owner = key.to_public().hash().to_hex();

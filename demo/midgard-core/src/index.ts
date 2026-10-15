@@ -58,6 +58,7 @@ export * from "./da-payload-sizing.js";
 export * from "./da-request-deadline.js";
 export * from "./da-transport.js";
 export * from "./deployment-manifest-identity.js";
+export * from "./ed25519-ledger-signature.js";
 export * from "./error-format.js";
 export * from "./hex.js";
 export * from "./l1-origin.js";

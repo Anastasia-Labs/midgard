@@ -10,10 +10,7 @@ import type {
   MidgardCekStructuralExecution,
 } from "./cek-executor.js";
 import type { LedgerEntry } from "./ledger.js";
-import type {
-  MidgardLedgerTx,
-  MidgardLedgerVKeyWitness,
-} from "./ledger-tx/types.js";
+import type { MidgardLedgerTx } from "./ledger-tx/types.js";
 import type { MidgardCekVerdictRequest } from "./phase-b.evaluate-cek-script.js";
 import type { RejectSubject } from "./reject-subject.js";
 
@@ -200,20 +197,6 @@ export type PhaseAConfig = {
   readonly concurrency: number;
   readonly strictnessProfile: string;
   readonly consensusProfile?: MidgardConsensusProfile;
-};
-
-/**
- * Process-local Phase-A extension points.
- *
- * This context is deliberately separate from {@link PhaseAConfig}: functions
- * must never enter the serializable worker configuration or wire protocol.
- * Browser and inline callers omit it and retain the CML reference verifier.
- */
-export type PhaseALocalContext = {
-  readonly verifyVKeyWitnessSignature?: (
-    txBodyHash: Buffer,
-    witness: MidgardLedgerVKeyWitness,
-  ) => boolean;
 };
 
 /** Process-local evidence from the single script evaluation used for its verdict. */

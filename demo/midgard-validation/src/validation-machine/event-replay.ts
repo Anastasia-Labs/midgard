@@ -3,6 +3,7 @@ import {
   decodeMidgardNativeTxFullFromCanonicalCbor,
   encodeMidgardCekProgramMaterialSidecar,
   isMidgardConsensusProfile,
+  ledgerEd25519SignatureReady,
   MIDGARD_CONSENSUS_PROFILE,
   type MidgardConsensusProfile,
 } from "@al-ft/midgard-core";
@@ -68,6 +69,7 @@ export const replayValidationVerdictEvent = (
   input: ValidationVerdictEventInput,
 ): Effect.Effect<ValidationVerdictEvent, Error> =>
   Effect.gen(function* () {
+    yield* Effect.promise(() => ledgerEd25519SignatureReady);
     const snapshot = yield* Effect.try(() => {
       if (!isMidgardConsensusProfile(input.consensusProfile)) {
         throw new Error("event replay requires the compiled consensus profile");

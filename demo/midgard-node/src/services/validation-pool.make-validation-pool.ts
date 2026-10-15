@@ -68,7 +68,6 @@ const makeValidationPool = Effect.gen(function* () {
         strictnessProfile: config.VALIDATION_STRICTNESS_PROFILE,
         consensusProfile: deploymentIdentity.consensusProfile,
       },
-      signatureVerifier: config.VALIDATION_WORKER_NODE_ED25519 ? "node" : "cml",
     },
   );
 

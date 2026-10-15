@@ -1,4 +1,7 @@
-import { decodeMidgardAddressWitnessFieldPreimage } from "@al-ft/midgard-core";
+import {
+  decodeMidgardAddressWitnessFieldPreimage,
+  ledgerEd25519SignatureReady,
+} from "@al-ft/midgard-core";
 import {
   type FieldOpening,
   missingSignatureFieldWalkCheckpoint,
@@ -159,6 +162,7 @@ export const submitSpendInputSignerMissingStep04 = async ({
   const witnesses = decodeMidgardAddressWitnessFieldPreimage(
     Buffer.from(evidence.addressWitnessFieldPreimageHex, "hex"),
   );
+  await ledgerEd25519SignatureReady;
   const signerPresent = witnesses
     .slice(checkpoint.nextItemIndex, nextCursor)
     .some((witness) => {

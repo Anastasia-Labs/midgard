@@ -106,14 +106,16 @@ export const makeNativeTx = (opts: NativeTxOptions = {}): NativeTxFixture => {
   const addrTxWitsPreimageCbor =
     opts.omitVkeyWitness === true
       ? EMPTY_CBOR_LIST
-      : encodeByteList([
-          Buffer.from(
-            CML.make_vkey_witness(
-              CML.TransactionHash.from_raw_bytes(signedBodyHash),
-              opts.privateKey ?? TEST_PRIVATE_KEY,
-            ).to_cbor_bytes(),
-          ),
-        ]);
+      : opts.vkeyWitnesses !== undefined
+        ? encodeByteList(opts.vkeyWitnesses(bodyHash))
+        : encodeByteList([
+            Buffer.from(
+              CML.make_vkey_witness(
+                CML.TransactionHash.from_raw_bytes(signedBodyHash),
+                opts.privateKey ?? TEST_PRIVATE_KEY,
+              ).to_cbor_bytes(),
+            ),
+          ]);
 
   const witnessSet: MidgardNativeTxWitnessSetCanonical = {
     addrTxWitsPreimageCbor,

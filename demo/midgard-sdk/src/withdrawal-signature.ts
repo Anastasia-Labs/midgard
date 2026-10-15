@@ -1,3 +1,4 @@
+import { verifyLedgerEd25519Signature } from "@al-ft/midgard-core";
 import { aikenSerialisedPlutusDataCborPreservingMapOrder } from "@al-ft/midgard-core/plutus-data-cbor";
 import { CML, Data as LucidData } from "@lucid-evolution/lucid";
 import { blake2b } from "@noble/hashes/blake2.js";
@@ -116,33 +117,34 @@ export const verifyWithdrawalSignatureCbor = (
     };
   }
 
+  const publicKeyHash = publicKeyHashFromWithdrawalSignature(signature);
+  if (publicKeyHash.toLowerCase() !== expectedOwnerHash.toLowerCase()) {
+    return {
+      valid: false,
+      reason: "owner_hash_mismatch",
+      publicKeyHash,
+    };
+  }
+  let message: Uint8Array;
   try {
-    const publicKey = CML.PublicKey.from_bytes(
-      Buffer.from(publicKeyHex, "hex"),
-    );
-    const publicKeyHash = publicKey.hash().to_hex();
-    if (publicKeyHash.toLowerCase() !== expectedOwnerHash.toLowerCase()) {
-      return {
-        valid: false,
-        reason: "owner_hash_mismatch",
-        publicKeyHash,
-      };
-    }
-    const verified = publicKey.verify(
-      withdrawalSigningMessageCbor(bodyCbor),
-      CML.Ed25519Signature.from_hex(signatureHex),
-    );
-    return verified
-      ? { valid: true, publicKeyHash }
-      : {
-          valid: false,
-          reason: "invalid_signature",
-          publicKeyHash,
-        };
+    message = withdrawalSigningMessageCbor(bodyCbor);
   } catch (cause) {
     return {
       valid: false,
       reason: cause instanceof Error ? cause.message : String(cause),
     };
   }
+  // The ledger's own check, as `withdrawal_signature_is_valid_v1` runs it. A
+  // failure of the check itself is raised, never read as an invalid signature.
+  return verifyLedgerEd25519Signature(
+    Buffer.from(publicKeyHex, "hex"),
+    message,
+    Buffer.from(signatureHex, "hex"),
+  )
+    ? { valid: true, publicKeyHash }
+    : {
+        valid: false,
+        reason: "invalid_signature",
+        publicKeyHash,
+      };
 };

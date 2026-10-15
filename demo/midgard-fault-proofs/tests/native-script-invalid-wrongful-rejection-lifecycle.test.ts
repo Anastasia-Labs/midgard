@@ -38,10 +38,13 @@ import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 
-import { encodeMidgardFieldPreimage } from "@al-ft/midgard-core";
+import {
+  encodeMidgardFieldPreimage,
+  ledgerEd25519SignatureReady,
+} from "@al-ft/midgard-core";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
-import { afterAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { admitNativeScriptInvalidForcedArtifact } from "../src/native-script-invalid/forced-artifact.js";
 import { submitNativeScriptInvalidStep02 } from "../src/native-script-invalid/submit-step-02.js";
@@ -55,6 +58,10 @@ import { run } from "./native-script-invalid-wrongful-rejection-lifecycle.run.js
 import { setup } from "./native-script-invalid-wrongful-rejection-lifecycle.setup.js";
 import { realBlueprintPath } from "./support/emulator/blueprints.js";
 import { captureEmulatorSubmission } from "./support/emulator/measurement.js";
+
+// The ledger's Ed25519 check is libsodium's, which initialises
+// asynchronously; production entry points await it, and so does this file.
+beforeAll(() => ledgerEd25519SignatureReady);
 
 afterAll(async () => {
   if (process.env.MIDGARD_WRITE_FIT_LEDGER !== "1") return;

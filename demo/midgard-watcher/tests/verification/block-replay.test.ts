@@ -21,3 +21,10 @@ import "./block-replay.w25-published-rejection-code-partition.js";
 import "./block-replay.w25-roots-and-deterministic-replay.js";
 import "./block-replay.w25-user-event-authority-capability.js";
 import "./block-replay.w25-canonical-rejection-attribution-and-adversarial-ordering.js";
+
+import { ledgerEd25519SignatureReady } from "@al-ft/midgard-core";
+import { beforeAll } from "vitest";
+
+// The ledger's Ed25519 check is libsodium's, which initialises
+// asynchronously; production entry points await it, and so does this file.
+beforeAll(() => ledgerEd25519SignatureReady);

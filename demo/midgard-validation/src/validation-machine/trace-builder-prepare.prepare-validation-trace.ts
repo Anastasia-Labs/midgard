@@ -39,6 +39,7 @@ import {
   hashMidgardValidationLedgerDelta,
   hashMidgardValidationLedgerDeltaOperation,
   inspectMidgardRedeemerData,
+  ledgerEd25519SignatureReady,
   MIDGARD_BOUNDED_ITEM_CHUNK_BYTES,
   MIDGARD_CONSENSUS_LIMITS,
   type MidgardBlake2b224TraceControl,
@@ -53,6 +54,7 @@ import {
   type MidgardValidationMerkleFrontier,
   type MidgardValidationMerkleMembership,
   type MidgardValidationPhaseName,
+  verifyLedgerEd25519Signature,
 } from "@al-ft/midgard-core";
 import {
   decodeMidgardAddressBytes,
@@ -76,7 +78,6 @@ import {
   deriveMidgardForcedTxProofSourceFromCanonicalCbor,
 } from "@al-ft/midgard-core/codec/forced";
 import { type MidgardRejectionReasonV1 } from "@al-ft/midgard-core/validation-trace";
-import { CML } from "@lucid-evolution/lucid";
 import { blake2b } from "@noble/hashes/blake2.js";
 import { Effect } from "effect";
 
@@ -159,6 +160,7 @@ import {
 
 export const prepareValidationTrace = (input: ValidationMachineReplayInput) =>
   Effect.gen(function* () {
+    yield* Effect.promise(() => ledgerEd25519SignatureReady);
     const contextCbor = Buffer.from(
       aikenSerialisedPlutusDataCbor(
         encodeCbor([
@@ -1523,26 +1525,13 @@ export const prepareValidationTrace = (input: ValidationMachineReplayInput) =>
                 hashMidgardSignerLeaf(scan.decoded.signerHash),
               )
             : signatureControl.signerFrontier;
-          let signatureIsValid = false;
-          try {
-            const publicKey = CML.PublicKey.from_bytes(
-              scan.decoded.verificationKey,
-            );
-            const signature = CML.Ed25519Signature.from_raw_bytes(
-              scan.decoded.signature,
-            );
-            try {
-              signatureIsValid = publicKey.verify(
-                input.transactionId,
-                signature,
-              );
-            } finally {
-              publicKey.free();
-              signature.free();
-            }
-          } catch {
-            signatureIsValid = false;
-          }
+          // The ledger's own check, as Phase A runs it. A failure of the
+          // check itself is raised and stops the build.
+          const signatureIsValid = verifyLedgerEd25519Signature(
+            scan.decoded.verificationKey,
+            input.transactionId,
+            scan.decoded.signature,
+          );
           const addressSeen = signatureControl.addressSeen + 1;
           const addressCount =
             signatureControl.addressCount === -1

@@ -1,3 +1,4 @@
+import { ledgerEd25519SignatureReady } from "@al-ft/midgard-core";
 import {
   decodeMidgardCekProgramMaterialSidecar,
   verifyMidgardCekProgramMaterial,
@@ -39,7 +40,6 @@ import {
 } from "./phase-a.validate-input-sets.js";
 import {
   PhaseAConfig,
-  PhaseALocalContext,
   PhaseAResult,
   PhaseAValidatedTx,
   QueuedTx,
@@ -184,7 +184,6 @@ const validateDeclaredExUnits = (
 export const validatePhaseASingle = (
   queuedTx: QueuedTx,
   config: PhaseAConfig,
-  localContext: PhaseALocalContext = {},
 ): PhaseAValidatedTx | RejectedTx => {
   const forced = queuedTx.sourceKind === "forced";
   // The tx-order mint admits a forced transaction whose outputs or native
@@ -385,12 +384,7 @@ export const validatePhaseASingle = (
   let rejection = validateInputSets(ledgerTx);
   if (rejection === null) rejection = validateValidityInterval(ledgerTx);
   if (rejection === null) rejection = validateRequiredSigners(ledgerTx);
-  if (rejection === null) {
-    rejection = verifyVKeyWitnessSignatures(
-      ledgerTx,
-      localContext.verifyVKeyWitnessSignature,
-    );
-  }
+  if (rejection === null) rejection = verifyVKeyWitnessSignatures(ledgerTx);
   if (rejection === null) rejection = validateNativeScriptWitnesses(ledgerTx);
   if (rejection === null) rejection = validateRequiredObservers(ledgerTx);
   if (rejection === null) {
@@ -426,13 +420,12 @@ export const validatePhaseASingle = (
 export const runPhaseAValidation = (
   queuedTxs: readonly QueuedTx[],
   config: PhaseAConfig,
-  localContext: PhaseALocalContext = {},
 ): Effect.Effect<PhaseAResult> =>
   Effect.gen(function* () {
+    yield* Effect.promise(() => ledgerEd25519SignatureReady);
     const orderedResults = yield* Effect.forEach(
       queuedTxs,
-      (queuedTx) =>
-        Effect.sync(() => validatePhaseASingle(queuedTx, config, localContext)),
+      (queuedTx) => Effect.sync(() => validatePhaseASingle(queuedTx, config)),
       {
         concurrency: config.concurrency <= 0 ? "unbounded" : config.concurrency,
       },

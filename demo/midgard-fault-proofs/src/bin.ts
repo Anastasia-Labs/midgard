@@ -49,7 +49,10 @@ import "./bin.parse-args.js";
 import "./bin.require-validation-one-step-cli-arguments.js";
 import "./bin.main.js";
 
-import { formatUnknownError } from "@al-ft/midgard-core";
+import {
+  formatUnknownError,
+  ledgerEd25519SignatureReady,
+} from "@al-ft/midgard-core";
 
 import { main } from "./bin.main.js";
 import { isCliEntrypoint } from "./bin.require-validation-one-step-cli-arguments.js";
@@ -57,7 +60,9 @@ import { isCliEntrypoint } from "./bin.require-validation-one-step-cli-arguments
 if (
   isCliEntrypoint({ moduleUrl: import.meta.url, argvPath: process.argv[1] })
 ) {
-  main().catch((error: unknown) => {
+  // Fault-proof preparation verifies Ed25519 signatures with libsodium, which
+  // answers only once it has initialised.
+  ledgerEd25519SignatureReady.then(main).catch((error: unknown) => {
     process.stderr.write(
       `midgard-fault-proofs: ${formatUnknownError(error)}\n`,
     );

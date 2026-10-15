@@ -14,8 +14,6 @@ export type ValidationWorkerInit = {
     readonly strictnessProfile: string;
     readonly consensusProfile: NonNullable<PhaseAConfig["consensusProfile"]>;
   };
-  /** Worker-local runtime choice; never enters serializable PhaseAConfig. */
-  readonly signatureVerifier?: "node" | "cml";
 };
 
 export type PhaseAJobRequest = {
@@ -54,7 +52,6 @@ export type PhaseAJobResponse = {
   readonly kind: "phase_a";
   readonly jobId: number;
   readonly workerThreadId: number;
-  readonly publicKeyCache: ValidationCacheStats;
   readonly addressCache: ValidationCacheStats;
   readonly results: ReadonlyArray<
     | { readonly ok: true; readonly candidate: WirePhaseACandidateV1 }
