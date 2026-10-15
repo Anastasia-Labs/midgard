@@ -26,7 +26,10 @@ export const DEFAULT_NODE_ED25519_CACHE_MAX_ENTRIES = 4_096;
  *
  * Raw Cardano verification keys are wrapped in the exact RFC 8410 Subject
  * Public Key Info prefix before import. Only successfully imported keys enter
- * the bounded LRU; malformed inputs fail closed and cannot poison the cache.
+ * the bounded LRU. A key or signature of the wrong length does not verify.
+ * On well-sized input OpenSSL answers true or false and does not throw, so a
+ * throw is a fault of this node: it is raised, never read as an invalid
+ * signature.
  */
 export class NodeEd25519Verifier {
   readonly #publicKeys = new Map<string, KeyObject>();
@@ -49,16 +52,12 @@ export class NodeEd25519Verifier {
     ) {
       return false;
     }
-    try {
-      return verifySignature(
-        null,
-        message,
-        this.#publicKey(witness.vkey),
-        witness.signature,
-      );
-    } catch {
-      return false;
-    }
+    return verifySignature(
+      null,
+      message,
+      this.#publicKey(witness.vkey),
+      witness.signature,
+    );
   };
 
   /** Fail worker startup if this Node/OpenSSL runtime cannot verify Ed25519. */
