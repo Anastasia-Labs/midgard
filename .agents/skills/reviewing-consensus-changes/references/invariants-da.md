@@ -331,8 +331,7 @@ accepted: `q58_timeout_accepts_mint_outside_the_operator_directories`
 `:2444`. Each refusal goes green, that is accepted, with its own policy
 dropped from the condition. In the emulator,
 `demo/midgard-node/tests/availability-challenge-timeout-operator-directory.test.ts`
-composes a forced retirement into a timeout under a profile whose DA slash
-penalty equals the inactivity penalty; the timeout withdrawal refuses it, and
-the same two as separate transactions land in one block.
+composes a forced retirement into a timeout; the timeout withdrawal refuses
+it, and the same two as separate transactions land in one block.
 
 Provenance: 2026-10-15, with the operator-slash bounty routing changes.

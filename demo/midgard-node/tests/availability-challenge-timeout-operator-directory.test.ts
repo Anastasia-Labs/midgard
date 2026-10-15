@@ -2,8 +2,6 @@
  * An availability-challenge timeout and an operator-directory change go in
  * separate transactions. Composed into one, the timeout withdrawal refuses;
  * submitted apart, both land in the same block.
- *
- * The profile's DA slash penalty equals the operator inactivity penalty.
  */
 import * as SDK from "@al-ft/midgard-sdk";
 import {
@@ -219,8 +217,6 @@ describe("availability-challenge timeout beside an operator directory change", (
       poolLovelace: pool.assets.lovelace,
       parameters: f.parameters,
     });
-    // One fee meets both rules: the timeout's `fee_part + c` with c = 0 and
-    // the forced retirement's inactivity penalty.
     expect(slash.feePart).toBe(INACTIVITY_SLASHING_PENALTY_LOVELACE);
     expect(slash.feePart).toBeLessThan(SLASHING_PENALTY_LOVELACE);
     const remaining = Data.from(
@@ -263,8 +259,6 @@ describe("availability-challenge timeout beside an operator directory change", (
       },
     )
       .compose(SDK.buildRetireOperatorTx(retirement))
-      // The active node's bond above the retired tranche, which the shared
-      // fee already covers, goes back as change.
       .pay.ToAddress(f.responder.address, {
         lovelace: INACTIVITY_SLASHING_PENALTY_LOVELACE,
       })
