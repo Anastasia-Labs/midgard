@@ -1,7 +1,7 @@
 {
   "schemaVersion": "midgard-van-rossem-fit-ledger-v1",
   "category": "validationTraceDispute/semantic resolver publication",
-  "blueprintSha256": "855fc4760228d210103fc15c616ef1f08b45be8cbb9b48694a051f50d0ad1dee",
+  "blueprintSha256": "aaad33273c6065c3bf7344ae900e38598e7e8d225cf46ea03b7db7fc303ee098",
   "compilerVersion": "v1.1.23+5adf783",
   "entries": [
     {
@@ -1097,5 +1097,5 @@
       "publicationReserveMargin": 1403
     }
   ],
-  "ledgerSha256": "5b2fe861e1bc1474078b02357dee0f9dfce85abd83c85038678ae2a561dc2882"
+  "ledgerSha256": "9828a605af7c2d89c87aae51a6ae5405c7b2f60368b6c930300ce302343819c3"
 }
