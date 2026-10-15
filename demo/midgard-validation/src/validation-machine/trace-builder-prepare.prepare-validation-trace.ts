@@ -1536,25 +1536,20 @@ export const prepareValidationTrace = (
                 hashMidgardSignerLeaf(scan.decoded.signerHash),
               )
             : signatureControl.signerFrontier;
-          let signatureIsValid = false;
+          // The decoder fixed both widths, so a throw here is a fault of the
+          // check itself and the build stops with it, as Phase A does.
+          let signatureIsValid: boolean;
+          const publicKey = CML.PublicKey.from_bytes(
+            scan.decoded.verificationKey,
+          );
+          const signature = CML.Ed25519Signature.from_raw_bytes(
+            scan.decoded.signature,
+          );
           try {
-            const publicKey = CML.PublicKey.from_bytes(
-              scan.decoded.verificationKey,
-            );
-            const signature = CML.Ed25519Signature.from_raw_bytes(
-              scan.decoded.signature,
-            );
-            try {
-              signatureIsValid = publicKey.verify(
-                input.transactionId,
-                signature,
-              );
-            } finally {
-              publicKey.free();
-              signature.free();
-            }
-          } catch {
-            signatureIsValid = false;
+            signatureIsValid = publicKey.verify(input.transactionId, signature);
+          } finally {
+            publicKey.free();
+            signature.free();
           }
           const addressSeen = signatureControl.addressSeen + 1;
           const addressCount =

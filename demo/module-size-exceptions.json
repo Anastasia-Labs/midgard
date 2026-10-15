@@ -1186,8 +1186,8 @@
   },
   {
     "file": "midgard-validation/src/validation-machine/trace-builder-prepare.prepare-validation-trace.ts",
-    "max": 4151,
-    "reason": "prepareValidationTrace is the dominant indivisible declaration (3805 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. Integrated deep-data, exact-reason and canonical-redeemer behavior; cap remeasured on the combined source. Combined F1/RLO source measured at integration. Authenticated forced redeemer refusal integrated; measured after combined formatting. VR (+1): trace preparation threads the deployment's L1 slot mapping into the script contexts it builds. I5 (+9): trace preparation opens the build's trace sink and picks the Phase B execution mode from its recording. Wall caps (+4): trace preparation hands the build's remaining wall-clock budget to Phase B."
+    "max": 4146,
+    "reason": "prepareValidationTrace is the dominant indivisible declaration (3805 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. Integrated deep-data, exact-reason and canonical-redeemer behavior; cap remeasured on the combined source. Combined F1/RLO source measured at integration. Authenticated forced redeemer refusal integrated; measured after combined formatting. VR (+1): trace preparation threads the deployment's L1 slot mapping into the script contexts it builds. I5 (+9): trace preparation opens the build's trace sink and picks the Phase B execution mode from its recording. Wall caps (+4): trace preparation hands the build's remaining wall-clock budget to Phase B. H9 (-5): a fault in the address-witness signature check stops the build instead of reading as an invalid signature."
   },
   {
     "file": "midgard-validation/tests/cek-executor.test.ts",
