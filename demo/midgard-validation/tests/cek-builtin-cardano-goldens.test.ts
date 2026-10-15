@@ -221,6 +221,9 @@ const fixtureType = (type: MidgardCekConstantType): FixtureType => {
       return { pair: [fixtureType(type.first), fixtureType(type.second)] };
     case "blsMillerLoopResult":
       throw new Error("a Miller loop result is never a builtin's value");
+    case "array":
+    case "value":
+      throw new Error("this golden set has no Value or array results");
   }
 };
 
@@ -257,6 +260,9 @@ const fixtureValue = (type: MidgardCekConstantType, payload: Data): unknown => {
     }
     case "blsMillerLoopResult":
       throw new Error("a Miller loop result is never a builtin's value");
+    case "array":
+    case "value":
+      throw new Error("this golden set has no Value or array results");
   }
 };
 

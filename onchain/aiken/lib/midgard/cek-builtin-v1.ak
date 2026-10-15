@@ -1714,6 +1714,12 @@ fn constant_memory_from_payload_node_v1(
     cek_constant_v1.BlsG1Constant -> 18
     cek_constant_v1.BlsG2Constant -> 36
     cek_constant_v1.BlsMillerLoopResultConstant -> 72
+    cek_constant_v1.ArrayConstant { .. } -> {
+      expect cek_data_v1.ListData { items_count, .. } = node
+      items_count
+    }
+    cek_constant_v1.ValueConstant ->
+      fail @"semantic value memory requires a recursive proof"
   }
 }
 
