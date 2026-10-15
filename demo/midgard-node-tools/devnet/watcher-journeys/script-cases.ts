@@ -21,8 +21,9 @@ import type * as SDK from "@al-ft/midgard-sdk";
 import { buildMidgardCanonicalCekProgram } from "@al-ft/midgard-validation";
 import { CML, walletFromSeed } from "@lucid-evolution/lucid";
 
-const identityProgram = buildMidgardCanonicalCekProgram(
-  Buffer.from("010100200101", "hex"),
+/** `(lam ctx [(lam _ ()) ctx])`: a Plutus V3 script must return Unit. */
+const unitProgram = buildMidgardCanonicalCekProgram(
+  Buffer.from("0101002324980041", "hex"),
 );
 
 /** An executable, signed transaction for real forced-order verdict disputes. */
@@ -53,7 +54,7 @@ export const buildJourneyScriptTransaction = (input: {
     variant === "plutusMint"
       ? {
           language: "PlutusV3" as const,
-          scriptBytes: identityProgram.envelopeCbor,
+          scriptBytes: unitProgram.envelopeCbor,
         }
       : decodeMidgardVersionedScript(Buffer.from("820043820180", "hex"));
   const policy = hashMidgardVersionedScript(script);
@@ -116,7 +117,7 @@ export const buildJourneyScriptTransaction = (input: {
   return {
     transaction,
     programMaterial:
-      variant === "plutusMint" ? [...identityProgram.material.values()] : [],
+      variant === "plutusMint" ? [...unitProgram.material.values()] : [],
   };
 };
 
