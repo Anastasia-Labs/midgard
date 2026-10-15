@@ -108,6 +108,9 @@ fn reference_script_data(output: MidgardTxOutput) -> Data {
 /// Reconstructs the exact `TxOut` Data subtree exposed to a PlutusV3 or
 /// MidgardV1 program from one independently bounded canonical ledger output.
 /// The only context-language difference is the protected-address constructor.
+/// The output bytes are read as Midgard output wire (the envelope entry, as in
+/// `ledger_output_v1.decode_canonical_output`); the datum inside them is read
+/// through the Data entry.
 pub fn tx_out_data_v1(
   output_cbor: ByteArray,
   midgard_encoding: Bool,
@@ -115,7 +118,7 @@ pub fn tx_out_data_v1(
   when ledger_output_v1.decode_canonical_output(output_cbor) is {
     None -> None
     Some(output) ->
-      when cbor_deserialise.deserialise(output_cbor) is {
+      when cbor_deserialise.deserialise_envelope(output_cbor) is {
         None -> None
         Some(output_data) ->
           when output_value_data(output_data) is {
@@ -191,7 +194,7 @@ pub fn ledger_output_summaries_v1(
   when ledger_output_v1.decode_canonical_output(output_cbor) is {
     None -> None
     Some(output) ->
-      when cbor_deserialise.deserialise(output_cbor) is {
+      when cbor_deserialise.deserialise_envelope(output_cbor) is {
         None -> None
         Some(output_data) ->
           when output_value_data(output_data) is {
