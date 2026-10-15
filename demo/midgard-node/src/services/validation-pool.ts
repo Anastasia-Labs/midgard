@@ -14,4 +14,7 @@ export {
   ValidationWorkerError,
 } from "./validation-pool.bundled-worker-exec-argv.js";
 export { FixedValidationWorkerPool } from "./validation-pool.fixed-validation-worker-pool.js";
-export { validationPoolLayer } from "./validation-pool.make-validation-pool.js";
+export {
+  evaluateImportCheckOn,
+  validationPoolLayer,
+} from "./validation-pool.make-validation-pool.js";

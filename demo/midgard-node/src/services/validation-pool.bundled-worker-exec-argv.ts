@@ -31,6 +31,20 @@ export type ValidationPoolService = {
   readonly evaluateCekVerdict: (
     request: MidgardCekVerdictRequest,
   ) => Effect.Effect<LocalScriptEvalResult, ValidationWorkerError>;
+  /**
+   * Runs one verdict-mode script for the import checker, below every other
+   * job: it starts only when no other job waits and a worker is idle, and
+   * at most `size - 1` run at once (one on a single-worker pool). The worker
+   * is started first if it has not, and is terminated after `killMs` from
+   * the job's start; with
+   * `fresh`, an idle worker is replaced and started before the job runs. A
+   * kill, crash or worker error fails the effect. Absent when the pool is
+   * disabled.
+   */
+  readonly evaluateImportCheck?: (
+    request: MidgardCekVerdictRequest,
+    options: { readonly killMs: number; readonly fresh: boolean },
+  ) => Effect.Effect<LocalScriptEvalResult, ValidationWorkerError>;
   /** HTTP advisory evaluation refuses when no reserved idle worker is available. */
   readonly tryEvaluateCekVerdict: (
     request: MidgardCekVerdictRequest,
@@ -57,6 +71,12 @@ export type PendingJob = {
   readonly reject: (error: ValidationWorkerError) => void;
 };
 
+/** An import-check job: below every other job, with its own kill. */
+export type BackgroundJob = PendingJob & {
+  readonly killMs: number;
+  readonly fresh: boolean;
+};
+
 export type WorkerSlot = {
   readonly index: number;
   worker: Worker;
@@ -65,6 +85,12 @@ export type WorkerSlot = {
   restartAttempt: number;
   restarting: boolean;
   inFlightStartedAt: number;
+  /** The worker answered a job, so it has started. */
+  started: boolean;
+  /** Whether the in-flight job is an import-check job. */
+  background: boolean;
+  /** The import-check job this slot was replaced for, run once it starts. */
+  reservedFor: BackgroundJob | null;
 };
 
 export const poolSizeGauge = Metric.gauge("validation_pool_size", {
