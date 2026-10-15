@@ -475,22 +475,6 @@ pub fn source_requires_trace(
   }
 }
 
-/// Gap B: a terminal state whose hash both descriptors commit to is coherent
-/// with the operator's descriptor when it is a well-formed Terminal state at
-/// exactly `step_count` carrying the descriptor's verdict and rejection hash.
-pub fn terminal_is_coherent(
-  descriptor: validation_trace_v1.ValidationTraceDescriptorV1,
-  terminal_state: validation_trace_v1.ValidationMachineStateV1,
-) -> Bool {
-  and {
-    validation_trace_v1.machine_state_is_well_formed(terminal_state),
-    terminal_state.phase == validation_trace_v1.Terminal,
-    terminal_state.program_counter == descriptor.step_count,
-    terminal_state.verdict == descriptor.verdict,
-    terminal_state.rejection_code_hash == descriptor.rejection_code_hash,
-  }
-}
-
 /// SEAM (FW-R): until the initial state is derived on chain, the operator's
 /// committed initial state must be exactly the one the derivation will build
 /// from the header, the event key, the source and the step's pre-UTxO root.

@@ -1,5 +1,6 @@
 use aiken/cbor
 use aiken/interval
+use env
 use midgard/common/utils
 use midgard/validation_dispute_v1
 use midgard/validation_resolution_v1
@@ -478,96 +479,16 @@ test a_dispute_move_range_longer_than_l_d_is_refused() fail {
   )
 }
 
-test dispute_open_maturity_boundary_is_exact_and_fails_closed() {
-  let challenged_block_end_time = 1_000_000
-  let maturity_duration = 604_800_000
-  let final_open_time = challenged_block_end_time + maturity_duration - validation_dispute_v1.max_dispute_duration_milliseconds
+/// The case open guard is inclusive at `block_end + M/2` and closed one
+/// millisecond later.
+test case_open_guard_is_inclusive_at_half_maturity() {
+  let block_end = 1_000_000
+  let deadline = block_end + env.block_maturity_duration_v1 / 2
   and {
-    validation_dispute_v1.can_open_before_maturity(
-      final_open_time,
-      challenged_block_end_time,
-      maturity_duration,
-    ),
-    !validation_dispute_v1.can_open_before_maturity(
-      final_open_time + 1,
-      challenged_block_end_time,
-      maturity_duration,
-    ),
-    !validation_dispute_v1.can_open_before_maturity(
-      final_open_time,
-      challenged_block_end_time,
-      validation_dispute_v1.max_dispute_duration_milliseconds - 1,
-    ),
-    !validation_dispute_v1.can_open_before_maturity(
-      -1,
-      challenged_block_end_time,
-      maturity_duration,
-    ),
+    validation_dispute_v1.case_open_window_milliseconds == env.block_maturity_duration_v1 / 2,
+    validation_dispute_v1.case_can_open(deadline, block_end),
+    !validation_dispute_v1.case_can_open(deadline + 1, block_end),
   }
-}
-
-test delayed_source_verification_starts_a_fresh_bounded_operator_turn() {
-  let challenged_block_end_time = 1_000_000
-  let maturity_duration = 604_800_000
-  let source_time_upper = 200
-  let dispute = validation_dispute_v1.open_after_source_verification(
-    descriptor4(h_a, h_b, h_c, h_d),
-    descriptor4(h_a, h_b, h_e, h_f),
-    h_a,
-    100,
-    source_time_upper,
-    challenged_block_end_time,
-    maturity_duration,
-  )
-  and {
-    dispute.turn_started_at == source_time_upper,
-    dispute.operator_clock_ms == validation_dispute_v1.dispute_side_clock_milliseconds,
-    dispute.challenger_clock_ms == validation_dispute_v1.dispute_side_clock_milliseconds,
-    dispute.agreed_low_hash == h_a,
-  }
-}
-
-test final_maturity_source_verification_boundary_remains_resolvable() {
-  let challenged_block_end_time = 1_000_000
-  let maturity_duration = 604_800_000
-  let final_source_time = challenged_block_end_time + maturity_duration - validation_dispute_v1.max_dispute_duration_milliseconds
-  let dispute = validation_dispute_v1.open_after_source_verification(
-    descriptor4(h_a, h_b, h_c, h_d),
-    descriptor4(h_a, h_b, h_e, h_f),
-    h_a,
-    100,
-    final_source_time,
-    challenged_block_end_time,
-    maturity_duration,
-  )
-  dispute.turn_started_at == final_source_time
-}
-
-test stale_source_verification_after_maturity_boundary_fails_closed() fail {
-  let challenged_block_end_time = 1_000_000
-  let maturity_duration = 604_800_000
-  let final_source_time = challenged_block_end_time + maturity_duration - validation_dispute_v1.max_dispute_duration_milliseconds
-  expect _dispute = validation_dispute_v1.open_after_source_verification(
-    descriptor4(h_a, h_b, h_c, h_d),
-    descriptor4(h_a, h_b, h_e, h_f),
-    h_a,
-    100,
-    final_source_time + 1,
-    challenged_block_end_time,
-    maturity_duration,
-  )
-}
-
-test source_verification_cannot_predate_authenticated_open_time() fail {
-  expect _dispute = validation_dispute_v1.open_after_source_verification(
-    descriptor4(h_a, h_b, h_c, h_d),
-    descriptor4(h_a, h_b, h_e, h_f),
-    h_a,
-    100,
-    99,
-    1_000_000,
-    604_800_000,
-  )
 }
 
 test one_step_boundary_is_authenticated_before_resolver_handoff() {

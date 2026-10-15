@@ -1,6 +1,6 @@
 //// VerifySource, driven through the deployed validator: the C1 order (source
-//// authenticated, check 3, Gap B, R-DESC, open), the bond output, the fee
-//// reserve and the maturity horizon, each in both polarities.
+//// authenticated, R-DESC, the challenger's claim, N5, the open guard, the
+//// bond), each in both polarities.
 
 use aiken/builtin
 use aiken/cbor
@@ -13,7 +13,6 @@ use cardano/assets
 use cardano/transaction.{
   InlineDatum, Input, Output, OutputReference, Transaction,
 }
-use env
 use fraud_proofs/validation_trace/source_v1 as source_validator
 use midgard/computation_thread as ct
 use midgard/dispute_bond_v1.{DisputeBondV1}
@@ -56,6 +55,9 @@ const thread_lovelace = 5_000_000
 const fee = 400_000
 
 const end_time = 1_000_000
+
+/// The node's `block_time`, later than the header's `end_time`.
+const block_end = 1_005_000
 
 const h28_a = #"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 
@@ -439,15 +441,13 @@ fn pending(
   operator: validation_trace_v1.ValidationTraceDescriptorV1,
   initial_state: validation_trace_v1.ValidationMachineStateV1,
   challenger: validation_trace_v1.ValidationTraceDescriptorV1,
-  supplied_terminal: Option<validation_trace_v1.ValidationMachineStateV1>,
 ) -> validation_game_v1.PendingValidationClaimV1 {
   validation_game_v1.PendingValidationClaimV1 {
     challenged_header_hash: header_hash,
     challenged_header: header_for(source),
     claim: claim(source, operator, initial_state),
     challenger_descriptor: challenger,
-    open_time_upper: end_time,
-    terminal_state: supplied_terminal,
+    block_end,
   }
 }
 
@@ -471,23 +471,91 @@ fn honest_operator() -> validation_trace_v1.ValidationTraceDescriptorV1 {
   )
 }
 
+// ## The challenger's claim: a Terminal Rejected state at S, proven as leaf S
+
+fn claimed_terminal() -> validation_trace_v1.ValidationMachineStateV1 {
+  terminal_state(validation_trace_v1.Rejected, h32_a)
+}
+
+/// A fixed sibling path of the trace depth for `step_count`.
+fn siblings() -> List<ByteArray> {
+  [zero_hash, zero_hash, zero_hash, zero_hash]
+}
+
+fn fold_path(
+  siblings: List<ByteArray>,
+  index: Int,
+  hash: ByteArray,
+) -> ByteArray {
+  when siblings is {
+    [] -> hash
+    [sibling, ..rest] ->
+      fold_path(
+        rest,
+        index / 2,
+        if index % 2 == 0 {
+          validation_trace_v1.trace_branch_hash(hash, sibling)
+        } else {
+          validation_trace_v1.trace_branch_hash(sibling, hash)
+        },
+      )
+  }
+}
+
+/// The trace root whose leaf `index` holds `state_hash`.
+fn root_with(index: Int, state_hash: ByteArray) -> ByteArray {
+  fold_path(siblings(), index, validation_trace_v1.trace_leaf_hash(state_hash))
+}
+
+fn proof_of(
+  index: Int,
+  state_hash: ByteArray,
+) -> validation_trace_v1.ValidationTraceProof {
+  validation_trace_v1.ValidationTraceProof {
+    state_index: index,
+    state_hash,
+    siblings: siblings(),
+  }
+}
+
+/// The challenger descriptor committing to `terminal_hash` at S, under a root
+/// whose leaf `leaf_index` holds `leaf_hash`.
+fn challenger_with(
+  terminal_hash: ByteArray,
+  leaf_index: Int,
+  leaf_hash: ByteArray,
+) -> validation_trace_v1.ValidationTraceDescriptorV1 {
+  validation_trace_v1.ValidationTraceDescriptorV1 {
+    ..descriptor(
+      validation_trace_v1.hash_machine_state(honest_initial()),
+      terminal_hash,
+      validation_trace_v1.Rejected,
+      h32_a,
+    ),
+    trace_root: root_with(leaf_index, leaf_hash),
+  }
+}
+
+/// The challenger descriptor for a claimed `terminal` proven at S.
+fn challenger_for(
+  terminal: validation_trace_v1.ValidationMachineStateV1,
+) -> validation_trace_v1.ValidationTraceDescriptorV1 {
+  let terminal_hash = validation_trace_v1.hash_machine_state(terminal)
+  challenger_with(terminal_hash, step_count, terminal_hash)
+}
+
 fn honest_challenger() -> validation_trace_v1.ValidationTraceDescriptorV1 {
-  descriptor(
-    validation_trace_v1.hash_machine_state(honest_initial()),
-    h32_c,
-    validation_trace_v1.Rejected,
-    h32_a,
-  )
+  challenger_for(claimed_terminal())
 }
 
 fn honest_pending() -> validation_game_v1.PendingValidationClaimV1 {
-  pending(
-    honest_source(),
-    honest_operator(),
-    honest_initial(),
-    honest_challenger(),
-    None,
-  )
+  with_challenger(honest_challenger())
+}
+
+fn with_challenger(
+  challenger: validation_trace_v1.ValidationTraceDescriptorV1,
+) -> validation_game_v1.PendingValidationClaimV1 {
+  pending(honest_source(), honest_operator(), honest_initial(), challenger)
 }
 
 // ## The transaction
@@ -555,13 +623,9 @@ fn tx_at(upper: Int, outputs: List<Output>) -> Transaction {
   }
 }
 
-fn reserved() -> Int {
-  thread_lovelace + validation_dispute_v1.thread_fee_reserve_lovelace
-}
-
 /// The game a VerifySource at `upper` opens, agreeing on `low_hash`. Built
-/// with `open`, which does not check the maturity horizon, so a refusal past
-/// maturity is the validator's alone.
+/// with `open`, which does not check the open guard, so a late refusal is the
+/// validator's alone.
 fn opened_at(
   state: validation_game_v1.PendingValidationClaimV1,
   low_hash: ByteArray,
@@ -595,7 +659,7 @@ fn open_outputs(
   upper: Int,
 ) -> List<Output> {
   [
-    thread_output(game_hash, reserved(), opened(state, upper)),
+    thread_output(game_hash, thread_lovelace, opened(state, upper)),
     bond_output(bond_lovelace, bond_datum()),
   ]
 }
@@ -612,8 +676,10 @@ fn award_outputs() -> List<Output> {
 
 const upper = end_time + 60_000
 
-fn verify(
+fn verify_claiming(
   state: validation_game_v1.PendingValidationClaimV1,
+  terminal: validation_trace_v1.ValidationMachineStateV1,
+  proof: validation_trace_v1.ValidationTraceProof,
   tx: Transaction,
 ) -> Bool {
   source_validator.main.spend(
@@ -624,16 +690,34 @@ fn verify(
     thread_policy,
     Some(ct.StepDatum { fraud_prover, data: Some(state) }),
     ct.Continue(
-      source_validator.VerifySource { input_index: 0, output_index: 0 },
+      source_validator.VerifySource {
+        input_index: 0,
+        output_index: 0,
+        challenger_terminal: terminal,
+        challenger_terminal_proof: proof,
+      },
     ),
     own_out_ref(),
     tx,
   )
 }
 
+fn verify(
+  state: validation_game_v1.PendingValidationClaimV1,
+  tx: Transaction,
+) -> Bool {
+  let terminal = claimed_terminal()
+  verify_claiming(
+    state,
+    terminal,
+    proof_of(step_count, validation_trace_v1.hash_machine_state(terminal)),
+    tx,
+  )
+}
+
 // ## 5. The honest open
 
-test verify_source_opens_the_game_with_the_bond_and_the_reserve() {
+test verify_source_opens_the_game_with_the_bond() {
   verify(honest_pending(), tx_at(upper, open_outputs(honest_pending(), upper)))
 }
 
@@ -648,7 +732,11 @@ test verify_source_refuses_another_agreed_low_hash() fail {
     tx_at(
       upper,
       [
-        thread_output(game_hash, reserved(), opened_at(state, h32_a, upper)),
+        thread_output(
+          game_hash,
+          thread_lovelace,
+          opened_at(state, h32_a, upper),
+        ),
         bond_output(bond_lovelace, bond_datum()),
       ],
     ),
@@ -669,161 +757,135 @@ test verify_source_refuses_an_unauthenticated_source() fail {
   verify(unauthenticated, tx_at(upper, award_outputs()))
 }
 
-// ## 2. Check 3 is decisive
+// ## 2. The challenger's claim
 
-/// C1: a normal Plutus source, the operator descriptor claims rejection, both
-/// descriptors commit to the same terminal hash and the supplied terminal
-/// state is coherent with the descriptor. Check 3 still convicts.
-test c1_check_3_convicts_a_rejected_normal_descriptor_even_with_equal_terminals() {
-  let terminal = terminal_state(validation_trace_v1.Rejected, h32_a)
-  let terminal_hash = validation_trace_v1.hash_machine_state(terminal)
-  let initial_hash = validation_trace_v1.hash_machine_state(honest_initial())
-  let operator = descriptor(
-    initial_hash,
-    terminal_hash,
-    validation_trace_v1.Rejected,
-    h32_a,
-  )
-  let challenger = descriptor(
-    initial_hash,
-    terminal_hash,
-    validation_trace_v1.Rejected,
-    h32_b,
-  )
-  verify(
-    pending(
-      honest_source(),
-      operator,
-      honest_initial(),
-      challenger,
-      Some(terminal),
-    ),
-    tx_at(upper, award_outputs()),
+/// The open, claiming `terminal` with `proof` against `state`.
+fn opens_claiming(
+  state: validation_game_v1.PendingValidationClaimV1,
+  terminal: validation_trace_v1.ValidationMachineStateV1,
+  proof: validation_trace_v1.ValidationTraceProof,
+) -> Bool {
+  verify_claiming(
+    state,
+    terminal,
+    proof,
+    tx_at(upper, open_outputs(state, upper)),
   )
 }
 
-test c1_check_3_conviction_pays_only_the_award() fail {
-  let terminal = terminal_state(validation_trace_v1.Rejected, h32_a)
+/// Opens with `terminal` proven at S under a matching challenger descriptor.
+fn opens_with_terminal(
+  terminal: validation_trace_v1.ValidationMachineStateV1,
+) -> Bool {
   let terminal_hash = validation_trace_v1.hash_machine_state(terminal)
-  let initial_hash = validation_trace_v1.hash_machine_state(honest_initial())
-  let operator = descriptor(
-    initial_hash,
-    terminal_hash,
-    validation_trace_v1.Rejected,
-    h32_a,
+  opens_claiming(
+    with_challenger(challenger_for(terminal)),
+    terminal,
+    proof_of(step_count, terminal_hash),
   )
-  let challenger = descriptor(
-    initial_hash,
-    terminal_hash,
-    validation_trace_v1.Rejected,
-    h32_b,
-  )
-  let state = pending(
-    honest_source(),
-    operator,
-    honest_initial(),
-    challenger,
-    Some(terminal),
-  )
-  verify(state, tx_at(upper, open_outputs(state, upper)))
 }
 
-test check_3_convicts_an_accepted_descriptor_on_a_rejecting_forced_leaf() {
-  let source = forced_source(
-    rejection_reason_v1.ForcedTxInvalid {
-      reason: rejection_reason_v1.FeeBelowMinimum,
+test claim_a_terminal_rejected_state_at_s_opens() {
+  opens_with_terminal(claimed_terminal())
+}
+
+test claim_a_state_that_is_not_terminal_is_refused() fail {
+  opens_with_terminal(
+    validation_trace_v1.ValidationMachineStateV1 {
+      ..claimed_terminal(),
+      phase: validation_trace_v1.CanonicalDecode,
     },
   )
-  verify(
-    pending(
-      source,
-      honest_operator(),
-      placeholder_state(),
-      honest_challenger(),
-      None,
-    ),
-    tx_at(upper, award_outputs()),
+}
+
+test claim_an_accepted_terminal_is_refused() fail {
+  opens_with_terminal(
+    validation_trace_v1.ValidationMachineStateV1 {
+      ..claimed_terminal(),
+      verdict: validation_trace_v1.Accepted,
+      rejection_code_hash: zero_hash,
+    },
   )
 }
 
-// ## 3. Gap B
+/// The proof is valid for leaf S - 1 of the challenger's root, and the state
+/// is the claimed one: only the leaf index is wrong.
+test claim_a_proof_of_another_leaf_is_refused() fail {
+  let terminal_hash = validation_trace_v1.hash_machine_state(claimed_terminal())
+  opens_claiming(
+    with_challenger(
+      challenger_with(terminal_hash, step_count - 1, terminal_hash),
+    ),
+    claimed_terminal(),
+    proof_of(step_count - 1, terminal_hash),
+  )
+}
 
-fn gap_b(
-  supplied: validation_trace_v1.ValidationMachineStateV1,
-  committed: validation_trace_v1.ValidationMachineStateV1,
-) -> validation_game_v1.PendingValidationClaimV1 {
-  let terminal_hash = validation_trace_v1.hash_machine_state(committed)
+/// Leaf S holds another state's hash; the challenger commits to the claimed
+/// state's hash.
+test claim_a_proof_of_another_state_is_refused() fail {
+  let terminal_hash = validation_trace_v1.hash_machine_state(claimed_terminal())
+  opens_claiming(
+    with_challenger(challenger_with(terminal_hash, step_count, h32_c)),
+    claimed_terminal(),
+    proof_of(step_count, h32_c),
+  )
+}
+
+/// The claimed state is leaf S, but the challenger commits to another
+/// terminal hash, which the game would carry as its high hash.
+test claim_a_terminal_hash_the_challenger_did_not_commit_is_refused() fail {
+  let terminal_hash = validation_trace_v1.hash_machine_state(claimed_terminal())
+  opens_claiming(
+    with_challenger(challenger_with(h32_c, step_count, terminal_hash)),
+    claimed_terminal(),
+    proof_of(step_count, terminal_hash),
+  )
+}
+
+test claim_a_proof_under_another_root_is_refused() fail {
+  let terminal_hash = validation_trace_v1.hash_machine_state(claimed_terminal())
+  opens_claiming(
+    with_challenger(
+      validation_trace_v1.ValidationTraceDescriptorV1 {
+        ..honest_challenger(),
+        trace_root: h32_c,
+      },
+    ),
+    claimed_terminal(),
+    proof_of(step_count, terminal_hash),
+  )
+}
+
+/// The operator commits to the claimed terminal hash itself: nothing is in
+/// dispute, so there is no successor, neither a game nor an award.
+fn operator_agrees() -> validation_game_v1.PendingValidationClaimV1 {
   let initial_hash = validation_trace_v1.hash_machine_state(honest_initial())
   pending(
     honest_source(),
     descriptor(
       initial_hash,
-      terminal_hash,
+      validation_trace_v1.hash_machine_state(claimed_terminal()),
       validation_trace_v1.Accepted,
       zero_hash,
     ),
     honest_initial(),
-    descriptor(initial_hash, terminal_hash, validation_trace_v1.Rejected, h32_a),
-    Some(supplied),
+    honest_challenger(),
   )
 }
 
-test gap_b_incoherent_terminal_goes_to_award() {
-  let incoherent = validation_trace_v1.ValidationMachineStateV1 {
-    ..terminal_state(validation_trace_v1.Accepted, zero_hash),
-    program_counter: step_count - 1,
-  }
-  verify(gap_b(incoherent, incoherent), tx_at(upper, award_outputs()))
+test claim_the_operators_own_terminal_cannot_open() fail {
+  verify(
+    operator_agrees(),
+    tx_at(upper, open_outputs(operator_agrees(), upper)),
+  )
 }
 
-test gap_b_coherent_terminal_has_no_successor() fail {
-  let coherent = terminal_state(validation_trace_v1.Accepted, zero_hash)
-  verify(gap_b(coherent, coherent), tx_at(upper, award_outputs()))
+test claim_the_operators_own_terminal_is_not_an_award() fail {
+  verify(operator_agrees(), tx_at(upper, award_outputs()))
 }
 
-test gap_b_coherent_terminal_cannot_open_the_game() fail {
-  let coherent = terminal_state(validation_trace_v1.Accepted, zero_hash)
-  let state = gap_b(coherent, coherent)
-  verify(state, tx_at(upper, open_outputs(state, upper)))
-}
-
-test gap_b_refuses_a_terminal_that_is_not_the_committed_one() fail {
-  let committed = terminal_state(validation_trace_v1.Accepted, zero_hash)
-  let incoherent = validation_trace_v1.ValidationMachineStateV1 {
-    ..committed,
-    program_counter: step_count - 1,
-  }
-  verify(gap_b(incoherent, committed), tx_at(upper, award_outputs()))
-}
-
-/// An incoherent operator terminal supplied although the challenger commits
-/// to another terminal hash: without the presence rule it would go to award.
-test gap_b_refuses_a_terminal_when_the_terminal_hashes_differ() fail {
-  let incoherent = validation_trace_v1.ValidationMachineStateV1 {
-    ..terminal_state(validation_trace_v1.Accepted, zero_hash),
-    program_counter: step_count - 1,
-  }
-  let state = validation_game_v1.PendingValidationClaimV1 {
-    ..gap_b(incoherent, incoherent),
-    challenger_descriptor: honest_challenger(),
-  }
-  verify(state, tx_at(upper, award_outputs()))
-}
-
-/// Equal terminal hashes with no terminal supplied: without the presence rule
-/// the game would open, since the descriptors still disagree on the verdict.
-test gap_b_requires_the_terminal_when_the_terminal_hashes_are_equal() fail {
-  let state = validation_game_v1.PendingValidationClaimV1 {
-    ..honest_pending(),
-    challenger_descriptor: validation_trace_v1.ValidationTraceDescriptorV1 {
-      ..honest_challenger(),
-      terminal_state_hash: honest_operator().terminal_state_hash,
-    },
-  }
-  verify(state, tx_at(upper, open_outputs(state, upper)))
-}
-
-// ## 4. R-DESC
+// ## 3. R-DESC
 
 fn native_only() -> validation_game_v1.PendingValidationClaimV1 {
   let source = normal_source(0)
@@ -833,8 +895,7 @@ fn native_only() -> validation_game_v1.PendingValidationClaimV1 {
     source,
     descriptor(initial_hash, h32_b, validation_trace_v1.Accepted, zero_hash),
     initial,
-    descriptor(initial_hash, h32_c, validation_trace_v1.Rejected, h32_a),
-    None,
+    honest_challenger(),
   )
 }
 
@@ -844,7 +905,6 @@ fn consistent_forced() -> validation_game_v1.PendingValidationClaimV1 {
     honest_operator(),
     placeholder_state(),
     honest_challenger(),
-    None,
   )
 }
 
@@ -879,7 +939,6 @@ test a_committed_initial_state_that_is_not_derived_goes_to_award() {
     honest_operator(),
     bogus,
     honest_challenger(),
-    None,
   )
   verify(state, tx_at(upper, award_outputs()))
 }
@@ -891,7 +950,7 @@ fn with_outputs(outputs: List<Output>) -> Bool {
 }
 
 fn game_output() -> Output {
-  thread_output(game_hash, reserved(), opened(honest_pending(), upper))
+  thread_output(game_hash, thread_lovelace, opened(honest_pending(), upper))
 }
 
 test bond_missing_is_refused() fail {
@@ -1003,7 +1062,7 @@ test one_bond_cannot_open_two_games() fail {
     [
       Output {
         address: address.from_script(game_hash),
-        value: assets.from_lovelace(reserved())
+        value: assets.from_lovelace(thread_lovelace)
           |> assets.add(thread_policy, second_thread, 1),
         datum: InlineDatum(game_datum),
         reference_script: None,
@@ -1012,44 +1071,28 @@ test one_bond_cannot_open_two_games() fail {
   )
 }
 
-// ## The fee reserve
+// ## The open guard: `upper <= block_end + M/2`
 
-test reserve_one_lovelace_short_is_refused() fail {
-  with_outputs(
-    [
-      thread_output(game_hash, reserved() - 1, opened(honest_pending(), upper)),
-      bond_output(bond_lovelace, bond_datum()),
-    ],
-  )
+fn open_deadline() -> Int {
+  block_end + ledger_state.block_maturity_duration_v1 / 2
 }
 
-test reserve_is_sixty_six_moves_at_the_cap() {
-  validation_dispute_v1.thread_fee_reserve_lovelace == 66 * env.max_dispute_move_fee_lovelace
-}
-
-// ## The maturity horizon
-
-fn latest_upper() -> Int {
-  end_time + ledger_state.block_maturity_duration_v1 - validation_dispute_v1.max_dispute_duration_milliseconds
-}
-
-test verify_source_opens_at_the_last_instant_maturity_allows() {
-  let at = latest_upper()
+fn opens_at(at: Int) -> Bool {
   verify(honest_pending(), tx_at(at, open_outputs(honest_pending(), at)))
 }
 
-test verify_source_refuses_to_open_past_maturity() fail {
-  let at = latest_upper() + 1
-  verify(
-    honest_pending(),
-    tx_at(
-      at,
-      [
-        thread_output(game_hash, reserved(), opened(honest_pending(), at)),
-        bond_output(bond_lovelace, bond_datum()),
-      ],
-    ),
-  )
+test verify_source_opens_at_the_open_deadline() {
+  opens_at(open_deadline())
+}
+
+test verify_source_refuses_to_open_after_the_open_deadline() fail {
+  opens_at(open_deadline() + 1)
+}
+
+/// The guard runs from the node's `block_time`, which is later than the
+/// header's `end_time` here: one millisecond past `end_time + M/2` still opens.
+test verify_source_open_guard_reads_the_node_block_time() {
+  opens_at(end_time + ledger_state.block_maturity_duration_v1 / 2 + 1)
 }
 
 // ## Census: who funds and who signs VerifySource
@@ -1060,11 +1103,14 @@ test verify_source_refuses_to_open_past_maturity() fail {
 // submit it.
 
 fn award_shaped(shape: fn(Transaction) -> Transaction) -> Bool {
-  let incoherent = validation_trace_v1.ValidationMachineStateV1 {
-    ..terminal_state(validation_trace_v1.Accepted, zero_hash),
-    program_counter: step_count - 1,
+  let bogus = validation_trace_v1.ValidationMachineStateV1 {
+    ..honest_initial(),
+    prior_ledger_root: h32_b,
   }
-  verify(gap_b(incoherent, incoherent), shape(tx_at(upper, award_outputs())))
+  verify(
+    pending(honest_source(), honest_operator(), bogus, honest_challenger()),
+    shape(tx_at(upper, award_outputs())),
+  )
 }
 
 test census_anyone_verifies_the_source_paying_the_cap_from_the_thread() {

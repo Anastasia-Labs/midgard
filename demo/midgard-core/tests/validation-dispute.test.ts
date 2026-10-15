@@ -2,10 +2,9 @@ import { describe, expect, it } from "vitest";
 
 import {
   buildMidgardValidationTraceTree,
-  canOpenMidgardValidationDisputeBeforeMaturity,
+  canOpenMidgardValidationCase,
   enterMidgardValidationDisputeResolution,
   MIDGARD_CONSENSUS_LIMITS,
-  MIDGARD_VALIDATION_DISPUTE_MAX_DURATION_MS,
   MIDGARD_VALIDATION_DISPUTE_MAX_VALIDITY_RANGE_MS,
   MIDGARD_VALIDATION_DISPUTE_SIDE_CLOCK_MS,
   MIDGARD_VALIDATION_NO_REJECTION_CODE_HASH,
@@ -127,43 +126,17 @@ describe("validation dispute orchestration", () => {
     ).toBe("operator");
   });
 
-  it("matches the inclusive L1 maturity boundary", () => {
+  it("opens a case up to block_end + M/2 inclusive", () => {
     const blockEnd = 1_000_000;
-    // The testing profiles' maturity is shorter than the dispute schedule, so
-    // no dispute opens under them; the boundary is exercised with a maturity
-    // that admits the schedule, and the schedule itself is the floor.
-    const maturity = Math.max(
-      MIDGARD_CONSENSUS_LIMITS.blockMaturityMs,
-      2 * MIDGARD_VALIDATION_DISPUTE_MAX_DURATION_MS,
-    );
-    const finalOpen =
-      blockEnd + maturity - MIDGARD_VALIDATION_DISPUTE_MAX_DURATION_MS;
+    const deadline =
+      blockEnd + Math.floor(MIDGARD_CONSENSUS_LIMITS.blockMaturityMs / 2);
     expect(
-      canOpenMidgardValidationDisputeBeforeMaturity({
-        currentTimeUpper: blockEnd,
-        challengedBlockEndTime: blockEnd,
-        maturityDuration: MIDGARD_VALIDATION_DISPUTE_MAX_DURATION_MS,
-      }),
+      canOpenMidgardValidationCase({ currentTimeUpper: deadline, blockEnd }),
     ).toBe(true);
     expect(
-      canOpenMidgardValidationDisputeBeforeMaturity({
-        currentTimeUpper: blockEnd,
-        challengedBlockEndTime: blockEnd + 1,
-        maturityDuration: MIDGARD_VALIDATION_DISPUTE_MAX_DURATION_MS - 1,
-      }),
-    ).toBe(false);
-    expect(
-      canOpenMidgardValidationDisputeBeforeMaturity({
-        currentTimeUpper: finalOpen,
-        challengedBlockEndTime: blockEnd,
-        maturityDuration: maturity,
-      }),
-    ).toBe(true);
-    expect(
-      canOpenMidgardValidationDisputeBeforeMaturity({
-        currentTimeUpper: finalOpen + 1,
-        challengedBlockEndTime: blockEnd,
-        maturityDuration: maturity,
+      canOpenMidgardValidationCase({
+        currentTimeUpper: deadline + 1,
+        blockEnd,
       }),
     ).toBe(false);
   });

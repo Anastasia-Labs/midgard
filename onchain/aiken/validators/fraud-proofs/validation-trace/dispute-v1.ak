@@ -2,12 +2,10 @@ use aiken/crypto.{ScriptHash}
 use aiken/primitive/bytearray
 use cardano/assets.{PolicyId}
 use cardano/transaction.{OutputReference, Transaction}
-use midgard/common/utils
 use midgard/computation_thread as ct
 use midgard/fraud_proof_catalogue
 use midgard/fraud_proofs/common.{ProverOnly, cancel, continue_validation_trace}
 use midgard/hub_oracle as hub
-use midgard/ledger_state
 use midgard/state_queue
 use midgard/validation_claim_v1
 use midgard/validation_dispute_v1
@@ -25,7 +23,6 @@ pub type OpenActionV1 {
     state_queue_node_ref_input_index: Int,
     claim: validation_claim_v1.ValidationClaimWitnessV1,
     challenger_descriptor: validation_trace_v1.ValidationTraceDescriptorV1,
-    terminal_state: Option<validation_trace_v1.ValidationMachineStateV1>,
   }
 }
 
@@ -63,12 +60,8 @@ validator main(
         state_queue_node_ref_input_index,
         claim,
         challenger_descriptor,
-        terminal_state,
       }) -> {
-        let Transaction { reference_inputs, validity_range, .. } = tx
-        let (_, current_time_upper) = utils.get_inclusive_bounds_of_a_short_validity_range(
-          validity_range,
-        )
+        let Transaction { reference_inputs, .. } = tx
         let hub.Datum { state_queue: state_queue_policy, .. } = hub.get_datum(
           reference_inputs,
           hub_oracle,
@@ -92,18 +85,18 @@ validator main(
             output_state,
           ) {
             expect None = input_state
-            state_queue.get_block_datum_v1(
+            state_queue.get_state_queue_node(
               reference_inputs,
               state_queue_policy,
               state_queue_node_ref_input_index,
-              fn(header, header_hash) {
+              fn(node, header_hash) {
+                let header = state_queue.decode_header_view(node.header)
                 let expected_state: Data = validation_game_v1.PendingValidationClaimV1 {
                   challenged_header_hash: header_hash,
                   challenged_header: header,
                   claim,
                   challenger_descriptor,
-                  open_time_upper: current_time_upper,
-                  terminal_state,
+                  block_end: node.block_time,
                 }
                 and {
                   output_script_hash == source_validator_script_hash,
@@ -118,11 +111,6 @@ validator main(
                   validation_dispute_v1.descriptors_can_dispute(
                     claim.descriptor_membership.value,
                     challenger_descriptor,
-                  ),
-                  validation_dispute_v1.can_open_before_maturity(
-                    current_time_upper,
-                    header.end_time,
-                    ledger_state.block_maturity_duration_v1,
                   ),
                   output_state == expected_state,
                 }

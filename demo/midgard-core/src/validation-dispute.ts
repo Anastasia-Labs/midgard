@@ -162,23 +162,28 @@ export const midgardValidationDescriptorsCanDispute = (
   }
 };
 
-export const canOpenMidgardValidationDisputeBeforeMaturity = ({
+/** M/2: how long after the challenged block's commit time a case may open. */
+export const MIDGARD_VALIDATION_CASE_OPEN_WINDOW_MS = Math.floor(
+  MIDGARD_CONSENSUS_LIMITS.blockMaturityMs / 2,
+);
+
+/**
+ * The case open guard, mirroring the validator: VerifySource's validity upper
+ * bound is at most `blockEnd + M/2`, where `blockEnd` is the challenged
+ * block's state-queue `block_time`.
+ */
+export const canOpenMidgardValidationCase = ({
   currentTimeUpper,
-  challengedBlockEndTime,
-  maturityDuration,
+  blockEnd,
 }: {
   readonly currentTimeUpper: number;
-  readonly challengedBlockEndTime: number;
-  readonly maturityDuration: number;
+  readonly blockEnd: number;
 }): boolean => {
   try {
     requireSafeUnsigned(currentTimeUpper, "currentTimeUpper");
-    requireSafeUnsigned(challengedBlockEndTime, "challengedBlockEndTime");
-    requireSafeUnsigned(maturityDuration, "maturityDuration");
+    requireSafeUnsigned(blockEnd, "blockEnd");
     return (
-      maturityDuration >= MIDGARD_VALIDATION_DISPUTE_MAX_DURATION_MS &&
-      currentTimeUpper + MIDGARD_VALIDATION_DISPUTE_MAX_DURATION_MS <=
-        challengedBlockEndTime + maturityDuration
+      currentTimeUpper <= blockEnd + MIDGARD_VALIDATION_CASE_OPEN_WINDOW_MS
     );
   } catch {
     return false;

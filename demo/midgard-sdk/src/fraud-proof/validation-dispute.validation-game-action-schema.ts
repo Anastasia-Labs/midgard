@@ -193,10 +193,9 @@ export const PendingValidationClaimSchema = Data.Object({
   challenged_header: HeaderSchema,
   claim: ValidationClaimWitnessSchema,
   challenger_descriptor: ValidationTraceDescriptorSchema,
-  open_time_upper: Data.Integer(),
-  // Gap B: the operator's terminal state, present exactly when both
-  // descriptors commit to the same terminal state hash.
-  terminal_state: Data.Nullable(ValidationMachineStateSchema),
+  // The challenged block's state-queue `block_time`, read at Open.
+  // VerifySource's open guard runs from it.
+  block_end: Data.Integer(),
 });
 
 export type PendingValidationClaim = Data.Static<
@@ -236,7 +235,6 @@ export const ValidationDisputeOpenActionSchema = Data.Object({
   state_queue_node_ref_input_index: Data.Integer(),
   claim: ValidationClaimWitnessSchema,
   challenger_descriptor: ValidationTraceDescriptorSchema,
-  terminal_state: Data.Nullable(ValidationMachineStateSchema),
 });
 
 export type ValidationDisputeOpenAction = Data.Static<

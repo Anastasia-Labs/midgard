@@ -7,7 +7,6 @@ use midgard/common/utils
 use midgard/computation_thread as ct
 use midgard/dispute_bond_v1.{DisputeBondV1}
 use midgard/fraud_proofs/common.{Anyone, cancel, continue_validation_trace}
-use midgard/ledger_state
 use midgard/validation_claim_v1
 use midgard/validation_dispute_v1
 use midgard/validation_game_v1
@@ -18,7 +17,14 @@ pub type Datum =
   ct.StepDatum<validation_game_v1.PendingValidationClaimV1>
 
 pub type VerifySourceActionV1 {
-  VerifySource { input_index: Int, output_index: Int }
+  VerifySource {
+    input_index: Int,
+    output_index: Int,
+    /// The challenger's claimed state at its step count S.
+    challenger_terminal: validation_trace_v1.ValidationMachineStateV1,
+    /// Leaf S of the challenger's trace root, holding that state's hash.
+    challenger_terminal_proof: validation_trace_v1.ValidationTraceProof,
+  }
 }
 
 pub type SpendRedeemer =
@@ -43,16 +49,34 @@ fn agreed_low_hash(
   }
 }
 
+/// The challenger's claim is coherent: a Terminal Rejected state, proven as
+/// leaf S of the challenger's trace root, whose hash is the challenger's
+/// committed terminal hash.
+fn claim_is_coherent(
+  challenger: validation_trace_v1.ValidationTraceDescriptorV1,
+  terminal: validation_trace_v1.ValidationMachineStateV1,
+  proof: validation_trace_v1.ValidationTraceProof,
+) -> Bool {
+  let terminal_hash = validation_trace_v1.hash_machine_state(terminal)
+  and {
+    terminal.phase == validation_trace_v1.Terminal,
+    terminal.verdict == validation_trace_v1.Rejected,
+    proof.state_index == challenger.step_count,
+    proof.state_hash == terminal_hash,
+    challenger.terminal_state_hash == terminal_hash,
+    validation_trace_v1.verify_trace_proof(challenger, proof),
+  }
+}
+
 /// VerifySource, the second half of the opener. In order:
 /// 1. the committed source must be authenticated, or there is no successor;
-/// 2. check 3: a descriptor whose verdict contradicts its source goes to award;
-/// 3. Gap B: the terminal state is present exactly when both descriptors share
-///    the terminal hash (Open stores it unchecked; this is its only reader), and
-///    must be the operator's; incoherent goes to award, coherent has no
-///    successor;
-/// 4. R-DESC: only a normal source with redeemers is disputed further;
-/// 5. the game opens: inside the maturity horizon, with the bond locked at
-///    `dispute_bond_v1`, the fee reserve added to the thread, and no other
+/// 2. R-DESC: only a normal source with redeemers is disputed further;
+/// 3. the challenger's claim is coherent, and its terminal hash is not the
+///    operator's;
+/// 4. N5: the agreed initial state, or award when the operator's committed
+///    initial state is not the derived one;
+/// 5. the open guard: the validity upper bound is at most `block_end + M/2`;
+/// 6. the game opens with the bond locked at `dispute_bond_v1`, and no other
 ///    thread opening in the same transaction.
 validator main(
   game_validator_script_hash: ScriptHash,
@@ -77,7 +101,12 @@ validator main(
           computation_thread_mint_redeemer_index,
           tx,
         )
-      ct.Continue(VerifySource { input_index, output_index }) -> {
+      ct.Continue(VerifySource {
+        input_index,
+        output_index,
+        challenger_terminal,
+        challenger_terminal_proof,
+      }) -> {
         let Transaction { inputs, outputs, validity_range, .. } = tx
         let (_, source_time_upper) = utils.get_inclusive_bounds_of_a_bounded_validity_range(
           validity_range,
@@ -102,98 +131,77 @@ validator main(
           ) {
             expect Some(state) = input_state
             let descriptor = state.claim.descriptor_membership.value
+            let challenger = state.challenger_descriptor
             expect Some(witness_set) = validation_claim_v1.committed_claim_source_witness_set(
               state.challenged_header,
               state.claim,
             )
-            let award_state: Data = validation_resolution_v1.winning_resolution()
-            let goes_to_award = and {
-              output_script_hash == award_validator_script_hash,
-              output_state == award_state,
-            }
-            if !validation_claim_v1.descriptor_matches_source_verdict(
-              descriptor,
-              state.claim.source_membership,
-            ) {
-              goes_to_award
-            } else {
-              when state.terminal_state is {
-                Some(terminal_state) -> {
-                  expect
-                    descriptor.terminal_state_hash == state.challenger_descriptor.terminal_state_hash
-                  expect
-                    validation_trace_v1.hash_machine_state(terminal_state) == descriptor.terminal_state_hash
-                  expect
-                    !validation_claim_v1.terminal_is_coherent(
-                      descriptor,
-                      terminal_state,
-                    )
-                  goes_to_award
+            expect
+              validation_claim_v1.source_requires_trace(
+                state.claim.source_membership,
+                witness_set,
+              )
+            expect
+              claim_is_coherent(
+                challenger,
+                challenger_terminal,
+                challenger_terminal_proof,
+              )
+            expect
+              descriptor.terminal_state_hash != challenger.terminal_state_hash
+            when agreed_low_hash(state) is {
+              None -> {
+                let award_state: Data = validation_resolution_v1.winning_resolution()
+                and {
+                  output_script_hash == award_validator_script_hash,
+                  output_state == award_state,
                 }
-                None -> {
-                  expect
-                    descriptor.terminal_state_hash != state.challenger_descriptor.terminal_state_hash
-                  expect
-                    validation_claim_v1.source_requires_trace(
-                      state.claim.source_membership,
-                      witness_set,
+              }
+              Some(low_hash) -> {
+                expect
+                  validation_dispute_v1.case_can_open(
+                    source_time_upper,
+                    state.block_end,
+                  )
+                let expected_state: Data = validation_game_v1.ValidationGameStateV1 {
+                  challenged_header_hash: state.challenged_header_hash,
+                  dispute: validation_dispute_v1.open(
+                    descriptor,
+                    challenger,
+                    low_hash,
+                    source_time_upper,
+                  ),
+                }
+                let bond: Data = DisputeBondV1 {
+                  challenged_header_hash: state.challenged_header_hash,
+                  fraud_prover,
+                  forfeit_after: dispute_bond_v1.forfeit_after(
+                    state.challenged_header.end_time,
+                  ),
+                }
+                // One opening per transaction, so each game is backed by its
+                // own bond output.
+                expect [_] = list.filter(
+                  inputs,
+                  fn(input) {
+                    input.output.address.payment_credential == Script(
+                      input_script_hash,
                     )
-                  when agreed_low_hash(state) is {
-                    None -> goes_to_award
-                    Some(low_hash) -> {
-                      let expected_state: Data = validation_game_v1.ValidationGameStateV1 {
-                        challenged_header_hash: state.challenged_header_hash,
-                        dispute: validation_dispute_v1.open_after_source_verification(
-                          descriptor,
-                          state.challenger_descriptor,
-                          low_hash,
-                          state.open_time_upper,
-                          source_time_upper,
-                          state.challenged_header.end_time,
-                          ledger_state.block_maturity_duration_v1,
-                        ),
-                      }
-                      let bond: Data = DisputeBondV1 {
-                        challenged_header_hash: state.challenged_header_hash,
-                        fraud_prover,
-                        forfeit_after: dispute_bond_v1.forfeit_after(
-                          state.challenged_header.end_time,
-                        ),
-                      }
-                      // One opening per transaction, so each game is backed
-                      // by its own bond output.
-                      expect [_] = list.filter(
-                        inputs,
-                        fn(input) {
-                          input.output.address.payment_credential == Script(
-                            input_script_hash,
-                          )
-                        },
-                      )
-                      expect [bond_output] = list.filter(
-                        outputs,
-                        fn(output) {
-                          output.address.payment_credential == Script(
-                            dispute_bond_validator_script_hash,
-                          )
-                        },
-                      )
-                      expect Some(thread_input) = list.at(inputs, input_index)
-                      expect Some(thread_output) = list.at(
-                        outputs,
-                        output_index,
-                      )
-                      and {
-                        output_script_hash == game_validator_script_hash,
-                        output_state == expected_state,
-                        lovelace_of(bond_output.value) >= dispute_bond_lovelace,
-                        bond_output.datum == InlineDatum(bond),
-                        lovelace_of(thread_output.value) >= lovelace_of(
-                          thread_input.output.value,
-                        ) + validation_dispute_v1.thread_fee_reserve_lovelace,
-                      }
-                    }
-                  }
+                  },
+                )
+                expect [bond_output] = list.filter(
+                  outputs,
+                  fn(output) {
+                    output.address.payment_credential == Script(
+                      dispute_bond_validator_script_hash,
+                    )
+                  },
+                )
+                and {
+                  output_script_hash == game_validator_script_hash,
+                  output_state == expected_state,
+                  lovelace_of(bond_output.value) >= dispute_bond_lovelace,
+                  bond_output.datum == InlineDatum(bond),
                 }
               }
             }

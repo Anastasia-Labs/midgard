@@ -25,27 +25,23 @@ pub const max_bisection_rounds: Int = env.max_bisection_rounds
 pub const max_dispute_duration_milliseconds: Int =
   2 * dispute_side_clock_milliseconds + 2 * ( 2 * max_bisection_rounds + 2 ) * dispute_max_validity_range_milliseconds + dispute_resolution_allowance_milliseconds
 
-/// The lovelace VerifySource adds to the thread so that it can pay the fee of
-/// every move the game can charge, each at the per-move cap.
+/// The fee reserve a thread carries so that it can pay the fee of every move
+/// the game can charge, each at the per-move cap. It is the defender's, posted
+/// per thread with the defense; VerifySource adds none.
 pub const thread_fee_reserve_lovelace: Int =
   ( 2 * max_bisection_rounds + 2 ) * env.max_dispute_move_fee_lovelace
 
-/// A dispute may open only while the entire worst-case alternating response
-/// schedule still fits inside the challenged block's V1 maturity
-/// horizon. The boundary is inclusive: a dispute that uses the final
-/// permitted millisecond remains resolvable, while the next millisecond fails
-/// closed.
-pub fn can_open_before_maturity(
-  current_time_upper: Int,
-  challenged_block_end_time: Int,
-  maturity_duration: Int,
-) -> Bool {
-  and {
-    current_time_upper >= 0,
-    challenged_block_end_time >= 0,
-    maturity_duration >= max_dispute_duration_milliseconds,
-    current_time_upper + max_dispute_duration_milliseconds <= challenged_block_end_time + maturity_duration,
-  }
+/// M/2: how long after the challenged block's commit time a case may still
+/// open.
+pub const case_open_window_milliseconds: Int =
+  env.block_maturity_duration_v1 / 2
+
+/// The case open guard (M1): VerifySource's validity upper bound is at most
+/// `block_end + M/2`, where `block_end` is the challenged block's state-queue
+/// `block_time`. The post-game allowance P = M - M/2 - D_case then covers the
+/// closes and the removal before the block can merge.
+pub fn case_can_open(current_time_upper: Int, block_end: Int) -> Bool {
+  current_time_upper <= block_end + case_open_window_milliseconds
 }
 
 pub type DisputeTurn {
@@ -130,30 +126,6 @@ pub fn open(
     challenger_clock_ms: dispute_side_clock_milliseconds,
     turn: next_turn(0, operator.step_count),
   }
-}
-
-/// Starts both clocks only after the source-verification transaction
-/// authenticates the committed claim. The source hop cannot travel backwards
-/// relative to the opener, and it must still leave the complete worst-case
-/// dispute inside the challenged block's maturity horizon.
-pub fn open_after_source_verification(
-  operator: validation_trace_v1.ValidationTraceDescriptorV1,
-  challenger: validation_trace_v1.ValidationTraceDescriptorV1,
-  agreed_low_hash: ByteArray,
-  open_time_upper: Int,
-  source_time_upper: Int,
-  challenged_block_end_time: Int,
-  maturity_duration: Int,
-) -> ValidationDisputeV1 {
-  expect open_time_upper >= 0
-  expect source_time_upper >= open_time_upper
-  expect
-    can_open_before_maturity(
-      source_time_upper,
-      challenged_block_end_time,
-      maturity_duration,
-    )
-  open(operator, challenger, agreed_low_hash, source_time_upper)
 }
 
 /// The mover's clock after this move. A move is charged the time since the
