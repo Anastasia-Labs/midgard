@@ -406,6 +406,12 @@ jobs:
       - name: Check MPF node-encoding golden vectors
         if: ${{ !cancelled() }}
         run: node scripts/preflight.mjs --run golden:mpf-node-encoding-v1
+      # State 0 of a validation trace: the TypeScript twin's derivation, which
+      # the generated Aiken module asserts against
+      # validation_claim_v1.derive_initial_state.
+      - name: Check validation initial-state golden vectors
+        if: ${{ !cancelled() }}
+        run: node scripts/preflight.mjs --run golden:validation-initial-state-v1
       - name: Check forced-tx admission golden vectors
         if: ${{ !cancelled() }}
         run: node scripts/preflight.mjs --run golden:forced-tx-admission-v1
