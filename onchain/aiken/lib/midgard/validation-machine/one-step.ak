@@ -1,4 +1,5 @@
 use midgard/script_context_v1.{L1SlotConfigV1}
+use midgard/script_decode_v1.{ScriptDecodeRecordV1}
 use midgard/validation_machine/canonical_decode.{
   verify_canonical_decode, verify_compact_binding,
 }
@@ -72,7 +73,9 @@ fn verify_one_step_with_auxiliary(
       validation_trace_v1.ScriptIntegrity ->
         verify_script_integrity(pre, witness, auxiliary)
       validation_trace_v1.Cek ->
-        verify_cek(pre, witness, auxiliary, door, slot_config)
+        // A Plutus selection needs its script's decode record, which only
+        // the split selection validators read; this dispatcher carries none.
+        verify_cek(pre, witness, auxiliary, door, slot_config, None)
       validation_trace_v1.LedgerDelta ->
         verify_ledger_delta(pre, witness, auxiliary)
       validation_trace_v1.Terminal -> False
@@ -214,11 +217,19 @@ pub fn verify_cek_one_step_v1(
   evidence: ValidationOneStepEvidenceV1,
   door: field_door.MachineFieldDoorV1,
   slot_config: L1SlotConfigV1,
+  record: Option<ScriptDecodeRecordV1>,
 ) -> Bool {
   and {
     pre.phase == validation_trace_v1.Cek,
     structural_transition_is_valid(pre, evidence.transition),
-    verify_cek(pre, evidence.transition, evidence.auxiliary, door, slot_config),
+    verify_cek(
+      pre,
+      evidence.transition,
+      evidence.auxiliary,
+      door,
+      slot_config,
+      record,
+    ),
   }
 }
 

@@ -41,7 +41,7 @@ use midgard/validation_machine_tests/fixtures_phase_a.{
   phase_a_native_step_fixture, phase_a_script_preconditions_fixture,
   resolve_inputs_step_fixture, signatures_scan_witness, signatures_step_fixture,
   signer_frontier_for_tx, singleton_field_item_chunk_proof,
-  static_rules_delta_root_fixture, submitted_source, v1_program_envelope,
+  static_rules_delta_root_fixture, submitted_source, v1_plutus_script,
 }
 use midgard/validation_merkle_v1
 use midgard/validation_trace_v1
@@ -1417,7 +1417,7 @@ test phase_a_script_preconditions_require_integrity_for_plutus_bytes() {
       script_tx_wits: [
         MidgardVersionedScript {
           language: PlutusV3Script,
-          script_bytes: v1_program_envelope(),
+          script_bytes: v1_plutus_script(),
         },
       ],
     },

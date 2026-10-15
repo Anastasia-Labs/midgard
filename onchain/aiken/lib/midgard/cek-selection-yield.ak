@@ -2,31 +2,18 @@ use aiken/builtin
 use aiken/collection/list
 use aiken/crypto.{ScriptHash}
 use cardano/address.{Script}
+use cardano/assets.{PolicyId}
 use cardano/transaction.{
   InlineDatum, Input, Output, OutputReference, Redeemer, ScriptPurpose, Spend,
 }
-use midgard/cek_proof_v1.{CekMaterialPartitionFacts}
 use midgard/computation_thread as ct
+use midgard/script_decode_v1.{Decoded, Refused, ScriptDecodeRecordV1}
 use midgard/validation_machine/machine_types.{ValidationOneStepWitnessV1}
-use midgard/validation_resolver_v1.{
-  CekMaterialRouteV1, DirectCekMaterial, MinimumMultiOutputCekMaterial,
-  SinglePublicationCekMaterial,
-}
 use midgard/validation_semantic_v1.{Datum}
 
 pub const authenticate_role = "V1VtCekSelAuthYield"
 
 pub const successor_role = "V1VtCekSelSuccYield"
-
-pub const material_program_role = "V1VtCekSelMatProgYield"
-
-pub const material_data_role = "V1VtCekSelMatDataYield"
-
-pub type EnvelopeFacts {
-  term_root: ByteArray,
-  node_count: Int,
-  material_byte_length: Int,
-}
 
 pub type Action {
   VerifyExecutionSelection {
@@ -34,11 +21,10 @@ pub type Action {
     output_index: Int,
     transition: ValidationOneStepWitnessV1,
     auxiliary: Data,
-    material_route: CekMaterialRouteV1,
     yield_ref_input_indices: List<Int>,
-    envelope_facts: EnvelopeFacts,
-    material_facts: CekMaterialPartitionFacts,
-    begin_traversal: Bool,
+    /// Reference input holding the script's decode record, or -1 when the
+    /// selection reads no program.
+    record_reference_input_index: Int,
   }
 }
 
@@ -80,11 +66,26 @@ pub fn unique_dispatch(
   (datum, action, output_reference)
 }
 
-pub fn route_envelope(route: CekMaterialRouteV1) -> ByteArray {
-  when route is {
-    DirectCekMaterial { envelope_cbor, .. } -> envelope_cbor
-    SinglePublicationCekMaterial { envelope_cbor, .. } -> envelope_cbor
-    MinimumMultiOutputCekMaterial { envelope_cbor, .. } -> envelope_cbor
-    _ -> fail
+/// The decode record at a reference input. The record token of the decode
+/// family is named by the script hash the record is for, and the family only
+/// mints it onto an unspendable output carrying that record, so holding the
+/// token named by the record's own hash authenticates the record.
+pub fn decode_record_at(
+  reference_inputs: List<Input>,
+  index: Int,
+  script_decode_policy_id: PolicyId,
+) -> ScriptDecodeRecordV1 {
+  expect
+      Some(Input {
+        output: Output { datum: InlineDatum(raw_record), value, .. },
+        ..
+      })
+    = list.at(reference_inputs, index)
+  expect record: ScriptDecodeRecordV1 = raw_record
+  let script_hash = when record is {
+    Decoded { script_hash, .. } -> script_hash
+    Refused { script_hash, .. } -> script_hash
   }
+  expect assets.quantity_of(value, script_decode_policy_id, script_hash) == 1
+  record
 }

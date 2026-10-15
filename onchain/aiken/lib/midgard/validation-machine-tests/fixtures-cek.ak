@@ -25,10 +25,12 @@ use midgard/ledger_output_commitment_v1
 use midgard/native_tx_field_access_v1
 use midgard/rejection_reason_v1
 use midgard/script_context_v1
+use midgard/script_decode_v1.{Decoded, ScriptDecodeRecordV1}
 use midgard/script_proof_v1
 use midgard/validation_machine/canonical_decode as vm_canonical_decode
+use midgard/validation_machine/cek as vm_cek
 use midgard/validation_machine/machine_types as vm_machine_types
-use midgard/validation_machine/one_step as vm_one_step
+use midgard/validation_machine/shared as vm_shared
 use midgard/validation_machine/witness as vm_witness
 use midgard/validation_machine_tests/constants.{
   h_28_a, h_a, h_b, h_c, maximum_mint_terminal_compact_cbor,
@@ -97,8 +99,8 @@ use midgard/validation_machine_tests/constants.{
   maximum_spend_input_terminal_terminal_chunk_index,
   maximum_spend_input_terminal_transaction_commitment,
   maximum_spend_input_terminal_transaction_id,
-  maximum_spend_input_terminal_witness_set_compact_cbor, test_l1_slot_config,
-  validation_context_cbor, zero,
+  maximum_spend_input_terminal_witness_set_compact_cbor, validation_context_cbor,
+  zero,
 }
 use midgard/validation_machine_tests/fixture_types.{
   CekSelectionFixtureV1, MaximumFieldTerminalFixtureV1,
@@ -106,49 +108,38 @@ use midgard/validation_machine_tests/fixture_types.{
 use midgard/validation_machine_tests/fixtures_phase_a.{
   cek_state_fixture, empty_native_control_fixture, empty_v1_transaction,
   exact_rejection_post, forced_pending_state, inline_field_door,
-  one_step_evidence, singleton_field_item_chunk_proof,
+  one_step_evidence, singleton_field_item_chunk_proof, v1_plutus_script,
 }
 use midgard/validation_merkle_v1
 use midgard/validation_trace_v1
 
-pub fn maximum_program_envelope_selection_fixture() -> CekSelectionFixtureV1 {
-  let f = program_envelope_selection_fixture(1, h_b)
-  expect
-    f.envelope_hash == #"6f25a78e8bbffffce7c062e1281984afa4b5fae7a479db7f191c56ebe4fd1260"
-  CekSelectionFixtureV1 {
-    pre: f.pre,
-    evidence: f.evidence,
-    tampered_post: f.tampered_post,
+/// The PlutusV3 script the selection fixtures run.
+fn selection_script() -> MidgardVersionedScript {
+  MidgardVersionedScript {
+    language: PlutusV3Script,
+    script_bytes: v1_plutus_script(),
   }
 }
 
-/// A selection of the maximum envelope at program version `1.version_minor.0`;
-/// `tampered_hash` replaces the committed envelope hash in the tampered post.
-pub fn program_envelope_selection_fixture(
-  version_minor: Int,
-  tampered_hash: ByteArray,
-) -> VersionedCekSelectionFixtureV1 {
-  let tx = empty_v1_transaction()
-  let maximum_program_envelope = cek_proof_v1.encode_program_envelope_v1(
-    1,
-    version_minor,
-    0,
-    h_a,
-    cek_proof_v1.max_program_node_count,
-    cek_proof_v1.max_program_material_byte_length,
-  )
-  let maximum_program_envelope_hash = cek_proof_v1.hash_program_envelope_v1(
-    1,
-    version_minor,
-    0,
-    h_a,
-    cek_proof_v1.max_program_node_count,
-    cek_proof_v1.max_program_material_byte_length,
-  )
-  let script = MidgardVersionedScript {
-    language: PlutusV3Script,
-    script_bytes: maximum_program_envelope,
+/// A decode record for the selection fixtures' script, taken as given: its
+/// term root `h_a` stands for the decoded program.
+pub fn plutus_selection_record(phase2_class: Int) -> ScriptDecodeRecordV1 {
+  Decoded {
+    script_hash: script_proof_v1.versioned_script_hash(selection_script()),
+    language: 3,
+    program_version: 1,
+    term_root: h_a,
+    phase2_class,
   }
+}
+
+/// A PlutusV3 spend selection whose record has `phase2_class`. With no
+/// phase-2 class the successor starts the context build over the record's
+/// term root, and `tampered_post` starts it over another root; with one, the
+/// successor fails the run and `tampered_post` starts the context build.
+pub fn plutus_selection_fixture(phase2_class: Int) -> CekSelectionFixtureV1 {
+  let tx = empty_v1_transaction()
+  let script = selection_script()
   let script_cbor = encode_midgard_versioned_script(script)
   let first_chunk_proof = singleton_field_item_chunk_proof(6, script_cbor)
   let script_item_commitment = bounded_item_v1.from_bytes(6, 0, script_cbor)
@@ -192,7 +183,6 @@ pub fn program_envelope_selection_fixture(
     stage: 0,
     language_tag: 3,
     program_term_root: h_a,
-    program_envelope_hash: maximum_program_envelope_hash,
     purpose_kind: 0,
     purpose_index: 0,
     script_hash,
@@ -224,57 +214,34 @@ pub fn program_envelope_selection_fixture(
     },
   }
   let Pair(pre, work_witness_cbor) = cek_state_fixture(tx, control, #"", 0, 40)
-  let Pair(post_base, _) = cek_state_fixture(
-    tx,
-    control,
-    vm_witness.encode_cek_context_control_v1(context_control),
-    0,
-    41,
-  )
-  let post = validation_trace_v1.ValidationMachineStateV1 {
-    ..post_base,
-    work_root: validation_trace_v1.hash_work_witness(
-      validation_trace_v1.Cek,
-      41,
-      vm_witness.encode_cek_witness_v1(
-        control,
-        vm_witness.encode_cek_context_control_v1(context_control),
-        0,
-        0,
-        0,
-        #"",
-        0,
-        0,
-        maximum_program_envelope_hash,
-        -1,
-        -1,
+  let context_post = fn(term_root) {
+    let Pair(post, _) = cek_state_fixture(
+      tx,
+      control,
+      vm_witness.encode_cek_context_control_v1(
+        vm_machine_types.CekContextControlV1 {
+          ..context_control,
+          program_term_root: term_root,
+        },
       ),
-    ),
+      0,
+      41,
+    )
+    post
   }
-  let tampered_post = validation_trace_v1.ValidationMachineStateV1 {
-    ..post,
-    work_root: validation_trace_v1.hash_work_witness(
-      validation_trace_v1.Cek,
-      41,
-      vm_witness.encode_cek_witness_v1(
-        control,
-        vm_witness.encode_cek_context_control_v1(
-          vm_machine_types.CekContextControlV1 {
-            ..context_control,
-            program_envelope_hash: tampered_hash,
-          },
-        ),
-        0,
-        0,
-        0,
-        #"",
-        0,
-        0,
-        tampered_hash,
-        -1,
-        -1,
+  let Pair(post, tampered_post) = if phase2_class == 0 {
+    Pair(context_post(h_a), context_post(h_b))
+  } else {
+    Pair(
+      exact_rejection_post(
+        pre,
+        rejection_reason_v1.PlutusExecutionFailed {
+          purpose_kind: 0,
+          purpose_index: 0,
+        },
       ),
-    ),
+      context_post(h_a),
+    )
   }
   let evidence = one_step_evidence(
     work_witness_cbor,
@@ -298,70 +265,40 @@ pub fn program_envelope_selection_fixture(
       first_chunk_proof,
     },
   )
-  expect bytearray.length(maximum_program_envelope) == 50
-  VersionedCekSelectionFixtureV1 {
-    pre,
-    evidence,
-    tampered_post,
-    envelope_hash: maximum_program_envelope_hash,
+  CekSelectionFixtureV1 { pre, evidence, tampered_post }
+}
+
+/// The selection step `f` checked as the split selection validators check
+/// it, against decode record `record`.
+pub fn plutus_selection_holds(
+  f: CekSelectionFixtureV1,
+  post: validation_trace_v1.ValidationMachineStateV1,
+  record: Option<ScriptDecodeRecordV1>,
+) -> Bool {
+  let transition = vm_machine_types.ValidationOneStepWitnessV1 {
+    ..f.evidence.transition,
+    claimed_successor: post,
+  }
+  and {
+    vm_shared.structural_transition_is_valid(f.pre, transition),
+    vm_cek.verify_cek_execution_selection_semantics_v1(
+      f.pre,
+      transition,
+      f.evidence.auxiliary,
+      record,
+    ),
   }
 }
 
-pub type VersionedCekSelectionFixtureV1 {
-  pre: validation_trace_v1.ValidationMachineStateV1,
-  evidence: vm_machine_types.ValidationOneStepEvidenceV1,
-  tampered_post: validation_trace_v1.ValidationMachineStateV1,
-  envelope_hash: ByteArray,
-}
-
-pub fn maximum_program_envelope_selection_is_exact() -> Bool {
-  selection_fixture_is_exact(maximum_program_envelope_selection_fixture())
-}
-
-/// The 1.0.0 envelope selects with its own envelope hash, and a successor that
-/// commits the 1.1.0 hash of the same term is refused.
-pub fn program_version_1_0_0_selection_is_exact() -> Bool {
-  let f = program_envelope_selection_fixture(
-    0,
-    cek_proof_v1.hash_program_envelope_v1(
-      1,
-      1,
-      0,
-      h_a,
-      cek_proof_v1.max_program_node_count,
-      cek_proof_v1.max_program_material_byte_length,
-    ),
-  )
-  selection_fixture_is_exact(
-    CekSelectionFixtureV1 {
-      pre: f.pre,
-      evidence: f.evidence,
-      tampered_post: f.tampered_post,
-    },
-  )
-}
-
-fn selection_fixture_is_exact(f: CekSelectionFixtureV1) -> Bool {
+/// `phase2_class`'s selection holds against its record, and its tampered
+/// successor does not.
+pub fn plutus_selection_is_exact(phase2_class: Int) -> Bool {
+  let f = plutus_selection_fixture(phase2_class)
+  let record = Some(plutus_selection_record(phase2_class))
   and {
     bytearray.length(cbor.serialise(f.evidence)) < 16_384,
-    vm_one_step.verify_one_step_evidence(
-      f.pre,
-      f.evidence,
-      inline_field_door(),
-      test_l1_slot_config,
-    ),
-    !vm_one_step.verify_one_step_evidence(
-      f.pre,
-      vm_machine_types.ValidationOneStepEvidenceV1 {
-        transition: vm_machine_types.ValidationOneStepWitnessV1 {
-          ..f.evidence.transition,
-          claimed_successor: f.tampered_post,
-        },
-        auxiliary: f.evidence.auxiliary,
-      },
-      inline_field_door(),
-      test_l1_slot_config,
-    ),
+    plutus_selection_holds(f, f.evidence.transition.claimed_successor, record),
+    !plutus_selection_holds(f, f.tampered_post, record),
   }
 }
 
@@ -1040,7 +977,7 @@ pub fn cek_keyed_core_step_fixture(
     active_pre_hash,
     cpu_limit,
     1000000,
-    h_b,
+    h_28_a,
     purpose_kind,
     purpose_index,
   )
@@ -1078,7 +1015,7 @@ pub fn cek_keyed_core_step_fixture(
           active_post_hash,
           cpu_limit,
           1000000,
-          h_b,
+          h_28_a,
           kind,
           index,
         ),

@@ -392,17 +392,6 @@ pub type ForcedTxProofSourceV1 {
   field_preimage_lengths_cbor: ByteArray,
 }
 
-/// Permissionless, immutable L1 publication of one content-addressed CEK
-/// program node. The root authenticates `(kind, preimage)` under the
-/// canonical V1 domain; the enclosing validator deliberately has no spend path so
-/// forced-transaction material remains available for later classification and
-/// challenge.
-pub type CekProgramMaterialDatumV1 {
-  kind: Int,
-  root: ByteArray,
-  preimage: ByteArray,
-}
-
 /// The L1 forced-inclusion order's payload.
 ///
 /// **No `terminal_receipt_reference`.** It used to name the last link of the

@@ -6,7 +6,6 @@ use aiken/primitive/bytearray
 use cardano/address
 use cardano/assets.{PolicyId}
 use cardano/transaction.{InlineDatum, Input, NoDatum, Output, OutputReference}
-use midgard/cek_proof_v1
 use midgard/forced_submission_fixture as forced_fixture
 use midgard/fraud_proofs/native_tx/compact.{
   encode_forced_tx_compact_v1, encode_native_tx_body_compact,
@@ -26,8 +25,7 @@ use midgard/fraud_proofs/native_tx/types.{
   TxIsValid, native_tx_version_v1,
 }
 use midgard/ledger_state.{
-  CekProgramMaterialDatumV1, ForcedInclusionTxV1, ForcedTxProofSourceV1,
-  TxOrderEventV1, TxOrderPayloadV1,
+  ForcedInclusionTxV1, ForcedTxProofSourceV1, TxOrderEventV1, TxOrderPayloadV1,
 }
 use midgard/native_tx_field_access_v1.{
   Certified, FieldCarriageV1, FieldPreimageCertificateV1, Inline, RawUtxo,
@@ -326,17 +324,6 @@ test tx_order_payload_rejects_an_extra_field() fail {
   )
   expect payload: TxOrderPayloadV1 = data
   payload.tx_id == order_transaction_id
-}
-
-test cek_program_material_v1_matches_the_typed_blob_chunk_hash_vector() {
-  let chunk = #"6d6174657269616c"
-  let preimage = #"486d6174657269616c"
-  let root = cek_proof_v1.hash_blob_chunk_v1(chunk)
-  let datum = CekProgramMaterialDatumV1 { kind: 3, root, preimage }
-  and {
-    root == #"941de596141f044be570fb7b579b3fc520db7cacdbccd020cdb7618ba124380c",
-    cbor.serialise(datum) == #"d8799f035820941de596141f044be570fb7b579b3fc520db7cacdbccd020cdb7618ba124380c49486d6174657269616cff",
-  }
 }
 
 // ---------------------------------------------------------------------------
