@@ -991,8 +991,8 @@
   },
   {
     "file": "midgard-node/tests/helpers/availability-challenge-emulator.create-fixture.ts",
-    "max": 825,
-    "reason": "createFixture is the dominant indivisible declaration (688 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. C2a (+9): the fixture deploys against Preprod's slot mapping and starts its emulator on a whole second, so committed headers name their commit slot. C1 adds the fixed challenger key option for the curated emulator profile."
+    "max": 826,
+    "reason": "createFixture is the dominant indivisible declaration (688 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. C2a (+9): the fixture deploys against Preprod's slot mapping and starts its emulator on a whole second, so committed headers name their commit slot. C1 adds the fixed challenger key option for the curated emulator profile. Directory timeout tests (+1): the fixture takes extra genesis outputs and reference scripts."
   },
   {
     "file": "midgard-node/tests/initialization-emulator.test.ts",

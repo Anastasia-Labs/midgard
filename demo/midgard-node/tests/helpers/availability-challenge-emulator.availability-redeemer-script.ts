@@ -1,6 +1,12 @@
 import * as SDK from "@al-ft/midgard-sdk";
-import { CML, getAddressDetails, type UTxO } from "@lucid-evolution/lucid";
+import {
+  CML,
+  type EmulatorAccount,
+  getAddressDetails,
+  type UTxO,
+} from "@lucid-evolution/lucid";
 
+import { type TEST_AVAILABILITY_PARAMETERS } from "./availability-challenge.js";
 import {
   type AvailabilityRefusalExpectation,
   type AvailabilityRefusalPurpose,
@@ -164,6 +170,20 @@ export type AvailabilityFixtureOptions = {
    * listed one.
    */
   readonly challengerPrivateKey?: string;
+  /**
+   * The DA availability parameters the contracts are applied with. Default:
+   * `TEST_AVAILABILITY_PARAMETERS`. The collateral coins and the default pool
+   * follow them.
+   */
+  readonly parameters?: typeof TEST_AVAILABILITY_PARAMETERS;
+  /** Further genesis outputs, given the loaded contracts. */
+  readonly genesis?: (
+    contracts: SDK.MidgardValidators,
+  ) => readonly EmulatorAccount[];
+  /** Further reference scripts the fixture publishes. */
+  readonly referenceScriptTargets?: (
+    contracts: SDK.MidgardValidators,
+  ) => readonly SDK.ReferenceScriptTarget[];
 };
 
 /** Reference-script roles only a commit fixture publishes. */

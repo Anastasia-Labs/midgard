@@ -8,7 +8,8 @@ Status, recurrence and line conventions are as in
 [invariants-state-queue.md](invariants-state-queue.md). This file is shallower
 than the state-queue and fraud-proof files: it covers the governor, the
 attestation apply and rescue paths, the pooled committee bond at apply and at
-timeout, and the commitment binding a challenge record carries.
+timeout, the commitment binding a challenge record carries, and the timeout's
+separation from the operator directories.
 
 ## DA1. Governed thresholds never drop below two thirds
 
@@ -309,3 +310,29 @@ Blind spot: Slash never reads the availability mint redeemer; against a
 Close in its place it relies on Close's input and output counts and its node
 transition, so relaxing Close (for example, batching it) reopens a drain
 `[review]`.
+
+## DA9. A timeout touches no operator directory
+
+Status: VERIFIED.
+
+Rule: a `TimeoutChallenge` transaction mints and burns nothing under the
+registered-, active- or retired-operators policy the hub datum names. A
+directory change and a timeout go in separate transactions, as the operator
+slashes do among themselves (`other_directory_is_untouched_v1`,
+`lib/midgard/operator-directory.ak:257`).
+
+Enforced: `validate_timeout_challenge`, one pass over `tx.mint` against the
+three hub-datum policies
+(`lib/midgard/availability-challenge-validation.ak:915-924`)
+`[aiken-test: availability-challenge.test/]`. Refused, all fail:
+`q58_timeout_rejects_registered_operators_mint` `:2424`,
+`..._active_operators_mint` `:2430` and `..._retired_operators_mint` `:2436`;
+accepted: `q58_timeout_accepts_mint_outside_the_operator_directories`
+`:2444`. Each refusal goes green, that is accepted, with its own policy
+dropped from the condition. In the emulator,
+`demo/midgard-node/tests/availability-challenge-timeout-operator-directory.test.ts`
+composes a forced retirement into a timeout under a profile whose DA slash
+penalty equals the inactivity penalty; the timeout withdrawal refuses it, and
+the same two as separate transactions land in one block.
+
+Provenance: 2026-10-15, with the operator-slash bounty routing changes.
