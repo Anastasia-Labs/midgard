@@ -212,7 +212,7 @@ pub fn value_memory_size_v1(value: ValueWitnessV1) -> Int {
     OpaqueValue(_) -> fail @"opaque value has no memory size"
     BlsMillerLoopValue(expression_root) -> {
       expect bytearray.length(expression_root) == 32
-      192
+      72
     }
   }
 }
@@ -221,43 +221,37 @@ fn standard_cost_sizes_v1(arguments: List<ValueWitnessV1>) -> List<Int> {
   list.map(arguments, value_memory_size_v1)
 }
 
-fn bitwise_cost_sizes_v1(arguments: List<ValueWitnessV1>) -> List<Int> {
-  expect [extend, left, right] = arguments
-  let left_size = value_memory_size_v1(left)
-  let right_size = value_memory_size_v1(right)
-  let normalized = if boolean_v1(extend) {
-    if left_size > right_size {
-      left_size
-    } else {
-      right_size
-    }
-  } else if left_size < right_size {
-    left_size
+/// Cardano costs an output width (integerToByteString) or a replication count
+/// (replicateByte) as the words it occupies. Out-of-range widths fail before
+/// costing; this stays total so the failure arm never aborts.
+fn width_cost_size_v1(width: Int) -> Int {
+  if width <= 0 {
+    0
   } else {
-    right_size
+    ( width - 1 ) / 8 + 1
   }
-  [1, normalized, normalized]
+}
+
+/// Cardano costs a shift or rotation amount by its absolute value, saturated
+/// to the largest signed 64-bit integer.
+fn literal_cost_size_v1(literal: Int) -> Int {
+  let magnitude = if literal < 0 {
+    -literal
+  } else {
+    literal
+  }
+  if magnitude > 9223372036854775807 {
+    9223372036854775807
+  } else {
+    magnitude
+  }
 }
 
 pub fn builtin_cost_sizes_v1(
   tag: Int,
   arguments: List<ValueWitnessV1>,
 ) -> List<Int> {
-  if tag == 21 {
-    // Cardano costs Ed25519 byte strings in eight-byte words; the generic
-    // constant memory remains part of its existing commitment ABI.
-    list.map(
-      arguments,
-      fn(argument) {
-        let length = bytearray.length(bytes_v1(argument))
-        if length == 0 {
-          1
-        } else {
-          ( length + 7 ) / 8
-        }
-      },
-    )
-  } else if tag == 26 {
+  if tag == 26 {
     expect [condition, _, _] = arguments
     let condition_value = boolean_v1(condition)
     expect or {
@@ -280,11 +274,27 @@ pub fn builtin_cost_sizes_v1(
   } else if tag == 36 {
     expect [source, _, _, _, _, _] = arguments
     [value_memory_size_v1(source), 1, 1, 1, 1, 1]
-  } else if and {
-    tag >= 75,
-    tag <= 77,
-  } {
-    bitwise_cost_sizes_v1(arguments)
+  } else if tag == 73 {
+    expect [endianness, width, input] = arguments
+    [
+      value_memory_size_v1(endianness),
+      width_cost_size_v1(integer_v1(width)),
+      value_memory_size_v1(input),
+    ]
+  } else if tag == 80 {
+    expect [source, indices, value] = arguments
+    let Pair(_, items) = list_payload_v1(indices)
+    [
+      value_memory_size_v1(source),
+      list.length(items),
+      value_memory_size_v1(value),
+    ]
+  } else if tag == 81 {
+    expect [count, byte] = arguments
+    [width_cost_size_v1(integer_v1(count)), value_memory_size_v1(byte)]
+  } else if tag == 82 || tag == 83 {
+    expect [source, amount] = arguments
+    [value_memory_size_v1(source), literal_cost_size_v1(integer_v1(amount))]
   } else {
     standard_cost_sizes_v1(arguments)
   }
@@ -1509,7 +1519,7 @@ fn verify_semantic_mkconstr_data_v1(
     }
     _ -> fail @"constrData index must be an integer constant"
   }
-  expect constructor >= 0
+  expect !outside_constr_index_v1(constructor)
   let first = exact_list_summary_for_node_v1(fields_node, witness.list_nodes)
   let fields = list_constant_sequence_v1(
     fields_value,
@@ -1663,7 +1673,10 @@ fn constant_memory_from_payload_node_v1(
     cek_constant_v1.IntegerConstant -> cek_data_v1.data_node_memory_v1(node) - 4
     cek_constant_v1.ByteStringConstant ->
       cek_data_v1.data_node_memory_v1(node) - 4
-    cek_constant_v1.StringConstant -> cek_data_v1.data_node_memory_v1(node) - 4
+    cek_constant_v1.StringConstant -> {
+      expect cek_data_v1.BytesData { bytes_length, .. } = node
+      bytes_length / 4
+    }
     cek_constant_v1.UnitConstant -> 1
     cek_constant_v1.BooleanConstant -> 1
     cek_constant_v1.DataConstant -> cek_data_v1.data_node_memory_v1(node)
@@ -1698,9 +1711,9 @@ fn constant_memory_from_payload_node_v1(
       } else {
         fail @"semantic pair memory requires a recursive proof"
       }
-    cek_constant_v1.BlsG1Constant -> 48
-    cek_constant_v1.BlsG2Constant -> 96
-    cek_constant_v1.BlsMillerLoopResultConstant -> 192
+    cek_constant_v1.BlsG1Constant -> 18
+    cek_constant_v1.BlsG2Constant -> 36
+    cek_constant_v1.BlsMillerLoopResultConstant -> 72
   }
 }
 
@@ -2605,6 +2618,54 @@ pub fn verify_semantic_builtin_failure_v1(
       arguments_count,
       arguments_root,
     )
+  if tag == 37 {
+    constr_data_index_fails_v1(arguments, witness)
+  } else {
+    verify_single_source_semantic_failure_v1(tag, arguments, witness)
+  }
+}
+
+/// A constrData index outside the unsigned 64-bit range fails the builtin.
+fn outside_constr_index_v1(index: Int) -> Bool {
+  or {
+    index < 0,
+    index > 18446744073709551615,
+  }
+}
+
+/// The index is read from its revealed leaf or, with no leaf, from its node
+/// memory: an integer of two or more words has magnitude at least 2^64.
+fn constr_data_index_fails_v1(
+  arguments: List<ValueWitnessV1>,
+  witness: SemanticBuiltinWitnessV1,
+) -> Bool {
+  expect [index, _] = arguments
+  expect [node] = witness.data_nodes
+  expect witness.list_nodes == []
+  expect witness.pair_nodes == []
+  let parts = semantic_constant_parts_v1(index)
+  expect parts.constant_type == cek_constant_v1.IntegerConstant
+  when witness.scalar_preimages is {
+    [] -> {
+      expect cek_data_v1.IntegerData { .. } = node
+      and {
+        top_node_matches_v1(parts.payload, node, None, None),
+        parts.payload.memory >= 6,
+      }
+    }
+    [raw] ->
+      outside_constr_index_v1(
+        canonical_integer_leaf_v1(parts.payload, node, raw),
+      )
+    _ -> False
+  }
+}
+
+fn verify_single_source_semantic_failure_v1(
+  tag: Int,
+  arguments: List<ValueWitnessV1>,
+  witness: SemanticBuiltinWitnessV1,
+) -> Bool {
   expect [source] = arguments
   expect [node] = witness.data_nodes
   expect witness.scalar_preimages == []
@@ -3795,12 +3856,17 @@ pub fn authenticated_builtin_failure_budget(
   tag: Int,
   arguments: List<ValueWitnessV1>,
 ) -> cek_cost_v1.BuiltinBudgetV1 {
-  let bls_uncompress_is_paid = if tag == 60 {
+  let failure_is_paid = if tag == 60 {
     expect [source] = arguments
     bytearray.length(bytes_v1(source)) == 48
   } else if tag == 67 {
     expect [source] = arguments
     bytearray.length(bytes_v1(source)) == 96
+  } else if tag == 73 {
+    // The reference CEK refuses an out-of-range width before charging.
+    expect [_, width, _] = arguments
+    let width_value = integer_v1(width)
+    width_value >= 0 && width_value <= 8192
   } else {
     False
   }
@@ -3813,8 +3879,7 @@ pub fn authenticated_builtin_failure_budget(
     tag == 53,
     tag == 58,
     tag == 65,
-    tag == 73,
-    bls_uncompress_is_paid,
+    failure_is_paid,
   } {
     direct_builtin_budget_v1(tag, arguments)
   } else {

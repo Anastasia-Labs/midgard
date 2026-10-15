@@ -36,7 +36,8 @@ test canonical_machine_mode_and_error_tags_match_typescript() {
       cek_machine_v1.error_invalid_case_scrutinee,
       cek_machine_v1.error_case_branch_missing,
       cek_machine_v1.error_builtin_failure,
-    ] == [0, 1, 2, 3, 4, 5, 6, 7],
+      cek_machine_v1.error_non_unit_halt,
+    ] == [0, 1, 2, 3, 4, 5, 6, 7, 8],
   }
 }
 
@@ -569,8 +570,8 @@ test direct_builtin_executes_with_exact_semantics_and_budget() {
     cek_proof_v1.empty_environment_root_v1,
     cek_proof_v1.empty_continuation_root_v1,
     0,
-    101728,
-    103,
+    101308,
+    102,
   )
   and {
     cek_machine_v1.verify_core_step_v1(
@@ -886,6 +887,108 @@ test nonconstant_empty_stack_halts_as_error() {
         body: h_01,
         environment: cek_proof_v1.empty_environment_root_v1,
       },
+    },
+  )
+}
+
+fn halting_constant(
+  type_cbor: ByteArray,
+) -> cek_machine_v1.MachineValueWitnessV1 {
+  cek_machine_v1.ConstantValue {
+    type_root: cek_proof_v1.hash_blob_chunk_v1(type_cbor),
+    payload_root: h_02,
+    payload_length: 1,
+    semantic_root: h_03,
+    memory: 1,
+  }
+}
+
+fn halting_constant_root(type_cbor: ByteArray) -> ByteArray {
+  cek_proof_v1.hash_constant_value_v1(
+    cek_proof_v1.hash_blob_chunk_v1(type_cbor),
+    h_02,
+    1,
+    h_03,
+    1,
+  )
+}
+
+fn empty_stack(focus_root: ByteArray) -> cek_machine_v1.MachineStateV1 {
+  state(
+    cek_machine_v1.mode_return,
+    focus_root,
+    cek_proof_v1.empty_environment_root_v1,
+    cek_proof_v1.empty_continuation_root_v1,
+    0,
+    16100,
+    200,
+  )
+}
+
+fn halted(
+  mode: Int,
+  focus_root: ByteArray,
+  auxiliary: Int,
+) -> cek_machine_v1.MachineStateV1 {
+  state(
+    mode,
+    focus_root,
+    cek_proof_v1.empty_environment_root_v1,
+    cek_proof_v1.empty_continuation_root_v1,
+    auxiliary,
+    16100,
+    200,
+  )
+}
+
+test unit_constant_on_empty_stack_halts_successfully() {
+  let root = halting_constant_root(#"9f03ff")
+  cek_machine_v1.verify_core_step_v1(
+    empty_stack(root),
+    halted(cek_machine_v1.mode_halt_success, root, 0),
+    cek_machine_v1.ReturnEmptyContinuation {
+      value: halting_constant(#"9f03ff"),
+    },
+  )
+}
+
+test non_unit_constant_on_empty_stack_halts_as_error() {
+  let root = halting_constant_root(#"9f00ff")
+  cek_machine_v1.verify_core_step_v1(
+    empty_stack(root),
+    halted(
+      cek_machine_v1.mode_halt_error,
+      cek_proof_v1.hash_error_term_v1(),
+      cek_machine_v1.error_non_unit_halt,
+    ),
+    cek_machine_v1.ReturnEmptyContinuation {
+      value: halting_constant(#"9f00ff"),
+    },
+  )
+}
+
+test non_unit_constant_cannot_claim_success() fail {
+  let root = halting_constant_root(#"9f04ff")
+  cek_machine_v1.verify_core_step_v1(
+    empty_stack(root),
+    halted(cek_machine_v1.mode_halt_success, root, 0),
+    cek_machine_v1.ReturnEmptyContinuation {
+      value: halting_constant(#"9f04ff"),
+    },
+  )
+}
+
+test unit_constant_cannot_claim_failure() fail {
+  let root = halting_constant_root(#"9f03ff")
+  cek_machine_v1.verify_core_step_v1(
+    empty_stack(root),
+    halted(
+      cek_machine_v1.mode_halt_error,
+      cek_proof_v1.hash_error_term_v1(),
+      cek_machine_v1.error_non_unit_halt,
+    ),
+    cek_machine_v1.ReturnEmptyContinuation {
+      value: halting_constant(#"9f03ff"),
     },
   )
 }

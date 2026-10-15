@@ -129,13 +129,23 @@ fn const_y_or_linear_z(quote: Int, slope: Int, sizes: List<Int>) -> Int {
   }
 }
 
-fn division_cpu(sizes: List<Int>) -> Int {
+/// Plutus V3 variant E: divideInteger and modInteger cost the quadratic over
+/// (larger, smaller) sizes on both sides of the diagonal; quotientInteger and
+/// remainderInteger stay constant below it.
+fn division_cpu(tag: Int, sizes: List<Int>) -> Int {
   let Pair(x, y) = two(sizes)
-  if x < y {
+  if x < y && ( tag == 4 || tag == 5 ) {
     85848
   } else {
-    let real = 123203 + 1716 * x + 7305 * y + 57 * x * x + 549 * x * y - 900 * y
-    max(85848, real)
+    let Pair(a, b) = if x < y {
+      Pair(y, x)
+    } else {
+      Pair(x, y)
+    }
+    max(
+      85848,
+      123203 + 1716 * a + 7305 * b + 57 * a * a + 960 * a * b - 900 * b * b,
+    )
   }
 }
 
@@ -209,7 +219,7 @@ fn cpu_cost_v1(tag: Int, sizes: List<Int>) -> Int {
     tag >= 3,
     tag <= 6,
   } {
-    division_cpu(sizes)
+    division_cpu(tag, sizes)
   } else if tag == 7 {
     linear2_min(51775, 558, sizes)
   } else if tag == 8 {
@@ -229,7 +239,7 @@ fn cpu_cost_v1(tag: Int, sizes: List<Int>) -> Int {
     expect [_, _] = sizes
     13169
   } else if tag == 15 {
-    linear_on_equal(29498, 38, 24548, sizes)
+    linear_on_equal(28755, 75, 30623, sizes)
   } else if or {
     tag == 16,
     tag == 17,

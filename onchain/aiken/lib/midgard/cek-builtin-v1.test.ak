@@ -2,6 +2,7 @@ use aiken/builtin
 use aiken/cbor
 use aiken/collection/list
 use aiken/fuzz
+use aiken/primitive/bytearray
 use midgard/cek_builtin_v1
 use midgard/cek_constant_v1
 use midgard/cek_cost_v1
@@ -127,8 +128,8 @@ test add_integer_direct_budget_matches_reference_cek() {
       integer(#"1881"),
     ),
     cek_builtin_v1.direct_builtin_budget_v1(0, arguments) == cek_cost_v1.BuiltinBudgetV1 {
-      cpu: 101628,
-      memory: 3,
+      cpu: 101208,
+      memory: 2,
     },
   }
 }
@@ -196,7 +197,7 @@ test integer_to_bytes_size_failure_charges_the_pinned_builtin_cost() {
       arguments,
     ),
     cek_builtin_v1.authenticated_builtin_failure_budget(73, arguments) == cek_cost_v1.BuiltinBudgetV1 {
-      cpu: 1351512,
+      cpu: 1322607,
       memory: 1,
     },
   }
@@ -948,6 +949,171 @@ test semantic_wrong_data_variant_failure_is_authenticated_locally() {
       scalar_preimages: [],
     },
   )
+}
+
+const largest_constr_index = 18446744073709551615
+
+const smallest_oversized_constr_index = 18446744073709551616
+
+fn empty_data_fields() -> cek_builtin_v1.ValueWitnessV1 {
+  constant(#"9f0508ff", #"80")
+}
+
+fn empty_data_fields_node() -> cek_data_v1.DataNodeV1 {
+  cek_data_v1.ListData {
+    items_count: 0,
+    items_root: cek_data_v1.empty_data_list_root_v1(),
+    cbor_length: 1,
+    memory: 4,
+  }
+}
+
+fn direct_integer(value: Int) -> cek_builtin_v1.ValueWitnessV1 {
+  integer(cbor.serialise(builtin.i_data(value)))
+}
+
+fn semantic_integer_node(value: Int) -> cek_data_v1.DataNodeV1 {
+  let raw = cbor.serialise(builtin.i_data(value))
+  cek_data_v1.IntegerData {
+    cbor_root: cek_data_scan_v1.bounded_blob_root_v1(raw),
+    cbor_length: bytearray.length(raw),
+    memory: 4 + cek_data_v1.integer_memory_size_v1(value),
+  }
+}
+
+fn semantic_integer(value: Int) -> cek_builtin_v1.ValueWitnessV1 {
+  let raw = cbor.serialise(builtin.i_data(value))
+  let summary = cek_data_v1.integer_data_summary_v1(
+    value,
+    cek_data_scan_v1.bounded_blob_root_v1(raw),
+  )
+  cek_builtin_v1.SemanticConstantValue {
+    type_cbor: #"9f00ff",
+    payload: summary,
+    memory: summary.memory - 4,
+  }
+}
+
+fn constr_data_result(index: Int) -> cek_builtin_v1.ValueWitnessV1 {
+  let raw = cbor.serialise(builtin.i_data(index))
+  let summary = cek_data_v1.large_constr_data_summary_from_cbor_v1(
+    cek_data_scan_v1.bounded_blob_root_v1(raw),
+    bytearray.length(raw),
+    4 + cek_data_v1.integer_memory_size_v1(index),
+    cek_data_v1.empty_data_list_summary_v1(),
+  )
+  cek_builtin_v1.SemanticConstantValue {
+    type_cbor: #"9f08ff",
+    payload: summary,
+    memory: summary.memory,
+  }
+}
+
+fn constr_data_succeeds(
+  index: cek_builtin_v1.ValueWitnessV1,
+  index_nodes: List<cek_data_v1.DataNodeV1>,
+  scalar_preimages: List<ByteArray>,
+  value: Int,
+) -> Bool {
+  let arguments = [index, empty_data_fields()]
+  cek_builtin_v1.verify_semantic_builtin_v1(
+    37,
+    builtin_root(37, arguments),
+    arguments,
+    constr_data_result(value),
+    cek_builtin_v1.SemanticBuiltinWitnessV1 {
+      data_nodes: list.concat(index_nodes, [empty_data_fields_node()]),
+      list_nodes: [],
+      pair_nodes: [],
+      scalar_preimages,
+    },
+  )
+}
+
+fn constr_data_fails(
+  index: cek_builtin_v1.ValueWitnessV1,
+  data_nodes: List<cek_data_v1.DataNodeV1>,
+  scalar_preimages: List<ByteArray>,
+) -> Bool {
+  let arguments = [index, empty_data_fields()]
+  cek_builtin_v1.verify_semantic_builtin_failure_v1(
+    37,
+    builtin_root(37, arguments),
+    arguments,
+    cek_builtin_v1.SemanticBuiltinWitnessV1 {
+      data_nodes,
+      list_nodes: [],
+      pair_nodes: [],
+      scalar_preimages,
+    },
+  )
+}
+
+fn leaf(value: Int) -> ByteArray {
+  cbor.serialise(builtin.i_data(value))
+}
+
+test constr_data_accepts_the_largest_unsigned_64_bit_index() {
+  constr_data_succeeds(
+    direct_integer(largest_constr_index),
+    [],
+    [],
+    largest_constr_index,
+  )
+}
+
+test semantic_constr_data_accepts_the_largest_unsigned_64_bit_index() {
+  constr_data_succeeds(
+    semantic_integer(largest_constr_index),
+    [semantic_integer_node(largest_constr_index)],
+    [leaf(largest_constr_index)],
+    largest_constr_index,
+  )
+}
+
+test constr_data_cannot_succeed_at_minus_one() fail {
+  constr_data_succeeds(
+    semantic_integer(-1),
+    [semantic_integer_node(-1)],
+    [leaf(-1)],
+    -1,
+  )
+}
+
+test constr_data_fails_provably_at_two_to_the_64() {
+  constr_data_fails(
+    semantic_integer(smallest_oversized_constr_index),
+    [semantic_integer_node(smallest_oversized_constr_index)],
+    [],
+  )
+}
+
+test constr_data_fails_provably_at_minus_one() {
+  constr_data_fails(direct_integer(-1), [semantic_integer_node(-1)], [leaf(-1)])
+}
+
+test semantic_constr_data_fails_provably_at_minus_one() {
+  constr_data_fails(
+    semantic_integer(-1),
+    [semantic_integer_node(-1)],
+    [leaf(-1)],
+  )
+}
+
+test constr_data_failure_is_refused_at_the_largest_index() fail {
+  constr_data_fails(
+    semantic_integer(largest_constr_index),
+    [semantic_integer_node(largest_constr_index)],
+    [leaf(largest_constr_index)],
+  )
+}
+
+test constr_data_failure_is_refused_at_zero() fail {
+  constr_data_fails(direct_integer(0), [semantic_integer_node(0)], [leaf(0)])
+}
+
+test one_word_constr_data_index_cannot_fail_from_memory() fail {
+  constr_data_fails(semantic_integer(-1), [semantic_integer_node(-1)], [])
 }
 
 // The old aggregate remains the oracle while physical core hops are introduced.

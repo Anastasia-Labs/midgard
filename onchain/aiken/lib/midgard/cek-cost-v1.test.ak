@@ -28,7 +28,7 @@ test bls_final_verify_budget_matches_pinned_v3() {
   }
 }
 
-test bitwise_budget_uses_normalized_sizes() {
+test bitwise_budget_follows_the_pinned_v3_row() {
   cek_cost_v1.builtin_budget_v1(75, [1, 5, 5]) == cek_cost_v1.BuiltinBudgetV1 {
     cpu: 107406,
     memory: 5,

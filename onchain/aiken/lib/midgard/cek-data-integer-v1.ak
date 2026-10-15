@@ -10,7 +10,15 @@ use midgard/fraud_proofs/native_tx/codec.{
 
 pub const version: Int = 1
 
-pub const syntax_bytes: Int = 14
+/// Covers a whole definite integer: a tag, a two-byte length head and a
+/// 64-byte magnitude.
+pub const syntax_bytes: Int = 67
+
+/// The widest measured chunk: a two-byte head and 64 bytes.
+const measure_bytes: Int = 66
+
+const all_ones_chunk: ByteArray =
+  #"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
 
 pub const stage_syntax: Int = 0
 
@@ -118,14 +126,6 @@ fn read_canonical_argument(
   }
 }
 
-fn unsigned_byte_size(value: Int) -> Int {
-  if value < 256 {
-    1
-  } else {
-    1 + unsigned_byte_size(value / 256)
-  }
-}
-
 pub fn parse_syntax_v1(bytes: ByteArray, source_length: Int) -> Option<Int> {
   if or {
     source_length < 1,
@@ -144,7 +144,12 @@ pub fn parse_syntax_v1(bytes: ByteArray, source_length: Int) -> Option<Int> {
             argument.value <= uint64_max,
             argument.next_offset == source_length,
           } {
-            Some(4 + unsigned_byte_size(argument.value * 2))
+            // |n| is the argument for major 0 and one more for major 1.
+            Some(
+              4 + cek_data_v1.integer_memory_size_v1(
+                argument.value + argument.major,
+              ),
+            )
           } else {
             None
           }
@@ -153,27 +158,9 @@ pub fn parse_syntax_v1(bytes: ByteArray, source_length: Int) -> Option<Int> {
       first == 194,
       first == 195,
     } {
-      if bytearray.length(bytes) >= 5 && bytearray.at(bytes, 1) == 95 {
-        when measured_magnitude_length(source_length - 1) is {
-          Some(length) ->
-            if and {
-              length > 64,
-              bytearray.at(bytes, 2) == 88,
-              bytearray.at(bytes, 3) == 64,
-              bytearray.at(bytes, 4) != 0,
-            } {
-              Some(
-                4 + length + if bytearray.at(bytes, 4) >= 128 {
-                  1
-                } else {
-                  0
-                },
-              )
-            } else {
-              None
-            }
-          None -> None
-        }
+      // An indefinite magnitude is measured chunk by chunk (stage_measure).
+      if bytearray.at(bytes, 1) == 95 {
+        None
       } else {
         when read_canonical_argument(bytes, 1) is {
           None -> None
@@ -191,13 +178,17 @@ pub fn parse_syntax_v1(bytes: ByteArray, source_length: Int) -> Option<Int> {
               )
               if first_magnitude_byte == 0 {
                 None
+              } else if first == 194 {
+                Some(4 + cek_data_v1.bytes_memory_size_v1(magnitude.value))
               } else {
+                // Tag 3 holds |n| - 1.
                 Some(
-                  4 + magnitude.value + if first_magnitude_byte >= 128 {
-                    1
-                  } else {
-                    0
-                  },
+                  4 + cek_data_v1.integer_memory_size_v1(
+                    builtin.bytearray_to_integer(
+                      True,
+                      slice_len(bytes, magnitude.next_offset, magnitude.value),
+                    ) + 1,
+                  ),
                 )
               }
             } else {
@@ -294,9 +285,12 @@ fn measured_magnitude_length(source_length: Int) -> Option<Int> {
   }
 }
 
+/// Before the first chunk the memory field holds the sign (1 for tag 3).
+/// After it, `4 + length + carry`, where the carry is 1 while a tag 3
+/// magnitude is all one bits, so `|n| = magnitude + 1` gains a word.
 fn measured_memory_is_well_formed(source_length: Int, memory: Int) -> Bool {
   if source_length == 2 {
-    memory == 0
+    memory == 0 || memory == 1
   } else {
     when measured_magnitude_length(source_length) is {
       None -> False
@@ -305,13 +299,20 @@ fn measured_memory_is_well_formed(source_length: Int, memory: Int) -> Bool {
   }
 }
 
-pub fn initial_measure_control_v1(source_start: Int) -> CekDataIntegerControlV1 {
+pub fn initial_measure_control_v1(
+  source_start: Int,
+  negative: Bool,
+) -> CekDataIntegerControlV1 {
   let control = CekDataIntegerControlV1 {
     version,
     stage: stage_measure,
     source_start,
     source_length: 2,
-    memory: 0,
+    memory: if negative {
+      1
+    } else {
+      0
+    },
     blob: None,
   }
   expect control_is_well_formed(control)
@@ -441,7 +442,7 @@ pub fn prevalidated_next_source_span(
       Some(
         cek_source_blob_v1.CekSourceBlobSpanV1 {
           absolute_start,
-          length: minimum(3, source_end - absolute_start),
+          length: minimum(measure_bytes, source_end - absolute_start),
         },
       )
     } else {
@@ -482,14 +483,10 @@ fn step_syntax(
           bytearray.at(bytes, 1) == 95,
         } {
           Some(
-            CekDataIntegerControlV1 {
-              version,
-              stage: stage_measure,
-              source_start: control.source_start,
-              source_length: 2,
-              memory: 0,
-              blob: None,
-            },
+            initial_measure_control_v1(
+              control.source_start,
+              bytearray.at(bytes, 0) == 195,
+            ),
           )
         } else {
           when parse_syntax_v1(bytes, control.source_length) is {
@@ -564,11 +561,20 @@ fn step_measure(
             Some(length) ->
               if length > 64 {
                 let source_length = control.source_length + 1
+                let carry = control.memory - 4 - length
                 Some(
                   CekDataIntegerControlV1 {
                     ..control,
                     stage: stage_blob,
                     source_length,
+                    memory: 4 + cek_data_v1.bytes_memory_size_v1(length) + if and {
+                      carry == 1,
+                      length % 8 == 0,
+                    } {
+                      1
+                    } else {
+                      0
+                    },
                     blob: Some(
                       cek_source_blob_v1.initial_control_v1(
                         control.source_start,
@@ -612,14 +618,23 @@ fn step_measure(
           } else if is_first && bytearray.at(bytes, 2) == 0 {
             None
           } else {
-            let memory = if is_first {
-              4 + length + if bytearray.at(bytes, 2) >= 128 {
-                1
-              } else {
-                0
-              }
+            let carry = if is_first {
+              control.memory
             } else {
-              control.memory + length
+              control.memory - 4 - ( control.source_length - 2 ) / 66 * 64
+            }
+            let still_ones = and {
+              carry == 1,
+              slice_len(bytes, header_length, length) == slice_len(
+                all_ones_chunk,
+                0,
+                length,
+              ),
+            }
+            let memory = 4 + ( control.source_length - 2 ) / 66 * 64 + length + if still_ones {
+              1
+            } else {
+              0
             }
             Some(
               CekDataIntegerControlV1 {
