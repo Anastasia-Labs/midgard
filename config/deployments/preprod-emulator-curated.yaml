@@ -13,10 +13,10 @@ l1_finality:
   active_slot_coeff: "0.05"
   slot_length_ms: 1000
 timing:
-  # 48 hours of emulator time, never a wall-clock wait: the longest
-  # transition-trace thread needs 1,608 L1 blocks (64,320,000 ms at twice the
+  # 72 hours of emulator time, never a wall-clock wait: the longest
+  # transition-trace thread needs 6,308 L1 blocks (252,320,000 ms at twice the
   # mean interval).
-  block_maturity_ms: 172800000
+  block_maturity_ms: 259200000
   dispute_response_window_ms: 60000
   operator_shift_ms: 1800000
   registration_ms: 30000
@@ -30,7 +30,7 @@ timing:
   da_full_response_window_ms: 840000
   da_challenge_window_ms: 1800000
   da_slash_grace_ms: 300000
-  da_bond_withdraw_delay_ms: 173580000 # validity + max(window + full response, maturity) + grace
+  da_bond_withdraw_delay_ms: 259980000 # validity + max(window + full response, maturity) + grace
 da_bond:
   da_bond_lovelace: 500000000
   da_slash_penalty_lovelace: 100000000

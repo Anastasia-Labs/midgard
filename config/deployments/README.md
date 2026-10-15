@@ -133,10 +133,10 @@ and L = 480,000, so N ≥ L holds with 720,000 ms to spare.
 ### Interactive emulator tests
 
 `preprod-emulator-testing` is selected only by the interactive Vitest projects
-in `midgard-fault-proofs` and `midgard-watcher`. It uses 48-hour block maturity,
+in `midgard-fault-proofs` and `midgard-watcher`. It uses 72-hour block maturity,
 one-minute dispute responses and bounded testing economics. Its event wait,
 DA challenge window and bond withdrawal delay satisfy the full profile checks.
-Emulator tests advance the ledger clock directly; 48 hours of protocol time
+Emulator tests advance the ledger clock directly; 72 hours of protocol time
 adds no wall-clock wait.
 
 The test setup verifies generated profiles and caches a separately stamped
@@ -281,10 +281,10 @@ Validation requires:
   from the attestation timeout;
 - on public and interactive emulator profiles, block maturity of at least the
   longest transition-trace thread at twice the 20-second mean block interval:
-  the proof against the consensus-maximum accepted L2 transaction (819 spend
-  inputs, 761 outputs) takes 1,608 chained steps, 64,320,000 ms
-  (`maximumTransitionTraceThreadBudgetMs`). The emulator profiles' 48 hours
-  hold it with 108,480,000 ms to spare.
+  the proof against the accepted L2 transaction with 819 spend inputs and 780
+  of the smallest outputs the replay stages (40 bytes, 7 steps each) takes
+  6,308 chained steps, 252,320,000 ms (`maximumTransitionTraceThreadBudgetMs`).
+  The emulator profiles' 72 hours hold it with 6,880,000 ms to spare.
 
 The generated environments carry these values as `da_bond_lovelace_v1`,
 `da_slash_penalty_lovelace_v1`, `da_bond_min_top_up_lovelace_v1`,
