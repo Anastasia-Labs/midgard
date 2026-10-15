@@ -6,6 +6,7 @@ import {
   ENVIRONMENT_NODE_DOMAIN,
   exactHash,
   hash32,
+  MIDGARD_CEK_MAX_BUILTIN_TAG,
   MIDGARD_CEK_MAX_RESOLVED_BUILTIN_TAG,
   MidgardCekValueTags,
   SEQUENCE_NODE_DOMAIN,
@@ -53,8 +54,9 @@ export type MidgardCekValueNode =
       readonly expressionRoot: Bytes;
     };
 
-export const encodeMidgardCekValueNode = (
+const encodeValueNode = (
   node: MidgardCekValueNode,
+  maximumBuiltinTag: bigint,
 ): Buffer => {
   switch (node.kind) {
     case "constant":
@@ -88,7 +90,7 @@ export const encodeMidgardCekValueNode = (
     case "builtin":
       return encodeCbor([
         MidgardCekValueTags.Builtin,
-        boundedBuiltinTag(node.tag, MIDGARD_CEK_MAX_RESOLVED_BUILTIN_TAG),
+        boundedBuiltinTag(node.tag, maximumBuiltinTag),
         uint32(node.forcesRemaining, "cek_value.builtin.forces_remaining"),
         uint32(node.argumentsCount, "cek_value.builtin.arguments_count"),
         exactHash(node.argumentsRoot, "cek_value.builtin.arguments_root"),
@@ -103,6 +105,19 @@ export const encodeMidgardCekValueNode = (
       ]);
   }
 };
+
+/** Proof-facing runtime values include only builtins with installed resolvers. */
+export const encodeMidgardCekValueNode = (node: MidgardCekValueNode): Buffer =>
+  encodeValueNode(node, MIDGARD_CEK_MAX_RESOLVED_BUILTIN_TAG);
+
+/** Verdict execution can carry every PV 11 builtin before proof support lands. */
+export const encodeMidgardCekRuntimeValueNode = (
+  node: MidgardCekValueNode,
+): Buffer => encodeValueNode(node, MIDGARD_CEK_MAX_BUILTIN_TAG);
+
+export const hashMidgardCekRuntimeValueNode = (
+  node: MidgardCekValueNode,
+): Hash32 => hash32(VALUE_NODE_DOMAIN, encodeMidgardCekRuntimeValueNode(node));
 
 export const hashMidgardCekValueNode = (node: MidgardCekValueNode): Hash32 =>
   hash32(VALUE_NODE_DOMAIN, encodeMidgardCekValueNode(node));

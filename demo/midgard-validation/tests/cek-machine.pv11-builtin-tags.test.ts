@@ -3,6 +3,7 @@ import {
   encodeMidgardCekTermNode,
   hashMidgardCekTermNode,
   hashMidgardCekValueNode,
+  hashMidgardCekRuntimeValueNode,
   MIDGARD_CEK_EMPTY_CONTINUATION_ROOT,
   MIDGARD_CEK_EMPTY_ENVIRONMENT_ROOT,
   MIDGARD_CEK_EMPTY_SEQUENCE_ROOT,
@@ -42,7 +43,7 @@ const computeBuiltin = (tag: bigint): MidgardCekMachineState =>
   );
 
 const builtinValue = (tag: bigint, forcesRemaining: bigint): Uint8Array =>
-  hashMidgardCekValueNode({
+  hashMidgardCekRuntimeValueNode({
     kind: "builtin",
     tag,
     forcesRemaining,
@@ -77,8 +78,8 @@ describe("PV 11 builtin tags", () => {
     for (const tag of [87n, 88n, 94n, 100n]) {
       const pre = computeBuiltin(tag);
       for (const claimed of [
-        state("return", builtinValue(86n, 0n), 0n, 16_000n, 100n),
-        state("return", builtinValue(86n, 1n), 0n, 16_000n, 100n),
+        state("return", builtinValue(tag, 0n), 0n, 16_000n, 100n),
+        state("return", builtinValue(tag, 1n), 0n, 16_000n, 100n),
         state(
           "haltError",
           hashMidgardCekTermNode({ kind: "error" }),
@@ -94,7 +95,16 @@ describe("PV 11 builtin tags", () => {
           }),
         ).toBe(false);
       }
-      expect(() => builtinValue(tag, 0n)).toThrow(/between 0 and 86/u);
+      expect(builtinValue(tag, 0n)).toHaveLength(32);
+      expect(() =>
+        hashMidgardCekValueNode({
+          kind: "builtin",
+          tag,
+          forcesRemaining: 0n,
+          argumentsCount: 0n,
+          argumentsRoot: MIDGARD_CEK_EMPTY_SEQUENCE_ROOT,
+        }),
+      ).toThrow(/between 0 and 86/u);
     }
   });
 });

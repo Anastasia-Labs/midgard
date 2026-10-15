@@ -17,7 +17,8 @@ import {
  *   trace.
  * - `verdict` does neither. The machine, its step bound and its budget are
  *   unchanged, so the terminal state, stop reason and step count are the
- *   same as in `proof` mode; only the per-step evidence is absent.
+ *   same as in `proof` mode for resolved builtins. PV 11 additions can execute
+ *   in `verdict` mode while `proof` mode refuses their unresolved steps.
  */
 export type MidgardCekExecutionMode = "proof" | "verdict";
 

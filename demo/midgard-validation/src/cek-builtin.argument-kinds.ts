@@ -73,7 +73,11 @@ type RuntimeValueKind =
   | "blsMillerLoop"
   | "listData"
   | "listDataPair"
-  | "listInteger";
+  | "listInteger"
+  | "array"
+  | "value"
+  | "listBlsG1"
+  | "listBlsG2";
 
 export const sameBytes = (left: Bytes, right: Bytes): boolean =>
   Buffer.from(left).equals(Buffer.from(right));
@@ -142,7 +146,10 @@ const sameConstantType = (
   right: MidgardCekConstantType,
 ): boolean => {
   if (left.kind !== right.kind) return false;
-  if (left.kind === "list" && right.kind === "list") {
+  if (
+    (left.kind === "list" && right.kind === "list") ||
+    (left.kind === "array" && right.kind === "array")
+  ) {
     return sameConstantType(left.element, right.element);
   }
   if (left.kind === "pair" && right.kind === "pair") {
@@ -182,6 +189,8 @@ export const matchesKind = (
     case "data":
     case "blsG1":
     case "blsG2":
+    case "array":
+    case "value":
       return type.kind === kind;
     case "list":
       return type.kind === "list";
@@ -191,6 +200,10 @@ export const matchesKind = (
       return type.kind === "list" && type.element.kind === "data";
     case "listInteger":
       return type.kind === "list" && type.element.kind === "integer";
+    case "listBlsG1":
+      return type.kind === "list" && type.element.kind === "blsG1";
+    case "listBlsG2":
+      return type.kind === "list" && type.element.kind === "blsG2";
     case "listDataPair":
       return (
         type.kind === "list" &&
@@ -202,7 +215,7 @@ export const matchesKind = (
 };
 
 export const argumentKinds = (tag: number): readonly RuntimeValueKind[] => {
-  if (!Number.isInteger(tag) || tag < 0 || tag > 86) {
+  if (!Number.isInteger(tag) || tag < 0 || tag > 100) {
     throw new Error("V1 builtin tag is outside Plutus V3");
   }
   if (tag <= 9) return ["integer", "integer"];
@@ -258,7 +271,20 @@ export const argumentKinds = (tag: number): readonly RuntimeValueKind[] => {
   if (tag === 80) return ["bytes", "listInteger", "boolean"];
   if (tag === 81) return ["integer", "integer"];
   if (tag <= 83) return ["bytes", "integer"];
-  return ["bytes"];
+  if (tag <= 86) return ["bytes"];
+  if (tag === 87) return ["integer", "integer", "integer"];
+  if (tag === 88) return ["integer", "list"];
+  if (tag === 89) return ["array"];
+  if (tag === 90) return ["list"];
+  if (tag === 91) return ["array", "integer"];
+  if (tag === 92) return ["listInteger", "listBlsG1"];
+  if (tag === 93) return ["listInteger", "listBlsG2"];
+  if (tag === 94) return ["bytes", "bytes", "integer", "value"];
+  if (tag === 95) return ["bytes", "bytes", "value"];
+  if (tag <= 97) return ["value", "value"];
+  if (tag === 98) return ["value"];
+  if (tag === 99) return ["data"];
+  return ["integer", "value"];
 };
 
 export const mkConsIsWellTyped = (

@@ -9,14 +9,15 @@ import {
   decodeMidgardCekProgramValuePreimage,
   encodeMidgardCekProgramMaterialEntry,
   encodeMidgardCekSequenceNode,
-  encodeMidgardCekValueNode,
+  encodeMidgardCekRuntimeValueNode as encodeMidgardCekValueNode,
   type Hash32,
   hashMidgardCekBlobChunk,
   hashMidgardCekContinuationFrame,
   hashMidgardCekEnvironmentNode,
   hashMidgardCekSequenceNode,
   hashMidgardCekTermNode,
-  hashMidgardCekValueNode,
+  hashMidgardCekRuntimeValueNode as hashMidgardCekValueNode,
+  MIDGARD_CEK_BLS_ML_RESULT_MEMORY,
   MIDGARD_CEK_EMPTY_CONTINUATION_ROOT,
   MIDGARD_CEK_EMPTY_ENVIRONMENT_ROOT,
   MIDGARD_CEK_EMPTY_SEQUENCE_ROOT,
@@ -38,6 +39,17 @@ import {
 } from "@harmoniclabs/plutus-data";
 
 import {
+  argumentKinds,
+  matchesKind,
+  mkConsIsWellTyped,
+} from "./cek-builtin.argument-kinds.js";
+import {
+  computeMidgardCekPv11BuiltinBudget,
+  midgardCekPv11BuiltinArgumentCount,
+  midgardCekPv11BuiltinForceCount,
+} from "./cek-builtin.pv11-cost.js";
+import { evaluateMidgardCekPv11Builtin } from "./cek-builtin.pv11.js";
+import {
   constrIndexFailureWitness,
   constrIndexIsOutOfRange,
 } from "./cek-builtin.constr-data-index.js";
@@ -51,7 +63,6 @@ import {
   midgardCekDirectBuiltinBudget,
   type MidgardCekDirectValueWitness,
   type MidgardCekRuntimeValueWitness,
-  verifyMidgardCekBuiltinTypeFailure,
 } from "./cek-builtin.js";
 import {
   decodeMidgardCekConstantTypeCbor,
@@ -96,6 +107,23 @@ import {
   returnEmptySuccessor,
 } from "./cek-machine.js";
 import { isPlutusDataMap } from "./plutus-data-narrowing.js";
+
+// Runtime semantics includes PV 11; the proof verifier retains its smaller table.
+const executionBuiltinArgumentCount = (tag: bigint): bigint =>
+  tag >= 87n
+    ? midgardCekPv11BuiltinArgumentCount(tag)
+    : midgardCekBuiltinArgumentCount(tag);
+const executionBuiltinForceCount = (tag: bigint): bigint =>
+  tag >= 87n
+    ? midgardCekPv11BuiltinForceCount(tag)
+    : midgardCekBuiltinForceCount(tag);
+
+const executionValueWitnessHash = (
+  value: MidgardCekRuntimeValueWitness,
+): Uint8Array =>
+  value.kind === "builtin"
+    ? hashMidgardCekValueNode(value)
+    : hashMidgardCekRuntimeValueWitness(value);
 
 export class StructuralExecutor {
   private state: MidgardCekMachineState;
@@ -620,7 +648,7 @@ export class StructuralExecutor {
         const value = this.addValue({
           kind: "builtin",
           tag: term.tag,
-          forcesRemaining: midgardCekBuiltinForceCount(term.tag),
+          forcesRemaining: executionBuiltinForceCount(term.tag),
           argumentsCount: 0n,
           argumentsRoot: MIDGARD_CEK_EMPTY_SEQUENCE_ROOT,
         });
@@ -769,7 +797,7 @@ export class StructuralExecutor {
     builtin: Extract<MidgardCekValueNode, { readonly kind: "builtin" }>,
     tail: Bytes,
   ): MidgardCekMachineState {
-    const required = midgardCekBuiltinArgumentCount(builtin.tag);
+    const required = executionBuiltinArgumentCount(builtin.tag);
     if (builtin.forcesRemaining !== 0n || builtin.argumentsCount >= required) {
       throw new Error(
         `invalid CEK builtin application state tag=${builtin.tag.toString()} forces=${builtin.forcesRemaining.toString()} arguments=${builtin.argumentsCount.toString()} required=${required.toString()}`,
@@ -852,7 +880,7 @@ export class StructuralExecutor {
     while (remaining > 0n) {
       const node = this.sequence(cursor, remaining);
       const witness = this.runtimeValueWitness(node.head);
-      if (!sameBytes(hashMidgardCekRuntimeValueWitness(witness), node.head)) {
+      if (!sameBytes(executionValueWitnessHash(witness), node.head)) {
         throw new Error("CEK runtime argument witness root mismatch");
       }
       reversed.push(witness);
@@ -1760,13 +1788,137 @@ export class StructuralExecutor {
     throw new Error(`unsupported CEK semantic builtin ${tag.toString()}`);
   }
 
+  private executePv11Builtin(
+    pre: MidgardCekMachineState,
+    tag: bigint,
+    arguments_: readonly MidgardCekDirectValueWitness[],
+  ): void {
+    const evaluated = evaluateMidgardCekPv11Builtin(
+      tag,
+      arguments_.map((argument) => this.resolvedConstant(argument)),
+    );
+    if (evaluated.kind === "failure") {
+      this.record(
+        { kind: "executeBuiltinFailure", tag, arguments: arguments_ },
+        exactState(pre, {
+          mode: "haltError",
+          focusRoot: hashMidgardCekTermNode({ kind: "error" }),
+          environmentRoot: MIDGARD_CEK_EMPTY_ENVIRONMENT_ROOT,
+          continuationRoot: MIDGARD_CEK_EMPTY_CONTINUATION_ROOT,
+          auxiliary: MidgardCekErrorCodes.BuiltinFailure,
+          cpuDelta: evaluated.budget.cpu,
+          memoryDelta: evaluated.budget.memory,
+        }),
+      );
+      return;
+    }
+    const result = this.addSemanticResult(
+      evaluated.result.type,
+      evaluated.result.payload,
+    );
+    // PV 11 resolvers are not installed. Proof mode already refuses computeBuiltin;
+    // verdict mode discards this witness and retains the exact semantic result.
+    this.record(
+      {
+        kind: "executeBuiltinSemantic",
+        tag,
+        arguments: arguments_,
+        result: result.result,
+        material: {
+          dataNodes: [],
+          listNodes: [],
+          pairNodes: [],
+          scalarPreimages: [],
+        },
+      },
+      exactState(pre, {
+        mode: "return",
+        focusRoot: result.root,
+        environmentRoot: MIDGARD_CEK_EMPTY_ENVIRONMENT_ROOT,
+        continuationRoot: pre.continuationRoot,
+        auxiliary: 0n,
+        cpuDelta: evaluated.budget.cpu,
+        memoryDelta: evaluated.budget.memory,
+      }),
+    );
+  }
+
+  /** SomeConstant list/array shape errors occur after the builtin charge. */
+  private pv11TypeFailureBudget(
+    tag: bigint,
+    arguments_: readonly MidgardCekRuntimeValueWitness[],
+  ): { readonly cpu: bigint; readonly memory: bigint } {
+    const zero = { cpu: 0n, memory: 0n };
+    const constantSize = (
+      argument: MidgardCekRuntimeValueWitness | undefined,
+    ): bigint | null => {
+      if (argument?.kind === "blsMillerLoop")
+        return MIDGARD_CEK_BLS_ML_RESULT_MEMORY;
+      if (
+        argument?.kind !== "constant" &&
+        argument?.kind !== "semanticConstant"
+      )
+        return null;
+      const decoded = this.resolvedConstant(argument);
+      // SomeConstant uses Plutus's default polymorphic sizes, not the
+      // representation sizes used to authenticate semantic constants.
+      if (decoded.type.kind === "pair") return (1n << 63n) - 1n;
+      if (decoded.type.kind === "string" && decoded.payload instanceof DataB) {
+        return BigInt(
+          [...Buffer.from(decoded.payload.bytes).toString("utf8")].length,
+        );
+      }
+      return midgardCekConstantMemorySize(decoded.type, decoded.payload);
+    };
+    const integer = (
+      argument: MidgardCekRuntimeValueWitness | undefined,
+    ): bigint | null => {
+      if (
+        argument?.kind !== "constant" &&
+        argument?.kind !== "semanticConstant"
+      )
+        return null;
+      const decoded = this.resolvedConstant(argument);
+      return decoded.type.kind === "integer" && decoded.payload instanceof DataI
+        ? decoded.payload.int
+        : null;
+    };
+    if (tag === 88n) {
+      const count = integer(arguments_[0]);
+      if (count === null || constantSize(arguments_[1]) === null) return zero;
+      const magnitude = count < 0n ? -count : count;
+      return computeMidgardCekPv11BuiltinBudget(tag, [
+        magnitude > (1n << 63n) - 1n ? (1n << 63n) - 1n : magnitude,
+        0n,
+      ]);
+    }
+    if (tag === 89n || tag === 90n) {
+      const memory = constantSize(arguments_[0]);
+      return memory === null
+        ? zero
+        : computeMidgardCekPv11BuiltinBudget(tag, [memory]);
+    }
+    if (tag === 91n) {
+      const index = integer(arguments_[1]);
+      if (
+        constantSize(arguments_[0]) === null ||
+        index === null ||
+        index < -(1n << 63n) ||
+        index >= 1n << 63n
+      )
+        return zero;
+      return computeMidgardCekPv11BuiltinBudget(tag, [0n, 0n]);
+    }
+    return zero;
+  }
+
   private executeBuiltin(): void {
     const pre = this.state;
     const builtin = this.value(pre.focusRoot);
     if (
       builtin.kind !== "builtin" ||
       builtin.forcesRemaining !== 0n ||
-      builtin.argumentsCount !== midgardCekBuiltinArgumentCount(builtin.tag)
+      builtin.argumentsCount !== executionBuiltinArgumentCount(builtin.tag)
     ) {
       throw new Error("CEK builtin mode has an incomplete builtin value");
     }
@@ -1775,15 +1927,27 @@ export class StructuralExecutor {
       builtin.argumentsCount,
     );
     if (
-      verifyMidgardCekBuiltinTypeFailure(builtin.tag, pre.focusRoot, arguments_)
+      !(builtin.tag === 32n
+        ? mkConsIsWellTyped(arguments_)
+        : arguments_.every((argument, index) =>
+            matchesKind(argument, argumentKinds(Number(builtin.tag))[index]!),
+          ))
     ) {
+      const typeFailureBudget = this.pv11TypeFailureBudget(
+        builtin.tag,
+        arguments_,
+      );
       this.record(
         {
           kind: "executeBuiltinTypeFailure",
           tag: builtin.tag,
           arguments: arguments_,
         },
-        errorSuccessor(pre, MidgardCekErrorCodes.BuiltinFailure),
+        exactState(pre, {
+          ...errorSuccessor(pre, MidgardCekErrorCodes.BuiltinFailure),
+          cpuDelta: typeFailureBudget.cpu,
+          memoryDelta: typeFailureBudget.memory,
+        }),
       );
       return;
     }
@@ -1806,10 +1970,14 @@ export class StructuralExecutor {
         }
         return {
           kind: "opaque",
-          root: hashMidgardCekRuntimeValueWitness(argument),
+          root: executionValueWitnessHash(argument),
         };
       },
     );
+    if (builtin.tag >= 87n) {
+      this.executePv11Builtin(pre, builtin.tag, directArguments);
+      return;
+    }
     if (
       (builtin.tag === 38n || builtin.tag === 43n) &&
       (directArguments[0]?.kind === "constant" ||
