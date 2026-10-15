@@ -15,7 +15,10 @@ import { describe, expect, it } from "vitest";
 import { decodeMidgardCekConstantWitness } from "../src/cek-constant.js";
 import { hashMidgardCekConstantWitness } from "../src/cek-constant.semantic-uplc-constant.js";
 import { executeMidgardCekStructuralProgram } from "../src/cek-executor.js";
-import { verifyMidgardCekCoreStep } from "../src/cek-machine.js";
+import {
+  MidgardCekErrorCodes,
+  verifyMidgardCekCoreStep,
+} from "../src/cek-machine.js";
 import { encodeMidgardCekCardanoFlatProgram } from "../src/cek-program.cardano-flat.js";
 import {
   buildMidgardCanonicalCekProgram,
@@ -92,7 +95,12 @@ const programView = (flat: Buffer) => {
   };
 };
 
-/** Runs the program in proof mode and checks every recorded step. */
+/**
+ * Runs the program in proof mode and checks every recorded step. Each program
+ * returns its builtin's result rather than unit, so the machine charges the
+ * whole run and then halts with the non-unit error a PlutusV3 script fails
+ * with; the result is read from the builtin step.
+ */
 const prove = (flat: Buffer) => {
   const { program } = programView(flat);
   const execution = executeMidgardCekStructuralProgram({
@@ -101,7 +109,10 @@ const prove = (flat: Buffer) => {
     constantWitnesses: program.constantWitnesses,
     maxSteps: 64,
   });
-  expect(execution.terminalState.mode).toBe("haltSuccess");
+  expect(execution.terminalState.mode).toBe("haltError");
+  expect(execution.terminalState.auxiliary).toBe(
+    MidgardCekErrorCodes.NonUnitHalt,
+  );
   expect(
     execution.steps.every((step) =>
       verifyMidgardCekCoreStep(step.pre, step.post, step.witness),
@@ -231,6 +242,22 @@ describe("Data constants spelled as the Cardano ledger accepts them", () => {
     }
   });
 
+  it("commits a padded 2^64 to its canonical root", () => {
+    const spelled = programView(
+      spelledFlat(serialiseDataTerm(), ["c24a00010000000000000000"]),
+    );
+    const [constantRoot, witness] = [
+      ...spelled.program.constantWitnesses.entries(),
+    ].find(([, value]) => value.kind === "constant")!;
+    if (witness.kind !== "constant") throw new Error("unreachable");
+    expect(hex(witness.witness.payloadCbor)).toBe("c249010000000000000000");
+    // The on-chain witness check pins the same root
+    // (cek-constant-v1.test.ak, data_two_pow_64_root).
+    expect(constantRoot).toBe(
+      "30f014bc9812674691ef17db74211c691c1aaa0038cda14ef8fda815a6b49a84",
+    );
+  });
+
   it("admits a constant over the 9,215-byte bound only through padding", () => {
     const count = 1_100;
     const padded = `9f${"1b0000000000000001".repeat(count)}ff`;
@@ -251,7 +278,8 @@ describe("Data constants spelled as the Cardano ledger accepts them", () => {
 /**
  * Programs the Plutus V3 evaluator (plutus-core 1.71, protocol version 11) ran
  * through `deserialiseScript` on the raw Flat bytes below, with its result and
- * budget. Its budget includes the machine's 100/100 start-up charge.
+ * budget. The budget includes the 100/100 start-up charge, which the Midgard
+ * machine charges too.
  */
 // [label, raw Flat program, Cardano result, Cardano cpu/mem]
 const CARDANO_RUNS = [
@@ -363,24 +391,23 @@ const CARDANO_RUNS = [
     "(con integer -1)",
     "68844/432",
   ],
-] as const;
-
-// [label, raw Flat program, Cardano result]
-const CARDANO_RESULTS = [
   [
     "serialiseData of bignum 2^64",
     "010100376698010bc2490100000000000000000001",
     "(con bytestring #c249010000000000000000)",
+    "2283478/412",
   ],
   [
     "serialiseData of padded bignum 2^64",
     "010100376698010cc24a000100000000000000000001",
     "(con bytestring #c249010000000000000000)",
+    "2283478/412",
   ],
   [
     "serialiseData of bignum 2^64-1",
     "010100376698010ac248ffffffffffffffff0001",
     "(con bytestring #1bffffffffffffffff)",
+    "2070166/410",
   ],
 ] as const;
 
@@ -398,14 +425,7 @@ describe("raw Flat programs the Cardano evaluator accepted", () => {
     (_label, flat, result, budget) => {
       const run = prove(bytes(flat));
       expect(cardanoResult(run.result)).toBe(result);
-      expect(`${run.cpu + 100n}/${run.memory + 100n}`).toBe(budget);
-    },
-  );
-
-  it.each(CARDANO_RESULTS)(
-    "%s gives Cardano's result",
-    (_label, flat, result) => {
-      expect(cardanoResult(prove(bytes(flat)).result)).toBe(result);
+      expect(`${run.cpu}/${run.memory}`).toBe(budget);
     },
   );
 });

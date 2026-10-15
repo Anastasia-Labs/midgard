@@ -284,7 +284,7 @@ const data_constructor_7_root =
   #"ca0f5832b69d147c495db22b97da258a94e69268bea11bebb21b068e5e224472"
 
 const data_two_pow_64_root =
-  #"f3f49964ea5ee398bd5f7fec6f8b88285310fd4701a2b84593a90ac9824ba3c3"
+  #"30f014bc9812674691ef17db74211c691c1aaa0038cda14ef8fda815a6b49a84"
 
 fn data_witness(payload_cbor: ByteArray) -> cek_constant_v1.ConstantWitnessV1 {
   cek_constant_v1.ConstantWitnessV1 { type_cbor: #"9f08ff", payload_cbor }

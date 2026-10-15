@@ -2,6 +2,7 @@ import { type Data, DataConstr, DataI } from "@harmoniclabs/plutus-data";
 import {
   Application,
   Builtin,
+  Lambda,
   UPLCConst,
   UPLCProgram,
   type UPLCTerm,
@@ -21,13 +22,18 @@ const compile = (term: UPLCTerm): Buffer =>
   encodeMidgardCekCardanoFlatProgram(new UPLCProgram([1, 1, 0], term));
 
 // equalsData compares Data by value. Each row runs
-// `[[equalsData (con data left)] (con data right)]` and reads the builtin step.
+// `[(lam _ (con unit ())) [[equalsData (con data left)] (con data right)]]`
+// and reads the builtin step. The wrapper returns unit, so the script halts
+// successfully, as a PlutusV3 script must.
 const equalsDataStep = (left: Data, right: Data) => {
   const program = buildMidgardCanonicalCekProgram(
     compile(
       new Application(
-        new Application(Builtin.equalsData, UPLCConst.data(left)),
-        UPLCConst.data(right),
+        new Lambda(UPLCConst.unit),
+        new Application(
+          new Application(Builtin.equalsData, UPLCConst.data(left)),
+          UPLCConst.data(right),
+        ),
       ),
     ),
   );
