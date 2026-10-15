@@ -8,9 +8,7 @@ import { transitionTraceFinalCaseRunner } from "./support/transition-trace-final
 // the same checkpoint proves the fault.
 const run = transitionTraceFinalCaseRunner();
 const TIMEOUT = 1_800_000;
-// One native asset: with an ADA-only value, a forged value summary is refused
-// before the summary verifier runs.
-const shape = { assetCount: 1, outputCount: 1, spentCount: 1 } as const;
+const shape = { assetCount: 0, outputCount: 1, spentCount: 1 } as const;
 
 describe("streamed accepted-transaction steps", () => {
   it(

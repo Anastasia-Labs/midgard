@@ -129,19 +129,41 @@ const forgedStep = (
       summary: verifiers.summary,
     });
   }
+  // Without an inline datum or reference script the first two summaries
+  // coincide, so both are forged together, consistently in every claim. The
+  // claims are rewritten field by field: a Data byte string longer than 64
+  // bytes is encoded in chunks, which can split a root.
   const root = claim.summary[0].root;
   const forgedRoot = flipped(root);
-  // Without an inline datum or reference script the first two summaries
-  // coincide, so both are forged together, consistently in every claim.
-  expect(claim.descriptor).toContain(root);
-  return withInsertedDescriptor(
-    step,
-    substituted(claim.descriptor, root, forgedRoot),
-    {
-      descriptor: substituted(verifiers.descriptor, root, forgedRoot),
-      summary: substituted(verifiers.summary, root, forgedRoot),
-    },
+  const descriptor = substituted(claim.descriptor, root, forgedRoot);
+  expect(descriptor).not.toBe(claim.descriptor);
+  expect(descriptor).not.toContain(root);
+  const forgedSummary = (summary: (typeof claim.summary)[number]) =>
+    summary.root === root ? { ...summary, root: forgedRoot } : summary;
+  const [s1, s2, s3] = claim.summary;
+  const summaryClaim = Data.from(
+    verifiers.summary,
+    SDK.TransitionTraceOutputSummaryClaim,
   );
+  return withInsertedDescriptor(step, descriptor, {
+    descriptor: Data.to(
+      {
+        ...claim,
+        descriptor,
+        summary: [forgedSummary(s1), forgedSummary(s2), forgedSummary(s3)],
+      },
+      SDK.TransitionTraceOutputDescriptorClaim,
+    ),
+    summary: Data.to(
+      {
+        ...summaryClaim,
+        summary: Data.from(
+          substituted(Data.to(summaryClaim.summary), root, forgedRoot),
+        ),
+      },
+      SDK.TransitionTraceOutputSummaryClaim,
+    ),
+  });
 };
 
 const forges = (
