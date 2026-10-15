@@ -72,7 +72,7 @@ describe("import checker negative cache", () => {
   it("does not fault or cache an honest transaction with a large script and a low declared budget, under a loaded pool too", async () => {
     const real = await realEvaluator(4);
     // Three workers busy with long runs; the checker gets the fourth.
-    const [loopRun] = await firstRuns(
+    const [loopRun] = firstRuns(
       await blockOf(["loop"], { firstByte: 0x90, cpu: 10_000_000_000n }),
     );
     const load = Array.from({ length: 3 }, () =>
@@ -162,7 +162,7 @@ describe("import checker backlog lane", () => {
   const floodUnderCachedScript = async (deadlineInMs: number) => {
     const seed = await blockOf(["accept"]);
     const flood = await blockOf(accepts(FLOOD + 1), { firstByte: 0x60 });
-    const fraud = (await firstRuns(flood))[FLOOD]!;
+    const fraud = firstRuns(flood)[FLOOD]!;
     const injected = await injectedEvaluator({
       mode: "hang",
       rejectContexts: [fraud.contextCbor],
@@ -252,7 +252,7 @@ describe("import checker backlog lane", () => {
     const hanging = 3;
     const filler = 3;
     const block = await blockOf(accepts(hanging + filler + 1));
-    const runs = await firstRuns(block);
+    const runs = firstRuns(block);
     const worker: InjectedWorker = {
       mode: "hang",
       acceptContexts: runs
@@ -262,10 +262,12 @@ describe("import checker backlog lane", () => {
     };
     const config = {
       ...CONFIG,
-      killFloorMs: 200,
-      blockCapMs: 300,
+      killFloorMs: 400,
+      blockCapMs: 700,
     };
-    const before = await injectedEvaluator(worker);
+    // Three workers: a killed run's retry takes the third at once instead of
+    // waiting for the killed worker's replacement.
+    const before = await injectedEvaluator(worker, { size: 3 });
     const deadlineMs = Date.now() + 20_000;
     await processBlock(block, { deadlineMs });
     // The first hanging transaction's two kills use up the block's cap.
@@ -278,7 +280,7 @@ describe("import checker backlog lane", () => {
     await closePools();
     expect(await entries(["cap_skipped"])).toHaveLength(hanging + filler);
     expect(await entries(["faulted"])).toHaveLength(1);
-    const after = await injectedEvaluator(worker);
+    const after = await injectedEvaluator(worker, { size: 3 });
     const check = checker(after.evaluator, config);
     expect(await check.sweep()).toEqual([]);
     const alarms = await check.backlog();

@@ -18,8 +18,8 @@ import {
 } from "../src/database/importChecks.js";
 import { type ImportCheckAlarm } from "../src/import-check/alarms.js";
 import {
-  BACKLOG_BATCH,
   type ImportCheckPassInput,
+  makeImportCheckRuns,
   runBacklogPass,
   runImportCheckPass,
   runUnverifiedSweep,
@@ -94,6 +94,7 @@ export const realEvaluator = async (size = 2) => {
   await pool.start();
   const evaluator = poolImportCheckEvaluator({
     evaluateImportCheck: evaluateImportCheckOn(pool),
+    importCheckBacklogShare: pool.backlogShare,
   })!;
   return Object.assign(evaluator, { pool });
 };
@@ -135,6 +136,7 @@ export const injectedEvaluator = async (
   await pool.start();
   const evaluator = poolImportCheckEvaluator({
     evaluateImportCheck: evaluateImportCheckOn(pool),
+    importCheckBacklogShare: pool.backlogShare,
   })!;
   return {
     evaluator,
@@ -154,10 +156,8 @@ export const checksOf = async (block: Block) => {
 };
 
 /** The first run of each of `block`'s transactions. */
-export const firstRuns = async (
-  block: Block,
-): Promise<MidgardCekVerdictRequest[]> =>
-  (await checksOf(block)).map((check) => check.runs[0]!);
+export const firstRuns = (block: Block): MidgardCekVerdictRequest[] =>
+  block.runs.map((runs) => runs[0]!);
 
 /** Imports `block` and processes it as a landed child of `parentHeaderHash`,
  * with its checks due at `deadlineMs`. */
@@ -234,6 +234,7 @@ export const checker = (
     config,
     alarm: (alarm) => Effect.sync(() => void alarms.push(alarm)),
     cache: makeNegativeCache(config.negativeCacheTtlMs),
+    runs: makeImportCheckRuns(),
   };
   const alarmed = new Set<number>();
   const raised = async <A, E>(effect: Parameters<typeof run<A, E>>[1]) => {
@@ -245,18 +246,19 @@ export const checker = (
       Effect.zipRight(effect),
       Effect.provide(TestContext.TestContext),
     );
+  const imports = runImportCheckPass(input).pipe(
+    Effect.repeat({ while: (worked) => worked }),
+  );
   return {
+    input,
+    /** Import passes until no block has a pending entry. */
     importPass: (nowMs?: number) =>
-      raised(
-        nowMs === undefined
-          ? runImportCheckPass(input)
-          : at(nowMs, runImportCheckPass(input)),
-      ),
-    /** Backlog passes until one reads less than a full batch. */
+      raised(nowMs === undefined ? imports : at(nowMs, imports)),
+    /** Backlog passes until one reads no entry. */
     backlog: () =>
       raised(
         runBacklogPass(input).pipe(
-          Effect.repeat({ while: (read) => read === BACKLOG_BATCH }),
+          Effect.repeat({ while: (read) => read > 0 }),
         ),
       ),
     sweep: (nowMs?: number) =>
@@ -277,7 +279,7 @@ export const ALL_STATES: readonly ImportCheckState[] = [
 ];
 
 export const entries = (states: readonly ImportCheckState[] = ALL_STATES) =>
-  db(retrieveChecks(states));
+  db(retrieveChecks(states, { limit: 100_000 }));
 
 /** The transaction ids of the entries in `states`, in set order. */
 export const idsIn = async (states: readonly ImportCheckState[]) =>

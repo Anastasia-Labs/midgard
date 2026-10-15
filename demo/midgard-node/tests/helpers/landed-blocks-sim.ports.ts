@@ -293,7 +293,18 @@ export const simPorts = (
         withdrawals: [],
         forcedIds: [],
         txIds,
-        scriptChecks: [],
+        scriptChecks: {
+          context: {
+            blockTimeMs: 0,
+            blockSlot: 0n,
+            expectedNetworkId: 0n,
+            minFeeA: 0n,
+            minFeeB: 0n,
+            l1SlotConfig: { zeroTime: 0, zeroSlot: 0, slotLength: 1_000 },
+          },
+          checks: [],
+          outputs: new Map(),
+        },
       } as const;
     }),
   ownJournal,

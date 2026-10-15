@@ -9,11 +9,17 @@ import {
   encodeMidgardCekProgramMaterialSidecar,
   type MidgardCekProgramMaterialEntry,
 } from "@al-ft/midgard-core/cek-proof";
+import {
+  encodeMidgardForcedTxCanonical,
+  materializeMidgardForcedTxFromCanonical,
+} from "@al-ft/midgard-core/codec";
 import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
 import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
+import { forcedVerdictForRejection } from "@al-ft/midgard-fault-proofs";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
   buildMidgardCanonicalCekProgram,
+  type MidgardCekVerdictRequest,
   MidgardRedeemerTag,
   placeholderValidationTraceDescriptorV1,
   replayValidationVerdictEvent,
@@ -49,6 +55,7 @@ import {
   encodeTransitionIntegerCbor,
   encodeTransitionStepCbor,
 } from "../src/mpf/transition-cbor.js";
+import { buildPlaceholderValidationTraceMembers } from "../src/mpf/validation-trace.js";
 import { countsFromLengths, headerFor } from "./da-payload.record.js";
 import { rebind, verdict } from "./foreign-block-import.fixture.js";
 
@@ -109,10 +116,12 @@ export const scriptOf = (body: ScriptBody) => {
 export type LedgerEntry = Readonly<{ outRef: Buffer; output: Buffer }>;
 
 /** One spend: `input` (and each of `extra`, each a run of its own) is
- * locked by `body`'s script; its one output is locked by `next`'s script. */
+ * locked by `body`'s script; its one output is locked by `next`'s script.
+ * It also references `references` (outputs of the ledger it is built on). */
 export type Spend = Readonly<{
   input: Buffer;
   extra?: readonly Buffer[];
+  references?: readonly Buffer[];
   body: ScriptBody;
   next: ScriptBody;
   /** Declared cpu units (default 10^9). */
@@ -130,6 +139,7 @@ const buildSpend = (spend: Spend) => {
   const inputs = [spend.input, ...(spend.extra ?? [])];
   const tx = makeNativeTx({
     spendInputs: inputs,
+    referenceInputs: spend.references ?? [],
     outputs: [
       makeOutput(
         FUNDED_OUTPUT_LOVELACE * BigInt(inputs.length),
@@ -180,8 +190,9 @@ const ledgerRoot = async (ledger: ReadonlyMap<string, Buffer>) =>
 
 /**
  * A block applying `spends` in order on `parent`, every transaction
- * committed Accepted. Returns the payload, its ledger after the block, and
- * an import on `parent`.
+ * committed Accepted. Returns the payload, its ledger after the block, each
+ * transaction's script runs as its committed replay builds them, and an
+ * import on `parent`.
  */
 export const committedBlock = async (
   parent: readonly LedgerEntry[],
@@ -197,10 +208,17 @@ export const committedBlock = async (
   const mapping: [string, string][] = [];
   const traces: [string, string][] = [];
   let pre = prior;
+  const runs: MidgardCekVerdictRequest[][] = [];
   for (const [index, { tx, material: own }] of built.entries()) {
     for (const entry of own)
       material.set(Buffer.from(entry.root).toString("hex"), entry);
-    const spent = [spends[index]!.input, ...(spends[index]!.extra ?? [])];
+    const spent = [
+      spends[index]!.input,
+      ...(spends[index]!.extra ?? []),
+      ...(spends[index]!.references ?? []),
+    ];
+    const txRuns: MidgardCekVerdictRequest[] = [];
+    runs.push(txRuns);
     const replay = await Effect.runPromise(
       replayValidationVerdictEvent({
         l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
@@ -217,7 +235,7 @@ export const committedBlock = async (
         minFeeB: 0n,
         blockSlot: 0n,
         sourceKind: "normal",
-        committedScriptRun: () => undefined,
+        committedScriptRun: (request) => void txRuns.push(request),
       }),
     );
     if (replay.verdict !== "accepted")
@@ -319,9 +337,148 @@ export const committedBlock = async (
     payload,
     headerHash: payload.block_body.header_hash,
     txIds: built.map(({ tx }) => tx.txId),
+    /** Each transaction's script runs, in order. */
+    runs,
     /** The output each transaction produced (index 0). */
     produced: built.map(({ tx }) => outRefFromTxId(tx.txId, 0n)),
     ledger: after,
+    imported: () =>
+      verdict(payload, {
+        parentUtxosRoot: prior,
+        parentEntries: parent.map((entry) => ({
+          outref: entry.outRef,
+          output: entry.output,
+        })),
+      }),
+  };
+};
+
+/**
+ * A block of one forced transaction spending `spend.input` with its script
+ * (and its redeemer), committed with the verdict a full replay gives it on
+ * `parent`. Returns the payload, that verdict, and an import on `parent`.
+ */
+export const forcedBlock = async (
+  parent: readonly LedgerEntry[],
+  spend: Spend,
+) => {
+  const { tx } = buildSpend(spend);
+  const cbor = encodeMidgardForcedTxCanonical(
+    materializeMidgardForcedTxFromCanonical({
+      version: tx.tx.version,
+      body: tx.tx.body,
+      witnessSet: tx.tx.witnessSet,
+    }),
+  );
+  const ledger = new Map(
+    parent.map((entry) => [entry.outRef.toString("hex"), entry.output]),
+  );
+  const prior = await ledgerRoot(ledger);
+  const replay = await Effect.runPromise(
+    replayValidationVerdictEvent({
+      l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
+      consensusProfile: MIDGARD_CONSENSUS_PROFILE,
+      canonicalTransactionCbor: cbor,
+      ledgerWitnessEntries: parent,
+      blockTimeMs: 2,
+      expectedNetworkId: 0n,
+      minFeeA: 0n,
+      minFeeB: 0n,
+      blockSlot: 0n,
+      sourceKind: "forced",
+    }),
+  );
+  if (replay.rejection === undefined)
+    throw new Error("fixture forced spend was accepted");
+  const committed = forcedVerdictForRejection(replay.rejection);
+  if (typeof committed === "string")
+    throw new Error("fixture forced verdict is not a rejection");
+  const { encodeForcedInclusionValueV1 } = await import(
+    "../src/database/forcedTransactions.js"
+  );
+  const encoded = await Effect.runPromise(
+    encodeForcedInclusionValueV1({
+      nativeTxCbor: cbor,
+      consensusProfile: MIDGARD_CONSENSUS_PROFILE,
+      verdict: committed,
+    }),
+  );
+  const orderId = { transactionId: "5b".repeat(32), outputIndex: 0n };
+  const key = Data.to(orderId, SDK.OutputReference);
+  const eventKey: SDK.EventKey = {
+    ForcedTransactionEventKey: { tx_order_id: orderId },
+  };
+  const eventCbor = Data.to(eventKey, SDK.EventKey);
+  const [member] = await Effect.runPromise(
+    buildPlaceholderValidationTraceMembers({
+      transactions: [
+        {
+          eventKey,
+          canonicalTransactionCbor: cbor,
+          sourceKind: "forced",
+          verdict: "rejected",
+          rejectionReason: committed.ForcedTxInvalid.reason,
+        },
+      ],
+    }),
+  );
+  if (member === undefined) throw new Error("missing fixture trace");
+  const counts = {
+    ...countsFromLengths({ forcedTransactions: 1 }),
+    validationTraceCount: 1n,
+  };
+  const header = {
+    ...headerFor(
+      Object.fromEntries(
+        ROOT_KEYS.map((rootKey) => [rootKey, SDK.EMPTY_MERKLE_TREE_ROOT]),
+      ) as Parameters<typeof headerFor>[0],
+      counts,
+    ),
+    prevUtxosRoot: prior,
+    utxosRoot: prior,
+  };
+  const payload = await rebind({
+    version: 1n,
+    block_body: {
+      header,
+      header_hash: "00".repeat(28),
+      transactions: [],
+      transaction_preimages: [],
+      withdrawals: [],
+      forced_transactions: [[key, encoded.value.toString("hex")]],
+      forced_transaction_preimages: [[key, cbor.toString("hex")]],
+      deposits: [],
+      cek_program_material: [],
+      transition_trace: [
+        [
+          encodeTransitionIntegerCbor(0n).toString("hex"),
+          encodeTransitionStepCbor({
+            schema_version: 1n,
+            step_index: 0n,
+            event_key: eventKey,
+            phase: "ForcedTransaction",
+            pre_utxos_root: prior,
+            post_utxos_root: prior,
+          }).toString("hex"),
+        ],
+      ],
+      event_to_step: [
+        [
+          eventCbor,
+          encodeEventToStepValueCbor({
+            step_index: 0n,
+            phase: "ForcedTransaction",
+          }).toString("hex"),
+        ],
+      ],
+      validation_traces: [[eventCbor, member.valueCbor.toString("hex")]],
+      validation_trace_witnesses: [],
+      counts,
+    },
+  });
+  return {
+    payload,
+    rejection: replay.rejection,
     imported: () =>
       verdict(payload, {
         parentUtxosRoot: prior,

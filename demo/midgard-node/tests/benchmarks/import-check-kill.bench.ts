@@ -43,7 +43,7 @@ import { describe, expect, it } from "vitest";
 import {
   importCheckKillMs,
   importCheckRunBytes,
-} from "../../src/import-check/evaluator.js";
+} from "../../src/import-check/kill.js";
 import { DEFAULT_IMPORT_CHECK_CONFIG } from "../../src/services/config.import-check.js";
 import {
   evaluateImportCheckOn,
@@ -124,9 +124,7 @@ describe("import checker kill parameters", () => {
     const block = await committedBlock(parent, [
       { input: parent[0]!.outRef, body: "accept", next: "accept" },
     ]);
-    const imported = await block.imported();
-    if (imported._tag === "Left") throw imported.left;
-    const minimal = imported.right.scriptChecks[0]!.runs[0]!;
+    const minimal = block.runs[0]![0]!;
 
     const pool = new FixedValidationWorkerPool(
       2,

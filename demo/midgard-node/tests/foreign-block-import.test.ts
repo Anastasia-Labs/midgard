@@ -25,7 +25,10 @@ describe("complete foreign block import", () => {
         root: SDK.EMPTY_MERKLE_TREE_ROOT,
         entries: [],
         // A forced transaction is replayed in full: it leaves no check.
-        scriptChecks: [],
+        scriptChecks: expect.objectContaining({
+          checks: [],
+          outputs: new Map(),
+        }),
       });
   });
   it.each(MINT_ADMITTED_UNDECODABLE)(
@@ -44,7 +47,10 @@ describe("complete foreign block import", () => {
         root: SDK.EMPTY_MERKLE_TREE_ROOT,
         entries: [],
         // A forced transaction is replayed in full: it leaves no check.
-        scriptChecks: [],
+        scriptChecks: expect.objectContaining({
+          checks: [],
+          outputs: new Map(),
+        }),
       });
     },
   );

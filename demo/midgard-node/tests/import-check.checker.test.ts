@@ -7,9 +7,11 @@
  * restart.
  */
 import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
+import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
 import { importCheckDeadlineMs } from "../src/import-check/deadline.js";
+import { type ImportCheckEvaluator } from "../src/import-check/evaluator.js";
 import { rollBackRows } from "../src/landed-blocks/settlements.js";
 import {
   markApplied,
@@ -50,6 +52,39 @@ describe("import checker", () => {
     // The rejected transaction stays for a challenge; the accepted one left.
     expect(await idsIn(["rejected"])).toEqual([hex(block.txIds[0]!)]);
     expect(await entries()).toHaveLength(1);
+  }, 60_000);
+
+  it("rejects a run that does not finish within its declared budget", async () => {
+    const block = await landBlock(["loop"], { cpu: 10_000_000n });
+    expect(await checker(await realEvaluator()).importPass()).toEqual([
+      expect.objectContaining({
+        alarm: "import_check_rejected",
+        transactionId: hex(block.txIds[0]!),
+      }),
+    ]);
+    expect(await idsIn(["rejected"])).toEqual([hex(block.txIds[0]!)]);
+  }, 60_000);
+
+  it("rejects a run its evaluator accepts with more cpu than it declared", async () => {
+    const block = await landBlock(["accept"], { cpu: 1_000_000_000n });
+    const overBudget: ImportCheckEvaluator = {
+      backlogShare: 1,
+      evaluate: () =>
+        Effect.succeed({
+          kind: "evaluated",
+          result: {
+            kind: "accepted",
+            budget: { cpu: 1_000_000_001n, memory: 0n },
+          },
+        }),
+    };
+    expect(await checker(overBudget).importPass()).toEqual([
+      expect.objectContaining({
+        alarm: "import_check_rejected",
+        transactionId: hex(block.txIds[0]!),
+      }),
+    ]);
+    expect(await idsIn(["rejected"])).toEqual([hex(block.txIds[0]!)]);
   }, 60_000);
 
   it("checks an honest block with no alarm and leaves no entry", async () => {
@@ -99,7 +134,7 @@ describe("import checker", () => {
       },
     ]);
     const processed = await processBlock(block);
-    expect(processed.scriptChecks[0]!.runs).toHaveLength(2);
+    expect(processed.scriptChecks.checks[0]!.runs).toBe(2);
     const injected = await injectedEvaluator({ mode: "crash-even" });
     expect(await checker(injected.evaluator).importPass()).toEqual([]);
     expect(injected.jobs()).toBe(4);
@@ -125,12 +160,14 @@ describe("import checker", () => {
 
   it("kills hanging runs, stops at the block's cap, and keeps the skipped transactions", async () => {
     const block = await landBlock(["accept", "accept", "accept", "accept"]);
-    const injected = await injectedEvaluator({ mode: "hang" });
+    // Three workers: a killed run's retry takes the third at once instead of
+    // waiting for the killed worker's replacement.
+    const injected = await injectedEvaluator({ mode: "hang" }, { size: 3 });
     const startedAt = Date.now();
     const alarms = await checker(injected.evaluator, {
       ...CONFIG,
-      killFloorMs: 300,
-      blockCapMs: 500,
+      killFloorMs: 500,
+      blockCapMs: 900,
     }).importPass();
     expect(Date.now() - startedAt).toBeLessThan(10_000);
     const faults = alarms.filter(
@@ -179,7 +216,7 @@ describe("import checker", () => {
     expect((await running).length).toBeGreaterThan(0);
   }, 60_000);
 
-  it("keeps every entry and its runs across a restart", async () => {
+  it("keeps every entry and its material across a restart", async () => {
     const block = await landBlock(["reject"]);
     const before = await entries(["pending"]);
     // A new pool and new database connections: nothing in memory carries
@@ -188,9 +225,6 @@ describe("import checker", () => {
     const after = await entries(["pending"]);
     expect(after).toHaveLength(1);
     expect(hex(after[0]!.transactionId)).toBe(hex(block.txIds[0]!));
-    expect(after[0]!.runs.map((run) => hex(run.scriptBytes))).toEqual(
-      block.scriptChecks[0]!.runs.map((run) => hex(run.scriptBytes)),
-    );
     expect(after).toEqual(before);
     const alarms = await checker(await realEvaluator()).importPass();
     expect(alarms.map((alarm) => alarm.alarm)).toEqual([
@@ -200,14 +234,16 @@ describe("import checker", () => {
 
   it("keeps faulted, skipped and rejected entries across a restart", async () => {
     const block = await landBlock(["accept", "accept", "accept"]);
-    const injected = await injectedEvaluator({
-      mode: "hang",
-      rejectContexts: [block.scriptChecks[0]!.runs[0]!.contextCbor],
-    });
+    const injected = await injectedEvaluator(
+      { mode: "hang", rejectContexts: [block.runs[0]![0]!.contextCbor] },
+      { size: 3 },
+    );
+    // The second transaction's run and retry start within the cap and are
+    // killed past it; the third does not start.
     await checker(injected.evaluator, {
       ...CONFIG,
-      killFloorMs: 200,
-      blockCapMs: 100,
+      killFloorMs: 700,
+      blockCapMs: 1_200,
     }).importPass();
     await closePools();
     const states = (await entries()).map((entry) => entry.state);

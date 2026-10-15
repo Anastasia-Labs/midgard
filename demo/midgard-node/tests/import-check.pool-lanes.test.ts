@@ -18,7 +18,7 @@ afterEach(() => closePools());
 describe("validation pool import-check lanes", () => {
   it("runs the backlog lane at its reserved share while admission saturates the pool, and the import lane only once admission is idle", async () => {
     const SLOW_MS = 300;
-    const [slow, fast] = await firstRuns(await blockOf(["accept", "accept"]));
+    const [slow, fast] = firstRuns(await blockOf(["accept", "accept"]));
     const { pool } = await injectedEvaluator(
       { mode: "accept", slowContexts: [slow!.contextCbor], slowMs: SLOW_MS },
       { size: 2, backlogShare: 1 },
@@ -53,5 +53,73 @@ describe("validation pool import-check lanes", () => {
     const importDone = await Promise.all(imports);
     for (const done of importDone) expect(done.waiting).toBe(0);
     await Promise.all(admission);
+  }, 60_000);
+
+  it("keeps a worker for admission while both lanes have a job (two workers, a backlog share of one)", async () => {
+    const SLOW_MS = 1_000;
+    const [slow, fast] = firstRuns(await blockOf(["accept", "accept"]));
+    const { pool } = await injectedEvaluator(
+      {
+        mode: "hang",
+        acceptContexts: [fast!.contextCbor],
+        slowContexts: [slow!.contextCbor],
+        slowMs: SLOW_MS,
+      },
+      { size: 2, backlogShare: 1 },
+    );
+    const job = () =>
+      ({ kind: "cek_verdict", jobId: pool.allocateJobId() }) as const;
+    const startedAt = Date.now();
+    const background = (["import", "backlog"] as const).map((lane) =>
+      pool
+        .submitBackground(
+          { ...job(), request: slow! },
+          { killMs: 10_000, fresh: false, lane },
+        )
+        .then(() => Date.now() - startedAt),
+    );
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    const admittedAt = Date.now();
+    await pool.submit({ ...job(), request: fast! });
+    expect(Date.now() - admittedAt).toBeLessThan(SLOW_MS / 2);
+    // One lane job at a time: the second ran after the first.
+    const done = (await Promise.all(background)).sort((a, b) => a - b);
+    expect(done[1]!).toBeGreaterThanOrEqual(2 * SLOW_MS);
+  }, 60_000);
+
+  it("counts a killed lane job's worker as its lane's until the replacement is free", async () => {
+    const SLOW_MS = 1_000;
+    const [hang, slow, fast] = firstRuns(
+      await blockOf(["accept", "accept", "accept"]),
+    );
+    // A replacement worker takes longer to start than a slow job runs.
+    const { pool } = await injectedEvaluator(
+      {
+        mode: "hang",
+        startDelayMs: 1_500,
+        acceptContexts: [fast!.contextCbor],
+        slowContexts: [slow!.contextCbor],
+        slowMs: SLOW_MS,
+      },
+      { size: 2, backlogShare: 1 },
+    );
+    const job = () =>
+      ({ kind: "cek_verdict", jobId: pool.allocateJobId() }) as const;
+    await expect(
+      pool.submitBackground(
+        { ...job(), request: hang! },
+        { killMs: 100, fresh: false, lane: "import" },
+      ),
+    ).rejects.toThrow();
+    // Its worker is being replaced: the next import job waits for it, and
+    // admission keeps the other worker.
+    const next = pool.submitBackground(
+      { ...job(), request: slow! },
+      { killMs: 10_000, fresh: false, lane: "import" },
+    );
+    const admittedAt = Date.now();
+    await pool.submit({ ...job(), request: fast! });
+    expect(Date.now() - admittedAt).toBeLessThan(SLOW_MS / 2);
+    await next;
   }, 60_000);
 });
