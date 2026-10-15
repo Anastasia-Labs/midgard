@@ -73,6 +73,8 @@ import {
   errorSuccessor,
   exactComputeSuccessor,
   exactState,
+  MACHINE_STARTUP_CPU,
+  MACHINE_STARTUP_MEMORY,
   type MidgardCekStructuralExecution,
   rootHex,
   sameBytes,
@@ -195,8 +197,8 @@ export class StructuralExecutor {
       environmentRoot: MIDGARD_CEK_EMPTY_ENVIRONMENT_ROOT,
       continuationRoot: MIDGARD_CEK_EMPTY_CONTINUATION_ROOT,
       auxiliary: 0n,
-      cpu: 0n,
-      memory: 0n,
+      cpu: MACHINE_STARTUP_CPU,
+      memory: MACHINE_STARTUP_MEMORY,
     });
   }
 

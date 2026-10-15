@@ -2262,3 +2262,364 @@ test ecdsa_uncompressed_key_success_aborts() fail {
     boolean(#"d87980"),
   )
 }
+
+fn byte_string(value: ByteArray) -> cek_builtin_v1.ValueWitnessV1 {
+  bytes(cbor.serialise(builtin.b_data(value)))
+}
+
+fn counting_bytes(length: Int) -> ByteArray {
+  list.foldr(
+    list.range(0, length - 1),
+    #"",
+    fn(byte, tail) { builtin.cons_bytearray(byte, tail) },
+  )
+}
+
+/// BIP-340 test vector key (bitcoin/bips bip-0340/test-vectors.csv, 15-18).
+const schnorr_key =
+  #"778caa53b4393ac467774d09497a87224bf9fab6f6e68b23086497324d6fd117"
+
+/// Valid BIP-340 signatures under `schnorr_key`, as message and signature.
+/// Vector 15: the empty message.
+fn schnorr_signed_empty() -> Pair<ByteArray, ByteArray> {
+  Pair(
+    #"",
+    #"71535db165ecd9fbbc046e5ffaea61186bb6ad436732fccc25291a55895464cf6069ce26bf03466228f19a3a62db8a649f2d560fac652827d1af0574e427ab63",
+  )
+}
+
+/// Signed with the vectors' secret key and an all-zero aux_rand.
+fn schnorr_signed_31() -> Pair<ByteArray, ByteArray> {
+  Pair(
+    counting_bytes(31),
+    #"6279da0776f05a84e74bd0400f577f22de28eab33c6cd0a69319b9097e912d4360c3c32b1252eb9b55186684198886abfceaf124f57b2088e809133ddd24d34a",
+  )
+}
+
+/// Signed with the vectors' secret key and an all-zero aux_rand.
+fn schnorr_signed_33() -> Pair<ByteArray, ByteArray> {
+  Pair(
+    counting_bytes(33),
+    #"fe02a88f7b6ad46d2a02f678741b1e03ff93ce930235a2c63f644e0d4ee9129d6fdb9aef937e53a826791b584e2392c6135386cca3009b31c7cab9cd3475e7d7",
+  )
+}
+
+/// Vector 18: 100 bytes of 0x99.
+fn schnorr_signed_100() -> Pair<ByteArray, ByteArray> {
+  Pair(
+    repeated_byte(153, 100),
+    #"403b12b0d8555a344175ea7ec746566303321e5dbfa8be6f091635163eca79a8585ed3e3170807e7c03b720fc54c7b23897fcba0e9d0b4a06894cfd249f22367",
+  )
+}
+
+/// Vectors 15 to 18 (messages of 0, 1, 17 and 100 bytes) and signatures over
+/// 31 and 33 bytes.
+fn schnorr_signed_messages() -> List<Pair<ByteArray, ByteArray>> {
+  [
+    schnorr_signed_empty(),
+    Pair(
+      #"11",
+      #"08a20a0afef64124649232e0693c583ab1b9934ae63b4c3511f3ae1134c6a303ea3173bfea6683bd101fa5aa5dbc1996fe7cacfc5a577d33ec14564cec2bacbf",
+    ),
+    Pair(
+      #"0102030405060708090a0b0c0d0e0f1011",
+      #"5130f39a4059b43bc7cac09a19ece52b5d8699d1a71e3c52da9afdb6b50ac370c4a482b77bf960f8681540e25b6771ece1e5a37fd80e5a51897c5566a97ea5a5",
+    ),
+    schnorr_signed_31(),
+    schnorr_signed_33(),
+    schnorr_signed_100(),
+  ]
+}
+
+fn schnorr_arguments(
+  key: ByteArray,
+  message: ByteArray,
+  signature: ByteArray,
+) -> List<cek_builtin_v1.ValueWitnessV1> {
+  [byte_string(key), byte_string(message), byte_string(signature)]
+}
+
+test schnorr_verifies_messages_of_any_length() {
+  list.all(
+    schnorr_signed_messages(),
+    fn(signed) {
+      let arguments = schnorr_arguments(schnorr_key, signed.1st, signed.2nd)
+      and {
+        cek_builtin_v1.verify_direct_scalar_semantics(
+          53,
+          arguments,
+          boolean(#"d87a80"),
+        ),
+        !cek_builtin_v1.verify_direct_builtin_failure_v1(
+          53,
+          builtin_root(53, arguments),
+          arguments,
+        ),
+      }
+    },
+  )
+}
+
+test schnorr_signature_over_another_message_returns_false() {
+  let arguments = schnorr_arguments(
+    schnorr_key,
+    schnorr_signed_33().1st,
+    schnorr_signed_31().2nd,
+  )
+  and {
+    cek_builtin_v1.verify_direct_scalar_semantics(
+      53,
+      arguments,
+      boolean(#"d87980"),
+    ),
+    !cek_builtin_v1.verify_direct_scalar_semantics(
+      53,
+      arguments,
+      boolean(#"d87a80"),
+    ),
+    !cek_builtin_v1.verify_direct_builtin_failure_v1(
+      53,
+      builtin_root(53, arguments),
+      arguments,
+    ),
+  }
+}
+
+test schnorr_charges_message_words() {
+  let Pair(empty, empty_signature) = schnorr_signed_empty()
+  let Pair(hundred, hundred_signature) = schnorr_signed_100()
+  and {
+    cek_builtin_v1.direct_builtin_budget_v1(
+      53,
+      schnorr_arguments(schnorr_key, empty, empty_signature),
+    ) == cek_cost_v1.BuiltinBudgetV1 { cpu: 43600591, memory: 10 },
+    cek_builtin_v1.direct_builtin_budget_v1(
+      53,
+      schnorr_arguments(schnorr_key, hundred, hundred_signature),
+    ) == cek_cost_v1.BuiltinBudgetV1 { cpu: 43916287, memory: 10 },
+  }
+}
+
+test schnorr_wrong_key_or_signature_length_fails_at_any_message_length() {
+  let key = schnorr_key
+  list.all(
+    schnorr_signed_messages(),
+    fn(signed) {
+      let signature = signed.2nd
+      list.all(
+        [
+          schnorr_arguments(
+            builtin.slice_bytearray(0, 31, key),
+            signed.1st,
+            signature,
+          ),
+          schnorr_arguments(
+            builtin.cons_bytearray(0, key),
+            signed.1st,
+            signature,
+          ),
+          schnorr_arguments(
+            key,
+            signed.1st,
+            builtin.slice_bytearray(0, 63, signature),
+          ),
+          schnorr_arguments(
+            key,
+            signed.1st,
+            builtin.cons_bytearray(0, signature),
+          ),
+        ],
+        fn(arguments) {
+          cek_builtin_v1.verify_direct_builtin_failure_v1(
+            53,
+            builtin_root(53, arguments),
+            arguments,
+          )
+        },
+      )
+    },
+  )
+}
+
+test schnorr_short_key_cannot_claim_a_successful_result() fail {
+  let Pair(hundred, hundred_signature) = schnorr_signed_100()
+  cek_builtin_v1.verify_direct_scalar_semantics(
+    53,
+    schnorr_arguments(
+      builtin.slice_bytearray(0, 31, schnorr_key),
+      hundred,
+      hundred_signature,
+    ),
+    boolean(#"d87980"),
+  )
+}
+
+test schnorr_ill_typed_message_is_not_a_known_failure() fail {
+  let arguments = [
+    byte_string(builtin.slice_bytearray(0, 31, schnorr_key)),
+    integer(#"01"),
+    byte_string(#""),
+  ]
+  cek_builtin_v1.verify_direct_builtin_failure_v1(
+    53,
+    builtin_root(53, arguments),
+    arguments,
+  )
+}
+
+test ed25519_ill_typed_message_is_not_a_known_failure() fail {
+  let arguments = [byte_string(#""), integer(#"01"), byte_string(#"")]
+  cek_builtin_v1.verify_direct_builtin_failure_v1(
+    21,
+    builtin_root(21, arguments),
+    arguments,
+  )
+}
+
+// Variant E also bounds three operands the 9,215 B cap leaves open: a writeBits
+// input at 4,096 B, a shift or rotate amount at Int64 (the bound the failure
+// arm proves), and a BLS12-381 scalarMul scalar at [-2^4095, 2^4095 - 1]. Each
+// success arm certifies at its bound and is refused one past it, with a result
+// that would be right if the operand were not refused.
+
+// Setting bit 0 of `length` zero bytes, written out without writeBits.
+fn write_bit_zero_succeeds_at(length: Int) -> Bool {
+  let source = cbor.serialise(builtin.b_data(zero_run(length)))
+  let indices = cbor.serialise(builtin.list_data([builtin.i_data(0)]))
+  let arguments = [
+    bytes(source),
+    constant(#"9f0500ff", indices),
+    boolean(#"d87a80"),
+  ]
+  let written = bytearray.concat(zero_run(length - 1), #"01")
+  cek_builtin_v1.verify_direct_builtin_v1(
+    80,
+    builtin_root(80, arguments),
+    arguments,
+    bytes(cbor.serialise(builtin.b_data(written))),
+  )
+}
+
+test write_bits_success_certifies_a_4096_byte_input() {
+  write_bit_zero_succeeds_at(4096)
+}
+
+test write_bits_success_is_refused_one_past_4096_bytes() fail {
+  write_bit_zero_succeeds_at(4097)
+}
+
+// Shifting one byte by eight bits or more leaves zero; rotating 0xff leaves it.
+fn shift_or_rotate_succeeds(tag: Int, amount: Int) -> Bool {
+  let source = if tag == 82 {
+    #"01"
+  } else {
+    #"ff"
+  }
+  let shifted = if tag == 82 {
+    #"00"
+  } else {
+    #"ff"
+  }
+  let arguments = [
+    bytes(cbor.serialise(builtin.b_data(source))),
+    integer(cbor.serialise(builtin.i_data(amount))),
+  ]
+  cek_builtin_v1.verify_direct_builtin_v1(
+    tag,
+    builtin_root(tag, arguments),
+    arguments,
+    bytes(cbor.serialise(builtin.b_data(shifted))),
+  )
+}
+
+test shift_and_rotate_success_certifies_int64_amounts() {
+  and {
+    shift_or_rotate_succeeds(82, 9223372036854775807),
+    shift_or_rotate_succeeds(82, -9223372036854775808),
+    shift_or_rotate_succeeds(83, 9223372036854775807),
+    shift_or_rotate_succeeds(83, -9223372036854775808),
+  }
+}
+
+test shift_success_is_refused_one_past_int64_max() fail {
+  shift_or_rotate_succeeds(82, 9223372036854775808)
+}
+
+test shift_success_is_refused_one_past_int64_min() fail {
+  shift_or_rotate_succeeds(82, -9223372036854775809)
+}
+
+test rotate_success_is_refused_one_past_int64_max() fail {
+  shift_or_rotate_succeeds(83, 9223372036854775808)
+}
+
+test rotate_success_is_refused_one_past_int64_min() fail {
+  shift_or_rotate_succeeds(83, -9223372036854775809)
+}
+
+// 0x80 followed by 511 zero bytes: 2^(8 * 511 + 7) = 2^4095.
+fn power_of_two_4095() -> Int {
+  bytearray.to_int_big_endian(bytearray.push(zero_run(511), 128))
+}
+
+test bls_scalar_bound_is_variant_e_bound() {
+  and {
+    cek_builtin_v1.bls_scalar_in_bound_v1(power_of_two_4095() - 1),
+    cek_builtin_v1.bls_scalar_in_bound_v1(-power_of_two_4095()),
+    !cek_builtin_v1.bls_scalar_in_bound_v1(power_of_two_4095()),
+    !cek_builtin_v1.bls_scalar_in_bound_v1(-power_of_two_4095() - 1),
+  }
+}
+
+// A scalar past 64 bits is a CBOR bignum, which today's constant reader cannot
+// decode (the pinned evaluator aborts on it), so the arm is driven here with
+// small scalars only; the bound itself is pinned above.
+fn scalar_mul_succeeds(tag: Int, scalar: Int) -> Bool {
+  let Pair(point, product) = if tag == 56 {
+    let generator = g1_generator()
+    Pair(
+      generator,
+      builtin.bls12_381_g1_scalar_mul(
+        scalar,
+        builtin.un_b_data(cbor_payload(generator.payload_cbor))
+          |> builtin.bls12_381_g1_uncompress,
+      )
+        |> builtin.bls12_381_g1_compress,
+    )
+  } else {
+    let generator = g2_generator()
+    Pair(
+      generator,
+      builtin.bls12_381_g2_scalar_mul(
+        scalar,
+        builtin.un_b_data(cbor_payload(generator.payload_cbor))
+          |> builtin.bls12_381_g2_uncompress,
+      )
+        |> builtin.bls12_381_g2_compress,
+    )
+  }
+  let arguments = [
+    integer(cbor.serialise(builtin.i_data(scalar))),
+    cek_builtin_v1.ConstantValue(point),
+  ]
+  cek_builtin_v1.verify_direct_builtin_v1(
+    tag,
+    builtin_root(tag, arguments),
+    arguments,
+    constant(point.type_cbor, cbor.serialise(builtin.b_data(product))),
+  )
+}
+
+fn cbor_payload(payload_cbor: ByteArray) -> Data {
+  expect Some(payload) = cbor.deserialise(payload_cbor)
+  payload
+}
+
+test scalar_mul_success_certifies_in_bound_scalars() {
+  and {
+    scalar_mul_succeeds(56, 7),
+    scalar_mul_succeeds(56, -7),
+    scalar_mul_succeeds(63, 7),
+    scalar_mul_succeeds(63, -7),
+  }
+}

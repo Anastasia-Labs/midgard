@@ -1642,23 +1642,17 @@ fn cek_context_execution_successor_is_exact(
     context_summary,
   )
   let context_term = cek_proof_v1.hash_context_constant_term_v1(context_value)
-  let initial_state = cek_machine_v1.MachineStateV1 {
-    mode: cek_machine_v1.mode_compute,
-    execution_index: execution_cursor,
-    focus_root: cek_proof_v1.hash_application_term_v1(
+  let initial_state = cek_machine_v1.initial_state_v1(
+    execution_cursor,
+    cek_proof_v1.hash_application_term_v1(
       context_control.program_term_root,
       context_term,
     ),
-    environment_root: cek_proof_v1.empty_environment_root_v1,
-    continuation_root: cek_proof_v1.empty_continuation_root_v1,
-    auxiliary: 0,
-    cpu: 0,
-    memory: 0,
-  }
+  )
   and {
     witness.claimed_successor.phase == validation_trace_v1.Cek,
-    witness.claimed_successor.execution_cpu == pre.execution_cpu,
-    witness.claimed_successor.execution_memory == pre.execution_memory,
+    witness.claimed_successor.execution_cpu == pre.execution_cpu + cek_machine_v1.startup_cpu,
+    witness.claimed_successor.execution_memory == pre.execution_memory + cek_machine_v1.startup_memory,
     witness.claimed_successor.work_root == validation_trace_v1.hash_work_witness(
       validation_trace_v1.Cek,
       pre.program_counter + 1,

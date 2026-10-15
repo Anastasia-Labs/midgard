@@ -1,7 +1,7 @@
 {
   "schemaVersion": "midgard-van-rossem-fit-ledger-v1",
   "category": "validationTraceDispute/CEK context publication",
-  "blueprintSha256": "aaad33273c6065c3bf7344ae900e38598e7e8d225cf46ea03b7db7fc303ee098",
+  "blueprintSha256": "b9ebabe4d05b4d7845a2b3d30c18b9f6cdbff99e93648bbdb468944025b75a76",
   "compilerVersion": "v1.1.23+5adf783",
   "entries": [
     {
@@ -380,25 +380,25 @@
       "name": "validationTraceDisputeCekContextSeed",
       "kind": "publication",
       "maximumShape": "parameterized context publication",
-      "signedBytes": 8043,
+      "signedBytes": 8045,
       "memoryUnits": "0",
       "cpuUnits": "0",
-      "signedByteMargin": 8341,
+      "signedByteMargin": 8339,
       "memoryUnitMargin": "16500000",
       "cpuUnitMargin": "10000000000",
-      "publicationReserveMargin": 7829
+      "publicationReserveMargin": 7827
     },
     {
       "name": "validationTraceDisputeCekContextSettle",
       "kind": "publication",
       "maximumShape": "parameterized context publication",
-      "signedBytes": 7135,
+      "signedBytes": 7214,
       "memoryUnits": "0",
       "cpuUnits": "0",
-      "signedByteMargin": 9249,
+      "signedByteMargin": 9170,
       "memoryUnitMargin": "16500000",
       "cpuUnitMargin": "10000000000",
-      "publicationReserveMargin": 8737
+      "publicationReserveMargin": 8658
     },
     {
       "name": "validationTraceDisputeCekContextSigner",
@@ -437,5 +437,5 @@
       "publicationReserveMargin": 6336
     }
   ],
-  "ledgerSha256": "82543c81330cd4eea7cab69ddc039927032c91e87bd6b373c86e089d84e22728"
+  "ledgerSha256": "ac396b05a284840a11be743d8152c8604aeaa37a1c1065a8d40d7b39c95da01f"
 }

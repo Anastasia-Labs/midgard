@@ -87,8 +87,8 @@ describe("V1 CEK trace generator", () => {
         verifyMidgardCekCoreStep(step.pre, step.post, step.witness),
       ),
     ).toBe(true);
-    expect(execution.terminalState.cpu).toBe(4n * 16_000n);
-    expect(execution.terminalState.memory).toBe(4n * 100n);
+    expect(execution.terminalState.cpu).toBe(100n + 4n * 16_000n);
+    expect(execution.terminalState.memory).toBe(100n + 4n * 100n);
   });
 
   it("fails closed at the declared trace-step bound", () => {
