@@ -679,6 +679,24 @@ pub fn prevalidated_step_v1(
   }
 }
 
+/// `prevalidated_step_v1` at the syntax and blob stages; the measure stage
+/// yields `None`. A large constructor's index is a definite uint64 (the
+/// traverse opens its control only for a major 0 argument, at the syntax
+/// stage), so its control never measures and its step carries no
+/// indefinite-magnitude code.
+pub fn prevalidated_definite_step_v1(
+  control: CekDataIntegerControlV1,
+  source_bytes: Option<ByteArray>,
+) -> Option<CekDataIntegerControlV1> {
+  if control.stage == stage_syntax {
+    step_syntax(control, source_bytes)
+  } else if control.stage == stage_blob {
+    step_blob(control, source_bytes)
+  } else {
+    None
+  }
+}
+
 /// `prevalidated_step_v1` at the syntax and measure stages, the steps that
 /// read grammar; every other stage yields `None`. A refusal check reaches only
 /// these stages, so it carries no content-streaming code.
