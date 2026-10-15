@@ -25,7 +25,6 @@ import {
   midgardCekConstantWitnessFromUplc,
   midgardCekIntegerMemorySize,
 } from "../src/cek-constant.js";
-import { buildMidgardCekDataScanTrace } from "../src/cek-data-scan.js";
 import {
   commitMidgardCekDataTree,
   encodeMidgardCekDataTreeInteger,
@@ -123,18 +122,6 @@ describe("Cardano integer layout in Data CBOR", () => {
     );
     expect(canonical.payloadCbor.toString("hex")).toBe(
       AIKEN_SERIALISE_DATA[name],
-    );
-  });
-
-  it("the Data scan accepts the chunked form and refuses one block", () => {
-    const chunked = Buffer.from(AIKEN_SERIALISE_DATA.positive65, "hex");
-    const trace = buildMidgardCekDataScanTrace(chunked);
-    expect(trace.terminal.offset).toBe(chunked.length);
-
-    const singleBlock = Buffer.from(`c25841${hexRange(1, 65)}`, "hex");
-    expect(singleBlock.length).toBe(68);
-    expect(() => buildMidgardCekDataScanTrace(singleBlock)).toThrow(
-      "CBOR Plutus Data byte string exceeds 64 bytes",
     );
   });
 

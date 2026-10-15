@@ -7,7 +7,6 @@ use aiken/primitive/bytearray
 use midgard/cek_builtin_v1
 use midgard/cek_constant_v1
 use midgard/cek_cost_v1
-use midgard/cek_data_scan_v1
 use midgard/cek_data_v1
 use midgard/cek_proof_v1
 
@@ -701,10 +700,10 @@ fn large_semantic_constructor_fixture() -> LargeSemanticConstructorFixture {
   )
   let child = cek_data_v1.bytes_data_summary_v1(
     9000,
-    cek_data_scan_v1.bounded_blob_root_v1(bytes),
+    cek_proof_v1.bounded_blob_root_v1(bytes),
   )
   let child_node = cek_data_v1.BytesData {
-    bytes_root: cek_data_scan_v1.bounded_blob_root_v1(bytes),
+    bytes_root: cek_proof_v1.bounded_blob_root_v1(bytes),
     bytes_length: 9000,
     cbor_length: child.cbor_length,
     memory: child.memory,
@@ -773,7 +772,7 @@ test semantic_unconstr_data_returns_the_exact_large_typed_pair() {
   let constructor_cbor = cbor.serialise(builtin.i_data(0))
   let constructor = cek_data_v1.integer_data_summary_v1(
     0,
-    cek_data_scan_v1.bounded_blob_root_v1(constructor_cbor),
+    cek_proof_v1.bounded_blob_root_v1(constructor_cbor),
   )
   let fields = cek_data_v1.list_data_summary_v1(fixture.fields)
   let result_payload = cek_data_v1.small_constr_data_summary_v1(
@@ -811,10 +810,10 @@ test semantic_fst_pair_extracts_the_constructor_without_the_large_field() {
   let constructor_cbor = cbor.serialise(builtin.i_data(0))
   let constructor = cek_data_v1.integer_data_summary_v1(
     0,
-    cek_data_scan_v1.bounded_blob_root_v1(constructor_cbor),
+    cek_proof_v1.bounded_blob_root_v1(constructor_cbor),
   )
   let constructor_node = cek_data_v1.IntegerData {
-    cbor_root: cek_data_scan_v1.bounded_blob_root_v1(constructor_cbor),
+    cbor_root: cek_proof_v1.bounded_blob_root_v1(constructor_cbor),
     cbor_length: constructor.cbor_length,
     memory: constructor.memory,
   }
