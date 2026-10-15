@@ -142,8 +142,8 @@ describe("midgard contracts registry", () => {
       // the composed P1 tree (allow-lists, the datum canonicity step, the
       // non-empty block rule, one event NFT per user-event mint), the retired
       // post-UTxO minimum-Ada mode, the streamed redeemer and datum Data
-      // verdict steps, the one-pass history payload node count, and the
-      // validation machine binding the exact rejection reason.
+      // verdict steps, the one-pass history payload node count, the exact
+      // rejection reason binding, and the fault-proof script optimisations.
       expect
         .soft(
           createHash("sha256")
@@ -153,7 +153,7 @@ describe("midgard contracts registry", () => {
             .digest("hex"),
         )
         .toBe(
-          "5b95d1556b1368b05879c7e89d3ccfdaae46a1e0d9eee4fc995731b87d158349",
+          "ccad268d5303c037a09712950eb09a86a0a7e51fcce0168eb5103a8cb5675fde",
         );
       // Includes current streamed Data/W1 metadata plus escape-hatch field
       // retirement and the hub witness's paired script bytes. The independently
@@ -168,7 +168,7 @@ describe("midgard contracts registry", () => {
       // the composed P1 tree (allow-lists, the non-empty block rule, T302), and
       // the fault-proof scripts the state queue is applied over (the retired
       // post-UTxO minimum-Ada mode, the streamed Data verdict steps, the exact
-      // rejection reason).
+      // rejection reason, the size and cost optimisations).
       expect
         .soft(
           createHash("sha256")
@@ -181,7 +181,7 @@ describe("midgard contracts registry", () => {
             .digest("hex"),
         )
         .toBe(
-          "c3d80034586fa3f158b65072f143ca9f179abffbf137d8b83c26e5de0b267e5f",
+          "729421df16e63394794e0016f89beba92c627df846027348d8d91c11d2653768",
         );
       // The always-succeeds stand-in is a real hazard here: it satisfies every
       // spend, so a role that silently kept it would pass any behavioural test

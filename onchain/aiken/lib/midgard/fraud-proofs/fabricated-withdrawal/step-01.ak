@@ -224,13 +224,27 @@ pub fn verify_committed_withdrawal_membership_v1(
   header: ledger_state.HeaderV1,
   membership: CommittedWithdrawalSourceProofV1,
 ) -> Bool {
+  verify_committed_withdrawal_membership_with_value_bytes_v1(
+    header,
+    membership,
+    cbor.serialise(membership.value),
+  )
+}
+
+/// `verify_committed_withdrawal_membership_v1` for a caller that also needs
+/// `value_bytes = cbor.serialise(membership.value)` and has already computed it.
+pub fn verify_committed_withdrawal_membership_with_value_bytes_v1(
+  header: ledger_state.HeaderV1,
+  membership: CommittedWithdrawalSourceProofV1,
+  value_bytes: ByteArray,
+) -> Bool {
   transition_trace.verify_root_membership_with_bytes(
     membership,
     transition_trace.WithdrawalsRootDomain,
     header.withdrawals_root,
     header.withdrawal_count,
     cbor.serialise(membership.key),
-    cbor.serialise(membership.value),
+    value_bytes,
   )
 }
 
