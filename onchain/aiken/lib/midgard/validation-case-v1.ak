@@ -447,19 +447,23 @@ pub fn thread_leftover_address(
 // ## Case close
 
 /// A case closes once no thread is open, and either a defender has won or the
-/// defense window has passed.
+/// defense window has passed. A case whose threads are still open closes once
+/// its lower bound is past `started_at + D_case`; it closes as `DefenderWon`.
 pub fn case_can_close(case: CaseV1, current_time_lower: Int) -> Bool {
-  and {
-    case.open_threads == 0,
+  if case.open_threads == 0 {
     or {
       case.defender_won,
       current_time_lower > defense_deadline(case),
-    },
+    }
+  } else {
+    current_time_lower > case.started_at + validation_dispute_v1.max_dispute_duration_milliseconds
   }
 }
 
+/// How a case that `case_can_close` admits settles. A thread still open at
+/// the close counts as a defender win.
 pub fn case_outcome(case: CaseV1) -> CaseOutcomeV1 {
-  if case.defender_won {
+  if case.defender_won || case.open_threads > 0 {
     DefenderWon
   } else if case.neither_claim_valid {
     NoValidClaim

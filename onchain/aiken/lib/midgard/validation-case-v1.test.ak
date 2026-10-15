@@ -556,6 +556,19 @@ test case_close_otherwise_waits_past_the_defense_window() {
   }
 }
 
+/// A case with an open thread closes only once its lower bound is past
+/// `started_at + D_case`, and then closes as a defender win.
+test case_close_with_an_open_thread_waits_for_d_case() {
+  let case = defended(case_with(4, h_d), vkh_1)
+  let d_case_end = case.started_at + validation_dispute_v1.max_dispute_duration_milliseconds
+  and {
+    !validation_case_v1.case_can_close(case, d_case_end),
+    validation_case_v1.case_can_close(case, d_case_end + 1),
+    validation_case_v1.case_outcome(case) == DefenderWon,
+    validation_case_v1.challenger_bond_address(case) == validation_case_v1.treasury_address,
+  }
+}
+
 test case_outcome_rows() {
   let case = case_with(4, h_d)
   let two = defended_twice(case)
