@@ -1,14 +1,27 @@
-import { type Data, isData } from "@harmoniclabs/plutus-data";
+import { isData } from "@harmoniclabs/plutus-data";
 import {
   type ConstType,
   ConstTyTag,
-  UPLCDecoder,
   UPLCEncoder,
   type UPLCProgram,
 } from "@harmoniclabs/uplc";
 
 import { encodeMidgardCekPlutusData } from "./cek-constant.js";
-import { plutusDataFromCborIterative } from "./plutus-data-iterative.decode.js";
+import { decodeCardanoFlatProgramOrThrow } from "./cek-program.cardano-flat.decode.js";
+
+/**
+ * The Cardano-exact Flat decoder: `decodeCardanoFlatProgram` returns the
+ * program Cardano reads, or the refusal class and the bit offset of the
+ * refused item; `CardanoFlatRefusal` is the error the throwing entries raise.
+ */
+export {
+  type CardanoFlatDecodeResult,
+  decodeCardanoFlatProgram,
+} from "./cek-program.cardano-flat.decode.js";
+export {
+  CardanoFlatRefusal,
+  type CardanoFlatRefusalClass,
+} from "./cek-program.cardano-flat.reader.js";
 
 /** Flat uses Cardano Data CBOR inside Data constants, including nested types. */
 class CardanoFlatEncoder extends UPLCEncoder {
@@ -24,21 +37,14 @@ class CardanoFlatEncoder extends UPLCEncoder {
   }
 }
 
-/**
- * Reads every Data constant, including those nested in list and pair
- * constants, with the Cardano-exact Plutus Data decoder: any spelling it
- * accepts stands for its value, and a form it refuses aborts the decode.
- */
-class CardanoFlatDecoder extends UPLCDecoder {
-  override decodeCborData(): Data {
-    return plutusDataFromCborIterative(this.decodeByteString());
-  }
-}
-
 export const encodeMidgardCekCardanoFlatProgram = (
   program: UPLCProgram,
 ): Buffer => Buffer.from(new CardanoFlatEncoder().compile(program));
 
+/**
+ * Reads a script's Flat bytes as the Cardano ledger does (Plutus V3, protocol
+ * version 11), or throws the `CardanoFlatRefusal`.
+ */
 export const decodeMidgardCekCardanoFlatProgram = (
   flat: Uint8Array,
-): UPLCProgram => new CardanoFlatDecoder(flat).decodeProgram();
+): UPLCProgram => decodeCardanoFlatProgramOrThrow(flat);
