@@ -1420,25 +1420,31 @@ export const commitConfirmRecoverAndMerge = async ({
   globals,
   expectedL2TxIds = [],
   production,
+  submitted,
 }: {
   readonly fixture: EmulatorFixture;
   readonly lucidService: Awaited<ReturnType<typeof makeLucidRuntimeService>>;
   readonly globals: Globals;
   readonly expectedL2TxIds?: readonly Buffer[];
   readonly production?: ProductionHistoryFixtureRuntime;
+  /** A commit the caller already submitted; this then confirms it. */
+  readonly submitted?: Awaited<
+    ReturnType<typeof runCommitWorkerUntilSubmitted>
+  >;
 }) => {
-  const latestBlockBeforeCommit = await fetchLatestCommittedBlock(
-    fixture.operatorLucid,
-    fixture.contracts,
-  );
-  const commitOutput = await runCommitWorkerUntilSubmitted({
-    fixture,
-    lucidService,
-    latestBlock: latestBlockBeforeCommit,
-    nodeConfig: production?.nodeConfig,
-    production:
-      production === undefined ? undefined : { ...production, globals },
-  });
+  const commitOutput =
+    submitted ??
+    (await runCommitWorkerUntilSubmitted({
+      fixture,
+      lucidService,
+      latestBlock: await fetchLatestCommittedBlock(
+        fixture.operatorLucid,
+        fixture.contracts,
+      ),
+      nodeConfig: production?.nodeConfig,
+      production:
+        production === undefined ? undefined : { ...production, globals },
+    }));
   await fixture.operatorLucid.awaitTx(commitOutput.submittedTxHash);
   await production?.synchronize();
   await runBlockConfirmation(
