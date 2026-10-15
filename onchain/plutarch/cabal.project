@@ -1,3 +1,8 @@
+-- Custom repository for cardano haskell packages, see
+-- https://github.com/IntersectMBO/cardano-haskell-packages
+-- for more information.
+--
+-- [NOTE] The "/" in the end of the URL is mandatory, or else we get a 404 NOT FOUND
 repository cardano-haskell-packages
   url: https://chap.intersectmbo.org/
   secure: True
@@ -9,30 +14,68 @@ repository cardano-haskell-packages
     c00aae8461a256275598500ea0e187588c35a5d5d7454fb57eac18d9edb86a56
     d4a35cd3121aa00d18544bb0ac01c3e1691d618f462c46129271bccf39f7e8ee
 
+-- Van Rossem (PV11) plutus stack, tracking input-output-hk/wsc-poc. The Van
+-- Rossem builtins are implemented in plutus-core 1.65 and gated on
+-- `vanRossemPV = MajorProtocolVersion 11` in plutus-ledger-api 1.65, enforced at
+-- script deserialisation. This package has no cardano-api/cardano-node
+-- dependency, so it takes the plutus half of that stack only.
 index-state:
-  , hackage.haskell.org 2025-04-08T16:51:26Z
-  , cardano-haskell-packages 2025-04-08T16:51:26Z
+  , hackage.haskell.org 2026-05-31T00:00:00Z
+  , cardano-haskell-packages 2026-05-31T00:00:00Z
 
-source-repository-package
-    type: git
-    location: https://github.com/input-output-hk/catalyst-onchain-libs
-    tag: d70a3a331691035d1dd47191b5c77eaaf42e643b
-    --sha256: sha256-MYfoY79AH3gXeuh8RfAXxY6ZSzXpRb+e8M842A/UQFs=
-    subdir:
-      src/plutarch-onchain-lib
-
-source-repository-package
-    type: git
-    location: https://github.com/Plutonomicon/plutarch-plutus
-    tag: f84a46287b06f36abf8d2d63bec7ff75d32f3e91
-    --sha256: sha256-gKBk9D6DHSEudq7P9+07yXWcgM/QX7NFp0tJXBodopM=
-    subdir:
-      .
-      plutarch-ledger-api
-      plutarch-orphanage
-      plutarch-testlib
+with-compiler: ghc-9.6.6
 
 packages: ./.
+
+constraints:
+    plutus-core == 1.65.0.0
+  , plutus-ledger-api == 1.65.0.0
+  , plutus-tx == 1.65.0.0
+  , plutarch == 1.14.0
+  , aeson == 2.2.4.1
+
+allow-older:
+    *:plutus-core
+  , *:plutus-ledger-api
+
+allow-newer:
+    *:plutus-core
+  , *:plutus-ledger-api
+
+-- Upstream Plutarch 1.14.0 (c3b47719) plus two fixes that belong upstream, on a
+-- fork branch until they land there:
+--   * Plutarch/Internal/Parse.hs carries a stray {-# LANGUAGE TypeAbstractions #-}
+--     (GHC 9.8+) though upstream declares tested-with GHC ==9.6.4 and every @a in
+--     that file is a type APPLICATION, not an abstraction.
+--   * plutarch-orphanage defines `instance Arbitrary1 NonEmptyList`, which newer
+--     QuickCheck now provides itself, making it a duplicate.
+-- Each is a separate commit on that branch so it maps to its own upstream PR;
+-- once both merge, repoint this at upstream and drop the fork.
+--
+-- 1.14 is what brings UPLC casing: pif is punsafeCase-based, ~6.9x cheaper CPU
+-- and ~4.5x cheaper memory per conditional than the pif'/ifThenElse idiom.
+source-repository-package
+  type: git
+  location: https://github.com/colll78/plutarch-plutus
+  tag: eac4bf1c36bced4e7174e51680122c1f88f6405f
+  --sha256: 1nw8dlbrh67jar0x3l80g0lwvikig91zhrn4snnavxcq0iv0xpyf
+  subdir:
+    .
+    plutarch-ledger-api
+
+-- plutarch-onchain-lib's Plutarch 1.14 port (PR #27) plus the length-dispatched
+-- value-scan key comparison (PR #28), at the commit the latter squash-merged to
+-- main. Pin a MAIN commit here, never a PR branch head: the branch is deleted on
+-- merge and its commits survive only on refs/pull/*, which a plain clone does not
+-- fetch, so cabal's checkout fails on CI with "Could not parse object" while local
+-- builds (whose checkouts have the commit) keep working.
+source-repository-package
+  type: git
+  location: https://github.com/input-output-hk/catalyst-onchain-libs
+  tag: b756d9daee73d4a19465fcdf8ab794700406ce27
+  --sha256: 1jx2lc02knb3z4dkh7prxhx462zm6mj537cc9rcbbm7b12m44992
+  subdir:
+    src/plutarch-onchain-lib
 
 package midgard-merkle
   ghc-options: -fobject-code
