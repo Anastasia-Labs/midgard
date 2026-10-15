@@ -16,7 +16,10 @@ export {
   type MidgardCekDirectValueWitness,
   type MidgardCekRuntimeValueWitness,
 } from "./cek-builtin.argument-kinds.js";
-export { evaluateMidgardCekDirectBuiltin } from "./cek-builtin.evaluate-reference-builtin.js";
+export {
+  evaluateMidgardCekDirectBuiltin,
+  semanticizeMidgardCekDirectConstant,
+} from "./cek-builtin.evaluate-reference-builtin.js";
 export {
   hashMidgardCekDirectArguments,
   hashMidgardCekDirectValueWitness,

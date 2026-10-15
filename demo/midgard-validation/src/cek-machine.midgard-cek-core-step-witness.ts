@@ -32,6 +32,7 @@ export const MidgardCekErrorCodes = Object.freeze({
   InvalidCaseScrutinee: 5n,
   CaseBranchMissing: 6n,
   BuiltinFailure: 7n,
+  NonUnitHalt: 8n,
 } as const);
 
 export type Bytes = Uint8Array;

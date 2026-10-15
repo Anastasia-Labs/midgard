@@ -1,6 +1,7 @@
 import { commitMidgardCekBlob } from "@al-ft/midgard-core";
 import { DataB, DataConstr, DataI } from "@harmoniclabs/plutus-data";
 
+import { constrIndexIsOutOfRange } from "./cek-builtin.constr-data-index.js";
 import { type MidgardCekDirectValueWitness } from "./cek-builtin.js";
 import {
   decodeMidgardCekConstantWitness,
@@ -232,7 +233,9 @@ export const verifySemanticData = (
         );
       }
     }
-    if (constructor === null || constructor < 0n) return false;
+    if (constructor === null || constrIndexIsOutOfRange(constructor)) {
+      return false;
+    }
     const summary = constrDataSummary(constructor, fields.sequence);
     return resultMatchesParts(
       result,

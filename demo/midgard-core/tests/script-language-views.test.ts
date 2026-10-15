@@ -22,14 +22,14 @@ const AIKEN_REDEEMER_TX_WITS_HASH = Buffer.alloc(32, 0x11);
 
 describe("script language views", () => {
   it("freezes the initial protocol cost model views", () => {
-    // The 297-parameter Conway PlutusV3 model. Library defaults move with
-    // later protocol versions, so the view is pinned by its own digest.
-    expect(PLUTUS_V3_CANONICAL_COST_MODEL_VIEW).toHaveLength(297);
+    // The 350-parameter PlutusV3 model of the latest mainnet protocol
+    // version. Library defaults move, so the view is pinned by its own digest.
+    expect(PLUTUS_V3_CANONICAL_COST_MODEL_VIEW).toHaveLength(350);
     expect(
       createHash("sha256")
         .update(JSON.stringify(PLUTUS_V3_CANONICAL_COST_MODEL_VIEW))
         .digest("hex"),
-    ).toBe("015b4c0953bbd57372fcd592df617215c7024a532882ece12b96e0557a285d39");
+    ).toBe("6b74a19b00bcca178a4c723c0ce871d41fc5c5a417d738798faea60930961b4e");
     expect(MIDGARD_CANONICAL_COST_MODEL_VIEW).toEqual(
       PLUTUS_V3_CANONICAL_COST_MODEL_VIEW,
     );
@@ -46,18 +46,18 @@ describe("script language views", () => {
       computeScriptIntegrityHashForLanguages(REDEEMER_TX_WITS_HASH, [
         "PlutusV3",
       ]).toString("hex"),
-    ).toBe("e2ebd40127c1f2fc48fc46388895edf309bdda534dfc1b1a1c0fceb94a43c60e");
+    ).toBe("2c8dd895d15d14f0197d323f15b153811874ca2d6bc8fcda1fb84e1bfed925f3");
     expect(
       computeScriptIntegrityHashForLanguages(REDEEMER_TX_WITS_HASH, [
         "MidgardV1",
       ]).toString("hex"),
-    ).toBe("6439e4fbfe80ed56da131bceafc2bcbdff24b59f69e84ed96507fe3725131442");
+    ).toBe("057035c930f43e00f71020693b3004b01eb6632d7c8eb6a6128eb3ddf147cf24");
     expect(
       computeScriptIntegrityHashForLanguages(REDEEMER_TX_WITS_HASH, [
         "MidgardV1",
         "PlutusV3",
       ]).toString("hex"),
-    ).toBe("907fec08d0de18a7da3449fa2b3a14d9898b8485e55f6112fcd184cffc9f93ff");
+    ).toBe("a994ca9d22a562c1f057d8a60c0ebafc046f47e4a083ea3c050e51d437c524c9");
   });
 
   it("matches the exact Aiken vectors for every supported language bitmap", () => {
@@ -71,18 +71,18 @@ describe("script language views", () => {
       computeScriptIntegrityHashForLanguages(AIKEN_REDEEMER_TX_WITS_HASH, [
         "PlutusV3",
       ]).toString("hex"),
-    ).toBe("d7239eb1bd8b7376dedfbf7e6201815b225c023d11c975cd99d25d5236b199a1");
+    ).toBe("b37aff1034628d20a78418d2c2cf20796ac08c83467b6f8558e6cea542de4c26");
     expect(
       computeScriptIntegrityHashForLanguages(AIKEN_REDEEMER_TX_WITS_HASH, [
         "MidgardV1",
       ]).toString("hex"),
-    ).toBe("71201d25ea11e4104eda108782a7d67b37b4ae97df6dc3258b06d9c98e58bbcb");
+    ).toBe("74c606847a40bed5f147cd6cca208fa1b0db6a130f7d86d7c478fd5838d6d878");
     expect(
       computeScriptIntegrityHashForLanguages(AIKEN_REDEEMER_TX_WITS_HASH, [
         "MidgardV1",
         "PlutusV3",
       ]).toString("hex"),
-    ).toBe("6d49b4f24c60bec1cb34a2538278252059ec0601b7f675ef73fe2b48e24317d8");
+    ).toBe("ceab70e09654e1f35ddf1566b15861055566fda429e056107de070c58c8b3991");
   });
 
   it("changes when redeemer witness hash changes", () => {

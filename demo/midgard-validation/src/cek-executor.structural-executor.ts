@@ -38,6 +38,10 @@ import {
 } from "@harmoniclabs/plutus-data";
 
 import {
+  constrIndexFailureWitness,
+  constrIndexIsOutOfRange,
+} from "./cek-builtin.constr-data-index.js";
+import {
   evaluateMidgardCekBlsFinal,
   evaluateMidgardCekDirectBuiltin,
   hashMidgardCekDirectValueWitness,
@@ -87,6 +91,7 @@ import {
   type MidgardCekEnvironmentSummary,
   MidgardCekErrorCodes,
   type MidgardCekMapConversionControl,
+  returnEmptySuccessor,
 } from "./cek-machine.js";
 import { isPlutusDataMap } from "./plutus-data-narrowing.js";
 
@@ -1303,13 +1308,7 @@ export class StructuralExecutor {
           scalarPreimages: [],
         },
       },
-      exactState(pre, {
-        mode: "haltError",
-        focusRoot: hashMidgardCekTermNode({ kind: "error" }),
-        environmentRoot: MIDGARD_CEK_EMPTY_ENVIRONMENT_ROOT,
-        continuationRoot: MIDGARD_CEK_EMPTY_CONTINUATION_ROOT,
-        auxiliary: MidgardCekErrorCodes.BuiltinFailure,
-      }),
+      errorSuccessor(pre, MidgardCekErrorCodes.BuiltinFailure),
     );
   }
 
@@ -1509,10 +1508,17 @@ export class StructuralExecutor {
         !(index.payload instanceof DataI) ||
         fields.type.kind !== "list" ||
         fields.type.element.kind !== "data" ||
-        !(fields.payload instanceof DataList) ||
-        index.payload.int < 0n
+        !(fields.payload instanceof DataList)
       ) {
-        throw new Error("constrData requires non-negative index and Data list");
+        throw new Error("constrData requires an integer index and Data list");
+      }
+      if (constrIndexIsOutOfRange(index.payload.int)) {
+        const { node } = this.topSemanticMaterial(index.tree);
+        this.record(
+          constrIndexFailureWitness(arguments_, index.payload.int, node),
+          errorSuccessor(pre, MidgardCekErrorCodes.BuiltinFailure),
+        );
+        return;
       }
       const fieldsTop = this.topSemanticMaterial(fields.tree);
       const indexIsSemantic = arguments_[0]?.kind === "semanticConstant";
@@ -1985,15 +1991,7 @@ export class StructuralExecutor {
     if (frame === null) {
       this.record(
         { kind: "returnEmptyContinuation", value },
-        value.kind === "constant"
-          ? exactState(pre, {
-              mode: "haltSuccess",
-              focusRoot: pre.focusRoot,
-              environmentRoot: MIDGARD_CEK_EMPTY_ENVIRONMENT_ROOT,
-              continuationRoot: MIDGARD_CEK_EMPTY_CONTINUATION_ROOT,
-              auxiliary: 0n,
-            })
-          : errorSuccessor(pre, MidgardCekErrorCodes.NonconstantHalt),
+        returnEmptySuccessor(pre, value),
       );
       return;
     }

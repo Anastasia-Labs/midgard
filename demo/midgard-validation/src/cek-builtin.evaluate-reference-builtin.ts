@@ -23,6 +23,7 @@ import {
 } from "./cek-builtin.cardano-exact.js";
 import {
   directByteLength,
+  directInteger,
   hashMidgardCekDirectValueWitness,
   midgardCekDirectBuiltinBudget,
   type MidgardCekDirectBuiltinEvaluation,
@@ -148,7 +149,7 @@ const semanticConstantFromCanonical = (
   });
 };
 
-const semanticizeDirectConstant = (
+export const semanticizeMidgardCekDirectConstant = (
   value: MidgardCekDirectValueWitness,
 ): MidgardCekDirectValueWitness => {
   if (value.kind !== "constant") return value;
@@ -321,7 +322,11 @@ const directFailureIsCharged = (
   tag: bigint,
   arguments_: readonly MidgardCekDirectValueWitness[],
 ): boolean =>
-  [4n, 5n, 6n, 21n, 52n, 53n, 58n, 65n, 73n].includes(tag) ||
+  [4n, 5n, 6n, 21n, 52n, 53n, 58n, 65n].includes(tag) ||
+  // The reference CEK refuses an out-of-range width before charging.
+  (tag === 73n &&
+    directInteger(arguments_[1]!) >= 0n &&
+    directInteger(arguments_[1]!) <= 8192n) ||
   (tag === 60n && directByteLength(arguments_[0]!) === 48) ||
   (tag === 67n && directByteLength(arguments_[0]!) === 96);
 
@@ -372,7 +377,7 @@ export const evaluateMidgardCekDirectBuiltin = (
     }
     return Object.freeze({
       kind: "success",
-      result: semanticizeDirectConstant(result),
+      result: semanticizeMidgardCekDirectConstant(result),
       budget,
     });
   }

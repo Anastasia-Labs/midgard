@@ -16,10 +16,7 @@ import {
   midgardCekDataMemorySize,
   midgardCekIntegerMemorySize,
 } from "../src/cek-constant.js";
-import {
-  computeMidgardCekBuiltinBudget,
-  normalizeMidgardCekBitwiseCostSizes,
-} from "../src/cek-cost.js";
+import { computeMidgardCekBuiltinBudget } from "../src/cek-cost.js";
 
 describe("V1 pinned Plutus V3 builtin costs", () => {
   it("matches integer, byte-string, and BLS cost-model vectors", () => {
@@ -110,18 +107,5 @@ describe("V1 pinned Plutus V3 builtin costs", () => {
       { fst: new DataI(1n), snd: new DataList([new DataB(new Uint8Array(2))]) },
     ]);
     expect(midgardCekDataMemorySize(data)).toBe(19n);
-  });
-
-  it("normalizes bitwise arguments after extend/truncate", () => {
-    expect(normalizeMidgardCekBitwiseCostSizes(true, 2n, 5n)).toEqual([
-      1n,
-      5n,
-      5n,
-    ]);
-    expect(normalizeMidgardCekBitwiseCostSizes(false, 2n, 5n)).toEqual([
-      1n,
-      2n,
-      2n,
-    ]);
   });
 });

@@ -1,12 +1,14 @@
 import {
   commitMidgardCekBlob,
   midgardCekDataBytesCborLength,
+  midgardCekDataBytesMemory,
   midgardCekDataConstrCborLength,
   midgardCekDataListCborLength,
   type MidgardCekDataListNode,
   midgardCekDataMapCborLength,
   type MidgardCekDataNode,
   type MidgardCekDataPairNode,
+  midgardCekStringMemoryWords,
 } from "@al-ft/midgard-core";
 import { DataConstr, DataI } from "@harmoniclabs/plutus-data";
 
@@ -117,7 +119,7 @@ const dataNodeTopologyMatches = (
       node.bytesRoot.length === 32 &&
       node.bytesLength >= 0n &&
       node.cborLength === midgardCekDataBytesCborLength(node.bytesLength) &&
-      node.memory === 4n + (node.bytesLength === 0n ? 1n : node.bytesLength)
+      node.memory === midgardCekDataBytesMemory(node.bytesLength)
     );
   }
   return (
@@ -159,6 +161,11 @@ export const constantMemoryFromPayloadNode = (
 ): bigint | null => {
   if (type.kind === "integer" || type.kind === "bytes") {
     return node.memory - 4n;
+  }
+  if (type.kind === "string") {
+    return node.kind === "bytes"
+      ? midgardCekStringMemoryWords(node.bytesLength)
+      : null;
   }
   if (type.kind === "list" && node.kind === "list") {
     if (type.element.kind === "data") return node.memory - 4n;
