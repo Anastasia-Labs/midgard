@@ -9,8 +9,11 @@ import {
   type ValidationWorkerResponse,
 } from "../workers/utils/validation-pool.js";
 import {
+  clampBacklogShare,
   idleSlot,
   isIdle,
+  queueBackgroundJob,
+  rejectBackgroundJobs,
   takeBackgroundJob,
 } from "./validation-pool.background-lanes.js";
 import {
@@ -29,7 +32,7 @@ export class FixedValidationWorkerPool {
   readonly queue: PendingJob[] = [];
   /** Import-check jobs, both lanes, in submission order. */
   readonly backgroundQueue: BackgroundJob[] = [];
-  /** Workers reserved for the backlog lane: at least one, at most `size`. */
+  /** Workers reserved for the backlog lane (`clampBacklogShare`). */
   readonly backlogShare: number;
   readonly capacityWaiters: Array<() => void> = [];
   readonly restartTimers = new Set<NodeJS.Timeout>();
@@ -53,7 +56,7 @@ export class FixedValidationWorkerPool {
     readonly init: ValidationWorkerInit,
     backlogShare = 1,
   ) {
-    this.backlogShare = Math.max(1, Math.min(size, backlogShare));
+    this.backlogShare = clampBacklogShare(size, backlogShare);
   }
 
   start(): Promise<void> {
@@ -221,26 +224,21 @@ export class FixedValidationWorkerPool {
     });
   }
 
-  /**
-   * An import-check job, scheduled by its lane (`takeBackgroundJob`). Its
-   * worker is terminated `killMs` after the job starts; a worker not yet
-   * started is started first. With `fresh`, an idle worker is replaced and
-   * the job runs once the new worker has started, so the kill never counts
-   * the worker's start.
-   */
+  /** An import-check job, scheduled by its lane (`takeBackgroundJob`),
+   * killed and cancelled as `ValidationPoolService.evaluateImportCheck`
+   * says; a fresh worker's start never counts toward its kill. */
   submitBackground(
     request: ValidationJobRequest,
-    options: Pick<BackgroundJob, "killMs" | "fresh" | "lane">,
+    options: Pick<BackgroundJob, "killMs" | "fresh" | "lane" | "startBy">,
   ): Promise<ValidationWorkerResponse> {
-    if (this.closed || !this.started) {
+    if (this.closed || !this.started)
       return Promise.reject(
         new ValidationWorkerError({
           message: "validation pool is not running",
         }),
       );
-    }
     return new Promise<ValidationWorkerResponse>((resolve, reject) => {
-      this.backgroundQueue.push({
+      queueBackgroundJob(this, {
         request,
         transferList: [],
         resolve,
@@ -292,7 +290,7 @@ export class FixedValidationWorkerPool {
       message: "validation pool shut down",
     });
     for (const job of this.queue.splice(0)) job.reject(error);
-    for (const job of this.backgroundQueue.splice(0)) job.reject(error);
+    rejectBackgroundJobs(this, error);
     for (const slot of this.slots) {
       slot.reservedFor?.reject(error);
       slot.reservedFor = null;
@@ -325,6 +323,7 @@ export class FixedValidationWorkerPool {
       started: false,
       lane: null,
       reservedFor: null,
+      heldLane: null,
     };
     worker.on("message", (response: ValidationWorkerResponse) =>
       this.handleResponse(slot, response),
@@ -356,8 +355,7 @@ export class FixedValidationWorkerPool {
     );
   }
 
-  /** Import-check jobs on idle workers: only the backlog lane's reserved
-   * share unless `open` (`takeBackgroundJob`). */
+  /** Import-check jobs on idle workers (`takeBackgroundJob`). */
   private dispatchBackground(open: boolean): void {
     for (;;) {
       const slot = idleSlot(this.slots);
@@ -369,8 +367,7 @@ export class FixedValidationWorkerPool {
 
   private startBackground(slot: WorkerSlot, job: BackgroundJob): void {
     if (job.fresh) {
-      // The exit handler respawns the slot; the replacement starts with a
-      // warm-up job and then runs `job`.
+      // Respawned by the exit handler, warmed up, then runs `job`.
       slot.reservedFor = job;
       slot.restarting = true;
       void slot.worker.terminate();
@@ -468,6 +465,7 @@ export class FixedValidationWorkerPool {
     });
     slot.inFlight?.reject(error);
     slot.reservedFor?.reject(error);
+    slot.heldLane = slot.lane ?? slot.reservedFor?.lane ?? null;
     slot.inFlight = null;
     slot.reservedFor = null;
     slot.lane = null;

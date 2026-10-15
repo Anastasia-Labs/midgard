@@ -162,6 +162,7 @@ const makeValidationPool = Effect.gen(function* () {
       evaluateImportCheckOn(pool)(request, options).pipe(
         Effect.ensuring(reportStats),
       ),
+    importCheckBacklogShare: pool.backlogShare,
     tryEvaluateCekVerdict: (request) =>
       Effect.suspend(() => {
         const pending = pool.trySubmitAdvisory({

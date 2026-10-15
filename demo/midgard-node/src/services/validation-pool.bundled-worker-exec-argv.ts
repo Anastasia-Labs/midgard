@@ -19,6 +19,8 @@ export class ValidationWorkerError extends Data.TaggedError(
 )<{
   readonly message: string;
   readonly cause?: unknown;
+  /** An import-check job cancelled before it started (its `startBy`). */
+  readonly notStarted?: true;
 }> {}
 
 export type ValidationPoolService = {
@@ -32,17 +34,21 @@ export type ValidationPoolService = {
     request: MidgardCekVerdictRequest,
   ) => Effect.Effect<LocalScriptEvalResult, ValidationWorkerError>;
   /**
-   * Runs one verdict-mode script for the import checker, in `lane`:
+   * Runs one verdict-mode script for the import checker, in `lane`. Both
+   * lanes together hold at most `size - 1` workers, so admission always
+   * keeps one:
    * - `import`: below every other job. It starts only when no other job
-   *   waits and a worker is idle, and import-check jobs hold at most
-   *   `size - 1` workers (one on a single-worker pool);
-   * - `backlog`: on the pool's reserved backlog share (at least one worker)
-   *   ahead of every other job, so admission load cannot starve it; past
-   *   the share, as an `import` job.
+   *   waits and a worker is idle;
+   * - `backlog`: on the pool's reserved backlog share
+   *   (`importCheckBacklogShare`) ahead of every other job, so admission
+   *   load cannot starve it; past the share, as an `import` job.
+   * On a single-worker pool nothing is reserved: both lanes run only when
+   * admission is idle, on its one worker.
    * The worker is started first if it has not, and is terminated `killMs`
    * after the job starts; with `fresh`, an idle worker is replaced and
    * started before the job runs. A kill, crash or worker error fails the
-   * effect. Absent when the pool is disabled.
+   * effect; a job not started by `startBy` (epoch ms) is cancelled and
+   * fails with `notStarted`. Absent when the pool is disabled.
    */
   readonly evaluateImportCheck?: (
     request: MidgardCekVerdictRequest,
@@ -50,8 +56,12 @@ export type ValidationPoolService = {
       readonly killMs: number;
       readonly fresh: boolean;
       readonly lane: ImportCheckLane;
+      readonly startBy?: number;
     },
   ) => Effect.Effect<LocalScriptEvalResult, ValidationWorkerError>;
+  /** The workers reserved for the backlog lane: 0 on a single-worker
+   * pool, else from 1 to `size - 1`. */
+  readonly importCheckBacklogShare?: number;
   /** HTTP advisory evaluation refuses when no reserved idle worker is available. */
   readonly tryEvaluateCekVerdict: (
     request: MidgardCekVerdictRequest,
@@ -86,6 +96,10 @@ export type BackgroundJob = PendingJob & {
   readonly killMs: number;
   readonly fresh: boolean;
   readonly lane: ImportCheckLane;
+  /** Cancelled when not started by this time (epoch ms). */
+  readonly startBy?: number;
+  /** The timer that cancels it, while it waits. */
+  cancel?: NodeJS.Timeout;
 };
 
 export type WorkerSlot = {
@@ -102,6 +116,9 @@ export type WorkerSlot = {
   lane: ImportCheckLane | null;
   /** The import-check job this slot was replaced for, run once it starts. */
   reservedFor: BackgroundJob | null;
+  /** The lane of the import-check job this failed slot ran: it stays held
+   * by that lane until its replacement is up. */
+  heldLane: ImportCheckLane | null;
 };
 
 export const poolSizeGauge = Metric.gauge("validation_pool_size", {
