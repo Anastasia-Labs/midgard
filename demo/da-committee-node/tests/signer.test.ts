@@ -1,3 +1,4 @@
+import { ledgerEd25519SignatureReady } from "@al-ft/midgard-core";
 import {
   availabilityResponseGeometry,
   buildDaAvailabilityCommitment,
@@ -5,7 +6,7 @@ import {
 } from "@al-ft/midgard-sdk";
 import { CML, walletFromSeed } from "@lucid-evolution/lucid";
 import { blake2b } from "@noble/hashes/blake2.js";
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 
 import {
   loadDaSigner,
@@ -14,6 +15,10 @@ import {
   verifyDaSignatureWitness,
 } from "../src/signer.js";
 import { bytesToHex } from "../src/utils/hex.js";
+
+// The ledger's Ed25519 check is libsodium's, which initialises
+// asynchronously; production entry points await it, and so does this file.
+beforeAll(() => ledgerEd25519SignatureReady);
 
 const availabilityCommitment = (headerHash: string) =>
   buildDaAvailabilityCommitment({

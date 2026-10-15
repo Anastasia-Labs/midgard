@@ -4,6 +4,7 @@ import {
   type AvailabilityResponseAdmissionInput,
   type AvailabilityResponseObligation,
   availabilityResponsePublicationCount,
+  ledgerEd25519SignatureReady,
 } from "@al-ft/midgard-core";
 import type { AvailabilityOperationActorSnapshot } from "@al-ft/midgard-core/availability-operation-journal";
 import { computeDaSha256Hash } from "@al-ft/midgard-core/da-transport";
@@ -239,6 +240,7 @@ export const committeePromiseAdmission = (args: {
       reason: "finite_runtime_policy_unavailable",
     },
   check: async (candidate) => {
+    await ledgerEd25519SignatureReady;
     const base = {
       deploymentId: args.config.deploymentFingerprint,
       candidateHeaderHash: candidate.record.headerHash,

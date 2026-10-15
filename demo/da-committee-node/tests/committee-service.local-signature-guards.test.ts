@@ -1,5 +1,6 @@
+import { ledgerEd25519SignatureReady } from "@al-ft/midgard-core";
 import { blake2b } from "@noble/hashes/blake2.js";
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 
 import { CommitteeService } from "../src/committee-service.js";
 import type { DaSignatureRecord } from "../src/domain.js";
@@ -20,6 +21,10 @@ import {
 } from "./helpers.js";
 import { openTestCommitteeStore } from "./helpers/committee-store.js";
 import { fakeL1Source } from "./helpers/fake-l1-source.js";
+
+// The ledger's Ed25519 check is libsodium's, which initialises
+// asynchronously; production entry points await it, and so does this file.
+beforeAll(() => ledgerEd25519SignatureReady);
 
 /**
  * The service's checks on this signer's stored signatures before it signs a

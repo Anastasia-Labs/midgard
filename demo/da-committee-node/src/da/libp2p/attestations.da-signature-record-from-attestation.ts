@@ -1,3 +1,4 @@
+import { ledgerEd25519SignatureReady } from "@al-ft/midgard-core";
 import {
   readSingleDaStreamFrame,
   writeDaStreamFrame,
@@ -192,6 +193,7 @@ export const daSignatureRecordFromAttestation = async ({
   readonly announcerPeerId: string;
   readonly attestation: DaAttestationGossip;
 }): Promise<DaSignatureRecordFromAttestationResult> => {
+  await ledgerEd25519SignatureReady;
   const headerHash = attestation.headerHash.toString("hex");
   if (
     attestation.deploymentFingerprint.toString("hex") !== deploymentFingerprint
