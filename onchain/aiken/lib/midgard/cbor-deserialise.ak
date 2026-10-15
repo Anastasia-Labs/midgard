@@ -102,28 +102,22 @@ fn maybe_item(
   } else {
     let next = index_bytearray(bytes, offset)
     let offset = offset + 1
-    if next < 0x40 {
-      if next < 0x18 {
-        return(i_data(next), offset)
-      } else if next < 0x20 {
-        maybe_argument(
-          bytes,
-          length,
-          offset,
-          next,
-          fn(n, offset) { return(i_data(n), offset) },
-        )
-      } else if next < 0x38 {
-        return(i_data(0x1f - next), offset)
-      } else {
-        maybe_argument(
-          bytes,
-          length,
-          offset,
-          next - 0x20,
-          fn(n, offset) { return(i_data(-1 - n), offset) },
-        )
-      }
+    if next < 0x20 {
+      maybe_argument(
+        bytes,
+        length,
+        offset,
+        next,
+        fn(n, offset) { return(i_data(n), offset) },
+      )
+    } else if next < 0x40 {
+      maybe_argument(
+        bytes,
+        length,
+        offset,
+        next - 0x20,
+        fn(n, offset) { return(i_data(-1 - n), offset) },
+      )
     } else if next < 0x80 {
       maybe_byte_string(
         bytes,
@@ -176,31 +170,26 @@ fn maybe_item(
       if offset >= length {
         None
       } else {
-        let head = index_bytearray(bytes, offset)
-        if head < 0x40 {
-          None
-        } else {
-          maybe_byte_string(
-            bytes,
-            length,
-            bound,
-            offset + 1,
-            head,
-            fn(magnitude, offset) {
-              let n = bytearray_to_integer(True, magnitude)
-              return(
-                i_data(
-                  if next == 0xc2 {
-                    n
-                  } else {
-                    -1 - n
-                  },
-                ),
-                offset,
-              )
-            },
-          )
-        }
+        maybe_byte_string(
+          bytes,
+          length,
+          bound,
+          offset + 1,
+          index_bytearray(bytes, offset),
+          fn(magnitude, offset) {
+            let n = bytearray_to_integer(True, magnitude)
+            return(
+              i_data(
+                if next == 0xc2 {
+                  n
+                } else {
+                  -1 - n
+                },
+              ),
+              offset,
+            )
+          },
+        )
       }
     } else {
       maybe_argument(
@@ -254,75 +243,47 @@ fn maybe_constr(
     None
   } else {
     let head = index_bytearray(bytes, offset)
-    let offset = offset + 1
-    if head == token_begin_list {
-      maybe_general_constr(
-        decode,
-        bytes,
-        length,
-        bound,
-        offset,
-        fn(ix, xs, offset) {
-          if offset >= length {
-            None
-          } else if index_bytearray(bytes, offset) == token_break {
-            return(constr_data(ix, xs), offset + 1)
-          } else {
-            None
-          }
-        },
-      )
-    } else {
-      maybe_argument(
-        bytes,
-        length,
-        offset,
-        head - 0x80,
-        fn(size, offset) {
-          if size == 2 {
-            maybe_general_constr(
-              decode,
-              bytes,
-              length,
-              bound,
-              offset,
-              fn(ix, xs, offset) { return(constr_data(ix, xs), offset) },
-            )
-          } else {
-            None
-          }
-        },
-      )
-    }
-  }
-}
-
-// The two elements of tag 102: a major-type-0 index, then a list of fields.
-fn maybe_general_constr(
-  decode: MaybeDecode,
-  bytes: ByteArray,
-  length: Int,
-  bound: Int,
-  offset: Int,
-  return: fn(Int, List<Data>, Int) -> Option<Data>,
-) -> Option<Data> {
-  if offset >= length {
-    None
-  } else {
+    let indefinite = head == token_begin_list
     maybe_argument(
       bytes,
       length,
       offset + 1,
-      index_bytearray(bytes, offset),
-      fn(ix, offset) {
-        maybe_fields(
-          decode,
-          bytes,
-          length,
-          bound,
-          offset,
-          fn(xs, offset) { return(ix, xs, offset) },
-        )
+      if indefinite {
+        2
+      } else {
+        head - 0x80
+      },
+      fn(size, offset) {
+        if size != 2 || offset >= length {
+          None
+        } else {
+          maybe_argument(
+            bytes,
+            length,
+            offset + 1,
+            index_bytearray(bytes, offset),
+            fn(ix, offset) {
+              maybe_fields(
+                decode,
+                bytes,
+                length,
+                bound,
+                offset,
+                fn(xs, offset) {
+                  if !indefinite {
+                    return(constr_data(ix, xs), offset)
+                  } else if offset >= length {
+                    None
+                  } else if index_bytearray(bytes, offset) == token_break {
+                    return(constr_data(ix, xs), offset + 1)
+                  } else {
+                    None
+                  }
+                },
+              )
+            },
+          )
+        }
       },
     )
   }
@@ -339,16 +300,20 @@ fn maybe_fields(
   if offset >= length {
     None
   } else {
-    let head = index_bytearray(bytes, offset)
-    if head < 0x80 {
-      None
-    } else {
-      maybe_list(decode, bytes, length, bound, offset + 1, head, return)
-    }
+    maybe_list(
+      decode,
+      bytes,
+      length,
+      bound,
+      offset + 1,
+      index_bytearray(bytes, offset),
+      return,
+    )
   }
 }
 
-// `head` is the list's initial byte, 0x80 or more.
+// `head` is the list's initial byte. One below 0x80 gives a negative size,
+// which no input reaches, so the read runs out of input and refuses.
 fn maybe_list(
   decode: MaybeDecode,
   bytes: ByteArray,
@@ -373,7 +338,8 @@ fn maybe_list(
   }
 }
 
-// A head's argument. `header` is its additional information, never negative.
+// A head's argument. `header` is its additional information; a negative one
+// is returned as is, and every caller refuses it or never completes on it.
 fn maybe_argument(
   bytes: ByteArray,
   length: Int,
@@ -387,27 +353,18 @@ fn maybe_argument(
     None
   } else if header == 24 {
     return(index_bytearray(bytes, offset), offset + 1)
-  } else if header == 25 {
+  } else if header < 28 {
+    let width = index_bytearray(#"020408", header - 25)
     return(
-      bytearray_to_integer(True, slice_bytearray(offset, 2, bytes)),
-      offset + 2,
-    )
-  } else if header == 26 {
-    return(
-      bytearray_to_integer(True, slice_bytearray(offset, 4, bytes)),
-      offset + 4,
-    )
-  } else if header == 27 {
-    return(
-      bytearray_to_integer(True, slice_bytearray(offset, 8, bytes)),
-      offset + 8,
+      bytearray_to_integer(True, slice_bytearray(offset, width, bytes)),
+      offset + width,
     )
   } else {
     None
   }
 }
 
-// `head` is the byte string's initial byte, 0x40 or more.
+// `head` is the byte string's initial byte; one below 0x40 is refused.
 fn maybe_byte_string(
   bytes: ByteArray,
   length: Int,
@@ -434,19 +391,23 @@ fn maybe_definite_bytes(
   head: Int,
   return: fn(ByteArray, Int) -> Option<Data>,
 ) -> Option<Data> {
-  maybe_argument(
-    bytes,
-    length,
-    offset,
-    head - 0x40,
-    fn(width, offset) {
-      if width > bound {
-        None
-      } else {
-        return(slice_bytearray(offset, width, bytes), offset + width)
-      }
-    },
-  )
+  if head < 0x40 {
+    None
+  } else {
+    maybe_argument(
+      bytes,
+      length,
+      offset,
+      head - 0x40,
+      fn(width, offset) {
+        if width > bound {
+          None
+        } else {
+          return(slice_bytearray(offset, width, bytes), offset + width)
+        }
+      },
+    )
+  }
 }
 
 fn maybe_chunks(
@@ -464,8 +425,6 @@ fn maybe_chunks(
     let offset = offset + 1
     if head == token_break {
       return(read, offset)
-    } else if head < 0x40 {
-      None
     } else {
       maybe_definite_bytes(
         bytes,
@@ -642,24 +601,31 @@ fn maybe_sized_entries(
 // string (major type 3) is read as a byte string head, and a float or simple
 // value (major type 7) as a tag head; both have additional information 28 or
 // more relative to that major type, which `argument` refuses.
+//
+// Script size: the reads are written for size, since every script that
+// decodes links them. A head's argument is read through `argument` even when
+// it sits in the head, and the 2-, 4- or 8-byte width comes from a table, at
+// the cost of a call or an index per item.
 
 /// Continues with the `data` that `deserialise(bytes)` returns as
 /// `Some(data)`, and fails the script where it returns `None`. Use it with
 /// backpassing, `let data <- cbor_deserialise.expect_deserialise(bytes)`. The
 /// decoding happens at that point, on every path, like an `expect` does:
-/// `data` is used twice below, once to pick `then` (every arm of
+/// `data` is used twice in `expect_decoded`, once to pick `then` (every arm of
 /// `choose_data` is `then`) and once as its argument. Without that, the
 /// compiler may move a value used once into the branch that uses it, so the
 /// decoding, and its failure, would no longer happen on every path.
 pub fn expect_deserialise(bytes: ByteArray, then: fn(Data) -> r) -> r {
-  let data = decode(bytes, data_bytes_bound)
-  choose_data(data, then, then, then, then, then)(data)
+  expect_decoded(decode(bytes, data_bytes_bound), then)
 }
 
 /// `expect_deserialise` without the 64-byte bound on a byte string or chunk,
 /// for Midgard-internal wire only.
 pub fn expect_deserialise_envelope(bytes: ByteArray, then: fn(Data) -> r) -> r {
-  let data = decode(bytes, length_of_bytearray(bytes))
+  expect_decoded(decode(bytes, length_of_bytearray(bytes)), then)
+}
+
+fn expect_decoded(data: Data, then: fn(Data) -> r) -> r {
   choose_data(data, then, then, then, then, then)(data)
 }
 
@@ -686,21 +652,15 @@ fn item(
 ) -> Data {
   let next = index_bytearray(bytes, offset)
   let offset = offset + 1
-  if next < 0x40 {
-    if next < 0x18 {
-      return(i_data(next), offset)
-    } else if next < 0x20 {
-      argument(bytes, offset, next, fn(n, offset) { return(i_data(n), offset) })
-    } else if next < 0x38 {
-      return(i_data(0x1f - next), offset)
-    } else {
-      argument(
-        bytes,
-        offset,
-        next - 0x20,
-        fn(n, offset) { return(i_data(-1 - n), offset) },
-      )
-    }
+  if next < 0x20 {
+    argument(bytes, offset, next, fn(n, offset) { return(i_data(n), offset) })
+  } else if next < 0x40 {
+    argument(
+      bytes,
+      offset,
+      next - 0x20,
+      fn(n, offset) { return(i_data(-1 - n), offset) },
+    )
   } else if next < 0x80 {
     byte_string(
       bytes,
@@ -744,23 +704,12 @@ fn item(
         },
       )
     }
-  } else if next == 0xd8 {
-    constr(
-      item,
-      bytes,
-      bound,
-      offset + 1,
-      index_bytearray(bytes, offset),
-      return,
-    )
   } else if next == 0xc2 || next == 0xc3 {
-    let head = index_bytearray(bytes, offset)
-    expect head >= 0x40
     byte_string(
       bytes,
       bound,
       offset + 1,
-      head,
+      index_bytearray(bytes, offset),
       fn(magnitude, offset) {
         let n = bytearray_to_integer(True, magnitude)
         return(
@@ -805,59 +754,44 @@ fn constr(
   } else {
     expect tag == 102
     let head = index_bytearray(bytes, offset)
-    let offset = offset + 1
-    if head == token_begin_list {
-      general_constr(
-        decode,
-        bytes,
-        bound,
-        offset,
-        fn(ix, xs, offset) {
-          expect index_bytearray(bytes, offset) == token_break
-          return(constr_data(ix, xs), offset + 1)
-        },
-      )
-    } else {
-      argument(
-        bytes,
-        offset,
-        head - 0x80,
-        fn(size, offset) {
-          expect size == 2
-          general_constr(
-            decode,
-            bytes,
-            bound,
-            offset,
-            fn(ix, xs, offset) { return(constr_data(ix, xs), offset) },
-          )
-        },
-      )
-    }
+    let indefinite = head == token_begin_list
+    argument(
+      bytes,
+      offset + 1,
+      if indefinite {
+        2
+      } else {
+        head - 0x80
+      },
+      fn(size, offset) {
+        expect size == 2
+        argument(
+          bytes,
+          offset + 1,
+          index_bytearray(bytes, offset),
+          fn(ix, offset) {
+            fields(
+              decode,
+              bytes,
+              bound,
+              offset,
+              fn(xs, offset) {
+                return(
+                  constr_data(ix, xs),
+                  if indefinite {
+                    expect index_bytearray(bytes, offset) == token_break
+                    offset + 1
+                  } else {
+                    offset
+                  },
+                )
+              },
+            )
+          },
+        )
+      },
+    )
   }
-}
-
-fn general_constr(
-  decode: Decode,
-  bytes: ByteArray,
-  bound: Int,
-  offset: Int,
-  return: fn(Int, List<Data>, Int) -> Data,
-) -> Data {
-  argument(
-    bytes,
-    offset + 1,
-    index_bytearray(bytes, offset),
-    fn(ix, offset) {
-      fields(
-        decode,
-        bytes,
-        bound,
-        offset,
-        fn(xs, offset) { return(ix, xs, offset) },
-      )
-    },
-  )
 }
 
 fn fields(
@@ -867,9 +801,7 @@ fn fields(
   offset: Int,
   return: fn(List<Data>, Int) -> Data,
 ) -> Data {
-  let head = index_bytearray(bytes, offset)
-  expect head >= 0x80
-  list(decode, bytes, bound, offset + 1, head, return)
+  list(decode, bytes, bound, offset + 1, index_bytearray(bytes, offset), return)
 }
 
 fn list(
@@ -905,15 +837,8 @@ fn argument(
   } else if header == 24 {
     return(index_bytearray(bytes, offset), offset + 1)
   } else {
-    let width = if header == 25 {
-      2
-    } else if header == 26 {
-      4
-    } else if header == 27 {
-      8
-    } else {
-      fail
-    }
+    // 2, 4 or 8 bytes for 25, 26 or 27; out of range, so failing, for more.
+    let width = index_bytearray(#"020408", header - 25)
     return(
       bytearray_to_integer(True, slice_bytearray(offset, width, bytes)),
       offset + width,
@@ -942,21 +867,16 @@ fn definite_bytes(
   head: Int,
   return: fn(ByteArray, Int) -> Data,
 ) -> Data {
-  if head < 0x58 {
-    let width = head - 0x40
-    expect width <= bound
-    return(slice_bytearray(offset, width, bytes), offset + width)
-  } else {
-    argument(
-      bytes,
-      offset,
-      head - 0x40,
-      fn(width, offset) {
-        expect width <= bound
-        return(slice_bytearray(offset, width, bytes), offset + width)
-      },
-    )
-  }
+  expect head >= 0x40
+  argument(
+    bytes,
+    offset,
+    head - 0x40,
+    fn(width, offset) {
+      expect width <= bound
+      return(slice_bytearray(offset, width, bytes), offset + width)
+    },
+  )
 }
 
 fn chunks(
@@ -971,7 +891,6 @@ fn chunks(
   if head == token_break {
     return(read, offset)
   } else {
-    expect head >= 0x40
     definite_bytes(
       bytes,
       bound,

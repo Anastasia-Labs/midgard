@@ -324,3 +324,51 @@ test descriptor_3545_bytes_derives() {
 test descriptor_3545_bytes_fixture_only() {
   fixture_only(3392, 3545)
 }
+
+test descriptor_4073_bytes_derives() {
+  derives(3904, 4073)
+}
+
+test descriptor_4073_bytes_fixture_only() {
+  fixture_only(3904, 4073)
+}
+
+test descriptor_4601_bytes_derives() {
+  derives(4416, 4601)
+}
+
+test descriptor_4601_bytes_fixture_only() {
+  fixture_only(4416, 4601)
+}
+
+test descriptor_4733_bytes_derives() {
+  derives(4544, 4733)
+}
+
+test descriptor_4733_bytes_fixture_only() {
+  fixture_only(4544, 4733)
+}
+
+test descriptor_4799_bytes_derives() {
+  derives(4608, 4799)
+}
+
+test descriptor_4799_bytes_fixture_only() {
+  fixture_only(4608, 4799)
+}
+
+test descriptor_4865_bytes_derives() {
+  derives(4672, 4865)
+}
+
+test descriptor_4865_bytes_fixture_only() {
+  fixture_only(4672, 4865)
+}
+
+test descriptor_4931_bytes_derives() {
+  derives(4736, 4931)
+}
+
+test descriptor_4931_bytes_fixture_only() {
+  fixture_only(4736, 4931)
+}

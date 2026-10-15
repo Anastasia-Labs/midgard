@@ -29,7 +29,7 @@
 //// * the basis is exhausted at **67 nodes** on the deep shape and **76** on the
 ////   wide one;
 //// * `native_script_v1.inspect_native_script`, the ready predicate A3 names,
-////   exhausts it at about **100** nodes;
+////   exhausts it at **106** nodes;
 //// * a bare `cbor.deserialise` of the payload -- no scan at all, just getting
 ////   the bytes into `Data` -- exhausts it at about **250**.
 ////
