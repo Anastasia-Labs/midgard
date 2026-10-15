@@ -5,6 +5,9 @@ import { registerTransitionTraceFinalCases } from "./support/transition-trace-fi
 
 const enterprise = `581d60${"aa".repeat(28)}`;
 const base = `583900${"ab".repeat(56)}`;
+const protectedEnterprise = (header: string) =>
+  `581d${header}${"aa".repeat(28)}`;
+const protectedBase = (header: string) => `5839${header}${"ab".repeat(56)}`;
 const policy = `581c${"44".repeat(28)}`;
 
 // Each output is inserted at the deepest MPF path a ledger allows, so its
@@ -17,6 +20,30 @@ const OUTPUTS = [
     outputCbor: `a200${base}01821bffffffffffffffffa0`,
     bytes: 73,
     whole: true,
+  },
+  {
+    label: "a protected key-key base output with a nine-byte coin",
+    outputCbor: `a200${protectedBase("08")}01821bffffffffffffffffa0`,
+    bytes: 73,
+    whole: false,
+  },
+  {
+    label: "a protected script-script base output with a nine-byte coin",
+    outputCbor: `a200${protectedBase("38")}01821bffffffffffffffffa0`,
+    bytes: 73,
+    whole: false,
+  },
+  {
+    label: "a protected key enterprise output with a nine-byte coin",
+    outputCbor: `a200${protectedEnterprise("68")}01821bffffffffffffffffa0`,
+    bytes: 45,
+    whole: false,
+  },
+  {
+    label: "a protected script enterprise output with a one-byte coin",
+    outputCbor: `a200${protectedEnterprise("78")}018200a0`,
+    bytes: 37,
+    whole: false,
   },
   {
     label: "one asset at the bound",

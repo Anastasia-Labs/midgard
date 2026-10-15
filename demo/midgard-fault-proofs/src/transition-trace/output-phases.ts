@@ -16,25 +16,22 @@ import {
   traceDataSummaryWalk,
 } from "./data-summary-walk.js";
 
-/** Mirrors `accepted_transaction_yields.output_step_bytes`. */
-export const TRANSITION_OUTPUT_STEP_BYTES = 73;
-
 /**
- * Mirrors `accepted_transaction_yields.output_step_is_whole`: an output of at
- * most `TRANSITION_OUTPUT_STEP_BYTES` canonical bytes of the shape
- * `{0: address, 1: [coin, {}]}` is replayed whole in its phase-11 step; every
- * other output takes the staged phases. Read from the bytes alone, as the
- * yield reads them.
+ * Mirrors `accepted_transaction_yields.output_step_is_whole`: an output of the
+ * canonical shape `{0: address, 1: [coin, {}]}` to an unprotected address is
+ * replayed whole in its phase-11 step; every other output takes the staged
+ * phases. Read from the bytes alone, as the yield reads them.
  */
 export const transitionOutputIsWhole = (outputCbor: string): boolean => {
+  if (!/^(?:[0-9a-f]{2})+$/iu.test(outputCbor))
+    throw new Error("Transition output is not hex");
   const bytes = Buffer.from(outputCbor, "hex");
   const at = (index: number): number => {
     const byte = bytes[index];
     if (byte === undefined) throw new Error("Transition output is truncated");
     return byte;
   };
-  if (bytes.length > TRANSITION_OUTPUT_STEP_BYTES || at(0) !== 0xa2)
-    return false;
+  if (at(0) !== 0xa2 || at(4) % 16 >= 8) return false;
   const coinHeads = (index: number): number => {
     const size = [2, 3, 5, 9][index];
     if (size === undefined)

@@ -3,7 +3,7 @@
 
 use aiken/primitive/bytearray
 use fraud_proofs/transition_trace/accepted_transaction_yields.{
-  output_step_bytes, output_step_is_whole,
+  output_step_is_whole,
 }
 
 test whole_step_replays_an_enterprise_output_with_a_one_byte_coin() {
@@ -46,6 +46,54 @@ test whole_step_replays_a_base_output_with_a_nine_byte_coin_at_the_bound() {
   }
 }
 
+test whole_step_replays_a_base_output_on_network_seven() {
+  let item = #"a200583907abababababababababababababababababababababababababababababababababababababababababababababababababababababababab01821bffffffffffffffffa0"
+  and {
+    bytearray.length(item) == 73,
+    output_step_is_whole(item),
+  }
+}
+
+test whole_step_stages_a_protected_key_enterprise_output() {
+  let item = #"a200581d68aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa01821bffffffffffffffffa0"
+  and {
+    bytearray.length(item) == 45,
+    !output_step_is_whole(item),
+  }
+}
+
+test whole_step_stages_a_protected_script_enterprise_output() {
+  let item = #"a200581d78aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa018200a0"
+  and {
+    bytearray.length(item) == 37,
+    !output_step_is_whole(item),
+  }
+}
+
+test whole_step_stages_a_protected_key_base_output() {
+  let item = #"a200583908abababababababababababababababababababababababababababababababababababababababababababababababababababababababab018217a0"
+  and {
+    bytearray.length(item) == 65,
+    !output_step_is_whole(item),
+  }
+}
+
+test whole_step_stages_a_protected_script_base_output_at_the_bound() {
+  let item = #"a200583938abababababababababababababababababababababababababababababababababababababababababababababababababababababababab01821bffffffffffffffffa0"
+  and {
+    bytearray.length(item) == 73,
+    !output_step_is_whole(item),
+  }
+}
+
+test whole_step_stages_a_protected_base_output_on_network_seven() {
+  let item = #"a20058390fabababababababababababababababababababababababababababababababababababababababababababababababababababababababab01821bffffffffffffffffa0"
+  and {
+    bytearray.length(item) == 73,
+    !output_step_is_whole(item),
+  }
+}
+
 test whole_step_stages_an_output_with_one_asset() {
   let item = #"a200581d60aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa018200a1581c44444444444444444444444444444444444444444444444444444444a14001"
   and {
@@ -73,7 +121,7 @@ test whole_step_stages_an_output_with_one_asset_at_the_bound() {
 test whole_step_stages_an_output_with_one_asset_past_the_bound() {
   let item = #"a200581d60aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa01821a001e8480a1581c44444444444444444444444444444444444444444444444444444444a14001"
   and {
-    bytearray.length(item) > output_step_bytes,
+    bytearray.length(item) == 74,
     !output_step_is_whole(item),
   }
 }
@@ -97,7 +145,7 @@ test whole_step_stages_an_output_with_a_reference_script() {
 test whole_step_stages_an_output_with_a_node_heavy_inline_datum() {
   let item = #"a300581d60aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa01821a004c4b40a00258519f40404040404040404040404040404040404040404040404040404040404040404040404040404040404040404040404040404040404040404040404040404040404040404040404040404040404040ff"
   and {
-    bytearray.length(item) > output_step_bytes,
+    bytearray.length(item) == 125,
     !output_step_is_whole(item),
   }
 }

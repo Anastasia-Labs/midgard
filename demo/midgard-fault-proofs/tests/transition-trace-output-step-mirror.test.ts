@@ -2,10 +2,7 @@ import { readFileSync } from "node:fs";
 
 import { describe, expect, it } from "vitest";
 
-import {
-  TRANSITION_OUTPUT_STEP_BYTES,
-  transitionOutputIsWhole,
-} from "../src/transition-trace/output-phases.js";
+import { transitionOutputIsWhole } from "../src/transition-trace/output-phases.js";
 import { TRANSITION_OUTPUTS_GRAMMAR_BATCH } from "../src/transition-trace/phases.js";
 
 const yields = (suffix: string) =>
@@ -27,9 +24,6 @@ const aikenConstant = (name: string): number => {
 
 describe("accepted-transaction output step", () => {
   it("mirrors the yields' compiled constants", () => {
-    expect(TRANSITION_OUTPUT_STEP_BYTES).toBe(
-      aikenConstant("output_step_bytes"),
-    );
     expect(TRANSITION_OUTPUTS_GRAMMAR_BATCH).toBe(
       aikenConstant("outputs_grammar_batch"),
     );
@@ -53,5 +47,17 @@ describe("accepted-transaction output step", () => {
         item,
         whole,
       });
+  });
+
+  // A whole enterprise output, then the same bytes with an odd digit, a
+  // non-hex digit, or nothing: the yield reads bytes, so the mirror refuses
+  // any text that is not whole bytes rather than deciding a truncation.
+  it("refuses text that is not whole hex bytes", () => {
+    const item = `a200581d60${"aa".repeat(28)}018200a0`;
+    expect(transitionOutputIsWhole(item)).toBe(true);
+    for (const text of [`${item}0`, `${item.slice(0, -2)}g0`, ""])
+      expect(() => transitionOutputIsWhole(text)).toThrow(
+        "Transition output is not hex",
+      );
   });
 });

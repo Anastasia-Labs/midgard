@@ -155,18 +155,17 @@ export const daBondWithdrawDelayFloorMs = (timing) =>
 //
 // Both replayed fields fill to the per-field bound
 // (MIDGARD_MAX_TRANSACTION_AGGREGATE_FIELD_BYTES) after a 3-byte list header;
-// a spend input's item is 40 bytes. An output leaves the most steps per
-// field byte when it is the smallest output the phase-11 step stages rather
-// than replays whole. That is a 40-byte output: an enterprise address,
-// lovelace alone with its coin in a one-byte head, and a one-byte inline
-// datum. Its 42-byte item takes 7 steps: the phase-11 step, two scan steps, a
-// value step, a datum step, the assembly and the insert. A whole output takes
-// one step for an item of at least 39 bytes, and every other staged output
-// (assets, a reference script, a longer datum) takes fewer steps per byte, so
-// filling the outputs field with the smallest staged output gives the longest
-// thread. The coin's
-// one-byte head is the conservative case; the step count assumes no minimum
-// lovelace.
+// a spend input's item is 40 bytes. The output that leaves the most steps per
+// field byte is a 40-byte output: an enterprise address, lovelace alone with
+// its coin in a one-byte head, and a one-byte inline datum. Its 42-byte item
+// takes 7 steps: the phase-11 step, two scan steps, a value step, a datum
+// step, the assembly and the insert. A whole output takes one step for an
+// item of at least 39 bytes, a lovelace-only output to a protected address is
+// staged in 6 steps for an item of at least 39 bytes, and every other staged
+// output (assets, a reference script, a longer datum) takes fewer steps per
+// byte, so filling the outputs field with that output gives the longest
+// thread. The coin's one-byte head is the conservative case; the step count
+// assumes no minimum lovelace.
 //
 // The copies are pinned by midgard-fault-proofs
 // tests/submit-init-emulator-transition-trace-final-maximum-lifecycle.test.ts,

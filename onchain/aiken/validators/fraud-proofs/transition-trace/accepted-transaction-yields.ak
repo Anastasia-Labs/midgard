@@ -33,23 +33,27 @@ pub const delete_batch = 1
 /// Output envelopes certified per phase-10 step.
 pub const outputs_grammar_batch = 32
 
-/// The longest output a phase-11 step replays whole: an address of 57 bytes
-/// and a Value of lovelace alone, its coin in a 9-byte head.
-pub const output_step_bytes = 73
-
-/// Whether the phase-11 step replays `item` whole: at most
-/// `output_step_bytes` long and of the shape `{0: address, 1: [coin, {}]}`,
-/// with no inline datum, no reference script and no native assets, so its
-/// replay cost is bounded by its length. Every other output leaves phase 11
-/// for the staged phases 2, 7, 8, 3 and 4. The answer depends on the bytes
-/// alone, so every output has exactly one path.
+/// Whether the phase-11 step replays `item` whole: an output of the shape
+/// `{0: address, 1: [coin, {}]}` to an unprotected address, with no inline
+/// datum, no reference script and no native assets. Every other output leaves
+/// phase 11 for the staged phases 2, 7, 8, 3 and 4. The answer depends on the
+/// bytes alone, so every output has exactly one path.
+///
+/// A protected address takes the staged path: its Midgard `TxOut` differs
+/// from its Cardano one, so its summaries cost a second `TxOut` that a whole
+/// replay at the deepest insert cannot afford.
 ///
 /// In canonical bytes the address is a byte string with a one-byte length
-/// head, `58 n`, so the coin's head stands at `6 + n` and the asset map's head
-/// right after the coin, whose head is 1, 2, 3, 5 or 9 bytes long; `a0` is the
-/// empty map.
+/// head, `58 n`, then its header byte, whose network nibble is 8 or more when
+/// the address is protected. The coin's head stands at `6 + n` and the asset
+/// map's head right after the coin, whose head is 1, 2, 3, 5 or 9 bytes long;
+/// `a0` is the empty map. No length bound is needed: the whole replay
+/// finishes only if the descriptor verifier's `pipeline.scan_whole` accepts
+/// the bytes, which requires minimal heads (`canonical_cbor_scan_v1`), an
+/// address of 29 or 57 bytes and an exact terminal, so an output replayed
+/// whole is at most 73 bytes: a 57-byte address and a coin in a 9-byte head.
 pub fn output_step_is_whole(item: ByteArray) -> Bool {
-  if bytearray.length(item) > output_step_bytes || bytearray.at(item, 0) != 0xa2 {
+  if bytearray.at(item, 0) != 0xa2 || bytearray.at(item, 4) % 16 >= 8 {
     False
   } else {
     let coin = 6 + bytearray.at(item, 3)
