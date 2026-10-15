@@ -100,10 +100,11 @@ describe("import check storage", () => {
 
   it("stores a block's 16 KB reference outputs once however many transactions and runs read them, within bounded import memory", async () => {
     const OUTPUT_BYTES = 16 * 1024;
-    // Transactions reading the same references (3 by default, as this
-    // builds every run's context twice: for the block, then at import).
-    const TRANSACTIONS = Number(
-      process.env.IMPORT_CHECK_MAX_SHAPE_TRANSACTIONS ?? 3,
+    // Transactions reading the same references: the measured max shape,
+    // 8; the environment may only raise it.
+    const TRANSACTIONS = Math.max(
+      8,
+      Number(process.env.IMPORT_CHECK_MAX_SHAPE_TRANSACTIONS ?? 8),
     );
     // The reference inputs one transaction fits within the size cap: the
     // bytes each one adds, from two small transactions.
