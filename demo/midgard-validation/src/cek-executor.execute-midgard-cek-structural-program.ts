@@ -16,10 +16,6 @@ import {
   type MidgardCekStructuralVerdict,
 } from "./cek-executor.step-recorder.js";
 import { StructuralExecutor } from "./cek-executor.structural-executor.js";
-import {
-  type MidgardCekGatedSet,
-  midgardCekStepScreen,
-} from "./cek-gated-set.js";
 
 type ExecuteMidgardCekStructuralProgramInput = {
   readonly root: Bytes;
@@ -38,16 +34,6 @@ type ExecuteMidgardCekStructuralProgramInput = {
     readonly cpu: bigint;
     readonly memory: bigint;
   };
-  /**
-   * `Date.now()` time past which the run throws `MidgardCekWallCapExceeded`.
-   * A node-local limit: it never changes a verdict, a step or a budget.
-   */
-  readonly wallDeadlineMs?: number;
-  /**
-   * Stops the run, throwing `MidgardCekOutsideGatedSet`, at its first step
-   * outside this set. Local admission policy: never part of a verdict.
-   */
-  readonly gatedSet?: MidgardCekGatedSet;
   /** Defaults to `proof`. See `MidgardCekExecutionMode`. */
   readonly mode?: MidgardCekExecutionMode;
 };
@@ -76,15 +62,7 @@ export function executeMidgardCekStructuralProgram(
     input.material,
     input.executionIndex ?? 0n,
     input.constantWitnesses,
-    new MidgardCekStepRecorder(
-      input.mode ?? "proof",
-      input.maxSteps,
-      undefined,
-      input.wallDeadlineMs,
-      input.gatedSet === undefined
-        ? undefined
-        : midgardCekStepScreen(input.gatedSet),
-    ),
+    new MidgardCekStepRecorder(input.mode ?? "proof", input.maxSteps),
   ).run(input.executionBudget);
 }
 
@@ -110,7 +88,7 @@ export type MidgardCekObservedRun = {
  * holding it.
  */
 export const startMidgardCekObservedRun = (
-  input: Omit<ExecuteMidgardCekStructuralProgramInput, "mode" | "gatedSet">,
+  input: Omit<ExecuteMidgardCekStructuralProgramInput, "mode">,
 ): MidgardCekObservedRun => {
   let observer: MidgardCekStepObserver | undefined;
   let started = false;
@@ -119,11 +97,8 @@ export const startMidgardCekObservedRun = (
     input.material,
     input.executionIndex ?? 0n,
     input.constantWitnesses,
-    new MidgardCekStepRecorder(
-      "verdict",
-      input.maxSteps,
-      (pre, post) => observer!(pre, post),
-      input.wallDeadlineMs,
+    new MidgardCekStepRecorder("verdict", input.maxSteps, (pre, post) =>
+      observer!(pre, post),
     ),
   );
   return {

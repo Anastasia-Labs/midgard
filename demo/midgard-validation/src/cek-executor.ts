@@ -25,5 +25,4 @@ export {
   type MidgardCekExecutionMode,
   type MidgardCekStepObserver,
   type MidgardCekStructuralVerdict,
-  MidgardCekWallCapExceeded,
 } from "./cek-executor.step-recorder.js";

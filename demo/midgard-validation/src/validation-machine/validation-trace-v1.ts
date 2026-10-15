@@ -81,14 +81,11 @@ export type ValidationTraceCommitmentV1 = {
 const commitWith = (
   input: ValidationMachineReplayInput,
   observe: ValidationTraceStateObserver,
-  wallCapMs?: number,
 ) =>
   Effect.gen(function* () {
     const frontier = new MidgardValidationTraceFrontier();
     const completed = yield* replayValidationTrace(input, {
       mode: "commit",
-      wallDeadlineMs:
-        wallCapMs === undefined ? undefined : Date.now() + wallCapMs,
       open: (frame) =>
         new HashingValidationTraceSink(frame, (index, stateHash, state) => {
           frontier.appendState(stateHash);
@@ -136,14 +133,11 @@ const commitWith = (
  * `buildDeterministicValidationMachineTrace` for the same input; the build
  * keeps O(log n) trace state. A failure is a process-local
  * `ValidationTraceStopped`, classified as the proof build classifies it.
- * With `wallCapMs`, a build whose script runs pass that many milliseconds
- * fails the same way: the node's commit wall cap, never a verdict.
  */
 export const commitValidationTraceV1 = (
   input: ValidationMachineReplayInput,
-  options: { readonly wallCapMs?: number } = {},
 ): Effect.Effect<ValidationTraceCommitmentV1, Error> =>
-  commitWith(input, () => undefined, options.wallCapMs).pipe(
+  commitWith(input, () => undefined).pipe(
     classifyValidationTraceFailure(input),
   );
 

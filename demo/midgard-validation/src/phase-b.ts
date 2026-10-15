@@ -26,8 +26,6 @@ export {
   type MidgardCekScriptRun,
   type MidgardCekVerdictRequest,
   ScriptEvaluationIndeterminateError,
-  ScriptOutsideGatedSetError,
-  ScriptWallCapExceededError,
 } from "./phase-b.evaluate-cek-script.js";
 export {
   evaluateMidgardTxRedeemers,
@@ -36,8 +34,6 @@ export {
 } from "./phase-b.evaluate-tx-redeemers.js";
 export {
   applyUTxOStatePatch,
-  type PhaseBLocalRefusal,
-  type PhaseBLocalRefusalError,
   type PhaseBResultWithPatch,
   type UTxOStatePatch,
 } from "./phase-b.resolve-reference-inputs.js";

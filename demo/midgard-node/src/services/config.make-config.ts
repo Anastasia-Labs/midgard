@@ -258,14 +258,6 @@ const makeConfig = Effect.gen(function* () {
     "VALIDATION_WORKER_JOB_TIMEOUT_MS",
     30_000,
   );
-  const validationSubmitWallCapMs = yield* boundedValidationInteger(
-    "VALIDATION_SUBMIT_WALL_CAP_MS",
-    30_000,
-  );
-  const validationCommitWallCapMs = yield* boundedValidationInteger(
-    "VALIDATION_COMMIT_WALL_CAP_MS",
-    40_000,
-  );
   const validationWorkerNodeEd25519 = yield* Config.boolean(
     "VALIDATION_WORKER_NODE_ED25519",
   ).pipe(Config.withDefault(true));
@@ -925,8 +917,6 @@ const makeConfig = Effect.gen(function* () {
     VALIDATION_WORKER_CHUNK_SIZE: validationWorkerChunkSize,
     VALIDATION_WORKER_INLINE_THRESHOLD: validationWorkerInlineThreshold,
     VALIDATION_WORKER_JOB_TIMEOUT_MS: validationWorkerJobTimeoutMs,
-    VALIDATION_SUBMIT_WALL_CAP_MS: validationSubmitWallCapMs,
-    VALIDATION_COMMIT_WALL_CAP_MS: validationCommitWallCapMs,
     VALIDATION_WORKER_NODE_ED25519: validationWorkerNodeEd25519,
     VALIDATION_DRAIN_LOOPS: validationDrainLoops,
     VALIDATION_LEDGER_DELTA_LOG_MAX: validationLedgerDeltaLogMax,

@@ -797,7 +797,6 @@ export const processMpfs = (
                 l1SlotConfig: validation.l1SlotConfig,
                 bucketConcurrency: validation.bucketConcurrency,
                 consensusProfile,
-                scriptWallCapMs: config.commitScriptWallCapMs,
               }),
             blockCheck: normalProgramCoverageCheck(proofPreState),
           }),

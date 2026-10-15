@@ -43,11 +43,6 @@ export const COMMIT_REJECT_CODE_SPENDS_REJECTED_OUTPUT =
 export const COMMIT_REJECT_CODE_TRACE_UNAVAILABLE =
   "E_COMMIT_TRACE_UNAVAILABLE";
 
-/** At commit, the transaction's script runs reach a builtin or machine arm
- * outside the gated set. */
-export const COMMIT_REJECT_CODE_SCRIPT_OUTSIDE_GATED_SET =
-  "E_COMMIT_SCRIPT_OUTSIDE_GATED_SET";
-
 /** Alone in a block, the transaction's DA payload exceeds the submit frame. */
 export const COMMIT_REJECT_CODE_DA_OVERSIZE = "E_COMMIT_DA_OVERSIZE";
 

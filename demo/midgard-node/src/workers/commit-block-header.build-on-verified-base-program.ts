@@ -646,7 +646,6 @@ export const buildOnVerifiedCommitBaseProgram = (
           Effect.void,
         commitEvictions,
         nativeMpf: nativeMpfContext,
-        commitScriptWallCapMs: nodeConfig.VALIDATION_COMMIT_WALL_CAP_MS,
       },
     );
     yield* verifyAdditiveCommitDaFrame({

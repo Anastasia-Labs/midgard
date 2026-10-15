@@ -9,7 +9,6 @@ import type {
   MidgardCekExecutionMode,
   MidgardCekStructuralExecution,
 } from "./cek-executor.js";
-import type { MidgardCekGatedSet } from "./cek-gated-set.js";
 import type { LedgerEntry } from "./ledger.js";
 import type {
   MidgardLedgerTx,
@@ -241,17 +240,6 @@ export type LocalScriptEvalResult =
     }
   | { readonly kind: "script_invalid"; readonly detail: string }
   /**
-   * The run passed its wall-clock deadline (`PhaseBConfig.scriptWallCapMs`).
-   * Not a verdict: the caller refuses or evicts the transaction locally.
-   */
-  | { readonly kind: "wall_cap_exceeded"; readonly detail: string }
-  /**
-   * The run reached a builtin or machine arm outside the caller's gated set
-   * (`PhaseBConfig.cekGatedSet`). Not a verdict: the caller refuses the
-   * transaction locally.
-   */
-  | { readonly kind: "outside_gated_set"; readonly detail: string }
-  /**
    * The evaluator itself failed: a throw, one of its own bounds, or a
    * self-check. Not a verdict: Phase B fails with
    * `ScriptEvaluationIndeterminateError` carrying `cause`.
@@ -276,32 +264,6 @@ export type PhaseBConfig = {
   readonly bucketConcurrency: number;
   readonly enforceScriptBudget?: boolean;
   readonly maxScriptExecutionSteps?: number;
-  /**
-   * A node-local wall-clock cap, in milliseconds, on the script runs of one
-   * transaction. A transaction whose runs pass it makes Phase B fail with
-   * `ScriptWallCapExceededError`, never a rejection, so the caller defers it
-   * locally. Unset (no cap) wherever the verdict is consensus: forced
-   * transactions and the verification of other operators' blocks.
-   */
-  readonly scriptWallCapMs?: number;
-  /**
-   * A node-local screen for submissions: a transaction whose CEK script runs
-   * reach a builtin or machine arm outside this set makes Phase B fail with
-   * `ScriptOutsideGatedSetError`, never a rejection, so the caller refuses it
-   * locally. Unset everywhere but submission: never at the commit of an
-   * admitted transaction, for forced transactions, or in the verification of
-   * other operators' blocks.
-   */
-  readonly cekGatedSet?: MidgardCekGatedSet;
-  /**
-   * Reports each candidate refused under `scriptWallCapMs` or `cekGatedSet`
-   * in `localRefusals` instead of failing Phase B. A refused candidate is left
-   * undecided together with every candidate that spends or references its
-   * outputs, and every other candidate is decided, in its own order, as if
-   * they were absent. Only where those refusals apply: submission, and the
-   * commit of admitted transactions.
-   */
-  readonly reportLocalRefusals?: boolean;
   /**
    * `verdict` (the default) runs CEK scripts without per-step verification or
    * retention, so each `onScriptEvaluated` report has `execution: null`. A

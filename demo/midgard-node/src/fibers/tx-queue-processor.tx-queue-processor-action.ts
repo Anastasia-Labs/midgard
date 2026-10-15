@@ -1,6 +1,6 @@
-import { MIDGARD_CEK_GATED_SET_V1 } from "@al-ft/midgard-validation";
+import { processedTxFromValidatedTx } from "@al-ft/midgard-validation";
 import { SqlClient } from "@effect/sql/SqlClient";
-import { Duration, Effect, Exit, Ref } from "effect";
+import { Duration, Effect, Exit, Metric, Ref } from "effect";
 
 import { TxAdmissionsDB, WithdrawalsDB } from "../database/index.js";
 import { DatabaseError } from "../database/utils/common.js";
@@ -18,11 +18,13 @@ import {
 import {
   decideAdmissionBatch,
   summarizeRejections,
+  validationAcceptCounter,
   validationBatchDurationSummary,
   validationBatchDurationTimer,
   validationBatchSizeGauge,
   validationClaimDurationTimer,
   validationClaimPayloadLoadDurationTimer,
+  validationMempoolInsertDurationTimer,
   validationOldestQueuedTxAgeGauge,
   validationPhaseAConcurrencyGauge,
   validationPhaseADurationTimer,
@@ -32,9 +34,10 @@ import {
   validationQueueDepthGauge,
   validationQueueWaitDurationTimer,
   validationQueueWaitMaxGauge,
+  validationRejectCounter,
+  validationRejectionInsertDurationTimer,
   validationWorkerUtilizationGauge,
 } from "./tx-queue-processor.classify-plutus-evaluation-failure.js";
-import { persistAdmissionDecision } from "./tx-queue-processor.persist-admission-decision.js";
 import { pooledCekVerdictEvaluator } from "./tx-queue-processor.pooled-cek-verdict.js";
 import {
   admissionToQueuedTx,
@@ -224,29 +227,25 @@ export const txQueueProcessorAction = (
 
             const pendingWithdrawalOutRefHexes =
               yield* WithdrawalsDB.retrievePendingLedgerOutRefHexes;
-            const { phaseB, allRejected, deferred, programEnvelopesByTxId } =
+            const { phaseB, allRejected, programEnvelopesByTxId } =
               yield* phaseBSequence.runDecision(
                 Effect.gen(function* () {
                   const cachedState = yield* ledgerCache.currentState;
                   const phaseBStart = Date.now();
-                  const { phaseB, allRejected, deferred } =
-                    yield* decideAdmissionBatch({
-                      phaseA,
-                      pendingWithdrawalOutRefHexes,
-                      ledgerState: cachedState,
-                      phaseBConfig: {
-                        nowCardanoSlotNo: BigInt(nowSlot.right),
-                        l1SlotConfig,
-                        bucketConcurrency:
-                          nodeConfig.VALIDATION_G4_BUCKET_CONCURRENCY,
-                        enforceScriptBudget: true,
-                        scriptWallCapMs:
-                          nodeConfig.VALIDATION_SUBMIT_WALL_CAP_MS,
-                        cekGatedSet: MIDGARD_CEK_GATED_SET_V1,
-                        evaluateCekVerdict:
-                          pooledCekVerdictEvaluator(validationPool),
-                      },
-                    });
+                  const { phaseB, allRejected } = yield* decideAdmissionBatch({
+                    phaseA,
+                    pendingWithdrawalOutRefHexes,
+                    ledgerState: cachedState,
+                    phaseBConfig: {
+                      nowCardanoSlotNo: BigInt(nowSlot.right),
+                      l1SlotConfig,
+                      bucketConcurrency:
+                        nodeConfig.VALIDATION_G4_BUCKET_CONCURRENCY,
+                      enforceScriptBudget: true,
+                      evaluateCekVerdict:
+                        pooledCekVerdictEvaluator(validationPool),
+                    },
+                  });
                   yield* validationPhaseBLatencyGauge(
                     Effect.succeed(Date.now() - phaseBStart),
                   );
@@ -266,23 +265,56 @@ export const txQueueProcessorAction = (
                   return {
                     phaseB,
                     allRejected,
-                    deferred,
                     programEnvelopesByTxId,
                   };
                 }),
               );
 
             yield* phaseBSequence.runPersistence(
-              persistAdmissionDecision({
-                rows: admittedRows,
-                leaseOwner,
-                decision: { phaseB, allRejected, deferred },
-                programEnvelopesByTxId,
+              Effect.gen(function* () {
+                if (allRejected.length > 0) {
+                  const rejectionInsertStart = Date.now();
+                  yield* TxAdmissionsDB.markRejected({
+                    rows: admittedRows,
+                    leaseOwner,
+                    rejectedTxs: allRejected,
+                  });
+                  yield* validationRejectionInsertDurationTimer(
+                    Effect.succeed(
+                      Duration.millis(Date.now() - rejectionInsertStart),
+                    ),
+                  );
+                  yield* Metric.incrementBy(
+                    validationRejectCounter,
+                    BigInt(allRejected.length),
+                  );
+                }
+
+                if (phaseB.accepted.length > 0) {
+                  const mempoolInsertStart = Date.now();
+                  yield* TxAdmissionsDB.markAccepted({
+                    rows: admittedRows,
+                    leaseOwner,
+                    processedTxs: phaseB.accepted.map(
+                      processedTxFromValidatedTx,
+                    ),
+                    programEnvelopesByTxId,
+                  });
+                  yield* validationMempoolInsertDurationTimer(
+                    Effect.succeed(
+                      Duration.millis(Date.now() - mempoolInsertStart),
+                    ),
+                  );
+                  yield* Metric.incrementBy(
+                    validationAcceptCounter,
+                    BigInt(phaseB.accepted.length),
+                  );
+                }
               }),
             );
 
             yield* Effect.logInfo(
-              `tx-queue validation batch done: queued=${admittedRows.length}, accepted=${phaseB.accepted.length}, rejected=${allRejected.length}, deferred=${deferred.length}, expired_leases_requeued=${expiredLeaseCount}, queue_wait_max_ms=${maxQueueWaitMs.toString()}, rejected_by_code=[${summarizeRejections(allRejected)}]`,
+              `tx-queue validation batch done: queued=${admittedRows.length}, accepted=${phaseB.accepted.length}, rejected=${allRejected.length}, expired_leases_requeued=${expiredLeaseCount}, queue_wait_max_ms=${maxQueueWaitMs.toString()}, rejected_by_code=[${summarizeRejections(allRejected)}]`,
             );
             const batchDurationMs = Date.now() - batchStart;
             yield* validationBatchDurationTimer(

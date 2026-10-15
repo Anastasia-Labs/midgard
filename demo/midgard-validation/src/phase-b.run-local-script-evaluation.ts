@@ -14,11 +14,7 @@ import {
   discoverLocalScriptExecutions,
   PURPOSE_KIND,
 } from "./phase-b.discover-local-script-executions.js";
-import {
-  ScriptEvaluationIndeterminateError,
-  ScriptOutsideGatedSetError,
-  ScriptWallCapExceededError,
-} from "./phase-b.evaluate-cek-script.js";
+import { ScriptEvaluationIndeterminateError } from "./phase-b.evaluate-cek-script.js";
 import {
   type CandidateNode,
   collectInlineScriptSources,
@@ -161,11 +157,6 @@ export const runLocalScriptEvaluation = (
       };
     }
 
-    // One deadline covers every script run of the transaction.
-    const wallDeadlineMs =
-      config.scriptWallCapMs === undefined
-        ? undefined
-        : Date.now() + config.scriptWallCapMs;
     for (const execution of nonNativeExecutions) {
       const redeemer = findRedeemerByPointer(
         discovered.contextView.redeemers.map((entry) => entry.redeemer),
@@ -214,8 +205,6 @@ export const runLocalScriptEvaluation = (
           maxSteps:
             config.maxScriptExecutionSteps ??
             MIDGARD_CONSENSUS_LIMITS.maxValidationMachineStepCount,
-          wallDeadlineMs,
-          gatedSet: config.cekGatedSet,
         },
         candidate.submission.programMaterialSidecarCbor,
         proofProgramMaterial,
@@ -230,23 +219,6 @@ export const runLocalScriptEvaluation = (
         graph,
         execution: cek,
       });
-      if (result.kind === "wall_cap_exceeded") {
-        return yield* Effect.fail(
-          new ScriptWallCapExceededError(
-            candidate.ledgerTx.txId,
-            config.scriptWallCapMs!,
-            `${execution.purpose.kind} ${execution.purpose.scriptHash}: ${result.detail}`,
-          ),
-        );
-      }
-      if (result.kind === "outside_gated_set") {
-        return yield* Effect.fail(
-          new ScriptOutsideGatedSetError(
-            candidate.ledgerTx.txId,
-            `${execution.purpose.kind} ${execution.purpose.scriptHash}: ${result.detail}`,
-          ),
-        );
-      }
       if (result.kind === "indeterminate") {
         return yield* Effect.fail(
           new ScriptEvaluationIndeterminateError(

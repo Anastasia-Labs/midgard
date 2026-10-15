@@ -1,10 +1,7 @@
 import {
   type PhaseAResult,
   type PhaseAValidatedTx,
-  type PhaseBLocalRefusalError,
-  RejectCodes,
   runPhaseBValidationWithPatch,
-  ScriptWallCapExceededError,
 } from "@al-ft/midgard-validation";
 import { Effect, Metric } from "effect";
 
@@ -202,126 +199,10 @@ export const refusePendingWithdrawalInputs = (
   return { accepted, rejected };
 };
 
-export const ADMISSION_REJECT_CODE_SCRIPT_WALL_CAP =
-  "E_ADMISSION_SCRIPT_WALL_CAP";
-
-export const validationSubmitWallCapRefusalCounter = Metric.counter(
-  "validation_submit_wall_cap_refusal_count",
-  {
-    description:
-      "Total number of txs deferred at admission because their script runs passed the submit wall cap",
-    bigint: true,
-    incremental: true,
-  },
-);
-
-export const ADMISSION_REJECT_CODE_SCRIPT_OUTSIDE_GATED_SET =
-  "E_ADMISSION_SCRIPT_OUTSIDE_GATED_SET";
-
-export const validationSubmitOutsideGatedSetRefusalCounter = Metric.counter(
-  "validation_submit_outside_gated_set_refusal_count",
-  {
-    description:
-      "Total number of txs refused at admission because their script runs reached a builtin or machine arm outside the gated set",
-    bigint: true,
-    incremental: true,
-  },
-);
-
-/**
- * The admission code and counter of a node-local Phase B refusal. A wall-cap
- * refusal is deferred: it depends on this node's load, not on the
- * transaction, so the transaction stays queued and is decided again later. A
- * gated-set refusal is terminal: the same script reaches the same arm under
- * the same gated set.
- */
-const localRefusalOf = (failure: PhaseBLocalRefusalError) =>
-  failure instanceof ScriptWallCapExceededError
-    ? {
-        code: ADMISSION_REJECT_CODE_SCRIPT_WALL_CAP,
-        counter: validationSubmitWallCapRefusalCounter,
-        deferred: true,
-      }
-    : {
-        code: ADMISSION_REJECT_CODE_SCRIPT_OUTSIDE_GATED_SET,
-        counter: validationSubmitOutsideGatedSetRefusalCounter,
-        deferred: false,
-      };
-
-/** A transaction left queued, with why, to be decided again later. */
-export type AdmissionDeferral = Readonly<{
-  txId: Buffer;
-  code: string;
-  detail: string;
-}>;
-
-/**
- * Runs Phase B once, refusing each candidate whose script runs pass the
- * submit wall cap (`scriptWallCapMs`) or leave the gated set (`cekGatedSet`)
- * and deciding the rest as if the refused ones were absent. The refusal is
- * the node's own, under its own code, and records no script verdict. A
- * gated-set refusal is terminal, and every candidate that depends on the
- * refused transaction's outputs is rejected as depending on it. A wall-cap
- * refusal is deferred together with those dependents, so that all of them are
- * decided again later. Every other Phase B failure fails the batch as before.
- */
-export const runPhaseBRefusingLocalBreaches = (
-  candidates: readonly PhaseAValidatedTx[],
-  ledgerState: Parameters<typeof runPhaseBValidationWithPatch>[1],
-  phaseBConfig: Parameters<typeof runPhaseBValidationWithPatch>[2],
-) =>
-  Effect.gen(function* () {
-    const phaseB = yield* runPhaseBValidationWithPatch(
-      candidates,
-      ledgerState,
-      { ...phaseBConfig, reportLocalRefusals: true },
-    );
-    const refused: TxAdmissionsDB.AdmissionRejection[] = [];
-    const deferred: AdmissionDeferral[] = [];
-    for (const {
-      refusal: breach,
-      candidate,
-      dependents,
-    } of phaseB.localRefusals ?? []) {
-      const refusal = localRefusalOf(breach);
-      const txId = Buffer.from(candidate.ledgerTx.txId);
-      const txIdHex = txId.toString("hex");
-      yield* Metric.increment(refusal.counter);
-      yield* Effect.logWarning(
-        `${refusal.deferred ? "Deferring" : "Refusing"} tx ${txIdHex} at admission: ${breach.message}`,
-      );
-      (refusal.deferred ? deferred : refused).push({
-        txId,
-        code: refusal.code,
-        detail: breach.message,
-      });
-      for (const dependent of dependents) {
-        const dependentTxId = Buffer.from(dependent.ledgerTx.txId);
-        if (refusal.deferred) {
-          const detail = `depends on deferred tx ${txIdHex}`;
-          yield* Effect.logWarning(
-            `Deferring tx ${dependentTxId.toString("hex")} at admission: ${detail}`,
-          );
-          deferred.push({ txId: dependentTxId, code: refusal.code, detail });
-        } else {
-          refused.push({
-            txId: dependentTxId,
-            code: RejectCodes.DependsOnRejectedTx,
-            detail: `depends on refused tx ${txIdHex}`,
-          });
-        }
-      }
-    }
-    return { phaseB, refused, deferred };
-  });
-
 /**
  * Decides one admission batch against the ledger state: Phase-A survivors
  * that spend an outref named by a pending withdrawal are refused, and the rest
- * run Phase B, which refuses any whose scripts pass the submit wall cap or
- * leave the gated set.
- * Returns Phase B's result, every rejection of the batch, and the
- * transactions deferred to a later batch.
+ * run Phase B. Returns Phase B's result and every rejection of the batch.
  */
 export const decideAdmissionBatch = ({
   phaseA,
@@ -339,7 +220,7 @@ export const decideAdmissionBatch = ({
       phaseA.accepted,
       pendingWithdrawalOutRefHexes,
     );
-    const { phaseB, refused, deferred } = yield* runPhaseBRefusingLocalBreaches(
+    const phaseB = yield* runPhaseBValidationWithPatch(
       admissible.accepted,
       ledgerState,
       phaseBConfig,
@@ -347,10 +228,9 @@ export const decideAdmissionBatch = ({
     const allRejected: readonly TxAdmissionsDB.AdmissionRejection[] = [
       ...phaseA.rejected,
       ...admissible.rejected,
-      ...refused,
       ...phaseB.rejected,
     ];
-    return { phaseB, allRejected, deferred };
+    return { phaseB, allRejected };
   });
 
 /**

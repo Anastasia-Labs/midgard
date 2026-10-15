@@ -276,10 +276,6 @@ export const prepareValidationTrace = (
           enforceScriptBudget: true,
           maxScriptExecutionSteps:
             input.consensusProfile.limits.maxValidationMachineStepCount,
-          scriptWallCapMs:
-            recording.wallDeadlineMs === undefined
-              ? undefined
-              : Math.max(1, recording.wallDeadlineMs - Date.now()),
           onScriptEvaluated: (_txId, evaluation) => {
             if (input.scriptEvaluations === undefined)
               scriptEvaluations.push(evaluation);

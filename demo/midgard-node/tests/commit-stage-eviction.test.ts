@@ -2,11 +2,6 @@ import "./utils.js";
 
 import { encodeMidgardCekProgramMaterialSidecar } from "@al-ft/midgard-core/cek-proof";
 import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
-import {
-  RejectCodes,
-  ScriptOutsideGatedSetError,
-  ScriptWallCapExceededError,
-} from "@al-ft/midgard-validation";
 import { SqlClient } from "@effect/sql";
 import { Effect, Logger } from "effect";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -27,7 +22,6 @@ import { heldBuildStage } from "../src/mpf/commit-rejection.evict-uncommittable-
 import {
   COMMIT_REJECT_CODE_DA_OVERSIZE,
   COMMIT_REJECT_CODE_PROGRAM_COVERAGE,
-  COMMIT_REJECT_CODE_SCRIPT_OUTSIDE_GATED_SET,
   COMMIT_REJECT_CODE_SPENDS_REJECTED_OUTPUT,
   COMMIT_REJECT_CODE_TRACE_UNAVAILABLE,
 } from "../src/mpf/commit-rejection.js";
@@ -50,8 +44,7 @@ import { provideDatabaseLayers, resetApplicationTables } from "./utils.js";
  * its dependents, and the block is built without it, when the failure is the
  * transaction's own. A node fault or a failure that does not happen again
  * holds the build instead, as does a forced-transaction store fault. Past a
- * few rejections at one stage, the rest stay pending for later builds, as
- * does a transaction past the commit wall cap, with its dependents. Real
+ * few rejections at one stage, the rest stay pending for later builds. Real
  * `processMpfs` over Postgres, with Phase A and Phase B reduced to their
  * ledger effects.
  */
@@ -143,37 +136,12 @@ vi.mock("@al-ft/midgard-validation", async () => {
           };
         }[],
         preState: ReadonlyMap<string, Buffer>,
-        config?: { readonly reportLocalRefusals?: boolean },
       ) => {
         const failure = fixture.fire(
           fixture.injected.phaseB,
           candidates.map(({ ledgerTx }) => hex(ledgerTx.txId)),
         );
-        // A local refusal, when reported, sets its transaction aside with
-        // every candidate spending its outputs, as Phase B does.
-        const refused =
-          failure !== undefined &&
-          config?.reportLocalRefusals === true &&
-          (failure.error instanceof actual.ScriptWallCapExceededError ||
-            failure.error instanceof actual.ScriptOutsideGatedSetError)
-            ? candidates.find(
-                ({ ledgerTx }) =>
-                  fixture.injected.phaseB.get(hex(ledgerTx.txId)) === failure,
-              )
-            : undefined;
-        const setAside = new Set(refused === undefined ? [] : [refused]);
-        const produced = new Set(
-          refused?.graph.produced.map((entry) =>
-            hex(entry[LedgerUtils.Columns.OUTREF]),
-          ),
-        );
-        for (const candidate of candidates)
-          if (candidate.graph.spentOutRefHexes.some((o) => produced.has(o))) {
-            setAside.add(candidate);
-            for (const entry of candidate.graph.produced)
-              produced.add(hex(entry[LedgerUtils.Columns.OUTREF]));
-          }
-        return failure !== undefined && refused === undefined
+        return failure !== undefined
           ? failure.die === true
             ? Effect.die(failure.error)
             : Effect.fail(failure.error)
@@ -182,7 +150,6 @@ vi.mock("@al-ft/midgard-validation", async () => {
               const accepted: (typeof candidates)[number][] = [];
               const rejected: unknown[] = [];
               for (const candidate of candidates) {
-                if (setAside.has(candidate)) continue;
                 const { spentOutRefHexes, produced } = candidate.graph;
                 if (!spentOutRefHexes.every((outRef) => state.has(outRef))) {
                   rejected.push({
@@ -200,14 +167,7 @@ vi.mock("@al-ft/midgard-validation", async () => {
               fixture.phaseBAccepted.push(
                 accepted.map(({ ledgerTx }) => hex(ledgerTx.txId)),
               );
-              const localRefusals = [...setAside].slice(0, 1).map(() => ({
-                refusal: failure!.error,
-                candidate: refused,
-                dependents: [...setAside].slice(1),
-              }));
-              return config?.reportLocalRefusals === true
-                ? { accepted, rejected, localRefusals }
-                : { accepted, rejected };
+              return { accepted, rejected };
             });
       },
     ),
@@ -502,56 +462,6 @@ describe("commit-stage eviction of normal transactions", () => {
     expect(result.rejected).toEqual({
       [t3]: COMMIT_REJECT_CODE_TRACE_UNAVAILABLE,
       [t5]: COMMIT_REJECT_CODE_SPENDS_REJECTED_OUTPUT,
-    });
-    expect(result.pending).toEqual([t1, t2, t4]);
-  }, 60_000);
-
-  it("leaves a transaction past the commit wall cap pending with its dependents, rejecting nothing, and commits it once the cap holds", async () => {
-    inject(
-      "phaseB",
-      t3,
-      new ScriptWallCapExceededError(TXS[2]!.txId, 40_000, "injected"),
-    );
-    const result = await run(
-      Effect.gen(function* () {
-        yield* seed();
-        const first = yield* build(100);
-        const afterFirst = {
-          rejected: yield* rejections,
-          pending: yield* pending,
-          phaseBPasses: fixture.phaseBAccepted.length,
-        };
-        fixture.injected.phaseB.clear();
-        return { first, afterFirst, next: yield* build(100) };
-      }),
-    );
-    expect(result.first).toEqual([t1, t2, t4]);
-    // One Phase B pass decides the block: no narrowing search, no rerun.
-    expect(result.afterFirst).toEqual({
-      rejected: {},
-      pending: [t1, t2, t3, t4, t5],
-      phaseBPasses: 1,
-    });
-    expect(result.next).toEqual([t1, t2, t3, t4, t5]);
-  }, 60_000);
-
-  it("rejects a transaction outside the gated set at commit, with its dependents", async () => {
-    inject(
-      "phaseB",
-      t3,
-      new ScriptOutsideGatedSetError(TXS[2]!.txId, "injected"),
-    );
-    const result = await run(
-      Effect.gen(function* () {
-        yield* seed();
-        const first = yield* build(100);
-        return { first, rejected: yield* rejections, pending: yield* pending };
-      }),
-    );
-    expect(result.first).toEqual([t1, t2, t4]);
-    expect(result.rejected).toEqual({
-      [t3]: COMMIT_REJECT_CODE_SCRIPT_OUTSIDE_GATED_SET,
-      [t5]: RejectCodes.DependsOnRejectedTx,
     });
     expect(result.pending).toEqual([t1, t2, t4]);
   }, 60_000);
