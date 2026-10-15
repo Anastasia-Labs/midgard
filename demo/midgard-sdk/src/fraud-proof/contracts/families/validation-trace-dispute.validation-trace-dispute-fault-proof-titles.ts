@@ -367,10 +367,6 @@ export const VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES = {
       "fraud_proofs/validation_trace/cek_execution_selection_yields.authenticate.withdraw",
     cekSelectionSuccessor:
       "fraud_proofs/validation_trace/cek_execution_selection_yields.successor.withdraw",
-    cekSelectionMaterialProgram:
-      "fraud_proofs/validation_trace/cek_execution_selection_yields.material_program.withdraw",
-    cekSelectionMaterialData:
-      "fraud_proofs/validation_trace/cek_execution_selection_yields.material_data.withdraw",
     valueAndMintAssetFold:
       "fraud_proofs/validation_trace/value_and_mint_asset_fold_yield.main.withdraw",
   },

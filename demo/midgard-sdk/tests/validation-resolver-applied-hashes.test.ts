@@ -10,7 +10,6 @@ import { describe, expect, it } from "vitest";
 import { applyBlueprintParams } from "../src/fraud-proof/contracts/blueprint.js";
 import {
   buildFaultProofContracts,
-  CEK_PROGRAM_MATERIAL_SPEND_TITLE,
   parseFaultProofBlueprint,
   VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES,
 } from "../src/index.js";
@@ -32,7 +31,7 @@ const currentTreeBlueprintPath =
 const referenceScriptAuthPolicyId = "dd".repeat(28);
 
 describe("validation resolver production-builder parameter application", () => {
-  it("applies immutable CEK material identity as the exact third parameter of the CEK execution-selection semantic resolver", async () => {
+  it("applies the script-decode policy to the CEK selection successor and every declared parameter of the CEK semantic resolvers", async () => {
     const currentTreeBlueprint = parseFaultProofBlueprint(
       JSON.parse(readFileSync(currentTreeBlueprintPath, "utf8")) as unknown,
     );
@@ -47,21 +46,24 @@ describe("validation resolver production-builder parameter application", () => {
         entry.title ===
         VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.semantics.cekContextStep,
     );
-    const materialValidator = currentTreeBlueprint.validators.find(
-      (entry) => entry.title === CEK_PROGRAM_MATERIAL_SPEND_TITLE,
+    const successorValidator = currentTreeBlueprint.validators.find(
+      (entry) =>
+        entry.title ===
+        VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.yields
+          .cekSelectionSuccessor,
     );
     if (
       selectionValidator === undefined ||
       contextStepValidator === undefined ||
-      materialValidator === undefined
+      successorValidator === undefined
     ) {
-      throw new Error("CEK semantic or program-material validator is missing");
+      throw new Error("CEK semantic or selection successor is missing");
     }
-    // The one claim this file exists to hold, stated by hand because it is a
-    // reviewed property of the deployment and not something a table can
-    // derive: complete CEK program material is admitted only at the
-    // execution-selection boundary, so the material identity is that
-    // resolver's THIRD parameter (#592/#605). Context execution instead
+    // The claims this file exists to hold, stated by hand because they are
+    // reviewed properties of the deployment and not something a table can
+    // derive: a selected Plutus execution takes its program from a
+    // script-decode record, so the record policy is the selection
+    // successor's SECOND parameter, after its dispatcher. Context execution
     // delegates to its control validator, whose identity is the context-step
     // resolver's FIRST parameter.
     const selectionTitles = (selectionValidator.parameters ?? []).map(
@@ -70,7 +72,13 @@ describe("validation resolver production-builder parameter application", () => {
     const contextStepTitles = (contextStepValidator.parameters ?? []).map(
       ({ title }) => title,
     );
-    expect(selectionTitles[2]).toBe("cek_program_material_script_hash");
+    const successorTitles = (successorValidator.parameters ?? []).map(
+      ({ title }) => title,
+    );
+    expect(successorTitles).toEqual([
+      "dispatcher_script_hash",
+      "script_decode_policy_id",
+    ]);
     expect(contextStepTitles[0]).toBe("cek_context_control_script_hash");
 
     const contracts = await Effect.runPromise(
@@ -129,11 +137,6 @@ describe("validation resolver production-builder parameter application", () => {
     expect(
       validatorToScriptHash({ type: "PlutusV3", script: appliedGame }),
     ).toBe(dispute.game.spendingScriptHash);
-    const materialHash = validatorToScriptHash({
-      type: "PlutusV3",
-      script: materialValidator.compiledCode,
-    });
-    expect(dispute.cekProgramMaterial.spendingScriptHash).toBe(materialHash);
 
     // The value each declared parameter name must be bound to. The blueprint's
     // declared order is the only authority on *positions*, so a builder that
@@ -142,10 +145,7 @@ describe("validation resolver production-builder parameter application", () => {
     const bindings: Readonly<Record<string, string>> = {
       award_script_hash: dispute.award.spendingScriptHash,
       computation_thread_policy_id: contracts.computationThread.policyId,
-      cek_program_material_script_hash: materialHash,
       reference_script_auth_policy_id: referenceScriptAuthPolicyId,
-      cek_material_traversal_script_hash:
-        dispute.cekMaterialTraversal.spendingScriptHash,
       cek_context_control_script_hash:
         dispute.cekContextStages.control.spendingScriptHash,
     };
@@ -186,6 +186,13 @@ describe("validation resolver production-builder parameter application", () => {
     expect(contextStepSemantic.spendingScriptHash).toBe(
       applied(contextStepValidator, contextStepTitles),
     );
+    const appliedSuccessor = applyExpectedScriptParams(
+      successorValidator.compiledCode,
+      [selectionSemantic.spendingScriptHash, contracts.scriptDecode.policyId],
+    );
+    expect(
+      validatorToScriptHash({ type: "PlutusV3", script: appliedSuccessor }),
+    ).toBe(dispute.yields.cekSelectionSuccessor.withdrawalScriptHash);
 
     // #605: under Plutus V3 an under-applied script is an always-succeeds
     // script -- it would let any prover collect the award. Every strict prefix

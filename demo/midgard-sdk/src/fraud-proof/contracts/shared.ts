@@ -22,6 +22,7 @@ import {
   makeSpendingValidator,
   tryBuild,
 } from "./blueprint.js";
+import { buildScriptDecodeValidator } from "./script-decode.js";
 import { FAULT_PROOF_SHARED_TITLES } from "./titles.js";
 import { type BuildFaultProofContractsParams } from "./types.js";
 
@@ -39,6 +40,12 @@ export type CertifiedFaultProofChainInputs = FaultProofChainInputs & {
   readonly fieldPreimageCertificatePolicyId: string;
 };
 
+/** A certified chain whose steps also read script-decode records. */
+export type ScriptDecodeFaultProofChainInputs =
+  CertifiedFaultProofChainInputs & {
+    readonly scriptDecodePolicyId: string;
+  };
+
 export type SharedFaultProofContracts = {
   readonly computationThread: MintingValidator;
   readonly fraudProof: AuthenticatedValidator;
@@ -55,6 +62,15 @@ export type SharedFaultProofContracts = {
    * agree or be wrong.
    */
   readonly fieldPreimageCertificatePolicyId: string;
+  /**
+   * The script-decode family: runs at its spending address, records minted
+   * under its policy. The validator takes no parameters and its handlers
+   * share one script, so the policy id is the script hash and a pure function
+   * of the blueprint, derived here for the same reason as the certificate
+   * policy above.
+   */
+  readonly scriptDecode: AuthenticatedValidator;
+  readonly scriptDecodePolicyId: string;
 };
 
 export const buildSharedFaultProofContracts = ({
@@ -96,12 +112,19 @@ export const buildSharedFaultProofContracts = ({
         ),
     );
 
+    const scriptDecode = yield* tryBuild(
+      "Failed to build script-decode validator",
+      () => buildScriptDecodeValidator(blueprint, network),
+    );
+
     return {
       computationThread,
       fraudProof,
       fraudProofTokenAddressData,
       fieldPreimageCertificate,
       fieldPreimageCertificatePolicyId: fieldPreimageCertificate.policyId,
+      scriptDecode,
+      scriptDecodePolicyId: scriptDecode.policyId,
     };
   });
 

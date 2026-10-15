@@ -6,7 +6,6 @@ import type {
 } from "@al-ft/midgard-core/validation-trace";
 import { Data } from "@lucid-evolution/lucid";
 
-import { H32Schema } from "../common.js";
 import { ValidationTraceDescriptorSchema } from "../ledger-state.js";
 import { ValidationAuxiliaryWitnessSchema } from "./validation-auxiliary-witness.js";
 import {
@@ -106,46 +105,6 @@ export const ValidationCanonicalDecodePrepareSelectedSpendRedeemer =
   asDataType<ValidationCanonicalDecodePrepareSelectedSpendRedeemer>(
     ValidationCanonicalDecodePrepareSelectedSpendRedeemerSchema,
   );
-
-/**
- * CEK complete-material carriage named by the `material_route` field of the
- * CEK execution-selection semantic action
- * (`cek_execution_selection_semantic_v1.VerifyExecutionSelection`). The route
- * is resolver evidence, never part of the hashed step witness.
- */
-export const ValidationCekMaterialRouteSchema = Data.Enum([
-  Data.Literal("NoCekMaterial"),
-  Data.Object({
-    DirectCekMaterial: Data.Object({
-      envelope_cbor: Data.Bytes(),
-      sidecar_cbor: Data.Bytes(),
-    }),
-  }),
-  Data.Object({
-    SinglePublicationCekMaterial: Data.Object({
-      envelope_cbor: Data.Bytes(),
-      reference_input_index: Data.Integer(),
-    }),
-  }),
-  Data.Object({
-    MinimumMultiOutputCekMaterial: Data.Object({
-      envelope_cbor: Data.Bytes(),
-      reference_input_indices: Data.Array(Data.Integer()),
-    }),
-  }),
-  Data.Object({
-    IncrementalCekMaterial: Data.Object({
-      program_envelope_hash: H32Schema,
-    }),
-  }),
-]);
-
-export type ValidationCekMaterialRoute = Data.Static<
-  typeof ValidationCekMaterialRouteSchema
->;
-
-export const ValidationCekMaterialRoute =
-  asDataType<ValidationCekMaterialRoute>(ValidationCekMaterialRouteSchema);
 
 export const ValidationAwardArgsSchema = Data.Object({
   input_index: Data.Integer(),

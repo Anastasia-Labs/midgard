@@ -14,7 +14,6 @@ import {
   getUnappliedScript,
   makeAuthenticatedValidator,
   makeMintingPolicy,
-  makeSpendingValidator,
 } from "../fraud-proof/contracts/blueprint.js";
 import { HUB_ORACLE_ASSET_NAME } from "../hub-oracle.js";
 
@@ -35,7 +34,6 @@ export const USER_EVENT_CONTRACT_TITLES = Object.freeze({
       "field_preimage_certificate.field_preimage_certificate.spend",
     fieldPreimageCertificateMint:
       "field_preimage_certificate.field_preimage_certificate.mint",
-    cekProgramMaterialSpend: "user_events/cek_program_material_v1.spend.spend",
   }),
 });
 
@@ -129,7 +127,6 @@ export const buildTxOrderValidators = (
 ): {
   readonly txOrder: AuthenticatedValidator;
   readonly fieldPreimageCertificate: SpendingValidator & MintingValidator;
-  readonly cekProgramMaterial: SpendingValidator;
 } => {
   const titles = USER_EVENT_CONTRACT_TITLES.txOrder;
   assertHubPolicyId(input.hubOraclePolicyId);
@@ -141,7 +138,6 @@ export const buildTxOrderValidators = (
   for (const title of [
     titles.fieldPreimageCertificateMint,
     titles.fieldPreimageCertificateSpend,
-    titles.cekProgramMaterialSpend,
   ]) {
     assertRecipe(input.blueprint, title, []);
   }
@@ -152,10 +148,6 @@ export const buildTxOrderValidators = (
   );
   return {
     fieldPreimageCertificate,
-    cekProgramMaterial: makeSpendingValidator(
-      input.network,
-      getUnappliedScript(input.blueprint, titles.cekProgramMaterialSpend),
-    ),
     txOrder: makeAuthenticatedValidator(
       input.network,
       applyBlueprintParams(input.blueprint, titles.mint, [

@@ -109,8 +109,6 @@ export {
   ValidationCanonicalDecodePrepareSelectedActionSchema,
   ValidationCanonicalDecodePrepareSelectedSpendRedeemer,
   ValidationCanonicalDecodePrepareSelectedSpendRedeemerSchema,
-  ValidationCekMaterialRoute,
-  ValidationCekMaterialRouteSchema,
   validationMachineStateDataFromCore,
   ValidationPrepareSelectedAction,
   ValidationPrepareSelectedActionSchema,

@@ -141,12 +141,6 @@ export const CEK_REDEEMER_ITEM_TITLES = [
   "cek_envelope",
 ].map((key) => `${REDEEMER_ITEM_PREFIX}${key}.main.spend`);
 
-export const CEK_MATERIAL_TRAVERSAL_TITLES = [
-  "fraud_proofs/validation_trace/cek_material_traversal_v1.main.spend",
-  "fraud_proofs/validation_trace/cek_material_traversal_yields.program.withdraw",
-  "fraud_proofs/validation_trace/cek_material_traversal_yields.data.withdraw",
-] as const;
-
 export const filterBlueprint = (
   blueprint: FaultProofBlueprint,
   titles: readonly string[],

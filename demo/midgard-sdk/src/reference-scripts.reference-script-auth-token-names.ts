@@ -254,7 +254,8 @@ export const REFERENCE_SCRIPT_AUTH_TOKEN_NAMES = {
   // divergence.
   "V1 field-preimage certificate": "V1FieldPreimageCertSpend",
   "V1 field-preimage certificate minting": "V1FieldPreimageCertMint",
-  "V1 immutable CEK program-material publication": "V1CekProgramMaterialSpend",
+  "V1 script decode": "V1ScriptDecodeSpend",
+  "V1 script decode minting": "V1ScriptDecodeMint",
   "V1 validation-trace dispute": "V1ValidationTraceDispute",
   "V1 validation-trace source": "V1ValidationTraceSource",
   "V1 validation-trace game": "V1ValidationTraceGame",
@@ -417,7 +418,6 @@ export const REFERENCE_SCRIPT_AUTH_TOKEN_NAMES = {
     "V1VtPhaseANativeItemNativeYield",
   "V1 validation-trace phase-A native item foreign yield":
     "V1VtPhaseANativeItemForeignYield",
-  "V1 validation-trace CEK material traversal": "V1VtCekMatTraversal",
   "V1 validation-trace CEK context settle": "V1VtCekCtxSet",
   "V1 validation-trace CEK context control": "V1VtCekCtxCon",
   "V1 validation-trace CEK context reference": "V1VtCekCtxRef",
@@ -499,15 +499,8 @@ export const REFERENCE_SCRIPT_AUTH_TOKEN_NAMES = {
   "V1 validation-trace CEK core type failure kinds": "V1VtCekCoreTypFaiKin",
   "V1 validation-trace CEK core type failure roots": "V1VtCekCoreTypFaiRoo",
 
-  "V1 validation-trace CEK material program task yield":
-    "V1VtCekMatProgramTask",
-  "V1 validation-trace CEK material Data task yield": "V1VtCekMatDataTask",
   "V1 validation-trace CEK selection authenticate yield": "V1VtCekSelAuthYield",
   "V1 validation-trace CEK selection successor yield": "V1VtCekSelSuccYield",
-  "V1 validation-trace CEK selection material program yield":
-    "V1VtCekSelMatProgYield",
-  "V1 validation-trace CEK selection material data yield":
-    "V1VtCekSelMatDataYield",
 
   "V1 fraud-proof transition-trace final-5 replay yield": "V1FpTtF5ReplayYield",
   "V1 fraud-proof min-ada step-02 tx yield": "V1FpMinAdaS02TxYield",
