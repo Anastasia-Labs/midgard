@@ -23,6 +23,7 @@ import {
 } from "@harmoniclabs/uplc";
 import { describe, expect, it } from "vitest";
 
+import { MIDGARD_CEK_CARDANO_BLS_TAGS } from "../src/cek-builtin.cardano-tags.js";
 import {
   decodeMidgardCekConstantWitness,
   encodeMidgardCekPlutusData,
@@ -800,9 +801,15 @@ describe("V1 CEK trace generator", () => {
       new Application(
         new Application(
           Builtin.bls12_381_millerLoop,
-          new Application(Builtin.bls12_381_G1_uncompress, g1Bytes),
+          new Application(
+            new Builtin(MIDGARD_CEK_CARDANO_BLS_TAGS.g1Uncompress),
+            g1Bytes,
+          ),
         ),
-        new Application(Builtin.bls12_381_G2_uncompress, g2Bytes),
+        new Application(
+          new Builtin(MIDGARD_CEK_CARDANO_BLS_TAGS.g2Uncompress),
+          g2Bytes,
+        ),
       );
     const program = buildMidgardCanonicalCekProgram(
       compile(

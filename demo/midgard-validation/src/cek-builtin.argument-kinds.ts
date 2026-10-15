@@ -236,15 +236,15 @@ export const argumentKinds = (tag: number): readonly RuntimeValueKind[] => {
   if (tag === 51) return ["data"];
   if (tag <= 53) return ["bytes", "bytes", "bytes"];
   if (tag === 54 || tag === 57) return ["blsG1", "blsG1"];
-  if (tag === 55 || tag === 59) return ["blsG1"];
+  if (tag === 55 || tag === 58) return ["blsG1"];
   if (tag === 56) return ["integer", "blsG1"];
-  if (tag === 58) return ["bytes", "bytes"];
-  if (tag === 60) return ["bytes"];
+  if (tag === 59) return ["bytes"];
+  if (tag === 60) return ["bytes", "bytes"];
   if (tag === 61 || tag === 64) return ["blsG2", "blsG2"];
-  if (tag === 62 || tag === 66) return ["blsG2"];
+  if (tag === 62 || tag === 65) return ["blsG2"];
   if (tag === 63) return ["integer", "blsG2"];
-  if (tag === 65) return ["bytes", "bytes"];
-  if (tag === 67) return ["bytes"];
+  if (tag === 66) return ["bytes"];
+  if (tag === 67) return ["bytes", "bytes"];
   if (tag === 68) return ["blsG1", "blsG2"];
   if (tag === 69 || tag === 70) {
     return ["blsMillerLoop", "blsMillerLoop"];

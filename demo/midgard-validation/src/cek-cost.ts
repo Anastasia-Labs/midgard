@@ -11,6 +11,8 @@ import {
 } from "@harmoniclabs/plutus-machine";
 import { UPLCBuiltinTag } from "@harmoniclabs/uplc";
 
+import { harmonicBuiltinTag } from "./cek-builtin.cardano-tags.js";
+
 export type MidgardCekBuiltinBudget = {
   readonly cpu: bigint;
   readonly memory: bigint;
@@ -124,7 +126,7 @@ const assertCostSize = (size: bigint): void => {
 
 /**
  * Evaluates the exact pinned Plutus V3 builtin cost function over the sizes
- * supplied by the CEK semantics. Callers size polymorphic, width, count and
+ * supplied by the CEK semantics. `tag` is Cardano's flat tag. Callers size polymorphic, width, count and
  * literal arguments exactly as cardano-node does before calling this helper.
  */
 export const computeMidgardCekBuiltinBudget = (
@@ -138,7 +140,7 @@ export const computeMidgardCekBuiltinBudget = (
   ) {
     throw new Error("V1 builtin tag is outside Plutus V3");
   }
-  const builtinTag = tag as UPLCBuiltinTag;
+  const builtinTag = harmonicBuiltinTag(tag);
   const arity = PartialBuiltin.getNRequiredArgsFor(builtinTag);
   if (costArgumentSizes.length !== arity) {
     throw new Error(

@@ -27764,18 +27764,14 @@
    "note": "random 0",
    "args": [
     {
-     "ty": "bs",
-     "v": "92f37cc0560089d3d30cd2de72fc7e2b5e4467c11552a5d4ee4faede06dabdf0853684c92251ae14a8634b59fd3595734de3e665ebb03c6f4eaad2b5f6deee"
-    },
-    {
-     "ty": "bs",
-     "v": "d08a6e906758bc1e3fc15629436a640c9fd2b0e262ffefb2aa4a2afc1dd792bd1752ef71c1f3074411bd618450e4a533d03881e8e204c91f1cd03a90dfd1924f07b00cf628a598182f5ca3cf4efd4cad248054044733f29ded49c679b8aac26a39e7c1a81457d69661cd1724c1e2fcf219dfbfae97be20ab49d7812a308889cb33145a2574b53a8e380f7b487bc1138dc823b9afb03d3bc1a1c48afda320da155604c7b7c2bb6d9932dca5dc05845fbe5798e76ff448f9fca72bb7e437cdfa1affe6ad06f3a47b2600e991521c1348bff6438f0812ba43f1b38658513e2492b512ba0425bdab84d68065c431c2cc27e4d7702d47f79db198875414cb613389"
+     "ty": "g1",
+     "v": "97f1d3a73197d7942695638c4fa9ac0fc3688c4f9774b905a14e3a3f171bac586c55e83ff97a1aeffb3af00adb22c6bb"
     }
    ],
    "expected": {
     "kind": "value",
-    "type": "g1",
-    "value": "a59124615a216d968a8b9515b66ec82866a36056db6717e0dbd51e8a27ff3e439553b3341e6bf3fb56c3f29a19f72bf3"
+    "type": "bs",
+    "value": "97f1d3a73197d7942695638c4fa9ac0fc3688c4f9774b905a14e3a3f171bac586c55e83ff97a1aeffb3af00adb22c6bb"
    }
   },
   {
@@ -27783,18 +27779,14 @@
    "note": "random 1",
    "args": [
     {
-     "ty": "bs",
-     "v": "4ba376"
-    },
-    {
-     "ty": "bs",
-     "v": ""
+     "ty": "g1",
+     "v": "b928f3beb93519eecf0145da903b40a4c97dca00b21f12ac0df3be9116ef2ef27b2ae6bcd4c5bc2d54ef5a70627efcb7"
     }
    ],
    "expected": {
     "kind": "value",
-    "type": "g1",
-    "value": "b743bd72b2a4abb5906893c4f488e82993f66c70be72596d4cd1a1422bd35ee81a94f8ad457dc519124825aeed335474"
+    "type": "bs",
+    "value": "b928f3beb93519eecf0145da903b40a4c97dca00b21f12ac0df3be9116ef2ef27b2ae6bcd4c5bc2d54ef5a70627efcb7"
    }
   },
   {
@@ -27802,80 +27794,19 @@
    "note": "random 2",
    "args": [
     {
-     "ty": "bs",
-     "v": "85"
-    },
-    {
-     "ty": "bs",
-     "v": ""
+     "ty": "g1",
+     "v": "b928f3beb93519eecf0145da903b40a4c97dca00b21f12ac0df3be9116ef2ef27b2ae6bcd4c5bc2d54ef5a70627efcb7"
     }
    ],
    "expected": {
     "kind": "value",
-    "type": "g1",
-    "value": "827b1497bd3f45c907f4e5b1c207a233625c6d9ca10cd506c77b398a63e1d0ef57f24d92b04a04c5f046429a27d33fa2"
+    "type": "bs",
+    "value": "b928f3beb93519eecf0145da903b40a4c97dca00b21f12ac0df3be9116ef2ef27b2ae6bcd4c5bc2d54ef5a70627efcb7"
    }
   },
   {
    "tag": 58,
    "note": "random 3",
-   "args": [
-    {
-     "ty": "bs",
-     "v": "a34b72d35229355454240e4a96d1a371ca6b991f1bdb6875c0ca73fccbc088c47fe4be0cf09c9e2ca7fbfb0e5d1b9789169ac5eadf5fa1c6b783c47e2987c0a8c485f11de5ce56fc536017e69f8302469cccba72ab6f55cfb5c78324ab84372673368324df252713c66f7955b04e5e15f28bf613614d3707a05240e721e2b410"
-    },
-    {
-     "ty": "bs",
-     "v": "a4"
-    }
-   ],
-   "expected": {
-    "kind": "value",
-    "type": "g1",
-    "value": "91d0cd50d92efe2eecf3a171a580749a19580dcc1909afc0da394682c51c25bb1138f5e4d6aec5f8934f1ef468a929df"
-   }
-  },
-  {
-   "tag": 58,
-   "note": "random 4",
-   "args": [
-    {
-     "ty": "bs",
-     "v": "954de946ae230c"
-    },
-    {
-     "ty": "bs",
-     "v": ""
-    }
-   ],
-   "expected": {
-    "kind": "value",
-    "type": "g1",
-    "value": "a2608ac6e7e29e7463021919b3d7300bbc3d0d8ef5ab297fb818a56504a221e54df8fdcac3f271ac5a3aca204873967f"
-   }
-  },
-  {
-   "tag": 58,
-   "note": "random 5",
-   "args": [
-    {
-     "ty": "bs",
-     "v": "75c43eeb7c"
-    },
-    {
-     "ty": "bs",
-     "v": "aa2a52fbb4447964ea10a4a6ee7530d7"
-    }
-   ],
-   "expected": {
-    "kind": "value",
-    "type": "g1",
-    "value": "8f12cb9275b2c83c9b2927aa3c372b9be155e2c69ddf47de10866160bab18f901beabd362b19a4016df79c7ff57bd24b"
-   }
-  },
-  {
-   "tag": 59,
-   "note": "random 0",
    "args": [
     {
      "ty": "g1",
@@ -27889,68 +27820,8 @@
    }
   },
   {
-   "tag": 59,
-   "note": "random 1",
-   "args": [
-    {
-     "ty": "g1",
-     "v": "c00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
-    }
-   ],
-   "expected": {
-    "kind": "value",
-    "type": "bs",
-    "value": "c00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
-   }
-  },
-  {
-   "tag": 59,
-   "note": "random 2",
-   "args": [
-    {
-     "ty": "g1",
-     "v": "b928f3beb93519eecf0145da903b40a4c97dca00b21f12ac0df3be9116ef2ef27b2ae6bcd4c5bc2d54ef5a70627efcb7"
-    }
-   ],
-   "expected": {
-    "kind": "value",
-    "type": "bs",
-    "value": "b928f3beb93519eecf0145da903b40a4c97dca00b21f12ac0df3be9116ef2ef27b2ae6bcd4c5bc2d54ef5a70627efcb7"
-   }
-  },
-  {
-   "tag": 59,
-   "note": "random 3",
-   "args": [
-    {
-     "ty": "g1",
-     "v": "c00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
-    }
-   ],
-   "expected": {
-    "kind": "value",
-    "type": "bs",
-    "value": "c00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
-   }
-  },
-  {
-   "tag": 59,
+   "tag": 58,
    "note": "random 4",
-   "args": [
-    {
-     "ty": "g1",
-     "v": "b928f3beb93519eecf0145da903b40a4c97dca00b21f12ac0df3be9116ef2ef27b2ae6bcd4c5bc2d54ef5a70627efcb7"
-    }
-   ],
-   "expected": {
-    "kind": "value",
-    "type": "bs",
-    "value": "b928f3beb93519eecf0145da903b40a4c97dca00b21f12ac0df3be9116ef2ef27b2ae6bcd4c5bc2d54ef5a70627efcb7"
-   }
-  },
-  {
-   "tag": 59,
-   "note": "random 5",
    "args": [
     {
      "ty": "g1",
@@ -27961,6 +27832,107 @@
     "kind": "value",
     "type": "bs",
     "value": "89ece308f9d1f0131765212deca99697b112d61f9be9a5f1f3780a51335b3ff981747a0b2ca2179b96d2c0c9024e5224"
+   }
+  },
+  {
+   "tag": 58,
+   "note": "random 5",
+   "args": [
+    {
+     "ty": "g1",
+     "v": "acccb5bab2944a1bdc721c97f3affa035d507c78fe442a9284982bd4c27617b33f1d46e8191a1eda03d73c357752d219"
+    }
+   ],
+   "expected": {
+    "kind": "value",
+    "type": "bs",
+    "value": "acccb5bab2944a1bdc721c97f3affa035d507c78fe442a9284982bd4c27617b33f1d46e8191a1eda03d73c357752d219"
+   }
+  },
+  {
+   "tag": 59,
+   "note": "random 0",
+   "args": [
+    {
+     "ty": "bs",
+     "v": "c00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+    }
+   ],
+   "expected": {
+    "kind": "value",
+    "type": "g1",
+    "value": "c00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+   }
+  },
+  {
+   "tag": 59,
+   "note": "random 1",
+   "args": [
+    {
+     "ty": "bs",
+     "v": "c00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+    }
+   ],
+   "expected": {
+    "kind": "value",
+    "type": "g1",
+    "value": "c00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+   }
+  },
+  {
+   "tag": 59,
+   "note": "random 2",
+   "args": [
+    {
+     "ty": "bs",
+     "v": "89ece308f9d1f0131765212deca99697b112d61f9be9a5f1f3780a51335b3ff981747a0b2ca2179396d2c0c9024e5224"
+    }
+   ],
+   "expected": {
+    "kind": "error"
+   }
+  },
+  {
+   "tag": 59,
+   "note": "random 3",
+   "args": [
+    {
+     "ty": "bs",
+     "v": "97f1d3a73197d7942695638c4fa9ac0fc3688c4f9774b905a14e3a3f171bac586c55e83ff97a1aeffb3af00adb22c6bb"
+    }
+   ],
+   "expected": {
+    "kind": "value",
+    "type": "g1",
+    "value": "97f1d3a73197d7942695638c4fa9ac0fc3688c4f9774b905a14e3a3f171bac586c55e83ff97a1aeffb3af00adb22c6bb"
+   }
+  },
+  {
+   "tag": 59,
+   "note": "random 4",
+   "args": [
+    {
+     "ty": "bs",
+     "v": "89ece308f9d1f0131765212deca99697b112d61f9be9a5f1f3780a51335b3ff981747a0b2ca2179b96d2c0c9024e5224"
+    }
+   ],
+   "expected": {
+    "kind": "value",
+    "type": "g1",
+    "value": "89ece308f9d1f0131765212deca99697b112d61f9be9a5f1f3780a51335b3ff981747a0b2ca2179b96d2c0c9024e5224"
+   }
+  },
+  {
+   "tag": 59,
+   "note": "random 5",
+   "args": [
+    {
+     "ty": "bs",
+     "v": "6486014810ded573085ed544c6a3d5de0e0a49438c5e1e06497ef6e5ea0345abb6ebe539147592e03e2411c2f9a526a7"
+    }
+   ],
+   "expected": {
+    "kind": "error"
    }
   },
   {
@@ -27969,11 +27941,17 @@
    "args": [
     {
      "ty": "bs",
-     "v": "5bd888f04f326e17bcfc0cd28cce5750a00da85022b85a7d7dbc3eb275abebc4cdc517aa5f3685cd989181fcfe6b9346"
+     "v": "d888f04f32"
+    },
+    {
+     "ty": "bs",
+     "v": "17bcfc0cd28cce5750a00da85022b85a"
     }
    ],
    "expected": {
-    "kind": "error"
+    "kind": "value",
+    "type": "g1",
+    "value": "b75d556f21565b1310ee081103b9ca118457e3b54feb47cb1a128c80ac2b61576bd4d67d9c0674903bb81a3990dda79f"
    }
   },
   {
@@ -27982,7 +27960,11 @@
    "args": [
     {
      "ty": "bs",
-     "v": "c00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001"
+     "v": "bc3eb275ab"
+    },
+    {
+     "ty": "bs",
+     "v": "c4cdc517aa5f3685cd989181fcfe6b93467633747348e730d1a3099c1ba804802a46692d8bf77a8f6ab47a72733e94453c0c455aae2f946e35974e658ae6d922e540385c878937a15c7163056ea423f05a489ce6302f3dfb9b4761c1b11d8293eab9cbe78e77a8ed408011dfd7c082543fb5ce65f08d3b24d30a5ee2e4c959c45c1991983486126901b0636cbd957c9b6e5dafae74be2bb82eed298a36f66f3a4f018669e1738ffe97472aa188eb9ed007976b588c9ca9375af40a788eb5bd9e730f1abf6615f1d34d60a8ea3ebefe2e23ca57e81f40f18df1aa9d8460158cc7e965bb04abd2895c0e41f9993b9b31c6c8bc32958040d49a0b1ff359b38d9381"
     }
    ],
    "expected": {
@@ -27995,11 +27977,17 @@
    "args": [
     {
      "ty": "bs",
-     "v": "747348e730d1a3099c1ba804802a46692d8bf77a8f6ab47a72733e94453c0c455aae2f946e35974e658ae6d922e540"
+     "v": "daa13e866ede29bd095a95db654cd5c5d7d9117623bfce0ee48337bc0b36e3"
+    },
+    {
+     "ty": "bs",
+     "v": "80"
     }
    ],
    "expected": {
-    "kind": "error"
+    "kind": "value",
+    "type": "g1",
+    "value": "8b406ec5314906ec0447ad6ff68b3eed267976d47733dca6e073a1a5a2cd2bdd245b4958c495c9b202cecfeabfeac123"
    }
   },
   {
@@ -28008,11 +27996,17 @@
    "args": [
     {
      "ty": "bs",
-     "v": "5c878937a15c7163056ea423f05a489ce6302f3dfb9b4761c1b11d8293eab9cbe78e77a8ed408011dfd7c082543fb5"
+     "v": "94e55043b7d58dd99a"
+    },
+    {
+     "ty": "bs",
+     "v": "2468e3518eccbbb75e3bcd47b94c04b8"
     }
    ],
    "expected": {
-    "kind": "error"
+    "kind": "value",
+    "type": "g1",
+    "value": "ace4cc3cf2b1e20dfca78e39dd485d66cae3cfffb0c69e6e95e794a875da2bfeef4af57b65faf2d3b6087ff391eda342"
    }
   },
   {
@@ -28021,13 +28015,17 @@
    "args": [
     {
      "ty": "bs",
-     "v": "a572cbea904d67468808c8eb50a9450c9721db309128012543902d0ac358a62ae28f75bb8f1c7c42c39a8c5529bf0f4e"
+     "v": "bd4df1924cd225bb9fe329b346a93c011cefe0740617936e7575413afb6f302dcc1eb8fc69f89b6436393fbd0b4afb5fb3fe27bf36ceb1d97f38bc743c17f53096"
+    },
+    {
+     "ty": "bs",
+     "v": ""
     }
    ],
    "expected": {
     "kind": "value",
     "type": "g1",
-    "value": "a572cbea904d67468808c8eb50a9450c9721db309128012543902d0ac358a62ae28f75bb8f1c7c42c39a8c5529bf0f4e"
+    "value": "ac3742d0391b0e48423aa2267784569d55550a0ecff8ecf5f8efc285ba799c1bfe18dd1f98536efea37c42082de37c48"
    }
   },
   {
@@ -28036,13 +28034,17 @@
    "args": [
     {
      "ty": "bs",
-     "v": "89ece308f9d1f0131765212deca99697b112d61f9be9a5f1f3780a51335b3ff981747a0b2ca2179b96d2c0c9024e5224"
+     "v": "a9eb"
+    },
+    {
+     "ty": "bs",
+     "v": "939653c4592c43e48a0c3f9ca19a11c8a43c3fd2103195f2dcbc9d01ae9223f61a39018688d7010f4b008631dfb5a451b5947590c791f01eab236e022336a8e52bf8fc295f57269a4aec927319a69c49f7efd43c3f0789558e6ecf59b1a723f2caaf6ed36d9309216628bd973450cbadb99115efb08334b0031ae349ff312a5106e77f3c0259a82af539048ca1903790a1b34d8e80688fd801b930080ee68d87209ea2c04a7dcad07c80916ded4a8fd2479bf6e4731797534e37189639412254beefd8287093bbf298ef19f56d544406e4bcfbcd95b385438db7182a3901a573d4b233147ec8592c1e6d75e369f3a8c174058447283627be915b10bcf8660a"
     }
    ],
    "expected": {
     "kind": "value",
     "type": "g1",
-    "value": "89ece308f9d1f0131765212deca99697b112d61f9be9a5f1f3780a51335b3ff981747a0b2ca2179b96d2c0c9024e5224"
+    "value": "b32ce7ab743c811aa7ddc804fa7fff3b9255001b0d33d7ee2b5e2a7ede1e75b34d720bb2bcc9ea1bb4b468ee57739ed5"
    }
   },
   {
@@ -28482,128 +28484,18 @@
    "note": "random 0",
    "args": [
     {
-     "ty": "bs",
-     "v": "fc21695d4a049622d026"
-    },
-    {
-     "ty": "bs",
-     "v": ""
-    }
-   ],
-   "expected": {
-    "kind": "value",
-    "type": "g2",
-    "value": "8011b06f6b27ce084d9a522901da1ddf4b4d19409235ccebab68c868c56be1b48b35ddca67c9f85453983b6f18d74b0b04efb9a66e69c01b185fa451c68837d44d5ed2c0cff5f90b5e28eba1aed63764f8851997d3a0cd59c5e47793fce1852c"
-   }
-  },
-  {
-   "tag": 65,
-   "note": "random 1",
-   "args": [
-    {
-     "ty": "bs",
-     "v": "27ab9c4b06b16edcf245b3"
-    },
-    {
-     "ty": "bs",
-     "v": "173d0199961286110abac3f55352d27beaccf4aea76991bcce6a472d068361a03729c5451f3aaabd4ab5b464d93c2a6846cd1f0fca0ffdb6302a3a3a1d2df685420c000792ca5bfbd159ef5666db5a64cfa800157c5cc7a9862b91e6c65021bcdd582592a2ab33a1efa4cb3af296bf1dd6520e6286709b8a3a2c8210d7a110acaa28714c393ebf0df66538bec428e91f60cf8b047922b2f378301f10f0f24da2e4bdbe589ed276c95f73d4459e999e417d32ca33eebf32045f8e224b79e4faab977645127c7e5f41c65fd2223c3a33de468abc9486d9a7929a1651dfa44fe6b727d0e6327759461488933ab782db006c94b8bac097424979e7f100630b46e6d6"
-    }
-   ],
-   "expected": {
-    "kind": "error"
-   }
-  },
-  {
-   "tag": 65,
-   "note": "random 2",
-   "args": [
-    {
-     "ty": "bs",
-     "v": "80bffdc9e289"
-    },
-    {
-     "ty": "bs",
-     "v": "0901a3a3c48a9d498b46e0b68555852a6cc0b6d615a71c4345d0295131834562e47ac60473f5c878beeff80a35c8a9850e3afa98a0fdba7aa9e7144ed0e1c59e66c1393a519bd94afd7dd451078e9822a69d91c3d93a5d9e8e81ec5050a57decaa872381382d98a511412c1214a9275601334b7625bffaf6d1bea46dfa3bf99eeac818620ee3811589b8ab6e6e91e527898dd1e051f343691b3c7f6adacd5ec8df5805e7bd22fed1742b4b3a08ddec85e9f99e5b10fcc419d768a16933c98a50e5699cd3c5af3a04bab51f25a7d07503c757c967cc36a8910381d55801a7116823482313084e31d384d482b67de9a1755b7225ad269804d6e1652e1eb87f40b6"
-    }
-   ],
-   "expected": {
-    "kind": "error"
-   }
-  },
-  {
-   "tag": 65,
-   "note": "random 3",
-   "args": [
-    {
-     "ty": "bs",
-     "v": ""
-    },
-    {
-     "ty": "bs",
-     "v": "287f8953e0c2fa269745bd86ccb08650"
-    }
-   ],
-   "expected": {
-    "kind": "value",
-    "type": "g2",
-    "value": "90a5722bcd58fdfcf2fff96b7c0660b54493a5b2f7b4fb956f370a86fac5fe617afc59e6f4ae329ffaf5f492f39ecfeb0f2f5c8a0b6797dfaf823aef841720dcc65e380bf37b8873a06607d3d0454a90660aeec524cd2bb016b0cdb3f1d00dbb"
-   }
-  },
-  {
-   "tag": 65,
-   "note": "random 4",
-   "args": [
-    {
-     "ty": "bs",
-     "v": "7c0054d34ee0c010a73c40"
-    },
-    {
-     "ty": "bs",
-     "v": "88838d186bb6b8b526f03e6fca5ba1d20d8603f37bfceafd2f32789efe9419261d4528d63afe4cca0379b8ace7373a266168ecf0753eef932f455a26e1285ee4d55d26fc563091cbd5838dfcc22cccfcf82d1b9079b00c154a2eacfeb47175b32e9afdcacd7c1cb9c8ee91b240d71b12263070c5dee5865501a250f9284a85374374f1d9e7cdf3c0245dec492bb65b4c8a21777362bf5f46d33f913619b8e631631d872608ed359653f8a6ac9b9bf1145646cf0cb1c9d615b5cd4dd3a76797bc9e470b5f7e8297dd0877ccd54b33a842187eb03d27dfa454478032b26c0c1fde542f8abf0bbb98232c65318df182ba67c7d5e83ea7c265abe89211e4490b7f"
-    }
-   ],
-   "expected": {
-    "kind": "value",
-    "type": "g2",
-    "value": "a39dde6ce0f86663b47c538b0900cf5e86332d7f235575ce4086e6d9bdd678f4fb7f1e7721b05130b43952f5b89442f6174d52672a60df77d738926ac7671e4c467d42f0fdaa1b55dbb1ffc7a46f974ce544e5b95d1b0fe404e19c8c9c69323c"
-   }
-  },
-  {
-   "tag": 65,
-   "note": "random 5",
-   "args": [
-    {
-     "ty": "bs",
-     "v": "26bfafcf6ac2cd9457d2fd779a717e36b80975ecb13cf412eb298f8bdd3d4d745a30b77a38375c58e5276f676fcb7cf2669d5ff49171b5f9b8bab54891d656c69c7eec6ba9f521bed3a6338e0f54411e622f91b580eac8a0aefd208410855b6f16ef2fa940a17526f77d183dbdfb3acfabde67c5655f6f599c9c49f00294fb72"
-    },
-    {
-     "ty": "bs",
-     "v": "4452cba02b9c0baccd75e9cc4a60b6f3"
-    }
-   ],
-   "expected": {
-    "kind": "value",
-    "type": "g2",
-    "value": "85b9105f4b530d910d4dbb8c6bae37dfe553f9ab073a8749fa384c14c6891d6907ed96d6d786007aad9ddabd437be4de06a6290337ce99e7354ea307b6f8221a01ff95a2185a3466743beaf9f06ec762c2897b4964b410fdd8cedb7ebaacf9b1"
-   }
-  },
-  {
-   "tag": 66,
-   "note": "random 0",
-   "args": [
-    {
      "ty": "g2",
-     "v": "89380275bbc8e5dcea7dc4dd7e0550ff2ac480905396eda55062650f8d251c96eb480673937cc6d9d6a44aaa56ca66dc122915c824a0857e2ee414a3dccb23ae691ae54329781315a0c75df1c04d6d7a50a030fc866f09d516020ef82324afae"
+     "v": "8d0273f6bf31ed37c3b8d68083ec3d8e20b5f2cc170fa24b9b5be35b34ed013f9a921f1cad1644d4bdb14674247234c8049cd1dbb2d2c3581e54c088135fef36505a6823d61b859437bfc79b617030dc8b40e32bad1fa85b9c0f368af6d38d3c"
     }
    ],
    "expected": {
     "kind": "value",
     "type": "bs",
-    "value": "89380275bbc8e5dcea7dc4dd7e0550ff2ac480905396eda55062650f8d251c96eb480673937cc6d9d6a44aaa56ca66dc122915c824a0857e2ee414a3dccb23ae691ae54329781315a0c75df1c04d6d7a50a030fc866f09d516020ef82324afae"
+    "value": "8d0273f6bf31ed37c3b8d68083ec3d8e20b5f2cc170fa24b9b5be35b34ed013f9a921f1cad1644d4bdb14674247234c8049cd1dbb2d2c3581e54c088135fef36505a6823d61b859437bfc79b617030dc8b40e32bad1fa85b9c0f368af6d38d3c"
    }
   },
   {
-   "tag": 66,
+   "tag": 65,
    "note": "random 1",
    "args": [
     {
@@ -28618,7 +28510,7 @@
    }
   },
   {
-   "tag": 66,
+   "tag": 65,
    "note": "random 2",
    "args": [
     {
@@ -28633,7 +28525,7 @@
    }
   },
   {
-   "tag": 66,
+   "tag": 65,
    "note": "random 3",
    "args": [
     {
@@ -28648,74 +28540,168 @@
    }
   },
   {
-   "tag": 66,
+   "tag": 65,
    "note": "random 4",
    "args": [
     {
      "ty": "g2",
-     "v": "b91327f84ea75495d166eb4b8f86f705900aca5546d1986ced1214f09c7c37bdc261c47f70acd96f50d50ddfe126ec15113b4f29f9345bf24c4860b7514efa254a0634088774dfab369e49f957bbe5b01172db420b89df55893bb92c446b60f8"
-    }
-   ],
-   "expected": {
-    "kind": "value",
-    "type": "bs",
-    "value": "b91327f84ea75495d166eb4b8f86f705900aca5546d1986ced1214f09c7c37bdc261c47f70acd96f50d50ddfe126ec15113b4f29f9345bf24c4860b7514efa254a0634088774dfab369e49f957bbe5b01172db420b89df55893bb92c446b60f8"
-   }
-  },
-  {
-   "tag": 66,
-   "note": "random 5",
-   "args": [
-    {
-     "ty": "g2",
-     "v": "a2910866ede42789c685af186234bfe4664e270ed447d2d142a159cf0cf9bac6c3789d558ea2e24b60e48ceb8b960fa8115fd914427334b6c45a823e1e011b6b2aa513f95fd64c956128fd631857945adf8aa7b0364ceea737c0671fd939219e"
-    }
-   ],
-   "expected": {
-    "kind": "value",
-    "type": "bs",
-    "value": "a2910866ede42789c685af186234bfe4664e270ed447d2d142a159cf0cf9bac6c3789d558ea2e24b60e48ceb8b960fa8115fd914427334b6c45a823e1e011b6b2aa513f95fd64c956128fd631857945adf8aa7b0364ceea737c0671fd939219e"
-   }
-  },
-  {
-   "tag": 67,
-   "note": "random 0",
-   "args": [
-    {
-     "ty": "bs",
-     "v": "aa4edef9c1ed7f729f520e47730a124fd70662a904ba1074728114d1031e1572c6c886f6b57ec72a6178288c47c335771638533957d540a9d2370f17c47ed5863bc0b995b8825e0ee1ea1e1e4d00dbae81f14b0bf3611b78c952aacab827a053"
-    }
-   ],
-   "expected": {
-    "kind": "error"
-   }
-  },
-  {
-   "tag": 67,
-   "note": "random 1",
-   "args": [
-    {
-     "ty": "bs",
-     "v": "ec69428f35c794307be2298a50a399b270b3e9e2808ba932d23017ec1380637ed899e6643d71be1899909743e9dda8e41195b399ff1665dfb8260b12bf0d328fcf83262beb31479457bcdef226a0f9e526742c8eb014c1bdfdd29b111570a8c1"
-    }
-   ],
-   "expected": {
-    "kind": "error"
-   }
-  },
-  {
-   "tag": 67,
-   "note": "random 2",
-   "args": [
-    {
-     "ty": "bs",
      "v": "aa4edef9c1ed7f729f520e47730a124fd70662a904ba1074728114d1031e1572c6c886f6b57ec72a6178288c47c335771638533957d540a9d2370f17cc7ed5863bc0b995b8825e0ee1ea1e1e4d00dbae81f14b0bf3611b78c952aacab827a053"
     }
    ],
    "expected": {
     "kind": "value",
-    "type": "g2",
+    "type": "bs",
     "value": "aa4edef9c1ed7f729f520e47730a124fd70662a904ba1074728114d1031e1572c6c886f6b57ec72a6178288c47c335771638533957d540a9d2370f17cc7ed5863bc0b995b8825e0ee1ea1e1e4d00dbae81f14b0bf3611b78c952aacab827a053"
+   }
+  },
+  {
+   "tag": 65,
+   "note": "random 5",
+   "args": [
+    {
+     "ty": "g2",
+     "v": "aa4edef9c1ed7f729f520e47730a124fd70662a904ba1074728114d1031e1572c6c886f6b57ec72a6178288c47c335771638533957d540a9d2370f17cc7ed5863bc0b995b8825e0ee1ea1e1e4d00dbae81f14b0bf3611b78c952aacab827a053"
+    }
+   ],
+   "expected": {
+    "kind": "value",
+    "type": "bs",
+    "value": "aa4edef9c1ed7f729f520e47730a124fd70662a904ba1074728114d1031e1572c6c886f6b57ec72a6178288c47c335771638533957d540a9d2370f17cc7ed5863bc0b995b8825e0ee1ea1e1e4d00dbae81f14b0bf3611b78c952aacab827a053"
+   }
+  },
+  {
+   "tag": 66,
+   "note": "random 0",
+   "args": [
+    {
+     "ty": "bs",
+     "v": "a2910866ede42789c685af186234bfe4664e270ed447d2d142a159cf0cf9bac6c3789d558ea2e24b60e48ceb8b960fa8115fd914427334b6c45a823e1e011b6b2aa513f95fd64c956128fd631857945adf8aa7b1364ceea737c0671fd939219e"
+    }
+   ],
+   "expected": {
+    "kind": "error"
+   }
+  },
+  {
+   "tag": 66,
+   "note": "random 1",
+   "args": [
+    {
+     "ty": "bs",
+     "v": "a2910866ede42789c685af186234bfe4664e270ed447d2d142a159cf0cf9bac6c3789d558ea2e24b60e48ceb8b960fa8115fd914427334b6c45a823e1e011b6b2aa513f95fd64c956128fd631857945adf8aa7b0364ceea737c0671fd939219e"
+    }
+   ],
+   "expected": {
+    "kind": "value",
+    "type": "g2",
+    "value": "a2910866ede42789c685af186234bfe4664e270ed447d2d142a159cf0cf9bac6c3789d558ea2e24b60e48ceb8b960fa8115fd914427334b6c45a823e1e011b6b2aa513f95fd64c956128fd631857945adf8aa7b0364ceea737c0671fd939219e"
+   }
+  },
+  {
+   "tag": 66,
+   "note": "random 2",
+   "args": [
+    {
+     "ty": "bs",
+     "v": "89380275bbc8e5dcea7dc4dd7e0550ff2ac480905396eda55062650f8d251c96eb480673937cc6d9d6a44aaa56ca66dc122915c824a0857e2ee414a3dccb27ae691ae54329781315a0c75df1c04d6d7a50a030fc866f09d516020ef82324afae"
+    }
+   ],
+   "expected": {
+    "kind": "error"
+   }
+  },
+  {
+   "tag": 66,
+   "note": "random 3",
+   "args": [
+    {
+     "ty": "bs",
+     "v": "e2e1bc43b7f95e09bc0ef953209be153900196e8a961ae3d8c9ebd905059e9619380cda84cafcfbe8463592bf1eea38c810d4f5632a80dc9e0a90e4b8f7b744d8febbbcfd65f0af1813b722f5520c6b0cb458cfa2cd5865ae7ddedcb2071bc0e"
+    }
+   ],
+   "expected": {
+    "kind": "error"
+   }
+  },
+  {
+   "tag": 66,
+   "note": "random 4",
+   "args": [
+    {
+     "ty": "bs",
+     "v": "a2910866ede42789c685af186234bfe4664e270ed447d2d142a159cf0cf9bac6c3789d518ea2e24b60e48ceb8b960fa8115fd914427334b6c45a823e1e011b6b2aa513f95fd64c956128fd631857945adf8aa7b0364ceea737c0671fd939219e"
+    }
+   ],
+   "expected": {
+    "kind": "error"
+   }
+  },
+  {
+   "tag": 66,
+   "note": "random 5",
+   "args": [
+    {
+     "ty": "bs",
+     "v": "4f531704120e6336f4e65784668320d10b1f441c7571eb4e19628e8b6335b99d874c79ae098ab739a627df97e0fccfbb1077262393e03fff5938753b3671b6b567cfb0919f14393245388f5449320c0f663686798cd815a8703c615021f433"
+    }
+   ],
+   "expected": {
+    "kind": "error"
+   }
+  },
+  {
+   "tag": 67,
+   "note": "random 0",
+   "args": [
+    {
+     "ty": "bs",
+     "v": "a16902"
+    },
+    {
+     "ty": "bs",
+     "v": "69428f35c794307be2298a50a399b270b3e9e2808ba932d23017ec1380637ed899e6643d71be1899909743e9dda8e41195b399ff1665dfb8260b12bf0d328fcf83262beb31479457bcdef226a0f9e526742c8eb014c1bdfdd29b111570a8c1b652d313a846720d51f70d419a9ce0fe0668f639ada510cd65d9aa7f8ddccc17db8a8a62b04027581843ab42420a875509430e4b493c862e436e57222e63537920249e8f50ed8e624a759b1b23b06b874760698d26157be06c4bcc313e1a5df4cbef8904b41e16cc25bea497c1d1e2d18d1289310c297fe474c3c83599d4437488c85ad20b60603a599cc55662f01571a8e62288aeeb61e84d4a78e03128718c3d"
+    }
+   ],
+   "expected": {
+    "kind": "error"
+   }
+  },
+  {
+   "tag": 67,
+   "note": "random 1",
+   "args": [
+    {
+     "ty": "bs",
+     "v": "a5906985bb0422"
+    },
+    {
+     "ty": "bs",
+     "v": "e3"
+    }
+   ],
+   "expected": {
+    "kind": "value",
+    "type": "g2",
+    "value": "b684b2a29341ed17e2fc75f30a5f255647b959390e7a75d5e6bc46fc16d2510f0bac9fe8cf9d32877944ae756a18a9e60183678189b53d3299066320ddc8e5dfe5d10e631ea34bdc3ed79a35e2dff4aa1b17ed846e7296a27808ff3f380b5b2f"
+   }
+  },
+  {
+   "tag": 67,
+   "note": "random 2",
+   "args": [
+    {
+     "ty": "bs",
+     "v": "018f82ac8e7c51938e46385bb45ef541e49417919ff78996763767924052033e9874418246409209709924dccf9dc518af1423365705752b24b3f9a0fc1f0f"
+    },
+    {
+     "ty": "bs",
+     "v": ""
+    }
+   ],
+   "expected": {
+    "kind": "value",
+    "type": "g2",
+    "value": "8fa9d6e0c4086c8b30925d8116b7973adedb360ddda3078837ba84440fc2b09e362f1fdfda8561c1c996995a9ea32a3e035100dcfbe23d7578d1714926632f0db89da22331391a94eb9c7630fbf4f56cbdc0b4fb4b91ff3f168eaa512a027e9b"
    }
   },
   {
@@ -28724,13 +28710,17 @@
    "args": [
     {
      "ty": "bs",
-     "v": "c00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+     "v": "ecd5"
+    },
+    {
+     "ty": "bs",
+     "v": ""
     }
    ],
    "expected": {
     "kind": "value",
     "type": "g2",
-    "value": "c00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+    "value": "818993022be45f8189a62f36a58faa227b0ca0cc86a2d003d0408a129248348d80b4f15d1d32c105c1984724a1f707cf1979d4c71d736d74d3316467a6100825d1d82c0e785c53db976560e20e03d0099c7397ebe9dafa0f5d18559de94594fe"
    }
   },
   {
@@ -28739,11 +28729,17 @@
    "args": [
     {
      "ty": "bs",
-     "v": "93e02b6052719f607dacd3a088274f65596bd0d09920b61ab5da61bbdc7f5049334cf11213945d57e5ac7d045d042b7e024aa2b2f08f0a91260805272dc51051c6e47ad4fa403b02b4510b647ae3d1770bac0326a805bbefd48056c8c121bdb8"
+     "v": "0ce2075e0b153b825d"
+    },
+    {
+     "ty": "bs",
+     "v": "18f675bc14409dac76a550b46a4fc169d036da00752c6ae9e703347412b4a0182b4729ad203ede73bf79160ac09a59e5a9e8ae4be3996fc93d61a0ba7f05d225772cdd9aa6475fc65601170a5917d40ed933209af30edcdf2b32d14b71cccd869e0d71ef70f2f80187ee6c5b31c80b6509a23bf4d6c8f4d1a0c588286322213075e960317f78d0e146a24c52ac3a0964279dda4cb086862407d930958391f5400c5680962f9b7b292f954ddd681b20d49dbbab63bee854068cbb09f78b56c62634430d351e3dd586f47a532070e0470ed934e5fb0e0ceb0a3962ddefc7cf7b7082b75a324d946b1b612f49d11b9e2662e927f0cf595dadeb6754e6339338c1"
     }
    ],
    "expected": {
-    "kind": "error"
+    "kind": "value",
+    "type": "g2",
+    "value": "b4163f0def935814143d8a750d05d3fd4896f71f7258b1e5b66080f7e9a02fbb901d3ba6891dc2ba28f700b5cba63f6503f19d05dbff7f5c4188356e9a7deb978719e34475b019dafae6d90947b36978bd291b5132ac971b0d98d238f20b5ba3"
    }
   },
   {
@@ -28752,11 +28748,17 @@
    "args": [
     {
      "ty": "bs",
-     "v": "f70d419a9ce0fe0668f639ada510cd65d9aa7f8ddccc17db8a8a62b04027581843ab42420a875509430e4b493c862e436e57222e63537920249e8f50ed8e624a759b1b23b06b874760698d26157be06c4bcc313e1a5df4cbef8904b41e16cc"
+     "v": "e970"
+    },
+    {
+     "ty": "bs",
+     "v": ""
     }
    ],
    "expected": {
-    "kind": "error"
+    "kind": "value",
+    "type": "g2",
+    "value": "940d2a4487db52755900842781a2b59afd444b9d3af73cab23bd709344a110c394c53d91b1c96017448e3a526c3b29d413e731618c6e665a61fa7a21ce48da8963e2dd4c95a0ba2598d0af7ca2f1d12a1db23d23e1d23ba0acb46b856d186bda"
    }
   },
   {

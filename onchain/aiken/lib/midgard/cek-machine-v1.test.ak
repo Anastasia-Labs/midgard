@@ -1661,8 +1661,8 @@ test ill_typed_division_by_zero_is_a_type_failure_step() {
     type_failure_step(4, bytes_dividend_by_zero()),
     type_failure_step(5, bytes_dividend_by_zero()),
     type_failure_step(6, bytes_dividend_by_zero()),
-    type_failure_step(58, integer_message_hash_to_group()),
-    type_failure_step(65, integer_message_hash_to_group()),
+    type_failure_step(60, integer_message_hash_to_group()),
+    type_failure_step(67, integer_message_hash_to_group()),
   }
 }
 
@@ -1679,11 +1679,11 @@ test ill_typed_mod_by_zero_is_not_a_known_failure_step() fail {
 }
 
 test ill_typed_g1_hash_to_group_is_not_a_known_failure_step() fail {
-  charged_known_failure_step(58, integer_message_hash_to_group())
+  charged_known_failure_step(60, integer_message_hash_to_group())
 }
 
 test ill_typed_g2_hash_to_group_is_not_a_known_failure_step() fail {
-  charged_known_failure_step(65, integer_message_hash_to_group())
+  charged_known_failure_step(67, integer_message_hash_to_group())
 }
 
 fn wide_message_hash_to_group() -> List<cek_constant_v1.ConstantWitnessV1> {
@@ -1696,8 +1696,8 @@ fn one_word_message_budget() -> cek_cost_v1.BuiltinBudgetV1 {
     wide_message_hash_to_group(),
     cek_builtin_v1.ConstantValue,
   )
-  expect [_, dst_size] = cek_builtin_v1.builtin_cost_sizes_v1(58, direct)
-  cek_cost_v1.builtin_budget_v1(58, [1, dst_size])
+  expect [_, dst_size] = cek_builtin_v1.builtin_cost_sizes_v1(60, direct)
+  cek_cost_v1.builtin_budget_v1(60, [1, dst_size])
 }
 
 // The revealed message is wider than one word; that is the size the failure
@@ -1707,12 +1707,12 @@ test revealed_hash_to_group_failure_pays_the_revealed_size() {
     wide_message_hash_to_group(),
     cek_builtin_v1.ConstantValue,
   )
-  let charged = cek_builtin_v1.direct_builtin_budget_v1(58, direct)
-  expect [message_size, _] = cek_builtin_v1.builtin_cost_sizes_v1(58, direct)
+  let charged = cek_builtin_v1.direct_builtin_budget_v1(60, direct)
+  expect [message_size, _] = cek_builtin_v1.builtin_cost_sizes_v1(60, direct)
   and {
     message_size > 1,
     charged != one_word_message_budget(),
-    known_failure_step(58, wide_message_hash_to_group(), direct, charged),
+    known_failure_step(60, wide_message_hash_to_group(), direct, charged),
   }
 }
 
@@ -1720,7 +1720,7 @@ test revealed_hash_to_group_failure_pays_the_revealed_size() {
 test opaque_hash_to_group_failure_is_not_a_known_failure_step() fail {
   expect [message, dst] = wide_message_hash_to_group()
   known_failure_step(
-    58,
+    60,
     wide_message_hash_to_group(),
     [
       cek_builtin_v1.OpaqueValue(cek_constant_v1.constant_root_v1(message)),

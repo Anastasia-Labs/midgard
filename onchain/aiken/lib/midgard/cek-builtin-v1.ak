@@ -2163,7 +2163,7 @@ fn verify_bls_g1_v1(
         ),
       ),
     )
-  } else if tag == 58 {
+  } else if tag == 60 {
     expect [message, domain] = arguments
     result_is_constant_v1(
       result,
@@ -2173,7 +2173,7 @@ fn verify_bls_g1_v1(
           |> builtin.bls12_381_g1_compress,
       ),
     )
-  } else if tag == 59 {
+  } else if tag == 58 {
     expect [source] = arguments
     result_is_constant_v1(
       result,
@@ -2185,7 +2185,7 @@ fn verify_bls_g1_v1(
       ),
     )
   } else {
-    expect tag == 60
+    expect tag == 59
     expect [source] = arguments
     let uncompressed = bytes_v1(source)
       |> builtin.bls12_381_g1_uncompress
@@ -2254,7 +2254,7 @@ fn verify_bls_g2_v1(
         ),
       ),
     )
-  } else if tag == 65 {
+  } else if tag == 67 {
     expect [message, domain] = arguments
     result_is_constant_v1(
       result,
@@ -2264,7 +2264,7 @@ fn verify_bls_g2_v1(
           |> builtin.bls12_381_g2_compress,
       ),
     )
-  } else if tag == 66 {
+  } else if tag == 65 {
     expect [source] = arguments
     result_is_constant_v1(
       result,
@@ -2276,7 +2276,7 @@ fn verify_bls_g2_v1(
       ),
     )
   } else {
-    expect tag == 67
+    expect tag == 66
     expect [source] = arguments
     let uncompressed = bytes_v1(source)
       |> builtin.bls12_381_g2_uncompress
@@ -2965,23 +2965,23 @@ fn builtin_argument_kinds_v1(tag: Int) -> List<RuntimeValueKindV1> {
     [ByteStringRuntimeValue, ByteStringRuntimeValue, ByteStringRuntimeValue]
   } else if tag == 54 || tag == 57 {
     [BlsG1RuntimeValue, BlsG1RuntimeValue]
-  } else if tag == 55 || tag == 59 {
+  } else if tag == 55 || tag == 58 {
     [BlsG1RuntimeValue]
   } else if tag == 56 {
     [IntegerRuntimeValue, BlsG1RuntimeValue]
-  } else if tag == 58 {
-    [ByteStringRuntimeValue, ByteStringRuntimeValue]
   } else if tag == 60 {
+    [ByteStringRuntimeValue, ByteStringRuntimeValue]
+  } else if tag == 59 {
     [ByteStringRuntimeValue]
   } else if tag == 61 || tag == 64 {
     [BlsG2RuntimeValue, BlsG2RuntimeValue]
-  } else if tag == 62 || tag == 66 {
+  } else if tag == 62 || tag == 65 {
     [BlsG2RuntimeValue]
   } else if tag == 63 {
     [IntegerRuntimeValue, BlsG2RuntimeValue]
-  } else if tag == 65 {
-    [ByteStringRuntimeValue, ByteStringRuntimeValue]
   } else if tag == 67 {
+    [ByteStringRuntimeValue, ByteStringRuntimeValue]
+  } else if tag == 66 {
     [ByteStringRuntimeValue]
   } else if tag == 68 {
     [BlsG1RuntimeValue, BlsG2RuntimeValue]
@@ -3286,10 +3286,10 @@ fn bls_compressed_coordinate_v1(encoded: ByteArray, offset: Int) -> Int {
 }
 
 fn bls_uncompress_header_is_invalid_v1(tag: Int, encoded: ByteArray) -> Bool {
-  let expected_length = if tag == 60 {
+  let expected_length = if tag == 59 {
     48
   } else {
-    expect tag == 67
+    expect tag == 66
     96
   }
   expect bytearray.length(encoded) == expected_length
@@ -3298,7 +3298,7 @@ fn bls_uncompress_header_is_invalid_v1(tag: Int, encoded: ByteArray) -> Bool {
   let infinity = first % 128 >= 64
   let sort = first % 64 >= 32
   let first_coordinate = bls_compressed_coordinate_v1(encoded, 0)
-  let second_coordinate = if tag == 67 {
+  let second_coordinate = if tag == 66 {
     builtin.bytearray_to_integer(True, builtin.slice_bytearray(48, 48, encoded))
   } else {
     0
@@ -3469,15 +3469,15 @@ fn known_builtin_failure_v1(tag: Int, arguments: List<ValueWitnessV1>) -> Bool {
   } {
     malformed_signature_lengths_v1(tag, arguments)
   } else if or {
-    tag == 58,
-    tag == 65,
+    tag == 60,
+    tag == 67,
   } {
     expect [message, domain] = arguments
     and {
       constant_type_v1(message) == cek_constant_v1.ByteStringConstant,
       bytearray.length(bytes_v1(domain)) > 255,
     }
-  } else if tag == 60 {
+  } else if tag == 59 {
     expect [source] = arguments
     let encoded = bytes_v1(source)
     or {
@@ -3496,7 +3496,7 @@ fn known_builtin_failure_v1(tag: Int, arguments: List<ValueWitnessV1>) -> Bool {
         False
       },
     }
-  } else if tag == 67 {
+  } else if tag == 66 {
     expect [source] = arguments
     let encoded = bytes_v1(source)
     or {
@@ -3856,10 +3856,10 @@ pub fn authenticated_builtin_failure_budget(
   tag: Int,
   arguments: List<ValueWitnessV1>,
 ) -> cek_cost_v1.BuiltinBudgetV1 {
-  let failure_is_paid = if tag == 60 {
+  let failure_is_paid = if tag == 59 {
     expect [source] = arguments
     bytearray.length(bytes_v1(source)) == 48
-  } else if tag == 67 {
+  } else if tag == 66 {
     expect [source] = arguments
     bytearray.length(bytes_v1(source)) == 96
   } else if tag == 73 {
@@ -3877,8 +3877,8 @@ pub fn authenticated_builtin_failure_budget(
     tag == 21,
     tag == 52,
     tag == 53,
-    tag == 58,
-    tag == 65,
+    tag == 60,
+    tag == 67,
     failure_is_paid,
   } {
     direct_builtin_budget_v1(tag, arguments)

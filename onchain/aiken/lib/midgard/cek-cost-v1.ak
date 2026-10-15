@@ -192,11 +192,11 @@ pub fn builtin_argument_count_v1(tag: Int) -> Int {
     tag == 54,
     tag == 56,
     tag == 57,
-    tag == 58,
+    tag == 60,
     tag == 61,
     tag == 63,
     tag == 64,
-    tag == 65,
+    tag == 67,
     tag == 68,
     tag == 69,
     tag == 70,
@@ -358,12 +358,12 @@ fn cpu_cost_v1(tag: Int, sizes: List<Int>) -> Int {
   } else if tag == 57 {
     expect [_, _] = sizes
     442008
-  } else if tag == 58 {
+  } else if tag == 60 {
     linear2_x(52538055, 3756, sizes)
-  } else if tag == 59 {
+  } else if tag == 58 {
     expect [_] = sizes
     2780678
-  } else if tag == 60 {
+  } else if tag == 59 {
     expect [_] = sizes
     52948122
   } else if tag == 61 {
@@ -377,12 +377,12 @@ fn cpu_cost_v1(tag: Int, sizes: List<Int>) -> Int {
   } else if tag == 64 {
     expect [_, _] = sizes
     901022
-  } else if tag == 65 {
+  } else if tag == 67 {
     linear2_x(166917843, 4307, sizes)
-  } else if tag == 66 {
+  } else if tag == 65 {
     expect [_] = sizes
     3227919
-  } else if tag == 67 {
+  } else if tag == 66 {
     expect [_] = sizes
     74698472
   } else if tag == 68 {
@@ -530,13 +530,13 @@ fn memory_cost_v1(tag: Int, sizes: List<Int>) -> Int {
   } else if tag == 57 {
     expect [_, _] = sizes
     1
-  } else if tag == 58 {
+  } else if tag == 60 {
     expect [_, _] = sizes
     18
-  } else if tag == 59 {
+  } else if tag == 58 {
     expect [_] = sizes
     6
-  } else if tag == 60 {
+  } else if tag == 59 {
     expect [_] = sizes
     18
   } else if and {
@@ -548,13 +548,13 @@ fn memory_cost_v1(tag: Int, sizes: List<Int>) -> Int {
   } else if tag == 64 {
     expect [_, _] = sizes
     1
-  } else if tag == 65 {
+  } else if tag == 67 {
     expect [_, _] = sizes
     36
-  } else if tag == 66 {
+  } else if tag == 65 {
     expect [_] = sizes
     12
-  } else if tag == 67 {
+  } else if tag == 66 {
     expect [_] = sizes
     36
   } else if or {

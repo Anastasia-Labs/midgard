@@ -280,12 +280,12 @@ test malformed_bls_g1_compression_header_failure_is_paid() {
   ]
   and {
     cek_builtin_v1.verify_direct_builtin_failure_v1(
-      60,
-      builtin_root(60, arguments),
+      59,
+      builtin_root(59, arguments),
       arguments,
     ),
-    cek_builtin_v1.authenticated_builtin_failure_budget(60, arguments) == cek_builtin_v1.direct_builtin_budget_v1(
-      60,
+    cek_builtin_v1.authenticated_builtin_failure_budget(59, arguments) == cek_builtin_v1.direct_builtin_budget_v1(
+      59,
       arguments,
     ),
   }
@@ -299,12 +299,12 @@ test malformed_bls_g2_compression_header_failure_is_paid() {
   ]
   and {
     cek_builtin_v1.verify_direct_builtin_failure_v1(
-      67,
-      builtin_root(67, arguments),
+      66,
+      builtin_root(66, arguments),
       arguments,
     ),
-    cek_builtin_v1.authenticated_builtin_failure_budget(67, arguments) == cek_builtin_v1.direct_builtin_budget_v1(
-      67,
+    cek_builtin_v1.authenticated_builtin_failure_budget(66, arguments) == cek_builtin_v1.direct_builtin_budget_v1(
+      66,
       arguments,
     ),
   }
@@ -318,12 +318,12 @@ test off_curve_bls_g1_encoding_has_a_bounded_paid_failure_proof() {
   ]
   and {
     cek_builtin_v1.verify_direct_builtin_failure_v1(
-      60,
-      builtin_root(60, arguments),
+      59,
+      builtin_root(59, arguments),
       arguments,
     ),
-    cek_builtin_v1.authenticated_builtin_failure_budget(60, arguments) == cek_builtin_v1.direct_builtin_budget_v1(
-      60,
+    cek_builtin_v1.authenticated_builtin_failure_budget(59, arguments) == cek_builtin_v1.direct_builtin_budget_v1(
+      59,
       arguments,
     ),
   }
@@ -336,8 +336,8 @@ test canonical_bls_infinity_encoding_is_not_a_failure() fail {
     ),
   ]
   cek_builtin_v1.verify_direct_builtin_failure_v1(
-    60,
-    builtin_root(60, arguments),
+    59,
+    builtin_root(59, arguments),
     arguments,
   )
 }
@@ -1451,8 +1451,8 @@ test ill_typed_hash_to_group_is_only_a_type_failure() {
     runtime_constant(#"9f01ff", dst),
   ]
   and {
-    ill_typed_failure_has_one_arm(58, arguments, runtime),
-    ill_typed_failure_has_one_arm(65, arguments, runtime),
+    ill_typed_failure_has_one_arm(60, arguments, runtime),
+    ill_typed_failure_has_one_arm(67, arguments, runtime),
   }
 }
 
@@ -2044,4 +2044,101 @@ test ed25519_charges_message_words_and_keeps_true_false_successes() {
       },
     ),
   }
+}
+
+// SH-2: the BLS builtins carry Cardano's flat tags (Plutus `Builtins.hs`):
+// 58/65 compress, 59/66 uncompress, 60/67 hashToGroup. The hashToGroup
+// points are RFC 9380 hash_to_curve of "midgard" under the BLS signature
+// suites' DSTs, computed independently of this module.
+fn h2g_message() -> cek_builtin_v1.ValueWitnessV1 {
+  bytes(#"476d696467617264")
+}
+
+test bls_g1_builtins_follow_cardano_flat_tags() {
+  let compressed = bytes(
+    #"583097f1d3a73197d7942695638c4fa9ac0fc3688c4f9774b905a14e3a3f171bac586c55e83ff97a1aeffb3af00adb22c6bb",
+  )
+  let point = cek_builtin_v1.ConstantValue(g1_generator())
+  let h2g_arguments = [
+    h2g_message(),
+    bytes(
+      #"582b424c535f5349475f424c53313233383147315f584d443a5348412d3235365f535357555f524f5f4e554c5f",
+    ),
+  ]
+  let hashed = constant(
+    #"9f09ff",
+    #"58308148482e08a92312cbd0a869e03ced121bf66f29306e281b0f894701f5e3f1242fa6cfdd3afbb2620cb9bfc50ed7dd52",
+  )
+  and {
+    verify_direct_with_split_parity(
+      58,
+      builtin_root(58, [point]),
+      [point],
+      compressed,
+    ),
+    verify_direct_with_split_parity(
+      59,
+      builtin_root(59, [compressed]),
+      [compressed],
+      point,
+    ),
+    verify_direct_with_split_parity(
+      60,
+      builtin_root(60, h2g_arguments),
+      h2g_arguments,
+      hashed,
+    ),
+  }
+}
+
+test bls_g2_builtins_follow_cardano_flat_tags() {
+  let compressed = bytes(
+    #"5f584093e02b6052719f607dacd3a088274f65596bd0d09920b61ab5da61bbdc7f5049334cf11213945d57e5ac7d055d042b7e024aa2b2f08f0a91260805272dc510515820c6e47ad4fa403b02b4510b647ae3d1770bac0326a805bbefd48056c8c121bdb8ff",
+  )
+  let point = cek_builtin_v1.ConstantValue(g2_generator())
+  let h2g_arguments = [
+    h2g_message(),
+    bytes(
+      #"582b424c535f5349475f424c53313233383147325f584d443a5348412d3235365f535357555f524f5f4e554c5f",
+    ),
+  ]
+  let hashed = constant(
+    #"9f0aff",
+    #"5f584089ac93813e1f13d1f1a75d2c790cbc435330bdfcaa9f42a609aa5563b8bab0edbc269b186eb3c3c9a6bdf9fd525c34e7167f474f0e648c0c3eeab5df3eebf3ff58207c39f72addeb2d3368a44d56f5dca28fca97fe1184b365e3c8a14e226b6188b1ff",
+  )
+  and {
+    verify_direct_with_split_parity(
+      65,
+      builtin_root(65, [point]),
+      [point],
+      compressed,
+    ),
+    verify_direct_with_split_parity(
+      66,
+      builtin_root(66, [compressed]),
+      [compressed],
+      point,
+    ),
+    verify_direct_with_split_parity(
+      67,
+      builtin_root(67, h2g_arguments),
+      h2g_arguments,
+      hashed,
+    ),
+  }
+}
+
+// The library's numbering (58 hashToGroup, 59 compress) is not Cardano's: a
+// G1 compress claimed at 59 is refused.
+test bls_g1_compress_is_refused_at_the_library_tag() fail {
+  let compressed = bytes(
+    #"583097f1d3a73197d7942695638c4fa9ac0fc3688c4f9774b905a14e3a3f171bac586c55e83ff97a1aeffb3af00adb22c6bb",
+  )
+  let point = cek_builtin_v1.ConstantValue(g1_generator())
+  cek_builtin_v1.verify_direct_builtin_v1(
+    59,
+    builtin_root(59, [point]),
+    [point],
+    compressed,
+  )
 }

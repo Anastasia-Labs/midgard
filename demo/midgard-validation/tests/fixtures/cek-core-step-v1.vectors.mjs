@@ -102,13 +102,18 @@ const g2Compressed = () =>
     ).bytes,
   );
 
+// Cardano's flat tags (Plutus `Builtins.hs`): 59 is G1 uncompress and 66 is
+// G2 uncompress. The library's enum numbers these two differently.
+const g1Uncompress = () => new Builtin(59);
+const g2Uncompress = () => new Builtin(66);
+
 const millerLoop = () =>
   new Application(
     new Application(
       Builtin.bls12_381_millerLoop,
-      new Application(Builtin.bls12_381_G1_uncompress, g1Compressed()),
+      new Application(g1Uncompress(), g1Compressed()),
     ),
-    new Application(Builtin.bls12_381_G2_uncompress, g2Compressed()),
+    new Application(g2Uncompress(), g2Compressed()),
   );
 
 const selfApplication = () =>
