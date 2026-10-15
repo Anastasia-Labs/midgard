@@ -240,9 +240,9 @@ describe("V1 CEK commitments", () => {
     expect(() =>
       hashMidgardCekBlobChunk(Buffer.alloc(MIDGARD_CEK_BLOB_CHUNK_BYTES + 1)),
     ).toThrow(/at most 4095 bytes/u);
-    expect(() => hashMidgardCekTermNode({ kind: "builtin", tag: 87n })).toThrow(
-      /between 0 and 86/u,
-    );
+    expect(() =>
+      hashMidgardCekTermNode({ kind: "builtin", tag: 101n }),
+    ).toThrow(/between 0 and 100/u);
     expect(() =>
       hashMidgardCekSequenceNode({
         head: hash(1),

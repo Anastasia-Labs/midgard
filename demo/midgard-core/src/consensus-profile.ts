@@ -311,7 +311,7 @@ export const MIDGARD_CONSENSUS_LIMITS = Object.freeze({
   maxCekProgramNodeCount: MAX_CEK_PROGRAM_NODE_COUNT,
   maxCekProgramMaterialBytes: MAX_CEK_PROGRAM_MATERIAL_BYTES,
   maxCekBlobChunkBytes: 4_095,
-  maxCekBuiltinTag: 86,
+  maxCekBuiltinTag: 100,
   // The complete ten-leaf CEK transition (root checks, semantics, pinned
   // builtin budget, and exact successor) measures 10,557,458 memory /
   // 7,723,985,480 CPU, below the reserved 80% L1 ceilings. The smaller direct

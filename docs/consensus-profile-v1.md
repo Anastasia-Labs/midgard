@@ -453,7 +453,7 @@ families, and the profile digest cannot drift from source.
 
 <!-- BEGIN MIDGARD_CONSENSUS_PROFILE_V1_GENERATED: do not edit -->
 
-Profile digest: `1cef7f991e87ff6220159def5be8deb3ba5be512ad5944586b65f0ed180b196c`
+Profile digest: `271f645320284a52f09fd1a879453c09d0a738be1a042720d045c8faf9f5ccdb`
 
 ```json
 {
@@ -493,7 +493,7 @@ Profile digest: `1cef7f991e87ff6220159def5be8deb3ba5be512ad5944586b65f0ed180b196
     "maxAddressWitnessesPreimageBytes": 32768,
     "maxCanonicalTransactionBytesPerBlock": 16777216,
     "maxCekBlobChunkBytes": 4095,
-    "maxCekBuiltinTag": 86,
+    "maxCekBuiltinTag": 100,
     "maxCekDirectBlsExpressionDepth": 10,
     "maxCekDirectBlsMillerLoopLeaves": 10,
     "maxCekProgramEnvelopeBytes": 50,

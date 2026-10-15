@@ -2220,3 +2220,72 @@ test malformed_ed25519_lengths_have_one_paid_failure_successor() {
     ),
   }
 }
+
+fn compute_builtin_pre(tag: Int) -> cek_machine_v1.MachineStateV1 {
+  state(
+    cek_machine_v1.mode_compute,
+    cek_proof_v1.hash_builtin_term_v1(tag),
+    cek_proof_v1.empty_environment_root_v1,
+    cek_proof_v1.empty_continuation_root_v1,
+    0,
+    100,
+    100,
+  )
+}
+
+fn explicit_error() -> cek_machine_v1.MachineStateV1 {
+  state(
+    cek_machine_v1.mode_halt_error,
+    cek_proof_v1.hash_error_term_v1(),
+    cek_proof_v1.empty_environment_root_v1,
+    cek_proof_v1.empty_continuation_root_v1,
+    cek_machine_v1.error_explicit,
+    100,
+    100,
+  )
+}
+
+test compute_builtin_steps_a_resolved_tag() {
+  cek_machine_v1.verify_core_step_v1(
+    compute_builtin_pre(86),
+    state(
+      cek_machine_v1.mode_return,
+      cek_proof_v1.hash_builtin_value_v1(
+        86,
+        0,
+        0,
+        cek_proof_v1.empty_sequence_root_v1,
+      ),
+      cek_proof_v1.empty_environment_root_v1,
+      cek_proof_v1.empty_continuation_root_v1,
+      0,
+      16100,
+      200,
+    ),
+    cek_machine_v1.ComputeBuiltin { tag: 86 },
+  )
+}
+
+test compute_builtin_aborts_on_tag_87() fail {
+  cek_machine_v1.verify_core_step_v1(
+    compute_builtin_pre(87),
+    explicit_error(),
+    cek_machine_v1.ComputeBuiltin { tag: 87 },
+  )
+}
+
+test compute_builtin_aborts_on_tag_100() fail {
+  cek_machine_v1.verify_core_step_v1(
+    compute_builtin_pre(100),
+    explicit_error(),
+    cek_machine_v1.ComputeBuiltin { tag: 100 },
+  )
+}
+
+test builtin_force_count_aborts_on_an_unresolved_tag() fail {
+  cek_machine_v1.builtin_force_count(88) >= 0
+}
+
+test builtin_argument_count_aborts_on_an_unresolved_tag() fail {
+  cek_machine_v1.builtin_argument_count(94) >= 0
+}

@@ -58,7 +58,17 @@ export const MIDGARD_CEK_MACHINE_STATE_VERSION = 1n;
 
 export const MIDGARD_CEK_BLOB_CHUNK_BYTES = 4_095;
 
-export const MIDGARD_CEK_MAX_BUILTIN_TAG = 86n;
+/** Cardano's PV 11 builtin indices: 0-100. */
+export const MIDGARD_CEK_MAX_BUILTIN_TAG = 100n;
+
+/**
+ * The builtins the CEK machine can step through. Tags 87-100 are admitted in
+ * program material, but every step that reaches one has no proof yet.
+ */
+export const MIDGARD_CEK_MAX_RESOLVED_BUILTIN_TAG = 86n;
+
+/** Cardano's PV 11 bound on a constr's field count (`mbConstr`). */
+export const MIDGARD_CEK_MAX_CONSTR_FIELDS = 1_024n;
 
 /** The admitted program versions: 1.0.0 (no constr or case) and 1.1.0. */
 export const MIDGARD_CEK_PROGRAM_UPLC_VERSIONS = Object.freeze([
@@ -226,10 +236,13 @@ export const uint64 = (value: bigint, fieldName: string): bigint => {
   return value;
 };
 
-export const boundedBuiltinTag = (value: bigint): bigint => {
-  if (value < 0n || value > MIDGARD_CEK_MAX_BUILTIN_TAG) {
+export const boundedBuiltinTag = (
+  value: bigint,
+  max: bigint = MIDGARD_CEK_MAX_BUILTIN_TAG,
+): bigint => {
+  if (value < 0n || value > max) {
     throw new RangeError(
-      `CEK builtin tag must be between 0 and ${MIDGARD_CEK_MAX_BUILTIN_TAG.toString(10)}`,
+      `CEK builtin tag must be between 0 and ${max.toString(10)}`,
     );
   }
   return value;
@@ -326,3 +339,14 @@ export const encodeMidgardCekTermNode = (node: MidgardCekTermNode): Buffer => {
 
 export const hashMidgardCekTermNode = (node: MidgardCekTermNode): Hash32 =>
   hash32(TERM_NODE_DOMAIN, encodeMidgardCekTermNode(node));
+
+/** True when a term is a constr with more fields than Cardano admits. */
+export const midgardCekTermExceedsConstrFields = (
+  term: MidgardCekTermNode,
+): boolean =>
+  term.kind === "constr" && term.termsCount > MIDGARD_CEK_MAX_CONSTR_FIELDS;
+
+/** The program minor version a term needs: constr and case need 1.1.0. */
+export const midgardCekTermMinimumVersionMinor = (
+  term: MidgardCekTermNode,
+): bigint => (term.kind === "constr" || term.kind === "case" ? 1n : 0n);

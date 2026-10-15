@@ -39,7 +39,15 @@ pub const max_blob_chunk_bytes = 4095
 
 pub const max_bounded_blob_bytes = 9215
 
-pub const max_builtin_tag = 86
+/// Cardano's PV 11 builtin indices: 0-100.
+pub const max_builtin_tag = 100
+
+/// The builtins the CEK machine can step through. Tags 87-100 are admitted in
+/// program material, but every step that reaches one aborts.
+pub const max_resolved_builtin_tag = 86
+
+/// Cardano's PV 11 bound on a constr's field count (`mbConstr`).
+pub const max_constr_fields = 1024
 
 pub const program_envelope_version: Int = 1
 
@@ -318,7 +326,7 @@ pub fn hash_builtin_value_v1(
   arguments_root: ByteArray,
 ) -> ByteArray {
   expect tag >= 0
-  expect tag <= max_builtin_tag
+  expect tag <= max_resolved_builtin_tag
   hash_value_preimage(
     #"85"
       |> bytearray.concat(cbor.serialise(4))
@@ -886,6 +894,25 @@ pub fn program_term_child_roots_v1(
     BuiltinTerm { .. } -> []
     ConstrTerm { sequence, .. } -> [sequence]
     CaseTerm { scrutinee, sequence, .. } -> [scrutinee, sequence]
+  }
+}
+
+/// True when a term is a constr with more fields than Cardano admits.
+pub fn program_term_exceeds_constr_fields_v1(
+  term: ProgramTermMaterialV1,
+) -> Bool {
+  when term is {
+    ConstrTerm { count, .. } -> count > max_constr_fields
+    _ -> False
+  }
+}
+
+/// The program minor version a term needs: constr and case need 1.1.0.
+pub fn program_term_minimum_version_minor_v1(term: ProgramTermMaterialV1) -> Int {
+  when term is {
+    ConstrTerm { .. } -> 1
+    CaseTerm { .. } -> 1
+    _ -> 0
   }
 }
 

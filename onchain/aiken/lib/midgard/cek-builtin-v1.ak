@@ -2915,7 +2915,7 @@ fn mk_cons_arguments_are_well_typed_v1(
 fn builtin_argument_kinds_v1(tag: Int) -> List<RuntimeValueKindV1> {
   expect and {
       tag >= 0,
-      tag <= cek_proof_v1.max_builtin_tag,
+      tag <= cek_proof_v1.max_resolved_builtin_tag,
     }
   if tag >= 0 && tag <= 9 {
     [IntegerRuntimeValue, IntegerRuntimeValue]

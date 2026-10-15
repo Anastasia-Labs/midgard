@@ -370,7 +370,7 @@ pub fn hash_state_v1(state: MachineStateV1) -> ByteArray {
 
 pub fn builtin_force_count(tag: Int) -> Int {
   expect tag >= 0
-  expect tag <= cek_proof_v1.max_builtin_tag
+  expect tag <= cek_proof_v1.max_resolved_builtin_tag
   if or {
     tag == 29,
     tag == 30,
@@ -395,7 +395,7 @@ pub fn builtin_force_count(tag: Int) -> Int {
 
 pub fn builtin_argument_count(tag: Int) -> Int {
   expect tag >= 0
-  expect tag <= cek_proof_v1.max_builtin_tag
+  expect tag <= cek_proof_v1.max_resolved_builtin_tag
   if tag == 36 {
     6
   } else if or {

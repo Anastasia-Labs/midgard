@@ -1,4 +1,5 @@
 use aiken/builtin
+use aiken/collection/list
 use aiken/primitive/bytearray
 use midgard/cek_proof_v1
 use midgard/ledger_state.{CekProgramMaterialDatumV1}
@@ -341,5 +342,72 @@ test complete_program_material_entries_bind_root_counts_and_no_extras() {
       envelope,
       [entry, extra],
     ),
+  }
+}
+
+fn builtin_term_preimage(tag: Int) -> ByteArray {
+  #"8207" |> bytearray.concat(builtin.serialise_data(builtin.i_data(tag)))
+}
+
+test program_material_admits_cardano_builtin_tags_through_100() {
+  list.all(
+    [0, 86, 87, 91, 100],
+    fn(tag) {
+      cek_proof_v1.inspect_program_term_material_v1(builtin_term_preimage(tag)) == Some(
+        cek_proof_v1.BuiltinTerm { tag },
+      )
+    },
+  ) && list.all(
+    [101, 127],
+    fn(tag) {
+      cek_proof_v1.inspect_program_term_material_v1(builtin_term_preimage(tag)) == None
+    },
+  )
+}
+
+test builtin_term_hash_takes_tag_100() {
+  cek_proof_v1.hash_builtin_term_v1(100) != cek_proof_v1.hash_builtin_term_v1(
+    86,
+  )
+}
+
+test builtin_term_hash_refuses_tag_101() fail {
+  cek_proof_v1.hash_builtin_term_v1(101) != #""
+}
+
+test builtin_value_hash_refuses_an_unresolved_tag() fail {
+  cek_proof_v1.hash_builtin_value_v1(
+    87,
+    0,
+    0,
+    cek_proof_v1.empty_sequence_root_v1,
+  ) != #""
+}
+
+test constr_field_bound_is_1024() {
+  let constr = fn(count) {
+    cek_proof_v1.ConstrTerm { tag: 0, count, sequence: h_01 }
+  }
+  and {
+    !cek_proof_v1.program_term_exceeds_constr_fields_v1(constr(1024)),
+    cek_proof_v1.program_term_exceeds_constr_fields_v1(constr(1025)),
+    !cek_proof_v1.program_term_exceeds_constr_fields_v1(
+      cek_proof_v1.CaseTerm { scrutinee: h_01, count: 4096, sequence: h_02 },
+    ),
+  }
+}
+
+test constr_and_case_need_program_version_1_1_0() {
+  and {
+    cek_proof_v1.program_term_minimum_version_minor_v1(
+      cek_proof_v1.ConstrTerm { tag: 0, count: 0, sequence: h_01 },
+    ) == 1,
+    cek_proof_v1.program_term_minimum_version_minor_v1(
+      cek_proof_v1.CaseTerm { scrutinee: h_01, count: 1, sequence: h_02 },
+    ) == 1,
+    cek_proof_v1.program_term_minimum_version_minor_v1(
+      cek_proof_v1.BuiltinTerm { tag: 100 },
+    ) == 0,
+    cek_proof_v1.program_term_minimum_version_minor_v1(cek_proof_v1.ErrorTerm) == 0,
   }
 }

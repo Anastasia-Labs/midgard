@@ -3,7 +3,7 @@ import {
   hashMidgardCekValueNode,
   MIDGARD_CEK_BLS_ML_RESULT_MEMORY,
   MIDGARD_CEK_EMPTY_SEQUENCE_ROOT,
-  MIDGARD_CEK_MAX_BUILTIN_TAG,
+  MIDGARD_CEK_MAX_RESOLVED_BUILTIN_TAG,
 } from "@al-ft/midgard-core";
 import { DataB, DataConstr, DataI, DataList } from "@harmoniclabs/plutus-data";
 
@@ -38,7 +38,7 @@ export const verifyMidgardCekBuiltinTypeFailure = (
   try {
     if (
       tag < 0n ||
-      tag > MIDGARD_CEK_MAX_BUILTIN_TAG ||
+      tag > MIDGARD_CEK_MAX_RESOLVED_BUILTIN_TAG ||
       tag > BigInt(Number.MAX_SAFE_INTEGER)
     ) {
       return false;
@@ -307,7 +307,7 @@ export const midgardCekDirectBuiltinBudget = (
 ): MidgardCekBuiltinBudget => {
   if (
     tag < 0n ||
-    tag > MIDGARD_CEK_MAX_BUILTIN_TAG ||
+    tag > MIDGARD_CEK_MAX_RESOLVED_BUILTIN_TAG ||
     tag > BigInt(Number.MAX_SAFE_INTEGER)
   ) {
     throw new Error("V1 builtin tag is outside Plutus V3");
