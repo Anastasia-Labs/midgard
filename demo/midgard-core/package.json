@@ -382,6 +382,8 @@
     "fixtures:mpf-node-encoding-v1:sync": "node scripts/generate-mpf-node-encoding-v1-goldens.mjs",
     "fixtures:forced-tx-admission-v1:check": "node scripts/generate-forced-tx-admission-v1-goldens.mjs --check",
     "fixtures:forced-tx-admission-v1:sync": "node scripts/generate-forced-tx-admission-v1-goldens.mjs",
+    "fixtures:rejection-reason-v1:check": "node scripts/generate-rejection-reason-v1-vectors.mjs --check",
+    "fixtures:rejection-reason-v1:sync": "node scripts/generate-rejection-reason-v1-vectors.mjs",
     "lint": "eslint . --max-warnings=0",
     "lint:fix": "eslint . --fix",
     "typecheck": "tsc --noEmit",
