@@ -10,7 +10,8 @@
 ////   lost-defense receipt `LostDefenseReceiptV1`;
 //// - the case redeemer `CaseRedeemerV1` (VerifySource, Defend, ThreadClose,
 ////   CaseClose);
-//// - the token names: the case NFT, the thread token and the receipt;
+//// - the token names: the case NFT, the bond marker, the thread token and the
+////   receipt;
 //// - what each step hands to the next: `open_case` (VerifySource),
 ////   `defense_is_valid`, `defend` and `open_thread` (Defend), `close_thread`,
 ////   `lost_defense_receipt` and `thread_leftover_address` (thread close),
@@ -21,8 +22,12 @@
 ////
 //// Token custody. The case NFT is minted by VerifySource into the case
 //// output, stays in the case output through every Defend and thread close,
-//// and is burned at the case close. A thread token is minted by Defend into
-//// the thread output and burned by that thread's close.
+//// and is burned at the case close; a convicted close instead locks it for
+//// ever in its own output at the fraud-proof address. The bond marker is
+//// minted by VerifySource into the challenger bond output and leaves it only
+//// at the case close, together with the case NFT: burned, or locked beside it
+//// on a conviction. A thread token is minted by Defend into the thread output
+//// and burned by that thread's close.
 
 use aiken/cbor
 use aiken/crypto.{VerificationKeyHash, blake2b_256}
@@ -82,6 +87,9 @@ pub type CaseV1 {
 pub type CaseThreadV1 {
   version: Int,
   case_id: CaseId,
+  /// The case's `started_at`, copied at Defend, so a thread holder can tell
+  /// when the case's `D_case` window has passed without reading the case.
+  started_at: Int,
   defender_vkh: VerificationKeyHash,
   challenger_root: ByteArray,
   defender_root: ByteArray,
@@ -130,18 +138,28 @@ pub type CaseRedeemerV1 {
     defender_state_proof: ValidationTraceProof,
   }
   /// Spends the case together with one closing thread, whose token is burned.
+  /// The thread's own script binds `outcome`; `defender_vkh` names the thread,
+  /// whose token name is recomputed from it.
   ThreadClose {
     case_output_index: Int,
     thread_input_index: Int,
     outcome: DisputeWinner,
+    defender_vkh: VerificationKeyHash,
   }
   /// Spends the case and its challenger bond, and burns the case NFT. On a
-  /// conviction the same transaction mints the fraud-proof token.
+  /// conviction the same transaction mints the fraud-proof token, and locks
+  /// the case NFT at the fraud-proof address instead of burning it.
   CaseClose {
     bond_input_index: Int,
     bond_output_index: Int,
     remainder_output_index: Int,
   }
+  /// Mint only, with no case input. Burns exactly one thread token, held by
+  /// the input at `thread_input_index`, whose payment credential is one of the
+  /// thread scripts in the case configuration (game, boundary, timeout,
+  /// award). That script's own spend decides when and to whom the thread's
+  /// value goes.
+  BurnThreadToken { thread_input_index: Int }
 }
 
 /// How a closed case settles.
@@ -166,10 +184,21 @@ pub fn case_nft_name(
   event_key: EventKey,
   opener_out_ref: OutputReference,
 ) -> AssetName {
-  expect bytearray.length(block_header_hash) == 32
+  expect bytearray.length(block_header_hash) == 28
   block_header_hash
     |> bytearray.concat(cbor.serialise(event_key))
     |> bytearray.concat(cbor.serialise(opener_out_ref))
+    |> blake2b_256
+}
+
+/// hash("bond" ‖ case_id). Marks the one challenger bond of the case; a bond
+/// output without it is not the case's bond. Its 36-byte preimage is shorter
+/// than the thread token's (60 bytes) and the case NFT's (header hash, event
+/// key and out-ref).
+pub fn bond_marker_name(case_id: CaseId) -> AssetName {
+  expect bytearray.length(case_id) == 32
+  "bond"
+    |> bytearray.concat(case_id)
     |> blake2b_256
 }
 
@@ -260,7 +289,7 @@ pub fn open_case(
   agreed_initial_hash: ByteArray,
   source_time_upper: Int,
 ) -> CaseV1 {
-  expect bytearray.length(block_header_hash) == 32
+  expect bytearray.length(block_header_hash) == 28
   expect bytearray.length(challenger_root) == 32
   expect step_count >= 1
   expect step_count <= validation_trace_v1.max_machine_step_count
@@ -369,6 +398,7 @@ pub fn open_thread(
   CaseThreadV1 {
     version: thread_version,
     case_id,
+    started_at: case.started_at,
     defender_vkh,
     challenger_root: case.challenger_root,
     defender_root,
@@ -405,7 +435,8 @@ pub fn close_thread(case: CaseV1, outcome: DisputeWinner) -> CaseV1 {
 /// The receipt a lost thread mints; `None` when the defender won.
 pub fn lost_defense_receipt(
   case: CaseV1,
-  thread: CaseThreadV1,
+  case_id: CaseId,
+  defender_vkh: VerificationKeyHash,
   outcome: DisputeWinner,
 ) -> Option<LostDefenseReceiptV1> {
   when outcome is {
@@ -413,8 +444,8 @@ pub fn lost_defense_receipt(
     _ ->
       Some(
         LostDefenseReceiptV1 {
-          case_id: thread.case_id,
-          defender_vkh: thread.defender_vkh,
+          case_id,
+          defender_vkh,
           outcome,
           bounty_claimant: case.bounty_claimant,
         },
@@ -434,11 +465,11 @@ pub const treasury_address: Address =
 /// neither claim was valid.
 pub fn thread_leftover_address(
   case: CaseV1,
-  thread: CaseThreadV1,
+  defender_vkh: VerificationKeyHash,
   outcome: DisputeWinner,
 ) -> Address {
   when outcome is {
-    DefenderWins -> from_verification_key(thread.defender_vkh)
+    DefenderWins -> from_verification_key(defender_vkh)
     ChallengerWins -> from_verification_key(case.bounty_claimant)
     NeitherClaimValid -> treasury_address
   }
@@ -447,19 +478,23 @@ pub fn thread_leftover_address(
 // ## Case close
 
 /// A case closes once no thread is open, and either a defender has won or the
-/// defense window has passed.
+/// defense window has passed. A case whose threads are still open closes once
+/// its lower bound is past `started_at + D_case`; it closes as `DefenderWon`.
 pub fn case_can_close(case: CaseV1, current_time_lower: Int) -> Bool {
-  and {
-    case.open_threads == 0,
+  if case.open_threads == 0 {
     or {
       case.defender_won,
       current_time_lower > defense_deadline(case),
-    },
+    }
+  } else {
+    current_time_lower > case.started_at + validation_dispute_v1.max_dispute_duration_milliseconds
   }
 }
 
+/// How a case that `case_can_close` admits settles. A thread still open at
+/// the close counts as a defender win.
 pub fn case_outcome(case: CaseV1) -> CaseOutcomeV1 {
-  if case.defender_won {
+  if case.defender_won || case.open_threads > 0 {
     DefenderWon
   } else if case.neither_claim_valid {
     NoValidClaim

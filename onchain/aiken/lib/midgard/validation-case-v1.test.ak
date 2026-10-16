@@ -24,6 +24,10 @@ const h_c = #"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
 
 const h_d = #"dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
 
+const header_a = #"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+
+const header_b = #"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+
 const zero = #"0000000000000000000000000000000000000000000000000000000000000000"
 
 const vkh_1 = #"11111111111111111111111111111111111111111111111111111111"
@@ -44,7 +48,7 @@ const clock = validation_dispute_v1.dispute_side_clock_milliseconds
 
 fn case_with(step_count: Int, challenger_terminal_hash: ByteArray) -> CaseV1 {
   validation_case_v1.open_case(
-    h_a,
+    header_a,
     event_a,
     h_b,
     step_count,
@@ -188,18 +192,38 @@ fn thread_of(case: CaseV1) -> CaseThreadV1 {
 // ## Token names
 
 test case_nft_name_binds_header_event_and_opener() {
-  let name = validation_case_v1.case_nft_name(h_a, event_a, opener)
+  let name = validation_case_v1.case_nft_name(header_a, event_a, opener)
   and {
     bytearray.length(name) == 32,
-    name == validation_case_v1.case_nft_name(h_a, event_a, opener),
-    name != validation_case_v1.case_nft_name(h_b, event_a, opener),
-    name != validation_case_v1.case_nft_name(h_a, event_b, opener),
+    name == validation_case_v1.case_nft_name(header_a, event_a, opener),
+    name != validation_case_v1.case_nft_name(header_b, event_a, opener),
+    name != validation_case_v1.case_nft_name(header_a, event_b, opener),
     name != validation_case_v1.case_nft_name(
-      h_a,
+      header_a,
       event_a,
       OutputReference { transaction_id: h_c, output_index: 1 },
     ),
   }
+}
+
+test case_nft_name_refuses_a_block_hash_length_header_hash() fail {
+  bytearray.length(validation_case_v1.case_nft_name(h_a, event_a, opener)) == 32
+}
+
+test bond_marker_name_is_distinct_per_case_and_from_the_case_nft() {
+  let case_id = validation_case_v1.case_nft_name(header_a, event_a, opener)
+  let other_id = validation_case_v1.case_nft_name(header_b, event_a, opener)
+  let marker = validation_case_v1.bond_marker_name(case_id)
+  and {
+    bytearray.length(marker) == 32,
+    marker != case_id,
+    marker != validation_case_v1.bond_marker_name(other_id),
+    marker != validation_case_v1.thread_token_name(case_id, vkh_1),
+  }
+}
+
+test bond_marker_name_refuses_a_short_case_id() fail {
+  bytearray.length(validation_case_v1.bond_marker_name(#"aa")) == 32
 }
 
 test case_nft_name_refuses_a_short_header_hash() fail {
@@ -226,7 +250,7 @@ test open_case_starts_an_undefended_case() {
   let case = case_with(4, h_d)
   and {
     case.version == validation_case_v1.case_version,
-    case.block_header_hash == h_a,
+    case.block_header_hash == header_a,
     case.event_key == event_a,
     case.challenger_root == h_b,
     case.step_count == 4,
@@ -362,7 +386,7 @@ test defend_refuses_the_same_operator_with_any_proof() {
 
 test defend_accepts_the_same_operator_in_another_case() {
   let other = validation_case_v1.open_case(
-    h_b,
+    header_b,
     event_b,
     h_b,
     4,
@@ -388,6 +412,7 @@ test open_thread_starts_from_the_case() {
   and {
     thread.version == validation_case_v1.thread_version,
     thread.case_id == h_d,
+    thread.started_at == case.started_at,
     thread.defender_vkh == vkh_1,
     thread.challenger_root == case.challenger_root,
     thread.defender_root == h_a,
@@ -492,10 +517,9 @@ test close_thread_refuses_a_case_with_no_open_thread() fail {
 
 test lost_defense_receipt_only_for_a_lost_thread() {
   let case = defended(case_with(4, h_d), vkh_1)
-  let thread = thread_of(case)
   and {
-    validation_case_v1.lost_defense_receipt(case, thread, DefenderWins) == None,
-    validation_case_v1.lost_defense_receipt(case, thread, ChallengerWins) == Some(
+    validation_case_v1.lost_defense_receipt(case, h_d, vkh_1, DefenderWins) == None,
+    validation_case_v1.lost_defense_receipt(case, h_d, vkh_1, ChallengerWins) == Some(
       LostDefenseReceiptV1 {
         case_id: h_d,
         defender_vkh: vkh_1,
@@ -503,7 +527,7 @@ test lost_defense_receipt_only_for_a_lost_thread() {
         bounty_claimant: vkh_prover,
       },
     ),
-    validation_case_v1.lost_defense_receipt(case, thread, NeitherClaimValid) == Some(
+    validation_case_v1.lost_defense_receipt(case, h_d, vkh_1, NeitherClaimValid) == Some(
       LostDefenseReceiptV1 {
         case_id: h_d,
         defender_vkh: vkh_1,
@@ -516,15 +540,14 @@ test lost_defense_receipt_only_for_a_lost_thread() {
 
 test thread_leftover_goes_to_the_winner_or_the_treasury() {
   let case = defended(case_with(4, h_d), vkh_1)
-  let thread = thread_of(case)
   and {
-    validation_case_v1.thread_leftover_address(case, thread, DefenderWins) == from_verification_key(
+    validation_case_v1.thread_leftover_address(case, vkh_1, DefenderWins) == from_verification_key(
       vkh_1,
     ),
-    validation_case_v1.thread_leftover_address(case, thread, ChallengerWins) == from_verification_key(
+    validation_case_v1.thread_leftover_address(case, vkh_1, ChallengerWins) == from_verification_key(
       vkh_prover,
     ),
-    validation_case_v1.thread_leftover_address(case, thread, NeitherClaimValid) == validation_case_v1.treasury_address,
+    validation_case_v1.thread_leftover_address(case, vkh_1, NeitherClaimValid) == validation_case_v1.treasury_address,
   }
 }
 
@@ -553,6 +576,19 @@ test case_close_otherwise_waits_past_the_defense_window() {
     deadline == started + clock + validation_dispute_v1.dispute_max_validity_range_milliseconds,
     !validation_case_v1.case_can_close(case, deadline),
     validation_case_v1.case_can_close(case, deadline + 1),
+  }
+}
+
+/// A case with an open thread closes only once its lower bound is past
+/// `started_at + D_case`, and then closes as a defender win.
+test case_close_with_an_open_thread_waits_for_d_case() {
+  let case = defended(case_with(4, h_d), vkh_1)
+  let d_case_end = case.started_at + validation_dispute_v1.max_dispute_duration_milliseconds
+  and {
+    !validation_case_v1.case_can_close(case, d_case_end),
+    validation_case_v1.case_can_close(case, d_case_end + 1),
+    validation_case_v1.case_outcome(case) == DefenderWon,
+    validation_case_v1.challenger_bond_address(case) == validation_case_v1.treasury_address,
   }
 }
 

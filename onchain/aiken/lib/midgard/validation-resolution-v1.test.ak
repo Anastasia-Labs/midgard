@@ -1,5 +1,6 @@
+use midgard/validation_case_v1.{CaseThreadV1, thread_version}
 use midgard/validation_dispute_v1.{
-  ChallengerWins, DefenderWins, NeitherClaimValid,
+  ChallengerWins, DefenderWins, NeitherClaimValid, ReadyForOneStep,
 }
 use midgard/validation_resolution_v1
 use midgard/validation_trace_v1
@@ -51,50 +52,43 @@ fn hash(state: validation_trace_v1.ValidationMachineStateV1) -> ByteArray {
   validation_trace_v1.hash_machine_state(state)
 }
 
-fn descriptor(
-  initial: ByteArray,
-  last: ByteArray,
-) -> validation_trace_v1.ValidationTraceDescriptorV1 {
-  validation_trace_v1.ValidationTraceDescriptorV1 {
-    schema_version: validation_trace_v1.descriptor_version,
-    machine_version: validation_trace_v1.machine_version,
-    trace_root: validation_trace_v1.trace_branch_hash(
-      validation_trace_v1.trace_leaf_hash(initial),
-      validation_trace_v1.trace_leaf_hash(last),
-    ),
-    step_count: 1,
-    initial_state_hash: initial,
-    terminal_state_hash: last,
-    verdict: validation_trace_v1.Accepted,
-    rejection_code_hash: zero,
-  }
-}
-
-/// A one-step dispute, ReadyForOneStep from the open, whose agreed state is
-/// `agreed` and whose two high hashes are the given successors.
+/// A one-step thread at ReadyForOneStep, whose agreed state is `agreed` and
+/// whose two high hashes are the given successors.
 fn ready(
   agreed: validation_trace_v1.ValidationMachineStateV1,
   defender_successor: ByteArray,
   challenger_successor: ByteArray,
-) -> validation_dispute_v1.ValidationDisputeV1 {
-  let agreed_hash = hash(agreed)
-  validation_dispute_v1.open(
-    descriptor(agreed_hash, defender_successor),
-    descriptor(agreed_hash, challenger_successor),
-    agreed_hash,
-    100,
-  )
+) -> CaseThreadV1 {
+  CaseThreadV1 {
+    version: thread_version,
+    case_id: h_a,
+    started_at: 0,
+    defender_vkh: #"01010101010101010101010101010101010101010101010101010101",
+    challenger_root: h_b,
+    defender_root: h_c,
+    step_count: 1,
+    low_index: 0,
+    high_index: 1,
+    agreed_low_hash: hash(agreed),
+    defender_high_hash: defender_successor,
+    challenger_high_hash: challenger_successor,
+    round: 1,
+    turn_started_at: 100,
+    defender_clock_ms: 1000,
+    challenger_clock_ms: 1000,
+    turn: ReadyForOneStep,
+  }
 }
 
 fn winner(
-  dispute: validation_dispute_v1.ValidationDisputeV1,
+  dispute: CaseThreadV1,
   terminal: validation_trace_v1.ValidationMachineStateV1,
 ) -> validation_dispute_v1.DisputeWinner {
   validation_resolution_v1.terminal_fixed_point_winner(dispute, terminal)
 }
 
 /// The challenger padded: its successor repeats the agreed Terminal state.
-fn challenger_padding() -> validation_dispute_v1.ValidationDisputeV1 {
+fn challenger_padding() -> CaseThreadV1 {
   ready(terminal_state(), h_c, hash(terminal_state()))
 }
 
@@ -113,19 +107,20 @@ test a_terminal_agreed_state_that_neither_side_repeats_is_neither_claim() {
 }
 
 test both_sides_repeating_the_terminal_state_is_the_defenders_win() {
-  let both = validation_dispute_v1.ValidationDisputeV1 {
+  let both = CaseThreadV1 {
     ..challenger_padding(),
-    operator_high_hash: hash(terminal_state()),
+    defender_high_hash: hash(terminal_state()),
   }
   winner(both, terminal_state()) == DefenderWins
 }
 
-test the_fixed_point_reads_only_the_two_high_hashes_not_the_descriptors() {
+test the_fixed_point_reads_only_the_two_high_hashes_not_the_roots_or_depth() {
   let padded = challenger_padding()
-  let reshaped = validation_dispute_v1.ValidationDisputeV1 {
+  let reshaped = CaseThreadV1 {
     ..padded,
-    operator_descriptor: padded.challenger_descriptor,
-    challenger_descriptor: padded.operator_descriptor,
+    challenger_root: padded.defender_root,
+    defender_root: padded.challenger_root,
+    step_count: 3,
     low_index: 7,
     high_index: 8,
   }
@@ -179,7 +174,7 @@ test the_fixed_point_refuses_a_terminal_state_that_is_not_the_agreed_one() fail 
 test the_fixed_point_refuses_a_running_state_under_its_own_agreed_hash() fail {
   let agreed = running_state()
   winner(
-    validation_dispute_v1.ValidationDisputeV1 {
+    CaseThreadV1 {
       ..challenger_padding(),
       agreed_low_hash: hash(agreed),
       challenger_high_hash: hash(agreed),
@@ -194,7 +189,7 @@ test the_fixed_point_refuses_a_malformed_terminal_state() fail {
     ledger_delta_root: #"00",
   }
   winner(
-    validation_dispute_v1.ValidationDisputeV1 {
+    CaseThreadV1 {
       ..challenger_padding(),
       agreed_low_hash: h_e,
       challenger_high_hash: h_e,
@@ -205,7 +200,7 @@ test the_fixed_point_refuses_a_malformed_terminal_state() fail {
 
 test the_fixed_point_refuses_a_dispute_still_bisecting() fail {
   winner(
-    validation_dispute_v1.ValidationDisputeV1 {
+    CaseThreadV1 {
       ..challenger_padding(),
       turn: validation_dispute_v1.AwaitingOperator { midpoint: 0 },
     },
@@ -213,22 +208,16 @@ test the_fixed_point_refuses_a_dispute_still_bisecting() fail {
   ) == ChallengerWins
 }
 
-test the_fixed_point_refuses_another_dispute_version() fail {
+test the_fixed_point_refuses_another_thread_version() fail {
   winner(
-    validation_dispute_v1.ValidationDisputeV1 {
-      ..challenger_padding(),
-      version: validation_dispute_v1.dispute_version + 1,
-    },
+    CaseThreadV1 { ..challenger_padding(), version: thread_version + 1 },
     terminal_state(),
   ) == ChallengerWins
 }
 
 test the_fixed_point_refuses_a_non_adjacent_boundary() fail {
   winner(
-    validation_dispute_v1.ValidationDisputeV1 {
-      ..challenger_padding(),
-      high_index: 2,
-    },
+    CaseThreadV1 { ..challenger_padding(), high_index: 2 },
     terminal_state(),
   ) == ChallengerWins
 }

@@ -98,7 +98,8 @@ pub fn descriptors_can_dispute(
   }
 }
 
-fn next_turn(low: Int, high: Int) -> DisputeTurn {
+/// The turn after the bisection narrows to `low..high`.
+pub fn next_turn(low: Int, high: Int) -> DisputeTurn {
   if high == low + 1 {
     ReadyForOneStep
   } else {
@@ -135,7 +136,7 @@ pub fn open(
 /// turn started, read from its validity lower bound; a lower bound before the
 /// turn start is charged nothing, so no move ever credits a clock. The move
 /// must fit in what is left.
-fn charge(clock: Int, turn_started_at: Int, current_time_lower: Int) -> Int {
+pub fn charge(clock: Int, turn_started_at: Int, current_time_lower: Int) -> Int {
   let elapsed = if current_time_lower > turn_started_at {
     current_time_lower - turn_started_at
   } else {

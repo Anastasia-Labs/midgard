@@ -2,6 +2,7 @@ use aiken/cbor
 use aiken/interval
 use env
 use midgard/common/utils
+use midgard/validation_case_v1
 use midgard/validation_dispute_v1
 use midgard/validation_resolution_v1
 use midgard/validation_trace_v1
@@ -19,6 +20,31 @@ const h_e = #"eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
 const h_f = #"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
 
 const zero = #"0000000000000000000000000000000000000000000000000000000000000000"
+
+/// The case thread the boundary reads, carrying this dispute's bisection.
+fn thread_of(
+  dispute: validation_dispute_v1.ValidationDisputeV1,
+) -> validation_case_v1.CaseThreadV1 {
+  validation_case_v1.CaseThreadV1 {
+    version: dispute.version,
+    case_id: #"",
+    started_at: 0,
+    defender_vkh: #"",
+    challenger_root: dispute.challenger_descriptor.trace_root,
+    defender_root: dispute.operator_descriptor.trace_root,
+    step_count: dispute.operator_descriptor.step_count,
+    low_index: dispute.low_index,
+    high_index: dispute.high_index,
+    agreed_low_hash: dispute.agreed_low_hash,
+    defender_high_hash: dispute.operator_high_hash,
+    challenger_high_hash: dispute.challenger_high_hash,
+    round: dispute.round,
+    turn_started_at: dispute.turn_started_at,
+    defender_clock_ms: dispute.operator_clock_ms,
+    challenger_clock_ms: dispute.challenger_clock_ms,
+    turn: dispute.turn,
+  }
+}
 
 fn descriptor4(
   a: ByteArray,
@@ -543,7 +569,7 @@ test one_step_boundary_is_authenticated_before_resolver_handoff() {
     operator.initial_state_hash,
     100,
   )
-  let resolution = validation_resolution_v1.prepare(ready, pre)
+  let resolution = validation_resolution_v1.prepare(thread_of(ready), pre)
   and {
     resolution.version == validation_resolution_v1.resolution_version,
     resolution.pre_state == pre,
@@ -579,7 +605,7 @@ fn compact_binding_pre_state() -> validation_trace_v1.ValidationMachineStateV1 {
 
 test gap_a_successor_hashes_come_from_the_dispute_datum() {
   let resolution = validation_resolution_v1.prepare(
-    ready_for_one_step(compact_binding_pre_state(), h_c, h_d),
+    thread_of(ready_for_one_step(compact_binding_pre_state(), h_c, h_d)),
     compact_binding_pre_state(),
   )
   and {
@@ -591,11 +617,11 @@ test gap_a_successor_hashes_come_from_the_dispute_datum() {
 test gap_a_one_pre_state_two_dispute_hash_pairs_each_prepare_their_own() {
   let pre = compact_binding_pre_state()
   let first = validation_resolution_v1.prepare(
-    ready_for_one_step(pre, h_c, h_d),
+    thread_of(ready_for_one_step(pre, h_c, h_d)),
     pre,
   )
   let second = validation_resolution_v1.prepare(
-    ready_for_one_step(pre, h_e, h_f),
+    thread_of(ready_for_one_step(pre, h_e, h_f)),
     pre,
   )
   and {
@@ -612,8 +638,11 @@ test gap_a_refuses_a_pre_state_that_is_not_the_agreed_low_state() fail {
     ..pre,
     work_root: h_e,
   }
-  validation_resolution_v1.prepare(ready_for_one_step(pre, h_c, h_d), other) == validation_resolution_v1.prepare(
-    ready_for_one_step(pre, h_c, h_d),
+  validation_resolution_v1.prepare(
+    thread_of(ready_for_one_step(pre, h_c, h_d)),
+    other,
+  ) == validation_resolution_v1.prepare(
+    thread_of(ready_for_one_step(pre, h_c, h_d)),
     pre,
   )
 }
@@ -627,7 +656,7 @@ test gap_a_refuses_a_dispute_still_bisecting() fail {
     pre_hash,
     100,
   )
-  validation_resolution_v1.prepare(bisecting, pre).version == validation_resolution_v1.resolution_version
+  validation_resolution_v1.prepare(thread_of(bisecting), pre).version == validation_resolution_v1.resolution_version
 }
 
 test gap_a_refuses_a_terminal_pre_state() fail {
@@ -636,7 +665,10 @@ test gap_a_refuses_a_terminal_pre_state() fail {
     phase: validation_trace_v1.Terminal,
     verdict: validation_trace_v1.Accepted,
   }
-  validation_resolution_v1.prepare(ready_for_one_step(pre, h_c, h_d), pre).version == validation_resolution_v1.resolution_version
+  validation_resolution_v1.prepare(
+    thread_of(ready_for_one_step(pre, h_c, h_d)),
+    pre,
+  ).version == validation_resolution_v1.resolution_version
 }
 
 test descriptors_with_different_initial_hashes_can_dispute() {

@@ -4,13 +4,13 @@ use cardano/assets.{PolicyId}
 use cardano/transaction.{OutputReference, Transaction}
 use midgard/computation_thread as ct
 use midgard/fraud_proofs/common.{ProverOnly, cancel, continue_validation_trace}
+use midgard/validation_case_thread_v1.{ThreadDatum}
 use midgard/validation_dispute_v1
-use midgard/validation_game_v1
 use midgard/validation_resolution_v1
 use midgard/validation_trace_v1
 
 pub type Datum =
-  ct.StepDatum<validation_game_v1.ValidationGameStateV1>
+  ThreadDatum
 
 pub type BoundaryActionV1 {
   PrepareResolution {
@@ -82,7 +82,7 @@ validator main(
                   resolver_index,
                 )
                 let expected_resolution_state: Data = validation_resolution_v1.prepare(
-                  state.dispute,
+                  state,
                   evidence.pre_state,
                 )
                 and {
@@ -97,7 +97,7 @@ validator main(
                 let expected_state: Data = validation_resolution_v1.winning_resolution()
                 and {
                   validation_resolution_v1.terminal_fixed_point_winner(
-                    state.dispute,
+                    state,
                     terminal_state,
                   ) == validation_dispute_v1.ChallengerWins,
                   output_script_hash == award_validator_script_hash,
