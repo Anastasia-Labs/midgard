@@ -54,17 +54,25 @@ fn bond_datum() -> DisputeBondV1 {
   }
 }
 
-fn bond_input(out_ref: OutputReference) -> Input {
+fn bond_marker_of(id: ByteArray) -> assets.Value {
+  assets.from_asset(case_policy_id, validation_case_v1.bond_marker_name(id), 1)
+}
+
+fn bond_input_holding(out_ref: OutputReference, tokens: assets.Value) -> Input {
   let datum: Data = bond_datum()
   Input {
     output_reference: out_ref,
     output: Output {
       address: address.from_script(bond_script_hash),
-      value: assets.from_lovelace(bond_lovelace),
+      value: assets.merge(assets.from_lovelace(bond_lovelace), tokens),
       datum: InlineDatum(datum),
       reference_script: None,
     },
   }
+}
+
+fn bond_input(out_ref: OutputReference) -> Input {
+  bond_input_holding(out_ref, bond_marker_of(case_id))
 }
 
 /// The case UTxO holding the case NFT `nft`; its datum is not read by the bond.
@@ -153,6 +161,35 @@ test bond_redeemer_wire_layout() {
 
 test bond_settles_with_its_own_case_close() {
   settles(Some(bond_datum()), bond_out_ref, honest_tx())
+}
+
+/// A bond-shaped output naming the case but without its marker is not the
+/// case's bond.
+test bond_without_its_marker_is_refused() fail {
+  let redeemer: Data = close_at(1)
+  settles(
+    Some(bond_datum()),
+    bond_out_ref,
+    tx_with(
+      [case_input(case_id), bond_input_holding(bond_out_ref, assets.zero)],
+      redeemer,
+    ),
+  )
+}
+
+test bond_holding_the_marker_of_another_case_is_refused() fail {
+  let redeemer: Data = close_at(1)
+  settles(
+    Some(bond_datum()),
+    bond_out_ref,
+    tx_with(
+      [
+        case_input(case_id),
+        bond_input_holding(bond_out_ref, bond_marker_of(other_case_id)),
+      ],
+      redeemer,
+    ),
+  )
 }
 
 test bond_refuses_a_case_holding_another_case_nft() fail {

@@ -17,16 +17,17 @@ use midgard/validation_case_v1.{
 }
 
 /// The validation case (`midgard/validation_case_v1`), as a mint and a spend
-/// purpose under one script hash. The mint purpose mints the case NFT at
-/// VerifySource, and the thread tokens at Defend, and burns a thread token
-/// held by a configured thread script at BurnThreadToken; the spend purpose
-/// runs Defend, ThreadClose and CaseClose on a case UTxO.
+/// purpose under one script hash. The mint purpose mints the case NFT and the
+/// bond marker at VerifySource and the thread tokens at Defend, and burns a
+/// thread token held by a configured thread script at BurnThreadToken; the
+/// spend purpose runs Defend, ThreadClose and CaseClose on a case UTxO.
 ///
 /// A case UTxO holds the case NFT, the case's computation-thread token and
 /// lovelace. Every other mint or burn under this policy, outside VerifySource
 /// and BurnThreadToken, happens in a transaction that spends a case UTxO, and
-/// that spend fixes the transaction's mint exactly. A convicted close locks the case NFT at the
-/// fraud-proof address, whose spend always fails; every other close burns it.
+/// that spend fixes the transaction's mint exactly. A convicted close locks
+/// the case NFT and the bond marker at the fraud-proof address, whose spend
+/// always fails; every other close burns them.
 validator main(
   hub_oracle: PolicyId,
   case_config_policy_id: PolicyId,
@@ -36,16 +37,25 @@ validator main(
   mint(redeemer: CaseRedeemerV1, policy_id: PolicyId, self: Transaction) {
     let Transaction { inputs, reference_inputs, mint, .. } = self
     when redeemer is {
-      // The case NFT: one token, minted with an opener input of source-v1,
-      // which checks its name, the case output and the bond.
+      // The case NFT and its bond marker: two tokens, minted with an opener
+      // input of source-v1, which checks the case NFT's name, the case output
+      // and the bond output. The marker is named from the other token here,
+      // so no marker is ever minted ahead of its case.
       VerifySource { opener_input_index, .. } -> {
         let config = validation_case_config_v1.get_config(
           reference_inputs,
           case_config_policy_id,
         )
         expect Some(opener) = list.at(inputs, opener_input_index)
-        expect [Pair(_, 1)] = dict.to_pairs(assets.tokens(mint, policy_id))
-        opener.output.address.payment_credential == Script(config.source_v1)
+        expect [Pair(first, 1),
+              Pair(second, 1)] = dict.to_pairs(assets.tokens(mint, policy_id))
+        and {
+          opener.output.address.payment_credential == Script(config.source_v1),
+          or {
+            second == validation_case_v1.bond_marker_name(first),
+            first == validation_case_v1.bond_marker_name(second),
+          },
+        }
       }
       // One thread token, burned with no case input: its holder is one of the
       // configured thread scripts, whose spend decides the timing and payee.
@@ -140,20 +150,24 @@ validator main(
         expect InlineDatum(bond_data) = bond_datum
         expect bond: DisputeBondV1 = bond_data
         let bond_lovelace = lovelace_of(bond_value)
+        let bond_marker = validation_case_v1.bond_marker_name(case_id)
         expect Some(bond_output) = list.at(outputs, bond_output_index)
         expect Some(remainder) = list.at(outputs, remainder_output_index)
-        // The thread token burns at every close. The case NFT burns too,
-        // except on a conviction: the fraud-proof token is minted exactly
-        // against the thread token, so the case NFT is locked for ever in its
-        // own output at the fraud-proof address instead. Both outputs are
-        // funded from the case, each with at most the fraud-proof output's
-        // lovelace (plus one move fee for the record).
+        // The thread token burns at every close. The case NFT and the bond
+        // marker burn too, except on a conviction: the fraud-proof token is
+        // minted exactly against the thread token, so the case NFT and the
+        // marker are locked for ever in their own output at the fraud-proof
+        // address instead. Both outputs are funded from the case, each with
+        // at most the fraud-proof output's lovelace (plus one move fee for the
+        // record).
         let thread_burn = assets.from_asset(
           computation_thread_token_policy_id,
           computation_thread_token_name,
           -1,
         )
-        let burn = thread_burn |> assets.add(own_policy, case_id, -1)
+        let case_tokens = assets.from_asset(own_policy, case_id, 1)
+          |> assets.add(own_policy, bond_marker, 1)
+        let burn = assets.merge(thread_burn, assets.negate(case_tokens))
         let fraud_proof_lovelace = if validation_case_v1.case_outcome(case) == Convicted {
           let (fraud_proof_policy, fraud_proof_address) = validation_case_config_v1.hub_fraud_proof(
             reference_inputs,
@@ -188,11 +202,7 @@ validator main(
           expect and {
               lock.address == fraud_proof_address,
               locked <= env.fraud_proof_output_lovelace,
-              assets.without_lovelace(lock.value) == assets.from_asset(
-                own_policy,
-                case_id,
-                1,
-              ),
+              assets.without_lovelace(lock.value) == case_tokens,
               mint == assets.merge(thread_burn, fraud_proof_token),
               fraud_proof_output.address == fraud_proof_address,
               assets.without_lovelace(fraud_proof_output.value) == fraud_proof_token,
@@ -215,6 +225,7 @@ validator main(
         let case_tag: Data = own_out_ref
         and {
           bond_address.payment_credential == Script(config.dispute_bond_v1),
+          assets.quantity_of(bond_value, own_policy, bond_marker) == 1,
           bond.case_id == case_id,
           bond_lovelace >= dispute_bond_lovelace,
           bond_output.address == validation_case_v1.challenger_bond_address(

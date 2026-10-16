@@ -625,13 +625,26 @@ fn bond_datum() -> Data {
   bond_datum_for(header_hash, fraud_prover, honest_case_id())
 }
 
-fn bond_output(lovelace: Int, datum: Data) -> Output {
+fn bond_output_holding(
+  lovelace: Int,
+  datum: Data,
+  tokens: assets.Value,
+) -> Output {
   Output {
     address: address.from_script(bond_hash),
-    value: assets.from_lovelace(lovelace),
+    value: assets.merge(assets.from_lovelace(lovelace), tokens),
     datum: InlineDatum(datum),
     reference_script: None,
   }
+}
+
+fn bond_marker_of(case_id: ByteArray) -> assets.Value {
+  assets.from_asset(case_hash, validation_case_v1.bond_marker_name(case_id), 1)
+}
+
+/// A bond output holding the honest case's bond marker.
+fn bond_output(lovelace: Int, datum: Data) -> Output {
+  bond_output_holding(lovelace, datum, bond_marker_of(honest_case_id()))
 }
 
 fn tx_with(
@@ -1108,6 +1121,37 @@ test bond_for_another_block_is_refused() fail {
       bond_output(
         bond_lovelace,
         bond_datum_for(h28_a, fraud_prover, honest_case_id()),
+      ),
+    ],
+  )
+}
+
+test bond_without_its_marker_is_refused() fail {
+  with_outputs(
+    [
+      case_output(),
+      bond_output_holding(bond_lovelace, bond_datum(), assets.zero),
+    ],
+  )
+}
+
+test bond_holding_the_marker_of_another_case_is_refused() fail {
+  with_outputs(
+    [
+      case_output(),
+      bond_output_holding(bond_lovelace, bond_datum(), bond_marker_of(h32_a)),
+    ],
+  )
+}
+
+test bond_holding_another_token_beside_its_marker_is_refused() fail {
+  with_outputs(
+    [
+      case_output(),
+      bond_output_holding(
+        bond_lovelace,
+        bond_datum(),
+        bond_marker_of(honest_case_id()) |> assets.add(thread_policy, #"01", 1),
       ),
     ],
   )

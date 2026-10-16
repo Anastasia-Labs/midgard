@@ -1,6 +1,7 @@
 //// The challenger bond of a validation case. VerifySource locks it in its own
 //// UTxO at `dispute_bond_v1`, apart from the case, and binds it to the case
-//// by its case id. It is spent only together with its own case's close:
+//// by its case id and by the case's bond marker token, which only that
+//// VerifySource mints. It is spent only together with its own case's close:
 //// refunded when the case convicts and forfeited to the protocol treasury
 //// otherwise. The case validator checks the settling output
 //// (`validation_case_v1.challenger_bond_address`); this module checks only
@@ -27,7 +28,8 @@ pub type SpendRedeemer {
   SettleWithCase { case_input_index: Int }
 }
 
-/// The bond is spent only by its own case's close.
+/// The bond is spent only by its own case's close, and only while it holds
+/// its case's bond marker.
 pub fn spend(
   case_policy_id: PolicyId,
   datum: Option<DisputeBondV1>,
@@ -48,5 +50,10 @@ pub fn spend(
   and {
     assets.quantity_of(case_input.output.value, case_policy_id, bond.case_id) == 1,
     bond_input.output_reference == own_out_ref,
+    assets.quantity_of(
+      bond_input.output.value,
+      case_policy_id,
+      validation_case_v1.bond_marker_name(bond.case_id),
+    ) == 1,
   }
 }

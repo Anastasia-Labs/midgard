@@ -58,7 +58,7 @@ fn agreed_initial_hash(
 /// 5. the open guard: the validity range is at most L_d long and its upper
 ///    bound is at most `block_end + M/2`;
 /// 6. the bond: one output at `dispute_bond_v1` holding at least
-///    `dispute_bond_lovelace`, bound to the case.
+///    `dispute_bond_lovelace` and the case's bond marker, bound to the case.
 ///
 /// The opener's thread token moves into the case output, with the case NFT
 /// minted under `case_v1` and named from the opener input.
@@ -183,6 +183,11 @@ validator main(
         let case_lovelace = lovelace_of(case_value)
         and {
           lovelace_of(bond_output.value) >= dispute_bond_lovelace,
+          assets.without_lovelace(bond_output.value) == assets.from_asset(
+            case_v1_script_hash,
+            validation_case_v1.bond_marker_name(case_id),
+            1,
+          ),
           bond_output.datum == InlineDatum(bond),
           case_address == from_script(case_v1_script_hash),
           case_datum == InlineDatum(case),

@@ -2,6 +2,7 @@
 //// validators: the configuration NFT, the case NFT mint, and the case close in
 //// each of its rows, with the challenger bond spent beside it.
 
+use aiken/collection/list
 use aiken/interval
 use cardano/address.{Address, Script, VerificationKey}
 use cardano/assets
@@ -86,6 +87,17 @@ fn event_key() -> ledger_state.EventKey {
 
 fn case_id() -> ByteArray {
   validation_case_v1.case_nft_name(header_hash, event_key(), out_ref(h32_c, 0))
+}
+
+fn bond_marker() -> ByteArray {
+  validation_case_v1.bond_marker_name(case_id())
+}
+
+/// What VerifySource mints under the case policy: the case NFT and its bond
+/// marker.
+fn case_tokens() -> assets.Value {
+  assets.from_asset(case_policy, case_id(), 1)
+    |> assets.add(case_policy, bond_marker(), 1)
 }
 
 // ## Reference inputs
@@ -325,40 +337,60 @@ const verify_source =
 test case_nft_mints_with_a_source_opener() {
   case_mint(
     verify_source,
-    verify_source_mint_tx(
-      opener_at(source_hash),
-      assets.from_asset(case_policy, case_id(), 1),
-    ),
+    verify_source_mint_tx(opener_at(source_hash), case_tokens()),
   )
 }
 
 test case_nft_mint_with_an_opener_of_another_script_is_refused() fail {
   case_mint(
     verify_source,
+    verify_source_mint_tx(opener_at(bond_hash), case_tokens()),
+  )
+}
+
+test case_nft_mint_of_a_doubled_case_nft_is_refused() fail {
+  case_mint(
+    verify_source,
     verify_source_mint_tx(
-      opener_at(bond_hash),
+      opener_at(source_hash),
+      case_tokens() |> assets.add(case_policy, case_id(), 1),
+    ),
+  )
+}
+
+test case_nft_mint_without_the_bond_marker_is_refused() fail {
+  case_mint(
+    verify_source,
+    verify_source_mint_tx(
+      opener_at(source_hash),
       assets.from_asset(case_policy, case_id(), 1),
     ),
   )
 }
 
-test case_nft_mint_of_two_tokens_is_refused() fail {
-  case_mint(
-    verify_source,
-    verify_source_mint_tx(
-      opener_at(source_hash),
-      assets.from_asset(case_policy, case_id(), 2),
-    ),
-  )
-}
-
-test case_nft_mint_of_two_names_is_refused() fail {
+/// A marker is only ever minted beside the case NFT it is named from, so no
+/// marker exists ahead of its case.
+test case_nft_mint_with_the_marker_of_another_case_is_refused() fail {
   case_mint(
     verify_source,
     verify_source_mint_tx(
       opener_at(source_hash),
       assets.from_asset(case_policy, case_id(), 1)
-        |> assets.add(case_policy, h32_c, 1),
+        |> assets.add(
+            case_policy,
+            validation_case_v1.bond_marker_name(h32_c),
+            1,
+          ),
+    ),
+  )
+}
+
+test case_nft_mint_with_a_third_token_is_refused() fail {
+  case_mint(
+    verify_source,
+    verify_source_mint_tx(
+      opener_at(source_hash),
+      case_tokens() |> assets.add(case_policy, h32_c, 1),
     ),
   )
 }
@@ -367,10 +399,7 @@ test case_nft_mint_without_the_configuration_is_refused() fail {
   case_mint(
     verify_source,
     Transaction {
-      ..verify_source_mint_tx(
-        opener_at(source_hash),
-        assets.from_asset(case_policy, case_id(), 1),
-      ),
+      ..verify_source_mint_tx(opener_at(source_hash), case_tokens()),
       reference_inputs: [],
     },
   )
@@ -390,10 +419,7 @@ test case_nft_mint_with_a_look_alike_configuration_is_refused() fail {
   case_mint(
     verify_source,
     Transaction {
-      ..verify_source_mint_tx(
-        opener_at(source_hash),
-        assets.from_asset(case_policy, case_id(), 1),
-      ),
+      ..verify_source_mint_tx(opener_at(source_hash), case_tokens()),
       reference_inputs: [look_alike],
     },
   )
@@ -648,16 +674,47 @@ fn bond_datum_of(id: ByteArray) -> Data {
   datum
 }
 
-fn bond_input_with(script: ByteArray, lovelace: Int, datum: Data) -> Input {
+fn bond_input_holding(
+  script: ByteArray,
+  lovelace: Int,
+  datum: Data,
+  tokens: assets.Value,
+) -> Input {
   Input {
     output_reference: bond_out_ref(),
     output: Output {
       address: address.from_script(script),
-      value: assets.from_lovelace(lovelace),
+      value: assets.merge(assets.from_lovelace(lovelace), tokens),
       datum: InlineDatum(datum),
       reference_script: None,
     },
   }
+}
+
+/// A bond output holding the case's bond marker.
+fn bond_input_with(script: ByteArray, lovelace: Int, datum: Data) -> Input {
+  bond_input_holding(
+    script,
+    lovelace,
+    datum,
+    assets.from_asset(case_policy, bond_marker(), 1),
+  )
+}
+
+/// A bond-shaped output at the bond script naming the case, without the
+/// case's marker.
+fn decoy_bond_input() -> Input {
+  bond_input_holding(
+    bond_hash,
+    bond_lovelace,
+    bond_datum_of(case_id()),
+    assets.zero,
+  )
+}
+
+/// `tx` with the decoy in place of the bond.
+fn with_decoy_bond(case: CaseV1, tx: Transaction) -> Transaction {
+  Transaction { ..tx, inputs: [case_input(case), decoy_bond_input()] }
 }
 
 fn bond_input() -> Input {
@@ -680,17 +737,17 @@ fn prover_address() -> Address {
 
 fn burn() -> assets.Value {
   assets.from_asset(thread_policy, thread_name, -1)
-    |> assets.add(case_policy, case_id(), -1)
+    |> assets.merge(assets.negate(case_tokens()))
 }
 
 const lock_lovelace = 1_500_000
 
-/// The case NFT, locked at the fraud-proof address by a convicted close.
+/// The case NFT and the bond marker, locked at the fraud-proof address by a
+/// convicted close.
 fn case_lock(lovelace: Int) -> Output {
   Output {
     address: address.from_script(fraud_proof_script),
-    value: assets.from_lovelace(lovelace)
-      |> assets.add(case_policy, case_id(), 1),
+    value: assets.merge(assets.from_lovelace(lovelace), case_tokens()),
     datum: NoDatum,
     reference_script: None,
   }
@@ -1211,6 +1268,133 @@ test close_with_another_mint_is_refused() fail {
   closes(
     defender_won(),
     Transaction { ..tx, mint: burn() |> assets.add(other_key, "x", 1) },
+  )
+}
+
+test close_keeping_the_bond_marker_is_refused() fail {
+  let tx = standing_close(defender_won(), started)
+  closes(
+    defender_won(),
+    Transaction {
+      ..tx,
+      mint: assets.from_asset(thread_policy, thread_name, -1)
+        |> assets.add(case_policy, case_id(), -1),
+    },
+  )
+}
+
+test close_convicted_burning_the_bond_marker_is_refused() fail {
+  closes(
+    undefended(),
+    convicted_close_locking(
+      after_window(),
+      fraud_proof_output(fp_lovelace(), prover),
+      Output {
+        ..case_lock(lock_lovelace),
+        value: assets.from_lovelace(lock_lovelace)
+          |> assets.add(case_policy, case_id(), 1),
+      },
+      case_lovelace - fp_lovelace() - lock_lovelace,
+      convicting_mint() |> assets.add(case_policy, bond_marker(), -1),
+    ),
+  )
+}
+
+test close_convicted_locking_the_case_nft_without_the_bond_marker_is_refused() fail {
+  let tx = convicted_close_locking(
+    after_window(),
+    fraud_proof_output(fp_lovelace(), prover),
+    Output {
+      ..case_lock(lock_lovelace),
+      value: assets.from_lovelace(lock_lovelace)
+        |> assets.add(case_policy, case_id(), 1),
+    },
+    case_lovelace - fp_lovelace() - lock_lovelace,
+    convicting_mint(),
+  )
+  let marker_out = Output {
+    address: prover_address(),
+    value: assets.from_lovelace(1_200_000)
+      |> assets.add(case_policy, bond_marker(), 1),
+    datum: NoDatum,
+    reference_script: None,
+  }
+  closes(
+    undefended(),
+    Transaction { ..tx, outputs: list.concat(tx.outputs, [marker_out]) },
+  )
+}
+
+// ### A decoy bond: a bond-shaped output naming the case, without its marker
+
+test close_convicted_with_a_decoy_bond_is_refused() fail {
+  closes(undefended(), with_decoy_bond(undefended(), convicted_close()))
+}
+
+test close_defender_won_with_a_decoy_bond_is_refused() fail {
+  closes(
+    defender_won(),
+    with_decoy_bond(defender_won(), standing_close(defender_won(), started)),
+  )
+}
+
+test close_no_valid_claim_with_a_decoy_bond_is_refused() fail {
+  closes(
+    no_valid_claim(),
+    with_decoy_bond(
+      no_valid_claim(),
+      standing_close(no_valid_claim(), after_window()),
+    ),
+  )
+}
+
+test close_with_an_open_thread_after_d_case_with_a_decoy_bond_is_refused() fail {
+  closes(
+    one_thread_open(),
+    with_decoy_bond(
+      one_thread_open(),
+      standing_close(
+        one_thread_open(),
+        started + validation_dispute_v1.max_dispute_duration_milliseconds + 1,
+      ),
+    ),
+  )
+}
+
+/// The case spend alone refuses a decoy, whichever bond spend runs beside it.
+test case_spend_alone_refuses_a_decoy_bond() fail {
+  case_validator.main.spend(
+    hub_policy,
+    config_policy,
+    thread_policy,
+    bond_lovelace,
+    Some(defender_won()),
+    close,
+    case_out_ref(),
+    with_decoy_bond(defender_won(), standing_close(defender_won(), started)),
+  )
+}
+
+test close_with_a_bond_holding_the_marker_of_another_case_is_refused() fail {
+  let tx = standing_close(defender_won(), started)
+  closes(
+    defender_won(),
+    Transaction {
+      ..tx,
+      inputs: [
+        case_input(defender_won()),
+        bond_input_holding(
+          bond_hash,
+          bond_lovelace,
+          bond_datum_of(case_id()),
+          assets.from_asset(
+            case_policy,
+            validation_case_v1.bond_marker_name(h32_a),
+            1,
+          ),
+        ),
+      ],
+    },
   )
 }
 
