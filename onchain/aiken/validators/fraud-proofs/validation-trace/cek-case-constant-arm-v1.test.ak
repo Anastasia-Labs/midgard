@@ -127,20 +127,36 @@ fn run_case_constant_bound(
   )
 }
 
+/// Runs the machine arm on one step bound to the group `core_group` routes
+/// it to.
 fn run_machine_arm(
   pre: cek_machine_v1.MachineStateV1,
   post: cek_machine_v1.MachineStateV1,
   witness: cek_machine_v1.CoreStepWitnessV1,
 ) -> Bool {
-  run_machine_bound(1, pre, post, witness)
+  let witness_data: Data = witness
+  run_machine_bound(
+    core_chain.core_group(pre.mode, witness_data),
+    pre,
+    post,
+    witness,
+  )
 }
 
+/// Runs the case-constant arm on one step bound to the group `core_group`
+/// routes it to.
 fn run_case_constant_arm(
   pre: cek_machine_v1.MachineStateV1,
   post: cek_machine_v1.MachineStateV1,
   witness: cek_machine_v1.CoreStepWitnessV1,
 ) -> Bool {
-  run_case_constant_bound(11, pre, post, witness)
+  let witness_data: Data = witness
+  run_case_constant_bound(
+    core_chain.core_group(pre.mode, witness_data),
+    pre,
+    post,
+    witness,
+  )
 }
 
 /// Two branches, `h_01` then `h_02`, closed over the empty environment and
@@ -602,7 +618,8 @@ fn integer_case_pre() -> cek_machine_v1.MachineStateV1 {
 
 // A case step on a constant belongs to group 11: the machine arm refuses it.
 test machine_arm_refuses_a_case_constant_step() fail {
-  run_machine_arm(
+  run_machine_bound(
+    1,
     integer_case_pre(),
     selecting(cek_proof_v1.empty_sequence_root_v1, 0, 1),
     integer_case_witness(),
@@ -620,7 +637,8 @@ test case_constant_arm_refuses_a_wrong_successor() fail {
 // The case-constant arm verifies only `ReturnCaseConstant` witnesses.
 test case_constant_arm_refuses_a_constructor_step() fail {
   let empty = cek_proof_v1.empty_sequence_root_v1
-  run_case_constant_arm(
+  run_case_constant_bound(
+    11,
     state(
       cek_machine_v1.mode_return,
       cek_proof_v1.hash_constr_value_v1(1, 0, empty),
@@ -639,6 +657,26 @@ test case_constant_arm_refuses_a_constructor_step() fail {
       tail: cek_proof_v1.empty_continuation_root_v1,
     },
   )
+}
+
+// `core_group` routes a return step on a constant to group 11 and one on a
+// constructor to group 1.
+test core_group_routes_a_case_constant_step_to_group_11() {
+  let witness: Data = integer_case_witness()
+  core_chain.core_group(cek_machine_v1.mode_return, witness) == 11
+}
+
+test core_group_routes_a_constructor_case_step_to_group_1() {
+  let witness: Data = cek_machine_v1.ReturnCaseConstr {
+    tag: 1,
+    values_count: 0,
+    values_root: cek_proof_v1.empty_sequence_root_v1,
+    branches_count: 2,
+    branches_root: two_branches(),
+    captured_environment: cek_proof_v1.empty_environment_root_v1,
+    tail: cek_proof_v1.empty_continuation_root_v1,
+  }
+  core_chain.core_group(cek_machine_v1.mode_return, witness) == 1
 }
 
 // The case-constant arm requires the bound group to be its own.

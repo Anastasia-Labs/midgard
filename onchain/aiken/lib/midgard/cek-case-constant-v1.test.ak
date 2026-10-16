@@ -624,6 +624,41 @@ fn wide_bytes() -> ByteArray {
   )
 }
 
+/// `B <9000 bytes>`, too wide to reveal.
+fn wide_bytes_summary() -> cek_data_v1.DataSummaryV1 {
+  cek_data_v1.bytes_data_summary_v1(
+    9000,
+    cek_data_scan_v1.bounded_blob_root_v1(wide_bytes()),
+  )
+}
+
+// A committed bytestring or data scrutinee is an invalid scrutinee, as an
+// inline one is, not a missing branch.
+
+test case_on_a_committed_bytestring_is_an_invalid_scrutinee() {
+  let summary = wide_bytes_summary()
+  let scrutinee = semantic(bytes_type, summary, summary.memory - 4)
+  semantic_cases(scrutinee, no_material(), 1, unsupported())
+}
+
+test case_on_a_committed_bytestring_refuses_a_missing_branch() {
+  let summary = wide_bytes_summary()
+  let scrutinee = semantic(bytes_type, summary, summary.memory - 4)
+  !semantic_cases(scrutinee, no_material(), 1, missing())
+}
+
+test case_on_committed_data_is_an_invalid_scrutinee() {
+  let summary = wide_bytes_summary()
+  let scrutinee = semantic(data_type, summary, summary.memory)
+  semantic_cases(scrutinee, no_material(), 2, unsupported())
+}
+
+test case_on_committed_data_refuses_a_missing_branch() {
+  let summary = wide_bytes_summary()
+  let scrutinee = semantic(data_type, summary, summary.memory)
+  !semantic_cases(scrutinee, no_material(), 2, missing())
+}
+
 type WideList {
   scrutinee: Pair<cek_builtin_v1.ValueWitnessV1, ByteArray>,
   head: ByteArray,
