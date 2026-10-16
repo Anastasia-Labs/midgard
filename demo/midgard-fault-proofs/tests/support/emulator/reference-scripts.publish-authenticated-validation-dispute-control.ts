@@ -47,11 +47,8 @@ export const publishAuthenticatedValidationDisputeControl = async ({
   // A deployment supplies its funding authority explicitly. Standalone
   // publication tests use their caller wallet; neither path changes a wallet.
   const publicationLucid = publisher?.lucid ?? lucid;
-  const reserved = new Set(publisher?.reservedInputs.map(outRefLabel));
   const selectedFundingInputs = selectReferenceScriptFundingUtxos(
-    (await publicationLucid.wallet().getUtxos()).filter(
-      (utxo) => !reserved.has(outRefLabel(utxo)),
-    ),
+    await publicationLucid.wallet().getUtxos(),
     referenceScriptPublicationFundingTarget(1),
   );
   if (selectedFundingInputs.length === 0) {

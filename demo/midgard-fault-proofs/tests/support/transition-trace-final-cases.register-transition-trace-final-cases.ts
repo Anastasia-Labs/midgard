@@ -199,8 +199,9 @@ export const transitionTraceFinalCaseRunner = (
     if (kind === "deposit")
       for (const [name, quantity] of names)
         depositor.assets["44".repeat(28) + name] = quantity;
+    const publisher = generateEmulatorAccount({ lovelace: 40_000_000_000n });
     const emulator = new Emulator(
-      [funder, prover, depositor],
+      [funder, prover, depositor, publisher],
       EMULATOR_PROTOCOL_PARAMETERS,
     );
     alignEmulatorToWholeSecond(emulator);
@@ -252,7 +253,7 @@ export const transitionTraceFinalCaseRunner = (
 
     await registerPhasMembershipRewardAccount(funderLucid, realBlueprint);
     const { nonceUtxo, referenceScriptAuth, referenceScriptPublisher } =
-      await createReferenceScriptPublisher(funderLucid, emulator.now());
+      await createReferenceScriptPublisher(funderLucid, publisher, emulator);
     // Explicit stress-fixture parameters, shared by every applied proof recipe.
     // This scaffold exercises proof consumers, not genuine list admission.
     const historyBounds = {
