@@ -95,8 +95,6 @@ afterAll(async () => {
       blueprintSha256: createHash("sha256")
         .update(blueprintBytes)
         .digest("hex"),
-      compilerVersion: JSON.parse(blueprintBytes.toString()).preamble.compiler
-        .version,
       measurements,
     }),
   );

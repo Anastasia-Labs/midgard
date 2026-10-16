@@ -16,12 +16,8 @@ import type { CompleteSignedTransactionMeasurement } from "./emulator/measuremen
 
 const blueprintIdentity = async () => {
   const bytes = await readFile(realBlueprintPath);
-  const blueprint = JSON.parse(bytes.toString()) as {
-    preamble: { compiler: { version: string } };
-  };
   return {
     blueprintSha256: createHash("sha256").update(bytes).digest("hex"),
-    compilerVersion: blueprint.preamble.compiler.version,
   };
 };
 
@@ -107,7 +103,6 @@ export const verifyMeasuredFitLedger = async ({
         ) as VanRossemFitLedger;
         expect(fragment.category).toBe(family);
         expect(fragment.blueprintSha256).toBe(identity.blueprintSha256);
-        expect(fragment.compilerVersion).toBe(identity.compilerVersion);
         expect(fragment).toEqual(
           buildVanRossemFitLedger({
             category: family,
@@ -128,7 +123,6 @@ export const verifyMeasuredFitLedger = async ({
   }
   expect(ledger.category).toBe(family);
   expect(ledger.blueprintSha256).toBe(identity.blueprintSha256);
-  expect(ledger.compilerVersion).toBe(identity.compilerVersion);
   expect(ledger).toEqual(
     buildVanRossemFitLedger({
       category: family,

@@ -11,20 +11,15 @@ import {
 } from "../../src/proof-fit/van-rossem-fit-ledger.js";
 
 /**
- * The blueprint digest and the compiler label (`aiken <version>`) recorded in
- * the blueprint's own preamble, so a pinned ledger names the build it was
- * measured against rather than a hand-maintained compiler literal.
+ * The digest of the exact blueprint bytes, including its compiler preamble,
+ * binds a pinned ledger to the build it was measured against.
  */
 export const readBlueprintIdentity = async (
   blueprintPath: string,
-): Promise<{ blueprintSha256: string; compilerVersion: string }> => {
+): Promise<{ blueprintSha256: string }> => {
   const bytes = await readFile(blueprintPath);
-  const blueprint = JSON.parse(bytes.toString("utf8")) as {
-    readonly preamble: { readonly compiler: { readonly version: string } };
-  };
   return {
     blueprintSha256: createHash("sha256").update(bytes).digest("hex"),
-    compilerVersion: `aiken ${blueprint.preamble.compiler.version}`,
   };
 };
 
@@ -33,7 +28,7 @@ export const readBlueprintIdentity = async (
  * `MIDGARD_WRITE_FIT_LEDGER=1` (set by the `fit:regenerate` script) the fresh
  * ledger replaces the checked-in one.
  * Otherwise the checked-in ledger must carry the fresh run's category,
- * blueprint and compiler identity and a digest that matches its body, and
+ * blueprint identity and a digest that matches its body, and
  * list the same rows. Execution budgets vary between runs of one blueprint,
  * so the row values themselves are not compared.
  */
@@ -53,7 +48,6 @@ export const writeOrVerifyPinnedFitLedger = async (
     buildVanRossemFitLedger({
       category: ledger.category,
       blueprintSha256: ledger.blueprintSha256,
-      compilerVersion: ledger.compilerVersion,
       measurements: pinned.entries.map((entry) => ({
         ...entry,
         memoryUnits: BigInt(entry.memoryUnits),

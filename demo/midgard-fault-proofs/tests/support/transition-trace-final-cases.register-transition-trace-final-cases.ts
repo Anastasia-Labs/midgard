@@ -127,7 +127,6 @@ export const registerTransitionTraceFinalCases = (
         buildVanRossemFitLedger({
           category: "transitionTrace",
           blueprintSha256: measuredBlueprintSha256,
-          compilerVersion: "aiken v1.1.23+5adf783",
           measurements: fitRows,
         }),
         { namedByCaller: true },

@@ -20,7 +20,6 @@ import { realBlueprintPath } from "./emulator/blueprints.js";
 export type SplitFitLedger = {
   readonly path: string;
   readonly category: string;
-  readonly compilerVersion: string;
   readonly caseCount: number;
   readonly parts: readonly string[];
   /**
@@ -55,7 +54,6 @@ export type StoredSplitFitPart = {
   readonly schemaVersion: typeof PART_SCHEMA_VERSION;
   readonly ledger: string;
   readonly category: string;
-  readonly compilerVersion: string;
   readonly blueprintSha256: string;
   readonly sourceSha256: string;
   readonly caseCount: number;
@@ -146,7 +144,6 @@ export const mergeSplitFitLedgerParts = (
       part.schemaVersion !== PART_SCHEMA_VERSION ||
       part.ledger !== ledgerName(ledger) ||
       part.category !== ledger.category ||
-      part.compilerVersion !== ledger.compilerVersion ||
       part.caseCount !== ledger.caseCount ||
       part.part !== ledger.parts[index] ||
       part.blueprintSha256 !== first.blueprintSha256 ||
@@ -182,7 +179,6 @@ export const mergeSplitFitLedgerParts = (
   return buildVanRossemFitLedger({
     category: ledger.category,
     blueprintSha256: first.blueprintSha256,
-    compilerVersion: ledger.compilerVersion,
     measurements,
   });
 };
@@ -236,7 +232,6 @@ export const createSplitFitLedgerPart = (
       schemaVersion: PART_SCHEMA_VERSION,
       ledger: ledgerName(ledger),
       category: ledger.category,
-      compilerVersion: ledger.compilerVersion,
       blueprintSha256: blueprint,
       sourceSha256: source,
       caseCount: ledger.caseCount,

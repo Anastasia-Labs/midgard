@@ -20,7 +20,6 @@ export type DeploymentReleaseProvenance = Readonly<{
   blueprintHash: string;
   aikenSourceHash: string;
   compiler: Readonly<{
-    version: string;
     forkRepository: string;
     forkRevision: string;
     cargoLockHash: string;
@@ -57,7 +56,6 @@ export const parseDeploymentReleaseProvenance = (
   )
     releaseFail("invalid_field", `${path}.deploymentProfileName`);
   const compiler = releaseRecord(record.compiler, `${path}.compiler`, [
-    "version",
     "forkRepository",
     "forkRevision",
     "cargoLockHash",
@@ -93,11 +91,6 @@ export const parseDeploymentReleaseProvenance = (
       RELEASE_HEX_32,
     ),
     compiler: Object.freeze({
-      version: releaseString(
-        compiler.version,
-        `${path}.compiler.version`,
-        /^.+$/u,
-      ),
       forkRepository: releaseString(
         compiler.forkRepository,
         `${path}.compiler.forkRepository`,

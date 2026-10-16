@@ -767,15 +767,11 @@ describe("observerOrderInvalid registered-chain lifecycle", () => {
       hasAdjacentConsensusBound: false,
     });
     const blueprintBytes = readFileSync(realBlueprintPath);
-    const preamble = JSON.parse(blueprintBytes.toString("utf8")) as {
-      readonly preamble?: { readonly compiler?: { readonly version?: string } };
-    };
     const ledger = buildVanRossemFitLedger({
       category: `observerOrderInvalid:${CATEGORY_ID}:testnet`,
       blueprintSha256: createHash("sha256")
         .update(blueprintBytes)
         .digest("hex"),
-      compilerVersion: `aiken ${preamble.preamble?.compiler?.version ?? "unknown"}`,
       measurements,
     });
     for (const entry of ledger.entries) {
