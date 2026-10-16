@@ -1,441 +1,441 @@
 {
   "schemaVersion": "midgard-van-rossem-fit-ledger-v1",
   "category": "validationTraceDispute/CEK context publication",
-  "blueprintSha256": "a2cbdbe1195f2f4868366813f3f44537b385891f1a8291a5db15d2d137a206aa",
-  "compilerVersion": "v1.1.23+5adf783",
+  "blueprintSha256": "a96a5b3d357993dcc1c613d2462eba4233516b6bb2660440e5572137fc2fa024",
+  "compilerVersion": "v1.1.24+28e4288",
   "entries": [
     {
       "name": "validationTraceDisputeCekContextAssemble",
       "kind": "publication",
       "maximumShape": "parameterized context publication",
-      "signedBytes": 7764,
+      "signedBytes": 7897,
       "memoryUnits": "0",
       "cpuUnits": "0",
-      "signedByteMargin": 8620,
+      "signedByteMargin": 8487,
       "memoryUnitMargin": "16500000",
       "cpuUnitMargin": "10000000000",
-      "publicationReserveMargin": 8108
+      "publicationReserveMargin": 7975
     },
     {
       "name": "validationTraceDisputeCekContextControl",
       "kind": "publication",
       "maximumShape": "parameterized context publication",
-      "signedBytes": 12892,
+      "signedBytes": 13038,
       "memoryUnits": "0",
       "cpuUnits": "0",
-      "signedByteMargin": 3492,
+      "signedByteMargin": 3346,
       "memoryUnitMargin": "16500000",
       "cpuUnitMargin": "10000000000",
-      "publicationReserveMargin": 2980
+      "publicationReserveMargin": 2834
     },
     {
       "name": "validationTraceDisputeCekContextFinalizeAuthenticate",
       "kind": "publication",
       "maximumShape": "parameterized context publication",
-      "signedBytes": 5382,
+      "signedBytes": 5508,
       "memoryUnits": "0",
       "cpuUnits": "0",
-      "signedByteMargin": 11002,
+      "signedByteMargin": 10876,
       "memoryUnitMargin": "16500000",
       "cpuUnitMargin": "10000000000",
-      "publicationReserveMargin": 10490
+      "publicationReserveMargin": 10364
     },
     {
       "name": "validationTraceDisputeCekContextFinalizeMidgard",
       "kind": "publication",
       "maximumShape": "parameterized context publication",
-      "signedBytes": 8855,
+      "signedBytes": 9001,
       "memoryUnits": "0",
       "cpuUnits": "0",
-      "signedByteMargin": 7529,
+      "signedByteMargin": 7383,
       "memoryUnitMargin": "16500000",
       "cpuUnitMargin": "10000000000",
-      "publicationReserveMargin": 7017
+      "publicationReserveMargin": 6871
     },
     {
       "name": "validationTraceDisputeCekContextFinalizeMint",
       "kind": "publication",
       "maximumShape": "parameterized context publication",
-      "signedBytes": 8861,
+      "signedBytes": 9008,
       "memoryUnits": "0",
       "cpuUnits": "0",
-      "signedByteMargin": 7523,
+      "signedByteMargin": 7376,
       "memoryUnitMargin": "16500000",
       "cpuUnitMargin": "10000000000",
-      "publicationReserveMargin": 7011
+      "publicationReserveMargin": 6864
     },
     {
       "name": "validationTraceDisputeCekContextFinalizeObserve",
       "kind": "publication",
       "maximumShape": "parameterized context publication",
-      "signedBytes": 8861,
+      "signedBytes": 9008,
       "memoryUnits": "0",
       "cpuUnits": "0",
-      "signedByteMargin": 7523,
+      "signedByteMargin": 7376,
       "memoryUnitMargin": "16500000",
       "cpuUnitMargin": "10000000000",
-      "publicationReserveMargin": 7011
+      "publicationReserveMargin": 6864
     },
     {
       "name": "validationTraceDisputeCekContextFinalizeSpend",
       "kind": "publication",
       "maximumShape": "parameterized context publication",
-      "signedBytes": 12342,
+      "signedBytes": 12490,
       "memoryUnits": "0",
       "cpuUnits": "0",
-      "signedByteMargin": 4042,
+      "signedByteMargin": 3894,
       "memoryUnitMargin": "16500000",
       "cpuUnitMargin": "10000000000",
-      "publicationReserveMargin": 3530
+      "publicationReserveMargin": 3382
     },
     {
       "name": "validationTraceDisputeCekContextFinalizeWithdraw",
       "kind": "publication",
       "maximumShape": "parameterized context publication",
-      "signedBytes": 8861,
+      "signedBytes": 9008,
       "memoryUnits": "0",
       "cpuUnits": "0",
-      "signedByteMargin": 7523,
+      "signedByteMargin": 7376,
       "memoryUnitMargin": "16500000",
       "cpuUnitMargin": "10000000000",
-      "publicationReserveMargin": 7011
+      "publicationReserveMargin": 6864
     },
     {
       "name": "validationTraceDisputeCekContextItemBind",
       "kind": "publication",
       "maximumShape": "parameterized context publication",
-      "signedBytes": 12572,
+      "signedBytes": 12700,
       "memoryUnits": "0",
       "cpuUnits": "0",
-      "signedByteMargin": 3812,
+      "signedByteMargin": 3684,
       "memoryUnitMargin": "16500000",
       "cpuUnitMargin": "10000000000",
-      "publicationReserveMargin": 3300
+      "publicationReserveMargin": 3172
     },
     {
       "name": "validationTraceDisputeCekContextItemDataContinue",
       "kind": "publication",
       "maximumShape": "parameterized context publication",
-      "signedBytes": 7005,
+      "signedBytes": 7151,
       "memoryUnits": "0",
       "cpuUnits": "0",
-      "signedByteMargin": 9379,
+      "signedByteMargin": 9233,
       "memoryUnitMargin": "16500000",
       "cpuUnitMargin": "10000000000",
-      "publicationReserveMargin": 8867
+      "publicationReserveMargin": 8721
     },
     {
       "name": "validationTraceDisputeCekContextItemDataFinishDescriptor",
       "kind": "publication",
       "maximumShape": "parameterized context publication",
-      "signedBytes": 5789,
+      "signedBytes": 5937,
       "memoryUnits": "0",
       "cpuUnits": "0",
-      "signedByteMargin": 10595,
+      "signedByteMargin": 10447,
       "memoryUnitMargin": "16500000",
       "cpuUnitMargin": "10000000000",
-      "publicationReserveMargin": 10083
+      "publicationReserveMargin": 9935
     },
     {
       "name": "validationTraceDisputeCekContextItemDataFinishValue",
       "kind": "publication",
       "maximumShape": "parameterized context publication",
-      "signedBytes": 7755,
+      "signedBytes": 7901,
       "memoryUnits": "0",
       "cpuUnits": "0",
-      "signedByteMargin": 8629,
+      "signedByteMargin": 8483,
       "memoryUnitMargin": "16500000",
       "cpuUnitMargin": "10000000000",
-      "publicationReserveMargin": 8117
+      "publicationReserveMargin": 7971
     },
     {
       "name": "validationTraceDisputeCekContextItemDataHash",
       "kind": "publication",
       "maximumShape": "parameterized context publication",
-      "signedBytes": 10287,
+      "signedBytes": 10417,
       "memoryUnits": "0",
       "cpuUnits": "0",
-      "signedByteMargin": 6097,
+      "signedByteMargin": 5967,
       "memoryUnitMargin": "16500000",
       "cpuUnitMargin": "10000000000",
-      "publicationReserveMargin": 5585
+      "publicationReserveMargin": 5455
     },
     {
       "name": "validationTraceDisputeCekContextItemEntry",
       "kind": "publication",
       "maximumShape": "parameterized context publication",
-      "signedBytes": 6293,
+      "signedBytes": 6437,
       "memoryUnits": "0",
       "cpuUnits": "0",
-      "signedByteMargin": 10091,
+      "signedByteMargin": 9947,
       "memoryUnitMargin": "16500000",
       "cpuUnitMargin": "10000000000",
-      "publicationReserveMargin": 9579
+      "publicationReserveMargin": 9435
     },
     {
       "name": "validationTraceDisputeCekContextItemFinalize",
       "kind": "publication",
       "maximumShape": "parameterized context publication",
-      "signedBytes": 9029,
+      "signedBytes": 9157,
       "memoryUnits": "0",
       "cpuUnits": "0",
-      "signedByteMargin": 7355,
+      "signedByteMargin": 7227,
       "memoryUnitMargin": "16500000",
       "cpuUnitMargin": "10000000000",
-      "publicationReserveMargin": 6843
+      "publicationReserveMargin": 6715
     },
     {
       "name": "validationTraceDisputeCekContextItemReturn",
       "kind": "publication",
       "maximumShape": "parameterized context publication",
-      "signedBytes": 4216,
+      "signedBytes": 4391,
       "memoryUnits": "0",
       "cpuUnits": "0",
-      "signedByteMargin": 12168,
+      "signedByteMargin": 11993,
       "memoryUnitMargin": "16500000",
       "cpuUnitMargin": "10000000000",
-      "publicationReserveMargin": 11656
+      "publicationReserveMargin": 11481
     },
     {
       "name": "validationTraceDisputeCekContextItemSelectionContinue",
       "kind": "publication",
       "maximumShape": "parameterized context publication",
-      "signedBytes": 5337,
+      "signedBytes": 5512,
       "memoryUnits": "0",
       "cpuUnits": "0",
-      "signedByteMargin": 11047,
+      "signedByteMargin": 10872,
       "memoryUnitMargin": "16500000",
       "cpuUnitMargin": "10000000000",
-      "publicationReserveMargin": 10535
+      "publicationReserveMargin": 10360
     },
     {
       "name": "validationTraceDisputeCekContextItemSelectionFinish",
       "kind": "publication",
       "maximumShape": "parameterized context publication",
-      "signedBytes": 4842,
+      "signedBytes": 5012,
       "memoryUnits": "0",
       "cpuUnits": "0",
-      "signedByteMargin": 11542,
+      "signedByteMargin": 11372,
       "memoryUnitMargin": "16500000",
       "cpuUnitMargin": "10000000000",
-      "publicationReserveMargin": 11030
+      "publicationReserveMargin": 10860
     },
     {
       "name": "validationTraceDisputeCekContextItemSelectionHash",
       "kind": "publication",
       "maximumShape": "parameterized context publication",
-      "signedBytes": 10287,
+      "signedBytes": 10417,
       "memoryUnits": "0",
       "cpuUnits": "0",
-      "signedByteMargin": 6097,
+      "signedByteMargin": 5967,
       "memoryUnitMargin": "16500000",
       "cpuUnitMargin": "10000000000",
-      "publicationReserveMargin": 5585
+      "publicationReserveMargin": 5455
     },
     {
       "name": "validationTraceDisputeCekContextItemSettlement",
       "kind": "publication",
       "maximumShape": "parameterized context publication",
-      "signedBytes": 7264,
+      "signedBytes": 7405,
       "memoryUnits": "0",
       "cpuUnits": "0",
-      "signedByteMargin": 9120,
+      "signedByteMargin": 8979,
       "memoryUnitMargin": "16500000",
       "cpuUnitMargin": "10000000000",
-      "publicationReserveMargin": 8608
+      "publicationReserveMargin": 8467
     },
     {
       "name": "validationTraceDisputeCekContextMintInit",
       "kind": "publication",
       "maximumShape": "parameterized context publication",
-      "signedBytes": 4609,
+      "signedBytes": 4752,
       "memoryUnits": "0",
       "cpuUnits": "0",
-      "signedByteMargin": 11775,
+      "signedByteMargin": 11632,
       "memoryUnitMargin": "16500000",
       "cpuUnitMargin": "10000000000",
-      "publicationReserveMargin": 11263
+      "publicationReserveMargin": 11120
     },
     {
       "name": "validationTraceDisputeCekContextMintItem",
       "kind": "publication",
       "maximumShape": "parameterized context publication",
-      "signedBytes": 9083,
+      "signedBytes": 9217,
       "memoryUnits": "0",
       "cpuUnits": "0",
-      "signedByteMargin": 7301,
+      "signedByteMargin": 7167,
       "memoryUnitMargin": "16500000",
       "cpuUnitMargin": "10000000000",
-      "publicationReserveMargin": 6789
+      "publicationReserveMargin": 6655
     },
     {
       "name": "validationTraceDisputeCekContextObserverAuthenticate",
       "kind": "publication",
       "maximumShape": "parameterized context publication",
-      "signedBytes": 8599,
+      "signedBytes": 8736,
       "memoryUnits": "0",
       "cpuUnits": "0",
-      "signedByteMargin": 7785,
+      "signedByteMargin": 7648,
       "memoryUnitMargin": "16500000",
       "cpuUnitMargin": "10000000000",
-      "publicationReserveMargin": 7273
+      "publicationReserveMargin": 7136
     },
     {
       "name": "validationTraceDisputeCekContextObserverFold",
       "kind": "publication",
       "maximumShape": "parameterized context publication",
-      "signedBytes": 9246,
+      "signedBytes": 9393,
       "memoryUnits": "0",
       "cpuUnits": "0",
-      "signedByteMargin": 7138,
+      "signedByteMargin": 6991,
       "memoryUnitMargin": "16500000",
       "cpuUnitMargin": "10000000000",
-      "publicationReserveMargin": 6626
+      "publicationReserveMargin": 6479
     },
     {
       "name": "validationTraceDisputeCekContextOutput",
       "kind": "publication",
       "maximumShape": "parameterized context publication",
-      "signedBytes": 7860,
+      "signedBytes": 7995,
       "memoryUnits": "0",
       "cpuUnits": "0",
-      "signedByteMargin": 8524,
+      "signedByteMargin": 8389,
       "memoryUnitMargin": "16500000",
       "cpuUnitMargin": "10000000000",
-      "publicationReserveMargin": 8012
+      "publicationReserveMargin": 7877
     },
     {
       "name": "validationTraceDisputeCekContextRedeemerBegin",
       "kind": "publication",
       "maximumShape": "parameterized context publication",
-      "signedBytes": 12052,
+      "signedBytes": 12185,
       "memoryUnits": "0",
       "cpuUnits": "0",
-      "signedByteMargin": 4332,
+      "signedByteMargin": 4199,
       "memoryUnitMargin": "16500000",
       "cpuUnitMargin": "10000000000",
-      "publicationReserveMargin": 3820
+      "publicationReserveMargin": 3687
     },
     {
       "name": "validationTraceDisputeCekContextRedeemerSelectAuthenticate",
       "kind": "publication",
       "maximumShape": "parameterized context publication",
-      "signedBytes": 5350,
+      "signedBytes": 5482,
       "memoryUnits": "0",
       "cpuUnits": "0",
-      "signedByteMargin": 11034,
+      "signedByteMargin": 10902,
       "memoryUnitMargin": "16500000",
       "cpuUnitMargin": "10000000000",
-      "publicationReserveMargin": 10522
+      "publicationReserveMargin": 10390
     },
     {
       "name": "validationTraceDisputeCekContextRedeemerSelectFinish",
       "kind": "publication",
       "maximumShape": "parameterized context publication",
-      "signedBytes": 5570,
+      "signedBytes": 5717,
       "memoryUnits": "0",
       "cpuUnits": "0",
-      "signedByteMargin": 10814,
+      "signedByteMargin": 10667,
       "memoryUnitMargin": "16500000",
       "cpuUnitMargin": "10000000000",
-      "publicationReserveMargin": 10302
+      "publicationReserveMargin": 10155
     },
     {
       "name": "validationTraceDisputeCekContextRedeemerSelectHash",
       "kind": "publication",
       "maximumShape": "parameterized context publication",
-      "signedBytes": 10548,
+      "signedBytes": 10675,
       "memoryUnits": "0",
       "cpuUnits": "0",
-      "signedByteMargin": 5836,
+      "signedByteMargin": 5709,
       "memoryUnitMargin": "16500000",
       "cpuUnitMargin": "10000000000",
-      "publicationReserveMargin": 5324
+      "publicationReserveMargin": 5197
     },
     {
       "name": "validationTraceDisputeCekContextRedeemerSelectInitialize",
       "kind": "publication",
       "maximumShape": "parameterized context publication",
-      "signedBytes": 8220,
+      "signedBytes": 8365,
       "memoryUnits": "0",
       "cpuUnits": "0",
-      "signedByteMargin": 8164,
+      "signedByteMargin": 8019,
       "memoryUnitMargin": "16500000",
       "cpuUnitMargin": "10000000000",
-      "publicationReserveMargin": 7652
+      "publicationReserveMargin": 7507
     },
     {
       "name": "validationTraceDisputeCekContextReference",
       "kind": "publication",
       "maximumShape": "parameterized context publication",
-      "signedBytes": 11692,
+      "signedBytes": 11821,
       "memoryUnits": "0",
       "cpuUnits": "0",
-      "signedByteMargin": 4692,
+      "signedByteMargin": 4563,
       "memoryUnitMargin": "16500000",
       "cpuUnitMargin": "10000000000",
-      "publicationReserveMargin": 4180
+      "publicationReserveMargin": 4051
     },
     {
       "name": "validationTraceDisputeCekContextSeed",
       "kind": "publication",
       "maximumShape": "parameterized context publication",
-      "signedBytes": 8010,
+      "signedBytes": 8153,
       "memoryUnits": "0",
       "cpuUnits": "0",
-      "signedByteMargin": 8374,
+      "signedByteMargin": 8231,
       "memoryUnitMargin": "16500000",
       "cpuUnitMargin": "10000000000",
-      "publicationReserveMargin": 7862
+      "publicationReserveMargin": 7719
     },
     {
       "name": "validationTraceDisputeCekContextSettle",
       "kind": "publication",
       "maximumShape": "parameterized context publication",
-      "signedBytes": 7163,
+      "signedBytes": 7310,
       "memoryUnits": "0",
       "cpuUnits": "0",
-      "signedByteMargin": 9221,
+      "signedByteMargin": 9074,
       "memoryUnitMargin": "16500000",
       "cpuUnitMargin": "10000000000",
-      "publicationReserveMargin": 8709
+      "publicationReserveMargin": 8562
     },
     {
       "name": "validationTraceDisputeCekContextSigner",
       "kind": "publication",
       "maximumShape": "parameterized context publication",
-      "signedBytes": 7220,
+      "signedBytes": 7352,
       "memoryUnits": "0",
       "cpuUnits": "0",
-      "signedByteMargin": 9164,
+      "signedByteMargin": 9032,
       "memoryUnitMargin": "16500000",
       "cpuUnitMargin": "10000000000",
-      "publicationReserveMargin": 8652
+      "publicationReserveMargin": 8520
     },
     {
       "name": "validationTraceDisputeCekContextSpend",
       "kind": "publication",
       "maximumShape": "parameterized context publication",
-      "signedBytes": 11691,
+      "signedBytes": 11820,
       "memoryUnits": "0",
       "cpuUnits": "0",
-      "signedByteMargin": 4693,
+      "signedByteMargin": 4564,
       "memoryUnitMargin": "16500000",
       "cpuUnitMargin": "10000000000",
-      "publicationReserveMargin": 4181
+      "publicationReserveMargin": 4052
     },
     {
       "name": "validationTraceDisputeCekContextTxInfo",
       "kind": "publication",
       "maximumShape": "parameterized context publication",
-      "signedBytes": 9501,
+      "signedBytes": 9643,
       "memoryUnits": "0",
       "cpuUnits": "0",
-      "signedByteMargin": 6883,
+      "signedByteMargin": 6741,
       "memoryUnitMargin": "16500000",
       "cpuUnitMargin": "10000000000",
-      "publicationReserveMargin": 6371
+      "publicationReserveMargin": 6229
     }
   ],
-  "ledgerSha256": "93b60f623ec45f4fc6eaceb0ab0512827f9bf3416411b3e901f73dbb6416088a"
+  "ledgerSha256": "a43278b734ce10ee307569261f0332e5bf08e2252c04b4f4ae5b5dfee95bcb45"
 }

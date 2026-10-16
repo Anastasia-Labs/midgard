@@ -1,19 +1,19 @@
 {
   "schemaVersion": "midgard-van-rossem-fit-ledger-v1",
   "category": "validationTraceDispute/CEK material tasks",
-  "blueprintSha256": "a2cbdbe1195f2f4868366813f3f44537b385891f1a8291a5db15d2d137a206aa",
-  "compilerVersion": "v1.1.23+5adf783",
+  "blueprintSha256": "a96a5b3d357993dcc1c613d2462eba4233516b6bb2660440e5572137fc2fa024",
+  "compilerVersion": "v1.1.24+28e4288",
   "entries": [
     {
       "name": "data/maximum-task",
       "kind": "lifecycle",
       "maximumShape": "data",
       "signedBytes": 9980,
-      "memoryUnits": "7528581",
-      "cpuUnits": "2325327318",
+      "memoryUnits": "7547036",
+      "cpuUnits": "2331505404",
       "signedByteMargin": 6404,
-      "memoryUnitMargin": "8971419",
-      "cpuUnitMargin": "7674672682",
+      "memoryUnitMargin": "8952964",
+      "cpuUnitMargin": "7668494596",
       "publicationReserveMargin": null
     },
     {
@@ -21,24 +21,24 @@
       "kind": "lifecycle",
       "maximumShape": "program",
       "signedBytes": 14052,
-      "memoryUnits": "6748689",
-      "cpuUnits": "2031781567",
+      "memoryUnits": "6767144",
+      "cpuUnits": "2037959653",
       "signedByteMargin": 2332,
-      "memoryUnitMargin": "9751311",
-      "cpuUnitMargin": "7968218433",
+      "memoryUnitMargin": "9732856",
+      "cpuUnitMargin": "7962040347",
       "publicationReserveMargin": null
     },
     {
       "name": "data/spend-publication",
       "kind": "publication",
       "maximumShape": "data",
-      "signedBytes": 8078,
+      "signedBytes": 8269,
       "memoryUnits": "0",
       "cpuUnits": "0",
-      "signedByteMargin": 8306,
+      "signedByteMargin": 8115,
       "memoryUnitMargin": "16500000",
       "cpuUnitMargin": "10000000000",
-      "publicationReserveMargin": 7794
+      "publicationReserveMargin": 7603
     },
     {
       "name": "data/yield-publication",
@@ -56,13 +56,13 @@
       "name": "program/spend-publication",
       "kind": "publication",
       "maximumShape": "program",
-      "signedBytes": 8081,
+      "signedBytes": 8272,
       "memoryUnits": "0",
       "cpuUnits": "0",
-      "signedByteMargin": 8303,
+      "signedByteMargin": 8112,
       "memoryUnitMargin": "16500000",
       "cpuUnitMargin": "10000000000",
-      "publicationReserveMargin": 7791
+      "publicationReserveMargin": 7600
     },
     {
       "name": "program/yield-publication",
@@ -77,5 +77,5 @@
       "publicationReserveMargin": 7895
     }
   ],
-  "ledgerSha256": "664c30be30ddcf5ce27531e3ac556e1226822e63c96bb3b4f405f6315ae09820"
+  "ledgerSha256": "b21618e38b438d577639efb8e2f0d2434ac97d4aa3ac101d4b4117bb3447ee8c"
 }
