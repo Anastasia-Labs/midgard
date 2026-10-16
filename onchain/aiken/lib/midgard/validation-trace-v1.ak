@@ -1,4 +1,3 @@
-use aiken/builtin
 use aiken/cbor
 use aiken/collection/list
 use aiken/crypto.{blake2b_256}
@@ -356,42 +355,5 @@ pub fn verify_trace_proof_against_root(
       proof.state_index,
       trace_leaf_hash(proof.state_hash),
     ) == trace_root,
-  }
-}
-
-/// The canonical V1 descriptor has 145 fixed bytes plus a 1/2/3/5-byte
-/// positive uint32 step count. Match that exact wire shape without invoking
-/// the general Data decoder on arbitrary leaf bytes. This keeps the source
-/// reference script below its measured publication target.
-pub fn descriptor_bytes_are_well_formed(bytes: ByteArray) -> Bool {
-  let length = builtin.length_of_bytearray(bytes)
-  if length < 146 || length > 150 {
-    False
-  } else {
-    let count_length = length - 145
-    let count_head = builtin.index_bytearray(bytes, 39)
-    let count_is_canonical = when count_length is {
-      1 -> count_head > 0 && count_head < 24
-      2 -> count_head == 24 && builtin.index_bytearray(bytes, 40) >= 24
-      3 -> count_head == 25 && builtin.index_bytearray(bytes, 40) > 0
-      5 -> count_head == 26 && builtin.slice_bytearray(40, 2, bytes) != #"0000"
-      _ -> False
-    }
-    let suffix = 39 + count_length
-    let verdict = builtin.slice_bytearray(suffix + 68, 3, bytes)
-    let rejection = builtin.slice_bytearray(suffix + 73, 32, bytes)
-    and {
-      count_is_canonical,
-      builtin.slice_bytearray(0, 7, bytes) == #"d8799f01015820",
-      builtin.slice_bytearray(suffix, 2, bytes) == #"5820",
-      builtin.slice_bytearray(suffix + 34, 2, bytes) == #"5820",
-      builtin.slice_bytearray(suffix + 71, 2, bytes) == #"5820",
-      builtin.index_bytearray(bytes, length - 1) == 255,
-      if verdict == #"d87a80" {
-        rejection == no_rejection_code_hash
-      } else {
-        verdict == #"d87b80" && rejection != no_rejection_code_hash
-      },
-    }
   }
 }

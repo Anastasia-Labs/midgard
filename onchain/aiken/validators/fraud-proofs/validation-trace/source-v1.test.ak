@@ -22,6 +22,7 @@ use midgard/fraud_proofs/native_tx/transaction as native_transaction
 use midgard/fraud_proofs/native_tx/types as native_types
 use midgard/fraud_proofs/thread_census_fixture_v1 as census
 use midgard/ledger_state
+use midgard/native_tx_field_access_v1
 use midgard/rejection_reason_v1
 use midgard/transition_trace
 use midgard/validation_case_v1
@@ -352,37 +353,18 @@ fn terminal_state(
   }
 }
 
-fn descriptor(
-  initial_state_hash: ByteArray,
-) -> validation_trace_v1.ValidationTraceDescriptorV1 {
-  validation_trace_v1.ValidationTraceDescriptorV1 {
-    schema_version: validation_trace_v1.descriptor_version,
-    machine_version: validation_trace_v1.machine_version,
-    trace_root: h32_c,
-    step_count,
-    initial_state_hash,
-    terminal_state_hash: h32_b,
-    verdict: validation_trace_v1.Accepted,
-    rejection_code_hash: zero_hash,
-  }
-}
-
 fn claim(
   source: validation_claim_v1.ValidationSourceMembershipV1,
-  initial_state: validation_trace_v1.ValidationMachineStateV1,
 ) -> validation_claim_v1.ValidationClaimWitnessV1 {
   let event_key = event_key_for(source)
+  let phase = when source is {
+    validation_claim_v1.ForcedValidationSource { .. } ->
+      ledger_state.ForcedTransaction
+    validation_claim_v1.NormalValidationSource { .. } ->
+      ledger_state.L2Transaction
+  }
   validation_claim_v1.ValidationClaimWitnessV1 {
     version: validation_claim_v1.claim_version,
-    descriptor_membership: transition_trace.RootMembershipProof {
-      domain: transition_trace.ValidationTracesRootDomain,
-      root: zero_hash,
-      phas_root: zero_hash,
-      count: 1,
-      key: event_key,
-      value: descriptor(validation_trace_v1.hash_machine_state(initial_state)),
-      proof: [],
-    },
     transition_step_membership: transition_trace.RootMembershipProof {
       domain: transition_trace.TransitionTraceRootDomain,
       root: zero_hash,
@@ -393,7 +375,7 @@ fn claim(
         schema_version: ledger_state.transition_step_schema_version_v1,
         step_index: 0,
         event_key,
-        phase: ledger_state.L2Transaction,
+        phase,
         pre_utxos_root: h32_a,
         post_utxos_root: h32_b,
       },
@@ -405,10 +387,7 @@ fn claim(
       phas_root: zero_hash,
       count: 1,
       key: event_key,
-      value: ledger_state.EventToStepValue {
-        step_index: 0,
-        phase: ledger_state.L2Transaction,
-      },
+      value: ledger_state.EventToStepValue { step_index: 0, phase },
       proof: [],
     },
     source_membership: source,
@@ -417,13 +396,12 @@ fn claim(
 
 fn pending(
   source: validation_claim_v1.ValidationSourceMembershipV1,
-  initial_state: validation_trace_v1.ValidationMachineStateV1,
   challenger_root: ByteArray,
 ) -> validation_game_v1.PendingValidationClaimV1 {
   validation_game_v1.PendingValidationClaimV1 {
     challenged_header_hash: header_hash,
     challenged_header: header_for(source),
-    claim: claim(source, initial_state),
+    claim: claim(source),
     challenger_root,
     step_count,
     block_end,
@@ -498,7 +476,6 @@ fn claiming(
 ) -> validation_game_v1.PendingValidationClaimV1 {
   pending(
     honest_source(),
-    honest_initial(),
     root_with(step_count, validation_trace_v1.hash_machine_state(terminal)),
   )
 }
@@ -541,7 +518,7 @@ fn case_id_of(
 ) -> ByteArray {
   validation_case_v1.case_nft_name(
     header_hash,
-    state.claim.descriptor_membership.key,
+    validation_claim_v1.claim_event_key(state.claim),
     out_ref,
   )
 }
@@ -558,7 +535,7 @@ fn case_datum(
 ) -> Data {
   let case: Data = validation_case_v1.open_case(
     header_hash,
-    state.claim.descriptor_membership.key,
+    validation_claim_v1.claim_event_key(state.claim),
     state.challenger_root,
     step_count,
     claimed_terminal_hash(),
@@ -857,24 +834,34 @@ test verify_source_refuses_an_unauthenticated_source() fail {
 
 // ## 2. R-DESC
 
-fn opens_pending(state: validation_game_v1.PendingValidationClaimV1) -> Bool {
-  let case_output = case_output_with(
-    case_datum(
-      state,
-      state.claim.descriptor_membership.value.initial_state_hash,
-      upper,
+/// The agreed initial state the validator derives for `state`.
+fn agreed_initial_hash(
+  state: validation_game_v1.PendingValidationClaimV1,
+) -> ByteArray {
+  validation_trace_v1.hash_machine_state(
+    validation_claim_v1.derive_initial_state(
+      state.challenged_header,
+      validation_claim_v1.claim_event_key(state.claim),
+      state.claim.source_membership,
+      state.claim.transition_step_membership.value.pre_utxos_root,
     ),
-    case_value(case_id_of(state, own_out_ref()), thread_lovelace),
   )
-  let bond = bond_datum_for(
-    header_hash,
-    fraud_prover,
-    case_id_of(state, own_out_ref()),
+}
+
+/// The open of `state` with every output named from its own case, so only
+/// R-DESC can refuse it.
+fn opens_pending(state: validation_game_v1.PendingValidationClaimV1) -> Bool {
+  let case_id = case_id_of(state, own_out_ref())
+  let case_output = case_output_with(
+    case_datum(state, agreed_initial_hash(state), upper),
+    case_value(case_id, thread_lovelace),
   )
-  verify(
-    state,
-    tx_with(state, upper, [case_output, bond_output(bond_lovelace, bond)]),
+  let bond = bond_output_holding(
+    bond_lovelace,
+    bond_datum_for(header_hash, fraud_prover, case_id),
+    bond_marker_of(case_id),
   )
+  verify(state, tx_with(state, upper, [case_output, bond]))
 }
 
 fn root_for_terminal() -> ByteArray {
@@ -887,19 +874,31 @@ test r_desc_a_normal_source_with_redeemers_opens() {
 
 test r_desc_a_normal_source_without_redeemers_cannot_open() fail {
   let source = normal_source(0)
-  opens_pending(
-    pending(source, derived_initial_state(source), root_for_terminal()),
-  )
+  opens_pending(pending(source, root_for_terminal()))
+}
+
+fn forced_pending() -> validation_game_v1.PendingValidationClaimV1 {
+  pending(forced_source(rejection_reason_v1.ForcedTxValid), root_for_terminal())
+}
+
+/// A forced source carrying redeemers is authenticated under its header, so
+/// the refusal below is R-DESC's.
+test r_desc_a_forced_source_with_redeemers_is_authenticated() {
+  let state = forced_pending()
+  when
+    validation_claim_v1.committed_claim_source_witness_set(
+      state.challenged_header,
+      state.claim,
+    )
+  is {
+    Some(witness_set) ->
+      witness_set.redeemer_tx_wits_hash != native_tx_field_access_v1.empty_field_commitment
+    None -> False
+  }
 }
 
 test r_desc_a_consistent_forced_source_cannot_open() fail {
-  opens_pending(
-    pending(
-      forced_source(rejection_reason_v1.ForcedTxValid),
-      placeholder_state(),
-      root_for_terminal(),
-    ),
-  )
+  opens_pending(forced_pending())
 }
 
 // ## 3. The challenger's claim
@@ -913,7 +912,7 @@ fn opens_claiming(
   let terminal_hash = validation_trace_v1.hash_machine_state(terminal)
   let case: Data = validation_case_v1.open_case(
     header_hash,
-    state.claim.descriptor_membership.key,
+    validation_claim_v1.claim_event_key(state.claim),
     state.challenger_root,
     step_count,
     terminal_hash,
@@ -974,11 +973,7 @@ test claim_an_accepted_terminal_is_refused() fail {
 /// is the claimed one: only the leaf index is wrong.
 test claim_a_proof_of_another_leaf_is_refused() fail {
   opens_claiming(
-    pending(
-      honest_source(),
-      honest_initial(),
-      root_with(step_count - 1, claimed_terminal_hash()),
-    ),
+    pending(honest_source(), root_with(step_count - 1, claimed_terminal_hash())),
     claimed_terminal(),
     proof_of(step_count - 1, claimed_terminal_hash()),
   )
@@ -987,7 +982,7 @@ test claim_a_proof_of_another_leaf_is_refused() fail {
 /// Leaf S holds another state's hash.
 test claim_a_proof_of_another_state_is_refused() fail {
   opens_claiming(
-    pending(honest_source(), honest_initial(), root_with(step_count, h32_c)),
+    pending(honest_source(), root_with(step_count, h32_c)),
     claimed_terminal(),
     proof_of(step_count, h32_c),
   )
@@ -995,7 +990,7 @@ test claim_a_proof_of_another_state_is_refused() fail {
 
 test claim_a_proof_under_another_root_is_refused() fail {
   opens_claiming(
-    pending(honest_source(), honest_initial(), h32_c),
+    pending(honest_source(), h32_c),
     claimed_terminal(),
     proof_of(step_count, claimed_terminal_hash()),
   )
@@ -1010,15 +1005,187 @@ test claim_at_another_step_count_is_refused() fail {
   verify(state, tx_with(state, upper, open_outputs(upper)))
 }
 
+// ### Terminal coherence
+//
+// A thread opens only from a defense of a case VerifySource opened. The case
+// holds the challenger's Terminal Rejected state at S, and a defense is a state
+// at S other than that state which, if Terminal, is Accepted
+// (`validation_case_v1.defense_is_valid`). A party that agrees with the
+// challenger's state at S therefore has no thread to open.
+
+/// Whether a defender whose trace holds `state` at S may defend `case`.
+fn defends_with(
+  case: validation_case_v1.CaseV1,
+  state: validation_trace_v1.ValidationMachineStateV1,
+) -> Bool {
+  let state_hash = validation_trace_v1.hash_machine_state(state)
+  validation_case_v1.defense_is_valid(
+    case,
+    root_with(step_count, state_hash),
+    state,
+    proof_of(step_count, state_hash),
+  )
+}
+
+test only_a_state_at_s_other_than_the_challengers_opens_a_thread() {
+  let state = honest_pending()
+  let case = validation_case_v1.open_case(
+    header_hash,
+    validation_claim_v1.claim_event_key(state.claim),
+    state.challenger_root,
+    step_count,
+    claimed_terminal_hash(),
+    fraud_prover,
+    agreed_initial_hash(state),
+    upper,
+  )
+  let opened: Data = case
+  let terminal = claimed_terminal()
+  and {
+    // The case is the one VerifySource opens.
+    verify(state, tx_at(upper, open_outputs(upper))),
+    case_datum(state, honest_initial_hash(), upper) == opened,
+    // The challenger's own state at S does not defend.
+    !defends_with(case, terminal),
+    // Nor does any other rejection: another rejection hash or program counter.
+    !defends_with(
+      case,
+      validation_trace_v1.ValidationMachineStateV1 {
+        ..terminal,
+        rejection_code_hash: h32_b,
+      },
+    ),
+    !defends_with(
+      case,
+      validation_trace_v1.ValidationMachineStateV1 {
+        ..terminal,
+        program_counter: step_count - 1,
+      },
+    ),
+    // An Accepted terminal defends, and so does a trace still running at S.
+    defends_with(
+      case,
+      terminal_state(
+        validation_trace_v1.Accepted,
+        validation_trace_v1.no_rejection_code_hash,
+      ),
+    ),
+    defends_with(
+      case,
+      validation_trace_v1.ValidationMachineStateV1 {
+        ..terminal,
+        phase: validation_trace_v1.Cek,
+        verdict: validation_trace_v1.Pending,
+        rejection_code_hash: validation_trace_v1.no_rejection_code_hash,
+      },
+    ),
+  }
+}
+
 // ## 4. N5: the agreed initial state
+
+/// The open recording `initial_hash` as the agreed initial state.
+fn opens_agreeing_on(initial_hash: ByteArray) -> Bool {
+  let state = honest_pending()
+  verify(
+    state,
+    tx_with(
+      state,
+      upper,
+      [
+        case_output_with(
+          case_datum(state, initial_hash, upper),
+          case_value(honest_case_id(), thread_lovelace),
+        ),
+        bond_output(bond_lovelace, bond_datum()),
+      ],
+    ),
+  )
+}
+
+test n5_the_derived_initial_state_opens() {
+  opens_agreeing_on(honest_initial_hash())
+}
 
 /// An initial state that derivation would not build: no case opens from it.
 test n5_an_initial_state_that_is_not_derived_cannot_open() fail {
-  let bogus = validation_trace_v1.ValidationMachineStateV1 {
-    ..honest_initial(),
-    prior_ledger_root: h32_b,
+  opens_agreeing_on(
+    validation_trace_v1.hash_machine_state(
+      validation_trace_v1.ValidationMachineStateV1 {
+        ..honest_initial(),
+        prior_ledger_root: h32_b,
+      },
+    ),
+  )
+}
+
+// ## Q1: the case is named from the claim's event
+
+/// The open naming its case, bond and case datum from `event_key`.
+fn opens_naming_event(event_key: ledger_state.EventKey) -> Bool {
+  let state = honest_pending()
+  let case_id = validation_case_v1.case_nft_name(
+    header_hash,
+    event_key,
+    own_out_ref(),
+  )
+  let case: Data = validation_case_v1.open_case(
+    header_hash,
+    event_key,
+    state.challenger_root,
+    step_count,
+    claimed_terminal_hash(),
+    fraud_prover,
+    honest_initial_hash(),
+    upper,
+  )
+  verify(
+    state,
+    tx_with(
+      state,
+      upper,
+      [
+        case_output_with(case, case_value(case_id, thread_lovelace)),
+        bond_output_holding(
+          bond_lovelace,
+          bond_datum_for(header_hash, fraud_prover, case_id),
+          bond_marker_of(case_id),
+        ),
+      ],
+    ),
+  )
+}
+
+/// Two challengers of one event, claiming different traces.
+test q1_two_claims_on_one_event_name_one_case() {
+  let other = pending(honest_source(), h32_c)
+  and {
+    other.challenger_root != honest_pending().challenger_root,
+    case_id_of(other, own_out_ref()) == honest_case_id(),
   }
-  opens_pending(pending(honest_source(), bogus, root_for_terminal()))
+}
+
+test q1_claims_on_two_events_name_two_cases() {
+  let other = pending(
+    forced_source(rejection_reason_v1.ForcedTxValid),
+    root_for_terminal(),
+  )
+  and {
+    validation_claim_v1.claim_event_key(other.claim) != validation_claim_v1.claim_event_key(
+      honest_pending().claim,
+    ),
+    case_id_of(other, own_out_ref()) != honest_case_id(),
+  }
+}
+
+test q1_an_open_naming_the_claimed_event_opens() {
+  opens_naming_event(event_key_for(honest_source()))
+}
+
+test q1_an_open_naming_another_event_is_refused() fail {
+  opens_naming_event(
+    event_key_for(forced_source(rejection_reason_v1.ForcedTxValid)),
+  )
 }
 
 // ## 5. The open guard: `upper <= block_end + M/2`

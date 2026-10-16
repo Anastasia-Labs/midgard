@@ -1903,11 +1903,9 @@ test q49_l295_one_event_of_each_kind_commits() {
         forced_transactions_root: q49_event_root,
         transition_trace_root: q49_event_root,
         event_to_step_root: q49_event_root,
-        validation_traces_root: q49_event_root,
         forced_transaction_count: 1,
         total_event_count: 1,
         transition_step_count: 1,
-        validation_trace_count: 1,
       },
     ),
     commit_block_header_output_is_valid_v1(
@@ -1916,11 +1914,9 @@ test q49_l295_one_event_of_each_kind_commits() {
         transactions_root: q49_event_root,
         transition_trace_root: q49_event_root,
         event_to_step_root: q49_event_root,
-        validation_traces_root: q49_event_root,
         l2_transaction_count: 1,
         total_event_count: 1,
         transition_step_count: 1,
-        validation_trace_count: 1,
       },
     ),
   }

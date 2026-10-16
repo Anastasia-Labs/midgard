@@ -33,20 +33,21 @@ pub type VerifySourceActionV1 {
 pub type SpendRedeemer =
   ct.StepRedeemer<VerifySourceActionV1>
 
-/// N5: the hash of the state every thread starts from.
-///
-/// The descriptor's committed initial state hash must be the hash of the state
-/// `validation_claim_v1.derive_initial_state` builds
-/// (`committed_initial_state_is_derived`), and that hash is the agreed one.
+/// N5: the hash of the state every thread starts from, state 0 as
+/// `validation_claim_v1.derive_initial_state` builds it from the committed
+/// header, the claim's event, its authenticated source and the step's
+/// pre-state root.
 fn agreed_initial_hash(
   state: validation_game_v1.PendingValidationClaimV1,
 ) -> ByteArray {
-  expect
-    validation_claim_v1.committed_initial_state_is_derived(
+  validation_trace_v1.hash_machine_state(
+    validation_claim_v1.derive_initial_state(
       state.challenged_header,
-      state.claim,
-    )
-  state.claim.descriptor_membership.value.initial_state_hash
+      validation_claim_v1.claim_event_key(state.claim),
+      state.claim.source_membership,
+      state.claim.transition_step_membership.value.pre_utxos_root,
+    ),
+  )
 }
 
 /// VerifySource, the second half of the opener. In order:
@@ -142,7 +143,7 @@ validator main(
             state.block_end,
           )
         // 6.
-        let event_key = state.claim.descriptor_membership.key
+        let event_key = validation_claim_v1.claim_event_key(state.claim)
         let case_id = validation_case_v1.case_nft_name(
           state.challenged_header_hash,
           event_key,

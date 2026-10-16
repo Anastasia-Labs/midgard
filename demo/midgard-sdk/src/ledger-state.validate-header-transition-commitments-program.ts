@@ -71,11 +71,6 @@ export const validateHeaderTransitionCommitmentsProgram = (
         commitments.transitionStepCount,
         MIDGARD_CONSENSUS_LIMITS.maxTransitionStepCount,
       ],
-      [
-        "validationTraceCount",
-        commitments.validationTraceCount,
-        MIDGARD_CONSENSUS_LIMITS.maxValidationTraceCount,
-      ],
     ] as const;
     for (const [field, count, maximum] of countEntries) {
       if (count < 0n) {
@@ -168,21 +163,19 @@ export const validateHeaderTransitionCommitmentsProgram = (
       );
     }
 
-    const expectedValidationTraceCount =
-      commitments.forcedTransactionCount + commitments.l2TransactionCount;
-    if (commitments.validationTraceCount !== expectedValidationTraceCount) {
+    // A block commits each transaction's leaf verdict and no validation-trace
+    // descriptor, so the validation-trace pair is pinned to the empty tree.
+    if (
+      commitments.validationTracesRoot !== EMPTY_MERKLE_TREE_ROOT ||
+      commitments.validationTraceCount !== 0n
+    ) {
       return yield* Effect.fail(
         headerTransitionCommitmentsError(
-          "Proof header validation_trace_count must equal forced_transaction_count + l2_transaction_count",
-          `expected=${expectedValidationTraceCount.toString()},actual=${commitments.validationTraceCount.toString()}`,
+          "Header validation-trace pair must be the empty tree with count zero",
+          `validation_traces_root=${commitments.validationTracesRoot},validation_trace_count=${commitments.validationTraceCount.toString()}`,
         ),
       );
     }
-    yield* validateSourceRootCount(
-      "validation_traces",
-      commitments.validationTracesRoot,
-      commitments.validationTraceCount,
-    );
     return commitments;
   });
 

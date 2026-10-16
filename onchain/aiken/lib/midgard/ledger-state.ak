@@ -207,8 +207,6 @@ pub const max_total_event_count_v1: Int = 40_000
 
 pub const max_transition_step_count_v1: Int = 40_000
 
-pub const max_validation_trace_count_v1: Int = 20_000
-
 fn root_matches_count_v1(root: ByteArray, count: Int) -> Bool {
   if count == 0 {
     root == env.empty_merkle_tree_root
@@ -255,11 +253,8 @@ pub fn header_transition_commitments_v1_are_valid(
     commitments.total_event_count <= max_total_event_count_v1,
     commitments.transition_step_count >= 0,
     commitments.transition_step_count <= max_transition_step_count_v1,
-    commitments.validation_trace_count >= 0,
-    commitments.validation_trace_count <= max_validation_trace_count_v1,
     commitments.total_event_count == commitments.withdrawal_count + commitments.forced_transaction_count + commitments.l2_transaction_count + commitments.deposit_count,
     commitments.transition_step_count == commitments.total_event_count,
-    commitments.validation_trace_count == commitments.forced_transaction_count + commitments.l2_transaction_count,
     root_matches_count_v1(
       commitments.forced_transactions_root,
       commitments.forced_transaction_count,
@@ -272,10 +267,10 @@ pub fn header_transition_commitments_v1_are_valid(
       commitments.event_to_step_root,
       commitments.total_event_count,
     ),
-    root_matches_count_v1(
-      commitments.validation_traces_root,
-      commitments.validation_trace_count,
-    ),
+    // A block commits each transaction's leaf verdict and no validation-trace
+    // descriptor, so the pair is pinned to the empty tree.
+    commitments.validation_traces_root == env.empty_merkle_tree_root,
+    commitments.validation_trace_count == 0,
   }
 }
 

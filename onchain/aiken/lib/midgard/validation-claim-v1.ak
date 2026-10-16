@@ -1,7 +1,6 @@
 use aiken/builtin
 use aiken/cbor
 use aiken/crypto.{blake2b_256}
-use aiken/primitive/bytearray
 use midgard/fraud_proofs/native_tx/compact.{
   forced_tx_proof_commitment_v1, native_tx_proof_commitment_v1,
   verify_forced_tx_proof_source_v1, verify_native_tx_proof_source_v1,
@@ -32,10 +31,6 @@ pub type ValidationSourceMembershipV1 {
 
 pub type ValidationClaimWitnessV1 {
   version: Int,
-  descriptor_membership: transition_trace.RootMembershipProof<
-    ledger_state.EventKey,
-    validation_trace_v1.ValidationTraceDescriptorV1,
-  >,
   transition_step_membership: transition_trace.RootMembershipProof<
     Int,
     ledger_state.TransitionStep,
@@ -45,6 +40,13 @@ pub type ValidationClaimWitnessV1 {
     ledger_state.EventToStepValue,
   >,
   source_membership: ValidationSourceMembershipV1,
+}
+
+/// The event a claim disputes: the key of its authenticated event-to-step
+/// membership. The block commits no per-event descriptor, so this is the one
+/// place the claim names its event.
+pub fn claim_event_key(claim: ValidationClaimWitnessV1) -> ledger_state.EventKey {
+  claim.event_to_step_membership.key
 }
 
 const validation_context_version_v1: Int = 1
@@ -165,23 +167,6 @@ fn first_field_scan_witness(
     0,
     -1,
     0,
-  )
-}
-
-fn verify_descriptor_membership(
-  header: ledger_state.HeaderV1,
-  membership: transition_trace.RootMembershipProof<
-    ledger_state.EventKey,
-    validation_trace_v1.ValidationTraceDescriptorV1,
-  >,
-) -> Bool {
-  transition_trace.verify_root_membership_with_bytes(
-    membership,
-    transition_trace.ValidationTracesRootDomain,
-    header.validation_traces_root,
-    header.validation_trace_count,
-    cbor.serialise(membership.key),
-    cbor.serialise(membership.value),
   )
 }
 
@@ -307,29 +292,24 @@ fn phase_for_event_key(
 }
 
 /// Authenticates the block-owned roots and the transition location only. The
-/// initial-state and verdict checks deliberately happen in the following
-/// source step, so a committed initial state that is not the derived one is
-/// itself a unilateral fault instead of making an honest challenge impossible
-/// to open.
+/// source is authenticated by the following source step.
 pub fn committed_claim_structure_is_valid(
   header: ledger_state.HeaderV1,
   witness: ValidationClaimWitnessV1,
 ) -> Bool {
-  let event_key = witness.descriptor_membership.key
+  let event_key = claim_event_key(witness)
   let transition_step = witness.transition_step_membership.value
   let event_to_step = witness.event_to_step_membership.value
 
   and {
     witness.version == claim_version,
     header.protocol_version == ledger_state.protocol_version_v1,
-    verify_descriptor_membership(header, witness.descriptor_membership),
     verify_transition_step_membership(
       header,
       witness.transition_step_membership,
     ),
     verify_event_to_step_membership(header, witness.event_to_step_membership),
     witness.transition_step_membership.key == event_to_step.step_index,
-    witness.event_to_step_membership.key == event_key,
     transition_step.event_key == event_key,
     transition_step.phase == phase_for_event_key(event_key),
     transition_step.phase == event_to_step.phase,
@@ -344,7 +324,7 @@ pub fn committed_claim_source_witness_set(
 ) -> Option<NativeTxWitnessSetCompact> {
   authenticated_source_witness_set(
     header,
-    witness.descriptor_membership.key,
+    claim_event_key(witness),
     witness.source_membership,
   )
 }
@@ -361,7 +341,7 @@ pub fn committed_claim_source_is_authenticated(
 
 /// Rule R-DESC: only a normal transaction with a non-empty redeemer field
 /// (witness-set field 8) runs Plutus, so only it has a real trace to dispute.
-/// Decided from the authenticated source bytes, never from the descriptor.
+/// Decided from the authenticated source bytes.
 pub fn source_requires_trace(
   source: ValidationSourceMembershipV1,
   witness_set: NativeTxWitnessSetCompact,
@@ -373,52 +353,6 @@ pub fn source_requires_trace(
   }
 }
 
-/// The operator descriptor's committed initial state is the derived one, so
-/// the dispute's agreed low state (the descriptor's `initial_state_hash`) is
-/// the derived state's hash.
-///
-/// The header and step guards come first: they keep a context or root the
-/// machine cannot represent a refusal (the challenger wins) rather than a
-/// failure inside the state encoder. `block_slot` needs no guard (state-queue
-/// R3 bounds it to the slot domain), and the source's `tx_id` is 32 bytes once
-/// `committed_claim_source_is_authenticated` holds.
-pub fn committed_initial_state_is_derived(
-  header: ledger_state.HeaderV1,
-  witness: ValidationClaimWitnessV1,
-) -> Bool {
-  let transition_step = witness.transition_step_membership.value
-  and {
-    header.expected_network_id == 0 || header.expected_network_id == 1,
-    header.min_fee_a >= 0,
-    header.min_fee_b >= 0,
-    bytearray.length(transition_step.pre_utxos_root) == 32,
-    witness.descriptor_membership.value.initial_state_hash == validation_trace_v1.hash_machine_state(
-      derive_initial_state(
-        header,
-        transition_step.event_key,
-        witness.source_membership,
-        transition_step.pre_utxos_root,
-      ),
-    ),
-  }
-}
-
-pub fn committed_claim_endpoints_and_source_are_valid(
-  header: ledger_state.HeaderV1,
-  witness: ValidationClaimWitnessV1,
-) -> Bool {
-  let descriptor = witness.descriptor_membership.value
-  let transition_step = witness.transition_step_membership.value
-  and {
-    committed_initial_state_is_derived(header, witness),
-    if descriptor.verdict == validation_trace_v1.Rejected {
-      transition_step.pre_utxos_root == transition_step.post_utxos_root
-    } else {
-      True
-    },
-  }
-}
-
 pub fn committed_claim_is_valid(
   header: ledger_state.HeaderV1,
   witness: ValidationClaimWitnessV1,
@@ -426,6 +360,5 @@ pub fn committed_claim_is_valid(
   and {
     committed_claim_structure_is_valid(header, witness),
     committed_claim_source_is_authenticated(header, witness),
-    committed_claim_endpoints_and_source_are_valid(header, witness),
   }
 }

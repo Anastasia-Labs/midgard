@@ -20,10 +20,7 @@ import {
   transitionStepFixture,
   value,
 } from "./sdk-abi-fixtures.header-fixture.js";
-import {
-  sourceKeyOpeningFixtures,
-  validationRunFaultFixtures,
-} from "./sdk-abi-fixtures.validation-run-fixtures.js";
+import { sourceKeyOpeningFixtures } from "./sdk-abi-fixtures.validation-run-fixtures.js";
 
 export const buildTransitionTraceAbiFixtures = (): Record<
   string,
@@ -177,7 +174,6 @@ export const buildTransitionTraceAbiFixtures = (): Record<
     },
   } satisfies Record<string, SDK.TransitionSourceNonMembershipProof>;
   const transitionFaults: Record<string, SDK.TransitionFault> = {
-    ...validationRunFaultFixtures(l2SourceMembership),
     "transition-fault.trace-boundary": SDK.traceBoundaryFault({
       side: "TraceStart",
       traceProof,
