@@ -6,7 +6,9 @@ import {
   nextScriptDecodeWalkStep,
   type ScriptDecodeRecord,
   scriptDecodeScriptHash,
+  type ScriptDecodeWalkCursor,
   scriptDecodeWalkRecord,
+  type ScriptDecodeWalkStep,
   startScriptDecodeWalk,
 } from "@al-ft/midgard-validation";
 import type { LucidEvolution, UTxO } from "@lucid-evolution/lucid";
@@ -20,11 +22,11 @@ import {
   stageScriptDecodeBytes,
 } from "./submit.js";
 
-/** Ticks the first Walk takes before the budget it uses is measured. */
+/** Ticks the first Walk tries before the budget it uses is measured. */
 export const SCRIPT_DECODE_INITIAL_FUEL = 32;
 
-/** The share of each transaction budget a Walk aims to use. */
-const BUDGET_TARGET = 0.85;
+/** The most builds tried for one Walk while searching its fuel. */
+const MAX_FUEL_TRIES = 16;
 
 /** One submitted Walk. */
 export type ScriptDecodeWalkReport = Readonly<{
@@ -51,33 +53,94 @@ export const findScriptDecodeRecord = async ({
   return records[0];
 };
 
-const budgetLimits = (lucid: LucidEvolution) => {
+const ledgerLimits = (lucid: LucidEvolution) => {
   const protocol = lucid.config().protocolParameters;
   if (protocol === undefined) {
     throw new Error("script decode: the walk needs ledger parameters");
   }
-  return { mem: protocol.maxTxExMem, steps: protocol.maxTxExSteps };
+  return {
+    mem: protocol.maxTxExMem,
+    steps: protocol.maxTxExSteps,
+    bytes: protocol.maxTxSize,
+  };
 };
 
-/** The fuel the next Walk takes, scaled from what the last one used. */
-const nextFuel = (
-  fuel: number,
-  used: ScriptDecodeExUnits,
-  limits: { readonly mem: bigint; readonly steps: bigint },
-): number => {
-  const share = Math.max(
+type Limits = ReturnType<typeof ledgerLimits>;
+
+/** The larger share of a transaction's budget a Walk used. */
+const budgetShare = (used: ScriptDecodeExUnits, limits: Limits): number =>
+  Math.max(
     Number(used.mem) / Number(limits.mem),
     Number(used.steps) / Number(limits.steps),
   );
-  const scaled = Math.floor((fuel * BUDGET_TARGET) / Math.max(share, 1e-6));
-  return Math.max(1, Math.min(scaled, fuel * 2));
+
+type Built = Awaited<ReturnType<typeof buildScriptDecodeWalk>>;
+
+type Fitted = Readonly<{
+  fuel: number;
+  next: ScriptDecodeWalkCursor;
+  built: Built;
+}>;
+
+/**
+ * The Walk from `cursor` with the most ticks that still builds: within the
+ * ledger's execution and size limits, and accepted by the local evaluation
+ * of the validator. The search starts at `guess`, scales up from what a
+ * built Walk used, and halves the gap after a Walk that does not build.
+ * Throws the last build error when not even one tick builds.
+ */
+const fitWalk = async (
+  cursor: ScriptDecodeWalkCursor,
+  guess: number,
+  limits: Limits,
+  build: (step: ScriptDecodeWalkStep) => Promise<Built>,
+): Promise<Fitted> => {
+  let best: Fitted | undefined;
+  let failed = Number.POSITIVE_INFINITY;
+  let lastError: unknown;
+  let fuel = Math.max(1, guess);
+  for (let tries = 0; tries < MAX_FUEL_TRIES; tries += 1) {
+    const { step, next } = nextScriptDecodeWalkStep(cursor, fuel);
+    let built: Built | undefined;
+    try {
+      built = await build(step);
+      if (BigInt(built.txBytes) > BigInt(limits.bytes)) {
+        throw new Error("script decode: the Walk exceeds the size limit");
+      }
+    } catch (error) {
+      built = undefined;
+      lastError = error;
+    }
+    if (built === undefined) {
+      failed = fuel;
+    } else {
+      best = { fuel, next, built };
+      // A finished walk takes no more ticks, whatever the fuel.
+      if (scriptDecodeWalkRecord(next) !== undefined) break;
+    }
+    const known = best?.fuel ?? 0;
+    if (failed <= known + 1) break;
+    if (best === undefined) {
+      fuel = Math.max(1, Math.floor(fuel / 2));
+      continue;
+    }
+    const share = budgetShare(best.built.exUnits, limits);
+    const scaled = Math.floor(best.fuel / Math.max(share, 1e-6));
+    const ceiling = Number.isFinite(failed) ? failed - 1 : 2 * known;
+    fuel =
+      built === undefined
+        ? Math.floor((known + failed) / 2)
+        : Math.min(Math.max(scaled, known + 1), ceiling);
+  }
+  if (best === undefined) throw lastError;
+  return best;
 };
 
 /**
  * The record UTxO of `scriptBytes` in `language`, minting it if there is none
- * yet. Each Walk's fuel adapts to the budget the previous one used, and halves
- * when a Walk cannot be built. With `maxWalks`, a walk that needs more Walks
- * than that throws instead of submitting the next one.
+ * yet. Each Walk takes the most ticks that build within the ledger's limits
+ * (`fitWalk`). With `maxWalks`, a walk that needs more Walks than that throws
+ * instead of submitting the next one.
  */
 export const recordScriptDecode = async ({
   lucid,
@@ -109,7 +172,7 @@ export const recordScriptDecode = async ({
   if (existing !== undefined) {
     return { recordUtxo: existing, record: undefined, walks: [] };
   }
-  const limits = budgetLimits(lucid);
+  const limits = ledgerLimits(lucid);
   const staging = await stageScriptDecodeBytes({ lucid, scriptBytes });
   let cursor = startScriptDecodeWalk(language, scriptBytes);
   let runUtxo = await bindScriptDecodeRun({
@@ -129,27 +192,26 @@ export const recordScriptDecode = async ({
         `script decode: the walk needs more than ${maxWalks.toString()} Walks`,
       );
     }
-    const { step, next } = nextScriptDecodeWalkStep(cursor, fuel);
-    let built: Awaited<ReturnType<typeof buildScriptDecodeWalk>>;
-    try {
-      built = await buildScriptDecodeWalk({
+    const spent = runUtxo;
+    const fitted = await fitWalk(cursor, fuel, limits, (step) =>
+      buildScriptDecodeWalk({
         lucid,
         deployment,
         scriptHashHex,
-        runUtxo,
+        runUtxo: spent,
         staging,
         step,
-      });
-    } catch (error) {
-      if (fuel === 1) throw error;
-      fuel = Math.floor(fuel / 2);
-      continue;
-    }
-    runUtxo = await built.submit();
-    walks.push({ fuel, exUnits: built.exUnits, txBytes: built.txBytes });
-    cursor = next;
+      }),
+    );
+    runUtxo = await fitted.built.submit();
+    walks.push({
+      fuel: fitted.fuel,
+      exUnits: fitted.built.exUnits,
+      txBytes: fitted.built.txBytes,
+    });
+    cursor = fitted.next;
     record = scriptDecodeWalkRecord(cursor);
-    fuel = nextFuel(fuel, built.exUnits, limits);
+    fuel = fitted.fuel;
   }
   const recordUtxo = await finishScriptDecodeRun({
     lucid,
