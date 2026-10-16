@@ -117,8 +117,17 @@ export type AikenStepArguments = {
   readonly witness: Uint8Array;
 };
 
-/** The adjudicator returned True, returned False, or failed. */
-export type AikenVerdict = "accepted" | "refused" | "failed";
+/**
+ * The adjudicator returned True, returned False, went over the evaluator's
+ * budget (the Cardano per-transaction maximum), or failed otherwise.
+ */
+export type AikenVerdict = "accepted" | "refused" | "overBudget" | "failed";
+
+/**
+ * The evaluator's report of a run stopped by its budget. The CLI exits 1 for
+ * every failure and tells a budget stop apart only in this line.
+ */
+const OVER_BUDGET_REPORT = "execution went over budget";
 
 /**
  * Items per evaluation. The pinned evaluator's start-up (reading the 75 KB
@@ -194,7 +203,13 @@ export const makeAikenStepOracle = (): AikenStepOracle => {
       return batch.items.map(verdictOf);
     }
     // One failing step fails the whole list; split it to find that step.
-    if (steps.length === 1) return ["failed"];
+    if (steps.length === 1) {
+      return [
+        batch.kind === "failed" && batch.output.includes(OVER_BUDGET_REPORT)
+          ? "overBudget"
+          : "failed",
+      ];
+    }
     const half = Math.ceil(steps.length / 2);
     return [
       ...verifyBatch(steps.slice(0, half)),

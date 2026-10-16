@@ -20,6 +20,10 @@ import {
   MIDGARD_CEK_TX_BUDGET,
   prepareMidgardCekProgram,
 } from "../helpers/cek-uplc-terms.js";
+import {
+  type CataloguedClass,
+  cataloguedClassOf,
+} from "./cek-step-fuzz.catalogue.js";
 import type {
   AikenStepArguments,
   AikenStepOracle,
@@ -31,7 +35,9 @@ import type { CekStepFuzzProgram } from "./cek-step-fuzz.programs.js";
  * One case end to end: the TypeScript builder runs the program in proof
  * mode; a deterministic sample of its steps, and one perturbed copy per
  * negative twist, goes to the Aiken machine; every disagreement is a
- * divergence. Step arguments are built through the step codecs
+ * divergence, except a genuine step in a catalogued class
+ * (`cek-step-fuzz.catalogue.ts`) that the Aiken machine does not accept,
+ * which is counted under its class. Step arguments are built through the step codecs
  * (`midgardCekMachineStateData`, `midgardCekCoreStepWitnessData`), so a state
  * format change reaches both sides without touching this file.
  */
@@ -86,12 +92,16 @@ export type SampledStep = {
   readonly builtin: number | null;
   /** The negative twist applied, or null for a genuine step. */
   readonly twist: string | null;
+  /** The catalogued class of the step under an Aiken verdict. */
+  readonly classify: (verdict: AikenVerdict) => CataloguedClass | null;
   readonly arguments: AikenStepArguments;
   readonly postHash: string;
 };
 
 export type PreparedCase = {
   readonly program: CekStepFuzzProgram;
+  /** The seed of the step sample. */
+  readonly sampleSeed: number;
   readonly totalSteps: number;
   readonly stopReason: MidgardCekStructuralExecution["stopReason"] | "threw";
   readonly sampled: readonly SampledStep[];
@@ -144,6 +154,10 @@ const sampleOf = (
   kind: step.witness.kind,
   builtin: executedBuiltin(step),
   twist,
+  classify: (verdict) =>
+    twist === null
+      ? cataloguedClassOf(step, executedBuiltin(step), verdict)
+      : null,
   arguments: stepArguments(step),
   postHash: hashMidgardCekMachineState(step.post).toString("hex"),
 });
@@ -159,12 +173,25 @@ export const prepareCase = (
   } catch (cause) {
     return {
       program,
+      sampleSeed,
       totalSteps: 0,
       stopReason: "threw",
       sampled: [],
       local: [`the builder threw: ${String(cause)}`],
     };
   }
+  return prepareExecution(program, execution, sampleSeed);
+};
+
+/**
+ * Picks the steps of an execution the builder already ran to adjudicate.
+ * `program` names the case.
+ */
+export const prepareExecution = (
+  program: CekStepFuzzProgram,
+  execution: MidgardCekStructuralExecution,
+  sampleSeed: number,
+): PreparedCase => {
   const steps = execution.steps;
   const local: string[] = [];
   const sampled = chooseSteps(steps, sampleSeed).map((index) => {
@@ -188,6 +215,7 @@ export const prepareCase = (
   }
   return {
     program,
+    sampleSeed,
     totalSteps: steps.length,
     stopReason: execution.stopReason,
     sampled,
@@ -199,6 +227,8 @@ export const prepareCase = (
 export type AdjudicatedStep = SampledStep & {
   readonly verdict: AikenVerdict;
   readonly aikenPostHash: string | null;
+  /** The catalogued class of a genuine step the Aiken machine refused. */
+  readonly catalogued: CataloguedClass | null;
 };
 
 export type CaseResult = {
@@ -214,7 +244,9 @@ const divergenceOf = (step: AdjudicatedStep): string | null => {
       ? `${at}: Aiken accepts twist ${step.twist}`
       : null;
   }
-  if (step.verdict !== "accepted") return `${at}: Aiken ${step.verdict}`;
+  if (step.verdict !== "accepted") {
+    return step.catalogued === null ? `${at}: Aiken ${step.verdict}` : null;
+  }
   return step.aikenPostHash === step.postHash
     ? null
     : `${at}: Aiken post hash ${String(step.aikenPostHash)}, TypeScript ${step.postHash}`;
@@ -232,11 +264,15 @@ export const adjudicateCases = (
   const hashOf = new Map(genuine.map((step, index) => [step, hashes[index]]));
   let cursor = 0;
   return cases.map((prepared) => {
-    const steps = prepared.sampled.map((step) => ({
-      ...step,
-      verdict: verdicts[cursor++] ?? "failed",
-      aikenPostHash: hashOf.get(step) ?? null,
-    }));
+    const steps = prepared.sampled.map((step) => {
+      const verdict = verdicts[cursor++] ?? "failed";
+      return {
+        ...step,
+        verdict,
+        aikenPostHash: hashOf.get(step) ?? null,
+        catalogued: step.classify(verdict),
+      };
+    });
     return {
       prepared,
       steps,

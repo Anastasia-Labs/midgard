@@ -22,6 +22,11 @@ export type CekStepFuzzVector = {
   /** The script context's Plutus Data CBOR, hex. */
   readonly contextCbor: string;
   readonly tightBudget: boolean;
+  /**
+   * The seed of the step sample that found the vector; absent, the vector's
+   * index in the corpus.
+   */
+  readonly sampleSeed?: number;
 };
 
 const CORPUS_URL = new URL("./cek-step-fuzz.corpus.json", import.meta.url);
@@ -46,7 +51,10 @@ export const recordCorpusVectors = (
     vectors: [...readCorpus(), ...vectors],
   });
 
-export const vectorOf = (program: CekStepFuzzProgram): CekStepFuzzVector => ({
+export const vectorOf = (
+  program: CekStepFuzzProgram,
+  sampleSeed: number,
+): CekStepFuzzVector => ({
   label: program.label,
   programFlat: Buffer.from(
     encodeMidgardCekCardanoFlatProgram(
@@ -57,6 +65,7 @@ export const vectorOf = (program: CekStepFuzzProgram): CekStepFuzzVector => ({
     encodeMidgardCekPlutusData(program.context),
   ).toString("hex"),
   tightBudget: program.tightBudget,
+  sampleSeed,
 });
 
 export const programOf = (vector: CekStepFuzzVector): CekStepFuzzProgram => ({
