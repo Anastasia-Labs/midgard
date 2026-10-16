@@ -28,9 +28,9 @@ const field_chunk_auxiliary_cbor =
 const field_chunk_preimage =
   #"8158268258201111111111111111111111111111111111111111111111111111111111111111190000"
 
-const raw_utxo_auxiliary_cbor = #"d87a9f0200d87a9f01ffff"
+const raw_utxo_auxiliary_cbor = #"d87a9f0600d87a9f01ffff"
 
-const certified_auxiliary_cbor = #"d87a9f0200d87b9f039f0102ffffff"
+const certified_auxiliary_cbor = #"d87a9f0600d87b9f039f0102ffffff"
 
 const evidence_hash =
   #"f3524eb09ccaa6c8a05879a7286fed60d9ef9afa2ef5c5969f2c8b6208304436"
@@ -124,13 +124,13 @@ test typescript_generated_field_chunk_auxiliary_is_exact() {
 }
 
 /// #600. The same emitted constructor at tier 2, where §8.4's partition puts a
-/// 14778-byte field-2 preimage.
+/// 14778-byte field-6 preimage.
 ///
 /// This is the vector the trace producer could not build before: the tier is
 /// resolved at evidence commitment against a concrete transaction's
 /// canonically-sorted reference-input set, so the auxiliary names a **positional
 /// reference-input index** and carries no preimage at all. That is what makes
-/// stage-4 evidence O(1) in output size — the property
+/// stage-4 evidence O(1) in field size — the property
 /// `validation_machine_v1.ak:9189-9192` states and C21-STAGE4 protects — and it
 /// is checked here as a byte length rather than asserted: 11 bytes for a
 /// field of 14778.
@@ -152,14 +152,14 @@ test typescript_generated_raw_utxo_carriage_auxiliary_is_exact() {
   and {
     // O(1) in field size: a tier-2 carriage is one integer.
     bytearray.length(raw_utxo_auxiliary_cbor) == 11,
-    field_index == 2,
+    field_index == 6,
     item_index == 0,
     carriage == RawUtxo { ref_input_index: 1 },
   }
 }
 
 /// #600. The same emitted constructor at tier 3, where §8.4's partition puts a
-/// 16388-byte field-2 preimage — above `chunk_bytes_k`, so the preimage is
+/// 16388-byte field-6 preimage — above `chunk_bytes_k`, so the preimage is
 /// split into 2 deterministic chunks with one §8.6 digest manifest.
 ///
 /// `chunk_ref_input_indices` is all-chunks-positional and its **order** is the
@@ -182,7 +182,7 @@ test typescript_generated_certified_carriage_auxiliary_is_exact() {
     // O(1) in field size at the top of the ladder too: at most three indices
     // plus the manifest's, whatever the preimage weighs.
     bytearray.length(certified_auxiliary_cbor) == 15,
-    field_index == 2,
+    field_index == 6,
     item_index == 0,
     carriage == Certified {
       cert_ref_input_index: 3,
