@@ -7,7 +7,9 @@ import {
   realpathSync,
   rmSync,
   lstatSync,
+  readFileSync,
 } from "node:fs";
+import { createRequire } from "node:module";
 import { relative, resolve } from "node:path";
 
 import { matchesAny } from "../preflight/derive.mjs";
@@ -38,8 +40,15 @@ export { artifactChannels, channelIdentity } from "./channels.mjs";
 
 export const dependencyPins = (root) => {
   const pins = new Map();
+  const configPath = resolve(root, "demo/pnpm-workspace.yaml");
+  const overrides = existsSync(configPath)
+    ? createRequire(new URL("../../demo/package.json", import.meta.url))(
+        "yaml",
+      ).parse(readFileSync(configPath, "utf8"))?.overrides
+    : undefined;
   const packages = [
     ...workspacePackages(root),
+    { name: "workspace overrides", dependencies: overrides },
     ...(existsSync(resolve(root, "demo/package.json"))
       ? [json(resolve(root, "demo/package.json"))]
       : []),
@@ -48,7 +57,6 @@ export const dependencyPins = (root) => {
     for (const [name, value] of Object.entries({
       ...pkg.dependencies,
       ...pkg.devDependencies,
-      ...pkg.pnpm?.overrides,
     })) {
       if (typeof value !== "string") continue;
       if (

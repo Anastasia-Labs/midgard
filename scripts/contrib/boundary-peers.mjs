@@ -23,6 +23,9 @@ export const preparePeerConsumer = (root, pkg, consumer) => {
   };
   if (external.length) {
     const yaml = createRequire(resolve(root, "demo/package.json"))("yaml");
+    const config = yaml.parse(
+      readFileSync(resolve(root, "demo/pnpm-workspace.yaml"), "utf8"),
+    );
     const lock = yaml.parse(
       readFileSync(resolve(root, "demo/pnpm-lock.yaml"), "utf8"),
     );
@@ -46,10 +49,15 @@ export const preparePeerConsumer = (root, pkg, consumer) => {
         entry.specifier,
       ]),
     );
-    manifest.pnpm = workspace.pnpm;
-    for (const patch of Object.values(
-      workspace.pnpm?.patchedDependencies ?? {},
-    )) {
+    writeFileSync(
+      resolve(consumer, "pnpm-workspace.yaml"),
+      yaml.stringify({
+        packages: ["."],
+        patchedDependencies: config.patchedDependencies,
+        overrides: config.overrides,
+      }),
+    );
+    for (const patch of Object.values(config.patchedDependencies ?? {})) {
       const destination = resolve(consumer, patch);
       if (relative(consumer, destination).startsWith(".."))
         throw new Error(`patch leaves peer consumer: ${patch}`);

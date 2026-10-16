@@ -242,7 +242,7 @@ bytes. Clean reproduction rechecks both owners after all artifact checks, so
 a later build or generator cannot silently erase an earlier native result.
 
 Guarded children use Corepack to select each project's declared package manager,
-including bare `pnpm --dir ...` inside nested recipes. The demo pins pnpm 9 and
+including bare `pnpm --dir ...` inside nested recipes. The demo pins pnpm 11 and
 the docs site pins pnpm 10; an ambient executable cannot select their version.
 Corepack must be available. Source folders named `build`, `target` or `dist`
 remain inputs; generated outputs are excluded only at their owning project.

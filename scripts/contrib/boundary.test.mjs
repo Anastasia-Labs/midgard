@@ -1,6 +1,12 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  renameSync,
+  writeFileSync,
+} from "node:fs";
 import { resolve } from "node:path";
 import test from "node:test";
 
@@ -14,7 +20,10 @@ import {
   outputIdentity,
 } from "./files.mjs";
 import { fixture as bareFixture } from "./fixture.test-support.mjs";
-import { runtimeSurfaces } from "./installed-boundary.mjs";
+import {
+  probeInstalledPackage,
+  runtimeSurfaces,
+} from "./installed-boundary.mjs";
 import { verifyReceipt } from "./receipts.mjs";
 import { withResource } from "./resources.mjs";
 
@@ -31,12 +40,14 @@ const fixture = (t) => {
     JSON.stringify({
       name: "boundary-fixture",
       private: true,
-      packageManager: "pnpm@9.15.4",
+      packageManager: JSON.parse(
+        readFileSync(new URL("../../demo/package.json", import.meta.url)),
+      ).packageManager,
     }),
   );
   writeFileSync(
     resolve(root, "demo/pnpm-workspace.yaml"),
-    'packages:\n  - "*"\n',
+    'packages:\n  - "*"\nforceLegacyDeploy: true\n',
   );
   const path = resolve(root, "demo/example/package.json");
   const pkg = JSON.parse(readFileSync(path));
@@ -119,6 +130,51 @@ test("boundary imports resolve against the selected root from another cwd", asyn
   const receipt = await checkBoundaries(root, "example");
   assert.equal(receipt.status, "passed");
   assert.equal(verifyReceipt(root, receipt.path).status, "passed");
+});
+
+test("nested workspace deployment keeps dependency bins inside the consumer", async (t) => {
+  const base = fixture(t);
+  const root = resolve(base, "a/b/c");
+  mkdirSync(root, { recursive: true });
+  renameSync(resolve(base, "demo"), resolve(root, "demo"));
+  const dependency = resolve(root, "demo/bin-dependency");
+  mkdirSync(dependency);
+  writeFileSync(
+    resolve(dependency, "package.json"),
+    JSON.stringify({
+      name: "bin-dependency",
+      version: "1.0.0",
+      bin: { "fixture-cli": "bin.js" },
+    }),
+  );
+  writeFileSync(resolve(dependency, "bin.js"), "#!/usr/bin/env node\n");
+  const path = resolve(root, "demo/example/package.json");
+  const pkg = JSON.parse(readFileSync(path));
+  pkg.dependencies = { "bin-dependency": "workspace:*" };
+  pkg.exports = { ".": "./dist/index.js" };
+  writeFileSync(path, JSON.stringify(pkg));
+  install(root);
+  const result = await probeInstalledPackage({
+    root,
+    pkg: { ...pkg, directory: "demo/example" },
+    directory: resolve(base, "deployment"),
+    env: process.env,
+  });
+  assert.equal(result.reason, undefined);
+  assert.ok(result.steps.every((step) => step.exitCode === 0 && !step.reason));
+  const installation = JSON.parse(
+    readFileSync(resolve(base, "deployment/installation.json")),
+  );
+  assert.ok(
+    installation.before.files[
+      "node_modules/example/node_modules/.bin/fixture-cli"
+    ],
+  );
+  assert.equal(
+    existsSync(resolve(base, "a/deployment")),
+    false,
+    "deploy must not write bins using workspace-relative paths at a package root",
+  );
 });
 
 test("boundary refuses a broken advertised require target even when its ESM target loads", async (t) => {

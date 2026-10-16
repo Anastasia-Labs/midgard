@@ -9,7 +9,7 @@ export const pinnedPnpmEnvironment = (env) => ({
 });
 
 // Corepack selects the immutable packageManager pin from this working
-// directory. A pnpm 10 docs process must not run the pnpm 9 demo recipes.
+// directory. A pnpm 10 docs process must not run the pnpm 11 demo recipes.
 export const pinnedPnpm = (cwd, args) => ({
   argv: ["corepack", "pnpm", ...args],
   cwd,
