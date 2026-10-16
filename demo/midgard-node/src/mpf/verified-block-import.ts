@@ -185,8 +185,9 @@ export const verifyAndImportBlock = (
     const replayRoot = yield* computeLedgerMpfRootFromLedgerEntries(entries);
     if (replayRoot !== input.header.utxosRoot)
       return yield* fail("invalid", "foreign replay UTxO root mismatch");
-    // Replay compares every transition, mapping and validation descriptor by its
-    // canonical bytes, independently of the payload's internally consistent roots.
+    // Replay compares every transition and mapping by its canonical bytes,
+    // independently of the payload's internally consistent roots; validation
+    // descriptors, which the header does not commit, only by verdict.
     return { headerHash: input.headerHash, root: replayRoot, entries };
   }).pipe(
     Effect.catchAllDefect((cause) =>

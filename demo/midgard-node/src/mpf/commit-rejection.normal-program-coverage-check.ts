@@ -43,16 +43,16 @@ const BLOCK_PROGRAM_MATERIAL_LIMITS: BlockProgramMaterialLimits = {
  *
  * - per transaction, its programs, collected against the state immediately
  *   before it, verify against the block material within the per-bundle
- *   node-visit and byte-work bounds
- *   (`verified-block-import.program-material.ts:41`). Here they verify
- *   against the transaction's own sidecar alone, with every entry reached,
- *   so a failure is the transaction's own and it is rejected;
+ *   node-visit and byte-work bounds (`importedEventProgramSidecar` in
+ *   `@al-ft/midgard-fault-proofs` block replay). Here they verify against
+ *   the transaction's own sidecar alone, with every entry reached, so a
+ *   failure is the transaction's own and it is rejected;
  * - block-wide, the merged material stays within the node-count and byte
  *   bounds of `normalizeProgramMaterial`, which the same call applies to the
- *   whole block material, and every entry is reached
- *   (`verified-block-import.replay-events.ts:296`), which every kept
- *   transaction's own check ensures for its entries. A transaction whose
- *   entries would take the kept ones past the bounds is deferred.
+ *   whole block material. Every entry is also reached, which every kept
+ *   transaction's own check ensures for its entries (import ignores an entry
+ *   no event reaches). A transaction whose entries would take the kept ones
+ *   past the bounds is deferred.
  */
 export const normalProgramCoverageCheck = (
   preState: ReadonlyMap<string, Buffer>,
