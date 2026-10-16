@@ -834,7 +834,7 @@ test("ordinary package scripts preserve Vitest selectors, reporters, CI environm
   const root = realpathSync(fixture(t));
   const cwd = resolve(root, "demo/example");
   const vitest = realpathSync(
-    resolve(repository, "demo/l1-node-transport/node_modules/vitest"),
+    resolve(repository, "demo/node_modules/vitest"),
   );
   mkdirSync(resolve(cwd, "node_modules"));
   symlinkSync(vitest, resolve(cwd, "node_modules/vitest"));
