@@ -6,7 +6,7 @@
   },
   {
     "file": "../.agents/skills/committing-safely/scripts/commit-paths.test.mjs",
-    "max": 739,
+    "max": 694,
     "reason": "A suite shares temporary Git-repository fixtures and process assertions across commit-path refusal/success cases. Preserve fixture lifetime and cleanup; dividing it needs a separately reviewed test-harness extraction."
   },
   {
@@ -616,7 +616,7 @@
   },
   {
     "file": "midgard-node-tools/devnet/phase4-process/tests/assets.test.mjs",
-    "max": 639,
+    "max": 635,
     "reason": "runCaptureSnapshot is the dominant indivisible declaration (137 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
   },
   {
@@ -736,7 +736,7 @@
   },
   {
     "file": "midgard-node/scripts/generate-transaction-root-v1-fixture.mjs",
-    "max": 678,
+    "max": 666,
     "reason": "makeAiken is the dominant indivisible declaration (200 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
   },
   {
@@ -1376,7 +1376,7 @@
   },
   {
     "file": "scripts/deployment-profiles.mjs",
-    "max": 595,
+    "max": 589,
     "reason": "validateProfile is the dominant indivisible declaration (273 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. C1 (+80): the stage-0 allow-lists (validation, placeholder marker, Option<List<ByteArray>> rendering) and the excluded fraud-proof categories; canonicalJson keeps arrays as arrays. C1 adds the curated emulator-only profile. Profile identity extraction (-15) moved the identity helpers out. Deployment budget arithmetic extraction (-95) moved the budget calculations out."
   },
   {
