@@ -4,8 +4,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-
-import { assertPinnedAiken, defaultAikenBinary } from "./pinned-compiler.mjs";
+import { aikenBinary } from "../../../scripts/lib/aiken.mjs";
 
 const BENCHMARK_VERSION = "1.0.0";
 const DEFAULT_MAX_SIZE = 1;
@@ -167,10 +166,8 @@ const getGitCommit = () => {
   return result.stdout.trim() || "unknown";
 };
 
-const aikenBinary = defaultAikenBinary();
-
 const getAikenVersion = () => {
-  const result = run(aikenBinary, ["--version"], projectDir);
+  const result = run(aikenBinary(), ["--version"], projectDir);
   if (result.status !== 0) {
     return "unknown";
   }
@@ -307,10 +304,8 @@ const printSummary = (report) => {
 
 const main = () => {
   const options = parseArgs(process.argv.slice(2));
-  // A benchmark is only a measurement of the pinned fork.
-  assertPinnedAiken(aikenBinary);
   const aikenArgs = buildAikenBenchArgs(options);
-  const benchResult = run(aikenBinary, aikenArgs, projectDir);
+  const benchResult = run(aikenBinary(), aikenArgs, projectDir);
 
   if (benchResult.status !== 0) {
     process.stdout.write(benchResult.stdout);

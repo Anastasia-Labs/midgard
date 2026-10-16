@@ -17,5 +17,6 @@ import "./operator-exit-emulator.operator-exit-emulator.js";
 import "./operator-exit-emulator.advance-shift-to-predecessor.js";
 import "./operator-exit-emulator.operator-exit-scheduler-synchronisation.js";
 import "./operator-exit-emulator.duplicate-operator-slashing.js";
+import "./operator-exit-emulator.one-slash-per-transaction.js";
 import "./operator-exit-emulator.assert-operator-not-in-directory.js";
 import "./operator-exit-emulator.derive-operator-status.js";

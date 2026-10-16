@@ -21,8 +21,6 @@ import {
   CONSTR_INDEXES,
   G1_POOL,
   G2_POOL,
-  INT64_MAX,
-  INT64_MIN,
   SIMPLE,
   UTF8_CASES,
   any,
@@ -245,28 +243,6 @@ const RANDOM_CASES = (tag) => {
   return 16;
 };
 
-// Cardano reads sliceByteString's two integers as Int64 machine Ints and fails
-// outside that range; the pinned evaluator reads them as unsigned 64-bit
-// values, clamping negatives, and aborts beyond that.
-const withSliceIntegerBound = (definition) =>
-  definition.tag === 12 &&
-  definition.args.some(
-    (argument) =>
-      argument.ty === "int" &&
-      (BigInt(argument.v) < INT64_MIN || BigInt(argument.v) > INT64_MAX),
-  )
-    ? {
-        ...definition,
-        // Plutus: the SliceByteString denotation takes `Int` arguments
-        // (plutus-core PlutusCore/Default/Builtins.hs), `Int` unlifts through
-        // `Int64`, and readKnownAsInteger fails an Integer outside its bounds
-        // (PlutusCore/Default/Universe.hs).
-        cardano: { kind: "error" },
-        reason:
-          "Cardano fails sliceByteString when an integer argument is outside Int64",
-      }
-    : definition;
-
 /**
  * Every case of the channel, in tag order: `{ tag, note, args }`, plus
  * `cardano` and `reason` where the Cardano ledger's outcome differs from the
@@ -285,5 +261,5 @@ export const buildCekBuiltinCardanoCases = () => {
     }
     for (const edge of edgeCases(tag)) cases.push({ tag, ...edge });
   }
-  return cases.map(withSliceIntegerBound);
+  return cases;
 };

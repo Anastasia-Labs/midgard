@@ -40,6 +40,8 @@ export type OperatorEconomics = {
   readonly requiredBondLovelace: bigint;
   readonly slashingPenaltyLovelace: bigint;
   readonly inactivitySlashingPenaltyLovelace: bigint;
+  /** The bounty a duplicate-registration slash pays its claimant. */
+  readonly fraudProverRewardLovelace: bigint;
 };
 
 export const configuredOperatorEconomicsProgram: Effect.Effect<
@@ -70,6 +72,7 @@ export const configuredOperatorEconomicsProgram: Effect.Effect<
     inactivitySlashingPenaltyLovelace: BigInt(
       economics.inactivitySlashingPenaltyLovelace,
     ),
+    fraudProverRewardLovelace: BigInt(economics.fraudProverRewardLovelace),
   };
 });
 

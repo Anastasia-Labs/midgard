@@ -124,8 +124,7 @@ export const buildStateQueueRemovalTx = (
 
   // D3: the fraud prover's exact reward, ADA-only, at their enterprise
   // address. Nothing is paid while the compiled reward is zero, which is the
-  // only case in which the slashing redeemer may carry a null reward index.
-  //
+  // only case in which the validator accepts no output to the prover.
   const rewardPlan = removeSlashingFraudProverReward(params.slashing);
   if (rewardPlan !== undefined) {
     tx = tx.pay.ToAddress(rewardPlan.proverEnterpriseAddress, {

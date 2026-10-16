@@ -7,6 +7,10 @@ import {
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
+import {
+  bountyClaimantAddress,
+  requireExactBountyRouting,
+} from "../bounty-routing.js";
 import { type MidgardValidators, outputReferenceFromUTxO } from "../common.js";
 import { encodeLinkedListNodeView } from "../linked-list.js";
 import {
@@ -22,6 +26,7 @@ import {
 import {
   type ExactFeeBalancePlan,
   exactFeeCompleteOptions,
+  type ExactFeeOutputPlan,
   withSettledLovelace,
 } from "./exact-fee.js";
 import {
@@ -29,6 +34,7 @@ import {
   completeInTwoPasses,
   type ContractOutput,
   exitError,
+  failExit,
   type LayoutOptions,
   LIST_STATE_TRANSITION_VOID_REDEEMER,
   OperatorExitError,
@@ -65,6 +71,13 @@ export type SlashDuplicateOperatorTxConfig =
     /** On-chain the fee must equal the slashing penalty exactly. */
     readonly slashingPenaltyLovelace: bigint;
     /**
+     * The key the bounty is paid to. It must sign the transaction, and the
+     * bounty goes to its enterprise address.
+     */
+    readonly bountyClaimantKeyHash: string;
+    /** The compiled `fraud_prover_reward`, paid to the claimant exactly. */
+    readonly fraudProverRewardLovelace: bigint;
+    /**
      * Set by `buildUnsignedSlashDuplicateOperatorTxProgram`. Callers that
      * drive `buildSlashDuplicateOperatorTx` themselves have to balance the
      * pinned fee with `planExactFeeBalance` and pass the plan here.
@@ -89,9 +102,9 @@ const updatedRegisteredAnchorDatumCbor = (
   });
 
 /**
- * The single output a slashing declares: the continued registered anchor. The
- * removed node's bond pays the penalty as the fee, and its remainder goes to
- * the submitter in the exact-fee balance's own output.
+ * The continued registered anchor. The removed node's bond pays the penalty
+ * as the fee and the bounty to the claimant (`slashBountyOutputs`); a bond
+ * holding exactly the required amount leaves nothing over.
  */
 const slashDeclaredOutputs = (
   config: SlashDuplicateOperatorTxConfig,
@@ -108,12 +121,63 @@ const slashDeclaredOutputs = (
   ),
 ];
 
+const claimantAddress = (config: SlashDuplicateOperatorTxConfig): string => {
+  const network = config.lucid.config().network;
+  if (network === undefined) {
+    throw exitError(
+      "Duplicate-operator slashing needs the network to derive the bounty address",
+      config.operatorKeyHash,
+    );
+  }
+  return bountyClaimantAddress(network, config.bountyClaimantKeyHash);
+};
+
+/**
+ * The bounty output: exactly the compiled reward, ADA only, to the claimant's
+ * enterprise address. A zero reward pays no output at all, which is the only
+ * case the validator accepts without one.
+ */
+const slashBountyOutputs = (
+  config: SlashDuplicateOperatorTxConfig,
+): readonly ExactFeeOutputPlan[] => {
+  const reward = config.fraudProverRewardLovelace;
+  if (reward === 0n) {
+    return [];
+  }
+  const output = {
+    address: claimantAddress(config),
+    assets: { lovelace: reward },
+  };
+  const settled = withSettledLovelace(
+    config.lucid,
+    output,
+    "Duplicate-operator slashing bounty",
+  );
+  if (settled.assets["lovelace"] !== reward) {
+    throw exitError(
+      `Duplicate-operator slashing bounty of ${reward.toString()} lovelace is below the minimum output`,
+      config.operatorKeyHash,
+    );
+  }
+  return [output];
+};
+
 const deriveSlashLayout = (
   config: SlashDuplicateOperatorTxConfig,
   ctx: RedeemerContext,
   anchorDatumCbor: string,
 ): SlashDuplicateOperatorRedeemerLayout => {
   const { registeredOperators } = config.contracts;
+  if (config.fraudProverRewardLovelace !== 0n) {
+    requireExactBountyRouting(
+      ctx.outputs,
+      {
+        claimantAddress: claimantAddress(config),
+        lovelace: config.fraudProverRewardLovelace,
+      },
+      "duplicate-operator slashing bounty",
+    );
+  }
   return {
     registeredAnchorNodeInputOutRef: outputReferenceFromUTxO(
       config.registeredAnchor.utxo,
@@ -185,16 +249,15 @@ const encodeSlashDuplicateRedeemer = (
       anchor_element_output_index: layout.registeredAnchorNodeOutputIndex,
       duplicate_node_ref_input_index: layout.duplicateNodeRefInputIndex,
       duplicate_operator_status: encodeDuplicateOperatorStatus(config, layout),
+      bounty_claimant: config.bountyClaimantKeyHash,
     },
   };
   return LucidData.to(redeemer, RegisteredOperatorMintRedeemer);
 };
 
 /**
- * Removes a duplicate registration and pays exactly the slashing penalty as
- * the transaction fee. Anyone may submit this, and on-chain nothing
- * constrains where the rest of the removed node's bond goes: the exact-fee
- * plan pays it to the submitter.
+ * Removes a duplicate registration, pays exactly the slashing penalty as the
+ * transaction fee and the bounty exactly to the named claimant, who signs.
  */
 export const buildSlashDuplicateOperatorTx = (
   config: SlashDuplicateOperatorTxConfig,
@@ -227,8 +290,12 @@ export const buildSlashDuplicateOperatorTx = (
         (layout) => encodeSlashDuplicateRedeemer(config, layout),
       ),
     )
+    .addSignerKey(config.bountyClaimantKeyHash)
     .setMinFee(config.slashingPenaltyLovelace);
   tx = payContractOutputs(tx, slashDeclaredOutputs(config, anchorDatumCbor));
+  for (const bounty of slashBountyOutputs(config)) {
+    tx = tx.pay.ToAddress(bounty.address, bounty.assets);
+  }
   if (config.validFrom !== undefined) {
     tx = tx.validFrom(
       safeTimeNumber(config.validFrom, "duplicate-operator slashing validFrom"),
@@ -257,6 +324,19 @@ export const buildUnsignedSlashDuplicateOperatorTxProgram = (
       config.walletInputs,
       "a duplicate-operator slashing",
     );
+    const bounty = yield* Effect.try({
+      try: () => ({
+        address: claimantAddress(config),
+        outputs: slashBountyOutputs(config),
+      }),
+      catch: (cause) =>
+        cause instanceof OperatorExitError
+          ? cause
+          : exitError(
+              `Failed to plan the duplicate-operator slashing bounty: ${String(cause)}`,
+              cause,
+            ),
+    });
     const plan =
       config.exactFeePlan ??
       (yield* planExactFee({
@@ -268,11 +348,25 @@ export const buildUnsignedSlashDuplicateOperatorTxProgram = (
           config.registeredAnchor.utxo,
           config.duplicateRegisteredNode.utxo,
         ],
-        declaredOutputs: slashDeclaredOutputs(
-          config,
-          updatedRegisteredAnchorDatumCbor(config),
-        ),
+        declaredOutputs: [
+          ...slashDeclaredOutputs(
+            config,
+            updatedRegisteredAnchorDatumCbor(config),
+          ),
+          ...bounty.outputs,
+        ],
       }));
+    // The validator accepts exactly one output to the claimant, so a
+    // remainder paid to the same address would be refused on chain.
+    if (
+      plan.remainderLovelace !== 0n &&
+      plan.remainderAddress === bounty.address
+    ) {
+      return yield* failExit(
+        `Duplicate-operator slashing would pay ${plan.remainderLovelace.toString()} lovelace of change to the bounty claimant's address; the claimant may receive only the bounty output`,
+        config.operatorKeyHash,
+      );
+    }
     return yield* completeInTwoPasses({
       label: "duplicate-operator slashing",
       operatorKeyHash: config.operatorKeyHash,

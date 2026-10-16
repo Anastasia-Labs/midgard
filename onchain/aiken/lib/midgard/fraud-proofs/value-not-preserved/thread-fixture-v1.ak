@@ -123,7 +123,7 @@ pub fn challenged_tx_v1(
 }
 
 pub fn empty_mint_v1() -> Data {
-  let empty: Data = []
+  let empty: Data = builtin.list_data([])
   empty
 }
 

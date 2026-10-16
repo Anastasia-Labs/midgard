@@ -2,6 +2,7 @@ export * from "./active-operators.js";
 export * from "./availability-challenge.js";
 export * from "./availability-challenge-operation.js";
 export * from "./availability-challenge-transactions.js";
+export * from "./bounty-routing.js";
 export * from "./cardano-addresses.js";
 export * from "./cbor.js";
 export * from "./common.js";

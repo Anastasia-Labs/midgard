@@ -54,8 +54,8 @@
  *
  * Usage, from `onchain/aiken/`:
  *
- *   MIDGARD_AIKEN_BIN=<fork> node scripts/verify-committed-field-shape-exec-ledger-v1.mjs
- *   MIDGARD_AIKEN_BIN=<fork> node scripts/verify-committed-field-shape-exec-ledger-v1.mjs --update
+ *   node scripts/verify-committed-field-shape-exec-ledger-v1.mjs
+ *   node scripts/verify-committed-field-shape-exec-ledger-v1.mjs --update
  *
  * `--update` rewrites the raw rows from the measurement and is the only way to
  * record a legitimate re-take. It absorbs measurement drift and nothing else: a

@@ -34,6 +34,7 @@ import {
 import { HISTORY_COMMIT_MINIMUM_FUTURE_BUFFER_MS } from "../src/services/history-commit-window.js";
 import { IntentJournalWithoutFollower } from "../src/services/intent-journal.js";
 import { MempoolLedgerCache } from "../src/services/mempool-ledger-cache.js";
+import { deserializeStateQueueUTxO } from "../src/workers/utils/commit-block-header.js";
 import {
   advanceEmulatorPastLatestBlockEndTime,
   advanceEmulatorPastUnixTime,
@@ -269,7 +270,13 @@ it("audits the native MPF root at the committed tip, and merges manually only un
       globals,
       headerHash: tail.headerHash!,
     });
-    return { headerHash: tail.headerHash!, endTimeMs: tail.blockEndTimeMs };
+    const node = await Effect.runPromise(
+      Effect.flatMap(deserializeStateQueueUTxO(tail.utxo), (utxo) =>
+        SDK.getStateQueueNodeFromStateQueueDatum(utxo.datum),
+      ),
+    );
+    const blockTimeMs = Number(node.block_time);
+    return { headerHash: tail.headerHash!, blockTimeMs };
   };
   // A merge may first register merge-submit due work while the local ledger
   // catches up; advance to it and retry, as the scheduled fiber would.
@@ -620,7 +627,7 @@ it("audits the native MPF root at the committed tip, and merges manually only un
     // --- Bug C: manual merges under the running node's follower write permit.
     await advanceEmulatorPastUnixTime(
       fixture,
-      mergeMaturityWindow(fixture.operatorLucid, second.endTimeMs)
+      mergeMaturityWindow(fixture.operatorLucid, second.blockTimeMs)
         .readyAfterUnixTime,
     );
     vi.setSystemTime(fixture.emulator.now());
@@ -652,8 +659,8 @@ it("audits the native MPF root at the committed tip, and merges manually only un
       globals: await makeGlobalsService(),
     });
     expect(standaloneAdmin.status).toBe(503);
-    expect(decodeMergeBody(standaloneAdmin).cause).toContain(
-      FOLLOWER_VIEW_UNAPPLIED,
+    expect(decodeMergeBody(standaloneAdmin).error_code).toBe(
+      "E_MERGE_PRODUCER_UNAVAILABLE",
     );
     expect((await queue()).blockCount).toBe(2);
     expect(await mergeJob(first.headerHash)).toBeUndefined();

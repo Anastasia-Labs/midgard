@@ -3,13 +3,15 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 
 import * as FP from "@al-ft/midgard-fault-proofs";
-import { depositEventsRetainedBlock } from "@al-ft/midgard-fault-proofs/test-support/transition-trace-retained";
 import { readPublishedDepositHistory } from "midgard-watcher/tests/support/published-deposit-history";
 import type { PublishedDepositTraceCheckpoint } from "midgard-watcher/tests/support/published-deposit-trace";
 import { beforeAll, describe, expect, it } from "vitest";
 
 import { readJourneyArtifact } from "./artifacts.js";
-import { classifyFullCatalogueTransactionFixture } from "./full-catalogue-verification.js";
+import { readCheckpointJourneyLedgerBlock } from "./journey-checkpoint-ledger.test-support.js";
+import { classifyFullCatalogueTransactionFixture } from "./journey-classification.test-support.js";
+import { depositEventsRetainedBlock } from "./journey-fixture-ledger.test-support.js";
+import { journeyLedgerPairs } from "./journey-ledger.js";
 import { buildJourneyScriptForcedFault } from "./script-cases.js";
 import {
   buildJourneyTransactionFault,
@@ -65,7 +67,14 @@ describe.skipIf(stagedPath === undefined || !existsSync(stagedPath))(
         blockSlot: staged.current.header.blockSlot,
         prevHeaderHash: staged.predecessor.headerHash,
         prevUtxosRoot: staged.predecessor.header.utxosRoot,
-        priorLedger: staged.predecessor.payload.block_body.utxos,
+        priorLedger: journeyLedgerPairs(
+          (
+            await readCheckpointJourneyLedgerBlock(
+              runDirectory!,
+              staged.predecessor,
+            )
+          ).ledger,
+        ),
         events: [
           {
             event: deposit.event,

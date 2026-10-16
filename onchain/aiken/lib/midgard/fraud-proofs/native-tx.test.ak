@@ -140,7 +140,7 @@ fn sample_golden_core_empty_preimage_cbor(_size: Int) -> Fuzzer<ByteArray> {
 }
 
 fn witness_field_order_transaction() -> MidgardTransaction {
-  let empty_mint: Data = []
+  let empty_mint: Data = builtin.list_data([])
   MidgardTransaction {
     version: native_tx_version_v1,
     validity: TxIsValid,
@@ -263,7 +263,7 @@ bench golden_core_decode_outputs_preimage_bench(
 bench golden_core_decode_empty_mint_preimage_bench(
   preimage_cbor: ByteArray via sample_golden_core_empty_preimage_cbor,
 ) {
-  let empty_mint: Data = []
+  let empty_mint: Data = builtin.list_data([])
   decode_midgard_tx_mint_preimage_cbor(preimage_cbor) == empty_mint
 }
 
@@ -355,7 +355,7 @@ test canonical_redeemer_bridge_golden_vector_is_stable() {
 }
 
 test midgard_transaction_full_decode_round_trip() {
-  let empty_mint: Data = []
+  let empty_mint: Data = builtin.list_data([])
   let pub_key_hash = #"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
   let tx_1_id = #"1111111111111111111111111111111111111111111111111111111111111111"
   let tx_2_id = #"2222222222222222222222222222222222222222222222222222222222222222"
@@ -625,7 +625,7 @@ test golden_midgard_core_native_preimage_cbor_decoders() {
   let outputs_preimage_cbor = golden_core_outputs_preimage_cbor
   let empty_preimage_cbor = golden_core_empty_preimage_cbor
   let empty_preimage_hash = golden_core_empty_preimage_hash
-  let empty_mint: Data = []
+  let empty_mint: Data = builtin.list_data([])
 
   expect [spend_input] = decode_midgard_tx_inputs_preimage_cbor(
     spend_preimage_cbor,
@@ -705,7 +705,7 @@ test byte_list_preimage_rejects_a_non_minimal_count_header() fail {
 /// shared §5.1 head decoder is the only thing standing between it and a second
 /// admissible spelling. `9a` is well-formed CBOR and outside the grammar.
 test mint_preimage_rejects_a_four_byte_count_header() fail {
-  let empty_mint: Data = []
+  let empty_mint: Data = builtin.list_data([])
   let honest = encode_mint_preimage(empty_mint)
   let four_byte = bytearray.concat(#"9a00000000", bytearray.drop(honest, 1))
   decode_midgard_tx_mint_preimage_cbor(four_byte) == empty_mint

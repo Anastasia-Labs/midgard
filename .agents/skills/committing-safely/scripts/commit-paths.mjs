@@ -41,12 +41,12 @@
 //
 // Environment:
 //   MIDGARD_PRETTIER_BIN  prettier to use (default <repo>/demo/node_modules/.bin/prettier)
-//   MIDGARD_AIKEN_BIN     aiken to use (default `aiken` on PATH)
 
 import "node:child_process";
 import "node:fs";
 import "node:os";
 import "node:path";
 import "./commit-paths.parse-args.mjs";
+import "../../../../scripts/lib/aiken.mjs";
 import "./commit-paths.main.mjs";
 import "./commit-paths.registration.mjs";

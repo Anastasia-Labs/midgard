@@ -42,13 +42,17 @@ The `operator-lifecycle/` directory holds the exit and recovery side:
   lovelace); `deriveRecoverOperatorBondWitnesses` and
   `buildUnsignedRecoverOperatorBondTxProgram` return the bond after the hold;
   `buildUnsignedSlashDuplicateOperatorTxProgram` removes a duplicate
-  registration with a `DuplicateProof` from another list.
+  registration with a `DuplicateProof` from another list, paying the bounty
+  (`fraudProverRewardLovelace`) to the enterprise address of
+  `bountyClaimantKeyHash`, which the builder adds as a required signer.
 
 Forced retirement and duplicate slashing pay the penalty as the transaction
 fee. The on-chain check is an equality, so those builders complete the
 transaction without coin selection and balance it to the lovelace, returning
-the remainder to the submitter as an explicit output instead of a change
-output.
+any remainder to the submitter as an explicit output instead of a change
+output. A duplicate slash leaves no remainder, because the bond is exactly the
+penalty plus the bounty; the builder refuses to pay a remainder to the
+claimant's bounty address, which may receive only the bounty.
 
 ## Related
 

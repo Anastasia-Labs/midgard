@@ -10,8 +10,8 @@
 // checkout this script lives in, and only when
 //   (a) the source's blueprint stamp is fresh for the source tree, and
 //   (b) every compiler input the stamp covers (onchain/aiken lib, validators,
-//       env, aiken.toml, aiken.lock) and the pinned compiler are identical in
-//       the two trees, and
+//       env, aiken.toml, aiken.lock, and the compiler pin demo/flake.lock) is
+//       identical in the two trees, and
 //   (c) the source was built for the deployment profile this checkout selects
 //       (SELECTED_DEPLOYMENT_PROFILE in
 //       demo/midgard-core/src/generated-deployment-profiles.ts), with the same
@@ -44,7 +44,6 @@ import {
   buildRecordPath,
   checkBlueprintStamp,
 } from "../demo/scripts/lib/blueprint-stamp.mjs";
-import { pinnedAikenVersion } from "../onchain/aiken/scripts/pinned-compiler.mjs";
 
 export const EXIT = { copied: 0, refused: 1, usage: 2 };
 
@@ -58,11 +57,6 @@ const blueprintOf = (root) => resolve(root, "onchain/aiken/plutus.json");
  * sentence, or null when every input the stamp covers is byte-identical.
  */
 export const firstDifferingInput = (source, destination) => {
-  const sourcePin = pinnedAikenVersion(source);
-  const destinationPin = pinnedAikenVersion(destination);
-  if (sourcePin !== destinationPin) {
-    return `the pinned compiler (AIKEN_FORK_VERSION): source '${sourcePin}', here '${destinationPin}'`;
-  }
   const inSource = new Map(
     blueprintSourceFiles(source).map((file) => [file.name, file.path]),
   );
@@ -253,7 +247,7 @@ export const main = (
   renameSync(stagedBlueprint, destinationBlueprint);
   renameSync(stagedRecord, buildRecordPath(destinationBlueprint));
   stdout(
-    `copied from ${source}: ${destinationBlueprint} matches its sources, the pinned compiler and this checkout's deployment profile\n`,
+    `copied from ${source}: ${destinationBlueprint} matches its sources and this checkout's deployment profile\n`,
   );
   return EXIT.copied;
 };

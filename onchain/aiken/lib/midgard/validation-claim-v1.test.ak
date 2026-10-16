@@ -7,6 +7,7 @@
 //// membership's key and the source membership — every other witness field is
 //// an inert dummy here on purpose.
 
+use aiken/builtin
 use aiken/cbor
 use aiken/crypto
 use aiken/merkle_patricia_forestry as mpf
@@ -168,7 +169,7 @@ test forced_verdict_matches_rejects_invalid_leaf_on_accepted_descriptor() {
 fn native_tx_with(
   validity: native_types.MidgardTxValidity,
 ) -> native_types.MidgardTransaction {
-  let empty_mint: Data = []
+  let empty_mint: Data = builtin.list_data([])
   native_types.MidgardTransaction {
     version: native_types.native_tx_version_v1,
     validity,

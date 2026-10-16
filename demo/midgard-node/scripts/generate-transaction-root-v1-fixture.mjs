@@ -11,7 +11,7 @@ import "@al-ft/midgard-core/consensus-profile";
 import "@al-ft/midgard-sdk";
 import "@lucid-evolution/lucid";
 import "effect";
-import "../../../onchain/aiken/scripts/pinned-compiler.mjs";
+import "../../../scripts/lib/aiken.mjs";
 import "./generate-transaction-root-v1-fixture.parse-canonical-transaction.mjs";
 
 import { spawnSync } from "node:child_process";
@@ -38,10 +38,6 @@ import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
 import {
-  assertPinnedAiken,
-  defaultAikenBinary,
-} from "../../../onchain/aiken/scripts/pinned-compiler.mjs";
-import {
   aikenBytes,
   aikenInt,
   decimal,
@@ -53,6 +49,7 @@ import {
   parseCanonicalTransaction,
   toJsonTransaction,
 } from "./generate-transaction-root-v1-fixture.parse-canonical-transaction.mjs";
+import { aikenBinary } from "../../../scripts/lib/aiken.mjs";
 
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
 
@@ -361,24 +358,15 @@ const writeOrCheck = (target, expected) => {
 const formatAiken = (source) => {
   const directory = mkdtempSync(join(tmpdir(), "midgard-rf031-aiken-format-"));
   const target = join(directory, "transaction-root-v1-golden.test.ak");
-  const aikenBinary = defaultAikenBinary();
-  if (aikenBinary.length === 0) {
-    fail("MIDGARD_AIKEN_BIN must be a non-empty executable path");
-  }
-  try {
-    assertPinnedAiken(aikenBinary);
-  } catch (error) {
-    fail(error instanceof Error ? error.message : String(error));
-  }
   try {
     writeFileSync(target, source, "utf8");
-    const result = spawnSync(aikenBinary, ["fmt", target], {
+    const result = spawnSync(aikenBinary(), ["fmt", target], {
       cwd: join(repositoryRoot, "onchain/aiken"),
       encoding: "utf8",
     });
     if (result.status !== 0) {
       fail(
-        `Aiken formatter (${aikenBinary}) failed: ${result.error?.message ?? result.stderr.trim()}`,
+        `Aiken formatter failed: ${result.error?.message ?? result.stderr.trim()}`,
       );
     }
     return readFileSync(target, "utf8");

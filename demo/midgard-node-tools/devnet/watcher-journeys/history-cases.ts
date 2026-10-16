@@ -18,6 +18,11 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { CML, Data, walletFromSeed } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
+import {
+  checkedJourneyConstruction,
+  type JourneyLedgerPredecessor,
+} from "./journey-ledger.js";
+
 export const JOURNEY_HISTORY_TRANSACTION_CATEGORIES = [
   "doubleSpend",
   "nonExistentInput",
@@ -28,11 +33,7 @@ export const JOURNEY_HISTORY_TRANSACTION_CATEGORIES = [
 export type JourneyHistoryTransactionCategory =
   (typeof JOURNEY_HISTORY_TRANSACTION_CATEGORIES)[number];
 
-export type HistoryPredecessor = {
-  header: SDK.Header;
-  headerHash: string;
-  payload: SDK.DaPayload;
-};
+export type HistoryPredecessor = JourneyLedgerPredecessor;
 
 export type HistoryTransactionInput = {
   category: JourneyHistoryTransactionCategory;
@@ -44,11 +45,7 @@ export type HistoryTransactionInput = {
   honest?: boolean;
 };
 
-const ledgerEntries = (block: HistoryPredecessor) =>
-  block.payload.block_body.utxos.map(([key, value]) => ({
-    outRef: Buffer.from(key, "hex"),
-    output: Buffer.from(value, "hex"),
-  }));
+const ledgerEntries = (block: HistoryPredecessor) => block.ledger.entries;
 
 /** Select only outputs spendable by the retained ledger owner. */
 export const ownedHistoryLedgerEntries = (
@@ -110,7 +107,8 @@ export const retainHistoryTransactions = async (
       },
     });
     retained.push(block);
-    ledger = ledgerEntries(block);
+    ledger = (await checkedJourneyConstruction(block, block.postLedgerEntries))
+      .ledger.entries;
     priorRoot = block.header.utxosRoot;
   }
   const base = await buildCanonicalBlockFixture({
@@ -183,16 +181,19 @@ export const retainHistoryTransactions = async (
       transition_trace: sorted(transitions),
     },
   };
-  return {
-    header,
-    headerHash,
-    payload,
-    payloadEnvelopeCbor: await wrapDaPayload(SDK.encodeDaPayload(payload), {
-      mode: "identity",
-    }),
-    transactions: input.transactions,
-    replays: retained.map((block) => block.replay),
-  };
+  return checkedJourneyConstruction(
+    {
+      header,
+      headerHash,
+      payload,
+      payloadEnvelopeCbor: await wrapDaPayload(SDK.encodeDaPayload(payload), {
+        mode: "identity",
+      }),
+      transactions: input.transactions,
+      replays: retained.map((block) => block.replay),
+    },
+    ledger,
+  );
 };
 
 export const buildJourneyHistoryTransaction = async (

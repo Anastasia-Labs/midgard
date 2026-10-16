@@ -44,7 +44,7 @@ import { fileURLToPath } from "node:url";
 export const tracedRefusalInputs = [
   "onchain/",
   "config/deployments/",
-  "scripts/ci/build-aiken-fork.sh",
+  "demo/flake.lock",
   "scripts/ci/traced-refusal-inputs.mjs",
   ".github/workflows/midgard-node-ci.yml",
   ".github/actions/demo-setup/",

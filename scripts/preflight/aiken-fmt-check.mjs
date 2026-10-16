@@ -10,17 +10,13 @@
 //
 // usage: node scripts/preflight/aiken-fmt-check.mjs [--write] (--all | <file.ak> ...)
 // Exit 0 when every file is formatted (or was rewritten with --write), 1 when
-// one is not or the compiler is not the pinned fork, 2 on usage errors.
+// one is not, 2 on usage errors.
 
 import { spawnSync } from "node:child_process";
 import { readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-
-import {
-  assertPinnedAiken,
-  defaultAikenBinary,
-} from "../../onchain/aiken/scripts/pinned-compiler.mjs";
+import { aikenBinary } from "../lib/aiken.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const usage =
@@ -29,8 +25,8 @@ const usage =
 // What the CI step's `sed -i 's/[[:space:]]\+$//'` does to formatter output.
 export const normalize = (source) => source.replace(/[ \t\r\f\v]+$/gmu, "");
 
-export const formatSource = (binary, source) => {
-  const run = spawnSync(binary, ["fmt", "--stdin"], {
+export const formatSource = (source) => {
+  const run = spawnSync(aikenBinary(), ["fmt", "--stdin"], {
     input: source,
     encoding: "utf8",
     maxBuffer: 64 * 1024 * 1024,
@@ -67,21 +63,13 @@ if (isMain) {
     process.exit(2);
   }
 
-  const binary = defaultAikenBinary();
-  try {
-    assertPinnedAiken(binary);
-  } catch (error) {
-    console.error(error instanceof Error ? error.message : String(error));
-    process.exit(1);
-  }
-
   const unformatted = [];
   for (const file of files) {
     const path = resolve(root, file);
     const source = readFileSync(path, "utf8");
     let formatted;
     try {
-      formatted = formatSource(binary, source);
+      formatted = formatSource(source);
     } catch (error) {
       console.error(`${file}: ${error.message}`);
       unformatted.push(file);

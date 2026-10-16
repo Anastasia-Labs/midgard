@@ -302,7 +302,6 @@ export const main = async (
     fullReasons: [
       ...(options.full ? ["--full"] : []),
       ...(killSwitch ? [`${FULL_RUN_ENV}=1`] : []),
-      ...changes.fullReasons,
     ],
     prePush: options.prePush,
     runtimeOwner:

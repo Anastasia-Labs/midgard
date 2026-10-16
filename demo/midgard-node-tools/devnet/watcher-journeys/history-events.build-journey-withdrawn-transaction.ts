@@ -23,6 +23,7 @@ import {
   retainJourneyWithdrawals,
   type StagedHistoryEvent,
 } from "./history-events.retain-journey-withdrawals.js";
+import { journeyLedgerPairs } from "./journey-ledger.js";
 
 export const buildJourneyWithdrawalEvent = async (
   input: HistoryEventBlockInput & {
@@ -165,7 +166,7 @@ export const buildJourneyWithdrawnTransaction = async (
     txId: Buffer.from(datum.event.info.body.l2_outref.transactionId, "hex"),
     outputIndex: Number(datum.event.info.body.l2_outref.outputIndex),
   });
-  const withdrawnOutput = input.predecessor.payload.block_body.utxos.find(
+  const withdrawnOutput = journeyLedgerPairs(input.predecessor.ledger).find(
     ([key]) => key === withdrawn.toString("hex"),
   );
   const owner = CML.PrivateKey.from_bech32(

@@ -116,14 +116,15 @@ and those commands destroy uncommitted work. [review]
   # S: a fresh directory outside the repository
   S=/path/to/scratch/redcheck-<topic> && mkdir -p "$S"
   git ls-files -z --cached --others --exclude-standard \
-    -- onchain/aiken .github/workflows ':!onchain/aiken/plutus.json' |
+    -- onchain/aiken scripts/aiken scripts/lib/aiken.mjs demo/flake.lock \
+    ':!onchain/aiken/plutus.json' |
     xargs -0 cp --parents -t "$S"
   # edit "$S/onchain/aiken/..." to put the bug back, then:
   node "$S/onchain/aiken/scripts/run-focused-check.mjs" <module> <test>
   ```
 
-  The copy needs `.github/workflows` because the script checks the compiler
-  against the workflow pin `[script: onchain/aiken/scripts/pinned-compiler.mjs]`.
+  The copy needs `scripts/lib/aiken.mjs` and `demo/flake.lock` because the
+  script builds the pinned compiler from the lock `[script: scripts/lib/aiken.mjs]`.
   The copy has no `build/`, so the first run fetches the Aiken dependencies.
   See the disposable-build rules in
   [aiken-contract-build](../aiken-contract-build/SKILL.md).
@@ -175,9 +176,9 @@ Done when: every pass-1 finding has a verdict.
 Run the gates listed in step 1 and read their output. A report, including a
 subagent's, is a claim, not evidence. Aiken evidence must show a nonzero
 collected count; `run-focused-check.mjs` fails unless exactly the named tests
-ran, and an `aiken check -m` selector can collect zero tests and exit 0. Before
-trusting any local Aiken result, confirm the compiler is the pinned fork with
-`pinned-compiler.mjs`. [script: onchain/aiken/scripts/run-focused-check.mjs]
+ran, and an `aiken check -m` selector can collect zero tests and exit 0. A
+local Aiken result counts only from `scripts/aiken` or the repository scripts,
+never a bare `aiken` from `PATH`. [script: onchain/aiken/scripts/run-focused-check.mjs]
 
 Done when: each gate's command and its observed result are in the report.
 

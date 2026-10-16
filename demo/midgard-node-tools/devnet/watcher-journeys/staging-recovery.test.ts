@@ -2,7 +2,6 @@ import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { depositEventsRetainedBlock } from "@al-ft/midgard-fault-proofs/test-support/transition-trace-retained";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
   CML,
@@ -29,11 +28,13 @@ import { afterEach, expect, it, vi } from "vitest";
 
 import { readJourneyArtifact, writeJourneyArtifact } from "./artifacts.js";
 import type { JourneyBlock, JourneyFixtureStage } from "./fixture.js";
+import { fixtureJourneyLedgerAt } from "./journey-fixture-ledger.test-support.js";
 import {
   createPreparedJourneyFixture,
   createTransactionJourneyFixture,
   type JourneyFaultPreparationInput,
 } from "./staging.js";
+import { buildRecoveryStageBlocks } from "./staging-recovery.funded-block.test-support.js";
 import { signedAttempt } from "./staging-recovery.signed-attempt.test-support.js";
 
 const actorFactory = vi.hoisted(() => vi.fn());
@@ -58,7 +59,7 @@ afterEach(async () => {
 });
 
 /** Real checkpoints, retained payloads and SDK datums; only chain/actor I/O is controlled. */
-const openStage = async () => {
+const openStage = async (funded = false) => {
   const directory = await mkdtemp(join(tmpdir(), "journey-staging-recovery-"));
   directories.push(directory);
   const account = generateEmulatorAccount({ lovelace: 100_000_000n });
@@ -69,28 +70,10 @@ const openStage = async () => {
   const publisherLucid = await Lucid(emulator, "Custom");
   publisherLucid.selectWallet.fromSeed(publisher.seedPhrase);
   const operatorVkey = paymentCredentialOf(account.address).hash;
-  const predecessor = {
-    ...(await depositEventsRetainedBlock({
-      operatorVkey,
-      startTime: 0n,
-      endTime: 60_000n,
-      blockSlot: 60n,
-      prevHeaderHash: SDK.GENESIS_HEADER_HASH,
-      prevUtxosRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
-      priorLedger: [],
-      events: [],
-    })),
-    commitTxHash: "11".repeat(32),
-  };
-  const current = await depositEventsRetainedBlock({
+  const { predecessor, current } = await buildRecoveryStageBlocks({
     operatorVkey,
-    startTime: predecessor.header.endTime,
-    endTime: 120_000n,
-    blockSlot: 120n,
-    prevHeaderHash: predecessor.headerHash,
-    prevUtxosRoot: predecessor.header.utxosRoot,
-    priorLedger: [],
-    events: [],
+    address: account.address,
+    funded,
   });
   const policyId = "ab".repeat(28);
   const commitTxHash = "22".repeat(32);
@@ -284,6 +267,7 @@ const openStage = async () => {
     onHealthyPredecessor?: JourneyFixtureStage["onHealthyPredecessor"],
   ): JourneyFixtureStage => ({
     context,
+    ledgerAt: fixtureJourneyLedgerAt([predecessor, current]),
     directory,
     retain,
     onHealthyPredecessor,
@@ -788,7 +772,7 @@ it("reconciles a history submission failure and replaces it from an unpinned wal
 });
 
 it("reconciles a successor submission failure and replaces it from an unpinned wallet", async () => {
-  const fixture = await openStage();
+  const fixture = await openStage(true);
   await writeJourneyArtifact(fixture.checkpointPath, fixture.checkpoint);
   const staged = await fixture.stage();
   const attempt = signedAttempt();

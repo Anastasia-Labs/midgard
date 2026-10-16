@@ -135,7 +135,7 @@ describe("POST /deposit/build under a transient provider failure", () => {
   it("refuses an invalid request without building", async () => {
     const result = await post({ valid: false });
     expect(result.status).toBe(400);
-    expect(result.body).toEqual({ error: "depositAmount is required" });
+    expect(result.body).toEqual({ error: "Invalid request" });
     expect(build.calls).toBe(0);
   });
 });

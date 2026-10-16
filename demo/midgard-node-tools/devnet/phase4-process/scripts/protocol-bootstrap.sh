@@ -5,7 +5,7 @@ script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 require_command jq
 require_command node
 require_command pnpm
-require_command aiken
+require_command nix
 require_command sha256sum
 require_run_dir
 upsert_private_env() {
@@ -63,7 +63,7 @@ upsert_private_env MIN_FEE_A 0 "$node_env"
 upsert_private_env MIN_FEE_B 0 "$node_env"
 export POSTGRES_HOST=127.0.0.1 POSTGRES_PORT="$MIDGARD_PHASE4_POSTGRES_PORT" POSTGRES_USER="$MIDGARD_PHASE4_POSTGRES_USER" POSTGRES_PASSWORD="$MIDGARD_PHASE4_POSTGRES_PASSWORD" POSTGRES_DB="$MIDGARD_PHASE4_POSTGRES_DATABASE"
 cd "$contract_root"
-aiken build --env testnet
+"$repo_root/scripts/aiken" build --env testnet
 [ -s "$blueprint" ] || die "Aiken testnet build did not create plutus.json"
 sha256sum "$blueprint" >"$MIDGARD_PHASE4_RUN_DIR/work/plutus.json.sha256"
 export MIDGARD_REAL_BLUEPRINT_PATH="$blueprint"

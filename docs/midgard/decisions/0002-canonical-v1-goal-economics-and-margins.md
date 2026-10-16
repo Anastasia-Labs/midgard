@@ -71,21 +71,35 @@ across credentials.
 
 ### 2.3 Exact fraud-slash value routing (ACCEPTED)
 
-The operator-directory node holds exactly one slashable bond tranche. It is
-the sole source of the protocol reward and penalty; wallet balancing, change,
-or the submitting wallet is not a reward-routing rule.
+The operator-directory node holds one slashable bond tranche. It is the sole
+source of the protocol reward and penalty; wallet balancing, change, or the
+submitting wallet is not a reward-routing rule. Registration and every transfer
+between directory lists create a node holding exactly `required_bond`, or
+`required_bond - inactivity_slashing_penalty` after a forced retirement. Later
+directory updates may leave more lovelace in a node, so a fraud slash accepts
+any node holding at least `required_bond - inactivity_slashing_penalty`.
+Every deployment profile sets `required_bond` to
+`slashing_penalty + fraud_prover_reward`, with
+`inactivity_slashing_penalty < slashing_penalty`. Each transaction carries at
+most one operator slash, and no availability-challenge timeout.
 
-- For a fully bonded node, the tranche is exactly `required_bond`. The
-  successful fraud-slash transaction pays exactly `fraud_prover_reward` as an
-  ADA-only output to the enterprise address whose payment credential is the
+- The successful fraud-slash transaction pays exactly `fraud_prover_reward` as
+  an ADA-only output to the enterprise address whose payment credential is the
   `fraud_prover` verification-key hash preserved in the authentic fraud-proof
-  datum, and sets the transaction fee to exactly `slashing_penalty`.
-- For a node previously inactivity-slashed by exactly
-  `inactivity_slashing_penalty`, the remaining tranche is exactly
-  `required_bond - inactivity_slashing_penalty`. The fraud-prover output stays
-  exactly `fraud_prover_reward`; the transaction fee is exactly
+  datum, and sets the transaction fee to what the node holds beyond that
+  reward, capped at `slashing_penalty`. A node holding `required_bond` or more
+  pays a fee of exactly `slashing_penalty`.
+- A node previously inactivity-slashed by exactly
+  `inactivity_slashing_penalty` holds the remaining tranche
+  `required_bond - inactivity_slashing_penalty` and pays a fee of exactly
   `slashing_penalty - inactivity_slashing_penalty`. Across the two slash
   transactions, the total penalty is therefore exactly `slashing_penalty`.
+  Lovelace added to that node raises the fee, up to `slashing_penalty`, so
+  the total exceeds `slashing_penalty` only by lovelace added to the node.
+- Whatever the node holds beyond the fee and the reward is unconstrained
+  change; the SDK returns it to the continued directory anchor. The cap keeps
+  the collateral a slasher posts, which grows with the fee, independent of
+  what the node holds.
 - The prover payment credential must match the immutable computation-thread
   prover identity, which `Init` authenticates with an extra signatory. A
   submitter, change address, stake credential, CLI flag, or first transaction
@@ -98,11 +112,9 @@ or the submitting wallet is not a reward-routing rule.
   bounty claimant to their canonical redeemer, require that claimant's extra
   signature, and pay the claimant's enterprise address. They never infer the
   claimant from a caller-supplied destination or change address.
-- The reward output and exact fee conserve the complete designated bond
-  tranche. Inputs used for unrelated minimum ADA, collateral, or construction
-  fees balance independently and cannot reduce, supplement, or receive the
-  reward. Registration and every directory transition preserve exactly the
-  expected tranche rather than accepting an unclassified bond surplus.
+- The reward output and the fee come from the node. Inputs used for
+  unrelated minimum ADA, collateral, or construction fees balance
+  independently and cannot reduce, supplement, or receive the reward.
 - For a bad-state fault proof, the reward can be paid only within a
   `RemoveFraudulentBlockHeader` transaction for that header (the bond-consuming slashing arms;
   successor-pruning transactions that carry the slash pay the reward;

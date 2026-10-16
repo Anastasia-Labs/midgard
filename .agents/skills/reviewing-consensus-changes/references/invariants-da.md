@@ -8,7 +8,8 @@ Status, recurrence and line conventions are as in
 [invariants-state-queue.md](invariants-state-queue.md). This file is shallower
 than the state-queue and fraud-proof files: it covers the governor, the
 attestation apply and rescue paths, the pooled committee bond at apply and at
-timeout, and the commitment binding a challenge record carries.
+timeout, the commitment binding a challenge record carries, and the timeout's
+separation from the operator directories.
 
 ## DA1. Governed thresholds never drop below two thirds
 
@@ -81,15 +82,15 @@ than its governed cap. At timeout the cap bounds only the challenger's share
 `c = tx.fee - fee_part`; the slashed penalty share is burned on top of it
 (DA8).
 
-Enforced: `lib/midgard/availability-challenge-validation.ak:292-293` (open),
-`:561-562` (settle), `:638-639` (close), `:877-879` (timeout: `tx.fee > 0`,
+Enforced: `lib/midgard/availability-challenge-validation.ak:294-295` (open),
+`:564-565` (settle), `:641-642` (close), `:883-885` (timeout: `tx.fee > 0`,
 `0 <= c <= max_timeout_fee_lovelace`)
 `[aiken-test: availability-challenge.test/]`
-(`q58_settle_rejects_excessive_fee` `:2227`,
-`q58_settle_rejects_batched_second_tranche_fee_charge` `:2247`,
-`q58_timeout_rejects_challenger_fee_one_above_the_cap` `:3378`,
-`..._on_an_empty_pool` `:3391`, `q58_timeout_rejects_zero_fee_on_an_empty_pool`
-`:3403`; all fail).
+(`q58_settle_rejects_excessive_fee` `:2256`,
+`q58_settle_rejects_batched_second_tranche_fee_charge` `:2276`,
+`q58_timeout_rejects_challenger_fee_one_above_the_cap` `:3440`,
+`..._on_an_empty_pool` `:3453`, `q58_timeout_rejects_zero_fee_on_an_empty_pool`
+`:3465`; all fail).
 
 Provenance: `3e3090aa1` (2026-08-31, the availability-challenge wave); #693
 moved the timeout cap onto `c` (decision D4).
@@ -229,43 +230,43 @@ The pool's `Slash` arm runs only beside this rule (B4, G4). It requires the
 state-queue mint redeemer to be constructor 5
 (`RemoveUnavailableBlockAfterTimeout`) and the correction lock to be `Idle`.
 At an Idle lock that redeemer forces a DACH burn of -1
-(`validators/state-queue.ak:1373-1374`; a `Locked` resume step mints 0 at
-`:1375-1378`), and only `TimeoutChallenge` can make it there. Open mints and
-takes two inputs (`lib/midgard/availability-challenge-validation.ak:290`,
-`:324`), Settle burns only a tranche token (`:583`), and Close takes exactly
-three inputs and two outputs (`:640-641`) and continues the node to
-`Published` (`:661`). The pool NFT is unique, so Slash and the yield read the
+(`validators/state-queue.ak:1286`; a `Locked` resume step mints 0 at
+`:1287-1290`), and only `TimeoutChallenge` can make it there. Open mints and
+takes two inputs (`lib/midgard/availability-challenge-validation.ak:292`,
+`:327`), Settle burns only a tranche token (`:586`), and Close takes exactly
+three inputs and two outputs (`:643-644`) and continues the node to
+`Published` (`:675`). The pool NFT is unique, so Slash and the yield read the
 same pool output; TopUp and the three withdraw arms each contradict the
 yield's value or datum equality.
 
 Enforced: `validate_timeout_challenge`
-(`lib/midgard/availability-challenge-validation.ak:807`; split `:859-871`,
-fee `:877-879`, indices `:882-885` (defence in depth), pool output
-`:886-892`, challenger output `:925-931`) with the pool reader
+(`lib/midgard/availability-challenge-validation.ak:813`; split `:865-877`,
+fee `:883-885`, indices `:888-891` (defence in depth), pool output
+`:892-898`, challenger output `:941-947`) with the pool reader
 `get_authentic_pool_input`
 (`lib/midgard/da-bond-pool.ak:97`); the pool `Slash` arm
 (`validators/da-bond-pool.ak:182-220`, constructor 5 at `:198-199`, Idle lock
 at `:201-205`) `[aiken-test: availability-challenge.test/]`. Accepted with
 exact amounts: `q58_timeout_accepts_full_pool_slash_with_the_penalty_as_the_fee`
-`:2304` and `q58_timeout_accepts_*` at `:3131-3271` (above one bond, partial,
+`:2333` and `q58_timeout_accepts_*` at `:3193-3333` (above one bond, partial,
 below the penalty, empty pool, dust payout, `Withdrawing` keeping
 `unlock_at`, `c` at the cap). Refused, all fail:
-`q58_timeout_rejects_without_pool_input` `:3296`,
-`..._pool_index_naming_a_non_pool_input` `:3287`,
-`..._counterfeit_pool_without_nft` `:3316`,
-`..._pool_nft_at_another_credential` `:3333`,
-`..._fee_one_lovelace_below_the_penalty_share` `:3355`,
-`..._negative_challenger_fee_on_a_short_pool` `:3362`,
-`..._challenger_fee_one_above_the_cap` `:3378`,
-`..._merged_challenger_output_one_lovelace_short` `:3418` and `_over` `:3424`,
-`..._second_challenger_output` `:2376`,
-`..._refund_and_payout_split_across_two_outputs` `:3432`, the
-`q58_timeout_rejects_pool_output_*` family at `:3452-3555` (lovelace ±1, no
+`q58_timeout_rejects_without_pool_input` `:3358`,
+`..._pool_index_naming_a_non_pool_input` `:3349`,
+`..._counterfeit_pool_without_nft` `:3378`,
+`..._pool_nft_at_another_credential` `:3395`,
+`..._fee_one_lovelace_below_the_penalty_share` `:3417`,
+`..._negative_challenger_fee_on_a_short_pool` `:3424`,
+`..._challenger_fee_one_above_the_cap` `:3440`,
+`..._merged_challenger_output_one_lovelace_short` `:3480` and `_over` `:3486`,
+`..._second_challenger_output` `:2405`,
+`..._refund_and_payout_split_across_two_outputs` `:3494`, the
+`q58_timeout_rejects_pool_output_*` family at `:3514-3617` (lovelace ±1, no
 NFT, extra token, datum changed either way or to another `unlock_at`, stake
 credential, reference script), and
-`..._pool_output_index_aliased_with_challenger_output` `:3570`, which the
-address and value shapes refuse, not `:885` alone (with `:882`, `:883` and
-`:885` deleted it still fails; no test aliases the pool input with the record
+`..._pool_output_index_aliased_with_challenger_output` `:3632`, which the
+address and value shapes refuse, not `:891` alone (with `:888`, `:889` and
+`:891` deleted it still fails; no test aliases the pool input with the record
 or terminal input). The reader:
 `da_bond_pool_input_reader_*` at `lib/midgard/da-bond-pool.test.ak:201-241`
 `[aiken-test: midgard/da-bond-pool.test/]`. The Slash arm alone:
@@ -276,19 +277,19 @@ or terminal input). The reader:
 `[aiken-test: da-bond-pool.test/]`. The whole transaction (pool Slash,
 availability mint, timeout yield, state-queue removal, correction lock) runs
 every script in `[aiken-test: da-bond-pool-timeout.test/]`: accepted
-`pool_timeout_e2e_*_pool_prune` and `_head` at `:1208-1314`; refused, each
+`pool_timeout_e2e_*_pool_prune` and `_head` at `:1209-1315`; refused, each
 with an every-other-script-accepts control,
-`pool_timeout_e2e_resume_step_*_pool_refuses_slash` `:1364-1368`,
-`..._close_swap_*_close_yield_refuses` `:1421-1425`,
-`..._optimised_close_*_close_yield_refuses` `:1434-1438` and
-`..._without_pool_*_timeout_yield_refuses` `:1467-1471` (prune and head
-each), and `..._top_up_in_place_of_slash_pool_refuses` `:1498`.
+`pool_timeout_e2e_resume_step_*_pool_refuses_slash` `:1365-1369`,
+`..._close_swap_*_close_yield_refuses` `:1422-1426`,
+`..._optimised_close_*_close_yield_refuses` `:1435-1439` and
+`..._without_pool_*_timeout_yield_refuses` `:1468-1472` (prune and head
+each), and `..._top_up_in_place_of_slash_pool_refuses` `:1499`.
 
 Liability is one bond per withholding episode, not one pool. A timeout needs
 the withheld block to be the queue head: `remove_unavailable_head_v1`
-(`validators/state-queue.ak:1006`) requires `removed_link == None` (`:1048`),
-and `prune_unavailable_block_descendant_v1` (`:941`) requires the head link to
-be the unavailable header's hash (`:964`). The slash runs only on the first,
+(`validators/state-queue.ak:914`) requires `removed_link == None` (`:956`),
+and `prune_unavailable_block_descendant_v1` (`:849`) requires the head link to
+be the unavailable header's hash (`:872`). The slash runs only on the first,
 Idle-lock step; the blocks queued after the withheld one are pruned in
 `Locked` resume steps without a slash. Apply requires a `Bonded` pool with one
 full bond of backing (DA5). So no block applied while the pool was full
@@ -309,3 +310,28 @@ Blind spot: Slash never reads the availability mint redeemer; against a
 Close in its place it relies on Close's input and output counts and its node
 transition, so relaxing Close (for example, batching it) reopens a drain
 `[review]`.
+
+## DA9. A timeout touches no operator directory
+
+Status: VERIFIED.
+
+Rule: a `TimeoutChallenge` transaction mints and burns nothing under the
+registered-, active- or retired-operators policy the hub datum names. A
+directory change and a timeout go in separate transactions, as the operator
+slashes do among themselves (`other_directory_is_untouched_v1`,
+`lib/midgard/operator-directory.ak:257`).
+
+Enforced: `validate_timeout_challenge`, one pass over `tx.mint` against the
+three hub-datum policies
+(`lib/midgard/availability-challenge-validation.ak:915-924`)
+`[aiken-test: availability-challenge.test/]`. Refused, all fail:
+`q58_timeout_rejects_registered_operators_mint` `:2424`,
+`..._active_operators_mint` `:2430` and `..._retired_operators_mint` `:2436`;
+accepted: `q58_timeout_accepts_mint_outside_the_operator_directories`
+`:2444`. Each refusal goes green, that is accepted, with its own policy
+dropped from the condition. In the emulator,
+`demo/midgard-node/tests/availability-challenge-timeout-operator-directory.test.ts`
+composes a forced retirement into a timeout; the timeout withdrawal refuses
+it, and the same two as separate transactions land in one block.
+
+Provenance: 2026-10-15, with the operator-slash bounty routing changes.

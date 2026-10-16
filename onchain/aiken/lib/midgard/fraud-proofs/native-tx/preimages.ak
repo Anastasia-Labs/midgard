@@ -396,7 +396,7 @@ pub fn encode_mint_policy_item(
 }
 
 fn canonical_mint_policy_pairs(mint: Data) -> List<Pair<Data, Data>> {
-  let empty_mint: Data = []
+  let empty_mint: Data = builtin.list_data([])
   if mint == empty_mint {
     []
   } else {
@@ -457,7 +457,7 @@ pub fn decode_midgard_tx_mint_preimage_cbor(preimage_cbor: ByteArray) -> Data {
   )
   expect offset == bytearray.length(preimage_cbor)
   if item_count == 0 {
-    let empty_mint: Data = []
+    let empty_mint: Data = builtin.list_data([])
     empty_mint
   } else {
     builtin.map_data(policy_pairs)

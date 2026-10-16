@@ -1,3 +1,4 @@
+use aiken/builtin
 use midgard/fraud_proofs/native_tx/compact.{
   decode_native_tx_field_preimage_lengths_v1, encode_native_tx_body_compact,
   encode_native_tx_field_preimage_lengths_v1, native_tx_id_for_version,
@@ -17,7 +18,7 @@ use midgard/validation_trace_v1 as vt
 const zero = #"0000000000000000000000000000000000000000000000000000000000000000"
 
 fn transaction() -> MidgardTransaction {
-  let empty_mint: Data = []
+  let empty_mint: Data = builtin.list_data([])
   MidgardTransaction {
     version: native_tx_version_v1,
     validity: TxIsValid,

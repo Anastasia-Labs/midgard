@@ -7,21 +7,13 @@
 // has to produce ERR_FOCUSED_CHECK_NOT_EXECUTED from an actual Vitest report
 // cannot.
 
-import {
-  chmodSync,
-  mkdirSync,
-  mkdtempSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 
 import {
-  aikenCompilerVersion,
   deriveAikenOutcome,
   deriveVitestOutcome,
-  forkAikenBinary,
   runAikenCheck,
   runVitest,
 } from "./runner-reports.mjs";
@@ -294,91 +286,6 @@ export const evaluateAikenFixture = (fixtureName) => {
   }
 };
 
-// Compiler-identity fixtures (issue #538). A gate that publishes a per-compiler
-// result has to know which binary produced it. These exercise that resolution
-// end to end: an unavailable binary must fail closed rather than fall through to
-// whatever `aiken` is first on PATH, the reported identity must come from the
-// binary itself rather than from a constant in the gate, and the pinned compiler
-// must be spawnable by name and produce a real measured outcome.
-//
-// RETIRED 2026-08-14 (#579, owner ruling A): the `dual` fixture is gone with the
-// stock compiler. It ran the same probe under `stockAikenBinary()` (labelled
-// "released authority") and `forkAikenBinary()` and required the two to agree.
-// Under ruling A stock has no remaining role, and the arm had degenerated into a
-// gate that could not fail: `stockAikenBinary()` falls back to `aikenBinary()`,
-// which CI sets to the fork, so in CI the fixture compared the fork against
-// itself; locally it resolved to whatever stock `aiken` happened to be on PATH,
-// making the result machine-dependent. The half of that fixture worth keeping is
-// single-compiler and is kept below as `fork`: the pinned binary is spawned by
-// name on a real project and its outcome is DERIVED, never asserted. The other
-// half — proving the runner detects a divergence — needs no second compiler and
-// is already covered by the `aikenFixtures` above, which seed declared-versus-
-// measured divergences (`failing`, `zero-collection`, `missing-selector`,
-// `module-mismatch`, and the four `batch-*` cases) and require the derivation to
-// fail closed on each.
-export const compilerFixtures = {
-  missing: "an unavailable compiler must fail closed",
-  "stub-version": "the identity must be read from the binary",
-  fork: "the pinned fork compiler must run a real project under its own name",
-};
-
-export const evaluateCompilerFixture = (fixtureName) => {
-  if (compilerFixtures[fixtureName] === undefined) {
-    throw new Error(`unknown compiler fixture ${fixtureName}`);
-  }
-  const fixtureRoot = mkdtempSync(join(tmpdir(), "midgard-compiler-fixture-"));
-  try {
-    if (fixtureName === "missing") {
-      // Throws ERR_AIKEN_BINARY_UNAVAILABLE; reaching the line below is itself
-      // the failure this fixture exists to catch.
-      aikenCompilerVersion(resolve(fixtureRoot, "no-such-aiken"));
-      throw new Error(
-        "compiler fixture missing: an unavailable binary reported a version",
-      );
-    }
-    if (fixtureName === "stub-version") {
-      const stubVersion = "aiken v0.0.0+0000000";
-      const stub = resolve(fixtureRoot, "stub-aiken");
-      writeFileSync(stub, `#!/bin/sh\nprintf '%s\\n' '${stubVersion}'\n`);
-      chmodSync(stub, 0o755);
-      const reported = aikenCompilerVersion(stub);
-      if (reported !== stubVersion) {
-        throw new Error(
-          `compiler fixture stub-version: reported ${reported}, not the ${stubVersion} the spawned binary printed`,
-        );
-      }
-      return { collected: 1, passed: 1 };
-    }
-    const project = resolve(fixtureRoot, "project");
-    mkdirSync(resolve(project, "lib", "selftest"), { recursive: true });
-    writeFileSync(resolve(project, "aiken.toml"), aikenProject);
-    writeFileSync(
-      resolve(project, "lib", "selftest", "probe.ak"),
-      "test selftest_probe() {\n  1 + 1 == 2\n}\n",
-    );
-    const declared = [{ module: "selftest/probe", selector: "selftest_probe" }];
-    const fork = deriveAikenOutcome({
-      label: "compiler fixture fork (patched fork)",
-      declared,
-      ...runAikenCheck({
-        projectRoot: project,
-        selectors: ["selftest/probe.{selftest_probe}"],
-        binary: forkAikenBinary(),
-      }),
-    });
-    if (fork.passed !== declared.length) {
-      throw new Error(
-        `compiler fixture fork: the pinned fork measured ${String(
-          fork.passed,
-        )} of ${String(declared.length)}`,
-      );
-    }
-    return { collected: fork.collected, passed: fork.passed };
-  } finally {
-    rmSync(fixtureRoot, { recursive: true, force: true });
-  }
-};
-
 // Fixture mode: run one seeded fixture and nothing else, so a gate's negative
 // self-tests can spawn that very gate and observe its real exit code.
 export const runFixtureMode = ({ argv, packageRoot }) => {
@@ -388,29 +295,18 @@ export const runFixtureMode = ({ argv, packageRoot }) => {
   const aikenArgument = argv.find((argument) =>
     argument.startsWith("--aiken-fixture="),
   );
-  const compilerArgument = argv.find((argument) =>
-    argument.startsWith("--compiler-fixture="),
-  );
-  if (
-    vitestArgument === undefined &&
-    aikenArgument === undefined &&
-    compilerArgument === undefined
-  ) {
+  if (vitestArgument === undefined && aikenArgument === undefined) {
     return false;
   }
   const [kind, fixtureName] =
     vitestArgument !== undefined
       ? ["vitest", vitestArgument.slice("--vitest-fixture=".length)]
-      : aikenArgument !== undefined
-        ? ["aiken", aikenArgument.slice("--aiken-fixture=".length)]
-        : ["compiler", compilerArgument.slice("--compiler-fixture=".length)];
+      : ["aiken", aikenArgument.slice("--aiken-fixture=".length)];
   try {
     const outcome =
       kind === "vitest"
         ? evaluateVitestFixture({ fixtureName, packageRoot })
-        : kind === "aiken"
-          ? evaluateAikenFixture(fixtureName)
-          : evaluateCompilerFixture(fixtureName);
+        : evaluateAikenFixture(fixtureName);
     process.stdout.write(
       `${kind} fixture ${fixtureName}: ${String(outcome.passed)}/${String(
         outcome.collected,

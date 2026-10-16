@@ -12,6 +12,11 @@ import { retainedTransactionFixture } from "@al-ft/midgard-fault-proofs/test-sup
 import type * as SDK from "@al-ft/midgard-sdk";
 import { CML, walletFromSeed } from "@lucid-evolution/lucid";
 
+import {
+  checkedJourneyConstruction,
+  type JourneyLedgerPredecessor,
+} from "./journey-ledger.js";
+
 type Mutation = (input: {
   spendInput: Buffer;
   output: ReturnType<typeof decodeMidgardTxOutput>;
@@ -77,11 +82,7 @@ export const JOURNEY_TRANSACTION_CATEGORIES = Object.keys(
 ) as JourneyTransactionCategory[];
 
 export type JourneyTransactionInput = {
-  predecessor: {
-    header: SDK.Header;
-    headerHash: string;
-    payload: SDK.DaPayload;
-  };
+  predecessor: JourneyLedgerPredecessor;
   ledgerOwnerSeedPhrase: string;
   operatorVkey: string;
   endTime: bigint;
@@ -94,12 +95,7 @@ const buildJourneyTransaction = async (
     minFeeB?: bigint;
   },
 ) => {
-  const ledgerEntries = input.predecessor.payload.block_body.utxos.map(
-    ([key, value]) => ({
-      outRef: Buffer.from(key, "hex"),
-      output: Buffer.from(value, "hex"),
-    }),
-  );
+  const ledgerEntries = input.predecessor.ledger.entries;
   const wallet = walletFromSeed(input.ledgerOwnerSeedPhrase, {
     network: "Custom",
   });
@@ -123,11 +119,11 @@ const buildJourneyTransaction = async (
     input.category === undefined
       ? {}
       : mutations[input.category]({ spendInput: spent.outRef, output });
-  const fee =
+  let fee =
     input.category === undefined
       ? (input.minFeeB ?? input.predecessor.header.minFeeB)
       : 0n;
-  const transactionInput: FixtureTransactionInput = {
+  const transactionInput = (): FixtureTransactionInput => ({
     spendInputs: [spent.outRef],
     outputs: [
       encodeMidgardTxOutput({
@@ -138,26 +134,38 @@ const buildJourneyTransaction = async (
     fee,
     networkId: input.predecessor.header.expectedNetworkId,
     ...changes,
-  };
-  const unsigned = buildFixtureTransaction(transactionInput);
-  const transaction = buildFixtureTransaction({
-    ...transactionInput,
-    addressWitnesses: changes.addressWitnesses ?? [
-      {
-        verification_key: Buffer.from(key.to_public().to_raw_bytes()).toString(
-          "hex",
-        ),
-        signature:
-          input.category === "invalidSignature"
-            ? "00".repeat(64)
-            : key.sign(Buffer.from(unsigned.txId, "hex")).to_hex(),
-      },
-    ],
   });
-  if (transaction.txId !== unsigned.txId)
-    throw new Error(
-      "Adding an address witness changed the transaction body id",
-    );
+  const sign = () => {
+    const unsigned = buildFixtureTransaction(transactionInput());
+    return buildFixtureTransaction({
+      ...transactionInput(),
+      addressWitnesses: changes.addressWitnesses ?? [
+        {
+          verification_key: Buffer.from(
+            key.to_public().to_raw_bytes(),
+          ).toString("hex"),
+          signature:
+            input.category === "invalidSignature"
+              ? "00".repeat(64)
+              : key.sign(Buffer.from(unsigned.txId, "hex")).to_hex(),
+        },
+      ],
+    });
+  };
+  let transaction = sign();
+  if (input.category === undefined) {
+    for (let attempt = 0; attempt < 32; attempt += 1) {
+      const required =
+        input.predecessor.header.minFeeA *
+          BigInt(transaction.canonicalCbor.length) +
+        (input.minFeeB ?? input.predecessor.header.minFeeB);
+      if (fee >= required) break;
+      if (required >= output.value.lovelace)
+        throw new Error("Journey control has insufficient value for its fee");
+      fee = required;
+      transaction = sign();
+    }
+  }
   const block = await retainedTransactionFixture({
     canonicalTransactionCbor: transaction.canonicalCbor,
     predecessor: input.predecessor,
@@ -167,7 +175,9 @@ const buildJourneyTransaction = async (
     blockSlot: input.blockSlot,
     minFeeB: input.minFeeB ?? input.predecessor.header.minFeeB,
   });
-  return block;
+  if (input.category === undefined && block.replay.trace.verdict !== "accepted")
+    throw new Error("Journey recovery transaction failed honest validation");
+  return checkedJourneyConstruction(block, block.postLedgerEntries);
 };
 
 export { buildJourneyScriptTransaction } from "./script-cases.js";

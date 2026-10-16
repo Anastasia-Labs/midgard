@@ -1,7 +1,6 @@
 import { existsSync, mkdirSync, readdirSync, renameSync } from "node:fs";
 import { dirname, join } from "node:path";
 
-import { depositEventsRetainedBlock } from "@al-ft/midgard-fault-proofs/test-support/transition-trace-retained";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
   type LucidEvolution,
@@ -27,6 +26,7 @@ import type {
   JourneySuccessor,
   StagedJourney,
 } from "./fixture.js";
+import { journeyBlockBuilder } from "./journey-ledger.js";
 import { readKupoUnitConsumptions } from "./kupo-consumption.js";
 import { JOURNEY_ACTION_DEPTH } from "./live-context.js";
 import { reconcileSignedCommit } from "./signed-commit-reconciliation.js";
@@ -41,10 +41,12 @@ import {
   type JourneyFaultPreparationInput,
   type StagingCheckpoint,
 } from "./staging.decode-journey-retained-block.js";
+import { buildJourneyTransactionControl } from "./transaction-cases.js";
 
 export async function stageJourney(
   {
     context,
+    ledgerAt,
     directory,
     retain,
     readConfirmedTransaction,
@@ -54,6 +56,8 @@ export async function stageJourney(
   }: JourneyFixtureStage,
   task: FaultPreparation,
 ): Promise<StagedJourney> {
+  const decodeRetained = (block: JourneyBlock) =>
+    decodeJourneyRetainedBlock(block, ledgerAt);
   const { deployment, accounts, provider } = context;
   const { contracts, chain } = deployment;
   const fingerprint = deployment.manifest.manifestId;
@@ -270,7 +274,7 @@ export async function stageJourney(
   }
   await retain(predecessor, predecessor.commitTxHash);
   await onHealthyPredecessor?.(predecessor.headerHash);
-  let retainedPredecessor = await decodeJourneyRetainedBlock(predecessor);
+  let retainedPredecessor = await decodeRetained(predecessor);
   const operatorKey = paymentCredentialOf(
     await deployment.operatorLucid.wallet().address(),
   ).hash;
@@ -303,6 +307,7 @@ export async function stageJourney(
   });
   const commitHistoryBlock: JourneyFaultPreparationInput["commitHistoryBlock"] =
     async (name, build) => {
+      build = journeyBlockBuilder(build);
       if (!/^[a-z][a-z0-9-]*$/u.test(name))
         throw new Error("Invalid history checkpoint name");
       const historyPath = join(directory, `history-${name}.json`);
@@ -433,12 +438,13 @@ export async function stageJourney(
         historyNode.next === "Empty"
       ) {
         predecessor = historyBlock;
-        retainedPredecessor = await decodeJourneyRetainedBlock(predecessor);
+        retainedPredecessor = await decodeRetained(predecessor);
       }
       return historyBlock;
     };
   const preparationInput: JourneyFaultPreparationInput = {
     context,
+    ledgerAt,
     directory,
     retain,
     readConfirmedTransaction,
@@ -451,12 +457,12 @@ export async function stageJourney(
   const prepared = await task.prepare(preparationInput);
   if (prepared.predecessor !== undefined) {
     predecessor = prepared.predecessor;
-    retainedPredecessor = await decodeJourneyRetainedBlock(predecessor);
+    retainedPredecessor = await decodeRetained(predecessor);
     await retain(predecessor, predecessor.commitTxHash);
     if (resume === undefined) await assertTail(predecessor);
   }
 
-  const buildFault = () => {
+  const buildFault = journeyBlockBuilder(async () => {
     const faultEndTime = BigInt(chain.now() + 59_999);
     return prepared.buildFault({
       predecessor: retainedPredecessor,
@@ -465,7 +471,7 @@ export async function stageJourney(
       endTime: faultEndTime,
       blockSlot: BigInt(maliciousLucid.unixTimeToSlot(Number(faultEndTime))),
     });
-  };
+  });
   // An unsigned draft may refer to a forced order that preparation just
   // replaced after authenticated expiry. Signed commitments retain exact bytes.
   let current =
@@ -622,8 +628,10 @@ export async function stageJourney(
         successorPredecessorPath,
         successorPredecessor,
       );
-      const successorRetainedPredecessor =
-        await decodeJourneyRetainedBlock(successorPredecessor);
+      const successorRetainedPredecessor = await decodeJourneyRetainedBlock(
+        successorPredecessor,
+        ledgerAt,
+      );
       const successorActor = await createPublishedWatcherBlockActor({
         deployment,
         lucid: successorLucid,
@@ -633,7 +641,7 @@ export async function stageJourney(
         onStage,
       });
       await successorActor.onboardOperator();
-      const buildSuccessor = async (): Promise<JourneyBlock> => {
+      const buildSuccessor = journeyBlockBuilder(async () => {
         const endTime = BigInt(chain.now() + 59_999);
         const successorInput: JourneyFaultBuildInput = {
           predecessor: successorRetainedPredecessor,
@@ -644,18 +652,8 @@ export async function stageJourney(
         };
         return prepared.buildSuccessor !== undefined
           ? prepared.buildSuccessor(successorInput)
-          : depositEventsRetainedBlock({
-              operatorVkey: successorActor.operatorVkey,
-              startTime: successorPredecessor.header.endTime,
-              endTime,
-              blockSlot: BigInt(successorLucid.unixTimeToSlot(Number(endTime))),
-              prevHeaderHash: successorPredecessor.headerHash,
-              prevUtxosRoot: successorPredecessor.header.utxosRoot,
-              priorLedger:
-                successorRetainedPredecessor.payload.block_body.utxos,
-              events: [],
-            });
-      };
+          : buildJourneyTransactionControl(successorInput);
+      });
       const resumedSuccessor = existsSync(successorPath)
         ? await readJourneyArtifact<{
             block: JourneyBlock;

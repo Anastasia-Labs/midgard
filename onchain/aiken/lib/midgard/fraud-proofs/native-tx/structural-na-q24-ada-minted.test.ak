@@ -123,7 +123,7 @@ test q24_positive_control_28_byte_policy_encodes_and_verifies() {
 }
 
 test q24_positive_control_empty_mint_encodes_and_verifies() {
-  let empty_mint: Data = []
+  let empty_mint: Data = builtin.list_data([])
   and {
     encode_mint_preimage(empty_mint) == #"80",
     verify_canonical_mint_preimage_cbor(

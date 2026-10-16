@@ -10,12 +10,15 @@ import {
 } from "./operator-exit-emulator.advance-shift-to-predecessor.js";
 import {
   BOND_LOVELACE,
+  FRAUD_PROVER_REWARD_LOVELACE,
   initOperatorExitFixture,
   PAST_SHIFT_END_SLOTS,
   SLASHING_PENALTY_LOVELACE,
 } from "./operator-exit-emulator.build-operator-exit-snapshot.js";
 import {
   appointFirstOperator,
+  bountyAddress,
+  bountyAddressUtxos,
   fetchDirectorySnapshot,
   keyHashOf,
   registerAndActivate,
@@ -27,11 +30,48 @@ import {
   forceActivateOperator,
   forceRegisterOperator,
   slashDuplicateOperator,
+  slashingPenaltyFeePlan,
 } from "./operator-exit-emulator.force-activate-operator.js";
 import {
   addActivatedOperator,
   newFundedWallet,
 } from "./operator-exit-emulator.operator-exit-emulator.js";
+
+const bountyLovelace = async (
+  lucid: LucidEvolution,
+  keyHash: string,
+): Promise<bigint> =>
+  (await bountyAddressUtxos(lucid, keyHash)).reduce(
+    (total, utxo) => total + (utxo.assets["lovelace"] ?? 0n),
+    0n,
+  );
+
+/**
+ * The bond is split exactly: the penalty as the fee and the bounty to the
+ * claimant's enterprise address. Nothing reaches the submitter's own wallet.
+ */
+const expectExactBountySplit = async ({
+  slasher,
+  claimantKeyHash,
+  fee,
+  walletBefore,
+  bountyBefore,
+}: {
+  readonly slasher: LucidEvolution;
+  readonly claimantKeyHash: string;
+  readonly fee: bigint;
+  readonly walletBefore: bigint;
+  readonly bountyBefore: bigint;
+}): Promise<void> => {
+  expect(fee).toEqual(SLASHING_PENALTY_LOVELACE);
+  expect(BOND_LOVELACE).toEqual(
+    SLASHING_PENALTY_LOVELACE + FRAUD_PROVER_REWARD_LOVELACE,
+  );
+  expect(
+    (await bountyLovelace(slasher, claimantKeyHash)) - bountyBefore,
+  ).toEqual(FRAUD_PROVER_REWARD_LOVELACE);
+  expect((await walletLovelace(slasher)) - walletBefore).toEqual(0n);
+};
 
 describe("duplicate operator slashing", () => {
   it("slashes duplicate registrations of an active and then a retired operator", async () => {
@@ -80,6 +120,7 @@ describe("duplicate operator slashing", () => {
     });
 
     const slasher = await newFundedWallet(fixture, 3_000_000_000n);
+    const slasherKeyHash = await keyHashOf(slasher);
     const activeSnapshot = await fetchDirectorySnapshot(lucid, contracts);
     const activeNode = SDK.findNodeByKey(
       activeSnapshot.active,
@@ -89,6 +130,10 @@ describe("duplicate operator slashing", () => {
       throw new Error("Expected the operator to be active");
     }
     const balanceBeforeActiveSlash = await walletLovelace(slasher);
+    const bountyBeforeActiveSlash = await bountyLovelace(
+      slasher,
+      slasherKeyHash,
+    );
     const activeSlash = await slashDuplicateOperator({
       fixture,
       submitterLucid: slasher,
@@ -100,10 +145,13 @@ describe("duplicate operator slashing", () => {
         hubOracleRefInput: activeSnapshot.hubOracle.utxo,
       },
     });
-    expect(activeSlash.fee).toEqual(SLASHING_PENALTY_LOVELACE);
-    expect((await walletLovelace(slasher)) - balanceBeforeActiveSlash).toEqual(
-      BOND_LOVELACE - SLASHING_PENALTY_LOVELACE,
-    );
+    await expectExactBountySplit({
+      slasher,
+      claimantKeyHash: slasherKeyHash,
+      fee: activeSlash.fee,
+      walletBefore: balanceBeforeActiveSlash,
+      bountyBefore: bountyBeforeActiveSlash,
+    });
     expect(
       SDK.findNodeByKey(
         (await fetchDirectorySnapshot(lucid, contracts)).registered,
@@ -126,6 +174,10 @@ describe("duplicate operator slashing", () => {
       throw new Error("Expected the operator to be retired");
     }
     const balanceBeforeRetiredSlash = await walletLovelace(slasher);
+    const bountyBeforeRetiredSlash = await bountyLovelace(
+      slasher,
+      slasherKeyHash,
+    );
     const retiredSlash = await slashDuplicateOperator({
       fixture,
       submitterLucid: slasher,
@@ -133,10 +185,13 @@ describe("duplicate operator slashing", () => {
       removedRegisteredNodeKey: third.nodeKey,
       duplicateProof: { kind: "retired", node: retiredNode },
     });
-    expect(retiredSlash.fee).toEqual(SLASHING_PENALTY_LOVELACE);
-    expect((await walletLovelace(slasher)) - balanceBeforeRetiredSlash).toEqual(
-      BOND_LOVELACE - SLASHING_PENALTY_LOVELACE,
-    );
+    await expectExactBountySplit({
+      slasher,
+      claimantKeyHash: slasherKeyHash,
+      fee: retiredSlash.fee,
+      walletBefore: balanceBeforeRetiredSlash,
+      bountyBefore: bountyBeforeRetiredSlash,
+    });
 
     const finalSnapshot = await fetchDirectorySnapshot(lucid, contracts);
     expect(
@@ -181,7 +236,9 @@ describe("duplicate operator slashing", () => {
     );
     expect(wrongFeeRefusal).toContain("duplicate-operator slashing tx");
 
+    const slasherKeyHash = await keyHashOf(slasher);
     const balanceBefore = await walletLovelace(slasher);
+    const bountyBefore = await bountyLovelace(slasher, slasherKeyHash);
     const slash = await slashDuplicateOperator({
       fixture,
       submitterLucid: slasher,
@@ -189,10 +246,13 @@ describe("duplicate operator slashing", () => {
       removedRegisteredNodeKey: second.nodeKey,
       duplicateProof: { kind: "registered", node: proofNode },
     });
-    expect(slash.fee).toEqual(SLASHING_PENALTY_LOVELACE);
-    expect((await walletLovelace(slasher)) - balanceBefore).toEqual(
-      BOND_LOVELACE - SLASHING_PENALTY_LOVELACE,
-    );
+    await expectExactBountySplit({
+      slasher,
+      claimantKeyHash: slasherKeyHash,
+      fee: slash.fee,
+      walletBefore: balanceBefore,
+      bountyBefore,
+    });
 
     // The surviving registration cannot prove its own duplication: the proof
     // is a reference input and the removed node is an input, and the ledger
@@ -251,6 +311,102 @@ describe("duplicate operator slashing", () => {
         first.nodeKey,
       ),
     ).toBeDefined();
+  }, 300_000);
+
+  it("pays the duplicate-registration bounty only to a claimant that signs, and only the exact reward", async () => {
+    const fixture = await initOperatorExitFixture();
+    const { lucid, contracts, operatorKeyHash, emulator } = fixture;
+    const first = await forceRegisterOperator({
+      fixture,
+      operatorLucid: lucid,
+      operatorKeyHash,
+    });
+    emulator.awaitSlot(3);
+    const second = await forceRegisterOperator({
+      fixture,
+      operatorLucid: lucid,
+      operatorKeyHash,
+    });
+    const slasher = await newFundedWallet(fixture, 3_000_000_000n);
+    const slasherKeyHash = await keyHashOf(slasher);
+    const otherKeyHash = await keyHashOf(
+      await newFundedWallet(fixture, 3_000_000_000n),
+    );
+    const proofNode = SDK.findNodeByKey(
+      (await fetchDirectorySnapshot(lucid, contracts)).registered,
+      first.nodeKey,
+    );
+    if (proofNode === undefined) {
+      throw new Error("Expected the first registration to be present");
+    }
+    const attempt = (overrides: Partial<SDK.SlashDuplicateOperatorTxConfig>) =>
+      slashDuplicateOperator({
+        fixture,
+        submitterLucid: slasher,
+        operatorKeyHash,
+        removedRegisteredNodeKey: second.nodeKey,
+        duplicateProof: { kind: "registered", node: proofNode },
+        overrides,
+      });
+
+    // Naming another key as the claimant makes it a required signer, so a
+    // submitter without that key cannot take the bounty for it.
+    await expect(
+      attempt({ bountyClaimantKeyHash: otherKeyHash }),
+    ).rejects.toThrow(`Missing vkey witness. Key hash: ${otherKeyHash}`);
+
+    // The named claimant signs, but the reward goes to another key: the
+    // ledger accepts the witnesses and the registered-operators policy, the
+    // only mint, refuses the routing.
+    const redirected = await expectOnChainRefusal(async () =>
+      attempt({
+        fraudProverRewardLovelace: 0n,
+        exactFeePlan: await slashingPenaltyFeePlan({
+          submitterLucid: slasher,
+          remainderAddress: bountyAddress(slasher, otherKeyHash),
+          remainderLovelace: FRAUD_PROVER_REWARD_LOVELACE,
+          declaredOutputCount: 1,
+        }),
+      }),
+    );
+    expect(redirected).toContain("duplicate-operator slashing tx");
+    expect(redirected).toContain("Mint[0]");
+
+    // One lovelace either way: the validator reads the compiled reward, so the
+    // builder's own figure cannot move it. The registered-operators policy is
+    // the only mint, so `Mint[0]` is its refusal; the traceless blueprint names
+    // no check, and the Aiken bounty tests pin each one.
+    for (const fraudProverRewardLovelace of [
+      FRAUD_PROVER_REWARD_LOVELACE - 1n,
+      FRAUD_PROVER_REWARD_LOVELACE + 1n,
+    ]) {
+      const refusal = await expectOnChainRefusal(() =>
+        attempt({ fraudProverRewardLovelace }),
+      );
+      expect(refusal).toContain("duplicate-operator slashing tx");
+      expect(refusal).toContain("Mint[0]");
+    }
+    expect(await bountyLovelace(slasher, slasherKeyHash)).toEqual(0n);
+    expect(await bountyLovelace(slasher, otherKeyHash)).toEqual(0n);
+
+    const walletBefore = await walletLovelace(slasher);
+    const slash = await attempt({});
+    await expectExactBountySplit({
+      slasher,
+      claimantKeyHash: slasherKeyHash,
+      fee: slash.fee,
+      walletBefore,
+      bountyBefore: 0n,
+    });
+    const [bounty, ...others] = await bountyAddressUtxos(
+      slasher,
+      slasherKeyHash,
+    );
+    expect(others).toHaveLength(0);
+    expect(bounty?.assets).toEqual({ lovelace: FRAUD_PROVER_REWARD_LOVELACE });
+    expect(bounty?.datum ?? null).toBeNull();
+    expect(bounty?.datumHash ?? null).toBeNull();
+    expect(bounty?.scriptRef ?? null).toBeNull();
   }, 300_000);
 
   it("does not let a dangling duplicate registration block the end-of-shift refresh", async () => {

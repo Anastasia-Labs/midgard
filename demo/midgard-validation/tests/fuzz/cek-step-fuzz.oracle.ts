@@ -29,23 +29,26 @@ const repositoryRoot = resolve(
   "../../../..",
 );
 const aikenProject = join(repositoryRoot, "onchain/aiken");
-const pinCheck = join(aikenProject, "scripts/pinned-compiler.mjs");
+const aikenResolver = join(repositoryRoot, "scripts/lib/aiken.mjs");
 const MACHINE_MODULE = "midgard/cek_machine_v1";
 
-/** `MIDGARD_AIKEN_BIN`, else the `aiken` on PATH, as the pinned tools use. */
-export const aikenBinary = (): string =>
-  process.env.MIDGARD_AIKEN_BIN ?? "aiken";
+let resolvedAiken: string | undefined;
 
-/** Fails unless the evaluator is the repository's pinned Aiken fork. */
-export const assertPinnedAikenEvaluator = (): void => {
-  const run = spawnSync(process.execPath, [pinCheck, aikenBinary()], {
+/**
+ * The aiken `demo/flake.lock` pins, from the repository's one resolver
+ * (`scripts/lib/aiken.mjs`), resolved once per run.
+ */
+export const aikenBinary = (): string => {
+  if (resolvedAiken !== undefined) return resolvedAiken;
+  const run = spawnSync(process.execPath, [aikenResolver], {
     encoding: "utf8",
   });
+  if (run.error !== undefined) throw run.error;
   if (run.status !== 0) {
-    throw new Error(
-      `the Aiken evaluator is not the pinned fork:\n${run.stderr ?? ""}`,
-    );
+    throw new Error(`could not resolve the pinned aiken:\n${run.stderr}`);
   }
+  resolvedAiken = run.stdout.trim();
+  return resolvedAiken;
 };
 
 const MAX_OUTPUT = 512 * 1024 * 1024;
@@ -149,7 +152,6 @@ const inBatches = <A, B>(
 
 /** Builds the oracle: exports both functions once, then evaluates batches. */
 export const makeAikenStepOracle = (): AikenStepOracle => {
-  assertPinnedAikenEvaluator();
   const verifyFlat = exportFunction("verify_core_step_v1");
   const hashFlat = exportFunction("hash_state_v1");
   const directory = mkdtempSync(join(tmpdir(), "midgard-cek-step-fuzz-"));

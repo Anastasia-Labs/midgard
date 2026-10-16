@@ -1670,7 +1670,12 @@ export class StructuralExecutor {
     if (frame?.kind !== "caseSelect") {
       throw new Error("CEK case-select state has the wrong continuation");
     }
-    const branch = this.sequence(pre.focusRoot, pre.auxiliary + 1n);
+    // The branch walk starts at the head of all the branches, so the node
+    // only has to be longer than the steps still to take.
+    const branch = this.sequences.get(rootHex(pre.focusRoot));
+    if (branch === undefined || branch.length <= pre.auxiliary) {
+      throw new Error(`missing CEK case branch ${rootHex(pre.focusRoot)}`);
+    }
     const witness: MidgardCekCoreStepWitness = {
       kind: "selectCaseBranch",
       branch: branch.head,
