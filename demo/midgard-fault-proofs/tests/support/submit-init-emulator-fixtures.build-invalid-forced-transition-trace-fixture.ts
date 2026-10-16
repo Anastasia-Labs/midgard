@@ -277,13 +277,6 @@ const buildForcedTransitionTraceFixture = async ({
       value: Buffer.from(value, "hex"),
     })),
   );
-  const validationTracesRoot = await buildCountedRoot(
-    ROOT_DOMAINS.validationTraces,
-    validationTraceEntries.map(([key, value]) => ({
-      key: Buffer.from(key, "hex"),
-      value: Buffer.from(value, "hex"),
-    })),
-  );
   const counts = {
     withdrawalCount: 0n,
     forcedTransactionCount: 1n,
@@ -305,8 +298,10 @@ const buildForcedTransitionTraceFixture = async ({
     forcedTransactionsRoot: forcedRoot.root,
     transitionTraceRoot: traceRoot.root,
     eventToStepRoot: eventToStepRoot.root,
-    validationTracesRoot: validationTracesRoot.root,
     ...counts,
+    // The header pins the validation-trace pair; the body keeps its traces.
+    validationTracesRoot: EMPTY_MERKLE_TREE_ROOT,
+    validationTraceCount: 0n,
   };
   const headerHash = await Effect.runPromise(hashBlockHeader(header));
   const payloadEnvelopeCbor = await wrapDaPayload(

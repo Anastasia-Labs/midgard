@@ -45,31 +45,11 @@ describe("W22 per-count mismatch determinism", () => {
         depositBytes: [11],
         withdrawalBytes: [21],
       });
-      // N2 authenticates validation traces with the committed count label.
-      // Rebind that label to isolate the independent declared-count check.
-      const validationRoot =
-        headerField === "validationTraceCount"
-          ? await buildCountedRoot(
-              SDK.ROOT_DOMAINS.validationTraces,
-              fixture.payload.block_body.validation_traces.map(
-                ([key, value]) => ({
-                  key: Buffer.from(key, "hex"),
-                  value: Buffer.from(value, "hex"),
-                }),
-              ),
-            )
-          : null;
-      const validationTracesRoot =
-        validationRoot === null
-          ? fixture.header.validationTracesRoot
-          : await commitCountedRoot({
-              domain: SDK.ROOT_DOMAINS.validationTraces,
-              phasRoot: validationRoot.phasRoot,
-              count: fixture.header.validationTraceCount + 7n,
-            });
+      // The header pins the validation-trace root to the empty tree, so it
+      // commits no count: changing a count alone isolates the declared-count
+      // check.
       const mutated = await commitMutatedHeader(fixture, (header) => ({
         ...header,
-        validationTracesRoot,
         [headerField]: (header[headerField] as bigint) + 7n,
       }));
       const result = await evaluateFixture(mutated);
@@ -81,13 +61,27 @@ describe("W22 per-count mismatch determinism", () => {
     },
   );
 
-  it("refuses a changed validation count before count classification when its root is not rebound", async () => {
+  it("refuses a changed validation count at the root, before count classification, when its root is rebound to that count", async () => {
     const fixture = await buildFixture({
       transactions: [corpusTransaction(0)],
     });
+    const builtRoot = await buildCountedRoot(
+      SDK.ROOT_DOMAINS.validationTraces,
+      fixture.payload.block_body.validation_traces.map(([key, value]) => ({
+        key: Buffer.from(key, "hex"),
+        value: Buffer.from(value, "hex"),
+      })),
+    );
+    const validationTraceCount = fixture.header.validationTraceCount + 7n;
+    const validationTracesRoot = await commitCountedRoot({
+      domain: SDK.ROOT_DOMAINS.validationTraces,
+      phasRoot: builtRoot.phasRoot,
+      count: validationTraceCount,
+    });
     const mutated = await commitMutatedHeader(fixture, (header) => ({
       ...header,
-      validationTraceCount: header.validationTraceCount + 7n,
+      validationTracesRoot,
+      validationTraceCount,
     }));
     const result = await evaluateFixture(mutated);
     expect(result.action).toBe("reject");

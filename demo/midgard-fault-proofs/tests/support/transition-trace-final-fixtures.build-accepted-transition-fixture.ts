@@ -309,10 +309,8 @@ export const buildAcceptedTransitionFixture = async ({
         }),
     transitionTraceRoot: trace!.root,
     eventToStepRoot: mapping!.root,
-    validationTracesRoot: "cc".repeat(32),
     totalEventCount: 1n,
     transitionStepCount: 1n,
-    validationTraceCount: 1n,
   };
   const headerHash = await Effect.runPromise(SDK.hashBlockHeader(header));
   const rootFields = (root: typeof transactions) => ({
