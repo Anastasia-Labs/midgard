@@ -2515,12 +2515,8 @@ fn timeout_spends(thread: CaseThreadV1, tx: Transaction) -> Bool {
 fn award_spends(tx: Transaction) -> Bool {
   award_validator.main.spend(
     case_policy,
-    Some(
-      ct.StepDatum {
-        fraud_prover: prover,
-        data: Some(validation_resolution_v1.winning_resolution()),
-      },
-    ),
+    hub_policy,
+    Some(awarded_datum()),
     CloseAwardedThread { input_index: 1, case_input_index: 0 },
     thread_out_ref(),
     tx,
@@ -2530,6 +2526,7 @@ fn award_spends(tx: Transaction) -> Bool {
 fn award_mints(tx: Transaction) -> Bool {
   award_validator.main.mint(
     case_policy,
+    hub_policy,
     MintReceipt { case_input_index: 0 },
     config().award_v1,
     tx,
