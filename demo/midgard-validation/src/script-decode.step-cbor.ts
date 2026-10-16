@@ -38,7 +38,6 @@ import {
   takeByte,
   takeSlice,
 } from "./script-decode.step-cbor-read.js";
-import { foldOne } from "./script-decode.step-const.js";
 import { encodePlutusInteger } from "./script-decode.step-data.js";
 import {
   type DecodeEnv,
@@ -48,6 +47,7 @@ import {
   type Tick,
   to,
 } from "./script-decode.step-exec.js";
+import { foldOne } from "./script-decode.step-list.js";
 import type {
   DataMode,
   SequenceSummary,
@@ -155,6 +155,7 @@ const deliver = (
     case "assetOuter":
     case "assetInner":
     case "pairEntry":
+    case "valueRun":
       throw new Error("script decode: data item under a non-data frame");
   }
 };

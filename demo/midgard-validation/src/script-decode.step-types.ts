@@ -116,6 +116,16 @@ export type Frame =
       readonly remaining: bigint;
       readonly count: number;
       readonly key: Summary | undefined;
+    }
+  /**
+   * `count` list elements decoded in bulk, from the cons bit at `start`, whose
+   * scan spent `units`.
+   */
+  | {
+      readonly k: "valueRun";
+      readonly start: number;
+      readonly count: number;
+      readonly units: number;
     };
 
 export type NatPurpose =
@@ -138,6 +148,7 @@ export type Fold = {
 export type ConstFoldNext =
   | {
       readonly k: "list";
+      readonly element: ConstantType;
       readonly array: boolean;
       readonly count: number;
       readonly memory: bigint;

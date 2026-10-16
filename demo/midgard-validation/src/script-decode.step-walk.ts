@@ -82,8 +82,8 @@ export const scriptDecodeWalkRecord = (
     : undefined;
 
 /**
- * The next Walk from `cursor`: up to `fuel` ticks, revealing exactly the
- * frames it pops.
+ * The next Walk from `cursor`: up to `fuel` ticks, revealing the fewest top
+ * frames that reach the machine a step over the whole stack reaches.
  */
 export const nextScriptDecodeWalkStep = (
   cursor: ScriptDecodeWalkCursor,
@@ -104,11 +104,22 @@ export const nextScriptDecodeWalkStep = (
     frames.length,
     fuel,
   );
-  const visible = probe.consumed;
-  const reveals = frames.slice(0, visible);
-  const base = stackRootOf(frames.slice(visible), EMPTY_STACK_ROOT);
-  const machine = scriptDecodeStep(env, run.machine, reveals, base, fuel);
-  if (!machine.stackRoot.equals(probe.machine.stackRoot)) {
+  // A tick may open a frame it then leaves on the stack (a CBOR break under a
+  // frame it does not close), so the frames the step pops are not always
+  // enough: reveal one more until the step reaches the probe's machine.
+  const stepWith = (visible: number) => {
+    const reveals = frames.slice(0, visible);
+    const base = stackRootOf(frames.slice(visible), EMPTY_STACK_ROOT);
+    const machine = scriptDecodeStep(env, run.machine, reveals, base, fuel);
+    return { reveals, base, machine };
+  };
+  let visible = probe.consumed;
+  let { reveals, base, machine } = stepWith(visible);
+  while (!sameMachine(machine, probe.machine) && visible < frames.length) {
+    visible += 1;
+    ({ reveals, base, machine } = stepWith(visible));
+  }
+  if (!sameMachine(machine, probe.machine)) {
     throw new Error("script decode: minimal reveal changed the step");
   }
   if (sameMachine(machine, run.machine)) {
@@ -123,7 +134,7 @@ export const nextScriptDecodeWalkStep = (
 
 /**
  * Plans a whole decode walk: each Walk takes `fuel` ticks (fewer on the last)
- * and reveals exactly the frames it pops.
+ * and reveals the fewest top frames that reach the same machine.
  */
 export const planScriptDecodeWalk = (
   language: number,

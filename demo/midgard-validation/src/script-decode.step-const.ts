@@ -1,22 +1,17 @@
 /**
- * The constant ticks of the script-decode step machine: the type tag list,
- * values and folds, as in
+ * The constant ticks of the script-decode step machine: the type tag list and
+ * values, as in
  * `onchain/aiken/lib/midgard/script-decode-v1.ak`.
  */
 import {
   emptyMidgardCekDataListSummary,
-  emptyMidgardCekDataPairSummary,
   hashMidgardCekBlobChunk,
   hashMidgardCekTermNode,
   hashMidgardCekValueNode,
-  prependMidgardCekDataListSummary,
-  prependMidgardCekDataPairSummary,
-  summarizeMidgardCekListData,
-  summarizeMidgardCekMapData,
   summarizeMidgardCekSmallConstrData,
 } from "@al-ft/midgard-core";
 
-import { shortBytesSummary } from "./script-decode.step-bits.js";
+import { general, leafOf } from "./script-decode.step-bulk.js";
 import {
   intData,
   serialiseScriptDecodeData,
@@ -25,7 +20,6 @@ import {
   at,
   type DecodeEnv,
   type Exec,
-  expectFrame,
   have,
   pop,
   push,
@@ -35,10 +29,16 @@ import {
   type Tick,
   to,
 } from "./script-decode.step-exec.js";
+import {
+  PAIR_UNITS,
+  pairSummary,
+  type Shape,
+  shapeOf,
+  UNITS_PER_TICK,
+} from "./script-decode.step-shape.js";
 import type {
   ConstantType,
   Control,
-  Fold,
   Frame,
   Summary,
 } from "./script-decode.step-types.js";
@@ -158,7 +158,96 @@ const emptyConstr = (constructor: number): Summary =>
     emptyMidgardCekDataListSummary(),
   );
 
-export const tickValue = (env: DecodeEnv, ex: Exec, ty: ConstantType): Tick => {
+export const bitsOf = (env: DecodeEnv) => ({
+  window: env.window,
+  flatLength: env.flatLength,
+});
+
+/**
+ * Decodes the value of `ty` in bulk where its bits allow, and otherwise as one
+ * node, after decoding what it can of a pair's components.
+ */
+export const tickValue = (env: DecodeEnv, ex: Exec, ty: ConstantType): Tick =>
+  piece(
+    env,
+    ex,
+    ex.cursor,
+    ty,
+    shapeOf(ty),
+    UNITS_PER_TICK,
+    (held) => held,
+    (after, summary, memory, left) =>
+      climb(env, { ...ex, cursor: after }, summary, memory, left),
+  );
+
+type PieceOk = (
+  after: number,
+  summary: Summary,
+  memory: bigint,
+  units: number,
+) => Tick;
+
+/**
+ * Decodes the value of `ty` at `cursor` while `units` last, as `piece`. A pair
+ * is decoded component by component; the first value that does not decode in
+ * bulk is decoded as one node, under the frames `pending` pushes.
+ */
+const piece = (
+  env: DecodeEnv,
+  ex: Exec,
+  cursor: number,
+  ty: ConstantType,
+  shape: Shape,
+  units: number,
+  pending: (held: Exec) => Exec,
+  ok: PieceOk,
+): Tick => {
+  const node = () => nodeValue(env, pending({ ...ex, cursor }), ty);
+  if (units < 0) return node();
+  const leaf = leafOf(bitsOf(env), shape, cursor);
+  if (leaf.k === "truncated") return node();
+  if (leaf.k === "fixed") {
+    return ok(leaf.after, leaf.value.summary, leaf.value.memory, units);
+  }
+  const kind = leaf.kind;
+  if (kind.k === "pair") {
+    if (ty.k !== "pair") {
+      throw new Error("script decode: a pair shape of a non-pair type");
+    }
+    return piece(
+      env,
+      ex,
+      cursor,
+      ty.first,
+      kind.first,
+      units - PAIR_UNITS,
+      (held) => push(pending(held), { k: "valuePairFirst", second: ty.second }),
+      (middle, a, aMemory, left) =>
+        piece(
+          env,
+          ex,
+          middle,
+          ty.second,
+          kind.second,
+          left,
+          (held) =>
+            push(pending(held), {
+              k: "valuePairSecond",
+              first: a,
+              memory: aMemory,
+            }),
+          (after, b, bMemory, rest) =>
+            ok(after, pairSummary(a, b), aMemory + bMemory, rest),
+        ),
+    );
+  }
+  const value = general(bitsOf(env), kind, cursor, units);
+  if (value.k === "stop") return node();
+  return ok(value.after, value.summary, value.memory, value.units);
+};
+
+/** One node of a constant value: a leaf, or the frame of a list, pair or value. */
+const nodeValue = (env: DecodeEnv, ex: Exec, ty: ConstantType): Tick => {
   const cursor = ex.cursor;
   switch (ty.k) {
     case "integer":
@@ -222,18 +311,49 @@ export const tickValue = (env: DecodeEnv, ex: Exec, ty: ConstantType): Tick => {
       return refuse(env, ex, ScriptDecodeClass.blsConstant, cursor);
   }
 };
-
 export const tickValueReturn = (
+  env: DecodeEnv,
   ex: Exec,
   summary: Summary,
   memory: bigint,
 ): Tick => {
   const popped = pop(ex);
   if (popped === undefined) return undefined;
-  const [frame, rest] = popped;
+  return ascend(env, popped[1], popped[0], summary, memory, UNITS_PER_TICK);
+};
+
+/**
+ * Returns a decoded value to the frames above it while `units` last and the
+ * frames are revealed.
+ */
+const climb = (
+  env: DecodeEnv,
+  ex: Exec,
+  summary: Summary,
+  memory: bigint,
+  units: number,
+): Exec => {
+  const held: Exec = { ...ex, control: { k: "valueReturn", summary, memory } };
+  if (units < 0) return held;
+  const popped = pop(ex);
+  if (popped === undefined) return held;
+  const next = ascend(env, popped[1], popped[0], summary, memory, units);
+  if (next === undefined) throw new Error("script decode: a stuck ascent");
+  return next;
+};
+
+/** Returns a decoded value to `frame`. */
+const ascend = (
+  env: DecodeEnv,
+  ex: Exec,
+  frame: Frame,
+  summary: Summary,
+  memory: bigint,
+  units: number,
+): Tick => {
   switch (frame.k) {
     case "constant":
-      return to(rest, {
+      return to(ex, {
         k: "return",
         hash: Buffer.from(
           hashMidgardCekTermNode({
@@ -251,7 +371,7 @@ export const tickValueReturn = (
       });
     case "valueList":
       return to(
-        push(push(rest, { k: "valueItem", summary }), {
+        push(push(ex, { k: "valueItem", summary }), {
           ...frame,
           count: frame.count + 1,
           memory: frame.memory + memory,
@@ -259,25 +379,31 @@ export const tickValueReturn = (
         { k: "listBit", element: frame.element },
       );
     case "valuePairFirst":
-      return to(push(rest, { k: "valuePairSecond", first: summary, memory }), {
-        k: "value",
-        ty: frame.second,
-      });
-    case "valuePairSecond":
-      return to(rest, {
-        k: "valueReturn",
-        summary: summarizeMidgardCekSmallConstrData(
-          0n,
-          prependMidgardCekDataListSummary(
-            frame.first,
-            prependMidgardCekDataListSummary(
-              summary,
-              emptyMidgardCekDataListSummary(),
-            ),
+      return piece(
+        env,
+        ex,
+        ex.cursor,
+        frame.second,
+        shapeOf(frame.second),
+        units,
+        (held) => push(held, { k: "valuePairSecond", first: summary, memory }),
+        (after, second, secondMemory, left) =>
+          climb(
+            env,
+            { ...ex, cursor: after },
+            pairSummary(summary, second),
+            memory + secondMemory,
+            left - PAIR_UNITS,
           ),
-        ),
-        memory: frame.memory + memory,
-      });
+      );
+    case "valuePairSecond":
+      return climb(
+        env,
+        ex,
+        pairSummary(frame.first, summary),
+        frame.memory + memory,
+        units - PAIR_UNITS,
+      );
     case "delay":
     case "lambda":
     case "force":
@@ -294,159 +420,9 @@ export const tickValueReturn = (
     case "pairEntry":
     case "dataList":
     case "dataMap":
+    case "valueRun":
       throw new Error(
         "script decode: constant value under a non-constant frame",
       );
-  }
-};
-
-const listBit = (
-  env: DecodeEnv,
-  ex: Exec,
-  more: Control,
-  close: (frame: Frame, rest: Exec, after: number) => Tick,
-): Tick => {
-  const cursor = ex.cursor;
-  if (!have(env, cursor, 1)) {
-    return refuse(env, ex, ScriptDecodeClass.flatTruncated, cursor);
-  }
-  if (read(env, cursor, 1) === 1) return at(ex, cursor + 1, more);
-  const popped = pop(ex);
-  if (popped === undefined) return undefined;
-  return close(popped[0], popped[1], cursor + 1);
-};
-
-export const tickListBit = (
-  env: DecodeEnv,
-  ex: Exec,
-  element: ConstantType,
-): Tick =>
-  listBit(env, ex, { k: "value", ty: element }, (frame, rest, after) => {
-    const list = expectFrame(frame, "valueList");
-    return at(rest, after, {
-      k: "constFold",
-      fold: {
-        pairs: false,
-        remaining: list.count,
-        sequence: emptyMidgardCekDataListSummary(),
-      },
-      next: {
-        k: "list",
-        array: list.array,
-        count: list.count,
-        memory: list.memory,
-      },
-    });
-  });
-
-export const tickAssetOuterBit = (env: DecodeEnv, ex: Exec): Tick =>
-  listBit(
-    env,
-    ex,
-    { k: "filler", purpose: "currency" },
-    (frame, rest, after) => {
-      const outer = expectFrame(frame, "assetOuter");
-      return at(rest, after, {
-        k: "constFold",
-        fold: {
-          pairs: true,
-          remaining: outer.count,
-          sequence: emptyMidgardCekDataPairSummary(),
-        },
-        next: { k: "assetOuter", invalid: outer.invalid, total: outer.total },
-      });
-    },
-  );
-
-export const tickAssetInnerBit = (env: DecodeEnv, ex: Exec): Tick =>
-  listBit(env, ex, { k: "filler", purpose: "token" }, (frame, rest, after) => {
-    const inner = expectFrame(frame, "assetInner");
-    return at(rest, after, {
-      k: "constFold",
-      fold: {
-        pairs: true,
-        remaining: inner.count,
-        sequence: emptyMidgardCekDataPairSummary(),
-      },
-      next: {
-        k: "assetInner",
-        currency: inner.currency,
-        count: inner.count,
-        invalid: inner.invalid,
-      },
-    });
-  });
-
-/** Folds one popped entry into the sequence. */
-export const foldOne = (fold: Fold, frame: Frame): Fold => {
-  if (fold.pairs) {
-    const entry = expectFrame(frame, "pairEntry");
-    return {
-      ...fold,
-      remaining: fold.remaining - 1,
-      sequence: prependMidgardCekDataPairSummary(
-        entry.key,
-        entry.value,
-        fold.sequence,
-      ),
-    };
-  }
-  const item = expectFrame(frame, "valueItem");
-  return {
-    ...fold,
-    remaining: fold.remaining - 1,
-    sequence: prependMidgardCekDataListSummary(item.summary, fold.sequence),
-  };
-};
-
-export const tickConstFold = (
-  env: DecodeEnv,
-  ex: Exec,
-  control: Extract<Control, { k: "constFold" }>,
-): Tick => {
-  const { fold, next } = control;
-  if (fold.remaining > 0) {
-    const popped = pop(ex);
-    if (popped === undefined) return undefined;
-    return to(popped[1], { ...control, fold: foldOne(fold, popped[0]) });
-  }
-  switch (next.k) {
-    case "list":
-      return to(ex, {
-        k: "valueReturn",
-        summary: summarizeMidgardCekListData(fold.sequence),
-        memory: next.array ? BigInt(next.count) : next.memory,
-      });
-    case "assetInner": {
-      const popped = pop(ex);
-      if (popped === undefined) return undefined;
-      const outer = expectFrame(popped[0], "assetOuter");
-      return to(
-        push(
-          push(popped[1], {
-            k: "pairEntry",
-            key: shortBytesSummary(next.currency),
-            value: summarizeMidgardCekMapData(fold.sequence),
-          }),
-          {
-            k: "assetOuter",
-            count: outer.count + 1,
-            previous: outer.previous,
-            invalid: outer.invalid || next.invalid || next.count === 0,
-            total: outer.total + next.count,
-          },
-        ),
-        { k: "assetOuterBit" },
-      );
-    }
-    case "assetOuter":
-      if (next.invalid) {
-        return refuse(env, ex, ScriptDecodeClass.nonCanonicalValue, ex.cursor);
-      }
-      return to(ex, {
-        k: "valueReturn",
-        summary: summarizeMidgardCekMapData(fold.sequence),
-        memory: BigInt(next.total),
-      });
   }
 };

@@ -21,6 +21,7 @@ import {
   flatOfTermBits,
   OUTSIDE_PROFILE,
 } from "./cek-program.cardano-flat.vectors.js";
+import { scriptDecodeStepScripts } from "./fixtures/script-decode-step-v1.vectors.mjs";
 
 const bytes = (value: string): Buffer => Buffer.from(value, "hex");
 
@@ -35,6 +36,15 @@ const wrap = (flat: Buffer): Buffer => {
         : Buffer.from([0x59, n >> 8, n & 255]);
   return Buffer.concat([head, flat]);
 };
+
+/** The Flat inside a script's CBOR byte-string wrapper. */
+const unwrap = (script: Buffer): Buffer =>
+  script.subarray(script[0]! < 0x58 ? 1 : script[0] === 0x58 ? 2 : 3);
+
+/** The constant lists of the golden vectors, decoded in bulk. */
+const BULK_ROWS = scriptDecodeStepScripts()
+  .filter(([label]) => label.startsWith("bulk") && !label.includes(","))
+  .map(([label, , script]) => [label, unwrap(script).toString("hex")] as const);
 
 /**
  * Each reader verdict and the script-decode verdict it projects to: a class
@@ -101,6 +111,7 @@ const RAW_ROWS: readonly (readonly [string, string])[] = [
   ["Data with a trailing byte string", "0101004c01020000000001"],
   ["Data with a trailing break", "0101004c010200ff0001"],
   ["deep delays", flatOfTermBits("0001".repeat(2_000) + "0110")],
+  ...BULK_ROWS,
 ];
 
 describe("the script-decode step port against the Flat reader", () => {

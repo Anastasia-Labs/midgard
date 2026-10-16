@@ -6,17 +6,13 @@
  *
  * It mirrors `initial_run_v1`, `step_with_frames_v1` and `record_of_v1`
  * exactly, because every Walk must reproduce the on-chain successor datum.
- * It builds witnesses only; whether a script is admitted is decided by
- * `decodeCardanoFlatProgram`.
+ * Its record is the off-chain verdict on a script: `Decoded` or `Refused`,
+ * exactly as Cardano decodes it.
  */
 import { nextSetBit } from "./script-decode.step-bits.js";
 import { tickBytes, tickFiller } from "./script-decode.step-bytes.js";
 import { tickData } from "./script-decode.step-cbor.js";
 import {
-  tickAssetInnerBit,
-  tickAssetOuterBit,
-  tickConstFold,
-  tickListBit,
   tickTypes,
   tickValue,
   tickValueReturn,
@@ -37,6 +33,12 @@ import {
   tickTerm,
   tickTermFold,
 } from "./script-decode.step-exec.js";
+import {
+  tickAssetInnerBit,
+  tickAssetOuterBit,
+  tickConstFold,
+  tickListBit,
+} from "./script-decode.step-list.js";
 import { tickMagnitude, tickNat } from "./script-decode.step-nat.js";
 import type {
   Control,
@@ -264,7 +266,7 @@ const tick = (env: DecodeEnv, ex: Exec): Tick => {
     case "value":
       return tickValue(env, ex, control.ty);
     case "valueReturn":
-      return tickValueReturn(ex, control.summary, control.memory);
+      return tickValueReturn(env, ex, control.summary, control.memory);
     case "listBit":
       return tickListBit(env, ex, control.element);
     case "assetOuterBit":

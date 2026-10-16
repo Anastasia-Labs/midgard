@@ -345,6 +345,7 @@ export const tickReturn = (ex: Exec, hash: Buffer): Tick => {
     case "pairEntry":
     case "dataList":
     case "dataMap":
+    case "valueRun":
       throw new Error("script decode: term return under a non-term frame");
   }
 };

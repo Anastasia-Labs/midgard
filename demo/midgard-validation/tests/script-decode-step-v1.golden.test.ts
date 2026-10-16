@@ -67,9 +67,14 @@ describe("script-decode step golden vectors", () => {
     }
   });
 
-  it("walk each row over more than one Walk", () => {
+  it("walk each row over more than one Walk, unless the Bind refuses it", () => {
     for (const row of rows) {
-      expect(row.steps.length, row.label).toBeGreaterThan(1);
+      if (row.steps.length === 0) {
+        expect(row.record, row.label).toMatchObject({ k: "refused" });
+      } else {
+        expect(row.steps.length, row.label).toBeGreaterThan(1);
+      }
     }
+    expect(rows.filter((row) => row.steps.length === 0)).toHaveLength(1);
   });
 });

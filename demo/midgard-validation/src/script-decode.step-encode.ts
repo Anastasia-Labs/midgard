@@ -179,6 +179,12 @@ export const frameData = (frame: Frame): ScriptDecodeData => {
         intData(frame.count),
         optionData(frame.key, summaryData),
       ]);
+    case "valueRun":
+      return constrData(20, [
+        intData(frame.start),
+        intData(frame.count),
+        intData(frame.units),
+      ]);
   }
 };
 
@@ -208,6 +214,7 @@ const constFoldNextData = (next: ConstFoldNext): ScriptDecodeData => {
   switch (next.k) {
     case "list":
       return constrData(0, [
+        constantTypeData(next.element),
         boolData(next.array),
         intData(next.count),
         next.memory,

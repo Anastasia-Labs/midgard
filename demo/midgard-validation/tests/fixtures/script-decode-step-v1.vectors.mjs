@@ -20,239 +20,34 @@
  * This module imports nothing from the package, so either side can load it.
  */
 
-// ## A Flat bit writer, as in script-decode-v1.test.ak
-
-const W0 = { acc: 0n, n: 0 };
-
-const put = (w, value, width) => ({
-  acc: (w.acc << BigInt(width)) + BigInt(value),
-  n: w.n + width,
-});
-
-/** A Flat natural: little-endian 7-bit groups. */
-const nat = (w, z) => {
-  let out = w;
-  let rest = BigInt(z);
-  while (rest >= 128n) {
-    out = put(out, 128n + (rest % 128n), 8);
-    rest /= 128n;
-  }
-  return put(out, rest, 8);
-};
-
-const int = (w, n) => {
-  const z = BigInt(n);
-  return nat(w, z >= 0n ? 2n * z : -2n * z - 1n);
-};
-
-const filler = (w) => put(w, 1, 8 - (w.n % 8));
-
-const chunks = (w, bytes) => {
-  let out = w;
-  for (let offset = 0; offset < bytes.length; offset += 255) {
-    const chunk = bytes.subarray(offset, offset + 255);
-    out = put(out, chunk.length, 8);
-    for (const byte of chunk) out = put(out, byte, 8);
-  }
-  return put(out, 0, 8);
-};
-
-const toBytes = (w) => {
-  const hex = w.acc.toString(16).padStart(w.n / 4, "0");
-  return Buffer.from(hex, "hex");
-};
-
-const finish = (w) => toBytes(filler(w));
-
-const enc = (w, term) => {
-  switch (term.k) {
-    case "var":
-      return nat(put(w, 0, 4), term.index);
-    case "delay":
-      return enc(put(w, 1, 4), term.body);
-    case "lam":
-      return enc(put(w, 2, 4), term.body);
-    case "app":
-      return enc(enc(put(w, 3, 4), term.function), term.argument);
-    case "force":
-      return enc(put(w, 5, 4), term.body);
-    case "err":
-      return put(w, 6, 4);
-    case "builtin":
-      return put(put(w, 7, 4), term.tag, 7);
-    case "constr":
-      return encList(nat(put(w, 8, 4), term.tag), term.fields);
-    case "case":
-      return encList(enc(put(w, 9, 4), term.scrutinee), term.branches);
-    case "con":
-      return encValue(typeTags(put(w, 4, 4), term.tags), term.value);
-    default:
-      throw new Error(`unknown term ${term.k}`);
-  }
-};
-
-const encList = (w, terms) => {
-  let out = w;
-  for (const term of terms) out = enc(put(out, 1, 1), term);
-  return put(out, 0, 1);
-};
-
-const encValue = (w, value) => {
-  switch (value.k) {
-    case "int":
-      return int(w, value.n);
-    case "bytes":
-      return chunks(filler(w), value.bytes);
-    case "bool":
-      return put(w, value.b ? 1 : 0, 1);
-    case "list": {
-      let out = w;
-      for (const item of value.items) out = encValue(put(out, 1, 1), item);
-      return put(out, 0, 1);
-    }
-    case "pair":
-      return encValue(encValue(w, value.first), value.second);
-    default:
-      throw new Error(`unknown value ${value.k}`);
-  }
-};
-
-const typeTags = (w, tags) => {
-  let out = w;
-  for (const tag of tags) out = put(put(out, 1, 1), tag, 4);
-  return put(out, 0, 1);
-};
-
-const program = (minor, body) =>
-  finish(enc(nat(nat(nat(W0, 1), minor), 0), body));
-
-const varT = (index) => ({ k: "var", index });
-const delay = (body) => ({ k: "delay", body });
-const lam = (body) => ({ k: "lam", body });
-const app = (fn, argument) => ({ k: "app", function: fn, argument });
-const force = (body) => ({ k: "force", body });
-const err = () => ({ k: "err" });
-const builtin = (tag) => ({ k: "builtin", tag });
-const constr = (tag, fields) => ({ k: "constr", tag, fields });
-const caseOf = (scrutinee, branches) => ({ k: "case", scrutinee, branches });
-const con = (tags, value) => ({ k: "con", tags, value });
-const vInt = (n) => ({ k: "int", n });
-const vBytes = (bytes) => ({ k: "bytes", bytes: Buffer.from(bytes) });
-const vBool = (b) => ({ k: "bool", b });
-const vList = (items) => ({ k: "list", items });
-const vPair = (first, second) => ({ k: "pair", first, second });
-const vValue = (entries) =>
-  vList(
-    entries.map(([currency, tokens]) =>
-      vPair(
-        vBytes(Buffer.from(currency, "hex")),
-        vList(
-          tokens.map(([name, quantity]) =>
-            vPair(vBytes(Buffer.from(name, "hex")), vInt(quantity)),
-          ),
-        ),
-      ),
-    ),
-  );
-
-// ## Plutus Data, written as the ledger's `serialiseData` writes it
-
-const cborHead = (major, argument) => {
-  const n = BigInt(argument);
-  const initial = major << 5;
-  if (n < 24n) return Buffer.from([initial | Number(n)]);
-  for (const [extra, bytes] of [
-    [24, 1],
-    [25, 2],
-    [26, 4],
-    [27, 8],
-  ]) {
-    if (n < 1n << BigInt(8 * bytes)) {
-      const hex = n.toString(16).padStart(2 * bytes, "0");
-      return Buffer.concat([
-        Buffer.from([initial | extra]),
-        Buffer.from(hex, "hex"),
-      ]);
-    }
-  }
-  throw new Error("argument over 64 bits");
-};
-
-const cborBytes = (bytes) => {
-  if (bytes.length <= 64) {
-    return Buffer.concat([cborHead(2, bytes.length), bytes]);
-  }
-  const parts = [Buffer.from([0x5f])];
-  for (let offset = 0; offset < bytes.length; offset += 64) {
-    const chunk = bytes.subarray(offset, offset + 64);
-    parts.push(cborHead(2, chunk.length), chunk);
-  }
-  parts.push(Buffer.from([0xff]));
-  return Buffer.concat(parts);
-};
-
-const cborList = (items) =>
-  items.length === 0
-    ? Buffer.from([0x80])
-    : Buffer.concat([
-        Buffer.from([0x9f]),
-        ...items.map(cborData),
-        Buffer.from([0xff]),
-      ]);
-
-const cborData = (data) => {
-  switch (data.k) {
-    case "I": {
-      const n = data.n;
-      if (n >= 0n && n < 1n << 64n) return cborHead(0, n);
-      if (n < 0n && n >= -(1n << 64n)) return cborHead(1, -n - 1n);
-      const magnitude = n >= 0n ? n : -n - 1n;
-      let hex = magnitude.toString(16);
-      if (hex.length % 2 === 1) hex = `0${hex}`;
-      return Buffer.concat([
-        Buffer.from([n >= 0n ? 0xc2 : 0xc3]),
-        cborBytes(Buffer.from(hex, "hex")),
-      ]);
-    }
-    case "B":
-      return cborBytes(data.bytes);
-    case "List":
-      return cborList(data.items);
-    case "Map":
-      return Buffer.concat([
-        cborHead(5, data.entries.length),
-        ...data.entries.flatMap(([key, value]) => [
-          cborData(key),
-          cborData(value),
-        ]),
-      ]);
-    case "Constr": {
-      const { tag, fields } = data;
-      if (tag < 7)
-        return Buffer.concat([cborHead(6, 121 + tag), cborList(fields)]);
-      if (tag < 128) {
-        return Buffer.concat([cborHead(6, 1280 + tag - 7), cborList(fields)]);
-      }
-      return Buffer.concat([
-        cborHead(6, 102),
-        cborHead(4, 2),
-        cborHead(0, tag),
-        cborList(fields),
-      ]);
-    }
-    default:
-      throw new Error(`unknown data ${data.k}`);
-  }
-};
-
-const iData = (n) => ({ k: "I", n: BigInt(n) });
-const bData = (bytes) => ({ k: "B", bytes: Buffer.from(bytes) });
-const listData = (items) => ({ k: "List", items });
-const mapData = (entries) => ({ k: "Map", entries });
-const constrData = (tag, fields) => ({ k: "Constr", tag, fields });
-
-const pow2 = (n) => 1n << BigInt(n);
-const repeat = (n, item) => Array.from({ length: n }, () => item);
+import {
+  app,
+  bData,
+  builtin,
+  caseOf,
+  cborData,
+  con,
+  constr,
+  constrData,
+  delay,
+  err,
+  force,
+  iData,
+  lam,
+  listData,
+  mapData,
+  pow2,
+  program,
+  repeat,
+  varT,
+  vBool,
+  vBytes,
+  vInt,
+  vList,
+  vPair,
+  vUnit,
+  vValue,
+} from "./script-decode-step-v1.writers.mjs";
 
 // ## The rows
 
@@ -363,6 +158,202 @@ export const SCRIPT_DECODE_BLUEPRINT_SCRIPTS = [
   ],
 ];
 
+/**
+ * Constant lists of each element type, long enough that their elements are
+ * decoded many to a tick, with elements the bulk path leaves to one-node
+ * ticks mixed in.
+ */
+const bulkPrograms = () => {
+  const range = (n) => Array.from({ length: n }, (_, index) => index);
+  const utf8 = (text) => Buffer.from(text, "utf8");
+  return [
+    [
+      "bulk list bool",
+      program(
+        0,
+        con([7, 5, 4], vList(range(300).map((i) => vBool(i % 3 === 0)))),
+      ),
+    ],
+    [
+      "bulk list unit",
+      program(0, con([7, 5, 3], vList(range(400).map(vUnit)))),
+    ],
+    [
+      "bulk list integer",
+      program(
+        0,
+        con(
+          [7, 5, 0],
+          vList(
+            range(160).map((i) =>
+              vInt(i % 40 === 17 ? -pow2(150) : i % 2 === 0 ? i * 977 : -i),
+            ),
+          ),
+        ),
+      ),
+    ],
+    [
+      "bulk list bytestring",
+      program(
+        0,
+        con(
+          [7, 5, 1],
+          vList(
+            range(90).map((i) =>
+              vBytes(Buffer.alloc(i === 45 ? 300 : i % 9, i)),
+            ),
+          ),
+        ),
+      ),
+    ],
+    [
+      "bulk list string",
+      program(
+        0,
+        con(
+          [7, 5, 2],
+          vList(
+            range(70).map((i) =>
+              vBytes(utf8(i % 5 === 0 ? "" : `e${i}\u20ac`)),
+            ),
+          ),
+        ),
+      ),
+    ],
+    [
+      "bulk list of a unit pair chain",
+      program(
+        0,
+        con(
+          [7, 5, 7, 7, 6, 3, 7, 7, 6, 3, 7, 7, 6, 4, 0],
+          vList(
+            range(60).map((i) =>
+              vPair(
+                vUnit(),
+                vPair(vUnit(), vPair(vBool(i % 2 === 1), vInt(i))),
+              ),
+            ),
+          ),
+        ),
+      ),
+    ],
+    [
+      "bulk list of pairs with a unit second",
+      program(
+        0,
+        con(
+          [7, 5, 7, 7, 6, 0, 3],
+          vList(range(150).map((i) => vPair(vInt(i * 31 - 900), vUnit()))),
+        ),
+      ),
+    ],
+    [
+      "bulk nested lists",
+      program(
+        0,
+        con(
+          [7, 5, 7, 5, 4],
+          vList(
+            range(50).map((i) =>
+              vList(range(i % 7).map((j) => vBool(j % 2 === 0))),
+            ),
+          ),
+        ),
+      ),
+    ],
+    [
+      "bulk list Data",
+      program(
+        0,
+        con([7, 5, 8], vList(range(12).map((i) => vBytes(cborData(iData(i)))))),
+      ),
+    ],
+    [
+      "bulk list string refused mid-list",
+      program(
+        0,
+        con(
+          [7, 5, 2],
+          vList(
+            range(80).map((i) =>
+              vBytes(i === 61 ? Buffer.from([0xc3, 0x28]) : utf8(`s${i}`)),
+            ),
+          ),
+        ),
+      ),
+    ],
+    [
+      "bulk list unit truncated",
+      program(0, con([7, 5, 3], vList(range(500).map(vUnit)))).subarray(0, 20),
+    ],
+  ];
+};
+
+/**
+ * One script per refusal class 1-17 (classes 5 and 11 are the phase-2 classes
+ * of a `Decoded` record), plus scripts whose record turns on a single rule:
+ * the scope depth inside a constr, a padding or filler offset, a builtin
+ * offset, a version. Each is `[label, script bytes, fuel]`.
+ */
+const refusalScripts = () => {
+  const flat = (raw) => Buffer.from(raw, "hex");
+  return [
+    ["class 1, a CBOR integer", Buffer.from("01", "hex"), 1],
+    [
+      "class 2, a byte after the CBOR byte string",
+      Buffer.concat([wrap(program(1, con([3], vUnit()))), Buffer.from([0])]),
+      1,
+    ],
+    ["class 3, no final pad", wrap(flat("0101003766980103c2410100")), 1],
+    ["class 4, a final pad of 03", wrap(flat("0101003766980103c241010003")), 1],
+    [
+      "class 4, a byte-string filler ending in an early 1 bit",
+      wrap(flat("010100488401aa0001")),
+      1,
+    ],
+    ["class 4, a final pad ending inside a byte", wrap(flat("0101007430")), 1],
+    ["phase-2 class 5, version 1.2.0", wrap(flat("01020061")), 1],
+    ["class 6, term tag 10", wrap(flat("010100a1")), 1],
+    ["class 7, constr in 1.0.0", wrap(flat("0100008001")), 1],
+    ["class 8, builtin tag 101", wrap(flat("0101007ca1")), 1],
+    ["class 8, builtin tag 106", wrap(flat("0101007d41")), 1],
+    [
+      "class 9, a constr of 1,025 fields",
+      wrap(program(1, constr(0, repeat(1025, builtin(1))))),
+      64,
+    ],
+    [
+      "class 10, a constr tag over 64 bits",
+      wrap(flat("0101008ffffffffffffffffff021")),
+      1,
+    ],
+    ["phase-2 class 11, variable index 0", wrap(flat("010100200001")), 1],
+    [
+      "a variable bound by a lambda inside a constr",
+      wrap(flat("01010080080001")),
+      1,
+    ],
+    ["class 12, type tag 14", wrap(flat("0101004f01")), 1],
+    [
+      "class 13, a constant type of 33 tags",
+      wrap(flat("0101004bd6f5bd6f5bd6f5bd6f5bd6f5bd6f5bd6f5bd6f5801")),
+      1,
+    ],
+    [
+      "class 14, a BLS12-381 G1 constant",
+      wrap(flat(`0101004c8130${"00".repeat(48)}0001`)),
+      1,
+    ],
+    ["class 15, a string of ff", wrap(flat("010100490101ff0001")), 1],
+    ["class 16, a Data constant of ff", wrap(flat("0101004c0101ff0001")), 1],
+    [
+      "class 17, a Value with a zero quantity",
+      wrap(flat("0101004ea10081000001")),
+      1,
+    ],
+  ];
+};
+
 const PLUTUS_V3 = 3;
 const MIDGARD_V1 = 128;
 
@@ -398,6 +389,16 @@ export const scriptDecodeStepScripts = () => [
     wrap(Buffer.from("0101004c010200ff0001", "hex")),
     1,
   ],
+  ...bulkPrograms().flatMap(([label, flat]) => [
+    [label, PLUTUS_V3, wrap(flat), 1],
+    [`${label}, 3 ticks a Walk`, PLUTUS_V3, wrap(flat), 3],
+  ]),
+  ...refusalScripts().map(([label, script, fuel]) => [
+    label,
+    PLUTUS_V3,
+    script,
+    fuel,
+  ]),
   ...SCRIPT_DECODE_BLUEPRINT_SCRIPTS.map(([title, , code]) => [
     title,
     PLUTUS_V3,

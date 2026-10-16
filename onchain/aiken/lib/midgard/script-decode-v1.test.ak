@@ -6,7 +6,10 @@ use aiken/primitive/bytearray
 use midgard/cbor_deserialise
 use midgard/cek_constant_v1.{ConstantWitnessV1}
 use midgard/cek_data_v1
+use midgard/cek_machine_v1
 use midgard/cek_proof_v1
+use midgard/script_decode_bits_v1 as bits
+use midgard/script_decode_bulk_v1 as bulk
 use midgard/script_decode_v1.{
   Decoded, Frame, Machine, Refused, ScriptDecodeRecordV1, ScriptDecodeRunV1,
   decode_env_v1, empty_stack_root, initial_run_v1, is_terminal, record_of_v1,
@@ -1249,6 +1252,417 @@ test script_decode_uplc_framing_rows() {
   }
 }
 
+// ## Constant lists decoded in bulk
+
+test script_decode_bulk_summaries_match_cek_data() {
+  let empty = cek_data_v1.empty_data_list_summary_v1()
+  let small = cek_data_v1.semantic_data_summary_v1(builtin.i_data(5))
+  let large = cek_data_v1.semantic_data_summary_v1(
+    builtin.list_data(list.repeat(builtin.b_data(#"abcdef"), 40)),
+  )
+  let one = cek_data_v1.prepend_data_list_summary_v1(large, empty)
+  let many = list.foldl(
+    list.repeat(small, 30),
+    one,
+    fn(head, tail) { cek_data_v1.prepend_data_list_summary_v1(head, tail) },
+  )
+  let pair = fn(a, b) {
+    cek_data_v1.small_constr_data_summary_v1(
+      0,
+      cek_data_v1.prepend_data_list_summary_v1(
+        a,
+        cek_data_v1.prepend_data_list_summary_v1(b, empty),
+      ),
+    )
+  }
+  let chunk = fn(n) { builtin.replicate_byte(n, 7) }
+  and {
+    list.all(
+      [empty, one, many],
+      fn(tail) {
+        and {
+          bulk.prepend_v1(small, tail) == cek_data_v1.prepend_data_list_summary_v1(
+            small,
+            tail,
+          ),
+          bulk.prepend_v1(large, tail) == cek_data_v1.prepend_data_list_summary_v1(
+            large,
+            tail,
+          ),
+          bulk.list_data_summary_v1(tail) == cek_data_v1.list_data_summary_v1(
+            tail,
+          ),
+        }
+      },
+    ),
+    bulk.pair_summary_v1(small, large) == pair(small, large),
+    bulk.pair_summary_v1(large, small) == pair(large, small),
+    bulk.pair_summary_v1(small, small) == pair(small, small),
+    list.all(
+      [1, 2, 31, 32, 33, 254, 255],
+      fn(n) {
+        bits.short_bytes_summary(chunk(n)) == bits.bytes_summary(
+          n,
+          bits.sink_root(bits.sink_push(bits.empty_sink(), chunk(n))),
+        )
+      },
+    ),
+  }
+}
+
+/// A constant list of `items` with Flat type tags `tags` (of the list type,
+/// applications included).
+fn list_program(tags: List<Int>, items: List<Val>) -> ByteArray {
+  program(1, con(tags, v_list(items)))
+}
+
+/// Decodes in one step and over walks of a few fuels that reveal one frame
+/// at a time.
+fn bulk_record(flat: ByteArray) -> ScriptDecodeRecordV1 {
+  let script = wrap(flat)
+  let whole = run_script(script)
+  expect walk_script(script, 1, 1) == whole
+  expect walk_script(script, 3, 1) == whole
+  expect walk_script(script, 40, 2) == whole
+  whole
+}
+
+fn bulk_root(flat: ByteArray) -> ByteArray {
+  expect Decoded { term_root, phase2_class: 0, .. } = bulk_record(flat)
+  term_root
+}
+
+fn bool_data(b: Bool) -> Data {
+  builtin.constr_data(
+    if b {
+      1
+    } else {
+      0
+    },
+    [],
+  )
+}
+
+fn pair_data(first: Data, second: Data) -> Data {
+  builtin.constr_data(0, [first, second])
+}
+
+/// A pair chain of `depth` pairs, each with a unit first, over `leaf`.
+fn unit_chain_tags(depth: Int, leaf: List<Int>) -> List<Int> {
+  if depth == 0 {
+    leaf
+  } else {
+    [7, 7, 6, 3, ..unit_chain_tags(depth - 1, leaf)]
+  }
+}
+
+fn unit_chain_val(depth: Int, leaf: Val) -> Val {
+  if depth == 0 {
+    leaf
+  } else {
+    v_pair(v_unit(), unit_chain_val(depth - 1, leaf))
+  }
+}
+
+fn unit_chain_data(depth: Int, leaf: Data) -> Data {
+  if depth == 0 {
+    leaf
+  } else {
+    pair_data(unit_data(), unit_chain_data(depth - 1, leaf))
+  }
+}
+
+fn without_applications(tags: List<Int>) -> List<Int> {
+  list.filter(tags, fn(tag) { tag != 7 })
+}
+
+fn list_root(tags: List<Int>, items: List<Data>) -> ByteArray {
+  constant_root(without_applications(tags), builtin.list_data(items))
+}
+
+test script_decode_bulk_zero_and_one_bit_elements() {
+  let count = 300
+  let flags = list.map(list.range(1, count), fn(i) { i % 3 == 0 })
+  let chained = list.take(flags, 120)
+  and {
+    bulk_root(list_program([7, 5, 3], list.repeat(v_unit(), count))) == list_root(
+      [7, 5, 3],
+      list.repeat(unit_data(), count),
+    ),
+    bulk_root(list_program([7, 5, 4], list.map(flags, v_bool))) == list_root(
+      [7, 5, 4],
+      list.map(flags, bool_data),
+    ),
+    bulk_root(
+      list_program(
+        [7, 12, 7, 7, 6, 3, 3],
+        list.repeat(v_pair(v_unit(), v_unit()), 200),
+      ),
+    ) == list_root(
+      [7, 12, 7, 7, 6, 3, 3],
+      list.repeat(pair_data(unit_data(), unit_data()), 200),
+    ),
+    bulk_root(
+      list_program(
+        [7, 5, ..unit_chain_tags(7, [4])],
+        list.map(chained, fn(b) { unit_chain_val(7, v_bool(b)) }),
+      ),
+    ) == list_root(
+      [7, 5, ..unit_chain_tags(7, [4])],
+      list.map(chained, fn(b) { unit_chain_data(7, bool_data(b)) }),
+    ),
+  }
+}
+
+test script_decode_bulk_nested_lists() {
+  let inner = fn(n) { v_list(list.repeat(v_unit(), n)) }
+  let inner_data = fn(n) { builtin.list_data(list.repeat(unit_data(), n)) }
+  let sizes = list.map(list.range(1, 120), fn(i) { i % 4 })
+  and {
+    bulk_root(list_program([7, 5, 7, 5, 3], list.map(sizes, inner))) == list_root(
+      [7, 5, 7, 5, 3],
+      list.map(sizes, inner_data),
+    ),
+    bulk_root(
+      list_program(
+        [7, 5, ..unit_chain_tags(6, [7, 5, 3])],
+        list.map(sizes, fn(n) { unit_chain_val(6, inner(n)) }),
+      ),
+    ) == list_root(
+      [7, 5, ..unit_chain_tags(6, [7, 5, 3])],
+      list.map(sizes, fn(n) { unit_chain_data(6, inner_data(n)) }),
+    ),
+    // An array inside a list: its memory is its length.
+    bulk_root(
+      list_program([7, 5, 7, 12, 4], list.repeat(v_list([v_bool(True)]), 50)),
+    ) == list_root(
+      [7, 5, 7, 12, 4],
+      list.repeat(builtin.list_data([bool_data(True)]), 50),
+    ),
+  }
+}
+
+test script_decode_bulk_integers_bytes_and_strings() {
+  let ints = [
+    0,
+    1,
+    -1,
+    63,
+    -64,
+    1000000,
+    math.pow2(64),
+    -math.pow2(64),
+    math.pow2(139) - 1,
+    math.pow2(139),
+    -math.pow2(139) - 1,
+    math.pow2(200),
+    5,
+  ]
+  let many = list.map(list.range(1, 150), fn(i) { i * 37 - 2000 })
+  let byte_strings = [
+    #"",
+    #"00",
+    builtin.replicate_byte(31, 9),
+    builtin.replicate_byte(255, 1),
+    builtin.replicate_byte(256, 2),
+    builtin.replicate_byte(600, 3),
+    #"ab",
+  ]
+  let strings = [
+    #"",
+    #"616263",
+    #"c3a9",
+    builtin.replicate_byte(255, 97),
+    bytearray.concat(builtin.replicate_byte(84, 0), #"e282ac"),
+    list.foldl(
+      list.repeat(#"e282ac", 85),
+      #"",
+      fn(piece, acc) { bytearray.concat(acc, piece) },
+    ),
+    #"f09f9880",
+  ]
+  and {
+    bulk_root(list_program([7, 5, 0], list.map(ints, v_int))) == list_root(
+      [7, 5, 0],
+      list.map(ints, builtin.i_data),
+    ),
+    bulk_root(list_program([7, 12, 0], list.map(many, v_int))) == list_root(
+      [7, 12, 0],
+      list.map(many, builtin.i_data),
+    ),
+    bulk_root(list_program([7, 5, 1], list.map(byte_strings, v_bytes))) == list_root(
+      [7, 5, 1],
+      list.map(byte_strings, builtin.b_data),
+    ),
+    bulk_root(list_program([7, 5, 2], list.map(strings, v_bytes))) == list_root(
+      [7, 5, 2],
+      list.map(strings, builtin.b_data),
+    ),
+    bulk_root(
+      list_program(
+        [7, 5, 7, 7, 6, 0, 7, 7, 6, 1, 4],
+        list.map(
+          many,
+          fn(n) { v_pair(v_int(n), v_pair(v_bytes(#"cafe"), v_bool(n > 0))) },
+        ),
+      ),
+    ) == list_root(
+      [7, 5, 7, 7, 6, 0, 7, 7, 6, 1, 4],
+      list.map(
+        many,
+        fn(n) {
+          pair_data(
+            builtin.i_data(n),
+            pair_data(builtin.b_data(#"cafe"), bool_data(n > 0)),
+          )
+        },
+      ),
+    ),
+  }
+}
+
+test script_decode_bulk_elements_that_decode_one_node_at_a_time() {
+  let datum = builtin.list_data([builtin.i_data(1), builtin.b_data(#"aa")])
+  let value = [(#"01", [(#"aa", 3), (#"bb", -4)])]
+  and {
+    bulk_root(
+      list_program(
+        [7, 5, 7, 7, 6, 8, 0],
+        list.repeat(v_pair(v_bytes(cbor.serialise(datum)), v_int(2)), 20),
+      ),
+    ) == list_root(
+      [7, 5, 7, 7, 6, 8, 0],
+      list.repeat(pair_data(datum, builtin.i_data(2)), 20),
+    ),
+    bulk_root(
+      list_program(
+        [7, 5, 13],
+        [v_value([]), v_value(value), v_value([]), v_value(value)],
+      ),
+    ) == list_root(
+      [7, 5, 13],
+      [value_data([]), value_data(value), value_data([]), value_data(value)],
+    ),
+    bulk_root(
+      list_program(
+        [7, 5, ..unit_chain_tags(7, [8])],
+        list.repeat(unit_chain_val(7, v_bytes(cbor.serialise(datum))), 10),
+      ),
+    ) == list_root(
+      [7, 5, ..unit_chain_tags(7, [8])],
+      list.repeat(unit_chain_data(7, datum), 10),
+    ),
+  }
+}
+
+/// Bits up to the end of a list constant's type tags, inside
+/// `(program 1.0.0 [(builtin 0) (con ...)])`, which leaves an odd bit count.
+fn list_head(tags: List<Int>) -> W {
+  (0, 0)
+    |> nat(1)
+    |> nat(0)
+    |> nat(0)
+    |> put(3, 4)
+    |> put(7, 4)
+    |> put(0, 7)
+    |> put(4, 4)
+    |> type_tags(tags)
+}
+
+/// `bit_offset` is from the start of the Flat bytes; the record's is from
+/// the start of the script, after the CBOR head `wrap` puts on.
+fn bulk_refusal(flat: ByteArray, class: Int, bit_offset: Int) -> Bool {
+  let head = bytearray.length(wrap(flat)) - bytearray.length(flat)
+  bulk_record(flat) == refused(class, 8 * head + bit_offset)
+}
+
+test script_decode_bulk_refusals_keep_their_offsets() {
+  // 59 bits of head, 50 bools, then a cons bit with no bool after it.
+  let bools = list.foldl(
+    list.repeat(True, 50),
+    list_head([7, 5, 4]),
+    fn(b, w) {
+      put(
+        put(w, 1, 1),
+        if b {
+          1
+        } else {
+          0
+        },
+        1,
+      )
+    },
+  )
+  let truncated_bools = put(bools, 1, 1)
+  // 59 bits of head and 101 unit elements: the list never ends.
+  let units = list.foldl(
+    list.repeat(0, 101),
+    list_head([7, 5, 3]),
+    fn(_, w) { put(w, 1, 1) },
+  )
+  let strings = fn(bad: ByteArray) {
+    let before = list.foldl(
+      [#"61", #"c3a9", #""],
+      list_head([7, 5, 2]),
+      fn(s, w) { flat_bytes(put(w, 1, 1), s) },
+    )
+    let invalid = flat_bytes(put(before, 1, 1), bad)
+    (
+      invalid
+        |> put(1, 1)
+        |> flat_bytes(#"62")
+        |> put(0, 1)
+        |> finish,
+      invalid.2nd,
+    )
+  }
+  let (bad_utf8, bad_utf8_end) = strings(#"ff")
+  let (bad_tail, bad_tail_end) = strings(#"61e282")
+  let ints = list.foldl(
+    list.range(1, 44),
+    list_head([7, 5, 0]),
+    fn(i, w) { int(put(w, 1, 1), i) },
+  )
+  and {
+    bulk_refusal(to_bytes(truncated_bools), 3, truncated_bools.2nd),
+    bulk_refusal(to_bytes(units), 3, units.2nd),
+    bulk_refusal(bad_utf8, 15, bad_utf8_end),
+    bulk_refusal(bad_tail, 15, bad_tail_end),
+    // A truncated integer: its continuation group has no successor.
+    bulk_refusal(to_bytes(put(put(ints, 1, 1), 255, 8)), 3, ints.2nd + 9),
+    // A byte string whose filler ends past the byte boundary.
+    bulk_refusal(
+      finish(
+        enc_value(
+          put(
+            list.foldl(
+              list.range(1, 30),
+              list_head([7, 5, 1]),
+              fn(_, w) { flat_bytes(put(w, 1, 1), #"aa") },
+            ),
+            1,
+            1,
+          ),
+          VMisaligned,
+        ),
+      ),
+      4,
+      {
+        let before = put(
+          list.foldl(
+            list.range(1, 30),
+            list_head([7, 5, 1]),
+            fn(_, w) { flat_bytes(put(w, 1, 1), #"aa") },
+          ),
+          1,
+          1,
+        )
+        before.2nd + 8 - before.2nd % 8 + 1
+      },
+    ),
+  }
+}
+
 // ## Multi-step walks
 
 fn mixed_program() -> ByteArray {
@@ -1349,4 +1763,463 @@ test script_decode_step_rejects_a_wrong_reveal() fail {
   let env = decode_env_v1(script, run)
   let (machine, _) = step_with_frames_v1(env, run.machine, [], 0, 5)
   step_v1(env, machine, [script_decode_v1.FDelay], empty_stack_root(), 5) == machine
+}
+
+// ## Agreement with the CEK constant root
+//
+// A decoded program is evaluated by the CEK machine, whose ComputeConstant
+// step recomputes a constant's value root with `constant_root_v1` and needs
+// the term the decoder committed to be the constant term over that root. The
+// rows below cover every constant type a program may hold.
+
+/// The witness ComputeConstant opens for a constant of CBOR type `type_tags`.
+fn constant_witness(type_tags: List<Int>, payload: Data) -> ConstantWitnessV1 {
+  ConstantWitnessV1 {
+    type_cbor: cbor.serialise(type_tags),
+    payload_cbor: cbor.serialise(payload),
+  }
+}
+
+/// True when the CEK machine accepts ComputeConstant with `witness` from the
+/// evaluation start of `term_root`.
+fn computes(term_root: ByteArray, witness: ConstantWitnessV1) -> Bool {
+  let pre = cek_machine_v1.initial_state_v1(0, term_root)
+  let post = cek_machine_v1.exact_state(
+    pre,
+    cek_machine_v1.mode_return,
+    cek_constant_v1.constant_root_v1(witness),
+    cek_proof_v1.empty_environment_root_v1,
+    cek_proof_v1.empty_continuation_root_v1,
+    0,
+    16000,
+    100,
+  )
+  cek_machine_v1.verify_core_step_v1(
+    pre,
+    post,
+    cek_machine_v1.ComputeConstant { value: witness },
+  )
+}
+
+/// The constant `(con tags value)`, decoded as a whole program by `decoded`,
+/// commits the CEK constant term over `constant_root_v1` of `payload`, and an
+/// honest ComputeConstant step over the decoded term is accepted.
+fn agrees_with(
+  decoded: fn(ByteArray) -> ByteArray,
+  tags: List<Int>,
+  value: Val,
+  payload: Data,
+) -> Bool {
+  let witness = constant_witness(without_applications(tags), payload)
+  let term_root = decoded(program(1, con(tags, value)))
+  and {
+    term_root == cek_proof_v1.hash_constant_term_v1(
+      cek_constant_v1.constant_root_v1(witness),
+    ),
+    computes(term_root, witness),
+  }
+}
+
+fn agrees(tags: List<Int>, value: Val, payload: Data) -> Bool {
+  agrees_with(root_of, tags, value, payload)
+}
+
+/// `agrees`, also checked over walks of a few fuels (the bulk list path).
+fn agrees_walked(tags: List<Int>, value: Val, payload: Data) -> Bool {
+  agrees_with(bulk_root, tags, value, payload)
+}
+
+fn utf8_repeat(piece: ByteArray, count: Int) -> ByteArray {
+  list.foldl(
+    list.repeat(piece, count),
+    #"",
+    fn(item, acc) { bytearray.concat(acc, item) },
+  )
+}
+
+fn data_of(d: Data) -> Val {
+  v_bytes(cbor.serialise(d))
+}
+
+test script_decode_constant_root_agreement_scalars() {
+  let ints = [
+    0,
+    1,
+    -1,
+    63,
+    64,
+    -64,
+    -65,
+    math.pow2(63) - 1,
+    math.pow2(64) - 1,
+    math.pow2(64),
+    -math.pow2(64),
+    -math.pow2(64) - 1,
+    math.pow2(139),
+    math.pow2(200),
+    -math.pow2(300),
+    math.pow2(511) + 12345,
+    math.pow2(512) - 1,
+    -math.pow2(512),
+  ]
+  let byte_strings = [
+    #"",
+    #"abcd",
+    builtin.replicate_byte(64, 7),
+    builtin.replicate_byte(65, 8),
+    builtin.replicate_byte(700, 171),
+    builtin.replicate_byte(2000, 3),
+  ]
+  let strings = [
+    #"",
+    #"616263",
+    #"c3a9",
+    #"e697a5e69cace8aa9e",
+    #"f09f9880",
+    utf8_repeat(#"e282ac", 85),
+    utf8_repeat(#"c3a9", 300),
+  ]
+  and {
+    list.all(ints, fn(n) { agrees([0], v_int(n), builtin.i_data(n)) }),
+    list.all(byte_strings, fn(b) { agrees([1], v_bytes(b), builtin.b_data(b)) }),
+    list.all(strings, fn(s) { agrees([2], v_bytes(s), builtin.b_data(s)) }),
+    agrees([3], v_unit(), unit_data()),
+    agrees([4], v_bool(True), bool_data(True)),
+    agrees([4], v_bool(False), bool_data(False)),
+  }
+}
+
+test script_decode_constant_root_agreement_data() {
+  let nested = list.foldl(
+    list.range(1, 20),
+    builtin.i_data(0),
+    fn(i, inner) {
+      builtin.constr_data(i, [inner, builtin.list_data([builtin.i_data(i)])])
+    },
+  )
+  let items = [
+    builtin.i_data(0),
+    builtin.i_data(-1000),
+    builtin.i_data(math.pow2(64)),
+    builtin.i_data(-math.pow2(300)),
+    builtin.i_data(math.pow2(512) - 1),
+    builtin.b_data(#""),
+    builtin.b_data(builtin.replicate_byte(64, 7)),
+    builtin.b_data(builtin.replicate_byte(1000, 9)),
+    builtin.list_data([]),
+    builtin.list_data(list.map(list.range(1, 300), builtin.i_data)),
+    builtin.map_data([]),
+    builtin.map_data(
+      list.map(
+        list.range(1, 40),
+        fn(i) { Pair(builtin.i_data(i), builtin.b_data(#"aa")) },
+      ),
+    ),
+    builtin.constr_data(0, []),
+    builtin.constr_data(6, [builtin.i_data(1)]),
+    builtin.constr_data(7, [builtin.i_data(1), builtin.b_data(#"ab")]),
+    builtin.constr_data(127, []),
+    builtin.constr_data(128, []),
+    builtin.constr_data(200, [builtin.map_data([])]),
+    builtin.constr_data(math.pow2(64) - 1, [builtin.list_data([])]),
+    nested,
+  ]
+  list.all(items, fn(d) { agrees([8], data_of(d), d) })
+}
+
+test script_decode_constant_root_agreement_lists() {
+  let ints = list.map(
+    list.range(1, 200),
+    fn(i) {
+      if i % 40 == 0 {
+        math.pow2(300) + i
+      } else {
+        i * 37 - 2000
+      }
+    },
+  )
+  let byte_strings = list.map(
+    list.range(1, 120),
+    fn(i) { builtin.replicate_byte(i % 70, i) },
+  )
+  let strings = list.map(
+    list.range(1, 100),
+    fn(i) { utf8_repeat(#"c3a9", i % 9) },
+  )
+  let flags = list.map(list.range(1, 600), fn(i) { i % 3 == 0 })
+  let datum = builtin.list_data([builtin.i_data(1), builtin.b_data(#"aa")])
+  let value = [(#"01", [(#"aa", 3), (#"bb", -4)])]
+  and {
+    agrees_walked(
+      [7, 5, 0],
+      v_list(list.map(ints, v_int)),
+      builtin.list_data(list.map(ints, builtin.i_data)),
+    ),
+    agrees_walked(
+      [7, 5, 1],
+      v_list(list.map(byte_strings, v_bytes)),
+      builtin.list_data(list.map(byte_strings, builtin.b_data)),
+    ),
+    agrees_walked(
+      [7, 5, 2],
+      v_list(list.map(strings, v_bytes)),
+      builtin.list_data(list.map(strings, builtin.b_data)),
+    ),
+    agrees_walked(
+      [7, 5, 3],
+      v_list(list.repeat(v_unit(), 600)),
+      builtin.list_data(list.repeat(unit_data(), 600)),
+    ),
+    agrees_walked(
+      [7, 5, 4],
+      v_list(list.map(flags, v_bool)),
+      builtin.list_data(list.map(flags, bool_data)),
+    ),
+    agrees_walked(
+      [7, 5, 8],
+      v_list(list.repeat(data_of(datum), 30)),
+      builtin.list_data(list.repeat(datum, 30)),
+    ),
+    agrees_walked(
+      [7, 5, 13],
+      v_list([v_value([]), v_value(value), v_value(value)]),
+      builtin.list_data([value_data([]), value_data(value), value_data(value)]),
+    ),
+    // Pairs with a fixed-width first, second, or both components.
+    agrees_walked(
+      [7, 5, 7, 7, 6, 3, 0],
+      v_list(list.map(ints, fn(n) { v_pair(v_unit(), v_int(n)) })),
+      builtin.list_data(
+        list.map(ints, fn(n) { pair_data(unit_data(), builtin.i_data(n)) }),
+      ),
+    ),
+    agrees_walked(
+      [7, 5, 7, 7, 6, 1, 3],
+      v_list(list.map(byte_strings, fn(b) { v_pair(v_bytes(b), v_unit()) })),
+      builtin.list_data(
+        list.map(
+          byte_strings,
+          fn(b) { pair_data(builtin.b_data(b), unit_data()) },
+        ),
+      ),
+    ),
+    agrees_walked(
+      [7, 5, 7, 7, 6, 7, 7, 6, 3, 4, 3],
+      v_list(
+        list.map(
+          list.take(flags, 300),
+          fn(b) { v_pair(v_pair(v_unit(), v_bool(b)), v_unit()) },
+        ),
+      ),
+      builtin.list_data(
+        list.map(
+          list.take(flags, 300),
+          fn(b) { pair_data(pair_data(unit_data(), bool_data(b)), unit_data()) },
+        ),
+      ),
+    ),
+    agrees_walked(
+      [7, 5, 7, 7, 6, 0, 1],
+      v_list(list.map(ints, fn(n) { v_pair(v_int(n), v_bytes(#"cafe")) })),
+      builtin.list_data(
+        list.map(
+          ints,
+          fn(n) { pair_data(builtin.i_data(n), builtin.b_data(#"cafe")) },
+        ),
+      ),
+    ),
+    // Nested lists.
+    agrees_walked(
+      [7, 5, 7, 5, 7, 5, 0],
+      v_list(
+        list.map(
+          list.range(0, 30),
+          fn(i) {
+            v_list(list.repeat(v_list(list.repeat(v_int(i), i % 3)), i % 4))
+          },
+        ),
+      ),
+      builtin.list_data(
+        list.map(
+          list.range(0, 30),
+          fn(i) {
+            builtin.list_data(
+              list.repeat(
+                builtin.list_data(list.repeat(builtin.i_data(i), i % 3)),
+                i % 4,
+              ),
+            )
+          },
+        ),
+      ),
+    ),
+    agrees_walked(
+      [7, 5, 7, 5, 3],
+      v_list(
+        list.map(
+          list.range(0, 80),
+          fn(i) { v_list(list.repeat(v_unit(), i % 5)) },
+        ),
+      ),
+      builtin.list_data(
+        list.map(
+          list.range(0, 80),
+          fn(i) { builtin.list_data(list.repeat(unit_data(), i % 5)) },
+        ),
+      ),
+    ),
+  }
+}
+
+test script_decode_constant_root_agreement_empty_lists() {
+  let element_types = [
+    [0],
+    [1],
+    [2],
+    [3],
+    [4],
+    [8],
+    [9],
+    [10],
+    [11],
+    [13],
+    [7, 5, 0],
+    [7, 12, 3],
+    [7, 7, 6, 9, 10],
+  ]
+  list.all(
+    element_types,
+    fn(element) {
+      and {
+        agrees([7, 5, ..element], v_list([]), builtin.list_data([])),
+        agrees([7, 12, ..element], v_list([]), builtin.list_data([])),
+      }
+    },
+  )
+}
+
+test script_decode_constant_root_agreement_pairs_arrays_and_values() {
+  let datum = builtin.constr_data(1, [builtin.b_data(#"aa")])
+  let value = [
+    (#"01", [(#"", -5), (#"aa", math.pow2(127) - 1)]),
+    (#"0101", [(#"00", -math.pow2(127))]),
+    (builtin.replicate_byte(32, 255), [(builtin.replicate_byte(32, 1), 7)]),
+  ]
+  let many = list.map(list.range(1, 200), fn(i) { i * 7 - 300 })
+  and {
+    agrees(
+      [7, 7, 6, 0, 1],
+      v_pair(v_int(5), v_bytes(#"ab")),
+      pair_data(builtin.i_data(5), builtin.b_data(#"ab")),
+    ),
+    agrees(
+      [7, 7, 6, 3, 3],
+      v_pair(v_unit(), v_unit()),
+      pair_data(unit_data(), unit_data()),
+    ),
+    agrees(
+      [7, 7, 6, 7, 7, 6, 0, 3, 7, 5, 4],
+      v_pair(v_pair(v_int(-9), v_unit()), v_list([v_bool(True), v_bool(False)])),
+      pair_data(
+        pair_data(builtin.i_data(-9), unit_data()),
+        builtin.list_data([bool_data(True), bool_data(False)]),
+      ),
+    ),
+    agrees(
+      [7, 7, 6, 8, 2],
+      v_pair(data_of(datum), v_bytes(#"c3a9")),
+      pair_data(datum, builtin.b_data(#"c3a9")),
+    ),
+    agrees(
+      [7, 7, 6, 13, 7, 7, 6, 4, 1],
+      v_pair(v_value(value), v_pair(v_bool(True), v_bytes(#"00"))),
+      pair_data(
+        value_data(value),
+        pair_data(bool_data(True), builtin.b_data(#"00")),
+      ),
+    ),
+    agrees_walked(
+      [7, 12, 0],
+      v_list(list.map(many, v_int)),
+      builtin.list_data(list.map(many, builtin.i_data)),
+    ),
+    agrees_walked(
+      [7, 12, 1],
+      v_list([v_bytes(#""), v_bytes(builtin.replicate_byte(100, 1))]),
+      builtin.list_data(
+        [builtin.b_data(#""), builtin.b_data(builtin.replicate_byte(100, 1))],
+      ),
+    ),
+    agrees_walked(
+      [7, 12, 3],
+      v_list(list.repeat(v_unit(), 300)),
+      builtin.list_data(list.repeat(unit_data(), 300)),
+    ),
+    agrees_walked(
+      [7, 12, 7, 7, 6, 3, 0],
+      v_list(list.map(many, fn(n) { v_pair(v_unit(), v_int(n)) })),
+      builtin.list_data(
+        list.map(many, fn(n) { pair_data(unit_data(), builtin.i_data(n)) }),
+      ),
+    ),
+    agrees_walked(
+      [7, 12, 7, 5, 0],
+      v_list([v_list([v_int(1), v_int(2)]), v_list([])]),
+      builtin.list_data(
+        [
+          builtin.list_data([builtin.i_data(1), builtin.i_data(2)]),
+          builtin.list_data([]),
+        ],
+      ),
+    ),
+    agrees_walked(
+      [7, 12, 7, 12, 4],
+      v_list([v_list([v_bool(True)]), v_list([])]),
+      builtin.list_data(
+        [builtin.list_data([bool_data(True)]), builtin.list_data([])],
+      ),
+    ),
+    agrees_walked(
+      [7, 12, 8],
+      v_list([data_of(datum), data_of(builtin.i_data(3))]),
+      builtin.list_data([datum, builtin.i_data(3)]),
+    ),
+    agrees_walked(
+      [7, 12, 13],
+      v_list([v_value(value), v_value([])]),
+      builtin.list_data([value_data(value), value_data([])]),
+    ),
+    agrees([13], v_value([]), value_data([])),
+    agrees([13], v_value([(#"", [(#"", 1)])]), value_data([(#"", [(#"", 1)])])),
+    agrees([13], v_value(value), value_data(value)),
+  }
+}
+
+/// A constant inside a term commits the same constant term.
+test script_decode_constant_root_agreement_inside_a_term() {
+  let witness = constant_witness([5, 0], builtin.list_data([builtin.i_data(7)]))
+  root_of(program(1, app(lam(var(1)), con([7, 5, 0], v_list([v_int(7)]))))) == cek_proof_v1.hash_application_term_v1(
+    cek_proof_v1.hash_lambda_term_v1(cek_proof_v1.hash_variable_term_v1(1)),
+    cek_proof_v1.hash_constant_term_v1(
+      cek_constant_v1.constant_root_v1(witness),
+    ),
+  )
+}
+
+/// ComputeConstant over a decoded constant refuses a witness of another
+/// value or another type with the same payload.
+test script_decode_compute_constant_refuses_another_constant() {
+  let ints = root_of(program(1, con([7, 5, 0], v_list([v_int(1), v_int(2)]))))
+  let text = root_of(program(1, con([2], v_bytes(#"616263"))))
+  let payload = builtin.list_data([builtin.i_data(1), builtin.i_data(2)])
+  and {
+    computes(ints, constant_witness([5, 0], payload)),
+    !computes(ints, constant_witness([12, 0], payload)),
+    !computes(
+      ints,
+      constant_witness([5, 0], builtin.list_data([builtin.i_data(1)])),
+    ),
+    computes(text, constant_witness([2], builtin.b_data(#"616263"))),
+    !computes(text, constant_witness([1], builtin.b_data(#"616263"))),
+  }
 }
