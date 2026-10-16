@@ -15,6 +15,7 @@ export {
   type MidgardCekConstantValueWitness,
   type MidgardCekDirectValueWitness,
   type MidgardCekRuntimeValueWitness,
+  presentMidgardCekDirectArgument,
 } from "./cek-builtin.argument-kinds.js";
 export {
   harmonicBuiltinTag,

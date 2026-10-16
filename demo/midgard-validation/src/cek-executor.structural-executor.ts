@@ -51,6 +51,7 @@ import {
   midgardCekDirectBuiltinBudget,
   type MidgardCekDirectValueWitness,
   type MidgardCekRuntimeValueWitness,
+  presentMidgardCekDirectArgument,
   verifyMidgardCekBuiltinTypeFailure,
 } from "./cek-builtin.js";
 import {
@@ -1801,28 +1802,8 @@ export class StructuralExecutor {
       );
       return;
     }
-    const directArguments = arguments_.map(
-      (argument): MidgardCekDirectValueWitness => {
-        if (argument.kind === "constant") {
-          return { kind: "constant", witness: argument.witness };
-        }
-        if (argument.kind === "semanticConstant") {
-          return {
-            kind: "semanticConstant",
-            witness: argument.witness,
-          };
-        }
-        if (argument.kind === "blsMillerLoop") {
-          return {
-            kind: "blsMillerLoop",
-            expressionRoot: argument.expressionRoot,
-          };
-        }
-        return {
-          kind: "opaque",
-          root: hashMidgardCekRuntimeValueWitness(argument),
-        };
-      },
+    const directArguments = arguments_.map((argument, index) =>
+      presentMidgardCekDirectArgument(builtin.tag, index, argument),
     );
     if (
       (builtin.tag === 38n || builtin.tag === 43n) &&

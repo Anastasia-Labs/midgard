@@ -321,3 +321,37 @@ export const directWitnessPayloadBytes = (
         : 0n),
     0n,
   );
+
+// ifThenElse, chooseUnit, trace, chooseList and chooseData pass a branch
+// through without reading it, and each costs a constant under the Plutus V3
+// cost model. Every argument after the first is therefore presented by its
+// value root alone, whatever value it holds.
+const PASS_THROUGH_TAGS = new Set([26n, 27n, 28n, 31n, 36n]);
+
+/**
+ * The direct presentation of a builtin argument: a revealed or semantic
+ * constant and a Miller-loop value as themselves, a pass-through branch and
+ * any other value by its value root.
+ */
+export const presentMidgardCekDirectArgument = (
+  tag: bigint,
+  index: number,
+  argument: MidgardCekRuntimeValueWitness,
+): MidgardCekDirectValueWitness => {
+  if (index > 0 && PASS_THROUGH_TAGS.has(tag)) {
+    return {
+      kind: "opaque",
+      root: hashMidgardCekRuntimeValueWitness(argument),
+    };
+  }
+  if (argument.kind === "constant") {
+    return { kind: "constant", witness: argument.witness };
+  }
+  if (argument.kind === "semanticConstant") {
+    return { kind: "semanticConstant", witness: argument.witness };
+  }
+  if (argument.kind === "blsMillerLoop") {
+    return { kind: "blsMillerLoop", expressionRoot: argument.expressionRoot };
+  }
+  return { kind: "opaque", root: hashMidgardCekRuntimeValueWitness(argument) };
+};
