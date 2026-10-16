@@ -294,8 +294,8 @@ test defense_with_a_rejected_terminal_is_refused() {
   !defense_holds(rejected_terminal(), case_with(1, h_d))
 }
 
-test defense_equal_to_the_challenger_terminal_is_refused() {
-  let last = pending_mid_trace()
+test defense_with_the_challenger_terminal_is_refused() {
+  let last = rejected_terminal()
   !defense_holds(
     last,
     case_with(1, validation_trace_v1.hash_machine_state(last)),

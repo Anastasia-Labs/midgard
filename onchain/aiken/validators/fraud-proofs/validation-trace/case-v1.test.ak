@@ -2020,12 +2020,16 @@ test defend_without_the_hub_is_refused() fail {
 
 // ### The defense rule
 
-test defend_equal_to_the_challenger_terminal_is_refused() fail {
+test defend_with_the_challenger_terminal_is_refused() fail {
+  let rejected = trace_state(
+    validation_trace_v1.Terminal,
+    validation_trace_v1.Rejected,
+  )
   let case = CaseV1 {
     ..defendable(),
-    challenger_terminal_hash: validation_trace_v1.hash_machine_state(running()),
+    challenger_terminal_hash: validation_trace_v1.hash_machine_state(rejected),
   }
-  case_defends(case, defend_of(running()), defense(case, running(), None))
+  case_defends(case, defend_of(rejected), defense(case, rejected, None))
 }
 
 test defend_with_a_rejected_terminal_is_refused() fail {

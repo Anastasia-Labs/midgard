@@ -48,6 +48,7 @@ import {
 } from "./support/validation-case-scene.js";
 import {
   deepDivergentTraces,
+  deepTracesEndingAt,
   sparseTrace,
 } from "./support/validation-game-deep-traces.js";
 import {
@@ -180,7 +181,7 @@ describe("validation case defense", () => {
     );
   });
 
-  it("refuses a defense claiming the challenger's high state or a rejected terminal state", async () => {
+  it("refuses a defense claiming a rejected terminal state, the challenger's own included", async () => {
     const { world, traces, opened } = await openedWorld();
     const defender = await registerDefender(world);
     const rejected = sparseTrace(
@@ -190,10 +191,22 @@ describe("validation case defense", () => {
       ],
       traces.stepCount,
     );
-    for (const claim of [traces.challengerTrace, rejected]) {
-      const { built } = await buildDefend(world, opened, defender, { claim });
-      await expectOnchainRefusal(() => built);
-    }
+    const refusedClaim = await buildDefend(world, opened, defender, {
+      claim: rejected,
+    });
+    await expectOnchainRefusal(() => refusedClaim.built);
+    // A case on the challenger's own rejected terminal state, as VerifySource
+    // opens it: the challenger's trace is refused as a defense, and the
+    // operator's trace is accepted.
+    const ownTraces = deepTracesEndingAt(2, rejectedTerminal(4));
+    const own = await openCase(world, ownTraces);
+    const challengers = await buildDefend(world, own, defender, {
+      claim: ownTraces.challengerTrace,
+    });
+    await expectOnchainRefusal(() => challengers.built);
+    await (
+      await buildDefend(world, own, defender)
+    ).built;
   });
 
   it("refuses a defense once the defender's clock has run out", async () => {

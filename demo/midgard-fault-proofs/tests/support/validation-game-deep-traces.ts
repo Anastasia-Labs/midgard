@@ -213,3 +213,18 @@ export const deepDivergentTraces = (depth: number): DeepGameTraces =>
     machineState(4, "cek"),
     machineState(2, "cek"),
   );
+
+/**
+ * As `deepDivergentTraces`, with the challenger's trace ending at
+ * `challengerEnd` instead.
+ */
+export const deepTracesEndingAt = (
+  depth: number,
+  challengerEnd: MidgardValidationMachineState,
+): DeepGameTraces =>
+  deepTraces(
+    depth,
+    machineState(3, "cek"),
+    challengerEnd,
+    machineState(2, "cek"),
+  );
