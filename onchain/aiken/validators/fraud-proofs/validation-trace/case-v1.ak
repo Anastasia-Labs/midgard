@@ -1,8 +1,11 @@
 use aiken/collection/dict
 use aiken/collection/list
+use aiken/crypto.{VerificationKeyHash}
 use aiken/math
-use cardano/address.{Script, from_verification_key}
-use cardano/assets.{PolicyId, lovelace_of}
+use aiken/primitive/bytearray
+use aiken_design_patterns/linked_list
+use cardano/address.{Script, from_script, from_verification_key}
+use cardano/assets.{PolicyId, Value, lovelace_of}
 use cardano/transaction.{
   InlineDatum, Input, Output, OutputReference, Transaction,
 }
@@ -10,11 +13,13 @@ use env
 use midgard/common/utils
 use midgard/dispute_bond_v1.{DisputeBondV1}
 use midgard/fraud_proof
+use midgard/operator_directory/active_operators.{NodeData}
 use midgard/validation_case_config_v1
 use midgard/validation_case_v1.{
   BurnThreadToken, CaseClose, CaseRedeemerV1, CaseV1, Convicted, Defend,
   ThreadClose, VerifySource,
 }
+use midgard/validation_dispute_v1
 
 /// The validation case (`midgard/validation_case_v1`), as a mint and a spend
 /// purpose under one script hash. The mint purpose mints the case NFT and the
@@ -108,6 +113,7 @@ validator main(
           fee,
           mint,
           validity_range,
+          extra_signatories,
           ..
         }
       = self
@@ -238,7 +244,80 @@ validator main(
           lovelace_of(remainder.value) >= lovelace_of(own_value) - fraud_proof_lovelace - fee_allowance,
         }
       }
-      Defend { .. } -> False
+      // One defense: the case continues with the defender added and one
+      // more thread open, the thread starts at game-v1 with its reserve, and
+      // the defender's active node holds its bond until the case is over.
+      Defend {
+        case_output_index,
+        thread_output_index,
+        active_node_input_index,
+        defender_vkh,
+        defenders_proof,
+        defender_root,
+        defender_state,
+        defender_state_proof,
+      } -> {
+        let config = validation_case_config_v1.get_config(
+          reference_inputs,
+          case_config_policy_id,
+        )
+        expect
+          validation_case_v1.defense_is_valid(
+            case,
+            defender_root,
+            defender_state,
+            defender_state_proof,
+          )
+        expect Some(defended) = validation_case_v1.defend(
+          case,
+          defender_vkh,
+          defenders_proof,
+        )
+        let (defense_time_lower, defense_time_upper) = utils.get_inclusive_bounds_of_a_bounded_validity_range(
+          validity_range,
+          validation_dispute_v1.dispute_max_validity_range_milliseconds,
+        )
+        let thread: Data = validation_case_v1.open_thread(
+          case,
+          case_id,
+          defender_vkh,
+          defender_root,
+          defender_state_proof.state_hash,
+          defense_time_lower,
+          defense_time_upper,
+        )
+        let thread_token = assets.from_asset(
+          own_policy,
+          validation_case_v1.thread_token_name(case_id, defender_vkh),
+          1,
+        )
+        expect Some(case_output) = list.at(outputs, case_output_index)
+        expect Some(thread_output) = list.at(outputs, thread_output_index)
+        let defended_data: Data = defended
+        and {
+          mint == thread_token,
+          list.has(extra_signatories, defender_vkh),
+          defender_bond_is_held(
+            defended,
+            defender_vkh,
+            active_node_input_index,
+            hub_oracle,
+            inputs,
+            reference_inputs,
+            outputs,
+          ),
+          case_output.address == own_address,
+          case_output.datum == InlineDatum(defended_data),
+          assets.without_lovelace(case_output.value) == assets.without_lovelace(
+            own_value,
+          ),
+          lovelace_of(case_output.value) >= lovelace_of(own_value),
+          thread_output.address == from_script(config.game_v1),
+          thread_output.datum == InlineDatum(thread),
+          assets.without_lovelace(thread_output.value) == thread_token,
+          lovelace_of(thread_output.value) >= validation_case_v1.thread_floor_lovelace,
+        }
+      }
       ThreadClose { .. } -> False
       VerifySource { .. } -> False
       BurnThreadToken { .. } -> False
@@ -248,4 +327,52 @@ validator main(
   else(_) {
     fail
   }
+}
+
+/// The defender's active node, spent at `active_node_input_index` and
+/// continued with its bond hold raised to `bond_hold_after_defense`. The node
+/// is found by its active-set NFT, under the policy the hub names; the
+/// active-operators validator checks the rest of the continuation.
+fn defender_bond_is_held(
+  case: CaseV1,
+  defender_vkh: VerificationKeyHash,
+  active_node_input_index: Int,
+  hub_oracle: PolicyId,
+  inputs: List<Input>,
+  reference_inputs: List<Input>,
+  outputs: List<Output>,
+) -> Bool {
+  let active_policy = validation_case_config_v1.hub_active_operators(
+    reference_inputs,
+    hub_oracle,
+  )
+  let node_name = bytearray.concat(
+    active_operators.node_asset_name_prefix,
+    defender_vkh,
+  )
+  let holds_node = fn(value: Value) {
+    assets.quantity_of(value, active_policy, node_name) == 1
+  }
+  expect Some(Input { output: node_input, .. }) = list.at(
+    inputs,
+    active_node_input_index,
+  )
+  expect Some(node_output) = list.find(
+    outputs,
+    fn(output) { holds_node(output.value) },
+  )
+  let old_bond_unlock_time = node_bond_unlock_time(node_input)
+  and {
+    holds_node(node_input.value),
+    node_bond_unlock_time(node_output) == Some(
+      validation_case_v1.bond_hold_after_defense(old_bond_unlock_time, case),
+    ),
+  }
+}
+
+fn node_bond_unlock_time(node: Output) -> Option<Int> {
+  expect InlineDatum(datum) = node.datum
+  expect element: active_operators.Datum = datum
+  expect linked_list.Node{data: NodeData { bond_unlock_time, .. }} = element.data
+  bond_unlock_time
 }

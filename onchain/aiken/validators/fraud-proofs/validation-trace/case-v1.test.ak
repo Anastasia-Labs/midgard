@@ -4,6 +4,9 @@
 
 use aiken/collection/list
 use aiken/interval
+use aiken/merkle_patricia_forestry as mpf
+use aiken/primitive/bytearray
+use aiken_design_patterns/linked_list
 use cardano/address.{Address, Script, VerificationKey}
 use cardano/assets
 use cardano/script_context.{ScriptContext, Spending}
@@ -17,11 +20,15 @@ use midgard/dispute_bond_v1.{DisputeBondV1, SettleWithCase}
 use midgard/fraud_proof
 use midgard/hub_oracle as hub
 use midgard/ledger_state
+use midgard/operator_directory/active_operators.{UpdateBondHoldNewDefense}
 use midgard/validation_case_config_v1.{CaseConfigV1, config_asset_name}
 use midgard/validation_case_v1.{
-  BurnThreadToken, CaseClose, CaseRedeemerV1, CaseV1, VerifySource,
+  BurnThreadToken, CaseClose, CaseRedeemerV1, CaseThreadV1, CaseV1, Defend,
+  VerifySource,
 }
 use midgard/validation_dispute_v1
+use midgard/validation_trace_v1.{ValidationMachineStateV1, ValidationTraceProof}
+use operator_directory/active_operators as active_operators_validator
 
 const hub_policy = #"c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0"
 
@@ -1518,5 +1525,743 @@ test close_convicted_without_the_hub_is_refused() fail {
   closes(
     undefended(),
     Transaction { ..tx, reference_inputs: [config_reference()] },
+  )
+}
+
+// ## Defend
+
+const defender = #"e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3"
+
+const active_policy =
+  #"a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+
+const active_script =
+  #"b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+
+const retired_policy =
+  #"a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2"
+
+const retired_script =
+  #"b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2"
+
+const node_lovelace = 50_000_000_000
+
+const defense_lower = 1_060_000
+
+fn defense_upper() -> Int {
+  defense_lower + validation_dispute_v1.dispute_max_validity_range_milliseconds
+}
+
+fn trace_state(
+  phase: validation_trace_v1.ValidationPhase,
+  verdict: validation_trace_v1.ValidationVerdict,
+) -> ValidationMachineStateV1 {
+  ValidationMachineStateV1 {
+    machine_version: validation_trace_v1.machine_version,
+    event_key_hash: h32_c,
+    transaction_id: h32_c,
+    transaction_commitment: h32_c,
+    validation_context_hash: h32_c,
+    source_kind: validation_trace_v1.Normal,
+    prior_ledger_root: h32_c,
+    phase,
+    program_counter: 0,
+    work_root: h32_c,
+    execution_cpu: 0,
+    execution_memory: 0,
+    verdict,
+    rejection_code_hash: if verdict == validation_trace_v1.Rejected {
+      h32_b
+    } else {
+      #"0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    ledger_delta_root: h32_c,
+  }
+}
+
+/// A defender state at S that is still running.
+fn running() -> ValidationMachineStateV1 {
+  trace_state(validation_trace_v1.Cek, validation_trace_v1.Pending)
+}
+
+/// A one-step trace `[initial, last]`: its root and the proof of leaf 1.
+fn one_step_trace(
+  last: ValidationMachineStateV1,
+) -> (ByteArray, ValidationTraceProof) {
+  let last_hash = validation_trace_v1.hash_machine_state(last)
+  let sibling = validation_trace_v1.trace_leaf_hash(h32_c)
+  (
+    validation_trace_v1.trace_branch_hash(
+      sibling,
+      validation_trace_v1.trace_leaf_hash(last_hash),
+    ),
+    ValidationTraceProof {
+      state_index: 1,
+      state_hash: last_hash,
+      siblings: [sibling],
+    },
+  )
+}
+
+/// A one-step case: S = 1, so a thread opens ready for the step.
+fn defendable() -> CaseV1 {
+  validation_case_v1.open_case(
+    header_hash,
+    event_key(),
+    h32_a,
+    1,
+    h32_b,
+    prover,
+    h32_c,
+    started,
+  )
+}
+
+fn defend_with(
+  state: ValidationMachineStateV1,
+  defenders_proof: mpf.Proof,
+) -> CaseRedeemerV1 {
+  let (defender_root, defender_state_proof) = one_step_trace(state)
+  Defend {
+    case_output_index: 0,
+    thread_output_index: 1,
+    active_node_input_index: 1,
+    defender_vkh: defender,
+    defenders_proof,
+    defender_root,
+    defender_state: state,
+    defender_state_proof,
+  }
+}
+
+fn defend_of(state: ValidationMachineStateV1) -> CaseRedeemerV1 {
+  defend_with(state, [])
+}
+
+fn node_out_ref() -> OutputReference {
+  out_ref(h32_b, 3)
+}
+
+fn node_holding(
+  script: ByteArray,
+  policy: ByteArray,
+  key: ByteArray,
+  hold: Option<Int>,
+  lovelace: Int,
+) -> Output {
+  let datum: active_operators.Datum = linked_list.Element {
+    data: linked_list.Node(
+      active_operators.NodeData {
+        bond_unlock_time: hold,
+        inactivity_strikes: 1,
+      },
+    ),
+    link: None,
+  }
+  Output {
+    address: address.from_script(script),
+    value: assets.from_lovelace(lovelace)
+      |> assets.add(
+          policy,
+          bytearray.concat(active_operators.node_asset_name_prefix, key),
+          1,
+        ),
+    datum: InlineDatum(datum),
+    reference_script: None,
+  }
+}
+
+fn active_node(hold: Option<Int>) -> Output {
+  node_holding(active_script, active_policy, defender, hold, node_lovelace)
+}
+
+fn node_input_of(node: Output) -> Input {
+  Input { output_reference: node_out_ref(), output: node }
+}
+
+fn hold_after(case: CaseV1, old: Option<Int>) -> Int {
+  validation_case_v1.bond_hold_after_defense(old, case)
+}
+
+fn thread_token() -> assets.Value {
+  assets.from_asset(
+    case_policy,
+    validation_case_v1.thread_token_name(case_id(), defender),
+    1,
+  )
+}
+
+fn thread_datum(case: CaseV1, state: ValidationMachineStateV1) -> Data {
+  let (root, proof) = one_step_trace(state)
+  let thread: Data = validation_case_v1.open_thread(
+    case,
+    case_id(),
+    defender,
+    root,
+    proof.state_hash,
+    defense_lower,
+    defense_upper(),
+  )
+  thread
+}
+
+fn thread_output(datum: Data, lovelace: Int) -> Output {
+  Output {
+    address: address.from_script(config().game_v1),
+    value: assets.merge(assets.from_lovelace(lovelace), thread_token()),
+    datum: InlineDatum(datum),
+    reference_script: None,
+  }
+}
+
+fn case_output(case: CaseV1, lovelace: Int) -> Output {
+  let datum: Data = case
+  Output {
+    address: address.from_script(case_policy),
+    value: assets.from_lovelace(lovelace)
+      |> assets.add(thread_policy, thread_name, 1)
+      |> assets.add(case_policy, case_id(), 1),
+    datum: InlineDatum(datum),
+    reference_script: None,
+  }
+}
+
+fn defended_by(case: CaseV1) -> CaseV1 {
+  expect Some(next) = validation_case_v1.defend(case, defender, [])
+  next
+}
+
+fn defense_tx(
+  case: CaseV1,
+  old_hold: Option<Int>,
+  outputs: List<Output>,
+  mint: assets.Value,
+) -> Transaction {
+  Transaction {
+    ..transaction.placeholder,
+    inputs: [case_input(case), node_input_of(active_node(old_hold))],
+    reference_inputs: [config_reference(), hub_reference()],
+    outputs,
+    mint,
+    fee,
+    validity_range: interval.between(defense_lower, defense_upper()),
+    extra_signatories: [defender],
+  }
+}
+
+/// The honest defense of `case` with `state` at S, by an operator whose bond
+/// was held until `old_hold`.
+fn defense(
+  case: CaseV1,
+  state: ValidationMachineStateV1,
+  old_hold: Option<Int>,
+) -> Transaction {
+  defense_tx(
+    case,
+    old_hold,
+    [
+      case_output(defended_by(case), case_lovelace),
+      thread_output(
+        thread_datum(case, state),
+        validation_case_v1.thread_floor_lovelace,
+      ),
+      active_node(Some(hold_after(case, old_hold))),
+    ],
+    thread_token(),
+  )
+}
+
+fn case_defends(case: CaseV1, redeemer: CaseRedeemerV1, tx: Transaction) -> Bool {
+  case_validator.main.spend(
+    hub_policy,
+    config_policy,
+    thread_policy,
+    bond_lovelace,
+    Some(case),
+    redeemer,
+    case_out_ref(),
+    tx,
+  )
+}
+
+/// The defense's three scripts: the case spend, the thread-token mint and
+/// the defender's active node.
+fn defends(case: CaseV1, redeemer: CaseRedeemerV1, tx: Transaction) -> Bool {
+  and {
+    case_defends(case, redeemer, tx),
+    case_mint(redeemer, tx),
+    active_operators_validator.spend.spend(
+      active_policy,
+      hub_policy,
+      None,
+      UpdateBondHoldNewDefense {
+        active_operator: defender,
+        active_node_input_index: 1,
+        active_node_output_index: 2,
+      },
+      node_out_ref(),
+      tx,
+    ),
+  }
+}
+
+/// `tx` with its outputs at `index` replaced by `output`.
+fn with_output(tx: Transaction, index: Int, output: Output) -> Transaction {
+  Transaction {
+    ..tx,
+    outputs: list.indexed_map(
+      tx.outputs,
+      fn(i, current) {
+        if i == index {
+          output
+        } else {
+          current
+        }
+      },
+    ),
+  }
+}
+
+fn honest_defense() -> Transaction {
+  defense(defendable(), running(), None)
+}
+
+test defend_opens_a_thread_and_holds_the_bond() {
+  defends(defendable(), defend_of(running()), honest_defense())
+}
+
+test defend_with_an_accepted_terminal_is_accepted() {
+  let accepted = trace_state(
+    validation_trace_v1.Terminal,
+    validation_trace_v1.Accepted,
+  )
+  defends(
+    defendable(),
+    defend_of(accepted),
+    defense(defendable(), accepted, None),
+  )
+}
+
+test defend_raises_a_shorter_hold_from_another_case() {
+  let old = Some(started)
+  defends(
+    defendable(),
+    defend_of(running()),
+    defense(defendable(), running(), old),
+  )
+}
+
+test defend_keeps_a_longer_hold_from_another_case() {
+  let old = Some(hold_after(defendable(), None) + 1)
+  and {
+    hold_after(defendable(), old) == hold_after(defendable(), None) + 1,
+    defends(
+      defendable(),
+      defend_of(running()),
+      defense(defendable(), running(), old),
+    ),
+  }
+}
+
+test defend_at_the_end_of_the_defender_clock_is_accepted() {
+  let lower = started + validation_dispute_v1.dispute_side_clock_milliseconds
+  let tx = honest_defense()
+  let (root, proof) = one_step_trace(running())
+  let datum: Data = validation_case_v1.open_thread(
+    defendable(),
+    case_id(),
+    defender,
+    root,
+    proof.state_hash,
+    lower,
+    lower + 60_000,
+  )
+  defends(
+    defendable(),
+    defend_of(running()),
+    with_output(
+      Transaction {
+        ..tx,
+        validity_range: interval.between(lower, lower + 60_000),
+      },
+      1,
+      thread_output(datum, validation_case_v1.thread_floor_lovelace),
+    ),
+  )
+}
+
+test defend_after_the_defender_clock_is_refused() fail {
+  let lower = started + validation_dispute_v1.dispute_side_clock_milliseconds + 1
+  let tx = honest_defense()
+  case_defends(
+    defendable(),
+    defend_of(running()),
+    Transaction {
+      ..tx,
+      validity_range: interval.between(lower, lower + 60_000),
+    },
+  )
+}
+
+test defend_with_a_validity_range_longer_than_a_move_is_refused() fail {
+  let tx = honest_defense()
+  case_defends(
+    defendable(),
+    defend_of(running()),
+    Transaction {
+      ..tx,
+      validity_range: interval.between(defense_lower, defense_upper() + 1),
+    },
+  )
+}
+
+test defend_topping_up_the_case_is_accepted() {
+  defends(
+    defendable(),
+    defend_of(running()),
+    with_output(
+      honest_defense(),
+      0,
+      case_output(defended_by(defendable()), case_lovelace + 1),
+    ),
+  )
+}
+
+// ### Who may defend
+
+test defend_unsigned_is_refused() fail {
+  case_defends(
+    defendable(),
+    defend_of(running()),
+    Transaction { ..honest_defense(), extra_signatories: [other_key] },
+  )
+}
+
+test defend_without_an_active_node_is_refused() fail {
+  let wallet = Output {
+    address: address.from_verification_key(defender),
+    value: assets.from_lovelace(node_lovelace),
+    datum: NoDatum,
+    reference_script: None,
+  }
+  let tx = honest_defense()
+  case_defends(
+    defendable(),
+    defend_of(running()),
+    Transaction {
+      ..tx,
+      inputs: [case_input(defendable()), node_input_of(wallet)],
+    },
+  )
+}
+
+test defend_by_a_retired_operator_is_refused() fail {
+  let retired = node_holding(
+    retired_script,
+    retired_policy,
+    defender,
+    None,
+    node_lovelace,
+  )
+  let tx = honest_defense()
+  case_defends(
+    defendable(),
+    defend_of(running()),
+    with_output(
+      Transaction {
+        ..tx,
+        inputs: [case_input(defendable()), node_input_of(retired)],
+      },
+      2,
+      node_holding(
+        retired_script,
+        retired_policy,
+        defender,
+        Some(hold_after(defendable(), None)),
+        node_lovelace,
+      ),
+    ),
+  )
+}
+
+test defend_with_the_active_node_of_another_operator_is_refused() fail {
+  let other = node_holding(
+    active_script,
+    active_policy,
+    other_key,
+    None,
+    node_lovelace,
+  )
+  let tx = honest_defense()
+  case_defends(
+    defendable(),
+    defend_of(running()),
+    with_output(
+      Transaction {
+        ..tx,
+        inputs: [case_input(defendable()), node_input_of(other)],
+      },
+      2,
+      node_holding(
+        active_script,
+        active_policy,
+        other_key,
+        Some(hold_after(defendable(), None)),
+        node_lovelace,
+      ),
+    ),
+  )
+}
+
+test defend_a_second_time_by_the_same_operator_is_refused() fail {
+  let case = defended_by(defendable())
+  case_defends(
+    case,
+    defend_of(running()),
+    Transaction {
+      ..honest_defense(),
+      inputs: [case_input(case), node_input_of(active_node(None))],
+    },
+  )
+}
+
+test defend_without_the_hub_is_refused() fail {
+  case_defends(
+    defendable(),
+    defend_of(running()),
+    Transaction { ..honest_defense(), reference_inputs: [config_reference()] },
+  )
+}
+
+// ### The defense rule
+
+test defend_equal_to_the_challenger_terminal_is_refused() fail {
+  let case = CaseV1 {
+    ..defendable(),
+    challenger_terminal_hash: validation_trace_v1.hash_machine_state(running()),
+  }
+  case_defends(case, defend_of(running()), defense(case, running(), None))
+}
+
+test defend_with_a_rejected_terminal_is_refused() fail {
+  let rejected = trace_state(
+    validation_trace_v1.Terminal,
+    validation_trace_v1.Rejected,
+  )
+  case_defends(
+    defendable(),
+    defend_of(rejected),
+    defense(defendable(), rejected, None),
+  )
+}
+
+// ### The bond hold
+
+test defend_with_a_shorter_hold_is_refused() fail {
+  case_defends(
+    defendable(),
+    defend_of(running()),
+    with_output(
+      honest_defense(),
+      2,
+      active_node(Some(hold_after(defendable(), None) - 1)),
+    ),
+  )
+}
+
+test defend_with_a_longer_hold_than_the_case_needs_is_refused() fail {
+  case_defends(
+    defendable(),
+    defend_of(running()),
+    with_output(
+      honest_defense(),
+      2,
+      active_node(Some(hold_after(defendable(), None) + 1)),
+    ),
+  )
+}
+
+test defend_without_the_node_continuation_is_refused() fail {
+  let tx = honest_defense()
+  case_defends(
+    defendable(),
+    defend_of(running()),
+    Transaction { ..tx, outputs: list.take(tx.outputs, 2) },
+  )
+}
+
+// ### The thread
+
+test defend_missing_the_reserve_is_refused() fail {
+  case_defends(
+    defendable(),
+    defend_of(running()),
+    with_output(
+      honest_defense(),
+      1,
+      thread_output(
+        thread_datum(defendable(), running()),
+        validation_case_v1.thread_floor_lovelace - 1,
+      ),
+    ),
+  )
+}
+
+test defend_with_the_thread_at_another_script_is_refused() fail {
+  let thread = thread_output(
+    thread_datum(defendable(), running()),
+    validation_case_v1.thread_floor_lovelace,
+  )
+  case_defends(
+    defendable(),
+    defend_of(running()),
+    with_output(
+      honest_defense(),
+      1,
+      Output { ..thread, address: address.from_script(config().boundary_v1) },
+    ),
+  )
+}
+
+test defend_with_a_thread_clock_left_uncharged_is_refused() fail {
+  let (root, proof) = one_step_trace(running())
+  let datum: Data = validation_case_v1.open_thread(
+    defendable(),
+    case_id(),
+    defender,
+    root,
+    proof.state_hash,
+    started,
+    defense_upper(),
+  )
+  case_defends(
+    defendable(),
+    defend_of(running()),
+    with_output(
+      honest_defense(),
+      1,
+      thread_output(datum, validation_case_v1.thread_floor_lovelace),
+    ),
+  )
+}
+
+test defend_with_a_thread_of_another_step_count_is_refused() fail {
+  expect thread: CaseThreadV1 = thread_datum(defendable(), running())
+  let datum: Data = CaseThreadV1 { ..thread, step_count: 2, high_index: 2 }
+  case_defends(
+    defendable(),
+    defend_of(running()),
+    with_output(
+      honest_defense(),
+      1,
+      thread_output(datum, validation_case_v1.thread_floor_lovelace),
+    ),
+  )
+}
+
+test defend_with_another_token_in_the_thread_is_refused() fail {
+  let thread = thread_output(
+    thread_datum(defendable(), running()),
+    validation_case_v1.thread_floor_lovelace,
+  )
+  case_defends(
+    defendable(),
+    defend_of(running()),
+    with_output(
+      honest_defense(),
+      1,
+      Output {
+        ..thread,
+        value: assets.add(thread.value, thread_policy, thread_name, 1),
+      },
+    ),
+  )
+}
+
+// ### The case continuation
+
+test defend_leaving_the_case_datum_unchanged_is_refused() fail {
+  case_defends(
+    defendable(),
+    defend_of(running()),
+    with_output(honest_defense(), 0, case_output(defendable(), case_lovelace)),
+  )
+}
+
+test defend_taking_lovelace_from_the_case_is_refused() fail {
+  case_defends(
+    defendable(),
+    defend_of(running()),
+    with_output(
+      honest_defense(),
+      0,
+      case_output(defended_by(defendable()), case_lovelace - 1),
+    ),
+  )
+}
+
+test defend_moving_the_case_elsewhere_is_refused() fail {
+  let moved = case_output(defended_by(defendable()), case_lovelace)
+  case_defends(
+    defendable(),
+    defend_of(running()),
+    with_output(
+      honest_defense(),
+      0,
+      Output { ..moved, address: address.from_script(config().game_v1) },
+    ),
+  )
+}
+
+// ### Thread tokens are minted only by Defend, one at a time
+
+test defend_minting_no_thread_token_is_refused() fail {
+  case_defends(
+    defendable(),
+    defend_of(running()),
+    Transaction { ..honest_defense(), mint: assets.zero },
+  )
+}
+
+test defend_minting_two_thread_tokens_is_refused() fail {
+  case_defends(
+    defendable(),
+    defend_of(running()),
+    Transaction {
+      ..honest_defense(),
+      mint: assets.add(
+        thread_token(),
+        case_policy,
+        validation_case_v1.thread_token_name(case_id(), other_key),
+        1,
+      ),
+    },
+  )
+}
+
+test defend_minting_a_doubled_thread_token_is_refused() fail {
+  case_defends(
+    defendable(),
+    defend_of(running()),
+    Transaction {
+      ..honest_defense(),
+      mint: assets.merge(thread_token(), thread_token()),
+    },
+  )
+}
+
+test thread_token_mint_without_a_case_input_is_refused() fail {
+  let tx = honest_defense()
+  case_mint(
+    defend_of(running()),
+    Transaction { ..tx, inputs: [node_input_of(active_node(None))] },
+  )
+}
+
+test thread_token_mint_beside_a_case_close_is_refused() fail {
+  let tx = standing_close(defender_won(), started)
+  closes(
+    defender_won(),
+    Transaction { ..tx, mint: assets.merge(tx.mint, thread_token()) },
   )
 }
