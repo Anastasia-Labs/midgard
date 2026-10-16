@@ -23,7 +23,6 @@ const HOST_KEYS = [
   "PATH",
   "HOME",
   "XDG_RUNTIME_DIR",
-  "MIDGARD_AIKEN_BIN",
   "GOPATH",
   "GOMODCACHE",
   "CARGO_HOME",

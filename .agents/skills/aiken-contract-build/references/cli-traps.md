@@ -52,7 +52,7 @@ This is why the two repository scripts exist:
 - **Compile errors vanish when stdout is not a terminal.** `aiken check` and
   `aiken build` with a type error, output redirected to files: exit 1, stderr
   holds only the `Compiling …` line, no diagnostic. Under a pseudo-terminal
-  (`script -qec "aiken check" /dev/null`) the full diagnostic prints. Read the
+  (`script -qec "../../scripts/aiken check" /dev/null`) the full diagnostic prints. Read the
   exit code, and rerun under a pseudo-terminal to see why.
 - **The JSON report appears only when stdout is not a terminal**, with or
   without `-e`. Under a pseudo-terminal you get the human table instead. So a

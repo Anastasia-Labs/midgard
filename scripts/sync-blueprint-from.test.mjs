@@ -23,7 +23,6 @@ import {
 } from "../demo/scripts/lib/blueprint-stamp.mjs";
 import { EXIT, main } from "./sync-blueprint-from.mjs";
 
-const pin = "aiken v1.1.23+5adf783";
 const digests = {
   "preprod-testing": "a".repeat(64),
   "local-devnet-testing": "b".repeat(64),
@@ -44,20 +43,11 @@ const profilesModule = (selected, digestOf = digests) =>
   `} as const;\n\n` +
   `export const SELECTED_DEPLOYMENT_PROFILE =\n  DEPLOYMENT_PROFILES[${JSON.stringify(selected)}];\n`;
 
-const writeTree = (
-  root,
-  { compiler = pin, selected = "preprod-testing" } = {},
-) => {
+const writeTree = (root, { selected = "preprod-testing" } = {}) => {
   const write = (path, contents) => {
     mkdirSync(dirname(join(root, path)), { recursive: true });
     writeFileSync(join(root, path), contents);
   };
-  for (const workflow of ["aiken-ci.yml", "midgard-node-ci.yml"]) {
-    write(
-      `.github/workflows/${workflow}`,
-      `env:\n  AIKEN_FORK_VERSION: ${compiler}\n`,
-    );
-  }
   write("onchain/aiken/aiken.toml", 'name = "midgard/selftest"\n');
   write("onchain/aiken/aiken.lock", "# lock\n");
   write("onchain/aiken/lib/midgard/probe.ak", "pub const x = 1\n");
@@ -86,26 +76,18 @@ const buildIn = (
       profileDigest: digests[profile],
       blueprintHash: blueprintHash(blueprintPath),
       sourceHash: blueprintSourceHash(root),
-      compiler: pin,
     }),
   );
   return blueprintPath;
 };
 
-const withTrees = (
-  run,
-  { destinationCompiler, sourceProfile, copyFile } = {},
-) => {
+const withTrees = (run, { sourceProfile, copyFile } = {}) => {
   const scratch = mkdtempSync(join(tmpdir(), "sync-blueprint-from-"));
   try {
     const source = join(scratch, "source");
     const destination = join(scratch, "destination");
     const writeSource = writeTree(source);
-    const writeDestination = writeTree(destination, {
-      ...(destinationCompiler === undefined
-        ? {}
-        : { compiler: destinationCompiler }),
-    });
+    const writeDestination = writeTree(destination);
     const sourceBlueprint = buildIn(source, undefined, sourceProfile);
     const output = { stdout: "", stderr: "" };
     const sync = (...args) =>
@@ -225,16 +207,6 @@ test("refuses a source with no blueprint", () => {
     assert.equal(sync(source), EXIT.refused);
     assert.match(output.stderr, /no blueprint at/u);
   });
-});
-
-test("refuses when the two trees pin different compilers", () => {
-  withTrees(
-    ({ source, sync, output }) => {
-      assert.equal(sync(source), EXIT.refused);
-      assert.match(output.stderr, /AIKEN_FORK_VERSION/u);
-    },
-    { destinationCompiler: "aiken v9.9.9+other" },
-  );
 });
 
 test("refuses a source built for another profile, naming both", () => {

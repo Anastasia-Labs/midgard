@@ -24,8 +24,8 @@
  *
  * Usage, from `onchain/aiken/`:
  *
- *   MIDGARD_AIKEN_BIN=<fork> node scripts/verify-carriage-exec-ledger-v1.mjs
- *   MIDGARD_AIKEN_BIN=<fork> node scripts/verify-carriage-exec-ledger-v1.mjs --update
+ *   node scripts/verify-carriage-exec-ledger-v1.mjs
+ *   node scripts/verify-carriage-exec-ledger-v1.mjs --update
  *
  * `--update` rewrites the ledger from the measurement. It is how a legitimate
  * remeasurement is recorded; review the corresponding specification limits

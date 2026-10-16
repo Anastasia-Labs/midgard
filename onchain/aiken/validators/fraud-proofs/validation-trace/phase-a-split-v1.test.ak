@@ -68,7 +68,7 @@ const validation_context_cbor =
 // min-Ada formulas; a C70 parameter change re-derives both.
 
 fn empty_v1_transaction() -> MidgardTransaction {
-  let empty_mint: Data = []
+  let empty_mint: Data = builtin.list_data([])
   MidgardTransaction {
     version: native_tx_version_v1,
     validity: TxIsValid,

@@ -15,9 +15,9 @@ REPO=$(git rev-parse --show-toplevel)
 SKILL="$REPO/.agents/skills/splitting-oversized-modules/scripts"
 WORK=<a scratch directory of your own, outside the repository>
 
-# 1. The compiler must be the pinned fork. Run the check from the checkout:
-#    it reads the pin from .github/workflows/, which the copies do not have.
-node "$REPO/onchain/aiken/scripts/pinned-compiler.mjs"
+# 1. The compiler is the pinned fork: the checkout's scripts/aiken, which
+#    builds the commit demo/flake.lock pins. Never a bare `aiken` from PATH.
+AIKEN="$REPO/scripts/aiken"
 
 # 2. Both sides from git: the parent of the split commit and the split commit.
 mkdir -p "$WORK/before" "$WORK/after"
@@ -27,7 +27,7 @@ git archive <split-commit>  onchain/aiken | tar -x -C "$WORK/after"
 # 3. Same --env and the same (default, silent) trace level on both sides.
 for side in before after; do
   (cd "$WORK/$side/onchain/aiken" && test ! -e build && test ! -e plutus.json &&
-   timeout 900 nice -n 19 aiken build --env testnet --out "$side.json")
+   timeout 900 nice -n 19 "$AIKEN" build --env testnet --out "$side.json")
 done
 
 # 4. Compare.

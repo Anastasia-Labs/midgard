@@ -3,8 +3,8 @@
  * The verbose-traced blueprint of one deployment profile, which
  * run-traced-refusals.mjs swaps single modules out of. It is cached under
  * onchain/aiken/build/traced-refusals/<profile> with a record of the profile,
- * the compiler, the source hash and the blueprint's own hash, and is reused
- * only while all four still match.
+ * the source hash and the blueprint's own hash, and is reused only while all
+ * three still match.
  *
  * With MIDGARD_REQUIRE_PREBUILT_BLUEPRINTS=1 (CI, where the `test-blueprints`
  * job built it) a missing or unmatched cache fails instead of being rebuilt.
@@ -25,13 +25,10 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import {
-  assertPinnedAiken,
-  defaultAikenBinary,
-} from "../../../onchain/aiken/scripts/pinned-compiler.mjs";
-import {
   blueprintHash,
   blueprintSourceHash,
 } from "../../scripts/lib/blueprint-stamp.mjs";
+import { aikenBinary } from "../../../scripts/lib/aiken.mjs";
 
 const aikenRoot = resolve(
   dirname(fileURLToPath(import.meta.url)),
@@ -73,10 +70,8 @@ const staleness = (profile, expected) => {
 /** The traced blueprint of `profile`, built unless a matching one is cached. */
 export const tracedBlueprint = (profile) => {
   const { directory, blueprint, record } = paths(profile);
-  const compilerPath = defaultAikenBinary();
   const expected = {
     profile,
-    compiler: assertPinnedAiken(compilerPath),
     sourceHash: blueprintSourceHash(),
   };
   const reason = staleness(profile, expected);
@@ -88,7 +83,7 @@ export const tracedBlueprint = (profile) => {
   mkdirSync(directory, { recursive: true });
   if (existsSync(record)) rmSync(record);
   const result = spawnSync(
-    compilerPath,
+    aikenBinary(),
     [
       "build",
       "--env",

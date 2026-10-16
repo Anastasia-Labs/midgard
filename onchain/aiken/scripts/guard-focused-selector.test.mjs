@@ -1,65 +1,43 @@
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
-import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join, resolve } from "node:path";
+import { join } from "node:path";
 import { test } from "node:test";
-import { fileURLToPath } from "node:url";
 
 import {
+  ALL_MODULES,
   evaluateSelectorReport,
   exUnitsSummary,
   parseInvocation,
   parseSelectors,
+  runSelector,
 } from "./guard-focused-selector.mjs";
-import { pinnedAikenVersion } from "./pinned-compiler.mjs";
 
-const guardPath = resolve(
-  dirname(fileURLToPath(import.meta.url)),
-  "guard-focused-selector.mjs",
-);
-
-// Runs the guard end to end with a stub standing in for `aiken`, so the whole
-// CLI path — spawn, parse, classify, exit — is exercised without paying for a
-// real compile. The stub reproduces the exact behaviour that made zero
-// collection invisible: a well-formed report and exit status 0.
-// With `expectedArgs`, the stub exits 64 and reports nothing unless the guard
-// invoked it with exactly those arguments.
-const runGuardAgainstStub = (
-  stubReport,
-  selectors,
-  stubVersion = pinnedAikenVersion(),
-  expectedArgs = undefined,
-) => {
+// End-to-end runs use the real aiken from demo/flake.lock on a throwaway
+// project: `passing` holds two passing tests, `failing` one passing and one
+// failing test.
+const withProject = (modules, body) => {
   const directory = mkdtempSync(join(tmpdir(), "midgard-guard-selftest-"));
   try {
-    const stubPath = join(directory, "aiken-stub.mjs");
     writeFileSync(
-      stubPath,
-      `#!/usr/bin/env node\nif (process.argv[2] === "--version") {\n  process.stdout.write(${JSON.stringify(
-        `${stubVersion}\n`,
-      )});\n  process.exit(0);\n}\n${
-        expectedArgs === undefined
-          ? ""
-          : `if (JSON.stringify(process.argv.slice(2)) !== ${JSON.stringify(
-              JSON.stringify(expectedArgs),
-            )}) {\n  process.exit(64);\n}\n`
-      }process.stdout.write(${JSON.stringify(
-        JSON.stringify(stubReport),
-      )});\nprocess.exit(0);\n`,
+      join(directory, "aiken.toml"),
+      'name = "midgard/selftest"\nversion = "0.0.0"\nplutus = "v3"\n',
     );
-    chmodSync(stubPath, 0o755);
-    return spawnSync(process.execPath, [guardPath, ...selectors], {
-      encoding: "utf8",
-      env: {
-        ...process.env,
-        MIDGARD_AIKEN_BIN: stubPath,
-      },
-    });
+    mkdirSync(join(directory, "lib/midgard"), { recursive: true });
+    for (const [name, source] of Object.entries(modules))
+      writeFileSync(join(directory, `lib/midgard/${name}.ak`), source);
+    return body(directory);
   } finally {
     rmSync(directory, { recursive: true, force: true });
   }
 };
+const PASSING =
+  "test keeps_order() { True }\n\ntest wide() { [1, 2, 3] == [1, 2, 3] }\n";
+const FAILING = "test keeps_order() { True }\n\ntest rejects_gap() { False }\n";
+const run = (selector, modules) =>
+  withProject(modules, (projectDirectory) =>
+    runSelector(selector, { projectDirectory }),
+  );
 
 test("rejects unusable selector arguments", () => {
   assert.throws(() => parseSelectors([]), /usage/u);
@@ -164,15 +142,6 @@ test("summarises the largest unit-test execution units against the §3.3 basis",
     maxMem: { test: "midgard/b.wide", mem: 3_300_000, ofBasis: "25.0%" },
     maxCpu: { test: "midgard/a.small", cpu: 9_000_000, ofBasis: "0.1%" },
   });
-  const result = runGuardAgainstStub(
-    { summary: { total: 3, passed: 3, failed: 0 }, ...report },
-    ["midgard"],
-  );
-  assert.equal(result.status, 0, result.stderr);
-  assert.deepEqual(
-    JSON.parse(result.stdout).exUnits.maxMem.test,
-    "midgard/b.wide",
-  );
 });
 
 test("refuses a signalled compiler even after it emitted a green report", () => {
@@ -185,83 +154,49 @@ test("refuses a signalled compiler even after it emitted a green report", () => 
 });
 
 // The negative self-test the guard exists for: a zero-collecting selector that
-// aiken itself reports with exit status 0 must leave the guard exiting nonzero.
-test("exits nonzero end to end on a zero-collecting selector", () => {
-  const result = runGuardAgainstStub(
-    { summary: { total: 0, passed: 0, failed: 0 }, modules: [] },
-    ["midgard/selector_that_matches_nothing"],
-  );
-  assert.notEqual(result.status, 0);
-  assert.match(result.stderr, /midgard\/selector_that_matches_nothing/u);
-  assert.match(result.stderr, /collected 0 tests/u);
+// aiken itself reports with exit status 0 must fail the guard.
+test("fails a zero-collecting selector and names it", () => {
+  const outcome = run("midgard/selector_that_matches_nothing", {
+    passing: PASSING,
+  });
+  assert.equal(outcome.ok, false);
+  assert.match(outcome.diagnostic, /midgard\/selector_that_matches_nothing/u);
+  assert.match(outcome.diagnostic, /collected 0 tests/u);
 });
 
-test("exits zero end to end on a selector that collects passing tests", () => {
-  const result = runGuardAgainstStub(
-    { summary: { total: 3, passed: 3, failed: 0 } },
-    ["state_queue"],
-  );
-  assert.equal(result.status, 0);
-  assert.match(result.stdout, /"collected":3/u);
+test("passes a selector that collects passing tests, with their ex-units", () => {
+  const outcome = run("midgard/passing", {
+    passing: PASSING,
+    failing: FAILING,
+  });
+  assert.equal(outcome.ok, true, outcome.diagnostic);
+  assert.equal(outcome.total, 2);
+  assert.equal(outcome.exUnits.unitTests, 2);
+  assert.match(outcome.exUnits.maxMem.test, /^midgard\/passing\./u);
 });
 
-test("refuses a compiler other than the pinned fork even when its report is green", () => {
-  const result = runGuardAgainstStub(
-    { summary: { total: 3, passed: 3, failed: 0 } },
-    ["state_queue"],
-    "aiken v1.1.22+39d6b04",
-  );
-  assert.equal(result.status, 1);
-  assert.equal(result.stdout, "");
-  assert.match(result.stderr, /reports 'aiken v1\.1\.22\+39d6b04'/u);
+// CI's full-suite step runs `--all`. A whole-suite run that collected nothing
+// (a source root moved, a filter left in the environment) must fail it.
+test("fails a whole-suite run that collects nothing", () => {
+  const outcome = run(ALL_MODULES, { empty: "pub const x = 1\n" });
+  assert.equal(outcome.ok, false);
+  assert.match(outcome.diagnostic, /\(all modules\) collected 0 tests/u);
 });
 
-// CI's full-suite step runs `--all`. A whole-suite report that collected
-// nothing (a source root moved, a filter left in the environment) must fail it.
-test("exits nonzero end to end when the whole suite collects nothing", () => {
-  const result = runGuardAgainstStub(
-    { summary: { total: 0, passed: 0, failed: 0 }, modules: [] },
-    ["--all"],
-    pinnedAikenVersion(),
-    ["check", "--plain-numbers"],
-  );
-  assert.equal(result.status, 1);
-  assert.match(result.stderr, /\(all modules\) collected 0 tests/u);
-});
-
-test("runs the whole suite with no module filter and reports its count", () => {
-  const result = runGuardAgainstStub(
-    { summary: { total: 4467, passed: 4467, failed: 0 }, modules: [] },
-    ["--all"],
-    pinnedAikenVersion(),
-    ["check", "--plain-numbers"],
-  );
-  assert.equal(result.status, 0, result.stderr);
-  assert.match(result.stdout, /"selector":"\(all modules\)"/u);
-  assert.match(result.stdout, /"collected":4467/u);
+test("runs the whole suite with no module filter", () => {
+  const outcome = run(ALL_MODULES, {
+    passing: PASSING,
+    other: "test other() { True }\n",
+  });
+  assert.equal(outcome.ok, true, outcome.diagnostic);
+  assert.equal(outcome.total, 3);
 });
 
 test("names the failing tests of a red whole-suite run", () => {
-  const result = runGuardAgainstStub(
-    {
-      summary: { total: 2, passed: 1, failed: 1 },
-      modules: [
-        {
-          name: "midgard/state_queue",
-          tests: [
-            { title: "keeps_order", status: "pass" },
-            { title: "rejects_gap", status: "fail" },
-          ],
-        },
-      ],
-    },
-    ["--all"],
-    pinnedAikenVersion(),
-    ["check", "--plain-numbers"],
-  );
-  assert.equal(result.status, 1);
-  assert.match(result.stderr, /collected=2, passed=1, failed=1/u);
-  assert.match(result.stderr, /"module":"midgard\/state_queue"/u);
-  assert.match(result.stderr, /"title":"rejects_gap"/u);
-  assert.doesNotMatch(result.stderr, /keeps_order/u);
+  const outcome = run(ALL_MODULES, { passing: PASSING, failing: FAILING });
+  assert.equal(outcome.ok, false);
+  assert.match(outcome.diagnostic, /collected=4, passed=3, failed=1/u);
+  assert.match(outcome.diagnostic, /"module":"midgard\/failing"/u);
+  assert.match(outcome.diagnostic, /"title":"rejects_gap"/u);
+  assert.doesNotMatch(outcome.diagnostic, /keeps_order/u);
 });

@@ -8,16 +8,22 @@
     nodeToolchain.url = "github:NixOS/nixpkgs/eef00dfd8a712b34af845f9350bac681b1228bd1";
     goToolchain.url = "github:NixOS/nixpkgs/466bc97ad91ffa340bfd137eff2e56452119b42d";
     flake-utils.url = "github:numtide/flake-utils";
+    # The one Aiken compiler this repository compiles, formats and tests with.
+    # flake.lock pins its exact commit; everything else reads the pin from there.
+    aiken.url = "github:colll78/aiken/midgard-28e42883";
+    aiken.inputs.flake-utils.follows = "flake-utils";
   };
-  outputs = { self, nixpkgs, nodeToolchain, goToolchain, flake-utils }:
+  outputs = { self, nixpkgs, nodeToolchain, goToolchain, flake-utils, aiken }:
     flake-utils.lib.eachDefaultSystem (system:
       let
         pkgs = import nixpkgs { inherit system; };
         toolchainPkgs = import nodeToolchain { inherit system; };
         goToolchainPkgs = import goToolchain { inherit system; };
         pinnedGo = goToolchainPkgs.go_1_25;
+        pinnedAiken = aiken.packages.${system}.aiken;
       in
       {
+        packages.aiken = pinnedAiken;
         devShells.default = assert pinnedGo.version == "1.25.7"; pkgs.mkShell {
           # Native watcher chain-sync is a release-identity boundary. Refuse a
           # nixpkgs advance until the repository's exact Go pin is reviewed.
@@ -25,12 +31,14 @@
             toolchainPkgs.nodejs_22
             toolchainPkgs.pnpm_9
             pinnedGo
+            pinnedAiken
           ];
           shellHook = ''
             echo "node `${toolchainPkgs.nodejs_22}/bin/node --version`"
             echo "pnpm `${toolchainPkgs.pnpm_9}/bin/pnpm --version`"
             test "$(go version | awk '{print $3}')" = "go1.25.7"
             echo "go `go version`"
+            ${pinnedAiken}/bin/aiken --version
           '';
         };
       }

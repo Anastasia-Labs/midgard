@@ -29,8 +29,8 @@ export const FULL_RUN = [
   `${DEMO}/scripts/deployment-profile-aiken.mjs`,
   `${DEMO}/scripts/deployment-profile-identity.mjs`,
   `${DEMO}/scripts/deployment-profile-budgets.mjs`,
-  // The compiler pin's reader (the pin itself is compared by value, below).
-  `${AIKEN_PROJECT}/scripts/pinned-compiler.mjs`,
+  // The compiler: demo/flake.lock pins the aiken every check runs.
+  `${DEMO}/flake.lock`,
   // Workspace manifests, lockfile, toolchain pin, patched and vendored
   // dependencies.
   `${DEMO}/package.json`,
@@ -175,7 +175,6 @@ export const aikenChecks = (root, index) => {
         }
         if (full || selectors.size > 64) {
           return [
-            step(node(`${AIKEN_PROJECT}/scripts/pinned-compiler.mjs`)),
             step(
               node(
                 `${AIKEN_PROJECT}/scripts/guard-focused-selector.mjs`,

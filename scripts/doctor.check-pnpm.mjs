@@ -17,7 +17,7 @@ import {
   probeDbPrefix,
   probeNodeModules,
   probePackageDist,
-  probePinnedCompiler,
+  probeAiken,
   probePostgres,
 } from "./preflight/probes.mjs";
 
@@ -72,7 +72,7 @@ export const checkPnpm = ({ root, run = defaultPnpmVersion }) => {
 };
 
 export const defaultChecks = {
-  aiken: () => fromProbe(probePinnedCompiler({})),
+  aiken: () => fromProbe(probeAiken()),
   postgres: ({ env }) =>
     probePostgres({ env }).then((probe) => fromProbe(probe)),
   "db-prefix": ({ root, env }) =>

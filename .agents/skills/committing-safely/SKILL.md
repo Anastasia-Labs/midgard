@@ -35,15 +35,15 @@ Refusals (nothing is committed, exit 1): a directory or the repository root,
 a path outside the repository, `onchain/aiken/plutus.json`, a path with no
 change against `HEAD`, a path whose real-index entry is a staged version that
 is neither `HEAD`'s nor the one being committed, unformatted content, an
-`aiken` that is not the pinned fork, an in-progress merge/rebase/cherry-pick/
-revert, a message carrying a tool attribution trailer, and `HEAD` moving
+in-progress merge/rebase/cherry-pick/revert, a message carrying a tool attribution trailer, and `HEAD` moving
 while it ran. No paths or no message is a usage error (exit 2).
 
 Formatting is checked on exactly the content being committed, not
 rewritten: `demo/**/*.{ts,tsx,md}` against demo's prettier, `*.ak` against the
-pinned fork's formatter with the trailing-whitespace normalization the
+formatter of the aiken `demo/flake.lock` pins (`scripts/lib/aiken.mjs`) with the trailing-whitespace normalization the
 `aiken-ci.yml` "Run normalized Aiken auto-formatter check" step applies. A
-missing tool exits 3 ("could not check", nothing committed); re-run with
+missing tool (for `.ak`, no nix to build the pinned aiken with) exits 3
+("could not check", nothing committed); re-run with
 `--allow-unchecked` only when you have formatted by other means.
 
 Options: `-F <file>` for the message, `--patch <file>` to commit only the hunks

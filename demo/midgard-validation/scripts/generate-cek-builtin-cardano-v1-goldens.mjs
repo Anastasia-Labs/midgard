@@ -37,11 +37,8 @@ import {
 } from "@al-ft/midgard-core/scripts/golden-channel.mjs";
 import { builtinTagToString, getNRequiredForces } from "@harmoniclabs/uplc";
 
-import {
-  assertPinnedAiken,
-  defaultAikenBinary,
-} from "../../../onchain/aiken/scripts/pinned-compiler.mjs";
 import { buildCekBuiltinCardanoCases } from "../tests/fixtures/cek-builtin-cardano-v1.cases.mjs";
+import { aikenBinary } from "../../../scripts/lib/aiken.mjs";
 
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
 const packageRoot = resolve(scriptDirectory, "..");
@@ -56,8 +53,7 @@ const { checkOnly } = parseGoldenChannelArguments(
 );
 const writeOrCheck = goldenChannelEmitter({ repositoryRoot, checkOnly });
 
-const aiken = defaultAikenBinary();
-assertPinnedAiken(aiken);
+const aiken = aikenBinary();
 
 /* ---------- printing a case as UPLC ---------- */
 

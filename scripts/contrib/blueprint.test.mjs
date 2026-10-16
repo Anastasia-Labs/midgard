@@ -2,7 +2,6 @@ import assert from "node:assert/strict";
 import {
   mkdirSync,
   mkdtempSync,
-  readFileSync,
   rmSync,
   utimesSync,
   writeFileSync,
@@ -22,7 +21,6 @@ import {
   syncCandidates,
 } from "./blueprint.mjs";
 
-const pin = "aiken v1.1.23+5adf783";
 const digests = {
   "preprod-testing": "a".repeat(64),
   "local-devnet-testing": "b".repeat(64),
@@ -36,11 +34,6 @@ const checkout = (t, { validator = "validator probe { }\n" } = {}) => {
     mkdirSync(dirname(join(root, path)), { recursive: true });
     writeFileSync(join(root, path), contents);
   };
-  for (const workflow of ["aiken-ci.yml", "midgard-node-ci.yml"])
-    write(
-      `.github/workflows/${workflow}`,
-      `env:\n  AIKEN_FORK_VERSION: ${pin}\n`,
-    );
   write("onchain/aiken/aiken.toml", 'name = "midgard/selftest"\n');
   write("onchain/aiken/aiken.lock", "# lock\n");
   write("onchain/aiken/lib/midgard/probe.ak", "pub const x = 1\n");
@@ -69,7 +62,6 @@ const build = (root, profile = "preprod-testing", contents = "{}\n") => {
       profileDigest: digests[profile],
       blueprintHash: blueprintHash(blueprint),
       sourceHash: blueprintSourceHash(root),
-      compiler: pin,
     }),
   );
   return blueprint;
@@ -111,27 +103,18 @@ test("a stale blueprint is copied from a checkout whose build matches this tree"
   assert.equal(blueprintReadiness(here).ready, true);
 });
 
-test("candidates exclude other sources, compilers and profiles; the main checkout comes first", (t) => {
+test("candidates exclude other sources and profiles; the main checkout comes first", (t) => {
   const here = checkout(t);
   const main = checkout(t);
   const older = checkout(t);
   const newer = checkout(t);
   const otherSources = checkout(t, { validator: "validator other { }\n" });
   const otherProfile = checkout(t);
-  const otherCompiler = checkout(t);
   build(main);
   utimesSync(buildRecordPath(build(older)), 1, 1);
   build(newer);
   build(otherSources);
   build(otherProfile, "local-devnet-testing");
-  const record = buildRecordPath(build(otherCompiler));
-  writeFileSync(
-    record,
-    JSON.stringify({
-      ...JSON.parse(readFileSync(record, "utf8")),
-      compiler: "aiken v1.1.22",
-    }),
-  );
   assert.deepEqual(
     syncCandidates(here, [
       main,
@@ -139,7 +122,6 @@ test("candidates exclude other sources, compilers and profiles; the main checkou
       otherSources,
       older,
       otherProfile,
-      otherCompiler,
       newer,
     ]),
     [main, newer, older],
