@@ -22,6 +22,7 @@ import * as Manifest from "../src/da/libp2p-producer.parse-da-producer-publicati
 import * as Publication from "../src/da/libp2p-producer.publish-da-payload-insert-from-env.js";
 import { ContractDeploymentIdentity } from "../src/services/index.js";
 import { sha256 } from "../src/sha256.js";
+import { withBuiltValidationTracePair } from "./foreign-block-import.fixture.js";
 import { normalFixture } from "./foreign-block-import.normal-fixture.js";
 
 const manifest: DaProducerPublicationManifest = {
@@ -125,6 +126,31 @@ it("acquires canonical-header-bound bytes from a configured committee without an
   expect(result._tag).toBe("Right");
   if (result._tag === "Right") expect(result.right.payloadBytes).toEqual(bytes);
   expect(t.requests).toEqual([0]);
+});
+
+it("accepts an honest block with a transaction whose header pins the validation-trace pair to the empty tree", async () => {
+  const { payload } = await normalFixture();
+  expect(payload.block_body.header.validationTracesRoot).toBe(
+    SDK.EMPTY_MERKLE_TREE_ROOT,
+  );
+  expect(payload.block_body.header.validationTraceCount).toBe(0n);
+  expect(payload.block_body.validation_traces).toHaveLength(1);
+  const bytes = await envelope(payload);
+  transport(() => bytes);
+  const result = await acquire(payload);
+  if (result._tag === "Left") throw result.left;
+  expect(result.right.payloadBytes).toEqual(bytes);
+});
+
+it("refuses a peer block whose header commits its built validation-trace pair", async () => {
+  const payload = await withBuiltValidationTracePair(
+    (await normalFixture()).payload,
+  );
+  const bytes = await envelope(payload);
+  const t = transport(() => bytes);
+  const result = await acquire(payload);
+  expect(result._tag).toBe("Left");
+  expect(t.requests).toEqual([0, 1]);
 });
 
 it("refuses a self-consistent peer envelope whose body differs from canonical commitments", async () => {

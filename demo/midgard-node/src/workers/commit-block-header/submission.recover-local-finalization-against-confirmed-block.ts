@@ -61,6 +61,29 @@ export const deferProcessedCommitPayloadUntilConfirmation = ({
     } satisfies WorkerOutput;
   });
 
+export const journalMatchesConfirmedHeader = (
+  record: PendingBlockFinalizationsDB.Record,
+  confirmedHeader: SDK.Header,
+  profileId: ContractDeploymentIdentityValue["consensusProfile"]["profileId"],
+): boolean =>
+  record[PendingBlockFinalizationsDB.Columns.CONSENSUS_PROFILE_ID] ===
+    profileId &&
+  record[PendingBlockFinalizationsDB.Columns.EXPECTED_UTXOS_ROOT] ===
+    confirmedHeader.utxosRoot &&
+  record[
+    PendingBlockFinalizationsDB.Columns.EXPECTED_FORCED_TRANSACTIONS_ROOT
+  ] === confirmedHeader.forcedTransactionsRoot &&
+  record[PendingBlockFinalizationsDB.Columns.EXPECTED_TRANSACTIONS_ROOT] ===
+    confirmedHeader.transactionsRoot &&
+  record[PendingBlockFinalizationsDB.Columns.EXPECTED_DEPOSITS_ROOT] ===
+    confirmedHeader.depositsRoot &&
+  record[PendingBlockFinalizationsDB.Columns.EXPECTED_WITHDRAWALS_ROOT] ===
+    confirmedHeader.withdrawalsRoot &&
+  // The header pins the validation-trace pair to the empty tree; the journal
+  // keeps the built pair.
+  confirmedHeader.validationTracesRoot === SDK.EMPTY_MERKLE_TREE_ROOT &&
+  confirmedHeader.validationTraceCount === 0n;
+
 export const recoverLocalFinalizationAgainstConfirmedBlock = ({
   latestBlock,
   transactionsMpf,
@@ -111,26 +134,11 @@ export const recoverLocalFinalizationAgainstConfirmedBlock = ({
       } satisfies WorkerOutput;
     }
     const record = pendingRecord.value;
-    const rootsMatch =
-      record[PendingBlockFinalizationsDB.Columns.CONSENSUS_PROFILE_ID] ===
-        consensusProfile.profileId &&
-      record[PendingBlockFinalizationsDB.Columns.EXPECTED_UTXOS_ROOT] ===
-        confirmedHeader.utxosRoot &&
-      record[
-        PendingBlockFinalizationsDB.Columns.EXPECTED_FORCED_TRANSACTIONS_ROOT
-      ] === confirmedHeader.forcedTransactionsRoot &&
-      record[PendingBlockFinalizationsDB.Columns.EXPECTED_TRANSACTIONS_ROOT] ===
-        confirmedHeader.transactionsRoot &&
-      record[PendingBlockFinalizationsDB.Columns.EXPECTED_DEPOSITS_ROOT] ===
-        confirmedHeader.depositsRoot &&
-      record[PendingBlockFinalizationsDB.Columns.EXPECTED_WITHDRAWALS_ROOT] ===
-        confirmedHeader.withdrawalsRoot &&
-      record[
-        PendingBlockFinalizationsDB.Columns.EXPECTED_VALIDATION_TRACES_ROOT
-      ] === confirmedHeader.validationTracesRoot &&
-      record[
-        PendingBlockFinalizationsDB.Columns.EXPECTED_VALIDATION_TRACE_COUNT
-      ] === confirmedHeader.validationTraceCount;
+    const rootsMatch = journalMatchesConfirmedHeader(
+      record,
+      confirmedHeader,
+      consensusProfile.profileId,
+    );
     if (!rootsMatch) {
       return {
         type: "FailureOutput",

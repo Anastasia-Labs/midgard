@@ -9,6 +9,8 @@ import { Data, Effect } from "effect";
 import * as Ledger from "../database/utils/ledger.js";
 import {
   computeDaPayloadRoots,
+  headerCommittedCounts,
+  headerCommittedRoots,
   headerCounts,
   headerRoots,
   rootMismatches,
@@ -128,7 +130,9 @@ export const verifyAndImportBlock = (
       );
     // Roots the payload's own entries cannot form are its fault.
     const roots = yield* computeDaPayloadRoots(payload).pipe(Effect.orDie);
-    const mismatches = [...rootMismatches(headerRoots(input.header), roots)];
+    const mismatches = [
+      ...rootMismatches(headerRoots(input.header), headerCommittedRoots(roots)),
+    ];
     const body = payload.block_body;
     const memberCounts: SDK.DaPayloadCounts = {
       depositCount: BigInt(body.deposits.length),
@@ -148,7 +152,8 @@ export const verifyAndImportBlock = (
       memberCounts,
     ) as (keyof SDK.DaPayloadCounts)[]) {
       if (
-        memberCounts[key] !== headerCounts(input.header)[key] ||
+        headerCommittedCounts(memberCounts)[key] !==
+          headerCounts(input.header)[key] ||
         body.counts[key] !== memberCounts[key]
       )
         mismatches.push(key);

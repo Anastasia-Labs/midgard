@@ -11,6 +11,8 @@ import { DatabaseError } from "../../database/utils/common.js";
 import {
   expectedCounts,
   expectedRoots,
+  headerCommittedCounts,
+  headerCommittedRoots,
   headerCounts,
   headerRoots,
   type PayloadCountSet,
@@ -122,7 +124,7 @@ export const verifyPayloadCommitments = ({
     const counts = expectedCounts(record);
     const mismatches = [
       ...rootMismatches(expected, roots),
-      ...rootMismatches(headerRoots(header), roots).map(
+      ...rootMismatches(headerRoots(header), headerCommittedRoots(roots)).map(
         (field) => `header_${field}`,
       ),
       ...countMismatches(counts, payloadDeclaredCounts(payload)),
@@ -131,7 +133,7 @@ export const verifyPayloadCommitments = ({
       ),
       ...countMismatches(
         headerCounts(header),
-        payloadDeclaredCounts(payload),
+        headerCommittedCounts(payloadDeclaredCounts(payload)),
       ).map((field) => `header_${field}`),
       payload.block_body.event_to_step.length ===
       payload.block_body.transition_trace.length

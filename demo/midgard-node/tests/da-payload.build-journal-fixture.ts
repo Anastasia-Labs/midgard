@@ -31,18 +31,22 @@ export const buildJournalFixture = async ({
   eventToStepEntries = [],
   rootOverrides = {},
   recordRootOverrides = {},
+  countOverrides = {},
 }: JournalFixtureOptions): Promise<{
   readonly roots: TestRoots;
   readonly header: SDK.Header;
   readonly headerHash: Buffer;
   readonly pending: PendingBlockFinalizationsDB.Record;
 }> => {
-  const counts = countsFromLengths({
-    withdrawals: withdrawalEntries.length,
-    forcedTransactions: forcedTransactionEntries.length,
-    transactions: txEntries.length,
-    deposits: depositEntries.length,
-  });
+  const counts = {
+    ...countsFromLengths({
+      withdrawals: withdrawalEntries.length,
+      forcedTransactions: forcedTransactionEntries.length,
+      transactions: txEntries.length,
+      deposits: depositEntries.length,
+    }),
+    ...countOverrides,
+  };
   const roots: TestRoots = {
     validationTracesRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
     ...(await Effect.runPromise(

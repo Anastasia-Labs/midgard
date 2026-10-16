@@ -17,8 +17,11 @@ import { ContractDeploymentIdentity } from "../services/index.js";
 import { sha256 } from "../sha256.js";
 import {
   computeDaPayloadRoots,
+  headerCommittedCounts,
+  headerCommittedRoots,
   headerCounts,
   headerRoots,
+  type PayloadRootSet,
   rootMismatches,
 } from "../workers/commit-block-header/da-payload.compute-da-payload-roots.js";
 import { loadDaProducerPublicationManifestFromEnv } from "./libp2p-producer.parse-da-producer-publication-manifest.js";
@@ -40,13 +43,18 @@ export const decodeStoredPayload = ({
         maxPayloadBytes: DA_TRANSPORT_LIMITS.maxPayloadBytes,
       }).then((unwrapped) => SDK.decodeDaPayload(unwrapped.innerBytes));
 
-/** Construct a retained row only from the canonical header and acquired bytes.
- * The caller persists it once the block's replay reached its header's root. */
+/** Construct a retained row from the canonical header, the acquired bytes and
+ * the verified body's roots and counts. The header pins the validation-trace
+ * pair to the empty tree, so the row takes that pair from the body, as local
+ * persist does. The caller persists the row once the block's replay reached
+ * its header's root. */
 export const foreignRetainedDaInsert = (
   headerHash: string,
   header: SDK.Header,
   blockTime: bigint,
   payloadBytes: Buffer,
+  roots: Pick<PayloadRootSet, "validationTracesRoot">,
+  counts: Pick<SDK.DaPayloadCounts, "validationTraceCount">,
 ): DaPayloadsDB.InsertInput => ({
   header_hash: Buffer.from(headerHash, "hex"),
   consensus_profile_id: MIDGARD_CONSENSUS_PROFILE_ID,
@@ -60,14 +68,14 @@ export const foreignRetainedDaInsert = (
   withdrawals_root: header.withdrawalsRoot,
   transition_trace_root: header.transitionTraceRoot,
   event_to_step_root: header.eventToStepRoot,
-  validation_traces_root: header.validationTracesRoot,
+  validation_traces_root: roots.validationTracesRoot,
   withdrawal_count: header.withdrawalCount,
   forced_transaction_count: header.forcedTransactionCount,
   l2_transaction_count: header.l2TransactionCount,
   deposit_count: header.depositCount,
   total_event_count: header.totalEventCount,
   transition_step_count: header.transitionStepCount,
-  validation_trace_count: header.validationTraceCount,
+  validation_trace_count: counts.validationTraceCount,
   block_start_time: new Date(Number(header.startTime)),
   block_end_time: new Date(Number(header.endTime)),
   block_time: new Date(Number(blockTime)),
@@ -163,7 +171,10 @@ export const fetchForeignRetainedDa = (
                   missing("foreign peer substituted the canonical header"),
                 );
               const roots = yield* computeDaPayloadRoots(payload);
-              if (rootMismatches(headerRoots(header), roots).length !== 0)
+              if (
+                rootMismatches(headerRoots(header), headerCommittedRoots(roots))
+                  .length !== 0
+              )
                 return yield* Effect.fail(
                   missing(
                     "foreign peer body is not bound to canonical commitments",
@@ -188,7 +199,8 @@ export const fetchForeignRetainedDa = (
                 counts,
               ) as (keyof SDK.DaPayloadCounts)[]) {
                 if (
-                  counts[key] !== headerCounts(header)[key] ||
+                  headerCommittedCounts(counts)[key] !==
+                    headerCounts(header)[key] ||
                   body.counts[key] !== counts[key]
                 )
                   return yield* Effect.fail(
@@ -197,7 +209,7 @@ export const fetchForeignRetainedDa = (
                     ),
                   );
               }
-              return { payloadBytes, payload };
+              return { payloadBytes, payload, roots, counts };
             }),
           ),
         ),

@@ -315,4 +315,5 @@ export type JournalFixtureOptions = {
   readonly eventToStepEntries?: readonly [Buffer, Buffer][];
   readonly rootOverrides?: Partial<TestRoots>;
   readonly recordRootOverrides?: Partial<TestRoots>;
+  readonly countOverrides?: Partial<TestCounts>;
 };

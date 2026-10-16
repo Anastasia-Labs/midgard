@@ -13,7 +13,6 @@ import {
   HeaderSchema,
   L2TransactionSourceSchema,
   TransitionStepSchema,
-  ValidationTraceDescriptorSchema,
 } from "../ledger-state.js";
 import { rootMembershipProofSchema } from "../transition-trace.js";
 import { ValidationAuxiliaryWitnessSchema } from "./validation-auxiliary-witness.js";
@@ -129,11 +128,6 @@ export const ValidationOneStepEvidence = asDataType<ValidationOneStepEvidence>(
   ValidationOneStepEvidenceSchema,
 );
 
-const ValidationDescriptorMembershipSchema = rootMembershipProofSchema(
-  EventKeySchema,
-  ValidationTraceDescriptorSchema,
-);
-
 const ValidationTransitionStepMembershipSchema = rootMembershipProofSchema(
   Data.Integer(),
   TransitionStepSchema,
@@ -169,7 +163,6 @@ export const ValidationSourceMembershipSchema = Data.Enum([
 
 export const ValidationClaimWitnessSchema = Data.Object({
   version: Data.Integer(),
-  descriptor_membership: ValidationDescriptorMembershipSchema,
   transition_step_membership: ValidationTransitionStepMembershipSchema,
   event_to_step_membership: ValidationEventToStepMembershipSchema,
   source_membership: ValidationSourceMembershipSchema,

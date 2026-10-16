@@ -84,6 +84,8 @@ const fetched = (
           header,
           blockTime,
           acquired.payloadBytes,
+          acquired.roots,
+          acquired.counts,
         ),
       };
     }),
