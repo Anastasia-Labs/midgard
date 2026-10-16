@@ -76,7 +76,8 @@ const nextFuel = (
 /**
  * The record UTxO of `scriptBytes` in `language`, minting it if there is none
  * yet. Each Walk's fuel adapts to the budget the previous one used, and halves
- * when a Walk cannot be built.
+ * when a Walk cannot be built. With `maxWalks`, a walk that needs more Walks
+ * than that throws instead of submitting the next one.
  */
 export const recordScriptDecode = async ({
   lucid,
@@ -84,12 +85,14 @@ export const recordScriptDecode = async ({
   language,
   scriptBytes,
   initialFuel = SCRIPT_DECODE_INITIAL_FUEL,
+  maxWalks = Number.POSITIVE_INFINITY,
 }: {
   readonly lucid: LucidEvolution;
   readonly deployment: ScriptDecodeDeployment;
   readonly language: number;
   readonly scriptBytes: Uint8Array;
   readonly initialFuel?: number;
+  readonly maxWalks?: number;
 }): Promise<{
   readonly recordUtxo: UTxO;
   readonly record: ScriptDecodeRecord | undefined;
@@ -121,6 +124,11 @@ export const recordScriptDecode = async ({
   let fuel = initialFuel;
   let record = scriptDecodeWalkRecord(cursor);
   while (record === undefined) {
+    if (walks.length >= maxWalks) {
+      throw new Error(
+        `script decode: the walk needs more than ${maxWalks.toString()} Walks`,
+      );
+    }
     const { step, next } = nextScriptDecodeWalkStep(cursor, fuel);
     let built: Awaited<ReturnType<typeof buildScriptDecodeWalk>>;
     try {
