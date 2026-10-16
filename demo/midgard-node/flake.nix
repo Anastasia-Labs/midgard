@@ -14,14 +14,19 @@
       });
     in
     {
-      devShells = forEachSupportedSystem ({ pkgs, toolchainPkgs }: {
-        default = pkgs.mkShell {
-          packages = [
-            pkgs.bun
-            toolchainPkgs.pnpm_9
-            toolchainPkgs.nodejs_22
-          ];
-        };
+      devShells = forEachSupportedSystem ({ pkgs, toolchainPkgs }:
+        let
+          pinnedPnpm = pkgs.writeShellScriptBin "pnpm" ''
+            exec ${toolchainPkgs.nodejs_22}/bin/node ${../../scripts/pnpm.mjs} "$@"
+          '';
+        in {
+          default = pkgs.mkShell {
+            packages = [
+              pkgs.bun
+              pinnedPnpm
+              toolchainPkgs.nodejs_22
+            ];
+          };
       });
     };
 }
