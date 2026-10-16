@@ -29,6 +29,14 @@ import {
 import { Effect } from "effect";
 
 import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
+import {
+  PLUTUS_SCRIPT_ITEM_KIND_REFERENCE_SCRIPT,
+  PLUTUS_SCRIPT_REFUSED_RESULT_BASE,
+  plutusItemScriptDecode,
+  plutusRecordResultClass,
+  type PlutusScriptRefusedResultClass,
+  plutusUndecodableAccusedClass,
+} from "../script-decode/item-record.js";
 import type { CanonicalViolationDetection } from "../workflow/classification.js";
 import { verdictDetectionSubject } from "../workflow/detection-subject.js";
 
@@ -43,10 +51,13 @@ export const OUTPUT_REFERENCE_SCRIPT_NODE_LIMIT_VIOLATION_ID =
   "output-reference-script-node-limit" as const;
 export const OUTPUT_REFERENCE_SCRIPT_DEPTH_LIMIT_VIOLATION_ID =
   "output-reference-script-depth-limit" as const;
+export const OUTPUT_REFERENCE_PLUTUS_SCRIPT_UNDECODABLE_VIOLATION_ID =
+  "output-reference-plutus-script-undecodable" as const;
 export type OutputReferenceScriptDecodingViolationId =
   | typeof OUTPUT_REFERENCE_SCRIPT_MALFORMED_VIOLATION_ID
   | typeof OUTPUT_REFERENCE_SCRIPT_NODE_LIMIT_VIOLATION_ID
-  | typeof OUTPUT_REFERENCE_SCRIPT_DEPTH_LIMIT_VIOLATION_ID;
+  | typeof OUTPUT_REFERENCE_SCRIPT_DEPTH_LIMIT_VIOLATION_ID
+  | typeof OUTPUT_REFERENCE_PLUTUS_SCRIPT_UNDECODABLE_VIOLATION_ID;
 
 export const OutputReferenceScriptResultClasses = Object.freeze({
   Pending: -1,
@@ -56,7 +67,8 @@ export const OutputReferenceScriptResultClasses = Object.freeze({
   DepthLimit: 2,
 } as const);
 export type OutputReferenceScriptResultClass =
-  (typeof OutputReferenceScriptResultClasses)[keyof typeof OutputReferenceScriptResultClasses];
+  | (typeof OutputReferenceScriptResultClasses)[keyof typeof OutputReferenceScriptResultClasses]
+  | PlutusScriptRefusedResultClass;
 
 const fail = (message: string): never => {
   throw new Error(`${OUTPUT_REFERENCE_SCRIPT_DECODING_CATEGORY}: ${message}`);
@@ -66,6 +78,16 @@ const exactOutputIndex = (subject: VerdictSubject): number => {
   const reason = subject.rejection_reason;
   if (reason === null || typeof reason === "string")
     return fail("forced subject has the wrong typed reason");
+  if (
+    "PlutusScriptUndecodable" in reason &&
+    reason.PlutusScriptUndecodable.item_kind ===
+      PLUTUS_SCRIPT_ITEM_KIND_REFERENCE_SCRIPT
+  ) {
+    const outputIndex = Number(reason.PlutusScriptUndecodable.item_index);
+    if (!Number.isSafeInteger(outputIndex) || outputIndex < 0)
+      return fail("typed output coordinate is invalid");
+    return outputIndex;
+  }
   const entries = [
     [
       "OutputReferenceScriptMalformed",
@@ -106,6 +128,14 @@ const accusedClass = (
     return OutputReferenceScriptResultClasses.NodeLimit;
   if ("OutputReferenceScriptDepthLimit" in reason)
     return OutputReferenceScriptResultClasses.DepthLimit;
+  if ("PlutusScriptUndecodable" in reason)
+    return (
+      plutusUndecodableAccusedClass(
+        reason,
+        PLUTUS_SCRIPT_ITEM_KIND_REFERENCE_SCRIPT,
+        Number(reason.PlutusScriptUndecodable.item_index),
+      ) ?? fail("typed reason is outside family")
+    );
   return fail("typed reason is outside family");
 };
 
@@ -135,8 +165,14 @@ const resultClassOf = (item: Uint8Array): OutputReferenceScriptResultClass => {
   const trace = buildMidgardNativeScriptDecodingTrace(item);
   if (trace.bind.kind === MidgardNativeScriptDecodingBindKinds.Malformed)
     return OutputReferenceScriptResultClasses.Malformed;
-  if (trace.bind.kind === MidgardNativeScriptDecodingBindKinds.NonNative)
-    return OutputReferenceScriptResultClasses.NoFault;
+  if (trace.bind.kind === MidgardNativeScriptDecodingBindKinds.NonNative) {
+    const decoded = plutusItemScriptDecode(item);
+    if (decoded === undefined) return fail("non-native item has no script");
+    return (
+      plutusRecordResultClass(decoded.record) ??
+      OutputReferenceScriptResultClasses.NoFault
+    );
+  }
   if (trace.outcome === null)
     return fail("native scan has no terminal outcome");
   if (
@@ -393,7 +429,10 @@ export const detectOutputReferenceScriptDecodingCompleteReplay = (
       !(
         "OutputReferenceScriptMalformed" in reason ||
         "OutputReferenceScriptNodeLimit" in reason ||
-        "OutputReferenceScriptDepthLimit" in reason
+        "OutputReferenceScriptDepthLimit" in reason ||
+        ("PlutusScriptUndecodable" in reason &&
+          reason.PlutusScriptUndecodable.item_kind ===
+            PLUTUS_SCRIPT_ITEM_KIND_REFERENCE_SCRIPT)
       )
     )
       return;
@@ -417,9 +456,10 @@ export const outputReferenceScriptDecodingViolationId = (
       return OUTPUT_REFERENCE_SCRIPT_NODE_LIMIT_VIOLATION_ID;
     case OutputReferenceScriptResultClasses.DepthLimit:
       return OUTPUT_REFERENCE_SCRIPT_DEPTH_LIMIT_VIOLATION_ID;
-    case OutputReferenceScriptResultClasses.Pending:
-    case OutputReferenceScriptResultClasses.NoFault:
-      return fail("terminal result has no output-reference violation id");
+    default:
+      return resultClass > PLUTUS_SCRIPT_REFUSED_RESULT_BASE
+        ? OUTPUT_REFERENCE_PLUTUS_SCRIPT_UNDECODABLE_VIOLATION_ID
+        : fail("terminal result has no output-reference violation id");
   }
 };
 
