@@ -718,6 +718,30 @@ fn accepted_forced_transition_case(
   ledger_state.HeaderV1,
   proof.AcceptedTransactionTransitionMismatchWitness,
 > {
+  accepted_forced_transition_case_with(
+    verdict,
+    phase,
+    claimed_post_root,
+    terminal_post_root,
+    fn(state) { state },
+  )
+}
+
+/// The accepted forced case with `tweak` applied to the initial state before
+/// the terminal state, the descriptor and both endpoint proofs are built from
+/// it, so the trace stays self-consistent and only the source binding sees the
+/// change.
+fn accepted_forced_transition_case_with(
+  verdict: rejection_reason_v1.OperatorVerdictV1,
+  phase: ledger_state.TransitionPhase,
+  claimed_post_root: ByteArray,
+  terminal_post_root: ByteArray,
+  tweak: fn(validation_trace_v1.ValidationMachineStateV1) ->
+    validation_trace_v1.ValidationMachineStateV1,
+) -> Pair<
+  ledger_state.HeaderV1,
+  proof.AcceptedTransactionTransitionMismatchWitness,
+> {
   let event_key = ledger_state.ForcedTransactionEventKey {
     tx_order_id: out_ref(0),
   }
@@ -741,40 +765,42 @@ fn accepted_forced_transition_case(
     -1,
     0,
   )
-  let initial_state = validation_trace_v1.ValidationMachineStateV1 {
-    machine_version: validation_trace_v1.machine_version,
-    event_key_hash,
-    transaction_id: source.tx_id,
-    // The §7 proof-source commitment of the source's own triple. Derived here
-    // because `ForcedInclusionTxV1` no longer carries one — which is exactly
-    // what `validation_claim_v1.source_binding_is_exact` now derives too, so a
-    // fixture that hard-coded a value would stop testing the binding.
-    //
-    // Derived from the `source` parameter's own three members rather than from
-    // the transaction `authenticated_forced_tx` happens to build them out of, so
-    // the fixture keeps agreeing with the claim if a caller ever passes a source
-    // assembled some other way.
-    transaction_commitment: native_compact.forced_tx_proof_commitment_v1(
-      source.submitted_source.compact_cbor,
-      source.submitted_source.witness_set_compact_cbor,
-      source.submitted_source.field_preimage_lengths_cbor,
-    ),
-    validation_context_hash,
-    source_kind: validation_trace_v1.Forced,
-    prior_ledger_root: h32_a,
-    phase: validation_trace_v1.CanonicalDecode,
-    program_counter: 0,
-    work_root: validation_trace_v1.hash_work_witness(
-      validation_trace_v1.CanonicalDecode,
-      0,
-      initial_work_witness,
-    ),
-    execution_cpu: 0,
-    execution_memory: 0,
-    verdict: validation_trace_v1.Pending,
-    rejection_code_hash: zero_hash,
-    ledger_delta_root: h32_c,
-  }
+  let initial_state = tweak(
+    validation_trace_v1.ValidationMachineStateV1 {
+      machine_version: validation_trace_v1.machine_version,
+      event_key_hash,
+      transaction_id: source.tx_id,
+      // The §7 proof-source commitment of the source's own triple. Derived here
+      // because `ForcedInclusionTxV1` no longer carries one — which is exactly
+      // what `validation_claim_v1.source_binds_initial_state` now derives too, so a
+      // fixture that hard-coded a value would stop testing the binding.
+      //
+      // Derived from the `source` parameter's own three members rather than from
+      // the transaction `authenticated_forced_tx` happens to build them out of, so
+      // the fixture keeps agreeing with the claim if a caller ever passes a source
+      // assembled some other way.
+      transaction_commitment: native_compact.forced_tx_proof_commitment_v1(
+        source.submitted_source.compact_cbor,
+        source.submitted_source.witness_set_compact_cbor,
+        source.submitted_source.field_preimage_lengths_cbor,
+      ),
+      validation_context_hash,
+      source_kind: validation_trace_v1.Forced,
+      prior_ledger_root: h32_a,
+      phase: validation_trace_v1.CanonicalDecode,
+      program_counter: 0,
+      work_root: validation_trace_v1.hash_work_witness(
+        validation_trace_v1.CanonicalDecode,
+        0,
+        initial_work_witness,
+      ),
+      execution_cpu: 0,
+      execution_memory: 0,
+      verdict: validation_trace_v1.Pending,
+      rejection_code_hash: zero_hash,
+      ledger_delta_root: h32_c,
+    },
+  )
   let terminal_acceptance_witness_cbor = vm_witness.encode_terminal_acceptance_witness_v1(
     terminal_post_root,
     0,
@@ -1852,16 +1878,72 @@ test accepted_claim_names_a_drained_ledger_by_the_committed_sentinel() {
   }
 }
 
-test rejects_invalid_forced_source_with_accepted_validation_claim() {
+// Check 3 is gone: the forced leaf's verdict no longer gates an accepted claim.
+// The claim rests on the block's own committed Accepted descriptor and its
+// authenticated source, so a mismatched post root convicts whatever the leaf
+// says.
+test accepted_claim_does_not_read_the_forced_leaf_verdict() {
   let Pair(header, witness) = accepted_forced_transition_case(
     verdict_plutus_failed(),
     ledger_state.ForcedTransaction,
     h32_b,
     h32_c,
   )
-  !proof.validate_accepted_transaction_fault_proof(
+  proof.validate_accepted_transaction_fault_proof(
     prove(header, proof.AcceptedTransactionTransitionMismatch { witness }),
     asset_name_for(header),
+  )
+}
+
+fn accepted_claim_convicts_with(
+  tweak: fn(validation_trace_v1.ValidationMachineStateV1) ->
+    validation_trace_v1.ValidationMachineStateV1,
+) -> Bool {
+  let Pair(header, witness) = accepted_forced_transition_case_with(
+    rejection_reason_v1.ForcedTxValid,
+    ledger_state.ForcedTransaction,
+    h32_b,
+    h32_c,
+    tweak,
+  )
+  proof.validate_accepted_transaction_fault_proof(
+    prove(header, proof.AcceptedTransactionTransitionMismatch { witness }),
+    asset_name_for(header),
+  )
+}
+
+// The source binding that remains: the committed initial state names the
+// authenticated source's transaction id, proof-source commitment and kind.
+test accepted_claim_refuses_an_initial_state_naming_another_transaction() {
+  !accepted_claim_convicts_with(
+    fn(state) {
+      validation_trace_v1.ValidationMachineStateV1 {
+        ..state,
+        transaction_id: h32_a,
+      }
+    },
+  )
+}
+
+test accepted_claim_refuses_an_initial_state_with_another_source_commitment() {
+  !accepted_claim_convicts_with(
+    fn(state) {
+      validation_trace_v1.ValidationMachineStateV1 {
+        ..state,
+        transaction_commitment: h32_a,
+      }
+    },
+  )
+}
+
+test accepted_claim_refuses_an_initial_state_of_the_normal_source_kind() {
+  !accepted_claim_convicts_with(
+    fn(state) {
+      validation_trace_v1.ValidationMachineStateV1 {
+        ..state,
+        source_kind: validation_trace_v1.Normal,
+      }
+    },
   )
 }
 

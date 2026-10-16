@@ -9,7 +9,6 @@ use midgard/fraud_proofs/native_tx/compact.{
 use midgard/fraud_proofs/native_tx/types.{NativeTxWitnessSetCompact}
 use midgard/ledger_state
 use midgard/native_tx_field_access_v1
-use midgard/rejection_reason_v1.{ForcedTxInvalid, ForcedTxValid}
 use midgard/transition_trace
 use midgard/validation_machine/witness as vm_witness
 use midgard/validation_trace_v1
@@ -206,26 +205,6 @@ fn verify_event_to_step_membership(
   )
 }
 
-/// The §2.4.2(c) bridge from the forced leaf's verdict to the descriptor: an
-/// accepting leaf demands an accepting descriptor; a rejecting leaf demands a
-/// rejecting descriptor whose committed `rejection_code_hash` is exactly the
-/// hash of the leaf's reason (arm and coordinates).
-///
-/// Exported so the #640 gate-5 tests can drive the bridge directly; the only
-/// production caller remains `source_binding_is_exact` in this module.
-pub fn forced_verdict_matches(
-  leaf_verdict: rejection_reason_v1.OperatorVerdictV1,
-  descriptor: validation_trace_v1.ValidationTraceDescriptorV1,
-) -> Bool {
-  when leaf_verdict is {
-    ForcedTxValid -> descriptor.verdict == validation_trace_v1.Accepted
-    ForcedTxInvalid { reason } -> and {
-        descriptor.verdict == validation_trace_v1.Rejected,
-        validation_trace_v1.hash_rejection_code(reason) == descriptor.rejection_code_hash,
-      }
-  }
-}
-
 /// The source's compact witness set when the source is authenticated under the
 /// header, `None` otherwise.
 fn authenticated_source_witness_set(
@@ -342,36 +321,6 @@ fn source_binds_initial_state(
         source_proof_commitment(membership.value.source) == initial_state.transaction_commitment,
         initial_state.source_kind == validation_trace_v1.Normal,
       }
-  }
-}
-
-/// Check 3, one-sided descriptor-verdict consistency: the committed descriptor
-/// carries the verdict its authenticated source already fixes. A normal leaf
-/// under `transactions_root` is an acceptance, so its descriptor must be
-/// Accepted (a well-formed Accepted descriptor carries the no-rejection hash);
-/// a forced leaf's descriptor must match the leaf's own verdict. It reads only
-/// the descriptor and the source, so it decides on its own whatever the
-/// terminal states are.
-pub fn descriptor_matches_source_verdict(
-  descriptor: validation_trace_v1.ValidationTraceDescriptorV1,
-  source: ValidationSourceMembershipV1,
-) -> Bool {
-  when source is {
-    ForcedValidationSource { membership } ->
-      forced_verdict_matches(membership.value.verdict, descriptor)
-    NormalValidationSource { .. } ->
-      descriptor.verdict == validation_trace_v1.Accepted
-  }
-}
-
-fn source_binding_is_exact(
-  descriptor: validation_trace_v1.ValidationTraceDescriptorV1,
-  initial_state: validation_trace_v1.ValidationMachineStateV1,
-  source: ValidationSourceMembershipV1,
-) -> Bool {
-  and {
-    source_binds_initial_state(initial_state, source),
-    descriptor_matches_source_verdict(descriptor, source),
   }
 }
 
@@ -543,7 +492,7 @@ pub fn committed_claim_endpoints_and_source_are_valid(
     terminal.verdict == descriptor.verdict,
     terminal.rejection_code_hash == descriptor.rejection_code_hash,
     immutable_context_matches(initial, terminal),
-    source_binding_is_exact(descriptor, initial, witness.source_membership),
+    source_binds_initial_state(initial, witness.source_membership),
     if descriptor.verdict == validation_trace_v1.Rejected {
       transition_step.pre_utxos_root == transition_step.post_utxos_root
     } else {

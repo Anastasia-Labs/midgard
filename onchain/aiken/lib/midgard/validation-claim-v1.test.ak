@@ -1,6 +1,5 @@
-//// #640 gate-5 tests: the §2.4.2(c) verdict bridge (`forced_verdict_matches`)
-//// and the §2.4.3(d)/(e) source-authoritativeness predicates, each exercised
-//// positively and negatively.
+//// #640 gate-5 tests: the §2.4.3(d)/(e) source-authoritativeness predicates,
+//// each exercised positively and negatively.
 ////
 //// The predicate tests drive the public door
 //// `committed_claim_source_is_authenticated`, which reads only the descriptor
@@ -8,7 +7,6 @@
 //// an inert dummy here on purpose.
 
 use aiken/cbor
-use aiken/crypto
 use aiken/merkle_patricia_forestry as mpf
 use cardano/transaction.{OutputReference}
 use env
@@ -33,8 +31,6 @@ const h32_b =
 const zero_hash =
   #"0000000000000000000000000000000000000000000000000000000000000000"
 
-// ## §2.4.2(c) bridge: `forced_verdict_matches`
-
 fn descriptor_with(
   verdict: validation_trace_v1.ValidationVerdict,
   rejection_code_hash: ByteArray,
@@ -49,118 +45,6 @@ fn descriptor_with(
     verdict,
     rejection_code_hash,
   }
-}
-
-test forced_verdict_matches_accepts_valid_leaf_on_accepted_descriptor() {
-  validation_claim_v1.forced_verdict_matches(
-    rejection_reason_v1.ForcedTxValid,
-    descriptor_with(validation_trace_v1.Accepted, zero_hash),
-  )
-}
-
-test forced_verdict_matches_rejects_valid_leaf_on_rejected_descriptor() {
-  !validation_claim_v1.forced_verdict_matches(
-    rejection_reason_v1.ForcedTxValid,
-    descriptor_with(
-      validation_trace_v1.Rejected,
-      validation_trace_v1.hash_rejection_code(
-        rejection_reason_v1.FeeBelowMinimum,
-      ),
-    ),
-  )
-}
-
-test forced_verdict_matches_accepts_invalid_leaf_with_matching_code_hash() {
-  validation_claim_v1.forced_verdict_matches(
-    rejection_reason_v1.ForcedTxInvalid {
-      reason: rejection_reason_v1.FeeBelowMinimum,
-    },
-    descriptor_with(
-      validation_trace_v1.Rejected,
-      validation_trace_v1.hash_rejection_code(
-        rejection_reason_v1.FeeBelowMinimum,
-      ),
-    ),
-  )
-}
-
-test forced_verdict_matches_rejects_invalid_leaf_with_wrong_code_hash() {
-  !validation_claim_v1.forced_verdict_matches(
-    rejection_reason_v1.ForcedTxInvalid {
-      reason: rejection_reason_v1.FeeBelowMinimum,
-    },
-    descriptor_with(
-      validation_trace_v1.Rejected,
-      validation_trace_v1.hash_rejection_code(
-        rejection_reason_v1.OutputBelowMinAda { output_index: 0 },
-      ),
-    ),
-  )
-}
-
-/// The bridge compares reason hashes only: a descriptor that binds the retired
-/// coarse preimage (the domain followed by the bare code bytes `E_MIN_FEE`)
-/// does not match the forced leaf's reason.
-test forced_verdict_matches_rejects_the_coarse_code_preimage() {
-  !validation_claim_v1.forced_verdict_matches(
-    rejection_reason_v1.ForcedTxInvalid {
-      reason: rejection_reason_v1.FeeBelowMinimum,
-    },
-    descriptor_with(
-      validation_trace_v1.Rejected,
-      crypto.blake2b_256(
-        #"4d69646761726456616c69646174696f6e52656a656374436f64655631455f4d494e5f464545",
-      ),
-    ),
-  )
-}
-
-test forced_verdict_matches_rejects_the_same_arm_at_another_coordinate() {
-  !validation_claim_v1.forced_verdict_matches(
-    rejection_reason_v1.ForcedTxInvalid {
-      reason: rejection_reason_v1.OutputBelowMinAda { output_index: 0 },
-    },
-    descriptor_with(
-      validation_trace_v1.Rejected,
-      validation_trace_v1.hash_rejection_code(
-        rejection_reason_v1.OutputBelowMinAda { output_index: 1 },
-      ),
-    ),
-  )
-}
-
-test forced_verdict_matches_accepts_the_exact_coordinate() {
-  validation_claim_v1.forced_verdict_matches(
-    rejection_reason_v1.ForcedTxInvalid {
-      reason: rejection_reason_v1.OutputBelowMinAda { output_index: 1 },
-    },
-    descriptor_with(
-      validation_trace_v1.Rejected,
-      validation_trace_v1.hash_rejection_code(
-        rejection_reason_v1.OutputBelowMinAda { output_index: 1 },
-      ),
-    ),
-  )
-}
-
-test forced_verdict_matches_rejects_invalid_leaf_on_accepted_descriptor() {
-  !validation_claim_v1.forced_verdict_matches(
-    rejection_reason_v1.ForcedTxInvalid {
-      reason: rejection_reason_v1.PlutusExecutionFailed {
-        purpose_kind: 0,
-        purpose_index: 0,
-      },
-    },
-    descriptor_with(
-      validation_trace_v1.Accepted,
-      validation_trace_v1.hash_rejection_code(
-        rejection_reason_v1.PlutusExecutionFailed {
-          purpose_kind: 0,
-          purpose_index: 0,
-        },
-      ),
-    ),
-  )
 }
 
 // ## Fixtures for the §2.4.3(d)/(e) predicate tests
@@ -480,48 +364,6 @@ test normal_source_accepts_validity_code_zero() {
 
 test normal_source_rejects_validity_code_one() {
   !source_is_authenticated(normal_source(native_types.TxIsInvalid))
-}
-
-// ## Check 3: `descriptor_matches_source_verdict`
-
-test check_3_normal_source_matches_an_accepted_descriptor() {
-  validation_claim_v1.descriptor_matches_source_verdict(
-    descriptor_with(validation_trace_v1.Accepted, zero_hash),
-    normal_source(native_types.TxIsValid),
-  )
-}
-
-test check_3_normal_source_convicts_a_rejected_descriptor() {
-  !validation_claim_v1.descriptor_matches_source_verdict(
-    descriptor_with(validation_trace_v1.Rejected, h32_a),
-    normal_source(native_types.TxIsValid),
-  )
-}
-
-test check_3_forced_valid_leaf_matches_an_accepted_descriptor() {
-  validation_claim_v1.descriptor_matches_source_verdict(
-    descriptor_with(validation_trace_v1.Accepted, zero_hash),
-    forced_source(native_types.TxIsValid, rejection_reason_v1.ForcedTxValid),
-  )
-}
-
-test check_3_forced_valid_leaf_convicts_a_rejected_descriptor() {
-  !validation_claim_v1.descriptor_matches_source_verdict(
-    descriptor_with(validation_trace_v1.Rejected, h32_a),
-    forced_source(native_types.TxIsValid, rejection_reason_v1.ForcedTxValid),
-  )
-}
-
-test check_3_forced_invalid_leaf_convicts_an_accepted_descriptor() {
-  !validation_claim_v1.descriptor_matches_source_verdict(
-    descriptor_with(validation_trace_v1.Accepted, zero_hash),
-    forced_source(
-      native_types.TxIsInvalid,
-      rejection_reason_v1.ForcedTxInvalid {
-        reason: rejection_reason_v1.FeeBelowMinimum,
-      },
-    ),
-  )
 }
 
 // ## The authenticated witness set and rule R-DESC

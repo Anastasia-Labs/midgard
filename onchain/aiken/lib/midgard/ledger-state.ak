@@ -475,8 +475,8 @@ pub type MidgardTxCompactWithoutValidity {
 /// The compact leaf's two-valued validity scalar (wire code 0 = valid,
 /// 1 = invalid). The five rejection arms retired in the #640 format wave
 /// (catalogue C-3, design note 3): the forced leaf's `OperatorVerdictV1`
-/// carries the full `RejectionReasonV1`, so a coarse arm choice — which
-/// `forced_verdict_matches` never adjudicated — has no surface left.
+/// carries the full `RejectionReasonV1`, so a coarse arm choice has no surface
+/// left.
 pub type MidgardTxValidity {
   TxIsValid
   TxIsInvalid
@@ -495,7 +495,7 @@ pub type MidgardTxValidity {
 /// validator reaches by two different routes. `verify_source_authentication`,
 /// under the mandatory `committed_claim_source_is_authenticated`, asserted that
 /// the carried value equalled the `native_tx_proof_commitment_v1` it re-derived
-/// from the `source` sitting beside it. `source_binding_is_exact`, under
+/// from the `source` sitting beside it. `source_binds_initial_state`, under
 /// `committed_claim_endpoints_and_source_are_valid` — which
 /// `validators/fraud-proofs/validation-trace/source-v1.ak` uses as a *branch
 /// selector* rather than a conjunct — then bound the carried value to the machine
