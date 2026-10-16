@@ -197,8 +197,11 @@ export const registeredContracts = async (harness: Harness) => {
   return { validators, contracts, catalogue: harness.catalogue, category };
 };
 
-export const makeOutputReferenceHarness = async () => {
+export const makeOutputReferenceHarness = async ({
+  referenceScriptAuthTimelockMs,
+}: { readonly referenceScriptAuthTimelockMs?: number } = {}) => {
   const harness = await makeFaultProofEmulatorHarness({
+    referenceScriptAuthTimelockMs,
     contractOptions: {
       realOutputReferenceScriptDecoding: true,
       alwaysFraudProofCatalogue: true,

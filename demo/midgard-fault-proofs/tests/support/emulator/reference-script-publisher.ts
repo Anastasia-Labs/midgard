@@ -14,10 +14,14 @@ export type ReferenceScriptPublishingContracts = MidgardValidators & {
   readonly referenceScriptPublisher?: ReferenceScriptPublisher;
 };
 
-/** Reserve the contract nonce before the funding wallet publishes references. */
+/**
+ * Reserve the contract nonce before the funding wallet publishes references.
+ * The auth policy expires `timelockMs` after `now`, by default the SDK's.
+ */
 export const createReferenceScriptPublisher = async (
   lucid: LucidEvolution,
   now: number,
+  timelockMs?: number,
 ) => {
   const nonceLovelace = 10_000_000n;
   const address = await lucid.wallet().address();
@@ -40,7 +44,11 @@ export const createReferenceScriptPublisher = async (
   const nonceUtxo = nonceCandidates[0]!;
   return {
     nonceUtxo,
-    referenceScriptAuth: await createReferenceScriptAuthPolicy(lucid, now),
+    referenceScriptAuth: await createReferenceScriptAuthPolicy(
+      lucid,
+      now,
+      timelockMs,
+    ),
     referenceScriptPublisher: {
       lucid,
       reservedInputs: [nonceUtxo],

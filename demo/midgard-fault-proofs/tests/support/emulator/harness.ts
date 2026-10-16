@@ -359,6 +359,7 @@ export const makeFaultProofEmulatorHarness = async ({
   emulatorTimeMs,
   registerAdditionalRewardAccounts,
   lucidOptions,
+  referenceScriptAuthTimelockMs: authMs,
 }: {
   readonly contractOptions?: Parameters<
     typeof buildMinimalFaultProofContracts
@@ -369,6 +370,8 @@ export const makeFaultProofEmulatorHarness = async ({
   };
   readonly emulatorTimeMs?: number;
   readonly lucidOptions?: Parameters<typeof Lucid>[2];
+  /** The reference-script auth policy's window; the SDK's by default. */
+  readonly referenceScriptAuthTimelockMs?: number;
   readonly registerAdditionalRewardAccounts?: (
     funderLucid: Awaited<ReturnType<typeof Lucid>>,
     realBlueprint: Blueprint,
@@ -411,7 +414,7 @@ export const makeFaultProofEmulatorHarness = async ({
     await registerAdditionalRewardAccounts(funderLucid, realBlueprint);
   }
   const { nonceUtxo, referenceScriptAuth, referenceScriptPublisher } =
-    await createReferenceScriptPublisher(funderLucid, emulator.now());
+    await createReferenceScriptPublisher(funderLucid, emulator.now(), authMs);
   const baseContracts = {
     ...(await buildMinimalFaultProofContracts(
       realBlueprint,

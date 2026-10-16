@@ -15,13 +15,14 @@
  * Walk-heaviest record outlasts the emulator profile's block maturity on its
  * own, so it is recorded first, from the script alone, as a watcher can once
  * the forced transaction is visible, and the case then runs inside the window.
- * It ends at the conviction: the harness's reference-script auth policy
- * expires four hours after the harness starts, so the removal references can
- * no longer be published, and removal itself is the delay chain's.
+ * Its harness keeps the reference-script auth policy open for the longest
+ * record the public Walk gate allows on top of the default window, so the
+ * removal references can still be published after it.
  */
 import {
   acceptedVerdictSubject,
   forcedVerdictSubject,
+  REFERENCE_SCRIPT_AUTH_TIMELOCK_MS,
 } from "@al-ft/midgard-sdk";
 import { scriptDecodeRecordOfScript } from "@al-ft/midgard-validation";
 import { describe, expect, it } from "vitest";
@@ -99,6 +100,15 @@ const MAX_TX_BYTES = 16_384;
 const PUBLIC_WALK_GATE = 877;
 
 const PLUTUS_V3 = 3;
+
+/** One emulator block, which each Bind, Walk and Finish takes. */
+const EMULATOR_BLOCK_MS = 20_000;
+
+/** The default auth window plus the longest record the public gate allows
+ * (Bind, 877 Walks, Finish). */
+const MAX_WALK_AUTH_TIMELOCK_MS =
+  REFERENCE_SCRIPT_AUTH_TIMELOCK_MS +
+  (PUBLIC_WALK_GATE + 2) * EMULATOR_BLOCK_MS;
 
 /** Every Walk fits the ledger's transaction limits. */
 const expectWalksFit = (
@@ -211,8 +221,10 @@ describe("outputReferenceScriptDecoding Plutus maximum shape", () => {
     );
   }, 7_200_000);
 
-  it("records the most Walk-heavy decodable script of a 16,384-byte output and convicts its undecodable rejection by the Decoded record", async () => {
-    const context = await makeOutputReferenceHarness();
+  it("records the most Walk-heavy decodable script of a 16,384-byte output and convicts its undecodable rejection by the Decoded record through removal", async () => {
+    const context = await makeOutputReferenceHarness({
+      referenceScriptAuthTimelockMs: MAX_WALK_AUTH_TIMELOCK_MS,
+    });
     const { emulator, proverLucid } = context.harness;
     const { output: maximum, script } = maxWalkOutputOfLength(
       OUTPUT_REFERENCE_MAX_OUTPUT_BYTES,
@@ -307,6 +319,8 @@ describe("outputReferenceScriptDecoding Plutus maximum shape", () => {
     expect(s5.result.closed).toBe(true);
     const s6 = await stages.step06(s5.result.nextThreadOutRef, evidence);
     expect(s6.result.fraudProofUnit).toBeTruthy();
+    const removal = await stages.remove(block.headerHash);
+    expect(removal.result.fraudCategoryId).toBe(OUTPUT_REFERENCE_CATEGORY_ID);
     console.info(
       `[script-decode-max-shape] max-walk case virtual ms ${(emulator.now() - openedAt).toString()}, from the block commit ${(emulator.now() - committedFrom).toString()}`,
     );
