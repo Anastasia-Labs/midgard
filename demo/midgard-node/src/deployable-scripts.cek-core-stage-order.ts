@@ -261,6 +261,17 @@ type ValidatorForPurpose = {
   readonly withdraw: SDK.WithdrawalValidator;
 };
 
+/**
+ * Scripts larger than one L1 transaction. The manifest records their roles,
+ * but initialization cannot publish them as reference scripts yet. Delete each
+ * entry in the change that makes that script fit.
+ */
+const NOT_YET_PUBLISHABLE_CONTRACTS: ReadonlySet<string> = new Set([
+  "scriptDecodeSpend",
+  "scriptDecodeMint",
+  "validationTraceDisputeCekCoreBlsBudget",
+]);
+
 export const entrySpec = (
   contracts: SDK.MidgardValidators,
   contract: string,
@@ -273,7 +284,9 @@ export const entrySpec = (
   referenceScript: options.referenceScript ?? true,
   commands: options.commands ?? [],
   ...(options.chain === undefined ? {} : { chain: options.chain }),
-  publishable: () => options.publishWhen?.(contracts) ?? true,
+  publishable: () =>
+    !NOT_YET_PUBLISHABLE_CONTRACTS.has(contract) &&
+    (options.publishWhen?.(contracts) ?? true),
   resolve,
 });
 
