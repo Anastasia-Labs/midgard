@@ -2,14 +2,16 @@
  * On honest blocks, the import by committed verdicts is the full replay:
  * every transition and every ledger byte the block replay produces is the
  * same whether each script runs or each transaction is applied by its
- * committed verdict. The checker then rebuilds, from the material stored
- * per transaction, exactly the runs the replay built.
+ * committed verdict. The committed replay builds no script context; the
+ * checker then rebuilds, from the material stored per transaction, exactly
+ * the runs the replay met, with the contexts a full replay builds.
  */
 import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import { replayBlockEvents } from "@al-ft/midgard-fault-proofs/block-replay";
 import {
   evaluateMidgardCekVerdict,
   type MidgardCekVerdictRequest,
+  type MidgardCommittedScriptRun,
   validationMachineLedgerRoot,
 } from "@al-ft/midgard-validation";
 import { outRefFromTxId } from "@al-ft/midgard-validation/tests/validation-fixtures";
@@ -43,7 +45,7 @@ const replay = (
   committed: boolean,
 ) => {
   const transitions: unknown[] = [];
-  const runs: MidgardCekVerdictRequest[] = [];
+  const runs: MidgardCommittedScriptRun[] = [];
   return Effect.runPromise(
     replayBlockEvents({
       header: block.payload.block_body.header,
@@ -73,6 +75,17 @@ const replay = (
     }),
   ).then((ledger) => ({ ledger, transitions, runs }));
 };
+
+const identityOf = (run: MidgardCommittedScriptRun) => ({
+  scriptBytes: Buffer.from(run.scriptBytes).toString("hex"),
+  executionBudget: run.executionBudget,
+  executionIndex: run.executionIndex,
+  maxSteps: run.maxSteps,
+  programMaterialSidecarCbor:
+    run.programMaterialSidecarCbor === null
+      ? null
+      : Buffer.from(run.programMaterialSidecarCbor).toString("hex"),
+});
 
 const bytesOf = (run: MidgardCekVerdictRequest) => ({
   scriptBytes: Buffer.from(run.scriptBytes).toString("hex"),
@@ -127,9 +140,10 @@ describe("import by committed verdicts on honest blocks", () => {
     expect(byVerdict.transitions).toEqual(full.transitions);
     expect(byVerdict.ledger).toEqual(full.ledger);
     expect(byVerdict.runs).toHaveLength(5);
+    expect(byVerdict.runs.filter((run) => "contextCbor" in run)).toEqual([]);
   }, 120_000);
 
-  it("rebuilds from the stored material exactly the runs the replay built", async () => {
+  it("rebuilds from the stored material exactly the runs the replay met, with a full replay's contexts", async () => {
     const { parent, block } = await honest();
     const built = (await replay(block, parent, true)).runs;
     await processBlock(block);
@@ -146,7 +160,8 @@ describe("import by committed verdicts on honest blocks", () => {
         }),
     };
     expect(await checker(recording).importPass()).toEqual([]);
-    expect(rebuilt.map(bytesOf)).toEqual(built.map(bytesOf));
+    expect(rebuilt.map(identityOf)).toEqual(built.map(identityOf));
+    expect(rebuilt.map(bytesOf)).toEqual(block.runs.flat().map(bytesOf));
     expect(await entries()).toEqual([]);
   }, 120_000);
 });

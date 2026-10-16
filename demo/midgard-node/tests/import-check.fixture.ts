@@ -235,7 +235,14 @@ export const committedBlock = async (
         minFeeB: 0n,
         blockSlot: 0n,
         sourceKind: "normal",
-        committedScriptRun: (request) => void txRuns.push(request),
+        evaluateScriptRun: (request) =>
+          Effect.sync(() => {
+            txRuns.push(request);
+            return {
+              kind: "accepted" as const,
+              budget: { cpu: 0n, memory: 0n },
+            };
+          }),
       }),
     );
     if (replay.verdict !== "accepted")

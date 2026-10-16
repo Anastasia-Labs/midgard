@@ -16,7 +16,7 @@ import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile
 import { type L1SlotConfig } from "@al-ft/midgard-core/l1-slot-config";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
-  type MidgardCekVerdictRequest,
+  type MidgardCommittedScriptRun,
   placeholderValidationTraceDescriptorV1,
   type RejectedTx,
   replayValidationVerdictEvent,
@@ -114,14 +114,15 @@ export type BlockReplayContext = {
   >;
   /**
    * Set: every L2 transaction is replayed by its committed Accepted verdict
-   * and runs no script. Each script run is handed to `onScriptRun` as the
-   * replay builds it (the callee need not keep it), then the accepted
+   * and runs no script. Each script run is handed to `onScriptRun`, without
+   * its script context, as the replay meets it (the callee need not keep
+   * it), then the accepted
    * transaction to `onTransaction`, for a check after the replay. Unset:
    * every script runs in the replay. Forced transactions always replay in
    * full.
    */
   readonly committedVerdicts?: Readonly<{
-    onScriptRun: (request: MidgardCekVerdictRequest) => void;
+    onScriptRun: (run: MidgardCommittedScriptRun) => void;
     onTransaction: (transaction: CommittedTransaction) => void;
   }>;
   readonly verifyForcedSource: (input: {

@@ -12,13 +12,13 @@ import {
 import * as SDK from "@al-ft/midgard-sdk";
 import {
   decodeMidgardLedgerTxFromCanonicalCbor,
-  type MidgardCekVerdictRequest,
+  type MidgardCommittedScriptRun,
   midgardOutRefToCborHex,
 } from "@al-ft/midgard-validation";
 import { Data, Effect } from "effect";
 
 import * as Ledger from "../database/utils/ledger.js";
-import { importCheckRunBytes } from "../import-check/kill.js";
+import { importCheckCommittedRunBytes } from "../import-check/kill.js";
 import {
   computeDaPayloadRoots,
   headerCounts,
@@ -73,8 +73,9 @@ export class ForeignBlockVerificationError extends Data.TaggedError(
  * runs are checked after the import, rebuilt from the transaction, its
  * sidecar and the outputs it resolves. `position` is the transaction's order
  * among the block's transactions with script runs. The rest summarizes its
- * runs: their count, declared cpu, bytes (script, context and sidecar per
- * run) and distinct scripts (sha256).
+ * runs: their count, declared cpu, bytes (script, sidecar and context per
+ * run, the context estimated as the transaction and the outputs it
+ * resolves: none is built at import) and distinct scripts (sha256).
  */
 export type ImportScriptCheck = Readonly<{
   transactionId: Buffer;
@@ -121,14 +122,13 @@ const blockChecksCollector = (context: ImportCheckContext) => {
       // The bookkeeping is this node's own: a throw from it is local. The
       // transaction's decoding reads the block's bytes, so a throw from it
       // keeps the block's attribution.
-      onScriptRun: (request: MidgardCekVerdictRequest) =>
+      onScriptRun: (run: MidgardCommittedScriptRun) =>
         locally("import check bookkeeping", () => {
           runs += 1;
-          cpu += request.executionBudget?.cpu ?? 0n;
-          runBytes += importCheckRunBytes(request);
-          const hash = createHash("sha256")
-            .update(request.scriptBytes)
-            .digest();
+          cpu += run.executionBudget?.cpu ?? 0n;
+          // Its context is counted once the transaction is in.
+          runBytes += importCheckCommittedRunBytes(run, 0);
+          const hash = createHash("sha256").update(run.scriptBytes).digest();
           scripts.set(hash.toString("hex"), hash);
         }),
       onTransaction: (transaction: CommittedTransaction) => {
@@ -140,10 +140,16 @@ const blockChecksCollector = (context: ImportCheckContext) => {
             midgardOutRefToCborHex,
           );
           locally("import check bookkeeping", () => {
+            // No run's context is built at import: each is estimated as
+            // the transaction and the outputs it resolves.
+            let contextBytes = transaction.canonicalTransactionCbor.byteLength;
             for (const key of keys) {
               const output = transaction.ledger.get(key);
-              if (output !== undefined) outputs.set(key, output);
+              if (output === undefined) continue;
+              outputs.set(key, output);
+              contextBytes += output.byteLength;
             }
+            runBytes += runs * contextBytes;
           });
           checks.push({
             transactionId: transaction.transactionId,

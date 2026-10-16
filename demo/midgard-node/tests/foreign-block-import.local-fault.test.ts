@@ -58,11 +58,11 @@ vi.mock("../src/import-check/kill.js", async (importOriginal) => {
     await importOriginal<typeof import("../src/import-check/kill.js")>();
   return {
     ...actual,
-    importCheckRunBytes: (
-      ...args: Parameters<typeof actual.importCheckRunBytes>
+    importCheckCommittedRunBytes: (
+      ...args: Parameters<typeof actual.importCheckCommittedRunBytes>
     ) => {
       if (fault.bookkeeping) throw new Error("bookkeeping fault");
-      return actual.importCheckRunBytes(...args);
+      return actual.importCheckCommittedRunBytes(...args);
     },
   };
 });

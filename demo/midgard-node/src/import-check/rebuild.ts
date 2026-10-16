@@ -1,7 +1,8 @@
 /**
- * Checks one entry: rebuilds its transaction's script runs from the stored
- * material (`ImportCheckMaterial`) with the same validation pipeline the
- * import replayed it with, and evaluates each run through `evaluate`
+ * Checks one entry: rebuilds its transaction's script runs, and their
+ * script contexts (the import builds none), from the stored material
+ * (`ImportCheckMaterial`) with the same validation pipeline the import
+ * replayed it with, and evaluates each run through `evaluate`
  * instead of the committed verdict. Only a script verdict comes out of a
  * rebuild that differs from the import's: any other rejection, or a
  * rebuild that fails, is a fault.
@@ -65,8 +66,9 @@ export const rebuildAndEvaluate = (
       ledgerWitnessEntries: material.outputs,
       ...material.context,
       sourceKind: "normal",
+      // Each run's context is built on this thread: yield between runs.
       evaluateScriptRun: (run) =>
-        evaluate(run).pipe(
+        Effect.zipRight(Effect.yieldNow(), evaluate(run)).pipe(
           Effect.flatMap((outcome) => {
             if (outcome.kind === "evaluated")
               return Effect.succeed(outcome.result);

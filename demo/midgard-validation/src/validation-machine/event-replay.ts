@@ -15,12 +15,12 @@ import { Effect } from "effect";
 
 import { validatePhaseASingle } from "../phase-a.js";
 import {
-  type MidgardCekVerdictRequest,
   runPhaseBValidationWithPatch,
   type UTxOStatePatch,
 } from "../phase-b.js";
 import {
   type LocalScriptEvaluation,
+  type MidgardCommittedScriptRun,
   type PhaseBConfig,
   type QueuedTx,
   type RejectedTx,
@@ -53,11 +53,12 @@ export type ValidationVerdictEventInput = Readonly<{
   cekExecutionMode?: PhaseBConfig["cekExecutionMode"];
   /**
    * Replays the transaction by its committed Accepted verdict: no script is
-   * run. Each script run is handed here instead (for a later check), and
-   * counts as accepted within its declared budget. Every other check runs as
-   * in a full replay. Only for verdict mode.
+   * run and no script context is built. Each script run is handed here
+   * instead, without its context (a later check rebuilds it), and counts as
+   * accepted within its declared budget. Every other check runs as in a
+   * full replay. Only for verdict mode.
    */
-  committedScriptRun?: (request: MidgardCekVerdictRequest) => void;
+  committedScriptRun?: (run: MidgardCommittedScriptRun) => void;
   /**
    * Runs each script run through this hook instead of the in-process
    * executor; a failure of the hook fails the replay. Every other check runs
@@ -134,27 +135,14 @@ export const replayValidationVerdictEvent = (
     );
     const scriptEvaluations: LocalScriptEvaluation[] = [];
     const committedScriptRun = input.committedScriptRun;
-    const evaluateScriptRun =
-      committedScriptRun === undefined
-        ? input.evaluateScriptRun
-        : (request: MidgardCekVerdictRequest) =>
-            Effect.sync(() => {
-              committedScriptRun(request);
-              return {
-                kind: "accepted" as const,
-                budget: { cpu: 0n, memory: 0n },
-              };
-            });
-    if (
-      committedScriptRun !== undefined &&
-      input.evaluateScriptRun !== undefined
-    ) {
+    const evaluateScriptRun = input.evaluateScriptRun;
+    if (committedScriptRun !== undefined && evaluateScriptRun !== undefined) {
       return yield* Effect.fail(
         new Error("a replay takes one script-run hook at most"),
       );
     }
     if (
-      evaluateScriptRun !== undefined &&
+      (committedScriptRun !== undefined || evaluateScriptRun !== undefined) &&
       (input.cekExecutionMode ?? "verdict") !== "verdict"
     ) {
       return yield* Effect.fail(
@@ -188,12 +176,14 @@ export const replayValidationVerdictEvent = (
           : { cekExecutionMode: input.cekExecutionMode }),
         maxScriptExecutionSteps:
           snapshot.consensusProfile.limits.maxValidationMachineStepCount,
-        ...(evaluateScriptRun === undefined
-          ? {
-              onScriptEvaluated: (_txId, evaluation) =>
-                scriptEvaluations.push(evaluation),
-            }
-          : { evaluateCekVerdict: evaluateScriptRun }),
+        ...(committedScriptRun !== undefined
+          ? { committedScriptRun }
+          : evaluateScriptRun === undefined
+            ? {
+                onScriptEvaluated: (_txId, evaluation) =>
+                  scriptEvaluations.push(evaluation),
+              }
+            : { evaluateCekVerdict: evaluateScriptRun }),
       },
     );
     if (phaseB.accepted.length + phaseB.rejected.length !== 1) {

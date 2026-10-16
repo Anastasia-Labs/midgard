@@ -2,16 +2,27 @@
  * The import checker's kills (`ImportCheckConfig`): one script run is
  * killed `floor + a * declared cpu + b * bytes` after it starts.
  */
-import { type MidgardCekVerdictRequest } from "@al-ft/midgard-validation";
+import {
+  type MidgardCekVerdictRequest,
+  type MidgardCommittedScriptRun,
+} from "@al-ft/midgard-validation";
 
 import { type ImportCheckLoad } from "../database/importChecks.js";
 import { type ImportCheckConfig } from "../services/config.import-check.js";
 
+/** The bytes a run decodes: its script, its context (`contextBytes`) and
+ * its sidecar. */
+export const importCheckCommittedRunBytes = (
+  run: MidgardCommittedScriptRun,
+  contextBytes: number,
+): number =>
+  run.scriptBytes.byteLength +
+  contextBytes +
+  (run.programMaterialSidecarCbor?.byteLength ?? 0);
+
 /** The bytes a run decodes: its script, its context and its sidecar. */
 export const importCheckRunBytes = (run: MidgardCekVerdictRequest): number =>
-  run.scriptBytes.byteLength +
-  run.contextCbor.byteLength +
-  (run.programMaterialSidecarCbor?.byteLength ?? 0);
+  importCheckCommittedRunBytes(run, run.contextCbor.byteLength);
 
 /** The kill of one run: `floor + a * declared cpu + b * bytes`. */
 export const importCheckKillMs = (
