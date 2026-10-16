@@ -1,4 +1,5 @@
 import { decodeMidgardNativeTxFullFromCanonicalCbor } from "@al-ft/midgard-core";
+import type * as SDK from "@al-ft/midgard-sdk";
 
 import { keyValuePhasRootWithCount } from "../../src/transition-trace/phas.js";
 import {
@@ -12,13 +13,17 @@ import { buildDecodingBlockFixture } from "./native-script-decoding-emulator.bui
  * forced=1 and l2=1. The honest block steps the forced transaction first;
  * `forcedLast` steps it after the L2 transaction while event_to_step still
  * agrees with the trace, so only the header phase bands are broken.
+ * `l2Phase` is the phase the trace and event_to_step commit for the L2
+ * transaction; the honest block commits its source phase.
  */
 export const buildForcedAndL2Block = async ({
   forcedLast,
   operatorVkey = "b1".repeat(28),
   startTime = 10n,
+  l2Phase = "L2Transaction",
 }: {
   readonly forcedLast: boolean;
+  readonly l2Phase?: SDK.TransitionPhase;
   readonly operatorVkey?: string;
   readonly startTime?: bigint;
 }) => {
@@ -45,5 +50,7 @@ export const buildForcedAndL2Block = async ({
     ...(forcedLast
       ? { orderEvents: <T>(events: readonly T[]) => [...events].reverse() }
       : {}),
+    committedPhase: ({ eventKey, phase }) =>
+      "L2TransactionEventKey" in eventKey ? l2Phase : phase,
   });
 };

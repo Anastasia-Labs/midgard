@@ -7,7 +7,6 @@ import {
   type Proof,
   ProofSchema,
 } from "../common.js";
-import { type EventKey, EventKeySchema } from "../ledger-state.js";
 import {
   DepositSourceLeafMembershipProofSchema,
   type EventToStepMembershipProof,
@@ -224,31 +223,6 @@ export const SourceMembershipMismatchWitnessSchema = Data.Enum([
       source_membership: SourceKeyOpeningSchema,
     }),
   }),
-  Data.Object({
-    SourceEventMissingValidationRun: Data.Object({
-      source: SourceKeyOpeningSchema,
-      run_phas_root: Data.Bytes(),
-      run_absence_proof: ProofSchema,
-    }),
-  }),
-  Data.Object({
-    ForeignValidationRun: Data.Object({
-      event_key: Data.Bytes(),
-      value_hash: Data.Bytes(),
-      run_phas_root: Data.Bytes(),
-      run_proof: ProofSchema,
-      source_phas_root: Data.Bytes(),
-      source_absence_proof: ProofSchema,
-    }),
-  }),
-  Data.Object({
-    MalformedValidationRun: Data.Object({
-      event_key: EventKeySchema,
-      value: Data.Bytes(),
-      run_phas_root: Data.Bytes(),
-      run_proof: ProofSchema,
-    }),
-  }),
 ]);
 
 export type SourceMembershipMismatchWitness =
@@ -269,31 +243,6 @@ export type SourceMembershipMismatchWitness =
       readonly SourcePhaseMismatch: {
         readonly trace_proof: IndexedTraceProof;
         readonly source_membership: SourceKeyOpening;
-      };
-    }
-  | {
-      readonly SourceEventMissingValidationRun: {
-        readonly source: SourceKeyOpening;
-        readonly run_phas_root: string;
-        readonly run_absence_proof: Proof;
-      };
-    }
-  | {
-      readonly ForeignValidationRun: {
-        readonly event_key: string;
-        readonly value_hash: string;
-        readonly run_phas_root: string;
-        readonly run_proof: Proof;
-        readonly source_phas_root: string;
-        readonly source_absence_proof: Proof;
-      };
-    }
-  | {
-      readonly MalformedValidationRun: {
-        readonly event_key: EventKey;
-        readonly value: string;
-        readonly run_phas_root: string;
-        readonly run_proof: Proof;
       };
     };
 

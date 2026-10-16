@@ -191,15 +191,56 @@ export const makePayloadFixture = async (
     withdrawalsRoot: roots.withdrawalsRoot,
     transitionTraceRoot: roots.transitionTraceRoot,
     eventToStepRoot: roots.eventToStepRoot,
-    validationTracesRoot: roots.validationTracesRoot,
+    // The header pins the validation-trace pair to the empty tree; the body
+    // keeps the built members.
+    validationTracesRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
     withdrawalCount: counts.withdrawalCount,
     forcedTransactionCount: counts.forcedTransactionCount,
     l2TransactionCount: counts.l2TransactionCount,
     depositCount: counts.depositCount,
     totalEventCount: counts.totalEventCount,
     transitionStepCount: counts.transitionStepCount,
-    validationTraceCount: counts.validationTraceCount,
+    validationTraceCount: 0n,
   };
+  return withHeader(payloadWithoutHash, header);
+};
+
+type PayloadFixture = Awaited<ReturnType<typeof makePayloadFixture>>;
+
+/** The fixture under a header that commits its built validation-trace pair. */
+export const withBuiltValidationTracePair = async (
+  fixture: PayloadFixture,
+  carried: {
+    readonly validationTracesRoot: boolean;
+    readonly validationTraceCount: boolean;
+  } = { validationTracesRoot: true, validationTraceCount: true },
+): Promise<PayloadFixture> => {
+  const roots = await computeDaPayloadRoots(fixture.payload);
+  return withHeader(fixture.payload, {
+    ...fixture.header,
+    ...(carried.validationTracesRoot
+      ? { validationTracesRoot: roots.validationTracesRoot }
+      : {}),
+    ...(carried.validationTraceCount
+      ? {
+          validationTraceCount:
+            fixture.payload.block_body.counts.validationTraceCount,
+        }
+      : {}),
+  });
+};
+
+/** The fixture re-bound under its header with `fields` replaced. */
+export const withHeaderFields = async (
+  fixture: PayloadFixture,
+  fields: Partial<Header>,
+): Promise<PayloadFixture> =>
+  withHeader(fixture.payload, { ...fixture.header, ...fields });
+
+const withHeader = async (
+  payloadWithoutHash: SDK.DaPayload,
+  header: Header,
+) => {
   const headerHash = headerHashOf(header);
   const payload: SDK.DaPayload = {
     ...payloadWithoutHash,

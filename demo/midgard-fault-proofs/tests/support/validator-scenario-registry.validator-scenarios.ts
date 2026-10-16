@@ -292,30 +292,14 @@ export const VALIDATOR_SCENARIOS: Readonly<
   "fraud_proofs/transition_trace/source_v1.main": {
     passing: [
       {
-        file: "demo/midgard-fault-proofs/tests/submit-init-emulator-transition-trace-validation-runs.test.ts",
-        test: "proves missing validation run and removes the block",
-      },
-      {
-        file: "demo/midgard-fault-proofs/tests/submit-init-emulator-transition-trace-validation-runs.test.ts",
-        test: "proves foreign validation run and removes the block",
-      },
-      {
-        file: "demo/midgard-fault-proofs/tests/submit-init-emulator-transition-trace-validation-runs.test.ts",
-        test: "proves malformed validation run and removes the block",
+        file: "demo/midgard-fault-proofs/tests/submit-init-emulator-transition-trace-source-phase.test.ts",
+        test: "proves an L2 transaction stepped under the forced phase and removes the block",
       },
     ],
     failing: [
       {
-        file: "demo/midgard-fault-proofs/tests/submit-init-emulator-transition-trace-validation-runs.test.ts",
-        test: "refuses missing validation-run claim against the honest block",
-      },
-      {
-        file: "demo/midgard-fault-proofs/tests/submit-init-emulator-transition-trace-validation-runs.test.ts",
-        test: "refuses foreign validation-run claim against the honest block",
-      },
-      {
-        file: "demo/midgard-fault-proofs/tests/submit-init-emulator-transition-trace-validation-runs.test.ts",
-        test: "refuses malformed validation-run claim against the honest block",
+        file: "demo/midgard-fault-proofs/tests/submit-init-emulator-transition-trace-source-phase.test.ts",
+        test: "refuses the same source-phase witness against an honest step",
       },
     ],
   },

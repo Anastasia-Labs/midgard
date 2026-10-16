@@ -107,7 +107,15 @@ const nodeTracedForcedPayload = async () => {
     },
   };
   const roots = await computeDaPayloadRoots(unhashed);
-  const header = { ...unhashed.block_body.header, ...counts, ...roots };
+  // The header pins the validation-trace pair to the empty tree; the body
+  // keeps the node's member.
+  const header = {
+    ...unhashed.block_body.header,
+    ...counts,
+    ...roots,
+    validationTracesRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
+    validationTraceCount: 0n,
+  };
   const headerHash = Effect.runSync(SDK.hashBlockHeader(header));
   const payload: SDK.DaPayload = {
     ...unhashed,
