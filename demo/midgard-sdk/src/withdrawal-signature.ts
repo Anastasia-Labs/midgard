@@ -25,14 +25,13 @@ const isHex = (value: string): boolean => /^[0-9a-fA-F]*$/.test(value);
 export const withdrawalSigningMessage = (body: WithdrawalBody): Uint8Array =>
   withdrawalSigningMessageCbor(LucidData.to(body, WithdrawalBody));
 
-export const withdrawalSigningMessageCbor = (
-  rawBodyCbor: string,
-): Uint8Array => {
-  // Validate the structure without re-encoding the opaque destination datum.
-  LucidData.from(rawBodyCbor, WithdrawalBody);
-  // The signed preimage is the body exactly as `cbor.serialise` renders it
-  // on-chain (`withdrawal_signature_is_valid_v1`): definite asset maps, which
-  // Lucid's own encoder does not emit.
+/**
+ * The message `withdrawal_signature_is_valid_v1` checks, built from the body's
+ * own bytes: the body exactly as `cbor.serialise` renders it on-chain (definite
+ * asset maps, which Lucid's own encoder does not emit). The reader is
+ * iterative, so a datum nested as deep as a transaction allows still reads.
+ */
+const withdrawalSignedMessageCbor = (rawBodyCbor: string): Uint8Array => {
   const bodyCbor = Buffer.from(
     aikenSerialisedPlutusDataCborPreservingMapOrder(rawBodyCbor),
     "hex",
@@ -42,6 +41,14 @@ export const withdrawalSigningMessageCbor = (
     bodyCbor,
   ]);
   return blake2b(preimage, { dkLen: 32 });
+};
+
+export const withdrawalSigningMessageCbor = (
+  rawBodyCbor: string,
+): Uint8Array => {
+  // Validate the structure without re-encoding the opaque destination datum.
+  LucidData.from(rawBodyCbor, WithdrawalBody);
+  return withdrawalSignedMessageCbor(rawBodyCbor);
 };
 
 export const signWithdrawalBody = (
@@ -74,9 +81,11 @@ export const publicKeyHashFromWithdrawalSignature = (
   ) {
     throw new Error("Withdrawal signature public key must be 32-byte hex.");
   }
-  return CML.PublicKey.from_bytes(Buffer.from(publicKeyHex, "hex"))
-    .hash()
-    .to_hex();
+  // `blake2b_224(verification_key)` over the raw key bytes, as the chain
+  // hashes it: any 32 bytes hash, curve point or not.
+  return Buffer.from(
+    blake2b(Buffer.from(publicKeyHex, "hex"), { dkLen: 28 }),
+  ).toString("hex");
 };
 
 export const verifyWithdrawalSignature = (
@@ -127,8 +136,10 @@ export const verifyWithdrawalSignatureCbor = (
   }
   let message: Uint8Array;
   try {
-    message = withdrawalSigningMessageCbor(bodyCbor);
+    message = withdrawalSignedMessageCbor(bodyCbor);
   } catch (cause) {
+    // The message is built by pure, iterative code from the body bytes alone,
+    // so a throw here is those bytes failing to read as Data.
     return {
       valid: false,
       reason: cause instanceof Error ? cause.message : String(cause),
