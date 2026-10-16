@@ -30,6 +30,10 @@ import {
   submitNativeTxBinding,
 } from "../native-tx-binding.js";
 import type { ResolvedProverSigner } from "../runtime.js";
+import {
+  PLUTUS_SCRIPT_ITEM_KIND_WITNESS,
+  plutusUndecodableAccusedClass,
+} from "../script-decode/item-record.js";
 import type { SubmitStep01TxInclusion } from "../step-support.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
 import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts.js";
@@ -158,6 +162,19 @@ const accusedClassOf = (
         throw new Error(`${FAMILY}: rejection coordinate differs`);
       }
       return result;
+    }
+  }
+  if ("PlutusScriptUndecodable" in (value as object)) {
+    try {
+      return BigInt(
+        plutusUndecodableAccusedClass(
+          value,
+          PLUTUS_SCRIPT_ITEM_KIND_WITNESS,
+          Number(scriptIndex),
+        )!,
+      );
+    } catch {
+      throw new Error(`${FAMILY}: rejection coordinate differs`);
     }
   }
   throw new Error(`${FAMILY}: forced reason is outside family`);
