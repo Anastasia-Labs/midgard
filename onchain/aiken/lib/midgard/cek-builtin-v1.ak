@@ -1739,6 +1739,40 @@ fn constant_memory_from_payload_node_v1(
   }
 }
 
+/// Whether a list item's summary memory is bound to its constant memory. A
+/// revealed item's summary is computed from its payload. A semantic item's
+/// summary memory is not in its value root, so it is bound to the root-bound
+/// constant memory by its element type, as `constant_semantic_projection`
+/// commits it: a Data item's payload is the value itself; an integer,
+/// byte-string or data-pair item's payload is one Data node of four words
+/// above the constant; a unit or boolean item's payload is an empty
+/// constructor of four words for a constant of one word. Any other element
+/// type has no such relation, so its item must be revealed.
+fn list_item_summary_memory_is_bound_v1(
+  item: ValueWitnessV1,
+  element: cek_constant_v1.ConstantTypeV1,
+  parts: SemanticConstantPartsV1,
+) -> Bool {
+  when item is {
+    ConstantValue(_) -> True
+    _ -> {
+      let summary_memory = parts.payload.memory
+      when element is {
+        cek_constant_v1.DataConstant -> summary_memory == parts.memory
+        cek_constant_v1.IntegerConstant | cek_constant_v1.ByteStringConstant ->
+          summary_memory == parts.memory + 4
+        cek_constant_v1.PairConstant {
+          first: cek_constant_v1.DataConstant,
+          second: cek_constant_v1.DataConstant,
+        } -> summary_memory == parts.memory + 4
+        cek_constant_v1.UnitConstant | cek_constant_v1.BooleanConstant ->
+          summary_memory == parts.memory + 3
+        _ -> False
+      }
+    }
+  }
+}
+
 fn semantic_pair_components_v1(
   source: ValueWitnessV1,
   witness: SemanticBuiltinWitnessV1,
@@ -2227,12 +2261,15 @@ fn verify_semantic_list_v1(
       item_parts.payload,
       parts.1st,
     )
-    result_is_semantic_constant_v1(
-      result,
-      cek_constant_v1.ListConstant { element },
-      cek_data_v1.list_data_summary_v1(sequence),
-      item_parts.memory + parts.2nd,
-    )
+    and {
+      list_item_summary_memory_is_bound_v1(item, element, item_parts),
+      result_is_semantic_constant_v1(
+        result,
+        cek_constant_v1.ListConstant { element },
+        cek_data_v1.list_data_summary_v1(sequence),
+        item_parts.memory + parts.2nd,
+      ),
+    }
   } else if tag == 33 || tag == 34 {
     expect [source] = arguments
     let Pair(element, values) = semantic_list_head_and_tail_v1(source, witness)
@@ -4131,12 +4168,15 @@ pub fn verify_semantic_list_construct(
       item_parts.payload,
       parts.1st,
     )
-    result_is_semantic_constant_v1(
-      result,
-      cek_constant_v1.ListConstant { element },
-      cek_data_v1.list_data_summary_v1(sequence),
-      item_parts.memory + parts.2nd,
-    )
+    and {
+      list_item_summary_memory_is_bound_v1(item, element, item_parts),
+      result_is_semantic_constant_v1(
+        result,
+        cek_constant_v1.ListConstant { element },
+        cek_data_v1.list_data_summary_v1(sequence),
+        item_parts.memory + parts.2nd,
+      ),
+    }
   } else {
     False
   }

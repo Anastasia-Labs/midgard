@@ -2551,3 +2551,394 @@ test scalar_mul_success_certifies_in_bound_scalars() {
     scalar_mul_succeeds(63, -7),
   }
 }
+
+// mkCons over a list item presented by its semantic summary. The summary
+// memory is not in the item's value root, so the arm binds it to the item's
+// constant memory by element type; any other element type must be revealed.
+type ListItemFixture {
+  list_type: ByteArray,
+  item: cek_builtin_v1.ValueWitnessV1,
+  source: cek_builtin_v1.ValueWitnessV1,
+  tail: cek_data_v1.DataSequenceSummaryV1,
+  material: cek_builtin_v1.SemanticBuiltinWitnessV1,
+}
+
+fn list_item_fixture(
+  element_cbor: ByteArray,
+  item: Data,
+  items: List<Data>,
+) -> ListItemFixture {
+  let source_cbor = cbor.serialise(builtin.list_data(items))
+  let tail = cek_data_v1.commit_data_list(items)
+  let list_nodes = when items is {
+    [] -> []
+    [head, ..rest] -> {
+      let head_summary = cek_data_v1.semantic_data_summary_v1(head)
+      [
+        cek_data_v1.DataListNodeV1 {
+          head: head_summary.root,
+          head_cbor_length: head_summary.cbor_length,
+          head_memory: head_summary.memory,
+          tail: cek_data_v1.commit_data_list(rest).root,
+          length: tail.length,
+          payload_cbor_length: tail.payload_cbor_length,
+          memory: tail.memory,
+        },
+      ]
+    }
+  }
+  let list_type = #"9f05"
+    |> bytearray.concat(element_cbor)
+    |> bytearray.concat(#"ff")
+  ListItemFixture {
+    list_type,
+    item: constant(
+      #"9f" |> bytearray.concat(element_cbor) |> bytearray.concat(#"ff"),
+      cbor.serialise(item),
+    ),
+    source: constant(list_type, source_cbor),
+    tail,
+    material: cek_builtin_v1.SemanticBuiltinWitnessV1 {
+      data_nodes: [
+        cek_data_v1.ListData {
+          items_count: tail.length,
+          items_root: tail.root,
+          cbor_length: bytearray.length(source_cbor),
+          memory: 4 + tail.memory,
+        },
+      ],
+      list_nodes,
+      pair_nodes: [],
+      scalar_preimages: [],
+    },
+  }
+}
+
+fn mk_cons_result(
+  fixture: ListItemFixture,
+  item: cek_builtin_v1.ValueWitnessV1,
+) -> cek_builtin_v1.ValueWitnessV1 {
+  cek_builtin_v1.SemanticConstantValue {
+    type_cbor: fixture.list_type,
+    payload: cek_data_v1.list_data_summary_v1(
+      cek_data_v1.prepend_data_list_summary_v1(
+        cek_builtin_v1.semantic_constant_payload_v1(item),
+        fixture.tail,
+      ),
+    ),
+    memory: cek_builtin_v1.semantic_constant_memory_v1(item) + cek_builtin_v1.semantic_constant_memory_v1(
+      fixture.source,
+    ),
+  }
+}
+
+/// The item presented by its semantic summary, with the summary memory moved
+/// by `delta`.
+fn presented_item(
+  fixture: ListItemFixture,
+  delta: Int,
+) -> cek_builtin_v1.ValueWitnessV1 {
+  expect cek_builtin_v1.SemanticConstantValue { type_cbor, payload, memory } = cek_builtin_v1.compact_semantic_value(
+    fixture.item,
+  )
+  cek_builtin_v1.SemanticConstantValue {
+    type_cbor,
+    payload: cek_data_v1.DataSummaryV1 {
+      ..payload,
+      memory: payload.memory + delta,
+    },
+    memory,
+  }
+}
+
+/// mkCons over the presented item, in the direct arm and the split chain.
+fn mk_cons_presented(fixture: ListItemFixture, delta: Int) -> Bool {
+  let item = presented_item(fixture, delta)
+  verify_semantic_with_split_parity(
+    32,
+    [item, fixture.source],
+    mk_cons_result(fixture, item),
+    fixture.material,
+  )
+}
+
+/// mkCons in the direct arm and the split list hop, each given the arguments
+/// as presented, so a revealed source is not compacted.
+fn mk_cons_in_both_arms(
+  fixture: ListItemFixture,
+  item: cek_builtin_v1.ValueWitnessV1,
+) -> Pair<Bool, Bool> {
+  let arguments = [item, fixture.source]
+  let result = mk_cons_result(fixture, item)
+  Pair(
+    cek_builtin_v1.verify_semantic_builtin_v1(
+      32,
+      arguments,
+      result,
+      fixture.material,
+    ),
+    cek_builtin_v1.verify_semantic_list_construct(
+      32,
+      arguments,
+      result,
+      fixture.material,
+    ),
+  )
+}
+
+fn summary_memory_words(item: cek_builtin_v1.ValueWitnessV1) -> Int {
+  cek_builtin_v1.semantic_constant_payload_v1(item).memory - cek_builtin_v1.semantic_constant_memory_v1(
+    item,
+  )
+}
+
+fn data_item_fixture() -> ListItemFixture {
+  list_item_fixture(
+    #"08",
+    builtin.i_data(0),
+    [builtin.i_data(1), builtin.i_data(2)],
+  )
+}
+
+fn integer_item_fixture() -> ListItemFixture {
+  list_item_fixture(
+    #"00",
+    builtin.i_data(70000),
+    [builtin.i_data(1), builtin.i_data(2)],
+  )
+}
+
+fn bytes_item_fixture() -> ListItemFixture {
+  list_item_fixture(
+    #"01",
+    builtin.b_data(#"2a2a2a2a2a2a2a2a2a"),
+    [builtin.b_data(#"01")],
+  )
+}
+
+fn data_pair_item_fixture() -> ListItemFixture {
+  list_item_fixture(
+    #"060808",
+    builtin.constr_data(0, [builtin.i_data(1), builtin.b_data(#"02")]),
+    [builtin.constr_data(0, [builtin.i_data(3), builtin.i_data(4)])],
+  )
+}
+
+fn unit_item_fixture() -> ListItemFixture {
+  list_item_fixture(
+    #"03",
+    builtin.constr_data(0, []),
+    [builtin.constr_data(0, [])],
+  )
+}
+
+fn boolean_item_fixture() -> ListItemFixture {
+  list_item_fixture(
+    #"04",
+    builtin.constr_data(1, []),
+    [builtin.constr_data(0, [])],
+  )
+}
+
+fn string_item_fixture() -> ListItemFixture {
+  list_item_fixture(#"02", builtin.b_data(#"6162"), [builtin.b_data(#"63")])
+}
+
+fn integer_list_item_fixture() -> ListItemFixture {
+  list_item_fixture(
+    #"0500",
+    builtin.list_data([builtin.i_data(1)]),
+    [builtin.list_data([builtin.i_data(2)])],
+  )
+}
+
+fn integer_pair_item_fixture() -> ListItemFixture {
+  list_item_fixture(
+    #"060000",
+    builtin.constr_data(0, [builtin.i_data(1), builtin.i_data(2)]),
+    [builtin.constr_data(0, [builtin.i_data(3), builtin.i_data(4)])],
+  )
+}
+
+test mk_cons_accepts_a_presented_data_item_whose_summary_memory_matches_its_memory() {
+  let fixture = data_item_fixture()
+  and {
+    summary_memory_words(presented_item(fixture, 0)) == 0,
+    mk_cons_presented(fixture, 0),
+  }
+}
+
+test mk_cons_refuses_a_presented_data_item_whose_summary_memory_is_one_more() {
+  !mk_cons_presented(data_item_fixture(), 1)
+}
+
+test mk_cons_refuses_a_presented_data_item_whose_summary_memory_is_one_less() {
+  !mk_cons_presented(data_item_fixture(), -1)
+}
+
+test mk_cons_accepts_a_presented_integer_item_whose_summary_memory_matches_its_memory() {
+  let fixture = integer_item_fixture()
+  and {
+    summary_memory_words(presented_item(fixture, 0)) == 4,
+    mk_cons_presented(fixture, 0),
+  }
+}
+
+test mk_cons_refuses_a_presented_integer_item_whose_summary_memory_is_one_more() {
+  !mk_cons_presented(integer_item_fixture(), 1)
+}
+
+test mk_cons_refuses_a_presented_integer_item_whose_summary_memory_is_one_less() {
+  !mk_cons_presented(integer_item_fixture(), -1)
+}
+
+test mk_cons_accepts_a_presented_bytes_item_whose_summary_memory_matches_its_memory() {
+  let fixture = bytes_item_fixture()
+  and {
+    summary_memory_words(presented_item(fixture, 0)) == 4,
+    mk_cons_presented(fixture, 0),
+  }
+}
+
+test mk_cons_refuses_a_presented_bytes_item_whose_summary_memory_is_one_more() {
+  !mk_cons_presented(bytes_item_fixture(), 1)
+}
+
+test mk_cons_refuses_a_presented_bytes_item_whose_summary_memory_is_one_less() {
+  !mk_cons_presented(bytes_item_fixture(), -1)
+}
+
+test mk_cons_accepts_a_presented_data_pair_item_whose_summary_memory_matches_its_memory() {
+  let fixture = data_pair_item_fixture()
+  and {
+    summary_memory_words(presented_item(fixture, 0)) == 4,
+    mk_cons_presented(fixture, 0),
+  }
+}
+
+test mk_cons_refuses_a_presented_data_pair_item_whose_summary_memory_is_one_more() {
+  !mk_cons_presented(data_pair_item_fixture(), 1)
+}
+
+test mk_cons_refuses_a_presented_data_pair_item_whose_summary_memory_is_one_less() {
+  !mk_cons_presented(data_pair_item_fixture(), -1)
+}
+
+test mk_cons_accepts_a_presented_unit_item_whose_summary_memory_matches_its_memory() {
+  let fixture = unit_item_fixture()
+  and {
+    summary_memory_words(presented_item(fixture, 0)) == 3,
+    mk_cons_presented(fixture, 0),
+  }
+}
+
+test mk_cons_refuses_a_presented_unit_item_whose_summary_memory_is_one_more() {
+  !mk_cons_presented(unit_item_fixture(), 1)
+}
+
+test mk_cons_refuses_a_presented_unit_item_whose_summary_memory_is_one_less() {
+  !mk_cons_presented(unit_item_fixture(), -1)
+}
+
+test mk_cons_accepts_a_presented_boolean_item_whose_summary_memory_matches_its_memory() {
+  let fixture = boolean_item_fixture()
+  and {
+    summary_memory_words(presented_item(fixture, 0)) == 3,
+    mk_cons_presented(fixture, 0),
+  }
+}
+
+test mk_cons_refuses_a_presented_boolean_item_whose_summary_memory_is_one_more() {
+  !mk_cons_presented(boolean_item_fixture(), 1)
+}
+
+test mk_cons_refuses_a_presented_boolean_item_whose_summary_memory_is_one_less() {
+  !mk_cons_presented(boolean_item_fixture(), -1)
+}
+
+test mk_cons_refuses_an_item_whose_summary_memory_differs_from_its_memory() {
+  let fixture = data_item_fixture()
+  and {
+    mk_cons_presented(fixture, 0),
+    !mk_cons_presented(fixture, 1),
+    !mk_cons_presented(fixture, -1),
+    !mk_cons_presented(fixture, 100),
+  }
+}
+
+/// A presented item of an element type with no summary memory relation, at
+/// its own summary memory and at each relation a bound element type uses.
+fn mk_cons_refuses_the_presented_item(fixture: ListItemFixture) -> Bool {
+  let words = summary_memory_words(presented_item(fixture, 0))
+  list.all(
+    [0, -words, 3 - words, 4 - words],
+    fn(delta) {
+      mk_cons_in_both_arms(fixture, presented_item(fixture, delta)) == Pair(
+        False,
+        False,
+      )
+    },
+  )
+}
+
+test mk_cons_refuses_a_presented_string_item_at_any_summary_memory() {
+  mk_cons_refuses_the_presented_item(string_item_fixture())
+}
+
+test mk_cons_refuses_a_presented_integer_list_item_at_any_summary_memory() {
+  mk_cons_refuses_the_presented_item(integer_list_item_fixture())
+}
+
+test mk_cons_refuses_a_presented_integer_pair_item_at_any_summary_memory() {
+  mk_cons_refuses_the_presented_item(integer_pair_item_fixture())
+}
+
+test mk_cons_accepts_a_revealed_item_of_any_element_type() {
+  list.all(
+    [
+      data_item_fixture(),
+      integer_item_fixture(),
+      bytes_item_fixture(),
+      data_pair_item_fixture(),
+      unit_item_fixture(),
+      boolean_item_fixture(),
+      string_item_fixture(),
+      integer_list_item_fixture(),
+      integer_pair_item_fixture(),
+    ],
+    fn(fixture) {
+      mk_cons_in_both_arms(fixture, fixture.item) == Pair(True, True)
+    },
+  )
+}
+
+/// The split roots hop compacts every argument before the list hop reads it
+/// (cek-core-builtin-roots.ak), so the list hop sees both compacted.
+fn mk_cons_from_its_split_presentation(fixture: ListItemFixture) -> Bool {
+  let arguments = list.map(
+    [fixture.item, fixture.source],
+    cek_builtin_v1.compact_semantic_value,
+  )
+  and {
+    verify_semantic_with_split_parity(
+      32,
+      [fixture.item, fixture.source],
+      mk_cons_result(fixture, fixture.item),
+      fixture.material,
+    ),
+    cek_builtin_v1.verify_semantic_list_construct(
+      32,
+      arguments,
+      mk_cons_result(fixture, fixture.item),
+      fixture.material,
+    ),
+  }
+}
+
+test mk_cons_over_a_unit_list_is_proved_from_its_split_presentation() {
+  mk_cons_from_its_split_presentation(unit_item_fixture())
+}
+
+test mk_cons_over_a_bool_list_is_proved_from_its_split_presentation() {
+  mk_cons_from_its_split_presentation(boolean_item_fixture())
+}
