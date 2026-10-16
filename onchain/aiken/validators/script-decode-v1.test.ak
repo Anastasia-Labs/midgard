@@ -179,9 +179,19 @@ fn spend(
 // ## Bind
 
 fn bind_tx(script: ByteArray, chunk_size: Int) -> (Transaction, Int) {
+  bind_tx_in(3, script, chunk_size)
+}
+
+/// An honest bind of `script` in `language`: its token and run datum are
+/// those of `language`'s script hash.
+fn bind_tx_in(
+  language: Int,
+  script: ByteArray,
+  chunk_size: Int,
+) -> (Transaction, Int) {
   let staged = staging_inputs(chunks_of(script, chunk_size), 0)
-  let hash = script_hash_v1(3, script)
-  let run: Data = initial_run_v1(hash, 3, script)
+  let hash = script_hash_v1(language, script)
+  let run: Data = initial_run_v1(hash, language, script)
   (
     Transaction {
       ..transaction.placeholder,
@@ -237,8 +247,16 @@ test script_decode_family_bind_at_max_script_size() {
   }
 }
 
+test script_decode_family_bind_opens_a_midgard_v1_run() {
+  let (tx, staged) = bind_tx_in(128, nested_script(3), 2)
+  mint(
+    Bind { language: 128, staging: list.range(0, staged - 1), run_output: 0 },
+    tx,
+  )
+}
+
 test script_decode_family_bind_rejects_another_language() fail {
-  let (tx, staged) = bind_tx(nested_script(3), 2)
+  let (tx, staged) = bind_tx_in(2, nested_script(3), 2)
   mint(
     Bind { language: 2, staging: list.range(0, staged - 1), run_output: 0 },
     tx,
@@ -523,13 +541,89 @@ test script_decode_family_walk_rejects_a_wrong_reveal() fail {
   )
 }
 
-test script_decode_family_walk_rejects_a_mint() fail {
-  let (tx, redeemer, run) = first_walk(nested_script(3), 4)
-  spend(
-    redeemer,
-    run_input(run),
-    Transaction { ..tx, mint: assets.from_asset(policy, run.script_hash, 1) },
+/// A Walk of `script`'s opened run in a transaction that also mints under
+/// this policy runs both handlers, as the ledger does: the Walk's spend, and
+/// the mint with the redeemer `mint_redeemer` builds from the staging.
+/// `extra` is appended to the outputs.
+fn walk_and_mint(
+  script: ByteArray,
+  minted: assets.Value,
+  extra: List<Output>,
+  mint_redeemer: fn(List<Int>) -> ScriptDecodeMintRedeemerV1,
+) -> Bool {
+  let (tx, walk, run) = first_walk(script, 4)
+  expect Walk { staging, .. } = walk
+  let tx = Transaction {
+    ..tx,
+    mint: minted,
+    outputs: list.concat(tx.outputs, extra),
+  }
+  spend(walk, run_input(run), tx) && mint(mint_redeemer(staging), tx)
+}
+
+/// A Walk beside a bind of its own script, with the bound run's output.
+test script_decode_family_walk_rejects_a_bind_mint() fail {
+  let script = nested_script(3)
+  let hash = script_hash_v1(3, script)
+  walk_and_mint(
+    script,
+    assets.from_asset(policy, run_token_name(hash), 1),
+    [own_output(run_token_name(hash), initial_run_v1(hash, 3, script))],
+    fn(staging) { Bind { language: 3, staging, run_output: 1 } },
   )
+}
+
+test script_decode_family_walk_rejects_a_finish_mint() fail {
+  let script = nested_script(3)
+  let hash = script_hash_v1(3, script)
+  walk_and_mint(
+    script,
+    assets.from_asset(policy, run_token_name(hash), -1)
+      |> assets.add(policy, hash, 1),
+    [
+      own_output(
+        hash,
+        Refused { script_hash: hash, language: 3, class: 3, bit_offset: 0 },
+      ),
+    ],
+    fn(_) { Finish { record_output: 1 } },
+  )
+}
+
+/// A finished run spent by a Walk beside its own Finish: the run's successor
+/// at output 0 and its record at output 1.
+fn finished_walk_tx(
+  script: ByteArray,
+) -> (Transaction, ScriptDecodeSpendRedeemerV1, ScriptDecodeRunV1) {
+  let run = finished(script)
+  expect Some(record) = record_of_v1(run)
+  let staged = staging_inputs(chunks_of(script, 5), 0)
+  let tx = finish_tx(run, record)
+  (
+    Transaction {
+      ..tx,
+      reference_inputs: staged,
+      outputs: [own_output(run_token_name(run.script_hash), run), ..tx.outputs],
+    },
+    Walk {
+      staging: indices(staged),
+      reveals: [],
+      base: empty_stack_root(),
+      fuel: 4,
+      run_output: 0,
+    },
+    run,
+  )
+}
+
+test script_decode_family_finish_holds_beside_a_walk_output() {
+  let (tx, _, _) = finished_walk_tx(nested_script(3))
+  mint(Finish { record_output: 1 }, tx)
+}
+
+test script_decode_family_walk_rejects_a_finished_run_with_its_finish() fail {
+  let (tx, walk, run) = finished_walk_tx(nested_script(3))
+  mint(Finish { record_output: 1 }, tx) && spend(walk, run_input(run), tx)
 }
 
 test script_decode_family_walk_rejects_two_runs() fail {

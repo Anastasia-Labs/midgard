@@ -673,6 +673,39 @@ test cek_plutus_selection_runs_a_phase2_class_record_as_failing() {
   )
 }
 
+/// A phase-2-class record fails the run with no budget spent: its honest
+/// successor holds, and the same successor charged `cpu` and `memory` more
+/// does not.
+fn phase2_class_failure_spends_no_budget(cpu: Int, memory: Int) -> Bool {
+  let spends_none = fn(phase2_class) {
+    let f = plutus_selection_fixture(phase2_class)
+    let record = Some(plutus_selection_record(phase2_class))
+    let post = f.evidence.transition.claimed_successor
+    let charged = validation_trace_v1.ValidationMachineStateV1 {
+      ..post,
+      execution_cpu: post.execution_cpu + cpu,
+      execution_memory: post.execution_memory + memory,
+    }
+    plutus_selection_holds(f, post, record) && !plutus_selection_holds(
+      f,
+      charged,
+      record,
+    )
+  }
+  and {
+    spends_none(script_decode_v1.class_open_term),
+    spends_none(script_decode_v1.class_version_unavailable),
+  }
+}
+
+test cek_plutus_selection_phase2_class_failure_spends_no_cpu() {
+  phase2_class_failure_spends_no_budget(1, 0)
+}
+
+test cek_plutus_selection_phase2_class_failure_spends_no_memory() {
+  phase2_class_failure_spends_no_budget(0, 1)
+}
+
 // Expected-failure inversion keeps the payload byte opaque. The two exact
 // pieces stay within Aiken's 8,192-byte `replicate_byte` optimizer bound while
 // preserving the 16,379-byte Cardano maximum on the single generated case.

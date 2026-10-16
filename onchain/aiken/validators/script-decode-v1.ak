@@ -74,7 +74,6 @@ pub fn staged_bytes_v1(
     staging,
     #"",
     fn(index, rest) {
-      expect index >= 0
       expect Some(input) = list.at(reference_inputs, index)
       expect InlineDatum(datum) = input.output.datum
       expect Pair(0, [chunks]) = builtin.un_constr_data(datum)
@@ -101,7 +100,6 @@ fn is_own_output(
   name: AssetName,
   datum: Data,
 ) -> Bool {
-  expect index >= 0
   expect Some(Output { address, value, datum: output_datum, reference_script })
     = list.at(outputs, index)
   and {
@@ -180,9 +178,12 @@ validator script_decode_v1 {
     when redeemer is {
       Walk { staging, reveals, base, fuel, run_output } -> {
         // One run per transaction, and no token of this policy is minted or
-        // burnt, so the run token can only move into the successor.
+        // burnt, so the run token can only move into the successor. A mint
+        // runs this policy's mint handler: Bind refuses a transaction that
+        // spends a run (`expect [] = own_inputs`), and Finish needs its one
+        // run to hold a record (`record_of_v1`), which leaves a machine that
+        // no Walk changes (`machine != run.machine` below).
         expect [_] = own_inputs(tx.inputs, policy)
-        expect [] = dict.to_pairs(assets.tokens(tx.mint, policy))
         let script_bytes = staged_bytes_v1(tx.reference_inputs, staging)
         expect script_hash_v1(run.language, script_bytes) == run.script_hash
         let machine = step_v1(
