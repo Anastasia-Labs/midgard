@@ -204,16 +204,24 @@ fn source(
       expect window_data == none
       None
     }
-    Some(span) -> {
-      expect Pair(0, [window_bytes]) = builtin.un_constr_data(window_data)
-      expect Some(bytes) = proof.bound_window_bytes_v1(
-        stages.window_from_frame(control),
-        span.absolute_start,
-        span.length,
-        builtin.un_b_data(window_bytes),
-      )
-      Some(bytes)
-    }
+    // An empty span reads no output bytes: it takes no window. Its start is
+    // at least 0 by `scalar_prefix` and `bytes_scalar_control` (through the
+    // attested claim) and at most the output length by the check below.
+    Some(span) ->
+      if span.length == 0 {
+        expect window_data == none
+        expect span.absolute_start <= raw.integer(control, 3)
+        Some(#"")
+      } else {
+        expect Pair(0, [window_bytes]) = builtin.un_constr_data(window_data)
+        expect Some(bytes) = proof.bound_window_bytes_v1(
+          stages.window_from_frame(control),
+          span.absolute_start,
+          span.length,
+          builtin.un_b_data(window_bytes),
+        )
+        Some(bytes)
+      }
   }
   (action, bytes)
 }

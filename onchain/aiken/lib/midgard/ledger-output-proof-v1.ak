@@ -832,6 +832,8 @@ pub fn bound_window_bytes_v1(
     Some(window) ->
       if and {
         window_covers_v1(span_window, absolute_start, length),
+        // Implied by the digest equality below: the recorded digest is over
+        // exactly `window.length` bytes.
         bytearray.length(bytes) == window.length,
         crypto.blake2b_256(bytes) == window.digest,
       } {
@@ -892,7 +894,13 @@ pub fn demanded_span_v1(
           cek_data_traverse_v1.prevalidated_next_source_span(datum_control)
         is {
           None -> None
-          Some(span) -> Some((span.absolute_start, span.length))
+          // An empty span reads no output bytes, so it demands no window.
+          Some(span) ->
+            if span.length > 0 {
+              Some((span.absolute_start, span.length))
+            } else {
+              None
+            }
         }
     }
   } else if control.stage == stage_reference_script_commitment {
@@ -1197,21 +1205,34 @@ fn datum_traversal_step(
             } else {
               None
             }
+          // An empty span reads no output bytes: it takes no window. Its start
+          // lies in [0, total_length] by `control_is_well_formed` (checked
+          // first in `step_v1`): the datum sits inside the output (scan
+          // terminal), the bytes control inside the datum, and the start is
+          // the bytes source start plus its one-byte header.
           Some(span) ->
-            when window is {
-              None -> None
-              Some(window_bytes) ->
-                when
-                  bound_window_bytes_v1(
-                    control.span_window,
-                    span.absolute_start,
-                    span.length,
-                    window_bytes,
-                  )
-                is {
-                  None -> None
-                  Some(bytes) -> Some(Some(bytes))
-                }
+            if span.length == 0 {
+              if window == None {
+                Some(Some(#""))
+              } else {
+                None
+              }
+            } else {
+              when window is {
+                None -> None
+                Some(window_bytes) ->
+                  when
+                    bound_window_bytes_v1(
+                      control.span_window,
+                      span.absolute_start,
+                      span.length,
+                      window_bytes,
+                    )
+                  is {
+                    None -> None
+                    Some(bytes) -> Some(Some(bytes))
+                  }
+              }
             }
         }
         when authenticated is {
