@@ -1,0 +1,73 @@
+{
+  "date": "2026-10-16T19:52:20.897576+00:00",
+  "node": "v22.22.2",
+  "runs": [
+    {
+      "name": "help",
+      "command": ["node", "scripts/contrib.mjs", "--help"],
+      "exitCode": 0
+    },
+    {
+      "name": "plan",
+      "command": [
+        "node",
+        "scripts/contrib.mjs",
+        "prepare",
+        "--package",
+        "midgard-node",
+        "--plan",
+        "--output",
+        "/tmp/midgard-agent-friendly-20261016/feature-proof-pinned/plan.json"
+      ],
+      "exitCode": 0
+    },
+    {
+      "name": "unknown",
+      "command": [
+        "node",
+        "scripts/contrib.mjs",
+        "prepare",
+        "--package",
+        "midgard-no-such-package-20261016",
+        "--plan"
+      ],
+      "exitCode": 1
+    }
+  ],
+  "planPackage": "midgard-node",
+  "prerequisites": [
+    {
+      "name": "@al-ft/midgard-core",
+      "status": "stale"
+    },
+    {
+      "name": "@al-ft/midgard-validation",
+      "status": "missing"
+    },
+    {
+      "name": "@al-ft/lucid-midgard",
+      "status": "stale"
+    },
+    {
+      "name": "@al-ft/midgard-sdk",
+      "status": "stale"
+    },
+    {
+      "name": "@al-ft/midgard-fault-proofs",
+      "status": "missing"
+    },
+    {
+      "name": "midgard-watcher",
+      "status": "missing"
+    },
+    {
+      "name": "midgard-node",
+      "status": "missing"
+    }
+  ],
+  "outputFilesBefore": 2953,
+  "outputFilesAfter": 2953,
+  "outputBytesUnchanged": true,
+  "cleanup": "No fixtures, services or resources created; evidence retained.",
+  "evidenceSurvivesCleanup": true
+}

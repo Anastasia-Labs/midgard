@@ -1,0 +1,63 @@
+{
+  "rows": [
+    {
+      "name": "aiken",
+      "status": "ok",
+      "detail": "aiken v1.1.23+5adf783"
+    },
+    {
+      "name": "postgres",
+      "status": "ok",
+      "detail": "test Postgres answers on 127.0.0.1:5433"
+    },
+    {
+      "name": "db-prefix",
+      "status": "ok",
+      "detail": "main checkout: the suites' default prefix"
+    },
+    {
+      "name": "node-modules",
+      "status": "ok",
+      "detail": "demo/node_modules is installed"
+    },
+    {
+      "name": "blueprint",
+      "status": "ok",
+      "detail": "blueprint stamp fresh: /home/gumbo/midgard-hub/midgard/onchain/aiken/plutus.json matches its sources and the pinned compiler"
+    },
+    {
+      "name": "dist:midgard-core",
+      "status": "failed",
+      "detail": "midgard-core dist preflight FAILED: @al-ft/midgard-core: build input closure changed; run contrib build --package @al-ft/midgard-core",
+      "fix": "pnpm --dir demo --filter @al-ft/midgard-core run build"
+    },
+    {
+      "name": "dist:midgard-sdk",
+      "status": "failed",
+      "detail": "@al-ft/midgard-sdk: build input closure changed; run contrib build --package @al-ft/midgard-sdk",
+      "fix": "pnpm --dir demo --filter @al-ft/midgard-sdk run build"
+    },
+    {
+      "name": "dist:midgard-validation",
+      "status": "failed",
+      "detail": "missing digest stamp for @al-ft/midgard-validation; run contrib build --package @al-ft/midgard-validation",
+      "fix": "pnpm --dir demo --filter @al-ft/midgard-validation run build"
+    },
+    {
+      "name": "hooks",
+      "status": "ok",
+      "detail": "3 hook(s) in /home/gumbo/midgard-hub/midgard/.githooks, all executable"
+    },
+    {
+      "name": "node",
+      "status": "ok",
+      "detail": "node 22.22.2 matches demo/.nvmrc"
+    },
+    {
+      "name": "pnpm",
+      "status": "ok",
+      "detail": "pnpm 9.15.4 in demo/ matches packageManager"
+    }
+  ],
+  "exitCode": 1
+}

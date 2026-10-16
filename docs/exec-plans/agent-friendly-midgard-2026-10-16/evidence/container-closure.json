@@ -1,0 +1,80 @@
+{
+  "snapshot": "43dc8e42b7706fc79978cfe1d4b4f5ec22144189",
+  "results": [
+    {
+      "service": "midgard-node",
+      "expected": [
+        "@al-ft/l1-node-transport",
+        "@al-ft/lucid-midgard",
+        "@al-ft/midgard-core",
+        "@al-ft/midgard-fault-proofs",
+        "@al-ft/midgard-l1-follower",
+        "@al-ft/midgard-sdk",
+        "@al-ft/midgard-validation",
+        "midgard-node"
+      ],
+      "declared": [
+        "@al-ft/l1-node-transport",
+        "@al-ft/lucid-midgard",
+        "@al-ft/midgard-core",
+        "@al-ft/midgard-fault-proofs",
+        "@al-ft/midgard-l1-follower",
+        "@al-ft/midgard-sdk",
+        "@al-ft/midgard-validation",
+        "midgard-node"
+      ],
+      "manualBuildDeclarations": 16,
+      "missing": [],
+      "extra": []
+    },
+    {
+      "service": "midgard-watcher",
+      "expected": [
+        "@al-ft/l1-node-transport",
+        "@al-ft/midgard-core",
+        "@al-ft/midgard-fault-proofs",
+        "@al-ft/midgard-l1-follower",
+        "@al-ft/midgard-sdk",
+        "@al-ft/midgard-validation",
+        "midgard-watcher"
+      ],
+      "declared": [
+        "@al-ft/l1-node-transport",
+        "@al-ft/lucid-midgard",
+        "@al-ft/midgard-core",
+        "@al-ft/midgard-fault-proofs",
+        "@al-ft/midgard-l1-follower",
+        "@al-ft/midgard-sdk",
+        "@al-ft/midgard-validation",
+        "midgard-watcher"
+      ],
+      "manualBuildDeclarations": 16,
+      "missing": [],
+      "extra": ["@al-ft/lucid-midgard"]
+    },
+    {
+      "service": "da-committee-node",
+      "expected": [
+        "@al-ft/l1-node-transport",
+        "@al-ft/midgard-core",
+        "@al-ft/midgard-l1-follower",
+        "@al-ft/midgard-sdk",
+        "@al-ft/midgard-validation",
+        "da-committee-node"
+      ],
+      "declared": [
+        "@al-ft/l1-node-transport",
+        "@al-ft/lucid-midgard",
+        "@al-ft/midgard-core",
+        "@al-ft/midgard-fault-proofs",
+        "@al-ft/midgard-l1-follower",
+        "@al-ft/midgard-sdk",
+        "@al-ft/midgard-validation",
+        "da-committee-node"
+      ],
+      "manualBuildDeclarations": 8,
+      "missing": [],
+      "extra": ["@al-ft/lucid-midgard", "@al-ft/midgard-fault-proofs"]
+    }
+  ]
+}

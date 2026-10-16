@@ -1,0 +1,156 @@
+{
+  "date": "2026-10-16T19:54:36.217158+00:00",
+  "node": "v22.22.2",
+  "runs": [
+    {
+      "name": "skills",
+      "command": ["node", "scripts/ci/check-agent-skills.mjs"],
+      "exitCode": 0,
+      "output": "agent skills: 71 skills checked, .claude/skills link intact"
+    },
+    {
+      "name": "tracked-tags",
+      "command": ["node", "scripts/agents/check-enforcement-tags.mjs"],
+      "exitCode": 0,
+      "output": "check-enforcement-tags: 87 file(s) clean"
+    },
+    {
+      "name": "new-file-aware-documents",
+      "command": [
+        "node",
+        "/tmp/midgard-agent-friendly-20261016/check-documents.mjs"
+      ],
+      "exitCode": 0,
+      "output": "{\n  \"date\": \"2026-10-16T19:54:35.886Z\",\n  \"node\": \"v22.22.2\",\n  \"documentationFiles\": 363,\n  \"documentationFindings\": [],\n  \"tagFiles\": 94,\n  \"tagFindings\": []\n}"
+    },
+    {
+      "name": "format",
+      "command": [
+        "demo/node_modules/.bin/prettier",
+        "--check",
+        "/home/gumbo/midgard-hub/midgard/docs/exec-plans/agent-friendly-midgard-2026-10-16",
+        ".agents/skills/local-test-environment/features"
+      ],
+      "exitCode": 0,
+      "output": "Checking formatting...\nAll matched files use Prettier code style!"
+    },
+    {
+      "name": "syntax",
+      "command": [
+        "node",
+        "--check",
+        "/home/gumbo/midgard-hub/midgard/docs/exec-plans/agent-friendly-midgard-2026-10-16/probes.mjs"
+      ],
+      "exitCode": 0,
+      "output": ""
+    },
+    {
+      "name": "tracked-whitespace",
+      "command": [
+        "git",
+        "diff",
+        "--check",
+        "--",
+        ".agents/skills/local-test-environment/SKILL.md"
+      ],
+      "exitCode": 0,
+      "output": ""
+    }
+  ],
+  "newFileWhitespace": {
+    "files": 18,
+    "findings": []
+  },
+  "probes": {
+    "command": "node docs/exec-plans/agent-friendly-midgard-2026-10-16/probes.mjs /home/gumbo/midgard-hub/midgard /home/gumbo/midgard-hub/midgard-integration /tmp/midgard-agent-friendly-20261016/consolidated-proof-pinned",
+    "groups": 6,
+    "exitCode": 0,
+    "results": "design-probes.json"
+  },
+  "featureProof": {
+    "date": "2026-10-16T19:52:20.897576+00:00",
+    "node": "v22.22.2",
+    "runs": [
+      {
+        "name": "help",
+        "command": ["node", "scripts/contrib.mjs", "--help"],
+        "exitCode": 0
+      },
+      {
+        "name": "plan",
+        "command": [
+          "node",
+          "scripts/contrib.mjs",
+          "prepare",
+          "--package",
+          "midgard-node",
+          "--plan",
+          "--output",
+          "/tmp/midgard-agent-friendly-20261016/feature-proof-pinned/plan.json"
+        ],
+        "exitCode": 0
+      },
+      {
+        "name": "unknown",
+        "command": [
+          "node",
+          "scripts/contrib.mjs",
+          "prepare",
+          "--package",
+          "midgard-no-such-package-20261016",
+          "--plan"
+        ],
+        "exitCode": 1
+      }
+    ],
+    "planPackage": "midgard-node",
+    "prerequisites": [
+      {
+        "name": "@al-ft/midgard-core",
+        "status": "stale"
+      },
+      {
+        "name": "@al-ft/midgard-validation",
+        "status": "missing"
+      },
+      {
+        "name": "@al-ft/lucid-midgard",
+        "status": "stale"
+      },
+      {
+        "name": "@al-ft/midgard-sdk",
+        "status": "stale"
+      },
+      {
+        "name": "@al-ft/midgard-fault-proofs",
+        "status": "missing"
+      },
+      {
+        "name": "midgard-watcher",
+        "status": "missing"
+      },
+      {
+        "name": "midgard-node",
+        "status": "missing"
+      }
+    ],
+    "outputFilesBefore": 2953,
+    "outputFilesAfter": 2953,
+    "outputBytesUnchanged": true,
+    "cleanup": "No fixtures, services or resources created; evidence retained.",
+    "evidenceSurvivesCleanup": true
+  },
+  "doctor": {
+    "command": "node scripts/doctor.mjs --json",
+    "exitCode": 1,
+    "rows": 11,
+    "results": "doctor.json",
+    "interpretation": "Aiken/Postgres/Node/pnpm/blueprint/hooks available; core and SDK output identities stale, validation stamp missing; no runtime suite attempted."
+  },
+  "priorAttempts": {
+    "format": "Initial write could not format protected skill README; applied identical formatting through patch tool. Later pinned feature JSON formatted.",
+    "rules": "First check caught skill line budget and one missing review tag; corrected within original 140 lines.",
+    "doctor": "Initial sandboxed probes included EPERM; pinned local rerun recorded separately.",
+    "externalDesignPanel": "Automatic approval review rejected CLI dispatch before launch; independent same-provider candidates and judge used."
+  }
+}

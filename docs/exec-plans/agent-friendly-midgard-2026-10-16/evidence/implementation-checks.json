@@ -1,0 +1,391 @@
+{
+  "baseline": "43dc8e42b7706fc79978cfe1d4b4f5ec22144189",
+  "status": "components reviewed; final integration and publication gates pending",
+  "completion": {
+    "candidate": "ce0d56b7c7044627d306e628a3ec0e209f4e7b91",
+    "focused": {
+      "red": {
+        "passed": 2,
+        "failed": 1
+      },
+      "green": {
+        "passed": 3,
+        "failed": 0
+      }
+    },
+    "relatedSdk": {
+      "passed": 819,
+      "files": 70
+    },
+    "requiredLanes": {
+      "node": {
+        "passed": 191,
+        "files": 10,
+        "receipt": "/tmp/midgard-contrib-1000/runs/fde2cba8-a440-4ba6-8741-3c510f286849/receipt.json"
+      },
+      "sdk": {
+        "passed": 1321,
+        "files": 130,
+        "receipt": "/tmp/midgard-contrib-1000/runs/ca73d81d-fba7-44e4-9aab-b21ed53836d9/receipt.json"
+      },
+      "emulator": {
+        "status": "failed; inherited ledger mismatch reproduced on unchanged baseline",
+        "receipt": "/tmp/midgard-contrib-1000/runs/8de92dd9-7c71-487d-855e-0f9fcf81550f/receipt.json",
+        "recheck": "/tmp/midgard-contrib-1000/runs/ba1bbb7d-d080-40fc-8600-bead4096cba3/receipt.json",
+        "baseline": "/tmp/midgard-contrib-1000/runs/8cb5e74e-18a6-4f97-afbf-dad7f6d6d227/receipt.json"
+      }
+    },
+    "prepush": "/tmp/midgard-completion-committed-prepush.json",
+    "review": [
+      "/tmp/midgard-completion-review-pass1.md",
+      "/tmp/midgard-completion-review-pass2.md"
+    ]
+  },
+  "containers": {
+    "base": "43dc8e42b7706fc79978cfe1d4b4f5ec22144189",
+    "packetSha256": "adf30d29b76d6cb15ccea54d0e94cf302a3d8a40b67e95d5212dca95c0a63927",
+    "review": "/tmp/midgard-container-review.md",
+    "images": {
+      "watcher": {
+        "argv": [
+          "docker",
+          "build",
+          "--no-cache",
+          "--progress=plain",
+          "--file",
+          "midgard-watcher/Dockerfile",
+          "--tag",
+          "midgard-agent-friendly-watcher:20261016",
+          "."
+        ],
+        "cwd": "/tmp/midgard-agent-container-closure/demo",
+        "startedAt": "2026-10-16T21:02:48.414Z",
+        "endedAt": "2026-10-16T21:04:58.089Z",
+        "durationMs": 133922.140037,
+        "exitCode": 0,
+        "signal": null,
+        "bytes": 81955,
+        "logPath": "/tmp/midgard-agent-watcher-image-build.log",
+        "logSha256": "93374b3af5fae30fb07f0a4821ae785462b6b5de0d0281cc983d263b7ee33de9",
+        "entrypoint": {
+          "exitCode": 0,
+          "log": "/tmp/midgard-agent-watcher-image-help.log",
+          "logSha256": "6ece14fba70bfa92aacff8a8cb7eb9835f1345a4b699e2767fb84ce648f763d9"
+        }
+      },
+      "committee": {
+        "argv": [
+          "docker",
+          "build",
+          "--no-cache",
+          "--progress=plain",
+          "--file",
+          "da-committee-node/Dockerfile",
+          "--tag",
+          "midgard-agent-friendly-committee:20261016",
+          "."
+        ],
+        "cwd": "/tmp/midgard-agent-container-closure/demo",
+        "startedAt": "2026-10-16T21:08:52.127Z",
+        "endedAt": "2026-10-16T21:10:52.170Z",
+        "durationMs": 123444.77333099999,
+        "exitCode": 0,
+        "signal": null,
+        "bytes": 79644,
+        "logPath": "/tmp/midgard-agent-committee-image-build.log",
+        "logSha256": "3a461d3e27082c6d6996f6d0453ddf5803a529c1fb67da577a6497ceb3b600a8",
+        "entrypoint": {
+          "exitCode": 0,
+          "log": "/tmp/midgard-agent-committee-image-help.log",
+          "logSha256": "ebba94f85169c9ef58593371e8ed9883eb068240d5b5e78c1bbf3e60beb03f8d"
+        }
+      },
+      "node": {
+        "argv": [
+          "docker",
+          "build",
+          "--no-cache",
+          "--progress=plain",
+          "--file",
+          "midgard-node/Dockerfile",
+          "--build-context",
+          "onchain=/tmp/midgard-completion-wallet-input-guard/onchain/aiken",
+          "--tag",
+          "midgard-agent-friendly-node:20261016",
+          "."
+        ],
+        "cwd": "/tmp/midgard-agent-container-closure/demo",
+        "startedAt": "2026-10-16T21:11:53.530Z",
+        "endedAt": "2026-10-16T21:13:39.934Z",
+        "durationMs": 109840.38914000001,
+        "exitCode": 0,
+        "signal": null,
+        "bytes": 102439,
+        "logPath": "/tmp/midgard-agent-node-image-build.log",
+        "logSha256": "133cdb057f6d7aad6a0abf8302d137d3e909efe7b835952c3fb1a1467ea6989f",
+        "entrypoint": {
+          "exitCode": 0,
+          "log": "/tmp/midgard-agent-node-image-help.log",
+          "logSha256": "509d8df3b57a3844e4079052d2306dd8a627e79f2a31ea7394d2e4c36a283c15"
+        }
+      }
+    },
+    "candidate": "691d1851c5a9492697369c6032ac2d3a66bf2433"
+  },
+  "recordedAt": "2026-10-16",
+  "deploymentMetadata": {
+    "status": "reviewed",
+    "base": "43dc8e42b7706fc79978cfe1d4b4f5ec22144189",
+    "packet": "/tmp/midgard-metadata.packet.json",
+    "packetSha256": "98a61b10d590db37d00b8a1bb9152833ac2c8b2252f328b01692f336a482f5cf",
+    "ownedPaths": 223,
+    "reviewFixPacketSha256": "73430c48852075cad646f387a761fe1333ca9fece3740fb46f39d6e20580cfb5",
+    "handoff": "/tmp/midgard-metadata-handback.md",
+    "reviews": [
+      "/tmp/midgard-metadata-consensus-pass1.md",
+      "/tmp/midgard-metadata-consensus-pass2.md",
+      "/tmp/midgard-metadata-consensus-pass1-fix.md",
+      "/tmp/midgard-metadata-consensus-pass2-fix.md"
+    ],
+    "reviewDisposition": "Both independent fix reviews close the incomplete public SDK restoration finding; no new confirmed or plausible finding remains.",
+    "identityParity": {
+      "manifestMembers": 527,
+      "publicationMembers": 522,
+      "catalogueCategories": 52,
+      "manifestSha256": "d74d2af48c5c18aa32fe6ad036df27e985e6ba79d229b0bd521ef9ea801c2c84",
+      "publicationSha256": "2e16ed8677ba531b608efad6d920e0b1f14efae370b7083d10f928e375faad9e",
+      "layoutParity": "/tmp/midgard-metadata-layout-parity.json"
+    },
+    "checks": [
+      {
+        "command": "PATH=/home/gumbo/.nvm/versions/node/v22.22.2/bin:$PATH node scripts/contrib.mjs test --package @al-ft/midgard-core --file tests/deployment-members.test.ts --source-only --output /tmp/midgard-metadata-core-final.json",
+        "cwd": "/tmp/midgard-agent-metadata",
+        "date": "2026-10-16",
+        "stage": "component",
+        "passed": 4,
+        "failed": 0,
+        "skipped": 0,
+        "exitCode": 0,
+        "files": 1,
+        "receipt": "/tmp/midgard-contrib-1000/runs/33548d71-5fa0-4f4f-ae64-fd3a5ff6d8ab/receipt.json"
+      },
+      {
+        "command": "PATH=/home/gumbo/.nvm/versions/node/v22.22.2/bin:$PATH node scripts/contrib.mjs test --package midgard-node --file tests/deployable-scripts.test.ts --file tests/deployment-members.test.ts --file tests/contract-deployment-info.test.ts --source-only --output /tmp/midgard-metadata-review-fix-node.json",
+        "cwd": "/tmp/midgard-agent-metadata",
+        "date": "2026-10-16",
+        "stage": "component",
+        "passed": 41,
+        "failed": 0,
+        "skipped": 0,
+        "exitCode": 0,
+        "files": 3,
+        "receipt": "/tmp/midgard-contrib-1000/runs/35af0b28-1e3c-42c0-b4e9-8b316e20ce0d/receipt.json"
+      }
+    ],
+    "causalControls": [
+      {
+        "name": "independent expected-member universe",
+        "status": "mutant killed",
+        "executed": 4,
+        "expectedFailed": 2,
+        "passed": 2,
+        "exitCode": 0,
+        "output": "/tmp/midgard-metadata-omission-mutant.json"
+      },
+      {
+        "name": "swapped real min-Ada step selectors",
+        "status": "mutant killed",
+        "executed": 16,
+        "expectedFailed": 4,
+        "passed": 12,
+        "exitCode": 0,
+        "output": "/tmp/midgard-metadata-swap-mutant.json"
+      },
+      {
+        "name": "public SDK missing CEK executors",
+        "status": "reviewer-only in-memory mutant failed at intended direct SDK property; fixed source passed",
+        "report": "/tmp/midgard-metadata-consensus-pass2-fix.md",
+        "scope": "symbolic reviewer harness, not repository Vitest mutation"
+      }
+    ],
+    "limits": [
+      "Component runs precede composed-source validation.",
+      "Reviewer structural checks use symbolic validators and do not claim real Plutus evaluation.",
+      "The author handback pending-review header is superseded by the two fix reviews."
+    ],
+    "candidate": "b7cd3416c9f42dc3ec9128b7f12710d52719ae58"
+  },
+  "packageTasks": {
+    "status": "reviewed",
+    "base": "43dc8e42b7706fc79978cfe1d4b4f5ec22144189",
+    "packet": "/tmp/midgard-agent-friendly-20261016/tasks/task-declarations-v2.packet.json",
+    "packetSha256": "e6c48cca6353a10e272c034b988dd4ae5cb937ca8b0a8ca67843e5c9f4857f2a",
+    "ownedPaths": 33,
+    "sourceIntegrity": "All 33 source files matched the frozen packet after final component checks.",
+    "handoff": "/tmp/midgard-agent-friendly-20261016/tasks/implementation-handoff-v2.md",
+    "reviews": [
+      "/tmp/midgard-task-declarations-review-v2.md",
+      "/tmp/midgard-boundary-review-v2.md"
+    ],
+    "reviewDisposition": "Task F1-F4 and ordinary lifecycle findings closed by task v2; residual preflight consumer finding F5 closed by the boundary companion re-review.",
+    "checks": [
+      {
+        "command": "PATH=/home/gumbo/.nvm/versions/node/v22.22.2/bin:$PATH node --test scripts/contrib/run-tests.test.mjs scripts/contrib/identity.test.mjs scripts/contrib/files.test.mjs scripts/contrib/artifacts.test.mjs scripts/contrib/operations.test.mjs scripts/contrib/pnpm.test.mjs",
+        "cwd": "/home/gumbo/midgard-hub/midgard/.claude/worktrees/agent-tasks",
+        "date": "2026-10-16",
+        "stage": "component",
+        "passed": 63,
+        "failed": 0,
+        "skipped": 0,
+        "exitCode": 0,
+        "log": "/tmp/midgard-agent-friendly-20261016/tasks/declarations-frozen-v2-units.log"
+      },
+      {
+        "command": "PATH=/home/gumbo/.nvm/versions/node/v22.22.2/bin:$PATH POSTGRES_PORT=5432 POSTGRES_DB=midgard corepack pnpm --dir l1-node-transport run test --shard=1/2 --maxWorkers=1",
+        "cwd": "/home/gumbo/midgard-hub/midgard/.claude/worktrees/agent-tasks/demo",
+        "date": "2026-10-16",
+        "stage": "component",
+        "passed": 25,
+        "failed": 0,
+        "skipped": 4,
+        "exitCode": 0,
+        "log": "/tmp/midgard-agent-friendly-20261016/tasks/ordinary-ci-final.log",
+        "files": 3
+      },
+      {
+        "command": "MIDGARD_REQUIRE_REAL_BUILDS=1 PATH=/home/gumbo/.nvm/versions/node/v22.22.2/bin:$PATH node --test scripts/contrib/build-freshness.test.mjs",
+        "cwd": "/home/gumbo/midgard-hub/midgard/.claude/worktrees/agent-tasks",
+        "date": "2026-10-16",
+        "stage": "before ordinary frontend split; guarded build and closure logic unchanged afterward",
+        "passed": 16,
+        "failed": 0,
+        "skipped": 0,
+        "exitCode": 0,
+        "log": "/tmp/midgard-agent-friendly-20261016/tasks/real-builds.log"
+      }
+    ],
+    "baselineParity": {
+      "packages": 11,
+      "result": "argv/environment/preludes and ordered build/blueprint/Postgres/native prerequisite closures match captured baseline",
+      "source": "/tmp/midgard-agent-friendly-20261016/tasks/baseline-recipes.json"
+    },
+    "limits": [
+      "Four transport live-only cases were skipped.",
+      "Earlier watcher39/node-tools5 pilots are historical preparation evidence, not final-tree receipts.",
+      "No new guarded shard interface or compatibility exit mapper remains."
+    ],
+    "candidate": "b7cd3416c9f42dc3ec9128b7f12710d52719ae58"
+  },
+  "installedBoundaries": {
+    "status": "reviewed",
+    "base": "43dc8e42b7706fc79978cfe1d4b4f5ec22144189",
+    "packet": "/tmp/midgard-boundary-successor-packet/integration-packet.json",
+    "packetSha256": "cd60dda8d114bd338df3b46cf8abe7127e70f39b00246b0bbe0d1c7ad60cd90f",
+    "patchSha256": "5983e001679bf5738e62dc706cec801721ebdff0dabacf750df53b5d71ae5736",
+    "ownedPaths": 21,
+    "borrowedTaskInputs": 13,
+    "review": "/tmp/midgard-boundary-review-v2.md",
+    "reviewDisposition": "Boundary F1-F4 and task F5 closed; no new actionable regression established.",
+    "checks": [
+      {
+        "command": "PATH=/home/gumbo/.nvm/versions/node/v22.22.2/bin:$PATH node --test scripts/contrib/boundary.test.mjs scripts/contrib/receipts.test.mjs scripts/preflight/registry.test.mjs scripts/preflight/runtime-owner.test.mjs scripts/preflight/sdk-suite-evidence.test.mjs scripts/preflight/run.test.mjs scripts/ci/preflight-runner-filters.test.mjs scripts/ci/workflow-triggers.test.mjs",
+        "cwd": "/tmp/midgard-agent-boundaries",
+        "date": "2026-10-16",
+        "stage": "component",
+        "passed": 97,
+        "failed": 0,
+        "skipped": 0,
+        "exitCode": 0,
+        "log": "/tmp/midgard-boundary-review-v2-tests.log"
+      }
+    ],
+    "sourceIntegrity": "/tmp/midgard-boundary-review-v2-integrity.json",
+    "limits": [
+      "The 97-test command covers tooling fixtures and dispatch, not all real application package boundaries.",
+      "The shared-helper workflow census was reconciled in composition and is covered by the composed169 run.",
+      "A composed installation-placement correction is pending; the reviewed snapshot is not final installed-package acceptance."
+    ],
+    "candidate": "b7cd3416c9f42dc3ec9128b7f12710d52719ae58"
+  },
+  "composition": {
+    "status": "final gates pending",
+    "sourceRoot": "/home/gumbo/midgard-hub/midgard/.claude/worktrees/midgard-agent-friendly-integration",
+    "checks": [
+      {
+        "command": "PATH=/home/gumbo/.nvm/versions/node/v22.22.2/bin:$PATH node --test --test-concurrency=2 scripts/contrib/run-tests.test.mjs scripts/contrib/identity.test.mjs scripts/contrib/files.test.mjs scripts/contrib/artifacts.test.mjs scripts/contrib/operations.test.mjs scripts/contrib/pnpm.test.mjs scripts/contrib/boundary.test.mjs scripts/contrib/receipts.test.mjs scripts/preflight/registry.test.mjs scripts/preflight/runtime-owner.test.mjs scripts/preflight/sdk-suite-evidence.test.mjs scripts/preflight/run.test.mjs scripts/ci/preflight-runner-filters.test.mjs scripts/ci/workflow-triggers.test.mjs scripts/release/docker-build-plan.test.mjs demo/scripts/lib/golden-channel.test.mjs",
+        "cwd": "/home/gumbo/midgard-hub/midgard/.claude/worktrees/midgard-agent-friendly-integration",
+        "date": "2026-10-16",
+        "stage": "composed tooling",
+        "passed": 169,
+        "failed": 0,
+        "skipped": 0,
+        "exitCode": 0,
+        "log": "/tmp/midgard-composed-tooling.log",
+        "startedAt": "2026-10-16T21:35Z",
+        "includes": "Four golden-channel portability tests; do not count them again as additional coverage."
+      },
+      {
+        "command": "PATH=/home/gumbo/.nvm/versions/node/v22.22.2/bin:$PATH node scripts/contrib.mjs test --package midgard-node --file tests/deployment-members.test.ts --file tests/deployable-scripts.test.ts --file tests/contract-deployment-info.test.ts --output /tmp/midgard-composed-metadata-node.json",
+        "cwd": "/home/gumbo/midgard-hub/midgard/.claude/worktrees/midgard-agent-friendly-integration",
+        "date": "2026-10-16",
+        "observedAt": "2026-10-16T21:45:59.889Z",
+        "stage": "composed guarded package regression",
+        "package": "midgard-node",
+        "passed": 41,
+        "failed": 0,
+        "skipped": 0,
+        "files": 3,
+        "exitCode": 0,
+        "sourceOnly": false,
+        "receipt": "/tmp/midgard-contrib-1000/runs/bc1ac88b-ca99-46f6-af01-8fbfacc1439f/receipt.json",
+        "output": "/tmp/midgard-composed-metadata-node.json"
+      },
+      {
+        "command": "PATH=/home/gumbo/.nvm/versions/node/v22.22.2/bin:$PATH node scripts/contrib.mjs test --package midgard-core --file tests/deployment-members.test.ts --output /tmp/midgard-composed-metadata-core.json",
+        "cwd": "/home/gumbo/midgard-hub/midgard/.claude/worktrees/midgard-agent-friendly-integration",
+        "date": "2026-10-16",
+        "observedAt": "2026-10-16T21:45:41.261Z",
+        "stage": "composed guarded package regression",
+        "package": "@al-ft/midgard-core",
+        "passed": 4,
+        "failed": 0,
+        "skipped": 0,
+        "files": 1,
+        "exitCode": 0,
+        "sourceOnly": false,
+        "receipt": "/tmp/midgard-contrib-1000/runs/0ec061bd-b665-44d3-93dc-84dae8ac4be6/receipt.json",
+        "output": "/tmp/midgard-composed-metadata-core.json"
+      },
+      {
+        "command": "PATH=/home/gumbo/.nvm/versions/node/v22.22.2/bin:$PATH node scripts/contrib.mjs test --package midgard-sdk --file tests/tx-completion.test.ts --output /tmp/midgard-composed-wallet.json",
+        "cwd": "/home/gumbo/midgard-hub/midgard/.claude/worktrees/midgard-agent-friendly-integration",
+        "date": "2026-10-16",
+        "observedAt": "2026-10-16T21:45:38.850Z",
+        "stage": "composed guarded package regression",
+        "package": "@al-ft/midgard-sdk",
+        "passed": 3,
+        "failed": 0,
+        "skipped": 0,
+        "files": 1,
+        "exitCode": 0,
+        "sourceOnly": false,
+        "receipt": "/tmp/midgard-contrib-1000/runs/5c3ddebb-bfa6-4848-9b94-42a7095914e5/receipt.json",
+        "output": "/tmp/midgard-composed-wallet.json"
+      }
+    ],
+    "composedCompanions": [
+      "R10 public golden-channel portability repair",
+      "private-fixture selector repair",
+      "watcher CI shared-helper census reconciliation"
+    ],
+    "pending": [
+      "installed-boundary installation-placement correction and final package acceptance",
+      "final selected integration checks",
+      "publication to the authorized target"
+    ],
+    "limits": [
+      "No full-program, hosted-CI, deployment or live acceptance pass is claimed."
+    ],
+    "candidate": "b7cd3416c9f42dc3ec9128b7f12710d52719ae58"
+  }
+}
