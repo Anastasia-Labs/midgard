@@ -543,6 +543,38 @@
       }
     },
     {
+      "id": "script-decode-step-v1",
+      "kind": "golden",
+      "summary": "Script-decode step machine, Walk by Walk: JSON fixture plus a generated Aiken module replaying each walk with midgard/script_decode_v1 and checking every run-datum hash against the TypeScript port.",
+      "generators": [
+        "demo/midgard-validation/scripts/generate-script-decode-step-v1-goldens.mjs"
+      ],
+      "packageScripts": [
+        "demo/midgard-validation:fixtures:script-decode-step-v1:sync",
+        "demo/midgard-validation:fixtures:script-decode-step-v1:check"
+      ],
+      "producers": ["demo/midgard-validation"],
+      "inputs": [
+        "@golden-channel",
+        "demo/midgard-validation/tests/fixtures/script-decode-step-v1.vectors.mjs"
+      ],
+      "outputs": [
+        "demo/midgard-validation/tests/fixtures/script-decode-step-v1.generated.json",
+        "onchain/aiken/lib/midgard/script-decode-v1-golden.test.ak"
+      ],
+      "aikenImportsOfOutputs": true,
+      "sync": {
+        "run": "pnpm --dir demo/midgard-validation run fixtures:script-decode-step-v1:sync"
+      },
+      "check": {
+        "run": "pnpm --dir demo/midgard-validation run fixtures:script-decode-step-v1:check"
+      },
+      "ci": {
+        "workflow": ".github/workflows/midgard-node-ci.yml",
+        "step": "Check script-decode step golden vectors"
+      }
+    },
+    {
       "id": "cek-builtin-cardano-v1",
       "kind": "golden",
       "summary": "Every builtin tag evaluated by the pinned Aiken evaluator, values and failures, with the ledger's outcome recorded where the two differ.",
