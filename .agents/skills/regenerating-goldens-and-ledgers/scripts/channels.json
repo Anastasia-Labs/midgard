@@ -507,6 +507,37 @@
       }
     },
     {
+      "id": "ledger-output-proof-replay",
+      "kind": "golden",
+      "summary": "Ledger output proof replay rows (empty fields, large datum scalars): JSON fixture plus each row's witness list and hashes rebound by name into a hand-written Aiken module.",
+      "generators": [
+        "demo/midgard-validation/scripts/generate-ledger-output-proof-replay-goldens.mjs"
+      ],
+      "packageScripts": [
+        "demo/midgard-validation:fixtures:ledger-output-proof-replay:sync",
+        "demo/midgard-validation:fixtures:ledger-output-proof-replay:check"
+      ],
+      "producers": ["demo/midgard-validation"],
+      "inputs": [
+        "@golden-channel",
+        "demo/midgard-validation/tests/fixtures/ledger-output-proof-replay.vectors.mjs"
+      ],
+      "outputs": [
+        "demo/midgard-validation/tests/fixtures/ledger-output-proof-replay.generated.json",
+        "onchain/aiken/lib/midgard/ledger-output-proof-datum.test.ak"
+      ],
+      "sync": {
+        "run": "pnpm --dir demo/midgard-validation run fixtures:ledger-output-proof-replay:sync"
+      },
+      "check": {
+        "run": "pnpm --dir demo/midgard-validation run fixtures:ledger-output-proof-replay:check"
+      },
+      "ci": {
+        "workflow": ".github/workflows/midgard-node-ci.yml",
+        "step": "Check ledger output proof replay golden vectors"
+      }
+    },
+    {
       "id": "cek-builtin-cardano-v1",
       "kind": "golden",
       "summary": "Every builtin tag evaluated by the pinned Aiken evaluator, values and failures, with the ledger's outcome recorded where the two differ.",

@@ -708,6 +708,31 @@ Golden channel cek-core-step-v1 (@al-ft/midgard-validation).
   - `demo/midgard-l1-follower/src/**`
 - Needs: `node-modules`, `aiken`, `core-dist`
 
+### `golden:ledger-output-proof-replay`
+
+Golden channel ledger-output-proof-replay (@al-ft/midgard-validation).
+
+- Command: `pnpm --dir demo/midgard-validation run fixtures:ledger-output-proof-replay:check`
+- Fix: `pnpm --dir demo/midgard-validation run fixtures:ledger-output-proof-replay:sync`
+- Runs on:
+  - `demo/midgard-validation/scripts/generate-ledger-output-proof-replay-goldens.mjs`
+  - `demo/midgard-validation/tests/fixtures/ledger-output-proof-replay.generated.json`
+  - `demo/midgard-validation/tests/fixtures/ledger-output-proof-replay.vectors.mjs`
+  - `onchain/aiken/lib/midgard/ledger-output-proof-datum.test.ak`
+  - `demo/lucid-midgard/src/**`
+  - `demo/midgard-core/src/**`
+  - `demo/midgard-fault-proofs/src/**`
+  - `demo/midgard-validation/src/**`
+  - `demo/midgard-node/src/**`
+  - `demo/midgard-node-tools/src/**`
+  - `demo/midgard-sdk/src/**`
+  - `demo/midgard-watcher/src/**`
+  - `demo/da-committee-node/src/**`
+  - `demo/midgard-test-support/src/**`
+  - `demo/l1-node-transport/src/**`
+  - `demo/midgard-l1-follower/src/**`
+- Needs: `node-modules`, `aiken`, `core-dist`
+
 ### `golden:cek-builtin-cardano-v1`
 
 Golden channel cek-builtin-cardano-v1 (@al-ft/midgard-validation).
