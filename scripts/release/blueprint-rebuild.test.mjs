@@ -16,7 +16,6 @@ const stamp = {
   blueprintHash: createHash("sha256").update(blueprint).digest("hex"),
   sourceHash: "source",
   profileDigest: "profile",
-  compiler: "compiler",
 };
 const builds = () =>
   [1, 2].map((index) => ({
@@ -64,13 +63,8 @@ test("refuses changed compiled bytes even when metadata claims the release hash"
     /differs/,
   );
 });
-test("refuses changed source/profile/compiler identities", () => {
-  for (const key of [
-    "sourceHash",
-    "profileDigest",
-    "compiler",
-    "blueprintHash",
-  ]) {
+test("refuses changed source/profile identities", () => {
+  for (const key of ["sourceHash", "profileDigest", "blueprintHash"]) {
     assert.throws(
       () =>
         compareBlueprintRebuilds(

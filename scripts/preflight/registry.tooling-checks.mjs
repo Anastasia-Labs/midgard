@@ -31,9 +31,7 @@ const DEMO_SCRIPT_TEST_INPUTS = [
   "demo/midgard-fault-proofs/scripts/traced-blueprint.mjs",
   "demo/midgard-core/src/generated-deployment-profiles.ts",
   "onchain/aiken/env/*.ak",
-  "onchain/aiken/scripts/pinned-compiler.mjs",
-  ".github/workflows/aiken-ci.yml",
-  ".github/workflows/midgard-node-ci.yml",
+  "demo/flake.lock",
 ];
 
 export const goldenChecks = (root, packages, ciText) =>

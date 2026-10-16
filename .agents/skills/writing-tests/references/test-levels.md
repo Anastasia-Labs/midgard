@@ -12,11 +12,8 @@ tabulated in
 
 - **Where:** a `test` block in the module that owns the predicate, under
   `onchain/aiken/lib` or `onchain/aiken/validators`.
-- **Prerequisite:** the pinned fork compiler.
-  `node onchain/aiken/scripts/pinned-compiler.mjs` exits 0 only when `aiken`
-  (or `MIDGARD_AIKEN_BIN`) reports the `AIKEN_FORK_VERSION` pinned in the
-  workflows. Stock v1.1.22 has an unsound decoder
-  (`onchain/aiken/scripts/pinned-compiler.mjs:3-10`).
+- **Prerequisite:** nix. The repository scripts run the aiken
+  `demo/flake.lock` pins (`scripts/aiken`); never a bare `aiken` from `PATH`.
 - **Focused run:**
 
   ```bash

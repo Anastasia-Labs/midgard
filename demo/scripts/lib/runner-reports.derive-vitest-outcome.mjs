@@ -4,8 +4,6 @@ import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 
-import { defaultAikenBinary } from "../../../onchain/aiken/scripts/pinned-compiler.mjs";
-
 export class RunnerCheckError extends Error {
   constructor(code, detail) {
     super(`${code}: ${detail}`);
@@ -203,44 +201,6 @@ export const deriveVitestOutcome = ({
 // ---------------------------------------------------------------------------
 // Aiken
 // ---------------------------------------------------------------------------
-
-export const aikenBinary = defaultAikenBinary;
-
-// `.github/workflows/aiken-ci.yml` runs ONE compiler: the patched fork
-// v1.1.23+5adf783 (Anastasia-Labs/aiken, tag midgard-5adf7837) is the authority
-// for compilation, for every applied validator hash, and for executing the test
-// suite. Stock aiken was retired from all roles — it is not a second authority
-// to agree with, because the stock v1.1.22 build that used to hold the
-// compilation role ships a live unsound-codegen defect, and upstream aiken#1389
-// makes a full stock `aiken check` take ~485 minutes on this tree. A gate that
-// publishes a claim about the compiler must spawn the fork by name rather than
-// leaving it to whatever `aiken` happens to be first on PATH.
-// RETIRED 2026-08-14 (#579, owner ruling A): `stockAikenBinary()` is gone with
-// its last caller, the `dual` compiler fixture. It read MIDGARD_STOCK_AIKEN_BIN
-// and fell back to `aikenBinary()`, so with stock retired from every role the
-// export could only resolve to the fork (in CI, where MIDGARD_AIKEN_BIN is the
-// fork) or to whatever unpinned `aiken` sat on PATH — either way supplying a
-// result under a name no longer entitled to one. There is no stock resolver.
-export const forkAikenBinary = () =>
-  process.env.MIDGARD_FORK_AIKEN_BIN ?? "aiken-fork";
-
-// The compiler identity is measured, never assumed: a cached or shadowed binary
-// that is not the pinned build must fail the gate that cites it rather than
-// silently supplying the result under another compiler's name.
-export const aikenCompilerVersion = (binary) => {
-  const run = spawnSync(binary, ["--version"], { encoding: "utf8" });
-  if (run.error !== undefined || run.status !== 0) {
-    throw new RunnerCheckError(
-      "ERR_AIKEN_BINARY_UNAVAILABLE",
-      `${binary} could not report its version (${
-        run.error === undefined
-          ? `exit ${String(run.status)}`
-          : run.error.message
-      }); set MIDGARD_AIKEN_BIN / MIDGARD_FORK_AIKEN_BIN to the fork compiler .github/workflows/aiken-ci.yml pins`,
-    );
-  }
-  return (run.stdout ?? "").trim();
-};
 
 // Aiken derives a module's name from its source path under `lib/` or
 // `validators/`, with hyphens folded to underscores: `lib/midgard/x-v1.test.ak`

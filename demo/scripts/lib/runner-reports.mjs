@@ -23,7 +23,6 @@ import "node:fs";
 import "node:module";
 import "node:os";
 import "node:path";
-import "../../../onchain/aiken/scripts/pinned-compiler.mjs";
 import "./runner-reports.derive-vitest-outcome.mjs";
 import "./runner-reports.derive-aiken-outcome.mjs";
 export {
@@ -32,13 +31,10 @@ export {
   runAikenCheck,
 } from "./runner-reports.derive-aiken-outcome.mjs";
 export {
-  aikenBinary,
-  aikenCompilerVersion,
   aikenModuleIndex,
   aikenModuleName,
   aikenSelectorPattern,
   deriveVitestOutcome,
-  forkAikenBinary,
   RunnerCheckError,
   runVitest,
   vitestPublishedCommand,

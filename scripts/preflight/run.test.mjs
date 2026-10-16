@@ -148,16 +148,11 @@ const write = (repo, files) => {
   }
 };
 
-const pinWorkflows = (version) => ({
-  ".github/workflows/aiken-ci.yml": `env:\n  AIKEN_FORK_VERSION: ${version}\n`,
-  ".github/workflows/midgard-node-ci.yml": `env:\n  AIKEN_FORK_VERSION: ${version}\n`,
-});
-
 const withRepo = async (body) => {
   const repo = mkdtempSync(join(tmpdir(), "preflight-run-test-"));
   try {
     git(repo, "init", "--quiet", "--initial-branch=main");
-    write(repo, { "a.txt": "a\n", ...pinWorkflows("aiken v1") });
+    write(repo, { "a.txt": "a\n" });
     git(repo, "add", "--", ".");
     git(repo, "commit", "--quiet", "-m", "base");
     git(repo, "branch", "base");
@@ -184,7 +179,6 @@ test("strict judges committed changes only; the default adds the working tree", 
     ]);
     const strict = collectChanges(repo, { base: "base", strict: true });
     assert.equal(strict.dirty, true);
-    assert.deepEqual(strict.fullReasons, []);
   }));
 
 test("a renamed file counts at both paths", () =>
@@ -256,27 +250,6 @@ test("an old explicit target ancestor is refused rather than selecting landed wo
     git(repo, "update-ref", `refs/remotes/${DEFAULT_BASE}`, "HEAD");
     assert.throws(() => resolveBase(repo, "base"), /stale.*target/u);
     assert.equal(resolveBase(repo, DEFAULT_BASE), DEFAULT_BASE);
-  }));
-
-test("a moved compiler pin forces a full run; another workflow edit does not", () =>
-  withRepo((repo) => {
-    write(repo, {
-      ".github/workflows/aiken-ci.yml":
-        "name: x\nenv:\n  AIKEN_FORK_VERSION: aiken v1\n",
-    });
-    git(repo, "commit", "--quiet", "-am", "unrelated workflow edit");
-    assert.deepEqual(
-      collectChanges(repo, { base: "base", strict: true }).fullReasons,
-      [],
-    );
-    write(repo, pinWorkflows("aiken v2"));
-    git(repo, "commit", "--quiet", "-am", "move the pin");
-    const { fullReasons } = collectChanges(repo, {
-      base: "base",
-      strict: true,
-    });
-    assert.equal(fullReasons.length, 1);
-    assert.match(fullReasons[0], /aiken v1 -> aiken v2/u);
   }));
 
 // --- running ----------------------------------------------------------------

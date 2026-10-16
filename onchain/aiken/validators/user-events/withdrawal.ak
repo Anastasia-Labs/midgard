@@ -677,7 +677,7 @@ fn test_withdrawal_membership_proof(
 
 fn test_phas_redeemer(value: Data) -> Data {
   let key_data: Data = test_withdrawal_ref
-  let proof_data: Data = []
+  let proof_data: Data = builtin.list_data([])
   builtin.list_data(
     [
       builtin.b_data(test_withdrawals_phas_root),

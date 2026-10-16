@@ -107,7 +107,7 @@ validator l2_replay(dispatcher: ScriptHash) {
     } else {
       expect state.kind == 1
       expect [trace_data, _, _, projected_data] = one_step_witness(fault, 3)
-      let empty: Data = []
+      let empty: Data = builtin.list_data([])
       let produced: Data = [projected_data]
       (trace_data, empty, produced)
     }

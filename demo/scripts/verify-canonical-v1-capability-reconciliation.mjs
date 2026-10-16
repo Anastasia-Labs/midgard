@@ -335,12 +335,6 @@ for (const [flag, expectedDiagnostic] of [
     "--aiken-fixture=batch-module-mismatch",
     /ERR_AIKEN_SELECTOR_MODULE_MISMATCH: .*selftest\/elsewhere\.test/su,
   ],
-  // The widened leg names the compiler it ran under, so an unresolvable binary
-  // must fail closed rather than fall through to whatever `aiken` is on PATH.
-  [
-    "--compiler-fixture=missing",
-    /ERR_AIKEN_BINARY_UNAVAILABLE: .*MIDGARD_FORK_AIKEN_BIN/su,
-  ],
 ]) {
   const selfTest = runSelfTest(flag);
   assert.notEqual(
@@ -360,10 +354,6 @@ for (const [flag, expectedStdout] of [
   [
     "--aiken-fixture=batch-passing",
     /aiken fixture batch-passing: 3\/3 passed/u,
-  ],
-  [
-    "--compiler-fixture=stub-version",
-    /compiler fixture stub-version: 1\/1 passed/u,
   ],
 ]) {
   const control = runSelfTest(flag);

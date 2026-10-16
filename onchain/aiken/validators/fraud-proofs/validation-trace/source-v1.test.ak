@@ -76,7 +76,7 @@ const step_count = 10
 // ## The source transaction and its membership
 
 fn native_tx(redeemers: Int) -> native_types.MidgardTransaction {
-  let empty_mint: Data = []
+  let empty_mint: Data = builtin.list_data([])
   let redeemer = native_types.MidgardRedeemerWitness {
     purpose: native_types.SpendRedeemer,
     index: 0,

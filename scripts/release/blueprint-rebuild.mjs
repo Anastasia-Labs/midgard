@@ -11,10 +11,6 @@ import {
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import {
-  assertPinnedAiken,
-  pinnedAikenFork,
-} from "../../onchain/aiken/scripts/pinned-compiler.mjs";
 import { runProcess } from "../contrib/process.mjs";
 import { withResource } from "../contrib/resources.mjs";
 
@@ -61,18 +57,16 @@ export const compareBlueprintRebuilds = (builds, releaseBytes) => {
       sha256(build.bytes) !== releaseHash ||
       build.stamp.blueprintHash !== releaseHash ||
       build.stamp.sourceHash !== expected.stamp.sourceHash ||
-      build.stamp.profileDigest !== expected.stamp.profileDigest ||
-      build.stamp.compiler !== expected.stamp.compiler
+      build.stamp.profileDigest !== expected.stamp.profileDigest
     )
       throw new Error(
-        "Independent rebuild/source/profile/compiler differs from release blueprint",
+        "Independent rebuild/source/profile differs from release blueprint",
       );
   }
   return {
     blueprintHash: releaseHash,
     sourceHash: expected.stamp.sourceHash,
     profileDigest: expected.stamp.profileDigest,
-    compiler: expected.stamp.compiler,
     validatorCount: JSON.parse(releaseBytes.toString("utf8")).validators.length,
   };
 };
@@ -83,7 +77,6 @@ export const parseBlueprintRebuildArguments = (args) => {
     "--root",
     "--revision",
     "--profile",
-    "--compiler",
     "--release-blueprint",
     "--output",
   ]);
@@ -96,24 +89,22 @@ export const parseBlueprintRebuildArguments = (args) => {
       args[index + 1].startsWith("--")
     )
       throw new Error(
-        "Usage: blueprint-rebuild.mjs --root DIR --revision FULL_SHA --profile preprod-public|mainnet --compiler ABSOLUTE_BINARY --release-blueprint FILE --output NEW_DIRECTORY",
+        "Usage: blueprint-rebuild.mjs --root DIR --revision FULL_SHA --profile preprod-public|mainnet --release-blueprint FILE --output NEW_DIRECTORY",
       );
     values[key] = args[index + 1];
   }
   if (
     allowed.size !== Object.keys(values).length ||
     !/^[0-9a-f]{40}$/u.test(values["--revision"]) ||
-    !["preprod-public", "mainnet"].includes(values["--profile"]) ||
-    !values["--compiler"].startsWith("/")
+    !["preprod-public", "mainnet"].includes(values["--profile"])
   )
     throw new Error(
-      "A frozen full source revision, public profile and absolute compiler are required",
+      "A frozen full source revision and public profile are required",
     );
   return {
     root: realpathSync(values["--root"]),
     revision: values["--revision"],
     profile: values["--profile"],
-    compiler: realpathSync(values["--compiler"]),
     releaseBlueprint: realpathSync(values["--release-blueprint"]),
     output: resolve(values["--output"]),
   };
@@ -140,13 +131,11 @@ export const rebuildReleaseBlueprint = async (options, signal) => {
     flag: "wx",
     mode: 0o600,
   });
-  const compilerHash = sha256(readFileSync(options.compiler));
   const report = {
     schemaVersion: "midgard-independent-blueprint-rebuild-v1",
     sourceRevision: revision,
     profile: options.profile,
     releaseBlueprintHash: sha256(releaseBytes),
-    compilerBinaryHash: compilerHash,
     status: "running",
     builds: [],
     startedAt: new Date().toISOString(),
@@ -174,10 +163,6 @@ export const rebuildReleaseBlueprint = async (options, signal) => {
         throw new Error(
           "Committed source must not contain a cached blueprint or Aiken build directory",
         );
-      const pin = pinnedAikenFork(root);
-      const compiler = assertPinnedAiken(options.compiler);
-      if (compiler !== pin.version)
-        throw new Error("Compiler differs from frozen source pin");
       const step = async (name, argv, cwd, env) => {
         const result = await runProcess({
           argv,
@@ -195,8 +180,6 @@ export const rebuildReleaseBlueprint = async (options, signal) => {
         ordinal,
         root,
         archiveHash: sha256(readFileSync(archive)),
-        compiler,
-        pin,
         steps: [],
       };
       report.builds.push(record);
@@ -234,7 +217,7 @@ export const rebuildReleaseBlueprint = async (options, signal) => {
               options.profile,
             ],
             demo,
-            { ...env, MIDGARD_AIKEN_BIN: options.compiler },
+            env,
           );
           record.compilerExitCode = compiled.exitCode;
           if (
@@ -269,8 +252,6 @@ export const rebuildReleaseBlueprint = async (options, signal) => {
       record.pnpmLockHash = sha256(
         readFileSync(resolve(demo, "pnpm-lock.yaml")),
       );
-      if (sha256(readFileSync(options.compiler)) !== compilerHash)
-        throw new Error("Compiler binary changed during rebuilding");
     }
     if (
       report.builds[0].archiveHash !== report.builds[1].archiveHash ||

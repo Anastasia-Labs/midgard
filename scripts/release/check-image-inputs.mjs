@@ -5,7 +5,6 @@ import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { profileDigest } from "../../demo/scripts/deployment-profiles.mjs";
-import { pinnedAikenFork } from "../../onchain/aiken/scripts/pinned-compiler.mjs";
 import {
   blueprintHash,
   blueprintSourceHash,
@@ -25,7 +24,6 @@ export const verifyPublicImageInputs = ({ root, profile, revision }) => {
   const record = JSON.parse(
     readFileSync(`${blueprintPath}.deployment.json`, "utf8"),
   );
-  const pin = pinnedAikenFork(root);
   const blueprint = JSON.parse(readFileSync(blueprintPath, "utf8"));
   if (
     !Array.isArray(blueprint.validators) ||
@@ -43,11 +41,10 @@ export const verifyPublicImageInputs = ({ root, profile, revision }) => {
     record.profile.name !== profile ||
     profileDigest(record.profile) !== record.profileDigest ||
     record.blueprintHash !== blueprintHash(blueprintPath) ||
-    record.sourceHash !== blueprintSourceHash(root) ||
-    record.compiler !== pin.version
+    record.sourceHash !== blueprintSourceHash(root)
   )
     throw new Error(
-      "Public image blueprint differs from frozen source/profile/compiler",
+      "Public image blueprint differs from frozen source/profile",
     );
   const selected = readFileSync(
     resolve(root, "demo/midgard-core/src/generated-deployment-profiles.ts"),
@@ -83,7 +80,6 @@ export const verifyPublicImageInputs = ({ root, profile, revision }) => {
     deploymentProfileDigest: record.profileDigest,
     blueprintHash: record.blueprintHash,
     aikenSourceHash: record.sourceHash,
-    compiler: pin,
     selectedCoreProfileHash: sha256(
       "demo/midgard-core/src/generated-deployment-profiles.ts",
     ),

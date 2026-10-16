@@ -6,10 +6,6 @@ import { parseDocument } from "yaml";
 import { format } from "prettier";
 
 import {
-  assertPinnedAiken,
-  defaultAikenBinary,
-} from "../../onchain/aiken/scripts/pinned-compiler.mjs";
-import {
   blueprintHash,
   blueprintSourceHash,
   buildRecordPath,
@@ -46,6 +42,7 @@ import {
   minimumPublicOpenAfterApplyMarginMs,
   specDaBondWithdrawDelayFloorMs,
 } from "./deployment-profile-budgets.mjs";
+import { aikenBinary } from "../../scripts/lib/aiken.mjs";
 export {
   COMMIT_TTL_FUTURE_BUFFER_MS,
   DA_RESPONSE_CHUNK_BYTES,
@@ -564,8 +561,6 @@ if (
     );
   const profile = await generateProfiles(selected, command === "check");
   if (command === "build") {
-    const aikenBinary = defaultAikenBinary();
-    const compiler = assertPinnedAiken(aikenBinary);
     const blueprintPath = resolve(root, "onchain/aiken/plutus.json");
     if (existsSync(buildRecordPath(blueprintPath)))
       unlinkSync(buildRecordPath(blueprintPath));
@@ -573,7 +568,7 @@ if (
     // must describe the inputs the compiler actually saw.
     const sourceHash = blueprintSourceHash(root);
     const result = spawnSync(
-      aikenBinary,
+      aikenBinary(),
       ["build", "--env", selected.replaceAll("-", "_")],
       { cwd: resolve(root, "onchain/aiken"), stdio: "inherit" },
     );
@@ -587,7 +582,6 @@ if (
           profileDigest: profileDigest(profile),
           blueprintHash: blueprintHash(blueprintPath),
           sourceHash,
-          compiler,
         },
         null,
         2,

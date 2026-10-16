@@ -17,28 +17,19 @@ Midgard demo, emulator, Preprod, and e2e contract builds use the Aiken
 `testnet` environment. Select it explicitly so environment-dependent protocol
 parameters in `plutus.json` match the off-chain testnet configuration.
 
-For a traced diagnostic blueprint, use:
+For a traced diagnostic blueprint, use (from `onchain/aiken`):
 
 ```bash
-aiken build --env testnet --trace-level verbose --trace-filter all
+../../scripts/aiken build --env testnet --trace-level verbose --trace-filter all
 ```
 
-For a normal blueprint without traces, use:
+For a normal blueprint without traces, use (from `onchain/aiken`):
 
 ```bash
-aiken build --env testnet
+../../scripts/aiken build --env testnet
 ```
 
 ## Focused Checks
-
-Use the fork repository and revision pinned in
-`.github/workflows/aiken-ci.yml`; `aiken.toml` records the base version, which
-alone cannot identify the patched compiler. Record the actual local
-`aiken --version` and match the CI pin before producing release evidence.
-`onchain/aiken/scripts/pinned-compiler.mjs` asserts it before the repository
-scripts and the pre-commit hook run `aiken`. Blind spot: a raw `aiken` command
-typed by hand is never checked, and `aikup` can silently repoint `aiken` at a
-stock release. [script: onchain/aiken/scripts/pinned-compiler.mjs]
 
 Run large Midgard vectors one compiler process at a time, and run every check
 through one of two guards. Each fails closed when it collects zero tests, and
@@ -114,39 +105,26 @@ an exit code alone is insufficient. [review]
 
 ## Pinned Compiler
 
-Before any build, check or format, confirm the compiler:
+The compiler is the `aiken` input of `demo/flake.nix`, locked to one commit
+in `demo/flake.lock`. Run it as `scripts/aiken <args>` (from `onchain/aiken`:
+`../../scripts/aiken`). It needs nix and nothing else: it builds exactly the
+locked commit (cached in the nix store after the first time) and runs it.
+[script: scripts/lib/aiken.mjs]
 
-```bash
-node onchain/aiken/scripts/pinned-compiler.mjs
-```
-
-It exits 0 only when the binary (`MIDGARD_AIKEN_BIN`, else `aiken` on `PATH`)
-prints the `AIKEN_FORK_VERSION` that both `aiken-ci.yml` and
-`midgard-node-ci.yml` declare (`aiken v1.1.23+5adf783` as of 2026-09-26), and
-exits 1 otherwise [script: onchain/aiken/scripts/pinned-compiler.mjs]. Stock
-v1.1.22 compiles unsound expect-decoders: it keys them by local type name, so
-two same-named types in different modules share one decoder
-(`.github/workflows/midgard-node-ci.yml` header, issue #521). The local
-`aiken` is an aikup-managed symlink, and running `aikup` can silently repoint
-it at stock; set `MIDGARD_AIKEN_BIN` to the fork's binary to pin it
-regardless of `PATH`.
-
-The assertion runs inside `run-focused-check.mjs`, `guard-focused-selector.mjs`
-and the pre-commit hook when `.ak` files are staged [hook: pre-commit], and
-`deployment:build` makes its own check against `aiken-ci.yml`
-[script: demo/scripts/deployment-profiles.mjs]. CI installs only the fork
-[ci: Aiken CI/Assert the pinned compiler identity and put it on PATH]. Blind
-spots: a hand-typed `aiken build` or `aiken check` checks nothing, and
-`deployment:build` ignores `MIDGARD_AIKEN_BIN` and uses the `aiken` on
-`PATH`.
+Every repository script, the pre-commit hook and CI reach the compiler only
+this way, so none of them can run a different aiken; nothing reads `aiken`
+from `PATH`. To move the pin, update the flake input
+(`nix flake update aiken --flake ./demo`) and commit the lock. A hand-typed
+bare `aiken` runs whatever is on your `PATH`, which is not the pin: never use
+one for a build, a check or evidence. [review]
 
 ## Which Build Path
 
-| You need                                                                                                                            | Use                                                                         |
-| ----------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------- |
-| A blueprint the node, or any suite that loads it through `midgard-contracts.ts`, will accept; anything matching CI                  | `pnpm --dir demo deployment:build preprod-testing` from the repository root |
-| A traced diagnostic build for a suite that reads the blueprint path directly (for example `demo/midgard-validation` emulator tests) | `aiken build --env testnet --trace-level verbose --trace-filter all`        |
-| A blueprint kept apart from the checkout's (traced, comparison, disposable)                                                         | `aiken build --env testnet --out <existing-dir>/<file>.json`                |
+| You need                                                                                                                            | Use                                                                                |
+| ----------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
+| A blueprint the node, or any suite that loads it through `midgard-contracts.ts`, will accept; anything matching CI                  | `pnpm --dir demo deployment:build preprod-testing` from the repository root        |
+| A traced diagnostic build for a suite that reads the blueprint path directly (for example `demo/midgard-validation` emulator tests) | `../../scripts/aiken build --env testnet --trace-level verbose --trace-filter all` |
+| A blueprint kept apart from the checkout's (traced, comparison, disposable)                                                         | `../../scripts/aiken build --env testnet --out <existing-dir>/<file>.json`         |
 
 CI builds the blueprint with `deployment:build preprod-testing` (Node CI
 step "Build testnet Aiken blueprint"). It also writes
@@ -186,7 +164,7 @@ As of 2026-09-26 on the pinned fork:
 
 - With stdout not a terminal, a compile error in `aiken check` or
   `aiken build` exits 1 and prints **no diagnostic**. Trust the exit code, and
-  rerun under a pseudo-terminal (`script -qec "aiken check" /dev/null`) to
+  rerun under a pseudo-terminal (`script -qec "../../scripts/aiken check" /dev/null`) to
   read the error [review].
 - The JSON test report prints only when stdout is not a terminal, with or
   without `-e`; the focused-check scripts depend on that, so never wrap them
