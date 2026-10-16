@@ -1,8 +1,10 @@
 # Agent-friendly Midgard: priorities by impact and complexity
 
-Date: 2026-10-16. Status: implementation authorized after the scope correction
-below. Deliver the complete plan and coordinate the push to
-`colll78/canonical-v1-watcher-l1-source-checkpoint` with its active lead.
+Date: 2026-10-16. Status: all five changes implemented and integrated after the
+scope correction below. The [implementation ledger](IMPLEMENTATION.md) records
+verification, the retained baseline emulator failure, and pending hosted CI.
+Publication is coordinated with the active lead of
+`colll78/canonical-v1-watcher-l1-source-checkpoint`.
 
 The strongest recurring pattern is **leaving a domain decision in several
 callers, then repairing each caller separately**. Prefer one enforced owner

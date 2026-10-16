@@ -6,7 +6,7 @@
   "tasks": [
     {
       "id": "completion",
-      "state": "reviewed",
+      "state": "integrated",
       "owner": "root",
       "dependsOn": [],
       "paths": [
@@ -20,18 +20,19 @@
       ],
       "issues": [],
       "base": "43dc8e42b7706fc79978cfe1d4b4f5ec22144189",
-      "candidate": "ce0d56b7c7044627d306e628a3ec0e209f4e7b91",
+      "candidate": "bce6e0dfb5931287cf9d022ed928c68c66014a1b",
       "review": {
         "passes": [
           "/tmp/midgard-completion-review-pass1.md",
           "/tmp/midgard-completion-review-pass2.md"
         ],
-        "findings": []
+        "findings": [],
+        "disposition": "Integrated after component review and the recorded composition checks; hosted CI and baseline ledger acceptance remain separate."
       }
     },
     {
       "id": "deployment-metadata",
-      "state": "reviewed",
+      "state": "integrated",
       "owner": "runtime_architecture",
       "dependsOn": [],
       "paths": [
@@ -276,13 +277,13 @@
         ],
         "findings": [],
         "packetSha256": "98a61b10d590db37d00b8a1bb9152833ac2c8b2252f328b01692f336a482f5cf",
-        "disposition": "component review complete; final composed boundary acceptance and publication pending"
+        "disposition": "Integrated after component review and the recorded composition checks; hosted CI and baseline ledger acceptance remain separate."
       },
-      "candidate": "b7cd3416c9f42dc3ec9128b7f12710d52719ae58"
+      "candidate": "bce6e0dfb5931287cf9d022ed928c68c66014a1b"
     },
     {
       "id": "installed-boundaries",
-      "state": "reviewed",
+      "state": "integrated",
       "owner": "verification_architecture",
       "dependsOn": [],
       "paths": [
@@ -320,13 +321,13 @@
         "reports": ["/tmp/midgard-boundary-review-v2.md"],
         "findings": [],
         "packetSha256": "cd60dda8d114bd338df3b46cf8abe7127e70f39b00246b0bbe0d1c7ad60cd90f",
-        "disposition": "component review complete; final composed boundary acceptance and publication pending"
+        "disposition": "Integrated after component review and the recorded composition checks; hosted CI and baseline ledger acceptance remain separate."
       },
-      "candidate": "b7cd3416c9f42dc3ec9128b7f12710d52719ae58"
+      "candidate": "bce6e0dfb5931287cf9d022ed928c68c66014a1b"
     },
     {
       "id": "package-tasks",
-      "state": "reviewed",
+      "state": "integrated",
       "owner": "transcript_corrections",
       "dependsOn": ["installed-boundaries"],
       "paths": [
@@ -379,13 +380,13 @@
         ],
         "findings": [],
         "packetSha256": "e6c48cca6353a10e272c034b988dd4ae5cb937ca8b0a8ca67843e5c9f4857f2a",
-        "disposition": "component review complete; final composed boundary acceptance and publication pending"
+        "disposition": "Integrated after component review and the recorded composition checks; hosted CI and baseline ledger acceptance remain separate."
       },
-      "candidate": "b7cd3416c9f42dc3ec9128b7f12710d52719ae58"
+      "candidate": "bce6e0dfb5931287cf9d022ed928c68c66014a1b"
     },
     {
       "id": "container-closure",
-      "state": "reviewed",
+      "state": "integrated",
       "owner": "root",
       "dependsOn": ["package-tasks"],
       "paths": [
@@ -404,10 +405,11 @@
       ],
       "issues": [],
       "base": "43dc8e42b7706fc79978cfe1d4b4f5ec22144189",
-      "candidate": "691d1851c5a9492697369c6032ac2d3a66bf2433",
+      "candidate": "bce6e0dfb5931287cf9d022ed928c68c66014a1b",
       "review": {
         "report": "/tmp/midgard-container-review.md",
-        "findings": []
+        "findings": [],
+        "disposition": "Integrated after component review and the recorded composition checks; hosted CI and baseline ledger acceptance remain separate."
       }
     }
   ],
