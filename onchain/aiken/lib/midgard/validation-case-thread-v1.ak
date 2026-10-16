@@ -11,21 +11,17 @@
 //// - it closes into its case (`closes_into_case`): its script fixes the outcome
 ////   and binds it to the case's `ThreadClose`, and the case spend checks the
 ////   case continuation, the burn, the receipt and the leftover;
-//// - once its case can no longer take it (`expires`), past `started_at +
-////   D_case`, its token is burned without the case and its value returns to
-////   the defender.
+//// - once its case can no longer take it, past `started_at + D_case`, it
+////   expires through the thread expiry script (`validation_thread_expiry_v1`):
+////   its token is burned without the case and its value returns to the
+////   defender.
 
 use aiken/collection/dict
 use aiken/collection/list
 use aiken/collection/pairs
-use aiken/math
-use cardano/address.{Script, from_verification_key}
-use cardano/assets.{PolicyId, lovelace_of}
-use cardano/transaction.{
-  InlineDatum, Input, Output, OutputReference, Spend, Transaction,
-}
-use env
-use midgard/common/utils
+use cardano/address.{Script}
+use cardano/assets.{PolicyId}
+use cardano/transaction.{Input, Output, OutputReference, Spend, Transaction}
 use midgard/computation_thread as ct
 use midgard/validation_case_v1.{CaseRedeemerV1, CaseThreadV1, ThreadClose}
 use midgard/validation_dispute_v1.{
@@ -178,14 +174,14 @@ pub fn timeout_winner(
 // ## Ends
 
 /// The thread input at `input_index` is the one being validated, and holds
-/// exactly one token under the thread token policy. Returns that token's name
-/// and the input's lovelace.
+/// exactly one token under the thread token policy. Returns that token's
+/// name.
 fn own_thread_token(
   thread_token_policy_id: PolicyId,
   input_index: Int,
   own_out_ref: OutputReference,
   inputs: List<Input>,
-) -> (ByteArray, Int) {
+) -> ByteArray {
   expect Some(Input { output_reference, output: Output { value, .. } }) = list.at(
     inputs,
     input_index,
@@ -194,7 +190,7 @@ fn own_thread_token(
   expect [Pair(name, 1)] = dict.to_pairs(
     assets.tokens(value, thread_token_policy_id),
   )
-  (name, lovelace_of(value))
+  name
 }
 
 /// The thread closes into its case with `outcome`: the input at
@@ -212,7 +208,7 @@ pub fn closes_into_case(
   tx: Transaction,
 ) -> Bool {
   let Transaction { inputs, mint, redeemers, .. } = tx
-  let (name, _) = own_thread_token(
+  let name = own_thread_token(
     thread_token_policy_id,
     input_index,
     own_out_ref,
@@ -229,55 +225,5 @@ pub fn closes_into_case(
     case_input.address.payment_credential == Script(thread_token_policy_id),
     closed_as == outcome,
     assets.quantity_of(mint, thread_token_policy_id, name) == -1,
-  }
-}
-
-/// A thread its case can no longer take: past `started_at + D_case` the case
-/// may close with the thread still open, as a defender win. The token is
-/// burned without the case: no input sits at the case validator, so no
-/// `ThreadClose` can count this burn as a close with another outcome. The
-/// thread's lovelace goes to the defender, tagged with this input's out-ref,
-/// less at most `min(fee, cap)` when the thread is the only input.
-pub fn expires(
-  thread_token_policy_id: PolicyId,
-  thread: CaseThreadV1,
-  input_index: Int,
-  own_out_ref: OutputReference,
-  tx: Transaction,
-) -> Bool {
-  let Transaction { inputs, outputs, mint, fee, validity_range, .. } = tx
-  let (name, thread_lovelace) = own_thread_token(
-    thread_token_policy_id,
-    input_index,
-    own_out_ref,
-    inputs,
-  )
-  let fee_allowance = when inputs is {
-    [_] -> math.min(fee, env.max_dispute_move_fee_lovelace)
-    _ -> 0
-  }
-  let defender = from_verification_key(thread.defender_vkh)
-  let tag: Data = own_out_ref
-  and {
-    utils.get_inclusive_lower_bound_of_interval(validity_range) > thread.started_at + validation_dispute_v1.max_dispute_duration_milliseconds,
-    assets.quantity_of(mint, thread_token_policy_id, name) == -1,
-    !list.any(
-      inputs,
-      fn(input) {
-        input.output.address.payment_credential == Script(
-          thread_token_policy_id,
-        )
-      },
-    ),
-    list.any(
-      outputs,
-      fn(output) {
-        and {
-          output.address == defender,
-          output.datum == InlineDatum(tag),
-          lovelace_of(output.value) >= thread_lovelace - fee_allowance,
-        }
-      },
-    ),
   }
 }

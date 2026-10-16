@@ -86,6 +86,10 @@ const scheduler_policy: PolicyId =
 const registered_operators_policy: PolicyId =
   #"a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9"
 
+/// The lost-defense receipt policy (the award validator).
+const receipt_policy: PolicyId =
+  #"acacacacacacacacacacacacacacacacacacacacacacacacacacacac"
+
 const misc_policy: PolicyId =
   #"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 
@@ -447,6 +451,7 @@ fn slash_retired_for_bad_settlement(
   let own_redeemer: Data = retired_slash_redeemer()
   retired_operators_validator.mint.mint(
     hub_oracle_hash,
+    receipt_policy,
     retired_slash_redeemer(),
     retired_operators_policy,
     bad_settlement_tx(
@@ -518,6 +523,7 @@ fn slash_active_for_bad_settlement(
     hub_oracle_hash,
     registered_operators_policy,
     retired_operators_policy,
+    receipt_policy,
     active_slash_redeemer(),
     active_operators_policy,
     bad_settlement_tx(
@@ -1363,6 +1369,7 @@ fn run_directory_action_in(
         hub_oracle_hash,
         registered_operators_policy,
         retired_operators_policy,
+        receipt_policy,
         active_action_redeemer(actions, position),
         active_operators_policy,
         tx,
@@ -1370,6 +1377,7 @@ fn run_directory_action_in(
     RetiredBadSettlementSlash | RetiredBadStateSlash ->
       retired_operators_validator.mint.mint(
         hub_oracle_hash,
+        receipt_policy,
         retired_action_redeemer(actions, position),
         retired_operators_policy,
         tx,

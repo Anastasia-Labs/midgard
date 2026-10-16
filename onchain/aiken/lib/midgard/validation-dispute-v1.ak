@@ -1,5 +1,4 @@
 use env
-use midgard/validation_trace_v1
 
 pub const dispute_version: Int = 1
 
@@ -53,22 +52,6 @@ pub type DisputeTurn {
   ReadyForOneStep
 }
 
-pub type ValidationDisputeV1 {
-  version: Int,
-  operator_descriptor: validation_trace_v1.ValidationTraceDescriptorV1,
-  challenger_descriptor: validation_trace_v1.ValidationTraceDescriptorV1,
-  low_index: Int,
-  high_index: Int,
-  agreed_low_hash: ByteArray,
-  operator_high_hash: ByteArray,
-  challenger_high_hash: ByteArray,
-  round: Int,
-  turn_started_at: Int,
-  operator_clock_ms: Int,
-  challenger_clock_ms: Int,
-  turn: DisputeTurn,
-}
-
 pub type DisputeWinner {
   DefenderWins
   ChallengerWins
@@ -79,56 +62,12 @@ fn midpoint(low: Int, high: Int) -> Int {
   low + ( high - low ) / 2
 }
 
-/// Both descriptors start from the one initial state VerifySource fixes as
-/// `agreed_low_hash`, so neither descriptor's own initial hash is compared.
-/// Well-formedness pins both machine versions to the one supported version.
-pub fn descriptors_can_dispute(
-  operator: validation_trace_v1.ValidationTraceDescriptorV1,
-  challenger: validation_trace_v1.ValidationTraceDescriptorV1,
-) -> Bool {
-  and {
-    validation_trace_v1.descriptor_is_well_formed(operator),
-    validation_trace_v1.descriptor_is_well_formed(challenger),
-    operator.step_count == challenger.step_count,
-    or {
-      operator.terminal_state_hash != challenger.terminal_state_hash,
-      operator.verdict != challenger.verdict,
-      operator.rejection_code_hash != challenger.rejection_code_hash,
-    },
-  }
-}
-
 /// The turn after the bisection narrows to `low..high`.
 pub fn next_turn(low: Int, high: Int) -> DisputeTurn {
   if high == low + 1 {
     ReadyForOneStep
   } else {
     AwaitingOperator { midpoint: midpoint(low, high) }
-  }
-}
-
-pub fn open(
-  operator: validation_trace_v1.ValidationTraceDescriptorV1,
-  challenger: validation_trace_v1.ValidationTraceDescriptorV1,
-  agreed_low_hash: ByteArray,
-  source_time_upper: Int,
-) -> ValidationDisputeV1 {
-  expect source_time_upper >= 0
-  expect descriptors_can_dispute(operator, challenger)
-  ValidationDisputeV1 {
-    version: dispute_version,
-    operator_descriptor: operator,
-    challenger_descriptor: challenger,
-    low_index: 0,
-    high_index: operator.step_count,
-    agreed_low_hash,
-    operator_high_hash: operator.terminal_state_hash,
-    challenger_high_hash: challenger.terminal_state_hash,
-    round: 0,
-    turn_started_at: source_time_upper,
-    operator_clock_ms: dispute_side_clock_milliseconds,
-    challenger_clock_ms: dispute_side_clock_milliseconds,
-    turn: next_turn(0, operator.step_count),
   }
 }
 
@@ -144,130 +83,4 @@ pub fn charge(clock: Int, turn_started_at: Int, current_time_lower: Int) -> Int 
   }
   expect elapsed <= clock
   clock - elapsed
-}
-
-pub fn reveal_operator_midpoint(
-  dispute: ValidationDisputeV1,
-  proof: validation_trace_v1.ValidationTraceProof,
-  current_time_lower: Int,
-  current_time_upper: Int,
-) -> ValidationDisputeV1 {
-  expect dispute.version == dispute_version
-  expect AwaitingOperator { midpoint } = dispute.turn
-  expect proof.state_index == midpoint
-  expect
-    validation_trace_v1.verify_trace_proof(dispute.operator_descriptor, proof)
-  ValidationDisputeV1 {
-    ..dispute,
-    turn_started_at: current_time_upper,
-    operator_clock_ms: charge(
-      dispute.operator_clock_ms,
-      dispute.turn_started_at,
-      current_time_lower,
-    ),
-    turn: AwaitingChallenger {
-      midpoint,
-      operator_midpoint_hash: proof.state_hash,
-    },
-  }
-}
-
-pub fn reveal_challenger_midpoint(
-  dispute: ValidationDisputeV1,
-  proof: validation_trace_v1.ValidationTraceProof,
-  current_time_lower: Int,
-  current_time_upper: Int,
-) -> ValidationDisputeV1 {
-  expect dispute.version == dispute_version
-  expect AwaitingChallenger { midpoint, operator_midpoint_hash } = dispute.turn
-  expect proof.state_index == midpoint
-  expect
-    validation_trace_v1.verify_trace_proof(dispute.challenger_descriptor, proof)
-  let midpoint_agrees = operator_midpoint_hash == proof.state_hash
-  let next_low = if midpoint_agrees {
-    midpoint
-  } else {
-    dispute.low_index
-  }
-  let next_high = if midpoint_agrees {
-    dispute.high_index
-  } else {
-    midpoint
-  }
-  expect next_high > next_low
-  let next_round = dispute.round + 1
-  expect next_round <= max_bisection_rounds
-  ValidationDisputeV1 {
-    ..dispute,
-    low_index: next_low,
-    high_index: next_high,
-    agreed_low_hash: if midpoint_agrees {
-      proof.state_hash
-    } else {
-      dispute.agreed_low_hash
-    },
-    operator_high_hash: if midpoint_agrees {
-      dispute.operator_high_hash
-    } else {
-      operator_midpoint_hash
-    },
-    challenger_high_hash: if midpoint_agrees {
-      dispute.challenger_high_hash
-    } else {
-      proof.state_hash
-    },
-    round: next_round,
-    turn_started_at: current_time_upper,
-    challenger_clock_ms: charge(
-      dispute.challenger_clock_ms,
-      dispute.turn_started_at,
-      current_time_lower,
-    ),
-    turn: next_turn(next_low, next_high),
-  }
-}
-
-/// The only exit from ReadyForOneStep. It is the challenger's move, so it is
-/// charged to the challenger's clock; everything after it runs on the
-/// resolution allowance.
-pub fn enter_resolution(
-  dispute: ValidationDisputeV1,
-  current_time_lower: Int,
-  current_time_upper: Int,
-) -> ValidationDisputeV1 {
-  expect dispute.version == dispute_version
-  expect ReadyForOneStep = dispute.turn
-  ValidationDisputeV1 {
-    ..dispute,
-    turn_started_at: current_time_upper,
-    challenger_clock_ms: charge(
-      dispute.challenger_clock_ms,
-      dispute.turn_started_at,
-      current_time_lower,
-    ),
-  }
-}
-
-/// The side to move loses once its whole remaining clock has passed since
-/// the turn started, read from the validity lower bound so that a timeout can
-/// never land before the real deadline. ReadyForOneStep is the challenger's
-/// turn, since only the challenger can exit it, so its timeout is the
-/// defender's win.
-pub fn timeout_winner(
-  dispute: ValidationDisputeV1,
-  current_time_lower: Int,
-) -> DisputeWinner {
-  expect dispute.version == dispute_version
-  when dispute.turn is {
-    AwaitingOperator { .. } -> {
-      expect
-        current_time_lower > dispute.turn_started_at + dispute.operator_clock_ms
-      ChallengerWins
-    }
-    AwaitingChallenger { .. } | ReadyForOneStep -> {
-      expect
-        current_time_lower > dispute.turn_started_at + dispute.challenger_clock_ms
-      DefenderWins
-    }
-  }
 }

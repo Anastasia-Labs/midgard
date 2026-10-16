@@ -7,6 +7,7 @@ use midgard/fraud_proofs/common.{ProverOnly, cancel, continue_validation_trace}
 use midgard/validation_case_thread_v1.{ThreadDatum}
 use midgard/validation_dispute_v1
 use midgard/validation_resolution_v1
+use midgard/validation_thread_expiry_v1
 use midgard/validation_trace_v1
 
 pub type Datum =
@@ -33,6 +34,7 @@ validator main(
   one_step_resolver_script_hashes: List<ScriptHash>,
   award_validator_script_hash: ScriptHash,
   computation_thread_token_policy_id: PolicyId,
+  thread_expiry_script_hash: ScriptHash,
 ) {
   spend(
     datum: Option<Datum>,
@@ -40,7 +42,12 @@ validator main(
     own_out_ref: OutputReference,
     tx: Transaction,
   ) {
-    when redeemer is {
+    validation_thread_expiry_v1.holder_releases_to_expiry(
+      computation_thread_token_policy_id,
+      thread_expiry_script_hash,
+      own_out_ref,
+      tx,
+    ) || when redeemer is {
       ct.Cancel { input_index, computation_thread_mint_redeemer_index } ->
         cancel(
           computation_thread_token_policy_id,

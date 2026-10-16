@@ -1,4 +1,4 @@
-use midgard/validation_case_v1.{CaseThreadV1, thread_version}
+use midgard/validation_case_v1.{CaseThreadV1, ThreadHeaderV1, thread_version}
 use midgard/validation_dispute_v1.{
   ChallengerWins, DefenderWins, NeitherClaimValid, ReadyForOneStep,
 }
@@ -60,10 +60,12 @@ fn ready(
   challenger_successor: ByteArray,
 ) -> CaseThreadV1 {
   CaseThreadV1 {
+    header: ThreadHeaderV1 {
+      started_at: 0,
+      defender_vkh: #"01010101010101010101010101010101010101010101010101010101",
+    },
     version: thread_version,
     case_id: h_a,
-    started_at: 0,
-    defender_vkh: #"01010101010101010101010101010101010101010101010101010101",
     challenger_root: h_b,
     defender_root: h_c,
     step_count: 1,

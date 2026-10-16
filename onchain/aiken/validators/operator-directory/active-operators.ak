@@ -390,6 +390,7 @@ validator mint(
   hub_oracle_script_hash: PolicyId,
   registered_operators_policy_id: PolicyId,
   retired_operators_policy_id: PolicyId,
+  lost_defense_receipt_policy_id: PolicyId,
 ) {
   mint(redeemer: MintRedeemer, own_policy_id: PolicyId, self: Transaction) {
     when redeemer is {
@@ -612,6 +613,7 @@ validator mint(
               redeemers
             <- slash_fraudulent_operator_and_get_info(
             hub_oracle_script_hash,
+            lost_defense_receipt_policy_id,
             ActiveOperatorsDirectory,
             slashing_arguments,
             self,

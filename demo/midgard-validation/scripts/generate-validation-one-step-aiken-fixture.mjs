@@ -39,7 +39,6 @@ import {
   buildValidationMachineLedgerInsertOp,
   buildValidationMachineLedgerMutationSteps,
   encodeValidationBoundaryEvidenceCbor,
-  encodeValidationDisputeDataCbor,
   encodeScriptDiscoveryControlCbor,
 } from "../dist/index.js";
 
@@ -472,7 +471,30 @@ const boundaryEvidenceCbor = encodeValidationBoundaryEvidenceCbor({
     tree: challengerTree,
   },
 });
-const disputeCbor = encodeValidationDisputeDataCbor(dispute);
+// The case thread the boundary reads, carrying the dispute's bisection.
+const threadCbor = Buffer.from(
+  Data.to(
+    new Constr(0, [
+      new Constr(0, [0n, ""]),
+      1n,
+      "",
+      "",
+      "",
+      BigInt(dispute.operatorDescriptor.stepCount),
+      BigInt(dispute.lowIndex),
+      BigInt(dispute.highIndex),
+      Buffer.from(dispute.agreedLowHash).toString("hex"),
+      Buffer.from(dispute.operatorHighHash).toString("hex"),
+      Buffer.from(dispute.challengerHighHash).toString("hex"),
+      BigInt(dispute.round),
+      BigInt(dispute.turnStartedAt),
+      BigInt(dispute.operatorClockMs),
+      BigInt(dispute.challengerClockMs),
+      new Constr(2, []),
+    ]),
+  ),
+  "hex",
+);
 const oneStepArgument = buildValidationOneStepArgument({
   trace,
   stateIndex: lowIndex,
@@ -582,15 +604,14 @@ use aiken/cbor
 use aiken/primitive/bytearray
 use midgard/native_tx_field_access_v1.{Certified, Inline, RawUtxo}
 use midgard/validation_case_v1
-use midgard/validation_dispute_v1
 use midgard/validation_machine/canonical_decode as vm_canonical_decode
 use midgard/validation_machine/machine_types as vm_machine_types
 use midgard/validation_machine/witness as vm_witness
 use midgard/validation_merkle_v1
 use midgard/validation_resolution_v1
 
-const dispute_cbor =
-  #"${disputeCbor.toString("hex")}"
+const thread_cbor =
+  #"${threadCbor.toString("hex")}"
 
 const boundary_evidence_cbor =
   #"${boundaryEvidenceCbor.toString("hex")}"
@@ -622,35 +643,9 @@ const retired_item_evidence_hash =
 const script_discovery_control_cbor =
   #"${scriptDiscoveryControlCbor.toString("hex")}"
 
-// The TypeScript evidence model still emits the dispute's bisection fields;
-// the boundary reads them from the case thread.
-fn thread_of(
-  dispute: validation_dispute_v1.ValidationDisputeV1,
-) -> validation_case_v1.CaseThreadV1 {
-  validation_case_v1.CaseThreadV1 {
-    version: validation_case_v1.thread_version,
-    case_id: #"",
-    started_at: 0,
-    defender_vkh: #"",
-    challenger_root: #"",
-    defender_root: #"",
-    step_count: dispute.operator_descriptor.step_count,
-    low_index: dispute.low_index,
-    high_index: dispute.high_index,
-    agreed_low_hash: dispute.agreed_low_hash,
-    defender_high_hash: dispute.operator_high_hash,
-    challenger_high_hash: dispute.challenger_high_hash,
-    round: dispute.round,
-    turn_started_at: dispute.turn_started_at,
-    defender_clock_ms: dispute.operator_clock_ms,
-    challenger_clock_ms: dispute.challenger_clock_ms,
-    turn: dispute.turn,
-  }
-}
-
 test typescript_generated_one_step_boundary_is_authenticated() {
-  expect Some(dispute_data) = cbor.deserialise(dispute_cbor)
-  expect dispute: validation_dispute_v1.ValidationDisputeV1 = dispute_data
+  expect Some(thread_data) = cbor.deserialise(thread_cbor)
+  expect thread: validation_case_v1.CaseThreadV1 = thread_data
   expect Some(boundary_evidence_data) = cbor.deserialise(boundary_evidence_cbor)
   expect
       boundary_evidence: validation_resolution_v1.ValidationBoundaryEvidenceV1
@@ -659,7 +654,7 @@ test typescript_generated_one_step_boundary_is_authenticated() {
     bytearray.length(boundary_evidence_cbor) == ${boundaryEvidenceCbor.length.toString()},
     bytearray.length(boundary_evidence_cbor) < 16_384,
     validation_resolution_v1.one_step_boundary_is_authenticated(
-      thread_of(dispute),
+      thread,
       boundary_evidence.pre_state,
     ),
   }

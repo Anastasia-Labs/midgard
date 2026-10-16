@@ -7,7 +7,7 @@ use aiken/interval
 use aiken/merkle_patricia_forestry as mpf
 use aiken/primitive/bytearray
 use aiken_design_patterns/linked_list
-use cardano/address.{Address, Script, VerificationKey}
+use cardano/address.{Address, Script}
 use cardano/assets
 use cardano/script_context.{ScriptContext, Spending}
 use cardano/transaction.{
@@ -28,7 +28,7 @@ use midgard/validation_award_v1.{CloseAwardedThread, MintReceipt}
 use midgard/validation_case_config_v1.{CaseConfigV1, config_asset_name}
 use midgard/validation_case_v1.{
   BurnThreadToken, CaseClose, CaseRedeemerV1, CaseThreadV1, CaseV1, Defend,
-  ThreadClose, VerifySource,
+  ThreadClose, ThreadHeaderV1, VerifySource,
 }
 use midgard/validation_dispute_v1.{
   ChallengerWins, DefenderWins, DisputeWinner, NeitherClaimValid,
@@ -56,6 +56,8 @@ const fraud_proof_script =
 const source_hash = #"d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1"
 
 const bond_hash = #"d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6"
+
+const expiry_hash = #"d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7"
 
 const prover = #"e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1"
 
@@ -124,6 +126,7 @@ fn config() -> CaseConfigV1 {
     award_v1: #"d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4",
     timeout_v1: #"d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5",
     dispute_bond_v1: bond_hash,
+    thread_expiry_v1: expiry_hash,
   }
 }
 
@@ -474,17 +477,16 @@ test case_policy_burn_beside_a_case_input_defers_to_the_case_spend() {
 const case_thread_name =
   #"4444444444444444444444444444444444444444444444444444444444444444"
 
-fn thread_holder(
-  credential: address.PaymentCredential,
-  value: assets.Value,
-) -> Input {
+fn held_thread_token() -> assets.Value {
+  assets.from_lovelace(2_000_000)
+    |> assets.add(case_policy, case_thread_name, 1)
+}
+
+fn thread_holder(value: assets.Value) -> Input {
   Input {
     output_reference: out_ref(h32_b, 3),
     output: Output {
-      address: Address {
-        payment_credential: credential,
-        stake_credential: None,
-      },
+      address: address.from_script(config().game_v1),
       value,
       datum: NoDatum,
       reference_script: None,
@@ -492,115 +494,81 @@ fn thread_holder(
   }
 }
 
-fn held_thread_token() -> assets.Value {
-  assets.from_lovelace(2_000_000)
-    |> assets.add(case_policy, case_thread_name, 1)
+fn withdrawal_of(script_hash: ByteArray) -> Pairs<address.Credential, Int> {
+  [Pair(Script(script_hash), 0)]
 }
 
-fn thread_burn_tx(holder: Input, mint: assets.Value) -> Transaction {
+fn thread_burn_tx(
+  mint: assets.Value,
+  withdrawals: Pairs<address.Credential, Int>,
+) -> Transaction {
   Transaction {
     ..transaction.placeholder,
-    inputs: [holder],
+    inputs: [thread_holder(held_thread_token())],
     reference_inputs: [config_reference()],
     mint,
+    withdrawals,
   }
 }
 
-fn burns_thread_token_held_at(script_hash: ByteArray) -> Bool {
+fn one_thread_burn() -> assets.Value {
+  assets.from_asset(case_policy, case_thread_name, -1)
+}
+
+test thread_token_burns_beside_the_expiry_withdrawal() {
   case_mint(
-    BurnThreadToken { thread_input_index: 0 },
-    thread_burn_tx(
-      thread_holder(Script(script_hash), held_thread_token()),
-      assets.from_asset(case_policy, case_thread_name, -1),
-    ),
+    BurnThreadToken,
+    thread_burn_tx(one_thread_burn(), withdrawal_of(config().thread_expiry_v1)),
   )
 }
 
-test thread_token_burns_from_each_thread_script() {
-  and {
-    burns_thread_token_held_at(config().game_v1),
-    burns_thread_token_held_at(config().boundary_v1),
-    burns_thread_token_held_at(config().timeout_v1),
-    burns_thread_token_held_at(config().award_v1),
-  }
+test thread_token_burn_without_the_expiry_withdrawal_is_refused() fail {
+  case_mint(BurnThreadToken, thread_burn_tx(one_thread_burn(), []))
 }
 
-test thread_token_burn_from_the_source_script_is_refused() fail {
-  burns_thread_token_held_at(source_hash)
-}
-
-test thread_token_burn_from_the_bond_script_is_refused() fail {
-  burns_thread_token_held_at(bond_hash)
-}
-
-test thread_token_burn_from_the_case_script_is_refused() fail {
-  burns_thread_token_held_at(case_policy)
-}
-
-test thread_token_burn_from_a_key_is_refused() fail {
+test thread_token_burn_beside_another_withdrawal_is_refused() fail {
   case_mint(
-    BurnThreadToken { thread_input_index: 0 },
-    thread_burn_tx(
-      thread_holder(VerificationKey(prover), held_thread_token()),
-      assets.from_asset(case_policy, case_thread_name, -1),
-    ),
-  )
-}
-
-test thread_token_burn_of_a_token_the_input_does_not_hold_is_refused() fail {
-  case_mint(
-    BurnThreadToken { thread_input_index: 0 },
-    thread_burn_tx(
-      thread_holder(Script(config().game_v1), held_thread_token()),
-      assets.from_asset(case_policy, h32_a, -1),
-    ),
+    BurnThreadToken,
+    thread_burn_tx(one_thread_burn(), withdrawal_of(config().game_v1)),
   )
 }
 
 test thread_token_burn_of_two_tokens_is_refused() fail {
-  let held = held_thread_token()
-    |> assets.add(case_policy, h32_a, 1)
   case_mint(
-    BurnThreadToken { thread_input_index: 0 },
+    BurnThreadToken,
     thread_burn_tx(
-      thread_holder(Script(config().game_v1), held),
-      assets.from_asset(case_policy, case_thread_name, -1)
-        |> assets.add(case_policy, h32_a, -1),
+      one_thread_burn() |> assets.add(case_policy, h32_a, -1),
+      withdrawal_of(config().thread_expiry_v1),
     ),
   )
 }
 
 test thread_token_burn_of_a_doubled_token_is_refused() fail {
-  let held = held_thread_token()
-    |> assets.add(case_policy, case_thread_name, 1)
   case_mint(
-    BurnThreadToken { thread_input_index: 0 },
+    BurnThreadToken,
     thread_burn_tx(
-      thread_holder(Script(config().game_v1), held),
       assets.from_asset(case_policy, case_thread_name, -2),
+      withdrawal_of(config().thread_expiry_v1),
     ),
   )
 }
 
 test thread_token_mint_under_the_burn_redeemer_is_refused() fail {
   case_mint(
-    BurnThreadToken { thread_input_index: 0 },
+    BurnThreadToken,
     thread_burn_tx(
-      thread_holder(Script(config().game_v1), held_thread_token()),
       assets.from_asset(case_policy, case_thread_name, 1),
+      withdrawal_of(config().thread_expiry_v1),
     ),
   )
 }
 
 test thread_token_burn_without_the_configuration_is_refused() fail {
   let tx = thread_burn_tx(
-    thread_holder(Script(config().game_v1), held_thread_token()),
-    assets.from_asset(case_policy, case_thread_name, -1),
+    one_thread_burn(),
+    withdrawal_of(config().thread_expiry_v1),
   )
-  case_mint(
-    BurnThreadToken { thread_input_index: 0 },
-    Transaction { ..tx, reference_inputs: [] },
-  )
+  case_mint(BurnThreadToken, Transaction { ..tx, reference_inputs: [] })
 }
 
 test case_spend_under_the_thread_burn_redeemer_is_refused() fail {
@@ -610,7 +578,7 @@ test case_spend_under_the_thread_burn_redeemer_is_refused() fail {
     thread_policy,
     bond_lovelace,
     Some(undefended()),
-    BurnThreadToken { thread_input_index: 0 },
+    BurnThreadToken,
     case_out_ref(),
     Transaction {
       ..transaction.placeholder,
@@ -2208,6 +2176,50 @@ test defend_with_another_fraud_prover_in_the_thread_is_refused() fail {
   )
 }
 
+/// The defense with its thread header set to `header`.
+fn defense_with_header(header: ThreadHeaderV1) -> Transaction {
+  let thread = thread_state(defendable(), running())
+  with_output(
+    honest_defense(),
+    1,
+    thread_output(
+      step_of(CaseThreadV1 { ..thread, header }),
+      validation_case_v1.thread_floor_lovelace,
+    ),
+  )
+}
+
+/// The thread header is the case's start and the defender's key.
+test defend_with_the_header_of_the_case_and_defender_is_accepted() {
+  case_defends(
+    defendable(),
+    defend_of(running()),
+    defense_with_header(
+      ThreadHeaderV1 { started_at: started, defender_vkh: defender },
+    ),
+  )
+}
+
+test defend_with_another_header_start_is_refused() fail {
+  case_defends(
+    defendable(),
+    defend_of(running()),
+    defense_with_header(
+      ThreadHeaderV1 { started_at: started + 1, defender_vkh: defender },
+    ),
+  )
+}
+
+test defend_with_another_header_defender_is_refused() fail {
+  case_defends(
+    defendable(),
+    defend_of(running()),
+    defense_with_header(
+      ThreadHeaderV1 { started_at: started, defender_vkh: other_key },
+    ),
+  )
+}
+
 test defend_with_another_token_in_the_thread_is_refused() fail {
   let thread = thread_output(
     thread_datum(defendable(), running()),
@@ -2502,6 +2514,7 @@ fn case_closes_thread(
 fn timeout_spends(thread: CaseThreadV1, tx: Transaction) -> Bool {
   timeout_validator.main.spend(
     case_policy,
+    expiry_hash,
     Some(ct.StepDatum { fraud_prover: prover, data: Some(thread) }),
     timeout_validator.CloseTimedOutThread {
       input_index: 1,
@@ -2515,12 +2528,9 @@ fn timeout_spends(thread: CaseThreadV1, tx: Transaction) -> Bool {
 fn award_spends(tx: Transaction) -> Bool {
   award_validator.main.spend(
     case_policy,
-    Some(
-      ct.StepDatum {
-        fraud_prover: prover,
-        data: Some(validation_resolution_v1.winning_resolution()),
-      },
-    ),
+    hub_policy,
+    expiry_hash,
+    Some(awarded_datum()),
     CloseAwardedThread { input_index: 1, case_input_index: 0 },
     thread_out_ref(),
     tx,
@@ -2530,6 +2540,8 @@ fn award_spends(tx: Transaction) -> Bool {
 fn award_mints(tx: Transaction) -> Bool {
   award_validator.main.mint(
     case_policy,
+    hub_policy,
+    expiry_hash,
     MintReceipt { case_input_index: 0 },
     config().award_v1,
     tx,
@@ -3005,55 +3017,4 @@ test thread_close_with_a_receipt_of_another_outcome_is_refused() fail {
 test receipt_mint_without_a_case_input_is_refused() fail {
   let tx = awarded_close()
   award_mints(Transaction { ..tx, inputs: [awarded()] })
-}
-
-// ### A thread expires only without its case
-
-fn expired_at() -> Int {
-  started + validation_dispute_v1.max_dispute_duration_milliseconds + 1
-}
-
-fn expiry_beside(inputs: List<Input>) -> Transaction {
-  Transaction {
-    ..transaction.placeholder,
-    inputs,
-    reference_inputs: [config_reference()],
-    outputs: [
-      tagged(
-        address.from_verification_key(defender),
-        thread_lovelace,
-        thread_out_ref(),
-      ),
-    ],
-    mint: thread_burn(),
-    fee,
-    validity_range: interval.between(expired_at(), expired_at() + 60_000),
-  }
-}
-
-fn timeout_expires(input_index: Int, tx: Transaction) -> Bool {
-  timeout_validator.main.spend(
-    case_policy,
-    Some(ct.StepDatum { fraud_prover: prover, data: Some(ready_thread()) }),
-    timeout_validator.ExpireTimedOutThread { input_index },
-    thread_out_ref(),
-    tx,
-  )
-}
-
-test timed_out_thread_expires_without_its_case() {
-  let tx = expiry_beside([timed_out(ready_thread())])
-  and {
-    timeout_expires(0, tx),
-    case_mint(BurnThreadToken { thread_input_index: 0 }, tx),
-  }
-}
-
-test timed_out_thread_expiring_beside_its_case_is_refused() fail {
-  let thread_close: Data = thread_close_of(ChallengerWins)
-  let tx = expiry_beside([case_input(open_case()), timed_out(ready_thread())])
-  timeout_expires(
-    1,
-    Transaction { ..tx, redeemers: [Pair(Spend(case_out_ref()), thread_close)] },
-  )
 }

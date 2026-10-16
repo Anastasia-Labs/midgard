@@ -412,8 +412,8 @@ test open_thread_starts_from_the_case() {
   and {
     thread.version == validation_case_v1.thread_version,
     thread.case_id == h_d,
-    thread.started_at == case.started_at,
-    thread.defender_vkh == vkh_1,
+    thread.header.started_at == case.started_at,
+    thread.header.defender_vkh == vkh_1,
     thread.challenger_root == case.challenger_root,
     thread.defender_root == h_a,
     thread.step_count == 4,

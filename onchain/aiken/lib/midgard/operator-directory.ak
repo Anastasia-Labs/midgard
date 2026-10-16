@@ -6,8 +6,8 @@ use aiken_design_patterns/linked_list
 use cardano/address.{Address, from_verification_key}
 use cardano/assets.{AssetName, Lovelace, PolicyId, Value}
 use cardano/transaction.{
-  Input, Mint, NoDatum, Output, OutputReference, Redeemer, ScriptPurpose,
-  Transaction,
+  InlineDatum, Input, Mint, NoDatum, Output, OutputReference, Redeemer,
+  ScriptPurpose, Transaction,
 }
 use env
 use midgard/common/types.{Empty}
@@ -15,6 +15,8 @@ use midgard/common/utils
 use midgard/hub_oracle as hub
 use midgard/settlement
 use midgard/state_queue
+use midgard/validation_case_v1.{LostDefenseReceiptV1}
+use midgard/validation_dispute_v1.{NeitherClaimValid}
 
 pub type SlashingReason {
   SlashOperatorForBadState { state_queue_redeemer_index: Int }
@@ -23,6 +25,9 @@ pub type SlashingReason {
     settlement_redeemer_index: Int,
     bounty_claimant: VerificationKeyHash,
   }
+  /// The operator lost a defense of a validation case: the input at
+  /// `receipt_index` holds its lost-defense receipt, which this slash burns.
+  SlashOperatorForLostDefense { receipt_index: Int }
 }
 
 /// The operator directory whose minting policy is slashing.
@@ -357,12 +362,17 @@ pub fn validate_transferred_operator_insertion(
 /// - Correctness of the operator PKH against the removed node key.
 /// - Depending on slashing reason, cross validates with state queue or
 ///   settlement contract. A bad-settlement slash also requires the bounty
-///   claimant's signature and pays it exactly the fraud-prover reward.
+///   claimant's signature and pays it exactly the fraud-prover reward. A
+///   lost-defense slash burns the operator's receipt, held under
+///   `lost_defense_receipt_policy_id`, and pays the fraud-prover reward to the
+///   receipt's `bounty_claimant`, or to the treasury when neither claim of
+///   the thread was valid.
 ///
 /// Returns various info extracted from the slashing arguments, list node
 /// removal, and script context (`tx`).
 pub fn slash_fraudulent_operator_and_get_info(
   hub_oracle_script_hash: PolicyId,
+  lost_defense_receipt_policy_id: PolicyId,
   slashing_directory: SlashingDirectory,
   slashing_arguments: SlashingArguments,
   tx: Transaction,
@@ -522,6 +532,48 @@ pub fn slash_fraudulent_operator_and_get_info(
         bounty_address_v1(bounty_claimant),
         env.fraud_prover_reward,
       )
+    }
+    SlashOperatorForLostDefense { receipt_index } -> {
+      // 8c. The receipt input holds the receipt token named by its datum.
+      //     A receipt token is minted only by a thread close, into one output
+      //     with this datum, and that output is spent only when the token is
+      //     burned, so the token authenticates the datum.
+      expect
+          Some(Input {
+            output: Output {
+              value: receipt_value,
+              datum: InlineDatum(receipt_data),
+              ..
+            },
+            ..
+          })
+        = list.at(inputs, receipt_index)
+      expect receipt: LostDefenseReceiptV1 = receipt_data
+      let receipt_name = validation_case_v1.receipt_token_name(
+        receipt.case_id,
+        receipt.defender_vkh,
+      )
+      and {
+        assets.quantity_of(
+          receipt_value,
+          lost_defense_receipt_policy_id,
+          receipt_name,
+        ) == 1,
+        // 8c-i. The receipt names the slashed operator, and is burned.
+        receipt.defender_vkh == slashed_operator,
+        assets.quantity_of(mint, lost_defense_receipt_policy_id, receipt_name) == -1,
+        // 8c-ii. Exactly `env.fraud_prover_reward` reaches the receipt's
+        //        payee.
+        bounty_routing_is_exact_v1(
+          outputs,
+          if receipt.outcome == NeitherClaimValid {
+            validation_case_v1.treasury_address
+          } else {
+            bounty_address_v1(receipt.bounty_claimant)
+          },
+          env.fraud_prover_reward,
+        ),
+      }
     }
   }
 }
