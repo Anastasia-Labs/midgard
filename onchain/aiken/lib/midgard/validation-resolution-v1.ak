@@ -1,6 +1,7 @@
 use aiken/cbor
 use aiken/crypto.{blake2b_256}
 use aiken/primitive/bytearray
+use midgard/validation_case_v1.{CaseThreadV1, thread_version}
 use midgard/validation_dispute_v1
 use midgard/validation_machine/machine_types as vm_machine_types
 use midgard/validation_machine/shared as vm_shared
@@ -73,11 +74,11 @@ pub const resolver_count: Int = 14
 /// the agreed state at `low_index`. The bisection already authenticated both
 /// high hashes against their descriptors, so no trace proof is re-checked.
 pub fn one_step_boundary_is_authenticated(
-  dispute: validation_dispute_v1.ValidationDisputeV1,
+  dispute: CaseThreadV1,
   pre_state: validation_trace_v1.ValidationMachineStateV1,
 ) -> Bool {
   and {
-    dispute.version == validation_dispute_v1.dispute_version,
+    dispute.version == thread_version,
     dispute.turn == validation_dispute_v1.ReadyForOneStep,
     dispute.high_index == dispute.low_index + 1,
     resolver_index(pre_state.phase) >= 0,
@@ -91,15 +92,15 @@ pub fn one_step_boundary_is_authenticated(
 /// proofs. No operator-provided intermediate transition is trusted here: any
 /// committed Terminal below step_count is itself forbidden padding.
 pub fn terminal_padding_is_authenticated(
-  dispute: validation_dispute_v1.ValidationDisputeV1,
+  dispute: CaseThreadV1,
   terminal_state: validation_trace_v1.ValidationMachineStateV1,
 ) -> Bool {
   and {
-    dispute.version == validation_dispute_v1.dispute_version,
+    dispute.version == thread_version,
     dispute.turn == validation_dispute_v1.ReadyForOneStep,
     dispute.low_index >= 0,
     dispute.high_index == dispute.low_index + 1,
-    dispute.low_index < dispute.operator_descriptor.step_count,
+    dispute.low_index < dispute.step_count,
     validation_trace_v1.machine_state_is_well_formed(terminal_state),
     terminal_state.phase == validation_trace_v1.Terminal,
     validation_trace_v1.hash_machine_state(terminal_state) == dispute.agreed_low_hash,
@@ -109,14 +110,14 @@ pub fn terminal_padding_is_authenticated(
 /// The resolver's state: the agreed pre-state and the two successor hashes,
 /// taken from the dispute datum only.
 pub fn prepare(
-  dispute: validation_dispute_v1.ValidationDisputeV1,
+  dispute: CaseThreadV1,
   pre_state: validation_trace_v1.ValidationMachineStateV1,
 ) -> ValidationResolutionStateV1 {
   expect one_step_boundary_is_authenticated(dispute, pre_state)
   ValidationResolutionStateV1 {
     version: resolution_version,
     pre_state,
-    operator_successor_hash: dispute.operator_high_hash,
+    operator_successor_hash: dispute.defender_high_hash,
     challenger_successor_hash: dispute.challenger_high_hash,
   }
 }

@@ -517,10 +517,9 @@ test close_thread_refuses_a_case_with_no_open_thread() fail {
 
 test lost_defense_receipt_only_for_a_lost_thread() {
   let case = defended(case_with(4, h_d), vkh_1)
-  let thread = thread_of(case)
   and {
-    validation_case_v1.lost_defense_receipt(case, thread, DefenderWins) == None,
-    validation_case_v1.lost_defense_receipt(case, thread, ChallengerWins) == Some(
+    validation_case_v1.lost_defense_receipt(case, h_d, vkh_1, DefenderWins) == None,
+    validation_case_v1.lost_defense_receipt(case, h_d, vkh_1, ChallengerWins) == Some(
       LostDefenseReceiptV1 {
         case_id: h_d,
         defender_vkh: vkh_1,
@@ -528,7 +527,7 @@ test lost_defense_receipt_only_for_a_lost_thread() {
         bounty_claimant: vkh_prover,
       },
     ),
-    validation_case_v1.lost_defense_receipt(case, thread, NeitherClaimValid) == Some(
+    validation_case_v1.lost_defense_receipt(case, h_d, vkh_1, NeitherClaimValid) == Some(
       LostDefenseReceiptV1 {
         case_id: h_d,
         defender_vkh: vkh_1,
@@ -541,15 +540,14 @@ test lost_defense_receipt_only_for_a_lost_thread() {
 
 test thread_leftover_goes_to_the_winner_or_the_treasury() {
   let case = defended(case_with(4, h_d), vkh_1)
-  let thread = thread_of(case)
   and {
-    validation_case_v1.thread_leftover_address(case, thread, DefenderWins) == from_verification_key(
+    validation_case_v1.thread_leftover_address(case, vkh_1, DefenderWins) == from_verification_key(
       vkh_1,
     ),
-    validation_case_v1.thread_leftover_address(case, thread, ChallengerWins) == from_verification_key(
+    validation_case_v1.thread_leftover_address(case, vkh_1, ChallengerWins) == from_verification_key(
       vkh_prover,
     ),
-    validation_case_v1.thread_leftover_address(case, thread, NeitherClaimValid) == validation_case_v1.treasury_address,
+    validation_case_v1.thread_leftover_address(case, vkh_1, NeitherClaimValid) == validation_case_v1.treasury_address,
   }
 }
 

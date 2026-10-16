@@ -240,6 +240,7 @@ test bond_refuses_a_thread_close() fail {
     case_output_index: 0,
     thread_input_index: 1,
     outcome: validation_dispute_v1.ChallengerWins,
+    defender_vkh: #"e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3",
   }
   settles(
     Some(bond_datum()),

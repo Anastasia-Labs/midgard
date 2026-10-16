@@ -138,10 +138,13 @@ pub type CaseRedeemerV1 {
     defender_state_proof: ValidationTraceProof,
   }
   /// Spends the case together with one closing thread, whose token is burned.
+  /// The thread's own script binds `outcome`; `defender_vkh` names the thread,
+  /// whose token name is recomputed from it.
   ThreadClose {
     case_output_index: Int,
     thread_input_index: Int,
     outcome: DisputeWinner,
+    defender_vkh: VerificationKeyHash,
   }
   /// Spends the case and its challenger bond, and burns the case NFT. On a
   /// conviction the same transaction mints the fraud-proof token, and locks
@@ -432,7 +435,8 @@ pub fn close_thread(case: CaseV1, outcome: DisputeWinner) -> CaseV1 {
 /// The receipt a lost thread mints; `None` when the defender won.
 pub fn lost_defense_receipt(
   case: CaseV1,
-  thread: CaseThreadV1,
+  case_id: CaseId,
+  defender_vkh: VerificationKeyHash,
   outcome: DisputeWinner,
 ) -> Option<LostDefenseReceiptV1> {
   when outcome is {
@@ -440,8 +444,8 @@ pub fn lost_defense_receipt(
     _ ->
       Some(
         LostDefenseReceiptV1 {
-          case_id: thread.case_id,
-          defender_vkh: thread.defender_vkh,
+          case_id,
+          defender_vkh,
           outcome,
           bounty_claimant: case.bounty_claimant,
         },
@@ -461,11 +465,11 @@ pub const treasury_address: Address =
 /// neither claim was valid.
 pub fn thread_leftover_address(
   case: CaseV1,
-  thread: CaseThreadV1,
+  defender_vkh: VerificationKeyHash,
   outcome: DisputeWinner,
 ) -> Address {
   when outcome is {
-    DefenderWins -> from_verification_key(thread.defender_vkh)
+    DefenderWins -> from_verification_key(defender_vkh)
     ChallengerWins -> from_verification_key(case.bounty_claimant)
     NeitherClaimValid -> treasury_address
   }

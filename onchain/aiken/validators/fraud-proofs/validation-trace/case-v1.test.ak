@@ -14,19 +14,26 @@ use cardano/transaction.{
   InlineDatum, Input, NoDatum, Output, OutputReference, Spend, Transaction,
 }
 use env
+use fraud_proofs/validation_trace/award_v1 as award_validator
 use fraud_proofs/validation_trace/case_config_v1 as config_validator
 use fraud_proofs/validation_trace/case_v1 as case_validator
+use fraud_proofs/validation_trace/timeout_v1 as timeout_validator
+use midgard/computation_thread as ct
 use midgard/dispute_bond_v1.{DisputeBondV1, SettleWithCase}
 use midgard/fraud_proof
 use midgard/hub_oracle as hub
 use midgard/ledger_state
 use midgard/operator_directory/active_operators.{UpdateBondHoldNewDefense}
+use midgard/validation_award_v1.{CloseAwardedThread, MintReceipt}
 use midgard/validation_case_config_v1.{CaseConfigV1, config_asset_name}
 use midgard/validation_case_v1.{
   BurnThreadToken, CaseClose, CaseRedeemerV1, CaseThreadV1, CaseV1, Defend,
-  VerifySource,
+  ThreadClose, VerifySource,
 }
-use midgard/validation_dispute_v1
+use midgard/validation_dispute_v1.{
+  ChallengerWins, DefenderWins, DisputeWinner, NeitherClaimValid,
+}
+use midgard/validation_resolution_v1
 use midgard/validation_trace_v1.{ValidationMachineStateV1, ValidationTraceProof}
 use operator_directory/active_operators as active_operators_validator
 
@@ -1691,9 +1698,9 @@ fn thread_token() -> assets.Value {
   )
 }
 
-fn thread_datum(case: CaseV1, state: ValidationMachineStateV1) -> Data {
+fn thread_state(case: CaseV1, state: ValidationMachineStateV1) -> CaseThreadV1 {
   let (root, proof) = one_step_trace(state)
-  let thread: Data = validation_case_v1.open_thread(
+  validation_case_v1.open_thread(
     case,
     case_id(),
     defender,
@@ -1702,7 +1709,16 @@ fn thread_datum(case: CaseV1, state: ValidationMachineStateV1) -> Data {
     defense_lower,
     defense_upper(),
   )
-  thread
+}
+
+/// A thread's datum: the challenger is its fraud prover.
+fn step_of(thread: CaseThreadV1) -> Data {
+  let datum: Data = ct.StepDatum { fraud_prover: prover, data: Some(thread) }
+  datum
+}
+
+fn thread_datum(case: CaseV1, state: ValidationMachineStateV1) -> Data {
+  step_of(thread_state(case, state))
 }
 
 fn thread_output(datum: Data, lovelace: Int) -> Output {
@@ -1867,14 +1883,16 @@ test defend_at_the_end_of_the_defender_clock_is_accepted() {
   let lower = started + validation_dispute_v1.dispute_side_clock_milliseconds
   let tx = honest_defense()
   let (root, proof) = one_step_trace(running())
-  let datum: Data = validation_case_v1.open_thread(
-    defendable(),
-    case_id(),
-    defender,
-    root,
-    proof.state_hash,
-    lower,
-    lower + 60_000,
+  let datum = step_of(
+    validation_case_v1.open_thread(
+      defendable(),
+      case_id(),
+      defender,
+      root,
+      proof.state_hash,
+      lower,
+      lower + 60_000,
+    ),
   )
   defends(
     defendable(),
@@ -2125,14 +2143,16 @@ test defend_with_the_thread_at_another_script_is_refused() fail {
 
 test defend_with_a_thread_clock_left_uncharged_is_refused() fail {
   let (root, proof) = one_step_trace(running())
-  let datum: Data = validation_case_v1.open_thread(
-    defendable(),
-    case_id(),
-    defender,
-    root,
-    proof.state_hash,
-    started,
-    defense_upper(),
+  let datum = step_of(
+    validation_case_v1.open_thread(
+      defendable(),
+      case_id(),
+      defender,
+      root,
+      proof.state_hash,
+      started,
+      defense_upper(),
+    ),
   )
   case_defends(
     defendable(),
@@ -2146,8 +2166,37 @@ test defend_with_a_thread_clock_left_uncharged_is_refused() fail {
 }
 
 test defend_with_a_thread_of_another_step_count_is_refused() fail {
-  expect thread: CaseThreadV1 = thread_datum(defendable(), running())
-  let datum: Data = CaseThreadV1 { ..thread, step_count: 2, high_index: 2 }
+  let thread = thread_state(defendable(), running())
+  let datum = step_of(CaseThreadV1 { ..thread, step_count: 2, high_index: 2 })
+  case_defends(
+    defendable(),
+    defend_of(running()),
+    with_output(
+      honest_defense(),
+      1,
+      thread_output(datum, validation_case_v1.thread_floor_lovelace),
+    ),
+  )
+}
+
+test defend_with_a_bare_thread_datum_is_refused() fail {
+  let datum: Data = thread_state(defendable(), running())
+  case_defends(
+    defendable(),
+    defend_of(running()),
+    with_output(
+      honest_defense(),
+      1,
+      thread_output(datum, validation_case_v1.thread_floor_lovelace),
+    ),
+  )
+}
+
+test defend_with_another_fraud_prover_in_the_thread_is_refused() fail {
+  let datum: Data = ct.StepDatum {
+    fraud_prover: other_key,
+    data: Some(thread_state(defendable(), running())),
+  }
   case_defends(
     defendable(),
     defend_of(running()),
@@ -2263,5 +2312,748 @@ test thread_token_mint_beside_a_case_close_is_refused() fail {
   closes(
     defender_won(),
     Transaction { ..tx, mint: assets.merge(tx.mint, thread_token()) },
+  )
+}
+
+// ## The thread close
+
+fn thread_out_ref() -> OutputReference {
+  out_ref(h32_c, 7)
+}
+
+const thread_lovelace = validation_case_v1.thread_floor_lovelace
+
+/// The fee a lone close may take from the thread: the case and the thread are
+/// its only inputs.
+fn close_fee() -> Int {
+  if fee < env.max_dispute_move_fee_lovelace {
+    fee
+  } else {
+    env.max_dispute_move_fee_lovelace
+  }
+}
+
+/// A one-step thread, its turn ReadyForOneStep: the challenger's to move.
+fn ready_thread() -> CaseThreadV1 {
+  thread_state(defendable(), running())
+}
+
+/// A four-step thread, its turn AwaitingOperator: the defender's to move.
+fn awaiting_defender() -> CaseThreadV1 {
+  thread_state(opened(), running())
+}
+
+/// The first lower bound at which the side to move has run out of clock.
+fn lapse_of(thread: CaseThreadV1) -> Int {
+  when thread.turn is {
+    validation_dispute_v1.AwaitingOperator { .. } ->
+      thread.turn_started_at + thread.defender_clock_ms + 1
+    _ -> thread.turn_started_at + thread.challenger_clock_ms + 1
+  }
+}
+
+fn thread_input_at(script: ByteArray, datum: Data) -> Input {
+  Input {
+    output_reference: thread_out_ref(),
+    output: Output {
+      address: address.from_script(script),
+      value: assets.merge(assets.from_lovelace(thread_lovelace), thread_token()),
+      datum: InlineDatum(datum),
+      reference_script: None,
+    },
+  }
+}
+
+fn awarded_datum() -> Data {
+  let datum: Data = ct.StepDatum {
+    fraud_prover: prover,
+    data: Some(validation_resolution_v1.winning_resolution()),
+  }
+  datum
+}
+
+fn thread_close_of(outcome: DisputeWinner) -> CaseRedeemerV1 {
+  ThreadClose {
+    case_output_index: 0,
+    thread_input_index: 1,
+    outcome,
+    defender_vkh: defender,
+  }
+}
+
+fn receipt_token() -> assets.Value {
+  assets.from_asset(
+    config().award_v1,
+    validation_case_v1.receipt_token_name(case_id(), defender),
+    1,
+  )
+}
+
+fn receipt_output(case: CaseV1, outcome: DisputeWinner, lovelace: Int) -> Output {
+  expect Some(receipt) = validation_case_v1.lost_defense_receipt(
+    case,
+    case_id(),
+    defender,
+    outcome,
+  )
+  let datum: Data = receipt
+  Output {
+    address: address.from_script(config().award_v1),
+    value: assets.merge(assets.from_lovelace(lovelace), receipt_token()),
+    datum: InlineDatum(datum),
+    reference_script: None,
+  }
+}
+
+fn thread_burn() -> assets.Value {
+  assets.negate(thread_token())
+}
+
+/// A close of the thread held at `holder` into `case` with `outcome`.
+fn thread_close_tx(
+  case: CaseV1,
+  holder: Input,
+  outcome: DisputeWinner,
+  lower: Int,
+  outputs: List<Output>,
+  mint: assets.Value,
+) -> Transaction {
+  let redeemer: Data = thread_close_of(outcome)
+  Transaction {
+    ..transaction.placeholder,
+    inputs: [case_input(case), holder],
+    reference_inputs: [config_reference()],
+    outputs,
+    mint,
+    fee,
+    validity_range: interval.between(lower, lower + 60_000),
+    redeemers: [Pair(Spend(case_out_ref()), redeemer)],
+  }
+}
+
+/// The honest close of `case` with `outcome`: the case continues closed, a
+/// lost thread funds its receipt with `fp`, and the rest of the thread, less
+/// the fee, goes to the outcome's payee.
+fn honest_thread_close(
+  case: CaseV1,
+  holder: Input,
+  outcome: DisputeWinner,
+  lower: Int,
+) -> Transaction {
+  let case_out = case_output(
+    validation_case_v1.close_thread(case, outcome),
+    case_lovelace,
+  )
+  let payee = validation_case_v1.thread_leftover_address(
+    case,
+    defender,
+    outcome,
+  )
+  when outcome is {
+    DefenderWins ->
+      thread_close_tx(
+        case,
+        holder,
+        outcome,
+        lower,
+        [
+          case_out,
+          tagged(payee, thread_lovelace - close_fee(), thread_out_ref()),
+        ],
+        thread_burn(),
+      )
+    _ ->
+      thread_close_tx(
+        case,
+        holder,
+        outcome,
+        lower,
+        [
+          case_out,
+          tagged(
+            payee,
+            thread_lovelace - fp_lovelace() - close_fee(),
+            thread_out_ref(),
+          ),
+          receipt_output(case, outcome, fp_lovelace()),
+        ],
+        assets.merge(thread_burn(), receipt_token()),
+      )
+  }
+}
+
+fn case_closes_thread(
+  case: CaseV1,
+  outcome: DisputeWinner,
+  tx: Transaction,
+) -> Bool {
+  case_validator.main.spend(
+    hub_policy,
+    config_policy,
+    thread_policy,
+    bond_lovelace,
+    Some(case),
+    thread_close_of(outcome),
+    case_out_ref(),
+    tx,
+  )
+}
+
+fn timeout_spends(thread: CaseThreadV1, tx: Transaction) -> Bool {
+  timeout_validator.main.spend(
+    case_policy,
+    Some(ct.StepDatum { fraud_prover: prover, data: Some(thread) }),
+    timeout_validator.CloseTimedOutThread {
+      input_index: 1,
+      case_input_index: 0,
+    },
+    thread_out_ref(),
+    tx,
+  )
+}
+
+fn award_spends(tx: Transaction) -> Bool {
+  award_validator.main.spend(
+    case_policy,
+    Some(
+      ct.StepDatum {
+        fraud_prover: prover,
+        data: Some(validation_resolution_v1.winning_resolution()),
+      },
+    ),
+    CloseAwardedThread { input_index: 1, case_input_index: 0 },
+    thread_out_ref(),
+    tx,
+  )
+}
+
+fn award_mints(tx: Transaction) -> Bool {
+  award_validator.main.mint(
+    case_policy,
+    MintReceipt { case_input_index: 0 },
+    config().award_v1,
+    tx,
+  )
+}
+
+fn timed_out(thread: CaseThreadV1) -> Input {
+  thread_input_at(config().timeout_v1, step_of(thread))
+}
+
+fn awarded() -> Input {
+  thread_input_at(config().award_v1, awarded_datum())
+}
+
+fn open_case() -> CaseV1 {
+  defended_by(defendable())
+}
+
+/// The defender's timed-out close with the thread at the timeout validator.
+fn defender_timed_out_close() -> Transaction {
+  honest_thread_close(
+    open_case(),
+    timed_out(ready_thread()),
+    DefenderWins,
+    lapse_of(ready_thread()),
+  )
+}
+
+/// The challenger's close of an awarded thread.
+fn awarded_close() -> Transaction {
+  honest_thread_close(open_case(), awarded(), ChallengerWins, started)
+}
+
+// ### Each holder closes with its outcome
+
+test thread_close_after_the_challenger_ran_out_of_clock_is_accepted() {
+  let tx = defender_timed_out_close()
+  and {
+    case_closes_thread(open_case(), DefenderWins, tx),
+    timeout_spends(ready_thread(), tx),
+    case_mint(thread_close_of(DefenderWins), tx),
+  }
+}
+
+test thread_close_after_the_defender_ran_out_of_clock_is_accepted() {
+  let thread = awaiting_defender()
+  let tx = honest_thread_close(
+    open_case(),
+    timed_out(thread),
+    ChallengerWins,
+    lapse_of(thread),
+  )
+  and {
+    case_closes_thread(open_case(), ChallengerWins, tx),
+    timeout_spends(thread, tx),
+    case_mint(thread_close_of(ChallengerWins), tx),
+    award_mints(tx),
+  }
+}
+
+test thread_close_of_an_awarded_thread_is_accepted() {
+  let tx = awarded_close()
+  and {
+    case_closes_thread(open_case(), ChallengerWins, tx),
+    award_spends(tx),
+    case_mint(thread_close_of(ChallengerWins), tx),
+    award_mints(tx),
+  }
+}
+
+test thread_close_before_the_clock_runs_out_is_refused() fail {
+  let thread = ready_thread()
+  timeout_spends(
+    thread,
+    honest_thread_close(
+      open_case(),
+      timed_out(thread),
+      DefenderWins,
+      lapse_of(thread) - 1,
+    ),
+  )
+}
+
+test timed_out_thread_closed_with_the_other_outcome_is_refused() fail {
+  let thread = ready_thread()
+  timeout_spends(
+    thread,
+    honest_thread_close(
+      open_case(),
+      timed_out(thread),
+      ChallengerWins,
+      lapse_of(thread),
+    ),
+  )
+}
+
+test awarded_thread_closed_as_a_defender_win_is_refused() fail {
+  award_spends(
+    honest_thread_close(open_case(), awarded(), DefenderWins, started),
+  )
+}
+
+test awarded_thread_closed_as_neither_is_refused() fail {
+  award_spends(
+    honest_thread_close(open_case(), awarded(), NeitherClaimValid, started),
+  )
+}
+
+test awarded_thread_close_under_another_case_redeemer_is_refused() fail {
+  let tx = awarded_close()
+  let redeemer: Data = close
+  award_spends(
+    Transaction { ..tx, redeemers: [Pair(Spend(case_out_ref()), redeemer)] },
+  )
+}
+
+test awarded_thread_close_without_burning_its_token_is_refused() fail {
+  let tx = awarded_close()
+  award_spends(Transaction { ..tx, mint: receipt_token() })
+}
+
+test thread_close_with_neither_claim_valid_pays_the_treasury() {
+  let tx = honest_thread_close(
+    open_case(),
+    awarded(),
+    NeitherClaimValid,
+    started,
+  )
+  and {
+    case_closes_thread(open_case(), NeitherClaimValid, tx),
+    award_mints(tx),
+  }
+}
+
+// ### The case side of the close
+
+test thread_close_of_a_case_with_no_open_thread_is_refused() fail {
+  let case = CaseV1 { ..open_case(), open_threads: 0 }
+  case_closes_thread(
+    case,
+    ChallengerWins,
+    honest_thread_close(open_case(), awarded(), ChallengerWins, started),
+  )
+}
+
+test thread_close_from_the_game_is_refused() fail {
+  case_closes_thread(
+    open_case(),
+    DefenderWins,
+    honest_thread_close(
+      open_case(),
+      thread_input_at(config().game_v1, step_of(ready_thread())),
+      DefenderWins,
+      started,
+    ),
+  )
+}
+
+test thread_close_from_the_boundary_is_refused() fail {
+  case_closes_thread(
+    open_case(),
+    DefenderWins,
+    honest_thread_close(
+      open_case(),
+      thread_input_at(config().boundary_v1, step_of(ready_thread())),
+      DefenderWins,
+      started,
+    ),
+  )
+}
+
+test thread_close_naming_another_defender_is_refused() fail {
+  case_validator.main.spend(
+    hub_policy,
+    config_policy,
+    thread_policy,
+    bond_lovelace,
+    Some(open_case()),
+    ThreadClose {
+      case_output_index: 0,
+      thread_input_index: 1,
+      outcome: DefenderWins,
+      defender_vkh: other_key,
+    },
+    case_out_ref(),
+    defender_timed_out_close(),
+  )
+}
+
+test thread_close_minting_beyond_the_burn_is_refused() fail {
+  let tx = defender_timed_out_close()
+  case_closes_thread(
+    open_case(),
+    DefenderWins,
+    Transaction { ..tx, mint: assets.add(tx.mint, case_policy, "x", 1) },
+  )
+}
+
+test thread_close_without_the_burn_is_refused() fail {
+  let tx = defender_timed_out_close()
+  case_closes_thread(
+    open_case(),
+    DefenderWins,
+    Transaction { ..tx, mint: assets.zero },
+  )
+}
+
+test thread_close_leaving_the_case_open_is_refused() fail {
+  case_closes_thread(
+    open_case(),
+    DefenderWins,
+    with_output(
+      defender_timed_out_close(),
+      0,
+      case_output(open_case(), case_lovelace),
+    ),
+  )
+}
+
+test thread_close_recording_another_outcome_is_refused() fail {
+  case_closes_thread(
+    open_case(),
+    DefenderWins,
+    with_output(
+      defender_timed_out_close(),
+      0,
+      case_output(
+        validation_case_v1.close_thread(open_case(), ChallengerWins),
+        case_lovelace,
+      ),
+    ),
+  )
+}
+
+test thread_close_taking_lovelace_from_the_case_is_refused() fail {
+  case_closes_thread(
+    open_case(),
+    DefenderWins,
+    with_output(
+      defender_timed_out_close(),
+      0,
+      case_output(
+        validation_case_v1.close_thread(open_case(), DefenderWins),
+        case_lovelace - 1,
+      ),
+    ),
+  )
+}
+
+test thread_close_moving_the_case_is_refused() fail {
+  let moved = case_output(
+    validation_case_v1.close_thread(open_case(), DefenderWins),
+    case_lovelace,
+  )
+  case_closes_thread(
+    open_case(),
+    DefenderWins,
+    with_output(
+      defender_timed_out_close(),
+      0,
+      Output { ..moved, address: address.from_script(config().timeout_v1) },
+    ),
+  )
+}
+
+// ### The leftover
+
+test thread_close_paying_the_leftover_to_another_key_is_refused() fail {
+  case_closes_thread(
+    open_case(),
+    DefenderWins,
+    with_output(
+      defender_timed_out_close(),
+      1,
+      tagged(
+        address.from_verification_key(other_key),
+        thread_lovelace - close_fee(),
+        thread_out_ref(),
+      ),
+    ),
+  )
+}
+
+test thread_close_paying_the_defender_one_lovelace_short_is_refused() fail {
+  case_closes_thread(
+    open_case(),
+    DefenderWins,
+    with_output(
+      defender_timed_out_close(),
+      1,
+      tagged(
+        address.from_verification_key(defender),
+        thread_lovelace - close_fee() - 1,
+        thread_out_ref(),
+      ),
+    ),
+  )
+}
+
+test thread_close_tagging_the_leftover_with_another_out_ref_is_refused() fail {
+  case_closes_thread(
+    open_case(),
+    DefenderWins,
+    with_output(
+      defender_timed_out_close(),
+      1,
+      tagged(
+        address.from_verification_key(defender),
+        thread_lovelace - close_fee(),
+        case_out_ref(),
+      ),
+    ),
+  )
+}
+
+test thread_close_paying_a_challenger_win_to_the_defender_is_refused() fail {
+  case_closes_thread(
+    open_case(),
+    ChallengerWins,
+    with_output(
+      awarded_close(),
+      1,
+      tagged(
+        address.from_verification_key(defender),
+        thread_lovelace - fp_lovelace() - close_fee(),
+        thread_out_ref(),
+      ),
+    ),
+  )
+}
+
+fn wallet_input() -> Input {
+  Input {
+    output_reference: out_ref(h32_c, 8),
+    output: Output {
+      address: address.from_verification_key(other_key),
+      value: assets.from_lovelace(5_000_000),
+      datum: NoDatum,
+      reference_script: None,
+    },
+  }
+}
+
+test thread_close_taking_the_fee_beside_another_input_is_refused() fail {
+  let tx = defender_timed_out_close()
+  case_closes_thread(
+    open_case(),
+    DefenderWins,
+    Transaction { ..tx, inputs: list.concat(tx.inputs, [wallet_input()]) },
+  )
+}
+
+test thread_close_beside_another_input_paying_the_whole_thread_is_accepted() {
+  let tx = defender_timed_out_close()
+  case_closes_thread(
+    open_case(),
+    DefenderWins,
+    with_output(
+      Transaction { ..tx, inputs: list.concat(tx.inputs, [wallet_input()]) },
+      1,
+      tagged(
+        address.from_verification_key(defender),
+        thread_lovelace,
+        thread_out_ref(),
+      ),
+    ),
+  )
+}
+
+// ### The receipt
+
+fn with_receipt_lovelace(lovelace: Int) -> Transaction {
+  let tx = awarded_close()
+  let paid = with_output(
+    tx,
+    2,
+    receipt_output(open_case(), ChallengerWins, lovelace),
+  )
+  with_output(
+    paid,
+    1,
+    tagged(
+      prover_address(),
+      thread_lovelace - lovelace - close_fee(),
+      thread_out_ref(),
+    ),
+  )
+}
+
+test thread_close_funding_the_receipt_up_to_one_fee_more_is_accepted() {
+  case_closes_thread(
+    open_case(),
+    ChallengerWins,
+    with_receipt_lovelace(fp_lovelace() + env.max_dispute_move_fee_lovelace),
+  )
+}
+
+test thread_close_funding_the_receipt_beyond_one_fee_more_is_refused() fail {
+  case_closes_thread(
+    open_case(),
+    ChallengerWins,
+    with_receipt_lovelace(fp_lovelace() + env.max_dispute_move_fee_lovelace + 1),
+  )
+}
+
+test thread_close_funding_the_receipt_below_the_output_is_refused() fail {
+  case_closes_thread(
+    open_case(),
+    ChallengerWins,
+    with_receipt_lovelace(fp_lovelace() - 1),
+  )
+}
+
+test thread_close_without_the_receipt_output_is_refused() fail {
+  let tx = awarded_close()
+  case_closes_thread(
+    open_case(),
+    ChallengerWins,
+    Transaction { ..tx, outputs: list.take(tx.outputs, 2) },
+  )
+}
+
+test thread_close_without_minting_the_receipt_is_refused() fail {
+  let tx = awarded_close()
+  case_closes_thread(
+    open_case(),
+    ChallengerWins,
+    Transaction { ..tx, mint: thread_burn() },
+  )
+}
+
+test thread_close_with_a_defender_win_minting_a_receipt_is_refused() fail {
+  let tx = defender_timed_out_close()
+  case_closes_thread(
+    open_case(),
+    DefenderWins,
+    Transaction {
+      ..tx,
+      outputs: list.concat(
+        tx.outputs,
+        [receipt_output(open_case(), ChallengerWins, fp_lovelace())],
+      ),
+      mint: assets.merge(tx.mint, receipt_token()),
+    },
+  )
+}
+
+test thread_close_with_the_receipt_elsewhere_is_refused() fail {
+  let receipt = receipt_output(open_case(), ChallengerWins, fp_lovelace())
+  case_closes_thread(
+    open_case(),
+    ChallengerWins,
+    with_output(
+      awarded_close(),
+      2,
+      Output { ..receipt, address: address.from_script(config().timeout_v1) },
+    ),
+  )
+}
+
+test thread_close_with_a_receipt_of_another_outcome_is_refused() fail {
+  case_closes_thread(
+    open_case(),
+    ChallengerWins,
+    with_output(
+      awarded_close(),
+      2,
+      receipt_output(open_case(), NeitherClaimValid, fp_lovelace()),
+    ),
+  )
+}
+
+test receipt_mint_without_a_case_input_is_refused() fail {
+  let tx = awarded_close()
+  award_mints(Transaction { ..tx, inputs: [awarded()] })
+}
+
+// ### A thread expires only without its case
+
+fn expired_at() -> Int {
+  started + validation_dispute_v1.max_dispute_duration_milliseconds + 1
+}
+
+fn expiry_beside(inputs: List<Input>) -> Transaction {
+  Transaction {
+    ..transaction.placeholder,
+    inputs,
+    reference_inputs: [config_reference()],
+    outputs: [
+      tagged(
+        address.from_verification_key(defender),
+        thread_lovelace,
+        thread_out_ref(),
+      ),
+    ],
+    mint: thread_burn(),
+    fee,
+    validity_range: interval.between(expired_at(), expired_at() + 60_000),
+  }
+}
+
+fn timeout_expires(input_index: Int, tx: Transaction) -> Bool {
+  timeout_validator.main.spend(
+    case_policy,
+    Some(ct.StepDatum { fraud_prover: prover, data: Some(ready_thread()) }),
+    timeout_validator.ExpireTimedOutThread { input_index },
+    thread_out_ref(),
+    tx,
+  )
+}
+
+test timed_out_thread_expires_without_its_case() {
+  let tx = expiry_beside([timed_out(ready_thread())])
+  and {
+    timeout_expires(0, tx),
+    case_mint(BurnThreadToken { thread_input_index: 0 }, tx),
+  }
+}
+
+test timed_out_thread_expiring_beside_its_case_is_refused() fail {
+  let thread_close: Data = thread_close_of(ChallengerWins)
+  let tx = expiry_beside([case_input(open_case()), timed_out(ready_thread())])
+  timeout_expires(
+    1,
+    Transaction { ..tx, redeemers: [Pair(Spend(case_out_ref()), thread_close)] },
   )
 }

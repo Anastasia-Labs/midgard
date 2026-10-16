@@ -2,6 +2,7 @@
 //// to anyone (the trace root pins every midpoint), EnterResolution is the
 //// prover's alone, and each move accepts exactly one successor.
 
+use aiken/collection/list
 use aiken/interval
 use cardano/address
 use cardano/assets
@@ -11,8 +12,9 @@ use cardano/transaction.{
 use fraud_proofs/validation_trace/game_v1 as game_validator
 use midgard/computation_thread as ct
 use midgard/fraud_proofs/thread_census_fixture_v1 as census
+use midgard/validation_case_thread_v1
+use midgard/validation_case_v1.{CaseThreadV1}
 use midgard/validation_dispute_v1
-use midgard/validation_game_v1
 use midgard/validation_trace_v1
 
 const game_hash = #"01010101010101010101010101010101010101010101010101010101"
@@ -29,7 +31,7 @@ const thread_name = #"0606"
 
 const fraud_prover = #"07070707070707070707070707070707070707070707070707070707"
 
-const header_hash = #"08080808080808080808080808080808080808080808080808080808"
+const defender = #"08080808080808080808080808080808080808080808080808080808"
 
 const third_party = #"09090909090909090909090909090909090909090909090909090909"
 
@@ -60,26 +62,8 @@ fn pair_root(a: ByteArray, b: ByteArray) -> ByteArray {
   )
 }
 
-/// A four-state trace `a, b, c, d`.
-fn descriptor4(
-  a: ByteArray,
-  b: ByteArray,
-  c: ByteArray,
-  d: ByteArray,
-) -> validation_trace_v1.ValidationTraceDescriptorV1 {
-  validation_trace_v1.ValidationTraceDescriptorV1 {
-    schema_version: validation_trace_v1.descriptor_version,
-    machine_version: validation_trace_v1.machine_version,
-    trace_root: validation_trace_v1.trace_branch_hash(
-      pair_root(a, b),
-      pair_root(c, d),
-    ),
-    step_count: 3,
-    initial_state_hash: a,
-    terminal_state_hash: d,
-    verdict: validation_trace_v1.Accepted,
-    rejection_code_hash: zero,
-  }
+fn root4(a: ByteArray, b: ByteArray, c: ByteArray, d: ByteArray) -> ByteArray {
+  validation_trace_v1.trace_branch_hash(pair_root(a, b), pair_root(c, d))
 }
 
 fn proof4(
@@ -95,14 +79,27 @@ fn proof4(
   }
 }
 
-/// The operator's trace is `a, b, c, d`; the challenger's is `a, b, e, f`.
-fn opened() -> validation_dispute_v1.ValidationDisputeV1 {
-  validation_dispute_v1.open(
-    descriptor4(h_a, h_b, h_c, h_d),
-    descriptor4(h_a, h_b, h_e, h_f),
-    h_a,
-    opened_at,
-  )
+/// The defender's trace is `a, b, c, d`; the challenger's is `a, b, e, f`.
+fn opened() -> CaseThreadV1 {
+  CaseThreadV1 {
+    version: validation_case_v1.thread_version,
+    case_id: h_a,
+    started_at: 0,
+    defender_vkh: defender,
+    challenger_root: root4(h_a, h_b, h_e, h_f),
+    defender_root: root4(h_a, h_b, h_c, h_d),
+    step_count: 3,
+    low_index: 0,
+    high_index: 3,
+    agreed_low_hash: h_a,
+    defender_high_hash: h_d,
+    challenger_high_hash: h_f,
+    round: 0,
+    turn_started_at: opened_at,
+    defender_clock_ms: validation_dispute_v1.dispute_side_clock_milliseconds,
+    challenger_clock_ms: validation_dispute_v1.dispute_side_clock_milliseconds,
+    turn: validation_dispute_v1.AwaitingOperator { midpoint: 1 },
+  }
 }
 
 fn operator_first_proof() -> validation_trace_v1.ValidationTraceProof {
@@ -121,8 +118,8 @@ fn challenger_second_proof() -> validation_trace_v1.ValidationTraceProof {
   proof4(2, h_e, h_f, pair_root(h_a, h_b))
 }
 
-fn after_operator_first() -> validation_dispute_v1.ValidationDisputeV1 {
-  validation_dispute_v1.reveal_operator_midpoint(
+fn after_operator_first() -> CaseThreadV1 {
+  validation_case_thread_v1.reveal_defender_midpoint(
     opened(),
     operator_first_proof(),
     1_100,
@@ -131,15 +128,15 @@ fn after_operator_first() -> validation_dispute_v1.ValidationDisputeV1 {
 }
 
 /// Both rounds played: the game is ready for its one step.
-fn ready() -> validation_dispute_v1.ValidationDisputeV1 {
-  let after_first = validation_dispute_v1.reveal_challenger_midpoint(
+fn ready() -> CaseThreadV1 {
+  let after_first = validation_case_thread_v1.reveal_challenger_midpoint(
     after_operator_first(),
     challenger_first_proof(),
     1_300,
     1_400,
   )
-  validation_dispute_v1.reveal_challenger_midpoint(
-    validation_dispute_v1.reveal_operator_midpoint(
+  validation_case_thread_v1.reveal_challenger_midpoint(
+    validation_case_thread_v1.reveal_defender_midpoint(
       after_first,
       operator_second_proof(),
       1_500,
@@ -151,11 +148,8 @@ fn ready() -> validation_dispute_v1.ValidationDisputeV1 {
   )
 }
 
-fn game(dispute: validation_dispute_v1.ValidationDisputeV1) -> Data {
-  let state: Data = validation_game_v1.ValidationGameStateV1 {
-    challenged_header_hash: header_hash,
-    dispute,
-  }
+fn game(thread: CaseThreadV1) -> Data {
+  let state: Data = thread
   state
 }
 
@@ -177,7 +171,7 @@ fn thread_output(script_hash: ByteArray, state: Data) -> Output {
 /// The game at `from` moves to `to_hash`/`to_state` in a transaction valid in
 /// `[lower, upper]` and signed by `signers`.
 fn move(
-  from: validation_dispute_v1.ValidationDisputeV1,
+  from: CaseThreadV1,
   action: game_validator.GameActionV1,
   lower: Int,
   upper: Int,
@@ -200,7 +194,7 @@ fn move(
 /// `move`, its transaction reshaped by `shape` (see `thread_census_fixture_v1`).
 fn shaped_move(
   shape: fn(Transaction) -> Transaction,
-  from: validation_dispute_v1.ValidationDisputeV1,
+  from: CaseThreadV1,
   action: game_validator.GameActionV1,
   lower: Int,
   upper: Int,
@@ -226,17 +220,7 @@ fn shaped_move(
     boundary_hash,
     timeout_hash,
     thread_policy,
-    Some(
-      ct.StepDatum {
-        fraud_prover,
-        data: Some(
-          validation_game_v1.ValidationGameStateV1 {
-            challenged_header_hash: header_hash,
-            dispute: from,
-          },
-        ),
-      },
-    ),
+    Some(ct.StepDatum { fraud_prover, data: Some(from) }),
     ct.Continue(action),
     own_out_ref(),
     tx,
@@ -278,7 +262,7 @@ test a_third_party_reveal_challenger_advances_the_game() {
     [third_party],
     game_hash,
     game(
-      validation_dispute_v1.reveal_challenger_midpoint(
+      validation_case_thread_v1.reveal_challenger_midpoint(
         after_operator_first(),
         challenger_first_proof(),
         1_300,
@@ -299,9 +283,9 @@ test a_reveal_with_any_other_successor_is_refused() fail {
     [],
     game_hash,
     game(
-      validation_dispute_v1.ValidationDisputeV1 {
+      CaseThreadV1 {
         ..after_operator_first(),
-        operator_clock_ms: after_operator_first().operator_clock_ms + 1,
+        defender_clock_ms: after_operator_first().defender_clock_ms + 1,
       },
     ),
   )
@@ -334,7 +318,7 @@ test a_reveal_off_the_movers_trace_root_is_refused() fail {
 // ## EnterResolution is the prover's
 
 fn resolution_successor() -> Data {
-  game(validation_dispute_v1.enter_resolution(ready(), 1_900, 2_000))
+  game(validation_case_thread_v1.enter_resolution(ready(), 1_900, 2_000))
 }
 
 test the_prover_enters_resolution() {
@@ -480,4 +464,217 @@ test census_the_challenger_timeout_beside_a_wallet_input_keeps_the_thread_value(
 
 test census_the_challenger_timeout_beside_a_wallet_input_taking_thread_value_is_refused() fail {
   challenger_timeout_shaped(census.beside_wallet_input(1), operator_lapsed_at)
+}
+
+// ## Timeouts on the challenger's turns go to the defender
+
+/// The game after both rounds, at `ReadyForOneStep`: a timeout there is the
+/// challenger's, and moves the thread to the timeout validator unchanged.
+fn ready_timeout(lower: Int) -> Bool {
+  shaped_move(
+    census.honest,
+    ready(),
+    game_validator.EnterChallengerTimeout { input_index: 0, output_index: 0 },
+    lower,
+    lower + 1_000,
+    [],
+    timeout_hash,
+    game(ready()),
+  )
+}
+
+fn ready_lapsed_at() -> Int {
+  ready().turn_started_at + ready().challenger_clock_ms + 1
+}
+
+test anyone_times_out_the_challenger_at_ready_for_one_step() {
+  ready_timeout(ready_lapsed_at())
+}
+
+test a_ready_for_one_step_timeout_before_the_challenger_clock_lapses_is_refused() fail {
+  ready_timeout(ready_lapsed_at() - 1)
+}
+
+test a_timed_out_thread_with_a_changed_state_is_refused() fail {
+  shaped_move(
+    census.honest,
+    ready(),
+    game_validator.EnterChallengerTimeout { input_index: 0, output_index: 0 },
+    ready_lapsed_at(),
+    ready_lapsed_at() + 1_000,
+    [],
+    timeout_hash,
+    game(CaseThreadV1 { ..ready(), challenger_clock_ms: 0 }),
+  )
+}
+
+test the_game_has_no_cancel() fail {
+  game_validator.main.spend(
+    boundary_hash,
+    timeout_hash,
+    thread_policy,
+    Some(ct.StepDatum { fraud_prover, data: Some(opened()) }),
+    ct.Cancel { input_index: 0, computation_thread_mint_redeemer_index: 0 },
+    own_out_ref(),
+    Transaction {
+      ..transaction.placeholder,
+      inputs: [
+        Input {
+          output_reference: own_out_ref(),
+          output: thread_output(game_hash, game(opened())),
+        },
+      ],
+      mint: assets.from_asset(thread_policy, thread_name, -1),
+      extra_signatories: [fraud_prover],
+    },
+  )
+}
+
+// ## A thread its case can no longer take
+
+const expired_at = validation_dispute_v1.max_dispute_duration_milliseconds + 1
+
+fn own_tag() -> Data {
+  let tag: Data = own_out_ref()
+  tag
+}
+
+fn defender_payout(lovelace: Int) -> Output {
+  Output {
+    address: address.from_verification_key(defender),
+    value: assets.from_lovelace(lovelace),
+    datum: InlineDatum(own_tag()),
+    reference_script: None,
+  }
+}
+
+fn expiry_tx(lower: Int) -> Transaction {
+  Transaction {
+    ..transaction.placeholder,
+    inputs: [
+      Input {
+        output_reference: own_out_ref(),
+        output: thread_output(game_hash, game(opened())),
+      },
+    ],
+    outputs: [defender_payout(thread_lovelace - fee)],
+    mint: assets.from_asset(thread_policy, thread_name, -1),
+    fee,
+    validity_range: interval.after(lower),
+  }
+}
+
+fn expires(tx: Transaction) -> Bool {
+  game_validator.main.spend(
+    boundary_hash,
+    timeout_hash,
+    thread_policy,
+    Some(ct.StepDatum { fraud_prover, data: Some(opened()) }),
+    ct.Continue(game_validator.ExpireThread { input_index: 0 }),
+    own_out_ref(),
+    tx,
+  )
+}
+
+test a_thread_past_d_case_returns_to_its_defender() {
+  expires(expiry_tx(expired_at))
+}
+
+test a_thread_at_d_case_does_not_expire() fail {
+  expires(expiry_tx(expired_at - 1))
+}
+
+test an_expiry_without_the_burn_is_refused() fail {
+  expires(Transaction { ..expiry_tx(expired_at), mint: assets.zero })
+}
+
+test an_expiry_paying_the_defender_less_is_refused() fail {
+  expires(
+    Transaction {
+      ..expiry_tx(expired_at),
+      outputs: [defender_payout(thread_lovelace - fee - 1)],
+    },
+  )
+}
+
+test an_expiry_paying_another_key_is_refused() fail {
+  expires(
+    Transaction {
+      ..expiry_tx(expired_at),
+      outputs: [
+        Output {
+          ..defender_payout(thread_lovelace - fee),
+          address: address.from_verification_key(fraud_prover),
+        },
+      ],
+    },
+  )
+}
+
+test an_expiry_paying_the_fee_beside_another_input_is_refused() fail {
+  let tx = expiry_tx(expired_at)
+  expires(
+    Transaction {
+      ..tx,
+      inputs: [
+        Input {
+          output_reference: OutputReference {
+            transaction_id: h_b,
+            output_index: 0,
+          },
+          output: Output {
+            address: address.from_verification_key(third_party),
+            value: assets.from_lovelace(2_000_000),
+            datum: transaction.NoDatum,
+            reference_script: None,
+          },
+        },
+        ..tx.inputs
+      ],
+    },
+  )
+}
+
+fn beside(tx: Transaction, credential_owner: Output) -> Transaction {
+  Transaction {
+    ..tx,
+    inputs: list.concat(
+      tx.inputs,
+      [
+        Input {
+          output_reference: OutputReference {
+            transaction_id: h_c,
+            output_index: 0,
+          },
+          output: credential_owner,
+        },
+      ],
+    ),
+    outputs: [defender_payout(thread_lovelace)],
+  }
+}
+
+fn held_at(credential: address.Address) -> Output {
+  Output {
+    address: credential,
+    value: assets.from_lovelace(2_000_000),
+    datum: transaction.NoDatum,
+    reference_script: None,
+  }
+}
+
+/// Beside a wallet input the thread pays its whole value to the defender.
+test an_expiry_beside_a_wallet_input_returns_the_whole_thread() {
+  expires(
+    beside(
+      expiry_tx(expired_at),
+      held_at(address.from_verification_key(third_party)),
+    ),
+  )
+}
+
+test an_expiry_beside_a_case_input_is_refused() fail {
+  expires(
+    beside(expiry_tx(expired_at), held_at(address.from_script(thread_policy))),
+  )
 }

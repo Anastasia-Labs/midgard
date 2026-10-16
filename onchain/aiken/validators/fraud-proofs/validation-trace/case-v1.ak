@@ -11,6 +11,7 @@ use cardano/transaction.{
 }
 use env
 use midgard/common/utils
+use midgard/computation_thread as ct
 use midgard/dispute_bond_v1.{DisputeBondV1}
 use midgard/fraud_proof
 use midgard/operator_directory/active_operators.{NodeData}
@@ -277,15 +278,22 @@ validator main(
           validity_range,
           validation_dispute_v1.dispute_max_validity_range_milliseconds,
         )
-        let thread: Data = validation_case_v1.open_thread(
-          case,
-          case_id,
-          defender_vkh,
-          defender_root,
-          defender_state_proof.state_hash,
-          defense_time_lower,
-          defense_time_upper,
-        )
+        // The thread's datum at game-v1: the challenger is its fraud prover,
+        // the one key the resolution moves need.
+        let thread: Data = ct.StepDatum {
+          fraud_prover: case.bounty_claimant,
+          data: Some(
+            validation_case_v1.open_thread(
+              case,
+              case_id,
+              defender_vkh,
+              defender_root,
+              defender_state_proof.state_hash,
+              defense_time_lower,
+              defense_time_upper,
+            ),
+          ),
+        }
         let thread_token = assets.from_asset(
           own_policy,
           validation_case_v1.thread_token_name(case_id, defender_vkh),
@@ -318,7 +326,112 @@ validator main(
           lovelace_of(thread_output.value) >= validation_case_v1.thread_floor_lovelace,
         }
       }
-      ThreadClose { .. } -> False
+      // One thread closes into the case. The thread's own script fixes the
+      // outcome and binds it to this redeemer; this spend checks the rest.
+      ThreadClose {
+        case_output_index,
+        thread_input_index,
+        outcome,
+        defender_vkh,
+      } -> {
+        let config = validation_case_config_v1.get_config(
+          reference_inputs,
+          case_config_policy_id,
+        )
+        expect
+            Some(Input {
+              output_reference: thread_out_ref,
+              output: Output {
+                address: thread_address,
+                value: thread_value,
+                ..
+              },
+            })
+          = list.at(inputs, thread_input_index)
+        expect Script(holder) = thread_address.payment_credential
+        let thread_name = validation_case_v1.thread_token_name(
+          case_id,
+          defender_vkh,
+        )
+        let thread_burn = assets.from_asset(own_policy, thread_name, -1)
+        // The receipt, when the defender lost: at the award validator, whose
+        // hash is the receipt policy, funded from the thread within
+        // `[fpol, fpol + cap]`.
+        let receipt_lovelace = when
+          validation_case_v1.lost_defense_receipt(
+            case,
+            case_id,
+            defender_vkh,
+            outcome,
+          )
+        is {
+          None -> {
+            expect mint == thread_burn
+            0
+          }
+          Some(receipt) -> {
+            let receipt_token = assets.from_asset(
+              config.award_v1,
+              validation_case_v1.receipt_token_name(case_id, defender_vkh),
+              1,
+            )
+            expect Some(receipt_output) = list.find(
+              outputs,
+              fn(output) {
+                assets.without_lovelace(output.value) == receipt_token
+              },
+            )
+            let receipt_data: Data = receipt
+            let paid = lovelace_of(receipt_output.value)
+            expect and {
+                mint == assets.merge(thread_burn, receipt_token),
+                receipt_output.address == from_script(config.award_v1),
+                receipt_output.datum == InlineDatum(receipt_data),
+                paid >= env.fraud_proof_output_lovelace,
+                paid <= env.fraud_proof_output_lovelace + env.max_dispute_move_fee_lovelace,
+              }
+            paid
+          }
+        }
+        // The thread may pay the fee only when the case and the thread are
+        // the only inputs.
+        let fee_allowance = when inputs is {
+          [_, _] -> math.min(fee, env.max_dispute_move_fee_lovelace)
+          _ -> 0
+        }
+        let leftover_address = validation_case_v1.thread_leftover_address(
+          case,
+          defender_vkh,
+          outcome,
+        )
+        let leftover = lovelace_of(thread_value) - receipt_lovelace - fee_allowance
+        let thread_tag: Data = thread_out_ref
+        expect Some(case_output) = list.at(outputs, case_output_index)
+        let closed: Data = validation_case_v1.close_thread(case, outcome)
+        and {
+          or {
+            holder == config.timeout_v1,
+            holder == config.award_v1,
+          },
+          assets.quantity_of(thread_value, own_policy, thread_name) == 1,
+          case_output.address == own_address,
+          case_output.datum == InlineDatum(closed),
+          assets.without_lovelace(case_output.value) == assets.without_lovelace(
+            own_value,
+          ),
+          lovelace_of(case_output.value) >= lovelace_of(own_value),
+          list.any(
+            outputs,
+            fn(output) {
+              and {
+                output.address == leftover_address,
+                output.datum == InlineDatum(thread_tag),
+                lovelace_of(output.value) >= leftover,
+              }
+            },
+          ),
+        }
+      }
       VerifySource { .. } -> False
       BurnThreadToken { .. } -> False
     }
