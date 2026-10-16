@@ -11,8 +11,6 @@ import {
 } from "../../scripts/lib/blueprint-stamp.mjs";
 import { blueprintStampDecision } from "../blueprint-stamp-setup.js";
 
-const pin = "aiken v1.1.23+5adf783";
-
 // A tree with everything the stamp reads, plus a second blueprint outside
 // onchain/aiken standing in for an explicitly named artifact.
 const withTree = (t) => {
@@ -23,11 +21,6 @@ const withTree = (t) => {
     writeFileSync(join(root, path), contents);
     return join(root, path);
   };
-  for (const workflow of ["aiken-ci.yml", "midgard-node-ci.yml"])
-    write(
-      `.github/workflows/${workflow}`,
-      `env:\n  AIKEN_FORK_VERSION: ${pin}\n`,
-    );
   write("onchain/aiken/aiken.toml", 'name = "midgard/selftest"\n');
   write("onchain/aiken/aiken.lock", "# lock\n");
   write("onchain/aiken/validators/probe.ak", "validator probe { }\n");
@@ -40,7 +33,6 @@ const withTree = (t) => {
         profile: { name: "preprod-emulator-testing" },
         blueprintHash: blueprintHash(blueprintPath),
         sourceHash: blueprintSourceHash(root),
-        compiler: pin,
         ...overrides,
       }),
     );
@@ -77,10 +69,6 @@ test("a named blueprint that is mismatched refuses instead of warning", (t) => {
     [
       "was built from other sources",
       ({ record, named }) => record(named, { sourceHash: "0".repeat(64) }),
-    ],
-    [
-      "was built by another compiler",
-      ({ record, named }) => record(named, { compiler: "aiken v1.1.22" }),
     ],
     [
       "was edited after its record",

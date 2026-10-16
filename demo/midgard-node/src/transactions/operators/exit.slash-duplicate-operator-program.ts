@@ -1,5 +1,9 @@
 import * as SDK from "@al-ft/midgard-sdk";
-import { type LucidEvolution, toUnit } from "@lucid-evolution/lucid";
+import {
+  type LucidEvolution,
+  paymentCredentialOf,
+  toUnit,
+} from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
 import {
@@ -79,8 +83,8 @@ export const selectDuplicateRegistration = (
 
 /**
  * Removes a duplicate registered node. Anyone may submit; the slashing
- * penalty is paid from the removed bond as the transaction fee and the rest of
- * that bond is left to the submitter as change.
+ * penalty is paid from the removed bond as the transaction fee and the bounty
+ * goes exactly to this node's wallet key, which signs as the claimant.
  */
 export const slashDuplicateOperatorProgram = (
   lucid: LucidEvolution,
@@ -138,6 +142,22 @@ export const slashDuplicateOperatorProgram = (
       );
     }
 
+    const walletAddress = yield* Effect.tryPromise({
+      try: () => lucid.wallet().address(),
+      catch: (cause) =>
+        new Error(`Failed to read the wallet address: ${String(cause)}`),
+    });
+    const walletCredential = paymentCredentialOf(walletAddress);
+    if (walletCredential.type !== "Key") {
+      return yield* Effect.fail(
+        new OperatorExitRefusal(
+          "The bounty claimant must be a key; this wallet's payment credential is a script",
+          input.operatorKeyHash,
+        ),
+      );
+    }
+    const bountyClaimantKeyHash = walletCredential.hash;
+
     // The slashing penalty leaves as the fee, so the ledger wants the
     // collateral percentage of the whole penalty in the submitter's wallet.
     yield* requireOperatorFundingProgram(lucid, {
@@ -168,6 +188,8 @@ export const slashDuplicateOperatorProgram = (
       ),
       duplicateProof: selection.proof,
       slashingPenaltyLovelace: input.economics.slashingPenaltyLovelace,
+      bountyClaimantKeyHash,
+      fraudProverRewardLovelace: input.economics.fraudProverRewardLovelace,
       validFrom,
       validTo,
       walletInputs: yield* operatorWalletInputsProgram(lucid, label),
@@ -185,7 +207,7 @@ export const slashDuplicateOperatorProgram = (
       removedRegisteredNodeKey: removedKey,
       proofKind: selection.proof.kind,
       feeLovelace,
-      submitterRewardLovelace:
-        (selection.removed.utxo.assets["lovelace"] ?? 0n) - feeLovelace,
+      bountyClaimantKeyHash,
+      bountyLovelace: input.economics.fraudProverRewardLovelace,
     };
   });

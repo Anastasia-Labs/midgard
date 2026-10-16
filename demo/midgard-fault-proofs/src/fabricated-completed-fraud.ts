@@ -186,6 +186,7 @@ export const prepareFabricatedCompletedFraud = async ({
             "completed fraud queue",
           ),
           fraud_proof_asset_name: proofAsset,
+          m_fraud_proof_ref_input_index: null,
         },
       },
       SDK.StateQueueSpendRedeemer,

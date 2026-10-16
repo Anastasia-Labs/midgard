@@ -27,7 +27,7 @@ export {
 } from "./state-queue.build-state-queue-removal-tx.js";
 export {
   findLinkStateQueueUTxO,
-  resolveFraudProverRewardOutputIndex,
+  requireFraudProverRewardRouting,
   sortStateQueueUTxOs,
 } from "./state-queue.collect-remove-slashing-inputs.js";
 export {

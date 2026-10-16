@@ -3,6 +3,7 @@ import {
   EMPTY_MERKLE_TREE_ROOT,
 } from "@al-ft/midgard-sdk";
 
+import type { LedgerAt } from "../../src/ledger-at.js";
 import { retainedPayloadReplaySource } from "../../src/retained-payload-replay-source.js";
 import type { RetainedDaPayloadSource } from "../../src/transition-trace/fetch.js";
 import type {
@@ -28,7 +29,9 @@ export const classifyRetainedReasonFixture = async ({
   history = [],
   replayContext,
   transitionTraceEventAuthority,
+  predecessorLedgerAt,
 }: {
+  readonly predecessorLedgerAt?: LedgerAt;
   readonly observation: AuthenticatedStateQueueHeaderObservation;
   readonly payloadEnvelopeCbor: Buffer;
   readonly deploymentFingerprint: string;
@@ -95,20 +98,23 @@ export const classifyRetainedReasonFixture = async ({
       }),
     sources: replaySource.sources,
     ...(replayContext === undefined ? {} : { replayContext }),
-    // The fixture's empty predecessor is supplied directly; any other
-    // predecessor ledger is read from retained bytes.
+    // The fixture's empty predecessor is supplied directly; the fixture
+    // ledger recorded for each retained header supplies the others.
     ...(replayContext === undefined &&
-    (predecessor !== undefined ||
+    (predecessorLedgerAt !== undefined ||
+      predecessor !== undefined ||
       observation.header.prevUtxosRoot === EMPTY_MERKLE_TREE_ROOT)
       ? {
-          predecessorLedgerAt: async (headerHash: string) =>
-            predecessor === undefined &&
-            headerHash === observation.header.prevHeaderHash &&
-            observation.header.prevUtxosRoot === EMPTY_MERKLE_TREE_ROOT
-              ? []
-              : await fixtureLedgerAt({ sources: replaySource.sources })(
-                  headerHash,
-                ),
+          predecessorLedgerAt:
+            predecessorLedgerAt ??
+            (async (headerHash: string) =>
+              predecessor === undefined &&
+              headerHash === observation.header.prevHeaderHash &&
+              observation.header.prevUtxosRoot === EMPTY_MERKLE_TREE_ROOT
+                ? []
+                : await fixtureLedgerAt({ sources: replaySource.sources })(
+                    headerHash,
+                  )),
         }
       : {}),
   });

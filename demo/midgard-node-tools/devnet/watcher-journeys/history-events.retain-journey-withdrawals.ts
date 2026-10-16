@@ -13,6 +13,10 @@ import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
 import { type HistoryPredecessor } from "./history-cases.js";
+import {
+  checkedJourneyConstruction,
+  journeyLedgerPairs,
+} from "./journey-ledger.js";
 
 export type HistoryEventBlockInput = {
   predecessor: HistoryPredecessor;
@@ -143,7 +147,7 @@ export const buildJourneyFabricatedDeposit = async (
     blockSlot: input.blockSlot,
     prevHeaderHash: input.predecessor.headerHash,
     prevUtxosRoot: input.predecessor.header.utxosRoot,
-    priorLedger: input.predecessor.payload.block_body.utxos,
+    priorLedger: journeyLedgerPairs(input.predecessor.ledger),
     events: [
       {
         eventCbor: canonical(
@@ -158,7 +162,10 @@ export const buildJourneyFabricatedDeposit = async (
       },
     ],
   });
-  return { ...block, actualDeposit: input.deposit };
+  return checkedJourneyConstruction(
+    { ...block, actualDeposit: input.deposit },
+    block.postLedgerEntries,
+  );
 };
 
 type WithdrawalClaim = { id: SDK.OutputReference; infoCbor: string };
@@ -171,7 +178,7 @@ type WithdrawalClaim = { id: SDK.OutputReference; infoCbor: string };
 export const retainJourneyWithdrawals = async (
   input: HistoryEventBlockInput & { claims: readonly WithdrawalClaim[] },
 ) => {
-  const ledger = new Map(input.predecessor.payload.block_body.utxos);
+  const ledger = new Map(journeyLedgerPairs(input.predecessor.ledger));
   const ledgerBlock = () =>
     buildCanonicalBlockFixture({
       transactions: [],
@@ -292,13 +299,19 @@ export const retainJourneyWithdrawals = async (
       transition_trace: sort(transitions),
     },
   };
-  return {
-    header,
-    headerHash,
-    payload,
-    payloadEnvelopeCbor: await wrapDaPayload(SDK.encodeDaPayload(payload), {
-      mode: "identity",
-    }),
-    classifications,
-  };
+  return checkedJourneyConstruction(
+    {
+      header,
+      headerHash,
+      payload,
+      payloadEnvelopeCbor: await wrapDaPayload(SDK.encodeDaPayload(payload), {
+        mode: "identity",
+      }),
+      classifications,
+    },
+    [...ledger].map(([outRef, output]) => ({
+      outRef: Buffer.from(outRef, "hex"),
+      output: Buffer.from(output, "hex"),
+    })),
+  );
 };

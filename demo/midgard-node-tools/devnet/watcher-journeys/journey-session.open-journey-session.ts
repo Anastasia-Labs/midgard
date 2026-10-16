@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 
 import { resolveProverSigner } from "@al-ft/midgard-fault-proofs";
 import {
+  loadWatcherVerifiedDeploymentAuthority,
   parseWatcherConfig,
   parseWatcherProcessConfig,
   WATCHER_CONFIG_SCHEMA_VERSION,
@@ -38,6 +39,7 @@ import {
   waitForRestartedJourneyOperations,
 } from "./operations.js";
 import { journeyPorts, launchJourneyWatcherProcess } from "./process.js";
+import { openJourneyReplayedLedger } from "./replayed-ledger.js";
 import { startJourneyRetainedDa } from "./retained-da.js";
 import type { SignedCommitAttempt } from "./signed-commit-reconciliation.js";
 import { readSignedTransactionRecovery } from "./signed-transaction-recovery.js";
@@ -78,7 +80,7 @@ export const openJourneySession = async (runDirectory: string) => {
   const stage = <T>(name: string, action: () => Promise<T>) =>
     measureJourneyStage(directory, name, action);
   try {
-    const authority = await stage("signed deployment authority", () =>
+    const publishedAuthority = await stage("signed deployment authority", () =>
       createPublishedWatcherDeploymentAuthority({
         deployment,
         directory,
@@ -101,6 +103,13 @@ export const openJourneySession = async (runDirectory: string) => {
         },
       }),
     );
+    const authority = {
+      ...publishedAuthority,
+      deploymentAuthority: await loadWatcherVerifiedDeploymentAuthority({
+        path: publishedAuthority.authorityPath,
+        ruleBundlePath: publishedAuthority.ruleBundlePath,
+      }),
+    };
     const releaseFinality = await watcherDeploymentReleaseFinalityAuthority(
       authority.deploymentAuthority.deploymentIdentity,
     ).verifyForWorkflow({
@@ -169,6 +178,16 @@ export const openJourneySession = async (runDirectory: string) => {
       }),
     );
     cleanup.push(native.close);
+    const replayedLedger = await openJourneyReplayedLedger({
+      authority: authority.deploymentAuthority,
+      blueprintPath: authority.blueprintPath,
+      watcherConfig,
+      binaryPath: nativeQuery.binaryPath,
+      directory,
+      checkpointDirectory: directory,
+      networkMagic: context.customNetwork.networkMagic,
+    });
+    cleanup.push(replayedLedger.close);
     // Inclusion comes from the recorder's canonical chain; the local node's
     // ledger settles expiry and spent inputs.
     const readSignedCommitRecovery = (attempt: SignedCommitAttempt) => {
@@ -436,6 +455,7 @@ export const openJourneySession = async (runDirectory: string) => {
       authority,
       releaseFinality,
       watcherConfig,
+      ledgerAt: replayedLedger.ledgerAt,
       readSignedCommitRecovery,
       native,
       retain,

@@ -1,9 +1,8 @@
 import { mkdir, readFile, realpath } from "node:fs/promises";
 
-import { FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER } from "@al-ft/midgard-sdk";
-
 import { type WatcherAvailabilityRuntime } from "../availability/runtime.js";
 import {
+  WATCHER_INSTALLED_WORKFLOW_CATEGORIES,
   type WatcherFaultProofApplication,
   type WatcherFaultProofStartupReadiness,
 } from "../fault-proofs/fault-proof-application.js";
@@ -54,19 +53,20 @@ export type WatcherRuntime = Readonly<{
 /**
  * A partial replay/runner union is not a production classifier: an omitted
  * family could otherwise be misreported as healthy. Launch therefore requires
- * the exact canonical catalogue, in canonical order, before L1 intake.
+ * the exact declared installed workflow set, in its declared order, before L1
+ * intake. A missing, extra, repeated or reordered category is refused.
  */
 export const assertWatcherFaultProofLaunchScope = (
   categories: readonly string[],
 ): void => {
   if (
-    categories.length !== FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER.length ||
-    FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER.some(
+    categories.length !== WATCHER_INSTALLED_WORKFLOW_CATEGORIES.length ||
+    WATCHER_INSTALLED_WORKFLOW_CATEGORIES.some(
       (category, index) => categories[index] !== category,
     )
   ) {
     throw new Error(
-      "watcher production fault-proof application does not cover the exact canonical catalogue",
+      "watcher production fault-proof application does not cover the exact installed workflow set",
     );
   }
 };

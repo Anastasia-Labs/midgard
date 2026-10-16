@@ -107,14 +107,9 @@ the source change that caused it.
   the first failing step, and "Check canonical V1 profile documentation" runs
   before every golden check. Run the listed checks locally rather than trusting
   a red pull request to have reported them all [review].
-- **Generated Aiken is formatted by the pinned fork**
-  [ci: Aiken CI/Run normalized Aiken auto-formatter check]. Blind spot:
-  `golden-channel.mjs` formats with `MIDGARD_AIKEN_BIN`, else `aiken` on
-  `PATH`, and asserts nothing about which compiler that is, so check
-  `node onchain/aiken/scripts/pinned-compiler.mjs` first. The long comment at
-  `demo/midgard-core/scripts/golden-channel.mjs:122-145` says stock `aiken fmt`
-  is the authority. That comment is stale: the workflow pin
-  (`.github/workflows/aiken-ci.yml:13-16`) makes the fork the formatter.
+- **Generated Aiken is formatted by the pinned fork.** `golden-channel.mjs`,
+  like every script here, runs the aiken `demo/flake.lock` pins
+  [ci: Aiken CI/Run normalized Aiken auto-formatter check].
 - **Every generator is in the table.** A tracked generator, ledger, writer env
   var, fixture package script or generated-looking file that no channel claims
   fails `--verify-table`, which the skill's own test runs on every pull request
@@ -145,9 +140,9 @@ last ran. It is not tracked and, as of 2026-09-25, not gitignored.
   testnet Aiken blueprint". Blind spot: nothing checks that the `plutus.json`
   on disk is fresh. A leftover blueprint from another branch or profile makes
   every blueprint-bound check measure the wrong contracts.
-- The compiler pin lives in both workflows as `AIKEN_FORK_VERSION` and is read
-  by `onchain/aiken/scripts/pinned-compiler.mjs`. Check it with
-  `node onchain/aiken/scripts/pinned-compiler.mjs` before building.
+- The compiler pin is the `aiken` input of `demo/flake.lock`. Run the
+  compiler only as `scripts/aiken`, never a bare `aiken` from `PATH`
+  [script: scripts/lib/aiken.mjs].
 
 ## Known failure: Wave 0 (fixed 2026-09-25 in `71e605e46`)
 

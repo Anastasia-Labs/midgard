@@ -19,11 +19,8 @@ Exit 0 before anything else. Exit 2 means the script could not read a source
 
 ## 2. Aiken
 
-```bash
-node onchain/aiken/scripts/pinned-compiler.mjs
-```
-
-It must exit 0 before any `aiken` command. Focused module checks and the
+Run the compiler only as `scripts/aiken` (the commit `demo/flake.lock` pins),
+never a bare `aiken` from `PATH`. Focused module checks and the
 zero-tests trap are in
 [aiken-contract-build](../../aiken-contract-build/SKILL.md); use its guarded
 selector (`onchain/aiken/scripts/guard-focused-selector.mjs`) rather than a

@@ -10,7 +10,6 @@ import {
   DOUBLE_SPEND_COMPLETE_CANONICAL_REPLAY,
 } from "@al-ft/midgard-fault-proofs";
 import { authenticatedHeaderObservation } from "@al-ft/midgard-fault-proofs/test-support/canonical-block-evidence-fixture";
-import { depositEventsRetainedBlock } from "@al-ft/midgard-fault-proofs/test-support/transition-trace-retained";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
@@ -19,8 +18,11 @@ import type { PublishedDepositTraceCheckpoint } from "midgard-watcher/tests/supp
 import { expect, it } from "vitest";
 
 import { readJourneyArtifact } from "./artifacts.js";
-import { classifyFullCatalogueTransactionFixture } from "./full-catalogue-verification.js";
 import { buildJourneyHistoryTransaction } from "./history-cases.js";
+import { readCheckpointJourneyLedgerBlock } from "./journey-checkpoint-ledger.test-support.js";
+import { classifyFullCatalogueTransactionFixture } from "./journey-classification.test-support.js";
+import { depositEventsRetainedBlock } from "./journey-fixture-ledger.test-support.js";
+import { journeyLedgerPairs } from "./journey-ledger.js";
 
 const runDirectory = process.env.MIDGARD_WATCHER_JOURNEY_RUN_DIR;
 const stagedPath =
@@ -51,7 +53,14 @@ it.skipIf(stagedPath === undefined || !existsSync(stagedPath))(
       blockSlot: staged.current.header.blockSlot,
       prevHeaderHash: staged.predecessor.headerHash,
       prevUtxosRoot: staged.predecessor.header.utxosRoot,
-      priorLedger: staged.predecessor.payload.block_body.utxos,
+      priorLedger: journeyLedgerPairs(
+        (
+          await readCheckpointJourneyLedgerBlock(
+            runDirectory!,
+            staged.predecessor,
+          )
+        ).ledger,
+      ),
       events: [
         {
           event: deposit.event,
@@ -109,7 +118,6 @@ it.skipIf(stagedPath === undefined || !existsSync(stagedPath))(
         ...retained.payload.block_body,
         header,
         header_hash: headerHash,
-        utxos: predecessor.payload.block_body.utxos,
         transition_trace: transitions,
       },
     };

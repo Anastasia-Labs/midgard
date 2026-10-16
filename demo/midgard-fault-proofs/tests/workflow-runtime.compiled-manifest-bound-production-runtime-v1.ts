@@ -80,6 +80,7 @@ import {
   runtimeFundingSelection,
   signedFundingTransaction,
 } from "./workflow-runtime.runtime-funding.js";
+import { registerSlashFundingEconomicsTests } from "./workflow-runtime.slash-funding-economics.js";
 import {
   type DoubleSpendIdentity,
   doubleSpendRecord,
@@ -93,67 +94,7 @@ describe("compiled manifest-bound production runtime V1", () => {
     "requires reserved-wallet change for ordinary funding",
     assertOrdinaryMissingChange,
   );
-  it.each(["full", "partially-inactivity-slashed"] as const)(
-    "admits exact signed %s slash economics without spending ordinary wallet funds",
-    async (tranche) => {
-      const runtime = await slashFundingFixture({ tranche });
-      try {
-        await runtime.admit();
-        expect(runtime.protocolAuthority).toHaveBeenCalledTimes(2);
-        expect(runtime.prepare).toHaveBeenCalledOnce();
-        expect(runtime.prepare).toHaveBeenCalledWith(
-          expect.objectContaining({
-            transition: expect.objectContaining({
-              actionKind: "remove",
-              consumedOutRefs: [],
-              signedTransactionCborHex: runtime.signed
-                .toTransaction()
-                .to_cbor_hex(),
-              producedInputs: [
-                expect.objectContaining({ lovelace: "400000000" }),
-              ],
-            }),
-          }),
-        );
-        const policy = readWorkflowRuntimeFundingPolicy(runtime.policy);
-        expect(policy.maximumSlashCollateralLovelace).toBe("750000000");
-        expect(BigInt(policy.maximumFeeLovelace)).toBeLessThan(400_000_000n);
-        expect(BigInt(policy.maximumCollateralLovelace)).toBeLessThan(
-          600_000_000n,
-        );
-        await expect(
-          assertWorkflowFundingReservationReadyToSubmit({
-            journal: runtime.journal,
-            transactionHash: runtime.signed.toHash(),
-          }),
-        ).resolves.toBeUndefined();
-      } finally {
-        runtime.close();
-      }
-    },
-  );
-  it.each([
-    { label: "fee below tranche", feeDelta: -1n },
-    { label: "fee above tranche", feeDelta: 1n },
-    { label: "reward below release", rewardDelta: -1n },
-    { label: "reward above release", rewardDelta: 1n },
-    { label: "different action", actionStage: "step-one" },
-    { label: "missing private capability", capability: false },
-    { label: "ordinary high fee", capability: false, actionStage: "step-one" },
-    { label: "ordinary wallet input", includeWalletInput: true },
-    { label: "foreign protocol authority", foreignAuthority: true },
-  ])(
-    "rejects signed slash funding with $label before durable preparation",
-    async (options) => {
-      const runtime = await slashFundingFixture(options);
-      try {
-        await expect(runtime.admit()).rejects.toThrow();
-        expect(runtime.prepare).not.toHaveBeenCalled();
-      } finally {
-        runtime.close();
-      }
-    },
-  );
+  registerSlashFundingEconomicsTests();
   it("rechecks the exact signed slash bytes before submission", async () => {
     const runtime = await slashFundingFixture();
     try {

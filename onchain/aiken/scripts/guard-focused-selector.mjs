@@ -32,9 +32,9 @@ import { spawnSync } from "node:child_process";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { assertPinnedAiken, defaultAikenBinary } from "./pinned-compiler.mjs";
 import { runShardInvocation } from "./complete-test-shards.mjs";
 import { GOAL_SPEC_EXECUTION_BASIS_V1 } from "./exec-ledger-within-basis-v1.mjs";
+import { aikenBinary } from "../../../scripts/lib/aiken.mjs";
 
 const MAX_SELECTOR_COUNT = 64;
 const MAX_SELECTOR_LENGTH = 256;
@@ -222,10 +222,7 @@ export const evaluateSelectorReport = (selector, result) => {
   };
 };
 
-export const runSelector = (
-  selector,
-  { binary, projectDirectory, environment },
-) => {
+export const runSelector = (selector, { projectDirectory, environment }) => {
   const args =
     selector === ALL_MODULES
       ? ["check", "--plain-numbers"]
@@ -233,7 +230,7 @@ export const runSelector = (
   if (environment !== undefined) {
     args.push("--env", environment);
   }
-  const result = spawnSync(binary, args, {
+  const result = spawnSync(aikenBinary(), args, {
     cwd: projectDirectory,
     encoding: "utf8",
     maxBuffer: 64 * 1024 * 1024,
@@ -256,9 +253,7 @@ if (isMain) {
     if (environment !== undefined && !VALID_ENVIRONMENT.test(environment)) {
       throw new Error("MIDGARD_AIKEN_ENV contains an invalid environment name");
     }
-    const binary = defaultAikenBinary();
     const context = {
-      binary,
       projectDirectory: resolve(dirname(fileURLToPath(import.meta.url)), ".."),
       environment,
     };
@@ -271,7 +266,6 @@ if (isMain) {
       exitCode = 0;
     } else {
       const selectors = parseInvocation(args);
-      assertPinnedAiken(binary);
 
       const outcomes = selectors.map((selector) =>
         runSelector(selector, context),

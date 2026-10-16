@@ -48,13 +48,13 @@ test("the matcher finds scripts at command position only", () => {
   assert.deepEqual(
     scriptsRunByPath(
       [
-        "        run: scripts/ci/build-aiken-fork.sh --prefix x",
+        "        run: scripts/ci/run-thing.sh --prefix x",
         "          ./scripts/start-test-postgres.sh",
         "          bash scripts/generate.sh",
         "        run: node scripts/ci/lint-workflows.mjs",
       ].join("\n"),
     ),
-    ["scripts/ci/build-aiken-fork.sh", "scripts/start-test-postgres.sh"],
+    ["scripts/ci/run-thing.sh", "scripts/start-test-postgres.sh"],
   );
 });
 

@@ -10,7 +10,10 @@ use env
 use midgard/common/allow_list
 use midgard/common/utils
 use midgard/hub_oracle as hub
-use midgard/operator_directory.{deinit, init, operator_is_not_a_member}
+use midgard/operator_directory.{
+  bounty_routing_is_exact_v1, deinit, init, operator_is_not_a_member,
+  other_directory_is_untouched_v1,
+}
 use midgard/operator_directory/active_operators
 use midgard/operator_directory/registered_operators.{
   ActivateOperator, Datum, Deinit, DeregisterOperator, DuplicateIsActive,
@@ -296,8 +299,19 @@ validator mint(
         anchor_element_output_index,
         duplicate_node_ref_input_index,
         duplicate_operator_status,
+        bounty_claimant,
       } -> {
-        let Transaction { inputs, outputs, reference_inputs, mint, fee, .. } = self
+        let
+            Transaction {
+              inputs,
+              outputs,
+              reference_inputs,
+              mint,
+              fee,
+              extra_signatories,
+              ..
+            }
+          = self
 
         // The proof node is read from `reference_inputs` and is not compared
         // with the node being removed: the ledger requires a transaction's
@@ -305,15 +319,31 @@ validator mint(
         // contexts from protocol version 11), so a node can never serve as
         // its own proof and a lone honest registration cannot be slashed.
         // 1. `slashing_penalty` must be paid via the transaction fee, which is
-        //    the pinned destination of the slashed bond (F04 §2.3).
-        //
-        //    Duplicate-registration slashing pays no `fraud_prover_reward`:
-        //    the 2026-08-11 owner ruling 7 (D4) routes the reward exclusively
-        //    through the bond-consuming arms of the state queue's
-        //    `RemoveFraudulentBlockHeader`, so no other endpoint may pay it.
-        //    Exactness of the remainder on this route is F04 §2.5's open
-        //    tranche-preservation item, owned by Q53.
+        //    the pinned destination of the penalty (F04 §2.3).
         expect fee == env.slashing_penalty
+
+        // 1a. The bounty claimant named in the redeemer must sign: nothing
+        //     earlier in a duplicate-registration slash authenticates it.
+        expect bounty_claimant |> utils.has_signed(extra_signatories)
+
+        // 1b. The rest of the removed bond, exactly `env.fraud_prover_reward`,
+        //     must reach the claimant (F04 §2.3).
+        expect
+          bounty_routing_is_exact_v1(
+            outputs,
+            bounty_claimant,
+            env.fraud_prover_reward,
+          )
+
+        // 1c. Allow one operator slash per transaction: the retired-operators
+        //     policy may not mint or burn alongside this slash, and an
+        //     active-operators slash refuses this one. With 1 and 1b, the fee
+        //     and the bounty then account for this registered bond alone.
+        expect
+          other_directory_is_untouched_v1(
+            mint,
+            retired_operators_mint_script_hash,
+          )
 
         // 2. Removal of the duplicate operator's node from the registered
         //    operator set must be valid.

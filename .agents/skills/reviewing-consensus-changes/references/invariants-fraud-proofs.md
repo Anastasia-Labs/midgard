@@ -80,17 +80,18 @@ Status: VERIFIED.
 Rule: blueprints and gate results come from the pinned Aiken fork, never
 stock Aiken.
 
-Enforced: `[ci: aiken-ci.yml/Assert the pinned compiler identity and put it on PATH]`
-(`.github/workflows/aiken-ci.yml:56-60`),
-`[script: onchain/aiken/scripts/pinned-compiler.mjs]`, `[hook: pre-commit]`.
+Enforced: every script, the pre-commit hook and CI run the compiler only
+through `scripts/aiken`, which builds the commit `demo/flake.lock` pins
+`[script: scripts/lib/aiken.mjs]`, `[hook: pre-commit]`.
 
 Provenance: #521 — stock v1.1.22 generated under-strict decoders when two
 modules declared the same type name (`ValueWitnessV1` in `cek_builtin_v1` and
 `cek_machine_v1`); `a954669fc` (2026-08-04) renamed the collision, and the
 fork carries the compiler fix.
 
-Recurrence: 2. Blind spot: the pre-commit hook skips when no compiler is
-found, and `aikup` can silently repoint the local `aiken` to stock.
+Recurrence: 2. Blind spot: the pre-commit hook skips formatting when nix
+cannot build the pinned compiler, and a hand-typed bare `aiken` runs whatever
+is on `PATH`.
 
 ## FP5. Witness-field openings check the anchored witness-set hash
 

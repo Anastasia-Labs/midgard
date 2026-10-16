@@ -25,6 +25,8 @@ export {
   fraudRemovalUsesWalletCoinSelection,
   fraudSlashEconomicsFromDeploymentManifest,
   type FraudSlashEconomicsPolicy,
+  fraudSlashFeeLovelace,
+  type FraudSlashFeeTerms,
   type FraudSlashFundingAuthority,
   readFraudSlashFundingAuthority,
   REMOVE_FRAUDULENT_BLOCK_REFERENCE_SCRIPT_NAMES,

@@ -1,212 +1,95 @@
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
-import {
-  chmodSync,
-  mkdtempSync,
-  readdirSync,
-  readFileSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join, resolve } from "node:path";
-import { test } from "node:test";
-import { fileURLToPath } from "node:url";
+import { dirname, join } from "node:path";
+import { after, test } from "node:test";
 
-import { pinnedAikenVersion } from "./pinned-compiler.mjs";
+import { focusedCheck } from "./run-focused-check.mjs";
 
-const scriptsDirectory = dirname(fileURLToPath(import.meta.url));
-const script = join(scriptsDirectory, "run-focused-check.mjs");
-const projectDirectory = resolve(scriptsDirectory, "..");
-const sourceRoots = ["lib", "validators"];
-
-const collectModules = (directory, prefix, found) => {
-  for (const entry of readdirSync(directory, { withFileTypes: true })) {
-    if (entry.isDirectory()) {
-      collectModules(
-        join(directory, entry.name),
-        `${prefix}${entry.name}/`,
-        found,
-      );
-    } else if (entry.isFile() && entry.name.endsWith(".ak")) {
-      found.push(`${prefix}${entry.name.slice(0, -".ak".length)}`);
-    }
-  }
-  return found;
+// One throwaway project, checked by the real aiken from demo/flake.lock. Its
+// module names carry the shapes the real tree uses: hyphens (which aiken folds
+// to underscores) and dots (which `-m` cannot spell in full), plus a module
+// whose name is a prefix of another's.
+const projectDirectory = mkdtempSync(join(tmpdir(), "midgard-focused-check-"));
+after(() => rmSync(projectDirectory, { recursive: true, force: true }));
+const write = (path, text) => {
+  mkdirSync(dirname(join(projectDirectory, path)), { recursive: true });
+  writeFileSync(join(projectDirectory, path), text);
 };
-
-const sourceModules = sourceRoots
-  .flatMap((root) => collectModules(join(projectDirectory, root), "", []))
-  .sort();
-
-// Aiken folds hyphens in a module's source path to underscores when it names the
-// module, so `midgard/bounded-blob-v1.test.ak` reports as
-// `midgard/bounded_blob_v1.test`.
-const toAikenModule = (candidate) => candidate.replaceAll("-", "_");
-
-const withStub = (callback) => {
-  const directory = mkdtempSync(join(tmpdir(), "midgard-focused-check-"));
-  const stub = join(directory, "stub-aiken.mjs");
-  const log = join(directory, "invocations.log");
-  writeFileSync(
-    stub,
-    `#!/usr/bin/env node
-import { appendFileSync } from "node:fs";
-const args = process.argv.slice(2);
-if (args[0] === "--version") {
-  process.stdout.write((process.env.MIDGARD_STUB_VERSION ?? ${JSON.stringify(pinnedAikenVersion())}) + "\\n");
-  process.exit(0);
-}
-const name = process.env.MIDGARD_STUB_MODULE ?? "";
-const selectors = args.filter((_, index) => args[index - 1] === "-m");
-appendFileSync(${JSON.stringify(log)}, selectors.join(" ") + "\\n");
-const tests = selectors.map((selector, index) => ({
-  title: selector.replace(/^.*\\{(.*)\\}$/u, "$1"),
-  status: "pass",
-  execution_units: { mem: 1_320_000 * (index + 1), cpu: 80_000_000 },
-}));
-const summary = {
-  total: tests.length,
-  passed: tests.length,
-  failed: 0,
-  kind: { unit: tests.length, property: 0 },
-};
-process.stdout.write(
-  JSON.stringify({ summary, modules: [{ name, summary, tests }] }),
+write(
+  "aiken.toml",
+  'name = "midgard/selftest"\nversion = "0.0.0"\nplutus = "v3"\n',
 );
-`,
-  );
-  chmodSync(stub, 0o755);
-  const run = (moduleName, testNames, stubModule, stubVersion) =>
-    spawnSync(process.execPath, [script, moduleName, ...testNames], {
-      encoding: "utf8",
-      env: {
-        ...process.env,
-        MIDGARD_AIKEN_BIN: stub,
-        MIDGARD_STUB_MODULE: stubModule ?? toAikenModule(moduleName),
-        ...(stubVersion === undefined
-          ? {}
-          : { MIDGARD_STUB_VERSION: stubVersion }),
-      },
-    });
-  try {
-    return callback(run, () =>
-      readFileSync(log, "utf8").split("\n").filter(Boolean),
-    );
-  } finally {
-    rmSync(directory, { recursive: true, force: true });
+write(
+  "lib/midgard/bounded-blob-v1.test.ak",
+  "test keeps_bound() { 1 + 1 == 2 }\n\ntest rejects_gap() { False }\n",
+);
+write("lib/midgard/shared.ak", "test same_name() { True }\n");
+write("lib/midgard/shared.test.ak", "test same_name() { True }\n");
+
+const check = (moduleName, ...testNames) =>
+  focusedCheck({ projectDirectory, moduleName, testNames });
+
+test("a hyphenated, dotted module runs under either spelling and reports its result", () => {
+  for (const moduleName of [
+    "midgard/bounded-blob-v1.test",
+    "midgard/bounded_blob_v1.test",
+  ]) {
+    const outcome = check(moduleName, "keeps_bound");
+    assert.equal(outcome.status, 0, outcome.stderr);
+    const report = JSON.parse(outcome.stdout);
+    assert.equal(report.modules[0].name, "midgard/bounded_blob_v1.test");
+    assert.equal(report.summary.passed, 1);
   }
-};
-
-test("every module in the tree is targetable", () => {
-  withStub((run, invocations) => {
-    assert.ok(sourceModules.length > 0);
-    const rejected = [];
-    for (const sourceModule of sourceModules) {
-      for (const spelling of new Set([
-        sourceModule,
-        toAikenModule(sourceModule),
-      ])) {
-        const result = run(
-          spelling,
-          ["probe_test"],
-          toAikenModule(sourceModule),
-        );
-        if (result.status !== 0) {
-          rejected.push(`${spelling}: ${result.stderr.trim()}`);
-        }
-      }
-    }
-    assert.deepEqual(rejected, []);
-    // Aiken splits an `-m` selector on its first ".", so the selector the script
-    // builds is the module name truncated there; it must still name the module.
-    const canonicalNames = new Set(sourceModules.map(toAikenModule));
-    for (const selector of invocations()) {
-      const modulePart = selector.slice(0, selector.lastIndexOf(".{"));
-      assert.ok(
-        [...canonicalNames].some((name) => name.startsWith(modulePart)),
-        `selector ${selector} does not prefix any module`,
-      );
-    }
-  });
-});
-
-test("a hyphenated module runs and its result is reported", () => {
-  const hyphenated = sourceModules.find((candidate) => candidate.includes("-"));
-  assert.ok(hyphenated, "expected at least one hyphenated module");
-  withStub((run) => {
-    const result = run(hyphenated, ["probe_test"]);
-    assert.equal(result.status, 0, result.stderr);
-    assert.equal(
-      JSON.parse(result.stdout).modules[0].name,
-      toAikenModule(hyphenated),
-    );
-  });
 });
 
 test("a passing run summarises its largest execution units on stderr, leaving stdout the report", () => {
-  withStub((run) => {
-    const result = run("midgard/state_queue", ["first", "second"]);
-    assert.equal(result.status, 0, result.stderr);
-    assert.equal(JSON.parse(result.stdout).summary.total, 2);
-    const { exUnits } = JSON.parse(result.stderr.trim().split("\n").at(-1));
-    assert.deepEqual(exUnits.maxMem, {
-      test: "midgard/state_queue.second",
-      mem: 2_640_000,
-      ofBasis: "20.0%",
-    });
-  });
+  const outcome = check("midgard/bounded-blob-v1.test", "keeps_bound");
+  assert.equal(outcome.status, 0, outcome.stderr);
+  const summary = JSON.parse(outcome.stderr.trimEnd().split("\n").at(-1));
+  assert.equal(summary.exUnits.unitTests, 1);
+  assert.equal(
+    summary.exUnits.maxMem.test,
+    "midgard/bounded_blob_v1.test.keeps_bound",
+  );
+  assert.equal(JSON.parse(outcome.stdout).summary.total, 1);
 });
 
-test("the pre-#524 module pattern rejected hyphenated modules", () => {
-  const previousPattern = /^[a-z0-9_/]+$/u;
-  assert.ok(
-    sourceModules.some((candidate) => !previousPattern.test(candidate)),
-    "expected modules the previous pattern could not express",
+test("a failing test fails the check", () => {
+  const outcome = check("midgard/bounded-blob-v1.test", "rejects_gap");
+  assert.equal(outcome.status, 1);
+  assert.match(
+    outcome.stderr,
+    /expected exactly 1 passing test\(s\); collected=1, passed=0, failed=1/u,
+  );
+});
+
+test("results from another module fail closed", () => {
+  // `-m midgard/shared.{same_name}` matches both modules by substring.
+  const outcome = check("midgard/shared.test", "same_name");
+  assert.equal(outcome.status, 1);
+  assert.match(
+    outcome.stderr,
+    /expected results from module 'midgard\/shared\.test' only/u,
   );
 });
 
 test("a missing module fails closed with a diagnostic", () => {
-  withStub((run) => {
-    const result = run("midgard/no-such-module-v1.test", ["probe_test"]);
-    assert.equal(result.status, 2);
-    assert.match(
-      result.stderr,
-      /no module 'midgard\/no-such-module-v1\.test'/u,
-    );
-  });
+  const outcome = check("midgard/no_such_module", "keeps_bound");
+  assert.equal(outcome.status, 2);
+  assert.match(outcome.stderr, /no module 'midgard\/no_such_module'/u);
 });
 
-test("a module outside the allowlist is rejected", () => {
-  withStub((run) => {
-    for (const rejected of ["Bad/Module", "../escape", "mod name", "mod;rm"]) {
-      const result = run(rejected, ["probe_test"]);
-      assert.equal(result.status, 2, `expected ${rejected} to be rejected`);
-      assert.match(result.stderr, /^usage:/u);
-    }
-  });
-});
-
-test("results from another module fail closed", () => {
-  const [first] = sourceModules;
-  withStub((run) => {
-    const result = run(first, ["probe_test"], "some/other_module");
-    assert.equal(result.status, 1);
-    assert.match(result.stderr, /expected results from module/u);
-  });
-});
-
-test("a compiler other than the pinned fork is refused before any check runs", () => {
-  const [first] = sourceModules;
-  withStub((run, invocations) => {
-    const result = run(
-      first,
-      ["probe_test"],
-      undefined,
-      "aiken v1.1.22+39d6b04",
-    );
-    assert.equal(result.status, 1);
-    assert.match(result.stderr, /reports 'aiken v1\.1\.22\+39d6b04'/u);
-    assert.throws(() => invocations(), /ENOENT/u);
-  });
+test("a module or test outside the allowlist is rejected", () => {
+  for (const [moduleName, testName] of [
+    ["../escape", "keeps_bound"],
+    ["Midgard/Upper", "keeps_bound"],
+    ["midgard/bounded-blob-v1.test", "Bad-Name"],
+  ]) {
+    const outcome = check(moduleName, testName);
+    assert.equal(outcome.status, 2);
+    assert.match(outcome.stderr, /usage/u);
+  }
+  assert.equal(check("midgard/shared").status, 2);
+  assert.equal(check("midgard/shared", "same_name", "same_name").status, 2);
 });

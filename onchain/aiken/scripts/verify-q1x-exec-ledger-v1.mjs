@@ -80,8 +80,8 @@
  *
  * Usage, from `onchain/aiken/`:
  *
- *   MIDGARD_AIKEN_BIN=<fork> node scripts/verify-q1x-exec-ledger-v1.mjs
- *   MIDGARD_AIKEN_BIN=<fork> node scripts/verify-q1x-exec-ledger-v1.mjs --update
+ *   node scripts/verify-q1x-exec-ledger-v1.mjs
+ *   node scripts/verify-q1x-exec-ledger-v1.mjs --update
  *
  * `--update` rewrites the ledger from the measurement, and is the only way to
  * record a legitimate re-take. It rewrites raw rows, derived figures and the

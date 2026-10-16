@@ -15,8 +15,10 @@ export const commitInitializedProvedFixtureHeader = async ({
   contracts,
   header: requestedHeader,
   schedulerStartTime,
+  bondPaddingLovelace,
 }: {
   readonly schedulerStartTime: bigint;
+  readonly bondPaddingLovelace?: bigint;
   readonly lucid: Parameters<typeof submitHeaderCommitTx>[0]["lucid"];
   readonly contracts: Parameters<typeof submitHeaderCommitTx>[0]["contracts"];
   readonly header: SDK.Header;
@@ -81,6 +83,7 @@ export const commitInitializedProvedFixtureHeader = async ({
     stateQueueRootUtxo: stateQueueRoot,
     appointedSchedulerUtxo: appointedScheduler,
     activeOperatorNode,
+    bondPaddingLovelace,
   });
   return {
     header,

@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+# Runs the aiken pinned by demo/flake.lock (see scripts/lib/aiken.mjs).
+set -euo pipefail
+binary="$(node "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/lib/aiken.mjs")"
+exec "$binary" "$@"

@@ -94,8 +94,8 @@
  *
  * Usage, from `onchain/aiken/`:
  *
- *   MIDGARD_AIKEN_BIN=<fork> MIDGARD_AIKEN_ENV=testnet node scripts/verify-transition-trace-descriptor-exec-ledger-v1.mjs
- *   MIDGARD_AIKEN_BIN=<fork> MIDGARD_AIKEN_ENV=testnet node scripts/verify-transition-trace-descriptor-exec-ledger-v1.mjs --update
+ *   MIDGARD_AIKEN_ENV=testnet node scripts/verify-transition-trace-descriptor-exec-ledger-v1.mjs
+ *   MIDGARD_AIKEN_ENV=testnet node scripts/verify-transition-trace-descriptor-exec-ledger-v1.mjs --update
  *
  * `MIDGARD_AIKEN_ENV=testnet` is not optional. One pinned row here reads a
  * deposit's inclusion window, and `env/default.ak` and `env/testnet.ak` differ

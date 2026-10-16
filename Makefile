@@ -48,9 +48,8 @@ spec-clean:
 # carriage exit measurement below, so a gate replaces a gate rather than a gate
 # becoming a comment.
 #
-# `MIDGARD_AIKEN_BIN` selects the runner and defaults to `aiken` on PATH; the
-# repo's measurements are taken with the patched fork (see
-# `docs/spec/midgard-tx.md` §8.10).
+# It runs the aiken `demo/flake.lock` pins (see `docs/spec/midgard-tx.md`
+# §8.10).
 .PHONY: carriage-exec-ledger-v1
 carriage-exec-ledger-v1:
 	cd onchain/aiken && node scripts/verify-carriage-exec-ledger-v1.mjs

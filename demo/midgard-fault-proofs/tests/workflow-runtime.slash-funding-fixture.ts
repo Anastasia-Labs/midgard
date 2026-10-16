@@ -98,7 +98,8 @@ export const prepareRuntimeFunding = (
 
 export const slashFundingFixture = async (
   options: {
-    tranche?: "full" | "partially-inactivity-slashed";
+    /** The slashed node's lovelace; the full bond by default. */
+    bondLovelace?: bigint;
     feeDelta?: bigint;
     rewardDelta?: bigint;
     actionStage?: string;
@@ -112,9 +113,10 @@ export const slashFundingFixture = async (
   } = {},
 ) => {
   const actuation = await admittedActuation();
-  const tranche = options.tranche ?? "full";
-  const bond = tranche === "full" ? 900_000_000n : 800_000_000n;
-  const exactFee = bond - 400_000_000n;
+  const bond = options.bondLovelace ?? 900_000_000n;
+  const exactFee =
+    bond - 400_000_000n < 500_000_000n ? bond - 400_000_000n : 500_000_000n;
+  const excess = bond - 400_000_000n - exactFee;
   const protocolAddress = CML.EnterpriseAddress.new(
     0,
     CML.Credential.new_script(CML.ScriptHash.from_hex("a5".repeat(28))),
@@ -253,7 +255,8 @@ export const slashFundingFixture = async (
     },
   };
   await beginWorkflowFundingReservationAction({ journal, action });
-  const collateral = (exactFee * 150n) / 100n;
+  // The ledger rounds the collateral percentage up; an odd fee needs it.
+  const collateral = (exactFee * 150n + 99n) / 100n;
   const signed = signedFundingTransaction({
     inputOutRefs: [
       ref(operator),
@@ -263,7 +266,12 @@ export const slashFundingFixture = async (
     referenceOutRefs: [ref(proof)],
     outputLovelace: 400_000_000n + (options.rewardDelta ?? 0n),
     outputAddress: rewardAddress,
-    additionalOutputs: [utxoToCore(anchor).output()],
+    additionalOutputs: [
+      utxoToCore({
+        ...anchor,
+        assets: { lovelace: anchor.assets.lovelace + excess },
+      }).output(),
+    ],
     fee: exactFee + (options.feeDelta ?? 0n),
     collateral: {
       outRefs: wallets.slice(1).map(ref),
@@ -283,7 +291,6 @@ export const slashFundingFixture = async (
     removedStateQueueOutRef: ref(anchor),
     operatorOutRef: ref(operator),
     operatorBondLovelace: bond.toString(),
-    tranche,
     exactFeeLovelace: exactFee.toString(),
     rewardLovelace: "400000000",
     rewardAddress: options.foreignRewardAddress

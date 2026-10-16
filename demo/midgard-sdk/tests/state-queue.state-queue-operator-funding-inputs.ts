@@ -20,8 +20,8 @@ import { describe, expect, it } from "vitest";
 
 import {
   type AuthenticatedValidator,
+  requireFraudProverRewardRouting,
   requireOperatorWalletInputs,
-  resolveFraudProverRewardOutputIndex,
   type SpendingValidator as SdkSpendingValidator,
 } from "../src/index.js";
 import { applyExpectedScriptParams } from "./fault-proof.expected-parameter-application.js";
@@ -64,13 +64,33 @@ describe("fraud-prover reward builder exactness", () => {
     ({ outputs }) as unknown as Parameters<BuildTxWithRedeemer>[0];
 
   it("accepts exactly one ADA-only NoDatum/no-reference-script prover output", () => {
-    expect(
-      resolveFraudProverRewardOutputIndex(
+    expect(() =>
+      requireFraudProverRewardRouting(
         context([output({ address: "addr_test1vother" }), output()]),
         reward,
         "Q53 reward",
       ),
-    ).toBe(1n);
+    ).not.toThrow();
+  });
+
+  it("rejects a bond-consuming slash planned without a reward", () => {
+    expect(() =>
+      requireFraudProverRewardRouting(
+        context([output()]),
+        undefined,
+        "Q53 reward",
+      ),
+    ).toThrow(/Q53 reward: a bond-consuming slash must route/);
+  });
+
+  it("rejects a slash that pays the prover nothing", () => {
+    expect(() =>
+      requireFraudProverRewardRouting(
+        context([output({ address: "addr_test1vother" })]),
+        reward,
+        "Q53 reward",
+      ),
+    ).toThrow(/exactly one output/);
   });
 
   it.each([
@@ -88,17 +108,13 @@ describe("fraud-prover reward builder exactness", () => {
     ],
   ])("rejects %s mutation", (_label, mutated) => {
     expect(() =>
-      resolveFraudProverRewardOutputIndex(
-        context([mutated]),
-        reward,
-        "Q53 reward",
-      ),
-    ).toThrow();
+      requireFraudProverRewardRouting(context([mutated]), reward, "Q53 reward"),
+    ).toThrow(/must pay exactly/);
   });
 
   it("rejects any second output to the prover credential", () => {
     expect(() =>
-      resolveFraudProverRewardOutputIndex(
+      requireFraudProverRewardRouting(
         context([output(), output({ assets: { lovelace: 2_000_000n } })]),
         reward,
         "Q53 reward",

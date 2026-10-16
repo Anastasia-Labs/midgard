@@ -7,3 +7,4 @@ import "./workflow-raw-l1-family-derivation.raw-l1-live-header-observation.js";
 import "./workflow-raw-l1-family-derivation.raw-l1-family-terminal-economics.js";
 import "./workflow-raw-l1-family-derivation.read-only-completed-workflow-verification.js";
 import "./workflow-raw-l1-family-derivation.distinct-operator-rewards.js";
+import "./workflow-raw-l1-family-derivation.bond-slash-fee.js";

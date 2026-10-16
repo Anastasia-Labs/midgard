@@ -44,7 +44,7 @@ To compare a separately retained release blueprint with two fresh compiler runs:
 ```sh
 node scripts/release/blueprint-rebuild.mjs \
   --root /absolute/source-repository --revision FULL40_SHA \
-  --profile preprod-public --compiler /absolute/pinned/aiken \
+  --profile preprod-public \
   --release-blueprint /absolute/release/plutus.json \
   --output /absolute/new-evidence-directory
 ```
@@ -52,7 +52,8 @@ node scripts/release/blueprint-rebuild.mjs \
 The command archives that exact commit twice, installs the pinned pnpm lock,
 executes the existing profile build producer in both fresh directories, requires
 nonzero unique validator counts, and compares the complete blueprint bytes.
-It retains source archives, compiler/profile identities, raw logs and a receipt.
+It builds with the aiken that commit's `demo/flake.lock` pins and retains
+source archives, profile identities, raw logs and a receipt.
 A readiness-cache copy is not an independent compiler run. An existing evidence
 destination is refused rather than overwritten.
 

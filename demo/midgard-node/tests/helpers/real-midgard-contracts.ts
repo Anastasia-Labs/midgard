@@ -19,6 +19,7 @@ export const loadRealMidgardContractsForTest = (
   referenceScriptAuth?: SDK.MintingValidator,
   eventHistoryProtectionDurationMs = 2_000n,
   l1SlotConfig: L1SlotConfig = NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
+  availabilityChallengeParameters = TEST_AVAILABILITY_PARAMETERS,
 ): Promise<SDK.MidgardValidators> =>
   Effect.runPromise(
     Effect.gen(function* () {
@@ -31,7 +32,7 @@ export const loadRealMidgardContractsForTest = (
           l1SlotConfig,
           referenceScriptAuth:
             referenceScriptAuth ?? placeholder.referenceScriptAuth,
-          availabilityChallengeParameters: TEST_AVAILABILITY_PARAMETERS,
+          availabilityChallengeParameters,
           eventHistoryProtectionDurationMs,
           eventHistoryBounds: {
             inlineLimitBytes: 512n,

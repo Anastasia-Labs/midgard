@@ -21,11 +21,11 @@ Ten ledgers, one verifier each, in `onchain/aiken/scripts/`:
 | `native-script-scan`             | `verify-native-script-scan-exec-ledger-v1.mjs`            | none [review]                                                                     |
 | `transition-trace-descriptor`    | `verify-transition-trace-descriptor-exec-ledger-v1.mjs`   | none [review]                                                                     |
 
-Run from `onchain/aiken/`, with the pinned fork in `MIDGARD_AIKEN_BIN`:
+Run from `onchain/aiken/` (the verifiers run the aiken `demo/flake.lock` pins):
 
 ```sh
-MIDGARD_AIKEN_BIN=<fork> node scripts/verify-<lane>-exec-ledger-v1.mjs            # check
-MIDGARD_AIKEN_BIN=<fork> node scripts/verify-<lane>-exec-ledger-v1.mjs --update   # re-take
+node scripts/verify-<lane>-exec-ledger-v1.mjs            # check
+node scripts/verify-<lane>-exec-ledger-v1.mjs --update   # re-take
 ```
 
 The transition-trace-descriptor verifier also needs `MIDGARD_AIKEN_ENV=testnet`
@@ -33,9 +33,8 @@ The transition-trace-descriptor verifier also needs `MIDGARD_AIKEN_ENV=testnet`
 carriage verifier has a make target, `make carriage-exec-ledger-v1` (Makefile:55).
 
 Every reading goes through `exec-ledger-measure-v1.mjs` and
-`run-focused-check.mjs`, which refuses any compiler other than the pinned fork
-(`run-focused-check.mjs:97`, `assertPinnedAiken`) [runtime: assertPinnedAiken].
-Each is a focused `aiken check` over the ledger's `modules[].module` selectors,
+`run-focused-check.mjs`, which runs only the pinned compiler
+[script: scripts/lib/aiken.mjs]. Each is a focused `aiken check` over the ledger's `modules[].module` selectors,
 so a verifier takes as long as those modules take to compile and run. It is not
 a light check.
 
@@ -59,8 +58,8 @@ regression, because a regression is a drift. The next section is the defence.
 
 ### Triage before re-taking
 
-1. **Rerun on a clean tree with the pinned fork.** A reading taken with another
-   compiler never gets this far (`assertPinnedAiken`). A reading taken on a
+1. **Rerun on a clean tree.** The scripts can run no compiler but the pinned
+   one. A reading taken on a
    tree with unrelated uncommitted `.ak` edits is measuring those edits.
 2. **Read the drift, row by row.** Which rows moved, by how much, on which axis,
    and which did not move? Where a ledger has fixture-only control rows (the

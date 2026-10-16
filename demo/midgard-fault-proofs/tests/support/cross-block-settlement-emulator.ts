@@ -1,22 +1,40 @@
 import * as SDK from "@al-ft/midgard-sdk";
-import { type BuildTxWithRedeemer, Data, toUnit } from "@lucid-evolution/lucid";
-import { Effect } from "effect";
+import {
+  type BuildTxWithRedeemer,
+  Data,
+  type Emulator,
+  type LucidEvolution,
+  toUnit,
+} from "@lucid-evolution/lucid";
+import { Effect, Either } from "effect";
 
+import type { ReferenceScriptPublishingContracts } from "./emulator/reference-script-publisher.js";
 import {
   publishPlainReferenceScriptUtxo,
   publishStateQueueYieldReferenceScript,
 } from "./emulator/reference-scripts.js";
-import type { makeFaultProofEmulatorHarness } from "./submit-init-emulator-shared.js";
 
-export const settleOldestCrossBlockHeader = async (
-  h: Awaited<ReturnType<typeof makeFaultProofEmulatorHarness>>,
-) => {
-  const config = {
-    stateQueueAddress: h.contracts.stateQueue.spendingScriptAddress,
-    stateQueuePolicyId: h.contracts.stateQueue.policyId,
-  };
-  let pair = await Effect.runPromise(
-    SDK.fetchConfirmedStateAndItsLinkProgram(h.funderLucid, config),
+/** The deployment pieces settlement reads: real state-queue, merge yield and
+ * settlement scripts over the scaffold DA policy. */
+export type QueueSettlementSubject = {
+  readonly contracts: ReferenceScriptPublishingContracts;
+  readonly funderLucid: LucidEvolution;
+  readonly emulator: Emulator;
+};
+
+const queueFetchConfig = (h: QueueSettlementSubject) => ({
+  stateQueueAddress: h.contracts.stateQueue.spendingScriptAddress,
+  stateQueuePolicyId: h.contracts.stateQueue.policyId,
+});
+
+/** Attach a published DA marker to the oldest queued header, keeping every
+ * other node field (including any completed-fraud marker). */
+export const publishOldestQueueHeaderDa = async (h: QueueSettlementSubject) => {
+  const pair = await Effect.runPromise(
+    SDK.fetchConfirmedStateAndItsLinkProgram(
+      h.funderLucid,
+      queueFetchConfig(h),
+    ),
   );
   const node = Data.from(Data.to(pair.link.datum.data), SDK.StateQueueNode);
   const nextDatum = SDK.encodeLinkedListNodeView({
@@ -50,13 +68,6 @@ export const settleOldestCrossBlockHeader = async (
     )) satisfies BuildTxWithRedeemer;
   // The shared harness's DA policy remains a test transport boundary. The
   // state-queue spend, merge yield and settlement mint below are real scripts.
-  const mergeRef = (
-    await publishStateQueueYieldReferenceScript({
-      lucid: h.funderLucid,
-      contracts: h.contracts,
-      arm: "merge",
-    })
-  ).utxo;
   const changed = await h.funderLucid
     .newTx()
     .collectFrom([pair.link.utxo], ((ctx) =>
@@ -92,7 +103,28 @@ export const settleOldestCrossBlockHeader = async (
   await h.funderLucid.awaitTx(
     await (await changed.sign.withWallet().complete()).submit(),
   );
+};
 
+/** Build (not submit) the merge of the oldest queued header once it is
+ * mature. `presentedNode` replaces only the off-chain view the builder
+ * inspects; the spent UTxO, and so what the validators see, stays the real
+ * one. */
+export const buildOldestQueueHeaderMerge = async (
+  h: QueueSettlementSubject,
+  {
+    presentedNode,
+  }: {
+    readonly presentedNode?: (node: SDK.StateQueueNode) => SDK.StateQueueNode;
+  } = {},
+) => {
+  const config = queueFetchConfig(h);
+  const mergeRef = (
+    await publishStateQueueYieldReferenceScript({
+      lucid: h.funderLucid,
+      contracts: h.contracts,
+      arm: "merge",
+    })
+  ).utxo;
   const mintRef = (
     await publishPlainReferenceScriptUtxo({
       lucid: h.funderLucid,
@@ -127,27 +159,58 @@ export const settleOldestCrossBlockHeader = async (
     }),
   );
   h.emulator.awaitSlot(604_900);
-  pair = await Effect.runPromise(
+  const pair = await Effect.runPromise(
     SDK.fetchConfirmedStateAndItsLinkProgram(h.funderLucid, config),
   );
+  const firstBlockUTxO =
+    presentedNode === undefined
+      ? pair.link
+      : {
+          ...pair.link,
+          datum: {
+            ...pair.link.datum,
+            data: SDK.castStateQueueNodeToData(
+              presentedNode(
+                Effect.runSync(
+                  SDK.getStateQueueNodeFromStateQueueDatum(pair.link.datum),
+                ),
+              ),
+            ) as SDK.LinkedListNodeView["data"],
+          },
+        };
   const merged = await Effect.runPromise(
-    SDK.buildMergeToConfirmedStateTxProgram({
-      lucid: h.funderLucid,
-      fetchConfig: config,
-      contracts: h.contracts,
-      confirmedUTxO: pair.confirmed,
-      firstBlockUTxO: pair.link,
-      validFrom: h.emulator.now() - 1000,
-      hubOracleRefInput: hub,
-      correctionLockRefInput: correction,
-      stateQueueMergeYieldRefInput: mergeRef,
-      referenceScripts: {
-        settlementMinting: mintRef,
-        stateQueueMinting: stateMintRef,
-        stateQueueSpending: stateSpendRef,
-      },
-    }),
+    Effect.either(
+      SDK.buildMergeToConfirmedStateTxProgram({
+        lucid: h.funderLucid,
+        fetchConfig: config,
+        contracts: h.contracts,
+        confirmedUTxO: pair.confirmed,
+        firstBlockUTxO,
+        validFrom: h.emulator.now() - 1000,
+        hubOracleRefInput: hub,
+        correctionLockRefInput: correction,
+        stateQueueMergeYieldRefInput: mergeRef,
+        referenceScripts: {
+          settlementMinting: mintRef,
+          stateQueueMinting: stateMintRef,
+          stateQueueSpending: stateSpendRef,
+        },
+      }),
+    ),
   );
+  // Surface the evaluator's own report, which the builder keeps in `cause`.
+  if (Either.isLeft(merged))
+    throw new Error(
+      `${merged.left.message}: ${JSON.stringify(merged.left.cause)}`,
+    );
+  return merged.right;
+};
+
+export const settleOldestCrossBlockHeader = async (
+  h: QueueSettlementSubject,
+) => {
+  await publishOldestQueueHeaderDa(h);
+  const merged = await buildOldestQueueHeaderMerge(h);
   await h.funderLucid.awaitTx(
     await (await merged.tx.sign.withWallet().complete()).submit(),
   );

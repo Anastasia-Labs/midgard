@@ -32,11 +32,11 @@ use midgard/settlement
 use midgard/state_queue.{
   AttachDaAttestation, AttestationTimeoutRemovalApproach,
   AvailabilityStatusUpdate, BlockRemovalApproach, CommitBlockHeader, Deinit,
-  HeaderView, InitV1, LinkedListMutation, MergeToConfirmedStateV1, MintRedeemer,
-  OperatorAlreadySlashed, PruneTimedOutBlockDescendant,
-  PruneUnattestedBlockDescendant, RemoveFraudulentBlockHeader,
-  RemoveFraudulentBlocksLink, RemoveLastFraudulentBlock,
-  RemoveLastUnattestedBlock, RemoveTimedOutHead,
+  DescendantOfValidationTraceConviction, HeaderView, InitV1, LinkedListMutation,
+  MergeToConfirmedStateV1, MintRedeemer, OperatorAlreadySlashed,
+  PruneTimedOutBlockDescendant, PruneUnattestedBlockDescendant,
+  RemoveFraudulentBlockHeader, RemoveFraudulentBlocksLink,
+  RemoveLastFraudulentBlock, RemoveLastUnattestedBlock, RemoveTimedOutHead,
   RemoveUnattestedBlockAfterTimeout, RemoveUnavailableBlockAfterTimeout,
   SlashActiveOperator, SlashRetiredOperator, SlashingApproach, SpendRedeemer,
   StateQueueNode, UnattestedTimeoutRemovalApproach,
@@ -206,42 +206,16 @@ pub fn authenticated_queue_head_for_append_v1(
   head_node
 }
 
-/// Exact fraud-prover reward routing (F04 §2.3; 2026-08-11 owner ruling 7, D3).
-///
-/// The reward-bearing slash transaction pays `expected_reward` lovelace,
-/// ADA-only, to the **enterprise** address whose payment credential is the
-/// fraud prover preserved in the authentic fraud-proof datum. Nothing else
-/// about the transaction may redirect it: a stake-delegated variant of the same
-/// key, a script address, a submitter's change address, or an output smuggling
-/// tokens or a reference script alongside the reward all fail this predicate.
-///
-/// Over- and under-payment are refused symmetrically. The operator's bond
-/// tranche is conserved exactly by this output plus the transaction fee
-/// (`operator_directory.slash_fraudulent_operator_and_get_info` floors the fee
-/// at the penalty), so one lovelace either way is a lovelace taken from the
-/// Cardano treasury's share of the bond or from the prover's.
-pub fn fraud_prover_reward_output_is_exact_v1(
-  reward_output: Output,
-  fraud_prover: VerificationKeyHash,
-  expected_reward: Lovelace,
-) -> Bool {
-  let Output { address, value, datum, reference_script } = reward_output
-  and {
-    address == from_verification_key(fraud_prover),
-    assets.lovelace_of(value) == expected_reward,
-    assets.without_lovelace(value) == assets.zero,
-    datum == NoDatum,
-    reference_script == None,
-  }
-}
-
-/// D4 exclusivity (2026-08-11 owner ruling 7): the reward is payable only by
-/// the bond-consuming arms of `RemoveFraudulentBlockHeader`. Every other shape
-/// of that transaction — in practice the `OperatorAlreadySlashed` arm, which is
-/// what a second claim against an already-forfeited bond must use — has to
-/// carry no reward-shaped payment at all, so a duplicate fraud-proof token for
-/// the same header stays harmless-but-unrewarded rather than funding a second
-/// claim.
+/// D4 exclusivity (2026-08-11 owner ruling 7): within
+/// `RemoveFraudulentBlockHeader`, the reward is payable only by the
+/// bond-consuming arms. Every other shape of that transaction has to carry no
+/// reward-shaped payment at all: the `OperatorAlreadySlashed` arm, which a
+/// second claim against an already-forfeited bond must use, and the
+/// `DescendantOfValidationTraceConviction` arm, which slashes nothing. So a
+/// duplicate fraud-proof token for the same header stays
+/// harmless-but-unrewarded rather than funding a second claim. This covers a
+/// second bad-state claim only; each other slashing reason pays its own bounty
+/// from the bond its slash consumes.
 pub fn no_output_pays_fraud_prover_reward_v1(
   outputs: List<Output>,
   fraud_prover: VerificationKeyHash,
@@ -250,88 +224,12 @@ pub fn no_output_pays_fraud_prover_reward_v1(
   !list.any(
     outputs,
     fn(output) {
-      fraud_prover_reward_output_is_exact_v1(
+      operator_directory.bounty_output_is_exact_v1(
         output,
         fraud_prover,
         expected_reward,
       )
     },
-  )
-}
-
-/// Routes the reward for one bond-consuming slashing arm.
-///
-/// `None` is accepted only when `expected_reward` is zero. Both release
-/// profiles compile a nonzero reward, so their bond-consuming arms must name
-/// the exact reward output.
-pub fn fraud_prover_reward_routing_is_exact_v1(
-  outputs: List<Output>,
-  m_reward_output_index: Option<Int>,
-  fraud_prover: VerificationKeyHash,
-  expected_reward: Lovelace,
-) -> Bool {
-  when m_reward_output_index is {
-    None -> expected_reward == 0
-    Some(reward_output_index) -> {
-      expect Some(reward_output) = outputs |> list.at(reward_output_index)
-      and {
-        fraud_prover_reward_output_is_exact_v1(
-          reward_output,
-          fraud_prover,
-          expected_reward,
-        ),
-        list.length(
-          list.filter(
-            outputs,
-            fn(output) { output.address == from_verification_key(fraud_prover) },
-          ),
-        ) == 1,
-      }
-    }
-  }
-}
-
-/// The complete reward obligation of a bond-consuming
-/// `RemoveFraudulentBlockHeader` arm: exact routing to the immutable fraud
-/// prover enterprise address named by the authentic fraud-proof datum.
-///
-/// The slash is deliberately permissionless after a proof token exists. The
-/// prover authenticated its identity when opening the computation thread; a
-/// second signature here would let an unavailable prover block correction and
-/// is not needed to protect any prover-controlled input. Exact address, value,
-/// output uniqueness, bond consumption and the already-slashed branch remain
-/// the complete no-redirection/no-double-reward boundary.
-///
-/// ## Why the reward rides the slash rather than the target block's removal
-///
-/// F04 §2.3's closing bullet reads "only the transaction that both consumes the
-/// operator-directory node and removes the fraud-proved target block can pay
-/// the reward". Those two events cannot always coincide. A fraudulent block
-/// with successors must have them pruned first, one `RemoveFraudulentBlocksLink`
-/// transaction at a time, and every one of those transactions must itself
-/// present a `slashing_approach`; `OperatorAlreadySlashed` proves NON-membership
-/// in both directories, so it is only constructible after the slash. The slash
-/// therefore necessarily happens on the first pruning transaction, and pinning
-/// the reward to `RemoveLastFraudulentBlock` would demand payment from a
-/// transaction that consumes no bond.
-///
-/// The reward is pinned to the bond instead, which is where F04 §2.4 puts the
-/// idempotency boundary in its own words: "at most one reward from an
-/// operator's slashable bond". The singleton operator-directory node is
-/// consumed exactly once, so exactly one reward is payable however many
-/// fraud-proof tokens exist for the header — the "harmless-but-unrewarded"
-/// duplicate the D4 ruling was chosen to produce.
-pub fn route_fraud_prover_reward_v1(
-  outputs: List<Output>,
-  m_reward_output_index: Option<Int>,
-  fraud_prover: VerificationKeyHash,
-  expected_reward: Lovelace,
-) -> Bool {
-  fraud_prover_reward_routing_is_exact_v1(
-    outputs,
-    m_reward_output_index,
-    fraud_prover,
-    expected_reward,
   )
 }
 
@@ -594,6 +492,7 @@ validator spend(
         state_queue_input_index,
         state_queue_output_index,
         fraud_proof_asset_name,
+        m_fraud_proof_ref_input_index,
       } -> {
         expect Some(input) = list.at(tx.inputs, state_queue_input_index)
         expect input.output_reference == own_ref
@@ -604,6 +503,7 @@ validator spend(
           state_queue_input_index,
           state_queue_output_index,
           fraud_proof_asset_name,
+          m_fraud_proof_ref_input_index,
         )
       }
     }
@@ -1461,12 +1361,23 @@ pub fn validate_remove_fraudulent_v1(
   //    because the prover it also yields is what the slashing arms route
   //    the reward to, and the fraud-proof datum is where F04 §2.3 says
   //    that identity lives.
-  let referenced_fraudulent_header_hash, fraud_prover <- fraud_proof.get_proven_fraud_record(
+  let referenced_fraudulent_header_hash, fraud_prover, fraud_proof_asset_name <- fraud_proof.get_proven_fraud_record_with_identity(
     reference_inputs,
     fraud_proof_script_hash,
     fraud_proof_ref_input_index,
   )
   expect referenced_fraudulent_header_hash == fraudulent_blocks_header_hash
+
+  // A descendant of a block convicted under the validation-trace category is
+  // removed without slashing its operator, and such a removal accepts no
+  // slash arm. The category is the prefix of the authenticated token's asset
+  // name read above, never a redeemer field.
+  expect
+    state_queue.slashing_approach_admits_removal_v1(
+      slashing_approach,
+      block_removal_approach,
+      fraud_proof_asset_name,
+    )
 
   expect _correction_lock_input = correction_lock.unique_input(
     inputs,
@@ -1480,10 +1391,7 @@ pub fn validate_remove_fraudulent_v1(
   //    retired, or already slashed.
   expect
     when slashing_approach is {
-      SlashActiveOperator {
-        active_operators_redeemer_index,
-        m_fraud_prover_reward_output_index,
-      } -> {
+      SlashActiveOperator { active_operators_redeemer_index } -> {
         // 2a. If the operator is active:
         //     The transaction must Remove a node from the
         //     `active_operators` set via the `SlashOperatorBadState`
@@ -1504,19 +1412,40 @@ pub fn validate_remove_fraudulent_v1(
         // 2a-i. This arm consumes the operator's bond, so it is the
         //       reward-bearing transaction: exactly
         //       `env.fraud_prover_reward` must reach the prover named by
-        //       the fraud-proof datum. Correction remains permissionless
-        //       once the permanent proof token exists.
-        route_fraud_prover_reward_v1(
+        //       the fraud-proof datum.
+        //
+        //       The slash is deliberately permissionless once the permanent
+        //       proof token exists. The prover authenticated its identity
+        //       when opening the computation thread; a second signature
+        //       here would let an unavailable prover block correction, and
+        //       protects no prover-controlled input.
+        //
+        //       The reward rides the slash rather than the target block's
+        //       removal. F04 §2.3 reads "only the transaction that both
+        //       consumes the operator-directory node and removes the
+        //       fraud-proved target block can pay the reward", but the two
+        //       cannot always coincide: a fraudulent block with successors
+        //       has them pruned first, one `RemoveFraudulentBlocksLink`
+        //       transaction at a time, each presenting a
+        //       `slashing_approach`, and `OperatorAlreadySlashed` is only
+        //       constructible after the slash. The slash therefore happens
+        //       on the first pruning transaction. Pinning the reward to the
+        //       bond is where F04 §2.4 puts the idempotency boundary ("at
+        //       most one reward from an operator's slashable bond"): the
+        //       singleton directory node is consumed exactly once, so one
+        //       reward is payable however many proof tokens exist for the
+        //       header. Under a validation-trace conviction the pruning
+        //       transactions use `DescendantOfValidationTraceConviction`
+        //       instead and slash nothing, so the convicted operator's bond,
+        //       and with it the reward, is consumed by the target's own
+        //       `RemoveLastFraudulentBlock`.
+        operator_directory.bounty_routing_is_exact_v1(
           outputs,
-          m_fraud_prover_reward_output_index,
           fraud_prover,
           env.fraud_prover_reward,
         )
       }
-      SlashRetiredOperator {
-        retired_operators_redeemer_index,
-        m_fraud_prover_reward_output_index,
-      } -> {
+      SlashRetiredOperator { retired_operators_redeemer_index } -> {
         // 2b. If the operator is retired:
         //     The transaction must Remove a node from the
         //     `retired_operators` set via the `SlashOperatorBadState`
@@ -1536,9 +1465,8 @@ pub fn validate_remove_fraudulent_v1(
 
         // 2b-i. Same reward routing as the active arm: the retired
         //       operator's bond is the same single slashable tranche.
-        route_fraud_prover_reward_v1(
+        operator_directory.bounty_routing_is_exact_v1(
           outputs,
-          m_fraud_prover_reward_output_index,
           fraud_prover,
           env.fraud_prover_reward,
         )
@@ -1578,6 +1506,15 @@ pub fn validate_remove_fraudulent_v1(
                 nft_policy_id: retired_operators_script_hash,
               ),
         }
+      DescendantOfValidationTraceConviction ->
+        // 2d. The removed block descends from a block convicted under the
+        //     validation-trace category (admitted above): no directory
+        //     input, no slash, and so no reward.
+        no_output_pays_fraud_prover_reward_v1(
+          outputs,
+          fraud_prover,
+          env.fraud_prover_reward,
+        )
     }
 
   // Remove fraudulent block or its link from the state queue:
@@ -2237,29 +2174,33 @@ fn d3_unrelated_output() -> Output {
 
 /// D3 exactness: the reward reaches the fraud prover's enterprise address and
 /// nowhere else, at exactly the ruled amount. Over- and under-payment are
-/// refused symmetrically because the bond tranche is conserved by this output
-/// plus the transaction fee, so a lovelace either way is taken from the
+/// refused symmetrically because the slashed node pays this output and the
+/// pinned transaction fee, so a lovelace either way is taken from the
 /// treasury's share or from the prover's.
 test d3_reward_output_exactness_control_and_mutations() {
   let control = d3_reward_output(d3_reward)
   and {
-    fraud_prover_reward_output_is_exact_v1(control, d3_fraud_prover, d3_reward),
-    !fraud_prover_reward_output_is_exact_v1(
+    operator_directory.bounty_output_is_exact_v1(
+      control,
+      d3_fraud_prover,
+      d3_reward,
+    ),
+    !operator_directory.bounty_output_is_exact_v1(
       d3_reward_output(d3_reward + 1),
       d3_fraud_prover,
       d3_reward,
     ),
-    !fraud_prover_reward_output_is_exact_v1(
+    !operator_directory.bounty_output_is_exact_v1(
       d3_reward_output(d3_reward - 1),
       d3_fraud_prover,
       d3_reward,
     ),
-    !fraud_prover_reward_output_is_exact_v1(
+    !operator_directory.bounty_output_is_exact_v1(
       Output { ..control, address: from_verification_key(d3_other_key) },
       d3_fraud_prover,
       d3_reward,
     ),
-    !fraud_prover_reward_output_is_exact_v1(
+    !operator_directory.bounty_output_is_exact_v1(
       Output {
         ..control,
         address: from_verification_key(d3_fraud_prover)
@@ -2268,12 +2209,12 @@ test d3_reward_output_exactness_control_and_mutations() {
       d3_fraud_prover,
       d3_reward,
     ),
-    !fraud_prover_reward_output_is_exact_v1(
+    !operator_directory.bounty_output_is_exact_v1(
       Output { ..control, address: from_script(d3_fraud_prover) },
       d3_fraud_prover,
       d3_reward,
     ),
-    !fraud_prover_reward_output_is_exact_v1(
+    !operator_directory.bounty_output_is_exact_v1(
       Output {
         ..control,
         value: assets.from_lovelace(d3_reward)
@@ -2282,12 +2223,12 @@ test d3_reward_output_exactness_control_and_mutations() {
       d3_fraud_prover,
       d3_reward,
     ),
-    !fraud_prover_reward_output_is_exact_v1(
+    !operator_directory.bounty_output_is_exact_v1(
       Output { ..control, reference_script: Some(d3_foreign_policy) },
       d3_fraud_prover,
       d3_reward,
     ),
-    !fraud_prover_reward_output_is_exact_v1(
+    !operator_directory.bounty_output_is_exact_v1(
       Output { ..control, datum: InlineDatum(0) },
       d3_fraud_prover,
       d3_reward,
@@ -2295,50 +2236,59 @@ test d3_reward_output_exactness_control_and_mutations() {
   }
 }
 
-/// D3 routing: the redeemer names the reward output, and omitting it is
-/// accepted only while the expected reward is zero. Under either release
-/// profile a missing reward output is a refusal, because paying nothing is not
-/// paying `fraud_prover_reward`.
+/// D3 routing: exactly one output pays the prover's bounty address, and it is
+/// the exact reward. No such output is accepted only while the expected reward
+/// is zero. Under either release profile a missing reward output is a
+/// refusal, because paying nothing is not paying `fraud_prover_reward`.
 test d3_reward_routing_control_and_mutations() {
-  let outputs = [d3_unrelated_output(), d3_reward_output(d3_reward)]
+  let control = [d3_unrelated_output(), d3_reward_output(d3_reward)]
+  let delegated_reward = Output {
+    ..d3_reward_output(d3_reward),
+    address: from_verification_key(d3_fraud_prover)
+      |> with_delegation_key(d3_other_key),
+  }
   and {
-    fraud_prover_reward_routing_is_exact_v1(
-      outputs,
-      Some(1),
+    operator_directory.bounty_routing_is_exact_v1(
+      control,
       d3_fraud_prover,
       d3_reward,
     ),
-    !fraud_prover_reward_routing_is_exact_v1(
-      outputs,
-      Some(0),
+    operator_directory.bounty_routing_is_exact_v1(
+      [d3_unrelated_output()],
+      d3_fraud_prover,
+      0,
+    ),
+    !operator_directory.bounty_routing_is_exact_v1(
+      [d3_unrelated_output()],
       d3_fraud_prover,
       d3_reward,
     ),
-    fraud_prover_reward_routing_is_exact_v1(outputs, None, d3_fraud_prover, 0),
-    !fraud_prover_reward_routing_is_exact_v1(
-      outputs,
-      None,
+    !operator_directory.bounty_routing_is_exact_v1(
+      [d3_unrelated_output(), delegated_reward],
       d3_fraud_prover,
       d3_reward,
     ),
-    !fraud_prover_reward_routing_is_exact_v1(
+    !operator_directory.bounty_routing_is_exact_v1(
+      [d3_unrelated_output(), d3_reward_output(d3_reward + 1)],
+      d3_fraud_prover,
+      d3_reward,
+    ),
+    !operator_directory.bounty_routing_is_exact_v1(
+      [d3_unrelated_output(), d3_reward_output(d3_reward - 1)],
+      d3_fraud_prover,
+      d3_reward,
+    ),
+    !operator_directory.bounty_routing_is_exact_v1(
       [d3_reward_output(d3_reward), d3_reward_output(d3_reward + 1)],
-      Some(0),
+      d3_fraud_prover,
+      d3_reward,
+    ),
+    !operator_directory.bounty_routing_is_exact_v1(
+      [d3_reward_output(d3_reward), d3_reward_output(d3_reward)],
       d3_fraud_prover,
       d3_reward,
     ),
   }
-}
-
-/// D3 routing: a redeemer that names an output which does not exist cannot
-/// launder the obligation away.
-test d3_reward_routing_rejects_out_of_range_index() fail {
-  fraud_prover_reward_routing_is_exact_v1(
-    [d3_reward_output(d3_reward)],
-    Some(7),
-    d3_fraud_prover,
-    d3_reward,
-  )
 }
 
 /// D4 exclusivity: the arms that consume no bond may pay no reward. The second
@@ -2346,10 +2296,10 @@ test d3_reward_routing_rejects_out_of_range_index() fail {
 /// against an already-forfeited bond (the only shape a duplicate fraud-proof
 /// token for the same header can take) cannot carry the payout.
 ///
-/// The third row states the guard's exact reach rather than implying more: it
-/// pins reward-*shaped* payments, so an amount that is not the reward is not
-/// caught. Nothing is lost by that — such a payment can only come from the
-/// submitter's own inputs, since this arm consumes no operator-directory node.
+/// The third row states the guard's exact reach: only reward-*shaped*
+/// payments are refused, so any other amount passes. The guard states D4 and
+/// protects no bond; a directory spend bundled into the same transaction
+/// answers to its own validator for its lovelace.
 test d4_reward_exclusivity_control_and_double_claim() {
   and {
     no_output_pays_fraud_prover_reward_v1(
@@ -2370,15 +2320,34 @@ test d4_reward_exclusivity_control_and_double_claim() {
   }
 }
 
-/// D3 permissionless reward routing: after the prover identity is frozen by
-/// thread Init, reward validity depends only on the exact immutable enterprise
-/// address and amount. A missing reward output remains valid only for an exact
-/// zero-reward profile.
-test d3_reward_routing_does_not_require_the_prover_signature() {
-  let outputs = [d3_unrelated_output(), d3_reward_output(d3_reward)]
+/// A duplicate-registration or bad-settlement slash pays its bounty claimant
+/// exactly the reward. Bundled with an already-slashed or exempt removal whose
+/// fraud prover is that claimant, the bounty is reward-shaped and the removal
+/// refuses the transaction; with another claimant it does not. The slash and
+/// the removal go through as separate transactions.
+test d4_refuses_a_bundled_slash_bounty_to_the_fraud_prover() {
+  let bounty_to_prover = d3_reward_output(d3_reward)
+  let bounty_to_other = d3_unrelated_output()
   and {
-    route_fraud_prover_reward_v1(outputs, Some(1), d3_fraud_prover, d3_reward),
-    route_fraud_prover_reward_v1(outputs, None, d3_fraud_prover, 0),
-    !route_fraud_prover_reward_v1(outputs, None, d3_fraud_prover, d3_reward),
+    operator_directory.bounty_routing_is_exact_v1(
+      [bounty_to_prover],
+      d3_fraud_prover,
+      d3_reward,
+    ),
+    !no_output_pays_fraud_prover_reward_v1(
+      [bounty_to_prover],
+      d3_fraud_prover,
+      d3_reward,
+    ),
+    operator_directory.bounty_routing_is_exact_v1(
+      [bounty_to_other],
+      d3_other_key,
+      d3_reward,
+    ),
+    no_output_pays_fraud_prover_reward_v1(
+      [bounty_to_other],
+      d3_fraud_prover,
+      d3_reward,
+    ),
   }
 }

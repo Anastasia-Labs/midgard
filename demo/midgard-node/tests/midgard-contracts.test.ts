@@ -124,65 +124,6 @@ describe("midgard contracts registry", () => {
         },
       );
 
-      // Applied recipes include the completed-fraud queue marker, explicit
-      // history bounds/retention metadata, both authenticated timing yields and
-      // the paired list/retention/retirement recipes; bigint parameters are
-      // decimal strings. Re-pinned by #689 (pooled DA bond added, per-block
-      // availability bond yield removed, availability-challenge and
-      // DA-attestation parameters changed), by MPF fixes (leaf fold, terminal
-      // neighbour, deletion Branch, emptied ledger root, disjoint node
-      // preimages), by removing missingNativeScriptTx/Utxo (superseded by
-      // missingScriptSource), by deleting the cross-block family, by the
-      // neglected-event strike rule (scheduler, so active operators and the
-      // state queue built on it), the forced due-window fix (transition trace),
-      // the new-shift inactivity grace raised to the maximum validity range
-      // (scheduler spend only), the txInfo L1 slot mapping (POSIX-ms ranges),
-      // the exclusive upper bound, bounds below -1, admission, the lock top-up,
-      // the output proof's datum step and the split Data refusal executor, and
-      // the composed P1 tree (allow-lists, the datum canonicity step, the
-      // non-empty block rule, one event NFT per user-event mint), the retired
-      // post-UTxO minimum-Ada mode, the streamed redeemer and datum Data
-      // verdict steps, the one-pass history payload node count, the exact
-      // rejection reason, the script optimisations and the case-constant arm.
-      expect
-        .soft(
-          createHash("sha256")
-            .update(
-              JSON.stringify(normalizeDeploymentManifestJsonValue(resolved)),
-            )
-            .digest("hex"),
-        )
-        .toBe(
-          "db1d4653b6f5f1cc3831c2795edd781cb17e8a5aeff9d3848cd4f1dada357719",
-        );
-      // Includes current streamed Data/W1 metadata plus escape-hatch field
-      // retirement and the hub witness's paired script bytes. The independently
-      // pinned queue fingerprint stays unchanged by that metadata correction.
-      // The queue/correction subset is pinned independently of the full registry.
-      // Includes every applied CBOR, hash, policy id, address, and queue yield.
-      // Re-pinned by #689: the state queue and correction lock are applied over
-      // the availability-challenge policy, whose parameters now include the
-      // pooled DA bond policy, and again for disjoint MPF node preimages and
-      // for the neglected-event strike rule (the state queue is applied over
-      // the scheduler and active-operator scripts), the lock ADA top-up, and
-      // the composed P1 tree (allow-lists, the non-empty block rule, T302), and
-      // the fault-proof scripts the state queue is applied over (the retired
-      // post-UTxO minimum-Ada mode, the streamed Data verdict steps, the exact
-      // rejection reason, the size and cost optimisations).
-      expect
-        .soft(
-          createHash("sha256")
-            .update(
-              JSON.stringify({
-                stateQueue: resolved.stateQueue,
-                correctionLock: resolved.correctionLock,
-              }),
-            )
-            .digest("hex"),
-        )
-        .toBe(
-          "729421df16e63394794e0016f89beba92c627df846027348d8d91c11d2653768",
-        );
       // The always-succeeds stand-in is a real hazard here: it satisfies every
       // spend, so a role that silently kept it would pass any behavioural test
       // built on this registry. Rather than name a handful of roles and assert

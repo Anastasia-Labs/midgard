@@ -55,6 +55,7 @@ const ECONOMICS: OperatorEconomics = {
   requiredBondLovelace: 900_000_000n,
   slashingPenaltyLovelace: 500_000_000n,
   inactivitySlashingPenaltyLovelace: 100_000_000n,
+  fraudProverRewardLovelace: 400_000_000n,
 };
 
 const WATCHDOG = { enabled: true, patienceMs: 120_000 } as const;

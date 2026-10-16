@@ -98,8 +98,8 @@
  *
  * Usage, from `onchain/aiken/`:
  *
- *   MIDGARD_AIKEN_BIN=<fork> node scripts/verify-native-script-scan-exec-ledger-v1.mjs
- *   MIDGARD_AIKEN_BIN=<fork> node scripts/verify-native-script-scan-exec-ledger-v1.mjs --update
+ *   node scripts/verify-native-script-scan-exec-ledger-v1.mjs
+ *   node scripts/verify-native-script-scan-exec-ledger-v1.mjs --update
  *
  * `--update` rewrites the raw rows, the recomputed derived integers and each
  * derived row's recomputed `mem` from the measurement, and is the only way to
