@@ -2,10 +2,8 @@ import {
   enterMidgardValidationDisputeResolution,
   type MidgardValidationDispute,
 } from "@al-ft/midgard-core";
-import { type UTxO } from "@lucid-evolution/lucid";
 
 import {
-  awardTerminalPaddingMove,
   type GameAction,
   gameMove,
   type MoveOptions,
@@ -13,12 +11,14 @@ import {
 import {
   createdAt,
   type Funding,
-  gameDatum,
   type GameScene,
   maxRangeMs,
   moveWindow,
+  type SeededGameScene,
+  seededIdentity,
   seedThreads,
   submitMove,
+  type Thread,
   threadPays,
 } from "./validation-game-scene.js";
 import {
@@ -29,24 +29,20 @@ import {
   operatorProof,
   revealChallenger,
   revealOperator,
-  terminalPaddingTraces,
 } from "./validation-game-traces.js";
-
-export type Thread = {
-  readonly utxo: UTxO;
-  readonly dispute: MidgardValidationDispute;
-};
 
 /** A game thread opened at the scene's current time. */
 export const openThread = async (
-  scene: GameScene,
+  scene: SeededGameScene,
   traces: GameTraces,
 ): Promise<Thread> => {
-  const dispute = openGame(traces, scene.emulator.now());
+  const now = scene.emulator.now();
+  const dispute = openGame(traces, now);
+  const identity = seededIdentity(now);
   const [utxo] = await seedThreads(scene, scene.game.address, [
-    gameDatum(scene, dispute),
+    { identity, dispute },
   ]);
-  return { utxo: utxo!, dispute };
+  return { utxo: utxo!, dispute, identity };
 };
 
 export const options = (
@@ -104,9 +100,9 @@ export const reveal = async (
   const { action, next } = nextReveal(traces, thread.dispute, from);
   const hash = await submitMove(
     scene,
-    gameMove(scene, thread.utxo, action, next, options(from)),
+    gameMove(scene, thread, action, next, options(from)),
   );
-  return { utxo: await createdAt(scene, hash, 0), dispute: next };
+  return { ...thread, utxo: await createdAt(scene, hash, 0), dispute: next };
 };
 
 export const playToOneStep = async (
@@ -134,7 +130,7 @@ export const enterResolution = (
   });
   const move = gameMove(
     scene,
-    thread.utxo,
+    thread,
     { kind: "EnterResolution" },
     next,
     options(from, shape),
@@ -144,7 +140,7 @@ export const enterResolution = (
 
 /** A thread at the boundary validator, after a signed EnterResolution. */
 export const boundaryThread = async (
-  scene: GameScene,
+  scene: SeededGameScene,
   traces: GameTraces,
 ): Promise<Thread> => {
   const ready = await playToOneStep(
@@ -154,47 +150,41 @@ export const boundaryThread = async (
   );
   const entered = enterResolution(scene, ready, { signed: true });
   const hash = await submitMove(scene, entered.move);
-  return { utxo: await createdAt(scene, hash, 0), dispute: entered.next };
+  return {
+    ...ready,
+    utxo: await createdAt(scene, hash, 0),
+    dispute: entered.next,
+  };
+};
+
+/** Waits whole slots until `deadline` has passed. */
+export const passDeadline = (scene: GameScene, deadline: number) => {
+  scene.emulator.awaitSlot(
+    Math.max(0, Math.ceil((deadline - scene.emulator.now()) / 1000)) + 1,
+  );
 };
 
 /** Waits until the operator's clock has run out on `thread`. */
-export const passOperatorDeadline = (scene: GameScene, thread: Thread) => {
-  const deadline =
-    thread.dispute.turnStartedAt + thread.dispute.operatorClockMs;
-  scene.emulator.awaitSlot((deadline - scene.emulator.now()) / 1000 + 1);
-};
+export const passOperatorDeadline = (scene: GameScene, thread: Thread) =>
+  passDeadline(
+    scene,
+    thread.dispute.turnStartedAt + thread.dispute.operatorClockMs,
+  );
+
+/** The move that hands a thread whose side to move ran out to the timeout. */
+export const timeoutMove = (scene: GameScene, thread: Thread) =>
+  gameMove(
+    scene,
+    thread,
+    { kind: "EnterChallengerTimeout" },
+    thread.dispute,
+    options(scene.emulator.now()),
+  );
 
 /** A thread at the timeout validator, after the operator's clock ran out. */
-export const timedOutThread = async (scene: GameScene): Promise<UTxO> => {
-  const traces = divergentTraces();
-  const opened = await openThread(scene, traces);
+export const timedOutThread = async (scene: SeededGameScene) => {
+  const opened = await openThread(scene, divergentTraces());
   passOperatorDeadline(scene, opened);
-  const from = scene.emulator.now();
-  const hash = await submitMove(
-    scene,
-    gameMove(
-      scene,
-      opened.utxo,
-      { kind: "EnterChallengerTimeout" },
-      opened.dispute,
-      options(from),
-    ),
-  );
-  return createdAt(scene, hash, 0);
-};
-
-/** A thread at the award validator, after a signed AwardTerminalPadding. */
-export const awardThread = async (scene: GameScene): Promise<UTxO> => {
-  const traces = terminalPaddingTraces();
-  const boundary = await boundaryThread(scene, traces);
-  const hash = await submitMove(
-    scene,
-    awardTerminalPaddingMove(
-      scene,
-      boundary.utxo,
-      traces.agreedLowState,
-      options(scene.emulator.now(), { signed: true }),
-    ),
-  );
-  return createdAt(scene, hash, 0);
+  const hash = await submitMove(scene, timeoutMove(scene, opened));
+  return { ...opened, utxo: await createdAt(scene, hash, 0) };
 };

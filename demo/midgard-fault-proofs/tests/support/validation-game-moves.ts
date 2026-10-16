@@ -6,24 +6,21 @@ import {
 } from "@al-ft/midgard-core";
 import {
   requireInputIndex,
-  ValidationAwardSpendRedeemer,
   ValidationBoundarySpendRedeemer,
   ValidationGameSpendRedeemer,
   validationMachineStateDataFromCore,
   ValidationResolutionDatum,
-  ValidationTimeoutSpendRedeemer,
   validationTraceProofDataFromCore,
-  WinningValidationResolutionDatum,
 } from "@al-ft/midgard-sdk";
 import { Data, type Script, type UTxO } from "@lucid-evolution/lucid";
 
 import {
-  finalizeMove,
   type Funding,
-  gameDatum,
   type GameScene,
   type Move,
   scriptAddress,
+  type Thread,
+  threadDatum,
 } from "./validation-game-scene.js";
 
 type Indices = { readonly input_index: bigint; readonly output_index: bigint };
@@ -114,14 +111,14 @@ export type MoveOptions = {
 /** A game move from `thread` to the game state `next`. */
 export const gameMove = (
   scene: GameScene,
-  thread: UTxO,
+  thread: Pick<Thread, "utxo" | "identity">,
   action: GameAction,
   next: MidgardValidationDispute,
   options: MoveOptions,
 ): Move =>
   threadMove({
     scene,
-    thread,
+    thread: thread.utxo,
     script: scene.game.script,
     redeem: gameRedeemer(action),
     toAddress:
@@ -130,7 +127,7 @@ export const gameMove = (
         : action.kind === "EnterChallengerTimeout"
           ? scene.timeout.address
           : scene.game.address,
-    toDatum: gameDatum(scene, next),
+    toDatum: threadDatum(scene, thread.identity, next),
     ...options,
   });
 
@@ -154,8 +151,7 @@ export const RESOLVER_INDEX = {
 /** PrepareResolution on a boundary thread, routed to the phase's resolver. */
 export const prepareResolutionMove = (
   scene: GameScene,
-  thread: UTxO,
-  dispute: MidgardValidationDispute,
+  thread: Thread,
   preState: MidgardValidationMachineState,
   options: MoveOptions,
 ): Move => {
@@ -165,7 +161,7 @@ export const prepareResolutionMove = (
   const resolverIndex = RESOLVER_INDEX[preState.phase];
   return threadMove({
     scene,
-    thread,
+    thread: thread.utxo,
     script: scene.boundary.script,
     redeem: (indices) =>
       Data.to(
@@ -191,8 +187,10 @@ export const prepareResolutionMove = (
         data: {
           version: 1n,
           pre_state: validationMachineStateDataFromCore(preState),
-          operator_successor_hash: dispute.operatorHighHash.toString("hex"),
-          challenger_successor_hash: dispute.challengerHighHash.toString("hex"),
+          operator_successor_hash:
+            thread.dispute.operatorHighHash.toString("hex"),
+          challenger_successor_hash:
+            thread.dispute.challengerHighHash.toString("hex"),
         },
       },
       ValidationResolutionDatum,
@@ -200,76 +198,6 @@ export const prepareResolutionMove = (
     ...options,
   });
 };
-
-/** AwardTerminalPadding on a boundary thread, to the award validator. */
-export const awardTerminalPaddingMove = (
-  scene: GameScene,
-  thread: UTxO,
-  terminalState: MidgardValidationMachineState,
-  options: MoveOptions,
-): Move => {
-  if (terminalState.phase !== "terminal") {
-    throw new Error("terminal padding needs a terminal state");
-  }
-  return threadMove({
-    scene,
-    thread,
-    script: scene.boundary.script,
-    redeem: (indices) =>
-      Data.to(
-        {
-          Continue: [
-            {
-              AwardTerminalPadding: {
-                ...indices,
-                terminal_state:
-                  validationMachineStateDataFromCore(terminalState),
-              },
-            },
-          ],
-        },
-        ValidationBoundarySpendRedeemer,
-      ),
-    toAddress: scene.award.address,
-    toDatum: Data.to(
-      { fraud_prover: scene.proverKey, data: { version: 1n } },
-      WinningValidationResolutionDatum,
-    ),
-    ...options,
-  });
-};
-
-/** The timeout thread's finalize, convicting on the operator's lapsed clock. */
-export const timeoutFinalizeMove = (
-  scene: GameScene,
-  thread: UTxO,
-  funding: Funding,
-  validFrom: number,
-): Move =>
-  finalizeMove(
-    scene,
-    thread,
-    scene.timeout.script,
-    (args) => Data.to({ Continue: [args] }, ValidationTimeoutSpendRedeemer),
-    funding,
-    validFrom,
-  );
-
-/** The award thread's finalize. */
-export const awardFinalizeMove = (
-  scene: GameScene,
-  thread: UTxO,
-  funding: Funding,
-  validFrom: number,
-): Move =>
-  finalizeMove(
-    scene,
-    thread,
-    scene.award.script,
-    (args) => Data.to({ Continue: [args] }, ValidationAwardSpendRedeemer),
-    funding,
-    validFrom,
-  );
 
 export const stateHashHex = (state: MidgardValidationMachineState) =>
   hashMidgardValidationMachineState(state).toString("hex");

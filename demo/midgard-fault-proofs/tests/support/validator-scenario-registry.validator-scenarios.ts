@@ -334,43 +334,39 @@ export const VALIDATOR_SCENARIOS: Readonly<
     passing: [
       {
         file: "demo/midgard-fault-proofs/tests/dispute-bond-emulator.test.ts",
-        test: "refunds a bond to the prover on conviction, the lone bond paying its fee",
+        test: "refunds the bond to the challenger when its case convicts",
       },
       {
         file: "demo/midgard-fault-proofs/tests/dispute-bond-emulator.test.ts",
-        test: "refuses two bonds that each pay the fee, and accepts the batch when a wallet pays it",
-      },
-      {
-        file: "demo/midgard-fault-proofs/tests/dispute-bond-emulator.test.ts",
-        test: "forfeits a bond to the treasury after forfeit_after, even on a convicted block",
+        test: "forfeits the bond to the treasury when a defender won, and refuses paying it to the challenger",
       },
     ],
     failing: [
       {
         file: "demo/midgard-fault-proofs/tests/dispute-bond-emulator.test.ts",
-        test: "refuses a refund without the conviction of the challenged block, or paying another address",
+        test: "refuses a bond spent without a case close",
       },
       {
         file: "demo/midgard-fault-proofs/tests/dispute-bond-emulator.test.ts",
-        test: "refuses two bonds that each pay the fee, and accepts the batch when a wallet pays it",
+        test: "refuses a case close that takes another case's bond",
       },
       {
         file: "demo/midgard-fault-proofs/tests/dispute-bond-emulator.test.ts",
-        test: "refuses a forfeit before forfeit_after, or to any address but the treasury",
+        test: "refuses a case close over a bond without the case's marker",
       },
     ],
   },
   "fraud_proofs/validation_trace/award_v1.main": {
     passing: [
       {
-        file: "demo/midgard-fault-proofs/tests/validation-game-emulator.test.ts",
-        test: "awards terminal padding only with the fraud prover's signature, and anyone finalizes the award in full",
+        file: "demo/midgard-fault-proofs/tests/validation-case-emulator.test.ts",
+        test: "closes a defender's timeout as the challenger's win, minting the receipt from the thread alone",
       },
     ],
     failing: [
       {
-        file: "demo/midgard-fault-proofs/tests/validation-game-emulator.test.ts",
-        test: "awards terminal padding only with the fraud prover's signature, and anyone finalizes the award in full",
+        file: "demo/midgard-fault-proofs/tests/validation-case-emulator.test.ts",
+        test: "refuses a receipt minted without a case input",
       },
     ],
   },
@@ -380,19 +376,47 @@ export const VALIDATOR_SCENARIOS: Readonly<
         file: "demo/midgard-fault-proofs/tests/validation-game-emulator.test.ts",
         test: "enters resolution and prepares it only with the fraud prover's signature",
       },
-      {
-        file: "demo/midgard-fault-proofs/tests/validation-game-emulator.test.ts",
-        test: "awards terminal padding only with the fraud prover's signature, and anyone finalizes the award in full",
-      },
     ],
     failing: [
       {
         file: "demo/midgard-fault-proofs/tests/validation-game-emulator.test.ts",
         test: "enters resolution and prepares it only with the fraud prover's signature",
       },
+    ],
+  },
+  "fraud_proofs/validation_trace/case_config_v1.main": {
+    passing: [
       {
-        file: "demo/midgard-fault-proofs/tests/validation-game-emulator.test.ts",
-        test: "awards terminal padding only with the fraud prover's signature, and anyone finalizes the award in full",
+        file: "demo/midgard-fault-proofs/tests/validation-case-emulator.test.ts",
+        test: "opens a case and its bond from the source, and refuses an opener elsewhere",
+      },
+    ],
+    failing: [
+      {
+        file: "demo/midgard-fault-proofs/tests/validation-case-emulator.test.ts",
+        test: "refuses a second configuration once its initialization UTxO is spent",
+      },
+    ],
+  },
+  "fraud_proofs/validation_trace/case_v1.main": {
+    passing: [
+      {
+        file: "demo/midgard-fault-proofs/tests/validation-case-emulator.test.ts",
+        test: "accepts a signed active operator and holds its bond through the case",
+      },
+      {
+        file: "demo/midgard-fault-proofs/tests/validation-case-emulator.test.ts",
+        test: "convicts an undefended case only after the defense deadline, refunding the bond",
+      },
+    ],
+    failing: [
+      {
+        file: "demo/midgard-fault-proofs/tests/validation-case-emulator.test.ts",
+        test: "refuses an unsigned defense, an inactive operator and a thread short of its reserve",
+      },
+      {
+        file: "demo/midgard-fault-proofs/tests/validation-case-emulator.test.ts",
+        test: "couples the thread token to the defense: a Defend minting none or two, and a mint without a Defend, are refused",
       },
     ],
   },
@@ -404,7 +428,7 @@ export const VALIDATOR_SCENARIOS: Readonly<
       },
       {
         file: "demo/midgard-fault-proofs/tests/validation-game-emulator.test.ts",
-        test: "moves two threads under one CT name only when each redeemer names its own successor",
+        test: "moves two threads in one transaction only when each redeemer names its own successor",
       },
     ],
     failing: [
@@ -418,7 +442,7 @@ export const VALIDATOR_SCENARIOS: Readonly<
       },
       {
         file: "demo/midgard-fault-proofs/tests/validation-game-emulator.test.ts",
-        test: "refuses a challenger timeout until the operator's clock has run out, then anyone finalizes it for at most the cap",
+        test: "refuses a challenger timeout until the operator's clock has run out, then lets anyone hand the thread to the timeout",
       },
       {
         file: "demo/midgard-fault-proofs/tests/validation-game-emulator.test.ts",
@@ -434,21 +458,35 @@ export const VALIDATOR_SCENARIOS: Readonly<
       },
       {
         file: "demo/midgard-fault-proofs/tests/validation-game-emulator.test.ts",
-        test: "moves two threads under one CT name only when each redeemer names its own successor",
+        test: "moves two threads in one transaction only when each redeemer names its own successor",
+      },
+    ],
+  },
+  "fraud_proofs/validation_trace/thread_expiry_v1.main": {
+    passing: [
+      {
+        file: "demo/midgard-fault-proofs/tests/validation-case-emulator.test.ts",
+        test: "releases a live thread to its defender once the longest case is over, and not before",
+      },
+    ],
+    failing: [
+      {
+        file: "demo/midgard-fault-proofs/tests/validation-case-emulator.test.ts",
+        test: "releases a live thread to its defender once the longest case is over, and not before",
       },
     ],
   },
   "fraud_proofs/validation_trace/timeout_v1.main": {
     passing: [
       {
-        file: "demo/midgard-fault-proofs/tests/validation-game-emulator.test.ts",
-        test: "refuses a challenger timeout until the operator's clock has run out, then anyone finalizes it for at most the cap",
+        file: "demo/midgard-fault-proofs/tests/validation-case-emulator.test.ts",
+        test: "closes a defender's timeout as the challenger's win, minting the receipt from the thread alone",
       },
     ],
     failing: [
       {
-        file: "demo/midgard-fault-proofs/tests/validation-game-emulator.test.ts",
-        test: "refuses a challenger timeout until the operator's clock has run out, then anyone finalizes it for at most the cap",
+        file: "demo/midgard-fault-proofs/tests/validation-case-emulator.test.ts",
+        test: "refuses a close naming the other side as the winner",
       },
     ],
   },

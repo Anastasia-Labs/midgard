@@ -1,10 +1,11 @@
-import { type MidgardValidationDispute } from "@al-ft/midgard-core";
+import {
+  MIDGARD_VALIDATION_DISPUTE_MAX_DURATION_MS,
+  type MidgardValidationDispute,
+} from "@al-ft/midgard-core";
 import { SELECTED_DEPLOYMENT_PROFILE } from "@al-ft/midgard-core/deployment-profile";
 import {
-  requireInputIndex,
-  requireMintRedeemerIndex,
-  validationDisputeDataFromCore,
-  ValidationDisputeDatum,
+  CaseThreadDatum,
+  validationCaseThreadDataFromCore,
 } from "@al-ft/midgard-sdk";
 import {
   type Assets,
@@ -30,19 +31,21 @@ import {
 
 import { applyBlueprintParamsExact } from "../../src/runtime.js";
 import { type Blueprint } from "./emulator/blueprints.js";
-import { makeIsolatedAlwaysSucceedsAuthenticatedValidator } from "./emulator/validators.make-isolated-always-succeeds-authenticated-validator.js";
 import {
   EMULATOR_PROTOCOL_PARAMETERS,
   network,
   readBlueprint,
   realBlueprintPath,
 } from "./submit-init-emulator-shared.js";
+import { threadTokenName } from "./validation-case-names.js";
 
 export const TRACE_TITLES = {
   game: "fraud_proofs/validation_trace/game_v1.main.spend",
   boundary: "fraud_proofs/validation_trace/boundary_v1.main.spend",
   award: "fraud_proofs/validation_trace/award_v1.main.spend",
   timeout: "fraud_proofs/validation_trace/timeout_v1.main.spend",
+  bond: "fraud_proofs/validation_trace/dispute_bond_v1.main.spend",
+  threadExpiry: "fraud_proofs/validation_trace/thread_expiry_v1.main.withdraw",
 } as const;
 
 export const cap = BigInt(
@@ -56,13 +59,8 @@ export const sideClockMs =
 export const maxRangeMs =
   SELECTED_DEPLOYMENT_PROFILE.timing.dispute_max_validity_range_ms;
 
-/** A thread holds enough to pay many capped fees and still finalize. */
+/** A thread holds enough to pay many capped fees. */
 export const threadLovelace = 40_000_000n;
-
-export const headerHash = "aa".repeat(28);
-
-/** The CT asset name: category ‖ header, shared by every thread on a header. */
-export const threadName = `00000006${headerHash}`;
 
 export type DeployedScript = {
   readonly script: Script;
@@ -70,26 +68,29 @@ export type DeployedScript = {
   readonly address: string;
 };
 
+/** The game, boundary and timeout validators over one thread policy. */
 export type GameScene = {
   readonly lucid: LucidEvolution;
   readonly emulator: Emulator;
-  /** Submits and pays collateral; a third party to the dispute. */
+  /** Submits and pays collateral; a third party to the thread. */
   readonly wallet: EmulatorAccount;
-  /** The fraud prover's signing key, bech32. */
+  /** The challenger's signing key, bech32: the threads' fraud prover. */
   readonly proverSigningKey: string;
   readonly proverKey: string;
   readonly proverAddress: string;
-  readonly threadPolicy: Script;
-  readonly threadUnit: string;
-  readonly fraudProofPolicy: Script;
-  readonly fraudProofUnit: string;
-  readonly fraudProofAddress: string;
+  readonly threadPolicyId: string;
   readonly game: DeployedScript;
   readonly boundary: DeployedScript;
-  readonly award: DeployedScript;
   readonly timeout: DeployedScript;
   /** The one-step resolver hashes the boundary routes to, by resolver index. */
   readonly resolverHashes: readonly string[];
+  /** Reference inputs carrying scripts, by script hash; others go inline. */
+  readonly scriptReferences: ReadonlyMap<string, UTxO>;
+};
+
+/** A game scene whose thread policy is a native script the wallet signs. */
+export type SeededGameScene = GameScene & {
+  readonly threadPolicy: Script;
 };
 
 let blueprint: Blueprint | undefined;
@@ -110,115 +111,179 @@ export const deploy = (
   };
 };
 
-/** `Address { Script(hash), None }` as Data. */
-const scriptAddressData = (hash: string) =>
-  new Constr(0, [new Constr(1, [hash]), new Constr(1, [])]);
-
 export const scriptAddress = (hash: string) =>
   credentialToAddress(network, { type: "Script", hash });
 
-/**
- * The game, boundary, award and timeout validators, applied exactly as
- * deployed over a CT policy the wallet controls and an always-succeeding
- * fraud-proof policy (finalize reads only that policy's redeemer and token).
- */
-export const setUpGameScene = async (): Promise<GameScene> => {
-  const wallet = generateEmulatorAccount({ lovelace: 30_000_000_000n });
-  const proverSigningKey = CML.PrivateKey.generate_ed25519();
-  const emulator = new Emulator([wallet], EMULATOR_PROTOCOL_PARAMETERS);
-  const lucid = await Lucid(emulator, network);
-  lucid.selectWallet.fromSeed(wallet.seedPhrase);
-  const threadPolicy = scriptFromNative({
-    type: "sig",
-    keyHash: paymentCredentialOf(wallet.address).hash,
-  });
-  const threadPolicyId = mintingPolicyToId(threadPolicy);
-  const fraudProof = makeIsolatedAlwaysSucceedsAuthenticatedValidator();
-  const finalizeParams = [
-    threadPolicyId,
-    fraudProof.policyId,
-    scriptAddressData(fraudProof.spendingScriptHash),
-  ];
-  const award = deploy(TRACE_TITLES.award, finalizeParams);
-  const timeout = deploy(TRACE_TITLES.timeout, finalizeParams);
-  const resolverHashes = Array.from({ length: 14 }, (_, index) =>
+export const keyAddress = (hash: string) =>
+  credentialToAddress(network, { type: "Key", hash });
+
+/** The resolver hashes a scene's boundary routes to; no resolver runs here. */
+export const standInResolverHashes = (): readonly string[] =>
+  Array.from({ length: 14 }, (_, index) =>
     (index + 0x30).toString(16).repeat(28),
   );
+
+/**
+ * The game, boundary and timeout validators as deployed over thread policy
+ * `threadPolicyId`, with the thread expiry and award they name.
+ */
+export const deployThreadHolders = (
+  threadPolicyId: string,
+  threadExpiryHash: string,
+  awardHash: string,
+) => {
+  const resolverHashes = standInResolverHashes();
+  const timeout = deploy(TRACE_TITLES.timeout, [
+    threadPolicyId,
+    threadExpiryHash,
+  ]);
   const boundary = deploy(TRACE_TITLES.boundary, [
     [...resolverHashes],
-    award.hash,
+    awardHash,
     threadPolicyId,
+    threadExpiryHash,
   ]);
   const game = deploy(TRACE_TITLES.game, [
     boundary.hash,
     timeout.hash,
     threadPolicyId,
+    threadExpiryHash,
   ]);
-  const proverKey = proverSigningKey.to_public().hash().to_hex();
+  return { game, boundary, timeout, resolverHashes };
+};
+
+export const newEmulator = async (lovelace = 30_000_000_000n) => {
+  const wallet = generateEmulatorAccount({ lovelace });
+  const emulator = new Emulator([wallet], EMULATOR_PROTOCOL_PARAMETERS);
+  const lucid = await Lucid(emulator, network);
+  lucid.selectWallet.fromSeed(wallet.seedPhrase);
+  return { wallet, emulator, lucid };
+};
+
+export const newKey = () => {
+  const signingKey = CML.PrivateKey.generate_ed25519();
+  const hash = signingKey.to_public().hash().to_hex();
+  return {
+    signingKey: signingKey.to_bech32(),
+    hash,
+    address: keyAddress(hash),
+  };
+};
+
+/**
+ * The thread holders applied exactly as deployed, over a thread policy the
+ * wallet controls: threads are seeded at any move without a case behind
+ * them, for the game's own moves. The award and the thread expiry are the
+ * real scripts over that policy.
+ */
+export const setUpGameScene = async (): Promise<SeededGameScene> => {
+  const { wallet, emulator, lucid } = await newEmulator();
+  const prover = newKey();
+  const threadPolicy = scriptFromNative({
+    type: "sig",
+    keyHash: paymentCredentialOf(wallet.address).hash,
+  });
+  const threadPolicyId = mintingPolicyToId(threadPolicy);
+  const threadExpiry = deploy(TRACE_TITLES.threadExpiry, [
+    threadPolicyId,
+    BigInt(MIDGARD_VALIDATION_DISPUTE_MAX_DURATION_MS),
+  ]);
+  const award = deploy(TRACE_TITLES.award, [
+    threadPolicyId,
+    "ab".repeat(28),
+    threadExpiry.hash,
+  ]);
   return {
     lucid,
     emulator,
     wallet,
-    proverSigningKey: proverSigningKey.to_bech32(),
-    proverKey,
-    proverAddress: credentialToAddress(network, {
-      type: "Key",
-      hash: proverKey,
-    }),
+    proverSigningKey: prover.signingKey,
+    proverKey: prover.hash,
+    proverAddress: prover.address,
+    threadPolicyId,
     threadPolicy,
-    threadUnit: `${threadPolicyId}${threadName}`,
-    fraudProofPolicy: fraudProof.mintingScript,
-    fraudProofUnit: `${fraudProof.policyId}${threadName}`,
-    fraudProofAddress: fraudProof.spendingScriptAddress,
-    game,
-    boundary,
-    award,
-    timeout,
-    resolverHashes,
+    ...deployThreadHolders(threadPolicyId, threadExpiry.hash, award.hash),
+    scriptReferences: new Map(),
   };
 };
 
-/** A thread's `StepDatum` over the game state for `dispute`. */
-export const gameDatum = (
+/** Which case and defender a thread belongs to: its header and token. */
+export type ThreadIdentity = {
+  readonly caseId: string;
+  readonly startedAt: number;
+  readonly defenderVkh: string;
+};
+
+export type Thread = {
+  readonly utxo: UTxO;
+  readonly dispute: MidgardValidationDispute;
+  readonly identity: ThreadIdentity;
+};
+
+export const threadUnit = (scene: GameScene, identity: ThreadIdentity) =>
+  `${scene.threadPolicyId}${threadTokenName(identity.caseId, identity.defenderVkh)}`;
+
+/** A thread's datum at the game, boundary or timeout validator. */
+export const threadDatum = (
   scene: GameScene,
+  identity: ThreadIdentity,
   dispute: MidgardValidationDispute,
 ): string =>
   Data.to(
     {
       fraud_prover: scene.proverKey,
-      data: {
-        challenged_header_hash: headerHash,
-        dispute: validationDisputeDataFromCore(dispute),
-      },
+      data: validationCaseThreadDataFromCore({
+        dispute,
+        caseId: identity.caseId,
+        startedAt: BigInt(identity.startedAt),
+        defenderVkh: identity.defenderVkh,
+      }),
     },
-    ValidationDisputeDatum,
+    CaseThreadDatum,
   );
 
-/** Mints one CT token per datum and locks each at `address`, in datum order. */
+/** A defender identity on a case of its own, started at `startedAt`. */
+export const seededIdentity = (
+  startedAt: number,
+  index = 0,
+): ThreadIdentity => ({
+  caseId: (0xc0 + index).toString(16).repeat(32),
+  startedAt,
+  defenderVkh: (0xd0 + index).toString(16).repeat(28),
+});
+
+/**
+ * Mints one thread token per thread under the wallet's policy and locks each
+ * at `address`, in order.
+ */
 export const seedThreads = async (
-  scene: GameScene,
+  scene: SeededGameScene,
   address: string,
-  datums: readonly string[],
+  threads: readonly {
+    readonly identity: ThreadIdentity;
+    readonly dispute: MidgardValidationDispute;
+  }[],
   lovelace = threadLovelace,
 ): Promise<readonly UTxO[]> => {
+  const units = threads.map(({ identity }) => threadUnit(scene, identity));
   let tx = scene.lucid
     .newTx()
-    .mintAssets({ [scene.threadUnit]: BigInt(datums.length) })
+    .mintAssets(Object.fromEntries(units.map((unit) => [unit, 1n])))
     .attach.MintingPolicy(scene.threadPolicy);
-  for (const datum of datums) {
+  threads.forEach(({ identity, dispute }, index) => {
     tx = tx.pay.ToContract(
       address,
-      { kind: "inline", value: datum },
-      { lovelace, [scene.threadUnit]: 1n },
+      { kind: "inline", value: threadDatum(scene, identity, dispute) },
+      { lovelace, [units[index]!]: 1n },
     );
-  }
+  });
   const signed = await (await tx.complete()).sign.withWallet().complete();
   const hash = await signed.submit();
   await scene.lucid.awaitTx(hash);
   const created = await scene.lucid.utxosByOutRef(
-    datums.map((_, outputIndex) => ({ txHash: hash, outputIndex })),
+    threads.map((_, outputIndex) => ({ txHash: hash, outputIndex })),
   );
-  return datums.map(
+  return threads.map(
     (_, outputIndex) =>
       created.find((utxo) => utxo.outputIndex === outputIndex)!,
   );
@@ -258,8 +323,6 @@ export type Move = {
   readonly signers?: readonly string[];
   readonly validFrom: number;
   readonly validTo: number;
-  /** Finalize: burn the CT token and mint the fraud-proof token. */
-  readonly finalize?: { readonly mintRedeemer: BuildTxWithRedeemer };
 };
 
 const lovelaceOf = (assets: Assets) => BigInt(assets.lovelace ?? 0n);
@@ -287,21 +350,15 @@ export const buildMove = async (
     const [walletInput] = await scene.lucid.wallet().getUtxos();
     tx = tx.collectFrom([walletInput!]);
   }
+  const references = new Map<string, UTxO>();
   for (const spend of move.spends) {
-    tx = tx
-      .collectFrom([spend.utxo], spend.redeemer)
-      .attach.SpendingValidator(spend.script);
+    tx = tx.collectFrom([spend.utxo], spend.redeemer);
+    const hash = validatorToScriptHash(spend.script);
+    const reference = scene.scriptReferences.get(hash);
+    if (reference !== undefined) references.set(hash, reference);
+    else tx = tx.attach.SpendingValidator(spend.script);
   }
-  if (move.finalize !== undefined) {
-    tx = tx
-      .mintAssets({ [scene.threadUnit]: -BigInt(move.spends.length) })
-      .attach.MintingPolicy(scene.threadPolicy)
-      .mintAssets(
-        { [scene.fraudProofUnit]: BigInt(move.spends.length) },
-        move.finalize.mintRedeemer,
-      )
-      .attach.MintingPolicy(scene.fraudProofPolicy);
-  }
+  if (references.size > 0) tx = tx.readFrom([...references.values()]);
   for (const output of outputs) {
     tx = tx.pay.ToContract(
       output.address,
@@ -335,9 +392,9 @@ export const submitMove = async (
   return hash;
 };
 
-/** The output a submitted move created at `outputIndex`. */
+/** The output a submitted transaction created at `outputIndex`. */
 export const createdAt = async (
-  scene: GameScene,
+  scene: Pick<GameScene, "lucid">,
   txHash: string,
   outputIndex: number,
 ): Promise<UTxO> => {
@@ -355,73 +412,6 @@ export const moveWindow = (from: number, width: number = maxRangeMs) => ({
   currentTimeUpper: from + width - 1,
 });
 
-/** `own_out_ref` as the `InlineDatum` tag on a finalize remainder. */
+/** An out-ref as the `InlineDatum` tag on a payout. */
 export const tagOf = (utxo: UTxO) =>
   Data.to(new Constr(0, [utxo.txHash, BigInt(utxo.outputIndex)]));
-
-/** The fraud-proof token's datum, `fraud_proof.Datum { fraud_prover }`. */
-export const fraudProofDatum = (scene: GameScene) =>
-  Data.to(new Constr(0, [scene.proverKey]));
-
-/**
- * `fraud_proof.MintRedeemer`, naming the burnt CT asset; the CT policy here is
- * native, so its redeemer index is never read.
- */
-export const fraudProofMintRedeemer: BuildTxWithRedeemer = () =>
-  Data.to(new Constr(0, [threadName, 0n]));
-
-/**
- * A finalize of `thread` through `script` with redeemer `redeem(args)`: the
- * fraud-proof output first, then the remainder to the prover.
- */
-export const finalizeMove = (
-  scene: GameScene,
-  thread: UTxO,
-  script: Script,
-  redeem: (args: {
-    readonly input_index: bigint;
-    readonly output_index: bigint;
-    readonly fraud_proof_mint_redeemer_index: bigint;
-  }) => string,
-  funding: Funding,
-  validFrom: number,
-): Move => {
-  const fraudProofOutput: MoveOutput = {
-    address: scene.fraudProofAddress,
-    datum: fraudProofDatum(scene),
-    assets: {
-      lovelace: fraudProofOutputLovelace,
-      [scene.fraudProofUnit]: 1n,
-    },
-  };
-  const remainder: MoveOutput = {
-    address: scene.proverAddress,
-    datum: tagOf(thread),
-    assets: { lovelace: lovelaceOf(thread.assets) - fraudProofOutputLovelace },
-  };
-  return {
-    spends: [
-      {
-        utxo: thread,
-        script,
-        redeemer: (ctx) =>
-          redeem({
-            input_index: requireInputIndex(ctx, thread, "finalize"),
-            output_index: 1n,
-            fraud_proof_mint_redeemer_index: requireMintRedeemerIndex(
-              ctx,
-              mintingPolicyToId(scene.fraudProofPolicy),
-              "finalize",
-            ),
-          }),
-      },
-    ],
-    // The remainder absorbs the fee or skim; the fraud-proof output stays at
-    // exactly the profile amount.
-    outputs: [remainder, fraudProofOutput],
-    funding,
-    validFrom,
-    validTo: validFrom + maxRangeMs,
-    finalize: { mintRedeemer: fraudProofMintRedeemer },
-  };
-};

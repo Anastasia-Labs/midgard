@@ -96,20 +96,6 @@ export const divergentTraces = (): GameTraces => {
   );
 };
 
-/**
- * The operator commits a Terminal state at index 1 and then keeps stepping;
- * the challenger's trace pads with that Terminal state, as an honest trace
- * does. The agreed state at the boundary is the Terminal state.
- */
-export const terminalPaddingTraces = (): GameTraces => {
-  const terminal = machineState(1, "terminal");
-  return traces(
-    [machineState(0, "canonicalDecode"), terminal, machineState(2, "cek")],
-    [machineState(0, "canonicalDecode"), terminal, terminal],
-    terminal,
-  );
-};
-
 export type MoveTime = {
   readonly currentTimeLower: number;
   readonly currentTimeUpper: number;
