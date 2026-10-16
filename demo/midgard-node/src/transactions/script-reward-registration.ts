@@ -34,6 +34,7 @@ export const ensureRuntimeRewardAccountsRegisteredProgram = (
       ...Object.values(
         contracts.fraudProofContracts.validationTraceDispute.yields,
       ),
+      contracts.fraudProofContracts.validationTraceDispute.threadExpiry,
       ...Object.values(contracts.fraudProofContracts.minAda.yields),
       contracts.chunkedVerify,
       contracts.pexcludes,

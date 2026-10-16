@@ -129,6 +129,9 @@ export const withRealStateQueueAndOperatorContracts = (
       deploymentParameters.l1SlotConfig,
       deploymentParameters.availabilityChallengeParameters
         .challenger_bond_lovelace,
+      // The case configuration token is minted beside the hub NFT, in the
+      // init transaction that spends this nonce.
+      normalizedOneShotOutRef,
     );
     const withRealFraudProof: SDK.MidgardValidators = {
       ...withRealFraudProofCatalogue,

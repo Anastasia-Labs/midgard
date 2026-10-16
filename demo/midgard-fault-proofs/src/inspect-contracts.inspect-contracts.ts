@@ -20,6 +20,7 @@ import {
   expectScriptHash,
   inspectEmbeddedDeploymentScriptIdentity,
   optionalDeploymentScriptHash,
+  parseContractDeploymentCaseConfigInitializationNonce,
   parseContractDeploymentDisputeBondLovelace,
   parseContractDeploymentL1SlotConfig,
   parseContractDeploymentReferenceScriptAuthPolicyId,
@@ -144,6 +145,8 @@ export const inspectContracts = ({
       l1SlotConfig: parseContractDeploymentL1SlotConfig(deploymentInfo),
       disputeBondLovelace:
         parseContractDeploymentDisputeBondLovelace(deploymentInfo),
+      caseConfigInitializationNonce:
+        parseContractDeploymentCaseConfigInitializationNonce(deploymentInfo),
     });
 
     for (const [category, entry] of [

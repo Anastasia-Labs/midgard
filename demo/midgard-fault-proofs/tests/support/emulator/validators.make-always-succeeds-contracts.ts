@@ -29,6 +29,12 @@ export const makeAlwaysSucceedsContracts = (
   const alwaysValidationTraceDispute = makeSpendingValidator(
     alwaysScript(blueprint, "fraud_proofs", "transition_trace", "spend"),
   );
+  const alwaysValidationTraceDisputeAuthenticated = {
+    ...alwaysValidationTraceDispute,
+    ...makeMintingValidator(
+      alwaysScript(blueprint, "fraud_proofs", "transition_trace", "mint"),
+    ),
+  };
   const nonExistentInputFirstStep = makeSpendingValidator(
     alwaysScript(blueprint, "fraud_proofs", "non_existent_input", "spend"),
   );
@@ -273,7 +279,14 @@ export const makeAlwaysSucceedsContracts = (
       game: alwaysValidationTraceDispute,
       boundary: alwaysValidationTraceDispute,
       timeout: alwaysValidationTraceDispute,
-      award: alwaysValidationTraceDispute,
+      award: alwaysValidationTraceDisputeAuthenticated,
+      case: alwaysValidationTraceDisputeAuthenticated,
+      caseConfig: makeMintingValidator(
+        alwaysScript(blueprint, "fraud_proofs", "transition_trace", "mint"),
+      ),
+      threadExpiry: makeWithdrawalValidator(
+        alwaysScript(blueprint, "fraud_proofs", "transition_trace", "withdraw"),
+      ),
       proofItem: alwaysValidationTraceDispute,
       canonicalDecodeItemStages: {
         source: alwaysValidationTraceDispute,

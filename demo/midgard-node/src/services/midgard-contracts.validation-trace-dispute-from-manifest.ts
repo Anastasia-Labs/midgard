@@ -14,6 +14,7 @@ import {
 } from "../deployable-scripts.js";
 import {
   authenticatedValidatorFromManifest,
+  mintingValidatorFromManifest,
   spendingValidatorFromManifest,
   withdrawalValidatorFromManifest,
 } from "./midgard-contracts.assert-deployment-manifest-matches-config.js";
@@ -171,7 +172,31 @@ export const validationTraceDisputeFromManifest = (
     game: spend("validationTraceDisputeGame"),
     boundary: spend("validationTraceDisputeBoundary"),
     timeout: spend("validationTraceDisputeTimeout"),
-    award: spend("validationTraceDisputeAward"),
+    award: authenticatedValidatorFromManifest(
+      network,
+      manifest,
+      sourcePath,
+      "validationTraceDisputeAward",
+      "validationTraceDisputeAwardMint",
+    ),
+    case: authenticatedValidatorFromManifest(
+      network,
+      manifest,
+      sourcePath,
+      "validationTraceDisputeCase",
+      "validationTraceDisputeCaseMint",
+    ),
+    caseConfig: mintingValidatorFromManifest(
+      manifest,
+      sourcePath,
+      "validationTraceDisputeCaseConfigMint",
+    ),
+    threadExpiry: withdrawalValidatorFromManifest(
+      manifest,
+      sourcePath,
+      "validationTraceDisputeThreadExpiryWithdraw",
+    ),
+    disputeBond: spend("validationTraceDisputeBond"),
     cekProgramMaterial,
     cekMaterialTraversal: spend("validationTraceDisputeCekMaterialTraversal"),
     cekCoreStages: byReference(SDK.CEK_CORE_STAGE_REFERENCES),
@@ -225,7 +250,6 @@ export const validationTraceDisputeFromManifest = (
       "prepare resolvers",
     ),
     resolvers: unrecordedValidationTraceMember(sourcePath, "resolvers"),
-    disputeBond: unrecordedValidationTraceMember(sourcePath, "dispute bond"),
   });
   return chain as unknown as SDK.FaultProofContractChains["validationTraceDispute"];
 };

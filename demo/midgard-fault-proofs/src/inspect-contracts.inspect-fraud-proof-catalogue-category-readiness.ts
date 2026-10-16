@@ -30,7 +30,7 @@ import {
   normalizeHex,
   trieRootHex,
 } from "./inspect-contracts.parse-contract-deployment-info.js";
-import { requireRecord } from "./json-file.js";
+import { parseHex, parseInteger, requireRecord } from "./json-file.js";
 
 /**
  * The deployment manifest's L1 slot mapping, the parameter the
@@ -57,6 +57,33 @@ export const parseContractDeploymentDisputeBondLovelace = (
       requireRecord(value, "Contract deployment info").availabilityChallenge,
     ).challengerBondLovelace,
   );
+
+/**
+ * The out-ref the validation-case configuration policy was applied with: the
+ * hub-oracle one-shot the deployment's init transaction consumed, which also
+ * mints the case configuration token.
+ */
+export const parseContractDeploymentCaseConfigInitializationNonce = (
+  value: unknown,
+): { readonly txHash: string; readonly outputIndex: number } => {
+  const oneShot = requireRecord(
+    requireRecord(value, "Contract deployment info").hubOracleOneShot,
+    "Contract deployment info.hubOracleOneShot",
+  );
+  return {
+    txHash: parseHex(
+      oneShot.txHash,
+      "Contract deployment info.hubOracleOneShot.txHash",
+      32,
+    ),
+    outputIndex: Number(
+      parseInteger(
+        oneShot.outputIndex,
+        "Contract deployment info.hubOracleOneShot.outputIndex",
+      ),
+    ),
+  };
+};
 
 export const parseContractDeploymentReferenceScriptAuthPolicyId = (
   value: unknown,

@@ -93,6 +93,9 @@ export const openPublishedLifecycle = async (
         retiredOperatorsMinting: reference("retiredOperatorsMint"),
         fraudProofCatalogueMinting: reference("fraudProofCatalogueMint"),
         daBondPoolMinting: reference("daBondPoolMint"),
+        validationCaseConfigMinting: reference(
+          "validationTraceDisputeCaseConfigMint",
+        ),
       },
     },
   };

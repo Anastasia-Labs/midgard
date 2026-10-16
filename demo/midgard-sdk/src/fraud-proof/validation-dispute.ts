@@ -7,8 +7,10 @@ import "./validation-auxiliary-witness.js";
 import "./validation-dispute.validation-machine-phase-schema.js";
 import "./validation-dispute.validation-game-action-schema.js";
 import "./validation-dispute.validation-machine-state-data-from-core.js";
-import "./validation-dispute.validation-dispute-core-from-data.js";
 import "./validation-dispute.dispute-bond-schema.js";
+import "./validation-case.config-initialization.js";
+export * from "./validation-case.config-initialization.js";
+export * from "./validation-case.js";
 export {
   DisputeBond,
   DisputeBondSchema,
@@ -17,10 +19,6 @@ export {
   protocolTreasuryAddress,
   protocolTreasuryScriptHash,
 } from "./validation-dispute.dispute-bond-schema.js";
-export {
-  validationDisputeCoreFromData,
-  validationDisputeDataFromCore,
-} from "./validation-dispute.validation-dispute-core-from-data.js";
 export {
   AuthenticatedCanonicalDecodeItemDatum,
   AuthenticatedCanonicalDecodeItemDatumSchema,
@@ -79,12 +77,6 @@ export {
   PreparedValidationResolutionDatumSchema,
   PreparedValidationResolutionState,
   PreparedValidationResolutionStateSchema,
-  ValidationDispute,
-  ValidationDisputeDatum,
-  ValidationDisputeDatumSchema,
-  ValidationDisputeSchema,
-  ValidationDisputeState,
-  ValidationDisputeStateSchema,
   ValidationDisputeTurnSchema,
   ValidationMachinePhaseSchema,
   ValidationMachineSourceKindSchema,
@@ -107,10 +99,6 @@ export {
   WinningValidationResolutionStateSchema,
 } from "./validation-dispute.validation-machine-phase-schema.js";
 export {
-  ValidationAwardArgs,
-  ValidationAwardArgsSchema,
-  ValidationAwardSpendRedeemer,
-  ValidationAwardSpendRedeemerSchema,
   ValidationBoundarySpendRedeemer,
   ValidationCanonicalDecodePrepareSelectedAction,
   ValidationCanonicalDecodePrepareSelectedActionSchema,
@@ -123,10 +111,6 @@ export {
   ValidationPrepareSelectedActionSchema,
   ValidationPrepareSelectedSpendRedeemer,
   ValidationPrepareSelectedSpendRedeemerSchema,
-  ValidationTimeoutAction,
-  ValidationTimeoutActionSchema,
-  ValidationTimeoutSpendRedeemer,
-  ValidationTimeoutSpendRedeemerSchema,
   validationTraceDescriptorCoreFromData,
   validationTraceDescriptorDataFromCore,
   validationTraceProofCoreFromData,

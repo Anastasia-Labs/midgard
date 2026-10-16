@@ -34,6 +34,7 @@ export {
   assertFraudProofCatalogueCategoryReady,
   type FraudProofCatalogueCategoryReadiness,
   inspectFraudProofCatalogueCategoryReadiness,
+  parseContractDeploymentCaseConfigInitializationNonce,
   parseContractDeploymentDisputeBondLovelace,
   parseContractDeploymentL1SlotConfig,
   parseContractDeploymentReferenceScriptAuthPolicyId,

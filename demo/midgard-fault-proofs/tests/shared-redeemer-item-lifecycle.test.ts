@@ -54,6 +54,7 @@ it("executes every shared item executor through the exact CEK Pending to Verifie
     computationThreadPolicyId: policy,
     deploymentId,
     returnScriptHash: returnHash,
+    threadExpiryScriptHash: "74".repeat(28),
   });
   const traces = [
     "00",
@@ -210,6 +211,10 @@ it("builds registered ScriptSources and CEK carriers with one identical shared e
       hubOraclePolicyId: "82".repeat(28),
       fraudProofCataloguePolicyId: catalogue,
       referenceScriptAuthPolicyId: "83".repeat(28),
+      caseConfigInitializationNonce: {
+        txHash: "84".repeat(32),
+        outputIndex: 0,
+      },
     }),
   );
   const registered =
@@ -217,9 +222,11 @@ it("builds registered ScriptSources and CEK carriers with one identical shared e
   const cek = buildCekRedeemerItemStages({
     blueprint,
     network,
-    computationThreadPolicyId: contracts.computationThread.policyId,
+    computationThreadPolicyId: contracts.validationTraceDispute.case.policyId,
     deploymentId: deriveValidationTraceDeploymentId(catalogue),
     returnScriptHash: contracts.validationTraceDispute.award.spendingScriptHash,
+    threadExpiryScriptHash:
+      contracts.validationTraceDispute.threadExpiry.withdrawalScriptHash,
   });
   expect(registered.executors).toHaveLength(21);
   expect(
