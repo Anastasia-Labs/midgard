@@ -1,3 +1,4 @@
+use aiken/builtin
 use aiken/crypto.{ScriptHash}
 use cardano/address.{Address}
 use cardano/assets.{PolicyId}
@@ -144,7 +145,7 @@ fn script_address(script_hash: ScriptHash) -> Address {
 }
 
 fn empty_v1_transaction() -> MidgardTransaction {
-  let empty_mint: Data = []
+  let empty_mint: Data = builtin.list_data([])
   MidgardTransaction {
     version: native_tx_version_v1,
     validity: TxIsValid,

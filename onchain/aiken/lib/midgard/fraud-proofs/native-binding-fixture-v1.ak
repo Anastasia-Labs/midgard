@@ -96,7 +96,7 @@ pub fn fraud_proof_token_address() -> Address {
 /// one required signer, and one address witness whose key hashes to the
 /// required signer.
 pub fn valid_native_tx_v1() -> native_types.MidgardTransaction {
-  let empty_mint: Data = []
+  let empty_mint: Data = builtin.list_data([])
   native_types.MidgardTransaction {
     version: native_types.native_tx_version_v1,
     validity: native_types.TxIsValid,
