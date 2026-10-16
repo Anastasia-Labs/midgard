@@ -188,6 +188,7 @@ export const verifyDaPayloadAgainstHeader = async (
         rootsMatch: true,
         stateQueueOutRef: options.stateQueueOutRef,
         headerHash: normalizedHeaderHash,
+        // The body-built validation-trace pair, not the header's pinned one.
         rootSummary: roots,
         countSummary: counts,
         l1Header: {

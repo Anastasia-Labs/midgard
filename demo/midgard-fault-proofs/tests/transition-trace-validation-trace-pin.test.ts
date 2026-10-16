@@ -178,6 +178,25 @@ describe("validation-trace pair pinned to the empty tree", () => {
     });
   });
 
+  it("refuses a body that declares a trace for its L2 transactions only", async () => {
+    const honest = await retainedBlock();
+    const body = honest.payload.block_body;
+    expect(body.counts.forcedTransactionCount).toBe(1n);
+    expect(body.counts.l2TransactionCount).toBe(1n);
+    expect(body.validation_traces).toHaveLength(2);
+    const block = await recommit(honest, {
+      body: {
+        counts: {
+          ...body.counts,
+          validationTraceCount: body.counts.l2TransactionCount,
+        },
+      },
+    });
+    await expect(reconstruct(block)).rejects.toMatchObject({
+      code: "countMismatch",
+    });
+  });
+
   it("replays an honest pinned block with a transaction to no fault", async () => {
     const { block, predecessorEntries } = await buildL2ReplayBlock({
       matchingCommittedRoot: true,
