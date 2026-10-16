@@ -150,7 +150,7 @@ describe("midgard contracts registry", () => {
       // the timeout's directory split, output-scan size, the case open guard,
       // the defender's one-step timeout, and the validation case (its
       // configuration token, thread expiry, case-keyed award and receipt
-      // policy, and the dispute bond's manifest entries).
+      // policy, and the dispute bond's manifest entries) and its defense rule.
       expect
         .soft(
           createHash("sha256")
@@ -160,7 +160,7 @@ describe("midgard contracts registry", () => {
             .digest("hex"),
         )
         .toBe(
-          "10603d6d996bb2d391e661aa708f771290cc1d41b0429e987c111bc025b53a62",
+          "a534f53b63b3a27db1e24fa9bae6c3b9b5b7b2b38099684a37fc43a1c2ee8076",
         );
       // Includes current streamed Data/W1 metadata plus escape-hatch field
       // retirement and the hub witness's paired script bytes. The independently
@@ -178,7 +178,7 @@ describe("midgard contracts registry", () => {
       // reason, optimisations), shared bounty routing, proof ref, exemption,
       // slashing above the bond, the timeout's operator-directory split, and
       // the validation case (the operator directories take its receipt
-      // policy).
+      // policy) and its defense rule.
       expect
         .soft(
           createHash("sha256")
@@ -191,7 +191,7 @@ describe("midgard contracts registry", () => {
             .digest("hex"),
         )
         .toBe(
-          "7e59589e49d99870153c5516a5413d48c0f9fe04849eb7d86d0a7d8909a40c2d",
+          "db6f0ed6ee2db9426fff0d0d2ed66c3d87552354fe6caa1b52a32ff3c7a916e9",
         );
       // The always-succeeds stand-in is a real hazard here: it satisfies every
       // spend, so a role that silently kept it would pass any behavioural test

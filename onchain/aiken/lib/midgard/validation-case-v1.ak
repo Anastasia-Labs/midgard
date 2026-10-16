@@ -324,8 +324,7 @@ pub fn open_case(
 // ## Defend
 
 /// The defense rule: the defender's state at S, proven under its root, is not
-/// the challenger's terminal state, and is not a Terminal state with any
-/// verdict but Accepted.
+/// a Terminal state with any verdict but Accepted.
 pub fn defense_is_valid(
   case: CaseV1,
   defender_root: ByteArray,
@@ -341,7 +340,9 @@ pub fn defense_is_valid(
       case.step_count,
       defender_state_proof,
     ),
-    state_hash != case.challenger_terminal_hash,
+    // This also refuses the challenger's own terminal state: VerifySource
+    // only opens a case on a Terminal Rejected claim, and the state hash
+    // binds the phase and the verdict.
     or {
       defender_state.phase != Terminal,
       defender_state.verdict == Accepted,
