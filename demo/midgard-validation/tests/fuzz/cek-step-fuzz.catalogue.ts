@@ -18,30 +18,41 @@ import type { AikenVerdict } from "./cek-step-fuzz.oracle.js";
 
 /**
  * The classes of genuine step that the on-chain machine does not adjudicate
- * today, each tied to its row of the published unprovable-step catalogue
- * (pd-design §P3) or to the pending ticket whose slip the catalogue absorbs
- * (§F2.0 (b)). A genuine step the Aiken machine does not accept is a
- * divergence unless it falls in one of these classes. Nothing here refuses a
+ * today. A genuine step the Aiken machine does not accept is a divergence
+ * unless it falls in one of these classes. Nothing here refuses a
  * transaction: admission stays Cardano-exact, and these classes only say which
- * steps a dispute cannot prove.
+ * steps a dispute cannot prove. Each class names its owner and the fix that
+ * removes it; the class goes when that fix composes. The CI rows pin every
+ * catalogued step to its vector (`cek-step-fuzz.pins.ts`).
  *
- * - `interimDataDecoding`: the interim §P3 row, until the on-chain Data
- *   decoder update lands. A step that reveals, in direct form, an integer
+ * - `interimDataDecoding`: a step that reveals, in direct form, an integer
  *   outside one CBOR head or a constructor index above 127, or whose semantic
  *   witness carries one in a preimage the on-chain machine decodes as Data
- *   (iData, unConstrData, unIData and serialiseData; pd-design §E, E-N5).
- * - `blsInvalidPointPending`: the E-N8 (c) BLS arms, catalogued while they are
- *   pending. A G1 or G2 uncompress failure outside the on-chain failure proof
- *   (for G1, not a wrong length, an invalid header or a point off the curve;
- *   for G2, not a wrong length or an invalid header).
- * - `computationCost`: the computation-cost rows of §P3 and the large-Data
- *   steps that wait on E-N6 (ii). A step of one of those kinds whose
- *   adjudication goes over the evaluator's budget.
+ *   (iData, unConstrData, unIData and serialiseData). Owner: E-N5 (the
+ *   interim §P3 row). Pending the on-chain Data decoder update.
+ * - `blsInvalidPointPending`: a G1 or G2 uncompress failure outside the
+ *   on-chain failure proof (for G1, not a wrong length, an invalid header or
+ *   a point off the curve; for G2, not a wrong length or an invalid header).
+ *   Owner: E-N8 (c). Pending the remaining BLS failure arms.
+ * - `computationCost`: a step of a computation-cost kind of §P3, or a
+ *   large-Data step, whose adjudication goes over the evaluator's budget.
+ *   Owner: the §P3 computation-cost rows and E-N6 (ii). Pending the E-N6 (ii)
+ *   cost update for the large-Data steps.
+ * - `trailingEmptyBytesDecoding`: a step the Aiken machine fails whose
+ *   revealed payload, or a preimage it decodes as Data, ends in an empty byte
+ *   string. Owner: the on-chain machine (assignment pending). Pending the
+ *   on-chain byte-string decoding update.
+ * - `nestedConstantCost`: a step revealing a constant whose type nests one
+ *   compound in another (a pair, or a list of lists), whose adjudication goes
+ *   over the evaluator's budget. Owner: the on-chain machine (assignment
+ *   pending). Pending the on-chain constant-step cost update.
  */
 export type CataloguedClass =
   | "interimDataDecoding"
   | "blsInvalidPointPending"
-  | "computationCost";
+  | "computationCost"
+  | "trailingEmptyBytesDecoding"
+  | "nestedConstantCost";
 
 type StepWitness = MidgardCekExecutionStep["witness"];
 
@@ -58,6 +69,26 @@ const revealedConstants = (
     value.kind === "constant" ? [value.witness] : [],
   );
 };
+
+/** Plutus constant type tags, as a constant witness's type lists them. */
+const LIST_TYPE_TAG = 5n;
+const PAIR_TYPE_TAG = 6n;
+
+/** Whether a constant's type nests one compound in another. */
+const typeIsNested = (typeCbor: Uint8Array): boolean => {
+  const type = plutusDataFromCborIterative(typeCbor);
+  if (!(type instanceof DataList)) return false;
+  const tags = type.list.flatMap((tag) =>
+    tag instanceof DataI ? [tag.int] : [],
+  );
+  return (
+    tags.includes(PAIR_TYPE_TAG) ||
+    tags.filter((tag) => tag === LIST_TYPE_TAG).length > 1
+  );
+};
+
+const revealsNestedConstant = (witness: StepWitness): boolean =>
+  revealedConstants(witness).some(({ typeCbor }) => typeIsNested(typeCbor));
 
 /**
  * The semantic builtins whose scalar preimages the on-chain machine decodes as
@@ -205,6 +236,34 @@ const isComputationCostKind = (
   CONSTANT_REVEALING_KINDS.has(witness.kind) ||
   (builtin !== null && COMPUTATION_COST_BUILTINS.has(builtin));
 
+/** The empty byte string's CBOR. */
+const EMPTY_BYTES_HEAD = 0x40;
+
+/** Whether a payload's encoding ends in an empty byte string. */
+const endsInEmptyBytes = (payloadCbor: Uint8Array): boolean => {
+  if (payloadCbor[payloadCbor.length - 1] !== EMPTY_BYTES_HEAD) return false;
+  let item: Data;
+  try {
+    item = plutusDataFromCborIterative(payloadCbor);
+  } catch {
+    return false;
+  }
+  // Follow the last field, item or value: the leaf encoded last.
+  for (;;) {
+    if (item instanceof DataB) return item.bytes.length === 0;
+    const last: Data | undefined =
+      item instanceof DataConstr
+        ? item.fields.at(-1)
+        : item instanceof DataList
+          ? item.list.at(-1)
+          : isPlutusDataMap(item)
+            ? item.map.at(-1)?.snd
+            : undefined;
+    if (last === undefined) return false;
+    item = last;
+  }
+};
+
 /**
  * The catalogued class of a genuine step the Aiken machine did not accept, or
  * null when the step is in no class and its refusal is a divergence.
@@ -216,17 +275,20 @@ export const cataloguedClassOf = (
 ): CataloguedClass | null => {
   if (verdict === "accepted") return null;
   const witness = step.witness;
-  if (
-    [
-      ...revealedConstants(witness).map(({ payloadCbor }) => payloadCbor),
-      ...dataDecodedPreimages(witness),
-    ].some(payloadIsInInterimRow)
-  ) {
-    return "interimDataDecoding";
-  }
+  const payloads = [
+    ...revealedConstants(witness).map(({ payloadCbor }) => payloadCbor),
+    ...dataDecodedPreimages(witness),
+  ];
+  if (payloads.some(payloadIsInInterimRow)) return "interimDataDecoding";
   if (isPendingBlsFailure(witness)) return "blsInvalidPointPending";
   if (verdict === "overBudget" && isComputationCostKind(witness, builtin)) {
     return "computationCost";
+  }
+  if (verdict === "failed" && payloads.some(endsInEmptyBytes)) {
+    return "trailingEmptyBytesDecoding";
+  }
+  if (verdict === "overBudget" && revealsNestedConstant(witness)) {
+    return "nestedConstantCost";
   }
   return null;
 };

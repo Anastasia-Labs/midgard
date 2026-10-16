@@ -21,6 +21,11 @@ import {
   makeAikenStepOracle,
 } from "./cek-step-fuzz.oracle.js";
 import {
+  type ClassCounts,
+  STEP_CORPUS_PINS,
+  STEP_FIXED_SET_PINS,
+} from "./cek-step-fuzz.pins.js";
+import {
   type CekStepFuzzProgram,
   cekStepFuzzProgram,
   FUZZ_PRIMARY_TAGS,
@@ -37,6 +42,8 @@ import {
  * does not accept; each run logs how many steps each class took.
  *
  * - CI: the fixed seed set and the checked-in corpus, with zero divergences.
+ *   Each catalogued step is pinned to its vector: the steps of each class per
+ *   vector, and per class over the row, must equal `cek-step-fuzz.pins.ts`.
  *   The per-builtin coverage of the fixed set must equal the checked-in
  *   report. `MIDGARD_WRITE_CEK_STEP_FUZZ_COVERAGE=1` rewrites the report.
  * - Release: `MIDGARD_CEK_STEP_FUZZ_SECONDS=<n>` adds a random run of about
@@ -83,6 +90,23 @@ const addToSummary = (
 const logRun = (name: string, summary: RunSummary): void =>
   console.info(
     `cek step fuzz ${name}: ${summary.cases.toString()} cases, ${summary.steps.toString()} adjudicated steps, catalogued ${JSON.stringify(summary.catalogued)}`,
+  );
+
+/** Per vector label, its steps in each catalogued class; vectors with any. */
+const cataloguedByVector = (
+  results: readonly CaseResult[],
+): Record<string, ClassCounts> =>
+  Object.fromEntries(
+    results.flatMap((result) => {
+      const counts: Record<string, number> = {};
+      for (const { catalogued } of result.steps) {
+        if (catalogued !== null)
+          counts[catalogued] = (counts[catalogued] ?? 0) + 1;
+      }
+      return Object.keys(counts).length === 0
+        ? []
+        : [[result.prepared.program.label, counts]];
+    }),
   );
 
 const describeDivergences = (results: readonly CaseResult[]): string[] =>
@@ -135,7 +159,8 @@ describe("CEK step differential against the Aiken machine", () => {
           })),
         ),
       );
-      logRun("fixed seed set", addToSummary(emptySummary(), results));
+      const summary = addToSummary(emptySummary(), results);
+      logRun("fixed seed set", summary);
       const coverage = coverageOf(results);
       if (process.env.MIDGARD_WRITE_CEK_STEP_FUZZ_COVERAGE === "1") {
         writeCoverageReport({
@@ -145,6 +170,10 @@ describe("CEK step differential against the Aiken machine", () => {
         });
       }
       expect(describeDivergences(results)).toStrictEqual([]);
+      expect(cataloguedByVector(results)).toStrictEqual(
+        STEP_FIXED_SET_PINS.vectors,
+      );
+      expect(summary.catalogued).toStrictEqual(STEP_FIXED_SET_PINS.totals);
       expect(readCoverageReport()).toStrictEqual(
         expect.objectContaining({ seedSet: SEED_SET, coverage }),
       );
@@ -160,8 +189,11 @@ describe("CEK step differential against the Aiken machine", () => {
         sampleSeed: vector.sampleSeed ?? index,
       })),
     );
-    logRun("corpus", addToSummary(emptySummary(), results));
+    const summary = addToSummary(emptySummary(), results);
+    logRun("corpus", summary);
     expect(describeDivergences(results)).toStrictEqual([]);
+    expect(cataloguedByVector(results)).toStrictEqual(STEP_CORPUS_PINS.vectors);
+    expect(summary.catalogued).toStrictEqual(STEP_CORPUS_PINS.totals);
     for (const result of results) {
       expect(result.prepared.totalSteps).toBeGreaterThan(0);
     }
