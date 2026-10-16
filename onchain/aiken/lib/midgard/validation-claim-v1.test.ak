@@ -6,7 +6,9 @@
 //// membership's key and the source membership — every other witness field is
 //// an inert dummy here on purpose.
 
+use aiken/builtin
 use aiken/cbor
+use aiken/collection/list
 use aiken/merkle_patricia_forestry as mpf
 use cardano/transaction.{OutputReference}
 use env
@@ -225,34 +227,6 @@ fn event_key_for(
   }
 }
 
-fn dummy_machine_state() -> validation_trace_v1.ValidationMachineStateV1 {
-  validation_trace_v1.ValidationMachineStateV1 {
-    machine_version: 1,
-    event_key_hash: zero_hash,
-    transaction_id: zero_hash,
-    transaction_commitment: zero_hash,
-    validation_context_hash: zero_hash,
-    source_kind: validation_trace_v1.Forced,
-    prior_ledger_root: zero_hash,
-    phase: validation_trace_v1.CanonicalDecode,
-    program_counter: 0,
-    work_root: zero_hash,
-    execution_cpu: 0,
-    execution_memory: 0,
-    verdict: validation_trace_v1.Pending,
-    rejection_code_hash: zero_hash,
-    ledger_delta_root: zero_hash,
-  }
-}
-
-fn dummy_trace_proof() -> validation_trace_v1.ValidationTraceProof {
-  validation_trace_v1.ValidationTraceProof {
-    state_index: 0,
-    state_hash: zero_hash,
-    siblings: [],
-  }
-}
-
 /// A witness whose only live fields are the descriptor membership's key and
 /// the source membership — exactly what
 /// `committed_claim_source_is_authenticated` reads.
@@ -300,11 +274,6 @@ fn witness_for(
       proof: [],
     },
     source_membership: source,
-    validation_context_cbor: #"",
-    initial_state: dummy_machine_state(),
-    terminal_state: dummy_machine_state(),
-    initial_state_proof: dummy_trace_proof(),
-    terminal_state_proof: dummy_trace_proof(),
   }
 }
 
@@ -436,6 +405,251 @@ test r_desc_a_normal_source_with_a_redeemer_has_a_trace() {
   )
 }
 
+// ## The derived initial state and the claim without trace endpoints
+//
+// Each case below commits one step, one event and one descriptor under the
+// header's own roots, so the whole claim (structure, source and endpoints) is
+// exercised, not only the predicate under test.
+
+fn counted_membership(
+  domain: transition_trace.RootDomain,
+  key: key,
+  value: value,
+  key_bytes: ByteArray,
+  value_bytes: ByteArray,
+) -> transition_trace.RootMembershipProof<key, value> {
+  let phas_root = mpf.root(mpf.insert(mpf.empty, key_bytes, value_bytes, []))
+  transition_trace.RootMembershipProof {
+    domain,
+    root: transition_trace.commit_counted_root(domain, phas_root, 1),
+    phas_root,
+    count: 1,
+    key,
+    value,
+    proof: [],
+  }
+}
+
+fn step_phase_for(
+  source: validation_claim_v1.ValidationSourceMembershipV1,
+) -> ledger_state.TransitionPhase {
+  when source is {
+    validation_claim_v1.ForcedValidationSource { .. } ->
+      ledger_state.ForcedTransaction
+    validation_claim_v1.NormalValidationSource { .. } ->
+      ledger_state.L2Transaction
+  }
+}
+
+/// Distinct, non-zero context values, so a derivation that reads the wrong
+/// header field cannot agree by accident.
+fn distinct_context(header: ledger_state.HeaderV1) -> ledger_state.HeaderV1 {
+  ledger_state.HeaderV1 {
+    ..header,
+    start_time: 1_700_000_000_000,
+    end_time: 1_700_000_020_000,
+    block_slot: 86_400,
+    expected_network_id: 1,
+    min_fee_a: 44,
+    min_fee_b: 155_381,
+  }
+}
+
+fn claim_with(
+  source: validation_claim_v1.ValidationSourceMembershipV1,
+  context: fn(ledger_state.HeaderV1) -> ledger_state.HeaderV1,
+  verdict: validation_trace_v1.ValidationVerdict,
+  rejection_code_hash: ByteArray,
+  pre_utxos_root: ByteArray,
+  post_utxos_root: ByteArray,
+  commit_initial: fn(validation_trace_v1.ValidationMachineStateV1) -> ByteArray,
+) -> (ledger_state.HeaderV1, validation_claim_v1.ValidationClaimWitnessV1) {
+  let event_key = event_key_for(source)
+  let phase = step_phase_for(source)
+  let base = context(header_for(source))
+  let step = ledger_state.TransitionStep {
+    schema_version: ledger_state.transition_step_schema_version_v1,
+    step_index: 0,
+    event_key,
+    phase,
+    pre_utxos_root,
+    post_utxos_root,
+  }
+  let transition_step_membership = counted_membership(
+    transition_trace.TransitionTraceRootDomain,
+    0,
+    step,
+    cbor.serialise(0),
+    cbor.serialise(step),
+  )
+  let event_to_step = ledger_state.EventToStepValue { step_index: 0, phase }
+  let event_to_step_membership = counted_membership(
+    transition_trace.EventToStepRootDomain,
+    event_key,
+    event_to_step,
+    cbor.serialise(event_key),
+    cbor.serialise(event_to_step),
+  )
+  let descriptor = validation_trace_v1.ValidationTraceDescriptorV1 {
+    schema_version: 1,
+    machine_version: 1,
+    trace_root: h32_a,
+    step_count: 1,
+    initial_state_hash: commit_initial(
+      validation_claim_v1.derive_initial_state(
+        base,
+        event_key,
+        source,
+        pre_utxos_root,
+      ),
+    ),
+    terminal_state_hash: h32_b,
+    verdict,
+    rejection_code_hash,
+  }
+  let descriptor_membership = counted_membership(
+    transition_trace.ValidationTracesRootDomain,
+    event_key,
+    descriptor,
+    cbor.serialise(event_key),
+    cbor.serialise(descriptor),
+  )
+  let header = ledger_state.HeaderV1 {
+    ..base,
+    transition_trace_root: transition_step_membership.root,
+    transition_step_count: 1,
+    event_to_step_root: event_to_step_membership.root,
+    total_event_count: 1,
+    validation_traces_root: descriptor_membership.root,
+    validation_trace_count: 1,
+  }
+  (
+    header,
+    validation_claim_v1.ValidationClaimWitnessV1 {
+      version: validation_claim_v1.claim_version,
+      descriptor_membership,
+      transition_step_membership,
+      event_to_step_membership,
+      source_membership: source,
+    },
+  )
+}
+
+fn honest_initial(
+  state: validation_trace_v1.ValidationMachineStateV1,
+) -> ByteArray {
+  validation_trace_v1.hash_machine_state(state)
+}
+
+fn accepted_claim(
+  source: validation_claim_v1.ValidationSourceMembershipV1,
+) -> (ledger_state.HeaderV1, validation_claim_v1.ValidationClaimWitnessV1) {
+  claim_with(
+    source,
+    distinct_context,
+    validation_trace_v1.Accepted,
+    zero_hash,
+    h32_a,
+    h32_b,
+    honest_initial,
+  )
+}
+
+fn plutus_failure() -> rejection_reason_v1.RejectionReasonV1 {
+  rejection_reason_v1.PlutusExecutionFailed {
+    purpose_kind: 0,
+    purpose_index: 0,
+  }
+}
+
+fn forced_invalid_source() -> validation_claim_v1.ValidationSourceMembershipV1 {
+  forced_source(
+    native_types.TxIsValid,
+    rejection_reason_v1.ForcedTxInvalid { reason: plutus_failure() },
+  )
+}
+
+fn rejected_claim(
+  source: validation_claim_v1.ValidationSourceMembershipV1,
+  post_utxos_root: ByteArray,
+) -> (ledger_state.HeaderV1, validation_claim_v1.ValidationClaimWitnessV1) {
+  claim_with(
+    source,
+    distinct_context,
+    validation_trace_v1.Rejected,
+    validation_trace_v1.hash_rejection_code(plutus_failure()),
+    h32_a,
+    post_utxos_root,
+    honest_initial,
+  )
+}
+
+fn initial_committed_as(
+  commit_initial: fn(validation_trace_v1.ValidationMachineStateV1) -> ByteArray,
+) -> (ledger_state.HeaderV1, validation_claim_v1.ValidationClaimWitnessV1) {
+  claim_with(
+    normal_source(native_types.TxIsValid),
+    distinct_context,
+    validation_trace_v1.Accepted,
+    zero_hash,
+    h32_a,
+    h32_b,
+    commit_initial,
+  )
+}
+
+fn claim_is_valid(
+  case: (ledger_state.HeaderV1, validation_claim_v1.ValidationClaimWitnessV1),
+) -> Bool {
+  let (header, witness) = case
+  validation_claim_v1.committed_claim_is_valid(header, witness)
+}
+
+fn opens(
+  case: (ledger_state.HeaderV1, validation_claim_v1.ValidationClaimWitnessV1),
+) -> Bool {
+  let (header, witness) = case
+  and {
+    validation_claim_v1.committed_claim_structure_is_valid(header, witness),
+    validation_claim_v1.committed_claim_source_is_authenticated(header, witness),
+  }
+}
+
+fn endpoints_hold(
+  case: (ledger_state.HeaderV1, validation_claim_v1.ValidationClaimWitnessV1),
+) -> Bool {
+  let (header, witness) = case
+  validation_claim_v1.committed_claim_endpoints_and_source_are_valid(
+    header,
+    witness,
+  )
+}
+
+/// The claim opens (so the source step runs) but the source step refuses its
+/// endpoints, which hands the game to the challenger.
+fn refused_at_source(
+  case: (ledger_state.HeaderV1, validation_claim_v1.ValidationClaimWitnessV1),
+) -> Bool {
+  and {
+    opens(case),
+    !endpoints_hold(case),
+  }
+}
+
+// ### The claim without trace endpoints
+
+test honest_normal_claim_is_valid() {
+  claim_is_valid(accepted_claim(normal_source(native_types.TxIsValid)))
+}
+
+test honest_forced_valid_claim_is_valid() {
+  claim_is_valid(
+    accepted_claim(
+      forced_source(native_types.TxIsValid, rejection_reason_v1.ForcedTxValid),
+    ),
+  )
+}
+
 test r_desc_a_normal_source_without_redeemers_has_no_trace() {
   !requires_trace(normal_source(native_types.TxIsValid))
 }
@@ -464,4 +678,299 @@ test witness_set_is_none_for_an_invalid_normal_source() {
     header_for(source),
     witness_for(source),
   ) == None
+}
+
+test honest_forced_invalid_claim_is_valid() {
+  claim_is_valid(rejected_claim(forced_invalid_source(), h32_a))
+}
+
+test claim_witness_round_trips_in_its_five_field_shape() {
+  let (_, witness) = accepted_claim(normal_source(native_types.TxIsValid))
+  let data: Data = witness
+  expect decoded: validation_claim_v1.ValidationClaimWitnessV1 = data
+  decoded == witness
+}
+
+/// The retired shape carried the context, both endpoint states and both trace
+/// proofs after the source membership.
+test claim_witness_refuses_the_retired_ten_field_shape() fail {
+  let (_, witness) = accepted_claim(normal_source(native_types.TxIsValid))
+  let data: Data = witness
+  let source = normal_source(native_types.TxIsValid)
+  let state: Data = validation_claim_v1.derive_initial_state(
+    header_for(source),
+    event_key_for(source),
+    source,
+    h32_a,
+  )
+  let proof: Data = validation_trace_v1.ValidationTraceProof {
+    state_index: 0,
+    state_hash: zero_hash,
+    siblings: [],
+  }
+  let retired: Data = builtin.constr_data(
+    0,
+    list.concat(
+      builtin.unconstr_fields(data),
+      [builtin.b_data(#""), state, state, proof, proof],
+    ),
+  )
+  expect decoded: validation_claim_v1.ValidationClaimWitnessV1 = retired
+  decoded.version == validation_claim_v1.claim_version
+}
+
+test rejected_claim_refuses_a_ledger_change() {
+  refused_at_source(rejected_claim(forced_invalid_source(), h32_b))
+}
+
+// ### The committed initial state is the derived one
+
+test refuses_a_supplied_initial_hash() {
+  refused_at_source(initial_committed_as(fn(_) { h32_b }))
+}
+
+test refuses_another_event_key_hash() {
+  refused_at_source(
+    initial_committed_as(
+      fn(state) {
+        honest_initial(
+          validation_trace_v1.ValidationMachineStateV1 {
+            ..state,
+            event_key_hash: h32_b,
+          },
+        )
+      },
+    ),
+  )
+}
+
+test refuses_another_transaction_id() {
+  refused_at_source(
+    initial_committed_as(
+      fn(state) {
+        honest_initial(
+          validation_trace_v1.ValidationMachineStateV1 {
+            ..state,
+            transaction_id: h32_b,
+          },
+        )
+      },
+    ),
+  )
+}
+
+test refuses_another_transaction_commitment() {
+  refused_at_source(
+    initial_committed_as(
+      fn(state) {
+        honest_initial(
+          validation_trace_v1.ValidationMachineStateV1 {
+            ..state,
+            transaction_commitment: h32_b,
+          },
+        )
+      },
+    ),
+  )
+}
+
+test refuses_another_validation_context_hash() {
+  refused_at_source(
+    initial_committed_as(
+      fn(state) {
+        honest_initial(
+          validation_trace_v1.ValidationMachineStateV1 {
+            ..state,
+            validation_context_hash: h32_b,
+          },
+        )
+      },
+    ),
+  )
+}
+
+test refuses_another_source_kind() {
+  refused_at_source(
+    initial_committed_as(
+      fn(state) {
+        honest_initial(
+          validation_trace_v1.ValidationMachineStateV1 {
+            ..state,
+            source_kind: validation_trace_v1.Forced,
+          },
+        )
+      },
+    ),
+  )
+}
+
+test refuses_another_prior_ledger_root() {
+  refused_at_source(
+    initial_committed_as(
+      fn(state) {
+        honest_initial(
+          validation_trace_v1.ValidationMachineStateV1 {
+            ..state,
+            prior_ledger_root: h32_b,
+          },
+        )
+      },
+    ),
+  )
+}
+
+test refuses_another_phase() {
+  refused_at_source(
+    initial_committed_as(
+      fn(state) {
+        honest_initial(
+          validation_trace_v1.ValidationMachineStateV1 {
+            ..state,
+            phase: validation_trace_v1.CompactBinding,
+          },
+        )
+      },
+    ),
+  )
+}
+
+test refuses_another_program_counter() {
+  refused_at_source(
+    initial_committed_as(
+      fn(state) {
+        honest_initial(
+          validation_trace_v1.ValidationMachineStateV1 {
+            ..state,
+            program_counter: 1,
+          },
+        )
+      },
+    ),
+  )
+}
+
+test refuses_another_work_root() {
+  refused_at_source(
+    initial_committed_as(
+      fn(state) {
+        honest_initial(
+          validation_trace_v1.ValidationMachineStateV1 {
+            ..state,
+            work_root: h32_b,
+          },
+        )
+      },
+    ),
+  )
+}
+
+test refuses_another_execution_cpu() {
+  refused_at_source(
+    initial_committed_as(
+      fn(state) {
+        honest_initial(
+          validation_trace_v1.ValidationMachineStateV1 {
+            ..state,
+            execution_cpu: 1,
+          },
+        )
+      },
+    ),
+  )
+}
+
+test refuses_another_execution_memory() {
+  refused_at_source(
+    initial_committed_as(
+      fn(state) {
+        honest_initial(
+          validation_trace_v1.ValidationMachineStateV1 {
+            ..state,
+            execution_memory: 1,
+          },
+        )
+      },
+    ),
+  )
+}
+
+test refuses_another_verdict() {
+  refused_at_source(
+    initial_committed_as(
+      fn(state) {
+        honest_initial(
+          validation_trace_v1.ValidationMachineStateV1 {
+            ..state,
+            verdict: validation_trace_v1.Accepted,
+          },
+        )
+      },
+    ),
+  )
+}
+
+test refuses_another_rejection_code_hash() {
+  refused_at_source(
+    initial_committed_as(
+      fn(state) {
+        honest_initial(
+          validation_trace_v1.ValidationMachineStateV1 {
+            ..state,
+            verdict: validation_trace_v1.Rejected,
+            rejection_code_hash: h32_b,
+          },
+        )
+      },
+    ),
+  )
+}
+
+// ### Header and step values the derivation cannot represent
+
+fn refused_header(
+  context: fn(ledger_state.HeaderV1) -> ledger_state.HeaderV1,
+) -> Bool {
+  refused_at_source(
+    claim_with(
+      normal_source(native_types.TxIsValid),
+      fn(header) { context(distinct_context(header)) },
+      validation_trace_v1.Accepted,
+      zero_hash,
+      h32_a,
+      h32_b,
+      honest_initial,
+    ),
+  )
+}
+
+test refuses_an_unknown_network_id() {
+  refused_header(
+    fn(header) { ledger_state.HeaderV1 { ..header, expected_network_id: 2 } },
+  )
+}
+
+test refuses_a_negative_min_fee_a() {
+  refused_header(
+    fn(header) { ledger_state.HeaderV1 { ..header, min_fee_a: -1 } },
+  )
+}
+
+test refuses_a_negative_min_fee_b() {
+  refused_header(
+    fn(header) { ledger_state.HeaderV1 { ..header, min_fee_b: -1 } },
+  )
+}
+
+test refuses_a_short_prior_ledger_root() {
+  refused_at_source(
+    claim_with(
+      normal_source(native_types.TxIsValid),
+      distinct_context,
+      validation_trace_v1.Accepted,
+      zero_hash,
+      #"11111111111111111111111111111111111111111111111111111111111111",
+      h32_b,
+      fn(_) { h32_a },
+    ),
+  )
 }

@@ -67,7 +67,7 @@ import {
   stepFieldPreimage,
 } from "./validation-machine.v1-purpose-kind-to-redeemer-pointer-mapping.js";
 import {
-  buildAcceptingIdentityProgram,
+  buildAcceptingUnitProgram,
   buildNonterminatingSelfApplicationProgram,
   context,
   validateBoundaryAbiAndCollectAuxiliaryKinds,
@@ -131,7 +131,6 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
       ...Array<string>(4).fill("scriptIntegrity"),
       "cek",
       ...Array<string>(8).fill("valueAndMint"),
-      ...Array<string>(9).fill("ledgerDelta"),
       "terminal",
     ]);
     const canonicalWitnesses = trace.witnesses.filter(
@@ -406,7 +405,7 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
 
   it("emits the exact incremental context and CEK trace for PlutusV3", async () => {
     const spent = outRefFromByte(0x1d);
-    const program = buildAcceptingIdentityProgram();
+    const program = buildAcceptingUnitProgram();
     const script = plutusV3ScriptWitness(program.envelopeCbor);
     const scriptHash = hashScriptWitness(script);
     const spentOutput = makeProtectedScriptOutput(
@@ -804,15 +803,12 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
       phase: "terminal",
       verdict: "rejected",
     });
-    expect(trace.states.some((state) => state.phase === "ledgerDelta")).toBe(
-      false,
-    );
   });
 
   it("executes an authenticated PlutusV3 reference script from a reference input", async () => {
     const spent = outRefFromByte(0x1e);
     const reference = outRefFromByte(0x1f);
-    const program = buildAcceptingIdentityProgram();
+    const program = buildAcceptingUnitProgram();
     const script = plutusV3ScriptWitness(program.envelopeCbor);
     const scriptHash = hashScriptWitness(script);
     const spentOutput = makeProtectedScriptOutput(
@@ -935,7 +931,7 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
     "executes scripted $operation through the exact mint context and CEK trace",
     async ({ quantity }) => {
       const spent = outRefFromByte(quantity > 0n ? 0x31 : 0x32);
-      const program = buildAcceptingIdentityProgram();
+      const program = buildAcceptingUnitProgram();
       const script = plutusV3ScriptWitness(program.envelopeCbor);
       const policyId = Buffer.from(hashScriptWitness(script), "hex");
       const assetName = Buffer.from("aced", "hex");
@@ -1016,12 +1012,7 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
       expect([
         ...validateBoundaryAbiAndCollectAuxiliaryKinds(trace).kinds,
       ]).toEqual(
-        expect.arrayContaining([
-          "cekMintContextItem",
-          "valueMintAsset",
-          "ledgerDeltaReplay",
-          "ledgerDeltaOutput",
-        ]),
+        expect.arrayContaining(["cekMintContextItem", "valueMintAsset"]),
       );
     },
     // Measured 15.0 s for the burn case on a 2-core CI runner against the
@@ -1033,7 +1024,7 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
   it("executes a MidgardV1 protected-output receiving script", async () => {
     const spent = outRefFromByte(0x33);
     const spentOutput = makeOutput(FUNDED_OUTPUT_LOVELACE);
-    const program = buildAcceptingIdentityProgram();
+    const program = buildAcceptingUnitProgram();
     const script = {
       language: "MidgardV1" as const,
       scriptBytes: program.envelopeCbor,
@@ -1128,7 +1119,6 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
         "nativeExecutionScan",
         "cekOutputContextItem",
         "cekContextFinalize",
-        "ledgerDeltaOutput",
       ]),
     );
   }, 60_000);
@@ -1137,7 +1127,7 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
     const spent = outRefFromByte(0x34);
     const spentOutput = makeOutput(FUNDED_OUTPUT_LOVELACE);
     const output = makeOutput(FUNDED_OUTPUT_LOVELACE);
-    const program = buildAcceptingIdentityProgram();
+    const program = buildAcceptingUnitProgram();
     const script = plutusV3ScriptWitness(program.envelopeCbor);
     const observerHash = Buffer.from(hashScriptWitness(script), "hex");
     const transaction = makeNativeTx({
@@ -1434,14 +1424,7 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
     expect(trace.verdict).toBe("accepted");
     expect([
       ...validateBoundaryAbiAndCollectAuxiliaryKinds(trace).kinds,
-    ]).toEqual(
-      expect.arrayContaining([
-        "valueOutputAsset",
-        "valueMintAsset",
-        "ledgerDeltaReplay",
-        "ledgerDeltaOutput",
-      ]),
-    );
+    ]).toEqual(expect.arrayContaining(["valueOutputAsset", "valueMintAsset"]));
     // Same CI-timing class as the mint/burn each above: ~6.5 s locally on
     // 32 cores, ~14-15 s on a 2-core runner, i.e. on the 15 s boundary.
   }, 60_000);
@@ -1510,14 +1493,7 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
     expect(trace.verdict).toBe("accepted");
     expect([
       ...validateBoundaryAbiAndCollectAuxiliaryKinds(trace).kinds,
-    ]).toEqual(
-      expect.arrayContaining([
-        "valueInputAsset",
-        "valueMintAsset",
-        "ledgerDeltaReplay",
-        "ledgerDeltaOutput",
-      ]),
-    );
+    ]).toEqual(expect.arrayContaining(["valueInputAsset", "valueMintAsset"]));
     // Same CI-timing class as the mint/burn each above: ~6.5 s locally on
     // 32 cores, ~14-15 s on a 2-core runner, i.e. on the 15 s boundary.
   }, 60_000);
@@ -1618,9 +1594,6 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
       phase: "terminal",
       verdict: "rejected",
     });
-    expect(trace.states.some((state) => state.phase === "ledgerDelta")).toBe(
-      false,
-    );
     expect(
       trace.witnesses
         .filter((witness) => witness.phase === "signatures")

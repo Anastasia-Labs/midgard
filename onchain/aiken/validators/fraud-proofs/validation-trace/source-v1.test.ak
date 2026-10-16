@@ -316,7 +316,6 @@ fn derived_initial_state(
     execution_memory: 0,
     verdict: validation_trace_v1.Pending,
     rejection_code_hash: zero_hash,
-    ledger_delta_root: h32_c,
   }
 }
 
@@ -336,7 +335,6 @@ fn placeholder_state() -> validation_trace_v1.ValidationMachineStateV1 {
     execution_memory: 0,
     verdict: validation_trace_v1.Pending,
     rejection_code_hash: zero_hash,
-    ledger_delta_root: zero_hash,
   }
 }
 
@@ -366,14 +364,6 @@ fn descriptor(
     terminal_state_hash: h32_b,
     verdict: validation_trace_v1.Accepted,
     rejection_code_hash: zero_hash,
-  }
-}
-
-fn proof() -> validation_trace_v1.ValidationTraceProof {
-  validation_trace_v1.ValidationTraceProof {
-    state_index: 0,
-    state_hash: zero_hash,
-    siblings: [],
   }
 }
 
@@ -422,11 +412,6 @@ fn claim(
       proof: [],
     },
     source_membership: source,
-    validation_context_cbor: context_cbor(header_for(source)),
-    initial_state,
-    terminal_state: placeholder_state(),
-    initial_state_proof: proof(),
-    terminal_state_proof: proof(),
   }
 }
 
@@ -876,7 +861,7 @@ fn opens_pending(state: validation_game_v1.PendingValidationClaimV1) -> Bool {
   let case_output = case_output_with(
     case_datum(
       state,
-      validation_trace_v1.hash_machine_state(state.claim.initial_state),
+      state.claim.descriptor_membership.value.initial_state_hash,
       upper,
     ),
     case_value(case_id_of(state, own_out_ref()), thread_lovelace),

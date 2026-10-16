@@ -82,7 +82,6 @@ fn state(
     } else {
       zero
     },
-    ledger_delta_root: zero,
   }
 }
 

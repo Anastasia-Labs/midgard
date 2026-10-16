@@ -148,7 +148,8 @@ describe("midgard contracts registry", () => {
       // the exact rejection reason, script optimisations, bounty claimants, the
       // queue's proof reference and exemption, slashing a node above the bond,
       // the timeout's directory split, output-scan size, the case open guard,
-      // the defender's one-step timeout and the terminal fixed point.
+      // the defender's one-step timeout, the terminal fixed point, the deleted
+      // ledger-delta phase and claim mode, and the phase-11 routing.
       expect
         .soft(
           createHash("sha256")

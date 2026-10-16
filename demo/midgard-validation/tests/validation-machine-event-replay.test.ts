@@ -10,7 +10,14 @@ import {
 } from "@al-ft/midgard-core/codec/forced";
 import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import { EventKey } from "@al-ft/midgard-sdk";
-import { Lambda, UPLCEncoder, UPLCProgram, UPLCVar } from "@harmoniclabs/uplc";
+import {
+  Application,
+  Lambda,
+  UPLCConst,
+  UPLCEncoder,
+  UPLCProgram,
+  UPLCVar,
+} from "@harmoniclabs/uplc";
 import { Data } from "@lucid-evolution/lucid";
 import { Cause, Effect, Exit } from "effect";
 import { describe, expect, it, vi } from "vitest";
@@ -150,18 +157,23 @@ describe("independent validation event replay", () => {
   });
 
   it.each([1, 2])(
-    "reconstructs the ordinary accepting Plutus V3 identity program and CEK trace for %i executions",
+    "reconstructs the ordinary accepting Plutus V3 unit program and CEK trace for %i executions",
     async (executionCount) => {
       const evaluator = vi.spyOn(
         cekExecutor,
         "executeMidgardCekStructuralProgram",
       );
       evaluator.mockClear();
-      // Same accepting identity program as the existing validation-machine suite.
+      // Same accepting unit program as the existing validation-machine suite.
       const program = buildMidgardCanonicalCekProgram(
         Buffer.from(
           UPLCEncoder.compile(
-            new UPLCProgram([1, 1, 0], new Lambda(new UPLCVar(0))),
+            new UPLCProgram(
+              [1, 1, 0],
+              new Lambda(
+                new Application(new Lambda(UPLCConst.unit), new UPLCVar(0)),
+              ),
+            ),
           ),
         ),
       );
@@ -218,11 +230,15 @@ describe("independent validation event replay", () => {
       // `validRange` (an absent upper bound is an inclusive PosInf); emitted
       // Phase A steps are independently checked by the Aiken one-step predicate.
       // Re-pinned when the declared ex-units moved under the per-tx cap, and
-      // again when the CEK witness began carrying its execution's purpose key.
+      // again when the CEK witness began carrying its execution's purpose key,
+      // when the program began returning Unit (PV 11 halt rule), when each
+      // execution began with Cardano's 100 cpu / 100 memory startup cost, and
+      // when the ledger-delta phase and the state's ledger-delta root were
+      // removed, so acceptance follows multi-asset accounting directly.
       const expectedTraceHash =
         executionCount === 1
-          ? "d075330cdabf38f1752fb4d968efaf8a6c168a8d0ec3b31c3032dab074176f09"
-          : "70dae19939e9004be92441fd8eaf12483ffddb4da160efe7063a24f4077b2eee";
+          ? "275a8a02a1300071cfeeb9f5eaf8b71ae91ec277dd37700165427c2b6f494084"
+          : "e3c6aae68868fd7d52e535b058df1df67cfaa517d4a9f289143ef57d83b4b246";
       expect(createHash("sha256").update(traceBytes).digest("hex")).toBe(
         expectedTraceHash,
       );
@@ -339,12 +355,17 @@ describe("independent validation event replay", () => {
     },
   );
 
-  it("a forced identity spend agrees across intake, classification and mandatory trace", async () => {
+  it("a forced unit-program spend agrees across intake, classification and mandatory trace", async () => {
     const dataHex = "d8799f01ff";
     const program = buildMidgardCanonicalCekProgram(
       Buffer.from(
         UPLCEncoder.compile(
-          new UPLCProgram([1, 1, 0], new Lambda(new UPLCVar(0))),
+          new UPLCProgram(
+            [1, 1, 0],
+            new Lambda(
+              new Application(new Lambda(UPLCConst.unit), new UPLCVar(0)),
+            ),
+          ),
         ),
       ),
     );

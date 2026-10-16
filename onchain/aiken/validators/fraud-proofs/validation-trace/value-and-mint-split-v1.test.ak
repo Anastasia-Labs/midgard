@@ -16,7 +16,7 @@
 ////    7  output_finish      stage 3, outputs exhausted -> 4
 ////    8  mint_asset         stage 4, mints pending
 ////    9  mint_finish        stage 4, mints exhausted -> 5
-////   10  finalize           stage 5 -> LedgerDelta
+////   10  finalize           stage 5 -> accepting Terminal
 ////
 //// These vectors drive all twelve validators through `main.spend` on the
 //// smallest honest step of each kind, pin the redeemer wire layouts, show
@@ -279,7 +279,6 @@ fn state_of(
       execution_memory: 0,
       verdict: validation_trace_v1.Pending,
       rejection_code_hash: zero,
-      ledger_delta_root: validation_trace_v1.hash_ledger_delta(#"80"),
     },
     work_witness_cbor,
   )
@@ -641,8 +640,7 @@ fn output_descriptor_fixture() -> StepFixtureV1 {
 /// The canonical exact-rejection successor: Terminal, one program counter on,
 /// `Rejected` with `hash_rejection_code(code)`, and the work root
 /// `hash_work_witness(Terminal, pc + 1, encode_terminal_rejection_witness(code,
-/// pre.prior_ledger_root))`. It deliberately carries `pre.ledger_delta_root`
-/// forward (via `..pre`): the claimed delta commitment is immutable context.
+/// pre.prior_ledger_root))`.
 fn exact_rejection_post(
   pre: validation_trace_v1.ValidationMachineStateV1,
   rejection_code: RejectionReasonV1,
@@ -772,7 +770,8 @@ fn mint_finish_fixture() -> StepFixtureV1 {
   idle_stage_step(9, 4)
 }
 
-/// Kind 10: `finalize` hands a settled accumulator to LedgerDelta.
+/// Kind 10: `finalize` accepts a settled accumulator: the successor is the
+/// accepting Terminal.
 fn finalize_fixture() -> StepFixtureV1 {
   let tx = empty_v1_transaction()
   let native_control = empty_native_control(tx)
@@ -780,16 +779,13 @@ fn finalize_fixture() -> StepFixtureV1 {
   let Pair(pre, work_witness_cbor) = state_of(tx, control, 40)
   let post = validation_trace_v1.ValidationMachineStateV1 {
     ..pre,
-    phase: validation_trace_v1.LedgerDelta,
+    phase: validation_trace_v1.Terminal,
     program_counter: 41,
+    verdict: validation_trace_v1.Accepted,
     work_root: validation_trace_v1.hash_work_witness(
-      validation_trace_v1.LedgerDelta,
+      validation_trace_v1.Terminal,
       41,
-      vm_witness.encode_ledger_delta_witness_v1(
-        native_control,
-        pre.prior_ledger_root,
-        control.replay_schedule_hash,
-      ),
+      vm_shared.terminal_acceptance_witness,
     ),
   }
   StepFixtureV1 {
@@ -965,7 +961,6 @@ fn golden_transition() -> ValidationOneStepWitnessV1 {
       execution_memory: 0,
       verdict: validation_trace_v1.Pending,
       rejection_code_hash: zero,
-      ledger_delta_root: zero,
     },
   }
 }
@@ -1887,8 +1882,56 @@ test mint_finish_validator_wins_the_exhausted_mints() {
   run_kind(9, mint_finish_fixture())
 }
 
-test finalize_validator_wins_the_ledger_delta_hand_off() {
+test finalize_validator_wins_the_accepting_terminal() {
   run_kind(10, finalize_fixture())
+}
+
+/// The settled-accumulator pre-state handed on as a pending, non-terminal
+/// state one program counter later: the shape of a successor that defers
+/// acceptance to a further ledger phase.
+fn deferred_hand_off_fixture() -> StepFixtureV1 {
+  let f = finalize_fixture()
+  StepFixtureV1 {
+    ..f,
+    transition: ValidationOneStepWitnessV1 {
+      ..f.transition,
+      claimed_successor: validation_trace_v1.ValidationMachineStateV1 {
+        ..f.pre,
+        program_counter: 41,
+        work_root: validation_trace_v1.hash_work_witness(
+          validation_trace_v1.ValueAndMint,
+          41,
+          f.transition.work_witness_cbor,
+        ),
+      },
+    },
+  }
+}
+
+/// One pre-state, two candidate successors: the accepting Terminal and a
+/// deferred hand-off. The accepting Terminal is the only successor the
+/// machine admits.
+test the_accepting_terminal_is_the_only_finalize_successor() {
+  let candidates = [finalize_fixture(), deferred_hand_off_fixture()]
+  let verifies = fn(f: StepFixtureV1) {
+    vm_one_step.verify_value_and_mint_one_step_v1(
+      f.pre,
+      ValidationOneStepEvidenceV1 {
+        transition: f.transition,
+        auxiliary: f.auxiliary,
+      },
+    )
+  }
+  and {
+    finalize_fixture().pre == deferred_hand_off_fixture().pre,
+    list.count(candidates, verifies) == 1,
+    verifies(finalize_fixture()),
+    !verifies(deferred_hand_off_fixture()),
+  }
+}
+
+test finalize_validator_refuses_a_deferred_hand_off() fail {
+  run_kind(10, deferred_hand_off_fixture())
 }
 
 // Stage-neighbour partition at the validator boundary. Each row is its own

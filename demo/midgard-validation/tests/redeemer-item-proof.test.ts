@@ -263,7 +263,7 @@ describe("retained V1 redeemer item proof", () => {
     expect(descriptor.itemCommitment).toEqual(item.commitment);
     expect(summary).toMatchObject({
       root: Buffer.from(
-        "26ef420c9e803ba9d74f048b521bff6c99e6a6b4d8aefd077c300a8e31a4dc20",
+        "fe754cfb63ff7759738576a50b4685d60350bfa5db47b65181658325dbcdb6cf",
         "hex",
       ),
       cborLength: 15_982n,

@@ -7,6 +7,7 @@
  */
 import { Data as LucidData } from "@lucid-evolution/lucid";
 
+import { midgardCekBytesMemoryWords } from "../src/cek-memory-size.js";
 import { semanticIntegerMemory } from "../src/cek-proof.commit-semantic-data.js";
 import { commitMidgardCekBlob } from "../src/cek-proof.encode-midgard-cek-continuation-frame.js";
 import { type SemanticDataReconstructionSource } from "../src/cek-proof.reconstruct-semantic-data.js";
@@ -242,7 +243,7 @@ export const addRawData = (
       bytesRoot: addBlob(material, bytes),
       bytesLength: BigInt(bytes.length),
       cborLength: midgardCekDataBytesCborLength(BigInt(bytes.length)),
-      memory: 4n + BigInt(Math.max(1, bytes.length)),
+      memory: 4n + midgardCekBytesMemoryWords(bytes.length),
     });
   }
   const addList = (items: readonly RawData[]): ChainSummary => {

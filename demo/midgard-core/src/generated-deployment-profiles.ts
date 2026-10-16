@@ -351,7 +351,7 @@ export const DEPLOYMENT_PROFILES = {
       slot_length_ms: 1000,
     },
     timing: {
-      block_maturity_ms: 14400000,
+      block_maturity_ms: 259200000,
       dispute_response_window_ms: 60000,
       dispute_side_clock_ms: 3600000,
       dispute_max_validity_range_ms: 20000,
@@ -368,7 +368,7 @@ export const DEPLOYMENT_PROFILES = {
       da_full_response_window_ms: 840000,
       da_challenge_window_ms: 1800000,
       da_slash_grace_ms: 300000,
-      da_bond_withdraw_delay_ms: 15180000,
+      da_bond_withdraw_delay_ms: 259980000,
     },
     da_bond: {
       da_bond_lovelace: 500000000,
@@ -428,7 +428,7 @@ export const DEPLOYMENT_PROFILES = {
       slot_length_ms: 1000,
     },
     timing: {
-      block_maturity_ms: 14400000,
+      block_maturity_ms: 259200000,
       dispute_response_window_ms: 60000,
       dispute_side_clock_ms: 3600000,
       dispute_max_validity_range_ms: 20000,
@@ -445,7 +445,7 @@ export const DEPLOYMENT_PROFILES = {
       da_full_response_window_ms: 840000,
       da_challenge_window_ms: 1800000,
       da_slash_grace_ms: 300000,
-      da_bond_withdraw_delay_ms: 15180000,
+      da_bond_withdraw_delay_ms: 259980000,
     },
     da_bond: {
       da_bond_lovelace: 500000000,
@@ -520,9 +520,9 @@ export const DEPLOYMENT_PROFILE_DIGESTS = {
   "local-devnet-testing":
     "800570446eff7e5194fa6d1cce5602afda21ba1f7563f567ad68ea8a0e3e6ce3",
   "preprod-emulator-testing":
-    "c50e859737b9bf0166a456c7dc149d9ef62069929a6cb422dbc97e54ebff9b91",
+    "8512bdcd872dff0b54ac7703b61a839ccc4bce69f72f8200ea570063b042b273",
   "preprod-emulator-curated":
-    "9c01ebcdd7432ee1073ae515f1f5661f006c4a0d26e9923c532de67f9b4d49e0",
+    "4d89aca5b3000750e02610f8828d5e068fc5fce6f766be51e9efd3efc7473b14",
 } as const;
 
 export const DEPLOYMENT_MANIFEST_ECONOMICS_BY_PROFILE = {

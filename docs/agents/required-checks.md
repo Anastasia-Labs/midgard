@@ -507,6 +507,25 @@ Golden channel native-tx-vector-v1 (@al-ft/midgard-core).
   - `demo/l1-node-transport/src/**`
 - Needs: `node-modules`, `aiken`
 
+### `golden:validation-initial-state-v1`
+
+Golden channel validation-initial-state-v1 (@al-ft/midgard-core).
+
+- Command: `pnpm --dir demo/midgard-core run fixtures:validation-initial-state-v1:check`
+- Fix: `pnpm --dir demo/midgard-core run fixtures:validation-initial-state-v1:sync`
+- Runs on:
+  - `demo/midgard-core/scripts/generate-validation-initial-state-v1-goldens.mjs`
+  - `demo/midgard-core/scripts/golden-channel.mjs`
+  - `demo/midgard-core/tests/fixtures/native-tx-field-items-v1.vectors.mjs`
+  - `demo/midgard-core/tests/fixtures/validation-initial-state-v1.generated.json`
+  - `demo/midgard-core/tests/fixtures/validation-initial-state-v1.vectors.mjs`
+  - `onchain/aiken/lib/midgard/validation-initial-state-v1-golden.test.ak`
+  - `onchain/aiken/scripts/pinned-compiler.mjs`
+  - `demo/midgard-core/src/**`
+  - `demo/midgard-test-support/src/**`
+  - `demo/l1-node-transport/src/**`
+- Needs: `node-modules`, `aiken`
+
 ### `golden:cek-data-canonical-corpus-v1`
 
 Golden channel cek-data-canonical-corpus-v1 (@al-ft/midgard-core).
@@ -636,6 +655,7 @@ Golden channel nested-boundary-aiken (@al-ft/midgard-validation).
   - `demo/midgard-validation/tests/nested-value-boundary.test.ts`
   - `onchain/aiken/lib/midgard/cek-data-traverse.max-cardano.test.ak`
   - `onchain/aiken/lib/midgard/ledger-output-value-v1.test.ak`
+  - `onchain/aiken/lib/midgard/ledger-output-value.max-cardano.test.ak`
   - `demo/lucid-midgard/src/**`
   - `demo/midgard-core/src/**`
   - `demo/midgard-fault-proofs/src/**`
@@ -685,6 +705,7 @@ Golden channel cek-core-step-v1 (@al-ft/midgard-validation).
   - `onchain/aiken/lib/midgard/cek-core-step-goldens/map-round-trip.test.ak`
   - `onchain/aiken/lib/midgard/cek-core-step-goldens/nonconstant-halt.test.ak`
   - `onchain/aiken/lib/midgard/cek-core-step-goldens/omega-budget-exceeded.test.ak`
+  - `onchain/aiken/lib/midgard/cek-core-step-goldens/schnorr-message-17-bytes.test.ak`
   - `onchain/aiken/lib/midgard/cek-core-step-goldens/un-constr-wrong-variant.test.ak`
   - `onchain/aiken/lib/midgard/cek-core-step-goldens/un-map-wrong-variant-constant.test.ak`
   - `onchain/aiken/lib/midgard/cek-core-step-goldens/unbound-variable.test.ak`

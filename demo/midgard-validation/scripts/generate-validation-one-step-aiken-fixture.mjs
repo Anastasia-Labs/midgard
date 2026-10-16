@@ -518,7 +518,7 @@ const evidenceHash = computeHash32(
 // (the auxiliary hashed is the same `NoAuxiliaryWitness` constant), and the
 // retired carriage-committed preimage yields a different hash both sides agree
 // on, so the two commitments can never collide.
-const itemAuxiliaryData = new Constr(30, [
+const itemAuxiliaryData = new Constr(28, [
   new Constr(0, [fieldChunkPreimage.toString("hex")]),
 ]);
 const itemAuxiliaryCbor = Buffer.from(Data.to(itemAuxiliaryData), "hex");

@@ -54,7 +54,6 @@ export const machineState = (
   executionMemory: 0n,
   verdict: "pending",
   rejectionCodeHash: MIDGARD_VALIDATION_NO_REJECTION_CODE_HASH,
-  ledgerDeltaRoot: hash32(0x17),
 });
 
 export const sideOf = (tree: MidgardValidationTraceTree): TraceSide => ({

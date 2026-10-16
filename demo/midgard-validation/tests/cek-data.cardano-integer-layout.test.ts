@@ -163,19 +163,12 @@ describe("Cardano integer layout in Data CBOR", () => {
     }
   });
 
-  it("charges serialiseData by the node's current Data sizing", () => {
-    // Byte sizing is the measure the node and the on-chain checker share
-    // today. Cardano's word sizing is the redeploy-1 measure: switch
-    // ASSERTED_SIZING to "word" in that change.
-    const BUDGETS = {
-      byte: { cpu: 15_674_034n, memory: 138n },
-      word: { cpu: 3_728_562n, memory: 26n },
-    } as const;
-    const ASSERTED_SIZING: keyof typeof BUDGETS = "byte";
+  it("charges serialiseData by Cardano's word sizing of the Data", () => {
+    // A 65-byte DataB is one Data node (4 words) plus nine 8-byte words.
     expect(
       midgardCekDirectBuiltinBudget(51n, [
         direct(UPLCConst.data(new DataB(Buffer.alloc(65, 7)))),
       ]),
-    ).toEqual(BUDGETS[ASSERTED_SIZING]);
+    ).toEqual({ cpu: 3_728_562n, memory: 26n });
   });
 });

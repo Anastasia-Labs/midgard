@@ -68,7 +68,6 @@ export type ValidationTraceDisputeFaultProofContracts = {
       SpendingValidator,
       SpendingValidator,
       SpendingValidator,
-      SpendingValidator,
     ];
     readonly yields: {
       readonly scriptSourcesStageTwoAdvance: WithdrawalValidator;
@@ -206,17 +205,8 @@ export type ValidationTraceDisputeFaultProofContracts = {
       SpendingValidator,
       SpendingValidator,
       SpendingValidator,
-      SpendingValidator,
-      SpendingValidator,
-      SpendingValidator,
-      SpendingValidator,
-      SpendingValidator,
-      SpendingValidator,
-      SpendingValidator,
-      SpendingValidator,
     ];
     readonly resolvers: readonly [
-      SpendingValidator,
       SpendingValidator,
       SpendingValidator,
       SpendingValidator,

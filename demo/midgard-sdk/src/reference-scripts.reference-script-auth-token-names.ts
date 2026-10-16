@@ -523,16 +523,20 @@ export const REFERENCE_SCRIPT_AUTH_TOKEN_NAMES = {
 
   "V1 fraud-proof transition-trace final-4 L2 open yield":
     "V1FpTtF4L2OpenYield",
+  "V1 fraud-proof transition-trace final-4 L2 delete yield":
+    "V1FpTtF4L2DeleteYield",
+  "V1 fraud-proof transition-trace final-4 L2 outputs yield":
+    "V1FpTtF4L2OutputsYield",
+  "V1 fraud-proof transition-trace final-4 L2 output step yield":
+    "V1FpTtF4L2OutputStepYield",
+  "V1 fraud-proof transition-trace final-4 L2 output descriptor yield":
+    "V1FpTtF4OutputDescriptorYield",
+  "V1 fraud-proof transition-trace final-4 L2 output summary yield":
+    "V1FpTtF4OutputSummaryYield",
   "V1 fraud-proof transition-trace final-4 L2 summaries yield":
     "V1FpTtF4L2SummariesYield",
   "V1 fraud-proof transition-trace final-4 L2 replay yield":
     "V1FpTtF4L2ReplayYield",
-  "V1 fraud-proof transition-trace final-4 claim structure yield":
-    "V1FpTtF4ClaimStructYield",
-  "V1 fraud-proof transition-trace final-4 claim source yield":
-    "V1FpTtF4ClaimSourceYield",
-  "V1 fraud-proof transition-trace final-4 claim endpoints yield":
-    "V1FpTtF4ClaimEndsYield",
   "V1 fraud-proof transition-trace final-5 projection yield":
     "V1FpTtF5ProjectionYield",
   "V1 fraud-proof transition-trace final-6 L1 event yield":

@@ -133,23 +133,28 @@ export const CEK_CORE_STAGE_ORDER = [
 
 export const TRANSITION_TRACE_YIELD_CONTRACT_NAMES = [
   ["l2Open", "fraudProofTransitionTraceAcceptedTransactionL2OpenWithdraw"],
+  ["l2Delete", "fraudProofTransitionTraceAcceptedTransactionL2DeleteWithdraw"],
+  [
+    "l2Outputs",
+    "fraudProofTransitionTraceAcceptedTransactionL2OutputsWithdraw",
+  ],
+  [
+    "l2OutputStep",
+    "fraudProofTransitionTraceAcceptedTransactionL2OutputStepWithdraw",
+  ],
+  [
+    "l2OutputDescriptor",
+    "fraudProofTransitionTraceAcceptedTransactionL2OutputDescriptorWithdraw",
+  ],
+  [
+    "l2OutputSummary",
+    "fraudProofTransitionTraceAcceptedTransactionL2OutputSummaryWithdraw",
+  ],
   [
     "l2Summaries",
     "fraudProofTransitionTraceAcceptedTransactionL2SummariesWithdraw",
   ],
   ["l2Replay", "fraudProofTransitionTraceAcceptedTransactionL2ReplayWithdraw"],
-  [
-    "claimStructure",
-    "fraudProofTransitionTraceAcceptedTransactionClaimStructureWithdraw",
-  ],
-  [
-    "claimSource",
-    "fraudProofTransitionTraceAcceptedTransactionClaimSourceWithdraw",
-  ],
-  [
-    "claimEndpoints",
-    "fraudProofTransitionTraceAcceptedTransactionClaimEndpointsWithdraw",
-  ],
   ["depositProjection", "fraudProofTransitionTraceDepositProjectionWithdraw"],
   ["l1Event", "fraudProofTransitionTraceL1EventWithdraw"],
   ["forcedTiming", "fraudProofTransitionTraceForcedTimingWithdraw"],

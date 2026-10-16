@@ -1,4 +1,11 @@
 import {
+  MIDGARD_CEK_BLS_G1_MEMORY,
+  MIDGARD_CEK_BLS_G2_MEMORY,
+  MIDGARD_CEK_BLS_ML_RESULT_MEMORY,
+  midgardCekBytesMemoryWords,
+  midgardCekStringMemoryWords,
+} from "./cek-memory-size.js";
+import {
   commitSemanticData,
   semanticIntegerMemory,
 } from "./cek-proof.commit-semantic-data.js";
@@ -80,7 +87,10 @@ export const semanticConstantMemory = (
     if (typeof value !== "string") {
       throw new Error("CEK bytes payload is not bytes");
     }
-    return BigInt(Math.max(1, Buffer.from(value, "hex").length));
+    const length = Buffer.from(value, "hex").length;
+    return type.kind === "string"
+      ? midgardCekStringMemoryWords(length)
+      : midgardCekBytesMemoryWords(length);
   }
   if (type.kind === "unit" || type.kind === "boolean") return 1n;
   if (type.kind === "list") {
@@ -106,7 +116,7 @@ export const semanticConstantMemory = (
     );
   }
   if (type.kind === "data") return commitSemanticData(value).memory;
-  if (type.kind === "blsG1") return 48n;
-  if (type.kind === "blsG2") return 96n;
-  return 192n;
+  if (type.kind === "blsG1") return MIDGARD_CEK_BLS_G1_MEMORY;
+  if (type.kind === "blsG2") return MIDGARD_CEK_BLS_G2_MEMORY;
+  return MIDGARD_CEK_BLS_ML_RESULT_MEMORY;
 };

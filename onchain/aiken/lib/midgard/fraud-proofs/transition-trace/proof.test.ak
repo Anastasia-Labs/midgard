@@ -11,6 +11,7 @@ use cardano/address.{Address}
 use cardano/assets
 use cardano/transaction.{InlineDatum, Input, NoDatum, Output, OutputReference}
 use env
+use midgard/cbor_deserialise
 use midgard/common/utils
 use midgard/event_history/order_facts
 use midgard/event_history/proof_fixture as history
@@ -31,9 +32,6 @@ use midgard/rejection_reason_v1
 use midgard/transition_trace
 use midgard/user_events
 use midgard/user_events/tx_order_v1 as tx_order
-use midgard/validation_claim_v1
-use midgard/validation_machine/witness as vm_witness
-use midgard/validation_machine_tests/fixtures_ledger
 use midgard/validation_trace_v1
 
 const h28_a = #"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
@@ -56,9 +54,6 @@ const fraud_category_id = #"00000004"
 
 const zero_hash =
   #"0000000000000000000000000000000000000000000000000000000000000000"
-
-const validation_context_cbor =
-  #"9f01546d6964676172642d636f6e73656e7375732d76311400000000ff"
 
 fn out_ref(ix: Int) -> OutputReference {
   OutputReference { transaction_id: h32_a, output_index: ix }
@@ -327,31 +322,6 @@ fn forced_source_membership(
   }
 }
 
-fn validation_descriptor_membership(
-  event_key: ledger_state.EventKey,
-  descriptor: validation_trace_v1.ValidationTraceDescriptorV1,
-) -> transition_trace.RootMembershipProof<
-  ledger_state.EventKey,
-  validation_trace_v1.ValidationTraceDescriptorV1,
-> {
-  let key_bytes = cbor.serialise(event_key)
-  let value_bytes = cbor.serialise(descriptor)
-  let phas_root = mpf.root(mpf.insert(mpf.empty, key_bytes, value_bytes, []))
-  transition_trace.RootMembershipProof {
-    domain: transition_trace.ValidationTracesRootDomain,
-    root: transition_trace.commit_counted_root(
-      transition_trace.ValidationTracesRootDomain,
-      phas_root,
-      1,
-    ),
-    phas_root,
-    count: 1,
-    key: event_key,
-    value: descriptor,
-    proof: [],
-  }
-}
-
 /// An L2 transaction source committed under the transactions root.
 ///
 /// Under §4's flat reversion the L2 transition authenticates the compact bytes
@@ -504,12 +474,7 @@ fn ledger_insert_witness(
   key: ByteArray,
   value: ByteArray,
 ) -> proof.LedgerInsertWitness {
-  proof.LedgerInsertWitness {
-    key,
-    value,
-    non_membership_proof: [],
-    insert_proof: [],
-  }
+  proof.LedgerInsertWitness { key, value, insert_proof: [] }
 }
 
 fn forced_tx(
@@ -706,179 +671,6 @@ fn omitted_forced_event_is_valid(inclusion_time: Int) -> Bool {
       header,
       [tx_order_reference_input(inclusion_time, event_asset_name)],
     ),
-  )
-}
-
-fn accepted_forced_transition_case(
-  verdict: rejection_reason_v1.OperatorVerdictV1,
-  phase: ledger_state.TransitionPhase,
-  claimed_post_root: ByteArray,
-  terminal_post_root: ByteArray,
-) -> Pair<
-  ledger_state.HeaderV1,
-  proof.AcceptedTransactionTransitionMismatchWitness,
-> {
-  accepted_forced_transition_case_with(
-    verdict,
-    phase,
-    claimed_post_root,
-    terminal_post_root,
-    fn(state) { state },
-  )
-}
-
-/// The accepted forced case with `tweak` applied to the initial state before
-/// the terminal state, the descriptor and both endpoint proofs are built from
-/// it, so the trace stays self-consistent and only the source binding sees the
-/// change.
-fn accepted_forced_transition_case_with(
-  verdict: rejection_reason_v1.OperatorVerdictV1,
-  phase: ledger_state.TransitionPhase,
-  claimed_post_root: ByteArray,
-  terminal_post_root: ByteArray,
-  tweak: fn(validation_trace_v1.ValidationMachineStateV1) ->
-    validation_trace_v1.ValidationMachineStateV1,
-) -> Pair<
-  ledger_state.HeaderV1,
-  proof.AcceptedTransactionTransitionMismatchWitness,
-> {
-  let event_key = ledger_state.ForcedTransactionEventKey {
-    tx_order_id: out_ref(0),
-  }
-  let source = authenticated_forced_tx(verdict)
-  let source_membership = forced_source_membership(out_ref(0), source)
-  let opened_step = step(0, event_key, phase, h32_a, claimed_post_root)
-  let transition_membership = trace_membership(opened_step)
-  let event_to_step = event_to_step_membership(event_key, 0, phase)
-  let event_key_hash = blake2b_256(cbor.serialise(event_key))
-  let validation_context_hash = validation_trace_v1.hash_validation_context(
-    validation_context_cbor,
-  )
-  let initial_work_witness = vm_witness.encode_transaction_field_scan_witness(
-    source.submitted_source.compact_cbor,
-    source.submitted_source.witness_set_compact_cbor,
-    source.submitted_source.field_preimage_lengths_cbor,
-    validation_context_cbor,
-    0,
-    0,
-    0,
-    -1,
-    0,
-  )
-  let initial_state = tweak(
-    validation_trace_v1.ValidationMachineStateV1 {
-      machine_version: validation_trace_v1.machine_version,
-      event_key_hash,
-      transaction_id: source.tx_id,
-      // The §7 proof-source commitment of the source's own triple. Derived here
-      // because `ForcedInclusionTxV1` no longer carries one — which is exactly
-      // what `validation_claim_v1.source_binds_initial_state` now derives too, so a
-      // fixture that hard-coded a value would stop testing the binding.
-      //
-      // Derived from the `source` parameter's own three members rather than from
-      // the transaction `authenticated_forced_tx` happens to build them out of, so
-      // the fixture keeps agreeing with the claim if a caller ever passes a source
-      // assembled some other way.
-      transaction_commitment: native_compact.forced_tx_proof_commitment_v1(
-        source.submitted_source.compact_cbor,
-        source.submitted_source.witness_set_compact_cbor,
-        source.submitted_source.field_preimage_lengths_cbor,
-      ),
-      validation_context_hash,
-      source_kind: validation_trace_v1.Forced,
-      prior_ledger_root: h32_a,
-      phase: validation_trace_v1.CanonicalDecode,
-      program_counter: 0,
-      work_root: validation_trace_v1.hash_work_witness(
-        validation_trace_v1.CanonicalDecode,
-        0,
-        initial_work_witness,
-      ),
-      execution_cpu: 0,
-      execution_memory: 0,
-      verdict: validation_trace_v1.Pending,
-      rejection_code_hash: zero_hash,
-      ledger_delta_root: h32_c,
-    },
-  )
-  let terminal_acceptance_witness_cbor = vm_witness.encode_terminal_acceptance_witness_v1(
-    terminal_post_root,
-    0,
-    [],
-  )
-  let terminal_state = validation_trace_v1.ValidationMachineStateV1 {
-    ..initial_state,
-    phase: validation_trace_v1.Terminal,
-    program_counter: 1,
-    work_root: validation_trace_v1.hash_work_witness(
-      validation_trace_v1.Terminal,
-      1,
-      terminal_acceptance_witness_cbor,
-    ),
-    verdict: validation_trace_v1.Accepted,
-  }
-  let initial_state_hash = validation_trace_v1.hash_machine_state(initial_state)
-  let terminal_state_hash = validation_trace_v1.hash_machine_state(
-    terminal_state,
-  )
-  let initial_leaf = validation_trace_v1.trace_leaf_hash(initial_state_hash)
-  let terminal_leaf = validation_trace_v1.trace_leaf_hash(terminal_state_hash)
-  let descriptor = validation_trace_v1.ValidationTraceDescriptorV1 {
-    schema_version: validation_trace_v1.descriptor_version,
-    machine_version: validation_trace_v1.machine_version,
-    trace_root: validation_trace_v1.trace_branch_hash(
-      initial_leaf,
-      terminal_leaf,
-    ),
-    step_count: 1,
-    initial_state_hash,
-    terminal_state_hash,
-    verdict: validation_trace_v1.Accepted,
-    rejection_code_hash: zero_hash,
-  }
-  let descriptor_membership = validation_descriptor_membership(
-    event_key,
-    descriptor,
-  )
-  let header = ledger_state.HeaderV1 {
-    ..base_header(),
-    utxos_root: claimed_post_root,
-    forced_transactions_root: source_membership.root,
-    transition_trace_root: transition_membership.root,
-    event_to_step_root: event_to_step.root,
-    validation_traces_root: descriptor_membership.root,
-    forced_transaction_count: 1,
-    total_event_count: 1,
-    transition_step_count: 1,
-    validation_trace_count: 1,
-  }
-  Pair(
-    header,
-    proof.AcceptedTransactionTransitionMismatchWitness {
-      claim: validation_claim_v1.ValidationClaimWitnessV1 {
-        version: validation_claim_v1.claim_version,
-        descriptor_membership,
-        transition_step_membership: transition_membership,
-        event_to_step_membership: event_to_step,
-        source_membership: validation_claim_v1.ForcedValidationSource {
-          membership: source_membership,
-        },
-        validation_context_cbor,
-        initial_state,
-        terminal_state,
-        initial_state_proof: validation_trace_v1.ValidationTraceProof {
-          state_index: 0,
-          state_hash: initial_state_hash,
-          siblings: [terminal_leaf],
-        },
-        terminal_state_proof: validation_trace_v1.ValidationTraceProof {
-          state_index: 1,
-          state_hash: terminal_state_hash,
-          siblings: [initial_leaf],
-        },
-      },
-      terminal_acceptance_witness_cbor,
-    },
   )
 }
 
@@ -1818,148 +1610,6 @@ test accepts_invalid_forced_transaction_no_op_transition_fault() {
   )
 }
 
-test accepts_valid_forced_transaction_wrong_accepted_post_root_fault() {
-  let Pair(header, witness) = accepted_forced_transition_case(
-    rejection_reason_v1.ForcedTxValid,
-    ledger_state.ForcedTransaction,
-    h32_b,
-    h32_c,
-  )
-  proof.validate_accepted_transaction_fault_proof(
-    prove(header, proof.AcceptedTransactionTransitionMismatch { witness }),
-    asset_name_for(header),
-  )
-}
-
-test rejects_valid_forced_transaction_matching_accepted_post_root_fault() {
-  let Pair(header, witness) = accepted_forced_transition_case(
-    rejection_reason_v1.ForcedTxValid,
-    ledger_state.ForcedTransaction,
-    h32_b,
-    h32_b,
-  )
-  !proof.validate_accepted_transaction_fault_proof(
-    prove(header, proof.AcceptedTransactionTransitionMismatch { witness }),
-    asset_name_for(header),
-  )
-}
-
-// An accepted claim over a transaction that deletes the ledger's only entry
-// ends at the terminal root the ledger delta admits for the drain. That root is
-// the committed empty-ledger sentinel, so the claim convicts a block that
-// commits the library's `null_hash` for the drained ledger and does not convict
-// the honest block that commits the sentinel.
-test accepted_claim_names_a_drained_ledger_by_the_committed_sentinel() {
-  let entry = fixtures_ledger.ledger_delta_singleton_entry_root()
-  let admits = fn(root) {
-    fixtures_ledger.ledger_delta_singleton_finalize(0, entry, root)
-  }
-  expect admits(env.empty_merkle_tree_root) != admits(null_hash)
-  let terminal_root = if admits(env.empty_merkle_tree_root) {
-    env.empty_merkle_tree_root
-  } else {
-    null_hash
-  }
-  let convicts = fn(post_root) {
-    let Pair(header, witness) = accepted_forced_transition_case(
-      rejection_reason_v1.ForcedTxValid,
-      ledger_state.ForcedTransaction,
-      post_root,
-      terminal_root,
-    )
-    proof.validate_accepted_transaction_fault_proof(
-      prove(header, proof.AcceptedTransactionTransitionMismatch { witness }),
-      asset_name_for(header),
-    )
-  }
-  and {
-    !convicts(env.empty_merkle_tree_root),
-    convicts(null_hash),
-  }
-}
-
-// Check 3 is gone: the forced leaf's verdict no longer gates an accepted claim.
-// The claim rests on the block's own committed Accepted descriptor and its
-// authenticated source, so a mismatched post root convicts whatever the leaf
-// says.
-test accepted_claim_does_not_read_the_forced_leaf_verdict() {
-  let Pair(header, witness) = accepted_forced_transition_case(
-    verdict_plutus_failed(),
-    ledger_state.ForcedTransaction,
-    h32_b,
-    h32_c,
-  )
-  proof.validate_accepted_transaction_fault_proof(
-    prove(header, proof.AcceptedTransactionTransitionMismatch { witness }),
-    asset_name_for(header),
-  )
-}
-
-fn accepted_claim_convicts_with(
-  tweak: fn(validation_trace_v1.ValidationMachineStateV1) ->
-    validation_trace_v1.ValidationMachineStateV1,
-) -> Bool {
-  let Pair(header, witness) = accepted_forced_transition_case_with(
-    rejection_reason_v1.ForcedTxValid,
-    ledger_state.ForcedTransaction,
-    h32_b,
-    h32_c,
-    tweak,
-  )
-  proof.validate_accepted_transaction_fault_proof(
-    prove(header, proof.AcceptedTransactionTransitionMismatch { witness }),
-    asset_name_for(header),
-  )
-}
-
-// The source binding that remains: the committed initial state names the
-// authenticated source's transaction id, proof-source commitment and kind.
-test accepted_claim_refuses_an_initial_state_naming_another_transaction() {
-  !accepted_claim_convicts_with(
-    fn(state) {
-      validation_trace_v1.ValidationMachineStateV1 {
-        ..state,
-        transaction_id: h32_a,
-      }
-    },
-  )
-}
-
-test accepted_claim_refuses_an_initial_state_with_another_source_commitment() {
-  !accepted_claim_convicts_with(
-    fn(state) {
-      validation_trace_v1.ValidationMachineStateV1 {
-        ..state,
-        transaction_commitment: h32_a,
-      }
-    },
-  )
-}
-
-test accepted_claim_refuses_an_initial_state_of_the_normal_source_kind() {
-  !accepted_claim_convicts_with(
-    fn(state) {
-      validation_trace_v1.ValidationMachineStateV1 {
-        ..state,
-        source_kind: validation_trace_v1.Normal,
-      }
-    },
-  )
-}
-
-test rejects_forced_event_with_l2_transition_phase_in_accepted_claim() {
-  let Pair(header, witness) = accepted_forced_transition_case(
-    rejection_reason_v1.ForcedTxValid,
-    ledger_state.L2Transaction,
-    h32_b,
-    h32_c,
-  )
-  !proof.validate_accepted_transaction_fault_proof(
-    prove(header, proof.AcceptedTransactionTransitionMismatch { witness }),
-    asset_name_for(header),
-  )
-}
-
 test accepts_forced_transaction_classified_as_normal_fault() {
   let event_key = ledger_state.ForcedTransactionEventKey {
     tx_order_id: out_ref(0),
@@ -2387,7 +2037,6 @@ fn deposit_insert_witness(insert_proof: mpf.Proof) -> proof.LedgerInsertWitness 
   proof.LedgerInsertWitness {
     key: ledger_outref_key(out_ref(0)),
     value: deposit_projected_value(),
-    non_membership_proof: deposit_honest_insert_proof(),
     insert_proof,
   }
 }
@@ -2490,193 +2139,6 @@ test rejects_a_terminal_fork_masquerade_against_an_honest_deposit_step() fail {
   deposit_insert_fault_is_valid(deposit_honest_post_root(), masquerade)
 }
 
-// Q43 structural-N/A adversarial control: a canonical valid normal L2
-// transaction must apply its exact delete/insert transition. Reusing its
-// authenticated pre-root as the claimed post-root makes the transition a
-// no-op; the accepted-transaction final route must still convict it.
-test accepts_valid_l2_transaction_no_op_transition_fault() {
-  let spent_input = native_input(h32_a, 0)
-  let spent_key = native_components.encode_midgard_tx_input(spent_input)
-  let produced_output = native_output()
-  let produced_value = ledger_value(
-    0,
-    native_components.encode_midgard_tx_output(produced_output),
-  )
-  // Both fixture outputs have index zero and identical content. Their ledger
-  // keys differ by transaction id; derive their shared descriptor only once.
-  let spent_value = produced_value
-  let spend_inputs_preimage = native_preimages.encode_input_preimage(
-    [spent_input],
-  )
-  let outputs_preimage = native_preimages.encode_output_preimage(
-    [produced_output],
-  )
-  let compact_cbor = native_l2_compact_cbor(
-    spend_inputs_preimage,
-    outputs_preimage,
-  )
-  let tx_id = native_l2_tx_id(compact_cbor)
-  let produced_key = native_components.encode_midgard_tx_input(
-    native_input(tx_id, 0),
-  )
-  let source_membership = raw_l2_source_membership(tx_id, compact_cbor)
-  let pre_root = mpf.root(mpf.insert(mpf.empty, spent_key, spent_value, []))
-  // The only input is consumed, leaving exactly the produced output. Build
-  // the expected tree independently instead of running the proof's delete
-  // and insert helpers a second time as part of this measurement's fixture.
-  let expected_post_root = mpf.root(
-    mpf.insert(mpf.empty, produced_key, produced_value, []),
-  )
-  let event_key = ledger_state.L2TransactionEventKey { tx_id }
-  let opened_step = step(
-    0,
-    event_key,
-    ledger_state.L2Transaction,
-    pre_root,
-    pre_root,
-  )
-  let trace_proof = trace_membership(opened_step)
-  let event_to_step = event_to_step_membership(
-    event_key,
-    0,
-    ledger_state.L2Transaction,
-  )
-  let header = ledger_state.HeaderV1 {
-    ..base_header(),
-    transactions_root: source_membership.root,
-    transition_trace_root: trace_proof.root,
-    event_to_step_root: event_to_step.root,
-    l2_transaction_count: 1,
-    total_event_count: 1,
-    transition_step_count: 1,
-  }
-
-  expect expected_post_root != opened_step.post_utxos_root
-  proof.validate_accepted_transaction_fault_proof(
-    prove(
-      header,
-      proof.InvalidOneStepTransition {
-        witness: proof.L2TransactionTransition {
-          trace_proof,
-          event_to_step,
-          source_membership,
-          spend_inputs_preimage,
-          outputs_preimage,
-          spent_utxos: [ledger_delete_witness(spent_key, spent_value)],
-          produced_utxos: [ledger_insert_witness(produced_key, produced_value)],
-        },
-      },
-    ),
-    asset_name_for(header),
-  )
-}
-
-/// The same hole on the L2 arm, and the reason the ruling calls it live.
-///
-/// `apply_l2_outputs` replays the challenger's insert values into
-/// `utxos_root`; it verifies insert-key non-membership only, so before the
-/// repoint a challenger could hand it the full output bytes, watch the replay
-/// diverge from every honest descriptor-built post-root, and mint. Every
-/// witness in this pair is constructible from real DA -- the delete path is
-/// format-agnostic -- which is what made the hole unilateral rather than
-/// theoretical.
-///
-/// The arm now derives the descriptor from the authenticated output, so the
-/// full-output value is refused before any root is computed. This test is
-/// `fail` rather than a `False` verdict because `apply_l2_outputs` binds the
-/// value with `expect`; the honest twin below proves the rest of the witness
-/// is sound, so the abort is the value check and nothing else.
-test l2_full_output_replay_against_a_descriptor_ledger_cannot_mint() fail {
-  let Pair(header, fault) = descriptor_ledger_l2_dispute(
-    native_components.encode_midgard_tx_output(native_output()),
-  )
-  proof.validate_accepted_transaction_fault_proof(
-    prove(header, fault),
-    asset_name_for(header),
-  )
-}
-
-/// The honest half: the same block, the same fault, the descriptor as the
-/// inserted value. This is the dispute the stale arm could not prove.
-test l2_descriptor_dispute_over_a_descriptor_ledger_mints() {
-  let Pair(header, fault) = descriptor_ledger_l2_dispute(
-    ledger_value(0, native_components.encode_midgard_tx_output(native_output())),
-  )
-  proof.validate_accepted_transaction_fault_proof(
-    prove(header, fault),
-    asset_name_for(header),
-  )
-}
-
-/// One descriptor-built ledger and one genuine no-op fault, parameterised by
-/// the value the challenger claims was inserted. Everything else -- the
-/// authenticated transaction, the pre-root, the trace and event-to-step
-/// bindings, the delete witness -- is identical between the two tests above,
-/// so the only difference under test is the wire format of the inserted value.
-fn descriptor_ledger_l2_dispute(
-  produced_witness_value: ByteArray,
-) -> Pair<ledger_state.HeaderV1, proof.TransitionFault> {
-  let spent_input = native_input(h32_a, 0)
-  let spent_key = native_components.encode_midgard_tx_input(spent_input)
-  let spent_value = native_output_ledger_value(spent_input.output_index)
-  let produced_output = native_output()
-  let spend_inputs_preimage = native_preimages.encode_input_preimage(
-    [spent_input],
-  )
-  let outputs_preimage = native_preimages.encode_output_preimage(
-    [produced_output],
-  )
-  let compact_cbor = native_l2_compact_cbor(
-    spend_inputs_preimage,
-    outputs_preimage,
-  )
-  let tx_id = native_l2_tx_id(compact_cbor)
-  let produced_key = native_components.encode_midgard_tx_input(
-    native_input(tx_id, 0),
-  )
-  let source_membership = raw_l2_source_membership(tx_id, compact_cbor)
-  let pre_root = mpf.root(mpf.insert(mpf.empty, spent_key, spent_value, []))
-  let event_key = ledger_state.L2TransactionEventKey { tx_id }
-  let opened_step = step(
-    0,
-    event_key,
-    ledger_state.L2Transaction,
-    pre_root,
-    pre_root,
-  )
-  let trace_proof = trace_membership(opened_step)
-  let event_to_step = event_to_step_membership(
-    event_key,
-    0,
-    ledger_state.L2Transaction,
-  )
-  let header = ledger_state.HeaderV1 {
-    ..base_header(),
-    transactions_root: source_membership.root,
-    transition_trace_root: trace_proof.root,
-    event_to_step_root: event_to_step.root,
-    l2_transaction_count: 1,
-    total_event_count: 1,
-    transition_step_count: 1,
-  }
-  Pair(
-    header,
-    proof.InvalidOneStepTransition {
-      witness: proof.L2TransactionTransition {
-        trace_proof,
-        event_to_step,
-        source_membership,
-        spend_inputs_preimage,
-        outputs_preimage,
-        spent_utxos: [ledger_delete_witness(spent_key, spent_value)],
-        produced_utxos: [
-          ledger_insert_witness(produced_key, produced_witness_value),
-        ],
-      },
-    },
-  )
-}
-
 fn common_nibbles(left: ByteArray, right: ByteArray, cursor: Int) -> Int {
   if nibble(left, cursor) == nibble(right, cursor) {
     common_nibbles(left, right, cursor + 1)
@@ -2685,6 +2147,11 @@ fn common_nibbles(left: ByteArray, right: ByteArray, cursor: Int) -> Int {
   }
 }
 
+// The accepted-transaction final replays an L2 transaction one ledger witness
+// per step (accepted-transaction-yields: phase 1 deletes, phase 4 inserts), so
+// its witness soundness is exercised here on the two library entry points those
+// steps call, and end to end by the transition-trace final emulator suites.
+//
 // An L2 transaction spends one output of a two-output ledger. The other
 // output sits in the root slot the produced output lands in, so the honest
 // spend ends in a Leaf step and the produced output then forks off that
@@ -2693,10 +2160,14 @@ fn common_nibbles(left: ByteArray, right: ByteArray, cursor: Int) -> Int {
 // output's insert keeps that branch, so the replayed post-root differs from
 // the honest one. `steered` picks the Branch reading for the spend and the
 // matching insert witness.
-fn l2_spend_branch_dispute(
+fn l2_spend_branch_replay(
   steered: Bool,
-  claimed_post_root: Option<ByteArray>,
-) -> Pair<ledger_state.HeaderV1, proof.TransitionFault> {
+) -> (
+  ByteArray,
+  ByteArray,
+  proof.LedgerDeleteWitness,
+  proof.LedgerInsertWitness,
+) {
   let spent_input = native_input(h32_a, 0)
   let spent_key = native_components.encode_midgard_tx_input(spent_input)
   let spent_value = native_output_ledger_value(spent_input.output_index)
@@ -2719,7 +2190,6 @@ fn l2_spend_branch_dispute(
   let produced_key = native_components.encode_midgard_tx_input(
     native_input(tx_id, 0),
   )
-  let source_membership = raw_l2_source_membership(tx_id, compact_cbor)
   let spent_path = blake2b_256(spent_key)
   let produced_path = blake2b_256(produced_key)
   let slot = nibble(produced_path, 0)
@@ -2777,511 +2247,44 @@ fn l2_spend_branch_dispute(
   } else {
     ([neighbour_leaf(0)], [neighbour_leaf(shared)])
   }
-  let post_root = when claimed_post_root is {
-    Some(root) -> root
-    None -> honest_post_root
-  }
-  let event_key = ledger_state.L2TransactionEventKey { tx_id }
-  let opened_step = step(
-    0,
-    event_key,
-    ledger_state.L2Transaction,
+  (
     pre_root,
-    post_root,
-  )
-  let trace_proof = trace_membership(opened_step)
-  let event_to_step = event_to_step_membership(
-    event_key,
-    0,
-    ledger_state.L2Transaction,
-  )
-  let header = ledger_state.HeaderV1 {
-    ..base_header(),
-    transactions_root: source_membership.root,
-    transition_trace_root: trace_proof.root,
-    event_to_step_root: event_to_step.root,
-    l2_transaction_count: 1,
-    total_event_count: 1,
-    transition_step_count: 1,
-  }
-  Pair(
-    header,
-    proof.InvalidOneStepTransition {
-      witness: proof.L2TransactionTransition {
-        trace_proof,
-        event_to_step,
-        source_membership,
-        spend_inputs_preimage,
-        outputs_preimage,
-        spent_utxos: [
-          proof.LedgerDeleteWitness {
-            key: spent_key,
-            value: spent_value,
-            opening: #"",
-            delete_proof,
-          },
-        ],
-        produced_utxos: [
-          proof.LedgerInsertWitness {
-            key: produced_key,
-            value: produced_value,
-            non_membership_proof: insert_proof,
-            insert_proof,
-          },
-        ],
-      },
+    honest_post_root,
+    proof.LedgerDeleteWitness {
+      key: spent_key,
+      value: spent_value,
+      opening: #"",
+      delete_proof,
+    },
+    proof.LedgerInsertWitness {
+      key: produced_key,
+      value: produced_value,
+      insert_proof,
     },
   )
 }
 
-fn l2_spend_branch_dispute_is_valid(
-  steered: Bool,
-  claimed_post_root: Option<ByteArray>,
-) -> Bool {
-  let Pair(header, fault) = l2_spend_branch_dispute(steered, claimed_post_root)
-  proof.validate_accepted_transaction_fault_proof(
-    prove(header, fault),
-    asset_name_for(header),
+fn replayed(steered: Bool) -> ByteArray {
+  let (pre_root, _, spent, produced) = l2_spend_branch_replay(steered)
+  proof.apply_insert_witness(
+    proof.apply_delete_witness(pre_root, spent),
+    produced,
   )
 }
 
-test honest_l2_spend_of_a_one_neighbour_ledger_resolves_to_the_honest_post_root() {
-  and {
-    !l2_spend_branch_dispute_is_valid(False, None),
-    l2_spend_branch_dispute_is_valid(False, Some(h32_b)),
-  }
+test honest_l2_spend_of_a_one_neighbour_ledger_replays_to_the_honest_post_root() {
+  let (_, honest_post_root, _, _) = l2_spend_branch_replay(False)
+  replayed(False) == honest_post_root
 }
 
 test l2_spend_branch_masquerade_proves_the_spent_output() {
-  let Pair(header, fault) = l2_spend_branch_dispute(True, None)
-  expect
-      proof.InvalidOneStepTransition{witness: proof.L2TransactionTransition {
-        trace_proof,
-        spent_utxos,
-        ..
-      }}
-    = fault
-  expect [spent] = spent_utxos
-  and {
-    header.l2_transaction_count == 1,
-    mpf.has(
-      mpf.from_root(trace_proof.value.pre_utxos_root),
-      spent.key,
-      spent.value,
-      spent.delete_proof,
-    ),
-  }
+  let (pre_root, _, spent, _) = l2_spend_branch_replay(True)
+  mpf.has(mpf.from_root(pre_root), spent.key, spent.value, spent.delete_proof)
 }
 
 test rejects_a_terminal_branch_masquerade_against_an_honest_l2_spend() fail {
-  l2_spend_branch_dispute_is_valid(True, None)
-}
-
-test rejects_l2_transaction_when_trace_matches_expected_post_root() {
-  let spent_input = native_input(h32_a, 0)
-  let spent_key = native_components.encode_midgard_tx_input(spent_input)
-  let spent_value = native_output_ledger_value(spent_input.output_index)
-  let produced_output = native_output()
-  let produced_value = ledger_value(
-    0,
-    native_components.encode_midgard_tx_output(produced_output),
-  )
-  let spend_inputs_preimage = native_preimages.encode_input_preimage(
-    [spent_input],
-  )
-  let outputs_preimage = native_preimages.encode_output_preimage(
-    [produced_output],
-  )
-  let compact_cbor = native_l2_compact_cbor(
-    spend_inputs_preimage,
-    outputs_preimage,
-  )
-  let tx_id = native_l2_tx_id(compact_cbor)
-  let produced_key = native_components.encode_midgard_tx_input(
-    native_input(tx_id, 0),
-  )
-  let source_membership = raw_l2_source_membership(tx_id, compact_cbor)
-  let pre_root = mpf.root(mpf.insert(mpf.empty, spent_key, spent_value, []))
-  let expected_post_root = proof.insert_root(
-    proof.delete_root(pre_root, spent_key, spent_value, [], #""),
-    produced_key,
-    produced_value,
-    [],
-  )
-  let event_key = ledger_state.L2TransactionEventKey { tx_id }
-  let opened_step = step(
-    0,
-    event_key,
-    ledger_state.L2Transaction,
-    pre_root,
-    expected_post_root,
-  )
-  let trace_proof = trace_membership(opened_step)
-  let event_to_step = event_to_step_membership(
-    event_key,
-    0,
-    ledger_state.L2Transaction,
-  )
-  let header = ledger_state.HeaderV1 {
-    ..base_header(),
-    transactions_root: source_membership.root,
-    transition_trace_root: trace_proof.root,
-    event_to_step_root: event_to_step.root,
-    l2_transaction_count: 1,
-    total_event_count: 1,
-    transition_step_count: 1,
-  }
-
-  !proof.validate_accepted_transaction_fault_proof(
-    prove(
-      header,
-      proof.InvalidOneStepTransition {
-        witness: proof.L2TransactionTransition {
-          trace_proof,
-          event_to_step,
-          source_membership,
-          spend_inputs_preimage,
-          outputs_preimage,
-          spent_utxos: [ledger_delete_witness(spent_key, spent_value)],
-          produced_utxos: [ledger_insert_witness(produced_key, produced_value)],
-        },
-      },
-    ),
-    asset_name_for(header),
-  )
-}
-
-test rejects_l2_transaction_with_wrong_authenticated_transaction_id() fail {
-  let spent_input = native_input(h32_a, 0)
-  let spent_key = native_components.encode_midgard_tx_input(spent_input)
-  let spent_value = native_output_ledger_value(spent_input.output_index)
-  let produced_output = native_output()
-  let produced_value = ledger_value(
-    0,
-    native_components.encode_midgard_tx_output(produced_output),
-  )
-  let spend_inputs_preimage = native_preimages.encode_input_preimage(
-    [spent_input],
-  )
-  let outputs_preimage = native_preimages.encode_output_preimage(
-    [produced_output],
-  )
-  let compact_cbor = native_l2_compact_cbor(
-    spend_inputs_preimage,
-    outputs_preimage,
-  )
-  let wrong_tx_id = h32_c
-  let produced_key = native_components.encode_midgard_tx_input(
-    native_input(wrong_tx_id, 0),
-  )
-  let source_membership = raw_l2_source_membership(wrong_tx_id, compact_cbor)
-  let pre_root = mpf.root(mpf.insert(mpf.empty, spent_key, spent_value, []))
-  let event_key = ledger_state.L2TransactionEventKey { tx_id: wrong_tx_id }
-  let opened_step = step(
-    0,
-    event_key,
-    ledger_state.L2Transaction,
-    pre_root,
-    h32_b,
-  )
-  let trace_proof = trace_membership(opened_step)
-  let event_to_step = event_to_step_membership(
-    event_key,
-    0,
-    ledger_state.L2Transaction,
-  )
-  let header = ledger_state.HeaderV1 {
-    ..base_header(),
-    transactions_root: source_membership.root,
-    transition_trace_root: trace_proof.root,
-    event_to_step_root: event_to_step.root,
-    l2_transaction_count: 1,
-    total_event_count: 1,
-    transition_step_count: 1,
-  }
-  proof.validate_accepted_transaction_fault_proof(
-    prove(
-      header,
-      proof.InvalidOneStepTransition {
-        witness: proof.L2TransactionTransition {
-          trace_proof,
-          event_to_step,
-          source_membership,
-          spend_inputs_preimage,
-          outputs_preimage,
-          spent_utxos: [ledger_delete_witness(spent_key, spent_value)],
-          produced_utxos: [ledger_insert_witness(produced_key, produced_value)],
-        },
-      },
-    ),
-    asset_name_for(header),
-  )
-}
-
-test rejects_l2_transaction_with_uncommitted_spend_preimage() fail {
-  let spent_input = native_input(h32_a, 0)
-  let spent_key = native_components.encode_midgard_tx_input(spent_input)
-  let spent_value = native_output_ledger_value(spent_input.output_index)
-  let produced_output = native_output()
-  let produced_value = ledger_value(
-    0,
-    native_components.encode_midgard_tx_output(produced_output),
-  )
-  let committed_spend_inputs_preimage = native_preimages.encode_input_preimage(
-    [spent_input],
-  )
-  let outputs_preimage = native_preimages.encode_output_preimage(
-    [produced_output],
-  )
-  let compact_cbor = native_l2_compact_cbor(
-    committed_spend_inputs_preimage,
-    outputs_preimage,
-  )
-  let tx_id = native_l2_tx_id(compact_cbor)
-  let produced_key = native_components.encode_midgard_tx_input(
-    native_input(tx_id, 0),
-  )
-  let source_membership = raw_l2_source_membership(tx_id, compact_cbor)
-  let pre_root = mpf.root(mpf.insert(mpf.empty, spent_key, spent_value, []))
-  let event_key = ledger_state.L2TransactionEventKey { tx_id }
-  let opened_step = step(
-    0,
-    event_key,
-    ledger_state.L2Transaction,
-    pre_root,
-    h32_b,
-  )
-  let trace_proof = trace_membership(opened_step)
-  let event_to_step = event_to_step_membership(
-    event_key,
-    0,
-    ledger_state.L2Transaction,
-  )
-  let header = ledger_state.HeaderV1 {
-    ..base_header(),
-    transactions_root: source_membership.root,
-    transition_trace_root: trace_proof.root,
-    event_to_step_root: event_to_step.root,
-    l2_transaction_count: 1,
-    total_event_count: 1,
-    transition_step_count: 1,
-  }
-  proof.validate_accepted_transaction_fault_proof(
-    prove(
-      header,
-      proof.InvalidOneStepTransition {
-        witness: proof.L2TransactionTransition {
-          trace_proof,
-          event_to_step,
-          source_membership,
-          spend_inputs_preimage: native_preimages.encode_input_preimage(
-            [native_input(h32_b, 0)],
-          ),
-          outputs_preimage,
-          spent_utxos: [ledger_delete_witness(spent_key, spent_value)],
-          produced_utxos: [ledger_insert_witness(produced_key, produced_value)],
-        },
-      },
-    ),
-    asset_name_for(header),
-  )
-}
-
-/// A one-input/one-output L2 transition fault whose ledger witnesses are built
-/// from the items the **supplied** preimages carry, rather than from the ones
-/// the block committed.
-///
-/// That inversion is the whole point of the shape, and it is what the older
-/// `rejects_l2_transaction_with_uncommitted_spend_preimage` vector above does
-/// not do. `apply_l2_spends` matches each walked input against its delete
-/// witness and `apply_l2_outputs` matches each walked output against its insert
-/// witness, so a vector that substitutes a preimage and leaves the committed
-/// witnesses in place is refused by *those* checks whether the door is there or
-/// not: it goes red for a reason that has nothing to do with §7.1, and would
-/// stay red if the authenticate-once hash were deleted outright.
-///
-/// Deriving the witnesses from the supplied items removes every such reason.
-/// The fault is internally consistent end to end and the post-root inequality
-/// it claims still holds, so the door's hash of the supplied preimage against
-/// the committed `spend_inputs_hash`/`outputs_hash` is the only thing standing
-/// between a prover and a `True` — which is what makes these neutralisation
-/// selectors rather than merely failing tests.
-///
-/// Verified by mutation, not by argument. Neutralising the door's
-/// authenticate-once check alone (`whole_view`'s
-/// `expect field_commitment(preimage) == expected_hash`) turns exactly the two
-/// substitution vectors below red and nothing else in this module — while
-/// `rejects_l2_transaction_with_uncommitted_spend_preimage` above stays green
-/// under that same mutation, because `apply_l2_spends` rejects its mismatched
-/// delete witness first. That is the concrete reason these two exist alongside
-/// it rather than instead of it, and it is why they, not it, are the selectors
-/// the Q21 execution ledger names.
-///
-/// `post_utxos_root` is a root the transition cannot produce, so the fault's own
-/// `expected_post_root != post_utxos_root` claim is satisfied for the right
-/// reason.
-fn substituted_preimage_l2_fault(
-  compact_cbor: ByteArray,
-  supplied_spend_inputs_preimage: ByteArray,
-  supplied_outputs_preimage: ByteArray,
-  supplied_spend_input: native_types.MidgardTxInput,
-  supplied_output: native_types.MidgardTxOutput,
-) -> Pair<ledger_state.HeaderV1, proof.TransitionFault> {
-  let spent_key = native_components.encode_midgard_tx_input(
-    supplied_spend_input,
-  )
-  let spent_value = native_output_ledger_value(
-    supplied_spend_input.output_index,
-  )
-  let produced_value = ledger_value(
-    0,
-    native_components.encode_midgard_tx_output(supplied_output),
-  )
-  let tx_id = native_l2_tx_id(compact_cbor)
-  let produced_key = native_components.encode_midgard_tx_input(
-    native_input(tx_id, 0),
-  )
-  let source_membership = raw_l2_source_membership(tx_id, compact_cbor)
-  let pre_root = mpf.root(mpf.insert(mpf.empty, spent_key, spent_value, []))
-  let event_key = ledger_state.L2TransactionEventKey { tx_id }
-  let opened_step = step(
-    0,
-    event_key,
-    ledger_state.L2Transaction,
-    pre_root,
-    h32_b,
-  )
-  let trace_proof = trace_membership(opened_step)
-  let event_to_step = event_to_step_membership(
-    event_key,
-    0,
-    ledger_state.L2Transaction,
-  )
-  let header = ledger_state.HeaderV1 {
-    ..base_header(),
-    transactions_root: source_membership.root,
-    transition_trace_root: trace_proof.root,
-    event_to_step_root: event_to_step.root,
-    l2_transaction_count: 1,
-    total_event_count: 1,
-    transition_step_count: 1,
-  }
-  Pair(
-    header,
-    proof.InvalidOneStepTransition {
-      witness: proof.L2TransactionTransition {
-        trace_proof,
-        event_to_step,
-        source_membership,
-        spend_inputs_preimage: supplied_spend_inputs_preimage,
-        outputs_preimage: supplied_outputs_preimage,
-        spent_utxos: [ledger_delete_witness(spent_key, spent_value)],
-        produced_utxos: [ledger_insert_witness(produced_key, produced_value)],
-      },
-    },
-  )
-}
-
-/// §7.1 on field 0. The prover hands the door a well-formed spend-inputs
-/// preimage for a transaction the block never committed, with every ledger
-/// witness consistent with it.
-test rejects_l2_transaction_with_a_substituted_spend_inputs_preimage() fail {
-  let substituted_spend_input = native_input(h32_c, 0)
-  let produced_output = native_output()
-  let outputs_preimage = native_preimages.encode_output_preimage(
-    [produced_output],
-  )
-  let compact_cbor = native_l2_compact_cbor(
-    native_preimages.encode_input_preimage([native_input(h32_a, 0)]),
-    outputs_preimage,
-  )
-  let Pair(header, fault) = substituted_preimage_l2_fault(
-    compact_cbor,
-    native_preimages.encode_input_preimage([substituted_spend_input]),
-    outputs_preimage,
-    substituted_spend_input,
-    produced_output,
-  )
-  proof.validate_accepted_transaction_fault_proof(
-    prove(header, fault),
-    asset_name_for(header),
-  )
-}
-
-/// §7.1 on field 2 — the second of the two openings, which the field-0 vector
-/// above cannot reach. Without it, an opening that named field 0 twice, or one
-/// that skipped the outputs door entirely, would keep the whole suite green.
-test rejects_l2_transaction_with_a_substituted_outputs_preimage() fail {
-  let spent_input = native_input(h32_a, 0)
-  let substituted_output = native_deposit_output(0)
-  let spend_inputs_preimage = native_preimages.encode_input_preimage(
-    [spent_input],
-  )
-  let compact_cbor = native_l2_compact_cbor(
-    spend_inputs_preimage,
-    native_preimages.encode_output_preimage([native_output()]),
-  )
-  let Pair(header, fault) = substituted_preimage_l2_fault(
-    compact_cbor,
-    spend_inputs_preimage,
-    native_preimages.encode_output_preimage([substituted_output]),
-    spent_input,
-    substituted_output,
-  )
-  proof.validate_accepted_transaction_fault_proof(
-    prove(header, fault),
-    asset_name_for(header),
-  )
-}
-
-/// §7.3 abort-never-clamp, on a preimage the block itself committed.
-///
-/// The committed field-0 preimage declares two items in its §5.1 header and
-/// carries one. Because the block committed these exact bytes the door's
-/// authenticate-once hash *matches* — the two substitution vectors above cannot
-/// reach this state — and the question becomes what a family does with a field
-/// whose commitment is honest and whose contents are malformed. The required
-/// answer is: abort. Clamping to the one item actually present would let a
-/// malformed commitment be disputed as though it were well-formed, and the
-/// walked spend-input list is fed straight into the ledger-root recomputation.
-///
-/// What this pins is that behaviour, not any single line of the door, and the
-/// distinction is why it is cited as §7.3 rather than §7.4. A miscounted header
-/// is §7.4's subject — count consistency at view construction — but mutation
-/// puts the boundary precisely, and §7.4 is not the guard that fires:
-/// neutralising `whole_view`'s arithmetic
-/// `header_len + stride * count == total_length` check does **not** turn this
-/// vector red, because the walk then runs off the end of the bytes and the
-/// §7.3 out-of-range item read aborts instead. Two independent guards refuse it,
-/// which is the right outcome for a fail-closed property but means this test is
-/// deliberately *not* listed as a Q21 neutralisation selector — it does not
-/// isolate one check, and a selector that cannot say which check it is watching
-/// is not one.
-test rejects_l2_transaction_with_a_miscounted_committed_spend_inputs_preimage() fail {
-  let spent_input = native_input(h32_a, 0)
-  let produced_output = native_output()
-  let miscounted_spend_inputs_preimage = bytearray.concat(
-    native_tx_field_access_v1.encode_field_array_header(2),
-    bytearray.drop(native_preimages.encode_input_preimage([spent_input]), 1),
-  )
-  let outputs_preimage = native_preimages.encode_output_preimage(
-    [produced_output],
-  )
-  let compact_cbor = native_l2_compact_cbor(
-    miscounted_spend_inputs_preimage,
-    outputs_preimage,
-  )
-  let Pair(header, fault) = substituted_preimage_l2_fault(
-    compact_cbor,
-    miscounted_spend_inputs_preimage,
-    outputs_preimage,
-    spent_input,
-    produced_output,
-  )
-  proof.validate_accepted_transaction_fault_proof(
-    prove(header, fault),
-    asset_name_for(header),
-  )
+  let (_, honest_post_root, _, _) = l2_spend_branch_replay(False)
+  replayed(True) != honest_post_root
 }
 
 test accepts_duplicate_trace_event_fault() {
@@ -4383,4 +3386,226 @@ test n2_fixed_descriptor_wire_refuses_nonminimal_count_spellings() {
       )
     },
   )
+}
+
+// Accepted forced transaction: the streamed accepted-transaction final replays
+// it as it replays an L2 transaction. Its leaf is opened over raw bytes under
+// the forced-transactions root and must carry `ForcedTxValid`.
+
+fn raw_forced_source_membership(
+  tx_order_id: ledger_state.TxOrderId,
+  leaf: ledger_state.ForcedInclusionTxV1,
+) -> transition_trace.RootMembershipProof<ByteArray, ByteArray> {
+  let key_bytes = cbor.serialise(tx_order_id)
+  let value_bytes = cbor.serialise(leaf)
+  let phas_root = mpf.root(mpf.insert(mpf.empty, key_bytes, value_bytes, []))
+  transition_trace.RootMembershipProof {
+    domain: transition_trace.ForcedTransactionsV1RootDomain,
+    root: transition_trace.commit_counted_root(
+      transition_trace.ForcedTransactionsV1RootDomain,
+      phas_root,
+      1,
+    ),
+    phas_root,
+    count: 1,
+    key: key_bytes,
+    value: value_bytes,
+    proof: [],
+  }
+}
+
+fn forced_valid_binding(
+  event_key: ledger_state.EventKey,
+  phase: ledger_state.TransitionPhase,
+  source: transition_trace.RootMembershipProof<ByteArray, ByteArray>,
+  forced_transactions_root: ByteArray,
+) -> Bool {
+  let trace_proof = trace_membership(step(0, event_key, phase, h32_a, h32_b))
+  let event_to_step = event_to_step_membership(event_key, 0, phase)
+  let header = ledger_state.HeaderV1 {
+    ..base_header(),
+    forced_transactions_root,
+    transition_trace_root: trace_proof.root,
+    event_to_step_root: event_to_step.root,
+    forced_transaction_count: 1,
+    total_event_count: 1,
+    transition_step_count: 1,
+  }
+  proof.validate_forced_valid_one_step_binding(
+    header,
+    trace_proof,
+    event_to_step,
+    source,
+  )
+}
+
+fn forced_valid_source() -> transition_trace.RootMembershipProof<
+  ByteArray,
+  ByteArray,
+> {
+  raw_forced_source_membership(
+    out_ref(0),
+    authenticated_forced_tx(rejection_reason_v1.ForcedTxValid),
+  )
+}
+
+fn forced_event_key(ix: Int) -> ledger_state.EventKey {
+  ledger_state.ForcedTransactionEventKey { tx_order_id: out_ref(ix) }
+}
+
+test forced_valid_binding_opens_the_committed_leaf() {
+  let source = forced_valid_source()
+  forced_valid_binding(
+    forced_event_key(0),
+    ledger_state.ForcedTransaction,
+    source,
+    source.root,
+  )
+}
+
+test forced_valid_binding_refuses_another_order() {
+  let source = forced_valid_source()
+  !forced_valid_binding(
+    forced_event_key(1),
+    ledger_state.ForcedTransaction,
+    source,
+    source.root,
+  )
+}
+
+test forced_valid_binding_refuses_the_l2_phase() {
+  let source = forced_valid_source()
+  !forced_valid_binding(
+    forced_event_key(0),
+    ledger_state.L2Transaction,
+    source,
+    source.root,
+  )
+}
+
+test forced_valid_binding_refuses_an_uncommitted_leaf() {
+  !forced_valid_binding(
+    forced_event_key(0),
+    ledger_state.ForcedTransaction,
+    forced_valid_source(),
+    h32_c,
+  )
+}
+
+test forced_valid_binding_refuses_a_transactions_root_leaf() {
+  let source = raw_l2_source_membership(h32_a, #"d87980")
+  !forced_valid_binding(
+    forced_event_key(0),
+    ledger_state.ForcedTransaction,
+    transition_trace.RootMembershipProof {
+      ..source,
+      key: cbor.serialise(out_ref(0)),
+    },
+    source.root,
+  )
+}
+
+test forced_valid_binding_refuses_an_l2_event_key() fail {
+  let source = forced_valid_source()
+  forced_valid_binding(
+    ledger_state.L2TransactionEventKey { tx_id: h32_a },
+    ledger_state.ForcedTransaction,
+    source,
+    source.root,
+  )
+}
+
+test accepted_forced_leaf_opens_a_valid_leaf() {
+  let leaf = authenticated_forced_tx(rejection_reason_v1.ForcedTxValid)
+  proof.accepted_forced_leaf(cbor.serialise(leaf)) == leaf
+}
+
+test accepted_forced_leaf_refuses_an_invalid_verdict() fail {
+  proof.accepted_forced_leaf(
+    cbor.serialise(authenticated_forced_tx(verdict_plutus_failed())),
+  ).tx_id != #""
+}
+
+test accepted_forced_leaf_refuses_a_fee_verdict() fail {
+  proof.accepted_forced_leaf(
+    cbor.serialise(
+      authenticated_forced_tx(
+        rejection_reason_v1.ForcedTxInvalid {
+          reason: rejection_reason_v1.FeeBelowMinimum,
+        },
+      ),
+    ),
+  ).tx_id != #""
+}
+
+test accepted_forced_leaf_refuses_non_canonical_bytes() fail {
+  let bytes = cbor.serialise(
+    authenticated_forced_tx(rejection_reason_v1.ForcedTxValid),
+  )
+  let definite = bytearray.concat(
+    #"d87983",
+    builtin.slice_bytearray(3, builtin.length_of_bytearray(bytes) - 4, bytes),
+  )
+  proof.accepted_forced_leaf(definite).tx_id != #""
+}
+
+// The definite spelling decodes to the leaf, so the refusal above is the
+// exact-bytes check, not the decoder.
+test accepted_forced_leaf_non_canonical_bytes_decode_to_the_leaf() {
+  let leaf = authenticated_forced_tx(rejection_reason_v1.ForcedTxValid)
+  let bytes = cbor.serialise(leaf)
+  let definite = bytearray.concat(
+    #"d87983",
+    builtin.slice_bytearray(3, builtin.length_of_bytearray(bytes) - 4, bytes),
+  )
+  let leaf_data: Data = leaf
+  cbor_deserialise.deserialise(definite) == Some(leaf_data)
+}
+
+// The L2 binding is unchanged: it opens the transactions root under an
+// L2TransactionEventKey only.
+test l2_binding_opens_the_committed_source() {
+  let source = raw_l2_source_membership(h32_a, #"d87980")
+  let event_key = ledger_state.L2TransactionEventKey { tx_id: h32_a }
+  let trace_proof = trace_membership(
+    step(0, event_key, ledger_state.L2Transaction, h32_a, h32_b),
+  )
+  let event_to_step = event_to_step_membership(
+    event_key,
+    0,
+    ledger_state.L2Transaction,
+  )
+  let header = ledger_state.HeaderV1 {
+    ..base_header(),
+    transactions_root: source.root,
+    transition_trace_root: trace_proof.root,
+    event_to_step_root: event_to_step.root,
+    l2_transaction_count: 1,
+    total_event_count: 1,
+    transition_step_count: 1,
+  }
+  proof.validate_l2_one_step_binding(header, trace_proof, event_to_step, source)
+}
+
+test l2_binding_refuses_a_forced_event_key() fail {
+  let source = forced_valid_source()
+  let event_key = forced_event_key(0)
+  let trace_proof = trace_membership(
+    step(0, event_key, ledger_state.ForcedTransaction, h32_a, h32_b),
+  )
+  let event_to_step = event_to_step_membership(
+    event_key,
+    0,
+    ledger_state.ForcedTransaction,
+  )
+  let header = ledger_state.HeaderV1 {
+    ..base_header(),
+    transactions_root: source.root,
+    transition_trace_root: trace_proof.root,
+    event_to_step_root: event_to_step.root,
+    l2_transaction_count: 1,
+    total_event_count: 1,
+    transition_step_count: 1,
+  }
+  proof.validate_l2_one_step_binding(header, trace_proof, event_to_step, source)
 }

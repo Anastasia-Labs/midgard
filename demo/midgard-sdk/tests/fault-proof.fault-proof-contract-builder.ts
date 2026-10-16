@@ -994,7 +994,7 @@ describe("fault-proof contract builder", () => {
         expectedSemanticResolvers[57]!,
         expectedSemanticResolvers[58]!,
         expectedSemanticResolvers[59]!,
-        expectedSemanticResolvers[90]!,
+        expectedSemanticResolvers[82]!,
       ],
       [
         expectedSemanticResolvers[60]!,
@@ -1025,16 +1025,6 @@ describe("fault-proof contract builder", () => {
         expectedSemanticResolvers[79]!,
         expectedSemanticResolvers[80]!,
         expectedSemanticResolvers[81]!,
-      ],
-      [
-        expectedSemanticResolvers[82]!,
-        expectedSemanticResolvers[83]!,
-        expectedSemanticResolvers[84]!,
-        expectedSemanticResolvers[85]!,
-        expectedSemanticResolvers[86]!,
-        expectedSemanticResolvers[87]!,
-        expectedSemanticResolvers[88]!,
-        expectedSemanticResolvers[89]!,
       ],
     ] as const;
     const resolverHashesSchema = Data.Array(Data.Bytes());
@@ -1073,7 +1063,6 @@ describe("fault-proof contract builder", () => {
       expectedPrepareResolvers[10]!,
       expectedPrepareResolvers[11]!,
       expectedPrepareResolvers[12]!,
-      expectedPrepareResolvers[13]!,
     ];
     expect(expectedResolvers).toHaveLength(VALIDATION_TRACE_RESOLVER_COUNT);
     const resolverHashesData = Data.from(

@@ -235,7 +235,7 @@ it("builds registered ScriptSources and CEK carriers with one identical shared e
   expect(registered.settlement.spendingScriptHash).not.toBe(
     cek.settlement.spendingScriptHash,
   );
-  expect(contracts.validationTraceDispute.semanticResolvers[90]).toEqual(
+  expect(contracts.validationTraceDispute.semanticResolvers[82]).toEqual(
     registered.envelope,
   );
   for (const role of [registered.sourceAuthenticator, ...registered.executors])

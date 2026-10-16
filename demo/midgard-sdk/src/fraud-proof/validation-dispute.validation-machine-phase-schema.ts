@@ -59,7 +59,6 @@ export const ValidationMachinePhaseSchema = Data.Enum([
   Data.Literal("ScriptIntegrity"),
   Data.Literal("Cek"),
   Data.Literal("ValueAndMint"),
-  Data.Literal("LedgerDelta"),
   Data.Literal("Terminal"),
 ]);
 
@@ -89,7 +88,6 @@ export const ValidationMachineStateSchema = Data.Object({
   execution_memory: Data.Integer(),
   verdict: ValidationMachineVerdictSchema,
   rejection_code_hash: H32Schema,
-  ledger_delta_root: H32Schema,
 });
 
 export type ValidationMachineState = Data.Static<

@@ -63,12 +63,11 @@ pub fn resolver_index(phase: validation_trace_v1.ValidationPhase) -> Int {
     validation_trace_v1.ScriptIntegrity -> 10
     validation_trace_v1.Cek -> 11
     validation_trace_v1.ValueAndMint -> 12
-    validation_trace_v1.LedgerDelta -> 13
     validation_trace_v1.Terminal -> -1
   }
 }
 
-pub const resolver_count: Int = 14
+pub const resolver_count: Int = 13
 
 /// The one-step boundary: the game is at ReadyForOneStep and `pre_state` is
 /// the agreed state at `low_index`. The bisection already authenticated both

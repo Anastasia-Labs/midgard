@@ -780,7 +780,6 @@ fn phase_a_semantic_fixture() -> Pair<
     execution_memory: 0,
     verdict: validation_trace_v1.Pending,
     rejection_code_hash: zero,
-    ledger_delta_root: h_c,
   }
   let post = validation_trace_v1.ValidationMachineStateV1 {
     ..pre,
@@ -836,7 +835,6 @@ fn pre_state(
     execution_memory: 0,
     verdict: validation_trace_v1.Pending,
     rejection_code_hash: zero,
-    ledger_delta_root: h_c,
   }
 }
 

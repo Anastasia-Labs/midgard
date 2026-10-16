@@ -137,6 +137,31 @@ export const midgardContractsFromDeploymentManifest = (
         sourcePath,
         "fraudProofTransitionTraceAcceptedTransactionL2OpenWithdraw",
       ),
+      l2Delete: withdrawalValidatorFromManifest(
+        manifest,
+        sourcePath,
+        "fraudProofTransitionTraceAcceptedTransactionL2DeleteWithdraw",
+      ),
+      l2Outputs: withdrawalValidatorFromManifest(
+        manifest,
+        sourcePath,
+        "fraudProofTransitionTraceAcceptedTransactionL2OutputsWithdraw",
+      ),
+      l2OutputStep: withdrawalValidatorFromManifest(
+        manifest,
+        sourcePath,
+        "fraudProofTransitionTraceAcceptedTransactionL2OutputStepWithdraw",
+      ),
+      l2OutputDescriptor: withdrawalValidatorFromManifest(
+        manifest,
+        sourcePath,
+        "fraudProofTransitionTraceAcceptedTransactionL2OutputDescriptorWithdraw",
+      ),
+      l2OutputSummary: withdrawalValidatorFromManifest(
+        manifest,
+        sourcePath,
+        "fraudProofTransitionTraceAcceptedTransactionL2OutputSummaryWithdraw",
+      ),
       l2Summaries: withdrawalValidatorFromManifest(
         manifest,
         sourcePath,
@@ -146,21 +171,6 @@ export const midgardContractsFromDeploymentManifest = (
         manifest,
         sourcePath,
         "fraudProofTransitionTraceAcceptedTransactionL2ReplayWithdraw",
-      ),
-      claimStructure: withdrawalValidatorFromManifest(
-        manifest,
-        sourcePath,
-        "fraudProofTransitionTraceAcceptedTransactionClaimStructureWithdraw",
-      ),
-      claimSource: withdrawalValidatorFromManifest(
-        manifest,
-        sourcePath,
-        "fraudProofTransitionTraceAcceptedTransactionClaimSourceWithdraw",
-      ),
-      claimEndpoints: withdrawalValidatorFromManifest(
-        manifest,
-        sourcePath,
-        "fraudProofTransitionTraceAcceptedTransactionClaimEndpointsWithdraw",
       ),
       depositProjection: withdrawalValidatorFromManifest(
         manifest,

@@ -321,17 +321,19 @@ export const LedgerDeleteWitness = asDataType<LedgerDeleteWitness>(
   LedgerDeleteWitnessSchema,
 );
 
+/**
+ * One ledger insert. The single proof's paired fold authenticates the key's
+ * absence from the predecessor root and derives the successor root.
+ */
 export const LedgerInsertWitnessSchema = Data.Object({
   key: Data.Bytes(),
   value: Data.Bytes(),
-  non_membership_proof: ProofSchema,
   insert_proof: ProofSchema,
 });
 
 export type LedgerInsertWitness = {
   readonly key: string;
   readonly value: string;
-  readonly non_membership_proof: Proof;
   readonly insert_proof: Proof;
 };
 
@@ -375,10 +377,15 @@ export const InvalidOneStepTransitionWitnessSchema = Data.Enum([
       trace_proof: TransitionTraceMembershipProofSchema,
       event_to_step: EventToStepMembershipProofSchema,
       source_membership: L2TransactionSourceMembershipProofSchema,
-      spend_inputs_preimage: Data.Bytes(),
-      outputs_preimage: Data.Bytes(),
-      spent_utxos: Data.Array(LedgerDeleteWitnessSchema),
-      produced_utxos: Data.Array(LedgerInsertWitnessSchema),
+    }),
+  }),
+  // The forced leaf is opened over its raw key (`TxOrderId` CBOR) and value
+  // (`ForcedInclusionTxV1` CBOR) bytes.
+  Data.Object({
+    ValidForcedTransactionTransition: Data.Object({
+      trace_proof: TransitionTraceMembershipProofSchema,
+      event_to_step: EventToStepMembershipProofSchema,
+      source_membership: RawRootMembershipProofSchema,
     }),
   }),
 ]);

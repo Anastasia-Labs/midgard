@@ -35,9 +35,9 @@ pub type SpendRedeemer =
 
 /// N5: the hash of the state every thread starts from.
 ///
-/// SEAM (FW-R): until `validation_claim_v1.derive_initial_state` lands, the
-/// claim's initial state must be exactly the one derivation builds
-/// (`committed_initial_state_is_derived`), and its hash is the agreed one.
+/// The descriptor's committed initial state hash must be the hash of the state
+/// `validation_claim_v1.derive_initial_state` builds
+/// (`committed_initial_state_is_derived`), and that hash is the agreed one.
 fn agreed_initial_hash(
   state: validation_game_v1.PendingValidationClaimV1,
 ) -> ByteArray {
@@ -46,7 +46,7 @@ fn agreed_initial_hash(
       state.challenged_header,
       state.claim,
     )
-  validation_trace_v1.hash_machine_state(state.claim.initial_state)
+  state.claim.descriptor_membership.value.initial_state_hash
 }
 
 /// VerifySource, the second half of the opener. In order:

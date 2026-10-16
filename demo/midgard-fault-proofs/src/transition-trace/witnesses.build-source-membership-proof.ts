@@ -284,6 +284,19 @@ export const buildForcedTransactionLeafMembershipProof = async ({
   });
 };
 
+/** A forced-transactions membership proof over the committed key and leaf bytes. */
+export const leafKeyMembershipProof = async <K, V>({
+  root,
+  entry,
+}: {
+  readonly root: CountedRoot;
+  readonly entry: DecodedRootEntry<K, V>;
+}): Promise<SDK.RawRootMembershipProof> => ({
+  ...(await membershipProof({ root, entry })),
+  key: entry.keyBytes.toString("hex"),
+  value: entry.valueBytes.toString("hex"),
+});
+
 export const buildRawL2TransactionSourceMembershipProof = async ({
   reconstruction,
   txId,

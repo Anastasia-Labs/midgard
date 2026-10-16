@@ -314,9 +314,7 @@ export const validationMachineStateDataFromCore = (
                             ? "Cek"
                             : state.phase === "valueAndMint"
                               ? "ValueAndMint"
-                              : state.phase === "ledgerDelta"
-                                ? "LedgerDelta"
-                                : "Terminal",
+                              : "Terminal",
   program_counter: BigInt(state.programCounter),
   work_root: bytesHex(state.workRoot),
   execution_cpu: state.executionCpu,
@@ -328,5 +326,4 @@ export const validationMachineStateDataFromCore = (
         ? "Accepted"
         : "Rejected",
   rejection_code_hash: bytesHex(state.rejectionCodeHash),
-  ledger_delta_root: bytesHex(state.ledgerDeltaRoot),
 });

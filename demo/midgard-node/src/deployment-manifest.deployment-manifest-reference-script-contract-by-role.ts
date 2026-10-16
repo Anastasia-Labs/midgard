@@ -677,16 +677,20 @@ export const DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE =
 
     "V1 fraud-proof transition-trace final-4 L2 open yield":
       "fraudProofTransitionTraceAcceptedTransactionL2OpenWithdraw",
+    "V1 fraud-proof transition-trace final-4 L2 delete yield":
+      "fraudProofTransitionTraceAcceptedTransactionL2DeleteWithdraw",
+    "V1 fraud-proof transition-trace final-4 L2 outputs yield":
+      "fraudProofTransitionTraceAcceptedTransactionL2OutputsWithdraw",
+    "V1 fraud-proof transition-trace final-4 L2 output step yield":
+      "fraudProofTransitionTraceAcceptedTransactionL2OutputStepWithdraw",
+    "V1 fraud-proof transition-trace final-4 L2 output descriptor yield":
+      "fraudProofTransitionTraceAcceptedTransactionL2OutputDescriptorWithdraw",
+    "V1 fraud-proof transition-trace final-4 L2 output summary yield":
+      "fraudProofTransitionTraceAcceptedTransactionL2OutputSummaryWithdraw",
     "V1 fraud-proof transition-trace final-4 L2 summaries yield":
       "fraudProofTransitionTraceAcceptedTransactionL2SummariesWithdraw",
     "V1 fraud-proof transition-trace final-4 L2 replay yield":
       "fraudProofTransitionTraceAcceptedTransactionL2ReplayWithdraw",
-    "V1 fraud-proof transition-trace final-4 claim structure yield":
-      "fraudProofTransitionTraceAcceptedTransactionClaimStructureWithdraw",
-    "V1 fraud-proof transition-trace final-4 claim source yield":
-      "fraudProofTransitionTraceAcceptedTransactionClaimSourceWithdraw",
-    "V1 fraud-proof transition-trace final-4 claim endpoints yield":
-      "fraudProofTransitionTraceAcceptedTransactionClaimEndpointsWithdraw",
     "V1 fraud-proof transition-trace final-5 projection yield":
       "fraudProofTransitionTraceDepositProjectionWithdraw",
     "V1 fraud-proof transition-trace final-6 L1 event yield":

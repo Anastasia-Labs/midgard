@@ -495,7 +495,8 @@ pub type MidgardTxValidity {
 /// validator reaches by two different routes. `verify_source_authentication`,
 /// under the mandatory `committed_claim_source_is_authenticated`, asserted that
 /// the carried value equalled the `native_tx_proof_commitment_v1` it re-derived
-/// from the `source` sitting beside it. `source_binds_initial_state`, under
+/// from the `source` sitting beside it. `source_binding_is_exact` (since folded
+/// into `derive_initial_state`), under
 /// `committed_claim_endpoints_and_source_are_valid` — which
 /// `validators/fraud-proofs/validation-trace/source-v1.ak` uses as a *branch
 /// selector* rather than a conjunct — then bound the carried value to the machine

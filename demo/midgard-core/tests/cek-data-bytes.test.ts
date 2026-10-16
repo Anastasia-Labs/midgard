@@ -40,7 +40,8 @@ describe("authenticated CEK Data bytes V1", () => {
       });
       const summary = finalizeMidgardCekDataBytes(trace.terminal)!;
       const bytesRoot = commitMidgardCekBlob(content).root;
-      const memory = 4n + (length === 0 ? 1n : BigInt(length));
+      const memory =
+        4n + (length === 0 ? 1n : BigInt(Math.floor((length - 1) / 8) + 1));
 
       expect(summary).toStrictEqual({
         root: Buffer.from(
@@ -96,7 +97,7 @@ describe("authenticated CEK Data bytes V1", () => {
     );
     expect(finalizeMidgardCekDataBytes(trace.terminal)).toMatchObject({
       cborLength: 16_384n,
-      memory: 15_889n,
+      memory: 1_990n,
     });
   });
 
@@ -124,7 +125,7 @@ describe("authenticated CEK Data bytes V1", () => {
     );
     expect(
       finalizeMidgardCekDataBytes(trace.terminal)!.root.toString("hex"),
-    ).toBe("e36bf656c2ebd1bb060fa2a5b3c8d515c595d7ddac821eab2ab29d5e97b29836");
+    ).toBe("51a986a84b9af3d99f4bbfa6f5fd1d1b674b9c2d064d9ce4a1c02ed1403778e3");
   });
 
   it.each([

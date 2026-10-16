@@ -40,11 +40,6 @@ export const VALIDATION_CONTEXT_DOMAIN = Buffer.from(
   "utf8",
 );
 
-export const LEDGER_DELTA_DOMAIN = Buffer.from(
-  "MidgardValidationLedgerDeltaV1",
-  "utf8",
-);
-
 export const MidgardValidationPhase = {
   canonicalDecode: 0,
   compactBinding: 1,
@@ -59,8 +54,7 @@ export const MidgardValidationPhase = {
   scriptIntegrity: 10,
   cek: 11,
   valueAndMint: 12,
-  ledgerDelta: 13,
-  terminal: 14,
+  terminal: 13,
 } as const;
 
 export type MidgardValidationPhaseName = keyof typeof MidgardValidationPhase;
@@ -123,8 +117,33 @@ export type MidgardValidationMachineState = {
   readonly executionMemory: bigint;
   readonly verdict: MidgardValidationVerdictName;
   readonly rejectionCodeHash: Hash32;
-  readonly ledgerDeltaRoot: Hash32;
 };
+
+/**
+ * The wire order of `validation_machine_state_v1`, one name per CBOR array
+ * slot. The encoder and the decoder both index through this list, so a field
+ * added to the state is placed by inserting its name here (and its value in
+ * `encodeMidgardValidationMachineState`); no other slot number moves by hand.
+ */
+export const MIDGARD_VALIDATION_MACHINE_STATE_FIELDS = [
+  "machineVersion",
+  "eventKeyHash",
+  "transactionId",
+  "transactionCommitment",
+  "validationContextHash",
+  "sourceKind",
+  "priorLedgerRoot",
+  "phase",
+  "programCounter",
+  "workRoot",
+  "executionCpu",
+  "executionMemory",
+  "verdict",
+  "rejectionCodeHash",
+] as const satisfies readonly (keyof MidgardValidationMachineState)[];
+
+export type MidgardValidationMachineStateFieldName =
+  (typeof MIDGARD_VALIDATION_MACHINE_STATE_FIELDS)[number];
 
 export type MidgardValidationTraceDescriptor = {
   readonly schemaVersion: typeof MIDGARD_VALIDATION_TRACE_DESCRIPTOR_VERSION;
@@ -212,25 +231,39 @@ export const encodeMidgardValidationMachineState = (
     state.rejectionCodeHash,
     "state",
   );
-  return encodeCbor([
-    BigInt(state.machineVersion),
-    ensureHash32(state.eventKeyHash, "state.event_key_hash"),
-    ensureHash32(state.transactionId, "state.transaction_id"),
-    ensureHash32(state.transactionCommitment, "state.transaction_commitment"),
-    ensureHash32(state.validationContextHash, "state.validation_context_hash"),
-    BigInt(MidgardValidationSourceKind[state.sourceKind]),
-    ensureHash32(state.priorLedgerRoot, "state.prior_ledger_root"),
-    BigInt(MidgardValidationPhase[state.phase]),
-    BigInt(
+  const encoded: Record<MidgardValidationMachineStateFieldName, unknown> = {
+    machineVersion: BigInt(state.machineVersion),
+    eventKeyHash: ensureHash32(state.eventKeyHash, "state.event_key_hash"),
+    transactionId: ensureHash32(state.transactionId, "state.transaction_id"),
+    transactionCommitment: ensureHash32(
+      state.transactionCommitment,
+      "state.transaction_commitment",
+    ),
+    validationContextHash: ensureHash32(
+      state.validationContextHash,
+      "state.validation_context_hash",
+    ),
+    sourceKind: BigInt(MidgardValidationSourceKind[state.sourceKind]),
+    priorLedgerRoot: ensureHash32(
+      state.priorLedgerRoot,
+      "state.prior_ledger_root",
+    ),
+    phase: BigInt(MidgardValidationPhase[state.phase]),
+    programCounter: BigInt(
       asBoundedUint(state.programCounter, "state.program_counter", 0xffff_ffff),
     ),
-    ensureHash32(state.workRoot, "state.work_root"),
-    state.executionCpu,
-    state.executionMemory,
-    BigInt(MidgardValidationVerdict[state.verdict]),
-    ensureHash32(state.rejectionCodeHash, "state.rejection_code_hash"),
-    ensureHash32(state.ledgerDeltaRoot, "state.ledger_delta_root"),
-  ]);
+    workRoot: ensureHash32(state.workRoot, "state.work_root"),
+    executionCpu: state.executionCpu,
+    executionMemory: state.executionMemory,
+    verdict: BigInt(MidgardValidationVerdict[state.verdict]),
+    rejectionCodeHash: ensureHash32(
+      state.rejectionCodeHash,
+      "state.rejection_code_hash",
+    ),
+  };
+  return encodeCbor(
+    MIDGARD_VALIDATION_MACHINE_STATE_FIELDS.map((name) => encoded[name]),
+  );
 };
 
 export const ZERO_HASH32 = Buffer.alloc(32);

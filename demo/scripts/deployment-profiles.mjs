@@ -41,6 +41,8 @@ import {
   largestFeasibleCommitEventDepth,
   largestNoStrikeCommitEventDepth,
   largestProductionCommitEventDepth,
+  maximumTransitionTraceThreadBudgetMs,
+  maximumTransitionTraceThreadSteps,
   minimumDaResponseBudgetMs,
   minimumPublicEventWaitMs,
   minimumPublicOpenAfterApplyMarginMs,
@@ -61,6 +63,8 @@ export {
   largestFeasibleCommitEventDepth,
   largestNoStrikeCommitEventDepth,
   largestProductionCommitEventDepth,
+  maximumTransitionTraceThreadBudgetMs,
+  maximumTransitionTraceThreadSteps,
   minimumDaResponseBudgetMs,
   minimumPublicEventWaitMs,
   minimumPublicOpenAfterApplyMarginMs,
@@ -325,6 +329,11 @@ export const validateProfile = (profile, name) => {
       "DA challenge window, maximum validity range, full response window and dispute schedule must end before block maturity",
     );
   }
+  const threadBudget = maximumTransitionTraceThreadBudgetMs();
+  if (!nonInteractiveTesting && threadBudget > timing.block_maturity_ms)
+    throw new Error(
+      `Block maturity must cover the longest transition-trace thread, ${maximumTransitionTraceThreadSteps()} steps (${threadBudget} ms)`,
+    );
   // An Apply may land as late as end time plus the attestation timeout, and an
   // open must land before end time plus the challenge window. On a public
   // profile a challenger must see that latest Apply at confirmation depth and

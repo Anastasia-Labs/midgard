@@ -307,7 +307,6 @@ fn cek_state(
       execution_memory,
       verdict: validation_trace_v1.Pending,
       rejection_code_hash: zero,
-      ledger_delta_root: validation_trace_v1.hash_ledger_delta(#"80"),
     },
     work_witness_cbor,
   )
@@ -1012,7 +1011,6 @@ fn golden_state() -> validation_trace_v1.ValidationMachineStateV1 {
     execution_memory: 0,
     verdict: validation_trace_v1.Pending,
     rejection_code_hash: zero,
-    ledger_delta_root: zero,
   }
 }
 
@@ -3055,7 +3053,7 @@ test bounded_context_binding_wire_matches_sdk() {
       staged_data,
     ],
   )
-  blake2b_256(cbor.serialise(vector)) == #"a0941f466a25f523e9650c28f2ee5d038b3093d7e6065ffe799fe4335bb6bd95"
+  blake2b_256(cbor.serialise(vector)) == #"43af4831f31bcf8837ddbb2c11f7539bc4f0b33a8ebc27237f752d33c92de882"
 }
 
 fn ordered_mint_fixture() -> Pair<CekContextControlV1, CekMintHead> {
@@ -5015,4 +5013,101 @@ test census_redeemer_select_finish_beside_a_wallet_input_taking_thread_value_is_
   census_redeemer_select_finish(
     only("redeemer_select_finish", census.beside_wallet_input(1)),
   )
+}
+
+/// The settle step of a context seed. Starting an execution spends Cardano's
+/// startup cost, so the claimed successor's running budget grows by
+/// `startup_cpu` and `startup_memory` over the pre-state's.
+fn settle_context_seed(startup_cpu: Int, startup_memory: Int) -> Bool {
+  let tx = empty_v1_transaction()
+  let original = context_staged_fixture(context_step_fixture())
+  expect cek: CekWitnessControlV1 = original.bound.control
+  let context = CekContextControlV1 { ..original.context, stage: 13 }
+  let Pair(pre, work_witness_cbor) = cek_state(
+    tx,
+    cek.control,
+    vm_witness.encode_cek_context_control_v1(context),
+    0,
+    #"",
+    0,
+    0,
+    h_b,
+    55,
+    7,
+    9,
+  )
+  // The leaf step authenticated the initial state; settlement only carries it.
+  let initial_state_hash = h_c
+  let next_work = vm_witness.encode_cek_witness_v1(
+    cek.control,
+    #"",
+    0,
+    0,
+    0,
+    initial_state_hash,
+    20,
+    10,
+    h_b,
+    0,
+    0,
+  )
+  let post = validation_trace_v1.ValidationMachineStateV1 {
+    ..pre,
+    program_counter: 56,
+    execution_cpu: pre.execution_cpu + startup_cpu,
+    execution_memory: pre.execution_memory + startup_memory,
+    work_root: validation_trace_v1.hash_work_witness(
+      validation_trace_v1.Cek,
+      56,
+      next_work,
+    ),
+  }
+  let f = step_fixture(
+    2,
+    pre,
+    work_witness_cbor,
+    post,
+    NoAuxiliaryWitness,
+    NoCekMaterial,
+  )
+  let staged_data: Data = context_staged_fixture(f)
+  let verified = context_chain.ContextVerified {
+    staged: staged_data,
+    successor: context_chain.StartExecution {
+      initial_state_hash,
+      execution_cpu_limit: 20,
+      execution_memory_limit: 10,
+      purpose_kind: 0,
+      purpose_index: 0,
+    },
+  }
+  context_settle.main.spend(
+    fixture.next_step_script_hash,
+    fixture.computation_thread_policy_id,
+    Some(
+      ct.StepDatum {
+        fraud_prover: fixture.fraud_prover_key_hash,
+        data: Some(verified),
+      },
+    ),
+    ct.Continue(context_chain_action(f)),
+    fixture.own_out_ref(),
+    fixture.continue_mid_step_l1_tx_v1(ct_asset, winning_output()),
+  )
+}
+
+test context_settle_seed_spends_the_startup_cost() {
+  settle_context_seed(100, 100)
+}
+
+test context_settle_seed_refuses_one_cpu_less_than_the_startup_cost() fail {
+  settle_context_seed(99, 100)
+}
+
+test context_settle_seed_refuses_one_memory_less_than_the_startup_cost() fail {
+  settle_context_seed(100, 99)
+}
+
+test context_settle_seed_refuses_a_free_start() fail {
+  settle_context_seed(0, 0)
 }

@@ -1,3 +1,4 @@
+import { midgardCekBytesMemoryWords } from "./cek-memory-size.js";
 import {
   asArray,
   asBigInt,
@@ -228,7 +229,7 @@ export const midgardCekDataBytesCborLength = (bytesLength: bigint): bigint => {
 
 export const midgardCekDataBytesMemory = (bytesLength: bigint): bigint => {
   uint32(bytesLength, "cek_data.bytes.bytes_length");
-  return 4n + (bytesLength === 0n ? 1n : bytesLength);
+  return 4n + midgardCekBytesMemoryWords(bytesLength);
 };
 
 export type MidgardCekDataSummary = {

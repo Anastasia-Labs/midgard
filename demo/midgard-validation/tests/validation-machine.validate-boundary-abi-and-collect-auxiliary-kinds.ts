@@ -11,6 +11,7 @@ import { parseExactAikenDataCbor } from "@al-ft/midgard-fault-proofs";
 import {
   Application,
   Lambda,
+  UPLCConst,
   UPLCEncoder,
   UPLCProgram,
   UPLCVar,
@@ -127,11 +128,17 @@ export const context = {
   ledgerMutationSteps: [],
 };
 
-export const buildAcceptingIdentityProgram = () =>
+/** `(lam ctx [(lam _ ()) ctx])`: accepts any context and halts with Unit. */
+export const buildAcceptingUnitProgram = () =>
   buildMidgardCanonicalCekProgram(
     Buffer.from(
       UPLCEncoder.compile(
-        new UPLCProgram([1, 1, 0], new Lambda(new UPLCVar(0))),
+        new UPLCProgram(
+          [1, 1, 0],
+          new Lambda(
+            new Application(new Lambda(UPLCConst.unit), new UPLCVar(0)),
+          ),
+        ),
       ),
     ),
   );

@@ -58,7 +58,6 @@ export const buildTransitionTraceAbiFixtures = (): Record<
   const ledgerInsertWitness: SDK.LedgerInsertWitness = {
     key: "cc",
     value: "dd",
-    non_membership_proof: proof,
     insert_proof: proof,
   };
   const traceProof: SDK.IndexedTraceProof = {
@@ -113,6 +112,14 @@ export const buildTransitionTraceAbiFixtures = (): Record<
     key: outputReference,
     value: forcedInclusionTxFixture,
     proof,
+  };
+  const forcedRawSourceMembership: SDK.RawRootMembershipProof = {
+    ...forcedSourceMembership,
+    key: Data.to(outputReference, SDK.OutputReference),
+    value: Data.to(
+      { ...forcedInclusionTxFixture, verdict: "ForcedTxValid" },
+      SDK.ForcedInclusionTxV1,
+    ),
   };
   const l2SourceMembership: SDK.L2TransactionSourceMembershipProof = {
     domain: SDK.ROOT_DOMAINS.transactionsV1,
@@ -257,10 +264,14 @@ export const buildTransitionTraceAbiFixtures = (): Record<
           trace_proof: traceProof,
           event_to_step: eventToStepMembership,
           source_membership: l2SourceMembership,
-          spend_inputs_preimage: "80",
-          outputs_preimage: "80",
-          spent_utxos: [ledgerDeleteWitness],
-          produced_utxos: [ledgerInsertWitness],
+        },
+      }),
+    "transition-fault.valid-forced-transaction-transition":
+      SDK.invalidOneStepTransitionFault({
+        ValidForcedTransactionTransition: {
+          trace_proof: traceProof,
+          event_to_step: eventToStepMembership,
+          source_membership: forcedRawSourceMembership,
         },
       }),
     "transition-fault.omitted-deposit": SDK.omittedDueL1EventFault({
@@ -367,70 +378,6 @@ export const buildTransitionTraceAbiFixtures = (): Record<
     proof: proofFor(fault),
     proof_ref_indices: [],
   });
-  const validationState: SDK.ValidationMachineState = {
-    machine_version: 1n,
-    event_key_hash: "81".repeat(32),
-    transaction_id: h32,
-    transaction_commitment: "35".repeat(32),
-    validation_context_hash: "82".repeat(32),
-    source_kind: "Normal",
-    prior_ledger_root: headerFixture.prevUtxosRoot,
-    phase: "Terminal",
-    program_counter: 1n,
-    work_root: "83".repeat(32),
-    execution_cpu: 1n,
-    execution_memory: 1n,
-    verdict: "Accepted",
-    rejection_code_hash: "00".repeat(32),
-    ledger_delta_root: "84".repeat(32),
-  };
-  const validationDescriptor: SDK.ValidationTraceDescriptor = {
-    schema_version: 1n,
-    machine_version: 1n,
-    trace_root: "85".repeat(32),
-    step_count: 1n,
-    initial_state_hash: "86".repeat(32),
-    terminal_state_hash: "87".repeat(32),
-    verdict: "Accepted",
-    rejection_code_hash: "00".repeat(32),
-  };
-  const validationProof: SDK.ValidationTraceProof = {
-    state_index: 0n,
-    state_hash: validationDescriptor.terminal_state_hash,
-    siblings: [],
-  };
-  const acceptedTransactionClaim: SDK.ValidationClaimWitness = {
-    version: 1n,
-    descriptor_membership: {
-      domain: SDK.ROOT_DOMAINS.validationTraces,
-      root: headerFixture.validationTracesRoot,
-      phas_root: "72".repeat(32),
-      count: 1n,
-      key: eventKeys[2]!,
-      value: validationDescriptor,
-      proof,
-    },
-    transition_step_membership: traceProof,
-    event_to_step_membership: eventToStepMembership,
-    source_membership: {
-      NormalValidationSource: {
-        membership: {
-          ...l2SourceMembership,
-          value: l2TransactionSourceFixture,
-        },
-      },
-    },
-    validation_context_cbor: "80",
-    initial_state: validationState,
-    terminal_state: validationState,
-    initial_state_proof: validationProof,
-    terminal_state_proof: validationProof,
-  };
-  transitionFaults["transition-fault.accepted-transaction-transition"] =
-    SDK.acceptedTransactionTransitionMismatchFault({
-      claim: acceptedTransactionClaim,
-      terminalAcceptanceWitnessCbor: "80",
-    });
   const fixtures: Record<string, AbiFixtureValue> = {
     HeaderV1: {
       schemaName: "HeaderV1",

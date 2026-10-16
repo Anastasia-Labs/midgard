@@ -36,7 +36,7 @@ test canonical_list_constant_matches_typescript() {
 test canonical_direct_4095_byte_constant_matches_typescript() {
   let bytes = bytearray.from_int_big_endian(0, 4095)
   cek_constant_v1.verify_constant_witness_v1(
-    #"39286d9f63929ce56cdd18c4b40524a0c1ecf7909825a3ed3b60f3afcd299d3a",
+    #"f78cf598a2aed2565c1a92207133ec48937408d549b22f702e2803c1017d683e",
     cek_constant_v1.ConstantWitnessV1 {
       type_cbor: #"9f01ff",
       payload_cbor: cbor.serialise(builtin.b_data(bytes)),
@@ -48,7 +48,7 @@ test canonical_direct_8800_byte_constant_matches_streamed_root() {
   let bytes = bytearray.from_int_big_endian(0, 4400)
     |> bytearray.concat(bytearray.from_int_big_endian(0, 4400))
   cek_constant_v1.verify_constant_witness_v1(
-    #"83ee73cbaad1ceaad96adde815cb0cd758faa8846e9cf06ab966889df1750a87",
+    #"3e10cc18dcf520d7b952abdd0cd502bf1c7513c34c4fb810c700ea016194fb78",
     cek_constant_v1.ConstantWitnessV1 {
       type_cbor: #"9f01ff",
       payload_cbor: cbor.serialise(builtin.b_data(bytes)),
@@ -62,7 +62,7 @@ test direct_payload_above_9215_bytes_fails_closed() fail {
   let payload_cbor = cbor.serialise(builtin.b_data(bytes))
   expect bytearray.length(payload_cbor) > 9215
   cek_constant_v1.verify_constant_witness_v1(
-    #"83ee73cbaad1ceaad96adde815cb0cd758faa8846e9cf06ab966889df1750a87",
+    #"3e10cc18dcf520d7b952abdd0cd502bf1c7513c34c4fb810c700ea016194fb78",
     cek_constant_v1.ConstantWitnessV1 { type_cbor: #"9f01ff", payload_cbor },
   )
 }
@@ -79,12 +79,12 @@ test noncanonical_payload_fails_closed() fail {
 
 test signed_integer_memory_size_matches_reference_cek() {
   [
-    cek_constant_v1.integer_memory_size_v1(-129),
-    cek_constant_v1.integer_memory_size_v1(-128),
+    cek_constant_v1.integer_memory_size_v1(-18446744073709551616),
+    cek_constant_v1.integer_memory_size_v1(-18446744073709551615),
     cek_constant_v1.integer_memory_size_v1(-1),
     cek_constant_v1.integer_memory_size_v1(0),
-    cek_constant_v1.integer_memory_size_v1(127),
-    cek_constant_v1.integer_memory_size_v1(128),
+    cek_constant_v1.integer_memory_size_v1(18446744073709551615),
+    cek_constant_v1.integer_memory_size_v1(18446744073709551616),
   ] == [2, 1, 1, 1, 1, 2]
 }
 
@@ -94,7 +94,7 @@ test semantic_list_memory_sums_elements() {
       type_cbor: #"9f0500ff",
       payload_cbor: #"9f01190100ff",
     },
-  ) == 3
+  ) == 2
 }
 
 test data_memory_adds_four_words_per_node() {
@@ -102,5 +102,5 @@ test data_memory_adds_four_words_per_node() {
     builtin.map_data(
       [Pair(builtin.i_data(1), builtin.list_data([builtin.b_data(#"0000")]))],
     ),
-  ) == 19
+  ) == 18
 }

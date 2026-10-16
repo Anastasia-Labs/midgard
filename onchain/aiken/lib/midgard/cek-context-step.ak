@@ -305,19 +305,13 @@ pub fn seed_hash(
   let context_value = cek_constant_v1.semantic_data_constant_root_v1(summary)
   let context_term = cek_proof_v1.hash_context_constant_term_v1(context_value)
   cek_machine_v1.hash_state_v1(
-    cek_machine_v1.MachineStateV1 {
-      mode: cek_machine_v1.mode_compute,
-      execution_index: execution_cursor,
-      focus_root: cek_proof_v1.hash_application_term_v1(
+    cek_machine_v1.initial_state_v1(
+      execution_cursor,
+      cek_proof_v1.hash_application_term_v1(
         context.program_term_root,
         context_term,
       ),
-      environment_root: cek_proof_v1.empty_environment_root_v1,
-      continuation_root: cek_proof_v1.empty_continuation_root_v1,
-      auxiliary: 0,
-      cpu: 0,
-      memory: 0,
-    },
+    ),
   )
 }
 

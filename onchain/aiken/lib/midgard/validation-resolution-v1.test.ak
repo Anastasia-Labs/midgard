@@ -28,14 +28,13 @@ fn running_state() -> validation_trace_v1.ValidationMachineStateV1 {
     validation_context_hash: h_d,
     source_kind: validation_trace_v1.Normal,
     prior_ledger_root: h_e,
-    phase: validation_trace_v1.LedgerDelta,
+    phase: validation_trace_v1.ValueAndMint,
     program_counter: 1,
     work_root: h_f,
     execution_cpu: 0,
     execution_memory: 0,
     verdict: validation_trace_v1.Pending,
     rejection_code_hash: zero,
-    ledger_delta_root: h_a,
   }
 }
 
@@ -139,7 +138,7 @@ test a_challengers_early_terminal_goes_to_the_phase_resolver() {
       dispute,
       running_state(),
     ),
-    validation_resolution_v1.resolver_index(running_state().phase) == 13,
+    validation_resolution_v1.resolver_index(running_state().phase) == 12,
   }
 }
 
@@ -188,7 +187,7 @@ test the_fixed_point_refuses_a_running_state_under_its_own_agreed_hash() fail {
 test the_fixed_point_refuses_a_malformed_terminal_state() fail {
   let malformed = validation_trace_v1.ValidationMachineStateV1 {
     ..terminal_state(),
-    ledger_delta_root: #"00",
+    work_root: #"00",
   }
   winner(
     CaseThreadV1 {

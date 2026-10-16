@@ -131,18 +131,18 @@
   },
   {
     "file": "midgard-core/src/deployment-manifest-identity/catalogue-roles.deployment-manifest-contract-names.ts",
-    "max": 563,
-    "reason": "One frozen declarative contract-name catalogue (571 lines) owns the complete deployment-role universe and its literal type. Splitting it creates catalogue assembly and inferred-type indirection without separating implementation; retaining all names together supports completeness review. Adds the single authenticated malformed-redeemer Data executor name to the same frozen catalogue. Canonical production binding: Eight mandatory closed canonical-route registry roles (prepare, Empty/Item semantics, source, observe, proof, settlement, proof-item publication). Exact formatter-final line count; no transaction budget changes. DUPDEL (-2): the cross-block duplicate-event family was deleted; repeated deposit and withdrawal events are convicted by the fabricated-event families. DC (+1): the redeemer Data refusal executor is split by traverse stage under the reference-script size limit, adding the scalar invalid-data executor role. DC datum step (+1): the non-canonical output proof gains its inline-datum step role. Streamed Data verdicts (+2): the redeemer canonicity proof gains its streamed data step role and the resolved-output canonicity proof its inline-datum step role. R3 escape-hatch manifest field retirement (-2)."
+    "max": 565,
+    "reason": "One frozen declarative contract-name catalogue (571 lines) owns the complete deployment-role universe and its literal type. Splitting it creates catalogue assembly and inferred-type indirection without separating implementation; retaining all names together supports completeness review. Adds the single authenticated malformed-redeemer Data executor name to the same frozen catalogue. Canonical production binding: Eight mandatory closed canonical-route registry roles (prepare, Empty/Item semantics, source, observe, proof, settlement, proof-item publication). Exact formatter-final line count; no transaction budget changes. DUPDEL (-2): the cross-block duplicate-event family was deleted; repeated deposit and withdrawal events are convicted by the fabricated-event families. DC (+1): the redeemer Data refusal executor is split by traverse stage under the reference-script size limit, adding the scalar invalid-data executor role. DC datum step (+1): the non-canonical output proof gains its inline-datum step role. Streamed Data verdicts (+2): the redeemer canonicity proof gains its streamed data step role and the resolved-output canonicity proof its inline-datum step role. R3 escape-hatch manifest field retirement (-2). Ledger-delta phase and claim mode deleted (-3). K0 stream (+2): the accepted-transaction replay gains its L2 delete and L2 outputs yield names. Output step (+3): the l2OutputStep, l2OutputDescriptor and l2OutputSummary transition-trace yield roles."
   },
   {
     "file": "midgard-core/src/deployment-manifest-identity/reference-script-contracts.ts",
-    "max": 954,
-    "reason": "DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE is the dominant indivisible declaration (964 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. Adds the authenticated malformed-redeemer Data executor binding to this declarative role table. Canonical production binding: Eight mandatory closed canonical-route registry roles (prepare, Empty/Item semantics, source, observe, proof, settlement, proof-item publication). Exact formatter-final line count; no transaction budget changes. DUPDEL (-4): the cross-block duplicate-event family was deleted; repeated deposit and withdrawal events are convicted by the fabricated-event families. DC (+2): the redeemer Data refusal executor is split by traverse stage under the reference-script size limit, adding the scalar invalid-data executor role. DC datum step (+2): the non-canonical output proof gains its inline-datum step role. Streamed Data verdicts (+4): the redeemer canonicity proof gains its streamed data step role and the resolved-output canonicity proof its inline-datum step role."
+    "max": 958,
+    "reason": "DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE is the dominant indivisible declaration (964 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. Adds the authenticated malformed-redeemer Data executor binding to this declarative role table. Canonical production binding: Eight mandatory closed canonical-route registry roles (prepare, Empty/Item semantics, source, observe, proof, settlement, proof-item publication). Exact formatter-final line count; no transaction budget changes. DUPDEL (-4): the cross-block duplicate-event family was deleted; repeated deposit and withdrawal events are convicted by the fabricated-event families. DC (+2): the redeemer Data refusal executor is split by traverse stage under the reference-script size limit, adding the scalar invalid-data executor role. DC datum step (+2): the non-canonical output proof gains its inline-datum step role. Streamed Data verdicts (+4): the redeemer canonicity proof gains its streamed data step role and the resolved-output canonicity proof its inline-datum step role. Ledger-delta phase and claim mode deleted (-6). K0 stream (+4): the accepted-transaction replay gains its L2 delete and L2 outputs yield role bindings. Output step (+6): the l2OutputStep, l2OutputDescriptor and l2OutputSummary transition-trace yield roles."
   },
   {
     "file": "midgard-core/src/deployment-manifest-identity/reference-script-tokens.ts",
-    "max": 744,
-    "reason": "DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_TOKEN_NAMES is the dominant indivisible declaration (761 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. Adds the authenticated malformed-redeemer Data executor token name to this declarative role table. Canonical production binding: Eight mandatory closed canonical-route registry roles (prepare, Empty/Item semantics, source, observe, proof, settlement, proof-item publication). Exact formatter-final line count; no transaction budget changes. DUPDEL (-4): the cross-block duplicate-event family was deleted; repeated deposit and withdrawal events are convicted by the fabricated-event families. DC (+2): the redeemer Data refusal executor is split by traverse stage under the reference-script size limit, adding the scalar invalid-data executor role. DC datum step (+2): the non-canonical output proof gains its inline-datum step role. Streamed Data verdicts (+3): the redeemer canonicity proof gains its streamed data step role and the resolved-output canonicity proof its inline-datum step role."
+    "max": 748,
+    "reason": "DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_TOKEN_NAMES is the dominant indivisible declaration (761 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. Adds the authenticated malformed-redeemer Data executor token name to this declarative role table. Canonical production binding: Eight mandatory closed canonical-route registry roles (prepare, Empty/Item semantics, source, observe, proof, settlement, proof-item publication). Exact formatter-final line count; no transaction budget changes. DUPDEL (-4): the cross-block duplicate-event family was deleted; repeated deposit and withdrawal events are convicted by the fabricated-event families. DC (+2): the redeemer Data refusal executor is split by traverse stage under the reference-script size limit, adding the scalar invalid-data executor role. DC datum step (+2): the non-canonical output proof gains its inline-datum step role. Streamed Data verdicts (+3): the redeemer canonicity proof gains its streamed data step role and the resolved-output canonicity proof its inline-datum step role. Ledger-delta phase and claim mode deleted (-6). K0 stream (+4): the accepted-transaction replay gains its L2 delete and L2 outputs yield token names. Output step (+6): the l2OutputStep, l2OutputDescriptor and l2OutputSummary transition-trace yield roles."
   },
   {
     "file": "midgard-core/tests/availability-operation-journal.test.ts",
@@ -176,8 +176,8 @@
   },
   {
     "file": "midgard-fault-proofs/src/bin.main.ts",
-    "max": 1437,
-    "reason": "main is the dominant indivisible declaration (1668 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
+    "max": 1438,
+    "reason": "main is the dominant indivisible declaration (1668 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. Output step (+1): submit-transition-trace-proof forwards --transition-l2-replay."
   },
   {
     "file": "midgard-fault-proofs/src/input-set-uniqueness/submit-input-set-uniqueness-step-02.submit-input-set-uniqueness-step02.ts",
@@ -246,8 +246,8 @@
   },
   {
     "file": "midgard-fault-proofs/src/transition-trace/submit.submit-transition-trace-final.ts",
-    "max": 777,
-    "reason": "submitTransitionTraceFinal is the dominant indivisible declaration (725 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. T302 (-50): the phase-8 datum walk moved to data-summary-walk; cap reduced to the measured count."
+    "max": 800,
+    "reason": "submitTransitionTraceFinal is the dominant indivisible declaration (725 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. T302 (-50): the phase-8 datum walk moved to data-summary-walk; cap reduced to the measured count. Output step (+23): accepted-transaction checkpoints open their field carriage and withdraw from the output-step verifiers."
   },
   {
     "file": "midgard-fault-proofs/src/value-not-preserved/union-plan.plan-conservation-fold.ts",
@@ -495,11 +495,6 @@
     "reason": "buildMinimalFaultProofContracts is the dominant indivisible declaration (1114 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. DUPDEL (-30): the cross-block duplicate-event family was deleted; repeated deposit and withdrawal events are convicted by the fabricated-event families. VR (+3): script contexts carry POSIX-ms validity bounds, so the phase-B, trace, classifier and contract-builder inputs here name the deployment's L1 slot mapping. B1-rest (-53): retained-witness consumers deleted; cap reduced to the measured count. Composed with the integrated commit-slot fixture changes. R3 escape-hatch manifest field retirement (-1). I3 (+2): the minimal contracts carry the dispute bond amount."
   },
   {
-    "file": "midgard-fault-proofs/tests/support/emulator/validators.make-always-succeeds-contracts.ts",
-    "max": 502,
-    "reason": "makeAlwaysSucceedsContracts is the dominant indivisible declaration (493 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. Canonical production binding: Explicit canonicalDecodePrepare member aliases the existing canonical prepare validator. Exact formatter-final line count; no transaction budget changes. DUPDEL (-1): the cross-block duplicate-event family was deleted; repeated deposit and withdrawal events are convicted by the fabricated-event families. R3 escape-hatch manifest field retirement (-1). I3 (+1): the dispute bond."
-  },
-  {
     "file": "midgard-fault-proofs/tests/support/invalid-signature-wrongful-emulator.run-invalid-signature-wrongful-rejection-scenario.ts",
     "max": 578,
     "reason": "runInvalidSignatureWrongfulRejectionScenario is the dominant indivisible declaration (524 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. C2a (+1): headers are committed with the commit slot as block_slot, and callers use the header the commit returns."
@@ -526,8 +521,8 @@
   },
   {
     "file": "midgard-fault-proofs/tests/support/transition-trace-final-cases.register-transition-trace-final-cases.ts",
-    "max": 925,
-    "reason": "registerTransitionTraceFinalCases is the dominant indivisible declaration (846 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. C2a (+2): headers are committed with the commit slot as block_slot, and callers use the header the commit returns. T302 (-9): the forged datum walk case lives in transition-trace-final-cases.forged-walk.ts; cap reduced to the measured count."
+    "max": 942,
+    "reason": "transitionTraceFinalCaseRunner (formerly the body of registerTransitionTraceFinalCases) is the dominant indivisible declaration (846 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. C2a (+2): headers are committed with the commit slot as block_slot, and callers use the header the commit returns. T302 (-9): the forged datum walk case lives in transition-trace-final-cases.forged-walk.ts; cap reduced to the measured count. Ledger-delta phase and claim mode deleted (-8). Maximum shape (+8): the accepted-transaction fit suite takes spent-input and ledger-fill shape parameters and records an over-budget transaction before asserting its budget. Output step (+22): accepted cases publish the field-preimage certificate reference and pre-publish both field carriages before captured hops. Forged steps (-23): the per-case runner is exported so a test file can give each case a literal title, refusal checks share one helper, and the forged accepted-transaction step cases live in transition-trace-final-cases.forged-step.ts; cap reduced to the measured count. Honest terminal (-2): the honest refusal check lives in transition-trace-final-cases.honest-terminal.ts; cap reduced to the measured count. Output-step routing (+7): a case may give its produced output's exact CBOR and insert it at a chosen ledger depth. Forged-step pins (+3): a forged-step case passes its proof material and its own refusal check to the forged step. N5 (+10): the forced kind-0 cases and their refusal at open."
   },
   {
     "file": "midgard-fault-proofs/tests/support/validator-scenario-registry.family-scenarios.ts",
@@ -536,7 +531,7 @@
   },
   {
     "file": "midgard-fault-proofs/tests/support/validator-scenario-registry.unmapped-validators.ts",
-    "max": 577,
+    "max": 565,
     "reason": "UNMAPPED_VALIDATORS: a single declarative catalogue/map keeps its complete role-to-entry relationship reviewable. Independent helpers were extracted; fragmenting the literal adds assembly indirection without a new concern. Combined recovered source removes obsolete lines; cap reduced to the measured final source count. Registered Data executor coverage removes five obsolete unmapped entries; cap ratchets down. Retiring two superseded families removes their entries; cap reduced to the measured count. DUPDEL (-2): the cross-block duplicate-event family was deleted; repeated deposit and withdrawal events are convicted by the fabricated-event families. B1-rest (+14): validators of families with no off-chain workflow in this release join the unmapped list with their reason. The integrated scalar executor is excluded with its validation-trace family. State-queue spend gains a mapped scenario pair (-1). The game, boundary, award and timeout validators are mapped to their emulator scenarios (-4)."
   },
   {
@@ -776,8 +771,8 @@
   },
   {
     "file": "midgard-node/src/deployment-manifest.deployment-manifest-reference-script-contract-by-role.ts",
-    "max": 951,
-    "reason": "DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE is the dominant indivisible declaration (961 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. Adds the authenticated malformed-redeemer Data executor binding to this declarative role table. Canonical production binding: Eight mandatory closed canonical-route registry roles (prepare, Empty/Item semantics, source, observe, proof, settlement, proof-item publication). Exact formatter-final line count; no transaction budget changes. DUPDEL (-4): the cross-block duplicate-event family was deleted; repeated deposit and withdrawal events are convicted by the fabricated-event families. DC (+2): the redeemer Data refusal executor is split by traverse stage under the reference-script size limit, adding the scalar invalid-data executor role. DC datum step (+2): the non-canonical output proof gains its inline-datum step role. Streamed Data verdicts (+4): the redeemer canonicity proof gains its streamed data step role and the resolved-output canonicity proof its inline-datum step role."
+    "max": 955,
+    "reason": "DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE is the dominant indivisible declaration (961 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. Adds the authenticated malformed-redeemer Data executor binding to this declarative role table. Canonical production binding: Eight mandatory closed canonical-route registry roles (prepare, Empty/Item semantics, source, observe, proof, settlement, proof-item publication). Exact formatter-final line count; no transaction budget changes. DUPDEL (-4): the cross-block duplicate-event family was deleted; repeated deposit and withdrawal events are convicted by the fabricated-event families. DC (+2): the redeemer Data refusal executor is split by traverse stage under the reference-script size limit, adding the scalar invalid-data executor role. DC datum step (+2): the non-canonical output proof gains its inline-datum step role. Streamed Data verdicts (+4): the redeemer canonicity proof gains its streamed data step role and the resolved-output canonicity proof its inline-datum step role. Ledger-delta phase and claim mode deleted (-6). K0 stream (+4): the accepted-transaction replay gains its L2 delete and L2 outputs yield role bindings. Output step (+6): the l2OutputStep, l2OutputDescriptor and l2OutputSummary transition-trace yield roles."
   },
   {
     "file": "midgard-node/src/mpf/process.process-mpfs.ts",
@@ -801,8 +796,8 @@
   },
   {
     "file": "midgard-node/src/services/always-succeeds.make-always-succeeds-service.ts",
-    "max": 536,
-    "reason": "makeAlwaysSucceedsService is the dominant indivisible declaration (529 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. Canonical production binding: Explicit canonicalDecodePrepare member aliases the existing canonical prepare validator. Exact formatter-final line count; no transaction budget changes. DUPDEL (-1): the cross-block duplicate-event family was deleted; repeated deposit and withdrawal events are convicted by the fabricated-event families. R3 escape-hatch manifest field retirement (-2)."
+    "max": 538,
+    "reason": "makeAlwaysSucceedsService is the dominant indivisible declaration (529 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. Canonical production binding: Explicit canonicalDecodePrepare member aliases the existing canonical prepare validator. Exact formatter-final line count; no transaction budget changes. DUPDEL (-1): the cross-block duplicate-event family was deleted; repeated deposit and withdrawal events are convicted by the fabricated-event families. R3 escape-hatch manifest field retirement (-2). Ledger-delta phase and claim mode deleted (-3). K0 stream (+2): the accepted-transaction replay gains its L2 delete and L2 outputs yield always-succeeds stand-ins. Output step (+3): the l2OutputStep, l2OutputDescriptor and l2OutputSummary transition-trace yield roles."
   },
   {
     "file": "midgard-node/src/services/config.make-config.ts",
@@ -811,8 +806,8 @@
   },
   {
     "file": "midgard-node/src/services/midgard-contracts.midgard-contracts-from-deployment-manifest.ts",
-    "max": 725,
-    "reason": "midgardContractsFromDeploymentManifest is the dominant indivisible declaration (722 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. DUPDEL (-6): the cross-block duplicate-event family was deleted; repeated deposit and withdrawal events are convicted by the fabricated-event families. R3 escape-hatch manifest field retirement (-7)."
+    "max": 735,
+    "reason": "midgardContractsFromDeploymentManifest is the dominant indivisible declaration (722 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. DUPDEL (-6): the cross-block duplicate-event family was deleted; repeated deposit and withdrawal events are convicted by the fabricated-event families. R3 escape-hatch manifest field retirement (-7). Ledger-delta phase and claim mode deleted (-15). K0 stream (+10): the accepted-transaction replay gains its L2 delete and L2 outputs yield manifest bindings. Output step (+15): the l2OutputStep, l2OutputDescriptor and l2OutputSummary transition-trace yield roles."
   },
   {
     "file": "midgard-node/src/services/mpf-native-owner/service.production-native-mpf-owner-service.ts",
@@ -1021,7 +1016,7 @@
   },
   {
     "file": "midgard-node/tests/midgard-contracts.test.ts",
-    "max": 560,
+    "max": 561,
     "reason": "Retained test registration “midgard contracts registry” (487 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor. VR (+7): script contexts carry POSIX-ms validity bounds, so the phase-B, trace, classifier and contract-builder inputs here name the deployment's L1 slot mapping, and the registry digest's re-pin history names the txInfo stage's mapping parameter. P1 composition (+3): the pinned registry digests name the composed tree in their re-pin reasons. Streamed Data verdicts (+4): the registry digests name the streamed redeemer and datum Data verdict steps in their re-pin reasons. Exact rejection reason (+2): the registry digests name the validation machine's exact rejection reason in their re-pin reasons. Operator slash economics (+2): the registry digests name the above-bond slash and the timeout's operator-directory separation in their re-pin reasons. I3 (+3): the treasury script and bond-locked source verification re-pin notes, merged into the integration notes. Defender one-step timeout (+1): the registry digest names the ReadyForOneStep timeout in its re-pin reasons."
   },
   {
@@ -1090,14 +1085,9 @@
     "reason": "Retained test registration “scheduler refresh witness selection” (649 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
   },
   {
-    "file": "midgard-node/tests/sdk-abi-fixtures.build-transition-trace-abi-fixtures.ts",
-    "max": 527,
-    "reason": "buildTransitionTraceAbiFixtures is the dominant indivisible declaration (501 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
-  },
-  {
     "file": "midgard-node/tests/sdk-abi-fixtures.test.ts",
-    "max": 1043,
-    "reason": "Retained test registration “SDK canonical ABI fixtures” (1000 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+    "max": 1051,
+    "reason": "Retained test registration “SDK canonical ABI fixtures” (1000 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor. N5 (+8): the ValidForcedTransactionTransition witness field order."
   },
   {
     "file": "midgard-node/tests/signed-intent-continuation-emulator.test.ts",
@@ -1126,13 +1116,13 @@
   },
   {
     "file": "midgard-sdk/src/fraud-proof/contracts/families/validation-trace-dispute.build-validation-trace-dispute-chain.ts",
-    "max": 1641,
+    "max": 1621,
     "reason": "buildValidationTraceDisputeChain is the dominant indivisible declaration (1577 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. Direct committed-step ABI: the game receives the ordered prepare-resolver hash list as its third parameter. The cap records the exact final line count. Root combined integration preserves prior terminal/builtin behavior; cap records the resulting source count. Canonical production binding: Explicit canonicalDecodePrepare member aliases the existing canonical prepare validator. Exact formatter-final line count; no transaction budget changes. VR (+4): the txInfo step validator is applied with the deployment's L1 slot mapping. I3 (+14): the dispute bond validator, applied to the fraud-proof policy. I3 (+4): the source validator is applied over the dispute bond script hash and bond amount. I3 deletions (-1): the game no longer takes the resolver hash list."
   },
   {
     "file": "midgard-sdk/src/reference-scripts.reference-script-auth-token-names.ts",
-    "max": 751,
-    "reason": "REFERENCE_SCRIPT_AUTH_TOKEN_NAMES: a single declarative catalogue/map keeps its complete role-to-entry relationship reviewable. Independent helpers were extracted; fragmenting the literal adds assembly indirection without a new concern. Adds the authenticated malformed-redeemer Data executor token name to this declarative role table. Canonical production binding: Eight mandatory closed canonical-route registry roles (prepare, Empty/Item semantics, source, observe, proof, settlement, proof-item publication). Exact formatter-final line count; no transaction budget changes. DUPDEL (-4): the cross-block duplicate-event family was deleted; repeated deposit and withdrawal events are convicted by the fabricated-event families. DC (+2): the redeemer Data refusal executor is split by traverse stage under the reference-script size limit, adding the scalar invalid-data executor role. DC datum step (+2): the non-canonical output proof gains its inline-datum step role. Streamed Data verdicts (+3): the redeemer canonicity proof gains its streamed data step role and the resolved-output canonicity proof its inline-datum step role."
+    "max": 755,
+    "reason": "REFERENCE_SCRIPT_AUTH_TOKEN_NAMES: a single declarative catalogue/map keeps its complete role-to-entry relationship reviewable. Independent helpers were extracted; fragmenting the literal adds assembly indirection without a new concern. Adds the authenticated malformed-redeemer Data executor token name to this declarative role table. Canonical production binding: Eight mandatory closed canonical-route registry roles (prepare, Empty/Item semantics, source, observe, proof, settlement, proof-item publication). Exact formatter-final line count; no transaction budget changes. DUPDEL (-4): the cross-block duplicate-event family was deleted; repeated deposit and withdrawal events are convicted by the fabricated-event families. DC (+2): the redeemer Data refusal executor is split by traverse stage under the reference-script size limit, adding the scalar invalid-data executor role. DC datum step (+2): the non-canonical output proof gains its inline-datum step role. Streamed Data verdicts (+3): the redeemer canonicity proof gains its streamed data step role and the resolved-output canonicity proof its inline-datum step role. Ledger-delta phase and claim mode deleted (-6). K0 stream (+4): the accepted-transaction replay gains its L2 delete and L2 outputs yield token names. Output step (+6): the l2OutputStep, l2OutputDescriptor and l2OutputSummary transition-trace yield roles."
   },
   {
     "file": "midgard-sdk/src/reserve-payout.build-history-retirement-program.ts",
@@ -1156,7 +1146,7 @@
   },
   {
     "file": "midgard-sdk/tests/fault-proof.fault-proof-contract-builder.ts",
-    "max": 1243,
+    "max": 1232,
     "reason": "Retained test registration “fault-proof contract builder” (1186 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor. Direct committed-step expectations and canonical test encoding: fully applies the boundary award hash and game resolver-hash list in their declared parameter order. Recomputes expected bindings with the pinned WASM API in the shared independent test oracle, avoiding the legacy encoder CBOR-major incompatibility. Root combined integration preserves prior terminal/builtin behavior; cap records the resulting source count. DUPDEL (-1): the cross-block duplicate-event family was deleted; repeated deposit and withdrawal events are convicted by the fabricated-event families. VR (+3): script contexts carry POSIX-ms validity bounds, so the phase-B, trace, classifier and contract-builder inputs here name the deployment's L1 slot mapping. DC (+1): the redeemer Data refusal executor is split by traverse stage under the reference-script size limit, adding the scalar invalid-data executor role. I3 (+15): the expected source parameters include the applied dispute bond hash and bond amount, and the bond script is size-checked. I3 deletions (-1): the expected game parameters drop the resolver hash list."
   },
   {
@@ -1171,7 +1161,7 @@
   },
   {
     "file": "midgard-validation/scripts/generate-validation-one-step-aiken-fixture.mjs",
-    "max": 863,
+    "max": 885,
     "reason": "generated is the dominant indivisible declaration (251 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. VR (+3): the generated traces' script contexts carry POSIX-ms validity bounds through the Preprod L1 slot mapping. Clock (+2): the fixture dispute carries the turn start and both side clocks in place of the response deadline. I3 (-2): the one-step boundary check no longer takes the two post states."
   },
   {
@@ -1181,18 +1171,18 @@
   },
   {
     "file": "midgard-validation/src/validation-machine/trace-builder-complete.ts",
-    "max": 2988,
-    "reason": "completeValidationTrace is the dominant indivisible declaration (2717 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. Combined F1/RLO source measured at integration. C5 (-2)."
+    "max": 2575,
+    "reason": "completeValidationTrace is the dominant indivisible declaration (2717 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. Combined F1/RLO source measured at integration. C5 (-2). Ledger-delta phase deleted (-420). Startup cost (+2): the context seed spends Cardano's startup budget before the first step. N5 (+5): state 0 is the claim's derived initial state, checked against the first witness."
   },
   {
     "file": "midgard-validation/src/validation-machine/trace-builder-prepare.prepare-validation-trace.ts",
-    "max": 4138,
-    "reason": "prepareValidationTrace is the dominant indivisible declaration (3805 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. Integrated deep-data, exact-reason and canonical-redeemer behavior; cap remeasured on the combined source. Combined F1/RLO source measured at integration. Authenticated forced redeemer refusal integrated; measured after combined formatting. VR (+1): trace preparation threads the deployment's L1 slot mapping into the script contexts it builds."
+    "max": 4107,
+    "reason": "prepareValidationTrace is the dominant indivisible declaration (3805 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. Integrated deep-data, exact-reason and canonical-redeemer behavior; cap remeasured on the combined source. Combined F1/RLO source measured at integration. Authenticated forced redeemer refusal integrated; measured after combined formatting. VR (+1): trace preparation threads the deployment's L1 slot mapping into the script contexts it builds. Ledger-delta phase deleted (-34). Initial state (+3): the derivation takes the source variant, so the trace's declared kind selects the forced or normal variant at the call."
   },
   {
     "file": "midgard-validation/tests/cek-executor.test.ts",
-    "max": 824,
-    "reason": "Retained test registration “V1 CEK trace generator” (783 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+    "max": 844,
+    "reason": "Retained test registration “V1 CEK trace generator” (783 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor. PV 11 halt rule (+13): compiled fixtures halt with Unit and the bare identity pins error 8. Cardano BLS tags (+7): the uncompress builtins are named by Cardano's flat numbers."
   },
   {
     "file": "midgard-validation/tests/data-breadth-boundary.test.ts",
@@ -1201,8 +1191,8 @@
   },
   {
     "file": "midgard-validation/tests/fixtures/validation-auxiliary-witness-canonical.ts",
-    "max": 610,
-    "reason": "This canonical fixture is imported directly as .ts by the auxiliary-witness golden CLI under Node strip-types. Retain its self-contained source boundary: .js facet imports have no corresponding source JavaScript, and changing the loader or fixture import contract is outside a pure module move. Combined F1/RLO source measured at integration."
+    "max": 533,
+    "reason": "This canonical fixture is imported directly as .ts by the auxiliary-witness golden CLI under Node strip-types. Retain its self-contained source boundary: .js facet imports have no corresponding source JavaScript, and changing the loader or fixture import contract is outside a pure module move. Combined F1/RLO source measured at integration. Ledger-delta witness arms deleted (-77)."
   },
   {
     "file": "midgard-validation/tests/nested-value-boundary.test.ts",
@@ -1216,8 +1206,8 @@
   },
   {
     "file": "midgard-validation/tests/phase-b.test.ts",
-    "max": 897,
-    "reason": "Retained test registration “phase B validation” (712 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor. T161 (+143): adds Phase B input-resolution cases to the retained registration (a referencer before a later spender of its reference, accepted order equal to applied order, a producer before its referencer, a reference/spend cycle). Integrated DA correctness branches; exact final source line count. Combined F1/RLO source measured at integration."
+    "max": 903,
+    "reason": "Retained test registration “phase B validation” (712 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor. T161 (+143): adds Phase B input-resolution cases to the retained registration (a referencer before a later spender of its reference, accepted order equal to applied order, a producer before its referencer, a reference/spend cycle). Integrated DA correctness branches; exact final source line count. Combined F1/RLO source measured at integration. PV 11 halt rule (+6): the V1 envelope program halts with Unit."
   },
   {
     "file": "midgard-validation/tests/plutus-data-unary-depth-boundary.test.ts",
@@ -1226,8 +1216,8 @@
   },
   {
     "file": "midgard-validation/tests/validation-machine.deterministic-validation-machine.ts",
-    "max": 2487,
-    "reason": "Retained test registration “deterministic validation machine” (2387 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor. VR (+26): script contexts carry POSIX-ms validity bounds, so the phase-B, trace, classifier and contract-builder inputs here name the deployment's L1 slot mapping."
+    "max": 2460,
+    "reason": "Retained test registration “deterministic validation machine” (2387 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor. VR (+26): script contexts carry POSIX-ms validity bounds, so the phase-B, trace, classifier and contract-builder inputs here name the deployment's L1 slot mapping. Ledger-delta phase deleted (-27)."
   },
   {
     "file": "midgard-watcher/src/availability/runtime.create-watcher-availability-runtime.ts",
@@ -1376,13 +1366,13 @@
   },
   {
     "file": "scripts/deployment-profiles.mjs",
-    "max": 597,
+    "max": 606,
     "reason": "validateProfile is the dominant indivisible declaration (273 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. C1 (+80): the stage-0 allow-lists (validation, placeholder marker, Option<List<ByteArray>> rendering) and the excluded fraud-proof categories; canonicalJson keeps arrays as arrays. C1 adds the curated emulator-only profile. Profile identity extraction (-15) moved the identity helpers out. Deployment budget arithmetic extraction (-95) moved the budget calculations out. I3 (+2): the protocol treasury native script key and its deep freeze."
   },
   {
     "file": "scripts/deployment-profiles.test.mjs",
-    "max": 1022,
-    "reason": "Retained test registration “every profile carries the pooled DA bond amounts and timing, rendered into env” (71 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor. C1 (+118): allow-list and excluded-category validation and rendering tests. C1 adds the curated emulator profile checks. R2 (+6): the public profile rejects placeholder keys while mainnet retains its undeployed stand-ins. I3 (+32): the treasury native-script encoder vectors."
+    "max": 1054,
+    "reason": "Retained test registration “every profile carries the pooled DA bond amounts and timing, rendered into env” (71 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor. C1 (+118): allow-list and excluded-category validation and rendering tests. C1 adds the curated emulator profile checks. R2 (+6): the public profile rejects placeholder keys while mainnet retains its undeployed stand-ins. I3 (+32): the treasury native-script encoder vectors. K0 (+32): the transition-trace thread budget against block maturity, both polarities at the exact bound, and the emulator delay floors at 48-hour maturity."
   },
   {
     "file": "scripts/verify-canonical-v1-cg1-control-publication-fit.mjs",

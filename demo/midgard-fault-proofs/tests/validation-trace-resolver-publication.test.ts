@@ -4,19 +4,20 @@
  * The resolver proof-fit sweep
  * (`resolver-proof-fit-sweep-generate.test.ts`) measures a resolver only when
  * an existing fixture drives a genuine one-step dispute all the way to it, so
- * 89 of the 91 semantic resolvers are honestly recorded there as `unfit[]`
- * rows with an "no harness-reachable fixture" reason. That is the right answer
- * for *lifecycle* fit — nothing can attest a step nobody can build — but it
- * left **publication** fit unmeasured for those 89 as well, and publication
- * fit does not need a fixture: a reference script publishes the same way
- * whatever the dispute around it looks like.
+ * all but two of the semantic resolvers it covered are honestly recorded
+ * there as `unfit[]` rows with an "no harness-reachable fixture" reason. That
+ * is the right answer for *lifecycle* fit — nothing can attest a step nobody
+ * can build — but it left **publication** fit unmeasured for those as well,
+ * and publication fit does not need a fixture: a reference script publishes
+ * the same way whatever the dispute around it looks like.
  *
  * That gap is how two resolvers grew past the reliable publication target
  * without any test noticing. This file closes it permanently: it publishes all
- * 91 applied semantic resolvers as reference scripts through the same helper
+ * 83 applied semantic resolvers as reference scripts through the same helper
  * every other publication-fit suite uses, asserts the real 512-byte reserve on
  * each, and — under `MIDGARD_WRITE_FIT_LEDGER=1` — pins the measurements to
  * `docs/fault-proofs/size-plans/validation-trace-resolver-publication-fit-ledger.json`.
+ * Every run checks that the checked-in ledger names exactly these resolvers.
  * `buildVanRossemFitLedger` throws on any row without a positive Van Rossem
  * margin and on any publication row past the 15,872-byte target, so a
  * regression fails a test instead of surviving to delivery.
@@ -53,9 +54,9 @@ import {
 } from "./support/submit-init-emulator-shared.js";
 
 /**
- * Entry names in `semanticResolvers` order: the 90 keys of the `semantics`
+ * Entry names in `semanticResolvers` order: the 82 keys of the `semantics`
  * title table, then the shared stage-one redeemer envelope that
- * `buildValidationTraceDisputeFaultProofContracts` appends as index 90.
+ * `buildValidationTraceDisputeFaultProofContracts` appends as index 82.
  */
 const SEMANTIC_RESOLVER_NAMES: readonly string[] = [
   ...Object.keys(VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.semantics),
@@ -89,8 +90,8 @@ describe("validation-trace resolver publication", () => {
     const family = (
       contracts as typeof contracts & ValidationTraceDisputeFaultProofContracts
     ).validationTraceDispute;
-    expect(SEMANTIC_RESOLVER_NAMES).toHaveLength(91);
-    expect(new Set(SEMANTIC_RESOLVER_NAMES).size).toBe(91);
+    expect(SEMANTIC_RESOLVER_NAMES).toHaveLength(83);
+    expect(new Set(SEMANTIC_RESOLVER_NAMES).size).toBe(83);
     expect(family.semanticResolvers.length).toBe(
       SEMANTIC_RESOLVER_NAMES.length,
     );
@@ -136,5 +137,12 @@ describe("validation-trace resolver publication", () => {
     if (process.env.MIDGARD_WRITE_FIT_LEDGER === "1") {
       await writeVanRossemFitLedger(ledgerPath, ledger);
     }
+    // The checked-in ledger names exactly the resolvers measured here.
+    const checkedIn = JSON.parse(readFileSync(ledgerPath, "utf8")) as {
+      entries: readonly { name: string }[];
+    };
+    expect(checkedIn.entries.map(({ name }) => name).sort()).toEqual(
+      [...SEMANTIC_RESOLVER_NAMES].sort(),
+    );
   }, 1_800_000);
 });

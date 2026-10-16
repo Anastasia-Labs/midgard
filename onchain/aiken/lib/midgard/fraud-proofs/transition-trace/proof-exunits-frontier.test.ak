@@ -9,13 +9,16 @@
 ////      `l2_datum` width, which is the one deposit field a user controls, and
 ////      brackets the crossing between adjacent *measured* rungs.
 ////
-////   2. Is the L2 arm's ~15.2M memory reading genuinely over basis, or is it
-////      an artefact of charging fixture construction to the row? Every row
-////      below has a `..._fixture_only` twin that builds the identical
-////      fixtures -- MPF roots, compact CBOR, tx id, descriptor ledger values,
-////      pre/post roots, the header hash -- and then stops short of the
-////      validator entrypoint. The difference between the two pinned readings
-////      is the marginal validator cost; neither reading on its own is one.
+////   2. What does the arm cost net of its fixtures? Every row below has a
+////      `..._fixture_only` twin that builds the identical fixtures -- MPF
+////      roots, descriptor ledger values, pre/post roots, the header hash --
+////      and then stops short of the validator entrypoint. The difference
+////      between the two pinned readings is the marginal validator cost;
+////      neither reading on its own is one.
+////
+//// The accepted L2 transaction is no longer replayed by one arm: the
+//// accepted-transaction final streams it one ledger witness per step, and
+//// those steps are measured by the final's own emulator suites.
 ////
 //// An Aiken `test` reading is a whole-test upper bound. That is why the
 //// baselines exist and why the ledger's derived rows, not these tests, carry
@@ -32,24 +35,20 @@
 
 use aiken/cbor
 use aiken/collection/list
-use aiken/crypto.{blake2b_256}
 use aiken/merkle_patricia_forestry as mpf
 use aiken/primitive/bytearray
 use cardano/address.{Address}
 use cardano/assets
-use cardano/transaction.{InlineDatum, Input, Output, OutputReference}
+use cardano/transaction.{Input, Output, OutputReference}
 use env
 use midgard/common/utils
-use midgard/fraud_proofs/native_tx/compact as native_compact
 use midgard/fraud_proofs/native_tx/components as native_components
-use midgard/fraud_proofs/native_tx/preimages as native_preimages
 use midgard/fraud_proofs/native_tx/types as native_types
 use midgard/fraud_proofs/transition_trace/proof
 use midgard/fraud_proofs/transition_trace/timing_fixture
 use midgard/hub_oracle
 use midgard/ledger_output_descriptor_v1
 use midgard/ledger_state
-use midgard/native_tx_field_access_v1
 use midgard/transition_trace
 
 const h28_a = #"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
@@ -279,12 +278,7 @@ fn ledger_insert_witness(
   key: ByteArray,
   value: ByteArray,
 ) -> proof.LedgerInsertWitness {
-  proof.LedgerInsertWitness {
-    key,
-    value,
-    non_membership_proof: [],
-    insert_proof: [],
-  }
+  proof.LedgerInsertWitness { key, value, insert_proof: [] }
 }
 
 fn ledger_delete_witness(
@@ -568,260 +562,13 @@ test deposit_arm_datum_384_bytes_fixture_only() {
 }
 
 // ---------------------------------------------------------------------------
-// L2 arm
-// ---------------------------------------------------------------------------
-
-fn native_input(
-  tx_id: ByteArray,
-  output_index: Int,
-) -> native_types.MidgardTxInput {
-  native_types.MidgardTxInput { tx_id, output_index }
-}
-
-fn native_output() -> native_types.MidgardTxOutput {
-  native_types.MidgardTxOutput {
-    address: native_types.MidgardAddress {
-      protected: False,
-      network_id: 0,
-      payment_credential: native_types.PubKeyCredential(h28_a),
-      stake_credential: None,
-    },
-    value: native_types.MidgardValue { lovelace: 1_000_000, assets: [] },
-    datum_cbor: None,
-    script_ref: None,
-  }
-}
-
-fn native_l2_witness_set_compact_cbor() -> ByteArray {
-  native_compact.encode_native_tx_witness_set_compact(
-    native_types.NativeTxWitnessSetCompact {
-      addr_tx_wits_hash: h32_a,
-      script_tx_wits_hash: h32_b,
-      redeemer_tx_wits_hash: h32_c,
-    },
-  )
-}
-
-fn native_l2_field_preimage_lengths_cbor() -> ByteArray {
-  native_compact.encode_native_tx_field_preimage_lengths_v1(
-    native_types.NativeTxFieldPreimageLengthsV1 {
-      spend_inputs: 0,
-      reference_inputs: 0,
-      outputs: 0,
-      required_observers: 0,
-      required_signers: 0,
-      mint: 0,
-      address_witnesses: 0,
-      script_witnesses: 0,
-      redeemers: 0,
-    },
-  )
-}
-
-fn native_l2_compact_cbor(
-  spend_inputs_preimage: ByteArray,
-  outputs_preimage: ByteArray,
-) -> ByteArray {
-  native_compact.encode_native_tx_compact_v1(
-    native_types.NativeTxCompact {
-      body: native_types.NativeTxBodyCompact {
-        spend_inputs_hash: native_tx_field_access_v1.field_commitment(
-          spend_inputs_preimage,
-        ),
-        reference_inputs_hash: h32_b,
-        outputs_hash: native_tx_field_access_v1.field_commitment(
-          outputs_preimage,
-        ),
-        fee: 0,
-        validity_interval_start: -1,
-        validity_interval_end: -1,
-        required_observers_hash: h32_b,
-        required_signers_hash: h32_b,
-        mint_hash: h32_b,
-        script_integrity_hash: h32_b,
-        auxiliary_data_hash: h32_b,
-        network_id: 0,
-      },
-      witness_set_hash: blake2b_256(native_l2_witness_set_compact_cbor()),
-      validity_code: 0,
-    },
-  )
-}
-
-fn native_l2_tx_id(compact_cbor: ByteArray) -> ByteArray {
-  let compact = native_compact.decode_native_tx_compact_v1(compact_cbor)
-  native_compact.native_tx_id_for_version(
-    native_types.native_tx_version_v1,
-    native_compact.encode_native_tx_body_compact(compact.body),
-  )
-}
-
-fn raw_l2_source_membership(
-  tx_id: ByteArray,
-  compact_cbor: ByteArray,
-) -> transition_trace.RootMembershipProof<ByteArray, ByteArray> {
-  let source = ledger_state.L2TransactionSourceV1 {
-    tx_id,
-    source: ledger_state.NativeTxProofSourceV1 {
-      compact_cbor,
-      witness_set_compact_cbor: native_l2_witness_set_compact_cbor(),
-      field_preimage_lengths_cbor: native_l2_field_preimage_lengths_cbor(),
-    },
-  }
-  let source_cbor = cbor.serialise(source)
-  let phas_root = mpf.root(mpf.insert(mpf.empty, tx_id, source_cbor, []))
-  transition_trace.RootMembershipProof {
-    domain: transition_trace.TransactionsV1RootDomain,
-    root: transition_trace.commit_counted_root(
-      transition_trace.TransactionsV1RootDomain,
-      phas_root,
-      1,
-    ),
-    phas_root,
-    count: 1,
-    key: tx_id,
-    value: source_cbor,
-    proof: [],
-  }
-}
-
-type L2Parts {
-  header: ledger_state.HeaderV1,
-  fault: proof.TransitionFault,
-  pre_root: ByteArray,
-  expected_post_root: ByteArray,
-  opened_post_root: ByteArray,
-}
-
-/// Everything `accepts_valid_l2_transaction_no_op_transition_fault` builds.
-fn l2_no_op_parts() -> L2Parts {
-  let spent_input = native_input(h32_a, 0)
-  let spent_key = native_components.encode_midgard_tx_input(spent_input)
-  let spent_value = ledger_value(
-    spent_input.output_index,
-    native_components.encode_midgard_tx_output(native_output()),
-  )
-  let produced_output = native_output()
-  let produced_value = ledger_value(
-    0,
-    native_components.encode_midgard_tx_output(produced_output),
-  )
-  let spend_inputs_preimage = native_preimages.encode_input_preimage(
-    [spent_input],
-  )
-  let outputs_preimage = native_preimages.encode_output_preimage(
-    [produced_output],
-  )
-  let compact_cbor = native_l2_compact_cbor(
-    spend_inputs_preimage,
-    outputs_preimage,
-  )
-  let tx_id = native_l2_tx_id(compact_cbor)
-  let produced_key = native_components.encode_midgard_tx_input(
-    native_input(tx_id, 0),
-  )
-  let source_membership = raw_l2_source_membership(tx_id, compact_cbor)
-  let pre_root = mpf.root(mpf.insert(mpf.empty, spent_key, spent_value, []))
-  let expected_post_root = proof.insert_root(
-    proof.delete_root(pre_root, spent_key, spent_value, [], #""),
-    produced_key,
-    produced_value,
-    [],
-  )
-  let event_key = ledger_state.L2TransactionEventKey { tx_id }
-  let opened_step = step(
-    0,
-    event_key,
-    ledger_state.L2Transaction,
-    pre_root,
-    pre_root,
-  )
-  let trace_proof = trace_membership(opened_step)
-  let event_to_step = event_to_step_membership(
-    event_key,
-    0,
-    ledger_state.L2Transaction,
-  )
-  let header = ledger_state.HeaderV1 {
-    ..base_header(),
-    transactions_root: source_membership.root,
-    transition_trace_root: trace_proof.root,
-    event_to_step_root: event_to_step.root,
-    l2_transaction_count: 1,
-    total_event_count: 1,
-    transition_step_count: 1,
-  }
-  L2Parts {
-    header,
-    fault: proof.InvalidOneStepTransition {
-      witness: proof.L2TransactionTransition {
-        trace_proof,
-        event_to_step,
-        source_membership,
-        spend_inputs_preimage,
-        outputs_preimage,
-        spent_utxos: [ledger_delete_witness(spent_key, spent_value)],
-        produced_utxos: [ledger_insert_witness(produced_key, produced_value)],
-      },
-    },
-    pre_root,
-    expected_post_root,
-    opened_post_root: opened_step.post_utxos_root,
-  }
-}
-
-fn l2_fixtures_forced(parts: L2Parts) -> Bool {
-  expect proof.InvalidOneStepTransition { witness } = parts.fault
-  expect
-      proof.L2TransactionTransition {
-        trace_proof,
-        event_to_step,
-        source_membership,
-        spend_inputs_preimage,
-        outputs_preimage,
-        spent_utxos,
-        produced_utxos,
-      }
-    = witness
-  let header_data: Data = parts.header
-  and {
-    parts.expected_post_root != parts.opened_post_root,
-    bytearray.length(parts.pre_root) == 32,
-    bytearray.length(trace_proof.root) == 32,
-    bytearray.length(event_to_step.root) == 32,
-    bytearray.length(source_membership.root) == 32,
-    bytearray.length(spend_inputs_preimage) > 0,
-    bytearray.length(outputs_preimage) > 0,
-    list.length(spent_utxos) == 1,
-    list.length(produced_utxos) == 1,
-    bytearray.length(utils.serialise_and_hash_28(header_data)) == 28,
-    bytearray.length(asset_name_for(parts.header)) == 32,
-  }
-}
-
-test l2_no_op_arm() {
-  let parts = l2_no_op_parts()
-  expect parts.expected_post_root != parts.opened_post_root
-  proof.validate_accepted_transaction_fault_proof(
-    prove(parts.header, parts.fault),
-    asset_name_for(parts.header),
-  )
-}
-
-test l2_no_op_arm_fixture_only() {
-  l2_fixtures_forced(l2_no_op_parts())
-}
-
-// ---------------------------------------------------------------------------
 // Neutralisation selectors
 //
-// A cost row over an arm that accepts everything measures nothing. These two
-// run in the same invocation as every reading -- the exec ledger declares them
-// and the verifier refuses a ledger whose selectors did not run -- and show
-// that both measured arms still reject: the deposit arm returns `False` when
-// the projected value is not the descriptor it must be, and the L2 arm aborts
-// rather than replaying full output bytes into `utxos_root`, which is the #628
-// hole itself.
+// A cost row over an arm that accepts everything measures nothing. This one
+// runs in the same invocation as every reading -- the exec ledger declares it
+// and the verifier refuses a ledger whose selectors did not run -- and shows
+// that the measured arm still rejects: the deposit arm returns `False` when
+// the projected value is not the descriptor it must be.
 // ---------------------------------------------------------------------------
 
 /// The serialised width of the `l2_datum` a rung carries, in bytes.
@@ -878,42 +625,5 @@ test deposit_arm_rejects_arbitrary_projected_value() {
     dummy_hub_datum(),
     parts.reference_inputs,
     Some(timing_fixture.evidence(parts.header, parts.reference_inputs)),
-  )
-}
-
-test l2_arm_refuses_full_output_replay() fail {
-  let parts = l2_no_op_parts()
-  expect proof.InvalidOneStepTransition { witness } = parts.fault
-  expect
-      proof.L2TransactionTransition {
-        trace_proof,
-        event_to_step,
-        source_membership,
-        spend_inputs_preimage,
-        outputs_preimage,
-        spent_utxos,
-        produced_utxos,
-      }
-    = witness
-  expect [produced] = produced_utxos
-  let tampered = proof.InvalidOneStepTransition {
-    witness: proof.L2TransactionTransition {
-      trace_proof,
-      event_to_step,
-      source_membership,
-      spend_inputs_preimage,
-      outputs_preimage,
-      spent_utxos,
-      produced_utxos: [
-        ledger_insert_witness(
-          produced.key,
-          native_components.encode_midgard_tx_output(native_output()),
-        ),
-      ],
-    },
-  }
-  proof.validate_accepted_transaction_fault_proof(
-    prove(parts.header, tampered),
-    asset_name_for(parts.header),
   )
 }

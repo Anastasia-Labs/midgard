@@ -10,30 +10,35 @@ import "./validation-trace.encode-midgard-validation-machine-state.js";
 import "./validation-trace.decode-midgard-validation-machine-state.js";
 import "./validation-trace.build-midgard-validation-trace-tree.js";
 import "./validation-trace.rejection-reason-v1.js";
+import "./validation-trace.derive-midgard-validation-initial-state-v1.js";
 export {
   buildMidgardValidationTraceTree,
   validationTraceDepthForStepCount,
   verifyMidgardValidationTraceProof,
 } from "./validation-trace.build-midgard-validation-trace-tree.js";
 export {
-  buildMidgardValidationLedgerDeltaFrontier,
   decodeMidgardValidationMachineState,
   decodeMidgardValidationTraceDescriptor,
   encodeMidgardValidationTraceDescriptor,
   hashMidgardValidationContext,
-  hashMidgardValidationLedgerDelta,
-  hashMidgardValidationLedgerDeltaCbor,
-  hashMidgardValidationLedgerDeltaOperation,
   hashMidgardValidationMachineState,
   hashMidgardValidationWorkWitness,
   MIDGARD_VALIDATION_NO_REJECTION_CODE_HASH,
-  type MidgardValidationAuthenticatedLedgerDeltaOperation,
-  type MidgardValidationLedgerDeltaOperation,
 } from "./validation-trace.decode-midgard-validation-machine-state.js";
+export {
+  deriveMidgardValidationContextCborV1,
+  deriveMidgardValidationInitialStateV1,
+  type MidgardValidationContextHeaderV1,
+  type MidgardValidationInitialStateInputV1,
+  type MidgardValidationSourceTransactionV1,
+  type MidgardValidationSourceV1,
+} from "./validation-trace.derive-midgard-validation-initial-state-v1.js";
 export {
   encodeMidgardValidationMachineState,
   hashMidgardValidationEventKey,
+  MIDGARD_VALIDATION_MACHINE_STATE_FIELDS,
   type MidgardValidationMachineState,
+  type MidgardValidationMachineStateFieldName,
   MidgardValidationPhase,
   type MidgardValidationPhaseName,
   MidgardValidationSourceKind,

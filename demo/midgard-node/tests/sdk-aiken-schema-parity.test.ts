@@ -210,8 +210,8 @@ const ABI_MAPPINGS = [
   // **#597 adds no row, and that is a measured conclusion rather than an
   // omission.** #592 moved two wire surfaces this file would naturally cover —
   // four `ValidationAuxiliaryWitnessV1` constructors onto §8's `FieldCarriageV1`
-  // (1 `TransactionFieldChunkWitness`, 2 `RequiredSignerItemWitness`, 29
-  // `TransactionRedeemerItemBeginWitness`, 30 `TransactionFieldItemWitness`) and
+  // (1 `TransactionFieldChunkWitness`, 2 `RequiredSignerItemWitness`, 27
+  // `TransactionRedeemerItemBeginWitness`, 28 `TransactionFieldItemWitness`) and
   // the whole of `ValidationProofItemDatumV1` — and #597 moved both TypeScript
   // twins to match. Neither can be measured here, for two different reasons, and
   // both were checked by adding the mapping and running it rather than reasoned
