@@ -36,15 +36,11 @@ const rows: VanRossemFitMeasurement[] = [
 const ledgerOf = (
   measurements: readonly VanRossemFitMeasurement[],
   blueprintSha256 = "ab".repeat(32),
-  {
-    category = "transitionTrace",
-    compilerVersion = "aiken v1.1.23+5adf783",
-  }: { category?: string; compilerVersion?: string } = {},
+  { category = "transitionTrace" }: { category?: string } = {},
 ) =>
   buildVanRossemFitLedger({
     category,
     blueprintSha256,
-    compilerVersion,
     measurements,
   });
 
@@ -92,18 +88,6 @@ describe("writeOrVerifyPinnedFitLedger", () => {
     );
   });
 
-  it("refuses a saved ledger recorded under another compiler", async () => {
-    vi.stubEnv("MIDGARD_WRITE_FIT_LEDGER", undefined);
-    await expect(
-      writeOrVerifyPinnedFitLedger(
-        path,
-        ledgerOf(rows, undefined, { compilerVersion: "aiken v1.1.24+0000000" }),
-      ),
-    ).rejects.toThrow(
-      "regenerate it with `pnpm --dir demo/midgard-fault-proofs fit:regenerate pinned-fit-ledger.json`",
-    );
-  });
-
   it("refuses a saved ledger whose row roster differs from the fresh run", async () => {
     vi.stubEnv("MIDGARD_WRITE_FIT_LEDGER", undefined);
     await expect(
@@ -138,7 +122,7 @@ describe("writeOrVerifyPinnedFitLedger", () => {
 });
 
 describe("readBlueprintIdentity", () => {
-  it("names the blueprint's digest and the compiler its preamble records", async () => {
+  it("hashes the exact blueprint bytes", async () => {
     const directory = await mkdtemp(join(tmpdir(), "midgard-blueprint-id-"));
     try {
       const path = join(directory, "plutus.json");
@@ -148,7 +132,6 @@ describe("readBlueprintIdentity", () => {
       await writeFile(path, bytes);
       expect(await readBlueprintIdentity(path)).toStrictEqual({
         blueprintSha256: createHash("sha256").update(bytes).digest("hex"),
-        compilerVersion: "aiken v9.9.9+abcdef0",
       });
     } finally {
       await rm(directory, { recursive: true, force: true });

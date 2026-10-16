@@ -63,8 +63,6 @@ afterAll(async () => {
   const ledger = buildVanRossemFitLedger({
     category: "nativeScriptInvalid",
     blueprintSha256: createHash("sha256").update(blueprint).digest("hex"),
-    compilerVersion: JSON.parse(blueprint.toString("utf8")).preamble.compiler
-      .version,
     measurements: fitRows.flatMap(({ shape, stages }) =>
       stages.map((row, index) => ({
         name: `${shape}/${index.toString().padStart(3, "0")}`,

@@ -1586,16 +1586,11 @@ describe("script-integrity-hash-missing real lifecycle", () => {
     const blueprintBytes = await readFile(
       new URL("../../../onchain/aiken/plutus.json", import.meta.url),
     );
-    const blueprint = JSON.parse(blueprintBytes.toString("utf8")) as {
-      readonly preamble?: { readonly compiler?: { readonly version?: string } };
-    };
     const ledger = buildVanRossemFitLedger({
       category: "scriptIntegrityHashMissing",
       blueprintSha256: createHash("sha256")
         .update(blueprintBytes)
         .digest("hex"),
-      compilerVersion:
-        blueprint.preamble?.compiler?.version ?? "unknown-aiken-compiler",
       measurements,
     });
     expect(ledger.entries).toHaveLength(measurements.length);

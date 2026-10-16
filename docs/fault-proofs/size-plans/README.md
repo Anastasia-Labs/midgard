@@ -6,10 +6,10 @@ compiler, blueprint, and shape; retaining a file does not make it current.
 
 ## Verification contracts
 
-| Contract                                      | Executable authority                                                                                                | What it establishes                                                                                      |
-| --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
-| Complete live resolver publication comparison | [Resolver publication test](../../../demo/midgard-fault-proofs/tests/validation-trace-resolver-publication.test.ts) | Rebuilds measurements and compares the full saved ledger, including current blueprint/compiler identity. |
-| Historical snapshot consistency               | Family tests listed below                                                                                           | Checks saved rows/digests or a hardcoded measurement table; does not establish current-build fit.        |
+| Contract                                      | Executable authority                                                                                                | What it establishes                                                                               |
+| --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| Complete live resolver publication comparison | [Resolver publication test](../../../demo/midgard-fault-proofs/tests/validation-trace-resolver-publication.test.ts) | Rebuilds measurements and compares the full saved ledger, including current blueprint identity.   |
+| Historical snapshot consistency               | Family tests listed below                                                                                           | Checks saved rows/digests or a hardcoded measurement table; does not establish current-build fit. |
 
 The `*-fit-ledger.test.ts` readers were removed on 2026-09-09: they compared
 a saved ledger to a transcribed copy of itself (or to a stale blueprint digest)
@@ -100,13 +100,16 @@ suite that measures it:
 | `transition-trace-forced-window-fit-ledger.json` | `submit-init-emulator-transition-trace-subvariants.test.ts` |
 | `transition-trace-workflow-fit-ledger.json`      | `transition-trace-installed-lifecycle.test.ts`              |
 
-Without the write flag, the suite requires the saved ledger's blueprint and
-compiler identity to match the current build, its digest to match its body, and
+Without the write flag, the suite requires the saved ledger's blueprint hash
+to match the current build, its digest to match its body, and
 its scenario and row roster to match the fresh run. Execution budgets differ
 between runs of one blueprint, so row values are not compared. Regenerate a
 ledger with `fit:regenerate` (above), then rerun its suite without it to verify
 the saved evidence. Never change a blueprint digest without fresh lifecycle
 measurements.
+
+The blueprint hash covers the exact build, including its compiler preamble.
+Fit ledgers do not carry a separate compiler version label.
 
 [Availability challenge](availability-challenge.md) is the remaining active
 publication plan. Implemented resolver decisions live in
