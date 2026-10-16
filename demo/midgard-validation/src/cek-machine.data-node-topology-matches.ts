@@ -162,22 +162,27 @@ export const constantMemoryFromPayloadNode = (
   if (type.kind === "integer" || type.kind === "bytes") {
     return node.memory - 4n;
   }
+  if (type.kind === "unit" || type.kind === "boolean") return 1n;
   if (type.kind === "string") {
     return node.kind === "bytes"
       ? midgardCekStringMemoryWords(node.bytesLength)
       : null;
   }
   if (type.kind === "list" && node.kind === "list") {
+    // An integer, bytestring or data-pair item costs its data node less the
+    // node's four words; a unit or boolean item costs one word.
     if (type.element.kind === "data") return node.memory - 4n;
-    if (type.element.kind === "integer") {
-      return node.memory - 4n - node.itemsCount * 4n;
-    }
     if (
-      type.element.kind === "pair" &&
-      type.element.first.kind === "data" &&
-      type.element.second.kind === "data"
+      type.element.kind === "integer" ||
+      type.element.kind === "bytes" ||
+      (type.element.kind === "pair" &&
+        type.element.first.kind === "data" &&
+        type.element.second.kind === "data")
     ) {
       return node.memory - 4n - node.itemsCount * 4n;
+    }
+    if (type.element.kind === "unit" || type.element.kind === "boolean") {
+      return node.itemsCount;
     }
     return null;
   }

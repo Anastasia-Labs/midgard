@@ -28,7 +28,7 @@ const max_blob_chunk_bytes = 4095
 // Ledger Data can occupy a full bounded ledger output.
 const max_ledger_data_blob_bytes = 16384
 
-fn hash_blob_chunk_v1(chunk: ByteArray) -> ByteArray {
+pub fn hash_blob_chunk_v1(chunk: ByteArray) -> ByteArray {
   expect bytearray.length(chunk) <= max_blob_chunk_bytes
   blob_chunk_domain
     |> bytearray.concat(encode_definite_bytes(chunk))

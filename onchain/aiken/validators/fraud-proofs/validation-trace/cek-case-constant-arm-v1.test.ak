@@ -401,6 +401,112 @@ test case_constant_arm_long_list_vector_alone() {
   root(#"9f0500ff", list) != post.focus_root
 }
 
+/// `count` one-byte bytestrings, counting down to `#01`.
+fn byte_items(count: Int) -> List<Data> {
+  if count == 0 {
+    []
+  } else {
+    [
+      builtin.b_data(builtin.cons_bytearray(count, #"")),
+      ..byte_items(count - 1)
+    ]
+  }
+}
+
+fn summary_link(
+  head: cek_data_v1.DataSummaryV1,
+  tail: cek_data_v1.DataSequenceSummaryV1,
+) -> cek_data_v1.DataListNodeV1 {
+  cek_data_v1.DataListNodeV1 {
+    head: head.root,
+    head_cbor_length: head.cbor_length,
+    head_memory: head.memory,
+    tail: tail.root,
+    length: tail.length + 1,
+    payload_cbor_length: head.cbor_length + tail.payload_cbor_length,
+    memory: head.memory + tail.memory,
+  }
+}
+
+type CommittedList {
+  scrutinee: cek_builtin_v1.ValueWitnessV1,
+  focus_root: ByteArray,
+  material: cek_builtin_v1.SemanticBuiltinWitnessV1,
+  post: cek_machine_v1.MachineStateV1,
+}
+
+/// `count` (at least two) one-byte bytestrings as a list in its committed
+/// form, read through its top node, its head node and its first two links,
+/// with the successor of its case step.
+fn committed_byte_list(count: Int) -> CommittedList {
+  let items = byte_items(count)
+  expect [head, second, ..rest] = items
+  let rest_items = cek_data_v1.commit_data_list(rest)
+  let second_summary = cek_data_v1.semantic_data_summary_v1(second)
+  let tail_items = cek_data_v1.prepend_data_list_summary_v1(
+    second_summary,
+    rest_items,
+  )
+  let head_summary = cek_data_v1.semantic_data_summary_v1(head)
+  let all_items = cek_data_v1.prepend_data_list_summary_v1(
+    head_summary,
+    tail_items,
+  )
+  let payload = cek_data_v1.list_data_summary_v1(all_items)
+  let head_blob = cek_data_v1.bounded_blob_root_v1(builtin.un_b_data(head))
+  CommittedList {
+    scrutinee: cek_builtin_v1.SemanticConstantValue {
+      type_cbor: #"9f0501ff",
+      payload,
+      memory: count,
+    },
+    focus_root: root(#"9f0501ff", builtin.list_data(items)),
+    material: cek_builtin_v1.SemanticBuiltinWitnessV1 {
+      data_nodes: [
+        cek_data_v1.ListData {
+          items_count: count,
+          items_root: all_items.root,
+          cbor_length: payload.cbor_length,
+          memory: payload.memory,
+        },
+        cek_data_v1.BytesData {
+          bytes_root: head_blob,
+          bytes_length: 1,
+          cbor_length: head_summary.cbor_length,
+          memory: head_summary.memory,
+        },
+      ],
+      list_nodes: [
+        summary_link(head_summary, tail_items),
+        summary_link(second_summary, rest_items),
+      ],
+      pair_nodes: [],
+      scalar_preimages: [],
+    },
+    post: selecting(
+      values(
+        root(#"9f01ff", head),
+        root(#"9f0501ff", builtin.list_data([second, ..rest])),
+      ),
+      2,
+      0,
+    ),
+  }
+}
+
+// A list of 100 bytestrings is proved in its committed form, at a cost that
+// does not grow with the list.
+test case_constant_arm_applies_a_list_branch_to_a_committed_bytestring_list() {
+  let list = committed_byte_list(100)
+  run_case_constant(list.scrutinee, list.focus_root, list.material, list.post)
+}
+
+// The cost of building the vector above without running the validator.
+test case_constant_arm_committed_bytestring_list_vector_alone() {
+  let list = committed_byte_list(100)
+  list.focus_root != list.post.focus_root
+}
+
 test case_constant_arm_halts_on_a_pair_with_two_branches() {
   run_inline(
     #"9f060004ff",

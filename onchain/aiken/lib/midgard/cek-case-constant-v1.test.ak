@@ -729,6 +729,138 @@ test case_on_a_wide_list_without_its_nodes_is_not_opened() fail {
   )
 }
 
+// Committed lists of scalars: whatever its length, a list in its root-equal
+// committed form is read through its top node, its head node and its first
+// two links, so the step's cost does not grow with the list.
+
+fn summary_link(
+  head: cek_data_v1.DataSummaryV1,
+  tail: cek_data_v1.DataSequenceSummaryV1,
+) -> cek_data_v1.DataListNodeV1 {
+  cek_data_v1.DataListNodeV1 {
+    head: head.root,
+    head_cbor_length: head.cbor_length,
+    head_memory: head.memory,
+    tail: tail.root,
+    length: tail.length + 1,
+    payload_cbor_length: head.cbor_length + tail.payload_cbor_length,
+    memory: head.memory + tail.memory,
+  }
+}
+
+/// A `case` with two branches on `items` (at least two) in committed form,
+/// against the head and tail roots of the same list carried inline.
+fn committed_case(
+  type_cbor: ByteArray,
+  element_cbor: ByteArray,
+  items: List<Data>,
+  head_node: cek_data_v1.DataNodeV1,
+) -> Bool {
+  expect [head, second, ..rest] = items
+  let rest_items = cek_data_v1.commit_data_list(rest)
+  let second_summary = cek_data_v1.semantic_data_summary_v1(second)
+  let tail_items = cek_data_v1.prepend_data_list_summary_v1(
+    second_summary,
+    rest_items,
+  )
+  let head_summary = cek_data_v1.semantic_data_summary_v1(head)
+  let all_items = cek_data_v1.prepend_data_list_summary_v1(
+    head_summary,
+    tail_items,
+  )
+  let payload = cek_data_v1.list_data_summary_v1(all_items)
+  let list = builtin.list_data(items)
+  let scrutinee = semantic(
+    type_cbor,
+    payload,
+    cek_constant_v1.semantic_memory_size_v1(
+      cek_constant_v1.decode_constant_type_v1(type_cbor),
+      list,
+    ),
+  )
+  expect scrutinee.2nd == root(type_cbor, list)
+  semantic_cases(
+    scrutinee,
+    cek_builtin_v1.SemanticBuiltinWitnessV1 {
+      data_nodes: [
+        cek_data_v1.ListData {
+          items_count: all_items.length,
+          items_root: all_items.root,
+          cbor_length: payload.cbor_length,
+          memory: payload.memory,
+        },
+        head_node,
+      ],
+      list_nodes: [
+        summary_link(head_summary, tail_items),
+        summary_link(second_summary, rest_items),
+      ],
+      pair_nodes: [],
+      scalar_preimages: [],
+    },
+    2,
+    selects(
+      2,
+      0,
+      2,
+      values(
+        root(element_cbor, head),
+        root(type_cbor, builtin.list_data([second, ..rest])),
+      ),
+    ),
+  )
+}
+
+fn bytes_node(bytes: ByteArray) -> cek_data_v1.DataNodeV1 {
+  let length = builtin.length_of_bytearray(bytes)
+  let blob = cek_data_v1.bounded_blob_root_v1(bytes)
+  let summary = cek_data_v1.bytes_data_summary_v1(length, blob)
+  cek_data_v1.BytesData {
+    bytes_root: blob,
+    bytes_length: length,
+    cbor_length: summary.cbor_length,
+    memory: summary.memory,
+  }
+}
+
+/// The node of a constructor without fields: a unit or a boolean.
+fn tag_node(constructor: Int) -> cek_data_v1.DataNodeV1 {
+  cek_data_v1.ConstrSmallData {
+    constructor,
+    fields_count: 0,
+    fields_root: cek_data_v1.empty_data_list_root_v1(),
+    cbor_length: 3,
+    memory: 4,
+  }
+}
+
+// One, two and three words each, so the element memory is not the item count.
+test case_on_a_committed_bytestring_list_applies_its_branch_to_head_and_tail() {
+  committed_case(
+    #"9f0501ff",
+    bytes_type,
+    [
+      builtin.b_data(#"00"),
+      builtin.b_data(builtin.replicate_byte(9, 1)),
+      builtin.b_data(builtin.replicate_byte(17, 2)),
+    ],
+    bytes_node(#"00"),
+  )
+}
+
+test case_on_a_committed_boolean_list_applies_its_branch_to_head_and_tail() {
+  committed_case(
+    #"9f0504ff",
+    boolean_type,
+    [boolean(True), boolean(False), boolean(True)],
+    tag_node(1),
+  )
+}
+
+test case_on_a_committed_unit_list_applies_its_branch_to_head_and_tail() {
+  committed_case(#"9f0503ff", unit_type, [unit(), unit()], tag_node(0))
+}
+
 type WidePair {
   scrutinee: Pair<cek_builtin_v1.ValueWitnessV1, ByteArray>,
   first: ByteArray,

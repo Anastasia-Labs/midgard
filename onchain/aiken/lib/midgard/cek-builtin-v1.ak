@@ -1682,15 +1682,24 @@ fn constant_memory_from_payload_node_v1(
     cek_constant_v1.DataConstant -> cek_data_v1.data_node_memory_v1(node)
     cek_constant_v1.ListConstant { element } -> {
       expect cek_data_v1.ListData { items_count, memory, .. } = node
+      // An integer, bytestring or data-pair item costs its data node less
+      // the node's four words; a unit or boolean item costs one word.
       if element == cek_constant_v1.DataConstant {
         memory - 4
-      } else if element == cek_constant_v1.IntegerConstant {
-        memory - 4 - items_count * 4
-      } else if element == cek_constant_v1.PairConstant {
-        first: cek_constant_v1.DataConstant,
-        second: cek_constant_v1.DataConstant,
+      } else if or {
+        element == cek_constant_v1.IntegerConstant,
+        element == cek_constant_v1.ByteStringConstant,
+        element == cek_constant_v1.PairConstant {
+          first: cek_constant_v1.DataConstant,
+          second: cek_constant_v1.DataConstant,
+        },
       } {
         memory - 4 - items_count * 4
+      } else if or {
+        element == cek_constant_v1.UnitConstant,
+        element == cek_constant_v1.BooleanConstant,
+      } {
+        items_count
       } else {
         fail @"semantic list element memory requires a recursive proof"
       }
