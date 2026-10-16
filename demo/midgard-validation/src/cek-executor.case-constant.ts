@@ -178,6 +178,39 @@ const semanticMaterial = (
   };
 };
 
+/**
+ * The shortest list of integers, bytestrings, booleans or units whose case
+ * step is proved in its committed form. The committed step reads two links
+ * and the head whatever the list's length, about 1.35M memory units; the
+ * inline step rereads every item, about 150k to 180k more per item. At three
+ * items the committed form is the cheaper one for booleans and units but not
+ * yet for integers and bytestrings; from four on it is the cheaper one for all
+ * four. The inline step is out of budget at about 76 one-word items.
+ */
+export const COMMITTED_LIST_CASE_MIN_LENGTH = 4n;
+
+/** Element types whose committed list the case-constant arm can read. */
+const COMMITTED_LIST_ELEMENTS: ReadonlySet<MidgardCekConstantType["kind"]> =
+  new Set(["integer", "bytes", "boolean", "unit"]);
+
+/**
+ * Whether a case on this inline constant is proved in its committed form: an
+ * integer of two or more words, which is past every branch index from its
+ * memory alone, or a long enough list of committed-readable items.
+ */
+const committedScrutinee = (
+  source: { readonly type: MidgardCekConstantType; readonly payload: Data },
+  memory: bigint,
+): boolean => {
+  if (source.type.kind === "integer") return memory >= 2n;
+  return (
+    source.type.kind === "list" &&
+    COMMITTED_LIST_ELEMENTS.has(source.type.element.kind) &&
+    source.payload instanceof DataList &&
+    BigInt(source.payload.list.length) >= COMMITTED_LIST_CASE_MIN_LENGTH
+  );
+};
+
 /** Returns a constant into a case frame: one `returnCaseConstant` step. */
 export const returnCaseConstant = (
   host: CaseConstantHost,
@@ -190,10 +223,8 @@ export const returnCaseConstant = (
   }
   const source = host.resolve(stored);
   const memory = midgardCekConstantMemorySize(source.type, source.payload);
-  // An integer of two or more words is past every branch index. Its
-  // committed form shows that from its memory alone, without the integer.
   const scrutinee: MidgardCekDirectValueWitness =
-    stored.kind === "constant" && source.type.kind === "integer" && memory >= 2n
+    stored.kind === "constant" && committedScrutinee(source, memory)
       ? {
           kind: "semanticConstant",
           witness: {

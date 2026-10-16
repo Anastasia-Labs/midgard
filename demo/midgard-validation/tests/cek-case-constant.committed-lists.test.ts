@@ -18,6 +18,7 @@ import {
   midgardCekConstantMemorySize,
 } from "../src/cek-constant.js";
 import { commitMidgardCekDataTree } from "../src/cek-data-tree.js";
+import { COMMITTED_LIST_CASE_MIN_LENGTH } from "../src/cek-executor.case-constant.js";
 import {
   buildMidgardCekExecutionGraph,
   executeMidgardCekStructuralProgram,
@@ -134,11 +135,6 @@ const toUnit = () => new Lambda(new Lambda(UPLCConst.unit));
 const LISTS: readonly (readonly [string, () => UPLCTerm])[] = [
   ["integers", () => constCase(integers([1n, 300n, 1n << 70n]), toUnit())],
   [
-    "100 one-byte bytestrings",
-    () =>
-      constCase(byteStrings(Array.from({ length: 100 }, () => 1)), toUnit()),
-  ],
-  [
     "bytestrings of one, two and three words",
     () => constCase(byteStrings([1, 9, 17]), toUnit()),
   ],
@@ -191,4 +187,129 @@ describe("case on a committed list or pair of scalars", () => {
       ).toBe(false);
     },
   );
+});
+
+const repeat = <T>(length: number, item: (index: number) => T): T[] =>
+  Array.from({ length }, (_, index) => item(index));
+
+// Lists of each committed-readable item type, of a given length.
+const ITEM_LISTS: readonly (readonly [string, (length: number) => UPLCTerm])[] =
+  [
+    [
+      "integers",
+      (length) => integers(repeat(length, (index) => BigInt(index))),
+    ],
+    ["bytestrings", (length) => byteStrings(repeat(length, () => 1))],
+    [
+      "booleans",
+      (length) =>
+        UPLCConst.listOf(constT.bool)(
+          repeat(length, (index) => index % 2 === 0) as never,
+        ),
+    ],
+    [
+      "units",
+      (length) =>
+        UPLCConst.listOf(constT.unit)(
+          repeat(length, () => UPLCConst.unit.value) as never,
+        ),
+    ],
+  ];
+
+const threshold = Number(COMMITTED_LIST_CASE_MIN_LENGTH);
+
+describe("which form the executor proves a list case in", () => {
+  it.each(ITEM_LISTS)(
+    "%s: inline below the threshold length, committed from it",
+    (_, list) => {
+      const below = caseConstantStep(constCase(list(threshold - 1), toUnit()));
+      expect(below.witness.scrutinee.kind).toBe("constant");
+      expect(below.witness.material.dataNodes).toEqual([]);
+      expect(
+        verifyMidgardCekCoreStep(below.pre, below.post, below.witness),
+      ).toBe(true);
+      // The committed form of the same step also proves it.
+      const semantic = committed(below.witness);
+      expect(verifyMidgardCekCoreStep(below.pre, below.post, semantic)).toBe(
+        true,
+      );
+
+      const at = caseConstantStep(constCase(list(threshold), toUnit()));
+      expect(at.witness.scrutinee.kind).toBe("semanticConstant");
+      expect(at.witness.material.listNodes).toHaveLength(2);
+      expect(verifyMidgardCekCoreStep(at.pre, at.post, at.witness)).toBe(true);
+    },
+  );
+
+  it.each(ITEM_LISTS)(
+    "%s: a 100-item list is proved in its committed form",
+    (_, list) => {
+      const { pre, post, witness } = caseConstantStep(
+        constCase(list(100), toUnit()),
+      );
+      expect(witness.scrutinee.kind).toBe("semanticConstant");
+      expect(verifyMidgardCekCoreStep(pre, post, witness)).toBe(true);
+      // The head node is bound to the list's first link.
+      expect(
+        verifyMidgardCekCoreStep(pre, post, {
+          ...witness,
+          material: {
+            ...witness.material,
+            dataNodes: [...witness.material.dataNodes].reverse(),
+          },
+        }),
+      ).toBe(false);
+    },
+  );
+
+  it.each(ITEM_LISTS)(
+    "%s: a committed list with three branches is missing its branch",
+    (_, list) => {
+      const { pre, post, witness } = caseConstantStep(
+        constCase(list(threshold), toUnit(), toUnit(), toUnit()),
+      );
+      expect(witness.scrutinee.kind).toBe("semanticConstant");
+      expect(post.mode).toBe("haltError");
+      expect(post.auxiliary).toBe(6n);
+      expect(verifyMidgardCekCoreStep(pre, post, witness)).toBe(true);
+    },
+  );
+
+  it.each([
+    ["a wide integer head", () => integers([1n << 600n, 1n, 2n, 3n])],
+    ["a wide bytestring head", () => byteStrings([200, 1, 1, 1])],
+  ] as const)("%s is read from its committed node", (_, list) => {
+    const { pre, post, witness } = caseConstantStep(
+      constCase(list(), toUnit()),
+    );
+    expect(witness.scrutinee.kind).toBe("semanticConstant");
+    expect(verifyMidgardCekCoreStep(pre, post, witness)).toBe(true);
+  });
+
+  it.each([
+    [
+      "strings",
+      () => UPLCConst.listOf(constT.str)(["a", "b", "c", "d"] as never),
+    ],
+    [
+      "lists of integers",
+      () =>
+        UPLCConst.listOf(constT.listOf(constT.int))(
+          repeat(threshold, () => [1n]) as never,
+        ),
+    ],
+    [
+      "pairs of integers",
+      () =>
+        UPLCConst.listOf(constT.pairOf(constT.int, constT.int))(
+          repeat(threshold, () => ({ fst: 1n, snd: 2n })) as never,
+        ),
+    ],
+  ] as const)("a list of %s stays inline", (_, list) => {
+    const { pre, post, witness } = caseConstantStep(
+      constCase(list(), toUnit()),
+    );
+    expect(witness.scrutinee.kind).toBe("constant");
+    expect(verifyMidgardCekCoreStep(pre, post, witness)).toBe(true);
+  });
 });

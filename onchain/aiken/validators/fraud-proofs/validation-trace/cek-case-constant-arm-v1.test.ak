@@ -451,11 +451,60 @@ type CommittedList {
   post: cek_machine_v1.MachineStateV1,
 }
 
-/// `count` (at least two) one-byte bytestrings as a list in its committed
-/// form, read through its top node, its head node and its first two links,
-/// with the successor of its case step.
-fn committed_byte_list(count: Int) -> CommittedList {
-  let items = byte_items(count)
+/// `count` booleans, alternating and ending in `False`.
+fn booleans(count: Int) -> List<Data> {
+  if count == 0 {
+    []
+  } else {
+    [builtin.constr_data(count % 2, []), ..booleans(count - 1)]
+  }
+}
+
+/// `count` units.
+fn units(count: Int) -> List<Data> {
+  if count == 0 {
+    []
+  } else {
+    [builtin.constr_data(0, []), ..units(count - 1)]
+  }
+}
+
+/// The node of a unit, a boolean, an integer or a bytestring item.
+fn item_node(item: Data) -> cek_data_v1.DataNodeV1 {
+  let summary = cek_data_v1.semantic_data_summary_v1(item)
+  builtin.choose_data(
+    item,
+    cek_data_v1.ConstrSmallData {
+      constructor: builtin.un_constr_data(item).1st,
+      fields_count: 0,
+      fields_root: cek_data_v1.empty_data_list_summary_v1().root,
+      cbor_length: summary.cbor_length,
+      memory: summary.memory,
+    },
+    fail,
+    fail,
+    cek_data_v1.IntegerData {
+      cbor_root: cek_data_v1.bounded_blob_root_v1(cbor.serialise(item)),
+      cbor_length: summary.cbor_length,
+      memory: summary.memory,
+    },
+    cek_data_v1.BytesData {
+      bytes_root: cek_data_v1.bounded_blob_root_v1(builtin.un_b_data(item)),
+      bytes_length: builtin.length_of_bytearray(builtin.un_b_data(item)),
+      cbor_length: summary.cbor_length,
+      memory: summary.memory,
+    },
+  )
+}
+
+/// `items` (at least two one-word items of the type `item_type`) as a list in
+/// its committed form, read through its top node, its head node and its first
+/// two links, with the successor of its case step.
+fn committed_list(
+  item_type: ByteArray,
+  list_type: ByteArray,
+  items: List<Data>,
+) -> CommittedList {
   expect [head, second, ..rest] = items
   let rest_items = cek_data_v1.commit_data_list(rest)
   let second_summary = cek_data_v1.semantic_data_summary_v1(second)
@@ -469,28 +518,23 @@ fn committed_byte_list(count: Int) -> CommittedList {
     tail_items,
   )
   let payload = cek_data_v1.list_data_summary_v1(all_items)
-  let head_blob = cek_data_v1.bounded_blob_root_v1(builtin.un_b_data(head))
   CommittedList {
+    // One word per item.
     scrutinee: cek_builtin_v1.SemanticConstantValue {
-      type_cbor: #"9f0501ff",
+      type_cbor: list_type,
       payload,
-      memory: count,
+      memory: all_items.length,
     },
-    focus_root: root(#"9f0501ff", builtin.list_data(items)),
+    focus_root: root(list_type, builtin.list_data(items)),
     material: cek_builtin_v1.SemanticBuiltinWitnessV1 {
       data_nodes: [
         cek_data_v1.ListData {
-          items_count: count,
+          items_count: all_items.length,
           items_root: all_items.root,
           cbor_length: payload.cbor_length,
           memory: payload.memory,
         },
-        cek_data_v1.BytesData {
-          bytes_root: head_blob,
-          bytes_length: 1,
-          cbor_length: head_summary.cbor_length,
-          memory: head_summary.memory,
-        },
+        item_node(head),
       ],
       list_nodes: [
         summary_link(head_summary, tail_items),
@@ -501,8 +545,8 @@ fn committed_byte_list(count: Int) -> CommittedList {
     },
     post: selecting(
       values(
-        root(#"9f01ff", head),
-        root(#"9f0501ff", builtin.list_data([second, ..rest])),
+        root(item_type, head),
+        root(list_type, builtin.list_data([second, ..rest])),
       ),
       2,
       0,
@@ -510,16 +554,47 @@ fn committed_byte_list(count: Int) -> CommittedList {
   }
 }
 
-// A list of 100 bytestrings is proved in its committed form, at a cost that
-// does not grow with the list.
-test case_constant_arm_applies_a_list_branch_to_a_committed_bytestring_list() {
-  let list = committed_byte_list(100)
+fn run_committed(list: CommittedList) -> Bool {
   run_case_constant(list.scrutinee, list.focus_root, list.material, list.post)
 }
 
-// The cost of building the vector above without running the validator.
+// Lists of 100 items of each type a committed list is read with are proved in
+// their committed form, at a cost that does not grow with the list. Each
+// vector's cost alone is measured beside it: the step costs the difference.
+
+test case_constant_arm_applies_a_list_branch_to_a_committed_bytestring_list() {
+  run_committed(committed_list(#"9f01ff", #"9f0501ff", byte_items(100)))
+}
+
 test case_constant_arm_committed_bytestring_list_vector_alone() {
-  let list = committed_byte_list(100)
+  let list = committed_list(#"9f01ff", #"9f0501ff", byte_items(100))
+  list.focus_root != list.post.focus_root
+}
+
+test case_constant_arm_applies_a_list_branch_to_a_committed_integer_list() {
+  run_committed(committed_list(#"9f00ff", #"9f0500ff", small_integers(100)))
+}
+
+test case_constant_arm_committed_integer_list_vector_alone() {
+  let list = committed_list(#"9f00ff", #"9f0500ff", small_integers(100))
+  list.focus_root != list.post.focus_root
+}
+
+test case_constant_arm_applies_a_list_branch_to_a_committed_boolean_list() {
+  run_committed(committed_list(#"9f04ff", #"9f0504ff", booleans(100)))
+}
+
+test case_constant_arm_committed_boolean_list_vector_alone() {
+  let list = committed_list(#"9f04ff", #"9f0504ff", booleans(100))
+  list.focus_root != list.post.focus_root
+}
+
+test case_constant_arm_applies_a_list_branch_to_a_committed_unit_list() {
+  run_committed(committed_list(#"9f03ff", #"9f0503ff", units(100)))
+}
+
+test case_constant_arm_committed_unit_list_vector_alone() {
+  let list = committed_list(#"9f03ff", #"9f0503ff", units(100))
   list.focus_root != list.post.focus_root
 }
 
