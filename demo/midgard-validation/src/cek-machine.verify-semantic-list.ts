@@ -25,6 +25,7 @@ import {
   constantParts,
   dataNodeSummary,
   type DataSequenceSummary,
+  type DataSummary,
   listSequenceFromNode,
 } from "./cek-machine.verify-case-select.js";
 import { dataListLinkMatches } from "./cek-machine.verify-map-conversion-start.js";
@@ -63,6 +64,54 @@ export const semanticListSource = (
     sequence,
     memory: parts.memory,
   };
+};
+
+/**
+ * The words a semantic list item's Data payload commits above its constant
+ * memory, as `semanticizeMidgardCekDirectConstant` commits it: none for a Data
+ * item, one Data node of four words for an integer, byte-string or data-pair
+ * item, and an empty constructor of four words over a one-word unit or
+ * boolean. Any other element type has no such relation and must be revealed.
+ */
+const listItemPayloadWords = (
+  element: MidgardCekConstantType,
+): bigint | null => {
+  switch (element.kind) {
+    case "data":
+      return 0n;
+    case "integer":
+    case "bytes":
+      return 4n;
+    case "pair":
+      return element.first.kind === "data" && element.second.kind === "data"
+        ? 4n
+        : null;
+    case "unit":
+    case "boolean":
+      return 3n;
+    case "string":
+    case "list":
+    case "blsG1":
+    case "blsG2":
+    case "blsMillerLoopResult":
+      return null;
+  }
+};
+
+/**
+ * Whether a list item's summary memory is bound to its constant memory: a
+ * revealed item's summary is computed from its payload, and a semantic item's
+ * summary memory, which its value root does not commit, must match its
+ * root-bound memory by its element type.
+ */
+const listItemSummaryMemoryIsBound = (
+  item: MidgardCekDirectValueWitness,
+  element: MidgardCekConstantType,
+  parts: { readonly payload: DataSummary; readonly memory: bigint },
+): boolean => {
+  if (item.kind === "constant") return true;
+  const words = listItemPayloadWords(element);
+  return words !== null && parts.payload.memory === parts.memory + words;
 };
 
 export const verifySemanticList = (
@@ -119,7 +168,8 @@ export const verifySemanticList = (
     if (
       source === null ||
       item === null ||
-      !sameConstantType(item.type, source.element)
+      !sameConstantType(item.type, source.element) ||
+      !listItemSummaryMemoryIsBound(arguments_[0]!, source.element, item)
     ) {
       return false;
     }

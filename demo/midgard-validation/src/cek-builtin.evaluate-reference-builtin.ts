@@ -148,7 +148,7 @@ const semanticConstantFromCanonical = (
   });
 };
 
-const semanticizeDirectConstant = (
+export const semanticizeMidgardCekDirectConstant = (
   value: MidgardCekDirectValueWitness,
 ): MidgardCekDirectValueWitness => {
   if (value.kind !== "constant") return value;
@@ -372,7 +372,7 @@ export const evaluateMidgardCekDirectBuiltin = (
     }
     return Object.freeze({
       kind: "success",
-      result: semanticizeDirectConstant(result),
+      result: semanticizeMidgardCekDirectConstant(result),
       budget,
     });
   }
