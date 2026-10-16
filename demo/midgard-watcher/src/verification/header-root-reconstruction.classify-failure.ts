@@ -217,7 +217,9 @@ const differingCounts = (
  * canonical reconstruction no longer compares them. W22 still rejects a
  * payload whose declared counts disagree with its members (`before`: checked
  * right after decoding, ahead of every header and root check) or with the
- * header (`after`: checked right after root authentication).
+ * header (`after`: checked right after root authentication). The header pins
+ * `validation_trace_count` to zero while the payload declares its trace
+ * number, so `after` compares the header with that pinned value instead.
  */
 export const declaredCountFailures = (
   payload: DaPayload,
@@ -238,7 +240,10 @@ export const declaredCountFailures = (
     counts.validationTraceCount !==
       counts.forcedTransactionCount + counts.l2TransactionCount ||
     BigInt(body.validation_traces.length) !== counts.validationTraceCount;
-  const header = differingCounts(headerCounts, declared);
+  const header = differingCounts(headerCounts, {
+    ...declared,
+    validation_trace_count: "0",
+  });
   return {
     before:
       members.length > 0
