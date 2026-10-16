@@ -161,14 +161,16 @@ const spanProofs = ({
   readonly absoluteStart: number;
   readonly length: number;
 }): Pick<MidgardRedeemerItemProofWitness, "chunkProof" | "nextChunkProof"> => {
-  const { first, last } = midgardRedeemerItemSpanChunks({
-    absoluteStart,
-    length,
-  });
+  const chunks = midgardRedeemerItemSpanChunks({ absoluteStart, length });
   return {
-    chunkProof: buildMidgardBoundedItemChunkProof(item, first),
+    chunkProof:
+      chunks === null
+        ? null
+        : buildMidgardBoundedItemChunkProof(item, chunks.first),
     nextChunkProof:
-      last === first ? null : buildMidgardBoundedItemChunkProof(item, last),
+      chunks === null || chunks.last === chunks.first
+        ? null
+        : buildMidgardBoundedItemChunkProof(item, chunks.last),
   };
 };
 

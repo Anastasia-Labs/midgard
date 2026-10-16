@@ -572,38 +572,24 @@ fn chunk_proof_matches(
   }
 }
 
+// A derived span is at most 132 bytes (max_source_span), under the 4,095-byte chunk.
 fn authenticated_span(
   control: RedeemerItemProofControlV1,
   span: RedeemerItemSourceSpanV1,
   chunk_proof: bounded_item_v1.ChunkProofV1,
   next_chunk_proof: Option<bounded_item_v1.ChunkProofV1>,
 ) -> Option<ByteArray> {
-  let span_end = span.absolute_start + span.length
   if or {
-    span.length < 0,
-    span.length > cek_data_traverse_v1.max_source_span,
+    span.length <= 0,
     span.absolute_start < 0,
-    span_end > control.total_length,
+    span.absolute_start + span.length > control.total_length,
   } {
     None
   } else {
-    // An empty span reads the chunk holding the byte before its end, or chunk
-    // 0 at the item's start.
-    let last_chunk_index = if span_end > 0 {
-      ( span_end - 1 ) / bounded_item_v1.chunk_bytes
-    } else {
-      0
-    }
-    let first_chunk_index = if span.length == 0 {
-      last_chunk_index
-    } else {
-      span.absolute_start / bounded_item_v1.chunk_bytes
-    }
+    let first_chunk_index = span.absolute_start / bounded_item_v1.chunk_bytes
+    let last_chunk_index = ( span.absolute_start + span.length - 1 ) / bounded_item_v1.chunk_bytes
     let local_start = span.absolute_start - first_chunk_index * bounded_item_v1.chunk_bytes
-    if or {
-      last_chunk_index > first_chunk_index + 1,
-      !chunk_proof_matches(control, chunk_proof, first_chunk_index),
-    } {
+    if !chunk_proof_matches(control, chunk_proof, first_chunk_index) {
       None
     } else if last_chunk_index == first_chunk_index {
       if next_chunk_proof == None {
@@ -866,7 +852,18 @@ pub fn authenticate_source_window(
       }
     Some(exact) ->
       when witness.chunk_proof is {
-        None -> None
+        // An empty span within the item reads no bytes and takes no proof.
+        None ->
+          if and {
+            exact.length == 0,
+            exact.absolute_start >= 0,
+            exact.absolute_start <= control.total_length,
+            witness.next_chunk_proof == None,
+          } {
+            Some(Some(#""))
+          } else {
+            None
+          }
         Some(first) ->
           when
             authenticated_span(control, exact, first, witness.next_chunk_proof)

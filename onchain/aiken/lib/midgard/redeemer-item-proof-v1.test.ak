@@ -537,11 +537,21 @@ fn window(
   start: Int,
   length: Int,
 ) -> Option<Option<ByteArray>> {
-  let (chunk_proof, next_chunk_proof) = when proofs is {
-    [] -> (None, None)
-    [first] -> (Some(first), None)
-    [first, next, ..] -> (Some(first), Some(next))
+  when proofs is {
+    [] -> window_with(control, None, None, start, length)
+    [first] -> window_with(control, Some(first), None, start, length)
+    [first, next, ..] ->
+      window_with(control, Some(first), Some(next), start, length)
   }
+}
+
+fn window_with(
+  control: redeemer_item_proof_v1.RedeemerItemProofControlV1,
+  chunk_proof: Option<bounded_item_v1.ChunkProofV1>,
+  next_chunk_proof: Option<bounded_item_v1.ChunkProofV1>,
+  start: Int,
+  length: Int,
+) -> Option<Option<ByteArray>> {
   redeemer_item_proof_v1.authenticate_source_window(
     control,
     Some(
@@ -563,17 +573,14 @@ fn window(
 
 test empty_source_span_inside_item_is_authenticated() {
   let small = data_control(small_redeemer)
-  let small_proof = [singleton_chunk_proof(small_redeemer, 0)]
-  let item = two_chunk_item()
-  let large = data_control(item)
-  expect [chunk_0, chunk_1] = two_chunk_proofs(item)
+  let large = data_control(two_chunk_item())
   and {
-    window(small, small_proof, 0, 0) == Some(Some(#"")),
-    window(small, small_proof, 3, 0) == Some(Some(#"")),
-    window(small, small_proof, 8, 0) == Some(Some(#"")),
-    window(large, [chunk_0], 4095, 0) == Some(Some(#"")),
-    window(large, [chunk_1], 4096, 0) == Some(Some(#"")),
-    window(large, [chunk_1], 4100, 0) == Some(Some(#"")),
+    window(small, [], 0, 0) == Some(Some(#"")),
+    window(small, [], 3, 0) == Some(Some(#"")),
+    window(small, [], 8, 0) == Some(Some(#"")),
+    window(large, [], 4095, 0) == Some(Some(#"")),
+    window(large, [], 4096, 0) == Some(Some(#"")),
+    window(large, [], 4100, 0) == Some(Some(#"")),
   }
 }
 
@@ -584,13 +591,14 @@ test empty_source_span_outside_item_or_with_other_evidence_is_refused() {
   let large = data_control(item)
   expect [chunk_0, chunk_1] = two_chunk_proofs(item)
   and {
-    window(small, [small_proof], 9, 0) == None,
-    window(small, [small_proof], -1, 0) == None,
+    window(small, [], 9, 0) == None,
+    window(small, [], -1, 0) == None,
+    window(small, [small_proof], 3, 0) == None,
     window(small, [small_proof, small_proof], 3, 0) == None,
-    window(small, [], 3, 0) == None,
-    window(large, [chunk_1], 4095, 0) == None,
-    window(large, [chunk_0], 4096, 0) == None,
-    window(large, [chunk_1], 4101, 0) == None,
+    window_with(small, None, Some(small_proof), 3, 0) == None,
+    window(large, [chunk_0], 4095, 0) == None,
+    window(large, [chunk_1], 4096, 0) == None,
+    window(large, [], 4101, 0) == None,
   }
 }
 
@@ -603,6 +611,7 @@ test non_empty_source_span_is_read_as_before() {
   and {
     window(small, small_proof, 3, 2) == Some(Some(#"4100")),
     window(small, small_proof, 3, -1) == None,
+    window(small, [], 3, -1) == None,
     window(small, small_proof, 7, 2) == None,
     window(large, [chunk_0, chunk_1], 4090, 10) == Some(
       Some(bytearray.slice(item, 4090, 4099)),
@@ -617,7 +626,6 @@ test non_empty_source_span_is_read_as_before() {
 /// executor prove it.
 fn empty_content_step_agrees(
   control_cbor: ByteArray,
-  chunk_proof: bounded_item_v1.ChunkProofV1,
   expected_next_hash: ByteArray,
 ) -> Bool {
   let control = redeemer_item_proof_v1.decode_control_v1(control_cbor)
@@ -626,7 +634,7 @@ fn empty_content_step_agrees(
     action: redeemer_item_proof_v1.RedeemerItemTraverseData {
       action: cek_data_traverse_v1.NoAction,
     },
-    chunk_proof: Some(chunk_proof),
+    chunk_proof: None,
     next_chunk_proof: None,
   }
   expect
@@ -665,53 +673,54 @@ fn empty_content_step_agrees(
 test empty_byte_string_data_step_agrees_with_typescript() {
   // The redeemer item [0, 0, B"", [10, 20]], its Data a definite byte string.
   let item = #"8400004140820a14"
-  empty_content_step_agrees(
-    #"90010102000108582072d5071985075018e0da2b0b4fc5ed3c0db54aef7895e312f8782ea6460c569e2020000004010a14d8799f89010204010040d87a80d8799f860101040100d8799f86010000008401000080d8799f8901000016584028c9bdf267e6096a3ba7ca8485ae67bb2bf894fe72f36e3cf1361d5f3af54fa5d182e6ad7f520e511f6c3e2b8c68059b6bbd41fbabd9831f79217e1319cde05b40004000ffffffd87a80ff",
-    singleton_chunk_proof(item, 0),
-    #"3b1546b684b0eb942e067ab368ca50190737bd0e0842bcfd65979bf22b596097",
-  )
+  let control_cbor = #"90010102000108582072d5071985075018e0da2b0b4fc5ed3c0db54aef7895e312f8782ea6460c569e2020000004010a14d8799f89010204010040d87a80d8799f860101040100d8799f86010000008401000080d8799f8901000016584028c9bdf267e6096a3ba7ca8485ae67bb2bf894fe72f36e3cf1361d5f3af54fa5d182e6ad7f520e511f6c3e2b8c68059b6bbd41fbabd9831f79217e1319cde05b40004000ffffffd87a80ff"
+  and {
+    empty_content_step_agrees(
+      control_cbor,
+      #"3b1546b684b0eb942e067ab368ca50190737bd0e0842bcfd65979bf22b596097",
+    ),
+    redeemer_item_proof_v1.step_v1(
+      redeemer_item_proof_v1.decode_control_v1(control_cbor),
+      source_witness(
+        redeemer_item_proof_v1.RedeemerItemTraverseData {
+          action: cek_data_traverse_v1.NoAction,
+        },
+        singleton_chunk_proof(item, 0),
+      ),
+    ) == None,
+  }
 }
 
 test empty_byte_string_at_chunk_boundary_agrees_with_typescript() {
   // A list of 61 64-byte strings and 61 zeros, then B"", whose empty content
   // starts at byte 4,095, the first of chunk 1.
-  let data = #"9f"
-    |> bytearray.concat(
-        repeat_bytes(#"5840" |> bytearray.concat(repeat_bytes(#"11", 64)), 61),
-      )
-    |> bytearray.concat(repeat_bytes(#"00", 61))
-    |> bytearray.concat(#"40ff")
-  let item = #"840000590ffa"
-    |> bytearray.concat(data)
-    |> bytearray.concat(#"820a14")
-  let chunk = bytearray.slice(item, 0, bounded_item_v1.chunk_bytes - 1)
-  let tail = bytearray.slice(
-    item,
-    bounded_item_v1.chunk_bytes,
-    bytearray.length(item) - 1,
+  empty_content_step_agrees(
+    #"9001010200011910035820b8ae18328fc1499016cc8505485b4917c1668a0c86c24d6bc2b73a1745362c8e2020000006190ffa0a14d8799f89010206190ffa190ff85820cac4b33b7a2eda9a1950c137bd6b202c83d4541740fb9c0ac35a6bac2f4784c9d87a80d8799f860101190ffe0100d8799f86010000008401000080d8799f8901000016584028c9bdf267e6096a3ba7ca8485ae67bb2bf894fe72f36e3cf1361d5f3af54fa5d182e6ad7f520e511f6c3e2b8c68059b6bbd41fbabd9831f79217e1319cde05b40004000ffffffd87a80ff",
+    #"a1f3f8a9cdf293e7955bf519ff1e2afc9c1b7c136bc468d098f1afcbf045c28d",
   )
-  let frontier = validation_merkle_v1.build_frontier(
-    [
-      bounded_item_v1.hash_chunk(8, 0, 0, chunk),
-      bounded_item_v1.hash_chunk(8, 0, 1, tail),
-    ],
-  ).peaks
-  let chunk_proof = bounded_item_v1.ChunkProofV1 {
-    version: 1,
-    field_index: 8,
-    item_index: 0,
-    total_length: bytearray.length(item),
-    chunk_index: 0,
-    chunk,
-    frontier,
-    siblings: [bounded_item_v1.hash_chunk(8, 0, 1, tail)],
-  }
-  and {
-    bytearray.length(item) == 4099,
-    empty_content_step_agrees(
-      #"9001010200011910035820b8ae18328fc1499016cc8505485b4917c1668a0c86c24d6bc2b73a1745362c8e2020000006190ffa0a14d8799f89010206190ffa190ff85820cac4b33b7a2eda9a1950c137bd6b202c83d4541740fb9c0ac35a6bac2f4784c9d87a80d8799f860101190ffe0100d8799f86010000008401000080d8799f8901000016584028c9bdf267e6096a3ba7ca8485ae67bb2bf894fe72f36e3cf1361d5f3af54fa5d182e6ad7f520e511f6c3e2b8c68059b6bbd41fbabd9831f79217e1319cde05b40004000ffffffd87a80ff",
+}
+
+/// A step with no source span takes no chunk proof.
+test no_span_step_refuses_a_chunk_proof() {
+  // The FinishData step of the redeemer item [0, 0, B"00", [10, 20]].
+  let control = redeemer_item_proof_v1.decode_control_v1(
+    #"900101020001085820f7f0d1013b70311a09ce7afa0e0ff24d93f67af1ce449ce73e699c88058f93ed2020000004010a14d8799f89010704010140d87a80d87a80d8799f8358200c4e8e7a8396d11dd8c0554ec32416c3257d87175f2dfcc7714469663e0f1da20105ffff",
+  )
+  let proof = singleton_chunk_proof(small_redeemer, 0)
+  let witness = fn(chunk_proof, next_chunk_proof) {
+    redeemer_item_proof_v1.RedeemerItemProofWitnessV1 {
+      action: redeemer_item_proof_v1.RedeemerItemFinishData,
       chunk_proof,
-      #"a1f3f8a9cdf293e7955bf519ff1e2afc9c1b7c136bc468d098f1afcbf045c28d",
-    ),
+      next_chunk_proof,
+    }
+  }
+  expect
+      Some(redeemer_item_proof_v1.RedeemerItemProofAdvanced { control: next })
+    = redeemer_item_proof_v1.step_v1(control, witness(None, None))
+  and {
+    redeemer_item_proof_v1.next_source_span_v1(control) == None,
+    redeemer_item_proof_v1.hash_control_v1(next) == #"26131db89798fb41a38a53b8216f34d12feb7c2465a1391a33e6655d332370dc",
+    redeemer_item_proof_v1.step_v1(control, witness(Some(proof), None)) == None,
+    redeemer_item_proof_v1.step_v1(control, witness(None, Some(proof))) == None,
   }
 }

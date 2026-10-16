@@ -97,18 +97,17 @@ const traverseWitness = (
   action: MidgardCekDataTraverseAction,
 ): MidgardRedeemerItemProofWitness => {
   const span = nextMidgardRedeemerItemProofSpan(control);
-  if (span === null)
-    return {
-      action: { kind: "traverseData", action },
-      chunkProof: null,
-      nextChunkProof: null,
-    };
-  const { first, last } = midgardRedeemerItemSpanChunks(span);
+  const chunks = span === null ? null : midgardRedeemerItemSpanChunks(span);
   return {
     action: { kind: "traverseData", action },
-    chunkProof: buildMidgardBoundedItemChunkProof(item, first),
+    chunkProof:
+      chunks === null
+        ? null
+        : buildMidgardBoundedItemChunkProof(item, chunks.first),
     nextChunkProof:
-      first === last ? null : buildMidgardBoundedItemChunkProof(item, last),
+      chunks === null || chunks.first === chunks.last
+        ? null
+        : buildMidgardBoundedItemChunkProof(item, chunks.last),
   };
 };
 
