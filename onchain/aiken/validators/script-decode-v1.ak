@@ -7,7 +7,7 @@
 //// `Decoded` or `Refused`. Decoding is deterministic, so anyone may open a run
 //// and any two records for one `H` agree.
 ////
-//// - **Bind** (mint): concatenates the staged chunks, hashes them, and opens a
+//// - **Bind** (mint): concatenates the staged bytes, hashes them, and opens a
 ////   run at this script's address under the run token `"R" ‖ H`.
 //// - **Walk** (spend): re-binds the staged bytes to `H`, advances the decoder
 ////   and writes the successor run.
@@ -15,8 +15,7 @@
 ////   record token with the run's verdict.
 ////
 //// Staged bytes ride in reference inputs whose inline datum is
-//// `Constr 0 [List [B chunk, ..]]`. Their split is free: only the hash binds
-//// them.
+//// `Constr 0 [B bytes]`. Their split is free: only the hash binds them.
 
 use aiken/builtin
 use aiken/collection/dict
@@ -34,7 +33,7 @@ use midgard/script_decode_v1.{
 } as decoder
 
 pub type ScriptDecodeMintRedeemerV1 {
-  /// Opens a run. `staging` names reference inputs, in order, whose chunks
+  /// Opens a run. `staging` names reference inputs, in order, whose bytes
   /// concatenate to the script bytes.
   Bind { language: Int, staging: List<Int>, run_output: Int }
   /// Burns the spent run's token and records its verdict at `record_output`.
@@ -76,12 +75,8 @@ pub fn staged_bytes_v1(
     fn(index, rest) {
       expect Some(input) = list.at(reference_inputs, index)
       expect InlineDatum(datum) = input.output.datum
-      expect Pair(0, [chunks]) = builtin.un_constr_data(datum)
-      list.foldr(
-        builtin.un_list_data(chunks),
-        rest,
-        fn(chunk, tail) { bytearray.concat(builtin.un_b_data(chunk), tail) },
-      )
+      expect Pair(0, [bytes]) = builtin.un_constr_data(datum)
+      bytearray.concat(builtin.un_b_data(bytes), rest)
     },
   )
 }

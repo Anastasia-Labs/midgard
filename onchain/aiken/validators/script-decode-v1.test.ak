@@ -92,14 +92,14 @@ fn chunks_of(bytes: ByteArray, size: Int) -> List<ByteArray> {
   }
 }
 
-/// One staging output per run of up to three chunks.
+/// One staging output per run of up to three chunks, as one byte string.
 fn staging_inputs(chunks: List<ByteArray>, index: Int) -> List<Input> {
   if chunks == [] {
     []
   } else {
     let datum = builtin.constr_data(
       0,
-      [builtin.list_data(list.map(list.take(chunks, 3), builtin.b_data))],
+      [builtin.b_data(list.foldr(list.take(chunks, 3), #"", bytearray.concat))],
     )
     [
       Input {

@@ -16,27 +16,13 @@ import {
 const cborHex = (data: ScriptDecodeData): string =>
   serialiseScriptDecodeData(data).toString("hex");
 
-/** Bytes per staged chunk: the size of one Plutus Data byte string. */
-export const SCRIPT_DECODE_STAGING_CHUNK_BYTES = 64;
-
 /** The run token's asset name `"R" ‖ H`, hex. */
 export const scriptDecodeRunTokenName = (scriptHashHex: string): string =>
   `52${scriptHashHex}`;
 
-/** `Constr 0 [List [B chunk, ..]]`: staged script bytes, 64 per chunk. */
-export const scriptDecodeStagingDatum = (bytes: Uint8Array): string => {
-  const chunks: Uint8Array[] = [];
-  for (
-    let offset = 0;
-    offset < bytes.length;
-    offset += SCRIPT_DECODE_STAGING_CHUNK_BYTES
-  ) {
-    chunks.push(
-      bytes.subarray(offset, offset + SCRIPT_DECODE_STAGING_CHUNK_BYTES),
-    );
-  }
-  return cborHex({ constr: 0, fields: [chunks] });
-};
+/** `Constr 0 [B bytes]`: staged script bytes as one byte string. */
+export const scriptDecodeStagingDatum = (bytes: Uint8Array): string =>
+  cborHex({ constr: 0, fields: [bytes] });
 
 export const scriptDecodeRunDatum = (run: ScriptDecodeRun): string =>
   cborHex(scriptDecodeRunData(run));
