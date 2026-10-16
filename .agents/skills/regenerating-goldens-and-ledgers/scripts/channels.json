@@ -1244,6 +1244,46 @@
       }
     },
     {
+      "id": "cek-step-fuzz-coverage",
+      "kind": "fixture",
+      "summary": "Per-builtin coverage of the CEK step differential over its fixed seed set, written by the step-fuzz suite under MIDGARD_WRITE_CEK_STEP_FUZZ_COVERAGE=1 and asserted by the same suite without it.",
+      "generators": [
+        "demo/midgard-validation/tests/fuzz/cek-step-fuzz.test.ts"
+      ],
+      "writerEnv": [
+        "MIDGARD_WRITE_CEK_STEP_FUZZ_COVERAGE"
+      ],
+      "producers": [
+        "demo/midgard-validation"
+      ],
+      "aikenClosure": [
+        "onchain/aiken/lib/midgard/cek-machine-v1.ak"
+      ],
+      "inputs": [
+        "demo/midgard-validation/tests/fuzz/cek-step-fuzz.*.ts",
+        "demo/midgard-validation/tests/helpers/cek-uplc-terms.ts",
+        "demo/midgard-validation/tests/fixtures/cek-builtin-cardano-v1.arguments.mjs",
+        "demo/midgard-validation/tests/fixtures/cek-core-step-v1.vectors.mjs",
+        "onchain/aiken/aiken.toml",
+        "onchain/aiken/aiken.lock",
+        "@compiler-pin"
+      ],
+      "outputs": [
+        "demo/midgard-validation/tests/fuzz/cek-step-fuzz.coverage.json"
+      ],
+      "sync": {
+        "run": "MIDGARD_WRITE_CEK_STEP_FUZZ_COVERAGE=1 pnpm --dir demo/midgard-validation exec vitest run tests/fuzz/cek-step-fuzz.test.ts -t \"fixed seed set\""
+      },
+      "check": {
+        "run": "pnpm --dir demo/midgard-validation exec vitest run tests/fuzz/cek-step-fuzz.test.ts -t \"fixed seed set\""
+      },
+      "ci": {
+        "workflow": ".github/workflows/midgard-node-ci.yml",
+        "step": "Build, typecheck, and test Midgard validation",
+        "via": "demo/midgard-validation/tests/fuzz/cek-step-fuzz.test.ts"
+      }
+    },
+    {
       "id": "bench-validation-fixtures",
       "kind": "fixture",
       "summary": "Benchmark ledger and transaction-sequence fixtures for the node validation benchmarks.",

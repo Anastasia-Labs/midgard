@@ -167,6 +167,17 @@ migrations and fail with `Failed to install the L1 follower schema`. Under
 receipt (`native artifact changed during test`), because that fixture is one
 of midgard-node's own inputs [review].
 
+## Test-written reports
+
+The step-fuzz suite writes its coverage report under
+`MIDGARD_WRITE_CEK_STEP_FUZZ_COVERAGE=1` and asserts it without the flag. The
+report is stale when the TypeScript step builder, the on-chain machine
+(`cek-machine-v1.ak` and its imports) or the fuzz programs change.
+
+| Channel                  | Output                                                           | Sync                                                                       | Check (CI)                                                                                                                                                                                                                                                          |
+| ------------------------ | ---------------------------------------------------------------- | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `cek-step-fuzz-coverage` | `demo/midgard-validation/tests/fuzz/cek-step-fuzz.coverage.json` | `node scripts/contrib.mjs artifacts sync --channel cek-step-fuzz-coverage` | `node scripts/contrib.mjs artifacts check --channel cek-step-fuzz-coverage` runs the step-fuzz suite without the flag, which compares the fixed seed set's per-builtin coverage with the report [ci: Midgard Node CI/Build, typecheck, and test Midgard validation] |
+
 ## Unchecked
 
 | Channel                     | Output                                                                                | Sync                                                       | Why unchecked                                                          |
