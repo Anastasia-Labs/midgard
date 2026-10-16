@@ -25,6 +25,8 @@ const repositoryRoot = resolve(
 // Everything `aiken build` reads. `build/` and `scripts/` are not inputs.
 const sourceDirectories = ["lib", "validators", "env"];
 const sourceFiles = ["aiken.toml", "aiken.lock"];
+// The compiler itself: scripts/aiken builds the commit this lock pins.
+const compilerLock = "demo/flake.lock";
 
 export const buildRecordPath = (blueprintPath) =>
   `${blueprintPath}.deployment.json`;
@@ -52,6 +54,7 @@ export const blueprintSourceFiles = (root = repositoryRoot) => {
       listFiles(resolve(project, directory), []),
     ),
     ...sourceFiles.map((file) => resolve(project, file)),
+    ...[resolve(root, compilerLock)].filter((path) => existsSync(path)),
   ]
     .map((path) => ({ path, name: relative(project, path) }))
     .sort((left, right) =>
@@ -127,7 +130,7 @@ export const checkBlueprintStamp = ({
     mismatches.push("the build record predates source stamping");
   } else if (record.sourceHash !== sourceHash) {
     mismatches.push(
-      "onchain/aiken sources (lib, validators, env, aiken.toml, aiken.lock) changed since it was built",
+      "onchain/aiken sources (lib, validators, env, aiken.toml, aiken.lock) or the compiler pin (demo/flake.lock) changed since it was built",
     );
   }
   if (mismatches.length > 0) {

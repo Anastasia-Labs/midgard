@@ -38,6 +38,7 @@ const withTree = (run) => {
     write("onchain/aiken/lib/midgard/probe.ak", "pub const x = 1\n");
     write("onchain/aiken/validators/probe.ak", "validator probe { }\n");
     write("onchain/aiken/env/default.ak", "pub const network = 0\n");
+    write("demo/flake.lock", '{"nodes":{}}\n');
     write("onchain/aiken/plutus.json", '{"validators":[]}\n');
     const blueprintPath = join(root, "onchain/aiken/plutus.json");
     const writeRecord = (overrides = {}) =>
@@ -71,6 +72,7 @@ test("any change to a compiler input makes the blueprint stale", () => {
     "onchain/aiken/aiken.toml",
     "onchain/aiken/aiken.lock",
     "onchain/aiken/validators/added.ak",
+    "demo/flake.lock",
   ]) {
     withTree(({ root, write }) => {
       write(path, "changed\n");

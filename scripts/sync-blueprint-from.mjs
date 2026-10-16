@@ -10,7 +10,8 @@
 // checkout this script lives in, and only when
 //   (a) the source's blueprint stamp is fresh for the source tree, and
 //   (b) every compiler input the stamp covers (onchain/aiken lib, validators,
-//       env, aiken.toml, aiken.lock) is identical in the two trees, and
+//       env, aiken.toml, aiken.lock, and the compiler pin demo/flake.lock) is
+//       identical in the two trees, and
 //   (c) the source was built for the deployment profile this checkout selects
 //       (SELECTED_DEPLOYMENT_PROFILE in
 //       demo/midgard-core/src/generated-deployment-profiles.ts), with the same
