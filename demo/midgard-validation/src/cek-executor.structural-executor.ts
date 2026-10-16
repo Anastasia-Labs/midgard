@@ -86,6 +86,7 @@ import {
   returnCaseConstant,
 } from "./cek-executor.case-constant.js";
 import {
+  isMidgardCekSemanticStep,
   presentMidgardCekSemanticArguments,
   presentMidgardCekSemanticResult,
 } from "./cek-executor.semantic-presentation.js";
@@ -1840,12 +1841,7 @@ export class StructuralExecutor {
       this.executeSemanticBuiltin(pre, builtin.tag, directArguments);
       return;
     }
-    if (
-      builtin.tag >= 29n &&
-      builtin.tag <= 50n &&
-      builtin.tag !== 38n &&
-      builtin.tag !== 43n
-    ) {
+    if (isMidgardCekSemanticStep(builtin.tag, directArguments)) {
       this.executeSemanticBuiltin(pre, builtin.tag, directArguments);
       return;
     }

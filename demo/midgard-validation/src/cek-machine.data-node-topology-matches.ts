@@ -155,6 +155,24 @@ export const exactTopMaterial = (
   );
 };
 
+/**
+ * Whether the memory of a list constant of this element type is read from its
+ * list node by `constantMemoryFromPayloadNode` (on chain,
+ * `constant_memory_from_payload_node_v1`): a Data, integer, bytestring, unit,
+ * boolean or `pair<data, data>` element.
+ */
+export const listMemoryIsReadFromNode = (
+  element: MidgardCekConstantType,
+): boolean =>
+  element.kind === "data" ||
+  element.kind === "integer" ||
+  element.kind === "bytes" ||
+  element.kind === "unit" ||
+  element.kind === "boolean" ||
+  (element.kind === "pair" &&
+    element.first.kind === "data" &&
+    element.second.kind === "data");
+
 export const constantMemoryFromPayloadNode = (
   type: MidgardCekConstantType,
   node: MidgardCekDataNode,
@@ -169,22 +187,14 @@ export const constantMemoryFromPayloadNode = (
       : null;
   }
   if (type.kind === "list" && node.kind === "list") {
+    if (!listMemoryIsReadFromNode(type.element)) return null;
     // An integer, bytestring or data-pair item costs its data node less the
     // node's four words; a unit or boolean item costs one word.
     if (type.element.kind === "data") return node.memory - 4n;
-    if (
-      type.element.kind === "integer" ||
-      type.element.kind === "bytes" ||
-      (type.element.kind === "pair" &&
-        type.element.first.kind === "data" &&
-        type.element.second.kind === "data")
-    ) {
-      return node.memory - 4n - node.itemsCount * 4n;
-    }
     if (type.element.kind === "unit" || type.element.kind === "boolean") {
       return node.itemsCount;
     }
-    return null;
+    return node.memory - 4n - node.itemsCount * 4n;
   }
   if (type.kind === "pair") {
     if (type.first.kind === "data" && type.second.kind === "data") {

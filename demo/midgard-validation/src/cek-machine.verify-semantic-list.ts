@@ -73,7 +73,7 @@ export const semanticListSource = (
  * item, and an empty constructor of four words over a one-word unit or
  * boolean. Any other element type has no such relation and must be revealed.
  */
-const listItemPayloadWords = (
+export const listItemPayloadWords = (
   element: MidgardCekConstantType,
 ): bigint | null => {
   switch (element.kind) {

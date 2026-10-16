@@ -6,6 +6,8 @@ import {
   decodeMidgardCekConstantTypeCbor,
   type MidgardCekConstantType,
 } from "./cek-constant.js";
+import { listMemoryIsReadFromNode } from "./cek-machine.data-node-topology-matches.js";
+import { listItemPayloadWords } from "./cek-machine.verify-semantic-list.js";
 
 /**
  * Whether the builtin is proved as one semantic step: tags 29 to 50 except
@@ -13,20 +15,6 @@ import {
  */
 const isSemanticStepTag = (tag: bigint): boolean =>
   tag >= 29n && tag <= 50n && tag !== 38n && tag !== 43n;
-
-/**
- * Whether a semantic list source of this element type has its memory derived
- * from the payload node (`constantMemoryFromPayloadNode`).
- */
-const listElementMemoryFromNode = (element: MidgardCekConstantType): boolean =>
-  element.kind === "data" ||
-  element.kind === "integer" ||
-  element.kind === "bytes" ||
-  element.kind === "unit" ||
-  element.kind === "boolean" ||
-  (element.kind === "pair" &&
-    element.first.kind === "data" &&
-    element.second.kind === "data");
 
 /**
  * Whether a semantic pair component of this type has its memory derived from
@@ -42,7 +30,7 @@ const componentMemoryFromNode = (type: MidgardCekConstantType): boolean => {
     case "data":
       return true;
     case "list":
-      return listElementMemoryFromNode(type.element);
+      return listMemoryIsReadFromNode(type.element);
     case "pair":
       return (
         (type.first.kind === "data" && type.second.kind === "data") ||
@@ -64,7 +52,7 @@ const componentMemoryFromNode = (type: MidgardCekConstantType): boolean => {
  */
 const semanticArgumentType = (type: MidgardCekConstantType): boolean =>
   type.kind === "data" ||
-  (type.kind === "list" && listElementMemoryFromNode(type.element)) ||
+  (type.kind === "list" && listMemoryIsReadFromNode(type.element)) ||
   (type.kind === "pair" &&
     componentMemoryFromNode(type.first) &&
     componentMemoryFromNode(type.second));
@@ -81,6 +69,42 @@ const listItemArgumentType = (type: MidgardCekConstantType): boolean =>
   (type.kind === "pair" &&
     type.first.kind === "data" &&
     type.second.kind === "data");
+
+/**
+ * Whether mkCons (32) over a list of this element type is proved as a semantic
+ * step. The split roots hop compacts the source and the item, so the list hop
+ * reads the source's memory from its list node (`listMemoryIsReadFromNode`)
+ * and binds the item's summary memory to its memory (`listItemPayloadWords`).
+ * Over any other element type mkCons is proved by the direct list-construct
+ * witness on the revealed values.
+ */
+export const midgardCekListConstructIsSemantic = (
+  element: MidgardCekConstantType,
+): boolean =>
+  listMemoryIsReadFromNode(element) && listItemPayloadWords(element) !== null;
+
+/**
+ * Whether the builtin step over these arguments is proved as one semantic
+ * step: a semantic step tag, except mkCons over a list whose element type is
+ * not `midgardCekListConstructIsSemantic`.
+ */
+export const isMidgardCekSemanticStep = (
+  tag: bigint,
+  arguments_: readonly MidgardCekDirectValueWitness[],
+): boolean => {
+  if (!isSemanticStepTag(tag)) return false;
+  const source = arguments_[1];
+  if (
+    tag !== 32n ||
+    (source?.kind !== "constant" && source?.kind !== "semanticConstant")
+  ) {
+    return true;
+  }
+  const type = decodeMidgardCekConstantTypeCbor(source.witness.typeCbor);
+  return (
+    type.kind !== "list" || midgardCekListConstructIsSemantic(type.element)
+  );
+};
 
 const semanticResultType = (type: MidgardCekConstantType): boolean =>
   type.kind === "data" || type.kind === "list" || type.kind === "pair";

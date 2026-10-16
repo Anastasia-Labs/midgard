@@ -1171,8 +1171,8 @@
   },
   {
     "file": "midgard-validation/src/cek-executor.structural-executor.ts",
-    "max": 2438,
-    "reason": "StructuralExecutor is one state owner: its methods share private state and lifecycle invariants. Further extraction would redesign ownership rather than separate independent declarations; surrounding helpers have been extracted. P (-24): step verification and retention moved to cek-executor.step-recorder.ts. C13a (+25): case on a constant delegates to cek-executor.case-constant.ts through a host of executor closures, and the branch walk accepts any branch before the last. C13a B-opaque (-19): builtin argument presentation moved to presentMidgardCekDirectArgument in cek-builtin.argument-kinds.ts. C13a B-semantic (+8): a semantic step's arguments and result are presented through cek-executor.semantic-presentation.ts."
+    "max": 2434,
+    "reason": "StructuralExecutor is one state owner: its methods share private state and lifecycle invariants. Further extraction would redesign ownership rather than separate independent declarations; surrounding helpers have been extracted. P (-24): step verification and retention moved to cek-executor.step-recorder.ts. C13a (+25): case on a constant delegates to cek-executor.case-constant.ts through a host of executor closures, and the branch walk accepts any branch before the last. C13a B-opaque (-19): builtin argument presentation moved to presentMidgardCekDirectArgument in cek-builtin.argument-kinds.ts. C13a B-semantic (+8): a semantic step's arguments and result are presented through cek-executor.semantic-presentation.ts. C13a list-construct emission (-4): whether a builtin step is semantic is isMidgardCekSemanticStep in the same module."
   },
   {
     "file": "midgard-validation/src/validation-machine/trace-builder-complete.ts",

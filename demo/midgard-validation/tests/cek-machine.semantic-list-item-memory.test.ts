@@ -18,10 +18,7 @@ import {
 } from "../src/cek-builtin.js";
 import { encodeMidgardCekCanonicalConstant } from "../src/cek-constant.js";
 import { executeMidgardCekStructuralProgram } from "../src/cek-executor.js";
-import {
-  type MidgardCekCoreStepWitness,
-  verifyMidgardCekCoreStep,
-} from "../src/cek-machine.js";
+import { verifyMidgardCekCoreStep } from "../src/cek-machine.js";
 import { listSequenceFromNode } from "../src/cek-machine.verify-case-select.js";
 import {
   listDataSummary,
@@ -29,11 +26,7 @@ import {
 } from "../src/cek-machine.verify-semantic-builtin-control.js";
 import { encodeMidgardCekCardanoFlatProgram } from "../src/cek-program.cardano-flat.js";
 import { buildMidgardCanonicalCekProgram } from "../src/cek-program.js";
-
-type SemanticWitness = Extract<
-  MidgardCekCoreStepWitness,
-  { readonly kind: "executeBuiltinSemantic" }
->;
+import { listConstructSemanticWitness } from "./cek-machine.list-construct-witness.js";
 
 const D = constT.data;
 
@@ -58,14 +51,20 @@ const mkConsStep = (item: UPLCConst, items: UPLCConst) => {
     maxSteps: 64,
   });
   const step = execution.steps.find(
-    (candidate) => candidate.witness.kind === "executeBuiltinSemantic",
+    (candidate) =>
+      candidate.witness.kind === "executeBuiltinSemantic" ||
+      candidate.witness.kind === "executeBuiltinDirect",
   )!;
   const { typeCbor, payloadCbor } = encodeMidgardCekCanonicalConstant(item);
   const revealed: MidgardCekDirectValueWitness = {
     kind: "constant",
     witness: { typeCbor, payloadCbor },
   };
-  return { step, witness: step.witness as SemanticWitness, revealed };
+  return {
+    step,
+    witness: listConstructSemanticWitness(step.witness),
+    revealed,
+  };
 };
 
 const semanticParts = (value: MidgardCekDirectValueWitness) => {
