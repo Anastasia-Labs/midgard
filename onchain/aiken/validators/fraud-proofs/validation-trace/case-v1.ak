@@ -12,19 +12,20 @@ use midgard/dispute_bond_v1.{DisputeBondV1}
 use midgard/fraud_proof
 use midgard/validation_case_config_v1
 use midgard/validation_case_v1.{
-  CaseClose, CaseRedeemerV1, CaseV1, Convicted, Defend, ThreadClose,
-  VerifySource,
+  BurnThreadToken, CaseClose, CaseRedeemerV1, CaseV1, Convicted, Defend,
+  ThreadClose, VerifySource,
 }
 
 /// The validation case (`midgard/validation_case_v1`), as a mint and a spend
 /// purpose under one script hash. The mint purpose mints the case NFT at
-/// VerifySource, and the thread tokens at Defend; the spend purpose runs
-/// Defend, ThreadClose and CaseClose on a case UTxO.
+/// VerifySource, and the thread tokens at Defend, and burns a thread token
+/// held by a configured thread script at BurnThreadToken; the spend purpose
+/// runs Defend, ThreadClose and CaseClose on a case UTxO.
 ///
 /// A case UTxO holds the case NFT, the case's computation-thread token and
-/// lovelace. Every mint or burn under this policy outside VerifySource happens
-/// in a transaction that spends a case UTxO, and that spend fixes the
-/// transaction's mint exactly. A convicted close locks the case NFT at the
+/// lovelace. Every other mint or burn under this policy, outside VerifySource
+/// and BurnThreadToken, happens in a transaction that spends a case UTxO, and
+/// that spend fixes the transaction's mint exactly. A convicted close locks the case NFT at the
 /// fraud-proof address, whose spend always fails; every other close burns it.
 validator main(
   hub_oracle: PolicyId,
@@ -45,6 +46,32 @@ validator main(
         expect Some(opener) = list.at(inputs, opener_input_index)
         expect [Pair(_, 1)] = dict.to_pairs(assets.tokens(mint, policy_id))
         opener.output.address.payment_credential == Script(config.source_v1)
+      }
+      // One thread token, burned with no case input: its holder is one of the
+      // configured thread scripts, whose spend decides the timing and payee.
+      BurnThreadToken { thread_input_index } -> {
+        let config = validation_case_config_v1.get_config(
+          reference_inputs,
+          case_config_policy_id,
+        )
+        expect Some(thread_input) = list.at(inputs, thread_input_index)
+        expect [Pair(thread_token_name, -1)] = dict.to_pairs(
+          assets.tokens(mint, policy_id),
+        )
+        expect Script(holder) = thread_input.output.address.payment_credential
+        and {
+          assets.quantity_of(
+            thread_input.output.value,
+            policy_id,
+            thread_token_name,
+          ) == 1,
+          or {
+            holder == config.game_v1,
+            holder == config.boundary_v1,
+            holder == config.timeout_v1,
+            holder == config.award_v1,
+          },
+        }
       }
       _ ->
         list.any(
@@ -203,6 +230,7 @@ validator main(
       Defend { .. } -> False
       ThreadClose { .. } -> False
       VerifySource { .. } -> False
+      BurnThreadToken { .. } -> False
     }
   }
 

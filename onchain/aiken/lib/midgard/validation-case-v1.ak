@@ -83,6 +83,9 @@ pub type CaseV1 {
 pub type CaseThreadV1 {
   version: Int,
   case_id: CaseId,
+  /// The case's `started_at`, copied at Defend, so a thread holder can tell
+  /// when the case's `D_case` window has passed without reading the case.
+  started_at: Int,
   defender_vkh: VerificationKeyHash,
   challenger_root: ByteArray,
   defender_root: ByteArray,
@@ -144,6 +147,12 @@ pub type CaseRedeemerV1 {
     bond_output_index: Int,
     remainder_output_index: Int,
   }
+  /// Mint only, with no case input. Burns exactly one thread token, held by
+  /// the input at `thread_input_index`, whose payment credential is one of the
+  /// thread scripts in the case configuration (game, boundary, timeout,
+  /// award). That script's own spend decides when and to whom the thread's
+  /// value goes.
+  BurnThreadToken { thread_input_index: Int }
 }
 
 /// How a closed case settles.
@@ -371,6 +380,7 @@ pub fn open_thread(
   CaseThreadV1 {
     version: thread_version,
     case_id,
+    started_at: case.started_at,
     defender_vkh,
     challenger_root: case.challenger_root,
     defender_root,

@@ -3,7 +3,7 @@
 //// each of its rows, with the challenger bond spent beside it.
 
 use aiken/interval
-use cardano/address.{Address}
+use cardano/address.{Address, Script, VerificationKey}
 use cardano/assets
 use cardano/script_context.{ScriptContext, Spending}
 use cardano/transaction.{
@@ -17,7 +17,9 @@ use midgard/fraud_proof
 use midgard/hub_oracle as hub
 use midgard/ledger_state
 use midgard/validation_case_config_v1.{CaseConfigV1, config_asset_name}
-use midgard/validation_case_v1.{CaseClose, CaseRedeemerV1, CaseV1, VerifySource}
+use midgard/validation_case_v1.{
+  BurnThreadToken, CaseClose, CaseRedeemerV1, CaseV1, VerifySource,
+}
 use midgard/validation_dispute_v1
 
 const hub_policy = #"c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0"
@@ -422,6 +424,158 @@ test case_policy_burn_beside_a_case_input_defers_to_the_case_spend() {
     Transaction {
       ..transaction.placeholder,
       inputs: [case_input(undefended())],
+      mint: assets.from_asset(case_policy, case_id(), -1),
+    },
+  )
+}
+
+// ## The thread-token burn with no case
+
+const case_thread_name =
+  #"4444444444444444444444444444444444444444444444444444444444444444"
+
+fn thread_holder(
+  credential: address.PaymentCredential,
+  value: assets.Value,
+) -> Input {
+  Input {
+    output_reference: out_ref(h32_b, 3),
+    output: Output {
+      address: Address {
+        payment_credential: credential,
+        stake_credential: None,
+      },
+      value,
+      datum: NoDatum,
+      reference_script: None,
+    },
+  }
+}
+
+fn held_thread_token() -> assets.Value {
+  assets.from_lovelace(2_000_000)
+    |> assets.add(case_policy, case_thread_name, 1)
+}
+
+fn thread_burn_tx(holder: Input, mint: assets.Value) -> Transaction {
+  Transaction {
+    ..transaction.placeholder,
+    inputs: [holder],
+    reference_inputs: [config_reference()],
+    mint,
+  }
+}
+
+fn burns_thread_token_held_at(script_hash: ByteArray) -> Bool {
+  case_mint(
+    BurnThreadToken { thread_input_index: 0 },
+    thread_burn_tx(
+      thread_holder(Script(script_hash), held_thread_token()),
+      assets.from_asset(case_policy, case_thread_name, -1),
+    ),
+  )
+}
+
+test thread_token_burns_from_each_thread_script() {
+  and {
+    burns_thread_token_held_at(config().game_v1),
+    burns_thread_token_held_at(config().boundary_v1),
+    burns_thread_token_held_at(config().timeout_v1),
+    burns_thread_token_held_at(config().award_v1),
+  }
+}
+
+test thread_token_burn_from_the_source_script_is_refused() fail {
+  burns_thread_token_held_at(source_hash)
+}
+
+test thread_token_burn_from_the_bond_script_is_refused() fail {
+  burns_thread_token_held_at(bond_hash)
+}
+
+test thread_token_burn_from_the_case_script_is_refused() fail {
+  burns_thread_token_held_at(case_policy)
+}
+
+test thread_token_burn_from_a_key_is_refused() fail {
+  case_mint(
+    BurnThreadToken { thread_input_index: 0 },
+    thread_burn_tx(
+      thread_holder(VerificationKey(prover), held_thread_token()),
+      assets.from_asset(case_policy, case_thread_name, -1),
+    ),
+  )
+}
+
+test thread_token_burn_of_a_token_the_input_does_not_hold_is_refused() fail {
+  case_mint(
+    BurnThreadToken { thread_input_index: 0 },
+    thread_burn_tx(
+      thread_holder(Script(config().game_v1), held_thread_token()),
+      assets.from_asset(case_policy, h32_a, -1),
+    ),
+  )
+}
+
+test thread_token_burn_of_two_tokens_is_refused() fail {
+  let held = held_thread_token()
+    |> assets.add(case_policy, h32_a, 1)
+  case_mint(
+    BurnThreadToken { thread_input_index: 0 },
+    thread_burn_tx(
+      thread_holder(Script(config().game_v1), held),
+      assets.from_asset(case_policy, case_thread_name, -1)
+        |> assets.add(case_policy, h32_a, -1),
+    ),
+  )
+}
+
+test thread_token_burn_of_a_doubled_token_is_refused() fail {
+  let held = held_thread_token()
+    |> assets.add(case_policy, case_thread_name, 1)
+  case_mint(
+    BurnThreadToken { thread_input_index: 0 },
+    thread_burn_tx(
+      thread_holder(Script(config().game_v1), held),
+      assets.from_asset(case_policy, case_thread_name, -2),
+    ),
+  )
+}
+
+test thread_token_mint_under_the_burn_redeemer_is_refused() fail {
+  case_mint(
+    BurnThreadToken { thread_input_index: 0 },
+    thread_burn_tx(
+      thread_holder(Script(config().game_v1), held_thread_token()),
+      assets.from_asset(case_policy, case_thread_name, 1),
+    ),
+  )
+}
+
+test thread_token_burn_without_the_configuration_is_refused() fail {
+  let tx = thread_burn_tx(
+    thread_holder(Script(config().game_v1), held_thread_token()),
+    assets.from_asset(case_policy, case_thread_name, -1),
+  )
+  case_mint(
+    BurnThreadToken { thread_input_index: 0 },
+    Transaction { ..tx, reference_inputs: [] },
+  )
+}
+
+test case_spend_under_the_thread_burn_redeemer_is_refused() fail {
+  case_validator.main.spend(
+    hub_policy,
+    config_policy,
+    thread_policy,
+    bond_lovelace,
+    Some(undefended()),
+    BurnThreadToken { thread_input_index: 0 },
+    case_out_ref(),
+    Transaction {
+      ..transaction.placeholder,
+      inputs: [case_input(undefended())],
+      reference_inputs: [config_reference()],
       mint: assets.from_asset(case_policy, case_id(), -1),
     },
   )
