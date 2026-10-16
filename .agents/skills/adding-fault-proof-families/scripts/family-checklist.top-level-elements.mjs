@@ -16,8 +16,8 @@ export const SOURCES = Object.freeze({
   sdkBuild: "demo/midgard-sdk/src/fraud-proof/contracts/build.ts",
   coreCatalogue:
     "demo/midgard-core/src/deployment-manifest-identity/catalogue-roles.ts",
-  coreReferenceContracts:
-    "demo/midgard-core/src/deployment-manifest-identity/reference-script-contracts.ts",
+  coreMembers:
+    "demo/midgard-core/src/deployment-manifest-identity/members.data.ts",
   coreReferenceTokens:
     "demo/midgard-core/src/deployment-manifest-identity/reference-script-tokens.ts",
   registry:

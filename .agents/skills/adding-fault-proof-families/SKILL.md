@@ -17,8 +17,14 @@ node .agents/skills/adding-fault-proof-families/scripts/family-checklist.mjs <ca
 
 It exits 0 when every gated artifact is present, 1 on gaps (each `GAP` line
 names the file), 2 when it could not read or parse a source (no result, fix
-the path or the parser), and 64 on bad usage. It checks presence, not
+the path or the parser), and 64 on bad usage. It reads source without an install
+or build. Deployment members are read only
+when reached by `members.data.ts`, and checked against the independent contract
+ABI; their titles supply validator-file evidence. SDK builder and title lookups
+must be reached through the family entry and its explicit facet imports/exports.
+It checks presence, not
 correctness. Test evidence is matched by file name and is labelled heuristic.
+[script: .agents/skills/adding-fault-proof-families/scripts/family-checklist.mjs]
 
 Read [AGENTS.md](../../../AGENTS.md), [docs/agents/contracts.md](../../../docs/agents/contracts.md)
 and the glossary entries under "Fault-proof workflow assembly" in
@@ -56,8 +62,8 @@ is stated next to it.
    modules call it; the `mint-item-non-canonical` central journal does not.
    Nothing lints for inline attachment (plan item W4.4 is open).
 2. **Every fraud-proof validator is published with a reference-script token.**
-   Each contract the family deploys needs a role in
-   `DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE` and a token name in
+   Each contract the family deploys needs a `referenceRole` in its core
+   deployment member and a token name in
    `DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_TOKEN_NAMES`.
    [ci: Midgard Node CI/Build and test Midgard core DA transport]
    The test is `demo/midgard-core/tests/deployment-manifest-identity.test.ts:429`:
@@ -151,18 +157,22 @@ by package with what enforces it. Read it before step 2, and again whenever a
 3. **Register the catalogue identity.** Append the category to
    `FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER`, give it an unused 8-hex ID in
    `FRAUD_PROOF_CATALOGUE_CATEGORY_IDS` (IDs are sparse; never derive one from
-   the array position), add it to the SDK `FraudProofs` type, and mirror all of
-   it in `demo/midgard-core/src/deployment-manifest-identity.ts`. Done when the
-   script shows `OK` for `catalogue-order`, `catalogue-id`, `core-identity` and
-   `reference-scripts`. [review]
-4. **Build the SDK contract chain.** `contracts/families/<kebab>.ts` with the
-   blueprint titles and `build<Name>Chain`, wired into `contracts/build.ts`,
-   `index.ts` and `types.ts`. Done when `sdk-chain` is `OK`.
-5. **Wire the node and the DA fixture.** Deployable scripts, the
-   `always-succeeds` chain, manifest contract loading, and the node role-map
-   mirror. Regenerate the DA fixture (see
+   the array position), add it to the SDK `FraudProofs` type, and register the
+   matching core protocol category and positional contract ABI. Add the family
+   members through `members.data.ts`, including auxiliary yields, roles,
+   compiler titles, aliases and ordered positions; add their token names. Done
+   when `catalogue-order`, `catalogue-id`, `deployment-members`, `core-identity`
+   and `reference-scripts` are `OK`. [review]
+4. **Build the SDK contract chain.** `contracts/families/<kebab>.ts` reads
+   titles through `deploymentValidatorTitle` and defines `build<Name>Chain`,
+   wired into `contracts/build.ts`, `index.ts` and `types.ts`. Add the typed
+   selectors to the total SDK deployment recipes. Done when `sdk-chain` is
+   `OK` and the SDK typecheck passes. [review]
+5. **Wire the node and the DA fixture.** Add the `always-succeeds` chain and
+   family manifest loader; deployment/publication and role maps derive from
+   core metadata and SDK recipes. Regenerate the DA fixture (see
    [references/verification.md](references/verification.md)). Done when the
-   node typecheck and the manifest tests pass.
+   node typecheck and the manifest tests pass. [review]
 6. **Write the fault-proofs family.** `src/<kebab>/` (scan, replay, submit
    steps, cancel, workflow), a `FRAUD_PROOF_CLASSIFICATION_RULES` entry at the
    category's catalogue position, the reason disposition, complete-replay
@@ -176,11 +186,11 @@ by package with what enforces it. Read it before step 2, and again whenever a
    `assertCompleteLifecycleCoverage` checks the scenario list. Done when every
    base scenario applicable to the family has a passing test and each negative
    fails in the validator.
-8. **Wire the watcher and the devnet journeys.** The watcher's
-   `CATALOGUE_CATEGORY_TO_CONTRACT` (`src/runtime/deployment-identity.ts:76`),
-   any category-keyed funding tables, and a `JOURNEY_FIXTURE_OWNERS` entry
-   with the pinned owner counts in `watcher-journeys/catalogue.test.ts`
-   updated. Done when `journey-owner` is `OK` and the watcher suite passes.
+8. **Wire the watcher and the devnet journeys.** Update any category-keyed
+   funding tables and add a `JOURNEY_FIXTURE_OWNERS` entry with the pinned
+   owner counts in `watcher-journeys/catalogue.test.ts` updated. The watcher
+   category map is a core projection. Done when `journey-owner` is `OK` and
+   the watcher suite passes. [review]
 9. **Update the docs in the same change.** The maintenance rule in
    [docs/fault-proofs/README.md](../../../docs/fault-proofs/README.md) names
    the catalogue status, coverage matrix, testing status, execution plan and
@@ -197,7 +207,7 @@ Tick an item only when its enforcement passed or, for `[review]` items, when
 you checked it by reading.
 
 - [ ] Eligibility row chosen and no "Stop" row applies. [review]
-- [ ] Catalogue order and a unique 8-hex ID, mirrored in core.
+- [ ] Catalogue order and a unique 8-hex ID agree with core protocol identity.
       [ci: Midgard Node CI/Build, typecheck, and test Midgard SDK]
       (`fraud-proof-catalogue-registration.test.ts`)
 - [ ] Every category-ID literal in TypeScript or Aiken is registered and is
@@ -206,9 +216,11 @@ you checked it by reading.
       [ci: Midgard Node CI/Build, typecheck, and test Midgard SDK]
 - [ ] Every family contract has a reference-script role and token name.
       [ci: Midgard Node CI/Build and test Midgard core DA transport]
-- [ ] Node role-map mirror equals core's.
-      [ci: Midgard Node CI/Test Midgard node]
-      (`deployment-manifest.test.ts:308`)
+- [ ] Reached deployment members cover the independent contract ABI; typed SDK
+      recipes cover every member.
+      [runtime: verifyDeploymentMembers]
+      Blind spot: the checklist checks source presence; real-blueprint binding,
+      ordering and manifest restoration need the node deployment tests.
 - [ ] DA deployment fixture regenerated.
       [ci: Midgard Node CI/Test Midgard node]
       (`da-deployment-fixture-generation.test.ts` fails on drift)
@@ -232,10 +244,8 @@ you checked it by reading.
 - [ ] Aiken compiled and tested under the pinned fork, formatted.
       [ci: Aiken CI/Compile and run the Aiken test suite with the pinned fork]
 - [ ] No generated Aiken edited by hand. [review]
-- [ ] Watcher deployment identity lists the category.
+- [ ] Watcher deployment identity admits the core-derived category.
       [ci: Midgard Node CI/Test Midgard watcher]
-      (inferred: its `exactRecord` parse rejects the core-built catalogue
-      fixture; not observed failing)
 - [ ] Devnet journey owner assigned and owner counts updated.
       [ci: Midgard Node CI/Typecheck, build, and test Midgard node tools]
       (the typecheck enforces the owner entry; the count test in
