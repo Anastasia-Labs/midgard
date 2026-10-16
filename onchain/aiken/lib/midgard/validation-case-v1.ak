@@ -10,7 +10,8 @@
 ////   lost-defense receipt `LostDefenseReceiptV1`;
 //// - the case redeemer `CaseRedeemerV1` (VerifySource, Defend, ThreadClose,
 ////   CaseClose);
-//// - the token names: the case NFT, the thread token and the receipt;
+//// - the token names: the case NFT, the bond marker, the thread token and the
+////   receipt;
 //// - what each step hands to the next: `open_case` (VerifySource),
 ////   `defense_is_valid`, `defend` and `open_thread` (Defend), `close_thread`,
 ////   `lost_defense_receipt` and `thread_leftover_address` (thread close),
@@ -22,8 +23,11 @@
 //// Token custody. The case NFT is minted by VerifySource into the case
 //// output, stays in the case output through every Defend and thread close,
 //// and is burned at the case close; a convicted close instead locks it for
-//// ever in its own output at the fraud-proof address. A thread token is
-//// minted by Defend into the thread output and burned by that thread's close.
+//// ever in its own output at the fraud-proof address. The bond marker is
+//// minted by VerifySource into the challenger bond output and leaves it only
+//// at the case close, together with the case NFT: burned, or locked beside it
+//// on a conviction. A thread token is minted by Defend into the thread output
+//// and burned by that thread's close.
 
 use aiken/cbor
 use aiken/crypto.{VerificationKeyHash, blake2b_256}
@@ -181,6 +185,17 @@ pub fn case_nft_name(
   block_header_hash
     |> bytearray.concat(cbor.serialise(event_key))
     |> bytearray.concat(cbor.serialise(opener_out_ref))
+    |> blake2b_256
+}
+
+/// hash("bond" ‖ case_id). Marks the one challenger bond of the case; a bond
+/// output without it is not the case's bond. Its 36-byte preimage is shorter
+/// than the thread token's (60 bytes) and the case NFT's (header hash, event
+/// key and out-ref).
+pub fn bond_marker_name(case_id: CaseId) -> AssetName {
+  expect bytearray.length(case_id) == 32
+  "bond"
+    |> bytearray.concat(case_id)
     |> blake2b_256
 }
 

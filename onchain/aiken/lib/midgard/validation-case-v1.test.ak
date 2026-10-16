@@ -210,6 +210,22 @@ test case_nft_name_refuses_a_block_hash_length_header_hash() fail {
   bytearray.length(validation_case_v1.case_nft_name(h_a, event_a, opener)) == 32
 }
 
+test bond_marker_name_is_distinct_per_case_and_from_the_case_nft() {
+  let case_id = validation_case_v1.case_nft_name(header_a, event_a, opener)
+  let other_id = validation_case_v1.case_nft_name(header_b, event_a, opener)
+  let marker = validation_case_v1.bond_marker_name(case_id)
+  and {
+    bytearray.length(marker) == 32,
+    marker != case_id,
+    marker != validation_case_v1.bond_marker_name(other_id),
+    marker != validation_case_v1.thread_token_name(case_id, vkh_1),
+  }
+}
+
+test bond_marker_name_refuses_a_short_case_id() fail {
+  bytearray.length(validation_case_v1.bond_marker_name(#"aa")) == 32
+}
+
 test case_nft_name_refuses_a_short_header_hash() fail {
   bytearray.length(validation_case_v1.case_nft_name(#"aa", event_a, opener)) == 32
 }
