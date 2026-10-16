@@ -21,11 +21,7 @@ import {
   tickValue,
   tickValueReturn,
 } from "./script-decode.step-const.js";
-import {
-  blake2b224,
-  serialiseScriptDecodeData,
-} from "./script-decode.step-data.js";
-import { machineData } from "./script-decode.step-encode.js";
+import { blake2b224 } from "./script-decode.step-data.js";
 import {
   at,
   type DecodeEnv,
@@ -415,72 +411,3 @@ export const scriptDecodeStepWithFrames = (
     consumed: done.revealedAt,
   };
 };
-
-export type ScriptDecodeWalkStep = {
-  readonly fuel: number;
-  /** The frames the Walk reveals, top first. */
-  readonly reveals: readonly Frame[];
-  /** The root of the stack below `reveals`. */
-  readonly base: Buffer;
-  /** The run the Walk spends. */
-  readonly before: ScriptDecodeRun;
-  /** The successor run the Walk writes. */
-  readonly after: ScriptDecodeRun;
-};
-
-export type ScriptDecodeWalk = {
-  readonly run: ScriptDecodeRun;
-  readonly steps: readonly ScriptDecodeWalkStep[];
-  readonly record: ScriptDecodeRecord;
-};
-
-/**
- * Plans a whole decode walk: each Walk takes `fuel` ticks (fewer on the last)
- * and reveals exactly the frames it pops.
- */
-export const planScriptDecodeWalk = (
-  language: number,
-  scriptBytes: Uint8Array,
-  fuel: number,
-): ScriptDecodeWalk => {
-  if (!Number.isSafeInteger(fuel) || fuel <= 0) {
-    throw new RangeError("script decode: fuel must be a positive integer");
-  }
-  const scriptHash = scriptDecodeScriptHash(language, scriptBytes);
-  const initial = initialScriptDecodeRun(scriptHash, language, scriptBytes);
-  const env = scriptDecodeEnv(scriptBytes, initial);
-  const steps: ScriptDecodeWalkStep[] = [];
-  let run = initial;
-  let frames: readonly Frame[] = [];
-  while (!isScriptDecodeTerminal(run.machine.control)) {
-    const probe = scriptDecodeStepWithFrames(
-      env,
-      run.machine,
-      frames,
-      frames.length,
-      fuel,
-    );
-    const visible = probe.consumed;
-    const reveals = frames.slice(0, visible);
-    const base = stackRootOf(frames.slice(visible), EMPTY_STACK_ROOT);
-    const machine = scriptDecodeStep(env, run.machine, reveals, base, fuel);
-    if (!machine.stackRoot.equals(probe.machine.stackRoot)) {
-      throw new Error("script decode: minimal reveal changed the step");
-    }
-    if (sameMachine(machine, run.machine)) {
-      throw new Error("script decode: a step made no progress");
-    }
-    const after = { ...run, machine };
-    steps.push({ fuel, reveals, base, before: run, after });
-    run = after;
-    frames = probe.frames;
-  }
-  const record = scriptDecodeRecordOf(run);
-  if (record === undefined) throw new Error("script decode: unfinished run");
-  return { run: initial, steps, record };
-};
-
-const sameMachine = (left: Machine, right: Machine): boolean =>
-  serialiseScriptDecodeData(machineData(left)).equals(
-    serialiseScriptDecodeData(machineData(right)),
-  );

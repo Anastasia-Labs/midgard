@@ -5,11 +5,11 @@ import { midgardBlake2b } from "@al-ft/midgard-core";
 import { describe, expect, it } from "vitest";
 
 import {
-  planScriptDecodeWalk,
   scriptDecodeRecordData,
   scriptDecodeRunData,
   serialiseScriptDecodeData,
 } from "../src/script-decode.step.js";
+import { planScriptDecodeWalk } from "../src/script-decode.step-walk.js";
 import * as vectors from "./fixtures/script-decode-step-v1.vectors.mjs";
 
 /**

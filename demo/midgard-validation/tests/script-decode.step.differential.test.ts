@@ -6,10 +6,13 @@ import {
 } from "../src/cek-program.cardano-flat.js";
 import { buildMidgardCanonicalCekProgram } from "../src/cek-program.js";
 import {
-  planScriptDecodeWalk,
   SCRIPT_DECODE_LANGUAGE_PLUTUS_V3,
   ScriptDecodeClass,
 } from "../src/script-decode.step.js";
+import {
+  planScriptDecodeWalk,
+  scriptDecodeRecordOfScript,
+} from "../src/script-decode.step-walk.js";
 import {
   CARDANO_ACCEPTED,
   CARDANO_REFUSED,
@@ -135,6 +138,15 @@ describe("the script-decode step port against the Flat reader", () => {
         Buffer.from(built).toString("hex"),
       );
     }
+  });
+
+  it.each(RAW_ROWS)("%s ends one-shot where it ends walked", (_label, raw) => {
+    const script = wrap(bytes(raw));
+    expect(
+      scriptDecodeRecordOfScript(SCRIPT_DECODE_LANGUAGE_PLUTUS_V3, script),
+    ).toEqual(
+      planScriptDecodeWalk(SCRIPT_DECODE_LANGUAGE_PLUTUS_V3, script, 3).record,
+    );
   });
 
   it("refuses bytes that are not one CBOR byte string", () => {
