@@ -290,6 +290,10 @@ try {
           recursive: true,
         });
       cpSync(
+        resolve(root, "demo/package.json"),
+        resolve(scratch, "demo/package.json"),
+      );
+      cpSync(
         resolve(root, "demo/scripts/package-tasks.mjs"),
         resolve(scratch, "demo/scripts/package-tasks.mjs"),
       );
