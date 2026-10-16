@@ -381,3 +381,111 @@ test data_witness_with_padded_bignum_spelling_fails_closed() fail {
     data_witness(#"c24a00010000000000000000"),
   )
 }
+
+// What a ComputeConstant step commits at the 64-bit and constructor-128
+// boundaries: Cardano's memory (an integer is two 64-bit words exactly from
+// |x| = 2^64; Data adds four words per node) and the TypeScript builder's root
+// (cek-data.cardano-integer-layout.test.ts).
+fn boundary_constant_commits(
+  type_cbor: ByteArray,
+  value: Data,
+  memory: Int,
+  root: ByteArray,
+) -> Bool {
+  let witness = cek_constant_v1.ConstantWitnessV1 {
+    type_cbor,
+    payload_cbor: cbor.serialise(value),
+  }
+  and {
+    cek_constant_v1.constant_memory_size_v1(witness) == memory,
+    cek_constant_v1.constant_root_v1(witness) == root,
+    cek_constant_v1.verify_constant_witness_v1(root, witness),
+  }
+}
+
+test integer_constants_at_the_64_bit_boundary_commit_cardano_memory() {
+  and {
+    boundary_constant_commits(
+      #"9f00ff",
+      builtin.i_data(18446744073709551615),
+      1,
+      #"ed8b58dfd83208feb6e15919daba8a5de3a148417c81d493ae44c1e59826c7df",
+    ),
+    boundary_constant_commits(
+      #"9f00ff",
+      builtin.i_data(18446744073709551616),
+      2,
+      #"724fb53b24c2cf2e428cbae76031acc1767339d955adad595b4d93b03e7997e5",
+    ),
+    boundary_constant_commits(
+      #"9f00ff",
+      builtin.i_data(-18446744073709551616),
+      2,
+      #"42b4cefc147377431ccf19107b8f37b9c4840bba6537711070a939a54db0b569",
+    ),
+    boundary_constant_commits(
+      #"9f00ff",
+      builtin.i_data(-18446744073709551617),
+      2,
+      #"9c1a0767bf83f43d66a797f0fbc5bcf92ab3da6fa2c15d2930b2794b9556f6cc",
+    ),
+  }
+}
+
+test data_constants_at_the_64_bit_boundary_commit_cardano_memory() {
+  and {
+    boundary_constant_commits(
+      #"9f08ff",
+      builtin.i_data(18446744073709551615),
+      5,
+      #"181f91edb58cd6ea394f22951a30f7d732a367096bb66d6dc4cd97b38f13090b",
+    ),
+    boundary_constant_commits(
+      #"9f08ff",
+      builtin.i_data(18446744073709551616),
+      6,
+      data_two_pow_64_root,
+    ),
+    boundary_constant_commits(
+      #"9f08ff",
+      builtin.i_data(-18446744073709551616),
+      6,
+      #"b78dd41a66dbf0e75f03f04f43e70105e40cefde9e7caecf886f238bdfcf6b95",
+    ),
+    boundary_constant_commits(
+      #"9f08ff",
+      builtin.i_data(-18446744073709551617),
+      6,
+      #"8dc056c16783dd26bf027e257f2983d1e6a82831cacdad8950bb1c2d0cea4edd",
+    ),
+  }
+}
+
+test constructor_127_and_128_constants_commit_cardano_memory() {
+  and {
+    boundary_constant_commits(
+      #"9f08ff",
+      builtin.constr_data(127, []),
+      4,
+      #"6b2b905a952b034a8d8c7fc30281f0dc48885a85582fae52c6776b2034be0717",
+    ),
+    boundary_constant_commits(
+      #"9f08ff",
+      builtin.constr_data(128, []),
+      4,
+      #"58ac7ef819e383417fc460b0ee8bba1acbfdad9a162c30adcfcc8a9f28ba2ea5",
+    ),
+    boundary_constant_commits(
+      #"9f08ff",
+      builtin.constr_data(127, [builtin.i_data(18446744073709551615)]),
+      9,
+      #"b99649435247ce2e70c14c017ebde1026da780fb9364633967ea5ae624341d77",
+    ),
+    boundary_constant_commits(
+      #"9f08ff",
+      builtin.constr_data(128, [builtin.i_data(18446744073709551616)]),
+      10,
+      #"db2030ae4a99c18f795583ab02da742c8295078cbd6628d676bc09ffbe18126d",
+    ),
+  }
+}

@@ -32,6 +32,11 @@ import {
   plutusDataFromCborIterative,
 } from "../src/plutus-data-iterative.decode.js";
 import {
+  CARDANO_BOUNDARY_CONSTANTS,
+  CARDANO_BOUNDARY_REFUSED,
+  CARDANO_BOUNDARY_RUNS,
+} from "./cek-program.cardano-boundaries.vectors.js";
+import {
   CARDANO_RUNS,
   DATA_DECODER_ACCEPTED,
   DATA_DECODER_REFUSED,
@@ -370,6 +375,36 @@ describe("Data decoder boundaries the Cardano evaluator drew", () => {
   );
 
   it.each(DATA_DECODER_REFUSED)(
+    "%s is refused as Cardano refuses it",
+    (_label, flat, _cardano, bitOffset, detail) => {
+      expect(invalidDataRefusal(bytes(flat))).toBe(`${bitOffset}: ${detail}`);
+    },
+  );
+});
+
+describe("Programs at the 64-bit and constructor-128 boundaries", () => {
+  it.each(CARDANO_BOUNDARY_RUNS)(
+    "%s gives Cardano's result and budget",
+    (_label, flat, result, budget) => {
+      const run = prove(bytes(flat));
+      expect(cardanoResult(run.result)).toBe(result);
+      expect(`${run.cpu}/${run.memory}`).toBe(budget);
+    },
+  );
+
+  it.each(CARDANO_BOUNDARY_CONSTANTS)(
+    "the constant %s commits its canonical payload at Cardano's budget",
+    (_label, flat, payload, budget) => {
+      const { constantWitnesses } = programView(bytes(flat));
+      expect(constantWitnesses).toHaveLength(1);
+      expect(constantWitnesses[0]!.split(":")[2]).toBe(payload);
+      const run = prove(bytes(flat));
+      expect(run.result).toBeUndefined();
+      expect(`${run.cpu}/${run.memory}`).toBe(budget);
+    },
+  );
+
+  it.each(CARDANO_BOUNDARY_REFUSED)(
     "%s is refused as Cardano refuses it",
     (_label, flat, _cardano, bitOffset, detail) => {
       expect(invalidDataRefusal(bytes(flat))).toBe(`${bitOffset}: ${detail}`);

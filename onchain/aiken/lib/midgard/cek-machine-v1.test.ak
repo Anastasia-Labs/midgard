@@ -2013,3 +2013,134 @@ test malformed_ed25519_lengths_have_one_paid_failure_successor() {
     ),
   }
 }
+
+// ComputeConstant at the 64-bit and constructor-128 boundaries. The post root
+// is the TypeScript builder's root (cek-data.cardano-integer-layout.test.ts),
+// which commits Cardano's memory for the value; the step charges one
+// 16000/100 machine step after the 100/100 start-up.
+fn compute_constant_commits(
+  type_cbor: ByteArray,
+  payload_cbor: ByteArray,
+  root: ByteArray,
+) -> Bool {
+  cek_machine_v1.verify_core_step_v1(
+    state(
+      cek_machine_v1.mode_compute,
+      cek_proof_v1.hash_constant_term_v1(root),
+      cek_proof_v1.empty_environment_root_v1,
+      cek_proof_v1.empty_continuation_root_v1,
+      0,
+      100,
+      100,
+    ),
+    state(
+      cek_machine_v1.mode_return,
+      root,
+      cek_proof_v1.empty_environment_root_v1,
+      cek_proof_v1.empty_continuation_root_v1,
+      0,
+      16100,
+      200,
+    ),
+    cek_machine_v1.ComputeConstant {
+      value: cek_constant_v1.ConstantWitnessV1 { type_cbor, payload_cbor },
+    },
+  )
+}
+
+test integer_constants_at_the_64_bit_boundary_compute_to_their_roots() {
+  and {
+    compute_constant_commits(
+      #"9f00ff",
+      #"1bffffffffffffffff",
+      #"ed8b58dfd83208feb6e15919daba8a5de3a148417c81d493ae44c1e59826c7df",
+    ),
+    compute_constant_commits(
+      #"9f00ff",
+      #"c249010000000000000000",
+      #"724fb53b24c2cf2e428cbae76031acc1767339d955adad595b4d93b03e7997e5",
+    ),
+    compute_constant_commits(
+      #"9f00ff",
+      #"3bffffffffffffffff",
+      #"42b4cefc147377431ccf19107b8f37b9c4840bba6537711070a939a54db0b569",
+    ),
+    compute_constant_commits(
+      #"9f00ff",
+      #"c349010000000000000000",
+      #"9c1a0767bf83f43d66a797f0fbc5bcf92ab3da6fa2c15d2930b2794b9556f6cc",
+    ),
+  }
+}
+
+test constructor_127_and_128_constants_compute_to_their_roots() {
+  and {
+    compute_constant_commits(
+      #"9f08ff",
+      #"d9057880",
+      #"6b2b905a952b034a8d8c7fc30281f0dc48885a85582fae52c6776b2034be0717",
+    ),
+    compute_constant_commits(
+      #"9f08ff",
+      #"d86682188080",
+      #"58ac7ef819e383417fc460b0ee8bba1acbfdad9a162c30adcfcc8a9f28ba2ea5",
+    ),
+    compute_constant_commits(
+      #"9f08ff",
+      #"d8668218809fc249010000000000000000ff",
+      #"db2030ae4a99c18f795583ab02da742c8295078cbd6628d676bc09ffbe18126d",
+    ),
+  }
+}
+
+// Payloads Cardano's Data decoder refuses, each against the root of the value
+// it would otherwise spell.
+fn compute_data_constant_against(value: Data, payload_cbor: ByteArray) -> Bool {
+  compute_constant_commits(
+    #"9f08ff",
+    payload_cbor,
+    cek_constant_v1.constant_root_v1(
+      cek_constant_v1.ConstantWitnessV1 {
+        type_cbor: #"9f08ff",
+        payload_cbor: cbor.serialise(value),
+      },
+    ),
+  )
+}
+
+test data_constants_compute_against_the_roots_of_their_canonical_values() {
+  and {
+    compute_data_constant_against(
+      builtin.i_data(18446744073709551616),
+      #"c249010000000000000000",
+    ),
+    compute_data_constant_against(
+      builtin.i_data(-18446744073709551617),
+      #"c349010000000000000000",
+    ),
+    compute_data_constant_against(builtin.constr_data(0, []), #"d87980"),
+    compute_data_constant_against(builtin.constr_data(1, []), #"d87a80"),
+  }
+}
+
+test compute_constant_refuses_a_long_tag_2_head() fail {
+  compute_data_constant_against(
+    builtin.i_data(18446744073709551616),
+    #"d80249010000000000000000",
+  )
+}
+
+test compute_constant_refuses_a_long_tag_3_head() fail {
+  compute_data_constant_against(
+    builtin.i_data(-18446744073709551617),
+    #"d80349010000000000000000",
+  )
+}
+
+test compute_constant_refuses_constructor_102_with_a_negative_index() fail {
+  compute_data_constant_against(builtin.constr_data(0, []), #"d866822080")
+}
+
+test compute_constant_refuses_constructor_102_with_a_bignum_index() fail {
+  compute_data_constant_against(builtin.constr_data(1, []), #"d86682c2410180")
+}

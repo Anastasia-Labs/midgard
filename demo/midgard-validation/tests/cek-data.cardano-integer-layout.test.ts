@@ -22,6 +22,8 @@ import {
   decodeMidgardCekConstantWitness,
   encodeMidgardCekCanonicalConstant,
   encodeMidgardCekPlutusData,
+  hashMidgardCekConstantWitness,
+  midgardCekConstantMemorySize,
   midgardCekConstantWitnessFromUplc,
   midgardCekIntegerMemorySize,
 } from "../src/cek-constant.js";
@@ -229,4 +231,176 @@ describe("Cardano layout at the 64-bit and constructor-128 boundaries", () => {
       }),
     ).toThrow();
   });
+});
+
+const TWO_64 = 1n << 64n;
+
+// What a ComputeConstant step commits for each constant: its memory and its
+// root. Cardano sizes an integer in 64-bit words, so the memory is 2 exactly
+// from |x| = 2^64, and a Data value four words per node plus its integers'
+// words. The on-chain constant and ComputeConstant rows pin the same roots
+// (cek-constant-v1.test.ak, cek-machine-v1.test.ak).
+const BOUNDARY_CONSTANT_ROOTS = [
+  [
+    "integer 2^64-1",
+    UPLCConst.int(TWO_64 - 1n),
+    1n,
+    "ed8b58dfd83208feb6e15919daba8a5de3a148417c81d493ae44c1e59826c7df",
+  ],
+  [
+    "integer 2^64",
+    UPLCConst.int(TWO_64),
+    2n,
+    "724fb53b24c2cf2e428cbae76031acc1767339d955adad595b4d93b03e7997e5",
+  ],
+  [
+    "integer -2^64",
+    UPLCConst.int(-TWO_64),
+    2n,
+    "42b4cefc147377431ccf19107b8f37b9c4840bba6537711070a939a54db0b569",
+  ],
+  [
+    "integer -2^64-1",
+    UPLCConst.int(-TWO_64 - 1n),
+    2n,
+    "9c1a0767bf83f43d66a797f0fbc5bcf92ab3da6fa2c15d2930b2794b9556f6cc",
+  ],
+  [
+    "data 2^64-1",
+    UPLCConst.data(new DataI(TWO_64 - 1n)),
+    5n,
+    "181f91edb58cd6ea394f22951a30f7d732a367096bb66d6dc4cd97b38f13090b",
+  ],
+  [
+    "data 2^64",
+    UPLCConst.data(new DataI(TWO_64)),
+    6n,
+    "30f014bc9812674691ef17db74211c691c1aaa0038cda14ef8fda815a6b49a84",
+  ],
+  [
+    "data -2^64",
+    UPLCConst.data(new DataI(-TWO_64)),
+    6n,
+    "b78dd41a66dbf0e75f03f04f43e70105e40cefde9e7caecf886f238bdfcf6b95",
+  ],
+  [
+    "data -2^64-1",
+    UPLCConst.data(new DataI(-TWO_64 - 1n)),
+    6n,
+    "8dc056c16783dd26bf027e257f2983d1e6a82831cacdad8950bb1c2d0cea4edd",
+  ],
+  [
+    "data constructor 127",
+    UPLCConst.data(new DataConstr(127n, [])),
+    4n,
+    "6b2b905a952b034a8d8c7fc30281f0dc48885a85582fae52c6776b2034be0717",
+  ],
+  [
+    "data constructor 128",
+    UPLCConst.data(new DataConstr(128n, [])),
+    4n,
+    "58ac7ef819e383417fc460b0ee8bba1acbfdad9a162c30adcfcc8a9f28ba2ea5",
+  ],
+  [
+    "data constructor 127 over 2^64-1",
+    UPLCConst.data(new DataConstr(127n, [new DataI(TWO_64 - 1n)])),
+    9n,
+    "b99649435247ce2e70c14c017ebde1026da780fb9364633967ea5ae624341d77",
+  ],
+  [
+    "data constructor 128 over 2^64",
+    UPLCConst.data(new DataConstr(128n, [new DataI(TWO_64)])),
+    10n,
+    "db2030ae4a99c18f795583ab02da742c8295078cbd6628d676bc09ffbe18126d",
+  ],
+] as const;
+
+// Each builtin's own charge: Cardano's PV 11 total for the program in
+// cek-program.cardano-boundaries.vectors.ts, less the 100/100 start-up and
+// the five 16000/100 machine steps of `[[builtin a] b]`.
+const BOUNDARY_BUDGETS = [
+  [
+    "addInteger 2^64-1 and 1",
+    0n,
+    UPLCConst.int(TWO_64 - 1n),
+    UPLCConst.int(1n),
+    101_208n,
+    2n,
+  ],
+  [
+    "addInteger 2^64 and -1",
+    0n,
+    UPLCConst.int(TWO_64),
+    UPLCConst.int(-1n),
+    101_628n,
+    3n,
+  ],
+  [
+    "addInteger -2^64 and -1",
+    0n,
+    UPLCConst.int(-TWO_64),
+    UPLCConst.int(-1n),
+    101_628n,
+    3n,
+  ],
+  [
+    "addInteger -2^64-1 and 1",
+    0n,
+    UPLCConst.int(-TWO_64 - 1n),
+    UPLCConst.int(1n),
+    101_628n,
+    3n,
+  ],
+  [
+    "equalsData -2^64 and -2^64-1",
+    47n,
+    UPLCConst.data(new DataI(-TWO_64)),
+    UPLCConst.data(new DataI(-TWO_64 - 1n)),
+    1_061_822n,
+    1n,
+  ],
+  [
+    "equalsData 2^64-1 and 2^64",
+    47n,
+    UPLCConst.data(new DataI(TWO_64 - 1n)),
+    UPLCConst.data(new DataI(TWO_64)),
+    1_034_543n,
+    1n,
+  ],
+  [
+    "equalsData constructor 127 and 128",
+    47n,
+    UPLCConst.data(new DataConstr(127n, [])),
+    UPLCConst.data(new DataConstr(128n, [])),
+    1_007_264n,
+    1n,
+  ],
+] as const;
+
+describe("Constants and builtin charges at the 64-bit and constructor-128 boundaries", () => {
+  it.each(BOUNDARY_CONSTANT_ROOTS)(
+    "commits the %s constant with Cardano's memory and its root",
+    (_label, constant, memory, root) => {
+      const witness = midgardCekConstantWitnessFromUplc(constant);
+      const decoded = decodeMidgardCekConstantWitness(witness);
+      expect(midgardCekConstantMemorySize(decoded.type, decoded.payload)).toBe(
+        memory,
+      );
+      expect(
+        Buffer.from(hashMidgardCekConstantWitness(witness)).toString("hex"),
+      ).toBe(root);
+    },
+  );
+
+  it.each(BOUNDARY_BUDGETS)(
+    "charges %s as Cardano does",
+    (_name, tag, left, right, cpu, memory) => {
+      expect(
+        midgardCekDirectBuiltinBudget(tag, [direct(left), direct(right)]),
+      ).toEqual({
+        cpu,
+        memory,
+      });
+    },
+  );
 });
