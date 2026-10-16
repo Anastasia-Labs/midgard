@@ -1,10 +1,4 @@
-import {
-  type Data,
-  DataB,
-  DataConstr,
-  dataFromCbor,
-  DataList,
-} from "@harmoniclabs/plutus-data";
+import { dataFromCbor } from "@harmoniclabs/plutus-data";
 import { parseUPLC } from "@harmoniclabs/uplc";
 import { Effect, Either } from "effect";
 
@@ -18,7 +12,6 @@ import {
   type ValidationMachineReplayInput,
   ValidationTraceStopped,
 } from "../../src/index.js";
-import { isPlutusDataMap } from "../../src/plutus-data-narrowing.js";
 import { buildDeterministicValidationMachineTrace } from "../helpers/trace-commit-golden.js";
 import { replayValidationMachineEvent } from "../validation-machine-event-replay.trace.js";
 import {
@@ -66,11 +59,6 @@ export type TxKnownClass =
    * (SH-2).
    */
   | "blsTagNumbering"
-  /**
-   * A case whose redeemer holds an empty byte string and whose trace replay
-   * stops. Owner: the redeemer-item proof. Pending its empty-span update.
-   */
-  | "redeemerEmptyBytes"
   /**
    * A script both sides run to unit whose spend is the reference's less
    * exactly 100 / 100, within the declared budget or either side of it.
@@ -120,23 +108,6 @@ const MACHINE_STARTUP = { cpu: 100n, memory: 100n } as const;
 
 const CARDANO_RENUMBERED_BLS_TAGS = [58, 59, 60, 65, 66, 67];
 const CONSTR_DATA_TAG = 37;
-
-/** Whether a Data value holds an empty byte string. */
-const holdsEmptyBytes = (data: Data): boolean => {
-  const pending: Data[] = [data];
-  for (let item = pending.pop(); item !== undefined; item = pending.pop()) {
-    if (item instanceof DataB) {
-      if (item.bytes.length === 0) return true;
-    } else if (item instanceof DataConstr) {
-      pending.push(...item.fields);
-    } else if (item instanceof DataList) {
-      pending.push(...item.list);
-    } else if (isPlutusDataMap(item)) {
-      for (const entry of item.map) pending.push(entry.fst, entry.snd);
-    }
-  }
-  return false;
-};
 
 const withoutCaptures = (
   input: ValidationMachineReplayInput,
@@ -305,8 +276,7 @@ export const runTxCase = async (
   let steps: PreparedCase | null = null;
   let haltErrorCode: bigint | null = null;
   if (Either.isLeft(replay)) {
-    if (holdsEmptyBytes(scenario.redeemer)) known.push("redeemerEmptyBytes");
-    else divergences.push(`trace replay stopped: ${String(replay.left)}`);
+    divergences.push(`trace replay stopped: ${String(replay.left)}`);
     haltErrorCode = await proofHaltErrorCode(scenario);
   } else {
     const { replayInput } = replay.right;

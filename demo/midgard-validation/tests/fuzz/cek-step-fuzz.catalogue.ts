@@ -40,12 +40,12 @@ import type { AikenVerdict } from "./cek-step-fuzz.oracle.js";
  *   cost update for the large-Data steps.
  * - `trailingEmptyBytesDecoding`: a step the Aiken machine fails whose
  *   revealed payload, or a preimage it decodes as Data, ends in an empty byte
- *   string. Owner: the on-chain machine (assignment pending). Pending the
- *   on-chain byte-string decoding update.
+ *   string. Owner: the on-chain Data decoder. Pending the on-chain
+ *   byte-string decoding update.
  * - `nestedConstantCost`: a step revealing a constant whose type nests one
  *   compound in another (a pair, or a list of lists), whose adjudication goes
- *   over the evaluator's budget. Owner: the on-chain machine (assignment
- *   pending). Pending the on-chain constant-step cost update.
+ *   over the evaluator's budget. Owner: the on-chain constant step. Pending
+ *   the on-chain constant-step cost update.
  */
 export type CataloguedClass =
   | "interimDataDecoding"

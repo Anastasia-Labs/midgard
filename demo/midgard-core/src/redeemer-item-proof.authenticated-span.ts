@@ -122,33 +122,55 @@ export const nextMidgardRedeemerItemProofSpan = (
   return null;
 };
 
-const authenticatedSpan = ({
-  control,
+type SourceSpan = {
+  readonly absoluteStart: number;
+  readonly length: number;
+};
+
+/**
+ * The chunks a source span reads (mirrors `authenticated_span` in
+ * redeemer-item-proof-v1.ak): the chunk of its first byte and the chunk of its
+ * last byte. An empty span reads the one chunk holding the byte before its
+ * end, or chunk 0 at the item's start.
+ */
+export const midgardRedeemerItemSpanChunks = ({
   absoluteStart,
   length,
+}: SourceSpan): { readonly first: number; readonly last: number } => {
+  const end = absoluteStart + length;
+  const last =
+    end > 0 ? Math.floor((end - 1) / MIDGARD_BOUNDED_ITEM_CHUNK_BYTES) : 0;
+  return {
+    first:
+      length === 0
+        ? last
+        : Math.floor(absoluteStart / MIDGARD_BOUNDED_ITEM_CHUNK_BYTES),
+    last,
+  };
+};
+
+const authenticatedSpan = ({
+  control,
+  span,
   chunkProof,
   nextChunkProof,
 }: {
   readonly control: MidgardRedeemerItemProofControl;
-  readonly absoluteStart: number;
-  readonly length: number;
+  readonly span: SourceSpan;
   readonly chunkProof: MidgardBoundedItemChunkProof;
   readonly nextChunkProof: MidgardBoundedItemChunkProof | null;
 }): Buffer | null => {
+  const { absoluteStart, length } = span;
   if (
-    length <= 0 ||
+    length < 0 ||
     length > MIDGARD_CEK_DATA_TRAVERSE_MAX_SOURCE_SPAN ||
     absoluteStart < 0 ||
     absoluteStart + length > control.totalLength
   ) {
     return null;
   }
-  const firstChunkIndex = Math.floor(
-    absoluteStart / MIDGARD_BOUNDED_ITEM_CHUNK_BYTES,
-  );
-  const lastChunkIndex = Math.floor(
-    (absoluteStart + length - 1) / MIDGARD_BOUNDED_ITEM_CHUNK_BYTES,
-  );
+  const { first: firstChunkIndex, last: lastChunkIndex } =
+    midgardRedeemerItemSpanChunks(span);
   const matches = (
     proof: MidgardBoundedItemChunkProof,
     chunkIndex: number,
@@ -182,6 +204,39 @@ const authenticatedSpan = ({
     : null;
 };
 
+/**
+ * Authenticate a source window against the item commitment (mirrors
+ * `authenticate_source_window`): no span takes no chunk proof, and a span
+ * takes exactly the proofs of the chunks it reads. Null is missing, extra or
+ * wrong evidence; otherwise the window's bytes, or null bytes for no span.
+ */
+export const authenticateMidgardRedeemerItemSourceWindow = ({
+  control,
+  span,
+  witness,
+}: {
+  readonly control: MidgardRedeemerItemProofControl;
+  readonly span: SourceSpan | null;
+  readonly witness: Pick<
+    MidgardRedeemerItemProofWitness,
+    "chunkProof" | "nextChunkProof"
+  >;
+}): { readonly sourceBytes: Buffer | null } | null => {
+  if (span === null) {
+    return witness.chunkProof === null && witness.nextChunkProof === null
+      ? { sourceBytes: null }
+      : null;
+  }
+  if (witness.chunkProof === null) return null;
+  const sourceBytes = authenticatedSpan({
+    control,
+    span,
+    chunkProof: witness.chunkProof,
+    nextChunkProof: witness.nextChunkProof,
+  });
+  return sourceBytes === null ? null : { sourceBytes };
+};
+
 /** Authenticate the canonical next source window, distinguishing no window from invalid evidence. */
 export const readMidgardRedeemerItemProofSource = ({
   control,
@@ -189,23 +244,11 @@ export const readMidgardRedeemerItemProofSource = ({
 }: {
   readonly control: MidgardRedeemerItemProofControl;
   readonly witness: MidgardRedeemerItemProofWitness;
-}): { readonly sourceBytes: Buffer | null } | null => {
-  if (!isWellFormedMidgardRedeemerItemProofControl(control)) return null;
-  const span = nextMidgardRedeemerItemProofSpan(control);
-  let sourceBytes: Buffer | null = null;
-  if (span === null) {
-    if (witness.chunkProof !== null || witness.nextChunkProof !== null) {
-      return null;
-    }
-  } else {
-    if (witness.chunkProof === null) return null;
-    sourceBytes = authenticatedSpan({
-      control,
-      ...span,
-      chunkProof: witness.chunkProof,
-      nextChunkProof: witness.nextChunkProof,
-    });
-    if (sourceBytes === null) return null;
-  }
-  return { sourceBytes };
-};
+}): { readonly sourceBytes: Buffer | null } | null =>
+  isWellFormedMidgardRedeemerItemProofControl(control)
+    ? authenticateMidgardRedeemerItemSourceWindow({
+        control,
+        span: nextMidgardRedeemerItemProofSpan(control),
+        witness,
+      })
+    : null;

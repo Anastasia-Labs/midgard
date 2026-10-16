@@ -578,16 +578,27 @@ fn authenticated_span(
   chunk_proof: bounded_item_v1.ChunkProofV1,
   next_chunk_proof: Option<bounded_item_v1.ChunkProofV1>,
 ) -> Option<ByteArray> {
+  let span_end = span.absolute_start + span.length
   if or {
-    span.length <= 0,
+    span.length < 0,
     span.length > cek_data_traverse_v1.max_source_span,
     span.absolute_start < 0,
-    span.absolute_start + span.length > control.total_length,
+    span_end > control.total_length,
   } {
     None
   } else {
-    let first_chunk_index = span.absolute_start / bounded_item_v1.chunk_bytes
-    let last_chunk_index = ( span.absolute_start + span.length - 1 ) / bounded_item_v1.chunk_bytes
+    // An empty span reads the chunk holding the byte before its end, or chunk
+    // 0 at the item's start.
+    let last_chunk_index = if span_end > 0 {
+      ( span_end - 1 ) / bounded_item_v1.chunk_bytes
+    } else {
+      0
+    }
+    let first_chunk_index = if span.length == 0 {
+      last_chunk_index
+    } else {
+      span.absolute_start / bounded_item_v1.chunk_bytes
+    }
     let local_start = span.absolute_start - first_chunk_index * bounded_item_v1.chunk_bytes
     if or {
       last_chunk_index > first_chunk_index + 1,

@@ -1,6 +1,5 @@
 import {
   buildMidgardBoundedItemChunkProof,
-  MIDGARD_BOUNDED_ITEM_CHUNK_BYTES,
   type MidgardBoundedItem,
 } from "./bounded-item.js";
 import { driveMidgardCekDataTraverse } from "./cek-data-traverse.drive.js";
@@ -15,6 +14,7 @@ import {
   buildMidgardRedeemerItemProofTrace,
 } from "./redeemer-item-proof.advance-midgard-redeemer-item-proof.js";
 import {
+  midgardRedeemerItemSpanChunks,
   nextMidgardRedeemerItemProofSpan,
   readMidgardRedeemerItemProofSource,
 } from "./redeemer-item-proof.authenticated-span.js";
@@ -103,12 +103,7 @@ const traverseWitness = (
       chunkProof: null,
       nextChunkProof: null,
     };
-  const first = Math.floor(
-    span.absoluteStart / MIDGARD_BOUNDED_ITEM_CHUNK_BYTES,
-  );
-  const last = Math.floor(
-    (span.absoluteStart + span.length - 1) / MIDGARD_BOUNDED_ITEM_CHUNK_BYTES,
-  );
+  const { first, last } = midgardRedeemerItemSpanChunks(span);
   return {
     action: { kind: "traverseData", action },
     chunkProof: buildMidgardBoundedItemChunkProof(item, first),
