@@ -1,11 +1,20 @@
 /**
  * The `case` on a constant programs of the V1 CEK core-step golden vectors
- * (`cek-core-step-v1.vectors.mjs`), one per kind of outcome. Like the rest of
- * the set, these are UPLC terms only and import nothing from the package.
+ * (`cek-core-step-v1.vectors.mjs`), one per kind of outcome, plus a `case` on
+ * a constructor that selects its first branch. Like the rest of the set, these
+ * are UPLC terms only and import nothing from the package.
  */
 
 import { DataB } from "@harmoniclabs/plutus-data";
-import { Case, constT, Lambda, UPLCConst, UPLCVar } from "@harmoniclabs/uplc";
+import {
+  Case,
+  Constr,
+  constT,
+  ErrorUPLC,
+  Lambda,
+  UPLCConst,
+  UPLCVar,
+} from "@harmoniclabs/uplc";
 
 /** The programs, each applied to `context`. */
 export const caseConstantPrograms = (context) => [
@@ -16,6 +25,14 @@ export const caseConstantPrograms = (context) => [
       new Lambda(
         new Case(UPLCConst.bool(true), [UPLCConst.int(7), UPLCConst.int(8)]),
       ),
+    context,
+    maxSteps: 32,
+  },
+  {
+    label: "case_constant_integer_first",
+    note: "returnCaseConstant: zero selects the first of two branches",
+    term: () =>
+      new Lambda(new Case(UPLCConst.int(0), [UPLCConst.unit, new ErrorUPLC()])),
     context,
     maxSteps: 32,
   },
@@ -59,6 +76,20 @@ export const caseConstantPrograms = (context) => [
           UPLCConst.byteString(new DataB(Buffer.from("00", "hex")).bytes),
           [UPLCConst.int(7)],
         ),
+      ),
+    context,
+    maxSteps: 32,
+  },
+  {
+    label: "case_constr_first",
+    note: "returnCaseConstr: tag 0 selects the first of three branches",
+    term: () =>
+      new Lambda(
+        new Case(new Constr(0n, []), [
+          UPLCConst.unit,
+          new ErrorUPLC(),
+          new ErrorUPLC(),
+        ]),
       ),
     context,
     maxSteps: 32,

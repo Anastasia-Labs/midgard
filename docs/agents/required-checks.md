@@ -636,6 +636,7 @@ Golden channel nested-boundary-aiken (@al-ft/midgard-validation).
   - `demo/midgard-validation/tests/nested-value-boundary.test.ts`
   - `onchain/aiken/lib/midgard/cek-data-traverse.max-cardano.test.ak`
   - `onchain/aiken/lib/midgard/ledger-output-value-v1.test.ak`
+  - `onchain/aiken/lib/midgard/ledger-output-value.max-cardano.test.ak`
   - `demo/lucid-midgard/src/**`
   - `demo/midgard-core/src/**`
   - `demo/midgard-fault-proofs/src/**`
@@ -660,6 +661,7 @@ Golden channel cek-core-step-v1 (@al-ft/midgard-validation).
   - `demo/midgard-validation/scripts/generate-cek-core-step-v1-goldens.mjs`
   - `demo/midgard-validation/src/cek-data.ts`
   - `demo/midgard-validation/src/cek-executor.ts`
+  - `demo/midgard-validation/tests/fixtures/cek-core-step-v1.case-constant.mjs`
   - `demo/midgard-validation/tests/fixtures/cek-core-step-v1.generated.json`
   - `demo/midgard-validation/tests/fixtures/cek-core-step-v1.vectors.mjs`
   - `onchain/aiken/lib/midgard/cek-core-step-goldens/add-integer.test.ak`
@@ -668,8 +670,15 @@ Golden channel cek-core-step-v1 (@al-ft/midgard-validation).
   - `onchain/aiken/lib/midgard/cek-core-step-goldens/builtin-failure.test.ak`
   - `onchain/aiken/lib/midgard/cek-core-step-goldens/builtin-type-failure.test.ak`
   - `onchain/aiken/lib/midgard/cek-core-step-goldens/case-branch-missing.test.ak`
+  - `onchain/aiken/lib/midgard/cek-core-step-goldens/case-constant-boolean.test.ak`
+  - `onchain/aiken/lib/midgard/cek-core-step-goldens/case-constant-branch-missing.test.ak`
+  - `onchain/aiken/lib/midgard/cek-core-step-goldens/case-constant-integer-first.test.ak`
+  - `onchain/aiken/lib/midgard/cek-core-step-goldens/case-constant-list.test.ak`
+  - `onchain/aiken/lib/midgard/cek-core-step-goldens/case-constant-pair.test.ak`
+  - `onchain/aiken/lib/midgard/cek-core-step-goldens/case-constant-unsupported.test.ak`
   - `onchain/aiken/lib/midgard/cek-core-step-goldens/case-constr-builtin.test.ak`
   - `onchain/aiken/lib/midgard/cek-core-step-goldens/case-constr-empty.test.ak`
+  - `onchain/aiken/lib/midgard/cek-core-step-goldens/case-constr-first.test.ak`
   - `onchain/aiken/lib/midgard/cek-core-step-goldens/case-constr-lambda.test.ak`
   - `onchain/aiken/lib/midgard/cek-core-step-goldens/case-scrutinee-invalid.test.ak`
   - `onchain/aiken/lib/midgard/cek-core-step-goldens/case-value-invalid.test.ak`
@@ -685,9 +694,57 @@ Golden channel cek-core-step-v1 (@al-ft/midgard-validation).
   - `onchain/aiken/lib/midgard/cek-core-step-goldens/map-round-trip.test.ak`
   - `onchain/aiken/lib/midgard/cek-core-step-goldens/nonconstant-halt.test.ak`
   - `onchain/aiken/lib/midgard/cek-core-step-goldens/omega-budget-exceeded.test.ak`
+  - `onchain/aiken/lib/midgard/cek-core-step-goldens/schnorr-message-17-bytes.test.ak`
   - `onchain/aiken/lib/midgard/cek-core-step-goldens/un-constr-wrong-variant.test.ak`
   - `onchain/aiken/lib/midgard/cek-core-step-goldens/un-map-wrong-variant-constant.test.ak`
   - `onchain/aiken/lib/midgard/cek-core-step-goldens/unbound-variable.test.ak`
+  - `demo/lucid-midgard/src/**`
+  - `demo/midgard-core/src/**`
+  - `demo/midgard-fault-proofs/src/**`
+  - `demo/midgard-validation/src/**`
+  - `demo/midgard-node/src/**`
+  - `demo/midgard-node-tools/src/**`
+  - `demo/midgard-sdk/src/**`
+  - `demo/midgard-watcher/src/**`
+  - `demo/da-committee-node/src/**`
+  - `demo/midgard-test-support/src/**`
+  - `demo/l1-node-transport/src/**`
+  - `demo/midgard-l1-follower/src/**`
+- Needs: `node-modules`, `aiken`, `core-dist`
+
+### `golden:cek-program-large-integer`
+
+Golden channel cek-program-large-integer (@al-ft/midgard-validation).
+
+- Command: `pnpm --dir demo/midgard-validation run fixtures:cek-program-large-integer:check`
+- Fix: `pnpm --dir demo/midgard-validation run fixtures:cek-program-large-integer:sync`
+- Runs on:
+  - `demo/midgard-validation/scripts/generate-cek-program-large-integer-fixture.mjs`
+  - `demo/midgard-validation/tests/fixtures/cek-program-large-integer.json`
+  - `demo/lucid-midgard/src/**`
+  - `demo/midgard-core/src/**`
+  - `demo/midgard-fault-proofs/src/**`
+  - `demo/midgard-validation/src/**`
+  - `demo/midgard-node/src/**`
+  - `demo/midgard-node-tools/src/**`
+  - `demo/midgard-sdk/src/**`
+  - `demo/midgard-watcher/src/**`
+  - `demo/da-committee-node/src/**`
+  - `demo/midgard-test-support/src/**`
+  - `demo/l1-node-transport/src/**`
+  - `demo/midgard-l1-follower/src/**`
+- Needs: `node-modules`, `aiken`, `core-dist`
+- Mode: warns only (no workflow runs this channel, so a red check does not block)
+
+### `golden:cek-cost-v1-aiken`
+
+Golden channel cek-cost-v1-aiken (@al-ft/midgard-validation).
+
+- Command: `pnpm --dir demo/midgard-validation run fixtures:cek-cost-v1-aiken:check`
+- Fix: `pnpm --dir demo/midgard-validation run fixtures:cek-cost-v1-aiken:sync`
+- Runs on:
+  - `demo/midgard-validation/scripts/generate-cek-cost-v1-aiken-goldens.mjs`
+  - `onchain/aiken/lib/midgard/cek-cost-v1-golden.test.ak`
   - `demo/lucid-midgard/src/**`
   - `demo/midgard-core/src/**`
   - `demo/midgard-fault-proofs/src/**`
