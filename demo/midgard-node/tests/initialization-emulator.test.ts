@@ -24,6 +24,7 @@ import {
   CML,
   Data,
   paymentCredentialOf,
+  Script,
   toUnit,
   UTxO,
 } from "@lucid-evolution/lucid";
@@ -152,6 +153,45 @@ describe("initialization emulator", () => {
       wallet,
     } as unknown as typeof lucid;
 
+    // Every minting script is read from a reference script carrying it.
+    const reference = (outputIndex: number, scriptRef: Script): UTxO => ({
+      ...nonceUtxo,
+      outputIndex,
+      assets: { lovelace: 1n },
+      scriptRef,
+    });
+    const referenceScripts: SDK.AtomicProtocolInitReferenceScripts = {
+      depositHistory: reference(90, contracts.deposit.mintingScript),
+      withdrawalHistory: reference(91, contracts.withdrawal.mintingScript),
+      hubOracleMinting: reference(92, contracts.hubOracle.mintingScript),
+      daParamsGovernorMinting: reference(
+        93,
+        contracts.daParamsGovernor.mintingScript,
+      ),
+      schedulerMinting: reference(94, contracts.scheduler.mintingScript),
+      stateQueueMinting: reference(95, contracts.stateQueue.mintingScript),
+      registeredOperatorsMinting: reference(
+        96,
+        contracts.registeredOperators.mintingScript,
+      ),
+      activeOperatorsMinting: reference(
+        97,
+        contracts.activeOperators.mintingScript,
+      ),
+      retiredOperatorsMinting: reference(
+        98,
+        contracts.retiredOperators.mintingScript,
+      ),
+      fraudProofCatalogueMinting: reference(
+        99,
+        contracts.fraudProofCatalogue.mintingScript,
+      ),
+      validationCaseConfigMinting: reference(
+        100,
+        contracts.fraudProofContracts.validationTraceDispute.caseConfig
+          .mintingScript,
+      ),
+    };
     const dateNowSpy = vi
       .spyOn(Date, "now")
       .mockReturnValue(Number(validTo) + 123_456_789);
@@ -165,6 +205,7 @@ describe("initialization emulator", () => {
           daParams: TEST_DA_PARAMS,
           oneShotNonceUTxO: nonceUtxo,
           validityRange: { validFrom, validTo },
+          referenceScripts,
         }),
       );
 
@@ -181,9 +222,10 @@ describe("initialization emulator", () => {
       expect(outputAssets[8]?.lovelace).toBeGreaterThan(0n);
       for (const { assets } of mintCalls)
         expect(assets).not.toHaveProperty("lovelace");
-      // Nine protocol outputs, two history roots, then the DA pool with one
-      // bond above its floor to back the first attestation.
-      expect(outputAssets).toHaveLength(12);
+      // Nine protocol outputs, two history roots, the DA pool with one bond
+      // above its floor to back the first attestation, then the case
+      // configuration token.
+      expect(outputAssets).toHaveLength(13);
       expect(
         outputAssets.slice(9, 11).every((assets) => assets.lovelace > 0n),
       ).toBe(true);
@@ -192,6 +234,13 @@ describe("initialization emulator", () => {
           SDK.DA_AVAILABILITY_PROFILE_BOND_AMOUNTS.daBondPoolFloorLovelace +
           SDK.DA_AVAILABILITY_PROFILE_BOND_AMOUNTS.daBondLovelace,
         [SDK.daBondPoolUnit(contracts.daBondPool.policyId)]: 1n,
+      });
+      expect(outputAssets[12]).toEqual({
+        [toUnit(
+          contracts.fraudProofContracts.validationTraceDispute.caseConfig
+            .policyId,
+          SDK.VALIDATION_CASE_CONFIG_ASSET_NAME,
+        )]: 1n,
       });
       const hubOracleUnit = toUnit(
         contracts.hubOracle.policyId,
@@ -227,15 +276,29 @@ describe("initialization emulator", () => {
             daParams: TEST_DA_PARAMS,
             oneShotNonceUTxO: nonceUtxo,
             validityRange: { validFrom, validTo },
+            referenceScripts,
             daBondPoolLovelace,
           }),
         );
       };
       await withPoolLovelace(daBondPoolFloorLovelace);
-      expect(outputAssets.at(-1)?.lovelace).toBe(daBondPoolFloorLovelace);
+      expect(outputAssets[11]?.lovelace).toBe(daBondPoolFloorLovelace);
       await expect(
         withPoolLovelace(daBondPoolFloorLovelace - 1n),
       ).rejects.toThrow(/below the pool floor/u);
+      // The case configuration mint has no inline fallback.
+      await expect(
+        Effect.runPromise(
+          SDK.incompleteInitializationTxProgram(fakeLucid, {
+            midgardValidators: contracts,
+            consensusProfile: MIDGARD_CONSENSUS_PROFILE,
+            fraudProofCatalogueMerkleRoot: EMPTY_FRAUD_PROOF_CATALOGUE_ROOT,
+            daParams: TEST_DA_PARAMS,
+            oneShotNonceUTxO: nonceUtxo,
+            validityRange: { validFrom, validTo },
+          }),
+        ),
+      ).rejects.toThrow(/published reference script/u);
     } finally {
       dateNowSpy.mockRestore();
     }
@@ -350,6 +413,21 @@ describe("initialization emulator", () => {
     });
     expect(runtimeReferenceScriptNames).toEqual(
       expect.arrayContaining(["da-bond-pool spending", "da-bond-pool minting"]),
+    );
+    // The case configuration token sits beside the hand-off hashes of this
+    // deployment's validation-trace chain.
+    const caseChain = contracts.fraudProofContracts.validationTraceDispute;
+    const caseConfigUtxos = await lucid.utxosAtWithUnit(
+      SDK.validationCaseConfigAddress("Preprod", caseChain.caseConfig),
+      toUnit(
+        caseChain.caseConfig.policyId,
+        SDK.VALIDATION_CASE_CONFIG_ASSET_NAME,
+      ),
+    );
+    expect(caseConfigUtxos).toHaveLength(1);
+    expect(caseConfigUtxos[0]!.txHash).toBe(txHash);
+    expect(Data.from(caseConfigUtxos[0]!.datum!, SDK.CaseConfig)).toEqual(
+      SDK.validationCaseConfigFromContracts(caseChain),
     );
     expect(status.daBondPoolInitialized).toBe(true);
     expect(status.complete).toBe(true);

@@ -2,7 +2,6 @@ import { asDataType } from "@al-ft/midgard-core/lucid-data";
 import { Data } from "@lucid-evolution/lucid";
 
 import { H32Schema, PubKeyHashSchema } from "../common.js";
-import { ValidationTraceDescriptorSchema } from "../ledger-state.js";
 import {
   FrontierPeakSchema,
   ValueAssetMutationWitnessSchema,
@@ -124,54 +123,6 @@ export const ValidationDisputeTurnSchema = Data.Enum([
   }),
   Data.Literal("ReadyForOneStep"),
 ]);
-
-export const ValidationDisputeSchema = Data.Object({
-  version: Data.Integer(),
-  operator_descriptor: ValidationTraceDescriptorSchema,
-  challenger_descriptor: ValidationTraceDescriptorSchema,
-  low_index: Data.Integer(),
-  high_index: Data.Integer(),
-  agreed_low_hash: H32Schema,
-  operator_high_hash: H32Schema,
-  challenger_high_hash: H32Schema,
-  round: Data.Integer(),
-  turn_started_at: Data.Integer(),
-  operator_clock_ms: Data.Integer(),
-  challenger_clock_ms: Data.Integer(),
-  turn: ValidationDisputeTurnSchema,
-});
-
-export type ValidationDispute = Data.Static<typeof ValidationDisputeSchema>;
-
-export const ValidationDispute = asDataType<ValidationDispute>(
-  ValidationDisputeSchema,
-);
-
-export const ValidationDisputeStateSchema = Data.Object({
-  challenged_header_hash: Data.Bytes({ minLength: 28, maxLength: 28 }),
-  dispute: ValidationDisputeSchema,
-});
-
-export type ValidationDisputeState = Data.Static<
-  typeof ValidationDisputeStateSchema
->;
-
-export const ValidationDisputeState = asDataType<ValidationDisputeState>(
-  ValidationDisputeStateSchema,
-);
-
-export const ValidationDisputeDatumSchema = Data.Object({
-  fraud_prover: PubKeyHashSchema,
-  data: Data.Nullable(ValidationDisputeStateSchema),
-});
-
-export type ValidationDisputeDatum = Data.Static<
-  typeof ValidationDisputeDatumSchema
->;
-
-export const ValidationDisputeDatum = asDataType<ValidationDisputeDatum>(
-  ValidationDisputeDatumSchema,
-);
 
 export const ValidationResolutionStateSchema = Data.Object({
   version: Data.Integer(),

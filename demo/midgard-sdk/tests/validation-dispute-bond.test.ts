@@ -36,27 +36,19 @@ describe("validation-dispute bond schemas", () => {
     const bond: DisputeBond = {
       challenged_header_hash: "aa".repeat(28),
       fraud_prover: "a1".repeat(28),
-      forfeit_after: 1_800_000_000_000n,
+      case_id: "c1".repeat(32),
     };
     const cbor = Data.to(bond, DisputeBond);
     expect(cbor).toBe(
-      "d8799f581caaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa581ca1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a11b000001a3185c5000ff",
+      `d8799f581c${"aa".repeat(28)}581c${"a1".repeat(28)}5820${"c1".repeat(32)}ff`,
     );
     expect(Data.from(cbor, DisputeBond)).toEqual(bond);
   });
 
-  it("encode Refund and Forfeit with the validator's constructor indices", () => {
-    expect(
-      Data.to(
-        {
-          Refund: { fraud_proof_ref_input_index: 1n, output_index: 2n },
-        },
-        DisputeBondSpendRedeemer,
-      ),
-    ).toBe("d8799f0102ff");
-    expect(
-      Data.to({ Forfeit: { output_index: 3n } }, DisputeBondSpendRedeemer),
-    ).toBe("d87a9f03ff");
+  it("encode SettleWithCase as the validator's only constructor", () => {
+    expect(Data.to({ case_input_index: 2n }, DisputeBondSpendRedeemer)).toBe(
+      "d8799f02ff",
+    );
   });
 });
 

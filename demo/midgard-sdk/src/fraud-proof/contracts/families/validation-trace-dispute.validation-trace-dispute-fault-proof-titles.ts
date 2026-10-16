@@ -8,7 +8,12 @@ export const VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES = {
   boundary: "fraud_proofs/validation_trace/boundary_v1.main.spend",
   timeout: "fraud_proofs/validation_trace/timeout_v1.main.spend",
   award: "fraud_proofs/validation_trace/award_v1.main.spend",
+  awardMint: "fraud_proofs/validation_trace/award_v1.main.mint",
   disputeBond: "fraud_proofs/validation_trace/dispute_bond_v1.main.spend",
+  caseSpend: "fraud_proofs/validation_trace/case_v1.main.spend",
+  caseMint: "fraud_proofs/validation_trace/case_v1.main.mint",
+  caseConfig: "fraud_proofs/validation_trace/case_config_v1.main.mint",
+  threadExpiry: "fraud_proofs/validation_trace/thread_expiry_v1.main.withdraw",
   canonicalDecodeItemStages: {
     source:
       "fraud_proofs/validation_trace/canonical_decode_item_source_v1.main.spend",

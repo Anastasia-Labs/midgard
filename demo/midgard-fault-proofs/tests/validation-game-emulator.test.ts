@@ -4,11 +4,8 @@ import { describe, expect, it } from "vitest";
 
 import { expectOnchainRefusal } from "./support/submit-init-emulator-shared.js";
 import {
-  awardFinalizeMove,
-  awardTerminalPaddingMove,
   gameMove,
   prepareResolutionMove,
-  timeoutFinalizeMove,
 } from "./support/validation-game-moves.js";
 import {
   enterResolution,
@@ -22,52 +19,22 @@ import {
   buildMove,
   cap,
   createdAt,
-  fraudProofDatum,
-  fraudProofOutputLovelace,
   type Funding,
-  gameDatum,
-  type GameScene,
   maxRangeMs,
   type Move,
   moveWindow,
+  seededIdentity,
   seedThreads,
   setUpGameScene,
   sideClockMs,
   submitMove,
-  tagOf,
+  threadDatum,
   threadLovelace,
-  threadPays,
   walletPays,
 } from "./support/validation-game-scene.js";
-import {
-  divergentTraces,
-  neitherTerminalPaddingTraces,
-  openGame,
-  operatorTerminalPaddingTraces,
-  terminalPaddingTraces,
-} from "./support/validation-game-traces.js";
+import { divergentTraces, openGame } from "./support/validation-game-traces.js";
 
 const lovelaceOf = (utxo: UTxO) => BigInt(utxo.assets.lovelace ?? 0n);
-
-/** The finalize outputs: the remainder to the prover, then the fraud proof. */
-const expectConviction = async (
-  scene: GameScene,
-  hash: string,
-  convicted: UTxO,
-  fee: bigint,
-) => {
-  const remainder = await createdAt(scene, hash, 0);
-  const fraudProof = await createdAt(scene, hash, 1);
-  expect(remainder.address).toBe(scene.proverAddress);
-  expect(remainder.datum).toBe(tagOf(convicted));
-  expect(lovelaceOf(remainder)).toBe(
-    lovelaceOf(convicted) - fraudProofOutputLovelace - fee,
-  );
-  expect(fraudProof.address).toBe(scene.fraudProofAddress);
-  expect(fraudProof.datum).toBe(fraudProofDatum(scene));
-  expect(fraudProof.assets[scene.fraudProofUnit]).toBe(1n);
-  expect(lovelaceOf(fraudProof)).toBe(fraudProofOutputLovelace);
-};
 
 describe("validation game on the emulator", () => {
   it("lets a third party make both reveals, each paying a capped fee from the thread", async () => {
@@ -77,7 +44,9 @@ describe("validation game on the emulator", () => {
     const revealed = await reveal(scene, traces, opened);
     expect(revealed.dispute.turn.type).toBe("awaitingChallenger");
     expect(revealed.utxo.address).toBe(scene.game.address);
-    expect(revealed.utxo.datum).toBe(gameDatum(scene, revealed.dispute));
+    expect(revealed.utxo.datum).toBe(
+      threadDatum(scene, revealed.identity, revealed.dispute),
+    );
     expect(lovelaceOf(revealed.utxo)).toBe(threadLovelace - cap);
     const ready = await reveal(scene, traces, revealed);
     expect(ready.dispute.turn.type).toBe("readyForOneStep");
@@ -91,13 +60,7 @@ describe("validation game on the emulator", () => {
     const at = (funding: Funding) => {
       const from = scene.emulator.now();
       const { action, next } = nextReveal(traces, opened.dispute, from);
-      return gameMove(
-        scene,
-        opened.utxo,
-        action,
-        next,
-        options(from, { funding }),
-      );
+      return gameMove(scene, opened, action, next, options(from, { funding }));
     };
     await expectOnchainRefusal(() =>
       buildMove(scene, at({ kind: "thread", fee: cap + 1n })),
@@ -124,13 +87,14 @@ describe("validation game on the emulator", () => {
     const enteredHash = await submitMove(scene, entered.move);
     const boundary = await createdAt(scene, enteredHash, 0);
     expect(boundary.address).toBe(scene.boundary.address);
-    expect(boundary.datum).toBe(gameDatum(scene, entered.next));
+    expect(boundary.datum).toBe(
+      threadDatum(scene, ready.identity, entered.next),
+    );
 
     const prepare = (signed: boolean) =>
       prepareResolutionMove(
         scene,
-        boundary,
-        entered.next,
+        { ...ready, utxo: boundary, dispute: entered.next },
         traces.agreedLowState,
         options(scene.emulator.now(), { signed }),
       );
@@ -141,93 +105,14 @@ describe("validation game on the emulator", () => {
     expect(resolver.datum).toBe(prepare(true).outputs[0]!.datum);
   });
 
-  it("awards terminal padding only with the fraud prover's signature, and anyone finalizes the award in full", async () => {
-    const scene = await setUpGameScene();
-    const traces = terminalPaddingTraces();
-    const ready = await playToOneStep(
-      scene,
-      traces,
-      await openThread(scene, traces),
-    );
-    const entered = enterResolution(scene, ready, { signed: true });
-    const boundary = await createdAt(
-      scene,
-      await submitMove(scene, entered.move),
-      0,
-    );
-    const award = (signed: boolean) =>
-      awardTerminalPaddingMove(
-        scene,
-        boundary,
-        traces.agreedLowState,
-        options(scene.emulator.now(), { signed }),
-      );
-    await expectOnchainRefusal(() => buildMove(scene, award(false)));
-    const awarded = await createdAt(
-      scene,
-      await submitMove(scene, award(true)),
-      0,
-    );
-    expect(awarded.address).toBe(scene.award.address);
-
-    // Beside a wallet input, the prover's remainder may not come up short.
-    await expectOnchainRefusal(() =>
-      buildMove(
-        scene,
-        awardFinalizeMove(
-          scene,
-          awarded,
-          { kind: "wallet", skim: 1n },
-          scene.emulator.now(),
-        ),
-      ),
-    );
-    const finalizeHash = await submitMove(
-      scene,
-      awardFinalizeMove(scene, awarded, threadPays, scene.emulator.now()),
-    );
-    await expectConviction(scene, finalizeHash, awarded, cap);
-  });
-
-  it("refuses the padding award when the challenger's step after the agreed Terminal state is not that state", async () => {
-    for (const traces of [
-      operatorTerminalPaddingTraces(),
-      neitherTerminalPaddingTraces(),
-    ]) {
-      const scene = await setUpGameScene();
-      const ready = await playToOneStep(
-        scene,
-        traces,
-        await openThread(scene, traces),
-      );
-      const entered = enterResolution(scene, ready, { signed: true });
-      const boundary = await createdAt(
-        scene,
-        await submitMove(scene, entered.move),
-        0,
-      );
-      await expectOnchainRefusal(() =>
-        buildMove(
-          scene,
-          awardTerminalPaddingMove(
-            scene,
-            boundary,
-            traces.agreedLowState,
-            options(scene.emulator.now(), { signed: true }),
-          ),
-        ),
-      );
-    }
-  });
-
-  it("refuses a challenger timeout until the operator's clock has run out, then anyone finalizes it for at most the cap", async () => {
+  it("refuses a challenger timeout until the operator's clock has run out, then lets anyone hand the thread to the timeout", async () => {
     const scene = await setUpGameScene();
     const traces = divergentTraces();
     const opened = await openThread(scene, traces);
     const toTimeout = (from: number) =>
       gameMove(
         scene,
-        opened.utxo,
+        opened,
         { kind: "EnterChallengerTimeout" },
         opened.dispute,
         options(from),
@@ -246,24 +131,9 @@ describe("validation game on the emulator", () => {
       0,
     );
     expect(timedOut.address).toBe(scene.timeout.address);
-    expect(timedOut.datum).toBe(gameDatum(scene, opened.dispute));
-
-    await expectOnchainRefusal(() =>
-      buildMove(
-        scene,
-        timeoutFinalizeMove(
-          scene,
-          timedOut,
-          { kind: "thread", fee: cap + 1n },
-          scene.emulator.now(),
-        ),
-      ),
+    expect(timedOut.datum).toBe(
+      threadDatum(scene, opened.identity, opened.dispute),
     );
-    const finalizeHash = await submitMove(
-      scene,
-      timeoutFinalizeMove(scene, timedOut, threadPays, scene.emulator.now()),
-    );
-    await expectConviction(scene, finalizeHash, timedOut, cap);
   });
 
   it("charges a long gap inside the clock to the mover, exactly, and convicts no one", async () => {
@@ -276,7 +146,7 @@ describe("validation game on the emulator", () => {
     const { action, next } = nextReveal(traces, opened.dispute, from);
     expect(next.operatorClockMs).toBe(30_000);
     const move = (dispute: MidgardValidationDispute) =>
-      gameMove(scene, opened.utxo, action, dispute, options(from));
+      gameMove(scene, opened, action, dispute, options(from));
     await expectOnchainRefusal(() =>
       buildMove(scene, move({ ...next, operatorClockMs: 29_999 })),
     );
@@ -306,7 +176,7 @@ describe("validation game on the emulator", () => {
         scene,
         gameMove(
           scene,
-          revealed.utxo,
+          revealed,
           action,
           { ...next, challengerClockMs: sideClockMs - 1 },
           options(early),
@@ -315,7 +185,7 @@ describe("validation game on the emulator", () => {
     );
     await submitMove(
       scene,
-      gameMove(scene, revealed.utxo, action, next, options(early)),
+      gameMove(scene, revealed, action, next, options(early)),
     );
   });
 
@@ -332,7 +202,7 @@ describe("validation game on the emulator", () => {
     );
     await submitMove(
       scene,
-      gameMove(scene, revealed.utxo, action, next, options(from)),
+      gameMove(scene, revealed, action, next, options(from)),
     );
   });
 
@@ -347,7 +217,7 @@ describe("validation game on the emulator", () => {
         scene,
         gameMove(
           scene,
-          opened.utxo,
+          opened,
           action,
           next,
           options(from, { width: maxRangeMs + 1000 }),
@@ -356,36 +226,31 @@ describe("validation game on the emulator", () => {
     );
     await submitMove(
       scene,
-      gameMove(scene, opened.utxo, action, next, options(from)),
+      gameMove(scene, opened, action, next, options(from)),
     );
   });
 
-  it("moves two threads under one CT name only when each redeemer names its own successor", async () => {
+  it("moves two threads in one transaction only when each redeemer names its own successor", async () => {
     const scene = await setUpGameScene();
-    const first = divergentTraces();
-    const second = terminalPaddingTraces();
+    const traces = divergentTraces();
     const now = scene.emulator.now();
-    const disputes = [openGame(first, now), openGame(second, now)] as const;
-    const utxos = await seedThreads(
-      scene,
-      scene.game.address,
-      disputes.map((dispute) => gameDatum(scene, dispute)),
-    );
+    const threads = ([0, 1] as const).map((index) => ({
+      identity: seededIdentity(now, index),
+      dispute: openGame(traces, now),
+    }));
+    const utxos = await seedThreads(scene, scene.game.address, threads);
     const from = scene.emulator.now();
-    const reveals = [
-      nextReveal(first, disputes[0], from),
-      nextReveal(second, disputes[1], from),
-    ];
-    expect(gameDatum(scene, reveals[0]!.next)).not.toBe(
-      gameDatum(scene, reveals[1]!.next),
+    const reveals = threads.map(({ dispute }) =>
+      nextReveal(traces, dispute, from),
     );
-    // Both successors carry the same CT unit, so only the redeemer's output
-    // index tells them apart.
+    const successor = (index: 0 | 1) =>
+      threadDatum(scene, threads[index]!.identity, reveals[index]!.next);
+    expect(successor(0)).not.toBe(successor(1));
     const both = (outputIndices: readonly [bigint, bigint]): Move => {
       const moves = ([0, 1] as const).map((index) =>
         gameMove(
           scene,
-          utxos[index]!,
+          { utxo: utxos[index]!, identity: threads[index]!.identity },
           reveals[index]!.action,
           reveals[index]!.next,
           {
@@ -402,11 +267,7 @@ describe("validation game on the emulator", () => {
     };
     await expectOnchainRefusal(() => buildMove(scene, both([1n, 0n])));
     const hash = await submitMove(scene, both([0n, 1n]));
-    expect((await createdAt(scene, hash, 0)).datum).toBe(
-      gameDatum(scene, reveals[0]!.next),
-    );
-    expect((await createdAt(scene, hash, 1)).datum).toBe(
-      gameDatum(scene, reveals[1]!.next),
-    );
+    expect((await createdAt(scene, hash, 0)).datum).toBe(successor(0));
+    expect((await createdAt(scene, hash, 1)).datum).toBe(successor(1));
   });
 });

@@ -1,4 +1,5 @@
 import type { L1SlotConfig } from "@al-ft/midgard-core/l1-slot-config";
+import type { OutRefLike } from "@al-ft/midgard-core/out-ref";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Network } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
@@ -50,6 +51,7 @@ export const buildRealFaultProofContracts = (
   eventHistoryBounds: SDK.EventHistoryPayloadBounds,
   l1SlotConfig: L1SlotConfig,
   disputeBondLovelace: bigint,
+  caseConfigInitializationNonce: OutRefLike,
 ): Effect.Effect<SDK.FaultProofContractChains, Error> =>
   Effect.gen(function* () {
     const blueprint = yield* loadRealBlueprint();
@@ -57,6 +59,7 @@ export const buildRealFaultProofContracts = (
       eventHistoryBounds,
       l1SlotConfig,
       disputeBondLovelace,
+      caseConfigInitializationNonce,
       blueprint,
       network,
       hubOraclePolicyId: contracts.hubOracle.policyId,

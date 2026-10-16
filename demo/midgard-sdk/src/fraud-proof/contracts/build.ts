@@ -3,6 +3,7 @@
  */
 
 import { type L1SlotConfig } from "@al-ft/midgard-core/l1-slot-config";
+import { type OutRefLike } from "@al-ft/midgard-core/out-ref";
 import { Effect } from "effect";
 
 import { type FraudProofs } from "../../common.js";
@@ -79,6 +80,8 @@ export const buildFaultProofContracts = (
      * A parameter of the source validator.
      */
     readonly disputeBondLovelace: bigint;
+    /** The hub oracle nonce: the case configuration policy's one-shot. */
+    readonly caseConfigInitializationNonce: OutRefLike;
   },
 ): Effect.Effect<FaultProofContracts, Error> =>
   Effect.gen(function* () {

@@ -205,16 +205,6 @@ const deepTraces = (
   };
 };
 
-/**
- * The deepest terminal padding: 2^depth - 1 steps, the operator reaching a
- * Terminal state at the boundary and stepping on past it, the challenger
- * padding with that Terminal state to the end.
- */
-export const deepTerminalPaddingTraces = (depth: number): DeepGameTraces => {
-  const terminal = machineState(2, "terminal");
-  return deepTraces(depth, machineState(3, "cek"), terminal, terminal);
-};
-
 /** The sides agree up to the boundary inside CEK and part right after it. */
 export const deepDivergentTraces = (depth: number): DeepGameTraces =>
   deepTraces(

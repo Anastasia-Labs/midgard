@@ -149,6 +149,14 @@ export const makeAlwaysSucceedsService: Effect.Effect<SDK.MidgardValidators> =
     const referenceInputNoIdx = nonExistentInputNoIndex;
     const invalidSignature = invalidRange;
 
+    // The case and the award mint as well as spend. The compact blueprint has
+    // no dedicated stub for either, so each pairs the `transition_trace`
+    // spend stub with the always-succeeds fraud-proof mint.
+    const validationTraceAuthenticated: SDK.AuthenticatedValidator = {
+      ...fraudProof,
+      ...transitionTrace,
+    };
+
     const validationTraceSemanticResolvers = Array.from(
       { length: 83 },
       () => transitionTrace,
@@ -272,7 +280,11 @@ export const makeAlwaysSucceedsService: Effect.Effect<SDK.MidgardValidators> =
       game: validationTraceDispute.game,
       boundary: validationTraceDispute.boundary,
       timeout: validationTraceDispute.timeout,
-      award: validationTraceDispute.award,
+      award: validationTraceAuthenticated,
+      disputeBond: transitionTrace,
+      case: validationTraceAuthenticated,
+      caseConfig: fraudProof,
+      threadExpiry: stateQueueYield,
       proofItem: transitionTrace,
       canonicalDecodeItemStages: validationTraceCanonicalDecodeItemStages,
       scriptSourcesStageOneRedeemerStages:

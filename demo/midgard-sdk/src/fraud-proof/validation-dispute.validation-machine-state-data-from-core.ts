@@ -147,60 +147,6 @@ export type ValidationCekMaterialRoute = Data.Static<
 export const ValidationCekMaterialRoute =
   asDataType<ValidationCekMaterialRoute>(ValidationCekMaterialRouteSchema);
 
-export const ValidationAwardArgsSchema = Data.Object({
-  input_index: Data.Integer(),
-  output_index: Data.Integer(),
-  fraud_proof_mint_redeemer_index: Data.Integer(),
-});
-
-export type ValidationAwardArgs = Data.Static<typeof ValidationAwardArgsSchema>;
-
-export const ValidationAwardArgs = asDataType<ValidationAwardArgs>(
-  ValidationAwardArgsSchema,
-);
-
-export const ValidationAwardSpendRedeemerSchema = Data.Enum([
-  cancelActionSchema,
-  Data.Object({
-    Continue: Data.Tuple([ValidationAwardArgsSchema]),
-  }),
-]);
-
-export type ValidationAwardSpendRedeemer = Data.Static<
-  typeof ValidationAwardSpendRedeemerSchema
->;
-
-export const ValidationAwardSpendRedeemer =
-  asDataType<ValidationAwardSpendRedeemer>(ValidationAwardSpendRedeemerSchema);
-
-export const ValidationTimeoutActionSchema = Data.Object({
-  input_index: Data.Integer(),
-  output_index: Data.Integer(),
-  fraud_proof_mint_redeemer_index: Data.Integer(),
-});
-
-export type ValidationTimeoutAction = Data.Static<
-  typeof ValidationTimeoutActionSchema
->;
-
-export const ValidationTimeoutAction = asDataType<ValidationTimeoutAction>(
-  ValidationTimeoutActionSchema,
-);
-
-export const ValidationTimeoutSpendRedeemerSchema = Data.Enum([
-  cancelActionSchema,
-  Data.Object({ Continue: Data.Tuple([ValidationTimeoutActionSchema]) }),
-]);
-
-export type ValidationTimeoutSpendRedeemer = Data.Static<
-  typeof ValidationTimeoutSpendRedeemerSchema
->;
-
-export const ValidationTimeoutSpendRedeemer =
-  asDataType<ValidationTimeoutSpendRedeemer>(
-    ValidationTimeoutSpendRedeemerSchema,
-  );
-
 export const bytesHex = (bytes: Uint8Array): string =>
   Buffer.from(bytes).toString("hex");
 

@@ -160,10 +160,27 @@ const ABI_MAPPINGS = [
     "ValidationTraceProofSchema",
     "midgard/validation_trace_v1/ValidationTraceProof",
   ],
+  ["CaseSchema", "midgard/validation_case_v1/CaseV1"],
+  ["CaseThreadSchema", "midgard/validation_case_v1/CaseThreadV1"],
+  ["ThreadHeaderSchema", "midgard/validation_case_v1/ThreadHeaderV1"],
+  ["CaseRedeemerSchema", "midgard/validation_case_v1/CaseRedeemerV1"],
+  ["CaseThreadDatumSchema", "fraud_proofs/validation_trace/timeout_v1/Datum"],
   [
-    "ValidationDisputeSchema",
-    "midgard/validation_dispute_v1/ValidationDisputeV1",
+    "ValidationTimeoutSpendRedeemerSchema",
+    "fraud_proofs/validation_trace/timeout_v1/SpendRedeemer",
   ],
+  ["ValidationDisputeTurnSchema", "midgard/validation_dispute_v1/DisputeTurn"],
+  ["DisputeWinnerSchema", "midgard/validation_dispute_v1/DisputeWinner"],
+  ["ReceiptRedeemerSchema", "midgard/validation_award_v1/ReceiptRedeemerV1"],
+  [
+    "ValidationAwardSpendRedeemerSchema",
+    "midgard/validation_award_v1/SpendRedeemer",
+  ],
+  ["SlashingReasonSchema", "midgard/operator_directory/SlashingReason"],
+  ["SlashingArgumentsSchema", "midgard/operator_directory/SlashingArguments"],
+  // `CaseConfigV1` and `LostDefenseReceiptV1` have no row: both are inline
+  // datums that no validator names in its ABI, so the blueprint publishes no
+  // definition for them.
   [
     "ValidationSourceMembershipSchema",
     "midgard/validation_claim_v1/ValidationSourceMembershipV1",

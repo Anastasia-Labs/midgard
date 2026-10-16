@@ -5,7 +5,7 @@ import {
 import { Constr, type Data, type Network } from "@lucid-evolution/lucid";
 
 import {
-  applyBlueprintParams,
+  applyThreadHolderParams,
   type FaultProofBlueprint,
   makeSpendingValidator,
 } from "./blueprint.js";
@@ -95,11 +95,17 @@ export const buildCekContextTail = (
   ctPolicy: string,
   fieldPreimagePolicy: string,
   l1SlotConfig: L1SlotConfig,
+  threadExpiryHash: string,
 ) => {
   const build = (key: keyof typeof CEK_CONTEXT_STAGE_TITLES, params: Data[]) =>
     makeSpendingValidator(
       network,
-      applyBlueprintParams(blueprint, CEK_CONTEXT_STAGE_TITLES[key], params),
+      applyThreadHolderParams(
+        blueprint,
+        CEK_CONTEXT_STAGE_TITLES[key],
+        params,
+        threadExpiryHash,
+      ),
     );
   const settle = build("settle", [awardHash, ctPolicy]);
   const terminal = (key: keyof typeof CEK_CONTEXT_STAGE_TITLES) =>
@@ -227,13 +233,16 @@ export const completeCekContextStages = (
   tail: CekContextTail,
   itemEntryHash: string,
   ctPolicy: string,
+  threadExpiryHash: string,
 ) => {
   const itemBind = makeSpendingValidator(
     network,
-    applyBlueprintParams(blueprint, CEK_CONTEXT_STAGE_TITLES.itemBind, [
-      itemEntryHash,
-      ctPolicy,
-    ]),
+    applyThreadHolderParams(
+      blueprint,
+      CEK_CONTEXT_STAGE_TITLES.itemBind,
+      [itemEntryHash, ctPolicy],
+      threadExpiryHash,
+    ),
   );
   const entries = [
     tail.redeemerBegin,
@@ -253,10 +262,12 @@ export const completeCekContextStages = (
   ];
   const control = makeSpendingValidator(
     network,
-    applyBlueprintParams(blueprint, CEK_CONTEXT_STAGE_TITLES.control, [
-      entries.map((stage) => stage.spendingScriptHash),
-      ctPolicy,
-    ]),
+    applyThreadHolderParams(
+      blueprint,
+      CEK_CONTEXT_STAGE_TITLES.control,
+      [entries.map((stage) => stage.spendingScriptHash), ctPolicy],
+      threadExpiryHash,
+    ),
   );
   return { ...tail, itemBind, control };
 };

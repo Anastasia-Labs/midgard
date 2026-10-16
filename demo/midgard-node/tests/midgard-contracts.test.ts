@@ -149,7 +149,9 @@ describe("midgard contracts registry", () => {
       // queue's proof reference and exemption, slashing a node above the bond,
       // the timeout's directory split, output-scan size, the case open guard,
       // the defender's one-step timeout, the terminal fixed point, the deleted
-      // ledger-delta phase and claim mode, and the phase-11 routing.
+      // ledger-delta phase and claim mode, the phase-11 routing, and the
+      // validation case (its configuration token, thread expiry, case-keyed
+      // award and receipt policy, and the dispute bond's manifest entries).
       expect
         .soft(
           createHash("sha256")
@@ -175,7 +177,9 @@ describe("midgard contracts registry", () => {
       // the fault-proof scripts the state queue is applied over (the retired
       // post-UTxO minimum-Ada mode, streamed Data verdicts, exact rejection
       // reason, optimisations), shared bounty routing, proof ref, exemption,
-      // slashing above the bond, and the timeout's operator-directory split.
+      // slashing above the bond, the timeout's operator-directory split, and
+      // the validation case (the operator directories take its receipt
+      // policy).
       expect
         .soft(
           createHash("sha256")
@@ -188,7 +192,7 @@ describe("midgard contracts registry", () => {
             .digest("hex"),
         )
         .toBe(
-          "d20a073a4842c3101835f2b160775ec41e8205a03780c559c75cf054866549eb",
+          "7e59589e49d99870153c5516a5413d48c0f9fe04849eb7d86d0a7d8909a40c2d",
         );
       // The always-succeeds stand-in is a real hazard here: it satisfies every
       // spend, so a role that silently kept it would pass any behavioural test

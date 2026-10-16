@@ -1,13 +1,12 @@
 /**
- * The validation game at the consensus maximum: a 2^32 - 1 step trace, all 32
- * bisection rounds, then resolution, the award and the bond. Each depth runs
- * as its own case so a measurement can start small and double.
+ * The validation case at the consensus maximum: a 2^32 - 1 step trace, a
+ * defense, every bisection round, then the timeout, the thread close and the
+ * case close with its bond. Each depth runs as its own case so a measurement
+ * can start small and double.
  *
- * Segments not yet available run through seams: the game is seeded at its
- * VerifySource successor (no TypeScript claim builder before L-N I5), the
- * one-step resolver chain is replaced by terminal padding (the award path),
- * and the fraud record is read by reference straight from the finalize
- * output (record-by-reference lands with the state-queue change).
+ * The case opens through the VerifySource seam of the case scene. The
+ * one-step resolver chain is not on this base, so a conviction here comes
+ * from a defender that lets its clock run out.
  */
 import {
   buildMidgardValidationTraceTree,
@@ -16,46 +15,49 @@ import {
   MIDGARD_VALIDATION_DISPUTE_MAX_VALIDITY_RANGE_MS,
 } from "@al-ft/midgard-core";
 import { SELECTED_DEPLOYMENT_PROFILE } from "@al-ft/midgard-core/deployment-profile";
-import { DisputeBondSpendRedeemer } from "@al-ft/midgard-sdk";
-import { Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
 import { expectOnchainRefusal } from "./support/submit-init-emulator-shared.js";
 import {
+  buildCloseCase,
+  buildCloseTimedOutThread,
+  closeTimedOutThread,
+} from "./support/validation-case-close.js";
+import { caseUnit, fraudProofUnit } from "./support/validation-case-moves.js";
+import {
+  bondLovelace,
+  defenseDeadline,
+  submitSigned,
+  treasuryAddress,
+} from "./support/validation-case-scene.js";
+import {
   deepDivergentTraces,
-  deepTerminalPaddingTraces,
   sparseTrace,
 } from "./support/validation-game-deep-traces.js";
 import {
-  bondLovelace,
-  bondSpend,
+  beforeDefenderReveal,
   lovelaceOf,
+  type MaxShape,
   playReveals,
   report,
   setUpMaxShape,
   spendWholeClock,
-  submitBuilt,
-  threadLovelace,
-  treasuryAddress,
 } from "./support/validation-game-max-shape-scene.js";
+import { gameMove } from "./support/validation-game-moves.js";
 import {
-  awardFinalizeMove,
-  awardTerminalPaddingMove,
-  gameMove,
-} from "./support/validation-game-moves.js";
-import {
-  enterResolution,
   nextReveal,
   options,
+  passDeadline,
+  passOperatorDeadline,
+  timeoutMove,
 } from "./support/validation-game-play.js";
 import {
   buildMove,
   cap,
   createdAt,
-  fraudProofOutputLovelace,
-  gameDatum,
   type Move,
   tagOf,
+  type Thread,
 } from "./support/validation-game-scene.js";
 import {
   machineState,
@@ -64,6 +66,30 @@ import {
 
 const maxBisectionRounds =
   SELECTED_DEPLOYMENT_PROFILE.limits.max_bisection_rounds;
+
+/** The thread handed to the timeout once its side to move ran out. */
+const timeOut = async (shape: MaxShape, thread: Thread) => {
+  const { hash, budget } = await submitSigned(
+    shape.world,
+    await buildMove(shape.world, timeoutMove(shape.world, thread)),
+  );
+  return {
+    thread: { ...thread, utxo: await createdAt(shape.world, hash, 0) },
+    budget,
+  };
+};
+
+/** The thread closed into its case, the thread paying the capped fee. */
+const closeThreadAlone = async (shape: MaxShape, thread: Thread) => {
+  const { built, next } = buildCloseTimedOutThread(
+    shape.world,
+    shape.opened,
+    thread,
+    { lone: true, fee: cap },
+  );
+  const { hash, budget } = await submitSigned(shape.world, await built);
+  return { opened: await next(hash), budget };
+};
 
 describe("sparse trace", () => {
   it("commits exactly what the core trace tree commits, for every index", () => {
@@ -101,99 +127,67 @@ describe("sparse trace", () => {
   });
 });
 
-describe.each([4, 8, 16, 32])("validation game at trace depth %i", (depth) => {
-  it(`depth ${depth} convicts terminal padding after every bisection round, and refunds the bond`, async () => {
-    const traces = deepTerminalPaddingTraces(depth);
-    const scene = await setUpMaxShape(traces);
+describe.each([4, 8, 16, 32])("validation case at trace depth %i", (depth) => {
+  it(`depth ${depth} convicts a defender that stops at its last turn, and refunds the bond`, async () => {
+    const traces = deepDivergentTraces(depth);
+    const shape = await setUpMaxShape(traces);
+    const { world } = shape;
     expect(traces.stepCount).toBe(2 ** depth - 1);
+    report("verify-source", depth, shape.budgets.open);
+    report("defend", depth, shape.budgets.defend);
 
-    const { thread: ready, heaviest } = await playReveals(
-      scene,
+    const { thread: last, heaviest } = await playReveals(
+      world,
       traces,
-      scene.thread,
-      () => false,
+      shape.thread,
+      beforeDefenderReveal(depth),
     );
-    expect(ready.dispute.turn.type).toBe("readyForOneStep");
-    expect(ready.dispute.round).toBe(depth);
-    expect(ready.dispute.lowIndex).toBe(traces.boundary);
-    expect(ready.dispute.highIndex).toBe(traces.boundary + 1);
+    expect(last.dispute.turn.type).toBe("awaitingOperator");
     report("reveal", depth, heaviest);
 
-    // EnterResolution is the prover's: the unsigned move is refused.
+    // The defender's clock has not run out yet: the timeout is refused.
     await expectOnchainRefusal(() =>
-      buildMove(scene, enterResolution(scene, ready, { signed: false }).move),
+      buildMove(world, timeoutMove(world, last)),
     );
-    const entered = enterResolution(scene, ready, { signed: true });
-    const entry = await submitBuilt(
-      scene,
-      await buildMove(scene, entered.move),
-      true,
-    );
-    report("enter-resolution", depth, entry.budget);
-    const boundary = await createdAt(scene, entry.hash, 0);
+    passOperatorDeadline(world, last);
+    const timedOut = await timeOut(shape, last);
+    report("enter-timeout", depth, timedOut.budget);
 
-    const award = await submitBuilt(
-      scene,
-      await buildMove(
-        scene,
-        awardTerminalPaddingMove(
-          scene,
-          boundary,
-          traces.agreedLowState,
-          options(scene.emulator.now(), { signed: true }),
-        ),
-      ),
-      true,
-    );
-    report("award-terminal-padding", depth, award.budget);
-    const awarded = await createdAt(scene, award.hash, 0);
-    // Every reveal, the entry and the award came out of the reserve.
-    const movesPaid = BigInt(2 * depth + 2);
-    expect(lovelaceOf(awarded)).toBe(threadLovelace - movesPaid * cap);
+    const closed = await closeThreadAlone(shape, timedOut.thread);
+    report("thread-close-challenger-wins", depth, closed.budget);
+    expect(closed.opened.datum.open_threads).toBe(0n);
 
-    const finalize = await submitBuilt(
-      scene,
-      await buildMove(
-        scene,
-        awardFinalizeMove(
-          scene,
-          awarded,
-          { kind: "thread" },
-          scene.emulator.now(),
-        ),
-      ),
-      false,
+    passDeadline(
+      world,
+      defenseDeadline(Number(closed.opened.datum.started_at)),
     );
-    report("award-finalize", depth, finalize.budget);
-    const record = await createdAt(scene, finalize.hash, 1);
-    expect(record.assets[scene.fraudProofUnit]).toBe(1n);
-    expect(lovelaceOf(record)).toBe(fraudProofOutputLovelace);
-
-    const refund = Data.to(
-      { Refund: { fraud_proof_ref_input_index: 0n, output_index: 0n } },
-      DisputeBondSpendRedeemer,
+    const close = await submitSigned(
+      world,
+      await buildCloseCase(world, closed.opened),
     );
-    await submitBuilt(
-      scene,
-      await bondSpend(scene, refund, scene.proverAddress, [record]),
-      false,
+    report("case-close-convicted", depth, close.budget);
+    const [record] = await world.lucid.utxosAtWithUnit(
+      world.fraudProofAddress,
+      fraudProofUnit(world, closed.opened),
     );
-    const paid = (await scene.lucid.utxosAt(scene.proverAddress)).filter(
-      (utxo) => utxo.datum === tagOf(scene.bond),
+    expect(lovelaceOf(record!)).toBeGreaterThan(0n);
+    const refund = (await world.lucid.utxosAt(world.proverAddress)).filter(
+      (utxo) => utxo.datum === tagOf(closed.opened.bond),
     );
-    expect(paid.map(lovelaceOf)).toEqual([bondLovelace - cap]);
+    expect(refund.map(lovelaceOf)).toEqual([bondLovelace]);
   });
 
-  it(`depth ${depth} never convicts an honest operator whose challenger stops, and forfeits the bond`, async () => {
+  it(`depth ${depth} never convicts a defender whose challenger stops, and forfeits the bond`, async () => {
     const traces = deepDivergentTraces(depth);
-    const scene = await setUpMaxShape(traces);
+    const shape = await setUpMaxShape(traces);
+    const { world } = shape;
 
     // Play to the challenger's last reveal and stop there.
     const { thread } = await playReveals(
-      scene,
+      world,
       traces,
-      scene.thread,
-      (next) => next.turn.type === "readyForOneStep",
+      shape.thread,
+      (_, next) => next.turn.type === "readyForOneStep",
     );
     expect(thread.dispute.turn.type).toBe("awaitingChallenger");
     expect(thread.dispute.round).toBe(depth - 1);
@@ -207,8 +201,8 @@ describe.each([4, 8, 16, 32])("validation game at trace depth %i", (depth) => {
       top[0] = top[0]! ^ 1;
       if (corrupt) siblings[siblings.length - 1] = top;
       return gameMove(
-        scene,
-        thread.utxo,
+        world,
+        thread,
         { kind: "RevealChallenger", proof: { ...action.proof, siblings } },
         next,
         options(from),
@@ -216,141 +210,88 @@ describe.each([4, 8, 16, 32])("validation game at trace depth %i", (depth) => {
     };
     // The honest reveal is accepted; the same reveal with one sibling of
     // the proof changed is refused at the proof check.
-    await buildMove(scene, challengerMove(scene.emulator.now(), false));
+    await buildMove(world, challengerMove(world.emulator.now(), false));
     await expectOnchainRefusal(() =>
-      buildMove(scene, challengerMove(scene.emulator.now(), true)),
+      buildMove(world, challengerMove(world.emulator.now(), true)),
     );
 
-    // The challenger lets its clock run out. (A late reveal has no valid
-    // successor; the overdraw refusal is pinned in validation-dispute-v1.test.ak.)
-    const deadline =
-      thread.dispute.turnStartedAt + thread.dispute.challengerClockMs;
-    // The turn starts at an upper bound ending in 999 ms: wait whole slots.
-    scene.emulator.awaitSlot(
-      Math.ceil((deadline - scene.emulator.now()) / 1000) + 1,
+    // The challenger lets its clock run out; the thread closes as the
+    // defender's win.
+    passDeadline(
+      world,
+      thread.dispute.turnStartedAt + thread.dispute.challengerClockMs,
     );
-    // A challenger timeout convicts only an operator whose clock ran out.
-    await expectOnchainRefusal(() =>
-      buildMove(
-        scene,
-        gameMove(
-          scene,
-          thread.utxo,
-          { kind: "EnterChallengerTimeout" },
-          thread.dispute,
-          options(scene.emulator.now()),
-        ),
-      ),
+    const timedOut = await timeOut(shape, thread);
+    const closed = await closeTimedOutThread(
+      world,
+      shape.opened,
+      timedOut.thread,
     );
+    report("thread-close-defender-wins", depth, closed.budget);
+    expect(closed.opened.datum.defender_won).toBe(true);
 
-    const forfeit = Data.to(
-      { Forfeit: { output_index: 0n } },
-      DisputeBondSpendRedeemer,
+    const close = await submitSigned(
+      world,
+      await buildCloseCase(world, closed.opened),
     );
-    await expectOnchainRefusal(() =>
-      bondSpend(scene, forfeit, treasuryAddress(), [], scene.forfeitAfter),
+    report("case-close-defender-won", depth, close.budget);
+    const forfeited = (await world.lucid.utxosAt(treasuryAddress())).filter(
+      (utxo) => utxo.datum === tagOf(closed.opened.bond),
     );
-    scene.emulator.awaitSlot(
-      Math.ceil((scene.forfeitAfter - scene.emulator.now()) / 1000) + 20,
-    );
-    await submitBuilt(
-      scene,
-      await bondSpend(
-        scene,
-        forfeit,
-        treasuryAddress(),
-        [],
-        scene.emulator.now(),
+    expect(forfeited.map(lovelaceOf)).toEqual([bondLovelace]);
+    expect(
+      await world.lucid.utxosAtWithUnit(
+        world.caseValidator.address,
+        caseUnit(world, closed.opened),
       ),
-      false,
-    );
-    const paid = await scene.lucid.utxosAt(treasuryAddress());
-    expect(paid.map(lovelaceOf)).toEqual([bondLovelace - cap]);
-    // The operator's thread is still where the game left it.
-    const [still] = await scene.lucid.utxosByOutRef([thread.utxo]);
-    expect(still?.datum).toBe(gameDatum(scene, thread.dispute));
+    ).toEqual([]);
   });
 });
 
 /**
- * The latest a validation-trace conviction can land: a game at the maximum
- * depth where each side spends its whole clock. VerifySource opens a game
- * only while the maximum dispute duration still fits before the challenged
- * block matures, so a conviction inside that duration lands no later than
- * the block's maturity, the earliest instant its committing operator's bond
- * can unlock. The selected testing profile is non-interactive (its maturity
- * is shorter than one dispute), so the game is seeded and the bound is
- * measured from its opening.
- *
- * The rest of this timeline, the exempt prunes at the maximum descendant
- * depth and the operator's bond recovery, needs the record-by-reference and
- * prune builders of the state-queue change and a committed block whose
- * operator node carries a bond hold; neither is on this base.
+ * The latest a validation-case conviction can land: a case at the maximum
+ * depth where each side spends its whole clock and the defender then stops.
+ * The case close lands within the maximum dispute duration of the case's
+ * start, so before the defender's bond hold ends.
  */
-describe("validation game at the consensus maximum, with both clocks spent", () => {
-  it("max-depth game with both clocks spent convicts within the maximum dispute duration", async () => {
+describe("validation case at the consensus maximum, with both clocks spent", () => {
+  it("max-depth case with both clocks spent convicts within the maximum dispute duration", async () => {
     const depth = maxBisectionRounds;
-    const traces = deepTerminalPaddingTraces(depth);
-    const scene = await setUpMaxShape(traces);
-    const opened = scene.thread.dispute.turnStartedAt;
+    const traces = deepDivergentTraces(depth);
+    const shape = await setUpMaxShape(traces);
+    const { world } = shape;
+    const startedAt = Number(shape.opened.datum.started_at);
 
-    const { thread: ready } = await playReveals(
-      scene,
+    const { thread: last } = await playReveals(
+      world,
       traces,
-      scene.thread,
-      () => false,
-      spendWholeClock(scene),
+      shape.thread,
+      beforeDefenderReveal(depth),
+      spendWholeClock(world),
     );
-    expect(ready.dispute.round).toBe(depth);
-    // Each side has less than two slots of its clock left.
-    expect(ready.dispute.operatorClockMs).toBeLessThan(2000);
-    expect(ready.dispute.challengerClockMs).toBeLessThan(2000);
-    const gameEnded = ready.dispute.turnStartedAt;
-
-    const entered = enterResolution(scene, ready, { signed: true });
-    const entry = await submitBuilt(
-      scene,
-      await buildMove(scene, entered.move),
-      true,
-    );
-    const boundary = await createdAt(scene, entry.hash, 0);
-    const award = await submitBuilt(
-      scene,
-      await buildMove(
-        scene,
-        awardTerminalPaddingMove(
-          scene,
-          boundary,
-          traces.agreedLowState,
-          options(scene.emulator.now(), { signed: true }),
-        ),
+    passOperatorDeadline(world, last);
+    const timedOut = await timeOut(shape, last);
+    const closed = await closeThreadAlone(shape, timedOut.thread);
+    passDeadline(world, defenseDeadline(startedAt));
+    const closedFrom = world.emulator.now();
+    await submitSigned(world, await buildCloseCase(world, closed.opened));
+    expect(
+      await world.lucid.utxosAtWithUnit(
+        world.fraudProofAddress,
+        fraudProofUnit(world, closed.opened),
       ),
-      true,
-    );
-    const awarded = await createdAt(scene, award.hash, 0);
-    const finalizedFrom = scene.emulator.now();
-    const finalize = await submitBuilt(
-      scene,
-      await buildMove(
-        scene,
-        awardFinalizeMove(scene, awarded, { kind: "thread" }, finalizedFrom),
-      ),
-      false,
-    );
-    const record = await createdAt(scene, finalize.hash, 1);
-    expect(record.assets[scene.fraudProofUnit]).toBe(1n);
+    ).toHaveLength(1);
 
-    // The finalize's validity upper bound: the latest the record can exist.
+    // The case close's validity upper bound: the latest the record can exist.
     const convictedBy =
-      finalizedFrom + MIDGARD_VALIDATION_DISPUTE_MAX_VALIDITY_RANGE_MS - 1;
-    expect(convictedBy - opened).toBeLessThanOrEqual(
+      closedFrom + MIDGARD_VALIDATION_DISPUTE_MAX_VALIDITY_RANGE_MS - 1;
+    expect(convictedBy - startedAt).toBeLessThanOrEqual(
       MIDGARD_VALIDATION_DISPUTE_MAX_DURATION_MS,
     );
     console.log(
-      `max-shape timing depth=${depth} game_ms=${gameEnded - opened} ` +
-        `resolution_ms=${convictedBy - gameEnded} ` +
+      `max-shape timing depth=${depth} case_ms=${convictedBy - startedAt} ` +
         `max_duration_ms=${MIDGARD_VALIDATION_DISPUTE_MAX_DURATION_MS} ` +
-        `slack_ms=${MIDGARD_VALIDATION_DISPUTE_MAX_DURATION_MS - (convictedBy - opened)}`,
+        `slack_ms=${MIDGARD_VALIDATION_DISPUTE_MAX_DURATION_MS - (convictedBy - startedAt)}`,
     );
   });
 });

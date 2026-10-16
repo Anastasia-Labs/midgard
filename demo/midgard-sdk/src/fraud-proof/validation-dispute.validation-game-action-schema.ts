@@ -187,7 +187,10 @@ export const PendingValidationClaimSchema = Data.Object({
   challenged_header_hash: Data.Bytes({ minLength: 28, maxLength: 28 }),
   challenged_header: HeaderSchema,
   claim: ValidationClaimWitnessSchema,
-  challenger_descriptor: ValidationTraceDescriptorSchema,
+  // The challenger's trace root over states `0..step_count`.
+  challenger_root: H32Schema,
+  // S: the challenger's step count.
+  step_count: Data.Integer(),
   // The challenged block's state-queue `block_time`, read at Open.
   // VerifySource's open guard runs from it.
   block_end: Data.Integer(),
@@ -229,7 +232,8 @@ export const ValidationDisputeOpenActionSchema = Data.Object({
   hub_ref_input_index: Data.Integer(),
   state_queue_node_ref_input_index: Data.Integer(),
   claim: ValidationClaimWitnessSchema,
-  challenger_descriptor: ValidationTraceDescriptorSchema,
+  challenger_root: H32Schema,
+  step_count: Data.Integer(),
 });
 
 export type ValidationDisputeOpenAction = Data.Static<
@@ -257,7 +261,12 @@ export const ValidationDisputeOpenSpendRedeemer =
 
 export const ValidationSourceActionSchema = Data.Object({
   input_index: Data.Integer(),
+  // The case output.
   output_index: Data.Integer(),
+  // The challenger's claimed state at its step count S, and its leaf under
+  // the challenger's trace root.
+  challenger_terminal: ValidationMachineStateSchema,
+  challenger_terminal_proof: ValidationTraceProofSchema,
 });
 
 export type ValidationSourceAction = Data.Static<

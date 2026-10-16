@@ -161,6 +161,7 @@ export const registeredContracts = async (harness: Harness) => {
       ...params(),
       l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
       disputeBondLovelace: 10_000_000_000n,
+      caseConfigInitializationNonce: harness.nonceUtxo,
     }),
   );
   expectRegisteredChainParity({

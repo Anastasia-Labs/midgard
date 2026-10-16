@@ -239,6 +239,14 @@ export const DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE =
     "V1 validation-trace boundary": "validationTraceDisputeBoundary",
     "V1 validation-trace timeout": "validationTraceDisputeTimeout",
     "V1 validation-trace award": "validationTraceDisputeAward",
+    "V1 validation-trace award minting": "validationTraceDisputeAwardMint",
+    "V1 validation-trace case": "validationTraceDisputeCase",
+    "V1 validation-trace case minting": "validationTraceDisputeCaseMint",
+    "V1 validation-trace case configuration minting":
+      "validationTraceDisputeCaseConfigMint",
+    "V1 validation-trace thread expiry":
+      "validationTraceDisputeThreadExpiryWithdraw",
+    "V1 validation-trace dispute bond": "validationTraceDisputeBond",
     "V1 validation-trace canonical-decode prepare":
       "validationTraceDisputeCanonicalDecodePrepare",
     "V1 validation-trace canonical-decode empty semantic":

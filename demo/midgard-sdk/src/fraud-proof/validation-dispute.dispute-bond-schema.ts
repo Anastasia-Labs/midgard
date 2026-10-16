@@ -8,40 +8,34 @@ import {
   validatorToScriptHash,
 } from "@lucid-evolution/lucid";
 
-import { PubKeyHashSchema } from "../common.js";
+import { H32Schema, PubKeyHashSchema } from "../common.js";
 import { HeaderHashSchema } from "../ledger-state.js";
 
 /**
  * `midgard/dispute_bond_v1.DisputeBondV1`: the inline datum VerifySource
- * gives the validation-dispute bond at `dispute_bond_v1`.
+ * gives the validation-case challenger bond at `dispute_bond_v1`.
  */
 export const DisputeBondSchema = Data.Object({
   challenged_header_hash: HeaderHashSchema,
   fraud_prover: PubKeyHashSchema,
-  forfeit_after: Data.Integer(),
+  /** The case NFT name of the case this bond backs. */
+  case_id: H32Schema,
 });
 
 export type DisputeBond = Data.Static<typeof DisputeBondSchema>;
 
 export const DisputeBond = asDataType<DisputeBond>(DisputeBondSchema);
 
+// One Aiken constructor, `SettleWithCase`: Lucid unwraps a one-member
+// Data.Enum, so its fields are modelled as a record with the same
+// constructor-0 wire shape.
 /**
- * `midgard/dispute_bond_v1.SpendRedeemer`. Refund needs the fraud-proof token
- * of the challenged block by reference; Forfeit needs a validity lower bound
- * after `forfeit_after`. Each pays the output at `output_index`, tagged with
- * `InlineDatum(bond out ref)`.
+ * `midgard/dispute_bond_v1.SpendRedeemer`: the bond is spent only by its own
+ * case's close, the case input at `case_input_index`.
  */
-export const DisputeBondSpendRedeemerSchema = Data.Enum([
-  Data.Object({
-    Refund: Data.Object({
-      fraud_proof_ref_input_index: Data.Integer(),
-      output_index: Data.Integer(),
-    }),
-  }),
-  Data.Object({
-    Forfeit: Data.Object({ output_index: Data.Integer() }),
-  }),
-]);
+export const DisputeBondSpendRedeemerSchema = Data.Object({
+  case_input_index: Data.Integer(),
+});
 
 export type DisputeBondSpendRedeemer = Data.Static<
   typeof DisputeBondSpendRedeemerSchema

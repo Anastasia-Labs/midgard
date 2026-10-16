@@ -249,6 +249,27 @@ export const DEPLOYABLE_SCRIPT_CATALOGUE = {
     spend("validationTraceDisputeAward", (c) => vtdControl(c).award, {
       publishWhen: vtdControlPresent,
     }),
+    mint("validationTraceDisputeAwardMint", (c) => vtd(c).award, {
+      publishWhen: vtdControlPresent,
+    }),
+    spend("validationTraceDisputeCase", (c) => vtd(c).case, {
+      publishWhen: vtdControlPresent,
+    }),
+    mint("validationTraceDisputeCaseMint", (c) => vtd(c).case, {
+      publishWhen: vtdControlPresent,
+    }),
+    // Minted once, by protocol initialization.
+    mint("validationTraceDisputeCaseConfigMint", (c) => vtd(c).caseConfig, {
+      commands: ["protocol-init"],
+    }),
+    withdraw(
+      "validationTraceDisputeThreadExpiryWithdraw",
+      (c) => vtd(c).threadExpiry,
+      { publishWhen: vtdControlPresent },
+    ),
+    spend("validationTraceDisputeBond", (c) => vtd(c).disputeBond, {
+      publishWhen: vtdControlPresent,
+    }),
   ),
   validationTraceScriptSourcesSemantics: semanticResolvers(
     VALIDATION_TRACE_SCRIPT_SOURCES_SEMANTIC_PREFIXES,
