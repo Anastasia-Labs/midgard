@@ -5,6 +5,8 @@ import { type L1SlotConfig } from "@al-ft/midgard-core/l1-slot-config";
 import {
   type BlockReplayContext,
   type CommittedTransaction,
+  isReplayLocalFault,
+  locally,
   replayBlockEvents,
 } from "@al-ft/midgard-fault-proofs/block-replay";
 import * as SDK from "@al-ft/midgard-sdk";
@@ -44,12 +46,17 @@ const ledgerRows = (
 /**
  * - `missing`: material the block needs is not available yet;
  * - `invalid`: the block (its header, DA payload or replay) is at fault;
+ * - `local_fault`: this node's own computation failed where the block's
+ *   input cannot make it fail (hashing, the payload roots after their keys
+ *   checked, the import's bookkeeping, a runtime fault named at its
+ *   origin); retried;
  * - `incomplete`: the import failed for a reason it cannot pin on the block
- *   (a local computation or an unclassified replay failure); retried.
+ *   (a ledger root, or an unclassified typed replay failure); retried.
  */
 export type ForeignBlockVerificationReason =
   | "missing"
   | "invalid"
+  | "local_fault"
   | "incomplete";
 
 export class ForeignBlockVerificationError extends Data.TaggedError(
@@ -111,23 +118,33 @@ const blockChecksCollector = (context: ImportCheckContext) => {
   const scripts = new Map<string, Buffer>();
   return {
     committedVerdicts: {
-      onScriptRun: (request: MidgardCekVerdictRequest) => {
-        runs += 1;
-        cpu += request.executionBudget?.cpu ?? 0n;
-        runBytes += importCheckRunBytes(request);
-        const hash = createHash("sha256").update(request.scriptBytes).digest();
-        scripts.set(hash.toString("hex"), hash);
-      },
+      // The bookkeeping is this node's own: a throw from it is local. The
+      // transaction's decoding reads the block's bytes, so a throw from it
+      // keeps the block's attribution.
+      onScriptRun: (request: MidgardCekVerdictRequest) =>
+        locally("import check bookkeeping", () => {
+          runs += 1;
+          cpu += request.executionBudget?.cpu ?? 0n;
+          runBytes += importCheckRunBytes(request);
+          const hash = createHash("sha256")
+            .update(request.scriptBytes)
+            .digest();
+          scripts.set(hash.toString("hex"), hash);
+        }),
       onTransaction: (transaction: CommittedTransaction) => {
         if (runs > 0) {
           const tx = decodeMidgardLedgerTxFromCanonicalCbor(
             transaction.canonicalTransactionCbor,
           );
-          for (const outRef of [...tx.spendInputs, ...tx.referenceInputs]) {
-            const key = midgardOutRefToCborHex(outRef);
-            const output = transaction.ledger.get(key);
-            if (output !== undefined) outputs.set(key, output);
-          }
+          const keys = [...tx.spendInputs, ...tx.referenceInputs].map(
+            midgardOutRefToCborHex,
+          );
+          locally("import check bookkeeping", () => {
+            for (const key of keys) {
+              const output = transaction.ledger.get(key);
+              if (output !== undefined) outputs.set(key, output);
+            }
+          });
           checks.push({
             transactionId: transaction.transactionId,
             position: checks.length,
@@ -154,6 +171,34 @@ class CallbackFailure {
   constructor(readonly cause: unknown) {}
 }
 
+/** This node's own computation failed: never the block's fault. */
+class LocalFailure {
+  constructor(
+    readonly what: string,
+    readonly cause: unknown,
+  ) {}
+}
+
+/** The first payload section that names one key twice, if any: such a
+ * section has no root, which is the block's fault. Keys compare as the
+ * root computation reads them. */
+const repeatedKeySection = (body: SDK.DaPayload["block_body"]) =>
+  (
+    [
+      ["withdrawals", body.withdrawals],
+      ["forced_transactions", body.forced_transactions],
+      ["transactions", body.transactions],
+      ["deposits", body.deposits],
+      ["transition_trace", body.transition_trace],
+      ["event_to_step", body.event_to_step],
+      ["validation_traces", body.validation_traces],
+    ] as const
+  ).find(
+    ([, entries]) =>
+      new Set(entries.map(([key]) => Buffer.from(key, "hex").toString("hex")))
+        .size !== entries.length,
+  )?.[0];
+
 const passThrough = <A>(effect: Effect.Effect<A, unknown>) =>
   Effect.mapError(effect, (cause) => new CallbackFailure(cause));
 
@@ -166,8 +211,11 @@ const passThrough = <A>(effect: Effect.Effect<A, unknown>) =>
  * `scriptChecks` for the import checker. Every other check runs in full.
  *
  * Failures: the caller's callbacks' pass through unchanged (their verdicts
- * are the caller's); a defect (the payload checks throw) is `invalid`, a
- * missing CEK root `missing`; any other failure is `incomplete`. */
+ * are the caller's). A `ReplayLocalFault` defect (named where it arose) and
+ * this import's own computations are `local_fault`; a missing CEK root is
+ * `missing`; any other defect is `invalid`: it may come from reading the
+ * block's or its events' bytes, so it is never taken for a local fault.
+ * Any other typed failure is `incomplete`. */
 export const verifyAndImportBlock = (
   input: ImportedBlockReplayContext & {
     readonly headerHash: string;
@@ -208,9 +256,12 @@ export const verifyAndImportBlock = (
     if (input.payload === undefined)
       return yield* fail("missing", "foreign DA payload is unavailable");
     const payload = input.payload;
-    // A header that does not hash is the observation's fault.
+    // A header that does not encode is the observation's fault (a throw);
+    // a hash that fails on encoded bytes is this node's.
     const hashOf = (header: SDK.Header) =>
-      SDK.hashBlockHeader(header).pipe(Effect.orDie);
+      SDK.hashBlockHeader(header).pipe(
+        Effect.mapError((cause) => new LocalFailure("header hashing", cause)),
+      );
     if (
       (yield* hashOf(input.header)) !== input.headerHash ||
       payload.block_body.header_hash !== input.headerHash ||
@@ -229,8 +280,17 @@ export const verifyAndImportBlock = (
         "invalid",
         "foreign replay parent snapshot root mismatch",
       );
-    // Roots the payload's own entries cannot form are its fault.
-    const roots = yield* computeDaPayloadRoots(payload).pipe(Effect.orDie);
+    // Roots the payload's own entries cannot form (a key named twice) are
+    // its fault; once its keys are distinct, a failure is this node's.
+    const repeated = repeatedKeySection(payload.block_body);
+    if (repeated !== undefined)
+      return yield* fail(
+        "invalid",
+        `foreign DA payload names a ${repeated} key twice`,
+      );
+    const roots = yield* computeDaPayloadRoots(payload).pipe(
+      Effect.mapError((cause) => new LocalFailure("payload roots", cause)),
+    );
     const mismatches = [...rootMismatches(headerRoots(input.header), roots)];
     const body = payload.block_body;
     const memberCounts: SDK.DaPayloadCounts = {
@@ -305,10 +365,12 @@ export const verifyAndImportBlock = (
       Effect.fail(
         new ForeignBlockVerificationError({
           foreignHeaderHash: input.headerHash,
-          reason:
-            cause instanceof MidgardCekProgramMaterialMissingRootError
+          reason: isReplayLocalFault(cause)
+            ? "local_fault"
+            : cause instanceof MidgardCekProgramMaterialMissingRootError
               ? "missing"
-              : "invalid",
+              : // A `BlockReplayFault`, or a throw not named local.
+                "invalid",
           detail: String(cause),
         }),
       ),
@@ -321,10 +383,15 @@ export const verifyAndImportBlock = (
             new ForeignBlockVerificationError({
               foreignHeaderHash: input.headerHash,
               reason:
-                cause instanceof MidgardCekProgramMaterialMissingRootError
-                  ? "missing"
-                  : "incomplete",
-              detail: String(cause),
+                cause instanceof LocalFailure
+                  ? "local_fault"
+                  : cause instanceof MidgardCekProgramMaterialMissingRootError
+                    ? "missing"
+                    : "incomplete",
+              detail:
+                cause instanceof LocalFailure
+                  ? `${cause.what} failed locally: ${String(cause.cause)}`
+                  : String(cause),
             }),
           ),
     ),

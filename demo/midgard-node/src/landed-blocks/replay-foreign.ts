@@ -19,7 +19,10 @@ import { outRefToCbor } from "@al-ft/lucid-midgard";
 import { deriveMidgardForcedTxFaultEvidenceMaterial } from "@al-ft/midgard-core/codec/forced";
 import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
 import { reconstructMidgardTransaction } from "@al-ft/midgard-core/consensus-validation";
-import { forcedVerdictForRejection } from "@al-ft/midgard-fault-proofs";
+import {
+  attributeWithdrawalClassificationFault,
+  forcedVerdictForRejection,
+} from "@al-ft/midgard-fault-proofs";
 import type { FactStore, View } from "@al-ft/midgard-l1-follower";
 import type { EventProjectionConfig } from "@al-ft/midgard-l1-follower/events";
 import { eventsAt } from "@al-ft/midgard-l1-follower/events";
@@ -165,13 +168,19 @@ export const foreignReplayMaterial = (
       const outRef = yield* WithdrawalsDB.toLedgerOutRef({
         [WithdrawalsDB.Columns.L2_OUTREF]: Buffer.from(entry.l2Outref, "hex"),
       });
-      const classification = yield* SDK.classifyWithdrawalFromLedger({
+      const classified = {
         l2Owner: entry.l2Owner,
         l2ValueCbor: entry.l2Value,
         eventInfoCbor: entry.info,
         ledgerOutRef: outRef,
         ledgerOutput: ledger.get(outRef.toString("hex")) ?? null,
-      });
+      };
+      // A runtime fault of the classifier is this node's (`local_fault`),
+      // never the block's.
+      const classification = yield* attributeWithdrawalClassificationFault(
+        classified,
+        SDK.classifyWithdrawalFromLedger(classified),
+      );
       const settlement = classification.settlementEventInfo.toString("hex");
       if (settlement !== source[1])
         return yield* Effect.fail(
@@ -195,6 +204,8 @@ export const foreignReplayMaterial = (
           return yield* Effect.fail(
             unknownEvent("a forced order is not known"),
           );
+        // Every step reads only the order's L1 bytes and the payload's
+        // bytes, so a throw is the block's fault, never a local one.
         yield* Effect.try({
           try: () => {
             const payload = SDK.decodeTxOrderDatumCbor(datum).event.tx;

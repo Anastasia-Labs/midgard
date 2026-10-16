@@ -73,15 +73,10 @@ import {
 import {
   combineHolds,
   CONFIRMED_LEDGER_BEHIND,
-  LANDED_BLOCK_AWAITING_DA,
-  LANDED_BLOCK_DA_REFETCH_PENDING,
-  LANDED_BLOCK_EVENT_UNKNOWN,
-  LANDED_BLOCK_FORCED_ORDER_PENDING,
   LANDED_BLOCK_INVALID,
   LANDED_BLOCK_OWN_JOURNAL_MISMATCH,
   LANDED_BLOCK_OWN_REVIVAL_PENDING,
   LANDED_BLOCK_REPLAY_FAILED,
-  LANDED_BLOCK_REPLAY_INCOMPLETE,
   LANDED_BLOCKS_WAITING,
 } from "./holds.js";
 import {
@@ -94,6 +89,10 @@ import {
   netDelta,
 } from "./ledger.js";
 import { type LandedBlockPorts, viewChecked, ViewMoved } from "./ports.js";
+import {
+  replayOutcomeAlarm,
+  replayOutcomeHold,
+} from "./replay-outcome-hold.js";
 import { processRow, rollBackRows } from "./settlements.js";
 import { type LandedBlockRow, retrieveRows } from "./store.js";
 
@@ -155,29 +154,6 @@ const linkageFault = (node: LandedNode, parent: Parent): string | undefined =>
       : node.header.startTime !== parent.endTime
         ? `block ${node.headerHash} starts at ${node.header.startTime.toString()}, its parent ends at ${parent.endTime.toString()}`
         : undefined;
-
-const HOLD_OF = {
-  missing: LANDED_BLOCK_AWAITING_DA,
-  da_refetch_pending: LANDED_BLOCK_DA_REFETCH_PENDING,
-  event_unknown: LANDED_BLOCK_EVENT_UNKNOWN,
-  forced_order_pending: LANDED_BLOCK_FORCED_ORDER_PENDING,
-  incomplete: LANDED_BLOCK_REPLAY_INCOMPLETE,
-  invalid: LANDED_BLOCK_INVALID,
-} as const;
-
-/**
- * The hold a replay outcome other than `replayed` stops processing at. The
- * waits on DA peers and on the follower's facts are retried on the driver's
- * backoff; `invalid` (a verdict) and `incomplete` (a failure the replay
- * cannot classify, so not known to be transient) are `notRetried`.
- */
-export const replayOutcomeHold = (
-  kind: keyof typeof HOLD_OF,
-  detail: string,
-): DriverHold =>
-  kind === "invalid" || kind === "incomplete"
-    ? verdict(HOLD_OF[kind], detail)
-    : hold(HOLD_OF[kind], detail);
 
 type Step =
   | Readonly<{ kind: "row"; row: LandedBlockRow; due?: ImportChecks }>
@@ -273,7 +249,12 @@ const newRow = <R>(
         ),
       } satisfies Step;
     const replayed = outcome.right;
-    if (replayed.kind !== "replayed")
+    if (replayed.kind !== "replayed") {
+      yield* replayOutcomeAlarm(
+        node.headerHash,
+        replayed.kind,
+        replayed.detail,
+      );
       return {
         kind: "held",
         hold: replayOutcomeHold(
@@ -281,6 +262,7 @@ const newRow = <R>(
           `block ${node.headerHash}: ${replayed.detail}`,
         ),
       } satisfies Step;
+    }
     if (replayed.root !== node.header.utxosRoot)
       return {
         kind: "held",

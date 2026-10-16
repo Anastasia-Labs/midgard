@@ -2,7 +2,8 @@
  * The `/readyz` reasons landed-block processing holds (plan §7.3, N3). Each
  * keeps the process up, and the reason clears once the condition does. A
  * wait (on DA peers, the follower, the rebase, this node's own commit path)
- * is retried on the driver's backoff; a verdict on the view (an invalid
+ * and a local fault of a foreign block's import are retried on the driver's
+ * backoff; a verdict on the view (an invalid
  * block, a base or journal mismatch), a failure that is not transient, and
  * a missing schema are `notRetried`: the next follower change re-reads them.
  */
@@ -64,10 +65,18 @@ export const LANDED_BLOCK_FORCED_ORDER_PENDING =
 /**
  * Importing a foreign block failed for a reason it cannot pin on the block:
  * a local computation (an MPF root) or a replay failure it cannot classify.
- * Never attributed to the block, and not known to be transient: the next
- * follower change runs it again, no timer does.
+ * Never attributed to the block: retried on the driver's backoff, with the
+ * `landed_block_local_fault` alarm.
  */
 export const LANDED_BLOCK_REPLAY_INCOMPLETE = "landed_block_replay_incomplete";
+/**
+ * Importing a foreign block failed in this node's own computation, where
+ * the block's input cannot make it fail (a runtime fault of a library the
+ * replay runs, hashing, the payload roots). Never attributed to the block:
+ * retried on the driver's backoff, with the `landed_block_local_fault`
+ * alarm, until the fault clears.
+ */
+export const LANDED_BLOCK_LOCAL_FAULT = "landed_block_local_fault";
 /** Replaying or recording a landed block failed for a reason it could not classify. */
 export const LANDED_BLOCK_REPLAY_FAILED = "landed_block_replay_failed";
 /**
@@ -120,6 +129,7 @@ const PRIORITY = [
   NATIVE_MPF_RESTORE_INDEX_CAP_EXCEEDED,
   NATIVE_MPF_RESTORE_READ_TRANSIENT,
   LANDED_BLOCK_REBASE_FAILED,
+  LANDED_BLOCK_LOCAL_FAULT,
   LANDED_BLOCK_REPLAY_INCOMPLETE,
   LANDED_BLOCK_REPLAY_FAILED,
   CONFIRMED_LEDGER_BASE_MISMATCH,

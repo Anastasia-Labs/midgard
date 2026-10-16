@@ -1,10 +1,18 @@
 import { LOVELACE_UNIT, normalizeAssets } from "@al-ft/midgard-core/assets";
+import {
+  attributeWithdrawalClassificationFault,
+  isReplayLocalFault,
+} from "@al-ft/midgard-fault-proofs/block-replay";
 import { classifyWithdrawalFromLedger } from "@al-ft/midgard-sdk";
 import { Effect, Option } from "effect";
 
 import { DatabaseError } from "../../../database/utils/common.js";
 import * as Ledger from "../../../database/utils/ledger.js";
 import * as WithdrawalsDB from "../../../database/withdrawals.js";
+import { heldBuildError } from "../../../mpf/commit-rejection.evict-uncommittable-normal-txs.js";
+
+/** The commit stage a withdrawal classification's local fault holds. */
+export const WITHDRAWAL_CLASSIFICATION_STAGE = "Withdrawal classification";
 
 export type ClassifiedWithdrawal = {
   readonly entry: WithdrawalsDB.Entry;
@@ -50,14 +58,18 @@ export const classifyWithdrawal = ({
   readonly entry: WithdrawalsDB.Entry;
   readonly ledgerOutRef: Buffer;
   readonly ledgerOutput: Option.Option<Buffer>;
-}): Effect.Effect<ClassifiedWithdrawal, DatabaseError, never> =>
-  classifyWithdrawalFromLedger({
+}): Effect.Effect<ClassifiedWithdrawal, DatabaseError, never> => {
+  const input = {
     l2Owner: entry[WithdrawalsDB.Columns.L2_OWNER].toString("hex"),
     l2ValueCbor: entry[WithdrawalsDB.Columns.L2_VALUE].toString("hex"),
     eventInfoCbor: entry[WithdrawalsDB.Columns.RAW_EVENT_INFO].toString("hex"),
     ledgerOutRef,
     ledgerOutput: Option.getOrNull(ledgerOutput),
-  }).pipe(
+  };
+  return attributeWithdrawalClassificationFault(
+    input,
+    classifyWithdrawalFromLedger(input),
+  ).pipe(
     Effect.map((classification) => ({
       entry,
       ledgerOutRef,
@@ -67,7 +79,33 @@ export const classifyWithdrawal = ({
       ({ message, cause }) =>
         new DatabaseError({ table: WithdrawalsDB.tableName, message, cause }),
     ),
+    // A runtime fault of the classifier is this node's: the withdrawal is
+    // not classified, and the build holds (nothing is committed or
+    // projected) until a later build classifies it.
+    Effect.catchSomeDefect((defect) =>
+      isReplayLocalFault(defect)
+        ? Option.some(
+            Effect.logError("WithdrawalClassificationLocalFault").pipe(
+              Effect.annotateLogs({
+                alarm: "withdrawal_classification_local_fault",
+                eventId: entry[WithdrawalsDB.Columns.ID].toString("hex"),
+                detail: defect.message,
+              }),
+              Effect.zipRight(
+                Effect.fail(
+                  heldBuildError(WITHDRAWAL_CLASSIFICATION_STAGE, {
+                    table: WithdrawalsDB.tableName,
+                    message: `Holding the block build: withdrawal classification failed locally: ${defect.message}`,
+                    cause: defect,
+                  }),
+                ),
+              ),
+            ),
+          )
+        : Option.none(),
+    ),
   );
+};
 
 /**
  * Classifies a block's withdrawals in trace-step order. Each one is judged
