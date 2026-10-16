@@ -2,7 +2,7 @@ name: Agent Skills CI
 
 # No path filter, on purpose. A skill goes stale when something it links to
 # moves, and that change lands outside .agents/**; a filter scoped to the
-# skills would skip exactly the change that broke them. The job takes seconds.
+# skills would skip exactly the change that broke them.
 on:
   workflow_dispatch:
   push:
@@ -19,9 +19,11 @@ concurrency:
 jobs:
   skills:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      # commit-paths checks .ak formatting with the aiken demo/flake.lock pins.
+      - uses: ./.github/actions/aiken
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version-file: demo/.nvmrc
