@@ -41,7 +41,9 @@ import {
 } from "./support/validation-game-scene.js";
 import {
   divergentTraces,
+  neitherTerminalPaddingTraces,
   openGame,
+  operatorTerminalPaddingTraces,
   terminalPaddingTraces,
 } from "./support/validation-game-traces.js";
 
@@ -185,6 +187,37 @@ describe("validation game on the emulator", () => {
       awardFinalizeMove(scene, awarded, threadPays, scene.emulator.now()),
     );
     await expectConviction(scene, finalizeHash, awarded, cap);
+  });
+
+  it("refuses the padding award when the challenger's step after the agreed Terminal state is not that state", async () => {
+    for (const traces of [
+      operatorTerminalPaddingTraces(),
+      neitherTerminalPaddingTraces(),
+    ]) {
+      const scene = await setUpGameScene();
+      const ready = await playToOneStep(
+        scene,
+        traces,
+        await openThread(scene, traces),
+      );
+      const entered = enterResolution(scene, ready, { signed: true });
+      const boundary = await createdAt(
+        scene,
+        await submitMove(scene, entered.move),
+        0,
+      );
+      await expectOnchainRefusal(() =>
+        buildMove(
+          scene,
+          awardTerminalPaddingMove(
+            scene,
+            boundary,
+            traces.agreedLowState,
+            options(scene.emulator.now(), { signed: true }),
+          ),
+        ),
+      );
+    }
   });
 
   it("refuses a challenger timeout until the operator's clock has run out, then anyone finalizes it for at most the cap", async () => {

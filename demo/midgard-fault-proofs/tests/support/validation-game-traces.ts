@@ -110,6 +110,30 @@ export const terminalPaddingTraces = (): GameTraces => {
   );
 };
 
+/**
+ * The mirror of {@link terminalPaddingTraces}: the operator pads with the
+ * Terminal state at index 1, as an honest trace does, and the challenger keeps
+ * stepping past it.
+ */
+export const operatorTerminalPaddingTraces = (): GameTraces => {
+  const terminal = machineState(1, "terminal");
+  return traces(
+    [machineState(0, "canonicalDecode"), terminal, terminal],
+    [machineState(0, "canonicalDecode"), terminal, machineState(2, "cek")],
+    terminal,
+  );
+};
+
+/** Both sides step past the agreed Terminal state, each differently. */
+export const neitherTerminalPaddingTraces = (): GameTraces => {
+  const terminal = machineState(1, "terminal");
+  return traces(
+    [machineState(0, "canonicalDecode"), terminal, machineState(2, "cek")],
+    [machineState(0, "canonicalDecode"), terminal, machineState(3, "cek")],
+    terminal,
+  );
+};
+
 export type MoveTime = {
   readonly currentTimeLower: number;
   readonly currentTimeUpper: number;

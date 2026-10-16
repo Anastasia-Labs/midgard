@@ -4,6 +4,7 @@ use cardano/assets.{PolicyId}
 use cardano/transaction.{OutputReference, Transaction}
 use midgard/computation_thread as ct
 use midgard/fraud_proofs/common.{ProverOnly, cancel, continue_validation_trace}
+use midgard/validation_dispute_v1
 use midgard/validation_game_v1
 use midgard/validation_resolution_v1
 use midgard/validation_trace_v1
@@ -95,10 +96,10 @@ validator main(
               AwardTerminalPadding { terminal_state, .. } -> {
                 let expected_state: Data = validation_resolution_v1.winning_resolution()
                 and {
-                  validation_resolution_v1.terminal_padding_is_authenticated(
+                  validation_resolution_v1.terminal_fixed_point_winner(
                     state.dispute,
                     terminal_state,
-                  ),
+                  ) == validation_dispute_v1.ChallengerWins,
                   output_script_hash == award_validator_script_hash,
                   output_state == expected_state,
                 }
