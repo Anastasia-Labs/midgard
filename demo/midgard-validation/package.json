@@ -168,6 +168,8 @@
     "fixtures:plutus-data-cbor-decoding-v1:check": "pnpm run build && node scripts/generate-plutus-data-cbor-decoding-v1-goldens.mjs --check",
     "fixtures:script-decode-step-v1:sync": "pnpm run build && node scripts/generate-script-decode-step-v1-goldens.mjs",
     "fixtures:script-decode-step-v1:check": "pnpm run build && node scripts/generate-script-decode-step-v1-goldens.mjs --check",
+    "fixtures:script-decode-haskell-v1:sync": "node scripts/generate-script-decode-haskell-v1-vectors.mjs",
+    "fixtures:script-decode-haskell-v1:check": "node scripts/generate-script-decode-haskell-v1-vectors.mjs --check",
     "fixtures:cek-program-large-integer:sync": "pnpm run build && node scripts/generate-cek-program-large-integer-fixture.mjs",
     "fixtures:cek-program-large-integer:check": "pnpm run build && node scripts/generate-cek-program-large-integer-fixture.mjs --check",
     "fixtures:cek-builtin-cardano-v1:sync": "node scripts/generate-cek-builtin-cardano-v1-goldens.mjs",

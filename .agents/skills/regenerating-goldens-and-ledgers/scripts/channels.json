@@ -571,6 +571,65 @@
       }
     },
     {
+      "id": "script-decode-haskell-v1",
+      "kind": "golden",
+      "summary": "Cardano's own verdict (deserialiseScript and mkTermToEvaluate at protocol version 11) on every PlutusV3 script-decode golden script and seeded one-bit flips, as the record the step machine must reach. Sync and check need MIDGARD_SCRIPT_DECODE_PROBE set to the built probe.",
+      "generators": [
+        "demo/midgard-validation/scripts/generate-script-decode-haskell-v1-vectors.mjs"
+      ],
+      "packageScripts": [
+        "demo/midgard-validation:fixtures:script-decode-haskell-v1:sync",
+        "demo/midgard-validation:fixtures:script-decode-haskell-v1:check"
+      ],
+      "producers": ["demo/midgard-validation"],
+      "inputs": [
+        "@golden-channel",
+        "demo/midgard-validation/tests/fixtures/script-decode-step-v1.vectors.mjs",
+        "demo/midgard-validation/scripts/haskell/ScriptDecodeProbe.hs"
+      ],
+      "outputs": [
+        "demo/midgard-validation/tests/fixtures/script-decode-haskell-v1.vectors.json"
+      ],
+      "sync": {
+        "run": "pnpm --dir demo/midgard-validation run fixtures:script-decode-haskell-v1:sync"
+      },
+      "check": {
+        "run": "pnpm --dir demo/midgard-validation run fixtures:script-decode-haskell-v1:check"
+      },
+      "ci": {
+        "none": "The check needs a built Haskell probe, which no workflow builds."
+      }
+    },
+    {
+      "id": "rejection-reason-v1",
+      "kind": "golden",
+      "summary": "RejectionReasonV1 codec vectors: one reason per arm of the on-chain declaration, its Plutus Data CBOR from a stand-alone encoder, and its domain hash.",
+      "generators": [
+        "demo/midgard-core/scripts/generate-rejection-reason-v1-vectors.mjs"
+      ],
+      "packageScripts": [
+        "demo/midgard-core:fixtures:rejection-reason-v1:sync",
+        "demo/midgard-core:fixtures:rejection-reason-v1:check"
+      ],
+      "producers": ["demo/midgard-core"],
+      "inputs": [
+        "@golden-channel",
+        "onchain/aiken/lib/midgard/rejection-reason-v1.ak"
+      ],
+      "outputs": [
+        "demo/midgard-core/tests/fixtures/rejection-reason-v1.vectors.json"
+      ],
+      "sync": {
+        "run": "pnpm --dir demo/midgard-core run fixtures:rejection-reason-v1:sync"
+      },
+      "check": {
+        "run": "pnpm --dir demo/midgard-core run fixtures:rejection-reason-v1:check"
+      },
+      "ci": {
+        "none": "No workflow step runs this generator's --check."
+      }
+    },
+    {
       "id": "cek-builtin-cardano-v1",
       "kind": "golden",
       "summary": "Every builtin tag evaluated by the pinned Aiken evaluator, values and failures, with the ledger's outcome recorded where the two differ.",
