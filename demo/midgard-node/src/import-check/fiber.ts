@@ -35,7 +35,7 @@ export const importCheckFiber: Effect.Effect<
     );
   else if (evaluator.backlogShare === 0)
     yield* Effect.logWarning(
-      "The validation pool has one worker: import checks have no reserved worker and run only while admission is idle, and every unrun entry is projected past its deadline",
+      "The validation pool has one worker: import checks have no reserved worker and run only while admission is idle, and every unrun entry is projected past its deadline (unverified_near_deadline is raised as structural). Set VALIDATION_WORKER_POOL_SIZE to 2 or more to reserve a worker for them",
     );
   const input = {
     evaluator,

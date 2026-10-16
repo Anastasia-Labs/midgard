@@ -10,8 +10,11 @@
  * - `import_check_cap`: the block's checker time ran out; its unstarted
  *   transactions stay in the set as skipped, for the backlog lane;
  * - `unverified_near_deadline`: the backlog's projected completion of the
- *   unrun entries due by a deadline runs past that deadline minus the
- *   opener's margin; raised once per deadline;
+ *   unrun entries due by a deadline (not yet past) runs past that deadline
+ *   minus the opener's margin; raised once per deadline. With
+ *   `structural`, the pool has one worker and reserves none for the
+ *   backlog: every unrun entry is projected past its deadline whatever the
+ *   load, so the alarm says only that checks wait for idle admission;
  * - `unverified_deadline_missed`: an entry reached its deadline with no
  *   local verdict, raised once per entry: when it leaves the set, or while
  *   it is still being checked (its verdict, when it comes, applies as
@@ -45,6 +48,8 @@ export type ImportCheckAlarm =
       /** The entries due by the deadline. */
       entries: number;
       projectedMs: number;
+      /** Set on a one-worker pool: no backlog worker is reserved. */
+      structural?: true;
     }>
   | Readonly<{
       alarm: "unverified_deadline_missed";

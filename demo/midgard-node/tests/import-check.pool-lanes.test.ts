@@ -122,4 +122,18 @@ describe("validation pool import-check lanes", () => {
     expect(Date.now() - admittedAt).toBeLessThan(SLOW_MS / 2);
     await next;
   }, 60_000);
+
+  it("reserves every worker but one for the backlog when as many or more are requested", async () => {
+    for (const [size, requested] of [
+      [2, 2],
+      [3, 3],
+      [3, 8],
+    ] as const) {
+      const { evaluator } = await injectedEvaluator(
+        { mode: "accept" },
+        { size, backlogShare: requested },
+      );
+      expect(evaluator.backlogShare).toBe(size - 1);
+    }
+  }, 60_000);
 });

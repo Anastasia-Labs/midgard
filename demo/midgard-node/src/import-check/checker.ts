@@ -68,6 +68,11 @@ import { importCheckOutRefs, rebuildAndEvaluate } from "./rebuild.js";
  */
 export type ImportCheckRuns = Readonly<{
   inFlight: Map<string, ImportCheckEntry>;
+  /**
+   * In memory only: after a restart, an entry alarmed while it was still
+   * being checked past its deadline is alarmed once more when the sweep
+   * drops it. Known and accepted: one duplicate alarm per such entry.
+   */
   missed: Map<string, number>;
 }>;
 
@@ -149,13 +154,17 @@ const runEntry = (
     const transactionId = entry.transactionId.toString("hex");
     if (verdict.kind === "accepted") yield* deleteCheck(entry);
     else if (verdict.kind === "rejected") {
+      // The alarm comes first: a stop between the two re-runs the entry
+      // (still unrun) and alarms again, where the other order would lose
+      // it. An entry that left the set or the landed chain is not alarmed.
+      if (yield* isCheckHeld(entry))
+        yield* input.alarm({
+          alarm: "import_check_rejected",
+          headerHash: entry.headerHash,
+          transactionId,
+          detail: verdict.detail,
+        });
       yield* setCheckState(entry, "rejected");
-      yield* input.alarm({
-        alarm: "import_check_rejected",
-        headerHash: entry.headerHash,
-        transactionId,
-        detail: verdict.detail,
-      });
     } else {
       yield* setCheckState(entry, "faulted");
       if (verdict.scriptHash !== undefined)
@@ -352,8 +361,14 @@ export const runUnverifiedSweep = (
       now,
       evaluator.backlogShare,
     )) {
-      if (alarmed.has(risk.deadlineMs)) continue;
+      // A deadline already past (an entry still being checked) is not
+      // near: `unverified_deadline_missed` covers it.
+      if (risk.deadlineMs <= now || alarmed.has(risk.deadlineMs)) continue;
       alarmed.add(risk.deadlineMs);
-      yield* input.alarm({ alarm: "unverified_near_deadline", ...risk });
+      yield* input.alarm({
+        alarm: "unverified_near_deadline",
+        ...risk,
+        ...(evaluator.backlogShare === 0 ? { structural: true } : {}),
+      });
     }
   });
