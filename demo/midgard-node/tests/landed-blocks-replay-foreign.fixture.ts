@@ -62,6 +62,10 @@ import {
 import { openNodeFollowerStore } from "./helpers/forced-orders-node-store.js";
 import { EVENTS_CONFIG, listOf } from "./helpers/l1-events-chain.js";
 import { ChainDriver } from "./helpers/l1-events-store.js";
+import {
+  attested,
+  AVAILABILITY,
+} from "./landed-blocks-replay-foreign.availability.js";
 import { provideDatabaseLayers } from "./utils.js";
 
 export const K = 2;
@@ -421,16 +425,21 @@ export const inNode = <A, E>(
     ),
   );
 
-/** The replay input for `payload` on an empty parent at the store's view. */
+/**
+ * The replay input for `payload` on an empty parent at the store's view; its
+ * node attested `payload`'s envelope unless `daAvailability` says otherwise.
+ */
 export const inputFor = async (
   store: FactStore,
   payload: SDK.DaPayload,
+  daAvailability?: SDK.DaAvailabilityStateQueueStatus,
 ): Promise<ReplayInput> => {
   const header = payload.block_body.header;
   return {
     headerHash: payload.block_body.header_hash,
     header,
     blockTime: header.endTime,
+    daAvailability: daAvailability ?? (await attested(payload)),
     parentHeaderHash: header.prevHeaderHash,
     parentUtxosRoot: header.prevUtxosRoot,
     parentEntries: [],
@@ -444,6 +453,7 @@ export const replayerFor = (store: FactStore) =>
     store,
     events: EVENTS_CONFIG,
     forcedOrders: FORCED_CONFIG,
+    availability: () => AVAILABILITY,
   });
 
 /** Replays `payload` with a fresh production replayer at the store's view. */

@@ -17,10 +17,6 @@
 import { deriveMidgardForcedTxFaultEvidenceMaterial } from "@al-ft/midgard-core/codec/forced";
 import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
 import { type L1SlotConfig } from "@al-ft/midgard-core/l1-slot-config";
-import {
-  decodeMidgardValidationTraceDescriptor,
-  encodeMidgardValidationTraceDescriptor,
-} from "@al-ft/midgard-core/validation-trace";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
   type RejectedTx,
@@ -55,22 +51,11 @@ export {
 
 /**
  * The verdict of a validation descriptor, which must be canonical for its
- * schema and a bounded V1 descriptor (versions, step count, terminal verdict
- * and its rejection-code binding), as the DA committee requires.
+ * schema and a bounded V1 descriptor, as the DA committee requires (the SDK
+ * decoder both run).
  */
-const descriptorVerdict = (valueHex: string) => {
-  const data = LucidData.from(
-    valueHex,
-    SDK.ValidationTraceDescriptor,
-  ) as SDK.ValidationTraceDescriptor;
-  if (LucidData.to(data, SDK.ValidationTraceDescriptor) !== valueHex)
-    throw new Error("foreign validation descriptor is not canonical");
-  return decodeMidgardValidationTraceDescriptor(
-    encodeMidgardValidationTraceDescriptor(
-      SDK.validationTraceDescriptorCoreFromData(data),
-    ),
-  ).verdict;
-};
+const descriptorVerdict = (valueHex: string) =>
+  SDK.decodeCanonicalValidationTraceDescriptorData(valueHex).verdict;
 
 /** One ledger entry: the out-ref key bytes and the full output CBOR. */
 export type BlockReplayLedgerEntry = {

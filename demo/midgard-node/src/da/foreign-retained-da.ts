@@ -81,13 +81,32 @@ export const foreignRetainedDaInsert = (
   block_time: new Date(Number(blockTime)),
 });
 
+/**
+ * The block's state-queue availability status, and the deployment authority
+ * its commitment is rebuilt with (read only when the status carries one).
+ */
+export type ForeignDaBinding = Readonly<{
+  status: SDK.DaAvailabilityStateQueueStatus;
+  authority: () => SDK.DaPayloadAvailabilityAuthority;
+}>;
+
 /** Acquire untrusted public bytes through the existing authenticated libp2p
  * transport. Peer metadata and signatures confer no block validity. A peer's
  * substituted body is skipped; only canonical-header-bound content leaves
- * this boundary, and the caller still must perform ordinary full replay. */
+ * this boundary, and the caller still must perform ordinary full replay.
+ *
+ * Once the block's queue node carries an availability commitment, a peer's
+ * body must also rebuild it (`bound`), or the next peer is asked; while the
+ * node is Unattested no commitment fixes the body's uncommitted sections
+ * (`bound` false). Peers are asked from `startPeer` on, wrapping round; the
+ * result names the one that served. */
 export const fetchForeignRetainedDa = (
   headerHash: string,
   header: SDK.Header,
+  options: Readonly<{
+    binding?: ForeignDaBinding;
+    startPeer?: number;
+  }> = {},
 ) =>
   Effect.gen(function* () {
     const missing = (detail: string) =>
@@ -118,7 +137,27 @@ export const fetchForeignRetainedDa = (
       catch: (cause) =>
         missing(`foreign public DA transport unavailable: ${String(cause)}`),
     });
-    for (const peer of manifest.committeePeers) {
+    const { binding } = options;
+    const status = binding?.status ?? "Unattested";
+    const authority =
+      binding !== undefined && SDK.daAvailabilityStatusBinds(status)
+        ? yield* Effect.try({
+            try: () => binding.authority(),
+            catch: (cause) =>
+              missing(
+                `the deployment's availability parameters are unavailable: ${String(cause)}`,
+              ),
+          })
+        : undefined;
+    const peers = manifest.committeePeers.map((peer, index) => ({
+      peer,
+      index,
+    }));
+    const start = (options.startPeer ?? 0) % Math.max(peers.length, 1);
+    for (const { peer, index: peerIndex } of [
+      ...peers.slice(start),
+      ...peers.slice(0, start),
+    ]) {
       // Committee nodes retain and serve the same public by-header protocol;
       // the optional retrieval role does not determine content authority.
       const source = new DaLibp2pRetainedDaSource({
@@ -209,7 +248,28 @@ export const fetchForeignRetainedDa = (
                     ),
                   );
               }
-              return { payloadBytes, payload, roots, counts };
+              if (
+                authority !== undefined &&
+                SDK.daPayloadAvailabilityBinding({
+                  status,
+                  authority,
+                  headerHash,
+                  payload: payloadBytes,
+                }) !== "bound"
+              )
+                return yield* Effect.fail(
+                  missing(
+                    "foreign peer body differs from the attested payload commitment",
+                  ),
+                );
+              return {
+                payloadBytes,
+                payload,
+                roots,
+                counts,
+                bound: authority !== undefined,
+                peer: peerIndex,
+              };
             }),
           ),
         ),
@@ -232,6 +292,14 @@ const FOREIGN_DA_MEMO_LIMIT = 1_024;
 
 type Attempt = Readonly<{ atMs: number; failures: number }>;
 
+/** Keeps `map` to `FOREIGN_DA_MEMO_LIMIT` keys, forgetting the oldest. */
+const bounded = <V>(map: Map<string, V>) => {
+  for (const oldest of map.keys()) {
+    if (map.size <= FOREIGN_DA_MEMO_LIMIT) break;
+    map.delete(oldest);
+  }
+};
+
 /**
  * A per-header next-attempt memo for foreign DA fetches: after a failed
  * fetch, the header is not fetched again (no peer is asked) before its next
@@ -239,10 +307,18 @@ type Attempt = Readonly<{ atMs: number; failures: number }>;
  * `FOREIGN_DA_RETRY_BASE_MS` to `FOREIGN_DA_RETRY_MAX_MS`; a fetch that
  * succeeds forgets the header. Time is read from the Effect clock; nothing
  * sleeps: a fetch asked for early fails `missing` at once.
+ *
+ * `refuse` records that the replay refused the unbound copy `peer` served,
+ * so the header's next fetch starts at the peer after it.
  */
 export const foreignDaFetchMemo = () => {
   const attempts = new Map<string, Attempt>();
-  return (headerHash: string, header: SDK.Header) =>
+  const startPeers = new Map<string, number>();
+  const fetch = (
+    headerHash: string,
+    header: SDK.Header,
+    binding?: ForeignDaBinding,
+  ) =>
     Effect.gen(function* () {
       const now = yield* Clock.currentTimeMillis;
       const last = attempts.get(headerHash);
@@ -255,7 +331,10 @@ export const foreignDaFetchMemo = () => {
           }),
         );
       const fetched = yield* Effect.either(
-        fetchForeignRetainedDa(headerHash, header),
+        fetchForeignRetainedDa(headerHash, header, {
+          ...(binding === undefined ? {} : { binding }),
+          startPeer: startPeers.get(headerHash) ?? 0,
+        }),
       );
       if (fetched._tag === "Right") {
         attempts.delete(headerHash);
@@ -272,10 +351,13 @@ export const foreignDaFetchMemo = () => {
           ),
         failures,
       });
-      for (const oldest of attempts.keys()) {
-        if (attempts.size <= FOREIGN_DA_MEMO_LIMIT) break;
-        attempts.delete(oldest);
-      }
+      bounded(attempts);
       return yield* Effect.fail(fetched.left);
     });
+  const refuse = (headerHash: string, peer: number) => {
+    startPeers.delete(headerHash);
+    startPeers.set(headerHash, peer + 1);
+    bounded(startPeers);
+  };
+  return Object.assign(fetch, { refuse });
 };

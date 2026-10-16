@@ -1,13 +1,18 @@
 import { asDataType } from "@al-ft/midgard-core/lucid-data";
-import type {
-  MidgardValidationMachineState,
-  MidgardValidationTraceDescriptor,
-  MidgardValidationTraceProof,
+import {
+  decodeMidgardValidationTraceDescriptor,
+  encodeMidgardValidationTraceDescriptor,
+  type MidgardValidationMachineState,
+  type MidgardValidationTraceDescriptor,
+  type MidgardValidationTraceProof,
 } from "@al-ft/midgard-core/validation-trace";
 import { Data } from "@lucid-evolution/lucid";
 
 import { H32Schema } from "../common.js";
-import { ValidationTraceDescriptorSchema } from "../ledger-state.js";
+import {
+  ValidationTraceDescriptor,
+  ValidationTraceDescriptorSchema,
+} from "../ledger-state.js";
 import { ValidationAuxiliaryWitnessSchema } from "./validation-auxiliary-witness.js";
 import {
   cancelActionSchema,
@@ -206,6 +211,57 @@ export const validationTraceDescriptorCoreFromData = (
   verdict: verdictCore(descriptor.verdict),
   rejectionCodeHash: Buffer.from(descriptor.rejection_code_hash, "hex"),
 });
+
+/** Which stage refused a `validation_traces` value. */
+export class ValidationTraceDescriptorDecodeError extends Error {
+  constructor(
+    /** `data`: not canonical Plutus Data; `bounds`: not a bounded V1 descriptor. */
+    readonly stage: "data" | "bounds",
+    message: string,
+    readonly cause: unknown,
+  ) {
+    super(message);
+    this.name = "ValidationTraceDescriptorDecodeError";
+  }
+}
+
+/**
+ * Decodes one `validation_traces` value: the canonical Plutus Data form of
+ * `ValidationTraceDescriptorV1` (re-encoding must give back exactly
+ * `valueHex`), held to the frozen V1 bounds (versions, step-count cap,
+ * terminal verdict, verdict/rejection binding) by a core-codec round trip.
+ * The hex is taken as given: a caller that admits other spellings normalises
+ * it first.
+ */
+export const decodeCanonicalValidationTraceDescriptorData = (
+  valueHex: string,
+): MidgardValidationTraceDescriptor => {
+  let data: Data.Static<typeof ValidationTraceDescriptorSchema>;
+  try {
+    data = Data.from(valueHex, ValidationTraceDescriptor);
+    if (Data.to(data, ValidationTraceDescriptor) !== valueHex)
+      throw new Error("re-encoding gives other bytes");
+  } catch (cause) {
+    throw new ValidationTraceDescriptorDecodeError(
+      "data",
+      `validation descriptor is not canonical for its schema: ${String(cause)}`,
+      cause,
+    );
+  }
+  try {
+    return decodeMidgardValidationTraceDescriptor(
+      encodeMidgardValidationTraceDescriptor(
+        validationTraceDescriptorCoreFromData(data),
+      ),
+    );
+  } catch (cause) {
+    throw new ValidationTraceDescriptorDecodeError(
+      "bounds",
+      `validation descriptor is not a bounded V1 descriptor: ${String(cause)}`,
+      cause,
+    );
+  }
+};
 
 export const validationTraceProofDataFromCore = (
   proof: MidgardValidationTraceProof,

@@ -99,6 +99,7 @@ export {
   WinningValidationResolutionStateSchema,
 } from "./validation-dispute.validation-machine-phase-schema.js";
 export {
+  decodeCanonicalValidationTraceDescriptorData,
   ValidationBoundarySpendRedeemer,
   ValidationCanonicalDecodePrepareSelectedAction,
   ValidationCanonicalDecodePrepareSelectedActionSchema,
@@ -113,6 +114,7 @@ export {
   ValidationPrepareSelectedSpendRedeemerSchema,
   validationTraceDescriptorCoreFromData,
   validationTraceDescriptorDataFromCore,
+  ValidationTraceDescriptorDecodeError,
   validationTraceProofCoreFromData,
   validationTraceProofDataFromCore,
 } from "./validation-dispute.validation-machine-state-data-from-core.js";

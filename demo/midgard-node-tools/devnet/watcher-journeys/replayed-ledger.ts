@@ -28,6 +28,7 @@ import {
   readWatcherObservation,
   readWatcherUserEventScriptBinding,
   verifyWatcherUserEventScriptBinding,
+  watcherReplayAvailabilityAuthority,
 } from "midgard-watcher/replayed-ledger";
 
 import { createJourneyReplayLifetime } from "./journey-replay-lifetime.js";
@@ -120,6 +121,8 @@ export const openJourneyReplayedLedger = async (input: {
       input.checkpointDirectory,
       `replayed-ledger-${deploymentIdentity.manifestId}.json`,
     ),
+    availabilityAuthority:
+      watcherReplayAvailabilityAuthority(deploymentIdentity),
   });
   let da: Awaited<ReturnType<typeof createWatcherRetainedDaRuntime>>;
   try {

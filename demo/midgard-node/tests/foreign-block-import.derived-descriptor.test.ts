@@ -30,6 +30,9 @@ import {
 
 type Descriptor = SDK.ValidationTraceDescriptor;
 
+/** The V1 step-count cap, written out rather than read from the profile. */
+const MAX_STEP_COUNT = 4_294_967_295n;
+
 const encoded = (descriptor: Descriptor) =>
   Data.to(descriptor, SDK.ValidationTraceDescriptor);
 
@@ -165,6 +168,34 @@ describe("foreign import of derived validation descriptors", () => {
     );
     refusedOverDescriptor(await f.imported());
   });
+  it("refuses a descriptor that writes an inner integer non-minimally", async () => {
+    const f = await normalWith((key) => {
+      const minimal = `5820${"c1".repeat(32)}05`;
+      const valueHex = encoded({ ...arbitraryAccepted(key), step_count: 5n });
+      expect(valueHex.split(minimal)).toHaveLength(2);
+      // The step count 5 as a one-byte-argument integer (`18 05`).
+      return valueHex.replace(minimal, `5820${"c1".repeat(32)}1805`);
+    });
+    refusedOverDescriptor(await f.imported());
+  });
+  it("imports a normal transaction whose descriptor's step count is the bound", async () => {
+    const f = await normalWith((key) => ({
+      ...arbitraryAccepted(key),
+      step_count: MAX_STEP_COUNT,
+    }));
+    importedRoot(await f.imported());
+  });
+  it("imports a rejected forced transaction whose descriptor's step count is the bound", async () => {
+    const payload = await fixture();
+    const [[key]] = payload.block_body.validation_traces as [
+      SDK.DaPayloadEntry,
+    ];
+    const descriptor = {
+      ...committeeDescriptor(key, "5a".repeat(32), "rejected", "EmptyInputs"),
+      step_count: MAX_STEP_COUNT,
+    };
+    importedRoot(await verdict(await withTrace(payload, encoded(descriptor))));
+  });
   it("refuses a descriptor whose step count exceeds the bound", async () => {
     const f = await normalWith((key) => ({
       ...arbitraryAccepted(key),
@@ -218,7 +249,10 @@ describe("foreign import of derived validation descriptors", () => {
         counts: { ...body.counts, validationTraceCount: 0n },
       },
     });
-    refusedOverDescriptor(await f.imported(payload));
+    // Named as absent, not as an undecodable descriptor.
+    expect(refusal(await f.imported(payload))).toMatch(
+      /^invalid: .*lacks its validation descriptor/u,
+    );
   });
   it("refuses a descriptor for an event the block does not carry", async () => {
     const f = await normalFixture();
@@ -242,6 +276,13 @@ describe("foreign import of derived validation descriptors", () => {
   });
 });
 
+/** Entries in key order, as the committee requires of a payload's sections. */
+const byKey = (entries: readonly SDK.DaPayloadEntry[]) => {
+  const sorted = [...entries].sort(([a], [b]) => (a < b ? -1 : 1));
+  expect(sorted.length).toBeGreaterThan(1);
+  return sorted;
+};
+
 describe("foreign import of uncommitted CEK program material", () => {
   it("imports a block carrying material no event reaches", async () => {
     const f = await normalFixture();
@@ -250,7 +291,9 @@ describe("foreign import of uncommitted CEK program material", () => {
       ...f.payload,
       block_body: {
         ...f.payload.block_body,
-        cek_program_material: plutus.payload.block_body.cek_program_material,
+        cek_program_material: byKey(
+          plutus.payload.block_body.cek_program_material,
+        ),
       },
     });
     expect(payload.block_body.cek_program_material.length).toBeGreaterThan(0);
@@ -276,12 +319,14 @@ describe("foreign import of uncommitted CEK program material", () => {
       ...f.payload,
       block_body: {
         ...body,
-        cek_program_material: body.cek_program_material.map(
-          ([key], index) =>
-            [
-              key,
-              index === 0 ? "00" : body.cek_program_material[index]![1],
-            ] as SDK.DaPayloadEntry,
+        cek_program_material: byKey(
+          body.cek_program_material.map(
+            ([key], index) =>
+              [
+                key,
+                index === 0 ? "00" : body.cek_program_material[index]![1],
+              ] as SDK.DaPayloadEntry,
+          ),
         ),
       },
     });

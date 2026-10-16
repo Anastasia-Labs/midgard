@@ -24,6 +24,10 @@ import { ContractDeploymentIdentity } from "../src/services/index.js";
 import { sha256 } from "../src/sha256.js";
 import { withBuiltValidationTracePair } from "./foreign-block-import.fixture.js";
 import { normalFixture } from "./foreign-block-import.normal-fixture.js";
+import {
+  attested,
+  AVAILABILITY,
+} from "./landed-blocks-replay-foreign.availability.js";
 
 const manifest: DaProducerPublicationManifest = {
   deploymentFingerprint: "de".repeat(32),
@@ -251,4 +255,58 @@ it("backs off a header whose fetch failed, asking no peer before its next attemp
   expect(t.requests).toHaveLength(5);
   expect((await fetch())._tag).toBe("Right");
   expect(t.requests).toHaveLength(6);
+});
+
+/** `payload` with program material no transaction reads, same header. */
+const strayMaterial = (payload: SDK.DaPayload): SDK.DaPayload => ({
+  ...payload,
+  block_body: {
+    ...payload.block_body,
+    cek_program_material: [["ab".repeat(32), "00"]],
+  },
+});
+
+it("asks the next peer within the fetch when a body differs from the attested commitment", async () => {
+  const { payload } = await normalFixture();
+  const variant = await envelope(strayMaterial(payload));
+  const canonical = await envelope(payload);
+  const t = transport((index) => (index === 0 ? variant : canonical));
+  const result = await Effect.runPromise(
+    Effect.either(
+      fetchForeignRetainedDa(
+        payload.block_body.header_hash,
+        payload.block_body.header,
+        {
+          binding: {
+            status: await attested(payload),
+            authority: () => AVAILABILITY,
+          },
+        },
+      ),
+    ).pipe(Effect.provideService(ContractDeploymentIdentity, identity)),
+  );
+  if (result._tag === "Left") throw result.left;
+  expect(result.right).toMatchObject({ bound: true, peer: 1 });
+  expect(result.right.payloadBytes).toEqual(canonical);
+  expect(t.requests).toEqual([0, 1]);
+});
+
+it("starts a header's next fetch at the peer after one whose copy was refused", async () => {
+  const { payload } = await normalFixture();
+  const bytes = await envelope(payload);
+  const t = transport(() => bytes);
+  const fetchDa = foreignDaFetchMemo();
+  const fetch = () =>
+    Effect.runPromise(
+      fetchDa(payload.block_body.header_hash, payload.block_body.header).pipe(
+        Effect.provideService(ContractDeploymentIdentity, identity),
+        Effect.withClock(fixedClock),
+      ),
+    );
+  expect(await fetch()).toMatchObject({ bound: false, peer: 0 });
+  fetchDa.refuse(payload.block_body.header_hash, 0);
+  expect(await fetch()).toMatchObject({ peer: 1 });
+  fetchDa.refuse(payload.block_body.header_hash, 1);
+  expect(await fetch()).toMatchObject({ peer: 0 });
+  expect(t.requests).toEqual([0, 1, 0]);
 });
