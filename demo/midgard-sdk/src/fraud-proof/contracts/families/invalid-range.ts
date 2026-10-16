@@ -1,3 +1,4 @@
+import { deploymentValidatorTitle as deployedTitle } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { Data, Network } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
@@ -19,8 +20,8 @@ import {
 } from "../types.js";
 
 export const INVALID_RANGE_FAULT_PROOF_TITLES = {
-  step01: "fraud_proofs/invalid_range/step_01.main.spend",
-  step02: "fraud_proofs/invalid_range/step_02.main.spend",
+  step01: deployedTitle("fraudProofInvalidRange"),
+  step02: deployedTitle("fraudProofInvalidRangeStep02"),
 } as const;
 
 export type InvalidRangeFaultProofContracts = {

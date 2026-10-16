@@ -13,6 +13,7 @@ export * from "./da-bond-pool.js";
 export * from "./da-bond-pool-quorum.js";
 export * from "./da-bond-pool-transactions.js";
 export * from "./da-payload.js";
+export * from "./deployment-members.js";
 export * from "./escape-hatch.js";
 export * from "./fraud-proof/index.js";
 export * from "./hub-oracle.js";

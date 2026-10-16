@@ -18,6 +18,7 @@ import {
   referencedFiles,
   workflowRunsCheck,
 } from "./derive.mjs";
+import { goldenChecks } from "./registry.tooling-checks.mjs";
 import { loadYaml } from "../ci/lint-workflows.mjs";
 import {
   buildRegistry,
@@ -251,6 +252,8 @@ test("a FULL_RUN path selects every check; the tracked blueprint selects nothing
   for (const path of [
     "demo/scripts/deployment-profile-aiken.mjs",
     "demo/scripts/deployment-profile-budgets.mjs",
+    "demo/scripts/package-tasks.mjs",
+    "demo/scripts/package-test.mjs",
     "onchain/aiken/aiken.toml",
     "demo/pnpm-lock.yaml",
     "scripts/preflight/derive.mjs",
@@ -463,6 +466,55 @@ test("building a blueprint cannot change generated preflight references", () => 
     assert.deepEqual(referencedFiles(root, "generator.mjs"), ["tracked.json"]);
     for (const path of IGNORED_PATHS) writeFileSync(join(root, path), "{}");
     assert.deepEqual(referencedFiles(root, "generator.mjs"), ["tracked.json"]);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("golden selection follows private imports through typed fixture helpers", () => {
+  const root = mkdtempSync(join(tmpdir(), "preflight-private-fixtures-"));
+  const directory = "demo/fixture-package";
+  const pkg = {
+    directory,
+    name: "fixture-package",
+    workspaceDependencies: [],
+    scripts: { "fixtures:example:check": "node scripts/generate.mjs --check" },
+  };
+  try {
+    for (const subdir of ["scripts", "tests/fixtures"]) {
+      mkdirSync(join(root, directory, subdir), { recursive: true });
+    }
+    writeFileSync(
+      join(root, directory, "package.json"),
+      JSON.stringify({
+        imports: { "#fixture-values": "./tests/fixtures/values.ts" },
+      }),
+    );
+    writeFileSync(
+      join(root, directory, "scripts/generate.mjs"),
+      'import "../tests/fixtures/canonical.ts";',
+    );
+    writeFileSync(
+      join(root, directory, "tests/fixtures/canonical.ts"),
+      'export { value } from "#fixture-values";',
+    );
+    writeFileSync(
+      join(root, directory, "tests/fixtures/values.ts"),
+      "export const value = 1;",
+    );
+    const checks = goldenChecks(root, [pkg], "fixtures:example:check");
+    for (const path of ["tests/fixtures/values.ts", "package.json"]) {
+      const result = selectChecks({ checks }, [`${directory}/${path}`]);
+      assert.deepEqual(
+        result.selected.map(({ check }) => check.id),
+        ["golden:example"],
+      );
+      assert.deepEqual(result.uncovered, []);
+    }
+    assert.deepEqual(
+      selectChecks({ checks }, [`${directory}/tests/unrelated.ts`]).selected,
+      [],
+    );
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

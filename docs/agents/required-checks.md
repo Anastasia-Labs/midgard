@@ -119,6 +119,8 @@ pre-push hook. It blocks the push only on a failed check. Skip it once with
 - `demo/.nvmrc`
 - `demo/patches/**`
 - `demo/vendor/**`
+- `demo/scripts/package-tasks.mjs`
+- `demo/scripts/package-test.mjs`
 - `demo/midgard-test-support/**`
 - `scripts/preflight.mjs`
 - `scripts/preflight/**`
@@ -400,6 +402,28 @@ Typecheck the touched packages and their dependents.
 - Needs: `node-modules`
 - Mode: Node CI owns the ordinary PR matrix; --full-local runs it locally
 
+### `demo-boundary`
+
+Installed production packages resolve public Node exports and CLI help.
+
+- Command: `node scripts/contrib.mjs boundary --package <each affected built package>`
+- Runs on:
+  - `demo/lucid-midgard/**`
+  - `demo/midgard-core/**`
+  - `demo/midgard-fault-proofs/**`
+  - `demo/midgard-validation/**`
+  - `demo/midgard-node/**`
+  - `demo/midgard-node-tools/**`
+  - `demo/midgard-sdk/**`
+  - `demo/midgard-watcher/**`
+  - `demo/da-committee-node/**`
+  - `demo/midgard-test-support/**`
+  - `demo/l1-node-transport/**`
+  - `demo/midgard-l1-follower/**`
+  - `.github/workflows/midgard-node-ci.yml`
+- Needs: `node-modules`
+- Mode: Node CI owns the ordinary PR matrix; --full-local runs it locally
+
 ### `golden:native-compact`
 
 Golden channel native-compact (@al-ft/lucid-midgard).
@@ -575,6 +599,7 @@ Golden channel ordered-collection-boundary-aiken (@al-ft/midgard-validation).
 - Fix: `pnpm --dir demo/midgard-validation run fixtures:ordered-collection-boundary-aiken:sync`
 - Runs on:
   - `demo/midgard-validation/scripts/generate-ordered-collection-boundary-aiken-goldens.mjs`
+  - `demo/midgard-node/blueprints/always-succeeds/plutus.json`
   - `demo/midgard-validation/scripts/generate-ordered-collection-boundary-aiken-goldens.aiken-families.mjs`
   - `demo/midgard-validation/scripts/generate-ordered-collection-boundary-aiken-goldens.terminal-fixture-constants.mjs`
   - `demo/midgard-validation/tests/blob-chunk-boundary.test.ts`
@@ -637,6 +662,7 @@ Golden channel nested-boundary-aiken (@al-ft/midgard-validation).
 - Fix: `pnpm --dir demo/midgard-validation run fixtures:nested-boundary-aiken:sync`
 - Runs on:
   - `demo/midgard-validation/scripts/generate-nested-boundary-aiken-goldens.mjs`
+  - `demo/midgard-node/blueprints/always-succeeds/plutus.json`
   - `demo/midgard-validation/tests/nested-data-boundary.test.ts`
   - `demo/midgard-validation/tests/nested-redeemer-data-boundary.test.ts`
   - `demo/midgard-validation/tests/nested-value-boundary.test.ts`
@@ -746,6 +772,7 @@ Golden channel transition-trace-abi (midgard-node).
   - `demo/midgard-node/scripts/generate-transition-trace-abi-fixture.mjs`
   - `demo/midgard-node/tests/fixtures/transition-trace-abi.json`
   - `demo/midgard-node/tests/sdk-abi-fixtures.test.ts`
+  - `onchain/aiken/env/testnet.ak`
   - `onchain/aiken/validators/fraud-proofs/transition-trace/abi-v1-golden.test.ak`
   - `demo/lucid-midgard/src/**`
   - `demo/midgard-core/src/**`

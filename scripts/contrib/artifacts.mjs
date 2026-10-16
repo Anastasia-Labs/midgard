@@ -1,3 +1,4 @@
+import { packageBuildTask } from "../../demo/scripts/package-tasks.mjs";
 import { execFileSync } from "node:child_process";
 import {
   cpSync,
@@ -195,7 +196,7 @@ export const runArtifact = async (
       const retainedArtifacts = [];
       const prepareArtifacts = async (checkout) => {
         const packages = packageClosure(checkout, pkg.name).filter(
-          (entry) => entry.scripts?.build,
+          packageBuildTask,
         );
         for (const dependency of packages) {
           if (checkBuild(checkout, dependency.name).status !== "fresh") {

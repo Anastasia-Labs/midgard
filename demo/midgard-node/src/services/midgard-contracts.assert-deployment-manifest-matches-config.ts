@@ -12,11 +12,6 @@ import {
 } from "@lucid-evolution/lucid";
 
 import { resolveHousekeepingRetentionDays } from "../database/retention-policy.js";
-import {
-  type LegacyFaultProofFamily,
-  recordedFaultProofStepContractNames,
-  type RegisteredLinearFaultProofCategory,
-} from "../deployable-scripts.js";
 import { type NodeConfigDep } from "./config.js";
 import { requireManifestString } from "./midgard-contracts.load-reference-script-auth-validator.js";
 
@@ -285,21 +280,3 @@ export const authenticatedValidatorFromManifest = (
   ...spendingValidatorFromManifest(network, manifest, sourcePath, spendName),
   ...mintingValidatorFromManifest(manifest, sourcePath, mintName),
 });
-
-/**
- * Every step of a fault-proof chain, restored by the manifest's own step
- * names. The step count comes from the manifest too, never from a locally
- * built bundle whose shape may differ from the deployment's.
- */
-export const faultProofStepsFromManifest = (
-  network: Network,
-  manifest: DeploymentManifest,
-  sourcePath: string,
-  chain: RegisteredLinearFaultProofCategory | LegacyFaultProofFamily,
-): SDK.SpendingValidator[] =>
-  recordedFaultProofStepContractNames(
-    chain,
-    (contract) => manifest.contracts[contract] !== undefined,
-  ).map((contract) =>
-    spendingValidatorFromManifest(network, manifest, sourcePath, contract),
-  );

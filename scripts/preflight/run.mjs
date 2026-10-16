@@ -18,6 +18,7 @@ import { ciOwnsRuntime, RUNTIME_CHECKS } from "./runtime-owner.mjs";
 import {
   SDK_SUITES,
   sdkContext as currentSdkContext,
+  sdkFullSuite,
   sdkLaneStep,
   sdkSuiteStep,
   sdkReportCounts,
@@ -157,6 +158,8 @@ export const planPreflight = (registry, changed, options = {}) => {
       if (
         hostedRuntime &&
         RUNTIME_CHECKS.includes(check.id) &&
+        (check.id !== "demo-boundary" ||
+          registry.runtimeWorkflow.boundaryLane) &&
         (check.id !== "tx-preparation:sdk" || registry.runtimeWorkflow.sdkLane)
       ) {
         const { workflow, gate } = registry.runtimeWorkflow;
@@ -255,14 +258,7 @@ export const spawnStep = async (root, step, env, log, signal) =>
     async (ownedEnv) => {
       const directory = runDirectory();
       const before = inputIdentity(root, "@repository");
-      const sdk =
-        sdkSuiteStep(step) &&
-        JSON.parse(
-          readFileSync(
-            resolve(root, SDK_SUITES[step.sdkSuite], "package.json"),
-            "utf8",
-          ),
-        ).scripts?.test === "vitest run";
+      const sdk = sdkSuiteStep(step) && sdkFullSuite(root, step.sdkSuite);
       const reportPath = sdk ? resolve(directory, "sdk-suite.json") : undefined;
       let sdkBefore;
       if (sdk) {

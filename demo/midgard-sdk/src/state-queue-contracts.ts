@@ -1,3 +1,4 @@
+import { deploymentValidatorTitle as deployedTitle } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { type L1SlotConfig } from "@al-ft/midgard-core/l1-slot-config";
 import { Address, Data, Network } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
@@ -20,7 +21,7 @@ import {
 import { l1SlotConfigParameterData } from "./fraud-proof/contracts/cek-context.js";
 
 export const CORRECTION_LOCK_SCRIPT_TITLES = {
-  spend: "correction_lock.spend.spend",
+  spend: deployedTitle("correctionLockSpend"),
 } as const;
 
 export type BuildCorrectionLockValidatorParams = {
@@ -46,13 +47,15 @@ export const buildCorrectionLockValidator = (
   );
 
 export const STATE_QUEUE_SCRIPT_TITLES = {
-  mint: "state_queue.mint.mint",
-  spend: "state_queue.spend.spend",
-  commitYield: "state_queue_yields.commit.withdraw",
-  unattestedTimeoutYield: "state_queue_yields.remove_unattested.withdraw",
-  unavailableTimeoutYield: "state_queue_yields.remove_unavailable.withdraw",
-  fraudRemovalYield: "state_queue_yields.remove_fraudulent.withdraw",
-  mergeYield: "state_queue_yields.merge.withdraw",
+  mint: deployedTitle("stateQueueMint"),
+  spend: deployedTitle("stateQueueSpend"),
+  commitYield: deployedTitle("stateQueueCommitWithdraw"),
+  unattestedTimeoutYield: deployedTitle("stateQueueUnattestedTimeoutWithdraw"),
+  unavailableTimeoutYield: deployedTitle(
+    "stateQueueUnavailableTimeoutWithdraw",
+  ),
+  fraudRemovalYield: deployedTitle("stateQueueFraudRemovalWithdraw"),
+  mergeYield: deployedTitle("stateQueueMergeWithdraw"),
 } as const;
 
 export type BuildStateQueueValidatorParams = {

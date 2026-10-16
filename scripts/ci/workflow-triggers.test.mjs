@@ -90,6 +90,7 @@ const scenarios = {
         "test-durations",
         "native-mpf",
         "lint",
+        "installed-boundaries",
         "da-committee-node",
         "midgard-l1-follower",
         "l1-fork-simulator",
@@ -175,6 +176,18 @@ const scenarios = {
       "scripts/preflight/run.test.mjs",
     ],
     runs: ["repo-tools-ci:repo-tools", "agent-skills-ci:skills"],
+  },
+  "shared package task helper pull request": {
+    event: "pull_request",
+    branch: workingBranch,
+    files: ["demo/scripts/package-tasks.mjs"],
+    runs: [
+      "aiken-ci:*",
+      "midgard-node-ci:*",
+      "midgard-watcher-ci:watcher",
+      "repo-tools-ci:repo-tools",
+      "agent-skills-ci:skills",
+    ],
   },
   "watcher pull request": {
     event: "pull_request",

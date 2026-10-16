@@ -1,6 +1,17 @@
+import {
+  packageTasks,
+  taskProcess,
+} from "../../demo/scripts/package-tasks.mjs";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  realpathSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { resolve } from "node:path";
 import test from "node:test";
 
@@ -8,16 +19,10 @@ import { HELP, parse } from "../contrib.mjs";
 import { packageNeedsPostgres } from "../preflight/derive.mjs";
 import { atomicJson, workspacePackages } from "./files.mjs";
 import { fixture } from "./fixture.test-support.mjs";
-import {
-  preparationPlan,
-  pretestBuilds,
-  runTests,
-  testCommand,
-  testRunningOwnDist,
-} from "./tests.mjs";
+import { preparationPlan, runTests, testCommand } from "./tests.mjs";
 import {
   failures,
-  parseTestScript,
+  declaredTestCommand,
   summaryLines,
   vitestFlags,
   withCallerFlags,
@@ -25,11 +30,37 @@ import {
 
 const repository = resolve(import.meta.dirname, "../..");
 
+test("declared compiled prerequisites cover a CLI path assembled by the test", (t) => {
+  const root = realpathSync(fixture(t));
+  const path = resolve(root, "demo/example/package.json");
+  const pkg = JSON.parse(readFileSync(path, "utf8"));
+  pkg.midgardTasks = {
+    build: {
+      steps: [{ command: ["tsup", "src/index.ts"] }],
+      outputs: ["dist"],
+    },
+    test: {
+      command: ["vitest", "run"],
+      prerequisites: [{ kind: "build", package: "example" }],
+    },
+  };
+  atomicJson(path, pkg);
+  mkdirSync(resolve(root, "demo/example/tests"));
+  writeFileSync(
+    resolve(root, "demo/example/tests/cli.test.ts"),
+    'spawnSync(process.execPath, [join(import.meta.dirname, "..", "dist", "cli.js")]);\n',
+  );
+  assert.deepEqual(
+    preparationPlan(root, "example").prerequisites.map(({ name }) => name),
+    ["example"],
+  );
+});
+
 test("every workspace test script reads as one Vitest command, or says it has none", () => {
   for (const pkg of workspacePackages(repository).filter(
     (pkg) => pkg.scripts?.test,
   )) {
-    if (!/\bvitest\b/u.test(pkg.scripts.test)) {
+    if (!pkg.midgardTasks?.test) {
       assert.throws(() => testCommand(pkg), /has no Vitest suites/u);
       continue;
     }
@@ -69,104 +100,72 @@ test("a package whose tests run its own dist plans that dist as a prerequisite",
   );
 });
 
-test("every package whose tests run its own dist declares that build in its pretest", () => {
-  // `pnpm test` (CI) runs the pretest and contrib prepares what it declares,
-  // so the declaration must cover every dist the suites execute.
-  const runners = workspacePackages(repository).filter((pkg) =>
-    testRunningOwnDist(repository, pkg),
-  );
-  assert.deepEqual(runners.map(({ name }) => name).sort(), [
-    "midgard-node",
-    "midgard-node-tools",
-  ]);
-  for (const pkg of runners)
-    assert.ok(pretestBuilds(repository, pkg).includes(pkg.name), pkg.name);
-});
-
-test("a pretest step contrib cannot read is refused, and an undeclared own-dist runner stops the plan", (t) => {
-  const root = realpathSync(fixture(t));
-  const pkg = (pretest) => ({
+test("task declarations reject unknown prerequisites and duplicate environment ownership", () => {
+  const pkg = {
     name: "example",
-    directory: "demo/example",
-    scripts: { pretest },
-  });
-  assert.deepEqual(pretestBuilds(root, pkg("pnpm run build")), ["example"]);
+    midgardTasks: {
+      test: {
+        command: ["vitest", "run"],
+        prerequisites: [{ kind: "database" }],
+      },
+    },
+  };
   assert.throws(
-    () => pretestBuilds(root, pkg("pnpm run build && tsc --noEmit")),
-    /pretest step `tsc --noEmit` is not/u,
+    () => packageTasks(pkg),
+    /prerequisite kind database is unknown/u,
   );
+  pkg.midgardTasks.test.prerequisites = [{ kind: "build", package: "missing" }];
   assert.throws(
-    () => pretestBuilds(root, pkg("pnpm run build:all")),
-    /pretest step `pnpm run build:all` is not/u,
+    () => packageTasks(pkg),
+    /must be a declared workspace dependency/u,
   );
-  mkdirSync(resolve(root, "demo/example/tests"));
-  writeFileSync(
-    resolve(root, "demo/example/tests/notes.test.ts"),
-    '// spawns "dist/cli.js"\n/* "../dist/cli.js" */\nconst fake = "/repo/dist/cli.js";\n',
-  );
-  assert.equal(testRunningOwnDist(root, pkg()), undefined);
-  writeFileSync(
-    resolve(root, "demo/example/tests/cli.test.ts"),
-    'spawnSync(process.execPath, [resolve("dist/cli.js")]);\n',
-  );
-  assert.equal(
-    testRunningOwnDist(root, pkg()),
-    "demo/example/tests/cli.test.ts",
-  );
-  assert.throws(
-    () => preparationPlan(root, "example"),
-    /tests\/cli\.test\.ts runs the package's own dist\/, but its pretest does not build it/u,
-  );
+  pkg.midgardTasks = {
+    build: {
+      steps: [
+        {
+          command: ["node", "build.mjs"],
+          environment: { FLAG: "a" },
+          appendEnvironment: { FLAG: "b" },
+        },
+      ],
+      outputs: ["dist"],
+    },
+  };
+  assert.throws(() => packageTasks(pkg), /both replaces and appends FLAG/u);
 });
 
-test("a test script's environment, flags and preludes are read, quotes and all", () => {
-  assert.deepEqual(
-    parseTestScript(
-      "pnpm run a && pnpm run b && export NODE_ENV='emulator' && vitest run --disableConsoleIntercept",
-    ),
-    {
-      env: { NODE_ENV: "emulator" },
-      config: undefined,
-      exclude: [],
-      maxWorkers: undefined,
-      disableConsoleIntercept: true,
-      preludes: ["pnpm run a", "pnpm run b"],
-    },
-  );
-  const watcher = parseTestScript(
-    "env MALLOC_MMAP_THRESHOLD_=131072 vitest run --exclude 'tests/fork-sim/**' --maxWorkers=2",
-  );
-  assert.deepEqual(watcher.env, { MALLOC_MMAP_THRESHOLD_: "131072" });
-  assert.deepEqual(vitestFlags(watcher), [
+test("declared test flags are preserved and unknown flags are refused", () => {
+  const command = declaredTestCommand({
+    command: [
+      "vitest",
+      "run",
+      "--exclude",
+      "tests/fork-sim/**",
+      "--maxWorkers=2",
+    ],
+    environment: { MALLOC_MMAP_THRESHOLD_: "131072" },
+  });
+  assert.deepEqual(command.env, { MALLOC_MMAP_THRESHOLD_: "131072" });
+  assert.deepEqual(vitestFlags(command), [
     "--exclude=tests/fork-sim/**",
     "--maxWorkers=2",
   ]);
-});
-
-test("a test script flag contrib does not understand is refused, not dropped", () => {
-  // Dropping it would make `contrib test` run something other than CI does.
   assert.throws(
-    () => parseTestScript("vitest run --pool=threads"),
+    () => declaredTestCommand({ command: ["vitest", "run", "--pool=threads"] }),
     /does not understand '--pool=threads'/u,
   );
-  assert.throws(
-    () => parseTestScript("vitest --run"),
-    /must use 'vitest run'/u,
-  );
-  assert.throws(
-    () => parseTestScript("vitest run && vitest run"),
-    /exactly once/u,
-  );
-  assert.throws(
-    () => parseTestScript("vitest run && node after.mjs"),
-    /a step follows vitest/u,
-  );
 });
 
-test("caller flags add to the script's: excludes accumulate, a worker cap replaces", () => {
+test("caller flags add to the declaration: excludes accumulate, a worker cap replaces", () => {
   const merged = withCallerFlags(
-    parseTestScript("vitest run --exclude a --maxWorkers 4"),
-    { exclude: ["b"], maxWorkers: "1", disableConsoleIntercept: true },
+    declaredTestCommand({
+      command: ["vitest", "run", "--exclude", "a", "--maxWorkers", "4"],
+    }),
+    {
+      exclude: ["b"],
+      maxWorkers: "1",
+      disableConsoleIntercept: true,
+    },
   );
   assert.deepEqual(vitestFlags(merged), [
     "--exclude=a",
@@ -279,12 +278,13 @@ test("the failure summary names each failed test and each file that failed to lo
 // (failing where the file says FAIL).
 const fakeVitest = `
 import {appendFileSync,readdirSync,readFileSync,writeFileSync} from 'node:fs';
-import {resolve} from 'node:path';
+import {resolve,join} from 'node:path';
+import {spawnSync} from 'node:child_process';
 import {listResources} from ${JSON.stringify(new URL("./resources.mjs", import.meta.url).href)};
 const [mode, ...rest] = process.argv.slice(2);
 const value = (name) => rest.filter((arg) => arg.startsWith('--' + name + '=')).map((arg) => arg.slice(name.length + 3));
 const glob = (pattern) => new RegExp('^' + pattern.replace(/[.+?^$()|[\\]\\\\]/g, '\\\\$&').replace(/\\*\\*/g, '\\0').replace(/\\*/g, '[^/]*').replace(/\\0/g, '.*') + '$');
-const filters = rest.filter((arg) => arg.endsWith('.test.ts'));
+const filters = rest.filter((arg, index) => !arg.startsWith('--') && rest[index - 1] !== '--testNamePattern');
 const directory = value('config').length ? 'journeys' : 'tests';
 const collected = readdirSync(directory).map((name) => directory + '/' + name)
   .filter((file) => !filters.length || filters.some((filter) => file.includes(filter)))
@@ -295,22 +295,43 @@ if (mode === 'list') {
 }
 const lease = listResources().some((entry) => entry.resource === 'workspace:' + process.env.FAKE_ROOT);
 appendFileSync(process.env.FAKE_LOG, JSON.stringify({vitest: rest, NODE_ENV: process.env.NODE_ENV, lease}) + '\\n');
-const results = collected.map((file) => ({name: resolve(file), status: readFileSync(file, 'utf8').includes('FAIL') ? 'failed' : 'passed',
-  assertionResults: [{status: readFileSync(file, 'utf8').includes('FAIL') ? 'failed' : 'passed', fullName: file + ' case', failureMessages: ['Error: broke in ' + file]}]}));
-const failed = results.filter((suite) => suite.status === 'failed').length;
-writeFileSync(value('outputFile')[0], JSON.stringify({success: failed === 0, numPassedTests: results.length - failed, numFailedTests: failed, testResults: results}));
-process.exit(failed ? 1 : 0);
+for (const file of collected) if (readFileSync(file, 'utf8').includes('RUN_CLI')) {
+  const result = spawnSync(process.execPath, [join(process.cwd(), 'dist', 'cli.js')], {encoding:'utf8'});
+  if (result.status !== 0) throw new Error(result.stderr || 'compiled CLI failed');
+  appendFileSync(process.env.FAKE_LOG, JSON.stringify({cli:result.stdout.trim()}) + '\\n');
+}
+const results = collected.map((file) => {
+  const body = readFileSync(file, 'utf8');
+  const status = body.includes('FAIL') ? 'failed' : body.includes('SKIP') ? 'pending' : body.includes('TODO') ? 'todo' : 'passed';
+  return {name: resolve(file), status: status === 'failed' ? 'failed' : 'passed',
+    assertionResults: body.includes('ZERO') ? [] : [{status, fullName: file + ' case', failureMessages: ['Error: broke in ' + file]}]};
+});
+const assertions = results.flatMap((suite) => suite.assertionResults);
+const failed = assertions.filter((entry) => entry.status === 'failed').length;
+const passed = assertions.filter((entry) => entry.status === 'passed').length;
+const setup = collected.some((file) => readFileSync(file, 'utf8').includes('SETUP'));
+if (collected.some((file) => readFileSync(file, 'utf8').includes('NO_REPORT'))) process.exit(0);
+writeFileSync(value('outputFile')[0], JSON.stringify({success: failed === 0 && !setup, numRuntimeErrorTestSuites: setup ? 1 : 0, numPassedTests: passed, numFailedTests: failed, testResults: results}));
+process.exit(failed || setup ? 1 : 0);
 `;
 
-const workspace = (t, script, tests) => {
+const workspace = (t, task, tests) => {
   const root = realpathSync(fixture(t));
   const runner = resolve(root, "demo/node_modules/vitest");
   mkdirSync(runner, { recursive: true });
-  atomicJson(resolve(runner, "package.json"), { name: "vitest" });
+  atomicJson(resolve(runner, "package.json"), {
+    name: "vitest",
+    bin: "vitest.mjs",
+  });
   writeFileSync(resolve(runner, "vitest.mjs"), fakeVitest);
+  atomicJson(resolve(root, "demo/package.json"), {
+    packageManager: "pnpm@9.15.4",
+  });
   const manifest = resolve(root, "demo/example/package.json");
   const pkg = JSON.parse(readFileSync(manifest, "utf8"));
-  pkg.scripts.test = script;
+  pkg.scripts.test = "node ../../scripts/contrib.mjs test --package example";
+  pkg.scripts["test:extra"] = "node extra.mjs";
+  pkg.midgardTasks.test = task;
   atomicJson(manifest, pkg);
   mkdirSync(resolve(root, "demo/example/tests"));
   for (const [name, body] of Object.entries(tests))
@@ -322,7 +343,7 @@ const workspace = (t, script, tests) => {
   // `corepack pnpm run <script>` runs a prelude; record it.
   writeFileSync(
     resolve(tools, "corepack"),
-    `#!/bin/sh\nprintf '{"prelude":"%s"}\\n' "$*" >> ${JSON.stringify(log)}\n`,
+    `#!/bin/sh\nif [ "$*" = "pnpm --version" ]; then printf "9.15.4\\n"; exit 0; fi\nprintf '{"prelude":"%s"}\\n' "$*" >> ${JSON.stringify(log)}\n`,
     { mode: 0o755 },
   );
   const env = {
@@ -343,7 +364,11 @@ const workspace = (t, script, tests) => {
 test("a whole-package run is the package's test script: its environment, flags and preludes, outside the lease", async (t) => {
   const { root, env, calls } = workspace(
     t,
-    "pnpm run test:extra && export NODE_ENV='emulator' && vitest run --exclude 'tests/slow*'",
+    {
+      environment: { NODE_ENV: "emulator" },
+      command: ["vitest", "run", "--exclude", "tests/slow*"],
+      before: [{ command: ["pnpm", "run", "test:extra"] }],
+    },
     {
       "a.test.ts": "",
       "b.test.ts": "",
@@ -387,7 +412,10 @@ test("a whole-package run is the package's test script: its environment, flags a
 test("a focused run skips the preludes and defaults to the test runtime", async (t) => {
   const { root, env, calls } = workspace(
     t,
-    "pnpm run test:extra && vitest run",
+    {
+      command: ["vitest", "run"],
+      before: [{ command: ["pnpm", "run", "test:extra"] }],
+    },
     { "a.test.ts": "", "b.test.ts": "" },
   );
   const receipt = await runTests(root, "example", {
@@ -404,7 +432,7 @@ test("a focused run skips the preludes and defaults to the test runtime", async 
 test("a named file that Vitest would not run is refused before anything runs", async (t) => {
   const { root, env, calls } = workspace(
     t,
-    "vitest run --exclude 'tests/slow*'",
+    { command: ["vitest", "run", "--exclude", "tests/slow*"] },
     { "slow.test.ts": "", "a.test.ts": "", "data.test.ts": "" },
   );
   await assert.rejects(
@@ -428,10 +456,14 @@ test("a named file that Vitest would not run is refused before anything runs", a
 });
 
 test("a failing run fails its receipt and names the failure", async (t) => {
-  const { root, env } = workspace(t, "vitest run", {
-    "a.test.ts": "",
-    "b.test.ts": "FAIL",
-  });
+  const { root, env } = workspace(
+    t,
+    { command: ["vitest", "run"] },
+    {
+      "a.test.ts": "",
+      "b.test.ts": "FAIL",
+    },
+  );
   const receipt = await runTests(root, "example", { sourceOnly: true, env });
   assert.equal(receipt.status, "failed");
   assert.equal(receipt.exitCode, 1);
@@ -448,7 +480,10 @@ test("a failing run fails its receipt and names the failure", async (t) => {
 test("a related run runs what the change reaches, with the preludes, and nothing when it reaches nothing", async (t) => {
   const { root, env, calls } = workspace(
     t,
-    "pnpm run test:extra && vitest run",
+    {
+      command: ["vitest", "run"],
+      before: [{ command: ["pnpm", "run", "test:extra"] }],
+    },
     { "a.test.ts": "", "b.test.ts": "" },
   );
   const stub = (answer) => async (_root, pkg, _command, changed) => {
@@ -503,7 +538,10 @@ test("a related run runs what the change reaches, with the preludes, and nothing
 test("a related change that reaches only the plain-Node preludes runs the whole script", async (t) => {
   const { root, env, calls } = workspace(
     t,
-    "pnpm run test:extra && vitest run",
+    {
+      command: ["vitest", "run"],
+      before: [{ command: ["pnpm", "run", "test:extra"] }],
+    },
     { "a.test.ts": "", "b.test.ts": "" },
   );
   const receipt = await runTests(root, "example", {
@@ -522,7 +560,11 @@ test("a related change that reaches only the plain-Node preludes runs the whole 
   assert.equal(receipt.selectedFiles.length, 2);
   assert.deepEqual(calls()[0], { prelude: "pnpm run test:extra" });
   // Without preludes, the same answer reaches nothing.
-  const plain = workspace(t, "vitest run", { "a.test.ts": "" });
+  const plain = workspace(
+    t,
+    { command: ["vitest", "run"] },
+    { "a.test.ts": "" },
+  );
   const skipped = await runTests(plain.root, "example", {
     related: ["demo/example/scripts/check.mjs"],
     sourceOnly: true,
@@ -563,7 +605,11 @@ test("--related is a test option, exclusive with --file", async (t) => {
   );
   assert.notEqual(refused.status, 0);
   assert.match(refused.stderr, /--related is supported only for test/u);
-  const { root, env, calls } = workspace(t, "vitest run", { "a.test.ts": "" });
+  const { root, env, calls } = workspace(
+    t,
+    { command: ["vitest", "run"] },
+    { "a.test.ts": "" },
+  );
   await assert.rejects(
     runTests(root, "example", {
       related: ["a.ts"],
@@ -579,7 +625,7 @@ test("--related is a test option, exclusive with --file", async (t) => {
 test("--config runs named files of another package config, and only named files", async (t) => {
   const { root, env, calls } = workspace(
     t,
-    "export NODE_ENV='emulator' && vitest run",
+    { environment: { NODE_ENV: "emulator" }, command: ["vitest", "run"] },
     { "a.test.ts": "" },
   );
   mkdirSync(resolve(root, "demo/example/journeys"));
@@ -632,7 +678,11 @@ test("--config runs named files of another package config, and only named files"
 });
 
 test("--timeout-seconds bounds the Vitest step, and only as whole seconds", async (t) => {
-  const { root, env, calls } = workspace(t, "vitest run", { "a.test.ts": "" });
+  const { root, env, calls } = workspace(
+    t,
+    { command: ["vitest", "run"] },
+    { "a.test.ts": "" },
+  );
   for (const timeoutMs of [0, -1000, 2 ** 31, 1.5])
     await assert.rejects(
       runTests(root, "example", { sourceOnly: true, env, timeoutMs }),
@@ -655,7 +705,11 @@ test("--timeout-seconds bounds the Vitest step, and only as whole seconds", asyn
 });
 
 test("a blueprint override is refused unless it is this checkout's own ready blueprint", async (t) => {
-  const { root, env, calls } = workspace(t, "vitest run", { "a.test.ts": "" });
+  const { root, env, calls } = workspace(
+    t,
+    { command: ["vitest", "run"] },
+    { "a.test.ts": "" },
+  );
   const copy = resolve(root, "frozen-plutus.json");
   writeFileSync(copy, "{}\n");
   await assert.rejects(
@@ -667,4 +721,279 @@ test("a blueprint override is refused unless it is this checkout's own ready blu
     /refuse MIDGARD_REAL_BLUEPRINT_PATH=.*byte-identical copy of this checkout's ready blueprint/u,
   );
   assert.deepEqual(calls(), []);
+});
+
+test("computed CLI paths execute newly prepared and stale rebuilt outputs", async (t) => {
+  const { root, env, calls } = workspace(
+    t,
+    {
+      command: ["vitest", "run"],
+      prerequisites: [{ kind: "build", package: "example" }],
+    },
+    {
+      "cli.test.ts":
+        "// RUN_CLI: join(import.meta.dirname, '..', 'dist', 'cli.js')",
+    },
+  );
+  const manifest = resolve(root, "demo/example/package.json");
+  const pkg = JSON.parse(readFileSync(manifest, "utf8"));
+  pkg.midgardTasks.build.steps = [{ command: ["node", "scripts/build.mjs"] }];
+  atomicJson(manifest, pkg);
+  mkdirSync(resolve(root, "demo/example/scripts"));
+  writeFileSync(
+    resolve(root, "demo/example/scripts/build.mjs"),
+    'import {mkdirSync,copyFileSync} from "node:fs"; mkdirSync("dist",{recursive:true}); copyFileSync("src/cli.js","dist/cli.js");\n',
+  );
+  const source = resolve(root, "demo/example/src/cli.js");
+  writeFileSync(source, 'console.log("first");\n');
+  const ordinary = spawnSync(
+    process.execPath,
+    [
+      resolve(repository, "demo/scripts/package-test.mjs"),
+      "tests/cli.test.ts",
+      `--outputFile=${resolve(root, "ordinary.json")}`,
+    ],
+    { cwd: resolve(root, "demo/example"), env, encoding: "utf8" },
+  );
+  assert.equal(ordinary.status, 0, ordinary.stderr);
+  writeFileSync(source, 'console.log("second");\n');
+  assert.equal((await runTests(root, "example", { env })).status, "passed");
+  assert.deepEqual(
+    calls()
+      .filter((entry) => entry.cli)
+      .map((entry) => entry.cli),
+    ["first", "second"],
+  );
+});
+
+test("task argv preserves shell characters and environment append values literally", (t) => {
+  const root = fixture(t);
+  const script = resolve(root, "echo.mjs");
+  writeFileSync(
+    script,
+    "console.log(JSON.stringify({argv:process.argv.slice(2),flag:process.env.FLAG}));",
+  );
+  const invocation = taskProcess(
+    {
+      command: ["node", script, "$(touch forbidden)", ">", "a b", "&&"],
+      appendEnvironment: { FLAG: " suffix" },
+    },
+    root,
+    { ...process.env, FLAG: "base" },
+  );
+  const result = spawnSync(invocation.argv[0], invocation.argv.slice(1), {
+    cwd: invocation.cwd,
+    env: invocation.env,
+    encoding: "utf8",
+  });
+  assert.equal(result.status, 0, result.stderr);
+  assert.deepEqual(JSON.parse(result.stdout), {
+    argv: ["$(touch forbidden)", ">", "a b", "&&"],
+    flag: "base suffix",
+  });
+});
+
+test("guarded evidence stays incomplete for selected skips and todos and fails missing execution", async (t) => {
+  for (const [body, expectedStatus, expectedExit] of [
+    ["SKIP", "incomplete", 3],
+    ["FAIL", "failed", 1],
+    ["SETUP", "failed", 1],
+    ["NO_REPORT", "failed", 1],
+    ["TODO", "incomplete", 3],
+  ]) {
+    const { root, env } = workspace(
+      t,
+      { command: ["vitest", "run"] },
+      { "passed.test.ts": "", "other.test.ts": body },
+    );
+    const result = await runTests(root, "example", { sourceOnly: true, env });
+    assert.equal(result.status, expectedStatus, body);
+    assert.equal(result.exitCode, expectedExit, body);
+    if (body === "SKIP") {
+      assert.equal(result.exitCode, 3, "direct contrib keeps its strict exit");
+      assert.equal(
+        JSON.parse(readFileSync(result.path, "utf8")).status,
+        "incomplete",
+        "selected skips cannot accept the receipt",
+      );
+    }
+  }
+  for (const body of ["ZERO", "SKIP"]) {
+    const { root, env } = workspace(
+      t,
+      { command: ["vitest", "run"] },
+      { "empty.test.ts": body },
+    );
+    const result = await runTests(root, "example", { sourceOnly: true, env });
+    assert.equal(result.counts.executed, 0);
+    assert.equal(result.exitCode, 1, "zero executed assertions never pass");
+  }
+});
+
+test("ordinary package scripts preserve Vitest selectors, reporters, CI environment and native exit status", (t) => {
+  const root = realpathSync(fixture(t));
+  const cwd = resolve(root, "demo/example");
+  const vitest = realpathSync(
+    resolve(repository, "demo/l1-node-transport/node_modules/vitest"),
+  );
+  mkdirSync(resolve(cwd, "node_modules"));
+  symlinkSync(vitest, resolve(cwd, "node_modules/vitest"));
+  const manifest = resolve(cwd, "package.json");
+  const pkg = JSON.parse(readFileSync(manifest, "utf8"));
+  pkg.midgardTasks.test = {
+    command: ["vitest", "run"],
+    environment: { NODE_ENV: "emulator", DECLARED_FLAG: "literal" },
+    prerequisites: [{ kind: "postgres" }],
+  };
+  atomicJson(manifest, pkg);
+  mkdirSync(resolve(cwd, "tests"));
+  writeFileSync(
+    resolve(cwd, "tests/selected.test.ts"),
+    `
+    import {test,expect} from "vitest";
+    test("selected case", () => {
+      expect(process.env.POSTGRES_PORT).toBe("5432");
+      expect(process.env.POSTGRES_DB).toBe("midgard");
+      expect(process.env.NODE_ENV).toBe("emulator");
+      expect(process.env.DECLARED_FLAG).toBe("literal");
+    });
+    test("other case", () => { throw new Error("name filter was lost"); });
+    test.skip("intentional skip", () => {});
+    test.todo("intentional todo");
+  `,
+  );
+  writeFileSync(
+    resolve(cwd, "tests/unselected.test.ts"),
+    `import {test} from "vitest"; test("selected case",()=>{throw new Error("file filter was lost")});`,
+  );
+  const report = resolve(root, "report.json");
+  const env = { ...process.env, POSTGRES_PORT: "5432", POSTGRES_DB: "midgard" };
+  const args = [
+    "--maxWorkers=1",
+    "--reporter=json",
+    `--outputFile=${report}`,
+    "--pool=forks",
+  ];
+  for (const nameFlag of ["-t", "--testNamePattern"]) {
+    const result = spawnSync(
+      process.execPath,
+      [
+        resolve(repository, "demo/scripts/package-test.mjs"),
+        "tests/selected",
+        nameFlag,
+        "selected case",
+        ...args,
+      ],
+      { cwd, env, encoding: "utf8" },
+    );
+    assert.equal(result.status, 0, result.stderr);
+    const summary = JSON.parse(readFileSync(report, "utf8"));
+    assert.equal(summary.numPassedTests, 1);
+    assert.equal(summary.numFailedTests, 0);
+    assert.equal(summary.testResults.length, 1);
+  }
+  const reporterOutput = resolve(root, "configured-reporter.txt");
+  writeFileSync(
+    resolve(cwd, "vitest.config.mjs"),
+    `
+    import {writeFileSync} from "node:fs";
+    export default {test:{reporters:[{onTestRunEnd(){writeFileSync(${JSON.stringify(reporterOutput)},"called")}}]}};
+  `,
+  );
+  const configured = spawnSync(
+    process.execPath,
+    [
+      resolve(repository, "demo/scripts/package-test.mjs"),
+      "tests/selected",
+      "-t",
+      "selected case|intentional",
+      "--maxWorkers=1",
+    ],
+    { cwd, env, encoding: "utf8" },
+  );
+  assert.equal(configured.status, 0, configured.stderr);
+  assert.equal(
+    readFileSync(reporterOutput, "utf8"),
+    "called",
+    "configured duration reporters run without injected CLI reporters",
+  );
+  // A whole selected file still returns Vitest's failure, without translating it
+  // into a receipt status. The same frontend accepts CI's shard spelling.
+  const failed = spawnSync(
+    process.execPath,
+    [
+      resolve(repository, "demo/scripts/package-test.mjs"),
+      "tests/selected",
+      "--shard=1/1",
+      ...args,
+    ],
+    { cwd, env, encoding: "utf8" },
+  );
+  assert.equal(failed.status, 1);
+  assert.equal(JSON.parse(readFileSync(report, "utf8")).numFailedTests, 1);
+});
+
+test("ordinary preludes inherit the caller environment, run for focused selections and stop on first failure", (t) => {
+  const { root, env, calls } = workspace(
+    t,
+    {
+      command: ["vitest", "run"],
+      environment: { NODE_ENV: "emulator" },
+      before: [
+        {
+          command: ["pnpm", "run", "test:first"],
+          environment: { PRELUDE_FLAG: "step" },
+        },
+        { command: ["pnpm", "run", "test:second"] },
+      ],
+    },
+    { "a.test.ts": "" },
+  );
+  const cwd = resolve(root, "demo/example");
+  const manifest = resolve(cwd, "package.json");
+  const pkg = JSON.parse(readFileSync(manifest, "utf8"));
+  pkg.scripts["test:first"] = "node first.mjs";
+  pkg.scripts["test:second"] = "node second.mjs";
+  atomicJson(manifest, pkg);
+  atomicJson(resolve(root, "demo/node_modules/vitest/package.json"), {
+    name: "vitest",
+    bin: "vitest.mjs",
+  });
+  writeFileSync(
+    resolve(root, "tools/corepack"),
+    String.raw`#!${process.execPath}
+    const {appendFileSync}=require("node:fs");
+    const name=process.argv.at(-1);
+    appendFileSync(process.env.FAKE_LOG, JSON.stringify({prelude:name,NODE_ENV:process.env.NODE_ENV,flag:process.env.PRELUDE_FLAG})+'\n');
+    process.exit(process.env.FAIL_PRELUDE === "1" && name === "test:first" ? 7 : 0);
+  `,
+    { mode: 0o755 },
+  );
+  const args = [
+    resolve(repository, "demo/scripts/package-test.mjs"),
+    "tests/a",
+    `--outputFile=${resolve(root, "result.json")}`,
+  ];
+  const inherited = { ...env, NODE_ENV: "caller" };
+  const passed = spawnSync(process.execPath, args, {
+    cwd,
+    env: inherited,
+    encoding: "utf8",
+  });
+  assert.equal(passed.status, 0, passed.stderr);
+  assert.deepEqual(calls().slice(0, 2), [
+    { prelude: "test:first", NODE_ENV: "caller", flag: "step" },
+    { prelude: "test:second", NODE_ENV: "caller" },
+  ]);
+  assert.equal(calls().at(-1).NODE_ENV, "emulator");
+  const count = calls().length;
+  const failed = spawnSync(process.execPath, args, {
+    cwd,
+    env: { ...inherited, FAIL_PRELUDE: "1" },
+    encoding: "utf8",
+  });
+  assert.equal(failed.status, 7, failed.stderr);
+  assert.deepEqual(calls().slice(count), [
+    { prelude: "test:first", NODE_ENV: "caller", flag: "step" },
+  ]);
 });

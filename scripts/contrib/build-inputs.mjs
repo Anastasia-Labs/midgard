@@ -1,3 +1,4 @@
+import { packageBuildTask } from "../../demo/scripts/package-tasks.mjs";
 import { existsSync, readFileSync, realpathSync, statSync } from "node:fs";
 import { createRequire } from "node:module";
 import { basename, dirname, relative, resolve, sep } from "node:path";
@@ -84,9 +85,6 @@ const { nodeOptionArguments } = nodeOptions;
 
 // --- recipe ----------------------------------------------------------------
 
-const EXPANSION =
-  /^\$(?:([A-Za-z_][A-Za-z0-9_]*)|\{([A-Za-z_][A-Za-z0-9_]*)(?::?-([^}$`"'\\]*))?\})/u;
-const PLAIN = /[A-Za-z0-9_\-./=:,*@+%]/u;
 // Node flags that load or evaluate code the guard does not scan, or read an
 // environment file.
 const REFUSED_NODE_FLAG =
@@ -98,149 +96,54 @@ const REFUSED_TSUP_FLAG =
   /^(?:--onSuccess|--config|-c|--watch|-w|--tsconfig|--ignore-watch)(?:=|$)/u;
 const NODE_SCRIPT = /\.(?:mjs|cjs|js)$/u;
 
-// Recipes are `&&` sequences of `tsup ...` and `node [flags] script.mjs ...`
-// commands, each optionally preceded by NAME=value assignments. Words may use
-// single or double quotes and $NAME, ${NAME} or ${NAME:-literal} expansions
-// of named variables. Nothing else is parsed, so nothing else can be fresh.
-export const parseRecipe = (recipe) => {
+// Steps are literal argv arrays. Shell syntax is data, never executable.
+export const inspectBuildTask = (task) => {
   const names = new Set();
   const commands = [];
-  const refuse = (reason) => ({
-    names,
-    commands: [],
-    scripts: [],
-    publicDirs: [],
-    reasons: [`build recipe ${reason}`],
-  });
-  let command = [];
-  let word;
-  const open = () => (word ??= { text: "", literal: true });
-  const close = () => {
-    if (word) command.push(word);
-    word = undefined;
-  };
-  const expand = (index) => {
-    const match = EXPANSION.exec(recipe.slice(index));
-    if (!match) return 0;
-    names.add(match[1] ?? match[2]);
-    open().literal = false;
-    word.text += `\${${match[1] ?? match[2]}}`;
-    return match[0].length;
-  };
-  for (let index = 0; index < recipe.length; ) {
-    const character = recipe[index];
-    if (character === " " || character === "\t") {
-      close();
-      index += 1;
-    } else if (recipe.startsWith("&&", index)) {
-      close();
-      if (command.length === 0) return refuse("has an empty command");
-      commands.push(command);
-      command = [];
-      index += 2;
-    } else if (character === "'") {
-      const end = recipe.indexOf("'", index + 1);
-      if (end < 0) return refuse("has an unterminated quote");
-      open().text += recipe.slice(index + 1, end);
-      index = end + 1;
-    } else if (character === '"') {
-      open();
-      index += 1;
-      while (index < recipe.length && recipe[index] !== '"') {
-        if (recipe[index] === "$") {
-          const length = expand(index);
-          if (!length) return refuse(`uses a shell expansion it cannot name`);
-          index += length;
-        } else if (/[`\\]/u.test(recipe[index]))
-          return refuse(`uses ${recipe[index]} inside double quotes`);
-        else {
-          word.text += recipe[index];
-          index += 1;
-        }
-      }
-      if (index >= recipe.length) return refuse("has an unterminated quote");
-      index += 1;
-    } else if (character === "$") {
-      const length = expand(index);
-      if (!length) return refuse(`uses a shell expansion it cannot name`);
-      index += length;
-    } else if (PLAIN.test(character)) {
-      open().text += character;
-      index += 1;
-    } else return refuse(`uses shell syntax ${JSON.stringify(character)}`);
-  }
-  close();
-  if (command.length === 0) return refuse("has an empty command");
-  commands.push(command);
-
   const reasons = [];
   const scripts = [];
   const publicDirs = [];
-  const parsed = [];
-  for (const words of commands) {
-    let index = 0;
-    const assignments = [];
-    while (
-      index < words.length &&
-      /^[A-Za-z_][A-Za-z0-9_]*=/u.test(words[index].text)
-    ) {
-      const [variable, ...value] = words[index].text.split("=");
-      assignments.push({ variable, value: value.join("=") });
-      index += 1;
-    }
-    for (const { variable, value } of assignments)
-      if (variable === "NODE_OPTIONS")
-        for (const flag of value.split(/\s+/u).filter(Boolean))
-          if (
-            flag !== "${NODE_OPTIONS}" &&
-            (!NODE_FLAG.test(flag) || REFUSED_NODE_FLAG.test(flag))
-          )
-            reasons.push(`build recipe passes node option ${flag}`);
-    const program = words[index];
-    const args = words.slice(index + 1);
-    if (!program || !program.literal)
-      reasons.push("build recipe runs a command it does not name literally");
-    else if (program.text === "tsup") {
+  for (const step of task?.steps ?? []) {
+    for (const name of Object.keys(step.appendEnvironment ?? {}))
+      names.add(name);
+    const options =
+      step.environment?.NODE_OPTIONS ?? step.appendEnvironment?.NODE_OPTIONS;
+    for (const flag of (options ?? "").split(/\s+/u).filter(Boolean))
+      if (!NODE_FLAG.test(flag) || REFUSED_NODE_FLAG.test(flag))
+        reasons.push(`build recipe passes node option ${flag}`);
+    const [program, ...args] = step.command;
+    if (program === "tsup") {
       args.forEach((arg, at) => {
-        if (REFUSED_TSUP_FLAG.test(arg.text))
-          reasons.push(`build recipe passes tsup ${arg.text.split("=")[0]}`);
-        // tsup copies the public directory into dist; it must be an input.
-        if (/^--publicDir(?:=|$)/u.test(arg.text)) {
-          const inline = arg.text.split("=").slice(1).join("=");
+        if (REFUSED_TSUP_FLAG.test(arg))
+          reasons.push(`build recipe passes tsup ${arg.split("=")[0]}`);
+        if (/^--publicDir(?:=|$)/u.test(arg)) {
+          const inline = arg.split("=").slice(1).join("=");
           const next = args[at + 1];
-          const target =
-            inline ||
-            (next && !next.text.startsWith("-") ? next.text : "public");
-          if (!arg.literal || (!inline && next && !next.literal))
-            reasons.push("build recipe passes tsup --publicDir it cannot name");
-          else publicDirs.push(target);
+          publicDirs.push(
+            inline || (next && !next.startsWith("-") ? next : "public"),
+          );
         }
       });
-    } else if (program.text === "node") {
+    } else if (program === "node") {
       let at = 0;
-      while (at < args.length && args[at].text.startsWith("-")) {
-        const flag = args[at];
-        if (
-          !flag.literal ||
-          !NODE_FLAG.test(flag.text) ||
-          REFUSED_NODE_FLAG.test(flag.text)
-        )
-          reasons.push(`build recipe passes node ${flag.text.split("=")[0]}`);
-        at += 1;
+      while (at < args.length && args[at].startsWith("-")) {
+        const flag = args[at++];
+        if (!NODE_FLAG.test(flag) || REFUSED_NODE_FLAG.test(flag))
+          reasons.push(`build recipe passes node ${flag.split("=")[0]}`);
       }
       const script = args[at];
-      if (!script || !script.literal || !NODE_SCRIPT.test(script.text))
+      if (!script || !NODE_SCRIPT.test(script))
         reasons.push(
-          `build recipe runs node on ${script?.text ?? "nothing"}, not a .mjs, .cjs or .js script`,
+          `build recipe runs node on ${script ?? "nothing"}, not a .mjs, .cjs or .js script`,
         );
-      else scripts.push(script.text);
+      else scripts.push(script);
     } else
       reasons.push(
-        `build recipe runs ${program.text}, which the guard does not scan`,
+        `build recipe runs ${program}, which the guard does not scan`,
       );
-    parsed.push({ assignments, program: program?.text, args });
+    commands.push({ program, args });
   }
-  return { names, commands: parsed, scripts, publicDirs, reasons };
+  return { names, commands, scripts, publicDirs, reasons };
 };
 
 // --- modules the recipe runs -------------------------------------------------
@@ -610,7 +513,7 @@ const escapingSourceImports = (root, name) => {
 const recipeFacts = (root, name) =>
   scoped(`recipe\0${root}\0${name}`, () => {
     const pkg = packageByName(root, name);
-    const recipe = parseRecipe(pkg.scripts?.["build:contrib-raw"] ?? "");
+    const recipe = inspectBuildTask(packageBuildTask(pkg));
     const configs = BUILD_CONFIGS.map((path) =>
       resolve(root, pkg.directory, path),
     ).filter((path) => existsSync(path));

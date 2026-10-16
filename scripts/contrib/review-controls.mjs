@@ -240,22 +240,22 @@ const controls = [
   },
   {
     name: "boundary-cli-main",
-    file: "discovery.mjs",
+    file: "installed-boundary.mjs",
     change: (text) =>
-      text.replace(/        !bins\.some\([\s\S]*?        \) &&\n/u, ""),
+      text.replace(
+        '!bins.some((bin) => resolve("/", bin) === resolve("/", pkg.main))',
+        "true",
+      ),
     match: "a CLI main shared with its bin is probed with help",
     failure: /AssertionError/u,
   },
   {
     name: "boundary-path",
-    file: "discovery.mjs",
+    file: "installed-boundary.mjs",
     change: (text) =>
-      text.replaceAll(
-        "resolve(root, pkg.directory, value.import)",
-        "resolve(pkg.directory, value.import)",
-      ),
+      text.replaceAll('resolve(root, "demo")', 'resolve("demo")'),
     match: "boundary imports resolve against the selected root",
-    failure: /expected a file inside/u,
+    failure: /AssertionError/u,
   },
   {
     name: "compiled-dependency",
@@ -270,13 +270,10 @@ const controls = [
   },
   {
     name: "boundary-artifact",
-    file: "discovery.mjs",
+    file: "installed-boundary.mjs",
     change: (text) =>
-      text.replace(
-        /    if \(\s*artifacts\.some[\s\S]*?    atomicJson\(receipt.path, receipt\);/u,
-        "    atomicJson(receipt.path, receipt);",
-      ),
-    match: "unguarded dist mutation during import fails",
+      text.replace("if (before.sha256 !== after.sha256)", "if (false)"),
+    match: "installed mutation during import fails",
     failure: /AssertionError/u,
   },
 ];
@@ -292,6 +289,10 @@ try {
         cpSync(resolve(root, directory), resolve(scratch, directory), {
           recursive: true,
         });
+      cpSync(
+        resolve(root, "demo/scripts/package-tasks.mjs"),
+        resolve(scratch, "demo/scripts/package-tasks.mjs"),
+      );
       if (control.file) {
         const path = resolve(scratch, "scripts/contrib", control.file);
         const original = readFileSync(path, "utf8");

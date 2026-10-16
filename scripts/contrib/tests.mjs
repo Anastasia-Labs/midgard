@@ -1,9 +1,13 @@
-import { existsSync, readdirSync, realpathSync, readFileSync } from "node:fs";
-import { join, relative, resolve } from "node:path";
+import {
+  packageBuildTask,
+  packageTestTask,
+  taskEnvironment,
+} from "../../demo/scripts/package-tasks.mjs";
+import { existsSync, realpathSync, readFileSync } from "node:fs";
+import { relative, resolve } from "node:path";
 import { randomUUID } from "node:crypto";
 import { createRequire } from "node:module";
 
-import { packageNeedsPostgres } from "../preflight/derive.mjs";
 import { probePostgres } from "../preflight/probes.mjs";
 import { blueprintReadiness, ensureBlueprint } from "./blueprint.mjs";
 import { dropTestDatabases, invocationDatabasePrefix } from "./databases.mjs";
@@ -13,9 +17,7 @@ import {
   inputIdentity,
   inside,
   packageByName,
-  packageClosure,
-  runtimeBuildClosure,
-  workspacePackages,
+  buildClosure,
   sha256,
   outputIdentity,
   hashFiles,
@@ -28,126 +30,44 @@ import { pinnedPnpm } from "./pnpm.mjs";
 import { reachedTests } from "./reached.mjs";
 import {
   failures,
-  parseTestScript,
+  declaredTestCommand,
   vitestFlags,
   withCallerFlags,
 } from "./vitest-command.mjs";
 
-// Whether a package's suites read the compiled blueprint: its own Vitest
-// config runs the blueprint stamp (or interactive-emulator) global setup, or
-// it depends at runtime on a package whose config does.
-const runsBlueprintSetup = (root, pkg) =>
-  ["vitest.config.ts", "vitest.config.mts", "vitest.config.js"].some(
-    (file) =>
-      existsSync(resolve(root, pkg.directory, file)) &&
-      /\b(?:blueprintStampGlobalSetup|interactiveEmulatorSetup)\b/u.test(
-        readFileSync(resolve(root, pkg.directory, file), "utf8"),
-      ),
-  );
-
-const readsBlueprint = (root, name, seen = new Set()) => {
-  const pkg = packageByName(root, name);
-  if (seen.has(pkg.name)) return false;
-  seen.add(pkg.name);
-  const workspace = new Set(workspacePackages(root).map(({ name }) => name));
-  return (
-    runsBlueprintSetup(root, pkg) ||
-    Object.keys(pkg.dependencies ?? {}).some(
-      (dependency) =>
-        workspace.has(dependency) && readsBlueprint(root, dependency, seen),
-    )
-  );
-};
-
-/**
- * The builds a package's `pretest` declares. The same script runs before
- * `pnpm test` (CI) and is what this planner prepares, so it is the one place
- * a package says which dists its suites execute. It must be an `&&` chain of
- * `pnpm run build` (the package itself) and `pnpm --dir ../SIBLING run build`;
- * any other step is refused rather than skipped, so a build the planner
- * cannot see is never silently left out.
- */
-export const pretestBuilds = (root, pkg) => {
-  const pretest = pkg.scripts?.pretest;
-  if (!pretest) return [];
-  return pretest.split("&&").map((step) => {
-    const [, directory] =
-      /^\s*pnpm(?: --dir (\.\.\/[\w.-]+))? run build\s*$/u.exec(step) ?? [];
-    if (directory === undefined && !/^\s*pnpm run build\s*$/u.test(step))
-      throw new Error(
-        `${pkg.name}: pretest step \`${step.trim()}\` is not \`pnpm run build\` or \`pnpm --dir ../SIBLING run build\`; contrib cannot tell what it prepares`,
-      );
-    return directory === undefined
-      ? pkg.name
-      : packageByName(root, resolve(pkg.directory, directory).split("/").at(-1))
-          .name;
-  });
-};
-
-/**
- * The first test-side file of a package that spells a relative path into its
- * own `dist/` (`"dist/cli.js"`, `"../dist/index.js"`), as a test that spawns
- * the package's CLI or loads its compiled worker does. Comments are skipped.
- * A path assembled from separate segments is not seen.
- */
-export const testRunningOwnDist = (root, pkg) => {
-  const tests = resolve(root, pkg.directory, "tests");
-  if (!existsSync(tests)) return undefined;
-  const visit = (path) => {
-    for (const entry of readdirSync(path, { withFileTypes: true }).sort(
-      (a, b) => a.name.localeCompare(b.name, "en"),
-    )) {
-      if (entry.name === "node_modules") continue;
-      const child = join(path, entry.name);
-      const found = entry.isDirectory()
-        ? visit(child)
-        : /\.[cm]?[jt]s$/u.test(entry.name) &&
-          /(["'`])(?:\.\.?\/)*dist\/[^"'`\s]+\1/u.test(
-            readFileSync(child, "utf8")
-              .replace(/\/\*[\s\S]*?\*\//gu, "")
-              .replace(/(^|[^:])\/\/.*$/gmu, "$1"),
-          ) &&
-          relative(root, child);
-      if (found) return found;
-    }
-    return undefined;
-  };
-  return visit(tests);
-};
-
 export const preparationPlan = (root, name, { sourceOnly = false } = {}) => {
   const pkg = packageByName(root, name);
-  const closure = packageClosure(root, pkg.name);
-  const pretest = pkg.scripts?.pretest;
-  const declared = pretestBuilds(root, pkg);
-  const runner = testRunningOwnDist(root, pkg);
-  if (runner && !declared.includes(pkg.name))
-    throw new Error(
-      `${pkg.name}: ${runner} runs the package's own dist/, but its pretest does not build it; end the pretest with \`pnpm run build\``,
-    );
-  const prerequisites = new Set();
-  // Build core first: several plain-Node generators and tsup configs load it.
-  if (!sourceOnly) {
-    if (closure.some((dependency) => dependency.name === "@al-ft/midgard-core"))
-      prerequisites.add("@al-ft/midgard-core");
-    for (const build of declared) prerequisites.add(build);
-  }
-  const ordered = [
-    ...new Set(
-      [...prerequisites].flatMap((name) =>
-        runtimeBuildClosure(root, name).map((pkg) => pkg.name),
-      ),
-    ),
-  ];
+  const task = packageTestTask(pkg);
+  const declared = task?.prerequisites ?? [];
+  for (const entry of declared.filter((entry) => entry.kind === "build"))
+    if (!packageBuildTask(packageByName(root, entry.package)))
+      throw new Error(
+        `${pkg.name}: test build prerequisite ${entry.package} has no build task`,
+      );
+  const ordered = sourceOnly
+    ? []
+    : [
+        ...new Set(
+          declared
+            .filter((entry) => entry.kind === "build")
+            .flatMap((entry) =>
+              buildClosure(root, entry.package)
+                .filter(packageBuildTask)
+                .map((pkg) => pkg.name),
+            ),
+        ),
+      ];
   return {
     schema: "midgard-contrib-plan/v1",
     package: pkg.name,
     directory: pkg.directory,
     sourceOnly,
-    postgres: packageNeedsPostgres(root, pkg),
-    blueprint: readsBlueprint(root, pkg.name),
+    postgres: declared.some((entry) => entry.kind === "postgres"),
+    blueprint: declared.some((entry) => entry.kind === "blueprint"),
+    native: declared
+      .filter((entry) => entry.kind === "native")
+      .map((entry) => entry.package),
     prerequisites: ordered.map((name) => ({ name, ...checkBuild(root, name) })),
-    pretest,
     inputSha256: inputIdentity(root, pkg.name).sha256,
   };
 };
@@ -184,6 +104,25 @@ export const prepareArtifacts = async (
     }
   }
   return { blueprintAction, built };
+};
+
+/** Native artifacts share their owner across ordinary and guarded tests. */
+export const prepareNativeArtifacts = async (
+  root,
+  packageName,
+  { signal, env = process.env } = {},
+) => {
+  const artifacts = [];
+  if (env.MIDGARD_SKIP_NATIVE_BUILD !== "1")
+    for (const name of preparationPlan(root, packageName).native) {
+      if (checkNative(root, name).status !== "fresh") {
+        const built = await buildNative(root, name, { signal, env });
+        if (built.exitCode)
+          throw new Error(`native prerequisite failed: ${built.path}`);
+      }
+      artifacts.push({ name, outputs: checkNative(root, name).stamp.outputs });
+    }
+  return artifacts;
 };
 
 // A blueprint override passes only as a byte-identical copy of this
@@ -231,18 +170,14 @@ export const prepare = async (
   return { ...preparationPlan(root, name, { sourceOnly }), blueprintAction };
 };
 
-/** The package's own `test` script, read as one Vitest command. */
+/** The package's declared test command, shared with ordinary package tests. */
 export const testCommand = (pkg) => {
-  if (!pkg.scripts?.test) throw new Error(`${pkg.name} has no test script`);
-  try {
-    return parseTestScript(pkg.scripts.test);
-  } catch (error) {
-    if (!/\bvitest\b/u.test(pkg.scripts.test))
-      throw new Error(
-        `${pkg.name} has no Vitest suites; its test script is: ${pkg.scripts.test}`,
-      );
-    throw error;
-  }
+  const task = packageTestTask(pkg);
+  if (!task)
+    throw new Error(
+      `${pkg.name} has no Vitest suites; declare midgardTasks.test`,
+    );
+  return declaredTestCommand(task);
 };
 
 const blueprintHash = (root) => {
@@ -400,26 +335,11 @@ export const runTests = async (
         env: leased,
         sourceOnly,
       });
-      if (
-        !["midgard-node", "midgard-node-tools"].includes(pkg.name) ||
-        runEnv.MIDGARD_SKIP_NATIVE_BUILD === "1"
-      )
-        return { prepared };
-      if (checkNative(root, "midgard-node").status !== "fresh") {
-        const built = await buildNative(root, "midgard-node", {
-          signal,
-          env: leased,
-        });
-        if (built.exitCode)
-          throw new Error(`native prerequisite failed: ${built.path}`);
-      }
-      return {
-        prepared,
-        native: {
-          name: "midgard-node",
-          outputs: checkNative(root, "midgard-node").stamp.outputs,
-        },
-      };
+      const native = await prepareNativeArtifacts(root, pkg.name, {
+        signal,
+        env: leased,
+      });
+      return { prepared, native };
     },
     { signal, env },
   );
@@ -459,13 +379,13 @@ export const runTests = async (
     // preludes belong to the whole-package run CI makes.
     if ((whole || reach) && !testName)
       for (const [index, prelude] of command.preludes.entries()) {
-        const [tool, ...args] = prelude.split(/\s+/u);
+        const [tool, ...args] = prelude.command;
         if (tool !== "pnpm")
           throw new Error(`cannot run test script step: ${prelude}`);
         steps.push(
           await runProcess({
             ...pinnedPnpm(cwd, args),
-            env: runEnv,
+            env: taskEnvironment(prelude, runEnv),
             signal,
             logPath: resolve(directory, `prelude-${index}.log`),
           }),
@@ -544,10 +464,12 @@ export const runTests = async (
       `artifacts changed during test: ${changedArtifacts.map(({ name }) => name).join(", ")}`,
     );
   if (
-    native &&
-    (checkNative(root, native.name).status !== "fresh" ||
-      native.outputs.sha256 !==
-        hashFiles(root, Object.keys(native.outputs.files)).sha256)
+    native.some(
+      (artifact) =>
+        checkNative(root, artifact.name).status !== "fresh" ||
+        artifact.outputs.sha256 !==
+          hashFiles(root, Object.keys(artifact.outputs.files)).sha256,
+    )
   )
     fail("native artifact changed during test");
   if (prepared.blueprint && blueprintHash(root) !== blueprintBefore)
@@ -568,7 +490,7 @@ export const runTests = async (
     databasePrefix: runEnv.MIDGARD_TEST_DATABASE_PREFIX,
     databaseCleanup,
     sourceOnly,
-    nativeArtifacts: native ? [native] : [],
+    nativeArtifacts: native,
     evidenceFiles: [
       runEnv.MIDGARD_CG1_EMIT,
       runEnv.MIDGARD_PUBLISHED_WORKFLOW_RECEIPT_PATH,

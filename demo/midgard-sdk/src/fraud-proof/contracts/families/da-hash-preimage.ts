@@ -1,3 +1,4 @@
+import { deploymentValidatorTitle as deployedTitle } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { Data, Network } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
@@ -19,8 +20,8 @@ import {
 } from "../types.js";
 
 export const DA_HASH_PREIMAGE_FAULT_PROOF_TITLES = {
-  step01: "fraud_proofs/da_hash_preimage/step_01.main.spend",
-  step02: "fraud_proofs/da_hash_preimage/step_02.main.spend",
+  step01: deployedTitle("fraudProofDaHashPreimage"),
+  step02: deployedTitle("fraudProofDaHashPreimageStep02"),
 } as const;
 
 export type DaHashPreimageFaultProofContracts = {

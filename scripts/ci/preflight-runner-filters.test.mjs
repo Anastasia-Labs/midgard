@@ -121,6 +121,7 @@ test("the runner closure follows imports and pins every computed import", () => 
     "scripts/preflight/probes.mjs",
     "scripts/preflight/runtime-owner.mjs",
     "scripts/contrib/process.mjs",
+    "demo/scripts/package-tasks.mjs",
     "demo/scripts/assert-midgard-core-dist-current.mjs",
     "demo/midgard-core/scripts/write-dist-source-digest.mjs",
   ])

@@ -1,3 +1,4 @@
+import { deploymentValidatorTitle as deployedTitle } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { Effect } from "effect";
 
 import {
@@ -16,10 +17,10 @@ import {
 } from "../types.js";
 
 export const INPUT_SET_UNIQUENESS_FAULT_PROOF_TITLES = {
-  step01: "fraud_proofs/input_set_uniqueness/step_01.main.spend",
-  step02: "fraud_proofs/input_set_uniqueness/step_02.main.spend",
-  step03: "fraud_proofs/input_set_uniqueness/step_03.main.spend",
-  step04: "fraud_proofs/input_set_uniqueness/step_04.main.spend",
+  step01: deployedTitle("fraudProofInputSetUniqueness"),
+  step02: deployedTitle("fraudProofInputSetUniquenessStep02"),
+  step03: deployedTitle("fraudProofInputSetUniquenessStep03"),
+  step04: deployedTitle("fraudProofInputSetUniquenessStep04"),
 } as const;
 
 export type InputSetUniquenessFaultProofContracts = {

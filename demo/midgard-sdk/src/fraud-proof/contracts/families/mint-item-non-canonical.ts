@@ -1,3 +1,4 @@
+import { deploymentValidatorTitle as deployedTitle } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { Effect } from "effect";
 
 import {
@@ -16,10 +17,10 @@ import {
 } from "../types.js";
 
 export const MINT_ITEM_NON_CANONICAL_FAULT_PROOF_TITLES = {
-  step01: "fraud_proofs/mint_item_non_canonical/step_01.main.spend",
-  step02: "fraud_proofs/mint_item_non_canonical/step_02.main.spend",
-  step03: "fraud_proofs/mint_item_non_canonical/step_03.main.spend",
-  step04: "fraud_proofs/mint_item_non_canonical/step_04.main.spend",
+  step01: deployedTitle("fraudProofMintItemNonCanonical"),
+  step02: deployedTitle("fraudProofMintItemNonCanonicalStep02"),
+  step03: deployedTitle("fraudProofMintItemNonCanonicalStep03"),
+  step04: deployedTitle("fraudProofMintItemNonCanonicalStep04"),
 } as const;
 
 export type MintItemNonCanonicalFaultProofContracts = {
