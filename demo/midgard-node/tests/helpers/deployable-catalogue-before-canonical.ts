@@ -5,12 +5,14 @@ import {
 } from "../../src/transactions/reference-scripts.js";
 
 // Preserve every prior order pin after projecting out precisely the eight
-// newly recorded canonical roles and the already-reviewed Data30 executor. The production-bound publication test
-// independently acquires and checks each of those eight scripts.
+// newly recorded canonical roles, the already-reviewed Data30 executor and the
+// case-constant CEK core arm. The production-bound publication test
+// independently acquires and checks each of those scripts.
 const canonicalRole = (role: string | undefined) =>
   role?.startsWith("V1 validation-trace canonical-decode ") === true ||
   role === "V1 validation-trace proof-item publication" ||
-  role === "V1 validation-trace redeemer item invalid data executor";
+  role === "V1 validation-trace redeemer item invalid data executor" ||
+  role === "V1 validation-trace CEK core case constant";
 export const manifestDeployableScripts: typeof allManifestScripts = (
   contracts,
 ) => allManifestScripts(contracts).filter(({ role }) => !canonicalRole(role));

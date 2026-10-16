@@ -464,6 +464,7 @@ export const REFERENCE_SCRIPT_AUTH_TOKEN_NAMES = {
   "V1 validation-trace CEK core settle": "V1VtCekCoreSet",
   "V1 validation-trace CEK core compute": "V1VtCekCoreCom",
   "V1 validation-trace CEK core machine": "V1VtCekCoreMac",
+  "V1 validation-trace CEK core case constant": "V1VtCekCoreCasCon",
   "V1 validation-trace CEK core map conversion": "V1VtCekCoreMapCon",
   "V1 validation-trace CEK core direct scalar": "V1VtCekCoreDirSca",
   "V1 validation-trace CEK core direct structured": "V1VtCekCoreDirStr",

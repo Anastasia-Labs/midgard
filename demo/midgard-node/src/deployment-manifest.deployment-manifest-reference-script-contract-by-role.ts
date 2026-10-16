@@ -175,6 +175,8 @@ export const DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE =
       "validationTraceDisputeCekCoreCompute",
     "V1 validation-trace CEK core machine":
       "validationTraceDisputeCekCoreMachine",
+    "V1 validation-trace CEK core case constant":
+      "validationTraceDisputeCekCoreCaseConstant",
     "V1 validation-trace CEK core map conversion":
       "validationTraceDisputeCekCoreMapConversion",
     "V1 validation-trace CEK core direct scalar":

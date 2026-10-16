@@ -100,6 +100,7 @@ export const CEK_CORE_STAGE_ORDER = [
   "settle",
   "compute",
   "machine",
+  "caseConstant",
   "mapConversion",
   "directScalar",
   "directStructured",

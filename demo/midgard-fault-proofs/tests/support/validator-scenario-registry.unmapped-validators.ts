@@ -55,6 +55,7 @@ export const UNMAPPED_VALIDATORS: readonly Readonly<{
       "fraud_proofs/validation_trace/cek_context_spend.main",
       "fraud_proofs/validation_trace/cek_context_step_semantic_v1.main",
       "fraud_proofs/validation_trace/cek_context_tx_info.main",
+      "fraud_proofs/validation_trace/cek_core_arm_case_constant.main",
       "fraud_proofs/validation_trace/cek_core_arm_compute.main",
       "fraud_proofs/validation_trace/cek_core_arm_machine.main",
       "fraud_proofs/validation_trace/cek_core_arm_map_conversion.main",

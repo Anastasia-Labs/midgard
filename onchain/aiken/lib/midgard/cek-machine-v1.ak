@@ -1543,8 +1543,10 @@ fn verify_return_case_invalid(
 
 // The case frame is bound by `pre.continuation_root`, and `ComputeCase`, its
 // only producer, already checked its branch count and branch root, so they are
-// not checked again here.
-fn verify_return_case_constant(
+// not checked again here. `verify_return_step` does not dispatch this step:
+// `case` on a constant has its own core group and arm validator, so the
+// machine arm does not carry its code.
+pub fn verify_return_case_constant(
   pre: MachineStateV1,
   post: MachineStateV1,
   scrutinee: cek_builtin_v1.ValueWitnessV1,
@@ -1758,24 +1760,6 @@ pub fn verify_return_step(
         pre,
         post,
         value,
-        branches_count,
-        branches_root,
-        captured_environment,
-        tail,
-      )
-    ReturnCaseConstant {
-      scrutinee,
-      material,
-      branches_count,
-      branches_root,
-      captured_environment,
-      tail,
-    } ->
-      verify_return_case_constant(
-        pre,
-        post,
-        scrutinee,
-        material,
         branches_count,
         branches_root,
         captured_environment,
@@ -2538,7 +2522,27 @@ pub fn verify_core_step_v1(
     } else if pre.mode == mode_lookup {
       verify_lookup_step(pre, post, witness)
     } else if pre.mode == mode_return {
-      verify_return_step(pre, post, witness)
+      when witness is {
+        ReturnCaseConstant {
+          scrutinee,
+          material,
+          branches_count,
+          branches_root,
+          captured_environment,
+          tail,
+        } ->
+          verify_return_case_constant(
+            pre,
+            post,
+            scrutinee,
+            material,
+            branches_count,
+            branches_root,
+            captured_environment,
+            tail,
+          )
+        _ -> verify_return_step(pre, post, witness)
+      }
     } else if pre.mode == mode_case_select {
       verify_case_select_step(pre, post, witness)
     } else if pre.mode == mode_case_apply {

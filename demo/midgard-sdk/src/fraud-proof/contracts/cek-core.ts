@@ -10,6 +10,8 @@ export const CEK_CORE_STAGE_TITLES = {
   settle: "fraud_proofs/validation_trace/cek_core_settle.main.spend",
   compute: "fraud_proofs/validation_trace/cek_core_arm_compute.main.spend",
   machine: "fraud_proofs/validation_trace/cek_core_arm_machine.main.spend",
+  caseConstant:
+    "fraud_proofs/validation_trace/cek_core_arm_case_constant.main.spend",
   mapConversion:
     "fraud_proofs/validation_trace/cek_core_arm_map_conversion.main.spend",
   directScalar:
@@ -78,6 +80,7 @@ export const CEK_CORE_ARM_HOP_COUNTS = [
   3n,
   2n,
   2n,
+  1n,
 ] as const;
 export const buildCekCoreStages = (
   blueprint: FaultProofBlueprint,
@@ -99,6 +102,7 @@ export const buildCekCoreStages = (
     build(key, [settle.spendingScriptHash, ctPolicy]);
   const compute = terminal("compute");
   const machine = terminal("machine");
+  const caseConstant = terminal("caseConstant");
   const mapConversion = terminal("mapConversion");
   const directScalar = terminal("directScalar");
   const directStructured = terminal("directStructured");
@@ -176,6 +180,7 @@ export const buildCekCoreStages = (
     settle,
     compute,
     machine,
+    caseConstant,
     mapConversion,
     directScalar,
     directStructured,
@@ -221,6 +226,7 @@ export const cekCoreEntryHashes = (stages: CekCoreStages) =>
     stages.blsBudget,
     stages.failureKnown,
     stages.typeFailureRoots,
+    stages.caseConstant,
   ].map((stage) => stage.spendingScriptHash);
 
 export const CEK_CORE_STAGE_REFERENCES = {
@@ -235,6 +241,10 @@ export const CEK_CORE_STAGE_REFERENCES = {
   machine: {
     deployment: "validationTraceDisputeCekCoreMachine",
     role: "V1 validation-trace CEK core machine",
+  },
+  caseConstant: {
+    deployment: "validationTraceDisputeCekCoreCaseConstant",
+    role: "V1 validation-trace CEK core case constant",
   },
   mapConversion: {
     deployment: "validationTraceDisputeCekCoreMapConversion",

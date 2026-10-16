@@ -236,6 +236,7 @@ export const makeAlwaysSucceedsService: Effect.Effect<SDK.MidgardValidators> =
         settle: transitionTrace,
         compute: transitionTrace,
         machine: transitionTrace,
+        caseConstant: transitionTrace,
         mapConversion: transitionTrace,
         directScalar: transitionTrace,
         directStructured: transitionTrace,

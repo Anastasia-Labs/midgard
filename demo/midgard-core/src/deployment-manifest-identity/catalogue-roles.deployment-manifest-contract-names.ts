@@ -354,6 +354,7 @@ export const DEPLOYMENT_MANIFEST_CONTRACT_NAMES = Object.freeze([
   "validationTraceDisputeCekCoreSettle",
   "validationTraceDisputeCekCoreCompute",
   "validationTraceDisputeCekCoreMachine",
+  "validationTraceDisputeCekCoreCaseConstant",
   "validationTraceDisputeCekCoreMapConversion",
   "validationTraceDisputeCekCoreDirectScalar",
   "validationTraceDisputeCekCoreDirectStructured",

@@ -1,11 +1,13 @@
-//// Validator-level vectors for the case steps of the machine arm
-//// (`cek_core_arm_machine`, group 1). Each runs the deployed validator on one
-//// honest case step, so its execution units are those of a real dispute
-//// transaction.
+//// Validator-level vectors for the case steps: the machine arm
+//// (`cek_core_arm_machine`, group 1) for constructor and invalid scrutinees,
+//// and the case-constant arm (`cek_core_arm_case_constant`, group 11) for
+//// constant scrutinees. Each runs the deployed validator on one honest case
+//// step, so its execution units are those of a real dispute transaction.
 
 use aiken/builtin
 use aiken/cbor
 use aiken/crypto.{blake2b_256}
+use fraud_proofs/validation_trace/cek_core_arm_case_constant as core_case_constant
 use fraud_proofs/validation_trace/cek_core_arm_machine as core_machine
 use midgard/cek_builtin_v1
 use midgard/cek_constant_v1
@@ -42,7 +44,12 @@ fn state(
   }
 }
 
-fn run_machine_arm(
+// Each runner references one arm validator only, so a vector's execution
+// units carry no code from the other arm.
+
+/// Runs the machine arm (group 1) on one step bound to `group`.
+fn run_machine_bound(
+  group: Int,
   pre: cek_machine_v1.MachineStateV1,
   post: cek_machine_v1.MachineStateV1,
   witness: cek_machine_v1.CoreStepWitnessV1,
@@ -54,7 +61,7 @@ fn run_machine_arm(
     post,
     witness_hash: blake2b_256(cbor.serialise(witness_data)),
     arm: builtin.un_constr_data(witness_data).1st,
-    group: 1,
+    group,
     progress: 0,
     facts: builtin.constr_data(0, []),
   }
@@ -78,6 +85,62 @@ fn run_machine_arm(
     fixture.own_out_ref(),
     fixture.continue_mid_step_l1_tx_v1(ct_asset, next),
   )
+}
+
+/// Runs the case-constant arm (group 11) on one step bound to `group`.
+fn run_case_constant_bound(
+  group: Int,
+  pre: cek_machine_v1.MachineStateV1,
+  post: cek_machine_v1.MachineStateV1,
+  witness: cek_machine_v1.CoreStepWitnessV1,
+) -> Bool {
+  let witness_data: Data = witness
+  let bound = core_chain.CoreBound {
+    prepared: builtin.constr_data(0, []),
+    pre,
+    post,
+    witness_hash: blake2b_256(cbor.serialise(witness_data)),
+    arm: builtin.un_constr_data(witness_data).1st,
+    group,
+    progress: 0,
+    facts: builtin.constr_data(0, []),
+  }
+  let next: Data = core_chain.CoreBound { ..bound, progress: 1 }
+  core_case_constant.main.spend(
+    fixture.next_step_script_hash,
+    fixture.computation_thread_policy_id,
+    Some(
+      ct.StepDatum {
+        fraud_prover: fixture.fraud_prover_key_hash,
+        data: Some(bound),
+      },
+    ),
+    ct.Continue(
+      core_chain.VerifyArm {
+        input_index: 0,
+        output_index: 0,
+        witness: witness_data,
+      },
+    ),
+    fixture.own_out_ref(),
+    fixture.continue_mid_step_l1_tx_v1(ct_asset, next),
+  )
+}
+
+fn run_machine_arm(
+  pre: cek_machine_v1.MachineStateV1,
+  post: cek_machine_v1.MachineStateV1,
+  witness: cek_machine_v1.CoreStepWitnessV1,
+) -> Bool {
+  run_machine_bound(1, pre, post, witness)
+}
+
+fn run_case_constant_arm(
+  pre: cek_machine_v1.MachineStateV1,
+  post: cek_machine_v1.MachineStateV1,
+  witness: cek_machine_v1.CoreStepWitnessV1,
+) -> Bool {
+  run_case_constant_bound(11, pre, post, witness)
 }
 
 /// Two branches, `h_01` then `h_02`, closed over the empty environment and
@@ -214,7 +277,7 @@ fn run_case_constant(
   material: cek_builtin_v1.SemanticBuiltinWitnessV1,
   post: cek_machine_v1.MachineStateV1,
 ) -> Bool {
-  run_machine_arm(
+  run_case_constant_arm(
     state(
       cek_machine_v1.mode_return,
       focus_root,
@@ -265,7 +328,7 @@ fn small_integers(count: Int) -> List<Data> {
   }
 }
 
-test machine_arm_selects_an_integer_branch() {
+test case_constant_arm_selects_an_integer_branch() {
   run_inline(
     #"9f00ff",
     builtin.i_data(1),
@@ -273,7 +336,7 @@ test machine_arm_selects_an_integer_branch() {
   )
 }
 
-test machine_arm_halts_on_an_integer_past_the_branches() {
+test case_constant_arm_halts_on_an_integer_past_the_branches() {
   run_inline(
     #"9f00ff",
     builtin.i_data(2),
@@ -281,7 +344,7 @@ test machine_arm_halts_on_an_integer_past_the_branches() {
   )
 }
 
-test machine_arm_selects_a_boolean_branch() {
+test case_constant_arm_selects_a_boolean_branch() {
   run_inline(
     #"9f04ff",
     builtin.constr_data(1, []),
@@ -289,7 +352,7 @@ test machine_arm_selects_a_boolean_branch() {
   )
 }
 
-test machine_arm_halts_on_a_bytestring_scrutinee() {
+test case_constant_arm_halts_on_a_bytestring_scrutinee() {
   run_inline(
     #"9f01ff",
     builtin.b_data(#"00"),
@@ -297,7 +360,7 @@ test machine_arm_halts_on_a_bytestring_scrutinee() {
   )
 }
 
-test machine_arm_applies_a_list_branch_to_head_and_tail() {
+test case_constant_arm_applies_a_list_branch_to_head_and_tail() {
   run_inline(
     #"9f0500ff",
     builtin.list_data([builtin.i_data(1), builtin.i_data(2)]),
@@ -326,19 +389,19 @@ fn long_list() -> Pair<Data, cek_machine_v1.MachineStateV1> {
   )
 }
 
-test machine_arm_applies_a_list_branch_to_a_long_list() {
+test case_constant_arm_applies_a_list_branch_to_a_long_list() {
   let Pair(list, post) = long_list()
   run_inline(#"9f0500ff", list, post)
 }
 
 // The cost of building the vector above without running the validator: the
 // step itself costs the difference.
-test machine_arm_long_list_vector_alone() {
+test case_constant_arm_long_list_vector_alone() {
   let Pair(list, post) = long_list()
   root(#"9f0500ff", list) != post.focus_root
 }
 
-test machine_arm_halts_on_a_pair_with_two_branches() {
+test case_constant_arm_halts_on_a_pair_with_two_branches() {
   run_inline(
     #"9f060004ff",
     builtin.constr_data(0, [builtin.i_data(5), builtin.constr_data(1, [])]),
@@ -346,7 +409,7 @@ test machine_arm_halts_on_a_pair_with_two_branches() {
   )
 }
 
-test machine_arm_applies_a_list_branch_to_a_wide_list() {
+test case_constant_arm_applies_a_list_branch_to_a_wide_list() {
   let bytes = builtin.append_bytearray(
     builtin.replicate_byte(4500, 42),
     builtin.replicate_byte(4500, 42),
@@ -405,5 +468,79 @@ test machine_arm_applies_a_list_branch_to_a_wide_list() {
       2,
       0,
     ),
+  )
+}
+
+fn integer_case_witness() -> cek_machine_v1.CoreStepWitnessV1 {
+  cek_machine_v1.ReturnCaseConstant {
+    scrutinee: cek_builtin_v1.ConstantValue(
+      inline(#"9f00ff", builtin.i_data(1)),
+    ),
+    material: no_material(),
+    branches_count: 2,
+    branches_root: two_branches(),
+    captured_environment: cek_proof_v1.empty_environment_root_v1,
+    tail: cek_proof_v1.empty_continuation_root_v1,
+  }
+}
+
+fn integer_case_pre() -> cek_machine_v1.MachineStateV1 {
+  state(
+    cek_machine_v1.mode_return,
+    root(#"9f00ff", builtin.i_data(1)),
+    cek_proof_v1.empty_environment_root_v1,
+    two_branch_frame(),
+    0,
+  )
+}
+
+// A case step on a constant belongs to group 11: the machine arm refuses it.
+test machine_arm_refuses_a_case_constant_step() fail {
+  run_machine_arm(
+    integer_case_pre(),
+    selecting(cek_proof_v1.empty_sequence_root_v1, 0, 1),
+    integer_case_witness(),
+  )
+}
+
+test case_constant_arm_refuses_a_wrong_successor() fail {
+  run_case_constant_arm(
+    integer_case_pre(),
+    selecting(cek_proof_v1.empty_sequence_root_v1, 0, 0),
+    integer_case_witness(),
+  )
+}
+
+// The case-constant arm verifies only `ReturnCaseConstant` witnesses.
+test case_constant_arm_refuses_a_constructor_step() fail {
+  let empty = cek_proof_v1.empty_sequence_root_v1
+  run_case_constant_arm(
+    state(
+      cek_machine_v1.mode_return,
+      cek_proof_v1.hash_constr_value_v1(1, 0, empty),
+      cek_proof_v1.empty_environment_root_v1,
+      two_branch_frame(),
+      0,
+    ),
+    selecting(empty, 0, 1),
+    cek_machine_v1.ReturnCaseConstr {
+      tag: 1,
+      values_count: 0,
+      values_root: empty,
+      branches_count: 2,
+      branches_root: two_branches(),
+      captured_environment: cek_proof_v1.empty_environment_root_v1,
+      tail: cek_proof_v1.empty_continuation_root_v1,
+    },
+  )
+}
+
+// The case-constant arm requires the bound group to be its own.
+test case_constant_arm_refuses_another_group() fail {
+  run_case_constant_bound(
+    1,
+    integer_case_pre(),
+    selecting(cek_proof_v1.empty_sequence_root_v1, 0, 1),
+    integer_case_witness(),
   )
 }
