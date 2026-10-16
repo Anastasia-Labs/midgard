@@ -41,6 +41,9 @@ pnpm build
 node dist/index.js --help
 ```
 
+For `ERR_WORKER_OUT_OF_MEMORY` or heap exhaustion, see
+[Build runs out of memory](../../docs-site/content/docs/getting-started/local-dev.mdx#build-runs-out-of-memory).
+
 Runtime configuration is the node's: the CLI loads the same dotenv and
 `NodeConfig` the operator binary does, so run it from (or point it at) the node
 checkout whose `.env`, `logs/`, and `dist/index.js` a command should use.
