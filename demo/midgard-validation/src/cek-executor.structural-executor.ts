@@ -86,6 +86,10 @@ import {
   returnCaseConstant,
 } from "./cek-executor.case-constant.js";
 import {
+  presentMidgardCekSemanticArguments,
+  presentMidgardCekSemanticResult,
+} from "./cek-executor.semantic-presentation.js";
+import {
   type MidgardCekStepRecorder,
   type MidgardCekStructuralVerdict,
 } from "./cek-executor.step-recorder.js";
@@ -1292,8 +1296,8 @@ export class StructuralExecutor {
       {
         kind: "executeBuiltinSemantic",
         tag,
-        arguments: arguments_,
-        result,
+        arguments: presentMidgardCekSemanticArguments(tag, arguments_),
+        result: presentMidgardCekSemanticResult(tag, result),
         material,
       },
       exactState(pre, {
@@ -1319,7 +1323,7 @@ export class StructuralExecutor {
       {
         kind: "executeBuiltinSemanticFailure",
         tag,
-        arguments: arguments_,
+        arguments: presentMidgardCekSemanticArguments(tag, arguments_),
         material: {
           dataNodes: [top.node],
           listNodes: top.lists,
@@ -1534,7 +1538,11 @@ export class StructuralExecutor {
       if (constrIndexIsOutOfRange(index.payload.int)) {
         const { node } = this.topSemanticMaterial(index.tree);
         this.record(
-          constrIndexFailureWitness(arguments_, index.payload.int, node),
+          constrIndexFailureWitness(
+            presentMidgardCekSemanticArguments(tag, arguments_),
+            index.payload.int,
+            node,
+          ),
           errorSuccessor(pre, MidgardCekErrorCodes.BuiltinFailure),
         );
         return;

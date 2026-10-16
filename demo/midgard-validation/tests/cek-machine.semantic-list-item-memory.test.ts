@@ -16,6 +16,7 @@ import {
   type MidgardCekDirectValueWitness,
   semanticizeMidgardCekDirectConstant,
 } from "../src/cek-builtin.js";
+import { encodeMidgardCekCanonicalConstant } from "../src/cek-constant.js";
 import { executeMidgardCekStructuralProgram } from "../src/cek-executor.js";
 import {
   type MidgardCekCoreStepWitness,
@@ -59,7 +60,12 @@ const mkConsStep = (item: UPLCConst, items: UPLCConst) => {
   const step = execution.steps.find(
     (candidate) => candidate.witness.kind === "executeBuiltinSemantic",
   )!;
-  return { step, witness: step.witness as SemanticWitness };
+  const { typeCbor, payloadCbor } = encodeMidgardCekCanonicalConstant(item);
+  const revealed: MidgardCekDirectValueWitness = {
+    kind: "constant",
+    witness: { typeCbor, payloadCbor },
+  };
+  return { step, witness: step.witness as SemanticWitness, revealed };
 };
 
 const semanticParts = (value: MidgardCekDirectValueWitness) => {
@@ -259,9 +265,13 @@ describe("mkCons list item summary memory", () => {
   );
 
   it.each(ALL)("mkCons accepts a revealed $element item", ({ step }) => {
-    const { step: core, witness } = step();
-    expect(witness.arguments[0]!.kind).toBe("constant");
-    expect(verifyMidgardCekCoreStep(core.pre, core.post, witness)).toBe(true);
+    const { step: core, witness, revealed } = step();
+    expect(
+      verifyMidgardCekCoreStep(core.pre, core.post, {
+        ...witness,
+        arguments: [revealed, witness.arguments[1]!],
+      }),
+    ).toBe(true);
   });
 
   it.each(BOUND)(

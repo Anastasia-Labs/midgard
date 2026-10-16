@@ -1171,8 +1171,8 @@
   },
   {
     "file": "midgard-validation/src/cek-executor.structural-executor.ts",
-    "max": 2430,
-    "reason": "StructuralExecutor is one state owner: its methods share private state and lifecycle invariants. Further extraction would redesign ownership rather than separate independent declarations; surrounding helpers have been extracted. P (-24): step verification and retention moved to cek-executor.step-recorder.ts. C13a (+25): case on a constant delegates to cek-executor.case-constant.ts through a host of executor closures, and the branch walk accepts any branch before the last. C13a B-opaque (-19): builtin argument presentation moved to presentMidgardCekDirectArgument in cek-builtin.argument-kinds.ts."
+    "max": 2438,
+    "reason": "StructuralExecutor is one state owner: its methods share private state and lifecycle invariants. Further extraction would redesign ownership rather than separate independent declarations; surrounding helpers have been extracted. P (-24): step verification and retention moved to cek-executor.step-recorder.ts. C13a (+25): case on a constant delegates to cek-executor.case-constant.ts through a host of executor closures, and the branch walk accepts any branch before the last. C13a B-opaque (-19): builtin argument presentation moved to presentMidgardCekDirectArgument in cek-builtin.argument-kinds.ts. C13a B-semantic (+8): a semantic step's arguments and result are presented through cek-executor.semantic-presentation.ts."
   },
   {
     "file": "midgard-validation/src/validation-machine/trace-builder-complete.ts",
@@ -1186,8 +1186,8 @@
   },
   {
     "file": "midgard-validation/tests/cek-executor.test.ts",
-    "max": 844,
-    "reason": "Retained test registration “V1 CEK trace generator” (783 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor. PV 11 halt rule (+13): compiled fixtures halt with Unit and the bare identity pins error 8. Cardano BLS tags (+7): the uncompress builtins are named by Cardano's flat numbers."
+    "max": 848,
+    "reason": "Retained test registration “V1 CEK trace generator” (783 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor. PV 11 halt rule (+13): compiled fixtures halt with Unit and the bare identity pins error 8. Cardano BLS tags (+7): the uncompress builtins are named by Cardano's flat numbers. C13a B-semantic (+4): the nested headList step's list result is checked by its semantic summary."
   },
   {
     "file": "midgard-validation/tests/data-breadth-boundary.test.ts",

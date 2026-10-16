@@ -28,6 +28,7 @@ import {
   decodeMidgardCekConstantWitness,
   encodeMidgardCekPlutusData,
 } from "../src/cek-constant.js";
+import { commitMidgardCekDataTree } from "../src/cek-data-tree.js";
 import {
   buildMidgardCekExecutionGraph,
   executeMidgardCekStructuralProgram,
@@ -474,11 +475,14 @@ describe("V1 CEK trace generator", () => {
     );
     expect(step?.witness.kind).toBe("executeBuiltinSemantic");
     if (step?.witness.kind === "executeBuiltinSemantic") {
-      expect(step.witness.result.kind).toBe("constant");
-      if (step.witness.result.kind === "constant") {
-        expect(
-          decodeMidgardCekConstantWitness(step.witness.result.witness).payload,
-        ).toMatchObject({ list: [{ int: 1n }, { int: 2n }] });
+      expect(step.witness.arguments[0]?.kind).toBe("constant");
+      expect(step.witness.result.kind).toBe("semanticConstant");
+      if (step.witness.result.kind === "semanticConstant") {
+        expect(step.witness.result.witness.payload.root).toEqual(
+          commitMidgardCekDataTree(new DataList([new DataI(1n), new DataI(2n)]))
+            .root,
+        );
+        expect(step.witness.result.witness.memory).toBe(2n);
       }
     }
   });
