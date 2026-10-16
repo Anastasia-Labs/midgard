@@ -176,6 +176,47 @@ export const WALK_SHAPES = {
     unitChainOver(6, [7, 5, 3]),
     (bits, index) => bits.put(index % 2 === 0 ? 0 : 2, index % 2 === 0 ? 1 : 2),
   ),
+  "list of a unit pair chain over list unit, every element [()]": constantList(
+    unitChainOver(6, [7, 5, 3]),
+    (bits) => bits.put(2, 2),
+  ),
+  "list of a unit pair chain over list Data, [] and [d] alternating":
+    constantList(unitChainOver(6, [7, 5, 8]), (bits, index) => {
+      if (index % 2 === 1) {
+        bits.put(1, 1);
+        bits.chunks(Uint8Array.from([0x00]));
+      }
+      bits.put(0, 1);
+    }),
+  "list of a unit pair chain over list Data, every element [d]": constantList(
+    unitChainOver(6, [7, 5, 8]),
+    (bits) => {
+      bits.put(1, 1);
+      bits.chunks(Uint8Array.from([0x00]));
+      bits.put(0, 1);
+    },
+  ),
+  "list of a unit pair chain over a pair of list unit and list Data":
+    constantList(
+      unitChainOver(5, [7, 7, 6, 7, 5, 3, 7, 5, 8]),
+      (bits, index) => {
+        bits.put(2, 2);
+        if (index % 2 === 1) {
+          bits.put(1, 1);
+          bits.chunks(Uint8Array.from([0x00]));
+        }
+        bits.put(0, 1);
+      },
+    ),
+  "list of a unit pair chain over a pair of list unit, every element ([()], [()])":
+    constantList(unitChainOver(5, [7, 7, 6, 7, 5, 3, 7, 5, 3]), (bits) => {
+      bits.put(2, 2);
+      bits.put(2, 2);
+    }),
+  "list of a unit pair chain over a pair of list unit and unit, every element ([()], ())":
+    constantList(unitChainOver(5, [7, 7, 6, 7, 5, 3, 3]), (bits) =>
+      bits.put(2, 2),
+    ),
   "list of a unit pair chain over value": constantList(
     unitChainOver(7, [13]),
     (bits) => bits.put(0, 1),

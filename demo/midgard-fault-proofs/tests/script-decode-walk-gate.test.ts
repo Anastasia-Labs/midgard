@@ -4,8 +4,10 @@
  * transaction rate, 877 Walk transactions.
  *
  * Each row records the largest script of one shape through the real Walk
- * builder, which sizes every Walk from the budget the previous one measured,
- * and counts the Walks.
+ * builder, which gives every Walk the most ticks that build within the
+ * ledger's limits, and counts the Walks. The rows hold the costliest shape
+ * per bit of each decoding construct and the costliest shapes a search over
+ * pair chains, list nesting, Data and element patterns found.
  */
 import { scriptDecodeRecordOfScript } from "@al-ft/midgard-validation";
 import {

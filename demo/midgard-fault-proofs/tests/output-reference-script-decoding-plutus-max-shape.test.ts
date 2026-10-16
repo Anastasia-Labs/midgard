@@ -8,8 +8,9 @@
  *   its last bit. Recording it walks every node, and step 04 convicts its
  *   acceptance.
  * - The shape whose record takes the most Walk transactions: a constant list
- *   of a unit pair chain over `list unit`. It decodes, and step 04 convicts a
- *   rejection that called it undecodable, reading the `Decoded` record.
+ *   of a unit pair chain over `list unit`, every element `[()]`. It decodes,
+ *   and step 04 convicts a rejection that called it undecodable, reading the
+ *   `Decoded` record.
  *
  * The delay chain is recorded after Init, while the thread is open. The
  * Walk-heaviest record outlasts the emulator profile's block maturity on its
@@ -73,7 +74,8 @@ const delayChainOutputOfLength = (length: number) => {
 };
 
 /** The most Walk-heavy shape (see `script-decode-walk-gate.test.ts`). */
-const MAX_WALK_SHAPE = WALK_SHAPES["list of a unit pair chain over list unit"];
+const MAX_WALK_SHAPE =
+  WALK_SHAPES["list of a unit pair chain over list unit, every element [()]"];
 
 /** The max-walk-shape output of exactly `length` canonical bytes, and its
  * script. */
@@ -245,7 +247,7 @@ describe("outputReferenceScriptDecoding Plutus maximum shape", () => {
     expectWalksFit(recorded.walks, proverLucid.config().protocolParameters!);
     console.info(
       `[script-decode-max-shape] ${JSON.stringify({
-        shape: "unit pair chain over list unit",
+        shape: "unit pair chain over list unit, every element [()]",
         scriptBytes: script.length,
         ...walkSummary(recorded.walks),
         recordVirtualMs: recordedAt - recordedFrom,
