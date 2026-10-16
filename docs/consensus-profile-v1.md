@@ -155,8 +155,7 @@ and are part of the counted-root preimage.
 The canonical input and generated TypeScript/Aiken golden are maintained at
 `demo/midgard-node/tests/fixtures/transaction-root-v1.canonical.json`; run
 `pnpm --dir demo run fixtures:transaction-root-v1:check` to verify that the
-derived JSON and Aiken projection are fresh. Set `MIDGARD_AIKEN_BIN` when a
-specific Aiken formatter executable must be used.
+derived JSON and Aiken projection are fresh.
 
 Normal DA carries every canonical field preimage. Forced-order material follows
 [MidgardTx §8.11](spec/midgard-tx.md#811-forced-order-material-carriage-normative):

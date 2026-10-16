@@ -2,11 +2,7 @@
   "about": "Every generated-artifact channel committed in this repository. Read by affected-channels.mjs; --verify-table fails when the tree has a generator, ledger or generated file that no channel claims. Commands run from the repository root.",
   "inputSets": {
     "@golden-channel": ["demo/midgard-core/scripts/golden-channel.mjs"],
-    "@compiler-pin": [
-      "onchain/aiken/scripts/pinned-compiler.mjs",
-      ".github/workflows/aiken-ci.yml",
-      ".github/workflows/midgard-node-ci.yml"
-    ],
+    "@compiler-pin": ["demo/flake.lock"],
     "@blueprint": [
       "onchain/aiken/lib/**/*.ak",
       "onchain/aiken/validators/**/*.ak",

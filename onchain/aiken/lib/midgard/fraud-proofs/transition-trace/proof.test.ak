@@ -500,7 +500,7 @@ fn verdict_plutus_failed() -> rejection_reason_v1.OperatorVerdictV1 {
 }
 
 fn empty_native_transaction() -> native_types.MidgardTransaction {
-  let empty_mint: Data = []
+  let empty_mint: Data = builtin.list_data([])
   native_types.MidgardTransaction {
     version: native_types.native_tx_version_v1,
     validity: native_types.TxIsValid,
@@ -3169,7 +3169,7 @@ fn missing_run_claim(source: proof.SourceKeyOpening) -> Bool {
   let header = honest_empty_trace_root_header()
   let header_data: Data = header
   let source_data: Data = source
-  let empty_proof: Data = []
+  let empty_proof: Data = builtin.list_data([])
   let claim = builtin.constr_data(
     0,
     [

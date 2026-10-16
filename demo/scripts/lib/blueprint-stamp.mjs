@@ -3,12 +3,11 @@
 // Whether `onchain/aiken/plutus.json` still describes the tree it sits in.
 //
 // The blueprint is untracked build output. Nothing rebuilds it when a
-// validator, an env module, or the compiler changes, so a suite can load a
-// blueprint compiled from last week's sources — or by stock Aiken — and report
-// hundreds of reds (or greens) that say nothing about the code under test.
-// `deployment-profiles.mjs build` therefore records, beside the blueprint, a
-// hash of every compiler input and the compiler's own `--version`; this module
-// computes that stamp and judges an existing one against the tree and the pin.
+// validator or an env module changes, so a suite can load a blueprint compiled
+// from last week's sources and report hundreds of reds (or greens) that say
+// nothing about the code under test. `deployment-profiles.mjs build` therefore
+// records, beside the blueprint, a hash of every compiler input; this module
+// computes that stamp and judges an existing one against the tree.
 //
 // CLI: `node demo/scripts/lib/blueprint-stamp.mjs [blueprint]` exits 0 when the
 // stamp is fresh, 1 when it is stale or missing, 3 when it could not be judged.
@@ -18,8 +17,6 @@ import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { pinnedAikenVersion } from "../../../onchain/aiken/scripts/pinned-compiler.mjs";
-
 const repositoryRoot = resolve(
   dirname(fileURLToPath(import.meta.url)),
   "../../..",
@@ -28,6 +25,8 @@ const repositoryRoot = resolve(
 // Everything `aiken build` reads. `build/` and `scripts/` are not inputs.
 const sourceDirectories = ["lib", "validators", "env"];
 const sourceFiles = ["aiken.toml", "aiken.lock"];
+// The compiler itself: scripts/aiken builds the commit this lock pins.
+const compilerLock = "demo/flake.lock";
 
 export const buildRecordPath = (blueprintPath) =>
   `${blueprintPath}.deployment.json`;
@@ -55,6 +54,7 @@ export const blueprintSourceFiles = (root = repositoryRoot) => {
       listFiles(resolve(project, directory), []),
     ),
     ...sourceFiles.map((file) => resolve(project, file)),
+    ...[resolve(root, compilerLock)].filter((path) => existsSync(path)),
   ]
     .map((path) => ({ path, name: relative(project, path) }))
     .sort((left, right) =>
@@ -101,17 +101,15 @@ export const checkBlueprintStamp = ({
   if (!existsSync(recordPath)) {
     return {
       status: "missing",
-      detail: `${blueprintPath} has no build record (${recordPath}); it was not built by deployment-profiles.mjs, so nothing says which sources or compiler produced it`,
+      detail: `${blueprintPath} has no build record (${recordPath}); it was not built by deployment-profiles.mjs, so nothing says which sources produced it`,
       fix: rebuildCommand(),
     };
   }
   let record;
-  let expectedCompiler;
   let sourceHash;
   let currentBlueprintHash;
   try {
     record = JSON.parse(readFileSync(recordPath, "utf8"));
-    expectedCompiler = pinnedAikenVersion(root);
     sourceHash = blueprintSourceHash(root);
     currentBlueprintHash = blueprintHash(blueprintPath);
   } catch (error) {
@@ -128,19 +126,12 @@ export const checkBlueprintStamp = ({
       "the blueprint was modified after its build record was written",
     );
   }
-  if (record.sourceHash === undefined || record.compiler === undefined) {
-    mismatches.push("the build record predates source and compiler stamping");
-  } else {
-    if (record.sourceHash !== sourceHash) {
-      mismatches.push(
-        "onchain/aiken sources (lib, validators, env, aiken.toml, aiken.lock) changed since it was built",
-      );
-    }
-    if (record.compiler !== expectedCompiler) {
-      mismatches.push(
-        `it was built by '${record.compiler}', not the pinned '${expectedCompiler}'`,
-      );
-    }
+  if (record.sourceHash === undefined) {
+    mismatches.push("the build record predates source stamping");
+  } else if (record.sourceHash !== sourceHash) {
+    mismatches.push(
+      "onchain/aiken sources (lib, validators, env, aiken.toml, aiken.lock) or the compiler pin (demo/flake.lock) changed since it was built",
+    );
   }
   if (mismatches.length > 0) {
     return {
@@ -151,7 +142,7 @@ export const checkBlueprintStamp = ({
   }
   return {
     status: "fresh",
-    detail: `${blueprintPath} matches its sources and the pinned compiler`,
+    detail: `${blueprintPath} matches its sources`,
     fix: null,
   };
 };

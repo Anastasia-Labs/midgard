@@ -61,10 +61,10 @@ Deployment checks remain manual; preparation lanes are selected by preflight. [r
 
 ## Local environment
 
-- **Aiken.** Use the fork pinned by `AIKEN_FORK_VERSION` in
-  `.github/workflows/aiken-ci.yml`, or point `MIDGARD_AIKEN_BIN` at it.
+- **Aiken.** Needs only nix. Every script runs the aiken `demo/flake.lock`
+  pins, through `scripts/aiken`; nothing reads `aiken` from `PATH`.
   `pnpm --dir demo deployment:build preprod-testing` builds
-  `onchain/aiken/plutus.json` and refuses any other compiler.
+  `onchain/aiken/plutus.json`.
 - **Test Postgres, test databases, dist and the blueprint stamp.** Read the
   [local-test-environment](../../.agents/skills/local-test-environment/SKILL.md)
   skill before running a Postgres-backed or blueprint-reading suite in a fresh

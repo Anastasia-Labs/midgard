@@ -1,32 +1,18 @@
 import { spawnSync } from "node:child_process";
+import { relative } from "node:path";
 
-import { assertPinnedAiken } from "../../../onchain/aiken/scripts/pinned-compiler.mjs";
-import {
-  aikenBinary,
-  RunnerCheckError,
-} from "./runner-reports.derive-vitest-outcome.mjs";
+import { aikenBinary } from "../../../scripts/lib/aiken.mjs";
+import { RunnerCheckError } from "./runner-reports.derive-vitest-outcome.mjs";
 
-export const aikenPublishedCommand = ({
-  projectDirectory,
-  selectors,
-  command = "aiken",
-}) =>
-  `cd ${projectDirectory} && ${command} check -e ${selectors
+// `projectDirectory` is relative to the repository root; the command runs the
+// flake-pinned aiken through `scripts/aiken`.
+export const aikenPublishedCommand = ({ projectDirectory, selectors }) =>
+  `cd ${projectDirectory} && ${relative(projectDirectory, "scripts/aiken")} check -e ${selectors
     .map((selector) => `-m ${selector}`)
     .join(" ")}`;
 
-export const runAikenCheck = ({ projectRoot, selectors, binary }) => {
-  const compiler = binary ?? aikenBinary();
-  // A report is only a measurement under the pinned fork; stock v1.1.22 can
-  // pass a suite it compiles unsoundly.
-  try {
-    assertPinnedAiken(compiler);
-  } catch (error) {
-    throw new RunnerCheckError(
-      "ERR_AIKEN_NOT_PINNED",
-      error instanceof Error ? error.message : String(error),
-    );
-  }
+export const runAikenCheck = ({ projectRoot, selectors }) => {
+  const compiler = aikenBinary();
   const run = spawnSync(
     compiler,
     [

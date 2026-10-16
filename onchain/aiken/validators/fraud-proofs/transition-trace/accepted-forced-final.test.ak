@@ -8,6 +8,7 @@
 //// no spend input to delete and phase 10 certifies an empty outputs field;
 //// the replay leaves the pre-root unchanged.
 
+use aiken/builtin
 use aiken/cbor
 use aiken/collection/list
 use aiken/crypto.{blake2b_256}
@@ -111,7 +112,7 @@ fn order_id() -> ledger_state.TxOrderId {
 // The disputed forced transaction and its committed evidence.
 
 fn empty_native_transaction() -> native_types.MidgardTransaction {
-  let empty_mint: Data = []
+  let empty_mint: Data = builtin.list_data([])
   native_types.MidgardTransaction {
     version: native_types.native_tx_version_v1,
     validity: native_types.TxIsValid,

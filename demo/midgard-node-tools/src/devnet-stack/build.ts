@@ -16,7 +16,7 @@ export const DEPLOYMENT_PROFILE = "local-devnet-testing";
 const TOOLS = [
   ["docker", ["compose", "version"]],
   ["pnpm", ["--version"]],
-  ["aiken", ["--version"]],
+  ["nix", ["--version"]],
   ["cargo", ["--version"]],
   ["go", ["version"]],
 ] as const;

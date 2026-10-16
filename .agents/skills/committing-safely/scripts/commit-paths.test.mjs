@@ -15,6 +15,7 @@ import {
   readFileSync,
   realpathSync,
   rmSync,
+  symlinkSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -503,101 +504,55 @@ describe("formatting of the committed content", () => {
     },
   );
 
-  const aikenRepo = () => {
+  // The real aiken from demo/flake.lock formats; nothing is stubbed.
+  const aikenRepo = (source) => {
     const repo = makeRepo({ "onchain/aiken/lib/a.ak": "fn a() {\n  1\n}\n" });
-    const pin = [
-      "  AIKEN_FORK_REPO: https://example.invalid/aiken",
-      "  AIKEN_FORK_TAG: v0.0.0",
-      `  AIKEN_FORK_REV: abcdef0${"0".repeat(33)}`,
-      "  AIKEN_FORK_VERSION: aiken v0.0.0+abcdef0",
-      "",
-    ].join("\n");
-    repo.write(".github/workflows/aiken-ci.yml", `env:\n${pin}`);
-    repo.write(".github/workflows/midgard-node-ci.yml", `env:\n${pin}`);
-    mkdirSync(join(repo.dir, "onchain/aiken/scripts"), { recursive: true });
-    copyFileSync(
-      join(SOURCE_REPO, "onchain/aiken/scripts/pinned-compiler.mjs"),
-      join(repo.dir, "onchain/aiken/scripts/pinned-compiler.mjs"),
-    );
-    repo.git(["add", "--", "."]);
-    repo.git(["commit", "-q", "--no-verify", "-m", "Pin"]);
-    // A stand-in compiler: --version reports FAKE_AIKEN_VERSION; `fmt --stdin`
-    // echoes its input, adding the trailing spaces the real formatter emits
-    // (FAKE_AIKEN_MODE=trailing) or a real change (FAKE_AIKEN_MODE=change).
-    const aiken = makeTool(
-      repo,
-      "aiken",
-      [
-        "const [cmd, flag] = process.argv.slice(2);",
-        "if (cmd === '--version') { console.log(process.env.FAKE_AIKEN_VERSION); process.exit(0); }",
-        "if (cmd !== 'fmt' || flag !== '--stdin') process.exit(9);",
-        "let s=''; process.stdin.on('data', d => s += d).on('end', () => {",
-        "  if (process.env.FAKE_AIKEN_MODE === 'change') s += '// moved\\n';",
-        "  else s = s.split('\\n').map(l => l.length ? l + '  ' : l).join('\\n');",
-        "  process.stdout.write(s);",
-        "});",
-      ].join("\n"),
-    );
-    repo.write("onchain/aiken/lib/a.ak", "fn a() {\n  2\n}\n");
-    return { repo, aiken };
+    repo.write("onchain/aiken/lib/a.ak", source);
+    return repo;
   };
 
-  test("an .ak file passes when only the formatter's trailing-space artifact differs", () => {
-    const { repo, aiken } = aikenRepo();
-    const result = repo.commitPaths(
-      ["-m", "Two", "--", "onchain/aiken/lib/a.ak"],
-      {
-        env: {
-          MIDGARD_AIKEN_BIN: aiken,
-          FAKE_AIKEN_VERSION: "aiken v0.0.0+abcdef0",
-          FAKE_AIKEN_MODE: "trailing",
-        },
-      },
-    );
+  test("a formatted .ak file is committed", () => {
+    const repo = aikenRepo("fn a() {\n  2\n}\n");
+    const result = repo.commitPaths([
+      "-m",
+      "Two",
+      "--",
+      "onchain/aiken/lib/a.ak",
+    ]);
     assert.equal(result.code, 0, result.stderr);
   });
 
   test("an unformatted .ak file is refused", () => {
-    const { repo, aiken } = aikenRepo();
-    const result = repo.commitPaths(
-      ["-m", "Two", "--", "onchain/aiken/lib/a.ak"],
-      {
-        env: {
-          MIDGARD_AIKEN_BIN: aiken,
-          FAKE_AIKEN_VERSION: "aiken v0.0.0+abcdef0",
-          FAKE_AIKEN_MODE: "change",
-        },
-      },
-    );
+    const repo = aikenRepo("fn a() {\n2\n}\n");
+    const result = repo.commitPaths([
+      "-m",
+      "Two",
+      "--",
+      "onchain/aiken/lib/a.ak",
+    ]);
     assert.equal(result.code, 1, result.stderr);
     assert.match(result.stderr, /a\.ak \(aiken fmt, CI-normalized\)/u);
   });
 
-  test("an aiken that is not the pinned fork is refused, not skipped", () => {
-    const { repo, aiken } = aikenRepo();
+  test("without nix, an .ak file is 'could not check'", () => {
+    const repo = aikenRepo("fn a() {\n  2\n}\n");
+    // PATH holds git and node only, so the flake's aiken cannot be built.
+    const bin = join(repo.dir, ".tools/bin");
+    mkdirSync(bin, { recursive: true });
+    for (const tool of ["git", "node"]) {
+      const found = spawnSync("sh", ["-c", `command -v ${tool}`], {
+        encoding: "utf8",
+      }).stdout.trim();
+      symlinkSync(found, join(bin, tool));
+    }
     const result = repo.commitPaths(
       ["-m", "Two", "--", "onchain/aiken/lib/a.ak"],
       {
-        env: {
-          MIDGARD_AIKEN_BIN: aiken,
-          FAKE_AIKEN_VERSION: "aiken v1.1.22",
-        },
-      },
-    );
-    assert.equal(result.code, 1, result.stderr);
-    assert.match(result.stderr, /not the pinned fork/u);
-  });
-
-  test("a missing aiken is 'could not check'", () => {
-    const { repo } = aikenRepo();
-    const result = repo.commitPaths(
-      ["-m", "Two", "--", "onchain/aiken/lib/a.ak"],
-      {
-        env: { MIDGARD_AIKEN_BIN: join(repo.dir, ".tools/no-such-aiken") },
+        env: { PATH: bin },
       },
     );
     assert.equal(result.code, 3, result.stderr);
-    assert.match(result.stderr, /could not run aiken/u);
+    assert.match(result.stderr, /could not get aiken from demo\/flake\.lock/u);
   });
 });
 

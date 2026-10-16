@@ -6,8 +6,8 @@
   },
   {
     "file": "../.agents/skills/committing-safely/scripts/commit-paths.test.mjs",
-    "max": 739,
-    "reason": "A suite shares temporary Git-repository fixtures and process assertions across commit-path refusal/success cases. Preserve fixture lifetime and cleanup; dividing it needs a separately reviewed test-harness extraction."
+    "max": 694,
+    "reason": "A suite shares temporary Git-repository fixtures and process assertions across commit-path refusal/success cases. Preserve fixture lifetime and cleanup; dividing it needs a separately reviewed test-harness extraction. Moving the compiler pin to scripts/lib/aiken.mjs: the stubbed-aiken tests went with the compiler pin (-45)."
   },
   {
     "file": "../.agents/skills/fixing-flaky-tests/scripts/diff-test-reds.test.mjs",
@@ -611,8 +611,8 @@
   },
   {
     "file": "midgard-node-tools/devnet/phase4-process/tests/assets.test.mjs",
-    "max": 639,
-    "reason": "runCaptureSnapshot is the dominant indivisible declaration (137 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
+    "max": 635,
+    "reason": "runCaptureSnapshot is the dominant indivisible declaration (137 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. Moving the compiler pin to scripts/lib/aiken.mjs: the compiler-pin assertion went (-4)."
   },
   {
     "file": "midgard-node-tools/devnet/watcher-journeys/correction-recovery.test.ts",
@@ -731,8 +731,8 @@
   },
   {
     "file": "midgard-node/scripts/generate-transaction-root-v1-fixture.mjs",
-    "max": 678,
-    "reason": "makeAiken is the dominant indivisible declaration (200 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
+    "max": 666,
+    "reason": "makeAiken is the dominant indivisible declaration (200 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. Moving the compiler pin to scripts/lib/aiken.mjs: the compiler-pin assertion went (-12)."
   },
   {
     "file": "midgard-node/scripts/mpf-architecture-g-gate-config.test.mjs",
@@ -1015,11 +1015,6 @@
     "reason": "Hoisted or module-scoped Vitest mocks own this test file’s import/evaluation boundary. Moving registrations between modules changes mock timing; retain the suite with its mocks and local fixtures. N1H (-1): the merge registers at the follower write gate on Postgres instead of under a stubbed history owner."
   },
   {
-    "file": "midgard-node/tests/midgard-contracts.test.ts",
-    "max": 565,
-    "reason": "Retained test registration “midgard contracts registry” (487 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor. VR (+7): script contexts carry POSIX-ms validity bounds, so the phase-B, trace, classifier and contract-builder inputs here name the deployment's L1 slot mapping, and the registry digest's re-pin history names the txInfo stage's mapping parameter. P1 composition (+3): the pinned registry digests name the composed tree in their re-pin reasons. Streamed Data verdicts (+4): the registry digests name the streamed redeemer and datum Data verdict steps in their re-pin reasons. Exact rejection reason (+2): the registry digests name the validation machine's exact rejection reason in their re-pin reasons. Operator slash economics (+2): the registry digests name the above-bond slash and the timeout's operator-directory separation in their re-pin reasons. I3 (+3): the treasury script and bond-locked source verification re-pin notes, merged into the integration notes. Defender one-step timeout (+1): the registry digest names the ReadyForOneStep timeout in its re-pin reasons. Validation case (+4): the registry digests name the validation case in their re-pin reasons."
-  },
-  {
     "file": "midgard-node/tests/midgard-local-script-eval.test.ts",
     "max": 884,
     "reason": "Retained test registration “Midgard local script evaluation primitives” (816 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor. VR (+12): script contexts carry POSIX-ms validity bounds, so the phase-B, trace, classifier and contract-builder inputs here name the deployment's L1 slot mapping."
@@ -1166,8 +1161,8 @@
   },
   {
     "file": "midgard-validation/src/cek-executor.structural-executor.ts",
-    "max": 2424,
-    "reason": "StructuralExecutor is one state owner: its methods share private state and lifecycle invariants. Further extraction would redesign ownership rather than separate independent declarations; surrounding helpers have been extracted. P (-24): step verification and retention moved to cek-executor.step-recorder.ts."
+    "max": 2429,
+    "reason": "StructuralExecutor is one state owner: its methods share private state and lifecycle invariants. Further extraction would redesign ownership rather than separate independent declarations; surrounding helpers have been extracted. P (-24): step verification and retention moved to cek-executor.step-recorder.ts. (+5): the branch walk accepts any branch before the last."
   },
   {
     "file": "midgard-validation/src/validation-machine/trace-builder-complete.ts",
@@ -1366,8 +1361,8 @@
   },
   {
     "file": "scripts/deployment-profiles.mjs",
-    "max": 606,
-    "reason": "validateProfile is the dominant indivisible declaration (273 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. C1 (+80): the stage-0 allow-lists (validation, placeholder marker, Option<List<ByteArray>> rendering) and the excluded fraud-proof categories; canonicalJson keeps arrays as arrays. C1 adds the curated emulator-only profile. Profile identity extraction (-15) moved the identity helpers out. Deployment budget arithmetic extraction (-95) moved the budget calculations out. I3 (+2): the protocol treasury native script key and its deep freeze."
+    "max": 600,
+    "reason": "validateProfile is the dominant indivisible declaration (273 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. C1 (+80): the stage-0 allow-lists (validation, placeholder marker, Option<List<ByteArray>> rendering) and the excluded fraud-proof categories; canonicalJson keeps arrays as arrays. C1 adds the curated emulator-only profile. Profile identity extraction (-15) moved the identity helpers out. Deployment budget arithmetic extraction (-95) moved the budget calculations out. I3 (+2): the protocol treasury native script key and its deep freeze. The compiler pin moving to scripts/lib/aiken.mjs (-6) removed the version assertion."
   },
   {
     "file": "scripts/deployment-profiles.test.mjs",

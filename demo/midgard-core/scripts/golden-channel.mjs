@@ -31,6 +31,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, relative } from "node:path";
+import { aikenBinary } from "../../../scripts/lib/aiken.mjs";
 
 /** Bytes as lowercase hex — the only spelling any fixture in this package uses. */
 export const hex = (value) => Buffer.from(value).toString("hex");
@@ -60,36 +61,6 @@ export const parseGoldenChannelArguments = (usage) => {
   return { checkOnly: commandArguments.length === 1 };
 };
 
-// Formatters that already reported the pinned identity in this process. The
-// check spawns a node child, so it runs once per binary rather than per file.
-const pinnedFormatters = new Set();
-
-/**
- * Refuses to format under any compiler but the pinned fork. This file ships in
- * the package, so it cannot import the checker statically; the repository root
- * the caller passes is where `onchain/aiken/scripts/pinned-compiler.mjs` lives.
- */
-const assertPinnedFormatter = (aikenBinary, repositoryRoot) => {
-  if (pinnedFormatters.has(aikenBinary)) {
-    return;
-  }
-  const result = spawnSync(
-    process.execPath,
-    [
-      join(repositoryRoot, "onchain/aiken/scripts/pinned-compiler.mjs"),
-      aikenBinary,
-    ],
-    { encoding: "utf8" },
-  );
-  if (result.status !== 0) {
-    throw new Error(
-      result.stderr.trim() ||
-        `could not verify the Aiken compiler identity (${result.error?.message ?? `exit ${String(result.status)}`})`,
-    );
-  }
-  pinnedFormatters.add(aikenBinary);
-};
-
 /**
  * Runs the generated Aiken source through `aiken fmt` before it is compared or
  * written, so the checked-in module is formatted exactly as a contributor's
@@ -106,19 +77,17 @@ export const formatAikenSource = ({
   repositoryRoot,
   tmpPrefix,
 }) => {
-  const aikenBinary = process.env.MIDGARD_AIKEN_BIN ?? "aiken";
-  assertPinnedFormatter(aikenBinary, repositoryRoot);
   const directory = mkdtempSync(join(tmpdir(), tmpPrefix));
   const target = join(directory, fileName);
   try {
     writeFileSync(target, source, "utf8");
-    const result = spawnSync(aikenBinary, ["fmt", target], {
+    const result = spawnSync(aikenBinary(), ["fmt", target], {
       cwd: join(repositoryRoot, "onchain/aiken"),
       encoding: "utf8",
     });
     if (result.status !== 0) {
       throw new Error(
-        `Aiken formatter (${aikenBinary}) failed: ${result.error?.message ?? result.stderr.trim()}`,
+        `Aiken formatter failed: ${result.error?.message ?? result.stderr.trim()}`,
       );
     }
     // The formatter emits trailing spaces after a multi-line `expect`/`let`
@@ -159,23 +128,16 @@ export const formatAikenSource = ({
  * own.
  *
  * That is *not* an exemption from the formatter's judgement. CI mandates
- * stock-formatter cleanliness over every tracked `.ak` file: the Aiken workflow
- * runs stock `aiken fmt` across `git ls-files '*.ak'`, normalises the formatter's
- * own trailing-space artifact, and fails on any remaining diff. So a rebound
- * declaration that stock `aiken fmt` would reflow breaks the gate just as surely
- * as a hand-written one. The obligation this function carries is therefore:
- * **emit output that survives stock `aiken fmt` unchanged** — which is what the
- * 80-column contract below is for. Aiken keeps a declaration on one line while it
- * fits in 80 columns and otherwise breaks after the `=` with a two-space indent,
- * so reproducing that layout exactly is precisely what the formatter would have
- * done to the lines this function touches.
- *
- * What agents must not run is the **fork's** formatter. The patched fork exists to
- * execute the test suite, and its `aiken fmt` v1.1.23 mangles the wide tuple
- * destructuring in `native-tx-v1.test.ak` into `let` plus trailing whitespace —
- * so routing anything through the fork formatter commits a formatter bug as a
- * generated diff, and disagrees with the stock binary that actually judges CI.
- * Stock `aiken fmt` is the authority; the fork is for tests only.
+ * formatter cleanliness over every tracked `.ak` file: the Aiken workflow runs
+ * the pinned `aiken fmt` across `git ls-files '*.ak'`, normalises trailing
+ * whitespace, and fails on any remaining diff. So a rebound declaration that
+ * `aiken fmt` would reflow breaks the gate just as surely as a hand-written one.
+ * The obligation this function carries is therefore: **emit output that
+ * survives `aiken fmt` unchanged** — which is what the 80-column contract below
+ * is for. Aiken keeps a declaration on one line while it fits in 80 columns and
+ * otherwise breaks after the `=` with a two-space indent, so reproducing that
+ * layout exactly is precisely what the formatter would have done to the lines
+ * this function touches.
  */
 const AIKEN_MAX_LINE_COLUMNS = 80;
 

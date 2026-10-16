@@ -38,7 +38,7 @@ const zero_hash =
 fn native_tx_with(
   validity: native_types.MidgardTxValidity,
 ) -> native_types.MidgardTransaction {
-  let empty_mint: Data = []
+  let empty_mint: Data = builtin.list_data([])
   native_types.MidgardTransaction {
     version: native_types.native_tx_version_v1,
     validity,

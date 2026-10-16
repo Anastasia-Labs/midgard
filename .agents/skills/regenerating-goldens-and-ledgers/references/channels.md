@@ -27,9 +27,8 @@ changes. Those are not repeated per channel.
 ## TypeScript-to-Aiken golden channels
 
 All generators here share `golden-channel.mjs`. `:check` builds the package, runs
-the generator into a temporary copy, formats generated Aiken with `aiken fmt`
-(the binary in `MIDGARD_AIKEN_BIN`, else `aiken` on `PATH`,
-`golden-channel.mjs:81`), and fails on any difference. `:sync` writes the files.
+the generator into a temporary copy, formats generated Aiken with the pinned
+`aiken fmt` (`scripts/lib/aiken.mjs`), and fails on any difference. `:sync` writes the files.
 
 | Channel                              | Outputs                                                                                                                                                                                                                                                          | Check (CI)                                                                                                                                                                 | Stale when                                                                                                                                                                                                                                                                                                                                      |
 | ------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |

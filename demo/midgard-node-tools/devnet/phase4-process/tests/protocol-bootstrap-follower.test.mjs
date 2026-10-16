@@ -15,6 +15,7 @@ import {
   FIND_ORIGIN_OUTPUT,
   L1_ORIGIN,
   NONCE_TX_HASH,
+  contractProject,
   root,
   run,
   temporaryRoot,
@@ -28,8 +29,8 @@ const scratch = (label) =>
   mkdtempSync(join(temporaryRoot, `midgard-phase4-follower-${label}-`));
 
 /**
- * Runs protocol-bootstrap.sh in a throwaway checkout whose node, pnpm, aiken
- * and jq are stubs: the operator CLI succeeds through the nonce, the follower
+ * Runs protocol-bootstrap.sh in a throwaway checkout whose node, pnpm and jq
+ * are stubs (its contracts build with the real aiken): the operator CLI succeeds through the nonce, the follower
  * CLI's find-origin answers with `findOrigin`, and the first command after the
  * follower inputs (deploy-reference-script-node-runtime) stops the script
  * with status 74. The helper module itself runs on the real node.
@@ -52,7 +53,6 @@ const bootstrapUntilReferenceScripts = async (findOrigin) => {
       operator,
       join(transport, "dist/native"),
       join(follower, "dist"),
-      join(checkout, "onchain/aiken"),
       binaries,
       join(runDir, "secrets"),
       join(runDir, "work"),
@@ -66,7 +66,7 @@ const bootstrapUntilReferenceScripts = async (findOrigin) => {
       "l1-follower-inputs.mjs",
     ])
       copyFileSync(join(root, "scripts", name), join(scripts, name));
-    writeFileSync(join(checkout, "onchain/aiken/plutus.json"), "{}\n");
+    contractProject(checkout);
     writeFileSync(
       join(transport, "dist/native/midgard-l1-node-transport"),
       "built transport\n",
@@ -106,7 +106,6 @@ const bootstrapUntilReferenceScripts = async (findOrigin) => {
       writeFileSync(join(binaries, name), `#!/bin/sh\n${body}\n`, {
         mode: 0o755,
       });
-    stub("aiken", "exit 0");
     stub("pnpm", `echo "pnpm $*" >>"${calls}"`);
     // The script parses the nonce transcript with jq; answer by filter.
     stub(

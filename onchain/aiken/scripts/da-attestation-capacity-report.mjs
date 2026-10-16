@@ -4,8 +4,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-
-import { assertPinnedAiken, defaultAikenBinary } from "./pinned-compiler.mjs";
+import { aikenBinary } from "../../../scripts/lib/aiken.mjs";
 
 const REPORT_VERSION = "1.0.0";
 const BENCHMARK_NAME = "da_attestation_add_signature_capacity_curve";
@@ -176,10 +175,8 @@ const getGitCommit = () => {
   return result.stdout.trim() || "unknown";
 };
 
-const aikenBinary = defaultAikenBinary();
-
 const getAikenVersion = () => {
-  const result = run(aikenBinary, ["--version"], projectDir);
+  const result = run(aikenBinary(), ["--version"], projectDir);
   if (result.status !== 0) {
     return "unknown";
   }
@@ -298,10 +295,8 @@ const printSummary = (report) => {
 
 const main = () => {
   const options = parseArgs(process.argv.slice(2));
-  // A benchmark is only a measurement of the pinned fork.
-  assertPinnedAiken(aikenBinary);
   const benchResult = run(
-    aikenBinary,
+    aikenBinary(),
     buildAikenBenchArgs(options),
     projectDir,
   );
