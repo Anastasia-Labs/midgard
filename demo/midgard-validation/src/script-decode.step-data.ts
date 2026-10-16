@@ -9,7 +9,16 @@
  * outside 64 bits as tag 2 or 3 bignums. `serialiseScriptDecodeData` writes
  * exactly those bytes.
  */
-import { midgardBlake2b } from "@al-ft/midgard-core";
+import {
+  hashMidgardCekBlobChunk,
+  midgardBlake2b,
+  midgardCekIntegerMemoryWords,
+  summarizeMidgardCekLargeConstrData,
+  summarizeMidgardCekListData,
+  summarizeMidgardCekSmallConstrData,
+} from "@al-ft/midgard-core";
+
+import type { SequenceSummary, Summary } from "./script-decode.step-types.js";
 
 /** A Plutus Data value as the port builds it. */
 export type ScriptDecodeData =
@@ -143,3 +152,24 @@ export const blake2b256 = (bytes: Uint8Array): Buffer =>
 
 export const blake2b224 = (bytes: Uint8Array): Buffer =>
   Buffer.from(midgardBlake2b(bytes, { dkLen: 28 }));
+
+/**
+ * The summary of a Data list (`constructor` -1) or constructor over the
+ * sequence of its items.
+ */
+export const constrSummary = (
+  constructor: bigint,
+  fields: SequenceSummary,
+): Summary => {
+  if (constructor < 0n) return summarizeMidgardCekListData(fields);
+  if (constructor <= 127n) {
+    return summarizeMidgardCekSmallConstrData(constructor, fields);
+  }
+  const encoded = encodePlutusInteger(constructor);
+  return summarizeMidgardCekLargeConstrData({
+    constructorCborRoot: hashMidgardCekBlobChunk(encoded),
+    constructorCborLength: BigInt(encoded.length),
+    constructorMemory: 4n + midgardCekIntegerMemoryWords(constructor),
+    fields,
+  });
+};

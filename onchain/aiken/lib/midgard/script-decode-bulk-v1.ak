@@ -22,8 +22,8 @@ use aiken/builtin
 use aiken/crypto.{blake2b_256}
 use midgard/cek_constant_v1.{
   ArrayConstant, BooleanConstant, ByteStringConstant, ConstantTypeV1,
-  IntegerConstant, ListConstant, PairConstant, StringConstant, UnitConstant,
-  ValueConstant,
+  DataConstant, IntegerConstant, ListConstant, PairConstant, StringConstant,
+  UnitConstant, ValueConstant,
 }
 use midgard/cek_data_v1.{DataSequenceSummaryV1, DataSummaryV1}
 use midgard/script_decode_bits_v1 as bits
@@ -294,6 +294,9 @@ pub type Kind {
   KInteger
   KBytes
   KString
+  KData
+  /// A Value with at least one currency.
+  KValue
   KList { element: Shape, array: Bool }
   /// `stops` when a component never decodes here.
   KPair { first: Shape, second: Shape, stops: Bool }
@@ -334,6 +337,7 @@ pub fn shape_v1(ty: ConstantTypeV1, summaries: Bool) -> Shape {
     IntegerConstant -> SGen { kind: KInteger }
     ByteStringConstant -> SGen { kind: KBytes }
     StringConstant -> SGen { kind: KString }
+    DataConstant -> SGen { kind: KData }
     ListConstant { element } ->
       SBit {
         zero: fixed(empty_list_value, empty_list_entry, 0, summaries),
@@ -351,7 +355,7 @@ pub fn shape_v1(ty: ConstantTypeV1, summaries: Bool) -> Shape {
     ValueConstant ->
       SBit {
         zero: fixed(empty_value_value, empty_value_entry, 0, summaries),
-        one: SGen { kind: KStop },
+        one: SGen { kind: KValue },
       }
     PairConstant { first, second } ->
       pair_shape(
@@ -751,6 +755,14 @@ pub fn compile_kind_v1(
       fn(origin, _position, units, ok, stop) {
         byte_string(window, flat_bits, origin, True, units, summaries, ok, stop)
       }
+    KData ->
+      fn(origin, _position, units, ok, stop) {
+        data_constant(window, flat_bits, origin, units, summaries, ok, stop)
+      }
+    KValue ->
+      fn(origin, _position, units, ok, stop) {
+        value_constant(window, flat_bits, origin, units, summaries, ok, stop)
+      }
     KList { element, array } ->
       join(
         compile_v1(window, flat_bits, element, summaries),
@@ -969,8 +981,72 @@ fn natural(
   }
 }
 
-/// A byte string or string of at most one chunk: the filler, the chunk and
-/// its empty successor.
+// ## Byte strings, Data and values
+//
+// Each decoder below accepts exactly the values the walk's one-node ticks
+// accept, or stops. Only the total it charges matters, so a decoder may
+// charge in any order, and it checks its units as it goes so that a value
+// too large for the tick stops early.
+
+/// Units per byte string or string, past those of its chunks.
+const string_units = 10
+
+/// Units per Flat chunk read or stepped over past a value's first.
+const chunk_units = 1
+
+/// Units per Data constant: its filler and its closing chunk.
+const data_units = 4
+
+/// Units per CBOR head or break read.
+const head_units = 1
+
+/// Units per integer item.
+const integer_units = 6
+
+/// Units per item of a Data list or constructor.
+const item_units = 2
+
+/// Units per entry of a Data map.
+const entry_units = 4
+
+/// Units per Data list, map or constructor node.
+const node_units = 4
+
+/// Units per currency and per token of a Value, past a quantity's groups.
+const currency_units = 16
+
+const token_units = 16
+
+/// The most bytes a byte string decoded here may have: one blob chunk.
+const max_string_bytes = 4095
+
+const max_data_bytes_chunk = 64
+
+const max_key_bytes = 32
+
+const min_quantity = -170141183460469231731687303715884105728
+
+const max_quantity = 170141183460469231731687303715884105727
+
+const empty_pairs: DataSequenceSummaryV1 =
+  cek_data_v1.empty_data_pair_summary_v1()
+
+/// The byte index after the filler from bit `position`, or -1 when the
+/// filler does not end on a byte boundary.
+fn filler_end(window: ByteArray, flat_length: Int, position: Int) -> Int {
+  when bits.next_set_bit(window, position, flat_length) is {
+    None -> -1
+    Some(q) ->
+      if ( q + 1 ) % 8 == 0 {
+        ( q + 1 ) / 8
+      } else {
+        -1
+      }
+  }
+}
+
+/// A byte string or string: the filler, its chunks and the empty chunk
+/// ending them.
 fn byte_string(
   window: ByteArray,
   flat_bits: Int,
@@ -982,75 +1058,1321 @@ fn byte_string(
   stop: fn(Int) -> r,
 ) -> r {
   let flat_length = flat_bits / 8
-  when bits.next_set_bit(window, position, flat_length) is {
-    None -> stop(units)
-    Some(q) ->
-      if ( q + 1 ) % 8 != 0 {
+  let index = filler_end(window, flat_length, position)
+  if index < 0 || index >= flat_length {
+    stop(units)
+  } else if builtin.index_bytearray(window, index) == 0 {
+    let left = units - 2
+    if left < 0 {
+      stop(left)
+    } else {
+      ok(
+        8 * index + 8,
+        empty_bytes_entry,
+        empty_bytes_value.cbor_length,
+        empty_bytes_value.memory,
+        if string {
+          0
+        } else {
+          1
+        },
+        left,
+      )
+    }
+  } else {
+    chunks(
+      window,
+      flat_length,
+      string,
+      summaries,
+      index,
+      index,
+      #"",
+      0,
+      0,
+      units - string_units,
+      ok,
+      stop,
+    )
+  }
+}
+
+/// The chunks of a byte string from the chunk head at `i`, after `total`
+/// bytes (kept in `acc` with summaries) and in UTF-8 state `utf8`.
+fn chunks(
+  window: ByteArray,
+  flat_length: Int,
+  string: Bool,
+  summaries: Bool,
+  first: Int,
+  i: Int,
+  acc: ByteArray,
+  total: Int,
+  utf8: Int,
+  units: Int,
+  ok: fn(Int, ByteArray, Int, Int, Int, Int) -> r,
+  stop: fn(Int) -> r,
+) -> r {
+  if i >= flat_length {
+    stop(units)
+  } else {
+    let n = builtin.index_bytearray(window, i)
+    if n == 0 {
+      if utf8 != 0 {
         stop(units)
       } else {
-        let index = ( q + 1 ) / 8
-        if index >= flat_length {
-          stop(units)
+        let memory = if string {
+          total / 4
         } else {
-          let n = builtin.index_bytearray(window, index)
-          if n == 0 {
-            let left = units - 2
-            if left < 0 {
-              stop(left)
-            } else {
-              ok(
-                q + 9,
-                empty_bytes_entry,
-                empty_bytes_value.cbor_length,
-                empty_bytes_value.memory,
-                if string {
-                  0
-                } else {
-                  1
-                },
-                left,
-              )
-            }
-          } else {
-            let left = units - 10 - if string {
-              n
-            } else {
-              n / 32
-            }
-            if left < 0 {
-              stop(left)
-            } else if index + 2 + n > flat_length {
-              stop(left)
-            } else if builtin.index_bytearray(window, index + 1 + n) != 0 {
-              stop(left)
-            } else {
-              let chunk = builtin.slice_bytearray(index + 1, n, window)
-              if string && bits.utf8_push(0, chunk) != 0 {
-                stop(left)
-              } else {
-                let memory = if string {
-                  n / 4
-                } else {
-                  cek_data_v1.bytes_memory_size_v1(n)
-                }
-                if summaries {
-                  let summary = bits.short_bytes_summary(chunk)
-                  ok(
-                    q + 1 + 8 * ( n + 2 ),
-                    entry_of_v1(summary),
-                    summary.cbor_length,
-                    summary.memory,
-                    memory,
-                    left,
-                  )
-                } else {
-                  ok(q + 1 + 8 * ( n + 2 ), #"", 0, 0, memory, left)
-                }
-              }
-            }
-          }
+          cek_data_v1.bytes_memory_size_v1(total)
+        }
+        if summaries {
+          let summary = bits.short_bytes_summary(acc)
+          ok(
+            8 * i + 8,
+            entry_of_v1(summary),
+            summary.cbor_length,
+            summary.memory,
+            memory,
+            units,
+          )
+        } else {
+          ok(8 * i + 8, #"", 0, 0, memory, units)
         }
       }
+    } else {
+      let units = units - if i == first {
+        0
+      } else {
+        chunk_units
+      } - if string {
+        n
+      } else {
+        n / 32
+      }
+      // A chunk running past the Flat bytes leaves the next chunk head past
+      // them, where the check above stops.
+      if units < 0 || total + n > max_string_bytes {
+        stop(units)
+      } else if string {
+        let chunk = builtin.slice_bytearray(i + 1, n, window)
+        let utf8 = bits.utf8_push(utf8, chunk)
+        if utf8 < 0 {
+          stop(units)
+        } else {
+          chunks(
+            window,
+            flat_length,
+            string,
+            summaries,
+            first,
+            i + 1 + n,
+            if summaries {
+              builtin.append_bytearray(acc, chunk)
+            } else {
+              acc
+            },
+            total + n,
+            utf8,
+            units,
+            ok,
+            stop,
+          )
+        }
+      } else {
+        chunks(
+          window,
+          flat_length,
+          string,
+          summaries,
+          first,
+          i + 1 + n,
+          if summaries {
+            builtin.append_bytearray(
+              acc,
+              builtin.slice_bytearray(i + 1, n, window),
+            )
+          } else {
+            acc
+          },
+          total + n,
+          0,
+          units,
+          ok,
+          stop,
+        )
+      }
+    }
+  }
+}
+
+// ### Data
+
+/// A Data constant from bit `position`: the filler, the first CBOR item and
+/// the Flat chunks after it up to the empty one.
+fn data_constant(
+  window: ByteArray,
+  flat_bits: Int,
+  position: Int,
+  units: Int,
+  summaries: Bool,
+  ok: fn(Int, ByteArray, Int, Int, Int, Int) -> r,
+  stop: fn(Int) -> r,
+) -> r {
+  let flat_length = flat_bits / 8
+  let start = filler_end(window, flat_length, position)
+  let units = units - data_units
+  if start < 0 || units < 0 {
+    stop(units)
+  } else {
+    d_item(
+      window,
+      flat_length,
+      summaries,
+      start,
+      start,
+      units,
+      fn(summary, _p, end, units) {
+        d_trail(window, flat_length, end, summary, units, summaries, ok, stop)
+      },
+      fn(_p, _end, units) { stop(units) },
+      stop,
+    )
+  }
+}
+
+/// Steps over the Flat chunks from the chunk head at `p` to the empty one.
+fn d_trail(
+  window: ByteArray,
+  flat_length: Int,
+  p: Int,
+  summary: DataSummaryV1,
+  units: Int,
+  summaries: Bool,
+  ok: fn(Int, ByteArray, Int, Int, Int, Int) -> r,
+  stop: fn(Int) -> r,
+) -> r {
+  if p >= flat_length {
+    stop(units)
+  } else {
+    let n = builtin.index_bytearray(window, p)
+    if n == 0 {
+      if summaries {
+        ok(
+          8 * p + 8,
+          entry_of_v1(summary),
+          summary.cbor_length,
+          summary.memory,
+          summary.memory,
+          units,
+        )
+      } else {
+        ok(8 * p + 8, #"", 0, 0, summary.memory, units)
+      }
+    } else {
+      let units = units - chunk_units
+      if units < 0 {
+        stop(units)
+      } else {
+        d_trail(
+          window,
+          flat_length,
+          p + 1 + n,
+          summary,
+          units,
+          summaries,
+          ok,
+          stop,
+        )
+      }
+    }
+  }
+}
+
+/// From the CBOR byte `p` of the Flat chunk ending at `end`, opens the next
+/// chunk when this one is spent.
+fn d_open(
+  window: ByteArray,
+  flat_length: Int,
+  p: Int,
+  end: Int,
+  units: Int,
+  k: fn(Int, Int, Int) -> r,
+  stop: fn(Int) -> r,
+) -> r {
+  if p < end {
+    k(p, end, units)
+  } else if p >= flat_length {
+    stop(units)
+  } else {
+    let n = builtin.index_bytearray(window, p)
+    let units = units - chunk_units
+    if n == 0 || p + 1 + n > flat_length || units < 0 {
+      stop(units)
+    } else {
+      k(p + 1, p + 1 + n, units)
+    }
+  }
+}
+
+fn d_byte(
+  window: ByteArray,
+  flat_length: Int,
+  p: Int,
+  end: Int,
+  units: Int,
+  k: fn(Int, Int, Int, Int) -> r,
+  stop: fn(Int) -> r,
+) -> r {
+  if p < end {
+    k(builtin.index_bytearray(window, p), p + 1, end, units)
+  } else {
+    d_open(
+      window,
+      flat_length,
+      p,
+      end,
+      units,
+      fn(p, end, units) {
+        k(builtin.index_bytearray(window, p), p + 1, end, units)
+      },
+      stop,
+    )
+  }
+}
+
+/// `count` CBOR bytes appended to `acc`, across Flat chunks.
+fn d_take(
+  window: ByteArray,
+  flat_length: Int,
+  count: Int,
+  acc: ByteArray,
+  p: Int,
+  end: Int,
+  units: Int,
+  k: fn(ByteArray, Int, Int, Int) -> r,
+  stop: fn(Int) -> r,
+) -> r {
+  if count == 0 {
+    k(acc, p, end, units)
+  } else {
+    d_open(
+      window,
+      flat_length,
+      p,
+      end,
+      units,
+      fn(p, end, units) {
+        let m = if count < end - p {
+          count
+        } else {
+          end - p
+        }
+        d_take(
+          window,
+          flat_length,
+          count - m,
+          builtin.append_bytearray(acc, builtin.slice_bytearray(p, m, window)),
+          p + m,
+          end,
+          units,
+          k,
+          stop,
+        )
+      },
+      stop,
+    )
+  }
+}
+
+fn d_uint(
+  window: ByteArray,
+  flat_length: Int,
+  width: Int,
+  acc: Int,
+  p: Int,
+  end: Int,
+  units: Int,
+  k: fn(Int, Int, Int, Int) -> r,
+  stop: fn(Int) -> r,
+) -> r {
+  if width == 0 {
+    k(acc, p, end, units)
+  } else {
+    d_byte(
+      window,
+      flat_length,
+      p,
+      end,
+      units,
+      fn(byte, p, end, units) {
+        d_uint(
+          window,
+          flat_length,
+          width - 1,
+          acc * 256 + byte,
+          p,
+          end,
+          units,
+          k,
+          stop,
+        )
+      },
+      stop,
+    )
+  }
+}
+
+/// The head with initial byte `initial`: its major type, additional
+/// information and argument, -1 for additional information 31.
+fn d_head(
+  window: ByteArray,
+  flat_length: Int,
+  initial: Int,
+  p: Int,
+  end: Int,
+  units: Int,
+  k: fn(Int, Int, Int, Int, Int, Int) -> r,
+  stop: fn(Int) -> r,
+) -> r {
+  let major = initial / 32
+  let additional = initial % 32
+  if additional < 24 {
+    k(major, additional, additional, p, end, units)
+  } else if additional == 31 {
+    k(major, additional, -1, p, end, units)
+  } else if additional > 27 {
+    stop(units)
+  } else {
+    d_uint(
+      window,
+      flat_length,
+      builtin.index_bytearray(#[1, 2, 4, 8], additional - 24),
+      0,
+      p,
+      end,
+      units,
+      fn(argument, p, end, units) {
+        k(major, additional, argument, p, end, units)
+      },
+      stop,
+    )
+  }
+}
+
+fn d_read_head(
+  window: ByteArray,
+  flat_length: Int,
+  p: Int,
+  end: Int,
+  units: Int,
+  k: fn(Int, Int, Int, Int, Int, Int) -> r,
+  stop: fn(Int) -> r,
+) -> r {
+  let units = units - head_units
+  if units < 0 {
+    stop(units)
+  } else {
+    d_byte(
+      window,
+      flat_length,
+      p,
+      end,
+      units,
+      fn(initial, p, end, units) {
+        d_head(window, flat_length, initial, p, end, units, k, stop)
+      },
+      stop,
+    )
+  }
+}
+
+/// The bytes of a byte string item of `length` bytes, or of chunks up to a
+/// break when `length` is -1, at most `limit` of them.
+fn d_string(
+  window: ByteArray,
+  flat_length: Int,
+  length: Int,
+  limit: Int,
+  p: Int,
+  end: Int,
+  units: Int,
+  k: fn(ByteArray, Int, Int, Int) -> r,
+  stop: fn(Int) -> r,
+) -> r {
+  if length >= 0 {
+    d_take(window, flat_length, length, #"", p, end, units, k, stop)
+  } else {
+    d_pieces(window, flat_length, limit, #"", p, end, units, k, stop)
+  }
+}
+
+fn d_pieces(
+  window: ByteArray,
+  flat_length: Int,
+  limit: Int,
+  acc: ByteArray,
+  p: Int,
+  end: Int,
+  units: Int,
+  k: fn(ByteArray, Int, Int, Int) -> r,
+  stop: fn(Int) -> r,
+) -> r {
+  let units = units - head_units
+  if units < 0 {
+    stop(units)
+  } else {
+    d_byte(
+      window,
+      flat_length,
+      p,
+      end,
+      units,
+      fn(initial, p, end, units) {
+        if initial == 255 {
+          k(acc, p, end, units)
+        } else {
+          d_head(
+            window,
+            flat_length,
+            initial,
+            p,
+            end,
+            units,
+            fn(major, _additional, length, p, end, units) {
+              if major != 2 || length < 0 || length > max_data_bytes_chunk || builtin.length_of_bytearray(
+                acc,
+              ) + length > limit {
+                stop(units)
+              } else {
+                d_take(
+                  window,
+                  flat_length,
+                  length,
+                  acc,
+                  p,
+                  end,
+                  units,
+                  fn(acc, p, end, units) {
+                    d_pieces(
+                      window,
+                      flat_length,
+                      limit,
+                      acc,
+                      p,
+                      end,
+                      units,
+                      k,
+                      stop,
+                    )
+                  },
+                  stop,
+                )
+              }
+            },
+            stop,
+          )
+        }
+      },
+      stop,
+    )
+  }
+}
+
+fn d_integer(n: Int, summaries: Bool) -> DataSummaryV1 {
+  if summaries {
+    bits.integer_summary(n)
+  } else {
+    DataSummaryV1 {
+      root: #"",
+      cbor_length: 0,
+      memory: 4 + cek_data_v1.integer_memory_size_v1(n),
+    }
+  }
+}
+
+fn d_constr(
+  constructor: Int,
+  fields: DataSequenceSummaryV1,
+  summaries: Bool,
+) -> DataSummaryV1 {
+  if summaries {
+    bits.constr_summary(constructor, fields)
+  } else {
+    DataSummaryV1 { root: #"", cbor_length: 0, memory: 4 + fields.memory }
+  }
+}
+
+/// One CBOR item: `k` gets its summary (only its memory without summaries),
+/// `brk` is taken at a break.
+fn d_item(
+  window: ByteArray,
+  flat_length: Int,
+  summaries: Bool,
+  p: Int,
+  end: Int,
+  units: Int,
+  k: fn(DataSummaryV1, Int, Int, Int) -> r,
+  brk: fn(Int, Int, Int) -> r,
+  stop: fn(Int) -> r,
+) -> r {
+  let units = units - head_units
+  if units < 0 {
+    stop(units)
+  } else {
+    d_byte(
+      window,
+      flat_length,
+      p,
+      end,
+      units,
+      fn(initial, p, end, units) {
+        if initial == 255 {
+          brk(p, end, units)
+        } else {
+          d_head(
+            window,
+            flat_length,
+            initial,
+            p,
+            end,
+            units,
+            fn(major, additional, argument, p, end, units) {
+              d_body(
+                window,
+                flat_length,
+                summaries,
+                major,
+                additional,
+                argument,
+                p,
+                end,
+                units,
+                k,
+                stop,
+              )
+            },
+            stop,
+          )
+        }
+      },
+      stop,
+    )
+  }
+}
+
+fn d_body(
+  window: ByteArray,
+  flat_length: Int,
+  summaries: Bool,
+  major: Int,
+  additional: Int,
+  argument: Int,
+  p: Int,
+  end: Int,
+  units: Int,
+  k: fn(DataSummaryV1, Int, Int, Int) -> r,
+  stop: fn(Int) -> r,
+) -> r {
+  if major <= 1 {
+    let units = units - integer_units
+    if argument < 0 || units < 0 {
+      stop(units)
+    } else if major == 0 {
+      k(d_integer(argument, summaries), p, end, units)
+    } else {
+      k(d_integer(-1 - argument, summaries), p, end, units)
+    }
+  } else if major == 2 {
+    if argument > max_data_bytes_chunk {
+      stop(units)
+    } else {
+      d_string(
+        window,
+        flat_length,
+        argument,
+        max_string_bytes,
+        p,
+        end,
+        units,
+        fn(bytes, p, end, units) {
+          let length = builtin.length_of_bytearray(bytes)
+          let units = units - string_units - length / 32
+          if units < 0 {
+            stop(units)
+          } else if summaries {
+            k(bits.short_bytes_summary(bytes), p, end, units)
+          } else {
+            k(
+              DataSummaryV1 {
+                root: #"",
+                cbor_length: 0,
+                memory: 4 + cek_data_v1.bytes_memory_size_v1(length),
+              },
+              p,
+              end,
+              units,
+            )
+          }
+        },
+        stop,
+      )
+    }
+  } else if major == 4 {
+    d_items(
+      window,
+      flat_length,
+      summaries,
+      argument,
+      0,
+      p,
+      end,
+      units,
+      fn(fields, p, end, units) {
+        k(d_constr(-1, fields, summaries), p, end, units)
+      },
+      stop,
+    )
+  } else if major == 5 {
+    d_entries(
+      window,
+      flat_length,
+      summaries,
+      argument,
+      0,
+      p,
+      end,
+      units,
+      fn(entries, p, end, units) {
+        if summaries {
+          k(cek_data_v1.map_data_summary_v1(entries), p, end, units)
+        } else {
+          k(
+            DataSummaryV1 {
+              root: #"",
+              cbor_length: 0,
+              memory: 4 + entries.memory,
+            },
+            p,
+            end,
+            units,
+          )
+        }
+      },
+      stop,
+    )
+  } else if major == 6 {
+    d_tagged(
+      window,
+      flat_length,
+      summaries,
+      additional,
+      argument,
+      p,
+      end,
+      units,
+      k,
+      stop,
+    )
+  } else {
+    stop(units)
+  }
+}
+
+/// The items of a list from item `index` of `length` (-1 up to a break).
+fn d_items(
+  window: ByteArray,
+  flat_length: Int,
+  summaries: Bool,
+  length: Int,
+  index: Int,
+  p: Int,
+  end: Int,
+  units: Int,
+  k: fn(DataSequenceSummaryV1, Int, Int, Int) -> r,
+  stop: fn(Int) -> r,
+) -> r {
+  if index == length {
+    let units = units - node_units
+    if units < 0 {
+      stop(units)
+    } else {
+      k(empty_sequence, p, end, units)
+    }
+  } else {
+    let units = units - item_units
+    if units < 0 {
+      stop(units)
+    } else {
+      d_item(
+        window,
+        flat_length,
+        summaries,
+        p,
+        end,
+        units,
+        fn(head, p, end, units) {
+          d_items(
+            window,
+            flat_length,
+            summaries,
+            length,
+            index + 1,
+            p,
+            end,
+            units,
+            fn(tail, p, end, units) {
+              if summaries {
+                k(prepend_v1(head, tail), p, end, units)
+              } else {
+                k(
+                  DataSequenceSummaryV1 {
+                    ..tail,
+                    memory: tail.memory + head.memory,
+                  },
+                  p,
+                  end,
+                  units,
+                )
+              }
+            },
+            stop,
+          )
+        },
+        fn(p, end, units) {
+          let units = units - node_units
+          if length >= 0 || units < 0 {
+            stop(units)
+          } else {
+            k(empty_sequence, p, end, units)
+          }
+        },
+        stop,
+      )
+    }
+  }
+}
+
+/// The entries of a map from entry `index` of `length` (-1 up to a break in
+/// place of a key).
+fn d_entries(
+  window: ByteArray,
+  flat_length: Int,
+  summaries: Bool,
+  length: Int,
+  index: Int,
+  p: Int,
+  end: Int,
+  units: Int,
+  k: fn(DataSequenceSummaryV1, Int, Int, Int) -> r,
+  stop: fn(Int) -> r,
+) -> r {
+  if index == length {
+    let units = units - node_units
+    if units < 0 {
+      stop(units)
+    } else {
+      k(empty_pairs, p, end, units)
+    }
+  } else {
+    let units = units - entry_units
+    if units < 0 {
+      stop(units)
+    } else {
+      d_item(
+        window,
+        flat_length,
+        summaries,
+        p,
+        end,
+        units,
+        fn(key, p, end, units) {
+          d_item(
+            window,
+            flat_length,
+            summaries,
+            p,
+            end,
+            units,
+            fn(value, p, end, units) {
+              d_entries(
+                window,
+                flat_length,
+                summaries,
+                length,
+                index + 1,
+                p,
+                end,
+                units,
+                fn(tail, p, end, units) {
+                  if summaries {
+                    k(
+                      cek_data_v1.prepend_data_pair_summary_v1(key, value, tail),
+                      p,
+                      end,
+                      units,
+                    )
+                  } else {
+                    k(
+                      DataSequenceSummaryV1 {
+                        ..tail,
+                        memory: tail.memory + key.memory + value.memory,
+                      },
+                      p,
+                      end,
+                      units,
+                    )
+                  }
+                },
+                stop,
+              )
+            },
+            fn(_p, _end, units) { stop(units) },
+            stop,
+          )
+        },
+        fn(p, end, units) {
+          let units = units - node_units
+          if length >= 0 || units < 0 {
+            stop(units)
+          } else {
+            k(empty_pairs, p, end, units)
+          }
+        },
+        stop,
+      )
+    }
+  }
+}
+
+/// The fields list of a constructor.
+fn d_fields(
+  window: ByteArray,
+  flat_length: Int,
+  summaries: Bool,
+  constructor: Int,
+  p: Int,
+  end: Int,
+  units: Int,
+  k: fn(DataSummaryV1, Int, Int, Int) -> r,
+  stop: fn(Int) -> r,
+) -> r {
+  d_read_head(
+    window,
+    flat_length,
+    p,
+    end,
+    units,
+    fn(major, _additional, length, p, end, units) {
+      if major != 4 {
+        stop(units)
+      } else {
+        d_items(
+          window,
+          flat_length,
+          summaries,
+          length,
+          0,
+          p,
+          end,
+          units,
+          fn(fields, p, end, units) {
+            k(d_constr(constructor, fields, summaries), p, end, units)
+          },
+          stop,
+        )
+      }
+    },
+    stop,
+  )
+}
+
+fn d_tagged(
+  window: ByteArray,
+  flat_length: Int,
+  summaries: Bool,
+  additional: Int,
+  tag: Int,
+  p: Int,
+  end: Int,
+  units: Int,
+  k: fn(DataSummaryV1, Int, Int, Int) -> r,
+  stop: fn(Int) -> r,
+) -> r {
+  if tag < 0 {
+    stop(units)
+  } else if additional == 2 || additional == 3 {
+    d_read_head(
+      window,
+      flat_length,
+      p,
+      end,
+      units,
+      fn(major, _additional, length, p, end, units) {
+        if major != 2 || length > max_data_bytes_chunk {
+          stop(units)
+        } else {
+          d_string(
+            window,
+            flat_length,
+            length,
+            max_data_bytes_chunk,
+            p,
+            end,
+            units,
+            fn(bytes, p, end, units) {
+              let units = units - integer_units
+              if units < 0 {
+                stop(units)
+              } else {
+                let m = builtin.bytearray_to_integer(True, bytes)
+                if additional == 3 {
+                  k(d_integer(-1 - m, summaries), p, end, units)
+                } else {
+                  k(d_integer(m, summaries), p, end, units)
+                }
+              }
+            },
+            stop,
+          )
+        }
+      },
+      stop,
+    )
+  } else if tag == 102 {
+    d_read_head(
+      window,
+      flat_length,
+      p,
+      end,
+      units,
+      fn(major, _additional, length, p, end, units) {
+        if major != 4 || length != 2 && length != -1 {
+          stop(units)
+        } else {
+          d_read_head(
+            window,
+            flat_length,
+            p,
+            end,
+            units,
+            fn(index_major, _additional, index, p, end, units) {
+              if index_major != 0 || index < 0 {
+                stop(units)
+              } else {
+                d_fields(
+                  window,
+                  flat_length,
+                  summaries,
+                  index,
+                  p,
+                  end,
+                  units,
+                  fn(summary, p, end, units) {
+                    if length == 2 {
+                      k(summary, p, end, units)
+                    } else {
+                      let units = units - head_units
+                      if units < 0 {
+                        stop(units)
+                      } else {
+                        d_byte(
+                          window,
+                          flat_length,
+                          p,
+                          end,
+                          units,
+                          fn(byte, p, end, units) {
+                            if byte == 255 {
+                              k(summary, p, end, units)
+                            } else {
+                              stop(units)
+                            }
+                          },
+                          stop,
+                        )
+                      }
+                    }
+                  },
+                  stop,
+                )
+              }
+            },
+            stop,
+          )
+        }
+      },
+      stop,
+    )
+  } else if tag >= 121 && tag <= 127 {
+    d_fields(window, flat_length, summaries, tag - 121, p, end, units, k, stop)
+  } else if tag >= 1280 && tag <= 1400 {
+    d_fields(window, flat_length, summaries, tag - 1273, p, end, units, k, stop)
+  } else {
+    stop(units)
+  }
+}
+
+// ### Values
+
+/// A non-empty Value from its first cons bit at `position`.
+fn value_constant(
+  window: ByteArray,
+  flat_bits: Int,
+  position: Int,
+  units: Int,
+  summaries: Bool,
+  ok: fn(Int, ByteArray, Int, Int, Int, Int) -> r,
+  stop: fn(Int) -> r,
+) -> r {
+  v_currencies(
+    window,
+    flat_bits,
+    summaries,
+    #"",
+    True,
+    position,
+    units,
+    fn(currencies, total, after, units) {
+      if summaries {
+        let summary = cek_data_v1.map_data_summary_v1(currencies)
+        ok(
+          after,
+          entry_of_v1(summary),
+          summary.cbor_length,
+          summary.memory,
+          total,
+          units,
+        )
+      } else {
+        ok(after, #"", 0, 0, total, units)
+      }
+    },
+    stop,
+  )
+}
+
+/// A Value key from bit `position`: at most 32 bytes over its chunks.
+fn v_key(
+  window: ByteArray,
+  flat_length: Int,
+  position: Int,
+  units: Int,
+  k: fn(ByteArray, Int, Int) -> r,
+  stop: fn(Int) -> r,
+) -> r {
+  let index = filler_end(window, flat_length, position)
+  if index < 0 {
+    stop(units)
+  } else {
+    v_chunks(window, flat_length, index, index, #"", units, k, stop)
+  }
+}
+
+fn v_chunks(
+  window: ByteArray,
+  flat_length: Int,
+  first: Int,
+  i: Int,
+  acc: ByteArray,
+  units: Int,
+  k: fn(ByteArray, Int, Int) -> r,
+  stop: fn(Int) -> r,
+) -> r {
+  if i >= flat_length {
+    stop(units)
+  } else {
+    let n = builtin.index_bytearray(window, i)
+    if n == 0 {
+      k(acc, 8 * i + 8, units)
+    } else {
+      let units = if i == first {
+        units
+      } else {
+        units - chunk_units
+      }
+      if units < 0 || builtin.length_of_bytearray(acc) + n > max_key_bytes {
+        stop(units)
+      } else {
+        v_chunks(
+          window,
+          flat_length,
+          first,
+          i + 1 + n,
+          builtin.append_bytearray(
+            acc,
+            builtin.slice_bytearray(i + 1, n, window),
+          ),
+          units,
+          k,
+          stop,
+        )
+      }
+    }
+  }
+}
+
+/// The currencies from the outer cons bit at `position`, after `previous`
+/// unless `first`: `k` gets their map entries, their token count, the
+/// position after them and the units left.
+fn v_currencies(
+  window: ByteArray,
+  flat_bits: Int,
+  summaries: Bool,
+  previous: ByteArray,
+  first: Bool,
+  position: Int,
+  units: Int,
+  k: fn(DataSequenceSummaryV1, Int, Int, Int) -> r,
+  stop: fn(Int) -> r,
+) -> r {
+  if position >= flat_bits {
+    stop(units)
+  } else if !bit(window, flat_bits, position) {
+    k(empty_pairs, 0, position + 1, units)
+  } else {
+    let units = units - currency_units
+    if units < 0 {
+      stop(units)
+    } else {
+      v_key(
+        window,
+        flat_bits / 8,
+        position + 1,
+        units,
+        fn(currency, after, units) {
+          if !first && !builtin.less_than_bytearray(previous, currency) {
+            stop(units)
+          } else {
+            v_tokens(
+              window,
+              flat_bits,
+              summaries,
+              #"",
+              True,
+              after,
+              units,
+              fn(tokens, count, after, units) {
+                v_currencies(
+                  window,
+                  flat_bits,
+                  summaries,
+                  currency,
+                  False,
+                  after,
+                  units,
+                  fn(tail, total, after, units) {
+                    if summaries {
+                      k(
+                        cek_data_v1.prepend_data_pair_summary_v1(
+                          bits.short_bytes_summary(currency),
+                          cek_data_v1.map_data_summary_v1(tokens),
+                          tail,
+                        ),
+                        total + count,
+                        after,
+                        units,
+                      )
+                    } else {
+                      k(tail, total + count, after, units)
+                    }
+                  },
+                  stop,
+                )
+              },
+              stop,
+            )
+          }
+        },
+        stop,
+      )
+    }
+  }
+}
+
+/// The tokens of one currency from the inner cons bit at `position`, after
+/// `previous` unless `first`; a currency has at least one.
+fn v_tokens(
+  window: ByteArray,
+  flat_bits: Int,
+  summaries: Bool,
+  previous: ByteArray,
+  first: Bool,
+  position: Int,
+  units: Int,
+  k: fn(DataSequenceSummaryV1, Int, Int, Int) -> r,
+  stop: fn(Int) -> r,
+) -> r {
+  if position >= flat_bits {
+    stop(units)
+  } else if !bit(window, flat_bits, position) {
+    if first {
+      stop(units)
+    } else {
+      k(empty_pairs, 0, position + 1, units)
+    }
+  } else {
+    let units = units - token_units
+    if units < 0 {
+      stop(units)
+    } else {
+      v_key(
+        window,
+        flat_bits / 8,
+        position + 1,
+        units,
+        fn(token, after, units) {
+          if !first && !builtin.less_than_bytearray(previous, token) {
+            stop(units)
+          } else {
+            natural(
+              window,
+              flat_bits,
+              after,
+              0,
+              0,
+              1,
+              fn(after, groups, acc) {
+                let units = units - groups
+                let n = zigzag(acc)
+                if units < 0 || n == 0 || n < min_quantity || n > max_quantity {
+                  stop(units)
+                } else {
+                  v_tokens(
+                    window,
+                    flat_bits,
+                    summaries,
+                    token,
+                    False,
+                    after,
+                    units,
+                    fn(tail, count, after, units) {
+                      if summaries {
+                        k(
+                          cek_data_v1.prepend_data_pair_summary_v1(
+                            bits.short_bytes_summary(token),
+                            bits.integer_summary(n),
+                            tail,
+                          ),
+                          count + 1,
+                          after,
+                          units,
+                        )
+                      } else {
+                        k(tail, count + 1, after, units)
+                      }
+                    },
+                    stop,
+                  )
+                }
+              },
+              fn() { stop(units) },
+            )
+          }
+        },
+        stop,
+      )
+    }
   }
 }
 

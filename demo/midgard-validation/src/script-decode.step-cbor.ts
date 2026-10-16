@@ -6,12 +6,7 @@
 import {
   emptyMidgardCekDataListSummary,
   emptyMidgardCekDataPairSummary,
-  hashMidgardCekBlobChunk,
-  midgardCekIntegerMemoryWords,
-  summarizeMidgardCekLargeConstrData,
-  summarizeMidgardCekListData,
   summarizeMidgardCekMapData,
-  summarizeMidgardCekSmallConstrData,
 } from "@al-ft/midgard-core";
 
 import {
@@ -38,7 +33,7 @@ import {
   takeByte,
   takeSlice,
 } from "./script-decode.step-cbor-read.js";
-import { encodePlutusInteger } from "./script-decode.step-data.js";
+import { constrSummary } from "./script-decode.step-data.js";
 import {
   type DecodeEnv,
   type Exec,
@@ -48,29 +43,7 @@ import {
   to,
 } from "./script-decode.step-exec.js";
 import { foldOne } from "./script-decode.step-list.js";
-import type {
-  DataMode,
-  SequenceSummary,
-  Source,
-  Summary,
-} from "./script-decode.step-types.js";
-
-const constrSummary = (
-  constructor: bigint,
-  fields: SequenceSummary,
-): Summary => {
-  if (constructor < 0n) return summarizeMidgardCekListData(fields);
-  if (constructor <= 127n) {
-    return summarizeMidgardCekSmallConstrData(constructor, fields);
-  }
-  const encoded = encodePlutusInteger(constructor);
-  return summarizeMidgardCekLargeConstrData({
-    constructorCborRoot: hashMidgardCekBlobChunk(encoded),
-    constructorCborLength: BigInt(encoded.length),
-    constructorMemory: 4n + midgardCekIntegerMemoryWords(constructor),
-    fields,
-  });
-};
+import type { DataMode, Source, Summary } from "./script-decode.step-types.js";
 
 /** Hands a finished item to the frame below it. */
 const deliver = (

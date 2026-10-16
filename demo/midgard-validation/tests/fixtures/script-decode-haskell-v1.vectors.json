@@ -1297,6 +1297,1068 @@
       }
     },
     {
+      "label": "bulk list Data, every item form",
+      "scriptBytes": 639,
+      "record": {
+        "k": "decoded",
+        "programVersion": 0,
+        "phase2Class": 0
+      }
+    },
+    {
+      "label": "bulk list Data, every item form, 3 ticks a Walk",
+      "scriptBytes": 639,
+      "record": {
+        "k": "decoded",
+        "programVersion": 0,
+        "phase2Class": 0
+      }
+    },
+    {
+      "label": "bulk list Data over Flat chunks",
+      "scriptBytes": 816,
+      "record": {
+        "k": "decoded",
+        "programVersion": 0,
+        "phase2Class": 0
+      }
+    },
+    {
+      "label": "bulk list Data over Flat chunks, 3 ticks a Walk",
+      "scriptBytes": 816,
+      "record": {
+        "k": "decoded",
+        "programVersion": 0,
+        "phase2Class": 0
+      }
+    },
+    {
+      "label": "bulk list Data, runs to the tick's units",
+      "scriptBytes": 2969,
+      "record": {
+        "k": "decoded",
+        "programVersion": 0,
+        "phase2Class": 0
+      }
+    },
+    {
+      "label": "bulk list Data, runs to the tick's units, 3 ticks a Walk",
+      "scriptBytes": 2969,
+      "record": {
+        "k": "decoded",
+        "programVersion": 0,
+        "phase2Class": 0
+      }
+    },
+    {
+      "label": "bulk list Data refused mid-list",
+      "scriptBytes": 963,
+      "record": {
+        "k": "refused",
+        "class": 16,
+        "bitOffset": 3496
+      }
+    },
+    {
+      "label": "bulk list Data refused mid-list, 3 ticks a Walk",
+      "scriptBytes": 963,
+      "record": {
+        "k": "refused",
+        "class": 16,
+        "bitOffset": 3496
+      }
+    },
+    {
+      "label": "bulk list Data, a chunk past the script end",
+      "scriptBytes": 49,
+      "record": {
+        "k": "refused",
+        "class": 3,
+        "bitOffset": 384
+      }
+    },
+    {
+      "label": "bulk list Data, a chunk past the script end",
+      "flipBit": 15,
+      "scriptBytes": 49,
+      "record": {
+        "k": "refused",
+        "class": 3,
+        "bitOffset": 384
+      }
+    },
+    {
+      "label": "bulk list Data, a chunk past the script end",
+      "flipBit": 21,
+      "scriptBytes": 49,
+      "record": {
+        "k": "refused",
+        "class": 3,
+        "bitOffset": 384
+      }
+    },
+    {
+      "label": "bulk list Data, a chunk past the script end",
+      "flipBit": 30,
+      "scriptBytes": 49,
+      "record": {
+        "k": "refused",
+        "class": 3,
+        "bitOffset": 384
+      }
+    },
+    {
+      "label": "bulk list Data, a chunk past the script end",
+      "flipBit": 49,
+      "scriptBytes": 49,
+      "record": {
+        "k": "refused",
+        "class": 12,
+        "bitOffset": 50
+      }
+    },
+    {
+      "label": "bulk list Data, a chunk past the script end",
+      "flipBit": 57,
+      "scriptBytes": 49,
+      "record": {
+        "k": "refused",
+        "class": 14,
+        "bitOffset": 61
+      }
+    },
+    {
+      "label": "bulk list Data, a chunk past the script end",
+      "flipBit": 79,
+      "scriptBytes": 49,
+      "record": {
+        "k": "refused",
+        "class": 3,
+        "bitOffset": 384
+      }
+    },
+    {
+      "label": "bulk list Data, a chunk past the script end",
+      "flipBit": 212,
+      "scriptBytes": 49,
+      "record": {
+        "k": "refused",
+        "class": 4,
+        "bitOffset": 213
+      }
+    },
+    {
+      "label": "bulk list Data, a chunk past the script end",
+      "flipBit": 234,
+      "scriptBytes": 49,
+      "record": {
+        "k": "refused",
+        "class": 3,
+        "bitOffset": 384
+      }
+    },
+    {
+      "label": "bulk list Data, a chunk past the script end",
+      "flipBit": 252,
+      "scriptBytes": 49,
+      "record": {
+        "k": "refused",
+        "class": 3,
+        "bitOffset": 384
+      }
+    },
+    {
+      "label": "bulk list Data, a chunk past the script end",
+      "flipBit": 329,
+      "scriptBytes": 49,
+      "record": {
+        "k": "refused",
+        "class": 3,
+        "bitOffset": 384
+      }
+    },
+    {
+      "label": "bulk list Data, a chunk past the script end",
+      "flipBit": 333,
+      "scriptBytes": 49,
+      "record": {
+        "k": "refused",
+        "class": 3,
+        "bitOffset": 384
+      }
+    },
+    {
+      "label": "bulk list Data, a chunk past the script end",
+      "flipBit": 353,
+      "scriptBytes": 49,
+      "record": {
+        "k": "refused",
+        "class": 3,
+        "bitOffset": 384
+      }
+    },
+    {
+      "label": "bulk list Data, a chunk past the script end, 3 ticks a Walk",
+      "scriptBytes": 49,
+      "record": {
+        "k": "refused",
+        "class": 3,
+        "bitOffset": 384
+      }
+    },
+    {
+      "label": "bulk list Data, a chunk past the script end, 3 ticks a Walk",
+      "flipBit": 74,
+      "scriptBytes": 49,
+      "record": {
+        "k": "refused",
+        "class": 3,
+        "bitOffset": 384
+      }
+    },
+    {
+      "label": "bulk list Data, a chunk past the script end, 3 ticks a Walk",
+      "flipBit": 79,
+      "scriptBytes": 49,
+      "record": {
+        "k": "refused",
+        "class": 3,
+        "bitOffset": 384
+      }
+    },
+    {
+      "label": "bulk list Data, a chunk past the script end, 3 ticks a Walk",
+      "flipBit": 136,
+      "scriptBytes": 49,
+      "record": {
+        "k": "refused",
+        "class": 16,
+        "bitOffset": 160
+      }
+    },
+    {
+      "label": "bulk list Data, a chunk past the script end, 3 ticks a Walk",
+      "flipBit": 166,
+      "scriptBytes": 49,
+      "record": {
+        "k": "refused",
+        "class": 4,
+        "bitOffset": 167
+      }
+    },
+    {
+      "label": "bulk list Data, a chunk past the script end, 3 ticks a Walk",
+      "flipBit": 211,
+      "scriptBytes": 49,
+      "record": {
+        "k": "refused",
+        "class": 4,
+        "bitOffset": 212
+      }
+    },
+    {
+      "label": "bulk list Data, a chunk past the script end, 3 ticks a Walk",
+      "flipBit": 231,
+      "scriptBytes": 49,
+      "record": {
+        "k": "refused",
+        "class": 16,
+        "bitOffset": 272
+      }
+    },
+    {
+      "label": "bulk list Data, a chunk past the script end, 3 ticks a Walk",
+      "flipBit": 232,
+      "scriptBytes": 49,
+      "record": {
+        "k": "refused",
+        "class": 3,
+        "bitOffset": 384
+      }
+    },
+    {
+      "label": "bulk list Data, a chunk past the script end, 3 ticks a Walk",
+      "flipBit": 264,
+      "scriptBytes": 49,
+      "record": {
+        "k": "refused",
+        "class": 3,
+        "bitOffset": 272
+      }
+    },
+    {
+      "label": "bulk list Data, a chunk past the script end, 3 ticks a Walk",
+      "flipBit": 268,
+      "scriptBytes": 49,
+      "record": {
+        "k": "refused",
+        "class": 4,
+        "bitOffset": 369
+      }
+    },
+    {
+      "label": "bulk list Data, a chunk past the script end, 3 ticks a Walk",
+      "flipBit": 278,
+      "scriptBytes": 49,
+      "record": {
+        "k": "refused",
+        "class": 4,
+        "bitOffset": 279
+      }
+    },
+    {
+      "label": "bulk list Data, a chunk past the script end, 3 ticks a Walk",
+      "flipBit": 279,
+      "scriptBytes": 49,
+      "record": {
+        "k": "refused",
+        "class": 4,
+        "bitOffset": 285
+      }
+    },
+    {
+      "label": "bulk list Data, a chunk past the script end, 3 ticks a Walk",
+      "flipBit": 296,
+      "scriptBytes": 49,
+      "record": {
+        "k": "refused",
+        "class": 3,
+        "bitOffset": 384
+      }
+    },
+    {
+      "label": "bulk chain over lists of Data, empty and not",
+      "scriptBytes": 615,
+      "record": {
+        "k": "decoded",
+        "programVersion": 0,
+        "phase2Class": 0
+      }
+    },
+    {
+      "label": "bulk chain over lists of Data, empty and not, 3 ticks a Walk",
+      "scriptBytes": 615,
+      "record": {
+        "k": "decoded",
+        "programVersion": 0,
+        "phase2Class": 0
+      }
+    },
+    {
+      "label": "bulk nested lists of Data",
+      "scriptBytes": 754,
+      "record": {
+        "k": "decoded",
+        "programVersion": 0,
+        "phase2Class": 0
+      }
+    },
+    {
+      "label": "bulk nested lists of Data, 3 ticks a Walk",
+      "scriptBytes": 754,
+      "record": {
+        "k": "decoded",
+        "programVersion": 0,
+        "phase2Class": 0
+      }
+    },
+    {
+      "label": "bulk list value",
+      "scriptBytes": 3887,
+      "record": {
+        "k": "decoded",
+        "programVersion": 0,
+        "phase2Class": 0
+      }
+    },
+    {
+      "label": "bulk list value, 3 ticks a Walk",
+      "scriptBytes": 3887,
+      "record": {
+        "k": "decoded",
+        "programVersion": 0,
+        "phase2Class": 0
+      }
+    },
+    {
+      "label": "bulk list value refused mid-list",
+      "scriptBytes": 77,
+      "record": {
+        "k": "refused",
+        "class": 17,
+        "bitOffset": 570
+      }
+    },
+    {
+      "label": "bulk list value refused mid-list, 3 ticks a Walk",
+      "scriptBytes": 77,
+      "record": {
+        "k": "refused",
+        "class": 17,
+        "bitOffset": 570
+      }
+    },
+    {
+      "label": "bulk list value, a quantity of 2^127",
+      "scriptBytes": 81,
+      "record": {
+        "k": "refused",
+        "class": 17,
+        "bitOffset": 640
+      }
+    },
+    {
+      "label": "bulk list value, a quantity of 2^127, 3 ticks a Walk",
+      "scriptBytes": 81,
+      "record": {
+        "k": "refused",
+        "class": 17,
+        "bitOffset": 640
+      }
+    },
+    {
+      "label": "bulk list bytestring over Flat chunks",
+      "scriptBytes": 10281,
+      "record": {
+        "k": "decoded",
+        "programVersion": 0,
+        "phase2Class": 0
+      }
+    },
+    {
+      "label": "bulk list bytestring over Flat chunks, 3 ticks a Walk",
+      "scriptBytes": 10281,
+      "record": {
+        "k": "decoded",
+        "programVersion": 0,
+        "phase2Class": 0
+      }
+    },
+    {
+      "label": "bulk list string over Flat chunks",
+      "scriptBytes": 309,
+      "record": {
+        "k": "decoded",
+        "programVersion": 0,
+        "phase2Class": 0
+      }
+    },
+    {
+      "label": "bulk list string over Flat chunks, 3 ticks a Walk",
+      "scriptBytes": 309,
+      "record": {
+        "k": "decoded",
+        "programVersion": 0,
+        "phase2Class": 0
+      }
+    },
+    {
+      "label": "bulk list string refused over Flat chunks",
+      "scriptBytes": 155,
+      "record": {
+        "k": "refused",
+        "class": 15,
+        "bitOffset": 1232
+      }
+    },
+    {
+      "label": "bulk list string refused over Flat chunks, 3 ticks a Walk",
+      "scriptBytes": 155,
+      "record": {
+        "k": "refused",
+        "class": 15,
+        "bitOffset": 1232
+      }
+    },
+    {
+      "label": "bulk list bytestring, a last chunk past the script end",
+      "scriptBytes": 21,
+      "record": {
+        "k": "refused",
+        "class": 3,
+        "bitOffset": 160
+      }
+    },
+    {
+      "label": "bulk list bytestring, a last chunk past the script end",
+      "flipBit": 47,
+      "scriptBytes": 21,
+      "record": {
+        "k": "refused",
+        "class": 14,
+        "bitOffset": 53
+      }
+    },
+    {
+      "label": "bulk list bytestring, a last chunk past the script end",
+      "flipBit": 49,
+      "scriptBytes": 21,
+      "record": {
+        "k": "refused",
+        "class": 4,
+        "bitOffset": 56
+      }
+    },
+    {
+      "label": "bulk list bytestring, a last chunk past the script end",
+      "flipBit": 69,
+      "scriptBytes": 21,
+      "record": {
+        "k": "refused",
+        "class": 3,
+        "bitOffset": 160
+      }
+    },
+    {
+      "label": "bulk list bytestring, a last chunk past the script end",
+      "flipBit": 74,
+      "scriptBytes": 21,
+      "record": {
+        "k": "refused",
+        "class": 3,
+        "bitOffset": 80
+      }
+    },
+    {
+      "label": "bulk list bytestring, a last chunk past the script end",
+      "flipBit": 80,
+      "scriptBytes": 21,
+      "record": {
+        "k": "refused",
+        "class": 4,
+        "bitOffset": 88
+      }
+    },
+    {
+      "label": "bulk list bytestring, a last chunk past the script end",
+      "flipBit": 85,
+      "scriptBytes": 21,
+      "record": {
+        "k": "refused",
+        "class": 4,
+        "bitOffset": 86
+      }
+    },
+    {
+      "label": "bulk list bytestring, a last chunk past the script end",
+      "flipBit": 86,
+      "scriptBytes": 21,
+      "record": {
+        "k": "refused",
+        "class": 4,
+        "bitOffset": 87
+      }
+    },
+    {
+      "label": "bulk list bytestring, a last chunk past the script end",
+      "flipBit": 90,
+      "scriptBytes": 21,
+      "record": {
+        "k": "refused",
+        "class": 3,
+        "bitOffset": 96
+      }
+    },
+    {
+      "label": "bulk list bytestring, a last chunk past the script end",
+      "flipBit": 97,
+      "scriptBytes": 21,
+      "record": {
+        "k": "refused",
+        "class": 3,
+        "bitOffset": 160
+      }
+    },
+    {
+      "label": "bulk list bytestring, a last chunk past the script end",
+      "flipBit": 137,
+      "scriptBytes": 21,
+      "record": {
+        "k": "refused",
+        "class": 3,
+        "bitOffset": 144
+      }
+    },
+    {
+      "label": "bulk list bytestring, a last chunk past the script end",
+      "flipBit": 155,
+      "scriptBytes": 21,
+      "record": {
+        "k": "refused",
+        "class": 3,
+        "bitOffset": 160
+      }
+    },
+    {
+      "label": "bulk list bytestring, a last chunk past the script end",
+      "flipBit": 164,
+      "scriptBytes": 21,
+      "record": {
+        "k": "refused",
+        "class": 3,
+        "bitOffset": 160
+      }
+    },
+    {
+      "label": "bulk list bytestring, a last chunk past the script end, 3 ticks a Walk",
+      "scriptBytes": 21,
+      "record": {
+        "k": "refused",
+        "class": 3,
+        "bitOffset": 160
+      }
+    },
+    {
+      "label": "bulk list bytestring, a last chunk past the script end, 3 ticks a Walk",
+      "flipBit": 7,
+      "scriptBytes": 21,
+      "record": {
+        "k": "refused",
+        "class": 1,
+        "bitOffset": 0
+      }
+    },
+    {
+      "label": "bulk list bytestring, a last chunk past the script end, 3 ticks a Walk",
+      "flipBit": 18,
+      "scriptBytes": 21,
+      "record": {
+        "k": "refused",
+        "class": 3,
+        "bitOffset": 160
+      }
+    },
+    {
+      "label": "bulk list bytestring, a last chunk past the script end, 3 ticks a Walk",
+      "flipBit": 80,
+      "scriptBytes": 21,
+      "record": {
+        "k": "refused",
+        "class": 4,
+        "bitOffset": 88
+      }
+    },
+    {
+      "label": "bulk list bytestring, a last chunk past the script end, 3 ticks a Walk",
+      "flipBit": 91,
+      "scriptBytes": 21,
+      "record": {
+        "k": "refused",
+        "class": 3,
+        "bitOffset": 96
+      }
+    },
+    {
+      "label": "bulk list bytestring, a last chunk past the script end, 3 ticks a Walk",
+      "flipBit": 102,
+      "scriptBytes": 21,
+      "record": {
+        "k": "refused",
+        "class": 3,
+        "bitOffset": 160
+      }
+    },
+    {
+      "label": "bulk list bytestring, a last chunk past the script end, 3 ticks a Walk",
+      "flipBit": 113,
+      "scriptBytes": 21,
+      "record": {
+        "k": "refused",
+        "class": 4,
+        "bitOffset": 114
+      }
+    },
+    {
+      "label": "bulk list bytestring, a last chunk past the script end, 3 ticks a Walk",
+      "flipBit": 121,
+      "scriptBytes": 21,
+      "record": {
+        "k": "refused",
+        "class": 3,
+        "bitOffset": 128
+      }
+    },
+    {
+      "label": "bulk list bytestring, a last chunk past the script end, 3 ticks a Walk",
+      "flipBit": 126,
+      "scriptBytes": 21,
+      "record": {
+        "k": "refused",
+        "class": 3,
+        "bitOffset": 160
+      }
+    },
+    {
+      "label": "bulk list bytestring, a last chunk past the script end, 3 ticks a Walk",
+      "flipBit": 135,
+      "scriptBytes": 21,
+      "record": {
+        "k": "refused",
+        "class": 3,
+        "bitOffset": 160
+      }
+    },
+    {
+      "label": "bulk list bytestring, a last chunk past the script end, 3 ticks a Walk",
+      "flipBit": 140,
+      "scriptBytes": 21,
+      "record": {
+        "k": "refused",
+        "class": 3,
+        "bitOffset": 144
+      }
+    },
+    {
+      "label": "bulk list bytestring, a last chunk past the script end, 3 ticks a Walk",
+      "flipBit": 141,
+      "scriptBytes": 21,
+      "record": {
+        "k": "refused",
+        "class": 3,
+        "bitOffset": 144
+      }
+    },
+    {
+      "label": "bulk list bytestring, a last chunk past the script end, 3 ticks a Walk",
+      "flipBit": 155,
+      "scriptBytes": 21,
+      "record": {
+        "k": "refused",
+        "class": 3,
+        "bitOffset": 160
+      }
+    },
+    {
+      "label": "bulk list string, a last chunk past the script end",
+      "scriptBytes": 17,
+      "record": {
+        "k": "refused",
+        "class": 3,
+        "bitOffset": 128
+      }
+    },
+    {
+      "label": "bulk list string, a last chunk past the script end",
+      "flipBit": 13,
+      "scriptBytes": 17,
+      "record": {
+        "k": "refused",
+        "class": 3,
+        "bitOffset": 128
+      }
+    },
+    {
+      "label": "bulk list string, a last chunk past the script end",
+      "flipBit": 21,
+      "scriptBytes": 17,
+      "record": {
+        "k": "refused",
+        "class": 3,
+        "bitOffset": 128
+      }
+    },
+    {
+      "label": "bulk list string, a last chunk past the script end",
+      "flipBit": 24,
+      "scriptBytes": 17,
+      "record": {
+        "k": "refused",
+        "class": 6,
+        "bitOffset": 44
+      }
+    },
+    {
+      "label": "bulk list string, a last chunk past the script end",
+      "flipBit": 31,
+      "scriptBytes": 17,
+      "record": {
+        "k": "refused",
+        "class": 3,
+        "bitOffset": 128
+      }
+    },
+    {
+      "label": "bulk list string, a last chunk past the script end",
+      "flipBit": 45,
+      "scriptBytes": 17,
+      "record": {
+        "k": "refused",
+        "class": 12,
+        "bitOffset": 52
+      }
+    },
+    {
+      "label": "bulk list string, a last chunk past the script end",
+      "flipBit": 54,
+      "scriptBytes": 17,
+      "record": {
+        "k": "refused",
+        "class": 4,
+        "bitOffset": 55
+      }
+    },
+    {
+      "label": "bulk list string, a last chunk past the script end",
+      "flipBit": 62,
+      "scriptBytes": 17,
+      "record": {
+        "k": "refused",
+        "class": 15,
+        "bitOffset": 112
+      }
+    },
+    {
+      "label": "bulk list string, a last chunk past the script end",
+      "flipBit": 67,
+      "scriptBytes": 17,
+      "record": {
+        "k": "refused",
+        "class": 3,
+        "bitOffset": 128
+      }
+    },
+    {
+      "label": "bulk list string, a last chunk past the script end",
+      "flipBit": 86,
+      "scriptBytes": 17,
+      "record": {
+        "k": "refused",
+        "class": 4,
+        "bitOffset": 87
+      }
+    },
+    {
+      "label": "bulk list string, a last chunk past the script end",
+      "flipBit": 109,
+      "scriptBytes": 17,
+      "record": {
+        "k": "refused",
+        "class": 3,
+        "bitOffset": 112
+      }
+    },
+    {
+      "label": "bulk list string, a last chunk past the script end",
+      "flipBit": 128,
+      "scriptBytes": 17,
+      "record": {
+        "k": "refused",
+        "class": 3,
+        "bitOffset": 128
+      }
+    },
+    {
+      "label": "bulk list string, a last chunk past the script end",
+      "flipBit": 134,
+      "scriptBytes": 17,
+      "record": {
+        "k": "refused",
+        "class": 3,
+        "bitOffset": 128
+      }
+    },
+    {
+      "label": "bulk list string, a last chunk past the script end, 3 ticks a Walk",
+      "scriptBytes": 17,
+      "record": {
+        "k": "refused",
+        "class": 3,
+        "bitOffset": 128
+      }
+    },
+    {
+      "label": "bulk list string, a last chunk past the script end, 3 ticks a Walk",
+      "flipBit": 26,
+      "scriptBytes": 17,
+      "record": {
+        "k": "refused",
+        "class": 3,
+        "bitOffset": 128
+      }
+    },
+    {
+      "label": "bulk list string, a last chunk past the script end, 3 ticks a Walk",
+      "flipBit": 35,
+      "scriptBytes": 17,
+      "record": {
+        "k": "refused",
+        "class": 6,
+        "bitOffset": 40
+      }
+    },
+    {
+      "label": "bulk list string, a last chunk past the script end, 3 ticks a Walk",
+      "flipBit": 41,
+      "scriptBytes": 17,
+      "record": {
+        "k": "refused",
+        "class": 12,
+        "bitOffset": 42
+      }
+    },
+    {
+      "label": "bulk list string, a last chunk past the script end, 3 ticks a Walk",
+      "flipBit": 43,
+      "scriptBytes": 17,
+      "record": {
+        "k": "refused",
+        "class": 12,
+        "bitOffset": 52
+      }
+    },
+    {
+      "label": "bulk list string, a last chunk past the script end, 3 ticks a Walk",
+      "flipBit": 45,
+      "scriptBytes": 17,
+      "record": {
+        "k": "refused",
+        "class": 12,
+        "bitOffset": 52
+      }
+    },
+    {
+      "label": "bulk list string, a last chunk past the script end, 3 ticks a Walk",
+      "flipBit": 52,
+      "scriptBytes": 17,
+      "record": {
+        "k": "refused",
+        "class": 4,
+        "bitOffset": 56
+      }
+    },
+    {
+      "label": "bulk list string, a last chunk past the script end, 3 ticks a Walk",
+      "flipBit": 53,
+      "scriptBytes": 17,
+      "record": {
+        "k": "refused",
+        "class": 4,
+        "bitOffset": 54
+      }
+    },
+    {
+      "label": "bulk list string, a last chunk past the script end, 3 ticks a Walk",
+      "flipBit": 99,
+      "scriptBytes": 17,
+      "record": {
+        "k": "refused",
+        "class": 3,
+        "bitOffset": 128
+      }
+    },
+    {
+      "label": "bulk list string, a last chunk past the script end, 3 ticks a Walk",
+      "flipBit": 106,
+      "scriptBytes": 17,
+      "record": {
+        "k": "refused",
+        "class": 3,
+        "bitOffset": 112
+      }
+    },
+    {
+      "label": "bulk list string, a last chunk past the script end, 3 ticks a Walk",
+      "flipBit": 120,
+      "scriptBytes": 17,
+      "record": {
+        "k": "refused",
+        "class": 3,
+        "bitOffset": 128
+      }
+    },
+    {
+      "label": "bulk list string, a last chunk past the script end, 3 ticks a Walk",
+      "flipBit": 122,
+      "scriptBytes": 17,
+      "record": {
+        "k": "refused",
+        "class": 3,
+        "bitOffset": 128
+      }
+    },
+    {
+      "label": "bulk list string, a last chunk past the script end, 3 ticks a Walk",
+      "flipBit": 124,
+      "scriptBytes": 17,
+      "record": {
+        "k": "refused",
+        "class": 3,
+        "bitOffset": 128
+      }
+    },
+    {
+      "label": "bulk list integer at the 20-group limit",
+      "scriptBytes": 1418,
+      "record": {
+        "k": "decoded",
+        "programVersion": 0,
+        "phase2Class": 0
+      }
+    },
+    {
+      "label": "bulk list integer at the 20-group limit, 3 ticks a Walk",
+      "scriptBytes": 1418,
+      "record": {
+        "k": "decoded",
+        "programVersion": 0,
+        "phase2Class": 0
+      }
+    },
+    {
+      "label": "bulk list integer past the 20-group limit",
+      "scriptBytes": 1382,
+      "record": {
+        "k": "decoded",
+        "programVersion": 0,
+        "phase2Class": 0
+      }
+    },
+    {
+      "label": "bulk list integer past the 20-group limit, 3 ticks a Walk",
+      "scriptBytes": 1382,
+      "record": {
+        "k": "decoded",
+        "programVersion": 0,
+        "phase2Class": 0
+      }
+    },
+    {
+      "label": "bulk fold of 64 items",
+      "scriptBytes": 1425,
+      "record": {
+        "k": "decoded",
+        "programVersion": 0,
+        "phase2Class": 0
+      }
+    },
+    {
+      "label": "bulk fold of 64 items, 3 ticks a Walk",
+      "scriptBytes": 1425,
+      "record": {
+        "k": "decoded",
+        "programVersion": 0,
+        "phase2Class": 0
+      }
+    },
+    {
+      "label": "bulk fold of 130 items",
+      "scriptBytes": 2885,
+      "record": {
+        "k": "decoded",
+        "programVersion": 0,
+        "phase2Class": 0
+      }
+    },
+    {
+      "label": "bulk fold of 130 items, 3 ticks a Walk",
+      "scriptBytes": 2885,
+      "record": {
+        "k": "decoded",
+        "programVersion": 0,
+        "phase2Class": 0
+      }
+    },
+    {
       "label": "bulk list string refused mid-list",
       "scriptBytes": 478,
       "record": {

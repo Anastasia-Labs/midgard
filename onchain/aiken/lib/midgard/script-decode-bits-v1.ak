@@ -10,7 +10,7 @@ use aiken/builtin
 use aiken/cbor
 use aiken/primitive/bytearray
 use midgard/cek_blob_frontier_v1.{CekBlobFrontierV1}
-use midgard/cek_data_v1.{DataSummaryV1, IntegerData}
+use midgard/cek_data_v1.{DataSequenceSummaryV1, DataSummaryV1, IntegerData}
 use midgard/cek_proof_v1
 
 /// 2^e for 0 <= e <= 16.
@@ -198,6 +198,25 @@ pub fn integer_summary(value: Int) -> DataSummaryV1 {
     ),
     cbor_length,
     memory,
+  }
+}
+
+/// The summary of a constructor over `fields`, or of a list when
+/// `constructor` is negative.
+pub fn constr_summary(
+  constructor: Int,
+  fields: DataSequenceSummaryV1,
+) -> DataSummaryV1 {
+  if constructor < 0 {
+    cek_data_v1.list_data_summary_v1(fields)
+  } else if constructor <= 127 {
+    cek_data_v1.small_constr_data_summary_v1(constructor, fields)
+  } else {
+    cek_data_v1.large_constr_data_summary_v1(
+      constructor,
+      cek_proof_v1.hash_blob_chunk_v1(cbor.serialise(constructor)),
+      fields,
+    )
   }
 }
 

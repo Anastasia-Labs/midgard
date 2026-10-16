@@ -1888,7 +1888,10 @@ fn entry_units(frame: Frame) -> Int {
   }
 }
 
-/// Folds one entry into the sequence.
+/// Folds one entry into the sequence. The frame is revealed against the
+/// committed stack hash, and the machine pushes pair entries only under a
+/// map fold and items and runs only under a list fold, so the frame's kind
+/// fixes the fold's.
 fn fold_entry(
   env: DecodeEnv,
   fold: Fold,
@@ -1898,8 +1901,7 @@ fn fold_entry(
   folder: FoldDecoder,
 ) -> Fold {
   when frame is {
-    FPairEntry { key, value } -> {
-      expect fold.pairs
+    FPairEntry { key, value } ->
       Fold {
         ..fold,
         remaining: fold.remaining - 1,
@@ -1909,15 +1911,12 @@ fn fold_entry(
           fold.sequence,
         ),
       }
-    }
-    FValueItem { summary } -> {
-      expect !fold.pairs
+    FValueItem { summary } ->
       Fold {
         ..fold,
         remaining: fold.remaining - 1,
         sequence: bulk.prepend_v1(summary, fold.sequence),
       }
-    }
     FValueRun { start, count, .. } -> {
       expect NextList { element, .. } = next
       Fold {
@@ -2430,23 +2429,6 @@ fn trail_from(
   }
 }
 
-fn constr_summary(
-  constructor: Int,
-  fields: DataSequenceSummaryV1,
-) -> DataSummaryV1 {
-  if constructor < 0 {
-    cek_data_v1.list_data_summary_v1(fields)
-  } else if constructor <= 127 {
-    cek_data_v1.small_constr_data_summary_v1(constructor, fields)
-  } else {
-    cek_data_v1.large_constr_data_summary_v1(
-      constructor,
-      cek_proof_v1.hash_blob_chunk_v1(cbor.serialise(constructor)),
-      fields,
-    )
-  }
-}
-
 /// Hands a finished item to the frame below it.
 fn deliver(
   env: DecodeEnv,
@@ -2578,7 +2560,7 @@ fn open_list(
       ex,
       origin,
       source,
-      constr_summary(constructor, cek_data_v1.empty_data_list_summary_v1()),
+      bits.constr_summary(constructor, cek_data_v1.empty_data_list_summary_v1()),
       break_after,
     )
   } else {
@@ -2973,7 +2955,7 @@ fn tick_data(
               ex,
               source,
               source,
-              constr_summary(constructor, fold.sequence),
+              bits.constr_summary(constructor, fold.sequence),
               break_after,
             )
           NextDataMap ->

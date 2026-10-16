@@ -89,6 +89,14 @@ const encValue = (w, value) => {
       return int(w, value.n);
     case "bytes":
       return chunks(filler(w), value.bytes);
+    case "chunks": {
+      let out = filler(w);
+      for (const part of value.parts) {
+        out = put(out, part.length, 8);
+        for (const byte of part) out = put(out, byte, 8);
+      }
+      return put(out, 0, 8);
+    }
     case "bool":
       return put(w, value.b ? 1 : 0, 1);
     case "list": {
@@ -130,6 +138,11 @@ export const caseOf = (scrutinee, branches) => ({
 export const con = (tags, value) => ({ k: "con", tags, value });
 export const vInt = (n) => ({ k: "int", n });
 export const vBytes = (bytes) => ({ k: "bytes", bytes: Buffer.from(bytes) });
+/** A byte string written as the given Flat chunks, each 1-255 bytes. */
+export const vChunks = (parts) => ({
+  k: "chunks",
+  parts: parts.map((part) => Buffer.from(part)),
+});
 export const vBool = (b) => ({ k: "bool", b });
 export const vList = (items) => ({ k: "list", items });
 export const vPair = (first, second) => ({ k: "pair", first, second });

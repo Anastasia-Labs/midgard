@@ -48,6 +48,7 @@ import {
   vUnit,
   vValue,
 } from "./script-decode-step-v1.writers.mjs";
+import { bulkDataPrograms } from "./script-decode-step-v1.bulk-data.mjs";
 
 // ## The rows
 
@@ -268,6 +269,7 @@ const bulkPrograms = () => {
         con([7, 5, 8], vList(range(12).map((i) => vBytes(cborData(iData(i)))))),
       ),
     ],
+    ...bulkDataPrograms(),
     [
       "bulk list string refused mid-list",
       program(

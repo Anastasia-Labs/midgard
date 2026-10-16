@@ -19,12 +19,23 @@ import {
   bytesSummary,
   emptySink,
   integerSummary,
-  nextSetBit,
   readBits,
   shortBytesSummary,
   sinkRoot,
   utf8Push,
 } from "./script-decode.step-bits.js";
+import {
+  afterFiller,
+  CHUNK_UNITS,
+  dataConstant,
+  MAX_STRING_BYTES,
+  naturalAt,
+  ok,
+  stop,
+  STRING_UNITS,
+  valueConstant,
+  zigzag,
+} from "./script-decode.step-bulk-data.js";
 import {
   ELEMENT_UNITS,
   type Fixed,
@@ -74,8 +85,6 @@ export const leafOf = (bits: Bits, shape: Shape, position: number): Leaf => {
   return { k: "gen", kind: current.kind };
 };
 
-const stop = (units: number): Quick => ({ k: "stop", units });
-
 /** Decodes the value of `shape` at bit `position`, as `quick_v1`. */
 export const quick = (
   bits: Bits,
@@ -101,8 +110,6 @@ export const quick = (
   }
 };
 
-const zigzag = (z: bigint): bigint => (z % 2n === 0n ? z / 2n : -(z / 2n) - 1n);
-
 /** Decodes a value of `kind` at bit `position`, as `general_v1`. */
 export const general = (
   bits: Bits,
@@ -112,33 +119,27 @@ export const general = (
 ): Quick => {
   switch (kind.k) {
     case "integer": {
-      let p = position;
-      let acc = 0n;
-      let scale = 1n;
-      for (let groups = 0; ; ) {
-        if (groups >= 20 || p + 8 > 8 * bits.flatLength) return stop(units);
-        const v = readBits(bits.window, p, 8);
-        acc += BigInt(v % 128) * scale;
-        groups += 1;
-        p += 8;
-        if (v < 128) {
-          const left = units - 5 - groups;
-          if (left < 0) return stop(left);
-          const n = zigzag(acc);
-          return {
-            k: "ok",
-            after: p,
-            summary: integerSummary(n),
-            memory: midgardCekIntegerMemoryWords(n),
-            units: left,
-          };
-        }
-        scale *= 128n;
-      }
+      const natural = naturalAt(bits, position);
+      if (natural === undefined) return stop(units);
+      const [after, groups, acc] = natural;
+      const left = units - 5 - groups;
+      if (left < 0) return stop(left);
+      const n = zigzag(acc);
+      return {
+        k: "ok",
+        after,
+        summary: integerSummary(n),
+        memory: midgardCekIntegerMemoryWords(n),
+        units: left,
+      };
     }
     case "bytes":
     case "string":
-      return byteString(bits, position, kind.k === "string", units);
+      return byteChunks(bits, position, kind.k === "string", units);
+    case "data":
+      return dataConstant(bits, position, units);
+    case "value":
+      return valueConstant(bits, position, units);
     case "list": {
       const listed = items(bits, kind.element, position, units - 1);
       if (listed.k === "stop") return listed;
@@ -181,42 +182,59 @@ export const general = (
   }
 };
 
-const byteString = (
+/**
+ * A byte string or string from bit `position`: the filler, its chunks and
+ * the empty chunk ending them.
+ */
+export const byteChunks = (
   bits: Bits,
   position: number,
   string: boolean,
   units: number,
 ): Quick => {
   const { window, flatLength } = bits;
-  const q = nextSetBit(window, position, flatLength);
-  if (q === undefined || (q + 1) % 8 !== 0) return stop(units);
-  const index = (q + 1) / 8;
-  if (index >= flatLength) return stop(units);
-  const n = window[index]!;
-  if (n === 0) {
+  const index = afterFiller(bits, position);
+  if (index === undefined || index >= flatLength) return stop(units);
+  if (window[index] === 0) {
     const left = units - 2;
     if (left < 0) return stop(left);
-    return {
-      k: "ok",
-      after: q + 9,
-      summary: bytesSummary(0, sinkRoot(emptySink())),
-      memory: string ? 0n : 1n,
-      units: left,
-    };
+    return ok(
+      8 * (index + 1),
+      bytesSummary(0, sinkRoot(emptySink())),
+      string ? 0n : 1n,
+      left,
+    );
   }
-  const left = units - 10 - (string ? n : Math.floor(n / 32));
-  if (left < 0) return stop(left);
-  if (index + 2 + n > flatLength) return stop(left);
-  if (window[index + 1 + n] !== 0) return stop(left);
-  const chunk = window.subarray(index + 1, index + 1 + n);
-  if (string && utf8Push(0, chunk) !== 0) return stop(left);
-  return {
-    k: "ok",
-    after: q + 1 + 8 * (n + 2),
-    summary: shortBytesSummary(chunk),
-    memory: string ? BigInt(Math.floor(n / 4)) : midgardCekBytesMemoryWords(n),
-    units: left,
-  };
+  const chunks: Uint8Array[] = [];
+  let left = units - STRING_UNITS;
+  let total = 0;
+  let utf8 = 0;
+  let i = index;
+  for (;;) {
+    if (i >= flatLength) return stop(left);
+    const n = window[i]!;
+    if (n === 0) break;
+    left -= (i === index ? 0 : CHUNK_UNITS) + (string ? n : n >> 5);
+    if (left < 0) return stop(left);
+    // A chunk running past the Flat bytes leaves the next chunk head past
+    // them, where the check above stops.
+    total += n;
+    if (total > MAX_STRING_BYTES) return stop(left);
+    const chunk = window.subarray(i + 1, i + 1 + n);
+    if (string) {
+      utf8 = utf8Push(utf8, chunk);
+      if (utf8 < 0) return stop(left);
+    }
+    chunks.push(chunk);
+    i += 1 + n;
+  }
+  if (utf8 !== 0) return stop(left);
+  return ok(
+    8 * (i + 1),
+    shortBytesSummary(Buffer.concat(chunks)),
+    string ? BigInt(total >> 2) : midgardCekBytesMemoryWords(total),
+    left,
+  );
 };
 
 type Items =
