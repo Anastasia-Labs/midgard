@@ -238,8 +238,6 @@ export const boundMidgardLedgerOutputWindowBytes = ({
   if (
     spanWindow === null ||
     !midgardLedgerOutputWindowCovers({ spanWindow, absoluteStart, length }) ||
-    // Implied by the digest equality below (over spanWindow.length bytes).
-    bytes.length !== spanWindow.length ||
     !Buffer.from(midgardBlake2b(bytes, { dkLen: 32 })).equals(spanWindow.digest)
   ) {
     return null;

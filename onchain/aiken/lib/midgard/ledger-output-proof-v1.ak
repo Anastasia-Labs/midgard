@@ -832,9 +832,6 @@ pub fn bound_window_bytes_v1(
     Some(window) ->
       if and {
         window_covers_v1(span_window, absolute_start, length),
-        // Implied by the digest equality below: the recorded digest is over
-        // exactly `window.length` bytes.
-        bytearray.length(bytes) == window.length,
         crypto.blake2b_256(bytes) == window.digest,
       } {
         Some(
