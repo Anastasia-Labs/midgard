@@ -16,6 +16,34 @@ import { fileURLToPath } from "node:url";
 
 export const root = dirname(dirname(fileURLToPath(import.meta.url)));
 
+// A checkout's contract project, built by the real aiken that scripts/aiken
+// resolves from demo/flake.lock: one validator, no dependencies.
+export const contractProject = (checkout) => {
+  const repo = join(root, "../../../..");
+  for (const path of [
+    "scripts/aiken",
+    "scripts/lib/aiken.mjs",
+    "demo/flake.lock",
+  ]) {
+    mkdirSync(dirname(join(checkout, path)), { recursive: true });
+    copyFileSync(join(repo, path), join(checkout, path));
+  }
+  const contracts = join(checkout, "onchain/aiken");
+  for (const directory of ["validators", "env"])
+    mkdirSync(join(contracts, directory), { recursive: true });
+  writeFileSync(
+    join(contracts, "aiken.toml"),
+    'name = "test/bootstrap"\nversion = "0.0.0"\nplutus = "v3"\n',
+  );
+  for (const name of ["default", "testnet"])
+    writeFileSync(join(contracts, `env/${name}.ak`), "pub const x = 1\n");
+  writeFileSync(
+    join(contracts, "validators/always.ak"),
+    "validator always {\n  spend(_d: Option<Data>, _r: Data, _o: Data, _t: Data) {\n    True\n  }\n\n  else(_) {\n    fail\n  }\n}\n",
+  );
+  return join(contracts, "plutus.json");
+};
+
 export const temporaryRoot = process.platform === "win32" ? tmpdir() : "/tmp";
 
 export const run = (

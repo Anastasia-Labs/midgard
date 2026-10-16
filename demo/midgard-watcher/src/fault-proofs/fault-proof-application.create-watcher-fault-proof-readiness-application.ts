@@ -15,6 +15,7 @@ export const createWatcherFaultProofApplication = (
   createApplication({
     options: Object.freeze({
       l1: options.l1,
+      replayedLedger: options.replayedLedger,
       deploymentIdentity: options.deploymentAuthority.deploymentIdentity,
       deploymentAuthority: options.deploymentAuthority,
       replayTranscriptStore: options.replayTranscriptStore,

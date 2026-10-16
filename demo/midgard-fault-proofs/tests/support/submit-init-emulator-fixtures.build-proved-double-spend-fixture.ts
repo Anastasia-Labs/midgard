@@ -59,6 +59,7 @@ export const buildProvedDoubleSpendFixture = async ({
   successorsAfterProofCount = 0,
   headerMinimumFee = 0n,
   coherentCanonicalEvidence = false,
+  bondPaddingLovelace,
 }: {
   /** Successors committed before `submitInit` mints the computation thread. */
   readonly successorCount?: number;
@@ -71,6 +72,8 @@ export const buildProvedDoubleSpendFixture = async ({
   /** Optional second violation used by cross-family Q53 idempotency tests. */
   readonly headerMinimumFee?: bigint;
   readonly coherentCanonicalEvidence?: boolean;
+  /** Lovelace the operator adds to its active node at the target's commit. */
+  readonly bondPaddingLovelace?: bigint;
 } = {}): Promise<
   ProvedDoubleSpendFixture & {
     readonly canonicalEvidence?: Awaited<
@@ -170,6 +173,7 @@ export const buildProvedDoubleSpendFixture = async ({
           contracts,
           header: requestedHeader,
           schedulerStartTime: BigInt(headerStartTime),
+          bondPaddingLovelace,
         })
       : nonceUtxo !== undefined
         ? await submitSetupTx({
@@ -178,6 +182,7 @@ export const buildProvedDoubleSpendFixture = async ({
             nonceUtxo,
             catalogue,
             header: requestedHeader,
+            bondPaddingLovelace,
           })
         : (() => {
             throw new Error("Legacy setup omitted its actual nonce");

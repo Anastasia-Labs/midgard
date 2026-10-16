@@ -92,6 +92,20 @@ export const VALIDATOR_SCENARIOS: Readonly<
       },
     ],
   },
+  "state_queue.spend": {
+    passing: [
+      {
+        file: "demo/midgard-fault-proofs/tests/submit-init-emulator-record-completed-fraud-by-reference.test.ts",
+        test: "lets any wallet record, leaving the cited token and the node value in place",
+      },
+    ],
+    failing: [
+      {
+        file: "demo/midgard-fault-proofs/tests/submit-init-emulator-record-completed-fraud-by-reference.test.ts",
+        test: "refuses a cited token that names another header",
+      },
+    ],
+  },
   "fraud_proofs/invalid_signature/step_02.main": {
     passing: [
       {

@@ -10,6 +10,7 @@ import {
   createLocalStateQueueMutationLeaseCoordinator,
   fraudRemovalUsesWalletCoinSelection,
   fraudSlashEconomicsFromDeploymentManifest,
+  fraudSlashFeeLovelace,
   LOCAL_STATE_QUEUE_MUTATION_LEASE_SOURCE,
   LOCAL_STATE_QUEUE_MUTATION_LEASE_TOKEN,
   RegisteredOperatorActivationRequiredError,
@@ -152,14 +153,14 @@ describe("Q53 exact fraud-slash economics", () => {
     );
   });
 
-  it("binds the public and testnet full/partially-inactivity-slashed tranches", () => {
+  it("binds the public and testnet full and inactivity-slashed bonds", () => {
     expect(
       resolveFraudSlashEconomics(publicEconomics, 100_000_000_000n),
     ).toEqual({
       requiredBondLovelace: 100_000_000_000n,
       fraudProverRewardLovelace: 75_000_000_000n,
       exactFeeLovelace: 25_000_000_000n,
-      tranche: "full",
+      excessLovelace: 0n,
     });
     expect(
       resolveFraudSlashEconomics(publicEconomics, 90_000_000_000n),
@@ -167,33 +168,49 @@ describe("Q53 exact fraud-slash economics", () => {
       requiredBondLovelace: 100_000_000_000n,
       fraudProverRewardLovelace: 75_000_000_000n,
       exactFeeLovelace: 15_000_000_000n,
-      tranche: "partially-inactivity-slashed",
+      excessLovelace: 0n,
     });
     expect(resolveFraudSlashEconomics(boundedEconomics, 900_000_000n)).toEqual({
       requiredBondLovelace: 900_000_000n,
       fraudProverRewardLovelace: 400_000_000n,
       exactFeeLovelace: 500_000_000n,
-      tranche: "full",
+      excessLovelace: 0n,
     });
     expect(resolveFraudSlashEconomics(boundedEconomics, 800_000_000n)).toEqual({
       requiredBondLovelace: 900_000_000n,
       fraudProverRewardLovelace: 400_000_000n,
       exactFeeLovelace: 400_000_000n,
-      tranche: "partially-inactivity-slashed",
+      excessLovelace: 0n,
     });
   });
 
   it.each([
-    899_999_999n,
-    900_000_001n,
-    799_999_999n,
-    800_000_001n,
-    700_000_000n,
-  ])("rejects illegal testnet bond tranche %s", (lovelace) => {
-    expect(() =>
-      resolveFraudSlashEconomics(boundedEconomics, lovelace),
-    ).toThrow(/must be exactly/);
-  });
+    [800_000_001n, 400_000_001n, 0n],
+    [899_999_999n, 499_999_999n, 0n],
+    [900_000_001n, 500_000_000n, 1n],
+    [1_800_000_000n, 500_000_000n, 900_000_000n],
+  ])(
+    "charges a testnet node holding %s a fee of %s with %s excess",
+    (lovelace, fee, excess) => {
+      expect(fraudSlashFeeLovelace(boundedEconomics, lovelace)).toBe(fee);
+      expect(resolveFraudSlashEconomics(boundedEconomics, lovelace)).toEqual(
+        expect.objectContaining({
+          exactFeeLovelace: fee,
+          excessLovelace: excess,
+        }),
+      );
+    },
+  );
+
+  it.each([799_999_999n, 700_000_000n, 0n])(
+    "rejects a testnet node holding %s, below the smaller tranche",
+    (lovelace) => {
+      expect(fraudSlashFeeLovelace(boundedEconomics, lovelace)).toBeNull();
+      expect(() =>
+        resolveFraudSlashEconomics(boundedEconomics, lovelace),
+      ).toThrow(/must be at least 800000000 lovelace/u);
+    },
+  );
 
   it("rejects a manifest economics tuple with inconsistent slash relations", () => {
     expect(() =>

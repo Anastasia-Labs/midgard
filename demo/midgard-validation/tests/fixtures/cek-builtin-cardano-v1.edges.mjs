@@ -90,12 +90,6 @@ const ed25519Edges = () => {
         bs(message),
         bs(Uint8Array.from([...identity, ...new Uint8Array(32)])),
       ],
-      // Cardano verifies through cardano-crypto-class Ed25519DSIGN, which
-      // calls libsodium's crypto_sign_ed25519_verify_detached (IOHK's 1.0.18
-      // build): ref10/open.c returns -1 when ge25519_has_small_order(pk).
-      cardano: { kind: "value", type: "bool", value: false },
-      reason:
-        "libsodium crypto_sign_ed25519_verify_detached refuses a small-order public key",
     },
     {
       note: "order-8 key, order-8 R, S = 0",
@@ -240,13 +234,6 @@ const ecdsaEdges = () => {
         bs(digest),
         bs(signature),
       ],
-      // CIP-49; plutus-core PlutusCore/Crypto/Secp256k1.hs
-      // verifyEcdsaSecp256k1Signature fails with "Invalid verification key."
-      // when rawDeserialiseVerKeyDSIGN @EcdsaSecp256k1DSIGN refuses the key,
-      // and that accepts only the 33-byte compressed form.
-      cardano: { kind: "error" },
-      reason:
-        "Cardano accepts only a 33-byte compressed secp256k1 verification key (CIP-49)",
     },
     {
       note: "message 31 bytes",

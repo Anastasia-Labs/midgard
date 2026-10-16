@@ -1,10 +1,16 @@
 import * as SDK from "@al-ft/midgard-sdk";
-import { type LucidEvolution, toUnit } from "@lucid-evolution/lucid";
+import {
+  type LucidEvolution,
+  toUnit,
+  type TxBuilder,
+  type TxSignBuilder,
+} from "@lucid-evolution/lucid";
 import { expect } from "vitest";
 
 import {
   BOND_LOVELACE,
   describeFailure,
+  FRAUD_PROVER_REWARD_LOVELACE,
   type OperatorExitFixture,
   REGISTRATION_DURATION_MS,
   runProgram,
@@ -14,6 +20,7 @@ import {
   alignMs,
   completeTx,
   fetchDirectorySnapshot,
+  keyHashOf,
   submitSigned,
 } from "./operator-exit-emulator.build-retire-tx.js";
 
@@ -203,21 +210,24 @@ export const forceActivateOperator = async ({
   return submitSigned(operatorLucid, completed);
 };
 
-export const slashDuplicateOperator = async ({
-  fixture,
-  submitterLucid,
-  operatorKeyHash,
-  removedRegisteredNodeKey,
-  duplicateProof,
-  overrides = {},
-}: {
+type DuplicateSlashInput = {
   readonly fixture: OperatorExitFixture;
   readonly submitterLucid: LucidEvolution;
   readonly operatorKeyHash: string;
   readonly removedRegisteredNodeKey: string;
   readonly duplicateProof: SDK.DuplicateProof;
   readonly overrides?: Partial<SDK.SlashDuplicateOperatorTxConfig>;
-}): Promise<{ readonly txHash: string; readonly fee: bigint }> => {
+};
+
+/** The honest duplicate-registration slash, claimed by the submitter. */
+export const duplicateSlashConfig = async ({
+  fixture,
+  submitterLucid,
+  operatorKeyHash,
+  removedRegisteredNodeKey,
+  duplicateProof,
+  overrides = {},
+}: DuplicateSlashInput): Promise<SDK.SlashDuplicateOperatorTxConfig> => {
   const { contracts, scriptRefs } = fixture;
   const snapshot = await fetchDirectorySnapshot(submitterLucid, contracts);
   const duplicateRegisteredNode = SDK.findNodeByKey(
@@ -231,26 +241,98 @@ export const slashDuplicateOperator = async ({
   if (duplicateRegisteredNode === undefined || registeredAnchor === undefined) {
     throw new Error("Missing witnesses for duplicate-operator slashing");
   }
+  return {
+    lucid: submitterLucid,
+    contracts,
+    operatorKeyHash,
+    registeredOperatorScriptRefs: scriptRefs.registeredOperators,
+    duplicateRegisteredNode,
+    registeredAnchor,
+    duplicateRegisteredNodeUnit: toUnit(
+      contracts.registeredOperators.policyId,
+      SDK.REGISTERED_OPERATOR_NODE_ASSET_NAME_PREFIX + removedRegisteredNodeKey,
+    ),
+    duplicateProof,
+    slashingPenaltyLovelace: SLASHING_PENALTY_LOVELACE,
+    bountyClaimantKeyHash: await keyHashOf(submitterLucid),
+    fraudProverRewardLovelace: FRAUD_PROVER_REWARD_LOVELACE,
+    ...overrides,
+  };
+};
+
+export const slashDuplicateOperator = async (
+  input: DuplicateSlashInput,
+): Promise<{ readonly txHash: string; readonly fee: bigint }> => {
   const { tx } = await runProgram(
-    SDK.buildUnsignedSlashDuplicateOperatorTxProgram({
-      lucid: submitterLucid,
-      contracts,
-      operatorKeyHash,
-      registeredOperatorScriptRefs: scriptRefs.registeredOperators,
-      duplicateRegisteredNode,
-      registeredAnchor,
-      duplicateRegisteredNodeUnit: toUnit(
-        contracts.registeredOperators.policyId,
-        SDK.REGISTERED_OPERATOR_NODE_ASSET_NAME_PREFIX +
-          removedRegisteredNodeKey,
-      ),
-      duplicateProof,
-      slashingPenaltyLovelace: SLASHING_PENALTY_LOVELACE,
-      ...overrides,
-    }),
+    SDK.buildUnsignedSlashDuplicateOperatorTxProgram(
+      await duplicateSlashConfig(input),
+    ),
   );
   const fee = tx.toTransaction().body().fee();
-  return { txHash: await submitSigned(submitterLucid, tx), fee };
+  return { txHash: await submitSigned(input.submitterLucid, tx), fee };
+};
+
+type ExactFeePlan = NonNullable<
+  SDK.SlashDuplicateOperatorTxConfig["exactFeePlan"]
+>;
+
+/**
+ * An exact-fee plan that spends no wallet coin: the fee is the slashing
+ * penalty and `remainderLovelace` leaves in one output to `remainderAddress`,
+ * after `declaredOutputCount` outputs the builders pay themselves.
+ */
+export const slashingPenaltyFeePlan = async ({
+  submitterLucid,
+  remainderAddress,
+  remainderLovelace,
+  declaredOutputCount,
+}: {
+  readonly submitterLucid: LucidEvolution;
+  readonly remainderAddress: string;
+  readonly remainderLovelace: bigint;
+  readonly declaredOutputCount: number;
+}): Promise<ExactFeePlan> => {
+  const percentage =
+    submitterLucid.config().protocolParameters?.collateralPercentage;
+  if (percentage === undefined) {
+    throw new Error("Expected protocol parameters");
+  }
+  const totalCollateralLovelace =
+    (SLASHING_PENALTY_LOVELACE * BigInt(percentage) + 99n) / 100n;
+  const [collateral] = (await submitterLucid.wallet().getUtxos()).filter(
+    (utxo) =>
+      Object.keys(utxo.assets).length === 1 &&
+      (utxo.assets["lovelace"] ?? 0n) >= totalCollateralLovelace,
+  );
+  if (collateral === undefined) {
+    throw new Error("Expected a plain-ADA collateral coin");
+  }
+  return {
+    feeLovelace: SLASHING_PENALTY_LOVELACE,
+    fundingInputs: [],
+    collateralInputs: [collateral],
+    totalCollateralLovelace,
+    remainderLovelace,
+    remainderAddress,
+    expectedOutputCount: declaredOutputCount + 1,
+  };
+};
+
+/** Completes an exact-fee build the way the SDK does, against `plan`. */
+export const completeExactFee = async (
+  builder: TxBuilder,
+  plan: ExactFeePlan,
+): Promise<TxSignBuilder> => {
+  try {
+    return await builder.complete({
+      localUPLCEval: true,
+      coinSelection: false,
+      presetWalletInputs: [...plan.collateralInputs],
+      setCollateral: plan.totalCollateralLovelace,
+    });
+  } catch (cause) {
+    throw new Error(describeFailure(cause));
+  }
 };
 
 /**

@@ -62,7 +62,7 @@ ARG MIDGARD_RELEASE_REVISION
 COPY --from=release-source /config/deployments /workspace/config/deployments
 COPY --from=release-source /demo/scripts /workspace/demo/scripts
 COPY --from=release-source /onchain/aiken /workspace/onchain/aiken
-COPY --from=release-source /.github/workflows /workspace/.github/workflows
+COPY --from=release-source /scripts/lib/aiken.mjs /workspace/scripts/lib/aiken.mjs
 COPY --from=release-source /scripts/release/check-image-inputs.mjs /workspace/scripts/release/check-image-inputs.mjs
 COPY --from=onchain /plutus.json /workspace/onchain/aiken/plutus.json
 COPY --from=onchain /plutus.json.deployment.json /workspace/onchain/aiken/plutus.json.deployment.json

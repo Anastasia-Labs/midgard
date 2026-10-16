@@ -4,8 +4,7 @@ import { checkBlueprintStamp } from "../scripts/lib/blueprint-stamp.mjs";
 
 /**
  * Vitest global setup for every package whose suites read the compiled
- * blueprint. A blueprint built from other sources, or by another compiler,
- * turns every result that touches a script hash or a budget into noise — the
+ * blueprint. A blueprint built from other sources turns every result that touches a script hash or a budget into noise — the
  * 2026-09 stale-blueprint incident surfaced as 864 unrelated reds — so the run
  * is refused before any file starts, with the command that rebuilds it.
  *
@@ -13,8 +12,8 @@ import { checkBlueprintStamp } from "../scripts/lib/blueprint-stamp.mjs";
  * on the missing file by name, and packages whose selected files never read
  * it still run. `MIDGARD_REAL_BLUEPRINT_PATH` names a blueprint explicitly, so
  * it must exist and be fresh: its build record must name this tree's sources
- * and the pinned compiler (the interactive-emulator build and the traced
- * refusal overlays both write one). `MIDGARD_BLUEPRINT_STAMP=warn` is the one
+ * (the interactive-emulator build and the traced refusal overlays both write
+ * one). `MIDGARD_BLUEPRINT_STAMP=warn` is the one
  * deliberate downgrade, from a refusal to a warning, for a local run against
  * a stale build; CI and `contrib test` never set it.
  *

@@ -177,9 +177,10 @@ describe("deposit flow emulator", { concurrent: false }, () => {
         (unit) => unit !== "lovelace",
       ),
     ).toHaveLength(1);
-    const queuedHeaderBeforeMerge = await Effect.runPromise(
-      SDK.getHeaderFromStateQueueDatum(queuedBlockBeforeMerge.datum),
-    );
+    const { header: queuedHeaderBeforeMerge, block_time: queuedBlockTime } =
+      await Effect.runPromise(
+        SDK.getStateQueueNodeFromStateQueueDatum(queuedBlockBeforeMerge.datum),
+      );
     const queuedHeaderHash = await Effect.runPromise(
       SDK.hashBlockHeader(queuedHeaderBeforeMerge),
     );
@@ -206,10 +207,8 @@ describe("deposit flow emulator", { concurrent: false }, () => {
 
     await advanceEmulatorPastUnixTime(
       fixture,
-      mergeMaturityWindow(
-        fixture.operatorLucid,
-        Number(queuedHeaderBeforeMerge.endTime),
-      ).readyAfterUnixTime,
+      mergeMaturityWindow(fixture.operatorLucid, Number(queuedBlockTime))
+        .readyAfterUnixTime,
     );
     vi.setSystemTime(new Date(fixture.emulator.now()));
 
@@ -305,6 +304,7 @@ describe("deposit flow emulator", { concurrent: false }, () => {
     const l2Address = await fixture.depositorLucid.wallet().address();
 
     const queuedHeaders: SDK.Header[] = [];
+    let latestBlockTime = 0n;
     for (const lovelace of [4_000_000n, 5_000_000n, 6_000_000n]) {
       // Each deposit must be admitted after the previous header's end time,
       // or it is due for a block that is already committed.
@@ -357,9 +357,11 @@ describe("deposit flow emulator", { concurrent: false }, () => {
           stateQueueFetchConfig(fixture.contracts),
         ),
       );
-      const header = await Effect.runPromise(
-        SDK.getHeaderFromStateQueueDatum(queue[queue.length - 1]!.datum),
+      const tail = await Effect.runPromise(
+        SDK.getStateQueueNodeFromStateQueueDatum(queue.at(-1)!.datum),
       );
+      const header = tail.header;
+      latestBlockTime = tail.block_time;
       // Attest before time moves on: an unattested block past its window
       // pauses every later commit.
       await attestQueuedStateQueueHeader({
@@ -385,10 +387,8 @@ describe("deposit flow emulator", { concurrent: false }, () => {
     expect(queueBeforeMerges).toHaveLength(4);
     await advanceEmulatorPastUnixTime(
       fixture,
-      mergeMaturityWindow(
-        fixture.operatorLucid,
-        Number(queuedHeaders[2]!.endTime),
-      ).readyAfterUnixTime,
+      mergeMaturityWindow(fixture.operatorLucid, Number(latestBlockTime))
+        .readyAfterUnixTime,
     );
     vi.setSystemTime(new Date(fixture.emulator.now()));
     await expectReconciled("three blocks queued, none merged", harness);

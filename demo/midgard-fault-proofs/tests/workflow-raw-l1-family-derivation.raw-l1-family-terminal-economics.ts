@@ -550,26 +550,6 @@ describe("raw L1 family terminal economics", () => {
     });
   });
 
-  it("accepts only the exact partially inactivity-slashed tranche", async () => {
-    const value = await fixture({ partial: true });
-    await expect(
-      deriveFraudProofRawL1FamilyStage({
-        snapshot: value.snapshot,
-        definition: value.definition,
-        releaseEconomics,
-      }),
-    ).resolves.toMatchObject({
-      kind: "removed",
-      terminal: {
-        economics: {
-          operatorBondInputLovelace: "800000000",
-          slashedLovelace: "400000000",
-          removalFeeLovelace: "400000000",
-        },
-      },
-    });
-  });
-
   it("rejects duplicate reward outputs", async () => {
     const value = await fixture({ duplicateReward: true });
     await expect(

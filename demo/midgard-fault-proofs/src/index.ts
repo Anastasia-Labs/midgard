@@ -75,6 +75,7 @@ export * from "./script-integrity-hash-missing/replay.js";
 export * from "./script-integrity-hash-missing/staged-plan.js";
 export * from "./script-integrity-hash-missing/v1.js";
 export * from "./spend-input-signer-missing/index.js";
+export * from "./submit/record-completed-fraud.js";
 export * from "./submit-da-hash-preimage-step-01.js";
 export * from "./submit-da-hash-preimage-step-02.js";
 export * from "./submit-input-no-idx-step-01.js";

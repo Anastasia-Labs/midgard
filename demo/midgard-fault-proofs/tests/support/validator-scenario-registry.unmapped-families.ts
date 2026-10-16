@@ -21,7 +21,7 @@ export const UNMAPPED_FAMILIES: readonly Readonly<{
 ];
 
 /** Only ever lowered. */
-export const UNMAPPED_VALIDATOR_COUNT = 540;
+export const UNMAPPED_VALIDATOR_COUNT = 539;
 
 /** Only ever lowered. */
 export const UNMAPPED_FAMILY_COUNT = 6;

@@ -6,19 +6,18 @@ built. Verified against the tree on 2026-09-26.
 
 ## Two ways to build, and what each produces
 
-| Command                                               | Environment                  | Compiler check                                                                      | Writes                                                                                                                                                                              |
-| ----------------------------------------------------- | ---------------------------- | ----------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `pnpm --dir demo deployment:build <profile>`          | `--env <profile>`, `-` → `_` | `aiken` on `PATH` must print `AIKEN_FORK_VERSION` from `aiken-ci.yml`, or it throws | regenerates `onchain/aiken/env/*.ak` and `demo/midgard-core/src/generated-deployment-profiles.ts`, then `onchain/aiken/plutus.json` and `onchain/aiken/plutus.json.deployment.json` |
-| `aiken build --env testnet [--trace-level … --out …]` | whatever you pass            | none                                                                                | `plutus.json` (or the `--out` path) only                                                                                                                                            |
+| Command                                                             | Environment                  | Writes                                                                                                                                                                              |
+| ------------------------------------------------------------------- | ---------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `pnpm --dir demo deployment:build <profile>`                        | `--env <profile>`, `-` → `_` | regenerates `onchain/aiken/env/*.ak` and `demo/midgard-core/src/generated-deployment-profiles.ts`, then `onchain/aiken/plutus.json` and `onchain/aiken/plutus.json.deployment.json` |
+| `../../scripts/aiken build --env testnet [--trace-level … --out …]` | whatever you pass            | `plutus.json` (or the `--out` path) only                                                                                                                                            |
+
+Both run the compiler `demo/flake.lock` pins (`scripts/lib/aiken.mjs`).
 
 Sources: `demo/package.json:7`, `demo/scripts/deployment-profiles.mjs:236-292`,
 `config/deployments/README.md` ("Build").
 
 `deployment:build` details that bite:
 
-- It spawns the bare `aiken` from `PATH`. It does **not** honour
-  `MIDGARD_AIKEN_BIN` (`deployment-profiles.mjs:265`), unlike
-  `pinned-compiler.mjs`, `run-focused-check.mjs` and the pre-commit hook.
 - It takes no `--out` and no trace flags. It always writes
   `onchain/aiken/plutus.json` in the checkout you run it from.
 - It deletes the previous `plutus.json.deployment.json` before compiling, so
@@ -99,7 +98,7 @@ YAML profiles. `Aiken CI / Verify generated user events witness prefix`
 `onchain/aiken`, and leaves `plutus.json` untouched. Use it for a blueprint
 you want kept apart from the checkout's (a traced diagnostic build, a
 comparison build). The parent directory must already exist: with a missing
-parent the fork (`aiken v1.1.23+5adf783`, probed 2026-09-26) exits 1, and
+parent the fork (`aiken v1.1.23+5adf783`, probed 2026-09-26) exited 1, and
 with output piped it prints no reason. `deployment:build` has no `--out`.
 
 ## `plutus.json` is never committed

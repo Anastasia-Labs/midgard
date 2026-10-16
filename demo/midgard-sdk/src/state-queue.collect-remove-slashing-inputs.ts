@@ -9,6 +9,7 @@ import {
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
+import { requireExactBountyRouting } from "./bounty-routing.js";
 import { LinkedListError, NodeKey } from "./linked-list.js";
 import {
   type EmulatorStateQueueRemoveSlashingParams,
@@ -24,7 +25,6 @@ import {
 import {
   requireMintRedeemerIndex,
   requireReferenceInputIndex,
-  requireUniqueOutputIndex,
 } from "./tx-context-redeemer.js";
 
 export const findLinkStateQueueUTxO = (
@@ -119,11 +119,38 @@ const requireSingleNonAdaPolicyId = (
   return [...policyIds][0]!;
 };
 
+/**
+ * Checks the fraud prover's reward the way the on-chain guard will, so a
+ * builder that pays the wrong shape fails here rather than on-chain. A
+ * bond-consuming slash always pays the reward, so a plan without one is
+ * refused.
+ */
+export const requireFraudProverRewardRouting = (
+  ctx: Parameters<BuildTxWithRedeemer>[0],
+  reward: FraudProverRewardPlan | undefined,
+  label: string,
+): void => {
+  if (reward === undefined)
+    throw new Error(
+      `${label}: a bond-consuming slash must route the fraud-prover reward.`,
+    );
+  requireExactBountyRouting(
+    ctx.outputs,
+    {
+      claimantAddress: reward.proverEnterpriseAddress,
+      lovelace: reward.lovelace,
+    },
+    label,
+  );
+};
+
 export const resolveRemoveSlashingApproach = (
   ctx: Parameters<BuildTxWithRedeemer>[0],
   slashing: EmulatorStateQueueRemoveSlashingParams,
 ): SlashingApproach => {
   switch (slashing.kind) {
+    case "descendantOfValidationTraceConviction":
+      return "DescendantOfValidationTraceConviction";
     case "operatorAlreadySlashed":
       return {
         OperatorAlreadySlashed: {
@@ -140,6 +167,11 @@ export const resolveRemoveSlashingApproach = (
         },
       };
     case "slashActiveOperator":
+      requireFraudProverRewardRouting(
+        ctx,
+        slashing.fraudProverReward,
+        "state-queue remove active-operator fraud-prover reward",
+      );
       return {
         SlashActiveOperator: {
           active_operators_redeemer_index: requireMintRedeemerIndex(
@@ -150,15 +182,14 @@ export const resolveRemoveSlashingApproach = (
             ),
             "state-queue remove active-operators burn",
           ),
-          m_fraud_prover_reward_output_index:
-            resolveFraudProverRewardOutputIndex(
-              ctx,
-              slashing.fraudProverReward,
-              "state-queue remove active-operator fraud-prover reward",
-            ),
         },
       };
     case "slashRetiredOperator":
+      requireFraudProverRewardRouting(
+        ctx,
+        slashing.fraudProverReward,
+        "state-queue remove retired-operator fraud-prover reward",
+      );
       return {
         SlashRetiredOperator: {
           retired_operators_redeemer_index: requireMintRedeemerIndex(
@@ -169,58 +200,16 @@ export const resolveRemoveSlashingApproach = (
             ),
             "state-queue remove retired-operators burn",
           ),
-          m_fraud_prover_reward_output_index:
-            resolveFraudProverRewardOutputIndex(
-              ctx,
-              slashing.fraudProverReward,
-              "state-queue remove retired-operator fraud-prover reward",
-            ),
         },
       };
   }
 };
 
-/**
- * Locates the reward output the on-chain guard will check, or reports `null`
- * when no reward is being routed. The predicate mirrors
- * `fraud_prover_reward_output_is_exact_v1`: the prover's enterprise address,
- * exactly the reward in lovelace, nothing else in the value, and no reference
- * script — so a builder that pays the wrong shape fails here rather than
- * on-chain. The reference-script leg never bites on the `pay.ToAddress` route
- * this module builds, and is carried anyway so the mirror is complete rather
- * than merely sufficient for the current caller.
- */
-export const resolveFraudProverRewardOutputIndex = (
-  ctx: Parameters<BuildTxWithRedeemer>[0],
-  reward: FraudProverRewardPlan | undefined,
-  label: string,
-): bigint | null => {
-  if (reward === undefined) return null;
-  const proverOutputs = ctx.outputs.filter(
-    (output) => output.address === reward.proverEnterpriseAddress,
-  );
-  if (proverOutputs.length !== 1) {
-    throw new Error(
-      `${label} must create exactly one output at the fraud prover enterprise address; found ${proverOutputs.length.toString()}`,
-    );
-  }
-  return requireUniqueOutputIndex(
-    ctx.outputs,
-    (output) =>
-      output.address === reward.proverEnterpriseAddress &&
-      output.assets.lovelace === reward.lovelace &&
-      Object.keys(output.assets).length === 1 &&
-      output.datum == null &&
-      output.datumHash == null &&
-      (output.scriptRef ?? null) === null,
-    label,
-  );
-};
-
 export const removeSlashingFraudProverReward = (
   slashing: EmulatorStateQueueRemoveSlashingParams,
 ): FraudProverRewardPlan | undefined =>
-  slashing.kind === "operatorAlreadySlashed"
+  slashing.kind === "operatorAlreadySlashed" ||
+  slashing.kind === "descendantOfValidationTraceConviction"
     ? undefined
     : slashing.fraudProverReward;
 
@@ -239,7 +228,10 @@ export const collectRemoveSlashingInputs = (
   slashing: EmulatorStateQueueRemoveSlashingParams,
   referenceScripts: StateQueueRemoveReferenceScriptUTxOs | undefined,
 ): TxBuilder => {
-  if (slashing.kind === "operatorAlreadySlashed") {
+  if (
+    slashing.kind === "operatorAlreadySlashed" ||
+    slashing.kind === "descendantOfValidationTraceConviction"
+  ) {
     return tx;
   }
 

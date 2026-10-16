@@ -114,7 +114,7 @@ test("derived goldens read Aiken sources or the pinned builtin evaluator", () =>
     // This oracle evaluates textual UPLC directly; it has no Aiken module.
     if (check.id === "golden:cek-builtin-cardano-v1") {
       for (const path of [
-        "onchain/aiken/scripts/pinned-compiler.mjs",
+        "demo/flake.lock",
         "demo/midgard-validation/tests/fixtures/cek-builtin-cardano-v1.cases.mjs",
         "demo/midgard-validation/tests/fixtures/cek-builtin-cardano-v1.generated.json",
         "demo/midgard-validation/src/**",

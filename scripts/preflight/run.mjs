@@ -4,19 +4,10 @@
 // injected probes and a fake command runner.
 
 import { spawnSync } from "node:child_process";
-import {
-  existsSync,
-  mkdirSync,
-  mkdtempSync,
-  readFileSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs";
-import { tmpdir } from "node:os";
-import { dirname, join, resolve } from "node:path";
+import { existsSync, readFileSync } from "node:fs";
+import { join, resolve } from "node:path";
 import { performance } from "node:perf_hooks";
 
-import { pinnedAikenVersion } from "../../onchain/aiken/scripts/pinned-compiler.mjs";
 import { runDirectory } from "../contrib/build.mjs";
 import { inputIdentity } from "../contrib/files.mjs";
 import { runProcess } from "../contrib/process.mjs";
@@ -113,39 +104,6 @@ export const changedFiles = (root, mergeBase, { strict }) => {
   return [...new Set([...nulList(committed.stdout), ...untracked])].sort();
 };
 
-// The compiler pin, compared by value: a moved AIKEN_FORK_VERSION changes what
-// every Aiken check means, while any other edit to the same workflow does not.
-const pinAt = (root, revision) => {
-  if (revision === undefined) {
-    try {
-      return pinnedAikenVersion(root);
-    } catch {
-      return undefined;
-    }
-  }
-  const scratch = mkdtempSync(join(tmpdir(), "midgard-preflight-pin-"));
-  try {
-    for (const workflow of [
-      ".github/workflows/aiken-ci.yml",
-      ".github/workflows/midgard-node-ci.yml",
-    ]) {
-      const show = git(root, ["show", `${revision}:${workflow}`], {
-        allow: [0, 128],
-      });
-      if (show.status !== 0) {
-        return undefined;
-      }
-      mkdirSync(dirname(join(scratch, workflow)), { recursive: true });
-      writeFileSync(join(scratch, workflow), show.stdout);
-    }
-    return pinnedAikenVersion(scratch);
-  } catch {
-    return undefined;
-  } finally {
-    rmSync(scratch, { recursive: true, force: true });
-  }
-};
-
 export const collectChanges = (root, { base, strict }) => {
   const mergeBase = git(root, ["merge-base", "HEAD", base]).stdout.trim();
   // A separately landed/cherry-picked foundation need not share ancestry.
@@ -169,14 +127,6 @@ export const collectChanges = (root, { base, strict }) => {
         ]),
       ].sort()
     : changedFiles(root, mergeBase, { strict });
-  const before = pinAt(root, tree ? base : mergeBase);
-  const after = pinAt(root, strict ? (tree ?? "HEAD") : undefined);
-  const fullReasons =
-    before === after
-      ? []
-      : [
-          `the Aiken compiler pin moved (${String(before)} -> ${String(after)})`,
-        ];
   const dirty =
     strict &&
     git(root, [
@@ -184,7 +134,7 @@ export const collectChanges = (root, { base, strict }) => {
       "--porcelain",
       "--untracked-files=no",
     ]).stdout.trim() !== "";
-  return { mergeBase, integrationTree: tree, changed, fullReasons, dirty };
+  return { mergeBase, integrationTree: tree, changed, dirty };
 };
 
 // Selection plus each selected check's concrete steps and the advisories the

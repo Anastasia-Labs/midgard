@@ -1,10 +1,10 @@
 import {
   encodeLinkedListNodeView,
   type FraudProverRewardPlan,
+  requireFraudProverRewardRouting,
   requireMintRedeemerIndex,
   requireOwnMintPurpose,
   requireReferenceInputIndex,
-  resolveFraudProverRewardOutputIndex,
   RETIRED_OPERATOR_NODE_ASSET_NAME_PREFIX,
   RetiredOperatorMintRedeemer,
   type SlashingApproach as SlashingApproachData,
@@ -16,11 +16,13 @@ import {
 } from "@lucid-evolution/lucid";
 
 import {
+  isBondConsumingSlashing,
   type RemoveFraudulentBlockContracts,
   type RemoveFraudulentBlockLayout,
 } from "./remove-fraudulent-block.assert-exact-fraud-slash-lovelace-conservation.js";
 import {
   buildActiveSlashingInputs,
+  continuedSlashAnchorAssets,
   type OperatorSlashingPlan,
 } from "./remove-fraudulent-block.build-active-slashing-inputs.js";
 import {
@@ -40,6 +42,7 @@ const buildRetiredSlashingInputs = ({
   contracts,
   hubOracleUtxo,
   fraudProverReward,
+  bondExcessLovelace,
 }: {
   readonly plan: Extract<
     OperatorSlashingPlan,
@@ -49,6 +52,7 @@ const buildRetiredSlashingInputs = ({
   readonly contracts: RemoveFraudulentBlockContracts;
   readonly hubOracleUtxo: UTxO;
   readonly fraudProverReward?: FraudProverRewardPlan;
+  readonly bondExcessLovelace: bigint;
 }): SlashingTxPlan => ({
   approach: "SlashRetiredOperator",
   removedOperatorNodeOutRef: outRefLabel(plan.removalPlan.node.utxo),
@@ -94,7 +98,10 @@ const buildRetiredSlashingInputs = ({
           ...plan.removalPlan.anchor.view,
           next: plan.removalPlan.node.view.next,
         }),
-        assets: plan.removalPlan.anchor.utxo.assets,
+        assets: continuedSlashAnchorAssets(
+          plan.removalPlan.anchor.utxo,
+          bondExcessLovelace,
+        ),
       },
     };
   },
@@ -127,6 +134,7 @@ export const buildSlashingInputs = ({
   hubOracleUtxo,
   registeredOperatorsElementUtxo,
   fraudProverReward,
+  bondExcessLovelace = 0n,
 }: {
   readonly plan: OperatorSlashingPlan;
   readonly operator: string;
@@ -139,6 +147,11 @@ export const buildSlashingInputs = ({
    * D4 exclusivity ruling expressed in the redeemer's own shape.
    */
   readonly fraudProverReward?: FraudProverRewardPlan;
+  /**
+   * What a bond-consuming slash's node holds beyond its fee and the reward
+   * (`resolveFraudSlashEconomics`); the continued directory anchor keeps it.
+   */
+  readonly bondExcessLovelace?: bigint;
 }): SlashingTxPlan => {
   switch (plan.approach) {
     case "SlashActiveOperator":
@@ -149,6 +162,7 @@ export const buildSlashingInputs = ({
         hubOracleUtxo,
         registeredOperatorsElementUtxo,
         ...(fraudProverReward === undefined ? {} : { fraudProverReward }),
+        bondExcessLovelace,
       });
     case "SlashRetiredOperator":
       return buildRetiredSlashingInputs({
@@ -157,9 +171,20 @@ export const buildSlashingInputs = ({
         contracts,
         hubOracleUtxo,
         ...(fraudProverReward === undefined ? {} : { fraudProverReward }),
+        bondExcessLovelace,
       });
     case "OperatorAlreadySlashed":
       return buildAlreadySlashedInputs({ plan });
+    case "DescendantOfValidationTraceConviction":
+      return {
+        approach: "DescendantOfValidationTraceConviction",
+        removedOperatorNodeOutRef: null,
+        registeredOperatorsElementOutRef: null,
+        buildSlashing: () => ({
+          kind: "descendantOfValidationTraceConviction",
+        }),
+        additionalRefInputs: [],
+      };
   }
 };
 
@@ -175,7 +200,19 @@ export const resolveStateQueueSlashingApproach = ({
   readonly slashingApproach: SlashingApproachData;
   readonly layout: Partial<RemoveFraudulentBlockLayout>;
 } => {
+  if (isBondConsumingSlashing(slashing)) {
+    requireFraudProverRewardRouting(
+      ctx,
+      slashing.fraudProverReward,
+      `remove-fraudulent-block ${slashing.kind === "slashActiveOperator" ? "active" : "retired"}-operator fraud-prover reward`,
+    );
+  }
   switch (slashing.kind) {
+    case "descendantOfValidationTraceConviction":
+      return {
+        slashingApproach: "DescendantOfValidationTraceConviction",
+        layout: {},
+      };
     case "slashActiveOperator": {
       const activeOperatorsRedeemerTxInfoIndex = requireMintRedeemerIndex(
         ctx,
@@ -186,12 +223,6 @@ export const resolveStateQueueSlashingApproach = ({
         slashingApproach: {
           SlashActiveOperator: {
             active_operators_redeemer_index: activeOperatorsRedeemerTxInfoIndex,
-            m_fraud_prover_reward_output_index:
-              resolveFraudProverRewardOutputIndex(
-                ctx,
-                slashing.fraudProverReward,
-                "remove-fraudulent-block active-operator fraud-prover reward",
-              ),
           },
         },
         layout: { activeOperatorsRedeemerTxInfoIndex },
@@ -208,12 +239,6 @@ export const resolveStateQueueSlashingApproach = ({
           SlashRetiredOperator: {
             retired_operators_redeemer_index:
               retiredOperatorsRedeemerTxInfoIndex,
-            m_fraud_prover_reward_output_index:
-              resolveFraudProverRewardOutputIndex(
-                ctx,
-                slashing.fraudProverReward,
-                "remove-fraudulent-block retired-operator fraud-prover reward",
-              ),
           },
         },
         layout: { retiredOperatorsRedeemerTxInfoIndex },

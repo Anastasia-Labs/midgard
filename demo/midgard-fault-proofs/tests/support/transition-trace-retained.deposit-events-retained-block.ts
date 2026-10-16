@@ -184,10 +184,16 @@ export const depositEventsRetainedBlock = async (input: {
       entries.transition_trace,
     ),
   };
-  return sealDepositPayload({
-    ...base.payload,
-    block_body: { ...base.payload.block_body, ...entries, counts, header },
-  });
+  return {
+    ...(await sealDepositPayload({
+      ...base.payload,
+      block_body: { ...base.payload.block_body, ...entries, counts, header },
+    })),
+    postLedgerEntries: [...ledger].map(([outRef, output]) => ({
+      outRef: Buffer.from(outRef, "hex"),
+      output: Buffer.from(output, "hex"),
+    })),
+  };
 };
 
 export const transitionTraceDepositRetainedFixture = async (

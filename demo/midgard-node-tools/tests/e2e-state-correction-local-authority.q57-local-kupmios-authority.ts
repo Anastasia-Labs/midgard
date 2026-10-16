@@ -200,21 +200,33 @@ describe("Q57 local Kupmios authority", () => {
     ).rejects.toThrow(/has 2 exact prover-reward outputs/u);
   });
 
-  it("rejects caller-authored economics outside the release-bound tranches", async () => {
-    await expect(
-      makeAuthority(makeSource()).authenticateFinalState({
-        ...finalInput,
-        economics: [
-          {
-            ...finalInput.economics[0]!,
-            slashedLovelace: "400000000",
-          },
-        ],
-      }),
-    ).rejects.toThrow(/release-bound full or partially inactivity-slashed/u);
-  });
+  it.each([
+    ["900000000", "400000000"],
+    ["900000001", "500000001"],
+    ["799999999", "399999999"],
+  ])(
+    "rejects caller-authored economics for bond %s and slash %s",
+    async (operatorBondInputLovelace, slashedLovelace) => {
+      await expect(
+        makeAuthority(makeSource()).authenticateFinalState({
+          ...finalInput,
+          economics: [
+            {
+              ...finalInput.economics[0]!,
+              operatorBondInputLovelace,
+              slashedLovelace,
+            },
+          ],
+        }),
+      ).rejects.toThrow(/release-bound slash of the bond/u);
+    },
+  );
 
-  it("admits the release-bound partially inactivity-slashed tranche", async () => {
+  it.each([
+    ["800000000", "400000000"],
+    ["800000001", "400000001"],
+    ["900000001", "500000000"],
+  ])("admits bond %s slashed by %s", async (bond, fee) => {
     const source = makeSource({
       observeOutput: vi.fn(async ({ txHash, outputIndex }) =>
         txHash === hash(17)
@@ -222,7 +234,7 @@ describe("Q57 local Kupmios authority", () => {
               txHash,
               outputIndex,
               address: operatorAddress,
-              lovelace: "800000000",
+              lovelace: bond,
               spent: true,
               assets: {},
             }
@@ -250,7 +262,7 @@ describe("Q57 local Kupmios authority", () => {
               ],
             }
           : {
-              feeLovelace: "400000000",
+              feeLovelace: fee,
               inputs: [`${hash(17)}#0`],
               referenceInputs: [`${hash(6)}#0`],
               outputs: [
@@ -269,9 +281,9 @@ describe("Q57 local Kupmios authority", () => {
         economics: [
           {
             ...finalInput.economics[0]!,
-            operatorBondInputLovelace: "800000000",
-            removalFeeLovelace: "400000000",
-            slashedLovelace: "400000000",
+            operatorBondInputLovelace: bond,
+            removalFeeLovelace: fee,
+            slashedLovelace: fee,
           },
         ],
       }),

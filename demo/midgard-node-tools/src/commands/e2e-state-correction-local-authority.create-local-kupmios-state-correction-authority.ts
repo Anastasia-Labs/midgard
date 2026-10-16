@@ -1,4 +1,5 @@
 import type { DeploymentManifest } from "@al-ft/midgard-core/deployment-manifest-identity";
+import { fraudSlashFeeLovelace } from "@al-ft/midgard-fault-proofs";
 import { credentialToAddress } from "@lucid-evolution/lucid";
 
 import { l1ProviderFailoverEnabled } from "../environment.js";
@@ -174,26 +175,16 @@ export const createLocalKupmiosStateCorrectionAuthority = (
             `live Ogmios fee does not equal the exact removal fee for ${expected.familyId}`,
           );
         }
-        const requiredBond = BigInt(
-          config.economicsPolicy.requiredBondLovelace,
-        );
-        const fullSlash = BigInt(
-          config.economicsPolicy.slashingPenaltyLovelace,
-        );
         const reward = BigInt(config.economicsPolicy.fraudProverRewardLovelace);
-        const inactivitySlash = BigInt(
-          config.economicsPolicy.inactivitySlashingPenaltyLovelace,
-        );
-        const observedBond = BigInt(expected.operatorBondInputLovelace);
-        const observedSlash = BigInt(expected.slashedLovelace);
-        const fullTranche =
-          observedBond === requiredBond && observedSlash === fullSlash;
-        const partiallyInactivitySlashedTranche =
-          observedBond === requiredBond - inactivitySlash &&
-          observedSlash === fullSlash - inactivitySlash;
-        if (!fullTranche && !partiallyInactivitySlashedTranche) {
+        if (
+          BigInt(expected.slashedLovelace) !==
+          fraudSlashFeeLovelace(
+            config.economicsPolicy,
+            BigInt(expected.operatorBondInputLovelace),
+          )
+        ) {
           throw new Error(
-            `live bond and slash do not match a release-bound full or partially inactivity-slashed tranche for ${expected.familyId}`,
+            `live bond and slash do not match the release-bound slash of the bond for ${expected.familyId}`,
           );
         }
         if (

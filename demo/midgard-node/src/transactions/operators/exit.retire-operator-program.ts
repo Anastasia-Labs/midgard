@@ -301,6 +301,8 @@ export type DuplicateSlashSubmission = {
   readonly removedRegisteredNodeKey: string;
   readonly proofKind: SDK.DuplicateProof["kind"];
   readonly feeLovelace: bigint;
-  /** What the submitter kept after the fee. */
-  readonly submitterRewardLovelace: bigint;
+  /** The key the bounty was paid to: this node's wallet key. */
+  readonly bountyClaimantKeyHash: string;
+  /** The bounty paid to the claimant's enterprise address. */
+  readonly bountyLovelace: bigint;
 };

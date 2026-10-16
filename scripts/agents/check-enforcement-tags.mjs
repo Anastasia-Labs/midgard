@@ -86,10 +86,6 @@ export const KNOWN_ENFORCERS = [
     tag: "[script: onchain/aiken/scripts/run-focused-check.mjs]",
   },
   {
-    pattern: /pinned (?:fork|compiler)|stock compiler/iu,
-    tag: "[script: onchain/aiken/scripts/pinned-compiler.mjs]",
-  },
-  {
     pattern: /validate-runbook/u,
     tag: "[script: .agents/skills/midgard-e2e-acceptance/scripts/validate-runbook.mjs]",
   },

@@ -7,7 +7,6 @@ import {
   buildRecordPath,
   checkBlueprintStamp,
 } from "../../demo/scripts/lib/blueprint-stamp.mjs";
-import { pinnedAikenVersion } from "../../onchain/aiken/scripts/pinned-compiler.mjs";
 import {
   main as syncBlueprintFrom,
   profileMismatch,
@@ -20,7 +19,7 @@ import { withResource } from "./resources.mjs";
 
 // One answer to "this checkout needs a blueprint": nobody decides between
 // copying and building. A blueprint is ready when its stamp is fresh (same
-// sources, pinned compiler, untouched since its record) AND it was built for
+// sources, untouched since its record) AND it was built for
 // the profile this checkout selects. When it is not, copy a ready one from
 // another checkout of the repository (scripts/sync-blueprint-from.mjs, which
 // re-verifies everything after the copy), and build only when none is.
@@ -48,15 +47,14 @@ export const listCheckouts = (root) =>
     .map((line) => line.slice("worktree ".length));
 
 /**
- * Checkouts whose build record already names this tree's sources, compiler
- * and profile, newest build first after the main checkout. Only a cheap
+ * Checkouts whose build record already names this tree's sources and
+ * profile, newest build first after the main checkout. Only a cheap
  * pre-filter: the copy itself re-verifies every input.
  */
 export const syncCandidates = (root, checkouts = listCheckouts(root)) => {
   const here = realpathSync(root);
   const wanted = {
     sourceHash: blueprintSourceHash(root),
-    compiler: pinnedAikenVersion(root),
     profile: selectedProfile(root).name,
   };
   const matching = checkouts.flatMap((checkout, index) => {
@@ -66,7 +64,6 @@ export const syncCandidates = (root, checkouts = listCheckouts(root)) => {
       const built = JSON.parse(readFileSync(record, "utf8"));
       if (
         built.sourceHash !== wanted.sourceHash ||
-        built.compiler !== wanted.compiler ||
         built.profile?.name !== wanted.profile
       )
         return [];

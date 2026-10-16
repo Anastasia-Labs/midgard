@@ -84,6 +84,7 @@ export const RegisteredOperatorMintRedeemerSchema = Data.Enum([
       anchor_element_output_index: Data.Integer(),
       duplicate_node_ref_input_index: Data.Integer(),
       duplicate_operator_status: DuplicateOperatorStatusSchema,
+      bounty_claimant: Data.Bytes({ minLength: 28, maxLength: 28 }),
     }),
   }),
 ]);

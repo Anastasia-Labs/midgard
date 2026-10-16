@@ -23,17 +23,15 @@ pre-existing real hook file as `<hook>.local`.
    `eslint --fix --max-warnings=0` on the `.ts`/`.tsx` subset, both run from
    `demo/`. Problems eslint cannot fix block the commit. A missing prettier or
    eslint prints a warning and **the commit proceeds unformatted/unlinted**.
-6. **Aiken sources** (`*.ak` anywhere). The compiler is `MIDGARD_AIKEN_BIN`,
-   else `aiken` on `PATH`.
-   - An `aiken` exists but the checkout has no
-     `onchain/aiken/scripts/pinned-compiler.mjs` to verify it with → blocked.
-   - `node onchain/aiken/scripts/pinned-compiler.mjs <aiken>` fails (not the
-     fork pinned by `AIKEN_FORK_VERSION` in the workflows) → blocked.
-   - Otherwise `aiken fmt <files>`, then `sed -i 's/[[:space:]]\+$//'` on the
+6. **Aiken sources** (`*.ak` anywhere). The compiler is the one
+   `demo/flake.lock` pins, built with nix by `scripts/lib/aiken.mjs`; the hook
+   never looks at `PATH`.
+   - `aiken fmt <files>`, then `sed -i 's/[[:space:]]\+$//'` on the
      same files: the formatter emits trailing spaces for monadic `let`/`expect`
      syntax, and CI strips them the same way before comparing. A parse failure
      blocks the commit.
-   - No `aiken` binary at all → warning, **commit proceeds unformatted**.
+   - The pinned aiken cannot be built (no nix) → warning, **commit proceeds
+     unformatted**.
 7. **Re-stage** exactly the files it formatted (`git add -- <those paths>`).
 8. **Chain to `pre-commit.local`** if `$repo_root/.git/hooks/pre-commit.local`
    is executable (line 168). This runs even when an earlier step failed.

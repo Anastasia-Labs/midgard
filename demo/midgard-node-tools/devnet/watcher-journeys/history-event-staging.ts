@@ -465,7 +465,7 @@ export const createWithdrawnInputJourneyFixture = (
         return block;
       },
     );
-    const predecessor = await decodeJourneyRetainedBlock(split);
+    const predecessor = await decodeJourneyRetainedBlock(split, input.ledgerAt);
     const preparation = { ...input, predecessor };
     const body = journeyWithdrawalBody({
       predecessor,

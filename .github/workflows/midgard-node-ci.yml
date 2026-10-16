@@ -19,6 +19,9 @@ on:
       - "docs/spec/**"
       - "scripts/ci/**"
       - "scripts/lib/worktree-identity.mjs"
+      - "demo/flake.lock"
+      - "scripts/aiken"
+      - "scripts/lib/aiken.mjs"
       - "scripts/preflight.mjs"
       - "scripts/preflight/ci-evidence.mjs"
       - "scripts/preflight/derive.mjs"
@@ -46,6 +49,9 @@ on:
       - "docs/spec/**"
       - "scripts/ci/**"
       - "scripts/lib/worktree-identity.mjs"
+      - "demo/flake.lock"
+      - "scripts/aiken"
+      - "scripts/lib/aiken.mjs"
       - "scripts/preflight.mjs"
       - "scripts/preflight/ci-evidence.mjs"
       - "scripts/preflight/derive.mjs"
@@ -91,40 +97,21 @@ permissions:
 # on this tree — `user_events/tx_order_v1.mint` diverges (stock 81fa79f4…,
 # 9,851 bytes; fork b5541807…, 10,071 bytes).
 #
-# All four arms of rider 1's pin, so a reviewer on other hardware can reproduce
-# the toolchain rather than take it on trust:
-#   repo    https://github.com/Anastasia-Labs/aiken   (org-controlled)
-#   tag     midgard-5adf7837                          (annotated, immutable)
-#   commit  5adf7837cbddb5d329fd51d9c0cd73f561eaf95c
-#   md5     ea9b39054f166e94771f838a662712f7          (published in the tag
-#                                                      message, so it is fixed
-#                                                      once for everyone)
-# The version string `v1.1.23+5adf783` is derived from the commit at build
-# time, so it is the arm that reproduces from source anywhere; the md5 is the
-# tagging build's own artifact hash and is pinned as provenance, not as a
-# build-time equality check (two honest builds of one tag on two machines need
-# not agree byte for byte).
-#
-# The 2026-08-27 advance from midgard-2a78108c to midgard-5adf7837, and the
-# measured blueprint/exunit invariance that makes it a pin bump rather than a
-# re-derivation, are recorded once in `.github/workflows/aiken-ci.yml`.
-# `onchain/aiken/scripts/pinned-compiler.mjs` fails if the two workflows ever
-# disagree on any of these values.
+# The pin is the `aiken` input of `demo/flake.nix`, locked in
+# `demo/flake.lock`. Every script reaches the compiler through `scripts/aiken`,
+# which builds exactly that commit with nix, so nothing can run another aiken;
+# `aiken-ci.yml`'s header records the 2026-10-15 move to midgard-28e42883 and
+# its measured blueprint invariance.
 #
 # JOB LAYOUT. Every independent gate is its own job, so the first red no longer
-# hides the rest: the fork is built once and shared as an artifact, the
-# blueprint is built once from it and shared together with its build record,
+# hides the rest: the fork is built once into the nix cache the other jobs
+# restore (`.github/actions/aiken`), the blueprint is built once from it and shared together with its build record,
 # and each package job starts from the workspace state its checks had in the
 # old serial job (`prebuild` rebuilds the packages that were built before them
 # there). The `gate` job at the bottom is the one check branch protection
 # should require; `scripts/ci/lint-workflows.mjs` holds it to the fail-closed
 # shape.
 env:
-  AIKEN_FORK_REPO: https://github.com/Anastasia-Labs/aiken
-  AIKEN_FORK_TAG: midgard-5adf7837
-  AIKEN_FORK_REV: 5adf7837cbddb5d329fd51d9c0cd73f561eaf95c
-  AIKEN_FORK_VERSION: aiken v1.1.23+5adf783
-  AIKEN_FORK_BINARY_MD5: ea9b39054f166e94771f838a662712f7
   L1_BLOCKFROST_API_URL: https://blockfrost.invalid
   L1_BLOCKFROST_KEY: test-key
   L1_OPERATOR_SEED_PHRASE: "panther fly crawl express smile lend company blue slogan dawn wall tip angle tomorrow battle myth category vanish misery ocean include salon wood rail"
@@ -147,32 +134,9 @@ jobs:
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
-      # No `setup-aiken` step: the fork is the compiler here for the reason
-      # given at the top of this file, and it is built by the same script and
-      # cached under the same path and key shape as in `aiken-ci`, so the
-      # blueprint this run builds cannot come from a different compiler than
-      # the one that workflow judges.
-      - name: Cache the pinned Aiken fork
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
-        with:
-          path: ~/.aiken-fork
-          key: aiken-fork-${{ env.AIKEN_FORK_REV }}-${{ runner.os }}
-      # A restored cache that already reports the pin is left alone; anything
-      # else is rebuilt with `cargo install --locked` from the pinned rev.
-      - name: Build the pinned Aiken fork
-        run: scripts/ci/build-aiken-fork.sh --prefix ~/.aiken-fork
-      # Assert, don't just print: a cache poisoned by an earlier rev must fail
-      # here rather than silently changing which compiler produced the testnet
-      # blueprint the suites assert hashes against.
-      - name: Assert the pinned compiler identity
-        run: node onchain/aiken/scripts/pinned-compiler.mjs ~/.aiken-fork/bin/aiken
-      - name: Share the pinned Aiken fork with later jobs
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        with:
-          name: aiken-fork
-          path: ~/.aiken-fork/bin/aiken
-          if-no-files-found: error
-          retention-days: 3
+      # Builds the locked commit once and saves it to the cache every later
+      # job of the run restores, so they do not each compile it.
+      - uses: ./.github/actions/aiken
 
   blueprint:
     name: Testnet blueprint
@@ -1177,6 +1141,7 @@ jobs:
             watcher-journeys/history-event-cases.test.ts \
             watcher-journeys/history-events.test.ts \
             watcher-journeys/journey-lucid.test.ts \
+            watcher-journeys/journey-replay-lifetime.test.ts \
             watcher-journeys/journey-session.test.ts \
             watcher-journeys/journey-timing.test.ts \
             watcher-journeys/kupo-consumption.test.ts \
@@ -1190,11 +1155,14 @@ jobs:
             watcher-journeys/public-da-preflight.test.ts \
             watcher-journeys/readiness-evidence.test.ts \
             watcher-journeys/readiness.test.ts \
+            watcher-journeys/replayed-ledger.test.ts \
             watcher-journeys/signed-commit-reconciliation.test.ts \
             watcher-journeys/signed-transaction-recovery.test.ts \
             watcher-journeys/stage-timing.test.ts \
             watcher-journeys/staged-checkpoint.test.ts \
             watcher-journeys/staging-recovery.test.ts \
+            watcher-journeys/staging.decode-journey-retained-block.test.ts \
+            watcher-journeys/transaction-cases.test.ts \
             watcher-journeys/verified-headers.test.ts
 
   da-e2e:

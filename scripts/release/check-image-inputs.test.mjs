@@ -1,12 +1,6 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import {
-  mkdirSync,
-  mkdtempSync,
-  readFileSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -14,7 +8,6 @@ import { test } from "node:test";
 
 import { profileDigest } from "../../demo/scripts/deployment-profiles.mjs";
 import { blueprintSourceHash } from "../../demo/scripts/lib/blueprint-stamp.mjs";
-import { pinnedAikenFork } from "../../onchain/aiken/scripts/pinned-compiler.mjs";
 import { verifyPublicImageInputs } from "./check-image-inputs.mjs";
 
 const source = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
@@ -31,11 +24,6 @@ const fixture = () => {
       typeof value === "string" ? value : JSON.stringify(value),
     );
   };
-  for (const name of ["aiken-ci.yml", "midgard-node-ci.yml"])
-    write(
-      `.github/workflows/${name}`,
-      readFileSync(resolve(source, `.github/workflows/${name}`), "utf8"),
-    );
   for (const directory of ["lib", "validators", "env"])
     write(`onchain/aiken/${directory}/test.ak`, "// isolated verifier control");
   write("onchain/aiken/aiken.lock", "locked");
@@ -61,7 +49,6 @@ const fixture = () => {
     profileDigest: profileDigest(profiles[profile]),
     blueprintHash: sha256(JSON.stringify(blueprint)),
     sourceHash: blueprintSourceHash(root),
-    compiler: pinnedAikenFork(root).version,
   };
   write("onchain/aiken/plutus.json.deployment.json", stamp);
   return {
@@ -81,7 +68,7 @@ const withFixture = (run) => {
   }
 };
 
-test("binds the selected public module, blueprint, frozen source and compiler inputs", () =>
+test("binds the selected public module, blueprint and frozen source inputs", () =>
   withFixture(({ root, stamp }) => {
     const result = verifyPublicImageInputs({ root, revision, profile });
     assert.equal(result.sourceRevision, revision);
@@ -100,7 +87,7 @@ test("refuses moving revision and a testing-profile selection", () =>
         /full source revision/,
       );
   }));
-test("refuses changed blueprint bytes, source, profile object and compiler stamp", () => {
+test("refuses changed blueprint bytes, source and profile object", () => {
   for (const mutate of [
     ({ write }) =>
       write("onchain/aiken/plutus.json", {
@@ -111,11 +98,6 @@ test("refuses changed blueprint bytes, source, profile object and compiler stamp
       write("onchain/aiken/plutus.json.deployment.json", {
         ...stamp,
         profile: { ...stamp.profile, network: "Mainnet" },
-      }),
-    ({ write, stamp }) =>
-      write("onchain/aiken/plutus.json.deployment.json", {
-        ...stamp,
-        compiler: "stock",
       }),
   ])
     withFixture((value) => {

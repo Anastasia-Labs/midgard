@@ -28,6 +28,7 @@ import {
   SDK,
 } from "./deposit-flow-emulator-shared.js";
 import {
+  attemptAppend,
   commitLocallyAppliedBlock,
   expectOneRoot,
   finalizeLocally,
@@ -159,14 +160,15 @@ it("admits a landed correction, recomputes its rollback at cd + 1 and its reland
       1,
     );
     // Revived: its journal is the commit path's again, local finalization
-    // owed. B1 is still past its DA attestation deadline, so the commit path
-    // defers (it pauses until correction removes the expired suffix): a
-    // refusal, never a halt.
+    // owed. B1 is on L1, so local finalization follows it. B1 is still past
+    // its DA attestation deadline, so the next append pauses until correction
+    // removes the expired suffix: a refusal, never a halt.
     expect(revived.journal).toMatchObject({
       status: "observed_waiting_stability",
       corrected: true,
     });
-    await expect(finalizeLocally(h, b1)).rejects.toThrow(
+    await finalizeLocally(h, b1);
+    await expect(attemptAppend(h)).rejects.toThrow(
       "Commit paused until expired unattested suffix is corrected",
     );
     const deferred = await observe(h, b1);

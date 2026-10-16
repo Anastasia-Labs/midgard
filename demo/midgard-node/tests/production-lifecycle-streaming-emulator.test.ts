@@ -165,6 +165,7 @@ it("streams public raw events through production reconciliation, native commitme
   const assertCommitWindow = async (
     block: Awaited<ReturnType<typeof commitConfirmRecoverAndMerge>>,
     futureEvent?: SDK.DepositUTxO | SDK.WithdrawalUTxO,
+    slice: "normal" | "catch_up" = "normal",
   ) => {
     const attempts = h.commitAttempts.filter(
       ({ output }) =>
@@ -207,9 +208,15 @@ it("streams public raw events through production reconciliation, native commitme
     const includedThroughMs = lucid.slotToUnixTime(attempt.permit.view.slot);
     const horizon = includedThroughMs + SDK.EVENT_WAIT_DURATION_MS - 1;
     expect(Number(signedHeader.endTime)).toBeLessThanOrEqual(horizon);
-    expect(lucid.slotToUnixTime(Number(body.ttl())) - 1).toBe(
-      Number(signedHeader.endTime),
-    );
+    // The block time is the inclusive validity upper bound. A normal block
+    // ends there; a catch-up slice ends earlier, at its last included event.
+    const blockTimeMs = lucid.slotToUnixTime(Number(body.ttl())) - 1;
+    if (slice === "normal") {
+      expect(blockTimeMs).toBe(Number(signedHeader.endTime));
+    } else {
+      expect(Number(signedHeader.endTime)).toBeLessThan(blockTimeMs);
+      expect(horizon).toBeLessThan(blockTimeMs);
+    }
     if (futureEvent !== undefined) {
       expect(Number(futureEvent.facts.inclusion_time)).toBeGreaterThan(
         includedThroughMs,
@@ -463,9 +470,9 @@ it("streams public raw events through production reconciliation, native commitme
     await h.deployment.chain.awaitLedgerTime(
       Number(invalidWithdrawal.facts.inclusion_time) + 1000,
     );
-    // The refused attempt below runs one event wait after this synchronization.
-    // Keep that attempt, with its commit buffer, inside one operator shift, so
-    // the planner reaches the validity cap rather than registering a Rewind.
+    // The stale-source attempt below runs one event wait after this
+    // synchronization. Keep that attempt, with its commit buffer, inside one
+    // operator shift, so it commits rather than registering a Rewind.
     const staleSourceSpanMs =
       SDK.EVENT_WAIT_DURATION_MS +
       1000 +
@@ -487,55 +494,39 @@ it("streams public raw events through production reconciliation, native commitme
     vi.setSystemTime(fixture.emulator.now());
     await h.synchronize();
     // Advance the actual ledger beyond this sealed source's fixed horizon.
-    // Leave the follower's view as is until the refused attempt returns.
-    const beforeState = await h.evidence();
-    const beforeStale = {
-      gate: structuredClone(beforeState.gate),
-      native: beforeState.native,
-    };
-    const nativeRootBefore = beforeStale.native?.durableRoot;
-    const receiptsBefore = h.receipts.length;
+    // Leave the follower's view as is until the attempt returns.
     const latestBefore = await fetchLatestCommittedBlock(
       lucid,
       fixture.contracts,
     );
     fixture.emulator.awaitSlot(SDK.EVENT_WAIT_DURATION_MS / 1000 + 1);
     vi.setSystemTime(fixture.emulator.now());
-    let staleFailure: unknown;
-    let staleOutput: unknown;
-    try {
-      staleOutput = await runCommitWorker(
-        fixture.contracts,
-        lucidService,
-        latestBefore,
-        h.production.nodeConfig,
-        fixture.runtimeOverrides!.deploymentIdentity,
-        { ...h.production, globals },
-      );
-    } catch (error) {
-      staleFailure = error;
-    }
+    const staleOutput = await runCommitWorker(
+      fixture.contracts,
+      lucidService,
+      latestBefore,
+      h.production.nodeConfig,
+      fixture.runtimeOverrides!.deploymentIdentity,
+      { ...h.production, globals },
+    );
     diagnostic.staleSourceAttempt = {
       output: staleOutput,
-      failure: inspect(staleFailure, { depth: 20 }),
-      before: beforeStale,
       observedSlotAfter: fixture.emulator.slot,
     };
-    expect(staleOutput).toBeUndefined();
-    expect(inspect(staleFailure, { depth: 20 })).toContain(
-      "Resolved commit transaction validity exceeds the selected scheduler window cap",
+    // The stale view still commits: a catch-up slice through its own horizon
+    // that carries the invalid Withdrawal and no L2 transactions.
+    expect(staleOutput.type).toBe("SubmittedAwaitingConfirmationOutput");
+    if (staleOutput.type !== "SubmittedAwaitingConfirmationOutput")
+      throw new Error("Expected the stale-source attempt to submit");
+    expect(staleOutput.mempoolTxsCount).toBe(0);
+    const invalidBlock = await commitConfirmRecoverAndMerge({
+      ...context,
+      submitted: staleOutput,
+    });
+    await assertCommitWindow(invalidBlock, undefined, "catch_up");
+    expect(Number(invalidWithdrawal.facts.inclusion_time)).toBeLessThanOrEqual(
+      Number(invalidBlock.queuedHeader.endTime),
     );
-    expect(h.receipts).toHaveLength(receiptsBefore);
-    expect(Object.keys(fixture.emulator.mempool)).toHaveLength(0);
-    expect(await fetchLatestCommittedBlock(lucid, fixture.contracts)).toEqual(
-      latestBefore,
-    );
-    const afterStale = await h.evidence();
-    expect(afterStale.gate).toEqual(beforeStale.gate);
-    expect(afterStale.native?.durableRoot).toBe(nativeRootBefore);
-    await h.synchronize();
-    const invalidBlock = await commitConfirmRecoverAndMerge(context);
-    await assertCommitWindow(invalidBlock);
     const invalidResolution = await command(
       resolveEventSettlementProofProgram({
         kind: "withdrawal",
@@ -785,6 +776,10 @@ it("streams public raw events through production reconciliation, native commitme
     ).toBe(WithdrawalsDB.Status.Awaiting);
     const withdrawalBlock = await commitConfirmRecoverAndMerge(context);
     await assertCommitWindow(withdrawalBlock, withdrawal);
+    // Time after the catch-up slice stayed due: the next block resumes there.
+    expect(withdrawalBlock.queuedHeader.startTime).toBe(
+      invalidBlock.queuedHeader.endTime,
+    );
     const resolution = await command(
       resolveEventSettlementProofProgram({
         kind: "withdrawal",

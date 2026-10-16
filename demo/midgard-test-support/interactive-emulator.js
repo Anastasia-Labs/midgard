@@ -13,10 +13,6 @@ import { fileURLToPath } from "node:url";
 import { setTimeout as pause } from "node:timers/promises";
 
 import {
-  assertPinnedAiken,
-  defaultAikenBinary,
-} from "../../onchain/aiken/scripts/pinned-compiler.mjs";
-import {
   generateProfiles,
   profileDigest,
   readProfiles,
@@ -27,6 +23,7 @@ import {
   buildRecordPath,
   checkBlueprintStamp,
 } from "../scripts/lib/blueprint-stamp.mjs";
+import { aikenBinary } from "../../scripts/lib/aiken.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 
@@ -170,14 +167,12 @@ export const emulatorProfileBlueprint = (profileName, directory) => {
     }
     try {
       if (fresh()) return;
-      const compilerPath = defaultAikenBinary();
-      const compiler = assertPinnedAiken(compilerPath);
       const profile = readProfiles()[profileName];
       const sourceHash = blueprintSourceHash(root);
       const recordPath = buildRecordPath(blueprintPath);
       if (existsSync(recordPath)) rmSync(recordPath);
       const result = spawnSync(
-        compilerPath,
+        aikenBinary(),
         [
           "build",
           "--env",
@@ -203,7 +198,6 @@ export const emulatorProfileBlueprint = (profileName, directory) => {
             profileDigest: profileDigest(profile),
             blueprintHash: blueprintHash(blueprintPath),
             sourceHash,
-            compiler,
           },
           null,
           2,
