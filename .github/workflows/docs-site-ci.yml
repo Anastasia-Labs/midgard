@@ -14,8 +14,10 @@ on:
       - "scripts/bin/**"
       - "demo/lucid-midgard/**"
       - "demo/midgard-core/**"
+      - "demo/scripts/package-tasks.mjs"
       - "demo/package.json"
       - "demo/pnpm-lock.yaml"
+      - "demo/pnpm-workspace.yaml"
       - "demo/.nvmrc"
       - ".github/workflows/docs-site-ci.yml"
   pull_request:
@@ -29,8 +31,10 @@ on:
       - "scripts/bin/**"
       - "demo/lucid-midgard/**"
       - "demo/midgard-core/**"
+      - "demo/scripts/package-tasks.mjs"
       - "demo/package.json"
       - "demo/pnpm-lock.yaml"
+      - "demo/pnpm-workspace.yaml"
       - "demo/.nvmrc"
       - ".github/workflows/docs-site-ci.yml"
 
