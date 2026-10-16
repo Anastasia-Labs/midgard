@@ -1926,12 +1926,7 @@ fn verify_builtin_direct_step(
   and {
     arguments_count == builtin_argument_count(tag),
     pre.focus_root == builtin_root,
-    cek_builtin_v1.verify_direct_builtin_v1(
-      tag,
-      builtin_root,
-      arguments,
-      result,
-    ),
+    cek_builtin_v1.verify_direct_builtin_v1(tag, arguments, result),
     post == exact_state(
       pre,
       mode_return,
@@ -2109,13 +2104,7 @@ fn verify_builtin_semantic_step(
   and {
     arguments_count == builtin_argument_count(tag),
     pre.focus_root == builtin_root,
-    cek_builtin_v1.verify_semantic_builtin_v1(
-      tag,
-      builtin_root,
-      arguments,
-      result,
-      material,
-    ),
+    cek_builtin_v1.verify_semantic_builtin_v1(tag, arguments, result, material),
     post == exact_state(
       pre,
       mode_return,
@@ -2135,20 +2124,12 @@ fn verify_builtin_failure_step(
   tag: Int,
   arguments: List<cek_builtin_v1.ValueWitnessV1>,
 ) -> Bool {
-  let Pair(arguments_root, arguments_count) = cek_builtin_v1.arguments_root_v1(
-    arguments,
-  )
-  let builtin_root = cek_proof_v1.hash_builtin_value_v1(
-    tag,
-    0,
-    arguments_count,
-    arguments_root,
-  )
+  // The library derives the builtin value root from `arguments` and checks it
+  // against the pre-state focus (cek-builtin-v1.ak:3878-3886).
   and {
-    pre.focus_root == builtin_root,
     cek_builtin_v1.verify_direct_builtin_failure_v1(
       tag,
-      builtin_root,
+      pre.focus_root,
       arguments,
     ),
     builtin_failure_post_is_exact(pre, post, tag, arguments),
@@ -2198,12 +2179,7 @@ fn verify_builtin_semantic_failure_step(
   and {
     arguments_count == builtin_argument_count(tag),
     pre.focus_root == builtin_root,
-    cek_builtin_v1.verify_semantic_builtin_failure_v1(
-      tag,
-      builtin_root,
-      arguments,
-      material,
-    ),
+    cek_builtin_v1.verify_semantic_builtin_failure_v1(tag, arguments, material),
     post == exact_state(
       pre,
       mode_halt_error,
@@ -2223,18 +2199,14 @@ fn verify_builtin_type_failure_step(
   tag: Int,
   arguments: List<cek_builtin_v1.RuntimeValueWitnessV1>,
 ) -> Bool {
-  let Pair(arguments_root, arguments_count) = cek_builtin_v1.runtime_arguments_root_v1(
-    arguments,
-  )
-  let builtin_root = cek_proof_v1.hash_builtin_value_v1(
-    tag,
-    0,
-    arguments_count,
-    arguments_root,
-  )
+  // The library derives the builtin value root from `arguments` and checks it
+  // against the pre-state focus (cek-builtin-v1.ak:3326-3336).
   and {
-    pre.focus_root == builtin_root,
-    cek_builtin_v1.verify_builtin_type_failure_v1(tag, builtin_root, arguments),
+    cek_builtin_v1.verify_builtin_type_failure_v1(
+      tag,
+      pre.focus_root,
+      arguments,
+    ),
     post == exact_state(
       pre,
       mode_halt_error,

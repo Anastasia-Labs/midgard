@@ -336,10 +336,15 @@ fn result_is_constant_v1(
   expected_payload: Data,
 ) -> Bool {
   when result is {
-    ConstantValue(witness) -> and {
-        cek_constant_v1.constant_type_v1(witness) == expected_type,
-        cek_constant_v1.constant_payload_v1(witness) == expected_payload,
+    ConstantValue(witness) -> {
+      let Pair(constant_type, payload) = cek_constant_v1.decode_constant_witness_v1(
+        witness,
+      )
+      and {
+        constant_type == expected_type,
+        payload == expected_payload,
       }
+    }
     SemanticConstantValue { type_cbor, payload, memory } -> {
       let expected_summary = cek_data_v1.semantic_data_summary_v1(
         expected_payload,
@@ -358,11 +363,17 @@ fn result_is_constant_v1(
   }
 }
 
+/// A result presented as the selected witness itself has the selected root;
+/// any other presentation is compared by root. The selected value is an
+/// argument, whose root the caller has already derived.
 fn result_is_selected_v1(
   result: ValueWitnessV1,
   selected: ValueWitnessV1,
 ) -> Bool {
-  value_root_v1(result) == value_root_v1(selected)
+  or {
+    result == selected,
+    value_root_v1(result) == value_root_v1(selected),
+  }
 }
 
 type SemanticConstantPartsV1 {
@@ -374,11 +385,13 @@ type SemanticConstantPartsV1 {
 fn semantic_constant_parts_v1(value: ValueWitnessV1) -> SemanticConstantPartsV1 {
   when value is {
     ConstantValue(witness) -> {
-      let payload = cek_constant_v1.constant_payload_v1(witness)
+      let Pair(constant_type, payload) = cek_constant_v1.decode_constant_witness_v1(
+        witness,
+      )
       SemanticConstantPartsV1 {
-        constant_type: cek_constant_v1.constant_type_v1(witness),
+        constant_type,
         payload: cek_data_v1.semantic_data_summary_v1(payload),
-        memory: cek_constant_v1.constant_memory_size_v1(witness),
+        memory: cek_constant_v1.semantic_memory_size_v1(constant_type, payload),
       }
     }
     SemanticConstantValue { type_cbor, payload, memory } -> {
@@ -2821,9 +2834,11 @@ fn revealed_argument_payload_bytes_v1(arguments: List<ValueWitnessV1>) -> Int {
 /// Verifies the semantic result of one successful, direct-payload builtin
 /// execution. Tags requiring partial cryptographic failure proofs, BLS opaque
 /// values, or streaming large-value witnesses remain deliberately closed.
+/// The caller binds `arguments` to the focus value: the machine step derives
+/// the builtin value root from them and checks it against the pre-state focus
+/// (`verify_builtin_direct_step`, cek-machine-v1.ak:1916-1928).
 pub fn verify_direct_builtin_v1(
   tag: Int,
-  builtin_value_root: ByteArray,
   arguments: List<ValueWitnessV1>,
   result: ValueWitnessV1,
 ) -> Bool {
@@ -2831,14 +2846,6 @@ pub fn verify_direct_builtin_v1(
     revealed_argument_payload_bytes_v1(arguments) + revealed_constant_payload_bytes_v1(
       result,
     ) <= max_direct_builtin_revealed_payload_bytes
-  let Pair(arguments_root, arguments_count) = arguments_root_v1(arguments)
-  expect
-    builtin_value_root == cek_proof_v1.hash_builtin_value_v1(
-      tag,
-      0,
-      arguments_count,
-      arguments_root,
-    )
   if tag >= 0 && tag <= 9 {
     verify_integer_binary_v1(tag, arguments, result)
   } else if tag >= 10 && tag <= 20 {
@@ -2871,21 +2878,14 @@ pub fn verify_direct_builtin_v1(
 /// Verifies a successful builtin against content-addressed semantic constant
 /// nodes. Unsupported semantic operations remain closed until they have a
 /// bounded multi-step proof; callers must never fall back to the direct path.
+/// The caller binds `arguments` to the focus value
+/// (`verify_builtin_semantic_step`, cek-machine-v1.ak:2094-2106).
 pub fn verify_semantic_builtin_v1(
   tag: Int,
-  builtin_value_root: ByteArray,
   arguments: List<ValueWitnessV1>,
   result: ValueWitnessV1,
   witness: SemanticBuiltinWitnessV1,
 ) -> Bool {
-  let Pair(arguments_root, arguments_count) = arguments_root_v1(arguments)
-  expect
-    builtin_value_root == cek_proof_v1.hash_builtin_value_v1(
-      tag,
-      0,
-      arguments_count,
-      arguments_root,
-    )
   if tag == 29 || tag == 30 {
     verify_semantic_pair_v1(tag, arguments, result, witness)
   } else if tag >= 31 && tag <= 35 {
@@ -2902,21 +2902,13 @@ pub fn verify_semantic_builtin_v1(
 /// Verifies the zero-budget semantic failures whose result is determined by
 /// one authenticated top-level node. The witness must contain exactly the
 /// local topology needed to distinguish the failing variant; no whole Data
-/// value is revealed.
+/// value is revealed. The caller binds `arguments` to the focus value
+/// (`verify_builtin_semantic_failure_step`, cek-machine-v1.ak:2170-2181).
 pub fn verify_semantic_builtin_failure_v1(
   tag: Int,
-  builtin_value_root: ByteArray,
   arguments: List<ValueWitnessV1>,
   witness: SemanticBuiltinWitnessV1,
 ) -> Bool {
-  let Pair(arguments_root, arguments_count) = arguments_root_v1(arguments)
-  expect
-    builtin_value_root == cek_proof_v1.hash_builtin_value_v1(
-      tag,
-      0,
-      arguments_count,
-      arguments_root,
-    )
   if tag == 37 {
     constr_data_index_fails_v1(arguments, witness)
   } else {

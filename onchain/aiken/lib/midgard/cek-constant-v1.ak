@@ -415,6 +415,6 @@ pub fn constant_payload_memory_size_v1(
 }
 
 pub fn constant_memory_size_v1(witness: ConstantWitnessV1) -> Int {
-  let constant_type = constant_type_v1(witness)
-  semantic_memory_size_v1(constant_type, constant_payload_v1(witness))
+  let Pair(constant_type, payload) = decode_constant_witness_v1(witness)
+  semantic_memory_size_v1(constant_type, payload)
 }
