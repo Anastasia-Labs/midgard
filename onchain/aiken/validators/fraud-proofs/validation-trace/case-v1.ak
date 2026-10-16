@@ -1,5 +1,6 @@
 use aiken/collection/dict
 use aiken/collection/list
+use aiken/collection/pairs
 use aiken/crypto.{VerificationKeyHash}
 use aiken/math
 use aiken/primitive/bytearray
@@ -25,7 +26,7 @@ use midgard/validation_dispute_v1
 /// The validation case (`midgard/validation_case_v1`), as a mint and a spend
 /// purpose under one script hash. The mint purpose mints the case NFT and the
 /// bond marker at VerifySource and the thread tokens at Defend, and burns a
-/// thread token held by a configured thread script at BurnThreadToken; the
+/// thread token beside the thread expiry withdrawal at BurnThreadToken; the
 /// spend purpose runs Defend, ThreadClose and CaseClose on a case UTxO.
 ///
 /// A case UTxO holds the case NFT, the case's computation-thread token and
@@ -63,31 +64,16 @@ validator main(
           },
         }
       }
-      // One thread token, burned with no case input: its holder is one of the
-      // configured thread scripts, whose spend decides the timing and payee.
-      BurnThreadToken { thread_input_index } -> {
+      // One thread token, burned beside the withdrawal of the configured
+      // thread expiry script, which checks the expiry: the timing, the payee
+      // and that no input sits at this script.
+      BurnThreadToken -> {
         let config = validation_case_config_v1.get_config(
           reference_inputs,
           case_config_policy_id,
         )
-        expect Some(thread_input) = list.at(inputs, thread_input_index)
-        expect [Pair(thread_token_name, -1)] = dict.to_pairs(
-          assets.tokens(mint, policy_id),
-        )
-        expect Script(holder) = thread_input.output.address.payment_credential
-        and {
-          assets.quantity_of(
-            thread_input.output.value,
-            policy_id,
-            thread_token_name,
-          ) == 1,
-          or {
-            holder == config.game_v1,
-            holder == config.boundary_v1,
-            holder == config.timeout_v1,
-            holder == config.award_v1,
-          },
-        }
+        expect [Pair(_, -1)] = dict.to_pairs(assets.tokens(mint, policy_id))
+        pairs.has_key(self.withdrawals, Script(config.thread_expiry_v1))
       }
       _ ->
         list.any(
@@ -433,7 +419,7 @@ validator main(
         }
       }
       VerifySource { .. } -> False
-      BurnThreadToken { .. } -> False
+      BurnThreadToken -> False
     }
   }
 

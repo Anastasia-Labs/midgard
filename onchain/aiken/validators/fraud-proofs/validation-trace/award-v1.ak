@@ -2,7 +2,7 @@ use aiken/builtin
 use aiken/collection/dict
 use aiken/collection/list
 use aiken/collection/pairs
-use aiken/crypto.{VerificationKeyHash}
+use aiken/crypto.{ScriptHash, VerificationKeyHash}
 use cardano/address.{Script}
 use cardano/assets.{PolicyId}
 use cardano/transaction.{
@@ -23,6 +23,7 @@ use midgard/validation_case_thread_v1
 use midgard/validation_case_v1.{LostDefenseReceiptV1}
 use midgard/validation_dispute_v1
 use midgard/validation_resolution_v1
+use midgard/validation_thread_expiry_v1
 
 /// The slashing reason of the directory mint whose redeemer is
 /// `directory_redeemer`. In both directories `SlashOperator` is constructor 4
@@ -61,10 +62,12 @@ fn in_neither_set(
 /// and the policy of the lost-defense receipts a thread close mints. A receipt
 /// stays in the output its thread close made until it is burned: by the
 /// slash of its defender (`SlashOperatorForLostDefense`), or once its
-/// defender is in neither operator set.
+/// defender is in neither operator set. An awarded thread its case can no
+/// longer take is released to the thread expiry script; a receipt never is.
 validator main(
   computation_thread_token_policy_id: PolicyId,
   hub_oracle_script_hash: PolicyId,
+  thread_expiry_script_hash: ScriptHash,
 ) {
   mint(redeemer: ReceiptRedeemerV1, policy_id: PolicyId, tx: Transaction) {
     let Transaction { inputs, reference_inputs, mint, redeemers, .. } = tx
@@ -143,38 +146,62 @@ validator main(
     own_out_ref: OutputReference,
     tx: Transaction,
   ) {
-    when redeemer is {
-      CloseAwardedThread { input_index, case_input_index } -> {
-        expect Some(data) = datum
-        expect step_datum: Datum = data
-        expect Some(state) = step_datum.data
-        and {
-          validation_resolution_v1.winning_resolution_is_well_formed(state),
-          validation_case_thread_v1.closes_into_case(
-            computation_thread_token_policy_id,
-            input_index,
-            case_input_index,
-            own_out_ref,
-            validation_dispute_v1.ChallengerWins,
-            tx,
-          ),
-        }
-      }
-      // The receipt's own token is burned, so the receipt policy's
-      // BurnReceipt runs.
-      SpendReceipt -> {
-        expect Some(Input { output: Output { address, value, .. }, .. }) = transaction.find_input(
-          tx.inputs,
-          own_out_ref,
-        )
-        expect Script(own_policy) = address.payment_credential
-        expect [Pair(name, 1)] = dict.to_pairs(assets.tokens(value, own_policy))
-        assets.quantity_of(tx.mint, own_policy, name) == -1
-      }
+    or {
+      validation_thread_expiry_v1.holder_releases_to_expiry(
+        computation_thread_token_policy_id,
+        thread_expiry_script_hash,
+        own_out_ref,
+        tx,
+      ),
+      award_spend(
+        computation_thread_token_policy_id,
+        datum,
+        redeemer,
+        own_out_ref,
+        tx,
+      ),
     }
   }
 
   else(_) {
     fail
+  }
+}
+
+fn award_spend(
+  computation_thread_token_policy_id: PolicyId,
+  datum: Option<Data>,
+  redeemer: SpendRedeemer,
+  own_out_ref: OutputReference,
+  tx: Transaction,
+) -> Bool {
+  when redeemer is {
+    CloseAwardedThread { input_index, case_input_index } -> {
+      expect Some(data) = datum
+      expect step_datum: Datum = data
+      expect Some(state) = step_datum.data
+      and {
+        validation_resolution_v1.winning_resolution_is_well_formed(state),
+        validation_case_thread_v1.closes_into_case(
+          computation_thread_token_policy_id,
+          input_index,
+          case_input_index,
+          own_out_ref,
+          validation_dispute_v1.ChallengerWins,
+          tx,
+        ),
+      }
+    }
+    // The receipt's own token is burned, so the receipt policy's
+    // BurnReceipt runs.
+    SpendReceipt -> {
+      expect Some(Input { output: Output { address, value, .. }, .. }) = transaction.find_input(
+        tx.inputs,
+        own_out_ref,
+      )
+      expect Script(own_policy) = address.payment_credential
+      expect [Pair(name, 1)] = dict.to_pairs(assets.tokens(value, own_policy))
+      assets.quantity_of(tx.mint, own_policy, name) == -1
+    }
   }
 }

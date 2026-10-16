@@ -61,6 +61,10 @@ const misc_policy: PolicyId =
 const award_hash: PolicyId =
   #"acacacacacacacacacacacacacacacacacacacacacacacacacacacac"
 
+/// The thread expiry script.
+const expiry_hash: ScriptHash =
+  #"aeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeaeae"
+
 /// The case validator: the thread-token policy.
 const case_hash: PolicyId =
   #"adadadadadadadadadadadadadadadadadadadadadadadadadadadad"
@@ -413,13 +417,21 @@ fn directory_slashes(
 
 fn award_burns(redeemer: Data, tx: Transaction) -> Bool {
   expect burn: validation_award_v1.ReceiptRedeemerV1 = redeemer
-  award_validator.main.mint(case_hash, hub_oracle_hash, burn, award_hash, tx)
+  award_validator.main.mint(
+    case_hash,
+    hub_oracle_hash,
+    expiry_hash,
+    burn,
+    award_hash,
+    tx,
+  )
 }
 
 fn award_spends_receipt(tx: Transaction) -> Bool {
   award_validator.main.spend(
     case_hash,
     hub_oracle_hash,
+    expiry_hash,
     Some(receipt_of(ChallengerWins, operator_vkey)),
     SpendReceipt,
     receipt_outref(),
@@ -815,6 +827,7 @@ test receipt_spend_of_an_awarded_thread_is_refused() fail {
   award_validator.main.spend(
     case_hash,
     hub_oracle_hash,
+    expiry_hash,
     Some(thread_datum),
     SpendReceipt,
     receipt_outref(),
@@ -826,6 +839,7 @@ test receipt_closed_as_an_awarded_thread_is_refused() fail {
   award_validator.main.spend(
     case_hash,
     hub_oracle_hash,
+    expiry_hash,
     Some(receipt_of(ChallengerWins, operator_vkey)),
     CloseAwardedThread { input_index: 0, case_input_index: 0 },
     receipt_outref(),

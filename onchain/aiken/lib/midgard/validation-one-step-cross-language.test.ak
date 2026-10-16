@@ -5,15 +5,14 @@ use aiken/cbor
 use aiken/primitive/bytearray
 use midgard/native_tx_field_access_v1.{Certified, Inline, RawUtxo}
 use midgard/validation_case_v1
-use midgard/validation_dispute_v1
 use midgard/validation_machine/canonical_decode as vm_canonical_decode
 use midgard/validation_machine/machine_types as vm_machine_types
 use midgard/validation_machine/witness as vm_witness
 use midgard/validation_merkle_v1
 use midgard/validation_resolution_v1
 
-const dispute_cbor =
-  #"d8799f01d8799f01015820c3126eabfc530130de7dae00ee0a6ebcbd047ae5141903838e8705267b29675b184f5820c886015ba7e97620a47cc7e03ec96b76bcc53e87e22454de009f07836e648df95820b3a525d049ede229da91ac879ef47131b76d382ec2317a1e20ea4c1fc71f86e1d87a8058200000000000000000000000000000000000000000000000000000000000000000ffd8799f010158200d8442b7839e5cb383c7610e2c8598d464b04cbda8189257373bf325c067dd0c184f5820c886015ba7e97620a47cc7e03ec96b76bcc53e87e22454de009f07836e648df95820358f58a84bc9fce36fdcbc47c8e1ce882e1da5c05378e357bc10d58502a1b8cfd87a8058200000000000000000000000000000000000000000000000000000000000000000ff0102582044043d7008debef45fe0a32db9a9574cc8682a20dd650c2fa69c65df7bbff645582048dd7a2f99b7e4223d24472125a4ff92df9ce44bf25aa588b591cbdcc098924a58201229ad6a510206233f5610682453346e4e37eeecf177a98b292ef9214ef9155d011b000001a3185c50001a05265c001a05265c00d87b80ff"
+const thread_cbor =
+  #"d8799fd8799f0040ff01404040184f0102582044043d7008debef45fe0a32db9a9574cc8682a20dd650c2fa69c65df7bbff645582048dd7a2f99b7e4223d24472125a4ff92df9ce44bf25aa588b591cbdcc098924a58201229ad6a510206233f5610682453346e4e37eeecf177a98b292ef9214ef9155d011b000001a3185c50001a05265c001a05265c00d87b80ff"
 
 const boundary_evidence_cbor =
   #"d8799fd8799f015820b121ec457f8ca78cbfca9d506b34ad3bee23f3cc92de6cef531e5279441fdbde58205ea059f3ddb9a90a2bc8aecf85d11bcf574b9a188c0d4b5396acc7693f8928555820d8d3658d01106e2daeee4fb1e2d94e86f5f734587592097018a587fdea2d45f55820efbf53e6fdf61931d07d45ffdfe6b848d44f992f3ee0296b4f1415cc1c890c9dd87a805820ef4d38fa44ac6a13f6ad544def9130ce98bc3750c269e81ece64a4904451126dd879800158200330c6f23ddf4aaea597ddcbb13492908018910ee9cca49801a738c98611ca5a0000d8798058200000000000000000000000000000000000000000000000000000000000000000582046def353dc28d38c9fac5288ee4d15774f91cc728f57dc72f7afeda86c772824ffff"
@@ -45,35 +44,9 @@ const retired_item_evidence_hash =
 const script_discovery_control_cbor =
   #"8f010203000441aa41bb050341cc4106410741dd0881820941ee"
 
-// The TypeScript evidence model still emits the dispute's bisection fields;
-// the boundary reads them from the case thread.
-fn thread_of(
-  dispute: validation_dispute_v1.ValidationDisputeV1,
-) -> validation_case_v1.CaseThreadV1 {
-  validation_case_v1.CaseThreadV1 {
-    version: validation_case_v1.thread_version,
-    case_id: #"",
-    started_at: 0,
-    defender_vkh: #"",
-    challenger_root: #"",
-    defender_root: #"",
-    step_count: dispute.operator_descriptor.step_count,
-    low_index: dispute.low_index,
-    high_index: dispute.high_index,
-    agreed_low_hash: dispute.agreed_low_hash,
-    defender_high_hash: dispute.operator_high_hash,
-    challenger_high_hash: dispute.challenger_high_hash,
-    round: dispute.round,
-    turn_started_at: dispute.turn_started_at,
-    defender_clock_ms: dispute.operator_clock_ms,
-    challenger_clock_ms: dispute.challenger_clock_ms,
-    turn: dispute.turn,
-  }
-}
-
 test typescript_generated_one_step_boundary_is_authenticated() {
-  expect Some(dispute_data) = cbor.deserialise(dispute_cbor)
-  expect dispute: validation_dispute_v1.ValidationDisputeV1 = dispute_data
+  expect Some(thread_data) = cbor.deserialise(thread_cbor)
+  expect thread: validation_case_v1.CaseThreadV1 = thread_data
   expect Some(boundary_evidence_data) = cbor.deserialise(boundary_evidence_cbor)
   expect
       boundary_evidence: validation_resolution_v1.ValidationBoundaryEvidenceV1
@@ -82,7 +55,7 @@ test typescript_generated_one_step_boundary_is_authenticated() {
     bytearray.length(boundary_evidence_cbor) == 293,
     bytearray.length(boundary_evidence_cbor) < 16_384,
     validation_resolution_v1.one_step_boundary_is_authenticated(
-      thread_of(dispute),
+      thread,
       boundary_evidence.pre_state,
     ),
   }

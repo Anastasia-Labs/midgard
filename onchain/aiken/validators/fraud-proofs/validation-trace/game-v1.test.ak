@@ -2,7 +2,6 @@
 //// to anyone (the trace root pins every midpoint), EnterResolution is the
 //// prover's alone, and each move accepts exactly one successor.
 
-use aiken/collection/list
 use aiken/interval
 use cardano/address
 use cardano/assets
@@ -23,6 +22,8 @@ const boundary_hash =
   #"02020202020202020202020202020202020202020202020202020202"
 
 const timeout_hash = #"03030303030303030303030303030303030303030303030303030303"
+
+const expiry_hash = #"04040404040404040404040404040404040404040404040404040404"
 
 const thread_policy =
   #"05050505050505050505050505050505050505050505050505050505"
@@ -82,10 +83,12 @@ fn proof4(
 /// The defender's trace is `a, b, c, d`; the challenger's is `a, b, e, f`.
 fn opened() -> CaseThreadV1 {
   CaseThreadV1 {
+    header: validation_case_v1.ThreadHeaderV1 {
+      started_at: 0,
+      defender_vkh: defender,
+    },
     version: validation_case_v1.thread_version,
     case_id: h_a,
-    started_at: 0,
-    defender_vkh: defender,
     challenger_root: root4(h_a, h_b, h_e, h_f),
     defender_root: root4(h_a, h_b, h_c, h_d),
     step_count: 3,
@@ -220,6 +223,7 @@ fn shaped_move(
     boundary_hash,
     timeout_hash,
     thread_policy,
+    expiry_hash,
     Some(ct.StepDatum { fraud_prover, data: Some(from) }),
     ct.Continue(action),
     own_out_ref(),
@@ -513,6 +517,7 @@ test the_game_has_no_cancel() fail {
     boundary_hash,
     timeout_hash,
     thread_policy,
+    expiry_hash,
     Some(ct.StepDatum { fraud_prover, data: Some(opened()) }),
     ct.Cancel { input_index: 0, computation_thread_mint_redeemer_index: 0 },
     own_out_ref(),
@@ -530,151 +535,161 @@ test the_game_has_no_cancel() fail {
   )
 }
 
-// ## A thread its case can no longer take
+// ## Every move keeps the thread header
 
-const expired_at = validation_dispute_v1.max_dispute_duration_milliseconds + 1
-
-fn own_tag() -> Data {
-  let tag: Data = own_out_ref()
-  tag
+fn with_header(
+  thread: CaseThreadV1,
+  header: validation_case_v1.ThreadHeaderV1,
+) -> Data {
+  game(CaseThreadV1 { ..thread, header })
 }
 
-fn defender_payout(lovelace: Int) -> Output {
-  Output {
-    address: address.from_verification_key(defender),
-    value: assets.from_lovelace(lovelace),
-    datum: InlineDatum(own_tag()),
-    reference_script: None,
+fn other_header() -> validation_case_v1.ThreadHeaderV1 {
+  validation_case_v1.ThreadHeaderV1 {
+    started_at: opened().header.started_at + 1,
+    defender_vkh: third_party,
   }
 }
 
-fn expiry_tx(lower: Int) -> Transaction {
-  Transaction {
-    ..transaction.placeholder,
-    inputs: [
-      Input {
-        output_reference: own_out_ref(),
-        output: thread_output(game_hash, game(opened())),
-      },
-    ],
-    outputs: [defender_payout(thread_lovelace - fee)],
-    mint: assets.from_asset(thread_policy, thread_name, -1),
-    fee,
-    validity_range: interval.after(lower),
-  }
+test a_reveal_operator_keeps_the_header() {
+  move(
+    opened(),
+    reveal_operator(operator_first_proof()),
+    1_100,
+    1_200,
+    [],
+    game_hash,
+    with_header(after_operator_first(), opened().header),
+  )
 }
 
-fn expires(tx: Transaction) -> Bool {
+test a_reveal_challenger_keeps_the_header() {
+  move(
+    after_operator_first(),
+    reveal_challenger(challenger_first_proof()),
+    1_300,
+    1_400,
+    [],
+    game_hash,
+    with_header(
+      validation_case_thread_v1.reveal_challenger_midpoint(
+        after_operator_first(),
+        challenger_first_proof(),
+        1_300,
+        1_400,
+      ),
+      opened().header,
+    ),
+  )
+}
+
+test entering_resolution_keeps_the_header() {
+  move(
+    ready(),
+    enter_resolution(),
+    1_900,
+    2_000,
+    [fraud_prover],
+    boundary_hash,
+    with_header(
+      validation_case_thread_v1.enter_resolution(ready(), 1_900, 2_000),
+      opened().header,
+    ),
+  )
+}
+
+test entering_the_timeout_keeps_the_header() {
+  move(
+    ready(),
+    game_validator.EnterChallengerTimeout { input_index: 0, output_index: 0 },
+    ready_lapsed_at(),
+    ready_lapsed_at() + 1_000,
+    [],
+    timeout_hash,
+    with_header(ready(), opened().header),
+  )
+}
+
+test a_reveal_changing_the_header_is_refused() fail {
+  move(
+    opened(),
+    reveal_operator(operator_first_proof()),
+    1_100,
+    1_200,
+    [],
+    game_hash,
+    with_header(after_operator_first(), other_header()),
+  )
+}
+
+test entering_resolution_changing_the_header_is_refused() fail {
+  move(
+    ready(),
+    enter_resolution(),
+    1_900,
+    2_000,
+    [fraud_prover],
+    boundary_hash,
+    with_header(
+      validation_case_thread_v1.enter_resolution(ready(), 1_900, 2_000),
+      other_header(),
+    ),
+  )
+}
+
+test entering_the_timeout_changing_the_header_is_refused() fail {
+  move(
+    ready(),
+    game_validator.EnterChallengerTimeout { input_index: 0, output_index: 0 },
+    ready_lapsed_at(),
+    ready_lapsed_at() + 1_000,
+    [],
+    timeout_hash,
+    with_header(ready(), other_header()),
+  )
+}
+
+// ## The game releases a thread to the expiry script
+
+fn released(input: Output, withdrawals: Pairs<address.Credential, Int>) -> Bool {
   game_validator.main.spend(
     boundary_hash,
     timeout_hash,
     thread_policy,
+    expiry_hash,
     Some(ct.StepDatum { fraud_prover, data: Some(opened()) }),
-    ct.Continue(game_validator.ExpireThread { input_index: 0 }),
+    ct.Cancel { input_index: 0, computation_thread_mint_redeemer_index: 0 },
     own_out_ref(),
-    tx,
-  )
-}
-
-test a_thread_past_d_case_returns_to_its_defender() {
-  expires(expiry_tx(expired_at))
-}
-
-test a_thread_at_d_case_does_not_expire() fail {
-  expires(expiry_tx(expired_at - 1))
-}
-
-test an_expiry_without_the_burn_is_refused() fail {
-  expires(Transaction { ..expiry_tx(expired_at), mint: assets.zero })
-}
-
-test an_expiry_paying_the_defender_less_is_refused() fail {
-  expires(
     Transaction {
-      ..expiry_tx(expired_at),
-      outputs: [defender_payout(thread_lovelace - fee - 1)],
+      ..transaction.placeholder,
+      inputs: [Input { output_reference: own_out_ref(), output: input }],
+      withdrawals,
     },
   )
 }
 
-test an_expiry_paying_another_key_is_refused() fail {
-  expires(
-    Transaction {
-      ..expiry_tx(expired_at),
-      outputs: [
-        Output {
-          ..defender_payout(thread_lovelace - fee),
-          address: address.from_verification_key(fraud_prover),
-        },
-      ],
-    },
+test the_game_releases_its_thread_to_the_expiry_withdrawal() {
+  released(
+    thread_output(game_hash, game(opened())),
+    [Pair(address.Script(expiry_hash), 0)],
   )
 }
 
-test an_expiry_paying_the_fee_beside_another_input_is_refused() fail {
-  let tx = expiry_tx(expired_at)
-  expires(
-    Transaction {
-      ..tx,
-      inputs: [
-        Input {
-          output_reference: OutputReference {
-            transaction_id: h_b,
-            output_index: 0,
-          },
-          output: Output {
-            address: address.from_verification_key(third_party),
-            value: assets.from_lovelace(2_000_000),
-            datum: transaction.NoDatum,
-            reference_script: None,
-          },
-        },
-        ..tx.inputs
-      ],
-    },
+test the_game_does_not_release_its_thread_without_the_expiry_withdrawal() fail {
+  released(thread_output(game_hash, game(opened())), [])
+}
+
+test the_game_does_not_release_its_thread_to_another_withdrawal() fail {
+  released(
+    thread_output(game_hash, game(opened())),
+    [Pair(address.Script(timeout_hash), 0)],
   )
 }
 
-fn beside(tx: Transaction, credential_owner: Output) -> Transaction {
-  Transaction {
-    ..tx,
-    inputs: list.concat(
-      tx.inputs,
-      [
-        Input {
-          output_reference: OutputReference {
-            transaction_id: h_c,
-            output_index: 0,
-          },
-          output: credential_owner,
-        },
-      ],
-    ),
-    outputs: [defender_payout(thread_lovelace)],
-  }
-}
-
-fn held_at(credential: address.Address) -> Output {
-  Output {
-    address: credential,
-    value: assets.from_lovelace(2_000_000),
-    datum: transaction.NoDatum,
-    reference_script: None,
-  }
-}
-
-/// Beside a wallet input the thread pays its whole value to the defender.
-test an_expiry_beside_a_wallet_input_returns_the_whole_thread() {
-  expires(
-    beside(
-      expiry_tx(expired_at),
-      held_at(address.from_verification_key(third_party)),
-    ),
-  )
-}
-
-test an_expiry_beside_a_case_input_is_refused() fail {
-  expires(
-    beside(expiry_tx(expired_at), held_at(address.from_script(thread_policy))),
+test the_game_does_not_release_a_utxo_without_a_thread_token() fail {
+  let thread = thread_output(game_hash, game(opened()))
+  released(
+    Output { ..thread, value: assets.from_lovelace(thread_lovelace) },
+    [Pair(address.Script(expiry_hash), 0)],
   )
 }

@@ -23,6 +23,8 @@ pub type CaseConfigV1 {
   award_v1: ScriptHash,
   timeout_v1: ScriptHash,
   dispute_bond_v1: ScriptHash,
+  /// The withdraw-zero thread expiry script (`thread-expiry-v1`).
+  thread_expiry_v1: ScriptHash,
 }
 
 /// The inline datum of the reference input holding the NFT `policy_id.name`.
