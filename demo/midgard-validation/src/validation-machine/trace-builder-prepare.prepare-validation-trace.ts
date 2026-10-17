@@ -90,6 +90,10 @@ import {
   projectMidgardMalformedNativeWitnessEnvelopeV1,
 } from "../ledger-tx.js";
 import { decodeMidgardRedeemers } from "../midgard-redeemers.js";
+import {
+  initialInputSetMergeControl,
+  inputSetMergeStep,
+} from "../phase-a.input-set-merge.js";
 import { validatePhaseASingle } from "../phase-a.js";
 import { runPhaseBValidationWithPatch } from "../phase-b.js";
 import { UNSET_REASON_COORDINATE } from "../rejection-reason.js";
@@ -519,16 +523,11 @@ export const prepareValidationTrace = (
       MIDGARD_ADDRESS_WITNESSES_FIELD_INDEX,
     );
     const redeemerWitnessesCollection = machineFieldTrace(8);
-    const collections = {
-      spend: spendInputsCollection,
-      reference: referenceInputsCollection,
-    };
-    const inputSetScanItems = orderMidgardInputResolutionSchedule({
+    const resolutionItems = orderMidgardInputResolutionSchedule({
       spend: spendInputsCollection.items,
       reference: referenceInputsCollection.items,
       keyOf: (item) => item.bytes,
-    }).map((node) => ({ ...node, collection: collections[node.sourceKind] }));
-    const resolutionItems = inputSetScanItems.map(({ sourceKind, item }) => ({
+    }).map(({ sourceKind, item }) => ({
       sourceKind,
       key: item.bytes,
     }));
@@ -605,7 +604,10 @@ export const prepareValidationTrace = (
       readonly referenceCount: number;
       readonly spendSeen: number;
       readonly referenceSeen: number;
-      readonly previousKey: Buffer;
+      readonly lastKey: Uint8Array;
+      readonly lastField: number;
+      readonly lastItem: number;
+      readonly cachedOtherHead: Uint8Array;
       readonly resolutionScheduleHash: Buffer;
     }): Buffer =>
       encodeCbor([
@@ -617,7 +619,10 @@ export const prepareValidationTrace = (
         BigInt(control.referenceCount),
         BigInt(control.spendSeen),
         BigInt(control.referenceSeen),
-        control.previousKey,
+        Buffer.from(control.lastKey),
+        BigInt(control.lastField),
+        BigInt(control.lastItem),
+        Buffer.from(control.cachedOtherHead),
         control.resolutionScheduleHash,
       ]);
     const decodeAddressWitnessItem = (
@@ -1370,24 +1375,23 @@ export const prepareValidationTrace = (
     }
 
     if (!stoppedAtRejection) {
-      let spendCount = spendInputsCollection.items.length === 0 ? 0 : -1;
-      let referenceCount =
-        referenceInputsCollection.items.length === 0 ? 0 : -1;
-      let spendSeen = 0;
-      let referenceSeen = 0;
-      let previousKey = Buffer.alloc(0);
+      const mergeFields = [
+        spendInputsCollection.items.map((item) => item.bytes),
+        referenceInputsCollection.items.map((item) => item.bytes),
+      ] as const;
+      const mergeCollections = [
+        spendInputsCollection,
+        referenceInputsCollection,
+      ] as const;
+      let mergeControl = initialInputSetMergeControl(mergeFields);
       let inputScheduleHash = emptyMidgardInputResolutionSchedule();
       const currentInputSetsWitness = (): Buffer =>
         inputSetsWitnessCbor({
-          spendCount,
-          referenceCount,
-          spendSeen,
-          referenceSeen,
-          previousKey,
+          ...mergeControl,
           resolutionScheduleHash: inputScheduleHash,
         });
 
-      if (spendCount === 0) {
+      if (mergeControl.spendCount === 0) {
         pushWitness("inputSets", currentInputSetsWitness());
         if (
           terminalPhase !== "inputSets" ||
@@ -1402,19 +1406,19 @@ export const prepareValidationTrace = (
         stopReason = "EmptyInputs";
         stoppedAtRejection = true;
       } else {
-        for (let index = inputSetScanItems.length - 1; index >= 0; index -= 1) {
-          const scan = inputSetScanItems[index]!;
-          const key = scan.item.bytes;
+        // The descending merge of fields 0 and 1 (`phase-a.input-set-merge.ts`):
+        // the control fixes the item each step opens, so the auxiliary is the
+        // opened field's carriage alone.
+        for (;;) {
+          const step = inputSetMergeStep(mergeControl, mergeFields);
+          const fieldIndex =
+            mergeCollections[step.opened.fieldIndex]!.fieldIndex;
           pushWitness("inputSets", currentInputSetsWitness(), {
-            kind: "transactionFieldChunk",
-            // `inputSets` is one of the two phases that read more than one slot
-            // — fields 0 and 1, alternating — so the index comes off the scan's
-            // own collection rather than a literal.
-            fieldIndex: scan.collection.fieldIndex,
-            itemIndex: scan.item.itemIndex,
-            fieldPreimage: fieldPreimage(scan.collection.fieldIndex),
+            kind: "transactionFieldItem",
+            fieldIndex,
+            fieldPreimage: fieldPreimage(fieldIndex),
           });
-          if (previousKey.length > 0 && key.equals(previousKey)) {
+          if (step.kind === "duplicate") {
             if (
               terminalPhase !== "inputSets" ||
               rejectionCode !== RejectCodes.DuplicateInputInTx
@@ -1436,40 +1440,18 @@ export const prepareValidationTrace = (
             stoppedAtRejection = true;
             break;
           }
-          if (previousKey.length > 0 && Buffer.compare(key, previousKey) >= 0) {
-            return yield* Effect.fail(
-              new Error("bounded input scan is not strictly descending"),
-            );
+          mergeControl = step.next;
+          if (step.kind === "consume") {
+            inputScheduleHash = prependMidgardInputResolutionSchedule({
+              sourceKind:
+                step.consumed.fieldIndex === 0 ? "spend" : "reference",
+              key: Buffer.from(step.key),
+              nextHash: inputScheduleHash,
+            });
+            if (step.complete) break;
           }
-          if (scan.sourceKind === "spend") {
-            if (spendCount === -1) {
-              spendCount = scan.collection.items.length;
-            }
-            spendSeen += 1;
-          } else {
-            if (referenceCount === -1) {
-              referenceCount = scan.collection.items.length;
-            }
-            referenceSeen += 1;
-          }
-          previousKey = key;
-          inputScheduleHash = prependMidgardInputResolutionSchedule({
-            sourceKind: scan.sourceKind,
-            key,
-            nextHash: inputScheduleHash,
-          });
         }
         if (!stoppedAtRejection) {
-          if (spendCount <= 0 || referenceCount < 0) {
-            return yield* Effect.fail(
-              new Error("bounded input scan did not reveal both input counts"),
-            );
-          }
-          if (spendSeen !== spendCount || referenceSeen !== referenceCount) {
-            return yield* Effect.fail(
-              new Error("bounded input scan did not reveal every input"),
-            );
-          }
           if (!inputScheduleHash.equals(resolutionScheduleHash)) {
             return yield* Effect.fail(
               new Error(

@@ -8,6 +8,7 @@ import type {
   MidgardLedgerTx,
   MidgardLedgerVKeyWitness,
 } from "./ledger-tx/types.js";
+import { runInputSetMerge } from "./phase-a.input-set-merge.js";
 import type { RejectSubject } from "./reject-subject.js";
 import {
   PhaseALocalContext,
@@ -15,7 +16,7 @@ import {
   RejectCodes,
   RejectedTx,
 } from "./types.js";
-import { midgardOutRefToCborHex } from "./validation-candidate.js";
+import { midgardOutRefToCbor } from "./validation-candidate.js";
 
 export const reject = (
   txId: Buffer,
@@ -154,110 +155,46 @@ export const hashHexes = (hashes: readonly Buffer[]): readonly string[] =>
     ? EMPTY_HASH_HEXES
     : hashes.map((hash) => hash.toString("hex"));
 
-/** Ordinals of the earliest-completed duplicate pair, first before second. */
-const firstDuplicate = (
-  values: readonly string[],
-): { readonly first: number; readonly second: number } | undefined => {
-  const seen = new Map<string, number>();
-  for (let index = 0; index < values.length; index += 1) {
-    const first = seen.get(values[index]!);
-    if (first !== undefined) {
-      return { first, second: index };
-    }
-    seen.set(values[index]!, index);
-  }
-  return undefined;
-};
-
-const duplicateInputSubject = (
-  firstField: bigint,
-  first: number,
-  secondField: bigint,
-  second: number,
-): RejectSubject => ({
-  arm: "DuplicateInput",
-  first: { fieldIndex: firstField, itemIndex: BigInt(first) },
-  second: { fieldIndex: secondField, itemIndex: BigInt(second) },
-});
-
-const outRefIdentity = (
-  outRef: MidgardLedgerTx["spendInputs"][number],
-): string => `${outRef.txId.toString("hex")}#${outRef.index.toString()}`;
-
+/**
+ * EmptyInputs, else the DuplicateInput the descending merge reaches first
+ * (`runInputSetMerge`), with the item scanned earlier as `first`.
+ */
 export const validateInputSets = (
   tx: Pick<MidgardLedgerTx, "txId" | "spendInputs" | "referenceInputs">,
 ): RejectedTx | null => {
   if (tx.spendInputs.length === 0) {
     return reject(tx.txId, RejectCodes.EmptyInputs, null, "inputSets");
   }
-
-  if (tx.spendInputs.length === 1 && tx.referenceInputs.length === 0) {
+  const duplicate = runInputSetMerge([
+    tx.spendInputs.map(midgardOutRefToCbor),
+    tx.referenceInputs.map(midgardOutRefToCbor),
+  ]);
+  if (duplicate === null) {
     return null;
   }
-
-  const spendOutRefIdentities = tx.spendInputs.map(outRefIdentity);
-  if (spendOutRefIdentities.length > 1) {
-    const duplicateSpend = firstDuplicate(spendOutRefIdentities);
-    if (duplicateSpend !== undefined) {
-      return reject(
-        tx.txId,
-        RejectCodes.DuplicateInputInTx,
-        midgardOutRefToCborHex(tx.spendInputs[duplicateSpend.first]!),
-        "inputSets",
-        duplicateInputSubject(
-          0n,
-          duplicateSpend.first,
-          0n,
-          duplicateSpend.second,
-        ),
-      );
-    }
-  }
-
-  if (tx.referenceInputs.length === 0) {
-    return null;
-  }
-
-  const spent = new Map(
-    spendOutRefIdentities.map((identity, index) => [identity, index]),
+  const { first, second } = duplicate;
+  const keyHex = Buffer.from(duplicate.key).toString("hex");
+  return reject(
+    tx.txId,
+    RejectCodes.DuplicateInputInTx,
+    first.fieldIndex !== second.fieldIndex
+      ? `outref appears in both spend and reference inputs ${keyHex}`
+      : first.fieldIndex === 1
+        ? `duplicate reference input ${keyHex}`
+        : keyHex,
+    "inputSets",
+    {
+      arm: "DuplicateInput",
+      first: {
+        fieldIndex: BigInt(first.fieldIndex),
+        itemIndex: BigInt(first.itemIndex),
+      },
+      second: {
+        fieldIndex: BigInt(second.fieldIndex),
+        itemIndex: BigInt(second.itemIndex),
+      },
+    },
   );
-  const referenceOutRefs = tx.referenceInputs.map(outRefIdentity);
-  if (referenceOutRefs.length > 1) {
-    const duplicateReference = firstDuplicate(referenceOutRefs);
-    if (duplicateReference !== undefined) {
-      return reject(
-        tx.txId,
-        RejectCodes.DuplicateInputInTx,
-        `duplicate reference input ${midgardOutRefToCborHex(
-          tx.referenceInputs[duplicateReference.first]!,
-        )}`,
-        "inputSets",
-        duplicateInputSubject(
-          1n,
-          duplicateReference.first,
-          1n,
-          duplicateReference.second,
-        ),
-      );
-    }
-  }
-
-  for (let index = 0; index < referenceOutRefs.length; index += 1) {
-    const spendIndex = spent.get(referenceOutRefs[index]!);
-    if (spendIndex !== undefined) {
-      return reject(
-        tx.txId,
-        RejectCodes.DuplicateInputInTx,
-        `outref appears in both spend and reference inputs ${midgardOutRefToCborHex(
-          tx.referenceInputs[index]!,
-        )}`,
-        "inputSets",
-        duplicateInputSubject(0n, spendIndex, 1n, index),
-      );
-    }
-  }
-
-  return null;
 };
 
 export const validateValidityInterval = (

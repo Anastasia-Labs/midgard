@@ -899,11 +899,11 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
       trace.witnesses
         .filter((witness) => witness.phase === "inputSets")
         .map((witness) =>
-          witness.auxiliary?.kind === "transactionFieldChunk"
+          witness.auxiliary?.kind === "transactionFieldItem"
             ? witness.auxiliary.fieldIndex
             : null,
         ),
-    ).toEqual([1, 0]);
+    ).toEqual([0, 1, 0]);
     expect(
       trace.witnesses.some(
         (witness) =>
@@ -1767,7 +1767,7 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
       },
       rejectionCode: RejectCodes.DuplicateInputInTx,
       expectedInputSteps: 2,
-      expectedInputFieldIndexes: [1, 0],
+      expectedInputFieldIndexes: [0, 1],
     },
     {
       name: "malformed validity interval",
@@ -1816,7 +1816,7 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
       expect(inputWitnesses).toHaveLength(expectedInputSteps);
       expect(
         inputWitnesses.map((witness) =>
-          witness.auxiliary?.kind === "transactionFieldChunk"
+          witness.auxiliary?.kind === "transactionFieldItem"
             ? witness.auxiliary.fieldIndex
             : null,
         ),

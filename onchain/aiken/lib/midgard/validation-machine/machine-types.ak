@@ -514,7 +514,15 @@ pub type InputSetsControlV1 {
   reference_count: Int,
   spend_seen: Int,
   reference_seen: Int,
-  previous_key: ByteArray,
+  /// The descending merge of fields 0 and 1 (`input_sets.ak`). `last_key` is
+  /// the item the scan consumed last and `(last_field, last_item)` its
+  /// position; `#""`, -1, -1 before the first. `cached_other_head` is the next
+  /// item of the field the step does not open, when it has been read and not
+  /// consumed; `#""` otherwise.
+  last_key: ByteArray,
+  last_field: Int,
+  last_item: Int,
+  cached_other_head: ByteArray,
   resolution_schedule_hash: ByteArray,
 }
 

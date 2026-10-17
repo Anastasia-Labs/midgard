@@ -113,26 +113,18 @@ pub fn encode_input_sets_scan_witness(
   reference_count: Int,
   spend_seen: Int,
   reference_seen: Int,
-  previous_key: ByteArray,
+  last_key: ByteArray,
+  last_field: Int,
+  last_item: Int,
+  cached_other_head: ByteArray,
   resolution_schedule_hash: ByteArray,
 ) -> ByteArray {
   expect spend_count >= -1
   expect reference_count >= -1
   expect spend_seen >= 0
   expect reference_seen >= 0
-  // `previous_key` is the §5.3 spend-/reference-input item this scan last read
-  // (`verify_input_sets_item` takes it straight off the item it decoded), so its
-  // one admissible width is the item width the field grammar declares. Named off
-  // `native_tx_field_access_v1` rather than restated as a literal: the retired
-  // minimal-index spelling was 36 bytes, this domain assertion still said 36
-  // after #586 moved the item to the fixed 3-byte output index, and a scan that
-  // reads one input could then not encode its own successor witness at all.
-  expect or {
-      bytearray.length(previous_key) == 0,
-      bytearray.length(previous_key) == native_tx_field_access_v1.spend_input_item_bytes,
-    }
   expect bytearray.length(resolution_schedule_hash) == 32
-  encode_definite_array_header(10)
+  encode_definite_array_header(13)
     |> bytearray.concat(encode_definite_bytes(compact_cbor))
     |> bytearray.concat(encode_definite_bytes(witness_set_compact_cbor))
     |> bytearray.concat(encode_definite_bytes(field_preimage_lengths_cbor))
@@ -141,7 +133,10 @@ pub fn encode_input_sets_scan_witness(
     |> bytearray.concat(cbor.serialise(reference_count))
     |> bytearray.concat(cbor.serialise(spend_seen))
     |> bytearray.concat(cbor.serialise(reference_seen))
-    |> bytearray.concat(encode_definite_bytes(previous_key))
+    |> bytearray.concat(encode_definite_bytes(last_key))
+    |> bytearray.concat(cbor.serialise(last_field))
+    |> bytearray.concat(cbor.serialise(last_item))
+    |> bytearray.concat(encode_definite_bytes(cached_other_head))
     |> bytearray.concat(encode_definite_bytes(resolution_schedule_hash))
 }
 
@@ -760,7 +755,8 @@ pub fn input_sets_control_from_witness(
         compact_cbor_data, witness_set_compact_cbor_data,
         field_preimage_lengths_cbor_data, context_cbor_data, spend_count_data,
         reference_count_data, spend_seen_data, reference_seen_data,
-        previous_key_data, resolution_schedule_hash_data,
+        last_key_data, last_field_data, last_item_data, cached_other_head_data,
+        resolution_schedule_hash_data,
       ]
     = builtin.un_list_data(data)
   InputSetsControlV1 {
@@ -774,7 +770,10 @@ pub fn input_sets_control_from_witness(
     reference_count: builtin.un_i_data(reference_count_data),
     spend_seen: builtin.un_i_data(spend_seen_data),
     reference_seen: builtin.un_i_data(reference_seen_data),
-    previous_key: builtin.un_b_data(previous_key_data),
+    last_key: builtin.un_b_data(last_key_data),
+    last_field: builtin.un_i_data(last_field_data),
+    last_item: builtin.un_i_data(last_item_data),
+    cached_other_head: builtin.un_b_data(cached_other_head_data),
     resolution_schedule_hash: builtin.un_b_data(resolution_schedule_hash_data),
   }
 }
@@ -798,12 +797,10 @@ pub fn input_sets_control_is_bound(
       control.field_preimage_lengths_cbor,
     ) == pre.transaction_commitment,
     validation_trace_v1.hash_validation_context(control.context_cbor) == pre.validation_context_hash,
-    control.spend_count >= -1,
+    // The lower bounds on the counts and cursors and the schedule hash width
+    // are `encode_input_sets_scan_witness`'s, which the last conjunct runs.
     control.spend_count <= max_tx_size_derived_collection_item_count,
-    control.reference_count >= -1,
     control.reference_count <= max_tx_size_derived_collection_item_count,
-    control.spend_seen >= 0,
-    control.reference_seen >= 0,
     if spend_is_empty {
       control.spend_count == 0 && control.spend_seen == 0
     } else if control.spend_count == -1 {
@@ -818,17 +815,7 @@ pub fn input_sets_control_is_bound(
     } else {
       control.reference_count > 0 && control.reference_seen <= control.reference_count
     },
-    if seen == 0 {
-      and {
-        control.previous_key == #"",
-        control.resolution_schedule_hash == empty_resolution_schedule_hash(),
-      }
-    } else {
-      // The same §5.3 item width `encode_input_sets_scan_witness` admits, and
-      // named off the same constant so the two cannot drift apart again.
-      bytearray.length(control.previous_key) == native_tx_field_access_v1.spend_input_item_bytes
-    },
-    bytearray.length(control.resolution_schedule_hash) == 32,
+    seen > 0 || control.resolution_schedule_hash == empty_resolution_schedule_hash(),
     witness.work_witness_cbor == encode_input_sets_scan_witness(
       control.compact_cbor,
       control.witness_set_compact_cbor,
@@ -838,7 +825,10 @@ pub fn input_sets_control_is_bound(
       control.reference_count,
       control.spend_seen,
       control.reference_seen,
-      control.previous_key,
+      control.last_key,
+      control.last_field,
+      control.last_item,
+      control.cached_other_head,
       control.resolution_schedule_hash,
     ),
   }

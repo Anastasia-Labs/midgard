@@ -47,7 +47,8 @@ const funded = makeOutput(FUNDED_OUTPUT_LOVELACE);
 
 describe("phase A rejection subjects", () => {
   it("names both positions of a duplicated spend input", async () => {
-    // Spend inputs are sorted, so a repeat sits next to its first copy.
+    // Spend inputs ascend, so a repeat sits next to its other copy. InputSets
+    // merges from the tail, so the later position is scanned first.
     const [a, b] = [outRefFromByte(0x31), outRefFromByte(0x32)];
     const rejection = await phaseARejection(
       makeNativeTx({ spendInputs: [a, b, b] }),
@@ -55,8 +56,8 @@ describe("phase A rejection subjects", () => {
     );
     expect(rejection.subject).toStrictEqual({
       arm: "DuplicateInput",
-      first: { fieldIndex: 0n, itemIndex: 1n },
-      second: { fieldIndex: 0n, itemIndex: 2n },
+      first: { fieldIndex: 0n, itemIndex: 2n },
+      second: { fieldIndex: 0n, itemIndex: 1n },
     });
   });
 
@@ -68,8 +69,8 @@ describe("phase A rejection subjects", () => {
     );
     expect(rejection.subject).toStrictEqual({
       arm: "DuplicateInput",
-      first: { fieldIndex: 1n, itemIndex: 1n },
-      second: { fieldIndex: 1n, itemIndex: 2n },
+      first: { fieldIndex: 1n, itemIndex: 2n },
+      second: { fieldIndex: 1n, itemIndex: 1n },
     });
   });
 

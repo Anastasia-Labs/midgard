@@ -544,7 +544,10 @@ pub fn input_sets_scan_witness(
   reference_count: Int,
   spend_seen: Int,
   reference_seen: Int,
-  previous_key: ByteArray,
+  last_key: ByteArray,
+  last_field: Int,
+  last_item: Int,
+  cached_other_head: ByteArray,
   schedule_hash: ByteArray,
 ) -> ByteArray {
   let proof_source = submitted_source(tx)
@@ -557,7 +560,10 @@ pub fn input_sets_scan_witness(
     reference_count,
     spend_seen,
     reference_seen,
-    previous_key,
+    last_key,
+    last_field,
+    last_item,
+    cached_other_head,
     schedule_hash,
   )
 }

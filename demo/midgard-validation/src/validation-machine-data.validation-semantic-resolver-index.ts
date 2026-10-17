@@ -44,7 +44,7 @@ export const validationSemanticResolverIndex = (
       break;
     case "inputSets":
       if (auxiliary === null) return 0;
-      if (auxiliary.kind === "transactionFieldChunk") return 1;
+      if (auxiliary.kind === "transactionFieldItem") return 1;
       break;
     case "signatures":
       if (auxiliary === null) {
