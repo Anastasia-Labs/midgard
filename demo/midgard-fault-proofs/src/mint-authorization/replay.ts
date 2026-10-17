@@ -73,11 +73,19 @@ export const prepareMintAuthorizationReplay = async ({
   const referenceItems = decodeMidgardFieldPreimage(
     tx.body.referenceInputsPreimageCbor,
   );
-  // A missing reference belongs to the reference-input absence family.
-  if (referenceItems.some((key) => !ledger.outputs.has(key.toString("hex"))))
+  const spendItems = decodeMidgardFieldPreimage(
+    tx.body.spendInputsPreimageCbor,
+  );
+  // A missing reference belongs to the reference-input absence family, and a
+  // missing spent input to the non-existent-input family.
+  if (
+    [...referenceItems, ...spendItems].some(
+      (key) => !ledger.outputs.has(key.toString("hex")),
+    )
+  )
     return [];
   const nativeScriptBytesByHashHex: Record<string, string> = {};
-  const references = referenceItems.map((key) => {
+  const resolve = (key: Buffer) => {
     const output = ledger.outputs.get(key.toString("hex"))!;
     const entry = ledger.root.entries.find((entry) => entry.key.equals(key));
     if (entry === undefined)
@@ -105,14 +113,16 @@ export const prepareMintAuthorizationReplay = async ({
       referenceScriptLanguage: BigInt(descriptor.referenceScriptLanguage),
       referenceScriptHashHex: descriptor.referenceScriptHash.toString("hex"),
     };
-  });
+  };
+  const references = referenceItems.map(resolve);
+  const spends = spendItems.map(resolve);
   const findings = scanMintAuthorization({
     mintPreimageCbor: tx.body.mintPreimageCbor,
     scriptTxWitsPreimageCbor: tx.witnessSet.scriptTxWitsPreimageCbor,
     addrTxWitsPreimageCbor: tx.witnessSet.addrTxWitsPreimageCbor,
     validityIntervalStart: tx.body.validityIntervalStart,
     validityIntervalEnd: tx.body.validityIntervalEnd,
-    resolvedReferenceScripts: references,
+    resolvedOutputScripts: [...references, ...spends],
     nativeScriptBytesByHashHex,
   });
   const proof = await keyValuePhasProof(
@@ -144,7 +154,9 @@ export const prepareMintAuthorizationReplay = async ({
     scriptWitnessItemCbors: items(tx.witnessSet.scriptTxWitsPreimageCbor),
     addrWitnessItemCbors: items(tx.witnessSet.addrTxWitsPreimageCbor),
     referenceInputItemCbors: items(tx.body.referenceInputsPreimageCbor),
+    spendInputItemCbors: items(tx.body.spendInputsPreimageCbor),
     references,
+    spends,
     referenceLedger: ledger.root,
   }));
 };

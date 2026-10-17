@@ -2,13 +2,13 @@
  * `mint-authorization` prover-side scan.
  *
  * Given one operator-ACCEPTED committed native transaction's field
- * preimages (and the reference-script anchors of its resolved reference
- * inputs), finds every mint policy the family can convict on:
+ * preimages (and the reference-script anchors of its resolved reference and
+ * spent inputs), finds every mint policy the family can convict on:
  *
  * - **direction A (script absent)**: the policy id hashes to no script in
  *   the transaction's machine-consulted source surface — the field-6 inline
  *   script witnesses plus the reference scripts of the resolved field-1
- *   reference inputs;
+ *   reference inputs and field-0 spent inputs;
  * - **direction B (script unsatisfied)**: the policy's script is present
  *   and is a native script whose machine-twin evaluation over the
  *   committed field-7 signer set and the committed validity interval yields
@@ -47,11 +47,11 @@ const proverError = (message: string): Error =>
   new Error(`${MINT_AUTHORIZATION_CATEGORY_LABEL} prover: ${message}`);
 
 /**
- * The reference-script anchor of one resolved reference input, in field-1
- * order. `referenceScriptLanguage === -1n` means the resolved output
- * carries no reference script (`referenceScriptHashHex` is then ignored).
+ * The reference-script anchor of one resolved reference or spent input.
+ * `referenceScriptLanguage === -1n` means the resolved output carries no
+ * reference script (`referenceScriptHashHex` is then ignored).
  */
-export type MintAuthorizationResolvedReferenceScript = {
+export type MintAuthorizationResolvedOutputScript = {
   readonly referenceScriptLanguage: bigint;
   readonly referenceScriptHashHex: string;
 };
@@ -86,7 +86,7 @@ export const scanMintAuthorization = ({
   addrTxWitsPreimageCbor,
   validityIntervalStart,
   validityIntervalEnd,
-  resolvedReferenceScripts,
+  resolvedOutputScripts,
   nativeScriptBytesByHashHex = {},
 }: {
   readonly mintPreimageCbor: Uint8Array;
@@ -94,11 +94,14 @@ export const scanMintAuthorization = ({
   readonly addrTxWitsPreimageCbor: Uint8Array;
   readonly validityIntervalStart: bigint;
   readonly validityIntervalEnd: bigint;
-  /** One anchor per committed field-1 reference input, in field order. */
-  readonly resolvedReferenceScripts: readonly MintAuthorizationResolvedReferenceScript[];
+  /**
+   * One anchor per committed field-1 reference input and field-0 spent
+   * input; only the set of script hashes they carry is consulted.
+   */
+  readonly resolvedOutputScripts: readonly MintAuthorizationResolvedOutputScript[];
   /**
    * Optional side table for direction B when the policy's native script is
-   * sourced through a reference input rather than inline: canonical native
+   * sourced through a resolved output rather than inline: canonical native
    * payload bytes (hex) keyed by script hash (hex). Entries are verified by
    * re-hash before use, so a wrong table cannot fabricate a finding.
    */
@@ -119,7 +122,7 @@ export const scanMintAuthorization = ({
     inlineByHash.set(hashMidgardVersionedScript(script), script);
   }
   const referencedHashes = new Set<string>(
-    resolvedReferenceScripts
+    resolvedOutputScripts
       .filter((anchor) => anchor.referenceScriptLanguage !== -1n)
       .map((anchor) => anchor.referenceScriptHashHex.toLowerCase()),
   );

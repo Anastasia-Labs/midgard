@@ -115,7 +115,7 @@ fn script_sources_stage_zero_control_is_bound(
     )
     and {
       pending.source_index == control.source_count,
-      pending.source_total_count == control.source_total_count,
+      pending.inline_source_count == control.inline_source_count,
     }
   }
   and {
@@ -141,8 +141,8 @@ fn script_sources_stage_zero_control_is_bound(
       control.source_count,
       control.source_peaks,
     ),
-    control.source_total_count >= control.source_count,
-    control.source_total_count <= max_tx_size_derived_collection_item_count,
+    control.inline_source_count >= control.source_count,
+    control.inline_source_count <= max_tx_size_derived_collection_item_count,
     control.redeemer_count == 0,
     control.redeemer_peaks == [],
     control.redeemer_total_count == 0,
@@ -410,13 +410,13 @@ pub fn verify_script_sources_stage_zero_finish_semantics_v1(
   let source_scan_is_complete = if script_commitment == empty_script_commitment {
     and {
       control.source_count == 0,
-      control.source_total_count == 0,
+      control.inline_source_count == 0,
       control.source_peaks == [],
     }
   } else {
     and {
-      control.source_total_count > 0,
-      control.source_count == control.source_total_count,
+      control.inline_source_count > 0,
+      control.source_count == control.inline_source_count,
     }
   }
   and {
@@ -449,7 +449,7 @@ pub fn verify_script_sources_stage_zero_begin_semantics_v1(
       ],
     )
   let source_count = raw_frame.item_int_v1(frame, 10)
-  let source_total_count = raw_frame.item_int_v1(frame, 25)
+  let inline_source_count = raw_frame.item_int_v1(frame, 25)
   let witness_set = decode_native_tx_witness_set_compact(
     frame.witness_set_compact_cbor,
   )
@@ -463,10 +463,10 @@ pub fn verify_script_sources_stage_zero_begin_semantics_v1(
   )
   let item_count = field_door.machine_field_item_count(item)
   let item_length = field_door.machine_field_item_length(item)
-  let active_total_count = if source_total_count == 0 {
+  let active_total_count = if inline_source_count == 0 {
     item_count
   } else {
-    source_total_count
+    inline_source_count
   }
   let header = native_script_scan_v1.versioned_script_header_v1(
     field_door.machine_field_item_chunk(item, 0),
@@ -502,7 +502,7 @@ pub fn verify_script_sources_stage_zero_begin_semantics_v1(
           InlineSourceHashControlV1 {
             version: 1,
             source_index: source_count,
-            source_total_count: active_total_count,
+            inline_source_count: active_total_count,
             language_tag: item_header.language_tag,
             payload_offset: item_header.payload_offset,
             payload_length: item_header.payload_length,
@@ -513,7 +513,7 @@ pub fn verify_script_sources_stage_zero_begin_semantics_v1(
             ),
           },
         )
-        let old_suffix = cbor.serialise(source_total_count)
+        let old_suffix = cbor.serialise(inline_source_count)
           |> bytearray.concat(#"00")
           |> bytearray.concat(raw_frame.empty_observer_scan_cbor)
           |> bytearray.concat(raw_frame.empty_mint_fold_cbor)
@@ -552,7 +552,7 @@ pub fn verify_script_sources_stage_zero_hash_block_semantics_v1(
   let pending_cbor = raw_frame.item_bytes_v1(frame, 30)
   let pending = inline_source_hash_control_from_cbor(pending_cbor)
   expect pending.source_index == raw_frame.item_int_v1(frame, 10)
-  expect pending.source_total_count == raw_frame.item_int_v1(frame, 25)
+  expect pending.inline_source_count == raw_frame.item_int_v1(frame, 25)
   when inline_source_hash_block_v1(pending, chunk_proof, next_chunk_proof) is {
     None -> False
     Some(block) -> {
@@ -762,7 +762,7 @@ pub fn script_sources_stage_zero(
       common_control_is_initial,
       auxiliary == NoAuxiliaryWitness,
       control.source_count == 0,
-      control.source_total_count == 0,
+      control.inline_source_count == 0,
       control.source_peaks == [],
       script_sources_control_successor_is_exact(
         pre,
@@ -771,8 +771,8 @@ pub fn script_sources_stage_zero(
       ),
     }
   } else if and {
-    control.source_total_count > 0,
-    control.source_count == control.source_total_count,
+    control.inline_source_count > 0,
+    control.source_count == control.inline_source_count,
   } {
     and {
       common_control_is_initial,
@@ -795,10 +795,10 @@ pub fn script_sources_stage_zero(
     )
     let item_count = field_door.machine_field_item_count(item)
     let item_length = field_door.machine_field_item_length(item)
-    let active_total_count = if control.source_total_count == 0 {
+    let active_total_count = if control.inline_source_count == 0 {
       item_count
     } else {
-      control.source_total_count
+      control.inline_source_count
     }
     let header = native_script_scan_v1.versioned_script_header_v1(
       field_door.machine_field_item_chunk(item, 0),
@@ -826,12 +826,12 @@ pub fn script_sources_stage_zero(
             witness,
             ScriptSourcesControlV1 {
               ..control,
-              source_total_count: active_total_count,
+              inline_source_count: active_total_count,
               pending_source_cbor: encode_inline_source_hash_control_v1(
                 InlineSourceHashControlV1 {
                   version: 1,
                   source_index: control.source_count,
-                  source_total_count: active_total_count,
+                  inline_source_count: active_total_count,
                   language_tag: item_header.language_tag,
                   payload_offset: item_header.payload_offset,
                   payload_length: item_header.payload_length,
@@ -860,7 +860,7 @@ fn script_sources_stage_one_raw_common_control_is_initial(
   output_cursor_data: Data,
   output_count_data: Data,
   receive_scan_data: Data,
-  source_total_count_data: Data,
+  inline_source_count_data: Data,
 ) -> Bool {
   expect
       [
@@ -870,7 +870,7 @@ fn script_sources_stage_one_raw_common_control_is_initial(
       ]
     = builtin.un_list_data(receive_scan_data)
   and {
-    builtin.un_i_data(source_total_count_data) == builtin.un_i_data(
+    builtin.un_i_data(inline_source_count_data) == builtin.un_i_data(
       source_count_data,
     ),
     builtin.un_list_data(resolved_item_peaks_data) == [],
@@ -898,7 +898,7 @@ pub fn verify_script_sources_stage_one_finish_raw_semantics_v1(
         _, _, _, _, _, _, _, _, resolved_item_peaks_data, _, source_count_data,
         _, redeemer_count_data, redeemer_peaks_data, replay_cursor_data, _, _,
         spend_index_data, purpose_count_data, _, output_cursor_data,
-        output_count_data, _, _, receive_scan_data, source_total_count_data,
+        output_count_data, _, _, receive_scan_data, inline_source_count_data,
         redeemer_total_count_data, _, _, resolution_schedule_hash_data,
       ]
     = frame.items
@@ -936,7 +936,7 @@ pub fn verify_script_sources_stage_one_finish_raw_semantics_v1(
       output_cursor_data,
       output_count_data,
       receive_scan_data,
-      source_total_count_data,
+      inline_source_count_data,
     ),
     bytearray.length(redeemer_commitment) == 32,
     bytearray.length(builtin.un_b_data(resolution_schedule_hash_data)) == 32,
@@ -964,8 +964,8 @@ pub fn verify_script_sources_stage_one_begin_raw_semantics(
         _, _, _, _, _, _, _, _, resolved_item_peaks_data, _, source_count_data,
         _, redeemer_count_data, _, replay_cursor_data, _, _, spend_index_data,
         purpose_count_data, _, output_cursor_data, output_count_data, _, _,
-        receive_scan_data, source_total_count_data, redeemer_total_count_data, _,
-        _, resolution_schedule_hash_data,
+        receive_scan_data, inline_source_count_data, redeemer_total_count_data,
+        _, _, resolution_schedule_hash_data,
       ]
     = frame.items
   expect
@@ -978,7 +978,7 @@ pub fn verify_script_sources_stage_one_begin_raw_semantics(
       output_cursor_data,
       output_count_data,
       receive_scan_data,
-      source_total_count_data,
+      inline_source_count_data,
     )
   expect
     bytearray.length(builtin.un_b_data(resolution_schedule_hash_data)) == 32
@@ -1048,7 +1048,7 @@ pub fn script_sources_stage_one(
   let redeemer_commitment = witness_set.redeemer_tx_wits_hash
   let empty_redeemer_commitment = native_tx_field_access_v1.empty_field_commitment
   let common_control_is_initial = and {
-    control.source_total_count == control.source_count,
+    control.inline_source_count == control.source_count,
     control.resolved_item_peaks == [],
     control.replay_cursor == 0,
     control.spend_index == 0,

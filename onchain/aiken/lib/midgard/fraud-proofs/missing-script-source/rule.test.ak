@@ -493,7 +493,7 @@ fn trace_authenticated_purpose(
     output_cursor: 0,
     output_total_count: 0,
     receive_scan: vm_witness.empty_receive_purpose_scan_control(),
-    source_total_count: source.count,
+    inline_source_count: source.count,
     redeemer_total_count: 0,
     observer_scan: vm_witness.empty_observer_purpose_scan_control(),
     discovery,

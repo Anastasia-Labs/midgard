@@ -52,14 +52,10 @@ use midgard/validation_trace_v1
 
 fn replay_source_frontier(
   control: ScriptSourcesControlV1,
-  source_kind: Int,
   key: ByteArray,
   descriptor: ledger_output_commitment_v1.LedgerOutputCommitmentV1,
 ) -> validation_merkle_v1.BuiltFrontier {
-  if and {
-    source_kind == 1,
-    descriptor.reference_script_language != -1,
-  } {
+  if descriptor.reference_script_language != -1 {
     validation_merkle_v1.BuiltFrontier {
       count: control.source_count + 1,
       peaks: validation_merkle_v1.append_leaf(
@@ -132,12 +128,7 @@ pub fn script_sources_replay_item(
 ) -> Bool {
   let descriptor = ledger_output_commitment_v1.decode(value)
   if resolution_schedule_node_hash(source_kind, key, next_schedule_hash) == control.replay_remaining_schedule_hash {
-    let next_sources = replay_source_frontier(
-      control,
-      source_kind,
-      key,
-      descriptor,
-    )
+    let next_sources = replay_source_frontier(control, key, descriptor)
     let next_purposes = replay_purpose_frontier(
       control,
       source_kind,
@@ -189,7 +180,7 @@ pub fn script_sources_replay_item(
       control.output_peaks,
       control.output_total_count,
       control.receive_scan,
-      next_sources.count,
+      control.inline_source_count,
       control.redeemer_total_count,
       control.observer_scan,
       control.mint_fold,
@@ -241,7 +232,7 @@ pub fn script_sources_stage_three(
       control.output_peaks,
       control.output_total_count,
       control.receive_scan,
-      control.source_total_count,
+      control.inline_source_count,
       control.redeemer_total_count,
       control.observer_scan,
       control.mint_fold,

@@ -247,7 +247,7 @@ fn stage_ten_authentication(
     output_peaks: [],
     output_total_count: 0,
     receive_scan: vm_witness.empty_receive_purpose_scan_control(),
-    source_total_count: 1,
+    inline_source_count: 1,
     redeemer_total_count: 0,
     observer_scan: vm_witness.empty_observer_purpose_scan_control(),
     discovery,

@@ -66,7 +66,7 @@ pub fn verify_script_sources_stage_three_finish_semantics_v1(
     control.output_peaks,
     control.output_total_count,
     control.receive_scan,
-    control.source_total_count,
+    control.inline_source_count,
     control.redeemer_total_count,
     control.observer_scan,
     control.mint_fold,

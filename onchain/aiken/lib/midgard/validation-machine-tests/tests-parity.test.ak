@@ -79,7 +79,7 @@ test stage_differential_zero_begin_routes_agree() {
   let pending = vm_machine_types.InlineSourceHashControlV1 {
     version: 1,
     source_index: 0,
-    source_total_count: 1,
+    inline_source_count: 1,
     language_tag: 3,
     payload_offset: bytearray.length(item_cbor) - bytearray.length(payload),
     payload_length: bytearray.length(payload),
@@ -100,7 +100,7 @@ test stage_differential_zero_begin_routes_agree() {
     tx,
     vm_machine_types.ScriptSourcesControlV1 {
       ..control,
-      source_total_count: 1,
+      inline_source_count: 1,
       pending_source_cbor: vm_witness.encode_inline_source_hash_control_v1(
         pending,
       ),
@@ -113,11 +113,11 @@ test stage_differential_zero_begin_routes_agree() {
     tx,
     vm_machine_types.ScriptSourcesControlV1 {
       ..control,
-      source_total_count: 2,
+      inline_source_count: 2,
       pending_source_cbor: vm_witness.encode_inline_source_hash_control_v1(
         vm_machine_types.InlineSourceHashControlV1 {
           ..pending,
-          source_total_count: 2,
+          inline_source_count: 2,
         },
       ),
     },

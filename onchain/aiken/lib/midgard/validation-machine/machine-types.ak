@@ -600,7 +600,7 @@ pub type ScriptSourcesControlV1 {
   output_peaks: List<validation_merkle_v1.FrontierPeak>,
   output_total_count: Int,
   receive_scan: ReceivePurposeScanControlV1,
-  source_total_count: Int,
+  inline_source_count: Int,
   redeemer_total_count: Int,
   observer_scan: ObserverPurposeScanControlV1,
   discovery: ScriptDiscoveryControlV1,
@@ -646,7 +646,7 @@ pub type ScriptDiscoveryControlV1 {
 pub type InlineSourceHashControlV1 {
   version: Int,
   source_index: Int,
-  source_total_count: Int,
+  inline_source_count: Int,
   language_tag: Int,
   payload_offset: Int,
   payload_length: Int,

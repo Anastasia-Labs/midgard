@@ -27,7 +27,7 @@ use midgard/validation_trace_v1
 pub fn stage_zero_script_sources_control(
   tx: MidgardTransaction,
   source_frontier: validation_merkle_v1.BuiltFrontier,
-  source_total_count: Int,
+  inline_source_count: Int,
   pending_source_cbor: ByteArray,
 ) -> vm_machine_types.ScriptSourcesControlV1 {
   let proof_source = submitted_source(tx)
@@ -61,7 +61,7 @@ pub fn stage_zero_script_sources_control(
     output_peaks: validation_merkle_v1.empty_frontier(),
     output_total_count: 0,
     receive_scan: vm_witness.empty_receive_purpose_scan_control(),
-    source_total_count,
+    inline_source_count,
     redeemer_total_count: 0,
     observer_scan: vm_witness.empty_observer_purpose_scan_control(),
     discovery: vm_witness.empty_script_discovery_control(),
@@ -105,7 +105,7 @@ pub fn stage_zero_script_sources_work_witness(
       control.output_peaks,
       control.output_total_count,
       control.receive_scan,
-      control.source_total_count,
+      control.inline_source_count,
       control.redeemer_total_count,
       control.observer_scan,
       control.mint_fold,
@@ -162,7 +162,7 @@ pub fn stage_zero_hash_block_checks_binding(wrong_commitment: Bool) -> Bool {
   let pending = vm_machine_types.InlineSourceHashControlV1 {
     version: 1,
     source_index: 0,
-    source_total_count: 1,
+    inline_source_count: 1,
     language_tag: 3,
     payload_offset: bytearray.length(item_cbor) - bytearray.length(payload),
     payload_length: bytearray.length(payload),
@@ -260,7 +260,7 @@ pub fn crossing_inline_source_hash_fixture() -> Pair<
   let pending = vm_machine_types.InlineSourceHashControlV1 {
     version: 1,
     source_index: 0,
-    source_total_count: 1,
+    inline_source_count: 1,
     language_tag: 3,
     payload_offset: bytearray.length(item_cbor) - bytearray.length(payload),
     payload_length: bytearray.length(payload),

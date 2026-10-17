@@ -64,6 +64,7 @@ fn witness(
     script_total_length: 10,
     item_commitment: h32,
     source_count: sources.count,
+    inline_source_count: sources.count,
     source_peaks: sources.peaks,
     purpose_count: purposes.count,
     purpose_peaks: purposes.peaks,
@@ -97,6 +98,7 @@ fn scan_without_alternates(
     rule.ReverseScanV1 { ..initial, witness: with_sources },
     rule.SourceOpeningV1 {
       source_index: 0,
+      source_key: #"",
       language_tag: 3,
       script_hash: h28b,
       total_length: 10,
@@ -220,7 +222,7 @@ fn authenticate_exact_witness(
     output_peaks: [],
     output_total_count: 0,
     receive_scan: vm_witness.empty_receive_purpose_scan_control(),
-    source_total_count: 1,
+    inline_source_count: 1,
     redeemer_total_count: 0,
     observer_scan: vm_witness.empty_observer_purpose_scan_control(),
     discovery,
@@ -428,7 +430,7 @@ test reverse_checkpoint_encoding_golden_vector() {
       used: False,
       checkpoint_hash: h32,
     },
-  ) == #"d8799fd8799fd8799fd8799f0100005820000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f40d87a80ff582033333333333333333333333333333333333333333333333333333333333333330101ff5820333333333333333333333333333333333333333333333333333333333333333303581c111111111111111111111111111111111111111111111111111111110a58203333333333333333333333333333333333333333333333333333333333333333029fd8799f0158203333333333333333333333333333333333333333333333333333333333333333ffff019fd8799f0058203333333333333333333333333333333333333333333333333333333333333333ffffff0100d87a80d8798058203333333333333333333333333333333333333333333333333333333333333333ff"
+  ) == #"d8799fd8799fd8799fd8799f0100005820000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f40d87a80ff582033333333333333333333333333333333333333333333333333333333333333330101ff5820333333333333333333333333333333333333333333333333333333333333333303581c111111111111111111111111111111111111111111111111111111110a5820333333333333333333333333333333333333333333333333333333333333333302029fd8799f0158203333333333333333333333333333333333333333333333333333333333333333ffff019fd8799f0058203333333333333333333333333333333333333333333333333333333333333333ffffff0100d87a80d8798058203333333333333333333333333333333333333333333333333333333333333333ff"
 }
 
 test alternate_source_membership_substitution_refuses() fail {
@@ -437,6 +439,7 @@ test alternate_source_membership_substitution_refuses() fail {
     state,
     rule.SourceOpeningV1 {
       source_index: 0,
+      source_key: #"",
       language_tag: 3,
       script_hash: h28b,
       total_length: 10,
@@ -578,7 +581,7 @@ fn authenticate_seam(seam: Seam) -> rule.AuthenticatedWitnessV1 {
     output_peaks: [],
     output_total_count: 0,
     receive_scan: vm_witness.empty_receive_purpose_scan_control(),
-    source_total_count: seam.source_count,
+    inline_source_count: seam.source_count,
     redeemer_total_count: 0,
     observer_scan: vm_witness.empty_observer_purpose_scan_control(),
     discovery,
@@ -818,6 +821,7 @@ fn scan_with_alternate(
     rule.ReverseScanV1 { ..initial, witness: with_sources },
     rule.SourceOpeningV1 {
       source_index: 0,
+      source_key: #"",
       language_tag: 3,
       script_hash: alternate_hash,
       total_length: 10,
@@ -834,6 +838,7 @@ test alternate_walk_cannot_overrun_the_coordinate() fail {
     complete,
     rule.SourceOpeningV1 {
       source_index: 1,
+      source_key: #"",
       language_tag: 3,
       script_hash: h28b,
       total_length: 10,
@@ -894,6 +899,205 @@ test checkpoint_binds_alternate_source() {
     h28c,
     [],
   ).checkpoint_hash
+}
+
+// ---------------------------------------------------------------------------
+// Resolved-output reference sources precede the inline witnesses
+// ---------------------------------------------------------------------------
+
+fn reference_key(index: Int) -> ByteArray {
+  when index is {
+    0 ->
+      #"8258204444444444444444444444444444444444444444444444444444444444444444190000"
+    1 ->
+      #"8258204444444444444444444444444444444444444444444444444444444444444444190001"
+    _ -> fail @"test layout supports two reference sources"
+  }
+}
+
+/// The frontier of a transaction whose inline witnesses are `inline_hashes`
+/// and whose resolved outputs carry `reference_hashes`, in canonical out-ref
+/// order: inline leaves first, then reference leaves.
+fn layout_leaves(
+  inline_hashes: List<ByteArray>,
+  reference_hashes: List<ByteArray>,
+) -> List<ByteArray> {
+  list.concat(
+    inline_hashes
+      |> list.indexed_map(
+          fn(index, hash) {
+            script_proof_v1.inline_source_leaf_hash(index, 3, hash, 10, h32)
+          },
+        ),
+    reference_hashes
+      |> list.indexed_map(
+          fn(index, hash) {
+            script_proof_v1.reference_source_leaf_hash(
+              reference_key(index),
+              3,
+              hash,
+              10,
+              h32,
+            )
+          },
+        ),
+  )
+}
+
+fn layout_witness(
+  direction: Int,
+  inline_hashes: List<ByteArray>,
+  reference_hashes: List<ByteArray>,
+  purpose_hashes: List<ByteArray>,
+) -> rule.ReverseScanV1 {
+  let sources = validation_merkle_v1.build_frontier(
+    layout_leaves(inline_hashes, reference_hashes),
+  )
+  let purposes = validation_merkle_v1.build_frontier(
+    purpose_hashes
+      |> list.indexed_map(fn(index, hash) { purpose_leaf(index % 4, 0, hash) }),
+  )
+  rule.initial_reverse_scan_v1(
+    rule.AuthenticatedWitnessV1 {
+      ..witness(direction, [h32], []),
+      source_count: sources.count,
+      inline_source_count: list.length(inline_hashes),
+      source_peaks: sources.peaks,
+      purpose_count: purposes.count,
+      purpose_peaks: purposes.peaks,
+    },
+  )
+}
+
+/// The full reverse scan for the accused inline witness 1 (`h28a`): every
+/// reference source in canonical order, then inline witness 0, then the
+/// purposes.
+fn scan_layout(
+  direction: Int,
+  inline_hashes: List<ByteArray>,
+  reference_hashes: List<ByteArray>,
+  purpose_hashes: List<ByteArray>,
+) -> rule.ReverseScanV1 {
+  let leaves = layout_leaves(inline_hashes, reference_hashes)
+  let inline_count = list.length(inline_hashes)
+  let reference_openings = reference_hashes
+    |> list.indexed_map(
+        fn(index, hash) {
+          rule.SourceOpeningV1 {
+            source_index: index,
+            source_key: reference_key(index),
+            language_tag: 3,
+            script_hash: hash,
+            total_length: 10,
+            item_commitment: h32,
+            siblings: proof(leaves, inline_count + index),
+          }
+        },
+      )
+  let inline_openings = inline_hashes
+    |> list.take(1)
+    |> list.indexed_map(
+        fn(index, hash) {
+          rule.SourceOpeningV1 {
+            source_index: list.length(reference_hashes) + index,
+            source_key: #"",
+            language_tag: 3,
+            script_hash: hash,
+            total_length: 10,
+            item_commitment: h32,
+            siblings: proof(leaves, index),
+          }
+        },
+      )
+  let walked = list.foldl(
+    list.concat(reference_openings, inline_openings),
+    layout_witness(direction, inline_hashes, reference_hashes, purpose_hashes),
+    fn(opening, state) { rule.authenticate_earlier_source_v1(state, opening) },
+  )
+  let purpose_leaves = purpose_hashes
+    |> list.indexed_map(fn(index, hash) { purpose_leaf(index % 4, 0, hash) })
+  scan_hashes(walked, purpose_hashes, purpose_leaves, 0)
+}
+
+/// An inline witness repeating a resolved output's reference script is
+/// unused even though a purpose selects that hash, so the rejection naming it
+/// stands.
+test reference_duplicate_rejection_stands() {
+  let state = scan_layout(1, [h28b, h28a], [h28a], [h28a])
+  let decision = rule.decision_v1(state)
+  and {
+    state.shadowed,
+    !state.used,
+    decision.unused,
+    !rule.terminal_contradiction_v1(decision),
+  }
+}
+
+test later_reference_duplicate_rejection_stands() {
+  let state = scan_layout(1, [h28b, h28a], [h28c, h28a], [h28a])
+  let decision = rule.decision_v1(state)
+  and {
+    state.shadowed,
+    decision.unused,
+    !rule.terminal_contradiction_v1(decision),
+  }
+}
+
+test acceptance_of_reference_duplicate_convicts() {
+  rule.terminal_contradiction_v1(
+    rule.decision_v1(scan_layout(0, [h28b, h28a], [h28a], [h28a])),
+  )
+}
+
+test distinct_reference_sources_leave_witness_used() {
+  let state = scan_layout(0, [h28b, h28a], [h28c], [h28a])
+  and {
+    !state.shadowed,
+    state.used,
+    !rule.terminal_contradiction_v1(rule.decision_v1(state)),
+  }
+}
+
+test rejection_of_witness_used_past_reference_sources_convicts() {
+  rule.terminal_contradiction_v1(
+    rule.decision_v1(scan_layout(1, [h28b, h28a], [h28c, h28b], [h28a])),
+  )
+}
+
+/// Lookup opens the reference sources before inline witness 0.
+test inline_opening_before_reference_sources_refuses() fail {
+  let leaves = layout_leaves([h28b, h28a], [h28c])
+  expect _next = rule.authenticate_earlier_source_v1(
+    layout_witness(0, [h28b, h28a], [h28c], [h28a]),
+    rule.SourceOpeningV1 {
+      source_index: 0,
+      source_key: #"",
+      language_tag: 3,
+      script_hash: h28b,
+      total_length: 10,
+      item_commitment: h32,
+      siblings: proof(leaves, 0),
+    },
+  )
+  True
+}
+
+test reverse_scan_cannot_complete_without_reference_sources() fail {
+  let leaves = layout_leaves([h28b, h28a], [h28a])
+  let state = rule.authenticate_earlier_source_v1(
+    layout_witness(1, [h28b, h28a], [h28a], [h28a]),
+    rule.SourceOpeningV1 {
+      source_index: 0,
+      source_key: reference_key(0),
+      language_tag: 3,
+      script_hash: h28a,
+      total_length: 10,
+      item_commitment: h32,
+      siblings: proof(leaves, 2),
+    },
+  )
+  expect _decision = rule.decision_v1(state)
+  True
 }
 
 // ---------------------------------------------------------------------------
@@ -1005,6 +1209,7 @@ test maximum_purpose_batch_at_consensus_bounded_frontier() {
       script_total_length: 10,
       item_commitment: h32,
       source_count: 1,
+      inline_source_count: 1,
       source_peaks: [
         validation_merkle_v1.FrontierPeak { height: 0, hash: inline_leaf(0) },
       ],
@@ -1058,6 +1263,7 @@ test maximum_alternate_batch_at_consensus_bounded_frontier() {
       script_total_length: 10,
       item_commitment: h32,
       source_count: count,
+      inline_source_count: count,
       source_peaks: [
         validation_merkle_v1.FrontierPeak {
           height: 11,
@@ -1081,6 +1287,7 @@ test maximum_alternate_batch_at_consensus_bounded_frontier() {
         state,
         rule.SourceOpeningV1 {
           source_index: index,
+          source_key: #"",
           language_tag: 3,
           script_hash: h28a,
           total_length: 1,
@@ -1093,6 +1300,69 @@ test maximum_alternate_batch_at_consensus_bounded_frontier() {
   and {
     walked.alternate_cursor == rule.maximum_scan_batch,
     walked.shadowed,
+    !rule.alternate_sources_complete_v1(walked),
+  }
+}
+
+/// The same full batch over reference sources: one inline witness, the
+/// accused, followed by 2,047 reference leaves, the lowest 31 distinct
+/// descriptors.
+test maximum_reference_batch_at_consensus_bounded_frontier() {
+  let reference_leaf = script_proof_v1.reference_source_leaf_hash(
+    reference_key(0),
+    3,
+    h28b,
+    1,
+    h32,
+  )
+  let levels = tree_levels([inline_leaf(0), ..repeat(reference_leaf, 31)])
+  let count = 2048
+  let initial = rule.initial_reverse_scan_v1(
+    rule.AuthenticatedWitnessV1 {
+      bound: rule.bind_witness_v1(subject(0), h32, 1, 0),
+      prior_ledger_root: h32,
+      language_tag: 3,
+      script_hash: h28a,
+      script_total_length: 10,
+      item_commitment: h32,
+      source_count: count,
+      inline_source_count: 1,
+      source_peaks: [
+        validation_merkle_v1.FrontierPeak {
+          height: 11,
+          hash: fold_left(tree_root(levels), 6),
+        },
+      ],
+      purpose_count: 1,
+      purpose_peaks: [
+        validation_merkle_v1.FrontierPeak {
+          height: 0,
+          hash: purpose_leaf(0, 0, h28b),
+        },
+      ],
+    },
+  )
+  let walked = list.foldl(
+    count_up(0, rule.maximum_scan_batch),
+    initial,
+    fn(index, state) {
+      rule.authenticate_earlier_source_v1(
+        state,
+        rule.SourceOpeningV1 {
+          source_index: index,
+          source_key: reference_key(0),
+          language_tag: 3,
+          script_hash: h28b,
+          total_length: 1,
+          item_commitment: h32,
+          siblings: list.concat(level_proof(levels, index + 1), repeat(h32, 6)),
+        },
+      )
+    },
+  )
+  and {
+    walked.alternate_cursor == rule.maximum_scan_batch,
+    !walked.shadowed,
     !rule.alternate_sources_complete_v1(walked),
   }
 }
@@ -1110,6 +1380,7 @@ fn golden_authenticated(direction: Int) -> rule.AuthenticatedWitnessV1 {
     script_total_length: 10,
     item_commitment: h32,
     source_count: 2,
+    inline_source_count: 2,
     source_peaks: [validation_merkle_v1.FrontierPeak { height: 1, hash: h32 }],
     purpose_count: 1,
     purpose_peaks: [validation_merkle_v1.FrontierPeak { height: 0, hash: h32 }],
@@ -1121,18 +1392,18 @@ test bound_witness_golden_vector() {
 }
 
 test authenticated_accepted_golden_vector() {
-  cbor.serialise(golden_authenticated(0)) == #"d8799fd8799fd8799f0100005820000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f40d87a80ff582033333333333333333333333333333333333333333333333333333333333333330101ff5820333333333333333333333333333333333333333333333333333333333333333303581c111111111111111111111111111111111111111111111111111111110a58203333333333333333333333333333333333333333333333333333333333333333029fd8799f0158203333333333333333333333333333333333333333333333333333333333333333ffff019fd8799f0058203333333333333333333333333333333333333333333333333333333333333333ffffff"
+  cbor.serialise(golden_authenticated(0)) == #"d8799fd8799fd8799f0100005820000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f40d87a80ff582033333333333333333333333333333333333333333333333333333333333333330101ff5820333333333333333333333333333333333333333333333333333333333333333303581c111111111111111111111111111111111111111111111111111111110a5820333333333333333333333333333333333333333333333333333333333333333302029fd8799f0158203333333333333333333333333333333333333333333333333333333333333333ffff019fd8799f0058203333333333333333333333333333333333333333333333333333333333333333ffffff"
 }
 
 test authenticated_forced_golden_vector() {
-  cbor.serialise(golden_authenticated(1)) == #"d8799fd8799fd8799f0101015820000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f4101d8799fd9051a9f01ffffff582033333333333333333333333333333333333333333333333333333333333333330101ff5820333333333333333333333333333333333333333333333333333333333333333303581c111111111111111111111111111111111111111111111111111111110a58203333333333333333333333333333333333333333333333333333333333333333029fd8799f0158203333333333333333333333333333333333333333333333333333333333333333ffff019fd8799f0058203333333333333333333333333333333333333333333333333333333333333333ffffff"
+  cbor.serialise(golden_authenticated(1)) == #"d8799fd8799fd8799f0101015820000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f4101d8799fd9051a9f01ffffff582033333333333333333333333333333333333333333333333333333333333333330101ff5820333333333333333333333333333333333333333333333333333333333333333303581c111111111111111111111111111111111111111111111111111111110a5820333333333333333333333333333333333333333333333333333333333333333302029fd8799f0158203333333333333333333333333333333333333333333333333333333333333333ffff019fd8799f0058203333333333333333333333333333333333333333333333333333333333333333ffffff"
 }
 
 /// Also pins the domain-separated checkpoint seed across both languages.
 test initial_reverse_scan_golden_vector() {
   rule.encode_reverse_scan_v1(
     rule.initial_reverse_scan_v1(golden_authenticated(0)),
-  ) == #"d8799fd8799fd8799fd8799f0100005820000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f40d87a80ff582033333333333333333333333333333333333333333333333333333333333333330101ff5820333333333333333333333333333333333333333333333333333333333333333303581c111111111111111111111111111111111111111111111111111111110a58203333333333333333333333333333333333333333333333333333333333333333029fd8799f0158203333333333333333333333333333333333333333333333333333333333333333ffff019fd8799f0058203333333333333333333333333333333333333333333333333333333333333333ffffff0000d87980d8798058200f7f6c7b0a0b8b3507c96310eb9a38807ead1a0832623262ed24aebe8aa7499cff"
+  ) == #"d8799fd8799fd8799fd8799f0100005820000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f40d87a80ff582033333333333333333333333333333333333333333333333333333333333333330101ff5820333333333333333333333333333333333333333333333333333333333333333303581c111111111111111111111111111111111111111111111111111111110a5820333333333333333333333333333333333333333333333333333333333333333302029fd8799f0158203333333333333333333333333333333333333333333333333333333333333333ffff019fd8799f0058203333333333333333333333333333333333333333333333333333333333333333ffffff0000d87980d8798058200f7f6c7b0a0b8b3507c96310eb9a38807ead1a0832623262ed24aebe8aa7499cff"
 }
 
 test decision_golden_vector() {

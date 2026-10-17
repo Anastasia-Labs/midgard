@@ -2263,7 +2263,7 @@ fn raw_envelope_control() -> vm_machine_types.ScriptSourcesControlV1 {
     output_peaks: [],
     output_total_count: 0,
     receive_scan: vm_witness.empty_receive_purpose_scan_control(),
-    source_total_count: 0,
+    inline_source_count: 0,
     redeemer_total_count: 3,
     observer_scan: vm_witness.empty_observer_purpose_scan_control(),
     discovery: vm_witness.empty_script_discovery_control(),

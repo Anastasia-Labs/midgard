@@ -7,7 +7,11 @@ import {
   deriveMidgardNativeTxWitnessSetCompact,
 } from "@al-ft/midgard-core";
 import { aikenSerialisedPlutusDataCborPreservingMapOrder } from "@al-ft/midgard-core/plutus-data-cbor";
-import { MintAuthorizationClaimEvidence } from "@al-ft/midgard-sdk";
+import {
+  MintAuthorizationClaimEvidence,
+  MintAuthorizationStep04Datum,
+  type MintAuthorizationStep04State,
+} from "@al-ft/midgard-sdk";
 import { MIDGARD_FIELD_INDEX } from "@al-ft/midgard-sdk";
 import { type LucidEvolution, type UTxO } from "@lucid-evolution/lucid";
 import { Data } from "@lucid-evolution/lucid";
@@ -18,17 +22,23 @@ import {
   resolveFaultProofFieldPreimageCertificate,
 } from "../field-opening.js";
 import type { StateQueueMutationLeaseCoordinator } from "../remove-fraudulent-block.js";
-import { type ResolvedProverSigner } from "../runtime.js";
+import {
+  fetchUtxoByOutRef,
+  parseOutRef,
+  type ResolvedProverSigner,
+} from "../runtime.js";
 import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts.js";
 import type { CompleteCanonicalReplayContext } from "../workflow/complete-replay.js";
 import { type FraudProofWorkflowDeploymentBinding } from "../workflow/deployment-manifest-binding.js";
 import { type FieldCarriageRequirement } from "../workflow/field-carriage-prerequisite.js";
+import type { JournalJsonObject } from "../workflow/journal.js";
 import { createStructuredDataPreimageRequirement } from "../workflow/raw-datum-preimage.js";
 import { createRawDatumPreimageRequirement } from "../workflow/raw-datum-preimage-prerequisite.js";
 import { admitMintAuthorizationWorkflowArtifact } from "./artifact.js";
 import type { MintAuthorizationContracts } from "./contracts.js";
 import { mintAuthorizationEvaluationPreimage } from "./evaluate.js";
 import { buildMintAuthorizationStep02Evidence } from "./evidence.js";
+import { requireMintAuthorizationStepState } from "./submit-common.js";
 
 export type MintAuthorizationWorkflowReferenceScripts = Readonly<{
   steps: readonly [UTxO, UTxO, UTxO, UTxO, UTxO, UTxO, UTxO];
@@ -63,11 +73,89 @@ export const witnessSet = (admitted: Prepared) => {
   };
 };
 
+/**
+ * The step-04 action names the input field its thread scans: the refined
+ * `scanFieldIndex` copied from the thread's state, field 1 then field 0.
+ */
+export const MINT_AUTHORIZATION_STEP_04_SCAN_FIELD = "scanFieldIndex";
+
+export const mintAuthorizationStep04ScanField = (
+  input: Readonly<Record<string, unknown>>,
+) => {
+  const value = input[MINT_AUTHORIZATION_STEP_04_SCAN_FIELD];
+  if (
+    value !== MIDGARD_FIELD_INDEX.referenceInputs &&
+    value !== MIDGARD_FIELD_INDEX.spendInputs
+  )
+    throw new Error("mint authorization: step-04 action omitted its field");
+  return value;
+};
+
+/** Reads the input field a step-04 thread is scanning from its own state. */
+export const readMintAuthorizationStep04ScanField = async ({
+  lucid,
+  signer,
+  threadOutRef,
+}: {
+  readonly lucid: LucidEvolution;
+  readonly signer: ResolvedProverSigner;
+  readonly threadOutRef: string;
+}) => {
+  const state = requireMintAuthorizationStepState<MintAuthorizationStep04State>(
+    {
+      threadUtxo: await fetchUtxoByOutRef({
+        lucid,
+        outRef: parseOutRef(threadOutRef, "step-04 thread outRef"),
+        label: "mint authorization step-04 thread",
+      }),
+      signer,
+      schema: MintAuthorizationStep04Datum,
+      stepIndex: 3,
+    },
+  );
+  return mintAuthorizationStep04ScanField({
+    [MINT_AUTHORIZATION_STEP_04_SCAN_FIELD]: Number(state.field_index),
+  });
+};
+
+/**
+ * Step-04 scans field 1 and then field 0 at the same step; the refined
+ * action carries the field its thread names so carriage is planned for it.
+ */
+export const mintAuthorizationRefineAction =
+  ({
+    lucid,
+    signer,
+  }: {
+    readonly lucid: LucidEvolution;
+    readonly signer: ResolvedProverSigner;
+  }) =>
+  async ({
+    observed,
+  }: {
+    readonly observed: Readonly<{
+      stage: Readonly<{ kind: string; step?: number; threadOutRef?: string }>;
+    }>;
+  }): Promise<JournalJsonObject> =>
+    observed.stage.kind === "step" &&
+    observed.stage.step === 4 &&
+    observed.stage.threadOutRef !== undefined
+      ? {
+          [MINT_AUTHORIZATION_STEP_04_SCAN_FIELD]:
+            await readMintAuthorizationStep04ScanField({
+              lucid,
+              signer,
+              threadOutRef: observed.stage.threadOutRef,
+            }),
+        }
+      : {};
+
 export const planMintAuthorizationWorkflowField = (
   admitted: Prepared,
   owner: string,
-  stage: unknown,
+  input: Readonly<Record<string, unknown>>,
 ) => {
+  const stage = input.stage;
   const fieldIndex =
     stage === "step_02"
       ? MIDGARD_FIELD_INDEX.mint
@@ -76,7 +164,7 @@ export const planMintAuthorizationWorkflowField = (
           ? MIDGARD_FIELD_INDEX.scriptWitnesses
           : MIDGARD_FIELD_INDEX.addressWitnesses
         : stage === "step_04"
-          ? MIDGARD_FIELD_INDEX.referenceInputs
+          ? mintAuthorizationStep04ScanField(input)
           : null;
   if (fieldIndex === null) return null;
   const items =
@@ -86,7 +174,9 @@ export const planMintAuthorizationWorkflowField = (
         ? admitted.scriptWitnessItemCbors
         : fieldIndex === MIDGARD_FIELD_INDEX.addressWitnesses
           ? admitted.addrWitnessItemCbors
-          : admitted.referenceInputItemCbors;
+          : fieldIndex === MIDGARD_FIELD_INDEX.referenceInputs
+            ? admitted.referenceInputItemCbors
+            : admitted.spendInputItemCbors;
   return planFaultProofFieldOpening({
     anchorSourceKind: 0n,
     fieldIndex,
@@ -107,10 +197,10 @@ export const planMintAuthorizationWorkflowField = (
 export const mintAuthorizationWorkflowFieldRequirement = (
   admitted: Prepared,
   owner: string,
-  stage: unknown,
+  input: Readonly<Record<string, unknown>>,
   certificate: FieldCarriageRequirement["certificate"],
 ): FieldCarriageRequirement | null => {
-  const planned = planMintAuthorizationWorkflowField(admitted, owner, stage);
+  const planned = planMintAuthorizationWorkflowField(admitted, owner, input);
   if (planned === null) return null;
   return {
     planned,

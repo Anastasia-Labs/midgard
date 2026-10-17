@@ -594,7 +594,7 @@ pub fn encode_script_sources_witness(
   output_peaks: List<validation_merkle_v1.FrontierPeak>,
   output_total_count: Int,
   receive_scan: ReceivePurposeScanControlV1,
-  source_total_count: Int,
+  inline_source_count: Int,
   redeemer_total_count: Int,
   observer_scan: ObserverPurposeScanControlV1,
   mint_fold: MintFoldControlV1,
@@ -629,7 +629,13 @@ pub fn encode_script_sources_witness(
     validation_merkle_v1.frontier_is_well_formed(output_count, output_peaks)
   expect output_cursor <= output_count
   expect output_total_count >= output_count
-  expect source_total_count >= source_count
+  expect inline_source_count >= 0
+  expect
+    if stage <= 2 {
+      inline_source_count >= source_count
+    } else {
+      inline_source_count <= source_count
+    }
   expect redeemer_total_count >= redeemer_count
   expect bytearray.length(resolution_schedule_hash) == 32
   encode_definite_array_header(30)
@@ -660,7 +666,7 @@ pub fn encode_script_sources_witness(
     |> bytearray.concat(validation_merkle_v1.encode_frontier(output_peaks))
     |> bytearray.concat(cbor.serialise(output_total_count))
     |> bytearray.concat(encode_receive_purpose_scan_control(receive_scan))
-    |> bytearray.concat(cbor.serialise(source_total_count))
+    |> bytearray.concat(cbor.serialise(inline_source_count))
     |> bytearray.concat(cbor.serialise(redeemer_total_count))
     |> bytearray.concat(encode_observer_purpose_scan_control(observer_scan))
     |> bytearray.concat(encode_mint_fold_control(mint_fold))
@@ -1797,7 +1803,7 @@ pub fn script_sources_control_from_data_items(
         replay_remaining_schedule_hash_data, spend_index_data,
         purpose_count_data, purpose_peaks_data, output_cursor_data,
         output_count_data, output_peaks_data, output_total_count_data,
-        receive_scan_data, source_total_count_data, redeemer_total_count_data,
+        receive_scan_data, inline_source_count_data, redeemer_total_count_data,
         observer_scan_data, mint_fold_data, resolution_schedule_hash_data,
       ]
     = items
@@ -1857,7 +1863,7 @@ pub fn script_sources_control_from_data_items(
       candidate_hash: builtin.un_b_data(receive_candidate_hash_data),
       descriptor_peaks: decode_frontier_peaks(receive_descriptor_peaks_data),
     },
-    source_total_count: builtin.un_i_data(source_total_count_data),
+    inline_source_count: builtin.un_i_data(inline_source_count_data),
     redeemer_total_count: builtin.un_i_data(redeemer_total_count_data),
     observer_scan: ObserverPurposeScanControlV1 {
       total_count: builtin.un_i_data(observer_total_count_data),
@@ -1927,7 +1933,7 @@ pub fn encode_inline_source_hash_control_v1(
 ) -> ByteArray {
   expect control.version == 1
   expect control.source_index >= 0
-  expect control.source_total_count > control.source_index
+  expect control.inline_source_count > control.source_index
   expect or {
       control.language_tag == 0,
       control.language_tag == 3,
@@ -1943,7 +1949,7 @@ pub fn encode_inline_source_hash_control_v1(
   #"89"
     |> bytearray.concat(cbor.serialise(1))
     |> bytearray.concat(cbor.serialise(control.source_index))
-    |> bytearray.concat(cbor.serialise(control.source_total_count))
+    |> bytearray.concat(cbor.serialise(control.inline_source_count))
     |> bytearray.concat(cbor.serialise(control.language_tag))
     |> bytearray.concat(cbor.serialise(control.payload_offset))
     |> bytearray.concat(cbor.serialise(control.payload_length))
@@ -1962,7 +1968,7 @@ pub fn inline_source_hash_control_from_cbor(
   let data <- cbor_deserialise.expect_deserialise(control_cbor)
   expect
       [
-        version_data, source_index_data, source_total_count_data,
+        version_data, source_index_data, inline_source_count_data,
         language_tag_data, payload_offset_data, payload_length_data,
         item_length_data, item_commitment_data, hash_control_data,
       ]
@@ -1970,7 +1976,7 @@ pub fn inline_source_hash_control_from_cbor(
   let control = InlineSourceHashControlV1 {
     version: builtin.un_i_data(version_data),
     source_index: builtin.un_i_data(source_index_data),
-    source_total_count: builtin.un_i_data(source_total_count_data),
+    inline_source_count: builtin.un_i_data(inline_source_count_data),
     language_tag: builtin.un_i_data(language_tag_data),
     payload_offset: builtin.un_i_data(payload_offset_data),
     payload_length: builtin.un_i_data(payload_length_data),
@@ -2015,7 +2021,7 @@ pub fn encode_script_sources_pending_source_witness(
     control.output_peaks,
     control.output_total_count,
     control.receive_scan,
-    control.source_total_count,
+    control.inline_source_count,
     control.redeemer_total_count,
     control.observer_scan,
     control.mint_fold,
@@ -2057,7 +2063,7 @@ pub fn encode_script_sources_output_proof_witness(
     control.output_peaks,
     control.output_total_count,
     control.receive_scan,
-    control.source_total_count,
+    control.inline_source_count,
     control.redeemer_total_count,
     control.observer_scan,
     control.mint_fold,
@@ -2104,7 +2110,7 @@ pub fn encode_script_sources_redeemer_item_witness(
     control.output_peaks,
     control.output_total_count,
     control.receive_scan,
-    control.source_total_count,
+    control.inline_source_count,
     control.redeemer_total_count,
     control.observer_scan,
     control.mint_fold,
@@ -2147,7 +2153,7 @@ pub fn encode_script_sources_discovery_witness(
     control.output_peaks,
     control.output_total_count,
     control.receive_scan,
-    control.source_total_count,
+    control.inline_source_count,
     control.redeemer_total_count,
     control.observer_scan,
     control.mint_fold,
@@ -2239,7 +2245,7 @@ pub fn exact_script_sources_control(
           control.output_peaks,
           control.output_total_count,
           control.receive_scan,
-          control.source_total_count,
+          control.inline_source_count,
           control.redeemer_total_count,
           control.observer_scan,
           control.mint_fold,
@@ -2276,7 +2282,7 @@ pub fn exact_script_sources_control(
       control.output_peaks,
       control.output_total_count,
       control.receive_scan,
-      control.source_total_count,
+      control.inline_source_count,
       control.redeemer_total_count,
       control.observer_scan,
       control.mint_fold,
@@ -2810,7 +2816,12 @@ pub fn script_sources_control_is_bound(
       control.source_count,
       control.source_peaks,
     ),
-    control.source_total_count >= control.source_count,
+    control.inline_source_count >= 0,
+    if control.stage <= 2 {
+      control.inline_source_count >= control.source_count
+    } else {
+      control.inline_source_count <= control.source_count
+    },
     validation_merkle_v1.frontier_is_well_formed(
       control.redeemer_count,
       control.redeemer_peaks,
@@ -2846,7 +2857,7 @@ pub fn script_sources_control_is_bound(
         )
         and {
           pending.source_index == control.source_count,
-          control.source_total_count == 0 || pending.source_total_count == control.source_total_count,
+          control.inline_source_count == 0 || pending.inline_source_count == control.inline_source_count,
         }
       }
     } else if control.stage == 1 {

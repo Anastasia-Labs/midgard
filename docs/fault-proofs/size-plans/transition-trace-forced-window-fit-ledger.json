@@ -1,7 +1,7 @@
 {
   "schemaVersion": "midgard-van-rossem-fit-ledger-v1",
   "category": "transitionTrace",
-  "blueprintSha256": "c82d719d25c0ecb48252ca5a1fe49d46c69c3d5fae04ca9ee30f1515ab60a422",
+  "blueprintSha256": "1ad03b82b913a2dfbc8ef9a2b8837362e7aa8d6de761c4619268ae4247f3b3ec",
   "entries": [
     {
       "name": "rejected-source/0",
@@ -2452,5 +2452,5 @@
       "publicationReserveMargin": 6326
     }
   ],
-  "ledgerSha256": "292fb4b3828d0dc0f8131823aafe8c3f4b8a31cbc9331ff5d6da2db3d6a256d2"
+  "ledgerSha256": "0786180ee1dc6ad0ff4e148812d3549c7ca152a0e79ef59446704b9fee13c5ae"
 }
