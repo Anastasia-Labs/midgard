@@ -1,8 +1,11 @@
 //// Source index built once from authenticated input/witness passes. Every
 //// priority comparison uses locations already committed by the field walk.
-//// T224 gives input script_refs priority over witness-set scripts; among
-//// input sources the canonical out-ref order decides, and among witnesses
-//// the first actual index decides. A duplicate witness stays unselected.
+//// The selected source for a script hash is the first one the T224 lookup
+//// visits, named by the shared source-order function: the physical frontier
+//// holds inline witnesses in item order, then the reference scripts of
+//// resolved outputs (spent and reference inputs) in canonical out-ref order,
+//// and the lookup visits the resolved-output sources first. A duplicate
+//// witness stays unselected.
 
 use aiken/cbor
 use aiken/merkle_patricia_forestry.{Proof}
@@ -10,6 +13,7 @@ use aiken/primitive/bytearray
 use env
 use midgard/fraud_proofs/direct_script_derivation/source.{SourceV1}
 use midgard/mpf_proof_v1 as mpf
+use midgard/script_source_order_v1.{script_source_physical_index}
 
 pub type StateV1 {
   root: ByteArray,
@@ -29,6 +33,8 @@ fn is_input_v1(source: SourceV1) -> Bool {
   source.field_index == 0 || source.field_index == 1
 }
 
+/// Two same-hash candidates form a two-entry physical frontier. `left`
+/// precedes when it sits at the physical slot the lookup visits first.
 pub fn priority_precedes_v1(left: SourceV1, right: SourceV1) -> Bool {
   expect and {
       bytearray.length(left.script_hash) == 28,
@@ -38,17 +44,27 @@ pub fn priority_precedes_v1(left: SourceV1, right: SourceV1) -> Bool {
       left.field_index == 6 || is_input_v1(left),
       right.field_index == 6 || is_input_v1(right),
     }
-  if is_input_v1(left) {
-    if is_input_v1(right) {
-      bytearray.compare(left.source_key, right.source_key) == Less
-    } else {
-      True
-    }
-  } else if is_input_v1(right) {
-    False
-  } else {
-    left.item_index < right.item_index
+  // Physical frontier of the pair: inline entries first, each class in its
+  // own physical order (item order inline, canonical out-ref order resolved).
+  let (left_slot, inline_count) = when
+    (left.field_index == 6, right.field_index == 6)
+  is {
+    (True, True) ->
+      if left.item_index < right.item_index {
+        (0, 2)
+      } else {
+        (1, 2)
+      }
+    (True, False) -> (0, 1)
+    (False, True) -> (1, 1)
+    (False, False) ->
+      if bytearray.compare(left.source_key, right.source_key) == Less {
+        (0, 0)
+      } else {
+        (1, 0)
+      }
   }
+  left_slot == script_source_physical_index(inline_count, 2, 0)
 }
 
 pub fn admit_v1(

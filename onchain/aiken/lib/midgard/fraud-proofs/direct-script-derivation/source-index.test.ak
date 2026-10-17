@@ -95,6 +95,85 @@ test lower_canonical_outref_has_input_source_priority_across_fields() {
   ) == index.StateV1 { root: expected_root(candidate), count: 1 }
 }
 
+test spent_source_below_a_reference_source_keeps_lookup_priority() {
+  let old = source(1, 0, 9)
+  let candidate = source(0, 0, 3)
+  index.admit_v1(
+    added(old),
+    candidate,
+    index.Existing { previous: old, proof: [] },
+  ) == index.StateV1 { root: expected_root(candidate), count: 1 }
+}
+
+test reference_source_above_a_spent_source_cannot_replace_it() {
+  let old = source(0, 0, 3)
+  index.admit_v1(
+    added(old),
+    source(1, 0, 9),
+    index.Existing { previous: old, proof: [] },
+  ) == added(old)
+}
+
+fn vector_source(field: Int, item: Int, key: ByteArray) -> SourceV1 {
+  SourceV1 {
+    field_index: field,
+    item_index: item,
+    source_key: key,
+    language_tag: 0,
+    script_hash: hash,
+    total_length: 4,
+    item_commitment: commitment,
+  }
+}
+
+// Differential row: the off-chain map builder admits the same vector in the
+// same scan order (fields 0, 1, then 6) to this root, pinned in
+// demo/midgard-fault-proofs/tests/direct-script-derivation-source-order.test.ts.
+test direct_source_order_vector_matches_the_off_chain_root() {
+  let spent = vector_source(
+    0,
+    0,
+    encode_midgard_tx_input(
+      MidgardTxInput {
+        tx_id: #"5555555555555555555555555555555555555555555555555555555555555555",
+        output_index: 3,
+      },
+    ),
+  )
+  let reference = vector_source(
+    1,
+    0,
+    encode_midgard_tx_input(
+      MidgardTxInput {
+        tx_id: #"3333333333333333333333333333333333333333333333333333333333333333",
+        output_index: 9,
+      },
+    ),
+  )
+  // The lower canonical out-ref (the reference input) replaces the spent
+  // source; neither inline witness replaces it.
+  let replaced = index.admit_v1(
+    added(spent),
+    reference,
+    index.Existing { previous: spent, proof: [] },
+  )
+  let admitted = list.foldl(
+    [vector_source(6, 0, #"00"), vector_source(6, 1, #"01")],
+    replaced,
+    fn(witness, state) {
+      index.admit_v1(
+        state,
+        witness,
+        index.Existing { previous: reference, proof: [] },
+      )
+    },
+  )
+  admitted == index.StateV1 {
+    root: #"55f9bdabe4400653437d3a254a210a6823b120de719d2b96ca0f36c030af1661",
+    count: 1,
+  }
+}
+
 test existing_source_value_cannot_be_substituted() fail {
   let old = source(1, 2, 0)
   index.admit_v1(

@@ -14,6 +14,7 @@ export {
 export { buildDirectReceiveEvidence } from "./receive-evidence.js";
 export { directRedeemerAt } from "./redeemers.js";
 export {
+  buildDirectSourceIndex,
   buildDirectSourceIndexEvidence,
   directSourcePrecedes,
 } from "./source-index.js";

@@ -1,4 +1,5 @@
 import { Trie } from "@aiken-lang/merkle-patricia-forestry";
+import { midgardScriptSourcePhysicalIndex } from "@al-ft/midgard-core";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 
@@ -21,27 +22,39 @@ const rootHex = (hash: Uint8Array | null | undefined): string =>
     : Buffer.from(hash).toString("hex");
 const descriptorBytes = (source: SDK.DirectScriptSource) =>
   Buffer.from(Data.to(source, SDK.DirectScriptSource), "hex");
-const inputSource = (source: SDK.DirectScriptSource) =>
-  source.field_index === 0n || source.field_index === 1n;
+const inlineSource = (source: SDK.DirectScriptSource) =>
+  source.field_index === 6n;
 
-/** T224 priority is an input script_ref before any witness, then canonical
- * outref order across both input fields, then the actual witness ordinal.
- * Raw field coordinates never stand in for machine frontier positions. */
+/** The selected source for a script hash is the first one the T224 lookup
+ * visits, named by the shared source-order function. Two same-hash candidates
+ * form a two-entry physical frontier: inline witnesses first in item order,
+ * then resolved-output reference scripts (spent and reference inputs) in
+ * canonical out-ref order. `left` precedes when it sits at the physical slot
+ * the lookup visits first. */
 export const directSourcePrecedes = (
   left: SDK.DirectScriptSource,
   right: SDK.DirectScriptSource,
 ): boolean => {
   if (left.script_hash !== right.script_hash)
     throw new Error("direct source priority compares different hashes");
-  if (inputSource(left))
-    return (
-      !inputSource(right) ||
-      Buffer.compare(
+  const leftInline = inlineSource(left);
+  const rightInline = inlineSource(right);
+  const leftFirstInClass = leftInline
+    ? left.item_index < right.item_index
+    : Buffer.compare(
         Buffer.from(left.source_key, "hex"),
         Buffer.from(right.source_key, "hex"),
-      ) < 0
-    );
-  return !inputSource(right) && left.item_index < right.item_index;
+      ) < 0;
+  const leftSlot =
+    leftInline !== rightInline
+      ? leftInline
+        ? 0
+        : 1
+      : leftFirstInClass
+        ? 0
+        : 1;
+  const inlineCount = Number(leftInline) + Number(rightInline);
+  return leftSlot === midgardScriptSourcePhysicalIndex(inlineCount, 2, 0);
 };
 
 /** Build a single source map from the authenticated source and root-checked
@@ -70,6 +83,14 @@ export const buildDirectSourceIndexEvidence = async (
       directWitnessSource(item, index),
     ),
   ];
+  return { inputs, ...(await buildDirectSourceIndex(candidates)) };
+};
+
+/** Admit authenticated candidates, in scan order, into the single source map
+ * and record each admission the map workers replay on-chain. */
+export const buildDirectSourceIndex = async (
+  candidates: readonly DirectScriptSourceMaterial[],
+) => {
   const trie = await Trie.fromList([]);
   const selected = new Map<string, DirectScriptSourceMaterial>();
   const steps: {
@@ -148,7 +169,6 @@ export const buildDirectSourceIndexEvidence = async (
     return { selected: source?.descriptor ?? null, proof };
   };
   return {
-    inputs,
     lookup,
     steps,
     selected,
