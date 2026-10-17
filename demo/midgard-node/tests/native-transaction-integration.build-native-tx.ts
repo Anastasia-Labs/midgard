@@ -87,8 +87,14 @@ export const buildNativeTx = (opts?: {
       : Array.from({ length: outputCount }, () => Buffer.from(defaultOutput));
   const outputCbor = outputCbors[0];
 
-  const spendInputsPreimageCbor = encodeByteList(spendInputs);
-  const referenceInputsPreimageCbor = encodeByteList(referenceInputs);
+  // CanonicalDecode admits fields 0 and 1 only in ascending item order, so the
+  // builder sorts them as a wallet does; a test passes them in any order.
+  const ascending = (items: readonly Buffer[]) =>
+    [...items].sort((left, right) => Buffer.compare(left, right));
+  const spendInputsPreimageCbor = encodeByteList(ascending(spendInputs));
+  const referenceInputsPreimageCbor = encodeByteList(
+    ascending(referenceInputs),
+  );
   const outputsPreimageCbor = encodeByteList(outputCbors);
   const requiredObserversPreimageCbor = encodeByteList(
     opts?.requiredObserverItems ?? [],
