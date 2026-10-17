@@ -12,8 +12,8 @@ export const validationTraceResolveInputsSemanticsMembers =
       validatorTitle:
         "fraud_proofs/validation_trace/resolve_inputs_initial_semantic_v1.main.spend",
       familyPaths: [
-        ["steps", "33"],
         ["semanticResolvers", "26"],
+        ["steps", "33"],
       ],
     },
     validationTraceDisputeResolveInputsFinishSemantic: {
@@ -26,8 +26,8 @@ export const validationTraceResolveInputsSemanticsMembers =
       validatorTitle:
         "fraud_proofs/validation_trace/resolve_inputs_finish_semantic_v1.main.spend",
       familyPaths: [
-        ["steps", "34"],
         ["semanticResolvers", "27"],
+        ["steps", "34"],
       ],
     },
     validationTraceDisputeResolveInputsMembershipBeginSemantic: {
@@ -41,8 +41,8 @@ export const validationTraceResolveInputsSemanticsMembers =
       validatorTitle:
         "fraud_proofs/validation_trace/resolve_inputs_membership_begin_semantic_v1.main.spend",
       familyPaths: [
-        ["steps", "35"],
         ["semanticResolvers", "28"],
+        ["steps", "35"],
       ],
     },
     validationTraceDisputeResolveInputsMembershipStepSemantic: {
@@ -56,8 +56,8 @@ export const validationTraceResolveInputsSemanticsMembers =
       validatorTitle:
         "fraud_proofs/validation_trace/resolve_inputs_membership_step_semantic_v1.main.spend",
       familyPaths: [
-        ["steps", "36"],
         ["semanticResolvers", "29"],
+        ["steps", "36"],
       ],
     },
     validationTraceDisputeResolveInputsMembershipFinalizeSemantic: {
@@ -71,8 +71,8 @@ export const validationTraceResolveInputsSemanticsMembers =
       validatorTitle:
         "fraud_proofs/validation_trace/resolve_inputs_membership_finalize_semantic_v1.main.spend",
       familyPaths: [
-        ["steps", "37"],
         ["semanticResolvers", "30"],
+        ["steps", "37"],
       ],
     },
     validationTraceDisputeResolveInputsNonMembershipSemantic: {
@@ -86,8 +86,8 @@ export const validationTraceResolveInputsSemanticsMembers =
       validatorTitle:
         "fraud_proofs/validation_trace/resolve_inputs_non_membership_semantic_v1.main.spend",
       familyPaths: [
-        ["steps", "38"],
         ["semanticResolvers", "31"],
+        ["steps", "38"],
       ],
     },
   });

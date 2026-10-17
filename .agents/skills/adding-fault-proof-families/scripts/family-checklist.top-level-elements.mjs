@@ -12,7 +12,6 @@ export const EXIT_CANNOT_READ = 2;
 export const EXIT_USAGE = 64;
 
 export const SOURCES = Object.freeze({
-  sdkCatalogue: "demo/midgard-sdk/src/fraud-proof/catalogue.ts",
   sdkBuild: "demo/midgard-sdk/src/fraud-proof/contracts/build.ts",
   coreCatalogue:
     "demo/midgard-core/src/deployment-manifest-identity/catalogue-roles.ts",

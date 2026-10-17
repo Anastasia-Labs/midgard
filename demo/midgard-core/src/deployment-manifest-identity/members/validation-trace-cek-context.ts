@@ -13,8 +13,8 @@ export const validationTraceCekContextMembers = defineDeploymentFamily(
       validatorTitle:
         "fraud_proofs/validation_trace/cek_context_settle.main.spend",
       familyPaths: [
-        ["steps", "123"],
         ["cekContextStages", "settle"],
+        ["steps", "123"],
       ],
     },
     validationTraceDisputeCekContextControl: {
@@ -27,8 +27,8 @@ export const validationTraceCekContextMembers = defineDeploymentFamily(
       validatorTitle:
         "fraud_proofs/validation_trace/cek_context_control.main.spend",
       familyPaths: [
-        ["steps", "156"],
         ["cekContextStages", "control"],
+        ["steps", "156"],
       ],
     },
     validationTraceDisputeCekContextReference: {
@@ -41,8 +41,8 @@ export const validationTraceCekContextMembers = defineDeploymentFamily(
       validatorTitle:
         "fraud_proofs/validation_trace/cek_context_reference.main.spend",
       familyPaths: [
-        ["steps", "124"],
         ["cekContextStages", "reference"],
+        ["steps", "124"],
       ],
     },
     validationTraceDisputeCekContextSpend: {
@@ -55,8 +55,8 @@ export const validationTraceCekContextMembers = defineDeploymentFamily(
       validatorTitle:
         "fraud_proofs/validation_trace/cek_context_spend.main.spend",
       familyPaths: [
-        ["steps", "125"],
         ["cekContextStages", "spend"],
+        ["steps", "125"],
       ],
     },
     validationTraceDisputeCekContextOutput: {
@@ -69,8 +69,8 @@ export const validationTraceCekContextMembers = defineDeploymentFamily(
       validatorTitle:
         "fraud_proofs/validation_trace/cek_context_output.main.spend",
       familyPaths: [
-        ["steps", "126"],
         ["cekContextStages", "output"],
+        ["steps", "126"],
       ],
     },
     validationTraceDisputeCekContextSigner: {
@@ -83,8 +83,8 @@ export const validationTraceCekContextMembers = defineDeploymentFamily(
       validatorTitle:
         "fraud_proofs/validation_trace/cek_context_signer.main.spend",
       familyPaths: [
-        ["steps", "127"],
         ["cekContextStages", "signer"],
+        ["steps", "127"],
       ],
     },
     validationTraceDisputeCekContextObserverAuthenticate: {
@@ -97,8 +97,8 @@ export const validationTraceCekContextMembers = defineDeploymentFamily(
       validatorTitle:
         "fraud_proofs/validation_trace/cek_context_observer_authenticate.main.spend",
       familyPaths: [
-        ["steps", "129"],
         ["cekContextStages", "observerAuthenticate"],
+        ["steps", "129"],
       ],
     },
     validationTraceDisputeCekContextObserverFold: {
@@ -111,8 +111,8 @@ export const validationTraceCekContextMembers = defineDeploymentFamily(
       validatorTitle:
         "fraud_proofs/validation_trace/cek_context_observer_fold.main.spend",
       familyPaths: [
-        ["steps", "128"],
         ["cekContextStages", "observerFold"],
+        ["steps", "128"],
       ],
     },
     validationTraceDisputeCekContextMintInit: {
@@ -125,8 +125,8 @@ export const validationTraceCekContextMembers = defineDeploymentFamily(
       validatorTitle:
         "fraud_proofs/validation_trace/cek_context_mint_init.main.spend",
       familyPaths: [
-        ["steps", "130"],
         ["cekContextStages", "mintInit"],
+        ["steps", "130"],
       ],
     },
     validationTraceDisputeCekContextMintItem: {
@@ -139,8 +139,8 @@ export const validationTraceCekContextMembers = defineDeploymentFamily(
       validatorTitle:
         "fraud_proofs/validation_trace/cek_context_mint_item.main.spend",
       familyPaths: [
-        ["steps", "131"],
         ["cekContextStages", "mintItem"],
+        ["steps", "131"],
       ],
     },
     validationTraceDisputeCekContextAssemble: {
@@ -153,8 +153,8 @@ export const validationTraceCekContextMembers = defineDeploymentFamily(
       validatorTitle:
         "fraud_proofs/validation_trace/cek_context_assemble.main.spend",
       familyPaths: [
-        ["steps", "132"],
         ["cekContextStages", "assemble"],
+        ["steps", "132"],
       ],
     },
     validationTraceDisputeCekContextTxInfo: {
@@ -167,8 +167,8 @@ export const validationTraceCekContextMembers = defineDeploymentFamily(
       validatorTitle:
         "fraud_proofs/validation_trace/cek_context_tx_info.main.spend",
       familyPaths: [
-        ["steps", "133"],
         ["cekContextStages", "txInfo"],
+        ["steps", "133"],
       ],
     },
     validationTraceDisputeCekContextSeed: {
@@ -181,8 +181,8 @@ export const validationTraceCekContextMembers = defineDeploymentFamily(
       validatorTitle:
         "fraud_proofs/validation_trace/cek_context_seed.main.spend",
       familyPaths: [
-        ["steps", "134"],
         ["cekContextStages", "seed"],
+        ["steps", "134"],
       ],
     },
     validationTraceDisputeCekContextFinalizeAuthenticate: {
@@ -195,8 +195,8 @@ export const validationTraceCekContextMembers = defineDeploymentFamily(
       validatorTitle:
         "fraud_proofs/validation_trace/cek_context_finalize_authenticate.main.spend",
       familyPaths: [
-        ["steps", "140"],
         ["cekContextStages", "finalizeAuthenticate"],
+        ["steps", "140"],
       ],
     },
     validationTraceDisputeCekContextFinalizeSpend: {
@@ -209,8 +209,8 @@ export const validationTraceCekContextMembers = defineDeploymentFamily(
       validatorTitle:
         "fraud_proofs/validation_trace/cek_context_finalize_spend.main.spend",
       familyPaths: [
-        ["steps", "135"],
         ["cekContextStages", "finalizeSpend"],
+        ["steps", "135"],
       ],
     },
     validationTraceDisputeCekContextFinalizeMint: {
@@ -223,8 +223,8 @@ export const validationTraceCekContextMembers = defineDeploymentFamily(
       validatorTitle:
         "fraud_proofs/validation_trace/cek_context_finalize_mint.main.spend",
       familyPaths: [
-        ["steps", "136"],
         ["cekContextStages", "finalizeMint"],
+        ["steps", "136"],
       ],
     },
     validationTraceDisputeCekContextFinalizeWithdraw: {
@@ -237,8 +237,8 @@ export const validationTraceCekContextMembers = defineDeploymentFamily(
       validatorTitle:
         "fraud_proofs/validation_trace/cek_context_finalize_withdraw.main.spend",
       familyPaths: [
-        ["steps", "137"],
         ["cekContextStages", "finalizeWithdraw"],
+        ["steps", "137"],
       ],
     },
     validationTraceDisputeCekContextFinalizeObserve: {
@@ -251,8 +251,8 @@ export const validationTraceCekContextMembers = defineDeploymentFamily(
       validatorTitle:
         "fraud_proofs/validation_trace/cek_context_finalize_observe.main.spend",
       familyPaths: [
-        ["steps", "138"],
         ["cekContextStages", "finalizeObserve"],
+        ["steps", "138"],
       ],
     },
     validationTraceDisputeCekContextFinalizeMidgard: {
@@ -265,8 +265,8 @@ export const validationTraceCekContextMembers = defineDeploymentFamily(
       validatorTitle:
         "fraud_proofs/validation_trace/cek_context_finalize_midgard.main.spend",
       familyPaths: [
-        ["steps", "139"],
         ["cekContextStages", "finalizeMidgard"],
+        ["steps", "139"],
       ],
     },
     validationTraceDisputeCekContextRedeemerBegin: {
@@ -279,8 +279,8 @@ export const validationTraceCekContextMembers = defineDeploymentFamily(
       validatorTitle:
         "fraud_proofs/validation_trace/cek_context_redeemer_begin.main.spend",
       familyPaths: [
-        ["steps", "141"],
         ["cekContextStages", "redeemerBegin"],
+        ["steps", "141"],
       ],
     },
     validationTraceDisputeCekContextRedeemerSelectAuthenticate: {
@@ -294,8 +294,8 @@ export const validationTraceCekContextMembers = defineDeploymentFamily(
       validatorTitle:
         "fraud_proofs/validation_trace/cek_context_redeemer_select_authenticate.main.spend",
       familyPaths: [
-        ["steps", "145"],
         ["cekContextStages", "redeemerSelectAuthenticate"],
+        ["steps", "145"],
       ],
     },
     validationTraceDisputeCekContextRedeemerSelectInitialize: {
@@ -309,8 +309,8 @@ export const validationTraceCekContextMembers = defineDeploymentFamily(
       validatorTitle:
         "fraud_proofs/validation_trace/cek_context_redeemer_select_initialize.main.spend",
       familyPaths: [
-        ["steps", "144"],
         ["cekContextStages", "redeemerSelectInitialize"],
+        ["steps", "144"],
       ],
     },
     validationTraceDisputeCekContextRedeemerSelectHash: {
@@ -323,8 +323,8 @@ export const validationTraceCekContextMembers = defineDeploymentFamily(
       validatorTitle:
         "fraud_proofs/validation_trace/cek_context_redeemer_select_hash.main.spend",
       familyPaths: [
-        ["steps", "143"],
         ["cekContextStages", "redeemerSelectHash"],
+        ["steps", "143"],
       ],
     },
     validationTraceDisputeCekContextRedeemerSelectFinish: {
@@ -337,8 +337,8 @@ export const validationTraceCekContextMembers = defineDeploymentFamily(
       validatorTitle:
         "fraud_proofs/validation_trace/cek_context_redeemer_select_finish.main.spend",
       familyPaths: [
-        ["steps", "142"],
         ["cekContextStages", "redeemerSelectFinish"],
+        ["steps", "142"],
       ],
     },
     validationTraceDisputeCekContextItemBind: {
@@ -351,8 +351,8 @@ export const validationTraceCekContextMembers = defineDeploymentFamily(
       validatorTitle:
         "fraud_proofs/validation_trace/cek_context_item_bind.main.spend",
       familyPaths: [
-        ["steps", "155"],
         ["cekContextStages", "itemBind"],
+        ["steps", "155"],
       ],
     },
     validationTraceDisputeCekContextItemReturn: {
@@ -365,8 +365,8 @@ export const validationTraceCekContextMembers = defineDeploymentFamily(
       validatorTitle:
         "fraud_proofs/validation_trace/cek_context_item_return.main.spend",
       familyPaths: [
-        ["steps", "154"],
         ["cekContextStages", "itemReturn"],
+        ["steps", "154"],
       ],
     },
     validationTraceDisputeCekContextItemSelectionHash: {
@@ -379,8 +379,8 @@ export const validationTraceCekContextMembers = defineDeploymentFamily(
       validatorTitle:
         "fraud_proofs/validation_trace/cek_context_item_hash.main.spend",
       familyPaths: [
-        ["steps", "151"],
         ["cekContextStages", "itemSelectionHash"],
+        ["steps", "151"],
       ],
     },
     validationTraceDisputeCekContextItemDataHash: {
@@ -393,8 +393,8 @@ export const validationTraceCekContextMembers = defineDeploymentFamily(
       validatorTitle:
         "fraud_proofs/validation_trace/cek_context_item_hash.main.spend",
       familyPaths: [
-        ["steps", "152"],
         ["cekContextStages", "itemDataHash"],
+        ["steps", "152"],
       ],
     },
     validationTraceDisputeCekContextItemFinalize: {
@@ -407,8 +407,8 @@ export const validationTraceCekContextMembers = defineDeploymentFamily(
       validatorTitle:
         "fraud_proofs/validation_trace/cek_context_item_finalize.main.spend",
       familyPaths: [
-        ["steps", "153"],
         ["cekContextStages", "itemFinalize"],
+        ["steps", "153"],
       ],
     },
     validationTraceDisputeCekContextItemSelectionContinue: {
@@ -421,8 +421,8 @@ export const validationTraceCekContextMembers = defineDeploymentFamily(
       validatorTitle:
         "fraud_proofs/validation_trace/cek_context_item_selection_continue.main.spend",
       familyPaths: [
-        ["steps", "146"],
         ["cekContextStages", "itemSelectionContinue"],
+        ["steps", "146"],
       ],
     },
     validationTraceDisputeCekContextItemSelectionFinish: {
@@ -435,8 +435,8 @@ export const validationTraceCekContextMembers = defineDeploymentFamily(
       validatorTitle:
         "fraud_proofs/validation_trace/cek_context_item_selection_finish.main.spend",
       familyPaths: [
-        ["steps", "147"],
         ["cekContextStages", "itemSelectionFinish"],
+        ["steps", "147"],
       ],
     },
     validationTraceDisputeCekContextItemDataContinue: {
@@ -449,8 +449,8 @@ export const validationTraceCekContextMembers = defineDeploymentFamily(
       validatorTitle:
         "fraud_proofs/validation_trace/cek_context_item_data_continue.main.spend",
       familyPaths: [
-        ["steps", "148"],
         ["cekContextStages", "itemDataContinue"],
+        ["steps", "148"],
       ],
     },
     validationTraceDisputeCekContextItemDataFinishDescriptor: {
@@ -464,8 +464,8 @@ export const validationTraceCekContextMembers = defineDeploymentFamily(
       validatorTitle:
         "fraud_proofs/validation_trace/cek_context_item_data_finish_descriptor.main.spend",
       familyPaths: [
-        ["steps", "149"],
         ["cekContextStages", "itemDataFinishDescriptor"],
+        ["steps", "149"],
       ],
     },
     validationTraceDisputeCekContextItemDataFinishValue: {
@@ -478,8 +478,8 @@ export const validationTraceCekContextMembers = defineDeploymentFamily(
       validatorTitle:
         "fraud_proofs/validation_trace/cek_context_item_data_finish_value.main.spend",
       familyPaths: [
-        ["steps", "150"],
         ["cekContextStages", "itemDataFinishValue"],
+        ["steps", "150"],
       ],
     },
   },

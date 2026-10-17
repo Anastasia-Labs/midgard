@@ -13,10 +13,10 @@ export const validationTraceCanonicalMembers = defineDeploymentFamily(
       validatorTitle:
         "fraud_proofs/validation_trace/canonical_decode_v1.main.spend",
       familyPaths: [
-        ["steps", "163"],
         ["canonicalDecodePrepare"],
         ["prepareResolvers", "0"],
         ["resolvers", "0"],
+        ["steps", "163"],
       ],
     },
     validationTraceDisputeCanonicalDecodeEmptySemantic: {
@@ -29,8 +29,8 @@ export const validationTraceCanonicalMembers = defineDeploymentFamily(
       validatorTitle:
         "fraud_proofs/validation_trace/canonical_decode_empty_semantic_v1.main.spend",
       familyPaths: [
-        ["steps", "7"],
         ["semanticResolvers", "0"],
+        ["steps", "7"],
       ],
     },
     validationTraceDisputeCanonicalDecodeItemSemantic: {
@@ -43,8 +43,8 @@ export const validationTraceCanonicalMembers = defineDeploymentFamily(
       validatorTitle:
         "fraud_proofs/validation_trace/canonical_decode_item_semantic_v1.main.spend",
       familyPaths: [
-        ["steps", "8"],
         ["semanticResolvers", "1"],
+        ["steps", "8"],
       ],
     },
     validationTraceDisputeCanonicalDecodeItemSource: {
@@ -57,8 +57,8 @@ export const validationTraceCanonicalMembers = defineDeploymentFamily(
       validatorTitle:
         "fraud_proofs/validation_trace/canonical_decode_item_source_v1.main.spend",
       familyPaths: [
-        ["steps", "159"],
         ["canonicalDecodeItemStages", "source"],
+        ["steps", "159"],
       ],
     },
     validationTraceDisputeCanonicalDecodeItemObserve: {
@@ -71,8 +71,8 @@ export const validationTraceCanonicalMembers = defineDeploymentFamily(
       validatorTitle:
         "fraud_proofs/validation_trace/canonical_decode_item_observe_v1.main.spend",
       familyPaths: [
-        ["steps", "160"],
         ["canonicalDecodeItemStages", "observe"],
+        ["steps", "160"],
       ],
     },
     validationTraceDisputeCanonicalDecodeItemProof: {
@@ -85,8 +85,8 @@ export const validationTraceCanonicalMembers = defineDeploymentFamily(
       validatorTitle:
         "fraud_proofs/validation_trace/canonical_decode_item_proof_v1.main.spend",
       familyPaths: [
-        ["steps", "161"],
         ["canonicalDecodeItemStages", "proof"],
+        ["steps", "161"],
       ],
     },
     validationTraceDisputeCanonicalDecodeItemSettlement: {
@@ -99,8 +99,8 @@ export const validationTraceCanonicalMembers = defineDeploymentFamily(
       validatorTitle:
         "fraud_proofs/validation_trace/canonical_decode_item_settlement_v1.main.spend",
       familyPaths: [
-        ["steps", "162"],
         ["canonicalDecodeItemStages", "settlement"],
+        ["steps", "162"],
       ],
     },
     validationTraceDisputeProofItem: {
@@ -111,7 +111,7 @@ export const validationTraceCanonicalMembers = defineDeploymentFamily(
       referenceRolePosition: 54,
       commands: [],
       validatorTitle: "fraud_proofs/validation_trace/proof_item_v1.main.else",
-      familyPaths: [["steps", "6"], ["proofItem"]],
+      familyPaths: [["proofItem"], ["steps", "6"]],
     },
   },
 );
