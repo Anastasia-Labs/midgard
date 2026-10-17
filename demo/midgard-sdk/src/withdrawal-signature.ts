@@ -3,6 +3,7 @@ import {
   verifyLedgerEd25519Signature,
 } from "@al-ft/midgard-core";
 import { aikenSerialisedPlutusDataCborPreservingMapOrder } from "@al-ft/midgard-core/plutus-data-cbor";
+import { lucidDataFromCborIterative } from "@al-ft/midgard-core/plutus-data-lucid-iterative";
 import { CML, Data as LucidData } from "@lucid-evolution/lucid";
 import { blake2b } from "@noble/hashes/blake2.js";
 
@@ -146,10 +147,14 @@ export const verifyWithdrawalSignatureCbor = (
   }
   let body: Buffer;
   try {
+    // A withdrawal body, or no signature check: Data of another shape is
+    // refused as the body's, however it is signed. Read without recursion
+    // (as `LucidData.from` reads it), so a deeply nested datum still reads.
+    LucidData.castFrom(lucidDataFromCborIterative(bodyCbor), WithdrawalBody);
     body = onChainBodyBytes(bodyCbor);
   } catch (cause) {
-    // Only the read is refused here: bytes that are not Data are the body's
-    // fault. Nothing after it depends on the body's content.
+    // Only the read is refused here: bytes that are not a withdrawal body
+    // are the body's fault. Nothing after it depends on the body's content.
     return {
       valid: false,
       reason: cause instanceof Error ? cause.message : String(cause),
