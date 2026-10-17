@@ -3,12 +3,16 @@ import {
   calculateMinLovelaceFromUTxO,
   type LucidEvolution,
   type Script,
+  type UTxO,
   validatorToScriptHash,
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
 import { journaledIntent, openPlan } from "../services/intent-journal.js";
 import type { WalletViewUnavailable } from "../services/intent-journal.wallet-view.js";
+import { tokenChangeMinLovelace } from "./operators/funding-preflight.js";
+import { deploymentInitializationNonceOutRefKeys } from "./reference-scripts.deployment-initialization-nonces.js";
+import { utxoOutRefKey } from "./reference-scripts.fetch-reference-script-utxos-program.js";
 import { handleSignSubmit } from "./utils.js";
 import {
   readSelectedWalletView,
@@ -21,6 +25,15 @@ const fundingFailure = (cause: WalletViewUnavailable) =>
       "Failed to read the wallet view to fund reward-account registrations",
     cause,
   });
+
+/**
+ * The history observer registration found too little to fund it once the
+ * deployment's initialization nonces, its reference-script outputs and any
+ * datum-bearing output are left out of the funding wallet's view.
+ */
+export class EventHistoryRegistrationUnfunded extends Error {
+  override readonly name = "EventHistoryRegistrationUnfunded";
+}
 
 /** Register runtime rewarding roles after availability and PHAS initialization. */
 export const ensureRuntimeRewardAccountsRegisteredProgram = (
@@ -114,8 +127,15 @@ export const ensureRuntimeRewardAccountsRegisteredProgram = (
     return before.map(({ scriptHash }) => results.get(scriptHash)!);
   });
 
-/** Registration precedes root initialization. Explicit funding preserves both
- * declared initialization nonces even when the operator also publishes scripts. */
+/**
+ * Registration precedes root initialization, funded from the reference-script
+ * wallet (`initialization.fetch-protocol-deployment-status.ts`). Its view is
+ * the funding, tokens included (their change keeps its minimum ADA), less
+ * three kinds of output: the deployment's initialization nonces
+ * (`deploymentInitializationNonceOutRefKeys`), which the init consumes; the
+ * reference-script outputs, which may be the deployment's publications at
+ * that same address; and datum-bearing outputs, which are not plain funds.
+ */
 export const ensureEventHistoryRewardAccountsRegisteredProgram = (
   lucid: LucidEvolution,
   contracts: SDK.MidgardValidators,
@@ -134,31 +154,29 @@ export const ensureEventHistoryRewardAccountsRegisteredProgram = (
     const view = yield* readSelectedWalletView(lucid).pipe(
       Effect.mapError(fundingFailure),
     );
+    const reservedNonces = deploymentInitializationNonceOutRefKeys(contracts);
     const tx = yield* Effect.tryPromise({
       try: async () => {
         const inputs = view.utxos.filter(
           (utxo) =>
             utxo.scriptRef == null &&
             utxo.datum == null &&
-            Object.keys(utxo.assets).every((unit) => unit === "lovelace") &&
-            !history.some(
-              ({ recipe }) =>
-                recipe.initializationNonce.transactionId === utxo.txHash &&
-                recipe.initializationNonce.outputIndex ===
-                  BigInt(utxo.outputIndex),
-            ),
+            utxo.datumHash == null &&
+            !reservedNonces.has(utxoOutRefKey(utxo)),
         );
         if (inputs.length === 0)
-          throw new Error(
-            "No plain funding remains after reserving history initialization nonces",
+          throw new EventHistoryRegistrationUnfunded(
+            "No funding remains after reserving the initialization nonces and the reference-script outputs",
           );
-        // Lucid's automatic selection does not fund a batch's certificate
-        // deposits. Select enough explicit inputs, without collecting every
-        // publication change output in a fragmented wallet.
+        // Lucid's coin selection (0.8.0) leaves certificate deposits out of
+        // what it must cover, so this path selects its inputs itself: enough
+        // for the deposits, the fee and the change, without collecting every
+        // output of a fragmented wallet. Revisit this if a later Lucid counts
+        // the deposits.
         const parameters = lucid.config().protocolParameters;
         if (parameters === undefined)
           throw new Error("History registration requires protocol parameters");
-        const minimumChange = calculateMinLovelaceFromUTxO(
+        const plainChange = calculateMinLovelaceFromUTxO(
           parameters.coinsPerUtxoByte,
           {
             txHash: "00".repeat(32),
@@ -167,12 +185,24 @@ export const ensureEventHistoryRewardAccountsRegisteredProgram = (
             assets: { lovelace: 0xffffffffffffffffn },
           },
         );
-        const budget =
+        const depositsAndFee =
           BigInt(missing.length) * parameters.keyDeposit +
           BigInt(parameters.minFeeA) * BigInt(parameters.maxTxSize) +
-          BigInt(parameters.minFeeB) +
-          minimumChange;
-        const selected = [];
+          BigInt(parameters.minFeeB);
+        // The change returns every selected token, so it needs their
+        // minimum ADA rather than a plain output's.
+        const budgetFor = (selection: readonly UTxO[]) => {
+          const tokenChange = tokenChangeMinLovelace(
+            lucid,
+            view.address,
+            selection,
+          );
+          return (
+            depositsAndFee +
+            (tokenChange > plainChange ? tokenChange : plainChange)
+          );
+        };
+        const selected: UTxO[] = [];
         let total = 0n;
         for (const input of inputs.sort((left, right) => {
           const delta =
@@ -186,10 +216,10 @@ export const ensureEventHistoryRewardAccountsRegisteredProgram = (
         })) {
           selected.push(input);
           total += input.assets.lovelace ?? 0n;
-          if (total >= budget) break;
+          if (total >= budgetFor(selected)) break;
         }
-        if (total < budget)
-          throw new Error(
+        if (total < budgetFor(selected))
+          throw new EventHistoryRegistrationUnfunded(
             "Insufficient unreserved funding for history observer deposits and fees",
           );
         const completed = await missing
@@ -203,9 +233,7 @@ export const ensureEventHistoryRewardAccountsRegisteredProgram = (
             presetWalletInputs: selected,
             localUPLCEval: true,
           });
-        const allowed = new Set(
-          inputs.map((input) => `${input.txHash}#${input.outputIndex}`),
-        );
+        const allowed = new Set(selected.map(utxoOutRefKey));
         const consumed = completed.toTransaction().body().inputs();
         for (let index = 0; index < consumed.len(); index += 1) {
           const input = consumed.get(index);
@@ -213,7 +241,7 @@ export const ensureEventHistoryRewardAccountsRegisteredProgram = (
             !allowed.has(`${input.transaction_id().to_hex()}#${input.index()}`)
           )
             throw new Error(
-              "History registration selected a reserved initialization input",
+              "History registration spent an input it did not select",
             );
         }
         return completed;
