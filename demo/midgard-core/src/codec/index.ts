@@ -11,6 +11,7 @@ export * from "./native-tx-carriage.js";
 export * from "./native-tx-field-access.js";
 export * from "./native-tx-field-item-decoders.js";
 export * from "./native-tx-field-items.js";
+export * from "./native-tx-field-order.js";
 export * from "./output.js";
 export * from "./script-language-views.js";
 export * from "./value.js";

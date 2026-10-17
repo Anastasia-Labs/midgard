@@ -92,8 +92,8 @@ export const fixture = async (
       return hash;
     }),
   });
-  // Signature-sort worker's genuine descending physical order fixture; seeds
-  // retain distinct keys beyond index 255, and every signature signs this tx id.
+  // Address witnesses in canonical signer-hash order; seeds retain distinct
+  // keys beyond index 255, and every signature signs this tx id.
   const physical = keys
     .map((key) => ({
       hash: Buffer.from(key.to_public().hash().to_raw_bytes()),
@@ -104,7 +104,7 @@ export const fixture = async (
         ).to_cbor_bytes(),
       ),
     }))
-    .sort((left, right) => Buffer.compare(right.hash, left.hash));
+    .sort((left, right) => Buffer.compare(left.hash, right.hash));
   const transaction = encodeRecomputedNativeTx({
     ...original.tx,
     witnessSet: {

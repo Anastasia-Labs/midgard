@@ -54,7 +54,7 @@ describe("deterministic signature consume order", { timeout: 60_000 }, () => {
         (MIDGARD_ADDRESS_WITNESS_ITEM_BYTES + 2),
     ),
   ])(
-    "consumes %i valid address witnesses in arbitrary physical order with one successor schedule",
+    "consumes %i valid address witnesses in canonical order with one successor schedule",
     async (count) => {
       const spent = outRefFromByte(0x11);
       const output = makeOutput(FUNDED_OUTPUT_LOVELACE);
@@ -90,7 +90,7 @@ describe("deterministic signature consume order", { timeout: 60_000 }, () => {
           ),
         }))
         .sort((left, right) =>
-          Buffer.compare(right.signerHash, left.signerHash),
+          Buffer.compare(left.signerHash, right.signerHash),
         );
       const transaction = encodeRecomputedNativeTx({
         ...original.tx,
@@ -154,7 +154,7 @@ describe("deterministic signature consume order", { timeout: 60_000 }, () => {
         expect(signatures[selected]?.auxiliary).toMatchObject({
           kind: "transactionFieldChunk",
           fieldIndex: 7,
-          itemIndex: count - selected - 1,
+          itemIndex: selected,
         });
       }
       expect(trace.verdict).toBe("accepted");

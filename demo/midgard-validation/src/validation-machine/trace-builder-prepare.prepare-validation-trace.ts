@@ -102,7 +102,10 @@ import {
   MIDGARD_ADDRESS_WITNESSES_FIELD_INDEX,
   MIDGARD_SCRIPT_WITNESSES_FIELD_INDEX,
 } from "./canonical-field-item.js";
-import { oversizedCanonicalOutputIndex } from "./canonical-output-bound.js";
+import {
+  canonicalDecodeItemRefusal,
+  canonicalOrderedItemEncodedLength,
+} from "./canonical-field-order.js";
 import {
   encodeScriptDiscoveryControlCbor,
   encodeValidationControlList,
@@ -425,10 +428,10 @@ export const prepareValidationTrace = (
       rejection !== null && rejectionPhase(rejection) === "canonicalDecode";
     if (
       stopsAtCanonicalDecode &&
-      oversizedCanonicalOutputIndex(
+      !canonicalDecodeItemRefusal(
         input.canonicalTransactionCbor,
         input.sourceKind,
-      ) === undefined
+      )
     ) {
       if (
         rejection.code === RejectCodes.InvalidFieldType ||
@@ -1288,9 +1291,10 @@ export const prepareValidationTrace = (
             itemCount = collection.items.length;
             encodedLength = canonicalCborArgumentHeaderSize(itemCount);
           }
-          const itemEncodedLength = canonicalFieldItemEncodedLength(
+          const itemEncodedLength = canonicalOrderedItemEncodedLength(
             field.fieldIndex,
-            item.bytes.length,
+            collection.items,
+            item.itemIndex,
           );
           if (itemEncodedLength === null) {
             if (
@@ -2891,24 +2895,19 @@ export const prepareValidationTrace = (
                     ),
                   );
                 }
-                // Stage 4 folds only the authenticated
-                // (field_index, item_index, item_length, item_commitment) tuple,
-                // all four of which the door *derives* from the authenticated
-                // preimage. The item bytes are still not revealed here, and the
-                // reason is unchanged: revealing them re-proves only that an
-                // authenticated commitment has a preimage — which canonicalDecode
-                // and the stage-5 output traversal already establish — while
-                // making the one-step evidence grow with output size and exceed
-                // the L1 envelope for legal 16,384-byte outputs (C21-STAGE4-GAP,
-                // Option A). The carriage keeps this redeemer O(1) in output
-                // size only under tiers 2-3, where the preimage rides reference
-                // inputs (`onchain/aiken/lib/midgard/validation-machine/`).
-                // The step therefore carries the *plan input* — which field, which
-                // bytes — and the tier is resolved at evidence commitment, where a
-                // transaction exists to index reference inputs into (#600). Above
-                // §8.3's 14,336-byte tier-1 cap the resolution is genuinely tier 2
-                // or 3 and this evidence is O(1); below it, tier-1 `Inline`. The
-                // producer itself never refuses and never names a tier.
+                // Stage 4 folds only the authenticated (field_index, item_index,
+                // item_length, item_commitment) tuple, all derived by the door from the
+                // authenticated preimage. The item bytes are not revealed: that re-proves
+                // only that an authenticated commitment has a preimage (canonicalDecode and
+                // the stage-5 output traversal establish it) while growing the one-step
+                // evidence past the L1 envelope for legal 16,384-byte outputs
+                // (C21-STAGE4-GAP, Option A). The carriage keeps this redeemer O(1) in
+                // output size only under tiers 2-3, where the preimage rides reference
+                // inputs. The step carries the *plan input* (field and bytes); the tier is
+                // resolved at evidence commitment, where a transaction exists to index
+                // reference inputs into (#600): above §8.3's 14,336-byte tier-1 cap it is
+                // tier 2 or 3 and O(1), below it tier-1 `Inline`. The producer never
+                // refuses and never names a tier.
                 pushWitness("scriptSources", currentOutputCommitmentWitness(), {
                   kind: "transactionRedeemerItemBegin",
                   fieldIndex: 2,

@@ -476,7 +476,8 @@ pub type CanonicalDecodeItemProofV1 {
 }
 
 /// What opening the item through §8's door established about it: the field's
-/// authenticated §5.2 item count and this item's §5.1 payload length.
+/// authenticated §5.2 item count, this item's §5.1 payload length, and whether
+/// it follows item k-1 in its field's order (`canonical_item_order_is_valid`).
 ///
 /// **It carries no proof, and it cannot.** Under the retired counted scheme this
 /// record held the prover's `ItemProofV1` and the item's `bounded_item_v1`
@@ -493,6 +494,7 @@ pub type CanonicalDecodeItemProofV1 {
 pub type CanonicalDecodeItemObservationV1 {
   item_count: Int,
   item_length: Int,
+  item_order_is_valid: Bool,
 }
 
 pub type ValidationContextV1 {

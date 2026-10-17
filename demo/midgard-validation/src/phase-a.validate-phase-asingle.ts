@@ -47,6 +47,7 @@ import {
   RejectedTx,
 } from "./types.js";
 import { buildPhaseAValidatedTx } from "./validation-candidate.js";
+import { canonicalFieldOrderFault } from "./validation-machine/canonical-field-order.js";
 import { oversizedCanonicalOutputIndex } from "./validation-machine/canonical-output-bound.js";
 
 const validateNativeScriptWitnesses = (
@@ -187,6 +188,24 @@ export const validatePhaseASingle = (
   localContext: PhaseALocalContext = {},
 ): PhaseAValidatedTx | RejectedTx => {
   const forced = queuedTx.sourceKind === "forced";
+  // CanonicalDecode, the machine's first item walk, refuses fields 0/1/7 out
+  // of order before any later phase reads them.
+  const orderFault = canonicalFieldOrderFault(
+    queuedTx.txCbor,
+    queuedTx.sourceKind ?? "normal",
+  );
+  if (orderFault !== undefined)
+    return reject(
+      queuedTx.txId,
+      RejectCodes.InvalidFieldType,
+      `field[${orderFault.fieldIndex}].item[${orderFault.itemIndex}] is out of canonical order`,
+      "canonicalDecode",
+      {
+        arm: "FieldItemWidthIllegal",
+        fieldIndex: BigInt(orderFault.fieldIndex),
+        itemIndex: BigInt(orderFault.itemIndex),
+      },
+    );
   // The tx-order mint admits a forced transaction whose outputs or native
   // script bodies may not decode. Each such item is a machine verdict: the
   // rejection names the lowest faulty output first.

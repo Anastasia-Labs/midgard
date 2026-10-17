@@ -47,14 +47,15 @@ const funded = makeOutput(FUNDED_OUTPUT_LOVELACE);
 
 describe("phase A rejection subjects", () => {
   it("names both positions of a duplicated spend input", async () => {
+    // Spend inputs are sorted, so a repeat sits next to its first copy.
     const [a, b] = [outRefFromByte(0x31), outRefFromByte(0x32)];
     const rejection = await phaseARejection(
-      makeNativeTx({ spendInputs: [a, b, a] }),
+      makeNativeTx({ spendInputs: [a, b, b] }),
       RejectCodes.DuplicateInputInTx,
     );
     expect(rejection.subject).toStrictEqual({
       arm: "DuplicateInput",
-      first: { fieldIndex: 0n, itemIndex: 0n },
+      first: { fieldIndex: 0n, itemIndex: 1n },
       second: { fieldIndex: 0n, itemIndex: 2n },
     });
   });
@@ -73,7 +74,7 @@ describe("phase A rejection subjects", () => {
   });
 
   it("names the spend and the reference position of a shared out-ref", async () => {
-    const [a, b, c] = [0x36, 0x37, 0x38].map((byte) => outRefFromByte(byte));
+    const [a, b, c] = [0x36, 0x37, 0x35].map((byte) => outRefFromByte(byte));
     const rejection = await phaseARejection(
       makeNativeTx({ spendInputs: [a!, b!], referenceInputs: [c!, b!] }),
       RejectCodes.DuplicateInputInTx,
@@ -86,7 +87,15 @@ describe("phase A rejection subjects", () => {
   });
 
   it("names the invalid address witness", async () => {
-    // Witness 0 signs the transaction id; witness 1 signs other bytes.
+    // Witness 0 signs the transaction id; witness 1 signs other bytes. Address
+    // witnesses ascend by signer hash, so witness 1's signer sorts later.
+    let laterKey = CML.PrivateKey.generate_ed25519();
+    while (
+      Buffer.from(laterKey.to_public().hash().to_raw_bytes()).compare(
+        Buffer.from(TEST_SIGNER_HASH, "hex"),
+      ) <= 0
+    )
+      laterKey = CML.PrivateKey.generate_ed25519();
     const base = makeNativeTx();
     const witness = (message: Buffer, key: CML.PrivateKey) =>
       Buffer.from(
@@ -101,7 +110,7 @@ describe("phase A rejection subjects", () => {
         ...base.tx.witnessSet,
         addrTxWitsPreimageCbor: encodeByteList([
           witness(base.txId, TEST_PRIVATE_KEY),
-          witness(Buffer.alloc(32, 0x7f), foreignKey),
+          witness(Buffer.alloc(32, 0x7f), laterKey),
         ]),
       },
     });
