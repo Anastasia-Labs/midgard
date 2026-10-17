@@ -1218,54 +1218,6 @@
       }
     },
     {
-      "id": "watcher-initialization-fixture",
-      "kind": "fixture",
-      "summary": "Accepted initialization transactions captured from the node initialization emulator for the watcher tests; records the blueprint SHA-256 it was captured against.",
-      "generators": ["demo/midgard-node/tests/initialization-emulator.test.ts"],
-      "writerEnv": ["MIDGARD_WRITE_WATCHER_INITIALIZATION_FIXTURE"],
-      "inputs": ["@blueprint"],
-      "exclude": ["@blueprint-exclude"],
-      "outputs": [
-        "demo/midgard-watcher/tests/fixtures/user-event-initialization.json"
-      ],
-      "sync": {
-        "run": "MIDGARD_WRITE_WATCHER_INITIALIZATION_FIXTURE=1 pnpm --dir demo/midgard-node exec vitest run tests/initialization-emulator.test.ts"
-      },
-      "check": {
-        "run": "pnpm --dir demo/midgard-node exec vitest run tests/initialization-emulator.test.ts"
-      },
-      "ci": {
-        "workflow": ".github/workflows/midgard-node-ci.yml",
-        "step": "Test Midgard node",
-        "via": "demo/midgard-node/tests/initialization-emulator.test.ts"
-      }
-    },
-    {
-      "id": "da-deployment-fixture",
-      "kind": "fixture",
-      "summary": "The DA committee's contract deployment fixture, derived from the real contracts by a node test.",
-      "generators": [
-        "demo/midgard-node/tests/da-deployment-fixture-generation.test.ts"
-      ],
-      "writerEnv": ["MIDGARD_WRITE_DA_DEPLOYMENT_FIXTURE"],
-      "inputs": ["@blueprint"],
-      "exclude": ["@blueprint-exclude"],
-      "outputs": [
-        "demo/da-committee-node/tests/fixtures/da-contract-deployment-info.json"
-      ],
-      "sync": {
-        "run": "MIDGARD_WRITE_DA_DEPLOYMENT_FIXTURE=1 pnpm --dir demo/midgard-node exec vitest run tests/da-deployment-fixture-generation.test.ts"
-      },
-      "check": {
-        "run": "pnpm --dir demo/midgard-node exec vitest run tests/da-deployment-fixture-generation.test.ts"
-      },
-      "ci": {
-        "workflow": ".github/workflows/midgard-node-ci.yml",
-        "step": "Test Midgard node",
-        "via": "demo/midgard-node/tests/da-deployment-fixture-generation.test.ts"
-      }
-    },
-    {
       "id": "bench-validation-fixtures",
       "kind": "fixture",
       "summary": "Benchmark ledger and transaction-sequence fixtures for the node validation benchmarks.",

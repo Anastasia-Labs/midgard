@@ -147,25 +147,6 @@ differs from goldens, so they have their own page: [ledgers.md](ledgers.md).
 | `workflow-fit-ledger`                       | the transition-trace installed suite [ci: Midgard Node CI/Test fault-proof tooling]                      |
 | `fault-proof-fit-ledgers`                   | [review]: nothing compares them with the current build                                                   |
 
-## Blueprint-bound fixtures
-
-These record the SHA-256 of the blueprint they were captured against, so any
-change that moves compiled validator bytes makes them stale.
-
-| Channel                          | Output                                                                   | Sync                                                                               | Check (CI)                                                                                                                                                                                                                                                                                                      |
-| -------------------------------- | ------------------------------------------------------------------------ | ---------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `da-deployment-fixture`          | `demo/da-committee-node/tests/fixtures/da-contract-deployment-info.json` | `node scripts/contrib.mjs artifacts sync --channel da-deployment-fixture`          | `node scripts/contrib.mjs artifacts check --channel da-deployment-fixture` runs the generating test without the flag, which compares the whole fixture, `blueprintHash` included (`demo/midgard-node/tests/da-deployment-fixture-generation.test.ts:75-85`) [ci: Midgard Node CI/Test Midgard node]             |
-| `watcher-initialization-fixture` | `demo/midgard-watcher/tests/fixtures/user-event-initialization.json`     | `node scripts/contrib.mjs artifacts sync --channel watcher-initialization-fixture` | `node scripts/contrib.mjs artifacts check --channel watcher-initialization-fixture` runs the generating test without the flag, which compares the recorded `blueprintSha256` with the current build (`demo/midgard-node/tests/initialization-emulator.test.ts:483-492`) [ci: Midgard Node CI/Test Midgard node] |
-
-Sync both through `artifacts sync`, which writes the fixture in a scratch
-checkout, runs the check, then copies the output back. A raw
-`pnpm exec vitest` with the `MIDGARD_WRITE_*` variable in your own checkout
-uses its default test database, so two raw writers started together race on
-migrations and fail with `Failed to install the L1 follower schema`. Under
-`contrib test`, a write that changes the watcher fixture leaves a failed
-receipt (`native artifact changed during test`), because that fixture is one
-of midgard-node's own inputs [review].
-
 ## Unchecked
 
 | Channel                     | Output                                                                                | Sync                                                       | Why unchecked                                                          |
