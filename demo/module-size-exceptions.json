@@ -320,11 +320,6 @@
     "reason": "Retained test registration “production linear family authenticated state machine V1” (592 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
   },
   {
-    "file": "midgard-fault-proofs/tests/min-ada-wrongful-rejection-lifecycle.test.ts",
-    "max": 511,
-    "reason": "Retained test registration “minimum-Ada forced rejection” (566 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
-  },
-  {
     "file": "midgard-fault-proofs/tests/mint-declared-asset-limit-lifecycle.test.ts",
     "max": 1447,
     "reason": "Retained test registration “mintDeclaredAssetLimit registered-chain lifecycle” (1302 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
@@ -558,11 +553,6 @@
     "file": "midgard-fault-proofs/tests/transition-trace-l1-evidence.test.ts",
     "max": 1398,
     "reason": "Hoisted or module-scoped Vitest mocks own this test file’s import/evaluation boundary. Moving registrations between modules changes mock timing; retain the suite with its mocks and local fixtures."
-  },
-  {
-    "file": "midgard-fault-proofs/tests/withdrawal-mistag-installed-lifecycle.test.ts",
-    "max": 529,
-    "reason": "Retained test registration “withdrawalMistag installed cursor actuator” (398 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
   },
   {
     "file": "midgard-fault-proofs/tests/witness-script-decoding-lifecycle.make-harness.ts",
