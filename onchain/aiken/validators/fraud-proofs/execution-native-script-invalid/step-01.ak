@@ -1,16 +1,20 @@
 use aiken/crypto.{ScriptHash}
 use cardano/assets.{PolicyId}
 use cardano/transaction.{OutputReference, Transaction}
+use midgard/cbor_deserialise
 use midgard/computation_thread as ct
 use midgard/fraud_proofs/common.{
-  cancel, continue, pass_native_tx_to_next_step_carried,
+  PublishedChunkInclusion, RedeemerCarriedInclusion, cancel, continue,
+  pass_native_tx_to_next_step_carried,
 }
-use midgard/fraud_proofs/direct_script_derivation/types.{SourceBoundV1}
+use midgard/fraud_proofs/execution_native_script_invalid/rule.{
+  bind_execution_v1,
+}
 use midgard/fraud_proofs/execution_native_script_invalid/step_01.{
   AcceptedSource, Args, Datum, ForcedSource, SpendRedeemer,
 }
 use midgard/fraud_proofs/proof_thread_substrate_v1 as substrate
-use midgard/fraud_proofs/source_carriage_v1
+use midgard/ledger_state.{L2TransactionSourceV1}
 
 validator main(
   accepted_reconstruction_init_script_hash: ScriptHash,
@@ -34,10 +38,7 @@ validator main(
           computation_thread_mint_redeemer_index,
           tx,
         )
-      ct.Continue(Args {
-        source: AcceptedSource { inclusion },
-        execution_index: _,
-      }) -> {
+      ct.Continue(Args { source: AcceptedSource { inclusion }, execution_index }) -> {
         let
             _,
             subject_thread_name,
@@ -59,14 +60,23 @@ validator main(
         // The inclusion helper authenticated these exact source bytes. Carry
         // its compact bytes forward instead of rebuilding the same envelope;
         // keeping the encoder out of this dispatcher preserves publication fit.
-        let expected: Data = SourceBoundV1 {
-          subject: substrate.open_subject_v1(
+        let source_cbor = when inclusion is {
+          RedeemerCarriedInclusion(args) -> args.l2_transaction_source_cbor
+          PublishedChunkInclusion(args) -> args.l2_transaction_source_cbor
+        }
+        let source_data <- cbor_deserialise.expect_deserialise(source_cbor)
+        expect source: L2TransactionSourceV1 = source_data
+        let expected: Data = bind_execution_v1(
+          substrate.open_subject_v1(
             subject_thread_name,
             substrate.AcceptedSource { header, tx_inclusion: verified },
           ),
-          header,
-          compact_cbor: source_carriage_v1.carriage_compact_cbor_v1(inclusion),
-        }
+          header.validation_traces_root,
+          header.validation_trace_count,
+          execution_index,
+          header.prev_utxos_root,
+          source.source.compact_cbor,
+        )
         and {
           next_script_hash == accepted_reconstruction_init_script_hash,
           next_state == expected,
@@ -74,7 +84,7 @@ validator main(
       }
       ct.Continue(Args {
         source: ForcedSource { input_index, output_index, header, membership },
-        execution_index: _,
+        execution_index,
       }) -> {
         let Transaction { inputs, outputs, .. } = tx
         expect Some(step_datum) = datum
@@ -91,12 +101,16 @@ validator main(
           thread_asset_name,
           substrate.ForcedSource { header, membership },
         )
-        // bind_forced_subject_to_thread_v1 already verified this exact source.
-        let expected: Data = SourceBoundV1 {
+        let leaf = membership.value
+        // open_subject_v1 already verified this exact source.
+        let expected: Data = bind_execution_v1(
           subject,
-          header,
-          compact_cbor: membership.value.submitted_source.compact_cbor,
-        }
+          header.validation_traces_root,
+          header.validation_trace_count,
+          execution_index,
+          header.prev_utxos_root,
+          leaf.submitted_source.compact_cbor,
+        )
         and {
           next_script_hash == forced_step_02_validator_script_hash,
           next_state == expected,

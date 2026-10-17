@@ -9,7 +9,6 @@ export * from "./computation-threads.js";
 export * from "./contracts/index.js";
 export * from "./counted-membership-carriage.js";
 export * from "./da-hash-preimage.js";
-export * from "./direct-script-derivation-source.js";
 export * from "./double-spend.js";
 export * from "./double-withdraw.js";
 export * from "./evidence-source.js";

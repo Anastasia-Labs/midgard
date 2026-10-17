@@ -5,7 +5,6 @@ use midgard/computation_thread as ct
 use midgard/fraud_proofs/common.{
   cancel, continue, pass_native_tx_to_next_step_carried,
 }
-use midgard/fraud_proofs/direct_script_derivation/types.{SourceBoundV1} as direct_types
 use midgard/fraud_proofs/native_tx/compact.{
   verify_forced_tx_proof_source_v1, verify_native_tx_proof_source_v1,
 }
@@ -14,7 +13,6 @@ use midgard/fraud_proofs/script_integrity_hash_mismatch/rule.{bind_integrity_v1}
 use midgard/fraud_proofs/script_integrity_hash_mismatch/step_01.{
   AcceptedSource, Args, Datum, ForcedSource, SpendRedeemer,
 }
-use midgard/fraud_proofs/source_carriage_v1
 
 validator main(
   step_02_hash: ScriptHash,
@@ -56,14 +54,15 @@ validator main(
           own_ref,
           tx,
         )
-        let expected: Data = SourceBoundV1 {
-          subject: substrate.open_subject_v1(
+        let expected: Data = bind_integrity_v1(
+          substrate.open_subject_v1(
             subject_thread_name,
             substrate.AcceptedSource { header, tx_inclusion: verified },
           ),
-          header,
-          compact_cbor: source_carriage_v1.carriage_compact_cbor_v1(inclusion),
-        }
+          header.validation_traces_root,
+          header.validation_trace_count,
+          verified.tx_compact.body.script_integrity_hash,
+        )
         and {
           output_hash == step_02_hash,
           output_state == expected,
@@ -98,11 +97,12 @@ validator main(
           leaf.submitted_source.field_preimage_lengths_cbor,
         )
         expect verified.tx_id == subject.transaction_id
-        let expected: Data = SourceBoundV1 {
+        let expected: Data = bind_integrity_v1(
           subject,
-          header,
-          compact_cbor: membership.value.submitted_source.compact_cbor,
-        }
+          header.validation_traces_root,
+          header.validation_trace_count,
+          verified.tx_compact.body.script_integrity_hash,
+        )
         and {
           output_hash == step_02_hash,
           output_state == expected,
