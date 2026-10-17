@@ -393,6 +393,7 @@ fn long_vectors() -> Pairs<ByteArray, Data> {
   [
     Pair(bytearray.concat(#"5841", ab(65)), b(ab(65))),
     Pair(bytearray.concat(#"59012c", ab(300)), b(ab(300))),
+    Pair(bytearray.concat(#"5a0000012c", ab(300)), b(ab(300))),
     Pair(bytearray.concat(#"5b0000000000000041", ab(65)), b(ab(65))),
     Pair(
       bytearray.concat(#"5f5841", bytearray.concat(ab(65), #"ff")),
@@ -448,10 +449,13 @@ fn filler(count: Int) -> ByteArray {
   }
 }
 
-// Every length the on-chain envelope writer emits reads back.
+// Every length the on-chain envelope writer emits reads back, up to the
+// longest a script can read. From protocol version 11 the Plutus evaluator
+// refuses a byte string argument over 65536 bytes, so 65533 bytes, under a
+// three-byte head, is the longest payload whose encoding can be read.
 test the_envelope_entry_reads_back_encode_definite_bytes() {
   list.all(
-    [0, 1, 23, 24, 64, 65, 255, 256, 4095, 65535, 65536, 70000],
+    [0, 1, 23, 24, 64, 65, 255, 256, 4095, 65533],
     fn(count) {
       let payload = filler(count)
       envelope_entry_decodes_to(
@@ -460,6 +464,23 @@ test the_envelope_entry_reads_back_encode_definite_bytes() {
       )
     },
   )
+}
+
+// One payload byte more makes the encoding 65537 bytes, too long for the
+// evaluator to read; Cardano's refuses it the same way.
+test the_envelope_entry_cannot_read_an_encoding_over_65536_bytes() fail {
+  let payload = filler(65534)
+  cbor_deserialise.deserialise_envelope(codec.encode_definite_bytes(payload)) == Some(
+    b(payload),
+  )
+}
+
+test expect_envelope_cannot_read_an_encoding_over_65536_bytes() fail {
+  let payload = filler(65534)
+  let data <- cbor_deserialise.expect_deserialise_envelope(
+    codec.encode_definite_bytes(payload),
+  )
+  data == b(payload)
 }
 
 // ## Agreement between the entries and variants on arbitrary bytes
