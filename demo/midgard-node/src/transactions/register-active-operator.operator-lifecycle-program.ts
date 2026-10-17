@@ -16,7 +16,9 @@ import {
 import { alignedUnixTimeStrictlyAfter } from "../workers/utils/commit-end-time.js";
 import {
   OperatorFundingShortfall,
+  OperatorWalletInputsEmpty,
   operatorWalletInputsProgram,
+  presetOperatorWalletInputs,
   requireOperatorFundingProgram,
 } from "./operators/funding-preflight.js";
 import {
@@ -74,6 +76,7 @@ export const operatorLifecycleProgram = (
   | SDK.StateQueueError
   | SDK.LucidError
   | OperatorFundingShortfall
+  | OperatorWalletInputsEmpty
   | TxConfirmError
   | TxSignError
   | TxSubmitError,
@@ -274,9 +277,9 @@ export const operatorLifecycleProgram = (
           label: "deregister-operator",
           lockedLovelace: 0n,
         });
-        const walletInputsForDeregister = yield* operatorWalletInputsProgram(
-          lucid,
+        const walletInputsForDeregister = yield* presetOperatorWalletInputs(
           "deregister-operator",
+          yield* operatorWalletInputsProgram(lucid, "deregister-operator"),
         );
         const deregisterUnsignedTx = yield* Effect.tryPromise({
           try: () =>
@@ -516,9 +519,9 @@ export const operatorLifecycleProgram = (
       });
       // Coin selection funds the bond and fee from the wallet view (§8.5);
       // the builder collects no wallet input of its own.
-      const walletInputsForRegister = yield* operatorWalletInputsProgram(
-        lucid,
+      const walletInputsForRegister = yield* presetOperatorWalletInputs(
         "register-operator",
+        yield* operatorWalletInputsProgram(lucid, "register-operator"),
       );
       const prependedNodeAssets = {
         lovelace: requiredBondLovelace,
@@ -824,9 +827,9 @@ export const operatorLifecycleProgram = (
     });
     // Coin selection funds the fee from the wallet view (§8.5); the builder
     // collects no wallet input of its own.
-    const walletInputsForActivation = yield* operatorWalletInputsProgram(
-      lucid,
+    const walletInputsForActivation = yield* presetOperatorWalletInputs(
       "activate-operator",
+      yield* operatorWalletInputsProgram(lucid, "activate-operator"),
     );
     const activationCompleteOptions = (options: {
       readonly localUPLCEval: boolean;

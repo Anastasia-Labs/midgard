@@ -27,7 +27,10 @@ import {
   type OperatorExitError,
   resolveOperatorScriptRefsProgram,
 } from "./exit.js";
-import { requireOperatorFundingProgram } from "./funding-preflight.js";
+import {
+  presetOperatorWalletInputs,
+  requireOperatorFundingProgram,
+} from "./funding-preflight.js";
 
 export type TakeoverError = OperatorExitError | SDK.SchedulerError;
 
@@ -185,7 +188,10 @@ export const submitInactivityStrikeProgram = (
       validTo: plan.validity.validTo,
       schedulerSpendingScriptRef: scriptRefs.spending.scheduler,
       activeOperatorsSpendingScriptRef: scriptRefs.spending["active-operators"],
-      presetWalletInputs: yield* readSelectedWalletViewInputs(lucid, label),
+      presetWalletInputs: yield* presetOperatorWalletInputs(
+        label,
+        yield* readSelectedWalletViewInputs(lucid, label),
+      ),
     });
     yield* Effect.logInfo(
       `${label}: striking ${plan.currentOperator} (tier=${plan.tier}, strikes→${result.struckInactivityStrikes.toString()}, new_operator=${plan.newOperatorKey}, valid=[${plan.validity.validFrom.toString()},${plan.validity.validTo.toString()}))`,

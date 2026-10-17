@@ -4,6 +4,9 @@
  *
  * - a wallet whose every output carries a foreign token funds registration,
  *   activation and deregistration, and gets its tokens back in change;
+ * - a wallet whose plain coins alone cannot fund registration spends its
+ *   token output, and an empty wallet-input set is refused rather than
+ *   left to coin selection, which would read the provider wallet;
  * - the reference-script wallet top-up is funded the same way, and pays the
  *   reference-script wallet plain ADA;
  * - with a follower attached, an output a live own intent spends is never
@@ -19,18 +22,17 @@ import {
   generateEmulatorAccount,
   Lucid,
   type LucidEvolution,
-  mintingPolicyToId,
-  paymentCredentialOf,
-  scriptFromNative,
-  toUnit,
-  type UTxO,
 } from "@lucid-evolution/lucid";
 import { Effect, Either } from "effect";
 import { afterAll, afterEach, describe, expect, it } from "vitest";
 
+import { unfundedSkipReason } from "../src/fibers/operator-watchdog.js";
 import type { IntentJournal } from "../src/services/intent-journal.js";
+import { isOperatorCommandRefusal } from "../src/transactions/operators/commands.js";
 import {
   OperatorFundingShortfall,
+  OperatorWalletInputsEmpty,
+  presetOperatorWalletInputs,
   requireOperatorFundingProgram,
 } from "../src/transactions/operators/funding-preflight.js";
 import { ensureReferenceScriptWalletWorkingCapital } from "../src/transactions/reference-scripts.ensure-reference-script-wallet-working-capital.js";
@@ -55,6 +57,12 @@ import {
 } from "./helpers/intent-journal-emulator.js";
 import { testDatabases } from "./helpers/l1-events-store.js";
 import {
+  amountOf,
+  isPlain,
+  lovelaceIn,
+  makeTokenBearingWallet,
+} from "./helpers/token-bearing-wallet.js";
+import {
   EMULATOR_PROTOCOL_PARAMETERS,
   EMULATOR_REQUIRED_BOND_LOVELACE,
   initOperatorLifecycleFixture,
@@ -74,64 +82,12 @@ afterAll(async () => {
   await databases.dropAll();
 });
 
-const lovelaceIn = (utxos: readonly UTxO[]): bigint =>
-  utxos.reduce((total, utxo) => total + (utxo.assets.lovelace ?? 0n), 0n);
-const amountOf = (utxos: readonly UTxO[], unit: string): bigint =>
-  utxos.reduce((total, utxo) => total + (utxo.assets[unit] ?? 0n), 0n);
-const isPlain = (utxo: UTxO): boolean =>
-  Object.keys(utxo.assets).every((unit) => unit === "lovelace") &&
-  utxo.scriptRef == null &&
-  utxo.datum == null &&
-  utxo.datumHash == null;
-
-/**
- * Re-spends the whole wallet into `outputs` outputs that each carry a
- * foreign token (minted under a policy of the wallet's key, as the DA
- * scaffold's attestation token is), the remainder going to `sink`: the
- * wallet is left without a single plain-ADA output. Returns the token unit.
- */
-const makeTokenOnlyWallet = async (
-  lucid: LucidEvolution,
-  { outputs = 3, keep }: { readonly outputs?: number; readonly keep?: bigint },
-): Promise<string> => {
-  const address = await lucid.wallet().address();
-  const policy = scriptFromNative({
-    type: "sig",
-    keyHash: paymentCredentialOf(address)!.hash,
-  });
-  const unit = toUnit(mintingPolicyToId(policy), "00");
-  const utxos = await lucid.utxosAt(address);
-  const spendable = keep ?? lovelaceIn(utxos) - 20_000_000n;
-  let tx = lucid
-    .newTx()
-    .collectFrom(utxos)
-    .mintAssets({ [unit]: BigInt(outputs) })
-    .attach.MintingPolicy(policy);
-  for (let index = 0; index < outputs; index += 1)
-    tx = tx.pay.ToAddress(address, {
-      lovelace: spendable / BigInt(outputs),
-      [unit]: 1n,
-    });
-  const unsigned = await tx.complete({
-    coinSelection: false,
-    changeAddress: generateEmulatorAccount({ lovelace: 0n }).address,
-    presetWalletInputs: utxos,
-  });
-  await lucid.awaitTx(
-    await (await unsigned.sign.withWallet().complete()).submit(),
-  );
-  const after = await lucid.utxosAt(address);
-  expect(after.length).toBe(outputs);
-  expect(after.some(isPlain)).toBe(false);
-  return unit;
-};
-
 describe("operator lifecycle funded from a token-only operator wallet", () => {
   it("registers, with the tokens back in change", async () => {
     const { lucid, referenceScriptsLucid, contracts } =
       await initOperatorLifecycleFixture();
     const address = await lucid.wallet().address();
-    const unit = await makeTokenOnlyWallet(lucid, {});
+    const unit = await makeTokenBearingWallet(lucid, {});
 
     const registered = await runWithoutFollower(
       registerOperatorProgram(
@@ -166,7 +122,7 @@ describe("operator lifecycle funded from a token-only operator wallet", () => {
         referenceScriptsLucid,
       ),
     );
-    const unit = await makeTokenOnlyWallet(lucid, {});
+    const unit = await makeTokenBearingWallet(lucid, {});
 
     advanceEmulatorPastRegistrationDelay(emulator);
     const activated = await runWithoutFollower(
@@ -199,7 +155,7 @@ describe("operator lifecycle funded from a token-only operator wallet", () => {
         referenceScriptsLucid,
       ),
     );
-    const unit = await makeTokenOnlyWallet(lucid, {});
+    const unit = await makeTokenBearingWallet(lucid, {});
 
     const deregistered = await runWithoutFollower(
       deregisterOperatorProgram(
@@ -213,6 +169,49 @@ describe("operator lifecycle funded from a token-only operator wallet", () => {
     expect(await fetchRegisteredOperatorNodes(lucid, contracts)).toEqual([]);
     expect(amountOf(await lucid.utxosAt(address), unit)).toBe(3n);
   }, 600_000);
+
+  it("registers from a mixed wallet whose plain coins alone cannot fund it, spending the token output", async () => {
+    const { lucid, referenceScriptsLucid, contracts } =
+      await initOperatorLifecycleFixture();
+    const address = await lucid.wallet().address();
+    const unit = await makeTokenBearingWallet(lucid, {
+      outputs: 1,
+      keep: 1_000_000_000n,
+      plainLovelace: 2_000_000n,
+    });
+    const tokenOutputs = (await lucid.utxosAt(address)).filter(
+      (utxo) => !isPlain(utxo),
+    );
+    expect(tokenOutputs).toHaveLength(1);
+
+    const registered = await runWithoutFollower(
+      registerOperatorProgram(
+        lucid,
+        contracts,
+        EMULATOR_REQUIRED_BOND_LOVELACE,
+        referenceScriptsLucid,
+      ),
+    );
+    expect(registered.registerTxHash).toHaveLength(64);
+    expect(await fetchRegisteredOperatorNodes(lucid, contracts)).not.toEqual(
+      [],
+    );
+    const after = await lucid.utxosAt(address);
+    expect(after.map(refOf)).not.toContain(refOf(tokenOutputs[0]!));
+    expect(amountOf(after, unit)).toBe(1n);
+  }, 600_000);
+
+  it("refuses an empty wallet-input set by name, an unfunded skip for the watchdog", () => {
+    const refused = Effect.runSync(
+      Effect.either(presetOperatorWalletInputs("register-operator", [])),
+    );
+    expect(Either.isLeft(refused)).toBe(true);
+    const error = Either.isLeft(refused) ? refused.left : undefined;
+    expect(error).toBeInstanceOf(OperatorWalletInputsEmpty);
+    expect(isOperatorCommandRefusal(error)).toBe(true);
+    expect(unfundedSkipReason(error)).toBe("wallet_inputs_empty");
+    expect(unfundedSkipReason(new Error("script failed"))).toBeUndefined();
+  });
 });
 
 describe("reference-script wallet top-up from the operator wallet view", () => {
@@ -233,7 +232,7 @@ describe("reference-script wallet top-up from the operator wallet view", () => {
   it("funds the top-up from a token-only operator wallet and pays plain ADA", async () => {
     const { operator, reference, operatorLucid, referenceLucid } =
       await topUpFixture();
-    const unit = await makeTokenOnlyWallet(operatorLucid, {});
+    const unit = await makeTokenBearingWallet(operatorLucid, {});
 
     await runWithoutFollower(
       ensureReferenceScriptWalletWorkingCapital(
@@ -438,7 +437,7 @@ describe("funding preflight over the whole view", () => {
 
   it("counts a token-only wallet's lovelace less the token change, refusing one lovelace past it", async () => {
     const { lucid, address } = await preflightFixture();
-    const unit = await makeTokenOnlyWallet(lucid, { keep: 60_000_000n });
+    const unit = await makeTokenBearingWallet(lucid, { keep: 60_000_000n });
     const total = lovelaceIn(await lucid.utxosAt(address));
     const kept = tokenChange(lucid, address, unit);
     expect(kept).toBeGreaterThan(0n);

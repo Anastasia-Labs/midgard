@@ -166,6 +166,10 @@ deadline:
 - `runtime_reference_scripts_failed` (a `failedReason`): the node-runtime
   reference-script preflight failed. Publish the reference scripts it
   names.
+- `runtime_reference_scripts_input_conflict`: the node-runtime
+  reference-script preflight lost an input to a transaction still in flight
+  (typically the previous process's, after a restart). It is built again once
+  that transaction lands; no action unless it outlives the budget.
 - `protocol_initialization_failed`: the startup's protocol initialization
   (its transaction, the reference scripts after it, or the deployment-info
   write) failed; startup ends with it as `failedReason`. Read the log.

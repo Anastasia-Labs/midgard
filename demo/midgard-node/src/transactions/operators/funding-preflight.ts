@@ -47,6 +47,37 @@ export class OperatorFundingShortfall extends Error {
   }
 }
 
+/**
+ * An operator-lifecycle build was handed no wallet input. It is refused
+ * rather than built: lucid's coin selection reads the provider's wallet when
+ * `presetWalletInputs` is empty, which can spend an output a live intent
+ * already spends (plan §8.5). The wallet is not ready to fund the command; a
+ * later attempt may succeed once the view holds an output.
+ */
+export class OperatorWalletInputsEmpty extends Error {
+  readonly label: string;
+  constructor(label: string) {
+    super(
+      `${label}: the operator wallet view gave no input to fund it; refused rather than letting coin selection read the provider wallet`,
+    );
+    this.name = "OperatorWalletInputsEmpty";
+    this.label = label;
+  }
+}
+
+/**
+ * The `presetWalletInputs` an operator-lifecycle builder completes with:
+ * `walletInputs` unchanged, or `OperatorWalletInputsEmpty` when there are
+ * none.
+ */
+export const presetOperatorWalletInputs = (
+  label: string,
+  walletInputs: readonly UTxO[],
+): Effect.Effect<UTxO[], OperatorWalletInputsEmpty> =>
+  walletInputs.length > 0
+    ? Effect.succeed([...walletInputs])
+    : Effect.fail(new OperatorWalletInputsEmpty(label));
+
 export const formatAda = (lovelace: bigint): string => {
   const whole = lovelace / 1_000_000n;
   const frac = (lovelace % 1_000_000n).toString().padStart(6, "0");
@@ -201,8 +232,9 @@ export const requireOperatorFundingProgram = (
 /**
  * The selected wallet's view (§8.5) as the explicit `walletInputs` an
  * operator-lifecycle builder selects coins and collateral from. An empty view
- * is refused by name (`wallet_view_empty` in the cause); the builder never
- * falls back to the provider.
+ * is refused by name (`wallet_view_empty` in the cause). The builder does not
+ * rely on that: it completes through `presetOperatorWalletInputs`, which
+ * refuses an empty set itself, so it never falls back to the provider.
  */
 export const operatorWalletInputsProgram = (
   lucid: LucidEvolution,
