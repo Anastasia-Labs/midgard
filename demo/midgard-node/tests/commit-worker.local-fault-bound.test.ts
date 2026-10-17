@@ -33,9 +33,10 @@ import {
  * This node's commit attempts while its Ed25519 verifier faults on a due
  * withdrawal. Each attempt classifies the withdrawal as the block build does,
  * fails at the worker's boundary and reaches the parent as its output. A
- * fault is retried; `LOCAL_FAULT_RUN_LIMIT` attempts in a row failing on it
- * exit the node non-zero, and a restarted node meets the same bound again.
- * A failure that is not the fault is not counted.
+ * fault is retried; `LOCAL_FAULT_RUN_LIMIT` attempts failing on it without a
+ * successful commit between them exit the node non-zero, and a restarted node
+ * meets the same bound again. Only a successful commit resets the count: waits
+ * and failures that are not the fault leave it, and are never counted.
  */
 /** The reason the node exits under, from source `commit_worker`. */
 const EXIT_REASON = "commit_worker_verifier_unavailable";
@@ -138,10 +139,15 @@ const freshProcess = () =>
 
 /**
  * One commit attempt over `entry`: the worker classifies it as the block
- * build does and reports its outcome, which the parent takes. Returns the
- * parent's output and the validities the attempt derived.
+ * build does and reports its outcome, which the parent takes; `passed` is
+ * what the worker reports once classification passes. Returns the parent's
+ * output and the validities the attempt derived.
  */
-const attempt = async (globals: Globals, entry: WithdrawalsDB.Entry) => {
+const attempt = async (
+  globals: Globals,
+  entry: WithdrawalsDB.Entry,
+  passed: WorkerOutput = { type: "NothingToCommitOutput" },
+) => {
   const validities: string[] = [];
   const output = await Effect.runPromise(
     captureCommitWorkerFailure(
@@ -151,7 +157,7 @@ const attempt = async (globals: Globals, entry: WithdrawalsDB.Entry) => {
         ),
         Effect.map((classified): WorkerOutput => {
           validities.push(...classified.map(({ validity }) => validity));
-          return { type: "NothingToCommitOutput" };
+          return passed;
         }),
       ),
     ),
@@ -169,6 +175,76 @@ const attempts = async (
     outputs.push((await attempt(globals, entry)).output);
   return outputs;
 };
+
+/** The parent takes `output` from the worker. */
+const take = (globals: Globals, output: WorkerOutput) =>
+  takeCommitWorkerOutput(globals, output, 16);
+
+const submitted = {
+  submittedTxHash: "11".repeat(32),
+  txSize: 1,
+  mempoolTxsCount: 0,
+  sizeOfBlocksTxs: 0,
+  blockEndTimeMs: 0,
+};
+
+/** Outputs that prove a commit went through. */
+const SUCCESSES: readonly WorkerOutput[] = [
+  {
+    type: "SuccessfulSubmissionOutput",
+    ...submitted,
+    mempoolLedgerDeletedOutRefHexes: [],
+  },
+  {
+    type: "SubmittedAwaitingConfirmationOutput",
+    ...submitted,
+    submittedHeaderHash: "22".repeat(28),
+    submittedUtxosRoot: "33".repeat(32),
+  },
+  {
+    type: "SuccessfulLocalFinalizationRecoveryOutput",
+    finalizedHeaderHash: "22".repeat(28),
+    mempoolTxsCount: 0,
+    sizeOfBlocksTxs: 0,
+    mempoolLedgerDeletedOutRefHexes: [],
+  },
+];
+
+/** Outputs that wait or do nothing: none proves a commit went through. */
+const WAITS: readonly WorkerOutput[] = [
+  {
+    type: "AwaitingCommitBaseOutput",
+    baseHeaderHash: "44".repeat(28),
+    detail: "foreign tail not applied yet",
+  },
+  { type: "NothingToCommitOutput" },
+  {
+    type: "AwaitingNextCommitWindowOutput",
+    heldHeaderHash: "55".repeat(28),
+    detail: "abandoned signed journal holds the header",
+  },
+  {
+    type: "SkippedSubmissionOutput",
+    mempoolTxsCount: 0,
+    sizeOfProcessedTxs: 0,
+  },
+  {
+    type: "RegisteredDueWorkOutput",
+    dueWork: {
+      kind: "commit_scheduler_refresh",
+      key: "commit",
+      callerLabel: "commit",
+      reason: "waiting for a slot",
+      observedSlot: 0,
+      dueSlot: 1,
+      dueAtMs: 0,
+      waitMs: 0,
+      slotSource: "test",
+      dependencyKey: "commit",
+      invalidationKey: "commit",
+    },
+  },
+];
 
 const exhausted = (globals: Globals) =>
   Effect.runPromise(Deferred.isDone(globals.TRANSIENT_EXHAUSTION));
@@ -208,26 +284,67 @@ const servingExit = async (globals: Globals) => {
 };
 
 describe("commit attempts under a verifier fault", () => {
-  it("retries a fault below the bound and succeeds once it clears", async () => {
+  it("retries a fault below the bound, and a successful commit resets the count", async () => {
+    const entry = await order();
+    for (const success of SUCCESSES) {
+      const label = success.type;
+      injected.fault = new Error("injected verifier fault");
+      const globals = await freshProcess();
+      const outputs = await attempts(globals, entry, LOCAL_FAULT_RUN_LIMIT - 1);
+      expect(
+        outputs.every((output) => output?.type === "FailureOutput"),
+        label,
+      ).toBe(true);
+      expect(await exhausted(globals), label).toBe(false);
+      expect(await reasons(globals), label).toEqual([
+        { source: COMMIT_WORKER_SOURCE, reason: COMMIT_WORKER_FAILED },
+      ]);
+
+      injected.fault = undefined;
+      const cleared = await attempt(globals, entry, success);
+      expect(cleared.output, label).toEqual(success);
+      expect(cleared.validities, label).toEqual(["WithdrawalIsValid"]);
+      expect(await reasons(globals), label).toEqual([]);
+      // The commit went through: the bound counts afresh from it.
+      injected.fault = new Error("injected verifier fault, again");
+      await attempts(globals, entry, LOCAL_FAULT_RUN_LIMIT - 1);
+      expect(await exhausted(globals), label).toBe(false);
+      await attempt(globals, entry);
+      expect(await exhausted(globals), label).toBe(true);
+    }
+  }, 60_000);
+
+  it("exits at the bound when the fault is interleaved with waits", async () => {
     injected.fault = new Error("injected verifier fault");
     const globals = await freshProcess();
     const entry = await order();
-    const outputs = await attempts(globals, entry, LOCAL_FAULT_RUN_LIMIT - 1);
-    expect(outputs.every((output) => output?.type === "FailureOutput")).toBe(
-      true,
-    );
+    for (let index = 0; index < LOCAL_FAULT_RUN_LIMIT - 1; index += 1) {
+      take(globals, WAITS[index % WAITS.length]!);
+      expect((await attempt(globals, entry)).output).toMatchObject({
+        type: "FailureOutput",
+        localFault: "verifier_unavailable",
+      });
+    }
+    // Every wait was taken at least once, and none reset the count.
+    for (const wait of WAITS) take(globals, wait);
     expect(await exhausted(globals)).toBe(false);
-    expect(await reasons(globals)).toEqual([
-      { source: COMMIT_WORKER_SOURCE, reason: COMMIT_WORKER_FAILED },
-    ]);
+    await attempt(globals, entry);
+    expect(await exhausted(globals)).toBe(true);
+  }, 60_000);
 
-    injected.fault = undefined;
-    const cleared = await attempt(globals, entry);
-    expect(cleared.output).toEqual({ type: "NothingToCommitOutput" });
-    expect(cleared.validities).toEqual(["WithdrawalIsValid"]);
-    // The success ended the run: the bound counts afresh from it.
-    injected.fault = new Error("injected verifier fault, again");
-    await attempts(globals, entry, LOCAL_FAULT_RUN_LIMIT - 1);
+  it("exits at the bound when the fault is interleaved with failures that are not it", async () => {
+    injected.fault = new Error("injected verifier fault");
+    const globals = await freshProcess();
+    const entry = await order();
+    // Event info that is not Data fails the attempt before any signature.
+    const other = await order(Buffer.from("ff", "hex"));
+    for (let index = 0; index < LOCAL_FAULT_RUN_LIMIT - 1; index += 1) {
+      const failed = await attempt(globals, other);
+      expect(failed.output?.type).toBe("FailureOutput");
+      expect(failed.output).not.toHaveProperty("localFault");
+      await attempt(globals, entry);
+    }
+    await attempt(globals, other);
     expect(await exhausted(globals)).toBe(false);
     await attempt(globals, entry);
     expect(await exhausted(globals)).toBe(true);
