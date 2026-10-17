@@ -28,8 +28,10 @@ import type { AikenVerdict } from "./cek-step-fuzz.oracle.js";
  * - `interimDataDecoding`: a step that reveals, in direct form, an integer
  *   outside one CBOR head or a constructor index above 127, or whose semantic
  *   witness carries one in a preimage the on-chain machine decodes as Data
- *   (iData, unConstrData, unIData and serialiseData). Owner: E-N5 (the
- *   interim §P3 row). Pending the on-chain Data decoder update.
+ *   (iData, unConstrData, unIData and serialiseData), and that the Aiken
+ *   machine fails or refuses. A step stopped by the budget is a cost verdict:
+ *   it is in a cost class or in none. Owner: E-N5 (the interim §P3 row).
+ *   Pending the on-chain Data decoder update.
  * - `blsInvalidPointPending`: a G1 or G2 uncompress failure outside the
  *   on-chain failure proof (for G1, not a wrong length, an invalid header or
  *   a point off the curve; for G2, not a wrong length or an invalid header).
@@ -280,7 +282,9 @@ export const cataloguedClassOf = (
     ...revealedConstants(witness).map(({ payloadCbor }) => payloadCbor),
     ...dataDecodedPreimages(witness),
   ];
-  if (payloads.some(payloadIsInInterimRow)) return "interimDataDecoding";
+  if (verdict !== "overBudget" && payloads.some(payloadIsInInterimRow)) {
+    return "interimDataDecoding";
+  }
   if (isPendingBlsFailure(witness)) return "blsInvalidPointPending";
   if (verdict === "overBudget" && isComputationCostKind(witness, builtin)) {
     return "computationCost";
