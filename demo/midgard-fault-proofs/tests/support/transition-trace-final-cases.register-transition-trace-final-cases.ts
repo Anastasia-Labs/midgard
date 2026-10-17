@@ -112,16 +112,24 @@ export const transitionTraceFinalCaseRunner = (
   fitLedgerSuffix?: FitLedgerSuffix,
 ): ((finalCase: TransitionTraceFinalCase) => Promise<void>) => {
   const fitRows: VanRossemFitMeasurement[] = [];
+  // Records carry every transaction's CBOR: kept only when they are written,
+  // so a thread of thousands of steps does not hold its history in memory.
+  const evidenceDir = process.env.MIDGARD_EVENT_HISTORY_EVIDENCE_DIR;
   const records: unknown[] = [];
+  const record = (entry: unknown) => {
+    if (evidenceDir !== undefined) records.push(entry);
+  };
   const measuredBlueprintSha256 = createHash("sha256")
     .update(readFileSync(realBlueprintPath))
     .digest("hex");
   afterAll(async () => {
-    const directory = process.env.MIDGARD_EVENT_HISTORY_EVIDENCE_DIR;
-    if (directory !== undefined) {
-      mkdirSync(directory, { recursive: true });
+    if (evidenceDir !== undefined) {
+      mkdirSync(evidenceDir, { recursive: true });
       writeFileSync(
-        join(directory, `transition-final-${fitLedgerSuffix ?? "cases"}.json`),
+        join(
+          evidenceDir,
+          `transition-final-${fitLedgerSuffix ?? "cases"}.json`,
+        ),
         JSON.stringify(
           {
             scope:
@@ -209,17 +217,27 @@ export const transitionTraceFinalCaseRunner = (
     emulator.submitTx = async (cbor) => {
       const result = await submit(cbor);
       const m = measureCompleteSignedTransaction(cbor);
-      const outputs = CML.Transaction.from_cbor_hex(cbor).body().outputs();
+      // One decode per transaction, freed here rather than left to finalizers.
+      const transaction = CML.Transaction.from_cbor_hex(cbor);
+      const body = transaction.body();
+      const outputs = body.outputs();
       let publication = false;
-      for (let i = 0; i < outputs.len(); i++)
-        if (outputs.get(i).script_ref() != null) publication = true;
+      for (let i = 0; i < outputs.len(); i++) {
+        const output = outputs.get(i);
+        const scriptRef = output.script_ref();
+        if (scriptRef != null) publication = true;
+        scriptRef?.free();
+        output.free();
+      }
+      const fee = body.fee();
+      for (const freed of [outputs, body, transaction]) freed.free();
       const shape = `assets-${assetCount}-outputs-${outputCount}-bytes-${outputBytes}-field-${fieldBytes}-honest-${honest}-depth-${depth}-kind-${kind}-cancel-${cancelAt}-datum-${datumCbor === undefined ? datumBytes : `cbor-${datumCbor.length / 2}`}${exactOutput === undefined ? "" : `-output-${exactOutput.slice(0, 16)}-${exactOutput.length / 2}`}-corrupt-index-${corruptAssetIndex}-corrupt-walk-${corruptWalk}-corrupt-source-${corruptSourceReference}${spentCount > 0 ? `-spent-${spentCount}` : ""}${ledgerFill > 0 ? `-fill-${ledgerFill}` : ""}${ledgerDepth > 0 ? `-ledger-depth-${ledgerDepth}` : ""}${forced === undefined ? "" : `-forced-${forced}`}${forgeStep === undefined ? "" : `-forge-${forgeStep}`}`;
-      records.push({
+      record({
         label: `${shape}/tx-${measuredIndex}`,
         txHash: result,
         transactionCbor: cbor,
         measurement: m,
-        fee: CML.Transaction.from_cbor_hex(cbor).body().fee(),
+        fee,
       });
       fitRows.push({
         name: `${shape}/tx-${measuredIndex++}`,
@@ -580,7 +598,7 @@ export const transitionTraceFinalCaseRunner = (
         ...yieldReferences,
       },
     });
-    records.push({
+    record({
       label: "deployment",
       kind,
       assetCount,

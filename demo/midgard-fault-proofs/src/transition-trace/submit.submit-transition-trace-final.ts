@@ -89,8 +89,28 @@ import { transitionTraceRouteDatum } from "./submit.transition-trace-route-datum
 import { transitionTraceYieldData } from "./yield-data.js";
 import { TRANSITION_TRACE_YIELD_REFERENCES } from "./yield-references.js";
 
-/** Exact terminal selected by the authenticated router output. */
-export const submitTransitionTraceFinal = async ({
+type SubmitTransitionTraceFinalConfig = SubmitTransitionTraceProofConfig & {
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
+};
+
+/**
+ * Exact terminal selected by the authenticated router output. A checkpoint
+ * final continues the thread at its own output, one transaction per step;
+ * the steps run in a loop, so each step's state is released once its
+ * transaction confirms rather than held for the rest of the thread.
+ */
+export const submitTransitionTraceFinal = async (
+  config: SubmitTransitionTraceFinalConfig,
+): Promise<SubmitTransitionTraceFinalResult> => {
+  let step = config;
+  for (;;) {
+    const outcome = await submitTransitionTraceFinalStep(step);
+    if (outcome.kind === "final") return outcome.result;
+    step = { ...step, ...outcome.continuation };
+  }
+};
+
+const submitTransitionTraceFinalStep = async ({
   lucid,
   blueprint,
   deploymentInfo,
@@ -104,9 +124,19 @@ export const submitTransitionTraceFinal = async ({
   fieldCertificateReferenceScript,
   preSubmitBoundary,
   awaitConfirmation = true,
-}: SubmitTransitionTraceProofConfig & {
-  readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
-}): Promise<SubmitTransitionTraceFinalResult> => {
+}: SubmitTransitionTraceFinalConfig): Promise<
+  | {
+      readonly kind: "checkpoint";
+      readonly continuation: Pick<
+        SubmitTransitionTraceFinalConfig,
+        "threadOutRef" | "depositOpening"
+      >;
+    }
+  | {
+      readonly kind: "final";
+      readonly result: SubmitTransitionTraceFinalResult;
+    }
+> => {
   const proof = readTransitionProof(proofInput);
   const {
     deploymentInfo: parsedDeploymentInfo,
@@ -606,21 +636,13 @@ export const submitTransitionTraceFinal = async ({
     await lucid.awaitTx(txHash);
     if (nextIndex === undefined)
       throw new Error("transition checkpoint layout unresolved");
-    return await submitTransitionTraceFinal({
-      lucid,
-      blueprint,
-      deploymentInfo,
-      network,
-      signer,
-      threadOutRef: `${txHash}#${nextIndex.toString()}`,
-      proof: proofInput,
-      depositOpening: retainedDeposit,
-      additionalReferenceInputs,
-      witnessReferenceScripts,
-      fieldCertificateReferenceScript,
-      preSubmitBoundary,
-      awaitConfirmation,
-    });
+    return {
+      kind: "checkpoint",
+      continuation: {
+        threadOutRef: `${txHash}#${nextIndex.toString()}`,
+        depositOpening: retainedDeposit,
+      },
+    };
   }
 
   const completedFraud =
@@ -779,7 +801,7 @@ export const submitTransitionTraceFinal = async ({
   if (awaitConfirmation) {
     await lucid.awaitTx(txHash, DEFAULT_CONFIRMATION_POLL_MS);
   }
-  return Object.freeze({
+  const result = Object.freeze({
     txHash,
     inputIndex: Number(spendLayout.inputIndex),
     outputIndex: Number(spendLayout.outputIndex),
@@ -797,4 +819,5 @@ export const submitTransitionTraceFinal = async ({
     finalIndex,
     awaitedConfirmation: awaitConfirmation,
   });
+  return { kind: "final", result };
 };
