@@ -1,3 +1,4 @@
+import { deploymentValidatorTitle as deployedTitle } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { Effect } from "effect";
 
 import {
@@ -16,12 +17,13 @@ import {
 } from "../types.js";
 
 export const TRANSACTION_OUTPUT_NON_CANONICAL_FAULT_PROOF_TITLES = {
-  step01: "fraud_proofs/transaction_output_non_canonical/step_01.main.spend",
-  step02: "fraud_proofs/transaction_output_non_canonical/step_02.main.spend",
-  step03: "fraud_proofs/transaction_output_non_canonical/step_03.main.spend",
-  step03Datum:
-    "fraud_proofs/transaction_output_non_canonical/step_03_datum.main.spend",
-  step04: "fraud_proofs/transaction_output_non_canonical/step_04.main.spend",
+  step01: deployedTitle("fraudProofTransactionOutputNonCanonical"),
+  step02: deployedTitle("fraudProofTransactionOutputNonCanonicalStep02"),
+  step03: deployedTitle("fraudProofTransactionOutputNonCanonicalStep03"),
+  step03Datum: deployedTitle(
+    "fraudProofTransactionOutputNonCanonicalStep03Datum",
+  ),
+  step04: deployedTitle("fraudProofTransactionOutputNonCanonicalStep04"),
 } as const;
 
 export type TransactionOutputNonCanonicalFaultProofContracts = {

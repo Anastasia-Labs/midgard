@@ -4,20 +4,11 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { Network } from "@lucid-evolution/lucid";
 
 import {
-  isRecordedValidationTraceSemantic,
-  VALIDATION_TRACE_RECORDED_YIELD_KEYS,
-  VALIDATION_TRACE_REDEEMER_NORMALIZATION_SEMANTIC_CONTRACT,
-  VALIDATION_TRACE_REDEEMER_NORMALIZATION_SEMANTIC_INDEX,
-  VALIDATION_TRACE_SEMANTIC_KEYS,
-  validationTraceSemanticContractName,
-  validationTraceYieldContractName,
-} from "../deployable-scripts.js";
-import {
   authenticatedValidatorFromManifest,
-  mintingValidatorFromManifest,
   spendingValidatorFromManifest,
   withdrawalValidatorFromManifest,
 } from "./midgard-contracts.assert-deployment-manifest-matches-config.js";
+import { faultProofMemberFromManifest } from "./midgard-contracts.linear-fault-proof-chain-from-manifest.js";
 
 export const eventHistoryContractsFromManifest = (
   network: Network,
@@ -84,172 +75,20 @@ export const eventHistoryContractsFromManifest = (
   return { deposit: load("deposit"), withdrawal: load("withdrawal") };
 };
 
-/**
- * A validation-trace member the deployment manifest does not record: the
- * noncanonical prepare resolvers (`resolvers` is the same list), semantic
- * resolvers outside the published canonical-decode, script-sources and phase-A
- * sets, and therefore the full `steps`
- * list. The manifest carries no bytes for any of them, and no locally built
- * bundle may stand in for a deployed script, so reading one fails loudly.
- */
-const unrecordedValidationTraceMember = (
-  sourcePath: string,
-  member: string,
-): PropertyDescriptor => ({
-  enumerable: true,
-  get: () => {
-    throw new Error(
-      `Deployment manifest at "${sourcePath}" does not record validation-trace ${member}; a manifest-sourced contract bundle cannot provide it`,
-    );
-  },
-});
-
-/**
- * The validation-trace dispute chain, every recorded member restored by its
- * manifest name.
- *
- * The CEK and ScriptSources redeemer-item carriers apply their normalizers and
- * executors to the same deployment id and thread policy, so they are one set
- * of scripts published once under the shared redeemer-item names; the CEK
- * carrier uses the first `REDEEMER_ITEM_EXECUTOR_KEYS.length` executors.
- */
+/** Restore the recorded SDK chain using purpose-checked manifest validators. */
 export const validationTraceDisputeFromManifest = (
   network: Network,
   manifest: DeploymentManifest,
   sourcePath: string,
   cekProgramMaterial: SDK.SpendingValidator,
-): SDK.FaultProofContractChains["validationTraceDispute"] => {
-  const spend = (contract: string) =>
-    spendingValidatorFromManifest(network, manifest, sourcePath, contract);
-  const byReference = (
-    references: Readonly<Record<string, { readonly deployment: string }>>,
-  ) =>
-    Object.fromEntries(
-      Object.entries(references).map(([key, { deployment }]) => [
-        key,
-        spend(deployment),
-      ]),
-    );
-
-  const opener = spend("validationTraceDispute");
-  const traversalNormalizer = spend(
-    "validationTraceDisputeRedeemerItemTraversalNormalizer",
-  );
-  const outerNormalizer = spend(
-    "validationTraceDisputeRedeemerItemOuterNormalizer",
-  );
-  const sourceAuthenticator = spend(
-    "validationTraceDisputeRedeemerItemSourceAuthenticator",
-  );
-  const executors = SDK.REDEEMER_ITEM_EXECUTOR_REFERENCES.map(
-    ({ deploymentEntry }) => spend(deploymentEntry),
-  );
-  const redeemerNormalizationSemantic = spend(
-    VALIDATION_TRACE_REDEEMER_NORMALIZATION_SEMANTIC_CONTRACT,
-  );
-
-  const semanticResolvers: SDK.SpendingValidator[] = [];
-  VALIDATION_TRACE_SEMANTIC_KEYS.forEach((key, index) => {
-    if (isRecordedValidationTraceSemantic(key)) {
-      semanticResolvers[index] = spend(
-        validationTraceSemanticContractName(key),
-      );
-    } else {
-      Object.defineProperty(
-        semanticResolvers,
-        index,
-        unrecordedValidationTraceMember(sourcePath, `semantic resolver ${key}`),
-      );
-    }
-  });
-  semanticResolvers[VALIDATION_TRACE_REDEEMER_NORMALIZATION_SEMANTIC_INDEX] =
-    redeemerNormalizationSemantic;
-
-  const chain = {
-    firstStep: opener,
-    opener,
-    source: spend("validationTraceDisputeSource"),
-    game: spend("validationTraceDisputeGame"),
-    boundary: spend("validationTraceDisputeBoundary"),
-    timeout: spend("validationTraceDisputeTimeout"),
-    award: authenticatedValidatorFromManifest(
-      network,
-      manifest,
-      sourcePath,
-      "validationTraceDisputeAward",
-      "validationTraceDisputeAwardMint",
-    ),
-    case: authenticatedValidatorFromManifest(
-      network,
-      manifest,
-      sourcePath,
-      "validationTraceDisputeCase",
-      "validationTraceDisputeCaseMint",
-    ),
-    caseConfig: mintingValidatorFromManifest(
-      manifest,
-      sourcePath,
-      "validationTraceDisputeCaseConfigMint",
-    ),
-    threadExpiry: withdrawalValidatorFromManifest(
-      manifest,
-      sourcePath,
-      "validationTraceDisputeThreadExpiryWithdraw",
-    ),
-    disputeBond: spend("validationTraceDisputeBond"),
+): SDK.FaultProofContractChains["validationTraceDispute"] =>
+  SDK.restoreValidationTraceDisputeScripts({
+    resolve: (contract) =>
+      faultProofMemberFromManifest(network, manifest, sourcePath, contract),
     cekProgramMaterial,
-    cekMaterialTraversal: spend("validationTraceDisputeCekMaterialTraversal"),
-    cekCoreStages: byReference(SDK.CEK_CORE_STAGE_REFERENCES),
-    cekContextStages: byReference(SDK.CEK_CONTEXT_STAGE_REFERENCES),
-    cekContextItemStages: {
-      ...byReference(SDK.CEK_CONTEXT_ITEM_REFERENCES),
-      traversalNormalizer,
-      outerNormalizer,
-      sourceAuthenticator,
-      executors: executors.slice(0, SDK.REDEEMER_ITEM_EXECUTOR_KEYS.length),
+    missingMember: (member) => {
+      throw new Error(
+        `Deployment manifest at "${sourcePath}" does not record validation-trace ${member}; a manifest-sourced contract bundle cannot provide it`,
+      );
     },
-    scriptSourcesStageOneRedeemerStages: {
-      envelope: redeemerNormalizationSemantic,
-      traversalNormalizer,
-      outerNormalizer,
-      sourceAuthenticator,
-      executors,
-      foldMapExecutor: executors[0],
-      finalizeFrameExecutor: executors[1],
-      settlement: spend("validationTraceDisputeRedeemerItemSettlement"),
-    },
-    proofItem: spend("validationTraceDisputeProofItem"),
-    canonicalDecodePrepare: spend(
-      "validationTraceDisputeCanonicalDecodePrepare",
-    ),
-    canonicalDecodeItemStages: {
-      source: spend("validationTraceDisputeCanonicalDecodeItemSource"),
-      observe: spend("validationTraceDisputeCanonicalDecodeItemObserve"),
-      proof: spend("validationTraceDisputeCanonicalDecodeItemProof"),
-      settlement: spend("validationTraceDisputeCanonicalDecodeItemSettlement"),
-    },
-    semanticResolvers,
-    yields: Object.fromEntries(
-      VALIDATION_TRACE_RECORDED_YIELD_KEYS.map((key) => [
-        key,
-        withdrawalValidatorFromManifest(
-          manifest,
-          sourcePath,
-          validationTraceYieldContractName(key),
-        ),
-      ]),
-    ),
-  };
-  Object.defineProperties(chain, {
-    steps: unrecordedValidationTraceMember(
-      sourcePath,
-      "steps (the full list includes unrecorded members)",
-    ),
-    prepareResolvers: unrecordedValidationTraceMember(
-      sourcePath,
-      "prepare resolvers",
-    ),
-    resolvers: unrecordedValidationTraceMember(sourcePath, "resolvers"),
   });
-  return chain as unknown as SDK.FaultProofContractChains["validationTraceDispute"];
-};

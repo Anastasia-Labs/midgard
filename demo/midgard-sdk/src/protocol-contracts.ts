@@ -1,3 +1,4 @@
+import { deploymentValidatorTitle as deployedTitle } from "@al-ft/midgard-core/deployment-manifest-identity";
 /** Production protocol family recipes; environment and manifest loading belong to consumers. */
 import { normalizeOutRef, type OutRefLike } from "@al-ft/midgard-core/out-ref";
 import { Constr, Data, type Network } from "@lucid-evolution/lucid";
@@ -32,76 +33,76 @@ import {
 import { requireEventHistoryContracts } from "./user-events/history-deployment.js";
 
 export const DA_PARAMS_GOVERNOR_SCRIPT_TITLES = {
-  mint: "da_params_governor.da_params_governor.mint",
-  spend: "da_params_governor.da_params_governor.spend",
+  mint: deployedTitle("daParamsGovernorMint"),
+  spend: deployedTitle("daParamsGovernorSpend"),
 } as const;
 
 export const DA_BOND_POOL_SCRIPT_TITLES = {
-  mint: "da_bond_pool.da_bond_pool.mint",
-  spend: "da_bond_pool.da_bond_pool.spend",
+  mint: deployedTitle("daBondPoolMint"),
+  spend: deployedTitle("daBondPoolSpend"),
 } as const;
 
 export const DA_ATTESTATION_SCRIPT_TITLES = {
-  mint: "da_attestation.da_attestation.mint",
-  spend: "da_attestation.da_attestation.spend",
+  mint: deployedTitle("daAttestationMint"),
+  spend: deployedTitle("daAttestationSpend"),
 } as const;
 
 export const AVAILABILITY_CHALLENGE_SCRIPT_TITLES = {
-  mint: "availability_challenge.availability_challenge.mint",
-  spend: "availability_challenge.availability_challenge.spend",
-  openYield: "availability_challenge_yields.open.withdraw",
-  settleYield: "availability_challenge_yields.settle.withdraw",
-  closeYield: "availability_challenge_yields.close.withdraw",
-  timeoutYield: "availability_challenge_yields.timeout.withdraw",
+  mint: deployedTitle("availabilityChallengeMint"),
+  spend: deployedTitle("availabilityChallengeSpend"),
+  openYield: deployedTitle("availabilityChallengeOpenWithdraw"),
+  settleYield: deployedTitle("availabilityChallengeSettleWithdraw"),
+  closeYield: deployedTitle("availabilityChallengeCloseWithdraw"),
+  timeoutYield: deployedTitle("availabilityChallengeTimeoutWithdraw"),
 } as const;
 
 export const REGISTERED_OPERATORS_SCRIPT_TITLES = {
-  mint: "operator_directory/registered_operators.mint.mint",
-  spend: "operator_directory/registered_operators.spend.spend",
+  mint: deployedTitle("registeredOperatorsMint"),
+  spend: deployedTitle("registeredOperatorsSpend"),
 } as const;
 
 export const ACTIVE_OPERATORS_SCRIPT_TITLES = {
-  mint: "operator_directory/active_operators.mint.mint",
-  spend: "operator_directory/active_operators.spend.spend",
+  mint: deployedTitle("activeOperatorsMint"),
+  spend: deployedTitle("activeOperatorsSpend"),
 } as const;
 
 export const RETIRED_OPERATORS_SCRIPT_TITLES = {
-  mint: "operator_directory/retired_operators.mint.mint",
-  spend: "operator_directory/retired_operators.spend.spend",
+  mint: deployedTitle("retiredOperatorsMint"),
+  spend: deployedTitle("retiredOperatorsSpend"),
 } as const;
 
 export const SCHEDULER_SCRIPT_TITLES = {
-  mint: "scheduler.mint.mint",
-  spend: "scheduler.spend.spend",
+  mint: deployedTitle("schedulerMint"),
+  spend: deployedTitle("schedulerSpend"),
 } as const;
 
 export const SETTLEMENT_SCRIPT_TITLES = {
-  mint: "settlement.mint.mint",
-  spend: "settlement.spend.spend",
+  mint: deployedTitle("settlementMint"),
+  spend: deployedTitle("settlementSpend"),
 } as const;
 
 export const RESERVE_SCRIPT_TITLES = {
-  spend: "reserve.spend.spend",
-  withdraw: "reserve.withdraw.else",
+  spend: deployedTitle("reserveSpend"),
+  withdraw: deployedTitle("reserveWithdraw"),
 } as const;
 
 export const PAYOUT_SCRIPT_TITLES = {
-  mint: "payout.mint.mint",
-  spend: "payout.spend.spend",
+  mint: deployedTitle("payoutMint"),
+  spend: deployedTitle("payoutSpend"),
 } as const;
 
 export const FRAUD_PROOF_CATALOGUE_SCRIPT_TITLES = {
-  mint: "fraud_proof_catalogue.mint.mint",
-  spend: "fraud_proof_catalogue.spend.else",
+  mint: deployedTitle("fraudProofCatalogueMint"),
+  spend: deployedTitle("fraudProofCatalogueSpend"),
 } as const;
 
 export const COMPUTATION_THREAD_SCRIPT_TITLES = {
-  mint: "computation_thread.mint.mint",
+  mint: deployedTitle("computationThreadMint"),
 } as const;
 
 export const FRAUD_PROOF_SCRIPT_TITLES = {
-  mint: "fraud_proof.mint.mint",
-  spend: "fraud_proof.spend.else",
+  mint: deployedTitle("fraudProofMint"),
+  spend: deployedTitle("fraudProofSpend"),
 } as const;
 
 const outputReferenceParam = (outRef: OutRefLike): Constr<Data> => {

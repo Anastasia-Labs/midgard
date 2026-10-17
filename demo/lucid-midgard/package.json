@@ -19,7 +19,6 @@
   },
   "scripts": {
     "clean": "rimraf dist",
-    "prebuild": "pnpm --dir ../midgard-validation run build",
     "build": "node ../../scripts/contrib.mjs build --package @al-ft/lucid-midgard",
     "fixtures:native-high-cardinality:sync": "MIDGARD_SYNC_FIXTURES=1 vitest run tests/native-high-cardinality-fixture.test.ts",
     "fixtures:native-size-balanced:sync": "MIDGARD_SYNC_FIXTURES=1 vitest run tests/native-size-balanced-fixture.test.ts",
@@ -29,8 +28,8 @@
     "lint": "eslint . --max-warnings=0",
     "lint:fix": "eslint . --fix",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run",
-    "build:contrib-raw": "tsup src/index.ts --format esm,cjs --dts --clean"
+    "test": "node ../scripts/package-test.mjs",
+    "build:contrib-raw": "node ../scripts/package-tasks.mjs build"
   },
   "keywords": [
     "cardano",
@@ -57,5 +56,45 @@
     "tsup": "^8.4.0",
     "typescript": "^5.7.3",
     "vitest": "^5.0.3"
+  },
+  "midgardTasks": {
+    "build": {
+      "steps": [
+        {
+          "command": [
+            "tsup",
+            "src/index.ts",
+            "--format",
+            "esm,cjs",
+            "--dts",
+            "--clean"
+          ]
+        }
+      ],
+      "outputs": [
+        "dist"
+      ],
+      "prerequisites": [
+        {
+          "kind": "build",
+          "package": "@al-ft/midgard-validation"
+        }
+      ]
+    },
+    "test": {
+      "command": [
+        "vitest",
+        "run"
+      ],
+      "prerequisites": [
+        {
+          "kind": "build",
+          "package": "@al-ft/midgard-core"
+        },
+        {
+          "kind": "blueprint"
+        }
+      ]
+    }
   }
 }

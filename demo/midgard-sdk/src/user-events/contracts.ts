@@ -1,3 +1,4 @@
+import { deploymentValidatorTitle as deployedTitle } from "@al-ft/midgard-core/deployment-manifest-identity";
 /** Shared deployment recipes for the hub and authenticated user-event scripts. */
 import { normalizeOutRef, type OutRefLike } from "@al-ft/midgard-core/out-ref";
 import { Constr, type Network } from "@lucid-evolution/lucid";
@@ -19,7 +20,9 @@ import {
 import { HUB_ORACLE_ASSET_NAME } from "../hub-oracle.js";
 
 export const USER_EVENT_CONTRACT_TITLES = Object.freeze({
-  hubOracle: Object.freeze({ mint: "hub_oracle.mint.mint" }),
+  hubOracle: Object.freeze({
+    mint: deployedTitle("hubOracleMint"),
+  }),
   deposit: Object.freeze({
     mint: "user_events/deposit.mint.mint",
     spend: "user_events/deposit.spend.spend",
@@ -29,13 +32,13 @@ export const USER_EVENT_CONTRACT_TITLES = Object.freeze({
     spend: "user_events/withdrawal.spend.spend",
   }),
   txOrder: Object.freeze({
-    mint: "user_events/tx_order_v1.mint.mint",
-    spend: "user_events/tx_order_v1.spend.spend",
-    fieldPreimageCertificateSpend:
-      "field_preimage_certificate.field_preimage_certificate.spend",
-    fieldPreimageCertificateMint:
-      "field_preimage_certificate.field_preimage_certificate.mint",
-    cekProgramMaterialSpend: "user_events/cek_program_material_v1.spend.spend",
+    mint: deployedTitle("txOrderMint"),
+    spend: deployedTitle("txOrderSpend"),
+    fieldPreimageCertificateSpend: deployedTitle(
+      "fieldPreimageCertificateSpend",
+    ),
+    fieldPreimageCertificateMint: deployedTitle("fieldPreimageCertificateMint"),
+    cekProgramMaterialSpend: deployedTitle("cekProgramMaterialSpend"),
   }),
 });
 

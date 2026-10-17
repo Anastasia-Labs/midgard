@@ -19,11 +19,10 @@ directories named in string literals, and widens to the whole package whenever
 it cannot decide. `no test reached` means no import or name can reach that
 package's tests. [script: scripts/contrib/reached.mjs]
 
-`contrib test` runs the package's own `test` script, the command CI runs: its
-environment, its Vitest flags and, for a whole-package run, its `node --test`
-preludes. It adds only `--maxWorkers`, `--exclude`,
-`--disableConsoleIntercept` and `--config` (another package config, with
-`--file`), under Vitest's spelling, and asks `vitest list`
+Ordinary package scripts and `contrib test` consume the same `midgardTasks`
+declaration. Before changing prerequisites or passing caller flags, read the
+[task declaration and flag rules](../../../../docs/agents/contrib/tests-and-builds.md).
+The runner asks Vitest
 first which files the run collects: a named file that the config or an
 `--exclude` drops, or a path that also selects other files, is refused before
 anything runs. A `--name` that matches nothing fails the receipt (0 tests

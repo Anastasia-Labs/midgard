@@ -91,6 +91,20 @@ test("reproduction refuses a native output deleted after its successful build", 
     JSON.stringify({
       name: "example",
       type: "module",
+      midgardTasks: {
+        build: {
+          steps: [
+            {
+              command: [
+                "node",
+                "../scripts/fixture-compiler.mjs",
+                "build:contrib-raw",
+              ],
+            },
+          ],
+          outputs: ["dist"],
+        },
+      },
       scripts: {
         build: "guarded",
         "build:contrib-raw": "node ../scripts/fixture-compiler.mjs",
@@ -105,6 +119,20 @@ test("reproduction refuses a native output deleted after its successful build", 
       `demo/${directory}/package.json`,
       JSON.stringify({
         name,
+        midgardTasks: {
+          build: {
+            steps: [
+              {
+                command: [
+                  "node",
+                  "../scripts/fixture-compiler.mjs",
+                  "build:contrib-raw",
+                ],
+              },
+            ],
+            outputs: ["dist"],
+          },
+        },
         scripts: {
           build: "guarded",
           "build:contrib-raw": "node ../scripts/fixture-compiler.mjs",

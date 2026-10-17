@@ -17,6 +17,7 @@ on:
       - "demo/midgard-core/**"
       - "demo/midgard-validation/**"
       - "demo/lucid-midgard/**"
+      - "demo/scripts/package-tasks.mjs"
       - "demo/patches/**"
       - "demo/.dockerignore"
       - "demo/package.json"
@@ -38,6 +39,7 @@ on:
       - "demo/midgard-core/**"
       - "demo/midgard-validation/**"
       - "demo/lucid-midgard/**"
+      - "demo/scripts/package-tasks.mjs"
       - "demo/patches/**"
       - "demo/.dockerignore"
       - "demo/package.json"
@@ -94,4 +96,6 @@ jobs:
           fi
       - name: Build watcher production image
         working-directory: demo
-        run: docker build --file midgard-watcher/Dockerfile --tag midgard-watcher:ci .
+        run: |
+          docker build --file midgard-watcher/Dockerfile --tag midgard-watcher:ci .
+          docker run --rm midgard-watcher:ci --help >/dev/null

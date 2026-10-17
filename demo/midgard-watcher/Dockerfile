@@ -27,21 +27,20 @@ COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY patches ./patches
 # The vendored MPF package that a package.json override resolves to.
 COPY vendor ./vendor
-COPY lucid-midgard/package.json ./lucid-midgard/package.json
+# BEGIN GENERATED manifests
+COPY da-committee-node/package.json ./da-committee-node/package.json
 COPY l1-node-transport/package.json ./l1-node-transport/package.json
+COPY lucid-midgard/package.json ./lucid-midgard/package.json
 COPY midgard-core/package.json ./midgard-core/package.json
-COPY midgard-validation/package.json ./midgard-validation/package.json
-COPY midgard-sdk/package.json ./midgard-sdk/package.json
 COPY midgard-fault-proofs/package.json ./midgard-fault-proofs/package.json
 COPY midgard-l1-follower/package.json ./midgard-l1-follower/package.json
-COPY midgard-watcher/package.json ./midgard-watcher/package.json
-COPY midgard-test-support/package.json ./midgard-test-support/package.json
-# Every other workspace manifest too: `pnpm deploy` resolves each
-# `workspace:*` edge the watcher declares (midgard-node among them), even
-# though only the production chain's sources are copied and built below.
 COPY midgard-node/package.json ./midgard-node/package.json
 COPY midgard-node-tools/package.json ./midgard-node-tools/package.json
-COPY da-committee-node/package.json ./da-committee-node/package.json
+COPY midgard-sdk/package.json ./midgard-sdk/package.json
+COPY midgard-test-support/package.json ./midgard-test-support/package.json
+COPY midgard-validation/package.json ./midgard-validation/package.json
+COPY midgard-watcher/package.json ./midgard-watcher/package.json
+# END GENERATED manifests
 RUN --mount=type=cache,id=pnpm,target=/root/.local/share/pnpm/store \
   pnpm install --frozen-lockfile --filter midgard-watcher...
 
@@ -49,18 +48,17 @@ RUN --mount=type=cache,id=pnpm,target=/root/.local/share/pnpm/store \
 # compiler recipes directly; shared-checkout leases and Git receipts belong to
 # contributor builds, and the repository tooling is outside this demo context.
 FROM workspace AS build
-COPY lucid-midgard ./lucid-midgard
+# BEGIN GENERATED sources
+COPY scripts/package-tasks.mjs ./scripts/package-tasks.mjs
 COPY l1-node-transport ./l1-node-transport
 COPY midgard-core ./midgard-core
-COPY midgard-validation ./midgard-validation
 COPY midgard-sdk ./midgard-sdk
+COPY midgard-validation ./midgard-validation
 COPY midgard-fault-proofs ./midgard-fault-proofs
 COPY midgard-l1-follower ./midgard-l1-follower
 COPY midgard-watcher ./midgard-watcher
-# The production chain only, dependencies first. `midgard-watcher...` would
-# also select its dev-only workspace edges (midgard-node and the packages
-# behind it), whose sources this image does not copy.
-RUN pnpm --filter @al-ft/lucid-midgard run build:contrib-raw
+# END GENERATED sources
+# BEGIN GENERATED builds
 RUN pnpm --filter @al-ft/l1-node-transport run build:contrib-raw
 RUN pnpm --filter @al-ft/midgard-core run build:contrib-raw
 RUN pnpm --filter @al-ft/midgard-sdk run build:contrib-raw
@@ -68,6 +66,7 @@ RUN pnpm --filter @al-ft/midgard-validation run build:contrib-raw
 RUN pnpm --filter @al-ft/midgard-fault-proofs run build:contrib-raw
 RUN pnpm --filter @al-ft/midgard-l1-follower run build:contrib-raw
 RUN pnpm --filter midgard-watcher run build:contrib-raw
+# END GENERATED builds
 # Same store as the install step: `deploy --prod` re-resolves the git-hosted
 # merkle-patricia-forestry dependency, and only a store that already holds the
 # prepared package avoids re-running its `prepare` build (which needs dev
@@ -89,7 +88,7 @@ COPY --from=onchain /plutus.json /workspace/onchain/aiken/plutus.json
 COPY --from=onchain /plutus.json.deployment.json /workspace/onchain/aiken/plutus.json.deployment.json
 RUN node scripts/deployment-profiles.mjs generate "$MIDGARD_DEPLOYMENT_PROFILE" \
   && node ../scripts/release/check-image-inputs.mjs "$MIDGARD_DEPLOYMENT_PROFILE" "$MIDGARD_RELEASE_REVISION" /workspace/public-build-inputs.json
-RUN pnpm --filter @al-ft/lucid-midgard run build:contrib-raw
+# BEGIN GENERATED public-builds
 RUN pnpm --filter @al-ft/l1-node-transport run build:contrib-raw
 RUN pnpm --filter @al-ft/midgard-core run build:contrib-raw
 RUN pnpm --filter @al-ft/midgard-sdk run build:contrib-raw
@@ -97,6 +96,7 @@ RUN pnpm --filter @al-ft/midgard-validation run build:contrib-raw
 RUN pnpm --filter @al-ft/midgard-fault-proofs run build:contrib-raw
 RUN pnpm --filter @al-ft/midgard-l1-follower run build:contrib-raw
 RUN pnpm --filter midgard-watcher run build:contrib-raw
+# END GENERATED public-builds
 RUN --mount=type=cache,id=pnpm,target=/root/.local/share/pnpm/store \
   pnpm --filter midgard-watcher deploy --prod /prod/public-midgard-watcher
 

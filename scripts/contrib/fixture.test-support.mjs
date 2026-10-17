@@ -13,6 +13,12 @@ export const fixture = (test) => {
     JSON.stringify({
       name: "example",
       type: "module",
+      midgardTasks: {
+        build: {
+          steps: [{ command: ["tsup", "src/index.ts"] }],
+          outputs: ["dist"],
+        },
+      },
       scripts: {
         build: "tsup src/index.ts",
         "build:contrib-raw": "tsup src/index.ts",
