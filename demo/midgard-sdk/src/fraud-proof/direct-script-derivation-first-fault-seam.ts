@@ -7,7 +7,10 @@ import { asDataType } from "@al-ft/midgard-core/lucid-data";
 import { Data } from "@lucid-evolution/lucid";
 
 import type { Header } from "../ledger-state.js";
-import type { RejectionReason } from "../rejection-reason.js";
+import {
+  isRejectionReasonArm,
+  type RejectionReason,
+} from "../rejection-reason.js";
 import type { NativeTxBodyCompact } from "./native.js";
 
 export const NetworkOrderContextSchema = Data.Object({
@@ -44,9 +47,24 @@ export const networkOrderContext = (
     compact.body.network_id !== header.expectedNetworkId,
 });
 
+const requireKnownArm = (reason: RejectionReason): void => {
+  const arm =
+    typeof reason === "string"
+      ? reason
+      : typeof reason === "object" &&
+          reason !== null &&
+          !Array.isArray(reason) &&
+          Object.keys(reason).length === 1
+        ? Object.keys(reason)[0]
+        : undefined;
+  if (arm === undefined || !isRejectionReasonArm(arm))
+    throw new Error("first-fault: unknown rejection arm");
+};
+
 export const purposeCoordinateOfReason = (
   reason: RejectionReason,
 ): PurposeCoordinate | null => {
+  requireKnownArm(reason);
   if (typeof reason === "string") return null;
   const payload =
     "ScriptSourceMissing" in reason
