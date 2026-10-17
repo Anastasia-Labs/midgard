@@ -45,7 +45,6 @@ export {
   type ReferenceScriptWalletBucketSummary,
   type ReferenceScriptWalletStatusSummary,
   resolveReferenceScriptUtxo,
-  selectWalletFundingUtxos,
   utxoOutRefKey,
 } from "./reference-scripts.fetch-reference-script-utxos-program.js";
 export { verifyNodeRuntimeReferenceScriptsProgram } from "./reference-scripts.verify-node-runtime-reference-scripts-program.js";

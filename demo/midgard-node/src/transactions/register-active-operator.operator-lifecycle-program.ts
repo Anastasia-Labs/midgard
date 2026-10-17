@@ -16,14 +16,12 @@ import {
 import { alignedUnixTimeStrictlyAfter } from "../workers/utils/commit-end-time.js";
 import {
   OperatorFundingShortfall,
+  operatorWalletInputsProgram,
   requireOperatorFundingProgram,
 } from "./operators/funding-preflight.js";
 import {
   referenceScriptTargetsByCommand,
   resolveReferenceScriptTargetsProgram,
-  resolveSpendableWalletUtxos,
-  selectWalletFundingUtxos,
-  utxoOutRefKey,
 } from "./reference-scripts.js";
 import {
   ACTIVATION_VALIDITY_WINDOW_MS,
@@ -167,14 +165,6 @@ export const operatorLifecycleProgram = (
     const activeOperatorScriptRefs = operatorReferenceScriptRefs.filter(
       ({ name }) => name.startsWith("active-operators "),
     );
-    const lifecycleScriptRefs = [
-      ...registeredOperatorScriptRefs,
-      ...activeOperatorScriptRefs,
-    ];
-    const lifecycleScriptRefOutRefs = new Set(
-      lifecycleScriptRefs.map(({ utxo }) => utxoOutRefKey(utxo)),
-    );
-
     const registeredNodes = yield* fetchNodeSet(
       lucid,
       contracts.registeredOperators.spendingScriptAddress,
@@ -284,8 +274,10 @@ export const operatorLifecycleProgram = (
           label: "deregister-operator",
           lockedLovelace: 0n,
         });
-        const spendableWalletUtxosForDeregister =
-          yield* resolveSpendableWalletUtxos(lucid, lifecycleScriptRefOutRefs);
+        const walletInputsForDeregister = yield* operatorWalletInputsProgram(
+          lucid,
+          "deregister-operator",
+        );
         const deregisterUnsignedTx = yield* Effect.tryPromise({
           try: () =>
             SDK.buildDeregisterRegisteredOperatorTx({
@@ -300,7 +292,7 @@ export const operatorLifecycleProgram = (
                 updatedRegisteredAnchorDatumAfterDeregister,
             }).complete({
               localUPLCEval: true,
-              presetWalletInputs: [...spendableWalletUtxosForDeregister],
+              presetWalletInputs: [...walletInputsForDeregister],
             }),
           catch: (cause) =>
             new SDK.LucidError({
@@ -522,21 +514,12 @@ export const operatorLifecycleProgram = (
         lockedLovelace: requiredBondLovelace,
         feeHeadroomLovelace: ACTIVATION_WALLET_FUNDING_TARGET_LOVELACE,
       });
-      const spendableWalletUtxosForRegister =
-        yield* resolveSpendableWalletUtxos(lucid, lifecycleScriptRefOutRefs);
-      const registerFundingInputs = selectWalletFundingUtxos(
-        spendableWalletUtxosForRegister,
-        requiredBondLovelace + ACTIVATION_WALLET_FUNDING_TARGET_LOVELACE,
+      // Coin selection funds the bond and fee from the wallet view (§8.5);
+      // the builder collects no wallet input of its own.
+      const walletInputsForRegister = yield* operatorWalletInputsProgram(
+        lucid,
+        "register-operator",
       );
-      if (registerFundingInputs.length === 0) {
-        return yield* Effect.fail(
-          new SDK.StateQueueError({
-            message:
-              "Failed to select wallet funding UTxOs for registration transaction",
-            cause: operatorKeyHash,
-          }),
-        );
-      }
       const prependedNodeAssets = {
         lovelace: requiredBondLovelace,
         [registeredNodeUnit]: 1n,
@@ -554,7 +537,7 @@ export const operatorLifecycleProgram = (
         activeNotMemberWitness,
         retiredNotMemberWitness,
         registeredRootNode,
-        registerFundingInputs,
+        registerFundingInputs: [],
         registerMintAssets,
         prependedNodeDatum,
         prependedNodeAssets,
@@ -585,7 +568,7 @@ export const operatorLifecycleProgram = (
         try: () =>
           mkRegisterTx().complete({
             localUPLCEval: true,
-            presetWalletInputs: [...registerFundingInputs],
+            presetWalletInputs: [...walletInputsForRegister],
           }),
         catch: (cause) =>
           new SDK.LucidError({
@@ -613,7 +596,7 @@ export const operatorLifecycleProgram = (
         try: () =>
           mkRegisterTx(resolvedRegisterLayout).complete({
             localUPLCEval: true,
-            presetWalletInputs: [...registerFundingInputs],
+            presetWalletInputs: [...walletInputsForRegister],
           }),
         catch: (cause) =>
           new SDK.LucidError({
@@ -839,26 +822,17 @@ export const operatorLifecycleProgram = (
       lockedLovelace: 0n,
       feeHeadroomLovelace: ACTIVATION_WALLET_FUNDING_TARGET_LOVELACE,
     });
-    const spendableWalletUtxosForActivation =
-      yield* resolveSpendableWalletUtxos(lucid, lifecycleScriptRefOutRefs);
-    const activationFundingInputs = selectWalletFundingUtxos(
-      spendableWalletUtxosForActivation,
-      ACTIVATION_WALLET_FUNDING_TARGET_LOVELACE,
+    // Coin selection funds the fee from the wallet view (§8.5); the builder
+    // collects no wallet input of its own.
+    const walletInputsForActivation = yield* operatorWalletInputsProgram(
+      lucid,
+      "activate-operator",
     );
-    if (activationFundingInputs.length === 0) {
-      return yield* Effect.fail(
-        new SDK.StateQueueError({
-          message:
-            "Failed to select wallet funding UTxOs for activation transaction",
-          cause: operatorKeyHash,
-        }),
-      );
-    }
     const activationCompleteOptions = (options: {
       readonly localUPLCEval: boolean;
     }) => ({
       ...options,
-      presetWalletInputs: [...activationFundingInputs],
+      presetWalletInputs: [...walletInputsForActivation],
     });
 
     const updatedRegisteredAnchorDatum: SDK.LinkedListNodeView = {
@@ -882,7 +856,7 @@ export const operatorLifecycleProgram = (
         registeredNode,
         registeredAnchor,
         activeInsertionAnchor,
-        activationFundingInputs,
+        activationFundingInputs: [],
         validFrom,
         validTo,
         registeredNodeUnit,

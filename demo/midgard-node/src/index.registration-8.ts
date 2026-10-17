@@ -6,6 +6,7 @@ import {
   failCli,
   parseL1AddressOption,
   parsePositiveIntegerOption,
+  provideLucidOnlyServices,
   provideTxServices,
   runCliEffect,
   tapJson,
@@ -19,6 +20,7 @@ import {
   type IntentJournal,
   IntentJournalWithoutFollower,
 } from "./services/intent-journal.js";
+import { stripOperatorWalletScriptRefsProgram } from "./transactions/operator-wallet-script-ref-strip.js";
 import * as OperatorCommands from "./transactions/operators/commands.js";
 import {
   liveReferenceScriptDeployment,
@@ -26,6 +28,20 @@ import {
   sweepRetiredReferenceScriptsProgram,
 } from "./transactions/reference-script-sweep.js";
 import * as RegisterActiveOperator from "./transactions/register-active-operator.js";
+
+/** The current protocol parameters as the sweep and strip batch limits. */
+const readBatchLimits = (lucidService: Services.Lucid) =>
+  Effect.tryPromise({
+    try: async () => {
+      const { snapshot } =
+        await ContractDeploymentInfo.cardanoProtocolParametersIdentityFromLedger(
+          ContractDeploymentInfo.ledgerProtocolParametersReader(lucidService),
+        );
+      return referenceScriptSweepLimitsFromProtocolParameters(snapshot);
+    },
+    catch: (cause) =>
+      new Error(`Failed to read current protocol parameters: ${String(cause)}`),
+  });
 
 program
   .command("sweep-reference-script-wallet")
@@ -92,21 +108,7 @@ program
                   `Failed to parse --quarantine-address: ${String(cause)}`,
                 ),
         });
-        const limits = yield* Effect.tryPromise({
-          try: async () => {
-            const { snapshot } =
-              await ContractDeploymentInfo.cardanoProtocolParametersIdentityFromLedger(
-                ContractDeploymentInfo.ledgerProtocolParametersReader(
-                  lucidService,
-                ),
-              );
-            return referenceScriptSweepLimitsFromProtocolParameters(snapshot);
-          },
-          catch: (cause) =>
-            new Error(
-              `Failed to read current protocol parameters: ${String(cause)}`,
-            ),
-        });
+        const limits = yield* readBatchLimits(lucidService);
         return yield* sweepRetiredReferenceScriptsProgram({
           lucid: lucidService.referenceScriptsApi,
           referenceScriptsAddress: lucidService.referenceScriptsAddress,
@@ -131,6 +133,55 @@ program
                 }),
             execute: opts.execute === true,
             acknowledgeRetirement: opts.iAmRetiringReferenceScripts === true,
+          },
+        });
+      }).pipe(tapJson()),
+    );
+
+    runCliEffect(mainEffect);
+  });
+
+program
+  .command("strip-operator-wallet-script-refs")
+  .description(
+    "Spend every operator-wallet UTxO that carries a reference script back to the operator wallet without one, in confirmed batches; lovelace and tokens stay in the wallet, less the fees",
+  )
+  .option(
+    "--max-reference-script-bytes-per-batch <bytes>",
+    "Lower the per-transaction reference-script byte budget (default: 90% of the protocol maximum)",
+    (value) =>
+      parsePositiveIntegerOption(
+        value,
+        "--max-reference-script-bytes-per-batch",
+      ),
+  )
+  .option(
+    "--execute",
+    "Submit the batches. Without this flag the command only prints the plan.",
+  )
+  .action(async (_args, options) => {
+    const opts = options.opts() as {
+      readonly maxReferenceScriptBytesPerBatch?: number;
+      readonly execute?: boolean;
+    };
+    const mainEffect = provideLucidOnlyServices(
+      Effect.gen(function* () {
+        const lucidService = yield* Services.Lucid;
+        yield* lucidService.switchToOperatorsMainWallet;
+        const limits = yield* readBatchLimits(lucidService);
+        return yield* stripOperatorWalletScriptRefsProgram({
+          lucid: lucidService.api,
+          referenceScriptsWalletAddress:
+            lucidService.referenceScriptsWalletAddress,
+          limits,
+          options: {
+            execute: opts.execute === true,
+            ...(opts.maxReferenceScriptBytesPerBatch === undefined
+              ? {}
+              : {
+                  maxReferenceScriptBytesPerBatch:
+                    opts.maxReferenceScriptBytesPerBatch,
+                }),
           },
         });
       }).pipe(tapJson()),

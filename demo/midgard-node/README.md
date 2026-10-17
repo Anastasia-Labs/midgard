@@ -715,6 +715,13 @@ retired tokens while their policy is still satisfiable (pass
 outputs. Execute it with `--execute --i-am-retiring-reference-scripts`; batches
 are confirmed one at a time, and a rerun resumes from chain.
 
+If the operator wallet holds UTxOs that carry a reference script, free them with
+`node dist/index.js strip-operator-wallet-script-refs`. Without `--execute` it
+only prints the batch plan. It spends those UTxOs back to the operator address
+in outputs without a reference script, keeping their ADA and tokens; only the
+fee leaves the wallet. It refuses to run against the reference-script wallet.
+Batches are confirmed one at a time, and a rerun resumes from chain.
+
 ```sh
 cd midgard-node
 pnpm build
