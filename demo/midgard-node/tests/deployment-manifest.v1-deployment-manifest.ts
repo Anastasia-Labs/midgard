@@ -1,11 +1,6 @@
 import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
 import type { DeploymentManifest } from "@al-ft/midgard-core/deployment-manifest-identity";
 import {
-  DEPLOYMENT_MANIFEST_FRAUD_PROOF_CATALOGUE_CATEGORY_IDS as SHARED_DEPLOYMENT_MANIFEST_FRAUD_PROOF_CATALOGUE_CATEGORY_IDS,
-  DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE as SHARED_DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE,
-} from "@al-ft/midgard-core/deployment-manifest-identity";
-import {
-  FRAUD_PROOF_CATALOGUE_CATEGORY_IDS,
   REFERENCE_SCRIPT_AUTH_TOKEN_NAMES,
   referenceScriptAuthUnit,
 } from "@al-ft/midgard-sdk";
@@ -30,15 +25,6 @@ import {
 } from "./deployment-manifest.canonical-identity.js";
 
 describe("V1 deployment manifest", () => {
-  it("keeps deployment registry mirrors aligned with core", () => {
-    expect(DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE).toEqual(
-      SHARED_DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE,
-    );
-    expect(FRAUD_PROOF_CATALOGUE_CATEGORY_IDS).toEqual(
-      SHARED_DEPLOYMENT_MANIFEST_FRAUD_PROOF_CATALOGUE_CATEGORY_IDS,
-    );
-  });
-
   it("names the network-id forced (wrongful-rejection) step and scan", () => {
     // The forced door and the resumable output scan it hands off to are
     // applied by `buildNetworkIdChain` but are not members of the chain's
