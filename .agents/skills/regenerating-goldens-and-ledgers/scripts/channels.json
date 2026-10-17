@@ -215,6 +215,7 @@
         "onchain/aiken/lib/midgard/fraud-proofs/withdrawal-mistag/step-03.node-agreement.test.ak",
         "onchain/aiken/lib/midgard/fraud-proofs/withdrawal-mistag/step-04.node-agreement.test.ak"
       ],
+      "aikenImportsOfOutputs": true,
       "sync": {
         "run": "pnpm --dir demo/midgard-fault-proofs run fixtures:withdrawal-mistag-agreement:sync"
       },

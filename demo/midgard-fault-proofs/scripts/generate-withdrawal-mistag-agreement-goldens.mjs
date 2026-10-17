@@ -25,7 +25,7 @@
  */
 
 import { readFileSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import {
@@ -37,10 +37,6 @@ import {
 
 const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const repositoryRoot = resolve(packageRoot, "../..");
-const moduleDirectory = join(
-  repositoryRoot,
-  "onchain/aiken/lib/midgard/fraud-proofs/withdrawal-mistag",
-);
 const vectorsPath = join(
   packageRoot,
   "tests/fixtures/withdrawal-mistag-agreement-vectors.json",
@@ -197,15 +193,21 @@ fn chain_payable(body_cbor: ByteArray, cardano_value_size: Int) -> Bool {
     ...unique(payability).map(payabilityTest),
   ].join("\n");
 
-for (const [fileName, source] of [
-  ["step-03.node-agreement.test.ak", valueRuleModule()],
-  ["step-04.node-agreement.test.ak", payabilityModule()],
+for (const [modulePath, source] of [
+  [
+    "onchain/aiken/lib/midgard/fraud-proofs/withdrawal-mistag/step-03.node-agreement.test.ak",
+    valueRuleModule(),
+  ],
+  [
+    "onchain/aiken/lib/midgard/fraud-proofs/withdrawal-mistag/step-04.node-agreement.test.ak",
+    payabilityModule(),
+  ],
 ]) {
   writeOrCheck(
-    join(moduleDirectory, fileName),
+    join(repositoryRoot, modulePath),
     formatAikenSource({
       source,
-      fileName,
+      fileName: basename(modulePath),
       repositoryRoot,
       tmpPrefix: "withdrawal-mistag-agreement-",
     }),

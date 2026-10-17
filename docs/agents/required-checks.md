@@ -600,6 +600,8 @@ Golden channel withdrawal-mistag-agreement (@al-ft/midgard-fault-proofs).
 - Runs on:
   - `demo/midgard-fault-proofs/scripts/generate-withdrawal-mistag-agreement-goldens.mjs`
   - `demo/midgard-fault-proofs/tests/fixtures/withdrawal-mistag-agreement-vectors.json`
+  - `onchain/aiken/lib/midgard/fraud-proofs/withdrawal-mistag/step-03.node-agreement.test.ak`
+  - `onchain/aiken/lib/midgard/fraud-proofs/withdrawal-mistag/step-04.node-agreement.test.ak`
   - `demo/lucid-midgard/src/**`
   - `demo/midgard-core/src/**`
   - `demo/midgard-fault-proofs/src/**`
