@@ -2,7 +2,7 @@
  * What processing a foreign landed block needs from a replayer: the
  * block's post-state on its parent's ledger, or why it cannot be had yet
  * (`missing`, `da_refetch_pending`, `event_unknown`, `forced_order_pending`,
- * `incomplete`) or
+ * `incomplete`, `verifier_unavailable`) or
  * ever (`invalid`:
  * the block does not replay to its header). A replayer throws
  * only for faults it cannot classify; the hook holds on those too.
@@ -46,6 +46,8 @@ export type Replayed = Readonly<{
  *   cannot be read back from the facts at the view yet;
  * - `incomplete`: the import failed for a reason it cannot pin on the
  *   block (a local computation, or a replay failure it cannot classify);
+ * - `verifier_unavailable`: this node's Ed25519 verifier could not answer
+ *   during the replay, a local fault and never the block's;
  * - `invalid`: the block does not replay to its header.
  */
 export type ReplayOutcome =
@@ -57,6 +59,7 @@ export type ReplayOutcome =
         | "event_unknown"
         | "forced_order_pending"
         | "incomplete"
+        | "verifier_unavailable"
         | "invalid";
       detail: string;
     }>;

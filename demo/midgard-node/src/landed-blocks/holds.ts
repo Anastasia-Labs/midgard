@@ -10,6 +10,8 @@ import {
   type DriverHold,
   isRetriedHold,
   isTransientFailureHold,
+  localFault,
+  localFaultSubject,
   notRetried,
   transientFailure,
 } from "../l1-events/driver.js";
@@ -68,6 +70,15 @@ export const LANDED_BLOCK_FORCED_ORDER_PENDING =
  * follower change runs it again, no timer does.
  */
 export const LANDED_BLOCK_REPLAY_INCOMPLETE = "landed_block_replay_incomplete";
+/**
+ * This node's Ed25519 verifier could not answer while it replayed a foreign
+ * block (libsodium failed to initialise, or raised). A local fault, never
+ * attributed to the block: retried on the driver's backoff, and after a
+ * fixed number of runs in a row on the same block the node exits non-zero
+ * for its supervisor to restart it (`l1-follower.coalesced-runner.ts`).
+ */
+export const LANDED_BLOCK_VERIFIER_UNAVAILABLE =
+  "landed_block_verifier_unavailable";
 /** Replaying or recording a landed block failed for a reason it could not classify. */
 export const LANDED_BLOCK_REPLAY_FAILED = "landed_block_replay_failed";
 /**
@@ -112,6 +123,7 @@ const PRIORITY = [
   LANDED_BLOCK_INVALID,
   LANDED_BLOCK_OWN_JOURNAL_MISMATCH,
   LANDED_BLOCK_FOLLOWER_SCHEMA_MISSING,
+  LANDED_BLOCK_VERIFIER_UNAVAILABLE,
   LANDED_BLOCK_EVENT_UNKNOWN,
   LANDED_BLOCK_FORCED_ORDER_PENDING,
   LANDED_BLOCK_DA_REFETCH_PENDING,
@@ -141,7 +153,8 @@ const cut = (detail: string) =>
  * Only each reason's own detail is truncated, so every reason stays named.
  * The combined hold is retried on the driver's backoff when any hold in it
  * is, and is `notRetried` when none is; it is a `transientFailure` when any
- * hold in it is.
+ * hold in it is, and a `localFault` on the first local fault's subject when
+ * any hold in it is one.
  */
 export const combineHolds = (
   holds: readonly DriverHold[],
@@ -161,5 +174,40 @@ export const combineHolds = (
     ].join("; "),
   };
   if (holds.some(isTransientFailureHold)) transientFailure(combined);
+  const subject = ordered
+    .map(localFaultSubject)
+    .find((faulted) => faulted !== undefined);
+  if (subject !== undefined) localFault(combined, subject);
   return holds.some(isRetriedHold) ? combined : notRetried(combined);
+};
+
+const HOLD_OF = {
+  missing: LANDED_BLOCK_AWAITING_DA,
+  da_refetch_pending: LANDED_BLOCK_DA_REFETCH_PENDING,
+  event_unknown: LANDED_BLOCK_EVENT_UNKNOWN,
+  forced_order_pending: LANDED_BLOCK_FORCED_ORDER_PENDING,
+  incomplete: LANDED_BLOCK_REPLAY_INCOMPLETE,
+  verifier_unavailable: LANDED_BLOCK_VERIFIER_UNAVAILABLE,
+  invalid: LANDED_BLOCK_INVALID,
+} as const;
+
+/**
+ * The hold a replay outcome other than `replayed` stops processing at. The
+ * waits on DA peers and on the follower's facts are retried on the driver's
+ * backoff; `invalid` (a verdict) and `incomplete` (a failure the replay
+ * cannot classify, so not known to be transient) are `notRetried`. A
+ * `verifier_unavailable` (this node's verifier could not answer) is a
+ * `localFault` on block `headerHash`: retried, within the runner's bound.
+ */
+export const replayOutcomeHold = (
+  kind: keyof typeof HOLD_OF,
+  detail: string,
+  headerHash?: string,
+): DriverHold => {
+  const hold: DriverHold = { reason: HOLD_OF[kind], detail };
+  return kind === "invalid" || kind === "incomplete"
+    ? notRetried(hold)
+    : kind === "verifier_unavailable"
+      ? localFault(hold, headerHash ?? detail)
+      : hold;
 };

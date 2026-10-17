@@ -1,4 +1,7 @@
-import { verifyLedgerEd25519Signature } from "@al-ft/midgard-core";
+import {
+  ledgerSignatureVerifierUnavailable,
+  verifyLedgerEd25519Signature,
+} from "@al-ft/midgard-core";
 import { aikenSerialisedPlutusDataCborPreservingMapOrder } from "@al-ft/midgard-core/plutus-data-cbor";
 import { CML, Data as LucidData } from "@lucid-evolution/lucid";
 import { blake2b } from "@noble/hashes/blake2.js";
@@ -31,11 +34,18 @@ export const withdrawalSigningMessage = (body: WithdrawalBody): Uint8Array =>
  * asset maps, which Lucid's own encoder does not emit). The reader is
  * iterative, so a datum nested as deep as a transaction allows still reads.
  */
-const withdrawalSignedMessageCbor = (rawBodyCbor: string): Uint8Array => {
-  const bodyCbor = Buffer.from(
+const withdrawalSignedMessageCbor = (rawBodyCbor: string): Uint8Array =>
+  withdrawalSignedMessageOfBody(onChainBodyBytes(rawBodyCbor));
+
+/** The body's bytes as `cbor.serialise` renders them; raises on non-Data. */
+const onChainBodyBytes = (rawBodyCbor: string): Buffer =>
+  Buffer.from(
     aikenSerialisedPlutusDataCborPreservingMapOrder(rawBodyCbor),
     "hex",
   );
+
+/** The domain-separated hash of the body's on-chain bytes. */
+const withdrawalSignedMessageOfBody = (bodyCbor: Buffer): Uint8Array => {
   const preimage = Buffer.concat([
     Buffer.from(WITHDRAWAL_SIGNATURE_DOMAIN, "utf8"),
     bodyCbor,
@@ -134,24 +144,31 @@ export const verifyWithdrawalSignatureCbor = (
       publicKeyHash,
     };
   }
-  let message: Uint8Array;
+  let body: Buffer;
   try {
-    message = withdrawalSignedMessageCbor(bodyCbor);
+    body = onChainBodyBytes(bodyCbor);
   } catch (cause) {
-    // The message is built by pure, iterative code from the body bytes alone,
-    // so a throw here is those bytes failing to read as Data.
+    // Only the read is refused here: bytes that are not Data are the body's
+    // fault. Nothing after it depends on the body's content.
     return {
       valid: false,
       reason: cause instanceof Error ? cause.message : String(cause),
     };
   }
-  // The ledger's own check, as `withdrawal_signature_is_valid_v1` runs it. A
-  // failure of the check itself is raised, never read as an invalid signature.
-  return verifyLedgerEd25519Signature(
-    Buffer.from(publicKeyHex, "hex"),
-    message,
-    Buffer.from(signatureHex, "hex"),
-  )
+  // The ledger's own check, as `withdrawal_signature_is_valid_v1` runs it.
+  // A failure from here on (the preimage, its hash, the check itself) is a
+  // fault of this process: raised, never read as an invalid signature.
+  let verified: boolean;
+  try {
+    verified = verifyLedgerEd25519Signature(
+      Buffer.from(publicKeyHex, "hex"),
+      withdrawalSignedMessageOfBody(body),
+      Buffer.from(signatureHex, "hex"),
+    );
+  } catch (cause) {
+    throw ledgerSignatureVerifierUnavailable(cause);
+  }
+  return verified
     ? { valid: true, publicKeyHash }
     : {
         valid: false,

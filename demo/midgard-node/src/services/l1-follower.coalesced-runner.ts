@@ -3,6 +3,7 @@ import {
   EVENTS_INGESTION_FAILED,
   isRetriedHold,
   isTransientFailureHold,
+  localFaultSubject,
 } from "../l1-events/driver.js";
 import { failureHold } from "./l1-follower.failure-hold.js";
 import { NODE_TRANSIENT_BUDGET_MS } from "./transient-exhaustion.js";
@@ -11,13 +12,24 @@ import { NODE_TRANSIENT_BUDGET_MS } from "./transient-exhaustion.js";
 const RETRY_INITIAL_MS = 500;
 const RETRY_MAX_MS = 30_000;
 
+/**
+ * How many runs in a row may end on a local fault on the same subject (a
+ * block this node's Ed25519 verifier could not check) before the runner
+ * stops: on the backoff above, about a minute of retries.
+ */
+export const LOCAL_FAULT_RUN_LIMIT = 8;
+
 export type CoalescedRunnerBound = Readonly<{
   /** How long runs may end on a transient failure in a row (default
    * `NODE_TRANSIENT_BUDGET_MS`). */
   budgetMs?: number;
   /** Wall-clock ms (default `Date.now`). */
   now?: () => number;
-  /** Called once, with the transient failures, when the budget ran out. */
+  /** How many runs in a row may end on a local fault on the same subject
+   * (default `LOCAL_FAULT_RUN_LIMIT`). */
+  localFaultRuns?: number;
+  /** Called once, with the transient failures or the local faults, when the
+   * budget or the local-fault bound ran out. */
   onExhausted: (holds: readonly DriverHold[]) => void;
 }>;
 
@@ -35,6 +47,13 @@ export type CoalescedRunnerBound = Readonly<{
  * have ended on one for `budgetMs` in a row, with no run between them free
  * of one, the runner stops (no further run) and calls `onExhausted`, and the
  * node exits non-zero (`transient-exhaustion.ts`).
+ *
+ * A local fault (`localFault`: this node's verifier could not check a block)
+ * is bounded by runs: once `localFaultRuns` runs in a row ended on one on the
+ * same subject, the runner stops and calls `onExhausted` the same way. The
+ * count is this process's, so a restarted node meeting the same fault on the
+ * same block retries within the same bound and exits again; it never waits
+ * on the fault unbounded, and never takes it for a verdict.
  */
 export const coalescedRunner = (
   run: () => Promise<readonly DriverHold[]>,
@@ -42,15 +61,18 @@ export const coalescedRunner = (
   bound: CoalescedRunnerBound,
 ): (() => void) => {
   const budgetMs = bound.budgetMs ?? NODE_TRANSIENT_BUDGET_MS;
+  const localFaultRuns = bound.localFaultRuns ?? LOCAL_FAULT_RUN_LIMIT;
   const now = bound.now ?? Date.now;
   let running = false;
   let queued = false;
   let exhausted = false;
   let transientSince: number | undefined;
+  let faultSubject: string | undefined;
+  let faultRuns = 0;
   let retryMs = RETRY_INITIAL_MS;
   let timer: ReturnType<typeof setTimeout> | undefined;
   /** Whether `holds` ran the budget out; records their transient failures. */
-  const spent = (holds: readonly DriverHold[]): boolean => {
+  const transientSpent = (holds: readonly DriverHold[]): boolean => {
     const failing = holds.filter(isTransientFailureHold);
     if (failing.length === 0) {
       transientSince = undefined;
@@ -63,6 +85,27 @@ export const coalescedRunner = (
     bound.onExhausted(failing);
     return true;
   };
+  /** Whether `holds` ran the local-fault bound out; counts their subject. */
+  const localFaultSpent = (holds: readonly DriverHold[]): boolean => {
+    const faults = holds.filter(
+      (hold) => localFaultSubject(hold) !== undefined,
+    );
+    const subject =
+      faults.length === 0 ? undefined : localFaultSubject(faults[0]!);
+    faultRuns =
+      subject !== undefined && subject === faultSubject
+        ? faultRuns + 1
+        : subject === undefined
+          ? 0
+          : 1;
+    faultSubject = subject;
+    if (faultRuns < localFaultRuns) return false;
+    exhausted = true;
+    bound.onExhausted(faults);
+    return true;
+  };
+  const spent = (holds: readonly DriverHold[]): boolean =>
+    transientSpent(holds) || localFaultSpent(holds);
   const trigger = (): void => {
     if (signal.aborted || exhausted) return;
     if (timer !== undefined) {

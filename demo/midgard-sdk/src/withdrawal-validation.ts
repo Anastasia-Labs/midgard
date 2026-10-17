@@ -1,3 +1,8 @@
+import {
+  ledgerEd25519SignatureReady,
+  ledgerSignatureVerifierUnavailable,
+  type LedgerSignatureVerifierUnavailableError,
+} from "@al-ft/midgard-core";
 import { assetUnitFromParts } from "@al-ft/midgard-core/assets";
 import {
   decodeMidgardAddressText,
@@ -13,7 +18,7 @@ import {
   replacePlutusConstrFieldCbor,
 } from "@al-ft/midgard-core/plutus-data-cbor";
 import { Data as LucidData } from "@lucid-evolution/lucid";
-import { Data as EffectData, Effect, type Either } from "effect";
+import { Data as EffectData, Effect } from "effect";
 
 import { Value } from "./common.js";
 import { WITHDRAWAL_MISTAG_MAXIMUM_ASSET_COUNT } from "./fraud-proof/withdrawal-mistag.js";
@@ -131,14 +136,24 @@ const assetQuantities = (value: MidgardValue): Record<string, string> =>
     ),
   ]);
 
+/**
+ * An asynchronous entry point: it waits for the ledger's verifier first. A
+ * fault of the verifier (libsodium not initialising, or raising) fails with
+ * `LedgerSignatureVerifierUnavailableError`, a fault of this process and
+ * never a classification of the withdrawal.
+ */
 export const classifyWithdrawalFromLedger = (
   input: WithdrawalLedgerClassificationInput,
 ): Effect.Effect<
   WithdrawalLedgerClassification,
-  WithdrawalValidationError,
+  WithdrawalValidationError | LedgerSignatureVerifierUnavailableError,
   never
 > =>
   Effect.gen(function* () {
+    yield* Effect.tryPromise({
+      try: () => ledgerEd25519SignatureReady,
+      catch: ledgerSignatureVerifierUnavailable,
+    });
     const { ledgerOutRef, ledgerOutput } = input;
     let validity: WithdrawalLedgerClassification["validity"];
     let validityDetail: unknown = {};
@@ -179,11 +194,18 @@ export const classifyWithdrawalFromLedger = (
           validity = "TooManyTokensInWithdrawal";
         } else {
           const withdrawalInfo = yield* decodeWithdrawalInfo(input);
-          const verification = verifyWithdrawalSignatureCbor(
-            plutusConstrFieldCbor(input.eventInfoCbor, [0]),
-            withdrawalInfo.signature,
-            input.l2Owner,
-          );
+          const bodyCbor = plutusConstrFieldCbor(input.eventInfoCbor, [0]);
+          // The check refuses by its answer; anything it raises is the
+          // verifier's fault in this process.
+          const verification = yield* Effect.try({
+            try: () =>
+              verifyWithdrawalSignatureCbor(
+                bodyCbor,
+                withdrawalInfo.signature,
+                input.l2Owner,
+              ),
+            catch: ledgerSignatureVerifierUnavailable,
+          });
           if (!verification.valid) {
             validity = "IncorrectWithdrawalSignature";
             validityDetail = {
@@ -236,11 +258,3 @@ export const classifyWithdrawalFromLedger = (
       shouldDeleteLedgerUtxo: validity === "WithdrawalIsValid",
     };
   });
-
-/** Runs the synchronous classifier with the SDK's Effect runtime, preserving
- * its typed failure channel for callers that do not own an Effect runtime.
- */
-export const classifyWithdrawalFromLedgerSync = (
-  input: WithdrawalLedgerClassificationInput,
-): Either.Either<WithdrawalLedgerClassification, WithdrawalValidationError> =>
-  Effect.runSync(Effect.either(classifyWithdrawalFromLedger(input)));

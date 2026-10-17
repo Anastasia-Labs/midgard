@@ -2,8 +2,10 @@ import {
   computeMidgardNativeTxId,
   decodeMidgardNativeTxFullFromCanonicalCbor,
   encodeMidgardCekProgramMaterialSidecar,
+  findLedgerSignatureVerifierUnavailable,
   isMidgardConsensusProfile,
   ledgerEd25519SignatureReady,
+  ledgerSignatureVerifierUnavailable,
   MIDGARD_CONSENSUS_PROFILE,
   type MidgardConsensusProfile,
 } from "@al-ft/midgard-core";
@@ -12,7 +14,7 @@ import {
   type L1SlotConfig,
   parseL1SlotConfig,
 } from "@al-ft/midgard-core/l1-slot-config";
-import { Effect } from "effect";
+import { Cause, Effect } from "effect";
 
 import { validatePhaseASingle } from "../phase-a.js";
 import {
@@ -64,12 +66,19 @@ export type ValidationVerdictEvent = Readonly<{
 /**
  * Derives one event's canonical verdict and ledger patch with the shared
  * Phase A/B pipeline, without building a validation-machine trace.
+ *
+ * It waits for the ledger's Ed25519 verifier first. A fault of the verifier
+ * fails with `LedgerSignatureVerifierUnavailableError` (the original error
+ * its cause), a fault of this process and never a verdict on the event.
  */
 export const replayValidationVerdictEvent = (
   input: ValidationVerdictEventInput,
 ): Effect.Effect<ValidationVerdictEvent, Error> =>
   Effect.gen(function* () {
-    yield* Effect.promise(() => ledgerEd25519SignatureReady);
+    yield* Effect.tryPromise({
+      try: () => ledgerEd25519SignatureReady,
+      catch: ledgerSignatureVerifierUnavailable,
+    });
     const snapshot = yield* Effect.try(() => {
       if (!isMidgardConsensusProfile(input.consensusProfile)) {
         throw new Error("event replay requires the compiled consensus profile");
@@ -109,16 +118,20 @@ export const replayValidationVerdictEvent = (
       arrivalSeq: 0n,
       createdAt: new Date(input.blockTimeMs),
     };
-    const phaseA = yield* Effect.try(() =>
-      validatePhaseASingle(queued, {
-        consensusProfile: snapshot.consensusProfile,
-        expectedNetworkId: input.expectedNetworkId,
-        minFeeA: input.minFeeA,
-        minFeeB: input.minFeeB,
-        concurrency: 1,
-        strictnessProfile: "phase1_midgard",
-      }),
-    );
+    const phaseA = yield* Effect.try({
+      try: () =>
+        validatePhaseASingle(queued, {
+          consensusProfile: snapshot.consensusProfile,
+          expectedNetworkId: input.expectedNetworkId,
+          minFeeA: input.minFeeA,
+          minFeeB: input.minFeeB,
+          concurrency: 1,
+          strictnessProfile: "phase1_midgard",
+        }),
+      catch: (cause) =>
+        findLedgerSignatureVerifierUnavailable(cause) ??
+        new Cause.UnknownException(cause),
+    });
     const scriptEvaluations: LocalScriptEvaluation[] = [];
     if ("code" in phaseA) {
       return {

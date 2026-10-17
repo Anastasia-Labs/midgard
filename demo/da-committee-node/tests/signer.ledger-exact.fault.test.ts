@@ -96,6 +96,37 @@ describe("DA attestation witness verification faults", () => {
     expect(recordCheck()).toBeUndefined();
   });
 
+  it("raises the verifier's local fault with its cause, and still refuses a wrong witness", async () => {
+    const { publicKeyHex, record } = await honestRecord();
+    const witness = {
+      publicKeyHex,
+      availabilityCommitment: commitment.commitment,
+      witnessHex: record.signatureWitness,
+    };
+    injected.verifyFault = true;
+    const raised = (() => {
+      try {
+        verifyDaSignatureWitness(witness);
+      } catch (error) {
+        return error as Error;
+      }
+      throw new Error("the witness check returned under a fault");
+    })();
+    expect(raised.name).toBe("LedgerSignatureVerifierUnavailableError");
+    expect(raised.message).toContain("injected libsodium fault");
+    expect((raised.cause as Error).message).toBe("injected libsodium fault");
+
+    injected.verifyFault = false;
+    const flipped = Buffer.from(witness.witnessHex, "hex");
+    flipped[flipped.length - 1] ^= 0x01;
+    expect(
+      verifyDaSignatureWitness({
+        ...witness,
+        witnessHex: flipped.toString("hex"),
+      }),
+    ).toBe(false);
+  });
+
   it("raises the fault from conflict-evidence intake and stores nothing", async () => {
     const fixture = await conflictFixture();
     const saveDaConflictEvidence = vi.fn(() => Promise.resolve(true));
