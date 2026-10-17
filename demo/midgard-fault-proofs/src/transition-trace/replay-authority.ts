@@ -460,23 +460,19 @@ export const provenTransitionEventKeyCbor = (
             };
     return Data.to(eventKey, SDK.EventKey);
   }
-  if ("AcceptedTransactionTransitionMismatch" in fault)
-    return Data.to(
-      fault.AcceptedTransactionTransitionMismatch.witness.claim
-        .transition_step_membership.value.event_key,
-      SDK.EventKey,
-    );
   if (!("InvalidOneStepTransition" in fault)) return undefined;
   const witness = fault.InvalidOneStepTransition.witness;
   const step =
     "L2TransactionTransition" in witness
       ? witness.L2TransactionTransition.trace_proof
-      : "ValidDepositTransition" in witness
-        ? witness.ValidDepositTransition.trace_proof
-        : "ValidWithdrawalTransition" in witness
-          ? witness.ValidWithdrawalTransition.trace_proof
-          : "InvalidWithdrawalNoOpTransition" in witness
-            ? witness.InvalidWithdrawalNoOpTransition.trace_proof
-            : witness.InvalidForcedTransactionNoOpTransition.trace_proof;
+      : "ValidForcedTransactionTransition" in witness
+        ? witness.ValidForcedTransactionTransition.trace_proof
+        : "ValidDepositTransition" in witness
+          ? witness.ValidDepositTransition.trace_proof
+          : "ValidWithdrawalTransition" in witness
+            ? witness.ValidWithdrawalTransition.trace_proof
+            : "InvalidWithdrawalNoOpTransition" in witness
+              ? witness.InvalidWithdrawalNoOpTransition.trace_proof
+              : witness.InvalidForcedTransactionNoOpTransition.trace_proof;
   return Data.to(step.value.event_key, SDK.EventKey);
 };

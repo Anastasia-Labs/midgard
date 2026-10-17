@@ -1123,8 +1123,8 @@ test script_sources_rejects_an_unsigned_protected_pubkey_output() {
   let rejection_code = rejection_reason_v1.ProtectedOutputSignerMissing {
     output_index: 0,
   }
-  // An exact rejection also clears the ledger delta to the empty frontier
-  // commitment; `exact_rejection_post` is the canonical successor shape.
+  // An exact rejection ends the machine with the rejected verdict and its
+  // reason's code; `exact_rejection_post` is the canonical successor shape.
   let terminal = exact_rejection_post(pre, rejection_code)
   vm_script_sources.verify_script_sources_output_proof_finalize_semantics_v1(
     pre,

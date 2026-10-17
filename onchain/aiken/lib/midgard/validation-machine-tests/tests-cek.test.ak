@@ -37,7 +37,6 @@ use midgard/rejection_reason_v1
 use midgard/script_context_v1
 use midgard/script_proof_v1
 use midgard/validation_machine/cek as vm_cek
-use midgard/validation_machine/ledger_delta as vm_ledger_delta
 use midgard/validation_machine/machine_types as vm_machine_types
 use midgard/validation_machine/native_scripts as vm_native_scripts
 use midgard/validation_machine/one_step as vm_one_step
@@ -70,12 +69,11 @@ use midgard/validation_machine_tests/fixtures_parity.{
 }
 use midgard/validation_machine_tests/fixtures_phase_a.{
   cek_context_native_control_fixture, cek_state_fixture,
-  empty_cek_context_control_fixture, empty_mpf_proof_descriptor,
-  empty_native_control_fixture, empty_v1_transaction, exact_rejection_post,
-  forced_pending_state, inline_field_carriage, inline_field_door,
-  maximum_mint_last_asset_siblings, maximum_mint_preimage_cbor,
-  native_scripts_step_fixture, next_phase_a_native_state,
-  non_empty_claimed_delta_root, observer_field_carriage, observer_hash_at,
+  empty_cek_context_control_fixture, empty_native_control_fixture,
+  empty_v1_transaction, exact_rejection_post, forced_pending_state,
+  inline_field_carriage, inline_field_door, maximum_mint_last_asset_siblings,
+  maximum_mint_preimage_cbor, native_scripts_step_fixture,
+  next_phase_a_native_state, observer_field_carriage, observer_hash_at,
   observer_hashes_from, one_step_evidence, singleton_field_item_chunk_proof,
   submitted_commitment, submitted_source, v1_program_envelope,
   verify_cek_context_source_transition_fixture,
@@ -328,9 +326,6 @@ test script_integrity_is_recomputed_before_cek() {
     validation_trace_v1.ScriptIntegrity,
     34,
     authentication_witness_cbor,
-    // Re-based off `frontier_commitment(0, [])`: this fixture backs rejection
-    // proofs, so it must carry the realistic non-empty claimed delta.
-    non_empty_claimed_delta_root(),
   )
   let compact_witness_cbor = vm_witness.encode_script_integrity_compact_witness_v1(
     valid_control,
@@ -502,111 +497,6 @@ test mint_asset_leaf_vector_is_stable() {
     #"abcd",
     -7,
   ) == #"4813bd9aad26eea82fa41280aefd50c848041a2a6cf27be416e1873c2876a479"
-}
-
-test ledger_delta_operation_frontier_vectors_are_stable() {
-  let proof_descriptor = empty_mpf_proof_descriptor()
-  let deletion = vm_shared.ledger_delta_operation_leaf_hash(
-    0,
-    #"010203",
-    #"",
-    proof_descriptor,
-  )
-  let insertion = vm_shared.ledger_delta_operation_leaf_hash(
-    1,
-    #"0405",
-    #"060708",
-    proof_descriptor,
-  )
-  let frontier = validation_merkle_v1.build_frontier([deletion, insertion])
-  and {
-    deletion == #"d70952a4347195627444cfbb1874f6857de1ad78f095460b76fc826cd267a589",
-    insertion == #"f8bc7029f5f58f0436ebdf6cbbb85bd9adac05d5f6dc1b9238c8166a517aa8db",
-    validation_merkle_v1.frontier_commitment(frontier.count, frontier.peaks) == #"b6d017c71f3fc974f620b22764385bf9ad56ee5627009e57dbeb9418e486dcb2",
-  }
-}
-
-test ledger_delta_terminal_step_binds_more_than_128_operations() {
-  // This is the off-chain-built frontier for 129 identical authenticated
-  // deletions. Supplying the compact peaks measures only the actual terminal
-  // resolver; constructing 129 leaves inside the test would charge fixture
-  // setup to the transition.
-  let operation_frontier = validation_merkle_v1.BuiltFrontier {
-    count: 129,
-    peaks: [
-      validation_merkle_v1.FrontierPeak {
-        height: 0,
-        hash: #"d70952a4347195627444cfbb1874f6857de1ad78f095460b76fc826cd267a589",
-      },
-      validation_merkle_v1.FrontierPeak {
-        height: 7,
-        hash: #"c4029f40ad899fb153acbf60401c4b0187fc7ce03060d3cbeae09ea32de11cc9",
-      },
-    ],
-  }
-  let control = vm_machine_types.LedgerDeltaControlV1 {
-    resolved_input_count: 0,
-    resolved_inputs_accumulator: vm_witness.initial_resolution_accumulator(),
-    output_count: 0,
-    output_descriptor_peaks: [],
-    stage: 2,
-    replay_schedule_hash: vm_witness.empty_resolution_schedule_hash(),
-    replay_cursor: 0,
-    replay_accumulator: vm_witness.initial_resolution_accumulator(),
-    replay_remaining_schedule_hash: vm_witness.empty_resolution_schedule_hash(),
-    current_ledger_root: h_b,
-    output_cursor: 0,
-    operation_count: operation_frontier.count,
-    operation_peaks: operation_frontier.peaks,
-    pending_mutation_cbor: #"",
-  }
-  let work_witness_cbor = vm_witness.encode_ledger_delta_control_v1(control)
-  let pre = validation_trace_v1.ValidationMachineStateV1 {
-    machine_version: validation_trace_v1.machine_version,
-    event_key_hash: h_a,
-    transaction_id: h_a,
-    transaction_commitment: h_b,
-    validation_context_hash: h_c,
-    source_kind: validation_trace_v1.Forced,
-    prior_ledger_root: h_c,
-    phase: validation_trace_v1.LedgerDelta,
-    program_counter: 46,
-    work_root: validation_trace_v1.hash_work_witness(
-      validation_trace_v1.LedgerDelta,
-      46,
-      work_witness_cbor,
-    ),
-    execution_cpu: 0,
-    execution_memory: 0,
-    verdict: validation_trace_v1.Pending,
-    rejection_code_hash: zero,
-    ledger_delta_root: validation_merkle_v1.frontier_commitment(
-      operation_frontier.count,
-      operation_frontier.peaks,
-    ),
-  }
-  let post = validation_trace_v1.ValidationMachineStateV1 {
-    ..pre,
-    phase: validation_trace_v1.Terminal,
-    program_counter: 47,
-    work_root: validation_trace_v1.hash_work_witness(
-      validation_trace_v1.Terminal,
-      47,
-      vm_witness.encode_terminal_acceptance_witness_v1(
-        h_b,
-        operation_frontier.count,
-        operation_frontier.peaks,
-      ),
-    ),
-    verdict: validation_trace_v1.Accepted,
-  }
-  vm_ledger_delta.verify_ledger_delta_terminal_semantics_v1(
-    pre,
-    vm_machine_types.ValidationOneStepWitnessV1 {
-      work_witness_cbor,
-      claimed_successor: post,
-    },
-  )
 }
 
 test cek_execution_selection_authenticates_program_and_context_subject() {
@@ -883,9 +773,7 @@ test plutus_v3_receive_selection_rejects_with_an_exact_noop() {
     purpose_kind: 3,
     purpose_index: 0,
   }
-  // Canonical exact-rejection successor: it carries the pre-state's non-empty
-  // claimed delta forward. See the note on
-  // `static_rules_prove_a_network_mismatch_is_an_exact_no_op`.
+  // Canonical exact-rejection successor.
   let post = exact_rejection_post(pre, rejection_code)
   vm_one_step.verify_one_step_evidence(
     pre,
@@ -3135,7 +3023,6 @@ test mk_cons_of_well_typed_values_has_one_one_step_successor() {
       validation_trace_v1.Cek,
       40,
       work_witness_cbor,
-      validation_trace_v1.hash_ledger_delta(#"80"),
     ),
     execution_cpu: 10,
     execution_memory: 11,

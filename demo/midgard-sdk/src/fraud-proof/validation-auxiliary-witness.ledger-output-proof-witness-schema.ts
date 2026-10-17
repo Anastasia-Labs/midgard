@@ -1,7 +1,6 @@
 import { asDataType } from "@al-ft/midgard-core/lucid-data";
 import { Data } from "@lucid-evolution/lucid";
 
-import { ProofStepSchema } from "../common.js";
 import { BoundedItemChunkProofSchema } from "../ledger-state.js";
 import { CekBlobFrontierSchema } from "./validation-auxiliary-witness.core-step-witness-schema.js";
 import {
@@ -272,26 +271,3 @@ export const LedgerOutputProofWitnessSchema = Data.Enum([
     }),
   }),
 ]);
-
-export const ProofFrameSchema = Data.Object({
-  version: Data.Integer(),
-  frame_index: Data.Integer(),
-  cursor: Data.Integer(),
-  next_cursor: Data.Integer(),
-  step: ProofStepSchema,
-});
-
-const ProofDescriptorSchema = Data.Object({
-  version: Data.Integer(),
-  frame_count: Data.Integer(),
-  terminal_cursor: Data.Integer(),
-  peaks: FrontierSchema,
-});
-
-export const LedgerDeltaOperationProofSchema = Data.Object({
-  descriptor: ProofDescriptorSchema,
-  operation_count: Data.Integer(),
-  operation_peaks: FrontierSchema,
-  operation_index: Data.Integer(),
-  operation_siblings: ByteArrayListSchema,
-});

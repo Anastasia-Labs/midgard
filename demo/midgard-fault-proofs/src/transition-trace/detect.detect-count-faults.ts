@@ -1,6 +1,7 @@
 import * as SDK from "@al-ft/midgard-sdk";
 
 import { TransitionTraceChallengerError } from "./errors.js";
+import { type TransitionL2ReplayMaterial } from "./proof-material.js";
 import {
   eventKeyFingerprint,
   type SourceEventRecord,
@@ -47,6 +48,8 @@ export type TransitionTraceDetection =
       readonly diagnostic: string;
       readonly fault: SDK.TransitionFault;
       readonly proof: SDK.TransitionFaultProof;
+      /** An accepted-transaction replay's field items and ledger witnesses. */
+      readonly l2Replay?: TransitionL2ReplayMaterial;
     }
   | {
       readonly buildable: false;
@@ -66,10 +69,11 @@ export type TransitionTraceDetectionEvidence = {
   readonly omittedDueL1Events?: readonly OmittedDueL1EventEvidence[];
   readonly outOfWindowSourceEvents?: readonly OutOfWindowSourceEventEvidence[];
   /**
-   * Authenticated ledger mutation witnesses for L2 steps whose committed
-   * post-root is disputed. Retained DA authenticates the transaction and its
-   * field preimages, but does not contain the predecessor ledger tree needed
-   * to derive these proofs automatically.
+   * Authenticated ledger mutation witnesses for L2 and accepted forced
+   * transaction steps whose committed post-root is disputed. Retained DA
+   * authenticates the transaction and its field preimages, but does not
+   * contain the predecessor ledger tree needed to derive these proofs
+   * automatically.
    */
   readonly l2TransactionTransitions?: readonly (L2TransactionTransitionEvidence & {
     readonly stepIndex: bigint;
@@ -82,12 +86,14 @@ export const detection = ({
   invariant,
   diagnostic,
   fault,
+  l2Replay,
 }: {
   readonly reconstruction: TransitionTraceReconstruction;
   readonly kind: TransitionTraceFaultKind;
   readonly invariant: string;
   readonly diagnostic: string;
   readonly fault: SDK.TransitionFault;
+  readonly l2Replay?: TransitionL2ReplayMaterial;
 }): TransitionTraceDetection => ({
   buildable: true,
   kind,
@@ -95,6 +101,7 @@ export const detection = ({
   diagnostic,
   fault,
   proof: buildTransitionFaultProof({ reconstruction, fault }),
+  ...(l2Replay === undefined ? {} : { l2Replay }),
 });
 
 const unsupportedDetection = ({

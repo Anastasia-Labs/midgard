@@ -27,7 +27,7 @@ pub fn signatures_handoff_with_claimed_result(result: Int) -> Bool {
       inputs: [MidgardTxInput { tx_id: h_a, output_index: 0 }],
     },
   }
-  let Pair(pre, _work_witness_cbor) = signatures_step_fixture(tx, h_a)
+  let Pair(pre, _work_witness_cbor) = signatures_step_fixture(tx)
   let proof_source = submitted_source(tx)
   let signer_frontier = validation_merkle_v1.build_frontier([])
   let handoff_witness_cbor = signatures_scan_witness(

@@ -42,7 +42,7 @@ export const buildValidationDisputeEvidenceBundle = ({
   const openingDispute = openMidgardValidationDispute({
     operatorDescriptor: operatorTrace.tree.descriptor,
     challengerDescriptor: challengerTrace.tree.descriptor,
-    currentTime,
+    sourceTimeUpper: currentTime,
   });
   let dispute = openingDispute;
   const moves: ValidationDisputeEvidenceMove[] = [];
@@ -72,12 +72,14 @@ export const buildValidationDisputeEvidenceBundle = ({
         ? revealMidgardValidationOperatorMidpoint({
             dispute,
             proof,
-            currentTime,
+            currentTimeLower: currentTime,
+            currentTimeUpper: currentTime,
           })
         : revealMidgardValidationChallengerMidpoint({
             dispute,
             proof,
-            currentTime,
+            currentTimeLower: currentTime,
+            currentTimeUpper: currentTime,
           });
     const proofCbor = encodeValidationTraceProofDataCbor(proof);
     const disputeAfterCbor = encodeValidationDisputeDataCbor(dispute);

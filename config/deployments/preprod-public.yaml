@@ -12,6 +12,12 @@ l1_finality:
 timing:
   block_maturity_ms: 604800000
   dispute_response_window_ms: 300000
+  # Validation-trace chess clock (pd-design §6.3). Each side's cumulative budget C,
+  # the longest dispute-move validity range L_d, and the resolution allowance R.
+  # PROJECTED: provisional values until the deployment checks fix them.
+  dispute_side_clock_ms: 86400000
+  dispute_max_validity_range_ms: 120000
+  dispute_resolution_allowance_ms: 21600000
   operator_shift_ms: 3600000
   registration_ms: 30000
   event_wait_ms: 1800000 # worst case for 30 blocks = 3N/f slots = 3*30/0.05 s (30 min)
@@ -41,6 +47,13 @@ limits:
   # P1: out of reach, so a strike skips the shift but never ejects an operator.
   max_inactivity_strikes: 1000000
   coins_per_utxo_byte: 4310
+  # Most a validation-trace move may take from its thread for the fee
+  # (pd-design 6.5). PROJECTED: twice the projected largest-move fee, to be
+  # re-measured on the fit rows.
+  max_dispute_move_fee_lovelace: 1200000
+  # Least lovelace of a validation-trace fraud-proof output. PROJECTED: above
+  # the min-UTxO of that fixed-shape output, to be re-measured.
+  fraud_proof_output_lovelace: 2000000
 economics:
   profile: public-preprod-launch-v1
   requiredBondLovelace: 100000000000
@@ -48,6 +61,20 @@ economics:
   inactivitySlashingPenaltyLovelace: 10000000000
   fraudProverRewardLovelace: 75000000000
   proverCollateralFloorLovelace: 5000000
+# Forfeited validation-dispute bonds go to the protocol treasury
+# (pd-design §6.4): an owner-quorum native script in the cardano-cli JSON
+# form, separate from the reserve. Its hash is derived by the generator.
+# PROJECTED: "placeholder:" keys stand in until the owner quorum is supplied.
+protocol_treasury_native_script:
+  type: atLeast
+  required: 2
+  scripts:
+    - type: sig
+      keyHash: "706c616365686f6c6465723a74726573000000000000000000000001"
+    - type: sig
+      keyHash: "706c616365686f6c6465723a74726573000000000000000000000002"
+    - type: sig
+      keyHash: "706c616365686f6c6465723a74726573000000000000000000000003"
 allow_lists:
   # P1 curated keys (owner input I1): payment key hashes of the Preprod
   # operator, fault-prover and DA-challenger wallets.

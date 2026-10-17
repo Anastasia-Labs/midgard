@@ -25,8 +25,6 @@ import {
   frontierPeaksData,
   inlineFieldCarriageResolver,
   int,
-  ledgerDeltaOperationProofData,
-  mpfProofFrameData,
   option,
   type PlutusData,
   proofData,
@@ -219,7 +217,7 @@ export const validationAuxiliaryWitnessData = (
         valueMutationData(auxiliary.mutationStep),
       ]);
     case "valueOutputDescriptor":
-      return new Constr(38, [
+      return new Constr(34, [
         int(auxiliary.outputIndex),
         bytes(auxiliary.descriptorCbor),
         byteList(auxiliary.siblings),
@@ -245,73 +243,44 @@ export const validationAuxiliaryWitnessData = (
         byteList(auxiliary.siblings),
         valueMutationData(auxiliary.mutationStep),
       ]);
-    case "ledgerDeltaOperation":
-      return new Constr(35, [
-        int(auxiliary.operationKind === "delete" ? 0 : 1),
-        bytes(auxiliary.key),
-        bytes(auxiliary.value),
-        ledgerDeltaOperationProofData(
-          auxiliary.mutationStep.proofFoldTrace.descriptor,
-          auxiliary.operationMembership,
-        ),
-      ]);
-    case "ledgerDeltaReplay":
-      return new Constr(27, [
-        sourceKind(auxiliary.sourceKind),
-        bytes(auxiliary.key),
-        bytes(auxiliary.nextScheduleHash),
-        bytes(auxiliary.value),
-      ]);
-    case "ledgerDeltaOutput":
-      return new Constr(28, [
-        int(auxiliary.outputIndex),
-        bytes(auxiliary.descriptorCbor),
-        byteList(auxiliary.siblings),
-      ]);
-    case "ledgerDeltaProofFrame":
-      return new Constr(34, [
-        mpfProofFrameData(auxiliary.frame),
-        byteList(auxiliary.siblings),
-        bytes(auxiliary.opening),
-      ]);
     case "transactionRedeemerItemBegin":
-      return new Constr(29, [
+      return new Constr(27, [
         resolvedFieldCarriageData(resolveFieldCarriage, auxiliary),
       ]);
     case "transactionFieldItem":
-      return new Constr(30, [
+      return new Constr(28, [
         resolvedFieldCarriageData(resolveFieldCarriage, auxiliary),
       ]);
     case "ledgerOutputProofBegin":
-      return new Constr(31, [
+      return new Constr(29, [
         int(auxiliary.outputIndex),
         int(auxiliary.totalLength),
         bytes(auxiliary.itemCommitment),
         byteList(auxiliary.siblings),
       ]);
     case "ledgerOutputProofStep":
-      return new Constr(32, [ledgerOutputProofWitnessData(auxiliary.witness)]);
+      return new Constr(30, [ledgerOutputProofWitnessData(auxiliary.witness)]);
     case "ledgerOutputProofFinalize":
-      return new Constr(33, [signerProofData(auxiliary.signerProof)]);
+      return new Constr(31, [signerProofData(auxiliary.signerProof)]);
     case "scriptSourceHashBlock":
-      return new Constr(36, [
+      return new Constr(32, [
         chunkProofData(auxiliary.chunkProof),
         option(auxiliary.nextChunkProof, chunkProofData),
       ]);
     case "mintFoldAsset":
-      return new Constr(39, [
+      return new Constr(35, [
         chunkProofData(auxiliary.chunkProof),
         option(auxiliary.nextChunkProof, chunkProofData),
       ]);
     case "cekRedeemerContextSkip":
-      return new Constr(40, [
+      return new Constr(36, [
         redeemerControlData(auxiliary.control),
         bytes(auxiliary.purposeLeaf),
         bytes(auxiliary.sourceLeaf),
         byteList(auxiliary.executionSiblings),
       ]);
     case "nativeExecutionDescriptor":
-      return new Constr(37, [
+      return new Constr(33, [
         int(auxiliary.executionIndex),
         int(auxiliary.languageTag),
         int(auxiliary.purpose.purposeKind),

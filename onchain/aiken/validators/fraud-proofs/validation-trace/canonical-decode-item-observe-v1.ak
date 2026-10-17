@@ -7,7 +7,7 @@ use cardano/transaction.{
 }
 use midgard/canonical_decode_item_staging_v1 as staging
 use midgard/computation_thread as ct
-use midgard/fraud_proofs/common.{cancel, continue}
+use midgard/fraud_proofs/common.{ProverOnly, cancel, continue_validation_trace}
 use midgard/native_tx_field_access_v1.{FieldCarriageV1, Inline}
 use midgard/validation_machine/canonical_decode.{
   observe_canonical_decode_item_v1,
@@ -112,16 +112,15 @@ fn observe_item(
   own_out_ref: OutputReference,
   tx: Transaction,
 ) -> Bool {
-  let Transaction { inputs, outputs, .. } = tx
   expect Some(step_datum) = datum
-  continue(
+  continue_validation_trace(
     computation_thread_policy_id,
     step_datum,
     input_index,
     output_index,
     own_out_ref,
-    inputs,
-    outputs,
+    tx,
+    ProverOnly,
     fn(
       _input_script_hash,
       _computation_thread_token_asset_name,

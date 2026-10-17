@@ -226,7 +226,7 @@ pub fn no_output_pays_fraud_prover_reward_v1(
     fn(output) {
       operator_directory.bounty_output_is_exact_v1(
         output,
-        fraud_prover,
+        operator_directory.bounty_address_v1(fraud_prover),
         expected_reward,
       )
     },
@@ -1441,7 +1441,7 @@ pub fn validate_remove_fraudulent_v1(
         //       `RemoveLastFraudulentBlock`.
         operator_directory.bounty_routing_is_exact_v1(
           outputs,
-          fraud_prover,
+          operator_directory.bounty_address_v1(fraud_prover),
           env.fraud_prover_reward,
         )
       }
@@ -1467,7 +1467,7 @@ pub fn validate_remove_fraudulent_v1(
         //       operator's bond is the same single slashable tranche.
         operator_directory.bounty_routing_is_exact_v1(
           outputs,
-          fraud_prover,
+          operator_directory.bounty_address_v1(fraud_prover),
           env.fraud_prover_reward,
         )
       }
@@ -1903,11 +1903,9 @@ test q49_l295_one_event_of_each_kind_commits() {
         forced_transactions_root: q49_event_root,
         transition_trace_root: q49_event_root,
         event_to_step_root: q49_event_root,
-        validation_traces_root: q49_event_root,
         forced_transaction_count: 1,
         total_event_count: 1,
         transition_step_count: 1,
-        validation_trace_count: 1,
       },
     ),
     commit_block_header_output_is_valid_v1(
@@ -1916,11 +1914,9 @@ test q49_l295_one_event_of_each_kind_commits() {
         transactions_root: q49_event_root,
         transition_trace_root: q49_event_root,
         event_to_step_root: q49_event_root,
-        validation_traces_root: q49_event_root,
         l2_transaction_count: 1,
         total_event_count: 1,
         transition_step_count: 1,
-        validation_trace_count: 1,
       },
     ),
   }
@@ -2182,22 +2178,22 @@ test d3_reward_output_exactness_control_and_mutations() {
   and {
     operator_directory.bounty_output_is_exact_v1(
       control,
-      d3_fraud_prover,
+      operator_directory.bounty_address_v1(d3_fraud_prover),
       d3_reward,
     ),
     !operator_directory.bounty_output_is_exact_v1(
       d3_reward_output(d3_reward + 1),
-      d3_fraud_prover,
+      operator_directory.bounty_address_v1(d3_fraud_prover),
       d3_reward,
     ),
     !operator_directory.bounty_output_is_exact_v1(
       d3_reward_output(d3_reward - 1),
-      d3_fraud_prover,
+      operator_directory.bounty_address_v1(d3_fraud_prover),
       d3_reward,
     ),
     !operator_directory.bounty_output_is_exact_v1(
       Output { ..control, address: from_verification_key(d3_other_key) },
-      d3_fraud_prover,
+      operator_directory.bounty_address_v1(d3_fraud_prover),
       d3_reward,
     ),
     !operator_directory.bounty_output_is_exact_v1(
@@ -2206,12 +2202,12 @@ test d3_reward_output_exactness_control_and_mutations() {
         address: from_verification_key(d3_fraud_prover)
           |> with_delegation_key(d3_other_key),
       },
-      d3_fraud_prover,
+      operator_directory.bounty_address_v1(d3_fraud_prover),
       d3_reward,
     ),
     !operator_directory.bounty_output_is_exact_v1(
       Output { ..control, address: from_script(d3_fraud_prover) },
-      d3_fraud_prover,
+      operator_directory.bounty_address_v1(d3_fraud_prover),
       d3_reward,
     ),
     !operator_directory.bounty_output_is_exact_v1(
@@ -2220,17 +2216,17 @@ test d3_reward_output_exactness_control_and_mutations() {
         value: assets.from_lovelace(d3_reward)
           |> assets.add(d3_foreign_policy, "smuggled", 1),
       },
-      d3_fraud_prover,
+      operator_directory.bounty_address_v1(d3_fraud_prover),
       d3_reward,
     ),
     !operator_directory.bounty_output_is_exact_v1(
       Output { ..control, reference_script: Some(d3_foreign_policy) },
-      d3_fraud_prover,
+      operator_directory.bounty_address_v1(d3_fraud_prover),
       d3_reward,
     ),
     !operator_directory.bounty_output_is_exact_v1(
       Output { ..control, datum: InlineDatum(0) },
-      d3_fraud_prover,
+      operator_directory.bounty_address_v1(d3_fraud_prover),
       d3_reward,
     ),
   }
@@ -2250,42 +2246,42 @@ test d3_reward_routing_control_and_mutations() {
   and {
     operator_directory.bounty_routing_is_exact_v1(
       control,
-      d3_fraud_prover,
+      operator_directory.bounty_address_v1(d3_fraud_prover),
       d3_reward,
     ),
     operator_directory.bounty_routing_is_exact_v1(
       [d3_unrelated_output()],
-      d3_fraud_prover,
+      operator_directory.bounty_address_v1(d3_fraud_prover),
       0,
     ),
     !operator_directory.bounty_routing_is_exact_v1(
       [d3_unrelated_output()],
-      d3_fraud_prover,
+      operator_directory.bounty_address_v1(d3_fraud_prover),
       d3_reward,
     ),
     !operator_directory.bounty_routing_is_exact_v1(
       [d3_unrelated_output(), delegated_reward],
-      d3_fraud_prover,
+      operator_directory.bounty_address_v1(d3_fraud_prover),
       d3_reward,
     ),
     !operator_directory.bounty_routing_is_exact_v1(
       [d3_unrelated_output(), d3_reward_output(d3_reward + 1)],
-      d3_fraud_prover,
+      operator_directory.bounty_address_v1(d3_fraud_prover),
       d3_reward,
     ),
     !operator_directory.bounty_routing_is_exact_v1(
       [d3_unrelated_output(), d3_reward_output(d3_reward - 1)],
-      d3_fraud_prover,
+      operator_directory.bounty_address_v1(d3_fraud_prover),
       d3_reward,
     ),
     !operator_directory.bounty_routing_is_exact_v1(
       [d3_reward_output(d3_reward), d3_reward_output(d3_reward + 1)],
-      d3_fraud_prover,
+      operator_directory.bounty_address_v1(d3_fraud_prover),
       d3_reward,
     ),
     !operator_directory.bounty_routing_is_exact_v1(
       [d3_reward_output(d3_reward), d3_reward_output(d3_reward)],
-      d3_fraud_prover,
+      operator_directory.bounty_address_v1(d3_fraud_prover),
       d3_reward,
     ),
   }
@@ -2331,7 +2327,7 @@ test d4_refuses_a_bundled_slash_bounty_to_the_fraud_prover() {
   and {
     operator_directory.bounty_routing_is_exact_v1(
       [bounty_to_prover],
-      d3_fraud_prover,
+      operator_directory.bounty_address_v1(d3_fraud_prover),
       d3_reward,
     ),
     !no_output_pays_fraud_prover_reward_v1(
@@ -2341,7 +2337,7 @@ test d4_refuses_a_bundled_slash_bounty_to_the_fraud_prover() {
     ),
     operator_directory.bounty_routing_is_exact_v1(
       [bounty_to_other],
-      d3_other_key,
+      operator_directory.bounty_address_v1(d3_other_key),
       d3_reward,
     ),
     no_output_pays_fraud_prover_reward_v1(

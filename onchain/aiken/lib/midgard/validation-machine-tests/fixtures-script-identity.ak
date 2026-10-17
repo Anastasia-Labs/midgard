@@ -137,7 +137,6 @@ pub fn stage_zero_script_sources_state(
     validation_trace_v1.ScriptSources,
     program_counter,
     work_witness_cbor,
-    validation_trace_v1.hash_ledger_delta(#"80"),
   )
 }
 

@@ -128,44 +128,6 @@ const valueMutation = {
   postSeenAssetCount: 1,
   postNonzeroAssetCount: 1,
 } as const;
-const proofFrame = {
-  version: 1,
-  frameIndex: 0,
-  cursor: 0,
-  nextCursor: 1,
-  step: { kind: "branch", skip: 0, neighbors: Buffer.alloc(0) },
-} as const;
-const proofDescriptor = {
-  version: 1,
-  frameCount: 0,
-  terminalCursor: 0,
-  frontier: emptyFrontier,
-} as const;
-const proofFoldControl = {
-  nextFrameIndex: 0,
-  expectedNextCursor: 0,
-  includingRoot: hash(0x1a),
-  excludingRoot: hash(0x1b),
-} as const;
-const ledgerMutation = {
-  operation: { type: "delete", key: bytes("1c") },
-  preRoot: hash(0x1d),
-  postRoot: hash(0x1e),
-  deletionOpening: Buffer.alloc(0),
-  proofFoldTrace: {
-    descriptor: proofDescriptor,
-    frames: [],
-    initial: proofFoldControl,
-    steps: [],
-    terminal: proofFoldControl,
-  },
-} as const;
-const operationMembership = {
-  frontier: emptyFrontier,
-  leafIndex: 0,
-  leafHash: hash(0x1f),
-  siblings: [],
-} as const;
 
 const auxiliary = (value: Auxiliary): Auxiliary => value;
 
@@ -470,38 +432,19 @@ export const canonicalValidationAuxiliaryWitnesses = [
   [
     27,
     auxiliary({
-      kind: "ledgerDeltaReplay",
-      sourceKind: "reference",
-      key: bytes("1f"),
-      nextScheduleHash: hash(0x2d),
-      value: bytes("20"),
-    }),
-  ],
-  [
-    28,
-    auxiliary({
-      kind: "ledgerDeltaOutput",
-      outputIndex: 0,
-      descriptorCbor: bytes("21"),
-      siblings: [],
-    }),
-  ],
-  [
-    29,
-    auxiliary({
       kind: "transactionRedeemerItemBegin",
       ...carriagePlan,
     }),
   ],
   [
-    30,
+    28,
     auxiliary({
       kind: "transactionFieldItem",
       ...carriagePlan,
     }),
   ],
   [
-    31,
+    29,
     auxiliary({
       kind: "ledgerOutputProofBegin",
       outputIndex: 0,
@@ -511,41 +454,21 @@ export const canonicalValidationAuxiliaryWitnesses = [
     }),
   ],
   [
-    32,
+    30,
     auxiliary({
       kind: "ledgerOutputProofStep",
       witness: null,
     }),
   ],
   [
-    33,
+    31,
     auxiliary({
       kind: "ledgerOutputProofFinalize",
       signerProof,
     }),
   ],
   [
-    34,
-    auxiliary({
-      kind: "ledgerDeltaProofFrame",
-      frame: proofFrame,
-      siblings: [],
-      opening: Buffer.alloc(0),
-    }),
-  ],
-  [
-    35,
-    auxiliary({
-      kind: "ledgerDeltaOperation",
-      operationKind: "delete",
-      key: bytes("23"),
-      value: bytes("24"),
-      mutationStep: ledgerMutation,
-      operationMembership,
-    }),
-  ],
-  [
-    36,
+    32,
     auxiliary({
       kind: "scriptSourceHashBlock",
       chunkProof,
@@ -553,7 +476,7 @@ export const canonicalValidationAuxiliaryWitnesses = [
     }),
   ],
   [
-    37,
+    33,
     auxiliary({
       kind: "nativeExecutionDescriptor",
       executionIndex: 0,
@@ -580,7 +503,7 @@ export const canonicalValidationAuxiliaryWitnesses = [
     }),
   ],
   [
-    38,
+    34,
     auxiliary({
       kind: "valueOutputDescriptor",
       outputIndex: 0,
@@ -589,7 +512,7 @@ export const canonicalValidationAuxiliaryWitnesses = [
     }),
   ],
   [
-    39,
+    35,
     auxiliary({
       kind: "mintFoldAsset",
       chunkProof,
@@ -597,7 +520,7 @@ export const canonicalValidationAuxiliaryWitnesses = [
     }),
   ],
   [
-    40,
+    36,
     auxiliary({
       kind: "cekRedeemerContextSkip",
       control: redeemerControl,

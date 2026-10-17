@@ -1,4 +1,5 @@
 import { Store, Trie } from "@aiken-lang/merkle-patricia-forestry";
+import { parseDeploymentManifestAvailabilityChallenge } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { deploymentFraudProofCatalogueCategories } from "@al-ft/midgard-core/deployment-profile";
 import { formatUnknownError } from "@al-ft/midgard-core/error-format";
 import {
@@ -29,7 +30,7 @@ import {
   normalizeHex,
   trieRootHex,
 } from "./inspect-contracts.parse-contract-deployment-info.js";
-import { requireRecord } from "./json-file.js";
+import { parseHex, parseInteger, requireRecord } from "./json-file.js";
 
 /**
  * The deployment manifest's L1 slot mapping, the parameter the
@@ -43,6 +44,46 @@ export const parseContractDeploymentL1SlotConfig = (
     requireRecord(value, "Contract deployment info").l1SlotConfig,
     "Contract deployment info.l1SlotConfig",
   );
+
+/**
+ * The validation-dispute bond the validation-trace source validator was
+ * applied with: the manifest's `availabilityChallenge.challengerBondLovelace`.
+ */
+export const parseContractDeploymentDisputeBondLovelace = (
+  value: unknown,
+): bigint =>
+  BigInt(
+    parseDeploymentManifestAvailabilityChallenge(
+      requireRecord(value, "Contract deployment info").availabilityChallenge,
+    ).challengerBondLovelace,
+  );
+
+/**
+ * The out-ref the validation-case configuration policy was applied with: the
+ * hub-oracle one-shot the deployment's init transaction consumed, which also
+ * mints the case configuration token.
+ */
+export const parseContractDeploymentCaseConfigInitializationNonce = (
+  value: unknown,
+): { readonly txHash: string; readonly outputIndex: number } => {
+  const oneShot = requireRecord(
+    requireRecord(value, "Contract deployment info").hubOracleOneShot,
+    "Contract deployment info.hubOracleOneShot",
+  );
+  return {
+    txHash: parseHex(
+      oneShot.txHash,
+      "Contract deployment info.hubOracleOneShot.txHash",
+      32,
+    ),
+    outputIndex: Number(
+      parseInteger(
+        oneShot.outputIndex,
+        "Contract deployment info.hubOracleOneShot.outputIndex",
+      ),
+    ),
+  };
+};
 
 export const parseContractDeploymentReferenceScriptAuthPolicyId = (
   value: unknown,

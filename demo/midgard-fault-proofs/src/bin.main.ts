@@ -264,6 +264,7 @@ export const main = async (): Promise<void> => {
         walletPrivateKeyEnv: args.walletPrivateKeyEnv,
         threadOutRef: args.threadOutRef,
         transitionFaultProofPath: args.transitionFaultProofPath,
+        transitionL2ReplayPath: args.transitionL2ReplayPath,
         referenceInputOutRefs: args.referenceInputOutRefs,
         awaitConfirmation: args.awaitConfirmation,
       }),

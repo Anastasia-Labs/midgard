@@ -1,7 +1,8 @@
 //// Checks the script-source steps and the ValueAndMint resolved-input replays
 //// a TypeScript trace emits, one step at a time, through the one-step
 //// dispatcher and through the split verifier the deployment routes that step
-//// to. The vectors are produced by
+//// to, and the native execution scan steps through the one-step dispatcher.
+//// The vectors are produced by
 //// demo/midgard-validation/tests/script-source-lookup.machine-rows.test.ts.
 
 use aiken/cbor
@@ -9,14 +10,17 @@ use aiken/collection/list
 use midgard/rejection_reason_v1.{RejectionReasonV1}
 use midgard/validation_machine/machine_types.{
   NoAuxiliaryWitness, ResolvedInputReplayWitness, ScriptSourceScanWitness,
-  ValidationAuxiliaryWitnessV1, ValidationOneStepWitnessV1,
+  ValidationAuxiliaryWitnessV1, ValidationOneStepEvidenceV1,
+  ValidationOneStepWitnessV1,
 }
+use midgard/validation_machine/one_step
 use midgard/validation_machine/script_sources as vm_script_sources
 use midgard/validation_machine/script_sources_late_stages as late
 use midgard/validation_machine/script_sources_middle_semantics as middle
 use midgard/validation_machine/shared.{rejected_successor_is_exact}
 use midgard/validation_machine/value_and_mint as vm_value_and_mint
 use midgard/validation_machine_field_door_v1.{MachineFieldDoorV1}
+use midgard/validation_machine_tests/constants.{test_l1_slot_config}
 use midgard/validation_trace_v1.{ValidationMachineStateV1}
 
 pub type OneStepVector {
@@ -47,7 +51,8 @@ fn decode(vector: OneStepVector) -> DecodedStep {
 /// stage, which no exported ScriptSources step shares.
 const value_replay_stage = 2
 
-/// Stages 3, 9 and 11 read no committed field, so the door is never opened.
+/// Stages 3, 9 and 11, and a native execution scan's token, frame, advance and
+/// finish steps, read no committed field, so the door is never opened.
 const unopened_door =
   MachineFieldDoorV1 { reference_inputs: [], certificate_policy_id: #"" }
 
@@ -200,6 +205,28 @@ pub fn verifies_every_step(vectors: List<OneStepVector>) -> Bool {
           },
           split_verifier_accepts(step),
         }
+      },
+    ),
+  }
+}
+
+/// Every step verifies through the one-step dispatcher.
+pub fn every_step_dispatches(vectors: List<OneStepVector>) -> Bool {
+  and {
+    vectors != [],
+    list.all(
+      vectors,
+      fn(vector) {
+        let step = decode(vector)
+        one_step.verify_one_step_evidence(
+          step.pre,
+          ValidationOneStepEvidenceV1 {
+            transition: step.transition,
+            auxiliary: step.auxiliary,
+          },
+          unopened_door,
+          test_l1_slot_config,
+        )
       },
     ),
   }

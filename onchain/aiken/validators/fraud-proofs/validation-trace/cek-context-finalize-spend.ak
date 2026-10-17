@@ -5,7 +5,7 @@ use cardano/transaction.{OutputReference, Transaction}
 use midgard/cek_context_chain as chain
 use midgard/cek_context_finalization as finalization
 use midgard/computation_thread as ct
-use midgard/fraud_proofs/common.{cancel, continue}
+use midgard/fraud_proofs/common.{ProverOnly, cancel, continue_validation_trace}
 use midgard/script_context_v1
 
 validator main(
@@ -45,14 +45,14 @@ validator main(
           descriptor,
         )
         let next: Data = finalization.finalized(pending, staged, info)
-        continue(
+        continue_validation_trace(
           computation_thread_policy_id,
           step,
           action.input_index,
           action.output_index,
           own_out_ref,
-          tx.inputs,
-          tx.outputs,
+          tx,
+          ProverOnly,
           fn(_, _, _, _, hash, state) {
             hash == settle_script_hash && state == next
           },

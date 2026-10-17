@@ -33,12 +33,19 @@ import {
 } from "./submit-init.submit-init-signer-resolution.js";
 import { submitInit } from "./support/legacy-submit-emulator.js";
 
+const caseConfigInitializationNonce = {
+  txHash: "ab".repeat(32),
+  outputIndex: 0,
+};
+
 describe("fault-proof deployment contract resolution", () => {
   it("preflights no-index init from exact deployed bytes and catalogue membership", async () => {
     const blueprint = readBlueprint();
     const contracts = await Effect.runPromise(
       buildFaultProofContracts({
         l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
+        disputeBondLovelace: 10_000_000_000n,
+        caseConfigInitializationNonce,
         eventHistoryBounds: {
           inlineLimitBytes: 512n,
           maxPayloadBytes: 5000n,
@@ -234,6 +241,8 @@ describe("fault-proof deployment contract resolution", () => {
     const contracts = await Effect.runPromise(
       buildFaultProofContracts({
         l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
+        disputeBondLovelace: 10_000_000_000n,
+        caseConfigInitializationNonce,
         eventHistoryBounds: {
           inlineLimitBytes: 512n,
           maxPayloadBytes: 5000n,
@@ -274,6 +283,8 @@ describe("fault-proof deployment contract resolution", () => {
     const contracts = await Effect.runPromise(
       buildFaultProofContracts({
         l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
+        disputeBondLovelace: 10_000_000_000n,
+        caseConfigInitializationNonce,
         eventHistoryBounds: {
           inlineLimitBytes: 512n,
           maxPayloadBytes: 5000n,
@@ -401,6 +412,8 @@ describe("fault-proof deployment contract resolution", () => {
     const contracts = await Effect.runPromise(
       buildFaultProofContracts({
         l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
+        disputeBondLovelace: 10_000_000_000n,
+        caseConfigInitializationNonce,
         eventHistoryBounds: {
           inlineLimitBytes: 512n,
           maxPayloadBytes: 5000n,
@@ -466,6 +479,8 @@ describe("fault-proof deployment contract resolution", () => {
     const contracts = await Effect.runPromise(
       buildFaultProofContracts({
         l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
+        disputeBondLovelace: 10_000_000_000n,
+        caseConfigInitializationNonce,
         eventHistoryBounds: {
           inlineLimitBytes: 512n,
           maxPayloadBytes: 5000n,

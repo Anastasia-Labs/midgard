@@ -114,6 +114,8 @@ import { followerTick } from "./l1-follower.tick.js";
 import { publishL1HeadChange } from "./l1-head-trigger.js";
 import { Lucid } from "./lucid.js";
 import {
+  availabilityParametersFromExplicitEnvironment,
+  availabilityParametersFromManifest,
   ContractDeploymentIdentity,
   MidgardContracts,
 } from "./midgard-contracts.js";
@@ -221,6 +223,17 @@ const followL1 = <R>(
       store,
       plan,
       recompute.rebaseIfDue,
+      // The commitment a foreign block's payload is checked against is the
+      // committee's: over the hub oracle policy and the response geometry.
+      () => ({
+        deploymentIdentity: plan.hubOraclePolicyId,
+        responseGeometry: (identity.manifest === undefined
+          ? availabilityParametersFromExplicitEnvironment()
+          : availabilityParametersFromManifest(
+              identity.manifest.availabilityChallenge,
+            )
+        ).response_geometry,
+      }),
     );
     const admissionDivergences = forcedAdmissionDivergences();
     const driver = createFollowerDriver({

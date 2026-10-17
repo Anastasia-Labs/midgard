@@ -190,7 +190,6 @@ pub fn resolution_schedule_terminal_state_at(
         validation_trace_v1.ScriptSources,
         program_counter,
         work_witness_cbor,
-        validation_trace_v1.hash_ledger_delta(#"80"),
       ),
       prior_ledger_root,
     },
@@ -1359,7 +1358,6 @@ pub fn script_sources_state_for_work_witness(
     validation_trace_v1.ScriptSources,
     program_counter,
     work_witness_cbor,
-    validation_trace_v1.hash_ledger_delta(#"80"),
   )
 }
 

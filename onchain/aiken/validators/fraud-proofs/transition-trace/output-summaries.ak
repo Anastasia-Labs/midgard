@@ -8,7 +8,7 @@ validator summaries(dispatcher: ScriptHash) {
   withdraw(witness: WalkWitness, _credential: Credential, tx: Transaction) {
     let (datum, args) = delegation.dispatch(dispatcher, tx.inputs, tx.redeemers)
     expect Some(state) = datum.data
-    expect state.phase == 8 && state.kind != 2
+    expect state.phase == 8
     delegation.advance(
       datum,
       args,

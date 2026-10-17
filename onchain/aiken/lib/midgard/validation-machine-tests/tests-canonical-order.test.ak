@@ -146,7 +146,6 @@ fn order_step_via(
     vm_trace.CanonicalDecode,
     40,
     current,
-    h_b,
   )
   let next_work = work.encode_transaction_field_scan_witness(
     source.compact_cbor,

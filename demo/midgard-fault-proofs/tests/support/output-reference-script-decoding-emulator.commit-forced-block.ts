@@ -166,13 +166,11 @@ export const commitForcedBlock = async (
   const transitionEntries = built.map((leaf) => leaf.transitionEntry);
   const eventEntries = built.map((leaf) => leaf.eventEntry);
   const validationEntries = built.map((leaf) => leaf.validationEntry);
-  const [forcedRoot, transitionRoot, eventRoot, validationRoot] =
-    await Promise.all([
-      counted(ROOT_DOMAINS.forcedTransactionsV1, forcedEntries),
-      counted(ROOT_DOMAINS.transitionTrace, transitionEntries),
-      counted(ROOT_DOMAINS.eventToStep, eventEntries),
-      counted(ROOT_DOMAINS.validationTraces, validationEntries),
-    ]);
+  const [forcedRoot, transitionRoot, eventRoot] = await Promise.all([
+    counted(ROOT_DOMAINS.forcedTransactionsV1, forcedEntries),
+    counted(ROOT_DOMAINS.transitionTrace, transitionEntries),
+    counted(ROOT_DOMAINS.eventToStep, eventEntries),
+  ]);
   const count = BigInt(leaves.length);
   const counts = {
     withdrawalCount: 0n,
@@ -190,8 +188,10 @@ export const commitForcedBlock = async (
     forcedTransactionsRoot: forcedRoot.root,
     transitionTraceRoot: transitionRoot.root,
     eventToStepRoot: eventRoot.root,
-    validationTracesRoot: validationRoot.root,
     ...counts,
+    // The header pins the validation-trace pair; the body keeps its traces.
+    validationTracesRoot: EMPTY_MERKLE_TREE_ROOT,
+    validationTraceCount: 0n,
   });
   const headerHash = await Effect.runPromise(hashBlockHeader(header));
   const payloadEnvelopeCbor = await wrapDaPayload(

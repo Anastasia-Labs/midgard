@@ -8,7 +8,6 @@ import {
 import { type ValidationMachineWorkWitness } from "./validation-machine/index.js";
 import {
   cekKind,
-  ledgerDeltaControlStatus,
   resolveInputsCursor,
   scriptIntegrityStage,
   scriptSourcesDiscoveryCurrentPurpose,
@@ -210,21 +209,6 @@ export const validationSemanticResolverIndex = (
       if (auxiliary?.kind === "ledgerOutputProofStep") return 2;
       if (auxiliary?.kind === "ledgerOutputProofFinalize") return 3;
       if (auxiliary === null) return 4;
-      break;
-    }
-    case "ledgerDelta": {
-      const control = ledgerDeltaControlStatus(witness);
-      if (auxiliary === null) {
-        if (control.pendingStage === 1) return 6;
-        if (control.pendingStage === 0) break;
-        if (control.stage === 0) return 2;
-        if (control.stage === 1) return 4;
-        return 7;
-      }
-      if (auxiliary.kind === "ledgerDeltaOperation") return 0;
-      if (auxiliary.kind === "ledgerDeltaReplay") return 1;
-      if (auxiliary.kind === "ledgerDeltaOutput") return 3;
-      if (auxiliary.kind === "ledgerDeltaProofFrame") return 5;
       break;
     }
     case "scriptIntegrity":

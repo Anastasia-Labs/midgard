@@ -3,7 +3,7 @@ use aiken/primitive/bytearray
 use cardano/assets.{PolicyId}
 use cardano/transaction.{OutputReference, Transaction}
 use midgard/computation_thread as ct
-use midgard/fraud_proofs/common.{cancel, continue}
+use midgard/fraud_proofs/common.{Anyone, cancel, continue_validation_trace}
 use midgard/script_sources_redeemer_normalization_v1 as normalization
 
 pub type Datum =
@@ -45,16 +45,15 @@ validator main(
           tx,
         )
       ct.Continue(SettleExecution { input_index, output_index, envelope }) -> {
-        let Transaction { inputs, outputs, .. } = tx
         expect Some(step_datum) = datum
-        continue(
+        continue_validation_trace(
           computation_thread_policy_id,
           step_datum,
           input_index,
           output_index,
           own_out_ref,
-          inputs,
-          outputs,
+          tx,
+          Anyone,
           fn(
             input_script_hash,
             _computation_thread_token_asset_name,

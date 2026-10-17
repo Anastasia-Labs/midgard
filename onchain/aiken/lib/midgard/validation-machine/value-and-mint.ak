@@ -23,16 +23,15 @@ use midgard/validation_machine/machine_types.{
   ValueMintAssetWitness, ValueOutputAssetWitness, ValueOutputDescriptorWitness,
 }
 use midgard/validation_machine/shared.{
-  mint_asset_leaf_hash, no_rejection_code_hash, output_meets_min_ada_v1,
-  rejected_successor_is_exact, unset_reason_coordinate,
+  accepted_successor_is_exact, mint_asset_leaf_hash, no_rejection_code_hash,
+  output_meets_min_ada_v1, rejected_successor_is_exact, unset_reason_coordinate,
   value_map_maximum_proof_steps,
 }
 use midgard/validation_machine/witness.{
-  empty_resolution_schedule_hash, encode_ledger_delta_witness_v1,
-  encode_value_and_mint_control_v1, initial_resolution_accumulator,
-  initial_value_accumulator, native_scripts_control_is_well_formed,
-  resolution_schedule_node_hash, resolved_input_accumulator_successor,
-  value_and_mint_control_from_witness,
+  empty_resolution_schedule_hash, encode_value_and_mint_control_v1,
+  initial_resolution_accumulator, initial_value_accumulator,
+  native_scripts_control_is_well_formed, resolution_schedule_node_hash,
+  resolved_input_accumulator_successor, value_and_mint_control_from_witness,
 }
 use midgard/validation_merkle_v1
 use midgard/validation_trace_v1
@@ -668,18 +667,7 @@ fn value_and_mint_stage_five(
         ValueNotPreserved,
       )
     } else {
-      and {
-        witness.claimed_successor.phase == validation_trace_v1.LedgerDelta,
-        witness.claimed_successor.work_root == validation_trace_v1.hash_work_witness(
-          validation_trace_v1.LedgerDelta,
-          pre.program_counter + 1,
-          encode_ledger_delta_witness_v1(
-            control.native_control,
-            pre.prior_ledger_root,
-            control.replay_schedule_hash,
-          ),
-        ),
-      }
+      accepted_successor_is_exact(pre, witness.claimed_successor)
     },
   }
 }

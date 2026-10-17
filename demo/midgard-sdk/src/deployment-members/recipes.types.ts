@@ -42,8 +42,10 @@ export const spend = (
 });
 export const mint = (
   select: (contracts: MidgardValidators) => MintingValidator,
+  publishable?: (contracts: MidgardValidators) => boolean,
 ): DeploymentRecipe<"mint"> => ({
   purpose: "mint",
+  ...(publishable === undefined ? {} : { publishable }),
   resolve: (contracts) => {
     const validator = select(contracts);
     return { script: validator.mintingScript, scriptHash: validator.policyId };
@@ -51,8 +53,10 @@ export const mint = (
 });
 export const withdraw = (
   select: (contracts: MidgardValidators) => WithdrawalValidator,
+  publishable?: (contracts: MidgardValidators) => boolean,
 ): DeploymentRecipe<"withdraw"> => ({
   purpose: "withdraw",
+  ...(publishable === undefined ? {} : { publishable }),
   resolve: (contracts) => {
     const validator = select(contracts);
     return {

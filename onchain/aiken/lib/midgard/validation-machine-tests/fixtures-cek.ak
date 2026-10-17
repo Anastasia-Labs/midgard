@@ -550,7 +550,6 @@ pub fn terminal_fixture_pre_state(
     execution_memory: 0,
     verdict: validation_trace_v1.Pending,
     rejection_code_hash: zero,
-    ledger_delta_root: validation_trace_v1.hash_ledger_delta(#"80"),
   }
 }
 
@@ -1006,7 +1005,6 @@ pub fn cek_keyed_core_step_fixture(
       validation_trace_v1.Cek,
       40,
       work_witness_cbor,
-      validation_trace_v1.hash_ledger_delta(#"80"),
     ),
     execution_cpu: 10,
     execution_memory: 11,

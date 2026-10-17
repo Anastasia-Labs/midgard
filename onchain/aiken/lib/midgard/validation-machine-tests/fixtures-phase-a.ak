@@ -80,7 +80,6 @@ pub fn forced_pending_state(
   phase: validation_trace_v1.ValidationPhase,
   program_counter: Int,
   work_witness_cbor: ByteArray,
-  ledger_delta_root: ByteArray,
 ) -> validation_trace_v1.ValidationMachineStateV1 {
   validation_trace_v1.ValidationMachineStateV1 {
     machine_version: validation_trace_v1.machine_version,
@@ -103,7 +102,6 @@ pub fn forced_pending_state(
     execution_memory: 0,
     verdict: validation_trace_v1.Pending,
     rejection_code_hash: zero,
-    ledger_delta_root,
   }
 }
 
@@ -308,7 +306,6 @@ pub fn initial_signatures_witness(tx: MidgardTransaction) -> ByteArray {
 
 pub fn signatures_step_fixture(
   tx: MidgardTransaction,
-  ledger_delta_root: ByteArray,
 ) -> Pair<validation_trace_v1.ValidationMachineStateV1, ByteArray> {
   let compact = midgard_transaction_to_compact(tx)
   let tx_id = native_tx_id_for_version(
@@ -324,7 +321,6 @@ pub fn signatures_step_fixture(
       validation_trace_v1.Signatures,
       4,
       work_witness_cbor,
-      ledger_delta_root,
     ),
     work_witness_cbor,
   )
@@ -332,11 +328,9 @@ pub fn signatures_step_fixture(
 
 pub fn phase_a_native_step_fixture(
   tx: MidgardTransaction,
-  ledger_delta_root: ByteArray,
 ) -> Pair<validation_trace_v1.ValidationMachineStateV1, ByteArray> {
   let Pair(signature_pre, _signature_work_witness_cbor) = signatures_step_fixture(
     tx,
-    ledger_delta_root,
   )
   let proof_source = submitted_source(tx)
   let signer_frontier = signer_frontier_for_tx(tx)
@@ -582,17 +576,12 @@ pub fn input_sets_pre(
     validation_trace_v1.InputSets,
     program_counter,
     work_witness_cbor,
-    validation_trace_v1.hash_ledger_delta(#"80"),
   )
 }
 
-// The canonical exact-rejection successor. It deliberately CARRIES FORWARD
-// `pre.ledger_delta_root` (via `..pre`) rather than clearing it: the claimed
-// delta commitment is immutable context, and clearing it here is what made
-// every rejection one-step unprovable from a realistic (non-empty) pre-state.
-// The rejecting terminal's no-op obligation lives in
-// `encode_terminal_rejection_witness` (empty operation list, post root = prior
-// root) and in the claim layer, not in this field.
+// The canonical exact-rejection successor. The rejecting terminal's no-op
+// obligation lives in `encode_terminal_rejection_witness` (post root = prior
+// root) and in the claim layer.
 pub fn exact_rejection_post(
   pre: validation_trace_v1.ValidationMachineStateV1,
   reason: RejectionReasonV1,
@@ -611,39 +600,11 @@ pub fn exact_rejection_post(
   }
 }
 
-// A realistic NON-EMPTY claimed ledger delta root: the frontier commitment over
-// one authenticated deletion and one authenticated insertion. This is the shape
-// every real transaction carries (it spends inputs and creates outputs), and it
-// is therefore the shape the rejection machinery must work against. Using
-// `frontier_commitment(0, [])` for rejection fixtures was the workaround that
-// hid the `rejected_successor_is_exact` / `immutable_context_matches`
-// contradiction, because it is the one pre-state in which the contradiction is
-// invisible.
-pub fn non_empty_claimed_delta_root() -> ByteArray {
-  let descriptor = empty_mpf_proof_descriptor()
-  let deletion = vm_shared.ledger_delta_operation_leaf_hash(
-    0,
-    #"010203",
-    #"",
-    descriptor,
-  )
-  let insertion = vm_shared.ledger_delta_operation_leaf_hash(
-    1,
-    #"0405",
-    #"060708",
-    descriptor,
-  )
-  let frontier = validation_merkle_v1.build_frontier([deletion, insertion])
-  validation_merkle_v1.frontier_commitment(frontier.count, frontier.peaks)
-}
-
 pub fn phase_a_script_preconditions_fixture(
   tx: MidgardTransaction,
-  ledger_delta_root: ByteArray,
 ) -> Pair<validation_trace_v1.ValidationMachineStateV1, ByteArray> {
   let Pair(native_pre, _native_work_witness_cbor) = phase_a_native_step_fixture(
     tx,
-    ledger_delta_root,
   )
   let proof_source = submitted_source(tx)
   let signer_frontier = signer_frontier_for_tx(tx)
@@ -804,9 +765,6 @@ pub fn resolve_inputs_step_fixture(
         validation_trace_v1.ResolveInputs,
         program_counter,
         work_witness_cbor,
-        // Re-based off `frontier_commitment(0, [])`: this fixture backs rejection
-        // proofs, so it must carry the realistic non-empty claimed delta.
-        non_empty_claimed_delta_root(),
       ),
       prior_ledger_root,
     },
@@ -903,7 +861,6 @@ pub fn script_sources_output_step_fixture_with_resolved_items(
       validation_trace_v1.ScriptSources,
       program_counter,
       work_witness_cbor,
-      validation_trace_v1.hash_ledger_delta(#"80"),
     ),
     work_witness_cbor,
   )
@@ -1008,7 +965,6 @@ pub fn script_sources_mint_fold_fixture(
       validation_trace_v1.ScriptSources,
       program_counter,
       work_witness_cbor,
-      validation_trace_v1.hash_ledger_delta(#"80"),
     ),
     work_witness_cbor,
   )
@@ -1165,7 +1121,6 @@ pub fn script_sources_active_output_proof_fixture(
       validation_trace_v1.ScriptSources,
       program_counter,
       work_witness_cbor,
-      validation_trace_v1.hash_ledger_delta(#"80"),
     ),
     work_witness_cbor,
   )
@@ -1342,7 +1297,6 @@ pub fn script_sources_pending_redeemer_item_fixture(
       validation_trace_v1.ScriptSources,
       program_counter,
       work_witness_cbor,
-      validation_trace_v1.hash_ledger_delta(#"80"),
     ),
     work_witness_cbor,
   )
@@ -1427,7 +1381,6 @@ pub fn script_discovery_step_fixture_with_output_frontier(
       validation_trace_v1.ScriptSources,
       program_counter,
       work_witness_cbor,
-      validation_trace_v1.hash_ledger_delta(#"80"),
     ),
     work_witness_cbor,
   )
@@ -1516,7 +1469,6 @@ pub fn native_scripts_step_fixture(
       validation_trace_v1.NativeScripts,
       program_counter,
       work_witness_cbor,
-      validation_trace_v1.hash_ledger_delta(#"80"),
     ),
     work_witness_cbor,
   )
@@ -1601,7 +1553,6 @@ pub fn cek_state_fixture(
       validation_trace_v1.Cek,
       program_counter,
       work_witness_cbor,
-      validation_trace_v1.hash_ledger_delta(#"80"),
     ),
     work_witness_cbor,
   )
@@ -1862,7 +1813,6 @@ pub fn canonical_step_fixture() -> Pair<
     validation_trace_v1.CanonicalDecode,
     0,
     work_witness_cbor,
-    h_a,
   )
   let post = validation_trace_v1.ValidationMachineStateV1 {
     ..pre,
@@ -1894,13 +1844,11 @@ pub fn canonical_step_fixture() -> Pair<
   )
 }
 
-// Shared StaticLedgerRules fixture for the delta-root controls below. `valid`
+// Shared StaticLedgerRules fixture for the rejection controls. `valid`
 // selects between a network-conformant transaction (whose true one-step is an
 // advance) and a network-mismatched one (whose true one-step is a rejection).
-// `claimed_delta_root` is the operator's immutable claimed delta commitment.
-pub fn static_rules_delta_root_fixture(
+pub fn static_rules_step_fixture(
   valid: Bool,
-  claimed_delta_root: ByteArray,
 ) -> Pair<validation_trace_v1.ValidationMachineStateV1, ByteArray> {
   let base = empty_v1_transaction()
   let tx = if valid {
@@ -1931,7 +1879,6 @@ pub fn static_rules_delta_root_fixture(
       validation_trace_v1.StaticLedgerRules,
       2,
       work_witness_cbor,
-      claimed_delta_root,
     ),
     work_witness_cbor,
   )

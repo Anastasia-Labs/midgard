@@ -235,9 +235,3 @@ export const formatReferenceScriptWalletStatusCause = (
 export const resolveReferenceScriptPublicationFundingTarget = (
   missingTargetCount: number,
 ): bigint => SDK.referenceScriptPublicationFundingTarget(missingTargetCount);
-
-export const selectWalletFundingUtxos = (
-  utxos: readonly UTxO[],
-  targetLovelace: bigint,
-): readonly UTxO[] =>
-  SDK.selectReferenceScriptFundingUtxos(utxos, targetLovelace);
