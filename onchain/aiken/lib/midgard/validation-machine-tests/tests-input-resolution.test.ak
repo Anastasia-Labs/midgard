@@ -1591,6 +1591,26 @@ fn signatures_cursor_row(
   opened: Int,
   post_invalid: Int,
 ) -> Bool {
+  signatures_cursor_row_declaring(
+    addresses,
+    list.length(addresses),
+    seen,
+    pre_invalid,
+    opened,
+    post_invalid,
+  )
+}
+
+/// `signatures_cursor_row` from a control (when `seen > 0`) that declares
+/// `count` field-7 items, to the successor that declaration yields.
+fn signatures_cursor_row_declaring(
+  addresses: List<MidgardAddressWitness>,
+  count: Int,
+  seen: Int,
+  pre_invalid: Int,
+  opened: Int,
+  post_invalid: Int,
+) -> Bool {
   let base = empty_v1_transaction()
   let tx = MidgardTransaction {
     ..base,
@@ -1599,7 +1619,6 @@ fn signatures_cursor_row(
       addr_tx_wits: addresses,
     },
   }
-  let count = list.length(addresses)
   let consumed = list.take(addresses, seen)
   expect Some(opened_address) = list.at(addresses, opened)
   let previous_signer = when list.last(consumed) is {
@@ -1736,6 +1755,18 @@ test signatures_cursor_refuses_skipping_a_middle_item() {
 
 test signatures_cursor_completes_on_the_last_item() {
   signatures_cursor_row(cursor_one_signer_triple(), 2, 0, 2, 0)
+}
+
+// The address step does not re-check the declared count: a control that
+// declares no items, or a count other than field 7's, is refused by
+// `active_count > 0` and `item_count == active_count`.
+test signatures_cursor_refuses_a_declared_count_other_than_field_seven() {
+  and {
+    signatures_cursor_row_declaring(cursor_one_signer_triple(), 3, 1, 0, 1, 0),
+    !signatures_cursor_row_declaring(cursor_one_signer_triple(), 0, 1, 0, 1, 0),
+    !signatures_cursor_row_declaring(cursor_one_signer_triple(), 2, 1, 0, 1, 0),
+    !signatures_cursor_row_declaring(cursor_one_signer_triple(), 4, 1, 0, 1, 0),
+  }
 }
 
 // I10: the AddressWitnessSignatureInvalid witness_index is the field-7

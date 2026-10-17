@@ -171,8 +171,9 @@ fn verify_signature_address_item(
   and {
     signatures_control_is_bound(pre, witness, control, verified, witness_set),
     control.stage == 0,
-    control.address_count != 0,
-    control.address_count == -1 || control.address_count == item_count,
+    // `active_count` is `address_count` unless that is -1, so `active_count >
+    // 0` refuses `address_count == 0` and `item_count == active_count` pins a
+    // set `address_count` to the field-7 item count.
     active_count > 0,
     active_count <= max_tx_size_derived_collection_item_count,
     control.address_seen < active_count,
@@ -311,9 +312,10 @@ fn verify_required_signer_item(
   and {
     signatures_control_is_bound(pre, witness, control, verified, witness_set),
     control.stage == 1,
-    control.required_count != 0,
     verified.tx_compact.body.required_signers_hash != native_tx_field_access_v1.empty_field_commitment,
-    control.required_count == -1 || control.required_count == item_count,
+    // As in the address step: `active_count > 0` refuses `required_count ==
+    // 0` and `item_count == active_count` pins a set `required_count` to the
+    // field-4 item count.
     active_count > 0,
     active_count <= max_tx_size_derived_collection_item_count,
     control.required_seen < active_count,
