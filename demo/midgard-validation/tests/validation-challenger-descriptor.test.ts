@@ -29,15 +29,14 @@ import {
   outRefFromTxId,
 } from "./validation-fixtures.js";
 import {
-  buildAcceptingIdentityProgram,
+  buildAcceptingUnitProgram,
   context,
 } from "./validation-machine.validate-boundary-abi-and-collect-auxiliary-kinds.js";
 
 const MAX_STEP_COUNT = 0xffff_ffff;
 
 /** An accepted PlutusV3 spend: field 8 carries one redeemer. */
-const plutusSpendInput = () =>
-  plutusV3SpendInput(buildAcceptingIdentityProgram());
+const plutusSpendInput = () => plutusV3SpendInput(buildAcceptingUnitProgram());
 
 /** An accepted transaction with no scripts: field 8 is empty. */
 const nativeSpendInput = async (): Promise<ValidationMachineReplayInput> => {

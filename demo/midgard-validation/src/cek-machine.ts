@@ -21,6 +21,7 @@ export {
   hashMidgardCekMapConversionControl,
   midgardCekBuiltinArgumentCount,
   midgardCekBuiltinForceCount,
+  returnEmptySuccessor,
 } from "./cek-machine.midgard-cek-builtin-argument-count.js";
 export {
   type MidgardCekCoreStepWitness,

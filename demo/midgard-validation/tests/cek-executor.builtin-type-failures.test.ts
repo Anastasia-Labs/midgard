@@ -11,6 +11,7 @@ import {
 import { executeMidgardCekStructuralProgram } from "../src/index.js";
 import {
   app,
+  discard,
   force,
   lam,
   MIDGARD_CEK_TX_BUDGET,
@@ -43,9 +44,9 @@ const textList = (length: number) =>
   UPLCConst.listOf(constT.str)(["x".repeat(length)] as never);
 
 const mkCons = (item: UPLCTerm, list: UPLCTerm): UPLCTerm =>
-  lam(app(force(Builtin.mkCons), item, list));
+  lam(discard(app(force(Builtin.mkCons), item, list)));
 const append = (left: UPLCTerm, right: UPLCTerm): UPLCTerm =>
-  lam(app(Builtin.appendByteString, left, right));
+  lam(discard(app(Builtin.appendByteString, left, right)));
 
 const runOf = (script: UPLCTerm, mode: "proof" | "verdict") => {
   const prepared = prepareMidgardCekProgram(script, CONTEXT);
@@ -67,21 +68,31 @@ const large: readonly (readonly [string, UPLCTerm])[] = [
   ["appendByteString of bytes and a string", append(bytes(LARGE), text(LARGE))],
 ];
 
-const proved: readonly (readonly [string, UPLCTerm, string])[] = [
+// Each case: its label, the script, its halt, and the one builtin step the
+// proof-mode run records (kind and builtin).
+const proved: readonly (readonly [
+  string,
+  UPLCTerm,
+  string,
+  readonly [string, Builtin],
+])[] = [
   [
     "mkCons of small bytes onto a list of strings",
     mkCons(bytes(SMALL), textList(SMALL)),
     "haltError",
+    ["executeBuiltinTypeFailure", Builtin.mkCons],
   ],
   [
     "appendByteString of small bytes and a string",
     append(bytes(SMALL), text(SMALL)),
     "haltError",
+    ["executeBuiltinTypeFailure", Builtin.appendByteString],
   ],
   [
     "mkCons of large bytes onto a list of large bytes",
     mkCons(bytes(LARGE), bytesList(LARGE)),
     "haltSuccess",
+    ["executeBuiltinSemantic", Builtin.mkCons],
   ],
 ];
 
@@ -99,10 +110,23 @@ describe("CEK builtin type failures on large arguments", () => {
     },
   );
 
-  it.each(proved)("runs %s to its halt in both modes", (_, script, halt) => {
-    expect(runOf(script, "verdict").terminalState.mode).toBe(halt);
-    expect(runOf(script, "proof").terminalState.mode).toBe(halt);
-  });
+  it.each(proved)(
+    "runs %s to its halt in both modes",
+    (_, script, halt, [kind, builtin]) => {
+      expect(runOf(script, "verdict").terminalState.mode).toBe(halt);
+      const proof = runOf(script, "proof");
+      expect(proof.terminalState.mode).toBe(halt);
+      const steps = "steps" in proof ? proof.steps : [];
+      expect(
+        steps.flatMap((step) =>
+          step.witness.kind.startsWith("executeBuiltin") &&
+          "tag" in step.witness
+            ? [[step.witness.kind, step.witness.tag]]
+            : [],
+        ),
+      ).toEqual([[kind, BigInt(builtin.builtinTag)]]);
+    },
+  );
 
   it("builds a semantic mkCons only of an item of the list's element type", () => {
     const root = new Uint8Array(32);

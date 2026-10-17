@@ -1015,15 +1015,11 @@ describe("outputReferenceScriptDecoding registered-chain lifecycle", () => {
       "incomplete fault-proof lifecycle coverage: OutputReferenceScriptNodeLimit success directions: accepted_invalid; OutputReferenceScriptDepthLimit success directions: accepted_invalid",
     );
     const blueprintBytes = readFileSync(realBlueprintPath);
-    const preamble = JSON.parse(blueprintBytes.toString("utf8")) as {
-      readonly preamble?: { readonly compiler?: { readonly version?: string } };
-    };
     const ledger = buildVanRossemFitLedger({
       category: `outputReferenceScriptDecoding:${OUTPUT_REFERENCE_CATEGORY_ID}:testnet`,
       blueprintSha256: createHash("sha256")
         .update(blueprintBytes)
         .digest("hex"),
-      compilerVersion: `aiken ${preamble.preamble?.compiler?.version ?? "unknown"}`,
       measurements: recorder.measurements,
     });
     expect(ledger.entries.length).toBeGreaterThan(30);

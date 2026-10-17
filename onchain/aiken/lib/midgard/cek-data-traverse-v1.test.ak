@@ -320,7 +320,7 @@ test accepts_the_cardano_canonical_65_byte_bignum_scalar() {
   expect Some(summary) = cek_data_integer_v1.finalize_v1(integer)
   and {
     summary.cbor_length == 71,
-    summary.memory == 69,
-    summary.root == #"2245ce3c839885a8e667481cec15cbe0e91df8a04f816859ae3bb38a8217b6aa",
+    summary.memory == 13,
+    summary.root == #"cab3184095fef7e4d8b95617d827cbda628b6d97fe3d6c22a1bc0df010769667",
   }
 }

@@ -3,6 +3,10 @@ import { dirname, join } from "node:path";
 
 import { readSourceFacets } from "../../../../scripts/lib/source-facets.mjs";
 import {
+  readDeploymentMembers,
+  readSdkFamilySources,
+} from "./family-checklist.deployment-members.mjs";
+import {
   arrayStrings,
   CannotLook,
   extractLiteral,
@@ -89,25 +93,11 @@ export const checkFamily = (root, category) => {
       SOURCES.coreCatalogue,
     ),
   );
-  const contractByCategory = objectStringPairs(
-    extractLiteral(
-      core,
-      "DEPLOYMENT_MANIFEST_FRAUD_PROOF_CONTRACT_BY_CATEGORY",
-      SOURCES.coreCatalogue,
-    ),
-  );
   const contractNames = arrayStrings(
     extractLiteral(
       core,
       "DEPLOYMENT_MANIFEST_CONTRACT_NAMES",
       SOURCES.coreCatalogue,
-    ),
-  );
-  const contractByRole = objectStringPairs(
-    extractLiteral(
-      readSource(root, "coreReferenceContracts"),
-      "DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE",
-      SOURCES.coreReferenceContracts,
     ),
   );
   const tokenByRole = objectStringPairs(
@@ -117,13 +107,45 @@ export const checkFamily = (root, category) => {
       SOURCES.coreReferenceTokens,
     ),
   );
-  if (contractNames.length === 0 || contractByRole.size === 0) {
-    throw new CannotLook(
-      `${SOURCES.coreCatalogue} / ${SOURCES.coreReferenceContracts}: identity tables are empty`,
-    );
+  if (
+    contractNames.length === 0 ||
+    coreOrder.length === 0 ||
+    coreIds.size === 0
+  ) {
+    throw new CannotLook(`${SOURCES.coreCatalogue}: identity tables are empty`);
   }
-
-  const firstContract = contractByCategory.get(category);
+  const members = readDeploymentMembers(root);
+  const expected = new Set(contractNames);
+  const missingMembers = contractNames.filter(
+    (contract) => !members.has(contract),
+  );
+  const unknownMembers = [...members.keys()].filter(
+    (contract) => !expected.has(contract),
+  );
+  const memberProblems = [
+    ...missingMembers.map(
+      (contract) => `${contract} has no reached deployment member`,
+    ),
+    ...unknownMembers.map(
+      (contract) =>
+        `${contract} is absent from DEPLOYMENT_MANIFEST_CONTRACT_NAMES`,
+    ),
+  ];
+  record(
+    "deployment-members",
+    memberProblems.length === 0 ? "ok" : "gap",
+    memberProblems.length === 0
+      ? `${members.size} members match the independent contract-name ABI`
+      : `${memberProblems.join("; ")} (${SOURCES.coreMembers}); register every member in the aggregate and the protocol ABI`,
+  );
+  const familyMembers = [...members].filter(
+    ([, member]) => member.family === category,
+  );
+  const firstContracts = familyMembers
+    .filter(([, member]) => member.firstStep)
+    .map(([contract]) => contract);
+  const firstContract =
+    firstContracts.length === 1 ? firstContracts[0] : undefined;
   const coreProblems = [];
   if (!coreOrder.includes(category)) {
     coreProblems.push(
@@ -141,7 +163,7 @@ export const checkFamily = (root, category) => {
   }
   if (firstContract === undefined) {
     coreProblems.push(
-      "no DEPLOYMENT_MANIFEST_FRAUD_PROOF_CONTRACT_BY_CATEGORY entry",
+      `expected one firstStep member for ${category}, found ${firstContracts.length}`,
     );
   }
   record(
@@ -153,21 +175,7 @@ export const checkFamily = (root, category) => {
   );
 
   if (firstContract !== undefined) {
-    // A family's contracts share its first-step contract's name as a prefix
-    // (fraudProofMinAda, fraudProofMinAdaStep02TxWithdraw), except names that
-    // belong to a longer first-step prefix of another category
-    // (fraudProofNonExistentInputNoIndex is not fraudProofNonExistentInput's).
-    const longerPrefixes = [...contractByCategory.values()].filter(
-      (other) =>
-        other !== firstContract &&
-        other.length > firstContract.length &&
-        other.startsWith(firstContract),
-    );
-    const familyContracts = contractNames.filter(
-      (name) =>
-        name.startsWith(firstContract) &&
-        !longerPrefixes.some((other) => name.startsWith(other)),
-    );
+    const familyContracts = familyMembers.map(([contract]) => contract);
     const roleProblems = [];
     if (!familyContracts.includes(firstContract)) {
       roleProblems.push(
@@ -176,13 +184,10 @@ export const checkFamily = (root, category) => {
     }
     let roleCount = 0;
     for (const contract of familyContracts) {
-      const roles = [...contractByRole]
-        .filter(([, value]) => value === contract)
-        .map(([role]) => role);
-      if (roles.length === 0) {
+      const role = members.get(contract).referenceRole;
+      if (role === null || role.length === 0) {
         roleProblems.push(`${contract} has no reference-script role`);
-      }
-      for (const role of roles) {
+      } else {
         roleCount += 1;
         if (!tokenByRole.has(role)) {
           roleProblems.push(
@@ -195,8 +200,8 @@ export const checkFamily = (root, category) => {
       "reference-scripts",
       roleProblems.length === 0 ? "ok" : "gap",
       roleProblems.length === 0
-        ? `${familyContracts.length} contract(s) named ${firstContract}*, ${roleCount} role(s), all with token names`
-        : `${roleProblems.join("; ")} (${SOURCES.coreCatalogue}, ${SOURCES.coreReferenceContracts}, ${SOURCES.coreReferenceTokens})`,
+        ? `${familyContracts.length} member(s) in family ${category}, ${roleCount} role(s), all with token names`
+        : `${roleProblems.join("; ")} (${SOURCES.coreCatalogue}, ${SOURCES.coreMembers}, ${SOURCES.coreReferenceTokens})`,
     );
   } else {
     record("reference-scripts", "gap", "skipped: no first-step contract");
@@ -236,14 +241,61 @@ export const checkFamily = (root, category) => {
       if (!existsSync(join(root, familyPath))) {
         record("sdk-chain", "gap", `${familyPath} does not exist`);
       } else {
-        const familyText = readSourceFacets(join(root, familyPath));
+        const familySource = readSdkFamilySources(root, familyPath);
+        const builder = chainCall[1];
+        const declaration = new RegExp(
+          `export\\s+(?:const|function)\\s+${builder}\\b`,
+          "u",
+        );
+        const reexport = new RegExp(
+          `export\\s*\\{\\s*${builder}\\s*\\}\\s*from`,
+          "u",
+        );
+        const chainProblems = [];
+        if (
+          !(
+            declaration.test(familySource.entry) ||
+            reexport.test(familySource.entry)
+          ) ||
+          !familySource.modules.some((source) => declaration.test(source))
+        ) {
+          chainProblems.push(`no reached exported ${builder} declaration`);
+        }
+        const titleLookups = familySource.modules.flatMap((source) => {
+          const aliases = [
+            ...source.matchAll(
+              /import\s*\{\s*deploymentValidatorTitle(?:\s+as\s+(\w+))?\s*\}\s*from\s*"@al-ft\/midgard-core\/deployment-manifest-identity"/gu,
+            ),
+          ].map((match) => match[1] ?? "deploymentValidatorTitle");
+          return aliases.flatMap((alias) =>
+            [
+              ...source.matchAll(
+                new RegExp(`\\b${alias}\\(\\s*"(\\w+)"\\s*\\)`, "gu"),
+              ),
+            ].map((match) => match[1]),
+          );
+        });
+        if (titleLookups.length === 0)
+          chainProblems.push("no reached deploymentValidatorTitle lookup");
+        for (const contract of new Set(titleLookups)) {
+          if (members.get(contract)?.family !== category) {
+            chainProblems.push(
+              `title lookup ${contract} is not a reached ${category} member`,
+            );
+          }
+        }
+        // SDK builders read deploymentValidatorTitle(...); the declarative
+        // members own title evidence, including yields outside the step chain.
         const titles = [
           ...new Set(
-            [...familyText.matchAll(/"(fraud_proofs\/[\w/]+\.[\w.]+)"/gu)].map(
-              (match) => match[1],
-            ),
+            familyMembers
+              .map(([, member]) => member.validatorTitle)
+              .filter((title) => title !== null),
           ),
         ];
+        const missingTitles = familyMembers
+          .filter(([, member]) => member.validatorTitle === null)
+          .map(([contract]) => contract);
         const missing = titles.filter(
           (title) =>
             !validatorFileCandidates(title).some((path) =>
@@ -255,11 +307,17 @@ export const checkFamily = (root, category) => {
             titles.map((title) => title.split("/")[1].replaceAll("_", "-")),
           ),
         ];
-        if (titles.length === 0) {
+        if (chainProblems.length > 0) {
           record(
             "sdk-chain",
             "gap",
-            `${familyPath} names no fraud_proofs/ blueprint titles`,
+            `${chainProblems.join("; ")} (${familyPath})`,
+          );
+        } else if (titles.length === 0 || missingTitles.length > 0) {
+          record(
+            "sdk-chain",
+            "gap",
+            `deployment members lack validator titles: ${missingTitles.join(", ") || category} (${SOURCES.coreMembers})`,
           );
         } else if (missing.length > 0) {
           record(

@@ -1,3 +1,4 @@
+import { deploymentValidatorTitle as deployedTitle } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { Effect } from "effect";
 
 import {
@@ -16,8 +17,8 @@ import {
 } from "../types.js";
 
 export const L2_TX_MISTAG_FAULT_PROOF_TITLES = {
-  step01: "fraud_proofs/l2_tx_mistag/step_01.main.spend",
-  step02: "fraud_proofs/l2_tx_mistag/step_02.main.spend",
+  step01: deployedTitle("fraudProofL2TxMistag"),
+  step02: deployedTitle("fraudProofL2TxMistagStep02"),
 } as const;
 
 export type L2TxMistagFaultProofContracts = {

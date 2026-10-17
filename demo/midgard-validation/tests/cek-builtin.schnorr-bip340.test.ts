@@ -97,6 +97,26 @@ describe("verifySchnorrSecp256k1Signature", () => {
     ).toBe("failure");
   });
 
+  it("verifies a 1,000 byte message and refuses another message's signature", () => {
+    // Signed with the secret key of vectors 15 to 18 and an all-zero
+    // aux_rand; Cardano returns True for it and False under vector 18's
+    // signature (aiken uplc eval, pinned fork).
+    const key = vectors[15]!.key;
+    const message = new Uint8Array(1000).fill(0x99);
+    const signature = fromHex(
+      "f1d320d7de4d5ff365a8ce6cf0ad580b9358f96f46dfbe141e22128b75919c3e47b4420db40806ad1cf6bf0fcade8a2d51634dedb7e118e9ae896dd4d6a504bb",
+    );
+    expect(verify(key, message, signature)).toEqual({
+      kind: "bool",
+      value: true,
+    });
+    expect(verify(key, message, vectors[18]!.signature)).toEqual({
+      kind: "bool",
+      value: false,
+    });
+    expect(verify(key, message, signature.subarray(1))).toBe("failure");
+  });
+
   it("agrees with noble on fresh signatures and their corruptions", () => {
     for (let round = 0; round < 16; round++) {
       const { secretKey, publicKey } = schnorr.keygen();

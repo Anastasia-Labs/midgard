@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 import { executeMidgardCekStructuralProgram } from "../src/cek-executor.js";
 import {
   app,
+  discard,
   force,
   lam,
   MIDGARD_CEK_TX_BUDGET,
@@ -43,7 +44,7 @@ const dataPairs = UPLCConst.listOf(constT.pairOf(constT.data, constT.data))(
 );
 
 const reading = (builtin: Builtin, constant: UPLCTerm): UPLCTerm =>
-  lam(app(force(builtin as never), constant));
+  lam(discard(app(force(builtin as never), constant)));
 
 const run = (script: UPLCTerm) => {
   const prepared = prepareMidgardCekProgram(script, CONTEXT);

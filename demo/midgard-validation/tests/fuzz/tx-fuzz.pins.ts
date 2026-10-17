@@ -97,7 +97,6 @@ export const TX_CORPUS_PINS: TxRowPins = {
       catalogued: { interimDataDecoding: 1 },
     },
     "330470803": { known: { caseOnConstant: 1 } },
-    "345237037": { known: { constrDataIndexRange: 1 } },
     "590911258": { known: { caseOnConstant: 1 } },
     "1088032817": { known: { costBeforeC1: 1 } },
     "1405241274": {
@@ -112,7 +111,6 @@ export const TX_CORPUS_PINS: TxRowPins = {
   known: {
     blsTagNumbering: 1,
     caseOnConstant: 2,
-    constrDataIndexRange: 1,
     costBeforeC1: 3,
   },
   catalogued: {

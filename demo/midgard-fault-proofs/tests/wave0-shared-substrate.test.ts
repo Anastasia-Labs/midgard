@@ -178,7 +178,6 @@ describe("Wave 0 shared off-chain substrate", () => {
     const input = {
       category: "exampleFamily",
       blueprintSha256: "ab".repeat(32),
-      compilerVersion: "aiken v1.1.23+5adf783",
       measurements: [
         {
           name: "step-01",
@@ -222,7 +221,6 @@ describe("Wave 0 shared off-chain substrate", () => {
       const ledger = buildVanRossemFitLedger({
         category: "exampleFamily",
         blueprintSha256: "ab".repeat(32),
-        compilerVersion: "aiken v1.1.23+5adf783",
         measurements: [
           {
             name: "step-01",
@@ -258,7 +256,6 @@ describe("Wave 0 shared off-chain substrate", () => {
     const ledger = buildVanRossemFitLedger({
       category: "exampleFamily",
       blueprintSha256: "ab".repeat(32),
-      compilerVersion: "aiken v1.1.23+5adf783",
       measurements: [
         {
           name: "step-01",
@@ -286,7 +283,6 @@ describe("Wave 0 shared off-chain substrate", () => {
     const base = {
       category: "exampleFamily",
       blueprintSha256: "ab".repeat(32),
-      compilerVersion: "aiken v1.1.23+5adf783",
     };
     expect(() =>
       buildVanRossemFitLedger({

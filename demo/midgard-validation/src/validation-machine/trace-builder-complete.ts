@@ -1898,6 +1898,8 @@ export const completeValidationTrace = (
               }),
               { kind: "cekContextSeed", control: finalControl },
             );
+            executionBudget.cpu = completedCpu + initialCekState.cpu; // spends startup cost
+            executionBudget.memory = completedMemory + initialCekState.memory;
             const contextWitness = evaluation.graph.contextWitness;
             if (
               !Buffer.from(initialCekState.focusRoot).equals(

@@ -23,6 +23,7 @@ import { executeMidgardCekStructuralProgram } from "../../src/cek-executor.js";
 import {
   app,
   data,
+  discard,
   force,
   lam,
   MIDGARD_CEK_TX_BUDGET,
@@ -70,50 +71,71 @@ const dataList = (items: Data[]): UPLCTerm =>
 
 const EMPTY_CONTEXT: Data = constr(0n, []);
 
-const cases: readonly (readonly [string, UPLCTerm, Data])[] = [
+/**
+ * Each case: its label, the script, the context, and the builtins whose
+ * application the script exists to step through, in run order. Every script
+ * discards its result and returns Unit.
+ */
+const cases: readonly (readonly [
+  string,
+  UPLCTerm,
+  Data,
+  readonly Builtin[],
+])[] = [
   [
     "headList (unListData ctx) over one input",
     lam(
-      app(
-        force(Builtin.headList as never),
-        app(Builtin.unListData as never, v(0)),
+      discard(
+        app(
+          force(Builtin.headList as never),
+          app(Builtin.unListData as never, v(0)),
+        ),
       ),
     ),
     inputs(1),
+    [Builtin.unListData, Builtin.headList],
   ],
   [
     "unListData ctx over five inputs",
-    lam(app(Builtin.unListData as never, v(0))),
+    lam(discard(app(Builtin.unListData as never, v(0)))),
     inputs(5),
+    [Builtin.unListData],
   ],
   [
     "unConstrData ctx over a sixteen-field record",
-    lam(app(Builtin.unConstrData as never, v(0))),
+    lam(discard(app(Builtin.unConstrData as never, v(0)))),
     constr(
       0n,
       Array.from({ length: 16 }, (_, index) => new DataList([txInInfo(index)])),
     ),
+    [Builtin.unConstrData],
   ],
   [
     "listData of two eight-integer lists",
     lam(
-      app(
-        Builtin.listData as never,
-        dataList([new DataList(integers(8)), new DataList(integers(8))]),
+      discard(
+        app(
+          Builtin.listData as never,
+          dataList([new DataList(integers(8)), new DataList(integers(8))]),
+        ),
       ),
     ),
     EMPTY_CONTEXT,
+    [Builtin.listData],
   ],
   [
     "mkCons onto a 64-integer list",
     lam(
-      app(
-        force(Builtin.mkCons as never),
-        data(new DataI(0n)),
-        dataList(integers(64)),
+      discard(
+        app(
+          force(Builtin.mkCons as never),
+          data(new DataI(0n)),
+          dataList(integers(64)),
+        ),
       ),
     ),
     EMPTY_CONTEXT,
+    [Builtin.mkCons],
   ],
 ];
 
@@ -132,7 +154,7 @@ describe("CEK steps of context-reading scripts against the Aiken machine", () =>
   it.each(cases)(
     "verifies every step of %s",
     { timeout: 600_000 },
-    (_, script, context) => {
+    (_, script, context, builtins) => {
       const prepared = prepareMidgardCekProgram(script, context);
       const execution = executeMidgardCekStructuralProgram({
         root: prepared.root,
@@ -143,6 +165,14 @@ describe("CEK steps of context-reading scripts against the Aiken machine", () =>
       });
       expect(execution.terminalState.mode).toBe("haltSuccess");
       const steps = execution.steps;
+      expect(
+        steps.flatMap((step) =>
+          step.witness.kind.startsWith("executeBuiltin") &&
+          "tag" in step.witness
+            ? [step.witness.tag]
+            : [],
+        ),
+      ).toEqual(builtins.map((builtin) => BigInt(builtin.builtinTag)));
       const verdicts = oracle!.verify(
         steps.map((step) => ({
           pre: stateCbor(step.pre),

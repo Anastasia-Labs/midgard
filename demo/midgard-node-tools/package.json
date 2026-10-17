@@ -43,9 +43,8 @@
     "test:phase4:journal-kill-recovery-summary-verifier": "node --test tests/phase4-journal-kill-recovery-summary-verifier.test.mjs",
     "test:phase4:devnet-assets": "node --test devnet/phase4-process/tests/assets.test.mjs devnet/phase4-process/tests/custom-chain-config.test.mjs devnet/phase4-process/tests/l1-follower-inputs.test.mjs devnet/phase4-process/tests/protocol-bootstrap-follower.test.mjs devnet/phase4-process/tests/recovery-window.test.mjs devnet/phase4-process/tests/lifecycle-scripts.test.mjs",
     "test:e2e-reliability": "export NODE_ENV='emulator' && vitest run tests/e2e-service-supervisor.test.ts tests/e2e-runner.test.ts tests/e2e-summary.test.ts --disableConsoleIntercept",
-    "pretest": "pnpm --dir ../lucid-midgard run build && pnpm --dir ../midgard-sdk run build && pnpm run build",
-    "test": "pnpm run test:phase4:journal-kill-recovery-summary-verifier && pnpm run test:phase4:devnet-assets && export NODE_ENV='emulator' && vitest run --disableConsoleIntercept",
-    "build:contrib-raw": "tsup"
+    "test": "node ../scripts/package-test.mjs",
+    "build:contrib-raw": "node ../scripts/package-tasks.mjs build"
   },
   "keywords": [
     "cardano",
@@ -126,5 +125,73 @@
   "engines": {
     "node": ">=22.16.0"
   },
-  "packageManager": "pnpm@9.15.4+sha512.b2dc20e2fc72b3e18848459b37359a32064663e5627a51e4c74b2c29dd8e8e0491483c3abb40789cfd578bf362fb6ba8261b05f0387d76792ed6e23ea3b1b6a0"
+  "packageManager": "pnpm@11.18.0+sha512.33d83c77da82f49fba836925c6f1b841181ec3132b670639bd012f7075f5c7cf634c5f870147c19aae7478fac01df09d8892e880454896edd23ee9b33757563c",
+  "midgardTasks": {
+    "build": {
+      "steps": [
+        {
+          "command": [
+            "tsup"
+          ]
+        }
+      ],
+      "outputs": [
+        "dist"
+      ]
+    },
+    "test": {
+      "command": [
+        "vitest",
+        "run",
+        "--disableConsoleIntercept"
+      ],
+      "prerequisites": [
+        {
+          "kind": "build",
+          "package": "@al-ft/midgard-core"
+        },
+        {
+          "kind": "build",
+          "package": "@al-ft/lucid-midgard"
+        },
+        {
+          "kind": "build",
+          "package": "@al-ft/midgard-sdk"
+        },
+        {
+          "kind": "build",
+          "package": "midgard-node-tools"
+        },
+        {
+          "kind": "blueprint"
+        },
+        {
+          "kind": "postgres"
+        },
+        {
+          "kind": "native",
+          "package": "midgard-node"
+        }
+      ],
+      "environment": {
+        "NODE_ENV": "emulator"
+      },
+      "before": [
+        {
+          "command": [
+            "pnpm",
+            "run",
+            "test:phase4:journal-kill-recovery-summary-verifier"
+          ]
+        },
+        {
+          "command": [
+            "pnpm",
+            "run",
+            "test:phase4:devnet-assets"
+          ]
+        }
+      ]
+    }
+  }
 }

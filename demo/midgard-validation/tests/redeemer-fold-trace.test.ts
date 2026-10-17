@@ -33,7 +33,7 @@ import {
   plutusV3ScriptWitness,
 } from "./validation-fixtures.js";
 import {
-  buildAcceptingIdentityProgram,
+  buildAcceptingUnitProgram,
   context,
   validateBoundaryAbiAndCollectAuxiliaryKinds,
 } from "./validation-machine.validate-boundary-abi-and-collect-auxiliary-kinds.js";
@@ -134,7 +134,7 @@ const firstItemStepAfter = (
 describe("redeemer fold over the execution frontier", () => {
   it("skips a native execution and selects the Plutus one below it", async () => {
     const spent = outRefFromByte(0x6a);
-    const program = buildAcceptingIdentityProgram();
+    const program = buildAcceptingUnitProgram();
     const plutus = plutusV3ScriptWitness(program.envelopeCbor);
     const native = nativeScriptWitness({ type: "all", scripts: [] });
     const nativePolicy = Buffer.from(hashScriptWitness(native), "hex");
@@ -203,7 +203,7 @@ describe("redeemer fold over the execution frontier", () => {
 
   it("shows a MidgardV1 receive redeemer to MidgardV1 contexts only", async () => {
     const spent = outRefFromByte(0x6b);
-    const program = buildAcceptingIdentityProgram();
+    const program = buildAcceptingUnitProgram();
     const plutus = plutusV3ScriptWitness(program.envelopeCbor);
     const receiving = {
       language: "MidgardV1" as const,

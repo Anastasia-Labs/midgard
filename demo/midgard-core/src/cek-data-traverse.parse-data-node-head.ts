@@ -3,6 +3,7 @@ import {
   MIDGARD_CEK_DATA_BYTES_SYNTAX_BYTES,
   parseMidgardCekDataBytesSyntax,
 } from "./cek-data-bytes.js";
+import { isCanonicalChunkedMagnitudeHead } from "./cek-data-integer.chunked-magnitude.js";
 import {
   MIDGARD_CEK_DATA_INTEGER_SYNTAX_BYTES,
   parseMidgardCekDataIntegerSyntax,
@@ -95,10 +96,12 @@ const scalarEnd = (bytes: Buffer, start: number): number | null => {
   );
   const valid =
     first >>> 5 <= 1 || first === 0xc2 || first === 0xc3
-      ? parseMidgardCekDataIntegerSyntax({
-          syntaxBytes,
-          sourceLength,
-        }) !== null
+      ? bytes[start + 1] === 0x5f && (first === 0xc2 || first === 0xc3)
+        ? isCanonicalChunkedMagnitudeHead(syntaxBytes, sourceLength)
+        : parseMidgardCekDataIntegerSyntax({
+            syntaxBytes,
+            sourceLength,
+          }) !== null
       : first === 0x5f
         ? indefiniteMidgardCekDataBytesLength(sourceLength) !== null
         : parseMidgardCekDataBytesSyntax({

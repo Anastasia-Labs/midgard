@@ -31,6 +31,7 @@ jobs:
       # linter and its tests load.
       - uses: ./.github/actions/demo-setup
         with:
+          aiken: "true"
           install-filter: midgard-demo
       # `node --test` given a glob that matches nothing runs zero tests and
       # exits 0, so a moved or renamed directory would turn this job into a

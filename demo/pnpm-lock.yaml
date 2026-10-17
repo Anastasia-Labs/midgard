@@ -11,15 +11,9 @@ overrides:
   libsodium-wrappers-sumo@0.7.15>libsodium-sumo: 0.7.15
 
 patchedDependencies:
-  '@lucid-evolution/utils@0.2.0':
-    hash: u4hx3nb27wdmfofsb2ixrsx73e
-    path: patches/@lucid-evolution__utils@0.2.0.patch
-  blake2b@2.1.4:
-    hash: amsgm2cgjjoucvcdg3i4tuosl4
-    path: patches/blake2b@2.1.4.patch
-  postgres@3.4.9:
-    hash: qmksmaj6uqhpu6mepouu5f27me
-    path: patches/postgres@3.4.9.patch
+  '@lucid-evolution/utils@0.2.0': 73149416d552756c6593e20a600a2778a3148fe76a4607c07c0fa25561cf7dfa
+  blake2b@2.1.4: 60bf56e2de63ded86d3f87168a61edeabc0fed189a9d3d020a4f334fd2bf2686
+  postgres@3.4.9: ccfcb3f12ffaa2fb06c98d3b9ca3ed086a25a7f06856f83641923680bdd5ce13
 
 importers:
 
@@ -509,7 +503,7 @@ importers:
         version: 3.1.0
       blake2b:
         specifier: 2.1.4
-        version: 2.1.4(patch_hash=amsgm2cgjjoucvcdg3i4tuosl4)
+        version: 2.1.4(patch_hash=60bf56e2de63ded86d3f87168a61edeabc0fed189a9d3d020a4f334fd2bf2686)
       chalk:
         specifier: ^5.4.1
         version: 5.4.1
@@ -708,7 +702,7 @@ importers:
         version: 3.1.0
       blake2b:
         specifier: 2.1.4
-        version: 2.1.4(patch_hash=amsgm2cgjjoucvcdg3i4tuosl4)
+        version: 2.1.4(patch_hash=60bf56e2de63ded86d3f87168a61edeabc0fed189a9d3d020a4f334fd2bf2686)
       chalk:
         specifier: ^5.4.1
         version: 5.4.1
@@ -741,7 +735,7 @@ importers:
         version: link:../midgard-watcher
       postgres:
         specifier: 3.4.9
-        version: 3.4.9(patch_hash=qmksmaj6uqhpu6mepouu5f27me)
+        version: 3.4.9(patch_hash=ccfcb3f12ffaa2fb06c98d3b9ca3ed086a25a7f06856f83641923680bdd5ce13)
       undici:
         specifier: ^7.25.0
         version: 7.25.0
@@ -3768,7 +3762,7 @@ snapshots:
 
   '@aiken-lang/merkle-patricia-forestry@file:vendor/mpf-1.3.1-midgard.1.tgz':
     dependencies:
-      blake2b: 2.1.4(patch_hash=amsgm2cgjjoucvcdg3i4tuosl4)
+      blake2b: 2.1.4(patch_hash=60bf56e2de63ded86d3f87168a61edeabc0fed189a9d3d020a4f334fd2bf2686)
       level: 8.0.1
 
   '@biglup/is-cid@1.0.3':
@@ -3824,7 +3818,7 @@ snapshots:
   '@cardano-sdk/crypto@0.4.5':
     dependencies:
       '@cardano-sdk/util': 0.17.1
-      blake2b: 2.1.4(patch_hash=amsgm2cgjjoucvcdg3i4tuosl4)
+      blake2b: 2.1.4(patch_hash=60bf56e2de63ded86d3f87168a61edeabc0fed189a9d3d020a4f334fd2bf2686)
       i: 0.3.7
       libsodium-wrappers-sumo: 0.7.10
       lodash: 4.18.1
@@ -3991,7 +3985,7 @@ snapshots:
       '@effect/sql': 0.34.1(@effect/experimental@0.46.8(@effect/platform@0.80.21(effect@3.21.2))(effect@3.21.2))(@effect/platform@0.80.21(effect@3.21.2))(effect@3.21.2)
       '@opentelemetry/semantic-conventions': 1.30.0
       effect: 3.21.2
-      postgres: 3.4.9(patch_hash=qmksmaj6uqhpu6mepouu5f27me)
+      postgres: 3.4.9(patch_hash=ccfcb3f12ffaa2fb06c98d3b9ca3ed086a25a7f06856f83641923680bdd5ce13)
 
   '@effect/sql@0.34.1(@effect/experimental@0.46.8(@effect/platform@0.80.21(effect@3.21.2))(effect@3.21.2))(@effect/platform@0.80.21(effect@3.21.2))(effect@3.21.2)':
     dependencies:
@@ -4453,7 +4447,7 @@ snapshots:
       '@lucid-evolution/sign_data': 0.2.0
       '@lucid-evolution/tx-graph': 0.1.0(@harmoniclabs/cbor@2.0.2)(@harmoniclabs/crypto@0.3.1)(encoding@0.1.13)
       '@lucid-evolution/uplc': 0.3.0
-      '@lucid-evolution/utils': 0.2.0(patch_hash=u4hx3nb27wdmfofsb2ixrsx73e)(@harmoniclabs/cbor@2.0.2)(@harmoniclabs/crypto@0.3.1)(encoding@0.1.13)
+      '@lucid-evolution/utils': 0.2.0(patch_hash=73149416d552756c6593e20a600a2778a3148fe76a4607c07c0fa25561cf7dfa)(@harmoniclabs/cbor@2.0.2)(@harmoniclabs/crypto@0.3.1)(encoding@0.1.13)
       '@lucid-evolution/wallet': 0.4.0(@harmoniclabs/cbor@2.0.2)(@harmoniclabs/crypto@0.3.1)(encoding@0.1.13)
       effect: 3.21.2
     transitivePeerDependencies:
@@ -4482,7 +4476,7 @@ snapshots:
       '@lucid-evolution/cml': 0.1.0
       '@lucid-evolution/core-types': 0.5.0
       '@lucid-evolution/core-utils': 0.2.0
-      '@lucid-evolution/utils': 0.2.0(patch_hash=u4hx3nb27wdmfofsb2ixrsx73e)(@harmoniclabs/cbor@2.0.2)(@harmoniclabs/crypto@0.3.1)(encoding@0.1.13)
+      '@lucid-evolution/utils': 0.2.0(patch_hash=73149416d552756c6593e20a600a2778a3148fe76a4607c07c0fa25561cf7dfa)(@harmoniclabs/cbor@2.0.2)(@harmoniclabs/crypto@0.3.1)(encoding@0.1.13)
       '@lucid-evolution/wallet': 0.4.0(@harmoniclabs/cbor@2.0.2)(@harmoniclabs/crypto@0.3.1)(encoding@0.1.13)
       effect: 3.21.2
     transitivePeerDependencies:
@@ -4515,7 +4509,7 @@ snapshots:
       '@lucid-evolution/cml': 0.1.0
       '@lucid-evolution/core-types': 0.5.0
       '@lucid-evolution/core-utils': 0.2.0
-      '@lucid-evolution/utils': 0.2.0(patch_hash=u4hx3nb27wdmfofsb2ixrsx73e)(@harmoniclabs/cbor@2.0.2)(@harmoniclabs/crypto@0.3.1)(encoding@0.1.13)
+      '@lucid-evolution/utils': 0.2.0(patch_hash=73149416d552756c6593e20a600a2778a3148fe76a4607c07c0fa25561cf7dfa)(@harmoniclabs/cbor@2.0.2)(@harmoniclabs/crypto@0.3.1)(encoding@0.1.13)
     transitivePeerDependencies:
       - '@dcspark/cardano-multiplatform-lib-asmjs'
       - '@dcspark/cardano-multiplatform-lib-browser'
@@ -4529,7 +4523,7 @@ snapshots:
 
   '@lucid-evolution/uplc@0.3.0': {}
 
-  '@lucid-evolution/utils@0.2.0(patch_hash=u4hx3nb27wdmfofsb2ixrsx73e)(@harmoniclabs/cbor@2.0.2)(@harmoniclabs/crypto@0.3.1)(encoding@0.1.13)':
+  '@lucid-evolution/utils@0.2.0(patch_hash=73149416d552756c6593e20a600a2778a3148fe76a4607c07c0fa25561cf7dfa)(@harmoniclabs/cbor@2.0.2)(@harmoniclabs/crypto@0.3.1)(encoding@0.1.13)':
     dependencies:
       '@cardano-sdk/core': 0.46.12(encoding@0.1.13)
       '@effect/schema': 0.68.27(effect@3.21.2)
@@ -4561,7 +4555,7 @@ snapshots:
       '@lucid-evolution/core-types': 0.5.0
       '@lucid-evolution/core-utils': 0.2.0
       '@lucid-evolution/sign_data': 0.2.0
-      '@lucid-evolution/utils': 0.2.0(patch_hash=u4hx3nb27wdmfofsb2ixrsx73e)(@harmoniclabs/cbor@2.0.2)(@harmoniclabs/crypto@0.3.1)(encoding@0.1.13)
+      '@lucid-evolution/utils': 0.2.0(patch_hash=73149416d552756c6593e20a600a2778a3148fe76a4607c07c0fa25561cf7dfa)(@harmoniclabs/cbor@2.0.2)(@harmoniclabs/crypto@0.3.1)(encoding@0.1.13)
       bip39: 3.1.0
     transitivePeerDependencies:
       - '@dcspark/cardano-multiplatform-lib-asmjs'
@@ -5141,7 +5135,7 @@ snapshots:
       b4a: 1.6.7
       nanoassert: 2.0.0
 
-  blake2b@2.1.4(patch_hash=amsgm2cgjjoucvcdg3i4tuosl4):
+  blake2b@2.1.4(patch_hash=60bf56e2de63ded86d3f87168a61edeabc0fed189a9d3d020a4f334fd2bf2686):
     dependencies:
       blake2b-wasm: 2.4.0
       nanoassert: 2.0.0
@@ -6178,7 +6172,7 @@ snapshots:
     dependencies:
       xtend: 4.0.2
 
-  postgres@3.4.9(patch_hash=qmksmaj6uqhpu6mepouu5f27me): {}
+  postgres@3.4.9(patch_hash=ccfcb3f12ffaa2fb06c98d3b9ca3ed086a25a7f06856f83641923680bdd5ce13): {}
 
   prelude-ls@1.2.1: {}
 

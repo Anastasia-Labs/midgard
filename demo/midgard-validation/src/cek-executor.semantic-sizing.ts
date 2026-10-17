@@ -1,6 +1,10 @@
 import {
+  MIDGARD_CEK_BLS_G1_MEMORY,
+  MIDGARD_CEK_BLS_G2_MEMORY,
+  MIDGARD_CEK_BLS_ML_RESULT_MEMORY,
   type MidgardCekDataListNode,
   type MidgardCekDataNode,
+  midgardCekStringMemoryWords,
 } from "@al-ft/midgard-core";
 
 import { type MidgardCekConstantType } from "./cek-constant.js";
@@ -139,13 +143,16 @@ export class MidgardCekSemanticSizing {
       case "blsG1":
       case "blsG2":
         return {
-          memory: type.kind === "blsG1" ? 48n : 96n,
+          memory:
+            type.kind === "blsG1"
+              ? MIDGARD_CEK_BLS_G1_MEMORY
+              : MIDGARD_CEK_BLS_G2_MEMORY,
           exact:
             node.kind === "bytes" &&
             node.bytesLength === (type.kind === "blsG1" ? 48n : 96n),
         };
       case "blsMillerLoopResult":
-        return { memory: 192n, exact: false };
+        return { memory: MIDGARD_CEK_BLS_ML_RESULT_MEMORY, exact: false };
       case "string":
       case "list":
       case "pair":
@@ -159,7 +166,7 @@ export class MidgardCekSemanticSizing {
       size =
         node.kind === "bytes"
           ? {
-              memory: node.memory - 4n,
+              memory: midgardCekStringMemoryWords(node.bytesLength),
               exact: isUtf8(this.blob(node.bytesRoot)),
             }
           : REFUSED;

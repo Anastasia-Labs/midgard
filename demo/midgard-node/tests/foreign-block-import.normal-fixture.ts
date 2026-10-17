@@ -23,7 +23,14 @@ import {
   outRefFromByte,
   plutusV3ScriptWitness,
 } from "@al-ft/midgard-validation/tests/validation-fixtures";
-import { Lambda, UPLCEncoder, UPLCProgram, UPLCVar } from "@harmoniclabs/uplc";
+import {
+  Application,
+  Lambda,
+  UPLCConst,
+  UPLCEncoder,
+  UPLCProgram,
+  UPLCVar,
+} from "@harmoniclabs/uplc";
 import { CML, Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
@@ -63,12 +70,20 @@ const signedTransfer = () => {
   return { spent, output, tx, material: [] };
 };
 
-/** A PlutusV3 spend of a script-locked output under an accepting program. */
+/**
+ * A PlutusV3 spend of a script-locked output under an accepting program; the
+ * program returns Unit, as a PlutusV3 script must to succeed.
+ */
 const plutusSpend = () => {
   const program = buildMidgardCanonicalCekProgram(
     Buffer.from(
       UPLCEncoder.compile(
-        new UPLCProgram([1, 1, 0], new Lambda(new UPLCVar(0))),
+        new UPLCProgram(
+          [1, 1, 0],
+          new Lambda(
+            new Application(new Lambda(UPLCConst.unit), new UPLCVar(0)),
+          ),
+        ),
       ),
     ),
   );

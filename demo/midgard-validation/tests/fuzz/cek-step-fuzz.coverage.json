@@ -56,7 +56,11 @@
       "30": ["executeBuiltinSemantic"],
       "31": ["executeBuiltinSemantic"],
       "32": ["executeBuiltinSemantic", "executeBuiltinTypeFailure"],
-      "33": ["executeBuiltinSemantic", "executeBuiltinSemanticFailure"],
+      "33": [
+        "executeBuiltinSemantic",
+        "executeBuiltinSemanticFailure",
+        "executeBuiltinTypeFailure"
+      ],
       "34": ["executeBuiltinSemantic", "executeBuiltinSemanticFailure"],
       "35": ["executeBuiltinSemantic", "executeBuiltinTypeFailure"],
       "36": ["executeBuiltinSemantic", "executeBuiltinTypeFailure"],
@@ -88,32 +92,24 @@
       "50": ["executeBuiltinSemantic", "executeBuiltinTypeFailure"],
       "51": ["executeBuiltinDirect", "executeBuiltinSemantic"],
       "52": ["executeBuiltinDirect", "executeBuiltinFailure"],
-      "53": [
-        "executeBuiltinDirect",
-        "executeBuiltinFailure",
-        "executeBuiltinTypeFailure"
-      ],
+      "53": ["executeBuiltinDirect", "executeBuiltinFailure"],
       "54": ["executeBuiltinDirect", "executeBuiltinTypeFailure"],
       "55": ["executeBuiltinDirect", "executeBuiltinTypeFailure"],
       "56": ["executeBuiltinDirect", "executeBuiltinTypeFailure"],
       "57": ["executeBuiltinDirect", "executeBuiltinTypeFailure"],
-      "58": [
+      "58": ["executeBuiltinDirect", "executeBuiltinTypeFailure"],
+      "59": ["executeBuiltinDirect", "executeBuiltinFailure"],
+      "60": [
         "executeBuiltinDirect",
         "executeBuiltinFailure",
         "executeBuiltinTypeFailure"
       ],
-      "59": ["executeBuiltinDirect", "executeBuiltinTypeFailure"],
-      "60": ["executeBuiltinDirect", "executeBuiltinFailure"],
       "61": ["executeBuiltinDirect", "executeBuiltinTypeFailure"],
       "62": ["executeBuiltinDirect", "executeBuiltinTypeFailure"],
       "63": ["executeBuiltinDirect", "executeBuiltinTypeFailure"],
-      "64": ["executeBuiltinDirect"],
-      "65": [
-        "executeBuiltinDirect",
-        "executeBuiltinFailure",
-        "executeBuiltinTypeFailure"
-      ],
-      "66": ["executeBuiltinDirect"],
+      "64": ["executeBuiltinDirect", "executeBuiltinTypeFailure"],
+      "65": ["executeBuiltinDirect"],
+      "66": ["executeBuiltinDirect", "executeBuiltinFailure"],
       "67": [
         "executeBuiltinDirect",
         "executeBuiltinFailure",
@@ -135,7 +131,11 @@
         "executeBuiltinFailure",
         "executeBuiltinTypeFailure"
       ],
-      "80": ["executeBuiltinDirect", "executeBuiltinFailure"],
+      "80": [
+        "executeBuiltinDirect",
+        "executeBuiltinFailure",
+        "executeBuiltinTypeFailure"
+      ],
       "81": [
         "executeBuiltinDirect",
         "executeBuiltinFailure",

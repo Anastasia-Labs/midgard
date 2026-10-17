@@ -32,6 +32,15 @@ const MACHINE_STEP_CPU = 16_000n;
 
 export const MACHINE_STEP_MEMORY = 100n;
 
+/**
+ * Cardano charges an evaluation this cost when it starts, before its first
+ * step, so a program's state starts with it already spent. A program refused
+ * before evaluation starts never reaches that state.
+ */
+export const MACHINE_STARTUP_CPU = 100n;
+
+export const MACHINE_STARTUP_MEMORY = 100n;
+
 export const rootHex = (root: Bytes): string =>
   Buffer.from(root).toString("hex");
 

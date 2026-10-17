@@ -28,6 +28,8 @@ export type MidgardCekSemanticBuiltinOutcome =
     }
   | {
       readonly kind: "failure";
+      /** The arguments the failure presents, when not those applied. */
+      readonly arguments?: readonly MidgardCekDirectValueWitness[];
       readonly material: MidgardCekSemanticStepMaterial;
     };
 

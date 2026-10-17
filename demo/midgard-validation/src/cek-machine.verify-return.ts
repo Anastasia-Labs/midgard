@@ -14,12 +14,12 @@ import {
   environmentSummaryMatches,
   errorSuccessor,
   exactState,
-  isConstant,
   isDelayOrForceableBuiltin,
   isLambdaOrBuiltin,
   linkedSequenceRootIsWellFormed,
   linkedSequenceTailIsWellFormed,
   midgardCekBuiltinForceCount,
+  returnEmptySuccessor,
   sameState,
   valueHash,
 } from "./cek-machine.midgard-cek-builtin-argument-count.js";
@@ -42,18 +42,7 @@ export const verifyReturn = (
       return (
         sameBytes(pre.continuationRoot, MIDGARD_CEK_EMPTY_CONTINUATION_ROOT) &&
         sameBytes(pre.focusRoot, valueHash(witness.value)) &&
-        sameState(
-          post,
-          isConstant(witness.value)
-            ? exactState(pre, {
-                mode: "haltSuccess",
-                focusRoot: pre.focusRoot,
-                environmentRoot: MIDGARD_CEK_EMPTY_ENVIRONMENT_ROOT,
-                continuationRoot: MIDGARD_CEK_EMPTY_CONTINUATION_ROOT,
-                auxiliary: 0n,
-              })
-            : errorSuccessor(pre, MidgardCekErrorCodes.NonconstantHalt),
-        )
+        sameState(post, returnEmptySuccessor(pre, witness.value))
       );
     case "returnApplyArgument": {
       const continuation = hashMidgardCekContinuationFrame({

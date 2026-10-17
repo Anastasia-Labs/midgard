@@ -55,8 +55,10 @@ export const FUZZ_PRIMARY_TAGS: readonly number[] = Array.from(
   (_, tag) => tag,
 ).filter((tag) => !ARGUMENT_ONLY_TAGS.has(tag));
 
-const G1_UNCOMPRESS = 60;
-const G2_UNCOMPRESS = 67;
+// Cardano's flat tags (Plutus `Builtins.hs`): 59 is G1 uncompress and 66 is
+// G2 uncompress.
+const G1_UNCOMPRESS = 59;
+const G2_UNCOMPRESS = 66;
 const MILLER_LOOP = 68;
 const MUL_ML_RESULT = 69;
 const ADD_INTEGER = 0;

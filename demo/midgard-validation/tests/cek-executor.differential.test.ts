@@ -11,11 +11,12 @@ import {
 /**
  * The structural executor builds each step's result nodes from its argument
  * roots. The reference outcomes in the fixture were recorded from the
- * executor that re-derived every argument and result from its full CBOR
- * payload. For every program in the corpus the executor must still produce,
- * in both modes, the same step count, stop reason and terminal state, and in
- * proof mode the same pre-state, post-state, step encoding and witness at
- * every step (folded into the digest). A run that throws must throw in both.
+ * executor under the current cost and halting rules (startup cost, word
+ * memory sizing, the Unit result rule). For every program in the corpus the
+ * executor must still produce, in both modes, the same step count, stop
+ * reason and terminal state, and in proof mode the same pre-state,
+ * post-state, step encoding and witness at every step (folded into the
+ * digest). A run that throws must throw in both.
  */
 
 type RecordedCase = {

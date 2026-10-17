@@ -1,3 +1,4 @@
+import { deploymentValidatorTitle as deployedTitle } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { Data } from "@lucid-evolution/lucid";
 
 import { H32Schema, OutputReferenceSchema } from "../common.js";
@@ -126,7 +127,7 @@ export const WitnessScriptDecodingStep04RedeemerSchema =
 export const WITNESS_SCRIPT_DECODING_PHYSICAL_SCRIPTS = Object.freeze([
   {
     role: "firstStep",
-    title: "fraud_proofs/witness_script_decoding/step_01.main.spend",
+    title: deployedTitle("fraudProofWitnessScriptDecoding"),
     parameters: [
       "step_02_validator_script_hash",
       "computation_thread_token_policy_id",
@@ -135,7 +136,7 @@ export const WITNESS_SCRIPT_DECODING_PHYSICAL_SCRIPTS = Object.freeze([
   },
   {
     role: "itemAuthenticator",
-    title: "fraud_proofs/witness_script_decoding/step_02.main.spend",
+    title: deployedTitle("fraudProofWitnessScriptDecodingStep02"),
     parameters: [
       "step_03_validator_script_hash",
       "computation_thread_token_policy_id",
@@ -144,7 +145,7 @@ export const WITNESS_SCRIPT_DECODING_PHYSICAL_SCRIPTS = Object.freeze([
   },
   {
     role: "resumableScan",
-    title: "fraud_proofs/witness_script_decoding/step_03.main.spend",
+    title: deployedTitle("fraudProofWitnessScriptDecodingStep03"),
     parameters: [
       "step_04_validator_script_hash",
       "computation_thread_token_policy_id",
@@ -152,7 +153,7 @@ export const WITNESS_SCRIPT_DECODING_PHYSICAL_SCRIPTS = Object.freeze([
   },
   {
     role: "terminal",
-    title: "fraud_proofs/witness_script_decoding/step_04.main.spend",
+    title: deployedTitle("fraudProofWitnessScriptDecodingStep04"),
     parameters: [
       "computation_thread_token_policy_id",
       "fraud_proof_token_policy_id",

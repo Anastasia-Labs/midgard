@@ -127,6 +127,18 @@ test("artifact identities follow the existing registry and Git dependencies have
   assert.throws(() => dependencyPins(scratch), /immutable/u);
 });
 
+test("dependency pin audits include workspace overrides", (t) => {
+  const scratch = fixture(t);
+  const config = resolve(scratch, "demo/pnpm-workspace.yaml");
+  writeFileSync(config, "overrides:\n  unavailable: file:/tmp/private.tgz\n");
+  assert.throws(() => dependencyPins(scratch), /nonportable/u);
+  writeFileSync(
+    config,
+    "overrides:\n  unavailable: github:owner/project#main\n",
+  );
+  assert.throws(() => dependencyPins(scratch), /immutable/u);
+});
+
 test("byte measurements deduplicate exact serialized content and refuse over-bound inputs", async (t) => {
   const scratch = fixture(t);
   const paths = [resolve(scratch, "a.bin"), resolve(scratch, "b.bin")];

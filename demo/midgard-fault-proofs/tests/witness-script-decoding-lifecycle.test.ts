@@ -958,15 +958,11 @@ describe("witnessScriptDecoding registered-chain lifecycle", () => {
       "incomplete fault-proof lifecycle coverage: WitnessNativeScriptNodeLimit success directions: accepted_invalid; WitnessNativeScriptDepthLimit success directions: accepted_invalid",
     );
     const blueprintBytes = readFileSync(realBlueprintPath);
-    const preamble = JSON.parse(blueprintBytes.toString("utf8")) as {
-      readonly preamble?: { readonly compiler?: { readonly version?: string } };
-    };
     const ledger = buildVanRossemFitLedger({
       category: `witnessScriptDecoding:${CATEGORY_ID}:testnet`,
       blueprintSha256: createHash("sha256")
         .update(blueprintBytes)
         .digest("hex"),
-      compilerVersion: `aiken ${preamble.preamble?.compiler?.version ?? "unknown"}`,
       measurements,
     });
     for (const entry of ledger.entries) {

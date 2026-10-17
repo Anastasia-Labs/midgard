@@ -1133,13 +1133,7 @@ pub fn advance_large_constructor(
     if !syntax_is_valid {
       None
     } else {
-      when
-        integer_control.prevalidated_step_v1(
-          integer,
-          current.source_start + current.source_length,
-          bytes,
-        )
-      is {
+      when integer_control.prevalidated_definite_step_v1(integer, bytes) is {
         None -> None
         Some(next) -> {
           expect next.source_start == integer.source_start

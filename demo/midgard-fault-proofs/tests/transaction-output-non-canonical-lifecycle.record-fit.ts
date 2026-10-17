@@ -59,7 +59,6 @@ const FIT_LEDGER: SplitFitLedger = {
     ),
   ),
   category: "transactionOutputNonCanonical:00000029:testnet",
-  compilerVersion: "aiken v1.1.23+5adf783",
   caseCount: Object.keys(MEASURED_CASES).length,
   parts: ["lifecycle", "datum"],
   source: fileURLToPath(import.meta.url),
@@ -172,7 +171,6 @@ export const expectMeasuredFit = () => {
     blueprintSha256: createHash("sha256")
       .update(readFileSync(realBlueprintPath))
       .digest("hex"),
-    compilerVersion: FIT_LEDGER.compilerVersion,
     measurements,
   });
   for (const entry of ledger.entries) {

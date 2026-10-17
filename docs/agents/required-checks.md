@@ -119,6 +119,8 @@ pre-push hook. It blocks the push only on a failed check. Skip it once with
 - `demo/.nvmrc`
 - `demo/patches/**`
 - `demo/vendor/**`
+- `demo/scripts/package-tasks.mjs`
+- `demo/scripts/package-test.mjs`
 - `demo/midgard-test-support/**`
 - `scripts/preflight.mjs`
 - `scripts/preflight/**`
@@ -400,6 +402,28 @@ Typecheck the touched packages and their dependents.
 - Needs: `node-modules`
 - Mode: Node CI owns the ordinary PR matrix; --full-local runs it locally
 
+### `demo-boundary`
+
+Installed production packages resolve public Node exports and CLI help.
+
+- Command: `node scripts/contrib.mjs boundary --package <each affected built package>`
+- Runs on:
+  - `demo/lucid-midgard/**`
+  - `demo/midgard-core/**`
+  - `demo/midgard-fault-proofs/**`
+  - `demo/midgard-validation/**`
+  - `demo/midgard-node/**`
+  - `demo/midgard-node-tools/**`
+  - `demo/midgard-sdk/**`
+  - `demo/midgard-watcher/**`
+  - `demo/da-committee-node/**`
+  - `demo/midgard-test-support/**`
+  - `demo/l1-node-transport/**`
+  - `demo/midgard-l1-follower/**`
+  - `.github/workflows/midgard-node-ci.yml`
+- Needs: `node-modules`
+- Mode: Node CI owns the ordinary PR matrix; --full-local runs it locally
+
 ### `golden:native-compact`
 
 Golden channel native-compact (@al-ft/lucid-midgard).
@@ -575,6 +599,7 @@ Golden channel ordered-collection-boundary-aiken (@al-ft/midgard-validation).
 - Fix: `pnpm --dir demo/midgard-validation run fixtures:ordered-collection-boundary-aiken:sync`
 - Runs on:
   - `demo/midgard-validation/scripts/generate-ordered-collection-boundary-aiken-goldens.mjs`
+  - `demo/midgard-node/blueprints/always-succeeds/plutus.json`
   - `demo/midgard-validation/scripts/generate-ordered-collection-boundary-aiken-goldens.aiken-families.mjs`
   - `demo/midgard-validation/scripts/generate-ordered-collection-boundary-aiken-goldens.terminal-fixture-constants.mjs`
   - `demo/midgard-validation/tests/blob-chunk-boundary.test.ts`
@@ -637,11 +662,13 @@ Golden channel nested-boundary-aiken (@al-ft/midgard-validation).
 - Fix: `pnpm --dir demo/midgard-validation run fixtures:nested-boundary-aiken:sync`
 - Runs on:
   - `demo/midgard-validation/scripts/generate-nested-boundary-aiken-goldens.mjs`
+  - `demo/midgard-node/blueprints/always-succeeds/plutus.json`
   - `demo/midgard-validation/tests/nested-data-boundary.test.ts`
   - `demo/midgard-validation/tests/nested-redeemer-data-boundary.test.ts`
   - `demo/midgard-validation/tests/nested-value-boundary.test.ts`
   - `onchain/aiken/lib/midgard/cek-data-traverse.max-cardano.test.ak`
   - `onchain/aiken/lib/midgard/ledger-output-value-v1.test.ak`
+  - `onchain/aiken/lib/midgard/ledger-output-value.max-cardano.test.ak`
   - `demo/lucid-midgard/src/**`
   - `demo/midgard-core/src/**`
   - `demo/midgard-fault-proofs/src/**`
@@ -691,6 +718,7 @@ Golden channel cek-core-step-v1 (@al-ft/midgard-validation).
   - `onchain/aiken/lib/midgard/cek-core-step-goldens/map-round-trip.test.ak`
   - `onchain/aiken/lib/midgard/cek-core-step-goldens/nonconstant-halt.test.ak`
   - `onchain/aiken/lib/midgard/cek-core-step-goldens/omega-budget-exceeded.test.ak`
+  - `onchain/aiken/lib/midgard/cek-core-step-goldens/schnorr-message-17-bytes.test.ak`
   - `onchain/aiken/lib/midgard/cek-core-step-goldens/un-constr-wrong-variant.test.ak`
   - `onchain/aiken/lib/midgard/cek-core-step-goldens/un-map-wrong-variant-constant.test.ak`
   - `onchain/aiken/lib/midgard/cek-core-step-goldens/unbound-variable.test.ak`
@@ -719,6 +747,53 @@ Golden channel ledger-output-proof-replay (@al-ft/midgard-validation).
   - `demo/midgard-validation/tests/fixtures/ledger-output-proof-replay.generated.json`
   - `demo/midgard-validation/tests/fixtures/ledger-output-proof-replay.vectors.mjs`
   - `onchain/aiken/lib/midgard/ledger-output-proof-datum.test.ak`
+  - `demo/lucid-midgard/src/**`
+  - `demo/midgard-core/src/**`
+  - `demo/midgard-fault-proofs/src/**`
+  - `demo/midgard-validation/src/**`
+  - `demo/midgard-node/src/**`
+  - `demo/midgard-node-tools/src/**`
+  - `demo/midgard-sdk/src/**`
+  - `demo/midgard-watcher/src/**`
+  - `demo/da-committee-node/src/**`
+  - `demo/midgard-test-support/src/**`
+  - `demo/l1-node-transport/src/**`
+  - `demo/midgard-l1-follower/src/**`
+- Needs: `node-modules`, `aiken`, `core-dist`
+
+### `golden:cek-program-large-integer`
+
+Golden channel cek-program-large-integer (@al-ft/midgard-validation).
+
+- Command: `pnpm --dir demo/midgard-validation run fixtures:cek-program-large-integer:check`
+- Fix: `pnpm --dir demo/midgard-validation run fixtures:cek-program-large-integer:sync`
+- Runs on:
+  - `demo/midgard-validation/scripts/generate-cek-program-large-integer-fixture.mjs`
+  - `demo/midgard-validation/tests/fixtures/cek-program-large-integer.json`
+  - `demo/lucid-midgard/src/**`
+  - `demo/midgard-core/src/**`
+  - `demo/midgard-fault-proofs/src/**`
+  - `demo/midgard-validation/src/**`
+  - `demo/midgard-node/src/**`
+  - `demo/midgard-node-tools/src/**`
+  - `demo/midgard-sdk/src/**`
+  - `demo/midgard-watcher/src/**`
+  - `demo/da-committee-node/src/**`
+  - `demo/midgard-test-support/src/**`
+  - `demo/l1-node-transport/src/**`
+  - `demo/midgard-l1-follower/src/**`
+- Needs: `node-modules`, `aiken`, `core-dist`
+- Mode: warns only (no workflow runs this channel, so a red check does not block)
+
+### `golden:cek-cost-v1-aiken`
+
+Golden channel cek-cost-v1-aiken (@al-ft/midgard-validation).
+
+- Command: `pnpm --dir demo/midgard-validation run fixtures:cek-cost-v1-aiken:check`
+- Fix: `pnpm --dir demo/midgard-validation run fixtures:cek-cost-v1-aiken:sync`
+- Runs on:
+  - `demo/midgard-validation/scripts/generate-cek-cost-v1-aiken-goldens.mjs`
+  - `onchain/aiken/lib/midgard/cek-cost-v1-golden.test.ak`
   - `demo/lucid-midgard/src/**`
   - `demo/midgard-core/src/**`
   - `demo/midgard-fault-proofs/src/**`
@@ -771,6 +846,7 @@ Golden channel transition-trace-abi (midgard-node).
   - `demo/midgard-node/scripts/generate-transition-trace-abi-fixture.mjs`
   - `demo/midgard-node/tests/fixtures/transition-trace-abi.json`
   - `demo/midgard-node/tests/sdk-abi-fixtures.test.ts`
+  - `onchain/aiken/env/testnet.ak`
   - `onchain/aiken/validators/fraud-proofs/transition-trace/abi-v1-golden.test.ak`
   - `demo/lucid-midgard/src/**`
   - `demo/midgard-core/src/**`

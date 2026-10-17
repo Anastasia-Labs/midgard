@@ -73,7 +73,6 @@ afterAll(async () => {
         blueprintSha256: createHash("sha256")
           .update(await readFile(process.env.MIDGARD_REAL_BLUEPRINT_PATH!))
           .digest("hex"),
-        compilerVersion: "aiken v1.1.23+5adf783",
         measurements: rows,
       }),
       { namedByCaller: true },

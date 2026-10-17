@@ -1,4 +1,8 @@
 import {
+  constrIndexFailureWitness,
+  constrIndexIsOutOfRange,
+} from "./cek-builtin.constr-data-index.js";
+import {
   buildMidgardCekDataConstrNode,
   buildMidgardCekDataIntegerNode,
   buildMidgardCekDataListLink,
@@ -109,11 +113,23 @@ export const midgardCekSemanticConstrData = (
     fields.type.element.kind !== "data" ||
     fields.node.kind !== "list"
   ) {
-    throw new Error("constrData requires non-negative index and Data list");
+    throw new Error("constrData requires an integer index and Data list");
   }
   const constructor = store.integer(index.root);
-  if (constructor < 0n) {
-    throw new Error("constrData requires non-negative index and Data list");
+  if (constrIndexIsOutOfRange(constructor)) {
+    const witness = constrIndexFailureWitness(
+      step.arguments_,
+      constructor,
+      index.node,
+    );
+    if (witness.kind !== "executeBuiltinSemanticFailure") {
+      throw new Error("constrData index failure has the wrong witness kind");
+    }
+    return {
+      kind: "failure",
+      arguments: witness.arguments,
+      material: witness.material,
+    };
   }
   const fieldsTop = midgardCekSemanticTopMaterial(store, fields.root);
   const indexIsSemantic = step.arguments_[0]?.kind === "semanticConstant";

@@ -42,6 +42,13 @@ export const emptyPairList = (): UPLCTerm =>
 export const seq = (discarded: UPLCTerm, kept: UPLCTerm): UPLCTerm =>
   app(lam(lam(v(1))), kept, discarded);
 
+/**
+ * `[(\_. ()) term]`: evaluates `term`, then returns Unit, the only value an
+ * accepting script may halt with.
+ */
+export const discard = (term: UPLCTerm): UPLCTerm =>
+  app(lam(UPLCConst.unit), term);
+
 /** Evaluates every term, last first, and yields the last. */
 export const seqAll = (...terms: readonly UPLCTerm[]): UPLCTerm =>
   terms

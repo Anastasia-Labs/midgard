@@ -30,8 +30,6 @@ afterAll(async () => {
   const ledger = buildVanRossemFitLedger({
     category: "minFee",
     blueprintSha256: createHash("sha256").update(blueprintBytes).digest("hex"),
-    compilerVersion: JSON.parse(blueprintBytes.toString()).preamble.compiler
-      .version,
     measurements: fitRows,
   });
   await writeVanRossemFitLedger(

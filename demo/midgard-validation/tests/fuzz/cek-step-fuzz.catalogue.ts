@@ -133,8 +133,9 @@ const payloadIsInInterimRow = (payloadCbor: Uint8Array): boolean => {
   return false;
 };
 
-const G1_UNCOMPRESS_TAG = 60;
-const G2_UNCOMPRESS_TAG = 67;
+// Cardano's flat tags for G1 and G2 uncompress.
+const G1_UNCOMPRESS_TAG = 59;
+const G2_UNCOMPRESS_TAG = 66;
 const BLS12_381_FIELD_PRIME =
   0x1a0111ea397fe69a4b1ba7b6434bacd764774b84f38512bf6730d2a0f6b0f6241eabfffeb153ffffb9feffffffffaaabn;
 

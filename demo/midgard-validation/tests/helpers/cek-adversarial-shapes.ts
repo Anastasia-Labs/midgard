@@ -5,6 +5,7 @@ import {
   app,
   countdown,
   dataInt,
+  discard,
   emptyDataList,
   emptyPairList,
   fix,
@@ -24,14 +25,15 @@ import {
 /**
  * Adversarial CEK program shapes, built at runtime from a size parameter.
  *
- * Every shape is a script `\ctx. body` whose work grows linearly with `n`
- * under the Plutus cost model. A structural executor whose per-step work is
+ * Every shape is a script `\ctx. [(\_. ()) body]` whose work grows linearly
+ * with `n` under the Plutus cost model; the script returns Unit once `body`
+ * has run. A structural executor whose per-step work is
  * proportional only to the nodes each step creates runs every shape in time
  * linear in `n`; work proportional to an unchanged subtree shows up as
  * super-linear growth.
  */
 
-const script = (body: UPLCTerm): UPLCTerm => lam(body);
+const script = (body: UPLCTerm): UPLCTerm => lam(discard(body));
 
 /** Grows a `[Data]` list by one small element per iteration. */
 const consGrowth = (n: number): UPLCTerm =>
@@ -262,7 +264,7 @@ export const MIDGARD_CEK_ADVERSARIAL_HALF_CAP_SIZES: Readonly<
   "constrData widening": 1_594,
   "listData widening": 1_660,
   "mapData widening": 1_938,
-  "appendByteString doubling chains": 395,
+  "appendByteString doubling chains": 562,
   "serialiseData of a grown structure": 1_196,
   "deep continuation stack": 2_493,
 };

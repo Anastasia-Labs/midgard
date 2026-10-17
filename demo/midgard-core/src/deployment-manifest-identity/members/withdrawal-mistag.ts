@@ -1,0 +1,57 @@
+import { defineDeploymentFamily } from "../members.types.js";
+
+export const withdrawalMistagMembers = defineDeploymentFamily(
+  "withdrawalMistag",
+  {
+    fraudProofWithdrawalMistag: {
+      purpose: "spend",
+      referenceRole: "V1 fraud-proof withdrawal-mistag step-01",
+      manifestPosition: 214,
+      publicationPosition: 120,
+      referenceRolePosition: 85,
+      commands: [],
+      validatorTitle: "fraud_proofs/withdrawal_mistag/step_01.main.spend",
+      familyPaths: [["firstStep"], ["steps", "0"]],
+    },
+    fraudProofWithdrawalMistagStep02: {
+      purpose: "spend",
+      referenceRole: "V1 fraud-proof withdrawal-mistag step-02",
+      manifestPosition: 215,
+      publicationPosition: 121,
+      referenceRolePosition: 86,
+      commands: [],
+      validatorTitle: "fraud_proofs/withdrawal_mistag/step_02.main.spend",
+      familyPaths: [["steps", "1"]],
+    },
+    fraudProofWithdrawalMistagStep03: {
+      purpose: "spend",
+      referenceRole: "V1 fraud-proof withdrawal-mistag step-03",
+      manifestPosition: 216,
+      publicationPosition: 122,
+      referenceRolePosition: 87,
+      commands: [],
+      validatorTitle: "fraud_proofs/withdrawal_mistag/step_03.main.spend",
+      familyPaths: [["steps", "2"]],
+    },
+    fraudProofWithdrawalMistagStep04: {
+      purpose: "spend",
+      referenceRole: "V1 fraud-proof withdrawal-mistag step-04",
+      manifestPosition: 217,
+      publicationPosition: 123,
+      referenceRolePosition: 88,
+      commands: [],
+      validatorTitle: "fraud_proofs/withdrawal_mistag/step_04.main.spend",
+      familyPaths: [["steps", "3"]],
+    },
+    fraudProofWithdrawalMistagStep05: {
+      purpose: "spend",
+      referenceRole: "V1 fraud-proof withdrawal-mistag step-05",
+      manifestPosition: 218,
+      publicationPosition: 124,
+      referenceRolePosition: 89,
+      commands: [],
+      validatorTitle: "fraud_proofs/withdrawal_mistag/step_05.main.spend",
+      familyPaths: [["steps", "4"]],
+    },
+  },
+);

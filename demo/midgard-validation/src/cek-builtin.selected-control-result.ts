@@ -1,10 +1,11 @@
 import {
   hashMidgardCekSequenceNode,
   hashMidgardCekValueNode,
+  MIDGARD_CEK_BLS_ML_RESULT_MEMORY,
   MIDGARD_CEK_EMPTY_SEQUENCE_ROOT,
   MIDGARD_CEK_MAX_BUILTIN_TAG,
 } from "@al-ft/midgard-core";
-import { DataB, DataConstr, DataList } from "@harmoniclabs/plutus-data";
+import { DataB, DataConstr, DataI, DataList } from "@harmoniclabs/plutus-data";
 
 import {
   argumentKinds,
@@ -28,7 +29,6 @@ import {
 import {
   computeMidgardCekBuiltinBudget,
   type MidgardCekBuiltinBudget,
-  normalizeMidgardCekBitwiseCostSizes,
 } from "./cek-cost.js";
 
 /**
@@ -186,7 +186,7 @@ const directValueMemorySize = (
     if (value.expressionRoot.length !== 32) {
       throw new Error("V1 BLS expression root must be bytes32");
     }
-    return 192n;
+    return MIDGARD_CEK_BLS_ML_RESULT_MEMORY;
   }
   if (value.kind === "semanticConstant") {
     return value.witness.memory;
@@ -215,20 +215,46 @@ export const directByteLength = (
   return decoded.payload.bytes.length;
 };
 
+export const directInteger = (value: MidgardCekDirectValueWitness): bigint => {
+  const decoded = decodedDirectConstant(value);
+  if (decoded.type.kind !== "integer" || !(decoded.payload instanceof DataI)) {
+    throw new Error("V1 builtin requires an integer");
+  }
+  return decoded.payload.int;
+};
+
+const directListLength = (value: MidgardCekDirectValueWitness): number => {
+  const decoded = decodedDirectConstant(value);
+  if (decoded.type.kind !== "list" || !(decoded.payload instanceof DataList)) {
+    throw new Error("V1 builtin requires a list");
+  }
+  return decoded.payload.list.length;
+};
+
+/**
+ * Cardano costs an output width (integerToByteString) or a replication count
+ * (replicateByte) as the words it occupies. Out-of-range widths fail before
+ * costing; this stays total so the failure arm never throws.
+ */
+const widthCostSize = (width: bigint): bigint =>
+  width <= 0n ? 0n : (width - 1n) / 8n + 1n;
+
+const MAX_SIGNED_64 = 9_223_372_036_854_775_807n;
+
+/**
+ * Cardano costs a shift or rotation amount by its absolute value, saturated
+ * to the largest signed 64-bit integer.
+ */
+const literalCostSize = (literal: bigint): bigint => {
+  const magnitude = literal < 0n ? -literal : literal;
+  return magnitude > MAX_SIGNED_64 ? MAX_SIGNED_64 : magnitude;
+};
+
 export const midgardCekDirectBuiltinCostSizes = (
   tag: bigint,
   arguments_: readonly MidgardCekDirectValueWitness[],
   memoryOf?: MidgardCekRevealedConstantMemory,
 ): readonly bigint[] => {
-  if (tag === 21n) {
-    // Match Cardano ByteString ExMemoryUsage without changing rooted constants.
-    return Object.freeze(
-      arguments_.map((argument) => {
-        const length = BigInt(directByteLength(argument));
-        return length === 0n ? 1n : (length + 7n) / 8n;
-      }),
-    );
-  }
   if (tag === 26n) {
     if (arguments_.length !== 3) {
       throw new Error("ifThenElse requires three arguments");
@@ -279,15 +305,43 @@ export const midgardCekDirectBuiltinCostSizes = (
       1n,
     ]);
   }
-  if (tag >= 75n && tag <= 77n) {
+  if (tag === 73n) {
     if (arguments_.length !== 3) {
-      throw new Error("bitwise builtin requires three arguments");
+      throw new Error("integerToByteString requires three arguments");
     }
-    return normalizeMidgardCekBitwiseCostSizes(
-      directBoolean(arguments_[0]!),
-      directValueMemorySize(arguments_[1]!, memoryOf),
+    return Object.freeze([
+      directValueMemorySize(arguments_[0]!, memoryOf),
+      widthCostSize(directInteger(arguments_[1]!)),
       directValueMemorySize(arguments_[2]!, memoryOf),
-    );
+    ]);
+  }
+  if (tag === 80n) {
+    if (arguments_.length !== 3) {
+      throw new Error("writeBits requires three arguments");
+    }
+    return Object.freeze([
+      directValueMemorySize(arguments_[0]!, memoryOf),
+      BigInt(directListLength(arguments_[1]!)),
+      directValueMemorySize(arguments_[2]!, memoryOf),
+    ]);
+  }
+  if (tag === 81n) {
+    if (arguments_.length !== 2) {
+      throw new Error("replicateByte requires two arguments");
+    }
+    return Object.freeze([
+      widthCostSize(directInteger(arguments_[0]!)),
+      directValueMemorySize(arguments_[1]!, memoryOf),
+    ]);
+  }
+  if (tag === 82n || tag === 83n) {
+    if (arguments_.length !== 2) {
+      throw new Error("shift or rotate requires two arguments");
+    }
+    return Object.freeze([
+      directValueMemorySize(arguments_[0]!, memoryOf),
+      literalCostSize(directInteger(arguments_[1]!)),
+    ]);
   }
   return Object.freeze(
     arguments_.map((argument) => directValueMemorySize(argument, memoryOf)),

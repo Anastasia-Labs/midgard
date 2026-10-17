@@ -7,10 +7,12 @@ import {
 import { Builtin, type UPLCTerm } from "@harmoniclabs/uplc";
 import { describe, expect, it } from "vitest";
 
+import { decodeMidgardCekConstantWitness } from "../src/cek-constant.js";
 import { verifyMidgardCekCoreStep } from "../src/cek-machine.js";
 import {
   app,
   data,
+  discard,
   lam,
   prepareMidgardCekProgram,
   runMidgardCekProgram,
@@ -39,14 +41,18 @@ const runBothModes = (script: UPLCTerm, context: Data) => {
 describe("CEK constant witnesses of equal values", () => {
   it("runs a source constant equal to the script context", () => {
     const { proof, verdict } = runBothModes(
-      lam(app(Builtin.equalsData, v(0), data(RECORD))),
+      lam(discard(app(Builtin.equalsData, v(0), data(RECORD)))),
       RECORD,
     );
     expect(proof.terminalState.mode).toBe("haltSuccess");
     expect(verdict.terminalState.mode).toBe("haltSuccess");
     expect(verdict.stepCount).toBe(proof.steps.length);
+    // The script's own Unit result is the other source constant.
     const constantSteps = proof.steps.filter(
-      (step) => step.witness.kind === "computeConstant",
+      (step) =>
+        step.witness.kind === "computeConstant" &&
+        decodeMidgardCekConstantWitness(step.witness.value).type.kind ===
+          "data",
     );
     expect(constantSteps).toHaveLength(1);
     expect(

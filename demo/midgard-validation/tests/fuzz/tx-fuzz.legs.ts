@@ -8,7 +8,6 @@ import {
   type LocalScriptEvaluation,
   RejectCodes,
   replayValidationVerdictEvent,
-  ScriptEvaluationIndeterminateError,
   type ValidationMachineReplayInput,
   ValidationTraceStopped,
 } from "../../src/index.js";
@@ -72,11 +71,6 @@ export type TxKnownClass =
    */
   | "costBeforeC1"
   /**
-   * A script naming constrData whose verdict leg ends without a verdict.
-   * Owner: C1. Pending the C1 constrData index range.
-   */
-  | "constrDataIndexRange"
-  /**
    * A case Phase B halts on as an invalid case scrutinee and the reference
    * runs to unit. Owner: C13a. Pending case on constants.
    */
@@ -107,7 +101,6 @@ export type TxCaseResult = {
 const MACHINE_STARTUP = { cpu: 100n, memory: 100n } as const;
 
 const CARDANO_RENUMBERED_BLS_TAGS = [58, 59, 60, 65, 66, 67];
-const CONSTR_DATA_TAG = 37;
 
 const withoutCaptures = (
   input: ValidationMachineReplayInput,
@@ -248,16 +241,7 @@ export const runTxCase = async (
     ),
   );
   if (Either.isLeft(verdictLeg)) {
-    if (
-      verdictLeg.left instanceof ScriptEvaluationIndeterminateError &&
-      builtinTagsOf(parseUPLC(scenario.scriptFlat, "flat").body).has(
-        CONSTR_DATA_TAG,
-      )
-    ) {
-      known.push("constrDataIndexRange");
-    } else {
-      divergences.push(`verdict leg stopped: ${String(verdictLeg.left)}`);
-    }
+    divergences.push(`verdict leg stopped: ${String(verdictLeg.left)}`);
     return {
       label: scenario.label,
       verdict: "indeterminate",

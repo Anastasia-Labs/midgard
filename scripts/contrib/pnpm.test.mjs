@@ -14,6 +14,12 @@ test("a build in a checkout without demo/node_modules names the missing install 
     resolve(root, "demo/app/package.json"),
     JSON.stringify({
       name: "app",
+      midgardTasks: {
+        build: {
+          steps: [{ command: ["tsup", "src/index.ts"] }],
+          outputs: ["dist"],
+        },
+      },
       scripts: { "build:contrib-raw": "tsup src/index.ts" },
       devDependencies: { tsup: "8.0.0" },
     }),

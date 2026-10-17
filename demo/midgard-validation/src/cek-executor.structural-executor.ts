@@ -51,6 +51,8 @@ import {
   errorSuccessor,
   exactComputeSuccessor,
   exactState,
+  MACHINE_STARTUP_CPU,
+  MACHINE_STARTUP_MEMORY,
   type MidgardCekConstantWitnessEntry,
   type MidgardCekSourceConstantWitness,
   type MidgardCekStructuralExecution,
@@ -82,6 +84,7 @@ import {
   type MidgardCekEnvironmentSummary,
   MidgardCekErrorCodes,
   type MidgardCekMapConversionControl,
+  returnEmptySuccessor,
 } from "./cek-machine.js";
 
 export class StructuralExecutor {
@@ -200,8 +203,8 @@ export class StructuralExecutor {
       environmentRoot: MIDGARD_CEK_EMPTY_ENVIRONMENT_ROOT,
       continuationRoot: MIDGARD_CEK_EMPTY_CONTINUATION_ROOT,
       auxiliary: 0n,
-      cpu: 0n,
-      memory: 0n,
+      cpu: MACHINE_STARTUP_CPU,
+      memory: MACHINE_STARTUP_MEMORY,
     });
   }
 
@@ -1060,13 +1063,7 @@ export class StructuralExecutor {
         arguments: arguments_,
         material,
       },
-      exactState(pre, {
-        mode: "haltError",
-        focusRoot: hashMidgardCekTermNode({ kind: "error" }),
-        environmentRoot: MIDGARD_CEK_EMPTY_ENVIRONMENT_ROOT,
-        continuationRoot: MIDGARD_CEK_EMPTY_CONTINUATION_ROOT,
-        auxiliary: MidgardCekErrorCodes.BuiltinFailure,
-      }),
+      errorSuccessor(pre, MidgardCekErrorCodes.BuiltinFailure),
     );
   }
 
@@ -1083,7 +1080,12 @@ export class StructuralExecutor {
       roots,
     );
     if (outcome.kind === "failure") {
-      this.recordSemanticFailure(pre, tag, arguments_, outcome.material);
+      this.recordSemanticFailure(
+        pre,
+        tag,
+        outcome.arguments ?? arguments_,
+        outcome.material,
+      );
       return;
     }
     this.recordSemanticResult(
@@ -1336,15 +1338,7 @@ export class StructuralExecutor {
     if (frame === null) {
       this.record(
         { kind: "returnEmptyContinuation", value },
-        value.kind === "constant"
-          ? exactState(pre, {
-              mode: "haltSuccess",
-              focusRoot: pre.focusRoot,
-              environmentRoot: MIDGARD_CEK_EMPTY_ENVIRONMENT_ROOT,
-              continuationRoot: MIDGARD_CEK_EMPTY_CONTINUATION_ROOT,
-              auxiliary: 0n,
-            })
-          : errorSuccessor(pre, MidgardCekErrorCodes.NonconstantHalt),
+        returnEmptySuccessor(pre, value),
       );
       return;
     }
