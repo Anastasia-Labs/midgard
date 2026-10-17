@@ -361,15 +361,16 @@ const refused_by_both_entries: List<ByteArray> =
     #"c25f5f40ffff", #"c25f4101410000ff", #"d8024101", #"d8034101",
     #"d9000241ff",
     // Unknown tags, and constructor tags over anything but a list.
-    #"c000", #"c100", #"c400", #"d81800", #"d87880", #"d904ff80", #"d9057980",
-    #"d95f80", #"d9ffff00", #"da0001000000", #"dbffffffffffffffff00", #"c0c000",
-    #"d87900", #"d87940", #"d879a0", #"d879d87980", #"d8798000", #"d87981f6",
+    #"c000", #"c100", #"c400", #"d81800", #"d87880", #"d88080", #"d904ff80",
+    #"d9057980", #"d95f80", #"d9ffff00", #"da0001000000",
+    #"dbffffffffffffffff00", #"c0c000", #"d87900", #"d87940", #"d879a0",
+    #"d879d87980", #"d8798000", #"d87981f6",
     // Tag 102 that is not a two-element array of a word and a list.
     #"d8664101", #"d8668201", #"d86683000080", #"d866820180ff",
     #"d8669f008000ff", #"d8669f0080", #"d866820083", #"d866820040",
     #"d8668200bf", #"d866829f00ff80", #"d86682c2410180",
     #"d86682c24901000000000000000080", #"d866823880", #"d866990002",
-    #"d8668218668080",
+    #"d8668218668080", #"d866822080", #"d86682c280",
     // Long declared lengths.
     #"990fff", #"b9ffff", #"9affffffff", #"9bffffffffffffffff",
   ]
@@ -692,6 +693,10 @@ test expect_fails_on_an_unknown_tag() fail {
   expect_returns(#"d87880")
 }
 
+test expect_fails_on_tag_128() fail {
+  expect_returns(#"d88080")
+}
+
 test expect_fails_on_a_tag_above_the_constructor_range() fail {
   expect_returns(#"d9057980")
 }
@@ -714,6 +719,14 @@ test expect_fails_on_tag_102_with_a_bignum_index() fail {
 
 test expect_fails_on_tag_102_with_a_negative_index() fail {
   expect_returns(#"d866823880")
+}
+
+test expect_fails_on_tag_102_with_index_minus_one() fail {
+  expect_returns(#"d866822080")
+}
+
+test expect_fails_on_tag_102_with_a_bignum_tag_as_its_index() fail {
+  expect_returns(#"d86682c280")
 }
 
 test expect_fails_on_tag_102_over_fields_that_are_not_a_list() fail {
