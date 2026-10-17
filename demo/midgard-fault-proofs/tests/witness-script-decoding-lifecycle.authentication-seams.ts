@@ -1,9 +1,6 @@
-import { fileURLToPath } from "node:url";
-
 import { type MidgardNativeTxFull } from "@al-ft/midgard-core/codec";
 import { expect } from "vitest";
 
-import { type VanRossemFitMeasurement } from "../src/proof-fit/van-rossem-fit-ledger.js";
 import { type CompleteSignedTransactionMeasurement } from "./support/emulator/measurement.js";
 import { createLifecycleCoverageRecorder } from "./support/lifecycle-coverage.js";
 import {
@@ -59,31 +56,20 @@ export const CANCELLABLE_STEPS = [
 
 /**
  * The deep shape is 1,369 sixteen-step scan transactions at the field
- * bound; a shallower depth can be requested for a quick local pass, but the
- * ledger is written only at the maximum.
+ * bound; a shallower depth can be requested for a quick local pass.
  */
 export const DEEP_DEPTH = Number(
   process.env.MIDGARD_WSD_DEEP_DEPTH ?? DEEP_MAXIMUM_DEPTH,
 );
 
-export const WRITE_LEDGER = process.env.MIDGARD_WRITE_FIT_LEDGER === "1";
-
-export const ledgerPath = fileURLToPath(
-  new URL(
-    "../../../docs/fault-proofs/size-plans/witness-script-decoding-v1-fit-ledger.json",
-    import.meta.url,
-  ),
-);
-
 export const coverage = createLifecycleCoverageRecorder();
 
-export const measurements: VanRossemFitMeasurement[] = [];
+/** The name of every transaction {@link record} has checked, in order. */
+export const recordedNames: string[] = [];
 
 export const record = (
   name: string,
-  maximumShape: string,
   measurement: CompleteSignedTransactionMeasurement,
-  kind: VanRossemFitMeasurement["kind"] = "lifecycle",
 ): void => {
   expect(measurement.l1ByteMargin, name).toBeGreaterThan(0);
   if (measurement.redeemerCount > 0) {
@@ -92,14 +78,7 @@ export const record = (
   }
   expect(measurement.executionMemory, name).toBeLessThanOrEqual(16_500_000n);
   expect(measurement.executionSteps, name).toBeLessThanOrEqual(10_000_000_000n);
-  measurements.push({
-    name,
-    kind,
-    maximumShape,
-    signedBytes: measurement.completeSignedBytes,
-    memoryUnits: measurement.executionMemory,
-    cpuUnits: measurement.executionSteps,
-  });
+  recordedNames.push(name);
 };
 
 // ---------------------------------------------------------------------------

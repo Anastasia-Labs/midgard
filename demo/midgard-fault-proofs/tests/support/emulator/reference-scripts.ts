@@ -3,7 +3,6 @@ import "@al-ft/midgard-sdk";
 import "@lucid-evolution/lucid";
 import "effect";
 import "../../../src/proof-chunk-carriage.js";
-import "../../../src/proof-fit/van-rossem-fit-ledger.js";
 import "../../../src/runtime.js";
 import "../../../src/step-support.js";
 import "./blueprints.js";

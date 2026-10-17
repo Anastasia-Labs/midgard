@@ -1,7 +1,3 @@
-import { createHash } from "node:crypto";
-import { readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
-
 import {
   CML,
   Emulator,
@@ -12,11 +8,6 @@ import {
 import { describe, expect, it } from "vitest";
 
 import { VAN_ROSSEM_PUBLICATION_TARGET_BYTES } from "../src/proof-fit/van-rossem.js";
-import {
-  buildVanRossemFitLedger,
-  type VanRossemFitMeasurement,
-  writeVanRossemFitLedger,
-} from "../src/proof-fit/van-rossem-fit-ledger.js";
 import {
   alwaysSucceedsBlueprintPath,
   readBlueprint,
@@ -31,13 +22,6 @@ import {
   publishPlainReferenceScriptUtxo,
   publishStateQueueYieldReferenceScript,
 } from "./support/emulator/reference-scripts.js";
-
-const ledgerPath = fileURLToPath(
-  new URL(
-    "../../../docs/fault-proofs/size-plans/state-queue-publication-fit-ledger.json",
-    import.meta.url,
-  ),
-);
 
 describe("state-queue withdraw-zero publication admission V1", () => {
   it("publishes the mint policy and every arm-specific rewarding script under Van Rossem limits", async () => {
@@ -80,7 +64,7 @@ describe("state-queue withdraw-zero publication admission V1", () => {
       referenceScriptPublisher,
     };
 
-    const measurements: VanRossemFitMeasurement[] = [];
+    const measured: string[] = [];
     const mint = await publishPlainReferenceScriptUtxo({
       lucid: consumerLucid,
       script: contracts.stateQueue.mintingScript,
@@ -94,14 +78,7 @@ describe("state-queue withdraw-zero publication admission V1", () => {
       expect(measurement.completeSignedBytes, name).toBeLessThanOrEqual(
         VAN_ROSSEM_PUBLICATION_TARGET_BYTES,
       );
-      measurements.push({
-        name,
-        maximumShape: "fully applied reference-script publication",
-        kind: "publication",
-        signedBytes: measurement.completeSignedBytes,
-        memoryUnits: measurement.executionMemory,
-        cpuUnits: measurement.executionSteps,
-      });
+      measured.push(name);
     };
     record("mint", mint.publicationMeasurement);
     for (const arm of [
@@ -137,7 +114,7 @@ describe("state-queue withdraw-zero publication admission V1", () => {
     // Every publication the admission claim covers was actually measured: the
     // mint policy plus one rewarding script per state-queue arm, no arm
     // silently absent from the loop above.
-    expect(measurements.map((measurement) => measurement.name)).toEqual([
+    expect(measured).toEqual([
       "mint",
       "commit",
       "unattestedTimeout",
@@ -145,16 +122,5 @@ describe("state-queue withdraw-zero publication admission V1", () => {
       "fraudRemoval",
       "merge",
     ]);
-    const blueprintBytes = readFileSync(realBlueprintPath);
-    const ledger = buildVanRossemFitLedger({
-      category: "stateQueue/publication",
-      blueprintSha256: createHash("sha256")
-        .update(blueprintBytes)
-        .digest("hex"),
-      measurements,
-    });
-    if (process.env.MIDGARD_WRITE_FIT_LEDGER === "1") {
-      await writeVanRossemFitLedger(ledgerPath, ledger);
-    }
   });
 });

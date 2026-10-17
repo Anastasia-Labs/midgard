@@ -18,7 +18,6 @@ import "../src/native-script-invalid/submit-step-03-staged.js";
 import "../src/native-script-invalid/submit-step-04.js";
 import "../src/native-script-invalid/submit-step-05.js";
 import "../src/native-script-invalid/workflow-artifact.js";
-import "../src/proof-fit/van-rossem-fit-ledger.js";
 import "../src/remove-fraudulent-block.js";
 import "../src/transition-trace/phas.js";
 import "../src/transition-trace/reconstruct.js";
@@ -30,63 +29,19 @@ import "./support/final-catalogue-emulator.js";
 import "./support/submit-init-emulator-fixtures.js";
 import "./support/submit-init-emulator-shared.js";
 import "./support/synthetic-deep-proof.js";
-import "./native-script-invalid-wrongful-rejection-lifecycle.fit-rows.js";
 import "./native-script-invalid-wrongful-rejection-lifecycle.setup.js";
 import "./native-script-invalid-wrongful-rejection-lifecycle.run.js";
 
-import { createHash } from "node:crypto";
-import { readFile } from "node:fs/promises";
-import { fileURLToPath } from "node:url";
-
-import { encodeMidgardFieldPreimage } from "@al-ft/midgard-core";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
-import { afterAll, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import { admitNativeScriptInvalidForcedArtifact } from "../src/native-script-invalid/forced-artifact.js";
 import { submitNativeScriptInvalidStep02 } from "../src/native-script-invalid/submit-step-02.js";
 import { admitNativeScriptInvalidWorkflowArtifact } from "../src/native-script-invalid/workflow-artifact.js";
-import {
-  buildVanRossemFitLedger,
-  writeVanRossemFitLedger,
-} from "../src/proof-fit/van-rossem-fit-ledger.js";
-import { fitRows } from "./native-script-invalid-wrongful-rejection-lifecycle.fit-rows.js";
 import { run } from "./native-script-invalid-wrongful-rejection-lifecycle.run.js";
 import { setup } from "./native-script-invalid-wrongful-rejection-lifecycle.setup.js";
-import { realBlueprintPath } from "./support/emulator/blueprints.js";
 import { captureEmulatorSubmission } from "./support/emulator/measurement.js";
-
-afterAll(async () => {
-  if (process.env.MIDGARD_WRITE_FIT_LEDGER !== "1") return;
-  expect(fitRows).toHaveLength(8);
-  const blueprint = await readFile(realBlueprintPath);
-  const ledger = buildVanRossemFitLedger({
-    category: "nativeScriptInvalid",
-    blueprintSha256: createHash("sha256").update(blueprint).digest("hex"),
-    measurements: fitRows.flatMap(({ shape, stages }) =>
-      stages.map((row, index) => ({
-        name: `${shape}/${index.toString().padStart(3, "0")}`,
-        kind:
-          row.executionMemory === 0n && row.executionSteps === 0n
-            ? ("publication" as const)
-            : ("lifecycle" as const),
-        maximumShape: shape,
-        signedBytes: row.completeSignedBytes,
-        memoryUnits: row.executionMemory,
-        cpuUnits: row.executionSteps,
-      })),
-    ),
-  });
-  await writeVanRossemFitLedger(
-    fileURLToPath(
-      new URL(
-        "../../../docs/fault-proofs/size-plans/native-script-invalid-wrongful-rejection-v1-fit-ledger.json",
-        import.meta.url,
-      ),
-    ),
-    ledger,
-  );
-});
 
 describe("native script wrongful forced rejection", { timeout: 30_000 }, () => {
   it.each([
@@ -127,15 +82,6 @@ describe("native script wrongful forced rejection", { timeout: 30_000 }, () => {
         expect(row.executionMemory).toBeLessThanOrEqual(13200000n);
         expect(row.executionSteps).toBeLessThanOrEqual(8000000000n);
       }
-      fitRows.push({
-        shape: options.shape,
-        scriptIndex: f.scriptIndex,
-        scriptFieldBytes: encodeMidgardFieldPreimage(f.scripts).length,
-        signerFieldBytes: encodeMidgardFieldPreimage(
-          f.witnesses.map((w) => w.item),
-        ).length,
-        stages,
-      });
     },
     600000,
   );
@@ -171,7 +117,6 @@ describe("native script wrongful forced rejection", { timeout: 30_000 }, () => {
         expect(row.executionMemory).toBeLessThanOrEqual(13200000n);
         expect(row.executionSteps).toBeLessThanOrEqual(8000000000n);
       }
-      fitRows.push({ shape: `cancel-and-restart-${phase}`, stages });
     },
     600000,
   );

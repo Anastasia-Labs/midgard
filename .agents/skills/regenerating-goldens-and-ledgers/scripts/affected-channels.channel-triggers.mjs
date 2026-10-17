@@ -90,10 +90,7 @@ const generatorPatterns = [
   "onchain/aiken/scripts/verify-*-exec-ledger-*.mjs",
 ];
 
-const ledgerPatterns = [
-  "onchain/aiken/scripts/*-exec-ledger-*.json",
-  "docs/fault-proofs/size-plans/*-fit-ledger.json",
-];
+const ledgerPatterns = ["onchain/aiken/scripts/*-exec-ledger-*.json"];
 
 const generatedNamePatterns = [
   "**/*.generated.*",

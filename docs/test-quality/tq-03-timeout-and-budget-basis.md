@@ -12,13 +12,15 @@ The fault-proof Vitest configuration and shared preset do not set a package
 while others explicitly allow long emulator runs. A timeout is a hang-detection
 allowance, not measured runtime or a sum of expected CI duration.
 
-The zero-input saved-ledger suite checks the hard 16.5M memory / 10G CPU
-limits; the network-id saved-ledger suite checks 13.2M / 8G, a 20% headroom
+The zero-input lifecycle suite checks the hard 16.5M memory / 10G CPU
+limits; the network-id lifecycle suite checks 13.2M / 8G, a 20% headroom
 basis. These are not automatically contradictory measurements of the same
 contract. The issue is whether the suite clearly states and enforces the
 required hard-fit or reliability-margin claim.
 
-`van-rossem-fit-ledger.ts` already exports hard limits. Check the current
+`demo/midgard-fault-proofs/src/proof-fit/van-rossem.ts` already exports hard
+limits, and the suite's submit guard enforces them on every emulator
+submission. Check the current
 profile and GOAL_SPEC §3.3 before choosing the reliability margin. Do not
 invent an existing `GOAL_SPEC_EXECUTION_BASIS_V1` export or replace distinct
 normative limits with a single unexplained number.

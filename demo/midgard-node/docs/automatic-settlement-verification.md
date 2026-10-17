@@ -58,7 +58,7 @@ Postgres checks used distinct `MIDGARD_TEST_DATABASE_PREFIX` values.
 | `MIDGARD_TEST_DATABASE_PREFIX=midgard_settlement_sdk pnpm --dir demo run test:tx-prep:sdk`                                                                                                                                                                                                                   | Lucid package: 175 passed. SDK: 873 passed, 3 timed out at their 5-second limit; exit 1.                                                     |
 | `pnpm --dir demo/midgard-sdk exec vitest run tests/lucid-inline-datum-preservation.test.ts --maxWorkers=1 --minWorkers=1`                                                                                                                                                                                    | All 6 tests passed with original timeouts; exit 0.                                                                                           |
 | `pnpm --dir demo/midgard-sdk exec vitest run --maxWorkers=2 --minWorkers=1`                                                                                                                                                                                                                                  | Full SDK: 876 passed in 92 files; exit 0.                                                                                                    |
-| `MIDGARD_TEST_DATABASE_PREFIX=midgard_settlement_emulator MIDGARD_NODE_TEST_FORKS=2 pnpm --dir demo run test:tx-prep:emulator`                                                                                                                                                                               | Node: 68 passed. Fault proofs: 617 passed, 2 timed out; 1 suite failed its pinned fit-ledger/blueprint identity check. Exit 1.               |
+| `MIDGARD_TEST_DATABASE_PREFIX=midgard_settlement_emulator MIDGARD_NODE_TEST_FORKS=2 pnpm --dir demo run test:tx-prep:emulator`                                                                                                                                                                               | Node: 68 passed. Fault proofs: 617 passed, 2 timed out; 1 suite failed its pinned ledger/blueprint identity check. Exit 1.                   |
 | `MIDGARD_TEST_DATABASE_PREFIX=midgard_settlement_fp_rerun pnpm --dir demo/midgard-fault-proofs exec vitest run --pool=forks --maxWorkers=1 --minWorkers=1 tests/submit-init-emulator-input-set-uniqueness-tier2.test.ts tests/submit-init-emulator-withdrawn-input-lifecycle.test.ts`                        | Both timeout files passed with original timeouts: 3 tests; exit 0.                                                                           |
 | `pnpm --dir demo/midgard-node run typecheck`                                                                                                                                                                                                                                                                 | Exit 0.                                                                                                                                      |
 | `pnpm --dir demo/midgard-sdk run typecheck`                                                                                                                                                                                                                                                                  | Exit 0.                                                                                                                                      |
@@ -137,9 +137,8 @@ layouts; replacement/replay paths retain proof and expiry guards.
 Both timeout files passed on the single-worker rerun with their original
 timeouts. The remaining unresolved failure is the ledger identity check below.
 
-The fault-proof gate's pinned ledger
-`docs/fault-proofs/size-plans/transition-trace-forced-window-fit-ledger.json`
-expects blueprint SHA-256
+The fault-proof gate's pinned transition-trace forced-window ledger expected
+blueprint SHA-256
 `3ddd74900b586e3b471e2c668a70dc46e1e864566e3fc5f620d98b274bf5f463`;
 the current `onchain/aiken/plutus.json` hashes to
 `636e8b9fe6cbc2cf247175c3303fa18ee61660891928e14620fad831be4fae1f`.
@@ -147,6 +146,10 @@ The ledger is unchanged from HEAD. This task changed neither the ledger nor
 Aiken/blueprint sources; the shared checkout contains other contract work.
 The mismatch remains unresolved, so the broad gate is **not passing**.
 A base-branch execution was not performed; no baseline-pass claim is made.
+
+That ledger and its identity check have since been removed: Van Rossem fit is
+now enforced on every emulator submission
+([fit evidence](../../../docs/fault-proofs/size-plans/README.md)).
 
 ## Limits and residual operational risks
 

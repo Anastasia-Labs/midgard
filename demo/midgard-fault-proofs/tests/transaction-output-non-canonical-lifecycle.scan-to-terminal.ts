@@ -34,7 +34,6 @@ export const scanToTerminal = async ({
   evidence,
   rederive,
   label,
-  shapes,
   nativeTxCompactCbor,
   witnessSetCompactCbor,
 }: {
@@ -43,8 +42,6 @@ export const scanToTerminal = async ({
   readonly evidence: Evidence;
   readonly rederive: () => Evidence;
   readonly label: string;
-  /** The fit ledger's maximum shapes for the scan rows and the datum rows. */
-  readonly shapes: { readonly scan: string; readonly datum: string };
   readonly nativeTxCompactCbor: string;
   readonly witnessSetCompactCbor: string;
 }) => {
@@ -69,10 +66,9 @@ export const scanToTerminal = async ({
     );
     scans += 1;
     current = scan.result.nextThreadOutRef;
-    if (scans === 1)
-      record(`${label}-scan-first`, scan.measurement, shapes.scan);
+    if (scans === 1) record(`${label}-scan-first`, scan.measurement);
     if (scan.result.terminal) {
-      record(`${label}-scan-final`, scan.measurement, shapes.scan);
+      record(`${label}-scan-final`, scan.measurement);
       if (scan.result.nextStage !== "step03Datum")
         return {
           threadOutRef: current,
@@ -85,7 +81,6 @@ export const scanToTerminal = async ({
         threadOutRef: current,
         evidence,
         label,
-        maximumShape: shapes.datum,
       });
       return { scans, ...datum };
     }
@@ -156,15 +151,12 @@ export const datumToVerdict = async ({
   threadOutRef,
   evidence,
   label,
-  maximumShape,
   onStep,
 }: {
   readonly registered: Registered;
   readonly threadOutRef: string;
   readonly evidence: Evidence;
   readonly label: string;
-  /** The fit ledger's maximum shape for the first and final reads. */
-  readonly maximumShape: string;
   /** Sees each datum step's measurement with its index from this thread. */
   readonly onStep?: (
     measurement: Parameters<typeof record>[1],
@@ -196,10 +188,9 @@ export const datumToVerdict = async ({
       step.measurement.executionMemory > costliest.executionMemory
     )
       costliest = step.measurement;
-    if (datumSteps === 1)
-      record(`${label}-datum-first`, step.measurement, maximumShape);
+    if (datumSteps === 1) record(`${label}-datum-first`, step.measurement);
     if (step.result.finished) {
-      record(`${label}-datum-final`, step.measurement, maximumShape);
+      record(`${label}-datum-final`, step.measurement);
       return { threadOutRef: current, datumSteps, costliest };
     }
   }

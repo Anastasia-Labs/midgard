@@ -1,6 +1,6 @@
 ---
 name: regenerating-goldens-and-ledgers
-description: Use when a change touches a cross-language golden (`*.generated.json`, `*-golden.test.ak`, Aiken constants a generator rebinds), an execution or fit ledger, a deployment profile or `onchain/aiken/env/*.ak`, `docs/consensus-profile-v1.md`, or any source those are generated from (midgard-core, midgard-sdk, midgard-validation, lucid-midgard, Aiken types a golden imports); when a `fixtures:*:check`, `docs:*:check`, `deployment:check` or `verify-*-exec-ledger` step fails; when adding a new generator; or before building or committing `onchain/aiken/plutus.json`.
+description: Use when a change touches a cross-language golden (`*.generated.json`, `*-golden.test.ak`, Aiken constants a generator rebinds), an execution ledger, a deployment profile or `onchain/aiken/env/*.ak`, `docs/consensus-profile-v1.md`, or any source those are generated from (midgard-core, midgard-sdk, midgard-validation, lucid-midgard, Aiken types a golden imports); when a `fixtures:*:check`, `docs:*:check`, `deployment:check` or `verify-*-exec-ledger` step fails; when adding a new generator; or before building or committing `onchain/aiken/plutus.json`.
 ---
 
 # Regenerating goldens and ledgers
@@ -83,8 +83,8 @@ the source change that caused it.
   [ci: Midgard Node CI/Check native V1 field-access golden vectors] and the
   sibling check steps listed in [references/channels.md](references/channels.md).
   Blind spot: channels whose check has no CI step (`transaction-root-v1`,
-  `validation-one-step-cross-language`, three execution ledgers, most fit
-  ledgers, the watcher fixture, the benchmark fixtures) accept a hand edit
+  `validation-one-step-cross-language`, three execution ledgers, the watcher
+  fixture, the benchmark fixtures) accept a hand edit
   silently; only a reader catches those.
 - **Commit the source change and the regenerated output together** [review].
   CI catches a split commit only for channels whose check it runs, and only on
@@ -130,7 +130,7 @@ last ran. It is not tracked and, as of 2026-09-25, not gitignored.
   runs where it is enabled (`make enable-git-hooks`), and
   `MIDGARD_SKIP_HOOKS=1` skips it.
 - **Build it fresh, with the pinned fork, before anything that reads it**:
-  fit ledgers, the DA deployment fixture, the watcher initialization fixture,
+  the DA deployment fixture, the watcher initialization fixture,
   fault-proof and node suites. `pnpm --dir demo run deployment:build preprod-testing`
   regenerates the profiles, refuses any compiler other than the pinned fork,
   runs `aiken build --env preprod_testing`, and records the blueprint hash in
@@ -176,11 +176,8 @@ later checks pass.
   channel's outputs, commands, CI step or blind spots, or when the script lists
   a channel you have not seen before.
 - [references/ledgers.md](references/ledgers.md): read this when an execution
-  or fit ledger is affected or red, before running any `--update` or
-  `fit:regenerate`.
+  ledger is affected or red, before running any `--update`.
 - [config/deployments/README.md](../../../config/deployments/README.md): the
   authority for deployment profiles.
-- [docs/fault-proofs/size-plans/README.md](../../../docs/fault-proofs/size-plans/README.md):
-  the authority for fit ledgers.
 - [aiken-contract-build](../aiken-contract-build/SKILL.md): building and
   focused-checking the Aiken project.
