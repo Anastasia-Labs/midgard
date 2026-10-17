@@ -1,4 +1,4 @@
-import { decodeMidgardFieldPreimage } from "@al-ft/midgard-core";
+import { decodeMidgardNativeTxWitnessSetCompact } from "@al-ft/midgard-core";
 import {
   type FieldOpening,
   requireInputIndex,
@@ -28,7 +28,12 @@ import type { ResolvedProverSigner } from "../runtime.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
 import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary.js";
 import type { FieldItemWidthIllegalContracts } from "./contracts.js";
-import type { FieldItemWidthEvidence } from "./field-item-width-illegal.js";
+import {
+  encodeFieldItemWidthBoundCoordinate,
+  fieldItemWidthAuthenticatedItem,
+  FieldItemWidthBoundCoordinate,
+  type FieldItemWidthEvidence,
+} from "./field-item-width-illegal.js";
 import {
   FieldItemWidthStep02DatumSchema,
   FieldItemWidthStep02RedeemerSchema,
@@ -83,11 +88,7 @@ export const submitFieldItemWidthIllegalStep02 = async ({
     stepIndex,
     threadOutRef,
   });
-  const state = requireLinearFaultStepState<{
-    subject: unknown;
-    field_index: bigint;
-    item_index: bigint;
-  }>({
+  const state = requireLinearFaultStepState<FieldItemWidthBoundCoordinate>({
     threadUtxo,
     signer,
     schema: FieldItemWidthStep02DatumSchema as never,
@@ -95,62 +96,83 @@ export const submitFieldItemWidthIllegalStep02 = async ({
     stepIndex,
   });
   if (
-    state.field_index !== BigInt(evidence.fieldIndex) ||
-    state.item_index !== BigInt(evidence.itemIndex)
+    Data.to(state, FieldItemWidthBoundCoordinate) !==
+    encodeFieldItemWidthBoundCoordinate(evidence, state.compact)
   )
     throw new Error(
-      "field-item-width-illegal: opening coordinate differs from thread",
+      "field-item-width-illegal: opening subject or coordinate differs from thread",
     );
-  const items = decodeMidgardFieldPreimage(
-    Buffer.from(evidence.fieldPreimageHex, "hex"),
+  const witnessSet = decodeMidgardNativeTxWitnessSetCompact(
+    Buffer.from(witnessSetCompactCbor, "hex"),
   );
-  const planned = planFaultProofFieldOpening({
-    anchorSourceKind: evidence.subject.source_kind === 1n ? 1n : 0n,
-    fieldIndex: evidence.fieldIndex,
-    anchorTxId: evidence.subject.transaction_id,
-    nativeTxCompactCbor,
-    itemCbors: items,
-    owner: signer.paymentKeyHash,
-    publish: publishCarriage,
-    label: "field-item-width-illegal field opening",
-  });
+  const planned =
+    evidence.kind === "StaticDomain"
+      ? null
+      : planFaultProofFieldOpening({
+          anchorSourceKind: state.subject.source_kind === 1n ? 1n : 0n,
+          fieldIndex: Number(evidence.fieldIndex),
+          anchorTxId: state.subject.transaction_id,
+          nativeTxCompactCbor,
+          fieldPreimage: Buffer.from(evidence.fieldPreimageHex, "hex"),
+          witnessSet: {
+            addr_tx_wits_hash: Buffer.from(witnessSet.addrTxWitsHash).toString(
+              "hex",
+            ),
+            script_tx_wits_hash: Buffer.from(
+              witnessSet.scriptTxWitsHash,
+            ).toString("hex"),
+            redeemer_tx_wits_hash: Buffer.from(
+              witnessSet.redeemerTxWitsHash,
+            ).toString("hex"),
+          },
+          ...(evidence.fieldIndex === 7n
+            ? { anchorWitnessSetHash: state.compact.witness_set_hash }
+            : {}),
+          owner: signer.paymentKeyHash,
+          publish: publishCarriage,
+          label: "field-item-width-illegal field opening",
+        });
   signer.selectWallet(lucid);
   const carriageUtxos =
-    publishedCarriageUtxos ??
-    (await publishFaultProofFieldCarriage({
-      lucid,
-      signer,
-      planned,
-      publisherAddress: signer.address,
-      label: "field-item-width-illegal field opening",
-      preSubmitBoundary: publicationPreSubmitBoundary,
-    }));
+    planned === null
+      ? []
+      : (publishedCarriageUtxos ??
+        (await publishFaultProofFieldCarriage({
+          lucid,
+          signer,
+          planned,
+          publisherAddress: signer.address,
+          label: "field-item-width-illegal field opening",
+          preSubmitBoundary: publicationPreSubmitBoundary,
+        })));
   const certificateUtxo =
-    suppliedCertificateUtxo ??
-    (planned.plan.tier === "Certified"
-      ? (
-          await certifyFaultProofFieldCarriage({
-            lucid,
-            network: lucid.config().network!,
-            signer,
-            planned,
-            certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
-            certificateMintingScript:
-              contracts.fieldPreimageCertificateMintingScript,
-            certificateReferenceScriptUtxo:
-              certificateReferenceScriptUtxo ??
-              (() => {
-                throw new Error(
-                  "field-item-width-illegal: certified opening requires certificate reference script",
-                );
-              })(),
-            chunkUtxos: carriageUtxos,
-            compactCbor: nativeTxCompactCbor,
-            witnessSetCompactCbor,
-            preSubmitBoundary: certificatePreSubmitBoundary,
-          })
-        ).certificateUtxo
-      : undefined);
+    planned === null
+      ? undefined
+      : (suppliedCertificateUtxo ??
+        (planned.plan.tier === "Certified"
+          ? (
+              await certifyFaultProofFieldCarriage({
+                lucid,
+                network: lucid.config().network!,
+                signer,
+                planned,
+                certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
+                certificateMintingScript:
+                  contracts.fieldPreimageCertificateMintingScript,
+                certificateReferenceScriptUtxo:
+                  certificateReferenceScriptUtxo ??
+                  (() => {
+                    throw new Error(
+                      "field-item-width-illegal: certified opening requires certificate reference script",
+                    );
+                  })(),
+                chunkUtxos: carriageUtxos,
+                compactCbor: nativeTxCompactCbor,
+                witnessSetCompactCbor,
+                preSubmitBoundary: certificatePreSubmitBoundary,
+              })
+            ).certificateUtxo
+          : undefined));
   await onCarriageReady?.();
   const stepReference = requireLinearFaultReferenceScript({
     utxo: referenceScriptUtxo,
@@ -158,25 +180,23 @@ export const submitFieldItemWidthIllegalStep02 = async ({
     family: "field-item-width-illegal",
     stepIndex,
   });
-  const opening: FieldOpening = faultProofFieldOpening({
-    planned,
-    referenceInputs: [
-      ...carriageUtxos,
-      stepReference,
-      ...(certificateUtxo === undefined ? [] : [certificateUtxo]),
-    ],
-    certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
-    label: "field-item-width-illegal field opening",
-  });
+  const opening: FieldOpening | null =
+    planned === null
+      ? null
+      : faultProofFieldOpening({
+          planned,
+          referenceInputs: [
+            ...carriageUtxos,
+            stepReference,
+            ...(certificateUtxo === undefined ? [] : [certificateUtxo]),
+          ],
+          certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
+          label: "field-item-width-illegal field opening",
+        });
   const nextDatum = Data.to(
     {
       fraud_prover: signer.paymentKeyHash,
-      data: {
-        subject: evidence.subject,
-        field_index: BigInt(evidence.fieldIndex),
-        item_index: BigInt(evidence.itemIndex),
-        item_width: BigInt(evidence.itemWidth),
-      },
+      data: fieldItemWidthAuthenticatedItem(evidence),
     } as never,
     FieldItemWidthStep03DatumSchema as never,
   );
@@ -229,6 +249,6 @@ export const submitFieldItemWidthIllegalStep02 = async ({
   return {
     txHash,
     nextThreadOutRef: `${txHash}#${outputIndex.toString()}`,
-    carriageTier: planned.plan.tier,
+    carriageTier: planned?.plan.tier ?? null,
   };
 };

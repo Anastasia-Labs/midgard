@@ -1,3 +1,4 @@
+import { VerdictSubjectSchema } from "./proof-thread-substrate.js";
 import { asDataType } from "@al-ft/midgard-core/lucid-data";
 import { Data } from "@lucid-evolution/lucid";
 
@@ -78,12 +79,12 @@ export const nativeScriptDecodingThreadTokenAssetName = (
 // ## Thread states (twin of `engine.ak:111-152`)
 
 /** Step-02's input state (step-01's output): the bound verdict subject. */
-export const NativeScriptDecodingBindStateSchema = Data.Object({
-  direction: Data.Integer(),
-  source_kind: Data.Integer(),
-  /** Id-verified subject tx id; `""` sentinel for forced threads until step-02. */
-  verified_tx_id: Data.Bytes(),
-});
+export const NativeScriptDecodingBindStateSchema = Data.Enum([
+  Data.Object({
+    BoundAccepted: Data.Object({ subject: VerdictSubjectSchema }),
+  }),
+  Data.Literal("PendingForced"),
+]);
 
 export type NativeScriptDecodingBindState = Data.Static<
   typeof NativeScriptDecodingBindStateSchema
@@ -159,7 +160,6 @@ export const NativeScriptDecodingStep01ArgsSchema = Data.Enum([
   }),
   Data.Object({
     RecordForcedSource: Data.Object({
-      direction: Data.Integer(),
       input_index: Data.Integer(),
       output_index: Data.Integer(),
     }),

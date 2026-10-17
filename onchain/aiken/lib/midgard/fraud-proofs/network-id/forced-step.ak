@@ -11,7 +11,6 @@ pub type Args {
     ledger_state.TxOrderId,
     ledger_state.ForcedInclusionTxV1,
   >,
-  direction: Int,
 }
 
 /// Step 01 hands the thread over carrying exactly `ForcedNetworkIdMismatch`;

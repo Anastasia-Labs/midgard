@@ -130,7 +130,10 @@ const bindAndOpen = async (
       signer: harness.proverSigner,
       threadOutRef: run.threadOutRef,
       finding: evidence,
-      forcedSource: { header: forced.header, membership, direction: 0n },
+      forcedSource: {
+        header: forced.header,
+        membership,
+      },
       witnessSetHash: Buffer.from(
         decodeMidgardForcedTxCompact(
           Buffer.from(

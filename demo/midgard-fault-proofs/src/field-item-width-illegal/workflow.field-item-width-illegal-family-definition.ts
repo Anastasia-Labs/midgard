@@ -1,8 +1,8 @@
 import {
-  decodeMidgardFieldPreimage,
-  deriveMidgardNativeTxFaultEvidenceMaterial,
+  decodeMidgardNativeTxCompact,
+  decodeMidgardNativeTxWitnessSetCompact,
 } from "@al-ft/midgard-core";
-import { deriveMidgardForcedTxFaultEvidenceMaterial } from "@al-ft/midgard-core/codec/forced";
+import { decodeMidgardForcedTxCompact } from "@al-ft/midgard-core/codec/forced";
 import { FraudProofComputationThreadStepDatum } from "@al-ft/midgard-sdk";
 
 import { type CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
@@ -20,20 +20,18 @@ import {
   assertManifestBoundWorkflowSigner,
   bindFraudProofWorkflowDeployment,
 } from "../workflow/deployment-manifest-binding.js";
-import {
-  acceptedTransactionSubject,
-  forcedTransactionSubject,
-} from "../workflow/detection-subject.js";
+import { verdictDetectionSubject } from "../workflow/detection-subject.js";
 import { defineFamily } from "../workflow/family-definition.js";
+import { completeReplayFindings } from "../workflow/replay-prerequisite.js";
 import {
   captureLocallyEvaluatedTransaction,
   workflowTransactionInputOutRefs,
 } from "../workflow/transaction-boundary.js";
 import { createFieldItemWidthIllegalCentralJournalAdapter } from "./central-journal.js";
 import {
-  fieldItemWidthCoordinateIsSupported,
+  fieldItemWidthDetectionId,
   type FieldItemWidthEvidence,
-  fieldItemWidthIsIllegal,
+  fieldItemWidthFindingsFromCanonicalBlock,
   type FieldItemWidthJournal,
   runFieldItemWidthProof,
 } from "./field-item-width-illegal.js";
@@ -80,94 +78,26 @@ export const loadManifestBoundFieldItemWidthIllegalConfig = async (
   return createFieldItemWidthIllegalBoundConfig(input, binding);
 };
 
-/** Complete accepted-block replay member: scans every field-2/field-5 item. */
+/** Shares exact coordinates and original bytes with public recovery. */
 export const detectFieldItemWidthIllegalCompleteReplay = (
-  evidence: CanonicalBlockEvidence,
+  block: CanonicalBlockEvidence,
 ): readonly CanonicalViolationDetection[] => {
-  const accepted = evidence.transactions.flatMap(
-    (transaction, transactionIndex) => {
-      const material = deriveMidgardNativeTxFaultEvidenceMaterial(
-        Buffer.from(transaction.txCbor, "hex"),
-      );
-      const transactionId = material.transactionId.toString("hex");
-      if (transaction.nodeTxId !== transactionId) {
-        throw new Error(
-          "fieldItemWidthIllegal complete replay transaction identity changed",
-        );
-      }
-      return ([2, 5] as const).flatMap((fieldIndex) =>
-        decodeMidgardFieldPreimage(
-          material.fieldPreimages[fieldIndex]!,
-        ).flatMap((item, itemIndex) =>
-          fieldItemWidthIsIllegal(fieldIndex, item.length)
-            ? [
-                {
-                  ...acceptedTransactionSubject(transaction.nodeTxId),
-                  detectionId: `${FIELD_ITEM_WIDTH_ILLEGAL_VIOLATION_ID}:${transactionIndex.toString()}:${transactionId}:${fieldIndex.toString()}:${itemIndex.toString()}:${item.length.toString()}`,
-                  headerHash: evidence.headerHash,
-                  violationId: FIELD_ITEM_WIDTH_ILLEGAL_VIOLATION_ID,
-                  position: BigInt(transactionIndex),
-                  diagnostic: `transaction ${transactionId} field ${fieldIndex.toString()} item ${itemIndex.toString()} has illegal width ${item.length.toString()}`,
-                },
-              ]
-            : [],
-        ),
-      );
-    },
+  const { findings, failures } =
+    fieldItemWidthFindingsFromCanonicalBlock(block);
+  return completeReplayFindings(
+    findings.map(({ evidence, position }) => ({
+      ...verdictDetectionSubject(evidence.subject),
+      detectionId: fieldItemWidthDetectionId(
+        { evidence, position },
+        FIELD_ITEM_WIDTH_ILLEGAL_VIOLATION_ID,
+      ),
+      headerHash: block.headerHash,
+      violationId: FIELD_ITEM_WIDTH_ILLEGAL_VIOLATION_ID,
+      position,
+      diagnostic: `transaction ${evidence.subject.transaction_id} contradicts its verdict at field ${evidence.fieldIndex.toString()} item ${evidence.itemIndex.toString()}`,
+    })),
+    failures,
   );
-  const forced = evidence.reconstruction.forcedTransactions.flatMap(
-    (transaction, forcedIndex) => {
-      if (transaction.value.verdict === "ForcedTxValid") return [];
-      const reason = transaction.value.verdict.ForcedTxInvalid.reason;
-      if (typeof reason === "string" || !("FieldItemWidthIllegal" in reason)) {
-        return [];
-      }
-      const material = deriveMidgardForcedTxFaultEvidenceMaterial(
-        transaction.fullTransactionCbor,
-      );
-      if (
-        material.transactionId.toString("hex") !== transaction.value.tx_id ||
-        material.proofSource.compactCbor.toString("hex") !==
-          transaction.value.submitted_source.compact_cbor ||
-        material.proofSource.witnessSetCompactCbor.toString("hex") !==
-          transaction.value.submitted_source.witness_set_compact_cbor ||
-        material.proofSource.fieldPreimageLengthsCbor.toString("hex") !==
-          transaction.value.submitted_source.field_preimage_lengths_cbor
-      ) {
-        throw new Error(
-          "fieldItemWidthIllegal forced transaction differs from its authenticated leaf",
-        );
-      }
-      const coordinate = reason.FieldItemWidthIllegal;
-      const fieldIndex = Number(coordinate.field_index);
-      const itemIndex = Number(coordinate.item_index);
-      if (!fieldItemWidthCoordinateIsSupported(fieldIndex, itemIndex)) {
-        return [];
-      }
-      const preimage = material.fieldPreimages[fieldIndex];
-      const item =
-        preimage === undefined
-          ? undefined
-          : decodeMidgardFieldPreimage(preimage)[itemIndex];
-      if (
-        item === undefined ||
-        fieldItemWidthIsIllegal(fieldIndex, item.length)
-      ) {
-        return [];
-      }
-      return [
-        {
-          ...forcedTransactionSubject(transaction.key),
-          detectionId: `${FIELD_ITEM_WIDTH_ILLEGAL_VIOLATION_ID}:forced:${forcedIndex.toString()}:${transaction.value.tx_id}:${fieldIndex.toString()}:${itemIndex.toString()}:${item.length.toString()}`,
-          headerHash: evidence.headerHash,
-          violationId: FIELD_ITEM_WIDTH_ILLEGAL_VIOLATION_ID,
-          position: BigInt(forcedIndex),
-          diagnostic: `forced transaction ${transaction.value.tx_id} was rejected for legal field ${fieldIndex.toString()} item ${itemIndex.toString()} width ${item.length.toString()}`,
-        },
-      ];
-    },
-  );
-  return [...accepted, ...forced];
 };
 
 export const createManifestBoundFieldItemWidthIllegalRuntime = ({
@@ -321,18 +251,43 @@ export const FIELD_ITEM_WIDTH_ILLEGAL_FAMILY_DEFINITION = defineFamily<
         const { binding } = context;
         if (action.input.stage !== "step_02") return null;
         const { evidence, source } = material.require(artifact);
+        if (evidence.kind === "StaticDomain") return null;
+        const witnessSet = decodeMidgardNativeTxWitnessSetCompact(
+          Buffer.from(source.witnessSetCompactCbor, "hex"),
+        );
+        const compact = (
+          evidence.subject.source_kind === 1n
+            ? decodeMidgardForcedTxCompact
+            : decodeMidgardNativeTxCompact
+        )(Buffer.from(source.nativeTxCompactCbor, "hex"));
         const certificate = binding.fieldPreimageCertificate;
         if (certificate === null)
           throw new Error(`${category} omitted field certificate authority`);
         return {
           planned: planFaultProofFieldOpening({
             anchorSourceKind: evidence.subject.source_kind === 1n ? 1n : 0n,
-            fieldIndex: evidence.fieldIndex,
+            fieldIndex: Number(evidence.fieldIndex),
             anchorTxId: evidence.subject.transaction_id,
             nativeTxCompactCbor: source.nativeTxCompactCbor,
-            itemCbors: decodeMidgardFieldPreimage(
-              Buffer.from(evidence.fieldPreimageHex, "hex"),
-            ),
+            fieldPreimage: Buffer.from(evidence.fieldPreimageHex, "hex"),
+            witnessSet: {
+              addr_tx_wits_hash: Buffer.from(
+                witnessSet.addrTxWitsHash,
+              ).toString("hex"),
+              script_tx_wits_hash: Buffer.from(
+                witnessSet.scriptTxWitsHash,
+              ).toString("hex"),
+              redeemer_tx_wits_hash: Buffer.from(
+                witnessSet.redeemerTxWitsHash,
+              ).toString("hex"),
+            },
+            ...(evidence.fieldIndex === 7n
+              ? {
+                  anchorWitnessSetHash: Buffer.from(
+                    compact.transactionWitnessSetHash,
+                  ).toString("hex"),
+                }
+              : {}),
             owner: config.signer.paymentKeyHash,
             publish: true,
             label: `${category} field opening`,

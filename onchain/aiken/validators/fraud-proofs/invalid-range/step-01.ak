@@ -91,7 +91,7 @@ validator main(
         //    step must pass.
         let
             _own_script_hash,
-            _computation_thread_token_asset_name,
+            subject_thread_name,
             _fraud_prover,
             m_input_state_data,
             output_script_hash,
@@ -122,7 +122,10 @@ validator main(
         //    challenged header.
         expect output_script_hash == step_02_validator_script_hash
         let expected_output_state: Data = step_02.State {
-          subject: substrate.bind_accepted_subject_v1(bad_tx_view),
+          subject: substrate.open_subject_v1(
+            subject_thread_name,
+            substrate.AcceptedSource { header, tx_inclusion: bad_tx_view },
+          ),
           block_slot,
           bad_tx_normalized_validity_range,
         }
@@ -136,7 +139,6 @@ validator main(
         output_index,
         header,
         membership,
-        direction,
       }}) -> {
         let Transaction { inputs, outputs, .. } = tx
         expect Some(step_datum) = datum
@@ -150,11 +152,9 @@ validator main(
           outputs,
         )
         expect None = input_state
-        let subject = substrate.bind_forced_subject_to_thread_v1(
+        let subject = substrate.open_subject_v1(
           thread_name,
-          header,
-          membership,
-          direction,
+          substrate.ForcedSource { header, membership },
         )
         let leaf = membership.value
         let Pair(verified, _) = verify_forced_tx_proof_source_v1(
@@ -263,8 +263,15 @@ fn run_step_01(
   expected_range: vrn.NormalizedTimeRange,
 ) -> Bool {
   let expected_output_state: Data = step_02.State {
-    subject: substrate.bind_accepted_subject_v1(
-      verify_native_tx_compact_cbor_v1(claimed.tx_id, claimed.compact_cbor),
+    subject: substrate.open_subject_v1(
+      fixture.ct_token_asset_name(claimed),
+      substrate.AcceptedSource {
+        header: claimed.header,
+        tx_inclusion: verify_native_tx_compact_cbor_v1(
+          claimed.tx_id,
+          claimed.compact_cbor,
+        ),
+      },
     ),
     block_slot: header.block_slot,
     bad_tx_normalized_validity_range: expected_range,
@@ -337,8 +344,15 @@ fn run_step_01_published(
   steps: mpf.Proof,
 ) -> Bool {
   let expected_output_state: Data = step_02.State {
-    subject: substrate.bind_accepted_subject_v1(
-      verify_native_tx_compact_cbor_v1(block.tx_id, block.compact_cbor),
+    subject: substrate.open_subject_v1(
+      fixture.ct_token_asset_name(block),
+      substrate.AcceptedSource {
+        header: block.header,
+        tx_inclusion: verify_native_tx_compact_cbor_v1(
+          block.tx_id,
+          block.compact_cbor,
+        ),
+      },
     ),
     block_slot: block.header.block_slot,
     bad_tx_normalized_validity_range: vrn.ClosedRange { lower: 5, upper: 8 },

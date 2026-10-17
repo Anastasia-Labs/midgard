@@ -124,8 +124,15 @@ fn zero_input_bad_tx() -> MidgardTransaction {
 
 fn run_finalize(block: fixture.NativeBlockFixtureV1) -> Bool {
   let asset_name = fixture.ct_token_asset_name(block)
-  let subject = substrate.bind_accepted_subject_v1(
-    verify_native_tx_compact_cbor_v1(block.tx_id, block.compact_cbor),
+  let subject = substrate.open_subject_v1(
+    fixture.ct_token_asset_name(block),
+    substrate.AcceptedSource {
+      header: block.header,
+      tx_inclusion: verify_native_tx_compact_cbor_v1(
+        block.tx_id,
+        block.compact_cbor,
+      ),
+    },
   )
   main.spend(
     fixture.fraud_proof_policy_id,
@@ -186,8 +193,15 @@ test zero_input_step_02_rejects_an_empty_preimage_for_a_spending_transaction() f
         fraud_prover: fixture.fraud_prover_key_hash,
         data: Some(
           bind_state_v1(
-            substrate.bind_accepted_subject_v1(
-              verify_native_tx_compact_cbor_v1(block.tx_id, block.compact_cbor),
+            substrate.open_subject_v1(
+              fixture.ct_token_asset_name(block),
+              substrate.AcceptedSource {
+                header: block.header,
+                tx_inclusion: verify_native_tx_compact_cbor_v1(
+                  block.tx_id,
+                  block.compact_cbor,
+                ),
+              },
             ),
           ),
         ),

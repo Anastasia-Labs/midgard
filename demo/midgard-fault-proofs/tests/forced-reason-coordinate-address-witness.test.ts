@@ -228,7 +228,10 @@ const setupScenario = async (witnessIndex: bigint) => {
       addressWitnesses: signedSubject.addrTxWits,
       nativeTxCompactCbor: leaf.submitted_source.compact_cbor,
     },
-    forcedSource: { header, membership, direction: 1n },
+    forcedSource: {
+      header,
+      membership,
+    },
     referenceScriptUtxo: references[0],
   });
   const threadOutRef = bound.nextThreadOutRef;

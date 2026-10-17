@@ -267,7 +267,10 @@ export const setup = async ({
     header: requestedHeader,
   });
   const header = seeded.header;
-  const source = { header, membership, direction: 1n };
+  const source = {
+    header,
+    membership,
+  };
   const state = {
     subject: SDK.forcedVerdictSubject({
       transactionId: txId,

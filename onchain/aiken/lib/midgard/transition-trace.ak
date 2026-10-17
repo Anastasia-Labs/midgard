@@ -149,7 +149,7 @@ pub fn verify_root_membership_raw(
   and {
     phas_root_count_is_consistent(root, count),
     count > 0,
-    mpf.has(mpf_from_midgard_root(root), key_bytes, value_bytes, proof),
+    canonical_mpf.has(root, key_bytes, value_bytes, proof),
   }
 }
 

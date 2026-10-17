@@ -1,164 +1,353 @@
+//// Actual body compact/field-door custody controls; no prover legality Bool.
+
+use aiken/cbor
+use aiken/collection/list
+use aiken/primitive/bytearray
 use midgard/fraud_proofs/field_item_width_illegal/rule
+use midgard/fraud_proofs/field_item_width_illegal/step_02
+use midgard/fraud_proofs/field_opening_v1.{
+  BodyAnchor, BodyFieldOpening, opened_whole_field_view,
+}
+use midgard/fraud_proofs/native_tx/compact.{
+  decode_forced_tx_compact_v1, encode_forced_tx_compact_v1,
+  encode_native_tx_body_compact, native_tx_id_for_version,
+}
+use midgard/fraud_proofs/native_tx/types.{
+  ForcedTxCompact, NativeTxBodyCompact, TxCompactView,
+}
 use midgard/fraud_proofs/proof_thread_substrate_v1 as substrate
-use midgard/rejection_reason_v1.{
-  FieldItemWidthIllegal, FieldPreimageLengthMismatch,
+use midgard/native_tx_field_access_v1.{
+  Inline, encode_field_array_header, field_commitment,
+}
+use midgard/rejection_reason_v1 as reason
+use midgard/validation_machine_tests/fixtures_phase_a.{
+  empty_v1_transaction, submitted_source,
 }
 
-const tx_id: ByteArray =
-  #"000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f"
+fn hash_item(prefix: ByteArray, first: ByteArray) -> ByteArray {
+  prefix
+    |> bytearray.concat(first)
+    |> bytearray.concat(
+        #"000102030405060708090a0b0c0d0e0f101112131415161718191a",
+      )
+}
 
-fn accepted() -> substrate.VerdictSubjectV1 {
+fn fixture_at_field(
+  field: Int,
+  items: List<ByteArray>,
+  selected: Int,
+  rejected: Option<reason.RejectionReasonV1>,
+  substitute: Bool,
+) -> rule.AuthenticatedItemV1 {
+  let preimage = encode_field_array_header(list.length(items))
+    |> bytearray.concat(
+        list.foldl(
+          items,
+          #"",
+          fn(item, prior) { bytearray.concat(prior, item) },
+        ),
+      )
+  let base = decode_forced_tx_compact_v1(
+    submitted_source(empty_v1_transaction()).compact_cbor,
+  )
+  let compact = ForcedTxCompact {
+    ..base,
+    body: NativeTxBodyCompact {
+      ..base.body,
+      spend_inputs_hash: if field == 0 {
+        field_commitment(preimage)
+      } else {
+        base.body.spend_inputs_hash
+      },
+      reference_inputs_hash: if field == 1 {
+        field_commitment(preimage)
+      } else {
+        base.body.reference_inputs_hash
+      },
+      required_signers_hash: if field == 4 {
+        field_commitment(preimage)
+      } else {
+        base.body.required_signers_hash
+      },
+    },
+  }
+  let compact_cbor = encode_forced_tx_compact_v1(compact)
+  let subject = substrate.VerdictSubjectV1 {
+    version: 1,
+    direction: if rejected == None {
+      0
+    } else {
+      1
+    },
+    source_kind: 1,
+    transaction_id: native_tx_id_for_version(
+      1,
+      encode_native_tx_body_compact(compact.body),
+    ),
+    source_key: #"00",
+    rejection_reason: rejected,
+  }
+  let bound = rule.bind_coordinate_v1(
+    subject,
+    field,
+    selected,
+    TxCompactView {
+      body: compact.body,
+      witness_set_hash: compact.witness_set_hash,
+      validity_code: None,
+    },
+  )
+  let view = opened_whole_field_view(
+    BodyFieldOpening {
+      native_tx_compact_cbor: compact_cbor,
+      carriage: Inline {
+        preimage: if substitute {
+          #"80"
+        } else {
+          preimage
+        },
+      },
+    },
+    BodyAnchor { tx_id: subject.transaction_id, source_kind: 1 },
+    field,
+    [],
+    #"",
+  )
+  rule.authenticate_item_legality_v1(bound, view)
+}
+
+fn fixture(
+  items: List<ByteArray>,
+  selected: Int,
+  rejected: Option<reason.RejectionReasonV1>,
+  substitute: Bool,
+) -> rule.AuthenticatedItemV1 {
+  fixture_at_field(4, items, selected, rejected, substitute)
+}
+
+fn input_item(index: Int) -> ByteArray {
+  #"5826825820000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f19"
+    |> bytearray.concat(bytearray.from_int_big_endian(index, 2))
+}
+
+fn ordered_item_control(field: Int, repeated: Bool, rejected: Bool) -> Bool {
+  let low = if field == 4 {
+    hash_item(#"581c", #"01")
+  } else {
+    input_item(8)
+  }
+  let high = if repeated {
+    low
+  } else if field == 4 {
+    hash_item(#"581c", #"02")
+  } else {
+    input_item(9)
+  }
+  let claimed = if rejected {
+    Some(reason.FieldItemWidthIllegal { field_index: field, item_index: 1 })
+  } else {
+    None
+  }
+  rule.terminal_contradiction_v1(
+    fixture_at_field(field, [high, low], 1, claimed, False),
+  )
+}
+
+test fiwi_descending_spends_do_not_convict_accepted() {
+  !ordered_item_control(0, False, False)
+}
+
+test fiwi_descending_spends_refute_exact_rejection() {
+  ordered_item_control(0, False, True)
+}
+
+test fiwi_descending_references_do_not_convict_accepted() {
+  !ordered_item_control(1, False, False)
+}
+
+test fiwi_descending_references_refute_exact_rejection() {
+  ordered_item_control(1, False, True)
+}
+
+test fiwi_descending_signers_do_not_convict_accepted() {
+  !ordered_item_control(4, False, False)
+}
+
+test fiwi_descending_signers_refute_exact_rejection() {
+  ordered_item_control(4, False, True)
+}
+
+test fiwi_repeated_signers_do_not_convict_accepted() {
+  !ordered_item_control(4, True, False)
+}
+
+test fiwi_repeated_signers_refute_exact_rejection() {
+  ordered_item_control(4, True, True)
+}
+
+test fiwi_repeated_spend_is_not_an_item_shape_fault() {
+  !ordered_item_control(0, True, False)
+}
+
+test fiwi_repeated_reference_is_not_an_item_shape_fault() {
+  !ordered_item_control(1, True, False)
+}
+
+fn bad_pair() -> List<ByteArray> {
+  [hash_item(#"581d", #"01"), hash_item(#"581d", #"02")]
+}
+
+fn claim(index: Int) -> Option<reason.RejectionReasonV1> {
+  Some(reason.FieldItemWidthIllegal { field_index: 4, item_index: index })
+}
+
+test n7_fiwi_actual_earlier_illegal_item_convicts_later_illegal_claim() {
+  rule.terminal_contradiction_v1(fixture(bad_pair(), 0, claim(1), False))
+}
+
+test n7_fiwi_actual_later_illegal_item_does_not_convict_true_first_fault() {
+  !rule.terminal_contradiction_v1(fixture(bad_pair(), 1, claim(0), False))
+}
+
+test n7_fiwi_actual_true_first_illegal_claim_is_refused() {
+  !rule.terminal_contradiction_v1(fixture(bad_pair(), 0, claim(0), False))
+}
+
+test n7_fiwi_actual_accepted_bad_wrapper_is_convicted() {
+  rule.terminal_contradiction_v1(fixture(bad_pair(), 0, None, False))
+}
+
+test n7_fiwi_actual_legal_item_at_exact_claim_is_convicted() {
+  rule.terminal_contradiction_v1(
+    fixture([hash_item(#"581c", #"01")], 0, claim(0), False),
+  )
+}
+
+test n7_fiwi_actual_legal_other_coordinate_cannot_refute_claim() {
+  !rule.terminal_contradiction_v1(
+    fixture(
+      [hash_item(#"581c", #"01"), hash_item(#"581c", #"02")],
+      0,
+      claim(1),
+      False,
+    ),
+  )
+}
+
+test n7_fiwi_actual_out_of_domain_exact_claim_is_convicted() {
+  rule.terminal_contradiction_v1(
+    fixture([hash_item(#"581c", #"01")], 1, claim(1), False),
+  )
+}
+
+test n7_fiwi_actual_out_of_domain_other_coordinate_is_refused() {
+  !rule.terminal_contradiction_v1(
+    fixture([hash_item(#"581c", #"01")], 2, claim(1), False),
+  )
+}
+
+test n7_fiwi_actual_accepted_out_of_domain_is_refused() {
+  !rule.terminal_contradiction_v1(fixture([], 0, None, False))
+}
+
+test n7_fiwi_actual_earlier_item_convicts_later_semantic_arm() {
+  rule.terminal_contradiction_v1(
+    fixture(bad_pair(), 0, Some(reason.NetworkIdMismatch), False),
+  )
+}
+
+test n7_fiwi_actual_source_substitution_is_refused() fail {
+  rule.terminal_contradiction_v1(fixture(bad_pair(), 0, None, True))
+}
+
+fn abi_subject() -> substrate.VerdictSubjectV1 {
   substrate.VerdictSubjectV1 {
-    version: substrate.version,
-    direction: substrate.direction_wrongful_acceptance,
-    source_kind: substrate.source_kind_accepted,
-    transaction_id: tx_id,
+    version: 1,
+    direction: 0,
+    source_kind: 0,
+    transaction_id: #"000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
     source_key: #"",
     rejection_reason: None,
   }
 }
 
-fn rejected(field_index: Int, item_index: Int) -> substrate.VerdictSubjectV1 {
-  substrate.VerdictSubjectV1 {
-    version: substrate.version,
-    direction: substrate.direction_wrongful_rejection,
-    source_kind: substrate.source_kind_forced,
-    transaction_id: tx_id,
-    source_key: #"d8799f581c000000000000000000000000000000000000000000000000000000001affffffff",
-    rejection_reason: Some(FieldItemWidthIllegal { field_index, item_index }),
+fn abi_bound(validity: Option<Int>) -> rule.BoundCoordinateV1 {
+  let hash = #"0000000000000000000000000000000000000000000000000000000000000000"
+  rule.BoundCoordinateV1 {
+    subject: abi_subject(),
+    field_index: 5,
+    item_index: 0,
+    compact: TxCompactView {
+      body: NativeTxBodyCompact {
+        spend_inputs_hash: hash,
+        reference_inputs_hash: hash,
+        outputs_hash: hash,
+        fee: 42,
+        validity_interval_start: 3,
+        validity_interval_end: 99,
+        required_observers_hash: hash,
+        required_signers_hash: hash,
+        mint_hash: hash,
+        script_integrity_hash: hash,
+        auxiliary_data_hash: hash,
+        network_id: 255,
+      },
+      witness_set_hash: #"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+      validity_code: validity,
+    },
   }
 }
 
-fn width_state(
-  subject: substrate.VerdictSubjectV1,
-  field_index: Int,
-  item_index: Int,
-  item_width: Int,
-) -> rule.AuthenticatedWidthV1 {
-  rule.AuthenticatedWidthV1 { subject, field_index, item_index, item_width }
-}
-
-test field_item_width_rule_acceptance_convicts_oversize_output() {
-  rule.terminal_contradiction_v1(
-    width_state(accepted(), 2, 0, rule.max_serialized_output_preimage_bytes + 1),
-  )
-}
-
-test field_item_width_rule_acceptance_convicts_empty_mint_item() {
-  rule.terminal_contradiction_v1(width_state(accepted(), 5, 3, 0))
-}
-
-test field_item_width_rule_rejection_convicts_legal_output() {
-  rule.terminal_contradiction_v1(
-    width_state(rejected(2, 0), 2, 0, rule.max_serialized_output_preimage_bytes),
-  )
-}
-
-test field_item_width_rule_rejection_convicts_nonempty_mint_item() {
-  rule.terminal_contradiction_v1(width_state(rejected(5, 3), 5, 3, 1))
-}
-
-test field_item_width_rule_honest_acceptance_refuses_boundary_output() fail {
-  rule.terminal_contradiction_v1(
-    width_state(accepted(), 2, 0, rule.max_serialized_output_preimage_bytes),
-  )
-}
-
-test field_item_width_rule_honest_acceptance_refuses_nonempty_mint() fail {
-  rule.terminal_contradiction_v1(width_state(accepted(), 5, 0, 1))
-}
-
-test field_item_width_rule_honest_rejection_refuses_oversize_output() fail {
-  rule.terminal_contradiction_v1(
-    width_state(
-      rejected(2, 0),
-      2,
-      0,
-      rule.max_serialized_output_preimage_bytes + 1,
-    ),
-  )
-}
-
-test field_item_width_rule_honest_rejection_refuses_empty_mint() fail {
-  rule.terminal_contradiction_v1(width_state(rejected(5, 0), 5, 0, 0))
-}
-
-test field_item_width_rule_binds_exact_forced_coordinate() {
-  rule.bind_coordinate_v1(rejected(2, 7), 2, 7).item_index == 7
-}
-
-test field_item_width_rule_rejects_mutated_item_coordinate() fail {
-  rule.bind_coordinate_v1(rejected(2, 7), 2, 8).item_index == 8
-}
-
-test field_item_width_rule_rejects_mutated_field_coordinate() fail {
-  rule.bind_coordinate_v1(rejected(2, 7), 5, 7).field_index == 5
-}
-
-test field_item_width_rule_rejects_other_reason_constructor() fail {
-  let subject = substrate.VerdictSubjectV1 {
-    ..rejected(2, 0),
-    rejection_reason: Some(FieldPreimageLengthMismatch { field_index: 2 }),
-  }
-  rule.bind_coordinate_v1(subject, 2, 0).field_index == 2
-}
-
-test field_item_width_rule_rejects_unrelated_field() fail {
-  rule.bind_coordinate_v1(accepted(), 4, 0).field_index == 4
-}
-
-test field_item_width_rule_rejects_negative_coordinate() fail {
-  rule.bind_coordinate_v1(accepted(), 2, -1).item_index == -1
-}
-
-test field_item_width_rule_authentication_derives_width_from_bytes() {
-  let bound = rule.bind_coordinate_v1(accepted(), 5, 0)
-  let state = rule.authenticate_item_width_v1(bound, #"000102")
-  and {
-    state.item_width == 3,
-    state.field_index == 5,
-    state.item_index == 0,
+fn abi_item(observation: rule.ItemObservationV1) -> rule.AuthenticatedItemV1 {
+  rule.AuthenticatedItemV1 {
+    subject: abi_subject(),
+    field_index: 5,
+    item_index: 0,
+    observation,
   }
 }
 
-test field_item_width_rule_rejects_negative_width_state() fail {
-  rule.terminal_contradiction_v1(width_state(accepted(), 2, 0, -1))
+test fiwi_bound_abi_carries_compact_and_some_validity() {
+  rule.encode_bound_coordinate_v1(abi_bound(Some(0))) == #"d8799fd8799f0100005820000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f40d87a80ff0500d8799fd8799f582000000000000000000000000000000000000000000000000000000000000000005820000000000000000000000000000000000000000000000000000000000000000058200000000000000000000000000000000000000000000000000000000000000000182a031863582000000000000000000000000000000000000000000000000000000000000000005820000000000000000000000000000000000000000000000000000000000000000058200000000000000000000000000000000000000000000000000000000000000000582000000000000000000000000000000000000000000000000000000000000000005820000000000000000000000000000000000000000000000000000000000000000018ffff5820ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffd8799f00ffffff"
 }
 
-/// The authenticated width is the payload's own length, never a value the
-/// prover names: substituting the selected bytes moves the verdict with them.
-test field_item_width_rule_substituted_bytes_flip_the_verdict() {
-  let bound = rule.bind_coordinate_v1(accepted(), 5, 1)
-  let empty = rule.authenticate_item_width_v1(bound, #"")
-  let nonempty = rule.authenticate_item_width_v1(bound, #"00")
-  and {
-    rule.terminal_contradiction_v1(empty),
-    !rule.terminal_contradiction_v1(nonempty),
-    rule.terminal_contradiction_v1(
-      rule.AuthenticatedWidthV1 { ..nonempty, subject: rejected(5, 1) },
-    ),
-    !rule.terminal_contradiction_v1(
-      rule.AuthenticatedWidthV1 { ..empty, subject: rejected(5, 1) },
-    ),
-  }
+test fiwi_bound_abi_carries_compact_and_no_validity() {
+  rule.encode_bound_coordinate_v1(abi_bound(None)) == #"d8799fd8799f0100005820000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f40d87a80ff0500d8799fd8799f582000000000000000000000000000000000000000000000000000000000000000005820000000000000000000000000000000000000000000000000000000000000000058200000000000000000000000000000000000000000000000000000000000000000182a031863582000000000000000000000000000000000000000000000000000000000000000005820000000000000000000000000000000000000000000000000000000000000000058200000000000000000000000000000000000000000000000000000000000000000582000000000000000000000000000000000000000000000000000000000000000005820000000000000000000000000000000000000000000000000000000000000000018ffff5820ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffd87a80ffff"
 }
 
-test field_item_width_rule_substituted_bytes_refuse_honest_acceptance() fail {
-  let bound = rule.bind_coordinate_v1(accepted(), 5, 1)
-  rule.terminal_contradiction_v1(rule.authenticate_item_width_v1(bound, #"00"))
+test fiwi_item_abi_preserves_legal_observation() {
+  rule.encode_authenticated_item_v1(
+    abi_item(rule.ItemLegality { item_is_legal: True }),
+  ) == #"d8799fd8799f0100005820000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f40d87a80ff0500d87a9fd87a80ffff"
 }
 
-/// The terminal step re-checks the coordinate it was handed: an authenticated
-/// state naming a field outside the family never reaches the predicate.
-test field_item_width_rule_terminal_refuses_unrelated_field_state() fail {
-  rule.terminal_contradiction_v1(width_state(accepted(), 4, 0, 0))
+test fiwi_item_abi_preserves_illegal_observation() {
+  rule.encode_authenticated_item_v1(
+    abi_item(rule.ItemLegality { item_is_legal: False }),
+  ) == #"d8799fd8799f0100005820000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f40d87a80ff0500d87a9fd87980ffff"
 }
 
-test field_item_width_rule_abi_vectors_are_stable() {
-  let bound = rule.bind_coordinate_v1(accepted(), 5, 0)
-  let authenticated = rule.authenticate_item_width_v1(bound, #"000102")
-  and {
-    rule.encode_bound_coordinate_v1(bound) == #"d8799fd8799f0100005820000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f40d87a80ff0500ff",
-    rule.encode_authenticated_width_v1(authenticated) == #"d8799fd8799f0100005820000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f40d87a80ff050003ff",
-  }
+test fiwi_item_abi_preserves_out_of_domain_observation() {
+  rule.encode_authenticated_item_v1(abi_item(rule.ItemOutOfDomain)) == #"d8799fd8799f0100005820000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f40d87a80ff0500d87980ff"
+}
+
+test fiwi_step02_abi_preserves_absent_opening() {
+  cbor.serialise(
+    step_02.Args { input_index: 0, output_index: 1, opening: None },
+  ) == #"d8799f0001d87a80ff"
+}
+
+test fiwi_step02_abi_preserves_present_opening() {
+  cbor.serialise(
+    step_02.Args {
+      input_index: 0,
+      output_index: 1,
+      opening: Some(
+        BodyFieldOpening {
+          native_tx_compact_cbor: #"01",
+          carriage: Inline { preimage: #"80" },
+        },
+      ),
+    },
+  ) == #"d8799f0001d8799fd8799f4101d8799f4180ffffffff"
 }

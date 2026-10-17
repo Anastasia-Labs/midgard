@@ -12,6 +12,7 @@ import { getAddressDetails } from "@lucid-evolution/lucid";
 import { expect } from "vitest";
 
 import {
+  fieldItemWidthCoordinateIsSupported,
   type FieldItemWidthEvidence,
   prepareFieldItemWidthEvidence,
 } from "../src/field-item-width-illegal/index.js";
@@ -49,8 +50,8 @@ export const acceptedEvidence = (shape: WidthShape): FieldItemWidthEvidence =>
       subject: acceptedVerdictSubject(
         computeMidgardNativeTxId(shape.nativeTx).toString("hex"),
       ),
-      fieldIndex: shape.fieldIndex,
-      itemIndex: shape.itemIndex,
+      fieldIndex: BigInt(shape.fieldIndex),
+      itemIndex: BigInt(shape.itemIndex),
     },
     fieldPreimage: shape.fieldPreimage,
     committedFieldHashHex: midgardFieldCommitment(shape.fieldPreimage).toString(
@@ -130,7 +131,14 @@ export const acceptedBlock = async (h: Harness, transactions: WidthShape[]) => {
   return { setup, inclusions: block.inclusions };
 };
 
-const forcedBlock = async (h: Harness, shape: WidthShape) => {
+export const forcedBlock = async (
+  h: Harness,
+  shape: WidthShape,
+  coordinate = {
+    fieldIndex: BigInt(shape.fieldIndex),
+    itemIndex: BigInt(shape.itemIndex),
+  },
+) => {
   const credential = getAddressDetails(
     await h.harness.funderLucid.wallet().address(),
   ).paymentCredential;
@@ -143,7 +151,12 @@ const forcedBlock = async (h: Harness, shape: WidthShape) => {
         h.harness.emulator.now() + 120_000,
       ) - 1,
     nativeTx: shape.nativeTx,
-    rejectionReason: widthReason(shape.fieldIndex, shape.itemIndex),
+    rejectionReason: {
+      FieldItemWidthIllegal: {
+        field_index: coordinate.fieldIndex,
+        item_index: coordinate.itemIndex,
+      },
+    },
   });
   const setup = await submitSetupTx({
     lucid: h.harness.funderLucid,
@@ -157,23 +170,31 @@ const forcedBlock = async (h: Harness, shape: WidthShape) => {
     reconstruction: forced.reconstruction,
     eventKey: forced.eventKey,
   });
-  const evidence = prepareFieldItemWidthEvidence({
-    finding: {
-      subject: forcedVerdictSubject({
-        transactionId: forced.transaction.tx_id,
-        sourceKey: membership.key,
-        rejectionReason: forced.rejectionReason,
-      }),
-      fieldIndex: shape.fieldIndex,
-      itemIndex: shape.itemIndex,
-    },
-    fieldPreimage: shape.fieldPreimage,
-    committedFieldHashHex: midgardFieldCommitment(shape.fieldPreimage).toString(
-      "hex",
-    ),
-  });
+  const finding = {
+    subject: forcedVerdictSubject({
+      transactionId: forced.transaction.tx_id,
+      sourceKey: membership.key,
+      rejectionReason: forced.rejectionReason,
+    }),
+    ...coordinate,
+  };
+  const evidence = fieldItemWidthCoordinateIsSupported(
+    coordinate.fieldIndex,
+    coordinate.itemIndex,
+  )
+    ? prepareFieldItemWidthEvidence({
+        finding,
+        fieldPreimage: shape.fieldPreimage,
+        committedFieldHashHex: midgardFieldCommitment(
+          shape.fieldPreimage,
+        ).toString("hex"),
+      })
+    : prepareFieldItemWidthEvidence({ finding });
   expect(evidence.decisiveFaultHolds).toBe(shape.illegal);
-  const source = { header: forced.header, membership, direction: 1n };
+  const source = {
+    header: forced.header,
+    membership,
+  };
   return { forced, setup, membership, evidence, source };
 };
 

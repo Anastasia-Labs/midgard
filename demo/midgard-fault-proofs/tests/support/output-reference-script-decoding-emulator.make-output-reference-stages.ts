@@ -130,7 +130,10 @@ export const makeOutputReferenceStages = ({
         signer,
         threadOutRef,
         evidence,
-        forcedSource: { header, membership: leaf.membership, direction: 1n },
+        forcedSource: {
+          header,
+          membership: leaf.membership,
+        },
         referenceScriptUtxo: references[0]!,
       }),
     );

@@ -61,13 +61,11 @@ validator main(
             expect None = args.forced_membership
             Pair(subject, witness_set_hash)
           }
-          PendingForced { direction } -> {
+          PendingForced -> {
             expect Some(membership) = args.forced_membership
-            let subject = substrate.bind_forced_subject_to_thread_v1(
+            let subject = substrate.open_subject_v1(
               thread_asset_name,
-              args.header,
-              membership,
-              direction,
+              substrate.ForcedSource { header: args.header, membership },
             )
             let leaf = membership.value
             let Pair(verified, _) = verify_forced_tx_proof_source_v1(

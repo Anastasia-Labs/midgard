@@ -55,11 +55,12 @@ validator main(
         )
         expect Some(state) = input_state
         expect state == ForcedConservation
-        let subject = substrate.bind_forced_subject_to_thread_v1(
+        let subject = substrate.open_subject_v1(
           thread_name,
-          args.header,
-          args.membership,
-          1,
+          substrate.ForcedSource {
+            header: args.header,
+            membership: args.membership,
+          },
         )
         expect ValueNotPreserved = substrate.rejection_reason_of_v1(subject)
         let source = args.membership.value.submitted_source

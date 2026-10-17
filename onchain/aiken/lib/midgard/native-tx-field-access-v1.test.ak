@@ -26,6 +26,7 @@ use aiken/primitive/bytearray
 use cardano/address
 use cardano/assets
 use cardano/transaction.{InlineDatum, Input, Output, OutputReference}
+use midgard/fixed_item_legality_v1
 use midgard/fraud_proofs/native_tx/compact.{
   encode_native_tx_witness_set_compact,
 }
@@ -47,10 +48,11 @@ use midgard/native_tx_field_access_v1.{
   Inline, RawUtxo, Whole, authenticated_field_view,
   authenticated_whole_fixed_field_view, chunk_bytes_k, empty_field_commitment,
   encode_field_array_header, encode_field_preimage, field_commitment,
-  field_commitment_from_items, field_fixed_item_extent, field_item_at,
-  field_item_count, field_item_extent, field_preimage_certificate_asset_name,
-  field_read_range, field_stride, field_total_length, hash28_stride,
-  spend_input_stride, whole_view_item_count, whole_view_read_range,
+  field_commitment_from_items, field_fixed_encoded_item_at,
+  field_fixed_item_extent, field_item_at, field_item_count, field_item_extent,
+  field_preimage_certificate_asset_name, field_read_range, field_stride,
+  field_total_length, hash28_stride, spend_input_stride, whole_view_item_count,
+  whole_view_read_range,
 }
 
 // ---------------------------------------------------------------------------
@@ -1633,4 +1635,38 @@ test fixed_door_never_clamps_a_range_read() fail {
     bytearray.length(preimage),
     1,
   ) == #""
+}
+
+/// The source commits this bad same-stride wrapper. It is a False legality
+/// observation, while the ordinary strict reader's existing negative stays.
+test t235_committed_bad_wrapper_can_be_observed_without_decoder_abort() {
+  let malformed = rewrapped_preimage(0, 0, #"ff26")
+  let view = inline_view(0, malformed)
+  !fixed_item_legality_v1.fixed_item_is_legal_v1(
+    0,
+    None,
+    field_fixed_encoded_item_at(view, 0),
+  )
+}
+
+test t235_encoded_item_observer_still_refuses_wrong_prover_bytes() fail {
+  let malformed = rewrapped_preimage(0, 0, #"ff26")
+  let view = view_of(0, field_preimage(0), Inline { preimage: malformed }, [])
+  bytearray.length(field_fixed_encoded_item_at(view, 0)) >= 0
+}
+
+test t235_encoded_item_observer_still_refuses_out_of_domain_index() fail {
+  let view = inline_view(0, field_preimage(0))
+  bytearray.length(field_fixed_encoded_item_at(view, 3)) >= 0
+}
+
+test t235_encoded_item_observer_does_not_erase_bad_wrapper_bytes() {
+  let malformed = rewrapped_preimage(4, 0, #"ff1c")
+  let view = inline_view(4, malformed)
+  let observed = field_fixed_encoded_item_at(view, 0)
+  and {
+    bytearray.take(observed, 2) == #"ff1c",
+    bytearray.length(observed) == hash28_stride,
+    !fixed_item_legality_v1.fixed_item_is_legal_v1(4, None, observed),
+  }
 }

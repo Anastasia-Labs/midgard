@@ -42,7 +42,6 @@ export type PreparedNetworkIdWrongfulRejection = Readonly<{
     membership: Awaited<
       ReturnType<typeof buildForcedTransactionLeafMembershipProof>
     >;
-    direction: 1n;
   }>;
   evidence: NetworkIdWrongfulRejectionEvidence;
 }>;
@@ -193,7 +192,6 @@ export const createNetworkIdWrongfulRejectionPlanner =
       forcedSource: Object.freeze({
         header: block.header,
         membership,
-        direction: 1n,
       }),
       evidence: detection.evidence,
     });

@@ -194,7 +194,6 @@ export const prepareRedeemerCanonicityWorkflowArtifact = async (
                 output_index: 0n,
                 header: block.header,
                 membership,
-                direction: detection.evidence.subject.direction,
               },
             } as never,
             RedeemerCanonicityStep01SourceSchema as never,

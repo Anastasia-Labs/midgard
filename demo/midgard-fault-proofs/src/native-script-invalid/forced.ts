@@ -150,6 +150,9 @@ export const prepareNativeScriptInvalidForcedPlan = async ({
   });
   return {
     ...finding,
-    forcedSource: { header: block.header, membership, direction: 1n },
+    forcedSource: {
+      header: block.header,
+      membership,
+    },
   };
 };

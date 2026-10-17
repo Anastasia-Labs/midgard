@@ -154,7 +154,6 @@ export const prepareMinAdaForcedPlan = async ({
     forcedSource: {
       header: block.header,
       membership,
-      direction: finding.evidence.state.direction,
     },
   };
 };

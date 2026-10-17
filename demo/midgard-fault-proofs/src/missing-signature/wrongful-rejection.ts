@@ -157,7 +157,6 @@ export const prepareMissingSignatureWrongfulRejection = async ({
         reconstruction: block.reconstruction,
         eventKey: { ForcedTransactionEventKey: { tx_order_id: forced.key } },
       }),
-      direction: 1n,
     },
   };
 };

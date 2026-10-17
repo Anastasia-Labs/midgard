@@ -1,5 +1,5 @@
+import type * as SDK from "@al-ft/midgard-sdk";
 import { outRefLabel } from "@al-ft/midgard-core";
-import * as SDK from "@al-ft/midgard-sdk";
 import { expect } from "vitest";
 
 import {
@@ -9,16 +9,15 @@ import {
 } from "../src/index.js";
 import { submitInit } from "./support/legacy-submit-emulator.js";
 import {
+  inputExistenceExecutionContext,
+  publishInputExistenceSelectionCarriage,
+} from "./support/input-existence-execution-context.js";
+import {
   NO_REFERENCE_INPUT_ABSENT_PRODUCER_TX_ID,
   type NoReferenceInputFixture,
   noReferenceInputOutRef,
-  publishNoReferenceInputReferenceScripts,
 } from "./support/no-reference-input-emulator.js";
-import {
-  expectStateQueueHeaderOrder,
-  registerPexcludesExclusionRewardAccount,
-  setupFraudulentBlock,
-} from "./support/submit-init-emulator-fixtures.js";
+import { registerPexcludesExclusionRewardAccount } from "./support/submit-init-emulator-fixtures.js";
 import {
   buildRemovalDeploymentInfo,
   expectSingleUtxoWithUnit,
@@ -28,28 +27,19 @@ import {
 } from "./support/submit-init-emulator-shared.js";
 
 export const makeNoReferenceInputHarness = async () =>
-  await makeFaultProofEmulatorHarness({
+  makeFaultProofEmulatorHarness({
     contractOptions: {
       realNoReferenceInput: true,
       alwaysFraudProofCatalogue: true,
     },
-    // Steps 03 and 04 both delegate their non-membership claim to
-    // `pexcludes.exclusion.withdraw`, whose reward account must exist first.
     registerAdditionalRewardAccounts: registerPexcludesExclusionRewardAccount,
   });
-
 type NoReferenceInputHarness = Awaited<
   ReturnType<typeof makeNoReferenceInputHarness>
 >;
 
-/**
- * init → step-01 → step-02 → step-03, the segment all three journeys share.
- *
- * Everything up to and including step-03 is satisfiable for an honest block
- * too: the challenged out-ref genuinely is absent from a block's prev ledger
- * when its producer sits inside the same block. Only step-04 separates the two
- * cases, which is why the adversarial journey drives this same helper.
- */
+/** Current source→selection→event pre-state; terminal ledger evidence is a
+ * separate physical step. Removal/operator assertions remain in each journey. */
 export const driveNoReferenceInputToStep04 = async ({
   harness,
   fixture,
@@ -59,125 +49,72 @@ export const driveNoReferenceInputToStep04 = async ({
   readonly fixture: NoReferenceInputFixture;
   readonly publishRemoval?: boolean;
 }) => {
-  const {
-    realBlueprint,
-    emulator,
-    funderLucid,
-    proverLucid,
-    proverSigner,
-    contracts,
-    catalogue,
-  } = harness;
-  const steps = contracts.fraudProofContracts.noReferenceInput.steps;
-  // The harness's one-shot nonce is the funder's first UTxO, so nothing may
-  // spend from the funder wallet before `setupFraudulentBlock` consumes it.
-  const setup = await setupFraudulentBlock({
-    funderLucid,
-    emulator,
-    contracts,
-    catalogue,
-    fixture,
+  const context = await inputExistenceExecutionContext({
+    harness,
+    nativeTx: fixture.nativeTx,
+    field: 1,
+    inputIndex: fixture.badReferenceInputIndex,
+    present: fixture.missingProducerIsCommitted,
   });
-  await expectStateQueueHeaderOrder({
-    lucid: funderLucid,
-    contracts,
-    expectedHeaderHashes: [setup.headerHash],
-  });
-  // Removal must source its seven validators from reference inputs to stay
-  // inside the 16,384-byte L1 envelope; only the journey that removes pays for
-  // publishing them.
   const removalPublications = publishRemoval
-    ? await publishRemovalReferenceScripts({ lucid: proverLucid, contracts })
+    ? await publishRemovalReferenceScripts({
+        lucid: harness.proverLucid,
+        contracts: harness.contracts,
+      })
     : undefined;
-  const stepReferences = await publishNoReferenceInputReferenceScripts({
-    lucid: funderLucid,
-    steps,
-  });
-  const deploymentInfo = buildRemovalDeploymentInfo(contracts, catalogue, {
-    ...(removalPublications === undefined
+  const deploymentInfo = buildRemovalDeploymentInfo(
+    harness.contracts,
+    harness.catalogue,
+    removalPublications === undefined
       ? {}
-      : { removalReferenceScripts: removalPublications.published }),
-  });
-
+      : { removalReferenceScripts: removalPublications.published },
+  );
+  const stageArguments = { ...context.arguments, deploymentInfo };
   const init = await submitInit({
-    lucid: proverLucid,
-    witnessReferenceScripts: harness.witnessReferenceScripts,
-    blueprint: realBlueprint,
+    lucid: harness.proverLucid,
+    blueprint: harness.realBlueprint,
     deploymentInfo,
     network,
-    signer: proverSigner,
+    signer: harness.proverSigner,
     fraudCategory: "noReferenceInput",
-    fraudulentBlockOutRef: setup.fraudulentBlockOutRef,
+    fraudulentBlockOutRef: context.setup.fraudulentBlockOutRef,
+    witnessReferenceScripts: harness.witnessReferenceScripts,
     awaitConfirmation: true,
   });
-  expect(init.fraudCategoryName).toBe("noReferenceInput");
-  expect(init.computationThreadAssetName).toBe(
-    `${catalogue.categories.noReferenceInput.categoryId}${setup.headerHash}`,
-  );
-  const firstStepUtxo = await expectSingleUtxoWithUnit(
-    proverLucid,
+  const first = await expectSingleUtxoWithUnit(
+    harness.proverLucid,
     init.firstStepAddress,
     init.computationThreadUnit,
   );
-
   const step01 = await submitNoReferenceInputStep01({
-    lucid: proverLucid,
-    witnessReferenceScripts: harness.witnessReferenceScripts,
-    blueprint: realBlueprint,
-    deploymentInfo,
-    network,
-    signer: proverSigner,
-    threadOutRef: outRefLabel(firstStepUtxo),
-    stateQueueBlockOutRef: setup.fraudulentBlockOutRef,
-    txInclusion: fixture.inclusion,
-    referenceScriptUtxo: stepReferences[0],
-    awaitConfirmation: true,
+    ...stageArguments,
+    threadOutRef: outRefLabel(first),
   });
-  // The §2.5 anchor is the disputed transaction's id, and the two roots the
-  // later steps open are the ones the on-chain header carries: an EMPTY prev
-  // ledger and the block's RAW transactions PHAS root.
-  expect(step01.badTxId).toBe(fixture.subjectTxId);
-  expect(step01.blocksPrevUtxosRoot).toBe(SDK.EMPTY_MERKLE_TREE_ROOT);
-  expect(step01.blocksTransactionsRoot).toBe(fixture.transactionsRoot);
-
+  expect(step01.sourceEventKey).toEqual(context.prepared.source.eventKey);
+  const fieldCarriage = await publishInputExistenceSelectionCarriage(
+    harness,
+    context.prepared,
+  );
   const step02 = await submitNoReferenceInputStep02({
-    lucid: proverLucid,
-    blueprint: realBlueprint,
-    deploymentInfo,
-    network,
-    signer: proverSigner,
+    ...stageArguments,
+    ...fieldCarriage,
     threadOutRef: step01.nextThreadOutRef,
-    referenceInputsPreimage: fixture.referenceInputsPreimage,
-    nativeTxCompactCbor: fixture.nativeTxCompactCbor,
-    badReferenceInputIndex: fixture.badReferenceInputIndex,
-    referenceScriptUtxo: stepReferences[1],
-    awaitConfirmation: true,
   });
-  expect(step02.referenceInputsItemCount).toBe(fixture.referenceInputs.length);
-  expect(step02.missingReferenceInput).toStrictEqual(
-    fixture.missingReferenceInput,
-  );
-
+  expect(step02.selectedInput).toEqual(context.prepared.selectedInput);
   const step03 = await submitNoReferenceInputStep03({
-    lucid: proverLucid,
-    witnessReferenceScripts: harness.witnessReferenceScripts,
-    blueprint: realBlueprint,
-    deploymentInfo,
-    network,
-    signer: proverSigner,
+    ...stageArguments,
     threadOutRef: step02.nextThreadOutRef,
-    ledgerNonMembershipProofCbor: fixture.ledgerNonMembershipProofCbor,
-    referenceScriptUtxo: stepReferences[2],
-    awaitConfirmation: true,
   });
-  expect(step03.missingReferenceInputTxId).toBe(
-    fixture.missingReferenceInput.tx_id,
+  expect(step03.eventPreUtxosRoot).toBe(
+    context.prepared.transitionMembership.value.pre_utxos_root,
   );
-
   return {
-    setup,
+    setup: context.setup,
+    prepared: context.prepared,
+    stageArguments,
     deploymentInfo,
-    stepReferences,
+    stepReferences: context.stepReferences,
+    referenceScripts: context.referenceScripts,
     init,
     step01,
     step02,

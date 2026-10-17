@@ -636,7 +636,7 @@ describe("transition-trace challenger tooling", () => {
       key: txOrderId,
       value: forced,
     });
-    expect(production.stageEvidence.forcedDirection).toBe(1n);
+    expect(production.prepared.direction).toBe("wrongfulRejection");
   });
 
   it("does not classify an honest forced field-length rejection", async () => {

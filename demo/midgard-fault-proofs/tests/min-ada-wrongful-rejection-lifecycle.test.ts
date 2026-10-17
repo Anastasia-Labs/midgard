@@ -1,3 +1,4 @@
+import { proofThreadDirectionOfForcedLeaf } from "@al-ft/midgard-sdk";
 import "node:crypto";
 import "node:fs/promises";
 import "@aiken-lang/merkle-patricia-forestry";
@@ -344,7 +345,11 @@ describe("minimum-Ada forced rejection", () => {
         JSON.parse(JSON.stringify(workflowArtifact)),
       );
       expect(reopened.evidence.state.direction).toBe(0n);
-      expect(reopened.forcedSource.direction).toBe(0n);
+      expect(
+        proofThreadDirectionOfForcedLeaf(
+          reopened.forcedSource.membership.value,
+        ),
+      ).toBe(0n);
       expect(reopened.evidence.subject).toStrictEqual(f.prepared.subject);
       const bound = await f.capture("bind", () =>
         submitMinAdaStep01Forced({

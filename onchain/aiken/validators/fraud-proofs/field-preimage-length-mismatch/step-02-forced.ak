@@ -63,12 +63,10 @@ validator main(
           outputs,
         )
         expect output_script_hash == step_03_validator_script_hash
-        expect Some(PendingForced { direction }) = input_state
-        let subject = substrate.bind_forced_subject_to_thread_v1(
+        expect Some(PendingForced) = input_state
+        let subject = substrate.open_subject_v1(
           thread_asset_name,
-          header,
-          membership,
-          direction,
+          substrate.ForcedSource { header, membership },
         )
         let leaf = membership.value
         let Pair(verified, _) = verify_forced_tx_proof_source_v1(
@@ -84,13 +82,13 @@ validator main(
           reference_inputs,
           field_preimage_certificate_policy_id,
         )
-        if direction == substrate.direction_wrongful_rejection {
+        if subject.direction == substrate.direction_wrongful_rejection {
           expect FieldPreimageLengthMismatch { field_index } = substrate.rejection_reason_of_v1(
             subject,
           )
           expect field_index == evidence.field_index
         } else {
-          expect direction == substrate.direction_wrongful_acceptance
+          expect subject.direction == substrate.direction_wrongful_acceptance
         }
         let expected: Data = step_03.State {
           subject,

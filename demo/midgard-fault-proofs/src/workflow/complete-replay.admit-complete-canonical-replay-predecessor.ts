@@ -1,3 +1,7 @@
+import {
+  decodeMidgardFieldPreimage,
+  decodeMidgardSpendInputItem,
+} from "@al-ft/midgard-core";
 import { EMPTY_MERKLE_TREE_ROOT } from "@al-ft/midgard-sdk";
 
 import { type CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
@@ -6,6 +10,11 @@ import {
   type LedgerAt,
   predecessorLedger,
 } from "../ledger-at.js";
+import {
+  EventLedgerReplayRefusal,
+  ledgerBeforeTransactionEvent,
+} from "../input-existence/event-ledger.js";
+import { openProofThreadSubjectFromCanonicalEvidence } from "../input-existence/source.js";
 import { detectNetworkIdAcceptedForced } from "../network-id/accepted-forced.js";
 import { findNetworkIdFaults } from "../network-id/evidence.js";
 import { detectNetworkIdWrongfulRejections } from "../network-id/wrongful-rejection.js";
@@ -24,7 +33,11 @@ import {
   predecessorLedgerByAuthority,
   requireReplayPredecessorLedger,
 } from "./complete-replay.replay-context-identity.js";
-import { acceptedTransactionSubject, subjectOf } from "./detection-subject.js";
+import {
+  acceptedTransactionSubject,
+  sourceEventSubject,
+  subjectOf,
+} from "./detection-subject.js";
 
 /**
  * Admits the ledger the challenged block starts from: `ledgerAt` is asked for
@@ -164,20 +177,11 @@ export const detectDoubleSpends = async (
 export const PREDECESSOR_CONTEXT_UNAVAILABLE_VIOLATION_ID =
   "authenticated-predecessor-context-unavailable" as const;
 
-const predecessorLedgerKeys = ({
-  evidence,
-  context,
-}: {
-  readonly evidence: CanonicalBlockEvidence;
-  readonly context: CompleteCanonicalReplayContext | undefined;
-}): ReadonlySet<string> | null => {
-  const predecessor = requireReplayPredecessorLedger({ evidence, context });
-  if (predecessor !== undefined) return new Set(predecessor.outputs.keys());
-  return evidence.header.prevUtxosRoot === EMPTY_MERKLE_TREE_ROOT
-    ? new Set<string>()
-    : null;
-};
+export const EVENT_PRE_STATE_UNAVAILABLE_VIOLATION_ID =
+  "authenticated-event-pre-state-unavailable" as const;
 
+/** Scan the selected transaction's authenticated event ledger, including
+ * earlier forced effects and withdrawals. A later creator never backfills it. */
 export const detectLedgerRelativeMissingInputs = async ({
   evidence,
   context,
@@ -187,45 +191,92 @@ export const detectLedgerRelativeMissingInputs = async ({
   readonly context: CompleteCanonicalReplayContext | undefined;
   readonly kind: "spend" | "reference";
 }): Promise<readonly CanonicalViolationDetection[]> => {
-  const transactions = await Promise.all(
-    evidence.transactions.map(decodeTransactionMaterial),
-  );
-  const currentTransactionIds = new Set(
-    transactions.map((transaction) => transaction.nodeTxId),
-  );
-  const predecessorLedger = predecessorLedgerKeys({ evidence, context });
-  const violationId =
-    kind === "spend" ? "non-existent-input" : "no-reference-input";
+  const predecessor = requireReplayPredecessorLedger({ evidence, context });
+  const field = kind === "spend" ? 0 : 1;
+  const violationId = field === 0 ? "non-existent-input" : "no-reference-input";
   const detections: CanonicalViolationDetection[] = [];
-  for (const [transactionIndex, transaction] of transactions.entries()) {
-    if (transaction.nativeTxCompact.validity_code !== 0n) continue;
-    const inputs =
-      kind === "spend" ? transaction.inputs : transaction.referenceInputs;
-    for (const [inputIndex, input] of inputs.entries()) {
-      if (currentTransactionIds.has(input.transactionId)) continue;
-      const inputKey = ledgerKeyBytesHex({
-        tx_id: input.transactionId,
-        output_index: input.outputIndex,
+  const positions = { ForcedTransaction: 0, L2Transaction: 0 };
+  for (const event of evidence.reconstruction.sourceEvents) {
+    if (event.phase !== "ForcedTransaction" && event.phase !== "L2Transaction")
+      continue;
+    const position = positions[event.phase]++;
+    if (
+      event.phase === "ForcedTransaction"
+        ? event.entry.value.verdict !== "ForcedTxValid"
+        : event.entry.validity !== "TxIsValid"
+    )
+      continue;
+    const source = await openProofThreadSubjectFromCanonicalEvidence({
+      block: evidence,
+      eventKey: event.eventKey,
+    });
+    const items = decodeMidgardFieldPreimage(source.fieldPreimages[field]!);
+    if (items.length === 0) continue;
+    const subject = sourceEventSubject(event);
+    const gap = (id: string, diagnostic: string): void => {
+      detections.push({
+        ...subject,
+        detectionId: `${id}:${kind}:${position}:${source.subject.transaction_id}`,
+        headerHash: evidence.headerHash,
+        violationId: id,
+        position: BigInt(position),
+        diagnostic,
       });
-      if (predecessorLedger === null) {
-        detections.push({
-          ...acceptedTransactionSubject(transaction.nodeTxId),
-          detectionId: `${PREDECESSOR_CONTEXT_UNAVAILABLE_VIOLATION_ID}:${kind}:${transactionIndex.toString()}:${inputIndex.toString()}:${transaction.nodeTxId}:${inputKey}`,
-          headerHash: evidence.headerHash,
-          violationId: PREDECESSOR_CONTEXT_UNAVAILABLE_VIOLATION_ID,
-          position: BigInt(transactionIndex),
-          diagnostic: `${kind} input ${inputIndex.toString()} requires the exact authenticated predecessor ledger before classification`,
-        });
-      } else if (!predecessorLedger.has(inputKey)) {
-        detections.push({
-          ...acceptedTransactionSubject(transaction.nodeTxId),
-          detectionId: `${violationId}:${transactionIndex.toString()}:${inputIndex.toString()}:${transaction.nodeTxId}:${inputKey}`,
-          headerHash: evidence.headerHash,
-          violationId,
-          position: BigInt(transactionIndex),
-          diagnostic: `accepted transaction ${transaction.nodeTxId} ${kind} input ${inputIndex.toString()} is absent from both the current transaction set and predecessor ledger`,
-        });
-      }
+    };
+    if (
+      predecessor === undefined &&
+      evidence.header.prevUtxosRoot !== EMPTY_MERKLE_TREE_ROOT
+    ) {
+      gap(
+        PREDECESSOR_CONTEXT_UNAVAILABLE_VIOLATION_ID,
+        "input classification requires the authenticated predecessor ledger",
+      );
+      continue;
+    }
+    const eventOpening = evidence.reconstruction.eventToStepByFingerprint.get(
+      event.fingerprint,
+    );
+    if (
+      eventOpening === undefined ||
+      eventOpening.value.phase !== event.phase
+    ) {
+      gap(
+        EVENT_PRE_STATE_UNAVAILABLE_VIOLATION_ID,
+        "input classification requires the exact committed event-to-step opening",
+      );
+      continue;
+    }
+    let ledger: CheckedLedger;
+    try {
+      ledger = await ledgerBeforeTransactionEvent({
+        block: evidence,
+        eventKey: event.eventKey,
+        stepIndex: eventOpening.value.step_index,
+        predecessor,
+      });
+    } catch (cause) {
+      if (!(cause instanceof EventLedgerReplayRefusal)) throw cause;
+      gap(
+        EVENT_PRE_STATE_UNAVAILABLE_VIOLATION_ID,
+        `input classification event-pre-state hold: ${cause.reason}`,
+      );
+      continue;
+    }
+    for (const [inputIndex, item] of items.entries()) {
+      const decoded = decodeMidgardSpendInputItem(item);
+      const inputKey = ledgerKeyBytesHex({
+        tx_id: Buffer.from(decoded.txId).toString("hex"),
+        output_index: BigInt(decoded.outputIndex),
+      });
+      if (ledger.outputs.has(inputKey)) continue;
+      detections.push({
+        ...subject,
+        detectionId: `${violationId}:${position}:${inputIndex}:${source.subject.transaction_id}:${inputKey}`,
+        headerHash: evidence.headerHash,
+        violationId,
+        position: BigInt(position),
+        diagnostic: `accepted transaction ${source.subject.transaction_id} ${kind} input ${inputIndex} is absent at its authenticated event pre-state`,
+      });
     }
   }
   return detections;

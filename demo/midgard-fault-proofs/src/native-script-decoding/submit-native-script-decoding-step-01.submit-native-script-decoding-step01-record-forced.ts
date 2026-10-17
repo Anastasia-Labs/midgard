@@ -1,7 +1,4 @@
 import {
-  NATIVE_SCRIPT_DECODING_DIRECTION_WRONGFUL_ACCEPTANCE,
-  NATIVE_SCRIPT_DECODING_DIRECTION_WRONGFUL_REJECTION,
-  NATIVE_SCRIPT_DECODING_SOURCE_KIND_FORCED,
   type NativeScriptDecodingBindState,
   NativeScriptDecodingStep01SpendRedeemer,
   NativeScriptDecodingStep02Datum,
@@ -44,7 +41,6 @@ export const submitNativeScriptDecodingStep01RecordForced = async ({
   categoryId,
   signer,
   threadOutRef,
-  direction,
   referenceScriptUtxo,
   preSubmitBoundary,
   awaitConfirmation = true,
@@ -55,19 +51,10 @@ export const submitNativeScriptDecodingStep01RecordForced = async ({
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
   /** 0 (wrongful acceptance) or 1 (wrongful rejection); fixed for the thread's life. */
-  readonly direction: bigint;
   readonly referenceScriptUtxo: UTxO;
   readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitNativeScriptDecodingStep01Result> => {
-  if (
-    direction !== NATIVE_SCRIPT_DECODING_DIRECTION_WRONGFUL_ACCEPTANCE &&
-    direction !== NATIVE_SCRIPT_DECODING_DIRECTION_WRONGFUL_REJECTION
-  ) {
-    throw nativeScriptDecodingSubmitError(
-      `direction ${direction.toString()} is outside {0, 1}.`,
-    );
-  }
   const { threadUtxo, threadToken } =
     await requireNativeScriptDecodingThreadUtxo({
       lucid,
@@ -77,11 +64,7 @@ export const submitNativeScriptDecodingStep01RecordForced = async ({
       threadOutRef,
     });
   requireInitialStepDatum({ threadUtxo, signer });
-  const bindState: NativeScriptDecodingBindState = {
-    direction,
-    source_kind: NATIVE_SCRIPT_DECODING_SOURCE_KIND_FORCED,
-    verified_tx_id: "",
-  };
+  const bindState: NativeScriptDecodingBindState = "PendingForced";
 
   signer.selectWallet(lucid);
   const feeInput = selectFeeInput(await lucid.wallet().getUtxos());
@@ -113,7 +96,6 @@ export const submitNativeScriptDecodingStep01RecordForced = async ({
         Continue: [
           {
             RecordForcedSource: {
-              direction,
               input_index: layout.inputIndex,
               output_index: layout.outputIndex,
             },

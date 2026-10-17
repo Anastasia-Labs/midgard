@@ -1,3 +1,4 @@
+import type { NeInputPreimageEntry } from "../../src/prepare-non-existent-input.js";
 import { Store, Trie } from "@aiken-lang/merkle-patricia-forestry";
 import { encodeMidgardNativeTxCompact } from "@al-ft/midgard-core";
 import {
@@ -12,10 +13,7 @@ import {
   buildNonMembershipProof,
   type TrieEntry,
 } from "../../src/ne-proofs.js";
-import {
-  type NeInputPreimageEntry,
-  parseSubmitStep01TxInclusion,
-} from "./legacy-submit-emulator.js";
+import { parseSubmitStep01TxInclusion } from "./legacy-submit-emulator.js";
 import {
   type MembershipProofShape,
   membershipProofShape,
@@ -55,6 +53,7 @@ export const buildNonExistentInputFixture = async ({
    */
   readonly spendInputCardinality?: number;
 } = {}): Promise<{
+  readonly nativeTx: ReturnType<typeof makeNativeTx>;
   readonly transactionsRoot: string;
   readonly l2TransactionCount: bigint;
   readonly inclusion: ReturnType<typeof parseSubmitStep01TxInclusion>;
@@ -167,6 +166,7 @@ export const buildNonExistentInputFixture = async ({
   );
 
   return {
+    nativeTx: badTxNative,
     transactionsRoot,
     l2TransactionCount: BigInt(2 + adversarialSiblings.length),
     badTxMembershipProof: await membershipProofShape({

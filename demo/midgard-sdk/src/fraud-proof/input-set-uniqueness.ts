@@ -1,3 +1,5 @@
+import { ProofThreadSubjectSourceSchema } from "./proof-thread-source.js";
+import { VerdictSubjectSchema } from "./proof-thread-substrate.js";
 /**
  * Input-set-uniqueness fault-proof family (pre-registration): schema twins of
  * `midgard/fraud_proofs/input_set_uniqueness/step_01` / `step_02`.
@@ -18,16 +20,14 @@
 import { asDataType } from "@al-ft/midgard-core/lucid-data";
 import { Data } from "@lucid-evolution/lucid";
 
-import { H32Schema, OutputReferenceSchema } from "../common.js";
-import { ForcedInclusionTxV1Schema, HeaderSchema } from "../ledger-state.js";
+import { H32Schema } from "../common.js";
+
 import { FieldCarriageSchema } from "../native-tx-field-access.js";
-import { RejectionReasonSchema } from "../rejection-reason.js";
-import { rootMembershipProofSchema } from "../transition-trace.js";
+
 import { FieldOpeningSchema } from "./field-opening.js";
 import {
   faultProofStepDatumSchema,
   faultProofStepRedeemerSchema,
-  NativeTxInclusionCarriageSchema,
 } from "./native.js";
 
 export const InputSetUniquenessStep01DatumSchema = faultProofStepDatumSchema(
@@ -41,22 +41,8 @@ export const InputSetUniquenessStep01Datum =
     InputSetUniquenessStep01DatumSchema,
   );
 
-export const InputSetUniquenessStep01SourceSchema = Data.Enum([
-  Data.Object({
-    AcceptedSource: Data.Object({ inclusion: NativeTxInclusionCarriageSchema }),
-  }),
-  Data.Object({
-    ForcedSource: Data.Object({
-      input_index: Data.Integer(),
-      output_index: Data.Integer(),
-      header: HeaderSchema,
-      membership: rootMembershipProofSchema(
-        OutputReferenceSchema,
-        ForcedInclusionTxV1Schema,
-      ),
-    }),
-  }),
-]);
+export const InputSetUniquenessStep01SourceSchema =
+  ProofThreadSubjectSourceSchema;
 export const InputSetUniquenessStep01ArgsSchema = Data.Object({
   source: InputSetUniquenessStep01SourceSchema,
 });
@@ -155,14 +141,7 @@ export const InputSetUniquenessStep02SpendRedeemer =
     InputSetUniquenessStep02SpendRedeemerSchema,
   );
 
-export const InputSetUniquenessVerdictSubjectSchema = Data.Object({
-  version: Data.Integer(),
-  direction: Data.Integer(),
-  source_kind: Data.Integer(),
-  transaction_id: H32Schema,
-  source_key: Data.Bytes(),
-  rejection_reason: Data.Nullable(RejectionReasonSchema),
-});
+export const InputSetUniquenessVerdictSubjectSchema = VerdictSubjectSchema;
 
 export const InputSetUniquenessBoundDuplicateInputSchema = Data.Object({
   subject: InputSetUniquenessVerdictSubjectSchema,

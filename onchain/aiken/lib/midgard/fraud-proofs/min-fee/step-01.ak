@@ -13,7 +13,6 @@ pub type Source {
       ledger_state.TxOrderId,
       ledger_state.ForcedInclusionTxV1,
     >,
-    direction: Int,
   }
 }
 

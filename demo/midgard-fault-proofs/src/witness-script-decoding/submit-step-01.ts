@@ -171,7 +171,6 @@ export const submitWitnessScriptDecodingStep01Forced = async ({
   threadOutRef,
   header,
   membership,
-  direction,
   witnessSetHash,
   scriptIndex,
   referenceScriptUtxo,
@@ -188,7 +187,6 @@ export const submitWitnessScriptDecodingStep01Forced = async ({
     OutputReference,
     ForcedInclusionTxV1
   >;
-  readonly direction: bigint;
   readonly witnessSetHash: string;
   readonly scriptIndex: bigint;
   readonly referenceScriptUtxo: UTxO;
@@ -213,9 +211,6 @@ export const submitWitnessScriptDecodingStep01Forced = async ({
     sourceKey: membership.key,
     rejectionReason,
   });
-  if (subject.direction !== direction) {
-    throw new Error(`${FAMILY}: direction differs from forced verdict`);
-  }
   const nextDatum = Data.to(
     {
       fraud_prover: signer.paymentKeyHash,
@@ -262,7 +257,6 @@ export const submitWitnessScriptDecodingStep01Forced = async ({
                 output_index: outputIndex,
                 header,
                 membership,
-                direction,
               },
             },
             script_index: scriptIndex,

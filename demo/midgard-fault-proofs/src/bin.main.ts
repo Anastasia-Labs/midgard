@@ -602,19 +602,18 @@ export const main = async (): Promise<void> => {
   }
 
   if (args.command === "submit-no-reference-input-step-01") {
-    if (args.threadOutRef === undefined) {
+    if (args.threadOutRef === undefined)
+      throw new Error(`Missing required --thread-out-ref.\n${usage}`);
+    if (args.inputExistenceArtifactPath === undefined)
+      throw new Error(`Missing required --input-existence-artifact.\n${usage}`);
+    if (args.inputExistenceReferencesPath === undefined)
       throw new Error(
-        `Missing required --thread-out-ref <txHash#outputIndex>.\n${usage}`,
+        `Missing required --input-existence-references.\n${usage}`,
       );
-    }
-    if (args.stateQueueBlockOutRef === undefined) {
+    if (args.stateQueueBlockOutRef === undefined)
       throw new Error(
-        `Missing required --state-queue-block-out-ref <txHash#outputIndex>.\n${usage}`,
+        `Missing required --state-queue-block-out-ref.\n${usage}`,
       );
-    }
-    if (args.txInclusionPath === undefined) {
-      throw new Error(`Missing required --tx-inclusion <path>.\n${usage}`);
-    }
     const output = await submitNoReferenceInputStep01FromFiles({
       blueprintPath: args.blueprintPath,
       deploymentInfoPath: args.deploymentInfoPath,
@@ -630,35 +629,23 @@ export const main = async (): Promise<void> => {
       walletPrivateKeyEnv: args.walletPrivateKeyEnv,
       threadOutRef: args.threadOutRef,
       stateQueueBlockOutRef: args.stateQueueBlockOutRef,
-      txInclusionPath: args.txInclusionPath,
+      artifactPath: args.inputExistenceArtifactPath,
+      referencesPath: args.inputExistenceReferencesPath,
       awaitConfirmation: args.awaitConfirmation,
     });
-
     writeJson(output);
     return;
   }
 
   if (args.command === "submit-no-reference-input-step-02") {
-    if (args.threadOutRef === undefined) {
+    if (args.threadOutRef === undefined)
+      throw new Error(`Missing required --thread-out-ref.\n${usage}`);
+    if (args.inputExistenceArtifactPath === undefined)
+      throw new Error(`Missing required --input-existence-artifact.\n${usage}`);
+    if (args.inputExistenceReferencesPath === undefined)
       throw new Error(
-        `Missing required --thread-out-ref <txHash#outputIndex>.\n${usage}`,
+        `Missing required --input-existence-references.\n${usage}`,
       );
-    }
-    if (args.referenceInputsPreimagePath === undefined) {
-      throw new Error(
-        `Missing required --reference-inputs-preimage <path>.\n${usage}`,
-      );
-    }
-    if (args.badReferenceInputIndex === undefined) {
-      throw new Error(
-        `Missing required --bad-reference-input-index <n>.\n${usage}`,
-      );
-    }
-    if (args.nativeTxCompactPath === undefined) {
-      throw new Error(
-        `Missing required --native-tx-compact <native-tx-compact.json>.\n${usage}`,
-      );
-    }
     const output = await submitNoReferenceInputStep02FromFiles({
       blueprintPath: args.blueprintPath,
       deploymentInfoPath: args.deploymentInfoPath,
@@ -673,27 +660,24 @@ export const main = async (): Promise<void> => {
       walletPrivateKey: args.walletPrivateKey,
       walletPrivateKeyEnv: args.walletPrivateKeyEnv,
       threadOutRef: args.threadOutRef,
-      referenceInputsPreimagePath: args.referenceInputsPreimagePath,
-      nativeTxCompactPath: args.nativeTxCompactPath,
-      badReferenceInputIndex: args.badReferenceInputIndex,
+      stateQueueBlockOutRef: args.stateQueueBlockOutRef,
+      artifactPath: args.inputExistenceArtifactPath,
+      referencesPath: args.inputExistenceReferencesPath,
       awaitConfirmation: args.awaitConfirmation,
     });
-
     writeJson(output);
     return;
   }
 
   if (args.command === "submit-no-reference-input-step-03") {
-    if (args.threadOutRef === undefined) {
+    if (args.threadOutRef === undefined)
+      throw new Error(`Missing required --thread-out-ref.\n${usage}`);
+    if (args.inputExistenceArtifactPath === undefined)
+      throw new Error(`Missing required --input-existence-artifact.\n${usage}`);
+    if (args.inputExistenceReferencesPath === undefined)
       throw new Error(
-        `Missing required --thread-out-ref <txHash#outputIndex>.\n${usage}`,
+        `Missing required --input-existence-references.\n${usage}`,
       );
-    }
-    if (args.ledgerNonMembershipProofPath === undefined) {
-      throw new Error(
-        `Missing required --ledger-non-membership-proof <path>.\n${usage}`,
-      );
-    }
     const output = await submitNoReferenceInputStep03FromFiles({
       blueprintPath: args.blueprintPath,
       deploymentInfoPath: args.deploymentInfoPath,
@@ -708,25 +692,24 @@ export const main = async (): Promise<void> => {
       walletPrivateKey: args.walletPrivateKey,
       walletPrivateKeyEnv: args.walletPrivateKeyEnv,
       threadOutRef: args.threadOutRef,
-      ledgerNonMembershipProofPath: args.ledgerNonMembershipProofPath,
+      stateQueueBlockOutRef: args.stateQueueBlockOutRef,
+      artifactPath: args.inputExistenceArtifactPath,
+      referencesPath: args.inputExistenceReferencesPath,
       awaitConfirmation: args.awaitConfirmation,
     });
-
     writeJson(output);
     return;
   }
 
   if (args.command === "submit-no-reference-input-step-04") {
-    if (args.threadOutRef === undefined) {
+    if (args.threadOutRef === undefined)
+      throw new Error(`Missing required --thread-out-ref.\n${usage}`);
+    if (args.inputExistenceArtifactPath === undefined)
+      throw new Error(`Missing required --input-existence-artifact.\n${usage}`);
+    if (args.inputExistenceReferencesPath === undefined)
       throw new Error(
-        `Missing required --thread-out-ref <txHash#outputIndex>.\n${usage}`,
+        `Missing required --input-existence-references.\n${usage}`,
       );
-    }
-    if (args.txsNonMembershipProofPath === undefined) {
-      throw new Error(
-        `Missing required --txs-non-membership-proof <path>.\n${usage}`,
-      );
-    }
     const output = await submitNoReferenceInputStep04FromFiles({
       blueprintPath: args.blueprintPath,
       deploymentInfoPath: args.deploymentInfoPath,
@@ -741,10 +724,11 @@ export const main = async (): Promise<void> => {
       walletPrivateKey: args.walletPrivateKey,
       walletPrivateKeyEnv: args.walletPrivateKeyEnv,
       threadOutRef: args.threadOutRef,
-      txsNonMembershipProofPath: args.txsNonMembershipProofPath,
+      stateQueueBlockOutRef: args.stateQueueBlockOutRef,
+      artifactPath: args.inputExistenceArtifactPath,
+      referencesPath: args.inputExistenceReferencesPath,
       awaitConfirmation: args.awaitConfirmation,
     });
-
     writeJson(output);
     return;
   }

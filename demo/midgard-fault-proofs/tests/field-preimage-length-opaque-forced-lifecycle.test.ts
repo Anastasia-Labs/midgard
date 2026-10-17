@@ -109,7 +109,6 @@ it("adjudicates authenticated opaque forced bytes with the installed field-lengt
   const dispatch = await submitFieldPreimageLengthForcedDispatch({
     config: fixture.config,
     threadOutRef: init.nextThreadOutRef,
-    direction: 0n,
   });
   await expectOnChainRefusal(
     () =>

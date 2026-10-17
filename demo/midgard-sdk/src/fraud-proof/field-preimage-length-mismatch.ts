@@ -1,11 +1,11 @@
+import { VerdictSubjectSchema } from "./proof-thread-substrate.js";
 import { decodeMidgardNativeTxProofFieldLengths } from "@al-ft/midgard-core";
 import { asDataType } from "@al-ft/midgard-core/lucid-data";
 import { Data } from "@lucid-evolution/lucid";
 
-import { H32Schema, OutputReferenceSchema } from "../common.js";
+import { OutputReferenceSchema } from "../common.js";
 import { ForcedInclusionTxV1Schema, HeaderSchema } from "../ledger-state.js";
 import type { RejectionReason as RejectionReasonType } from "../rejection-reason.js";
-import { RejectionReasonSchema } from "../rejection-reason.js";
 import { rootMembershipProofSchema } from "../transition-trace.js";
 import { CommittedFieldClaimSchema } from "./canonical-decodability.js";
 import {
@@ -155,14 +155,7 @@ export const fieldPreimageLengthTerminalContradiction = ({
   return terminalVerdictContradiction(subject, evidence.faultHolds);
 };
 
-export const FieldPreimageLengthVerdictSubjectSchema = Data.Object({
-  version: Data.Integer(),
-  direction: Data.Integer(),
-  source_kind: Data.Integer(),
-  transaction_id: H32Schema,
-  source_key: Data.Bytes(),
-  rejection_reason: Data.Nullable(RejectionReasonSchema),
-});
+export const FieldPreimageLengthVerdictSubjectSchema = VerdictSubjectSchema;
 
 /** `step_01.Args`: dispatches accepted and forced subjects to distinct scripts. */
 export const FieldPreimageLengthStep01ArgsSchema = Data.Enum([
@@ -174,7 +167,6 @@ export const FieldPreimageLengthStep01ArgsSchema = Data.Enum([
   }),
   Data.Object({
     RecordForced: Data.Object({
-      direction: Data.Integer(),
       input_index: Data.Integer(),
       output_index: Data.Integer(),
     }),
@@ -194,9 +186,7 @@ export const FieldPreimageLengthStep02StateSchema = Data.Enum([
       source_cbor: Data.Bytes(),
     }),
   }),
-  Data.Object({
-    PendingForced: Data.Object({ direction: Data.Integer() }),
-  }),
+  Data.Literal("PendingForced"),
 ]);
 export const FieldPreimageLengthStep02DatumSchema = faultProofStepDatumSchema(
   FieldPreimageLengthStep02StateSchema,

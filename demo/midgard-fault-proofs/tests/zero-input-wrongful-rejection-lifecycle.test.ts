@@ -417,7 +417,10 @@ describe("zeroInput wrongful-rejection real lifecycle", () => {
           signer: harness.proverSigner,
           threadOutRef,
           finding: evidence,
-          forcedSource: { header, membership, direction: 1n },
+          forcedSource: {
+            header,
+            membership,
+          },
           referenceScriptUtxo: references[0]!,
         }),
       );

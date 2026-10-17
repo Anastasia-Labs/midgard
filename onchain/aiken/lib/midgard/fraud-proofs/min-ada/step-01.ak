@@ -19,7 +19,6 @@ pub type ForcedSource {
     ledger_state.TxOrderId,
     ledger_state.ForcedInclusionTxV1,
   >,
-  direction: Int,
 }
 
 pub type Args {

@@ -1,3 +1,4 @@
+import { proofThreadDirectionOfForcedLeaf } from "@al-ft/midgard-sdk";
 import { Proof as MpfProof } from "@aiken-lang/merkle-patricia-forestry";
 import {
   computeHash28,
@@ -171,13 +172,12 @@ export const admitNativeInclusionTwoStepArtifact = (
       const source = forcedSource as {
         readonly header: SDK.Header;
         readonly membership: SDK.ForcedTransactionSourceMembershipProof;
-        readonly direction: bigint;
       };
       const leaf = source.membership.value;
       if (
         computeHash28(SDK.encodeHeaderCbor(source.header)).toString("hex") !==
           artifact.headerHash ||
-        source.direction !== 1n ||
+        proofThreadDirectionOfForcedLeaf(source.membership.value) !== 1n ||
         source.membership.root !== source.header.forcedTransactionsRoot ||
         source.membership.count !== source.header.forcedTransactionCount ||
         leaf.tx_id !== artifact.nativeTxId ||
@@ -241,13 +241,12 @@ export const admitNativeInclusionTwoStepArtifact = (
     ) as {
       header: SDK.Header;
       membership: SDK.ForcedTransactionSourceMembershipProof;
-      direction: bigint;
     };
     const leaf = source.membership.value;
     if (
       computeHash28(SDK.encodeHeaderCbor(source.header)).toString("hex") !==
         artifact.headerHash ||
-      source.direction !== 1n ||
+      proofThreadDirectionOfForcedLeaf(source.membership.value) !== 1n ||
       source.membership.root !== source.header.forcedTransactionsRoot ||
       source.membership.count !== source.header.forcedTransactionCount ||
       leaf.tx_id !== artifact.nativeTxId ||

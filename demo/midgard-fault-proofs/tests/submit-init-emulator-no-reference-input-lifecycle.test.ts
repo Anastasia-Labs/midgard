@@ -1,30 +1,18 @@
+import { requireInputExistenceTerminalResult } from "./support/input-existence-execution-context.js";
+import { submitRawInputExistenceStep } from "./support/raw-input-existence-step.js";
 /**
  * `no-reference-input` (Q18) emulator lifecycle, both polarities.
  *
  * Three journeys against the real Aiken validators, driven by the production
  * submitters:
  *
- *  1. **Real fault, end to end.** A committed transaction names a reference
- *     input whose producing transaction is nowhere — not in the block's
- *     `prev_utxos_root`, not among the transactions the block committed.
- *     init → step-01 bind → step-02 §2.5 field-1 opening → step-03 ledger
- *     exclusion → step-04 transactions exclusion + finalize → permanent
- *     fraud-proof token → fraudulent-block removal.
- *  2. **Tier-2 carriage, selected by size alone.** The same fault with the
- *     challenged reference input buried in a 365-item field-1 list whose §5.1
- *     preimage (14,603 bytes) exceeds §8.4's 14,336-byte tier-1 redeemer
- *     bound, so the plan is `RawUtxo` and the prover must publish the preimage
- *     before the step can reference it. Nothing forces the tier; no flag
- *     exists to force it.
- *  3. **Adversarial: an honest commitment.** The committed transaction's
- *     reference input was produced *in-block*, by the companion transaction
- *     the same block committed — so the block is honest and there is no fault
- *     to prove. steps 01–03 still go through (the out-ref really is absent
- *     from the block's prev ledger, which is what step-03 claims), and the
- *     conviction has to die at step-04's exclusion of the producing
- *     transaction id from `blocks_transactions_root`. That is the check the
- *     family's soundness rests on, and it is exercised with the strongest
- *     material an adversary has: the *genuine membership witness* for that id.
+ *  1. A selected reference input is absent from its event pre-state: source
+ *     binding → selection → authenticated event root → ledger exclusion,
+ *     permanent fraud-proof token and fraudulent-block removal.
+ *  2. The same journey with a size-selected RawUtxo field publication.
+ *  3. A retained in-block creator precedes the selected reference input, so
+ *     its authenticated event pre-state contains that input. The genuine
+ *     membership witness and an empty proof both fail as ledger exclusions.
  *
  * Every step reads its validator from a published reference script (the
  * standing deployment ruling), which also puts each step's own reference-input
@@ -66,7 +54,6 @@ import {
   submitNoReferenceInputStep04,
   submitRemoveFraudulentBlock,
 } from "../src/index.js";
-import { buildNonMembershipProof } from "../src/ne-proofs.js";
 import {
   driveNoReferenceInputToStep04,
   makeNoReferenceInputHarness,
@@ -78,8 +65,6 @@ import {
   buildNoReferenceInputFixture,
   NO_REFERENCE_INPUT_ABSENT_PRODUCER_TX_ID,
   noReferenceInputOutRef,
-  requireNoReferenceInputTxsMembershipProof,
-  requireNoReferenceInputTxsNonMembershipProof,
 } from "./support/no-reference-input-emulator.js";
 import { expectStateQueueHeaderOrder } from "./support/submit-init-emulator-fixtures.js";
 import {
@@ -127,25 +112,23 @@ describe("no-reference-input emulator lifecycle", () => {
       fixture,
       publishRemoval: true,
     });
-    const { setup, deploymentInfo, stepReferences, init, step03 } = journey;
+    const { setup, deploymentInfo, init, step03 } = journey;
 
-    const step04 = await submitNoReferenceInputStep04({
-      lucid: proverLucid,
-      witnessReferenceScripts: harness.witnessReferenceScripts,
-      blueprint: realBlueprint,
-      deploymentInfo,
-      network,
-      signer: proverSigner,
-      threadOutRef: step03.nextThreadOutRef,
-      txsNonMembershipProofCbor:
-        requireNoReferenceInputTxsNonMembershipProof(fixture),
-      referenceScriptUtxo: stepReferences[3],
-      awaitConfirmation: true,
-    });
-    expect(step04.missingReferenceInputTxId).toBe(
+    const step04 = requireInputExistenceTerminalResult(
+      await submitNoReferenceInputStep04({
+        ...journey.stageArguments,
+        threadOutRef: step03.nextThreadOutRef,
+      }),
+    );
+    expect(step04.selectedInput?.tx_id).toBe(
       NO_REFERENCE_INPUT_ABSENT_PRODUCER_TX_ID,
     );
-    expect(step04.fraudProofAssetName).toBe(init.computationThreadAssetName);
+    expect(step04.fraudProofUnit).toBe(
+      toUnit(
+        harness.contracts.fraudProof.policyId,
+        init.computationThreadAssetName,
+      ),
+    );
 
     // The thread NFT is burned: no step address still holds it.
     for (const step of harness.contracts.fraudProofContracts.noReferenceInput
@@ -159,7 +142,7 @@ describe("no-reference-input emulator lifecycle", () => {
     }
     const fraudProofUtxo = await expectSingleUtxoWithUnit(
       proverLucid,
-      step04.fraudProofAddress,
+      harness.contracts.fraudProof.spendingScriptAddress,
       step04.fraudProofUnit,
     );
     expect(outRefLabel(fraudProofUtxo)).toBe(step04.fraudProofOutRef);
@@ -248,7 +231,7 @@ describe("no-reference-input emulator lifecycle", () => {
     // permanent evidence, not a burnable receipt.
     const retainedFraudProof = await expectSingleUtxoWithUnit(
       proverLucid,
-      step04.fraudProofAddress,
+      harness.contracts.fraudProof.spendingScriptAddress,
       step04.fraudProofUnit,
     );
     expect(outRefLabel(retainedFraudProof)).toBe(step04.fraudProofOutRef);
@@ -272,7 +255,7 @@ describe("no-reference-input emulator lifecycle", () => {
 
   it("convicts a reference input buried in a 14,603-byte field-1 list through a size-selected RawUtxo publication", async () => {
     const harness = await makeNoReferenceInputHarness();
-    const { realBlueprint, proverLucid, proverSigner } = harness;
+    const { proverLucid, proverSigner } = harness;
     const fixture = await buildNoReferenceInputFixture({
       buildReferenceInputs: tier2ReferenceInputs,
       badReferenceInputIndex: TIER2_BAD_REFERENCE_INPUT_INDEX,
@@ -304,9 +287,9 @@ describe("no-reference-input emulator lifecycle", () => {
       }).plan.tier,
     ).toBe("RawUtxo");
 
-    const { deploymentInfo, stepReferences, init, step03 } =
-      await driveNoReferenceInputToStep04({ harness, fixture });
-    expect(step03.missingReferenceInputTxId).toBe(
+    const journey = await driveNoReferenceInputToStep04({ harness, fixture });
+    const { init, step03 } = journey;
+    expect(step03.selectedInput?.tx_id).toBe(
       NO_REFERENCE_INPUT_ABSENT_PRODUCER_TX_ID,
     );
 
@@ -319,31 +302,29 @@ describe("no-reference-input emulator lifecycle", () => {
     ).filter((utxo) => utxo.datum === expectedDatum);
     expect(publications).toHaveLength(1);
 
-    const step04 = await submitNoReferenceInputStep04({
-      lucid: proverLucid,
-      witnessReferenceScripts: harness.witnessReferenceScripts,
-      blueprint: realBlueprint,
-      deploymentInfo,
-      network,
-      signer: proverSigner,
-      threadOutRef: step03.nextThreadOutRef,
-      txsNonMembershipProofCbor:
-        requireNoReferenceInputTxsNonMembershipProof(fixture),
-      referenceScriptUtxo: stepReferences[3],
-      awaitConfirmation: true,
-    });
-    expect(step04.fraudProofAssetName).toBe(init.computationThreadAssetName);
+    const step04 = requireInputExistenceTerminalResult(
+      await submitNoReferenceInputStep04({
+        ...journey.stageArguments,
+        threadOutRef: step03.nextThreadOutRef,
+      }),
+    );
+    expect(step04.fraudProofUnit).toBe(
+      toUnit(
+        harness.contracts.fraudProof.policyId,
+        init.computationThreadAssetName,
+      ),
+    );
     const fraudProofUtxo = await expectSingleUtxoWithUnit(
       proverLucid,
-      step04.fraudProofAddress,
+      harness.contracts.fraudProof.spendingScriptAddress,
       step04.fraudProofUnit,
     );
     expect(fraudProofUtxo.assets[step04.fraudProofUnit]).toBe(1n);
   }, 900_000);
 
-  it("refuses to convict an honest commitment whose reference input was produced in-block", async () => {
+  it("refuses to convict a retained commitment whose selected reference input exists at its event", async () => {
     const harness = await makeNoReferenceInputHarness();
-    const { realBlueprint, funderLucid, proverLucid, proverSigner } = harness;
+    const { funderLucid, proverLucid } = harness;
     // HONEST block: the disputed transaction's challenged reference input is
     // an output of the companion transaction the same block committed. The
     // reference input exists, so there is no fault.
@@ -356,62 +337,60 @@ describe("no-reference-input emulator lifecycle", () => {
     });
     expect(fixture.missingReferenceInput.tx_id).toBe(fixture.companionTxId);
     expect(fixture.missingProducerIsCommitted).toBe(true);
-    // No honest prover can even construct the witness step-04 needs: the key
-    // is in the trie, so there is nothing to exclude.
-    await expect(
-      buildNonMembershipProof(
-        fixture.txsEntries,
-        Buffer.from(fixture.companionTxId, "hex"),
-      ),
-    ).rejects.toThrow(
-      /Cannot build a non-membership proof for a key that is present/u,
+    const journey = await driveNoReferenceInputToStep04({ harness, fixture });
+    const { setup, init, step03 } = journey;
+    const ledger = journey.prepared.ledgerEvidence;
+    if (ledger === "OutOfDomain" || !("Present" in ledger))
+      throw new Error(
+        "present-input control has no authenticated ledger membership",
+      );
+    expect(step03.selectedInput).toEqual(journey.prepared.selectedInput);
+    const genuineLedgerMembershipProof = Data.to(
+      ledger.Present.proof,
+      SDK.Proof,
     );
 
-    // Steps 01–03 are all satisfiable against an honest block: the challenged
-    // out-ref really is absent from the block's (empty) prev ledger, which is
-    // all step-03 claims. The adversary reaches step-04 with a live thread.
-    const { setup, deploymentInfo, stepReferences, init, step03 } =
-      await driveNoReferenceInputToStep04({ harness, fixture });
-    expect(step03.missingReferenceInputTxId).toBe(fixture.companionTxId);
-
-    const step04Reference = stepReferences[3];
     const forgeStep04 = async (txsNonMembershipProofCbor: string) =>
-      await submitNoReferenceInputStep04({
-        lucid: proverLucid,
-        witnessReferenceScripts: harness.witnessReferenceScripts,
-        blueprint: realBlueprint,
-        deploymentInfo,
-        network,
-        signer: proverSigner,
+      submitRawInputExistenceStep({
+        ...journey.stageArguments,
+        contracts: {
+          hubOraclePolicyId: harness.contracts.hubOracle.policyId,
+          steps: harness.contracts.fraudProofContracts.noReferenceInput.steps,
+          computationThread: harness.contracts.computationThread,
+          fraudProof: harness.contracts.fraudProof,
+        },
+        categoryId: harness.catalogue.categories.noReferenceInput.categoryId,
+        prepared: {
+          ...journey.prepared,
+          ledgerEvidence: {
+            Absent: { proof: Data.from(txsNonMembershipProofCbor, SDK.Proof) },
+          },
+        },
         threadOutRef: step03.nextThreadOutRef,
-        txsNonMembershipProofCbor,
-        referenceScriptUtxo: step04Reference,
-        awaitConfirmation: true,
+        stepIndex: 3,
       });
 
     // The strongest material an adversary holds is the genuine MEMBERSHIP
-    // witness for the producing transaction id. `pexcludes.exclusion.withdraw`
+    // witness for the held input under its actual event pre-root. `pexcludes.exclusion.withdraw`
     // binds it as `mpf.insert(trie, key, "", proof)`, which asserts
     // `excluding(key, proof) == root` and fails outright for a key the trie
     // already holds: a membership witness cannot masquerade as its opposite.
     const membershipRefusal = await expectOnchainRefusal(async () =>
-      forgeStep04(requireNoReferenceInputTxsMembershipProof(fixture)),
+      forgeStep04(genuineLedgerMembershipProof),
     );
     expect(membershipRefusal).toMatch(/failed script execution/u);
 
     // The retired fixture shape (#582) stays refused too: an empty proof is a
     // witness only for an empty trie, never for this block's populated one.
-    const emptyProofCbor = await buildNonMembershipProof(
-      [],
-      Buffer.from(fixture.companionTxId, "hex"),
-    );
+    const emptyProofCbor = Data.to([], SDK.Proof);
     await expectOnchainRefusal(async () => forgeStep04(emptyProofCbor));
 
     // Both refusals were the validator's, not a spent thread's: the thread is
     // still at step 04, unspent, and no fraud-proof token was minted.
     await expectSingleUtxoWithUnit(
       proverLucid,
-      step03.fourthStepAddress,
+      harness.contracts.fraudProofContracts.noReferenceInput.steps[3]!
+        .spendingScriptAddress,
       init.computationThreadUnit,
     );
     await expect(
@@ -427,7 +406,10 @@ describe("no-reference-input emulator lifecycle", () => {
     await expectStateQueueHeaderOrder({
       lucid: funderLucid,
       contracts: harness.contracts,
-      expectedHeaderHashes: [setup.headerHash],
+      expectedHeaderHashes: [
+        journey.prepared.source.header.prevHeaderHash,
+        setup.headerHash,
+      ],
     });
   }, 900_000);
 });

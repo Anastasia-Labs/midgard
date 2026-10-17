@@ -127,17 +127,15 @@ export const driveNormalThreadToStep03 = async ({
   return step02.nextThreadOutRef;
 };
 
-/** Init → step-01 (forced, prover-chosen direction) → the step-02 thread. */
+/** Init → pending forced source → the step-02 thread; no direction is supplied. */
 export const driveForcedThreadToStep02 = async ({
   harness,
   scenario,
   refs,
-  direction,
 }: {
   readonly harness: DecodingHarness;
   readonly scenario: DecodingScenario;
   readonly refs: DecodingReferenceScripts;
-  readonly direction: bigint;
 }): Promise<string> => {
   const { proverLucid, proverSigner, decoding, category, realBlueprint } =
     harness;
@@ -163,7 +161,6 @@ export const driveForcedThreadToStep02 = async ({
     categoryId: category.categoryId,
     signer: proverSigner,
     threadOutRef: init.nextThreadOutRef,
-    direction,
     referenceScriptUtxo: refs[0],
   });
   return step01.nextThreadOutRef;

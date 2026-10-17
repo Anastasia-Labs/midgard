@@ -179,7 +179,6 @@ export const createNativeScriptDecodingTransactionPort = (
               if (a.coordinate.sourceKind === 1)
                 await submitNativeScriptDecodingStep01RecordForced({
                   ...common,
-                  direction: a.direction,
                   referenceScriptUtxo: config.references.steps[0],
                 });
               else {

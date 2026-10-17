@@ -131,7 +131,6 @@ export const forcedFieldPreimageLengthRawFinding = async ({
           material.proofSource.witnessSetCompactCbor.toString("hex"),
       }),
       stageEvidence: Object.freeze({
-        forcedDirection: 0n,
         forcedHeader: header,
         forcedMembership: {
           domain: SDK.ROOT_DOMAINS.forcedTransactionsV1,

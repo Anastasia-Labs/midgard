@@ -6,7 +6,7 @@ use midgard/transition_trace
 
 pub type State {
   BoundSource { subject: VerdictSubjectV1, source_cbor: ByteArray }
-  PendingForced { direction: Int }
+  PendingForced
 }
 
 pub type Datum =

@@ -21,10 +21,8 @@ import { describe, expect, it } from "vitest";
 import {
   NATIVE_SCRIPT_DECODING_CLASS_PENDING,
   NATIVE_SCRIPT_DECODING_DIRECTION_WRONGFUL_ACCEPTANCE,
-  NATIVE_SCRIPT_DECODING_DIRECTION_WRONGFUL_REJECTION,
   NATIVE_SCRIPT_DECODING_LANGUAGE_UNBOUND,
   NATIVE_SCRIPT_DECODING_OUTPOINT_SOURCE_SPEND,
-  NATIVE_SCRIPT_DECODING_SOURCE_KIND_FORCED,
   NATIVE_SCRIPT_DECODING_SOURCE_KIND_NORMAL,
   NativeScriptDecodingBindState,
   nativeScriptDecodingBoundDescriptorState,
@@ -139,14 +137,8 @@ describe("native-script-decoding thread states", () => {
   });
 
   it("bind state matches step-01's BindStateV1 bytes (v3)", () => {
-    const bindState: NativeScriptDecodingBindState = {
-      direction: NATIVE_SCRIPT_DECODING_DIRECTION_WRONGFUL_REJECTION,
-      source_kind: NATIVE_SCRIPT_DECODING_SOURCE_KIND_FORCED,
-      verified_tx_id: "",
-    };
-    expect(Data.to(bindState, NativeScriptDecodingBindState)).toBe(
-      "d8799f010140ff",
-    );
+    const bindState: NativeScriptDecodingBindState = "PendingForced";
+    expect(Data.to(bindState, NativeScriptDecodingBindState)).toBe("d87a80");
   });
 });
 
@@ -154,14 +146,11 @@ describe("native-script-decoding step arguments", () => {
   it("step-01 RecordForcedSource matches Aiken constructor 1 (v4)", () => {
     const args: NativeScriptDecodingStep01Args = {
       RecordForcedSource: {
-        direction: NATIVE_SCRIPT_DECODING_DIRECTION_WRONGFUL_REJECTION,
         input_index: 0n,
         output_index: 0n,
       },
     };
-    expect(Data.to(args, NativeScriptDecodingStep01Args)).toBe(
-      "d87a9f010000ff",
-    );
+    expect(Data.to(args, NativeScriptDecodingStep01Args)).toBe("d87a9f0000ff");
   });
 
   it("step-02 args match the full Aiken wire shape (v9)", () => {

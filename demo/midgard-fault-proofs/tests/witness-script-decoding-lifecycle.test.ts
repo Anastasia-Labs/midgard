@@ -594,7 +594,16 @@ describe("witnessScriptDecoding registered-chain lifecycle", () => {
           },
         },
       ],
-      ["forced_direction", { direction: 0n }],
+      [
+        "forced_direction",
+        {
+          subject: {
+            ...evidence.finding.subject,
+            direction: 0n,
+            rejection_reason: null,
+          },
+        },
+      ],
       ["script_coordinate", { scriptIndex: 1n }],
       ["bound_witness_set_hash", { witnessSetHash: "ab".repeat(32) }],
       ["bound_accused_class", { accusedClass: 1n }],
@@ -901,7 +910,6 @@ describe("witnessScriptDecoding registered-chain lifecycle", () => {
         threadOutRef: thread,
         header: forced.block.header,
         membership: forced.membership,
-        direction: 1n,
         subject: SDK.forcedVerdictSubject({
           transactionId: shape.txId,
           sourceKey: forced.orderKey,

@@ -1,8 +1,22 @@
+import type { ForcedInclusionTxV1 } from "../ledger-state.js";
 import { Data } from "@lucid-evolution/lucid";
 
 import { type OutputReference, OutputReferenceSchema } from "../common.js";
 import type { RejectionReason } from "../rejection-reason.js";
-import { RejectionReason as RejectionReasonSchema } from "../rejection-reason.js";
+import {
+  RejectionReason as RejectionReasonData,
+  RejectionReasonSchema,
+} from "../rejection-reason.js";
+
+/** Exact Plutus Data record twin of the authenticated carried subject. */
+export const VerdictSubjectSchema = Data.Object({
+  version: Data.Integer(),
+  direction: Data.Integer(),
+  source_kind: Data.Integer(),
+  transaction_id: Data.Bytes(),
+  source_key: Data.Bytes(),
+  rejection_reason: Data.Nullable(RejectionReasonSchema),
+});
 
 export const PROOF_THREAD_SUBJECT_VERSION = 1n;
 export const PROOF_THREAD_DIRECTION_WRONGFUL_ACCEPTANCE = 0n;
@@ -110,7 +124,7 @@ export const encodeVerdictSubject = (subject: VerdictSubject): Buffer => {
       : Buffer.concat([
           cborHeader(4, 1),
           Buffer.from(
-            Data.to(subject.rejection_reason, RejectionReasonSchema),
+            Data.to(subject.rejection_reason, RejectionReasonData),
             "hex",
           ),
         ]);
@@ -180,8 +194,8 @@ export const bindExactVerdictSubjectReason = (
     throw new Error("VerdictSubjectV1 carries no canonical rejection reason");
   }
   if (
-    Data.to(subject.rejection_reason, RejectionReasonSchema) !==
-    Data.to(expected, RejectionReasonSchema)
+    Data.to(subject.rejection_reason, RejectionReasonData) !==
+    Data.to(expected, RejectionReasonData)
   ) {
     throw new Error("VerdictSubjectV1 typed reason or coordinate differs");
   }
@@ -199,3 +213,11 @@ export const terminalVerdictContradiction = (
     ? decisiveFaultHolds
     : !decisiveFaultHolds;
 };
+
+/** A source carriage never chooses direction; its committed leaf decides it. */
+export const proofThreadDirectionOfForcedLeaf = (
+  leaf: ForcedInclusionTxV1,
+): bigint =>
+  leaf.verdict === "ForcedTxValid"
+    ? PROOF_THREAD_DIRECTION_WRONGFUL_ACCEPTANCE
+    : PROOF_THREAD_DIRECTION_WRONGFUL_REJECTION;

@@ -43,6 +43,7 @@ use midgard/fraud_proofs/native_tx/codec.{
 use midgard/fraud_proofs/native_tx/compact.{
   verify_forced_tx_proof_source_v1, verify_native_tx_proof_source_v1,
 }
+use midgard/fraud_proofs/proof_thread_substrate_v1 as substrate
 use midgard/ledger_output_commitment_v1.{LedgerOutputCommitmentV1}
 use midgard/ledger_state
 use midgard/native_script_scan_v1.{
@@ -57,19 +58,21 @@ use midgard/transition_trace
 
 /// Direction A: the operator accepted a transaction whose resolved reference
 /// script the frozen scan refuses.
-pub const direction_wrongful_acceptance: Int = 0
+pub const direction_wrongful_acceptance: Int =
+  substrate.direction_wrongful_acceptance
 
 /// Direction B: the operator force-rejected a transaction with a scan arm
 /// although the accused script scans to the exact canonical terminal.
-pub const direction_wrongful_rejection: Int = 1
+pub const direction_wrongful_rejection: Int =
+  substrate.direction_wrongful_rejection
 
 /// The thread's verdict subject is a leaf of the block's counted
 /// `transactions_root` (an acceptance verdict by definition).
-pub const source_kind_normal: Int = 0
+pub const source_kind_normal: Int = substrate.source_kind_accepted
 
 /// The thread's verdict subject is a leaf of the block's counted
 /// `forced_transactions_root` (carries an explicit operator verdict).
-pub const source_kind_forced: Int = 1
+pub const source_kind_forced: Int = substrate.source_kind_forced
 
 /// The accused outpoint lives in the subject transaction's field 0.
 pub const outpoint_source_spend: Int = 0
@@ -111,9 +114,8 @@ pub const machine_control_domain: ByteArray =
 /// threads and the `#""` sentinel for forced-source threads until step-02
 /// opens the forced leaf.
 pub type BindStateV1 {
-  direction: Int,
-  source_kind: Int,
-  verified_tx_id: ByteArray,
+  BoundAccepted { subject: substrate.VerdictSubjectV1 }
+  PendingForced
 }
 
 /// The constant-size thread state from step-02's output onward (§4 of the
@@ -476,104 +478,19 @@ pub fn budgeted_scan_v1(
 // authenticates the pre-state ledger root and the forced leaf against exactly
 // the roots the interactive machine would.
 
-fn phase_for_event_key(
-  event_key: ledger_state.EventKey,
-) -> ledger_state.TransitionPhase {
-  when event_key is {
-    ledger_state.WithdrawalEventKey { .. } -> ledger_state.Withdrawal
-    ledger_state.ForcedTransactionEventKey { .. } ->
-      ledger_state.ForcedTransaction
-    ledger_state.L2TransactionEventKey { .. } -> ledger_state.L2Transaction
-    ledger_state.DepositEventKey { .. } -> ledger_state.Deposit
-  }
-}
+// ## Direction-B accusation extraction
 
 /// Opens the event's transition step and event-to-step leaf under the
 /// header's counted roots, cross-checks them against each other and the event
 /// key (the `committed_claim_structure_is_valid` cross-check block), and
 /// returns the transition step's `pre_utxos_root` — the ledger the subject
 /// transaction was resolved against.
-pub fn verify_committed_pre_state_v1(
-  header: ledger_state.HeaderV1,
-  event_key: ledger_state.EventKey,
-  event_to_step_membership: transition_trace.RootMembershipProof<
-    ledger_state.EventKey,
-    ledger_state.EventToStepValue,
-  >,
-  transition_step_membership: transition_trace.RootMembershipProof<
-    Int,
-    ledger_state.TransitionStep,
-  >,
-) -> ByteArray {
-  let event_to_step = event_to_step_membership.value
-  let transition_step = transition_step_membership.value
-  expect and {
-      header.protocol_version == ledger_state.protocol_version_v1,
-      transition_trace.verify_root_membership_with_bytes(
-        transition_step_membership,
-        transition_trace.TransitionTraceRootDomain,
-        header.transition_trace_root,
-        header.transition_step_count,
-        cbor.serialise(transition_step_membership.key),
-        cbor.serialise(transition_step_membership.value),
-      ),
-      transition_step_membership.key == transition_step.step_index,
-      transition_step_membership.key >= 0,
-      transition_step_membership.key < transition_step_membership.count,
-      transition_step.schema_version == ledger_state.transition_step_schema_version_v1,
-      transition_trace.verify_root_membership_with_bytes(
-        event_to_step_membership,
-        transition_trace.EventToStepRootDomain,
-        header.event_to_step_root,
-        header.total_event_count,
-        cbor.serialise(event_to_step_membership.key),
-        cbor.serialise(event_to_step_membership.value),
-      ),
-      transition_step_membership.key == event_to_step.step_index,
-      event_to_step_membership.key == event_key,
-      transition_step.event_key == event_key,
-      transition_step.phase == phase_for_event_key(event_key),
-      transition_step.phase == event_to_step.phase,
-    }
-  transition_step.pre_utxos_root
-}
-
 /// Opens the forced leaf under the header's counted
 /// `forced_transactions_root` and enforces the §2.4.3(e) leaf-internal
 /// authoritativeness predicate: the leaf's verdict must agree with the
 /// embedded validity scalar of the leaf's own id-verified compact bytes.
 /// The caller builds the event key from `membership.key`, which is what binds
 /// the leaf to the transition step.
-pub fn verify_forced_leaf_v1(
-  header: ledger_state.HeaderV1,
-  membership: transition_trace.RootMembershipProof<
-    ledger_state.TxOrderId,
-    ledger_state.ForcedInclusionTxV1,
-  >,
-) -> ledger_state.ForcedInclusionTxV1 {
-  let leaf = membership.value
-  let Pair(verified, _witness_set) = verify_forced_tx_proof_source_v1(
-    leaf.tx_id,
-    leaf.submitted_source.compact_cbor,
-    leaf.submitted_source.witness_set_compact_cbor,
-    leaf.submitted_source.field_preimage_lengths_cbor,
-  )
-  expect and {
-      transition_trace.verify_root_membership_with_bytes(
-        membership,
-        transition_trace.ForcedTransactionsV1RootDomain,
-        header.forced_transactions_root,
-        header.forced_transaction_count,
-        cbor.serialise(membership.key),
-        cbor.serialise(membership.value),
-      ),
-      verified.version == 1,
-    }
-  leaf
-}
-
-// ## Direction-B accusation extraction
-
 /// The accusation a direction-B thread must contradict: the scan class and
 /// the ruled outpoint pair, copied verbatim from the forced leaf's rejection
 /// reason. Aborts on any reason outside this family's three arms.

@@ -157,7 +157,10 @@ export const setupMissingSignatureForcedScenario = async (
     witnessSetCompact: transaction.witnessSetCompact,
     verifiedWitnessSetHash:
       transaction.transaction.compact.transactionWitnessSetHash.toString("hex"),
-    forcedSource: { header: block.header, membership, direction: 1n },
+    forcedSource: {
+      header: block.header,
+      membership,
+    },
     evidence: {
       subject,
       signerIndex,

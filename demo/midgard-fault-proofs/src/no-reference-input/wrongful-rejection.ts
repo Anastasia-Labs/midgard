@@ -1,23 +1,17 @@
+import { proofThreadDirectionOfForcedLeaf } from "@al-ft/midgard-sdk";
 import {
   computeHash28,
   decodeMidgardFieldPreimage,
-  decodeMidgardForcedTxFullFromCanonicalCbor,
   decodeMidgardSpendInputItem,
-  encodeMidgardSpendInputItem,
 } from "@al-ft/midgard-core";
 import { deriveMidgardForcedTxFaultEvidenceMaterial } from "@al-ft/midgard-core/codec/forced";
 import * as SDK from "@al-ft/midgard-sdk";
-import { buildCanonicalMidgardLedgerEntryOutputMaterial } from "@al-ft/midgard-validation";
 import { Data } from "@lucid-evolution/lucid";
 
 import type { CanonicalBlockEvidence } from "../evidence/canonical-block-evidence.js";
+import { ledgerBeforeTransactionEvent } from "../input-existence/event-ledger.js";
 import { type CheckedLedger } from "../ledger-at.js";
-import {
-  type KeyValuePhasEntry,
-  keyValuePhasProof,
-  keyValuePhasRootWithCount,
-} from "../transition-trace/phas.js";
-import { eventKeyFingerprint } from "../transition-trace/reconstruct.js";
+import { keyValuePhasProof } from "../transition-trace/phas.js";
 import {
   buildEventToStepMembershipProof,
   buildForcedTransactionLeafMembershipProof,
@@ -30,7 +24,6 @@ export const NO_REFERENCE_INPUT_WRONGFUL_REJECTION_VIOLATION_ID =
 export type NoReferenceInputForcedSource = {
   header: SDK.Header;
   membership: SDK.ForcedTransactionSourceMembershipProof;
-  direction: bigint;
 };
 export type PreparedNoReferenceInputWrongfulRejection = Readonly<{
   headerHash: string;
@@ -49,7 +42,10 @@ export const noReferenceInputForcedSourceMaterial = (
   fullTransactionCbor: string,
 ) => {
   const leaf = source.membership.value;
-  if (source.direction !== 1n || leaf.verdict === "ForcedTxValid")
+  if (
+    proofThreadDirectionOfForcedLeaf(source.membership.value) !== 1n ||
+    leaf.verdict === "ForcedTxValid"
+  )
     throw new Error("noReferenceInput: wrong forced direction");
   const reason = leaf.verdict.ForcedTxInvalid.reason;
   if (
@@ -95,89 +91,6 @@ export const noReferenceInputForcedSourceMaterial = (
   };
 };
 
-/** Reconstruct only committed effects before the selected forced event. Every
- * intermediate root is checked, so historical state is evidence, not authority. */
-const priorLedger = async (
-  block: CanonicalBlockEvidence,
-  stepIndex: bigint,
-  predecessor?: CheckedLedger,
-) => {
-  if (
-    predecessor !== undefined &&
-    predecessor.utxosRoot !== block.header.prevUtxosRoot
-  )
-    throw new Error("noReferenceInput: unrelated predecessor");
-  const entries = new Map<string, KeyValuePhasEntry>(
-    (predecessor?.trie.entries ?? []).map((entry) => [
-      entry.key.toString("hex"),
-      entry,
-    ]),
-  );
-  let root = await keyValuePhasRootWithCount([...entries.values()]);
-  if (root.root !== block.header.prevUtxosRoot)
-    throw new Error(
-      "noReferenceInput: authenticated predecessor ledger unavailable",
-    );
-  for (let index = 0n; index < stepIndex; index++) {
-    const step = block.reconstruction.traceByStepIndex.get(index)?.value;
-    if (
-      step === undefined ||
-      step.step_index !== index ||
-      step.schema_version !== 1n ||
-      step.pre_utxos_root !== root.root
-    )
-      throw new Error("noReferenceInput: inconsistent prior transition");
-    const event = block.reconstruction.sourceEventsByFingerprint.get(
-      eventKeyFingerprint(step.event_key),
-    );
-    if (event === undefined || event.phase !== step.phase)
-      throw new Error("noReferenceInput: missing prior source event");
-    if (event.phase === "Withdrawal") {
-      if (event.entry.value.validity === "WithdrawalIsValid") {
-        const outref = event.entry.value.body.l2_outref;
-        entries.delete(
-          encodeMidgardSpendInputItem({
-            txId: Buffer.from(outref.transactionId, "hex"),
-            outputIndex: Number(outref.outputIndex),
-          }).toString("hex"),
-        );
-      }
-    } else if (event.phase === "ForcedTransaction") {
-      if (event.entry.value.verdict === "ForcedTxValid") {
-        const tx = decodeMidgardForcedTxFullFromCanonicalCbor(
-          event.entry.fullTransactionCbor,
-        );
-        for (const input of decodeMidgardFieldPreimage(
-          tx.body.spendInputsPreimageCbor,
-        ))
-          entries.delete(input.toString("hex"));
-        for (const [outputIndex, outputCbor] of decodeMidgardFieldPreimage(
-          tx.body.outputsPreimageCbor,
-        ).entries()) {
-          const key = encodeMidgardSpendInputItem({
-            txId: Buffer.from(event.entry.value.tx_id, "hex"),
-            outputIndex,
-          });
-          entries.set(key.toString("hex"), {
-            key,
-            value: buildCanonicalMidgardLedgerEntryOutputMaterial({
-              outRef: key,
-              outputCbor,
-            }).descriptorCbor,
-          });
-        }
-      }
-    } else
-      throw new Error(
-        "noReferenceInput: noncanonical event phase before forced transaction",
-      );
-    root = await keyValuePhasRootWithCount([...entries.values()]);
-    if (root.root !== step.post_utxos_root)
-      throw new Error("noReferenceInput: committed prior effect root mismatch");
-  }
-  return root;
-};
-
 export const prepareNoReferenceInputWrongfulRejection = async ({
   block,
   forcedIndex,
@@ -199,7 +112,6 @@ export const prepareNoReferenceInputWrongfulRejection = async ({
       reconstruction: block.reconstruction,
       eventKey,
     }),
-    direction: 1n,
   };
   const fullTransactionCbor = forced.fullTransactionCbor.toString("hex");
   const material = noReferenceInputForcedSourceMaterial(
@@ -230,11 +142,14 @@ export const prepareNoReferenceInputWrongfulRejection = async ({
   let ledgerMembership: PreparedNoReferenceInputWrongfulRejection["ledgerMembership"] =
     null;
   if (material.selectedInput !== null) {
-    const ledger = await priorLedger(
-      block,
-      eventMembership.value.step_index,
-      predecessor,
-    );
+    const ledger = (
+      await ledgerBeforeTransactionEvent({
+        block,
+        eventKey,
+        stepIndex: eventMembership.value.step_index,
+        predecessor,
+      })
+    ).trie;
     if (ledger.root !== transitionMembership.value.pre_utxos_root)
       throw new Error(
         "noReferenceInput: selected transition pre-state differs",

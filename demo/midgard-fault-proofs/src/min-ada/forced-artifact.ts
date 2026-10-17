@@ -1,3 +1,4 @@
+import { proofThreadDirectionOfForcedLeaf } from "@al-ft/midgard-sdk";
 import { Proof as MpfProof } from "@aiken-lang/merkle-patricia-forestry";
 import { computeHash28 } from "@al-ft/midgard-core";
 import * as SDK from "@al-ft/midgard-sdk";
@@ -56,7 +57,6 @@ export const admitMinAdaForcedArtifact = async (
   ) as {
     header: SDK.Header;
     membership: SDK.ForcedTransactionSourceMembershipProof;
-    direction: bigint;
   };
   if (
     Data.to(source as never, SDK.MinAdaForcedSourcePayloadSchema as never) !==
@@ -65,7 +65,8 @@ export const admitMinAdaForcedArtifact = async (
     throw new Error("minAda: noncanonical forced source");
   const { membership, header } = source;
   if (
-    (source.direction !== 0n && source.direction !== 1n) ||
+    (proofThreadDirectionOfForcedLeaf(source.membership.value) !== 0n &&
+      proofThreadDirectionOfForcedLeaf(source.membership.value) !== 1n) ||
     header.protocolVersion !== 1n ||
     membership.domain !== SDK.ROOT_DOMAINS.forcedTransactionsV1 ||
     membership.root !== header.forcedTransactionsRoot ||
@@ -145,14 +146,20 @@ export const admitMinAdaForcedArtifact = async (
     throw new Error("minAda: detection identity changed");
   const { detection, detectionId } = selected;
   // The retained direction must be the one the committed verdict implies.
-  if (source.direction !== detection.evidence.state.direction)
+  if (
+    proofThreadDirectionOfForcedLeaf(source.membership.value) !==
+    detection.evidence.state.direction
+  )
     throw new Error("minAda: artifact source/header changed");
   return Object.freeze({
     ...detection,
     detectionId,
     forcedIndex: Number(artifact.forcedIndex),
     position: BigInt(Number(artifact.forcedIndex)),
-    forcedSource: { header, membership, direction: source.direction },
+    forcedSource: {
+      header,
+      membership,
+    },
   });
 };
 export const prepareMinAdaForcedArtifact = async ({

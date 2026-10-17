@@ -200,7 +200,9 @@ export const makeHarness = async () => {
   const step01Forced = (
     threadOutRef: string,
     finding: FieldItemWidthFinding,
-    forcedSource: Readonly<Record<string, unknown>>,
+    forcedSource: Parameters<
+      typeof submitFieldItemWidthIllegalStep01Forced
+    >[0]["forcedSource"],
   ) =>
     captureEmulatorSubmission(harness.emulator, () =>
       submitFieldItemWidthIllegalStep01Forced({
@@ -217,7 +219,12 @@ export const makeHarness = async () => {
   const step02 = (
     threadOutRef: string,
     evidence: FieldItemWidthEvidence,
-    shape: WidthShape,
+    shape:
+      | WidthShape
+      | {
+          readonly nativeTxCompactCbor: string;
+          readonly witnessSetCompactCbor: string;
+        },
   ) =>
     captureEmulatorSubmission(harness.emulator, () =>
       submitFieldItemWidthIllegalStep02({
@@ -227,11 +234,14 @@ export const makeHarness = async () => {
         signer: harness.proverSigner,
         threadOutRef,
         evidence,
-        nativeTxCompactCbor: compactCborHex(
-          shape.nativeTx,
-          evidence.subject.source_kind,
-        ),
-        witnessSetCompactCbor: witnessSetCompactCborHex(shape.nativeTx),
+        nativeTxCompactCbor:
+          "nativeTxCompactCbor" in shape
+            ? shape.nativeTxCompactCbor
+            : compactCborHex(shape.nativeTx, evidence.subject.source_kind),
+        witnessSetCompactCbor:
+          "witnessSetCompactCbor" in shape
+            ? shape.witnessSetCompactCbor
+            : witnessSetCompactCborHex(shape.nativeTx),
         referenceScriptUtxo: references[1]!,
         certificateReferenceScriptUtxo: requireCertificateReference(),
       }),
@@ -239,7 +249,12 @@ export const makeHarness = async () => {
   const step02Raw = (
     threadOutRef: string,
     evidence: FieldItemWidthEvidence,
-    shape: WidthShape,
+    shape:
+      | WidthShape
+      | {
+          readonly nativeTxCompactCbor: string;
+          readonly witnessSetCompactCbor: string;
+        },
     options: {
       readonly mutateOpening?: (
         opening: FieldOpening,
@@ -255,11 +270,14 @@ export const makeHarness = async () => {
       signer: harness.proverSigner,
       threadOutRef,
       evidence,
-      nativeTxCompactCbor: compactCborHex(
-        shape.nativeTx,
-        evidence.subject.source_kind,
-      ),
-      witnessSetCompactCbor: witnessSetCompactCborHex(shape.nativeTx),
+      nativeTxCompactCbor:
+        "nativeTxCompactCbor" in shape
+          ? shape.nativeTxCompactCbor
+          : compactCborHex(shape.nativeTx, evidence.subject.source_kind),
+      witnessSetCompactCbor:
+        "witnessSetCompactCbor" in shape
+          ? shape.witnessSetCompactCbor
+          : witnessSetCompactCborHex(shape.nativeTx),
       referenceScriptUtxo: references[1]!,
       certificateReferenceScriptUtxo: requireCertificateReference(),
       ...options,

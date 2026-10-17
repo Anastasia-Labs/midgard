@@ -232,7 +232,10 @@ export const setup = async ({
   });
   const header = seeded.header;
   const direction = accepted ? 0n : 1n;
-  const source = { header, membership, direction };
+  const source = {
+    header,
+    membership,
+  };
   const scriptPublications: ReturnType<
     typeof import("./support/emulator/measurement.js").measureCompleteSignedTransaction
   >[] = [];

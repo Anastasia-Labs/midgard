@@ -171,8 +171,8 @@
   },
   {
     "file": "midgard-fault-proofs/src/bin.main.ts",
-    "max": 1437,
-    "reason": "main is the dominant indivisible declaration (1668 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move."
+    "max": 1421,
+    "reason": "main is the dominant indivisible declaration (1668 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. N1 current shared input-existence API migration reduces retained source size; this cap is lowered to the exact current line count."
   },
   {
     "file": "midgard-fault-proofs/src/input-set-uniqueness/submit-input-set-uniqueness-step-02.submit-input-set-uniqueness-step02.ts",
@@ -341,13 +341,13 @@
   },
   {
     "file": "midgard-fault-proofs/tests/no-reference-input-wrongful-rejection-lifecycle.test.ts",
-    "max": 669,
-    "reason": "Retained test registration “noReferenceInput wrongful rejection registered lifecycle” (581 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+    "max": 666,
+    "reason": "Retained test registration “noReferenceInput wrongful rejection registered lifecycle” (581 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor. N1 current shared input-existence API migration reduces retained source size; this cap is lowered to the exact current line count."
   },
   {
     "file": "midgard-fault-proofs/tests/non-existent-input-wrongful-rejection-lifecycle.test.ts",
-    "max": 666,
-    "reason": "Retained test registration “nonExistentInput wrongful rejection registered lifecycle” (576 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+    "max": 663,
+    "reason": "Retained test registration “nonExistentInput wrongful rejection registered lifecycle” (576 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor. N1 current shared input-existence API migration reduces retained source size; this cap is lowered to the exact current line count."
   },
   {
     "file": "midgard-fault-proofs/tests/observer-order-invalid-lifecycle.make-harness.ts",
@@ -436,8 +436,8 @@
   },
   {
     "file": "midgard-fault-proofs/tests/submit-init-emulator-ledger-rules.test.ts",
-    "max": 1113,
-    "reason": "Retained test registration “fault-proof emulator integration” (1046 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor. C2a (+5): headers are committed with the commit slot as block_slot, and callers use the header the commit returns."
+    "max": 1073,
+    "reason": "Retained test registration “fault-proof emulator integration” (1046 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor. C2a (+5): headers are committed with the commit slot as block_slot, and callers use the header the commit returns. N1 current shared input-existence API migration reduces retained source size; this cap is lowered to the exact current line count."
   },
   {
     "file": "midgard-fault-proofs/tests/submit-init-emulator-native-script-decoding-adversarial.test.ts",

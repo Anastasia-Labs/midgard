@@ -247,7 +247,10 @@ export const commitForcedBlock = async (
     }),
     compactCbor: proofSource.compactCbor.toString("hex"),
     witnessSetCompactCbor: proofSource.witnessSetCompactCbor.toString("hex"),
-    forcedSource: { header: setup.header, membership, direction: 1n },
+    forcedSource: {
+      header: setup.header,
+      membership,
+    },
     membership,
     blockOutRef: setup.successorOutRef,
     headerHash: setup.successorHeaderHash,

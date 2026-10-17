@@ -1196,6 +1196,20 @@ pub fn field_item_extent(view: FieldViewV1, index: Int) -> Pair<Int, Int> {
   }
 }
 
+/// Observe the operator's exact fixed-stride wrapper and payload together.
+/// The view has authenticated the source/field commitment and count/length;
+/// this accessor deliberately does not parse the item wrapper. Verdict
+/// consumers use the shared fixed-item legality predicate on these bytes.
+/// Ordinary item readers retain field_item_extent's strict wrapper checks.
+pub fn field_fixed_encoded_item_at(view: FieldViewV1, index: Int) -> ByteArray {
+  let count = field_item_count(view)
+  let stride = field_view_stride(view)
+  expect stride > walk_derived_stride
+  expect index >= 0
+  expect index < count
+  field_read_range(view, header_len_for_count(count) + stride * index, stride)
+}
+
 /// §5.3's stride for the field this view was opened on:
 /// `walk_derived_stride` for the variable-width fields, the item stride for
 /// the fixed-width ones.

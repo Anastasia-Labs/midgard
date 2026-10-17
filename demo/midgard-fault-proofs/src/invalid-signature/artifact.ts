@@ -1,3 +1,4 @@
+import { proofThreadDirectionOfForcedLeaf } from "@al-ft/midgard-sdk";
 import { Proof as MpfProof } from "@aiken-lang/merkle-patricia-forestry";
 import { computeHash28 } from "@al-ft/midgard-core";
 import * as SDK from "@al-ft/midgard-sdk";
@@ -55,11 +56,10 @@ export const admitInvalidSignatureForcedArtifact = async (
   ) as {
     header: SDK.Header;
     membership: SDK.ForcedTransactionSourceMembershipProof;
-    direction: bigint;
   };
   const { membership, header } = source;
   if (
-    source.direction !== 1n ||
+    proofThreadDirectionOfForcedLeaf(source.membership.value) !== 1n ||
     membership.domain !== SDK.ROOT_DOMAINS.forcedTransactionsV1 ||
     membership.root !== header.forcedTransactionsRoot ||
     membership.count !== header.forcedTransactionCount ||
@@ -121,7 +121,10 @@ export const admitInvalidSignatureForcedArtifact = async (
   return Object.freeze({
     headerHash: artifact.headerHash as string,
     evidence,
-    forcedSource: { header, membership, direction: 1n as const },
+    forcedSource: {
+      header,
+      membership,
+    },
   });
 };
 export const prepareInvalidSignatureForcedArtifact = async ({

@@ -38,7 +38,10 @@ import {
 } from "@al-ft/midgard-sdk";
 import { describe, expect, it } from "vitest";
 
-import { type FieldItemWidthFinding } from "../src/field-item-width-illegal/index.js";
+import {
+  type FieldItemWidthFinding,
+  prepareFieldItemWidthEvidence,
+} from "../src/field-item-width-illegal/index.js";
 import {
   buildVanRossemFitLedger,
   writeVanRossemFitLedger,
@@ -220,19 +223,29 @@ describe("fieldItemWidthIllegal registered-chain lifecycle", () => {
     coverage.seamMutated("successor_script");
     await h.cancel(seamThread, 1);
 
-    // Adjacent-over-bound coordinate: the field has one item, the thread binds
-    // index 1, and the door refuses the read at the item-count bound.
+    // An absent item is an authenticated domain observation. An accepted
+    // transaction cannot be convicted from that observation at the terminal step.
     const overBound = await h.step01Accepted(
       (await h.init(setup.fraudulentBlockOutRef)).result,
-      { subject: evidence.subject, fieldIndex: 2, itemIndex: 1 },
+      { subject: evidence.subject, fieldIndex: 2n, itemIndex: 1n },
       maximumInclusion,
       setup.fraudulentBlockOutRef,
     );
+    const absentEvidence = prepareFieldItemWidthEvidence({
+      finding: { subject: evidence.subject, fieldIndex: 2n, itemIndex: 1n },
+      fieldPreimage: maximum.fieldPreimage,
+      committedFieldHashHex: evidence.fieldCommitmentHex!,
+    });
+    const absent = await h.step02(
+      overBound.result.nextThreadOutRef,
+      absentEvidence,
+      maximum,
+    );
     await expectOnchainRefusal(() =>
-      h.step02Raw(overBound.result.nextThreadOutRef, evidence, maximum, {}),
+      h.step03Raw(absent.result.nextThreadOutRef),
     );
     coverage.adjacentOverBoundRefused();
-    await h.cancel(overBound.result.nextThreadOutRef, 1);
+    await h.cancel(absent.result.nextThreadOutRef, 2);
 
     // Honest accepted block: the adjacent legal width, exactly at the bound,
     // authenticates but the terminal step refuses to convict it.
@@ -383,8 +396,8 @@ describe("fieldItemWidthIllegal registered-chain lifecycle", () => {
             sourceKey: membership.key,
             rejectionReason: widthReason(2, 0),
           }),
-          fieldIndex: 2,
-          itemIndex: 0,
+          fieldIndex: 2n,
+          itemIndex: 0n,
         },
         {},
       );
@@ -399,10 +412,10 @@ describe("fieldItemWidthIllegal registered-chain lifecycle", () => {
         "forced_direction",
         {
           subject: acceptedVerdictSubject(forced.transaction.tx_id),
-          fieldIndex: 2,
-          itemIndex: 1,
+          fieldIndex: 2n,
+          itemIndex: 1n,
         },
-        { direction: 0n },
+        {},
       );
       await h.cancel(thread, 0);
     });

@@ -1,11 +1,14 @@
 import {
   computeHash32,
   computeMidgardNativeTxId,
+  decodeMidgardFieldArrayHeader,
+  decodeMidgardFieldPreimage,
   decodeMidgardNativeTxCompact,
   encodeMidgardFieldPreimage,
   encodeMidgardNativeTxWitnessSetCompact,
   type MidgardFieldCarriagePlan,
   midgardFieldCommitment,
+  midgardFieldStride,
   planMidgardFieldCarriage,
 } from "@al-ft/midgard-core";
 import { decodeMidgardForcedTxCompact } from "@al-ft/midgard-core/codec/forced";
@@ -56,7 +59,7 @@ export type FaultProofFieldOpeningPlan = {
   /** The §2.5 anchor these bytes were checked against. */
   readonly nativeTxId: string;
   readonly nativeTxCompactCbor: string;
-  /** §5.1's envelope over the canonical item bytes. */
+  /** Exact committed §5.1 bytes, including malformed fixed-item wrappers. */
   readonly preimage: Buffer;
   readonly itemCount: number;
   /** §4's flat commitment — the value the door will re-derive. */
@@ -151,24 +154,18 @@ const committedFieldCommitment = ({
  * carried; what changed is that they are now enveloped by §5.1 and travel under
  * a carriage tier instead of being reproduced as a typed list the validator
  * re-hashed.
+ *
+ * `fieldPreimage` instead preserves an already committed envelope byte for
+ * byte. Fixed fields authenticate the canonical count and total stride length
+ * without decoding individual wrappers; T235 must be able to dispute those
+ * wrappers. Variable fields retain the strict envelope walk. The two inputs
+ * are exclusive, and both use the same compact/id/field/witness hash checks.
  */
-export const planFaultProofFieldOpening = ({
-  anchorSourceKind,
-  fieldIndex,
-  anchorTxId,
-  nativeTxCompactCbor,
-  itemCbors,
-  owner,
-  publish = false,
-  witnessSet,
-  anchorWitnessSetHash,
-  label,
-}: {
+type FaultProofFieldOpeningAnchor = {
   readonly fieldIndex: number;
   readonly anchorTxId: string;
   readonly anchorSourceKind: 0n | 1n;
   readonly nativeTxCompactCbor: string;
-  readonly itemCbors: readonly Uint8Array[];
   /** §8.6 min-Ada reclaim authority; no consuming step reads it. */
   readonly owner: string;
   readonly publish?: boolean;
@@ -186,7 +183,37 @@ export const planFaultProofFieldOpening = ({
    */
   readonly anchorWitnessSetHash?: string;
   readonly label: string;
-}): FaultProofFieldOpeningPlan => {
+};
+
+type ItemFieldOpeningArgs = FaultProofFieldOpeningAnchor & {
+  readonly itemCbors: readonly Uint8Array[];
+  readonly fieldPreimage?: never;
+};
+
+type RawFieldOpeningArgs = FaultProofFieldOpeningAnchor & {
+  readonly fieldPreimage: Uint8Array;
+  readonly itemCbors?: never;
+};
+
+export function planFaultProofFieldOpening(
+  args: RawFieldOpeningArgs,
+): FaultProofFieldOpeningPlan;
+export function planFaultProofFieldOpening(
+  args: ItemFieldOpeningArgs,
+): FaultProofFieldOpeningPlan;
+export function planFaultProofFieldOpening({
+  anchorSourceKind,
+  fieldIndex,
+  anchorTxId,
+  nativeTxCompactCbor,
+  itemCbors,
+  fieldPreimage,
+  owner,
+  publish = false,
+  witnessSet,
+  anchorWitnessSetHash,
+  label,
+}: RawFieldOpeningArgs | ItemFieldOpeningArgs): FaultProofFieldOpeningPlan {
   const anchoredTxId = requireHash32(anchorTxId, `${label} anchored tx id`);
   const compactCbor = nativeTxCompactCbor.toLowerCase();
   if (!/^([0-9a-f]{2})+$/u.test(compactCbor)) {
@@ -258,9 +285,36 @@ export const planFaultProofFieldOpening = ({
     );
   }
 
-  const preimage = encodeMidgardFieldPreimage(
-    itemCbors.map((item) => Buffer.from(item)),
-  );
+  let preimage: Buffer;
+  let itemCount: number;
+  if (itemCbors !== undefined) {
+    if (fieldPreimage !== undefined) {
+      throw new Error(
+        "Field opening supplies both item bytes and a field preimage.",
+      );
+    }
+    preimage = encodeMidgardFieldPreimage(
+      itemCbors.map((item) => Buffer.from(item)),
+    );
+    itemCount = itemCbors.length;
+  } else {
+    if (fieldPreimage === undefined) {
+      throw new Error("Field opening supplies no field bytes.");
+    }
+    preimage = Buffer.from(fieldPreimage);
+    const { nextOffset, count } = decodeMidgardFieldArrayHeader(preimage);
+    const stride = midgardFieldStride(fieldIndex);
+    if (stride > 0) {
+      if (nextOffset + count * stride !== preimage.length) {
+        throw new Error(
+          `${label} fixed field count and stride disagree with its exact byte length.`,
+        );
+      }
+      itemCount = count;
+    } else {
+      itemCount = decodeMidgardFieldPreimage(preimage).length;
+    }
+  }
   const commitment = midgardFieldCommitment(preimage).toString("hex");
   // 3. `field_commitment_at`: these items are this transaction's field
   //    `fieldIndex`, not some other field of the same transaction. Under §4 the
@@ -283,7 +337,7 @@ export const planFaultProofFieldOpening = ({
     sourceKind: anchorSourceKind,
     nativeTxCompactCbor: compactCbor,
     preimage,
-    itemCount: itemCbors.length,
+    itemCount,
     commitment,
     plan: planMidgardFieldCarriage({
       owner: Buffer.from(owner, "hex"),
@@ -295,4 +349,4 @@ export const planFaultProofFieldOpening = ({
     ...(witnessSet === undefined ? {} : { witnessSet }),
     ...(witnessSetHash === undefined ? {} : { witnessSetHash }),
   };
-};
+}

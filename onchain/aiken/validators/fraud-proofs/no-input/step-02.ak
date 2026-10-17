@@ -1,25 +1,21 @@
 use aiken/cbor
 use aiken/collection/list
 use aiken/crypto.{ScriptHash}
+use aiken/merkle_patricia_forestry as mpf
+use cardano/address.{Address}
 use cardano/assets.{PolicyId}
 use cardano/transaction.{OutputReference, Transaction}
 use midgard/computation_thread as ct
-use midgard/fraud_proofs/common.{cancel, continue}
-use midgard/fraud_proofs/field_opening_v1.{
-  BodyAnchor, opened_field_view, spend_inputs_field_index,
-}
+use midgard/fraud_proofs/input_existence_fixture_v1 as carriage_fixture
+use midgard/fraud_proofs/input_existence_v1/select_step
+use midgard/fraud_proofs/input_existence_v1/types.{SelectArgsV1}
 use midgard/fraud_proofs/native_binding_fixture_v1 as fixture
+use midgard/fraud_proofs/native_script_decoding/thread_fixture_v1 as tf
 use midgard/fraud_proofs/native_tx/components.{encode_midgard_tx_input}
-use midgard/fraud_proofs/native_tx/types.{MidgardTxInput}
-use midgard/fraud_proofs/no_input/step_02.{
-  Args, Datum, ForcedArgs, ForcedState, SpendRedeemer, State,
-}
-use midgard/fraud_proofs/no_input/step_03
+use midgard/fraud_proofs/native_tx/types.{MidgardTxInput} as native_types
+use midgard/fraud_proofs/no_input/step_02.{Datum, SpendRedeemer}
 use midgard/fraud_proofs/proof_thread_substrate_v1 as substrate
 use midgard/ledger_state
-use midgard/native_tx_machine_walk_v1.{spend_input_at, spend_input_count}
-use midgard/rejection_reason_v1.{InputNotFound}
-use midgard/transition_trace
 
 validator main(
   step_03_validator_script_hash: ScriptHash,
@@ -32,154 +28,16 @@ validator main(
     own_out_ref: OutputReference,
     tx: Transaction,
   ) {
-    when redeemer is {
-      ct.Cancel { input_index, computation_thread_mint_redeemer_index } ->
-        cancel(
-          computation_thread_token_policy_id,
-          datum,
-          input_index,
-          own_out_ref,
-          computation_thread_mint_redeemer_index,
-          tx,
-        )
-      ct.Continue(Args {
-        input_index,
-        output_index,
-        spend_inputs_opening,
-        bad_input_index,
-      }) -> {
-        let Transaction { inputs, outputs, reference_inputs, .. } = tx
-
-        expect Some(step_datum) = datum
-
-        // 1. Specified input must be authentic and properly reproduced.
-        let
-            _own_script_hash,
-            _computation_thread_token_asset_name,
-            _fraud_prover,
-            m_input_state_data,
-            output_script_hash,
-            output_state_data
-          <- continue(
-          computation_thread_token_policy_id,
-          step_datum,
-          input_index,
-          output_index,
-          own_out_ref,
-          inputs,
-          outputs,
-        )
-
-        expect
-            Some(State {
-              bad_tx_id,
-              blocks_prev_utxos_root,
-              blocks_transactions_root,
-            })
-          = m_input_state_data
-
-        // 2. Target input is read out of the disputed transaction's field-0
-        //    preimage through the §8.8 door: the expected commitment is
-        //    extracted positionally from the compact structures `bad_tx_id`
-        //    authenticates, never supplied, and the item itself is one
-        //    arithmetic slice at the §5.3 fixed stride (§10.5) rather than a
-        //    reproduction of the whole collection.
-        let spend_inputs_view = opened_field_view(
-          spend_inputs_opening,
-          BodyAnchor { tx_id: bad_tx_id, source_kind: 0 },
-          spend_inputs_field_index,
-          reference_inputs,
-          field_preimage_certificate_policy_id,
-        )
-        let missing_input = spend_input_at(spend_inputs_view, bad_input_index)
-
-        // 3. Target input, plus the relevant block roots, must be passed to the
-        //    next step.
-        expect output_script_hash == step_03_validator_script_hash
-        let expected_output_state: Data = step_03.State {
-          missing_input,
-          blocks_prev_utxos_root,
-          blocks_transactions_root,
-        }
-        expect output_state_data == expected_output_state
-
-        // Done.
-        True
-      }
-      ct.Continue(ForcedArgs {
-        input_index,
-        output_index,
-        spend_inputs_opening,
-        event_membership,
-      }) -> {
-        expect Some(step_datum) = datum
-        let _, _, _, input_state, output_hash, output_state <- continue(
-          computation_thread_token_policy_id,
-          step_datum,
-          input_index,
-          output_index,
-          own_out_ref,
-          tx.inputs,
-          tx.outputs,
-        )
-        expect
-            Some(ForcedState {
-              subject,
-              event_key,
-              event_root,
-              event_count,
-              trace_root,
-              trace_count,
-            })
-          = input_state
-        expect InputNotFound { source_kind, input_index: selected_index } = substrate.rejection_reason_of_v1(
-          subject,
-        )
-        expect source_kind == 0
-        let view = opened_field_view(
-          spend_inputs_opening,
-          BodyAnchor {
-            tx_id: subject.transaction_id,
-            source_kind: subject.source_kind,
-          },
-          spend_inputs_field_index,
-          tx.reference_inputs,
-          field_preimage_certificate_policy_id,
-        )
-        let selected_input = if selected_index >= 0 && selected_index < spend_input_count(
-          view,
-        ) {
-          Some(spend_input_at(view, selected_index))
-        } else {
-          None
-        }
-        expect and {
-            transition_trace.verify_root_membership_with_bytes(
-              event_membership,
-              transition_trace.EventToStepRootDomain,
-              event_root,
-              event_count,
-              cbor.serialise(event_membership.key),
-              cbor.serialise(event_membership.value),
-            ),
-            event_membership.key == event_key,
-            event_membership.value.phase == ledger_state.ForcedTransaction,
-            event_membership.value.step_index >= 0,
-            event_membership.value.step_index < trace_count,
-          }
-        let expected: Data = step_03.ForcedState {
-          event_key,
-          trace_root,
-          trace_count,
-          step_index: event_membership.value.step_index,
-          selected_input,
-        }
-        and {
-          output_hash == step_03_validator_script_hash,
-          output_state == expected,
-        }
-      }
-    }
+    select_step.select_step_v1(
+      0,
+      step_03_validator_script_hash,
+      computation_thread_token_policy_id,
+      field_preimage_certificate_policy_id,
+      datum,
+      redeemer,
+      own_out_ref,
+      tx,
+    )
   }
 
   else(_) {
@@ -210,10 +68,28 @@ fn run_step_02(
   bad_input_index: Int,
   expected_missing_input: MidgardTxInput,
 ) -> Bool {
-  let expected_output_state: Data = step_03.State {
-    missing_input: expected_missing_input,
-    blocks_prev_utxos_root: prev_utxos_root(),
-    blocks_transactions_root: transactions_root(),
+  let claim = tf.thread_claim_v1(
+    ledger_state.L2TransactionEventKey { tx_id: block.tx_id },
+    ledger_state.L2Transaction,
+    block.header.prev_utxos_root,
+    None,
+  )
+  let expected_output_state: Data = types.SelectedInputStateV1 {
+    compact: carriage_fixture.compact_view_v1(block.compact),
+    source_kind: 0,
+    input_index: bad_input_index,
+    claimed_input: None,
+    subject: substrate.VerdictSubjectV1 {
+      version: substrate.version,
+      direction: substrate.direction_wrongful_acceptance,
+      source_kind: substrate.source_kind_accepted,
+      transaction_id: block.tx_id,
+      source_key: #"",
+      rejection_reason: None,
+    },
+    header: claim.header,
+    selected_input: Some(expected_missing_input),
+    step_index: claim.event_to_step_membership.value.step_index,
   }
   let asset_name = fixture.ct_token_asset_name(fixture.challenged_block_v1())
   main.spend(
@@ -224,27 +100,48 @@ fn run_step_02(
       ct.StepDatum {
         fraud_prover: fixture.fraud_prover_key_hash,
         data: Some(
-          State {
-            bad_tx_id: block.tx_id,
-            blocks_prev_utxos_root: prev_utxos_root(),
-            blocks_transactions_root: transactions_root(),
+          types.SourceStateV1 {
+            compact: carriage_fixture.compact_view_v1(block.compact),
+            subject: substrate.VerdictSubjectV1 {
+              version: substrate.version,
+              direction: substrate.direction_wrongful_acceptance,
+              source_kind: substrate.source_kind_accepted,
+              transaction_id: block.tx_id,
+              source_key: #"",
+              rejection_reason: None,
+            },
+            header: claim.header,
           },
         ),
       },
     ),
     ct.Continue(
-      Args {
+      SelectArgsV1 {
         input_index: 0,
         output_index: 0,
-        spend_inputs_opening: fixture.inline_body_opening(
+        inputs_opening: fixture.inline_body_opening(
           block.compact_cbor,
           carried_inputs |> list.map(encode_midgard_tx_input),
         ),
-        bad_input_index,
+        selected_input_index: bad_input_index,
+        claimed_inputs_opening: None,
+        event_membership: carriage_fixture.direct_carried_membership_v1(
+          claim.event_to_step_membership,
+          0,
+        ),
       },
     ),
     fixture.own_out_ref(),
-    fixture.continue_mid_step_l1_tx_v1(asset_name, expected_output_state),
+    Transaction {
+      ..fixture.continue_mid_step_l1_tx_v1(asset_name, expected_output_state),
+      redeemers: [
+        fixture.phas_withdraw_redeemer_entry(
+          claim.event_to_step_membership.phas_root,
+          cbor.serialise(claim.event_to_step_membership.key),
+          cbor.serialise(claim.event_to_step_membership.value),
+        ),
+      ],
+    },
   )
 }
 
@@ -265,7 +162,6 @@ fn first_challenged_input() -> MidgardTxInput {
 
 /// Positive selector: the carried preimage is the one the disputed
 /// transaction's field-0 commitment authenticates, so the input at the
-/// challenged index is carried to step-03 together with both block roots.
 test no_input_step_02_forwards_the_challenged_spend_input() {
   run_step_02(
     fixture.challenged_block_v1(),

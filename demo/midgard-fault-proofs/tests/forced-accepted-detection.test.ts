@@ -1,3 +1,4 @@
+import { proofThreadDirectionOfForcedLeaf } from "@al-ft/midgard-sdk";
 /**
  * Detection over accepted forced transactions. A `ForcedTxValid` leaf's outputs
  * enter the ledger exactly as an accepted normal transaction's do, so the
@@ -197,7 +198,9 @@ describe("minimum-Ada detection over accepted forced transactions", () => {
     const reopened = await admitMinAdaForcedArtifact(
       JSON.parse(JSON.stringify(artifact)),
     );
-    expect(reopened.forcedSource.direction).toBe(0n);
+    expect(
+      proofThreadDirectionOfForcedLeaf(reopened.forcedSource.membership.value),
+    ).toBe(0n);
     expect(reopened.evidence.badOutputIndex).toBe(2n);
     // An artifact whose retained source claims the rejection direction is
     // refused against the committed verdict.
@@ -270,7 +273,9 @@ describe("network-id detection over accepted forced transactions", () => {
     });
     expect(body.fault).toBe("TransactionNetwork");
     expect(body.committedNetworkId).toBe(1n);
-    expect(body.forcedSource.direction).toBe(0n);
+    expect(
+      proofThreadDirectionOfForcedLeaf(body.forcedSource.membership.value),
+    ).toBe(0n);
     expect(body.subject).toStrictEqual(
       SDK.forcedVerdictSubject({
         transactionId: txId,

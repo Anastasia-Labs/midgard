@@ -47,7 +47,6 @@ export const RedeemerCanonicityStep01SourceSchema = Data.Enum([
         OutputReferenceSchema,
         ForcedInclusionTxV1Schema,
       ),
-      direction: Data.Integer(),
     }),
   }),
 ]);

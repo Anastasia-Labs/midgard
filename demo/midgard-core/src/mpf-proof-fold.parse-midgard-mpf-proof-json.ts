@@ -134,6 +134,7 @@ export const parseMidgardMpfProofJson = (
   if (value.length > PATH_NIBBLE_COUNT) {
     throw new Error("MPF proof has more frames than the key path");
   }
+  let cursor = 0;
   return value.map((rawStep, index) => {
     const field = `mpf_proof[${index.toString()}]`;
     const step = asRecord(rawStep, field);
@@ -142,6 +143,10 @@ export const parseMidgardMpfProofJson = (
       `${field}.skip`,
       PATH_NIBBLE_COUNT,
     );
+    cursor += skip + 1;
+    if (cursor > PATH_NIBBLE_COUNT) {
+      throw new Error(`${field} advances beyond the key path`);
+    }
     if (step.type === "branch") {
       return {
         kind: "branch",
@@ -151,6 +156,17 @@ export const parseMidgardMpfProofJson = (
     }
     if (step.type === "fork") {
       const neighbor = asRecord(step.neighbor, `${field}.neighbor`);
+      const prefix = asHexBytes(
+        neighbor.prefix,
+        `${field}.neighbor.prefix`,
+        undefined,
+        PATH_NIBBLE_COUNT - cursor - 1,
+      );
+      if (!prefix.every((digit) => digit < 16)) {
+        throw new Error(
+          `${field}.neighbor.prefix must contain only nibble bytes`,
+        );
+      }
       return {
         kind: "fork",
         skip,
@@ -160,12 +176,7 @@ export const parseMidgardMpfProofJson = (
             `${field}.neighbor.nibble`,
             15,
           ),
-          prefix: asHexBytes(
-            neighbor.prefix,
-            `${field}.neighbor.prefix`,
-            undefined,
-            32,
-          ),
+          prefix,
           root: ensureHash32(
             asHexBytes(neighbor.root, `${field}.neighbor.root`, 32),
             `${field}.neighbor.root`,

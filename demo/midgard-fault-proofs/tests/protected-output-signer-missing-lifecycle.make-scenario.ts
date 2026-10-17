@@ -168,14 +168,12 @@ export const makeScenario = async ({
     {
       header = block.header,
       membership,
-      direction = 1n,
     }: {
       readonly header?: SDK.Header;
       readonly membership?: SDK.RootMembershipProof<
         SDK.OutputReference,
         SDK.ForcedInclusionTxV1
       >;
-      readonly direction?: bigint;
     } = {},
   ) =>
     submitProtectedOutputSignerMissingStep01Forced({
@@ -185,7 +183,6 @@ export const makeScenario = async ({
       forcedSource: {
         header,
         membership: membership ?? (await forcedMembership()),
-        direction,
       },
     });
   const step02 = (

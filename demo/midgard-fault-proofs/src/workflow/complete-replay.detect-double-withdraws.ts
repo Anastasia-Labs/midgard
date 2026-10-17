@@ -207,17 +207,15 @@ export const DOUBLE_SPEND_COMPLETE_CANONICAL_REPLAY = completeReplayer(
   detectDoubleSpends,
 );
 
-/** Complete accepted spend-input scan against current and predecessor state. */
+/** Complete accepted spend-input scan at each authenticated event pre-state. */
 export const NON_EXISTENT_INPUT_COMPLETE_CANONICAL_REPLAY = completeReplayer(
   ["nonExistentInput"],
   async (evidence, context) => [
-    ...(await (evidence.transactions.length === 0
-      ? []
-      : detectLedgerRelativeMissingInputs({
-          evidence,
-          context,
-          kind: "spend",
-        }))),
+    ...(await detectLedgerRelativeMissingInputs({
+      evidence,
+      context,
+      kind: "spend",
+    })),
     ...(await detectNonExistentInputWrongfulRejections({
       block: evidence,
       predecessor: completeCanonicalReplayPredecessorLedger({
@@ -250,13 +248,11 @@ export const ZERO_INPUT_COMPLETE_CANONICAL_REPLAY = completeReplayer(
 export const NO_REFERENCE_INPUT_COMPLETE_CANONICAL_REPLAY = completeReplayer(
   ["noReferenceInput"],
   async (evidence, context) => [
-    ...(await (evidence.transactions.length === 0
-      ? []
-      : detectLedgerRelativeMissingInputs({
-          evidence,
-          context,
-          kind: "reference",
-        }))),
+    ...(await detectLedgerRelativeMissingInputs({
+      evidence,
+      context,
+      kind: "reference",
+    })),
     ...(await detectNoReferenceInputWrongfulRejections({
       block: evidence,
       predecessor: completeCanonicalReplayPredecessorLedger({

@@ -432,7 +432,6 @@ describe("networkId wrongful-rejection real lifecycle", () => {
         forcedSource: {
           header: { ...block.header, forcedTransactionsRoot: foreign.root },
           membership: foreign,
-          direction: 1n,
         },
       }),
     ).rejects.toThrow(/script|evaluat/iu);

@@ -13,6 +13,7 @@ import {
   decodeMidgardSpendInputItem,
   midgardRedeemerPurposeFromTag,
 } from "../src/codec/native-tx-field-item-decoders.js";
+import { midgardFixedFieldItemIsLegal } from "../src/codec/native-tx-field-item-legality.js";
 import {
   encodeMidgardFieldItems,
   encodeMidgardFieldPreimageForField,
@@ -124,6 +125,50 @@ const itemEncoderFor = (
   items: MidgardFieldItems["items"],
 ): readonly Buffer[] =>
   encodeMidgardFieldItems({ fieldIndex, items } as MidgardFieldItems);
+
+describe("fixed-item legality preserves authored input and signer order", () => {
+  const item = (field: number, index: number): Buffer =>
+    field === 4
+      ? Buffer.concat([Buffer.from("581c", "hex"), Buffer.alloc(28, index)])
+      : Buffer.concat([
+          Buffer.from("5826825820", "hex"),
+          Buffer.alloc(32),
+          Buffer.of(0x19, 0x00, index),
+        ]);
+
+  it.each([0, 1, 4])(
+    "accepts descending distinct items in field %i",
+    (field) => {
+      expect(
+        midgardFixedFieldItemIsLegal(field, item(field, 9), item(field, 8)),
+      ).toBe(true);
+    },
+  );
+
+  it.each([0, 1, 4])(
+    "leaves repeated items to their semantic phase in field %i",
+    (field) => {
+      expect(
+        midgardFixedFieldItemIsLegal(field, item(field, 8), item(field, 8)),
+      ).toBe(true);
+    },
+  );
+
+  it.each([0, 1, 4])(
+    "still refuses malformed current and previous shapes in field %i",
+    (field) => {
+      const valid = item(field, 8);
+      const short = valid.subarray(0, valid.length - 1);
+      const wrongWrapper = Buffer.from(valid);
+      wrongWrapper[1] = wrongWrapper[1]! + 1;
+      expect(midgardFixedFieldItemIsLegal(field, valid, short)).toBe(false);
+      expect(midgardFixedFieldItemIsLegal(field, short, valid)).toBe(false);
+      expect(midgardFixedFieldItemIsLegal(field, null, wrongWrapper)).toBe(
+        false,
+      );
+    },
+  );
+});
 
 describe("§5.3 field item decoders are the inverse of the #569 producers", () => {
   it("covers all nine fields, in the fixture's positional order", () => {

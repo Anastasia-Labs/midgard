@@ -149,7 +149,12 @@ export const submitNativeScriptDecodingStep02 = async ({
       schema: NativeScriptDecodingStep02Datum,
       stepIndex: 1,
     });
-  const { direction, source_kind: sourceKind } = bindState;
+  const acceptedSubject =
+    bindState === "PendingForced" ? undefined : bindState.BoundAccepted.subject;
+  const sourceKind =
+    acceptedSubject === undefined
+      ? NATIVE_SCRIPT_DECODING_SOURCE_KIND_FORCED
+      : acceptedSubject.source_kind;
 
   // The header must be the thread NFT's: category id ‖ blake2b-224(header).
   const headerHash = await Effect.runPromise(
@@ -183,7 +188,10 @@ export const submitNativeScriptDecodingStep02 = async ({
 
   let eventKey: EventKey;
   if (sourceKind === NATIVE_SCRIPT_DECODING_SOURCE_KIND_NORMAL) {
-    if (direction !== NATIVE_SCRIPT_DECODING_DIRECTION_WRONGFUL_ACCEPTANCE) {
+    if (
+      acceptedSubject?.direction !==
+      NATIVE_SCRIPT_DECODING_DIRECTION_WRONGFUL_ACCEPTANCE
+    ) {
       throw nativeScriptDecodingSubmitError(
         "a normal-source thread is structurally direction A; the thread state disagrees.",
       );
@@ -193,16 +201,13 @@ export const submitNativeScriptDecodingStep02 = async ({
         "a normal-source thread binds no forced leaf; drop --forced-order-key.",
       );
     }
-    eventKey = { L2TransactionEventKey: { tx_id: bindState.verified_tx_id } };
+    eventKey = {
+      L2TransactionEventKey: { tx_id: acceptedSubject.transaction_id },
+    };
   } else {
     if (sourceKind !== NATIVE_SCRIPT_DECODING_SOURCE_KIND_FORCED) {
       throw nativeScriptDecodingSubmitError(
         `thread state carries source kind ${sourceKind.toString()}, outside {normal, forced}.`,
-      );
-    }
-    if (bindState.verified_tx_id !== "") {
-      throw nativeScriptDecodingSubmitError(
-        "a forced thread reaches step 02 with the empty verified_tx_id sentinel; the thread state disagrees.",
       );
     }
     if (forcedOrderKey === undefined) {
@@ -220,13 +225,24 @@ export const submitNativeScriptDecodingStep02 = async ({
   const priorLedgerRoot =
     evidence.transitionStepMembership.value.pre_utxos_root;
 
+  const direction =
+    evidence.forcedMembership === null
+      ? NATIVE_SCRIPT_DECODING_DIRECTION_WRONGFUL_ACCEPTANCE
+      : evidence.forcedMembership.value.verdict === "ForcedTxValid"
+        ? NATIVE_SCRIPT_DECODING_DIRECTION_WRONGFUL_ACCEPTANCE
+        : NATIVE_SCRIPT_DECODING_DIRECTION_WRONGFUL_REJECTION;
   let scanState: NativeScriptDecodingScanThreadState;
   if (evidence.forcedMembership === null) {
+    if (acceptedSubject === undefined) {
+      throw nativeScriptDecodingSubmitError(
+        "normal event evidence requires the authenticated accepted subject",
+      );
+    }
     const pair = requireChosenPair();
     scanState = nativeScriptDecodingPreBindScanState({
       direction,
       sourceKind,
-      verifiedTxId: bindState.verified_tx_id,
+      verifiedTxId: acceptedSubject.transaction_id,
       txOrderId: "",
       scanReasonClass: NATIVE_SCRIPT_DECODING_CLASS_PENDING,
       priorLedgerRoot,
@@ -257,11 +273,6 @@ export const submitNativeScriptDecodingStep02 = async ({
         outpointCursor: pair.cursor,
       });
     } else {
-      if (direction !== NATIVE_SCRIPT_DECODING_DIRECTION_WRONGFUL_REJECTION) {
-        throw nativeScriptDecodingSubmitError(
-          `thread state carries direction ${direction.toString()}, outside {0, 1}.`,
-        );
-      }
       if (leaf.verdict === "ForcedTxValid") {
         throw nativeScriptDecodingSubmitError(
           "direction B disputes an explicit rejection, but the forced leaf's verdict is an acceptance.",
