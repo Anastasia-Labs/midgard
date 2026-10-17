@@ -10,6 +10,7 @@ import { makeDeploymentMarker } from "@al-ft/midgard-core/deployment-manifest-id
 import type { L1SlotConfig } from "@al-ft/midgard-core/l1-slot-config";
 import * as SDK from "@al-ft/midgard-sdk";
 import { createReferenceScriptAuthPolicy } from "@al-ft/midgard-sdk";
+import { loadOrCreateRunSharedFixture } from "@al-ft/midgard-test-support/run-shared-fixtures";
 import {
   Emulator,
   generateEmulatorAccount,
@@ -41,7 +42,6 @@ import {
 import { bindNodeFollower } from "./helpers/follower-emulator.host.js";
 import { runWithoutFollower } from "./helpers/intent-journal.js";
 import { loadRealMidgardContractsForTest } from "./helpers/real-midgard-contracts.js";
-import { loadOrCreateRunSharedFixture } from "./helpers/run-shared-fixture-directory.js";
 import { resetApplicationTables } from "./utils.js";
 
 export const EMULATOR_PROTOCOL_PARAMETERS = {
@@ -326,7 +326,7 @@ let deployedFixture: DeployedFixture | undefined;
  * so every call of a run restores one deployment instead of publishing its
  * own: the first call in the run deploys and shares it while calls in files
  * that start at the same time wait for it
- * (`helpers/run-shared-fixture-directory.ts`), and each call returns an
+ * (`@al-ft/midgard-test-support/run-shared-fixtures`), and each call returns an
  * independent copy (its own emulator, lucid instances and records) of the
  * chain the deployment left. Without the package's global setup each file
  * deploys once and restores from that.

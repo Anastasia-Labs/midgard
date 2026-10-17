@@ -224,9 +224,6 @@ you checked it by reading.
       [runtime: verifyDeploymentMembers]
       Blind spot: the checklist checks source presence; real-blueprint binding,
       ordering and manifest restoration need the node deployment tests.
-- [ ] DA deployment fixture regenerated.
-      [ci: Midgard Node CI/Test Midgard node]
-      (`da-deployment-fixture-generation.test.ts` fails on drift)
 - [ ] Family record in `FAMILY_APPLICATION_REGISTRY`, roster names deployed
       contracts. [ci: Midgard Node CI/Typecheck fault-proof tooling]
       [ci: Midgard Node CI/Test fault-proof tooling]

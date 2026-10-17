@@ -27,6 +27,7 @@
     "src",
     "vitest.d.ts",
     "database-identity.d.ts",
+    "run-shared-fixtures.d.ts",
     "duration-shards.d.ts"
   ],
   "exclude": ["node_modules"]

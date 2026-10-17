@@ -169,9 +169,10 @@ a timeout or skipping it.
 - **Stale `dist/` or `plutus.json`.** The run exercises old code or old
   validators. Rebuild first (see
   [references/test-levels.md](references/test-levels.md)). [hook: pre-commit]
-  refuses a staged `plutus.json`. Blueprint-reading suites also verify its
-  source/compiler stamp through `demo/midgard-test-support/blueprint-stamp-setup.js`;
-  focused runs can still execute stale subprocess `dist` files.
+  refuses a staged `plutus.json`. Blueprint-reading suites rebuild a
+  blueprint whose source/compiler stamp is stale through
+  `demo/midgard-test-support/blueprint-stamp-setup.js`; focused runs can
+  still execute stale subprocess `dist` files.
 - **`it.only` / `describe.only`.** Every other test in the file is skipped.
   vitest refuses `.only` when `CI` is set (`allowOnly: !isCI`), so CI catches
   it; a local run does not. [review]

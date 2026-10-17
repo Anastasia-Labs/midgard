@@ -36,8 +36,9 @@ that a reader would miss.
 
    Done when the script exits 0 and you have its channel list.
 
-2. **Build the blueprint if a listed channel reads it** (the blueprint-bound
-   fixtures). See [The blueprint](#the-blueprint).
+2. **No channel reads the blueprint.** No committed file is derived from it
+   (see [The blueprint](#the-blueprint)), so a channel check never needs a
+   fresh build.
 
 3. **Run each listed check, in the order printed.** The order puts producers
    before consumers (lucid fixtures before `native-compact-aiken`, profiles
@@ -137,16 +138,17 @@ last ran. It is not tracked and, as of 2026-09-25, not gitignored.
   runs where it is enabled (`make enable-git-hooks`), and
   `MIDGARD_SKIP_HOOKS=1` skips it.
 - **Build it fresh, with the pinned fork, before anything that reads it**:
-  the DA deployment fixture, the watcher initialization fixture,
-  fault-proof and node suites. `pnpm --dir demo run deployment:build preprod-testing`
+  the fault-proof, node, watcher and DA committee suites (the last two derive
+  their deployment input and initialization frame from it each run).
+  `pnpm --dir demo run deployment:build preprod-testing`
   regenerates the profiles, refuses any compiler other than the pinned fork,
   runs `aiken build --env preprod_testing`, and records the blueprint hash in
   the gitignored `plutus.json.deployment.json`
   (`demo/scripts/deployment-profiles.mjs:260-290`)
   [script: demo/scripts/deployment-profiles.mjs]. CI builds the same way in "Build
-  testnet Aiken blueprint". Blind spot: nothing checks that the `plutus.json`
-  on disk is fresh. A leftover blueprint from another branch or profile makes
-  every blueprint-bound check measure the wrong contracts.
+  testnet Aiken blueprint". The suites' stamp setup
+  (`demo/midgard-test-support/blueprint-stamp-setup.js`) rebuilds a missing or
+  stale default blueprint before any file runs.
 - The compiler pin is the `aiken` input of `demo/flake.lock`. Run the
   compiler only as `scripts/aiken`, never a bare `aiken` from `PATH`
   [script: scripts/lib/aiken.mjs].

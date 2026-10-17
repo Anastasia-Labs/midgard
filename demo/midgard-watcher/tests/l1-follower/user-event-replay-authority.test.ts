@@ -46,7 +46,7 @@ import {
 } from "../support/state-queue-observation-fixture.commit-transaction.js";
 import { genuineUserEventForcedPayloadForCanonicalTx } from "../support/user-event-forced-order-fixture.js";
 
-const deployment = followerUserEventsDeployment();
+const deployment = await followerUserEventsDeployment();
 const ID = Object.freeze({
   deposit: userEventId("d1"),
   withdrawal: userEventId("e1"),

@@ -1,4 +1,3 @@
-import "node:fs/promises";
 import "@aiken-lang/merkle-patricia-forestry";
 import "@al-ft/midgard-core/codec/native-script";
 import "@al-ft/midgard-core/consensus-profile";
@@ -9,6 +8,7 @@ import "@al-ft/midgard-sdk";
 import "@lucid-evolution/lucid";
 import "@noble/hashes/blake2.js";
 import "@noble/hashes/utils.js";
+import "midgard-node/tests/helpers/derived-da-deployment-info";
 import "../../src/l1/deployment.js";
 import "./deployment-fixture.build-canonical-fraud-proof-catalogue-fixture.js";
 import "./deployment-fixture.build-da-deployment-fixture.js";

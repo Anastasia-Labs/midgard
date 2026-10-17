@@ -10,6 +10,7 @@ import {
   isolatedForksPool,
   midgardSourceEnvironments,
   rawSqlLoaderPlugin,
+  runSharedFixturesGlobalSetup,
   workspaceBundleProjects,
 } from "@al-ft/midgard-test-support/vitest";
 import { defineConfig } from "vitest/config";
@@ -58,7 +59,13 @@ export default defineConfig({
               "./tests/fault-proofs/follower-validation-dispute-journey.test.ts",
               "./tests/fault-proofs/follower-validation-source-award-journey.test.ts",
             ],
-            globalSetup: [blueprintStampGlobalSetup],
+            // The node initialization frame the origin fixtures replay is
+            // derived from the blueprint once per run. The interactive
+            // project reads another blueprint, so it never derives one.
+            globalSetup: [
+              blueprintStampGlobalSetup,
+              runSharedFixturesGlobalSetup,
+            ],
           },
         },
         { packageDirectory: fileURLToPath(new URL(".", import.meta.url)) },
