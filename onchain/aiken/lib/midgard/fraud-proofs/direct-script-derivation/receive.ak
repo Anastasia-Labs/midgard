@@ -119,14 +119,15 @@ pub fn admit_output_v1(
   credential: Option<ByteArray>,
   witness: OutputWitnessV1,
 ) -> Pair<ByteArray, Int> {
-  expect output_index >= 0
+  // The output index is a resumed walk checkpoint's next item index, which
+  // decode_field_walk_checkpoint already holds non-negative; the credential is
+  // the 28-byte payment hash of a 29- or 57-byte decoded Midgard address.
   when credential is {
     None -> {
       expect witness == NoCredential
       Pair(root, credential_count)
     }
-    Some(script_hash) -> {
-      expect bytearray.length(script_hash) == 28
+    Some(script_hash) ->
       when witness is {
         NoCredential -> fail
         FirstCredential { proof } -> {
@@ -152,7 +153,6 @@ pub fn admit_output_v1(
           Pair(root, credential_count)
         }
       }
-    }
   }
 }
 

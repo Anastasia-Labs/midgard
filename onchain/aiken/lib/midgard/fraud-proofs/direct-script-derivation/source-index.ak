@@ -35,15 +35,11 @@ fn is_input_v1(source: SourceV1) -> Bool {
 
 /// Two same-hash candidates form a two-entry physical frontier. `left`
 /// precedes when it sits at the physical slot the lookup visits first.
-pub fn priority_precedes_v1(left: SourceV1, right: SourceV1) -> Bool {
-  expect and {
-      bytearray.length(left.script_hash) == 28,
-      left.script_hash == right.script_hash,
-      left.item_index >= 0,
-      right.item_index >= 0,
-      left.field_index == 6 || is_input_v1(left),
-      right.field_index == 6 || is_input_v1(right),
-    }
+/// Only `admit_v1` calls this: it has already checked the candidate's hash
+/// length, item index and field, and the equal script hash; the previous
+/// source passed the same checks when it entered the map, and its map
+/// membership is proven on either branch of the comparison.
+fn priority_precedes_v1(left: SourceV1, right: SourceV1) -> Bool {
   // Physical frontier of the pair: inline entries first, each class in its
   // own physical order (item order inline, canonical out-ref order resolved).
   let (left_slot, inline_count) = when
