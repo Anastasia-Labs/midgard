@@ -11,7 +11,7 @@ import {
   type UTxO,
 } from "@lucid-evolution/lucid";
 
-import { VAN_ROSSEM_PUBLICATION_TARGET_BYTES } from "../../../src/proof-fit/van-rossem-fit-ledger.js";
+import { VAN_ROSSEM_PUBLICATION_TARGET_BYTES } from "../../../src/proof-fit/van-rossem.js";
 import { FRAUD_PROOF_DEPLOYMENT_ENTRIES_BY_CATEGORY } from "../../../src/runtime.js";
 import { network } from "./blueprints.js";
 import {

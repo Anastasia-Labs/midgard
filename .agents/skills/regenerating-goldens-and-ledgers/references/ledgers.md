@@ -1,8 +1,9 @@
-# Script budgets and fit ledgers
+# Script budgets and Van Rossem fit
 
-A fit ledger records a measured cost, not a derived value, so "regenerate"
-means "measure again". The measurement is only as good as the tree and compiler
-it ran on.
+Neither execution cost nor Van Rossem fit is committed as a reading. Execution
+costs are held to ceilings, and fit is checked as each transaction is
+submitted, so a change that makes a script cheaper or smaller needs no edit
+here.
 
 ## Script budgets
 
@@ -47,47 +48,13 @@ ceilings through `scriptBudget()` (the native-script scan planner and the
 tx-order mint estimator), so changing one of those moves a production cost:
 run the consumer's tests in the same change [review].
 
-## Fit ledgers
+## Van Rossem fit has no ledger
 
-`docs/fault-proofs/size-plans/*-fit-ledger.json` (45 tracked files) record
-Van Rossem fit measurements. Each is stamped with the `blueprintSha256` and
-`compilerVersion` it was measured against.
-[`docs/fault-proofs/size-plans/README.md`](../../../../docs/fault-proofs/size-plans/README.md)
-is the authority. Its rules:
-
-- The `*-fit-ledger.test.ts` readers were removed on 2026-09-09. Most of these
-  files are recorded evidence and writer outputs. Nothing compares them with
-  the current build. `verifyMeasuredFitLedger`
-  (`demo/midgard-fault-proofs/tests/support/measured-fit-ledger.ts:85`) would,
-  but as of 2026-09-25 it has no caller.
-- Two ledgers are still held to the current build:
-  `transition-trace-forced-window-fit-ledger.json` (transition subvariants
-  suite) and `transition-trace-workflow-fit-ledger.json` (installed
-  transition-trace lifecycle suite). Each suite requires the recorded
-  `blueprintSha256` to equal the SHA-256 of the current blueprint, and the
-  scenario and row roster to equal a fresh run's; the budgets themselves may
-  differ (`demo/midgard-fault-proofs/tests/support/pinned-fit-ledger.ts`)
-  [ci: Midgard Node CI/Test fault-proof tooling]. Any
-  change that moves blueprint bytes makes both stale.
-- Regenerate against a freshly built blueprint with
-  `pnpm --dir demo/midgard-fault-proofs fit:regenerate <ledger>` (or `--all`;
-  `--list` shows each ledger's owning test files). It finds the owning files
-  in the test sources, runs exactly those under `MIDGARD_WRITE_FIT_LEDGER=1`
-  with a fragment directory and run token it makes for the run, and keeps the
-  ledger only if every owning file passed and rewrote it; otherwise it puts
-  the ledger back and exits 1. It sets `MIDGARD_FIT_FRAGMENT_DIR` and
-  `MIDGARD_FIT_MEASUREMENT_RUN` itself. Thirteen checked-in ledgers have no
-  suite writer, and the command refuses each with the reason
-  (`LEDGERS_WITHOUT_SUITE_WRITER` in
-  `demo/midgard-fault-proofs/scripts/fit-ledger-owners.mjs`)
-  [ci: Midgard Node CI/Test the fit-ledger regeneration script].
-- Without the flag the writer throws `FitLedgerWriteRefusedError` for every
-  checked-in ledger, so no ledger changes; only the caller-named outputs
-  (`MIN_ADA_FIT_LEDGER_PATH`, `TRANSITION_TRACE_FIT_LEDGER_PATH`) write without
-  it [runtime: writeVanRossemFitLedger].
-- Never replace a blueprint digest without re-measuring the transactions. A
-  digest edited by hand makes an old measurement claim a new build [review].
-- Do not recommit a historical report just because a test run rewrote it.
-
-Example of a real re-pin: `1d85e6db3` (2026-09-12), "Re-pin the
-transition-trace forced-window fit ledger to the decision 0007 blueprint".
+There are no fit ledgers. Every transaction a fault-proof emulator test submits
+is held to the Van Rossem limits (16,384 signed bytes, 16.5M memory, 10G CPU)
+at submission, and a publication (zero execution units) to the 15,872-byte
+publication target, by the suite's submit guard
+(`demo/midgard-fault-proofs/tests/support/emulator/van-rossem-submit-guard.ts`,
+limits in `demo/midgard-fault-proofs/src/proof-fit/van-rossem.ts`). A
+transaction over a limit fails the test that submitted it, naming the axis and
+the negative margin. There is nothing to regenerate.

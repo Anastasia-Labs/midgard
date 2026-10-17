@@ -3,7 +3,7 @@
  *
  * Test helpers observe real objects by wrapping one of their methods: the
  * raw-L1 recorder wraps `Emulator.prototype.submitTx` to keep the signed bytes
- * the real emulator accepted, and a fit-ledger measurement wraps the same
+ * the real emulator accepted, and the Van Rossem submit guard wraps the same
  * method to size every transaction. Both must see every real call, so their
  * wrappers have to compose.
  *

@@ -120,6 +120,9 @@ is stated next to it.
 7. **Never raise transaction limits to make a family fit.** Emulator tests run
    at `VAN_ROSSEM_TRANSACTION_LIMITS` (16,384 bytes, 16.5M memory, 10G steps,
    `tests/support/emulator/protocol-parameters.ts`). Split the family instead.
+   The suite's submit guard (`tests/support/emulator/van-rossem-submit-guard.ts`)
+   refuses any emulator submission over those limits, and a publication over
+   the 15,872-byte target, so a family's emulator tests are its fit proof.
    [ci: Midgard Node CI/Test fault-proof tooling]
    The test "finds no positive limit escape across the fault-proof TypeScript
    surface" (`tests/wave0-shared-substrate.test.ts:130`) scans only

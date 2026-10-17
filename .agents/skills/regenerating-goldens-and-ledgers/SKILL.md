@@ -1,6 +1,6 @@
 ---
 name: regenerating-goldens-and-ledgers
-description: Use when a change touches a cross-language golden (`*.generated.json`, `*-golden.test.ak`, Aiken constants a generator rebinds), a script budget (`script-budgets.json`) or fit ledger, a deployment profile or `onchain/aiken/env/*.ak`, `docs/consensus-profile-v1.md`, or any source those are generated from (midgard-core, midgard-sdk, midgard-validation, lucid-midgard, Aiken types a golden imports); when a `fixtures:*:check`, `docs:*:check`, `deployment:check` or script-budget step fails; when adding a new generator; or before building or committing `onchain/aiken/plutus.json`.
+description: Use when a change touches a cross-language golden (`*.generated.json`, `*-golden.test.ak`, Aiken constants a generator rebinds), a script budget (`script-budgets.json`), a deployment profile or `onchain/aiken/env/*.ak`, `docs/consensus-profile-v1.md`, or any source those are generated from (midgard-core, midgard-sdk, midgard-validation, lucid-midgard, Aiken types a golden imports); when a `fixtures:*:check`, `docs:*:check`, `deployment:check` or script-budget step fails; when adding a new generator; or before building or committing `onchain/aiken/plutus.json`.
 ---
 
 # Regenerating goldens and ledgers
@@ -36,8 +36,8 @@ that a reader would miss.
 
    Done when the script exits 0 and you have its channel list.
 
-2. **Build the blueprint if a listed channel reads it** (the fit ledgers and
-   the blueprint-bound fixtures). See [The blueprint](#the-blueprint).
+2. **Build the blueprint if a listed channel reads it** (the blueprint-bound
+   fixtures). See [The blueprint](#the-blueprint).
 
 3. **Run each listed check, in the order printed.** The order puts producers
    before consumers (lucid fixtures before `native-compact-aiken`, profiles
@@ -59,8 +59,7 @@ that a reader would miss.
    `node scripts/contrib.mjs artifacts sync --channel <id>` for executable
    channels: it generates and checks in a disposable checkout before applying
    an allowlisted packet. A manual channel retains its printed owner recipe.
-   Re-run the check; it must pass with no further edits. For fit ledgers, triage
-   the drift before re-taking: [references/ledgers.md](references/ledgers.md). [review]
+   Re-run the check; it must pass with no further edits.
 
 6. **When you add or move a generator, update the table.** Add a channel to
    `scripts/channels.json` (or an `ignored` entry with a reason if its output is
@@ -77,14 +76,13 @@ the source change that caused it.
 
 - **Never hand-edit a generated artifact.** That covers whole generated modules,
   rebound constants, `*.generated.json`, the generated block of
-  `docs/consensus-profile-v1.md`, `onchain/aiken/env/*.ak`,
-  `generated-deployment-profiles.ts` and fit-ledger rows
+  `docs/consensus-profile-v1.md`, `onchain/aiken/env/*.ak` and
+  `generated-deployment-profiles.ts`
   [ci: Midgard Node CI/Check native V1 field-access golden vectors] and the
   sibling check steps listed in [references/channels.md](references/channels.md).
   Blind spot: channels whose check has no CI step (`transaction-root-v1`,
-  `validation-one-step-cross-language`, most fit ledgers, the watcher fixture,
-  the benchmark fixtures) accept a hand edit silently; only a reader catches
-  those.
+  `validation-one-step-cross-language`, the watcher fixture, the benchmark
+  fixtures) accept a hand edit silently; only a reader catches those.
 - **Commit the source change and the regenerated output together** [review].
   CI catches a split commit only for channels whose check it runs, and only on
   the pull request's final state.
@@ -139,7 +137,7 @@ last ran. It is not tracked and, as of 2026-09-25, not gitignored.
   runs where it is enabled (`make enable-git-hooks`), and
   `MIDGARD_SKIP_HOOKS=1` skips it.
 - **Build it fresh, with the pinned fork, before anything that reads it**:
-  fit ledgers, the DA deployment fixture, the watcher initialization fixture,
+  the DA deployment fixture, the watcher initialization fixture,
   fault-proof and node suites. `pnpm --dir demo run deployment:build preprod-testing`
   regenerates the profiles, refuses any compiler other than the pinned fork,
   runs `aiken build --env preprod_testing`, and records the blueprint hash in
@@ -185,11 +183,8 @@ later checks pass.
   channel's outputs, commands, CI step or blind spots, or when the script lists
   a channel you have not seen before.
 - [references/ledgers.md](references/ledgers.md): read this when a script
-  budget fails, or a fit ledger is affected or red, before running
-  `fit:regenerate`.
+  budget fails or a submission fails the Van Rossem limits.
 - [config/deployments/README.md](../../../config/deployments/README.md): the
   authority for deployment profiles.
-- [docs/fault-proofs/size-plans/README.md](../../../docs/fault-proofs/size-plans/README.md):
-  the authority for fit ledgers.
 - [aiken-contract-build](../aiken-contract-build/SKILL.md): building and
   focused-checking the Aiken project.

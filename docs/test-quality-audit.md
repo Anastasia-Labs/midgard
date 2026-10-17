@@ -22,18 +22,14 @@ check the producer. An assertion comparing separate fields, saved data with a
 recomputed value, or a producer's output with its required property can fail
 when the producer or saved data is wrong. Do not conflate these cases.
 
-### 1.1 Fit-ledger provenance and integrity
+### 1.1 Fit evidence provenance and integrity
 
-There are 43 retained `*fit-ledger.json` files under
-`docs/fault-proofs/size-plans`. Their consumers split into 25 current-build/live
-comparison inputs and 18 saved self-consistency fixtures. The latter remain
-required test inputs; they are not fresh release evidence.
-
-Against the existing local `onchain/aiken/plutus.json`, these files contain 29
-distinct recorded blueprint digests and one matching digest. This is a local
-inventory comparison, not a fresh compilation or an assertion that every
-nonmatching historical fixture is defective. [TQ-01](test-quality/tq-01-blueprint-provenance.md)
-provides the measurement and consumer classification procedure.
+There are no fit ledger files: every fault-proof emulator submission is held to
+the Van Rossem limits when it is submitted
+([TQ-15](test-quality/tq-15-fit-evidence-consolidation.md)), so fit evidence is
+always measured on the current build.
+[TQ-01](test-quality/tq-01-blueprint-provenance.md) provides the measurement
+and consumer classification procedure for the saved artifacts that remain.
 
 A test comparing an artifact digest with a literal can detect a changed
 artifact, but cannot establish that it describes the current compiler output.
@@ -45,7 +41,7 @@ removed merely because the current builder enforces those invariants.
 Generation and verification must remain distinguishable: writing a fixture and
 then comparing against that just-written fixture does not verify its previous
 content. See [TQ-08](test-quality/tq-08-tautological-assertions.md) and
-[TQ-15](test-quality/tq-15-fit-ledger-consolidation.md).
+[TQ-15](test-quality/tq-15-fit-evidence-consolidation.md).
 
 ### 1.2 Corrected examples
 
@@ -189,17 +185,17 @@ can look duplicated while checking distinct behavior. See
 
 ### 7.1 Fit evidence and bounds
 
-The current tree has 22 `*-publication-fit.test.ts` files and 40
-`*-fit-ledger.test.ts` files. A saved publication row does not replace a test
-that builds, signs, and evaluates the current transaction. Consolidation must
-preserve a current producer and required consumer for every removed live check.
+The current tree has 12 `*-publication-fit.test.ts` files and no fit ledgers;
+the fault-proof suite's submit guard holds every emulator submission to the Van
+Rossem limits. A saved publication row does not replace a test that builds,
+signs, and evaluates the current transaction.
 
 The 16,384-byte ledger maximum and 15,872-byte publication target serve different
 purposes. So do protocol execution maxima and reserved execution budgets. Apply
 the governing requirement to each claim, not a uniform number chosen only for
 consistency. Build-from-literals and rebuild-from-stored describe workflows,
 not necessarily different schemas. See
-[TQ-15](test-quality/tq-15-fit-ledger-consolidation.md).
+[TQ-15](test-quality/tq-15-fit-evidence-consolidation.md).
 
 ## 8. Dead code and never-executed gates
 

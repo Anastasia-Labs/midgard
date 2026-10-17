@@ -8,7 +8,6 @@ import "effect";
 import "vitest";
 import "../src/committed-field-shape/submit-committed-field-shape-init.js";
 import "../src/field-item-width-illegal/index.js";
-import "../src/proof-fit/van-rossem-fit-ledger.js";
 import "../src/remove-fraudulent-block.js";
 import "../src/testing/complete-lifecycle.js";
 import "../src/transition-trace/witnesses.js";
@@ -29,9 +28,6 @@ import "./field-item-width-illegal-lifecycle.record.js";
 import "./field-item-width-illegal-lifecycle.make-harness.js";
 import "./field-item-width-illegal-lifecycle.forced-block.js";
 
-import { createHash } from "node:crypto";
-import { readFileSync } from "node:fs";
-
 import {
   acceptedVerdictSubject,
   forcedVerdictSubject,
@@ -39,10 +35,6 @@ import {
 import { describe, expect, it } from "vitest";
 
 import { type FieldItemWidthFinding } from "../src/field-item-width-illegal/index.js";
-import {
-  buildVanRossemFitLedger,
-  writeVanRossemFitLedger,
-} from "../src/proof-fit/van-rossem-fit-ledger.js";
 import { assertCompleteLifecycleCoverage } from "../src/testing/complete-lifecycle.js";
 import {
   acceptedBlock,
@@ -58,12 +50,9 @@ import {
   AUTHENTICATION_SEAMS,
   CANCELLABLE_STEPS,
   coverage,
-  ledgerPath,
-  measurements,
   REASON_ARM,
   record,
 } from "./field-item-width-illegal-lifecycle.record.js";
-import { realBlueprintPath } from "./support/emulator/blueprints.js";
 import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
 import {
   boundaryLegalOutputShape,
@@ -94,27 +83,27 @@ describe("fieldItemWidthIllegal registered-chain lifecycle", () => {
     expect(legalEvidence.decisiveFaultHolds).toBe(false);
 
     const initialized = await h.init(setup.fraudulentBlockOutRef);
-    record("accepted-init", maximum.label, initialized.measurement);
+    record("accepted-init", initialized.measurement);
     const bound = await h.step01Accepted(
       initialized.result,
       evidence,
       maximumInclusion,
       setup.fraudulentBlockOutRef,
     );
-    record("accepted-step01", maximum.label, bound.measurement);
+    record("accepted-step01", bound.measurement);
     const authenticated = await h.step02(
       bound.result.nextThreadOutRef,
       evidence,
       maximum,
     );
     expect(authenticated.result.carriageTier).toBe("Certified");
-    recordCarriage("accepted", maximum.label, authenticated, 3);
+    recordCarriage("accepted", authenticated, 3);
     const proven = await h.step03(
       authenticated.result.nextThreadOutRef,
       evidence,
     );
     expect(proven.result.fraudProofUnit).toBeTruthy();
-    record("accepted-step03-proof-mint", maximum.label, proven.measurement);
+    record("accepted-step03-proof-mint", proven.measurement);
     coverage.reason(REASON_ARM, "accepted_invalid");
     coverage.scenario("wrongful_acceptance_success");
     coverage.scenario("maximum_supported_evidence");
@@ -122,7 +111,6 @@ describe("fieldItemWidthIllegal registered-chain lifecycle", () => {
     const cancelAt01 = await h.init(setup.fraudulentBlockOutRef);
     record(
       "accepted-cancel-step01",
-      maximum.label,
       (await h.cancel(h.threadOf(cancelAt01.result), 0)).measurement,
     );
     const cancelAt02 = await h.step01Accepted(
@@ -133,7 +121,6 @@ describe("fieldItemWidthIllegal registered-chain lifecycle", () => {
     );
     record(
       "accepted-cancel-step02",
-      maximum.label,
       (await h.cancel(cancelAt02.result.nextThreadOutRef, 1)).measurement,
     );
     const cancelAt03 = await h.step02(
@@ -150,7 +137,6 @@ describe("fieldItemWidthIllegal registered-chain lifecycle", () => {
     );
     record(
       "accepted-cancel-step03",
-      maximum.label,
       (await h.cancel(cancelAt03.result.nextThreadOutRef, 2)).measurement,
     );
 
@@ -255,11 +241,7 @@ describe("fieldItemWidthIllegal registered-chain lifecycle", () => {
     await h.cancel(honest.result.nextThreadOutRef, 2);
 
     // Removal last: it consumes the fraudulent block every thread above bound.
-    record(
-      "accepted-remove",
-      maximum.label,
-      (await h.removal(setup.headerHash)).measurement,
-    );
+    record("accepted-remove", (await h.removal(setup.headerHash)).measurement);
   }, 600_000);
 
   it("convicts an accepted empty mint-policy item through inline carriage, refuses substituted field bytes and the honest non-empty item, then mints and removes", async () => {
@@ -275,27 +257,27 @@ describe("fieldItemWidthIllegal registered-chain lifecycle", () => {
     expect(evidence.decisiveFaultHolds).toBe(true);
 
     const initialized = await h.init(setup.fraudulentBlockOutRef);
-    record("accepted-mint-init", empty.label, initialized.measurement);
+    record("accepted-mint-init", initialized.measurement);
     const bound = await h.step01Accepted(
       initialized.result,
       evidence,
       inclusion,
       setup.fraudulentBlockOutRef,
     );
-    record("accepted-mint-step01", empty.label, bound.measurement);
+    record("accepted-mint-step01", bound.measurement);
     const authenticated = await h.step02(
       bound.result.nextThreadOutRef,
       evidence,
       empty,
     );
     expect(authenticated.result.carriageTier).toBe("Inline");
-    recordCarriage("accepted-mint", empty.label, authenticated, 0);
+    recordCarriage("accepted-mint", authenticated, 0);
     const proven = await h.step03(
       authenticated.result.nextThreadOutRef,
       evidence,
     );
     expect(proven.result.fraudProofUnit).toBeTruthy();
-    record("accepted-mint-step03-proof-mint", empty.label, proven.measurement);
+    record("accepted-mint-step03-proof-mint", proven.measurement);
     coverage.reason(REASON_ARM, "accepted_invalid");
     coverage.scenario("wrongful_acceptance_success");
     // Inline carriage exposes the bytes themselves: one flipped byte breaks
@@ -352,7 +334,6 @@ describe("fieldItemWidthIllegal registered-chain lifecycle", () => {
 
     record(
       "accepted-mint-remove",
-      empty.label,
       (await h.removal(setup.headerHash)).measurement,
     );
   }, 600_000);
@@ -420,7 +401,7 @@ describe("fieldItemWidthIllegal registered-chain lifecycle", () => {
     await forcedHonestRefusal(emptyMintItemShape());
   }, 600_000);
 
-  it("closes the coverage gate and the Van Rossem fit ledger", async () => {
+  it("closes the coverage gate", () => {
     assertCompleteLifecycleCoverage({
       coverage: coverage.snapshot(),
       expectedReasonArms: [REASON_ARM],
@@ -429,30 +410,5 @@ describe("fieldItemWidthIllegal registered-chain lifecycle", () => {
       resumable: false,
       hasAdjacentConsensusBound: true,
     });
-    const blueprintBytes = readFileSync(realBlueprintPath);
-    const ledger = buildVanRossemFitLedger({
-      category: "fieldItemWidthIllegal:00000021:testnet",
-      blueprintSha256: createHash("sha256")
-        .update(blueprintBytes)
-        .digest("hex"),
-      measurements,
-    });
-    for (const entry of ledger.entries) {
-      expect(entry.signedByteMargin, entry.name).toBeGreaterThan(0);
-      expect(BigInt(entry.memoryUnitMargin), entry.name).toBeGreaterThan(0n);
-      expect(BigInt(entry.cpuUnitMargin), entry.name).toBeGreaterThan(0n);
-      if (entry.kind === "publication")
-        expect(
-          entry.publicationReserveMargin,
-          entry.name,
-        ).toBeGreaterThanOrEqual(0);
-    }
-    if (process.env.MIDGARD_WRITE_FIT_LEDGER === "1") {
-      await writeVanRossemFitLedger(ledgerPath, ledger);
-      console.info(`[field-item-width-illegal-fit-ledger] wrote ${ledgerPath}`);
-    }
-    console.info(
-      `[field-item-width-illegal-fit-ledger] ${JSON.stringify(ledger.entries)}`,
-    );
   });
 });

@@ -81,7 +81,11 @@ const generatorPatterns = [
   "**/scripts/write-*",
 ];
 
-const ledgerPatterns = ["docs/fault-proofs/size-plans/*-fit-ledger.json"];
+// Both kinds are gone; a new file of either shape is flagged as unclaimed.
+const ledgerPatterns = [
+  "docs/fault-proofs/size-plans/*-fit-ledger.json",
+  "onchain/aiken/scripts/*-exec-ledger-*.json",
+];
 
 const generatedNamePatterns = [
   "**/*.generated.*",

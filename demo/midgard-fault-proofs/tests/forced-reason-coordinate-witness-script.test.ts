@@ -90,7 +90,7 @@ const setupScenario = async (offset: bigint) => {
     Number(index),
   );
   const bound = await h.step01Forced(
-    await h.init(forced.setup.fraudulentBlockOutRef, null, shape.label),
+    await h.init(forced.setup.fraudulentBlockOutRef, null),
     forced,
     evidence.finding.witnessSetHash,
     index,
@@ -105,15 +105,10 @@ describe("forced WitnessNativeScriptMalformed coordinate the node writes", () =>
     expect(evidence.resultClass).toBe(
       WitnessScriptDecodingResultClasses.NoFault,
     );
-    const closed = await h.scanToClose(
-      opened.nextThreadOutRef,
-      evidence,
-      null,
-      shape.label,
-    );
-    await h.step04(closed.threadOutRef, evidence, null, shape.label);
+    const closed = await h.scanToClose(opened.nextThreadOutRef, evidence, null);
+    await h.step04(closed.threadOutRef, evidence, null);
     await h.expectThreadsGone(forced.setup.headerHash);
-    await h.remove(forced.setup.headerHash, null, shape.label);
+    await h.remove(forced.setup.headerHash, null);
   }, 600_000);
 
   it("refuses the written coordinate on chain", async () => {
