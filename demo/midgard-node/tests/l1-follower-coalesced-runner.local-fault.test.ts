@@ -49,7 +49,9 @@ const faulted = (block: string): readonly DriverHold[] => [
 
 /** A run free of the fault, still held (a wait) so the runner retries it. */
 const waiting = (block: string): readonly DriverHold[] => [
-  combineHolds([replayOutcomeHold("missing", `block ${block}: no DA yet`)])!,
+  combineHolds([
+    replayOutcomeHold("missing", `block ${block}: no DA yet`, block),
+  ])!,
 ];
 
 /** A run the database did not answer: a transient failure. */

@@ -198,17 +198,18 @@ const HOLD_OF = {
  * backoff; `invalid` (a verdict) and `incomplete` (a failure the replay
  * cannot classify, so not known to be transient) are `notRetried`. A
  * `verifier_unavailable` (this node's verifier could not answer) is a
- * `localFault` on block `headerHash`: retried, within the runner's bound.
+ * `localFault` on block `headerHash`, the block it stopped at, whatever the
+ * fault's text: retried, within the runner's bound.
  */
 export const replayOutcomeHold = (
   kind: keyof typeof HOLD_OF,
   detail: string,
-  headerHash?: string,
+  headerHash: string,
 ): DriverHold => {
   const hold: DriverHold = { reason: HOLD_OF[kind], detail };
   return kind === "invalid" || kind === "incomplete"
     ? notRetried(hold)
     : kind === "verifier_unavailable"
-      ? localFault(hold, headerHash ?? detail)
+      ? localFault(hold, headerHash)
       : hold;
 };

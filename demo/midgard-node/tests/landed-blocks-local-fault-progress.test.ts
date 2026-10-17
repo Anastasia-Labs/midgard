@@ -2,9 +2,9 @@
  * Processing's report of the blocks it commits (`ProcessOptions.committed`),
  * which the follower feeds to the coalesced runner's local-fault bound, on
  * the node database: a block held on a verifier fault is not reported and
- * its hold is a local fault on its header hash; once the fault clears and
- * processing commits the block, it is reported, and the runner's progress
- * watching that block says it passed.
+ * its hold is a local fault on its header hash, whatever the fault's text;
+ * once the fault clears and processing commits the block, it is reported,
+ * and the runner's progress watching that block says it passed.
  */
 import "./utils.js";
 
@@ -52,8 +52,15 @@ describe("processing reports the blocks it commits", () => {
         progress.watch([localFaultSubject(held!)!]);
         expect(progress.passed()).toBe(false);
 
-        // Still faulted: no progress past the block.
-        yield* process([a, f]);
+        // Still faulted, with another text: the same subject, and no
+        // progress past the block.
+        state.replayEnds = Effect.succeed({
+          kind: "verifier_unavailable",
+          detail: "LedgerSignatureVerifierUnavailableError: raised again",
+        } as const);
+        const again = yield* process([a, f]);
+        expect(again?.detail).not.toBe(held?.detail);
+        expect(localFaultSubject(again!)).toBe(f.hash);
         expect(committed).toEqual([a.hash]);
         expect(progress.passed()).toBe(false);
 
