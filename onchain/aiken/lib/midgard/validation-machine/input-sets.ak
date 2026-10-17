@@ -104,7 +104,6 @@ fn input_sets_item_successor_is_exact(
             0,
             0,
             #"",
-            #"",
             0,
             [],
             -1,

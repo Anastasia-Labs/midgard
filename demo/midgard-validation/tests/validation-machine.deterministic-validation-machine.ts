@@ -1625,7 +1625,7 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
       trace.witnesses
         .filter((witness) => witness.phase === "signatures")
         .map((witness) => witness.auxiliary?.kind ?? null),
-    ).toEqual(["transactionFieldChunk", null]);
+    ).toEqual(["transactionFieldItem", null]);
     expect(
       validateBoundaryAbiAndCollectAuxiliaryKinds(trace).maxArgumentsBytes,
     ).toBeLessThan(16 * 1024);
@@ -1674,9 +1674,9 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
     );
     expect(
       signatureWitnesses.map((witness) => witness.auxiliary?.kind ?? null),
-    ).toEqual(["transactionFieldChunk", "requiredSignerItem", null]);
+    ).toEqual(["transactionFieldItem", "requiredSignerItem", null]);
     expect(signatureWitnesses[0]?.auxiliary).toMatchObject({
-      kind: "transactionFieldChunk",
+      kind: "transactionFieldItem",
       ...expectedFieldPlanInput(transaction.txCbor, 7),
     });
     expect(
@@ -1723,9 +1723,9 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
     );
     expect(
       signatureWitnesses.map((witness) => witness.auxiliary?.kind ?? null),
-    ).toEqual(["transactionFieldChunk", "requiredSignerItem"]);
+    ).toEqual(["transactionFieldItem", "requiredSignerItem"]);
     expect(signatureWitnesses[0]?.auxiliary).toMatchObject({
-      kind: "transactionFieldChunk",
+      kind: "transactionFieldItem",
       ...expectedFieldPlanInput(transaction.txCbor, 7),
     });
     expect(

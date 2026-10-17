@@ -537,7 +537,6 @@ pub type SignaturesControlV1 {
   required_count: Int,
   address_seen: Int,
   required_seen: Int,
-  previous_order_key: ByteArray,
   previous_signer_hash: ByteArray,
   signer_count: Int,
   signer_peaks: List<validation_merkle_v1.FrontierPeak>,

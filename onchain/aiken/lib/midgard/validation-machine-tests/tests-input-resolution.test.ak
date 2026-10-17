@@ -310,7 +310,6 @@ test signatures_accepts_an_empty_required_signer_and_witness_set() {
     0,
     0,
     #"",
-    #"",
     signer_frontier,
     -1,
   )
@@ -330,7 +329,6 @@ test signatures_accepts_an_empty_required_signer_and_witness_set() {
     0,
     0,
     0,
-    #"",
     #"",
     signer_frontier,
     -1,
@@ -458,7 +456,6 @@ test signatures_proves_a_missing_required_signer_is_an_exact_no_op() {
     0,
     0,
     #"",
-    #"",
     signer_frontier,
     -1,
   )
@@ -534,7 +531,6 @@ test signatures_proves_an_invalid_address_signature_is_an_exact_no_op() {
     1,
     0,
     #"",
-    #"",
     signer_frontier,
     0,
   )
@@ -559,8 +555,6 @@ test signatures_proves_an_invalid_address_signature_is_an_exact_no_op() {
         claimed_successor: required_pre,
       },
       inline_field_door(),
-      7,
-      0,
       carriage,
     ),
     vm_signatures.verify_signatures_advance_semantics_v1(
@@ -1564,131 +1558,40 @@ test resolve_inputs_finalizes_into_script_source_resolution() {
   )
 }
 
-test signatures_refuses_an_alternative_authentic_first_choice() {
-  let base = empty_v1_transaction()
-  let first = MidgardAddressWitness {
-    verification_key: h_a,
-    signature: zero |> bytearray.concat(zero),
+/// The signer leaves of `addresses`, one per run of equal signers (field 7 is
+/// in (signer, bytes) order, so a signer's items are adjacent).
+fn cursor_signer_leaves(
+  addresses: List<MidgardAddressWitness>,
+  previous: ByteArray,
+) -> List<ByteArray> {
+  when addresses is {
+    [] -> []
+    [address, ..rest] -> {
+      let signer = blake2b_224(address.verification_key)
+      if signer == previous {
+        cursor_signer_leaves(rest, previous)
+      } else {
+        [
+          script_proof_v1.signer_leaf_hash(signer),
+          ..cursor_signer_leaves(rest, signer)
+        ]
+      }
+    }
   }
-  let second = MidgardAddressWitness {
-    verification_key: zero,
-    signature: zero |> bytearray.concat(zero),
-  }
-  let tx = MidgardTransaction {
-    ..base,
-    witness_set: MidgardTransactionWitnessSet {
-      ..base.witness_set,
-      addr_tx_wits: [first, second],
-    },
-  }
-  let Pair(pre, work_witness_cbor) = signatures_step_fixture(tx, h_a)
-  let bytes = encode_midgard_address_witness(second)
-  let signer_hash = blake2b_224(second.verification_key)
-  let frontier = validation_merkle_v1.build_frontier(
-    [script_proof_v1.signer_leaf_hash(signer_hash)],
-  )
-  let next = signatures_scan_witness(
-    tx,
-    0,
-    2,
-    0,
-    1,
-    0,
-    signer_hash
-      |> bytearray.concat(bytes)
-      |> bytearray.concat(cbor.serialise(1)),
-    signer_hash,
-    frontier,
-    1,
-  )
-  let post = validation_trace_v1.ValidationMachineStateV1 {
-    ..pre,
-    program_counter: pre.program_counter + 1,
-    work_root: validation_trace_v1.hash_work_witness(
-      validation_trace_v1.Signatures,
-      pre.program_counter + 1,
-      next,
-    ),
-  }
-  !vm_signatures.verify_signature_address_item_semantics_v1(
-    pre,
-    vm_machine_types.ValidationOneStepWitnessV1 {
-      work_witness_cbor,
-      claimed_successor: post,
-    },
-    inline_field_door(),
-    7,
-    1,
-    inline_field_carriage([encode_midgard_address_witness(first), bytes]),
-  )
 }
 
-test signatures_accepts_the_authentic_minimum_at_reordered_physical_index() {
+/// One Signatures address step over field 7 = `addresses`, from the control
+/// after `seen` items to a claimed successor that consumed item `opened`.
+/// Every fixture signature is invalid, so the first invalid witness index is
+/// `pre_invalid` when set, else the consumed item's field-7 position.
+fn signatures_cursor_row(
+  addresses: List<MidgardAddressWitness>,
+  seen: Int,
+  pre_invalid: Int,
+  opened: Int,
+  post_invalid: Int,
+) -> Bool {
   let base = empty_v1_transaction()
-  let first = MidgardAddressWitness {
-    verification_key: zero,
-    signature: zero |> bytearray.concat(zero),
-  }
-  let second = MidgardAddressWitness {
-    verification_key: h_a,
-    signature: zero |> bytearray.concat(zero),
-  }
-  let tx = MidgardTransaction {
-    ..base,
-    witness_set: MidgardTransactionWitnessSet {
-      ..base.witness_set,
-      addr_tx_wits: [first, second],
-    },
-  }
-  let Pair(pre, work_witness_cbor) = signatures_step_fixture(tx, h_a)
-  let bytes = encode_midgard_address_witness(second)
-  let signer_hash = blake2b_224(second.verification_key)
-  let frontier = validation_merkle_v1.build_frontier(
-    [script_proof_v1.signer_leaf_hash(signer_hash)],
-  )
-  let next = signatures_scan_witness(
-    tx,
-    0,
-    2,
-    0,
-    1,
-    0,
-    signer_hash
-      |> bytearray.concat(bytes)
-      |> bytearray.concat(cbor.serialise(1)),
-    signer_hash,
-    frontier,
-    1,
-  )
-  let post = validation_trace_v1.ValidationMachineStateV1 {
-    ..pre,
-    program_counter: pre.program_counter + 1,
-    work_root: validation_trace_v1.hash_work_witness(
-      validation_trace_v1.Signatures,
-      pre.program_counter + 1,
-      next,
-    ),
-  }
-  vm_signatures.verify_signature_address_item_semantics_v1(
-    pre,
-    vm_machine_types.ValidationOneStepWitnessV1 {
-      work_witness_cbor,
-      claimed_successor: post,
-    },
-    inline_field_door(),
-    7,
-    1,
-    inline_field_carriage([encode_midgard_address_witness(first), bytes]),
-  )
-}
-
-fn signatures_accepts_duplicate_index_boundary(count: Int, index: Int) -> Bool {
-  let base = empty_v1_transaction()
-  let address = MidgardAddressWitness {
-    verification_key: zero,
-    signature: zero |> bytearray.concat(zero),
-  }
-  let addresses = list.repeat(address, count)
   let tx = MidgardTransaction {
     ..base,
     witness_set: MidgardTransactionWitnessSet {
@@ -1696,25 +1599,29 @@ fn signatures_accepts_duplicate_index_boundary(count: Int, index: Int) -> Bool {
       addr_tx_wits: addresses,
     },
   }
-  let Pair(initial, _) = signatures_step_fixture(tx, h_a)
-  let bytes = encode_midgard_address_witness(address)
-  let signer_hash = blake2b_224(address.verification_key)
-  let prefix = signer_hash |> bytearray.concat(bytes)
-  let frontier = validation_merkle_v1.build_frontier(
-    [script_proof_v1.signer_leaf_hash(signer_hash)],
-  )
-  let work_witness_cbor = signatures_scan_witness(
-    tx,
-    0,
-    count,
-    0,
-    index,
-    0,
-    prefix |> bytearray.concat(cbor.serialise(index - 1)),
-    signer_hash,
-    frontier,
-    0,
-  )
+  let count = list.length(addresses)
+  let consumed = list.take(addresses, seen)
+  expect Some(opened_address) = list.at(addresses, opened)
+  let previous_signer = when list.last(consumed) is {
+    Some(address) -> blake2b_224(address.verification_key)
+    None -> #""
+  }
+  let Pair(initial, initial_witness_cbor) = signatures_step_fixture(tx, h_a)
+  let work_witness_cbor = if seen == 0 {
+    initial_witness_cbor
+  } else {
+    signatures_scan_witness(
+      tx,
+      0,
+      count,
+      0,
+      seen,
+      0,
+      previous_signer,
+      validation_merkle_v1.build_frontier(cursor_signer_leaves(consumed, #"")),
+      pre_invalid,
+    )
+  }
   let pre = validation_trace_v1.ValidationMachineStateV1 {
     ..initial,
     work_root: validation_trace_v1.hash_work_witness(
@@ -1723,17 +1630,27 @@ fn signatures_accepts_duplicate_index_boundary(count: Int, index: Int) -> Bool {
       work_witness_cbor,
     ),
   }
+  let next_consumed = list.concat(consumed, [opened_address])
   let next = signatures_scan_witness(
     tx,
-    0,
+    if seen + 1 == count {
+      1
+    } else {
+      0
+    },
     count,
     0,
-    index + 1,
+    seen + 1,
     0,
-    prefix |> bytearray.concat(cbor.serialise(index)),
-    signer_hash,
-    frontier,
-    0,
+    if seen + 1 == count {
+      #""
+    } else {
+      blake2b_224(opened_address.verification_key)
+    },
+    validation_merkle_v1.build_frontier(
+      cursor_signer_leaves(next_consumed, #""),
+    ),
+    post_invalid,
   )
   let post = validation_trace_v1.ValidationMachineStateV1 {
     ..pre,
@@ -1751,16 +1668,82 @@ fn signatures_accepts_duplicate_index_boundary(count: Int, index: Int) -> Bool {
       claimed_successor: post,
     },
     inline_field_door(),
-    7,
-    index,
     inline_field_carriage(list.map(addresses, encode_midgard_address_witness)),
   )
 }
 
-test signatures_preserves_duplicate_index_cbor_boundary_24() {
-  signatures_accepts_duplicate_index_boundary(318, 24)
+fn cursor_address(
+  key: ByteArray,
+  signature_head: ByteArray,
+) -> MidgardAddressWitness {
+  MidgardAddressWitness {
+    verification_key: key,
+    signature: signature_head |> bytearray.concat(zero),
+  }
 }
 
-test signatures_preserves_duplicate_index_cbor_boundary_256() {
-  signatures_accepts_duplicate_index_boundary(318, 256)
+// blake2b_224(h_a) < blake2b_224(zero), so [h_a key, zero key] is field 7 in
+// canonical order and [zero key, h_a key] is not.
+fn cursor_ascending_pair() -> List<MidgardAddressWitness> {
+  [cursor_address(h_a, zero), cursor_address(zero, zero)]
+}
+
+// One signer, three items in ascending signature bytes.
+fn cursor_one_signer_triple() -> List<MidgardAddressWitness> {
+  [
+    cursor_address(zero, zero),
+    cursor_address(zero, h_a),
+    cursor_address(zero, h_b),
+  ]
+}
+
+test signatures_cursor_order_premise() {
+  and {
+    bytearray.compare(blake2b_224(h_a), blake2b_224(zero)) == Less,
+    bytearray.compare(zero, h_a) == Less,
+    bytearray.compare(h_a, h_b) == Less,
+  }
+}
+
+test signatures_cursor_opens_the_item_at_address_seen() {
+  signatures_cursor_row(cursor_ascending_pair(), 0, -1, 0, 0)
+}
+
+test signatures_refuses_an_alternative_authentic_first_choice() {
+  !signatures_cursor_row(cursor_ascending_pair(), 0, -1, 1, 1)
+}
+
+// Before the cursor this successor was accepted: the step took the least
+// (signer, bytes) key wherever it sat in field 7. It is now refused, so field
+// 7's wire order is no longer the prover's choice.
+test signatures_refuses_the_least_key_at_a_later_physical_index() {
+  let reordered = [cursor_address(zero, zero), cursor_address(h_a, zero)]
+  !signatures_cursor_row(reordered, 0, -1, 1, 1)
+}
+
+test signatures_cursor_opens_a_middle_item_and_keeps_one_signer_leaf() {
+  signatures_cursor_row(cursor_one_signer_triple(), 1, 0, 1, 0)
+}
+
+// The skip successor names item 2 as the first invalid witness; the cursor
+// derives item 1, so only the successor naming item 1 verifies.
+test signatures_cursor_refuses_skipping_a_middle_item() {
+  and {
+    signatures_cursor_row(cursor_one_signer_triple(), 1, -1, 1, 1),
+    !signatures_cursor_row(cursor_one_signer_triple(), 1, -1, 2, 2),
+  }
+}
+
+test signatures_cursor_completes_on_the_last_item() {
+  signatures_cursor_row(cursor_one_signer_triple(), 2, 0, 2, 0)
+}
+
+// I10: the AddressWitnessSignatureInvalid witness_index is the field-7
+// position of the first invalid item the cursor reaches.
+test signatures_cursor_names_the_first_invalid_witness_by_position() {
+  and {
+    signatures_cursor_row(cursor_one_signer_triple(), 1, -1, 1, 1),
+    !signatures_cursor_row(cursor_one_signer_triple(), 1, -1, 1, 0),
+    !signatures_cursor_row(cursor_one_signer_triple(), 1, -1, 1, 2),
+  }
 }

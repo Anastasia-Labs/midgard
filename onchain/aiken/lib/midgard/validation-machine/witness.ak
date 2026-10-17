@@ -222,7 +222,6 @@ pub fn encode_signatures_scan_witness(
   required_count: Int,
   address_seen: Int,
   required_seen: Int,
-  previous_order_key: ByteArray,
   previous_signer_hash: ByteArray,
   signer_count: Int,
   signer_peaks: List<validation_merkle_v1.FrontierPeak>,
@@ -243,7 +242,7 @@ pub fn encode_signatures_scan_witness(
   expect
     validation_merkle_v1.frontier_is_well_formed(signer_count, signer_peaks)
   expect first_invalid_witness_index >= -1
-  encode_definite_array_header(15)
+  encode_definite_array_header(14)
     |> bytearray.concat(encode_definite_bytes(compact_cbor))
     |> bytearray.concat(encode_definite_bytes(witness_set_compact_cbor))
     |> bytearray.concat(encode_definite_bytes(field_preimage_lengths_cbor))
@@ -254,7 +253,6 @@ pub fn encode_signatures_scan_witness(
     |> bytearray.concat(cbor.serialise(required_count))
     |> bytearray.concat(cbor.serialise(address_seen))
     |> bytearray.concat(cbor.serialise(required_seen))
-    |> bytearray.concat(encode_definite_bytes(previous_order_key))
     |> bytearray.concat(encode_definite_bytes(previous_signer_hash))
     |> bytearray.concat(cbor.serialise(signer_count))
     |> bytearray.concat(validation_merkle_v1.encode_frontier(signer_peaks))
@@ -844,8 +842,8 @@ pub fn signatures_control_from_witness(
         field_preimage_lengths_cbor_data, context_cbor_data,
         resolution_schedule_hash_data, stage_data, address_count_data,
         required_count_data, address_seen_data, required_seen_data,
-        previous_order_key_data, previous_signer_hash_data, signer_count_data,
-        signer_peaks_data, first_invalid_witness_index_data,
+        previous_signer_hash_data, signer_count_data, signer_peaks_data,
+        first_invalid_witness_index_data,
       ]
     = builtin.un_list_data(data)
   SignaturesControlV1 {
@@ -861,7 +859,6 @@ pub fn signatures_control_from_witness(
     required_count: builtin.un_i_data(required_count_data),
     address_seen: builtin.un_i_data(address_seen_data),
     required_seen: builtin.un_i_data(required_seen_data),
-    previous_order_key: builtin.un_b_data(previous_order_key_data),
     previous_signer_hash: builtin.un_b_data(previous_signer_hash_data),
     signer_count: builtin.un_i_data(signer_count_data),
     signer_peaks: decode_frontier_peaks(signer_peaks_data),
@@ -933,13 +930,11 @@ pub fn signatures_control_is_bound(
         control.required_seen == 0,
         if control.address_seen == 0 {
           and {
-            control.previous_order_key == #"",
             control.previous_signer_hash == #"",
             control.signer_count == 0,
           }
         } else {
           and {
-            bytearray.length(control.previous_order_key) > 0,
             bytearray.length(control.previous_signer_hash) == 28,
             control.signer_count > 0,
           }
@@ -948,7 +943,6 @@ pub fn signatures_control_is_bound(
     } else {
       and {
         address_complete,
-        control.previous_order_key == #"",
         control.previous_signer_hash == #"",
         if control.stage == 2 {
           required_complete
@@ -968,7 +962,6 @@ pub fn signatures_control_is_bound(
       control.required_count,
       control.address_seen,
       control.required_seen,
-      control.previous_order_key,
       control.previous_signer_hash,
       control.signer_count,
       control.signer_peaks,

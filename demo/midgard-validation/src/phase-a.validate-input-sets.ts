@@ -237,29 +237,17 @@ const verifyVKeyWitnessWithCml = (
 };
 
 /**
- * The signature scan's order: by order key, signer hash ‖ witness CBOR ‖
- * CBOR(item index). The key and signature have fixed widths, so comparing
- * the signer hash, key, signature and then index is that byte order.
+ * Reports the first invalid witness in field-7 order, which the Signatures
+ * cursor scans: the node refused field 7 at decode unless it is strictly
+ * ascending by (signer hash, item bytes).
  */
-const compareAddressWitnessOrder = (
-  left: MidgardLedgerVKeyWitness,
-  right: MidgardLedgerVKeyWitness,
-): number =>
-  Buffer.compare(left.keyHash, right.keyHash) ||
-  Buffer.compare(left.vkey, right.vkey) ||
-  Buffer.compare(left.signature, right.signature) ||
-  left.index - right.index;
-
-/** Reports the first invalid witness of the scan, in its order. */
 export const verifyVKeyWitnessSignatures = (
   tx: Pick<MidgardLedgerTx, "txId" | "vkeyWitnesses">,
   verifySignature: NonNullable<
     PhaseALocalContext["verifyVKeyWitnessSignature"]
   > = verifyVKeyWitnessWithCml,
 ): RejectedTx | null => {
-  for (const witness of [...tx.vkeyWitnesses].sort(
-    compareAddressWitnessOrder,
-  )) {
+  for (const witness of tx.vkeyWitnesses) {
     if (!verifySignature(tx.txId, witness)) {
       return reject(
         tx.txId,

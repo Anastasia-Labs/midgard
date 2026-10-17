@@ -151,11 +151,12 @@ describe("deterministic signature consume order", { timeout: 60_000 }, () => {
       for (let selected = 0; selected < count; selected += 1) {
         expect(Number(controls[selected]?.[5])).toBe(0);
         expect(Number(controls[selected]?.[8])).toBe(selected);
+        // The control's address_seen names the item; the witness does not.
         expect(signatures[selected]?.auxiliary).toMatchObject({
-          kind: "transactionFieldChunk",
+          kind: "transactionFieldItem",
           fieldIndex: 7,
-          itemIndex: selected,
         });
+        expect(signatures[selected]?.auxiliary).not.toHaveProperty("itemIndex");
       }
       expect(trace.verdict).toBe("accepted");
       let rawFieldCarriageBytes = 0;

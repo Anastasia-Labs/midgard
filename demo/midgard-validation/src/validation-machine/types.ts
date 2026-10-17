@@ -74,9 +74,8 @@ export type ValidationMachineWorkWitness = {
   readonly auxiliary:
     | {
         /**
-         * One item of one committed field, reached through §8's door. Nine of
-         * the machine's fifteen per-item sites match this arm, across all eight
-         * phases that read a field.
+         * One item of one committed field, reached through §8's door, at a
+         * site whose step names the field and the item.
          *
          * It used to carry a counted `(collectionProof, chunkProof)` pair
          * checked against the §4 flat field commitment — a predicate no honest
@@ -85,12 +84,10 @@ export type ValidationMachineWorkWitness = {
          * is, the door authenticates the whole preimage once against the flat
          * commitment, and the item is then a slice.
          *
-         * `fieldIndex` is on the wire because §4 removed field-index domain
-         * separation and two phases read more than one slot — `canonicalDecode`,
-         * which walks all nine from its own control, and `inputSets`, which
-         * alternates fields 0 and 1. `itemIndex` is on the wire because two
-         * sites let the prover choose the item order and the claimed successor
-         * pins it.
+         * `fieldIndex` and `itemIndex` are on the wire because §4 removed
+         * field-index domain separation; the step checks both against its own
+         * control. `inputSets` and `signatures` use `transactionFieldItem`
+         * instead: their controls fix the item, so the prover chooses neither.
          *
          * `fieldPreimage` is the plan input, not wire: it is replaced by the §8
          * carriage §8.4 admits for its length when the auxiliary is encoded
@@ -103,10 +100,11 @@ export type ValidationMachineWorkWitness = {
       }
     | {
         /**
-         * `canonicalDecode`'s complete-item step: one item read whole rather
-         * than chunk by chunk. Field index and item index come from the phase's
-         * control, so the carriage is the entire wire surface — `fieldIndex`
-         * here is the plan input's, never encoded (#600).
+         * One item read whole, where the phase's control fixes the field and
+         * the item: `canonicalDecode`'s complete-item step, the `inputSets`
+         * descending merge and the `signatures` field-7 cursor. The carriage is
+         * the entire wire surface — `fieldIndex` here is the plan input's,
+         * never encoded (#600).
          */
         readonly kind: "transactionFieldItem";
         readonly fieldIndex: number;

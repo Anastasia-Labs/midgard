@@ -50,7 +50,7 @@ export const validationSemanticResolverIndex = (
       if (auxiliary === null) {
         return scanStage(witness, "signatures_control") === 2 ? 3 : 0;
       }
-      if (auxiliary.kind === "transactionFieldChunk") return 1;
+      if (auxiliary.kind === "transactionFieldItem") return 1;
       if (auxiliary.kind === "requiredSignerItem") return 2;
       break;
     case "phaseANativeScripts": {

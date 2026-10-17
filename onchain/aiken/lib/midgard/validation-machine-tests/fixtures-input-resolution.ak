@@ -38,7 +38,6 @@ pub fn signatures_handoff_with_claimed_result(result: Int) -> Bool {
     0,
     0,
     #"",
-    #"",
     signer_frontier,
     -1,
   )

@@ -660,22 +660,11 @@ export const prepareValidationTrace = (
       };
     };
     // Later semantic items remain unread after a canonical terminal; exact source bytes stay committed.
+    // Signatures reads field 7 in physical order: CanonicalDecode has refused
+    // it unless it is strictly ascending by (signer hash, item bytes).
     const addressWitnessScanItems = (
       stopsAtCanonicalDecode ? [] : addressWitnessesCollection.items
-    )
-      .map((item) => {
-        const decoded = decodeAddressWitnessItem(item.bytes);
-        return {
-          item,
-          decoded,
-          orderKey: Buffer.concat([
-            decoded.signerHash,
-            item.bytes,
-            encodeCbor(BigInt(item.itemIndex)),
-          ]),
-        };
-      })
-      .sort((left, right) => Buffer.compare(left.orderKey, right.orderKey));
+    ).map((item) => ({ item, decoded: decodeAddressWitnessItem(item.bytes) }));
     const canonicalSignerHashes = addressWitnessScanItems
       .map(({ decoded }) => decoded.signerHash)
       .sort(Buffer.compare)
@@ -814,7 +803,6 @@ export const prepareValidationTrace = (
         BigInt(control.requiredCount),
         BigInt(control.addressSeen),
         BigInt(control.requiredSeen),
-        control.previousOrderKey,
         control.previousSignerHash,
         BigInt(control.signerFrontier.count),
         encodeFrontierPeaks(control.signerFrontier),
@@ -826,7 +814,6 @@ export const prepareValidationTrace = (
       requiredCount: requiredSignersCollection.items.length === 0 ? 0 : -1,
       addressSeen: 0,
       requiredSeen: 0,
-      previousOrderKey: Buffer.alloc(0),
       previousSignerHash: Buffer.alloc(0),
       signerFrontier: emptyValidationFrontier,
       firstInvalidWitnessIndex: -1,
@@ -1495,21 +1482,17 @@ export const prepareValidationTrace = (
           index += 1
         ) {
           const scan = addressWitnessScanItems[index]!;
-          pushSignatureWitness({
-            kind: "transactionFieldChunk",
-            fieldIndex: MIDGARD_ADDRESS_WITNESSES_FIELD_INDEX,
-            itemIndex: scan.item.itemIndex,
-            fieldPreimage: fieldPreimage(MIDGARD_ADDRESS_WITNESSES_FIELD_INDEX),
-          });
-          if (
-            signatureControl.previousOrderKey.length > 0 &&
-            Buffer.compare(signatureControl.previousOrderKey, scan.orderKey) >=
-              0
-          ) {
+          // The cursor opens the item at `addressSeen`.
+          if (scan.item.itemIndex !== signatureControl.addressSeen) {
             return yield* Effect.fail(
-              new Error("address-witness scan is not strictly ordered"),
+              new Error("address-witness scan left physical order"),
             );
           }
+          pushSignatureWitness({
+            kind: "transactionFieldItem",
+            fieldIndex: MIDGARD_ADDRESS_WITNESSES_FIELD_INDEX,
+            fieldPreimage: fieldPreimage(MIDGARD_ADDRESS_WITNESSES_FIELD_INDEX),
+          });
           const newSigner = !scan.decoded.signerHash.equals(
             signatureControl.previousSignerHash,
           );
@@ -1546,7 +1529,6 @@ export const prepareValidationTrace = (
                   stage: 1,
                   addressCount,
                   addressSeen,
-                  previousOrderKey: Buffer.alloc(0),
                   previousSignerHash: Buffer.alloc(0),
                   signerFrontier,
                   firstInvalidWitnessIndex:
@@ -1559,7 +1541,6 @@ export const prepareValidationTrace = (
                   ...signatureControl,
                   addressCount,
                   addressSeen,
-                  previousOrderKey: scan.orderKey,
                   previousSignerHash: scan.decoded.signerHash,
                   signerFrontier,
                   firstInvalidWitnessIndex:
