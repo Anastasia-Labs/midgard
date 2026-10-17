@@ -120,15 +120,35 @@ export const ownKeySignatureWithR = (
   return Buffer.concat([encodedR, littleEndian32((h * scalar) % ED25519_L)]);
 };
 
+/**
+ * A signature by the key whose secret scalar is `scalarBytes` (32 bytes,
+ * little-endian, as an extended key's first half holds it) whose R is the
+ * given encoding and whose S is h·a mod L.
+ */
+export const scalarSignatureWithR = (
+  scalarBytes: Uint8Array,
+  message: Uint8Array,
+  encodedR: Buffer,
+): Buffer => {
+  const scalar = littleEndianInteger(scalarBytes) % ED25519_L;
+  const vkey = ed25519.Point.BASE.multiply(scalar).toBytes();
+  const h =
+    littleEndianInteger(sha512(Buffer.concat([encodedR, vkey, message]))) %
+    ED25519_L;
+  return Buffer.concat([encodedR, littleEndian32((h * scalar) % ED25519_L)]);
+};
+
 export const ownKeyIdentityRSignature = (
   seed: Uint8Array,
   message: Uint8Array,
 ): Buffer => ownKeySignatureWithR(seed, message, IDENTITY_ENCODING);
 
-const withS = (signature: Buffer, s: bigint): Buffer =>
+/** `signature` with its S replaced by `s`. */
+export const withS = (signature: Buffer, s: bigint): Buffer =>
   Buffer.concat([signature.subarray(0, 32), littleEndian32(s)]);
 
-const sOf = (signature: Buffer): bigint =>
+/** The S of `signature`, as an integer. */
+export const sOf = (signature: Buffer): bigint =>
   littleEndianInteger(signature.subarray(32));
 
 /** A signature by `seed` for key A + T, where T is a small-order point. */
