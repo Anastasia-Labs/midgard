@@ -2144,3 +2144,57 @@ test compute_constant_refuses_constructor_102_with_a_negative_index() fail {
 test compute_constant_refuses_constructor_102_with_a_bignum_index() fail {
   compute_data_constant_against(builtin.constr_data(1, []), #"d86682c2410180")
 }
+
+// ComputeConstant over Data payloads that end in an empty byte string, or
+// hold one before their last item: Cardano runs `(con data _)` over each for
+// 16100/200, and the post root is the TypeScript builder's.
+test data_constants_ending_in_an_empty_byte_string_compute_to_their_roots() {
+  and {
+    compute_constant_commits(
+      #"9f08ff",
+      #"40",
+      #"7d8fc47fe0106bf4067f0f776f6dbbf0c13c95e8c7e0ecf0c51390e25a313a1b",
+    ),
+    compute_constant_commits(
+      #"9f08ff",
+      #"9f40ff",
+      #"4101754cf6a5ddecd24a6c34fa07ffbe84831bdcfe7f32450357b407732bad99",
+    ),
+    compute_constant_commits(
+      #"9f08ff",
+      #"d87a9f40ff",
+      #"52b6dbd7388a7127eaf8d8642346903ed308a293bbad5995b2b390bb02a0737d",
+    ),
+    compute_constant_commits(
+      #"9f08ff",
+      #"a10040",
+      #"acc70e559a6bd37b416cacee1edc031d20ec3afeb086293f521c02d809f28037",
+    ),
+    compute_constant_commits(
+      #"9f08ff",
+      #"a14040",
+      #"3bf83bc59fcdec011df7bbc526461f1e9cbfe216311f500f74570aef9232f932",
+    ),
+    compute_constant_commits(
+      #"9f08ff",
+      #"a2448d3ed5d702448d3ed5d740",
+      #"a37677e60441f8a71e7c3f976ebda7a9b26c6cee8132167754e538b918e0c403",
+    ),
+    compute_constant_commits(
+      #"9f08ff",
+      #"9f4000ff",
+      #"5e36a939ee38e0f8b480a371c386bbd6649c318ec34c461ba2204825e90d8d6d",
+    ),
+  }
+}
+
+test compute_constant_refuses_a_byte_string_claiming_one_byte_past_the_end() fail {
+  compute_data_constant_against(builtin.b_data(#""), #"41")
+}
+
+test compute_constant_refuses_a_list_ending_in_a_byte_string_claiming_one_byte() fail {
+  compute_data_constant_against(
+    builtin.list_data([builtin.b_data(#"")]),
+    #"8141",
+  )
+}

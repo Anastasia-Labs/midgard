@@ -489,3 +489,105 @@ test constructor_127_and_128_constants_commit_cardano_memory() {
     ),
   }
 }
+
+// Data constants whose canonical payload ends in an empty byte string, or
+// holds one before its last item. The Cardano ledger (plutus-core 1.71,
+// protocol version 11) runs `(con data _)` over each for 16100/200; the memory
+// and root are the TypeScript builder's, and
+// cek-program.data-constant-spelling.test.ts runs the same programs.
+test data_constants_ending_in_an_empty_byte_string_commit_their_roots() {
+  and {
+    boundary_constant_commits(
+      #"9f08ff",
+      builtin.b_data(#""),
+      5,
+      #"7d8fc47fe0106bf4067f0f776f6dbbf0c13c95e8c7e0ecf0c51390e25a313a1b",
+    ),
+    boundary_constant_commits(
+      #"9f08ff",
+      builtin.list_data([builtin.b_data(#"")]),
+      9,
+      #"4101754cf6a5ddecd24a6c34fa07ffbe84831bdcfe7f32450357b407732bad99",
+    ),
+    boundary_constant_commits(
+      #"9f08ff",
+      builtin.list_data([builtin.b_data(#""), builtin.b_data(#"")]),
+      14,
+      #"4ea0620e6ebd9551ca6b4e878b15a3b79ff994ed141acfc8d45a7c4a25611127",
+    ),
+    boundary_constant_commits(
+      #"9f08ff",
+      builtin.constr_data(1, [builtin.b_data(#"")]),
+      9,
+      #"52b6dbd7388a7127eaf8d8642346903ed308a293bbad5995b2b390bb02a0737d",
+    ),
+    boundary_constant_commits(
+      #"9f08ff",
+      builtin.map_data([Pair(builtin.i_data(0), builtin.b_data(#""))]),
+      14,
+      #"acc70e559a6bd37b416cacee1edc031d20ec3afeb086293f521c02d809f28037",
+    ),
+    boundary_constant_commits(
+      #"9f08ff",
+      builtin.map_data([Pair(builtin.b_data(#""), builtin.b_data(#""))]),
+      14,
+      #"3bf83bc59fcdec011df7bbc526461f1e9cbfe216311f500f74570aef9232f932",
+    ),
+    boundary_constant_commits(
+      #"9f08ff",
+      builtin.map_data(
+        [Pair(builtin.b_data(#"c84797cfa721"), builtin.b_data(#""))],
+      ),
+      14,
+      #"cc9f5c6c2c7158543d0a7ca7c587a097d1249065b71bb4d53fe473d8b94bbacd",
+    ),
+    boundary_constant_commits(
+      #"9f08ff",
+      builtin.map_data(
+        [
+          Pair(builtin.b_data(#"8d3ed5d7"), builtin.i_data(2)),
+          Pair(builtin.b_data(#"8d3ed5d7"), builtin.b_data(#"")),
+        ],
+      ),
+      24,
+      #"a37677e60441f8a71e7c3f976ebda7a9b26c6cee8132167754e538b918e0c403",
+    ),
+  }
+}
+
+test data_constant_with_an_item_after_an_empty_byte_string_commits_its_root() {
+  boundary_constant_commits(
+    #"9f08ff",
+    builtin.list_data([builtin.b_data(#""), builtin.i_data(0)]),
+    14,
+    #"5e36a939ee38e0f8b480a371c386bbd6649c318ec34c461ba2204825e90d8d6d",
+  )
+}
+
+test data_payloads_ending_in_an_empty_byte_string_decode() {
+  and {
+    cek_constant_v1.decode_constant_payload_v1(#"40") == builtin.b_data(#""),
+    cek_constant_v1.decode_constant_payload_v1(#"9f40ff") == builtin.list_data(
+      [builtin.b_data(#"")],
+    ),
+    cek_constant_v1.decode_constant_payload_v1(#"d87a9f40ff") == builtin.constr_data(
+      1,
+      [builtin.b_data(#"")],
+    ),
+    cek_constant_v1.decode_constant_payload_v1(#"a10040") == builtin.map_data(
+      [Pair(builtin.i_data(0), builtin.b_data(#""))],
+    ),
+  }
+}
+
+// Cardano refuses `(con data _)` over `41` and `8141`: the byte string head
+// claims one byte the payload does not hold.
+test data_payload_claiming_one_byte_past_its_end_fails_closed() fail {
+  cek_constant_v1.decode_constant_payload_v1(#"41") == builtin.b_data(#"")
+}
+
+test data_payload_ending_in_a_list_claiming_one_byte_past_its_end_fails_closed() fail {
+  cek_constant_v1.decode_constant_payload_v1(#"8141") == builtin.list_data(
+    [builtin.b_data(#"")],
+  )
+}

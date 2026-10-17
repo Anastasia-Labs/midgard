@@ -260,6 +260,61 @@ test decodes_an_empty_byte_string_as_the_last_byte() {
   }
 }
 
+// An empty byte string that ends the input, against the Cardano ledger
+// (plutus-core 1.71, protocol version 11, reading each payload as a Data
+// constant): it accepts each payload below to the value given, and refuses a
+// byte string head that claims one byte more than the input holds.
+test decodes_an_empty_byte_string_ending_the_input_as_the_ledger_does() {
+  and {
+    decodes_to(#"824040", l([b(#""), b(#"")])),
+    decodes_to(#"818140", l([l([b(#"")])])),
+    decodes_to(#"d86682018140", c(1, [b(#"")])),
+    decodes_to(#"a14040", m([Pair(b(#""), b(#""))])),
+    decodes_to(#"a146c84797cfa72140", m([Pair(b(#"c84797cfa721"), b(#""))])),
+    decodes_to(
+      #"a2448d3ed5d702448d3ed5d740",
+      m([Pair(b(#"8d3ed5d7"), i(2)), Pair(b(#"8d3ed5d7"), b(#""))]),
+    ),
+  }
+}
+
+test decodes_the_item_after_an_empty_byte_string() {
+  and {
+    decodes_to(#"824000", l([b(#""), i(0)])),
+    decodes_to(#"82405fff", l([b(#""), b(#"")])),
+    decodes_to(#"9f40ff", l([b(#"")])),
+    decodes_to(#"d87a9f40ff", c(1, [b(#"")])),
+    decodes_to(#"d8799f40ff", c(0, [b(#"")])),
+  }
+}
+
+test decodes_other_empty_items_ending_the_input_as_the_ledger_does() {
+  and {
+    decodes_to(#"5fff", b(#"")),
+    decodes_to(#"815fff", l([b(#"")])),
+    decodes_to(#"c240", i(0)),
+    decodes_to(#"c340", i(-1)),
+    decodes_to(#"81c240", l([i(0)])),
+    decodes_to(#"80", l([])),
+    decodes_to(#"8180", l([l([])])),
+    decodes_to(#"819fff", l([l([])])),
+    decodes_to(#"a0", m([])),
+    decodes_to(#"81a0", l([m([])])),
+  }
+}
+
+test both_entries_refuse_a_byte_string_claiming_one_byte_past_the_end() {
+  list.all(
+    [#"41", #"8141", #"a10041", #"d87a8141", #"60", #"8160"],
+    fn(bytes) {
+      and {
+        cbor_deserialise.deserialise(bytes) == None,
+        cbor_deserialise.deserialise_envelope(bytes) == None,
+      }
+    },
+  )
+}
+
 test decodes_byte_strings_of_64_bytes_and_longer_ones_in_chunks() {
   and {
     decodes_to(bytearray.concat(#"5840", ab(64)), b(ab(64))),
@@ -548,6 +603,18 @@ test expect_fails_on_a_byte_string_running_past_the_end() fail {
   expect_returns(#"5801")
 }
 
+test expect_fails_on_a_byte_string_claiming_one_byte_at_the_end() fail {
+  expect_returns(#"41")
+}
+
+test expect_fails_on_a_list_ending_in_a_byte_string_claiming_one_byte() fail {
+  expect_returns(#"8141")
+}
+
+test expect_fails_on_a_map_ending_in_a_byte_string_claiming_one_byte() fail {
+  expect_returns(#"a10041")
+}
+
 test expect_fails_on_a_short_wide_argument() fail {
   expect_returns(#"1a0001")
 }
@@ -656,6 +723,14 @@ test expect_envelope_fails_on_a_trailing_byte() fail {
 
 test expect_envelope_fails_on_a_byte_string_running_past_the_end() fail {
   expect_envelope_returns(bytearray.concat(#"5842", ab(65)))
+}
+
+test expect_envelope_fails_on_a_byte_string_claiming_one_byte_at_the_end() fail {
+  expect_envelope_returns(#"41")
+}
+
+test expect_envelope_fails_on_a_list_ending_in_a_byte_string_claiming_one_byte() fail {
+  expect_envelope_returns(#"8141")
 }
 
 test expect_envelope_fails_on_a_nested_indefinite_chunk() fail {

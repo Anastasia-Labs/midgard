@@ -3657,3 +3657,124 @@ test mk_cons_over_an_integer_list_is_proved_from_its_split_presentation() {
 test mk_cons_over_a_data_pair_list_is_proved_from_its_split_presentation() {
   mk_cons_from_its_split_presentation(data_pair_item_fixture())
 }
+
+// Builtin arguments and results that are, or end in, an empty byte string.
+// Each charge is Cardano's PV 11 total for the one-builtin program in
+// cek-program.data-constant-spelling.test.ts, less the 100/100 start-up and
+// its 16000/100 machine steps (five for a two-argument builtin, three for a
+// one-argument one).
+fn empty_bytes_list() -> Data {
+  builtin.list_data([builtin.b_data(#"")])
+}
+
+test data_builtins_charge_cardano_budgets_over_an_ending_empty_byte_string() {
+  and {
+    charges(46, [data_value(builtin.b_data(#""))], 20142, 32),
+    charges(41, [bytes(#"40")], 11183, 32),
+    charges(44, [data_value(empty_bytes_list())], 25933, 32),
+    charges(
+      43,
+      [
+        data_value(
+          builtin.map_data([Pair(builtin.i_data(0), builtin.b_data(#""))]),
+        ),
+      ],
+      24623,
+      32,
+    ),
+    charges(
+      42,
+      [data_value(builtin.constr_data(1, [builtin.b_data(#"")]))],
+      24588,
+      32,
+    ),
+    charges(51, [data_value(builtin.b_data(#""))], 2022066, 10),
+    charges(51, [data_value(empty_bytes_list())], 2875314, 18),
+    charges(
+      51,
+      [
+        data_value(
+          builtin.map_data([Pair(builtin.i_data(0), builtin.b_data(#""))]),
+        ),
+      ],
+      3941874,
+      28,
+    ),
+    charges(
+      47,
+      [data_value(builtin.b_data(#"")), data_value(builtin.b_data(#""))],
+      1034543,
+      1,
+    ),
+    charges(
+      47,
+      [data_value(empty_bytes_list()), data_value(empty_bytes_list())],
+      1143659,
+      1,
+    ),
+  }
+}
+
+test data_builtins_read_and_return_an_ending_empty_byte_string() {
+  let empty = [data_value(builtin.b_data(#""))]
+  let list = [data_value(empty_bytes_list())]
+  let constructor = [data_value(builtin.constr_data(1, [builtin.b_data(#"")]))]
+  and {
+    verify_direct_with_split_parity(
+      41,
+      builtin_root(41, [bytes(#"40")]),
+      [bytes(#"40")],
+      constant(#"9f08ff", #"40"),
+    ),
+    verify_direct_with_split_parity(
+      46,
+      builtin_root(46, empty),
+      empty,
+      bytes(#"40"),
+    ),
+    verify_direct_with_split_parity(
+      44,
+      builtin_root(44, list),
+      list,
+      constant(#"9f0508ff", #"9f40ff"),
+    ),
+    verify_direct_with_split_parity(
+      42,
+      builtin_root(42, constructor),
+      constructor,
+      constant(#"9f06000508ff", #"d8799f019f40ffff"),
+    ),
+    verify_direct_with_split_parity(
+      51,
+      builtin_root(51, list),
+      list,
+      bytes(#"439f40ff"),
+    ),
+  }
+}
+
+test data_builtins_reveal_an_ending_empty_byte_string() {
+  and {
+    serialise_data_verifies(builtin.b_data(#""), #"40", #"40"),
+    serialise_data_verifies(empty_bytes_list(), #"9f40ff", #"9f40ff"),
+    serialise_data_split_arm(builtin.b_data(#"")),
+    serialise_data_split_arm(empty_bytes_list()),
+    equals_data_verifies(#"40", #"40", #"d87a80"),
+    equals_data_verifies(#"9f40ff", #"9f40ff", #"d87a80"),
+    equals_data_verifies(#"40", #"9f40ff", #"d87980"),
+  }
+}
+
+test un_b_data_refuses_a_byte_string_claiming_one_byte_past_the_end() fail {
+  let source = [constant(#"9f08ff", #"41")]
+  verify_direct_with_split_parity(
+    46,
+    builtin_root(46, source),
+    source,
+    bytes(#"40"),
+  )
+}
+
+test serialise_data_refuses_a_revealed_byte_string_claiming_one_byte_past_the_end() fail {
+  serialise_data_verifies(builtin.b_data(#""), #"41", #"40")
+}
