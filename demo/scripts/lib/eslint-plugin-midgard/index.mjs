@@ -15,6 +15,7 @@ import localeCompareExplicitLocale from "./rules/locale-compare-explicit-locale.
 import noRecursivePlutusData from "./rules/no-recursive-plutus-data.mjs";
 import nodeCliOperatorCommandsOnly from "./rules/node-cli-operator-commands-only.mjs";
 import scopedUtxoOverride from "./rules/scoped-utxo-override.mjs";
+import testsObserveBehavior from "./rules/tests-observe-behavior.mjs";
 import validFromWallClockMargin from "./rules/valid-from-wall-clock-margin.mjs";
 
 export { loadBaseline } from "./baseline.mjs";
@@ -33,6 +34,7 @@ export default {
     "no-recursive-plutus-data": noRecursivePlutusData,
     "node-cli-operator-commands-only": nodeCliOperatorCommandsOnly,
     "scoped-utxo-override": scopedUtxoOverride,
+    "tests-observe-behavior": testsObserveBehavior,
     "valid-from-wall-clock-margin": validFromWallClockMargin,
   },
 };

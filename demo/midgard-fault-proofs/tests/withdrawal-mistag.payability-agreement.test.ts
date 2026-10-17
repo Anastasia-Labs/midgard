@@ -3,16 +3,16 @@
  * Each case is a withdrawal body (raw CBOR, as the order carries it) and the
  * ledger output it withdraws. The chain judges payability with
  * withdrawal-mistag step-04's `payout_is_exactly_payable_v1` in
- * `onchain/aiken/lib/midgard/fraud-proofs/withdrawal-mistag/step-04.node-agreement.test.ak`,
- * whose `agrees_<case>` tests pin the body bytes, the output's Cardano value
- * size and the chain's verdict (or that step-04 refuses the body outright).
- * This test checks that the Aiken vectors are this table's, that the SDK's
- * `withdrawalMistagPayable` returns the chain's verdict, and that the node's
+ * `onchain/aiken/lib/midgard/fraud-proofs/withdrawal-mistag/step-04.node-agreement.test.ak`.
+ * Both read `fixtures/withdrawal-mistag-agreement-vectors.json`
+ * (`payability`): the body bytes, the output's Cardano value size and the
+ * chain's verdict (or that step-04 refuses the body outright), rendered into
+ * the Aiken tests by `scripts/generate-withdrawal-mistag-agreement-goldens.mjs`.
+ * This test checks that the vectors are this table's, that the SDK's
+ * `withdrawalMistagPayable` returns the pinned verdict, and that the node's
  * `classifyWithdrawalFromLedger` tags the withdrawal valid exactly when the
- * chain judges it payable.
+ * pinned verdict is payable.
  */
-import { readFile } from "node:fs/promises";
-
 import {
   encodeMidgardSpendInputItem,
   encodeMidgardTxOutput,
@@ -28,10 +28,7 @@ import { CML, Data, walletFromSeed } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
-const AIKEN_VECTORS = new URL(
-  "../../../onchain/aiken/lib/midgard/fraud-proofs/withdrawal-mistag/step-04.node-agreement.test.ak",
-  import.meta.url,
-);
+import VECTORS from "./fixtures/withdrawal-mistag-agreement-vectors.json" with { type: "json" };
 
 const wallet = walletFromSeed(
   "test test test test test test test test test test test junk",
@@ -292,40 +289,31 @@ const nodeValidity = async (testCase: Case): Promise<string> => {
   return result.validity;
 };
 
-const VECTOR =
-  /test agrees_(\w+)\(\) (fail )?\{\s*chain_payable\(\s*#"([0-9a-f]*)",\s*([\d_]+),?\s*\)(?:\s*==\s*(True|False))?\s*\}/gu;
-
 type ChainVerdict = "payable" | "unpayable" | "refused";
 
-const aikenVectors = async () => {
-  const source = await readFile(AIKEN_VECTORS, "utf8");
-  return new Map(
-    [...source.matchAll(VECTOR)].map((match) => [
-      match[1]!,
+const aikenVectors = () =>
+  new Map(
+    VECTORS.payability.map((vector) => [
+      vector.name,
       {
         vector: {
-          bodyCbor: match[3]!,
-          cardanoValueSize: BigInt(match[4]!.replaceAll("_", "")),
+          bodyCbor: vector.bodyCbor,
+          cardanoValueSize: BigInt(vector.cardanoValueSize),
         },
-        verdict: (match[2] === "fail "
-          ? "refused"
-          : match[5] === "True"
-            ? "payable"
-            : "unpayable") as ChainVerdict,
+        verdict: vector.verdict as ChainVerdict,
       },
     ]),
   );
-};
 
 describe("withdrawal payability: node classification agrees with step-04", () => {
   it("covers every case and nothing else in the Aiken vectors", async () => {
-    expect([...(await aikenVectors()).keys()].sort()).toEqual(
+    expect([...aikenVectors().keys()].sort()).toEqual(
       CASES.map(({ name }) => name).sort(),
     );
   });
 
   it.each(CASES)("$name", async (testCase) => {
-    const chain = (await aikenVectors()).get(testCase.name);
+    const chain = aikenVectors().get(testCase.name);
     const vector = chainVector(testCase);
     expect(chain?.vector).toEqual(vector);
     const payable = chain?.verdict === "payable";

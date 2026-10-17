@@ -100,6 +100,8 @@
     "dist"
   ],
   "scripts": {
+    "fixtures:withdrawal-mistag-agreement:sync": "node scripts/generate-withdrawal-mistag-agreement-goldens.mjs",
+    "fixtures:withdrawal-mistag-agreement:check": "node scripts/generate-withdrawal-mistag-agreement-goldens.mjs --check",
     "clean": "rimraf dist",
     "build": "node ../../scripts/contrib.mjs build --package @al-ft/midgard-fault-proofs",
     "lint": "eslint . --max-warnings=0",

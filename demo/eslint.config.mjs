@@ -324,6 +324,7 @@ export default tseslint.config(
       "midgard/no-recursive-plutus-data": "error",
       "midgard/node-cli-operator-commands-only": "error",
       "midgard/scoped-utxo-override": "error",
+      "midgard/tests-observe-behavior": "error",
       "midgard/valid-from-wall-clock-margin": "error",
     },
   },

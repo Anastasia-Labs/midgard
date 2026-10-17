@@ -3,9 +3,15 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { SELECTED_DEPLOYMENT_PROFILE } from "@al-ft/midgard-core/deployment-profile";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 import { expect } from "vitest";
+
+import {
+  limitConstants,
+  timingConstants,
+} from "../../scripts/deployment-profile-aiken.mjs";
 
 type BlueprintConstructor = {
   readonly title: string;
@@ -52,16 +58,6 @@ const blueprintPath =
 
 const blueprint = JSON.parse(readFileSync(blueprintPath, "utf8")) as Blueprint;
 
-const testnetEnv = readFileSync(
-  path.join(repoRoot, "onchain/aiken/env/testnet.ak"),
-  "utf8",
-);
-
-export const ledgerStateSource = readFileSync(
-  path.join(repoRoot, "onchain/aiken/lib/midgard/ledger-state.ak"),
-  "utf8",
-);
-
 export const transitionTraceAbiGolden = JSON.parse(
   readFileSync(transitionTraceAbiGoldenPath, "utf8"),
 ) as GoldenAbiFixtureFile;
@@ -89,33 +85,20 @@ export const constructor = (
 export const fields = (ctor: BlueprintConstructor): readonly string[] =>
   (ctor.fields ?? []).map((field) => field.title ?? "");
 
-// The Aiken sources are the normative home of these protocol constants and the
-// compiler emits none of them into plutus.json, so a text read of the `pub
-// const` declaration is the only channel available. It is deliberately narrow
-// and fails closed: a missing declaration fails the lookup, and anything but a
-// product of decimal literals fails the shape check rather than being silently
-// coerced.
-const aikenIntegerConst = (
-  source: string,
-  sourceLabel: string,
-  name: string,
-): bigint => {
-  const match = source.match(
-    new RegExp(`pub const ${name}: [^=]+=([\\d_\\s*]+)`, "m"),
-  );
-  expect(match, `missing ${sourceLabel} Aiken const ${name}`).toBeDefined();
-  const expression = match![1]!.trim().replace(/\s+/g, " ");
-  expect(expression, `unsupported expression for ${name}`).toMatch(
-    /^[\d_]+(?: \* [\d_]+)*$/,
-  );
-  return expression
-    .split(" * ")
-    .map((term) => BigInt(term.replaceAll("_", "")))
-    .reduce((acc, term) => acc * term, 1n);
+// The value the generator compiles into the selected profile's Aiken env
+// constant `name`. deployment-profiles.mjs renders every env from the profile
+// YAML through these tables, so looking the name up here is reading what the
+// validators are compiled with, without parsing the rendered Aiken.
+export const aikenEnvConst = (name: string): bigint => {
+  for (const [values, names] of [
+    [SELECTED_DEPLOYMENT_PROFILE.timing, timingConstants],
+    [SELECTED_DEPLOYMENT_PROFILE.limits, limitConstants],
+  ] as const) {
+    const key = Object.keys(names).find((field) => names[field] === name);
+    if (key !== undefined) return BigInt(values[key as keyof typeof values]);
+  }
+  throw new Error(`no profile field renders the Aiken env constant ${name}`);
 };
-
-export const testnetIntegerConst = (name: string): bigint =>
-  aikenIntegerConst(testnetEnv, "testnet", name);
 
 export const h28 = "11".repeat(28);
 

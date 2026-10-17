@@ -269,20 +269,6 @@ describe("SDK/Aiken canonical V1 schema parity", () => {
       [],
     );
 
-    const sources = [
-      "demo/midgard-sdk/src/user-events/tx-order.ts",
-      "demo/midgard-node/src/forced-orders/carriage.ts",
-      "demo/midgard-node/src/forced-orders/entry.ts",
-      "onchain/aiken/lib/midgard/user-events/tx-order-v1.ak",
-      "onchain/aiken/validators/user-events/tx-order-v1.ak",
-    ];
-    for (const relativePath of sources) {
-      expect(
-        readFileSync(path.join(repoRoot, relativePath), "utf8"),
-        relativePath,
-      ).not.toMatch(retiredName);
-    }
-
     for (const relativePath of [
       "onchain/aiken/lib/midgard/user-events/tx-order-v2.ak",
       "onchain/aiken/lib/midgard/user-events/tx-order-v3.ak",

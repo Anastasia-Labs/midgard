@@ -5,14 +5,14 @@
  * order admission accepted it). The node judges it with
  * `classifyWithdrawalFromLedger`; the chain judges the same bytes with
  * withdrawal-mistag step-03's `output_value_matches_v1` in
- * `onchain/aiken/lib/midgard/fraud-proofs/withdrawal-mistag/step-03.node-agreement.test.ak`,
- * whose `agrees_<case>` tests pin the requested value, the output's ledger
- * descriptor facts and the chain's verdict. This test checks that the Aiken
- * vectors are this table's (same bytes, same descriptor facts) and that the
- * node's verdict equals the chain's.
+ * `onchain/aiken/lib/midgard/fraud-proofs/withdrawal-mistag/step-03.node-agreement.test.ak`.
+ * Both read `fixtures/withdrawal-mistag-agreement-vectors.json` (`valueRule`):
+ * the requested value, the output's ledger descriptor facts and the chain's
+ * verdict, rendered into the Aiken tests by
+ * `scripts/generate-withdrawal-mistag-agreement-goldens.mjs`. This test checks
+ * that the vectors are this table's (same bytes, same descriptor facts) and
+ * that the node's verdict equals the pinned one.
  */
-import { readFile } from "node:fs/promises";
-
 import {
   encodeMidgardSpendInputItem,
   encodeMidgardTxOutput,
@@ -25,10 +25,7 @@ import { CML, Data, walletFromSeed } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
-const AIKEN_VECTORS = new URL(
-  "../../../onchain/aiken/lib/midgard/fraud-proofs/withdrawal-mistag/step-03.node-agreement.test.ak",
-  import.meta.url,
-);
+import VECTORS from "./fixtures/withdrawal-mistag-agreement-vectors.json" with { type: "json" };
 
 const wallet = walletFromSeed(
   "test test test test test test test test test test test junk",
@@ -296,36 +293,31 @@ const nodeValid = async (testCase: Case): Promise<boolean> => {
   return result.validity === "WithdrawalIsValid";
 };
 
-const VECTOR =
-  /test agrees_(\w+)\(\) \{\s*chain_valid\(\s*#"([0-9a-f]*)",\s*([\d_]+),\s*([\d_]+),\s*#"([0-9a-f]*)",?\s*\)\s*==\s*(True|False)\s*\}/gu;
-
-const aikenVectors = async () => {
-  const source = await readFile(AIKEN_VECTORS, "utf8");
-  return new Map(
-    [...source.matchAll(VECTOR)].map((match) => [
-      match[1]!,
+const aikenVectors = () =>
+  new Map(
+    VECTORS.valueRule.map((vector) => [
+      vector.name,
       {
         vector: {
-          l2Value: match[2]!,
-          lovelace: BigInt(match[3]!.replaceAll("_", "")),
-          assetCount: BigInt(match[4]!.replaceAll("_", "")),
-          frontier: match[5]!,
+          l2Value: vector.l2Value,
+          lovelace: BigInt(vector.outputLovelace),
+          assetCount: BigInt(vector.outputAssetCount),
+          frontier: vector.outputAssetFrontierCommitment,
         },
-        chainValid: match[6] === "True",
+        chainValid: vector.chainValid,
       },
     ]),
   );
-};
 
 describe("withdrawal value: node classification agrees with step-03", () => {
   it("covers every case and nothing else in the Aiken vectors", async () => {
-    expect([...(await aikenVectors()).keys()].sort()).toEqual(
+    expect([...aikenVectors().keys()].sort()).toEqual(
       CASES.map(({ name }) => name).sort(),
     );
   });
 
   it.each(CASES)("$name", async (testCase) => {
-    const chain = (await aikenVectors()).get(testCase.name);
+    const chain = aikenVectors().get(testCase.name);
     expect(chain?.vector).toEqual(chainVector(testCase));
     expect(await nodeValid(testCase)).toBe(chain?.chainValid);
   });

@@ -19,7 +19,6 @@
  * the correction predicate (the queue still holds the timed-out target) is
  * the I1 predicates' and tested with them.
  */
-import { readFile } from "node:fs/promises";
 
 import { timeoutCorrectionAttemptStatus } from "@al-ft/midgard-fault-proofs";
 import { decodeTransaction } from "@al-ft/midgard-l1-follower";
@@ -336,38 +335,4 @@ describe("the attestation-timeout correction's intent-journal recovery", () => {
     await s6.run();
     expect(hex(sent)).toEqual([tx.cbor, tx.cbor]);
   }, 120_000);
-
-  it("imports no L1 client, and the action wires no Kupo or Ogmios into its recovery", async () => {
-    const source = await readFile(
-      new URL(
-        "../src/fibers/attestation-timeout-correction.intent-journal-recovery.ts",
-        import.meta.url,
-      ),
-      "utf8",
-    );
-    const imports = [...source.matchAll(/from "([^"]+)";/gu)].map(
-      (match) => match[1],
-    );
-    expect(imports).toEqual([
-      "@al-ft/midgard-fault-proofs",
-      "@al-ft/midgard-l1-follower",
-      "@al-ft/midgard-l1-follower/heads",
-      "@effect/sql",
-      "effect",
-      "../database/follower-schema.js",
-      "../l1-heads.js",
-    ]);
-    expect(source).not.toMatch(/lucid|kupo|ogmios|fetch\(|WebSocket/iu);
-    const action = await readFile(
-      new URL(
-        "../src/fibers/attestation-timeout-correction.attestation-timeout-correction-action.ts",
-        import.meta.url,
-      ),
-      "utf8",
-    );
-    expect(action).not.toMatch(/Kupmios\w*TimeoutCorrectionRecovery/u);
-    expect(action).toContain(
-      "recovery: intentJournalTimeoutCorrectionRecovery(",
-    );
-  });
 });

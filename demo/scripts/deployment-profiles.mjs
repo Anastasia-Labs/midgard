@@ -17,10 +17,9 @@ import {
   economicsConstants,
   limitConstants,
   renderAiken,
+  renderTemplateExports,
   timingConstants,
 } from "./deployment-profile-aiken.mjs";
-
-export { renderAiken } from "./deployment-profile-aiken.mjs";
 import {
   canonicalJson,
   profileDigest,
@@ -516,6 +515,7 @@ export const generateProfiles = async (selected, check = false) => {
     `export const DEPLOYMENT_MANIFEST_ECONOMICS_BY_PROFILE = ${JSON.stringify(economics, null, 2)} as const;\n\n` +
     `/** The least span from planning a commit to its TTL (\`deployment-profiles.mjs\`). */\n` +
     `export const COMMIT_TTL_FUTURE_BUFFER_MS = ${COMMIT_TTL_FUTURE_BUFFER_MS};\n\n` +
+    renderTemplateExports(template) +
     `export const SELECTED_DEPLOYMENT_PROFILE = DEPLOYMENT_PROFILES[${JSON.stringify(selected)}];\n` +
     `export const SELECTED_DEPLOYMENT_PROFILE_DIGEST = DEPLOYMENT_PROFILE_DIGESTS[${JSON.stringify(selected)}];\n` +
     `for (const profile of Object.values(DEPLOYMENT_PROFILES)) {\n` +

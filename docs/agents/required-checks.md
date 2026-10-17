@@ -591,6 +591,29 @@ Golden channel forced-tx-admission-v1 (@al-ft/midgard-core).
   - `demo/l1-node-transport/src/**`
 - Needs: `node-modules`, `aiken`
 
+### `golden:withdrawal-mistag-agreement`
+
+Golden channel withdrawal-mistag-agreement (@al-ft/midgard-fault-proofs).
+
+- Command: `pnpm --dir demo/midgard-fault-proofs run fixtures:withdrawal-mistag-agreement:check`
+- Fix: `pnpm --dir demo/midgard-fault-proofs run fixtures:withdrawal-mistag-agreement:sync`
+- Runs on:
+  - `demo/midgard-fault-proofs/scripts/generate-withdrawal-mistag-agreement-goldens.mjs`
+  - `demo/midgard-fault-proofs/tests/fixtures/withdrawal-mistag-agreement-vectors.json`
+  - `demo/lucid-midgard/src/**`
+  - `demo/midgard-core/src/**`
+  - `demo/midgard-fault-proofs/src/**`
+  - `demo/midgard-validation/src/**`
+  - `demo/midgard-node/src/**`
+  - `demo/midgard-node-tools/src/**`
+  - `demo/midgard-sdk/src/**`
+  - `demo/midgard-watcher/src/**`
+  - `demo/da-committee-node/src/**`
+  - `demo/midgard-test-support/src/**`
+  - `demo/l1-node-transport/src/**`
+  - `demo/midgard-l1-follower/src/**`
+- Needs: `node-modules`, `aiken`, `core-dist`
+
 ### `golden:ordered-collection-boundary-aiken`
 
 Golden channel ordered-collection-boundary-aiken (@al-ft/midgard-validation).
@@ -846,7 +869,6 @@ Golden channel transition-trace-abi (midgard-node).
   - `demo/midgard-node/scripts/generate-transition-trace-abi-fixture.mjs`
   - `demo/midgard-node/tests/fixtures/transition-trace-abi.json`
   - `demo/midgard-node/tests/sdk-abi-fixtures.test.ts`
-  - `onchain/aiken/env/testnet.ak`
   - `onchain/aiken/validators/fraud-proofs/transition-trace/abi-v1-golden.test.ak`
   - `demo/lucid-midgard/src/**`
   - `demo/midgard-core/src/**`
