@@ -1,6 +1,9 @@
 import { parentPort, threadId, workerData } from "node:worker_threads";
 
-import { ledgerEd25519SignatureReady } from "@al-ft/midgard-core";
+import {
+  findLedgerSignatureVerifierUnavailable,
+  ledgerEd25519SignatureReady,
+} from "@al-ft/midgard-core";
 import {
   evaluateMidgardCekVerdict,
   phaseAAddressCacheStats,
@@ -73,6 +76,9 @@ const failed = (jobId: number, error: unknown): ValidationWorkerResponse => ({
   jobId,
   error:
     error instanceof Error ? (error.stack ?? error.message) : String(error),
+  ...(findLedgerSignatureVerifierUnavailable(error) === undefined
+    ? {}
+    : { localFault: "verifier_unavailable" as const }),
 });
 
 const respond = (request: ValidationJobRequest): ValidationWorkerResponse => {

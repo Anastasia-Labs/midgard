@@ -1,5 +1,6 @@
 import { Worker } from "node:worker_threads";
 
+import { LedgerSignatureVerifierUnavailableError } from "@al-ft/midgard-core";
 import { Effect, Metric } from "effect";
 
 import {
@@ -13,6 +14,7 @@ import {
   type PendingJob,
   restartCounter,
   timeoutCounter,
+  ValidationJobTimeoutError,
   ValidationWorkerError,
   type WorkerSlot,
 } from "./validation-pool.bundled-worker-exec-argv.js";
@@ -307,9 +309,7 @@ export class FixedValidationWorkerPool {
       void Metric.increment(timeoutCounter).pipe(Effect.runPromise);
       this.failSlot(
         slot,
-        new Error(
-          `validation job ${job.request.jobId} timed out after ${this.timeoutMs}ms`,
-        ),
+        new ValidationJobTimeoutError(job.request.jobId, this.timeoutMs),
       );
       void slot.worker.terminate();
     }, this.timeoutMs);
@@ -332,7 +332,16 @@ export class FixedValidationWorkerPool {
       return;
     }
     if (response.kind === "job_failed") {
-      this.failSlot(slot, new Error(response.error));
+      const error = new Error(response.error);
+      this.failSlot(
+        slot,
+        response.localFault === undefined
+          ? error
+          : new LedgerSignatureVerifierUnavailableError(
+              `validation worker ${slot.index}: Ed25519 verification is unavailable`,
+              { cause: error },
+            ),
+      );
       void slot.worker.terminate();
       return;
     }

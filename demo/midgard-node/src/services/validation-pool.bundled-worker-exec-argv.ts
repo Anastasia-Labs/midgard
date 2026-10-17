@@ -21,6 +21,18 @@ export class ValidationWorkerError extends Data.TaggedError(
   readonly cause?: unknown;
 }> {}
 
+/** A validation job its worker did not answer within the pool's job
+ * timeout. */
+export class ValidationJobTimeoutError extends Error {
+  constructor(
+    readonly jobId: number,
+    readonly timeoutMs: number,
+  ) {
+    super(`validation job ${jobId} timed out after ${timeoutMs}ms`);
+    this.name = "ValidationJobTimeoutError";
+  }
+}
+
 export type ValidationPoolService = {
   readonly poolSize: number;
   readonly consensusProfile: NonNullable<PhaseAConfig["consensusProfile"]>;

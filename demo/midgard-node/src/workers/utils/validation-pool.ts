@@ -68,6 +68,10 @@ export type WorkerFailure = {
   readonly kind: "job_failed";
   readonly jobId: number;
   readonly error: string;
+  /** Set when the failure is the worker's Ed25519 verifier fault
+   * (`LedgerSignatureVerifierUnavailableError`): its libsodium did not
+   * initialise, or the verifier raised. */
+  readonly localFault?: "verifier_unavailable";
 };
 
 export type CekVerdictJobResponse = {
