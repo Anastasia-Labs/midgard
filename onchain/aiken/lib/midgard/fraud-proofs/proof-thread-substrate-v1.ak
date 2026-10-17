@@ -88,28 +88,32 @@ pub type EventPreStateV1 {
 
 /// One subject-opening boundary. Normal source provenance comes from the
 /// already authenticated carriage, not from a prover-labelled verified value.
-/// Header binding and accepted scalar are enforced here for both source routes.
+///
+/// An accepted source's header is the state-queue node datum the carriage
+/// read: `state_queue.get_block_datum_v1` decodes it with
+/// `decode_header_view` (protocol version), and the carriage binds that
+/// node's key, the commit-time hash of this header, to the thread name. Only
+/// the accepted scalar is checked here. A forced source's header is supplied
+/// by the prover, so its protocol version and thread binding are checked
+/// before its leaf is opened.
 pub fn open_subject_v1(
   thread_name: ByteArray,
   source: SubjectSourceV1,
 ) -> VerdictSubjectV1 {
-  let header = when source is {
-    AcceptedSource { header, .. } -> header
-    ForcedSource { header, .. } -> header
-  }
-  let header_data: Data = header
-  expect and {
-      header.protocol_version == ledger_state.protocol_version_v1,
-      utils.serialise_and_hash_28(header_data) == bytearray.drop(
-        thread_name,
-        fraud_proof_catalogue.id_byte_count,
-      ),
-    }
   when source is {
     AcceptedSource { tx_inclusion, .. } ->
       bind_accepted_subject_v1(tx_inclusion)
-    ForcedSource { membership, .. } ->
+    ForcedSource { header, membership } -> {
+      let header_data: Data = header
+      expect and {
+          header.protocol_version == ledger_state.protocol_version_v1,
+          utils.serialise_and_hash_28(header_data) == bytearray.drop(
+            thread_name,
+            fraud_proof_catalogue.id_byte_count,
+          ),
+        }
       bind_forced_subject_v1(header, membership)
+    }
   }
 }
 
@@ -202,24 +206,23 @@ pub fn open_forced_leaf_raw_v1(
   phas_root: ByteArray,
   proof: Proof,
 ) -> ByteArray {
-  let membership = transition_trace.RootMembershipProof {
-    domain: transition_trace.ForcedTransactionsV1RootDomain,
-    root: header.forced_transactions_root,
-    phas_root,
-    count: header.forced_transaction_count,
-    key: raw_key,
-    value: raw_value,
-    proof,
-  }
-  expect
-    transition_trace.verify_root_membership_with_bytes(
-      membership,
-      transition_trace.ForcedTransactionsV1RootDomain,
-      header.forced_transactions_root,
-      header.forced_transaction_count,
-      raw_key,
-      raw_value,
-    )
+  // The domain, root, and count come from the header itself, so only the
+  // counted-root consistency and the raw membership remain to be checked.
+  expect and {
+      transition_trace.counted_root_is_consistent(
+        transition_trace.ForcedTransactionsV1RootDomain,
+        header.forced_transactions_root,
+        phas_root,
+        header.forced_transaction_count,
+      ),
+      transition_trace.verify_root_membership_raw(
+        phas_root,
+        header.forced_transaction_count,
+        raw_key,
+        raw_value,
+        proof,
+      ),
+    }
   raw_value
 }
 
@@ -415,7 +418,10 @@ pub fn subject_event_step_index_v1(
 }
 
 /// Physical transition door. `selected_step_index` must be carried from the
-/// event door's authenticated output, never read from a prover's hint.
+/// event door's authenticated output, never read from a prover's hint. That
+/// door bounds it to `[0, header.transition_step_count)`, and the counted
+/// membership below binds `step_membership.count` to the same header count,
+/// so the selected key needs no second range check here.
 pub fn subject_selected_event_pre_state_v1(
   header: ledger_state.HeaderV1,
   subject: VerdictSubjectV1,
@@ -438,8 +444,6 @@ pub fn subject_selected_event_pre_state_v1(
       ),
       selected_step_index == step_membership.key,
       step_membership.key == step.step_index,
-      step_membership.key >= 0,
-      step_membership.key < step_membership.count,
       step.schema_version == ledger_state.transition_step_schema_version_v1,
       event_key_matches_subject_v1(step.event_key, subject),
       step.phase == phase_for_event_key_v1(step.event_key),
