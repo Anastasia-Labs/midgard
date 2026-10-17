@@ -1963,8 +1963,6 @@ test cek_context_mint_is_authenticated_and_folded_incrementally() {
       item_work_witness_cbor,
       item_post,
       vm_machine_types.CekMintContextItemWitness {
-        previous: None,
-        mint_index: 0,
         policy_id: h_28_a,
         asset_name: #"01",
         quantity: -5,
@@ -2989,8 +2987,6 @@ test cek_context_maximum_mint_authenticates_last_asset_membership() {
       work_witness_cbor,
       post,
       vm_machine_types.CekMintContextItemWitness {
-        previous: None,
-        mint_index: 127,
         policy_id: h_28_a,
         asset_name: last_asset,
         quantity: 1,

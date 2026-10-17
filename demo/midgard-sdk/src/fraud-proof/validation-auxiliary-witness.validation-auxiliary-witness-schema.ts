@@ -13,7 +13,6 @@ import {
 import { CoreStepEvidenceSchema } from "./validation-auxiliary-witness.core-step-witness-schema.js";
 import {
   ByteArrayListSchema,
-  DataSequenceSummarySchema,
   FrontierSchema,
 } from "./validation-auxiliary-witness.data-node-schema.js";
 import {
@@ -179,18 +178,10 @@ export const buildValidationAuxiliaryWitnessSchema = <
     }),
     Data.Object({
       CekMintContextItemWitness: Data.Object({
-        mint_index: Data.Integer(),
         policy_id: Data.Bytes(),
         asset_name: Data.Bytes(),
         quantity: Data.Integer(),
         siblings: ByteArrayListSchema,
-        previous: Data.Nullable(
-          Data.Object({
-            asset_name: Data.Bytes(),
-            quantity: Data.Integer(),
-            tail: DataSequenceSummarySchema,
-          }),
-        ),
       }),
     }),
     Data.Object({

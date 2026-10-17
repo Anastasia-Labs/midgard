@@ -6,7 +6,6 @@ use midgard/cbor_deserialise
 use midgard/cek_constant_v1
 use midgard/cek_data_v1
 use midgard/cek_machine_v1
-use midgard/cek_mint_order
 use midgard/cek_proof_v1
 use midgard/fraud_proofs/native_tx/compact.{
   decode_tx_compact_view_v1, verify_tx_proof_source_v1,
@@ -1239,31 +1238,23 @@ fn verify_cek_mint_context_item(
       ),
     }
   } else {
+    // Stage 6 appends the mint leaves in strictly ascending (policy id, asset
+    // name) byte order (`mint_order.mint_policy_is_valid` and
+    // `mint_asset_is_valid`), so the fold opens leaf
+    // `mint_count - 1 - mint_cursor` and walks the frontier descending: each
+    // step has one successor, each policy's assets are adjacent, a new policy
+    // is below the current one, and the prepended summaries end in the
+    // context's mint map.
     expect
-        CekMintContextItemWitness {
-          mint_index,
-          policy_id,
-          asset_name,
-          quantity,
-          siblings,
-          previous,
-        }
+        CekMintContextItemWitness { policy_id, asset_name, quantity, siblings }
       = auxiliary
-    let membership_verified = and {
-      cek_mint_order.order_is_valid(
-        context_control,
-        policy_id,
-        asset_name,
-        previous,
-      ),
-      validation_merkle_v1.verify_membership(
-        native_control.mint_count,
-        native_control.mint_peaks,
-        mint_index,
-        mint_asset_leaf_hash(policy_id, asset_name, quantity),
-        siblings,
-      ),
-    }
+    let membership_verified = validation_merkle_v1.verify_membership(
+      native_control.mint_count,
+      native_control.mint_peaks,
+      native_control.mint_count - 1 - context_control.mint_cursor,
+      mint_asset_leaf_hash(policy_id, asset_name, quantity),
+      siblings,
+    )
     if context_control.current_mint_policy == #"" {
       and {
         membership_verified,
@@ -1311,7 +1302,6 @@ fn verify_cek_mint_context_item(
       let next_policies = finalize_current_mint_policy(context_control)
       and {
         membership_verified,
-        bytearray.compare(policy_id, context_control.current_mint_policy) == Less,
         cek_context_successor_is_exact(
           pre,
           witness,

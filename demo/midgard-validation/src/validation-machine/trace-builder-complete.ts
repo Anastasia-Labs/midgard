@@ -61,6 +61,7 @@ import {
   summarizeMidgardCekLucidData,
   validateMidgardCekObserverCollection,
 } from "../cek-context.js";
+import { runMidgardCekMintFold } from "../cek-context.mint-item-step.js";
 import { startMidgardCekObservedRun } from "../cek-executor.js";
 import {
   cardanoScriptPurposeData,
@@ -75,10 +76,8 @@ import {
 } from "../rejection-reason.js";
 import {
   emptyMidgardCekDataListSummary,
-  emptyMidgardCekDataPairSummary,
   prependMidgardCekDataListSummary,
   prependMidgardCekDataPairSummary,
-  summarizeMidgardCekMapData,
   summarizeMidgardCekSmallConstrData,
 } from "../script-context-proof.js";
 import { txOutRefData } from "../tx-out-ref.js";
@@ -1425,40 +1424,20 @@ export const completeValidationTrace = (
                 ...contextControl,
                 stage: 8,
               };
-
-              // The mint frontier is in plain byte order, the order of the
-              // context's mint map; the fold below walks it descending.
-              const orderedMint = authenticatedMintAssets.map(
-                (asset, index) => ({ ...asset, index }),
-              );
-              let previousHead: {
-                assetName: Buffer;
-                quantity: bigint;
-                tail: ReturnType<typeof emptyMidgardCekDataPairSummary>;
-              } | null = null;
-              for (
-                let orderedIndex = orderedMint.length - 1;
-                orderedIndex >= 0;
-                orderedIndex--
-              ) {
-                const asset = orderedMint[orderedIndex]!;
-                const mintIndex = asset.index;
-                pushWitness(
-                  "cek",
-                  cekContextWitness({
-                    contextControl,
-                    executionCursor: executionIndex,
-                    completedCpu,
-                    completedMemory,
-                  }),
-                  {
+              const witnessAt = (control: typeof contextControl) =>
+                cekContextWitness({
+                  contextControl: control,
+                  executionCursor: executionIndex,
+                  completedCpu,
+                  completedMemory,
+                });
+              contextControl = runMidgardCekMintFold(
+                contextControl,
+                authenticatedMintAssets,
+                (pre, mintIndex) => {
+                  const asset = authenticatedMintAssets[mintIndex]!;
+                  pushWitness("cek", witnessAt(pre), {
                     kind: "cekMintContextItem",
-                    mintIndex,
-                    previous: contextControl.currentMintPolicy.equals(
-                      asset.policyId,
-                    )
-                      ? previousHead
-                      : null,
                     policyId: asset.policyId,
                     assetName: asset.assetName,
                     quantity: asset.quantity,
@@ -1466,79 +1445,10 @@ export const completeValidationTrace = (
                       authenticatedMintLeaves,
                       mintIndex,
                     ).siblings,
-                  },
-                );
-                previousHead = {
-                  assetName: asset.assetName,
-                  quantity: asset.quantity,
-                  tail: contextControl.currentMintPolicy.equals(asset.policyId)
-                    ? contextControl.currentMintAssets
-                    : emptyMidgardCekDataPairSummary(),
-                };
-                const nextAssetSummary = prependMidgardCekDataPairSummary(
-                  summarizeMidgardCekLucidData(asset.assetName.toString("hex")),
-                  summarizeMidgardCekLucidData(asset.quantity),
-                  contextControl.currentMintAssets,
-                );
-                if (
-                  contextControl.currentMintPolicy.length === 0 ||
-                  contextControl.currentMintPolicy.equals(asset.policyId)
-                ) {
-                  contextControl = {
-                    ...contextControl,
-                    mintCursor: contextControl.mintCursor + 1,
-                    currentMintPolicy: asset.policyId,
-                    currentMintAssets: nextAssetSummary,
-                  };
-                } else {
-                  const priorPolicy = prependMidgardCekDataPairSummary(
-                    summarizeMidgardCekLucidData(
-                      contextControl.currentMintPolicy.toString("hex"),
-                    ),
-                    summarizeMidgardCekMapData(
-                      contextControl.currentMintAssets,
-                    ),
-                    contextControl.mintPolicies,
-                  );
-                  contextControl = {
-                    ...contextControl,
-                    mintCursor: contextControl.mintCursor + 1,
-                    currentMintPolicy: asset.policyId,
-                    currentMintAssets: prependMidgardCekDataPairSummary(
-                      summarizeMidgardCekLucidData(
-                        asset.assetName.toString("hex"),
-                      ),
-                      summarizeMidgardCekLucidData(asset.quantity),
-                      emptyMidgardCekDataPairSummary(),
-                    ),
-                    mintPolicies: priorPolicy,
-                  };
-                }
-              }
-              pushWitness(
-                "cek",
-                cekContextWitness({
-                  contextControl,
-                  executionCursor: executionIndex,
-                  completedCpu,
-                  completedMemory,
-                }),
+                  });
+                },
+                (pre) => pushWitness("cek", witnessAt(pre)),
               );
-              const finalPolicies = prependMidgardCekDataPairSummary(
-                summarizeMidgardCekLucidData(
-                  contextControl.currentMintPolicy.toString("hex"),
-                ),
-                summarizeMidgardCekMapData(contextControl.currentMintAssets),
-                contextControl.mintPolicies,
-              );
-              contextControl = {
-                ...contextControl,
-                stage: 9,
-                currentMintPolicy: Buffer.alloc(0),
-                currentMintAssets: emptyMidgardCekDataPairSummary(),
-                mintPolicies: finalPolicies,
-                mintSummary: summarizeMidgardCekMapData(finalPolicies),
-              };
             }
             if (!sameSummary(contextControl.mintSummary, contextParts.mint)) {
               throw new Error(

@@ -9,7 +9,6 @@ import {
   ledgerOutputProofWitnessData,
   redeemerControlData,
   resolvedFieldCarriageData,
-  sequenceSummaryData,
   signerProofData,
   txInfoAssemblyControlData,
 } from "./validation-machine-data.ledger-output-proof-witness-data.js";
@@ -162,18 +161,10 @@ export const validationAuxiliaryWitnessData = (
       ]);
     case "cekMintContextItem":
       return new Constr(16, [
-        int(auxiliary.mintIndex),
         bytes(auxiliary.policyId),
         bytes(auxiliary.assetName),
         auxiliary.quantity,
         byteList(auxiliary.siblings),
-        option(auxiliary.previous, (head) =>
-          record([
-            bytes(head.assetName),
-            head.quantity,
-            sequenceSummaryData(head.tail),
-          ]),
-        ),
       ]);
     case "cekRedeemerContextSelect":
       return new Constr(17, [

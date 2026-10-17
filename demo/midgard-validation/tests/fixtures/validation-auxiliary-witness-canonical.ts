@@ -348,8 +348,6 @@ export const canonicalValidationAuxiliaryWitnesses = [
     16,
     auxiliary({
       kind: "cekMintContextItem",
-      previous: null,
-      mintIndex: 0,
       policyId: bytes("11"),
       assetName: bytes("12"),
       quantity: 1n,

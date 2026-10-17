@@ -197,13 +197,13 @@ pub type ValidationAuxiliaryWitnessV1 {
     signer_hash: ByteArray,
     siblings: List<ByteArray>,
   }
+  /// Opens mint-frontier leaf `mint_count - 1 - mint_cursor`: the index is
+  /// the control's, not the witness's.
   CekMintContextItemWitness {
-    mint_index: Int,
     policy_id: ByteArray,
     asset_name: ByteArray,
     quantity: Int,
     siblings: List<ByteArray>,
-    previous: Option<CekMintHead>,
   }
   /// Selects the redeemer of the purpose just below the control's purpose
   /// bound. The execution leaf at that index names the purpose, its source
@@ -862,10 +862,4 @@ pub type CekWitnessControlV1 {
   /// `PlutusExecutionFailed` rejection names this key.
   purpose_kind: Int,
   purpose_index: Int,
-}
-
-pub type CekMintHead {
-  asset_name: ByteArray,
-  quantity: Int,
-  tail: cek_data_v1.DataSequenceSummaryV1,
 }

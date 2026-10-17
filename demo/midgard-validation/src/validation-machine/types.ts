@@ -25,7 +25,6 @@ import {
   type MidgardCekTxInfoAssemblyControl,
 } from "../cek-context.js";
 import { type MidgardCekExecutionStep } from "../cek-executor.js";
-import type { MidgardCekDataSequenceSummary } from "../script-context-proof.js";
 import type { LocalScriptEvaluation, RejectCode } from "../types.js";
 import {
   type ValidationMachineLedgerEntry,
@@ -292,17 +291,12 @@ export type ValidationMachineWorkWitness = {
         readonly siblings: readonly Buffer[];
       }
     | {
+        /** Opens mint-frontier leaf `mintCount - 1 - mintCursor`. */
         readonly kind: "cekMintContextItem";
-        readonly mintIndex: number;
         readonly policyId: Buffer;
         readonly assetName: Buffer;
         readonly quantity: bigint;
         readonly siblings: readonly Buffer[];
-        readonly previous: {
-          readonly assetName: Buffer;
-          readonly quantity: bigint;
-          readonly tail: MidgardCekDataSequenceSummary;
-        } | null;
       }
     | {
         readonly kind: "cekRedeemerContextSelect";
