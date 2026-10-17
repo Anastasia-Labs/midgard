@@ -1,21 +1,25 @@
 import * as SDK from "@al-ft/midgard-sdk";
-import { Data, type TxBuilder, type UTxO } from "@lucid-evolution/lucid";
+import {
+  type BuildTxWithRedeemer,
+  Data,
+  type RedeemerContext,
+  type TxBuilder,
+  type UTxO,
+} from "@lucid-evolution/lucid";
 
 import {
   inline,
-  inputIndex,
-  type Layout,
-  mintIndex,
   recordOf,
-  refIndex,
   timeoutYield,
   unavailableTimeoutYield,
 } from "./availability-challenge-pool-slash-lifecycle.submit-built.js";
 import { TEST_AVAILABILITY_PARAMETERS as parameters } from "./helpers/availability-challenge.js";
-import { type AvailabilityFixture } from "./helpers/availability-challenge-emulator.js";
-
-/** Further inputs, references and policies a composed transaction adds. */
-export type MirrorBundle = Partial<Layout>;
+import {
+  type AvailabilityFixture,
+  inputAt,
+  mintAt,
+  referenceAt,
+} from "./helpers/availability-challenge-emulator.js";
 
 /** The challenger output and, when present, the pool's continuing output. */
 export type MirrorArithmetic = {
@@ -25,24 +29,80 @@ export type MirrorArithmetic = {
   | { readonly pool?: undefined }
 );
 
-const sameOutRef = (a: UTxO, b: UTxO) =>
-  a.txHash === b.txHash && a.outputIndex === b.outputIndex;
+/** The Idle lock's `Correct` spend, reading the hub oracle. */
+const correct =
+  (f: AvailabilityFixture): BuildTxWithRedeemer =>
+  (ctx) =>
+    Data.to(
+      {
+        Correct: {
+          hub_oracle_ref_input_index: referenceAt(ctx, f.hubOracleRefInput),
+        },
+      },
+      SDK.CorrectionLockRedeemer,
+    );
+
+/** The head removal: the continued root is output 0. */
+const removeHead =
+  (
+    f: AvailabilityFixture,
+    challengeAssetName: string,
+    root: UTxO,
+  ): BuildTxWithRedeemer =>
+  (ctx) =>
+    Data.to(
+      {
+        RemoveUnavailableBlockAfterTimeout: {
+          yield_to_ref_input_index: referenceAt(
+            ctx,
+            f.reference("state-queue unavailable-timeout withdrawal"),
+          ),
+          unavailable_header_hash: f.target.headerHash,
+          challenge_asset_name: challengeAssetName,
+          removal_approach: {
+            RemoveTimedOutHead: {
+              confirmed_state_input_outref: SDK.outputReferenceFromUTxO(root),
+              confirmed_state_output_index: 0n,
+            },
+          },
+        },
+      },
+      SDK.StateQueueRedeemer,
+    );
+
+/** The pool's `Slash` beside the head removal: the pool continues at 3. */
+const slash =
+  (f: AvailabilityFixture, lock: UTxO): BuildTxWithRedeemer =>
+  (ctx) =>
+    Data.to(
+      {
+        Slash: {
+          hub_oracle_ref_input_index: referenceAt(ctx, f.hubOracleRefInput),
+          state_queue_mint_redeemer_index: mintAt(
+            ctx,
+            f.contracts.stateQueue.policyId,
+          ),
+          correction_lock_input_index: inputAt(ctx, lock),
+          output_index: 3n,
+        },
+      },
+      SDK.DaBondPoolSpendRedeemer,
+    );
 
 /**
  * A hand-built mirror of the timeout (record, terminal, head, root, Idle lock,
  * pool) with free arithmetic, so a negative can break exactly one relation
  * the production builder never lets through. Outputs: root (0), Idle lock
  * (1), the ONE challenger output (2), the pool (3, when present), rent (4),
- * then whatever a composed transaction pays. Its redeemer indices count the
- * `bundle`'s inputs, references and policies, so another builder can be
- * composed after it. The caller pins the fee where it completes.
+ * then whatever a composed transaction pays. Its redeemer indices resolve
+ * against the final transaction, so another builder can be composed after
+ * it. The caller pins the fee where it completes.
  */
 export const buildTimeoutMirror = (
   f: AvailabilityFixture,
   s: SDK.DaAvailabilityChallengeSnapshot,
   terminal: UTxO,
   arithmetic: MirrorArithmetic,
-  bundle: MirrorBundle = {},
 ): TxBuilder => {
   const record = s.record!;
   const queue = s.queue!.utxo;
@@ -52,36 +112,23 @@ export const buildTimeoutMirror = (
   const challengeAssetName = recordOf(s).challenge_asset_name;
   const ap = f.contracts.availabilityChallenge.policyId;
   const qp = f.contracts.stateQueue.policyId;
-  const own: Layout = {
-    inputs: [record, terminal, queue, root, lock, ...(pool ? [pool] : [])],
-    policies: [ap, qp],
-    references: [
-      f.hubOracleRefInput,
-      f.reference("state-queue spending"),
-      f.reference("state-queue minting"),
-      f.reference("state-queue unavailable-timeout withdrawal"),
-      f.reference("correction-lock spending"),
-      f.reference("availability-challenge spending"),
-      f.reference("availability-challenge minting"),
-      f.reference("availability-challenge timeout withdrawal"),
-      ...(pool ? [f.reference("da-bond-pool spending")] : []),
-    ],
-  };
-  const layout: Layout = {
-    inputs: [...own.inputs, ...(bundle.inputs ?? [])],
-    policies: [...own.policies, ...(bundle.policies ?? [])],
-    references: [
-      ...own.references,
-      ...(bundle.references ?? []).filter(
-        (u) => !own.references.some((r) => sameOutRef(r, u)),
-      ),
-    ],
-  };
+  const references = [
+    f.hubOracleRefInput,
+    f.reference("state-queue spending"),
+    f.reference("state-queue minting"),
+    f.reference("state-queue unavailable-timeout withdrawal"),
+    f.reference("correction-lock spending"),
+    f.reference("availability-challenge spending"),
+    f.reference("availability-challenge minting"),
+    f.reference("availability-challenge timeout withdrawal"),
+    ...(pool ? [f.reference("da-bond-pool spending")] : []),
+  ];
   const lower = BigInt(f.emulator.now());
-  const coordinate = Data.to(
-    { Coordinate: { mint_redeemer_index: mintIndex(layout, ap) } },
-    SDK.DaAvailabilitySpendRedeemer,
-  );
+  const coordinate = (ctx: RedeemerContext) =>
+    Data.to(
+      { Coordinate: { mint_redeemer_index: mintAt(ctx, ap) } },
+      SDK.DaAvailabilitySpendRedeemer,
+    );
   let tx = f.lucid
     .newTx()
     .validFrom(Number(lower))
@@ -91,18 +138,8 @@ export const buildTimeoutMirror = (
       [queue, root],
       Data.to("LinkedListMutation", SDK.StateQueueSpendRedeemer),
     )
-    .collectFrom(
-      [lock],
-      Data.to(
-        {
-          Correct: {
-            hub_oracle_ref_input_index: refIndex(layout, f.hubOracleRefInput),
-          },
-        },
-        SDK.CorrectionLockRedeemer,
-      ),
-    )
-    .readFrom([...layout.references])
+    .collectFrom([lock], correct(f))
+    .readFrom(references)
     .mintAssets(
       {
         [ap + challengeAssetName]: -1n,
@@ -110,48 +147,28 @@ export const buildTimeoutMirror = (
         SDK.daAvailabilityTerminalAccumulatorAssetName(challengeAssetName)]:
           -1n,
       },
-      Data.to(
-        {
-          TimeoutChallenge: {
-            yield_to_ref_input_index: refIndex(
-              layout,
-              f.reference("availability-challenge timeout withdrawal"),
-            ),
-            hub_oracle_ref_input_index: refIndex(layout, f.hubOracleRefInput),
-            record_input_index: inputIndex(layout, record),
-            terminal_accumulator_input_index: inputIndex(layout, terminal),
-            state_queue_mint_redeemer_index: mintIndex(layout, qp),
-            // Without a pool the index names the (unauthentic) lock input.
-            pool_input_index: inputIndex(layout, pool ?? lock),
-            pool_output_index: 3n,
-            challenger_refund_output_index: 2n,
-          },
-        },
-        SDK.DaAvailabilityMintRedeemer,
-      ),
-    )
-    .mintAssets(
-      { [f.queueUnit]: -1n },
-      Data.to(
-        {
-          RemoveUnavailableBlockAfterTimeout: {
-            yield_to_ref_input_index: refIndex(
-              layout,
-              f.reference("state-queue unavailable-timeout withdrawal"),
-            ),
-            unavailable_header_hash: f.target.headerHash,
-            challenge_asset_name: challengeAssetName,
-            removal_approach: {
-              RemoveTimedOutHead: {
-                confirmed_state_input_outref: SDK.outputReferenceFromUTxO(root),
-                confirmed_state_output_index: 0n,
-              },
+      (ctx) =>
+        Data.to(
+          {
+            TimeoutChallenge: {
+              yield_to_ref_input_index: referenceAt(
+                ctx,
+                f.reference("availability-challenge timeout withdrawal"),
+              ),
+              hub_oracle_ref_input_index: referenceAt(ctx, f.hubOracleRefInput),
+              record_input_index: inputAt(ctx, record),
+              terminal_accumulator_input_index: inputAt(ctx, terminal),
+              state_queue_mint_redeemer_index: mintAt(ctx, qp),
+              // Without a pool the index names the (unauthentic) lock input.
+              pool_input_index: inputAt(ctx, pool ?? lock),
+              pool_output_index: 3n,
+              challenger_refund_output_index: 2n,
             },
           },
-        },
-        SDK.StateQueueRedeemer,
-      ),
+          SDK.DaAvailabilityMintRedeemer,
+        ),
     )
+    .mintAssets({ [f.queueUnit]: -1n }, removeHead(f, challengeAssetName, root))
     .pay.ToContract(
       root.address,
       inline(
@@ -172,20 +189,7 @@ export const buildTimeoutMirror = (
     });
   if (arithmetic.pool)
     tx = tx
-      .collectFrom(
-        [arithmetic.pool],
-        Data.to(
-          {
-            Slash: {
-              hub_oracle_ref_input_index: refIndex(layout, f.hubOracleRefInput),
-              state_queue_mint_redeemer_index: mintIndex(layout, qp),
-              correction_lock_input_index: inputIndex(layout, lock),
-              output_index: 3n,
-            },
-          },
-          SDK.DaBondPoolSpendRedeemer,
-        ),
-      )
+      .collectFrom([arithmetic.pool], slash(f, lock))
       .pay.ToContract(arithmetic.pool.address, inline(arithmetic.pool.datum!), {
         lovelace: arithmetic.poolOutputLovelace,
         [f.poolUnit]: 1n,
@@ -228,19 +232,14 @@ export const buildLockedHeadResume = (
   const queue = s.queue!.utxo;
   const root = s.confirmedState.utxo;
   const lock = s.correctionLock;
-  const qp = f.contracts.stateQueue.policyId;
-  const layout: Layout = {
-    inputs: [queue, root, lock, feeFunding, ...(pool ? [pool] : [])],
-    policies: [qp],
-    references: [
-      f.hubOracleRefInput,
-      f.reference("state-queue spending"),
-      f.reference("state-queue minting"),
-      f.reference("state-queue unavailable-timeout withdrawal"),
-      f.reference("correction-lock spending"),
-      ...(pool ? [f.reference("da-bond-pool spending")] : []),
-    ],
-  };
+  const references = [
+    f.hubOracleRefInput,
+    f.reference("state-queue spending"),
+    f.reference("state-queue minting"),
+    f.reference("state-queue unavailable-timeout withdrawal"),
+    f.reference("correction-lock spending"),
+    ...(pool ? [f.reference("da-bond-pool spending")] : []),
+  ];
   const lower = BigInt(f.emulator.now());
   let tx = f.lucid
     .newTx()
@@ -251,40 +250,9 @@ export const buildLockedHeadResume = (
       [queue, root],
       Data.to("LinkedListMutation", SDK.StateQueueSpendRedeemer),
     )
-    .collectFrom(
-      [lock],
-      Data.to(
-        {
-          Correct: {
-            hub_oracle_ref_input_index: refIndex(layout, f.hubOracleRefInput),
-          },
-        },
-        SDK.CorrectionLockRedeemer,
-      ),
-    )
-    .readFrom([...layout.references])
-    .mintAssets(
-      { [f.queueUnit]: -1n },
-      Data.to(
-        {
-          RemoveUnavailableBlockAfterTimeout: {
-            yield_to_ref_input_index: refIndex(
-              layout,
-              f.reference("state-queue unavailable-timeout withdrawal"),
-            ),
-            unavailable_header_hash: f.target.headerHash,
-            challenge_asset_name: challengeAssetName,
-            removal_approach: {
-              RemoveTimedOutHead: {
-                confirmed_state_input_outref: SDK.outputReferenceFromUTxO(root),
-                confirmed_state_output_index: 0n,
-              },
-            },
-          },
-        },
-        SDK.StateQueueRedeemer,
-      ),
-    )
+    .collectFrom([lock], correct(f))
+    .readFrom(references)
+    .mintAssets({ [f.queueUnit]: -1n }, removeHead(f, challengeAssetName, root))
     .pay.ToContract(
       root.address,
       inline(
@@ -307,20 +275,7 @@ export const buildLockedHeadResume = (
       parameters,
     });
     tx = tx
-      .collectFrom(
-        [pool],
-        Data.to(
-          {
-            Slash: {
-              hub_oracle_ref_input_index: refIndex(layout, f.hubOracleRefInput),
-              state_queue_mint_redeemer_index: mintIndex(layout, qp),
-              correction_lock_input_index: inputIndex(layout, lock),
-              output_index: 3n,
-            },
-          },
-          SDK.DaBondPoolSpendRedeemer,
-        ),
-      )
+      .collectFrom([pool], slash(f, lock))
       .pay.ToContract(pool.address, inline(pool.datum!), {
         lovelace: poolOutputLovelace,
         [f.poolUnit]: 1n,

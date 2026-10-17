@@ -234,13 +234,7 @@ export const plainOutputMinAda = (address: string) => {
   throw new Error("min-UTxO did not stabilise");
 };
 
-// --- Ledger-layout helpers for the hand-built mirrors ----------------------
-
-export type Layout = {
-  readonly inputs: readonly UTxO[];
-  readonly references: readonly UTxO[];
-  readonly policies: readonly string[];
-};
+// --- Ledger input order, the oracle for refusal attribution ----------------
 
 const compareOutRef = (a: UTxO, b: UTxO) =>
   a.txHash < b.txHash
@@ -259,25 +253,7 @@ export const position = (utxos: readonly UTxO[], utxo: UTxO) => {
   return BigInt(found);
 };
 
-export const inputIndex = (layout: Layout, utxo: UTxO) =>
-  position(layout.inputs, utxo);
-
-export const refIndex = (layout: Layout, utxo: UTxO) =>
-  position(layout.references, utxo);
-
 export const inline = (value: string) => ({ kind: "inline" as const, value });
-
-const isScriptAddress = (address: string) =>
-  CML.Address.from_bech32(address).payment_cred()?.as_script() !== undefined;
-
-/** Redeemers sort spends first, then mints by policy. */
-const scriptSpendCount = (layout: Layout) =>
-  layout.inputs.filter((u) => isScriptAddress(u.address)).length;
-
-export const mintIndex = (layout: Layout, policy: string) =>
-  BigInt(
-    scriptSpendCount(layout) + [...layout.policies].sort().indexOf(policy),
-  );
 
 export const unavailableTimeoutYield = (f: AvailabilityFixture) =>
   SDK.scriptRewardAddress(
