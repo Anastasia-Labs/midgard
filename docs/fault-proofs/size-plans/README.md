@@ -112,8 +112,8 @@ comes from `scripts/write-invalid-signature-fit-ledger.mjs`, which reads the
 log of a passing run, and `min-ada-wrongful-rejection-v1-fit-ledger.json` from
 the path `MIN_ADA_FIT_LEDGER_PATH` names. The other ten belong to families
 whose suites record measured-fit fragments
-(`tests/support/measured-fit-ledger.ts`) that nothing merges into a ledger,
-because `verifyMeasuredFitLedger` has no caller. The list is
+(`tests/support/measured-fit-ledger.ts`) that nothing merges into a ledger.
+No test reads any of the twelve. The list is
 `LEDGERS_WITHOUT_SUITE_WRITER` in `fit-ledger-owners.mjs`; its test fails when
 the list and the test sources disagree.
 

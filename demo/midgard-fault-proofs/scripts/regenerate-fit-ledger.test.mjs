@@ -312,7 +312,7 @@ test("the command refuses a ledger no test writes, naming how it is written", ()
   assert.equal(result.status, 2);
   assert.match(
     result.stderr,
-    /No test writes zero-input.*verifyMeasuredFitLedger/u,
+    /No test writes zero-input.*nothing merges them into this ledger/u,
   );
 });
 

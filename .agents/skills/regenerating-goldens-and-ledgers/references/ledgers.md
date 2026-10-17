@@ -124,10 +124,8 @@ is the authority. Its rules:
   same call.
 - The ledgers no test writes (`LEDGERS_WITHOUT_SUITE_WRITER` in
   `demo/midgard-fault-proofs/scripts/fit-ledger-owners.mjs`) are recorded
-  evidence. Nothing compares them with the current build;
-  `verifyMeasuredFitLedger`
-  (`demo/midgard-fault-proofs/tests/support/measured-fit-ledger.ts`) would,
-  but it has no caller.
+  evidence. Nothing compares them with the current build, and no test reads
+  them.
 - Regenerate against a freshly built blueprint with
   `pnpm --dir demo/midgard-fault-proofs fit:regenerate <ledger>` (or `--all`;
   `--list` shows each ledger's owning test files). It finds the owning files

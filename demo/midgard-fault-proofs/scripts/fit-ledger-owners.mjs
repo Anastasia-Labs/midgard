@@ -6,11 +6,10 @@
  * docs/fault-proofs/size-plans (`new URL("../../../docs/fault-proofs/size-plans/
  * <name>-fit-ledger.json", import.meta.url)`, or the `path` of a
  * `SplitFitLedger`). The module holding that literal is the ledger's site. A
- * writer is a module that calls `writeVanRossemFitLedger`,
- * `createSplitFitLedgerPart` or `verifyMeasuredFitLedger` and either is a site of the ledger or imports one
- * directly. The ledger's owners are the test
- * files that import such a writer, directly or through other modules, or are
- * one. For a split ledger that is every part file, because each part imports
+ * writer is a module that calls `writeVanRossemFitLedger` or
+ * `createSplitFitLedgerPart` and either is a site of the ledger or imports one
+ * directly. The ledger's owners are the test files that import such a writer,
+ * directly or through other modules, or are one. For a split ledger that is every part file, because each part imports
  * the module that declares the `SplitFitLedger`.
  *
  * Only relative imports are followed: the package's tests reach each other
@@ -35,7 +34,7 @@ export const SIZE_PLANS = "docs/fault-proofs/size-plans";
  * so a ledger that gains or loses a suite writer must be moved in or out here.
  */
 const MEASURED_FRAGMENTS_ONLY =
-  "its suite records measured-fit fragments (tests/support/measured-fit-ledger.ts), and nothing merges them into this ledger: verifyMeasuredFitLedger has no caller";
+  "its suite records measured-fit fragments (tests/support/measured-fit-ledger.ts), and nothing merges them into this ledger";
 export const LEDGERS_WITHOUT_SUITE_WRITER = new Map([
   [
     "field-preimage-length-mismatch-v1-fit-ledger.json",
@@ -71,8 +70,7 @@ export const LEDGERS_WITHOUT_SUITE_WRITER = new Map([
 
 const SOURCE_FILE = /\.(?:ts|tsx|mts)$/u;
 const TEST_FILE = /\.test\.tsx?$/u;
-const WRITER_CALL =
-  /\b(?:writeVanRossemFitLedger|createSplitFitLedgerPart|verifyMeasuredFitLedger)\(/u;
+const WRITER_CALL = /\b(?:writeVanRossemFitLedger|createSplitFitLedgerPart)\(/u;
 const RELATIVE_IMPORT =
   /(?:\bfrom\s+|\bimport\s*\(\s*|\bimport\s+)["'](\.\.?\/[^"']+)["']/gu;
 const LEDGER_LITERAL =
