@@ -13,14 +13,12 @@ use cardano/assets.{PolicyId}
 use cardano/transaction.{Input}
 use env
 use midgard/fraud_proofs/direct_script_derivation/cursor
-use midgard/fraud_proofs/direct_script_derivation/first_fault_seam.{
-  PurposeCoordinateV1,
-}
 use midgard/fraud_proofs/direct_script_derivation/purpose
 use midgard/fraud_proofs/direct_script_derivation/source_index
 use midgard/fraud_proofs/direct_script_derivation/source_scan.{BoundIndexV1}
 use midgard/fraud_proofs/direct_script_derivation/types.{BoundV1, PurposeV1}
 use midgard/fraud_proofs/field_opening_v1.{FieldOpeningV1, outputs_field_index}
+use midgard/fraud_proofs/first_fault_v1.{PurposeCoordinateV1}
 use midgard/mpf_proof_v1 as mpf
 use midgard/native_tx_field_access_v1.{FieldViewV1, field_read_range}
 use midgard/native_tx_machine_walk_v1 as walk

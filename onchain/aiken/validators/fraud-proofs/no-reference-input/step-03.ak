@@ -4,6 +4,7 @@ use cardano/address.{Address}
 use cardano/assets.{PolicyId}
 use cardano/transaction.{OutputReference, Transaction}
 use midgard/computation_thread as ct
+use midgard/fraud_proofs/first_fault_v1 as order
 use midgard/fraud_proofs/input_existence_fixture_v1 as carriage_fixture
 use midgard/fraud_proofs/input_existence_v1/pre_state
 use midgard/fraud_proofs/input_existence_v1/types.{
@@ -124,7 +125,12 @@ fn run_pre_state_v1(
     selected_input,
     step_index: selected_step_index,
   }
+  let context = order.network_order_context_v1(
+    input_state.compact,
+    input_state.header,
+  )
   let expected: Data = LedgerStateV1 {
+    network_order_context: context,
     compact: carriage_fixture.compact_view_v1(
       fixture.challenged_block_v1().compact,
     ),

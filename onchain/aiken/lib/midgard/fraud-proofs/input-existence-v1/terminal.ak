@@ -72,13 +72,13 @@ pub fn verdict_contradiction_v1(
       subcheck: order.input_absence_subcheck,
     }
     let claimed = when state.subject.rejection_reason is {
-      None -> None
+      None -> order.NotRequired
       Some(r) ->
         when order.resolution_coordinate_of_reason_v1(r) is {
-          None -> None
+          None -> order.NotRequired
           Some(Pair(source_kind, input_index)) -> {
             expect Some(claimed_input) = state.claimed_input
-            Some(
+            order.ResolutionReopened(
               order.ResolutionPositionV1 {
                 source_kind,
                 input_index,
@@ -91,6 +91,7 @@ pub fn verdict_contradiction_v1(
     }
     !order.leaf_admits_fault_v1(
       state.subject,
+      Some(state.network_order_context),
       order.ResolutionFault(observed),
       claimed,
     )

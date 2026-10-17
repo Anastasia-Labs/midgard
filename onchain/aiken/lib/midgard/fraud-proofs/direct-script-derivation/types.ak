@@ -2,7 +2,7 @@
 //// Step 01 alone authenticates the source and thread-bound header. Step 02
 //// authenticates the subject's event pre-root before any ledger output opens.
 
-use midgard/fraud_proofs/direct_script_derivation/first_fault_seam.{
+use midgard/fraud_proofs/first_fault_v1.{
   NetworkOrderContextV1, PurposeCoordinateV1,
 }
 use midgard/fraud_proofs/proof_thread_substrate_v1.{VerdictSubjectV1}

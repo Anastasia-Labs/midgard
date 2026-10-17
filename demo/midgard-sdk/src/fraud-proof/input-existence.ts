@@ -9,6 +9,7 @@ import {
   TransitionCarriedMembershipSchema,
 } from "./counted-membership-carriage.js";
 import { FieldOpeningSchema } from "./field-opening.js";
+import { NetworkOrderContextSchema } from "./first-fault.js";
 import {
   MidgardTxInputSchema,
   NativeTxBodyCompactSchema,
@@ -56,6 +57,7 @@ export const InputExistencePreStateArgsSchema = Data.Object({
 export const InputExistenceLedgerStateSchema = Data.Object({
   subject: VerdictSubjectSchema,
   compact: InputExistenceCompactSchema,
+  network_order_context: NetworkOrderContextSchema,
   source_kind: Data.Integer(),
   input_index: Data.Integer(),
   selected_input: Data.Nullable(MidgardTxInputSchema),

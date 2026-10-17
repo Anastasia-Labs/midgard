@@ -144,13 +144,14 @@ pub fn terminal_contradiction_v1(state: AuthenticatedItemV1) -> Bool {
     ItemLegality { item_is_legal: False } ->
       !first_fault_v1.leaf_admits_fault_v1(
         state.subject,
+        None,
         first_fault_v1.CanonicalFault(
           first_fault_v1.CanonicalItem {
             field_index: state.field_index,
             item_index: state.item_index,
           },
         ),
-        None,
+        first_fault_v1.NotRequired,
       )
   }
 }

@@ -4,6 +4,7 @@ use cardano/address.{Address}
 use cardano/assets.{PolicyId}
 use cardano/transaction.{OutputReference, Transaction}
 use midgard/computation_thread as ct
+use midgard/fraud_proofs/first_fault_v1 as order
 use midgard/fraud_proofs/input_existence_fixture_v1 as carriage_fixture
 use midgard/fraud_proofs/input_existence_v1/pre_state
 use midgard/fraud_proofs/input_existence_v1/types.{
@@ -73,6 +74,7 @@ fn run_pre_state_v1(
   >,
   step: transition_trace.RootMembershipProof<Int, ledger_state.TransitionStep>,
   expected_root: ByteArray,
+  tamper_context: Bool,
 ) -> Bool {
   let subject = normal_subject_v1()
   // Unit composition explicitly executes the crypto walk performed by the
@@ -125,7 +127,18 @@ fn run_pre_state_v1(
     selected_input,
     step_index: selected_step_index,
   }
+  let context = order.network_order_context_v1(
+    input_state.compact,
+    input_state.header,
+  )
   let expected: Data = LedgerStateV1 {
+    network_order_context: if tamper_context {
+      order.NetworkOrderContextV1 {
+        body_network_mismatch: !context.body_network_mismatch,
+      }
+    } else {
+      context
+    },
     compact: carriage_fixture.compact_view_v1(
       fixture.challenged_block_v1().compact,
     ),
@@ -177,6 +190,7 @@ test event_pre_state_uses_committed_event_root_instead_of_block_initial_root() {
     claim.event_to_step_membership,
     claim.transition_step_membership,
     tf.h32_d,
+    False,
   )
 }
 
@@ -187,6 +201,7 @@ test event_pre_state_rejects_forwarding_the_block_initial_root() fail {
     claim.event_to_step_membership,
     claim.transition_step_membership,
     claim.header.prev_utxos_root,
+    False,
   )
 }
 
@@ -200,6 +215,7 @@ test event_pre_state_rejects_substituted_event_key() fail {
     },
     claim.transition_step_membership,
     tf.h32_d,
+    False,
   )
 }
 
@@ -213,6 +229,7 @@ test event_pre_state_rejects_substituted_step_root() fail {
       root: tf.h32_c,
     },
     tf.h32_d,
+    False,
   )
 }
 
@@ -226,6 +243,7 @@ test event_pre_state_rejects_substituted_step_domain() fail {
       domain: transition_trace.EventToStepRootDomain,
     },
     tf.h32_d,
+    False,
   )
 }
 
@@ -239,6 +257,7 @@ test event_pre_state_rejects_substituted_step_count() fail {
       count: 2,
     },
     tf.h32_d,
+    False,
   )
 }
 
@@ -255,6 +274,7 @@ test event_pre_state_rejects_substituted_event_index() fail {
     },
     claim.transition_step_membership,
     tf.h32_d,
+    False,
   )
 }
 
@@ -271,5 +291,28 @@ test event_pre_state_rejects_substituted_step_pre_root() fail {
       },
     },
     tf.h32_d,
+    False,
+  )
+}
+
+test n7_pre_state_carries_derived_network_context() {
+  let claim = claim_v1()
+  run_pre_state_v1(
+    claim,
+    claim.event_to_step_membership,
+    claim.transition_step_membership,
+    tf.h32_d,
+    False,
+  )
+}
+
+test n7_pre_state_rejects_only_the_tampered_network_context() {
+  let claim = claim_v1()
+  !run_pre_state_v1(
+    claim,
+    claim.event_to_step_membership,
+    claim.transition_step_membership,
+    tf.h32_d,
+    True,
   )
 }

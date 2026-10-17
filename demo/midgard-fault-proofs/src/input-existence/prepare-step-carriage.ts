@@ -60,6 +60,10 @@ export const inputExistenceStates = (prepared: PreparedInputExistence) =>
     {
       subject: prepared.source.subject,
       compact: prepared.compact,
+      network_order_context: SDK.networkOrderContext(
+        prepared.compact,
+        prepared.source.header,
+      ),
       source_kind: BigInt(prepared.field),
       input_index: prepared.inputIndex,
       selected_input: prepared.selectedInput,

@@ -8,9 +8,6 @@ use cardano/transaction.{Input, Redeemer, ScriptPurpose}
 use midgard/computation_thread as ct
 use midgard/fraud_proofs/common.{MembershipCarriage}
 use midgard/fraud_proofs/direct_script_derivation/cursor
-use midgard/fraud_proofs/direct_script_derivation/first_fault_seam.{
-  PurposeCoordinateV1,
-}
 use midgard/fraud_proofs/direct_script_derivation/mint_purpose
 use midgard/fraud_proofs/direct_script_derivation/purpose
 use midgard/fraud_proofs/direct_script_derivation/selection_types.{SelectionV1}
@@ -21,6 +18,7 @@ use midgard/fraud_proofs/direct_script_derivation/types.{PurposeV1}
 use midgard/fraud_proofs/field_opening_v1.{
   FieldOpeningV1, mint_field_index, opened_field_walk, spend_inputs_field_index,
 }
+use midgard/fraud_proofs/first_fault_v1.{PurposeCoordinateV1}
 use midgard/native_tx_machine_walk_v1 as walk
 
 /// The selection door chooses the purpose kind. A spend selection is opened by

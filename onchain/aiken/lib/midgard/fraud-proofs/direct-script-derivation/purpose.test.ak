@@ -4,11 +4,9 @@ use aiken/primitive/bytearray
 use cardano/transaction.{OutputReference}
 use midgard/cek_data_v1.{DataSummaryV1}
 use midgard/fraud_proofs/common.{RedeemerCarriedMembership}
-use midgard/fraud_proofs/direct_script_derivation/first_fault_seam.{
-  NetworkOrderContextV1,
-}
 use midgard/fraud_proofs/direct_script_derivation/purpose
 use midgard/fraud_proofs/direct_script_derivation/types.{BoundV1}
+use midgard/fraud_proofs/first_fault_v1.{NetworkOrderContextV1}
 use midgard/fraud_proofs/native_binding_fixture_v1 as fixture
 use midgard/fraud_proofs/native_tx/components.{encode_midgard_tx_input}
 use midgard/fraud_proofs/native_tx/types as native_types

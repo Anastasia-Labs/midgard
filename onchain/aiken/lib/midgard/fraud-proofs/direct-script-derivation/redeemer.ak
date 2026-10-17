@@ -8,12 +8,10 @@ use cardano/transaction.{Input}
 use midgard/bounded_item_v1
 use midgard/canonical_cbor_scan_v1
 use midgard/fraud_proofs/direct_script_derivation/cursor
-use midgard/fraud_proofs/direct_script_derivation/first_fault_seam.{
-  PurposeCoordinateV1,
-}
 use midgard/fraud_proofs/field_opening_v1.{
   FieldOpeningV1, redeemers_field_index,
 }
+use midgard/fraud_proofs/first_fault_v1.{PurposeCoordinateV1}
 use midgard/fraud_proofs/native_tx/codec.{
   decode_definite_bytes_at, decode_uint_at,
 }

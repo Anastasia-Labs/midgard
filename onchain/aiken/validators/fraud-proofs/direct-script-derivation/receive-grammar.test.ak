@@ -6,9 +6,6 @@ use fraud_proofs/direct_script_derivation/receive_grammar as grammar_validator
 use fraud_proofs/direct_script_derivation/receive_start as start_validator
 use midgard/computation_thread as ct
 use midgard/fraud_proofs/direct_script_derivation/cursor
-use midgard/fraud_proofs/direct_script_derivation/first_fault_seam.{
-  NetworkOrderContextV1,
-}
 use midgard/fraud_proofs/direct_script_derivation/receive
 use midgard/fraud_proofs/direct_script_derivation/receive_grammar as door
 use midgard/fraud_proofs/direct_script_derivation/receive_start as start_door
@@ -16,6 +13,7 @@ use midgard/fraud_proofs/direct_script_derivation/source_index
 use midgard/fraud_proofs/direct_script_derivation/source_scan.{BoundIndexV1}
 use midgard/fraud_proofs/direct_script_derivation/types.{BoundV1}
 use midgard/fraud_proofs/field_opening_v1.{FieldOpeningV1, outputs_field_index}
+use midgard/fraud_proofs/first_fault_v1.{NetworkOrderContextV1}
 use midgard/fraud_proofs/native_binding_fixture_v1 as fixture
 use midgard/fraud_proofs/native_tx/components.{encode_midgard_tx_output}
 use midgard/fraud_proofs/native_tx/types.{MidgardTxOutput,

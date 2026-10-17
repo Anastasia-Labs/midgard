@@ -281,14 +281,19 @@ export const fieldItemWidthEvidenceCloses = (
     evidence.observation.ItemLegality.item_is_legal
   )
     return namesObservedItem(evidence);
-  return !leafAdmitsFault(evidence.subject, {
-    phase: "canonical",
-    position: {
-      kind: "item",
-      fieldIndex: evidence.fieldIndex,
-      itemIndex: evidence.itemIndex,
+  return !leafAdmitsFault(
+    evidence.subject,
+    null,
+    {
+      phase: "canonical",
+      position: {
+        kind: "item",
+        fieldIndex: evidence.fieldIndex,
+        itemIndex: evidence.itemIndex,
+      },
     },
-  });
+    "NotRequired",
+  );
 };
 
 const isFieldGrammarError = (error: unknown): error is MidgardTxCodecError =>

@@ -5,11 +5,11 @@ import {
   NetworkOrderContext,
   PurposeCoordinate,
   purposeCoordinateOfReason,
-} from "../src/fraud-proof/direct-script-derivation-first-fault-seam.js";
+} from "../src/fraud-proof/first-fault.js";
 import type { RejectionReason } from "../src/rejection-reason.js";
 
-/** The same encodings are pinned on-chain in first-fault-seam.test.ak. */
-describe("direct script derivation first-fault seam", () => {
+/** The same encodings are pinned on-chain in first-fault-v1.test.ak. */
+describe("first-fault wire twins", () => {
   it("encodes a purpose coordinate and the network-order context as on-chain", () => {
     expect(Data.to({ kind: 3n, index: 7n }, PurposeCoordinate)).toBe(
       "d8799f0307ff",
