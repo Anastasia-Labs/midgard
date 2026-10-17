@@ -119,6 +119,8 @@ pre-push hook. It blocks the push only on a failed check. Skip it once with
 - `demo/.nvmrc`
 - `demo/patches/**`
 - `demo/vendor/**`
+- `demo/scripts/package-tasks.mjs`
+- `demo/scripts/package-test.mjs`
 - `demo/midgard-test-support/**`
 - `scripts/preflight.mjs`
 - `scripts/preflight/**`
@@ -400,6 +402,28 @@ Typecheck the touched packages and their dependents.
 - Needs: `node-modules`
 - Mode: Node CI owns the ordinary PR matrix; --full-local runs it locally
 
+### `demo-boundary`
+
+Installed production packages resolve public Node exports and CLI help.
+
+- Command: `node scripts/contrib.mjs boundary --package <each affected built package>`
+- Runs on:
+  - `demo/lucid-midgard/**`
+  - `demo/midgard-core/**`
+  - `demo/midgard-fault-proofs/**`
+  - `demo/midgard-validation/**`
+  - `demo/midgard-node/**`
+  - `demo/midgard-node-tools/**`
+  - `demo/midgard-sdk/**`
+  - `demo/midgard-watcher/**`
+  - `demo/da-committee-node/**`
+  - `demo/midgard-test-support/**`
+  - `demo/l1-node-transport/**`
+  - `demo/midgard-l1-follower/**`
+  - `.github/workflows/midgard-node-ci.yml`
+- Needs: `node-modules`
+- Mode: Node CI owns the ordinary PR matrix; --full-local runs it locally
+
 ### `golden:native-compact`
 
 Golden channel native-compact (@al-ft/lucid-midgard).
@@ -567,6 +591,24 @@ Golden channel forced-tx-admission-v1 (@al-ft/midgard-core).
   - `demo/l1-node-transport/src/**`
 - Needs: `node-modules`, `aiken`
 
+### `golden:rejection-reason-v1`
+
+Golden channel rejection-reason-v1 (@al-ft/midgard-core).
+
+- Command: `pnpm --dir demo/midgard-core run fixtures:rejection-reason-v1:check`
+- Fix: `pnpm --dir demo/midgard-core run fixtures:rejection-reason-v1:sync`
+- Runs on:
+  - `demo/midgard-core/scripts/generate-rejection-reason-v1-vectors.mjs`
+  - `demo/flake.lock`
+  - `demo/midgard-core/scripts/golden-channel.mjs`
+  - `demo/midgard-core/tests/fixtures/rejection-reason-v1.vectors.json`
+  - `scripts/lib/aiken.mjs`
+  - `demo/midgard-core/src/**`
+  - `demo/midgard-test-support/src/**`
+  - `demo/l1-node-transport/src/**`
+- Needs: `node-modules`, `aiken`
+- Mode: warns only (no workflow runs this channel, so a red check does not block)
+
 ### `golden:ordered-collection-boundary-aiken`
 
 Golden channel ordered-collection-boundary-aiken (@al-ft/midgard-validation).
@@ -575,6 +617,7 @@ Golden channel ordered-collection-boundary-aiken (@al-ft/midgard-validation).
 - Fix: `pnpm --dir demo/midgard-validation run fixtures:ordered-collection-boundary-aiken:sync`
 - Runs on:
   - `demo/midgard-validation/scripts/generate-ordered-collection-boundary-aiken-goldens.mjs`
+  - `demo/midgard-node/blueprints/always-succeeds/plutus.json`
   - `demo/midgard-validation/scripts/generate-ordered-collection-boundary-aiken-goldens.aiken-families.mjs`
   - `demo/midgard-validation/scripts/generate-ordered-collection-boundary-aiken-goldens.terminal-fixture-constants.mjs`
   - `demo/midgard-validation/tests/blob-chunk-boundary.test.ts`
@@ -637,11 +680,13 @@ Golden channel nested-boundary-aiken (@al-ft/midgard-validation).
 - Fix: `pnpm --dir demo/midgard-validation run fixtures:nested-boundary-aiken:sync`
 - Runs on:
   - `demo/midgard-validation/scripts/generate-nested-boundary-aiken-goldens.mjs`
+  - `demo/midgard-node/blueprints/always-succeeds/plutus.json`
   - `demo/midgard-validation/tests/nested-data-boundary.test.ts`
   - `demo/midgard-validation/tests/nested-redeemer-data-boundary.test.ts`
   - `demo/midgard-validation/tests/nested-value-boundary.test.ts`
   - `onchain/aiken/lib/midgard/cek-data-traverse.max-cardano.test.ak`
   - `onchain/aiken/lib/midgard/ledger-output-value-v1.test.ak`
+  - `onchain/aiken/lib/midgard/ledger-output-value.max-cardano.test.ak`
   - `demo/lucid-midgard/src/**`
   - `demo/midgard-core/src/**`
   - `demo/midgard-fault-proofs/src/**`
@@ -691,6 +736,7 @@ Golden channel cek-core-step-v1 (@al-ft/midgard-validation).
   - `onchain/aiken/lib/midgard/cek-core-step-goldens/map-round-trip.test.ak`
   - `onchain/aiken/lib/midgard/cek-core-step-goldens/nonconstant-halt.test.ak`
   - `onchain/aiken/lib/midgard/cek-core-step-goldens/omega-budget-exceeded.test.ak`
+  - `onchain/aiken/lib/midgard/cek-core-step-goldens/schnorr-message-17-bytes.test.ak`
   - `onchain/aiken/lib/midgard/cek-core-step-goldens/un-constr-wrong-variant.test.ak`
   - `onchain/aiken/lib/midgard/cek-core-step-goldens/un-map-wrong-variant-constant.test.ak`
   - `onchain/aiken/lib/midgard/cek-core-step-goldens/unbound-variable.test.ak`
@@ -719,6 +765,132 @@ Golden channel plutus-data-cbor-decoding-v1 (@al-ft/midgard-validation).
   - `demo/midgard-validation/tests/fixtures/plutus-data-cbor-decoding-v1.generated.json`
   - `demo/midgard-validation/tests/fixtures/plutus-data-cbor-decoding-v1.vectors.mjs`
   - `onchain/aiken/lib/midgard/cbor-deserialise-v1-golden.test.ak`
+  - `demo/lucid-midgard/src/**`
+  - `demo/midgard-core/src/**`
+  - `demo/midgard-fault-proofs/src/**`
+  - `demo/midgard-validation/src/**`
+  - `demo/midgard-node/src/**`
+  - `demo/midgard-node-tools/src/**`
+  - `demo/midgard-sdk/src/**`
+  - `demo/midgard-watcher/src/**`
+  - `demo/da-committee-node/src/**`
+  - `demo/midgard-test-support/src/**`
+  - `demo/l1-node-transport/src/**`
+  - `demo/midgard-l1-follower/src/**`
+- Needs: `node-modules`, `aiken`, `core-dist`
+
+### `golden:script-decode-step-v1`
+
+Golden channel script-decode-step-v1 (@al-ft/midgard-validation).
+
+- Command: `pnpm --dir demo/midgard-validation run fixtures:script-decode-step-v1:check`
+- Fix: `pnpm --dir demo/midgard-validation run fixtures:script-decode-step-v1:sync`
+- Runs on:
+  - `demo/midgard-validation/scripts/generate-script-decode-step-v1-goldens.mjs`
+  - `demo/midgard-validation/tests/fixtures/script-decode-step-v1.bulk-data.mjs`
+  - `demo/midgard-validation/tests/fixtures/script-decode-step-v1.generated.json`
+  - `demo/midgard-validation/tests/fixtures/script-decode-step-v1.vectors.mjs`
+  - `demo/midgard-validation/tests/fixtures/script-decode-step-v1.writers.mjs`
+  - `onchain/aiken/lib/midgard/script-decode-v1-golden.test.ak`
+  - `demo/lucid-midgard/src/**`
+  - `demo/midgard-core/src/**`
+  - `demo/midgard-fault-proofs/src/**`
+  - `demo/midgard-validation/src/**`
+  - `demo/midgard-node/src/**`
+  - `demo/midgard-node-tools/src/**`
+  - `demo/midgard-sdk/src/**`
+  - `demo/midgard-watcher/src/**`
+  - `demo/da-committee-node/src/**`
+  - `demo/midgard-test-support/src/**`
+  - `demo/l1-node-transport/src/**`
+  - `demo/midgard-l1-follower/src/**`
+- Needs: `node-modules`, `aiken`, `core-dist`
+
+### `golden:script-decode-haskell-v1`
+
+Golden channel script-decode-haskell-v1 (@al-ft/midgard-validation).
+
+- Command: `pnpm --dir demo/midgard-validation run fixtures:script-decode-haskell-v1:check`
+- Fix: `pnpm --dir demo/midgard-validation run fixtures:script-decode-haskell-v1:sync`
+- Runs on:
+  - `demo/midgard-validation/scripts/generate-script-decode-haskell-v1-vectors.mjs`
+  - `demo/midgard-validation/tests/fixtures/script-decode-haskell-v1.vectors.json`
+  - `demo/midgard-validation/tests/fixtures/script-decode-step-v1.bulk-data.mjs`
+  - `demo/midgard-validation/tests/fixtures/script-decode-step-v1.vectors.mjs`
+  - `demo/midgard-validation/tests/fixtures/script-decode-step-v1.writers.mjs`
+  - `demo/lucid-midgard/src/**`
+  - `demo/midgard-core/src/**`
+  - `demo/midgard-fault-proofs/src/**`
+  - `demo/midgard-validation/src/**`
+  - `demo/midgard-node/src/**`
+  - `demo/midgard-node-tools/src/**`
+  - `demo/midgard-sdk/src/**`
+  - `demo/midgard-watcher/src/**`
+  - `demo/da-committee-node/src/**`
+  - `demo/midgard-test-support/src/**`
+  - `demo/l1-node-transport/src/**`
+  - `demo/midgard-l1-follower/src/**`
+- Needs: `node-modules`, `aiken`, `core-dist`
+- Mode: warns only (no workflow runs this channel, so a red check does not block)
+
+### `golden:ledger-output-proof-replay`
+
+Golden channel ledger-output-proof-replay (@al-ft/midgard-validation).
+
+- Command: `pnpm --dir demo/midgard-validation run fixtures:ledger-output-proof-replay:check`
+- Fix: `pnpm --dir demo/midgard-validation run fixtures:ledger-output-proof-replay:sync`
+- Runs on:
+  - `demo/midgard-validation/scripts/generate-ledger-output-proof-replay-goldens.mjs`
+  - `demo/midgard-validation/tests/fixtures/ledger-output-proof-replay.generated.json`
+  - `demo/midgard-validation/tests/fixtures/ledger-output-proof-replay.vectors.mjs`
+  - `onchain/aiken/lib/midgard/ledger-output-proof-datum.test.ak`
+  - `demo/lucid-midgard/src/**`
+  - `demo/midgard-core/src/**`
+  - `demo/midgard-fault-proofs/src/**`
+  - `demo/midgard-validation/src/**`
+  - `demo/midgard-node/src/**`
+  - `demo/midgard-node-tools/src/**`
+  - `demo/midgard-sdk/src/**`
+  - `demo/midgard-watcher/src/**`
+  - `demo/da-committee-node/src/**`
+  - `demo/midgard-test-support/src/**`
+  - `demo/l1-node-transport/src/**`
+  - `demo/midgard-l1-follower/src/**`
+- Needs: `node-modules`, `aiken`, `core-dist`
+
+### `golden:cek-program-large-integer`
+
+Golden channel cek-program-large-integer (@al-ft/midgard-validation).
+
+- Command: `pnpm --dir demo/midgard-validation run fixtures:cek-program-large-integer:check`
+- Fix: `pnpm --dir demo/midgard-validation run fixtures:cek-program-large-integer:sync`
+- Runs on:
+  - `demo/midgard-validation/scripts/generate-cek-program-large-integer-fixture.mjs`
+  - `demo/midgard-validation/tests/fixtures/cek-program-large-integer.json`
+  - `demo/lucid-midgard/src/**`
+  - `demo/midgard-core/src/**`
+  - `demo/midgard-fault-proofs/src/**`
+  - `demo/midgard-validation/src/**`
+  - `demo/midgard-node/src/**`
+  - `demo/midgard-node-tools/src/**`
+  - `demo/midgard-sdk/src/**`
+  - `demo/midgard-watcher/src/**`
+  - `demo/da-committee-node/src/**`
+  - `demo/midgard-test-support/src/**`
+  - `demo/l1-node-transport/src/**`
+  - `demo/midgard-l1-follower/src/**`
+- Needs: `node-modules`, `aiken`, `core-dist`
+- Mode: warns only (no workflow runs this channel, so a red check does not block)
+
+### `golden:cek-cost-v1-aiken`
+
+Golden channel cek-cost-v1-aiken (@al-ft/midgard-validation).
+
+- Command: `pnpm --dir demo/midgard-validation run fixtures:cek-cost-v1-aiken:check`
+- Fix: `pnpm --dir demo/midgard-validation run fixtures:cek-cost-v1-aiken:sync`
+- Runs on:
+  - `demo/midgard-validation/scripts/generate-cek-cost-v1-aiken-goldens.mjs`
+  - `onchain/aiken/lib/midgard/cek-cost-v1-golden.test.ak`
   - `demo/lucid-midgard/src/**`
   - `demo/midgard-core/src/**`
   - `demo/midgard-fault-proofs/src/**`
@@ -771,6 +943,7 @@ Golden channel transition-trace-abi (midgard-node).
   - `demo/midgard-node/scripts/generate-transition-trace-abi-fixture.mjs`
   - `demo/midgard-node/tests/fixtures/transition-trace-abi.json`
   - `demo/midgard-node/tests/sdk-abi-fixtures.test.ts`
+  - `onchain/aiken/env/testnet.ak`
   - `onchain/aiken/validators/fraud-proofs/transition-trace/abi-v1-golden.test.ak`
   - `demo/lucid-midgard/src/**`
   - `demo/midgard-core/src/**`
@@ -1044,94 +1217,13 @@ Phase 4 devnet generator and shell asset tests (no running devnet).
   - `demo/midgard-node-tools/devnet/phase4-process/**`
 - Needs: `node-modules`, `blueprint`
 
-### `exec-ledger:canonical-decodability`
+### `script-budgets`
 
-Execution ledger canonical-decodability-exec-ledger-v1.json.
+Script budgets: Aiken execution units at or under their ceilings.
 
-- Command: `node onchain/aiken/scripts/verify-canonical-decodability-exec-ledger-v1.mjs`
-- Fix: `node onchain/aiken/scripts/verify-canonical-decodability-exec-ledger-v1.mjs --update — only for a drift you can explain; commit onchain/aiken/scripts/canonical-decodability-exec-ledger-v1.json with the explanation`
-- Runs on: onchain/aiken/scripts/verify-canonical-decodability-exec-ledger-v1.mjs, onchain/aiken/scripts/canonical-decodability-exec-ledger-v1.json, and every .ak module that midgard/fraud_proofs/canonical_decodability/rule.test imports, transitively
-- Needs: `aiken`
-
-### `exec-ledger:carriage`
-
-Execution ledger native-tx-carriage-exec-ledger-v1.json.
-
-- Command: `node onchain/aiken/scripts/verify-carriage-exec-ledger-v1.mjs`
-- Fix: `node onchain/aiken/scripts/verify-carriage-exec-ledger-v1.mjs --update — only for a drift you can explain; commit onchain/aiken/scripts/native-tx-carriage-exec-ledger-v1.json with the explanation`
-- Runs on: onchain/aiken/scripts/verify-carriage-exec-ledger-v1.mjs, onchain/aiken/scripts/native-tx-carriage-exec-ledger-v1.json, and every .ak module that midgard/native-tx-carriage-v1.test, field-preimage-certificate-handlers.test import, transitively
-- Needs: `aiken`
-
-### `exec-ledger:committed-field-shape`
-
-Execution ledger committed-field-shape-exec-ledger-v1.json.
-
-- Command: `node onchain/aiken/scripts/verify-committed-field-shape-exec-ledger-v1.mjs`
-- Fix: `node onchain/aiken/scripts/verify-committed-field-shape-exec-ledger-v1.mjs --update — only for a drift you can explain; commit onchain/aiken/scripts/committed-field-shape-exec-ledger-v1.json with the explanation`
-- Runs on: onchain/aiken/scripts/verify-committed-field-shape-exec-ledger-v1.mjs, onchain/aiken/scripts/committed-field-shape-exec-ledger-v1.json, and every .ak module that midgard/fraud_proofs/committed_field_shape/rule.test imports, transitively
-- Needs: `aiken`
-
-### `exec-ledger:native-script-decoding-engine`
-
-Execution ledger native-script-decoding-engine-exec-ledger-v1.json.
-
-- Command: `node onchain/aiken/scripts/verify-native-script-decoding-engine-exec-ledger-v1.mjs`
-- Fix: `node onchain/aiken/scripts/verify-native-script-decoding-engine-exec-ledger-v1.mjs --update — only for a drift you can explain; commit onchain/aiken/scripts/native-script-decoding-engine-exec-ledger-v1.json with the explanation`
-- Runs on: onchain/aiken/scripts/verify-native-script-decoding-engine-exec-ledger-v1.mjs, onchain/aiken/scripts/native-script-decoding-engine-exec-ledger-v1.json, and every .ak module that midgard/fraud_proofs/native_script_decoding/exec_measure_v1.test, fraud_proofs/native_script_decoding/step_01, fraud_proofs/native_script_decoding/step_02, fraud_proofs/native_script_decoding/step_03_open_subject, fraud_proofs/native_script_decoding/step_03_bind_descriptor, fraud_proofs/native_script_decoding/step_03_advance_or_close, fraud_proofs/native_script_decoding/step_04 import, transitively
-- Needs: `aiken`
-
-### `exec-ledger:native-script-scan`
-
-Execution ledger native-script-scan-exec-ledger-v1.json.
-
-- Command: `node onchain/aiken/scripts/verify-native-script-scan-exec-ledger-v1.mjs`
-- Fix: `node onchain/aiken/scripts/verify-native-script-scan-exec-ledger-v1.mjs --update — only for a drift you can explain; commit onchain/aiken/scripts/native-script-scan-exec-ledger-v1.json with the explanation`
-- Runs on: onchain/aiken/scripts/verify-native-script-scan-exec-ledger-v1.mjs, onchain/aiken/scripts/native-script-scan-exec-ledger-v1.json, and every .ak module that midgard/native_script_scan_worst_case_v1.test, midgard/native_script_scan_worst_case_deep_v1.test, midgard/native_script_scan_worst_case_wide_v1.test import, transitively
-- Needs: `aiken`
-
-### `exec-ledger:q1x`
-
-Execution ledger native-tx-q1x-exec-ledger-v1.json.
-
-- Command: `node onchain/aiken/scripts/verify-q1x-exec-ledger-v1.mjs`
-- Fix: `node onchain/aiken/scripts/verify-q1x-exec-ledger-v1.mjs --update — only for a drift you can explain; commit onchain/aiken/scripts/native-tx-q1x-exec-ledger-v1.json with the explanation`
-- Runs on: onchain/aiken/scripts/verify-q1x-exec-ledger-v1.mjs, onchain/aiken/scripts/native-tx-q1x-exec-ledger-v1.json, and every .ak module that fraud-proofs/q1x-spend-input-cardinality.test imports, transitively
-- Needs: `aiken`
-
-### `exec-ledger:q21`
-
-Execution ledger native-tx-q21-exec-ledger-v1.json.
-
-- Command: `node onchain/aiken/scripts/verify-q21-exec-ledger-v1.mjs`
-- Fix: `node onchain/aiken/scripts/verify-q21-exec-ledger-v1.mjs --update — only for a drift you can explain; commit onchain/aiken/scripts/native-tx-q21-exec-ledger-v1.json with the explanation`
-- Runs on: onchain/aiken/scripts/verify-q21-exec-ledger-v1.mjs, onchain/aiken/scripts/native-tx-q21-exec-ledger-v1.json, and every .ak module that midgard/fraud_proofs/transition_trace/proof.test imports, transitively
-- Needs: `aiken`
-
-### `exec-ledger:q31`
-
-Execution ledger native-tx-q31-exec-ledger-v1.json.
-
-- Command: `node onchain/aiken/scripts/verify-q31-exec-ledger-v1.mjs`
-- Fix: `node onchain/aiken/scripts/verify-q31-exec-ledger-v1.mjs --update — only for a drift you can explain; commit onchain/aiken/scripts/native-tx-q31-exec-ledger-v1.json with the explanation`
-- Runs on: onchain/aiken/scripts/verify-q31-exec-ledger-v1.mjs, onchain/aiken/scripts/native-tx-q31-exec-ledger-v1.json, and every .ak module that fraud_proofs/reference_input_no_idx/step_02, fraud_proofs/reference_input_no_idx/step_04 import, transitively
-- Needs: `aiken`
-
-### `exec-ledger:transition-trace-descriptor`
-
-Execution ledger transition-trace-descriptor-exec-ledger-v1.json.
-
-- Command: `MIDGARD_AIKEN_ENV=testnet node onchain/aiken/scripts/verify-transition-trace-descriptor-exec-ledger-v1.mjs`
-- Fix: `MIDGARD_AIKEN_ENV=testnet node onchain/aiken/scripts/verify-transition-trace-descriptor-exec-ledger-v1.mjs --update — only for a drift you can explain; commit onchain/aiken/scripts/transition-trace-descriptor-exec-ledger-v1.json with the explanation`
-- Runs on: onchain/aiken/scripts/verify-transition-trace-descriptor-exec-ledger-v1.mjs, onchain/aiken/scripts/transition-trace-descriptor-exec-ledger-v1.json, and every .ak module that midgard/ledger_output_descriptor_v1_exunits_frontier.test, midgard/fraud_proofs/transition_trace/proof_exunits_frontier.test, midgard/ledger_output_descriptor_v1.test, midgard/fraud_proofs/transition_trace/proof.test import, transitively
-- Needs: `aiken`
-
-### `exec-ledger:tx-order-mint`
-
-Execution ledger tx-order-mint-exec-ledger-v1.json.
-
-- Command: `node onchain/aiken/scripts/verify-tx-order-mint-exec-ledger-v1.mjs`
-- Fix: `node onchain/aiken/scripts/verify-tx-order-mint-exec-ledger-v1.mjs --update — only for a drift you can explain; commit onchain/aiken/scripts/tx-order-mint-exec-ledger-v1.json with the explanation`
-- Runs on: onchain/aiken/scripts/verify-tx-order-mint-exec-ledger-v1.mjs, onchain/aiken/scripts/tx-order-mint-exec-ledger-v1.json, and every .ak module that midgard/user_events/tx_order_v1.test imports, transitively
+- Command: `node onchain/aiken/scripts/script-budgets.mjs check`
+- Fix: `node onchain/aiken/scripts/script-budgets.mjs raise <name> --reason <why> — only for a cost you accept; otherwise shrink the script`
+- Runs on: demo/midgard-core/src/script-budgets.json, the judge, and every .ak module a budgeted module imports, transitively
 - Needs: `aiken`
 
 ### `demo-test`

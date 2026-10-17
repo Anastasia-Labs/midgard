@@ -1,6 +1,8 @@
 import type { TxBuilder, TxSignBuilder, UTxO } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
+import { LucidError } from "./errors.js";
+
 export type TxCompleteOptions = NonNullable<
   Parameters<TxBuilder["complete"]>[0]
 >;
@@ -24,9 +26,9 @@ export const completeOptionsWithLocalEval = ({
  * there is something to spend.
  *
  * A builder handed `walletInputs` must select coins from exactly those inputs.
- * Lucid reads the wallet from the provider whenever its preset inputs are
+ * Lucid reads the selected wallet whenever its preset inputs are
  * empty, so an empty explicit set is refused by name before Lucid runs: the
- * caller's view has nothing to offer, and the provider is not a fallback.
+ * caller's view has nothing to offer, and wallet discovery is not a fallback.
  */
 export const emptyWalletInputsRefusal = (
   walletInputs: readonly UTxO[] | undefined,
@@ -41,9 +43,9 @@ export const EMPTY_WALLET_INPUTS_CAUSE = "explicit wallet inputs are empty";
 
 /**
  * Completes with local evaluation. With `walletInputs`, Lucid selects coins
- * and collateral from exactly those inputs and never reads the provider;
- * without them it reads the wallet as before. The caller refuses an empty
- * explicit set first (`emptyWalletInputsRefusal`).
+ * and collateral from exactly those inputs without wallet discovery;
+ * without them it reads the wallet as before. An empty explicit set fails
+ * through the caller's error mapping before Lucid runs.
  */
 export const completeTxWithLocalUPLCEvalProgram = <E>(
   tx: Pick<TxBuilder, "complete">,
@@ -51,9 +53,17 @@ export const completeTxWithLocalUPLCEvalProgram = <E>(
   walletInputs?: readonly UTxO[],
 ): Effect.Effect<TxSignBuilder, E> =>
   Effect.tryPromise({
-    try: () =>
-      tx.complete(
+    try: () => {
+      const refusal = emptyWalletInputsRefusal(walletInputs, "transaction");
+      if (refusal !== null) {
+        throw new LucidError({
+          message: refusal,
+          cause: EMPTY_WALLET_INPUTS_CAUSE,
+        });
+      }
+      return tx.complete(
         completeOptionsWithLocalEval({ presetWalletInputs: walletInputs }),
-      ),
+      );
+    },
     catch: catchError,
   });

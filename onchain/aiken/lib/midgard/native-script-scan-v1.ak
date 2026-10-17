@@ -1116,7 +1116,7 @@ pub fn payload_structure_is_canonical_at_bounds_v1(
 /// *Cause.* A3 gates wave item 9 on an R3-style ExUnits precondition measured
 /// before any on-chain commitment. That precondition FAILED. Against the frozen
 /// `GOAL_SPEC_EXECUTION_BASIS_V1` of 13,200,000 memory units
-/// (`scripts/exec-ledger-within-basis-v1.mjs`, GOAL_SPEC §3.3):
+/// (`SCRIPT_BUDGET_BASIS` in midgard-core, GOAL_SPEC §3.3):
 ///
 /// - the largest payload this arm can ever see -- 16,341 bytes, 5,447 nodes,
 ///   the deep shape -- costs about 1.08 billion memory units, **81.6x over**
@@ -1131,9 +1131,8 @@ pub fn payload_structure_is_canonical_at_bounds_v1(
 ///   without the derived figure.
 ///
 /// The basis is exhausted at **67 nodes** on the deep shape and **76** on the
-/// wide one; the readings, the derivations and the gate are
-/// `scripts/native-script-scan-exec-ledger-v1.json` and
-/// `scripts/verify-native-script-scan-exec-ledger-v1.mjs`. No cheaper faithful
+/// wide one; the readings are held in `demo/midgard-core/src/script-budgets.json`
+/// and judged by `scripts/script-budgets.mjs`. No cheaper faithful
 /// driver rescues it: `native_script_v1.inspect_native_script`, the alternative
 /// A3 names, exhausts the same basis at 106 nodes, and even a bare
 /// `cbor.deserialise` of the payload exhausts it at about 250.

@@ -1,3 +1,4 @@
+import { packageBuildTask } from "../../demo/scripts/package-tasks.mjs";
 // contrib mutate: put one mutant into a TypeScript or JavaScript source file
 // of a workspace package, run the tests that reach it, and put the file back.
 //
@@ -43,7 +44,7 @@ export const journalPath = (root, env = process.env) =>
 const stamps = (root) =>
   Object.fromEntries(
     workspacePackages(root)
-      .filter((pkg) => pkg.scripts?.["build:contrib-raw"])
+      .filter(packageBuildTask)
       .map((pkg) => {
         const path = resolve(
           root,

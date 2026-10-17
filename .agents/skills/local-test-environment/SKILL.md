@@ -1,6 +1,6 @@
 ---
 name: local-test-environment
-description: Get a Midgard checkout ready to run its test suites, and read what is wrong when it is not. Covers the shared test Postgres on 127.0.0.1:5433 (scripts/start-test-postgres.sh, synchronous_commit on), the per-worktree test-database prefix (MIDGARD_TEST_DATABASE_PREFIX), which suites need a built dist and why, the blueprint staleness guard (MIDGARD_BLUEPRINT_STAMP, deployment:build), the pinned Aiken and the hooks, and each linked worktree's own operator compose project and host ports. Use before running a Postgres-backed or blueprint-reading suite in a fresh checkout or worktree; when vitest reports "No test files found", ECONNREFUSED 127.0.0.1:5433, a "[blueprint-stamp]" refusal, a missing dist/ file, or rows a test did not write; when two checkouts run suites or the operator stack at once; before running one file of a package, a gate over several suites or anything longer than one Bash call; when reusing another worktree's blueprint; or when `node scripts/doctor.mjs` fails.
+description: Get a Midgard checkout ready to run its test suites, and read what is wrong when it is not. Covers the shared test Postgres on 127.0.0.1:5433 (scripts/start-test-postgres.sh, synchronous_commit on), the per-worktree test-database prefix (MIDGARD_TEST_DATABASE_PREFIX), which suites need a built dist and why, the blueprint stamp setup that rebuilds a stale blueprint (deployment:build), the pinned Aiken and the hooks, and each linked worktree's own operator compose project and host ports. Use before running a Postgres-backed or blueprint-reading suite in a fresh checkout or worktree; when vitest reports "No test files found", ECONNREFUSED 127.0.0.1:5433, a "[blueprint-stamp]" rebuild or refusal, a missing dist/ file, or rows a test did not write; when two checkouts run suites or the operator stack at once; before running one file of a package, a gate over several suites or anything longer than one Bash call; when reusing another worktree's blueprint; or when `node scripts/doctor.mjs` fails.
 ---
 
 # Local test environment
@@ -12,9 +12,8 @@ missing prerequisite or two checkouts touching the same resource.
 ## Start with `doctor`
 
 Run suites with `node scripts/contrib.mjs test --package <name> [--file <path> | --related <changed>]`
-([how](references/running-suites.md#one-file-the-files-a-change-reaches-or-the-whole-package)): it runs
-the package's `test` script as CI does, after preparing the blueprint and
-dists, under its own database family, and counts what ran.
+([how](references/running-suites.md#one-file-the-files-a-change-reaches-or-the-whole-package)): it prepares declared artifacts,
+runs the package task under its own database family, and counts what ran. When proving the contributor CLI itself, use the [feature map](features/README.md).
 
 `node scripts/doctor.mjs` (`--json` for machine-readable output) is
 read-only: it starts, installs and writes nothing, and prints a fix under each
@@ -83,33 +82,34 @@ export condition, and a single run bundles that source ([the workspace
 bundle](references/running-suites.md#the-workspace-bundle)). Plain `node`
 follows the `import` condition to `dist/`, so code run outside vitest needs it.
 
-`contrib prepare` builds what each `pretest` declares (`pnpm run build`,
-`pnpm --dir ../SIBLING run build`; any other step is refused) and their runtime
-closure, in order. `contrib test` owns these artifacts until the run joins.
+`contrib prepare` builds the prerequisites declared by `midgardTasks.test`
+and their runtime/build dependency closure, in order. For the declaration
+shape and caller flags, read [focused tests and builds](../../../docs/agents/contrib/tests-and-builds.md).
 
-- **A raw `vitest run` skips `pretest`.** `contrib test` rebuilds each stale
-  declared dist, by digest, and nothing undeclared. A test spelling a relative
-  path into its own package's `dist/` makes the run refuse until `pretest`
-  ends with `pnpm run build` (blind spot: a path joined from segments). [script: scripts/contrib/tests.mjs]
+- **Declare every compiled entrypoint the suite executes**, including paths
+  assembled from segments, in `midgardTasks.test.prerequisites`. Ordinary
+  package tests and `contrib test` share that owner; raw Vitest skips preparation.
+  [script: scripts/contrib/tests.mjs] Blind spot: the declaration validates
+  named edges, but does not discover an omitted runtime file read.
 - **Build dist in each checkout; never copy it from another.** Guarded stamps
   authenticate checkout, source closure and emitted dependencies. [script: scripts/contrib/build.mjs]
 
 ## The blueprint stamp
 
 Suites that read the untracked `onchain/aiken/plutus.json` run
-`demo/midgard-test-support/blueprint-stamp-setup.js`, which refuses with a
-`[blueprint-stamp]` error a blueprint built from other sources or by another
-compiler, or one `MIDGARD_REAL_BLUEPRINT_PATH` names without a fresh build
-record. An absent default one is left to the suites that read it.
+`demo/midgard-test-support/blueprint-stamp-setup.js` before any file starts.
+A missing default blueprint, or one built from other sources or by another
+compiler, is rebuilt there under a lock in `onchain/aiken/build/`, so parallel
+runs wait for one build. It refuses with a `[blueprint-stamp]` error only when
+the pinned compiler is unavailable, or when `MIDGARD_REAL_BLUEPRINT_PATH` names
+a blueprint without a fresh build record. [script: demo/midgard-test-support/blueprint-stamp-setup.js]
 
-- **`contrib prepare` and `contrib test` make the blueprint ready; nobody
-  chooses between copying and building.** A stale or other-profile blueprint
-  is copied from a checkout whose build record matches this tree
+- **Nobody chooses between copying and building.** `contrib prepare`,
+  `contrib test` and the stamp setup all leave a blueprint the same way: copied
+  from a checkout whose build record matches this tree
   (`scripts/sync-blueprint-from.mjs` re-verifies the copy), else built with
-  `deployment:build`. [script: scripts/contrib/blueprint.mjs]
-- **`MIDGARD_BLUEPRINT_STAMP=warn` is for a deliberate run against a stale
-  build only**; never report such a run as a result for the current tree.
-  CI never sets it, and nothing stops a local run from setting it. [review]
+  `deployment:build`. `contrib` also rebuilds an other-profile blueprint.
+  [script: scripts/contrib/blueprint.mjs]
 
 ## One file, and gate runs
 

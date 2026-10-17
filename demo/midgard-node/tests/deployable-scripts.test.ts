@@ -7,11 +7,7 @@ import { Effect } from "effect";
 import { beforeAll, describe, expect, it } from "vitest";
 
 import { collectScriptDescriptors } from "../src/commands/contract-deployment-info.js";
-import {
-  MANIFEST_ORDER,
-  PUBLICATION_ORDER,
-  REFERENCE_SCRIPT_COMMAND_NAMES,
-} from "../src/deployable-scripts.js";
+import { REFERENCE_SCRIPT_COMMAND_NAMES } from "../src/deployable-scripts.js";
 import { DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE } from "../src/deployment-manifest.js";
 import { AlwaysSucceedsContract } from "../src/services/always-succeeds.js";
 import {} from "../src/transactions/reference-scripts.js";
@@ -31,6 +27,7 @@ import {
   nodeRuntimeReferenceScriptTargets,
   referenceScriptTargetsByCommand,
 } from "./helpers/deployable-catalogue-before-canonical.js";
+import { expectPreMigrationDeploymentBoundary } from "./helpers/deployment-member-baseline.js";
 import { withRealEventHistoryForTest } from "./helpers/event-history.js";
 import { loadRealMidgardContractsForTest } from "./helpers/real-midgard-contracts.js";
 
@@ -164,14 +161,8 @@ describe("deployable-script catalogue", () => {
     );
   }, 120_000);
 
-  it("orders publication over every catalogue section exactly once", () => {
-    const publicationSections = PUBLICATION_ORDER.flatMap((step) =>
-      typeof step === "string" ? [step] : step.interleaveByChain,
-    );
-    expect(new Set(publicationSections).size).toEqual(
-      publicationSections.length,
-    );
-    expect([...publicationSections].sort()).toEqual([...MANIFEST_ORDER].sort());
+  it("preserves the complete pre-migration script binding and publication order", () => {
+    expectPreMigrationDeploymentBoundary(real);
   });
 
   it("pins the manifest order of contracts and roles", () => {

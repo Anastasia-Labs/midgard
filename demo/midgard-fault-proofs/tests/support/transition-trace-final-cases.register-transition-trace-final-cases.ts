@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { join, parse } from "node:path";
+import { join } from "node:path";
 
 import { outRefLabel } from "@al-ft/midgard-core";
 import {
@@ -28,11 +28,6 @@ import {
   submitRemoveFraudulentBlock,
   submitTransitionTraceProof,
 } from "../../src/index.js";
-import {
-  buildVanRossemFitLedger,
-  type VanRossemFitMeasurement,
-  writeVanRossemFitLedger,
-} from "../../src/proof-fit/van-rossem-fit-ledger.js";
 import {
   type TransitionDepositOpening,
   transitionDepositOpening,
@@ -84,12 +79,11 @@ import {
 } from "./transition-trace-final-fixtures.js";
 import { publishTransitionTraceYields } from "./transition-trace-yields.js";
 
-/** Each test file registers its own suite, measurement rows and module spies. */
+/** Each test file registers its own suite, evidence records and module spies. */
 export const registerTransitionTraceFinalCases = (
   cases: readonly TransitionTraceFinalCase[],
-  fitLedgerSuffix?: "many-assets" | "deep-deposit" | "drained",
+  variant?: "many-assets" | "deep-deposit" | "drained",
 ): void => {
-  const fitRows: VanRossemFitMeasurement[] = [];
   const records: unknown[] = [];
   const measuredBlueprintSha256 = createHash("sha256")
     .update(readFileSync(realBlueprintPath))
@@ -99,7 +93,7 @@ export const registerTransitionTraceFinalCases = (
     if (directory !== undefined) {
       mkdirSync(directory, { recursive: true });
       writeFileSync(
-        join(directory, `transition-final-${fitLedgerSuffix ?? "cases"}.json`),
+        join(directory, `transition-final-${variant ?? "cases"}.json`),
         JSON.stringify(
           {
             scope:
@@ -114,24 +108,6 @@ export const registerTransitionTraceFinalCases = (
         ) + "\n",
       );
     }
-    const configuredPath = process.env.TRANSITION_TRACE_FIT_LEDGER_PATH;
-    // Split files emit sibling ledgers instead of overwriting each other's rows.
-    const parsed = configuredPath ? parse(configuredPath) : undefined;
-    const path =
-      parsed !== undefined && fitLedgerSuffix !== undefined
-        ? join(parsed.dir, `${parsed.name}-${fitLedgerSuffix}${parsed.ext}`)
-        : configuredPath;
-    if (path)
-      await writeVanRossemFitLedger(
-        path,
-        buildVanRossemFitLedger({
-          category: "transitionTrace",
-          blueprintSha256: measuredBlueprintSha256,
-          compilerVersion: "aiken v1.1.23+5adf783",
-          measurements: fitRows,
-        }),
-        { namedByCaller: true },
-      );
   });
   describe("fault-proof emulator integration", () => {
     it.each(cases)(
@@ -184,25 +160,13 @@ export const registerTransitionTraceFinalCases = (
           const result = await submit(cbor);
           const m = measureCompleteSignedTransaction(cbor);
           expect(m.executionMemory).toBeLessThanOrEqual(13_200_000n);
-          const outputs = CML.Transaction.from_cbor_hex(cbor).body().outputs();
-          let publication = false;
-          for (let i = 0; i < outputs.len(); i++)
-            if (outputs.get(i).script_ref() != null) publication = true;
           const shape = `assets-${assetCount}-outputs-${outputCount}-bytes-${outputBytes}-field-${fieldBytes}-honest-${honest}-depth-${depth}-kind-${kind}-cancel-${cancelAt}-datum-${datumCbor === undefined ? datumBytes : `cbor-${datumCbor.length / 2}`}-corrupt-index-${corruptAssetIndex}-corrupt-walk-${corruptWalk}-corrupt-source-${corruptSourceReference}`;
           records.push({
-            label: `${shape}/tx-${measuredIndex}`,
+            label: `${shape}/tx-${measuredIndex++}`,
             txHash: result,
             transactionCbor: cbor,
             measurement: m,
             fee: CML.Transaction.from_cbor_hex(cbor).body().fee(),
-          });
-          fitRows.push({
-            name: `${shape}/tx-${measuredIndex++}`,
-            kind: publication ? "publication" : "lifecycle",
-            maximumShape: shape,
-            signedBytes: m.completeSignedBytes,
-            memoryUnits: m.executionMemory,
-            cpuUnits: m.executionSteps,
           });
           if (
             process.env.TRANSITION_TRACE_FIT_PROGRESS === "1" &&
@@ -522,7 +486,7 @@ export const registerTransitionTraceFinalCases = (
               "Deposit",
             ),
           );
-          if (fitLedgerSuffix === "deep-deposit")
+          if (variant === "deep-deposit")
             expect(
               assetsToValue(witness.anchor.utxo.assets).to_cbor_bytes().length,
             ).toBe(5000);

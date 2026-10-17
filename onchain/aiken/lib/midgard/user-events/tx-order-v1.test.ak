@@ -1015,7 +1015,7 @@ test tx_order_mint_redeemer_wire_form_is_the_event_plus_the_carriage_vector() {
 // §8.11 publishes a cost for this mint — "§12.5's tier-2 per-step
 // full-preimage re-hash, bounded by §5.4's 32,768-byte aggregate over all nine
 // fields" — and a published cost claim gets a pin, per the §8.10 precedent.
-// `scripts/verify-tx-order-mint-exec-ledger-v1.mjs` takes the rows; the
+// `scripts/script-budgets.mjs` takes the rows; the
 // fixtures below are the two shapes the claim splits into, and
 // `tx_order_mint_material_fixture_sits_at_the_aggregate_bound` is what stops
 // either row quietly becoming a cheaper one.

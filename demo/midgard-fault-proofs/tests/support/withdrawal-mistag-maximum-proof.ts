@@ -13,10 +13,6 @@ import {
 } from "./withdrawal-mistag-emulator.js";
 
 export const runWithdrawalMistagMaximumProof = async (
-  record: (
-    label: string,
-    measurement: import("./emulator/measurement.js").CompleteSignedTransactionMeasurement,
-  ) => void,
   maximumAssetNames = false,
 ) => {
   const harness = await makeWithdrawalMistagEmulatorHarness();
@@ -58,9 +54,6 @@ export const runWithdrawalMistagMaximumProof = async (
             ).find((utxo) => utxo.txHash === txHash && utxo.datum === datum)!;
           },
         );
-        captured.measurements.forEach((measurement, index) =>
-          record(`evidence-${step}-${published.size}-${index}`, measurement),
-        );
         expect(captured.measurement.completeSignedBytes).toBeLessThanOrEqual(
           15872,
         );
@@ -72,13 +65,7 @@ export const runWithdrawalMistagMaximumProof = async (
     }
     refsByStep.push(refs);
   }
-  const publication = await captureEmulatorSubmission(harness.emulator, () =>
-    publishWithdrawalMistagScripts({ harness }),
-  );
-  publication.measurements.forEach((measurement, index) =>
-    record(`script-${index}`, measurement),
-  );
-  const scripts = publication.result;
+  const scripts = await publishWithdrawalMistagScripts({ harness });
   const lifecycle = await driveWithdrawalMistagToFraud({
     harness,
     scenario,
@@ -88,21 +75,12 @@ export const runWithdrawalMistagMaximumProof = async (
   for (const [label, measurement] of Object.entries(
     lifecycle.transactionMeasurements,
   )) {
-    record(label, measurement);
     expect(measurement.completeSignedBytes).toBeLessThanOrEqual(15872);
     expect(measurement.executionMemory, label).toBeLessThanOrEqual(13_200_000n);
     expect(measurement.executionSteps, label).toBeLessThanOrEqual(
       8_000_000_000n,
     );
   }
-  const removal = await captureEmulatorSubmission(harness.emulator, () =>
-    removeWithdrawalMistagBlock({ harness, scenario }),
-  );
-  removal.measurements.forEach((measurement, index) =>
-    record(
-      `${index === removal.measurements.length - 1 ? "remove" : "removal-script"}-${index}`,
-      measurement,
-    ),
-  );
-  expect(removal.result.fraudCategory).toBe("withdrawalMistag");
+  const removal = await removeWithdrawalMistagBlock({ harness, scenario });
+  expect(removal.fraudCategory).toBe("withdrawalMistag");
 };

@@ -165,13 +165,16 @@ test("artifact sync refuses destination input drift instead of rebinding uncheck
       },
     ],
   });
-  // This fixture has no dependencies. Its package-manager adapter runs the
-  // actual tiny compiler recipe while avoiding a network install in this unit test.
+  // The dependency-free fixture needs no install; its compiler is a real declared step.
   writeFileSync(
     resolve(adapter, "corepack"),
-    '#!/bin/sh\nif [ "$1" = "pnpm" ] && [ "$2" = "run" ]; then exec node build.mjs; fi\n',
+    '#!/bin/sh\nif [ "$1" = pnpm ] && [ "$2" = install ]; then exit 0; fi\nexit 2\n',
     { mode: 0o755 },
   );
+  const manifest = resolve(root, "demo/example/package.json");
+  const pkg = JSON.parse(readFileSync(manifest, "utf8"));
+  pkg.midgardTasks.build.steps = [{ command: ["node", "build.mjs"] }];
+  atomicJson(manifest, pkg);
   const git = (...args) =>
     execFileSync("git", args, { cwd: root, stdio: "pipe" });
   git(
@@ -202,13 +205,21 @@ test("artifact sync refuses destination input drift instead of rebinding uncheck
     env,
     signal: controller.signal,
   });
-  pending.catch(() => {});
+  let completed;
+  pending.then(
+    (result) => {
+      completed = result;
+    },
+    (error) => {
+      completed = { reason: error.message };
+    },
+  );
   try {
     const deadline = performance.now() + 5000;
     while (!existsSync(marker) && performance.now() < deadline) await delay(10);
     assert.ok(
       existsSync(marker),
-      "generator must actually reach its input read",
+      `generator must actually reach its input read${completed ? `: ${completed.reason ?? completed.status}` : ""}`,
     );
     writeFileSync(resolve(root, "external-inputs/limit.json"), "43");
   } catch (error) {

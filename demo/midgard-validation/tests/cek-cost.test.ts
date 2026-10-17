@@ -45,6 +45,29 @@ describe("V1 pinned Plutus V3 builtin costs", () => {
     });
   });
 
+  // Cardano's charges for each division builtin at (2 words, 10 words), below
+  // the diagonal, and at (10 words, 2 words), above it: the pinned uplc
+  // evaluator at PV 11 under the 350-entry vector, with the machine's own
+  // step and startup charges subtracted.
+  it.each([
+    ["divideInteger", 3, 176_273n, 1n, 176_273n, 8n],
+    ["quotientInteger", 4, 85_848n, 1n, 176_273n, 8n],
+    ["remainderInteger", 5, 85_848n, 10n, 176_273n, 2n],
+    ["modInteger", 6, 176_273n, 10n, 176_273n, 2n],
+  ] as const)(
+    "costs %s on both sides of the diagonal as Cardano does",
+    (_name, tag, belowCpu, belowMemory, aboveCpu, aboveMemory) => {
+      expect(computeMidgardCekBuiltinBudget(tag, [2n, 10n])).toEqual({
+        cpu: belowCpu,
+        memory: belowMemory,
+      });
+      expect(computeMidgardCekBuiltinBudget(tag, [10n, 2n])).toEqual({
+        cpu: aboveCpu,
+        memory: aboveMemory,
+      });
+    },
+  );
+
   it("fails closed on unknown tags, wrong arity, or negative sizes", () => {
     expect(() => computeMidgardCekBuiltinBudget(87, [1n])).toThrow(
       /outside Plutus V3/u,

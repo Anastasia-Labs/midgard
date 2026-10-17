@@ -1,3 +1,4 @@
+import { deploymentValidatorTitle as deployedTitle } from "@al-ft/midgard-core/deployment-manifest-identity";
 import {
   type LucidEvolution,
   type Network,
@@ -20,8 +21,9 @@ import {
   emptyWalletInputsRefusal,
 } from "./tx-completion.js";
 
-export const PHAS_MEMBERSHIP_WITHDRAWAL_VALIDATOR_TITLE =
-  "phas.membership.withdraw";
+export const PHAS_MEMBERSHIP_WITHDRAWAL_VALIDATOR_TITLE = deployedTitle(
+  "phasMembershipWithdraw",
+);
 
 export type PhasMembershipBlueprint = {
   readonly validators: readonly {

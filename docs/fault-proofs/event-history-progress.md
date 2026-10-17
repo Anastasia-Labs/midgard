@@ -4,6 +4,10 @@
 
 Status: In progress; ABI not frozen; no acceptance or gap closure claimed.
 
+The fit ledgers and their write flag that entries below mention have since been
+removed; Van Rossem fit is now enforced on every emulator submission
+([fit evidence](size-plans/README.md)).
+
 ## Baseline and preservation
 
 - Starting source: `1b53eafd8c0c88c36232869b23eb8aaf48f7f8c2`.
@@ -1683,7 +1687,7 @@ The original default full-package run finished: 377 files passed, 20 failed,
 4 pre-existing skipped files; 4,503 tests passed, 93 failed, 4 pre-existing skipped
 (23m41.58s). The failures comprise the diagnosed inline-script successor builders,
 23 obsolete builder byte identities, three dense-data wall-time limits, and one
-additional suite-level fit-ledger identity failure. The latter is the pinned
+additional suite-level fit ledger identity failure. The latter is the pinned
 forced-window ledger still naming blueprint
 `04790ae612c2478aa089a7f08089f11e43638cf007a2f562fa8b445f4ee25f6e`.
 Regenerate that artifact through its existing measurement mode, then run its
@@ -1693,7 +1697,7 @@ log remains `history-fault-proofs-full-suite.log`; updated-source full acceptanc
 is still pending. Existing skips were neither added nor modified.
 
 Forced-window fit ledger was regenerated from all six actual emulator scenarios
-using its existing `MIDGARD_WRITE_FIT_LEDGER=1` mode; the following full run uses
+using its existing ledger write mode; the following full run uses
 normal assertion mode. Updated-source full package run is now active:
 
 ```sh
@@ -2297,7 +2301,7 @@ Checks so far (Node 22.22.2/pnpm 9.15.4, isolated workspace):
 - `pnpm --dir demo/midgard-fault-proofs run test tests/submit-init-emulator-transition-timing-history.test.ts --testTimeout 120000`: 12/12 passed, 36.37 s. Both kinds, inline/external, omission/out-of-window positives and honest eligible negatives; actual admission, prepublished external data, predecessor churn, stale caller references, corrupted actual event index, terminal marker. Evidence `transition-timing-yields-third/transition-timing-history.json`; log `history-transition-timing-yields-third-tests.log`.
 - `pnpm --dir demo/midgard-node run typecheck`: passed after completing the core token-name manifest map. Log `history-transition-timing-yields-node-typecheck-second.log`.
 - SDK selected validator parameter-order test: 1 passed, 29 unselected, with exact applied CBOR assertions for dispatcher and both yields. Log `history-transition-timing-yields-sdk-parameters.log`.
-- `MIDGARD_WRITE_FIT_LEDGER=1 pnpm --dir demo/midgard-fault-proofs run test tests/submit-init-emulator-transition-trace-subvariants.test.ts -t 'authenticates a late rejected order' --testTimeout 180000`: 2 passed, 4 unselected, 12.20 s; preserves exact forced-submission/verdict authentication and removal. The isolated generated forced-window fit ledger was regenerated through its existing supported path; no check changed. Log `history-transition-timing-forced-first-tests.log`.
+- With the ledger write flag set, `pnpm --dir demo/midgard-fault-proofs run test tests/submit-init-emulator-transition-trace-subvariants.test.ts -t 'authenticates a late rejected order' --testTimeout 180000`: 2 passed, 4 unselected, 12.20 s; preserves exact forced-submission/verdict authentication and removal. The isolated generated forced-window fit ledger was regenerated through its existing supported path; no check changed. Log `history-transition-timing-forced-first-tests.log`.
 
 Added negative applied yield-reference substitution and 19 focused dispatcher/role-selection unit cases. New shared applied run covers timed history plus installed/staged transition and both fabricated families; checks are in progress. Current implementation is still unapplied to root. No live reset/redeployment occurred. Remaining gates include obsolete timed witness/schema/helper removal, maximum direct proof carriage, installed direct timing restart/rollback, full history/user/node lifecycle migration, coherent integration and full/live acceptance. The goal remains active; publication fit for these measured scenarios does not freeze the ABI or close maximum-size acceptance.
 
@@ -2337,7 +2341,7 @@ Final commands/results on blueprint `20b7fb3dd1b540cd0234b02a9259c035cc87303c69a
 - `MIDGARD_AIKEN_BIN=/home/gumbo/.aiken-fork/bin/aiken MIDGARD_AIKEN_ENV=testnet node scripts/guard-focused-selector.mjs midgard/event_history midgard/fraud_proofs/transition_trace fraud_proofs/transition_trace`: **195 + 154 + 244 = 593 collected/passed**.
 - `pnpm --dir demo/midgard-fault-proofs run test tests/submit-init-emulator-transition-timing-history.test.ts --testTimeout 120000`: **14 passed**, 46.62 s.
 - `pnpm --dir demo/midgard-fault-proofs run test tests/transition-trace-installed-lifecycle.test.ts tests/submit-init-emulator-transition-history.test.ts tests/submit-init-emulator-fabricated-deposit.test.ts tests/submit-init-emulator-fabricated-withdrawal.test.ts --testTimeout 120000`: **21 passed**, 76.78 s.
-- Forced timing selected replay with `MIDGARD_WRITE_FIT_LEDGER=1`: **2 passed, 4 unselected**, 13.19 s; generated isolated ledger updated for this blueprint.
+- Forced timing selected replay with the ledger write flag set: **2 passed, 4 unselected**, 13.19 s; generated isolated ledger updated for this blueprint.
 - `pnpm --dir demo/midgard-sdk run test tests/fault-proof.test.ts tests/reference-scripts.test.ts`: **38 passed**.
 - `NODE_ENV=emulator pnpm --dir demo/midgard-node exec vitest run tests/deployment-manifest.test.ts tests/contract-deployment-info.test.ts tests/midgard-contracts.test.ts tests/reference-publication-chain.test.ts tests/fraud-proof-catalogue.test.ts tests/da-deployment-fixture-generation.test.ts tests/benchmark-regression.test.mjs`: **97 passed**, 17.05 s. The full-registry golden and DA fixture were updated for the changed router; independent queue/correction and stand-in inventory assertions remain intact. Live publication opt-in acceptance remains unrun.
 - Final fault-proof typecheck and targeted ESLint: passed. Earlier four-package typechecks passed; core/SDK/node source did not change after those checks beyond node fixture identities.
@@ -2391,7 +2395,7 @@ This targets installed timing/chunk/prerequisite/restart/current-pointer coverag
 
 #### Verified installed timing checkpoint (2026-09-22)
 
-`MIDGARD_EVENT_HISTORY_EVIDENCE_DIR=.../transition-installed-timing-third MIDGARD_WRITE_FIT_LEDGER=1 pnpm --dir demo/midgard-fault-proofs run test tests/transition-trace-installed-lifecycle.test.ts --testTimeout 180000` passed **13/13**, 123.20 s. Six direct timing positives completed through proof mint/removal after actual pointer replacement: small omission and out-of-window cases took four cold workflow/disk-journal resumptions each; both 12,000-byte external cases took seven and used published proof chunks. Both honest late-event cases returned `no_fault_detected`. The five original installed cases passed unchanged assertions. Every acquired terminal mutation lease had three renewals, one release and no failure. Final fault-proof typecheck and targeted ESLint passed. No production source change was needed for the two diagnosed fixture ordering/eligibility issues.
+With the ledger write flag set, `MIDGARD_EVENT_HISTORY_EVIDENCE_DIR=.../transition-installed-timing-third pnpm --dir demo/midgard-fault-proofs run test tests/transition-trace-installed-lifecycle.test.ts --testTimeout 180000` passed **13/13**, 123.20 s. Six direct timing positives completed through proof mint/removal after actual pointer replacement: small omission and out-of-window cases took four cold workflow/disk-journal resumptions each; both 12,000-byte external cases took seven and used published proof chunks. Both honest late-event cases returned `no_fault_detected`. The five original installed cases passed unchanged assertions. Every acquired terminal mutation lease had three renewals, one release and no failure. Final fault-proof typecheck and targeted ESLint passed. No production source change was needed for the two diagnosed fixture ordering/eligibility issues.
 
 `artifacts/event-history/history-transition-installed-timing-identity.json` binds this checkpoint to the unchanged `3ddf56af8e03652ff1bdfcc496b9c5c4d4d1999e347c180e71a216a19911eb7f` blueprint/compiler/1,225 Aiken inputs, the new 3,036-file TypeScript snapshot, applied deployment/parameter records, journals and fit ledger. Only the installed lifecycle test and its retained payload fixture changed after the verified semantic checkpoint. The 63-path cumulative TypeScript/generated patch still has zero root overlap, passes `git apply --check`, remains unapplied, and excludes Aiken. Root whitespace and protected-document checks passed.
 
@@ -2424,13 +2428,13 @@ Corrected blueprint **`98bd07b4ca894bc0900a3200adb35111df0dc9b2af5fdd98229a5efbd
 Commands/results (isolated workspace, Node 22.22.2/pnpm 9.15.4):
 
 - `pnpm --dir demo/midgard-fault-proofs run test tests/transition-trace-challenger.test.ts tests/transition-trace-l1-evidence.test.ts tests/ledger-delta-dense-trace-totality.test.ts tests/replay-prerequisite.test.ts`: **92 passed**, 9.83 s.
-- `MIDGARD_EVENT_HISTORY_EVIDENCE_DIR=.../transition-deposit-semantics-shared MIDGARD_WRITE_FIT_LEDGER=1 pnpm --dir demo/midgard-fault-proofs run test tests/transition-trace-installed-lifecycle.test.ts tests/submit-init-emulator-transition-history.test.ts tests/submit-init-emulator-transition-timing-history.test.ts tests/submit-init-emulator-transition-trace-subvariants.test.ts tests/submit-init-emulator-fabricated-deposit.test.ts tests/submit-init-emulator-fabricated-withdrawal.test.ts --testTimeout 180000`: **49 passed**, 6 files, 122.83 s. Includes all 13 installed cases, eight staged original-Value cases, fourteen direct timing cases, six semantic subvariants and eight fabricated-family cases.
+- With the ledger write flag set, `MIDGARD_EVENT_HISTORY_EVIDENCE_DIR=.../transition-deposit-semantics-shared pnpm --dir demo/midgard-fault-proofs run test tests/transition-trace-installed-lifecycle.test.ts tests/submit-init-emulator-transition-history.test.ts tests/submit-init-emulator-transition-timing-history.test.ts tests/submit-init-emulator-transition-trace-subvariants.test.ts tests/submit-init-emulator-fabricated-deposit.test.ts tests/submit-init-emulator-fabricated-withdrawal.test.ts --testTimeout 180000`: **49 passed**, 6 files, 122.83 s. Includes all 13 installed cases, eight staged original-Value cases, fourteen direct timing cases, six semantic subvariants and eight fabricated-family cases.
 - `pnpm --dir demo/midgard-sdk run test tests/fault-proof.test.ts tests/reference-scripts.test.ts`: **38 passed** on the corrected blueprint.
 - `NODE_ENV=emulator pnpm --dir demo/midgard-node exec vitest run tests/deployment-manifest.test.ts tests/contract-deployment-info.test.ts tests/midgard-contracts.test.ts tests/reference-publication-chain.test.ts tests/fraud-proof-catalogue.test.ts tests/da-deployment-fixture-generation.test.ts tests/benchmark-regression.test.mjs tests/sdk-abi-fixtures.test.ts`: **106 passed**, 8 files, 15.72 s. Includes rejection of old pointer-bearing deposit bytes. Full-registry golden updated to `aea85b5e916fd92ad86d90c45ef00e84f8bd02508dd363ba925e5cdd6d0ec9fb`; independent queue/correction and full stand-in inventory assertions unchanged. Generated DA fixture uses the existing explicit writer.
 - SDK and fault-proof builds; SDK, node and final fault-proof typechecks; targeted ESLint; generated ABI check: passed.
 - Root `pnpm --dir docs-site run check:links`: **303 files passed**. Root whitespace and 65-path cumulative TypeScript/generated patch apply checks passed, zero root overlap; patch remains unapplied and excludes Aiken.
 
-The full descriptor execution-cost ledger **did not pass**: `MIDGARD_AIKEN_BIN=... MIDGARD_AIKEN_ENV=testnet node scripts/verify-transition-trace-descriptor-exec-ledger-v1.mjs --update` failed closed at 31/32 selectors because its existing `derivation_declines_an_empty_inline_datum` selector is absent; unchanged descriptor source instead defines `derivation_accepts_an_empty_inline_datum`. The ledger was not rewritten and the verifier/check source was not edited. Supplementary readings through the existing `measureModule` guard ran **34 tests in the two affected transition modules**, recorded in `history-transition-deposit-semantics-affected-exunits.json`; they do not replace the failed full gate. Current no-datum deposit whole-test: 11,346,180 memory / 4,974,743,370 CPU; fixture-only twin: 5,301,868 / 2,336,326,760. These are whole-test readings with fixture overhead, not deployed transaction budgets or proof of a safe inline frontier. Do not claim the stale descriptor ledger or unrelated descriptor gap closed.
+The full descriptor execution-cost ledger **did not pass**: its verifier (since replaced by the script-budget judge), run with `MIDGARD_AIKEN_ENV=testnet` and `--update`, failed closed at 31/32 selectors because its existing `derivation_declines_an_empty_inline_datum` selector is absent; unchanged descriptor source instead defines `derivation_accepts_an_empty_inline_datum`. The ledger was not rewritten and the verifier/check source was not edited. Supplementary readings through the existing `measureModule` guard ran **34 tests in the two affected transition modules**, recorded in `history-transition-deposit-semantics-affected-exunits.json`; they do not replace the failed full gate. Current no-datum deposit whole-test: 11,346,180 memory / 4,974,743,370 CPU; fixture-only twin: 5,301,868 / 2,336,326,760. These are whole-test readings with fixture overhead, not deployed transaction budgets or proof of a safe inline frontier. Do not claim the stale descriptor ledger or unrelated descriptor gap closed.
 
 Evidence identity `artifacts/event-history/history-transition-deposit-semantics-identity.json` binds the pinned compiler, 1,225 Aiken inputs, 3,036 TypeScript/config inputs, current blueprint, applied recipes/deployment identities and checks. The six final evidence files retain **3,223 unique complete signed transactions**, with CSV independent maxima **15,769 bytes / 6,482,237 memory / 2,763,729,747 CPU**. Large installed deposit route: 13,706 bytes, fee 1,085,018 lovelace, 1,636,730 memory/542,169,524 CPU; final: 1,825 bytes, 946,511, 2,394,141/2,028,004,859. Withdrawal route: 13,889 bytes, 1,122,557, 2,020,825/643,753,913; final: 1,825 bytes, 982,976, 2,791,779/2,215,541,798. Full publication/admission/churn costs remain in the CSV; 500 ADA setup fees are not user lifecycle estimates. No production limits changed.
 
@@ -2456,7 +2460,7 @@ The phase-7 bottleneck reconstructs/validates the entire captured Value at every
 
 Clean pinned testnet blueprint `a9d59ec09a5b0d59b29ccac493e57a0a02f35449d69bf54537affa2be4fd6c08` built successfully. Only projection, Value and summary deposit yields changed (withdraw/else entries); ABI check passed unchanged. Focused Aiken guard passed **195 history + 244 transition = 439 distinct tests**. SDK family/reference **38 passed**. Node generated identity/manifest/catalogue/reference/ABI suite **106 passed**, 17.75 s, after the expected stale full-registry fixture failed 18/19 and was regenerated/updated. Current full-registry golden `88aa8acf324dad922fb7b3060b2adefbcbe255cd1a54a29e22a3513f53807e4e`; independent queue/correction and inventory assertions preserved.
 
-Extended genuine staged tests from eight to twelve: nine native assets plus ADA, including 32-byte asset names and maximum signed-64-bit quantity, in inline/external modes with honest/faulty roots. All twelve passed, including pointer replacement and immutable reopening. Companion timing/fabricated/shared run passed all 40 test bodies, but its subvariant afterAll correctly rejected a stale source-bound fit ledger. Reran the six subvariants with the existing `MIDGARD_WRITE_FIT_LEDGER=1` writer: **six passed**, 21.53 s. Original failed suite log remains; no verifier/assertion edited.
+Extended genuine staged tests from eight to twelve: nine native assets plus ADA, including 32-byte asset names and maximum signed-64-bit quantity, in inline/external modes with honest/faulty roots. All twelve passed, including pointer replacement and immutable reopening. Companion timing/fabricated/shared run passed all 40 test bodies, but its subvariant afterAll correctly rejected a stale source-bound fit ledger. Reran the six subvariants with the existing ledger writer: **six passed**, 21.53 s. Original failed suite log remains; no verifier/assertion edited.
 
 The main six-file 46-case command has completed 19 standard finalization, 13 installed, eight earlier staged, four genuine admission boundary and the unchanged 1,304-asset accepted stress cases successfully; the 1,287-asset/depth-64 deposit stress is still running (session 86387, verified live). Do not claim the full maximum gate passed yet. Fault-proof build, final fault-proof/node typechecks, targeted ESLint and ABI check passed. Root docs links passed **306 Markdown/MDX files**. Current 67-path cumulative TypeScript/generated patch has zero overlap and passes apply check; remains unapplied, excludes Aiken. Reverified 1,225 Aiken/3,037 TypeScript/config source hashes, pinned compiler hash, protected docs and root whitespace.
 
@@ -2466,7 +2470,7 @@ Next independent consumer migration must include the existing watcher fold at `d
 
 The pending run completed successfully without interruption or timeout changes: **46/46 passed in six files**, 1,076.23 s. The 1,287-asset, exactly 5,000-byte Value/depth-64 deposit completed proof and block removal in 1,066.218 s; the unchanged 1,304-asset accepted case also passed. These are synthetic proof-consumer stress cases under explicit scaffold event authority, not admissible user token counts. Together with the final twelve genuine staged cases, four genuine admission boundary cases, installed workflows and shared timing/fabricated regressions, this checkpoint verifies **78 distinct applied/installed scenarios** (the earlier eight staged cases and six ledger-regeneration reruns are not counted twice).
 
-Main command (isolated workspace): `MIDGARD_EVENT_HISTORY_EVIDENCE_DIR=.../transition-max-reopening TRANSITION_TRACE_FIT_LEDGER_PATH=.../history-transition-max-reopening-fit-ledger.json MIDGARD_WRITE_FIT_LEDGER=1 pnpm --dir demo/midgard-fault-proofs run test tests/submit-init-emulator-transition-trace-final.test.ts tests/submit-init-emulator-transition-trace-final-deep-deposit.test.ts tests/submit-init-emulator-transition-trace-final-many-assets.test.ts tests/submit-init-emulator-history-deposit-asset-bound.test.ts tests/submit-init-emulator-transition-history.test.ts tests/transition-trace-installed-lifecycle.test.ts`. Companion command ran the twelve-case staged file plus `tests/submit-init-emulator-transition-timing-history.test.ts`, `tests/submit-init-emulator-transition-trace-subvariants.test.ts`, `tests/submit-init-emulator-fabricated-deposit.test.ts`, and `tests/submit-init-emulator-fabricated-withdrawal.test.ts`; the stale ledger failure and six-case regeneration rerun remain recorded above.
+Main command (isolated workspace, with the ledger write flag set and the transition-trace ledger path naming a max-reopening ledger): `MIDGARD_EVENT_HISTORY_EVIDENCE_DIR=.../transition-max-reopening pnpm --dir demo/midgard-fault-proofs run test tests/submit-init-emulator-transition-trace-final.test.ts tests/submit-init-emulator-transition-trace-final-deep-deposit.test.ts tests/submit-init-emulator-transition-trace-final-many-assets.test.ts tests/submit-init-emulator-history-deposit-asset-bound.test.ts tests/submit-init-emulator-transition-history.test.ts tests/transition-trace-installed-lifecycle.test.ts`. Companion command ran the twelve-case staged file plus `tests/submit-init-emulator-transition-timing-history.test.ts`, `tests/submit-init-emulator-transition-trace-subvariants.test.ts`, `tests/submit-init-emulator-fabricated-deposit.test.ts`, and `tests/submit-init-emulator-fabricated-withdrawal.test.ts`; the stale ledger failure and six-case regeneration rerun remain recorded above.
 
 `artifacts/event-history/history-transition-max-reopening-identity.json` binds blueprint `a9d59ec09a5b0d59b29ccac493e57a0a02f35449d69bf54537affa2be4fd6c08`, compiler, 1,225 Aiken and 3,037 TypeScript/config inputs, applied deployment parameters, logs, fit ledgers and complete transaction evidence. The combined CSV retains **7,267 unique complete signed transactions**. Independent maxima are **15,461 bytes / 12,556,125 memory / 6,929,687,360 CPU**, within the unchanged limits; the memory maximum also remains below the existing 13.2M stress assertion. The deep deposit fixture used 737 transactions including setup/publication and 1,630,664,103 lovelace in total fees including artificial setup fees. This is not a production user fee estimate.
 
@@ -2655,7 +2659,7 @@ Root verification (Node 22.22.2 / pnpm 9.15.4, logs in `artifacts/event-history/
 - `root-durable-sdk-user-flow.log`: 26 applied user-flow/public-builder tests passed after the publication-receipt and collateral changes. The two new cases stop admission recovery when the original publication receipt is unresolved. Existing crash, contention, delayed-visibility and honest controls remain.
 - `root-durable-sdk-suite.log`: all 609 tests / 71 files passed. SDK ESM/CJS/DTS build and node main/worker builds passed; node typecheck and touched-file lint passed. Exact logs retain commands/results; initial test-only address and emulator pre-genesis mistakes were corrected without relaxing assertions.
 - `root-independent-watcher-tests.log`: 65 passed across the four primary agent indexer suites plus root original-funds coverage. Agent origin follow-up passed 32/32 broader cases and six focused origin regressions, plus typecheck/lint/format. Root independent rerun of that final origin handoff is tracked separately in `root-independent-watcher-origin-tests.log`.
-- `root-history-initialization-tests.log`: all eight real initialization emulator tests passed. The actual accepted atomic initialization regenerated `demo/midgard-watcher/tests/fixtures/user-event-initialization.json`; it binds blueprint `7b7a0abae2db62e3ecb9e26e7907bbc1d4793eeee1a522470cc1c1014d1c8d74`, initialization transaction `d53c7d0b89aca966d5862227ab420a2e774ce6373ecb5a162bc00e9b3cf866cd`, and eight creating reference transactions. `parallel/history-initialization/node-atomic-history-bootstrap.json` retains accepted frames and exact emulator recipes. No hand-edited transaction CBOR or public-chain inclusion claim.
+- `root-history-initialization-tests.log`: all eight real initialization emulator tests passed. The actual accepted atomic initialization regenerated `demo/midgard-watcher/tests/fixtures/user-event-initialization.json`; it binds blueprint `7b7a0abae2db62e3ecb9e26e7907bbc1d4793eeee1a522470cc1c1014d1c8d74`, initialization transaction `d53c7d0b89aca966d5862227ab420a2e774ce6373ecb5a162bc00e9b3cf866cd`, and eight creating reference transactions. `parallel/history-initialization/node-atomic-history-bootstrap.json` retains accepted frames and exact emulator recipes. No hand-edited transaction CBOR or public-chain inclusion claim. That fixture was deleted on 2026-10-16; the watcher tests now derive the frame each run. <!-- doc-links:historical -->
 
 Root fixed the shared watcher binder to apply each signed history recipe and independently verify list, retention and retirement scripts against the exact signed blueprint/manifest. Agent origin parsing now compares canonical Plutus values while preserving actual definite/indefinite datum bytes; malformed data and policy mismatches remain rejected. The prior 23-failure origin status is superseded by the successful migrated agent run and the separately recorded root verification.
 
@@ -2873,7 +2877,7 @@ is still failed; no pass or production-bound closure is claimed.
 
 
 The full proof-emulator remainder finished in 1040.04s: 581 passing and five
-failing tests, plus one afterAll fit-ledger identity mismatch; 112 files passed
+failing tests, plus one afterAll fit ledger identity mismatch; 112 files passed
 and three failed (115 total). The largest 1,287-asset/depth-64 deposit trace
 passed in 1026.451s within its existing 1800s allowance. The yield-reference
 failure was fixed and independently passed as documented; the four 5s boundary
@@ -2884,10 +2888,10 @@ transactions, followed by a fresh read-only comparison run. No ledger equality
 or production budget assertion is being changed.
 
 
-Fit-ledger generation passed 6/6 in 18.67s; a separate normal run with
-`MIDGARD_WRITE_FIT_LEDGER=0` passed 6/6 in 18.54s, retaining pinned equality,
+Fit ledger generation passed 6/6 in 18.67s; a separate normal run with the
+ledger write flag off passed 6/6 in 18.54s, retaining pinned equality,
 scenario roster, and all lifecycle assertions. The current generated source
-`docs/fault-proofs/size-plans/transition-trace-forced-window-fit-ledger.json`
+forced-window fit ledger
 has 196 measurements and current blueprint SHA256 `7b7a0abae2db62e3ecb9e26e7907bbc1d4793eeee1a522470cc1c1014d1c8d74`.
 Measured maxima: 15,461 signed bytes, 2,972,835 memory units, 1,015,598,302 CPU
 units. Ledger digest `02178c3d3e62d08fd7a5c07a41e134eba0718a21eb367d60c8b107079e808c98`;
@@ -4821,7 +4825,7 @@ full counts534/527/526 and permanent old-projection assertions are retained.
 
 Root read-only final-application preview compared captured original baseline,
 checkpoint2 and current original:7,092 preserve-current,405 apply-task, one
-conflict (generated transition-trace-workflow-fit-ledger.json), no concurrent
+conflict (the generated transition-trace workflow fit ledger), no concurrent
 source drift during preview. No original implementation writes occurred. That
 ledger contains measurements bound to differing source/blueprint identities;
 retain both records and regenerate/check final integrated evidence, never merge

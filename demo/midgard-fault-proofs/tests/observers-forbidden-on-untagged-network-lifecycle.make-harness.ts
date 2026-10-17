@@ -131,12 +131,7 @@ export const makeHarness = async () => {
         }),
       );
       if (!publicationsRecorded) {
-        record(
-          `publish-step0${(index + 1).toString()}`,
-          "fully applied testnet validator",
-          published.measurement,
-          "publication",
-        );
+        record(`publish-step0${(index + 1).toString()}`, published.measurement);
       }
       references.push(published.result.utxo);
     }
@@ -218,23 +213,14 @@ export const makeHarness = async () => {
   };
   const recordCarriage = (
     prefix: string,
-    shape: ObserverShape,
     published: Awaited<ReturnType<typeof publishField>>,
   ) => {
     expect(published.tier).toBe("Certified");
     expect(published.chunks).toHaveLength(MAXIMUM_CHUNKS);
     published.chunks.forEach((measurement, index) =>
-      record(
-        `${prefix}-carriage-chunk0${(index + 1).toString()}`,
-        shape.label,
-        measurement,
-      ),
+      record(`${prefix}-carriage-chunk0${(index + 1).toString()}`, measurement),
     );
-    record(
-      `${prefix}-carriage-certificate`,
-      shape.label,
-      published.certificate!,
-    );
+    record(`${prefix}-carriage-certificate`, published.certificate!);
   };
 
   const init = (fraudulentBlockOutRef: string, fraudulentHeaderHash: string) =>

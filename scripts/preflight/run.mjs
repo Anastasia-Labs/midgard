@@ -18,6 +18,7 @@ import { ciOwnsRuntime, RUNTIME_CHECKS } from "./runtime-owner.mjs";
 import {
   SDK_SUITES,
   sdkContext as currentSdkContext,
+  sdkFullSuite,
   sdkLaneStep,
   sdkSuiteStep,
   sdkReportCounts,
@@ -157,6 +158,8 @@ export const planPreflight = (registry, changed, options = {}) => {
       if (
         hostedRuntime &&
         RUNTIME_CHECKS.includes(check.id) &&
+        (check.id !== "demo-boundary" ||
+          registry.runtimeWorkflow.boundaryLane) &&
         (check.id !== "tx-preparation:sdk" || registry.runtimeWorkflow.sdkLane)
       ) {
         const { workflow, gate } = registry.runtimeWorkflow;
@@ -167,7 +170,7 @@ export const planPreflight = (registry, changed, options = {}) => {
     }
   }
   // "You changed an input and did not regenerate the output": a golden channel
-  // or execution ledger whose inputs moved while none of its artifacts did.
+  // whose inputs moved while none of its artifacts did.
   if (!selection.full) {
     const changedSet = new Set(changed);
     for (const { check, matched } of planned) {
@@ -183,25 +186,16 @@ export const planPreflight = (registry, changed, options = {}) => {
       const shown =
         inputs.slice(0, 3).join(", ") +
         (inputs.length > 3 ? `, and ${String(inputs.length - 3)} more` : "");
-      const isLedger = check.id.startsWith("exec-ledger:");
       advise({
         id: `regenerate:${check.id}`,
         message: `you changed ${shown}, which ${check.id} reads, and none of the files it produces (${artifacts.join(", ")}) changed`,
-        steps: isLedger
-          ? [
-              `Re-measure: ${check.display}`,
-              `If a reading moved and you can explain why, record it: ${check.fix}`,
-              `Stage the ledger by explicit path: git add ${artifacts.join(" ")}`,
-            ]
-          : [
-              `Run the check: ${check.display}`,
-              ...(check.fix === undefined
-                ? []
-                : [
-                    `If it reports drift you intended, regenerate: ${check.fix}`,
-                  ]),
-              `Review the regenerated diff, then stage by explicit path: git add ${artifacts.join(" ")}`,
-            ],
+        steps: [
+          `Run the check: ${check.display}`,
+          ...(check.fix === undefined
+            ? []
+            : [`If it reports drift you intended, regenerate: ${check.fix}`]),
+          `Review the regenerated diff, then stage by explicit path: git add ${artifacts.join(" ")}`,
+        ],
       });
     }
   }
@@ -255,14 +249,7 @@ export const spawnStep = async (root, step, env, log, signal) =>
     async (ownedEnv) => {
       const directory = runDirectory();
       const before = inputIdentity(root, "@repository");
-      const sdk =
-        sdkSuiteStep(step) &&
-        JSON.parse(
-          readFileSync(
-            resolve(root, SDK_SUITES[step.sdkSuite], "package.json"),
-            "utf8",
-          ),
-        ).scripts?.test === "vitest run";
+      const sdk = sdkSuiteStep(step) && sdkFullSuite(root, step.sdkSuite);
       const reportPath = sdk ? resolve(directory, "sdk-suite.json") : undefined;
       let sdkBefore;
       if (sdk) {

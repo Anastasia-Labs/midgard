@@ -233,7 +233,7 @@ fn raw_common_control_is_initial(
   output_cursor_data: Data,
   output_count_data: Data,
   receive_scan_data: Data,
-  source_total_count_data: Data,
+  inline_source_count_data: Data,
 ) -> Bool {
   expect
       [
@@ -243,7 +243,7 @@ fn raw_common_control_is_initial(
       ]
     = builtin.un_list_data(receive_scan_data)
   and {
-    builtin.un_i_data(source_total_count_data) == builtin.un_i_data(
+    builtin.un_i_data(inline_source_count_data) == builtin.un_i_data(
       source_count_data,
     ),
     builtin.un_list_data(resolved_item_peaks_data) == [],
@@ -441,7 +441,7 @@ pub fn verify_raw_envelope_v1(
         replay_remaining_schedule_hash_data, spend_index_data,
         purpose_count_data, purpose_peaks_data, output_cursor_data,
         output_count_data, output_peaks_data, output_total_count_data,
-        receive_scan_data, source_total_count_data, redeemer_total_count_data,
+        receive_scan_data, inline_source_count_data, redeemer_total_count_data,
         observer_scan_data, mint_fold_data, resolution_schedule_hash_data,
         pending_item_control_hash_data,
       ]
@@ -586,7 +586,7 @@ pub fn verify_raw_envelope_v1(
       output_cursor_data,
       output_count_data,
       receive_scan_data,
-      source_total_count_data,
+      inline_source_count_data,
     ),
     redeemer_count >= 0,
     redeemer_total_count > redeemer_count,

@@ -1,3 +1,4 @@
+import { deploymentValidatorTitle as deployedTitle } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { Effect } from "effect";
 
 import {
@@ -16,12 +17,14 @@ import {
 } from "../types.js";
 
 export const FIELD_PREIMAGE_LENGTH_MISMATCH_FAULT_PROOF_TITLES = {
-  step01: "fraud_proofs/field_preimage_length_mismatch/step_01.main.spend",
-  step02Accepted:
-    "fraud_proofs/field_preimage_length_mismatch/step_02_accepted.main.spend",
-  step02Forced:
-    "fraud_proofs/field_preimage_length_mismatch/step_02_forced.main.spend",
-  step03: "fraud_proofs/field_preimage_length_mismatch/step_03.main.spend",
+  step01: deployedTitle("fraudProofFieldPreimageLengthMismatch"),
+  step02Accepted: deployedTitle(
+    "fraudProofFieldPreimageLengthMismatchStep02Accepted",
+  ),
+  step02Forced: deployedTitle(
+    "fraudProofFieldPreimageLengthMismatchStep02Forced",
+  ),
+  step03: deployedTitle("fraudProofFieldPreimageLengthMismatchStep03"),
 } as const;
 
 export type FieldPreimageLengthMismatchFaultProofContracts = {

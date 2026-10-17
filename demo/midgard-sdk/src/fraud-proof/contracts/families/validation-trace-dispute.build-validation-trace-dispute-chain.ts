@@ -33,7 +33,7 @@ import {
   buildScriptSourcesRedeemerItemStages,
 } from "./shared-redeemer-item.js";
 import { type ValidationTraceDisputeFaultProofContracts } from "./validation-trace-dispute.types.js";
-import { VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES } from "./validation-trace-dispute.validation-trace-dispute-fault-proof-titles.js";
+import { VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES as validationTraceTitles } from "./validation-trace-dispute.validation-trace-dispute-fault-proof-titles.js";
 import { VALIDATION_TRACE_SEMANTIC_RESOLVER_GROUP_SIZES } from "./validation-trace-dispute.validation-trace-semantic-resolver-group-sizes.js";
 
 export const buildValidationTraceDisputeChain = ({
@@ -70,15 +70,11 @@ export const buildValidationTraceDisputeChain = ({
       () =>
         makeSpendingValidator(
           network,
-          applyBlueprintParams(
-            blueprint,
-            VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.award,
-            [
-              computationThread.policyId,
-              fraudProof.policyId,
-              fraudProofTokenAddressData,
-            ],
-          ),
+          applyBlueprintParams(blueprint, validationTraceTitles.award, [
+            computationThread.policyId,
+            fraudProof.policyId,
+            fraudProofTokenAddressData,
+          ]),
         ),
     );
 
@@ -151,18 +147,13 @@ export const buildValidationTraceDisputeChain = ({
       settlement: sharedItem.settlement,
     } as const;
 
-    const semanticTitles = Object.values(
-      VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.semantics,
-    );
+    const semanticTitles = Object.values(validationTraceTitles.semantics);
     const proofItem = yield* tryBuild(
       "Failed to build validation-trace proof-item validator",
       () =>
         makeSpendingValidator(
           network,
-          getUnappliedScript(
-            blueprint,
-            VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.proofItem,
-          ),
+          getUnappliedScript(blueprint, validationTraceTitles.proofItem),
         ),
     );
     const canonicalDecodeItemSettlement = yield* tryBuild(
@@ -172,8 +163,7 @@ export const buildValidationTraceDisputeChain = ({
           network,
           applyBlueprintParams(
             blueprint,
-            VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES
-              .canonicalDecodeItemStages.settlement,
+            validationTraceTitles.canonicalDecodeItemStages.settlement,
             [award.spendingScriptHash, computationThread.policyId],
           ),
         ),
@@ -185,8 +175,7 @@ export const buildValidationTraceDisputeChain = ({
           network,
           applyBlueprintParams(
             blueprint,
-            VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES
-              .canonicalDecodeItemStages.proof,
+            validationTraceTitles.canonicalDecodeItemStages.proof,
             [
               canonicalDecodeItemSettlement.spendingScriptHash,
               computationThread.policyId,
@@ -201,8 +190,7 @@ export const buildValidationTraceDisputeChain = ({
           network,
           applyBlueprintParams(
             blueprint,
-            VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES
-              .canonicalDecodeItemStages.observe,
+            validationTraceTitles.canonicalDecodeItemStages.observe,
             [
               canonicalDecodeItemProof.spendingScriptHash,
               computationThread.policyId,
@@ -219,8 +207,7 @@ export const buildValidationTraceDisputeChain = ({
           network,
           applyBlueprintParams(
             blueprint,
-            VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES
-              .canonicalDecodeItemStages.source,
+            validationTraceTitles.canonicalDecodeItemStages.source,
             [
               canonicalDecodeItemObserve.spendingScriptHash,
               computationThread.policyId,
@@ -410,14 +397,12 @@ export const buildValidationTraceDisputeChain = ({
         makeWithdrawalValidator(
           applyBlueprintParams(
             blueprint,
-            VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.yields
-              .scriptSourcesStageTwoAdvance,
+            validationTraceTitles.yields.scriptSourcesStageTwoAdvance,
             [
               [
                 builtSemanticResolvers[
                   semanticTitles.indexOf(
-                    VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.semantics
-                      .scriptSourcesNonOutput,
+                    validationTraceTitles.semantics.scriptSourcesNonOutput,
                   )
                 ]!.spendingScriptHash,
               ],
@@ -431,14 +416,12 @@ export const buildValidationTraceDisputeChain = ({
         makeWithdrawalValidator(
           applyBlueprintParams(
             blueprint,
-            VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.yields
-              .scriptSourcesStageThreeReplay,
+            validationTraceTitles.yields.scriptSourcesStageThreeReplay,
             [
               [
                 builtSemanticResolvers[
                   semanticTitles.indexOf(
-                    VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.semantics
-                      .scriptSourcesNonOutput,
+                    validationTraceTitles.semantics.scriptSourcesNonOutput,
                   )
                 ]!.spendingScriptHash,
               ],
@@ -452,14 +435,12 @@ export const buildValidationTraceDisputeChain = ({
         makeWithdrawalValidator(
           applyBlueprintParams(
             blueprint,
-            VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.yields
-              .scriptSourcesStageThreeFinish,
+            validationTraceTitles.yields.scriptSourcesStageThreeFinish,
             [
               [
                 builtSemanticResolvers[
                   semanticTitles.indexOf(
-                    VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.semantics
-                      .scriptSourcesNonOutput,
+                    validationTraceTitles.semantics.scriptSourcesNonOutput,
                   )
                 ]!.spendingScriptHash,
               ],
@@ -473,14 +454,12 @@ export const buildValidationTraceDisputeChain = ({
         makeWithdrawalValidator(
           applyBlueprintParams(
             blueprint,
-            VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.yields
-              .scriptSourcesStageFourBegin,
+            validationTraceTitles.yields.scriptSourcesStageFourBegin,
             [
               [
                 builtSemanticResolvers[
                   semanticTitles.indexOf(
-                    VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.semantics
-                      .scriptSourcesNonOutput,
+                    validationTraceTitles.semantics.scriptSourcesNonOutput,
                   )
                 ]!.spendingScriptHash,
               ],
@@ -495,14 +474,12 @@ export const buildValidationTraceDisputeChain = ({
         makeWithdrawalValidator(
           applyBlueprintParams(
             blueprint,
-            VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.yields
-              .scriptSourcesStageFourFinish,
+            validationTraceTitles.yields.scriptSourcesStageFourFinish,
             [
               [
                 builtSemanticResolvers[
                   semanticTitles.indexOf(
-                    VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.semantics
-                      .scriptSourcesNonOutput,
+                    validationTraceTitles.semantics.scriptSourcesNonOutput,
                   )
                 ]!.spendingScriptHash,
               ],
@@ -516,14 +493,12 @@ export const buildValidationTraceDisputeChain = ({
         makeWithdrawalValidator(
           applyBlueprintParams(
             blueprint,
-            VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.yields
-              .scriptSourcesStageSixBeginPolicy,
+            validationTraceTitles.yields.scriptSourcesStageSixBeginPolicy,
             [
               [
                 builtSemanticResolvers[
                   semanticTitles.indexOf(
-                    VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.semantics
-                      .scriptSourcesNonOutput,
+                    validationTraceTitles.semantics.scriptSourcesNonOutput,
                   )
                 ]!.spendingScriptHash,
               ],
@@ -538,14 +513,12 @@ export const buildValidationTraceDisputeChain = ({
         makeWithdrawalValidator(
           applyBlueprintParams(
             blueprint,
-            VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.yields
-              .scriptSourcesStageSixFoldAsset,
+            validationTraceTitles.yields.scriptSourcesStageSixFoldAsset,
             [
               [
                 builtSemanticResolvers[
                   semanticTitles.indexOf(
-                    VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.semantics
-                      .scriptSourcesNonOutput,
+                    validationTraceTitles.semantics.scriptSourcesNonOutput,
                   )
                 ]!.spendingScriptHash,
               ],
@@ -559,14 +532,12 @@ export const buildValidationTraceDisputeChain = ({
         makeWithdrawalValidator(
           applyBlueprintParams(
             blueprint,
-            VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.yields
-              .scriptSourcesStageSixFinish,
+            validationTraceTitles.yields.scriptSourcesStageSixFinish,
             [
               [
                 builtSemanticResolvers[
                   semanticTitles.indexOf(
-                    VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.semantics
-                      .scriptSourcesNonOutput,
+                    validationTraceTitles.semantics.scriptSourcesNonOutput,
                   )
                 ]!.spendingScriptHash,
               ],
@@ -580,12 +551,11 @@ export const buildValidationTraceDisputeChain = ({
         makeWithdrawalValidator(
           applyBlueprintParams(
             blueprint,
-            VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.yields
-              .scriptSourcesObserverItem,
+            validationTraceTitles.yields.scriptSourcesObserverItem,
             [
               builtSemanticResolvers[
                 semanticTitles.indexOf(
-                  VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.semantics
+                  validationTraceTitles.semantics
                     .scriptSourcesStageSevenObserver,
                 )
               ]!.spendingScriptHash,
@@ -600,12 +570,11 @@ export const buildValidationTraceDisputeChain = ({
         makeWithdrawalValidator(
           applyBlueprintParams(
             blueprint,
-            VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.yields
-              .scriptSourcesObserverBound,
+            validationTraceTitles.yields.scriptSourcesObserverBound,
             [
               builtSemanticResolvers[
                 semanticTitles.indexOf(
-                  VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.semantics
+                  validationTraceTitles.semantics
                     .scriptSourcesStageSevenObserver,
                 )
               ]!.spendingScriptHash,
@@ -619,25 +588,23 @@ export const buildValidationTraceDisputeChain = ({
         makeWithdrawalValidator(
           applyBlueprintParams(
             blueprint,
-            VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.yields
-              .scriptSourcesRedeemerDescriptor,
+            validationTraceTitles.yields.scriptSourcesRedeemerDescriptor,
             [
               [
                 builtSemanticResolvers[
                   semanticTitles.indexOf(
-                    VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.semantics
-                      .scriptSourcesStageTenMatch,
+                    validationTraceTitles.semantics.scriptSourcesStageTenMatch,
                   )
                 ]!.spendingScriptHash,
                 builtSemanticResolvers[
                   semanticTitles.indexOf(
-                    VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.semantics
+                    validationTraceTitles.semantics
                       .scriptSourcesStageTenMismatch,
                   )
                 ]!.spendingScriptHash,
                 builtSemanticResolvers[
                   semanticTitles.indexOf(
-                    VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.semantics
+                    validationTraceTitles.semantics
                       .scriptSourcesStageTwelveRedeemer,
                   )
                 ]!.spendingScriptHash,
@@ -649,28 +616,24 @@ export const buildValidationTraceDisputeChain = ({
     const stepDispatcherHashes = [
       builtSemanticResolvers[
         semanticTitles.indexOf(
-          VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.semantics
-            .scriptSourcesOutputProofStep,
+          validationTraceTitles.semantics.scriptSourcesOutputProofStep,
         )
       ]!.spendingScriptHash,
       builtSemanticResolvers[
         semanticTitles.indexOf(
-          VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.semantics
-            .resolveInputsMembershipStep,
+          validationTraceTitles.semantics.resolveInputsMembershipStep,
         )
       ]!.spendingScriptHash,
     ];
     const finalizeDispatcherHashes = [
       builtSemanticResolvers[
         semanticTitles.indexOf(
-          VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.semantics
-            .scriptSourcesOutputProofFinalize,
+          validationTraceTitles.semantics.scriptSourcesOutputProofFinalize,
         )
       ]!.spendingScriptHash,
       builtSemanticResolvers[
         semanticTitles.indexOf(
-          VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.semantics
-            .resolveInputsMembershipFinalize,
+          validationTraceTitles.semantics.resolveInputsMembershipFinalize,
         )
       ]!.spendingScriptHash,
     ];
@@ -680,8 +643,7 @@ export const buildValidationTraceDisputeChain = ({
         makeWithdrawalValidator(
           applyBlueprintParams(
             blueprint,
-            VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.yields
-              .ledgerOutputProofStructure,
+            validationTraceTitles.yields.ledgerOutputProofStructure,
             [stepDispatcherHashes],
           ),
         ),
@@ -692,8 +654,7 @@ export const buildValidationTraceDisputeChain = ({
         makeWithdrawalValidator(
           applyBlueprintParams(
             blueprint,
-            VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.yields
-              .ledgerOutputProofValue,
+            validationTraceTitles.yields.ledgerOutputProofValue,
             [stepDispatcherHashes],
           ),
         ),
@@ -704,8 +665,7 @@ export const buildValidationTraceDisputeChain = ({
         makeWithdrawalValidator(
           applyBlueprintParams(
             blueprint,
-            VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.yields
-              .ledgerOutputProofDatumFoldMap,
+            validationTraceTitles.yields.ledgerOutputProofDatumFoldMap,
             [stepDispatcherHashes],
           ),
         ),
@@ -716,8 +676,7 @@ export const buildValidationTraceDisputeChain = ({
         makeWithdrawalValidator(
           applyBlueprintParams(
             blueprint,
-            VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.yields
-              .ledgerOutputProofDatumFinalizeFrame,
+            validationTraceTitles.yields.ledgerOutputProofDatumFinalizeFrame,
             [stepDispatcherHashes],
           ),
         ),
@@ -728,8 +687,7 @@ export const buildValidationTraceDisputeChain = ({
         makeWithdrawalValidator(
           applyBlueprintParams(
             blueprint,
-            VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.yields
-              .ledgerOutputProofDatumHeadScalar,
+            validationTraceTitles.yields.ledgerOutputProofDatumHeadScalar,
             [stepDispatcherHashes],
           ),
         ),
@@ -740,8 +698,7 @@ export const buildValidationTraceDisputeChain = ({
         makeWithdrawalValidator(
           applyBlueprintParams(
             blueprint,
-            VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.yields
-              .ledgerOutputProofDatumAttachInteger,
+            validationTraceTitles.yields.ledgerOutputProofDatumAttachInteger,
             [stepDispatcherHashes],
           ),
         ),
@@ -752,8 +709,7 @@ export const buildValidationTraceDisputeChain = ({
         makeWithdrawalValidator(
           applyBlueprintParams(
             blueprint,
-            VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.yields
-              .ledgerOutputProofDatumFoldList,
+            validationTraceTitles.yields.ledgerOutputProofDatumFoldList,
             [stepDispatcherHashes],
           ),
         ),
@@ -764,8 +720,7 @@ export const buildValidationTraceDisputeChain = ({
         makeWithdrawalValidator(
           applyBlueprintParams(
             blueprint,
-            VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.yields
-              .ledgerOutputProofDatumAdvanceInteger,
+            validationTraceTitles.yields.ledgerOutputProofDatumAdvanceInteger,
             [stepDispatcherHashes],
           ),
         ),
@@ -776,8 +731,7 @@ export const buildValidationTraceDisputeChain = ({
         makeWithdrawalValidator(
           applyBlueprintParams(
             blueprint,
-            VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.yields
-              .ledgerOutputProofReferenceScript,
+            validationTraceTitles.yields.ledgerOutputProofReferenceScript,
             [stepDispatcherHashes],
           ),
         ),
@@ -788,8 +742,7 @@ export const buildValidationTraceDisputeChain = ({
         makeWithdrawalValidator(
           applyBlueprintParams(
             blueprint,
-            VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.yields
-              .ledgerOutputProofScriptHash,
+            validationTraceTitles.yields.ledgerOutputProofScriptHash,
             [stepDispatcherHashes],
           ),
         ),
@@ -800,8 +753,7 @@ export const buildValidationTraceDisputeChain = ({
         makeWithdrawalValidator(
           applyBlueprintParams(
             blueprint,
-            VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.yields
-              .ledgerOutputProofNativeScript,
+            validationTraceTitles.yields.ledgerOutputProofNativeScript,
             [stepDispatcherHashes],
           ),
         ),
@@ -812,8 +764,7 @@ export const buildValidationTraceDisputeChain = ({
         makeWithdrawalValidator(
           applyBlueprintParams(
             blueprint,
-            VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.yields
-              .ledgerOutputProofStructureAssets,
+            validationTraceTitles.yields.ledgerOutputProofStructureAssets,
             [stepDispatcherHashes],
           ),
         ),
@@ -824,8 +775,7 @@ export const buildValidationTraceDisputeChain = ({
         makeWithdrawalValidator(
           applyBlueprintParams(
             blueprint,
-            VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.yields
-              .ledgerOutputProofStructureOptional,
+            validationTraceTitles.yields.ledgerOutputProofStructureOptional,
             [stepDispatcherHashes],
           ),
         ),
@@ -836,8 +786,7 @@ export const buildValidationTraceDisputeChain = ({
         makeWithdrawalValidator(
           applyBlueprintParams(
             blueprint,
-            VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.yields
-              .ledgerOutputProofStructureFinish,
+            validationTraceTitles.yields.ledgerOutputProofStructureFinish,
             [stepDispatcherHashes],
           ),
         ),
@@ -848,8 +797,7 @@ export const buildValidationTraceDisputeChain = ({
         makeWithdrawalValidator(
           applyBlueprintParams(
             blueprint,
-            VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.yields
-              .ledgerOutputProofDatumHeadSequence,
+            validationTraceTitles.yields.ledgerOutputProofDatumHeadSequence,
             [stepDispatcherHashes],
           ),
         ),
@@ -860,8 +808,7 @@ export const buildValidationTraceDisputeChain = ({
         makeWithdrawalValidator(
           applyBlueprintParams(
             blueprint,
-            VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.yields
-              .ledgerOutputProofDatumHeadMap,
+            validationTraceTitles.yields.ledgerOutputProofDatumHeadMap,
             [stepDispatcherHashes],
           ),
         ),
@@ -872,7 +819,7 @@ export const buildValidationTraceDisputeChain = ({
         makeWithdrawalValidator(
           applyBlueprintParams(
             blueprint,
-            VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.yields
+            validationTraceTitles.yields
               .ledgerOutputProofDatumHeadLargeConstructor,
             [stepDispatcherHashes],
           ),
@@ -884,8 +831,7 @@ export const buildValidationTraceDisputeChain = ({
         makeWithdrawalValidator(
           applyBlueprintParams(
             blueprint,
-            VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.yields
-              .ledgerOutputProofDatumAttachBytes,
+            validationTraceTitles.yields.ledgerOutputProofDatumAttachBytes,
             [stepDispatcherHashes],
           ),
         ),
@@ -896,8 +842,7 @@ export const buildValidationTraceDisputeChain = ({
         makeWithdrawalValidator(
           applyBlueprintParams(
             blueprint,
-            VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.yields
-              .ledgerOutputProofDatumAdvanceBytes,
+            validationTraceTitles.yields.ledgerOutputProofDatumAdvanceBytes,
             [stepDispatcherHashes],
           ),
         ),
@@ -908,8 +853,7 @@ export const buildValidationTraceDisputeChain = ({
         makeWithdrawalValidator(
           applyBlueprintParams(
             blueprint,
-            VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.yields
-              .ledgerOutputProofDatumFinish,
+            validationTraceTitles.yields.ledgerOutputProofDatumFinish,
             [stepDispatcherHashes],
           ),
         ),
@@ -920,8 +864,7 @@ export const buildValidationTraceDisputeChain = ({
         makeWithdrawalValidator(
           applyBlueprintParams(
             blueprint,
-            VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.yields
-              .ledgerOutputProofDatumLargeConstructor,
+            validationTraceTitles.yields.ledgerOutputProofDatumLargeConstructor,
             [stepDispatcherHashes],
           ),
         ),
@@ -932,8 +875,7 @@ export const buildValidationTraceDisputeChain = ({
         makeWithdrawalValidator(
           applyBlueprintParams(
             blueprint,
-            VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.yields
-              .ledgerOutputProofDatumLargeFields,
+            validationTraceTitles.yields.ledgerOutputProofDatumLargeFields,
             [stepDispatcherHashes],
           ),
         ),
@@ -944,8 +886,7 @@ export const buildValidationTraceDisputeChain = ({
         makeWithdrawalValidator(
           applyBlueprintParams(
             blueprint,
-            VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.yields
-              .ledgerOutputProofDatumClose,
+            validationTraceTitles.yields.ledgerOutputProofDatumClose,
             [stepDispatcherHashes],
           ),
         ),
@@ -956,8 +897,7 @@ export const buildValidationTraceDisputeChain = ({
         makeWithdrawalValidator(
           applyBlueprintParams(
             blueprint,
-            VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.yields
-              .ledgerOutputProofSpan,
+            validationTraceTitles.yields.ledgerOutputProofSpan,
             [stepDispatcherHashes],
           ),
         ),
@@ -968,8 +908,7 @@ export const buildValidationTraceDisputeChain = ({
         makeWithdrawalValidator(
           applyBlueprintParams(
             blueprint,
-            VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.yields
-              .ledgerOutputProofScalarInteger,
+            validationTraceTitles.yields.ledgerOutputProofScalarInteger,
             [stepDispatcherHashes],
           ),
         ),
@@ -980,8 +919,7 @@ export const buildValidationTraceDisputeChain = ({
         makeWithdrawalValidator(
           applyBlueprintParams(
             blueprint,
-            VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.yields
-              .ledgerOutputProofScalarBytes,
+            validationTraceTitles.yields.ledgerOutputProofScalarBytes,
             [stepDispatcherHashes],
           ),
         ),
@@ -992,8 +930,7 @@ export const buildValidationTraceDisputeChain = ({
         makeWithdrawalValidator(
           applyBlueprintParams(
             blueprint,
-            VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.yields
-              .ledgerOutputDescriptorScanFacts,
+            validationTraceTitles.yields.ledgerOutputDescriptorScanFacts,
             [finalizeDispatcherHashes],
           ),
         ),
@@ -1004,8 +941,7 @@ export const buildValidationTraceDisputeChain = ({
         makeWithdrawalValidator(
           applyBlueprintParams(
             blueprint,
-            VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.yields
-              .ledgerOutputDescriptorReferenceScript,
+            validationTraceTitles.yields.ledgerOutputDescriptorReferenceScript,
             [finalizeDispatcherHashes],
           ),
         ),
@@ -1016,8 +952,7 @@ export const buildValidationTraceDisputeChain = ({
         makeWithdrawalValidator(
           applyBlueprintParams(
             blueprint,
-            VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.yields
-              .ledgerOutputDescriptorDatumSummary,
+            validationTraceTitles.yields.ledgerOutputDescriptorDatumSummary,
             [finalizeDispatcherHashes],
           ),
         ),
@@ -1028,8 +963,7 @@ export const buildValidationTraceDisputeChain = ({
         makeWithdrawalValidator(
           applyBlueprintParams(
             blueprint,
-            VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.yields
-              .ledgerOutputDescriptorValueSummary,
+            validationTraceTitles.yields.ledgerOutputDescriptorValueSummary,
             [finalizeDispatcherHashes],
           ),
         ),
@@ -1040,13 +974,11 @@ export const buildValidationTraceDisputeChain = ({
         makeWithdrawalValidator(
           applyBlueprintParams(
             blueprint,
-            VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.yields
-              .phaseANativeItemNative,
+            validationTraceTitles.yields.phaseANativeItemNative,
             [
               builtSemanticResolvers[
                 semanticTitles.indexOf(
-                  VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.semantics
-                    .phaseANativeScriptsItem,
+                  validationTraceTitles.semantics.phaseANativeScriptsItem,
                 )
               ]!.spendingScriptHash,
               award.spendingScriptHash,
@@ -1061,13 +993,11 @@ export const buildValidationTraceDisputeChain = ({
         makeWithdrawalValidator(
           applyBlueprintParams(
             blueprint,
-            VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.yields
-              .phaseANativeItemForeign,
+            validationTraceTitles.yields.phaseANativeItemForeign,
             [
               builtSemanticResolvers[
                 semanticTitles.indexOf(
-                  VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.semantics
-                    .phaseANativeScriptsItem,
+                  validationTraceTitles.semantics.phaseANativeScriptsItem,
                 )
               ]!.spendingScriptHash,
               award.spendingScriptHash,
@@ -1079,8 +1009,7 @@ export const buildValidationTraceDisputeChain = ({
     const selectionDispatcherHash =
       builtSemanticResolvers[
         semanticTitles.indexOf(
-          VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.semantics
-            .cekExecutionSelection,
+          validationTraceTitles.semantics.cekExecutionSelection,
         )
       ]!.spendingScriptHash;
     const cekSelectionAuthenticate = yield* tryBuild(
@@ -1089,8 +1018,7 @@ export const buildValidationTraceDisputeChain = ({
         makeWithdrawalValidator(
           applyBlueprintParams(
             blueprint,
-            VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.yields
-              .cekSelectionAuthenticate,
+            validationTraceTitles.yields.cekSelectionAuthenticate,
             [selectionDispatcherHash],
           ),
         ),
@@ -1101,8 +1029,7 @@ export const buildValidationTraceDisputeChain = ({
         makeWithdrawalValidator(
           applyBlueprintParams(
             blueprint,
-            VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.yields
-              .cekSelectionSuccessor,
+            validationTraceTitles.yields.cekSelectionSuccessor,
             [selectionDispatcherHash, scriptDecodePolicyId],
           ),
         ),
@@ -1113,25 +1040,21 @@ export const buildValidationTraceDisputeChain = ({
         makeWithdrawalValidator(
           applyBlueprintParams(
             blueprint,
-            VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.yields
-              .valueAndMintAssetFold,
+            validationTraceTitles.yields.valueAndMintAssetFold,
             [
               builtSemanticResolvers[
                 semanticTitles.indexOf(
-                  VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.semantics
-                    .valueAndMintReplayAsset,
+                  validationTraceTitles.semantics.valueAndMintReplayAsset,
                 )
               ]!.spendingScriptHash,
               builtSemanticResolvers[
                 semanticTitles.indexOf(
-                  VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.semantics
-                    .valueAndMintOutputAsset,
+                  validationTraceTitles.semantics.valueAndMintOutputAsset,
                 )
               ]!.spendingScriptHash,
               builtSemanticResolvers[
                 semanticTitles.indexOf(
-                  VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.semantics
-                    .valueAndMintMintAsset,
+                  validationTraceTitles.semantics.valueAndMintMintAsset,
                 )
               ]!.spendingScriptHash,
             ],
@@ -1251,7 +1174,7 @@ export const buildValidationTraceDisputeChain = ({
     );
 
     const prepareTitles = Object.entries(
-      VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.prepares,
+      validationTraceTitles.prepares,
     ) as readonly (readonly [
       keyof typeof VALIDATION_TRACE_SEMANTIC_RESOLVER_GROUP_SIZES,
       string,
@@ -1365,15 +1288,11 @@ export const buildValidationTraceDisputeChain = ({
       () =>
         makeSpendingValidator(
           network,
-          applyBlueprintParams(
-            blueprint,
-            VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.boundary,
-            [
-              resolverHashesData,
-              award.spendingScriptHash,
-              computationThread.policyId,
-            ],
-          ),
+          applyBlueprintParams(blueprint, validationTraceTitles.boundary, [
+            resolverHashesData,
+            award.spendingScriptHash,
+            computationThread.policyId,
+          ]),
         ),
     );
     const timeout = yield* tryBuild(
@@ -1381,15 +1300,11 @@ export const buildValidationTraceDisputeChain = ({
       () =>
         makeSpendingValidator(
           network,
-          applyBlueprintParams(
-            blueprint,
-            VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.timeout,
-            [
-              computationThread.policyId,
-              fraudProof.policyId,
-              fraudProofTokenAddressData,
-            ],
-          ),
+          applyBlueprintParams(blueprint, validationTraceTitles.timeout, [
+            computationThread.policyId,
+            fraudProof.policyId,
+            fraudProofTokenAddressData,
+          ]),
         ),
     );
     const game = yield* tryBuild(
@@ -1397,16 +1312,12 @@ export const buildValidationTraceDisputeChain = ({
       () =>
         makeSpendingValidator(
           network,
-          applyBlueprintParams(
-            blueprint,
-            VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.game,
-            [
-              boundary.spendingScriptHash,
-              timeout.spendingScriptHash,
-              resolverHashesData,
-              computationThread.policyId,
-            ],
-          ),
+          applyBlueprintParams(blueprint, validationTraceTitles.game, [
+            boundary.spendingScriptHash,
+            timeout.spendingScriptHash,
+            resolverHashesData,
+            computationThread.policyId,
+          ]),
         ),
     );
     const source = yield* tryBuild(
@@ -1414,15 +1325,11 @@ export const buildValidationTraceDisputeChain = ({
       () =>
         makeSpendingValidator(
           network,
-          applyBlueprintParams(
-            blueprint,
-            VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.source,
-            [
-              game.spendingScriptHash,
-              award.spendingScriptHash,
-              computationThread.policyId,
-            ],
-          ),
+          applyBlueprintParams(blueprint, validationTraceTitles.source, [
+            game.spendingScriptHash,
+            award.spendingScriptHash,
+            computationThread.policyId,
+          ]),
         ),
     );
     const dispute = yield* tryBuild(
@@ -1430,15 +1337,11 @@ export const buildValidationTraceDisputeChain = ({
       () =>
         makeSpendingValidator(
           network,
-          applyBlueprintParams(
-            blueprint,
-            VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.dispute,
-            [
-              source.spendingScriptHash,
-              computationThread.policyId,
-              hubOraclePolicyId,
-            ],
-          ),
+          applyBlueprintParams(blueprint, validationTraceTitles.dispute, [
+            source.spendingScriptHash,
+            computationThread.policyId,
+            hubOraclePolicyId,
+          ]),
         ),
     );
 

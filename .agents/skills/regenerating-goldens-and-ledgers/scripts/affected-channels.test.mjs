@@ -376,7 +376,7 @@ describe("--verify-table", () => {
 
   test("an unmapped ledger, generated file, package script or writer env fails", () => {
     const root = makeRepository("verify-unclaimed");
-    write(root, "onchain/aiken/scripts/new-exec-ledger-v1.json", "{}\n");
+    write(root, "docs/fault-proofs/size-plans/new-fit-ledger.json", "{}\n");
     write(root, "demo/pkg-a/tests/fixtures/z.generated.json", "{}\n");
     write(
       root,
@@ -396,7 +396,7 @@ describe("--verify-table", () => {
     git(root, "add", "-A");
     const result = invoke(withRoot(root, "--verify-table"));
     assert.equal(result.code, 1);
-    assert.match(result.out, /new-exec-ledger-v1\.json looks like a ledger/u);
+    assert.match(result.out, /new-fit-ledger\.json looks like a ledger/u);
     assert.match(result.out, /z\.generated\.json looks generated/u);
     assert.match(result.out, /marked\.json looks generated/u);
     assert.match(result.out, /package script demo\/pkg-a:fixtures:z:sync/u);

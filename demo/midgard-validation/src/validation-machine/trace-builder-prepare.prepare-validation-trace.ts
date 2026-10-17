@@ -50,6 +50,7 @@ import {
   midgardLedgerOutputProofFactsComplete,
   MidgardRedeemerItemProofModes,
   MidgardRedeemerItemProofStages,
+  midgardScriptSourcePhysicalIndex,
   type MidgardValidationMerkleFrontier,
   type MidgardValidationMerkleMembership,
   type MidgardValidationPhaseName,
@@ -112,6 +113,7 @@ import { countedMachineFieldTrace } from "./field-carriage.js";
 import {
   advanceMidgardResolvedInputsAccumulator,
   emptyMidgardInputResolutionSchedule,
+  hash32,
   initialMidgardResolvedInputsAccumulator,
   orderMidgardInputResolutionSchedule,
   prependMidgardInputResolutionSchedule,
@@ -151,13 +153,17 @@ import type {
   ScriptSourceProofEntry,
   SignatureScanControl,
 } from "./trace-builder-types.js";
+import { type ValidationTraceRecording } from "./trace-sink.js";
 import {
   type ValidationMachineReplayInput,
   type ValidationMachineSignerSetProof,
   type ValidationMachineWorkWitness,
 } from "./types.js";
 
-export const prepareValidationTrace = (input: ValidationMachineReplayInput) =>
+export const prepareValidationTrace = (
+  input: ValidationMachineReplayInput,
+  recording: ValidationTraceRecording,
+) =>
   Effect.gen(function* () {
     const contextCbor = Buffer.from(
       aikenSerialisedPlutusDataCbor(
@@ -276,7 +282,12 @@ export const prepareValidationTrace = (input: ValidationMachineReplayInput) =>
               scriptEvaluations.push(evaluation);
           },
           ...(input.scriptEvaluations === undefined
-            ? { cekExecutionMode: "proof" as const }
+            ? {
+                cekExecutionMode:
+                  recording.mode === "proof"
+                    ? ("proof" as const)
+                    : ("verdict" as const),
+              }
             : {
                 evaluateProofScript: (
                   scriptBytes: Uint8Array,
@@ -932,7 +943,7 @@ export const prepareValidationTrace = (input: ValidationMachineReplayInput) =>
         readonly candidateHash: Buffer;
         readonly descriptorFrontier: MidgardValidationMerkleFrontier;
       };
-      readonly sourceTotalCount?: number;
+      readonly inlineSourceCount?: number;
       readonly redeemerTotalCount?: number;
       readonly observerScan?: {
         readonly totalCount: number;
@@ -943,7 +954,7 @@ export const prepareValidationTrace = (input: ValidationMachineReplayInput) =>
       readonly discovery?: ScriptDiscoveryTraceControl;
       readonly pendingSource?: {
         readonly sourceIndex: number;
-        readonly sourceTotalCount: number;
+        readonly inlineSourceCount: number;
         readonly languageTag: 0 | 3 | 128;
         readonly payloadOffset: number;
         readonly payloadLength: number;
@@ -999,7 +1010,7 @@ export const prepareValidationTrace = (input: ValidationMachineReplayInput) =>
           receiveScan.candidateHash,
           encodeFrontierPeaks(receiveScan.descriptorFrontier),
         ],
-        BigInt(input.sourceTotalCount ?? input.sourceFrontier.count),
+        BigInt(input.inlineSourceCount ?? inlineScriptSourceFrontier.count),
         BigInt(input.redeemerTotalCount ?? input.redeemerFrontier.count),
         [
           BigInt(observerScan.totalCount),
@@ -1018,7 +1029,7 @@ export const prepareValidationTrace = (input: ValidationMachineReplayInput) =>
           encodeCbor([
             1n,
             BigInt(input.pendingSource.sourceIndex),
-            BigInt(input.pendingSource.sourceTotalCount),
+            BigInt(input.pendingSource.inlineSourceCount),
             BigInt(input.pendingSource.languageTag),
             BigInt(input.pendingSource.payloadOffset),
             BigInt(input.pendingSource.payloadLength),
@@ -1180,11 +1191,15 @@ export const prepareValidationTrace = (input: ValidationMachineReplayInput) =>
         new Error(`unknown validation terminal phase ${terminalPhase}`),
       );
     }
-    const witnesses: ValidationMachineWorkWitness[] = [];
-    const witnessExecutionBudgets: {
-      readonly cpu: bigint;
-      readonly memory: bigint;
-    }[] = [];
+    const traceSink = recording.open({
+      eventKeyHash: hash32(input.eventKeyCbor),
+      transactionId: input.transactionId,
+      transactionCommitment,
+      validationContextHash,
+      sourceKind: input.sourceKind,
+      priorLedgerRoot,
+      ledgerDeltaRoot,
+    });
     const executionBudget = { cpu: 0n, memory: 0n };
 
     const pushWitness = (
@@ -1192,16 +1207,11 @@ export const prepareValidationTrace = (input: ValidationMachineReplayInput) =>
       cbor: Buffer,
       auxiliary: ValidationMachineWorkWitness["auxiliary"] = null,
     ): void => {
-      witnesses.push({
-        phase,
-        programCounter: witnesses.length,
-        cbor,
-        auxiliary,
-      });
-      witnessExecutionBudgets.push({
-        cpu: executionBudget.cpu,
-        memory: executionBudget.memory,
-      });
+      traceSink.push(
+        { phase, programCounter: traceSink.length, cbor, auxiliary },
+        executionBudget,
+        null,
+      );
     };
     const macroWitness = (phase: MidgardValidationPhaseName): Buffer => {
       const witness = macroWitnessByPhase.get(phase);
@@ -1523,25 +1533,20 @@ export const prepareValidationTrace = (input: ValidationMachineReplayInput) =>
                 hashMidgardSignerLeaf(scan.decoded.signerHash),
               )
             : signatureControl.signerFrontier;
-          let signatureIsValid = false;
+          // The decoder fixed both widths, so a throw here is a fault of the
+          // check itself and the build stops with it, as Phase A does.
+          let signatureIsValid: boolean;
+          const publicKey = CML.PublicKey.from_bytes(
+            scan.decoded.verificationKey,
+          );
+          const signature = CML.Ed25519Signature.from_raw_bytes(
+            scan.decoded.signature,
+          );
           try {
-            const publicKey = CML.PublicKey.from_bytes(
-              scan.decoded.verificationKey,
-            );
-            const signature = CML.Ed25519Signature.from_raw_bytes(
-              scan.decoded.signature,
-            );
-            try {
-              signatureIsValid = publicKey.verify(
-                input.transactionId,
-                signature,
-              );
-            } finally {
-              publicKey.free();
-              signature.free();
-            }
-          } catch {
-            signatureIsValid = false;
+            signatureIsValid = publicKey.verify(input.transactionId, signature);
+          } finally {
+            publicKey.free();
+            signature.free();
           }
           const addressSeen = signatureControl.addressSeen + 1;
           const addressCount =
@@ -2348,7 +2353,7 @@ export const prepareValidationTrace = (input: ValidationMachineReplayInput) =>
           const currentInlineSourceWitness = (
             pendingSource?: {
               readonly sourceIndex: number;
-              readonly sourceTotalCount: number;
+              readonly inlineSourceCount: number;
               readonly languageTag: 0 | 3 | 128;
               readonly payloadOffset: number;
               readonly payloadLength: number;
@@ -2362,7 +2367,7 @@ export const prepareValidationTrace = (input: ValidationMachineReplayInput) =>
               stage: 0,
               sourceFrontier: authenticatedInlineSourceFrontier,
               redeemerFrontier: emptyValidationFrontier,
-              sourceTotalCount: inlineSourceTotalCount,
+              inlineSourceCount: inlineSourceTotalCount,
               redeemerTotalCount: 0,
               pendingSource,
             });
@@ -2435,7 +2440,7 @@ export const prepareValidationTrace = (input: ValidationMachineReplayInput) =>
             const hashTrace = buildMidgardBlake2b224Trace(hashMessage);
             let pendingSource = {
               sourceIndex: item.itemIndex,
-              sourceTotalCount: inlineSourceTotalCount,
+              inlineSourceCount: inlineSourceTotalCount,
               languageTag: exactLanguageTag,
               payloadOffset,
               payloadLength: scriptPayload.value.length,
@@ -2539,7 +2544,7 @@ export const prepareValidationTrace = (input: ValidationMachineReplayInput) =>
               stage: 1,
               sourceFrontier: inlineScriptSourceFrontier,
               redeemerFrontier: authenticatedRedeemerFrontier,
-              sourceTotalCount: inlineSourceTotalCount,
+              inlineSourceCount: inlineSourceTotalCount,
               redeemerTotalCount,
               redeemerItemControlHash,
             });
@@ -2750,15 +2755,12 @@ export const prepareValidationTrace = (input: ValidationMachineReplayInput) =>
                     ),
                   );
                 }
-                if (
-                  node.sourceKind === "reference" &&
-                  descriptor.referenceScriptLanguage !== -1
-                ) {
+                if (descriptor.referenceScriptLanguage !== -1) {
                   const output = decodeMidgardTxOutput(outputCbor);
                   if (output.script_ref === undefined) {
                     return yield* Effect.fail(
                       new Error(
-                        "reference-input descriptor commits a missing retained reference script",
+                        "resolved-output descriptor commits a missing retained reference script",
                       ),
                     );
                   }
@@ -3631,10 +3633,15 @@ export const prepareValidationTrace = (input: ValidationMachineReplayInput) =>
                         }
                       | undefined;
                     for (
-                      let sourceIndex = 0;
-                      sourceIndex < scriptSourceEntries.length;
-                      sourceIndex += 1
+                      let sourceCursor = 0;
+                      sourceCursor < scriptSourceEntries.length;
+                      sourceCursor += 1
                     ) {
+                      const sourceIndex = midgardScriptSourcePhysicalIndex(
+                        inlineScriptSourceFrontier.count,
+                        scriptSourceEntries.length,
+                        sourceCursor,
+                      );
                       const source = scriptSourceEntries[sourceIndex]!;
                       pushWitness(
                         "scriptSources",
@@ -3654,7 +3661,7 @@ export const prepareValidationTrace = (input: ValidationMachineReplayInput) =>
                       const sourceHash = source.scriptHash;
                       discovery = {
                         ...discovery,
-                        sourceCursor: sourceIndex + 1,
+                        sourceCursor: sourceCursor + 1,
                       };
                       if (sourceHash.equals(purpose.scriptHash)) {
                         const exactLanguageTag = source.scriptLanguageTag;
@@ -4125,9 +4132,9 @@ export const prepareValidationTrace = (input: ValidationMachineReplayInput) =>
       authenticatedLedgerOps,
       postLedgerRoot,
       ledgerDeltaRoot,
-      witnesses,
+      traceSink,
+      recording,
       ledgerDeltaFrontier,
-      witnessExecutionBudgets,
       transactionCommitment,
       validationContextHash,
       verdict,

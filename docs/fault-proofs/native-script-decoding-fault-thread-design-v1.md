@@ -74,15 +74,15 @@ closes to step 04 without claiming to have decoded a nonexistent script.
 ## 6. Execution and proof-fit contract
 
 The scan is resumable and carries only bounded cursor/stack state between L1
-transactions. The authoritative measurements are the current ledgers under
-`onchain/aiken/scripts/`, especially:
+transactions. The authoritative costs are the script-budget ceilings in
+`demo/midgard-core/src/script-budgets.json` (the
+`native_script_decoding/` entries), which
+`onchain/aiken/scripts/script-budgets.mjs` holds every fresh reading under. The
+scan planner derives its per-step costs from those ceilings.
 
-- `native-script-decoding-engine-exec-ledger-v1.json`
-- `verify-native-script-decoding-engine-exec-ledger-v1.mjs`
-
-Those measurements must be refreshed when the compiler, validator bytes,
-decoder, native-script limits, field bounds, or Cardano protocol limits change.
-No prose estimate overrides the measured ledger.
+A change to the compiler, validator bytes, decoder, native-script limits, field
+bounds, or Cardano protocol limits that raises a reading needs a recorded
+ceiling raise. No prose estimate overrides the measured ceiling.
 
 ## 7. Adversarial requirements
 
@@ -103,8 +103,8 @@ compiled-size envelope suite protects the physical reference-script topology.
 
 ## 8. Acceptance
 
-The manifest-bound runner and watcher installation exist. Keep the current
-execution ledgers and applied-script identity paired; exercise installed recovery
+The manifest-bound runner and watcher installation exist. Keep the script
+budgets and applied-script identity paired; exercise installed recovery
 and both claim directions on the release build. Live/preprod acceptance and the
 complete maximum-shape corpus remain governed by the
 [remaining acceptance plan](execution-plan.md).

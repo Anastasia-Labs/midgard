@@ -6,11 +6,9 @@ import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
 import { buildMidgardCanonicalCekProgram } from "../src/cek-program.js";
-import {
-  buildDeterministicValidationMachineTrace,
-  RejectCodes,
-} from "../src/index.js";
+import { RejectCodes } from "../src/index.js";
 import { MidgardRedeemerTag } from "../src/midgard-redeemers.js";
+import { buildDeterministicValidationMachineTrace } from "./helpers/trace-commit-golden.js";
 import {
   expectSinglePhaseBRejection,
   preState,

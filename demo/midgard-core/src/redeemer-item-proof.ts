@@ -11,10 +11,12 @@ export {
   buildMidgardRedeemerItemProofTrace,
 } from "./redeemer-item-proof.advance-midgard-redeemer-item-proof.js";
 export {
+  authenticateMidgardRedeemerItemSourceWindow,
   encodeMidgardRedeemerItemProofControl,
   finalizeMidgardRedeemerItemProof,
   hashMidgardRedeemerItemProofControl,
   midgardRedeemerItemDescriptor,
+  midgardRedeemerItemSpanChunks,
   nextMidgardRedeemerItemProofSpan,
   readMidgardRedeemerItemProofSource,
 } from "./redeemer-item-proof.authenticated-span.js";

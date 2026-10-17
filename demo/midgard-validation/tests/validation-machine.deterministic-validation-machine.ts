@@ -27,7 +27,6 @@ import { describe, expect, it } from "vitest";
 
 import {
   advanceMidgardResolvedInputsAccumulator,
-  buildDeterministicValidationMachineTrace,
   buildValidationMachineLedgerInsertOp,
   buildValidationMachineLedgerMutationSteps,
   type DeterministicValidationMachineTrace,
@@ -39,6 +38,7 @@ import {
   valueAndMintKind,
 } from "../src/index.js";
 import { exerciseMidgardRetainedDaCanonicalBoundary } from "./helpers/retained-da-boundary.js";
+import { buildDeterministicValidationMachineTrace } from "./helpers/trace-commit-golden.js";
 import {
   FUNDED_OUTPUT_LOVELACE,
   hashScriptWitness,

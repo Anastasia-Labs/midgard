@@ -238,7 +238,17 @@ export type LocalScriptEvalResult =
         readonly memory: bigint;
       };
     }
-  | { readonly kind: "script_invalid"; readonly detail: string };
+  | { readonly kind: "script_invalid"; readonly detail: string }
+  /**
+   * The evaluator itself failed: a throw, one of its own bounds, or a
+   * self-check. Not a verdict: Phase B fails with
+   * `ScriptEvaluationIndeterminateError` carrying `cause`.
+   */
+  | {
+      readonly kind: "indeterminate";
+      readonly detail: string;
+      readonly cause?: unknown;
+    };
 
 /**
  * Configuration knobs for phase-B validation.

@@ -9,10 +9,10 @@ import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
 import {
-  buildDeterministicValidationMachineTrace,
   buildValidationMachineLedgerInsertOp,
   buildValidationMachineLedgerMutationSteps,
 } from "../src/index.js";
+import { buildDeterministicValidationMachineTrace } from "./helpers/trace-commit-golden.js";
 import {
   encodeRecomputedNativeTx,
   FUNDED_OUTPUT_LOVELACE,

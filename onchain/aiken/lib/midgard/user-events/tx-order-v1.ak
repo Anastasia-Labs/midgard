@@ -301,8 +301,8 @@ fn authenticate_material_fields(
 ///
 /// ### What it costs, measured
 ///
-/// Pinned by `scripts/tx-order-mint-exec-ledger-v1.json` against the tests in
-/// this module's test file, because §8.11 publishes the claim and a published
+/// Held to ceilings in `demo/midgard-core/src/script-budgets.json` against the
+/// tests in this module's test file, because §8.11 publishes the claim and a published
 /// cost claim with nothing asserting it can drift arbitrarily far.
 ///
 /// The cost splits where `whole_view`'s §5.1 count-consistency check splits. For

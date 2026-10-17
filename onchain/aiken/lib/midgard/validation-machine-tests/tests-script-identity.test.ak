@@ -151,7 +151,7 @@ test maximum_script_program_instruction_evidence_is_bounded() {
     output_peaks: dense_frontier_six.peaks,
     output_total_count: 63,
     receive_scan: vm_witness.empty_receive_purpose_scan_control(),
-    source_total_count: 15,
+    inline_source_count: 15,
     redeemer_total_count: 15,
     observer_scan: vm_witness.empty_observer_purpose_scan_control(),
     discovery,
@@ -217,7 +217,7 @@ test script_sources_stage_zero_begin_initializes_an_authenticated_identity_trace
   let pending = vm_machine_types.InlineSourceHashControlV1 {
     version: 1,
     source_index: 0,
-    source_total_count: 1,
+    inline_source_count: 1,
     language_tag: 3,
     payload_offset: bytearray.length(item_cbor) - bytearray.length(payload),
     payload_length: bytearray.length(payload),
@@ -235,7 +235,7 @@ test script_sources_stage_zero_begin_initializes_an_authenticated_identity_trace
   )
   let successor_control = vm_machine_types.ScriptSourcesControlV1 {
     ..control,
-    source_total_count: 1,
+    inline_source_count: 1,
     pending_source_cbor: vm_witness.encode_inline_source_hash_control_v1(
       pending,
     ),
@@ -335,7 +335,7 @@ test script_sources_stage_zero_advances_an_inline_hash_round() {
   let pending = vm_machine_types.InlineSourceHashControlV1 {
     version: 1,
     source_index: 0,
-    source_total_count: 1,
+    inline_source_count: 1,
     language_tag: 3,
     payload_offset: bytearray.length(item_cbor) - bytearray.length(payload),
     payload_length: bytearray.length(payload),
@@ -401,7 +401,7 @@ test script_sources_stage_zero_commits_the_terminal_script_identity() {
   let pending = vm_machine_types.InlineSourceHashControlV1 {
     version: 1,
     source_index: 0,
-    source_total_count: 1,
+    inline_source_count: 1,
     language_tag: 3,
     payload_offset: bytearray.length(item_cbor) - bytearray.length(payload),
     payload_length: bytearray.length(payload),

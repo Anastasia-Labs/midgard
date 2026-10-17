@@ -16,18 +16,22 @@ import { executeMidgardCekStructuralProgram } from "../src/cek-executor.js";
 import { verifyMidgardCekCoreStep } from "../src/cek-machine.js";
 import { encodeMidgardCekCardanoFlatProgram } from "../src/cek-program.cardano-flat.js";
 import { buildMidgardCanonicalCekProgram } from "../src/cek-program.js";
+import { discard } from "./helpers/cek-uplc-terms.js";
 
 const compile = (term: UPLCTerm): Buffer =>
   encodeMidgardCekCardanoFlatProgram(new UPLCProgram([1, 1, 0], term));
 
 // equalsData compares Data by value. Each row runs
-// `[[equalsData (con data left)] (con data right)]` and reads the builtin step.
+// `[[equalsData (con data left)] (con data right)]`, discards the result so the
+// program halts with Unit, and reads the builtin step.
 const equalsDataStep = (left: Data, right: Data) => {
   const program = buildMidgardCanonicalCekProgram(
     compile(
-      new Application(
-        new Application(Builtin.equalsData, UPLCConst.data(left)),
-        UPLCConst.data(right),
+      discard(
+        new Application(
+          new Application(Builtin.equalsData, UPLCConst.data(left)),
+          UPLCConst.data(right),
+        ),
       ),
     ),
   );

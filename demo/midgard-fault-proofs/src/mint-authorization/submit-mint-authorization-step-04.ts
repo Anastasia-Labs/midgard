@@ -1,16 +1,18 @@
 /**
  * `mint-authorization` step-04 submitters — the direction-A
- * reference-input scan.
+ * resolved-input scan, over the reference inputs (field 1) and then the
+ * spent inputs (field 0).
  *
  * - `submitMintAuthorizationStep04ResolveNext` — the self-loop. Opens the
- *   committed field 1 at the thread's cursor, resolves the outpoint under
- *   the pre-state ledger root (MPF membership of the descriptor), and lets
- *   the validator prove the resolved output carries no reference script of
- *   the claimed policy hash. The thread returns to step-04's own address
- *   with the cursor advanced.
- * - `submitMintAuthorizationStep04AdvanceComplete` — closes the scan once
- *   the cursor equals the authenticated field-1 item count; pays the
- *   direction-A verdict forward to step-05.
+ *   committed input field the thread names at its cursor, resolves the
+ *   outpoint under the pre-state ledger root (MPF membership of the
+ *   descriptor), and lets the validator prove the resolved output carries no
+ *   reference script of the claimed policy hash. The thread returns to
+ *   step-04's own address with the cursor advanced.
+ * - `submitMintAuthorizationStep04AdvanceComplete` — once the cursor equals
+ *   the field's authenticated item count, moves the scan from field 1 to
+ *   field 0 at cursor 0, or, after field 0, pays the direction-A verdict
+ *   forward to step-05.
  *
  * Local refusals mirror the validator: a cursor outside the committed
  * field, a descriptor that DOES anchor the claimed policy as a reference
@@ -74,25 +76,14 @@ import {
   requireMintAuthorizationStepState,
   requireMintAuthorizationThreadUtxo,
 } from "./submit-common.js";
+import {
+  step04ScanField,
+  type SubmitMintAuthorizationStep04Result,
+} from "./submit-mint-authorization-step-04.submit-mint-authorization-step04-scan-field.js";
+
+export { type SubmitMintAuthorizationStep04Result } from "./submit-mint-authorization-step-04.submit-mint-authorization-step04-scan-field.js";
 
 const STEP_LABEL = mintAuthorizationStepLabel(3);
-
-export type SubmitMintAuthorizationStep04Result = {
-  readonly txHash: string;
-  readonly walletSource: string;
-  readonly proverAddress: string;
-  readonly fraudProver: string;
-  readonly threadOutRef: string;
-  readonly nextThreadOutRef: string;
-  readonly fraudulentHeaderHash: string;
-  readonly computationThreadUnit: string;
-  readonly nextStepAddress: string;
-  /** The cursor the thread carries after this transaction (ResolveNext). */
-  readonly nextRefCursor: bigint | null;
-  readonly inputIndex: number;
-  readonly outputIndex: number;
-  readonly awaitedConfirmation: boolean;
-};
 
 type Step04Shared = {
   readonly lucid: LucidEvolution;
@@ -103,11 +94,13 @@ type Step04Shared = {
   /** The bound transaction's compact CBOR, hex. */
   readonly nativeTxCompactCbor: string;
   /**
-   * The committed field-1 items — each §5.3 spend-input item's canonical
-   * bytes, hex, in committed order. The §8 planner re-envelopes them and
-   * picks the carriage tier from the resulting preimage's own byte length.
+   * The committed field-1 and field-0 items — each §5.3 spend-input item's
+   * canonical bytes, hex, in committed order. The thread's `field_index`
+   * selects one; the §8 planner re-envelopes it and picks the carriage tier
+   * from the resulting preimage's own byte length.
    */
   readonly referenceInputsItemCbors: readonly string[];
+  readonly spendInputsItemCbors: readonly string[];
   /** Pre-minted §8.6 certificate when the planner selects tier 3. */
   readonly certificateUtxo?: UTxO;
   /** Authenticated workflow publications; avoids publishing inside step capture. */
@@ -134,21 +127,20 @@ const prepareStep04 = async (shared: Step04Shared) => {
       stepIndex: 3,
     },
   );
-  // The §8.8 door: plan field 1 against the bound tx id, then let the byte
-  // length pick the tier — a scan over a large committed reference-input list
-  // publishes tier-2 carriage rather than forcing it.
+  // The §8.8 door: plan the scanned input field against the bound tx id,
+  // then let the byte length pick the tier — a scan over a large committed
+  // input list publishes tier-2 carriage rather than forcing it.
+  const scan = step04ScanField(shared, state);
   const planned = planFaultProofFieldOpening({
     anchorSourceKind: 0n,
-    fieldIndex: MIDGARD_FIELD_INDEX.referenceInputs,
+    fieldIndex: scan.fieldIndex,
     anchorTxId: state.bad_tx_id,
     nativeTxCompactCbor: shared.nativeTxCompactCbor,
-    itemCbors: shared.referenceInputsItemCbors.map((hex) =>
-      Buffer.from(hex, "hex"),
-    ),
+    itemCbors: scan.itemCbors.map((hex) => Buffer.from(hex, "hex")),
     owner: shared.signer.paymentKeyHash,
-    label: `${STEP_LABEL} reference-inputs`,
+    label: `${STEP_LABEL} ${scan.label}`,
   });
-  const referenceItems = decodeMidgardFieldPreimage(planned.preimage);
+  const scannedItems = decodeMidgardFieldPreimage(planned.preimage);
   shared.signer.selectWallet(shared.lucid);
   const carriageUtxos =
     shared.publishedCarriageUtxos ??
@@ -157,7 +149,7 @@ const prepareStep04 = async (shared: Step04Shared) => {
       signer: shared.signer,
       planned,
       publisherAddress: shared.signer.address,
-      label: `${STEP_LABEL} reference-inputs`,
+      label: `${STEP_LABEL} ${scan.label}`,
     }));
   const fieldReferenceInputs = [
     ...(shared.certificateUtxo === undefined ? [] : [shared.certificateUtxo]),
@@ -167,7 +159,8 @@ const prepareStep04 = async (shared: Step04Shared) => {
     threadUtxo,
     threadToken,
     state,
-    referenceItems,
+    scan,
+    scannedItems,
     planned,
     carriageUtxos,
     fieldReferenceInputs,
@@ -178,12 +171,13 @@ const submitPreparedStep04 = async ({
   shared,
   threadUtxo,
   threadToken,
+  scanLabel,
   planned,
   carriageUtxos,
   fieldReferenceInputs,
   nextStepIndex,
   nextStepDatum,
-  nextRefCursor,
+  nextScan,
   argsOf,
 }: {
   readonly shared: Step04Shared;
@@ -192,19 +186,20 @@ const submitPreparedStep04 = async ({
     readonly unit: string;
     readonly fraudulentHeaderHash: string;
   };
+  readonly scanLabel: string;
   readonly planned: ReturnType<typeof planFaultProofFieldOpening>;
   readonly carriageUtxos: readonly UTxO[];
   readonly fieldReferenceInputs: readonly UTxO[];
   /** 3 = the self-loop back to step-04's own address, 4 = step-05. */
   readonly nextStepIndex: 3 | 4;
   readonly nextStepDatum: string;
-  readonly nextRefCursor: bigint | null;
+  readonly nextScan: SubmitMintAuthorizationStep04Result["nextScan"];
   readonly argsOf: (
     layout: {
       readonly inputIndex: bigint;
       readonly outputIndex: bigint;
     },
-    referenceInputsOpening: ReturnType<typeof faultProofFieldOpening>,
+    inputsOpening: ReturnType<typeof faultProofFieldOpening>,
   ) => MintAuthorizationStep04Args;
 }): Promise<SubmitMintAuthorizationStep04Result> => {
   const { lucid, contracts, signer, referenceScriptUtxo } = shared;
@@ -230,11 +225,11 @@ const submitPreparedStep04 = async ({
     ...fieldReferenceInputs,
     ...stepCarriage.referenceInputs,
   ];
-  const referenceInputsOpening = faultProofFieldOpening({
+  const inputsOpening = faultProofFieldOpening({
     planned,
     referenceInputs,
     certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
-    label: `${STEP_LABEL} reference-inputs`,
+    label: `${STEP_LABEL} ${scanLabel}`,
   });
   const walletUtxos = await lucid.wallet().getUtxos();
   const walletUtxosSansCarriage = carriageUtxos.reduce<readonly UTxO[]>(
@@ -262,7 +257,7 @@ const submitPreparedStep04 = async ({
     };
     resolvedLayout = layout;
     return Data.to(
-      { Continue: [argsOf(layout, referenceInputsOpening)] },
+      { Continue: [argsOf(layout, inputsOpening)] },
       MintAuthorizationStep04SpendRedeemer,
     );
   }) satisfies BuildTxWithRedeemer;
@@ -334,14 +329,14 @@ const submitPreparedStep04 = async ({
     fraudulentHeaderHash: threadToken.fraudulentHeaderHash,
     computationThreadUnit: threadToken.unit,
     nextStepAddress: contracts.steps[nextStepIndex].spendingScriptAddress,
-    nextRefCursor,
+    nextScan,
     inputIndex: Number(resolvedLayout.inputIndex),
     outputIndex: Number(resolvedLayout.outputIndex),
     awaitedConfirmation: awaitConfirmation,
   };
 };
 
-/** The self-loop: clear the reference input at the thread's cursor. */
+/** The self-loop: clear the scanned input at the thread's cursor. */
 export const submitMintAuthorizationStep04ResolveNext = async ({
   trie,
   descriptorCborHex,
@@ -356,18 +351,19 @@ export const submitMintAuthorizationStep04ResolveNext = async ({
     threadUtxo,
     threadToken,
     state,
-    referenceItems,
+    scan,
+    scannedItems,
     planned,
     carriageUtxos,
     fieldReferenceInputs,
   } = await prepareStep04(shared);
-  const cursor = state.ref_cursor;
-  if (cursor < 0n || cursor >= BigInt(referenceItems.length)) {
+  const cursor = state.cursor;
+  if (cursor < 0n || cursor >= BigInt(scannedItems.length)) {
     throw mintAuthorizationSubmitError(
-      `ref cursor ${cursor.toString()} is outside the committed field 1's ${referenceItems.length.toString()} items — ResolveNext has nothing to resolve.`,
+      `cursor ${cursor.toString()} is outside the committed field ${scan.fieldIndex.toString()}'s ${scannedItems.length.toString()} items — ResolveNext has nothing to resolve.`,
     );
   }
-  const outpointKey = Buffer.from(referenceItems[Number(cursor)]);
+  const outpointKey = Buffer.from(scannedItems[Number(cursor)]);
   // Local twin of the validator's canonical-item read (fail-closed).
   decodeMidgardSpendInputItem(outpointKey);
   const descriptor = decodeMidgardLedgerOutputCommitment(
@@ -378,7 +374,7 @@ export const submitMintAuthorizationStep04ResolveNext = async ({
     descriptor.referenceScriptHash.toString("hex") === state.policy_id
   ) {
     throw mintAuthorizationSubmitError(
-      `the resolved reference input at cursor ${cursor.toString()} carries a reference script hashing to the claimed policy ${state.policy_id} — the absence claim is false.`,
+      `the resolved field-${scan.fieldIndex.toString()} input at cursor ${cursor.toString()} carries a reference script hashing to the claimed policy ${state.policy_id} — the absence claim is false.`,
     );
   }
   const ledgerMembershipProof = await buildMintAuthorizationLedgerMembership({
@@ -389,7 +385,7 @@ export const submitMintAuthorizationStep04ResolveNext = async ({
 
   const nextState: MintAuthorizationStep04State = {
     ...state,
-    ref_cursor: cursor + 1n,
+    cursor: cursor + 1n,
   };
   const nextStepDatum = Data.to(
     { fraud_prover: shared.signer.paymentKeyHash, data: nextState },
@@ -399,17 +395,18 @@ export const submitMintAuthorizationStep04ResolveNext = async ({
     shared,
     threadUtxo,
     threadToken,
+    scanLabel: scan.label,
     planned,
     carriageUtxos,
     fieldReferenceInputs,
     nextStepIndex: 3,
     nextStepDatum,
-    nextRefCursor: nextState.ref_cursor,
+    nextScan: { fieldIndex: nextState.field_index, cursor: nextState.cursor },
     argsOf: (layout, opening) => ({
       ResolveNext: {
         input_index: layout.inputIndex,
         output_index: layout.outputIndex,
-        reference_inputs_opening: opening,
+        inputs_opening: opening,
         descriptor_cbor: descriptorCborHex,
         ledger_membership_proof: ledgerMembershipProof,
       },
@@ -417,7 +414,10 @@ export const submitMintAuthorizationStep04ResolveNext = async ({
   });
 };
 
-/** Close the completed scan into the direction-A verdict. */
+/**
+ * Close the scanned field: field 1 moves the scan to field 0 at cursor 0,
+ * and field 0 closes it into the direction-A verdict.
+ */
 export const submitMintAuthorizationStep04AdvanceComplete = async (
   shared: Step04Shared,
 ): Promise<SubmitMintAuthorizationStep04Result> => {
@@ -425,39 +425,54 @@ export const submitMintAuthorizationStep04AdvanceComplete = async (
     threadUtxo,
     threadToken,
     state,
-    referenceItems,
+    scan,
+    scannedItems,
     planned,
     carriageUtxos,
     fieldReferenceInputs,
   } = await prepareStep04(shared);
-  if (state.ref_cursor !== BigInt(referenceItems.length)) {
+  if (state.cursor !== BigInt(scannedItems.length)) {
     throw mintAuthorizationSubmitError(
-      `ref cursor ${state.ref_cursor.toString()} has not covered the committed field 1's ${referenceItems.length.toString()} items — the scan is incomplete.`,
+      `cursor ${state.cursor.toString()} has not covered the committed field ${scan.fieldIndex.toString()}'s ${scannedItems.length.toString()} items — the scan is incomplete.`,
     );
   }
+  const closes = scan.fieldIndex === MIDGARD_FIELD_INDEX.spendInputs;
+  const nextState: MintAuthorizationStep04State = {
+    ...state,
+    field_index: BigInt(MIDGARD_FIELD_INDEX.spendInputs),
+    cursor: 0n,
+  };
   const step05State: MintAuthorizationStep05State = {
     policy_id: state.policy_id,
     direction: MINT_AUTHORIZATION_DIRECTION_SCRIPT_ABSENT,
   };
-  const nextStepDatum = Data.to(
-    { fraud_prover: shared.signer.paymentKeyHash, data: step05State },
-    MintAuthorizationStep05Datum,
-  );
+  const nextStepDatum = closes
+    ? Data.to(
+        { fraud_prover: shared.signer.paymentKeyHash, data: step05State },
+        MintAuthorizationStep05Datum,
+      )
+    : Data.to(
+        { fraud_prover: shared.signer.paymentKeyHash, data: nextState },
+        MintAuthorizationStep04Datum,
+      );
   return submitPreparedStep04({
     shared,
     threadUtxo,
     threadToken,
+    scanLabel: scan.label,
     planned,
     carriageUtxos,
     fieldReferenceInputs,
-    nextStepIndex: 4,
+    nextStepIndex: closes ? 4 : 3,
     nextStepDatum,
-    nextRefCursor: null,
+    nextScan: closes
+      ? null
+      : { fieldIndex: nextState.field_index, cursor: nextState.cursor },
     argsOf: (layout, opening) => ({
       AdvanceComplete: {
         input_index: layout.inputIndex,
         output_index: layout.outputIndex,
-        reference_inputs_opening: opening,
+        inputs_opening: opening,
       },
     }),
   });

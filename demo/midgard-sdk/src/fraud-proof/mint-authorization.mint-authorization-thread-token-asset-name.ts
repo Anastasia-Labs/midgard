@@ -99,8 +99,13 @@ export const MintAuthorizationStep04StateSchema = Data.Object({
   policy_id: Data.Bytes(),
   bad_tx_id: Data.Bytes(),
   prior_ledger_root: MerkleRootSchema,
-  /** Next field-1 ordinal to resolve; step-03's direction-A arm writes 0. */
-  ref_cursor: Data.Integer(),
+  /**
+   * The input field under scan: 1 (reference inputs, which step-03's
+   * direction-A arm writes) and then 0 (spent inputs).
+   */
+  field_index: Data.Integer(),
+  /** Next ordinal of `field_index` to resolve; each field starts at 0. */
+  cursor: Data.Integer(),
 });
 
 export type MintAuthorizationStep04State = Data.Static<

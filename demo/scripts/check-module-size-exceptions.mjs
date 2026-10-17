@@ -3,8 +3,11 @@ import { isAbsolute, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
 // module-size-exceptions.json is the one inventory of modules retained above
-// the 500-line limit. Each entry caps one file at its exact current size, so
-// growth and an obsolete waiver both fail until the entry is updated.
+// the 500-line limit. Each entry's `max` is a ceiling: the file may shrink
+// without touching the entry, growth past the ceiling fails, and an entry
+// whose file is back at or under 500 lines is obsolete and fails until it is
+// deleted. `reason` says why the file stays large; size history lives in git,
+// so a reason carrying a `(+N)`/`(-N)` change note is refused.
 //
 // `file` is relative to demo/. Demo TS/JS entries also get an ESLint
 // max-lines cap (eslint.config.mjs); the rest (native sources, SQL migrations
@@ -12,6 +15,9 @@ import { fileURLToPath } from "node:url";
 // count here only.
 
 const root = fileURLToPath(new URL("../", import.meta.url));
+
+// A size-change note such as "C3 (+15): ..." or "(-2)".
+const SIZE_CHANGE_NOTE = /\([+\u2212-]\d+\)/u;
 
 /** The one spelling of a repository file relative to demo/, or null. */
 export const canonicalExceptionPath = (demoRoot, file) => {
@@ -30,7 +36,7 @@ export const canonicalExceptionPath = (demoRoot, file) => {
     : `../${posix}`;
 };
 
-/** Every reason the listed caps are malformed or no longer exact. */
+/** Every reason the listed caps are malformed, exceeded or obsolete. */
 export const moduleSizeExceptionFailures = (
   exceptions,
   { demoRoot = root, read = (path) => readFileSync(path, "utf8") } = {},
@@ -44,7 +50,8 @@ export const moduleSizeExceptionFailures = (
       !Number.isInteger(max) ||
       max <= 500 ||
       typeof reason !== "string" ||
-      reason.trim().length === 0
+      reason.trim().length === 0 ||
+      SIZE_CHANGE_NOTE.test(reason)
     ) {
       failures.push(`Invalid or duplicate exception: ${String(file)}`);
       continue;
@@ -53,9 +60,13 @@ export const moduleSizeExceptionFailures = (
     try {
       const lines = read(resolve(demoRoot, file)).split(/\r\n|\r|\n/u);
       if (lines.at(-1) === "") lines.pop();
-      if (lines.length !== max) {
+      if (lines.length > max) {
         failures.push(
-          `${file}: recorded ${max}, actual ${lines.length}; remove an obsolete exception or update its cap and justification.`,
+          `${file}: ${lines.length} lines exceeds its cap ${max}; split the module, or raise the cap and say why in its reason.`,
+        );
+      } else if (lines.length <= 500) {
+        failures.push(
+          `${file}: ${lines.length} lines is within the 500-line limit; delete the obsolete exception.`,
         );
       }
     } catch (error) {
@@ -73,7 +84,5 @@ if (failures.length) {
   process.stderr.write(`${failures.join("\n")}\n`);
   process.exitCode = 1;
 } else {
-  process.stdout.write(
-    `Verified ${exceptions.length} explicit module-size caps.\n`,
-  );
+  process.stdout.write(`Verified ${exceptions.length} module-size ceilings.\n`);
 }

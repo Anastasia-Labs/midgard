@@ -54,6 +54,12 @@ const workspaceDependency = (root, name = "dependency") => {
     JSON.stringify({
       name,
       scripts: { build: "compiler", "build:contrib-raw": "compiler" },
+      midgardTasks: {
+        build: {
+          steps: [{ command: ["tsup", "src/index.ts"] }],
+          outputs: ["dist"],
+        },
+      },
     }),
   );
   writeFileSync(
@@ -251,8 +257,12 @@ test("build enrollment is idempotent and refuses unknown wrappers", (t) => {
 test("a variable the build recipe names is bound; one it cannot name is never fresh", (t) => {
   const root = fixture(t);
   editPackage(root, "example", (pkg) => {
-    pkg.scripts["build:contrib-raw"] =
-      'NODE_OPTIONS="${NODE_OPTIONS:-} --max-old-space-size=64" tsup src/index.ts';
+    pkg.midgardTasks.build.steps = [
+      {
+        command: ["tsup", "src/index.ts"],
+        appendEnvironment: { NODE_OPTIONS: " --max-old-space-size=64" },
+      },
+    ];
   });
   writeFileSync(
     resolve(root, "demo/example/tsup.config.ts"),
@@ -315,12 +325,15 @@ test("a variable the build recipe names is bound; one it cannot name is never fr
     "export default {};",
   );
   editPackage(root, "example", (pkg) => {
-    pkg.scripts["build:contrib-raw"] = "tsup src/index.ts --env.STAMP=$(date)";
+    pkg.midgardTasks.build.steps = [
+      { command: ["tsup", "src/index.ts", "--env.STAMP=$(date)"] },
+    ];
   });
   stamp(root, env);
-  assert.match(
-    checkBuild(root, "example", { env }).reason,
-    /never provably fresh/u,
+  assert.equal(
+    checkBuild(root, "example", { env }).status,
+    "fresh",
+    "literal shell metacharacters cannot execute",
   );
 });
 
@@ -489,7 +502,10 @@ test("a recipe that runs another package script is never fresh", (t) => {
   generator(root, "scripts/gen.mjs", "console.log(process.env.PROFILE);\n");
   editPackage(root, "example", (pkg) => {
     pkg.scripts.gen = "node scripts/gen.mjs";
-    pkg.scripts["build:contrib-raw"] = "pnpm run gen && tsup src/index.ts";
+    pkg.midgardTasks.build.steps = [
+      { command: ["pnpm", "run", "gen"] },
+      { command: ["tsup", "src/index.ts"] },
+    ];
   });
   stamp(root, PROFILE_A);
   assert.match(
@@ -535,8 +551,10 @@ test("node flags before a recipe script do not hide it from the scan", (t) => {
   const root = fixture(t);
   generator(root, "scripts/gen.mjs", "console.log(process.env.PROFILE);\n");
   editPackage(root, "example", (pkg) => {
-    pkg.scripts["build:contrib-raw"] =
-      "node --enable-source-maps scripts/gen.mjs && tsup src/index.ts";
+    pkg.midgardTasks.build.steps = [
+      { command: ["node", "--enable-source-maps", "scripts/gen.mjs"] },
+      { command: ["tsup", "src/index.ts"] },
+    ];
   });
   stamp(root, PROFILE_A);
   assert.equal(checkBuild(root, "example", { env: PROFILE_A }).status, "fresh");
@@ -545,18 +563,27 @@ test("node flags before a recipe script do not hide it from the scan", (t) => {
     /build environment changed/u,
   );
   for (const [recipe, reason] of [
-    ["node --require ./hook.cjs scripts/gen.mjs", /passes node --require/u],
-    ["node -r ./hook.cjs scripts/gen.mjs", /passes node -r/u],
-    ["node --env-file=.env scripts/gen.mjs", /passes node --env-file/u],
+    [
+      [{ command: ["node", "--require", "./hook.cjs", "scripts/gen.mjs"] }],
+      /passes node --require/u,
+    ],
+    [
+      [{ command: ["node", "-r", "./hook.cjs", "scripts/gen.mjs"] }],
+      /passes node -r/u,
+    ],
+    [
+      [{ command: ["node", "--env-file=.env", "scripts/gen.mjs"] }],
+      /passes node --env-file/u,
+    ],
   ]) {
     editPackage(root, "example", (pkg) => {
-      pkg.scripts["build:contrib-raw"] = recipe;
+      pkg.midgardTasks.build.steps = recipe;
     });
     stamp(root, PROFILE_A);
     assert.match(
       checkBuild(root, "example", { env: PROFILE_A }).reason,
       reason,
-      recipe,
+      JSON.stringify(recipe),
     );
   }
 });
@@ -598,25 +625,32 @@ test("a recipe running a TypeScript script or an unknown tool is never fresh", (
   generator(root, "scripts/gen.ts", "console.log(process.env.PROFILE);\n");
   for (const [recipe, reason] of [
     [
-      "node scripts/gen.ts && tsup src/index.ts",
+      [
+        { command: ["node", "scripts/gen.ts"] },
+        { command: ["tsup", "src/index.ts"] },
+      ],
       /runs node on scripts\/gen\.ts/u,
     ],
     [
-      "tsx scripts/gen.ts && tsup src/index.ts",
+      [
+        { command: ["tsx", "scripts/gen.ts"] },
+        { command: ["tsup", "src/index.ts"] },
+      ],
       /runs tsx, which the guard does not scan/u,
     ],
-    ["tsup src/index.ts --onSuccess 'node x.mjs'", /passes tsup --onSuccess/u],
-    ["tsup src/index.ts; true", /uses shell syntax ";"/u],
-    ["tsup src/index.ts > log", /uses shell syntax ">"/u],
+    [
+      [{ command: ["tsup", "src/index.ts", "--onSuccess", "node x.mjs"] }],
+      /passes tsup --onSuccess/u,
+    ],
   ]) {
     editPackage(root, "example", (pkg) => {
-      pkg.scripts["build:contrib-raw"] = recipe;
+      pkg.midgardTasks.build.steps = recipe;
     });
     stamp(root, PROFILE_A);
     assert.match(
       checkBuild(root, "example", { env: PROFILE_A }).reason,
       reason,
-      recipe,
+      JSON.stringify(recipe),
     );
   }
 });
@@ -629,8 +663,10 @@ test("build code may import only builtins that run nothing the trace misses", (t
     'import { readFileSync } from "node:fs";\n',
   );
   editPackage(root, "example", (pkg) => {
-    pkg.scripts["build:contrib-raw"] =
-      "node scripts/gen.mjs && tsup src/index.ts";
+    pkg.midgardTasks.build.steps = [
+      { command: ["node", "scripts/gen.mjs"] },
+      { command: ["tsup", "src/index.ts"] },
+    ];
   });
   stamp(root);
   assert.equal(checkBuild(root, "example").status, "fresh");
@@ -669,8 +705,10 @@ test("build code may import only builtins that run nothing the trace misses", (t
 test("build code that reaches past the scan or the network is never fresh", (t) => {
   const root = fixture(t);
   editPackage(root, "example", (pkg) => {
-    pkg.scripts["build:contrib-raw"] =
-      "node scripts/gen.mjs && tsup src/index.ts";
+    pkg.midgardTasks.build.steps = [
+      { command: ["node", "scripts/gen.mjs"] },
+      { command: ["tsup", "src/index.ts"] },
+    ];
   });
   for (const code of [
     'const { Worker } = module.constructor._load("worker_threads");',
@@ -704,8 +742,10 @@ test("build code that reaches past the scan or the network is never fresh", (t) 
 test("comments and string text never refuse build code; code beside them still does", (t) => {
   const root = fixture(t);
   editPackage(root, "example", (pkg) => {
-    pkg.scripts["build:contrib-raw"] =
-      "node scripts/gen.mjs && tsup src/index.ts";
+    pkg.midgardTasks.build.steps = [
+      { command: ["node", "scripts/gen.mjs"] },
+      { command: ["tsup", "src/index.ts"] },
+    ];
   });
   generator(
     root,
@@ -769,36 +809,44 @@ test("a public directory tsup copies must be a closure input", (t) => {
   writeFileSync(resolve(root, "demo/example/public/asset.txt"), "a");
   for (const [recipe, reason] of [
     [
-      "tsup src/index.ts --publicDir ../undeclared",
+      [{ command: ["tsup", "src/index.ts", "--publicDir", "../undeclared"] }],
       /build recipe copies public directory \.\.\/undeclared, which is outside the input closure/u,
     ],
     [
-      "tsup src/index.ts --publicDir=../../outside-public",
+      [
+        {
+          command: ["tsup", "src/index.ts", "--publicDir=../../outside-public"],
+        },
+      ],
       /copies public directory \.\.\/\.\.\/outside-public, which is outside/u,
     ],
-    [
-      'tsup src/index.ts --publicDir "$DIR"',
-      /passes tsup --publicDir it cannot name/u,
-    ],
   ]) {
     editPackage(root, "example", (pkg) => {
-      pkg.scripts["build:contrib-raw"] = recipe;
+      pkg.midgardTasks.build.steps = recipe;
     });
     stamp(root);
-    assert.match(checkBuild(root, "example").reason, reason, recipe);
+    assert.match(
+      checkBuild(root, "example").reason,
+      reason,
+      JSON.stringify(recipe),
+    );
   }
   for (const recipe of [
-    "tsup src/index.ts --publicDir public",
-    "tsup src/index.ts --publicDir",
+    [{ command: ["tsup", "src/index.ts", "--publicDir", "public"] }],
+    [{ command: ["tsup", "src/index.ts", "--publicDir"] }],
   ]) {
     editPackage(root, "example", (pkg) => {
-      pkg.scripts["build:contrib-raw"] = recipe;
+      pkg.midgardTasks.build.steps = recipe;
     });
     stamp(root);
-    assert.equal(checkBuild(root, "example").status, "fresh", recipe);
+    assert.equal(
+      checkBuild(root, "example").status,
+      "fresh",
+      JSON.stringify(recipe),
+    );
   }
   editPackage(root, "example", (pkg) => {
-    pkg.scripts["build:contrib-raw"] = "tsup src/index.ts";
+    pkg.midgardTasks.build.steps = [{ command: ["tsup", "src/index.ts"] }];
   });
   for (const [config, verdict] of [
     [
@@ -969,8 +1017,10 @@ test("only reads the stamp binds may produce a stamped dist", (t) => {
     /read demo\/undeclared\/src\/index\.ts, which its input closure does not bind/u,
   );
   editPackage(root, "example", (pkg) => {
-    pkg.scripts["build:contrib-raw"] =
-      "tsup src/index.ts && node scripts/digest.mjs";
+    pkg.midgardTasks.build.steps = [
+      { command: ["tsup", "src/index.ts"] },
+      { command: ["node", "scripts/digest.mjs"] },
+    ];
   });
   generator(root, "scripts/digest.mjs", "");
   assert.match(

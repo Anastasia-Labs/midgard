@@ -1,21 +1,22 @@
 //// ## Mint-Authorization Fault Proof — Step 04 (W-C14)
 ////
-//// Direction A's reference-input scan (self-loop). The machine's stage-nine
+//// Direction A's resolved-input scan (self-loop). The machine's stage-nine
 //// source surface has two halves: the inline field-6 witnesses (cleared by
-//// step-03) and the reference scripts of the RESOLVED reference inputs —
-//// each field-1 outpoint looked up in the transition step's
-//// `pre_utxos_root`, contributing a source exactly when its descriptor's
-//// `reference_script_language != -1`, matched by
+//// step-03) and the reference scripts of every RESOLVED input — each
+//// field-1 reference outpoint and each field-0 spent outpoint looked up in
+//// the transition step's `pre_utxos_root`, contributing a source exactly
+//// when its descriptor's `reference_script_language != -1`, matched by
 //// `reference_script_hash` alone across every language.
 ////
 //// Each `ResolveNext` reproduces one machine resolution: the committed
-//// field-1 item at the cursor, its canonical outpoint key, the MPF
-//// membership of the descriptor bytes under the thread-carried pre-state
-//// root — the lookup is deterministic, so these ARE the bytes the machine
-//// read — and the cleared-source predicate (`language == -1` or
-//// `hash != policy_id`). `AdvanceComplete` closes the scan only when the
-//// cursor equals the authenticated item count, so the absence claim covers
-//// the complete surface with no gap for a prover to skip past.
+//// item of the scanned input field at the cursor, its canonical outpoint
+//// key, the MPF membership of the descriptor bytes under the thread-carried
+//// pre-state root — the lookup is deterministic, so these ARE the bytes the
+//// machine read — and the cleared-source predicate (`language == -1` or
+//// `hash != policy_id`). `AdvanceComplete` requires the cursor to equal the
+//// field's authenticated item count: field 1 then moves the scan to field 0
+//// at cursor 0, and field 0 closes it, so the absence claim covers the
+//// complete surface with no gap for a prover to skip past.
 ////
 //// The scan deliberately does NOT cross-check
 //// `descriptor.output_index == outpoint.output_index`: absence must hold
@@ -34,6 +35,7 @@ use midgard/computation_thread as ct
 use midgard/fraud_proofs/common.{cancel, continue}
 use midgard/fraud_proofs/field_opening_v1.{
   BodyAnchor, opened_field_view, reference_inputs_field_index,
+  spend_inputs_field_index,
 }
 use midgard/fraud_proofs/mint_authorization/engine
 use midgard/fraud_proofs/mint_authorization/step_04.{
@@ -72,7 +74,7 @@ validator main(
       ct.Continue(ResolveNext {
         input_index,
         output_index,
-        reference_inputs_opening,
+        inputs_opening,
         descriptor_cbor,
         ledger_membership_proof,
       }) -> {
@@ -99,24 +101,30 @@ validator main(
         )
 
         expect
-            Some(State { policy_id, bad_tx_id, prior_ledger_root, ref_cursor })
+            Some(State {
+              policy_id,
+              bad_tx_id,
+              prior_ledger_root,
+              field_index,
+              cursor,
+            })
           = m_input_state_data
 
-        // 2. The committed field-1 item at the cursor, through the §8.8
-        //    door. §7.3 abort-never-clamp: an ordinal past the committed
-        //    collection fails the read.
-        let reference_inputs_view = opened_field_view(
-          reference_inputs_opening,
+        // 2. The committed item of the scanned input field at the cursor,
+        //    through the §8.8 door. §7.3 abort-never-clamp: an ordinal past
+        //    the committed collection fails the read.
+        let inputs_view = opened_field_view(
+          inputs_opening,
           BodyAnchor { tx_id: bad_tx_id, source_kind: 0 },
-          reference_inputs_field_index,
+          field_index,
           reference_inputs,
           field_preimage_certificate_policy_id,
         )
         expect and {
-            ref_cursor >= 0,
-            ref_cursor < field_item_count(reference_inputs_view),
+            cursor >= 0,
+            cursor < field_item_count(inputs_view),
           }
-        let outpoint = spend_input_at(reference_inputs_view, ref_cursor)
+        let outpoint = spend_input_at(inputs_view, cursor)
         let outpoint_key_bytes = encode_midgard_tx_input(outpoint)
 
         // 3. The descriptor is the pre-state ledger's own resolution of the
@@ -143,25 +151,22 @@ validator main(
           policy_id,
           bad_tx_id,
           prior_ledger_root,
-          ref_cursor: ref_cursor + 1,
+          field_index,
+          cursor: cursor + 1,
         }
         expect output_state_data == expected_output_state
 
         // Done.
         True
       }
-      ct.Continue(AdvanceComplete {
-        input_index,
-        output_index,
-        reference_inputs_opening,
-      }) -> {
+      ct.Continue(AdvanceComplete { input_index, output_index, inputs_opening }) -> {
         let Transaction { inputs, outputs, reference_inputs, .. } = tx
 
         expect Some(step_datum) = datum
 
         // 1. Generic thread-advancement validations must pass.
         let
-            _own_script_hash,
+            own_script_hash,
             _computation_thread_token_asset_name,
             _fraud_prover,
             m_input_state_data,
@@ -181,31 +186,44 @@ validator main(
             Some(State {
               policy_id,
               bad_tx_id,
-              prior_ledger_root: _,
-              ref_cursor,
+              prior_ledger_root,
+              field_index,
+              cursor,
             })
           = m_input_state_data
 
-        // 2. The scan is complete exactly when the cursor equals the
-        //    authenticated field-1 item count: every resolved reference
-        //    script has been cleared, and with step-03's inline half the
-        //    machine-consulted source surface is exhausted.
-        let reference_inputs_view = opened_field_view(
-          reference_inputs_opening,
+        // 2. The scanned field is complete exactly when the cursor equals
+        //    its authenticated item count.
+        let inputs_view = opened_field_view(
+          inputs_opening,
           BodyAnchor { tx_id: bad_tx_id, source_kind: 0 },
-          reference_inputs_field_index,
+          field_index,
           reference_inputs,
           field_preimage_certificate_policy_id,
         )
-        expect ref_cursor == field_item_count(reference_inputs_view)
+        expect cursor == field_item_count(inputs_view)
 
-        // 3. The absence claim is decided: close to the terminal step.
-        expect output_script_hash == step_05_validator_script_hash
-        let expected_output_state: Data = step_05.State {
-          policy_id,
-          direction: engine.direction_script_absent,
+        // 3. Field 1 moves the scan to the spent inputs; field 0 exhausts,
+        //    with step-03's inline half, the machine-consulted source
+        //    surface, so the absence claim is decided.
+        if field_index == reference_inputs_field_index {
+          expect output_script_hash == own_script_hash
+          let expected_output_state: Data = State {
+            policy_id,
+            bad_tx_id,
+            prior_ledger_root,
+            field_index: spend_inputs_field_index,
+            cursor: 0,
+          }
+          expect output_state_data == expected_output_state
+        } else {
+          expect output_script_hash == step_05_validator_script_hash
+          let expected_output_state: Data = step_05.State {
+            policy_id,
+            direction: engine.direction_script_absent,
+          }
+          expect output_state_data == expected_output_state
         }
-        expect output_state_data == expected_output_state
 
         // Done.
         True
@@ -225,14 +243,25 @@ validator main(
 const accused_policy_id: ByteArray =
   #"42424242424242424242424242424242424242424242424242424242"
 
-/// The fixture transaction's single reference input.
-fn fixture_outpoint_key(block: fixture.NativeBlockFixtureV1) -> ByteArray {
-  expect Some(outpoint) = list.at(block.tx.body.reference_inputs, 0)
-  encode_midgard_tx_input(outpoint)
+/// The committed items of the fixture transaction's input field: one spent
+/// input (field 0) and one reference input (field 1).
+fn field_items(
+  block: fixture.NativeBlockFixtureV1,
+  field_index: Int,
+) -> List<ByteArray> {
+  if field_index == reference_inputs_field_index {
+    block.tx.body.reference_inputs |> list.map(encode_midgard_tx_input)
+  } else {
+    block.tx.body.inputs |> list.map(encode_midgard_tx_input)
+  }
 }
 
-fn field_1_items(block: fixture.NativeBlockFixtureV1) -> List<ByteArray> {
-  block.tx.body.reference_inputs |> list.map(encode_midgard_tx_input)
+fn fixture_outpoint_key(
+  block: fixture.NativeBlockFixtureV1,
+  field_index: Int,
+) -> ByteArray {
+  expect [key] = field_items(block, field_index)
+  key
 }
 
 /// A resolved-output descriptor: `language == -1` carries no reference
@@ -247,7 +276,8 @@ fn run_resolve(
   policy_id: ByteArray,
   descriptor_cbor: ByteArray,
   prior_ledger_root: ByteArray,
-  ref_cursor: Int,
+  field_index: Int,
+  cursor: Int,
   carried_items: List<ByteArray>,
 ) -> Bool {
   let block = fixture.challenged_block_v1()
@@ -255,14 +285,10 @@ fn run_resolve(
     policy_id,
     bad_tx_id: block.tx_id,
     prior_ledger_root,
-    ref_cursor,
+    field_index,
+    cursor,
   }
-  let expected_output_state: Data = State {
-    policy_id,
-    bad_tx_id: block.tx_id,
-    prior_ledger_root,
-    ref_cursor: ref_cursor + 1,
-  }
+  let expected_output_state: Data = State { ..state, cursor: cursor + 1 }
   let asset_name = fixture.ct_token_asset_name(block)
   main.spend(
     fixture.next_step_script_hash,
@@ -278,7 +304,7 @@ fn run_resolve(
       ResolveNext {
         input_index: 0,
         output_index: 0,
-        reference_inputs_opening: fixture.inline_body_opening(
+        inputs_opening: fixture.inline_body_opening(
           block.compact_cbor,
           carried_items,
         ),
@@ -291,35 +317,59 @@ fn run_resolve(
   )
 }
 
-fn run_resolve_language(policy_id: ByteArray, language: Int) -> Bool {
+fn run_resolve_language(
+  policy_id: ByteArray,
+  language: Int,
+  field_index: Int,
+) -> Bool {
   let block = fixture.challenged_block_v1()
   let descriptor_cbor = descriptor_cbor_of(language)
   run_resolve(
     policy_id,
     descriptor_cbor,
-    tf.single_leaf_ledger_root_v1(fixture_outpoint_key(block), descriptor_cbor),
+    tf.single_leaf_ledger_root_v1(
+      fixture_outpoint_key(block, field_index),
+      descriptor_cbor,
+    ),
+    field_index,
     0,
-    field_1_items(block),
+    field_items(block, field_index),
   )
 }
 
 /// A resolved output with no reference script at all clears: the machine
 /// drew no source from it.
 test mint_authorization_step_04_clears_a_scriptless_resolved_output() {
-  run_resolve_language(accused_policy_id, -1)
+  run_resolve_language(accused_policy_id, -1, reference_inputs_field_index)
 }
 
 /// A resolved output whose reference script hashes to a DIFFERENT policy
 /// clears: hash matching is exact.
 test mint_authorization_step_04_clears_a_foreign_reference_script() {
-  run_resolve_language(accused_policy_id, 0)
+  run_resolve_language(accused_policy_id, 0, reference_inputs_field_index)
 }
 
 /// A resolved output carrying a reference script of the claimed policy hash
 /// refuses — whatever its language, the machine had the source, so the
 /// absence accusation is false.
 test mint_authorization_step_04_rejects_a_resolved_policy_source() fail {
-  run_resolve_language(tf.h28_y, 3)
+  run_resolve_language(tf.h28_y, 3, reference_inputs_field_index)
+}
+
+/// A spent input's resolved output is a source too: one without a reference
+/// script clears.
+test mint_authorization_step_04_clears_a_scriptless_spent_output() {
+  run_resolve_language(accused_policy_id, -1, spend_inputs_field_index)
+}
+
+test mint_authorization_step_04_clears_a_foreign_spent_reference_script() {
+  run_resolve_language(accused_policy_id, 0, spend_inputs_field_index)
+}
+
+/// A spent input whose resolved output carries the claimed policy's script
+/// refuses: the machine had the source, so the absence accusation is false.
+test mint_authorization_step_04_rejects_a_spent_policy_source() fail {
+  run_resolve_language(tf.h28_y, 0, spend_inputs_field_index)
 }
 
 /// The cursor is bounded by the authenticated field-1 item count: an
@@ -330,9 +380,13 @@ test mint_authorization_step_04_rejects_an_out_of_range_cursor() fail {
   run_resolve(
     accused_policy_id,
     descriptor_cbor,
-    tf.single_leaf_ledger_root_v1(fixture_outpoint_key(block), descriptor_cbor),
+    tf.single_leaf_ledger_root_v1(
+      fixture_outpoint_key(block, reference_inputs_field_index),
+      descriptor_cbor,
+    ),
+    reference_inputs_field_index,
     1,
-    field_1_items(block),
+    field_items(block, reference_inputs_field_index),
   )
 }
 
@@ -344,11 +398,12 @@ test mint_authorization_step_04_rejects_a_non_member_descriptor() fail {
     accused_policy_id,
     descriptor_cbor_of(-1),
     tf.single_leaf_ledger_root_v1(
-      fixture_outpoint_key(block),
+      fixture_outpoint_key(block, reference_inputs_field_index),
       descriptor_cbor_of(0),
     ),
+    reference_inputs_field_index,
     0,
-    field_1_items(block),
+    field_items(block, reference_inputs_field_index),
   )
 }
 
@@ -360,7 +415,11 @@ test mint_authorization_step_04_rejects_a_truncated_field_1_preimage() fail {
   run_resolve(
     accused_policy_id,
     descriptor_cbor,
-    tf.single_leaf_ledger_root_v1(fixture_outpoint_key(block), descriptor_cbor),
+    tf.single_leaf_ledger_root_v1(
+      fixture_outpoint_key(block, reference_inputs_field_index),
+      descriptor_cbor,
+    ),
+    reference_inputs_field_index,
     0,
     [],
   )
@@ -368,19 +427,35 @@ test mint_authorization_step_04_rejects_a_truncated_field_1_preimage() fail {
 
 // ### Completion
 
-fn run_complete(ref_cursor: Int, carried_items: List<ByteArray>) -> Bool {
+fn run_complete(
+  field_index: Int,
+  cursor: Int,
+  carried_items: List<ByteArray>,
+  closes: Bool,
+) -> Bool {
   let block = fixture.challenged_block_v1()
   let state = State {
     policy_id: accused_policy_id,
     bad_tx_id: block.tx_id,
     prior_ledger_root: tf.h32_c,
-    ref_cursor,
-  }
-  let expected_output_state: Data = step_05.State {
-    policy_id: accused_policy_id,
-    direction: engine.direction_script_absent,
+    field_index,
+    cursor,
   }
   let asset_name = fixture.ct_token_asset_name(block)
+  let l1_tx = if closes {
+    let expected_output_state: Data = step_05.State {
+      policy_id: accused_policy_id,
+      direction: engine.direction_script_absent,
+    }
+    fixture.continue_mid_step_l1_tx_v1(asset_name, expected_output_state)
+  } else {
+    let expected_output_state: Data = State {
+      ..state,
+      field_index: spend_inputs_field_index,
+      cursor: 0,
+    }
+    tf.self_loop_l1_tx_v1(asset_name, expected_output_state)
+  }
   main.spend(
     fixture.next_step_script_hash,
     fixture.computation_thread_policy_id,
@@ -395,35 +470,78 @@ fn run_complete(ref_cursor: Int, carried_items: List<ByteArray>) -> Bool {
       AdvanceComplete {
         input_index: 0,
         output_index: 0,
-        reference_inputs_opening: fixture.inline_body_opening(
+        inputs_opening: fixture.inline_body_opening(
           block.compact_cbor,
           carried_items,
         ),
       },
     ),
     fixture.own_out_ref(),
-    fixture.continue_mid_step_l1_tx_v1(asset_name, expected_output_state),
+    l1_tx,
   )
 }
 
-/// Once the cursor has covered the authenticated item count the scan closes
-/// to the terminal step with the direction-A verdict.
-test mint_authorization_step_04_completes_at_the_item_count() {
+/// Once the cursor has covered field 1 the scan moves to the spent inputs.
+test mint_authorization_step_04_moves_to_the_spent_inputs_after_field_1() {
   let block = fixture.challenged_block_v1()
-  run_complete(1, field_1_items(block))
+  run_complete(
+    reference_inputs_field_index,
+    1,
+    field_items(block, reference_inputs_field_index),
+    False,
+  )
+}
+
+/// Covering field 1 does not decide the absence claim: the spent inputs'
+/// resolved outputs are still unscanned.
+test mint_authorization_step_04_rejects_closing_after_field_1() fail {
+  let block = fixture.challenged_block_v1()
+  run_complete(
+    reference_inputs_field_index,
+    1,
+    field_items(block, reference_inputs_field_index),
+    True,
+  )
+}
+
+/// Once the cursor has covered field 0 the scan closes to the terminal step
+/// with the direction-A verdict.
+test mint_authorization_step_04_completes_at_the_spent_input_count() {
+  let block = fixture.challenged_block_v1()
+  run_complete(
+    spend_inputs_field_index,
+    1,
+    field_items(block, spend_inputs_field_index),
+    True,
+  )
 }
 
 /// The scan cannot close early: a cursor short of the item count leaves
-/// unresolved reference inputs the policy could hide in.
+/// unresolved inputs the policy could hide in.
 test mint_authorization_step_04_rejects_an_early_completion() fail {
   let block = fixture.challenged_block_v1()
-  run_complete(0, field_1_items(block))
+  run_complete(
+    spend_inputs_field_index,
+    0,
+    field_items(block, spend_inputs_field_index),
+    True,
+  )
 }
 
-/// Nor can the count itself be shrunk: a truncated field-1 carriage fails
-/// the door before the count is read.
+test mint_authorization_step_04_rejects_an_early_field_1_completion() fail {
+  let block = fixture.challenged_block_v1()
+  run_complete(
+    reference_inputs_field_index,
+    0,
+    field_items(block, reference_inputs_field_index),
+    False,
+  )
+}
+
+/// Nor can the count itself be shrunk: a truncated carriage fails the door
+/// before the count is read.
 test mint_authorization_step_04_rejects_completion_over_a_truncated_preimage() fail {
-  run_complete(0, [])
+  run_complete(spend_inputs_field_index, 0, [], True)
 }
 
 // ## Cancellation
@@ -443,7 +561,8 @@ fn run_cancel(signed_by_prover: Bool) -> Bool {
             policy_id: accused_policy_id,
             bad_tx_id: block.tx_id,
             prior_ledger_root: tf.h32_c,
-            ref_cursor: 0,
+            field_index: reference_inputs_field_index,
+            cursor: 0,
           },
         ),
       },

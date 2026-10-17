@@ -7,13 +7,16 @@ import {
   MINT_AUTHORIZATION_ARTIFACT,
 } from "../src/mint-authorization/artifact.js";
 import {
+  detectMintAuthorizationReplay,
   mintAuthorizationDetectionId,
   prepareMintAuthorizationReplay,
 } from "../src/mint-authorization/replay.js";
+import { completeCanonicalReplayPredecessorLedger } from "../src/workflow/complete-replay.js";
 import {
   buildMintAuthorizationSubject,
   directionBNativeScript,
 } from "./support/mint-authorization-emulator.js";
+import { mintAuthorizationRetainedReferenceFixture } from "./support/mint-authorization-retained-reference.js";
 import { buildDecodingBlockFixture } from "./support/native-script-decoding-emulator.js";
 
 const fixture = async (present: boolean) => {
@@ -74,6 +77,68 @@ describe("mint authorization retained evidence", () => {
       await expect(
         admitMintAuthorizationWorkflowArtifact({ ...artifact, direction: 1 }),
       ).rejects.toThrow();
+    },
+  );
+});
+
+/**
+ * Phase B resolves a policy among the reference scripts of every resolved
+ * output, spent and referenced alike. A policy whose only source is a spent
+ * output is present: authorized when its native script holds, unauthorized
+ * when it fails, and absent only when no resolved output carries it.
+ */
+describe("mint authorization policies sourced from spent outputs", () => {
+  it.each([
+    {
+      inputField: "spend",
+      present: true,
+      satisfied: true,
+      expected: [],
+    },
+    {
+      inputField: "spend",
+      present: true,
+      satisfied: false,
+      expected: [1n],
+    },
+    {
+      inputField: "spend",
+      present: false,
+      satisfied: false,
+      expected: [0n],
+    },
+    {
+      inputField: "reference",
+      present: true,
+      satisfied: true,
+      expected: [],
+    },
+  ] as const)(
+    "$inputField source present=$present satisfied=$satisfied proves directions $expected",
+    async ({ inputField, present, satisfied, expected }) => {
+      const fixture = await mintAuthorizationRetainedReferenceFixture({
+        now: 1_000_000,
+        operatorVkey: "aa".repeat(28),
+        inputField,
+        present,
+        satisfied,
+      });
+      const findings = await detectMintAuthorizationReplay({
+        block: fixture.evidence,
+        predecessor: completeCanonicalReplayPredecessorLedger({
+          evidence: fixture.evidence,
+          context: fixture.context,
+        }),
+      });
+      expect(
+        findings.map(({ prepared }) => prepared.finding.direction),
+      ).toEqual(expected);
+      for (const { prepared } of findings) {
+        expect(prepared.finding.policyIdHex).toBe(fixture.target.policyIdHex);
+        expect(prepared.spendInputItemCbors).toHaveLength(
+          inputField === "spend" ? 1 : 0,
+        );
+      }
     },
   );
 });

@@ -92,7 +92,7 @@ test script_sources_commits_inline_reference_script_candidates() {
   let pending = vm_machine_types.InlineSourceHashControlV1 {
     version: 1,
     source_index: 0,
-    source_total_count: 1,
+    inline_source_count: 1,
     language_tag: 3,
     payload_offset: bytearray.length(item_cbor) - bytearray.length(payload),
     payload_length: bytearray.length(payload),
@@ -110,7 +110,7 @@ test script_sources_commits_inline_reference_script_candidates() {
   )
   let pending_control = vm_machine_types.ScriptSourcesControlV1 {
     ..initial_control,
-    source_total_count: 1,
+    inline_source_count: 1,
     pending_source_cbor: vm_witness.encode_inline_source_hash_control_v1(
       pending,
     ),

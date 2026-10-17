@@ -5,7 +5,7 @@ Last reviewed: 2026-09-07 (semantic source review)
 
 - **Audit sections**: §1.2 and non-provenance candidates in §1.1
 - **Rules**: R1, R5, R8 in [principles](principles.md)
-- **Coordination**: TQ-01 owns provenance; TQ-15 owns fit-ledger consolidation.
+- **Coordination**: TQ-01 owns provenance; TQ-15 (done) consolidated fit evidence.
 
 ## Problem and boundary
 
@@ -21,11 +21,10 @@ before proposing deletion.
 
 ## Source corrections
 
-- [Van Rossem fit construction](../../demo/midgard-fault-proofs/src/proof-fit/van-rossem-fit-ledger.ts)
-  rejects non-positive margins. A test of that guarantee can still detect its
-  removal, and checks against saved JSON do not necessarily invoke the current
-  producer. Margin arithmetic, ledger digests, and reconstructed commitments
-  may be integrity checks; they do not independently prove fresh measurement.
+- [Van Rossem fit check](../../demo/midgard-fault-proofs/src/proof-fit/van-rossem.ts)
+  rejects negative margins. A test of that guarantee can still detect its
+  removal. Margin arithmetic and reconstructed commitments may be integrity
+  checks; they do not independently prove fresh measurement.
 - [DA conflict evidence](../../demo/da-committee-node/tests/conflict-evidence.test.ts)
   intentionally uses the same header with different availability commitments
   under different deployment identities. Signatures authenticate those commitments. Replacing one

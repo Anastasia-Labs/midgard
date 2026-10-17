@@ -282,4 +282,5 @@ export type MintAuthorizationSubject = {
   readonly scriptWitnessItemCbors: readonly string[];
   readonly addrWitnessItemCbors: readonly string[];
   readonly referenceInputItemCbors: readonly string[];
+  readonly spendInputItemCbors: readonly string[];
 };

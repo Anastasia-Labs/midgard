@@ -109,7 +109,6 @@ it("the author reconstructs the genuine registry and enforces public measurement
         blueprintHash: fixture.manifest.artifacts.blueprintHash,
         aikenSourceHash: "11".repeat(32),
         compiler: {
-          version: "test-only-metadata",
           forkRepository: "https://example.com/test-only-compiler",
           forkRevision: "22".repeat(20),
           cargoLockHash: "33".repeat(32),

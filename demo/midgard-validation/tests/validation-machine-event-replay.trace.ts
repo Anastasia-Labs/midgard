@@ -10,7 +10,6 @@ import {
 import { Effect } from "effect";
 
 import {
-  buildDeterministicValidationMachineTrace,
   buildValidationMachineLedgerInsertOp,
   buildValidationMachineLedgerMutationSteps,
   type DeterministicValidationMachineTrace,
@@ -23,6 +22,7 @@ import {
   validationMachineLedgerRoot,
   type ValidationMachineReplayInput,
 } from "../src/index.js";
+import { buildDeterministicValidationMachineTrace } from "./helpers/trace-commit-golden.js";
 
 export type ValidationMachineEventReplayInput = Readonly<{
   consensusProfile: MidgardConsensusProfile;

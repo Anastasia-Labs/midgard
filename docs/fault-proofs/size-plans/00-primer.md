@@ -31,9 +31,12 @@ Follow the repository Aiken build skill for compiler selection, isolated probes,
 and build locking. Do not copy an old build cache or reuse a historical blueprint
 hash as current evidence. Use the declared Node/pnpm toolchain for emulator work.
 
-A fit ledger must bind compiler and blueprint identity and include every physical
-publication plus maximum-shape registered lifecycle transactions. Exercise honest
-refusal, substitutions, cancellation/recovery, permanent proof, and removal.
-Never establish fit through raised limits, disabled evaluation, or oversized
-publication exemptions. Run the ledger's dedicated verifier after regeneration;
-never change recorded digests to disguise measurements from another build.
+A family's emulator tests are its fit proof: they must submit every physical
+publication plus the maximum-shape registered lifecycle transactions, and the
+suite's submit guard
+([`van-rossem-submit-guard.ts`](../../../demo/midgard-fault-proofs/tests/support/emulator/van-rossem-submit-guard.ts))
+refuses any of them over a Van Rossem limit or, for a publication, over the
+15,872-byte target. Exercise honest refusal, substitutions,
+cancellation/recovery, permanent proof, and removal. Never establish fit
+through raised limits, disabled evaluation, or oversized publication
+exemptions.

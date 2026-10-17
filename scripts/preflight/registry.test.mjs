@@ -18,6 +18,7 @@ import {
   referencedFiles,
   workflowRunsCheck,
 } from "./derive.mjs";
+import { goldenChecks } from "./registry.tooling-checks.mjs";
 import { loadYaml } from "../ci/lint-workflows.mjs";
 import {
   buildRegistry,
@@ -123,21 +124,29 @@ test("derived goldens read Aiken sources or the pinned builtin evaluator", () =>
       }
       continue;
     }
+    // This fixture is TypeScript program material that only a vitest suite
+    // decodes and executes; no Aiken module reads it.
+    if (check.id === "golden:cek-program-large-integer") {
+      for (const path of [
+        "demo/midgard-validation/scripts/generate-cek-program-large-integer-fixture.mjs",
+        "demo/midgard-validation/tests/fixtures/cek-program-large-integer.json",
+        "demo/midgard-core/src/**",
+        "demo/midgard-validation/src/**",
+      ]) {
+        assert.ok(check.triggers.includes(path), `${check.id}: ${path}`);
+      }
+      continue;
+    }
     assert.ok(
       check.triggers.some((path) => path.endsWith(".ak")),
       `${check.id} names no .ak file, so an Aiken edit cannot select it`,
     );
   }
-  const ledgers = registry.checks.filter((check) =>
-    check.id.startsWith("exec-ledger:"),
-  );
-  assert.ok(ledgers.length >= 7, `only ${String(ledgers.length)} ledgers`);
-  for (const check of ledgers) {
-    const sources = check.triggers.filter((path) => path.endsWith(".ak"));
-    assert.ok(sources.length > 0, `${check.id} measures no module`);
-    for (const path of sources) {
-      assert.ok(existsSync(resolve(root, path)), `${check.id}: ${path}`);
-    }
+  const budgets = byId.get("script-budgets");
+  const sources = budgets.triggers.filter((path) => path.endsWith(".ak"));
+  assert.ok(sources.length > 0, "script-budgets measures no module");
+  for (const path of sources) {
+    assert.ok(existsSync(resolve(root, path)), `script-budgets: ${path}`);
   }
 });
 
@@ -148,13 +157,35 @@ test("consensus-profile.ts selects the profile-doc check", () => {
   assert.ok(!ids.includes("aiken-fmt"));
 });
 
-test("an Aiken library edit selects format, focused tests, blueprint, ledgers and goldens", () => {
+test("a budgeted test module's edit measures only the budgets that can depend on it", () => {
+  const module =
+    "onchain/aiken/lib/midgard/native-script-scan-worst-case-wide-v1.test.ak";
+  assert.ok(selectedIds([module]).includes("script-budgets"));
+  const [only] = byId.get("script-budgets").plan({ matched: [module] });
+  assert.deepEqual(only.argv, [
+    "node",
+    "onchain/aiken/scripts/script-budgets.mjs",
+    "check",
+    "--module",
+    "midgard/native_script_scan_worst_case_wide_v1.test",
+  ]);
+  const [whole] = byId
+    .get("script-budgets")
+    .plan({ matched: ["demo/midgard-core/src/script-budgets.json"] });
+  assert.deepEqual(whole.argv, [
+    "node",
+    "onchain/aiken/scripts/script-budgets.mjs",
+    "check",
+  ]);
+});
+
+test("an Aiken library edit selects format, focused tests, blueprint, budgets and goldens", () => {
   const module = "onchain/aiken/lib/midgard/fraud-proofs/native-tx/codec.ak";
   const ids = selectedIds([module]);
   for (const id of ["aiken-fmt", "aiken-focused", "aiken-blueprint"]) {
     assert.ok(ids.includes(id), id);
   }
-  assert.ok(ids.includes("exec-ledger:carriage"));
+  assert.ok(ids.includes("script-budgets"));
   // The suites that read the compiled blueprint are reached; nothing builds.
   assert.deepEqual(
     ids.filter((id) => id.startsWith("demo-")),
@@ -251,6 +282,8 @@ test("a FULL_RUN path selects every check; the tracked blueprint selects nothing
   for (const path of [
     "demo/scripts/deployment-profile-aiken.mjs",
     "demo/scripts/deployment-profile-budgets.mjs",
+    "demo/scripts/package-tasks.mjs",
+    "demo/scripts/package-test.mjs",
     "onchain/aiken/aiken.toml",
     "demo/pnpm-lock.yaml",
     "scripts/preflight/derive.mjs",
@@ -468,6 +501,55 @@ test("building a blueprint cannot change generated preflight references", () => 
   }
 });
 
+test("golden selection follows private imports through typed fixture helpers", () => {
+  const root = mkdtempSync(join(tmpdir(), "preflight-private-fixtures-"));
+  const directory = "demo/fixture-package";
+  const pkg = {
+    directory,
+    name: "fixture-package",
+    workspaceDependencies: [],
+    scripts: { "fixtures:example:check": "node scripts/generate.mjs --check" },
+  };
+  try {
+    for (const subdir of ["scripts", "tests/fixtures"]) {
+      mkdirSync(join(root, directory, subdir), { recursive: true });
+    }
+    writeFileSync(
+      join(root, directory, "package.json"),
+      JSON.stringify({
+        imports: { "#fixture-values": "./tests/fixtures/values.ts" },
+      }),
+    );
+    writeFileSync(
+      join(root, directory, "scripts/generate.mjs"),
+      'import "../tests/fixtures/canonical.ts";',
+    );
+    writeFileSync(
+      join(root, directory, "tests/fixtures/canonical.ts"),
+      'export { value } from "#fixture-values";',
+    );
+    writeFileSync(
+      join(root, directory, "tests/fixtures/values.ts"),
+      "export const value = 1;",
+    );
+    const checks = goldenChecks(root, [pkg], "fixtures:example:check");
+    for (const path of ["tests/fixtures/values.ts", "package.json"]) {
+      const result = selectChecks({ checks }, [`${directory}/${path}`]);
+      assert.deepEqual(
+        result.selected.map(({ check }) => check.id),
+        ["golden:example"],
+      );
+      assert.deepEqual(result.uncovered, []);
+    }
+    assert.deepEqual(
+      selectChecks({ checks }, [`${directory}/tests/unrelated.ts`]).selected,
+      [],
+    );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test("workspace lint and its helper tests cover source, rules, and baseline moves", () => {
   const baseline = "demo/scripts/lib/eslint-plugin-midgard/baseline.json";
   for (const path of [
@@ -513,7 +595,7 @@ test("golden output manifests select every split Aiken artifact", () => {
   const outputs = channel.triggers.filter((path) =>
     path.startsWith("onchain/aiken/lib/midgard/cek-core-step-goldens/"),
   );
-  assert.equal(outputs.length, 26);
+  assert.equal(outputs.length, 27);
   for (const path of outputs) {
     assert.ok(existsSync(resolve(root, path)), path);
     assert.ok(selectedIds([path]).includes(channel.id), path);

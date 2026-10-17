@@ -15,16 +15,8 @@
  * without any test noticing. This file closes it permanently: it publishes all
  * 91 applied semantic resolvers as reference scripts through the same helper
  * every other publication-fit suite uses, asserts the real 512-byte reserve on
- * each, and — under `MIDGARD_WRITE_FIT_LEDGER=1` — pins the measurements to
- * `docs/fault-proofs/size-plans/validation-trace-resolver-publication-fit-ledger.json`.
- * `buildVanRossemFitLedger` throws on any row without a positive Van Rossem
- * margin and on any publication row past the 15,872-byte target, so a
- * regression fails a test instead of surviving to delivery.
+ * each, so a regression fails a test instead of surviving to delivery.
  */
-import { createHash } from "node:crypto";
-import { readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
-
 import {
   VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES,
   type ValidationTraceDisputeFaultProofContracts,
@@ -37,12 +29,7 @@ import {
 } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
-import {
-  buildVanRossemFitLedger,
-  VAN_ROSSEM_PUBLICATION_RESERVE_BYTES,
-  type VanRossemFitMeasurement,
-  writeVanRossemFitLedger,
-} from "../src/proof-fit/van-rossem-fit-ledger.js";
+import { VAN_ROSSEM_PUBLICATION_RESERVE_BYTES } from "../src/proof-fit/van-rossem.js";
 import {
   alwaysSucceedsBlueprintPath,
   buildMinimalFaultProofContracts,
@@ -61,13 +48,6 @@ const SEMANTIC_RESOLVER_NAMES: readonly string[] = [
   ...Object.keys(VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.semantics),
   "scriptSourcesStageOneRedeemerEnvelope",
 ];
-
-const ledgerPath = fileURLToPath(
-  new URL(
-    "../../../docs/fault-proofs/size-plans/validation-trace-resolver-publication-fit-ledger.json",
-    import.meta.url,
-  ),
-);
 
 describe("validation-trace resolver publication", () => {
   it("publishes every semantic resolver under the real L1 limit", async () => {
@@ -95,11 +75,6 @@ describe("validation-trace resolver publication", () => {
       SEMANTIC_RESOLVER_NAMES.length,
     );
 
-    const rows: VanRossemFitMeasurement[] = [];
-    const blueprintBytes = readFileSync(realBlueprintPath);
-    const blueprintSha256 = createHash("sha256")
-      .update(blueprintBytes)
-      .digest("hex");
     for (const [index, name] of SEMANTIC_RESOLVER_NAMES.entries()) {
       const contract = family.semanticResolvers[index];
       if (contract === undefined) {
@@ -113,28 +88,9 @@ describe("validation-trace resolver publication", () => {
         label: `validation semantic resolver ${name}`,
       });
       const measurement = result.publicationMeasurement;
-      rows.push({
-        name,
-        maximumShape: "parameterized semantic resolver publication",
-        kind: "publication",
-        signedBytes: measurement.completeSignedBytes,
-        memoryUnits: measurement.executionMemory,
-        cpuUnits: measurement.executionSteps,
-      });
       expect(measurement.l1ByteMargin, name).toBeGreaterThanOrEqual(
         VAN_ROSSEM_PUBLICATION_RESERVE_BYTES,
       );
-    }
-
-    const ledger = buildVanRossemFitLedger({
-      category: "validationTraceDispute/semantic resolver publication",
-      blueprintSha256,
-      compilerVersion: JSON.parse(blueprintBytes.toString()).preamble.compiler
-        .version,
-      measurements: rows,
-    });
-    if (process.env.MIDGARD_WRITE_FIT_LEDGER === "1") {
-      await writeVanRossemFitLedger(ledgerPath, ledger);
     }
   }, 1_800_000);
 });

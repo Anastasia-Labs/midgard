@@ -1,18 +1,12 @@
-import { mkdtemp, readdir, readFile, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import {
   assertNoPositiveFaultProofLimitEscapes,
   scanFaultProofLimitEscapes,
 } from "../src/proof-fit/limit-escape-scan.js";
-import {
-  buildVanRossemFitLedger,
-  FitLedgerWriteRefusedError,
-  writeVanRossemFitLedger,
-} from "../src/proof-fit/van-rossem-fit-ledger.js";
 import {
   assertCompleteLifecycleCoverage,
   COMPLETE_LIFECYCLE_BASE_SCENARIOS,
@@ -172,151 +166,5 @@ describe("Wave 0 shared off-chain substrate", () => {
         hasAdjacentConsensusBound: true,
       }),
     ).not.toThrow();
-  });
-
-  it("builds deterministic positive-margin ledgers and writes their digest", async () => {
-    const input = {
-      category: "exampleFamily",
-      blueprintSha256: "ab".repeat(32),
-      compilerVersion: "aiken v1.1.23+5adf783",
-      measurements: [
-        {
-          name: "step-01",
-          kind: "lifecycle" as const,
-          maximumShape: "10,000 committed items",
-          signedBytes: 16_000,
-          memoryUnits: 16_000_000n,
-          cpuUnits: 9_000_000_000n,
-        },
-        {
-          name: "publish-bind",
-          kind: "publication" as const,
-          maximumShape: "applied testnet script",
-          signedBytes: 15_800,
-          memoryUnits: 0n,
-          cpuUnits: 0n,
-        },
-      ],
-    };
-    const ledger = buildVanRossemFitLedger(input);
-    expect(buildVanRossemFitLedger(input)).toStrictEqual(ledger);
-    expect(ledger.entries.map((entry) => entry.name)).toStrictEqual([
-      "step-01",
-      "publish-bind",
-    ]);
-    const directory = await mkdtemp(join(tmpdir(), "midgard-fit-"));
-    const path = join(directory, "example-fit-ledger.json");
-    try {
-      vi.stubEnv("MIDGARD_WRITE_FIT_LEDGER", "1");
-      await writeVanRossemFitLedger(path, ledger);
-      expect(JSON.parse(await readFile(path, "utf8"))).toStrictEqual(ledger);
-    } finally {
-      vi.unstubAllEnvs();
-      await rm(directory, { recursive: true, force: true });
-    }
-  });
-
-  it.each([undefined, "", "0", "true"])(
-    "refuses to write a ledger when MIDGARD_WRITE_FIT_LEDGER is %j",
-    async (flag) => {
-      const ledger = buildVanRossemFitLedger({
-        category: "exampleFamily",
-        blueprintSha256: "ab".repeat(32),
-        compilerVersion: "aiken v1.1.23+5adf783",
-        measurements: [
-          {
-            name: "step-01",
-            kind: "lifecycle",
-            maximumShape: "one item",
-            signedBytes: 1_000,
-            memoryUnits: 1_000n,
-            cpuUnits: 1_000n,
-          },
-        ],
-      });
-      const directory = await mkdtemp(join(tmpdir(), "midgard-fit-"));
-      const path = join(directory, "nested", "example-fit-ledger.json");
-      try {
-        vi.stubEnv("MIDGARD_WRITE_FIT_LEDGER", flag);
-        const refusal = writeVanRossemFitLedger(path, ledger);
-        await expect(refusal).rejects.toBeInstanceOf(
-          FitLedgerWriteRefusedError,
-        );
-        await expect(refusal).rejects.toThrow(
-          `refused to write fit ledger ${path}: fit ledgers are written only under MIDGARD_WRITE_FIT_LEDGER=1`,
-        );
-        // Nothing reached the disk: no ledger, no temporary file, no directory.
-        expect(await readdir(directory)).toStrictEqual([]);
-      } finally {
-        vi.unstubAllEnvs();
-        await rm(directory, { recursive: true, force: true });
-      }
-    },
-  );
-
-  it("writes a caller-named output path without the global flag", async () => {
-    const ledger = buildVanRossemFitLedger({
-      category: "exampleFamily",
-      blueprintSha256: "ab".repeat(32),
-      compilerVersion: "aiken v1.1.23+5adf783",
-      measurements: [
-        {
-          name: "step-01",
-          kind: "lifecycle",
-          maximumShape: "one item",
-          signedBytes: 1_000,
-          memoryUnits: 1_000n,
-          cpuUnits: 1_000n,
-        },
-      ],
-    });
-    const directory = await mkdtemp(join(tmpdir(), "midgard-fit-"));
-    const path = join(directory, "requested-fit-ledger.json");
-    try {
-      vi.stubEnv("MIDGARD_WRITE_FIT_LEDGER", undefined);
-      await writeVanRossemFitLedger(path, ledger, { namedByCaller: true });
-      expect(JSON.parse(await readFile(path, "utf8"))).toStrictEqual(ledger);
-    } finally {
-      vi.unstubAllEnvs();
-      await rm(directory, { recursive: true, force: true });
-    }
-  });
-
-  it("refuses hard-boundary and publication-reserve failures", () => {
-    const base = {
-      category: "exampleFamily",
-      blueprintSha256: "ab".repeat(32),
-      compilerVersion: "aiken v1.1.23+5adf783",
-    };
-    expect(() =>
-      buildVanRossemFitLedger({
-        ...base,
-        measurements: [
-          {
-            name: "at-hard-boundary",
-            kind: "lifecycle",
-            maximumShape: "maximum",
-            signedBytes: 16_384,
-            memoryUnits: 1n,
-            cpuUnits: 1n,
-          },
-        ],
-      }),
-    ).toThrow(/no positive Van Rossem margin/);
-    expect(() =>
-      buildVanRossemFitLedger({
-        ...base,
-        measurements: [
-          {
-            name: "publication-without-reserve",
-            kind: "publication",
-            maximumShape: "applied script",
-            signedBytes: 15_873,
-            memoryUnits: 1n,
-            cpuUnits: 1n,
-          },
-        ],
-      }),
-    ).toThrow(/reliable target/);
   });
 });

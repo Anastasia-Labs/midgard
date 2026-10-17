@@ -10,7 +10,6 @@ import {
   scriptHashToCredential,
 } from "@lucid-evolution/lucid";
 
-import { TRANSITION_TRACE_FINAL_CONTRACT_NAMES } from "../deployable-scripts.js";
 import {
   authenticatedValidatorFromManifest,
   mintingValidatorFromManifest,
@@ -18,7 +17,7 @@ import {
   withdrawalValidatorFromManifest,
 } from "./midgard-contracts.assert-deployment-manifest-matches-config.js";
 import {
-  legacyFaultProofChainFromManifest,
+  faultProofFamilyScriptsFromManifest,
   linearFaultProofChainFromManifest,
 } from "./midgard-contracts.linear-fault-proof-chain-from-manifest.js";
 import { requireManifestString } from "./midgard-contracts.load-reference-script-auth-validator.js";
@@ -100,26 +99,18 @@ export const midgardContractsFromDeploymentManifest = (
     "scriptDecodeSpend",
     "scriptDecodeMint",
   );
-  const transitionTraceRoute = spendingValidatorFromManifest(
+  const transitionTraceScripts = faultProofFamilyScriptsFromManifest(
     network,
     manifest,
     sourcePath,
-    "fraudProofTransitionTrace",
+    "transitionTrace",
   );
-  const transitionTraceFinals = TRANSITION_TRACE_FINAL_CONTRACT_NAMES.map(
-    (contractName) =>
-      spendingValidatorFromManifest(
-        network,
-        manifest,
-        sourcePath,
-        contractName,
-      ),
-  ) as unknown as SDK.FaultProofContractChains["transitionTrace"]["finals"];
   const transitionHistory = manifest.contracts.fraudProofTransitionTrace;
   const transitionBounds = parseDeploymentManifestEventHistoryBounds(
     transitionHistory.eventHistoryBounds,
   );
   const transitionTrace: SDK.FaultProofContractChains["transitionTrace"] = {
+    ...transitionTraceScripts,
     history: {
       inlineLimitBytes: BigInt(transitionBounds.inlineLimitBytes),
       maxPayloadBytes: BigInt(transitionBounds.maxPayloadBytes),
@@ -128,155 +119,65 @@ export const midgardContractsFromDeploymentManifest = (
         transitionHistory.eventHistoryRetentionAddresses,
       ),
     },
-    firstStep: transitionTraceRoute,
-    route: transitionTraceRoute,
-    finals: transitionTraceFinals,
-    steps: [transitionTraceRoute, ...transitionTraceFinals],
-    yields: {
-      l2Open: withdrawalValidatorFromManifest(
-        manifest,
-        sourcePath,
-        "fraudProofTransitionTraceAcceptedTransactionL2OpenWithdraw",
-      ),
-      l2Summaries: withdrawalValidatorFromManifest(
-        manifest,
-        sourcePath,
-        "fraudProofTransitionTraceAcceptedTransactionL2SummariesWithdraw",
-      ),
-      l2Replay: withdrawalValidatorFromManifest(
-        manifest,
-        sourcePath,
-        "fraudProofTransitionTraceAcceptedTransactionL2ReplayWithdraw",
-      ),
-      claimStructure: withdrawalValidatorFromManifest(
-        manifest,
-        sourcePath,
-        "fraudProofTransitionTraceAcceptedTransactionClaimStructureWithdraw",
-      ),
-      claimSource: withdrawalValidatorFromManifest(
-        manifest,
-        sourcePath,
-        "fraudProofTransitionTraceAcceptedTransactionClaimSourceWithdraw",
-      ),
-      claimEndpoints: withdrawalValidatorFromManifest(
-        manifest,
-        sourcePath,
-        "fraudProofTransitionTraceAcceptedTransactionClaimEndpointsWithdraw",
-      ),
-      depositProjection: withdrawalValidatorFromManifest(
-        manifest,
-        sourcePath,
-        "fraudProofTransitionTraceDepositProjectionWithdraw",
-      ),
-      l1Event: withdrawalValidatorFromManifest(
-        manifest,
-        sourcePath,
-        "fraudProofTransitionTraceL1EventWithdraw",
-      ),
-      forcedTiming: withdrawalValidatorFromManifest(
-        manifest,
-        sourcePath,
-        "fraudProofTransitionTraceForcedTimingWithdraw",
-      ),
-      depositSummaries: withdrawalValidatorFromManifest(
-        manifest,
-        sourcePath,
-        "fraudProofTransitionTraceDepositSummariesWithdraw",
-      ),
-      l2Assembly: withdrawalValidatorFromManifest(
-        manifest,
-        sourcePath,
-        "fraudProofTransitionTraceAcceptedTransactionL2AssemblyWithdraw",
-      ),
-      l2Scan: withdrawalValidatorFromManifest(
-        manifest,
-        sourcePath,
-        "fraudProofTransitionTraceAcceptedTransactionL2ScanWithdraw",
-      ),
-      l2Value: withdrawalValidatorFromManifest(
-        manifest,
-        sourcePath,
-        "fraudProofTransitionTraceAcceptedTransactionL2ValueWithdraw",
-      ),
-      depositAssembly: withdrawalValidatorFromManifest(
-        manifest,
-        sourcePath,
-        "fraudProofTransitionTraceDepositAssemblyWithdraw",
-      ),
-      depositScan: withdrawalValidatorFromManifest(
-        manifest,
-        sourcePath,
-        "fraudProofTransitionTraceDepositScanWithdraw",
-      ),
-      depositValue: withdrawalValidatorFromManifest(
-        manifest,
-        sourcePath,
-        "fraudProofTransitionTraceDepositValueWithdraw",
-      ),
-      depositReplay: withdrawalValidatorFromManifest(
-        manifest,
-        sourcePath,
-        "fraudProofTransitionTraceDepositReplayWithdraw",
-      ),
-    },
   };
+
   const validationTraceDispute = validationTraceDisputeFromManifest(
     network,
     manifest,
     sourcePath,
   );
   const fraudProofContracts: SDK.FaultProofContractChains = {
-    doubleSpend: legacyFaultProofChainFromManifest(
+    doubleSpend: linearFaultProofChainFromManifest(
       network,
       manifest,
       sourcePath,
       "doubleSpend",
     ),
-    nonExistentInput: legacyFaultProofChainFromManifest(
+    nonExistentInput: linearFaultProofChainFromManifest(
       network,
       manifest,
       sourcePath,
       "nonExistentInput",
     ),
-    nonExistentInputNoIndex: legacyFaultProofChainFromManifest(
+    nonExistentInputNoIndex: linearFaultProofChainFromManifest(
       network,
       manifest,
       sourcePath,
       "nonExistentInputNoIndex",
     ),
-    invalidRange: legacyFaultProofChainFromManifest(
+    invalidRange: linearFaultProofChainFromManifest(
       network,
       manifest,
       sourcePath,
       "invalidRange",
     ),
     transitionTrace,
-    zeroInput: legacyFaultProofChainFromManifest(
+    zeroInput: linearFaultProofChainFromManifest(
       network,
       manifest,
       sourcePath,
       "zeroInput",
     ),
     validationTraceDispute,
-    daHashPreimage: legacyFaultProofChainFromManifest(
+    daHashPreimage: linearFaultProofChainFromManifest(
       network,
       manifest,
       sourcePath,
       "daHashPreimage",
     ),
-    noReferenceInput: legacyFaultProofChainFromManifest(
+    noReferenceInput: linearFaultProofChainFromManifest(
       network,
       manifest,
       sourcePath,
       "noReferenceInput",
     ),
-    referenceInputNoIdx: legacyFaultProofChainFromManifest(
+    referenceInputNoIdx: linearFaultProofChainFromManifest(
       network,
       manifest,
       sourcePath,
       "referenceInputNoIdx",
     ),
-    invalidSignature: legacyFaultProofChainFromManifest(
+    invalidSignature: linearFaultProofChainFromManifest(
       network,
       manifest,
       sourcePath,

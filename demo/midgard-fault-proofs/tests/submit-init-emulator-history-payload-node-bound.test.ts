@@ -5,28 +5,19 @@
  * lands under a deployment whose bound is one node larger.
  */
 import { readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
 
 import { DEPLOYMENT_MANIFEST_MAX_PAYLOAD_NODES } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { replacePlutusConstrFieldCbor } from "@al-ft/midgard-core/plutus-data-cbor";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data, type UTxO } from "@lucid-evolution/lucid";
-import { afterAll, expect, it } from "vitest";
+import { expect, it } from "vitest";
 
-import {
-  buildVanRossemFitLedger,
-  type VanRossemFitMeasurement,
-} from "../src/proof-fit/van-rossem-fit-ledger.js";
 import { realBlueprintPath } from "./support/emulator/blueprints.js";
 import {
   historyPairPayloads,
   setupHistoryPair,
 } from "./support/emulator/history-pair.js";
 import { type CompleteSignedTransactionMeasurement } from "./support/emulator/measurement.js";
-import {
-  readBlueprintIdentity,
-  writeOrVerifyPinnedFitLedger,
-} from "./support/pinned-fit-ledger.js";
 
 const blueprint = SDK.parseFaultProofBlueprint(
   JSON.parse(readFileSync(realBlueprintPath).toString()),
@@ -99,9 +90,6 @@ const depositPayloadCbor = (
 const nodesAroundDatum = (payloadCbor: string) =>
   Number(SDK.countHistoryDataNodesCbor(payloadCbor, 1_000_000n)) - 1;
 
-const measurements: VanRossemFitMeasurement[] = [];
-const completed = new Set<string>();
-
 type Row = {
   readonly name: string;
   readonly shape: Shape;
@@ -159,23 +147,6 @@ const ROWS: readonly Row[] = [
     admitted: true,
   },
 ];
-
-afterAll(async () => {
-  expect([...completed].sort()).toEqual(ROWS.map(({ name }) => name).sort());
-  await writeOrVerifyPinnedFitLedger(
-    fileURLToPath(
-      new URL(
-        "../../../docs/fault-proofs/size-plans/event-history-admission-fit-ledger.json",
-        import.meta.url,
-      ),
-    ),
-    buildVanRossemFitLedger({
-      category: "eventHistoryAdmission",
-      ...(await readBlueprintIdentity(realBlueprintPath)),
-      measurements,
-    }),
-  );
-});
 
 it.each(ROWS)(
   "$name: admitted=$admitted",
@@ -268,7 +239,6 @@ it.each(ROWS)(
       await expect(request()).rejects.toThrow();
       expect(await h.lucid.utxosAt(applied.address)).toEqual(listBefore);
       expect(await h.lucid.utxosByOutRef([nonce])).toHaveLength(1);
-      completed.add(row.name);
       return;
     }
     const admission = await request();
@@ -297,16 +267,6 @@ it.each(ROWS)(
         .payloadCbor,
     ).toBe(plan.payloadCbor);
     expect(await h.lucid.utxosByOutRef([nonce])).toHaveLength(0);
-    if (row.deploymentNodes === undefined)
-      measurements.push({
-        name: row.name,
-        kind: "lifecycle",
-        maximumShape: `${row.shape}, ${payloadNodes.toString()} payload nodes, ${plan.payloadBytes.toString()} payload bytes`,
-        signedBytes: measured.completeSignedBytes,
-        memoryUnits: measured.executionMemory,
-        cpuUnits: measured.executionSteps,
-      });
-    completed.add(row.name);
   },
   240_000,
 );

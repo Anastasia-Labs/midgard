@@ -48,7 +48,7 @@ describe("witnessScriptDecoding Plutus items", () => {
     const published = await h.publishField(shape, null);
 
     const bound = await h.step01Accepted(
-      await h.init(setup.fraudulentBlockOutRef, null, shape.label),
+      await h.init(setup.fraudulentBlockOutRef, null),
       inclusionOf(shape),
       setup.fraudulentBlockOutRef,
       0n,
@@ -79,7 +79,6 @@ describe("witnessScriptDecoding Plutus items", () => {
     const init = await h.init(
       setup.fraudulentBlockOutRef,
       "accepted-plutus-init",
-      shape.label,
     );
     const opened = await h.step02(
       await h.step01Accepted(
@@ -88,7 +87,6 @@ describe("witnessScriptDecoding Plutus items", () => {
         setup.fraudulentBlockOutRef,
         0n,
         "accepted-plutus-step01",
-        shape.label,
       ),
       shape,
       evidence,
@@ -99,16 +97,14 @@ describe("witnessScriptDecoding Plutus items", () => {
       opened.nextThreadOutRef,
       evidence,
       "accepted-plutus",
-      shape.label,
     );
     await h.step04(
       closed.threadOutRef,
       evidence,
       "accepted-plutus-step04-proof-mint",
-      shape.label,
     );
     await h.expectThreadsGone(setup.headerHash);
-    await h.remove(setup.headerHash, "accepted-plutus-remove", shape.label);
+    await h.remove(setup.headerHash, "accepted-plutus-remove");
   }, 900_000);
 
   it("contradicts a wrongful undecodable rejection of a decodable Plutus item", async () => {
@@ -123,16 +119,11 @@ describe("witnessScriptDecoding Plutus items", () => {
     );
     const opened = await h.step02(
       await h.step01Forced(
-        await h.init(
-          forced.setup.fraudulentBlockOutRef,
-          "forced-plutus-init",
-          shape.label,
-        ),
+        await h.init(forced.setup.fraudulentBlockOutRef, "forced-plutus-init"),
         forced,
         evidence.finding.witnessSetHash,
         0n,
         "forced-plutus-step01",
-        shape.label,
       ),
       shape,
       evidence,
@@ -142,20 +133,14 @@ describe("witnessScriptDecoding Plutus items", () => {
       opened.nextThreadOutRef,
       evidence,
       "forced-plutus",
-      shape.label,
     );
     await h.step04(
       closed.threadOutRef,
       evidence,
       "forced-plutus-step04-proof-mint",
-      shape.label,
     );
     await h.expectThreadsGone(forced.setup.headerHash);
-    await h.remove(
-      forced.setup.headerHash,
-      "forced-plutus-remove",
-      shape.label,
-    );
+    await h.remove(forced.setup.headerHash, "forced-plutus-remove");
   }, 900_000);
 
   it("refuses to contradict an honest undecodable rejection", async () => {
@@ -167,7 +152,7 @@ describe("witnessScriptDecoding Plutus items", () => {
     expect(evidence.resultClass).toBe(evidence.finding.accusedClass);
     const opened = await h.step02(
       await h.step01Forced(
-        await h.init(forced.setup.fraudulentBlockOutRef, null, shape.label),
+        await h.init(forced.setup.fraudulentBlockOutRef, null),
         forced,
         evidence.finding.witnessSetHash,
         0n,
@@ -175,12 +160,7 @@ describe("witnessScriptDecoding Plutus items", () => {
       shape,
       evidence,
     );
-    const closed = await h.scanToClose(
-      opened.nextThreadOutRef,
-      evidence,
-      null,
-      shape.label,
-    );
+    const closed = await h.scanToClose(opened.nextThreadOutRef, evidence, null);
     await expectOnchainRefusal(() => h.step04Raw(closed.threadOutRef));
     await h.cancel(closed.threadOutRef, 3);
   }, 900_000);

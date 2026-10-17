@@ -16,7 +16,6 @@ describe("field-preimage-length-mismatch real publication fit", () => {
     const chain =
       harness.contracts.fraudProofContracts.fieldPreimageLengthMismatch;
     if (chain === undefined) throw new Error("real length chain is absent");
-    const ledger = [];
     for (const [index, step] of chain.steps.entries()) {
       const capture = await captureEmulatorSubmission(harness.emulator, () =>
         publishPlainReferenceScriptUtxo({
@@ -26,22 +25,10 @@ describe("field-preimage-length-mismatch real publication fit", () => {
         }),
       );
       const measurement = capture.measurement;
-      ledger.push({
-        step: index + 1,
-        signedBytes: measurement.completeSignedBytes,
-        byteMargin:
-          PROTOCOL_PARAMETERS_DEFAULT.maxTxSize -
-          measurement.completeSignedBytes,
-        executionMemory: measurement.executionMemory.toString(),
-        executionSteps: measurement.executionSteps.toString(),
-      });
       expect(measurement.completeSignedBytes).toBeLessThanOrEqual(
         PROTOCOL_PARAMETERS_DEFAULT.maxTxSize,
       );
       expect(measurement.l1ByteMargin).toBeGreaterThan(0);
     }
-    console.info(
-      `[field-preimage-length-fit-ledger] ${JSON.stringify(ledger)}`,
-    );
   }, 120_000);
 });

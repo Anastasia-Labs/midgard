@@ -1,4 +1,3 @@
-import { fileURLToPath } from "node:url";
 import { inspect } from "node:util";
 
 import {
@@ -57,10 +56,6 @@ import {
 } from "../../src/value-not-preserved/union-schemas.js";
 import { FRAUD_PROOF_AUTHENTICATED_PUBLICATION_OBSERVER } from "../../src/workflow/raw-l1-publication-observation.js";
 import { buildDecodingBlockFixture } from "./native-script-decoding-emulator.js";
-import {
-  createSplitFitLedgerPart,
-  type SplitFitLedger,
-} from "./split-fit-ledger.js";
 import { registerChunkedVerifyRewardAccount } from "./submit-init-emulator-shared.js";
 import {
   alignUnixTimeToEmulatorSlotBoundary,
@@ -207,35 +202,14 @@ const partOf = ({
 }: (typeof VALUE_CONSERVATION_CASES)[number]): ValueConservationPart =>
   !assetMaximum ? "rest" : forced ? "forced-assets" : "non-forced-assets";
 
-const VALUE_CONSERVATION_FIT_LEDGER: SplitFitLedger = {
-  path: fileURLToPath(
-    new URL(
-      "../../../../docs/fault-proofs/size-plans/value-not-preserved-fit-ledger.json",
-      import.meta.url,
-    ),
-  ),
-  category: "valueNotPreserved:00000019:testnet",
-  compilerVersion: "aiken v1.1.23+5adf783",
-  caseCount: VALUE_CONSERVATION_CASES.length,
-  parts: ["forced-assets", "non-forced-assets", "rest"],
-  source: fileURLToPath(import.meta.url),
-};
-
 /** Registers one part of the suite; the three part files together run every case. */
 export const registerValueConservationCases = (
   part: ValueConservationPart,
 ): void => {
-  const cases = VALUE_CONSERVATION_CASES.map((testCase, ordinal) => ({
-    ...testCase,
-    ordinal,
-  })).filter((testCase) => partOf(testCase) === part);
-  const fit = createSplitFitLedgerPart(
-    VALUE_CONSERVATION_FIT_LEDGER,
-    part,
-    cases.map(({ ordinal }) => ordinal),
+  const cases = VALUE_CONSERVATION_CASES.filter(
+    (testCase) => partOf(testCase) === part,
   );
   const proveValueConservation = async ({
-    ordinal,
     forced,
     maximum,
     cancellation,
@@ -267,15 +241,6 @@ export const registerValueConservationCases = (
           measurement,
           maxTxExMem: harness.emulator.protocolParameters.maxTxExMem,
           maxTxExSteps: harness.emulator.protocolParameters.maxTxExSteps,
-        });
-        fit.record(ordinal, {
-          stem: `${expect.getState().currentTestName}:${label}`,
-          kind:
-            measurement.executionMemory === 0n ? "publication" : "lifecycle",
-          maximumShape: expect.getState().currentTestName!,
-          signedBytes: measurement.completeSignedBytes,
-          memoryUnits: measurement.executionMemory,
-          cpuUnits: measurement.executionSteps,
         });
       }
       return capture.result;
@@ -1288,9 +1253,7 @@ export const registerValueConservationCases = (
     it.each(cases)(
       "proves value conservation $forced, maximum=$maximum, cancellation=$cancellation, assets=$assetMaximum, proofs=$proofMaximum, domain=$assetMode, honest=$honest across mint and burn",
       async (testCase) => {
-        fit.begin(testCase.ordinal);
         await proveValueConservation(testCase);
-        fit.pass(testCase.ordinal);
       },
       1_800_000,
     );

@@ -11,6 +11,7 @@
 
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { dirname, join, relative, resolve, sep } from "node:path";
+import { packageTestTask } from "../../demo/scripts/package-tasks.mjs";
 
 const toPosix = (path) => path.split(sep).join("/");
 
@@ -91,17 +92,45 @@ const isTrackableFile = (path) =>
 // The repository files a script names in string literals or relative imports,
 // resolved the way the script resolves them: `./` and `../` against the
 // script's directory, anything else against the repository root and then the
-// script's package root. Referenced `.mjs` helpers and `.json` artifact manifests are followed, so a shared
-// helper's own inputs count too. Returns repository-relative paths.
+// script's package root. Follow typed fixture helpers and their exact private
+// package imports as well as `.mjs` and `.json` references, so helper-only edits
+// select the owning generator. Returns repository-relative paths.
 export const referencedFiles = (rootPath, file) => {
   const root = resolve(rootPath);
   const found = new Set();
   const visit = (absolute) => {
     const source = stripComments(readFileSync(absolute, "utf8"));
     const packageRoot = nearestPackageRoot(root, absolute);
-    for (const [, literal] of source.matchAll(
-      /["'`]((?:\.{1,2}\/)?[A-Za-z0-9_.@-]+(?:\/[A-Za-z0-9_.@-]+)*\.[A-Za-z0-9]+)["'`]/gu,
+    const literals = [
+      ...source.matchAll(
+        /["'`]((?:\.{1,2}\/)?[A-Za-z0-9_.@-]+(?:\/[A-Za-z0-9_.@-]+)*\.[A-Za-z0-9]+)["'`]/gu,
+      ),
+    ].map(([, literal]) => literal);
+    for (const [, specifier] of source.matchAll(
+      /\b(?:from\s+|import\s*(?:\(\s*)?|require\s*\(\s*)["'](#[A-Za-z0-9_./-]+)["']/gu,
     )) {
+      const manifest = packageRoot && join(packageRoot, "package.json");
+      const target =
+        manifest &&
+        JSON.parse(readFileSync(manifest, "utf8")).imports?.[specifier];
+      if (typeof target !== "string" || !target.startsWith("./")) {
+        throw new Error(
+          `${absolute}: private import '${specifier}' needs an exact local package target`,
+        );
+      }
+      const resolved = resolve(packageRoot, target);
+      if (
+        !resolved.startsWith(`${packageRoot}${sep}`) ||
+        !isTrackableFile(resolved)
+      ) {
+        throw new Error(
+          `${absolute}: private import '${specifier}' has no repository local target`,
+        );
+      }
+      found.add(toPosix(relative(root, manifest)));
+      literals.push(`./${toPosix(relative(dirname(absolute), resolved))}`);
+    }
+    for (const literal of literals) {
       const candidates = literal.startsWith(".")
         ? [resolve(dirname(absolute), literal)]
         : [
@@ -130,7 +159,7 @@ export const referencedFiles = (rootPath, file) => {
         continue;
       }
       found.add(path);
-      if (hit.endsWith(".mjs") || hit.endsWith(".json")) {
+      if (/\.(?:mjs|json|[cm]?ts)$/u.test(hit)) {
         visit(hit);
       }
     }
@@ -159,6 +188,7 @@ export const workspacePackages = (root) => {
     const manifestPath = `${DEMO}/${directory}/package.json`;
     const json = JSON.parse(readText(root, manifestPath));
     return {
+      ...json,
       directory: `${DEMO}/${directory}`,
       name: json.name,
       scripts: json.scripts ?? {},
@@ -207,29 +237,12 @@ export const workspaceDependentClosure = (packages, names) =>
       .map((pkg) => pkg.name),
   );
 
-// A package whose suites reach the test Postgres: a test file or its Vitest
-// config reads the destination (POSTGRES_HOST) or the per-run database prefix
-// (MIDGARD_TEST_DATABASE_PREFIX). Those suites cannot run without the server.
-export const packageNeedsPostgres = (root, pkg) => {
-  const directory = resolve(root, pkg.directory);
-  const files = readdirSync(directory)
-    .filter((name) => /^vitest\.config\.[cm]?[jt]s$/u.test(name))
-    .map((name) => join(directory, name));
-  const visit = (path) => {
-    for (const entry of readdirSync(path, { withFileTypes: true })) {
-      if (entry.name === "node_modules") continue;
-      const child = join(path, entry.name);
-      if (entry.isDirectory()) visit(child);
-      else if (/\.[cm]?[jt]s$/u.test(entry.name)) files.push(child);
-    }
-  };
-  if (existsSync(join(directory, "tests"))) visit(join(directory, "tests"));
-  return files.some((file) =>
-    /\b(?:POSTGRES_HOST|MIDGARD_TEST_DATABASE_PREFIX)\b/u.test(
-      readFileSync(file, "utf8"),
-    ),
-  );
-};
+// Test prerequisites are package contracts; source spelling cannot add or
+// remove a database obligation from the same task the runner executes.
+export const packageNeedsPostgres = (_root, pkg) =>
+  packageTestTask(pkg)?.prerequisites?.some(
+    ({ kind }) => kind === "postgres",
+  ) ?? false;
 
 // --- CI ---------------------------------------------------------------------
 
@@ -353,55 +366,21 @@ export const aikenImportClosure = (index, moduleNames) => {
   );
 };
 
-// --- execution ledgers -------------------------------------------------------
+// --- script budgets ----------------------------------------------------------
 
-const LEDGER_SCRIPTS = `${AIKEN_PROJECT}/scripts`;
+export const SCRIPT_BUDGET_TABLE = `${DEMO}/midgard-core/src/script-budgets.json`;
+export const SCRIPT_BUDGET_JUDGE = `${AIKEN_PROJECT}/scripts/script-budgets.mjs`;
 
-export const execLedgers = (root) => {
-  const ledgers = [];
-  for (const name of readdirSync(resolve(root, LEDGER_SCRIPTS)).sort()) {
-    if (!/^verify-.+-exec-ledger-v1\.mjs$/u.test(name)) {
-      continue;
-    }
-    const verifier = `${LEDGER_SCRIPTS}/${name}`;
-    const source = readText(root, verifier);
-    const ledgerNames = new Set(
-      [
-        ...stripComments(source).matchAll(
-          /["'`]([a-z0-9-]+-exec-ledger-v1\.json)["'`]/gu,
-        ),
-      ].map(([, file]) => file),
-    );
-    if (ledgerNames.size !== 1) {
-      throw new Error(
-        `${verifier} must name exactly one ledger JSON; found ${String(ledgerNames.size)}`,
-      );
-    }
-    const ledger = `${LEDGER_SCRIPTS}/${[...ledgerNames][0]}`;
-    const modules = (JSON.parse(readText(root, ledger)).modules ?? []).map(
-      (entry) => entry.module,
-    );
-    if (modules.length === 0) {
-      throw new Error(`${ledger} measures no modules`);
-    }
-    // The verifier's own usage line names the Aiken environment it needs.
-    const environment = source.match(
-      new RegExp(
-        `MIDGARD_AIKEN_ENV=([a-z0-9_-]+)[^\\n]*scripts/${escapeRegExp(name)}`,
-        "u",
-      ),
-    )?.[1];
-    ledgers.push({
-      id: name.slice("verify-".length, -"-exec-ledger-v1.mjs".length),
-      verifier,
-      ledger,
-      modules,
-      environment,
-      scripts: referencedFiles(root, verifier),
-    });
+// The Aiken modules the script-budget table measures, in table order.
+export const scriptBudgetModules = (root) => {
+  const budgets = JSON.parse(readText(root, SCRIPT_BUDGET_TABLE)).budgets ?? {};
+  const modules = new Set(
+    Object.values(budgets).map((entry) =>
+      entry.test.slice(0, entry.test.lastIndexOf("/")),
+    ),
+  );
+  if (modules.size === 0) {
+    throw new Error(`${SCRIPT_BUDGET_TABLE} measures no modules`);
   }
-  if (ledgers.length === 0) {
-    throw new Error(`no execution-ledger verifiers under ${LEDGER_SCRIPTS}`);
-  }
-  return ledgers;
+  return [...modules];
 };

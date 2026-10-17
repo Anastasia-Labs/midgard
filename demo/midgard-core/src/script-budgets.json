@@ -1,0 +1,1796 @@
+{
+  "budgets": {
+    "midgard/fraud_proofs/canonical_decodability/rule.test/canonical_decodability_verdict_at_the_field_byte_bound": {
+      "test": "midgard/fraud_proofs/canonical_decodability/rule.test/canonical_decodability_verdict_at_the_field_byte_bound",
+      "ceiling": {
+        "mem": 2467393,
+        "cpu": 1175943696
+      }
+    },
+    "midgard/fraud_proofs/canonical_decodability/rule.test/canonical_decodability_verdict_fixture_only_at_the_field_byte_bound": {
+      "test": "midgard/fraud_proofs/canonical_decodability/rule.test/canonical_decodability_verdict_fixture_only_at_the_field_byte_bound",
+      "ceiling": {
+        "mem": 1759041,
+        "cpu": 859694160
+      }
+    },
+    "midgard/fraud_proofs/canonical_decodability/rule.test/canonical_decodability_verdict_at_two_hundred_fifty_items": {
+      "test": "midgard/fraud_proofs/canonical_decodability/rule.test/canonical_decodability_verdict_at_two_hundred_fifty_items",
+      "ceiling": {
+        "mem": 7274339,
+        "cpu": 2317283031
+      }
+    },
+    "midgard/fraud_proofs/canonical_decodability/rule.test/canonical_decodability_verdict_fixture_only_at_two_hundred_fifty_items": {
+      "test": "midgard/fraud_proofs/canonical_decodability/rule.test/canonical_decodability_verdict_fixture_only_at_two_hundred_fifty_items",
+      "ceiling": {
+        "mem": 3979223,
+        "cpu": 1474256424
+      }
+    },
+    "midgard/fraud_proofs/canonical_decodability/rule.test/canonical_decodability_verdict_at_five_hundred_items": {
+      "test": "midgard/fraud_proofs/canonical_decodability/rule.test/canonical_decodability_verdict_at_five_hundred_items",
+      "ceiling": {
+        "mem": 12672372,
+        "cpu": 3768737241
+      }
+    },
+    "midgard/fraud_proofs/canonical_decodability/rule.test/canonical_decodability_verdict_fixture_only_at_five_hundred_items": {
+      "test": "midgard/fraud_proofs/canonical_decodability/rule.test/canonical_decodability_verdict_fixture_only_at_five_hundred_items",
+      "ceiling": {
+        "mem": 6339065,
+        "cpu": 2156880770
+      }
+    },
+    "midgard/fraud_proofs/committed_field_shape/rule.test/committed_field_shape_verdict_at_the_field_byte_bound": {
+      "test": "midgard/fraud_proofs/committed_field_shape/rule.test/committed_field_shape_verdict_at_the_field_byte_bound",
+      "ceiling": {
+        "mem": 2472042,
+        "cpu": 1178502616
+      }
+    },
+    "midgard/fraud_proofs/committed_field_shape/rule.test/committed_field_shape_verdict_fixture_only_at_the_field_byte_bound": {
+      "test": "midgard/fraud_proofs/committed_field_shape/rule.test/committed_field_shape_verdict_fixture_only_at_the_field_byte_bound",
+      "ceiling": {
+        "mem": 1745091,
+        "cpu": 856737726
+      }
+    },
+    "midgard/fraud_proofs/committed_field_shape/rule.test/committed_field_shape_verdict_at_two_hundred_fifty_items": {
+      "test": "midgard/fraud_proofs/committed_field_shape/rule.test/committed_field_shape_verdict_at_two_hundred_fifty_items",
+      "ceiling": {
+        "mem": 7288336,
+        "cpu": 2321168942
+      }
+    },
+    "midgard/fraud_proofs/committed_field_shape/rule.test/committed_field_shape_verdict_fixture_only_at_two_hundred_fifty_items": {
+      "test": "midgard/fraud_proofs/committed_field_shape/rule.test/committed_field_shape_verdict_fixture_only_at_two_hundred_fifty_items",
+      "ceiling": {
+        "mem": 3970977,
+        "cpu": 1472020997
+      }
+    },
+    "midgard/fraud_proofs/committed_field_shape/rule.test/committed_field_shape_verdict_at_five_hundred_items": {
+      "test": "midgard/fraud_proofs/committed_field_shape/rule.test/committed_field_shape_verdict_at_five_hundred_items",
+      "ceiling": {
+        "mem": 12676601,
+        "cpu": 3770699468
+      }
+    },
+    "midgard/fraud_proofs/committed_field_shape/rule.test/committed_field_shape_verdict_fixture_only_at_five_hundred_items": {
+      "test": "midgard/fraud_proofs/committed_field_shape/rule.test/committed_field_shape_verdict_fixture_only_at_five_hundred_items",
+      "ceiling": {
+        "mem": 6318920,
+        "cpu": 2152316783
+      }
+    },
+    "midgard/fraud_proofs/transition_trace/proof.test/accepts_valid_l2_transaction_no_op_transition_fault": {
+      "test": "midgard/fraud_proofs/transition_trace/proof.test/accepts_valid_l2_transaction_no_op_transition_fault",
+      "ceiling": {
+        "mem": 7811185,
+        "cpu": 3376431212
+      }
+    },
+    "midgard/fraud_proofs/transition_trace/proof.test/accepts_late_forced_order_as_out_of_window_source_event": {
+      "test": "midgard/fraud_proofs/transition_trace/proof.test/accepts_late_forced_order_as_out_of_window_source_event",
+      "ceiling": {
+        "mem": 2463630,
+        "cpu": 1082770886
+      }
+    },
+    "fraud_proofs/reference_input_no_idx/step_02/reference_input_no_idx_step_02_forwards_the_committed_out_of_range_input": {
+      "test": "fraud_proofs/reference_input_no_idx/step_02/reference_input_no_idx_step_02_forwards_the_committed_out_of_range_input",
+      "ceiling": {
+        "mem": 2632216,
+        "cpu": 1129721562
+      }
+    },
+    "fraud_proofs/reference_input_no_idx/step_04/reference_input_no_idx_step_04_accepts_out_of_range_index": {
+      "test": "fraud_proofs/reference_input_no_idx/step_04/reference_input_no_idx_step_04_accepts_out_of_range_index",
+      "ceiling": {
+        "mem": 2624202,
+        "cpu": 1128299509
+      }
+    },
+    "midgard/user_events/tx_order_v1.test/tx_order_mint_material_at_the_aggregate_bound": {
+      "test": "midgard/user_events/tx_order_v1.test/tx_order_mint_material_at_the_aggregate_bound",
+      "ceiling": {
+        "mem": 2370675,
+        "cpu": 911941669
+      }
+    },
+    "midgard/user_events/tx_order_v1.test/tx_order_mint_material_fixture_only_at_the_aggregate_bound": {
+      "test": "midgard/user_events/tx_order_v1.test/tx_order_mint_material_fixture_only_at_the_aggregate_bound",
+      "ceiling": {
+        "mem": 770289,
+        "cpu": 391812067
+      }
+    },
+    "midgard/user_events/tx_order_v1.test/tx_order_mint_material_at_two_hundred_fifty_variable_width_items": {
+      "test": "midgard/user_events/tx_order_v1.test/tx_order_mint_material_at_two_hundred_fifty_variable_width_items",
+      "ceiling": {
+        "mem": 7393114,
+        "cpu": 2268170536
+      }
+    },
+    "midgard/user_events/tx_order_v1.test/tx_order_mint_material_at_five_hundred_variable_width_items": {
+      "test": "midgard/user_events/tx_order_v1.test/tx_order_mint_material_at_five_hundred_variable_width_items",
+      "ceiling": {
+        "mem": 12787027,
+        "cpu": 3864782084
+      }
+    },
+    "midgard/user_events/tx_order_v1.test/tx_order_mint_material_at_five_hundred_variable_width_items - tx_order_mint_material_at_two_hundred_fifty_variable_width_items": {
+      "test": "midgard/user_events/tx_order_v1.test/tx_order_mint_material_at_five_hundred_variable_width_items",
+      "minusControl": "tx_order_mint_material_at_two_hundred_fifty_variable_width_items",
+      "ceiling": {
+        "mem": 5340508,
+        "cpu": 1580803513
+      }
+    },
+    "midgard/fraud_proofs/native_script_decoding/exec_measure_v1.test/decoding_measure_deep_9_nodes": {
+      "test": "midgard/fraud_proofs/native_script_decoding/exec_measure_v1.test/decoding_measure_deep_9_nodes",
+      "ceiling": {
+        "mem": 6766787,
+        "cpu": 2693903299
+      }
+    },
+    "midgard/fraud_proofs/native_script_decoding/exec_measure_v1.test/decoding_measure_deep_9_nodes_fixture_only": {
+      "test": "midgard/fraud_proofs/native_script_decoding/exec_measure_v1.test/decoding_measure_deep_9_nodes_fixture_only",
+      "ceiling": {
+        "mem": 574832,
+        "cpu": 285726119
+      }
+    },
+    "midgard/fraud_proofs/native_script_decoding/exec_measure_v1.test/decoding_measure_deep_17_nodes": {
+      "test": "midgard/fraud_proofs/native_script_decoding/exec_measure_v1.test/decoding_measure_deep_17_nodes",
+      "ceiling": {
+        "mem": 12792790,
+        "cpu": 5130812957
+      }
+    },
+    "midgard/fraud_proofs/native_script_decoding/exec_measure_v1.test/decoding_measure_deep_17_nodes_fixture_only": {
+      "test": "midgard/fraud_proofs/native_script_decoding/exec_measure_v1.test/decoding_measure_deep_17_nodes_fixture_only",
+      "ceiling": {
+        "mem": 1119427,
+        "cpu": 564189776
+      }
+    },
+    "midgard/fraud_proofs/native_script_decoding/exec_measure_v1.test/decoding_measure_wide_9_nodes": {
+      "test": "midgard/fraud_proofs/native_script_decoding/exec_measure_v1.test/decoding_measure_wide_9_nodes",
+      "ceiling": {
+        "mem": 6081617,
+        "cpu": 2338454059
+      }
+    },
+    "midgard/fraud_proofs/native_script_decoding/exec_measure_v1.test/decoding_measure_wide_9_nodes_fixture_only": {
+      "test": "midgard/fraud_proofs/native_script_decoding/exec_measure_v1.test/decoding_measure_wide_9_nodes_fixture_only",
+      "ceiling": {
+        "mem": 121956,
+        "cpu": 35137982
+      }
+    },
+    "midgard/fraud_proofs/native_script_decoding/exec_measure_v1.test/decoding_measure_wide_17_nodes": {
+      "test": "midgard/fraud_proofs/native_script_decoding/exec_measure_v1.test/decoding_measure_wide_17_nodes",
+      "ceiling": {
+        "mem": 11380217,
+        "cpu": 4401575798
+      }
+    },
+    "midgard/fraud_proofs/native_script_decoding/exec_measure_v1.test/decoding_measure_wide_17_nodes_fixture_only": {
+      "test": "midgard/fraud_proofs/native_script_decoding/exec_measure_v1.test/decoding_measure_wide_17_nodes_fixture_only",
+      "ceiling": {
+        "mem": 211655,
+        "cpu": 61234184
+      }
+    },
+    "fraud_proofs/native_script_decoding/step_01/decoding_step_01_binds_an_accepted_normal_transaction": {
+      "test": "fraud_proofs/native_script_decoding/step_01/decoding_step_01_binds_an_accepted_normal_transaction",
+      "ceiling": {
+        "mem": 2552984,
+        "cpu": 957314782
+      },
+      "raisedBecause": "Composed with the PV 11 script-decode change; the reading is the cost measured on that change."
+    },
+    "fraud_proofs/native_script_decoding/step_01/decoding_step_01_binds_a_published_chunk_membership_proof": {
+      "test": "fraud_proofs/native_script_decoding/step_01/decoding_step_01_binds_a_published_chunk_membership_proof",
+      "ceiling": {
+        "mem": 3690916,
+        "cpu": 1395539890
+      },
+      "raisedBecause": "Composed with the PV 11 script-decode change; the reading is the cost measured on that change."
+    },
+    "fraud_proofs/native_script_decoding/step_01/decoding_step_01_records_a_forced_source_for_either_direction": {
+      "test": "fraud_proofs/native_script_decoding/step_01/decoding_step_01_records_a_forced_source_for_either_direction",
+      "ceiling": {
+        "mem": 2413416,
+        "cpu": 1063482490
+      }
+    },
+    "fraud_proofs/native_script_decoding/step_02/decoding_step_02_opens_a_normal_claim": {
+      "test": "fraud_proofs/native_script_decoding/step_02/decoding_step_02_opens_a_normal_claim",
+      "ceiling": {
+        "mem": 1512127,
+        "cpu": 766447574
+      }
+    },
+    "fraud_proofs/native_script_decoding/step_02/decoding_step_02_opens_a_forced_acceptance": {
+      "test": "fraud_proofs/native_script_decoding/step_02/decoding_step_02_opens_a_forced_acceptance",
+      "ceiling": {
+        "mem": 3068771,
+        "cpu": 1417729590
+      }
+    },
+    "fraud_proofs/native_script_decoding/step_02/decoding_step_02_copies_a_malformed_accusation_verbatim": {
+      "test": "fraud_proofs/native_script_decoding/step_02/decoding_step_02_copies_a_malformed_accusation_verbatim",
+      "ceiling": {
+        "mem": 3076696,
+        "cpu": 1426999854
+      }
+    },
+    "fraud_proofs/native_script_decoding/step_03_open_subject/open_subject_commits_the_authenticated_outpoint": {
+      "test": "fraud_proofs/native_script_decoding/step_03_open_subject/open_subject_commits_the_authenticated_outpoint",
+      "ceiling": {
+        "mem": 3786986,
+        "cpu": 1658353382
+      }
+    },
+    "fraud_proofs/native_script_decoding/step_03_open_subject/open_subject_closes_an_out_of_domain_direction_b_ordinal": {
+      "test": "fraud_proofs/native_script_decoding/step_03_open_subject/open_subject_closes_an_out_of_domain_direction_b_ordinal",
+      "ceiling": {
+        "mem": 3921232,
+        "cpu": 1706408590
+      }
+    },
+    "fraud_proofs/native_script_decoding/step_03_bind_descriptor/bind_descriptor_authenticates_and_starts_the_machine": {
+      "test": "fraud_proofs/native_script_decoding/step_03_bind_descriptor/bind_descriptor_authenticates_and_starts_the_machine",
+      "ceiling": {
+        "mem": 3564928,
+        "cpu": 1457807614
+      },
+      "raisedBecause": "Composed with the PV 11 script-decode change; the reading is the cost measured on that change."
+    },
+    "fraud_proofs/native_script_decoding/step_03_bind_descriptor/bind_descriptor_closes_a_non_native_direction_b_descriptor": {
+      "test": "fraud_proofs/native_script_decoding/step_03_bind_descriptor/bind_descriptor_closes_a_non_native_direction_b_descriptor",
+      "ceiling": {
+        "mem": 2633027,
+        "cpu": 1079816537
+      },
+      "raisedBecause": "Composed with the PV 11 script-decode change; the reading is the cost measured on that change."
+    },
+    "fraud_proofs/native_script_decoding/step_03_advance_or_close/advance_or_close_commits_a_partial_advance": {
+      "test": "fraud_proofs/native_script_decoding/step_03_advance_or_close/advance_or_close_commits_a_partial_advance",
+      "ceiling": {
+        "mem": 3667596,
+        "cpu": 1532330401
+      }
+    },
+    "fraud_proofs/native_script_decoding/step_03_advance_or_close/advance_or_close_closes_direction_b_at_the_exact_terminal": {
+      "test": "fraud_proofs/native_script_decoding/step_03_advance_or_close/advance_or_close_closes_direction_b_at_the_exact_terminal",
+      "ceiling": {
+        "mem": 3927334,
+        "cpu": 1603443615
+      },
+      "raisedBecause": "Composed with the PV 11 script-decode change; the reading is the cost measured on that change."
+    },
+    "fraud_proofs/native_script_decoding/step_03_advance_or_close/advance_or_close_closes_a_direction_a_refusal": {
+      "test": "fraud_proofs/native_script_decoding/step_03_advance_or_close/advance_or_close_closes_a_direction_a_refusal",
+      "ceiling": {
+        "mem": 3051026,
+        "cpu": 1281767953
+      },
+      "raisedBecause": "Composed with the PV 11 script-decode change; the reading is the cost measured on that change."
+    },
+    "fraud_proofs/native_script_decoding/step_04/decoding_step_04_finalizes_a_wrongful_acceptance": {
+      "test": "fraud_proofs/native_script_decoding/step_04/decoding_step_04_finalizes_a_wrongful_acceptance",
+      "ceiling": {
+        "mem": 1262824,
+        "cpu": 552380415
+      }
+    },
+    "fraud_proofs/native_script_decoding/step_04/decoding_step_04_finalizes_a_wrongful_rejection": {
+      "test": "fraud_proofs/native_script_decoding/step_04/decoding_step_04_finalizes_a_wrongful_rejection",
+      "ceiling": {
+        "mem": 1271919,
+        "cpu": 555909494
+      }
+    },
+    "midgard/fraud_proofs/native_script_decoding/exec_measure_v1.test/decoding_measure_deep_17_nodes - decoding_measure_deep_9_nodes": {
+      "test": "midgard/fraud_proofs/native_script_decoding/exec_measure_v1.test/decoding_measure_deep_17_nodes",
+      "minusControl": "decoding_measure_deep_9_nodes",
+      "ceiling": {
+        "mem": 5966339,
+        "cpu": 2412781839
+      }
+    },
+    "midgard/native_tx_carriage_v1.test/tier3_corner_fixture_only": {
+      "test": "midgard/native_tx_carriage_v1.test/tier3_corner_fixture_only",
+      "ceiling": {
+        "mem": 410938,
+        "cpu": 231027548
+      }
+    },
+    "midgard/native_tx_carriage_v1.test/tier3_corner_open_only": {
+      "test": "midgard/native_tx_carriage_v1.test/tier3_corner_open_only",
+      "ceiling": {
+        "mem": 654082,
+        "cpu": 304485573
+      }
+    },
+    "midgard/native_tx_carriage_v1.test/tier3_corner_one_read": {
+      "test": "midgard/native_tx_carriage_v1.test/tier3_corner_one_read",
+      "ceiling": {
+        "mem": 818059,
+        "cpu": 401426659
+      }
+    },
+    "midgard/native_tx_carriage_v1.test/tier3_corner_two_reads": {
+      "test": "midgard/native_tx_carriage_v1.test/tier3_corner_two_reads",
+      "ceiling": {
+        "mem": 983657,
+        "cpu": 498803406
+      }
+    },
+    "midgard/native_tx_carriage_v1.test/tier3_corner_straddling_read": {
+      "test": "midgard/native_tx_carriage_v1.test/tier3_corner_straddling_read",
+      "ceiling": {
+        "mem": 856089,
+        "cpu": 428638831
+      }
+    },
+    "midgard/native_tx_carriage_v1.test/tier3_corner_second_straddling_read": {
+      "test": "midgard/native_tx_carriage_v1.test/tier3_corner_second_straddling_read",
+      "ceiling": {
+        "mem": 879263,
+        "cpu": 422470058
+      }
+    },
+    "midgard/native_tx_carriage_v1.test/tier3_corner_last_chunk_read": {
+      "test": "midgard/native_tx_carriage_v1.test/tier3_corner_last_chunk_read",
+      "ceiling": {
+        "mem": 851093,
+        "cpu": 371309233
+      }
+    },
+    "field_preimage_certificate_handlers.test/certificate_mint_fixture_only_smallest_tier3": {
+      "test": "field_preimage_certificate_handlers.test/certificate_mint_fixture_only_smallest_tier3",
+      "ceiling": {
+        "mem": 437725,
+        "cpu": 177414753
+      }
+    },
+    "field_preimage_certificate_handlers.test/certificate_mint_cost_at_the_smallest_tier3": {
+      "test": "field_preimage_certificate_handlers.test/certificate_mint_cost_at_the_smallest_tier3",
+      "ceiling": {
+        "mem": 1097952,
+        "cpu": 444672399
+      }
+    },
+    "field_preimage_certificate_handlers.test/certificate_mint_fixture_only_at_the_corner": {
+      "test": "field_preimage_certificate_handlers.test/certificate_mint_fixture_only_at_the_corner",
+      "ceiling": {
+        "mem": 470738,
+        "cpu": 256494009
+      }
+    },
+    "field_preimage_certificate_handlers.test/certificate_mint_cost_at_the_corner": {
+      "test": "field_preimage_certificate_handlers.test/certificate_mint_cost_at_the_corner",
+      "ceiling": {
+        "mem": 1229960,
+        "cpu": 621065700
+      }
+    },
+    "field_preimage_certificate_handlers.test/certificate_spend_fixture_only": {
+      "test": "field_preimage_certificate_handlers.test/certificate_spend_fixture_only",
+      "ceiling": {
+        "mem": 266102,
+        "cpu": 136476085
+      }
+    },
+    "field_preimage_certificate_handlers.test/certificate_spend_cost": {
+      "test": "field_preimage_certificate_handlers.test/certificate_spend_cost",
+      "ceiling": {
+        "mem": 501508,
+        "cpu": 264513506
+      }
+    },
+    "midgard/native_tx_carriage_v1.test/tier3_corner_open_only - tier3_corner_fixture_only": {
+      "test": "midgard/native_tx_carriage_v1.test/tier3_corner_open_only",
+      "minusControl": "tier3_corner_fixture_only",
+      "ceiling": {
+        "mem": 243144,
+        "cpu": 73458026
+      }
+    },
+    "midgard/native_tx_carriage_v1.test/tier3_corner_one_read - tier3_corner_open_only": {
+      "test": "midgard/native_tx_carriage_v1.test/tier3_corner_one_read",
+      "minusControl": "tier3_corner_open_only",
+      "ceiling": {
+        "mem": 163978,
+        "cpu": 96941086
+      }
+    },
+    "midgard/native_tx_carriage_v1.test/tier3_corner_two_reads - tier3_corner_one_read": {
+      "test": "midgard/native_tx_carriage_v1.test/tier3_corner_two_reads",
+      "minusControl": "tier3_corner_one_read",
+      "ceiling": {
+        "mem": 165598,
+        "cpu": 97376748
+      }
+    },
+    "midgard/native_tx_carriage_v1.test/tier3_corner_straddling_read - tier3_corner_one_read": {
+      "test": "midgard/native_tx_carriage_v1.test/tier3_corner_straddling_read",
+      "minusControl": "tier3_corner_one_read",
+      "ceiling": {
+        "mem": 38030,
+        "cpu": 27212173
+      }
+    },
+    "midgard/native_tx_carriage_v1.test/tier3_corner_second_straddling_read - tier3_corner_one_read": {
+      "test": "midgard/native_tx_carriage_v1.test/tier3_corner_second_straddling_read",
+      "minusControl": "tier3_corner_one_read",
+      "ceiling": {
+        "mem": 61204,
+        "cpu": 21043400
+      }
+    },
+    "midgard/native_tx_carriage_v1.test/tier3_corner_last_chunk_read - tier3_corner_one_read": {
+      "test": "midgard/native_tx_carriage_v1.test/tier3_corner_last_chunk_read",
+      "minusControl": "tier3_corner_one_read",
+      "ceiling": {
+        "mem": 33035,
+        "cpu": -29521041
+      }
+    },
+    "field_preimage_certificate_handlers.test/certificate_mint_cost_at_the_smallest_tier3 - certificate_mint_fixture_only_smallest_tier3": {
+      "test": "field_preimage_certificate_handlers.test/certificate_mint_cost_at_the_smallest_tier3",
+      "minusControl": "certificate_mint_fixture_only_smallest_tier3",
+      "ceiling": {
+        "mem": 660227,
+        "cpu": 267257646
+      }
+    },
+    "field_preimage_certificate_handlers.test/certificate_mint_cost_at_the_corner - certificate_mint_fixture_only_at_the_corner": {
+      "test": "field_preimage_certificate_handlers.test/certificate_mint_cost_at_the_corner",
+      "minusControl": "certificate_mint_fixture_only_at_the_corner",
+      "ceiling": {
+        "mem": 759223,
+        "cpu": 364571691
+      }
+    },
+    "field_preimage_certificate_handlers.test/certificate_spend_cost - certificate_spend_fixture_only": {
+      "test": "field_preimage_certificate_handlers.test/certificate_spend_cost",
+      "minusControl": "certificate_spend_fixture_only",
+      "ceiling": {
+        "mem": 235406,
+        "cpu": 128037422
+      }
+    },
+    "fraud_proofs/q1x_spend_input_cardinality.test/q1x_f6_no_input_step_02_at_one_spend_input - q1x_f6_no_input_step_02_control_at_one_spend_input": {
+      "test": "fraud_proofs/q1x_spend_input_cardinality.test/q1x_f6_no_input_step_02_at_one_spend_input",
+      "minusControl": "q1x_f6_no_input_step_02_control_at_one_spend_input",
+      "ceiling": {
+        "mem": 534766,
+        "cpu": 164484687
+      }
+    },
+    "fraud_proofs/q1x_spend_input_cardinality.test/q1x_f6_no_input_step_02_at_the_admissible_maximum - q1x_f6_no_input_step_02_control_at_the_admissible_maximum": {
+      "test": "fraud_proofs/q1x_spend_input_cardinality.test/q1x_f6_no_input_step_02_at_the_admissible_maximum",
+      "minusControl": "q1x_f6_no_input_step_02_control_at_the_admissible_maximum",
+      "ceiling": {
+        "mem": 361974,
+        "cpu": 149953455
+      }
+    },
+    "fraud_proofs/q1x_spend_input_cardinality.test/q1x_f6_double_spend_step_04_at_one_spend_input - q1x_f6_double_spend_step_04_control_at_one_spend_input": {
+      "test": "fraud_proofs/q1x_spend_input_cardinality.test/q1x_f6_double_spend_step_04_at_one_spend_input",
+      "minusControl": "q1x_f6_double_spend_step_04_control_at_one_spend_input",
+      "ceiling": {
+        "mem": 531266,
+        "cpu": 166461151
+      }
+    },
+    "fraud_proofs/q1x_spend_input_cardinality.test/q1x_f6_double_spend_step_04_at_the_admissible_maximum - q1x_f6_double_spend_step_04_control_at_the_admissible_maximum": {
+      "test": "fraud_proofs/q1x_spend_input_cardinality.test/q1x_f6_double_spend_step_04_at_the_admissible_maximum",
+      "minusControl": "q1x_f6_double_spend_step_04_control_at_the_admissible_maximum",
+      "ceiling": {
+        "mem": 358474,
+        "cpu": 151929919
+      }
+    },
+    "fraud_proofs/q1x_spend_input_cardinality.test/q1x_f6_missing_signature_step_04_at_one_address_witness - q1x_f6_missing_signature_step_04_control_at_one_address_witness": {
+      "test": "fraud_proofs/q1x_spend_input_cardinality.test/q1x_f6_missing_signature_step_04_at_one_address_witness",
+      "minusControl": "q1x_f6_missing_signature_step_04_control_at_one_address_witness",
+      "ceiling": {
+        "mem": 677034,
+        "cpu": 214204822
+      }
+    },
+    "fraud_proofs/q1x_spend_input_cardinality.test/q1x_f6_missing_signature_step_04_at_the_admissible_maximum - q1x_f6_missing_signature_step_04_control_at_the_admissible_maximum": {
+      "test": "fraud_proofs/q1x_spend_input_cardinality.test/q1x_f6_missing_signature_step_04_at_the_admissible_maximum",
+      "minusControl": "q1x_f6_missing_signature_step_04_control_at_the_admissible_maximum",
+      "ceiling": {
+        "mem": 8240283,
+        "cpu": 2761952886
+      }
+    },
+    "midgard/native_script_scan_worst_case_v1.test/curve_wide_00064": {
+      "test": "midgard/native_script_scan_worst_case_v1.test/curve_wide_00064",
+      "ceiling": {
+        "mem": 11480796,
+        "cpu": 3790590347
+      }
+    },
+    "midgard/native_script_scan_worst_case_v1.test/curve_wide_00256": {
+      "test": "midgard/native_script_scan_worst_case_v1.test/curve_wide_00256",
+      "ceiling": {
+        "mem": 45308771,
+        "cpu": 14972580217
+      },
+      "aboveBasis": {
+        "why": "a 257-node tag-0 payload in the flat wide shape -- 773 bytes, under 5% of the reachable cap -- already cannot be scanned by the one-shot predicate inside one L1 transaction. #633 / decision 0005 amendment A3. A3 gates wave item 9 on this measurement and rules the item out of the #617 wave if it fails; it failed, and the on-chain half queues for the next regeneration. Resolution is owned by the follow-up re-ruling on #633, not by this lane and not by docs/spec/midgard-tx.md, which is re-pointed separately."
+      }
+    },
+    "midgard/native_script_scan_worst_case_v1.test/curve_wide_01024": {
+      "test": "midgard/native_script_scan_worst_case_v1.test/curve_wide_01024",
+      "ceiling": {
+        "mem": 180541558,
+        "cpu": 59677420664
+      },
+      "aboveBasis": {
+        "why": "a 1,025-node wide payload costs 13.5x the memory basis; the curve is linear from here to the reachable cap and never comes back. #633 / decision 0005 amendment A3. A3 gates wave item 9 on this measurement and rules the item out of the #617 wave if it fails; it failed, and the on-chain half queues for the next regeneration. Resolution is owned by the follow-up re-ruling on #633, not by this lane and not by docs/spec/midgard-tx.md, which is re-pointed separately."
+      }
+    },
+    "midgard/native_script_scan_worst_case_v1.test/curve_wide_04096": {
+      "test": "midgard/native_script_scan_worst_case_v1.test/curve_wide_04096",
+      "ceiling": {
+        "mem": 721440537,
+        "cpu": 238487751038
+      },
+      "aboveBasis": {
+        "why": "a 4,097-node wide payload costs 54.1x the memory basis. It is a curve point rather than the worst case: `worst_case_wide_predicate` is. #633 / decision 0005 amendment A3. A3 gates wave item 9 on this measurement and rules the item out of the #617 wave if it fails; it failed, and the on-chain half queues for the next regeneration. Resolution is owned by the follow-up re-ruling on #633, not by this lane and not by docs/spec/midgard-tx.md, which is re-pointed separately."
+      }
+    },
+    "midgard/native_script_scan_worst_case_v1.test/curve_deep_00064": {
+      "test": "midgard/native_script_scan_worst_case_v1.test/curve_deep_00064",
+      "ceiling": {
+        "mem": 12944806,
+        "cpu": 4323333255
+      }
+    },
+    "midgard/native_script_scan_worst_case_v1.test/curve_deep_00256": {
+      "test": "midgard/native_script_scan_worst_case_v1.test/curve_deep_00256",
+      "ceiling": {
+        "mem": 51297027,
+        "cpu": 17150454181
+      },
+      "aboveBasis": {
+        "why": "a 257-node tag-0 payload in the nested deep shape -- 771 bytes -- already cannot be scanned inside one L1 transaction, at 3.85x the memory basis. #633 / decision 0005 amendment A3. A3 gates wave item 9 on this measurement and rules the item out of the #617 wave if it fails; it failed, and the on-chain half queues for the next regeneration. Resolution is owned by the follow-up re-ruling on #633, not by this lane and not by docs/spec/midgard-tx.md, which is re-pointed separately."
+      }
+    },
+    "midgard/native_script_scan_worst_case_v1.test/curve_deep_01024": {
+      "test": "midgard/native_script_scan_worst_case_v1.test/curve_deep_01024",
+      "ceiling": {
+        "mem": 204673744,
+        "cpu": 68449906470
+      },
+      "aboveBasis": {
+        "why": "a 1,025-node deep payload costs 15.4x the memory basis. #633 / decision 0005 amendment A3. A3 gates wave item 9 on this measurement and rules the item out of the #617 wave if it fails; it failed, and the on-chain half queues for the next regeneration. Resolution is owned by the follow-up re-ruling on #633, not by this lane and not by docs/spec/midgard-tx.md, which is re-pointed separately."
+      }
+    },
+    "midgard/native_script_scan_worst_case_v1.test/curve_deep_04096": {
+      "test": "midgard/native_script_scan_worst_case_v1.test/curve_deep_04096",
+      "ceiling": {
+        "mem": 818148447,
+        "cpu": 273638684215
+      },
+      "aboveBasis": {
+        "why": "a 4,097-node deep payload costs 61.4x the memory basis. It is a curve point rather than the worst case: `worst_case_deep_predicate` is. #633 / decision 0005 amendment A3. A3 gates wave item 9 on this measurement and rules the item out of the #617 wave if it fails; it failed, and the on-chain half queues for the next regeneration. Resolution is owned by the follow-up re-ruling on #633, not by this lane and not by docs/spec/midgard-tx.md, which is re-pointed separately."
+      }
+    },
+    "midgard/native_script_scan_worst_case_v1.test/worst_case_deep_builder_only": {
+      "test": "midgard/native_script_scan_worst_case_v1.test/worst_case_deep_builder_only",
+      "ceiling": {
+        "mem": 83751,
+        "cpu": 21584322
+      }
+    },
+    "midgard/native_script_scan_worst_case_v1.test/worst_case_wide_builder_only": {
+      "test": "midgard/native_script_scan_worst_case_v1.test/worst_case_wide_builder_only",
+      "ceiling": {
+        "mem": 89737,
+        "cpu": 24199827
+      }
+    },
+    "midgard/native_script_scan_worst_case_v1.test/cmp_inspect_wide_00064": {
+      "test": "midgard/native_script_scan_worst_case_v1.test/cmp_inspect_wide_00064",
+      "ceiling": {
+        "mem": 8210170,
+        "cpu": 2633649554
+      },
+      "raisedBecause": "Composed with the PV 11 script-decode change; the reading is the cost measured on that change."
+    },
+    "midgard/native_script_scan_worst_case_v1.test/cmp_inspect_wide_01024": {
+      "test": "midgard/native_script_scan_worst_case_v1.test/cmp_inspect_wide_01024",
+      "ceiling": {
+        "mem": 129000216,
+        "cpu": 41411098506
+      },
+      "aboveBasis": {
+        "why": "the alternative driver A3 names, `native_script_v1.inspect_native_script`, is over the basis at 1,025 nodes too. Swapping drivers does not rescue the item; it moves the crossing from 76 nodes to 100. #633 / decision 0005 amendment A3. A3 gates wave item 9 on this measurement and rules the item out of the #617 wave if it fails; it failed, and the on-chain half queues for the next regeneration. Resolution is owned by the follow-up re-ruling on #633, not by this lane and not by docs/spec/midgard-tx.md, which is re-pointed separately."
+      },
+      "raisedBecause": "Composed with the PV 11 script-decode change; the reading is the cost measured on that change."
+    },
+    "midgard/native_script_scan_worst_case_v1.test/cmp_inspect_deep_01024": {
+      "test": "midgard/native_script_scan_worst_case_v1.test/cmp_inspect_deep_01024",
+      "ceiling": {
+        "mem": 152566626,
+        "cpu": 46771923906
+      },
+      "aboveBasis": {
+        "why": "`inspect_native_script` on the deep shape at 1,025 nodes, over the basis by 11.9x. It is measured on both shapes for the same reason the predicate is: to show the crossing does not depend on which shape an operator picks. #633 / decision 0005 amendment A3. A3 gates wave item 9 on this measurement and rules the item out of the #617 wave if it fails; it failed, and the on-chain half queues for the next regeneration. Resolution is owned by the follow-up re-ruling on #633, not by this lane and not by docs/spec/midgard-tx.md, which is re-pointed separately."
+      },
+      "raisedBecause": "Composed with the PV 11 script-decode change; the reading is the cost measured on that change."
+    },
+    "midgard/native_script_scan_worst_case_v1.test/cmp_cbor_wide_00064": {
+      "test": "midgard/native_script_scan_worst_case_v1.test/cmp_cbor_wide_00064",
+      "ceiling": {
+        "mem": 3511260,
+        "cpu": 885509211
+      }
+    },
+    "midgard/native_script_scan_worst_case_v1.test/cmp_cbor_wide_01024": {
+      "test": "midgard/native_script_scan_worst_case_v1.test/cmp_cbor_wide_01024",
+      "ceiling": {
+        "mem": 54483437,
+        "cpu": 13709285383
+      },
+      "aboveBasis": {
+        "why": "even a bare `cbor.deserialise` of a 1,025-node payload -- no scan at all, just getting the bytes into `Data` -- is 4.1x over the memory basis. This is the floor under any conceivable one-shot driver, and it is what closes the question rather than deferring it to a cleverer implementation. #633 / decision 0005 amendment A3. A3 gates wave item 9 on this measurement and rules the item out of the #617 wave if it fails; it failed, and the on-chain half queues for the next regeneration. Resolution is owned by the follow-up re-ruling on #633, not by this lane and not by docs/spec/midgard-tx.md, which is re-pointed separately."
+      }
+    },
+    "midgard/native_script_scan_worst_case_wide_v1.test/worst_case_wide_predicate": {
+      "test": "midgard/native_script_scan_worst_case_wide_v1.test/worst_case_wide_predicate",
+      "ceiling": {
+        "mem": 958964147,
+        "cpu": 317007763474
+      },
+      "aboveBasis": {
+        "why": "the same conclusion from the other end of the scan's stack: 5,446 nodes at stack depth 1 rather than 5,446, 71.9x the memory basis. Cost tracks node count and not depth, so no shape choice rescues the item. #633 / decision 0005 amendment A3. A3 gates wave item 9 on this measurement and rules the item out of the #617 wave if it fails; it failed, and the on-chain half queues for the next regeneration. Resolution is owned by the follow-up re-ruling on #633, not by this lane and not by docs/spec/midgard-tx.md, which is re-pointed separately."
+      }
+    },
+    "testnet:midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_575_bytes_derives": {
+      "test": "midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_575_bytes_derives",
+      "env": "testnet",
+      "ceiling": {
+        "mem": 5025019,
+        "cpu": 1940747244
+      }
+    },
+    "testnet:midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_575_bytes_fixture_only": {
+      "test": "midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_575_bytes_fixture_only",
+      "env": "testnet",
+      "ceiling": {
+        "mem": 116329,
+        "cpu": 52494157
+      }
+    },
+    "testnet:midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_839_bytes_derives": {
+      "test": "midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_839_bytes_derives",
+      "env": "testnet",
+      "ceiling": {
+        "mem": 5800996,
+        "cpu": 2188357273
+      }
+    },
+    "testnet:midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_839_bytes_fixture_only": {
+      "test": "midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_839_bytes_fixture_only",
+      "env": "testnet",
+      "ceiling": {
+        "mem": 116931,
+        "cpu": 59477115
+      }
+    },
+    "testnet:midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_1103_bytes_derives": {
+      "test": "midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_1103_bytes_derives",
+      "env": "testnet",
+      "ceiling": {
+        "mem": 6581651,
+        "cpu": 2437363171
+      }
+    },
+    "testnet:midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_1103_bytes_fixture_only": {
+      "test": "midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_1103_bytes_fixture_only",
+      "env": "testnet",
+      "ceiling": {
+        "mem": 122082,
+        "cpu": 67833309
+      }
+    },
+    "testnet:midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_1367_bytes_derives": {
+      "test": "midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_1367_bytes_derives",
+      "env": "testnet",
+      "ceiling": {
+        "mem": 7357889,
+        "cpu": 2685018814
+      }
+    },
+    "testnet:midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_1367_bytes_fixture_only": {
+      "test": "midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_1367_bytes_fixture_only",
+      "env": "testnet",
+      "ceiling": {
+        "mem": 122686,
+        "cpu": 74816617
+      }
+    },
+    "testnet:midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_1499_bytes_derives": {
+      "test": "midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_1499_bytes_derives",
+      "env": "testnet",
+      "ceiling": {
+        "mem": 7746259,
+        "cpu": 2808892413
+      }
+    },
+    "testnet:midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_1499_bytes_fixture_only": {
+      "test": "midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_1499_bytes_fixture_only",
+      "env": "testnet",
+      "ceiling": {
+        "mem": 123191,
+        "cpu": 78341271
+      }
+    },
+    "testnet:midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_1631_bytes_derives": {
+      "test": "midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_1631_bytes_derives",
+      "env": "testnet",
+      "ceiling": {
+        "mem": 8133846,
+        "cpu": 2932630391
+      }
+    },
+    "testnet:midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_1631_bytes_fixture_only": {
+      "test": "midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_1631_bytes_fixture_only",
+      "env": "testnet",
+      "ceiling": {
+        "mem": 122880,
+        "cpu": 81733226
+      }
+    },
+    "testnet:midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_1763_bytes_derives": {
+      "test": "midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_1763_bytes_derives",
+      "env": "testnet",
+      "ceiling": {
+        "mem": 8522285,
+        "cpu": 3056516003
+      }
+    },
+    "testnet:midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_1763_bytes_fixture_only": {
+      "test": "midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_1763_bytes_fixture_only",
+      "env": "testnet",
+      "ceiling": {
+        "mem": 123387,
+        "cpu": 85258229
+      }
+    },
+    "testnet:midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_1895_bytes_derives": {
+      "test": "midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_1895_bytes_derives",
+      "env": "testnet",
+      "ceiling": {
+        "mem": 8910342,
+        "cpu": 3180331298
+      }
+    },
+    "testnet:midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_1895_bytes_fixture_only": {
+      "test": "midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_1895_bytes_fixture_only",
+      "env": "testnet",
+      "ceiling": {
+        "mem": 123482,
+        "cpu": 88716185
+      }
+    },
+    "testnet:midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_2159_bytes_derives": {
+      "test": "midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_2159_bytes_derives",
+      "env": "testnet",
+      "ceiling": {
+        "mem": 9691115,
+        "cpu": 3429396706
+      }
+    },
+    "testnet:midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_2159_bytes_fixture_only": {
+      "test": "midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_2159_bytes_fixture_only",
+      "env": "testnet",
+      "ceiling": {
+        "mem": 128227,
+        "cpu": 97006380
+      }
+    },
+    "testnet:midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_2423_bytes_derives": {
+      "test": "midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_2423_bytes_derives",
+      "env": "testnet",
+      "ceiling": {
+        "mem": 10467872,
+        "cpu": 3677143227
+      }
+    },
+    "testnet:midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_2423_bytes_fixture_only": {
+      "test": "midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_2423_bytes_fixture_only",
+      "env": "testnet",
+      "ceiling": {
+        "mem": 128833,
+        "cpu": 103990037
+      }
+    },
+    "testnet:midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_2687_bytes_derives": {
+      "test": "midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_2687_bytes_derives",
+      "env": "testnet",
+      "ceiling": {
+        "mem": 11244346,
+        "cpu": 3924845332
+      }
+    },
+    "testnet:midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_2687_bytes_fixture_only": {
+      "test": "midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_2687_bytes_fixture_only",
+      "env": "testnet",
+      "ceiling": {
+        "mem": 129027,
+        "cpu": 110906646
+      }
+    },
+    "testnet:midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_2753_bytes_derives": {
+      "test": "midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_2753_bytes_derives",
+      "env": "testnet",
+      "ceiling": {
+        "mem": 11438898,
+        "cpu": 3986848148
+      }
+    },
+    "testnet:midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_2753_bytes_fixture_only": {
+      "test": "midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_2753_bytes_fixture_only",
+      "env": "testnet",
+      "ceiling": {
+        "mem": 129490,
+        "cpu": 112703196
+      }
+    },
+    "testnet:midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_2819_bytes_derives": {
+      "test": "midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_2819_bytes_derives",
+      "env": "testnet",
+      "ceiling": {
+        "mem": 11633042,
+        "cpu": 4048776026
+      }
+    },
+    "testnet:midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_2819_bytes_fixture_only": {
+      "test": "midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_2819_bytes_fixture_only",
+      "env": "testnet",
+      "ceiling": {
+        "mem": 129535,
+        "cpu": 114431824
+      }
+    },
+    "testnet:midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_3083_bytes_derives": {
+      "test": "midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_3083_bytes_derives",
+      "env": "testnet",
+      "ceiling": {
+        "mem": 12410117,
+        "cpu": 4296578251
+      }
+    },
+    "testnet:midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_3083_bytes_fixture_only": {
+      "test": "midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_3083_bytes_fixture_only",
+      "env": "testnet",
+      "ceiling": {
+        "mem": 130136,
+        "cpu": 121414607
+      }
+    },
+    "testnet:midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_3149_bytes_derives": {
+      "test": "midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_3149_bytes_derives",
+      "env": "testnet",
+      "ceiling": {
+        "mem": 12604714,
+        "cpu": 4358580248
+      }
+    },
+    "testnet:midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_3149_bytes_fixture_only": {
+      "test": "midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_3149_bytes_fixture_only",
+      "env": "testnet",
+      "ceiling": {
+        "mem": 130596,
+        "cpu": 123210633
+      }
+    },
+    "testnet:midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_3215_bytes_derives": {
+      "test": "midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_3215_bytes_derives",
+      "env": "testnet",
+      "ceiling": {
+        "mem": 12797683,
+        "cpu": 4420317788
+      }
+    },
+    "testnet:midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_3215_bytes_fixture_only": {
+      "test": "midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_3215_bytes_fixture_only",
+      "env": "testnet",
+      "ceiling": {
+        "mem": 129417,
+        "cpu": 124740214
+      }
+    },
+    "testnet:midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_3281_bytes_derives": {
+      "test": "midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_3281_bytes_derives",
+      "env": "testnet",
+      "ceiling": {
+        "mem": 12992301,
+        "cpu": 4482332092
+      }
+    },
+    "testnet:midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_3281_bytes_fixture_only": {
+      "test": "midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_3281_bytes_fixture_only",
+      "env": "testnet",
+      "ceiling": {
+        "mem": 129880,
+        "cpu": 126536938
+      }
+    },
+    "testnet:midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_3347_bytes_derives": {
+      "test": "midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_3347_bytes_derives",
+      "env": "testnet",
+      "ceiling": {
+        "mem": 13186511,
+        "cpu": 4544271459
+      }
+    },
+    "testnet:midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_3347_bytes_fixture_only": {
+      "test": "midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_3347_bytes_fixture_only",
+      "env": "testnet",
+      "ceiling": {
+        "mem": 129927,
+        "cpu": 128265741
+      }
+    },
+    "testnet:midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_3413_bytes_derives": {
+      "test": "midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_3413_bytes_derives",
+      "env": "testnet",
+      "ceiling": {
+        "mem": 10347921,
+        "cpu": 3673618398
+      }
+    },
+    "testnet:midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_3413_bytes_fixture_only": {
+      "test": "midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_3413_bytes_fixture_only",
+      "env": "testnet",
+      "ceiling": {
+        "mem": 130387,
+        "cpu": 130061941
+      }
+    },
+    "testnet:midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_3479_bytes_derives": {
+      "test": "midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_3479_bytes_derives",
+      "env": "testnet",
+      "ceiling": {
+        "mem": 10483048,
+        "cpu": 3717533034
+      }
+    },
+    "testnet:midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_3479_bytes_fixture_only": {
+      "test": "midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_3479_bytes_fixture_only",
+      "env": "testnet",
+      "ceiling": {
+        "mem": 130022,
+        "cpu": 131723697
+      }
+    },
+    "testnet:midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_3545_bytes_derives": {
+      "test": "midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_3545_bytes_derives",
+      "env": "testnet",
+      "ceiling": {
+        "mem": 10619009,
+        "cpu": 3761592082
+      }
+    },
+    "testnet:midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_3545_bytes_fixture_only": {
+      "test": "midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_3545_bytes_fixture_only",
+      "env": "testnet",
+      "ceiling": {
+        "mem": 130484,
+        "cpu": 133520246
+      }
+    },
+    "testnet:midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_4073_bytes_derives": {
+      "test": "midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_4073_bytes_derives",
+      "env": "testnet",
+      "ceiling": {
+        "mem": 11704090,
+        "cpu": 4113591914
+      }
+    },
+    "testnet:midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_4073_bytes_fixture_only": {
+      "test": "midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_4073_bytes_fixture_only",
+      "env": "testnet",
+      "ceiling": {
+        "mem": 131281,
+        "cpu": 147419988
+      }
+    },
+    "testnet:midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_4601_bytes_derives": {
+      "test": "midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_4601_bytes_derives",
+      "env": "testnet",
+      "ceiling": {
+        "mem": 12925192,
+        "cpu": 4520268965
+      }
+    },
+    "testnet:midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_4601_bytes_fixture_only": {
+      "test": "midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_4601_bytes_fixture_only",
+      "env": "testnet",
+      "ceiling": {
+        "mem": 136227,
+        "cpu": 162628016
+      }
+    },
+    "testnet:midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_4733_bytes_derives": {
+      "test": "midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_4733_bytes_derives",
+      "env": "testnet",
+      "ceiling": {
+        "mem": 13196979,
+        "cpu": 4608351303
+      }
+    },
+    "testnet:midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_4733_bytes_fixture_only": {
+      "test": "midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_4733_bytes_fixture_only",
+      "env": "testnet",
+      "ceiling": {
+        "mem": 136733,
+        "cpu": 166152844
+      }
+    },
+    "testnet:midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_4799_bytes_derives": {
+      "test": "midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_4799_bytes_derives",
+      "env": "testnet",
+      "ceiling": {
+        "mem": 13200000,
+        "cpu": 4652235835
+      }
+    },
+    "testnet:midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_4799_bytes_fixture_only": {
+      "test": "midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_4799_bytes_fixture_only",
+      "env": "testnet",
+      "ceiling": {
+        "mem": 135958,
+        "cpu": 167747901
+      }
+    },
+    "testnet:midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_4865_bytes_derives": {
+      "test": "midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_4865_bytes_derives",
+      "env": "testnet",
+      "ceiling": {
+        "mem": 13467983,
+        "cpu": 4696315453
+      },
+      "aboveBasis": {
+        "why": "13,334,636 mem whole-test, 101.0% of the basis, and 13,199,563 net of its fixture-only twin, 100.0%. The descriptor dimension's measured crossing after the script-decode composition moved the 3,413- to 3,545-byte rungs inside the basis. #628 sign-off item, #617 wave. Whether §5.3 owes a maximum serviceable output width is the open question this rung informs (`maximum-serviceable-output-width`)."
+      }
+    },
+    "testnet:midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_4865_bytes_fixture_only": {
+      "test": "midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_4865_bytes_fixture_only",
+      "env": "testnet",
+      "ceiling": {
+        "mem": 136424,
+        "cpu": 169545149
+      }
+    },
+    "testnet:midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_4931_bytes_derives": {
+      "test": "midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_4931_bytes_derives",
+      "env": "testnet",
+      "ceiling": {
+        "mem": 13603696,
+        "cpu": 4740327524
+      },
+      "aboveBasis": {
+        "why": "13,469,005 mem whole-test, 102.0% of the basis, and 13,333,889 net of its fixture-only twin, 101.0%. The descriptor dimension's measured crossing after the script-decode composition moved the 3,413- to 3,545-byte rungs inside the basis. #628 sign-off item, #617 wave. Whether §5.3 owes a maximum serviceable output width is the open question this rung informs (`maximum-serviceable-output-width`)."
+      }
+    },
+    "testnet:midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_4931_bytes_fixture_only": {
+      "test": "midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_4931_bytes_fixture_only",
+      "env": "testnet",
+      "ceiling": {
+        "mem": 136468,
+        "cpu": 171273428
+      }
+    },
+    "testnet:midgard/fraud_proofs/transition_trace/proof_exunits_frontier.test/deposit_arm_datum_absent": {
+      "test": "midgard/fraud_proofs/transition_trace/proof_exunits_frontier.test/deposit_arm_datum_absent",
+      "env": "testnet",
+      "ceiling": {
+        "mem": 9228985,
+        "cpu": 4003843053
+      },
+      "raisedBecause": "Composed with the PV 11 script-decode change; the reading is the cost measured on that change."
+    },
+    "testnet:midgard/fraud_proofs/transition_trace/proof_exunits_frontier.test/deposit_arm_datum_absent_fixture_only": {
+      "test": "midgard/fraud_proofs/transition_trace/proof_exunits_frontier.test/deposit_arm_datum_absent_fixture_only",
+      "env": "testnet",
+      "ceiling": {
+        "mem": 4346089,
+        "cpu": 1884729409
+      },
+      "raisedBecause": "Composed with the PV 11 script-decode change; the reading is the cost measured on that change."
+    },
+    "testnet:midgard/fraud_proofs/transition_trace/proof_exunits_frontier.test/deposit_arm_datum_1_byte": {
+      "test": "midgard/fraud_proofs/transition_trace/proof_exunits_frontier.test/deposit_arm_datum_1_byte",
+      "env": "testnet",
+      "ceiling": {
+        "mem": 10280378,
+        "cpu": 4413741950
+      }
+    },
+    "testnet:midgard/fraud_proofs/transition_trace/proof_exunits_frontier.test/deposit_arm_datum_1_byte_fixture_only": {
+      "test": "midgard/fraud_proofs/transition_trace/proof_exunits_frontier.test/deposit_arm_datum_1_byte_fixture_only",
+      "env": "testnet",
+      "ceiling": {
+        "mem": 4881722,
+        "cpu": 2089845544
+      }
+    },
+    "testnet:midgard/fraud_proofs/transition_trace/proof_exunits_frontier.test/deposit_arm_datum_8_bytes": {
+      "test": "midgard/fraud_proofs/transition_trace/proof_exunits_frontier.test/deposit_arm_datum_8_bytes",
+      "env": "testnet",
+      "ceiling": {
+        "mem": 10312573,
+        "cpu": 4422841396
+      }
+    },
+    "testnet:midgard/fraud_proofs/transition_trace/proof_exunits_frontier.test/deposit_arm_datum_8_bytes_fixture_only": {
+      "test": "midgard/fraud_proofs/transition_trace/proof_exunits_frontier.test/deposit_arm_datum_8_bytes_fixture_only",
+      "env": "testnet",
+      "ceiling": {
+        "mem": 4913909,
+        "cpu": 2098907763
+      }
+    },
+    "testnet:midgard/fraud_proofs/transition_trace/proof_exunits_frontier.test/deposit_arm_datum_16_bytes": {
+      "test": "midgard/fraud_proofs/transition_trace/proof_exunits_frontier.test/deposit_arm_datum_16_bytes",
+      "env": "testnet",
+      "ceiling": {
+        "mem": 10323338,
+        "cpu": 4427882149
+      }
+    },
+    "testnet:midgard/fraud_proofs/transition_trace/proof_exunits_frontier.test/deposit_arm_datum_16_bytes_fixture_only": {
+      "test": "midgard/fraud_proofs/transition_trace/proof_exunits_frontier.test/deposit_arm_datum_16_bytes_fixture_only",
+      "env": "testnet",
+      "ceiling": {
+        "mem": 4924651,
+        "cpu": 2102592523
+      }
+    },
+    "testnet:midgard/fraud_proofs/transition_trace/proof_exunits_frontier.test/deposit_arm_datum_24_bytes": {
+      "test": "midgard/fraud_proofs/transition_trace/proof_exunits_frontier.test/deposit_arm_datum_24_bytes",
+      "env": "testnet",
+      "ceiling": {
+        "mem": 10452917,
+        "cpu": 4474400589
+      }
+    },
+    "testnet:midgard/fraud_proofs/transition_trace/proof_exunits_frontier.test/deposit_arm_datum_24_bytes_fixture_only": {
+      "test": "midgard/fraud_proofs/transition_trace/proof_exunits_frontier.test/deposit_arm_datum_24_bytes_fixture_only",
+      "env": "testnet",
+      "ceiling": {
+        "mem": 4991866,
+        "cpu": 2125900091
+      }
+    },
+    "testnet:midgard/fraud_proofs/transition_trace/proof_exunits_frontier.test/deposit_arm_datum_32_bytes": {
+      "test": "midgard/fraud_proofs/transition_trace/proof_exunits_frontier.test/deposit_arm_datum_32_bytes",
+      "env": "testnet",
+      "ceiling": {
+        "mem": 10462869,
+        "cpu": 4479309303
+      }
+    },
+    "testnet:midgard/fraud_proofs/transition_trace/proof_exunits_frontier.test/deposit_arm_datum_32_bytes_fixture_only": {
+      "test": "midgard/fraud_proofs/transition_trace/proof_exunits_frontier.test/deposit_arm_datum_32_bytes_fixture_only",
+      "env": "testnet",
+      "ceiling": {
+        "mem": 5001796,
+        "cpu": 2129452832
+      }
+    },
+    "testnet:midgard/fraud_proofs/transition_trace/proof_exunits_frontier.test/deposit_arm_datum_48_bytes": {
+      "test": "midgard/fraud_proofs/transition_trace/proof_exunits_frontier.test/deposit_arm_datum_48_bytes",
+      "env": "testnet",
+      "ceiling": {
+        "mem": 10463766,
+        "cpu": 4483501784
+      }
+    },
+    "testnet:midgard/fraud_proofs/transition_trace/proof_exunits_frontier.test/deposit_arm_datum_48_bytes_fixture_only": {
+      "test": "midgard/fraud_proofs/transition_trace/proof_exunits_frontier.test/deposit_arm_datum_48_bytes_fixture_only",
+      "env": "testnet",
+      "ceiling": {
+        "mem": 5002649,
+        "cpu": 2130933369
+      }
+    },
+    "testnet:midgard/fraud_proofs/transition_trace/proof_exunits_frontier.test/deposit_arm_datum_64_bytes": {
+      "test": "midgard/fraud_proofs/transition_trace/proof_exunits_frontier.test/deposit_arm_datum_64_bytes",
+      "env": "testnet",
+      "ceiling": {
+        "mem": 10473761,
+        "cpu": 4490440739
+      }
+    },
+    "testnet:midgard/fraud_proofs/transition_trace/proof_exunits_frontier.test/deposit_arm_datum_64_bytes_fixture_only": {
+      "test": "midgard/fraud_proofs/transition_trace/proof_exunits_frontier.test/deposit_arm_datum_64_bytes_fixture_only",
+      "env": "testnet",
+      "ceiling": {
+        "mem": 5012599,
+        "cpu": 2135160378
+      }
+    },
+    "testnet:midgard/fraud_proofs/transition_trace/proof_exunits_frontier.test/deposit_arm_datum_128_bytes": {
+      "test": "midgard/fraud_proofs/transition_trace/proof_exunits_frontier.test/deposit_arm_datum_128_bytes",
+      "env": "testnet",
+      "ceiling": {
+        "mem": 11013820,
+        "cpu": 4665399517
+      }
+    },
+    "testnet:midgard/fraud_proofs/transition_trace/proof_exunits_frontier.test/deposit_arm_datum_128_bytes_fixture_only": {
+      "test": "midgard/fraud_proofs/transition_trace/proof_exunits_frontier.test/deposit_arm_datum_128_bytes_fixture_only",
+      "env": "testnet",
+      "ceiling": {
+        "mem": 5290002,
+        "cpu": 2221741351
+      }
+    },
+    "testnet:midgard/fraud_proofs/transition_trace/proof_exunits_frontier.test/deposit_arm_datum_256_bytes": {
+      "test": "midgard/fraud_proofs/transition_trace/proof_exunits_frontier.test/deposit_arm_datum_256_bytes",
+      "env": "testnet",
+      "ceiling": {
+        "mem": 11812833,
+        "cpu": 4944466740
+      }
+    },
+    "testnet:midgard/fraud_proofs/transition_trace/proof_exunits_frontier.test/deposit_arm_datum_256_bytes_fixture_only": {
+      "test": "midgard/fraud_proofs/transition_trace/proof_exunits_frontier.test/deposit_arm_datum_256_bytes_fixture_only",
+      "env": "testnet",
+      "ceiling": {
+        "mem": 5699802,
+        "cpu": 2358114151
+      }
+    },
+    "testnet:midgard/fraud_proofs/transition_trace/proof_exunits_frontier.test/deposit_arm_datum_384_bytes": {
+      "test": "midgard/fraud_proofs/transition_trace/proof_exunits_frontier.test/deposit_arm_datum_384_bytes",
+      "env": "testnet",
+      "ceiling": {
+        "mem": 12583558,
+        "cpu": 5209283502
+      }
+    },
+    "testnet:midgard/fraud_proofs/transition_trace/proof_exunits_frontier.test/deposit_arm_datum_384_bytes_fixture_only": {
+      "test": "midgard/fraud_proofs/transition_trace/proof_exunits_frontier.test/deposit_arm_datum_384_bytes_fixture_only",
+      "env": "testnet",
+      "ceiling": {
+        "mem": 6088383,
+        "cpu": 2485587384
+      }
+    },
+    "testnet:midgard/fraud_proofs/transition_trace/proof_exunits_frontier.test/l2_no_op_arm": {
+      "test": "midgard/fraud_proofs/transition_trace/proof_exunits_frontier.test/l2_no_op_arm",
+      "env": "testnet",
+      "ceiling": {
+        "mem": 10696141,
+        "cpu": 4614921122
+      }
+    },
+    "testnet:midgard/fraud_proofs/transition_trace/proof_exunits_frontier.test/l2_no_op_arm_fixture_only": {
+      "test": "midgard/fraud_proofs/transition_trace/proof_exunits_frontier.test/l2_no_op_arm_fixture_only",
+      "env": "testnet",
+      "ceiling": {
+        "mem": 6532809,
+        "cpu": 2885365267
+      }
+    },
+    "testnet:midgard/ledger_output_descriptor_v1.test/builds_no_reference_output_exactly": {
+      "test": "midgard/ledger_output_descriptor_v1.test/builds_no_reference_output_exactly",
+      "env": "testnet",
+      "ceiling": {
+        "mem": 3217847,
+        "cpu": 1404698255
+      }
+    },
+    "testnet:midgard/ledger_output_descriptor_v1.test/builds_small_datum_output_exactly": {
+      "test": "midgard/ledger_output_descriptor_v1.test/builds_small_datum_output_exactly",
+      "env": "testnet",
+      "ceiling": {
+        "mem": 3822108,
+        "cpu": 1618388821
+      }
+    },
+    "testnet:midgard/ledger_output_descriptor_v1.test/builds_small_reference_output_exactly": {
+      "test": "midgard/ledger_output_descriptor_v1.test/builds_small_reference_output_exactly",
+      "env": "testnet",
+      "ceiling": {
+        "mem": 3881732,
+        "cpu": 1647680862
+      },
+      "raisedBecause": "Composed with the PV 11 script-decode change; the reading is the cost measured on that change."
+    },
+    "testnet:midgard/ledger_output_descriptor_v1.test/builds_native_reference_script_output_exactly": {
+      "test": "midgard/ledger_output_descriptor_v1.test/builds_native_reference_script_output_exactly",
+      "env": "testnet",
+      "ceiling": {
+        "mem": 3886377,
+        "cpu": 1653662987
+      },
+      "raisedBecause": "Composed with the PV 11 script-decode change; the reading is the cost measured on that change."
+    },
+    "testnet:midgard/ledger_output_descriptor_v1.test/builds_rich_multi_chunk_output_exactly": {
+      "test": "midgard/ledger_output_descriptor_v1.test/builds_rich_multi_chunk_output_exactly",
+      "env": "testnet",
+      "ceiling": {
+        "mem": 13200000,
+        "cpu": 4824928833
+      }
+    },
+    "testnet:midgard/ledger_output_descriptor_v1.test/the_output_index_is_bound_into_the_value": {
+      "test": "midgard/ledger_output_descriptor_v1.test/the_output_index_is_bound_into_the_value",
+      "env": "testnet",
+      "ceiling": {
+        "mem": 3218353,
+        "cpu": 1404855864
+      }
+    },
+    "testnet:midgard/fraud_proofs/transition_trace/proof.test/accepts_valid_deposit_transition_fault": {
+      "test": "midgard/fraud_proofs/transition_trace/proof.test/accepts_valid_deposit_transition_fault",
+      "env": "testnet",
+      "ceiling": {
+        "mem": 9357474,
+        "cpu": 4043866437
+      },
+      "raisedBecause": "Composed with the PV 11 script-decode change; the reading is the cost measured on that change."
+    },
+    "testnet:midgard/fraud_proofs/transition_trace/proof.test/rejects_valid_deposit_transition_with_arbitrary_projected_output": {
+      "test": "midgard/fraud_proofs/transition_trace/proof.test/rejects_valid_deposit_transition_with_arbitrary_projected_output",
+      "env": "testnet",
+      "ceiling": {
+        "mem": 5323538,
+        "cpu": 2370278061
+      },
+      "raisedBecause": "Composed with the PV 11 script-decode change; the reading is the cost measured on that change."
+    },
+    "testnet:midgard/fraud_proofs/transition_trace/proof.test/accepts_valid_l2_transaction_no_op_transition_fault": {
+      "test": "midgard/fraud_proofs/transition_trace/proof.test/accepts_valid_l2_transaction_no_op_transition_fault",
+      "env": "testnet",
+      "ceiling": {
+        "mem": 7811185,
+        "cpu": 3376431212
+      }
+    },
+    "testnet:midgard/fraud_proofs/transition_trace/proof.test/l2_descriptor_dispute_over_a_descriptor_ledger_mints": {
+      "test": "midgard/fraud_proofs/transition_trace/proof.test/l2_descriptor_dispute_over_a_descriptor_ledger_mints",
+      "env": "testnet",
+      "ceiling": {
+        "mem": 10626070,
+        "cpu": 4592487982
+      }
+    },
+    "testnet:midgard/fraud_proofs/transition_trace/proof.test/rejects_l2_transaction_when_trace_matches_expected_post_root": {
+      "test": "midgard/fraud_proofs/transition_trace/proof.test/rejects_l2_transaction_when_trace_matches_expected_post_root",
+      "env": "testnet",
+      "ceiling": {
+        "mem": 10682593,
+        "cpu": 4609822931
+      }
+    },
+    "testnet:midgard/fraud_proofs/transition_trace/proof.test/accepts_omitted_due_deposit_fault": {
+      "test": "midgard/fraud_proofs/transition_trace/proof.test/accepts_omitted_due_deposit_fault",
+      "env": "testnet",
+      "ceiling": {
+        "mem": 635431,
+        "cpu": 354499211
+      }
+    },
+    "testnet:midgard/fraud_proofs/transition_trace/proof.test/accepts_out_of_window_deposit_fault": {
+      "test": "midgard/fraud_proofs/transition_trace/proof.test/accepts_out_of_window_deposit_fault",
+      "env": "testnet",
+      "ceiling": {
+        "mem": 689594,
+        "cpu": 400875312
+      }
+    },
+    "testnet:midgard/fraud_proofs/transition_trace/proof_exunits_frontier.test/l2_no_op_arm - l2_no_op_arm_fixture_only": {
+      "test": "midgard/fraud_proofs/transition_trace/proof_exunits_frontier.test/l2_no_op_arm",
+      "minusControl": "l2_no_op_arm_fixture_only",
+      "env": "testnet",
+      "ceiling": {
+        "mem": 4220764,
+        "cpu": 1741601267
+      },
+      "raisedBecause": "Composed with the PV 11 script-decode change; the reading is the cost measured on that change."
+    },
+    "testnet:midgard/fraud_proofs/transition_trace/proof_exunits_frontier.test/deposit_arm_datum_absent - deposit_arm_datum_absent_fixture_only": {
+      "test": "midgard/fraud_proofs/transition_trace/proof_exunits_frontier.test/deposit_arm_datum_absent",
+      "minusControl": "deposit_arm_datum_absent_fixture_only",
+      "env": "testnet",
+      "ceiling": {
+        "mem": 4882896,
+        "cpu": 2119113645
+      },
+      "raisedBecause": "Composed with the PV 11 script-decode change; the reading is the cost measured on that change."
+    },
+    "testnet:midgard/fraud_proofs/transition_trace/proof_exunits_frontier.test/deposit_arm_datum_1_byte - deposit_arm_datum_1_byte_fixture_only": {
+      "test": "midgard/fraud_proofs/transition_trace/proof_exunits_frontier.test/deposit_arm_datum_1_byte",
+      "minusControl": "deposit_arm_datum_1_byte_fixture_only",
+      "env": "testnet",
+      "ceiling": {
+        "mem": 5398657,
+        "cpu": 2323896407
+      }
+    },
+    "testnet:midgard/fraud_proofs/transition_trace/proof_exunits_frontier.test/deposit_arm_datum_8_bytes - deposit_arm_datum_8_bytes_fixture_only": {
+      "test": "midgard/fraud_proofs/transition_trace/proof_exunits_frontier.test/deposit_arm_datum_8_bytes",
+      "minusControl": "deposit_arm_datum_8_bytes_fixture_only",
+      "env": "testnet",
+      "ceiling": {
+        "mem": 5398665,
+        "cpu": 2323933633
+      }
+    },
+    "testnet:midgard/fraud_proofs/transition_trace/proof_exunits_frontier.test/deposit_arm_datum_16_bytes - deposit_arm_datum_16_bytes_fixture_only": {
+      "test": "midgard/fraud_proofs/transition_trace/proof_exunits_frontier.test/deposit_arm_datum_16_bytes",
+      "minusControl": "deposit_arm_datum_16_bytes_fixture_only",
+      "env": "testnet",
+      "ceiling": {
+        "mem": 5398687,
+        "cpu": 2325289626
+      }
+    },
+    "testnet:midgard/fraud_proofs/transition_trace/proof_exunits_frontier.test/deposit_arm_datum_24_bytes - deposit_arm_datum_24_bytes_fixture_only": {
+      "test": "midgard/fraud_proofs/transition_trace/proof_exunits_frontier.test/deposit_arm_datum_24_bytes",
+      "minusControl": "deposit_arm_datum_24_bytes_fixture_only",
+      "env": "testnet",
+      "ceiling": {
+        "mem": 5461051,
+        "cpu": 2348500499
+      }
+    },
+    "testnet:midgard/fraud_proofs/transition_trace/proof_exunits_frontier.test/deposit_arm_datum_32_bytes - deposit_arm_datum_32_bytes_fixture_only": {
+      "test": "midgard/fraud_proofs/transition_trace/proof_exunits_frontier.test/deposit_arm_datum_32_bytes",
+      "minusControl": "deposit_arm_datum_32_bytes_fixture_only",
+      "env": "testnet",
+      "ceiling": {
+        "mem": 5461074,
+        "cpu": 2349856471
+      }
+    },
+    "testnet:midgard/fraud_proofs/transition_trace/proof_exunits_frontier.test/deposit_arm_datum_48_bytes - deposit_arm_datum_48_bytes_fixture_only": {
+      "test": "midgard/fraud_proofs/transition_trace/proof_exunits_frontier.test/deposit_arm_datum_48_bytes",
+      "minusControl": "deposit_arm_datum_48_bytes_fixture_only",
+      "env": "testnet",
+      "ceiling": {
+        "mem": 5461118,
+        "cpu": 2352568416
+      }
+    },
+    "testnet:midgard/fraud_proofs/transition_trace/proof_exunits_frontier.test/deposit_arm_datum_64_bytes - deposit_arm_datum_64_bytes_fixture_only": {
+      "test": "midgard/fraud_proofs/transition_trace/proof_exunits_frontier.test/deposit_arm_datum_64_bytes",
+      "minusControl": "deposit_arm_datum_64_bytes_fixture_only",
+      "env": "testnet",
+      "ceiling": {
+        "mem": 5461162,
+        "cpu": 2355280361
+      }
+    },
+    "testnet:midgard/fraud_proofs/transition_trace/proof_exunits_frontier.test/deposit_arm_datum_128_bytes - deposit_arm_datum_128_bytes_fixture_only": {
+      "test": "midgard/fraud_proofs/transition_trace/proof_exunits_frontier.test/deposit_arm_datum_128_bytes",
+      "minusControl": "deposit_arm_datum_128_bytes_fixture_only",
+      "env": "testnet",
+      "ceiling": {
+        "mem": 5723819,
+        "cpu": 2443658167
+      }
+    },
+    "testnet:midgard/fraud_proofs/transition_trace/proof_exunits_frontier.test/deposit_arm_datum_256_bytes - deposit_arm_datum_256_bytes_fixture_only": {
+      "test": "midgard/fraud_proofs/transition_trace/proof_exunits_frontier.test/deposit_arm_datum_256_bytes",
+      "minusControl": "deposit_arm_datum_256_bytes_fixture_only",
+      "env": "testnet",
+      "ceiling": {
+        "mem": 6113032,
+        "cpu": 2586352589
+      }
+    },
+    "testnet:midgard/fraud_proofs/transition_trace/proof_exunits_frontier.test/deposit_arm_datum_384_bytes - deposit_arm_datum_384_bytes_fixture_only": {
+      "test": "midgard/fraud_proofs/transition_trace/proof_exunits_frontier.test/deposit_arm_datum_384_bytes",
+      "minusControl": "deposit_arm_datum_384_bytes_fixture_only",
+      "env": "testnet",
+      "ceiling": {
+        "mem": 6495176,
+        "cpu": 2723696119
+      }
+    },
+    "testnet:midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_575_bytes_derives - descriptor_575_bytes_fixture_only": {
+      "test": "midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_575_bytes_derives",
+      "minusControl": "descriptor_575_bytes_fixture_only",
+      "env": "testnet",
+      "ceiling": {
+        "mem": 4908690,
+        "cpu": 1888253088
+      }
+    },
+    "testnet:midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_839_bytes_derives - descriptor_839_bytes_fixture_only": {
+      "test": "midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_839_bytes_derives",
+      "minusControl": "descriptor_839_bytes_fixture_only",
+      "env": "testnet",
+      "ceiling": {
+        "mem": 5684065,
+        "cpu": 2128880159
+      }
+    },
+    "testnet:midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_1103_bytes_derives - descriptor_1103_bytes_fixture_only": {
+      "test": "midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_1103_bytes_derives",
+      "minusControl": "descriptor_1103_bytes_fixture_only",
+      "env": "testnet",
+      "ceiling": {
+        "mem": 6459570,
+        "cpu": 2369529862
+      }
+    },
+    "testnet:midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_1367_bytes_derives - descriptor_1367_bytes_fixture_only": {
+      "test": "midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_1367_bytes_derives",
+      "minusControl": "descriptor_1367_bytes_fixture_only",
+      "env": "testnet",
+      "ceiling": {
+        "mem": 7235203,
+        "cpu": 2610202198
+      }
+    },
+    "testnet:midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_1499_bytes_derives - descriptor_1499_bytes_fixture_only": {
+      "test": "midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_1499_bytes_derives",
+      "minusControl": "descriptor_1499_bytes_fixture_only",
+      "env": "testnet",
+      "ceiling": {
+        "mem": 7623068,
+        "cpu": 2730551143
+      }
+    },
+    "testnet:midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_1631_bytes_derives - descriptor_1631_bytes_fixture_only": {
+      "test": "midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_1631_bytes_derives",
+      "minusControl": "descriptor_1631_bytes_fixture_only",
+      "env": "testnet",
+      "ceiling": {
+        "mem": 8010966,
+        "cpu": 2850897165
+      }
+    },
+    "testnet:midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_1763_bytes_derives - descriptor_1763_bytes_fixture_only": {
+      "test": "midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_1763_bytes_derives",
+      "minusControl": "descriptor_1763_bytes_fixture_only",
+      "env": "testnet",
+      "ceiling": {
+        "mem": 8398898,
+        "cpu": 2971257774
+      }
+    },
+    "testnet:midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_1895_bytes_derives - descriptor_1895_bytes_fixture_only": {
+      "test": "midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_1895_bytes_derives",
+      "minusControl": "descriptor_1895_bytes_fixture_only",
+      "env": "testnet",
+      "ceiling": {
+        "mem": 8786860,
+        "cpu": 3091615114
+      }
+    },
+    "testnet:midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_2159_bytes_derives - descriptor_2159_bytes_fixture_only": {
+      "test": "midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_2159_bytes_derives",
+      "minusControl": "descriptor_2159_bytes_fixture_only",
+      "env": "testnet",
+      "ceiling": {
+        "mem": 9562889,
+        "cpu": 3332390327
+      }
+    },
+    "testnet:midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_2423_bytes_derives - descriptor_2423_bytes_fixture_only": {
+      "test": "midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_2423_bytes_derives",
+      "minusControl": "descriptor_2423_bytes_fixture_only",
+      "env": "testnet",
+      "ceiling": {
+        "mem": 10339039,
+        "cpu": 3573153191
+      }
+    },
+    "testnet:midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_2687_bytes_derives - descriptor_2687_bytes_fixture_only": {
+      "test": "midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_2687_bytes_derives",
+      "minusControl": "descriptor_2687_bytes_fixture_only",
+      "env": "testnet",
+      "ceiling": {
+        "mem": 11115319,
+        "cpu": 3813938687
+      }
+    },
+    "testnet:midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_2753_bytes_derives - descriptor_2753_bytes_fixture_only": {
+      "test": "midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_2753_bytes_derives",
+      "minusControl": "descriptor_2753_bytes_fixture_only",
+      "env": "testnet",
+      "ceiling": {
+        "mem": 11309409,
+        "cpu": 3874144952
+      }
+    },
+    "testnet:midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_2819_bytes_derives - descriptor_2819_bytes_fixture_only": {
+      "test": "midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_2819_bytes_derives",
+      "minusControl": "descriptor_2819_bytes_fixture_only",
+      "env": "testnet",
+      "ceiling": {
+        "mem": 11503508,
+        "cpu": 3934344202
+      }
+    },
+    "testnet:midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_3083_bytes_derives - descriptor_3083_bytes_fixture_only": {
+      "test": "midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_3083_bytes_derives",
+      "minusControl": "descriptor_3083_bytes_fixture_only",
+      "env": "testnet",
+      "ceiling": {
+        "mem": 12279981,
+        "cpu": 4175163644
+      }
+    },
+    "testnet:midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_3149_bytes_derives - descriptor_3149_bytes_fixture_only": {
+      "test": "midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_3149_bytes_derives",
+      "minusControl": "descriptor_3149_bytes_fixture_only",
+      "env": "testnet",
+      "ceiling": {
+        "mem": 12474119,
+        "cpu": 4235369616
+      }
+    },
+    "testnet:midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_3215_bytes_derives - descriptor_3215_bytes_fixture_only": {
+      "test": "midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_3215_bytes_derives",
+      "minusControl": "descriptor_3215_bytes_fixture_only",
+      "env": "testnet",
+      "ceiling": {
+        "mem": 12668267,
+        "cpu": 4295577575
+      }
+    },
+    "testnet:midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_3281_bytes_derives - descriptor_3281_bytes_fixture_only": {
+      "test": "midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_3281_bytes_derives",
+      "minusControl": "descriptor_3281_bytes_fixture_only",
+      "env": "testnet",
+      "ceiling": {
+        "mem": 12862421,
+        "cpu": 4355795154
+      }
+    },
+    "testnet:midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_3347_bytes_derives - descriptor_3347_bytes_fixture_only": {
+      "test": "midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_3347_bytes_derives",
+      "minusControl": "descriptor_3347_bytes_fixture_only",
+      "env": "testnet",
+      "ceiling": {
+        "mem": 13056585,
+        "cpu": 4416005718
+      }
+    },
+    "testnet:midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_3413_bytes_derives - descriptor_3413_bytes_fixture_only": {
+      "test": "midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_3413_bytes_derives",
+      "minusControl": "descriptor_3413_bytes_fixture_only",
+      "env": "testnet",
+      "ceiling": {
+        "mem": 13200000,
+        "cpu": 4476217347
+      }
+    },
+    "testnet:midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_3479_bytes_derives - descriptor_3479_bytes_fixture_only": {
+      "test": "midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_3479_bytes_derives",
+      "minusControl": "descriptor_3479_bytes_fixture_only",
+      "env": "testnet",
+      "ceiling": {
+        "mem": 10353027,
+        "cpu": 3585809338
+      }
+    },
+    "testnet:midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_3545_bytes_derives - descriptor_3545_bytes_fixture_only": {
+      "test": "midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_3545_bytes_derives",
+      "minusControl": "descriptor_3545_bytes_fixture_only",
+      "env": "testnet",
+      "ceiling": {
+        "mem": 10488525,
+        "cpu": 3628071837
+      }
+    },
+    "testnet:midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_4073_bytes_derives - descriptor_4073_bytes_fixture_only": {
+      "test": "midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_4073_bytes_derives",
+      "minusControl": "descriptor_4073_bytes_fixture_only",
+      "env": "testnet",
+      "ceiling": {
+        "mem": 11572809,
+        "cpu": 3966171926
+      }
+    },
+    "testnet:midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_4601_bytes_derives - descriptor_4601_bytes_fixture_only": {
+      "test": "midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_4601_bytes_derives",
+      "minusControl": "descriptor_4601_bytes_fixture_only",
+      "env": "testnet",
+      "ceiling": {
+        "mem": 12788965,
+        "cpu": 4357640949
+      }
+    },
+    "testnet:midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_4733_bytes_derives - descriptor_4733_bytes_fixture_only": {
+      "test": "midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_4733_bytes_derives",
+      "minusControl": "descriptor_4733_bytes_fixture_only",
+      "env": "testnet",
+      "ceiling": {
+        "mem": 13060246,
+        "cpu": 4442198459
+      }
+    },
+    "testnet:midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_4799_bytes_derives - descriptor_4799_bytes_fixture_only": {
+      "test": "midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_4799_bytes_derives",
+      "minusControl": "descriptor_4799_bytes_fixture_only",
+      "env": "testnet",
+      "ceiling": {
+        "mem": 13195899,
+        "cpu": 4484487935
+      }
+    },
+    "testnet:midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_4865_bytes_derives - descriptor_4865_bytes_fixture_only": {
+      "test": "midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_4865_bytes_derives",
+      "minusControl": "descriptor_4865_bytes_fixture_only",
+      "env": "testnet",
+      "ceiling": {
+        "mem": 13200000,
+        "cpu": 4526770304
+      }
+    },
+    "testnet:midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_4931_bytes_derives - descriptor_4931_bytes_fixture_only": {
+      "test": "midgard/ledger_output_descriptor_v1_exunits_frontier.test/descriptor_4931_bytes_derives",
+      "minusControl": "descriptor_4931_bytes_fixture_only",
+      "env": "testnet",
+      "ceiling": {
+        "mem": 13467228,
+        "cpu": 4569054097
+      },
+      "aboveBasis": {
+        "why": "Deriving the §5.3 descriptor for a single 4,931-byte canonical output costs 13,333,889 mem net of every fixture the test builds, 101.0% of the 13,200,000 basis. The rest of a fraud-proof transaction can only reduce the headroom. #628 sign-off item, #617 wave. Whether §5.3 owes a maximum serviceable output width, and whether the L2 ledger must refuse an output the fraud-proof arms cannot re-derive, is owed an owner ruling (`maximum-serviceable-output-width`)."
+      }
+    }
+  },
+  "growth": {
+    "q1x-f6 double-spend step-04 does not grow with spend-input count": {
+      "of": "fraud_proofs/q1x_spend_input_cardinality.test/q1x_f6_double_spend_step_04_at_the_admissible_maximum - q1x_f6_double_spend_step_04_control_at_the_admissible_maximum",
+      "from": "fraud_proofs/q1x_spend_input_cardinality.test/q1x_f6_double_spend_step_04_at_one_spend_input - q1x_f6_double_spend_step_04_control_at_one_spend_input",
+      "within": {
+        "mem": {
+          "min": -250000,
+          "max": 250000
+        },
+        "cpu": {
+          "min": -100000000,
+          "max": 100000000
+        }
+      },
+      "why": "Under the §8.8 door the step's cost does not scale with the disputed transaction's spend-input count: the preimage is hashed once (§7.1) and item n is located by §5.3 arithmetic (§10.5). The band holds the one extra hash over the longer preimage plus the control-subtraction residue, and sits far below the cheapest per-item walk regression measured (+12,129,016 mem / +4,062,287,469 cpu for a half-collection walk)."
+    }
+  }
+}

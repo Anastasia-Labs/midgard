@@ -572,6 +572,7 @@ fn chunk_proof_matches(
   }
 }
 
+// A derived span is at most 132 bytes (max_source_span), under the 4,095-byte chunk.
 fn authenticated_span(
   control: RedeemerItemProofControlV1,
   span: RedeemerItemSourceSpanV1,
@@ -580,7 +581,6 @@ fn authenticated_span(
 ) -> Option<ByteArray> {
   if or {
     span.length <= 0,
-    span.length > cek_data_traverse_v1.max_source_span,
     span.absolute_start < 0,
     span.absolute_start + span.length > control.total_length,
   } {
@@ -589,10 +589,7 @@ fn authenticated_span(
     let first_chunk_index = span.absolute_start / bounded_item_v1.chunk_bytes
     let last_chunk_index = ( span.absolute_start + span.length - 1 ) / bounded_item_v1.chunk_bytes
     let local_start = span.absolute_start - first_chunk_index * bounded_item_v1.chunk_bytes
-    if or {
-      last_chunk_index > first_chunk_index + 1,
-      !chunk_proof_matches(control, chunk_proof, first_chunk_index),
-    } {
+    if !chunk_proof_matches(control, chunk_proof, first_chunk_index) {
       None
     } else if last_chunk_index == first_chunk_index {
       if next_chunk_proof == None {
@@ -855,7 +852,18 @@ pub fn authenticate_source_window(
       }
     Some(exact) ->
       when witness.chunk_proof is {
-        None -> None
+        // An empty span within the item reads no bytes and takes no proof.
+        None ->
+          if and {
+            exact.length == 0,
+            exact.absolute_start >= 0,
+            exact.absolute_start <= control.total_length,
+            witness.next_chunk_proof == None,
+          } {
+            Some(Some(#""))
+          } else {
+            None
+          }
         Some(first) ->
           when
             authenticated_span(control, exact, first, witness.next_chunk_proof)

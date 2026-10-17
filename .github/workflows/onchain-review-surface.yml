@@ -1,0 +1,59 @@
+name: On-chain Review Surface
+
+# Review information, not a gate. Builds the blueprint at the merge base and at
+# the head and writes their ABI and compiled-size movement to the job summary
+# (scripts/ci/review-surface.mjs). Nothing is committed: a committed file may
+# not be a function of the blueprint, so the reviewer reads the movement off
+# fresh builds instead of a snapshot every on-chain change has to re-sync.
+on:
+  pull_request:
+    paths:
+      - "onchain/aiken/**"
+      - "scripts/aiken"
+      - "scripts/lib/aiken.mjs"
+      - "demo/flake.nix"
+      - "demo/flake.lock"
+      - ".github/actions/aiken/**"
+      - "scripts/ci/review-surface.mjs"
+      - ".github/workflows/onchain-review-surface.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: onchain-review-surface-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  review-surface:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          fetch-depth: 0
+      - uses: ./.github/actions/aiken
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version-file: demo/.nvmrc
+
+      - name: Test the review surface
+        run: node --test scripts/ci/review-surface.test.mjs
+
+      - name: Build the head blueprint
+        working-directory: onchain/aiken
+        run: ../../scripts/aiken build --silent --out "$RUNNER_TEMP/head.json"
+
+      # Each side builds with its own pinned compiler, so a compiler bump shows
+      # up as the size movement it causes.
+      - name: Build the merge-base blueprint
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          base="$RUNNER_TEMP/base-tree"
+          git worktree add --detach "$base" "$(git merge-base "$BASE_SHA" HEAD)"
+          cd "$base/onchain/aiken"
+          ../../scripts/aiken build --silent --out "$RUNNER_TEMP/base.json"
+
+      - name: Write the ABI and compiled-size movement to the summary
+        run: node scripts/ci/review-surface.mjs "$RUNNER_TEMP/base.json" "$RUNNER_TEMP/head.json" >> "$GITHUB_STEP_SUMMARY"

@@ -1,3 +1,4 @@
+import { deploymentValidatorTitle as deployedTitle } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { Effect } from "effect";
 
 import {
@@ -16,11 +17,11 @@ import {
 } from "../types.js";
 
 export const SCRIPT_INTEGRITY_HASH_MISMATCH_FAULT_PROOF_TITLES = {
-  step01: "fraud_proofs/script_integrity_hash_mismatch/step_01.main.spend",
-  step02: "fraud_proofs/script_integrity_hash_mismatch/step_02.main.spend",
-  step03: "fraud_proofs/script_integrity_hash_mismatch/step_03.main.spend",
-  step04: "fraud_proofs/script_integrity_hash_mismatch/step_04.main.spend",
-  step05: "fraud_proofs/script_integrity_hash_mismatch/step_05.main.spend",
+  step01: deployedTitle("fraudProofScriptIntegrityHashMismatch"),
+  step02: deployedTitle("fraudProofScriptIntegrityHashMismatchStep02"),
+  step03: deployedTitle("fraudProofScriptIntegrityHashMismatchStep03"),
+  step04: deployedTitle("fraudProofScriptIntegrityHashMismatchStep04"),
+  step05: deployedTitle("fraudProofScriptIntegrityHashMismatchStep05"),
 } as const;
 
 export type ScriptIntegrityHashMismatchFaultProofContracts = {

@@ -11,8 +11,8 @@ import { admitWatcherNativeRollForwardBlock } from "../../src/l1/native-block-ad
 import { WATCHER_NATIVE_CHAIN_SYNC_SCHEMA_VERSION } from "../../src/l1/native-chain-sync.exact-record.js";
 import { type WatcherUserEventScriptBinding } from "../../src/runtime/deployment-identity.js";
 import {
+  type MadeOriginDeployment,
   makeConfig,
-  makeOriginDeployment,
   type Point,
   pointAt,
   type SyntheticUserEventBlock,
@@ -116,18 +116,16 @@ export type SyntheticNativeQuery = Readonly<{
 }>;
 
 export type OriginDeployment = Omit<
-  ReturnType<typeof makeOriginDeployment>,
+  MadeOriginDeployment,
   "signedIdentity" | "trustRoots"
 > & {
   signedIdentity: unknown;
-  trustRoots: readonly ReturnType<
-    typeof makeOriginDeployment
-  >["trustRoots"][number][];
+  trustRoots: readonly MadeOriginDeployment["trustRoots"][number][];
 };
 
 export type SyntheticUserEventOriginFixture = Readonly<{
   deployment: OriginDeployment;
-  deploymentIdentity: ReturnType<typeof makeOriginDeployment>["result"];
+  deploymentIdentity: MadeOriginDeployment["result"];
   scriptBinding: WatcherUserEventScriptBinding;
   watcherConfig: ReturnType<typeof makeConfig>;
   l1NodeTransportBinaryPath: string;

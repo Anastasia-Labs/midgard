@@ -92,7 +92,6 @@ type Harness = Awaited<ReturnType<typeof makeHarness>>;
 /** The chunk publications, the certificate, then the step: recorded apart. */
 export const recordCarriage = (
   prefix: string,
-  shape: string,
   captured: Awaited<ReturnType<Harness["step02"]>>,
   expectedChunks: number,
 ): void => {
@@ -102,14 +101,10 @@ export const recordCarriage = (
   } else {
     expect(all).toHaveLength(expectedChunks + 2);
     for (let index = 0; index < expectedChunks; index += 1)
-      record(
-        `${prefix}-carriage-chunk0${(index + 1).toString()}`,
-        shape,
-        all[index]!,
-      );
-    record(`${prefix}-carriage-certificate`, shape, all[expectedChunks]!);
+      record(`${prefix}-carriage-chunk0${(index + 1).toString()}`, all[index]!);
+    record(`${prefix}-carriage-certificate`, all[expectedChunks]!);
   }
-  record(`${prefix}-step02`, shape, captured.measurement);
+  record(`${prefix}-step02`, captured.measurement);
 };
 
 export const acceptedBlock = async (h: Harness, transactions: WidthShape[]) => {
@@ -190,33 +185,29 @@ export const forcedSuccess = async (
   const block = await forcedBlock(h, shape);
   const { setup, evidence, source } = block;
   const initialized = await h.init(setup.fraudulentBlockOutRef);
-  record(`${prefix}-init`, shape.label, initialized.measurement);
+  record(`${prefix}-init`, initialized.measurement);
   const bound = await h.step01Forced(
     h.threadOf(initialized.result),
     evidence,
     source,
   );
-  record(`${prefix}-step01`, shape.label, bound.measurement);
+  record(`${prefix}-step01`, bound.measurement);
   const authenticated = await h.step02(
     bound.result.nextThreadOutRef,
     evidence,
     shape,
   );
-  recordCarriage(prefix, shape.label, authenticated, expectedChunks);
+  recordCarriage(prefix, authenticated, expectedChunks);
   const proven = await h.step03(
     authenticated.result.nextThreadOutRef,
     evidence,
   );
   expect(proven.result.fraudProofUnit).toBeTruthy();
-  record(`${prefix}-step03-proof-mint`, shape.label, proven.measurement);
+  record(`${prefix}-step03-proof-mint`, proven.measurement);
   coverage.reason(REASON_ARM, "forced_rejection_wrong");
   coverage.scenario("wrongful_forced_rejection_success");
   await beforeRemoval({ ...h, ...block });
-  record(
-    `${prefix}-remove`,
-    shape.label,
-    (await h.removal(setup.headerHash)).measurement,
-  );
+  record(`${prefix}-remove`, (await h.removal(setup.headerHash)).measurement);
 };
 
 /** Init → forced step 01 → step 02, then the terminal step must refuse. */

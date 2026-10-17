@@ -15,13 +15,17 @@ import { describe, expect, it } from "vitest";
 import { decodeMidgardCekConstantWitness } from "../src/cek-constant.js";
 import { hashMidgardCekConstantWitness } from "../src/cek-constant.semantic-uplc-constant.js";
 import { executeMidgardCekStructuralProgram } from "../src/cek-executor.js";
-import { verifyMidgardCekCoreStep } from "../src/cek-machine.js";
+import {
+  MidgardCekErrorCodes,
+  verifyMidgardCekCoreStep,
+} from "../src/cek-machine.js";
 import { encodeMidgardCekCardanoFlatProgram } from "../src/cek-program.cardano-flat.js";
 import {
   buildMidgardCanonicalCekProgram,
   buildMidgardCanonicalScriptArtifact,
 } from "../src/cek-program.js";
 import { plutusDataFromCborIterative } from "../src/plutus-data-iterative.decode.js";
+import { discard } from "./helpers/cek-uplc-terms.js";
 
 /**
  * The Cardano ledger reads a Data constant inside a script's Flat bytes with
@@ -60,13 +64,18 @@ const spelledFlat = (term: UPLCTerm, spellings: readonly string[]): Buffer =>
 const canonicalFlat = (term: UPLCTerm): Buffer =>
   encodeMidgardCekCardanoFlatProgram(new UPLCProgram([1, 1, 0], term));
 
+// Each program discards the builtin's result so it halts with Unit.
 const serialiseDataTerm = (): UPLCTerm =>
-  new Application(Builtin.serialiseData, UPLCConst.data(new DataI(0n)));
+  discard(
+    new Application(Builtin.serialiseData, UPLCConst.data(new DataI(0n))),
+  );
 
 const equalsDataTerm = (): UPLCTerm =>
-  new Application(
-    new Application(Builtin.equalsData, UPLCConst.data(new DataI(0n))),
-    UPLCConst.data(new DataI(0n)),
+  discard(
+    new Application(
+      new Application(Builtin.equalsData, UPLCConst.data(new DataI(0n))),
+      UPLCConst.data(new DataI(0n)),
+    ),
   );
 
 const programView = (flat: Buffer) => {
@@ -92,8 +101,12 @@ const programView = (flat: Buffer) => {
   };
 };
 
-/** Runs the program in proof mode and checks every recorded step. */
-const prove = (flat: Buffer) => {
+/**
+ * Runs the program in proof mode and checks every recorded step. A program
+ * that halts with a value other than Unit fails as a Plutus V3 script, after
+ * the same steps and budget.
+ */
+const prove = (flat: Buffer, halt: "unit" | "nonUnit" = "unit") => {
   const { program } = programView(flat);
   const execution = executeMidgardCekStructuralProgram({
     root: program.envelope.termRoot,
@@ -101,7 +114,14 @@ const prove = (flat: Buffer) => {
     constantWitnesses: program.constantWitnesses,
     maxSteps: 64,
   });
-  expect(execution.terminalState.mode).toBe("haltSuccess");
+  if (halt === "unit") {
+    expect(execution.terminalState.mode).toBe("haltSuccess");
+  } else {
+    expect(execution.terminalState.mode).toBe("haltError");
+    expect(execution.terminalState.auxiliary).toBe(
+      MidgardCekErrorCodes.NonUnitHalt,
+    );
+  }
   expect(
     execution.steps.every((step) =>
       verifyMidgardCekCoreStep(step.pre, step.post, step.witness),
@@ -156,9 +176,11 @@ describe("Data constants spelled as the Cardano ledger accepts them", () => {
       // byte string.
       expect(twin).toEqual(
         canonicalFlat(
-          new Application(
-            Builtin.serialiseData,
-            UPLCConst.data(plutusDataFromCborIterative(bytes(canonical))),
+          discard(
+            new Application(
+              Builtin.serialiseData,
+              UPLCConst.data(plutusDataFromCborIterative(bytes(canonical))),
+            ),
           ),
         ),
       );
@@ -207,11 +229,16 @@ describe("Data constants spelled as the Cardano ledger accepts them", () => {
 
   it("refuses a constant witness that carries a non-canonical spelling", () => {
     const spelled = programView(spelledFlat(serialiseDataTerm(), ["c24101"]));
-    const [constantRoot, witness] = [
+    // The program's one Data constant (the other is the discarding Unit).
+    const dataConstants = [
       ...spelled.program.constantWitnesses.entries(),
-    ].find(([, value]) => value.kind === "constant")!;
+    ].filter(
+      ([, value]) =>
+        value.kind === "constant" && hex(value.witness.typeCbor) === "9f08ff",
+    );
+    expect(dataConstants).toHaveLength(1);
+    const [constantRoot, witness] = dataConstants[0]!;
     if (witness.kind !== "constant") throw new Error("unreachable");
-    expect(hex(witness.witness.typeCbor)).toBe("9f08ff");
     expect(hex(witness.witness.payloadCbor)).toBe("01");
     // The on-chain witness check pins the same root
     // (cek-constant-v1.test.ak, data_one_root).
@@ -251,7 +278,9 @@ describe("Data constants spelled as the Cardano ledger accepts them", () => {
 /**
  * Programs the Plutus V3 evaluator (plutus-core 1.71, protocol version 11) ran
  * through `deserialiseScript` on the raw Flat bytes below, with its result and
- * budget. Its budget includes the machine's 100/100 start-up charge.
+ * budget. Its budget includes the machine's 100/100 start-up charge, which the
+ * executor charges too. Each program returns its builtin's result, so as a
+ * script it fails at the halt.
  */
 // [label, raw Flat program, Cardano result, Cardano cpu/mem]
 const CARDANO_RUNS = [
@@ -396,16 +425,16 @@ describe("raw Flat programs the Cardano evaluator accepted", () => {
   it.each(CARDANO_RUNS)(
     "%s gives Cardano's result and budget",
     (_label, flat, result, budget) => {
-      const run = prove(bytes(flat));
+      const run = prove(bytes(flat), "nonUnit");
       expect(cardanoResult(run.result)).toBe(result);
-      expect(`${run.cpu + 100n}/${run.memory + 100n}`).toBe(budget);
+      expect(`${run.cpu}/${run.memory}`).toBe(budget);
     },
   );
 
   it.each(CARDANO_RESULTS)(
     "%s gives Cardano's result",
     (_label, flat, result) => {
-      expect(cardanoResult(prove(bytes(flat)).result)).toBe(result);
+      expect(cardanoResult(prove(bytes(flat), "nonUnit").result)).toBe(result);
     },
   );
 });

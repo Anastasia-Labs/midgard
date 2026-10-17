@@ -374,11 +374,12 @@ export const runShardCheck = ({ plan, index, output, projectDirectory }) => {
   return { index, ...summary };
 };
 
-export const collectShardReports = ({
+// Every test record of a complete census, keyed by JSON.stringify([module,
+// title]), after the same validation the collector applies.
+export const readShardUnion = ({
   plan,
   projectDirectory,
   reportsDirectory,
-  baseline,
 }) => {
   validateShardPlan(plan, projectDirectory);
   const files = readdirSync(reportsDirectory)
@@ -412,6 +413,20 @@ export const collectShardReports = ({
     summary.total += validated.summary.total;
     summary.passed += validated.summary.passed;
   }
+  return { ids, summary };
+};
+
+export const collectShardReports = ({
+  plan,
+  projectDirectory,
+  reportsDirectory,
+  baseline,
+}) => {
+  const { ids, summary } = readShardUnion({
+    plan,
+    projectDirectory,
+    reportsDirectory,
+  });
   if (baseline !== undefined) {
     const report = JSON.parse(readFileSync(baseline, "utf8"));
     const original = new Map();

@@ -57,7 +57,8 @@ preserves the predicate but increases fees, reference-script costs, and elapsed
 challenge time. Those costs require measured lifecycle evidence.
 
 Publication tests enforce a 512-byte reserve under the 16,384-byte signed envelope.
-Execution uses the shared Van Rossem limits and the applicable fit-ledger reserve.
+Execution uses the shared Van Rossem limits, which the fault-proof suite's
+submit guard applies to every emulator submission.
 Rebuild and remeasure after any change to compiler, applied parameters, shared
 libraries, witness frontier, or protocol limits.
 
