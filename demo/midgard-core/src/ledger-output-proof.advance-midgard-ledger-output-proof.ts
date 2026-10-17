@@ -177,12 +177,10 @@ export const advanceMidgardLedgerOutputProof = ({
           ? null
           : witness.kind === "value"
             ? {
-                assetIndex: witness.assetIndex,
                 policyId: witness.policyId,
                 assetName: witness.assetName,
                 quantity: witness.quantity,
                 siblings: witness.siblings,
-                previous: witness.previous,
               }
             : null;
       if (witness !== null && witness.kind !== "value") return null;

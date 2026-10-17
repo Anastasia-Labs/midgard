@@ -31,24 +31,15 @@ pub type LedgerOutputValueControlV1 {
   result: Option<cek_data_v1.DataSummaryV1>,
 }
 
-/// Opening of the current within-policy map head, so a step can prove its
-/// asset name is strictly smaller than the previously folded one without the
-/// control retaining more than the rolling summary. Mirrors `CekMintHead`.
-pub type LedgerOutputValueHeadV1 {
-  asset_name: ByteArray,
-  quantity: Int,
-  tail: cek_data_v1.DataSequenceSummaryV1,
-}
-
+/// An asset step opens the leaf at index `asset_remaining - 1` of the asset
+/// frontier; the control fixes it, so the witness carries no index.
 pub type LedgerOutputValueWitnessV1 {
   LedgerOutputValueNoWitness
   LedgerOutputValueAsset {
-    asset_index: Int,
     policy_id: ByteArray,
     asset_name: ByteArray,
     quantity: Int,
     siblings: List<ByteArray>,
-    previous: Option<LedgerOutputValueHeadV1>,
   }
 }
 
@@ -326,58 +317,32 @@ fn advanced(
   }
 }
 
-/// Strict descending execution order over independently authenticated source
-/// indices, mirroring `cek_mint_order.order_is_valid`. The native frontier and
-/// the evaluated script context both order asset names as plain bytes, so an
-/// honest traversal visits the source indices in reverse. The head opening is
-/// checked against the accumulated within-policy commitment.
-fn order_is_valid(
-  control: LedgerOutputValueControlV1,
-  asset_count: Int,
-  policy_id: ByteArray,
-  asset_name: ByteArray,
-  previous: Option<LedgerOutputValueHeadV1>,
-) -> Bool {
-  if control.current_policy == #"" {
-    previous == None && control.asset_remaining == asset_count
-  } else if policy_id == control.current_policy {
-    when previous is {
-      Some(head) -> and {
-          bytearray.compare(asset_name, head.asset_name) == Less,
-          cek_data_v1.prepend_data_pair_summary_v1(
-            bounded_bytes_summary(head.asset_name),
-            bounded_integer_summary(head.quantity),
-            head.tail,
-          ) == control.current_assets,
-        }
-      None -> False
-    }
-  } else {
-    previous == None && bytearray.compare(policy_id, control.current_policy) == Less
-  }
-}
-
+/// One asset step: the leaf at index `asset_remaining - 1`, so the fold walks
+/// the asset frontier from its last leaf to its first and each step has one
+/// successor. The output scan appends the leaves in strictly ascending (policy
+/// id, asset name) byte order (`ledger_output_scan_v1` `step_policy` and
+/// `step_asset`), the order of the evaluated script context map, so the
+/// prepending accumulator emits that map and each policy's assets are adjacent.
+/// The fold starts from `initial_control_v1(asset_count)`, the only writer of a
+/// control with no current policy.
 fn asset_step(
   control: LedgerOutputValueControlV1,
   asset_count: Int,
   asset_peaks: List<validation_merkle_v1.FrontierPeak>,
-  asset_index: Int,
   policy_id: ByteArray,
   asset_name: ByteArray,
   quantity: Int,
   siblings: List<ByteArray>,
-  previous: Option<LedgerOutputValueHeadV1>,
 ) -> Option<LedgerOutputValueControlV1> {
   if or {
     bytearray.length(policy_id) != 28,
     bytearray.length(asset_name) > 32,
     quantity <= 0,
     quantity > uint64_max,
-    !order_is_valid(control, asset_count, policy_id, asset_name, previous),
     !validation_merkle_v1.verify_membership(
       asset_count,
       asset_peaks,
-      asset_index,
+      control.asset_remaining - 1,
       ledger_output_commitment_v1.asset_leaf_hash(
         policy_id,
         asset_name,
@@ -477,24 +442,15 @@ pub fn step_v1(
       }
     } else {
       when witness is {
-        LedgerOutputValueAsset {
-          asset_index,
-          policy_id,
-          asset_name,
-          quantity,
-          siblings,
-          previous,
-        } ->
+        LedgerOutputValueAsset { policy_id, asset_name, quantity, siblings } ->
           asset_step(
             control,
             asset_count,
             asset_peaks,
-            asset_index,
             policy_id,
             asset_name,
             quantity,
             siblings,
-            previous,
           )
         _ -> None
       }

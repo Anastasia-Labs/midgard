@@ -176,12 +176,10 @@ fn requested_asset(
 ) -> (value.LedgerOutputValueWitnessV1, Int) {
   (
     value.LedgerOutputValueAsset {
-      asset_index: index,
       policy_id: #"11111111111111111111111111111111111111111111111111111111",
       asset_name: name,
       quantity,
       siblings: [],
-      previous: None,
     },
     index,
   )

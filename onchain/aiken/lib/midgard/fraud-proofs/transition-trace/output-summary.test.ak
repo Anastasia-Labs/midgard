@@ -41,29 +41,19 @@ fn folded_value_summary() -> cek_data_v1.DataSummaryV1 {
   expect Some(first) = step(
     ledger_output_value_v1.initial_control_v1(2),
     ledger_output_value_v1.LedgerOutputValueAsset {
-      asset_index: 1,
       policy_id: policy(),
       asset_name: #"aa",
       quantity: 5,
       siblings: [wide],
-      previous: None,
     },
   )
   expect Some(second) = step(
     first,
     ledger_output_value_v1.LedgerOutputValueAsset {
-      asset_index: 0,
       policy_id: policy(),
       asset_name: #"0102",
       quantity: 7,
       siblings: [narrow],
-      previous: Some(
-        ledger_output_value_v1.LedgerOutputValueHeadV1 {
-          asset_name: #"aa",
-          quantity: 5,
-          tail: cek_data_v1.empty_data_pair_summary_v1(),
-        },
-      ),
     },
   )
   expect Some(finalizing) = step(

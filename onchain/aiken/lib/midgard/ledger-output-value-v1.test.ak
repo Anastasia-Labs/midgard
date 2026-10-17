@@ -83,12 +83,10 @@ test folds_the_exact_plutus_value_from_reverse_memberships() {
     peaks,
     8000000,
     ledger_output_value_v1.LedgerOutputValueAsset {
-      asset_index: 2,
       policy_id: policy(34),
       asset_name: #"bbcc",
       quantity: 18446744073709551615,
       siblings: [],
-      previous: None,
     },
   )
   expect Some(control2) = ledger_output_value_v1.step_v1(
@@ -97,12 +95,10 @@ test folds_the_exact_plutus_value_from_reverse_memberships() {
     peaks,
     8000000,
     ledger_output_value_v1.LedgerOutputValueAsset {
-      asset_index: 1,
       policy_id: policy(17),
       asset_name: #"aa",
       quantity: 42,
       siblings: [first],
-      previous: None,
     },
   )
   expect Some(control3) = ledger_output_value_v1.step_v1(
@@ -111,18 +107,10 @@ test folds_the_exact_plutus_value_from_reverse_memberships() {
     peaks,
     8000000,
     ledger_output_value_v1.LedgerOutputValueAsset {
-      asset_index: 0,
       policy_id: policy(17),
       asset_name: #"",
       quantity: 1,
       siblings: [second],
-      previous: Some(
-        ledger_output_value_v1.LedgerOutputValueHeadV1 {
-          asset_name: #"aa",
-          quantity: 42,
-          tail: cek_data_v1.empty_data_pair_summary_v1(),
-        },
-      ),
     },
   )
   expect Some(control4) = ledger_output_value_v1.step_v1(
@@ -260,20 +248,66 @@ test substituted_asset_facts_fail_closed() {
     peaks,
     8000000,
     ledger_output_value_v1.LedgerOutputValueAsset {
-      asset_index: 2,
       policy_id: policy(34),
       asset_name: #"bbcc",
       quantity: 18446744073709551614,
       siblings: [],
-      previous: None,
+    },
+  ) == None
+}
+
+// The first step opens the last leaf. Before the index was derived, opening
+// any leaf first was accepted.
+test lower_first_index_is_refused() {
+  expect [first, _second, _third] = asset_leaves()
+  ledger_output_value_v1.step_v1(
+    ledger_output_value_v1.initial_control_v1(3),
+    3,
+    asset_peaks(),
+    8000000,
+    ledger_output_value_v1.LedgerOutputValueAsset {
+      policy_id: policy(17),
+      asset_name: #"aa",
+      quantity: 42,
+      siblings: [first],
+    },
+  ) == None
+}
+
+// After the last leaf the step opens the one before it; skipping it to the
+// first leaf is refused.
+test skipped_asset_is_refused() {
+  expect [_first, second, _third] = asset_leaves()
+  let peaks = asset_peaks()
+  expect Some(control1) = ledger_output_value_v1.step_v1(
+    ledger_output_value_v1.initial_control_v1(3),
+    3,
+    peaks,
+    8000000,
+    ledger_output_value_v1.LedgerOutputValueAsset {
+      policy_id: policy(34),
+      asset_name: #"bbcc",
+      quantity: 18446744073709551615,
+      siblings: [],
+    },
+  )
+  ledger_output_value_v1.step_v1(
+    control1,
+    3,
+    peaks,
+    8000000,
+    ledger_output_value_v1.LedgerOutputValueAsset {
+      policy_id: policy(17),
+      asset_name: #"",
+      quantity: 1,
+      siblings: [second],
     },
   ) == None
 }
 
 // Mixed-width battery: the frontier commits assets in plain byte order,
 // `#"0102"` before the shorter `#"aa"`, the same order as the evaluated context
-// map. The fold must accept exactly the descending traversal with per-step
-// membership indices and refuse every mutation at its clause.
+// map. The fold walks the leaves from the last to the first.
 
 fn mixed_width_leaves() -> List<ByteArray> {
   [
@@ -288,56 +322,45 @@ fn mixed_width_peaks() -> List<validation_merkle_v1.FrontierPeak> {
   validation_merkle_v1.append_leaf(1, first_peaks, second)
 }
 
-fn mixed_width_first_step() -> ledger_output_value_v1.LedgerOutputValueControlV1 {
+fn mixed_width_first_witness() -> ledger_output_value_v1.LedgerOutputValueWitnessV1 {
   expect [first, _second] = mixed_width_leaves()
+  ledger_output_value_v1.LedgerOutputValueAsset {
+    policy_id: policy(17),
+    asset_name: #"aa",
+    quantity: 5,
+    siblings: [first],
+  }
+}
+
+fn mixed_width_first_step() -> ledger_output_value_v1.LedgerOutputValueControlV1 {
   expect Some(control1) = ledger_output_value_v1.step_v1(
     ledger_output_value_v1.initial_control_v1(2),
     2,
     mixed_width_peaks(),
     8000000,
-    ledger_output_value_v1.LedgerOutputValueAsset {
-      asset_index: 1,
-      policy_id: policy(17),
-      asset_name: #"aa",
-      quantity: 5,
-      siblings: [first],
-      previous: None,
-    },
+    mixed_width_first_witness(),
   )
   control1
 }
 
-fn mixed_width_second_witness(
-  asset_index: Int,
-  previous: Option<ledger_output_value_v1.LedgerOutputValueHeadV1>,
-) -> ledger_output_value_v1.LedgerOutputValueWitnessV1 {
+fn mixed_width_second_witness() -> ledger_output_value_v1.LedgerOutputValueWitnessV1 {
   expect [_first, second] = mixed_width_leaves()
   ledger_output_value_v1.LedgerOutputValueAsset {
-    asset_index,
     policy_id: policy(17),
     asset_name: #"0102",
     quantity: 7,
     siblings: [second],
-    previous,
   }
 }
 
-fn mixed_width_head() -> ledger_output_value_v1.LedgerOutputValueHeadV1 {
-  ledger_output_value_v1.LedgerOutputValueHeadV1 {
-    asset_name: #"aa",
-    quantity: 5,
-    tail: cek_data_v1.empty_data_pair_summary_v1(),
-  }
-}
-
-test mixed_width_permutation_folds_to_the_lexicographic_map() {
+test mixed_width_descending_walk_folds_to_the_lexicographic_map() {
   let peaks = mixed_width_peaks()
   expect Some(control2) = ledger_output_value_v1.step_v1(
     mixed_width_first_step(),
     2,
     peaks,
     8000000,
-    mixed_width_second_witness(0, Some(mixed_width_head())),
+    mixed_width_second_witness(),
   )
   expect Some(control3) = ledger_output_value_v1.step_v1(
     control2,
@@ -402,170 +425,15 @@ test finalize_is_refused_while_assets_remain() {
   }
 }
 
-test duplicate_membership_index_is_refused() {
-  // The second step claims the already-consumed frontier slot 1; the leaf at
-  // that index is the first asset, so the membership clause refuses.
+test reopened_asset_is_refused() {
+  // The second step re-opens the asset the first step consumed; the derived
+  // index is 0 and that leaf is the other asset, so membership refuses.
   ledger_output_value_v1.step_v1(
     mixed_width_first_step(),
     2,
     mixed_width_peaks(),
     8000000,
-    mixed_width_second_witness(1, Some(mixed_width_head())),
-  ) == None
-}
-
-test out_of_range_membership_index_is_refused() {
-  and {
-    ledger_output_value_v1.step_v1(
-      mixed_width_first_step(),
-      2,
-      mixed_width_peaks(),
-      8000000,
-      mixed_width_second_witness(2, Some(mixed_width_head())),
-    ) == None,
-    ledger_output_value_v1.step_v1(
-      mixed_width_first_step(),
-      2,
-      mixed_width_peaks(),
-      8000000,
-      mixed_width_second_witness(-1, Some(mixed_width_head())),
-    ) == None,
-  }
-}
-
-test same_policy_step_without_head_opening_is_refused() {
-  // Claiming the identity traversal (no previous head) on a same-policy step
-  // is exactly the permuted-but-identity-claimed shape; the order clause
-  // refuses it.
-  ledger_output_value_v1.step_v1(
-    mixed_width_first_step(),
-    2,
-    mixed_width_peaks(),
-    8000000,
-    mixed_width_second_witness(0, None),
-  ) == None
-}
-
-test non_strictly_smaller_head_is_refused() {
-  // Repeating the head name (`compare == Equal`) must fail the strict order
-  // clause even though the head opening itself is genuine.
-  expect [first, _second] = mixed_width_leaves()
-  ledger_output_value_v1.step_v1(
-    mixed_width_first_step(),
-    2,
-    mixed_width_peaks(),
-    8000000,
-    ledger_output_value_v1.LedgerOutputValueAsset {
-      asset_index: 1,
-      policy_id: policy(17),
-      asset_name: #"aa",
-      quantity: 5,
-      siblings: [first],
-      previous: Some(mixed_width_head()),
-    },
-  ) == None
-}
-
-test forged_head_opening_is_refused() {
-  // A head whose reconstruction does not equal the accumulated within-policy
-  // commitment must be refused even when its name orders correctly.
-  ledger_output_value_v1.step_v1(
-    mixed_width_first_step(),
-    2,
-    mixed_width_peaks(),
-    8000000,
-    mixed_width_second_witness(
-      0,
-      Some(
-        ledger_output_value_v1.LedgerOutputValueHeadV1 {
-          asset_name: #"aa",
-          quantity: 6,
-          tail: cek_data_v1.empty_data_pair_summary_v1(),
-        },
-      ),
-    ),
-  ) == None
-}
-
-test first_step_with_head_opening_is_refused() {
-  expect [first, _second] = mixed_width_leaves()
-  ledger_output_value_v1.step_v1(
-    ledger_output_value_v1.initial_control_v1(2),
-    2,
-    mixed_width_peaks(),
-    8000000,
-    ledger_output_value_v1.LedgerOutputValueAsset {
-      asset_index: 1,
-      policy_id: policy(17),
-      asset_name: #"aa",
-      quantity: 5,
-      siblings: [first],
-      previous: Some(mixed_width_head()),
-    },
-  ) == None
-}
-
-test policy_change_with_head_opening_is_refused() {
-  expect [first, second, _third] = asset_leaves()
-  let peaks = asset_peaks()
-  let control0 = ledger_output_value_v1.initial_control_v1(3)
-  expect Some(control1) = ledger_output_value_v1.step_v1(
-    control0,
-    3,
-    peaks,
-    8000000,
-    ledger_output_value_v1.LedgerOutputValueAsset {
-      asset_index: 2,
-      policy_id: policy(34),
-      asset_name: #"bbcc",
-      quantity: 18446744073709551615,
-      siblings: [],
-      previous: None,
-    },
-  )
-  ledger_output_value_v1.step_v1(
-    control1,
-    3,
-    peaks,
-    8000000,
-    ledger_output_value_v1.LedgerOutputValueAsset {
-      asset_index: 1,
-      policy_id: policy(17),
-      asset_name: #"aa",
-      quantity: 42,
-      siblings: [first],
-      previous: Some(
-        ledger_output_value_v1.LedgerOutputValueHeadV1 {
-          asset_name: #"bbcc",
-          quantity: 18446744073709551615,
-          tail: cek_data_v1.empty_data_pair_summary_v1(),
-        },
-      ),
-    },
-  ) == None
-}
-
-test stale_first_step_resumption_is_refused() {
-  // A crafted control that still claims an empty current policy after a step
-  // has been consumed must not accept a fresh no-head first step.
-  let crafted = ledger_output_value_v1.LedgerOutputValueControlV1 {
-    ..ledger_output_value_v1.initial_control_v1(2),
-    asset_remaining: 1,
-  }
-  expect [first, _second] = mixed_width_leaves()
-  ledger_output_value_v1.step_v1(
-    crafted,
-    2,
-    mixed_width_peaks(),
-    8000000,
-    ledger_output_value_v1.LedgerOutputValueAsset {
-      asset_index: 1,
-      policy_id: policy(17),
-      asset_name: #"aa",
-      quantity: 5,
-      siblings: [first],
-      previous: None,
-    },
+    mixed_width_first_witness(),
   ) == None
 }
 

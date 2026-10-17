@@ -188,12 +188,10 @@ export const buildMidgardLedgerOutputProofTrace = ({
         ? null
         : {
             kind: "value",
-            assetIndex: valueStep.witness.assetIndex,
             policyId: valueStep.witness.policyId,
             assetName: valueStep.witness.assetName,
             quantity: valueStep.witness.quantity,
             siblings: valueStep.witness.siblings,
-            previous: valueStep.witness.previous,
           },
     );
     if (

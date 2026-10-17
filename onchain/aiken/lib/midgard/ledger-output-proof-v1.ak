@@ -73,12 +73,10 @@ pub type LedgerOutputProofWitnessV1 {
     next_chunk_proof: Option<bounded_item_v1.ChunkProofV1>,
   }
   LedgerOutputProofValue {
-    asset_index: Int,
     policy_id: ByteArray,
     asset_name: ByteArray,
     quantity: Int,
     siblings: List<ByteArray>,
-    previous: Option<ledger_output_value_v1.LedgerOutputValueHeadV1>,
   }
   LedgerOutputProofDatum {
     action: cek_data_traverse_v1.DataTraverseActionV1,
@@ -1128,22 +1126,13 @@ fn value_fold_step(
     let value_witness = when witness is {
       LedgerOutputProofNoWitness ->
         Some(ledger_output_value_v1.LedgerOutputValueNoWitness)
-      LedgerOutputProofValue {
-        asset_index,
-        policy_id,
-        asset_name,
-        quantity,
-        siblings,
-        previous,
-      } ->
+      LedgerOutputProofValue { policy_id, asset_name, quantity, siblings } ->
         Some(
           ledger_output_value_v1.LedgerOutputValueAsset {
-            asset_index,
             policy_id,
             asset_name,
             quantity,
             siblings,
-            previous,
           },
         )
       _ -> None

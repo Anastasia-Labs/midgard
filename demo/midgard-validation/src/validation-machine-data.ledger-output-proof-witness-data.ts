@@ -229,18 +229,10 @@ export const ledgerOutputProofWitnessData = (
       ]);
     case "value":
       return new Constr(2, [
-        int(witness.assetIndex),
         bytes(witness.policyId),
         bytes(witness.assetName),
         witness.quantity,
         byteList(witness.siblings),
-        option(witness.previous, (head) =>
-          record([
-            bytes(head.assetName),
-            head.quantity,
-            sequenceSummaryData(head.tail),
-          ]),
-        ),
       ]);
     case "datum":
       return new Constr(3, [
