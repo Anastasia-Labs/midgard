@@ -147,12 +147,12 @@ test fixed_witness_rejects_bad_signature_header_without_aborting() {
   )
 }
 
-test fixed_witness_rejects_exact_repeat() {
+test fixed_witness_accepts_exact_repeat() {
   let item = witness(key, signature)
-  !fixed_item_is_legal_v1(7, Some(item), item)
+  fixed_item_is_legal_v1(7, Some(item), item)
 }
 
-test fixed_witness_same_signer_uses_signature_bytes_as_tiebreak() {
+test fixed_witness_accepts_both_same_signer_signature_orders() {
   let low = witness(key, signature)
   let high = witness(
     key,
@@ -160,11 +160,11 @@ test fixed_witness_same_signer_uses_signature_bytes_as_tiebreak() {
   )
   and {
     fixed_item_is_legal_v1(7, Some(low), high),
-    !fixed_item_is_legal_v1(7, Some(high), low),
+    fixed_item_is_legal_v1(7, Some(high), low),
   }
 }
 
-test fixed_witness_compares_signer_hash_before_vkey_bytes() {
+test fixed_witness_accepts_descending_signer_hashes() {
   let other = bytearray.concat(#"01", bytearray.take(key, 31))
   let first = witness(key, signature)
   let second = witness(other, signature)
@@ -172,7 +172,7 @@ test fixed_witness_compares_signer_hash_before_vkey_bytes() {
     // The signer hashes descend while the verification keys ascend.
     bytearray.compare(blake2b_224(key), blake2b_224(other)) == Greater,
     bytearray.compare(key, other) == Less,
-    !fixed_item_is_legal_v1(7, Some(first), second),
+    fixed_item_is_legal_v1(7, Some(first), second),
     fixed_item_is_legal_v1(7, Some(second), first),
   }
 }
@@ -220,4 +220,21 @@ test item_width_is_total_on_negative_and_unsupported_fields() {
     item_width_is_legal_v1(6, 0),
     item_width_is_legal_v1(8, 0),
   }
+}
+
+// A prior item remains shape evidence; removing ordering must not hide garbage.
+test fixed_witness_rejects_a_bad_previous_wrapper() {
+  !fixed_item_is_legal_v1(
+    7,
+    Some(bytearray.concat(#"5864", bytearray.drop(witness(key, signature), 2))),
+    witness(key, signature),
+  )
+}
+
+test fixed_witness_rejects_a_bad_previous_signature_header() {
+  let prior = bytearray.concat(
+    bytearray.take(witness(key, signature), 37),
+    bytearray.concat(#"5841", signature),
+  )
+  !fixed_item_is_legal_v1(7, Some(prior), witness(key, signature))
 }

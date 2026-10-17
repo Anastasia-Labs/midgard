@@ -45,7 +45,11 @@ const replaceWitnessField = (hex: string, field: Buffer) => {
 };
 
 describe("source-bound fieldItemWidthIllegal physical chain", () => {
-  it.each([["malformed wrapper", signed.descending, true]] as const)(
+  it.each([
+    ["descending", signed.descending, false],
+    ["duplicate", signed.duplicate, false],
+    ["malformed wrapper", signed.descending, true],
+  ] as const)(
     "authenticates %s witnesses through all three validators",
     async (label, hex, illegal) => {
       const h = await makeHarness();

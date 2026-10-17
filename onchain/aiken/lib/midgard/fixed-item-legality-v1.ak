@@ -3,13 +3,12 @@
 //// The caller authenticates the field and derives these exact stride slices.
 //// This module returns False for committed garbage; it never parses by expect.
 
-use aiken/crypto.{blake2b_224}
 use aiken/primitive/bytearray
 
 pub const max_serialized_output_preimage_bytes: Int = 16384
 
 /// Width half shared by CanonicalDecode and FIWI. Fixed-item callers still
-/// run fixed_item_is_legal_v1 for the wrapper, content and adjacent order.
+/// run fixed_item_is_legal_v1 for the current and preceding encoded shapes.
 pub fn item_width_is_legal_v1(field_index: Int, item_width: Int) -> Bool {
   if item_width < 0 {
     False
@@ -68,27 +67,6 @@ fn shape_is_legal(field_index: Int, item: ByteArray) -> Bool {
   }
 }
 
-fn follows_previous(
-  field_index: Int,
-  previous: ByteArray,
-  item: ByteArray,
-) -> Bool {
-  if field_index != 7 {
-    // Inputs and required signers preserve authored order. Input uniqueness
-    // and observer ordering are later semantic checks, not item-shape faults.
-    True
-  } else {
-    // Shape was checked before slicing the verification key or hashing it.
-    let previous_signer = blake2b_224(bytearray.slice(previous, 5, 36))
-    let current_signer = blake2b_224(bytearray.slice(item, 5, 36))
-    when bytearray.compare(previous_signer, current_signer) is {
-      Less -> True
-      Equal -> bytearray.compare(previous, item) == Less
-      Greater -> False
-    }
-  }
-}
-
 pub fn fixed_item_is_legal_v1(
   field_index: Int,
   previous: Option<ByteArray>,
@@ -100,11 +78,9 @@ pub fn fixed_item_is_legal_v1(
     when previous is {
       None -> True
       Some(prior) ->
-        if !shape_is_legal(field_index, prior) {
-          False
-        } else {
-          follows_previous(field_index, prior, item)
-        }
+        // The committed order is authored. Signature execution sorts its
+        // logical work list and admits repeated witnesses.
+        shape_is_legal(field_index, prior)
     }
   }
 }

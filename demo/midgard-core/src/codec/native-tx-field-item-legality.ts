@@ -1,4 +1,3 @@
-import { midgardBlake2b } from "./blake2b.js";
 import { MidgardTxCodecError, MidgardTxCodecErrorCodes } from "./errors.js";
 import type { MidgardNativeTxCanonical } from "./native.validate-midgard-native-tx-canonical.js";
 import {
@@ -67,18 +66,9 @@ export const midgardFixedFieldItemIsLegal = (
   if (!fixedShapeIsLegal(fieldIndex, item)) return false;
   if (previous === null) return true;
   if (!fixedShapeIsLegal(fieldIndex, previous)) return false;
-  // Inputs and required signers preserve authored order. Input uniqueness
-  // and observer ordering are later semantic checks, not item-shape faults.
-  if (fieldIndex !== 7) return true;
-  const order = Buffer.compare(previous, item);
-  const previousSigner = Buffer.from(
-    midgardBlake2b(previous.subarray(5, 37), { dkLen: 28 }),
-  );
-  const currentSigner = Buffer.from(
-    midgardBlake2b(item.subarray(5, 37), { dkLen: 28 }),
-  );
-  const signerOrder = Buffer.compare(previousSigner, currentSigner);
-  return signerOrder < 0 || (signerOrder === 0 && order < 0);
+  // All fixed fields preserve authored order. Signature execution sorts its
+  // logical work list; the committed witness list may be unordered or repeat.
+  return true;
 };
 
 /** Inspect one exact committed field; its grammar failures remain typed. */
