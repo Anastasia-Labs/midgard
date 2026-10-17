@@ -5,6 +5,9 @@
 //// Applied doors authenticate each item against the step-01-carried compact
 //// transaction and each resolved output against `prior_ledger_root`; this
 //// module owns only the deterministic consensus-order fold and checkpoint.
+//// Source discovery walks the T224 script-source order (see
+//// `scan_resolved_output_v1`), so a native script carried only by a spent
+//// output is found as well as one carried by a reference input or inline.
 
 use aiken/cbor
 use aiken/crypto.{blake2b_256}
@@ -27,8 +30,6 @@ pub const phase_inline_source: Int = 4
 
 pub const phase_reference_source: Int = 5
 
-pub const phase_complete: Int = 6
-
 const checkpoint_domain: ByteArray =
   "midgard/fraud-proofs/execution-native-script-invalid/accepted-reconstruction-v1"
 
@@ -40,7 +41,9 @@ pub type SelectedPurposeV1 {
 }
 
 pub type SelectedSourceV1 {
+  /// Physical index in the T224 source order.
   source_index: Int,
+  /// 0 for an inline witness, 1 for a resolved output's reference script.
   origin_kind: Int,
   source_key: ByteArray,
   language_tag: Int,
@@ -140,7 +143,7 @@ pub fn state_is_authentic_v1(state: StateV1) -> Bool {
   and {
     state.bound.subject.direction == substrate.direction_wrongful_acceptance,
     state.phase >= phase_spend,
-    state.phase <= phase_complete,
+    state.phase <= phase_reference_source,
     state.field_cursor >= 0,
     state.execution_cursor >= 0,
     state.source_base_index >= 0,
@@ -340,65 +343,156 @@ pub fn finish_purpose_phase_v1(
   )
 }
 
-pub fn append_source_v1(
+// Source discovery follows the T224 script-source order, the one
+// `script_source_order_v1.script_source_physical_index` maps:
+//
+// - physical order: the inline witnesses (field 6) first, then the reference
+//   scripts of the resolved outputs of the spend inputs (field 0) and the
+//   reference inputs (field 1) together, in ascending canonical out-ref order;
+// - lookup order: reference-first. The first resolved-output source carrying
+//   the purpose's hash is selected, and an inline witness only when no resolved
+//   output carries it.
+//
+// `source_index` is the physical index: the field-6 index of an inline source,
+// and `inline_count + rank` of a resolved one, `rank` being its position among
+// the resolved sources. The inline walk keeps its first match provisionally;
+// a selection becomes final only once every resolved output has been walked.
+
+/// The lookup-order selection after one more source in physical order. A
+/// resolved-output source (origin 1) displaces an inline one (origin 0); within
+/// one origin the earlier source stays selected.
+fn selected_after_v1(
+  state: StateV1,
+  source: SelectedSourceV1,
+) -> Option<SelectedSourceV1> {
+  expect Some(purpose) = state.selected_purpose
+  if source.script_hash == purpose.script_hash {
+    when state.selected_source is {
+      None -> Some(source)
+      Some(incumbent) ->
+        if incumbent.origin_kind < source.origin_kind {
+          Some(source)
+        } else {
+          state.selected_source
+        }
+    }
+  } else {
+    state.selected_source
+  }
+}
+
+fn appended_source_v1(state: StateV1, source: SelectedSourceV1) -> StateV1 {
+  expect and {
+      source.source_index == state.source_cursor,
+      source.total_length > 0,
+      bytearray.length(source.script_hash) == 28,
+      bytearray.length(source.item_commitment) == 32,
+    }
+  StateV1 {
+    ..state,
+    source_cursor: state.source_cursor + 1,
+    selected_source: selected_after_v1(state, source),
+  }
+}
+
+/// Consume the inline witness at `field_cursor`.
+pub fn append_inline_source_v1(
   state: StateV1,
   source: SelectedSourceV1,
   next_expected_script_hash: ByteArray,
 ) -> StateV1 {
   expect and {
       state_is_authentic_v1(state),
-      state.selected_source == None,
-      state.phase >= phase_inline_source,
-      state.phase <= phase_reference_source,
-      source.origin_kind == state.phase - phase_inline_source,
-      source.source_index == state.source_cursor,
-      source.total_length > 0,
-      bytearray.length(source.script_hash) == 28,
-      bytearray.length(source.item_commitment) == 32,
+      state.phase == phase_inline_source,
+      source.origin_kind == 0,
     }
-  expect Some(purpose) = state.selected_purpose
-  let selected = if source.script_hash == purpose.script_hash {
-    Some(source)
-  } else {
-    None
-  }
   with_checkpoint(
     StateV1 {
-      ..state,
+      ..appended_source_v1(state, source),
       field_cursor: state.field_cursor + 1,
-      source_cursor: state.source_cursor + 1,
-      selected_source: selected,
     },
     next_expected_script_hash,
   )
 }
 
-pub fn advance_reference_without_source_v1(
+/// The applied field-6 door calls this only after proving the inline witnesses
+/// exhausted. Resolved-output discovery always follows, because lookup is
+/// reference-first.
+pub fn finish_inline_sources_v1(
   state: StateV1,
   next_expected_script_hash: ByteArray,
 ) -> StateV1 {
   expect and {
       state_is_authentic_v1(state),
-      state.phase == phase_reference_source,
-      state.selected_source == None,
+      state.phase == phase_inline_source,
     }
   with_checkpoint(
-    StateV1 { ..state, field_cursor: state.field_cursor + 1 },
+    StateV1 {
+      ..state,
+      phase: phase_reference_source,
+      field_cursor: 0,
+      source_base_index: state.source_cursor,
+    },
     next_expected_script_hash,
   )
 }
 
-/// Collapse the independently reconstructed purpose/source pair into the
-/// datum already consumed by logical evaluator step 3.
-pub fn authenticated_source_v1(state: StateV1) -> AuthenticatedExecutionSourceV1 {
-  expect state_is_authentic_v1(state)
-  expect Some(purpose) = state.selected_purpose
-  expect Some(source) = state.selected_source
+/// Consume one resolved output, a spend input or a reference input, whose
+/// canonical out-ref key the applied door read from field 0 or field 1 and
+/// whose descriptor it authenticated against `prior_ledger_root`. `source` is
+/// that output's reference script, if it carries one.
+///
+/// Keys strictly ascend across both fields, so the walk is the merged canonical
+/// order and visits no out-ref twice. `field_cursor` counts the outputs walked;
+/// reaching the two fields' total therefore proves every one of them visited.
+pub fn scan_resolved_output_v1(
+  state: StateV1,
+  key: ByteArray,
+  source: Option<SelectedSourceV1>,
+  next_expected_script_hash: ByteArray,
+) -> StateV1 {
   expect and {
-      purpose.script_hash == source.script_hash,
-      purpose.purpose_kind >= phase_spend,
-      purpose.purpose_kind <= phase_receive,
+      state_is_authentic_v1(state),
+      state.phase == phase_reference_source,
+      or {
+        state.previous_key == #"",
+        bytearray.compare(state.previous_key, key) == Less,
+      },
     }
+  let scanned = when source is {
+    None -> state
+    Some(source) -> {
+      expect and {
+          source.origin_kind == 1,
+          source.source_key == key,
+        }
+      appended_source_v1(state, source)
+    }
+  }
+  with_checkpoint(
+    StateV1 {
+      ..scanned,
+      field_cursor: state.field_cursor + 1,
+      previous_key: key,
+    },
+    next_expected_script_hash,
+  )
+}
+
+/// Close resolved-output discovery once all `resolved_output_count` outputs
+/// of fields 0 and 1 are walked, and collapse the reconstructed purpose and
+/// source into the datum logical evaluator step 3 consumes. A selection exists
+/// only when some source carries the purpose's hash.
+pub fn finish_resolved_outputs_v1(
+  state: StateV1,
+  resolved_output_count: Int,
+) -> AuthenticatedExecutionSourceV1 {
+  expect and {
+      state_is_authentic_v1(state),
+      state.phase == phase_reference_source,
+      state.field_cursor == resolved_output_count,
+    }
+  expect Some(source) = state.selected_source
   AuthenticatedExecutionSourceV1 {
     bound: state.bound,
     prior_ledger_root: state.bound.prior_ledger_root,
@@ -411,42 +505,4 @@ pub fn authenticated_source_v1(state: StateV1) -> AuthenticatedExecutionSourceV1
     item_commitment: source.item_commitment,
     compact_cbor: state.bound.compact_cbor,
   }
-}
-
-pub fn finish_inline_sources_v1(
-  state: StateV1,
-  next_expected_script_hash: ByteArray,
-) -> StateV1 {
-  expect and {
-      state_is_authentic_v1(state),
-      state.phase == phase_inline_source,
-    }
-  with_checkpoint(
-    StateV1 {
-      ..state,
-      phase: if state.selected_source == None {
-        phase_reference_source
-      } else {
-        phase_complete
-      },
-      field_cursor: 0,
-      source_base_index: state.source_cursor,
-    },
-    next_expected_script_hash,
-  )
-}
-
-pub fn finish_reference_sources_v1(
-  state: StateV1,
-  next_expected_script_hash: ByteArray,
-) -> StateV1 {
-  expect and {
-      state_is_authentic_v1(state),
-      state.phase == phase_reference_source,
-      state.selected_source != None,
-    }
-  with_checkpoint(
-    StateV1 { ..state, phase: phase_complete },
-    next_expected_script_hash,
-  )
 }
