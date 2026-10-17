@@ -1,6 +1,7 @@
 use aiken/builtin
 use aiken/cbor
 use aiken/collection/list
+use aiken/fuzz
 use aiken/math
 use aiken/primitive/bytearray
 use midgard/cbor_deserialise
@@ -2221,5 +2222,170 @@ test script_decode_compute_constant_refuses_another_constant() {
     ),
     computes(text, constant_witness([2], builtin.b_data(#"616263"))),
     !computes(text, constant_witness([1], builtin.b_data(#"616263"))),
+  }
+}
+
+// ## Cost curves
+
+/// The Flat bits of `count` list elements, each the `width`-bit `pattern`
+/// with its cons bit, and the closing nil bit, padded with zeros to whole
+/// bytes: the window, which holds one zero byte more, and the count of Flat
+/// bits.
+fn run_window(pattern: Int, width: Int, count: Int) -> (ByteArray, Int) {
+  let (acc, n) = put(
+    list.foldl(
+      list.repeat(pattern, count),
+      (0, 0),
+      fn(p, w) { put(w, p, width) },
+    ),
+    0,
+    1,
+  )
+  let pad = ( 8 - n % 8 ) % 8
+  let flat_bits = n + pad
+  (
+    builtin.integer_to_bytearray(
+      True,
+      flat_bits / 8 + 1,
+      acc * math.pow2(pad + 8),
+    ),
+    flat_bits,
+  )
+}
+
+/// `[()]` under a cons bit.
+fn unit_list_element() -> (cek_constant_v1.ConstantTypeV1, Int, Int) {
+  (cek_constant_v1.ListConstant { element: cek_constant_v1.UnitConstant }, 6, 3)
+}
+
+/// `([()], [()])` under a cons bit.
+fn list_pair_element() -> (cek_constant_v1.ConstantTypeV1, Int, Int) {
+  let l = cek_constant_v1.ListConstant { element: cek_constant_v1.UnitConstant }
+  (cek_constant_v1.PairConstant { first: l, second: l }, 26, 5)
+}
+
+type RunFixture {
+  width: Int,
+  window: ByteArray,
+  flat_bits: Int,
+  element: cek_constant_v1.ConstantTypeV1,
+  count: Int,
+}
+
+fn run_fixture(
+  element: (cek_constant_v1.ConstantTypeV1, Int, Int),
+  count: Int,
+) -> RunFixture {
+  let (ty, pattern, width) = element
+  let (window, flat_bits) = run_window(pattern, width, count)
+  RunFixture { width, window, flat_bits, element: ty, count }
+}
+
+fn sample_unit_list_run(size: Int) -> Fuzzer<RunFixture> {
+  fuzz.constant(run_fixture(unit_list_element(), 3 * size))
+}
+
+fn sample_list_pair_run(size: Int) -> Fuzzer<RunFixture> {
+  fuzz.constant(run_fixture(list_pair_element(), size))
+}
+
+/// The position of the run's nil bit.
+fn run_end(fixture: RunFixture) -> Int {
+  fixture.count * fixture.width
+}
+
+fn scans_whole_run(fixture: RunFixture) -> Bool {
+  let RunFixture { window, flat_bits, element, count, .. } = fixture
+  let (scanned, nil, _, _) = bulk.scan_run_v1(
+    window,
+    flat_bits,
+    bulk.scan_decoder_v1(window, flat_bits, element),
+    0,
+  )
+  scanned == count && nil == run_end(fixture)
+}
+
+fn folds_whole_run(fixture: RunFixture) -> Bool {
+  let RunFixture { window, flat_bits, element, count, .. } = fixture
+  bulk.fold_run_v1(
+    bulk.fold_decoder_v1(window, flat_bits, element),
+    0,
+    count,
+    cek_data_v1.empty_data_list_summary_v1(),
+  ).length == count
+}
+
+/// The bulk scan of a run of `[()]` elements over the run's length.
+bench script_decode_scan_run_of_unit_lists(fixture via sample_unit_list_run) {
+  scans_whole_run(fixture)
+}
+
+/// The bulk scan of a run of `([()], [()])` elements over the run's length.
+bench script_decode_scan_run_of_list_pairs(fixture via sample_list_pair_run) {
+  scans_whole_run(fixture)
+}
+
+/// The bulk fold of a run of `[()]` elements over the run's length.
+bench script_decode_fold_run_of_unit_lists(fixture via sample_unit_list_run) {
+  folds_whole_run(fixture)
+}
+
+/// The bulk fold of a run of `([()], [()])` elements over the run's length.
+bench script_decode_fold_run_of_list_pairs(fixture via sample_list_pair_run) {
+  folds_whole_run(fixture)
+}
+
+/// A script of a list of 600 six-pair unit chains over `[()]`, the shape whose
+/// ticks cost most, and a tick count.
+fn sample_unit_chain_ticks(size: Int) -> Fuzzer<(ByteArray, Int)> {
+  let tags = [7, 5, ..unit_chain_tags(6, [7, 5, 3])]
+  let item = unit_chain_val(6, v_list([v_unit()]))
+  fuzz.constant((wrap(list_program(tags, list.repeat(item, 600))), size + 1))
+}
+
+/// A script of a list of 600 `([()], [()])` pairs and a tick count.
+fn sample_list_pair_ticks(size: Int) -> Fuzzer<(ByteArray, Int)> {
+  let tags = [7, 5, 7, 7, 6, 7, 5, 3, 7, 5, 3]
+  let item = v_pair(v_list([v_unit()]), v_list([v_unit()]))
+  fuzz.constant((wrap(list_program(tags, list.repeat(item, 600))), size + 1))
+}
+
+fn steps(fixture: (ByteArray, Int)) -> Bool {
+  let (script, fuel) = fixture
+  let run = initial_run_v1(#"aa", 3, script)
+  let env = decode_env_v1(script, run)
+  step_v1(env, run.machine, [], run.machine.stack_root, fuel) != run.machine
+}
+
+/// One step of the script decoder over its tick count.
+bench script_decode_ticks_of_unit_chain_list(
+  fixture via sample_unit_chain_ticks,
+) {
+  steps(fixture)
+}
+
+/// One step of the script decoder over its tick count.
+bench script_decode_ticks_of_list_pair_list(fixture via sample_list_pair_ticks) {
+  steps(fixture)
+}
+
+/// The Data constant of `depth` nested one-item lists over an integer.
+fn nested_data(depth: Int) -> Data {
+  if depth == 0 {
+    builtin.i_data(1)
+  } else {
+    builtin.list_data([nested_data(depth - 1)])
+  }
+}
+
+fn sample_nested_data(size: Int) -> Fuzzer<ByteArray> {
+  fuzz.constant(wrap(data_flat(cbor.serialise(nested_data(8 * size)))))
+}
+
+/// The whole decode of a Data constant over its nesting depth.
+bench script_decode_nested_data(script via sample_nested_data) {
+  when run_script(script) is {
+    Decoded { .. } -> True
+    _ -> False
   }
 }
