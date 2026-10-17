@@ -1,4 +1,7 @@
-import { ledgerEd25519SignatureReady } from "@al-ft/midgard-core";
+import {
+  findLedgerSignatureVerifierUnavailable,
+  ledgerEd25519SignatureReady,
+} from "@al-ft/midgard-core";
 import { Cause, Effect } from "effect";
 import { parentPort, workerData } from "worker_threads";
 
@@ -29,7 +32,11 @@ import {
   followerCommitLucidFactory,
   provideCommitBlockWorkerServices,
 } from "./commit-block-header.pending-user-event-counts-up-to.js";
-import { WorkerInput, WorkerOutput } from "./utils/commit-block-header.js";
+import {
+  VERIFIER_UNAVAILABLE_FAULT,
+  WorkerInput,
+  WorkerOutput,
+} from "./utils/commit-block-header.js";
 
 // Export the production commit worker core so emulator tests can exercise the
 // exact same effect graph without going through a worker-thread bootstrap.
@@ -170,7 +177,8 @@ export const runCommitBlockHeaderWorkerProgram = (
   );
 
 /** The worker's outgoing failure boundary, shared with in-process
- * acceptance. */
+ * acceptance. A failure carrying this process's Ed25519 verifier fault is
+ * marked `localFault`, which the parent bounds. */
 export const captureCommitWorkerFailure = <E, R>(
   program: Effect.Effect<WorkerOutput, E, R>,
 ) =>
@@ -179,6 +187,12 @@ export const captureCommitWorkerFailure = <E, R>(
       Effect.succeed({
         type: "FailureOutput",
         error: `Block commitment worker failure: ${Cause.pretty(cause)}`,
+        ...([...Cause.failures(cause), ...Cause.defects(cause)].some(
+          (error) =>
+            findLedgerSignatureVerifierUnavailable(error) !== undefined,
+        )
+          ? { localFault: VERIFIER_UNAVAILABLE_FAULT }
+          : {}),
       } satisfies WorkerOutput),
     ),
   );

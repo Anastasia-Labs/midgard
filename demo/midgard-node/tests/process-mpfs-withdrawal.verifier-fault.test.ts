@@ -1,6 +1,9 @@
 import "./utils.js";
 
-import { ledgerEd25519SignatureReady } from "@al-ft/midgard-core";
+import {
+  findLedgerSignatureVerifierUnavailable,
+  ledgerEd25519SignatureReady,
+} from "@al-ft/midgard-core";
 import {
   encodeMidgardSpendInputItem,
   encodeMidgardTxOutput,
@@ -33,8 +36,9 @@ import { provideDatabaseLayers, resetApplicationTables } from "./utils.js";
  * withdrawal: the build fails, naming the verifier's fault, before any
  * withdrawal is classified or written. The worker reports the failure and
  * the parent raises `commit_worker_failed`, so the next commit tick retries
- * it. Nothing is judged and nothing is dropped; once the fault clears the
- * same withdrawal is classified and projected.
+ * it (bounded: `commit-worker.local-fault-bound.test.ts`). Nothing is judged
+ * and nothing is dropped; once the fault clears the same withdrawal is
+ * classified and projected.
  */
 const injected = vi.hoisted(() => ({ fault: undefined as Error | undefined }));
 
@@ -220,13 +224,20 @@ describe("this node's block under a verifier fault on a due withdrawal", () => {
     expect(failure.message).toBe(
       `Ed25519 verification is unavailable: ${fault.message}`,
     );
-    expect(failure.cause).toBe(fault);
-    // The worker reports it as a failed attempt, which the parent raises as
-    // `commit_worker_failed` and the next commit tick retries.
+    // The typed fault is the cause, carrying the verifier's own error.
+    const local = findLedgerSignatureVerifierUnavailable(failure.cause);
+    expect(local).toBe(failure.cause);
+    expect((local as { cause?: unknown } | undefined)?.cause).toBe(fault);
+    // The worker reports it as a failed attempt on a local fault, which the
+    // parent raises as `commit_worker_failed` and the next commit tick
+    // retries, within a bound.
     const output = await Effect.runPromise(
       captureCommitWorkerFailure(Effect.fail(failure)),
     );
-    expect(output.type).toBe("FailureOutput");
+    expect(output).toMatchObject({
+      type: "FailureOutput",
+      localFault: "verifier_unavailable",
+    });
     expect(output.type === "FailureOutput" && output.error).toContain(
       fault.message,
     );

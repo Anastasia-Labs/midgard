@@ -1,4 +1,7 @@
-import { ledgerEd25519SignatureReady } from "@al-ft/midgard-core";
+import {
+  findLedgerSignatureVerifierUnavailable,
+  ledgerEd25519SignatureReady,
+} from "@al-ft/midgard-core";
 import { LOVELACE_UNIT, normalizeAssets } from "@al-ft/midgard-core/assets";
 import { classifyWithdrawalFromLedger } from "@al-ft/midgard-sdk";
 import { Effect, Option } from "effect";
@@ -64,9 +67,15 @@ export const classifyWithdrawal = ({
       ledgerOutRef,
       ...classification,
     })),
+    // A verifier fault stays the cause as it is, so the commit path can tell
+    // this process's fault from a failure of the withdrawal's bytes.
     Effect.mapError(
-      ({ message, cause }) =>
-        new DatabaseError({ table: WithdrawalsDB.tableName, message, cause }),
+      (error) =>
+        new DatabaseError({
+          table: WithdrawalsDB.tableName,
+          message: error.message,
+          cause: findLedgerSignatureVerifierUnavailable(error) ?? error.cause,
+        }),
     ),
   );
 

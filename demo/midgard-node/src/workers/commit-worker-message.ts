@@ -1,7 +1,10 @@
 import { Effect, Ref } from "effect";
 
 import { applyCommitDaFrameNotice } from "../fibers/block-commitment.commit-da-frame-readiness.js";
-import { applyCommitWorkerReadiness } from "../fibers/block-commitment.worker-readiness.js";
+import {
+  applyCommitWorkerReadiness,
+  boundCommitWorkerLocalFaults,
+} from "../fibers/block-commitment.worker-readiness.js";
 import {
   noticeCommitBuildAlarm,
   settleCommitBuildAlarms,
@@ -52,7 +55,9 @@ export type CommitWorkerMessage =
  * because a "nothing to commit" output also ends a tick whose step-down
  * dropped every transaction from an over-frame ledger. A notice of refusal
  * holds the worker could not write goes to `adoptRefusalHolds` (the node
- * journal's `adopt`), which names them on `/readyz` and writes them.
+ * journal's `adopt`), which names them on `/readyz` and writes them. An
+ * output also counts toward the bound on attempts failing on this process's
+ * Ed25519 verifier (`boundCommitWorkerLocalFaults`).
  */
 export const takeCommitWorkerOutput = (
   globals: Globals,
@@ -82,6 +87,7 @@ export const takeCommitWorkerOutput = (
   }
   if (message.type !== "MempoolLedgerRevertedNotice") {
     Effect.runSync(applyCommitWorkerReadiness(globals, message));
+    Effect.runSync(boundCommitWorkerLocalFaults(globals, message));
     Effect.runSync(
       Ref.update(globals.COMMIT_BUILD_ALARMS, (alarms) =>
         settleCommitBuildAlarms(alarms, message),
