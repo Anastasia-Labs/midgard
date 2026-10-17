@@ -44,7 +44,7 @@ const ledgerOf = (entries, fields = {}) => ({
 
 const ROWS = [row("a/0"), row("b/1", { kind: "publication" })];
 const RECORDED = ledgerOf(ROWS);
-/** The same measurement re-taken: other budgets, build and digest. */
+/** A fresh run that measured other budgets against another build. */
 const RETAKEN = ledgerOf(
   ROWS.map((entry) => ({
     ...entry,
@@ -114,13 +114,13 @@ const check = (setup, run) =>
     run,
   });
 
-test("a re-take that differs only in budgets and digests is current, and size-plans is untouched", async (t) => {
+test("a fresh run equal to the checked-in copy is current, and size-plans is untouched", async (t) => {
   const setup = fixture(t);
   const before = setup.bytes();
   const calls = [];
   const { status, lines } = await check(
     setup,
-    owner({ ...setup, fresh: RETAKEN, calls }),
+    owner({ ...setup, fresh: RECORDED, calls }),
   );
   assert.deepEqual(lines, ["current: x-fit-ledger.json"]);
   assert.equal(status, 0);
@@ -131,6 +131,34 @@ test("a re-take that differs only in budgets and digests is current, and size-pl
 
 const [first, second] = ROWS;
 for (const [field, recorded, expected] of [
+  [
+    "memoryUnits",
+    ledgerOf([{ ...first, memoryUnits: "9000001" }, second]),
+    'row a/0 memoryUnits: recorded "9000001", fresh "9000000"',
+  ],
+  [
+    "cpuUnits",
+    ledgerOf([first, { ...second, cpuUnits: "2999999999" }]),
+    'row b/1 cpuUnits: recorded "2999999999", fresh "3000000000"',
+  ],
+  [
+    "memoryUnitMargin",
+    ledgerOf([{ ...first, memoryUnitMargin: "7499999" }, second]),
+    'row a/0 memoryUnitMargin: recorded "7499999", fresh "7500000"',
+  ],
+  [
+    "cpuUnitMargin",
+    ledgerOf([first, { ...second, cpuUnitMargin: "7000000001" }]),
+    'row b/1 cpuUnitMargin: recorded "7000000001", fresh "7000000000"',
+  ],
+  [
+    "a budget measured against another blueprint",
+    ledgerOf([{ ...first, cpuUnits: "3000000001" }, second], {
+      blueprintSha256: "cd".repeat(32),
+      ledgerSha256: "02".repeat(32),
+    }),
+    'row a/0 cpuUnits: recorded "3000000001", fresh "3000000000"',
+  ],
   [
     "signedBytes",
     ledgerOf([{ ...first, signedBytes: 9_001 }, second]),
@@ -200,7 +228,7 @@ for (const [field, recorded, expected] of [
     const before = setup.bytes();
     const { status, lines } = await check(
       setup,
-      owner({ ...setup, fresh: RETAKEN }),
+      owner({ ...setup, fresh: RECORDED }),
     );
     assert.equal(status, 1);
     assert.equal(lines.length, 1);
@@ -212,6 +240,30 @@ for (const [field, recorded, expected] of [
       lines[0].split("\n").slice(1),
       [expected].flat().map((line) => `  ${line}`),
     );
+    assert.deepEqual(setup.bytes(), before);
+  });
+
+for (const [digests, recorded] of [
+  ["blueprintSha256", ledgerOf(ROWS, { blueprintSha256: "cd".repeat(32) })],
+  ["ledgerSha256", ledgerOf(ROWS, { ledgerSha256: "02".repeat(32) })],
+  [
+    "both digests",
+    ledgerOf(ROWS, {
+      blueprintSha256: "cd".repeat(32),
+      ledgerSha256: "02".repeat(32),
+    }),
+  ],
+])
+  test(`a checked-in ledger that differs only in ${digests} is current`, async (t) => {
+    // A blueprint change makes a ledger stale only when its numbers move.
+    const setup = fixture(t, recorded);
+    const before = setup.bytes();
+    const { status, lines } = await check(
+      setup,
+      owner({ ...setup, fresh: RECORDED }),
+    );
+    assert.deepEqual(lines, ["current: x-fit-ledger.json"]);
+    assert.equal(status, 0);
     assert.deepEqual(setup.bytes(), before);
   });
 
@@ -300,5 +352,5 @@ test("the comparison names a row list that is missing on either side", () => {
       "row b/1: in the fresh run, not recorded",
     ],
   );
-  assert.deepEqual(fitLedgerDifferences(RECORDED, RETAKEN), []);
+  assert.deepEqual(fitLedgerDifferences(RECORDED, RECORDED), []);
 });

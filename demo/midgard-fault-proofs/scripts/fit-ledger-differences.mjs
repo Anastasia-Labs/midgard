@@ -1,25 +1,20 @@
 /**
  * What `fit:regenerate --check` compares between a checked-in fit ledger and
- * the one a fresh run of its owners writes. Every field counts except four
- * row fields and two ledger fields. The row fields are the execution budgets
- * (`memoryUnits`, `cpuUnits`) and the margins derived from them, which vary
- * between runs of one blueprint. The ledger fields are `blueprintSha256` and
- * `ledgerSha256`, which name the build and the file's bytes, not what was
- * measured. A field only one side has is a difference, so a ledger still
- * carrying a field the format dropped is stale.
+ * the one a fresh run of its owners writes: every field, the execution
+ * budgets and their margins included, except the two digests. Owners run on
+ * fixed wallet seeds and a fixed emulator clock, so a fresh run of one
+ * blueprint measures the same budgets. `blueprintSha256` and `ledgerSha256`
+ * (whose body holds the blueprint digest) name the build and the file's
+ * bytes, not what was measured, so a blueprint change makes a ledger stale
+ * only when its numbers move. A field only one side has is a difference, so
+ * a ledger still carrying a field the format dropped is stale.
  */
 const UNCOMPARED_LEDGER_FIELDS = new Set(["blueprintSha256", "ledgerSha256"]);
-const UNCOMPARED_ROW_FIELDS = new Set([
-  "memoryUnits",
-  "cpuUnits",
-  "memoryUnitMargin",
-  "cpuUnitMargin",
-]);
 
 const shown = (value) =>
   value === undefined ? "absent" : JSON.stringify(value);
 
-const fieldDifferences = (label, recorded, fresh, uncompared) =>
+const fieldDifferences = (label, recorded, fresh, uncompared = new Set()) =>
   [...new Set([...Object.keys(recorded), ...Object.keys(fresh)])]
     .filter(
       (field) =>
@@ -59,14 +54,7 @@ export const fitLedgerDifferences = (recorded, fresh) => {
     if (freshRow === undefined)
       differences.push(`row ${row.name}: recorded, not in the fresh run`);
     else
-      differences.push(
-        ...fieldDifferences(
-          `row ${row.name} `,
-          row,
-          freshRow,
-          UNCOMPARED_ROW_FIELDS,
-        ),
-      );
+      differences.push(...fieldDifferences(`row ${row.name} `, row, freshRow));
   }
   for (const { name } of freshRows)
     if (!recordedNames.has(name))

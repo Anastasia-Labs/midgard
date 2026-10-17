@@ -108,11 +108,12 @@ is the authority. Its rules:
   `--check --all`). It runs the owning test files as a regeneration does, but
   has them write each checked-in ledger into a scratch directory
   (`MIDGARD_FIT_LEDGER_CHECK_DIR`), then compares the fresh ledger with the
-  checked-in copy on every field except the execution budgets and their
-  margins, `blueprintSha256` and `ledgerSha256`
+  checked-in copy on every field, the execution budgets and their margins
+  included, except `blueprintSha256` and `ledgerSha256`
   (`demo/midgard-fault-proofs/scripts/fit-ledger-differences.mjs`). It fails
   when a ledger differs, an owner fails or skips a case, or the run changes
-  anything under size-plans
+  anything under size-plans. A blueprint change makes a ledger stale only if
+  its numbers move
   [ci: Midgard Node CI/Check the fit ledgers against a fresh run of their owners].
 - Each owning test file calls `fixFitLedgerOwnerEmulator()`
   (`demo/midgard-fault-proofs/tests/support/emulator/fit-ledger-owner-emulator.ts`)

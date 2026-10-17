@@ -50,8 +50,7 @@ test("every owner is a test file Vitest runs", () => {
 
 test("every owner of a checked-in ledger fixes its wallet seeds and emulator clock", () => {
   // Random wallets or a wall-clock start make a re-run build different
-  // transactions. `--check` sees moved bytes, but not moved execution
-  // budgets, which it does not compare.
+  // transactions, so `--check` would fail on a ledger nothing changed.
   for (const ledger of tracked)
     for (const file of owners.get(ledger) ?? [])
       assert.match(

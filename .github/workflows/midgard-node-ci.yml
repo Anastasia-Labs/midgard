@@ -658,8 +658,8 @@ jobs:
   # Every checked-in fit ledger a test writes, against a fresh run of its
   # owning test files in one Vitest run. `fit:regenerate --check` has them
   # write each ledger into a scratch directory and compares it with the
-  # checked-in copy on every field except the execution budgets and the two
-  # digests (scripts/fit-ledger-differences.mjs). It fails when a ledger
+  # checked-in copy on every field except the two digests
+  # (scripts/fit-ledger-differences.mjs). It fails when a ledger
   # differs, an owner fails or skips a case, or the run changes size-plans.
   midgard-fault-proofs-fit-ledgers:
     name: midgard-fault-proofs fit ledgers

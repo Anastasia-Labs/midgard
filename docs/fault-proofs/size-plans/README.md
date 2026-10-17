@@ -38,8 +38,9 @@ for that run and removes afterwards. It keeps a ledger only when every owning
 file passed with no skipped case and the run rewrote the ledger. Otherwise it
 puts the ledger back as it was and exits 1. It also puts back any other file
 in this directory the run changed. The stale-blueprint refusal applies as in
-any Vitest run. Execution budgets vary between runs of one blueprint, so a
-rewrite without a blueprint change is noise: do not commit it.
+any Vitest run. Owners run on fixed wallet seeds and a fixed emulator clock
+([below](#checking-a-ledger)), so with the same blueprint and owners a
+regeneration writes the same bytes.
 
 ## Checking a ledger
 
@@ -57,15 +58,16 @@ variable, `MIDGARD_FIT_LEDGER_CHECK_DIR`, set to a scratch directory:
 instead, so a check never rewrites a checked-in file. It then compares each
 checked-in ledger with the fresh one
 ([`fit-ledger-differences.mjs`](../../../demo/midgard-fault-proofs/scripts/fit-ledger-differences.mjs)).
-Every field counts except the execution budgets (`memoryUnits`, `cpuUnits`),
-the margins derived from them, `blueprintSha256` and `ledgerSha256`: rows,
-their order, names, kinds, shapes, signed bytes and the byte and publication
-margins must all match. A field only one side has is a difference, so a ledger
-still carrying a dropped field such as `compilerVersion` is stale. The check
-exits 1 and names each difference when a ledger is stale, when an owning file
-failed, skipped a case or did not write its ledger, or when the run changed a
-file in this directory; any such file is put back. It needs no pinned
-blueprint hash or compiler version. CI runs `--check --all` in the
+Every field counts except the two digests, `blueprintSha256` and
+`ledgerSha256`: rows, their order, names, kinds, shapes, signed bytes, the
+execution budgets (`memoryUnits`, `cpuUnits`) and every margin must all match.
+A blueprint change therefore makes a ledger stale only if its numbers move. A
+field only one side has is a difference, so a ledger still carrying a dropped
+field such as `compilerVersion` is stale. The check exits 1 and names each
+difference when a ledger is stale, when an owning file failed, skipped a case
+or did not write its ledger, or when the run changed a file in this
+directory; any such file is put back. It needs no pinned blueprint hash or
+compiler version. CI runs `--check --all` in the
 `midgard-fault-proofs fit ledgers` job.
 
 A re-run has to build the same transactions for the comparison to mean
@@ -73,8 +75,8 @@ anything. Each owning test file calls `fixFitLedgerOwnerEmulator()`
 ([`fit-ledger-owner-emulator.ts`](../../../demo/midgard-fault-proofs/tests/support/emulator/fit-ledger-owner-emulator.ts))
 when it loads, so its emulators start at a fixed time and its wallets come
 from fixed seed phrases, one per role. Two runs then write the same ledger
-byte for byte, execution budgets included. Other suites keep random wallets
-and a wall-clock start.
+byte for byte, which is what lets the check compare the execution budgets.
+Other suites keep random wallets and a wall-clock start.
 
 Every checked-in ledger is written through `writeVanRossemFitLedger`, which
 throws `FitLedgerWriteRefusedError` unless `MIDGARD_WRITE_FIT_LEDGER=1` is set,

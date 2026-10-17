@@ -1168,7 +1168,7 @@
     {
       "id": "forced-window-fit-ledger",
       "kind": "fit-ledger",
-      "summary": "The transition-trace forced-window fit ledger. `fit:regenerate --check` reruns its owning suite and compares the fresh ledger with the checked-in copy on every field except the execution budgets and the blueprint and ledger digests.",
+      "summary": "The transition-trace forced-window fit ledger. `fit:regenerate --check` reruns its owning suite and compares the fresh ledger with the checked-in copy on every field except the blueprint and ledger digests.",
       "generators": [
         "demo/midgard-fault-proofs/tests/submit-init-emulator-transition-trace-subvariants.test.ts"
       ],
@@ -1198,7 +1198,7 @@
     {
       "id": "workflow-fit-ledger",
       "kind": "fit-ledger",
-      "summary": "The installed transition-trace workflow fit ledger, checked like the forced-window ledger: `fit:regenerate --check` compares a fresh run with the checked-in copy on every field except the execution budgets and the blueprint and ledger digests. About a tenth of its row budgets differ between runs of one blueprint, so a rewrite without a blueprint change is noise.",
+      "summary": "The installed transition-trace workflow fit ledger, checked like the forced-window ledger: `fit:regenerate --check` compares a fresh run with the checked-in copy on every field except the blueprint and ledger digests.",
       "generators": [
         "demo/midgard-fault-proofs/tests/transition-trace-installed-lifecycle.test.ts"
       ],
@@ -1228,7 +1228,7 @@
     {
       "id": "fault-proof-fit-ledgers",
       "kind": "fit-ledger",
-      "summary": "The other fit ledgers under docs/fault-proofs/size-plans. Each one a test writes is checked by `fit:regenerate --check --all`, which compares a fresh run of its owners with the checked-in copy on every field except the execution budgets and the blueprint and ledger digests. The ledgers no test writes (LEDGERS_WITHOUT_SUITE_WRITER in scripts/fit-ledger-owners.mjs) are recorded evidence that nothing compares with the current build.",
+      "summary": "The other fit ledgers under docs/fault-proofs/size-plans. Each one a test writes is checked by `fit:regenerate --check --all`, which compares a fresh run of its owners with the checked-in copy on every field except the blueprint and ledger digests. The ledgers no test writes (LEDGERS_WITHOUT_SUITE_WRITER in scripts/fit-ledger-owners.mjs) are recorded evidence that nothing compares with the current build.",
       "generators": [
         "demo/midgard-fault-proofs/scripts/regenerate-fit-ledger.mjs",
         "demo/midgard-fault-proofs/tests/support/measured-fit-ledger.ts",
