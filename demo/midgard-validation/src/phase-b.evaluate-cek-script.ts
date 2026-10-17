@@ -1,6 +1,7 @@
 import {
   decodeMidgardCekProgramEnvelope,
   decodeMidgardCekProgramMaterialSidecar,
+  MidgardCekProgramMaterialMissingRootError,
   type MidgardCekProgramMaterialSidecar,
 } from "@al-ft/midgard-core/cek-proof";
 
@@ -56,14 +57,29 @@ export type MidgardCekVerdictRequest = MidgardCekScriptRun & {
   readonly programMaterialSidecarCbor: Uint8Array | null;
 };
 
+/** Whether the transaction's program material carries the node `rootHex`. */
+const materialCarriesRoot = (
+  material: MidgardCekProgramMaterialSidecar,
+  rootHex: string,
+): boolean => {
+  for (const entry of material) {
+    if (Buffer.from(entry.root).toString("hex") === rootHex) return true;
+  }
+  return false;
+};
+
 /**
  * Runs one Phase B script on the structural CEK executor. A run that halts
  * with an error is a `script_invalid` verdict. A budget stop is reported as
  * accepted with the spent budget; the caller compares it with the declared
- * ex-units. Anything else the run throws is the evaluator's own failure,
- * never the script's: `indeterminate`. The program envelope and material
- * were verified before the run, so a throw here is a bound or a fault of the
- * evaluator.
+ * ex-units.
+ *
+ * A throw is judged by what the transaction supplied. A program root the
+ * transaction's material does not carry is the transaction's own failure:
+ * the program cannot run, so the verdict is `script_invalid`. Anything else
+ * the run throws is the evaluator's own failure, never the script's:
+ * `indeterminate`. That includes a root the material does carry but the run
+ * still reports missing, and every bound of the evaluator.
  */
 export const evaluateMidgardCekScript = (
   run: MidgardCekScriptRun,
@@ -108,6 +124,19 @@ export const evaluateMidgardCekScript = (
             },
     };
   } catch (cause) {
+    if (
+      cause instanceof MidgardCekProgramMaterialMissingRootError &&
+      !materialCarriesRoot(material, cause.rootHex)
+    ) {
+      return {
+        graph,
+        execution: null,
+        result: {
+          kind: "script_invalid",
+          detail: `V1 CEK execution failed closed: ${cause.name}: ${cause.message}`,
+        },
+      };
+    }
     return {
       graph,
       execution: null,

@@ -7,6 +7,7 @@ import { describe, expect, it } from "vitest";
 import { encodeMidgardCekPlutusData } from "../src/cek-constant.js";
 import {
   commitValidationTraceV1,
+  evaluateMidgardCekScript,
   evaluateMidgardCekVerdict,
   type MidgardCekVerdictRequest,
   type PhaseBConfig,
@@ -204,6 +205,50 @@ describe("verdict evaluator: no verdict on bytes it cannot read", () => {
         verdictRequest(failingProgram(), { maxSteps: 1_000 }),
       ).kind,
     ).toBe("script_invalid");
+  });
+});
+
+describe("structural evaluator: a program root missing from the run", () => {
+  const program = acceptingProgram();
+  const entries = [...program.material.values()];
+  const withheld = entries[0]!;
+  const others = entries.filter((entry) => entry !== withheld);
+  const missing = `CEK program material is missing root ${Buffer.from(withheld.root).toString("hex")}`;
+  const evaluate = (material: typeof entries) =>
+    evaluateMidgardCekScript(
+      {
+        scriptBytes: program.envelopeCbor,
+        contextCbor: encodeMidgardCekPlutusData(new DataI(42n)),
+        executionIndex: 0n,
+        maxSteps: 1_000,
+      },
+      material,
+      "verdict",
+    ).result;
+
+  it("is rejected when the transaction's material does not carry it", () => {
+    expect(evaluate(others)).toStrictEqual({
+      kind: "script_invalid",
+      detail: expect.stringContaining(missing) as unknown,
+    });
+  });
+
+  it("is indeterminate when the material carries it and the run still loses it", () => {
+    // The material hands the run every node but one on its first read, and
+    // all of them on any later read: the root is the transaction's, so its
+    // absence from the run is the evaluator's failure.
+    let reads = 0;
+    const losesOneNode = Object.assign([...entries], {
+      [Symbol.iterator]: () => {
+        reads += 1;
+        return (reads === 1 ? others : entries)[Symbol.iterator]();
+      },
+    });
+    expect(evaluate(losesOneNode)).toMatchObject({
+      kind: "indeterminate",
+      detail: expect.stringContaining(missing) as unknown,
+    });
+    expect(evaluate(entries).kind).toBe("accepted");
   });
 });
 
