@@ -4,6 +4,8 @@ import { inspect } from "node:util";
 
 import * as SDK from "@al-ft/midgard-sdk";
 import {
+  type Assets,
+  calculateMinLovelaceFromUTxO,
   CML,
   Emulator,
   generateEmulatorAccount,
@@ -205,12 +207,15 @@ it("registers history observers within the size limit without spending reserved 
 });
 
 const historyFixture = async (
-  outputs: readonly bigint[],
+  outputs: readonly (bigint | Assets)[],
   nonce?: (lucid: LucidEvolution) => Promise<UTxO>,
 ) => {
   const wallet = generateEmulatorAccount({ lovelace: 0n });
   const emulator = new Emulator(
-    outputs.map((lovelace) => ({ ...wallet, assets: { lovelace } })),
+    outputs.map((assets) => ({
+      ...wallet,
+      assets: typeof assets === "bigint" ? { lovelace: assets } : assets,
+    })),
     PROTOCOL_PARAMETERS_DEFAULT,
   );
   const lucid = await Lucid(emulator, "Preprod");
@@ -301,4 +306,49 @@ it("leaves out every out-ref the deployment's nonce helper reserves", async () =
   expect(Either.isRight(result)).toBe(true);
   expect(await unspent(lucid, large!)).toBe(true);
   expect(await unspent(lucid, small!)).toBe(false);
+});
+
+it("selects past an output that covers a plain change but not the change of its tokens", async () => {
+  // A covers the four deposits, the fee allowance and a plain change exactly;
+  // its fifteen long-named tokens need more change than that, so B is needed.
+  const parameters = PROTOCOL_PARAMETERS_DEFAULT;
+  const policy = "ab".repeat(28);
+  const units = Array.from(
+    { length: 15 },
+    (_, index) => policy + index.toString(16).padStart(2, "0").repeat(32),
+  );
+  const outputA = 9_846_027n;
+  const { lucid, address, run } = await historyFixture([
+    {
+      lovelace: outputA,
+      ...Object.fromEntries(units.map((unit) => [unit, 1n])),
+    },
+    5_000_000n,
+  ]);
+  const plainChange = calculateMinLovelaceFromUTxO(
+    parameters.coinsPerUtxoByte,
+    {
+      txHash: "00".repeat(32),
+      outputIndex: 0,
+      address,
+      assets: { lovelace: 0xffffffffffffffffn },
+    },
+  );
+  expect(outputA).toBe(
+    4n * parameters.keyDeposit +
+      BigInt(parameters.minFeeA) * BigInt(parameters.maxTxSize) +
+      BigInt(parameters.minFeeB) +
+      plainChange,
+  );
+  const funding = await lucid.utxosAt(address);
+  expect(funding).toHaveLength(2);
+
+  const result = await run();
+  expect(Either.isRight(result)).toBe(true);
+  expect(
+    Either.isRight(result) && result.right.every((r) => r.registered),
+  ).toBe(true);
+  for (const utxo of funding) expect(await unspent(lucid, utxo)).toBe(false);
+  const after = await lucid.utxosAt(address);
+  for (const unit of units) expect(amountOf(after, unit)).toBe(1n);
 });
