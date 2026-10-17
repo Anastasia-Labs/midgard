@@ -2,7 +2,7 @@ use aiken/crypto.{ScriptHash}
 use cardano/assets.{PolicyId}
 use cardano/transaction.{OutputReference, Transaction}
 use midgard/computation_thread as ct
-use midgard/fraud_proofs/common.{continue}
+use midgard/fraud_proofs/common.{Anyone, continue_validation_trace}
 use midgard/validation_machine/machine_types.{ValidationOneStepWitnessV1}
 use midgard/validation_resolution_v1
 use midgard/validation_trace_v1
@@ -23,17 +23,16 @@ pub fn continue_winning(
   own_out_ref: OutputReference,
   tx: Transaction,
 ) -> Bool {
-  let Transaction { inputs, outputs, .. } = tx
   expect Some(step_datum) = datum
   let transition_data: Data = transition
-  continue(
+  continue_validation_trace(
     computation_thread_policy_id,
     step_datum,
     input_index,
     output_index,
     own_out_ref,
-    inputs,
-    outputs,
+    tx,
+    Anyone,
     fn(
       _input_script_hash,
       _computation_thread_token_asset_name,
@@ -90,17 +89,16 @@ pub fn continue_winning_at(
   own_out_ref: OutputReference,
   tx: Transaction,
 ) -> Bool {
-  let Transaction { inputs, outputs, .. } = tx
   expect Some(step_datum) = datum
   let transition_data: Data = transition
-  continue(
+  continue_validation_trace(
     computation_thread_policy_id,
     step_datum,
     input_index,
     output_index,
     own_out_ref,
-    inputs,
-    outputs,
+    tx,
+    Anyone,
     fn(
       _input_script_hash,
       _computation_thread_token_asset_name,

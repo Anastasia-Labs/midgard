@@ -2,7 +2,7 @@ use aiken/crypto.{ScriptHash}
 use cardano/assets.{PolicyId}
 use cardano/transaction.{OutputReference, Transaction}
 use midgard/computation_thread as ct
-use midgard/fraud_proofs/common.{cancel, continue}
+use midgard/fraud_proofs/common.{Anyone, cancel, continue_validation_trace}
 use midgard/validation_machine/machine_types.{
   NoAuxiliaryWitness, ValidationOneStepEvidenceV1, ValidationOneStepWitnessV1,
 }
@@ -45,7 +45,6 @@ validator main(
           tx,
         )
       ct.Continue(VerifyCompactBinding { input_index, output_index, transition }) -> {
-        let Transaction { inputs, outputs, .. } = tx
         expect Some(step_datum) = datum
         let evidence = ValidationOneStepEvidenceV1 {
           transition,
@@ -53,14 +52,14 @@ validator main(
         }
         let transition_data: Data = transition
         let auxiliary_data: Data = NoAuxiliaryWitness
-        continue(
+        continue_validation_trace(
           computation_thread_policy_id,
           step_datum,
           input_index,
           output_index,
           own_out_ref,
-          inputs,
-          outputs,
+          tx,
+          Anyone,
           fn(
             _input_script_hash,
             _computation_thread_token_asset_name,

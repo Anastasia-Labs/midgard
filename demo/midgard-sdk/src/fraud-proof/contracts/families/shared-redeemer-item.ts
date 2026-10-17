@@ -2,7 +2,7 @@ import type { Network } from "@lucid-evolution/lucid";
 
 import type { SpendingValidator } from "../../../common.js";
 import {
-  applyBlueprintParams,
+  applyThreadHolderParams,
   type FaultProofBlueprint,
   makeSpendingValidator,
 } from "../blueprint.js";
@@ -44,6 +44,8 @@ export type BuildCekRedeemerItemStagesParams = {
   readonly blueprint: FaultProofBlueprint;
   readonly network: Network;
   readonly computationThreadPolicyId: string;
+  /** The thread expiry script every thread holder takes as its last parameter. */
+  readonly threadExpiryScriptHash: string;
   readonly deploymentId: string;
   readonly returnScriptHash: string;
 };
@@ -53,6 +55,7 @@ const buildRedeemerItemStages = ({
   blueprint,
   network,
   computationThreadPolicyId,
+  threadExpiryScriptHash,
   deploymentId,
   returnScriptHash,
   carrier,
@@ -62,17 +65,23 @@ const buildRedeemerItemStages = ({
   for (const [label, value, length] of [
     ["deployment", deploymentId, 64],
     ["thread policy", computationThreadPolicyId, 56],
+    ["thread expiry script", threadExpiryScriptHash, 56],
     ["return script", returnScriptHash, 56],
   ] as const)
     if (value.length !== length || !/^[0-9a-f]+$/.test(value))
       throw new Error(`Invalid shared redeemer item ${label}`);
   const build = (
     key: string,
-    params: Parameters<typeof applyBlueprintParams>[2],
+    params: Parameters<typeof applyThreadHolderParams>[2],
   ) =>
     makeSpendingValidator(
       network,
-      applyBlueprintParams(blueprint, `${prefix}${key}.main.spend`, params),
+      applyThreadHolderParams(
+        blueprint,
+        `${prefix}${key}.main.spend`,
+        params,
+        threadExpiryScriptHash,
+      ),
     );
   const base = [deploymentId, computationThreadPolicyId];
   const keys =

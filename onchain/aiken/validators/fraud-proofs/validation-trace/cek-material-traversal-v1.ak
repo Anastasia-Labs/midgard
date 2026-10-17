@@ -3,7 +3,9 @@ use cardano/assets.{PolicyId}
 use cardano/transaction.{OutputReference, Transaction}
 use midgard/cek_material_traversal as material
 use midgard/computation_thread as ct
-use midgard/fraud_proofs/common.{cancel, continue}
+use midgard/fraud_proofs/common.{
+  Anyone, ProverOnly, cancel, continue_validation_trace,
+}
 use midgard/state_queue_yield.{require_authenticated_zero_yield}
 use midgard/validation_resolution_v1.{winning_resolution}
 
@@ -45,14 +47,18 @@ validator main(
           role,
           action.yield_reference_input_index,
         )
-        continue(
+        continue_validation_trace(
           computation_thread_policy_id,
           step,
           action.input_index,
           action.output_index,
           own_out_ref,
-          tx.inputs,
-          tx.outputs,
+          tx,
+          if next.pending_root == material.empty_stack {
+            Anyone
+          } else {
+            ProverOnly
+          },
           fn(input_hash, _, _, _, output_hash, output_state) {
             if next.pending_root == material.empty_stack {
               let award: Data = winning_resolution()

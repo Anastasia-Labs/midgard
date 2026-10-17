@@ -174,9 +174,6 @@ for (const commandName of RegisterActiveOperator.REFERENCE_SCRIPT_COMMAND_NAMES)
               lucidService.api,
               lucidService.referenceScriptsAddress,
               nodeConfig.REFERENCE_SCRIPT_AUTH_MIN_REMAINING_MS,
-              new Set([
-                `${nodeConfig.HUB_ORACLE_ONE_SHOT_TX_HASH}#${nodeConfig.HUB_ORACLE_ONE_SHOT_OUTPUT_INDEX.toString()}`,
-              ]),
             );
           return { mode: "publish" as const, published };
         }).pipe(

@@ -6,7 +6,7 @@ use cardano/transaction.{OutputReference, Transaction}
 use midgard/cek_context_chain as chain
 use midgard/cek_context_step
 use midgard/computation_thread as ct
-use midgard/fraud_proofs/common.{cancel, continue}
+use midgard/fraud_proofs/common.{ProverOnly, cancel, continue_validation_trace}
 use midgard/validation_machine/machine_types.{CekWitnessControlV1}
 use midgard/validation_machine/witness as witness
 
@@ -75,14 +75,14 @@ validator main(
           native: cek_context_step.native_facts(cek.control),
           execution_cursor: cek.execution_cursor,
         }
-        continue(
+        continue_validation_trace(
           computation_thread_policy_id,
           step,
           action.input_index,
           action.output_index,
           own_out_ref,
-          tx.inputs,
-          tx.outputs,
+          tx,
+          ProverOnly,
           fn(_, _, _, _, hash, state) { hash == next_hash && state == next },
         )
       }

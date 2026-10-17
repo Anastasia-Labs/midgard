@@ -191,7 +191,6 @@ export const setupWithdrawnReferenceInputScenario = async ({
     withdrawalCount: 1n,
     totalEventCount: 2n,
     transitionStepCount: 2n,
-    validationTraceCount: 1n,
   });
   const headerHash = await Effect.runPromise(SDK.hashBlockHeader(header));
   const blockTxs = [
@@ -283,7 +282,6 @@ export const setupWithdrawnReferenceInputUncheckedScenario = async ({
     withdrawalCount: 1n,
     totalEventCount: 2n,
     transitionStepCount: 2n,
-    validationTraceCount: 1n,
   };
   const setup = await submitSetupTx({
     lucid: harness.funderLucid,

@@ -178,6 +178,8 @@ export const retainSignedIntentContinuationChildDa = (
         childHeader,
         childHeader.endTime,
         bytes,
+        roots,
+        counts,
       ),
     );
     return { payload, bytes, roots, counts };

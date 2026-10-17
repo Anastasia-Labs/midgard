@@ -11,8 +11,8 @@ use midgard/common/allow_list
 use midgard/common/utils
 use midgard/hub_oracle as hub
 use midgard/operator_directory.{
-  bounty_routing_is_exact_v1, deinit, init, operator_is_not_a_member,
-  other_directory_is_untouched_v1,
+  bounty_address_v1, bounty_routing_is_exact_v1, deinit, init,
+  operator_is_not_a_member, other_directory_is_untouched_v1,
 }
 use midgard/operator_directory/active_operators
 use midgard/operator_directory/registered_operators.{
@@ -331,7 +331,7 @@ validator mint(
         expect
           bounty_routing_is_exact_v1(
             outputs,
-            bounty_claimant,
+            bounty_address_v1(bounty_claimant),
             env.fraud_prover_reward,
           )
 

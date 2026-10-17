@@ -164,10 +164,6 @@ export const submitTxBackedCommit = ({
         depositCount: BigInt(includedDepositEventIds.length),
         transitionStepCount: BigInt(transitionStepCount),
       },
-      {
-        validationTracesRoot,
-        validationTraceCount: BigInt(validationTraceCount),
-      },
     );
     const submittedAwaitingConfirmationOutput = (
       submittedTxHash: string,

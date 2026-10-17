@@ -121,6 +121,11 @@ export type TransitionTraceReconstruction = {
     readonly deposits: CountedRoot;
     readonly transitionTrace: CountedRoot;
     readonly eventToStep: CountedRoot;
+    /**
+     * Derived body data, not header-committed: the header pins the
+     * validation-trace pair to the empty tree, so this trie is checked only
+     * against the body's own declared count.
+     */
     readonly validationTraces: CountedRoot;
   };
 };
@@ -219,7 +224,9 @@ export const validatePayloadEntryArray = (
  * The payload's declared counts are not committed by the header: they are
  * bound only through the DA payload hash, and no on-chain arm reads them.
  * Reconstruction therefore authenticates counts against the header and only
- * requires the declared ones to be well formed.
+ * requires the declared ones to be well formed. The one exception is
+ * validation_trace_count, which the header pins to 0: reconstruction checks it
+ * against the body's own validation-trace trie instead.
  */
 export const validateDeclaredCounts = (payload: SDK.DaPayload): void => {
   const counts = payload.block_body.counts;

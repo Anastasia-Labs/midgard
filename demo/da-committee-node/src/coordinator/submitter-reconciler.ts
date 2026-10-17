@@ -191,6 +191,10 @@ const validationSummaryFromHeader = (
   },
 });
 
+/**
+ * The validation-trace pair comes from the header, so it is the pinned empty
+ * root and zero count, not the body-built pair a locally verified record holds.
+ */
 const rootSummaryFromHeader = (
   header: StateQueueHeaderRecord,
   rootSummary?: PayloadRootSet,

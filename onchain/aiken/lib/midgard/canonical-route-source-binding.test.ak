@@ -104,7 +104,6 @@ fn fixture(
     execution_memory: 0,
     verdict: vt.Pending,
     rejection_code_hash: zero,
-    ledger_delta_root: zero,
   }
   let post_work = encode_transaction_field_scan_witness(
     source.compact_cbor,

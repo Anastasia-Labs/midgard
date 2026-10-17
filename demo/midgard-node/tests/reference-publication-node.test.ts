@@ -4,6 +4,7 @@ import { setTimeout as pause } from "node:timers/promises";
 
 import { DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE } from "@al-ft/midgard-core/deployment-manifest-identity";
 import * as SDK from "@al-ft/midgard-sdk";
+import { selectPlainFundingUtxos } from "@al-ft/midgard-test-support/reference-script-funding";
 import { CML, Kupmios, Lucid, type UTxO } from "@lucid-evolution/lucid";
 import { expect, it } from "vitest";
 
@@ -80,7 +81,7 @@ it.skipIf(runDirectory === undefined)(
       prepared = JSON.parse(await readFile(preparedPath, "utf8"));
     } catch (cause) {
       if ((cause as NodeJS.ErrnoException).code !== "ENOENT") throw cause;
-      const [nonce] = SDK.selectReferenceScriptFundingUtxos(
+      const [nonce] = selectPlainFundingUtxos(
         await lucid.wallet().getUtxos(),
         100_000_000n,
       );

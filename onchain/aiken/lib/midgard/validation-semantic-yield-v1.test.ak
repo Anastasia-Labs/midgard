@@ -36,7 +36,6 @@ fn fixture() -> Transaction {
     execution_memory: 0,
     verdict: Pending,
     rejection_code_hash: hash,
-    ledger_delta_root: hash,
   }
   let prepared = PreparedValidationResolutionStateV1 {
     version: 1,

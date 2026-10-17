@@ -13,7 +13,6 @@ import {
   type ReferenceScriptTarget,
   resolveReferenceScriptPublicationFundingTarget,
   sumWalletLovelace,
-  utxoOutRefKey,
   WALLET_OWN_ADDRESS_REFRESH_MAX_RETRIES,
   WALLET_OWN_ADDRESS_REFRESH_RETRY_DELAY,
 } from "./reference-scripts.fetch-reference-script-utxos-program.js";
@@ -156,26 +155,6 @@ export const awaitWalletViewUtxos = (
       }),
     );
   });
-
-/**
- * The plain (no script reference, ADA-only) UTxOs of the selected wallet's
- * view that are not in `excludedOutRefKeys`: funding inputs for a build.
- * Reference-script publications stay available for `.readFrom(...)`.
- */
-export const resolveSpendableWalletUtxos = (
-  lucid: LucidEvolution,
-  excludedOutRefKeys: ReadonlySet<string>,
-): Effect.Effect<readonly UTxO[], SDK.StateQueueError, IntentJournal> =>
-  readViewOfSelectedWallet(
-    lucid,
-    "Failed to read the wallet view for transaction input preset",
-  ).pipe(
-    Effect.map((view) =>
-      filterPlainWalletUtxos(view.utxos).filter(
-        (utxo) => !excludedOutRefKeys.has(utxoOutRefKey(utxo)),
-      ),
-    ),
-  );
 
 export const resolveLiveWalletUtxo = (
   lucid: LucidEvolution,

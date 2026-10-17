@@ -1,6 +1,5 @@
 import { Store, Trie } from "@aiken-lang/merkle-patricia-forestry";
 import {
-  aikenSerialisedPlutusDataCbor,
   appendMidgardValidationMerkleLeaf,
   attachMidgardLedgerOutputProofFacts,
   buildMidgardBlake2b224Trace,
@@ -9,14 +8,14 @@ import {
   buildMidgardLedgerOutputProofTrace,
   buildMidgardRedeemerDataUnreadableTrace,
   buildMidgardRedeemerItemProofTrace,
-  buildMidgardValidationLedgerDeltaFrontier,
   buildMidgardValidationMerkleFrontier,
   buildMidgardValidationMerkleMembership,
   commitMidgardValidationMerkleFrontier,
-  computeMidgardNativeTxProofCommitment,
   decodeMidgardCekProgramMaterialSidecar,
   deriveMidgardNativeTxProofSourceFromCanonicalCbor,
   deriveMidgardTxFieldPreimages,
+  deriveMidgardValidationContextCborV1,
+  deriveMidgardValidationInitialStateV1,
   encodeCbor,
   encodeMidgardBlake2b224TraceControl,
   encodeMidgardCekProgramMaterialSidecar,
@@ -35,9 +34,7 @@ import {
   hashMidgardScriptPurposeLeaf,
   hashMidgardScriptSourceLeaf,
   hashMidgardSignerLeaf,
-  hashMidgardValidationContext,
-  hashMidgardValidationLedgerDelta,
-  hashMidgardValidationLedgerDeltaOperation,
+  hashMidgardValidationMachineState,
   inspectMidgardRedeemerData,
   MIDGARD_BOUNDED_ITEM_CHUNK_BYTES,
   MIDGARD_CONSENSUS_LIMITS,
@@ -52,7 +49,6 @@ import {
   MidgardRedeemerItemProofStages,
   midgardScriptSourcePhysicalIndex,
   type MidgardValidationMerkleFrontier,
-  type MidgardValidationMerkleMembership,
   type MidgardValidationPhaseName,
 } from "@al-ft/midgard-core";
 import {
@@ -72,7 +68,6 @@ import {
   readCborMapHeader,
 } from "@al-ft/midgard-core/codec/cbor";
 import {
-  computeMidgardForcedTxProofCommitment,
   decodeMidgardForcedTxCompact,
   deriveMidgardForcedTxProofSourceFromCanonicalCbor,
 } from "@al-ft/midgard-core/codec/forced";
@@ -113,7 +108,6 @@ import { countedMachineFieldTrace } from "./field-carriage.js";
 import {
   advanceMidgardResolvedInputsAccumulator,
   emptyMidgardInputResolutionSchedule,
-  hash32,
   initialMidgardResolvedInputsAccumulator,
   orderMidgardInputResolutionSchedule,
   prependMidgardInputResolutionSchedule,
@@ -153,7 +147,10 @@ import type {
   ScriptSourceProofEntry,
   SignatureScanControl,
 } from "./trace-builder-types.js";
-import { type ValidationTraceRecording } from "./trace-sink.js";
+import {
+  validationMachineStateV1,
+  type ValidationTraceRecording,
+} from "./trace-sink.js";
 import {
   type ValidationMachineReplayInput,
   type ValidationMachineSignerSetProof,
@@ -165,21 +162,16 @@ export const prepareValidationTrace = (
   recording: ValidationTraceRecording,
 ) =>
   Effect.gen(function* () {
-    const contextCbor = Buffer.from(
-      aikenSerialisedPlutusDataCbor(
-        encodeCbor([
-          1n,
-          Buffer.from(input.consensusProfile.profileId, "ascii"),
-          safeBlockTime(input.blockTimeMs),
-          input.expectedNetworkId,
-          input.minFeeA,
-          input.minFeeB,
-          input.blockSlot,
-        ]).toString("hex"),
-      ),
-      "hex",
-    );
-    const validationContextHash = hashMidgardValidationContext(contextCbor);
+    // The claim derives this context from the header; its time element is
+    // `header.end_time` (see `ValidationMachineReplayInput.blockTimeMs`).
+    const contextHeader = {
+      endTimeMs: safeBlockTime(input.blockTimeMs),
+      blockSlot: input.blockSlot,
+      expectedNetworkId: input.expectedNetworkId,
+      minFeeA: input.minFeeA,
+      minFeeB: input.minFeeB,
+    };
+    const contextCbor = deriveMidgardValidationContextCborV1(contextHeader);
     const priorLedgerRoot = exactHash32(input.priorUtxosRoot, "priorUtxosRoot");
     const postLedgerRoot = exactHash32(input.postUtxosRoot, "postUtxosRoot");
     if (input.transactionId.length !== 32) {
@@ -444,28 +436,6 @@ export const prepareValidationTrace = (
       );
     }
 
-    const authenticatedLedgerOps = input.ledgerMutationSteps.map(
-      ({ operation, proofFoldTrace }) => ({
-        ...operation,
-        proofDescriptor: proofFoldTrace.descriptor,
-      }),
-    );
-    const ledgerDeltaFrontier = buildMidgardValidationLedgerDeltaFrontier(
-      authenticatedLedgerOps,
-    );
-    const ledgerDeltaRoot = hashMidgardValidationLedgerDelta(
-      authenticatedLedgerOps,
-    );
-    const ledgerDeltaOperationLeafHashes = authenticatedLedgerOps.map(
-      hashMidgardValidationLedgerDeltaOperation,
-    );
-    const ledgerDeltaOperationMembership = (
-      operationIndex: number,
-    ): MidgardValidationMerkleMembership =>
-      buildMidgardValidationMerkleMembership(
-        ledgerDeltaOperationLeafHashes,
-        operationIndex,
-      );
     // Exact submitted bytes bind the source independently of the operator's verdict.
     const proofSource = (
       input.sourceKind === "forced"
@@ -480,11 +450,22 @@ export const prepareValidationTrace = (
     const compactProofWitnessSet = decodeMidgardNativeTxWitnessSetCompact(
       proofSource.witnessSetCompactCbor,
     );
-    const transactionCommitment = (
-      input.sourceKind === "forced"
-        ? computeMidgardForcedTxProofCommitment
-        : computeMidgardNativeTxProofCommitment
-    )(proofSource);
+    // State 0 is the claim's derivation, not a builder construction.
+    const { canonicalTransactionCbor } = input;
+    const initialState = deriveMidgardValidationInitialStateV1({
+      ...contextHeader,
+      eventKeyCbor: input.eventKeyCbor,
+      source:
+        input.sourceKind === "forced"
+          ? { forced: { canonicalTransactionCbor } }
+          : { normal: { canonicalTransactionCbor } },
+      preUtxosRoot: priorLedgerRoot,
+    });
+    if (!initialState.transactionId.equals(input.transactionId)) {
+      return yield* Effect.fail(
+        new Error("transactionId is not the canonical transaction's id"),
+      );
+    }
     const fieldPreimages = deriveMidgardTxFieldPreimages(
       input.canonicalTransactionCbor,
       input.sourceKind,
@@ -1167,7 +1148,7 @@ export const prepareValidationTrace = (
         "compactBinding",
         encodeCbor([
           input.transactionId,
-          transactionCommitment,
+          initialState.transactionCommitment,
           proofSource.compactCbor,
           proofSource.witnessSetCompactCbor,
           proofSource.fieldPreimageLengthsCbor,
@@ -1179,7 +1160,6 @@ export const prepareValidationTrace = (
       ["nativeScripts", transactionContextWitnessCbor],
       ["scriptIntegrity", transactionContextWitnessCbor],
       ["cek", transactionContextWitnessCbor],
-      ["ledgerDelta", transactionContextWitnessCbor],
     ]);
     const macroAuxiliaryByPhase = new Map<
       MidgardValidationPhaseName,
@@ -1187,7 +1167,7 @@ export const prepareValidationTrace = (
     >([]);
 
     const terminalPhase =
-      rejection === null ? "ledgerDelta" : rejectionPhase(rejection);
+      rejection === null ? "valueAndMint" : rejectionPhase(rejection);
     const stopIndex = orderedPhases.indexOf(terminalPhase);
     if (stopIndex < 0) {
       return yield* Effect.fail(
@@ -1207,15 +1187,18 @@ export const prepareValidationTrace = (
               `${fault} but replay rejected at ${terminalPhase}/${rejectionCode ?? "none"}`,
             ),
           );
-    const traceSink = recording.open({
-      eventKeyHash: hash32(input.eventKeyCbor),
-      transactionId: input.transactionId,
-      transactionCommitment,
-      validationContextHash,
-      sourceKind: input.sourceKind,
-      priorLedgerRoot,
-      ledgerDeltaRoot,
-    });
+    // Every state shares state 0's frame, and state 0 is the claim's
+    // derivation: the first push must reproduce it exactly.
+    const traceFrame = {
+      eventKeyHash: initialState.eventKeyHash,
+      transactionId: initialState.transactionId,
+      transactionCommitment: initialState.transactionCommitment,
+      validationContextHash: initialState.validationContextHash,
+      sourceKind: initialState.sourceKind,
+      priorLedgerRoot: initialState.priorLedgerRoot,
+    };
+    const initialStateHash = hashMidgardValidationMachineState(initialState);
+    const traceSink = recording.open(traceFrame);
     const executionBudget = { cpu: 0n, memory: 0n };
 
     const pushWitness = (
@@ -1223,11 +1206,23 @@ export const prepareValidationTrace = (
       cbor: Buffer,
       auxiliary: ValidationMachineWorkWitness["auxiliary"] = null,
     ): void => {
-      traceSink.push(
-        { phase, programCounter: traceSink.length, cbor, auxiliary },
-        executionBudget,
-        null,
-      );
+      const witness = {
+        phase,
+        programCounter: traceSink.length,
+        cbor,
+        auxiliary,
+      };
+      if (
+        witness.programCounter === 0 &&
+        !hashMidgardValidationMachineState(
+          validationMachineStateV1(traceFrame, witness, executionBudget, null),
+        ).equals(initialStateHash)
+      ) {
+        throw new Error(
+          "validation trace does not start from the derived initial state",
+        );
+      }
+      traceSink.push(witness, executionBudget, null);
     };
     const macroWitness = (phase: MidgardValidationPhaseName): Buffer => {
       const witness = macroWitnessByPhase.get(phase);
@@ -4126,17 +4121,8 @@ export const prepareValidationTrace = (
       ledgerState,
       outputCbors,
       priorLedgerRoot,
-      resolutionItems,
-      encodeFrontierPeaks,
-      ledgerDeltaOperationMembership,
-      authenticatedLedgerOps,
-      postLedgerRoot,
-      ledgerDeltaRoot,
       traceSink,
       recording,
-      ledgerDeltaFrontier,
-      transactionCommitment,
-      validationContextHash,
       verdict,
       contextCbor,
       canonicalProgramMaterialSidecarCbor,

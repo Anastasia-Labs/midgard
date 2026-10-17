@@ -21,6 +21,7 @@
  */
 
 import "./validator-scenario-registry.validator-scenarios.js";
+import "./validator-scenario-registry.validation-trace-scenarios.js";
 import "./validator-scenario-registry.family-scenarios.js";
 import "./validator-scenario-registry.unmapped-validators.js";
 import "./validator-scenario-registry.unmapped-families.js";

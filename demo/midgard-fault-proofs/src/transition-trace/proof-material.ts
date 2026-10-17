@@ -11,9 +11,29 @@ import { Data } from "@lucid-evolution/lucid";
 import { mpfProofFromWitness, normalizedMpfRoot } from "./detect.js";
 import type { TransitionTraceReconstruction } from "./reconstruct.js";
 
+/**
+ * The ledger replay an accepted-transaction proof steps through. The proof
+ * commits only the transaction's source leaf; the two field preimages and the
+ * ledger witnesses travel beside it, and the thread authenticates each piece
+ * against its committed field or root as it is used.
+ */
+export type TransitionL2ReplayMaterial = Readonly<{
+  /** The spend-inputs field (§2.5 field 0) items, in field order. */
+  spendInputCbors: readonly string[];
+  /** The outputs field (§2.5 field 2) items, in field order. */
+  outputCbors: readonly string[];
+  /** One delete witness per spend input, in field order. */
+  spentUtxos: readonly SDK.LedgerDeleteWitness[];
+  /** One insert witness per output, in field order. */
+  producedUtxos: readonly SDK.LedgerInsertWitness[];
+}>;
+
 /** A serialization source, not an authority token. Installed workflows create
  * this from freshly admitted reconstruction and rederive it on resume. */
-export type TransitionProofMaterial = Readonly<{ proofCbor: string }>;
+export type TransitionProofMaterial = Readonly<{
+  proofCbor: string;
+  l2Replay?: TransitionL2ReplayMaterial;
+}>;
 
 /** Typed callers author new Data; material callers retain already committed
  * Data. A typed view cannot recover a raw leaf's map order or repeated pairs. */
@@ -25,6 +45,65 @@ export const transitionProofCbor = (input: TransitionProofInput): string => {
   if (!("proofCbor" in input)) return Data.to(input, SDK.TransitionFaultProof);
   Data.from(input.proofCbor, SDK.TransitionFaultProof);
   return input.proofCbor;
+};
+
+/** The accepted-transaction replay material beside `input`, if it has any. */
+export const transitionL2Replay = (
+  input: TransitionProofInput,
+): TransitionL2ReplayMaterial | undefined =>
+  "proofCbor" in input ? input.l2Replay : undefined;
+
+/**
+ * The transaction an accepted-transaction proof replays. Kind 0 is an L2
+ * transaction, opened from its `transactions_root` leaf; kind 2 is an accepted
+ * forced transaction, opened from its `forced_transactions_root` leaf, whose
+ * id and compact structure the leaf carries. Both take the same phases.
+ */
+export type TransitionReplayedTransaction = Readonly<{
+  /** The final-state kind. */
+  kind: 0n | 2n;
+  /** The source kind the anchor re-derives the id under: normal or forced. */
+  sourceKind: 0n | 1n;
+  traceProof: SDK.IndexedTraceProof;
+  txId: string;
+  compactCbor: string;
+  witnessSetCompactCbor: string;
+}>;
+
+export const transitionReplayedTransaction = (
+  witness: SDK.InvalidOneStepTransitionWitness,
+): TransitionReplayedTransaction | null => {
+  if ("L2TransactionTransition" in witness) {
+    const { trace_proof, source_membership } = witness.L2TransactionTransition;
+    const { source } = Data.from(
+      source_membership.value,
+      SDK.L2TransactionSource,
+    );
+    return {
+      kind: 0n,
+      sourceKind: 0n,
+      traceProof: trace_proof,
+      txId: source_membership.key,
+      compactCbor: source.compact_cbor,
+      witnessSetCompactCbor: source.witness_set_compact_cbor,
+    };
+  }
+  if ("ValidForcedTransactionTransition" in witness) {
+    const { trace_proof, source_membership } =
+      witness.ValidForcedTransactionTransition;
+    // The leaf's verdict is the thread's to check (phase 0 refuses anything
+    // but ForcedTxValid); the witness builder selects only accepted leaves.
+    const leaf = Data.from(source_membership.value, SDK.ForcedInclusionTxV1);
+    return {
+      kind: 2n,
+      sourceKind: 1n,
+      traceProof: trace_proof,
+      txId: leaf.tx_id,
+      compactCbor: leaf.submitted_source.compact_cbor,
+      witnessSetCompactCbor: leaf.submitted_source.witness_set_compact_cbor,
+    };
+  }
+  return null;
 };
 
 export const readTransitionProof = (
@@ -144,6 +223,7 @@ export const transitionProofHistorySource = (input: TransitionProofInput) => {
 export const makeTransitionProofMaterial = (
   reconstruction: TransitionTraceReconstruction,
   proof: SDK.TransitionFaultProof,
+  l2Replay?: TransitionL2ReplayMaterial,
 ): TransitionProofMaterial => {
   if (
     proof.challenged_header_hash !== reconstruction.headerHash ||
@@ -213,5 +293,8 @@ export const makeTransitionProofMaterial = (
         valueCbor,
       );
   }
-  return Object.freeze({ proofCbor });
+  return Object.freeze({
+    proofCbor,
+    ...(l2Replay === undefined ? {} : { l2Replay }),
+  });
 };

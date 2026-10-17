@@ -50,8 +50,8 @@ import {
   completeReferenceScriptPublicationTxProgram,
   createReferenceScriptAuthPolicy,
   referenceScriptPublicationFundingTarget,
-  selectReferenceScriptFundingUtxos,
 } from "@al-ft/midgard-sdk";
+import { selectPlainFundingUtxos } from "@al-ft/midgard-test-support/reference-script-funding";
 import {
   CML,
   Emulator,
@@ -186,7 +186,7 @@ describe.skipIf(!blueprintPresent)(
       // the previous one's confirmed change, the way a real deployment run
       // publishes one target at a time.
       for (const target of targets as readonly ReferenceScriptTarget[]) {
-        const selectedFundingInputs = selectReferenceScriptFundingUtxos(
+        const selectedFundingInputs = selectPlainFundingUtxos(
           await lucid.wallet().getUtxos(),
           referenceScriptPublicationFundingTarget(1),
         );

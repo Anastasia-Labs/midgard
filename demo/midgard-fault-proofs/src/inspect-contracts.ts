@@ -34,6 +34,8 @@ export {
   assertFraudProofCatalogueCategoryReady,
   type FraudProofCatalogueCategoryReadiness,
   inspectFraudProofCatalogueCategoryReadiness,
+  parseContractDeploymentCaseConfigInitializationNonce,
+  parseContractDeploymentDisputeBondLovelace,
   parseContractDeploymentL1SlotConfig,
   parseContractDeploymentReferenceScriptAuthPolicyId,
 } from "./inspect-contracts.inspect-fraud-proof-catalogue-category-readiness.js";

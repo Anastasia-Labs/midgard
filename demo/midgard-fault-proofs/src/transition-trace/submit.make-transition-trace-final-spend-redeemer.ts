@@ -215,16 +215,16 @@ export const transitionTraceFinalIndex = (
     if ("InvalidForcedTransactionNoOpTransition" in witness) {
       return 3;
     }
-    if ("L2TransactionTransition" in witness) {
+    if (
+      "L2TransactionTransition" in witness ||
+      "ValidForcedTransactionTransition" in witness
+    ) {
       return 4;
     }
     if ("ValidDepositTransition" in witness) {
       return 5;
     }
     return unreachableTransitionVariant(witness);
-  }
-  if ("AcceptedTransactionTransitionMismatch" in fault) {
-    return 4;
   }
   if ("OmittedDueL1Event" in fault || "OutOfWindowSourceEvent" in fault) {
     return 6;
