@@ -1,5 +1,6 @@
 import { type MidgardFieldCarriagePlan } from "@al-ft/midgard-core/codec/native-tx-carriage";
 import {
+  type BuildTxWithRedeemer,
   type LucidEvolution,
   type MintingPolicy,
   type TxSignBuilder,
@@ -7,6 +8,7 @@ import {
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
+import { requireUniqueOutputIndex } from "../tx-context-redeemer.js";
 import { resolveFieldPreimageCertificationReferenceLayout } from "./field-preimage-carriage.assert-midgard-field-carriage-resolves-at-door.js";
 import { resolveProtocolParameters } from "./field-preimage-carriage.build-unsigned-field-preimage-publication-program.js";
 import {
@@ -86,9 +88,6 @@ export const buildUnsignedFieldPreimageCertificationProgram = (
             })
           : undefined;
       const referenceInputs = strictLayout?.referenceInputs ?? chunkUtxos;
-      const chunkRefInputIndices =
-        strictLayout?.chunkRefInputIndices ??
-        resolveChunkReferenceIndices({ plan, referenceInputs });
       const protocolParameters = await resolveProtocolParameters(lucid);
       const lovelace = minimumLovelaceForFieldPreimageCertificate({
         certificateAddress,
@@ -100,16 +99,25 @@ export const buildUnsignedFieldPreimageCertificationProgram = (
       const transaction = lucid
         .newTx()
         .readFrom([...referenceInputs])
-        .mintAssets(
-          { [unit]: 1n },
+        .mintAssets({ [unit]: 1n }, ((ctx) =>
           certifyFieldPreimageRedeemer({
             compactCbor,
             sourceKind,
             witnessSetCompactCbor,
-            chunkRefInputIndices,
-            outputIndex: 0,
-          }),
-        )
+            chunkRefInputIndices: resolveChunkReferenceIndices({
+              plan,
+              referenceInputs: ctx.referenceInputs,
+            }),
+            outputIndex: Number(
+              requireUniqueOutputIndex(
+                ctx.outputs,
+                (output) =>
+                  output.address === certificateAddress &&
+                  output.assets[unit] === 1n,
+                "field-preimage certificate",
+              ),
+            ),
+          })) satisfies BuildTxWithRedeemer)
         .pay.ToAddressWithData(
           certificateAddress,
           { kind: "inline", value: certification.datumCbor },

@@ -3,6 +3,7 @@ import {
   type MidgardConsensusProfile,
 } from "@al-ft/midgard-core/consensus-profile";
 import {
+  type BuildTxWithRedeemer,
   calculateMinLovelaceFromUTxO,
   credentialToAddress,
   Data,
@@ -70,6 +71,7 @@ import {
   STATE_QUEUE_ROOT_ASSET_NAME,
   StateQueueRedeemer,
 } from "./state-queue.js";
+import { requireUniqueOutputIndex } from "./tx-context-redeemer.js";
 import { appendEventHistoryInitialization } from "./user-events/history-initialization.js";
 
 export type AtomicProtocolInitReferenceScripts = {
@@ -284,10 +286,22 @@ export const incompleteInitializationTxProgram = (
         },
         schedulerAssets,
       )
-      .mintAssets(
-        stateQueueAssets,
-        Data.to({ InitV1: { output_index: 3n } }, StateQueueRedeemer),
-      )
+      .mintAssets(stateQueueAssets, ((ctx) =>
+        Data.to(
+          {
+            InitV1: {
+              output_index: requireUniqueOutputIndex(
+                ctx.outputs,
+                (output) =>
+                  output.address ===
+                    midgardValidators.stateQueue.spendingScriptAddress &&
+                  (output.assets[stateQueueUnit] ?? 0n) === 1n,
+                "state-queue root",
+              ),
+            },
+          },
+          StateQueueRedeemer,
+        )) satisfies BuildTxWithRedeemer)
       .pay.ToContract(
         midgardValidators.stateQueue.spendingScriptAddress,
         {
