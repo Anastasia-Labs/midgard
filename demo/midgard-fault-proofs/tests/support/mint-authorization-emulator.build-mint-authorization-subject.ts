@@ -49,19 +49,21 @@ export const buildMintAuthorizationSubject = ({
   scriptWitnessItemCbors = [],
   addrWitnessItemCbors = [],
   referenceInputItemCbors = [],
+  spendInputItemCbors = [],
   validity = "TxIsValid",
 }: {
   readonly mintItemCbors: readonly string[];
   readonly scriptWitnessItemCbors?: readonly string[];
   readonly addrWitnessItemCbors?: readonly string[];
   readonly referenceInputItemCbors?: readonly string[];
+  readonly spendInputItemCbors?: readonly string[];
   readonly validity?: "TxIsValid" | "TxIsInvalid";
 }): MintAuthorizationSubject => {
   const nativeTx = materializeMidgardNativeTxFromCanonical({
     version: MIDGARD_NATIVE_TX_VERSION,
     validity,
     body: {
-      spendInputsPreimageCbor: EMPTY_CBOR_LIST,
+      spendInputsPreimageCbor: fieldPreimageOf(spendInputItemCbors),
       referenceInputsPreimageCbor: fieldPreimageOf(referenceInputItemCbors),
       outputsPreimageCbor: EMPTY_CBOR_LIST,
       requiredObserversPreimageCbor: EMPTY_CBOR_LIST,
@@ -92,6 +94,7 @@ export const buildMintAuthorizationSubject = ({
     scriptWitnessItemCbors,
     addrWitnessItemCbors,
     referenceInputItemCbors,
+    spendInputItemCbors,
   };
 };
 

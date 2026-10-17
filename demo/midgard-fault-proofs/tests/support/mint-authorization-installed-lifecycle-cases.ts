@@ -21,6 +21,7 @@ import { admitMintAuthorizationWorkflowArtifact } from "../../src/mint-authoriza
 import { MINT_AUTHORIZATION_CATEGORY_LABEL } from "../../src/mint-authorization/contracts.js";
 import {
   createMintAuthorizationTransactionPort,
+  mintAuthorizationRefineAction,
   mintAuthorizationWorkflowFieldRequirement,
   mintAuthorizationWorkflowRawRequirement,
 } from "../../src/mint-authorization/workflow.js";
@@ -426,7 +427,7 @@ const captureAndRestart = async (
       return mintAuthorizationWorkflowFieldRequirement(
         await admitMintAuthorizationWorkflowArtifact(artifact),
         h.proverSigner.paymentKeyHash,
-        action.input.stage,
+        action.input,
         {
           policyId: h.contracts.fieldPreimageCertificate.policyId,
           mintingScript: h.contracts.fieldPreimageCertificate.mintingScript,
@@ -589,6 +590,10 @@ const captureAndRestart = async (
           l1,
           transactions: port,
           stateQueueMutationLeaseCoordinator: leaseCoordinator,
+          refineAction: mintAuthorizationRefineAction({
+            lucid: h.proverLucid,
+            signer: h.proverSigner,
+          }),
         }),
       }),
     });

@@ -17,7 +17,7 @@ import {
 import { ScriptEvaluationIndeterminateError } from "./phase-b.evaluate-cek-script.js";
 import {
   type CandidateNode,
-  collectInlineScriptSources,
+  collectScriptSources,
   type LocalScriptValidationResult,
   requiredScriptLanguages,
   type ResolvedReferenceInputs,
@@ -38,11 +38,14 @@ export const runLocalScriptEvaluation = (
   Effect.gen(function* () {
     const candidate = node.candidate;
     const { ledgerTx } = candidate;
-    const inlineSources = collectInlineScriptSources(ledgerTx);
-    const sources = [
-      ...inlineSources,
-      ...resolvedReferenceInputs.scriptSources,
-    ];
+    const sources = collectScriptSources(
+      node,
+      stateValue,
+      resolvedReferenceInputs,
+    );
+    const inlineSources = sources.filter(
+      (source) => source.origin === "inline",
+    );
     const discovered = discoverLocalScriptExecutions(
       node,
       stateValue,

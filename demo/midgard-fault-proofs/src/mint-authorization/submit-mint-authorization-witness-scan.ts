@@ -6,6 +6,7 @@ import {
   hashMidgardVersionedScript,
 } from "@al-ft/midgard-core";
 import {
+  MIDGARD_FIELD_INDEX,
   MintAuthorizationStep04Datum,
   MintAuthorizationWitnessScanDatum,
   MintAuthorizationWitnessScanSpendRedeemer,
@@ -127,7 +128,8 @@ export const submitMintAuthorizationWitnessScan = async ({
             policy_id: state.policy_id,
             bad_tx_id: state.bad_tx_id,
             prior_ledger_root: state.prior_ledger_root,
-            ref_cursor: 0n,
+            field_index: BigInt(MIDGARD_FIELD_INDEX.referenceInputs),
+            cursor: 0n,
           },
         },
         MintAuthorizationStep04Datum,

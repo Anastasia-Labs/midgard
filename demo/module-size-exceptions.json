@@ -501,8 +501,8 @@
   },
   {
     "file": "midgard-fault-proofs/tests/support/mint-authorization-installed-lifecycle-cases.ts",
-    "max": 830,
-    "reason": "captureAndRestart is the dominant indivisible declaration: the body of the retained test registration “mintAuthorization installed cursor actuator”, moved here unchanged so its five part files (mint-authorization-installed-lifecycle{,-native-wide,-native-deep,-reference,-field-maxima}.test.ts) run disjoint cases in parallel. Its staged control flow shares one scenario's harness, journal and adapter; dividing it changes fixture lifetime or requires a separate harness refactor."
+    "max": 835,
+    "reason": "captureAndRestart is the dominant indivisible declaration: the body of the retained test registration “mintAuthorization installed cursor actuator”, moved here unchanged so its five part files (mint-authorization-installed-lifecycle{,-native-wide,-native-deep,-reference,-field-maxima}.test.ts) run disjoint cases in parallel. Its staged control flow shares one scenario's harness, journal and adapter; dividing it changes fixture lifetime or requires a separate harness refactor. Script-source lookup (+5): the actuator refines the step-04 scan's input field before each capture."
   },
   {
     "file": "midgard-fault-proofs/tests/support/resolved-output-non-canonical-emulator.make-resolved-output-stages.ts",
@@ -1171,8 +1171,8 @@
   },
   {
     "file": "midgard-validation/src/validation-machine/trace-builder-prepare.prepare-validation-trace.ts",
-    "max": 4142,
-    "reason": "prepareValidationTrace is the dominant indivisible declaration (3805 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. Integrated deep-data, exact-reason and canonical-redeemer behavior; cap remeasured on the combined source. Combined F1/RLO source measured at integration. Authenticated forced redeemer refusal integrated; measured after combined formatting. VR (+1): trace preparation threads the deployment's L1 slot mapping into the script contexts it builds. I5 (+9): trace preparation opens the build's trace sink and picks the Phase B execution mode from its recording. Wall caps reverted (-4). H9 (-5): a fault in the address-witness signature check stops the build instead of reading as an invalid signature."
+    "max": 4145,
+    "reason": "prepareValidationTrace is the dominant indivisible declaration (3805 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. Integrated deep-data, exact-reason and canonical-redeemer behavior; cap remeasured on the combined source. Combined F1/RLO source measured at integration. Authenticated forced redeemer refusal integrated; measured after combined formatting. VR (+1): trace preparation threads the deployment's L1 slot mapping into the script contexts it builds. I5 (+9): trace preparation opens the build's trace sink and picks the Phase B execution mode from its recording. Wall caps reverted (-4). H9 (-5): a fault in the address-witness signature check stops the build instead of reading as an invalid signature. Script-source lookup (+3): stage nine maps its reference-first cursor to the physical source index."
   },
   {
     "file": "midgard-validation/tests/cek-executor.test.ts",
