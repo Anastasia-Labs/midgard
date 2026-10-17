@@ -822,7 +822,10 @@ export const prepareValidationTrace = (input: ValidationMachineReplayInput) =>
         proofSource.witnessSetCompactCbor,
         proofSource.fieldPreimageLengthsCbor,
         contextCbor,
-        resolutionScheduleHash,
+        // A late execution scan binds its NativeScripts continuation here.
+        continuationCbor.length === 0
+          ? resolutionScheduleHash
+          : Buffer.from(blake2b(continuationCbor, { dkLen: 32 })),
         BigInt(control.stage),
         BigInt(control.scriptCount),
         BigInt(control.scriptSeen),

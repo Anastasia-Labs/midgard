@@ -1,5 +1,8 @@
 import { encodeMidgardCekProgramMaterialSidecar } from "@al-ft/midgard-core/cek-proof";
-import { encodeCbor } from "@al-ft/midgard-core/codec";
+import {
+  encodeCbor,
+  encodeMidgardFieldPreimage,
+} from "@al-ft/midgard-core/codec";
 import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
 import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import type { MidgardRejectionReasonV1 } from "@al-ft/midgard-core/validation-trace";
@@ -26,6 +29,7 @@ import {
   validationMachineStateData,
 } from "../src/validation-machine-data.js";
 import {
+  encodeRecomputedNativeTx,
   FUNDED_OUTPUT_LOVELACE,
   hashScriptWitness,
   makeMintPreimageCbor,
@@ -109,17 +113,26 @@ export type PendingInputIndexReason = {
 
 export type Expected = {
   readonly code: RejectCode;
-  readonly reason: MidgardRejectionReasonV1 | PendingInputIndexReason;
+  /**
+   * `null` when the rejection records no subject: a canonical decode refusal,
+   * which a direct proof convicts rather than a machine trace.
+   */
+  readonly reason: MidgardRejectionReasonV1 | PendingInputIndexReason | null;
 };
+
+const isPendingInputIndex = (
+  expected: Expected["reason"],
+): expected is PendingInputIndexReason =>
+  typeof expected === "object" &&
+  expected !== null &&
+  "pendingInputIndex" in expected;
 
 /** A reason as a row asserts it: without `input_index` when that is pending. */
 const assertedReason = (
   expected: Expected["reason"],
   actual: MidgardRejectionReasonV1 | null | undefined,
 ): unknown => {
-  if (typeof expected !== "object" || !("pendingInputIndex" in expected)) {
-    return actual;
-  }
+  if (!isPendingInputIndex(expected)) return actual;
   if (typeof actual !== "object" || actual === null) return actual;
   return Object.fromEntries(
     Object.entries(actual).map(([arm, fields]) => {
@@ -132,13 +145,12 @@ const assertedReason = (
   );
 };
 const expectedReason = (expected: Expected["reason"]): unknown =>
-  typeof expected === "object" && "pendingInputIndex" in expected
-    ? expected.pendingInputIndex
-    : expected;
+  isPendingInputIndex(expected) ? expected.pendingInputIndex : expected;
 
 export type Row = {
   readonly name: string;
-  readonly kind: "multi" | "control" | "accept";
+  /** `refusal`: a fault class the machine stops on before the case's scan. */
+  readonly kind: "multi" | "control" | "accept" | "refusal";
   /** The producer already emitted this verdict before the reconciliation. */
   readonly guard: boolean;
   /** The Phase B route Phase A admits the row to, when the row pins it. */
@@ -146,6 +158,11 @@ export type Row = {
   readonly state: readonly (readonly [Buffer, Buffer])[];
   readonly tx: NativeTxOptions & { readonly spendInputs: readonly Buffer[] };
   readonly sidecar: Buffer;
+  /**
+   * Raw field-6 items, each a versioned-script item, in place of the encoded
+   * `tx.scriptWitnesses`: a row can carry an item no script encoder writes.
+   */
+  readonly scriptItems?: readonly Buffer[];
   readonly expected: Expected | null;
 };
 
@@ -175,8 +192,18 @@ const PHASE_A_CONFIG = {
   consensusProfile: MIDGARD_CONSENSUS_PROFILE,
 } as const;
 
-const transactionOf = (row: Row) =>
-  makeNativeTx({ ...row.tx, privateKey: KEY });
+const transactionOf = (row: Row) => {
+  const transaction = makeNativeTx({ ...row.tx, privateKey: KEY });
+  if (row.scriptItems === undefined) return transaction;
+  // The key signs the body, so the witness set can change under it.
+  return encodeRecomputedNativeTx({
+    ...transaction.tx,
+    witnessSet: {
+      ...transaction.tx.witnessSet,
+      scriptTxWitsPreimageCbor: encodeMidgardFieldPreimage(row.scriptItems),
+    },
+  });
+};
 
 /** The producer: Phase A, then Phase B on what Phase A admits. */
 export const producer = async (row: Row) => {

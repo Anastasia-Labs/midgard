@@ -649,13 +649,14 @@
     {
       "id": "emission-order-rows",
       "kind": "golden",
-      "summary": "The stopping step of every emission-order row's trace (cases b, c, d, then a), written by its vitest producer as a whole generated Aiken module that checks each step through the one-step dispatcher. The on-chain half runs the module's focused aiken check: about 3 GB peak with RAYON_NUM_THREADS=1, 5.3 GB at default threads, and about 4.5 GB for each failing row.",
+      "summary": "The stopping step of every emission-order row's trace (cases b, c, d, a, then e), written by its vitest producer as a whole generated Aiken module that checks each step through the one-step dispatcher. The on-chain half runs the module's focused aiken check: about 3.9 GB peak with RAYON_NUM_THREADS=1, more at default threads, and about 4.5 GB for each failing row.",
       "generators": [
         "demo/midgard-validation/tests/emission-order.aiken-rows.test.ts"
       ],
       "writerEnv": ["MIDGARD_WRITE_EMISSION_ORDER_ROWS"],
       "producers": ["demo/midgard-validation"],
       "inputs": [
+        "demo/midgard-validation/tests/emission-order.native.rows.ts",
         "demo/midgard-validation/tests/emission-order.rows.ts",
         "demo/midgard-validation/tests/emission-order.resolve-inputs.rows.ts",
         "demo/midgard-validation/tests/emission-order.support.ts",

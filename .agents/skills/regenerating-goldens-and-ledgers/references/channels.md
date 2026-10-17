@@ -73,10 +73,10 @@ Notes a reader needs:
   module with `MIDGARD_WRITE_EMISSION_ORDER_ROWS=1` and otherwise compares it
   byte for byte. The on-chain half is
   `aiken check -m midgard/validation_machine_tests/emission_order_rows`
-  (35 tests). Run it with `RAYON_NUM_THREADS=1`: about 3 GB peak and 5.5
-  minutes (measured 2026-10-17); at default threads it peaks near 5.3 GB, and
-  each failing row costs about 4.5 GB more, so a broken table can exhaust a
-  12 GB cap.
+  (49 tests). Run it with `RAYON_NUM_THREADS=1`: about 3.9 GB peak and 7.5
+  minutes (measured 2026-10-17); default threads use more memory, and each
+  failing row costs about 4.5 GB more, so a broken table can exhaust a 12 GB
+  cap.
 - `lucid-native-fixtures` must be synced before `native-compact-aiken`; the
   script lists them in that order.
 - `da-commitment-v1`, `da-bond-pool-v1` and `da-attestation-capacity-v1`
