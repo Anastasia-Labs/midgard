@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 
+import { findLedgerSignatureVerifierUnavailable } from "@al-ft/midgard-core";
 import { MidgardCekProgramMaterialMissingRootError } from "@al-ft/midgard-core/cek-proof";
 import { type L1SlotConfig } from "@al-ft/midgard-core/l1-slot-config";
 import {
@@ -52,12 +53,16 @@ const ledgerRows = (
  *   origin); retried;
  * - `incomplete`: the import failed for a reason it cannot pin on the block
  *   (a ledger root, or an unclassified typed replay failure); retried.
+ * - `verifier_unavailable`: this node's Ed25519 verifier could not answer
+ *   (`LedgerSignatureVerifierUnavailableError`), a local fault and never the
+ *   block's; retried on the driver's backoff, within a bound.
  */
 export type ForeignBlockVerificationReason =
   | "missing"
   | "invalid"
   | "local_fault"
-  | "incomplete";
+  | "incomplete"
+  | "verifier_unavailable";
 
 export class ForeignBlockVerificationError extends Data.TaggedError(
   "ForeignBlockVerificationError",
@@ -208,6 +213,18 @@ const repeatedKeySection = (body: SDK.DaPayload["block_body"]) =>
 const passThrough = <A>(effect: Effect.Effect<A, unknown>) =>
   Effect.mapError(effect, (cause) => new CallbackFailure(cause));
 
+/** `verifier_unavailable` when `cause` is the Ed25519 verifier's local fault. */
+const verifierUnavailable = (foreignHeaderHash: string, cause: unknown) => {
+  const fault = findLedgerSignatureVerifierUnavailable(cause);
+  return fault === undefined
+    ? undefined
+    : new ForeignBlockVerificationError({
+        foreignHeaderHash,
+        reason: "verifier_unavailable",
+        detail: `${fault.name}: ${fault.message}`,
+      });
+};
+
 /** Full import authentication. A caller must supply the exact canonical parent
  * and deployment observation; matching ledger roots or DA signatures do not
  * substitute for replay. No successful result is cached across observations.
@@ -216,8 +233,10 @@ const passThrough = <A>(effect: Effect.Effect<A, unknown>) =>
  * no script, and returns the transactions with script runs as
  * `scriptChecks` for the import checker. Every other check runs in full.
  *
- * Failures: the caller's callbacks' pass through unchanged (their verdicts
- * are the caller's). A `ReplayLocalFault` defect (named where it arose) and
+ * Failures: a fault of the Ed25519 verifier, wherever it is raised (a
+ * callback's included), is `verifier_unavailable`, checked first; otherwise
+ * the caller's callbacks' pass through unchanged (their verdicts are the
+ * caller's). A `ReplayLocalFault` defect (named where it arose) and
  * this import's own computations are `local_fault`; a missing CEK root is
  * `missing`; any other defect is `invalid`: it may come from reading the
  * block's or its events' bytes, so it is never taken for a local fault.
@@ -369,36 +388,43 @@ export const verifyAndImportBlock = (
   }).pipe(
     Effect.catchAllDefect((cause) =>
       Effect.fail(
-        new ForeignBlockVerificationError({
-          foreignHeaderHash: input.headerHash,
-          reason: isReplayLocalFault(cause)
-            ? "local_fault"
-            : cause instanceof MidgardCekProgramMaterialMissingRootError
-              ? "missing"
-              : // A `BlockReplayFault`, or a throw not named local.
-                "invalid",
-          detail: String(cause),
-        }),
+        verifierUnavailable(input.headerHash, cause) ??
+          new ForeignBlockVerificationError({
+            foreignHeaderHash: input.headerHash,
+            reason: isReplayLocalFault(cause)
+              ? "local_fault"
+              : cause instanceof MidgardCekProgramMaterialMissingRootError
+                ? "missing"
+                : // A `BlockReplayFault`, or a throw not named local.
+                  "invalid",
+            detail: String(cause),
+          }),
       ),
     ),
     Effect.catchAll((cause: unknown) =>
-      cause instanceof CallbackFailure ||
-      cause instanceof ForeignBlockVerificationError
-        ? Effect.fail(cause instanceof CallbackFailure ? cause.cause : cause)
-        : Effect.fail(
-            new ForeignBlockVerificationError({
-              foreignHeaderHash: input.headerHash,
-              reason:
-                cause instanceof LocalFailure
-                  ? "local_fault"
-                  : cause instanceof MidgardCekProgramMaterialMissingRootError
-                    ? "missing"
-                    : "incomplete",
-              detail:
-                cause instanceof LocalFailure
-                  ? `${cause.what} failed locally: ${String(cause.cause)}`
-                  : String(cause),
-            }),
-          ),
+      Effect.fail(
+        verifierUnavailable(
+          input.headerHash,
+          cause instanceof CallbackFailure ? cause.cause : cause,
+        ) ??
+          (cause instanceof CallbackFailure
+            ? cause.cause
+            : cause instanceof ForeignBlockVerificationError
+              ? cause
+              : new ForeignBlockVerificationError({
+                  foreignHeaderHash: input.headerHash,
+                  reason:
+                    cause instanceof LocalFailure
+                      ? "local_fault"
+                      : cause instanceof
+                          MidgardCekProgramMaterialMissingRootError
+                        ? "missing"
+                        : "incomplete",
+                  detail:
+                    cause instanceof LocalFailure
+                      ? `${cause.what} failed locally: ${String(cause.cause)}`
+                      : String(cause),
+                })),
+      ),
     ),
   );

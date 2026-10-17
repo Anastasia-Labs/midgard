@@ -1,9 +1,9 @@
-import { encodeCbor } from "@al-ft/midgard-core";
+import { encodeCbor, ledgerEd25519SignatureReady } from "@al-ft/midgard-core";
 import {
   encodeMidgardForcedTxCanonical,
   materializeMidgardForcedTxFromCanonical,
 } from "@al-ft/midgard-core/codec/forced";
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 
 import {
   buildMidgardCanonicalCekProgram,
@@ -19,6 +19,10 @@ import {
   makeQueued,
   outRefFromByte,
 } from "./validation-fixtures.js";
+
+// The ledger's Ed25519 check is libsodium's, which initialises
+// asynchronously; production entry points await it, and so does this file.
+beforeAll(() => ledgerEd25519SignatureReady());
 
 /**
  * Malformed field-6 native bytes reach the ordered native scan for both source

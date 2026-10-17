@@ -1,10 +1,12 @@
-import { Effect } from "effect";
+import { Effect, Ref } from "effect";
 
 import type { Globals } from "../services/globals.js";
+import { LOCAL_FAULT_RUN_LIMIT } from "../services/l1-follower.coalesced-runner.js";
 import {
   clearLivenessIncident,
   raiseLivenessIncident,
 } from "../services/liveness-halt.js";
+import { signalTransientExhausted } from "../services/transient-exhaustion.js";
 import type { WorkerOutput } from "../workers/utils/commit-block-header.js";
 
 export const COMMIT_WORKER_SOURCE = "commit_worker";
@@ -14,6 +16,13 @@ export const COMMIT_WORKER_FAILED = "commit_worker_failed";
  * tick, so a failure that outlasts this is a stalled commit pipeline, not a
  * passing one. */
 export const COMMIT_WORKER_FAILED_ESCALATION_MS = 10 * 60_000;
+/**
+ * The reason the node exits under (source `commit_worker`) once
+ * `LOCAL_FAULT_RUN_LIMIT` commit-worker attempts since the last successful
+ * commit failed on this process's Ed25519 verifier fault.
+ */
+export const COMMIT_WORKER_VERIFIER_UNAVAILABLE =
+  "commit_worker_verifier_unavailable";
 /** The liveness source `commit_base_pending` is raised under. */
 export const COMMIT_BASE_SOURCE = "commit_base";
 /**
@@ -114,3 +123,58 @@ export const clearCommitWorkerFailure = (
     ],
     { discard: true },
   );
+
+/** The outputs that prove a commit went through: the same set that clears
+ * `commit_worker_failed`. */
+const COMMIT_SUCCEEDED: ReadonlySet<WorkerOutput["type"]> = new Set([
+  "SuccessfulSubmissionOutput",
+  "SubmittedAwaitingConfirmationOutput",
+  "SuccessfulLocalFinalizationRecoveryOutput",
+]);
+
+/**
+ * Bounds commit-worker attempts that fail on this process's Ed25519 verifier
+ * fault (`FailureOutput.localFault`), as the coalesced runner bounds a local
+ * fault on a landed block: each such failure counts, and once `limit` of them
+ * accrue without a successful commit (`COMMIT_SUCCEEDED`) between them the
+ * node exits non-zero (`transient-exhaustion.ts`) for its supervisor to
+ * restart it. Only a successful commit resets the count. A wait (for the
+ * commit base or window), a no-op, a skip, or a failure that is not the fault
+ * leaves it as it is, so a persistent fault interleaved with them still
+ * reaches the bound. The count is this process's, so a restarted node meeting
+ * the same fault retries within the same bound and exits again. Failures that
+ * are not the fault are never counted and stay `commit_worker_failed` as
+ * before.
+ */
+export const boundCommitWorkerLocalFaults = (
+  globals: Pick<
+    Globals,
+    "COMMIT_WORKER_LOCAL_FAULT_RUNS" | "TRANSIENT_EXHAUSTION"
+  >,
+  output: WorkerOutput,
+  limit: number = LOCAL_FAULT_RUN_LIMIT,
+): Effect.Effect<void> => {
+  const fault =
+    output.type === "FailureOutput" && output.localFault !== undefined
+      ? output
+      : undefined;
+  return Ref.updateAndGet(globals.COMMIT_WORKER_LOCAL_FAULT_RUNS, (runs) =>
+    fault !== undefined
+      ? runs + 1
+      : COMMIT_SUCCEEDED.has(output.type)
+        ? 0
+        : runs,
+  ).pipe(
+    Effect.flatMap((runs) =>
+      fault !== undefined && runs >= limit
+        ? Effect.sync(() =>
+            signalTransientExhausted(globals.TRANSIENT_EXHAUSTION, {
+              source: COMMIT_WORKER_SOURCE,
+              reason: COMMIT_WORKER_VERIFIER_UNAVAILABLE,
+              detail: `${runs} commit attempts since the last successful commit failed on the Ed25519 verifier: ${fault.error}`,
+            }),
+          )
+        : Effect.void,
+    ),
+  );
+};

@@ -1,3 +1,4 @@
+import { ledgerEd25519SignatureReady } from "@al-ft/midgard-core";
 import { computeHash32 } from "@al-ft/midgard-core/codec";
 import {
   encodeMidgardForcedTxCanonical,
@@ -5,15 +6,13 @@ import {
 } from "@al-ft/midgard-core/codec/forced";
 import { CML } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 
 import {
   LedgerColumns,
   phaseAAddressCacheStats,
-  phaseAPublicKeyCacheStats,
   RejectCodes,
   resetPhaseAAddressCache,
-  resetPhaseAPublicKeyCache,
   runPhaseAValidation,
   validatePhaseASingle,
 } from "../src/index.js";
@@ -36,6 +35,10 @@ import {
   nativeScriptWitness,
   outRefFromByte,
 } from "./validation-fixtures.js";
+
+// The ledger's Ed25519 check is libsodium's, which initialises
+// asynchronously; production entry points await it, and so does this file.
+beforeAll(() => ledgerEd25519SignatureReady());
 
 describe("phase A validation", () => {
   it("reuses address projections and evicts them at the configured bound", async () => {
@@ -80,42 +83,6 @@ describe("phase A validation", () => {
     }
   });
 
-  it("reuses public keys and frees the least-recently-used key on eviction", async () => {
-    const firstKey = CML.PrivateKey.generate_ed25519();
-    const secondKey = CML.PrivateKey.generate_ed25519();
-    try {
-      resetPhaseAPublicKeyCache(1);
-      const first = makeNativeTx({ privateKey: firstKey });
-      const second = makeNativeTx({ privateKey: secondKey });
-      await expectSinglePhaseAAcceptance(first);
-      await expectSinglePhaseAAcceptance(first);
-      expect(phaseAPublicKeyCacheStats()).toMatchObject({
-        size: 1,
-        hits: 1,
-        misses: 1,
-        evictions: 0,
-      });
-
-      await expectSinglePhaseAAcceptance(second);
-      expect(phaseAPublicKeyCacheStats()).toMatchObject({
-        size: 1,
-        hits: 1,
-        misses: 2,
-        evictions: 1,
-      });
-      await expectSinglePhaseAAcceptance(first);
-      expect(phaseAPublicKeyCacheStats()).toMatchObject({
-        size: 1,
-        misses: 3,
-        evictions: 2,
-      });
-    } finally {
-      resetPhaseAPublicKeyCache();
-      firstKey.free();
-      secondKey.free();
-    }
-  });
-
   it("keeps the exported single-tx validator identical to the batch reference", async () => {
     const fixture = makeNativeTx();
     const queued = makeQueued(fixture.txId, fixture.txCbor);
@@ -135,28 +102,6 @@ describe("phase A validation", () => {
     ).toStrictEqual(single);
   });
 
-  it("keeps the process-local signature verifier outside serializable config", () => {
-    const fixture = makeNativeTx({ invalidVkeyWitness: true });
-    const queued = makeQueued(fixture.txId, fixture.txCbor);
-    const reference = validatePhaseASingle(queued, phaseAConfig);
-    expect("ledgerTx" in reference).toBe(false);
-    if (!("ledgerTx" in reference)) {
-      expect(reference.code).toBe(RejectCodes.InvalidSignature);
-    }
-
-    let calls = 0;
-    const injected = validatePhaseASingle(queued, phaseAConfig, {
-      verifyVKeyWitnessSignature: (txBodyHash, value) => {
-        calls += 1;
-        expect(txBodyHash).toStrictEqual(fixture.txId);
-        expect(value.vkey).toHaveLength(32);
-        expect(value.signature).toHaveLength(64);
-        return true;
-      },
-    });
-    expect(calls).toBe(1);
-    expect("ledgerTx" in injected).toBe(true);
-  });
   it("accepts canonical native transactions", async () => {
     const fixture = makeNativeTx();
 

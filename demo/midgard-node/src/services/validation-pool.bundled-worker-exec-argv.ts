@@ -1,5 +1,6 @@
 import { Worker } from "node:worker_threads";
 
+import { LedgerSignatureVerifierUnavailableError } from "@al-ft/midgard-core";
 import {
   type LocalScriptEvalResult,
   type MidgardCekVerdictRequest,
@@ -12,6 +13,7 @@ import { Context, Data, Effect, Metric } from "effect";
 import {
   type ValidationJobRequest,
   type ValidationWorkerResponse,
+  type WorkerFailure,
 } from "../workers/utils/validation-pool.js";
 
 export class ValidationWorkerError extends Data.TaggedError(
@@ -22,6 +24,57 @@ export class ValidationWorkerError extends Data.TaggedError(
   /** An import-check job cancelled before it started (its `startBy`). */
   readonly notStarted?: true;
 }> {}
+
+/** The failure a worker's `job_failed` response stands for: its Ed25519
+ * verifier's fault when the worker marks one (`localFault`), otherwise an
+ * error with the worker's text. */
+export const jobFailedError = (
+  slotIndex: number,
+  response: WorkerFailure,
+): Error => {
+  const error = new Error(response.error);
+  return response.localFault === undefined
+    ? error
+    : new LedgerSignatureVerifierUnavailableError(
+        `validation worker ${slotIndex}: Ed25519 verification is unavailable`,
+        { cause: error },
+      );
+};
+
+/** A validation job its worker did not answer within the pool's job
+ * timeout. */
+export class ValidationJobTimeoutError extends Error {
+  constructor(
+    readonly jobId: number,
+    readonly timeoutMs: number,
+  ) {
+    super(`validation job ${jobId} timed out after ${timeoutMs}ms`);
+    this.name = "ValidationJobTimeoutError";
+  }
+}
+
+/**
+ * A validation worker stopped: it raised an error it did not handle (Node's
+ * `error` event, `cause` the worker's error: an uncaught exception, a heap
+ * limit reached, or a module that did not load), or it exited with
+ * `exitCode`.
+ */
+export class ValidationWorkerStoppedError extends Error {
+  readonly exitCode: number | undefined;
+  constructor(
+    readonly workerIndex: number,
+    stop: { readonly error: unknown } | { readonly exitCode: number },
+  ) {
+    super(
+      "error" in stop
+        ? `validation worker ${workerIndex} stopped on an error it did not handle: ${stop.error instanceof Error ? stop.error.message : String(stop.error)}`
+        : `validation worker exited with code ${stop.exitCode}`,
+      "error" in stop ? { cause: stop.error } : undefined,
+    );
+    this.name = "ValidationWorkerStoppedError";
+    this.exitCode = "exitCode" in stop ? stop.exitCode : undefined;
+  }
+}
 
 export type ValidationPoolService = {
   readonly poolSize: number;

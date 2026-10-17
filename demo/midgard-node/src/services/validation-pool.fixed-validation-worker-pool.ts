@@ -19,11 +19,13 @@ import {
 import {
   type BackgroundJob,
   BUNDLED_WORKER_EXEC_ARGV,
-  type ImportCheckLane,
+  jobFailedError,
   type PendingJob,
   restartCounter,
   timeoutCounter,
+  ValidationJobTimeoutError,
   ValidationWorkerError,
+  ValidationWorkerStoppedError,
   type WorkerSlot,
 } from "./validation-pool.bundled-worker-exec-argv.js";
 
@@ -328,12 +330,14 @@ export class FixedValidationWorkerPool {
     worker.on("message", (response: ValidationWorkerResponse) =>
       this.handleResponse(slot, response),
     );
-    worker.on("error", (cause) => this.failSlot(slot, cause));
+    worker.on("error", (error) =>
+      this.failSlot(slot, new ValidationWorkerStoppedError(index, { error })),
+    );
     worker.on("exit", (code) => {
       if (!this.closed && !slot.restarting) {
         this.failSlot(
           slot,
-          new Error(`validation worker exited with code ${code}`),
+          new ValidationWorkerStoppedError(index, { exitCode: code }),
         );
       }
       if (!this.closed) this.scheduleRespawn(slot);
@@ -395,7 +399,7 @@ export class FixedValidationWorkerPool {
     slot: WorkerSlot,
     job: PendingJob,
     timeoutMs = this.timeoutMs,
-    lane: ImportCheckLane | null = null,
+    lane: WorkerSlot["lane"] = null,
   ): void {
     slot.inFlight = job;
     slot.lane = lane;
@@ -404,9 +408,7 @@ export class FixedValidationWorkerPool {
       void Metric.increment(timeoutCounter).pipe(Effect.runPromise);
       this.failSlot(
         slot,
-        new Error(
-          `validation job ${job.request.jobId} timed out after ${timeoutMs}ms`,
-        ),
+        new ValidationJobTimeoutError(job.request.jobId, timeoutMs),
       );
       void slot.worker.terminate();
     }, timeoutMs);
@@ -429,7 +431,7 @@ export class FixedValidationWorkerPool {
       return;
     }
     if (response.kind === "job_failed") {
-      this.failSlot(slot, new Error(response.error));
+      this.failSlot(slot, jobFailedError(slot.index, response));
       void slot.worker.terminate();
       return;
     }

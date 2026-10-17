@@ -4,7 +4,11 @@
  */
 import { Effect, Metric } from "effect";
 
-import { type DriverHold, notRetried } from "../l1-events/driver.js";
+import {
+  type DriverHold,
+  localFault,
+  notRetried,
+} from "../l1-events/driver.js";
 import {
   LANDED_BLOCK_AWAITING_DA,
   LANDED_BLOCK_DA_REFETCH_PENDING,
@@ -13,6 +17,7 @@ import {
   LANDED_BLOCK_INVALID,
   LANDED_BLOCK_LOCAL_FAULT,
   LANDED_BLOCK_REPLAY_INCOMPLETE,
+  LANDED_BLOCK_VERIFIER_UNAVAILABLE,
 } from "./holds.js";
 import type { ReplayOutcome } from "./replay.js";
 
@@ -23,6 +28,7 @@ const HOLD_OF = {
   forced_order_pending: LANDED_BLOCK_FORCED_ORDER_PENDING,
   local_fault: LANDED_BLOCK_LOCAL_FAULT,
   incomplete: LANDED_BLOCK_REPLAY_INCOMPLETE,
+  verifier_unavailable: LANDED_BLOCK_VERIFIER_UNAVAILABLE,
   invalid: LANDED_BLOCK_INVALID,
 } as const satisfies Record<Exclude<ReplayOutcome["kind"], "replayed">, string>;
 
@@ -30,16 +36,26 @@ export type ReplayHoldKind = keyof typeof HOLD_OF;
 
 /**
  * Only `invalid` (a verdict: the same view replays to the same answer) is
- * `notRetried`. Every other outcome, the local failures (`local_fault`,
- * `incomplete`) included, is retried on the driver's backoff.
+ * `notRetried`. Every other outcome is retried on the driver's backoff. A
+ * local failure (`local_fault`, `incomplete`, `verifier_unavailable`: this
+ * node's own computation, or its verifier, failed) is a `localFault` on block
+ * `headerHash`, the block it stopped at, whatever the failure's text: retried
+ * within the runner's bound.
  */
 export const replayOutcomeHold = (
   kind: ReplayHoldKind,
   detail: string,
-): DriverHold =>
-  kind === "invalid"
-    ? notRetried({ reason: HOLD_OF[kind], detail })
-    : { reason: HOLD_OF[kind], detail };
+  headerHash: string,
+): DriverHold => {
+  const hold: DriverHold = { reason: HOLD_OF[kind], detail };
+  return kind === "invalid"
+    ? notRetried(hold)
+    : kind === "local_fault" ||
+        kind === "incomplete" ||
+        kind === "verifier_unavailable"
+      ? localFault(hold, headerHash)
+      : hold;
+};
 
 /** Foreign-block imports that failed locally, by outcome kind. */
 export const landedBlockLocalFaultCounter = Metric.counter(

@@ -260,6 +260,7 @@ const newRow = <R>(
         hold: replayOutcomeHold(
           replayed.kind,
           `block ${node.headerHash}: ${replayed.detail}`,
+          node.headerHash,
         ),
       } satisfies Step;
     }
@@ -432,6 +433,7 @@ const run = <R>(
           break;
         }
         yield* viewChecked(ports, queue.view, processRow(step.row, step.due));
+        options.committed?.(step.row.headerHash);
         applyDelta(ledger, step.row);
         parent = {
           headerHash: step.row.headerHash,

@@ -1,3 +1,4 @@
+import { LedgerSignatureVerifierUnavailableError } from "@al-ft/midgard-core";
 import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import { CML } from "@lucid-evolution/lucid";
 import { Effect, Either } from "effect";
@@ -15,6 +16,43 @@ import {
   outRefFromByte,
 } from "./validation-fixtures.js";
 import { context } from "./validation-machine.validate-boundary-abi-and-collect-auxiliary-kinds.js";
+
+/**
+ * The check faults for `faultKey` once it has answered `answeredChecks` of
+ * that key's checks.
+ */
+const injected = vi.hoisted(() => ({
+  faultKey: null as Buffer | null,
+  answeredChecks: 0,
+  fault: null as unknown,
+}));
+
+vi.mock(
+  "../../midgard-core/node_modules/libsodium-wrappers-sumo",
+  async (importOriginal) => {
+    const actual = (await importOriginal<{ default: object }>()).default;
+    return {
+      default: new Proxy(actual, {
+        get: (target, key, receiver) => {
+          const value = Reflect.get(target, key, receiver) as unknown;
+          if (key !== "crypto_sign_verify_detached") return value;
+          const verify = value as (...args: Uint8Array[]) => boolean;
+          return (
+            signature: Uint8Array,
+            message: Uint8Array,
+            publicKey: Uint8Array,
+          ): boolean => {
+            if (injected.faultKey?.equals(publicKey) === true) {
+              if (injected.answeredChecks === 0) throw injected.fault;
+              injected.answeredChecks -= 1;
+            }
+            return verify(signature, message, publicKey);
+          };
+        },
+      }),
+    };
+  },
+);
 
 /**
  * E8 fault injection: the trace builder checks each address-witness
@@ -37,11 +75,19 @@ const validVerificationKey = Buffer.from(
 
 const spent = outRefFromByte(0x11);
 const output = makeOutput(FUNDED_OUTPUT_LOVELACE);
+const vkeyWitness = (key: CML.PrivateKey, message: Buffer): Buffer =>
+  Buffer.from(
+    CML.make_vkey_witness(
+      CML.TransactionHash.from_raw_bytes(message),
+      key,
+    ).to_cbor_bytes(),
+  );
 const transaction = makeNativeTx({
   version: 1n,
-  invalidVkeyWitness: true,
-  privateKey: invalidSigner,
-  extraVkeyWitnessKeys: [validSigner],
+  vkeyWitnesses: (message) => [
+    vkeyWitness(invalidSigner, Buffer.alloc(32, 0x7f)),
+    vkeyWitness(validSigner, message),
+  ],
   spendInputs: [spent],
   outputs: [output],
 });
@@ -66,7 +112,8 @@ const commitClaimedInvalidSignature = () =>
 
 describe("trace builder signature check fault", { timeout: 60_000 }, () => {
   afterEach(() => {
-    vi.restoreAllMocks();
+    injected.faultKey = null;
+    injected.answeredChecks = 0;
   });
 
   it("builds the claimed rejection while the check works", async () => {
@@ -78,17 +125,20 @@ describe("trace builder signature check fault", { timeout: 60_000 }, () => {
 
   it("stops as unavailable, never building a rejection, when the check fails", async () => {
     const fault = new WebAssembly.RuntimeError("unreachable");
-    const fromBytes = CML.PublicKey.from_bytes.bind(CML.PublicKey);
-    vi.spyOn(CML.PublicKey, "from_bytes").mockImplementation((bytes) => {
-      if (Buffer.from(bytes).equals(validVerificationKey)) throw fault;
-      return fromBytes(bytes);
-    });
+    injected.fault = fault;
+    injected.faultKey = validVerificationKey;
+    // The build's Phase A replay checks the key first; that check answers,
+    // so the fault reaches the trace builder's own signature scan.
+    injected.answeredChecks = 1;
     const result = await commitClaimedInvalidSignature();
     expect(Either.isLeft(result)).toBe(true);
     if (Either.isRight(result)) return;
     expect(result.left).toBeInstanceOf(ValidationTraceStopped);
     expect((result.left as ValidationTraceStopped).reason).toBe("unavailable");
-    // The fault itself is the cause, so a caller can tell a node fault apart.
-    expect((result.left as ValidationTraceStopped).cause).toBe(fault);
+    // The verifier's typed fault is the cause, carrying the fault itself, so
+    // a caller can tell a node fault apart.
+    const cause = (result.left as ValidationTraceStopped).cause;
+    expect(cause).toBeInstanceOf(LedgerSignatureVerifierUnavailableError);
+    expect((cause as Error).cause).toBe(fault);
   });
 });

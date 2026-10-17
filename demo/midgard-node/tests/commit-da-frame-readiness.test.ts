@@ -119,6 +119,7 @@ const node = () =>
     COMMIT_DA_FRAME_PRESSURE: Ref.unsafeMake(null),
     COMMIT_BUILD_ALARMS: Ref.unsafeMake(NO_COMMIT_BUILD_ALARMS),
     L1_CONTROL_PLANE_ACTIVITY: Ref.unsafeMake(initialL1ControlPlaneActivity()),
+    COMMIT_WORKER_LOCAL_FAULT_RUNS: Ref.unsafeMake(0),
   }) as unknown as Globals;
 
 const reasonsOf = (globals: Globals) =>

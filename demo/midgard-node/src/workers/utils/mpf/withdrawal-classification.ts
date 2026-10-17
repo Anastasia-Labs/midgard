@@ -1,9 +1,11 @@
+import { findLedgerSignatureVerifierUnavailable } from "@al-ft/midgard-core";
 import { LOVELACE_UNIT, normalizeAssets } from "@al-ft/midgard-core/assets";
 import {
   attributeWithdrawalClassificationFault,
   isReplayLocalFault,
 } from "@al-ft/midgard-fault-proofs/block-replay";
 import { classifyWithdrawalFromLedger } from "@al-ft/midgard-sdk";
+import { awaitLedgerEd25519SignatureReady } from "@al-ft/midgard-validation";
 import { Effect, Option } from "effect";
 
 import { DatabaseError } from "../../../database/utils/common.js";
@@ -75,9 +77,15 @@ export const classifyWithdrawal = ({
       ledgerOutRef,
       ...classification,
     })),
+    // A verifier fault stays the cause as it is, so the commit path can tell
+    // this process's fault from a failure of the withdrawal's bytes.
     Effect.mapError(
-      ({ message, cause }) =>
-        new DatabaseError({ table: WithdrawalsDB.tableName, message, cause }),
+      (error) =>
+        new DatabaseError({
+          table: WithdrawalsDB.tableName,
+          message: error.message,
+          cause: findLedgerSignatureVerifierUnavailable(error) ?? error.cause,
+        }),
     ),
     // A runtime fault of the classifier is this node's: the withdrawal is
     // not classified, and the build holds (nothing is committed or
@@ -123,6 +131,19 @@ export const classifyWithdrawalsInOrder = ({
   readonly baseOutputs: ReadonlyMap<string, Buffer>;
 }): Effect.Effect<readonly ClassifiedWithdrawal[], DatabaseError, never> =>
   Effect.gen(function* () {
+    // Signature checks are libsodium's, which answer only once initialised.
+    // A verifier that cannot answer fails as its typed fault, kept as the
+    // cause exactly as `classifyWithdrawal` keeps it.
+    yield* awaitLedgerEd25519SignatureReady.pipe(
+      Effect.mapError(
+        (fault) =>
+          new DatabaseError({
+            table: WithdrawalsDB.tableName,
+            message: fault.message,
+            cause: fault,
+          }),
+      ),
+    );
     const drained = new Set<string>();
     const classified: ClassifiedWithdrawal[] = [];
     for (const entry of entries) {

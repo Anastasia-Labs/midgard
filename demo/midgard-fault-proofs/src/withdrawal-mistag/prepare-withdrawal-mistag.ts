@@ -2,7 +2,12 @@
 import { isDeepStrictEqual } from "node:util";
 
 import { Proof as MpfProof } from "@aiken-lang/merkle-patricia-forestry";
-import { computeHash32 } from "@al-ft/midgard-core";
+import {
+  computeHash28,
+  computeHash32,
+  ledgerEd25519SignatureReady,
+  verifyLedgerEd25519Signature,
+} from "@al-ft/midgard-core";
 import {
   decodeMidgardAddressBytes,
   decodeMidgardTxOutput,
@@ -14,7 +19,7 @@ import {
 } from "@al-ft/midgard-core/plutus-data-cbor";
 import * as SDK from "@al-ft/midgard-sdk";
 import { buildCanonicalMidgardLedgerOutputMaterial } from "@al-ft/midgard-validation";
-import { CML, Data } from "@lucid-evolution/lucid";
+import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
 const domain = Buffer.from("MidgardWithdrawalV1", "utf8");
@@ -119,29 +124,33 @@ const verifyCountedMembership = async <K, V>({
 
 /**
  * Checks the owner signature over the committed body bytes. Decoding a body
- * drops repeated datum map keys, so the bytes are never re-encoded.
+ * drops repeated datum map keys, so the bytes are never re-encoded. The
+ * signature verifies exactly as the ledger does; a failure of the check itself
+ * is raised, never read as an invalid signature.
  */
 const signatureIsValid = (
   info: SDK.WithdrawalInfo,
   bodyCbor: string,
 ): boolean => {
-  try {
-    const [publicKeyHex, signatureHex] = info.signature;
-    if (publicKeyHex.length !== 64 || signatureHex.length !== 128) return false;
-    const publicKey = CML.PublicKey.from_bytes(
-      Buffer.from(publicKeyHex, "hex"),
-    );
-    if (publicKey.hash().to_hex() !== info.body.l2_owner) return false;
-    const message = computeHash32(
-      Buffer.concat([domain, Buffer.from(bodyCbor, "hex")]),
-    );
-    return publicKey.verify(
-      message,
-      CML.Ed25519Signature.from_raw_bytes(Buffer.from(signatureHex, "hex")),
-    );
-  } catch {
+  const [publicKeyHex, signatureHex] = info.signature;
+  if (
+    !/^(?:[0-9a-f]{2}){32}$/u.test(publicKeyHex) ||
+    !/^(?:[0-9a-f]{2}){64}$/u.test(signatureHex)
+  ) {
     return false;
   }
+  const publicKey = Buffer.from(publicKeyHex, "hex");
+  if (computeHash28(publicKey).toString("hex") !== info.body.l2_owner) {
+    return false;
+  }
+  const message = computeHash32(
+    Buffer.concat([domain, Buffer.from(bodyCbor, "hex")]),
+  );
+  return verifyLedgerEd25519Signature(
+    publicKey,
+    message,
+    Buffer.from(signatureHex, "hex"),
+  );
 };
 
 const hash32Hex = (cbor: string): string =>
@@ -222,6 +231,7 @@ export const prepareWithdrawalMistag = async ({
     committedWithdrawal,
     committedWithdrawalInfoCbor,
   );
+  await ledgerEd25519SignatureReady();
   const bodyCbor = plutusConstrFieldCbor(infoCbor, [0]);
   await verifyCountedMembership({
     witness: committedWithdrawal,

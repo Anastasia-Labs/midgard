@@ -54,6 +54,7 @@ import {
   type MidgardValidationMerkleFrontier,
   type MidgardValidationMerkleMembership,
   type MidgardValidationPhaseName,
+  verifyLedgerEd25519Signature,
 } from "@al-ft/midgard-core";
 import {
   decodeMidgardAddressBytes,
@@ -77,10 +78,10 @@ import {
   deriveMidgardForcedTxProofSourceFromCanonicalCbor,
 } from "@al-ft/midgard-core/codec/forced";
 import { type MidgardRejectionReasonV1 } from "@al-ft/midgard-core/validation-trace";
-import { CML } from "@lucid-evolution/lucid";
 import { blake2b } from "@noble/hashes/blake2.js";
 import { Effect } from "effect";
 
+import { awaitLedgerEd25519SignatureReady } from "../ledger-ed25519-ready.js";
 import {
   buildCanonicalMidgardLedgerEntryOutputMaterial,
   buildCanonicalMidgardLedgerOutputMaterial,
@@ -165,6 +166,7 @@ export const prepareValidationTrace = (
   recording: ValidationTraceRecording,
 ) =>
   Effect.gen(function* () {
+    yield* awaitLedgerEd25519SignatureReady;
     const contextCbor = Buffer.from(
       aikenSerialisedPlutusDataCbor(
         encodeCbor([
@@ -1533,21 +1535,13 @@ export const prepareValidationTrace = (
                 hashMidgardSignerLeaf(scan.decoded.signerHash),
               )
             : signatureControl.signerFrontier;
-          // The decoder fixed both widths, so a throw here is a fault of the
-          // check itself and the build stops with it, as Phase A does.
-          let signatureIsValid: boolean;
-          const publicKey = CML.PublicKey.from_bytes(
+          // The ledger's own check, as Phase A runs it. A failure of the
+          // check itself is raised and stops the build.
+          const signatureIsValid = verifyLedgerEd25519Signature(
             scan.decoded.verificationKey,
-          );
-          const signature = CML.Ed25519Signature.from_raw_bytes(
+            input.transactionId,
             scan.decoded.signature,
           );
-          try {
-            signatureIsValid = publicKey.verify(input.transactionId, signature);
-          } finally {
-            publicKey.free();
-            signature.free();
-          }
           const addressSeen = signatureControl.addressSeen + 1;
           const addressCount =
             signatureControl.addressCount === -1
