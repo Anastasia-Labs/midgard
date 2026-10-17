@@ -33,6 +33,29 @@ export class ValidationJobTimeoutError extends Error {
   }
 }
 
+/**
+ * A validation worker stopped: it raised an error it did not handle (Node's
+ * `error` event, `cause` the worker's error: an uncaught exception, a heap
+ * limit reached, or a module that did not load), or it exited with
+ * `exitCode`.
+ */
+export class ValidationWorkerStoppedError extends Error {
+  readonly exitCode: number | undefined;
+  constructor(
+    readonly workerIndex: number,
+    stop: { readonly error: unknown } | { readonly exitCode: number },
+  ) {
+    super(
+      "error" in stop
+        ? `validation worker ${workerIndex} stopped on an error it did not handle: ${stop.error instanceof Error ? stop.error.message : String(stop.error)}`
+        : `validation worker exited with code ${stop.exitCode}`,
+      "error" in stop ? { cause: stop.error } : undefined,
+    );
+    this.name = "ValidationWorkerStoppedError";
+    this.exitCode = "exitCode" in stop ? stop.exitCode : undefined;
+  }
+}
+
 export type ValidationPoolService = {
   readonly poolSize: number;
   readonly consensusProfile: NonNullable<PhaseAConfig["consensusProfile"]>;

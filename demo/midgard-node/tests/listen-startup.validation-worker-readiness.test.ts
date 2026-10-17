@@ -10,6 +10,13 @@
  *   follower is reached;
  * - it fails once: the retry starts the node;
  * - it succeeds: the node starts as before, on one pool.
+ *
+ * Or a worker stops while it answers its readiness job, on an error it does
+ * not handle or at its heap limit: that start is retried on a fresh pool
+ * within the same bound, then startup fails exhausted and the process exits
+ * non-zero; one that stops once is retried and the node starts. A worker
+ * whose module does not load fails startup at once, and the process exits
+ * non-zero. No failure leaves the node held up unready.
  */
 import { existsSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -51,6 +58,25 @@ vi.mock("../src/fibers/resolve-worker-entry.js", async (importOriginal) => {
           )
         : actual.resolveWorkerEntry(moduleUrl, fileName),
   };
+});
+// A worker started for the `out-of-memory` case gets a small heap, so it
+// reaches its limit at once.
+vi.mock("node:worker_threads", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("node:worker_threads")>();
+  class Worker extends actual.Worker {
+    constructor(
+      entry: string | URL,
+      options?: import("node:worker_threads").WorkerOptions,
+    ) {
+      super(
+        entry,
+        process.env.MIDGARD_TEST_WORKER_READINESS_MODE === "out-of-memory"
+          ? { ...options, resourceLimits: { maxOldGenerationSizeMb: 32 } }
+          : options,
+      );
+    }
+  }
+  return { ...actual, default: { ...actual, Worker }, Worker };
 });
 vi.mock("../src/services/index.js", async (importOriginal) => {
   const { Layer } = await import("effect");
@@ -143,7 +169,36 @@ const startupConfig = {
   VALIDATION_STRICTNESS_PROFILE: "phase1_midgard",
 } as unknown as NodeConfig["Type"];
 
-type Mode = "fault" | "never" | "fault-once" | "ready";
+type Mode =
+  | "fault"
+  | "never"
+  | "fault-once"
+  | "ready"
+  | "crash"
+  | "crash-once"
+  | "out-of-memory"
+  | "load";
+
+/** `cause` and the causes it carries, outermost first. */
+const causeChain = (cause: unknown): unknown[] => {
+  const chain: unknown[] = [];
+  for (let next = cause; next !== undefined && chain.length < 8; ) {
+    chain.push(next);
+    next =
+      typeof next === "object" && next !== null && "cause" in next
+        ? (next as { readonly cause?: unknown }).cause
+        : undefined;
+  }
+  return chain;
+};
+
+/** The Node error code on `cause` or a cause it carries. */
+const causeCodes = (cause: unknown): unknown[] =>
+  causeChain(cause).map((link) =>
+    typeof link === "object" && link !== null && "code" in link
+      ? (link as { readonly code?: unknown }).code
+      : undefined,
+  );
 
 /** Starts the node with the workers' initialisation set to `mode`, runs
  * `observe` on it, then stops it. */
@@ -157,6 +212,7 @@ const startNode = async (
     /** How many workers read their libsodium initialisation. */
     readonly workersRead: () => number;
   }) => Promise<void>,
+  jobTimeoutMs = JOB_TIMEOUT_MS,
 ) => {
   await ledgerEd25519SignatureReady;
   expect(existsSync(new URL("../dist/validation.js", import.meta.url))).toBe(
@@ -184,7 +240,10 @@ const startNode = async (
       withStartupHttpServer(0, (startup) =>
         runNode(startup).pipe(
           Effect.tapError((error) => Effect.sync(() => failures.push(error))),
-          Effect.provideService(NodeConfig, startupConfig),
+          Effect.provideService(NodeConfig, {
+            ...startupConfig,
+            VALIDATION_WORKER_JOB_TIMEOUT_MS: jobTimeoutMs,
+          }),
           Effect.provideService(
             ContractDeploymentIdentity,
             ContractDeploymentIdentity.make({
@@ -226,9 +285,15 @@ const startNode = async (
 };
 
 /** The node's exit, once startup ended it; fails if it is still running. */
-const nodeExit = (fiber: Fiber.RuntimeFiber<void, unknown>) =>
+/** The outcome a held startup logs: the node stays up, unready. */
+const HELD = expect.stringMatching(/the node stays up, unready/u);
+
+const nodeExit = (
+  fiber: Fiber.RuntimeFiber<void, unknown>,
+  withinMs = 8 * JOB_TIMEOUT_MS,
+) =>
   Effect.runPromise(
-    Fiber.await(fiber).pipe(Effect.timeout(`${8 * JOB_TIMEOUT_MS} millis`)),
+    Fiber.await(fiber).pipe(Effect.timeout(`${withinMs} millis`)),
   );
 
 describe("node startup while its validation workers initialise", () => {
@@ -284,6 +349,104 @@ describe("node startup while its validation workers initialise", () => {
     },
     60_000,
   );
+
+  it.each([
+    [
+      "throws an error it does not handle",
+      "crash",
+      (cause: unknown) =>
+        expect(
+          causeChain(cause).map((link) => (link as Error).message),
+        ).toContainEqual("injected worker crash"),
+      JOB_TIMEOUT_MS,
+      8 * JOB_TIMEOUT_MS,
+    ],
+    [
+      // A job timeout well past the time a worker takes to load and reach
+      // its heap limit, so the worker stops before its job times out; a
+      // worker near its heap limit collects garbage often, so each attempt
+      // takes seconds.
+      "reaches its heap limit",
+      "out-of-memory",
+      (cause: unknown) =>
+        expect(causeCodes(cause)).toContain("ERR_WORKER_OUT_OF_MEMORY"),
+      30_000,
+      90_000,
+    ],
+  ] as const)(
+    "a worker that %s while it answers its readiness job is retried within the bound, then exits non-zero before any durable work",
+    async (_label, mode, lastCause, jobTimeoutMs, exitWithinMs) => {
+      await startNode(
+        mode,
+        async ({ fiber, pools, messages }) => {
+          const exit = await nodeExit(fiber, exitWithinMs);
+          expect(Exit.isFailure(exit)).toBe(true);
+          const step = Exit.isFailure(exit)
+            ? findStartupStepFailure(exit.cause)
+            : undefined;
+          expect(step).toMatchObject({
+            step: "validation_workers",
+            reason: "validation_worker_crashed",
+            exhausted: true,
+            attempts: ATTEMPTS,
+          });
+          lastCause(step?.cause);
+          expect(reached).toEqual({ instanceLock: 0, da: 0, follower: 0 });
+          expect(pools).toHaveLength(ATTEMPTS);
+          expect(pools.every((pool) => pool.isClosed())).toBe(true);
+          expect(messages).toContainEqual(
+            expect.stringMatching(
+              /^node_startup_failed stage=\S+ step=validation_workers reason=validation_worker_crashed; a transient failure outlived its bound; the node exits non-zero$/u,
+            ),
+          );
+          expect(messages).not.toContainEqual(HELD);
+        },
+        jobTimeoutMs,
+      );
+    },
+    120_000,
+  );
+
+  it("a worker whose module does not load fails startup at once and exits non-zero before any durable work", async () => {
+    await startNode("load", async ({ fiber, pools, messages }) => {
+      const exit = await nodeExit(fiber);
+      expect(Exit.isFailure(exit)).toBe(true);
+      const step = Exit.isFailure(exit)
+        ? findStartupStepFailure(exit.cause)
+        : undefined;
+      expect(step).toMatchObject({
+        step: "validation_workers",
+        reason: "validation_worker_load_failed",
+        exhausted: false,
+        terminal: true,
+        attempts: 1,
+      });
+      expect(causeCodes(step?.cause)).toContain("ERR_MODULE_NOT_FOUND");
+      expect(reached).toEqual({ instanceLock: 0, da: 0, follower: 0 });
+      expect(pools).toHaveLength(1);
+      expect(pools[0]!.isClosed()).toBe(true);
+      expect(messages).toContainEqual(
+        expect.stringMatching(
+          /^node_startup_failed stage=\S+ step=validation_workers reason=validation_worker_load_failed; a failure waiting does not clear; the node exits non-zero$/u,
+        ),
+      );
+      expect(messages).not.toContainEqual(HELD);
+    });
+  }, 60_000);
+
+  it("a worker that stops once while it answers its readiness job is retried and the node starts", async () => {
+    await startNode("crash-once", async ({ fiber, pools, failures }) => {
+      await vi.waitFor(() => expect(reached.follower).toBe(1), {
+        timeout: 20_000,
+      });
+      expect(reached).toEqual({ instanceLock: 1, da: 1, follower: 1 });
+      expect(failures).toEqual([]);
+      expect(pools).toHaveLength(2);
+      expect(pools[0]!.isClosed()).toBe(true);
+      expect(pools[1]!.isClosed()).toBe(false);
+      expect(fiber.unsafePoll()).toBeNull();
+    });
+  }, 60_000);
 
   it("a worker initialisation that fails once is retried and the node starts", async () => {
     await startNode("fault-once", async ({ pools, failures, workersRead }) => {

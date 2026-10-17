@@ -93,7 +93,9 @@ const failure = (current: StartupState) => ({
  * ruling 2026-10-09; plan §7.5): a transient failure that outlived its
  * budget (`StartupStepFailedError.exhausted`, `TransientBudgetExhaustedError`)
  * fails the effect, so the process exits non-zero and its supervisor's
- * restart is the backoff. Any other failure, deterministic or unknown, holds:
+ * restart is the backoff. So does a failure its step marks terminal
+ * (`StartupStepFailedError.terminal`), at once. Any other failure,
+ * deterministic or unknown, holds:
  * the listener keeps serving `startup_failed`, `/healthz` stays live, and
  * the effect never completes until it is interrupted, so a supervisor's
  * restart cannot loop on it.
@@ -226,7 +228,9 @@ export const withStartupHttpServer = <A, E, R>(
               const current = yield* Ref.get(state);
               const step = findStartupStepFailure(cause);
               const spent = findTransientBudgetExhausted(cause);
-              const exits = spent !== undefined || step?.exhausted === true;
+              const terminal = step?.terminal === true;
+              const exits =
+                spent !== undefined || step?.exhausted === true || terminal;
               if (current.stage !== "fatal") {
                 const named =
                   spent !== undefined
@@ -242,9 +246,11 @@ export const withStartupHttpServer = <A, E, R>(
                 // Names only (stage, and step and reason when a step failed),
                 // never the cause. An exit propagates the original error,
                 // cause included, to CLI teardown, which exits non-zero.
-                const outcome = exits
-                  ? "a transient failure outlived its bound; the node exits non-zero"
-                  : "the node stays up, unready, until it is restarted";
+                const outcome = terminal
+                  ? "a failure waiting does not clear; the node exits non-zero"
+                  : exits
+                    ? "a transient failure outlived its bound; the node exits non-zero"
+                    : "the node stays up, unready, until it is restarted";
                 yield* Effect.logError(
                   spent !== undefined
                     ? `node_transient_budget_exhausted stage=${current.stage} source=${spent.source} reason=${spent.reason}; ${outcome}`

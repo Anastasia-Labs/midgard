@@ -18,7 +18,7 @@ import {
 } from "../workers/utils/validation-pool.js";
 import { NodeConfig } from "./config.js";
 import { ContractDeploymentIdentity } from "./midgard-contracts.js";
-import { retryStartupStep } from "./startup-waiting.js";
+import { retryStartupStep, startupStepFailed } from "./startup-waiting.js";
 import {
   busyWorkersGauge,
   deserializeDuration,
@@ -30,6 +30,7 @@ import {
   ValidationPool,
   type ValidationPoolService,
   ValidationWorkerError,
+  ValidationWorkerStoppedError,
 } from "./validation-pool.bundled-worker-exec-argv.js";
 import { FixedValidationWorkerPool } from "./validation-pool.fixed-validation-worker-pool.js";
 
@@ -44,6 +45,42 @@ const poolStartFailure = (cause: unknown): ValidationWorkerError =>
 /** The startup step the validation workers' readiness reports under. */
 const VALIDATION_WORKERS_STEP = "validation_workers";
 
+/** A validation worker stopped while it answered its readiness job. */
+const VALIDATION_WORKER_CRASHED = "validation_worker_crashed";
+
+/** A validation worker's module, or one it imports, did not load. */
+const VALIDATION_WORKER_LOAD_FAILED = "validation_worker_load_failed";
+
+/** The validation workers did not start, for a reason not named above. */
+const VALIDATION_WORKER_START_FAILED = "validation_worker_start_failed";
+
+/** Node's codes for a worker entry, or a module it imports, that cannot be
+ * resolved or loaded. */
+const MODULE_LOAD_CODES: ReadonlySet<unknown> = new Set([
+  "ERR_MODULE_NOT_FOUND",
+  "MODULE_NOT_FOUND",
+  "ERR_UNSUPPORTED_DIR_IMPORT",
+  "ERR_UNKNOWN_FILE_EXTENSION",
+  "ERR_UNKNOWN_MODULE_FORMAT",
+  "ERR_WORKER_PATH",
+  "ERR_INVALID_URL",
+  "ERR_INVALID_URL_SCHEME",
+  "ERR_REQUIRE_ESM",
+]);
+
+/** `error` and the causes it carries, outermost first. */
+const causes = (error: unknown): readonly unknown[] => {
+  const chain: unknown[] = [];
+  for (let next = error; next !== undefined && chain.length < 8; ) {
+    chain.push(next);
+    next =
+      typeof next === "object" && next !== null && "cause" in next
+        ? (next as { readonly cause?: unknown }).cause
+        : undefined;
+  }
+  return chain;
+};
+
 /**
  * A pool start that failed because a worker did not become ready to verify:
  * its Ed25519 verifier did not initialise (the worker's typed fault), or it
@@ -53,19 +90,49 @@ const workerNotReady = (error: ValidationWorkerError): boolean =>
   findLedgerSignatureVerifierUnavailable(error) !== undefined ||
   error.cause instanceof ValidationJobTimeoutError;
 
+/** A pool start that failed because a worker's module, or one it imports,
+ * did not load: it cannot be resolved, or it does not parse or link. */
+const workerModuleNotLoaded = (error: ValidationWorkerError): boolean =>
+  causes(error).some(
+    (cause) =>
+      (cause instanceof Error && cause.name === "SyntaxError") ||
+      (typeof cause === "object" &&
+        cause !== null &&
+        MODULE_LOAD_CODES.has((cause as { readonly code?: unknown }).code)),
+  );
+
+/** A pool start that failed because a worker stopped while it answered its
+ * readiness job (`ValidationWorkerStoppedError`: an error it did not handle,
+ * its heap limit reached, a non-zero exit), other than a module that did not
+ * load. */
+const workerStopped = (error: ValidationWorkerError): boolean =>
+  causes(error).some(
+    (cause) => cause instanceof ValidationWorkerStoppedError,
+  ) && !workerModuleNotLoaded(error);
+
 /**
  * Starts the validation workers. Each worker initialises its own Ed25519
  * verifier, which the parent's readiness does not establish, and the pool
  * starts once every worker answered its readiness job.
  *
- * A start that fails because a worker did not become ready
- * (`workerNotReady`) is retried on a fresh pool under the ledger signature
- * verifier's startup bound (`LEDGER_SIGNATURE_VERIFIER_STARTUP_BOUNDS`,
- * reported under `validation_workers` /
- * `ledger_signature_verifier_unavailable`). Past it the step fails
- * exhausted (`StartupStepFailedError`), so the process exits non-zero for
- * its supervisor to restart it. Any other start failure fails as it did,
- * with its `ValidationWorkerError`.
+ * A start that fails on what is plausibly transient is retried on a fresh
+ * pool under the ledger signature verifier's startup bound
+ * (`LEDGER_SIGNATURE_VERIFIER_STARTUP_BOUNDS`), reported under
+ * `validation_workers`:
+ *
+ * - a worker that did not become ready (`workerNotReady`), under
+ *   `ledger_signature_verifier_unavailable`;
+ * - a worker that stopped (`workerStopped`: an error it did not handle, its
+ *   heap limit reached, `ERR_WORKER_OUT_OF_MEMORY`, or a non-zero exit),
+ *   under `validation_worker_crashed`. A worker whose module throws while it
+ *   is evaluated stops the same way and is retried the same way.
+ *
+ * Past the bound the step fails exhausted (`StartupStepFailedError`), so the
+ * process exits non-zero for its supervisor to restart it. Any other start
+ * failure is not retried: the step fails at once, marked terminal, so the
+ * process exits non-zero rather than holds, under
+ * `validation_worker_load_failed` for a worker module that did not load and
+ * `validation_worker_start_failed` otherwise.
  */
 const startValidationWorkers = (makePool: () => FixedValidationWorkerPool) => {
   const start = Effect.acquireRelease(
@@ -83,7 +150,7 @@ const startValidationWorkers = (makePool: () => FixedValidationWorkerPool) => {
         Either.right(pool),
     ),
     Effect.catchIf(
-      (error) => !workerNotReady(error),
+      (error) => !workerNotReady(error) && !workerStopped(error),
       (error) => Effect.succeed(Either.left(error)),
     ),
   );
@@ -92,7 +159,10 @@ const startValidationWorkers = (makePool: () => FixedValidationWorkerPool) => {
   );
   return retryStartupStep(start, {
     key: VALIDATION_WORKERS_STEP,
-    reason: LEDGER_SIGNATURE_VERIFIER_UNAVAILABLE,
+    reason: (error) =>
+      workerStopped(error)
+        ? VALIDATION_WORKER_CRASHED
+        : LEDGER_SIGNATURE_VERIFIER_UNAVAILABLE,
     retryable: () => true,
     budget: {
       maxAttempts: LEDGER_SIGNATURE_VERIFIER_STARTUP_BOUNDS.maxAttempts,
@@ -102,7 +172,16 @@ const startValidationWorkers = (makePool: () => FixedValidationWorkerPool) => {
   }).pipe(
     Effect.flatMap((started) =>
       Either.isLeft(started)
-        ? Effect.fail(started.left)
+        ? Effect.fail(
+            startupStepFailed({
+              step: VALIDATION_WORKERS_STEP,
+              reason: workerModuleNotLoaded(started.left)
+                ? VALIDATION_WORKER_LOAD_FAILED
+                : VALIDATION_WORKER_START_FAILED,
+              cause: started.left,
+              terminal: true,
+            }),
+          )
         : Effect.succeed(started.right),
     ),
   );
