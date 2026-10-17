@@ -117,7 +117,7 @@ const wellFormedInteger = (
       return (
         control.blob === null &&
         (control.sourceLength === 2
-          ? control.memory === 0n
+          ? control.memory === 0n || control.memory === 1n
           : length !== null &&
             (control.memory === 4n + BigInt(length) ||
               control.memory === 5n + BigInt(length)))
@@ -288,6 +288,7 @@ export const advanceValidatedMidgardCekDataInteger = ({
       ) {
         return initialMidgardCekDataIntegerMeasureControl({
           sourceStart: control.sourceStart,
+          negative: sourceBytes[0] === 0xc3,
         });
       }
       const memory = parseMidgardCekDataIntegerSyntax({

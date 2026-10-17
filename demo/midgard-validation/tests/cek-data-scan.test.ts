@@ -40,7 +40,7 @@ describe("V1 content-addressed Data scanner", () => {
       "6b5258f74c54a3932194e3087c5ce5652fb1bbffb042b71572aab47bea7d07e4",
     );
     expect(hashMidgardCekDataScanControl(trace.terminal).toString("hex")).toBe(
-      "865b9c51d15222a3b33dbb422e212aa302d37e4a791268c0f22a8ff6b0a538fa",
+      "c37b5c2284d1d45cfd16930cce3335ec078250d2b445d5fb100175970490bf50",
     );
     expect(trace.steps.map(({ step }) => step.kind)).toEqual([
       "openConstructor",

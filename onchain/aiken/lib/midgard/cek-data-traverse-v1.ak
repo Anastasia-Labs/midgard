@@ -832,7 +832,10 @@ pub fn prevalidated_head_scalar(
         ..control,
         stage: stage_integer,
         integer: Some(
-          cek_data_integer_v1.initial_measure_control_v1(item_start),
+          cek_data_integer_v1.initial_measure_control_v1(
+            item_start,
+            first == 195,
+          ),
         ),
       },
     )

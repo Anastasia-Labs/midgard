@@ -89,6 +89,41 @@ describe("evaluateMidgardTxRedeemers", () => {
     );
   });
 
+  it("charges Cardano's budget, startup cost included, and no unit less", async () => {
+    // Cardano's budget for this program, measured with `aiken uplc eval` (the
+    // pinned evaluator, PlutusV3 cost model) on the program applied to
+    // `Constr 0 []`. The program's cost does not depend on the context beyond
+    // its constructor tag, and that budget includes the 100 cpu / 100 memory
+    // Cardano spends when an evaluation starts.
+    const cardano = { memory: 2_868n, cpu: 817_918n };
+    const evaluation = await evaluate(draft([0n, 0n]));
+    expect(evaluation.kind).toBe("evaluated");
+    if (evaluation.kind !== "evaluated") return;
+    expect(evaluation.redeemers).toEqual([
+      {
+        tag: MidgardRedeemerTag.Spend,
+        index: 0n,
+        memory: cardano.memory,
+        steps: cardano.cpu,
+      },
+    ]);
+
+    const exact = await phaseB(draft([cardano.memory, cardano.cpu]));
+    expect(exact.result.accepted).toHaveLength(1);
+    expect(exact.spent).toEqual([{ kind: "accepted", budget: cardano }]);
+
+    for (const short of [
+      [cardano.memory - 1n, cardano.cpu],
+      [cardano.memory, cardano.cpu - 1n],
+    ] as const) {
+      const refused = await phaseB(draft(short));
+      expect(refused.result.accepted).toHaveLength(0);
+      expect(refused.result.rejected[0]?.code).toBe(
+        RejectCodes.PlutusScriptInvalid,
+      );
+    }
+  });
+
   it("gives the same budgets through an out-of-process evaluator", async () => {
     let calls = 0;
     const tx = draft([0n, 0n]);

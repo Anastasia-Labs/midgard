@@ -140,9 +140,10 @@ test proves_canonical_chunked_bytes_in_raw_and_virtual_coordinates() {
   )
   expect Some(summary) = cek_data_bytes_v1.finalize_v1(terminal)
   and {
-    summary.root == #"e36bf656c2ebd1bb060fa2a5b3c8d515c595d7ddac821eab2ab29d5e97b29836",
+    summary.root == #"51a986a84b9af3d99f4bbfa6f5fd1d1b674b9c2d064d9ce4a1c02ed1403778e3",
     summary.cbor_length == 70,
-    summary.memory == 69,
+    // 65 bytes occupy nine 8-byte words, plus the four-word Data node.
+    summary.memory == 13,
     cek_data_bytes_v1.encode_control_v1(terminal) == typescript_terminal_control_cbor,
   }
 }
@@ -157,7 +158,7 @@ test decodes_the_typescript_terminal_control() {
     control.source_start == 17,
     control.source_length == 70,
     control.bytes_length == 65,
-    summary.root == #"e36bf656c2ebd1bb060fa2a5b3c8d515c595d7ddac821eab2ab29d5e97b29836",
+    summary.root == #"51a986a84b9af3d99f4bbfa6f5fd1d1b674b9c2d064d9ce4a1c02ed1403778e3",
     cek_data_bytes_v1.encode_control_v1(control) == typescript_terminal_control_cbor,
   }
 }

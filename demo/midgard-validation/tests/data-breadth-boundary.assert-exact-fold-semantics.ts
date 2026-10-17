@@ -96,18 +96,13 @@ export type DataTraverseStep = {
   readonly next: Parameters<typeof advanceMidgardCekDataTraverse>[0]["control"];
 };
 
-const unsignedByteLength = (value: number): number => {
-  let size = 1;
-  let remaining = value;
-  while (remaining >= 256) {
-    size += 1;
-    remaining = Math.floor(remaining / 256);
-  }
-  return size;
-};
-
+// A Data integer costs 4 words of node plus its magnitude in 64-bit words
+// (one word for zero).
 const integerDataMemory = (value: number): bigint =>
-  BigInt(4 + unsignedByteLength(value * 2));
+  4n +
+  (value === 0
+    ? 1n
+    : (BigInt(BigInt(value).toString(2).length) - 1n) / 64n + 1n);
 
 const exactBreadthMemory = (kind: DataBreadthKind, breadth: number): bigint => {
   if (kind !== "map") return 4n + BigInt(breadth) * 5n;

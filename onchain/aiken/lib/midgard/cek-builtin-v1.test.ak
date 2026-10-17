@@ -128,8 +128,8 @@ test add_integer_direct_budget_matches_reference_cek() {
       integer(#"1881"),
     ),
     cek_builtin_v1.direct_builtin_budget_v1(0, arguments) == cek_cost_v1.BuiltinBudgetV1 {
-      cpu: 101628,
-      memory: 3,
+      cpu: 101208,
+      memory: 2,
     },
   }
 }
@@ -197,7 +197,7 @@ test integer_to_bytes_size_failure_charges_the_pinned_builtin_cost() {
       arguments,
     ),
     cek_builtin_v1.authenticated_builtin_failure_budget(73, arguments) == cek_cost_v1.BuiltinBudgetV1 {
-      cpu: 1351512,
+      cpu: 1322607,
       memory: 1,
     },
   }
@@ -280,12 +280,12 @@ test malformed_bls_g1_compression_header_failure_is_paid() {
   ]
   and {
     cek_builtin_v1.verify_direct_builtin_failure_v1(
-      60,
-      builtin_root(60, arguments),
+      59,
+      builtin_root(59, arguments),
       arguments,
     ),
-    cek_builtin_v1.authenticated_builtin_failure_budget(60, arguments) == cek_builtin_v1.direct_builtin_budget_v1(
-      60,
+    cek_builtin_v1.authenticated_builtin_failure_budget(59, arguments) == cek_builtin_v1.direct_builtin_budget_v1(
+      59,
       arguments,
     ),
   }
@@ -299,12 +299,12 @@ test malformed_bls_g2_compression_header_failure_is_paid() {
   ]
   and {
     cek_builtin_v1.verify_direct_builtin_failure_v1(
-      67,
-      builtin_root(67, arguments),
+      66,
+      builtin_root(66, arguments),
       arguments,
     ),
-    cek_builtin_v1.authenticated_builtin_failure_budget(67, arguments) == cek_builtin_v1.direct_builtin_budget_v1(
-      67,
+    cek_builtin_v1.authenticated_builtin_failure_budget(66, arguments) == cek_builtin_v1.direct_builtin_budget_v1(
+      66,
       arguments,
     ),
   }
@@ -318,12 +318,12 @@ test off_curve_bls_g1_encoding_has_a_bounded_paid_failure_proof() {
   ]
   and {
     cek_builtin_v1.verify_direct_builtin_failure_v1(
-      60,
-      builtin_root(60, arguments),
+      59,
+      builtin_root(59, arguments),
       arguments,
     ),
-    cek_builtin_v1.authenticated_builtin_failure_budget(60, arguments) == cek_builtin_v1.direct_builtin_budget_v1(
-      60,
+    cek_builtin_v1.authenticated_builtin_failure_budget(59, arguments) == cek_builtin_v1.direct_builtin_budget_v1(
+      59,
       arguments,
     ),
   }
@@ -336,8 +336,8 @@ test canonical_bls_infinity_encoding_is_not_a_failure() fail {
     ),
   ]
   cek_builtin_v1.verify_direct_builtin_failure_v1(
-    60,
-    builtin_root(60, arguments),
+    59,
+    builtin_root(59, arguments),
     arguments,
   )
 }
@@ -951,6 +951,171 @@ test semantic_wrong_data_variant_failure_is_authenticated_locally() {
   )
 }
 
+const largest_constr_index = 18446744073709551615
+
+const smallest_oversized_constr_index = 18446744073709551616
+
+fn empty_data_fields() -> cek_builtin_v1.ValueWitnessV1 {
+  constant(#"9f0508ff", #"80")
+}
+
+fn empty_data_fields_node() -> cek_data_v1.DataNodeV1 {
+  cek_data_v1.ListData {
+    items_count: 0,
+    items_root: cek_data_v1.empty_data_list_root_v1(),
+    cbor_length: 1,
+    memory: 4,
+  }
+}
+
+fn direct_integer(value: Int) -> cek_builtin_v1.ValueWitnessV1 {
+  integer(cbor.serialise(builtin.i_data(value)))
+}
+
+fn semantic_integer_node(value: Int) -> cek_data_v1.DataNodeV1 {
+  let raw = cbor.serialise(builtin.i_data(value))
+  cek_data_v1.IntegerData {
+    cbor_root: cek_data_scan_v1.bounded_blob_root_v1(raw),
+    cbor_length: bytearray.length(raw),
+    memory: 4 + cek_data_v1.integer_memory_size_v1(value),
+  }
+}
+
+fn semantic_integer(value: Int) -> cek_builtin_v1.ValueWitnessV1 {
+  let raw = cbor.serialise(builtin.i_data(value))
+  let summary = cek_data_v1.integer_data_summary_v1(
+    value,
+    cek_data_scan_v1.bounded_blob_root_v1(raw),
+  )
+  cek_builtin_v1.SemanticConstantValue {
+    type_cbor: #"9f00ff",
+    payload: summary,
+    memory: summary.memory - 4,
+  }
+}
+
+fn constr_data_result(index: Int) -> cek_builtin_v1.ValueWitnessV1 {
+  let raw = cbor.serialise(builtin.i_data(index))
+  let summary = cek_data_v1.large_constr_data_summary_from_cbor_v1(
+    cek_data_scan_v1.bounded_blob_root_v1(raw),
+    bytearray.length(raw),
+    4 + cek_data_v1.integer_memory_size_v1(index),
+    cek_data_v1.empty_data_list_summary_v1(),
+  )
+  cek_builtin_v1.SemanticConstantValue {
+    type_cbor: #"9f08ff",
+    payload: summary,
+    memory: summary.memory,
+  }
+}
+
+fn constr_data_succeeds(
+  index: cek_builtin_v1.ValueWitnessV1,
+  index_nodes: List<cek_data_v1.DataNodeV1>,
+  scalar_preimages: List<ByteArray>,
+  value: Int,
+) -> Bool {
+  let arguments = [index, empty_data_fields()]
+  cek_builtin_v1.verify_semantic_builtin_v1(
+    37,
+    builtin_root(37, arguments),
+    arguments,
+    constr_data_result(value),
+    cek_builtin_v1.SemanticBuiltinWitnessV1 {
+      data_nodes: list.concat(index_nodes, [empty_data_fields_node()]),
+      list_nodes: [],
+      pair_nodes: [],
+      scalar_preimages,
+    },
+  )
+}
+
+fn constr_data_fails(
+  index: cek_builtin_v1.ValueWitnessV1,
+  data_nodes: List<cek_data_v1.DataNodeV1>,
+  scalar_preimages: List<ByteArray>,
+) -> Bool {
+  let arguments = [index, empty_data_fields()]
+  cek_builtin_v1.verify_semantic_builtin_failure_v1(
+    37,
+    builtin_root(37, arguments),
+    arguments,
+    cek_builtin_v1.SemanticBuiltinWitnessV1 {
+      data_nodes,
+      list_nodes: [],
+      pair_nodes: [],
+      scalar_preimages,
+    },
+  )
+}
+
+fn leaf(value: Int) -> ByteArray {
+  cbor.serialise(builtin.i_data(value))
+}
+
+test constr_data_accepts_the_largest_unsigned_64_bit_index() {
+  constr_data_succeeds(
+    direct_integer(largest_constr_index),
+    [],
+    [],
+    largest_constr_index,
+  )
+}
+
+test semantic_constr_data_accepts_the_largest_unsigned_64_bit_index() {
+  constr_data_succeeds(
+    semantic_integer(largest_constr_index),
+    [semantic_integer_node(largest_constr_index)],
+    [leaf(largest_constr_index)],
+    largest_constr_index,
+  )
+}
+
+test constr_data_cannot_succeed_at_minus_one() fail {
+  constr_data_succeeds(
+    semantic_integer(-1),
+    [semantic_integer_node(-1)],
+    [leaf(-1)],
+    -1,
+  )
+}
+
+test constr_data_fails_provably_at_two_to_the_64() {
+  constr_data_fails(
+    semantic_integer(smallest_oversized_constr_index),
+    [semantic_integer_node(smallest_oversized_constr_index)],
+    [],
+  )
+}
+
+test constr_data_fails_provably_at_minus_one() {
+  constr_data_fails(direct_integer(-1), [semantic_integer_node(-1)], [leaf(-1)])
+}
+
+test semantic_constr_data_fails_provably_at_minus_one() {
+  constr_data_fails(
+    semantic_integer(-1),
+    [semantic_integer_node(-1)],
+    [leaf(-1)],
+  )
+}
+
+test constr_data_failure_is_refused_at_the_largest_index() fail {
+  constr_data_fails(
+    semantic_integer(largest_constr_index),
+    [semantic_integer_node(largest_constr_index)],
+    [leaf(largest_constr_index)],
+  )
+}
+
+test constr_data_failure_is_refused_at_zero() fail {
+  constr_data_fails(direct_integer(0), [semantic_integer_node(0)], [leaf(0)])
+}
+
+test one_word_constr_data_index_cannot_fail_from_memory() fail {
+  constr_data_fails(semantic_integer(-1), [semantic_integer_node(-1)], [])
+}
+
 // The old aggregate remains the oracle while physical core hops are introduced.
 fn verify_direct_with_split_parity(
   tag: Int,
@@ -1041,6 +1206,151 @@ fn verify_semantic_with_split_parity(
 test bls_root_hop_refuses_twelve_leaves() {
   let expression = six_miller_loop_expression()
   !cek_builtin_v1.verify_bls_expression_roots(expression, expression, #"", #"")
+}
+
+// The MlResult leaf cap is a proof limit, not a Cardano rule: eleven leaves
+// fail the root hop (the validator expects it, so nothing is certified) and
+// abort the final-verify arm, which has no failure successor to fall into.
+test bls_root_hop_refuses_eleven_leaves() {
+  let left = six_miller_loop_expression()
+  let right = five_miller_loop_expression()
+  !cek_builtin_v1.verify_bls_expression_roots(left, right, #"", #"")
+}
+
+fn bls_expression_root(
+  expression: cek_builtin_v1.BlsExpressionWitnessV1,
+) -> ByteArray {
+  when expression is {
+    cek_builtin_v1.BlsMillerLoopExpression { g1, g2 } ->
+      cek_proof_v1.hash_bls_miller_loop_expression_v1(
+        cek_constant_v1.constant_root_v1(g1),
+        cek_constant_v1.constant_root_v1(g2),
+      )
+    cek_builtin_v1.BlsMultiplyExpression { left, right } ->
+      cek_proof_v1.hash_bls_multiply_expression_v1(
+        bls_expression_root(left),
+        bls_expression_root(right),
+      )
+  }
+}
+
+fn unequal_final_verify(
+  left: cek_builtin_v1.BlsExpressionWitnessV1,
+  right: cek_builtin_v1.BlsExpressionWitnessV1,
+) -> Bool {
+  let arguments = [
+    cek_builtin_v1.BlsMillerLoopValue(bls_expression_root(left)),
+    cek_builtin_v1.BlsMillerLoopValue(bls_expression_root(right)),
+  ]
+  cek_builtin_v1.verify_direct_bls_final_v1(
+    builtin_root(70, arguments),
+    left,
+    right,
+    boolean(#"d87980"),
+  )
+}
+
+test nine_leaf_unequal_final_verify_is_certified() {
+  unequal_final_verify(
+    five_miller_loop_expression(),
+    cek_builtin_v1.BlsMultiplyExpression {
+      left: double_miller_loop_expression(),
+      right: double_miller_loop_expression(),
+    },
+  )
+}
+
+test eleven_leaf_unequal_final_verify_aborts() fail {
+  unequal_final_verify(
+    six_miller_loop_expression(),
+    five_miller_loop_expression(),
+  )
+}
+
+// The 9,215 B revealed-payload cap is a proof limit, not a Cardano rule. At
+// the cap each arm certifies; one byte over, the success arms, the known
+// failure arm and the type failure arm all abort, so the limit never becomes
+// a failure successor. Plutus CBOR chunks a byte string above 64 B, so a
+// payload of L bytes is L + 2 * ceil(L / 64) + 2 bytes.
+fn zero_bytes_constant(length: Int) -> ByteArray {
+  let half = length / 2
+  cbor.serialise(
+    builtin.b_data(
+      bytearray.concat(
+        bytearray.from_int_big_endian(0, half),
+        bytearray.from_int_big_endian(0, length - half),
+      ),
+    ),
+  )
+}
+
+fn length_of_bytes_at(length: Int) -> Bool {
+  let payload = zero_bytes_constant(length)
+  let result = integer(cbor.serialise(builtin.i_data(length)))
+  let arguments = [bytes(payload)]
+  verify_direct_with_split_parity(
+    13,
+    builtin_root(13, arguments),
+    arguments,
+    result,
+  )
+}
+
+fn negative_index_failure_at(length: Int) -> Bool {
+  let arguments = [bytes(zero_bytes_constant(length)), integer(#"20")]
+  cek_builtin_v1.verify_direct_builtin_failure_v1(
+    14,
+    builtin_root(14, arguments),
+    arguments,
+  )
+}
+
+fn add_integer_type_failure_at(length: Int) -> Bool {
+  let arguments = [
+    runtime_constant(#"9f01ff", zero_bytes_constant(length)),
+    runtime_constant(#"9f00ff", #"01"),
+  ]
+  cek_builtin_v1.verify_builtin_type_failure_v1(
+    0,
+    runtime_builtin_root(0, arguments),
+    arguments,
+  )
+}
+
+test direct_arms_certify_at_the_revealed_payload_cap() {
+  // lengthOfByteString: 9,210 B argument + 3 B result.
+  expect bytearray.length(zero_bytes_constant(8930)) == 9212
+  // indexByteString and the addInteger type failure: 9,214 B + 1 B.
+  expect bytearray.length(zero_bytes_constant(8932)) == 9214
+  and {
+    length_of_bytes_at(8930),
+    negative_index_failure_at(8932),
+    add_integer_type_failure_at(8932),
+  }
+}
+
+test direct_success_one_byte_over_the_cap_aborts() fail {
+  expect bytearray.length(zero_bytes_constant(8931)) == 9213
+  length_of_bytes_at(8931)
+}
+
+test direct_scalar_semantics_one_byte_over_the_cap_aborts() fail {
+  let arguments = [bytes(zero_bytes_constant(8931))]
+  cek_builtin_v1.verify_direct_scalar_semantics(
+    13,
+    arguments,
+    integer(cbor.serialise(builtin.i_data(8931))),
+  )
+}
+
+test known_failure_one_byte_over_the_cap_aborts() fail {
+  expect bytearray.length(zero_bytes_constant(8933)) == 9215
+  negative_index_failure_at(8933)
+}
+
+test type_failure_one_byte_over_the_cap_aborts() fail {
+  expect bytearray.length(zero_bytes_constant(8933)) == 9215
+  add_integer_type_failure_at(8933)
 }
 
 fn repeated_byte(byte: Int, count: Int) -> ByteArray {
@@ -1141,8 +1451,8 @@ test ill_typed_hash_to_group_is_only_a_type_failure() {
     runtime_constant(#"9f01ff", dst),
   ]
   and {
-    ill_typed_failure_has_one_arm(58, arguments, runtime),
-    ill_typed_failure_has_one_arm(65, arguments, runtime),
+    ill_typed_failure_has_one_arm(60, arguments, runtime),
+    ill_typed_failure_has_one_arm(67, arguments, runtime),
   }
 }
 
@@ -1733,6 +2043,633 @@ test ed25519_charges_message_words_and_keeps_true_false_successes() {
         }
       },
     ),
+  }
+}
+
+// SH-2: the BLS builtins carry Cardano's flat tags (Plutus `Builtins.hs`):
+// 58/65 compress, 59/66 uncompress, 60/67 hashToGroup. The hashToGroup
+// points are RFC 9380 hash_to_curve of "midgard" under the BLS signature
+// suites' DSTs, computed independently of this module.
+fn h2g_message() -> cek_builtin_v1.ValueWitnessV1 {
+  bytes(#"476d696467617264")
+}
+
+test bls_g1_builtins_follow_cardano_flat_tags() {
+  let compressed = bytes(
+    #"583097f1d3a73197d7942695638c4fa9ac0fc3688c4f9774b905a14e3a3f171bac586c55e83ff97a1aeffb3af00adb22c6bb",
+  )
+  let point = cek_builtin_v1.ConstantValue(g1_generator())
+  let h2g_arguments = [
+    h2g_message(),
+    bytes(
+      #"582b424c535f5349475f424c53313233383147315f584d443a5348412d3235365f535357555f524f5f4e554c5f",
+    ),
+  ]
+  let hashed = constant(
+    #"9f09ff",
+    #"58308148482e08a92312cbd0a869e03ced121bf66f29306e281b0f894701f5e3f1242fa6cfdd3afbb2620cb9bfc50ed7dd52",
+  )
+  and {
+    verify_direct_with_split_parity(
+      58,
+      builtin_root(58, [point]),
+      [point],
+      compressed,
+    ),
+    verify_direct_with_split_parity(
+      59,
+      builtin_root(59, [compressed]),
+      [compressed],
+      point,
+    ),
+    verify_direct_with_split_parity(
+      60,
+      builtin_root(60, h2g_arguments),
+      h2g_arguments,
+      hashed,
+    ),
+  }
+}
+
+test bls_g2_builtins_follow_cardano_flat_tags() {
+  let compressed = bytes(
+    #"5f584093e02b6052719f607dacd3a088274f65596bd0d09920b61ab5da61bbdc7f5049334cf11213945d57e5ac7d055d042b7e024aa2b2f08f0a91260805272dc510515820c6e47ad4fa403b02b4510b647ae3d1770bac0326a805bbefd48056c8c121bdb8ff",
+  )
+  let point = cek_builtin_v1.ConstantValue(g2_generator())
+  let h2g_arguments = [
+    h2g_message(),
+    bytes(
+      #"582b424c535f5349475f424c53313233383147325f584d443a5348412d3235365f535357555f524f5f4e554c5f",
+    ),
+  ]
+  let hashed = constant(
+    #"9f0aff",
+    #"5f584089ac93813e1f13d1f1a75d2c790cbc435330bdfcaa9f42a609aa5563b8bab0edbc269b186eb3c3c9a6bdf9fd525c34e7167f474f0e648c0c3eeab5df3eebf3ff58207c39f72addeb2d3368a44d56f5dca28fca97fe1184b365e3c8a14e226b6188b1ff",
+  )
+  and {
+    verify_direct_with_split_parity(
+      65,
+      builtin_root(65, [point]),
+      [point],
+      compressed,
+    ),
+    verify_direct_with_split_parity(
+      66,
+      builtin_root(66, [compressed]),
+      [compressed],
+      point,
+    ),
+    verify_direct_with_split_parity(
+      67,
+      builtin_root(67, h2g_arguments),
+      h2g_arguments,
+      hashed,
+    ),
+  }
+}
+
+// The library's numbering (58 hashToGroup, 59 compress) is not Cardano's: a
+// G1 compress claimed at 59 is refused.
+test bls_g1_compress_is_refused_at_the_library_tag() fail {
+  let compressed = bytes(
+    #"583097f1d3a73197d7942695638c4fa9ac0fc3688c4f9774b905a14e3a3f171bac586c55e83ff97a1aeffb3af00adb22c6bb",
+  )
+  let point = cek_builtin_v1.ConstantValue(g1_generator())
+  cek_builtin_v1.verify_direct_builtin_v1(
+    59,
+    builtin_root(59, [point]),
+    [point],
+    compressed,
+  )
+}
+
+// Variant E bounds a CInteger argument to [-2^262143, 2^262143 - 1] and a
+// CByteString argument to 65,536 B; out of bound, Cardano fails the call. Every
+// success arm of a bounded builtin reads its operands from revealed payloads
+// under the 9,215 B cap, so one past either bound is refused at that cap and
+// never certified. An arm that admits operands beyond the cap must bound them
+// itself. The roots are left empty: the cap is checked before them, and a
+// bignum payload cannot be decoded by today's reader.
+
+// integerToByteString stops at 8,192 B, so longer zero runs are appended.
+fn zero_run(length: Int) -> ByteArray {
+  if length <= 8192 {
+    bytearray.from_int_big_endian(0, length)
+  } else {
+    bytearray.concat(
+      bytearray.from_int_big_endian(0, 8192),
+      zero_run(length - 8192),
+    )
+  }
+}
+
+// 0x80 followed by 32,767 zero bytes: 2^(8 * 32767 + 7) = 2^262143.
+fn power_of_two_262143() -> Int {
+  bytearray.to_int_big_endian(bytearray.push(zero_run(32767), 128))
+}
+
+fn out_of_bound_integer_addition(operand: Int) -> Bool {
+  let arguments = [
+    integer(cbor.serialise(builtin.i_data(operand))),
+    integer(cbor.serialise(builtin.i_data(0))),
+  ]
+  cek_builtin_v1.verify_direct_builtin_v1(
+    0,
+    #"",
+    arguments,
+    integer(cbor.serialise(builtin.i_data(operand))),
+  )
+}
+
+test add_integer_success_is_refused_one_past_the_upper_bound() fail {
+  out_of_bound_integer_addition(power_of_two_262143())
+}
+
+test add_integer_success_is_refused_one_past_the_lower_bound() fail {
+  out_of_bound_integer_addition(-power_of_two_262143() - 1)
+}
+
+test append_bytes_success_is_refused_one_past_the_bound() fail {
+  let left = cbor.serialise(builtin.b_data(zero_run(65537)))
+  let arguments = [bytes(left), bytes(cbor.serialise(builtin.b_data(#"")))]
+  cek_builtin_v1.verify_direct_builtin_v1(10, #"", arguments, bytes(left))
+}
+
+// ECDSA takes a 33 B key, a 32 B message and a 64 B signature; any other
+// length fails the call (PV 11 leaves secp256k1 unchanged). The failure arm
+// certifies each such call, and the success arm aborts on it.
+fn ecdsa_with_lengths(
+  key: ByteArray,
+  message: ByteArray,
+  signature: ByteArray,
+) -> List<cek_builtin_v1.ValueWitnessV1> {
+  [
+    bytes(cbor.serialise(builtin.b_data(key))),
+    bytes(cbor.serialise(builtin.b_data(message))),
+    bytes(cbor.serialise(builtin.b_data(signature))),
+  ]
+}
+
+const ecdsa_x =
+  #"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798"
+
+fn ecdsa_message() -> ByteArray {
+  bytearray.from_int_big_endian(0, 32)
+}
+
+fn ecdsa_signature() -> ByteArray {
+  bytearray.concat(
+    builtin.integer_to_bytearray(True, 32, 1),
+    builtin.integer_to_bytearray(True, 32, 1),
+  )
+}
+
+fn uncompressed_key_arguments() -> List<cek_builtin_v1.ValueWitnessV1> {
+  let y = #"483ada7726a3c4655da4fbfc0e1108a8fd17b448a68554199c47d08ffb10d4b8"
+  ecdsa_with_lengths(
+    bytearray.push(bytearray.concat(ecdsa_x, y), 4),
+    ecdsa_message(),
+    ecdsa_signature(),
+  )
+}
+
+test ecdsa_length_edges_are_certified_failures() {
+  let key = bytearray.push(ecdsa_x, 2)
+  let message = ecdsa_message()
+  let signature = ecdsa_signature()
+  list.all(
+    [
+      uncompressed_key_arguments(),
+      ecdsa_with_lengths(key, bytearray.drop(message, 1), signature),
+      ecdsa_with_lengths(key, bytearray.push(message, 0), signature),
+      ecdsa_with_lengths(key, message, bytearray.drop(signature, 1)),
+      ecdsa_with_lengths(key, message, bytearray.push(signature, 0)),
+    ],
+    fn(arguments) {
+      cek_builtin_v1.verify_direct_builtin_failure_v1(
+        52,
+        builtin_root(52, arguments),
+        arguments,
+      )
+    },
+  )
+}
+
+test ecdsa_uncompressed_key_success_aborts() fail {
+  cek_builtin_v1.verify_direct_scalar_semantics(
+    52,
+    uncompressed_key_arguments(),
+    boolean(#"d87980"),
+  )
+}
+
+fn byte_string(value: ByteArray) -> cek_builtin_v1.ValueWitnessV1 {
+  bytes(cbor.serialise(builtin.b_data(value)))
+}
+
+fn counting_bytes(length: Int) -> ByteArray {
+  list.foldr(
+    list.range(0, length - 1),
+    #"",
+    fn(byte, tail) { builtin.cons_bytearray(byte, tail) },
+  )
+}
+
+/// BIP-340 test vector key (bitcoin/bips bip-0340/test-vectors.csv, 15-18).
+const schnorr_key =
+  #"778caa53b4393ac467774d09497a87224bf9fab6f6e68b23086497324d6fd117"
+
+/// Valid BIP-340 signatures under `schnorr_key`, as message and signature.
+/// Vector 15: the empty message.
+fn schnorr_signed_empty() -> Pair<ByteArray, ByteArray> {
+  Pair(
+    #"",
+    #"71535db165ecd9fbbc046e5ffaea61186bb6ad436732fccc25291a55895464cf6069ce26bf03466228f19a3a62db8a649f2d560fac652827d1af0574e427ab63",
+  )
+}
+
+/// Signed with the vectors' secret key and an all-zero aux_rand.
+fn schnorr_signed_31() -> Pair<ByteArray, ByteArray> {
+  Pair(
+    counting_bytes(31),
+    #"6279da0776f05a84e74bd0400f577f22de28eab33c6cd0a69319b9097e912d4360c3c32b1252eb9b55186684198886abfceaf124f57b2088e809133ddd24d34a",
+  )
+}
+
+/// Signed with the vectors' secret key and an all-zero aux_rand.
+fn schnorr_signed_33() -> Pair<ByteArray, ByteArray> {
+  Pair(
+    counting_bytes(33),
+    #"fe02a88f7b6ad46d2a02f678741b1e03ff93ce930235a2c63f644e0d4ee9129d6fdb9aef937e53a826791b584e2392c6135386cca3009b31c7cab9cd3475e7d7",
+  )
+}
+
+/// Vector 18: 100 bytes of 0x99.
+fn schnorr_signed_100() -> Pair<ByteArray, ByteArray> {
+  Pair(
+    repeated_byte(153, 100),
+    #"403b12b0d8555a344175ea7ec746566303321e5dbfa8be6f091635163eca79a8585ed3e3170807e7c03b720fc54c7b23897fcba0e9d0b4a06894cfd249f22367",
+  )
+}
+
+/// 1,000 bytes of 0x99, signed with the vectors' secret key and an all-zero
+/// aux_rand.
+fn schnorr_signed_1000() -> Pair<ByteArray, ByteArray> {
+  Pair(
+    repeated_byte(153, 1000),
+    #"f1d320d7de4d5ff365a8ce6cf0ad580b9358f96f46dfbe141e22128b75919c3e47b4420db40806ad1cf6bf0fcade8a2d51634dedb7e118e9ae896dd4d6a504bb",
+  )
+}
+
+/// Vectors 15 to 18 (messages of 0, 1, 17 and 100 bytes) and signatures over
+/// 31, 33 and 1,000 bytes.
+fn schnorr_signed_messages() -> List<Pair<ByteArray, ByteArray>> {
+  [
+    schnorr_signed_empty(),
+    Pair(
+      #"11",
+      #"08a20a0afef64124649232e0693c583ab1b9934ae63b4c3511f3ae1134c6a303ea3173bfea6683bd101fa5aa5dbc1996fe7cacfc5a577d33ec14564cec2bacbf",
+    ),
+    Pair(
+      #"0102030405060708090a0b0c0d0e0f1011",
+      #"5130f39a4059b43bc7cac09a19ece52b5d8699d1a71e3c52da9afdb6b50ac370c4a482b77bf960f8681540e25b6771ece1e5a37fd80e5a51897c5566a97ea5a5",
+    ),
+    schnorr_signed_31(),
+    schnorr_signed_33(),
+    schnorr_signed_100(),
+    schnorr_signed_1000(),
+  ]
+}
+
+fn schnorr_arguments(
+  key: ByteArray,
+  message: ByteArray,
+  signature: ByteArray,
+) -> List<cek_builtin_v1.ValueWitnessV1> {
+  [byte_string(key), byte_string(message), byte_string(signature)]
+}
+
+test schnorr_verifies_messages_of_any_length() {
+  list.all(
+    schnorr_signed_messages(),
+    fn(signed) {
+      let arguments = schnorr_arguments(schnorr_key, signed.1st, signed.2nd)
+      and {
+        cek_builtin_v1.verify_direct_scalar_semantics(
+          53,
+          arguments,
+          boolean(#"d87a80"),
+        ),
+        !cek_builtin_v1.verify_direct_builtin_failure_v1(
+          53,
+          builtin_root(53, arguments),
+          arguments,
+        ),
+      }
+    },
+  )
+}
+
+test schnorr_signature_over_another_message_returns_false() {
+  let arguments = schnorr_arguments(
+    schnorr_key,
+    schnorr_signed_33().1st,
+    schnorr_signed_31().2nd,
+  )
+  and {
+    cek_builtin_v1.verify_direct_scalar_semantics(
+      53,
+      arguments,
+      boolean(#"d87980"),
+    ),
+    !cek_builtin_v1.verify_direct_scalar_semantics(
+      53,
+      arguments,
+      boolean(#"d87a80"),
+    ),
+    !cek_builtin_v1.verify_direct_builtin_failure_v1(
+      53,
+      builtin_root(53, arguments),
+      arguments,
+    ),
+  }
+}
+
+test schnorr_1000_byte_message_under_another_signature_returns_false() {
+  let arguments = schnorr_arguments(
+    schnorr_key,
+    schnorr_signed_1000().1st,
+    schnorr_signed_100().2nd,
+  )
+  and {
+    cek_builtin_v1.verify_direct_scalar_semantics(
+      53,
+      arguments,
+      boolean(#"d87980"),
+    ),
+    !cek_builtin_v1.verify_direct_scalar_semantics(
+      53,
+      arguments,
+      boolean(#"d87a80"),
+    ),
+    !cek_builtin_v1.verify_direct_builtin_failure_v1(
+      53,
+      builtin_root(53, arguments),
+      arguments,
+    ),
+  }
+}
+
+test schnorr_1000_byte_message_cannot_claim_false() fail {
+  let Pair(message, signature) = schnorr_signed_1000()
+  cek_builtin_v1.verify_direct_scalar_semantics(
+    53,
+    schnorr_arguments(schnorr_key, message, signature),
+    boolean(#"d87980"),
+  )
+}
+
+test schnorr_charges_message_words() {
+  let Pair(empty, empty_signature) = schnorr_signed_empty()
+  let Pair(hundred, hundred_signature) = schnorr_signed_100()
+  let Pair(thousand, thousand_signature) = schnorr_signed_1000()
+  and {
+    cek_builtin_v1.direct_builtin_budget_v1(
+      53,
+      schnorr_arguments(schnorr_key, empty, empty_signature),
+    ) == cek_cost_v1.BuiltinBudgetV1 { cpu: 43600591, memory: 10 },
+    cek_builtin_v1.direct_builtin_budget_v1(
+      53,
+      schnorr_arguments(schnorr_key, hundred, hundred_signature),
+    ) == cek_cost_v1.BuiltinBudgetV1 { cpu: 43916287, memory: 10 },
+    cek_builtin_v1.direct_builtin_budget_v1(
+      53,
+      schnorr_arguments(schnorr_key, thousand, thousand_signature),
+    ) == cek_cost_v1.BuiltinBudgetV1 { cpu: 46862783, memory: 10 },
+  }
+}
+
+test schnorr_wrong_key_or_signature_length_fails_at_any_message_length() {
+  let key = schnorr_key
+  list.all(
+    schnorr_signed_messages(),
+    fn(signed) {
+      let signature = signed.2nd
+      list.all(
+        [
+          schnorr_arguments(
+            builtin.slice_bytearray(0, 31, key),
+            signed.1st,
+            signature,
+          ),
+          schnorr_arguments(
+            builtin.cons_bytearray(0, key),
+            signed.1st,
+            signature,
+          ),
+          schnorr_arguments(
+            key,
+            signed.1st,
+            builtin.slice_bytearray(0, 63, signature),
+          ),
+          schnorr_arguments(
+            key,
+            signed.1st,
+            builtin.cons_bytearray(0, signature),
+          ),
+        ],
+        fn(arguments) {
+          cek_builtin_v1.verify_direct_builtin_failure_v1(
+            53,
+            builtin_root(53, arguments),
+            arguments,
+          )
+        },
+      )
+    },
+  )
+}
+
+test schnorr_short_key_cannot_claim_a_successful_result() fail {
+  let Pair(hundred, hundred_signature) = schnorr_signed_100()
+  cek_builtin_v1.verify_direct_scalar_semantics(
+    53,
+    schnorr_arguments(
+      builtin.slice_bytearray(0, 31, schnorr_key),
+      hundred,
+      hundred_signature,
+    ),
+    boolean(#"d87980"),
+  )
+}
+
+test schnorr_ill_typed_message_is_not_a_known_failure() fail {
+  let arguments = [
+    byte_string(builtin.slice_bytearray(0, 31, schnorr_key)),
+    integer(#"01"),
+    byte_string(#""),
+  ]
+  cek_builtin_v1.verify_direct_builtin_failure_v1(
+    53,
+    builtin_root(53, arguments),
+    arguments,
+  )
+}
+
+test ed25519_ill_typed_message_is_not_a_known_failure() fail {
+  let arguments = [byte_string(#""), integer(#"01"), byte_string(#"")]
+  cek_builtin_v1.verify_direct_builtin_failure_v1(
+    21,
+    builtin_root(21, arguments),
+    arguments,
+  )
+}
+
+// Variant E also bounds three operands the 9,215 B cap leaves open: a writeBits
+// input at 4,096 B, a shift or rotate amount at Int64 (the bound the failure
+// arm proves), and a BLS12-381 scalarMul scalar at [-2^4095, 2^4095 - 1]. Each
+// success arm certifies at its bound and is refused one past it, with a result
+// that would be right if the operand were not refused.
+
+// Setting bit 0 of `length` zero bytes, written out without writeBits.
+fn write_bit_zero_succeeds_at(length: Int) -> Bool {
+  let source = cbor.serialise(builtin.b_data(zero_run(length)))
+  let indices = cbor.serialise(builtin.list_data([builtin.i_data(0)]))
+  let arguments = [
+    bytes(source),
+    constant(#"9f0500ff", indices),
+    boolean(#"d87a80"),
+  ]
+  let written = bytearray.concat(zero_run(length - 1), #"01")
+  cek_builtin_v1.verify_direct_builtin_v1(
+    80,
+    builtin_root(80, arguments),
+    arguments,
+    bytes(cbor.serialise(builtin.b_data(written))),
+  )
+}
+
+test write_bits_success_certifies_a_4096_byte_input() {
+  write_bit_zero_succeeds_at(4096)
+}
+
+test write_bits_success_is_refused_one_past_4096_bytes() fail {
+  write_bit_zero_succeeds_at(4097)
+}
+
+// Shifting one byte by eight bits or more leaves zero; rotating 0xff leaves it.
+fn shift_or_rotate_succeeds(tag: Int, amount: Int) -> Bool {
+  let source = if tag == 82 {
+    #"01"
+  } else {
+    #"ff"
+  }
+  let shifted = if tag == 82 {
+    #"00"
+  } else {
+    #"ff"
+  }
+  let arguments = [
+    bytes(cbor.serialise(builtin.b_data(source))),
+    integer(cbor.serialise(builtin.i_data(amount))),
+  ]
+  cek_builtin_v1.verify_direct_builtin_v1(
+    tag,
+    builtin_root(tag, arguments),
+    arguments,
+    bytes(cbor.serialise(builtin.b_data(shifted))),
+  )
+}
+
+test shift_and_rotate_success_certifies_int64_amounts() {
+  and {
+    shift_or_rotate_succeeds(82, 9223372036854775807),
+    shift_or_rotate_succeeds(82, -9223372036854775808),
+    shift_or_rotate_succeeds(83, 9223372036854775807),
+    shift_or_rotate_succeeds(83, -9223372036854775808),
+  }
+}
+
+test shift_success_is_refused_one_past_int64_max() fail {
+  shift_or_rotate_succeeds(82, 9223372036854775808)
+}
+
+test shift_success_is_refused_one_past_int64_min() fail {
+  shift_or_rotate_succeeds(82, -9223372036854775809)
+}
+
+test rotate_success_is_refused_one_past_int64_max() fail {
+  shift_or_rotate_succeeds(83, 9223372036854775808)
+}
+
+test rotate_success_is_refused_one_past_int64_min() fail {
+  shift_or_rotate_succeeds(83, -9223372036854775809)
+}
+
+// 0x80 followed by 511 zero bytes: 2^(8 * 511 + 7) = 2^4095.
+fn power_of_two_4095() -> Int {
+  bytearray.to_int_big_endian(bytearray.push(zero_run(511), 128))
+}
+
+test bls_scalar_bound_is_variant_e_bound() {
+  and {
+    cek_builtin_v1.bls_scalar_in_bound_v1(power_of_two_4095() - 1),
+    cek_builtin_v1.bls_scalar_in_bound_v1(-power_of_two_4095()),
+    !cek_builtin_v1.bls_scalar_in_bound_v1(power_of_two_4095()),
+    !cek_builtin_v1.bls_scalar_in_bound_v1(-power_of_two_4095() - 1),
+  }
+}
+
+// A scalar past 64 bits is a CBOR bignum, which today's constant reader cannot
+// decode (the pinned evaluator aborts on it), so the arm is driven here with
+// small scalars only; the bound itself is pinned above.
+fn scalar_mul_succeeds(tag: Int, scalar: Int) -> Bool {
+  let Pair(point, product) = if tag == 56 {
+    let generator = g1_generator()
+    Pair(
+      generator,
+      builtin.bls12_381_g1_scalar_mul(
+        scalar,
+        builtin.un_b_data(cbor_payload(generator.payload_cbor))
+          |> builtin.bls12_381_g1_uncompress,
+      )
+        |> builtin.bls12_381_g1_compress,
+    )
+  } else {
+    let generator = g2_generator()
+    Pair(
+      generator,
+      builtin.bls12_381_g2_scalar_mul(
+        scalar,
+        builtin.un_b_data(cbor_payload(generator.payload_cbor))
+          |> builtin.bls12_381_g2_uncompress,
+      )
+        |> builtin.bls12_381_g2_compress,
+    )
+  }
+  let arguments = [
+    integer(cbor.serialise(builtin.i_data(scalar))),
+    cek_builtin_v1.ConstantValue(point),
+  ]
+  cek_builtin_v1.verify_direct_builtin_v1(
+    tag,
+    builtin_root(tag, arguments),
+    arguments,
+    constant(point.type_cbor, cbor.serialise(builtin.b_data(product))),
+  )
+}
+
+fn cbor_payload(payload_cbor: ByteArray) -> Data {
+  expect Some(payload) = cbor.deserialise(payload_cbor)
+  payload
+}
+
+test scalar_mul_success_certifies_in_bound_scalars() {
+  and {
+    scalar_mul_succeeds(56, 7),
+    scalar_mul_succeeds(56, -7),
+    scalar_mul_succeeds(63, 7),
+    scalar_mul_succeeds(63, -7),
   }
 }
 

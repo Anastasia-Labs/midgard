@@ -1,3 +1,4 @@
+import { midgardCekIntegerMemoryWords } from "./cek-memory-size.js";
 import { commitMidgardCekBlob } from "./cek-proof.js";
 import {
   emptyMidgardCekDataPairSummary,
@@ -225,11 +226,8 @@ export const initialMidgardLedgerOutputValueControl = (
   return control;
 };
 
-const integerMemory = (value: bigint): bigint => {
-  const doubled = value < 0n ? (-value - 1n) * 2n : value * 2n;
-  if (doubled === 0n) return 1n;
-  return BigInt(Math.ceil(doubled.toString(2).length / 8));
-};
+const integerMemory = (value: bigint): bigint =>
+  midgardCekIntegerMemoryWords(value);
 
 export const summarizeInteger = (value: bigint): MidgardCekDataSummary => {
   const cbor = encodeCbor(value);

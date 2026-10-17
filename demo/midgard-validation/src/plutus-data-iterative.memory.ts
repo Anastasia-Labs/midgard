@@ -1,4 +1,8 @@
 import {
+  midgardCekBytesMemoryWords,
+  midgardCekIntegerMemoryWords,
+} from "@al-ft/midgard-core";
+import {
   type Data,
   DataB,
   DataConstr,
@@ -9,20 +13,14 @@ import {
 import { isPlutusDataMap } from "./plutus-data-narrowing.js";
 
 /**
- * Plutus' ExMemory size for an integer. This is the signed CBOR-style byte
- * magnitude used by cardano-node's CEK cost model, not the encoded payload
- * length.
+ * Plutus' ExMemory size for an integer: 64-bit words of the magnitude, as the
+ * cardano-node CEK cost model counts them.
  */
-export const midgardCekIntegerMemorySize = (value: bigint): bigint => {
-  const doubledMagnitude = value < 0n ? (-value - 1n) << 1n : value << 1n;
-  if (doubledMagnitude === 0n) {
-    return 1n;
-  }
-  return BigInt(Math.floor((doubledMagnitude.toString(2).length - 1) / 8) + 1);
-};
+export const midgardCekIntegerMemorySize = (value: bigint): bigint =>
+  midgardCekIntegerMemoryWords(value);
 
 export const midgardCekByteStringMemorySize = (value: Uint8Array): bigint =>
-  BigInt(Math.max(1, value.length));
+  midgardCekBytesMemoryWords(value.length);
 
 /**
  * Plutus Data charges four memory words for every node, then the signed

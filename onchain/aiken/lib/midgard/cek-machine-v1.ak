@@ -44,6 +44,21 @@ pub const error_case_branch_missing = 6
 
 pub const error_builtin_failure = 7
 
+/// A PlutusV3 or MidgardV1 script must return the unit constant; any other
+/// constant fails the script.
+pub const error_non_unit_halt = 8
+
+/// `hash_blob_chunk_v1(#"9f03ff")`: the root of the canonical unit type CBOR.
+const unit_type_root =
+  #"c07fe5713d1b85f663401f9f907b3e1d21126b9a78c5a6474839f7dc9841f3d6"
+
+/// Cardano charges an evaluation 100 cpu and 100 memory when it starts, before
+/// its first step, so a program's state starts with that cost already spent.
+/// A program refused before evaluation starts never reaches this state.
+pub const startup_cpu = 100
+
+pub const startup_memory = 100
+
 const machine_step_cpu = 16000
 
 const machine_step_memory = 100
@@ -57,6 +72,24 @@ pub type MachineStateV1 {
   auxiliary: Int,
   cpu: Int,
   memory: Int,
+}
+
+/// The state an evaluation of `focus_root` starts in: computing, with empty
+/// environment and continuation, and the startup cost spent.
+pub fn initial_state_v1(
+  execution_index: Int,
+  focus_root: ByteArray,
+) -> MachineStateV1 {
+  MachineStateV1 {
+    mode: mode_compute,
+    execution_index,
+    focus_root,
+    environment_root: cek_proof_v1.empty_environment_root_v1,
+    continuation_root: cek_proof_v1.empty_continuation_root_v1,
+    auxiliary: 0,
+    cpu: startup_cpu,
+    memory: startup_memory,
+  }
 }
 
 pub type EnvironmentSummaryV1 {
@@ -396,11 +429,11 @@ pub fn builtin_argument_count(tag: Int) -> Int {
     tag == 54,
     tag == 56,
     tag == 57,
-    tag == 58,
+    tag == 60,
     tag == 61,
     tag == 63,
     tag == 64,
-    tag == 65,
+    tag == 67,
     tag == 68,
     tag == 69,
     tag == 70,
@@ -447,13 +480,6 @@ fn value_witness_hash(value: MachineValueWitnessV1) -> ByteArray {
       )
     BlsMillerLoopValue { expression_root } ->
       cek_proof_v1.hash_bls_miller_loop_value_v1(expression_root)
-  }
-}
-
-fn value_is_constant(value: MachineValueWitnessV1) -> Bool {
-  when value is {
-    ConstantValue { .. } -> True
-    _ -> False
   }
 }
 
@@ -982,19 +1008,23 @@ fn verify_return_empty(
   and {
     pre.continuation_root == cek_proof_v1.empty_continuation_root_v1,
     pre.focus_root == value_witness_hash(value),
-    post == if value_is_constant(value) {
-      exact_state(
-        pre,
-        mode_halt_success,
-        pre.focus_root,
-        cek_proof_v1.empty_environment_root_v1,
-        cek_proof_v1.empty_continuation_root_v1,
-        0,
-        0,
-        0,
-      )
-    } else {
-      error_successor(pre, error_nonconstant_halt)
+    post == when value is {
+      ConstantValue { type_root, .. } ->
+        if type_root == unit_type_root {
+          exact_state(
+            pre,
+            mode_halt_success,
+            pre.focus_root,
+            cek_proof_v1.empty_environment_root_v1,
+            cek_proof_v1.empty_continuation_root_v1,
+            0,
+            0,
+            0,
+          )
+        } else {
+          error_successor(pre, error_non_unit_halt)
+        }
+      _ -> error_successor(pre, error_nonconstant_halt)
     },
   }
 }
