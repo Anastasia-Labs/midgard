@@ -10,7 +10,8 @@
  * `tests/ledger-output-proof-split-span.test.ts`) drive the same rows through
  * `src/` and check the result against the checked-in fixture. The Aiken tests
  * replay each row's witness list through the typed and split on-chain steps to
- * the same terminal control.
+ * the same terminal control, feeding the step planner's scalar claims to the
+ * scalar attestation and the split stage yields on the way.
  *
  * A row is an output (a datum, and optionally a reference script or an asset)
  * plus the claims that make it worth having: its step count, how many datum
@@ -23,7 +24,7 @@
  * package functions are passed in as `twins`.
  */
 
-import { Constr } from "@lucid-evolution/lucid";
+import { Constr, Data } from "@lucid-evolution/lucid";
 import { blake2b } from "@noble/hashes/blake2.js";
 
 /** The address every row's output pays to. */
@@ -292,6 +293,43 @@ const emptySpanSteps = (twins, trace) =>
       twins.nextMidgardCekDataTraverseSpan(control.datum)?.length === 0,
   ).length;
 
+/** The scalar roles: integer attach and advance, bytes attach and advance. */
+const SCALAR_ROLES = [5, 7, 17, 18];
+
+/**
+ * The scalar claims the step planner derives for the proof: for each scalar
+ * role and blob shape (as in `attachShapes`), the claim at the first step that
+ * has both, as `[step index, claim]` in step order. The Aiken replay feeds
+ * each to the scalar attestation and to the split stage yield of its step.
+ */
+const plannerScalarClaims = (twins, trace) => {
+  const seen = new Set();
+  return trace.steps.flatMap(({ control, witness }, index) => {
+    if (witness?.kind !== "datum") return [];
+    const controlItems = Data.from(
+      Buffer.from(
+        twins.encodeMidgardLedgerOutputProofControl(control),
+      ).toString("hex"),
+    );
+    const roleIndex = twins.ledgerOutputProofDatumRoleIndex(
+      controlItems,
+      twins.witnessData(witness).fields[0],
+    );
+    if (!SCALAR_ROLES.includes(roleIndex)) return [];
+    const blob =
+      control.datum.integer?.blob ?? control.datum.bytes?.blob ?? null;
+    const shape = blob === null ? 0 : blob.activeHash === null ? 10 : 11;
+    const key = `${roleIndex}/${shape}`;
+    if (seen.has(key)) return [];
+    seen.add(key);
+    const { claimedScalar } = twins.deriveLedgerOutputProofStepClaims({
+      control: controlItems,
+      roleIndex,
+    });
+    return [[BigInt(index), claimedScalar]];
+  });
+};
+
 /**
  * What the twins produce for `row` of `family` (`"emptyField"` or
  * `"datumScalar"`): the output, its proof's witness list and terminal control,
@@ -328,6 +366,9 @@ export const ledgerOutputProofReplayVector = (row, family, twins) => {
     witnessesCborHex: witnessesCbor.toString("hex"),
     witnessesHash: hash(witnessesCbor).toString("hex"),
     terminalHash: hash(terminal).toString("hex"),
+    plannerClaimsCborHex: twins.plutusDataToCborHex(
+      plannerScalarClaims(twins, trace),
+    ),
   };
 };
 

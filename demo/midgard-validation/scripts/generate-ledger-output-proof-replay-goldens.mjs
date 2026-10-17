@@ -5,7 +5,9 @@
  * `tests/fixtures/ledger-output-proof-replay.vectors.mjs`, the output the
  * TypeScript codec encodes, the witness list and terminal control the
  * TypeScript trace builder (`buildMidgardLedgerOutputProofTrace`) emits for
- * it, and the hashes of both. Every value is written to two places:
+ * it, the hashes of both, and the scalar claims the step planner
+ * (`@al-ft/midgard-fault-proofs`) derives on the way. They are written to two
+ * places:
  *
  *   * `tests/fixtures/ledger-output-proof-replay.generated.json` — recomputed
  *     by `tests/ledger-output-proof-empty-span.test.ts` and
@@ -13,8 +15,10 @@
  *     rows through `src/` and assert equality, so a drifting builder or
  *     encoder fails on the TypeScript side; and
  *   * named constants of the hand-written
- *     `onchain/aiken/lib/midgard/ledger-output-proof-datum.test.ak`, rebound
- *     in place by name, where the typed and split on-chain steps replay each
+ *     `onchain/aiken/lib/midgard/ledger-output-proof-datum.test.ak` (the
+ *     output, the witness list, the terminal control hash and the step
+ *     planner's scalar claims), rebound in
+ *     place by name, where the typed and split on-chain steps replay each
  *     witness list to the pinned terminal control.
  *
  * A row whose producer no longer exhibits the row's hand-written claims (step
@@ -44,6 +48,10 @@ import {
   decodeMidgardDatum,
   encodeMidgardTxOutput,
 } from "@al-ft/midgard-core/codec";
+import {
+  deriveLedgerOutputProofStepClaims,
+  ledgerOutputProofDatumRoleIndex,
+} from "@al-ft/midgard-fault-proofs";
 import {
   bytes,
   goldenChannelEmitter,
@@ -91,9 +99,11 @@ const witnessData = (witness) =>
 const twins = {
   buildMidgardLedgerOutputProofTrace,
   decodeMidgardDatum,
+  deriveLedgerOutputProofStepClaims,
   encodeMidgardLedgerOutputProofControl,
   encodeMidgardTxOutput,
   isExactMidgardLedgerOutputProofTerminal,
+  ledgerOutputProofDatumRoleIndex,
   MidgardLedgerOutputProofStages,
   nextMidgardCekDataTraverseSpan,
   plutusDataToCborHex,
@@ -119,17 +129,17 @@ const golden = {
 };
 
 /**
- * The Aiken constants of one row: its witness list and both hashes, and for
- * an empty-field row also its output (a datum-scalar row's output is built in
- * the Aiken test from its structure).
+ * The Aiken constants of one row: its witness list, terminal control hash and
+ * planner scalar claims, and for an empty-field row also its output (a datum-scalar row's output is
+ * built in the Aiken test from its structure).
  */
 const rowConstants = ({ family, vector }) => ({
   ...(family === "emptyField"
     ? { [`${vector.id}_output`]: bytes(vector.outputCborHex) }
     : {}),
   [`${vector.id}_witnesses`]: bytes(vector.witnessesCborHex),
-  [`${vector.id}_witnesses_hash`]: bytes(vector.witnessesHash),
   [`${vector.id}_terminal_hash`]: bytes(vector.terminalHash),
+  [`${vector.id}_planner_claims`]: bytes(vector.plannerClaimsCborHex),
 });
 
 writeOrCheck(generatedJsonPath, `${JSON.stringify(golden, null, 2)}\n`);

@@ -179,13 +179,35 @@ fn honest_scalar_claim(datum_control: traverse.DataTraverseControlV1) -> Data {
   )
 }
 
+/// The scalar attestation of the scalar stage `stage`'s family.
+fn scalar_attestation(stage: Int) -> fn(raw.Frame, Data) -> Bool {
+  if stage == traverse.stage_integer {
+    narrow_datum.integer_scalar_claim_is_exact
+  } else {
+    expect stage == traverse.stage_bytes
+    narrow_datum.bytes_scalar_claim_is_exact
+  }
+}
+
+/// The scalar claim of the attestation stage: built from the split
+/// frame-form read of the datum sub-control (not from the typed control),
+/// and accepted by the scalar attestation of the control's family.
+fn attested_scalar_claim(control_frame: raw.Frame) -> Data {
+  let frame_control = narrow_datum.frame_datum_control(control_frame)
+  let claim = honest_scalar_claim(frame_control)
+  expect scalar_attestation(frame_control.stage)(control_frame, claim)
+  claim
+}
+
 /// Route one datum action to the narrow stage function of its role, exactly
-/// the way the step-plan role table does.
-fn routed(
+/// the way the step-plan role table does, with `claim` as the scalar claim of
+/// the scalar attach and advance roles.
+fn routed_with_claim(
   control_frame: raw.Frame,
   witness: Data,
   datum_control: traverse.DataTraverseControlV1,
   action: traverse.DataTraverseActionV1,
+  claim: Data,
 ) -> Option<narrow.StepResult> {
   when action is {
     traverse.HeadScalar -> narrow_datum.head_scalar(control_frame, witness)
@@ -195,31 +217,15 @@ fn routed(
       narrow_datum.head_large_constructor(control_frame, witness)
     traverse.AttachScalar { .. } ->
       if datum_control.stage == traverse.stage_integer {
-        narrow_datum.attach_integer(
-          control_frame,
-          witness,
-          honest_scalar_claim(datum_control),
-        )
+        narrow_datum.attach_integer(control_frame, witness, claim)
       } else {
-        narrow_datum.attach_bytes(
-          control_frame,
-          witness,
-          honest_scalar_claim(datum_control),
-        )
+        narrow_datum.attach_bytes(control_frame, witness, claim)
       }
     traverse.NoAction ->
       if datum_control.stage == traverse.stage_integer {
-        narrow_datum.advance_integer(
-          control_frame,
-          witness,
-          honest_scalar_claim(datum_control),
-        )
+        narrow_datum.advance_integer(control_frame, witness, claim)
       } else if datum_control.stage == traverse.stage_bytes {
-        narrow_datum.advance_bytes(
-          control_frame,
-          witness,
-          honest_scalar_claim(datum_control),
-        )
+        narrow_datum.advance_bytes(control_frame, witness, claim)
       } else if datum_control.stage == traverse.stage_large_constructor {
         narrow_datum.advance_large_constructor(control_frame, witness)
       } else if datum_control.stage == traverse.stage_large_fields {
@@ -233,6 +239,28 @@ fn routed(
     traverse.FinalizeFrame { .. } ->
       narrow_datum.finalize_frame(control_frame, witness)
   }
+}
+
+/// `routed_with_claim` with the claim of the attestation stage at the scalar
+/// stages (see `attested_scalar_claim`).
+fn routed(
+  control_frame: raw.Frame,
+  witness: Data,
+  datum_control: traverse.DataTraverseControlV1,
+  action: traverse.DataTraverseActionV1,
+) -> Option<narrow.StepResult> {
+  let scalar_role = when action is {
+    traverse.AttachScalar { .. } -> True
+    traverse.NoAction ->
+      datum_control.stage == traverse.stage_integer || datum_control.stage == traverse.stage_bytes
+    _ -> False
+  }
+  let claim = if scalar_role {
+    attested_scalar_claim(control_frame)
+  } else {
+    builtin.constr_data(1, [])
+  }
+  routed_with_claim(control_frame, witness, datum_control, action, claim)
 }
 
 /// One golden datum step: the typed monolith and the routed narrow function
@@ -888,13 +916,8 @@ fn scalar_claim_attests(
   datum_control: traverse.DataTraverseControlV1,
   control_frame: raw.Frame,
 ) -> Bool {
-  if datum_control.stage == traverse.stage_integer {
-    narrow_datum.integer_scalar_claim_is_exact(
-      control_frame,
-      honest_scalar_claim(datum_control),
-    )
-  } else if datum_control.stage == traverse.stage_bytes {
-    narrow_datum.bytes_scalar_claim_is_exact(
+  if datum_control.stage == traverse.stage_integer || datum_control.stage == traverse.stage_bytes {
+    scalar_attestation(datum_control.stage)(
       control_frame,
       honest_scalar_claim(datum_control),
     )
@@ -903,21 +926,42 @@ fn scalar_claim_attests(
   }
 }
 
+/// The step planner's scalar claim for step `index`, if `claims` (its
+/// `[step index, claim]` pairs, in step order) has one, and the claims of the
+/// later steps.
+fn planner_claim(claims: List<Data>, index: Int) -> (Option<Data>, List<Data>) {
+  when claims is {
+    [] -> (None, [])
+    [pair, ..rest] -> {
+      expect [claim_index, claim] = builtin.un_list_data(pair)
+      if builtin.un_i_data(claim_index) == index {
+        (Some(claim), rest)
+      } else {
+        (None, claims)
+      }
+    }
+  }
+}
+
 /// One replayed step. A span attach and a datum step also run through their
 /// split stage function, to the same successor; at the datum-traversal
-/// stage the split and typed span selections agree. Returns the successor
-/// and whether the step read an empty span.
+/// stage the split and typed span selections agree. A datum step with a
+/// step planner's scalar claim takes it: the scalar attestation accepts it
+/// and the split stage yield reaches the same successor under it. Returns
+/// the successor and whether the step read an empty span.
 fn replay_step(
   control: proof.LedgerOutputProofControlV1,
   witness: proof.LedgerOutputProofWitnessV1,
   proofs: List<bounded_item_v1.ChunkProofV1>,
   output: ByteArray,
+  claim: Option<Data>,
 ) -> (proof.LedgerOutputProofControlV1, Int) {
   let next = advanced(proof.step_v1(control, witness))
   let control_frame = raw.open(proof.encode_control_v1(control))
   expect same_source_span(control, control_frame)
   when witness is {
     proof.LedgerOutputProofSpanAttach { .. } -> {
+      expect claim == None
       expect Some(narrow.Advanced { control: raw_next }) = span.attach(
         control_frame,
         witness,
@@ -928,12 +972,20 @@ fn replay_step(
     proof.LedgerOutputProofDatum { action, window } -> {
       let witness_data: Data = witness
       let datum_control = active_datum(control)
-      expect Some(narrow.Advanced { control: raw_next }) = routed(
-        control_frame,
-        witness_data,
-        datum_control,
-        action,
-      )
+      let result = when claim is {
+        None -> routed(control_frame, witness_data, datum_control, action)
+        Some(planned) -> {
+          expect scalar_attestation(datum_control.stage)(control_frame, planned)
+          routed_with_claim(
+            control_frame,
+            witness_data,
+            datum_control,
+            action,
+            planned,
+          )
+        }
+      }
+      expect Some(narrow.Advanced { control: raw_next }) = result
       expect raw.encode(raw_next) == proof.encode_control_v1(next)
       expect scalar_claim_attests(datum_control, control_frame)
       if reads_empty_span(control) {
@@ -944,32 +996,44 @@ fn replay_step(
         (next, 0)
       }
     }
-    _ -> (next, 0)
+    _ -> {
+      expect claim == None
+      (next, 0)
+    }
   }
 }
 
-/// Replay `witnesses` from `control`: the terminal control, the number of
-/// steps that read an empty span, and the shape of each datum-stage span
-/// attach, in order.
+/// Replay `witnesses` from `control`, the first being step `index`, taking
+/// the step planner's scalar `claims` at their steps: the terminal control,
+/// the number of steps that read an empty span, and the shape of each
+/// datum-stage span attach, in order. Every claim is taken.
 fn replay(
   control: proof.LedgerOutputProofControlV1,
   witnesses: List<Data>,
   proofs: List<bounded_item_v1.ChunkProofV1>,
   output: ByteArray,
   empty_steps: Int,
+  index: Int,
+  claims: List<Data>,
 ) -> (proof.LedgerOutputProofControlV1, Int, List<Int>) {
   when witnesses is {
-    [] -> (control, empty_steps, [])
+    [] -> {
+      expect claims == []
+      (control, empty_steps, [])
+    }
     [data, ..rest] -> {
       let witness = replay_witness(control, data, proofs, output)
       let shape = attach_shape(control, witness)
-      let (next, empty) = replay_step(control, witness, proofs, output)
+      let (claim, later_claims) = planner_claim(claims, index)
+      let (next, empty) = replay_step(control, witness, proofs, output, claim)
       let (terminal, total_empty, shapes) = replay(
         next,
         rest,
         proofs,
         output,
         empty_steps + empty,
+        index + 1,
+        later_claims,
       )
       (
         terminal,
@@ -1027,10 +1091,12 @@ fn output_material(
 }
 
 /// Replay the TypeScript-built proof `witnesses` of `output` from its
-/// initial control.
+/// initial control, taking the step planner's scalar claims
+/// `planner_claims`.
 fn replay_terminal(
   output: ByteArray,
   witnesses: ByteArray,
+  planner_claims: ByteArray,
 ) -> (proof.LedgerOutputProofControlV1, Int, List<Int>) {
   let Pair(commitment, proofs) = output_material(output)
   let initial = proof.initial_control_v1(
@@ -1039,25 +1105,38 @@ fn replay_terminal(
     commitment,
   )
   let witness_list <- cbor_deserialise.expect_deserialise(witnesses)
-  replay(initial, builtin.un_list_data(witness_list), proofs, output, 0)
+  let claims <- cbor_deserialise.expect_deserialise(planner_claims)
+  replay(
+    initial,
+    builtin.un_list_data(witness_list),
+    proofs,
+    output,
+    0,
+    0,
+    builtin.un_list_data(claims),
+  )
 }
 
 /// The TypeScript-built proof of `output` replays to an exact terminal whose
-/// control hash is `terminal_hash` and whose spend datum is `datum`, reading
+/// control hash is `terminal_hash` and whose spend datum is `datum`, taking
+/// the step planner's scalar claims `planner_claims` and reading
 /// `empty_steps` empty spans on the way, with datum-stage span attaches (see
 /// `attach_shape`) that satisfy `attaches`.
 fn replays_where(
   output: ByteArray,
   datum: Data,
   witnesses: ByteArray,
-  witnesses_hash: ByteArray,
   terminal_hash: ByteArray,
+  planner_claims: ByteArray,
   empty_steps: Int,
   attaches: fn(List<Int>) -> Bool,
 ) -> Bool {
-  let (terminal, empty, shapes) = replay_terminal(output, witnesses)
+  let (terminal, empty, shapes) = replay_terminal(
+    output,
+    witnesses,
+    planner_claims,
+  )
   and {
-    crypto.blake2b_256(witnesses) == witnesses_hash,
     empty == empty_steps,
     attaches(shapes),
     proof.terminal_is_exact_v1(terminal),
@@ -1074,8 +1153,8 @@ fn replays(
   output: ByteArray,
   datum: ByteArray,
   witnesses: ByteArray,
-  witnesses_hash: ByteArray,
   terminal_hash: ByteArray,
+  planner_claims: ByteArray,
   empty_steps: Int,
 ) -> Bool {
   // The decoder refuses an empty byte string at the very end of its input
@@ -1088,11 +1167,280 @@ fn replays(
     output,
     datum_data,
     witnesses,
-    witnesses_hash,
     terminal_hash,
+    planner_claims,
     empty_steps,
     fn(_) { True },
   )
+}
+
+// The scalar roles under substituted claims. At every integer or bytes
+// attach or advance step of a TypeScript-built proof, the routed stage yield
+// under the attested claim reaches the typed successor (see `routed`), and
+// each claim that differs from it in one field is refused by the scalar
+// attestation.
+
+/// Each datum step of `output`'s TypeScript-built proof at the scalar stage
+/// `stage`, attaching (`attach`) or advancing: its control and witness.
+fn scalar_role_steps(
+  output: ByteArray,
+  witnesses: ByteArray,
+  stage: Int,
+  attach: Bool,
+) -> List<(proof.LedgerOutputProofControlV1, proof.LedgerOutputProofWitnessV1)> {
+  let Pair(commitment, proofs) = output_material(output)
+  let initial = proof.initial_control_v1(
+    0,
+    bytearray.length(output),
+    commitment,
+  )
+  let witness_list <- cbor_deserialise.expect_deserialise(witnesses)
+  scalar_role_steps_from(
+    initial,
+    builtin.un_list_data(witness_list),
+    proofs,
+    output,
+    stage,
+    attach,
+  )
+}
+
+fn scalar_role_steps_from(
+  control: proof.LedgerOutputProofControlV1,
+  witnesses: List<Data>,
+  proofs: List<bounded_item_v1.ChunkProofV1>,
+  output: ByteArray,
+  stage: Int,
+  attach: Bool,
+) -> List<(proof.LedgerOutputProofControlV1, proof.LedgerOutputProofWitnessV1)> {
+  when witnesses is {
+    [] -> []
+    [data, ..rest] -> {
+      let witness = replay_witness(control, data, proofs, output)
+      let later = scalar_role_steps_from(
+        advanced(proof.step_v1(control, witness)),
+        rest,
+        proofs,
+        output,
+        stage,
+        attach,
+      )
+      when witness is {
+        proof.LedgerOutputProofDatum { action, .. } -> {
+          let attaches = when action is {
+            traverse.AttachScalar { .. } -> True
+            _ -> False
+          }
+          if active_datum(control).stage == stage && attaches == attach {
+            [(control, witness), ..later]
+          } else {
+            later
+          }
+        }
+        _ -> later
+      }
+    }
+  }
+}
+
+/// `datum_control` with its active scalar sub-control's extent shifted.
+fn with_scalar_extent(
+  datum_control: traverse.DataTraverseControlV1,
+  start_shift: Int,
+  length_shift: Int,
+) -> traverse.DataTraverseControlV1 {
+  when (datum_control.integer, datum_control.bytes) is {
+    (Some(integer), _) ->
+      traverse.DataTraverseControlV1 {
+        ..datum_control,
+        integer: Some(
+          integer_control.CekDataIntegerControlV1 {
+            ..integer,
+            source_start: integer.source_start + start_shift,
+            source_length: integer.source_length + length_shift,
+          },
+        ),
+      }
+    (_, Some(bytes)) ->
+      traverse.DataTraverseControlV1 {
+        ..datum_control,
+        bytes: Some(
+          bytes_control.CekDataBytesControlV1 {
+            ..bytes,
+            source_start: bytes.source_start + start_shift,
+            source_length: bytes.source_length + length_shift,
+          },
+        ),
+      }
+    _ -> fail
+  }
+}
+
+/// The claims that differ from the attested claim at `datum_control` in one
+/// field: each prefix field, and the scalar sub-control's start or length.
+fn substituted_claims(
+  datum_control: traverse.DataTraverseControlV1,
+) -> List<Data> {
+  [
+    traverse.DataTraverseControlV1 {
+      ..datum_control,
+      source_start: datum_control.source_start + 1,
+    },
+    traverse.DataTraverseControlV1 {
+      ..datum_control,
+      source_length: datum_control.source_length + 1,
+    },
+    traverse.DataTraverseControlV1 {
+      ..datum_control,
+      offset: datum_control.offset + 1,
+    },
+    traverse.DataTraverseControlV1 {
+      ..datum_control,
+      frame_root: if datum_control.frame_root == #"" {
+        crypto.blake2b_256(#"")
+      } else {
+        #""
+      },
+    },
+    with_scalar_extent(datum_control, 1, 0),
+    with_scalar_extent(datum_control, 0, 1),
+  ]
+    |> list.map(honest_scalar_claim)
+}
+
+/// Whether `result` is the typed successor `next`.
+fn reaches(
+  result: Option<narrow.StepResult>,
+  next: proof.LedgerOutputProofControlV1,
+) -> Bool {
+  when result is {
+    Some(narrow.Advanced { control }) ->
+      raw.encode(control) == proof.encode_control_v1(next)
+    _ -> False
+  }
+}
+
+/// At each `stage` scalar step of `output`'s proof, attaching (`attach`) or
+/// advancing: the claim of the attestation stage is the typed control's, and
+/// the routed stage yield under it reaches the typed successor; the scalar
+/// attestation refuses every substituted claim; and under each substituted
+/// claim at an index in `consumed` the routed stage yield does not reach the
+/// typed successor.
+fn scalar_claim_is_bound(
+  output: ByteArray,
+  witnesses: ByteArray,
+  stage: Int,
+  attach: Bool,
+  consumed: List<Int>,
+) -> Bool {
+  let steps = scalar_role_steps(output, witnesses, stage, attach)
+  let attests = scalar_attestation(stage)
+  and {
+    steps != [],
+    list.all(
+      steps,
+      fn(step) {
+        let (control, witness) = step
+        expect proof.LedgerOutputProofDatum { action, .. } = witness
+        let next = advanced(proof.step_v1(control, witness))
+        let control_frame = raw.open(proof.encode_control_v1(control))
+        let datum_control = active_datum(control)
+        let witness_data: Data = witness
+        let yields = fn(claim) {
+          reaches(
+            routed_with_claim(
+              control_frame,
+              witness_data,
+              datum_control,
+              action,
+              claim,
+            ),
+            next,
+          )
+        }
+        let claim = attested_scalar_claim(control_frame)
+        let substituted = substituted_claims(datum_control)
+        and {
+          claim == honest_scalar_claim(datum_control),
+          yields(claim),
+          list.all(substituted, fn(other) { !attests(control_frame, other) }),
+          list.all(
+            consumed,
+            fn(index) {
+              expect Some(other) = list.at(substituted, index)
+              !yields(other)
+            },
+          ),
+        }
+      },
+    ),
+  }
+}
+
+/// The integer attach step of the `[B"", 1]` proof consumes every field of
+/// the claim.
+test integer_attach_takes_the_attested_scalar_claim() {
+  scalar_claim_is_bound(
+    list_starting_with_empty_bytes_output,
+    list_starting_with_empty_bytes_witnesses,
+    traverse.stage_integer,
+    True,
+    [0, 1, 2, 3, 4, 5],
+  )
+}
+
+/// The integer advance steps of the `[B"", 1]` proof consume the claimed
+/// scalar sub-control.
+test integer_advance_takes_the_attested_scalar_claim() {
+  scalar_claim_is_bound(
+    list_starting_with_empty_bytes_output,
+    list_starting_with_empty_bytes_witnesses,
+    traverse.stage_integer,
+    False,
+    [4, 5],
+  )
+}
+
+/// The bytes attach steps of the `[B"", 1]` and `B"01"` proofs consume the
+/// claim's prefix and the claimed scalar's length.
+test bytes_attach_takes_the_attested_scalar_claim() {
+  and {
+    scalar_claim_is_bound(
+      list_starting_with_empty_bytes_output,
+      list_starting_with_empty_bytes_witnesses,
+      traverse.stage_bytes,
+      True,
+      [0, 1, 2, 3, 5],
+    ),
+    scalar_claim_is_bound(
+      one_byte_string_output,
+      one_byte_string_witnesses,
+      traverse.stage_bytes,
+      True,
+      [0, 1, 2, 3, 5],
+    ),
+  }
+}
+
+/// The bytes advance steps of the `[B"", 1]` and `B"01"` proofs, the empty
+/// span's included, consume the claimed scalar's length.
+test bytes_advance_takes_the_attested_scalar_claim() {
+  and {
+    scalar_claim_is_bound(
+      list_starting_with_empty_bytes_output,
+      list_starting_with_empty_bytes_witnesses,
+      traverse.stage_bytes,
+      False,
+      [5],
+    ),
+    scalar_claim_is_bound(
+      one_byte_string_output,
+      one_byte_string_witnesses,
+      traverse.stage_bytes,
+      False,
+      [5],
+    ),
+  }
 }
 
 /// The control of the first datum step that reads an empty span, and that
@@ -1143,26 +1491,6 @@ fn first_empty_span_step(
   at_empty_span(initial, builtin.un_list_data(witness_list), proofs, output)
 }
 
-/// The split datum step over `control`'s frame with `total_item` in place
-/// of the encoded output length (frame bytes 4..5).
-fn split_empty_span_step(
-  control: proof.LedgerOutputProofControlV1,
-  action: traverse.DataTraverseActionV1,
-  total_item: ByteArray,
-) -> Option<narrow.StepResult> {
-  let encoded = proof.encode_control_v1(control)
-  expect slice_len(encoded, 4, 2) == #"182e"
-  let patched = bytearray.concat(
-    slice_len(encoded, 0, 4),
-    bytearray.concat(
-      total_item,
-      slice_len(encoded, 6, bytearray.length(encoded) - 6),
-    ),
-  )
-  let witness_data: Data = proof.LedgerOutputProofDatum { action, window: None }
-  routed(raw.open(patched), witness_data, active_datum(control), action)
-}
-
 /// The split datum step refuses a window over an empty span.
 test split_datum_step_refuses_a_window_over_an_empty_span() fail {
   let (control, action) = first_empty_span_step(
@@ -1181,30 +1509,26 @@ test split_datum_step_refuses_a_window_over_an_empty_span() fail {
   ) != None
 }
 
-/// The split datum step reads an empty span starting at the frame's output
-/// length (45 here, the span's start) and at the honest length 46.
-test split_empty_span_may_start_at_the_output_length() {
+/// The split datum step reads the honest empty span of `[B""]`, which starts
+/// at 45, one byte before the end of the 46-byte output.
+test split_datum_step_reads_an_empty_span_before_the_output_end() {
   let (control, action) = first_empty_span_step(
     list_holding_empty_bytes_output,
     list_holding_empty_bytes_witnesses,
   )
   expect Some(source_span) = traverse.next_source_span_v1(active_datum(control))
+  let witness_data: Data = proof.LedgerOutputProofDatum { action, window: None }
   and {
     source_span.length == 0,
     source_span.absolute_start == 45,
-    split_empty_span_step(control, action, #"182e") != None,
-    split_empty_span_step(control, action, #"182d") != None,
+    control.total_length == 46,
+    routed(
+      raw.open(proof.encode_control_v1(control)),
+      witness_data,
+      active_datum(control),
+      action,
+    ) != None,
   }
-}
-
-/// The split datum step refuses an empty span starting past the frame's
-/// output length.
-test split_empty_span_refuses_a_start_past_the_output_length() fail {
-  let (control, action) = first_empty_span_step(
-    list_holding_empty_bytes_output,
-    list_holding_empty_bytes_witnesses,
-  )
-  split_empty_span_step(control, action, #"182c") != None
 }
 
 /// An honest empty span starting exactly at the end of the 44-byte output
@@ -1238,11 +1562,11 @@ const empty_bytes_last_output =
 const empty_bytes_last_witnesses =
   #"9fd87a80d87a80d87a80d87a80d87980d87980d87980d87980d87980d87e80d87c9fd87a80d8799f4140ffffd87c9fd87980d8799f4140ffffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87e9fd87a80ffd87a80ffd87980ff"
 
-const empty_bytes_last_witnesses_hash =
-  #"8ec7e69b3ccc24ae8e1c0f7609cd07a0c6188f4cafcc9abbb2e7b4f34cec5586"
-
 const empty_bytes_last_terminal_hash =
   #"9b9e60d6da19d5dc8cca51cb2aa0512b5e019cb3789087c458b243faa157a37f"
+
+const empty_bytes_last_planner_claims =
+  #"9f9f0bd8799f182b010040d8799f0100182b0100d87a80ffffff9f0cd8799f182b010040d8799f0101182b0100d8799fd8799f01000000d8799f000080ffd8799fd8799f01000016584028c9bdf267e6096a3ba7ca8485ae67bb2bf894fe72f36e3cf1361d5f3af54fa5d182e6ad7f520e511f6c3e2b8c68059b6bbd41fbabd9831f79217e1319cde05b40004000ffffffffffffff9f181bd8799f182b010040d8799f0101182b0100d8799fd8799f01010000d8799f01009fd8799f0058205b5fb0c983697cff1977899896435e4e8f24cd6f761099da0c4a04a6a90e1c6c00ffffffd87a80ffffffffff9f181cd8799f182b010040d8799f0103182b0100d8799fd8799f01010000d8799f01009fd8799f0058205b5fb0c983697cff1977899896435e4e8f24cd6f761099da0c4a04a6a90e1c6c00ffffffd87a80ffffffffffff"
 
 /// The datum `B""` is the last field: its empty span starts at the end of the output.
 test empty_byte_string_datum_ending_the_output_replays_the_typescript_trace() {
@@ -1250,8 +1574,8 @@ test empty_byte_string_datum_ending_the_output_replays_the_typescript_trace() {
     empty_bytes_last_output,
     #"40",
     empty_bytes_last_witnesses,
-    empty_bytes_last_witnesses_hash,
     empty_bytes_last_terminal_hash,
+    empty_bytes_last_planner_claims,
     1,
   )
 }
@@ -1262,11 +1586,11 @@ const list_holding_empty_bytes_output =
 const list_holding_empty_bytes_witnesses =
   #"9fd87a80d87a80d87a80d87a80d87980d87980d87980d87980d87980d87e80d87c9fd87b80d8799f439f40ffffffd87c9fd87a80d8799f439f40ffffffd87c9fd87980d8799f439f40ffffffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87e9fd8799fd8799f02004000004000008000d8799f58208c446a903f125939fd6e036b313c52340c9ac0539e6730f08e95eaec9052fa56000000ffffffffd87a80ffd87c9fd87980d8799f439f40ffffffd87c9fd87f9fd8799f02004000004000019fd8799f0058204e031d4f96ae82d7fad43d65ddb0f52be3182f9b33eaca92e11392ae380f07abffff00d8799f58208c446a903f125939fd6e036b313c52340c9ac0539e6730f08e95eaec9052fa56000000ffff00d8799f5820f3f2777df4485f9e3e4abff00c01e3036f171903ed0279565383a81c0e74929f0105ff80ffd87a80ffd87c9fd905019fd8799f02004000004000019fd8799f0058204e031d4f96ae82d7fad43d65ddb0f52be3182f9b33eaca92e11392ae380f07abffff01d8799f582016925ec20d2cfa48b7d727ce43aabab6f695dcc94463febd74e2c67631181800010105ffffd87a80ffd87a80ffd87980ff"
 
-const list_holding_empty_bytes_witnesses_hash =
-  #"a3adbe1daaefc32482253e35f9a2f2cf1344525cc7af3cc37e9a2fdd0f40be3b"
-
 const list_holding_empty_bytes_terminal_hash =
   #"9f22dd78891a1e99a7eb9d65632a90db25ff6fc0d47d15691de984cd8baf311f"
+
+const list_holding_empty_bytes_planner_claims =
+  #"9f9f0cd8799f182b030158201a63c468a0c551cce49c375c363b335f92d5a4e00e14a6c503dfb59ee3f6b549d8799f0100182c0100d87a80ffffff9f0dd8799f182b030158201a63c468a0c551cce49c375c363b335f92d5a4e00e14a6c503dfb59ee3f6b549d8799f0101182c0100d8799fd8799f01000000d8799f000080ffd8799fd8799f01000016584028c9bdf267e6096a3ba7ca8485ae67bb2bf894fe72f36e3cf1361d5f3af54fa5d182e6ad7f520e511f6c3e2b8c68059b6bbd41fbabd9831f79217e1319cde05b40004000ffffffffffffff9f181cd8799f182b030158201a63c468a0c551cce49c375c363b335f92d5a4e00e14a6c503dfb59ee3f6b549d8799f0101182c0100d8799fd8799f01010000d8799f01009fd8799f0058205b5fb0c983697cff1977899896435e4e8f24cd6f761099da0c4a04a6a90e1c6c00ffffffd87a80ffffffffff9f181dd8799f182b030158201a63c468a0c551cce49c375c363b335f92d5a4e00e14a6c503dfb59ee3f6b549d8799f0103182c0100d8799fd8799f01010000d8799f01009fd8799f0058205b5fb0c983697cff1977899896435e4e8f24cd6f761099da0c4a04a6a90e1c6c00ffffffd87a80ffffffffffff"
 
 /// The datum `[B""]`.
 test list_holding_an_empty_byte_string_replays_the_typescript_trace() {
@@ -1274,8 +1598,8 @@ test list_holding_an_empty_byte_string_replays_the_typescript_trace() {
     list_holding_empty_bytes_output,
     #"9f40ff",
     list_holding_empty_bytes_witnesses,
-    list_holding_empty_bytes_witnesses_hash,
     list_holding_empty_bytes_terminal_hash,
+    list_holding_empty_bytes_planner_claims,
     1,
   )
 }
@@ -1286,11 +1610,11 @@ const list_starting_with_empty_bytes_output =
 const list_starting_with_empty_bytes_witnesses =
   #"9fd87a80d87a80d87a80d87a80d87980d87980d87980d87980d87980d87e80d87c9fd87b80d8799f449f4001ffffffd87c9fd87a80d8799f449f4001ffffffd87c9fd87980d8799f449f4001ffffffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87e9fd8799fd8799f02004000004000008000d8799f58208c446a903f125939fd6e036b313c52340c9ac0539e6730f08e95eaec9052fa56000000ffffffffd87a80ffd87c9fd87a80d8799f449f4001ffffffd87c9fd87980d8799f449f4001ffffffd87c9fd87980d8799f449f4001ffffffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87e9fd8799fd8799f02004000004000019fd8799f0058204e031d4f96ae82d7fad43d65ddb0f52be3182f9b33eaca92e11392ae380f07abffff00d8799f58208c446a903f125939fd6e036b313c52340c9ac0539e6730f08e95eaec9052fa56000000ffffffffd87a80ffd87c9fd87980d8799f449f4001ffffffd87c9fd87f9fd8799f02004000004000029fd8799f015820e644b8b04fb1f16375b92127ea5b8cf59098fa2f7141805715d887aa8b2bbb15ffff00d8799f58208c446a903f125939fd6e036b313c52340c9ac0539e6730f08e95eaec9052fa56000000ffff01d8799f58206102804ee42d85218a31c7dda323bccc1ad4b31a9f3f3880449bdfca06a307dc0105ff9f58204e031d4f96ae82d7fad43d65ddb0f52be3182f9b33eaca92e11392ae380f07abffffd87a80ffd87c9fd87f9fd8799f02004000004000029fd8799f015820e644b8b04fb1f16375b92127ea5b8cf59098fa2f7141805715d887aa8b2bbb15ffff01d8799f5820c66d34dc169dc55d9f05404a8d8b1e711f9e1e7fa38accdb2c01225262c4e763010105ffff00d8799f5820f3f2777df4485f9e3e4abff00c01e3036f171903ed0279565383a81c0e74929f0105ff9f58206a4eb2a14e5295bd2a48287c98e33b7948b9536ad5b9daef8a542fa898c49322ffffd87a80ffd87c9fd905019fd8799f02004000004000029fd8799f015820e644b8b04fb1f16375b92127ea5b8cf59098fa2f7141805715d887aa8b2bbb15ffff02d8799f58208fe7d531abef51c62880cb6f54137e5007a6743df67ba733ebee0a4bb9d7f8e002020affffd87a80ffd87a80ffd87980ff"
 
-const list_starting_with_empty_bytes_witnesses_hash =
-  #"1d7d0837c2643977fb81c14fe6236d2e320d256f473bf2f39d120d130f28950b"
-
 const list_starting_with_empty_bytes_terminal_hash =
   #"ea04b9559d06e85d313d0d065117cc6aacbbbd98e070359df8e9fbb9f31c8f61"
+
+const list_starting_with_empty_bytes_planner_claims =
+  #"9f9f0cd8799f182b040158201a63c468a0c551cce49c375c363b335f92d5a4e00e14a6c503dfb59ee3f6b549d8799f0100182c0100d87a80ffffff9f0dd8799f182b040158201a63c468a0c551cce49c375c363b335f92d5a4e00e14a6c503dfb59ee3f6b549d8799f0101182c0100d8799fd8799f01000000d8799f000080ffd8799fd8799f01000016584028c9bdf267e6096a3ba7ca8485ae67bb2bf894fe72f36e3cf1361d5f3af54fa5d182e6ad7f520e511f6c3e2b8c68059b6bbd41fbabd9831f79217e1319cde05b40004000ffffffffffffff9f181cd8799f182b040158201a63c468a0c551cce49c375c363b335f92d5a4e00e14a6c503dfb59ee3f6b549d8799f0101182c0100d8799fd8799f01010000d8799f01009fd8799f0058205b5fb0c983697cff1977899896435e4e8f24cd6f761099da0c4a04a6a90e1c6c00ffffffd87a80ffffffffff9f181dd8799f182b040158201a63c468a0c551cce49c375c363b335f92d5a4e00e14a6c503dfb59ee3f6b549d8799f0103182c0100d8799fd8799f01010000d8799f01009fd8799f0058205b5fb0c983697cff1977899896435e4e8f24cd6f761099da0c4a04a6a90e1c6c00ffffffd87a80ffffffffff9f181fd8799f182b04025820cc0257a7384f72c1a664aa1c1a230b1d48295e5d5549f3908d9e0b712fa88648d8799f0100182d0100d87a80ffffff9f1820d8799f182b04025820cc0257a7384f72c1a664aa1c1a230b1d48295e5d5549f3908d9e0b712fa88648d8799f0101182d0105d8799fd8799f0100182d01d8799f000080ffd8799fd8799f01000017584028c9bdf267e6096a3ba7ca8485ae67bb2bf894fe72f36e3cf1361d5f3af54fa5d182e6ad7f520e511f6c3e2b8c68059b6bbd41fbabd9831f79217e1319cde05b40004000ffffffffffffff9f182fd8799f182b04025820cc0257a7384f72c1a664aa1c1a230b1d48295e5d5549f3908d9e0b712fa88648d8799f0101182d0105d8799fd8799f0101182d01d8799f01019fd8799f005820eb5fd47ef72521e3f86fe5eb13a464d7542ed021a5140ff4590b36d8432b002401ffffffd87a80ffffffffff9f1830d8799f182b04025820cc0257a7384f72c1a664aa1c1a230b1d48295e5d5549f3908d9e0b712fa88648d8799f0102182d0105d8799fd8799f0101182d01d8799f01019fd8799f005820eb5fd47ef72521e3f86fe5eb13a464d7542ed021a5140ff4590b36d8432b002401ffffffd87a80ffffffffffff"
 
 /// The datum `[B"", 1]`.
 test list_starting_with_an_empty_byte_string_replays_the_typescript_trace() {
@@ -1298,8 +1622,8 @@ test list_starting_with_an_empty_byte_string_replays_the_typescript_trace() {
     list_starting_with_empty_bytes_output,
     #"9f4001ff",
     list_starting_with_empty_bytes_witnesses,
-    list_starting_with_empty_bytes_witnesses_hash,
     list_starting_with_empty_bytes_terminal_hash,
+    list_starting_with_empty_bytes_planner_claims,
     1,
   )
 }
@@ -1310,11 +1634,11 @@ const constr_holding_empty_bytes_output =
 const constr_holding_empty_bytes_witnesses =
   #"9fd87a80d87a80d87a80d87a80d87980d87980d87980d87980d87980d87e80d87c9fd87b80d8799f45d8799f40ffffffd87c9fd87a80d8799f45d8799f40ffffffd87c9fd87980d8799f45d8799f40ffffffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87e9fd8799fd8799f00004000004000008000d8799f58208c446a903f125939fd6e036b313c52340c9ac0539e6730f08e95eaec9052fa56000000ffffffffd87a80ffd87c9fd87980d8799f45d8799f40ffffffd87c9fd87f9fd8799f00004000004000019fd8799f0058204e031d4f96ae82d7fad43d65ddb0f52be3182f9b33eaca92e11392ae380f07abffff00d8799f58208c446a903f125939fd6e036b313c52340c9ac0539e6730f08e95eaec9052fa56000000ffff00d8799f5820f3f2777df4485f9e3e4abff00c01e3036f171903ed0279565383a81c0e74929f0105ff80ffd87a80ffd87c9fd905019fd8799f00004000004000019fd8799f0058204e031d4f96ae82d7fad43d65ddb0f52be3182f9b33eaca92e11392ae380f07abffff01d8799f582016925ec20d2cfa48b7d727ce43aabab6f695dcc94463febd74e2c67631181800010105ffffd87a80ffd87a80ffd87980ff"
 
-const constr_holding_empty_bytes_witnesses_hash =
-  #"65c0e56cf73db6cc5c7c0f64aefc3588b29874c6a74558f4c4aff986cad76a4c"
-
 const constr_holding_empty_bytes_terminal_hash =
   #"77b28cc72668a185fa2277aebdae336a00f90b239891af697c6eec7b51c25f33"
+
+const constr_holding_empty_bytes_planner_claims =
+  #"9f9f0cd8799f182b05035820cd215fde0af7f804be5726273a2dfacd8088b852f9170b9d02183327d0c5f082d8799f0100182e0100d87a80ffffff9f0dd8799f182b05035820cd215fde0af7f804be5726273a2dfacd8088b852f9170b9d02183327d0c5f082d8799f0101182e0100d8799fd8799f01000000d8799f000080ffd8799fd8799f01000016584028c9bdf267e6096a3ba7ca8485ae67bb2bf894fe72f36e3cf1361d5f3af54fa5d182e6ad7f520e511f6c3e2b8c68059b6bbd41fbabd9831f79217e1319cde05b40004000ffffffffffffff9f181cd8799f182b05035820cd215fde0af7f804be5726273a2dfacd8088b852f9170b9d02183327d0c5f082d8799f0101182e0100d8799fd8799f01010000d8799f01009fd8799f0058205b5fb0c983697cff1977899896435e4e8f24cd6f761099da0c4a04a6a90e1c6c00ffffffd87a80ffffffffff9f181dd8799f182b05035820cd215fde0af7f804be5726273a2dfacd8088b852f9170b9d02183327d0c5f082d8799f0103182e0100d8799fd8799f01010000d8799f01009fd8799f0058205b5fb0c983697cff1977899896435e4e8f24cd6f761099da0c4a04a6a90e1c6c00ffffffd87a80ffffffffffff"
 
 /// The datum `Constr 0 [B""]`.
 test constructor_holding_an_empty_byte_string_replays_the_typescript_trace() {
@@ -1322,8 +1646,8 @@ test constructor_holding_an_empty_byte_string_replays_the_typescript_trace() {
     constr_holding_empty_bytes_output,
     #"d8799f40ff",
     constr_holding_empty_bytes_witnesses,
-    constr_holding_empty_bytes_witnesses_hash,
     constr_holding_empty_bytes_terminal_hash,
+    constr_holding_empty_bytes_planner_claims,
     1,
   )
 }
@@ -1334,11 +1658,11 @@ const constr_starting_with_empty_bytes_output =
 const constr_starting_with_empty_bytes_witnesses =
   #"9fd87a80d87a80d87a80d87a80d87980d87980d87980d87980d87980d87e80d87c9fd87b80d8799f46d8799f4001ffffffd87c9fd87a80d8799f46d8799f4001ffffffd87c9fd87980d8799f46d8799f4001ffffffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87e9fd8799fd8799f00004000004000008000d8799f58208c446a903f125939fd6e036b313c52340c9ac0539e6730f08e95eaec9052fa56000000ffffffffd87a80ffd87c9fd87a80d8799f46d8799f4001ffffffd87c9fd87980d8799f46d8799f4001ffffffd87c9fd87980d8799f46d8799f4001ffffffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87e9fd8799fd8799f00004000004000019fd8799f0058204e031d4f96ae82d7fad43d65ddb0f52be3182f9b33eaca92e11392ae380f07abffff00d8799f58208c446a903f125939fd6e036b313c52340c9ac0539e6730f08e95eaec9052fa56000000ffffffffd87a80ffd87c9fd87980d8799f46d8799f4001ffffffd87c9fd87f9fd8799f00004000004000029fd8799f015820e644b8b04fb1f16375b92127ea5b8cf59098fa2f7141805715d887aa8b2bbb15ffff00d8799f58208c446a903f125939fd6e036b313c52340c9ac0539e6730f08e95eaec9052fa56000000ffff01d8799f58206102804ee42d85218a31c7dda323bccc1ad4b31a9f3f3880449bdfca06a307dc0105ff9f58204e031d4f96ae82d7fad43d65ddb0f52be3182f9b33eaca92e11392ae380f07abffffd87a80ffd87c9fd87f9fd8799f00004000004000029fd8799f015820e644b8b04fb1f16375b92127ea5b8cf59098fa2f7141805715d887aa8b2bbb15ffff01d8799f5820c66d34dc169dc55d9f05404a8d8b1e711f9e1e7fa38accdb2c01225262c4e763010105ffff00d8799f5820f3f2777df4485f9e3e4abff00c01e3036f171903ed0279565383a81c0e74929f0105ff9f58206a4eb2a14e5295bd2a48287c98e33b7948b9536ad5b9daef8a542fa898c49322ffffd87a80ffd87c9fd905019fd8799f00004000004000029fd8799f015820e644b8b04fb1f16375b92127ea5b8cf59098fa2f7141805715d887aa8b2bbb15ffff02d8799f58208fe7d531abef51c62880cb6f54137e5007a6743df67ba733ebee0a4bb9d7f8e002020affffd87a80ffd87a80ffd87980ff"
 
-const constr_starting_with_empty_bytes_witnesses_hash =
-  #"bea77d37825b28cd24c71cf13bfbbf164b61328b14ce7c6da6e584bbadfb6e5f"
-
 const constr_starting_with_empty_bytes_terminal_hash =
   #"9e865907b8a644d4520b6b6b66c15ba8c6cabce3dc8d5d1f6037aa521fe14fff"
+
+const constr_starting_with_empty_bytes_planner_claims =
+  #"9f9f0cd8799f182b06035820cd215fde0af7f804be5726273a2dfacd8088b852f9170b9d02183327d0c5f082d8799f0100182e0100d87a80ffffff9f0dd8799f182b06035820cd215fde0af7f804be5726273a2dfacd8088b852f9170b9d02183327d0c5f082d8799f0101182e0100d8799fd8799f01000000d8799f000080ffd8799fd8799f01000016584028c9bdf267e6096a3ba7ca8485ae67bb2bf894fe72f36e3cf1361d5f3af54fa5d182e6ad7f520e511f6c3e2b8c68059b6bbd41fbabd9831f79217e1319cde05b40004000ffffffffffffff9f181cd8799f182b06035820cd215fde0af7f804be5726273a2dfacd8088b852f9170b9d02183327d0c5f082d8799f0101182e0100d8799fd8799f01010000d8799f01009fd8799f0058205b5fb0c983697cff1977899896435e4e8f24cd6f761099da0c4a04a6a90e1c6c00ffffffd87a80ffffffffff9f181dd8799f182b06035820cd215fde0af7f804be5726273a2dfacd8088b852f9170b9d02183327d0c5f082d8799f0103182e0100d8799fd8799f01010000d8799f01009fd8799f0058205b5fb0c983697cff1977899896435e4e8f24cd6f761099da0c4a04a6a90e1c6c00ffffffd87a80ffffffffff9f181fd8799f182b06045820a9f68596695906b87360ab98ae1b394ee0da715cf4eab0b975bdb88b47b9acc4d8799f0100182f0100d87a80ffffff9f1820d8799f182b06045820a9f68596695906b87360ab98ae1b394ee0da715cf4eab0b975bdb88b47b9acc4d8799f0101182f0105d8799fd8799f0100182f01d8799f000080ffd8799fd8799f01000017584028c9bdf267e6096a3ba7ca8485ae67bb2bf894fe72f36e3cf1361d5f3af54fa5d182e6ad7f520e511f6c3e2b8c68059b6bbd41fbabd9831f79217e1319cde05b40004000ffffffffffffff9f182fd8799f182b06045820a9f68596695906b87360ab98ae1b394ee0da715cf4eab0b975bdb88b47b9acc4d8799f0101182f0105d8799fd8799f0101182f01d8799f01019fd8799f005820eb5fd47ef72521e3f86fe5eb13a464d7542ed021a5140ff4590b36d8432b002401ffffffd87a80ffffffffff9f1830d8799f182b06045820a9f68596695906b87360ab98ae1b394ee0da715cf4eab0b975bdb88b47b9acc4d8799f0102182f0105d8799fd8799f0101182f01d8799f01019fd8799f005820eb5fd47ef72521e3f86fe5eb13a464d7542ed021a5140ff4590b36d8432b002401ffffffd87a80ffffffffffff"
 
 /// The datum `Constr 0 [B"", 1]`.
 test constructor_starting_with_an_empty_byte_string_replays_the_typescript_trace() {
@@ -1346,8 +1670,8 @@ test constructor_starting_with_an_empty_byte_string_replays_the_typescript_trace
     constr_starting_with_empty_bytes_output,
     #"d8799f4001ff",
     constr_starting_with_empty_bytes_witnesses,
-    constr_starting_with_empty_bytes_witnesses_hash,
     constr_starting_with_empty_bytes_terminal_hash,
+    constr_starting_with_empty_bytes_planner_claims,
     1,
   )
 }
@@ -1358,11 +1682,11 @@ const map_with_empty_bytes_key_output =
 const map_with_empty_bytes_key_witnesses =
   #"9fd87a80d87a80d87a80d87a80d87980d87980d87980d87980d87980d87e80d87c9fd87c80d8799f43a14000ffffd87c9fd87a80d8799f43a14000ffffd87c9fd87980d8799f43a14000ffffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87e9fd8799fd8799f03004000004002008000d8799f5820bbcb3bff6f87a2005a336b6cb5fe5fbea093815716945279140f31aec8cbaba2000000ffffffffd87a80ffd87c9fd87a80d8799f43a14000ffffd87c9fd87980d8799f43a14000ffffd87c9fd87980d8799f43a14000ffffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87e9fd8799fd8799f03004000004002019fd8799f0058204e031d4f96ae82d7fad43d65ddb0f52be3182f9b33eaca92e11392ae380f07abffff00d8799f5820bbcb3bff6f87a2005a336b6cb5fe5fbea093815716945279140f31aec8cbaba2000000ffffffffd87a80ffd87c9fd905009fd8799f03004000004002029fd8799f01582069ba927ffb89db72ddfe802258c4a445bc04942bdf483ec0f963c675cdc51ce5ffff00d8799f5820bbcb3bff6f87a2005a336b6cb5fe5fbea093815716945279140f31aec8cbaba2000000ffff00d8799f5820f3f2777df4485f9e3e4abff00c01e3036f171903ed0279565383a81c0e74929f0105ffd8799f58200c4e8e7a8396d11dd8c0554ec32416c3257d87175f2dfcc7714469663e0f1da20105ff9f5820ebfd10c4a2e729a2ded716392352fe681c9ebb85b93dec6698a7ebb223f9ea16ff9f58204e031d4f96ae82d7fad43d65ddb0f52be3182f9b33eaca92e11392ae380f07abffffd87a80ffd87c9fd905019fd8799f03004000004002029fd8799f01582069ba927ffb89db72ddfe802258c4a445bc04942bdf483ec0f963c675cdc51ce5ffff01d8799f5820a43ad9958682ac4eb2811a3450133ba0addcde6e3107b4108824138c5660c19701020affffd87a80ffd87a80ffd87980ff"
 
-const map_with_empty_bytes_key_witnesses_hash =
-  #"73a578ec81a5f213c7ae7eab2a93cf14ce44e99af083ab08730c806df5c853f3"
-
 const map_with_empty_bytes_key_terminal_hash =
   #"dd557e32210bd0ad747fc4bcea3559c41baac486c98a2fddb3de57cfcf4afa58"
+
+const map_with_empty_bytes_key_planner_claims =
+  #"9f9f0cd8799f182b03015820260518ba81d70f59504e1a2880942f93e4a047fac1958c73cbe38ce00b7e7f93d8799f0100182c0100d87a80ffffff9f0dd8799f182b03015820260518ba81d70f59504e1a2880942f93e4a047fac1958c73cbe38ce00b7e7f93d8799f0101182c0100d8799fd8799f01000000d8799f000080ffd8799fd8799f01000016584028c9bdf267e6096a3ba7ca8485ae67bb2bf894fe72f36e3cf1361d5f3af54fa5d182e6ad7f520e511f6c3e2b8c68059b6bbd41fbabd9831f79217e1319cde05b40004000ffffffffffffff9f181cd8799f182b03015820260518ba81d70f59504e1a2880942f93e4a047fac1958c73cbe38ce00b7e7f93d8799f0101182c0100d8799fd8799f01010000d8799f01009fd8799f0058205b5fb0c983697cff1977899896435e4e8f24cd6f761099da0c4a04a6a90e1c6c00ffffffd87a80ffffffffff9f181dd8799f182b03015820260518ba81d70f59504e1a2880942f93e4a047fac1958c73cbe38ce00b7e7f93d8799f0103182c0100d8799fd8799f01010000d8799f01009fd8799f0058205b5fb0c983697cff1977899896435e4e8f24cd6f761099da0c4a04a6a90e1c6c00ffffffd87a80ffffffffff9f181fd8799f182b030258202583b04d99310318fcdd671701af93f84517f20b16b257c7e42933a2e2c00c4cd8799f0100182d0100d87a80ffffff9f1820d8799f182b030258202583b04d99310318fcdd671701af93f84517f20b16b257c7e42933a2e2c00c4cd8799f0101182d0105d8799fd8799f0100182d01d8799f000080ffd8799fd8799f01000017584028c9bdf267e6096a3ba7ca8485ae67bb2bf894fe72f36e3cf1361d5f3af54fa5d182e6ad7f520e511f6c3e2b8c68059b6bbd41fbabd9831f79217e1319cde05b40004000ffffffffffffff9f182fd8799f182b030258202583b04d99310318fcdd671701af93f84517f20b16b257c7e42933a2e2c00c4cd8799f0101182d0105d8799fd8799f0101182d01d8799f01019fd8799f0058205fb8c7d0d530210e8dc0ab900c98c42577fe756e39777c1e516c187f89e55df301ffffffd87a80ffffffffff9f1830d8799f182b030258202583b04d99310318fcdd671701af93f84517f20b16b257c7e42933a2e2c00c4cd8799f0102182d0105d8799fd8799f0101182d01d8799f01019fd8799f0058205fb8c7d0d530210e8dc0ab900c98c42577fe756e39777c1e516c187f89e55df301ffffffd87a80ffffffffffff"
 
 /// The datum `{B"": 0}`.
 test map_with_an_empty_byte_string_key_replays_the_typescript_trace() {
@@ -1370,8 +1694,8 @@ test map_with_an_empty_byte_string_key_replays_the_typescript_trace() {
     map_with_empty_bytes_key_output,
     #"a14000",
     map_with_empty_bytes_key_witnesses,
-    map_with_empty_bytes_key_witnesses_hash,
     map_with_empty_bytes_key_terminal_hash,
+    map_with_empty_bytes_key_planner_claims,
     1,
   )
 }
@@ -1382,11 +1706,11 @@ const map_with_empty_bytes_value_output =
 const map_with_empty_bytes_value_witnesses =
   #"9fd87a80d87a80d87a80d87a80d87980d87980d87980d87980d87980d87e80d87c9fd87c80d8799f43a10040ffffd87c9fd87a80d8799f43a10040ffffd87c9fd87980d8799f43a10040ffffd87c9fd87980d8799f43a10040ffffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87e9fd8799fd8799f03004000004002008000d8799f5820bbcb3bff6f87a2005a336b6cb5fe5fbea093815716945279140f31aec8cbaba2000000ffffffffd87a80ffd87c9fd87a80d8799f43a10040ffffd87c9fd87980d8799f43a10040ffffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87e9fd8799fd8799f03004000004002019fd8799f0058206a9194f205ef503230d073cded1b21eb8891ba6df37cb446dda7f703a00dd05bffff00d8799f5820bbcb3bff6f87a2005a336b6cb5fe5fbea093815716945279140f31aec8cbaba2000000ffffffffd87a80ffd87c9fd905009fd8799f03004000004002029fd8799f015820a52bfa3178ba0b906d297cbbdcbce064369abb67dccc9a5fd94a98e40d89c984ffff00d8799f5820bbcb3bff6f87a2005a336b6cb5fe5fbea093815716945279140f31aec8cbaba2000000ffff00d8799f58200c4e8e7a8396d11dd8c0554ec32416c3257d87175f2dfcc7714469663e0f1da20105ffd8799f5820f3f2777df4485f9e3e4abff00c01e3036f171903ed0279565383a81c0e74929f0105ff9f582084a23d5356d95ebc0e196f044589d386f31e492462db23c29f883c49f37981beff9f58206a9194f205ef503230d073cded1b21eb8891ba6df37cb446dda7f703a00dd05bffffd87a80ffd87c9fd905019fd8799f03004000004002029fd8799f015820a52bfa3178ba0b906d297cbbdcbce064369abb67dccc9a5fd94a98e40d89c984ffff01d8799f582015eb547d20c86032bf253ac722b17b26d76fa4a23f499fddc96f4753eab636e001020affffd87a80ffd87a80ffd87980ff"
 
-const map_with_empty_bytes_value_witnesses_hash =
-  #"4215dc224cea39d9395b06479b3274ee6c0c272714cede23dbe0267099e63792"
-
 const map_with_empty_bytes_value_terminal_hash =
   #"4be44e4ab7c360d596fad6fda318ad08a40eac85d13011e034f9d8d81c43f373"
+
+const map_with_empty_bytes_value_planner_claims =
+  #"9f9f0cd8799f182b03015820260518ba81d70f59504e1a2880942f93e4a047fac1958c73cbe38ce00b7e7f93d8799f0100182c0100d87a80ffffff9f0dd8799f182b03015820260518ba81d70f59504e1a2880942f93e4a047fac1958c73cbe38ce00b7e7f93d8799f0101182c0105d8799fd8799f0100182c01d8799f000080ffd8799fd8799f01000017584028c9bdf267e6096a3ba7ca8485ae67bb2bf894fe72f36e3cf1361d5f3af54fa5d182e6ad7f520e511f6c3e2b8c68059b6bbd41fbabd9831f79217e1319cde05b40004000ffffffffffffff9f181cd8799f182b03015820260518ba81d70f59504e1a2880942f93e4a047fac1958c73cbe38ce00b7e7f93d8799f0101182c0105d8799fd8799f0101182c01d8799f01019fd8799f0058205fb8c7d0d530210e8dc0ab900c98c42577fe756e39777c1e516c187f89e55df301ffffffd87a80ffffffffff9f181dd8799f182b03015820260518ba81d70f59504e1a2880942f93e4a047fac1958c73cbe38ce00b7e7f93d8799f0102182c0105d8799fd8799f0101182c01d8799f01019fd8799f0058205fb8c7d0d530210e8dc0ab900c98c42577fe756e39777c1e516c187f89e55df301ffffffd87a80ffffffffff9f181fd8799f182b03025820e154b7c3e3dd45d90e419038d26fff72e2668726fc7c78078e56011d4365c081d8799f0100182d0100d87a80ffffff9f1820d8799f182b03025820e154b7c3e3dd45d90e419038d26fff72e2668726fc7c78078e56011d4365c081d8799f0101182d0100d8799fd8799f01000000d8799f000080ffd8799fd8799f01000016584028c9bdf267e6096a3ba7ca8485ae67bb2bf894fe72f36e3cf1361d5f3af54fa5d182e6ad7f520e511f6c3e2b8c68059b6bbd41fbabd9831f79217e1319cde05b40004000ffffffffffffff9f182fd8799f182b03025820e154b7c3e3dd45d90e419038d26fff72e2668726fc7c78078e56011d4365c081d8799f0101182d0100d8799fd8799f01010000d8799f01009fd8799f0058205b5fb0c983697cff1977899896435e4e8f24cd6f761099da0c4a04a6a90e1c6c00ffffffd87a80ffffffffff9f1830d8799f182b03025820e154b7c3e3dd45d90e419038d26fff72e2668726fc7c78078e56011d4365c081d8799f0103182d0100d8799fd8799f01010000d8799f01009fd8799f0058205b5fb0c983697cff1977899896435e4e8f24cd6f761099da0c4a04a6a90e1c6c00ffffffd87a80ffffffffffff"
 
 /// The datum `{0: B""}`.
 test map_with_an_empty_byte_string_value_replays_the_typescript_trace() {
@@ -1394,8 +1718,8 @@ test map_with_an_empty_byte_string_value_replays_the_typescript_trace() {
     map_with_empty_bytes_value_output,
     #"a10040",
     map_with_empty_bytes_value_witnesses,
-    map_with_empty_bytes_value_witnesses_hash,
     map_with_empty_bytes_value_terminal_hash,
+    map_with_empty_bytes_value_planner_claims,
     1,
   )
 }
@@ -1406,11 +1730,11 @@ const empty_bytes_before_a_script_output =
 const empty_bytes_before_a_script_witnesses =
   #"9fd87a80d87a80d87a80d87a80d87a80d87a80d87980d87980d87980d87980d87980d87e80d87c9fd87a80d8799f4f400382034a6b6b6b6b6b6b6b6b6b6bffffd87c9fd87980d8799f4f400382034a6b6b6b6b6b6b6b6b6b6bffffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87e9fd87a80ffd87a80ffd87980d87f9f4f400382034a6b6b6b6b6b6b6b6b6b6bffd87980d87f9f4f400382034a6b6b6b6b6b6b6b6b6b6bffd87980d87980d87980d87980d87980d87980d87980d87980d87980d87980d87980d87980d87980d87980ff"
 
-const empty_bytes_before_a_script_witnesses_hash =
-  #"02d9097578a569235cc9cf6d253eb558234a8e3308fc557fcc47d0365b9b93fb"
-
 const empty_bytes_before_a_script_terminal_hash =
   #"a233872d165bdefe6a4f5d0b32671ec758e4378900fa614101540c84c0867e07"
+
+const empty_bytes_before_a_script_planner_claims =
+  #"9f9f0dd8799f182b010040d8799f0100182b0100d87a80ffffff9f0ed8799f182b010040d8799f0101182b0100d8799fd8799f01000000d8799f000080ffd8799fd8799f01000016584028c9bdf267e6096a3ba7ca8485ae67bb2bf894fe72f36e3cf1361d5f3af54fa5d182e6ad7f520e511f6c3e2b8c68059b6bbd41fbabd9831f79217e1319cde05b40004000ffffffffffffff9f181dd8799f182b010040d8799f0101182b0100d8799fd8799f01010000d8799f01009fd8799f0058205b5fb0c983697cff1977899896435e4e8f24cd6f761099da0c4a04a6a90e1c6c00ffffffd87a80ffffffffff9f181ed8799f182b010040d8799f0103182b0100d8799fd8799f01010000d8799f01009fd8799f0058205b5fb0c983697cff1977899896435e4e8f24cd6f761099da0c4a04a6a90e1c6c00ffffffd87a80ffffffffffff"
 
 /// The datum `B""`, then a ten-byte PlutusV3 reference script.
 test empty_byte_string_datum_before_a_reference_script_replays_the_typescript_trace() {
@@ -1418,8 +1742,8 @@ test empty_byte_string_datum_before_a_reference_script_replays_the_typescript_tr
     empty_bytes_before_a_script_output,
     #"40",
     empty_bytes_before_a_script_witnesses,
-    empty_bytes_before_a_script_witnesses_hash,
     empty_bytes_before_a_script_terminal_hash,
+    empty_bytes_before_a_script_planner_claims,
     1,
   )
 }
@@ -1430,11 +1754,11 @@ const empty_asset_name_and_bytes_output =
 const empty_asset_name_and_bytes_witnesses =
   #"9fd87a80d87a80d87a80d87a80d87a80d87a80d87980d87980d87b9f00581c55555555555555555555555555555555555555555555555555555555400180d87a80ffd87980d87980d87980d87e80d87c9fd87a80d8799f4140ffffd87c9fd87980d8799f4140ffffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87e9fd87a80ffd87a80ffd87980ff"
 
-const empty_asset_name_and_bytes_witnesses_hash =
-  #"38d26f3e0c278baf8ac930fc85dcc02aec5ab4022dd4f3fb385990cc9333d8a4"
-
 const empty_asset_name_and_bytes_terminal_hash =
   #"b41d1323a9fc4c1775d9c3ac400fb4af1615e339bb415bcf0642ed458771588d"
+
+const empty_asset_name_and_bytes_planner_claims =
+  #"9f9f0ed8799f184c010040d8799f0100184c0100d87a80ffffff9f0fd8799f184c010040d8799f0101184c0100d8799fd8799f01000000d8799f000080ffd8799fd8799f01000016584028c9bdf267e6096a3ba7ca8485ae67bb2bf894fe72f36e3cf1361d5f3af54fa5d182e6ad7f520e511f6c3e2b8c68059b6bbd41fbabd9831f79217e1319cde05b40004000ffffffffffffff9f181ed8799f184c010040d8799f0101184c0100d8799fd8799f01010000d8799f01009fd8799f0058205b5fb0c983697cff1977899896435e4e8f24cd6f761099da0c4a04a6a90e1c6c00ffffffd87a80ffffffffff9f181fd8799f184c010040d8799f0103184c0100d8799fd8799f01010000d8799f01009fd8799f0058205b5fb0c983697cff1977899896435e4e8f24cd6f761099da0c4a04a6a90e1c6c00ffffffd87a80ffffffffffff"
 
 /// A token with an empty asset name, and the datum `B""`.
 test empty_asset_name_and_empty_byte_string_datum_replays_the_typescript_trace() {
@@ -1442,8 +1766,8 @@ test empty_asset_name_and_empty_byte_string_datum_replays_the_typescript_trace()
     empty_asset_name_and_bytes_output,
     #"40",
     empty_asset_name_and_bytes_witnesses,
-    empty_asset_name_and_bytes_witnesses_hash,
     empty_asset_name_and_bytes_terminal_hash,
+    empty_asset_name_and_bytes_planner_claims,
     1,
   )
 }
@@ -1454,11 +1778,11 @@ const empty_reference_script_output =
 const empty_reference_script_witnesses =
   #"9fd87a80d87a80d87a80d87a80d87a80d87980d87980d87980d87980d87e80d87c9fd87a80d8799f450003820340ffffd87c9fd87980d8799f450003820340ffffd87c9fd87980d8799f450003820340ffffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87e9fd87a80ffd87a80ffd87980d87f9f450003820340ffd87980d87980d87980d87980d87980d87980d87980d87980d87980d87980d87980d87980d87980d87980d87980d87980ff"
 
-const empty_reference_script_witnesses_hash =
-  #"f94cbc996375d18844219e49b747bcdf794147d536810931e121bda50f9c3c40"
-
 const empty_reference_script_terminal_hash =
   #"bb248dd4fad390dc849958ddbd2ca8503274b3f4356f6857f17fc09d4376df36"
+
+const empty_reference_script_planner_claims =
+  #"9f9f0bd8799f182b010040d8799f0100182b0100d87a80ffffff9f0cd8799f182b010040d8799f0101182b0105d8799fd8799f0100182b01d8799f000080ffd8799fd8799f01000017584028c9bdf267e6096a3ba7ca8485ae67bb2bf894fe72f36e3cf1361d5f3af54fa5d182e6ad7f520e511f6c3e2b8c68059b6bbd41fbabd9831f79217e1319cde05b40004000ffffffffffffff9f181bd8799f182b010040d8799f0101182b0105d8799fd8799f0101182b01d8799f01019fd8799f0058205fb8c7d0d530210e8dc0ab900c98c42577fe756e39777c1e516c187f89e55df301ffffffd87a80ffffffffff9f181cd8799f182b010040d8799f0102182b0105d8799fd8799f0101182b01d8799f01019fd8799f0058205fb8c7d0d530210e8dc0ab900c98c42577fe756e39777c1e516c187f89e55df301ffffffd87a80ffffffffffff"
 
 /// The datum `0`, then an empty PlutusV3 reference script.
 test empty_reference_script_replays_the_typescript_trace() {
@@ -1466,8 +1790,8 @@ test empty_reference_script_replays_the_typescript_trace() {
     empty_reference_script_output,
     #"00",
     empty_reference_script_witnesses,
-    empty_reference_script_witnesses_hash,
     empty_reference_script_terminal_hash,
+    empty_reference_script_planner_claims,
     0,
   )
 }
@@ -1478,11 +1802,11 @@ const one_byte_string_output =
 const one_byte_string_witnesses =
   #"9fd87a80d87a80d87a80d87a80d87980d87980d87980d87980d87980d87e80d87c9fd87a80d8799f424101ffffd87c9fd87980d8799f424101ffffd87c9fd87980d8799f424101ffffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87e9fd87a80ffd87a80ffd87980ff"
 
-const one_byte_string_witnesses_hash =
-  #"be1d3b4ae788dd5a68b99b4435b7ff461a5e729687b3a0dd6a10c809a96d5a9c"
-
 const one_byte_string_terminal_hash =
   #"3520b30ab186c1614adc9456d20e57251a3cc24f73f1d10665f37f56f0fa5a6a"
+
+const one_byte_string_planner_claims =
+  #"9f9f0bd8799f182b020040d8799f0100182b0200d87a80ffffff9f0cd8799f182b020040d8799f0101182b0201d8799fd8799f01000001d8799f000080ffd8799fd8799f01000017584028c9bdf267e6096a3ba7ca8485ae67bb2bf894fe72f36e3cf1361d5f3af54fa5d182e6ad7f520e511f6c3e2b8c68059b6bbd41fbabd9831f79217e1319cde05b40004000ffffffffffffff9f181bd8799f182b020040d8799f0101182b0201d8799fd8799f01010001d8799f01019fd8799f005820eb5fd47ef72521e3f86fe5eb13a464d7542ed021a5140ff4590b36d8432b002401ffffffd87a80ffffffffff9f181cd8799f182b020040d8799f0103182b0201d8799fd8799f01010001d8799f01019fd8799f005820eb5fd47ef72521e3f86fe5eb13a464d7542ed021a5140ff4590b36d8432b002401ffffffd87a80ffffffffffff"
 
 /// The datum `B"01"`: no empty span.
 test one_byte_string_datum_replays_the_typescript_trace() {
@@ -1490,8 +1814,8 @@ test one_byte_string_datum_replays_the_typescript_trace() {
     one_byte_string_output,
     #"4101",
     one_byte_string_witnesses,
-    one_byte_string_witnesses_hash,
     one_byte_string_terminal_hash,
+    one_byte_string_planner_claims,
     0,
   )
 }
@@ -1548,11 +1872,11 @@ fn datum_output(datum_head: ByteArray, datum: ByteArray) -> ByteArray {
 const large_bytes_datum_witnesses =
   #"9fd87a9f0001ffd87a9f0001ffd87a9f0001ffd87a9f0020ffd87a9f0120ffd87980d87980d87980d87980d87980d87e9f0001ffd905029fd87a80ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd87e9f0120ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd87e9f0001ffd905029fd87980ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd905029fd87980ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd905029fd87980ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd905029fd87980ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd905029fd87980ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd905029fd87980ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd905029fd87980ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd905029fd87980ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd905029fd87980ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd905029fd87980ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd905029fd87980ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd905029fd87980ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd905029fd87980ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd905029fd87980ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd905029fd87980ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd905029fd87980ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd905029fd87980ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd905029fd87980ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd905029fd87980ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd905029fd87980ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd905029fd87980ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd905029fd87980ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd905029fd87980ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd905029fd87980ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd905029fd87980ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd905029fd87980ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd905029fd87980ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd905029fd87980ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd905029fd87980ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd905029fd87980ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd905029fd87980ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87e9f0120ffd905029fd87980ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd905029fd87980ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd905029fd87980ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd905029fd87980ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd905029fd87980ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd905029fd87980ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd905029fd87980ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd905029fd87980ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd905029fd87980ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd905029fd87980ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87e9fd87a80ffd87a80ffd87980ff"
 
-const large_bytes_datum_witnesses_hash =
-  #"cdd59a999045dc075b9258e70cdaca8e2ebba93d6f32f17b2f2da5382bb8a7bb"
-
 const large_bytes_datum_terminal_hash =
   #"7b393ab1038641890e29681cf557d56911c4bb02771923adc1981c2931a0a91c"
+
+const large_bytes_datum_planner_claims =
+  #"9f9f0cd8799f182d1914270040d8799f0102182d0100d87a80ffffff9f185ed8799f182d1914270040d8799f0101182d191427191388d8799fd8799f010000191388d8799f000080ffd8799fd8799f010000191017584028c9bdf267e6096a3ba7ca8485ae67bb2bf894fe72f36e3cf1361d5f3af54fa5d182e6ad7f520e511f6c3e2b8c68059b6bbd41fbabd9831f79217e1319cde05b40004000ffffffffffffff9f19029fd8799f182d1914270040d8799f0101182d191427191388d8799fd8799f010100191388d8799f021913889fd8799f015820b5eb32b42f9bcf6ef9201e26576fd0dc9d482e09d8324203fb1600e6a7cbd0a8191388ffffffd87a80ffffffffff9f1902a0d8799f182d1914270040d8799f0103182d191427191388d8799fd8799f010100191388d8799f021913889fd8799f015820b5eb32b42f9bcf6ef9201e26576fd0dc9d482e09d8324203fb1600e6a7cbd0a8191388ffffffd87a80ffffffffffff"
 
 /// The datum is a 5000-byte byte string: span attaches at the datum head,
 /// at the bytes stage while measuring, and twice at the bytes stage with a
@@ -1564,8 +1888,8 @@ test five_kilobyte_byte_string_datum_replays_the_typescript_trace() {
     output,
     builtin.b_data(builtin.replicate_byte(5000, 0xab)),
     large_bytes_datum_witnesses,
-    large_bytes_datum_witnesses_hash,
     large_bytes_datum_terminal_hash,
+    large_bytes_datum_planner_claims,
     0,
     fn(attaches) { attaches == [0, 200, 211, 211] },
   )
@@ -1574,11 +1898,11 @@ test five_kilobyte_byte_string_datum_replays_the_typescript_trace() {
 const large_integer_datum_witnesses =
   #"9fd87a9f0001ffd87a9f0001ffd87a9f0001ffd87a9f0020ffd87a9f0120ffd87980d87980d87980d87980d87980d87e9f0001ffd905029fd87a80ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd87e9f0120ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd87e9f0001ffd905029fd87980ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd905029fd87980ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd905029fd87980ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd905029fd87980ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd905029fd87980ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd905029fd87980ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd905029fd87980ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd905029fd87980ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd905029fd87980ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd905029fd87980ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd905029fd87980ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd905029fd87980ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd905029fd87980ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd905029fd87980ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd905029fd87980ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd905029fd87980ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd905029fd87980ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd905029fd87980ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd905029fd87980ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd905029fd87980ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd905029fd87980ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd905029fd87980ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd905029fd87980ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd905029fd87980ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd905029fd87980ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd905029fd87980ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd905029fd87980ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd905029fd87980ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd905029fd87980ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd905029fd87980ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd905029fd87980ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd905029fd87980ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd905029fd87980ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87e9f0120ffd905029fd87980ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd905029fd87980ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd905029fd87980ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd905029fd87980ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd905029fd87980ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd905029fd87980ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd905029fd87980ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd905029fd87980ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd905029fd87980ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87e9fd87a80ffd87a80ffd87980ff"
 
-const large_integer_datum_witnesses_hash =
-  #"d6c0031e5a93784b0c112c6dd539471f0e258f3e66735baf9549af488e064ec3"
-
 const large_integer_datum_terminal_hash =
   #"8ece54a17e93a232608c8648f24469709b3ed7bd5021704539e3df20c0e5e33d"
+
+const large_integer_datum_planner_claims =
+  #"9f9f0cd8799f182d1914280040d8799f0103182d0200d87a80ffffff9f185ed8799f182d1914280040d8799f0101182d19142819138cd8799fd8799f0100182d191428d8799f000080ffd8799fd8799f010000191017584028c9bdf267e6096a3ba7ca8485ae67bb2bf894fe72f36e3cf1361d5f3af54fa5d182e6ad7f520e511f6c3e2b8c68059b6bbd41fbabd9831f79217e1319cde05b40004000ffffffffffffff9f1902add8799f182d1914280040d8799f0101182d19142819138cd8799fd8799f0101182d191428d8799f021914289fd8799f015820130afe7bef03d587a0e69348e2fe780254207fa2210fe12dd20c25a4037f2d09191428ffffffd87a80ffffffffff9f1902aed8799f182d1914280040d8799f0102182d19142819138cd8799fd8799f0101182d191428d8799f021914289fd8799f015820130afe7bef03d587a0e69348e2fe780254207fa2210fe12dd20c25a4037f2d09191428ffffffd87a80ffffffffffff"
 
 /// The datum is a positive integer over a 5000-byte byte string: span
 /// attaches at the datum head, at the integer stage while measuring, and
@@ -1595,8 +1919,8 @@ test five_kilobyte_integer_datum_replays_the_typescript_trace() {
       builtin.bytearray_to_integer(True, builtin.replicate_byte(5000, 1)),
     ),
     large_integer_datum_witnesses,
-    large_integer_datum_witnesses_hash,
     large_integer_datum_terminal_hash,
+    large_integer_datum_planner_claims,
     0,
     fn(attaches) { attaches == [0, 100, 111, 111] },
   )
@@ -1620,8 +1944,8 @@ fn replays_an_empty_byte_string_after(
   datum_head: ByteArray,
   total: Int,
   witnesses: ByteArray,
-  witnesses_hash: ByteArray,
   terminal_hash: ByteArray,
+  planner_claims: ByteArray,
 ) -> Bool {
   let output = datum_output(
     datum_head,
@@ -1637,8 +1961,8 @@ fn replays_an_empty_byte_string_after(
       ],
     ),
     witnesses,
-    witnesses_hash,
     terminal_hash,
+    planner_claims,
     1,
     fn(attaches) { attaches == [0] },
   )
@@ -1647,11 +1971,11 @@ fn replays_an_empty_byte_string_after(
 const empty_bytes_ending_the_first_chunk_witnesses =
   #"9fd87a9f0020ffd87a9f0020ffd87a9f0020ffd87a9f0020ffd87980d87980d87980d87980d87980d87e9f0020ffd905029fd87b80ffd905029fd87a80ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd905029fd87980ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd905029fd87980ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd905029fd87980ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd905029fd87980ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd905029fd87980ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd905029fd87980ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd905029fd87980ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd905029fd87980ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd905029fd87980ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd905029fd87980ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd905029fd87980ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd905029fd87980ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd905029fd87980ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd905029fd87980ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd905029fd87980ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd905029fd87980ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd905029fd87980ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd905029fd87980ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd905029fd87980ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd905029fd87980ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd905029fd87980ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd905029fd87980ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd905029fd87980ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd905029fd87980ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd905029fd87980ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd905029fd87980ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd905029fd87980ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd905029fd87980ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd905029fd87980ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd905029fd87980ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87e9fd8799fd8799f02004000004000008000d8799f58208c446a903f125939fd6e036b313c52340c9ac0539e6730f08e95eaec9052fa56000000ffffffffd87a80ffd905029fd87a80ffd905029fd87980ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87e9fd8799fd8799f02004000004000019fd8799f0058208cf0b64588b7c7c04ccc753f081473c5499315d78ff52a8462e0715983242c8effff00d8799f58208c446a903f125939fd6e036b313c52340c9ac0539e6730f08e95eaec9052fa56000000ffffffffd87a80ffd905029fd87980ffd87c9fd87f9fd8799f02004000004000029fd8799f01582017e34c4905b248d112b418790bc4becf1d5c27ddae27015fbd2bece183bf1c0affff00d8799f58208c446a903f125939fd6e036b313c52340c9ac0539e6730f08e95eaec9052fa56000000ffff01d8799f5820f3f2777df4485f9e3e4abff00c01e3036f171903ed0279565383a81c0e74929f0105ff9f58208cf0b64588b7c7c04ccc753f081473c5499315d78ff52a8462e0715983242c8effffd87a80ffd87c9fd87f9fd8799f02004000004000029fd8799f01582017e34c4905b248d112b418790bc4becf1d5c27ddae27015fbd2bece183bf1c0affff01d8799f582016925ec20d2cfa48b7d727ce43aabab6f695dcc94463febd74e2c67631181800010105ffff00d8799f58200b34e6914e228649eb4b971851c63c42bae1575e20f034b424d465bf8a50e06c190fcf190f56ff9f582084a23d5356d95ebc0e196f044589d386f31e492462db23c29f883c49f37981beffffd87a80ffd87c9fd905019fd8799f02004000004000029fd8799f01582017e34c4905b248d112b418790bc4becf1d5c27ddae27015fbd2bece183bf1c0affff02d8799f582092ef3691c172ceee2bb399c467a294eb75b31298af232ef41672598c9809fb4502190fd0190f5bffffd87a80ffd87a80ffd87980ff"
 
-const empty_bytes_ending_the_first_chunk_witnesses_hash =
-  #"c1c0f43315ff1e270d83ba331215b429b575b6313e959148069f35cad2044c67"
-
 const empty_bytes_ending_the_first_chunk_terminal_hash =
   #"c72dfbb16af6d51fe13aa613bf00b84f07d37b5bafc4c187f3d5baa71d93146c"
+
+const empty_bytes_ending_the_first_chunk_planner_claims =
+  #"9f9f0cd8799f182d190fd20158201a63c468a0c551cce49c375c363b335f92d5a4e00e14a6c503dfb59ee3f6b549d8799f0102182e0100d87a80ffffff9f184bd8799f182d190fd20158201a63c468a0c551cce49c375c363b335f92d5a4e00e14a6c503dfb59ee3f6b549d8799f0101182e190fcf190f52d8799fd8799f010000190f52d8799f000080ffd8799fd8799f010000190f6a584028c9bdf267e6096a3ba7ca8485ae67bb2bf894fe72f36e3cf1361d5f3af54fa5d182e6ad7f520e511f6c3e2b8c68059b6bbd41fbabd9831f79217e1319cde05b40004000ffffffffffffff9f1901fed8799f182d190fd20158201a63c468a0c551cce49c375c363b335f92d5a4e00e14a6c503dfb59ee3f6b549d8799f0101182e190fcf190f52d8799fd8799f010100190f52d8799f01190f529fd8799f005820b79345913ad14dfcf5c0b0cc8c6088f11212daa6bdcee04c3171e31ff79cc3a4190f52ffffffd87a80ffffffffff9f1901ffd8799f182d190fd20158201a63c468a0c551cce49c375c363b335f92d5a4e00e14a6c503dfb59ee3f6b549d8799f0103182e190fcf190f52d8799fd8799f010100190f52d8799f01190f529fd8799f005820b79345913ad14dfcf5c0b0cc8c6088f11212daa6bdcee04c3171e31ff79cc3a4190f52ffffffd87a80ffffffffffff"
 
 /// The empty byte string ending the first chunk of the 4095-byte output.
 test empty_byte_string_ending_the_first_chunk_replays_the_typescript_trace() {
@@ -1660,19 +1984,19 @@ test empty_byte_string_ending_the_first_chunk_replays_the_typescript_trace() {
     #"590fd2",
     4095,
     empty_bytes_ending_the_first_chunk_witnesses,
-    empty_bytes_ending_the_first_chunk_witnesses_hash,
     empty_bytes_ending_the_first_chunk_terminal_hash,
+    empty_bytes_ending_the_first_chunk_planner_claims,
   )
 }
 
 const empty_bytes_starting_the_second_chunk_witnesses =
   #"9fd87a9f0001ffd87a9f0001ffd87a9f0001ffd87a9f0020ffd87a9f0120ffd87980d87980d87980d87980d87980d87e9f0001ffd905029fd87b80ffd905029fd87a80ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd905029fd87980ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd905029fd87980ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd905029fd87980ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd905029fd87980ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd905029fd87980ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd905029fd87980ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd905029fd87980ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd905029fd87980ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd905029fd87980ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd905029fd87980ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd905029fd87980ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd905029fd87980ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd905029fd87980ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd905029fd87980ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd905029fd87980ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd905029fd87980ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd905029fd87980ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd905029fd87980ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd905029fd87980ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd905029fd87980ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd905029fd87980ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd905029fd87980ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd905029fd87980ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd905029fd87980ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd905029fd87980ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd905029fd87980ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd905029fd87980ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd905029fd87980ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd905029fd87980ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd905029fd87980ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87e9fd8799fd8799f02004000004000008000d8799f58208c446a903f125939fd6e036b313c52340c9ac0539e6730f08e95eaec9052fa56000000ffffffffd87a80ffd905029fd87a80ffd905029fd87980ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87e9fd8799fd8799f02004000004000019fd8799f005820f4564ae7750a50b8c3e1d7637675c149c7a9ee2e2da2b5459853a131bdcab98fffff00d8799f58208c446a903f125939fd6e036b313c52340c9ac0539e6730f08e95eaec9052fa56000000ffffffffd87a80ffd905029fd87980ffd87c9fd87f9fd8799f02004000004000029fd8799f01582045f1d25adb4efe7be828d524e948833f67dcaff1ce5698f0ae1e431e6718b8efffff00d8799f58208c446a903f125939fd6e036b313c52340c9ac0539e6730f08e95eaec9052fa56000000ffff01d8799f5820f3f2777df4485f9e3e4abff00c01e3036f171903ed0279565383a81c0e74929f0105ff9f5820f4564ae7750a50b8c3e1d7637675c149c7a9ee2e2da2b5459853a131bdcab98fffffd87a80ffd87c9fd87f9fd8799f02004000004000029fd8799f01582045f1d25adb4efe7be828d524e948833f67dcaff1ce5698f0ae1e431e6718b8efffff01d8799f582016925ec20d2cfa48b7d727ce43aabab6f695dcc94463febd74e2c67631181800010105ffff00d8799f5820c7f5ad68f987e28bebeeb2a34aa8f0c70ca42f8bde411c474faf9971c08421b2190fd0190f57ff9f582084a23d5356d95ebc0e196f044589d386f31e492462db23c29f883c49f37981beffffd87a80ffd87c9fd905019fd8799f02004000004000029fd8799f01582045f1d25adb4efe7be828d524e948833f67dcaff1ce5698f0ae1e431e6718b8efffff02d8799f582045317c904ee4cc0c04f876f8a51b5c927ab5f359a55fce812e8bb9aeac639ea702190fd1190f5cffffd87a80ffd87a80ffd87980ff"
 
-const empty_bytes_starting_the_second_chunk_witnesses_hash =
-  #"07640a40eff3f0bbc81f6d4885f7b534688bcf2e9b8fa19be958634c843b7b73"
-
 const empty_bytes_starting_the_second_chunk_terminal_hash =
   #"1dd89d1832a803037d57e8f66acea9cfa48cba05f95895701c3a63b2e09cfd46"
+
+const empty_bytes_starting_the_second_chunk_planner_claims =
+  #"9f9f0dd8799f182d190fd30158201a63c468a0c551cce49c375c363b335f92d5a4e00e14a6c503dfb59ee3f6b549d8799f0102182e0100d87a80ffffff9f184cd8799f182d190fd30158201a63c468a0c551cce49c375c363b335f92d5a4e00e14a6c503dfb59ee3f6b549d8799f0101182e190fd0190f53d8799fd8799f010000190f53d8799f000080ffd8799fd8799f010000190f6b584028c9bdf267e6096a3ba7ca8485ae67bb2bf894fe72f36e3cf1361d5f3af54fa5d182e6ad7f520e511f6c3e2b8c68059b6bbd41fbabd9831f79217e1319cde05b40004000ffffffffffffff9f1901ffd8799f182d190fd30158201a63c468a0c551cce49c375c363b335f92d5a4e00e14a6c503dfb59ee3f6b549d8799f0101182e190fd0190f53d8799fd8799f010100190f53d8799f01190f539fd8799f005820f9826809229ff00afc27bda0ff91078e5193b5f62227e10ceebed0ca84628fb6190f53ffffffd87a80ffffffffff9f190200d8799f182d190fd30158201a63c468a0c551cce49c375c363b335f92d5a4e00e14a6c503dfb59ee3f6b549d8799f0103182e190fd0190f53d8799fd8799f010100190f53d8799f01190f539fd8799f005820f9826809229ff00afc27bda0ff91078e5193b5f62227e10ceebed0ca84628fb6190f53ffffffd87a80ffffffffffff"
 
 /// The empty byte string whose content would start the second chunk of the 4096-byte output.
 test empty_byte_string_starting_the_second_chunk_replays_the_typescript_trace() {
@@ -1681,19 +2005,19 @@ test empty_byte_string_starting_the_second_chunk_replays_the_typescript_trace() 
     #"590fd3",
     4096,
     empty_bytes_starting_the_second_chunk_witnesses,
-    empty_bytes_starting_the_second_chunk_witnesses_hash,
     empty_bytes_starting_the_second_chunk_terminal_hash,
+    empty_bytes_starting_the_second_chunk_planner_claims,
   )
 }
 
 const empty_bytes_inside_the_second_chunk_witnesses =
   #"9fd87a9f0001ffd87a9f0001ffd87a9f0001ffd87a9f0020ffd87a9f0120ffd87980d87980d87980d87980d87980d87e9f0001ffd905029fd87b80ffd905029fd87a80ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd905029fd87980ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd905029fd87980ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd905029fd87980ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd905029fd87980ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd905029fd87980ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd905029fd87980ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd905029fd87980ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd905029fd87980ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd905029fd87980ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd905029fd87980ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd905029fd87980ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd905029fd87980ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd905029fd87980ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd905029fd87980ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd905029fd87980ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd905029fd87980ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd905029fd87980ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd905029fd87980ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd905029fd87980ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd905029fd87980ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd905029fd87980ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd905029fd87980ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd905029fd87980ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd905029fd87980ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd905029fd87980ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd905029fd87980ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd905029fd87980ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd905029fd87980ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd905029fd87980ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd905029fd87980ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd905029fd87980ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87e9fd8799fd8799f02004000004000008000d8799f58208c446a903f125939fd6e036b313c52340c9ac0539e6730f08e95eaec9052fa56000000ffffffffd87a80ffd905029fd87a80ffd905029fd87980ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87980d87a80ffd87c9fd87e9fd8799fd8799f02004000004000019fd8799f005820c26720265803dafbe3b09c438c513513b9e37f122f32d3395b3bdc31c36ed84cffff00d8799f58208c446a903f125939fd6e036b313c52340c9ac0539e6730f08e95eaec9052fa56000000ffffffffd87a80ffd905029fd87980ffd87c9fd87f9fd8799f02004000004000029fd8799f015820e775d7f5b3ba54ea18bdddf4e668f218330b0eeee44e81126b1f71794ae1f8e7ffff00d8799f58208c446a903f125939fd6e036b313c52340c9ac0539e6730f08e95eaec9052fa56000000ffff01d8799f5820f3f2777df4485f9e3e4abff00c01e3036f171903ed0279565383a81c0e74929f0105ff9f5820c26720265803dafbe3b09c438c513513b9e37f122f32d3395b3bdc31c36ed84cffffd87a80ffd87c9fd87f9fd8799f02004000004000029fd8799f015820e775d7f5b3ba54ea18bdddf4e668f218330b0eeee44e81126b1f71794ae1f8e7ffff01d8799f582016925ec20d2cfa48b7d727ce43aabab6f695dcc94463febd74e2c67631181800010105ffff00d8799f582061c98b9dd1196667c505e4daf54e6de3c952edbea16bc1f3eda3f3f355860572190fd1190f58ff9f582084a23d5356d95ebc0e196f044589d386f31e492462db23c29f883c49f37981beffffd87a80ffd87c9fd905019fd8799f02004000004000029fd8799f015820e775d7f5b3ba54ea18bdddf4e668f218330b0eeee44e81126b1f71794ae1f8e7ffff02d8799f58205f71ab1681d1159a692bc631109df0b54897fbdba7aa6690faf8b8b7342e94d102190fd2190f5dffffd87a80ffd87a80ffd87980ff"
 
-const empty_bytes_inside_the_second_chunk_witnesses_hash =
-  #"47a4eee66ef6b45baf754bc998d7a489fca2d56a49bce3675df589dda67702fd"
-
 const empty_bytes_inside_the_second_chunk_terminal_hash =
   #"9c402b99edf79ad299ccba340fdb6ba8cff66e7116e14509f40ff18ce240d43a"
+
+const empty_bytes_inside_the_second_chunk_planner_claims =
+  #"9f9f0dd8799f182d190fd40158201a63c468a0c551cce49c375c363b335f92d5a4e00e14a6c503dfb59ee3f6b549d8799f0102182e0100d87a80ffffff9f184cd8799f182d190fd40158201a63c468a0c551cce49c375c363b335f92d5a4e00e14a6c503dfb59ee3f6b549d8799f0101182e190fd1190f54d8799fd8799f010000190f54d8799f000080ffd8799fd8799f010000190f6c584028c9bdf267e6096a3ba7ca8485ae67bb2bf894fe72f36e3cf1361d5f3af54fa5d182e6ad7f520e511f6c3e2b8c68059b6bbd41fbabd9831f79217e1319cde05b40004000ffffffffffffff9f1901ffd8799f182d190fd40158201a63c468a0c551cce49c375c363b335f92d5a4e00e14a6c503dfb59ee3f6b549d8799f0101182e190fd1190f54d8799fd8799f010100190f54d8799f01190f549fd8799f00582027b4a1c6a0fdccde4aa13b04363597e8c3d54fbbf7226bf0fae3c82cdf261075190f54ffffffd87a80ffffffffff9f190200d8799f182d190fd40158201a63c468a0c551cce49c375c363b335f92d5a4e00e14a6c503dfb59ee3f6b549d8799f0103182e190fd1190f54d8799fd8799f010100190f54d8799f01190f549fd8799f00582027b4a1c6a0fdccde4aa13b04363597e8c3d54fbbf7226bf0fae3c82cdf261075190f54ffffffd87a80ffffffffffff"
 
 /// The empty byte string inside the second chunk of the 4097-byte output.
 test empty_byte_string_inside_the_second_chunk_replays_the_typescript_trace() {
@@ -1702,8 +2026,8 @@ test empty_byte_string_inside_the_second_chunk_replays_the_typescript_trace() {
     #"590fd4",
     4097,
     empty_bytes_inside_the_second_chunk_witnesses,
-    empty_bytes_inside_the_second_chunk_witnesses_hash,
     empty_bytes_inside_the_second_chunk_terminal_hash,
+    empty_bytes_inside_the_second_chunk_planner_claims,
   )
 }
 
@@ -2101,6 +2425,19 @@ test frame_refuses_a_peak_with_an_extra_field() fail {
   span == span
 }
 
+test frame_refuses_a_frontier_with_an_extra_field() fail {
+  let frontier = builtin.list_data(
+    list.concat(
+      builtin.un_list_data(wire_frontier([wire_peak(frame_peak_high)])),
+      [builtin.i_data(0)],
+    ),
+  )
+  let span = integer_span(
+    some_data(wire_integer_over(wire_blob_over(frontier))),
+  )
+  span == span
+}
+
 test frame_refuses_a_constructor_hash_trace() fail {
   let claimed: Data = frame_hash
   let span = integer_span(
@@ -2245,6 +2582,37 @@ test frame_reads_a_head_stage_datum_sub_control() {
     narrow_datum.next_source_span(frame) == Some((45, 14)),
     typed_span(typed) == Some((45, 14)),
   }
+}
+
+/// The same head-stage datum sub-control under another option tag is refused.
+test frame_refuses_a_datum_sub_control_under_another_tag() fail {
+  let initial = raw.open(
+    proof.encode_control_v1(proof.initial_control_v1(0, 5205, frame_root)),
+  )
+  let frame = raw.replace(
+    raw.replace(initial, 1, builtin.i_data(proof.stage_datum_traversal)),
+    7,
+    builtin.constr_data(
+      1,
+      [
+        builtin.list_data(
+          [
+            builtin.i_data(1),
+            builtin.i_data(traverse.stage_head),
+            builtin.i_data(45),
+            builtin.i_data(5160),
+            builtin.i_data(0),
+            builtin.b_data(frame_root),
+            none_data(),
+            none_data(),
+            none_data(),
+          ],
+        ),
+      ],
+    ),
+  )
+  let span = narrow_datum.next_source_span(frame)
+  span == span
 }
 
 test frame_refuses_a_hash_cursor_that_is_not_an_integer() fail {

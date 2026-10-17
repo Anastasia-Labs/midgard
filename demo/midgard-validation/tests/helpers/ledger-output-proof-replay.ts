@@ -12,6 +12,10 @@ import {
   decodeMidgardDatum,
   encodeMidgardTxOutput,
 } from "@al-ft/midgard-core/codec";
+import {
+  deriveLedgerOutputProofStepClaims,
+  ledgerOutputProofDatumRoleIndex,
+} from "@al-ft/midgard-fault-proofs";
 import { expect } from "vitest";
 
 import { plutusDataToCborHex } from "../../src/plutus-data.js";
@@ -49,9 +53,11 @@ export const replayGolden = JSON.parse(
 const twins: vectors.LedgerOutputProofReplayTwinsV1 = {
   buildMidgardLedgerOutputProofTrace,
   decodeMidgardDatum,
+  deriveLedgerOutputProofStepClaims,
   encodeMidgardLedgerOutputProofControl,
   encodeMidgardTxOutput,
   isExactMidgardLedgerOutputProofTerminal,
+  ledgerOutputProofDatumRoleIndex,
   MidgardLedgerOutputProofStages,
   nextMidgardCekDataTraverseSpan,
   plutusDataToCborHex,

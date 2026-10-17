@@ -204,13 +204,11 @@ fn source(
       expect window_data == none
       None
     }
-    // An empty span reads no output bytes: it takes no window. Its start is
-    // at least 0 by `scalar_prefix` and `bytes_scalar_control` (through the
-    // attested claim) and at most the output length by the check below.
+    // An empty span reads no output bytes: it takes no window, and its read
+    // is `#""` at any start.
     Some(span) ->
       if span.length == 0 {
         expect window_data == none
-        expect span.absolute_start <= raw.integer(control, 3)
         Some(#"")
       } else {
         expect Pair(0, [window_bytes]) = builtin.un_constr_data(window_data)
@@ -825,9 +823,9 @@ pub fn frame_datum_control(control: raw.Frame) -> traverse.DataTraverseControlV1
 /// The `(absolute_start, length)` the next datum traversal step reads from
 /// the output, or `None` when it reads nothing: the traverse machine's own
 /// span selection over the frame's datum sub-control (item 7), read in its
-/// frame form.
+/// frame form. The caller has checked the frame is at the datum-traversal
+/// stage.
 pub fn next_source_span(control: raw.Frame) -> Option<(Int, Int)> {
-  expect raw.integer(control, 1) == proof.stage_datum_traversal
   when traverse.prevalidated_next_source_span(frame_datum_control(control)) is {
     None -> None
     Some(span) -> Some((span.absolute_start, span.length))

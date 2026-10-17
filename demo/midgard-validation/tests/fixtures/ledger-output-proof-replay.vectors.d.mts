@@ -22,7 +22,7 @@ import type {
   decodeMidgardDatum,
   encodeMidgardTxOutput,
 } from "@al-ft/midgard-core/codec";
-import type { Constr } from "@lucid-evolution/lucid";
+import type { Constr, Data } from "@lucid-evolution/lucid";
 
 import type { plutusDataToCborHex } from "../../src/plutus-data.js";
 
@@ -57,15 +57,26 @@ export type LedgerOutputProofReplayVectorV1 = {
   readonly witnessesCborHex: string;
   readonly witnessesHash: string;
   readonly terminalHash: string;
+  readonly plannerClaimsCborHex: string;
 };
 
 /** The package functions a vector is computed with. */
 export type LedgerOutputProofReplayTwinsV1 = {
   readonly buildMidgardLedgerOutputProofTrace: typeof buildMidgardLedgerOutputProofTrace;
   readonly decodeMidgardDatum: typeof decodeMidgardDatum;
+  /** `deriveLedgerOutputProofStepClaims` of `@al-ft/midgard-fault-proofs`. */
+  readonly deriveLedgerOutputProofStepClaims: (step: {
+    readonly control: readonly Data[];
+    readonly roleIndex: number;
+  }) => { readonly claimedScalar: Data };
   readonly encodeMidgardLedgerOutputProofControl: typeof encodeMidgardLedgerOutputProofControl;
   readonly encodeMidgardTxOutput: typeof encodeMidgardTxOutput;
   readonly isExactMidgardLedgerOutputProofTerminal: typeof isExactMidgardLedgerOutputProofTerminal;
+  /** `ledgerOutputProofDatumRoleIndex` of `@al-ft/midgard-fault-proofs`. */
+  readonly ledgerOutputProofDatumRoleIndex: (
+    control: readonly Data[],
+    action: Constr<Data>,
+  ) => number;
   readonly MidgardLedgerOutputProofStages: typeof MidgardLedgerOutputProofStages;
   readonly nextMidgardCekDataTraverseSpan: typeof nextMidgardCekDataTraverseSpan;
   readonly plutusDataToCborHex: typeof plutusDataToCborHex;

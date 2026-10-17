@@ -509,7 +509,7 @@
     {
       "id": "ledger-output-proof-replay",
       "kind": "golden",
-      "summary": "Ledger output proof replay rows (empty fields, large datum scalars): JSON fixture plus each row's witness list and hashes rebound by name into a hand-written Aiken module.",
+      "summary": "Ledger output proof replay rows (empty fields, large datum scalars): JSON fixture plus each row's witness list, terminal hash and step-planner scalar claims rebound by name into a hand-written Aiken module.",
       "generators": [
         "demo/midgard-validation/scripts/generate-ledger-output-proof-replay-goldens.mjs"
       ],
@@ -517,7 +517,7 @@
         "demo/midgard-validation:fixtures:ledger-output-proof-replay:sync",
         "demo/midgard-validation:fixtures:ledger-output-proof-replay:check"
       ],
-      "producers": ["demo/midgard-validation"],
+      "producers": ["demo/midgard-validation", "demo/midgard-fault-proofs"],
       "inputs": [
         "@golden-channel",
         "demo/midgard-validation/tests/fixtures/ledger-output-proof-replay.vectors.mjs"
