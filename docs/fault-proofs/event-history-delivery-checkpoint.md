@@ -30,7 +30,8 @@ were unchanged at application. The application report is
 previous bytes and both measurement ledgers are retained in
 `artifacts/event-history/parallel/delivery-before-checkpoint-28/`. One measurement-ledger conflict is
 preserved explicitly: original and candidate
-`transition-trace-workflow-fit-ledger.json` evidence remain separate; their claims
+transition-trace workflow fit ledger evidence (that ledger has since been
+removed) remain separate; their claims
 were not text-merged. Post-delivery acceptance29 regenerated the ledger by
 running the complete installed transition-trace suite on the exact checkpoint
 source, then independently checked all signed receipts before replacing it. Both

@@ -78,7 +78,6 @@
     "tests/da-bond-pool-lifecycle.test.ts": 14.5,
     "tests/da-bond-submit-outcome-unknown.test.ts": 3,
     "tests/da-config-load.test.ts": 2.6,
-    "tests/da-deployment-fixture-generation.test.ts": 8.2,
     "tests/da-hardening.test.ts": 2.5,
     "tests/da-libp2p-producer-transport-partial-start.test.ts": 2.7,
     "tests/da-libp2p-runtime-manifest.test.ts": 9.3,

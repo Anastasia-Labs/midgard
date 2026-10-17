@@ -64,10 +64,11 @@ import {
 } from "../support/follower-user-events-fixture.js";
 import {
   buildWatcherOriginFixtureHistoryDeployments,
-  INITIALIZATION,
+  originInitialization,
 } from "../support/user-event-origin-fixture.make-config.js";
 
-const deployment = followerUserEventsDeployment();
+const deployment = await followerUserEventsDeployment();
+const INITIALIZATION = await originInitialization();
 const K = RELEASE_FINALITY_DEPTH + 2;
 const NETWORK = "Preprod" as const;
 /** The header the capture is for; no proof pins it. */

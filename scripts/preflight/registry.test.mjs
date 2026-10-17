@@ -142,16 +142,11 @@ test("derived goldens read Aiken sources or the pinned builtin evaluator", () =>
       `${check.id} names no .ak file, so an Aiken edit cannot select it`,
     );
   }
-  const ledgers = registry.checks.filter((check) =>
-    check.id.startsWith("exec-ledger:"),
-  );
-  assert.ok(ledgers.length >= 7, `only ${String(ledgers.length)} ledgers`);
-  for (const check of ledgers) {
-    const sources = check.triggers.filter((path) => path.endsWith(".ak"));
-    assert.ok(sources.length > 0, `${check.id} measures no module`);
-    for (const path of sources) {
-      assert.ok(existsSync(resolve(root, path)), `${check.id}: ${path}`);
-    }
+  const budgets = byId.get("script-budgets");
+  const sources = budgets.triggers.filter((path) => path.endsWith(".ak"));
+  assert.ok(sources.length > 0, "script-budgets measures no module");
+  for (const path of sources) {
+    assert.ok(existsSync(resolve(root, path)), `script-budgets: ${path}`);
   }
 });
 
@@ -162,13 +157,35 @@ test("consensus-profile.ts selects the profile-doc check", () => {
   assert.ok(!ids.includes("aiken-fmt"));
 });
 
-test("an Aiken library edit selects format, focused tests, blueprint, ledgers and goldens", () => {
+test("a budgeted test module's edit measures only the budgets that can depend on it", () => {
+  const module =
+    "onchain/aiken/lib/midgard/native-script-scan-worst-case-wide-v1.test.ak";
+  assert.ok(selectedIds([module]).includes("script-budgets"));
+  const [only] = byId.get("script-budgets").plan({ matched: [module] });
+  assert.deepEqual(only.argv, [
+    "node",
+    "onchain/aiken/scripts/script-budgets.mjs",
+    "check",
+    "--module",
+    "midgard/native_script_scan_worst_case_wide_v1.test",
+  ]);
+  const [whole] = byId
+    .get("script-budgets")
+    .plan({ matched: ["demo/midgard-core/src/script-budgets.json"] });
+  assert.deepEqual(whole.argv, [
+    "node",
+    "onchain/aiken/scripts/script-budgets.mjs",
+    "check",
+  ]);
+});
+
+test("an Aiken library edit selects format, focused tests, blueprint, budgets and goldens", () => {
   const module = "onchain/aiken/lib/midgard/fraud-proofs/native-tx/codec.ak";
   const ids = selectedIds([module]);
   for (const id of ["aiken-fmt", "aiken-focused", "aiken-blueprint"]) {
     assert.ok(ids.includes(id), id);
   }
-  assert.ok(ids.includes("exec-ledger:carriage"));
+  assert.ok(ids.includes("script-budgets"));
   // The suites that read the compiled blueprint are reached; nothing builds.
   assert.deepEqual(
     ids.filter((id) => id.startsWith("demo-")),

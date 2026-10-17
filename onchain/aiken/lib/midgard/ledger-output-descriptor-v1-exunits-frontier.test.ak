@@ -15,9 +15,9 @@
 //// An Aiken `test` reading is a whole-test upper bound -- it charges fixture
 //// construction to the row. Pinning the fixture-only twin makes the marginal
 //// cost of `ledger_value_v1` a difference the reader takes over two pinned
-//// rows rather than a claim this module asserts. The verifier
-//// `scripts/verify-transition-trace-descriptor-exec-ledger-v1.mjs` recomputes
-//// those differences from the measured readings.
+//// rows rather than a claim this module asserts. The script budgets
+//// (`demo/midgard-core/src/script-budgets.json`) hold those differences, taken
+//// from fresh readings, to ceilings.
 ////
 //// Guardrail 3 (#617): no worst-case payload is written as a source literal.
 //// `filler` builds every payload programmatically by doubling, so the source

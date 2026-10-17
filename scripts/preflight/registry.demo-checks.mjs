@@ -9,8 +9,11 @@ import {
   AIKEN_PROJECT,
   aikenImportClosure,
   DEMO,
-  execLedgers,
   packageNeedsPostgres,
+  referencedFiles,
+  SCRIPT_BUDGET_JUDGE,
+  SCRIPT_BUDGET_TABLE,
+  scriptBudgetModules,
   workflowRunsCheck,
   workspaceDependentClosure,
 } from "./derive.mjs";
@@ -211,32 +214,52 @@ export const aikenChecks = (root, index) => {
   ];
 };
 
-export const ledgerChecks = (root, index, ciText) =>
-  execLedgers(root).map((ledger) => {
-    const closure = [...aikenImportClosure(index, ledger.modules)].sort();
-    const env =
-      ledger.environment === undefined
-        ? undefined
-        : { MIDGARD_AIKEN_ENV: ledger.environment };
-    const gated =
-      ciText.includes(basename(ledger.verifier)) ||
-      workflowRunsCheck(ciText, `exec-ledger:${ledger.id}`);
-    return {
-      id: `exec-ledger:${ledger.id}`,
-      title: `Execution ledger ${basename(ledger.ledger)}`,
-      triggers: [ledger.verifier, ledger.ledger, ...ledger.scripts, ...closure],
-      triggerNote: `${ledger.verifier}, ${ledger.ledger}, and every .ak module that ${ledger.modules.join(", ")} import${ledger.modules.length === 1 ? "s" : ""}, transitively`,
-      capabilities: ["aiken"],
-      warnOnly: !gated,
-      warnReason: gated
-        ? undefined
-        : "no workflow runs this verifier, so a red reading does not block",
-      artifacts: [ledger.ledger],
-      display: formatCommand(step(node(ledger.verifier), { env })),
-      fix: `${formatCommand(step(node(ledger.verifier, "--update"), { env }))} — only for a drift you can explain; commit ${ledger.ledger} with the explanation`,
-      plan: () => [step(node(ledger.verifier), { env })],
-    };
-  });
+// One check for every script budget. A change to the table or the judge runs
+// the whole table; a change to Aiken source runs the budgets of every module
+// whose compiled code can depend on it.
+export const scriptBudgetCheck = (root, index, ciText) => {
+  const modules = scriptBudgetModules(root);
+  const closures = new Map(
+    modules.map((module) => [module, aikenImportClosure(index, [module])]),
+  );
+  const tooling = [
+    SCRIPT_BUDGET_TABLE,
+    SCRIPT_BUDGET_JUDGE,
+    ...referencedFiles(root, SCRIPT_BUDGET_JUDGE),
+  ];
+  const gated = ciText.includes(basename(SCRIPT_BUDGET_JUDGE));
+  const judge = (...args) => step(node(SCRIPT_BUDGET_JUDGE, "check", ...args));
+  return {
+    id: "script-budgets",
+    title: "Script budgets: Aiken execution units at or under their ceilings",
+    triggers: [
+      ...new Set([
+        ...tooling,
+        ...[...closures.values()].flatMap((c) => [...c]),
+      ]),
+    ].sort(),
+    triggerNote: `${SCRIPT_BUDGET_TABLE}, the judge, and every .ak module a budgeted module imports, transitively`,
+    capabilities: ["aiken"],
+    warnOnly: !gated,
+    warnReason: gated
+      ? undefined
+      : "no workflow runs the script-budget judge, so a red reading does not block",
+    display: formatCommand(judge()),
+    fix: `node ${SCRIPT_BUDGET_JUDGE} raise <name> --reason <why> — only for a cost you accept; otherwise shrink the script`,
+    plan: ({ matched, full }) => {
+      if (full || matched.some((path) => tooling.includes(path))) {
+        return [judge()];
+      }
+      const touched = new Set(matched);
+      const reached = modules.filter((module) =>
+        [...closures.get(module)].some((file) => touched.has(file)),
+      );
+      return reached.length === 0
+        ? null
+        : [judge(...reached.flatMap((module) => ["--module", module]))];
+    },
+  };
+};
 
 // --- TypeScript workspace -----------------------------------------------
 

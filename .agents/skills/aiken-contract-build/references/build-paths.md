@@ -51,8 +51,9 @@ the blueprint, checks its profile and digest against
   from `deployment:build`, which cannot trace.
 
 The test suites check the same record before any file starts
-(`demo/midgard-test-support/blueprint-stamp-setup.js`): a blueprint named by
-`MIDGARD_REAL_BLUEPRINT_PATH` without a fresh record is refused, so a plain or
+(`demo/midgard-test-support/blueprint-stamp-setup.js`): a default blueprint
+without a fresh record is rebuilt with `deployment:build`, and a blueprint
+named by `MIDGARD_REAL_BLUEPRINT_PATH` without one is refused, so a plain or
 traced `aiken build` cannot stand in for one. Traced runs go through
 `demo/midgard-fault-proofs/scripts/run-traced-refusals.mjs`, which writes a
 record for its overlay.

@@ -28,11 +28,7 @@ import {
 } from "../src/transition-trace/phas.js";
 import { eventKeyFingerprint } from "../src/transition-trace/reconstruct.js";
 import { MIN_ADA_COMPLETE_CANONICAL_REPLAY } from "../src/workflow/complete-replay.js";
-import { rows } from "./min-ada-wrongful-rejection-lifecycle.rows.js";
-import {
-  captureEmulatorSubmission,
-  type CompleteSignedTransactionMeasurement,
-} from "./support/emulator/measurement.js";
+import { captureEmulatorSubmission } from "./support/emulator/measurement.js";
 import { makeNativeTx } from "./support/emulator/native-tx.js";
 import {
   makeMinAdaEmulatorHarness,
@@ -233,15 +229,10 @@ export const setup = async ({
   const header = seeded.header;
   const direction = accepted ? 0n : 1n;
   const source = { header, membership, direction };
-  const scriptPublications: ReturnType<
-    typeof import("./support/emulator/measurement.js").measureCompleteSignedTransaction
-  >[] = [];
   const refs = await publishFinalFamilyReferenceScripts({
     lucid: h.proverLucid,
     family: h.family,
     label: "min-ada",
-    onPublication: (_index, publication) =>
-      scriptPublications.push(publication.publicationMeasurement),
   });
 
   const state = {
@@ -296,31 +287,7 @@ export const setup = async ({
     signer: h.proverSigner,
   };
   const shape = `scenario-${scenarioId}${accepted ? "-accepted" : ""}-assets-${assetCount}-cancel-${cancelAt}-output-${outputCbor.length}-field-${encodeMidgardFieldPreimage(outputs).length}-mpf-${depth}-above-${above}`;
-  let measurementSequence = 0;
-  const record = (
-    name: string,
-    kind: "publication" | "lifecycle",
-    measurements: readonly CompleteSignedTransactionMeasurement[],
-  ) =>
-    measurements.forEach((m, i) =>
-      rows.push({
-        name: `${shape}/${name}/${measurementSequence++}/${i}`,
-        kind,
-        maximumShape: shape,
-        signedBytes: m.completeSignedBytes,
-        memoryUnits: m.executionMemory,
-        cpuUnits: m.executionSteps,
-      }),
-    );
-  record("family-publications", "publication", scriptPublications);
-  record("yield-publications", "publication", [
-    seeded.minAdaYieldReferenceScripts!.tx.publicationMeasurement,
-  ]);
-  const capture = async <T>(
-    name: string,
-    operation: () => Promise<T>,
-    kind: "publication" | "lifecycle" = "lifecycle",
-  ) => {
+  const capture = async <T>(name: string, operation: () => Promise<T>) => {
     const captured = await captureEmulatorSubmission(
       h.emulator,
       operation,
@@ -328,7 +295,6 @@ export const setup = async ({
       console.error("MIN_ADA_PHASE", name, shape);
       throw error;
     });
-    record(name, kind, captured.measurements);
     return captured.result;
   };
   const initialize = () =>

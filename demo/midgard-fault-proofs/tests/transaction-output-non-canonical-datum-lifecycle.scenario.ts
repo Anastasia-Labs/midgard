@@ -176,10 +176,9 @@ export const stepCommon = (registered: Registered) => ({
   signer: registered.harness.proverSigner,
 });
 
-/** Names the terminal scan's fit row and its maximum shape. */
+/** Names the terminal scan's checked transaction. */
 export type MeasuredScan = {
   readonly label: string;
-  readonly maximumShape: string;
 };
 
 /** Runs the envelope scan; the canonical envelope opens the datum step. */
@@ -207,11 +206,7 @@ export const scanToDatum = async (
     if (scanned.result.terminal) {
       expect(scanned.result.nextStage).toBe("step03Datum");
       if (measured !== undefined)
-        record(
-          `${measured.label}-scan-to-datum`,
-          scanned.measurement,
-          measured.maximumShape,
-        );
+        record(`${measured.label}-scan-to-datum`, scanned.measurement);
       return current;
     }
   }

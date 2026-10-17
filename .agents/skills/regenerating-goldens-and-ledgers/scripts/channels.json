@@ -2,25 +2,7 @@
   "about": "Every generated-artifact channel committed in this repository. Read by affected-channels.mjs; --verify-table fails when the tree has a generator, ledger or generated file that no channel claims. Commands run from the repository root.",
   "inputSets": {
     "@golden-channel": ["demo/midgard-core/scripts/golden-channel.mjs"],
-    "@compiler-pin": ["demo/flake.lock"],
-    "@blueprint": [
-      "onchain/aiken/lib/**/*.ak",
-      "onchain/aiken/validators/**/*.ak",
-      "onchain/aiken/env/*.ak",
-      "onchain/aiken/aiken.toml",
-      "onchain/aiken/aiken.lock",
-      "@compiler-pin"
-    ],
-    "@blueprint-exclude": ["onchain/aiken/**/*.test.ak"],
-    "@exec-ledger-harness": [
-      "onchain/aiken/scripts/exec-ledger-measure-v1.mjs",
-      "onchain/aiken/scripts/exec-ledger-within-basis-v1.mjs",
-      "onchain/aiken/scripts/run-focused-check.mjs",
-      "onchain/aiken/env/*.ak",
-      "onchain/aiken/aiken.toml",
-      "onchain/aiken/aiken.lock",
-      "@compiler-pin"
-    ]
+    "@compiler-pin": ["demo/flake.lock"]
   },
   "channels": [
     {
@@ -540,6 +522,37 @@
       }
     },
     {
+      "id": "ledger-output-proof-replay",
+      "kind": "golden",
+      "summary": "Ledger output proof replay rows (empty fields, large datum scalars): JSON fixture plus each row's witness list, terminal hash and step-planner scalar claims rebound by name into a hand-written Aiken module.",
+      "generators": [
+        "demo/midgard-validation/scripts/generate-ledger-output-proof-replay-goldens.mjs"
+      ],
+      "packageScripts": [
+        "demo/midgard-validation:fixtures:ledger-output-proof-replay:sync",
+        "demo/midgard-validation:fixtures:ledger-output-proof-replay:check"
+      ],
+      "producers": ["demo/midgard-validation", "demo/midgard-fault-proofs"],
+      "inputs": [
+        "@golden-channel",
+        "demo/midgard-validation/tests/fixtures/ledger-output-proof-replay.vectors.mjs"
+      ],
+      "outputs": [
+        "demo/midgard-validation/tests/fixtures/ledger-output-proof-replay.generated.json",
+        "onchain/aiken/lib/midgard/ledger-output-proof-datum.test.ak"
+      ],
+      "sync": {
+        "run": "pnpm --dir demo/midgard-validation run fixtures:ledger-output-proof-replay:sync"
+      },
+      "check": {
+        "run": "pnpm --dir demo/midgard-validation run fixtures:ledger-output-proof-replay:check"
+      },
+      "ci": {
+        "workflow": ".github/workflows/midgard-node-ci.yml",
+        "step": "Check ledger output proof replay golden vectors"
+      }
+    },
+    {
       "id": "cek-cost-v1-aiken",
       "kind": "golden",
       "summary": "Every builtin's cpu and memory budget at a spread of argument sizes, from the pinned 350-entry Plutus V3 cost vector through the TypeScript cost twin: a whole generated Aiken module run against the on-chain cost table.",
@@ -676,6 +689,32 @@
       },
       "ci": {
         "none": "No workflow step runs this generator's --check."
+      }
+    },
+    {
+      "id": "script-source-lookup-rows",
+      "kind": "golden",
+      "summary": "One-step script-source lookup vectors the TypeScript validation machine produces for each lookup row, rendered as a whole Aiken test module the on-chain machine must reproduce; the vitest suite writes it under MIDGARD_WRITE_SCRIPT_SOURCE_LOOKUP_ROWS=1 and compares it without.",
+      "generators": [
+        "demo/midgard-validation/tests/script-source-lookup.machine-rows.test.ts"
+      ],
+      "writerEnv": ["MIDGARD_WRITE_SCRIPT_SOURCE_LOOKUP_ROWS"],
+      "producers": ["demo/midgard-validation"],
+      "inputs": [],
+      "outputs": [
+        "onchain/aiken/lib/midgard/validation-machine-tests/script-source-lookup-rows.test.ak"
+      ],
+      "aikenImportsOfOutputs": true,
+      "sync": {
+        "run": "MIDGARD_WRITE_SCRIPT_SOURCE_LOOKUP_ROWS=1 pnpm --dir demo/midgard-validation exec vitest run tests/script-source-lookup.machine-rows.test.ts"
+      },
+      "check": {
+        "run": "pnpm --dir demo/midgard-validation exec vitest run tests/script-source-lookup.machine-rows.test.ts"
+      },
+      "ci": {
+        "workflow": ".github/workflows/midgard-node-ci.yml",
+        "step": "Build, typecheck, and test Midgard validation",
+        "via": "demo/midgard-validation/tests/script-source-lookup.machine-rows.test.ts"
       }
     },
     {
@@ -950,351 +989,37 @@
       "generators": []
     },
     {
-      "id": "exec-ledger-carriage",
-      "kind": "exec-ledger",
-      "summary": "Section 8.10 carriage execution readings; a drift also moves the published figures in docs/spec/midgard-tx.md section 8.10.",
-      "generators": [
-        "onchain/aiken/scripts/verify-carriage-exec-ledger-v1.mjs"
-      ],
-      "ledger": "onchain/aiken/scripts/native-tx-carriage-exec-ledger-v1.json",
-      "inputs": ["@exec-ledger-harness"],
-      "outputs": [
-        "onchain/aiken/scripts/native-tx-carriage-exec-ledger-v1.json"
-      ],
-      "sync": {
-        "run": "cd onchain/aiken && node scripts/verify-carriage-exec-ledger-v1.mjs --update"
-      },
-      "check": {
-        "run": "cd onchain/aiken && node scripts/verify-carriage-exec-ledger-v1.mjs"
-      },
-      "ci": {
-        "workflow": ".github/workflows/aiken-ci.yml",
-        "step": "Pin the §8.10 carriage execution ledger"
-      }
-    },
-    {
-      "id": "exec-ledger-q1x",
-      "kind": "exec-ledger",
-      "summary": "Q1x family execution readings and the growth bands.",
-      "generators": ["onchain/aiken/scripts/verify-q1x-exec-ledger-v1.mjs"],
-      "ledger": "onchain/aiken/scripts/native-tx-q1x-exec-ledger-v1.json",
-      "inputs": ["@exec-ledger-harness"],
-      "outputs": ["onchain/aiken/scripts/native-tx-q1x-exec-ledger-v1.json"],
-      "sync": {
-        "run": "cd onchain/aiken && node scripts/verify-q1x-exec-ledger-v1.mjs --update"
-      },
-      "check": {
-        "run": "cd onchain/aiken && node scripts/verify-q1x-exec-ledger-v1.mjs"
-      },
-      "ci": {
-        "workflow": ".github/workflows/aiken-ci.yml",
-        "step": "Pin the Q1x family execution ledger"
-      }
-    },
-    {
-      "id": "exec-ledger-q31",
-      "kind": "exec-ledger",
-      "summary": "Q31 reference-input-no-idx within-basis readings.",
-      "generators": ["onchain/aiken/scripts/verify-q31-exec-ledger-v1.mjs"],
-      "ledger": "onchain/aiken/scripts/native-tx-q31-exec-ledger-v1.json",
-      "inputs": ["@exec-ledger-harness"],
-      "outputs": ["onchain/aiken/scripts/native-tx-q31-exec-ledger-v1.json"],
-      "sync": {
-        "run": "cd onchain/aiken && node scripts/verify-q31-exec-ledger-v1.mjs --update"
-      },
-      "check": {
-        "run": "cd onchain/aiken && node scripts/verify-q31-exec-ledger-v1.mjs"
-      },
-      "ci": {
-        "workflow": ".github/workflows/aiken-ci.yml",
-        "step": "Pin the Q31 reference-input-no-idx family execution ledger"
-      }
-    },
-    {
-      "id": "exec-ledger-q21",
-      "kind": "exec-ledger",
-      "summary": "Q21 transition-trace within-basis readings.",
-      "generators": ["onchain/aiken/scripts/verify-q21-exec-ledger-v1.mjs"],
-      "ledger": "onchain/aiken/scripts/native-tx-q21-exec-ledger-v1.json",
-      "inputs": ["@exec-ledger-harness"],
-      "outputs": ["onchain/aiken/scripts/native-tx-q21-exec-ledger-v1.json"],
-      "sync": {
-        "run": "cd onchain/aiken && node scripts/verify-q21-exec-ledger-v1.mjs --update"
-      },
-      "check": {
-        "run": "cd onchain/aiken && node scripts/verify-q21-exec-ledger-v1.mjs"
-      },
-      "ci": {
-        "workflow": ".github/workflows/aiken-ci.yml",
-        "step": "Pin the Q21 transition-trace family execution ledger"
-      }
-    },
-    {
-      "id": "exec-ledger-tx-order-mint",
-      "kind": "exec-ledger",
-      "summary": "Tx-order mint material-carriage readings.",
-      "generators": [
-        "onchain/aiken/scripts/verify-tx-order-mint-exec-ledger-v1.mjs"
-      ],
-      "ledger": "onchain/aiken/scripts/tx-order-mint-exec-ledger-v1.json",
-      "inputs": ["@exec-ledger-harness"],
-      "outputs": ["onchain/aiken/scripts/tx-order-mint-exec-ledger-v1.json"],
-      "sync": {
-        "run": "cd onchain/aiken && node scripts/verify-tx-order-mint-exec-ledger-v1.mjs --update"
-      },
-      "check": {
-        "run": "cd onchain/aiken && node scripts/verify-tx-order-mint-exec-ledger-v1.mjs"
-      },
-      "ci": {
-        "workflow": ".github/workflows/aiken-ci.yml",
-        "step": "Pin the tx-order mint material-carriage execution ledger"
-      }
-    },
-    {
-      "id": "exec-ledger-canonical-decodability",
-      "kind": "exec-ledger",
-      "summary": "Canonical-decodability committed-preimage readings.",
-      "generators": [
-        "onchain/aiken/scripts/verify-canonical-decodability-exec-ledger-v1.mjs"
-      ],
-      "ledger": "onchain/aiken/scripts/canonical-decodability-exec-ledger-v1.json",
-      "inputs": ["@exec-ledger-harness"],
-      "outputs": [
-        "onchain/aiken/scripts/canonical-decodability-exec-ledger-v1.json"
-      ],
-      "sync": {
-        "run": "cd onchain/aiken && node scripts/verify-canonical-decodability-exec-ledger-v1.mjs --update"
-      },
-      "check": {
-        "run": "cd onchain/aiken && node scripts/verify-canonical-decodability-exec-ledger-v1.mjs"
-      },
-      "ci": {
-        "workflow": ".github/workflows/aiken-ci.yml",
-        "step": "Pin the canonical-decodability committed-preimage execution ledger"
-      }
-    },
-    {
-      "id": "exec-ledger-committed-field-shape",
-      "kind": "exec-ledger",
-      "summary": "Committed-field-shape slot-verdict readings.",
-      "generators": [
-        "onchain/aiken/scripts/verify-committed-field-shape-exec-ledger-v1.mjs"
-      ],
-      "ledger": "onchain/aiken/scripts/committed-field-shape-exec-ledger-v1.json",
-      "inputs": ["@exec-ledger-harness"],
-      "outputs": [
-        "onchain/aiken/scripts/committed-field-shape-exec-ledger-v1.json"
-      ],
-      "sync": {
-        "run": "cd onchain/aiken && node scripts/verify-committed-field-shape-exec-ledger-v1.mjs --update"
-      },
-      "check": {
-        "run": "cd onchain/aiken && node scripts/verify-committed-field-shape-exec-ledger-v1.mjs"
-      },
-      "ci": {
-        "workflow": ".github/workflows/aiken-ci.yml",
-        "step": "Pin the committed-field-shape slot-verdict execution ledger"
-      }
-    },
-    {
-      "id": "exec-ledger-native-script-decoding-engine",
-      "kind": "exec-ledger",
-      "summary": "Native-script decoding engine fold and step readings.",
-      "generators": [
-        "onchain/aiken/scripts/verify-native-script-decoding-engine-exec-ledger-v1.mjs"
-      ],
-      "ledger": "onchain/aiken/scripts/native-script-decoding-engine-exec-ledger-v1.json",
-      "inputs": ["@exec-ledger-harness"],
-      "outputs": [
-        "onchain/aiken/scripts/native-script-decoding-engine-exec-ledger-v1.json"
-      ],
-      "sync": {
-        "run": "cd onchain/aiken && node scripts/verify-native-script-decoding-engine-exec-ledger-v1.mjs --update"
-      },
-      "check": {
-        "run": "cd onchain/aiken && node scripts/verify-native-script-decoding-engine-exec-ledger-v1.mjs"
-      },
-      "ci": {
-        "workflow": ".github/workflows/aiken-ci.yml",
-        "step": "Pin the native-script decoding-engine execution ledger"
-      }
-    },
-    {
-      "id": "exec-ledger-native-script-scan",
-      "kind": "exec-ledger",
-      "summary": "Native-script scan worst-case readings and derived rows.",
-      "generators": [
-        "onchain/aiken/scripts/verify-native-script-scan-exec-ledger-v1.mjs"
-      ],
-      "ledger": "onchain/aiken/scripts/native-script-scan-exec-ledger-v1.json",
-      "inputs": ["@exec-ledger-harness"],
-      "outputs": [
-        "onchain/aiken/scripts/native-script-scan-exec-ledger-v1.json"
-      ],
-      "sync": {
-        "run": "cd onchain/aiken && node scripts/verify-native-script-scan-exec-ledger-v1.mjs --update"
-      },
-      "check": {
-        "run": "cd onchain/aiken && node scripts/verify-native-script-scan-exec-ledger-v1.mjs"
-      },
-      "ci": {
-        "workflow": ".github/workflows/aiken-ci.yml",
-        "step": "Pin the native-script scan execution ledger"
-      }
-    },
-    {
-      "id": "exec-ledger-transition-trace-descriptor",
-      "kind": "exec-ledger",
-      "summary": "Transition-trace descriptor frontier readings and crossings; must run with MIDGARD_AIKEN_ENV=testnet.",
-      "generators": [
-        "onchain/aiken/scripts/verify-transition-trace-descriptor-exec-ledger-v1.mjs"
-      ],
-      "ledger": "onchain/aiken/scripts/transition-trace-descriptor-exec-ledger-v1.json",
-      "inputs": ["@exec-ledger-harness"],
-      "outputs": [
-        "onchain/aiken/scripts/transition-trace-descriptor-exec-ledger-v1.json"
-      ],
-      "sync": {
-        "run": "cd onchain/aiken && MIDGARD_AIKEN_ENV=testnet node scripts/verify-transition-trace-descriptor-exec-ledger-v1.mjs --update"
-      },
-      "check": {
-        "run": "cd onchain/aiken && MIDGARD_AIKEN_ENV=testnet node scripts/verify-transition-trace-descriptor-exec-ledger-v1.mjs"
-      },
-      "ci": {
-        "workflow": ".github/workflows/aiken-ci.yml",
-        "step": "Pin the transition-trace descriptor execution ledger"
-      }
-    },
-    {
-      "id": "forced-window-fit-ledger",
-      "kind": "fit-ledger",
-      "summary": "A fit ledger a test holds to the current build: its blueprintSha256 must equal the SHA-256 of the freshly built onchain/aiken/plutus.json, and its scenario and row coverage must match.",
-      "generators": [
-        "demo/midgard-fault-proofs/tests/submit-init-emulator-transition-trace-subvariants.test.ts"
-      ],
-      "writerEnv": ["MIDGARD_WRITE_FIT_LEDGER"],
-      "inputs": [
-        "@blueprint",
-        "demo/midgard-fault-proofs/src/proof-fit/van-rossem-fit-ledger.ts",
-        "demo/midgard-fault-proofs/tests/support/pinned-fit-ledger.ts"
-      ],
-      "exclude": ["@blueprint-exclude"],
-      "outputs": [
-        "docs/fault-proofs/size-plans/transition-trace-forced-window-fit-ledger.json"
-      ],
-      "sync": {
-        "run": "pnpm --dir demo/midgard-fault-proofs fit:regenerate transition-trace-forced-window-fit-ledger.json"
-      },
-      "check": {
-        "run": "pnpm --dir demo/midgard-fault-proofs exec vitest run tests/submit-init-emulator-transition-trace-subvariants.test.ts"
-      },
-      "ci": {
-        "workflow": ".github/workflows/midgard-node-ci.yml",
-        "step": "Test fault-proof tooling",
-        "via": "demo/midgard-fault-proofs/tests/submit-init-emulator-transition-trace-subvariants.test.ts"
-      }
-    },
-    {
-      "id": "workflow-fit-ledger",
-      "kind": "fit-ledger",
-      "summary": "The installed transition-trace workflow fit ledger, held to the current build like the forced-window ledger: its blueprintSha256 must equal the SHA-256 of the freshly built onchain/aiken/plutus.json, and its scenario and row coverage must match. About a tenth of its row budgets differ between runs of one blueprint, so a rewrite without a blueprint change is noise.",
-      "generators": [
-        "demo/midgard-fault-proofs/tests/transition-trace-installed-lifecycle.test.ts"
-      ],
-      "writerEnv": ["MIDGARD_WRITE_FIT_LEDGER"],
-      "inputs": [
-        "@blueprint",
-        "demo/midgard-fault-proofs/src/proof-fit/van-rossem-fit-ledger.ts",
-        "demo/midgard-fault-proofs/tests/support/pinned-fit-ledger.ts"
-      ],
-      "exclude": ["@blueprint-exclude"],
-      "outputs": [
-        "docs/fault-proofs/size-plans/transition-trace-workflow-fit-ledger.json"
-      ],
-      "sync": {
-        "run": "pnpm --dir demo/midgard-fault-proofs fit:regenerate transition-trace-workflow-fit-ledger.json"
-      },
-      "check": {
-        "run": "pnpm --dir demo/midgard-fault-proofs exec vitest run tests/transition-trace-installed-lifecycle.test.ts"
-      },
-      "ci": {
-        "workflow": ".github/workflows/midgard-node-ci.yml",
-        "step": "Test fault-proof tooling",
-        "via": "demo/midgard-fault-proofs/tests/transition-trace-installed-lifecycle.test.ts"
-      }
-    },
-    {
-      "id": "fault-proof-fit-ledgers",
-      "kind": "fit-ledger",
-      "summary": "The other fit ledgers under docs/fault-proofs/size-plans: recorded evidence and writer outputs, each stamped with the blueprintSha256 it was measured against. No test compares them to the current build.",
-      "generators": [
-        "demo/midgard-fault-proofs/scripts/regenerate-fit-ledger.mjs",
-        "demo/midgard-fault-proofs/tests/support/measured-fit-ledger.ts",
-        "demo/midgard-fault-proofs/tests/support/split-fit-ledger.ts",
-        "demo/midgard-fault-proofs/scripts/write-invalid-signature-fit-ledger.mjs"
-      ],
-      "packageScripts": ["demo/midgard-fault-proofs:fit:regenerate"],
-      "writerEnv": ["MIDGARD_WRITE_FIT_LEDGER"],
-      "inputs": [
-        "demo/midgard-fault-proofs/src/proof-fit/van-rossem-fit-ledger.ts"
-      ],
-      "outputs": ["docs/fault-proofs/size-plans/*-fit-ledger.json"],
-      "sync": {
-        "manual": "Per ledger, against a freshly built blueprint: pnpm --dir demo/midgard-fault-proofs fit:regenerate <ledger filename> (or --all). It finds and runs the owning test files with a fresh fragment directory and run token, and leaves the ledger untouched unless every owning file passed; --list shows the owners, and it refuses, with the reason, a ledger no test writes. docs/fault-proofs/size-plans/README.md governs."
-      },
-      "check": {
-        "none": "Historical snapshots: the *-fit-ledger.test.ts readers were removed on 2026-09-09 and verifyMeasuredFitLedger has no caller, so nothing compares these ledgers with the current blueprint."
-      },
-      "ci": {
-        "none": "No workflow step checks these ledgers."
-      }
-    },
-    {
-      "id": "watcher-initialization-fixture",
+      "id": "cek-step-fuzz-coverage",
       "kind": "fixture",
-      "summary": "Accepted initialization transactions captured from the node initialization emulator for the watcher tests; records the blueprint SHA-256 it was captured against.",
-      "generators": ["demo/midgard-node/tests/initialization-emulator.test.ts"],
-      "writerEnv": ["MIDGARD_WRITE_WATCHER_INITIALIZATION_FIXTURE"],
-      "inputs": ["@blueprint"],
-      "exclude": ["@blueprint-exclude"],
-      "outputs": [
-        "demo/midgard-watcher/tests/fixtures/user-event-initialization.json"
-      ],
-      "sync": {
-        "run": "MIDGARD_WRITE_WATCHER_INITIALIZATION_FIXTURE=1 pnpm --dir demo/midgard-node exec vitest run tests/initialization-emulator.test.ts"
-      },
-      "check": {
-        "run": "pnpm --dir demo/midgard-node exec vitest run tests/initialization-emulator.test.ts"
-      },
-      "ci": {
-        "workflow": ".github/workflows/midgard-node-ci.yml",
-        "step": "Test Midgard node",
-        "via": "demo/midgard-node/tests/initialization-emulator.test.ts"
-      }
-    },
-    {
-      "id": "da-deployment-fixture",
-      "kind": "fixture",
-      "summary": "The DA committee's contract deployment fixture, derived from the real contracts by a node test.",
+      "summary": "Per-builtin coverage of the CEK step differential over its fixed seed set, written by the step-fuzz suite under MIDGARD_WRITE_CEK_STEP_FUZZ_COVERAGE=1 and asserted by the same suite without it.",
       "generators": [
-        "demo/midgard-node/tests/da-deployment-fixture-generation.test.ts"
+        "demo/midgard-validation/tests/fuzz/cek-step-fuzz.test.ts"
       ],
-      "writerEnv": ["MIDGARD_WRITE_DA_DEPLOYMENT_FIXTURE"],
-      "inputs": ["@blueprint"],
-      "exclude": ["@blueprint-exclude"],
+      "writerEnv": ["MIDGARD_WRITE_CEK_STEP_FUZZ_COVERAGE"],
+      "producers": ["demo/midgard-validation"],
+      "aikenClosure": ["onchain/aiken/lib/midgard/cek-machine-v1.ak"],
+      "inputs": [
+        "demo/midgard-validation/tests/fuzz/cek-step-fuzz.*.ts",
+        "demo/midgard-validation/tests/helpers/cek-uplc-terms.ts",
+        "demo/midgard-validation/tests/fixtures/cek-builtin-cardano-v1.arguments.mjs",
+        "demo/midgard-validation/tests/fixtures/cek-core-step-v1.vectors.mjs",
+        "onchain/aiken/aiken.toml",
+        "onchain/aiken/aiken.lock",
+        "@compiler-pin"
+      ],
       "outputs": [
-        "demo/da-committee-node/tests/fixtures/da-contract-deployment-info.json"
+        "demo/midgard-validation/tests/fuzz/cek-step-fuzz.coverage.json"
       ],
       "sync": {
-        "run": "MIDGARD_WRITE_DA_DEPLOYMENT_FIXTURE=1 pnpm --dir demo/midgard-node exec vitest run tests/da-deployment-fixture-generation.test.ts"
+        "run": "MIDGARD_WRITE_CEK_STEP_FUZZ_COVERAGE=1 pnpm --dir demo/midgard-validation exec vitest run tests/fuzz/cek-step-fuzz.test.ts -t \"fixed seed set\""
       },
       "check": {
-        "run": "pnpm --dir demo/midgard-node exec vitest run tests/da-deployment-fixture-generation.test.ts"
+        "run": "pnpm --dir demo/midgard-validation exec vitest run tests/fuzz/cek-step-fuzz.test.ts -t \"fixed seed set\""
       },
       "ci": {
         "workflow": ".github/workflows/midgard-node-ci.yml",
-        "step": "Test Midgard node",
-        "via": "demo/midgard-node/tests/da-deployment-fixture-generation.test.ts"
+        "step": "Build, typecheck, and test Midgard validation",
+        "via": "demo/midgard-validation/tests/fuzz/cek-step-fuzz.test.ts"
       }
     },
     {

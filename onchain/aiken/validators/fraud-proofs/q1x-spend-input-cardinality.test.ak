@@ -24,9 +24,10 @@
 //// difference is the step; the difference between the two differences is
 //// whatever cost still scales with cardinality.
 ////
-//// The readings are pinned in `scripts/native-tx-q1x-exec-ledger-v1.json` and
-//// asserted by `scripts/verify-q1x-exec-ledger-v1.mjs` at the GOAL_SPEC §3.3
-//// declared basis of 13,200,000 memory units. Aiken cannot assert its own
+//// The readings are held to ceilings in
+//// `demo/midgard-core/src/script-budgets.json` and judged by
+//// `scripts/script-budgets.mjs` at the GOAL_SPEC §3.3 declared basis of
+//// 13,200,000 memory units. Aiken cannot assert its own
 //// execution units, so the pin has to live one level up; this module's job is
 //// to be a *stable and honest subject* for it.
 ////
@@ -46,7 +47,7 @@
 //// 7, Q16 step-04), because that is a walk the rebind made linear and
 //// measuring only the flat ones would not be a measurement of the rebind. The
 //// name is therefore narrower than the contents. Renaming it would move the
-//// `module` key of every row in `scripts/native-tx-q1x-exec-ledger-v1.json`
+//// test name of every entry for it in `demo/midgard-core/src/script-budgets.json`
 //// and add a second entry to the drift the F05 manifest already carries for
 //// this wave's deleted `input-witness.ak`, so it is noted here and left to
 //// [#579](https://github.com/Anastasia-Labs/midgard/issues/579)'s identity

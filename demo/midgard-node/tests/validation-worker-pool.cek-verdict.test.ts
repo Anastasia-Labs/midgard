@@ -50,6 +50,15 @@ const request = (
   };
 };
 
+const withCause = (
+  result: ReturnType<typeof evaluateMidgardCekVerdict>,
+): ReturnType<typeof evaluateMidgardCekVerdict> & {
+  readonly cause?: unknown;
+} => result;
+
+const causeMessage = (cause: unknown): string | undefined =>
+  cause instanceof Error ? cause.message : undefined;
+
 /** `(lam ctx [(lam _ ()) ctx])`: a Plutus V3 script must return Unit. */
 const unitProgram = () =>
   new Lambda(new Application(new Lambda(UPLCConst.unit), new UPLCVar(0)));
@@ -136,16 +145,23 @@ describe("validation pool CEK verdicts", () => {
         });
         expect(response.kind, label).toBe("cek_verdict");
         if (response.kind !== "cek_verdict") continue;
-        expect(response.result, label).toEqual(
+        // A cause crosses the worker boundary by structured clone: its message
+        // and built-in error class survive, its own fields do not.
+        const { cause: workerCause, ...workerVerdict } = withCause(
+          response.result,
+        );
+        const { cause: localCause, ...localVerdict } = withCause(
           evaluateMidgardCekVerdict(cekRequest),
         );
+        expect(workerVerdict, label).toEqual(localVerdict);
+        expect(causeMessage(workerCause), label).toBe(causeMessage(localCause));
         kinds.push(response.result.kind);
       }
       expect(kinds).toEqual([
         "accepted",
         "script_invalid",
         "accepted",
-        "script_invalid",
+        "indeterminate",
       ]);
     } finally {
       await pool.close();

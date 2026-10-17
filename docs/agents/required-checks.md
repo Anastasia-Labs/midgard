@@ -761,6 +761,31 @@ Golden channel plutus-data-cbor-decoding-v1 (@al-ft/midgard-validation).
   - `demo/midgard-l1-follower/src/**`
 - Needs: `node-modules`, `aiken`, `core-dist`
 
+### `golden:ledger-output-proof-replay`
+
+Golden channel ledger-output-proof-replay (@al-ft/midgard-validation).
+
+- Command: `pnpm --dir demo/midgard-validation run fixtures:ledger-output-proof-replay:check`
+- Fix: `pnpm --dir demo/midgard-validation run fixtures:ledger-output-proof-replay:sync`
+- Runs on:
+  - `demo/midgard-validation/scripts/generate-ledger-output-proof-replay-goldens.mjs`
+  - `demo/midgard-validation/tests/fixtures/ledger-output-proof-replay.generated.json`
+  - `demo/midgard-validation/tests/fixtures/ledger-output-proof-replay.vectors.mjs`
+  - `onchain/aiken/lib/midgard/ledger-output-proof-datum.test.ak`
+  - `demo/lucid-midgard/src/**`
+  - `demo/midgard-core/src/**`
+  - `demo/midgard-fault-proofs/src/**`
+  - `demo/midgard-validation/src/**`
+  - `demo/midgard-node/src/**`
+  - `demo/midgard-node-tools/src/**`
+  - `demo/midgard-sdk/src/**`
+  - `demo/midgard-watcher/src/**`
+  - `demo/da-committee-node/src/**`
+  - `demo/midgard-test-support/src/**`
+  - `demo/l1-node-transport/src/**`
+  - `demo/midgard-l1-follower/src/**`
+- Needs: `node-modules`, `aiken`, `core-dist`
+
 ### `golden:cek-program-large-integer`
 
 Golden channel cek-program-large-integer (@al-ft/midgard-validation).
@@ -1120,94 +1145,13 @@ Phase 4 devnet generator and shell asset tests (no running devnet).
   - `demo/midgard-node-tools/devnet/phase4-process/**`
 - Needs: `node-modules`, `blueprint`
 
-### `exec-ledger:canonical-decodability`
+### `script-budgets`
 
-Execution ledger canonical-decodability-exec-ledger-v1.json.
+Script budgets: Aiken execution units at or under their ceilings.
 
-- Command: `node onchain/aiken/scripts/verify-canonical-decodability-exec-ledger-v1.mjs`
-- Fix: `node onchain/aiken/scripts/verify-canonical-decodability-exec-ledger-v1.mjs --update — only for a drift you can explain; commit onchain/aiken/scripts/canonical-decodability-exec-ledger-v1.json with the explanation`
-- Runs on: onchain/aiken/scripts/verify-canonical-decodability-exec-ledger-v1.mjs, onchain/aiken/scripts/canonical-decodability-exec-ledger-v1.json, and every .ak module that midgard/fraud_proofs/canonical_decodability/rule.test imports, transitively
-- Needs: `aiken`
-
-### `exec-ledger:carriage`
-
-Execution ledger native-tx-carriage-exec-ledger-v1.json.
-
-- Command: `node onchain/aiken/scripts/verify-carriage-exec-ledger-v1.mjs`
-- Fix: `node onchain/aiken/scripts/verify-carriage-exec-ledger-v1.mjs --update — only for a drift you can explain; commit onchain/aiken/scripts/native-tx-carriage-exec-ledger-v1.json with the explanation`
-- Runs on: onchain/aiken/scripts/verify-carriage-exec-ledger-v1.mjs, onchain/aiken/scripts/native-tx-carriage-exec-ledger-v1.json, and every .ak module that midgard/native-tx-carriage-v1.test, field-preimage-certificate-handlers.test import, transitively
-- Needs: `aiken`
-
-### `exec-ledger:committed-field-shape`
-
-Execution ledger committed-field-shape-exec-ledger-v1.json.
-
-- Command: `node onchain/aiken/scripts/verify-committed-field-shape-exec-ledger-v1.mjs`
-- Fix: `node onchain/aiken/scripts/verify-committed-field-shape-exec-ledger-v1.mjs --update — only for a drift you can explain; commit onchain/aiken/scripts/committed-field-shape-exec-ledger-v1.json with the explanation`
-- Runs on: onchain/aiken/scripts/verify-committed-field-shape-exec-ledger-v1.mjs, onchain/aiken/scripts/committed-field-shape-exec-ledger-v1.json, and every .ak module that midgard/fraud_proofs/committed_field_shape/rule.test imports, transitively
-- Needs: `aiken`
-
-### `exec-ledger:native-script-decoding-engine`
-
-Execution ledger native-script-decoding-engine-exec-ledger-v1.json.
-
-- Command: `node onchain/aiken/scripts/verify-native-script-decoding-engine-exec-ledger-v1.mjs`
-- Fix: `node onchain/aiken/scripts/verify-native-script-decoding-engine-exec-ledger-v1.mjs --update — only for a drift you can explain; commit onchain/aiken/scripts/native-script-decoding-engine-exec-ledger-v1.json with the explanation`
-- Runs on: onchain/aiken/scripts/verify-native-script-decoding-engine-exec-ledger-v1.mjs, onchain/aiken/scripts/native-script-decoding-engine-exec-ledger-v1.json, and every .ak module that midgard/fraud_proofs/native_script_decoding/exec_measure_v1.test, fraud_proofs/native_script_decoding/step_01, fraud_proofs/native_script_decoding/step_02, fraud_proofs/native_script_decoding/step_03_open_subject, fraud_proofs/native_script_decoding/step_03_bind_descriptor, fraud_proofs/native_script_decoding/step_03_advance_or_close, fraud_proofs/native_script_decoding/step_04 import, transitively
-- Needs: `aiken`
-
-### `exec-ledger:native-script-scan`
-
-Execution ledger native-script-scan-exec-ledger-v1.json.
-
-- Command: `node onchain/aiken/scripts/verify-native-script-scan-exec-ledger-v1.mjs`
-- Fix: `node onchain/aiken/scripts/verify-native-script-scan-exec-ledger-v1.mjs --update — only for a drift you can explain; commit onchain/aiken/scripts/native-script-scan-exec-ledger-v1.json with the explanation`
-- Runs on: onchain/aiken/scripts/verify-native-script-scan-exec-ledger-v1.mjs, onchain/aiken/scripts/native-script-scan-exec-ledger-v1.json, and every .ak module that midgard/native_script_scan_worst_case_v1.test, midgard/native_script_scan_worst_case_deep_v1.test, midgard/native_script_scan_worst_case_wide_v1.test import, transitively
-- Needs: `aiken`
-
-### `exec-ledger:q1x`
-
-Execution ledger native-tx-q1x-exec-ledger-v1.json.
-
-- Command: `node onchain/aiken/scripts/verify-q1x-exec-ledger-v1.mjs`
-- Fix: `node onchain/aiken/scripts/verify-q1x-exec-ledger-v1.mjs --update — only for a drift you can explain; commit onchain/aiken/scripts/native-tx-q1x-exec-ledger-v1.json with the explanation`
-- Runs on: onchain/aiken/scripts/verify-q1x-exec-ledger-v1.mjs, onchain/aiken/scripts/native-tx-q1x-exec-ledger-v1.json, and every .ak module that fraud-proofs/q1x-spend-input-cardinality.test imports, transitively
-- Needs: `aiken`
-
-### `exec-ledger:q21`
-
-Execution ledger native-tx-q21-exec-ledger-v1.json.
-
-- Command: `node onchain/aiken/scripts/verify-q21-exec-ledger-v1.mjs`
-- Fix: `node onchain/aiken/scripts/verify-q21-exec-ledger-v1.mjs --update — only for a drift you can explain; commit onchain/aiken/scripts/native-tx-q21-exec-ledger-v1.json with the explanation`
-- Runs on: onchain/aiken/scripts/verify-q21-exec-ledger-v1.mjs, onchain/aiken/scripts/native-tx-q21-exec-ledger-v1.json, and every .ak module that midgard/fraud_proofs/transition_trace/proof.test imports, transitively
-- Needs: `aiken`
-
-### `exec-ledger:q31`
-
-Execution ledger native-tx-q31-exec-ledger-v1.json.
-
-- Command: `node onchain/aiken/scripts/verify-q31-exec-ledger-v1.mjs`
-- Fix: `node onchain/aiken/scripts/verify-q31-exec-ledger-v1.mjs --update — only for a drift you can explain; commit onchain/aiken/scripts/native-tx-q31-exec-ledger-v1.json with the explanation`
-- Runs on: onchain/aiken/scripts/verify-q31-exec-ledger-v1.mjs, onchain/aiken/scripts/native-tx-q31-exec-ledger-v1.json, and every .ak module that fraud_proofs/reference_input_no_idx/step_02, fraud_proofs/reference_input_no_idx/step_04 import, transitively
-- Needs: `aiken`
-
-### `exec-ledger:transition-trace-descriptor`
-
-Execution ledger transition-trace-descriptor-exec-ledger-v1.json.
-
-- Command: `MIDGARD_AIKEN_ENV=testnet node onchain/aiken/scripts/verify-transition-trace-descriptor-exec-ledger-v1.mjs`
-- Fix: `MIDGARD_AIKEN_ENV=testnet node onchain/aiken/scripts/verify-transition-trace-descriptor-exec-ledger-v1.mjs --update — only for a drift you can explain; commit onchain/aiken/scripts/transition-trace-descriptor-exec-ledger-v1.json with the explanation`
-- Runs on: onchain/aiken/scripts/verify-transition-trace-descriptor-exec-ledger-v1.mjs, onchain/aiken/scripts/transition-trace-descriptor-exec-ledger-v1.json, and every .ak module that midgard/ledger_output_descriptor_v1_exunits_frontier.test, midgard/fraud_proofs/transition_trace/proof_exunits_frontier.test, midgard/ledger_output_descriptor_v1.test, midgard/fraud_proofs/transition_trace/proof.test import, transitively
-- Needs: `aiken`
-
-### `exec-ledger:tx-order-mint`
-
-Execution ledger tx-order-mint-exec-ledger-v1.json.
-
-- Command: `node onchain/aiken/scripts/verify-tx-order-mint-exec-ledger-v1.mjs`
-- Fix: `node onchain/aiken/scripts/verify-tx-order-mint-exec-ledger-v1.mjs --update — only for a drift you can explain; commit onchain/aiken/scripts/tx-order-mint-exec-ledger-v1.json with the explanation`
-- Runs on: onchain/aiken/scripts/verify-tx-order-mint-exec-ledger-v1.mjs, onchain/aiken/scripts/tx-order-mint-exec-ledger-v1.json, and every .ak module that midgard/user_events/tx_order_v1.test imports, transitively
+- Command: `node onchain/aiken/scripts/script-budgets.mjs check`
+- Fix: `node onchain/aiken/scripts/script-budgets.mjs raise <name> --reason <why> — only for a cost you accept; otherwise shrink the script`
+- Runs on: demo/midgard-core/src/script-budgets.json, the judge, and every .ak module a budgeted module imports, transitively
 - Needs: `aiken`
 
 ### `demo-test`

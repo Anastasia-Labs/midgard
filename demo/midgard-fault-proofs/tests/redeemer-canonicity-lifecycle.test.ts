@@ -15,7 +15,6 @@ import "./support/emulator/measurement.js";
 import "./support/emulator/reference-scripts.js";
 import "./support/emulator/removal-deployment.js";
 import "./support/emulator/setup-tx.js";
-import "./support/measured-fit-ledger.js";
 import "./support/submit-init-emulator-fixtures.js";
 import "./support/submit-init-emulator-shared.js";
 import "./redeemer-canonicity-lifecycle.init-thread.js";

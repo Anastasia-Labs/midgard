@@ -113,6 +113,7 @@ import { countedMachineFieldTrace } from "./field-carriage.js";
 import {
   advanceMidgardResolvedInputsAccumulator,
   emptyMidgardInputResolutionSchedule,
+  hash32,
   initialMidgardResolvedInputsAccumulator,
   orderMidgardInputResolutionSchedule,
   prependMidgardInputResolutionSchedule,
@@ -152,13 +153,17 @@ import type {
   ScriptSourceProofEntry,
   SignatureScanControl,
 } from "./trace-builder-types.js";
+import { type ValidationTraceRecording } from "./trace-sink.js";
 import {
   type ValidationMachineReplayInput,
   type ValidationMachineSignerSetProof,
   type ValidationMachineWorkWitness,
 } from "./types.js";
 
-export const prepareValidationTrace = (input: ValidationMachineReplayInput) =>
+export const prepareValidationTrace = (
+  input: ValidationMachineReplayInput,
+  recording: ValidationTraceRecording,
+) =>
   Effect.gen(function* () {
     const contextCbor = Buffer.from(
       aikenSerialisedPlutusDataCbor(
@@ -277,7 +282,12 @@ export const prepareValidationTrace = (input: ValidationMachineReplayInput) =>
               scriptEvaluations.push(evaluation);
           },
           ...(input.scriptEvaluations === undefined
-            ? { cekExecutionMode: "proof" as const }
+            ? {
+                cekExecutionMode:
+                  recording.mode === "proof"
+                    ? ("proof" as const)
+                    : ("verdict" as const),
+              }
             : {
                 evaluateProofScript: (
                   scriptBytes: Uint8Array,
@@ -1181,11 +1191,15 @@ export const prepareValidationTrace = (input: ValidationMachineReplayInput) =>
         new Error(`unknown validation terminal phase ${terminalPhase}`),
       );
     }
-    const witnesses: ValidationMachineWorkWitness[] = [];
-    const witnessExecutionBudgets: {
-      readonly cpu: bigint;
-      readonly memory: bigint;
-    }[] = [];
+    const traceSink = recording.open({
+      eventKeyHash: hash32(input.eventKeyCbor),
+      transactionId: input.transactionId,
+      transactionCommitment,
+      validationContextHash,
+      sourceKind: input.sourceKind,
+      priorLedgerRoot,
+      ledgerDeltaRoot,
+    });
     const executionBudget = { cpu: 0n, memory: 0n };
 
     const pushWitness = (
@@ -1193,16 +1207,11 @@ export const prepareValidationTrace = (input: ValidationMachineReplayInput) =>
       cbor: Buffer,
       auxiliary: ValidationMachineWorkWitness["auxiliary"] = null,
     ): void => {
-      witnesses.push({
-        phase,
-        programCounter: witnesses.length,
-        cbor,
-        auxiliary,
-      });
-      witnessExecutionBudgets.push({
-        cpu: executionBudget.cpu,
-        memory: executionBudget.memory,
-      });
+      traceSink.push(
+        { phase, programCounter: traceSink.length, cbor, auxiliary },
+        executionBudget,
+        null,
+      );
     };
     const macroWitness = (phase: MidgardValidationPhaseName): Buffer => {
       const witness = macroWitnessByPhase.get(phase);
@@ -1524,25 +1533,20 @@ export const prepareValidationTrace = (input: ValidationMachineReplayInput) =>
                 hashMidgardSignerLeaf(scan.decoded.signerHash),
               )
             : signatureControl.signerFrontier;
-          let signatureIsValid = false;
+          // The decoder fixed both widths, so a throw here is a fault of the
+          // check itself and the build stops with it, as Phase A does.
+          let signatureIsValid: boolean;
+          const publicKey = CML.PublicKey.from_bytes(
+            scan.decoded.verificationKey,
+          );
+          const signature = CML.Ed25519Signature.from_raw_bytes(
+            scan.decoded.signature,
+          );
           try {
-            const publicKey = CML.PublicKey.from_bytes(
-              scan.decoded.verificationKey,
-            );
-            const signature = CML.Ed25519Signature.from_raw_bytes(
-              scan.decoded.signature,
-            );
-            try {
-              signatureIsValid = publicKey.verify(
-                input.transactionId,
-                signature,
-              );
-            } finally {
-              publicKey.free();
-              signature.free();
-            }
-          } catch {
-            signatureIsValid = false;
+            signatureIsValid = publicKey.verify(input.transactionId, signature);
+          } finally {
+            publicKey.free();
+            signature.free();
           }
           const addressSeen = signatureControl.addressSeen + 1;
           const addressCount =
@@ -4128,9 +4132,9 @@ export const prepareValidationTrace = (input: ValidationMachineReplayInput) =>
       authenticatedLedgerOps,
       postLedgerRoot,
       ledgerDeltaRoot,
-      witnesses,
+      traceSink,
+      recording,
       ledgerDeltaFrontier,
-      witnessExecutionBudgets,
       transactionCommitment,
       validationContextHash,
       verdict,

@@ -6,6 +6,7 @@ import {
   isolatedForksPool,
   midgardSourceEnvironments,
   rawSqlLoaderPlugin,
+  runSharedFixturesGlobalSetup,
   workspaceBundleProjects,
 } from "@al-ft/midgard-test-support/vitest";
 import { configDefaults, defineConfig } from "vitest/config";
@@ -122,8 +123,13 @@ export default defineConfig({
     // machine down to one file at a time.
     ...isolatedForksPool({ maxForks: testMaxForks() }),
     // Creates and migrates one database per worker shard before any file runs,
-    // after refusing a stale onchain/aiken/plutus.json.
-    globalSetup: [blueprintStampGlobalSetup, "./tests/global-setup.ts"],
+    // after refusing a stale onchain/aiken/plutus.json, and gives the run its
+    // shared fixture directory.
+    globalSetup: [
+      blueprintStampGlobalSetup,
+      runSharedFixturesGlobalSetup,
+      "./tests/global-setup.ts",
+    ],
     // Packs Node CI's `--shard=i/3` by the CI seconds each file took and starts
     // the longest files first: a few database and emulator files run two to
     // three minutes each while most files take seconds, so a giant that starts

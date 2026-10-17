@@ -270,14 +270,14 @@ Ask:
 
 Every flat-reversion measurement is judged against 13,200,000 memory units:
 the 20% reserve off Cardano's 16,500,000 `maxTxExUnits` memory cap
-([GOAL_SPEC §3.3](../../../../docs/exec-plans/GOAL_SPEC.md)). Execution
-ledgers pin measured units for several lanes
-`[ci: aiken-ci.yml/Pin the Q1x family execution ledger]` and its sibling
-`Pin the ... execution ledger` steps, judged by
-`[script: onchain/aiken/scripts/exec-ledger-within-basis-v1.mjs]`. The Aiken
-guards print each run's largest unit-test units as a share of this basis, but
-only a ledger gates them. Blind spot: a validator without a ledger can grow
-past the budget with every suite green.
+([GOAL_SPEC §3.3](../../../../docs/exec-plans/GOAL_SPEC.md)). The script
+budgets in `demo/midgard-core/src/script-budgets.json` hold measured units for
+the budgeted tests to ceilings at or under this basis
+`[ci: aiken-ci.yml/Hold every script budget to its ceiling]`, judged by
+`[script: onchain/aiken/scripts/script-budgets.mjs]`. The Aiken guards print
+each run's largest unit-test units as a share of this basis, but only a budget
+gates them. Blind spot: a validator without a budgeted test can grow past the
+basis with every suite green.
 
 Ask:
 
