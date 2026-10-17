@@ -88,7 +88,10 @@ import {
   nodeSeededAddresses,
   protocolPaymentCredentials,
 } from "./intent-journal.tracked-set.js";
-import { coalescedRunner } from "./l1-follower.coalesced-runner.js";
+import {
+  coalescedRunner,
+  localFaultProgress,
+} from "./l1-follower.coalesced-runner.js";
 import { driverSink } from "./l1-follower.driver-sink.js";
 import { failureHold } from "./l1-follower.failure-hold.js";
 import { nodeFamilyPredicate } from "./l1-follower.intent-predicates.js";
@@ -223,6 +226,8 @@ const followL1 = <R>(
       recompute.rebaseIfDue,
     );
     const admissionDivergences = forcedAdmissionDivergences();
+    // The blocks processing commits: progress past a local fault (R1).
+    const progress = localFaultProgress();
     const driver = createFollowerDriver({
       failureHold,
       store,
@@ -257,6 +262,7 @@ const followL1 = <R>(
             store,
             config: plan.stateQueue,
             ports: landedPorts,
+            committed: progress.committed,
             run: (effect) =>
               Runtime.runPromise(dbRuntime)(
                 withDriverView(change.view)(effect),
@@ -312,11 +318,13 @@ const followL1 = <R>(
       recompute,
       refreshJournal: () => journal.refresh(),
     });
-    // A database transient that outlives its bound exits the node (R2).
+    // A database transient that outlives its bound exits the node (R2), as
+    // does a local fault on landed blocks processing makes no progress past.
     const trigger = coalescedRunner(
       () => Runtime.runPromise(runtime)(tick).then((ran) => ran.holds),
       abort.signal,
       {
+        progress,
         onExhausted: (holds) =>
           signalTransientExhausted(globals.TRANSIENT_EXHAUSTION, {
             source: "driver",

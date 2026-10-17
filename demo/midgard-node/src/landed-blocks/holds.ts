@@ -74,8 +74,9 @@ export const LANDED_BLOCK_REPLAY_INCOMPLETE = "landed_block_replay_incomplete";
  * This node's Ed25519 verifier could not answer while it replayed a foreign
  * block (libsodium failed to initialise, or raised). A local fault, never
  * attributed to the block: retried on the driver's backoff, and after a
- * fixed number of runs in a row on the same block the node exits non-zero
- * for its supervisor to restart it (`l1-follower.coalesced-runner.ts`).
+ * fixed number of runs with no progress past the faulted block (processing
+ * committing it) the node exits non-zero for its supervisor to restart it
+ * (`l1-follower.coalesced-runner.ts`).
  */
 export const LANDED_BLOCK_VERIFIER_UNAVAILABLE =
   "landed_block_verifier_unavailable";

@@ -422,6 +422,7 @@ const run = <R>(
           break;
         }
         yield* viewChecked(ports, queue.view, processRow(step.row));
+        options.committed?.(step.row.headerHash);
         applyDelta(ledger, step.row);
         parent = {
           headerHash: step.row.headerHash,

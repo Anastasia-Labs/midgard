@@ -90,10 +90,11 @@ export const isTransientFailureHold = (hold: DriverHold): boolean =>
 const LOCAL_FAULT = new WeakMap<DriverHold, string>();
 
 /**
- * Marks `hold` as a local fault of this process on `subject` (a block this
- * node's Ed25519 verifier could not check): retried on the coalesced
- * runner's backoff a bounded number of runs in a row on the same subject,
- * after which the node exits for its supervisor to restart it.
+ * Marks `hold` as a local fault of this process on `subject` (the header
+ * hash of a block this node's Ed25519 verifier could not check): retried on
+ * the coalesced runner's backoff a bounded number of runs with no progress
+ * past the faulted blocks, after which the node exits for its supervisor to
+ * restart it.
  */
 export const localFault = (hold: DriverHold, subject: string): DriverHold => {
   LOCAL_FAULT.set(hold, subject);
