@@ -114,7 +114,6 @@ export function buildInvocation(seat, workspace) {
       "--config",
       'approval_policy="never"',
       "--config",
-      "--config",
       'web_search="disabled"',
       "--disable",
       "hooks",
@@ -155,7 +154,7 @@ export function buildInvocation(seat, workspace) {
       "Read,Glob,Grep",
       "--strict-mcp-config",
       "--mcp-config",
-      "{}",
+      '{"mcpServers":{}}',
       "--settings",
       '{"disableAllHooks":true}',
     ];
@@ -229,6 +228,26 @@ export function isolateCodexMcp(invocation, execImpl = execFileSync) {
   };
 }
 
+// Provider CLIs report a missing or expired login as plain text; a nested CLI does not share
+// the caller's session, so name the fix instead of a bare exit status.
+const AUTH_FAILURE =
+  /Failed to authenticate|OAuth (?:session|token) (?:has )?expired|Invalid API key|Please run \/login|Not logged in/iu;
+
+function providerFailure(command, code, output, stderr) {
+  const text = `${stderr}\n${output}`;
+  if (AUTH_FAILURE.test(text)) {
+    const login =
+      command === "claude" ? "claude auth login" : `${command} login`;
+    return new Error(
+      `${command} CLI is not authenticated; run \`${login}\` in a terminal and retry. No verdict produced`,
+    );
+  }
+  const tail = text.trim().split("\n").slice(-5).join("\n");
+  return new Error(
+    `Provider exited ${code}; no verdict produced${tail ? `\n${tail}` : ""}`,
+  );
+}
+
 export function runInvocation(
   invocation,
   prompt,
@@ -273,14 +292,17 @@ export function runInvocation(
     child.on("close", (code, signal) => {
       clearTimeout(timer);
       const output = Buffer.concat(stdout).toString("utf8");
+      const errors = Buffer.concat(stderr).toString("utf8");
       if (failure) reject(failure);
       else if (code !== 0)
         reject(
-          new Error(`Provider exited ${code ?? signal}; no verdict produced`),
+          providerFailure(invocation.command, code ?? signal, output, errors),
         );
       else if (!output.trim())
         reject(new Error("Provider returned an empty response"));
-      else accept({ output, stderr: Buffer.concat(stderr).toString("utf8") });
+      else if (!output.trim().includes("\n") && AUTH_FAILURE.test(output))
+        reject(providerFailure(invocation.command, code, output, errors));
+      else accept({ output, stderr: errors });
     });
     child.stdin.end(prompt);
   });

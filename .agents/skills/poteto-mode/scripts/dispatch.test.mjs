@@ -144,6 +144,46 @@ test("provider task receives literal stdin without shell interpolation", async (
   }
 });
 
+test("provider argument vectors parse as each CLI expects", () => {
+  const codex = buildInvocation(
+    { provider: "codex", model: "m", effort: "high" },
+    tmpdir(),
+  ).args;
+  codex.forEach((arg, index) => {
+    if (arg === "--config") assert.match(codex[index + 1], /^[a-z_.]+=\S/u);
+  });
+  const claude = buildInvocation({ provider: "claude" }, tmpdir()).args;
+  const mcp = JSON.parse(claude[claude.indexOf("--mcp-config") + 1]);
+  assert.deepEqual(mcp, { mcpServers: {} });
+});
+
+test("an unauthenticated provider names the login command instead of a bare exit status", async () => {
+  const expired =
+    "Failed to authenticate: OAuth session expired and could not be refreshed";
+  for (const provider of ["claude", "codex"]) {
+    const invocation = buildInvocation({ provider }, tmpdir());
+    const login = provider === "claude" ? "claude auth login" : "codex login";
+    for (const exit of [1, 0]) {
+      await assert.rejects(
+        runInvocation(invocation, "review", {
+          spawnImpl: nodeStub(
+            `process.stdin.resume(); console.log(${JSON.stringify(expired)}); process.exitCode=${exit}`,
+          ),
+        }),
+        (error) => error.message.includes(`run \`${login}\``),
+      );
+    }
+  }
+  await assert.rejects(
+    runInvocation(buildInvocation({ provider: "codex" }, tmpdir()), "review", {
+      spawnImpl: nodeStub(
+        'process.stdin.resume(); console.error("unexpected argument"); process.exitCode=2',
+      ),
+    }),
+    /exited 2; no verdict produced\nunexpected argument/u,
+  );
+});
+
 test("provider failure, timeout, excessive output and empty success cannot become verdicts", async () => {
   const invocation = buildInvocation({ provider: "codex" }, tmpdir());
   await assert.rejects(
