@@ -64,6 +64,7 @@ export {
   TxOrderSpendRedeemerSchema,
   type TxOrderUTxOV1,
   utxosToTxOrderUTxOs,
+  utxoToTxOrderUTxO,
 } from "./tx-order.submit-tx-order-config.js";
 export {
   type CekProgramMaterialPublication,

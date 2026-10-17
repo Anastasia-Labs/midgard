@@ -13,7 +13,9 @@
  * `holds.ts` for why it is a wait); a known id outside the window, an
  * undecodable one, a known in-window id it leaves out, or one it names
  * twice, is `invalid`; an in-window order whose output cannot be read
- * back at the view is `forced_order_pending`. A block that ends past what
+ * back at the view is `forced_order_pending`. A forced order whose datum no
+ * order cast accepts (`readForcedOrder`'s `unreadable`) is left out the same
+ * way as an undecodable event. A block that ends past what
  * the view can know (`view time + event wait - 1`) is `missing`, like a DA
  * payload that is not available yet.
  */
@@ -100,8 +102,9 @@ const exact = (
 
 /**
  * The forced orders admitted in the block's window at the view: order id
- * hex to raw datum, from the facts. An in-window order whose output cannot
- * be read back there is a wait.
+ * hex to raw datum, from the facts, and the in-window unreadable ones, id
+ * hex to why. An in-window order whose output cannot be read back there is
+ * a wait.
  */
 const forcedInWindow = (
   store: FactStore,
@@ -119,20 +122,23 @@ const forcedInWindow = (
       );
     const forced = new Map<string, Buffer>();
     const seen = new Set<string>();
+    const unreadable = new Map<string, string>();
     for (const admitted of read.orders) {
-      if (admitted.order !== null)
-        seen.add(admitted.order.idCbor.toString("hex"));
+      const order = admitted.read;
+      if (order !== null) seen.add(order.idCbor.toString("hex"));
       if (!inWindow(admitted.inclusionTime)) continue;
-      if (admitted.order === null)
+      if (order === null)
         return yield* Effect.fail(
           new Verdict(
             "forced_order_pending",
             `forced order ${outRefLabel(admitted.outRef)} is admitted in the window but its output cannot be read at the view`,
           ),
         );
-      forced.set(admitted.order.idCbor.toString("hex"), admitted.order.datum);
+      if (order.kind === "unreadable")
+        unreadable.set(order.idCbor.toString("hex"), order.detail);
+      else forced.set(order.idCbor.toString("hex"), order.datum);
     }
-    return { forced, seen };
+    return { forced, seen, unreadable };
   });
 
 const depositLedgerKey = (idCbor: string) => {
@@ -326,12 +332,11 @@ export const replayForeignBlock = (deps: {
             });
         }
       }
-      const { forced, seen: seenForced } = yield* forcedInWindow(
-        deps.store,
-        deps.forcedOrders,
-        view,
-        inWindow,
-      );
+      const {
+        forced,
+        seen: seenForced,
+        unreadable,
+      } = yield* forcedInWindow(deps.store, deps.forcedOrders, view, inWindow);
       const { payload, acquired } = yield* payloadOf(
         fetchDa,
         refetching,
@@ -360,6 +365,7 @@ export const replayForeignBlock = (deps: {
           seenForced,
           body.forced_transactions,
           "forced order",
+          unreadable,
         );
       if (mismatch !== undefined) return yield* Effect.fail(mismatch);
       const memberships: WithdrawalMembership[] = [];

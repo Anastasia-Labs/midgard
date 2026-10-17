@@ -122,19 +122,14 @@ describe("V1 transaction-order datum, §8 field carriage, and CEK program materi
       SDK.decodeTxOrderDatumCbor(SDK.encodeTxOrderDatumCbor(datum)),
     ).toEqual(datum);
 
-    const overlongInclusionTime = datumCbor.replace(
-      "187b581c",
-      "1a0000007b581c",
+    // Read as the chain casts it: any encoding, the order datum's shape only.
+    const read = (cbor: string) =>
+      SDK.decodeTxOrderDatumCbor(Buffer.from(cbor, "hex"));
+    expect(read(datumCbor.replace("187b581c", "1a0000007b581c"))).toEqual(
+      datum,
     );
-    expect(() =>
-      SDK.decodeTxOrderDatumCbor(Buffer.from(overlongInclusionTime, "hex")),
-    ).toThrow(/exact canonical encoding/u);
-    expect(() =>
-      Data.from(`d87a${datumCbor.slice(4)}`, SDK.TxOrderDatum),
-    ).toThrow();
-    expect(() =>
-      Data.from(`${datumCbor.slice(0, -2)}00ff`, SDK.TxOrderDatum),
-    ).toThrow();
+    expect(() => read(`d87a${datumCbor.slice(4)}`)).toThrow();
+    expect(() => read(`${datumCbor.slice(0, -2)}00ff`)).toThrow();
 
     const pointerDatum: SDK.TxOrderDatum = {
       ...datum,

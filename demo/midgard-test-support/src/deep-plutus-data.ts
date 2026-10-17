@@ -24,6 +24,25 @@ export const deepPlutusDataCbor = ({
   readonly depth: number;
 }): string => `${(shape === "list" ? "81" : "d87981").repeat(depth)}00`;
 
+/** The deepest canonical nesting a transaction can carry, as the SDK and
+ * Aiken encode it (`canonicalDeepPlutusDataCbor`). */
+export const CANONICAL_MAX_DEPTHS = [
+  { shape: "list", depth: 7_000 },
+  { shape: "constr", depth: 3_700 },
+] as const;
+
+/** `depth` nested one-item containers of `shape` around the integer 0, as
+ * the SDK and Aiken encode them: indefinite-length lists (`9f … ff`) or
+ * constructor-0 fields (`d8799f … ff`). */
+export const canonicalDeepPlutusDataCbor = ({
+  shape,
+  depth,
+}: {
+  readonly shape: DeepPlutusDataCase["shape"];
+  readonly depth: number;
+}): string =>
+  `${(shape === "list" ? "9f" : "d8799f").repeat(depth)}00${"ff".repeat(depth)}`;
+
 /**
  * `cbor` with its one occurrence of the item `from` replaced by `to`, by
  * bytes alone: a fixture built this way never runs the decoder it tests.
