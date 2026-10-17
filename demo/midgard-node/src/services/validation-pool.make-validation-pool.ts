@@ -26,6 +26,37 @@ import {
 } from "./validation-pool.bundled-worker-exec-argv.js";
 import { FixedValidationWorkerPool } from "./validation-pool.fixed-validation-worker-pool.js";
 
+/** The pool's import-check lane (`ValidationPoolService.evaluateImportCheck`). */
+export const evaluateImportCheckOn =
+  (
+    pool: FixedValidationWorkerPool,
+  ): NonNullable<ValidationPoolService["evaluateImportCheck"]> =>
+  (request, options) =>
+    Effect.tryPromise({
+      try: () =>
+        pool.submitBackground(
+          { kind: "cek_verdict", jobId: pool.allocateJobId(), request },
+          options,
+        ),
+      catch: (cause) =>
+        cause instanceof ValidationWorkerError
+          ? cause
+          : new ValidationWorkerError({
+              message: "import check worker failed",
+              cause,
+            }),
+    }).pipe(
+      Effect.flatMap((response) =>
+        response.kind === "cek_verdict"
+          ? Effect.succeed(response.result)
+          : Effect.fail(
+              new ValidationWorkerError({
+                message: `expected cek_verdict response, got ${response.kind}`,
+              }),
+            ),
+      ),
+    );
+
 const makeValidationPool = Effect.gen(function* () {
   const config = yield* NodeConfig;
   const deploymentIdentity = yield* ContractDeploymentIdentity;
@@ -70,6 +101,7 @@ const makeValidationPool = Effect.gen(function* () {
       },
       signatureVerifier: config.VALIDATION_WORKER_NODE_ED25519 ? "node" : "cml",
     },
+    config.IMPORT_CHECK.backlogWorkers,
   );
 
   const reportStats = Effect.sync(() => pool.stats()).pipe(
@@ -126,6 +158,11 @@ const makeValidationPool = Effect.gen(function* () {
               ),
         ),
       ),
+    evaluateImportCheck: (request, options) =>
+      evaluateImportCheckOn(pool)(request, options).pipe(
+        Effect.ensuring(reportStats),
+      ),
+    importCheckBacklogShare: pool.backlogShare,
     tryEvaluateCekVerdict: (request) =>
       Effect.suspend(() => {
         const pending = pool.trySubmitAdvisory({

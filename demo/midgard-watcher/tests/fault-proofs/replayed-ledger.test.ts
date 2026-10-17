@@ -7,6 +7,7 @@ import {
   FraudProofL1CheckpointChangedError,
   FraudProofL1UnavailableError,
   type LedgerCheckpoint,
+  ReplayLocalFault,
 } from "@al-ft/midgard-fault-proofs";
 import { buildCanonicalBlockFixture } from "@al-ft/midgard-fault-proofs/test-support/canonical-block-evidence-fixture";
 import * as SDK from "@al-ft/midgard-sdk";
@@ -116,6 +117,36 @@ describe("the production replay keeper", () => {
         detail: "the follower is reconnecting",
       },
     ]);
+  });
+  it("holds a local replay fault under its own reason, and advances once it clears", async () => {
+    const h = await setup();
+    let faulted = true;
+    const keeper = createWatcherReplayedLedger({
+      follower: {
+        ...h.follower,
+        confirmed: async (current) => {
+          if (faulted) {
+            faulted = false;
+            throw new ReplayLocalFault({
+              message: "withdrawal classification failed locally",
+              cause: undefined,
+            });
+          }
+          return h.follower.confirmed(current);
+        },
+      },
+      l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
+      checkpointPath: join(directories[0]!, "local-fault.json"),
+    });
+    expect(await keeper.advance(observation([]), [])).toEqual([
+      {
+        reason: "replayed_ledger_local_fault",
+        detail: "withdrawal classification failed locally",
+      },
+    ]);
+    expect(h.durable).toEqual([]);
+    expect(await keeper.advance(observation([]), [])).toEqual([]);
+    expect(h.durable).toEqual([1000n]);
   });
 });
 

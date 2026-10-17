@@ -7,6 +7,7 @@ import {
   fileLedgerCheckpointStore,
   FraudProofL1CheckpointChangedError,
   isFraudProofL1WaitError,
+  isReplayLocalFault,
   isRetainedDaPayloadUnavailableError,
   type LedgerAt,
   type LedgerCheckpointStore,
@@ -117,6 +118,12 @@ export const createWatcherReplayedLedger = (
         input.follower.checkpointDurable(confirmed.state.endTime);
         return [];
       } catch (error) {
+        // This watcher's own replay failed: held under its own reason, and
+        // replayed again on the next pass.
+        if (isReplayLocalFault(error))
+          return [
+            { reason: "replayed_ledger_local_fault", detail: error.message },
+          ];
         if (
           !isWatcherL1TransientFailure(error) &&
           !isFraudProofL1WaitError(error) &&

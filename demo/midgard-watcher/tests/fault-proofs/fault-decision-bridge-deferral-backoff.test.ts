@@ -1,5 +1,6 @@
 import {
   FraudProofL1UnavailableError,
+  ReplayLocalFault,
   RetainedDaPayloadUnavailableError,
 } from "@al-ft/midgard-fault-proofs";
 import { describe, expect, it, vi } from "vitest";
@@ -95,6 +96,43 @@ describe("fault decision bridge deferral on a transient", () => {
       },
     });
     await expect(h.bridge.reconcileAndDispatch(current)).rejects.toBe(forged);
+  });
+
+  it("defers a header whose replay failed locally, warns once and targets the fault once it clears", async () => {
+    const current = observation([headerFixture("01")], "Idle", [ATTESTED]);
+    const [faulty] = current.finalizedHeaders;
+    const warn = vi.fn();
+    let faults = 2;
+    const h = harness({
+      current,
+      categoryByHeader: { [faulty!.headerHash]: "doubleSpend" },
+      nowMs: IN_WINDOW,
+      warn,
+      classifyOverride: (fresh) => {
+        if (faults > 0) {
+          faults -= 1;
+          throw new ReplayLocalFault({
+            message: "withdrawal classification failed locally",
+            cause: undefined,
+          });
+        }
+        return fresh;
+      },
+    });
+    expect((await h.bridge.reconcileAndDispatch(current)).target).toBeNull();
+    expect((await h.bridge.reconcileAndDispatch(current)).target).toBeNull();
+    expect(h.enqueued).toEqual([]);
+    expect(warn).toHaveBeenCalledExactlyOnceWith({
+      event: "classification_deferred",
+      headerHash: faulty!.headerHash,
+      cause: "replay_local_fault",
+    });
+
+    await h.bridge.reconcileAndDispatch(current);
+    expect(h.enqueued.map(({ headerHash }) => headerHash)).toEqual([
+      faulty!.headerHash,
+    ]);
+    expect(h.application.classifyHeader).toHaveBeenCalledTimes(3);
   });
 
   it("waits for an Attested payload while a source does not answer, then targets it once", async () => {

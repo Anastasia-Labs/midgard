@@ -20,6 +20,7 @@ import {
 } from "../phase-b.js";
 import {
   type LocalScriptEvaluation,
+  type MidgardCommittedScriptRun,
   type PhaseBConfig,
   type QueuedTx,
   type RejectedTx,
@@ -50,6 +51,21 @@ export type ValidationVerdictEventInput = Readonly<{
   /** "proof" captures every CEK step for a validation-machine trace;
    * verdict-only callers leave the default. */
   cekExecutionMode?: PhaseBConfig["cekExecutionMode"];
+  /**
+   * Replays the transaction by its committed Accepted verdict: no script is
+   * run and no script context is built. Each script run is handed here
+   * instead, without its context (a later check rebuilds it), and counts as
+   * accepted within its declared budget. Every other check runs as in a
+   * full replay. Only for verdict mode.
+   */
+  committedScriptRun?: (run: MidgardCommittedScriptRun) => void;
+  /**
+   * Runs each script run through this hook instead of the in-process
+   * executor; a failure of the hook fails the replay. Every other check runs
+   * as in a full replay. Only for verdict mode, and not with
+   * `committedScriptRun`.
+   */
+  evaluateScriptRun?: NonNullable<PhaseBConfig["evaluateCekVerdict"]>;
 }>;
 
 export type ValidationVerdictEvent = Readonly<{
@@ -118,6 +134,21 @@ export const replayValidationVerdictEvent = (
       }),
     );
     const scriptEvaluations: LocalScriptEvaluation[] = [];
+    const committedScriptRun = input.committedScriptRun;
+    const evaluateScriptRun = input.evaluateScriptRun;
+    if (committedScriptRun !== undefined && evaluateScriptRun !== undefined) {
+      return yield* Effect.fail(
+        new Error("a replay takes one script-run hook at most"),
+      );
+    }
+    if (
+      (committedScriptRun !== undefined || evaluateScriptRun !== undefined) &&
+      (input.cekExecutionMode ?? "verdict") !== "verdict"
+    ) {
+      return yield* Effect.fail(
+        new Error("a script-run hook runs in verdict mode only"),
+      );
+    }
     if ("code" in phaseA) {
       return {
         transactionId: snapshot.transactionId,
@@ -145,8 +176,14 @@ export const replayValidationVerdictEvent = (
           : { cekExecutionMode: input.cekExecutionMode }),
         maxScriptExecutionSteps:
           snapshot.consensusProfile.limits.maxValidationMachineStepCount,
-        onScriptEvaluated: (_txId, evaluation) =>
-          scriptEvaluations.push(evaluation),
+        ...(committedScriptRun !== undefined
+          ? { committedScriptRun }
+          : evaluateScriptRun === undefined
+            ? {
+                onScriptEvaluated: (_txId, evaluation) =>
+                  scriptEvaluations.push(evaluation),
+              }
+            : { evaluateCekVerdict: evaluateScriptRun }),
       },
     );
     if (phaseB.accepted.length + phaseB.rejected.length !== 1) {

@@ -16,6 +16,7 @@ import {
 } from "../artifact-schema.js";
 import { isStrictlyAscending, splitPackedHex } from "../da/local-signers.js";
 import { type ExUnitsBudget } from "../workers/utils/commit-block-planner.commit-scheduler-evidence-key.js";
+import { type ImportCheckConfig } from "./config.import-check.js";
 import { type NativeLedgerSettings } from "./native-ledger.js";
 
 /**
@@ -197,6 +198,8 @@ export type NodeConfigDep = {
   /** The per-block declared ex-units budget for normal transactions
    * (`config.block-ex-units-budget.ts`). */
   BLOCK_EX_UNITS_BUDGET: ExUnitsBudget;
+  /** The import checker's kill and per-block cap (`config.import-check.ts`). */
+  IMPORT_CHECK: ImportCheckConfig;
   /** Explicit housekeeping window in days; undefined when unset, which means
    * the verified deployment manifest's window (`resolveHousekeepingRetentionDays`). */
   RETENTION_DAYS: number | undefined;

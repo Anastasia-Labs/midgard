@@ -292,7 +292,21 @@ export type PhaseBConfig = {
   readonly evaluateCekVerdict?: (
     request: MidgardCekVerdictRequest,
   ) => Effect.Effect<LocalScriptEvalResult, Error>;
+  /**
+   * Applies the transaction by its committed Accepted verdict: each
+   * non-native script run is handed here instead of running, without its
+   * script context being built, and counts as accepted within its declared
+   * budget. Takes precedence over every evaluation hook.
+   */
+  readonly committedScriptRun?: (run: MidgardCommittedScriptRun) => void;
 };
+
+/** A script run a committed-verdict replay hands on: the run without its
+ * script context, which a later check rebuilds. */
+export type MidgardCommittedScriptRun = Omit<
+  MidgardCekVerdictRequest,
+  "contextCbor"
+>;
 
 /**
  * Serializable subset of queued-transaction metadata used at process
