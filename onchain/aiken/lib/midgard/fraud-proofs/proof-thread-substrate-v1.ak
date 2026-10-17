@@ -364,27 +364,6 @@ pub fn event_pre_state_v1(
   }
 }
 
-pub fn subject_event_pre_state_v1(
-  header: ledger_state.HeaderV1,
-  subject: VerdictSubjectV1,
-  event_membership: transition_trace.RootMembershipProof<
-    ledger_state.EventKey,
-    ledger_state.EventToStepValue,
-  >,
-  step_membership: transition_trace.RootMembershipProof<
-    Int,
-    ledger_state.TransitionStep,
-  >,
-) -> EventPreStateV1 {
-  expect event_key_matches_subject_v1(event_membership.key, subject)
-  event_pre_state_v1(
-    header,
-    event_membership.key,
-    event_membership,
-    step_membership,
-  )
-}
-
 /// Physical event door. Source/header provenance was established by step01;
 /// the only returned authority is this event's authenticated transition index.
 pub fn subject_event_step_index_v1(
