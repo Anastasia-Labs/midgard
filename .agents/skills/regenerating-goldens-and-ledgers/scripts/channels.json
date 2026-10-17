@@ -444,7 +444,7 @@
     {
       "id": "nested-boundary-aiken",
       "kind": "golden",
-      "summary": "Nested datum, redeemer and Value maxima found by three vitest suites, rebound by name into two hand-written Aiken modules.",
+      "summary": "Nested datum, redeemer and Value maxima found by three vitest suites, rebound by name into three hand-written Aiken modules.",
       "generators": [
         "demo/midgard-validation/scripts/generate-nested-boundary-aiken-goldens.mjs"
       ],
@@ -461,7 +461,8 @@
       ],
       "outputs": [
         "onchain/aiken/lib/midgard/cek-data-traverse.max-cardano.test.ak",
-        "onchain/aiken/lib/midgard/ledger-output-value-v1.test.ak"
+        "onchain/aiken/lib/midgard/ledger-output-value-v1.test.ak",
+        "onchain/aiken/lib/midgard/ledger-output-value.max-cardano.test.ak"
       ],
       "sync": {
         "run": "pnpm --dir demo/midgard-validation run fixtures:nested-boundary-aiken:sync"
@@ -507,6 +508,32 @@
       }
     },
     {
+      "id": "cek-cost-v1-aiken",
+      "kind": "golden",
+      "summary": "Every builtin's cpu and memory budget at a spread of argument sizes, from the pinned 350-entry Plutus V3 cost vector through the TypeScript cost twin: a whole generated Aiken module run against the on-chain cost table.",
+      "generators": [
+        "demo/midgard-validation/scripts/generate-cek-cost-v1-aiken-goldens.mjs"
+      ],
+      "packageScripts": [
+        "demo/midgard-validation:fixtures:cek-cost-v1-aiken:sync",
+        "demo/midgard-validation:fixtures:cek-cost-v1-aiken:check"
+      ],
+      "producers": ["demo/midgard-validation"],
+      "inputs": ["@golden-channel"],
+      "outputs": ["onchain/aiken/lib/midgard/cek-cost-v1-golden.test.ak"],
+      "aikenImportsOfOutputs": true,
+      "sync": {
+        "run": "pnpm --dir demo/midgard-validation run fixtures:cek-cost-v1-aiken:sync"
+      },
+      "check": {
+        "run": "pnpm --dir demo/midgard-validation run fixtures:cek-cost-v1-aiken:check"
+      },
+      "ci": {
+        "workflow": ".github/workflows/midgard-node-ci.yml",
+        "step": "Check V1 CEK builtin cost golden vectors"
+      }
+    },
+    {
       "id": "cek-builtin-cardano-v1",
       "kind": "golden",
       "summary": "Every builtin tag evaluated by the pinned Aiken evaluator, values and failures, with the ledger's outcome recorded where the two differ.",
@@ -537,6 +564,32 @@
       "ci": {
         "workflow": ".github/workflows/midgard-node-ci.yml",
         "step": "Check V1 CEK builtin golden vectors"
+      }
+    },
+    {
+      "id": "cek-program-large-integer",
+      "kind": "golden",
+      "summary": "Canonical CEK program envelope and material for a program that adds a 65-byte integer, decoded and executed by the material-execution vitest suite.",
+      "generators": [
+        "demo/midgard-validation/scripts/generate-cek-program-large-integer-fixture.mjs"
+      ],
+      "packageScripts": [
+        "demo/midgard-validation:fixtures:cek-program-large-integer:sync",
+        "demo/midgard-validation:fixtures:cek-program-large-integer:check"
+      ],
+      "producers": ["demo/midgard-core", "demo/midgard-validation"],
+      "inputs": ["@golden-channel"],
+      "outputs": [
+        "demo/midgard-validation/tests/fixtures/cek-program-large-integer.json"
+      ],
+      "sync": {
+        "run": "pnpm --dir demo/midgard-validation run fixtures:cek-program-large-integer:sync"
+      },
+      "check": {
+        "run": "pnpm --dir demo/midgard-validation run fixtures:cek-program-large-integer:check"
+      },
+      "ci": {
+        "none": "No workflow step runs fixtures:cek-program-large-integer:check."
       }
     },
     {

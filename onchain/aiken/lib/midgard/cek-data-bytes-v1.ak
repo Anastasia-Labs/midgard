@@ -778,11 +778,7 @@ pub fn finalize_v1(
           bytes_root,
           bytes_length: control.bytes_length,
           cbor_length: control.source_length,
-          memory: 4 + if control.bytes_length == 0 {
-            1
-          } else {
-            control.bytes_length
-          },
+          memory: 4 + cek_data_v1.bytes_memory_size_v1(control.bytes_length),
         }
         Some(
           cek_data_v1.DataSummaryV1 {

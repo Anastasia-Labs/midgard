@@ -1,6 +1,13 @@
-import { parseChunkedMagnitudeSyntax } from "./cek-data-integer.chunked-magnitude.js";
+import {
+  midgardCekBytesMemoryWords,
+  midgardCekIntegerMemoryWords,
+} from "./cek-memory-size.js";
 
-export const MIDGARD_CEK_DATA_INTEGER_SYNTAX_BYTES = 14;
+/**
+ * Covers a whole definite integer: a tag, a two-byte length head and a
+ * 64-byte magnitude.
+ */
+export const MIDGARD_CEK_DATA_INTEGER_SYNTAX_BYTES = 67;
 
 export const UINT32_MAX = 0xffff_ffff;
 export const UINT64_MAX = 0xffff_ffff_ffff_ffffn;
@@ -58,16 +65,6 @@ const readCanonicalCborArgument = (
   };
 };
 
-const unsignedByteLength = (value: bigint): bigint => {
-  let size = 1n;
-  let remaining = value;
-  while (remaining >= 256n) {
-    size += 1n;
-    remaining >>= 8n;
-  }
-  return size;
-};
-
 /** Memory derived from the integer's authenticated prefix and canonical extent. */
 export const parseMidgardCekDataIntegerSyntax = ({
   syntaxBytes,
@@ -97,12 +94,15 @@ export const parseMidgardCekDataIntegerSyntax = ({
       ) {
         return null;
       }
-      return 4n + unsignedByteLength(argument.value * 2n);
+      // |n| is the argument for major 0 and one more for major 1.
+      return (
+        4n +
+        midgardCekIntegerMemoryWords(argument.value + BigInt(argument.major))
+      );
     }
     if (first !== 0xc2 && first !== 0xc3) return null;
-    if (syntaxBytes[1] === 0x5f) {
-      return parseChunkedMagnitudeSyntax(syntaxBytes, sourceLength);
-    }
+    // An indefinite magnitude is measured chunk by chunk (Measure stage).
+    if (syntaxBytes[1] === 0x5f) return null;
     const magnitude = readCanonicalCborArgument(syntaxBytes, 1);
     if (
       magnitude === null ||
@@ -116,7 +116,16 @@ export const parseMidgardCekDataIntegerSyntax = ({
     }
     const firstMagnitudeByte = syntaxBytes[magnitude.nextOffset]!;
     if (firstMagnitudeByte === 0) return null;
-    return 4n + magnitude.value + (firstMagnitudeByte >= 0x80 ? 1n : 0n);
+    if (first === 0xc2) return 4n + midgardCekBytesMemoryWords(magnitude.value);
+    // Tag 3 holds |n| - 1.
+    let value = 0n;
+    for (const byte of syntaxBytes.subarray(
+      magnitude.nextOffset,
+      magnitude.nextOffset + Number(magnitude.value),
+    )) {
+      value = (value << 8n) | BigInt(byte);
+    }
+    return 4n + midgardCekIntegerMemoryWords(value + 1n);
   } catch {
     return null;
   }

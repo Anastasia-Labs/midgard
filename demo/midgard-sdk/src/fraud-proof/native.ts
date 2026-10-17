@@ -1,3 +1,4 @@
+import { deploymentValidatorTitle as deployedTitle } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { asDataType } from "@al-ft/midgard-core/lucid-data";
 import { Data } from "@lucid-evolution/lucid";
 
@@ -193,12 +194,13 @@ export const ChunkedProofClaim = asDataType<ChunkedProofClaim>(
 );
 
 /** Blueprint title of the merkelized published-chunk verifier. */
-export const MPF_CHUNKED_VERIFY_WITHDRAW_TITLE =
-  "mpf_chunked_verify.verify.withdraw";
+export const MPF_CHUNKED_VERIFY_WITHDRAW_TITLE = deployedTitle(
+  "chunkedVerifyWithdraw",
+);
 
 /** Blueprint title of the direct MPF non-membership verifier. */
 export const PEXCLUDES_EXCLUSION_WITHDRAW_TITLE =
-  "pexcludes.exclusion.withdraw";
+  deployedTitle("pexcludesWithdraw");
 
 /** The `value_hash` slot of a non-membership claim, which has no value. */
 export const ABSENT_VALUE_HASH = "00".repeat(32);

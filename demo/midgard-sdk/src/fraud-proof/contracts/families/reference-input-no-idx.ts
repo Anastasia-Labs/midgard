@@ -1,3 +1,4 @@
+import { deploymentValidatorTitle as deployedTitle } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { Data, Network } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
@@ -19,10 +20,10 @@ import {
 } from "../types.js";
 
 export const REFERENCE_INPUT_NO_IDX_FAULT_PROOF_TITLES = {
-  step01: "fraud_proofs/reference_input_no_idx/step_01.main.spend",
-  step02: "fraud_proofs/reference_input_no_idx/step_02.main.spend",
-  step03: "fraud_proofs/reference_input_no_idx/step_03.main.spend",
-  step04: "fraud_proofs/reference_input_no_idx/step_04.main.spend",
+  step01: deployedTitle("fraudProofReferenceInputNoIdx"),
+  step02: deployedTitle("fraudProofReferenceInputNoIdxStep02"),
+  step03: deployedTitle("fraudProofReferenceInputNoIdxStep03"),
+  step04: deployedTitle("fraudProofReferenceInputNoIdxStep04"),
 } as const;
 
 /**

@@ -26,13 +26,13 @@ describe("V1 script-context output commitments", () => {
     const cardano = commitMidgardScriptContextTxOut(output, "cardano");
     const midgard = commitMidgardScriptContextTxOut(output, "midgard");
     expect(Buffer.from(cardano.root).toString("hex")).toBe(
-      "e1649a619efea4d8319405dae3455e5add966785c25f269e83fd0f15352693a7",
+      "9a798cedaf0cebe75f5254e541a33d035eb24d281a387c878b60bdbc41c53c98",
     );
     expect(Buffer.from(midgard.root).toString("hex")).toBe(
-      "65951e5653516caf350b2cd750bab349fbd1a48811a4c278859dd825868c2d32",
+      "83ec6cf75d0b365e4ffb51c25ee65faf7da53b7d6d21381c97aa651bba903085",
     );
     expect(cardano.cborLength).toBe(133n);
-    expect(cardano.memory).toBe(169n);
+    expect(cardano.memory).toBe(94n);
     expect(midgard.cborLength).toBe(cardano.cborLength);
     expect(midgard.memory).toBe(cardano.memory);
   });
@@ -87,13 +87,13 @@ describe("V1 script-context output commitments", () => {
       "midgard",
     );
     expect(Buffer.from(cardano.root).toString("hex")).toBe(
-      "66b39a3f329165f6ab15f249df38d5e8bc99230853ce5c16976b4780af1ed029",
+      "a2be4f66f683151c175713c30809198758c71485bbd424f4acf903e692b733fa",
     );
     expect(Buffer.from(midgard.root).toString("hex")).toBe(
-      "097c6693964ba9a7448e88f4e73fcaff44b7e41663d4cd3ba2b52ff3afbc3f8f",
+      "23ef033204c588b0f8c3903697e3790624a900fa373260b71497a61dbda7c970",
     );
     expect(cardano.cborLength).toBe(176n);
-    expect(cardano.memory).toBe(218n);
+    expect(cardano.memory).toBe(115n);
     expect(midgard.cborLength).toBe(cardano.cborLength);
     expect(midgard.memory).toBe(cardano.memory);
   });

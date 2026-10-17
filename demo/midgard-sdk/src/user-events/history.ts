@@ -1,3 +1,4 @@
+import { deploymentValidatorTitle as deployedTitle } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { asDataType } from "@al-ft/midgard-core/lucid-data";
 import {
   Data,
@@ -39,10 +40,10 @@ const keySchema = Data.Bytes({ minLength: 32, maxLength: 32 });
 const signerSchema = Data.Bytes({ minLength: 28, maxLength: 28 });
 export const EVENT_HISTORY_MAX_PROTECTION_TIME = 9_223_372_036_854_775_807n;
 export const EVENT_HISTORY_CONTRACT_TITLES = Object.freeze({
-  spend: "user_events/history.history.spend",
+  spend: deployedTitle("depositSpend"),
   mint: "user_events/history.history.mint",
   withdraw: "user_events/history.history.withdraw",
-  retirement: "user_events/history_retirement.retirement_observer.withdraw",
+  retirement: deployedTitle("depositHistoryRetirementWithdraw"),
 });
 
 export const EventHistoryPayloadSchema = Data.Enum([

@@ -1,3 +1,4 @@
+import { deploymentValidatorTitle as deployedTitle } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { Effect } from "effect";
 
 import {
@@ -16,9 +17,9 @@ import {
 } from "../types.js";
 
 export const WITHDRAWN_INPUT_FAULT_PROOF_TITLES = {
-  step01: "fraud_proofs/withdrawn_input/step_01.main.spend",
-  step02: "fraud_proofs/withdrawn_input/step_02.main.spend",
-  step03: "fraud_proofs/withdrawn_input/step_03.main.spend",
+  step01: deployedTitle("fraudProofWithdrawnInput"),
+  step02: deployedTitle("fraudProofWithdrawnInputStep02"),
+  step03: deployedTitle("fraudProofWithdrawnInputStep03"),
 } as const;
 
 export type WithdrawnInputFaultProofContracts = {

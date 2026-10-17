@@ -132,6 +132,10 @@ export const runFollowerCli = async (
   io: CliIo,
 ): Promise<number> => {
   const [command, ...args] = argv;
+  if (command === "--help" && args.length === 0) {
+    io.stdout(USAGE);
+    return 0;
+  }
   if (command === "reset") {
     const parsed = parseReset(args);
     if (typeof parsed === "string") {

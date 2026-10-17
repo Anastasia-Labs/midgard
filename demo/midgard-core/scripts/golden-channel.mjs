@@ -29,9 +29,11 @@ import {
   rmSync,
   writeFileSync,
 } from "node:fs";
+import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
-import { dirname, join, relative } from "node:path";
-import { aikenBinary } from "../../../scripts/lib/aiken.mjs";
+import { dirname, join, relative, resolve } from "node:path";
+
+const require = createRequire(import.meta.url);
 
 /** Bytes as lowercase hex — the only spelling any fixture in this package uses. */
 export const hex = (value) => Buffer.from(value).toString("hex");
@@ -80,6 +82,7 @@ export const formatAikenSource = ({
   const directory = mkdtempSync(join(tmpdir(), tmpPrefix));
   const target = join(directory, fileName);
   try {
+    const { aikenBinary } = require(resolve(repositoryRoot, "scripts/lib/aiken.mjs"));
     writeFileSync(target, source, "utf8");
     const result = spawnSync(aikenBinary(), ["fmt", target], {
       cwd: join(repositoryRoot, "onchain/aiken"),

@@ -18,6 +18,7 @@ import {
   referencedFiles,
   workflowRunsCheck,
 } from "./derive.mjs";
+import { goldenChecks } from "./registry.tooling-checks.mjs";
 import { loadYaml } from "../ci/lint-workflows.mjs";
 import {
   buildRegistry,
@@ -117,6 +118,19 @@ test("derived goldens read Aiken sources or the pinned builtin evaluator", () =>
         "demo/flake.lock",
         "demo/midgard-validation/tests/fixtures/cek-builtin-cardano-v1.cases.mjs",
         "demo/midgard-validation/tests/fixtures/cek-builtin-cardano-v1.generated.json",
+        "demo/midgard-validation/src/**",
+      ]) {
+        assert.ok(check.triggers.includes(path), `${check.id}: ${path}`);
+      }
+      continue;
+    }
+    // This fixture is TypeScript program material that only a vitest suite
+    // decodes and executes; no Aiken module reads it.
+    if (check.id === "golden:cek-program-large-integer") {
+      for (const path of [
+        "demo/midgard-validation/scripts/generate-cek-program-large-integer-fixture.mjs",
+        "demo/midgard-validation/tests/fixtures/cek-program-large-integer.json",
+        "demo/midgard-core/src/**",
         "demo/midgard-validation/src/**",
       ]) {
         assert.ok(check.triggers.includes(path), `${check.id}: ${path}`);
@@ -251,6 +265,8 @@ test("a FULL_RUN path selects every check; the tracked blueprint selects nothing
   for (const path of [
     "demo/scripts/deployment-profile-aiken.mjs",
     "demo/scripts/deployment-profile-budgets.mjs",
+    "demo/scripts/package-tasks.mjs",
+    "demo/scripts/package-test.mjs",
     "onchain/aiken/aiken.toml",
     "demo/pnpm-lock.yaml",
     "scripts/preflight/derive.mjs",
@@ -468,6 +484,55 @@ test("building a blueprint cannot change generated preflight references", () => 
   }
 });
 
+test("golden selection follows private imports through typed fixture helpers", () => {
+  const root = mkdtempSync(join(tmpdir(), "preflight-private-fixtures-"));
+  const directory = "demo/fixture-package";
+  const pkg = {
+    directory,
+    name: "fixture-package",
+    workspaceDependencies: [],
+    scripts: { "fixtures:example:check": "node scripts/generate.mjs --check" },
+  };
+  try {
+    for (const subdir of ["scripts", "tests/fixtures"]) {
+      mkdirSync(join(root, directory, subdir), { recursive: true });
+    }
+    writeFileSync(
+      join(root, directory, "package.json"),
+      JSON.stringify({
+        imports: { "#fixture-values": "./tests/fixtures/values.ts" },
+      }),
+    );
+    writeFileSync(
+      join(root, directory, "scripts/generate.mjs"),
+      'import "../tests/fixtures/canonical.ts";',
+    );
+    writeFileSync(
+      join(root, directory, "tests/fixtures/canonical.ts"),
+      'export { value } from "#fixture-values";',
+    );
+    writeFileSync(
+      join(root, directory, "tests/fixtures/values.ts"),
+      "export const value = 1;",
+    );
+    const checks = goldenChecks(root, [pkg], "fixtures:example:check");
+    for (const path of ["tests/fixtures/values.ts", "package.json"]) {
+      const result = selectChecks({ checks }, [`${directory}/${path}`]);
+      assert.deepEqual(
+        result.selected.map(({ check }) => check.id),
+        ["golden:example"],
+      );
+      assert.deepEqual(result.uncovered, []);
+    }
+    assert.deepEqual(
+      selectChecks({ checks }, [`${directory}/tests/unrelated.ts`]).selected,
+      [],
+    );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test("workspace lint and its helper tests cover source, rules, and baseline moves", () => {
   const baseline = "demo/scripts/lib/eslint-plugin-midgard/baseline.json";
   for (const path of [
@@ -513,7 +578,7 @@ test("golden output manifests select every split Aiken artifact", () => {
   const outputs = channel.triggers.filter((path) =>
     path.startsWith("onchain/aiken/lib/midgard/cek-core-step-goldens/"),
   );
-  assert.equal(outputs.length, 26);
+  assert.equal(outputs.length, 27);
   for (const path of outputs) {
     assert.ok(existsSync(resolve(root, path)), path);
     assert.ok(selectedIds([path]).includes(channel.id), path);

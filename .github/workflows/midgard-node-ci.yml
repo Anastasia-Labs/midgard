@@ -284,10 +284,14 @@ jobs:
         run: docker compose -f compose.yaml config --quiet
 
   node-image:
-    name: Node image
+    name: Runtime image (${{ matrix.package }})
     needs: [aiken-fork, blueprint]
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        package: [midgard-node, da-committee-node]
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - name: Download the testnet blueprint and its build record
@@ -295,14 +299,16 @@ jobs:
         with:
           name: testnet-blueprint
           path: onchain/aiken
-      - name: Build the node image
+      - name: Build and start the runtime image
         working-directory: demo
+        env:
+          IMAGE_PACKAGE: ${{ matrix.package }}
         run: |
           set -euo pipefail
-          docker build --file midgard-node/Dockerfile \
+          docker build --file "$IMAGE_PACKAGE/Dockerfile" \
             --build-context onchain=../onchain/aiken \
-            --tag midgard-node:ci .
-          docker run --rm midgard-node:ci node ./dist/index.js --help >/dev/null
+            --tag "$IMAGE_PACKAGE:ci" .
+          docker run --rm --entrypoint node "$IMAGE_PACKAGE:ci" ./dist/index.js --help >/dev/null
 
   # Every cross-language golden channel, one step each. Each generator
   # regenerates its artifacts from the TypeScript twins in `--check` mode and
@@ -464,6 +470,12 @@ jobs:
       - name: Check V1 CEK builtin golden vectors
         if: ${{ !cancelled() }}
         run: node scripts/preflight.mjs --run golden:cek-builtin-cardano-v1
+      # The V1 CEK builtin cost channel: every builtin's budget at a spread of
+      # argument sizes, from the pinned 350-entry cost vector, run against the
+      # on-chain cost table as a generated Aiken module.
+      - name: Check V1 CEK builtin cost golden vectors
+        if: ${{ !cancelled() }}
+        run: node scripts/preflight.mjs --run golden:cek-cost-v1-aiken
       # The V1 validation-auxiliary-witness ABI channel. Its generator emits
       # both `tests/fixtures/validation-auxiliary-witness-v1.generated.json` —
       # which `demo/midgard-sdk/tests/validation-auxiliary-witness.test.ts`
@@ -878,6 +890,19 @@ jobs:
           pnpm --dir demo/midgard-node run test:mpf:architecture-g-closure
           node --test demo/midgard-node/scripts/throughput-load-watchdog.test.mjs
 
+  installed-boundaries:
+    name: Installed package boundaries
+    needs: [aiken-fork, blueprint]
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: ./.github/actions/demo-setup
+        with:
+          blueprint: "true"
+      - name: Check every built package from an isolated production installation
+        run: node scripts/preflight.mjs --run demo-boundary
+
   # Workspace-wide eslint (type-aware) and prettier, once for every package.
   # The pre-commit hook applies the same two tools to staged files; this job is
   # the enforcement the hook cannot provide for contributors who never
@@ -1212,6 +1237,7 @@ jobs:
       - test-durations
       - native-mpf
       - lint
+      - installed-boundaries
       - da-committee-node
       - midgard-l1-follower
       - l1-fork-simulator

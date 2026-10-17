@@ -1,3 +1,4 @@
+import { packageBuildTask } from "../../demo/scripts/package-tasks.mjs";
 import { resolve } from "node:path";
 
 import {
@@ -109,9 +110,7 @@ export const reproduce = async (
             `final native output ${name} is ${verdict.status}: ${verdict.reason}`,
           );
       }
-      for (const pkg of workspacePackages(scratch).filter(
-        (entry) => entry.scripts?.["build:contrib-raw"],
-      )) {
+      for (const pkg of workspacePackages(scratch).filter(packageBuildTask)) {
         const verdict = checkBuild(scratch, pkg.name);
         if (verdict.status !== "fresh")
           throw new Error(

@@ -46,6 +46,7 @@ import {
   MIDGARD_CEK_EMPTY_DATA_LIST_ROOT,
   MIDGARD_CEK_EMPTY_DATA_PAIR_ROOT,
   midgardCekDataBytesCborLength,
+  midgardCekDataBytesMemory,
   midgardCekDataConstrCborLength,
   midgardCekDataListCborLength,
   type MidgardCekDataListNode,
@@ -806,8 +807,7 @@ export const verifyOneProgramMaterial = (
     if (
       dataNode.cborLength !==
         midgardCekDataBytesCborLength(dataNode.bytesLength) ||
-      dataNode.memory !==
-        4n + (dataNode.bytesLength === 0n ? 1n : dataNode.bytesLength)
+      dataNode.memory !== midgardCekDataBytesMemory(dataNode.bytesLength)
     ) {
       throw new Error("CEK Data bytes summary is invalid");
     }

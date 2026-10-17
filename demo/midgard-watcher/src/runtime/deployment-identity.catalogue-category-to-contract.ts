@@ -1,4 +1,7 @@
-import { DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE } from "@al-ft/midgard-core/deployment-manifest-identity";
+import {
+  DEPLOYMENT_MANIFEST_FRAUD_PROOF_CONTRACT_BY_CATEGORY,
+  DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE,
+} from "@al-ft/midgard-core/deployment-manifest-identity";
 
 export {
   DEPLOYMENT_RELEASE_SIGNATURE_DOMAIN as WATCHER_DEPLOYMENT_IDENTITY_SIGNATURE_DOMAIN,
@@ -25,61 +28,8 @@ export const OUT_REF = /^[0-9a-f]{64}#(?:0|[1-9][0-9]*)$/u;
 
 const COMMITMENT_NAME = /^[a-z][a-z0-9]*(?:[-_.][a-z0-9]+)*$/u;
 
-export const CATALOGUE_CATEGORY_TO_CONTRACT = Object.freeze({
-  doubleSpend: "fraudProofDoubleSpend",
-  nonExistentInput: "fraudProofNonExistentInput",
-  nonExistentInputNoIndex: "fraudProofNonExistentInputNoIndex",
-  invalidRange: "fraudProofInvalidRange",
-  transitionTrace: "fraudProofTransitionTrace",
-  zeroInput: "fraudProofZeroInput",
-  validationTraceDispute: "validationTraceDispute",
-  daHashPreimage: "fraudProofDaHashPreimage",
-  noReferenceInput: "fraudProofNoReferenceInput",
-  referenceInputNoIdx: "fraudProofReferenceInputNoIdx",
-  invalidSignature: "fraudProofInvalidSignature",
-  fabricatedDeposit: "fraudProofFabricatedDeposit",
-  fabricatedWithdrawal: "fraudProofFabricatedWithdrawal",
-  nativeScriptDecoding: "fraudProofNativeScriptDecoding",
-  missingSignature: "fraudProofMissingSignature",
-  withdrawnReferenceInput: "fraudProofWithdrawnReferenceInput",
-  canonicalDecodability: "fraudProofCanonicalDecodability",
-  committedFieldShape: "fraudProofCommittedFieldShape",
-  minFee: "fraudProofMinFee",
-  withdrawalMistag: "fraudProofWithdrawalMistag",
-  doubleWithdraw: "fraudProofDoubleWithdraw",
-  l2TxMistag: "fraudProofL2TxMistag",
-  withdrawnInput: "fraudProofWithdrawnInput",
-  valueNotPreserved: "fraudProofValueNotPreserved",
-  inputSetUniqueness: "fraudProofInputSetUniqueness",
-  mintAuthorization: "fraudProofMintAuthorization",
-  networkId: "fraudProofNetworkId",
-  nativeScriptInvalid: "fraudProofNativeScriptInvalid",
-  minAda: "fraudProofMinAda",
-  fieldPreimageLengthMismatch: "fraudProofFieldPreimageLengthMismatch",
-  fieldItemWidthIllegal: "fraudProofFieldItemWidthIllegal",
-  witnessScriptDecoding: "fraudProofWitnessScriptDecoding",
-  scriptIntegrityHashMissing: "fraudProofScriptIntegrityHashMissing",
-  transactionOutputNonCanonical: "fraudProofTransactionOutputNonCanonical",
-  mintItemNonCanonical: "fraudProofMintItemNonCanonical",
-  resolvedOutputNonCanonical: "fraudProofResolvedOutputNonCanonical",
-  mintDeclaredAssetLimit: "fraudProofMintDeclaredAssetLimit",
-  spendInputSignerMissing: "fraudProofSpendInputSignerMissing",
-  protectedOutputSignerMissing: "fraudProofProtectedOutputSignerMissing",
-  observersForbiddenOnUntaggedNetwork:
-    "fraudProofObserversForbiddenOnUntaggedNetwork",
-  outputReferenceScriptDecoding: "fraudProofOutputReferenceScriptDecoding",
-  executionSourceScriptDecoding: "fraudProofExecutionSourceScriptDecoding",
-  observerOrderInvalid: "fraudProofObserverOrderInvalid",
-  redeemerCanonicity: "fraudProofRedeemerCanonicity",
-  receivePurposeLanguage: "fraudProofReceivePurposeLanguage",
-  unusedScriptWitness: "fraudProofUnusedScriptWitness",
-  missingScriptSource: "fraudProofMissingScriptSource",
-  missingRedeemer: "fraudProofMissingRedeemer",
-  unusedRedeemer: "fraudProofUnusedRedeemer",
-  executionNativeScriptInvalid: "fraudProofExecutionNativeScriptInvalid",
-  scriptIntegrityHashMismatch: "fraudProofScriptIntegrityHashMismatch",
-  distinctAssetAccumulationLimit: "fraudProofDistinctAssetAccumulationLimit",
-} as const);
+export const CATALOGUE_CATEGORY_TO_CONTRACT =
+  DEPLOYMENT_MANIFEST_FRAUD_PROOF_CONTRACT_BY_CATEGORY;
 
 export const REFERENCE_SCRIPT_ROLES = Object.freeze(
   Object.keys(DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE),

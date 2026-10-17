@@ -78,13 +78,13 @@ const expectedTerminalVectors = {
     originalScheduleHashHex:
       "b1276de655cef9d7a3bc33abb49024dd36462f2cd2486dd25d9f7347563eab35",
     terminalAccumulatorHex:
-      "fb2154b7f046126c8cda87674c2822c3dad1ac294531845e6e6b49c0035e4858",
+      "ea27a61b8f396c3354831035b7fe4861195ca8796d1703ae0e89a6229952c98d",
     terminalFrontierCommitmentHex:
-      "8d0f7813e70f9bf63f84b78365a38e5c00efb807ac4f5ed16d21f0eff4b5e5b7",
+      "839634308167c061ce5ebad392b4dba1e9d037d65177dc233a76667a416152a2",
     penultimate: {
       cursor: 433,
       accumulatorHex:
-        "7f4f9eb3bfca6b31c4c6781cc36b58f0305c7cafbfbbe4dbfef9ad2370f8cbdc",
+        "c73070dfccee71dfb0bb8775eebcf23fc9967f71620cd0e1fd35a5ccabf29b85",
       remainingScheduleHashHex:
         "6d5383cff6142a4e20298cf82b71837886eeb853245d068a8cf43a540e1d2b3d",
       spendIndex: 433,
@@ -92,27 +92,27 @@ const expectedTerminalVectors = {
         {
           height: 0,
           hashHex:
-            "490d3ccf112900b8af68cdf9873ea682bc41f5e3a18ce80e8cbaad97c7afe1f0",
+            "b9467fa86e247e7a65d15e9c85a9c5f340b3bd2fce982e68c88d15a2348078cc",
         },
         {
           height: 4,
           hashHex:
-            "d01cd11a1af0cc1270e6f3f3a7dfff15c52f7710c1c12bdd3245c068f328c53b",
+            "c4a783d21ea9afe3d098a0610f6bf62728f0f58751b282a91ce2de8bd1ad2a5c",
         },
         {
           height: 5,
           hashHex:
-            "4bd02c803151903ed7bb3a09e8c7823ba0391d78edfc6dacaf66badc3950d9bf",
+            "255f6f71f881c1d692b9f0c2feb325d77fe8b109c195dfc68d68b4c47fbc68bf",
         },
         {
           height: 7,
           hashHex:
-            "66b7b616caa9588056af4d6191ecd23ba077e9c7644e70bb2666fb08f759a0a6",
+            "7249e4ca6ce4b4f45791ead776a41724da58067e9a84c0bf5a4808358ed016d9",
         },
         {
           height: 8,
           hashHex:
-            "998486423647076a38bdd62961e92f2c404cd7c9f3ce8f862890f806e82eb543",
+            "988dd55e275323ec92dd4eb08ecded7a5812233c927bda85b39598bba5823dea",
         },
       ],
     },
@@ -123,27 +123,27 @@ const expectedTerminalVectors = {
         {
           height: 1,
           hashHex:
-            "45e3f84f8c35714d5ce696474f5b300c7860a7ebc7f3eb30cc0c1fc8390c3e20",
+            "be8cdd3293ea83148f1d803ffa9313f97122421aa729e31026656384474fea6b",
         },
         {
           height: 4,
           hashHex:
-            "d01cd11a1af0cc1270e6f3f3a7dfff15c52f7710c1c12bdd3245c068f328c53b",
+            "c4a783d21ea9afe3d098a0610f6bf62728f0f58751b282a91ce2de8bd1ad2a5c",
         },
         {
           height: 5,
           hashHex:
-            "4bd02c803151903ed7bb3a09e8c7823ba0391d78edfc6dacaf66badc3950d9bf",
+            "255f6f71f881c1d692b9f0c2feb325d77fe8b109c195dfc68d68b4c47fbc68bf",
         },
         {
           height: 7,
           hashHex:
-            "66b7b616caa9588056af4d6191ecd23ba077e9c7644e70bb2666fb08f759a0a6",
+            "7249e4ca6ce4b4f45791ead776a41724da58067e9a84c0bf5a4808358ed016d9",
         },
         {
           height: 8,
           hashHex:
-            "998486423647076a38bdd62961e92f2c404cd7c9f3ce8f862890f806e82eb543",
+            "988dd55e275323ec92dd4eb08ecded7a5812233c927bda85b39598bba5823dea",
         },
       ],
     },
@@ -152,7 +152,7 @@ const expectedTerminalVectors = {
       keyHex:
         "82582000000000000000000000000000000000000000000000000000000000000000001901b1",
       valueHex:
-        "90011901b11829582075905d5cce7bbf39a2d566bf6f5ee2f9074354777ca4408ebd73e9d6d77cc9fb581d60111111111111111111111111111111111111111111111111111111111a00989680005820b6575c6c81264fc5d6802905bc4cb01d26fcca7c75412712fd4d4b7e5a23d6cd05204000408358208e037f86edc06fd63fbc01bf5e587d66127e73513943f7d1c294a3b6649b72b7183c18528358208e037f86edc06fd63fbc01bf5e587d66127e73513943f7d1c294a3b6649b72b7183c18528358209525e1ea4350de9f831fc817b64355d7c3e26427effb7f4ca9bd29541d5eda390304",
+        "90011901b11829582075905d5cce7bbf39a2d566bf6f5ee2f9074354777ca4408ebd73e9d6d77cc9fb581d60111111111111111111111111111111111111111111111111111111111a00989680005820b6575c6c81264fc5d6802905bc4cb01d26fcca7c75412712fd4d4b7e5a23d6cd05204000408358200767446910aa276510642f89978c67b7ab51f1fb1d11b18447591f4a0f826329183c18378358200767446910aa276510642f89978c67b7ab51f1fb1d11b18447591f4a0f826329183c18378358209525e1ea4350de9f831fc817b64355d7c3e26427effb7f4ca9bd29541d5eda390304",
       nextScheduleHashHex:
         "96c1acf52ec7e32c975a3c5343d7417257e0eca08c0fda83d77f2172000d0b36",
     },
@@ -164,13 +164,13 @@ const expectedTerminalVectors = {
     originalScheduleHashHex:
       "320bc3d5140983c35d48db52cbf4e722de03b8ea618ef56b6a7f8b6fc6162e56",
     terminalAccumulatorHex:
-      "e0254c2da094b13f9857dd7f442bd346f74ccf0f4a1337bd1328983d80156421",
+      "8c0cb3c900dd4b1526b89b1ed63c46d1621cad53e608f5058de703bb49e5bd46",
     terminalFrontierCommitmentHex:
-      "b4757e20d40f58687e5421545c69f0399d6de0026a8e9728ec6e9bb13b510a46",
+      "ec0105edd129d2b374936f85aad9f28fe10e32703ddc0f205a301e2b773adf13",
     penultimate: {
       cursor: 433,
       accumulatorHex:
-        "cef5b3dc9392a0a6f359309a1b6ef88bc48196c7d85e4b2ab2b539a778fec226",
+        "f31c120d3d965e078630f7b64155608a0d7550a84583426720e4f98785e04b98",
       remainingScheduleHashHex:
         "11e90c7b9d22faa10a757fe7cbcfc12f5784cb6c546408583d36ce0dd5d49329",
       spendIndex: 1,
@@ -178,27 +178,27 @@ const expectedTerminalVectors = {
         {
           height: 0,
           hashHex:
-            "c830521b7ad8c959ae55b31633e207388fae52161373666e11f0cfb8f2636258",
+            "7a92d9d2f5a648f7de6437180a121be3085ecea5baa90548f294313f2f437040",
         },
         {
           height: 4,
           hashHex:
-            "fb7125a9b42801c60668ae85fbb63c9688ae6f1db51b66e808f887beb33ad939",
+            "d84930fcad5a1be2f0b63c8f653e8fd0f0085c737c66da3c0980bd4c1bcc4bd4",
         },
         {
           height: 5,
           hashHex:
-            "d434d9b86a8a039067633f60db0b7028cd8c0e20d7738f136c71ba4ebb17f600",
+            "9cd20b30015713aefe1507d97408acbf739c87f99fbafe18fa5c27c6c5dfa8e1",
         },
         {
           height: 7,
           hashHex:
-            "a0b8592e98857754eb7c710a2b73418391aef2bda4fcbd1e1bef9db50945bed7",
+            "52d757c7abe509358ebb79d685da19705cb68ac1e539cb208369e5f3b41ab257",
         },
         {
           height: 8,
           hashHex:
-            "7d334c4861036c40c26095c4cb1d9db17b736a5a4108beb136aa4988ce854fe7",
+            "faa0f448c6c8a9b2a2477e8de9754c47d29673e15ff284490cfb2b1fc5f61f66",
         },
       ],
     },
@@ -209,27 +209,27 @@ const expectedTerminalVectors = {
         {
           height: 1,
           hashHex:
-            "8ef1a237aa9edee558dfd3d186967ef1d9fcb2359dbc03db2baab40d0e0a957e",
+            "044e443bc41379b7b62047df92c0d699be61172d191942d44fe51d4f180df200",
         },
         {
           height: 4,
           hashHex:
-            "fb7125a9b42801c60668ae85fbb63c9688ae6f1db51b66e808f887beb33ad939",
+            "d84930fcad5a1be2f0b63c8f653e8fd0f0085c737c66da3c0980bd4c1bcc4bd4",
         },
         {
           height: 5,
           hashHex:
-            "d434d9b86a8a039067633f60db0b7028cd8c0e20d7738f136c71ba4ebb17f600",
+            "9cd20b30015713aefe1507d97408acbf739c87f99fbafe18fa5c27c6c5dfa8e1",
         },
         {
           height: 7,
           hashHex:
-            "a0b8592e98857754eb7c710a2b73418391aef2bda4fcbd1e1bef9db50945bed7",
+            "52d757c7abe509358ebb79d685da19705cb68ac1e539cb208369e5f3b41ab257",
         },
         {
           height: 8,
           hashHex:
-            "7d334c4861036c40c26095c4cb1d9db17b736a5a4108beb136aa4988ce854fe7",
+            "faa0f448c6c8a9b2a2477e8de9754c47d29673e15ff284490cfb2b1fc5f61f66",
         },
       ],
     },
@@ -238,7 +238,7 @@ const expectedTerminalVectors = {
       keyHex:
         "82582000000000000000000000000000000000000000000000000000000000000000001901b1",
       valueHex:
-        "90011901b11829582075905d5cce7bbf39a2d566bf6f5ee2f9074354777ca4408ebd73e9d6d77cc9fb581d60111111111111111111111111111111111111111111111111111111111a00989680005820b6575c6c81264fc5d6802905bc4cb01d26fcca7c75412712fd4d4b7e5a23d6cd05204000408358208e037f86edc06fd63fbc01bf5e587d66127e73513943f7d1c294a3b6649b72b7183c18528358208e037f86edc06fd63fbc01bf5e587d66127e73513943f7d1c294a3b6649b72b7183c18528358209525e1ea4350de9f831fc817b64355d7c3e26427effb7f4ca9bd29541d5eda390304",
+        "90011901b11829582075905d5cce7bbf39a2d566bf6f5ee2f9074354777ca4408ebd73e9d6d77cc9fb581d60111111111111111111111111111111111111111111111111111111111a00989680005820b6575c6c81264fc5d6802905bc4cb01d26fcca7c75412712fd4d4b7e5a23d6cd05204000408358200767446910aa276510642f89978c67b7ab51f1fb1d11b18447591f4a0f826329183c18378358200767446910aa276510642f89978c67b7ab51f1fb1d11b18447591f4a0f826329183c18378358209525e1ea4350de9f831fc817b64355d7c3e26427effb7f4ca9bd29541d5eda390304",
       nextScheduleHashHex:
         "96c1acf52ec7e32c975a3c5343d7417257e0eca08c0fda83d77f2172000d0b36",
     },

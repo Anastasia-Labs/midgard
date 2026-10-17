@@ -33,6 +33,7 @@ export {
   parseMidgardCekDataLargeConstructorSyntax,
 } from "./cek-data-integer.js";
 export * from "./cek-data-traverse.js";
+export * from "./cek-memory-size.js";
 export * from "./cek-proof.js";
 export * from "./cek-semantic.js";
 export {

@@ -45,7 +45,7 @@ describe("V1 direct builtin execution", () => {
         evaluated.result,
       ),
     ).toBe(true);
-    expect(evaluated.budget).toEqual({ cpu: 101_628n, memory: 3n });
+    expect(evaluated.budget).toEqual({ cpu: 101_208n, memory: 2n });
   });
 
   it("distinguishes paid division failures from zero-cost shape failures", () => {

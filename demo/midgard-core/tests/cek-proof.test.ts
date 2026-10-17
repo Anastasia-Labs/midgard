@@ -1047,12 +1047,12 @@ describe("V1 CEK commitments", () => {
       readonly memory: bigint;
     }[] = [
       { name: "integer", typeTags: [0], payload: 0n, memory: 1n },
-      { name: "bytes", typeTags: [1], payload: "00ff", memory: 2n },
+      { name: "bytes", typeTags: [1], payload: "00ff", memory: 1n },
       {
         name: "UTF-8 string",
         typeTags: [2],
         payload: "c3a9",
-        memory: 2n,
+        memory: 0n,
       },
       {
         name: "Unit",
@@ -1101,13 +1101,13 @@ describe("V1 CEK commitments", () => {
         name: "G1",
         typeTags: [9],
         payload: "00".repeat(48),
-        memory: 48n,
+        memory: 18n,
       },
       {
         name: "G2",
         typeTags: [10],
         payload: "00".repeat(96),
-        memory: 96n,
+        memory: 36n,
       },
     ];
     for (const testCase of validCases) {
@@ -1185,19 +1185,19 @@ describe("V1 CEK commitments", () => {
         name: "G1 rejects the wrong payload length",
         typeTags: [9],
         payload: "00".repeat(47),
-        memory: 48n,
+        memory: 18n,
       },
       {
         name: "G2 rejects the wrong payload length",
         typeTags: [10],
         payload: "00".repeat(95),
-        memory: 96n,
+        memory: 36n,
       },
       {
         name: "Miller-loop type rejects Data",
         typeTags: [11],
         payload: { kind: "constr", constructor: 0n, fields: [] },
-        memory: 192n,
+        memory: 72n,
       },
     ];
     for (const testCase of invalidCases) {
@@ -1231,7 +1231,7 @@ describe("V1 CEK commitments", () => {
       bytesRoot: rawBlob.root,
       bytesLength: BigInt(rawValue.length),
       cborLength: midgardCekDataBytesCborLength(BigInt(rawValue.length)),
-      memory: 4n + BigInt(rawValue.length),
+      memory: 4n + BigInt(Math.ceil(rawValue.length / 8)),
     } as const;
     const semanticRoot = hashMidgardCekDataNode(semanticNode);
     const valueNode = {
@@ -1240,7 +1240,7 @@ describe("V1 CEK commitments", () => {
       payloadRoot: semanticRoot,
       payloadLength: BigInt(payloadBytes.length),
       semanticRoot,
-      memory: BigInt(rawValue.length),
+      memory: BigInt(Math.ceil(rawValue.length / 8)),
     } as const;
     const valuePreimage = encodeMidgardCekValueNode(valueNode);
     const valueRoot = hashMidgardCekValueNode(valueNode);
@@ -1368,7 +1368,7 @@ describe("V1 CEK commitments", () => {
       kind: "constrLarge",
       constructorCborRoot: constructorBlob.root,
       constructorCborLength: BigInt(constructorCbor.length),
-      constructorMemory: 15n,
+      constructorMemory: 6n,
       fieldsCount: 0n,
       fieldsRoot: MIDGARD_CEK_EMPTY_DATA_LIST_ROOT,
       cborLength: midgardCekDataConstrCborLength(constructor, 0n, 0n),

@@ -56,6 +56,11 @@ fn linear2_add(quote: Int, slope: Int, sizes: List<Int>) -> Int {
   quote + ( x + y ) * slope
 }
 
+fn linear2_mul(quote: Int, slope: Int, sizes: List<Int>) -> Int {
+  let Pair(x, y) = two(sizes)
+  quote + x * y * slope
+}
+
 fn linear2_sub(quote: Int, slope: Int, minimum: Int, sizes: List<Int>) -> Int {
   let Pair(x, y) = two(sizes)
   quote + max(minimum, x - y) * slope
@@ -129,13 +134,23 @@ fn const_y_or_linear_z(quote: Int, slope: Int, sizes: List<Int>) -> Int {
   }
 }
 
-fn division_cpu(sizes: List<Int>) -> Int {
+/// Plutus V3 variant E: divideInteger and modInteger cost the quadratic over
+/// (larger, smaller) sizes on both sides of the diagonal; quotientInteger and
+/// remainderInteger stay constant below it.
+fn division_cpu(tag: Int, sizes: List<Int>) -> Int {
   let Pair(x, y) = two(sizes)
-  if x < y {
+  if x < y && ( tag == 4 || tag == 5 ) {
     85848
   } else {
-    let real = 123203 + 1716 * x + 7305 * y + 57 * x * x + 549 * x * y - 900 * y
-    max(85848, real)
+    let Pair(a, b) = if x < y {
+      Pair(y, x)
+    } else {
+      Pair(x, y)
+    }
+    max(
+      85848,
+      123203 + 1716 * a + 7305 * b + 57 * a * a + 960 * a * b - 900 * b * b,
+    )
   }
 }
 
@@ -177,11 +192,11 @@ pub fn builtin_argument_count_v1(tag: Int) -> Int {
     tag == 54,
     tag == 56,
     tag == 57,
-    tag == 58,
+    tag == 60,
     tag == 61,
     tag == 63,
     tag == 64,
-    tag == 65,
+    tag == 67,
     tag == 68,
     tag == 69,
     tag == 70,
@@ -204,12 +219,12 @@ fn cpu_cost_v1(tag: Int, sizes: List<Int>) -> Int {
   } {
     linear2_max(100788, 420, sizes)
   } else if tag == 2 {
-    linear2_add(90434, 519, sizes)
+    linear2_mul(90434, 519, sizes)
   } else if and {
     tag >= 3,
     tag <= 6,
   } {
-    division_cpu(sizes)
+    division_cpu(tag, sizes)
   } else if tag == 7 {
     linear2_min(51775, 558, sizes)
   } else if tag == 8 {
@@ -229,7 +244,7 @@ fn cpu_cost_v1(tag: Int, sizes: List<Int>) -> Int {
     expect [_, _] = sizes
     13169
   } else if tag == 15 {
-    linear_on_equal(29498, 38, 24548, sizes)
+    linear_on_equal(28755, 75, 30623, sizes)
   } else if or {
     tag == 16,
     tag == 17,
@@ -343,12 +358,12 @@ fn cpu_cost_v1(tag: Int, sizes: List<Int>) -> Int {
   } else if tag == 57 {
     expect [_, _] = sizes
     442008
-  } else if tag == 58 {
+  } else if tag == 60 {
     linear2_x(52538055, 3756, sizes)
-  } else if tag == 59 {
+  } else if tag == 58 {
     expect [_] = sizes
     2780678
-  } else if tag == 60 {
+  } else if tag == 59 {
     expect [_] = sizes
     52948122
   } else if tag == 61 {
@@ -362,12 +377,12 @@ fn cpu_cost_v1(tag: Int, sizes: List<Int>) -> Int {
   } else if tag == 64 {
     expect [_, _] = sizes
     901022
-  } else if tag == 65 {
+  } else if tag == 67 {
     linear2_x(166917843, 4307, sizes)
-  } else if tag == 66 {
+  } else if tag == 65 {
     expect [_] = sizes
     3227919
-  } else if tag == 67 {
+  } else if tag == 66 {
     expect [_] = sizes
     74698472
   } else if tag == 68 {
@@ -515,13 +530,13 @@ fn memory_cost_v1(tag: Int, sizes: List<Int>) -> Int {
   } else if tag == 57 {
     expect [_, _] = sizes
     1
-  } else if tag == 58 {
+  } else if tag == 60 {
     expect [_, _] = sizes
     18
-  } else if tag == 59 {
+  } else if tag == 58 {
     expect [_] = sizes
     6
-  } else if tag == 60 {
+  } else if tag == 59 {
     expect [_] = sizes
     18
   } else if and {
@@ -533,13 +548,13 @@ fn memory_cost_v1(tag: Int, sizes: List<Int>) -> Int {
   } else if tag == 64 {
     expect [_, _] = sizes
     1
-  } else if tag == 65 {
+  } else if tag == 67 {
     expect [_, _] = sizes
     36
-  } else if tag == 66 {
+  } else if tag == 65 {
     expect [_] = sizes
     12
-  } else if tag == 67 {
+  } else if tag == 66 {
     expect [_] = sizes
     36
   } else if or {

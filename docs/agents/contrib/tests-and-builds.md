@@ -14,27 +14,32 @@ node scripts/contrib.mjs native --package midgard-node
 node scripts/contrib.mjs boundary --package midgard-core
 ```
 
-`contrib test` is how suites run, one file or a whole package. It runs the
-package's own `test` script, the command CI runs: the environment that script
-sets (`NODE_ENV=emulator` for node and node-tools, `NODE_ENV=test` where it
-sets none), its Vitest flags and, for a whole-package run without `--name`, its
-plain-Node preludes (`scripts/contrib/vitest-command.mjs`). A script flag the
-runner does not understand is refused, not dropped. The caller may add only
-Vitest's `--maxWorkers N`, `--exclude GLOB` (repeatable),
-`--disableConsoleIntercept` and `--config FILE`, spelled as Vitest spells them.
-`--config` names another Vitest config in the package directory, for files the
-default config leaves out (the watcher journeys, some of which need a live
-devnet); it runs only the files `--file` names.
+`contrib test` and ordinary package tests read argv, environment, preludes and
+prerequisites from `package.json` under `midgardTasks.test`, validated by
+`demo/scripts/package-tasks.mjs`. Commands are argv arrays and environment
+values are literal strings. Both prepare the declared build, blueprint and
+native artifacts through the same owners. Ordinary `pnpm test` then runs the
+declared `before` scripts and Vitest with the caller's arguments, inherited
+database environment and Vitest exit status. Positional file filters, `-t`,
+reporters and CI's shard flags retain their normal Vitest behavior.
+[script: scripts/contrib/run-tests.test.mjs]
+
+`contrib test` additionally owns the strict receipt and disposable database
+policy below. Its `before` scripts run for whole-package selections without
+`--name`. It accepts `--maxWorkers N`, `--exclude GLOB` (repeatable),
+`--disableConsoleIntercept` and `--config FILE`; unknown flags fail. `--config`
+selects a config in the package directory and requires explicit `--file` paths.
+Selected skips remain exit 3.
+[script: scripts/contrib/run-tests.test.mjs]
 
 `--file` takes package-relative test paths; without one, the run is the whole
 package. Before running, `vitest list` collects the files with the same
 configuration and flags: a named file the config or an `--exclude` drops, or a
 filter that also selects other files, is refused, and the receipt then
 requires the report to cover exactly those files. The runner derives the
-package's pretest builds, makes the blueprint ready where the package reads it
+package's declared build prerequisites, makes its declared blueprint ready
 (copied from a checkout with identical inputs and profile, else built with
-`deployment:build`), requires the local test Postgres where the package's
-tests read it, and assigns an invocation-specific disposable database family,
+`deployment:build`), requires the local test Postgres and native outputs declared by the package, and assigns an invocation-specific disposable database family,
 dropped when the run ends. File order uses the recorded seed; tests within a
 file run in their declared order, as in CI.
 A name selector records filtered assertions separately from skipped selected
@@ -105,11 +110,39 @@ the mutant is in the tree while the tests run. The receipt is a
 
 ## Builds
 
-Package `build` scripts now enter the same guard. The original commands live
-under `build:contrib-raw` as the guard's implementation. The three Dockerfiles
-also call these recipes inside their isolated copied build trees; the demo
-Docker context contains neither repository tooling nor Git. Native build
-recipes likewise enter `contrib native`. Build freshness binds the checkout,
+`contrib boundary --package NAME` builds fresh artifacts, then uses the pinned
+pnpm to deploy that package and its production dependencies into a separate
+consumer. Ordinary Node resolves its public package specifiers through both
+ESM and CommonJS conditions (including nested/array/default exports); installed
+CLIs run with `--help`. Source/type-only conditions are reported separately.
+An active runtime wildcard is refused until concrete probes are supplied.
+Workspace hoisting, source aliases and resolutions outside the consumer cannot
+hide missing production dependencies or files excluded by the package manifest.
+Every export must finish loading; a zero exit without a complete terminal
+export record fails. Receipts bind that record, install/probe logs and a digest of the installed files; the
+temporary dependency tree is removed after its unchanged digest is checked.
+`demo-boundary` selects affected built packages during ordinary preflight and
+all eleven built packages in Node CI. The source-only test-support package
+keeps its own tooling suite. Import/help checks do not prove live startup,
+database recovery or acceptance behavior.
+
+Package `build` scripts enter the same guard. `midgardTasks.build` owns ordered
+argv `steps`, literal `environment`, named `appendEnvironment`, output `dist`
+and extra build prerequisites. Runtime workspace dependencies and explicit
+build prerequisites form one dependency-ordered closure; each explicit edge
+must also name a declared workspace dependency. `prebuild` and `pretest`
+lifecycle recipes move into these declarations. Enrollment validates the
+generated wrappers. [script: scripts/contrib/enroll-builds.mjs]
+
+`build:contrib-raw` is a generated adapter to the same task executor, copied
+into the isolated demo Docker context with `scripts/package-tasks.mjs`.
+`scripts/release/docker-build-plan.mjs --write` generates manifest, source,
+dependency-build and public-build blocks in all three images from that graph;
+`--check` detects drift. Native stages and cache mounts retain their existing
+owners. [script: scripts/release/docker-build-plan.mjs]
+
+Native build recipes enter `contrib native`.
+Build freshness binds the checkout,
 source/dependency/configuration/lock/native/generated-input closure and emitted
 file contents; timestamps cannot establish freshness. Doctor and preflight use
 the same dist verdict. Inputs conservatively include dependency tests and
@@ -123,15 +156,14 @@ The closure also binds the installed packages
 dist bytes of every workspace package a build source imports. A dist can be
 fresh only when all of these hold (`scripts/contrib/build-inputs.mjs`):
 
-- `build:contrib-raw` is an `&&` sequence of `tsup` (without `--onSuccess`,
-  `--config`, `--tsconfig` or watch flags) and `node [flags] script.mjs|.cjs|.js`
-  (without flags that load or evaluate other code or read an env file), each
-  optionally preceded by `NAME=value`. Words may be quoted and may expand
-  `$NAME`, `${NAME}` or `${NAME:-literal}`; each such name is bound. Any other
-  program (`pnpm`, `npx`, `tsx`, `sh`, a `.ts` script) or shell syntax is
-  refused, with the reason. The package defines no `prebuild:contrib-raw` or
-  `postbuild:contrib-raw` script, and the build runs pnpm with pre/post
-  scripts disabled, `/bin/sh` as the script shell and no shell emulator.
+- Build steps use `tsup` (without `--onSuccess`, `--config`, `--tsconfig`
+  or watch flags) or `node [flags] script.mjs|.cjs|.js` (without flags that
+  load/evaluate other code or read an env file). Every argv value is literal;
+  shell metacharacters never execute. Named appended environment values are
+  bound by the stamp. Other programs cannot earn a fresh stamp. The guard
+  launches each step directly, so package lifecycle scripts cannot surround
+  the task; defining `prebuild:contrib-raw` or `postbuild:contrib-raw` still
+  refuses freshness.
 - The tsup config (which sets no `onSuccess` or `tsconfig`) and node scripts,
   and every local module they import, are closure files that import only
   `fs`, `fs/promises`, `path`, `url`, `crypto`, `util` and `os` (and `tsup`),
@@ -210,7 +242,7 @@ bytes. Clean reproduction rechecks both owners after all artifact checks, so
 a later build or generator cannot silently erase an earlier native result.
 
 Guarded children use Corepack to select each project's declared package manager,
-including bare `pnpm --dir ...` inside nested recipes. The demo pins pnpm 9 and
+including bare `pnpm --dir ...` inside nested recipes. The demo pins pnpm 11 and
 the docs site pins pnpm 10; an ambient executable cannot select their version.
 Corepack must be available. Source folders named `build`, `target` or `dist`
 remain inputs; generated outputs are excluded only at their owning project.

@@ -63,6 +63,7 @@ describe("V1 structural CEK machine", () => {
       5n,
       6n,
       7n,
+      8n,
     ]);
   });
 

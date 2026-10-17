@@ -1,5 +1,9 @@
 import { Data as LucidData } from "@lucid-evolution/lucid";
 
+import {
+  midgardCekBytesMemoryWords,
+  midgardCekIntegerMemoryWords,
+} from "./cek-memory-size.js";
 import { commitMidgardCekBlob } from "./cek-proof.encode-midgard-cek-continuation-frame.js";
 import { MIDGARD_CEK_MAX_CONSTANT_TYPE_CBOR_BYTES } from "./cek-proof.encode-midgard-cek-term-node.js";
 import {
@@ -88,11 +92,8 @@ export const decodeSemanticConstantType = (
   return stack[0]!;
 };
 
-export const semanticIntegerMemory = (value: bigint): bigint => {
-  const doubled = value < 0n ? (-value - 1n) * 2n : value * 2n;
-  if (doubled === 0n) return 1n;
-  return BigInt(Math.ceil(doubled.toString(2).length / 8));
-};
+export const semanticIntegerMemory = (value: bigint): bigint =>
+  midgardCekIntegerMemoryWords(value);
 
 type SemanticDataSummary = {
   readonly root: Hash32;
@@ -151,7 +152,7 @@ const commitLeaf = (value: bigint | string): CommittedNode => {
       bytesRoot: commitMidgardCekBlob(bytes).root,
       bytesLength: BigInt(bytes.length),
       cborLength: midgardCekDataBytesCborLength(BigInt(bytes.length)),
-      memory: 4n + BigInt(Math.max(1, bytes.length)),
+      memory: 4n + midgardCekBytesMemoryWords(bytes.length),
     };
   }
   return sealNode(node, encodedLength);

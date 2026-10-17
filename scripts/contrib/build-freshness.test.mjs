@@ -95,7 +95,22 @@ test(
       buildPackage(root, name, { env: { ...process.env, ...env }, force });
     const rebuilt = (receipt) => {
       assert.equal(receipt.status, "passed", receipt.reason ?? receipt.path);
-      assert.equal(receipt.steps.length, 1);
+      assert.equal(
+        receipt.steps.length,
+        JSON.parse(
+          readFileSync(
+            resolve(
+              root,
+              "demo",
+              receipt.package === "@al-ft/midgard-core"
+                ? "midgard-core"
+                : receipt.package.replace("@al-ft/", ""),
+              "package.json",
+            ),
+            "utf8",
+          ),
+        ).midgardTasks.build.steps.length,
+      );
       assert.equal(receipt.fresh, undefined);
     };
     const skipped = (receipt) => {
@@ -219,16 +234,21 @@ test(
     await t.test("a variable the recipe names rebinds the dist", async () => {
       const path = resolve(root, "demo/midgard-core/package.json");
       const pkg = JSON.parse(readFileSync(path, "utf8"));
-      const recipe = pkg.scripts["build:contrib-raw"];
+      const recipe = pkg.midgardTasks.build.steps;
       // Any other command the recipe could run is outside the allow-list.
-      pkg.scripts["build:contrib-raw"] = `${recipe} && test -n x`;
+      pkg.midgardTasks.build.steps = [
+        ...recipe,
+        { command: ["test", "-n", "x"] },
+      ];
       writeFileSync(path, JSON.stringify(pkg, null, 2));
       assert.match(
         checkBuild(root, core).reason,
         /runs test, which the guard does not scan/u,
       );
-      pkg.scripts["build:contrib-raw"] =
-        `MIDGARD_FRESHNESS_COPY="\${MIDGARD_FRESHNESS_PROBE:-unset}" ${recipe}`;
+      pkg.midgardTasks.build.steps = recipe.map((step) => ({
+        ...step,
+        appendEnvironment: { MIDGARD_FRESHNESS_PROBE: "" },
+      }));
       writeFileSync(path, JSON.stringify(pkg, null, 2));
       rebuilt(await build(core, { env: { MIDGARD_FRESHNESS_PROBE: "one" } }));
       skipped(await build(core, { env: { MIDGARD_FRESHNESS_PROBE: "one" } }));
@@ -304,7 +324,7 @@ test(
     const originalPackage = readFileSync(packagePath, "utf8");
     const withRecipe = (edit) => {
       const pkg = JSON.parse(originalPackage);
-      pkg.scripts["build:contrib-raw"] = edit(pkg.scripts["build:contrib-raw"]);
+      pkg.midgardTasks.build.steps = edit(pkg.midgardTasks.build.steps);
       writeFileSync(packagePath, JSON.stringify(pkg, null, 2));
     };
     const configPath = resolve(root, "demo/midgard-core/tsup.config.ts");
@@ -332,9 +352,17 @@ test(
         mkdirSync(resolve(root, "outside-public"));
         writeFileSync(resolve(root, "outside-public/asset.txt"), "asset");
         withRecipe((recipe) =>
-          recipe.replace(
-            " --clean &&",
-            " --clean --publicDir ../../outside-public &&",
+          recipe.map((step, index) =>
+            index
+              ? step
+              : {
+                  ...step,
+                  command: [
+                    ...step.command,
+                    "--publicDir",
+                    "../../outside-public",
+                  ],
+                },
           ),
         );
         // A fresh stamp from the restored build above: the refusal is
@@ -358,9 +386,13 @@ test(
           "export const injected = 1;\n",
         );
         withRecipe((recipe) =>
-          recipe.replace(
-            " --clean &&",
-            " --clean --inject ../../outside.js &&",
+          recipe.map((step, index) =>
+            index
+              ? step
+              : {
+                  ...step,
+                  command: [...step.command, "--inject", "../../outside.js"],
+                },
           ),
         );
         assert.deepEqual(buildRefusals(root, core), []);

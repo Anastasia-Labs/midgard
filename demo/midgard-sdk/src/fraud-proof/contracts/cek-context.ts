@@ -1,3 +1,4 @@
+import { deploymentValidatorTitle as deployedTitle } from "@al-ft/midgard-core/deployment-manifest-identity";
 import {
   type L1SlotConfig,
   parseL1SlotConfig,
@@ -15,62 +16,72 @@ import {
 } from "./families/shared-redeemer-item.js";
 
 export const CEK_CONTEXT_STAGE_TITLES = {
-  settle: "fraud_proofs/validation_trace/cek_context_settle.main.spend",
-  control: "fraud_proofs/validation_trace/cek_context_control.main.spend",
-  reference: "fraud_proofs/validation_trace/cek_context_reference.main.spend",
-  spend: "fraud_proofs/validation_trace/cek_context_spend.main.spend",
-  output: "fraud_proofs/validation_trace/cek_context_output.main.spend",
-  signer: "fraud_proofs/validation_trace/cek_context_signer.main.spend",
-  observerAuthenticate:
-    "fraud_proofs/validation_trace/cek_context_observer_authenticate.main.spend",
-  observerFold:
-    "fraud_proofs/validation_trace/cek_context_observer_fold.main.spend",
-  mintInit: "fraud_proofs/validation_trace/cek_context_mint_init.main.spend",
-  mintItem: "fraud_proofs/validation_trace/cek_context_mint_item.main.spend",
-  assemble: "fraud_proofs/validation_trace/cek_context_assemble.main.spend",
-  txInfo: "fraud_proofs/validation_trace/cek_context_tx_info.main.spend",
-  seed: "fraud_proofs/validation_trace/cek_context_seed.main.spend",
-  finalizeAuthenticate:
-    "fraud_proofs/validation_trace/cek_context_finalize_authenticate.main.spend",
-  finalizeSpend:
-    "fraud_proofs/validation_trace/cek_context_finalize_spend.main.spend",
-  finalizeMint:
-    "fraud_proofs/validation_trace/cek_context_finalize_mint.main.spend",
-  finalizeWithdraw:
-    "fraud_proofs/validation_trace/cek_context_finalize_withdraw.main.spend",
-  finalizeObserve:
-    "fraud_proofs/validation_trace/cek_context_finalize_observe.main.spend",
-  finalizeMidgard:
-    "fraud_proofs/validation_trace/cek_context_finalize_midgard.main.spend",
-  redeemerBegin:
-    "fraud_proofs/validation_trace/cek_context_redeemer_begin.main.spend",
-  redeemerSelectAuthenticate:
-    "fraud_proofs/validation_trace/cek_context_redeemer_select_authenticate.main.spend",
-  redeemerSelectInitialize:
-    "fraud_proofs/validation_trace/cek_context_redeemer_select_initialize.main.spend",
-  redeemerSelectHash:
-    "fraud_proofs/validation_trace/cek_context_redeemer_select_hash.main.spend",
-  redeemerSelectFinish:
-    "fraud_proofs/validation_trace/cek_context_redeemer_select_finish.main.spend",
-  itemBind: "fraud_proofs/validation_trace/cek_context_item_bind.main.spend",
-  itemReturn:
-    "fraud_proofs/validation_trace/cek_context_item_return.main.spend",
-  itemSelectionHash:
-    "fraud_proofs/validation_trace/cek_context_item_hash.main.spend",
-  itemDataHash:
-    "fraud_proofs/validation_trace/cek_context_item_hash.main.spend",
-  itemFinalize:
-    "fraud_proofs/validation_trace/cek_context_item_finalize.main.spend",
-  itemSelectionContinue:
-    "fraud_proofs/validation_trace/cek_context_item_selection_continue.main.spend",
-  itemSelectionFinish:
-    "fraud_proofs/validation_trace/cek_context_item_selection_finish.main.spend",
-  itemDataContinue:
-    "fraud_proofs/validation_trace/cek_context_item_data_continue.main.spend",
-  itemDataFinishDescriptor:
-    "fraud_proofs/validation_trace/cek_context_item_data_finish_descriptor.main.spend",
-  itemDataFinishValue:
-    "fraud_proofs/validation_trace/cek_context_item_data_finish_value.main.spend",
+  settle: deployedTitle("validationTraceDisputeCekContextSettle"),
+  control: deployedTitle("validationTraceDisputeCekContextControl"),
+  reference: deployedTitle("validationTraceDisputeCekContextReference"),
+  spend: deployedTitle("validationTraceDisputeCekContextSpend"),
+  output: deployedTitle("validationTraceDisputeCekContextOutput"),
+  signer: deployedTitle("validationTraceDisputeCekContextSigner"),
+  observerAuthenticate: deployedTitle(
+    "validationTraceDisputeCekContextObserverAuthenticate",
+  ),
+  observerFold: deployedTitle("validationTraceDisputeCekContextObserverFold"),
+  mintInit: deployedTitle("validationTraceDisputeCekContextMintInit"),
+  mintItem: deployedTitle("validationTraceDisputeCekContextMintItem"),
+  assemble: deployedTitle("validationTraceDisputeCekContextAssemble"),
+  txInfo: deployedTitle("validationTraceDisputeCekContextTxInfo"),
+  seed: deployedTitle("validationTraceDisputeCekContextSeed"),
+  finalizeAuthenticate: deployedTitle(
+    "validationTraceDisputeCekContextFinalizeAuthenticate",
+  ),
+  finalizeSpend: deployedTitle("validationTraceDisputeCekContextFinalizeSpend"),
+  finalizeMint: deployedTitle("validationTraceDisputeCekContextFinalizeMint"),
+  finalizeWithdraw: deployedTitle(
+    "validationTraceDisputeCekContextFinalizeWithdraw",
+  ),
+  finalizeObserve: deployedTitle(
+    "validationTraceDisputeCekContextFinalizeObserve",
+  ),
+  finalizeMidgard: deployedTitle(
+    "validationTraceDisputeCekContextFinalizeMidgard",
+  ),
+  redeemerBegin: deployedTitle("validationTraceDisputeCekContextRedeemerBegin"),
+  redeemerSelectAuthenticate: deployedTitle(
+    "validationTraceDisputeCekContextRedeemerSelectAuthenticate",
+  ),
+  redeemerSelectInitialize: deployedTitle(
+    "validationTraceDisputeCekContextRedeemerSelectInitialize",
+  ),
+  redeemerSelectHash: deployedTitle(
+    "validationTraceDisputeCekContextRedeemerSelectHash",
+  ),
+  redeemerSelectFinish: deployedTitle(
+    "validationTraceDisputeCekContextRedeemerSelectFinish",
+  ),
+  itemBind: deployedTitle("validationTraceDisputeCekContextItemBind"),
+  itemReturn: deployedTitle("validationTraceDisputeCekContextItemReturn"),
+  itemSelectionHash: deployedTitle(
+    "validationTraceDisputeCekContextItemSelectionHash",
+  ),
+  itemDataHash: deployedTitle(
+    "validationTraceDisputeCekContextItemSelectionHash",
+  ),
+  itemFinalize: deployedTitle("validationTraceDisputeCekContextItemFinalize"),
+  itemSelectionContinue: deployedTitle(
+    "validationTraceDisputeCekContextItemSelectionContinue",
+  ),
+  itemSelectionFinish: deployedTitle(
+    "validationTraceDisputeCekContextItemSelectionFinish",
+  ),
+  itemDataContinue: deployedTitle(
+    "validationTraceDisputeCekContextItemDataContinue",
+  ),
+  itemDataFinishDescriptor: deployedTitle(
+    "validationTraceDisputeCekContextItemDataFinishDescriptor",
+  ),
+  itemDataFinishValue: deployedTitle(
+    "validationTraceDisputeCekContextItemDataFinishValue",
+  ),
 } as const;
 
 /**

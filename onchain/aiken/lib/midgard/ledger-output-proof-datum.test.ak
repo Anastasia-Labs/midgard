@@ -417,7 +417,7 @@ test datum_family_golden_agreement_over_a_streamed_large_constructor() {
     {
       expect Some(summary) = traverse.finalize_v1(terminal_datum)
       // The TypeScript twin's summary root for the datum item.
-      summary.root == #"b5822d21df1af70ea902b57f6bebc7693e64cf2be6cb34804b6cb346e8baacfb"
+      summary.root == #"ce1eaec75e8bab1cd95372432d54684932757241ca27b0c31884904240283ee3"
     },
   }
 }
@@ -622,7 +622,7 @@ test datum_family_golden_agreement_over_a_streamed_chunked_integer() {
   )
   and {
     summary.cbor_length == 71,
-    summary.memory == 69,
+    summary.memory == 13,
     active_datum(attached).stage == traverse.stage_terminal,
   }
 }

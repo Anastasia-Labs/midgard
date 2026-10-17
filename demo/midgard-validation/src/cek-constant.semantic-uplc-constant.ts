@@ -1,6 +1,10 @@
 import {
   hashMidgardCekBlobChunk,
   hashMidgardCekValueNode,
+  MIDGARD_CEK_BLS_G1_MEMORY,
+  MIDGARD_CEK_BLS_G2_MEMORY,
+  MIDGARD_CEK_BLS_ML_RESULT_MEMORY,
+  midgardCekStringMemoryWords,
 } from "@al-ft/midgard-core";
 import {
   type Data,
@@ -195,11 +199,15 @@ export const midgardCekConstantMemorySize = (
       }
       return midgardCekIntegerMemorySize(payload.int);
     case "bytes":
-    case "string":
       if (!(payload instanceof DataB)) {
         throw new Error("V1 byte payload is not DataB");
       }
       return midgardCekByteStringMemorySize(payload.bytes);
+    case "string":
+      if (!(payload instanceof DataB)) {
+        throw new Error("V1 string payload is not DataB");
+      }
+      return midgardCekStringMemoryWords(payload.bytes.length);
     case "unit":
     case "boolean":
       if (!(payload instanceof DataConstr)) {
@@ -230,11 +238,11 @@ export const midgardCekConstantMemorySize = (
     case "data":
       return midgardCekDataMemorySize(payload);
     case "blsG1":
-      return 48n;
+      return MIDGARD_CEK_BLS_G1_MEMORY;
     case "blsG2":
-      return 96n;
+      return MIDGARD_CEK_BLS_G2_MEMORY;
     case "blsMillerLoopResult":
-      return 192n;
+      return MIDGARD_CEK_BLS_ML_RESULT_MEMORY;
   }
 };
 

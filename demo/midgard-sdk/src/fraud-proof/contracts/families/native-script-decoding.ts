@@ -1,3 +1,4 @@
+import { deploymentValidatorTitle as deployedTitle } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { Effect } from "effect";
 
 import {
@@ -16,15 +17,18 @@ import {
 } from "../types.js";
 
 export const NATIVE_SCRIPT_DECODING_FAULT_PROOF_TITLES = {
-  step01: "fraud_proofs/native_script_decoding/step_01.main.spend",
-  step02: "fraud_proofs/native_script_decoding/step_02.main.spend",
-  step03OpenSubject:
-    "fraud_proofs/native_script_decoding/step_03_open_subject.main.spend",
-  step03BindDescriptor:
-    "fraud_proofs/native_script_decoding/step_03_bind_descriptor.main.spend",
-  step03AdvanceOrClose:
-    "fraud_proofs/native_script_decoding/step_03_advance_or_close.main.spend",
-  step04: "fraud_proofs/native_script_decoding/step_04.main.spend",
+  step01: deployedTitle("fraudProofNativeScriptDecoding"),
+  step02: deployedTitle("fraudProofNativeScriptDecodingStep02"),
+  step03OpenSubject: deployedTitle(
+    "fraudProofNativeScriptDecodingStep03OpenSubject",
+  ),
+  step03BindDescriptor: deployedTitle(
+    "fraudProofNativeScriptDecodingStep03BindDescriptor",
+  ),
+  step03AdvanceOrClose: deployedTitle(
+    "fraudProofNativeScriptDecodingStep03AdvanceOrClose",
+  ),
+  step04: deployedTitle("fraudProofNativeScriptDecodingStep04"),
 } as const;
 
 export type NativeScriptDecodingFaultProofContracts = {

@@ -44,6 +44,7 @@ export const buildRegistry = (root) => {
     demo.format,
     demo.build,
     demo.typecheck,
+    demo.boundary,
     ...goldenChecks(root, packages, ciText),
     focused,
     blueprint,

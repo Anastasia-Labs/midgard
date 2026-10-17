@@ -227,17 +227,40 @@ test("shallow checkout parents and ignored discovered manifests retain complete 
       }),
       "",
     );
-    assert.throws(() => enrollBuilds(root), /unguarded package builds/u);
+    assert.throws(() => enrollBuilds(root), {
+      message:
+        "private-validator-input: declare midgardTasks.build before enrolling its build",
+    });
     assert.notEqual(validatorInputs(root), before);
+    const declared = {
+      name: "private-validator-input",
+      midgardTasks: {
+        build: { steps: [{ command: ["tsup"] }], outputs: ["dist"] },
+      },
+      scripts: {
+        build:
+          "node ../../scripts/contrib.mjs build --package private-validator-input",
+        "build:contrib-raw": "node ../scripts/package-tasks.mjs build",
+      },
+    };
     writeFileSync(
       resolve(root, "demo/private-validator-input/package.json"),
-      JSON.stringify({
-        name: "private-validator-input",
-        directory: "demo/midgard-watcher",
-        scripts: { build: "echo unguarded" },
-      }),
+      JSON.stringify(declared),
     );
-    assert.throws(() => enrollBuilds(root), /unexpected guarded build recipe/u);
+    assert.doesNotThrow(() => enrollBuilds(root));
+    const declaredInputs = validatorInputs(root);
+    assert.notEqual(declaredInputs, before);
+    // Its own declaration and adapters are valid. Spoofing the physical
+    // directory must still fail admission and alter the discovered identity.
+    writeFileSync(
+      resolve(root, "demo/private-validator-input/package.json"),
+      JSON.stringify({ ...declared, directory: "demo/midgard-watcher" }),
+    );
+    assert.throws(() => enrollBuilds(root), {
+      message:
+        "unguarded package builds: demo/midgard-watcher; run node scripts/contrib/enroll-builds.mjs --write",
+    });
+    assert.notEqual(validatorInputs(root), declaredInputs);
     assert.notEqual(validatorInputs(root), before);
   } finally {
     rmSync(directory, { recursive: true, force: true });

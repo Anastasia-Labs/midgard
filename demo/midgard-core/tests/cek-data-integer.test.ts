@@ -32,24 +32,32 @@ const integerCases = [
   {
     name: "uint64 maximum",
     source: Buffer.from("1bffffffffffffffff", "hex"),
-    memory: 13n,
+    memory: 5n,
   },
   {
     name: "major-one uint64 maximum",
     source: Buffer.from("3bffffffffffffffff", "hex"),
-    memory: 13n,
+    memory: 6n,
   },
   {
     name: "positive bignum boundary",
     source: Buffer.from("c249010000000000000000", "hex"),
-    memory: 13n,
+    memory: 6n,
   },
   {
     name: "negative bignum boundary",
     source: Buffer.from("c349010000000000000000", "hex"),
-    memory: 13n,
+    memory: 6n,
   },
 ] as const;
+
+/** Cardano's memory of an integer: 64-bit words of its magnitude. */
+const integerWords = (value: bigint): bigint => {
+  const magnitude = value < 0n ? -value : value;
+  return magnitude === 0n
+    ? 1n
+    : BigInt(Math.floor((magnitude.toString(2).length - 1) / 64) + 1);
+};
 
 describe("authenticated CEK Data integer V1", () => {
   it.each(integerCases)(
@@ -97,7 +105,7 @@ describe("authenticated CEK Data integer V1", () => {
           });
           expect(finalizeMidgardCekDataInteger(trace.terminal)).toMatchObject({
             cborLength: BigInt(source.length),
-            memory: 4n + BigInt(length) + (highBit ? 1n : 0n),
+            memory: 4n + integerWords(value),
           });
           if (length === 65 && !highBit && value === magnitude) {
             expect(
@@ -119,7 +127,7 @@ describe("authenticated CEK Data integer V1", () => {
                 "hex",
               ),
             ).toBe(
-              "8601021118471845d8799f860101111847840101184781830058206f2bcd2c7aaabd4f57c1d3b1d0f2ba43fcbe6927f0551a73dd7daf4fdcf7e3051847d87a80ff",
+              "8601021118470dd8799f860101111847840101184781830058206f2bcd2c7aaabd4f57c1d3b1d0f2ba43fcbe6927f0551a73dd7daf4fdcf7e3051847d87a80ff",
             );
           }
           expect(
@@ -136,7 +144,7 @@ describe("authenticated CEK Data integer V1", () => {
               )
               .every(
                 ({ sourceBytes }) =>
-                  sourceBytes !== null && sourceBytes.length <= 3,
+                  sourceBytes !== null && sourceBytes.length <= 66,
               ),
           ).toBe(true);
         }
@@ -221,7 +229,7 @@ describe("authenticated CEK Data integer V1", () => {
     expect(blobReveals).toStrictEqual(source);
     expect(finalizeMidgardCekDataInteger(trace.terminal)).toMatchObject({
       cborLength: BigInt(source.length),
-      memory: 4n + BigInt(magnitudeLength),
+      memory: 4n + integerWords(1n << BigInt((magnitudeLength - 1) * 8)),
     });
     for (const { sourceBytes } of trace.steps) {
       if (sourceBytes !== null) {
@@ -250,11 +258,11 @@ describe("authenticated CEK Data integer V1", () => {
     expect(
       encodeMidgardCekDataIntegerControl(trace.terminal).toString("hex"),
     ).toBe(
-      "860102110b0dd8799f860101110b8401010b8183005820529618b73f1e990ed364ce58c08a76518a3f4ddaf2397ea92207a760422764840bd87a80ff",
+      "860102110b06d8799f860101110b8401010b8183005820529618b73f1e990ed364ce58c08a76518a3f4ddaf2397ea92207a760422764840bd87a80ff",
     );
     expect(
       finalizeMidgardCekDataInteger(trace.terminal)!.root.toString("hex"),
-    ).toBe("720c28eb8291c0e25d860108458a13027f509d93b9c61296532fdb230063c691");
+    ).toBe("7dc0c3aab64ed83c197f2d0030ae54549e9cdf6b0077f3919819a9bf4e4516ea");
   });
 
   it("accepts only canonical constructor alternatives above 127", () => {
@@ -344,6 +352,6 @@ describe("authenticated CEK Data integer V1", () => {
         sourceLength: 0,
       }),
     ).toThrow(/range/u);
-    expect(MIDGARD_CEK_DATA_INTEGER_SYNTAX_BYTES).toBe(14);
+    expect(MIDGARD_CEK_DATA_INTEGER_SYNTAX_BYTES).toBe(67);
   });
 });

@@ -73,8 +73,10 @@ describe("V1 semantic Data commitment", () => {
         integer.free();
       }
     }
-    expect(midgardCekDataMemorySize(new DataI(hugeMagnitude))).toBe(261n);
-    expect(midgardCekDataMemorySize(new DataI(-(1n << 2_048n)))).toBe(261n);
+    // A Data node is four words plus its leaf: 2^2048 - 1 fills 32 words,
+    // and the magnitude 2^2048 needs a 33rd.
+    expect(midgardCekDataMemorySize(new DataI(hugeMagnitude))).toBe(36n);
+    expect(midgardCekDataMemorySize(new DataI(-(1n << 2_048n)))).toBe(37n);
   });
 
   it("streams large leaves instead of imposing a whole-value cap", () => {
@@ -137,7 +139,7 @@ describe("V1 semantic Data commitment", () => {
       encodeMidgardCekDataNode(rootNode!.node),
     );
     expect(Buffer.from(committed.root).toString("hex")).toBe(
-      "9ce9a6db13fa610a6efad613e5266cefe3740f2de1dd4a014884fa3f717d69de",
+      "f37e29e366cb173ba3d65f8f0a0c5494b0edf067cdafd7b55557849be02b0d4b",
     );
   });
 

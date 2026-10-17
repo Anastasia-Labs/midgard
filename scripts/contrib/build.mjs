@@ -1,4 +1,8 @@
 import {
+  packageBuildTask,
+  taskProcess,
+} from "../../demo/scripts/package-tasks.mjs";
+import {
   accessSync,
   constants,
   existsSync,
@@ -26,15 +30,11 @@ import {
   json,
   outputIdentity,
   packageByName,
-  runtimeBuildClosure,
+  buildClosure,
   withIdentityScope,
 } from "./files.mjs";
 import { runProcess } from "./process.mjs";
-import {
-  pinnedPnpm,
-  pinnedPnpmEnvironment,
-  requireInstalled,
-} from "./pnpm.mjs";
+import { pinnedPnpmEnvironment, requireInstalled } from "./pnpm.mjs";
 import { writeReceipt } from "./receipts.mjs";
 import { resourceDirectory, withResource } from "./resources.mjs";
 
@@ -108,8 +108,8 @@ export const checkBuild = (root, name, { env = process.env } = {}) =>
         throw new Error("compiled dependency contents changed");
       // Inlined non-runtime dists are bound by bytes above. Recursing into
       // them could cycle through a devDependency back to this package.
-      for (const dependency of runtimeBuildClosure(root, pkg.name).filter(
-        (entry) => entry.name !== pkg.name,
+      for (const dependency of buildClosure(root, pkg.name).filter(
+        (entry) => entry.name !== pkg.name && packageBuildTask(entry),
       )) {
         const verdict = checkBuild(root, dependency.name, { env });
         if (verdict.status !== "fresh")
@@ -193,8 +193,8 @@ export const buildPackage = async (
   { signal, env = process.env, force = false } = {},
 ) => {
   const pkg = packageByName(root, name);
-  if (!pkg.scripts?.["build:contrib-raw"])
-    throw new Error(`${pkg.name} has no guarded build recipe`);
+  const task = packageBuildTask(pkg);
+  if (!task) throw new Error(`${pkg.name} has no guarded build recipe`);
   // A package with nothing to import builds without an install.
   if (Object.keys({ ...pkg.dependencies, ...pkg.devDependencies }).length)
     requireInstalled(root);
@@ -202,8 +202,8 @@ export const buildPackage = async (
   return withResource(
     `workspace:${realpathSync(root)}`,
     async (ownedEnv) => {
-      for (const dependency of runtimeBuildClosure(root, pkg.name).filter(
-        (entry) => entry.name !== pkg.name,
+      for (const dependency of buildClosure(root, pkg.name).filter(
+        (entry) => entry.name !== pkg.name && packageBuildTask(entry),
       )) {
         if (checkBuild(root, dependency.name, { env }).status !== "fresh") {
           const built = await buildPackage(root, dependency.name, {
@@ -231,28 +231,31 @@ export const buildPackage = async (
           // Every Node process of the recipe records what it reads.
           const trace = resolve(directory, "reads.jsonl");
           const launcher = launcherPath(buildEnv);
-          const step = await runProcess({
-            // Package-manager configuration must not run anything around
-            // the recipe from the exempt launcher: no pre/post scripts, and
-            // the default shell rather than one an .npmrc names.
-            ...pinnedPnpm(resolve(root, pkg.directory), [
-              "--config.enable-pre-post-scripts=false",
-              "--config.script-shell=/bin/sh",
-              "--config.shell-emulator=false",
-              "run",
-              "build:contrib-raw",
-            ]),
-            env: {
-              ...buildEnv,
-              MIDGARD_CONTRIB_BUILD_TRACE: trace,
-              ...(launcher ? { MIDGARD_CONTRIB_BUILD_LAUNCHER: launcher } : {}),
-              NODE_OPTIONS:
-                `${buildEnv.NODE_OPTIONS ?? ""} --require ${JSON.stringify(TRACER)}`.trim(),
-            },
-            signal,
-            logPath: resolve(directory, "build.log"),
-            echo: process.env.MIDGARD_CONTRIB_VERBOSE === "1",
-          });
+          const steps = [];
+          for (const [index, declared] of task.steps.entries()) {
+            const invocation = taskProcess(
+              declared,
+              resolve(root, pkg.directory),
+              buildEnv,
+            );
+            const step = await runProcess({
+              ...invocation,
+              env: {
+                ...invocation.env,
+                MIDGARD_CONTRIB_BUILD_TRACE: trace,
+                ...(launcher
+                  ? { MIDGARD_CONTRIB_BUILD_LAUNCHER: launcher }
+                  : {}),
+                NODE_OPTIONS:
+                  `${invocation.env.NODE_OPTIONS ?? ""} --require ${JSON.stringify(TRACER)}`.trim(),
+              },
+              signal,
+              logPath: resolve(directory, `build-${index}.log`),
+              echo: process.env.MIDGARD_CONTRIB_VERBOSE === "1",
+            });
+            steps.push(step);
+            if (step.exitCode !== 0) break;
+          }
           const after = inputIdentity(root, pkg.name);
           const receipt = writeReceipt({
             root,
@@ -261,7 +264,7 @@ export const buildPackage = async (
             kind: "build",
             before,
             after,
-            steps: [step],
+            steps,
           });
           const outputs = outputIdentity(root, `${pkg.directory}/dist`);
           receipt.artifacts = [{ name: pkg.name, outputs }, ...dependencies];
