@@ -11,8 +11,12 @@
  *   apart, for at most `maxAttempts` attempts in all.
  * - Past that the step fails exhausted (`StartupStepFailedError`, step
  *   `ledger_signature_verifier`), so the process exits non-zero and its
- *   supervisor restarts it (`withStartupHttpServer`). A rejected
- *   initialisation stays rejected for the life of the process: a restart is
+ *   supervisor restarts it (`withStartupHttpServer`).
+ * - The verifier bounds its own initialisation
+ *   (`LEDGER_ED25519_READY_TIMEOUT_MS`, which `attemptTimeout` matches), and
+ *   one that fails or does not settle within it stays unavailable for the
+ *   life of the process. Later attempts then fail at once, so the step is
+ *   exhausted about `retryDelay` per attempt after the first: a restart is
  *   the retry that can clear it, and the node never runs without it.
  *
  * The bound is a constant, not configuration: initialisation is a local
@@ -20,7 +24,10 @@
  * bound (about half a minute at most) hands a failure to the supervisor
  * quickly.
  */
-import { ledgerEd25519SignatureReady } from "@al-ft/midgard-core";
+import {
+  LEDGER_ED25519_READY_TIMEOUT_MS,
+  ledgerEd25519SignatureReady,
+} from "@al-ft/midgard-core";
 import { Duration, Effect } from "effect";
 
 import {
@@ -42,10 +49,11 @@ export type LedgerSignatureVerifierStartupBounds = Readonly<{
   retryDelay: Duration.DurationInput;
 }>;
 
-/** At most 3 attempts of 10 s each, 1 s apart. */
+/** At most 3 attempts, 1 s apart, each as long as the verifier's own bound
+ * (10 s). */
 export const LEDGER_SIGNATURE_VERIFIER_STARTUP_BOUNDS: LedgerSignatureVerifierStartupBounds =
   {
-    attemptTimeout: Duration.seconds(10),
+    attemptTimeout: Duration.millis(LEDGER_ED25519_READY_TIMEOUT_MS),
     maxAttempts: 3,
     retryDelay: Duration.seconds(1),
   };

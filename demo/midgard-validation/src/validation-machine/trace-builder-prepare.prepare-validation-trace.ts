@@ -39,7 +39,6 @@ import {
   hashMidgardValidationLedgerDelta,
   hashMidgardValidationLedgerDeltaOperation,
   inspectMidgardRedeemerData,
-  ledgerEd25519SignatureReady,
   MIDGARD_BOUNDED_ITEM_CHUNK_BYTES,
   MIDGARD_CONSENSUS_LIMITS,
   type MidgardBlake2b224TraceControl,
@@ -81,6 +80,7 @@ import { type MidgardRejectionReasonV1 } from "@al-ft/midgard-core/validation-tr
 import { blake2b } from "@noble/hashes/blake2.js";
 import { Effect } from "effect";
 
+import { awaitLedgerEd25519SignatureReady } from "../ledger-ed25519-ready.js";
 import {
   buildCanonicalMidgardLedgerEntryOutputMaterial,
   buildCanonicalMidgardLedgerOutputMaterial,
@@ -160,7 +160,7 @@ import {
 
 export const prepareValidationTrace = (input: ValidationMachineReplayInput) =>
   Effect.gen(function* () {
-    yield* Effect.promise(() => ledgerEd25519SignatureReady);
+    yield* awaitLedgerEd25519SignatureReady;
     const contextCbor = Buffer.from(
       aikenSerialisedPlutusDataCbor(
         encodeCbor([

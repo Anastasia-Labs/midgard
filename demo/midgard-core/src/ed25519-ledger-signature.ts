@@ -66,17 +66,51 @@ export const ledgerSignatureVerifierUnavailable = (
 let sodiumReady = false;
 
 /**
- * Resolves once {@link verifyLedgerEd25519Signature} can answer, and rejects
- * with a `LedgerSignatureVerifierUnavailableError` if libsodium cannot
- * initialise. Worker start-up and asynchronous entry points await it before
- * their first verification.
+ * How long libsodium may take to initialise before the verifier is
+ * unavailable for the life of the process. Initialisation is a local
+ * WebAssembly instantiation with nothing external to wait on; the node's
+ * startup attempt uses the same bound.
  */
-export const ledgerEd25519SignatureReady: Promise<void> = sodium.ready.then(
-  () => {
-    sodiumReady = true;
-  },
-  (cause: unknown) => {
-    throw ledgerSignatureVerifierUnavailable(cause);
+export const LEDGER_ED25519_READY_TIMEOUT_MS = 10_000;
+
+/**
+ * Resolves once {@link verifyLedgerEd25519Signature} can answer. Rejects with
+ * a `LedgerSignatureVerifierUnavailableError` if libsodium cannot initialise,
+ * or has not within `LEDGER_ED25519_READY_TIMEOUT_MS`, so no caller that
+ * awaits it waits longer than that. The outcome is settled once: every later
+ * await gets the same rejection at once, and the verifier stays unavailable
+ * even if libsodium initialises afterwards. Worker start-up and asynchronous
+ * entry points await it before their first verification.
+ */
+export const ledgerEd25519SignatureReady: Promise<void> = new Promise<void>(
+  (resolve, reject) => {
+    let settled = false;
+    // Not unref'd: a process with nothing else to do still waits out the
+    // bound, and so reports the failure instead of ending with it unsettled.
+    const timer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      reject(
+        new LedgerSignatureVerifierUnavailableError(
+          `Ed25519 verification is unavailable: libsodium did not initialise within ${LEDGER_ED25519_READY_TIMEOUT_MS.toString()} ms`,
+        ),
+      );
+    }, LEDGER_ED25519_READY_TIMEOUT_MS);
+    sodium.ready.then(
+      () => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        sodiumReady = true;
+        resolve();
+      },
+      (cause: unknown) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        reject(ledgerSignatureVerifierUnavailable(cause));
+      },
+    );
   },
 );
 // A failed initialisation surfaces where the promise is awaited and at every

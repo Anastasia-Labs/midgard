@@ -1,9 +1,7 @@
-import {
-  findLedgerSignatureVerifierUnavailable,
-  ledgerEd25519SignatureReady,
-} from "@al-ft/midgard-core";
+import { findLedgerSignatureVerifierUnavailable } from "@al-ft/midgard-core";
 import { LOVELACE_UNIT, normalizeAssets } from "@al-ft/midgard-core/assets";
 import { classifyWithdrawalFromLedger } from "@al-ft/midgard-sdk";
+import { awaitLedgerEd25519SignatureReady } from "@al-ft/midgard-validation";
 import { Effect, Option } from "effect";
 
 import { DatabaseError } from "../../../database/utils/common.js";
@@ -96,7 +94,18 @@ export const classifyWithdrawalsInOrder = ({
 }): Effect.Effect<readonly ClassifiedWithdrawal[], DatabaseError, never> =>
   Effect.gen(function* () {
     // Signature checks are libsodium's, which answer only once initialised.
-    yield* Effect.promise(() => ledgerEd25519SignatureReady);
+    // A verifier that cannot answer fails as its typed fault, kept as the
+    // cause exactly as `classifyWithdrawal` keeps it.
+    yield* awaitLedgerEd25519SignatureReady.pipe(
+      Effect.mapError(
+        (fault) =>
+          new DatabaseError({
+            table: WithdrawalsDB.tableName,
+            message: fault.message,
+            cause: fault,
+          }),
+      ),
+    );
     const drained = new Set<string>();
     const classified: ClassifiedWithdrawal[] = [];
     for (const entry of entries) {

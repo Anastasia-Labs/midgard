@@ -1,4 +1,4 @@
-import { ledgerEd25519SignatureReady } from "@al-ft/midgard-core";
+import { type LedgerSignatureVerifierUnavailableError } from "@al-ft/midgard-core";
 import {
   decodeMidgardCekProgramMaterialSidecar,
   verifyMidgardCekProgramMaterial,
@@ -19,6 +19,7 @@ import { validateMidgardConsensusTxCbor } from "@al-ft/midgard-core/consensus-va
 import { collectMidgardAttachedProgramEnvelopes } from "@al-ft/midgard-core/script-proof";
 import { Effect } from "effect";
 
+import { awaitLedgerEd25519SignatureReady } from "./ledger-ed25519-ready.js";
 import {
   decodeMidgardSubmittedTxFromCanonicalCbor,
   locateMidgardForcedTxOutputFault,
@@ -420,9 +421,9 @@ export const validatePhaseASingle = (
 export const runPhaseAValidation = (
   queuedTxs: readonly QueuedTx[],
   config: PhaseAConfig,
-): Effect.Effect<PhaseAResult> =>
+): Effect.Effect<PhaseAResult, LedgerSignatureVerifierUnavailableError> =>
   Effect.gen(function* () {
-    yield* Effect.promise(() => ledgerEd25519SignatureReady);
+    yield* awaitLedgerEd25519SignatureReady;
     const orderedResults = yield* Effect.forEach(
       queuedTxs,
       (queuedTx) => Effect.sync(() => validatePhaseASingle(queuedTx, config)),

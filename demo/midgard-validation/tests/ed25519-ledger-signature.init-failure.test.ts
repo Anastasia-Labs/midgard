@@ -14,7 +14,11 @@ import { CML, Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { describe, expect, it, vi } from "vitest";
 
-import { replayValidationVerdictEvent } from "../src/index.js";
+import {
+  replayValidationVerdictEvent,
+  runPhaseAValidation,
+} from "../src/index.js";
+import { prepareValidationTrace } from "../src/validation-machine/trace-builder-prepare.js";
 import {
   honestSignature,
   signerPublicKey,
@@ -25,7 +29,8 @@ import { makeNativeTx } from "./validation-fixtures.js";
 /**
  * libsodium failing to initialise is a fault of this process: the readiness
  * promise rejects with the verifier's local fault, keeping the original
- * error, and every asynchronous entry point that waits on it fails with that
+ * error, and every asynchronous entry point that waits on it (event replay,
+ * Phase A, trace preparation, withdrawal classification) fails with that
  * typed error rather than a defect or a verdict.
  */
 vi.mock(
@@ -98,6 +103,32 @@ describe("Ed25519 verification when libsodium fails to initialise", () => {
           l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
           sourceKind: "normal",
         }),
+      ),
+    );
+  });
+
+  it("fails Phase A with the local fault", async () => {
+    expectLocalFault(
+      await leftOf(
+        runPhaseAValidation([], {
+          expectedNetworkId: 0n,
+          minFeeA: 0n,
+          minFeeB: 0n,
+          concurrency: 1,
+          strictnessProfile: "phase1_midgard",
+          consensusProfile: MIDGARD_CONSENSUS_PROFILE,
+        }),
+      ),
+    );
+  });
+
+  it("fails trace preparation with the local fault", async () => {
+    // The wait comes first: nothing of the input is read before it.
+    expectLocalFault(
+      await leftOf(
+        prepareValidationTrace(
+          {} as Parameters<typeof prepareValidationTrace>[0],
+        ),
       ),
     );
   });
