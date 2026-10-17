@@ -40,6 +40,7 @@ export {
   makeDeploymentMarker,
   parseDeploymentMarker,
 } from "./deployment-manifest-identity/marker.js";
+export * from "./deployment-manifest-identity/members.js";
 export { parseDeploymentManifestCardanoProtocolParameters } from "./deployment-manifest-identity/protocol-parameters.js";
 export {
   CONWAY_MAXIMUM_REFERENCE_SCRIPTS_SIZE_BYTES,

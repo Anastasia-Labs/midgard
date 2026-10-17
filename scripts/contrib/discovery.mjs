@@ -5,7 +5,6 @@ import { resolve, relative } from "node:path";
 import {
   filesUnder,
   packageByName,
-  inside,
   inputIdentity,
   atomicJson,
   runtimeBuildClosure,
@@ -15,8 +14,8 @@ import { realpathSync } from "node:fs";
 import { withResource } from "./resources.mjs";
 import { sourceFacetPaths } from "../lib/source-facets.mjs";
 import { checkBuild, buildPackage, runDirectory } from "./build.mjs";
-import { runProcess } from "./process.mjs";
 import { writeReceipt } from "./receipts.mjs";
+import { probeInstalledPackage } from "./installed-boundary.mjs";
 
 export const symbolOwners = (root, query) => {
   const ts = createRequire(resolve(root, "demo/midgard-core/package.json"))(
@@ -81,72 +80,13 @@ export const checkBoundaries = async (
         name: entry.name,
         outputs: checkBuild(root, entry.name).stamp.outputs,
       }));
-      const bins =
-        typeof pkg.bin === "string" ? [pkg.bin] : Object.values(pkg.bin ?? {});
-      const targets = Object.entries(pkg.exports ?? {}).flatMap(
-        ([key, value]) => {
-          if (key.includes("*") || typeof value !== "object" || !value.import)
-            return [];
-          return [
-            {
-              role: key,
-              path: inside(root, resolve(root, pkg.directory, value.import)),
-            },
-          ];
-        },
-      );
-      if (
-        pkg.main &&
-        !bins.some(
-          (bin) =>
-            resolve(root, pkg.directory, bin) ===
-            resolve(root, pkg.directory, pkg.main),
-        ) &&
-        !targets.some(
-          (entry) => entry.path === resolve(root, pkg.directory, pkg.main),
-        )
-      )
-        targets.push({
-          role: "main",
-          path: inside(root, resolve(root, pkg.directory, pkg.main)),
-        });
-      if (!targets.length && !pkg.bin)
-        throw new Error(`no declared runtime exports or CLI for ${name}`);
-      const steps = [];
-      // Sequential imports expose actual ESM initialization order/cycles. Child
-      // processes load import/default dist conditions, never Vitest's src alias.
-      if (targets.length)
-        steps.push(
-          await runProcess({
-            argv: [
-              process.execPath,
-              "--input-type=module",
-              "-e",
-              "for (const path of JSON.parse(process.argv[1])) await import(path);",
-              JSON.stringify(targets.map((entry) => entry.path)),
-            ],
-            cwd: resolve(root, pkg.directory),
-            env: ownedEnv,
-            signal,
-            logPath: resolve(directory, "exports.log"),
-            echo: process.env.MIDGARD_CONTRIB_VERBOSE === "1",
-          }),
-        );
-      for (const bin of bins)
-        steps.push(
-          await runProcess({
-            argv: [
-              process.execPath,
-              inside(root, resolve(root, pkg.directory, bin)),
-              "--help",
-            ],
-            cwd: resolve(root, pkg.directory),
-            env: ownedEnv,
-            signal,
-            logPath: resolve(directory, `cli-${steps.length}.log`),
-            echo: process.env.MIDGARD_CONTRIB_VERBOSE === "1",
-          }),
-        );
+      const installed = await probeInstalledPackage({
+        root,
+        pkg,
+        directory,
+        env: ownedEnv,
+        signal,
+      });
       const receipt = writeReceipt({
         root,
         pkg,
@@ -154,9 +94,16 @@ export const checkBoundaries = async (
         kind: "boundary",
         before,
         after: inputIdentity(root, name),
-        steps,
+        steps: installed.steps,
       });
       receipt.artifacts = artifacts;
+      receipt.evidenceFiles = installed.evidenceFiles;
+      receipt.surfaces = installed.surfaces;
+      if (installed.reason) {
+        receipt.status = "failed";
+        receipt.exitCode = 1;
+        receipt.reason = installed.reason;
+      }
       if (
         artifacts.some(
           ({ name, outputs }) =>

@@ -1,3 +1,4 @@
+import { deploymentValidatorTitle as deployedTitle } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { Effect } from "effect";
 
 import {
@@ -22,11 +23,11 @@ import {
 } from "../types.js";
 
 export const MIN_ADA_FAULT_PROOF_TITLES = {
-  step01: "fraud_proofs/min_ada/step_01.main.spend",
-  step02: "fraud_proofs/min_ada/step_02.main.spend",
-  step03: "fraud_proofs/min_ada/step_03.main.spend",
-  step04: "fraud_proofs/min_ada/step_04.main.spend",
-  txYield: "fraud_proofs/min_ada/step_02_yields.tx.withdraw",
+  step01: deployedTitle("fraudProofMinAda"),
+  step02: deployedTitle("fraudProofMinAdaStep02"),
+  step03: deployedTitle("fraudProofMinAdaStep03"),
+  step04: deployedTitle("fraudProofMinAdaStep04"),
+  txYield: deployedTitle("fraudProofMinAdaStep02TxWithdraw"),
 } as const;
 
 export type MinAdaFaultProofContracts = {

@@ -1,3 +1,4 @@
+import { packageTasks } from "../../demo/scripts/package-tasks.mjs";
 import { writeFileSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -6,21 +7,36 @@ import { workspacePackages } from "./files.mjs";
 
 export const enrollBuilds = (root, { write = false } = {}) => {
   const changes = [];
-  for (const pkg of workspacePackages(root).filter(
-    (entry) => entry.scripts?.build,
-  )) {
+  for (const pkg of workspacePackages(root)) {
     const path = resolve(root, pkg.directory, "package.json");
     const manifest = JSON.parse(readFileSync(path, "utf8"));
-    const expected = `node ../../scripts/contrib.mjs build --package ${pkg.name}`;
+    const tasks = packageTasks(manifest);
+    if (manifest.scripts?.build && !tasks.build)
+      throw new Error(
+        `${pkg.name}: declare midgardTasks.build before enrolling its build`,
+      );
+    const expected = {
+      ...(tasks.build
+        ? {
+            build: `node ../../scripts/contrib.mjs build --package ${pkg.name}`,
+            "build:contrib-raw": "node ../scripts/package-tasks.mjs build",
+          }
+        : {}),
+      ...(tasks.test ? { test: "node ../scripts/package-test.mjs" } : {}),
+    };
+    for (const hook of ["prebuild", "postbuild", "pretest", "posttest"])
+      if (
+        manifest.scripts?.[hook] &&
+        tasks[hook.includes("build") ? "build" : "test"]
+      )
+        throw new Error(`${pkg.name}: move ${hook} behavior into midgardTasks`);
     if (
-      manifest.scripts.build === expected &&
-      manifest.scripts["build:contrib-raw"]
+      Object.entries(expected).every(
+        ([name, script]) => manifest.scripts?.[name] === script,
+      )
     )
       continue;
-    if (manifest.scripts.build.includes("contrib.mjs"))
-      throw new Error(`unexpected guarded build recipe: ${pkg.name}`);
-    manifest.scripts["build:contrib-raw"] = manifest.scripts.build;
-    manifest.scripts.build = expected;
+    manifest.scripts = { ...manifest.scripts, ...expected };
     changes.push(pkg.directory);
     if (write) writeFileSync(path, `${JSON.stringify(manifest, null, 2)}\n`);
   }

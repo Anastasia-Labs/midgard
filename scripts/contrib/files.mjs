@@ -1,3 +1,4 @@
+import { packageBuildTask } from "../../demo/scripts/package-tasks.mjs";
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import {
@@ -248,13 +249,19 @@ export const packageClosure = (root, name) => {
 // computed rather than spelled.
 const externalWorkspacePackages = (root, pkg, packages) => {
   const lists = [
-    ...buildConfigText(root, pkg).matchAll(/\bexternal\s*:\s*\[([^\]]*)\]/gu),
-    ...(pkg.scripts?.["build:contrib-raw"] ?? "").matchAll(
-      /--external[ =](\S+)/gu,
+    ...[
+      ...buildConfigText(root, pkg).matchAll(/\bexternal\s*:\s*\[([^\]]*)\]/gu),
+    ].map(([, list]) => list),
+    ...(packageBuildTask(pkg)?.steps ?? []).flatMap(({ command }) =>
+      command.flatMap((arg, index) =>
+        arg === "--external"
+          ? [command[index + 1] ?? ""]
+          : arg.startsWith("--external=")
+            ? [arg.slice("--external=".length)]
+            : [],
+      ),
     ),
-  ]
-    .map(([, list]) => list.replaceAll("\\", ""))
-    .join("\n");
+  ].join("\n");
   return packages
     .map((entry) => entry.name)
     .filter(
@@ -269,7 +276,7 @@ const externalWorkspacePackages = (root, pkg, packages) => {
 
 // Runtime imports consume emitted workspace artifacts. Unlike the source
 // closure, their dependency graph must be acyclic and built in dependency order.
-export const runtimeBuildClosure = (root, name) => {
+const orderedBuildClosure = (root, name, includeBuildPrerequisites) => {
   const packages = workspacePackages(root);
   const visited = new Set();
   const visiting = new Set();
@@ -284,17 +291,49 @@ export const runtimeBuildClosure = (root, name) => {
           `${pkg.name}: its build keeps ${external} external, so its dist imports ${external}'s dist at runtime, but ${external} is not in its dependencies; move it there so that dist is built first`,
         );
     visiting.add(pkg.name);
-    for (const dependency of Object.keys(pkg.dependencies ?? {}).sort()) {
+    for (const dependency of [
+      ...new Set([
+        ...Object.keys(pkg.dependencies ?? {}).sort(),
+        ...(includeBuildPrerequisites
+          ? (packageBuildTask(pkg)?.prerequisites ?? []).map(
+              (entry) => entry.package,
+            )
+          : []),
+      ]),
+    ]) {
       const next = packages.find((entry) => entry.name === dependency);
-      if (next) visit(next);
+      if (next) {
+        if (
+          (packageBuildTask(pkg)?.prerequisites ?? []).some(
+            (entry) => entry.package === dependency,
+          ) &&
+          !packageBuildTask(next)
+        )
+          throw new Error(
+            `${pkg.name}: build prerequisite ${dependency} has no build task`,
+          );
+        visit(next);
+      } else if (
+        (packageBuildTask(pkg)?.prerequisites ?? []).some(
+          (entry) => entry.package === dependency,
+        )
+      )
+        throw new Error(
+          `${pkg.name}: unknown build prerequisite ${dependency}`,
+        );
     }
     visiting.delete(pkg.name);
     visited.add(pkg.name);
-    if (pkg.scripts?.build) ordered.push(pkg);
+    if (includeBuildPrerequisites || packageBuildTask(pkg)) ordered.push(pkg);
   };
   visit(packageByName(root, name));
   return ordered;
 };
+
+export const runtimeBuildClosure = (root, name) =>
+  orderedBuildClosure(root, name, false);
+export const buildClosure = (root, name) =>
+  orderedBuildClosure(root, name, true);
 
 export const MODULE_SPECIFIER =
   /(?:\bfrom|\bimport|\brequire)\s*\(?\s*["'`]([^"'`\s]+)["'`]/gu;
@@ -359,14 +398,21 @@ export const compiledDependencies = (root, name) => {
   const self = packageByName(root, name);
   const inlined = inlinedWorkspacePackages(root, name)
     .map((entry) => packageByName(root, entry))
-    .filter((pkg) => pkg.scripts?.build);
+    .filter(packageBuildTask);
   return [
-    ...runtimeBuildClosure(root, name).filter((pkg) => pkg.name !== self.name),
+    ...buildClosure(root, name).filter(
+      (pkg) => pkg.name !== self.name && packageBuildTask(pkg),
+    ),
     ...inlined,
-  ].map((pkg) => ({
-    name: pkg.name,
-    outputs: outputIdentity(root, `${pkg.directory}/dist`),
-  }));
+  ]
+    .filter(
+      (pkg, index, entries) =>
+        entries.findIndex((entry) => entry.name === pkg.name) === index,
+    )
+    .map((pkg) => ({
+      name: pkg.name,
+      outputs: outputIdentity(root, `${pkg.directory}/dist`),
+    }));
 };
 
 // Repository inputs every package build binds, besides its package closure.

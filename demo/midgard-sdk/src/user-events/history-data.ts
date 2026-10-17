@@ -1,3 +1,4 @@
+import { deploymentValidatorTitle as deployedTitle } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { asDataType } from "@al-ft/midgard-core/lucid-data";
 import { aikenSerialisedPlutusDataCborPreservingMapOrder } from "@al-ft/midgard-core/plutus-data-cbor";
 import {
@@ -69,7 +70,7 @@ export const applyEventHistoryRetentionValidator = (
     type: "PlutusV3",
     script: applyBlueprintParams(
       blueprint,
-      "user_events/history_data.retention.spend",
+      deployedTitle("depositHistoryRetentionSpend"),
       [hubPolicyId, Data.from(Data.to(kind, EventHistoryKind))],
     ),
   };

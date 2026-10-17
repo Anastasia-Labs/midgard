@@ -10,6 +10,7 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { test } from "node:test";
+import { packageTestTask } from "../../demo/scripts/package-tasks.mjs";
 import { loadYaml } from "../ci/lint-workflows.mjs";
 import { buildRegistry } from "./registry.mjs";
 import { planPreflight, runPreflight } from "./run.mjs";
@@ -158,13 +159,18 @@ test("Node CI covers every package build, typecheck and full suite", () => {
         script === "test"
           ? [`${prefix} test`, `${prefix} run test`]
           : [`${prefix} run ${script}`];
-      // These package hooks are actual build prerequisites in CI.
+      // These package commands declare actual build prerequisites in CI.
       if (script === "build" && pkg.name === "midgard-node") {
         assert.match(pkg.scripts["db:migrate"], /^pnpm run build &&/u);
         invocations.push(`${prefix} run db:migrate`);
       }
       if (script === "build" && pkg.name === "da-committee-node") {
-        assert.equal(pkg.scripts.pretest, "pnpm run build");
+        assert.ok(
+          packageTestTask(pkg)?.prerequisites?.some(
+            (entry) => entry.kind === "build" && entry.package === pkg.name,
+          ),
+          "DA tests must declare their own build prerequisite",
+        );
         invocations.push(`${prefix} test`);
       }
       const reached = commands.filter(({ run }) =>
@@ -214,6 +220,30 @@ test("Node CI covers every package build, typecheck and full suite", () => {
   );
 });
 
+test("installed boundaries cover all built packages and retain local ownership if the CI step disappears", () => {
+  const check = registry.checks.find(({ id }) => id === "demo-boundary");
+  const selected = check.plan({ matched: [], full: true });
+  assert.deepEqual(
+    selected.map(({ argv }) => argv.at(-1)),
+    registry.packages
+      .filter((pkg) => pkg.scripts.build)
+      .map(({ name }) => name),
+  );
+  assert.equal(selected.length, 11);
+  assert.equal(registry.runtimeWorkflow.boundaryLane, true);
+  assert.ok(document().jobs.gate.needs.includes("installed-boundaries"));
+  const plan = planPreflight(
+    {
+      ...registry,
+      runtimeWorkflow: { ...registry.runtimeWorkflow, boundaryLane: false },
+    },
+    ["demo/midgard-core/src/index.ts"],
+    { runtimeOwner: "ci" },
+  );
+  assert.ok(ids(plan).includes("demo-boundary"));
+  assert.ok(!plan.hosted.some(({ id }) => id === "demo-boundary"));
+});
+
 test("workflow routing and summary failures cannot silently delegate runtime", () => {
   assert.ok(yaml, "yaml is required to prove hosted coverage");
   const scratch = mkdtempSync(join(tmpdir(), "runtime-owner-"));
@@ -239,6 +269,13 @@ test("workflow routing and summary failures cannot silently delegate runtime", (
       JSON.stringify(workspace),
     );
     assert.equal(readRuntimeWorkflow(scratch, { yaml }).sdkLane, false);
+    const missingBoundary = document();
+    missingBoundary.jobs["installed-boundaries"].steps.pop();
+    writeFileSync(
+      join(scratch, RUNTIME_WORKFLOW),
+      yaml.stringify(missingBoundary),
+    );
+    assert.equal(readRuntimeWorkflow(scratch, { yaml }).boundaryLane, false);
     for (const mutate of [
       (w) => {
         w.on.pull_request.branches = ["main"];
