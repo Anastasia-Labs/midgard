@@ -1,6 +1,7 @@
 import { decodeMidgardNativeTxWitnessSetCompact } from "@al-ft/midgard-core";
 import {
   type FieldOpening,
+  isMidgardWitnessSetField,
   requireInputIndex,
   requireOwnSpendPurpose,
   requireUniqueOutputIndex,
@@ -113,17 +114,22 @@ export const submitWidthStep02Raw = async ({
     anchorTxId: state.subject.transaction_id,
     nativeTxCompactCbor,
     fieldPreimage: Buffer.from(evidence.fieldPreimageHex, "hex"),
-    witnessSet: {
-      addr_tx_wits_hash: Buffer.from(witnessSet.addrTxWitsHash).toString("hex"),
-      script_tx_wits_hash: Buffer.from(witnessSet.scriptTxWitsHash).toString(
-        "hex",
-      ),
-      redeemer_tx_wits_hash: Buffer.from(
-        witnessSet.redeemerTxWitsHash,
-      ).toString("hex"),
-    },
-    ...(evidence.fieldIndex === 7n
-      ? { anchorWitnessSetHash: state.compact.witness_set_hash }
+    // Only a witness-set field carries the witness set and its anchor.
+    ...(isMidgardWitnessSetField(Number(evidence.fieldIndex))
+      ? {
+          witnessSet: {
+            addr_tx_wits_hash: Buffer.from(witnessSet.addrTxWitsHash).toString(
+              "hex",
+            ),
+            script_tx_wits_hash: Buffer.from(
+              witnessSet.scriptTxWitsHash,
+            ).toString("hex"),
+            redeemer_tx_wits_hash: Buffer.from(
+              witnessSet.redeemerTxWitsHash,
+            ).toString("hex"),
+          },
+          anchorWitnessSetHash: state.compact.witness_set_hash,
+        }
       : {}),
     owner: signer.paymentKeyHash,
     publish: false,
