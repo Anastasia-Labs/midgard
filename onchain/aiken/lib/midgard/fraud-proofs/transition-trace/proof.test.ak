@@ -3033,7 +3033,7 @@ test rejects_l2_transaction_with_uncommitted_spend_preimage() fail {
 /// under that same mutation, because `apply_l2_spends` rejects its mismatched
 /// delete witness first. That is the concrete reason these two exist alongside
 /// it rather than instead of it, and it is why they, not it, are the selectors
-/// the Q21 execution ledger names.
+/// the Q21 script budgets name.
 ///
 /// `post_utxos_root` is a root the transition cannot produce, so the fault's own
 /// `expected_post_root != post_utxos_root` claim is satisfied for the right

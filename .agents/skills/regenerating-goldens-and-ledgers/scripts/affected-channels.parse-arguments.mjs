@@ -267,22 +267,3 @@ export const producerClosure = (tree, directories) => {
   }
   return [...seen].sort();
 };
-
-export const ledgerModules = (tree, ledgerPath) => {
-  const source = tree.read(ledgerPath);
-  if (source === undefined) return [];
-  let ledger;
-  try {
-    ledger = JSON.parse(source);
-  } catch {
-    return [];
-  }
-  const names = new Set();
-  for (const entry of ledger.modules ?? []) {
-    if (typeof entry?.module === "string") names.add(entry.module);
-  }
-  return [...names].map((name) => ({
-    name,
-    file: resolveAikenModule(tree, name),
-  }));
-};

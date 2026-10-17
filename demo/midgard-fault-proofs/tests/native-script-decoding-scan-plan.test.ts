@@ -3,12 +3,8 @@
  * §8.2(3)). Pure unit tests — no emulator: the planner's contract is that
  * every plan it emits replays exactly on the engine twin's
  * `budgeted_scan_v1`, so the suite replays published plans from the outside
- * with nothing but the plan's own window/frames/budget, and cross-checks
- * the planner's pinned execution constants against the exec ledger JSON so
- * a ledger re-pin cannot silently split the planner from the measurement.
+ * with nothing but the plan's own window/frames/budget.
  */
-import { readFileSync } from "node:fs";
-
 import {
   budgetedMidgardNativeScriptDecodingScan,
   buildMidgardNativeScriptDecodingTrace,
@@ -21,13 +17,13 @@ import {
   MidgardNativeScriptDecodingScanOutcomeKinds,
   midgardNativeScriptDecodingScanWindowForCursor,
   MidgardNativeScriptStructureStages,
+  SCRIPT_BUDGET_BASIS,
 } from "@al-ft/midgard-core";
 import { describe, expect, it } from "vitest";
 
 import {
   buildNativeScriptDecodingScanPlan,
   NATIVE_SCRIPT_DECODING_DEFAULT_MAX_STEPS_PER_TX,
-  NATIVE_SCRIPT_DECODING_EXEC_PINS,
   NativeScriptDecodingPlanRoutes,
   type NativeScriptDecodingScanPlan,
 } from "../src/native-script-decoding/scan-plan.js";
@@ -114,85 +110,6 @@ const chainIsContinuous = (plan: NativeScriptDecodingScanPlan): void => {
 };
 
 describe("native-script-decoding scan planner (offchain plan §5.2/§5.3)", () => {
-  it("pins its execution constants to the exec ledger JSON", () => {
-    type LedgerRow = { readonly mem: number; readonly cpu: number };
-    type LedgerFile = {
-      readonly basis: {
-        readonly memoryUnits: number;
-        readonly cpuUnits: number;
-      };
-      readonly modules: readonly {
-        readonly module: string;
-        readonly rows: Readonly<Record<string, LedgerRow>>;
-      }[];
-    };
-    const ledger = JSON.parse(
-      readFileSync(
-        new URL(
-          "../../../onchain/aiken/scripts/native-script-decoding-engine-exec-ledger-v1.json",
-          import.meta.url,
-        ),
-        "utf8",
-      ),
-    ) as LedgerFile;
-    const rowsOf = (moduleSuffix: string): Record<string, LedgerRow> => {
-      const module = ledger.modules.find((entry) =>
-        entry.module.endsWith(moduleSuffix),
-      );
-      if (module === undefined) {
-        throw new Error(`ledger module ${moduleSuffix} is missing`);
-      }
-      return { ...module.rows };
-    };
-    const pins = NATIVE_SCRIPT_DECODING_EXEC_PINS;
-    expect(ledger.basis.memoryUnits).toStrictEqual(pins.basisMemoryUnits);
-    expect(ledger.basis.cpuUnits).toStrictEqual(pins.basisCpuUnits);
-
-    const fold = rowsOf("exec_measure_v1.test");
-    const deep9 = fold["decoding_measure_deep_9_nodes"]!;
-    const deep17 = fold["decoding_measure_deep_17_nodes"]!;
-    expect(deep17.mem - deep9.mem).toStrictEqual(pins.deepMemSlopeNumerator);
-    expect(deep17.cpu - deep9.cpu).toStrictEqual(pins.deepCpuSlopeNumerator);
-    expect(pins.slopeDenominator).toStrictEqual(17 - 9);
-
-    const bindDescriptor = rowsOf(
-      "native_script_decoding/step_03_bind_descriptor",
-    );
-    const advanceOrClose = rowsOf(
-      "native_script_decoding/step_03_advance_or_close",
-    );
-    expect(
-      advanceOrClose[
-        "advance_or_close_closes_direction_b_at_the_exact_terminal"
-      ]!.cpu,
-    ).toStrictEqual(pins.scanStepEnvelopeCpuUnits);
-    expect(
-      advanceOrClose["advance_or_close_closes_a_direction_a_refusal"],
-    ).toStrictEqual({
-      mem: pins.verdictWrongfulAcceptance.mem,
-      cpu: pins.verdictWrongfulAcceptance.cpu,
-      basisFit: "within",
-    });
-    expect(
-      advanceOrClose[
-        "advance_or_close_closes_direction_b_at_the_exact_terminal"
-      ],
-    ).toStrictEqual({
-      mem: pins.verdictWrongfulRejection.mem,
-      cpu: pins.verdictWrongfulRejection.cpu,
-      basisFit: "within",
-    });
-    expect(
-      bindDescriptor[
-        "bind_descriptor_closes_a_non_native_direction_b_descriptor"
-      ],
-    ).toStrictEqual({
-      mem: pins.descriptorContradictionClose.mem,
-      cpu: pins.descriptorContradictionClose.cpu,
-      basisFit: "within",
-    });
-  });
-
   it("derives the default 16-step budget and refuses over-basis overrides", () => {
     expect(NATIVE_SCRIPT_DECODING_DEFAULT_MAX_STEPS_PER_TX).toStrictEqual(16);
     // A deep chain with 26 primitive steps: 12 container tokens + the leaf
@@ -222,10 +139,10 @@ describe("native-script-decoding scan planner (offchain plan §5.2/§5.3)", () =
     ]);
     for (const segment of plan.segments) {
       expect(segment.predictedMemoryUnits).toBeLessThanOrEqual(
-        NATIVE_SCRIPT_DECODING_EXEC_PINS.basisMemoryUnits,
+        SCRIPT_BUDGET_BASIS.mem,
       );
       expect(segment.predictedCpuUnits).toBeLessThanOrEqual(
-        NATIVE_SCRIPT_DECODING_EXEC_PINS.basisCpuUnits,
+        SCRIPT_BUDGET_BASIS.cpu,
       );
     }
   });

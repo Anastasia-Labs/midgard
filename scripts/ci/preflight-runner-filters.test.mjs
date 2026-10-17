@@ -159,7 +159,6 @@ test(
       ({ workflow }) => idsRunBy(workflow).length > 0,
     );
     assert.deepEqual(callers.map(({ file }) => file).sort(), [
-      "aiken-ci.yml",
       "midgard-node-ci.yml",
       "repo-tools-ci.yml",
     ]);

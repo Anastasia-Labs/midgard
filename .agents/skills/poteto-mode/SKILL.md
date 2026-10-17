@@ -38,7 +38,7 @@ Read only the applicable references. Independent perspectives help when they can
 | Test assertions | [writing-tests](../writing-tests/SKILL.md) |
 | Aiken build or compiler failure | [aiken-contract-build](../aiken-contract-build/SKILL.md) |
 | Consensus behavior | [reviewing-consensus-changes](../reviewing-consensus-changes/SKILL.md) |
-| Goldens or execution ledgers | [regenerating-goldens-and-ledgers](../regenerating-goldens-and-ledgers/SKILL.md) |
+| Goldens, fit ledgers or script budgets | [regenerating-goldens-and-ledgers](../regenerating-goldens-and-ledgers/SKILL.md) |
 | Test database or blueprint setup | [local-test-environment](../local-test-environment/SKILL.md) |
 | Live devnet behavior | [running-the-devnet](../running-the-devnet/SKILL.md) |
 | Preprod acceptance | [midgard-e2e-acceptance](../midgard-e2e-acceptance/SKILL.md) |

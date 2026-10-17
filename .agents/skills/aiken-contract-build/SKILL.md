@@ -39,7 +39,7 @@ GOAL_SPEC §3.3 basis (a reading, not a gate; a test is not a transaction):
 - **Exact tests in one module:** pass every unique name to one invocation
   rather than recompiling the tree for each. It fails unless exactly that many
   tests from that one module pass. Its stdout stays Aiken's report (the
-  execution ledgers parse it); the summary goes to stderr.
+  script-budget judge parses it); the summary goes to stderr.
   [script: onchain/aiken/scripts/run-focused-check.mjs]
 
   ```bash

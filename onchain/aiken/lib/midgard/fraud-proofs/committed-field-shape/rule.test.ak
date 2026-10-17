@@ -23,8 +23,8 @@
 ////    admissible — is **not** claimed, and is pinned as unclaimed by
 ////    `committed_field_shape_defers_a_fixed_stride_field_the_door_opens` so that
 ////    a later reader meets it as a documented asymmetry rather than as a bug.
-//// 4. **The cost claim** §12.8 publishes, as the rows
-////    `scripts/committed-field-shape-exec-ledger-v1.json` pins.
+//// 4. **The cost claim** §12.8 publishes, as the rows whose ceilings
+////    `demo/midgard-core/src/script-budgets.json` holds.
 
 use aiken/collection/list
 use aiken/primitive/bytearray
@@ -509,8 +509,8 @@ test committed_field_shape_defers_a_fixed_stride_field_the_door_opens() {
 }
 
 // ---------------------------------------------------------------------------
-// Cost claim — the rows `scripts/committed-field-shape-exec-ledger-v1.json`
-// pins (§12.8)
+// Cost claim — the rows `demo/midgard-core/src/script-budgets.json` holds to
+// ceilings (§12.8)
 // ---------------------------------------------------------------------------
 
 /// The two item cardinalities the per-item term is priced at. Both are carried
