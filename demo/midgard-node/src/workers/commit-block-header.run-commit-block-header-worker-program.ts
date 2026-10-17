@@ -1,10 +1,12 @@
 import {
   findLedgerSignatureVerifierUnavailable,
   ledgerEd25519SignatureReady,
+  LedgerSignatureVerifierUnavailableError,
 } from "@al-ft/midgard-core";
-import { Cause, Effect } from "effect";
+import { Cause, Duration, Effect } from "effect";
 import { parentPort, workerData } from "worker_threads";
 
+import { LEDGER_SIGNATURE_VERIFIER_STARTUP_BOUNDS } from "../commands/listen-startup.await-ledger-signature-verifier.js";
 import {
   MpfEngineStateDB,
   StateQueueMutationLeasesDB,
@@ -38,6 +40,41 @@ import {
   WorkerOutput,
 } from "./utils/commit-block-header.js";
 
+/**
+ * The worker's wait for its Ed25519 verifier, bounded as one startup attempt
+ * of the ledger signature verifier is
+ * (`LEDGER_SIGNATURE_VERIFIER_STARTUP_BOUNDS.attemptTimeout`). An
+ * initialisation that fails, or does not settle within the bound, fails the
+ * run with `LedgerSignatureVerifierUnavailableError`, which the worker's
+ * failure boundary (`captureCommitWorkerFailure`) reports as a local fault
+ * and the parent bounds.
+ */
+const awaitCommitWorkerVerifier = (): Effect.Effect<
+  void,
+  LedgerSignatureVerifierUnavailableError
+> => {
+  const attemptTimeout = Duration.decode(
+    LEDGER_SIGNATURE_VERIFIER_STARTUP_BOUNDS.attemptTimeout,
+  );
+  return Effect.tryPromise({
+    try: () => ledgerEd25519SignatureReady,
+    catch: (cause) =>
+      findLedgerSignatureVerifierUnavailable(cause) ??
+      new LedgerSignatureVerifierUnavailableError(
+        "The commit worker's Ed25519 verifier failed to initialise",
+        { cause },
+      ),
+  }).pipe(
+    Effect.timeoutFail({
+      duration: attemptTimeout,
+      onTimeout: () =>
+        new LedgerSignatureVerifierUnavailableError(
+          `The commit worker's Ed25519 verifier did not initialise within ${Duration.format(attemptTimeout)}`,
+        ),
+    }),
+  );
+};
+
 // Export the production commit worker core so emulator tests can exercise the
 // exact same effect graph without going through a worker-thread bootstrap.
 export const runCommitBlockHeaderWorkerProgram = (
@@ -56,7 +93,7 @@ export const runCommitBlockHeaderWorkerProgram = (
   Effect.gen(function* () {
     // Phase A, withdrawal classification and the trace builder verify
     // signatures with libsodium, which initialises asynchronously.
-    yield* Effect.promise(() => ledgerEd25519SignatureReady);
+    yield* awaitCommitWorkerVerifier();
     yield* Effect.logInfo("🔹 Retrieving all mempool transactions...");
 
     const stateQueueLeaseToken = workerInput.data.stateQueueLeaseToken;
