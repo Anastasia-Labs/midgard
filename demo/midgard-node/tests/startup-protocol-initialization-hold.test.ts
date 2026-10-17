@@ -10,7 +10,8 @@
  * read. A bootstrap's node-runtime reference-script preflight whose
  * submission lost an input to a transaction in flight (a previous process's,
  * after a restart) is built again under
- * `runtime_reference_scripts_input_conflict` and the startup completes; any
+ * `runtime_reference_scripts_input_conflict` and the startup completes, or,
+ * past the same budget, fails under that reason; any
  * other preflight failure fails it at once under
  * `runtime_reference_scripts_failed`. The deployment's reads and the
  * preflight are stubbed; the check's own logic runs.
@@ -321,6 +322,24 @@ describe("the startup protocol check", () => {
       ["runtime_reference_scripts", [RUNTIME_REFERENCE_SCRIPTS_INPUT_CONFLICT]],
       ["runtime_reference_scripts", []],
     ]);
+  });
+
+  it("fails the startup under runtime_reference_scripts_input_conflict once the lost-input preflight outlives its budget", async () => {
+    stub.failures = 0;
+    stub.preflightFailure = "input_spent";
+    stub.preflightFailures = MAX_ATTEMPTS + 1;
+    const { failure } = await runCheck({
+      lucid: PREPROD,
+      manifest: PREPROD,
+      bootstrap: true,
+    });
+    expect(failure).toMatchObject({
+      step: "runtime_reference_scripts",
+      reason: RUNTIME_REFERENCE_SCRIPTS_INPUT_CONFLICT,
+      exhausted: true,
+      attempts: MAX_ATTEMPTS,
+    });
+    expect(stub.preflightRuns).toBe(MAX_ATTEMPTS);
   });
 
   it("fails the startup at once on any other reference-script preflight failure", async () => {
