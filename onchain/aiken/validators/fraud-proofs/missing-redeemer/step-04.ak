@@ -3,7 +3,6 @@ use cardano/assets.{PolicyId}
 use cardano/transaction.{OutputReference, Transaction}
 use midgard/computation_thread as ct
 use midgard/fraud_proofs/common.{cancel, continue}
-use midgard/fraud_proofs/direct_script_derivation/redeemer
 use midgard/fraud_proofs/missing_redeemer/claim
 use midgard/fraud_proofs/missing_redeemer/rule
 use midgard/fraud_proofs/missing_redeemer/step_04 as door
@@ -48,16 +47,12 @@ validator main(
         expect Some(state) = input_state
         when action is {
           door.Scan { args } -> {
-            expect args.budget <= rule.scan_batch
-            let Pair(advanced, _) = redeemer.advance_pointers_v1(
-              state.scan,
-              args.opening,
-              args.checkpoint_bytes,
-              args.budget,
+            let expected: Data = rule.advance_v1(
+              state,
+              args,
               tx.reference_inputs,
               field_preimage_certificate_policy,
             )
-            let expected: Data = rule.ScanStateV1 { ..state, scan: advanced }
             and {
               output_hash == own_hash,
               output_state == expected,

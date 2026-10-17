@@ -6,7 +6,7 @@ use cardano/assets.{PolicyId}
 use cardano/transaction.{Input}
 use midgard/fraud_proofs/direct_script_derivation/cursor
 use midgard/fraud_proofs/direct_script_derivation/purpose_workers.{
-  SourceSelectionV1,
+  ProgressArgsV1, SourceSelectionV1,
 }
 use midgard/fraud_proofs/direct_script_derivation/redeemer
 use midgard/fraud_proofs/field_opening_v1.{
@@ -64,6 +64,53 @@ pub fn initial_scan_v1(
     },
     checkpoint,
   )
+}
+
+/// Bounded field-8 grammar certification before the pointer walk. The scan
+/// has found nothing yet, so no observation can be carried across it.
+pub fn certify_v1(
+  state: ScanStateV1,
+  args: ProgressArgsV1,
+  reference_inputs: List<Input>,
+  certificate_policy_id: PolicyId,
+) -> ScanStateV1 {
+  expect and {
+      !state.scan.complete,
+      !state.scan.found,
+      args.budget <= scan_batch,
+    }
+  let (advanced, _, complete) = cursor.certify_with_completion_at_v1(
+    state.scan.cursor,
+    redeemers_field_index,
+    args.opening,
+    args.checkpoint_bytes,
+    args.budget,
+    reference_inputs,
+    certificate_policy_id,
+  )
+  ScanStateV1 {
+    ..state,
+    scan: redeemer.PointerStateV1 { ..state.scan, cursor: advanced, complete },
+  }
+}
+
+/// One bounded batch of the authenticated field-8 pointer walk.
+pub fn advance_v1(
+  state: ScanStateV1,
+  args: ProgressArgsV1,
+  reference_inputs: List<Input>,
+  certificate_policy_id: PolicyId,
+) -> ScanStateV1 {
+  expect args.budget <= scan_batch
+  let Pair(advanced, _) = redeemer.advance_pointers_v1(
+    state.scan,
+    args.opening,
+    args.checkpoint_bytes,
+    args.budget,
+    reference_inputs,
+    certificate_policy_id,
+  )
+  ScanStateV1 { ..state, scan: advanced }
 }
 
 pub fn decision_v1(state: ScanStateV1) -> DecisionStateV1 {

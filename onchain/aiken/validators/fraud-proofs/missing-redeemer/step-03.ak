@@ -4,8 +4,6 @@ use cardano/transaction.{OutputReference, Transaction}
 use midgard/computation_thread as ct
 use midgard/fraud_proofs/common.{cancel, continue}
 use midgard/fraud_proofs/direct_script_derivation/cursor
-use midgard/fraud_proofs/direct_script_derivation/redeemer
-use midgard/fraud_proofs/field_opening_v1.{redeemers_field_index}
 use midgard/fraud_proofs/missing_redeemer/rule
 use midgard/fraud_proofs/missing_redeemer/step_03.{Datum, SpendRedeemer}
 
@@ -42,30 +40,15 @@ validator main(
           tx.outputs,
         )
         expect Some(state) = input_state
-        expect and {
-            !state.scan.complete,
-            !state.scan.found,
-            args.budget <= rule.scan_batch,
-          }
-        let (advanced, _, complete) = cursor.certify_with_completion_at_v1(
-          state.scan.cursor,
-          redeemers_field_index,
-          args.opening,
-          args.checkpoint_bytes,
-          args.budget,
+        let advanced = rule.certify_v1(
+          state,
+          args,
           tx.reference_inputs,
           field_preimage_certificate_policy,
         )
-        let expected: Data = rule.ScanStateV1 {
-          ..state,
-          scan: redeemer.PointerStateV1 {
-            ..state.scan,
-            cursor: advanced,
-            complete,
-          },
-        }
+        let expected: Data = advanced
         and {
-          output_hash == if advanced.phase == cursor.Walking {
+          output_hash == if advanced.scan.cursor.phase == cursor.Walking {
             next_step_hash
           } else {
             own_hash
