@@ -12,11 +12,7 @@
 import { nextSetBit } from "./script-decode.step-bits.js";
 import { tickBytes, tickFiller } from "./script-decode.step-bytes.js";
 import { tickData } from "./script-decode.step-cbor.js";
-import {
-  tickTypes,
-  tickValue,
-  tickValueReturn,
-} from "./script-decode.step-const.js";
+import { tickValue, tickValueReturn } from "./script-decode.step-const.js";
 import { blake2b224 } from "./script-decode.step-data.js";
 import {
   at,
@@ -40,6 +36,7 @@ import {
   tickListBit,
 } from "./script-decode.step-list.js";
 import { tickMagnitude, tickNat } from "./script-decode.step-nat.js";
+import { tickTypes } from "./script-decode.step-type-tags.js";
 import type {
   Control,
   Frame,

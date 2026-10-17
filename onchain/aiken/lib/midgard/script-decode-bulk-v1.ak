@@ -39,7 +39,7 @@ pub const pair_units = 3
 
 /// More units than any run spends: folding re-decodes a run that a scan
 /// already accepted, so it is never metered.
-const unmetered = 1000000000
+pub const unmetered = 1000000000
 
 /// The most leaves a pair's bit table may have.
 const max_leaves = 4
@@ -551,6 +551,62 @@ pub fn shape_v1(ty: ConstantTypeV1, summaries: Bool) -> Shape {
         summaries,
       )
     _ -> SGen { kind: KStop }
+  }
+}
+
+/// Shapes with summaries, each with its list, array or pair type.
+pub type Shapes =
+  List<(ConstantTypeV1, Shape)>
+
+/// `shape_v1(ty, True)`, built on the shapes `shapes` holds: those of the
+/// list, array and pair types it holds are taken from it, and those of the
+/// others built and added. Gives the shape and the shapes after it.
+pub fn shape_in_v1(ty: ConstantTypeV1, shapes: Shapes) -> (Shape, Shapes) {
+  when ty is {
+    ListConstant { element } -> list_shape_in(ty, element, False, shapes)
+    ArrayConstant { element } -> list_shape_in(ty, element, True, shapes)
+    PairConstant { first, second } ->
+      when shape_of(shapes, ty) is {
+        Some(shape) -> (shape, shapes)
+        None -> {
+          let (a, shapes) = shape_in_v1(first, shapes)
+          let (b, shapes) = shape_in_v1(second, shapes)
+          let shape = pair_shape(a, b, True)
+          (shape, [(ty, shape), ..shapes])
+        }
+      }
+    _ -> (shape_v1(ty, True), shapes)
+  }
+}
+
+fn list_shape_in(
+  ty: ConstantTypeV1,
+  element: ConstantTypeV1,
+  array: Bool,
+  shapes: Shapes,
+) -> (Shape, Shapes) {
+  when shape_of(shapes, ty) is {
+    Some(shape) -> (shape, shapes)
+    None -> {
+      let (element, shapes) = shape_in_v1(element, shapes)
+      let shape = SBit {
+        zero: fixed(empty_list_value, empty_list_entry, 0, True),
+        one: SGen { kind: KList { element, array } },
+      }
+      (shape, [(ty, shape), ..shapes])
+    }
+  }
+}
+
+fn shape_of(shapes: Shapes, ty: ConstantTypeV1) -> Option<Shape> {
+  when shapes is {
+    [] -> None
+    [(known, shape), ..rest] ->
+      if known == ty {
+        Some(shape)
+      } else {
+        shape_of(rest, ty)
+      }
   }
 }
 
@@ -1099,14 +1155,35 @@ fn byte_at(window: ByteArray, position: Int) -> Int {
   word * builtin.index_bytearray(#[1, 2, 4, 8, 16, 32, 64, 128], position % 8) / 256 % 256
 }
 
+/// One step from a value down to where a decode of it stopped.
+pub type Within {
+  /// In a list, from its first cons bit: `count` elements decoded, with
+  /// constant memory `memory`, spending `units`; stopped at or in the element
+  /// whose cons bit is at `at`.
+  WList { count: Int, memory: Int, units: Int, at: Int }
+  /// In the first component of a pair whose components both have bits.
+  WFirst
+  /// In the second component of such a pair, from `middle`; the first has
+  /// constant memory `memory`.
+  WSecond { middle: Int, memory: Int }
+}
+
 /// A compiled decoder of one value: from the bit where the value began, the
 /// current bit (the same bit outside a shape's bit table) and the units
 /// left, it goes to `ok` with the position after the value, its entry, CBOR
 /// length, Data memory and constant memory (the first three placeholders
-/// without summaries) and the units left, never negative; or to `stop` with
-/// the units left when the value is not decoded here.
+/// without summaries) and the units left, never negative; or, when the value
+/// is not decoded here, to `stop` with the steps from the value down to where
+/// it stopped, outermost first. A metered decoder gives every step down it
+/// took; one without `metered` stops only on a value no scan decoded.
 pub type Decoder<r> =
-  fn(Int, Int, Int, fn(Int, ByteArray, Int, Int, Int, Int) -> r, fn(Int) -> r) ->
+  fn(
+    Int,
+    Int,
+    Int,
+    fn(Int, ByteArray, Int, Int, Int, Int) -> r,
+    fn(List<Within>) -> r,
+  ) ->
     r
 
 /// Builds a decoder from two compiled ones. Every compiled decoder is built
@@ -1133,11 +1210,11 @@ fn join_wrap(
 fn stopped(
   _origin: Int,
   _position: Int,
-  units: Int,
+  _units: Int,
   _ok: fn(Int, ByteArray, Int, Int, Int, Int) -> r,
-  stop: fn(Int) -> r,
+  stop: fn(List<Within>) -> r,
 ) -> r {
-  stop(units)
+  stop([])
 }
 
 /// Compiles `shape` into a decoder over the window. A shape is compiled once
@@ -1149,7 +1226,10 @@ fn stopped(
 /// run that a scan has already decoded within its units: it keeps no units,
 /// and the units and constant memory it gives are not those of the value.
 /// It reads only bits that scan read, all before `flat_bits`, so its list
-/// and bit-table steps do not check for the end of the bits.
+/// and bit-table steps do not check for the end of the bits, and it skips
+/// the checks of byte strings, strings and Values that the scan made (their
+/// bounds, UTF-8, key order and quantities). The checks of Data and integers
+/// stay.
 pub fn compile_v1(
   window: ByteArray,
   flat_bits: Int,
@@ -1183,31 +1263,184 @@ fn compile_node(
       join(
         compile_node(window, flat_bits, top, zero, summaries, metered),
         compile_node(window, flat_bits, top, one, summaries, metered),
-        fn(zero, one) {
-          if metered {
-            fn(origin, position, units, ok, stop) {
-              if position >= flat_bits {
-                stop(units)
-              } else if builtin.read_bit(window, top - position) {
-                one(origin, position + 1, units, ok, stop)
-              } else {
-                zero(origin, position + 1, units, ok, stop)
-              }
-            }
-          } else {
-            fn(origin, position, units, ok, stop) {
-              if builtin.read_bit(window, top - position) {
-                one(origin, position + 1, units, ok, stop)
-              } else {
-                zero(origin, position + 1, units, ok, stop)
-              }
-            }
-          }
-        },
+        fn(zero, one) { bit_table(window, flat_bits, top, metered, zero, one) },
       )
     SGen { kind } ->
       compile_kind_v1(window, flat_bits, top, kind, summaries, metered)
   }
+}
+
+/// The decoder that reads one bit and goes on with `zero` or `one`.
+fn bit_table(
+  window: ByteArray,
+  flat_bits: Int,
+  top: Int,
+  metered: Bool,
+  zero: Decoder<r>,
+  one: Decoder<r>,
+) -> Decoder<r> {
+  if metered {
+    fn(origin, position, units, ok, stop) {
+      if position >= flat_bits {
+        stop([])
+      } else if builtin.read_bit(window, top - position) {
+        one(origin, position + 1, units, ok, stop)
+      } else {
+        zero(origin, position + 1, units, ok, stop)
+      }
+    }
+  } else {
+    fn(origin, position, units, ok, stop) {
+      if builtin.read_bit(window, top - position) {
+        one(origin, position + 1, units, ok, stop)
+      } else {
+        zero(origin, position + 1, units, ok, stop)
+      }
+    }
+  }
+}
+
+/// The decoder of a list or array from its first cons bit, whose elements
+/// `element` decodes.
+fn list_kind(
+  window: ByteArray,
+  flat_bits: Int,
+  top: Int,
+  element: Decoder<r>,
+  array: Bool,
+  summaries: Bool,
+  metered: Bool,
+) -> Decoder<r> {
+  if !metered {
+    fn(origin, _position, units, ok, stop) {
+      fold_items_from(
+        window,
+        top,
+        element,
+        origin,
+        units,
+        fn(after, root, _length, count, payload, data, left) {
+          let cbor = 2 + payload
+          ok(
+            after,
+            list_entry(root, count, cbor, data),
+            cbor,
+            4 + data,
+            0,
+            left,
+          )
+        },
+        stop,
+      )
+    }
+  } else if summaries {
+    fn(origin, _position, units, ok, stop) {
+      let base = units - 1
+      items_from(
+        window,
+        flat_bits,
+        top,
+        element,
+        origin,
+        base,
+        0,
+        0,
+        fn(after, root, length, count, payload, data, memory, left) {
+          let cbor = 2 + payload
+          ok(
+            after,
+            list_entry(root, count, cbor, data),
+            cbor,
+            4 + data,
+            if array {
+              length
+            } else {
+              memory
+            },
+            left,
+          )
+        },
+        fn(at, count, memory, now, path) {
+          stop([WList { count, memory, units: base - now, at }, ..path])
+        },
+      )
+    }
+  } else {
+    fn(origin, _position, units, ok, stop) {
+      let base = units - 1
+      scan_items_from(
+        window,
+        flat_bits,
+        top,
+        element,
+        origin,
+        base,
+        0,
+        0,
+        fn(after, length, memory, left) {
+          ok(
+            after,
+            #"",
+            0,
+            0,
+            if array {
+              length
+            } else {
+              memory
+            },
+            left,
+          )
+        },
+        fn(at, count, memory, now, path) {
+          stop([WList { count, memory, units: base - now, at }, ..path])
+        },
+      )
+    }
+  }
+}
+
+/// The decoder of a list or array whose elements `element` decodes, the
+/// one `compile_v1` gives for its shape, built on the element decoder.
+pub fn list_decoder_v1(
+  window: ByteArray,
+  flat_bits: Int,
+  element: Decoder<r>,
+  array: Bool,
+  summaries: Bool,
+  metered: Bool,
+) -> Decoder<r> {
+  list_decoder_at(
+    window,
+    flat_bits,
+    flat_bits + 7,
+    element,
+    array,
+    summaries,
+    metered,
+  )
+}
+
+fn list_decoder_at(
+  window: ByteArray,
+  flat_bits: Int,
+  top: Int,
+  element: Decoder<r>,
+  array: Bool,
+  summaries: Bool,
+  metered: Bool,
+) -> Decoder<r> {
+  join(
+    compile_node(
+      window,
+      flat_bits,
+      top,
+      fixed(empty_list_value, empty_list_entry, 0, summaries),
+      summaries,
+      metered,
+    ),
+    list_kind(window, flat_bits, top, element, array, summaries, metered),
+    fn(zero, one) { bit_table(window, flat_bits, top, metered, zero, one) },
+  )
 }
 
 /// Compiles a decoder of a value of `kind` at the bit where it begins.
@@ -1232,7 +1465,7 @@ pub fn compile_kind_v1(
           fn(after, groups, acc) {
             let left = units - 5 - groups
             if left < 0 {
-              stop(left)
+              stop([])
             } else {
               let n = zigzag(acc)
               let memory = cek_data_v1.integer_memory_size_v1(n)
@@ -1251,25 +1484,46 @@ pub fn compile_kind_v1(
               }
             }
           },
-          fn() { stop(units) },
+          fn() { stop([]) },
         )
       }
     KBytes ->
-      fn(origin, _position, units, ok, stop) {
-        byte_string(
-          window,
-          flat_bits,
-          origin,
-          False,
-          units,
-          summaries,
-          ok,
-          stop,
-        )
+      if metered {
+        fn(origin, _position, units, ok, stop) {
+          byte_string(
+            window,
+            flat_bits,
+            origin,
+            False,
+            units,
+            summaries,
+            ok,
+            stop,
+          )
+        }
+      } else {
+        fn(origin, _position, units, ok, _stop) {
+          scanned_string(window, flat_bits, origin, False, units, ok)
+        }
       }
     KString ->
-      fn(origin, _position, units, ok, stop) {
-        byte_string(window, flat_bits, origin, True, units, summaries, ok, stop)
+      if metered {
+        fn(origin, _position, units, ok, stop) {
+          byte_string(
+            window,
+            flat_bits,
+            origin,
+            True,
+            units,
+            summaries,
+            ok,
+            stop,
+          )
+        }
+      } else {
+        fn(origin, _position, units, ok, _stop) {
+          scanned_string(window, flat_bits, origin, True, units, ok)
+        }
       }
     KData ->
       fn(origin, _position, units, ok, stop) {
@@ -1277,91 +1531,23 @@ pub fn compile_kind_v1(
       }
     KValue ->
       fn(origin, _position, units, ok, stop) {
-        value_constant(window, flat_bits, origin, units, summaries, ok, stop)
+        value_constant(
+          window,
+          flat_bits,
+          origin,
+          units,
+          summaries,
+          metered,
+          ok,
+          stop,
+        )
       }
     KList { element, array } ->
       join(
         compile_node(window, flat_bits, top, element, summaries, metered),
         stopped,
         fn(element, _) {
-          if !metered {
-            fn(origin, _position, units, ok, stop) {
-              fold_items_from(
-                window,
-                top,
-                element,
-                origin,
-                units,
-                fn(after, root, _length, count, payload, data, left) {
-                  let cbor = 2 + payload
-                  ok(
-                    after,
-                    list_entry(root, count, cbor, data),
-                    cbor,
-                    4 + data,
-                    0,
-                    left,
-                  )
-                },
-                stop,
-              )
-            }
-          } else if summaries {
-            fn(origin, _position, units, ok, stop) {
-              items_from(
-                window,
-                flat_bits,
-                top,
-                element,
-                origin,
-                units - 1,
-                fn(after, root, length, count, payload, data, memory, left) {
-                  let cbor = 2 + payload
-                  ok(
-                    after,
-                    list_entry(root, count, cbor, data),
-                    cbor,
-                    4 + data,
-                    if array {
-                      length
-                    } else {
-                      memory
-                    },
-                    left,
-                  )
-                },
-                stop,
-              )
-            }
-          } else {
-            fn(origin, _position, units, ok, stop) {
-              scan_items_from(
-                window,
-                flat_bits,
-                top,
-                element,
-                origin,
-                units - 1,
-                0,
-                0,
-                fn(after, length, memory, left) {
-                  ok(
-                    after,
-                    #"",
-                    0,
-                    0,
-                    if array {
-                      length
-                    } else {
-                      memory
-                    },
-                    left,
-                  )
-                },
-                stop,
-              )
-            }
-          }
+          list_kind(window, flat_bits, top, element, array, summaries, metered)
         },
       )
     KPair { first, second, stops } ->
@@ -1404,7 +1590,7 @@ pub fn compile_kind_v1(
             } else if summaries {
               fn(origin, _position, units, ok, stop) {
                 if units < pair_units {
-                  stop(units - pair_units)
+                  stop([])
                 } else {
                   first(
                     origin,
@@ -1427,17 +1613,19 @@ pub fn compile_kind_v1(
                             rest,
                           )
                         },
-                        stop,
+                        fn(path) {
+                          stop([WSecond { middle, memory: a_memory }, ..path])
+                        },
                       )
                     },
-                    stop,
+                    fn(path) { stop([WFirst, ..path]) },
                   )
                 }
               }
             } else {
               fn(origin, _position, units, ok, stop) {
                 if units < pair_units {
-                  stop(units - pair_units)
+                  stop([])
                 } else {
                   first(
                     origin,
@@ -1451,10 +1639,12 @@ pub fn compile_kind_v1(
                         fn(after, _b, _b_cbor, _b_data, b_memory, rest) {
                           ok(after, #"", 0, 0, a_memory + b_memory, rest)
                         },
-                        stop,
+                        fn(path) {
+                          stop([WSecond { middle, memory: a_memory }, ..path])
+                        },
                       )
                     },
-                    stop,
+                    fn(path) { stop([WFirst, ..path]) },
                   )
                 }
               }
@@ -1465,7 +1655,13 @@ pub fn compile_kind_v1(
     KWrap { inner, layers, units: layer_units, memory: layer_memory } ->
       join_wrap(
         compile_kind_v1(window, flat_bits, top, inner, summaries, metered),
-        compile_layers(layers),
+        compile_layers(
+          if summaries {
+            layers
+          } else {
+            []
+          },
+        ),
         fn(inner, wrap) {
           if !metered {
             fn(origin, position, units, ok, stop) {
@@ -1713,16 +1909,16 @@ fn byte_string(
   units: Int,
   summaries: Bool,
   ok: fn(Int, ByteArray, Int, Int, Int, Int) -> r,
-  stop: fn(Int) -> r,
+  stop: fn(List<Within>) -> r,
 ) -> r {
   let flat_length = flat_bits / 8
   let index = filler_end(window, flat_length, position)
   if index < 0 || index >= flat_length {
-    stop(units)
+    stop([])
   } else if builtin.index_bytearray(window, index) == 0 {
     let left = units - 2
     if left < 0 {
-      stop(left)
+      stop([])
     } else {
       ok(
         8 * index + 8,
@@ -1769,15 +1965,15 @@ fn chunks(
   utf8: Int,
   units: Int,
   ok: fn(Int, ByteArray, Int, Int, Int, Int) -> r,
-  stop: fn(Int) -> r,
+  stop: fn(List<Within>) -> r,
 ) -> r {
   if i >= flat_length {
-    stop(units)
+    stop([])
   } else {
     let n = builtin.index_bytearray(window, i)
     if n == 0 {
       if utf8 != 0 {
-        stop(units)
+        stop([])
       } else {
         let memory = if string {
           total / 4
@@ -1811,12 +2007,12 @@ fn chunks(
       // A chunk running past the Flat bytes leaves the next chunk head past
       // them, where the check above stops.
       if units < 0 || total + n > max_string_bytes {
-        stop(units)
+        stop([])
       } else if string {
         let chunk = builtin.slice_bytearray(i + 1, n, window)
         let utf8 = bits.utf8_push(utf8, chunk)
         if utf8 < 0 {
-          stop(units)
+          stop([])
         } else {
           chunks(
             window,
@@ -1864,6 +2060,75 @@ fn chunks(
   }
 }
 
+/// A byte string or string from bit `position` that a scan decoded: the
+/// bytes and summary `byte_string` gives it, read without its checks. The
+/// scan's `byte_string` checked the filler, the chunks against the Flat
+/// bytes, the size bound and UTF-8, and the units are not metered here.
+fn scanned_string(
+  window: ByteArray,
+  flat_bits: Int,
+  position: Int,
+  string: Bool,
+  units: Int,
+  ok: fn(Int, ByteArray, Int, Int, Int, Int) -> r,
+) -> r {
+  let flat_length = flat_bits / 8
+  let index = filler_end(window, flat_length, position)
+  if builtin.index_bytearray(window, index) == 0 {
+    ok(
+      8 * index + 8,
+      empty_bytes_entry,
+      empty_bytes_value.cbor_length,
+      empty_bytes_value.memory,
+      if string {
+        0
+      } else {
+        1
+      },
+      units,
+    )
+  } else {
+    scanned_chunks(window, string, index, #"", 0, units, ok)
+  }
+}
+
+fn scanned_chunks(
+  window: ByteArray,
+  string: Bool,
+  i: Int,
+  acc: ByteArray,
+  total: Int,
+  units: Int,
+  ok: fn(Int, ByteArray, Int, Int, Int, Int) -> r,
+) -> r {
+  let n = builtin.index_bytearray(window, i)
+  if n == 0 {
+    let summary = bits.short_bytes_summary(acc)
+    ok(
+      8 * i + 8,
+      entry_of_v1(summary),
+      summary.cbor_length,
+      summary.memory,
+      if string {
+        total / 4
+      } else {
+        cek_data_v1.bytes_memory_size_v1(total)
+      },
+      units,
+    )
+  } else {
+    scanned_chunks(
+      window,
+      string,
+      i + 1 + n,
+      builtin.append_bytearray(acc, builtin.slice_bytearray(i + 1, n, window)),
+      total + n,
+      units,
+      ok,
+    )
+  }
+}
+
 // ### Data
 
 /// A Data constant from bit `position`: the filler, the first CBOR item and
@@ -1875,13 +2140,13 @@ fn data_constant(
   units: Int,
   summaries: Bool,
   ok: fn(Int, ByteArray, Int, Int, Int, Int) -> r,
-  stop: fn(Int) -> r,
+  stop: fn(List<Within>) -> r,
 ) -> r {
   let flat_length = flat_bits / 8
   let start = filler_end(window, flat_length, position)
   let units = units - data_units
   if start < 0 || units < 0 {
-    stop(units)
+    stop([])
   } else {
     d_item(
       window,
@@ -1893,7 +2158,7 @@ fn data_constant(
       fn(summary, _p, end, units) {
         d_trail(window, flat_length, end, summary, units, summaries, ok, stop)
       },
-      fn(_p, _end, units) { stop(units) },
+      fn(_p, _end, _units) { stop([]) },
       stop,
     )
   }
@@ -1908,10 +2173,10 @@ fn d_trail(
   units: Int,
   summaries: Bool,
   ok: fn(Int, ByteArray, Int, Int, Int, Int) -> r,
-  stop: fn(Int) -> r,
+  stop: fn(List<Within>) -> r,
 ) -> r {
   if p >= flat_length {
-    stop(units)
+    stop([])
   } else {
     let n = builtin.index_bytearray(window, p)
     if n == 0 {
@@ -1930,7 +2195,7 @@ fn d_trail(
     } else {
       let units = units - chunk_units
       if units < 0 {
-        stop(units)
+        stop([])
       } else {
         d_trail(
           window,
@@ -1956,17 +2221,17 @@ fn d_open(
   end: Int,
   units: Int,
   k: fn(Int, Int, Int) -> r,
-  stop: fn(Int) -> r,
+  stop: fn(List<Within>) -> r,
 ) -> r {
   if p < end {
     k(p, end, units)
   } else if p >= flat_length {
-    stop(units)
+    stop([])
   } else {
     let n = builtin.index_bytearray(window, p)
     let units = units - chunk_units
     if n == 0 || p + 1 + n > flat_length || units < 0 {
-      stop(units)
+      stop([])
     } else {
       k(p + 1, p + 1 + n, units)
     }
@@ -1980,7 +2245,7 @@ fn d_byte(
   end: Int,
   units: Int,
   k: fn(Int, Int, Int, Int) -> r,
-  stop: fn(Int) -> r,
+  stop: fn(List<Within>) -> r,
 ) -> r {
   if p < end {
     k(builtin.index_bytearray(window, p), p + 1, end, units)
@@ -2009,7 +2274,7 @@ fn d_take(
   end: Int,
   units: Int,
   k: fn(ByteArray, Int, Int, Int) -> r,
-  stop: fn(Int) -> r,
+  stop: fn(List<Within>) -> r,
 ) -> r {
   if count == 0 {
     k(acc, p, end, units)
@@ -2052,7 +2317,7 @@ fn d_uint(
   end: Int,
   units: Int,
   k: fn(Int, Int, Int, Int) -> r,
-  stop: fn(Int) -> r,
+  stop: fn(List<Within>) -> r,
 ) -> r {
   if width == 0 {
     k(acc, p, end, units)
@@ -2091,7 +2356,7 @@ fn d_head(
   end: Int,
   units: Int,
   k: fn(Int, Int, Int, Int, Int, Int) -> r,
-  stop: fn(Int) -> r,
+  stop: fn(List<Within>) -> r,
 ) -> r {
   let major = initial / 32
   let additional = initial % 32
@@ -2100,7 +2365,7 @@ fn d_head(
   } else if additional == 31 {
     k(major, additional, -1, p, end, units)
   } else if additional > 27 {
-    stop(units)
+    stop([])
   } else {
     d_uint(
       window,
@@ -2125,11 +2390,11 @@ fn d_read_head(
   end: Int,
   units: Int,
   k: fn(Int, Int, Int, Int, Int, Int) -> r,
-  stop: fn(Int) -> r,
+  stop: fn(List<Within>) -> r,
 ) -> r {
   let units = units - head_units
   if units < 0 {
-    stop(units)
+    stop([])
   } else {
     d_byte(
       window,
@@ -2156,7 +2421,7 @@ fn d_string(
   end: Int,
   units: Int,
   k: fn(ByteArray, Int, Int, Int) -> r,
-  stop: fn(Int) -> r,
+  stop: fn(List<Within>) -> r,
 ) -> r {
   if length >= 0 {
     d_take(window, flat_length, length, #"", p, end, units, k, stop)
@@ -2174,11 +2439,11 @@ fn d_pieces(
   end: Int,
   units: Int,
   k: fn(ByteArray, Int, Int, Int) -> r,
-  stop: fn(Int) -> r,
+  stop: fn(List<Within>) -> r,
 ) -> r {
   let units = units - head_units
   if units < 0 {
-    stop(units)
+    stop([])
   } else {
     d_byte(
       window,
@@ -2201,7 +2466,7 @@ fn d_pieces(
               if major != 2 || length < 0 || length > max_data_bytes_chunk || builtin.length_of_bytearray(
                 acc,
               ) + length > limit {
-                stop(units)
+                stop([])
               } else {
                 d_take(
                   window,
@@ -2272,11 +2537,11 @@ fn d_item(
   units: Int,
   k: fn(DataSummaryV1, Int, Int, Int) -> r,
   brk: fn(Int, Int, Int) -> r,
-  stop: fn(Int) -> r,
+  stop: fn(List<Within>) -> r,
 ) -> r {
   let units = units - head_units
   if units < 0 {
-    stop(units)
+    stop([])
   } else {
     d_byte(
       window,
@@ -2330,12 +2595,12 @@ fn d_body(
   end: Int,
   units: Int,
   k: fn(DataSummaryV1, Int, Int, Int) -> r,
-  stop: fn(Int) -> r,
+  stop: fn(List<Within>) -> r,
 ) -> r {
   if major <= 1 {
     let units = units - integer_units
     if argument < 0 || units < 0 {
-      stop(units)
+      stop([])
     } else if major == 0 {
       k(d_integer(argument, summaries), p, end, units)
     } else {
@@ -2343,7 +2608,7 @@ fn d_body(
     }
   } else if major == 2 {
     if argument > max_data_bytes_chunk {
-      stop(units)
+      stop([])
     } else {
       d_string(
         window,
@@ -2357,7 +2622,7 @@ fn d_body(
           let length = builtin.length_of_bytearray(bytes)
           let units = units - string_units - length / 32
           if units < 0 {
-            stop(units)
+            stop([])
           } else if summaries {
             k(bits.short_bytes_summary(bytes), p, end, units)
           } else {
@@ -2433,7 +2698,7 @@ fn d_body(
       stop,
     )
   } else {
-    stop(units)
+    stop([])
   }
 }
 
@@ -2448,19 +2713,19 @@ fn d_items(
   end: Int,
   units: Int,
   k: fn(DataSequenceSummaryV1, Int, Int, Int) -> r,
-  stop: fn(Int) -> r,
+  stop: fn(List<Within>) -> r,
 ) -> r {
   if index == length {
     let units = units - node_units
     if units < 0 {
-      stop(units)
+      stop([])
     } else {
       k(empty_sequence, p, end, units)
     }
   } else {
     let units = units - item_units
     if units < 0 {
-      stop(units)
+      stop([])
     } else {
       d_item(
         window,
@@ -2500,7 +2765,7 @@ fn d_items(
         fn(p, end, units) {
           let units = units - node_units
           if length >= 0 || units < 0 {
-            stop(units)
+            stop([])
           } else {
             k(empty_sequence, p, end, units)
           }
@@ -2523,19 +2788,19 @@ fn d_entries(
   end: Int,
   units: Int,
   k: fn(DataSequenceSummaryV1, Int, Int, Int) -> r,
-  stop: fn(Int) -> r,
+  stop: fn(List<Within>) -> r,
 ) -> r {
   if index == length {
     let units = units - node_units
     if units < 0 {
-      stop(units)
+      stop([])
     } else {
       k(empty_pairs, p, end, units)
     }
   } else {
     let units = units - entry_units
     if units < 0 {
-      stop(units)
+      stop([])
     } else {
       d_item(
         window,
@@ -2585,14 +2850,14 @@ fn d_entries(
                 stop,
               )
             },
-            fn(_p, _end, units) { stop(units) },
+            fn(_p, _end, _units) { stop([]) },
             stop,
           )
         },
         fn(p, end, units) {
           let units = units - node_units
           if length >= 0 || units < 0 {
-            stop(units)
+            stop([])
           } else {
             k(empty_pairs, p, end, units)
           }
@@ -2613,7 +2878,7 @@ fn d_fields(
   end: Int,
   units: Int,
   k: fn(DataSummaryV1, Int, Int, Int) -> r,
-  stop: fn(Int) -> r,
+  stop: fn(List<Within>) -> r,
 ) -> r {
   d_read_head(
     window,
@@ -2623,7 +2888,7 @@ fn d_fields(
     units,
     fn(major, _additional, length, p, end, units) {
       if major != 4 {
-        stop(units)
+        stop([])
       } else {
         d_items(
           window,
@@ -2655,10 +2920,10 @@ fn d_tagged(
   end: Int,
   units: Int,
   k: fn(DataSummaryV1, Int, Int, Int) -> r,
-  stop: fn(Int) -> r,
+  stop: fn(List<Within>) -> r,
 ) -> r {
   if tag < 0 {
-    stop(units)
+    stop([])
   } else if additional == 2 || additional == 3 {
     d_read_head(
       window,
@@ -2668,7 +2933,7 @@ fn d_tagged(
       units,
       fn(major, _additional, length, p, end, units) {
         if major != 2 || length > max_data_bytes_chunk {
-          stop(units)
+          stop([])
         } else {
           d_string(
             window,
@@ -2681,7 +2946,7 @@ fn d_tagged(
             fn(bytes, p, end, units) {
               let units = units - integer_units
               if units < 0 {
-                stop(units)
+                stop([])
               } else {
                 let m = builtin.bytearray_to_integer(True, bytes)
                 if additional == 3 {
@@ -2706,7 +2971,7 @@ fn d_tagged(
       units,
       fn(major, _additional, length, p, end, units) {
         if major != 4 || length != 2 && length != -1 {
-          stop(units)
+          stop([])
         } else {
           d_read_head(
             window,
@@ -2716,7 +2981,7 @@ fn d_tagged(
             units,
             fn(index_major, _additional, index, p, end, units) {
               if index_major != 0 || index < 0 {
-                stop(units)
+                stop([])
               } else {
                 d_fields(
                   window,
@@ -2732,7 +2997,7 @@ fn d_tagged(
                     } else {
                       let units = units - head_units
                       if units < 0 {
-                        stop(units)
+                        stop([])
                       } else {
                         d_byte(
                           window,
@@ -2744,7 +3009,7 @@ fn d_tagged(
                             if byte == 255 {
                               k(summary, p, end, units)
                             } else {
-                              stop(units)
+                              stop([])
                             }
                           },
                           stop,
@@ -2767,7 +3032,7 @@ fn d_tagged(
   } else if tag >= 1280 && tag <= 1400 {
     d_fields(window, flat_length, summaries, tag - 1273, p, end, units, k, stop)
   } else {
-    stop(units)
+    stop([])
   }
 }
 
@@ -2780,13 +3045,15 @@ fn value_constant(
   position: Int,
   units: Int,
   summaries: Bool,
+  check: Bool,
   ok: fn(Int, ByteArray, Int, Int, Int, Int) -> r,
-  stop: fn(Int) -> r,
+  stop: fn(List<Within>) -> r,
 ) -> r {
   v_currencies(
     window,
     flat_bits,
     summaries,
+    check,
     #"",
     True,
     position,
@@ -2810,35 +3077,38 @@ fn value_constant(
   )
 }
 
-/// A Value key from bit `position`: at most 32 bytes over its chunks.
+/// A Value key from bit `position`: at most 32 bytes over its chunks,
+/// checked only with `check`.
 fn v_key(
   window: ByteArray,
   flat_length: Int,
+  check: Bool,
   position: Int,
   units: Int,
   k: fn(ByteArray, Int, Int) -> r,
-  stop: fn(Int) -> r,
+  stop: fn(List<Within>) -> r,
 ) -> r {
   let index = filler_end(window, flat_length, position)
   if index < 0 {
-    stop(units)
+    stop([])
   } else {
-    v_chunks(window, flat_length, index, index, #"", units, k, stop)
+    v_chunks(window, flat_length, check, index, index, #"", units, k, stop)
   }
 }
 
 fn v_chunks(
   window: ByteArray,
   flat_length: Int,
+  check: Bool,
   first: Int,
   i: Int,
   acc: ByteArray,
   units: Int,
   k: fn(ByteArray, Int, Int) -> r,
-  stop: fn(Int) -> r,
+  stop: fn(List<Within>) -> r,
 ) -> r {
   if i >= flat_length {
-    stop(units)
+    stop([])
   } else {
     let n = builtin.index_bytearray(window, i)
     if n == 0 {
@@ -2849,12 +3119,15 @@ fn v_chunks(
       } else {
         units - chunk_units
       }
-      if units < 0 || builtin.length_of_bytearray(acc) + n > max_key_bytes {
-        stop(units)
+      if check && (
+        units < 0 || builtin.length_of_bytearray(acc) + n > max_key_bytes
+      ) {
+        stop([])
       } else {
         v_chunks(
           window,
           flat_length,
+          check,
           first,
           i + 1 + n,
           builtin.append_bytearray(
@@ -2874,40 +3147,44 @@ fn v_chunks(
 /// unless `first`: `k` gets the root of their map entries, their count, the
 /// sums of the entries' CBOR lengths and Data memories, their token count,
 /// the position after them and the units left (the first four placeholders
-/// without summaries).
+/// without summaries). Without `check`, for a Value a scan decoded, it does
+/// not check the key bounds, the key order or the quantities: the scan did.
 fn v_currencies(
   window: ByteArray,
   flat_bits: Int,
   summaries: Bool,
+  check: Bool,
   previous: ByteArray,
   first: Bool,
   position: Int,
   units: Int,
   k: fn(ByteArray, Int, Int, Int, Int, Int, Int) -> r,
-  stop: fn(Int) -> r,
+  stop: fn(List<Within>) -> r,
 ) -> r {
   if position >= flat_bits {
-    stop(units)
+    stop([])
   } else if !bit(window, flat_bits, position) {
     k(empty_pairs_root, 0, 0, 0, 0, position + 1, units)
   } else {
     let units = units - currency_units
     if units < 0 {
-      stop(units)
+      stop([])
     } else {
       v_key(
         window,
         flat_bits / 8,
+        check,
         position + 1,
         units,
         fn(currency, after, units) {
-          if !first && !builtin.less_than_bytearray(previous, currency) {
-            stop(units)
+          if check && !first && !builtin.less_than_bytearray(previous, currency) {
+            stop([])
           } else {
             v_tokens(
               window,
               flat_bits,
               summaries,
+              check,
               #"",
               True,
               after,
@@ -2917,6 +3194,7 @@ fn v_currencies(
                   window,
                   flat_bits,
                   summaries,
+                  check,
                   currency,
                   False,
                   after,
@@ -2985,34 +3263,36 @@ fn v_tokens(
   window: ByteArray,
   flat_bits: Int,
   summaries: Bool,
+  check: Bool,
   previous: ByteArray,
   first: Bool,
   position: Int,
   units: Int,
   k: fn(ByteArray, Int, Int, Int, Int, Int) -> r,
-  stop: fn(Int) -> r,
+  stop: fn(List<Within>) -> r,
 ) -> r {
   if position >= flat_bits {
-    stop(units)
+    stop([])
   } else if !bit(window, flat_bits, position) {
     if first {
-      stop(units)
+      stop([])
     } else {
       k(empty_pairs_root, 0, 0, 0, position + 1, units)
     }
   } else {
     let units = units - token_units
     if units < 0 {
-      stop(units)
+      stop([])
     } else {
       v_key(
         window,
         flat_bits / 8,
+        check,
         position + 1,
         units,
         fn(token, after, units) {
-          if !first && !builtin.less_than_bytearray(previous, token) {
-            stop(units)
+          if check && !first && !builtin.less_than_bytearray(previous, token) {
+            stop([])
           } else {
             natural(
               window,
@@ -3024,13 +3304,16 @@ fn v_tokens(
               fn(after, groups, acc) {
                 let units = units - groups
                 let n = zigzag(acc)
-                if units < 0 || n == 0 || n < min_quantity || n > max_quantity {
-                  stop(units)
+                if check && (
+                  units < 0 || n == 0 || n < min_quantity || n > max_quantity
+                ) {
+                  stop([])
                 } else {
                   v_tokens(
                     window,
                     flat_bits,
                     summaries,
+                    check,
                     token,
                     False,
                     after,
@@ -3073,7 +3356,7 @@ fn v_tokens(
                   )
                 }
               },
-              fn() { stop(units) },
+              fn() { stop([]) },
             )
           }
         },
@@ -3089,7 +3372,10 @@ fn v_tokens(
 /// count and serialised count, the sums of their CBOR lengths, Data
 /// memories and constant memories, and the units left. The last element's
 /// sequence node is built from its entry, whose CBOR length and Data memory
-/// are the sequence's.
+/// are the sequence's. `count` elements with constant memory `before` come
+/// before `position`. Where it stops, `level` gets the cons bit it stopped
+/// at or in, the count and constant memory of the elements before that bit,
+/// the units left there and the steps down from that element.
 fn items_from(
   window: ByteArray,
   flat_bits: Int,
@@ -3097,11 +3383,13 @@ fn items_from(
   element: Decoder<r>,
   position: Int,
   units: Int,
+  count: Int,
+  before: Int,
   ok: fn(Int, ByteArray, Int, ByteArray, Int, Int, Int, Int) -> r,
-  stop: fn(Int) -> r,
+  level: fn(Int, Int, Int, Int, List<Within>) -> r,
 ) -> r {
   if units < element_units {
-    stop(units - element_units)
+    level(position, count, before, units, [])
   } else {
     element(
       position + 1,
@@ -3109,7 +3397,7 @@ fn items_from(
       units - element_units,
       fn(middle, head, cbor, data, memory, left) {
         if middle >= flat_bits {
-          stop(left)
+          level(middle, count + 1, before + memory, left, [])
         } else if builtin.read_bit(window, top - middle) {
           items_from(
             window,
@@ -3118,6 +3406,8 @@ fn items_from(
             element,
             middle,
             left,
+            count + 1,
+            before + memory,
             fn(after, root, length, _count, payload, data_sum, memory_sum, rest) {
               let length = length + 1
               let count = builtin.serialise_data(builtin.i_data(length))
@@ -3134,13 +3424,13 @@ fn items_from(
                 rest,
               )
             },
-            stop,
+            level,
           )
         } else {
           ok(middle + 1, last_root(head), 1, #"01", cbor, data, memory, left)
         }
       },
-      stop,
+      fn(path) { level(position, count, before, units, path) },
     )
   }
 }
@@ -3164,7 +3454,8 @@ fn last_root(head: ByteArray) -> ByteArray {
 /// `items_from` without summaries, with `length` elements and `memory`
 /// constant memory before the cons bit at `position`: `ok` gets the
 /// position after the end, the count of all the elements, their constant
-/// memory and the units left.
+/// memory and the units left; where it stops, `level` gets what
+/// `items_from` gives it.
 fn scan_items_from(
   window: ByteArray,
   flat_bits: Int,
@@ -3175,10 +3466,10 @@ fn scan_items_from(
   length: Int,
   memory: Int,
   ok: fn(Int, Int, Int, Int) -> r,
-  stop: fn(Int) -> r,
+  level: fn(Int, Int, Int, Int, List<Within>) -> r,
 ) -> r {
   if units < element_units {
-    stop(units - element_units)
+    level(position, length, memory, units, [])
   } else {
     element(
       position + 1,
@@ -3186,7 +3477,7 @@ fn scan_items_from(
       units - element_units,
       fn(middle, _head, _cbor, _data, value_memory, left) {
         if middle >= flat_bits {
-          stop(left)
+          level(middle, length + 1, memory + value_memory, left, [])
         } else if builtin.read_bit(window, top - middle) {
           scan_items_from(
             window,
@@ -3198,13 +3489,13 @@ fn scan_items_from(
             length + 1,
             memory + value_memory,
             ok,
-            stop,
+            level,
           )
         } else {
           ok(middle + 1, length + 1, memory + value_memory, left)
         }
       },
-      stop,
+      fn(path) { level(position, length, memory, units, path) },
     )
   }
 }
@@ -3220,7 +3511,7 @@ fn fold_items_from(
   position: Int,
   units: Int,
   ok: fn(Int, ByteArray, Int, ByteArray, Int, Int, Int) -> r,
-  stop: fn(Int) -> r,
+  stop: fn(List<Within>) -> r,
 ) -> r {
   element(
     position + 1,
@@ -3261,36 +3552,40 @@ fn fold_items_from(
 
 // ## Runs
 
-/// The decoder a run scan uses for elements of type `element`. A Walk
-/// compiles it once and runs it on every element of its ticks.
+/// The decoder a run scan uses for elements whose shape with summaries is
+/// `shape`. A Walk compiles it once and runs it on every element of its
+/// ticks. A scan reads no summary, so the shape's entries and wraps go
+/// unused: it decodes as on the shape without summaries.
 pub fn scan_decoder_v1(
   window: ByteArray,
   flat_bits: Int,
-  element: ConstantTypeV1,
-) -> Decoder<(Int, Int, Int, Int)> {
-  compile_v1(window, flat_bits, shape_v1(element, False), False, True)
+  shape: Shape,
+) -> Decoder<(Int, Int, Int, Int, List<Within>)> {
+  compile_v1(window, flat_bits, shape, False, True)
 }
 
-/// The decoder a run fold uses for elements of type `element`.
+/// The decoder a run fold uses for elements whose shape with summaries is
+/// `shape`.
 pub fn fold_decoder_v1(
   window: ByteArray,
   flat_bits: Int,
-  element: ConstantTypeV1,
+  shape: Shape,
 ) -> Decoder<DataSequenceSummaryV1> {
-  compile_v1(window, flat_bits, shape_v1(element, True), True, False)
+  compile_v1(window, flat_bits, shape, True, False)
 }
 
 /// The run of list elements from the cons bit at `position` that a tick
 /// decodes with the scan decoder `element`: the longest whose elements all
 /// decode here within `units_per_tick`, ending before a nil bit. Gives the
-/// element count, the position after the run, the elements' constant memory
-/// and the units the run spent.
+/// element count, the position after the run, the elements' constant memory,
+/// the units the run spent, and, when an element stopped it, the steps down
+/// from that element to where it stopped.
 pub fn scan_run_v1(
   window: ByteArray,
   flat_bits: Int,
-  element: Decoder<(Int, Int, Int, Int)>,
+  element: Decoder<(Int, Int, Int, Int, List<Within>)>,
   position: Int,
-) -> (Int, Int, Int, Int) {
+) -> (Int, Int, Int, Int, List<Within>) {
   run_loop(
     window,
     flat_bits,
@@ -3307,18 +3602,18 @@ fn run_loop(
   window: ByteArray,
   flat_bits: Int,
   top: Int,
-  element: Decoder<(Int, Int, Int, Int)>,
+  element: Decoder<(Int, Int, Int, Int, List<Within>)>,
   position: Int,
   units: Int,
   count: Int,
   memory: Int,
-) -> (Int, Int, Int, Int) {
+) -> (Int, Int, Int, Int, List<Within>) {
   if position >= flat_bits {
-    (count, position, memory, units_per_tick - units)
+    (count, position, memory, units_per_tick - units, [])
   } else if !builtin.read_bit(window, top - position) {
-    (count, position, memory, units_per_tick - units)
+    (count, position, memory, units_per_tick - units, [])
   } else if units < element_units {
-    (count, position, memory, units_per_tick - units)
+    (count, position, memory, units_per_tick - units, [])
   } else {
     element(
       position + 1,
@@ -3336,14 +3631,16 @@ fn run_loop(
           memory + value_memory,
         )
       },
-      fn(_left) { (count, position, memory, units_per_tick - units) },
+      fn(path) { (count, position, memory, units_per_tick - units, path) },
     )
   }
 }
 
 /// Prepends the `count` elements of a scanned run, from the cons bit at
 /// `position`, to `sequence`, last element first, with the fold decoder
-/// `element`.
+/// `element`. The run is one a scan decoded, with its checks, within its
+/// units, and the stack hash binds its start and count, so every element
+/// decodes again here and the fold never stops.
 pub fn fold_run_v1(
   element: Decoder<DataSequenceSummaryV1>,
   position: Int,
@@ -3410,7 +3707,7 @@ fn fold_loop(
           },
         )
       },
-      fn(_left) {
+      fn(_path) {
         fail @"a scanned run element no longer decodes"
       },
     )

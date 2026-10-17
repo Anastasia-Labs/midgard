@@ -14,7 +14,12 @@ import {
 
 import { shortBytesSummary } from "./script-decode.step-bits.js";
 import { foldRun, scanRun } from "./script-decode.step-bulk.js";
-import { bitsOf } from "./script-decode.step-const.js";
+import {
+  bitsOf,
+  climb,
+  descend,
+  LIST_CLOSE_UNITS,
+} from "./script-decode.step-const.js";
 import {
   at,
   type DecodeEnv,
@@ -64,12 +69,14 @@ export const tickListBit = (
 ): Tick => {
   const cursor = ex.cursor;
   if (have(env, cursor, 1) && read(env, cursor, 1) === 1) {
-    const [run, after, runMemory, spent] = scanRun(
+    const [run, after, runMemory, spent, path] = scanRun(
       bitsOf(env),
       shapeOf(element),
       cursor,
     );
-    if (run === 0) return at(ex, cursor + 1, { k: "value", ty: element });
+    if (run === 0) {
+      return descend(env, { ...ex, cursor: cursor + 1 }, element, path);
+    }
     const popped = pop(ex);
     if (popped === undefined) return undefined;
     const list = expectFrame(popped[0], "valueList");
@@ -94,21 +101,23 @@ export const tickListBit = (
   }
   return listBit(env, ex, { k: "value", ty: element }, (frame, rest, after) => {
     const list = expectFrame(frame, "valueList");
-    return at(rest, after, {
-      k: "constFold",
-      fold: {
+    return foldMore(
+      env,
+      { ...rest, cursor: after },
+      {
         pairs: false,
         remaining: list.count,
         sequence: emptyMidgardCekDataListSummary(),
       },
-      next: {
+      {
         k: "list",
         element,
         array: list.array,
         count: list.count,
         memory: list.memory,
       },
-    });
+      UNITS_PER_TICK,
+    );
   });
 };
 
@@ -220,6 +229,42 @@ const foldEntry = (
   throw new Error("script decode: a non-entry frame in a constant fold");
 };
 
+/**
+ * Folds further entries while each fits in `units` and the frames are
+ * revealed; a list whose entries are all folded closes, and its value climbs
+ * while `units` last.
+ */
+const foldMore = (
+  env: DecodeEnv,
+  ex: Exec,
+  fold: Fold,
+  next: ConstFoldNext,
+  units: number,
+): Exec => {
+  let folded = fold;
+  let current = ex;
+  let left = units;
+  while (folded.remaining > 0) {
+    const more = pop(current);
+    if (more === undefined) break;
+    const cost = entryUnits(more[0]);
+    if (cost > left) break;
+    folded = foldEntry(env, folded, next, more[0]);
+    current = more[1];
+    left -= cost;
+  }
+  if (folded.remaining === 0 && next.k === "list" && left >= LIST_CLOSE_UNITS) {
+    return climb(
+      env,
+      current,
+      summarizeMidgardCekListData(folded.sequence),
+      next.array ? BigInt(next.count) : next.memory,
+      left - LIST_CLOSE_UNITS,
+    );
+  }
+  return { ...current, control: { k: "constFold", fold: folded, next } };
+};
+
 export const tickConstFold = (
   env: DecodeEnv,
   ex: Exec,
@@ -229,27 +274,23 @@ export const tickConstFold = (
   if (fold.remaining > 0) {
     const popped = pop(ex);
     if (popped === undefined) return undefined;
-    let folded = foldEntry(env, fold, next, popped[0]);
-    let current = popped[1];
-    let units = UNITS_PER_TICK - entryUnits(popped[0]);
-    while (folded.remaining > 0) {
-      const more = pop(current);
-      if (more === undefined) break;
-      const cost = entryUnits(more[0]);
-      if (cost > units) break;
-      folded = foldEntry(env, folded, next, more[0]);
-      current = more[1];
-      units -= cost;
-    }
-    return to(current, { k: "constFold", fold: folded, next });
+    return foldMore(
+      env,
+      popped[1],
+      foldEntry(env, fold, next, popped[0]),
+      next,
+      UNITS_PER_TICK - entryUnits(popped[0]),
+    );
   }
   switch (next.k) {
     case "list":
-      return to(ex, {
-        k: "valueReturn",
-        summary: summarizeMidgardCekListData(fold.sequence),
-        memory: next.array ? BigInt(next.count) : next.memory,
-      });
+      return climb(
+        env,
+        ex,
+        summarizeMidgardCekListData(fold.sequence),
+        next.array ? BigInt(next.count) : next.memory,
+        UNITS_PER_TICK - LIST_CLOSE_UNITS,
+      );
     case "assetInner": {
       const popped = pop(ex);
       if (popped === undefined) return undefined;

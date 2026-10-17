@@ -54,7 +54,8 @@ const CBOR_BREAK = 255;
 const MIN_QUANTITY = -(1n << 127n);
 const MAX_QUANTITY = (1n << 127n) - 1n;
 
-export const stop = (units: number): Quick => ({ k: "stop", units });
+/** A stop inside a leaf, which takes no step down. */
+export const stop = (units: number): Quick => ({ k: "stop", units, path: [] });
 
 export const ok = (
   after: number,

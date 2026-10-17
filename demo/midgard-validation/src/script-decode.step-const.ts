@@ -1,21 +1,22 @@
 /**
- * The constant ticks of the script-decode step machine: the type tag list and
- * values, as in
+ * The constant value ticks of the script-decode step machine, as in
  * `onchain/aiken/lib/midgard/script-decode-v1.ak`.
  */
 import {
   emptyMidgardCekDataListSummary,
-  hashMidgardCekBlobChunk,
   hashMidgardCekTermNode,
   hashMidgardCekValueNode,
+  prependMidgardCekDataListSummary,
+  summarizeMidgardCekListData,
   summarizeMidgardCekSmallConstrData,
 } from "@al-ft/midgard-core";
 
-import { general, leafOf } from "./script-decode.step-bulk.js";
 import {
-  intData,
-  serialiseScriptDecodeData,
-} from "./script-decode.step-data.js";
+  general,
+  leafOf,
+  quick,
+  type Within,
+} from "./script-decode.step-bulk.js";
 import {
   at,
   type DecodeEnv,
@@ -30,125 +31,19 @@ import {
   to,
 } from "./script-decode.step-exec.js";
 import {
+  type Fixed,
   PAIR_UNITS,
   pairSummary,
   type Shape,
   shapeOf,
   UNITS_PER_TICK,
+  UNMETERED,
 } from "./script-decode.step-shape.js";
 import type {
   ConstantType,
-  Control,
   Frame,
   Summary,
 } from "./script-decode.step-types.js";
-
-const MAX_TYPE_TAGS = 32;
-const TYPE_TAGS_PER_TICK = 8;
-
-// ## Constant types
-
-/**
- * One type tag through the kind grammar: `pending` types remain, the next
- * symbol sits under `top` (0 a type, 1 one application, 2 two).
- */
-const kindStep = (
-  pending: number,
-  top: number,
-  bad: boolean,
-  tag: number,
-): readonly [number, number, boolean] => {
-  if (bad || pending === 0) return [pending, top, true];
-  if (tag === 7)
-    return top === 2 ? [pending, top, true] : [pending, top + 1, false];
-  if (tag === 5 || tag === 12) {
-    return top === 1 ? [pending, 0, false] : [pending, top, true];
-  }
-  if (tag === 6) {
-    return top === 2 ? [pending + 1, 0, false] : [pending, top, true];
-  }
-  if (tag === 14 || tag === 15) return [pending, top, true];
-  return top === 0 ? [pending - 1, 0, false] : [pending, top, true];
-};
-
-const SIMPLE_TYPES: Readonly<Record<number, ConstantType>> = {
-  0: { k: "integer" },
-  1: { k: "bytestring" },
-  2: { k: "string" },
-  3: { k: "unit" },
-  4: { k: "boolean" },
-  8: { k: "data" },
-  9: { k: "g1" },
-  10: { k: "g2" },
-  11: { k: "ml" },
-  13: { k: "value" },
-};
-
-const parseType = (
-  tags: readonly number[],
-  from: number,
-): readonly [ConstantType, number] => {
-  const tag = tags[from];
-  if (tag === undefined) throw new Error("script decode: empty type tags");
-  if (tag === 5 || tag === 12) {
-    const [element, after] = parseType(tags, from + 1);
-    return [{ k: tag === 5 ? "list" : "array", element }, after];
-  }
-  if (tag === 6) {
-    const [first, middle] = parseType(tags, from + 1);
-    const [second, after] = parseType(tags, middle);
-    return [{ k: "pair", first, second }, after];
-  }
-  const simple = SIMPLE_TYPES[tag];
-  if (simple === undefined) throw new Error("script decode: bad type tag");
-  return [simple, from + 1];
-};
-
-export const tickTypes = (
-  env: DecodeEnv,
-  ex: Exec,
-  control: Extract<Control, { k: "types" }>,
-): Tick => {
-  let { count, pending, top, bad, tags } = control;
-  let c = ex.cursor;
-  for (let budget = TYPE_TAGS_PER_TICK; budget > 0; budget -= 1) {
-    if (!have(env, c, 1)) {
-      return refuse(env, ex, ScriptDecodeClass.flatTruncated, c);
-    }
-    if (read(env, c, 1) === 0) {
-      const after = c + 1;
-      if (bad || pending !== 0) {
-        return refuse(env, ex, ScriptDecodeClass.unknownConstantType, after);
-      }
-      if (count > MAX_TYPE_TAGS) {
-        return refuse(env, ex, ScriptDecodeClass.constantTypeTooLarge, after);
-      }
-      const ordered = [...tags].reverse();
-      const [ty] = parseType(ordered, 0);
-      return at(
-        push(ex, {
-          k: "constant",
-          typeHash: Buffer.from(
-            hashMidgardCekBlobChunk(
-              serialiseScriptDecodeData(ordered.map(intData)),
-            ),
-          ),
-        }),
-        after,
-        { k: "value", ty },
-      );
-    }
-    if (!have(env, c + 1, 4)) {
-      return refuse(env, ex, ScriptDecodeClass.flatTruncated, c + 1);
-    }
-    const tag = read(env, c + 1, 4);
-    [pending, top, bad] = kindStep(pending, top, bad, tag);
-    if (tag !== 7 && count + 1 <= MAX_TYPE_TAGS) tags = [tag, ...tags];
-    count += 1;
-    c += 5;
-  }
-  return at(ex, c, { k: "types", count, pending, top, bad, tags });
-};
 
 // ## Constant values
 
@@ -175,6 +70,7 @@ export const tickValue = (env: DecodeEnv, ex: Exec, ty: ConstantType): Tick =>
     ty,
     shapeOf(ty),
     UNITS_PER_TICK,
+    true,
     (held) => held,
     (after, summary, memory, left) =>
       climb(env, { ...ex, cursor: after }, summary, memory, left),
@@ -190,7 +86,9 @@ type PieceOk = (
 /**
  * Decodes the value of `ty` at `cursor` while `units` last, as `piece`. A pair
  * is decoded component by component; the first value that does not decode in
- * bulk is decoded as one node, under the frames `pending` pushes.
+ * bulk is decoded as one node, under the frames `pending` pushes. When the
+ * decode began at the value with a whole tick's units (`full`), what it
+ * decoded of the value is kept instead (see `descend`).
  */
 const piece = (
   env: DecodeEnv,
@@ -199,6 +97,7 @@ const piece = (
   ty: ConstantType,
   shape: Shape,
   units: number,
+  full: boolean,
   pending: (held: Exec) => Exec,
   ok: PieceOk,
 ): Tick => {
@@ -221,6 +120,7 @@ const piece = (
       ty.first,
       kind.first,
       units - PAIR_UNITS,
+      full,
       (held) => push(pending(held), { k: "valuePairFirst", second: ty.second }),
       (middle, a, aMemory, left) =>
         piece(
@@ -230,6 +130,7 @@ const piece = (
           ty.second,
           kind.second,
           left,
+          false,
           (held) =>
             push(pending(held), {
               k: "valuePairSecond",
@@ -242,8 +143,119 @@ const piece = (
     );
   }
   const value = general(bitsOf(env), kind, cursor, units);
-  if (value.k === "stop") return node();
+  if (value.k === "stop") {
+    return full
+      ? descend(env, pending({ ...ex, cursor }), ty, value.path)
+      : node();
+  }
   return ok(value.after, value.summary, value.memory, value.units);
+};
+
+/** The value of a type no bits encode. */
+const fixedValue = (ty: ConstantType): Fixed | undefined => {
+  if (!noBits(ty)) return undefined;
+  const shape = shapeOf(ty);
+  if (shape.k !== "fixed") {
+    throw new Error("script decode: a type without bits has a bit table");
+  }
+  return shape.value;
+};
+
+const noBits = (ty: ConstantType): boolean =>
+  ty.k === "unit" || (ty.k === "pair" && noBits(ty.first) && noBits(ty.second));
+
+/**
+ * Keeps what a bulk decode of the value of `ty` at the cursor decoded before
+ * it stopped, given as the steps `path` down from the value, as `descend`:
+ * pushes the frames of the values it was in, outermost first, each list's
+ * decoded elements as a run, and goes on at the cons bit of the innermost
+ * list, or, where no step leads further, with the value there as one node. A
+ * pair component no bits encode takes no step.
+ */
+export const descend = (
+  env: DecodeEnv,
+  ex: Exec,
+  ty: ConstantType,
+  path: readonly Within[],
+): Tick => {
+  const [step, ...rest] = path;
+  if (ty.k === "list" || ty.k === "array") {
+    if (step?.k !== "list") return nodeValue(env, ex, ty);
+    const runs =
+      step.count > 0
+        ? push(ex, {
+            k: "valueRun",
+            start: ex.cursor,
+            count: step.count,
+            units: step.units,
+          })
+        : ex;
+    const held = push(runs, {
+      k: "valueList",
+      element: ty.element,
+      array: ty.k === "array",
+      count: step.count,
+      memory: step.memory,
+    });
+    if (rest.length === 0) {
+      return at(held, step.at, { k: "listBit", element: ty.element });
+    }
+    return descend(env, { ...held, cursor: step.at + 1 }, ty.element, rest);
+  }
+  if (ty.k === "pair") {
+    const first = fixedValue(ty.first);
+    if (first !== undefined) {
+      return descend(
+        env,
+        push(ex, {
+          k: "valuePairSecond",
+          first: first.summary,
+          memory: first.memory,
+        }),
+        ty.second,
+        path,
+      );
+    }
+    if (fixedValue(ty.second) !== undefined) {
+      return descend(
+        env,
+        push(ex, { k: "valuePairFirst", second: ty.second }),
+        ty.first,
+        path,
+      );
+    }
+    if (step?.k === "first") {
+      return descend(
+        env,
+        push(ex, { k: "valuePairFirst", second: ty.second }),
+        ty.first,
+        rest,
+      );
+    }
+    if (step?.k === "second") {
+      const a = quick(bitsOf(env), shapeOf(ty.first), ex.cursor, UNMETERED);
+      if (a.k === "stop") {
+        throw new Error(
+          "script decode: a scanned pair component no longer decodes",
+        );
+      }
+      return descend(
+        env,
+        {
+          ...push(ex, {
+            k: "valuePairSecond",
+            first: a.summary,
+            memory: step.memory,
+          }),
+          cursor: step.middle,
+        },
+        ty.second,
+        rest,
+      );
+    }
+    return nodeValue(env, ex, ty);
+  }
+  return nodeValue(env, ex, ty);
 };
 
 /** One node of a constant value: a leaf, or the frame of a list, pair or value. */
@@ -319,14 +331,28 @@ export const tickValueReturn = (
 ): Tick => {
   const popped = pop(ex);
   if (popped === undefined) return undefined;
-  return ascend(env, popped[1], popped[0], summary, memory, UNITS_PER_TICK);
+  return ascend(
+    env,
+    popped[1],
+    popped[0],
+    summary,
+    memory,
+    UNITS_PER_TICK,
+    true,
+  );
 };
+
+/**
+ * Units charged for closing a list: its summary, and returning it to the
+ * frame above.
+ */
+export const LIST_CLOSE_UNITS = 32;
 
 /**
  * Returns a decoded value to the frames above it while `units` last and the
  * frames are revealed.
  */
-const climb = (
+export const climb = (
   env: DecodeEnv,
   ex: Exec,
   summary: Summary,
@@ -337,12 +363,15 @@ const climb = (
   if (units < 0) return held;
   const popped = pop(ex);
   if (popped === undefined) return held;
-  const next = ascend(env, popped[1], popped[0], summary, memory, units);
+  const next = ascend(env, popped[1], popped[0], summary, memory, units, false);
   if (next === undefined) throw new Error("script decode: a stuck ascent");
   return next;
 };
 
-/** Returns a decoded value to `frame`. */
+/**
+ * Returns a decoded value to `frame`, with `units` left, all of a tick's when
+ * `full`.
+ */
 const ascend = (
   env: DecodeEnv,
   ex: Exec,
@@ -350,6 +379,7 @@ const ascend = (
   summary: Summary,
   memory: bigint,
   units: number,
+  full: boolean,
 ): Tick => {
   switch (frame.k) {
     case "constant":
@@ -369,7 +399,38 @@ const ascend = (
           }),
         ),
       });
-    case "valueList":
+    case "valueList": {
+      const cursor = ex.cursor;
+      if (
+        units >= LIST_CLOSE_UNITS &&
+        have(env, cursor, 1) &&
+        read(env, cursor, 1) === 0
+      ) {
+        const sequence = prependMidgardCekDataListSummary(
+          summary,
+          emptyMidgardCekDataListSummary(),
+        );
+        if (frame.count === 0) {
+          return climb(
+            env,
+            { ...ex, cursor: cursor + 1 },
+            summarizeMidgardCekListData(sequence),
+            frame.array ? 1n : frame.memory + memory,
+            units - LIST_CLOSE_UNITS,
+          );
+        }
+        return at(ex, cursor + 1, {
+          k: "constFold",
+          fold: { pairs: false, remaining: frame.count, sequence },
+          next: {
+            k: "list",
+            element: frame.element,
+            array: frame.array,
+            count: frame.count + 1,
+            memory: frame.memory + memory,
+          },
+        });
+      }
       return to(
         push(push(ex, { k: "valueItem", summary }), {
           ...frame,
@@ -378,6 +439,7 @@ const ascend = (
         }),
         { k: "listBit", element: frame.element },
       );
+    }
     case "valuePairFirst":
       return piece(
         env,
@@ -386,6 +448,7 @@ const ascend = (
         frame.second,
         shapeOf(frame.second),
         units,
+        full,
         (held) => push(held, { k: "valuePairSecond", first: summary, memory }),
         (after, second, secondMemory, left) =>
           climb(

@@ -2309,10 +2309,10 @@ fn run_end(fixture: RunFixture) -> Int {
 
 fn scans_whole_run(fixture: RunFixture) -> Bool {
   let RunFixture { window, flat_bits, element, count, .. } = fixture
-  let (scanned, nil, _, _) = bulk.scan_run_v1(
+  let (scanned, nil, _, _, _) = bulk.scan_run_v1(
     window,
     flat_bits,
-    bulk.scan_decoder_v1(window, flat_bits, element),
+    bulk.scan_decoder_v1(window, flat_bits, bulk.shape_v1(element, True)),
     0,
   )
   scanned == count && nil == run_end(fixture)
@@ -2321,7 +2321,7 @@ fn scans_whole_run(fixture: RunFixture) -> Bool {
 fn folds_whole_run(fixture: RunFixture) -> Bool {
   let RunFixture { window, flat_bits, element, count, .. } = fixture
   bulk.fold_run_v1(
-    bulk.fold_decoder_v1(window, flat_bits, element),
+    bulk.fold_decoder_v1(window, flat_bits, bulk.shape_v1(element, True)),
     0,
     count,
     cek_data_v1.empty_data_list_summary_v1(),

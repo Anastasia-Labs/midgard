@@ -50,6 +50,32 @@ import {
 } from "./script-decode.step-shape.js";
 import type { SequenceSummary, Summary } from "./script-decode.step-types.js";
 
+/** One step from a value down to where a decode of it stopped, as `Within`. */
+export type Within =
+  | {
+      /**
+       * In a list, from its first cons bit: `count` elements decoded, with
+       * constant memory `memory`, spending `units`; stopped at or in the
+       * element whose cons bit is at `at`.
+       */
+      readonly k: "list";
+      readonly count: number;
+      readonly memory: bigint;
+      readonly units: number;
+      readonly at: number;
+    }
+  /** In the first component of a pair whose components both have bits. */
+  | { readonly k: "first" }
+  /**
+   * In the second component of such a pair, from `middle`; the first has
+   * constant memory `memory`.
+   */
+  | { readonly k: "second"; readonly middle: number; readonly memory: bigint };
+
+/**
+ * A decoded value, or a stop with the steps from the value down to where it
+ * stopped, outermost first.
+ */
 export type Quick =
   | {
       readonly k: "ok";
@@ -58,7 +84,17 @@ export type Quick =
       readonly memory: bigint;
       readonly units: number;
     }
-  | { readonly k: "stop"; readonly units: number };
+  | {
+      readonly k: "stop";
+      readonly units: number;
+      readonly path: readonly Within[];
+    };
+
+const down = (step: Within, inner: Quick & { k: "stop" }): Quick => ({
+  k: "stop",
+  units: inner.units,
+  path: [step, ...inner.path],
+});
 
 export type Bits = { readonly window: Uint8Array; readonly flatLength: number };
 
@@ -85,14 +121,13 @@ export const leafOf = (bits: Bits, shape: Shape, position: number): Leaf => {
   return { k: "gen", kind: current.kind };
 };
 
-/** Decodes the value of `shape` at bit `position`, as `quick_v1`. */
+/** Decodes the value of `shape` at bit `position`, as a compiled decoder. */
 export const quick = (
   bits: Bits,
   shape: Shape,
   position: number,
   units: number,
 ): Quick => {
-  if (units < 0) return stop(units);
   const leaf = leafOf(bits, shape, position);
   switch (leaf.k) {
     case "fixed":
@@ -142,7 +177,7 @@ export const general = (
       return valueConstant(bits, position, units);
     case "list": {
       const listed = items(bits, kind.element, position, units - 1);
-      if (listed.k === "stop") return listed;
+      if (listed.k === "stop") return listed.stop;
       return {
         k: "ok",
         after: listed.after,
@@ -153,10 +188,13 @@ export const general = (
     }
     case "pair": {
       if (kind.stops) return stop(units);
+      if (units < PAIR_UNITS) return stop(units - PAIR_UNITS);
       const a = quick(bits, kind.first, position, units - PAIR_UNITS);
-      if (a.k === "stop") return a;
+      if (a.k === "stop") return down({ k: "first" }, a);
       const b = quick(bits, kind.second, a.after, a.units);
-      if (b.k === "stop") return b;
+      if (b.k === "stop") {
+        return down({ k: "second", middle: a.after, memory: a.memory }, b);
+      }
       return {
         k: "ok",
         after: b.after,
@@ -246,9 +284,12 @@ type Items =
       readonly memory: bigint;
       readonly units: number;
     }
-  | { readonly k: "stop"; readonly units: number };
+  | { readonly k: "stop"; readonly stop: Quick };
 
-/** The elements of a list from the cons bit at `position` to its end. */
+/**
+ * The elements of a list from its first cons bit at `position`, which the
+ * list's bit table has read as set, to its end, as `items_from`.
+ */
 const items = (
   bits: Bits,
   element: Shape,
@@ -259,16 +300,31 @@ const items = (
   let memory = 0n;
   let p = position;
   let left = units;
+  const stopped = (
+    at: number,
+    now: number,
+    path: readonly Within[],
+  ): Items => ({
+    k: "stop",
+    stop: {
+      k: "stop",
+      units: now,
+      path: [
+        { k: "list", count: heads.length, memory, units: units - now, at },
+        ...path,
+      ],
+    },
+  });
   for (;;) {
-    if (left < 0) return { k: "stop", units: left };
-    if (p >= 8 * bits.flatLength) return { k: "stop", units: left };
-    if (readBits(bits.window, p, 1) === 0) break;
+    if (left < ELEMENT_UNITS) return stopped(p, left, []);
     const head = quick(bits, element, p + 1, left - ELEMENT_UNITS);
-    if (head.k === "stop") return head;
+    if (head.k === "stop") return stopped(p, left, head.path);
     heads.push(head.summary);
     memory += head.memory;
     p = head.after;
     left = head.units;
+    if (p >= 8 * bits.flatLength) return stopped(p, left, []);
+    if (readBits(bits.window, p, 1) === 0) break;
   }
   let sequence = emptyMidgardCekDataListSummary();
   for (let index = heads.length - 1; index >= 0; index -= 1) {
@@ -289,29 +345,35 @@ const items = (
 /**
  * The run of list elements from the cons bit at `position` that a tick
  * decodes, as `scan_run_v1`: its element count, the position after it, the
- * elements' memory and the units it spent.
+ * elements' memory, the units it spent and, when an element stopped it, the
+ * steps down from that element to where it stopped.
  */
 export const scanRun = (
   bits: Bits,
   element: Shape,
   position: number,
-): readonly [number, number, bigint, number] => {
-  if (never(element)) return [0, position, 0n, 0];
+): readonly [number, number, bigint, number, readonly Within[]] => {
+  if (never(element)) return [0, position, 0n, 0, []];
   let count = 0;
   let memory = 0n;
   let p = position;
   let units = UNITS_PER_TICK;
+  let path: readonly Within[] = [];
   for (;;) {
     if (p >= 8 * bits.flatLength) break;
     if (readBits(bits.window, p, 1) === 0) break;
+    if (units < ELEMENT_UNITS) break;
     const next = quick(bits, element, p + 1, units - ELEMENT_UNITS);
-    if (next.k === "stop") break;
+    if (next.k === "stop") {
+      path = next.path;
+      break;
+    }
     count += 1;
     memory += next.memory;
     p = next.after;
     units = next.units;
   }
-  return [count, p, memory, UNITS_PER_TICK - units];
+  return [count, p, memory, UNITS_PER_TICK - units, path];
 };
 
 /**
