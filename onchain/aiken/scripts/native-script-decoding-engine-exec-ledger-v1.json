@@ -69,18 +69,18 @@
       ],
       "rows": {
         "decoding_step_01_binds_an_accepted_normal_transaction": {
-          "mem": 2522283,
-          "cpu": 987866436,
+          "mem": 2507677,
+          "cpu": 946483644,
           "basisFit": "within"
         },
         "decoding_step_01_binds_a_published_chunk_membership_proof": {
-          "mem": 3648449,
-          "cpu": 1421680992,
+          "mem": 3633843,
+          "cpu": 1380289890,
           "basisFit": "within"
         },
         "decoding_step_01_records_a_pending_forced_source": {
-          "mem": 1205166,
-          "cpu": 526515045,
+          "mem": 1204666,
+          "cpu": 526435045,
           "basisFit": "within"
         }
       }
@@ -94,18 +94,18 @@
       ],
       "rows": {
         "decoding_step_02_opens_a_normal_claim": {
-          "mem": 1525393,
-          "cpu": 768836695,
+          "mem": 1515693,
+          "cpu": 766011661,
           "basisFit": "within"
         },
         "decoding_step_02_opens_a_forced_acceptance": {
-          "mem": 3099831,
-          "cpu": 1486736439,
+          "mem": 3059841,
+          "cpu": 1471655669,
           "basisFit": "within"
         },
         "decoding_step_02_copies_a_malformed_accusation_verbatim": {
-          "mem": 3109497,
-          "cpu": 1499513150,
+          "mem": 3069507,
+          "cpu": 1484432380,
           "basisFit": "within"
         }
       }

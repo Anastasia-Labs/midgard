@@ -20,20 +20,20 @@
       ],
       "rows": {
         "q1x_f6_no_input_step_02_control_at_one_spend_input": {
-          "mem": 1134832,
-          "cpu": 507522367
+          "mem": 1251392,
+          "cpu": 578578323
         },
         "q1x_f6_no_input_step_02_at_one_spend_input": {
-          "mem": 1664303,
-          "cpu": 670378492
+          "mem": 1980313,
+          "cpu": 843523206
         },
         "q1x_f6_no_input_step_02_control_at_the_admissible_maximum": {
-          "mem": 24165115,
-          "cpu": 10048755248
+          "mem": 24281675,
+          "cpu": 10119811204
         },
         "q1x_f6_no_input_step_02_at_the_admissible_maximum": {
-          "mem": 24523505,
-          "cpu": 10197224015
+          "mem": 24839515,
+          "cpu": 10370368729
         },
         "q1x_f6_double_spend_step_04_control_at_one_spend_input": {
           "mem": 1137976,
@@ -75,16 +75,16 @@
       "claim": "Q11 no-input step-02 at 1 spend input",
       "minus": "q1x_f6_no_input_step_02_control_at_one_spend_input",
       "from": "q1x_f6_no_input_step_02_at_one_spend_input",
-      "mem": 529471,
-      "cpu": 162856125,
+      "mem": 728921,
+      "cpu": 264944883,
       "basisFit": "fits"
     },
     {
       "claim": "Q11 no-input step-02 at 296 spend inputs",
       "minus": "q1x_f6_no_input_step_02_control_at_the_admissible_maximum",
       "from": "q1x_f6_no_input_step_02_at_the_admissible_maximum",
-      "mem": 358390,
-      "cpu": 148468767,
+      "mem": 557840,
+      "cpu": 250557525,
       "basisFit": "fits"
     },
     {
