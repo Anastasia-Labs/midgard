@@ -29,6 +29,10 @@
       "midgard-source": "./src/hex.ts",
       "types": "./src/hex.ts"
     },
+    "./reference-script-funding": {
+      "midgard-source": "./src/reference-script-funding.ts",
+      "types": "./src/reference-script-funding.ts"
+    },
     "./plutus-data-fuzz": {
       "midgard-source": "./src/plutus-data-fuzz.ts",
       "types": "./src/plutus-data-fuzz.ts"

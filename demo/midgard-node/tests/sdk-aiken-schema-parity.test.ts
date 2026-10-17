@@ -338,6 +338,23 @@ describe("SDK/Aiken canonical V1 schema parity", () => {
     },
   );
 
+  // Shapes alone cannot tell apart two fields of one type, so the field names
+  // pin the order of the descriptor the node commits with this schema.
+  it("orders ValidationTraceDescriptorSchema's fields as ValidationTraceDescriptorV1 does", () => {
+    const fieldTitles = (schema: DataSchema) =>
+      (schema.anyOf ?? []).map(({ fields = [] }) =>
+        fields.map(({ title }) => title),
+      );
+    const aiken =
+      blueprint.definitions[
+        "midgard/validation_trace_v1/ValidationTraceDescriptorV1"
+      ]!;
+    expect(fieldTitles(aiken)[0]).toContain("initial_state_hash");
+    expect(
+      fieldTitles(SDK.ValidationTraceDescriptorSchema as DataSchema),
+    ).toEqual(fieldTitles(aiken));
+  });
+
   it.each(VALIDITY_VECTORS)(
     "binds raw native validity %s code %s to its Plutus constructor",
     (name, code, plutusDataCbor) => {

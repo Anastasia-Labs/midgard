@@ -8,8 +8,8 @@ import {
   referenceScriptAuthUnit,
   type ReferenceScriptPublication,
   referenceScriptPublicationFundingTarget,
-  selectReferenceScriptFundingUtxos,
 } from "@al-ft/midgard-sdk";
+import { selectPlainFundingUtxos } from "@al-ft/midgard-test-support/reference-script-funding";
 import { Lucid, type Script, type UTxO } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
@@ -47,7 +47,7 @@ export const publishAuthenticatedValidationDisputeControl = async ({
   // A deployment supplies its funding authority explicitly. Standalone
   // publication tests use their caller wallet; neither path changes a wallet.
   const publicationLucid = publisher?.lucid ?? lucid;
-  const selectedFundingInputs = selectReferenceScriptFundingUtxos(
+  const selectedFundingInputs = selectPlainFundingUtxos(
     await publicationLucid.wallet().getUtxos(),
     referenceScriptPublicationFundingTarget(1),
   );

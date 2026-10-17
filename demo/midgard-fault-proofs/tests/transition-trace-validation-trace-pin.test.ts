@@ -178,7 +178,13 @@ describe("validation-trace pair pinned to the empty tree", () => {
     });
   });
 
-  it("refuses a body that declares a trace for its L2 transactions only", async () => {
+  // Reconstruction checks the declared count against the traces the body
+  // carries, and nothing more: here it declares one, for its L2 transaction,
+  // and carries two. That the count covers forced plus L2 transactions is
+  // the watcher's shape check, pinned by "rejects a forced-and-L2 body that
+  // declares and carries a trace for its L2 transaction only" in
+  // midgard-watcher/tests/verification/header-root-reconstruction-pinned-header.test.ts.
+  it("refuses a body that declares fewer traces than it carries", async () => {
     const honest = await retainedBlock();
     const body = honest.payload.block_body;
     expect(body.counts.forcedTransactionCount).toBe(1n);

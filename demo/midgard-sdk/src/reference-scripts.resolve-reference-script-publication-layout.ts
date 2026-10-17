@@ -84,28 +84,6 @@ export const orderReferenceScriptFundingUtxos = (
     return leftLovelace > rightLovelace ? -1 : 1;
   });
 
-export const selectReferenceScriptFundingUtxos = (
-  utxos: readonly UTxO[],
-  targetLovelace: bigint,
-): readonly UTxO[] => {
-  if (targetLovelace <= 0n) {
-    return [];
-  }
-  const selected: UTxO[] = [];
-  let covered = 0n;
-  for (const utxo of orderReferenceScriptFundingUtxos(utxos)) {
-    if (!isPlainAdaOnlyUtxo(utxo)) {
-      continue;
-    }
-    selected.push(utxo);
-    covered += lovelaceOf(utxo);
-    if (covered >= targetLovelace) {
-      return selected;
-    }
-  }
-  return [];
-};
-
 const completeWithSelectedFundingInputs = (
   selectedFundingInputs: readonly UTxO[],
 ): TxCompleteOptions => ({
