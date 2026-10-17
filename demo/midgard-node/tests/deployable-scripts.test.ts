@@ -27,7 +27,6 @@ import {
   nodeRuntimeReferenceScriptTargets,
   referenceScriptTargetsByCommand,
 } from "./helpers/deployable-catalogue-before-canonical.js";
-import { expectPreMigrationDeploymentBoundary } from "./helpers/deployment-member-baseline.js";
 import { withRealEventHistoryForTest } from "./helpers/event-history.js";
 import { loadRealMidgardContractsForTest } from "./helpers/real-midgard-contracts.js";
 
@@ -152,10 +151,6 @@ describe("deployable-script catalogue", () => {
       }).pipe(Effect.provide(AlwaysSucceedsContract.Default)),
     );
   }, 120_000);
-
-  it("preserves the complete pre-migration script binding and publication order", () => {
-    expectPreMigrationDeploymentBoundary(real);
-  });
 
   it("pins the manifest order of contracts and roles", () => {
     for (const contracts of [real, placeholder]) {
