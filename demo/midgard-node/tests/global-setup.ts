@@ -26,7 +26,6 @@ import { fileURLToPath } from "node:url";
 import { SqlClient } from "@effect/sql";
 import { PgClient } from "@effect/sql-pg";
 import { Effect, Layer, Redacted } from "effect";
-import type { TestProject } from "vitest/node";
 
 import { MigrationRunner } from "../src/database/index.js";
 import { MigrationError } from "../src/database/migrations/runner.js";
@@ -40,11 +39,6 @@ import {
   createRunJournalDirectory,
   removeRunJournalDirectory,
 } from "./helpers/run-journal-directory.js";
-import {
-  createRunSharedFixtureDirectory,
-  invalidateRunSharedFixtures,
-  removeRunSharedFixtureDirectory,
-} from "./helpers/run-shared-fixture-directory.js";
 import { applyMidgardNodeTestEnv, testDatabaseNames } from "./test-env.js";
 
 const maintenanceClient = (database: string) =>
@@ -214,52 +208,28 @@ const provisionOnce = async (): Promise<void> => {
  * process join the first one, failures included.
  */
 const ONCE = Symbol.for("midgard-node/tests/global-setup");
-const SHARED_FIXTURE_DIRECTORY = Symbol.for(
-  "midgard-node/tests/global-setup/shared-fixtures",
-);
 const JOURNAL_DIRECTORY = Symbol.for(
   "midgard-node/tests/global-setup/journals",
-);
-const RERUN_INVALIDATION = Symbol.for(
-  "midgard-node/tests/global-setup/rerun-invalidation",
 );
 
 type Registry = {
   [ONCE]?: Promise<void>;
-  [SHARED_FIXTURE_DIRECTORY]?: Promise<string>;
   [JOURNAL_DIRECTORY]?: Promise<string>;
-  [RERUN_INVALIDATION]?: true;
 };
 
-export const setup = async (project: TestProject): Promise<void> => {
+export const setup = async (): Promise<void> => {
   const registry = globalThis as Registry;
   // Created before any worker starts: Vitest copies this process's
   // environment into each worker when it starts running files.
-  registry[SHARED_FIXTURE_DIRECTORY] ??= createRunSharedFixtureDirectory();
   registry[JOURNAL_DIRECTORY] ??= createRunJournalDirectory();
-  const [sharedFixtures] = await Promise.all([
-    registry[SHARED_FIXTURE_DIRECTORY],
-    registry[JOURNAL_DIRECTORY],
-  ]);
-  // Watch mode keeps the run directories for the whole session; a rerun
-  // after a source change must not read fixtures the earlier sources
-  // deployed. Every project shares one Vitest instance, so one handler
-  // covers them all.
-  if (registry[RERUN_INVALIDATION] === undefined) {
-    registry[RERUN_INVALIDATION] = true;
-    project.onTestsRerun(() => invalidateRunSharedFixtures(sharedFixtures));
-  }
+  await registry[JOURNAL_DIRECTORY];
   registry[ONCE] ??= provisionOnce();
   return registry[ONCE];
 };
 
-/** Removes the run's shared deployed fixtures and publication journals; the
- * later calls for the other workspace projects find nothing left to remove. */
+/** Removes the run's publication journals; the later calls for the other
+ * workspace projects find nothing left to remove. */
 export const teardown = async (): Promise<void> => {
-  const registry = globalThis as Registry;
-  const directory = registry[SHARED_FIXTURE_DIRECTORY];
-  const journals = registry[JOURNAL_DIRECTORY];
-  if (directory !== undefined)
-    await removeRunSharedFixtureDirectory(await directory);
+  const journals = (globalThis as Registry)[JOURNAL_DIRECTORY];
   if (journals !== undefined) await removeRunJournalDirectory(await journals);
 };

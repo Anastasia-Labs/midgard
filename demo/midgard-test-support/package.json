@@ -17,6 +17,10 @@
       "midgard-source": "./src/witness-fixture.ts",
       "types": "./src/witness-fixture.ts"
     },
+    "./run-shared-fixtures": {
+      "types": "./run-shared-fixtures.d.ts",
+      "default": "./run-shared-fixtures.js"
+    },
     "./database-identity": {
       "types": "./database-identity.d.ts",
       "default": "./database-identity.js"
@@ -68,6 +72,9 @@
     "workspace-bundle-files.js",
     "workspace-bundle-guard.js",
     "blueprint-stamp-setup.js",
+    "run-shared-fixtures.js",
+    "run-shared-fixtures.d.ts",
+    "run-shared-fixtures-setup.js",
     "interactive-emulator.js",
     "curated-emulator.js",
     "database-identity.js",

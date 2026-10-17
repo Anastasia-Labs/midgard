@@ -1,5 +1,5 @@
 import { readdirSync, readFileSync } from "node:fs";
-import { join, relative } from "node:path";
+import { isAbsolute, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { configDefaults } from "vitest/config";
@@ -138,6 +138,14 @@ export const rawSqlLoaderPlugin = () => ({
  */
 export const blueprintStampGlobalSetup = fileURLToPath(
   new URL("./blueprint-stamp-setup.js", import.meta.url),
+);
+
+/**
+ * The global-setup module that gives a run its shared directory for values
+ * produced once per run; see `run-shared-fixtures-setup.js`.
+ */
+export const runSharedFixturesGlobalSetup = fileURLToPath(
+  new URL("./run-shared-fixtures-setup.js", import.meta.url),
 );
 
 const globToRegExp = (pattern) => {
@@ -299,10 +307,12 @@ export const workspaceBundleProjects = (project, { packageDirectory }) => {
       test.include ?? configDefaults.include,
       exclude,
     ),
+    // Relative setups and the absolute ones this package exports (the
+    // run-shared directory's setup imports a module tests import too).
     setupRoots: [test.globalSetup ?? []]
       .flat()
-      .filter((file) => file.startsWith("."))
-      .map((file) => join(packageDirectory, file)),
+      .filter((file) => file.startsWith(".") || isAbsolute(file))
+      .map((file) => (isAbsolute(file) ? file : join(packageDirectory, file))),
   });
   if (analysis.entries.size === 0) return [project];
   const routed = [...analysis.sourceRouted.keys()].map(

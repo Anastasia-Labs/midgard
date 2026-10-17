@@ -1,7 +1,7 @@
 /**
  * Capturing a deployed emulator as plain data and restoring independent
  * copies of it, for fixtures that deploy once and hand every caller its own
- * chain (`run-shared-fixture-directory.ts`).
+ * chain (`@al-ft/midgard-test-support/run-shared-fixtures`).
  */
 import { type Emulator, type LucidEvolution } from "@lucid-evolution/lucid";
 
