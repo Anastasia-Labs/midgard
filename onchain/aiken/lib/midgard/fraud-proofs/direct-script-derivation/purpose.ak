@@ -18,7 +18,9 @@ use midgard/fraud_proofs/native_tx/types.{PubKeyCredential,
 use midgard/fraud_proofs/transition_trace/proof.{ledger_outref_key}
 use midgard/ledger_output_commitment_v1
 use midgard/ledger_output_v1
-use midgard/native_tx_field_access_v1.{field_item_at, field_item_count}
+use midgard/native_tx_field_access_v1.{
+  FieldViewV1, field_item_at, field_item_count,
+}
 use midgard/native_tx_machine_walk_v1.{spend_input_at}
 
 pub const spend: Int = 0
@@ -61,13 +63,34 @@ pub fn open_spend_credential_v1(
   redeemers: Pairs<ScriptPurpose, Redeemer>,
   certificate_policy_id: PolicyId,
 ) -> SpendCredentialV1 {
-  let view = opening.opened_field_view(
-    field_opening,
-    cursor.anchor_v1(bound, opening.spend_inputs_field_index),
-    opening.spend_inputs_field_index,
+  spend_credential_in_view_v1(
+    bound,
+    opening.opened_field_view(
+      field_opening,
+      cursor.anchor_v1(bound, opening.spend_inputs_field_index),
+      opening.spend_inputs_field_index,
+      reference_inputs,
+      certificate_policy_id,
+    ),
+    index,
+    descriptor_cbor,
+    membership,
     reference_inputs,
-    certificate_policy_id,
+    redeemers,
   )
+}
+
+/// `view` must be the authenticated spend-inputs field of `bound`'s
+/// transaction; every caller opens it against `cursor.anchor_v1(bound, 0)`.
+pub fn spend_credential_in_view_v1(
+  bound: BoundV1,
+  view: FieldViewV1,
+  index: Int,
+  descriptor_cbor: ByteArray,
+  membership: MembershipCarriage,
+  reference_inputs: List<Input>,
+  redeemers: Pairs<ScriptPurpose, Redeemer>,
+) -> SpendCredentialV1 {
   // This index addresses the authenticated raw field. It becomes a pointer
   // only after the direct spend pass proves its rank among spent outrefs.
   let count = field_item_count(view)

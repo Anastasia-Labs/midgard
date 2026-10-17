@@ -514,13 +514,14 @@ export const UNMAPPED_VALIDATORS: readonly Readonly<{
   },
   {
     reason:
-      "direct-script-derivation purpose-stage validators (purpose selection, spend and mint scans, source lookup). The library compiles and its on-chain rows cover them; their emulator scenarios belong to the family chain that wires them, which is not wired in this change.",
+      "direct-script-derivation purpose-stage validators (purpose and spend selection, spend and mint scans, source lookup). The library compiles and its on-chain rows cover them; their emulator scenarios belong to the family chain that wires them, which is not wired in this change.",
     validators: [
       "fraud_proofs/direct_script_derivation/mint_grammar.main",
       "fraud_proofs/direct_script_derivation/mint_scan.main",
       "fraud_proofs/direct_script_derivation/purpose_select.main",
       "fraud_proofs/direct_script_derivation/source_lookup.main",
       "fraud_proofs/direct_script_derivation/spend_scan.main",
+      "fraud_proofs/direct_script_derivation/spend_select.main",
     ],
   },
   {

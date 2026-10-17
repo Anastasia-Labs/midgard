@@ -26,20 +26,20 @@ const selected = {
   opening: FieldOpeningSchema,
 };
 
+/** The selection door hands a spend selection to the spend door unchanged. */
 export const DirectPurposeActionSchema = Data.Enum([
-  Data.Object({
-    Spend: Data.Object({
-      ...indices,
-      raw_item_index: Data.Integer(),
-      opening: FieldOpeningSchema,
-      descriptor_cbor: Data.Bytes(),
-      membership: MembershipCarriageSchema,
-    }),
-  }),
+  Data.Object({ Spend: Data.Object(indices) }),
   Data.Object({ Observe: Data.Object(selected) }),
   Data.Object({ Mint: Data.Object(selected) }),
   Data.Object({ Receive: Data.Object(indices) }),
 ]);
+export const DirectSpendSelectionArgsSchema = Data.Object({
+  ...indices,
+  raw_item_index: Data.Integer(),
+  opening: FieldOpeningSchema,
+  descriptor_cbor: Data.Bytes(),
+  membership: MembershipCarriageSchema,
+});
 export const DirectMintWorkStateSchema = Data.Object({
   source_index: DirectSourceIndexSchema,
   scan: DirectMintPurposeStateSchema,
@@ -135,6 +135,15 @@ export type DirectPurposeSelectRedeemer = Data.Static<
 export const DirectPurposeSelectRedeemer =
   asDataType<DirectPurposeSelectRedeemer>(DirectPurposeSelectRedeemerSchema);
 
+export const DirectSpendSelectRedeemerSchema = faultProofStepRedeemerSchema(
+  DirectSpendSelectionArgsSchema,
+);
+export type DirectSpendSelectRedeemer = Data.Static<
+  typeof DirectSpendSelectRedeemerSchema
+>;
+export const DirectSpendSelectRedeemer = asDataType<DirectSpendSelectRedeemer>(
+  DirectSpendSelectRedeemerSchema,
+);
 export const DirectMintWorkDatumSchema = faultProofStepDatumSchema(
   DirectMintWorkStateSchema,
 );

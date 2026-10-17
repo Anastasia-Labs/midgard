@@ -4,17 +4,15 @@ use cardano/assets.{PolicyId}
 use cardano/transaction.{OutputReference, Transaction}
 use midgard/computation_thread as ct
 use midgard/fraud_proofs/common.{cancel, continue}
-use midgard/fraud_proofs/direct_script_derivation/cursor
 use midgard/fraud_proofs/direct_script_derivation/first_fault_seam.{
   PurposeCoordinateV1,
 }
 use midgard/fraud_proofs/direct_script_derivation/purpose
 use midgard/fraud_proofs/direct_script_derivation/purpose_workers as door
-use midgard/fraud_proofs/field_opening_v1.{spend_inputs_field_index}
 
 validator main(
   source_lookup_script_hash: ScriptHash,
-  spend_scan_script_hash: ScriptHash,
+  spend_select_script_hash: ScriptHash,
   mint_grammar_script_hash: ScriptHash,
   receive_start_script_hash: ScriptHash,
   computation_thread_token_policy_id: PolicyId,
@@ -51,40 +49,10 @@ validator main(
         expect Some(state) = input_state
         expect list.has(tx.extra_signatories, fraud_prover)
         when action is {
-          door.Spend {
-            raw_item_index,
-            opening,
-            descriptor_cbor,
-            membership,
-            ..
-          } -> {
-            expect Some(selected) = purpose.open_spend_v1(
-              state.bound,
-              raw_item_index,
-              opening,
-              descriptor_cbor,
-              membership,
-              tx.reference_inputs,
-              tx.redeemers,
-              field_preimage_certificate_policy_id,
-            )
-            let (field_cursor, _, complete) = cursor.initial_with_completion_v1(
-              state.bound,
-              spend_inputs_field_index,
-              opening,
-              tx.reference_inputs,
-              field_preimage_certificate_policy_id,
-            )
-            let expected: Data = door.SpendStateV1 {
-              source_index: state.source_index,
-              cursor: field_cursor,
-              raw_item_index,
-              target: selected,
-              rank: 0,
-              complete,
-            }
+          door.Spend { .. } -> {
+            let expected: Data = state
             and {
-              output_hash == spend_scan_script_hash,
+              output_hash == spend_select_script_hash,
               output_state == expected,
             }
           }

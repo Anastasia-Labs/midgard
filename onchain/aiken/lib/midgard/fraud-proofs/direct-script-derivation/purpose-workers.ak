@@ -4,7 +4,7 @@
 use aiken/merkle_patricia_forestry.{Proof}
 use aiken/primitive/bytearray
 use cardano/assets.{PolicyId}
-use cardano/transaction.{Input}
+use cardano/transaction.{Input, Redeemer, ScriptPurpose}
 use midgard/computation_thread as ct
 use midgard/fraud_proofs/common.{MembershipCarriage}
 use midgard/fraud_proofs/direct_script_derivation/cursor
@@ -19,19 +19,14 @@ use midgard/fraud_proofs/direct_script_derivation/source_index
 use midgard/fraud_proofs/direct_script_derivation/source_scan.{BoundIndexV1}
 use midgard/fraud_proofs/direct_script_derivation/types.{PurposeV1}
 use midgard/fraud_proofs/field_opening_v1.{
-  FieldOpeningV1, mint_field_index, spend_inputs_field_index,
+  FieldOpeningV1, mint_field_index, opened_field_walk, spend_inputs_field_index,
 }
 use midgard/native_tx_machine_walk_v1 as walk
 
+/// The selection door chooses the purpose kind. A spend selection is opened by
+/// the spend door, which receives this door's state unchanged.
 pub type SelectionActionV1 {
-  Spend {
-    input_index: Int,
-    output_index: Int,
-    raw_item_index: Int,
-    opening: FieldOpeningV1,
-    descriptor_cbor: ByteArray,
-    membership: MembershipCarriage,
-  }
+  Spend { input_index: Int, output_index: Int }
   Observe {
     input_index: Int,
     output_index: Int,
@@ -45,6 +40,15 @@ pub type SelectionActionV1 {
     opening: FieldOpeningV1,
   }
   Receive { input_index: Int, output_index: Int }
+}
+
+pub type SpendSelectionArgsV1 {
+  input_index: Int,
+  output_index: Int,
+  raw_item_index: Int,
+  opening: FieldOpeningV1,
+  descriptor_cbor: ByteArray,
+  membership: MembershipCarriage,
 }
 
 pub type MintStateV1 {
@@ -92,6 +96,9 @@ pub type SelectionDatum =
 pub type SelectionRedeemer =
   ct.StepRedeemer<SelectionActionV1>
 
+pub type SpendSelectionRedeemer =
+  ct.StepRedeemer<SpendSelectionArgsV1>
+
 pub type MintDatum =
   ct.StepDatum<MintStateV1>
 
@@ -117,7 +124,7 @@ pub const scan_batch: Int = 16
 
 pub fn selection_indices_v1(action: SelectionActionV1) -> Pair<Int, Int> {
   when action is {
-    Spend { input_index, output_index, .. } -> Pair(input_index, output_index)
+    Spend { input_index, output_index } -> Pair(input_index, output_index)
     Observe { input_index, output_index, .. } -> Pair(input_index, output_index)
     Mint { input_index, output_index, .. } -> Pair(input_index, output_index)
     Receive { input_index, output_index } -> Pair(input_index, output_index)
@@ -172,6 +179,52 @@ pub fn finish_mint_v1(state: MintStateV1) -> SelectionV1 {
     PurposeCoordinateV1 { kind: purpose.mint, index: state.scan.target_ordinal },
     mint_purpose.selected_purpose_v1(state.scan),
   )
+}
+
+/// The spend field has a fixed stride, so its cursor starts in the walking
+/// phase (the field-0 branch of `cursor.initial_with_completion_v1`), and the
+/// same authenticated walk view yields the selected spend credential. A key
+/// credential has no script to derive and is refused.
+pub fn initial_spend_v1(
+  source: BoundIndexV1,
+  args: SpendSelectionArgsV1,
+  reference_inputs: List<Input>,
+  redeemers: Pairs<ScriptPurpose, Redeemer>,
+  certificate_policy_id: PolicyId,
+) -> SpendStateV1 {
+  let Pair(view, position) = opened_field_walk(
+    args.opening,
+    cursor.anchor_v1(source.bound, spend_inputs_field_index),
+    spend_inputs_field_index,
+    reference_inputs,
+    certificate_policy_id,
+  )
+  let credential = purpose.spend_credential_in_view_v1(
+    source.bound,
+    view,
+    args.raw_item_index,
+    args.descriptor_cbor,
+    args.membership,
+    reference_inputs,
+    redeemers,
+  )
+  expect Some(script_hash) = credential.script_hash
+  SpendStateV1 {
+    source_index: source.source_index,
+    cursor: cursor.CursorV1 {
+      bound: source.bound,
+      field_index: spend_inputs_field_index,
+      phase: cursor.Walking,
+      checkpoint_hash: walk.field_walk_checkpoint_hash(position),
+    },
+    raw_item_index: args.raw_item_index,
+    target: purpose.SpendCandidateV1 {
+      script_hash,
+      subject: credential.subject,
+    },
+    rank: 0,
+    complete: walk.walk_is_complete(position),
+  }
 }
 
 /// The resolution producer sorts the union, then increments replaySpendIndex

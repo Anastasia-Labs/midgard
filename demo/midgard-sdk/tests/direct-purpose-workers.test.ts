@@ -2,8 +2,10 @@ import { Constr, Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
 import {
+  DirectPurposeSelectRedeemer,
   DirectSourceSelection,
   type DirectSourceSelection as SourceSelection,
+  DirectSpendSelectRedeemer,
   DirectSpendWorkState,
 } from "../src/fraud-proof/direct-purpose-workers.js";
 
@@ -79,5 +81,43 @@ describe("direct purpose wire custody", () => {
     );
     expect(spend.fields[2]).toBe(2n);
     expect(spend.fields[4]).toBe(1n);
+  });
+
+  // The same encodings are pinned on-chain in
+  // onchain/aiken/validators/fraud-proofs/direct-script-derivation/purpose-select.test.ak.
+  it("encodes the selection door's spend hand-off and the spend door's arguments as on-chain", () => {
+    expect(
+      Data.to(
+        { Continue: [{ Spend: { input_index: 5n, output_index: 6n } }] },
+        DirectPurposeSelectRedeemer,
+      ),
+    ).toBe("d87a9fd8799f0506ffff");
+    expect(
+      Data.to(
+        {
+          Continue: [
+            {
+              input_index: 1n,
+              output_index: 2n,
+              raw_item_index: 3n,
+              opening: {
+                BodyFieldOpening: {
+                  native_tx_compact_cbor: "a1",
+                  carriage: { Inline: { preimage: "b2" } },
+                },
+              },
+              descriptor_cbor: "c3",
+              membership: {
+                RedeemerCarriedMembership: {
+                  membership_proof: [],
+                  membership_proof_script_redeemer_index: 4n,
+                },
+              },
+            },
+          ],
+        },
+        DirectSpendSelectRedeemer,
+      ),
+    ).toBe("d87a9fd8799f010203d8799f41a1d8799f41b2ffff41c3d8799f8004ffffff");
   });
 });

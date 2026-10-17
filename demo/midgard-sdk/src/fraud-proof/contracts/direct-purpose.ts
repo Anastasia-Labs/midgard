@@ -13,6 +13,7 @@ export * from "../direct-purpose-workers.js";
 
 export const DIRECT_PURPOSE_TITLES = {
   select: "fraud_proofs/direct_script_derivation/purpose_select.main.spend",
+  spendSelect: "fraud_proofs/direct_script_derivation/spend_select.main.spend",
   spendScan: "fraud_proofs/direct_script_derivation/spend_scan.main.spend",
   mintGrammar: "fraud_proofs/direct_script_derivation/mint_grammar.main.spend",
   mintScan: "fraud_proofs/direct_script_derivation/mint_scan.main.spend",
@@ -21,6 +22,7 @@ export const DIRECT_PURPOSE_TITLES = {
 
 export type DirectPurposeContracts = Readonly<{
   select: SpendingValidator;
+  spendSelect: SpendingValidator;
   spendScan: SpendingValidator;
   mintGrammar: SpendingValidator;
   mintScan: SpendingValidator;
@@ -66,6 +68,16 @@ export const buildDirectPurposeContracts = ({
       ],
       "Failed to build direct spend pointer rank",
     );
+    const spendSelect = yield* buildFaultProofSpendingStep(
+      context,
+      DIRECT_PURPOSE_TITLES.spendSelect,
+      [
+        spendScan.spendingScriptHash,
+        computationThreadPolicyId,
+        fieldPreimageCertificatePolicyId,
+      ],
+      "Failed to build direct spend selection",
+    );
     const mintScan = yield* buildFaultProofSpendingStep(
       context,
       DIRECT_PURPOSE_TITLES.mintScan,
@@ -91,7 +103,7 @@ export const buildDirectPurposeContracts = ({
       DIRECT_PURPOSE_TITLES.select,
       [
         lookup.spendingScriptHash,
-        spendScan.spendingScriptHash,
+        spendSelect.spendingScriptHash,
         mintGrammar.spendingScriptHash,
         receive.start.spendingScriptHash,
         computationThreadPolicyId,
@@ -99,5 +111,13 @@ export const buildDirectPurposeContracts = ({
       ],
       "Failed to build direct purpose selection",
     );
-    return { select, spendScan, mintGrammar, mintScan, lookup, receive };
+    return {
+      select,
+      spendSelect,
+      spendScan,
+      mintGrammar,
+      mintScan,
+      lookup,
+      receive,
+    };
   });
