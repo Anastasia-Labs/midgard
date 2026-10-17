@@ -4,15 +4,22 @@
  * verdict on the block: the import ends `verifier_unavailable` with the
  * original error's text, the hold it makes is retried on the driver's
  * backoff, and the import succeeds once the fault clears, with no follower
- * change. A wrong signature with no fault is still the block's fault.
+ * change. The same holds when the fault reaches the import as a defect (a
+ * check the import calls back raises it inside `Effect.sync`). A wrong
+ * signature with no fault is still the block's fault.
  */
-import { ledgerEd25519SignatureReady } from "@al-ft/midgard-core";
+import {
+  ledgerEd25519SignatureReady,
+  verifyLedgerEd25519Signature,
+} from "@al-ft/midgard-core";
+import { Effect } from "effect";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 
 import {
   type DriverHold,
   isRetriedHold,
   isTransientFailureHold,
+  localFaultSubject,
 } from "../src/l1-events/driver.js";
 import { combineHolds, replayOutcomeHold } from "../src/landed-blocks/holds.js";
 import { Verdict } from "../src/landed-blocks/replay-foreign.verdict.js";
@@ -107,6 +114,34 @@ describe("a verifier fault during a foreign-block import", () => {
     const fault = new Error("injected verifier fault on a transaction");
     injected.fault = fault;
     expectLocalFaultHold(await fixture.imported(), headerHash, fault);
+    injected.fault = undefined;
+    expect((await fixture.imported())._tag).toBe("Right");
+  }, 120_000);
+
+  it("holds a block on a retried local fault when the fault reaches the import as a defect", async () => {
+    // The user event's replay first runs a signature check inside
+    // `Effect.sync`: a fault there is a defect, not a typed failure.
+    const fixture = await withdrawalFixture({
+      userEvent: (replay) => (event) =>
+        Effect.zipRight(
+          Effect.sync(() =>
+            verifyLedgerEd25519Signature(
+              new Uint8Array(32),
+              new Uint8Array(0),
+              new Uint8Array(64),
+            ),
+          ),
+          replay(event),
+        ),
+    });
+    expect((await fixture.imported())._tag).toBe("Right");
+    const fault = new Error("injected verifier fault inside a callback");
+    injected.fault = fault;
+    const imported = await fixture.imported();
+    expectLocalFaultHold(imported, fixture.headerHash, fault);
+    expect(localFaultSubject(holdOf(imported, fixture.headerHash)!)).toBe(
+      fixture.headerHash,
+    );
     injected.fault = undefined;
     expect((await fixture.imported())._tag).toBe("Right");
   }, 120_000);

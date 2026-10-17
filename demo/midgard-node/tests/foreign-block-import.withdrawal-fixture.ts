@@ -14,17 +14,26 @@ import {
   encodeEventToStepValueCbor,
   encodeTransitionStepCbor,
 } from "../src/mpf/transition-cbor.js";
-import { verifyAndImportBlock } from "../src/mpf/verified-block-import.js";
+import {
+  type ImportedBlockReplayContext,
+  verifyAndImportBlock,
+} from "../src/mpf/verified-block-import.js";
 import { computeDaPayloadRoots } from "../src/workers/commit-block-header/da-payload.compute-da-payload-roots.js";
 
 /**
  * A foreign block settling one honestly signed withdrawal of a ledger output
  * its owner holds. With `wrongSignature` the L1 event the follower knows
  * carries a signature over other bytes, while the block still commits the
- * honest verdict: the block's verdict is wrong.
+ * honest verdict: the block's verdict is wrong. `userEvent` wraps the
+ * replay of the block's user event the import calls back.
  */
 export const withdrawalFixture = async (
-  options: { readonly wrongSignature?: boolean } = {},
+  options: {
+    readonly wrongSignature?: boolean;
+    readonly userEvent?: (
+      replay: ImportedBlockReplayContext["replayUserEvent"],
+    ) => ImportedBlockReplayContext["replayUserEvent"];
+  } = {},
 ) => {
   const privateKey = CML.PrivateKey.from_normal_bytes(Buffer.alloc(32, 0x31));
   const owner = privateKey.to_public().hash().to_hex();
@@ -169,11 +178,15 @@ export const withdrawalFixture = async (
   ]);
   return {
     headerHash: payload.block_body.header_hash,
-    imported: () =>
-      Effect.runPromise(
+    imported: () => {
+      const material = foreignReplayMaterial(new Map(), known, new Map(), []);
+      return Effect.runPromise(
         Effect.either(
           verifyAndImportBlock({
-            ...foreignReplayMaterial(new Map(), known, new Map(), []),
+            ...material,
+            replayUserEvent:
+              options.userEvent?.(material.replayUserEvent) ??
+              material.replayUserEvent,
             header: payload.block_body.header,
             headerHash: payload.block_body.header_hash,
             parentHeaderHash: header.prevHeaderHash,
@@ -188,6 +201,7 @@ export const withdrawalFixture = async (
             l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
           }),
         ),
-      ),
+      );
+    },
   };
 };
