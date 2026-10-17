@@ -56,6 +56,7 @@ import { captureEmulatorSubmission } from "./support/emulator/measurement.js";
 import { makeNativeTx } from "./support/emulator/native-tx.js";
 import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.js";
 import { submitSetupTx } from "./support/emulator/setup-tx.js";
+import { deepProofChunks } from "./support/input-existence-deep-chunks.js";
 import { submitRawNonExistentInputForcedStep } from "./support/non-existent-input-raw-step.js";
 import { buildInvalidForcedTransitionTraceFixture } from "./support/submit-init-emulator-fixtures.js";
 import {
@@ -521,6 +522,7 @@ describe("nonExistentInput wrongful rejection registered lifecycle", () => {
         );
         return;
       }
+      const chunked = deep ? await deepProofChunks(harness, prepared) : [];
       const advance = async (
         threadOutRef: string,
         stepIndex: 0 | 1 | 2 | 3,
@@ -539,6 +541,7 @@ describe("nonExistentInput wrongful rejection registered lifecycle", () => {
               stepIndex === 1 ? [...chunks, ...certificates] : [],
             certificatePolicyId:
               harness.contracts.fieldPreimageCertificate.policyId,
+            publishedProofChunks: chunked[stepIndex] ?? [],
           }),
         );
       if (!deep)

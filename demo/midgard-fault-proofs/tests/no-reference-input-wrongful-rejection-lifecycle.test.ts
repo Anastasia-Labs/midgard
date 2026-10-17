@@ -53,6 +53,7 @@ import { withCommitSlot } from "./support/emulator/header-fixtures.js";
 import { captureEmulatorSubmission } from "./support/emulator/measurement.js";
 import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.js";
 import { submitSetupTx } from "./support/emulator/setup-tx.js";
+import { deepProofChunks } from "./support/input-existence-deep-chunks.js";
 import { makeReferenceNativeTx as makeNativeTx } from "./support/no-reference-input-native.js";
 import { submitRawNoReferenceInputForcedStep } from "./support/no-reference-input-raw-step.js";
 import { buildInvalidForcedTransitionTraceFixture } from "./support/submit-init-emulator-fixtures.js";
@@ -524,6 +525,7 @@ describe("noReferenceInput wrongful rejection registered lifecycle", () => {
         );
         return;
       }
+      const chunked = deep ? await deepProofChunks(harness, prepared) : [];
       const advance = async (
         threadOutRef: string,
         stepIndex: 0 | 1 | 2 | 3,
@@ -542,6 +544,7 @@ describe("noReferenceInput wrongful rejection registered lifecycle", () => {
               stepIndex === 1 ? [...chunks, ...certificates] : [],
             certificatePolicyId:
               harness.contracts.fieldPreimageCertificate.policyId,
+            publishedProofChunks: chunked[stepIndex] ?? [],
           }),
         );
       if (!deep)

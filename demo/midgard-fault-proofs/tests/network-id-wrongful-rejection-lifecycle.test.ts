@@ -435,12 +435,12 @@ describe("networkId wrongful-rejection real lifecycle", () => {
         },
       }),
     ).rejects.toThrow(/script|evaluat/iu);
-    // Wrong direction is refused before submission.
+    // Wrong direction: an accepted leaf verdict selects the other direction.
+    const valid = { ...committed.value, verdict: "ForcedTxValid" as const };
+    const membership = { ...committed, value: valid };
+    const forcedSource = { ...claimed.forcedSource, membership };
     await expect(
-      stages.bind(thread, {
-        ...claimed,
-        forcedSource: { ...claimed.forcedSource, direction: 0n } as never,
-      }),
+      stages.bind(thread, { ...claimed, forcedSource }),
     ).rejects.toThrow(/direction 1/u);
     // The thread survives every refused attempt and is still cancellable.
     await stages.cancel(thread, "forcedStep");
