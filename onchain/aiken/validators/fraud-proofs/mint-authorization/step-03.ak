@@ -9,11 +9,11 @@
 ////
 //// **Direction A (script absent, inline half).** The machine's stage-nine
 //// source surface for a mint purpose is exactly the field-6 script witnesses
-//// plus the resolved reference inputs' reference scripts
-//// (`replay_source_frontier`), matched by hash alone across every language.
-//// This arm walks the whole committed field 6 and proves no item's
+//// plus the reference scripts of every resolved input, spent and reference
+//// alike (`replay_source_frontier`), matched by hash alone across every
+//// language. This arm walks the whole committed field 6 and proves no item's
 //// canonical versioned-script hash equals the claimed policy id, then routes
-//// into step-04's reference-input scan for the other half.
+//// into step-04's resolved-input scan for the other half.
 ////
 //// **Direction B (script present but unsatisfied).** `script_bytes` is
 //// pinned as the policy's native payload by
@@ -42,7 +42,8 @@ use midgard/computation_thread as ct
 use midgard/fraud_proofs/common.{cancel, continue}
 use midgard/fraud_proofs/field_opening_v1.{
   WitnessAnchor, address_witnesses_field_index, fold_opened_field,
-  opened_committed_preimage, opened_field_walk, script_witnesses_field_index,
+  opened_committed_preimage, opened_field_walk, reference_inputs_field_index,
+  script_witnesses_field_index,
 }
 use midgard/fraud_proofs/mint_authorization/engine
 use midgard/fraud_proofs/mint_authorization/evaluate as evaluate
@@ -162,14 +163,15 @@ validator main(
         )
         expect policy_script_is_present == False
 
-        // 3. The other half of the absence claim is the reference-input
-        //    scan: route into step-04 at cursor 0.
+        // 3. The other half of the absence claim is the resolved-input
+        //    scan: route into step-04 at field 1, cursor 0.
         expect output_script_hash == step_04_validator_script_hash
         let expected_output_state: Data = step_04.State {
           policy_id,
           bad_tx_id,
           prior_ledger_root,
-          ref_cursor: 0,
+          field_index: reference_inputs_field_index,
+          cursor: 0,
         }
         expect output_state_data == expected_output_state
 
@@ -504,7 +506,8 @@ fn run_witness_absence(
     policy_id,
     bad_tx_id: block.tx_id,
     prior_ledger_root: tf.h32_c,
-    ref_cursor: 0,
+    field_index: reference_inputs_field_index,
+    cursor: 0,
   }
   run_arm(
     block,
@@ -538,7 +541,7 @@ fn honest_field_6_items_of(
 
 /// Direction-A positive: no field-6 witness hashes to the claimed policy id,
 /// so the inline half of the absence claim holds and the thread routes into
-/// the reference-input scan at cursor 0.
+/// the resolved-input scan at field 1, cursor 0.
 test mint_authorization_step_03_clears_an_absent_inline_witness() {
   let block = fixture.challenged_block_v1()
   run_witness_absence(

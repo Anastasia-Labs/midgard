@@ -42,6 +42,7 @@ export {
   runOrResumeManifestBoundMintAuthorizationWorkflow,
 } from "./workflow.mint-authorization-family-definition.js";
 export {
+  mintAuthorizationRefineAction,
   mintAuthorizationWorkflowFieldRequirement,
   mintAuthorizationWorkflowRawRequirement,
   type MintAuthorizationWorkflowReferenceScripts,

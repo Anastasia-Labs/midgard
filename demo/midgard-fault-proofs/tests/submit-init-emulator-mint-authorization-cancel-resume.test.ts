@@ -95,16 +95,21 @@ describe("mint-authorization cancellation and restart", () => {
       scriptTxWitsItemCbors: subject.scriptWitnessItemCbors,
       referenceScriptUtxo: refs[2],
     });
-    const step04 = await submitMintAuthorizationStep04AdvanceComplete({
-      lucid: harness.proverLucid,
-      contracts: harness.family,
-      categoryId: harness.category.categoryId,
-      signer: harness.proverSigner,
-      threadOutRef: step03.nextThreadOutRef,
-      nativeTxCompactCbor: block.nativeTxCompactCbor,
-      referenceInputsItemCbors: subject.referenceInputItemCbors,
-      referenceScriptUtxo: refs[3],
-    });
+    const advance = (threadOutRef: string) =>
+      submitMintAuthorizationStep04AdvanceComplete({
+        lucid: harness.proverLucid,
+        contracts: harness.family,
+        categoryId: harness.category.categoryId,
+        signer: harness.proverSigner,
+        threadOutRef,
+        nativeTxCompactCbor: block.nativeTxCompactCbor,
+        referenceInputsItemCbors: subject.referenceInputItemCbors,
+        spendInputsItemCbors: subject.spendInputItemCbors,
+        referenceScriptUtxo: refs[3],
+      });
+    const step04 = await advance(
+      (await advance(step03.nextThreadOutRef)).nextThreadOutRef,
+    );
 
     const cancelled = await submitLinearFaultCancel({
       lucid: harness.proverLucid,

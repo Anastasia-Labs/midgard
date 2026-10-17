@@ -1,7 +1,10 @@
 import {
   computeHash28,
+  encodeMidgardNativeScript,
   encodeMidgardSpendInputItem,
   encodeMidgardVersionedScript,
+  hashMidgardVersionedScript,
+  type MidgardNativeScript,
 } from "@al-ft/midgard-core";
 import * as SDK from "@al-ft/midgard-sdk";
 
@@ -22,20 +25,41 @@ import {
 import { buildDecodingBlockFixture } from "./native-script-decoding-emulator.js";
 import { payloadLedgerAt } from "./predecessor-ledger.js";
 
+/** `all []`: a native script every transaction satisfies. */
+const satisfiedNativeScript = () => {
+  const script: MidgardNativeScript = { type: "all", scripts: [] };
+  const scriptBytes = encodeMidgardNativeScript(script);
+  return {
+    script,
+    scriptBytesHex: scriptBytes.toString("hex"),
+    policyIdHex: hashMidgardVersionedScript({
+      language: "NativeCardano",
+      scriptBytes,
+      nativeScript: script,
+    }),
+  };
+};
+
 export const mintAuthorizationRetainedReferenceFixture = async ({
   now,
   operatorVkey,
   count = 1,
   present = true,
   quantity = 1n,
+  inputField = "reference",
+  satisfied = false,
 }: {
   now: number;
   operatorVkey: string;
   count?: number;
   present?: boolean;
   quantity?: bigint;
+  /** The field the transaction names the source outputs in. */
+  inputField?: "reference" | "spend";
+  /** Whether the target policy is the always-satisfied native script. */
+  satisfied?: boolean;
 }) => {
-  const target = directionBNativeScript();
+  const target = satisfied ? satisfiedNativeScript() : directionBNativeScript();
   const other = directionBNativeScript(0xce);
   const utxos = Array.from({ length: count }, (_, index) => {
     const txId = Buffer.alloc(32);
@@ -89,7 +113,9 @@ export const mintAuthorizationRetainedReferenceFixture = async ({
         quantity,
       }),
     ],
-    referenceInputItemCbors: utxos.map(({ key }) => key.toString("hex")),
+    [inputField === "spend"
+      ? "spendInputItemCbors"
+      : "referenceInputItemCbors"]: utxos.map(({ key }) => key.toString("hex")),
   });
   const current = await buildDecodingBlockFixture({
     operatorVkey,
