@@ -1,7 +1,7 @@
 # Availability challenge commands
 
-The `availability-challenge` command group exposes `open`, `respond`, `settle`,
-`close`, `timeout`, `status` and `recover`. All actions use the verified finalized
+The `availability-challenge` command group exposes `prepare`, `open`,
+`respond`, `settle`, `close`, `timeout`, `status` and `recover`. All actions use the verified finalized
 deployment manifest and local canonical Kupmios source. Mutation commands use
 the same SDK builders and durable operation executor as the watcher and committee
 responder.
@@ -55,13 +55,14 @@ different deployment while any workflow is live.
 
 Add the following flags to the common arguments for each mutation:
 
-| Action    | Additional arguments and behavior                                                                                                                                                                                                                                                                               |
-| --------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `open`    | `--collateral-out-ref <txHash#index>` and `--funding-out-ref <txHash#index>`. The funding coin must hold exactly the configured challenger bond, challenge record lovelace and maximum opening fee. The command recovers the attested commitment from chain history and checks its hash against the queue node. |
-| `respond` | `--collateral-out-ref <txHash#index>` and `--payload-file <path>`. Reads the exact retained envelope bytes, verifies their frozen commitment, and publishes one next chunk. Optional `--tranche-index <0..15>` selects an active tranche.                                                                       |
-| `settle`  | `--collateral-out-ref <txHash#index>`. Settles the next ordered completed tranche, or an unfinished tranche after the strict response deadline.                                                                                                                                                                 |
-| `close`   | `--collateral-out-ref <txHash#index>`. Closes a fully answered challenge and preserves the frozen refund beneficiaries.                                                                                                                                                                                         |
-| `timeout` | `--collateral-out-ref <txHash#index>`, plus `--funding-out-ref <txHash#index>` when descendant pruning or head removal needs actor fee funding. Advances one required step: expired tranche settlement, unavailable timeout, descendant pruning or final head removal.                                          |
+| Action    | Additional arguments and behavior                                                                                                                                                                                                                                                                                        |
+| --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `prepare` | No further arguments. Pays the actor three ADA-only coins with no datum from any of its coins, token-bearing ones included: output 0, the exact opening input; output 1, the workflow collateral; output 2, the removal working capital. Spent tokens return as change. Reports the three output references and amounts. |
+| `open`    | `--collateral-out-ref <txHash#index>` and `--funding-out-ref <txHash#index>`. The funding coin must hold exactly the configured challenger bond, challenge record lovelace and maximum opening fee. The command recovers the attested commitment from chain history and checks its hash against the queue node.          |
+| `respond` | `--collateral-out-ref <txHash#index>` and `--payload-file <path>`. Reads the exact retained envelope bytes, verifies their frozen commitment, and publishes one next chunk. Optional `--tranche-index <0..15>` selects an active tranche.                                                                                |
+| `settle`  | `--collateral-out-ref <txHash#index>`. Settles the next ordered completed tranche, or an unfinished tranche after the strict response deadline.                                                                                                                                                                          |
+| `close`   | `--collateral-out-ref <txHash#index>`. Closes a fully answered challenge and preserves the frozen refund beneficiaries.                                                                                                                                                                                                  |
+| `timeout` | `--collateral-out-ref <txHash#index>`, plus `--funding-out-ref <txHash#index>` when descendant pruning or head removal needs actor fee funding. Advances one required step: expired tranche settlement, unavailable timeout, descendant pruning or final head removal.                                                   |
 
 Collateral is explicit plain ADA owned by the dedicated actor; it must not
 overlap spending inputs. The unavailable timeout slashes the DA bond pool: it
@@ -83,6 +84,24 @@ challenger bond, challenge record lovelace and opening fee are additional to tha
 reserve. The check excludes collateral and reservations from every deployment in
 the shared journal; a longer queue can require additional funds before timeout
 proceeds.
+
+## Challenging from any wallet
+
+`open` needs an exact opening input, plain-ADA collateral and plain-ADA
+working capital. A wallet holding only token-bearing coins prepares all three
+in one transaction:
+
+1. Run `prepare` for the header. Wait for it to be included.
+2. Run `open --funding-out-ref <output 0> --collateral-out-ref <output 1>`.
+3. Pass the same `--collateral-out-ref <output 1>` to every later `settle`,
+   `close` or `timeout`. A valid step never spends collateral, and output 1
+   covers the largest fee of any step.
+4. When `timeout` prunes descendants or removes the head, add
+   `--funding-out-ref <output 2>`.
+
+The working capital is sized to the queue at preparation time. If the queue
+grows before removal, the opening and removal checks refuse with the missing
+amount; top the wallet up with ADA-only coins.
 
 Each invocation advances at most one transaction. Repeated `respond`, `settle`
 or `timeout` invocations first reconcile prior intent and then continue from
