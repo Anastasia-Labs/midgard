@@ -151,10 +151,10 @@ export const ensureReferenceScriptTargetsProgram = (
   scopeName: string,
   targets: readonly ReferenceScriptTarget[],
   authPolicy: ReferenceScriptAuthMintingPolicy,
-  fundingLucid: LucidEvolution = referenceScriptsLucid,
-  configuredReferenceScriptsAddress?: string,
-  minAuthPolicyRemainingMs: number = REFERENCE_SCRIPT_AUTH_MIN_REMAINING_MS,
-  reservedFundingOutRefKeys: ReadonlySet<string> = new Set<string>(),
+  fundingLucid: LucidEvolution,
+  configuredReferenceScriptsAddress: string | undefined,
+  minAuthPolicyRemainingMs: number,
+  reservedFundingOutRefKeys: ReadonlySet<string>,
   publicationOptions?: ReferencePublicationOptions,
   publicationRetry: ProviderRetryOptions = REFERENCE_SCRIPT_PUBLICATION_RETRY,
 ): Effect.Effect<
@@ -298,7 +298,6 @@ export const deployReferenceScriptCommandProgram = (
   fundingLucid: LucidEvolution = referenceScriptsLucid,
   referenceScriptsAddress?: string,
   minAuthPolicyRemainingMs: number = REFERENCE_SCRIPT_AUTH_MIN_REMAINING_MS,
-  reservedFundingOutRefKeys: ReadonlySet<string> = new Set<string>(),
 ): Effect.Effect<
   readonly ReferenceScriptResolved[],
   | SDK.StateQueueError
@@ -316,7 +315,7 @@ export const deployReferenceScriptCommandProgram = (
     fundingLucid,
     referenceScriptsAddress,
     minAuthPolicyRemainingMs,
-    reservedFundingOutRefKeys,
+    deploymentInitializationNonceOutRefKeys(contracts),
   );
 
 export const planReferenceScriptCommandProgram = (

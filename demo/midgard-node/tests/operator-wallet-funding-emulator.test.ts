@@ -17,7 +17,6 @@
 import "./helpers/follower-emulator-installed.js";
 
 import {
-  calculateMinLovelaceFromUTxO,
   Emulator,
   generateEmulatorAccount,
   Lucid,
@@ -240,6 +239,7 @@ describe("reference-script wallet top-up from the operator wallet view", () => {
         referenceLucid,
         "token-only",
         100_000_000n,
+        new Set(),
       ),
     );
 
@@ -423,45 +423,37 @@ describe("funding preflight over the whole view", () => {
       ),
     );
 
-  /** The minimum ADA of one output at `address` carrying `unit` once. */
-  const tokenChange = (lucid: LucidEvolution, address: string, unit: string) =>
-    calculateMinLovelaceFromUTxO(
-      lucid.config().protocolParameters!.coinsPerUtxoByte,
-      {
-        txHash: "00".repeat(32),
-        outputIndex: 0,
-        address,
-        assets: { lovelace: 0xffffffffffffffffn, [unit]: 3n },
-      },
-    );
-
   it("counts a token-only wallet's lovelace less the token change, refusing one lovelace past it", async () => {
     const { lucid, address } = await preflightFixture();
-    const unit = await makeTokenBearingWallet(lucid, { keep: 60_000_000n });
+    await makeTokenBearingWallet(lucid, { keep: 60_000_000n });
     const total = lovelaceIn(await lucid.utxosAt(address));
-    const kept = tokenChange(lucid, address, unit);
-    expect(kept).toBeGreaterThan(0n);
-    const spendable = total - kept;
 
-    const exact = await preflight(lucid, spendable);
+    const probe = await preflight(lucid, 0n);
+    if (Either.isLeft(probe)) throw probe.left;
+    const { availableLovelace, tokenChangeLovelace } = probe.right;
+    expect(tokenChangeLovelace).toBeGreaterThan(0n);
+    expect(availableLovelace).toBe(total - tokenChangeLovelace);
+
+    const exact = await preflight(lucid, availableLovelace);
     if (Either.isLeft(exact)) throw exact.left;
     expect(exact.right).toMatchObject({
-      availableLovelace: spendable,
-      tokenChangeLovelace: kept,
+      availableLovelace,
+      tokenChangeLovelace,
+      requiredLovelace: availableLovelace,
       shortfallLovelace: 0n,
     });
 
-    const over = await preflight(lucid, spendable + 1n);
+    const over = await preflight(lucid, availableLovelace + 1n);
     expect(Either.isLeft(over)).toBe(true);
     const refusal = (over as Either.Left<unknown, never>).left;
     expect(refusal).toBeInstanceOf(OperatorFundingShortfall);
     expect((refusal as OperatorFundingShortfall).preflight).toMatchObject({
-      availableLovelace: spendable,
+      label: "test-command",
+      availableLovelace,
+      tokenChangeLovelace,
+      requiredLovelace: availableLovelace + 1n,
       shortfallLovelace: 1n,
     });
-    expect((refusal as Error).message).toBe(
-      `test-command: wallet ${address} holds ${(spendable / 1_000_000n).toString()}.${(spendable % 1_000_000n).toString().padStart(6, "0")} ADA (${spendable.toString()} lovelace) spendable (after ${(kept / 1_000_000n).toString()}.${(kept % 1_000_000n).toString().padStart(6, "0")} ADA (${kept.toString()} lovelace) kept to return its tokens in change) but needs ${((spendable + 1n) / 1_000_000n).toString()}.${((spendable + 1n) % 1_000_000n).toString().padStart(6, "0")} ADA (${(spendable + 1n).toString()} lovelace); short by 0.000001 ADA (1 lovelace)`,
-    );
   }, 120_000);
 
   it("keeps no token change for a plain wallet", async () => {

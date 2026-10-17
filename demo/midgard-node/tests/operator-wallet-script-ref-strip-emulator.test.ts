@@ -174,26 +174,34 @@ const setUp = async (): Promise<Fixture> => {
   return { emulator, operator, reference, authPolicy, limits };
 };
 
+/** A deployment whose initialization nonce is in neither wallet. */
+let otherDeployment: Promise<SDK.MidgardValidators> | undefined;
+const deploymentElsewhere = () =>
+  (otherDeployment ??= loadRealMidgardContractsForTest({
+    txHash: "00".repeat(32),
+    outputIndex: 0,
+  }));
+
 const strip = async (
   fixture: Fixture,
   {
     execute,
     wallet = fixture.operator,
     maxReferenceScriptBytesPerBatch,
-    reservedOutRefKeys = new Set<string>(),
+    contracts,
   }: {
     readonly execute: boolean;
     readonly wallet?: Wallet;
     readonly maxReferenceScriptBytesPerBatch?: number;
-    readonly reservedOutRefKeys?: ReadonlySet<string>;
+    readonly contracts?: SDK.MidgardValidators;
   },
 ): Promise<Either.Either<OperatorWalletScriptRefStripResult, unknown>> =>
   runWithoutFollower(
     Effect.either(
       stripOperatorWalletScriptRefsProgram({
         lucid: wallet.lucid,
+        contracts: contracts ?? (await deploymentElsewhere()),
         referenceScriptsWalletAddress: fixture.reference.address,
-        reservedOutRefKeys,
         limits: fixture.limits,
         options: {
           execute,
@@ -284,10 +292,7 @@ describe("strip-operator-wallet-script-refs on the emulator", () => {
     const strips = expectReplayedFamilies(
       await replayJournaledOnFollower({
         emulator: fixture.emulator,
-        contracts: await loadRealMidgardContractsForTest({
-          txHash: "00".repeat(32),
-          outputIndex: 0,
-        }),
+        contracts: await deploymentElsewhere(),
         config: walletReplayConfig({
           operatorSeed: operator.seedPhrase,
           referenceScriptsSeed: fixture.reference.seedPhrase,
@@ -416,12 +421,13 @@ describe("strip-operator-wallet-script-refs on the emulator", () => {
     expect(
       withScriptRef(await utxosOf(fixture, fixture.operator)),
     ).toHaveLength(2);
-    const reservedOutRefKeys = deploymentInitializationNonceOutRefKeys(
-      await loadRealMidgardContractsForTest(nonce!),
-    );
-    expect([...reservedOutRefKeys]).toEqual([outRef(nonce!)]);
+    // The strip reads the nonce from the deployment it runs against.
+    const contracts = await loadRealMidgardContractsForTest(nonce!);
+    expect([...deploymentInitializationNonceOutRefKeys(contracts)]).toEqual([
+      outRef(nonce!),
+    ]);
     const executed = expectStripped(
-      await strip(fixture, { execute: true, reservedOutRefKeys }),
+      await strip(fixture, { execute: true, contracts }),
     );
     expect(executed.submitted.map((batch) => batch.inputCount)).toEqual([1]);
     expect(
@@ -443,11 +449,11 @@ describe("strip-operator-wallet-script-refs on the emulator", () => {
     const before = await utxosOf(fixture, fixture.operator);
     const plain = before.filter((utxo) => utxo.scriptRef == null);
     expect(plain).toHaveLength(1);
-    const reservedOutRefKeys = deploymentInitializationNonceOutRefKeys(
-      await loadRealMidgardContractsForTest(plain[0]!),
-    );
-    expect([...reservedOutRefKeys]).toEqual([outRef(plain[0]!)]);
-    const result = await strip(fixture, { execute: true, reservedOutRefKeys });
+    const contracts = await loadRealMidgardContractsForTest(plain[0]!);
+    expect([...deploymentInitializationNonceOutRefKeys(contracts)]).toEqual([
+      outRef(plain[0]!),
+    ]);
+    const result = await strip(fixture, { execute: true, contracts });
     expect(Either.isLeft(result)).toBe(true);
     expect(outRefsOf(await utxosOf(fixture, fixture.operator))).toEqual(
       outRefsOf(before),

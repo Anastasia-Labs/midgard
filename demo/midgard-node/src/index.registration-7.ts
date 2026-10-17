@@ -18,7 +18,6 @@ import { program } from "./index.registration.js";
 import { canonicalSlotConfigForLucid } from "./lucid-time.js";
 import * as Services from "./services/index.js";
 import {
-  deploymentInitializationNonceOutRefKeys,
   planReferenceScriptCommandProgram,
   referenceScriptTargetsByCommand,
   referenceScriptWalletStatusProgram,
@@ -175,7 +174,6 @@ for (const commandName of RegisterActiveOperator.REFERENCE_SCRIPT_COMMAND_NAMES)
               lucidService.api,
               lucidService.referenceScriptsAddress,
               nodeConfig.REFERENCE_SCRIPT_AUTH_MIN_REMAINING_MS,
-              deploymentInitializationNonceOutRefKeys(contracts),
             );
           return { mode: "publish" as const, published };
         }).pipe(

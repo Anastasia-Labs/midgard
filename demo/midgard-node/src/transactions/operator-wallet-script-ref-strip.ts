@@ -37,6 +37,7 @@ import {
   SIGNED_TX_WITNESS_ALLOWANCE_BYTES,
 } from "./reference-script-sweep.reference-script-fee.js";
 import {
+  deploymentInitializationNonceOutRefKeys,
   REFERENCE_SCRIPT_CONFIRMATION_TIMEOUT_MS,
   utxoOutRefKey,
 } from "./reference-scripts.js";
@@ -208,20 +209,26 @@ const buildBatchTransaction = (
 
 /**
  * Plans (dry run, the default) or executes the strip. `lucid` has the
- * operator wallet selected; the reference-script wallet is refused.
- * `reservedOutRefKeys` are the deployment's initialization nonces
- * (`deploymentInitializationNonceOutRefKeys`).
+ * operator wallet selected; the reference-script wallet is refused. The
+ * reserved initialization nonces are read from `contracts`, the deployment
+ * the strip runs against (`deploymentInitializationNonceOutRefKeys`).
+ *
+ * The command runs without an L1 follower, so its batches are submitted
+ * unjournaled (`no_follower`). A rerun after an interruption re-reads the
+ * operator wallet from the provider: a batch that landed left nothing to
+ * strip, and one still in flight conflicts with its rebuild on the same
+ * inputs, so only one of them can land.
  */
 export const stripOperatorWalletScriptRefsProgram = ({
   lucid,
+  contracts,
   referenceScriptsWalletAddress,
-  reservedOutRefKeys,
   limits,
   options,
 }: {
   readonly lucid: LucidEvolution;
+  readonly contracts: Pick<SDK.MidgardValidators, "eventHistory">;
   readonly referenceScriptsWalletAddress: string;
-  readonly reservedOutRefKeys: ReadonlySet<string>;
   readonly limits: ReferenceScriptSweepLimits;
   readonly options: OperatorWalletScriptRefStripOptions;
 }): Effect.Effect<
@@ -230,6 +237,8 @@ export const stripOperatorWalletScriptRefsProgram = ({
   IntentJournal
 > =>
   Effect.gen(function* () {
+    const reservedOutRefKeys =
+      deploymentInitializationNonceOutRefKeys(contracts);
     const spentOutRefs = new Set<string>();
 
     // S5: each round's plan opens before the view its batch is built on.

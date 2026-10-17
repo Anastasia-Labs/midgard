@@ -26,7 +26,6 @@ import {
   referenceScriptSweepLimitsFromProtocolParameters,
   sweepRetiredReferenceScriptsProgram,
 } from "./transactions/reference-script-sweep.js";
-import { deploymentInitializationNonceOutRefKeys } from "./transactions/reference-scripts.js";
 import * as RegisterActiveOperator from "./transactions/register-active-operator.js";
 
 /** The current protocol parameters as the sweep and strip batch limits. */
@@ -172,10 +171,9 @@ program
         const limits = yield* readBatchLimits(lucidService);
         return yield* stripOperatorWalletScriptRefsProgram({
           lucid: lucidService.api,
+          contracts,
           referenceScriptsWalletAddress:
             lucidService.referenceScriptsWalletAddress,
-          reservedOutRefKeys:
-            deploymentInitializationNonceOutRefKeys(contracts),
           limits,
           options: {
             execute: opts.execute === true,

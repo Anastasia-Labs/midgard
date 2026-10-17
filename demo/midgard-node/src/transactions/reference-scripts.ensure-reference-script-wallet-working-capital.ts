@@ -80,7 +80,7 @@ export const ensureReferenceScriptWalletWorkingCapital = (
   referenceScriptsLucid: LucidEvolution,
   scopeName: string,
   requiredPlainBalance: bigint,
-  reservedFundingOutRefKeys: ReadonlySet<string> = new Set<string>(),
+  reservedFundingOutRefKeys: ReadonlySet<string>,
   preparationFeeAllowance: (plainFundingCount: number) => bigint = () => 0n,
 ): Effect.Effect<
   void,
