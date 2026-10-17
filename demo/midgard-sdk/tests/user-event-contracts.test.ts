@@ -11,10 +11,8 @@ import {
 import { describe, expect, it } from "vitest";
 
 import {
-  buildDepositValidators,
   buildHubOracleMintingValidator,
   buildTxOrderValidators,
-  buildWithdrawalValidators,
   type FaultProofBlueprint,
   HUB_ORACLE_ASSET_NAME,
   parseFaultProofBlueprint,
@@ -68,41 +66,22 @@ describe("shared user-event contract deployment recipes", () => {
       [],
     );
     const certificatePolicyId = mintingPolicyToId(mint(certificate));
-    for (const [actual, mintTitle, spendTitle, parameters] of [
-      [
-        buildDepositValidators(input),
-        titles.deposit.mint,
-        titles.deposit.spend,
-        [hubOraclePolicyId],
-      ],
-      [
-        buildWithdrawalValidators(input),
-        titles.withdrawal.mint,
-        titles.withdrawal.spend,
-        [hubOraclePolicyId],
-      ],
-      [
-        family.txOrder,
-        titles.txOrder.mint,
-        titles.txOrder.spend,
-        [hubOraclePolicyId, certificatePolicyId],
-      ],
-    ] as const) {
-      const expectedMint = independentlyApply(mintTitle, [...parameters]);
-      const expectedSpend = independentlyApply(spendTitle, [hubOraclePolicyId]);
-      expect(actual).toEqual({
-        mintingScriptCBOR: expectedMint,
-        mintingScript: mint(expectedMint),
-        policyId: mintingPolicyToId(mint(expectedMint)),
-        spendingScriptCBOR: expectedSpend,
-        spendingScript: mint(expectedSpend),
-        spendingScriptHash: validatorToScriptHash(mint(expectedSpend)),
-        spendingScriptAddress: validatorToAddress(
-          "Preprod",
-          mint(expectedSpend),
-        ),
-      });
-    }
+    const expectedMint = independentlyApply(titles.txOrder.mint, [
+      hubOraclePolicyId,
+      certificatePolicyId,
+    ]);
+    const expectedSpend = independentlyApply(titles.txOrder.spend, [
+      hubOraclePolicyId,
+    ]);
+    expect(family.txOrder).toEqual({
+      mintingScriptCBOR: expectedMint,
+      mintingScript: mint(expectedMint),
+      policyId: mintingPolicyToId(mint(expectedMint)),
+      spendingScriptCBOR: expectedSpend,
+      spendingScript: mint(expectedSpend),
+      spendingScriptHash: validatorToScriptHash(mint(expectedSpend)),
+      spendingScriptAddress: validatorToAddress("Preprod", mint(expectedSpend)),
+    });
     expect(family.fieldPreimageCertificate.mintingScriptCBOR).toBe(certificate);
     expect(family.fieldPreimageCertificate.policyId).toBe(certificatePolicyId);
     for (const [actual, title] of [
@@ -174,15 +153,9 @@ describe("shared user-event contract deployment recipes", () => {
   it.each(["", "00", "00".repeat(27), "gg".repeat(28)])(
     "refuses malformed hub policy %s",
     (policyId) => {
-      for (const build of [
-        buildDepositValidators,
-        buildWithdrawalValidators,
-        buildTxOrderValidators,
-      ]) {
-        expect(() => build({ ...input, hubOraclePolicyId: policyId })).toThrow(
-          "exactly 28 bytes",
-        );
-      }
+      expect(() =>
+        buildTxOrderValidators({ ...input, hubOraclePolicyId: policyId }),
+      ).toThrow("exactly 28 bytes");
     },
   );
 

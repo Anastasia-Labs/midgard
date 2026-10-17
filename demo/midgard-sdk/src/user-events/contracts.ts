@@ -23,14 +23,6 @@ export const USER_EVENT_CONTRACT_TITLES = Object.freeze({
   hubOracle: Object.freeze({
     mint: deployedTitle("hubOracleMint"),
   }),
-  deposit: Object.freeze({
-    mint: "user_events/deposit.mint.mint",
-    spend: "user_events/deposit.spend.spend",
-  }),
-  withdrawal: Object.freeze({
-    mint: "user_events/withdrawal.mint.mint",
-    spend: "user_events/withdrawal.spend.spend",
-  }),
   txOrder: Object.freeze({
     mint: deployedTitle("txOrderMint"),
     spend: deployedTitle("txOrderSpend"),
@@ -97,34 +89,6 @@ type UserEventContractInput = Readonly<{
   network: Network;
   hubOraclePolicyId: string;
 }>;
-
-const buildAuthenticatedEvent = (
-  input: UserEventContractInput,
-  titles: Readonly<{ mint: string; spend: string }>,
-): AuthenticatedValidator => {
-  assertHubPolicyId(input.hubOraclePolicyId);
-  assertRecipe(input.blueprint, titles.mint, ["hub_oracle"]);
-  assertRecipe(input.blueprint, titles.spend, ["hub_oracle"]);
-  return makeAuthenticatedValidator(
-    input.network,
-    applyBlueprintParams(input.blueprint, titles.mint, [
-      input.hubOraclePolicyId,
-    ]),
-    applyBlueprintParams(input.blueprint, titles.spend, [
-      input.hubOraclePolicyId,
-    ]),
-  );
-};
-
-export const buildDepositValidators = (
-  input: UserEventContractInput,
-): AuthenticatedValidator =>
-  buildAuthenticatedEvent(input, USER_EVENT_CONTRACT_TITLES.deposit);
-
-export const buildWithdrawalValidators = (
-  input: UserEventContractInput,
-): AuthenticatedValidator =>
-  buildAuthenticatedEvent(input, USER_EVENT_CONTRACT_TITLES.withdrawal);
 
 /** Derive the parameterless certificate before applying its policy to tx-order. */
 export const buildTxOrderValidators = (
