@@ -1,3 +1,4 @@
+import { deploymentValidatorTitle as deployedTitle } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { Effect } from "effect";
 
 import {
@@ -16,13 +17,13 @@ import {
 } from "../types.js";
 
 export const MINT_AUTHORIZATION_FAULT_PROOF_TITLES = {
-  step01: "fraud_proofs/mint_authorization/step_01.main.spend",
-  step02: "fraud_proofs/mint_authorization/step_02.main.spend",
-  step03: "fraud_proofs/mint_authorization/step_03.main.spend",
-  step04: "fraud_proofs/mint_authorization/step_04.main.spend",
-  step05: "fraud_proofs/mint_authorization/step_05.main.spend",
-  evaluate: "fraud_proofs/mint_authorization/evaluate.main.spend",
-  witnessScan: "fraud_proofs/mint_authorization/witness_scan.main.spend",
+  step01: deployedTitle("fraudProofMintAuthorization"),
+  step02: deployedTitle("fraudProofMintAuthorizationStep02"),
+  step03: deployedTitle("fraudProofMintAuthorizationStep03"),
+  step04: deployedTitle("fraudProofMintAuthorizationStep04"),
+  step05: deployedTitle("fraudProofMintAuthorizationStep05"),
+  evaluate: deployedTitle("fraudProofMintAuthorizationStep06"),
+  witnessScan: deployedTitle("fraudProofMintAuthorizationStep07"),
 } as const;
 
 export type MintAuthorizationFaultProofContracts = {

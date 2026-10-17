@@ -94,8 +94,6 @@ describe("CEK context tail publication", () => {
         buildVanRossemFitLedger({
           category: "validationTraceDispute/CEK context publication",
           blueprintSha256,
-          compilerVersion: JSON.parse(blueprintBytes.toString()).preamble
-            .compiler.version,
           measurements: rows,
         }),
       );

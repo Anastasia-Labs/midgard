@@ -1,9 +1,11 @@
+import { deploymentValidatorTitle as deployedTitle } from "@al-ft/midgard-core/deployment-manifest-identity";
 /**
  * Blueprint titles shared across families.
  */
 
-export const CEK_PROGRAM_MATERIAL_SPEND_TITLE =
-  "user_events/cek_program_material_v1.spend.spend";
+export const CEK_PROGRAM_MATERIAL_SPEND_TITLE = deployedTitle(
+  "cekProgramMaterialSpend",
+);
 
 export const VALIDATION_TRACE_RESOLVER_COUNT = 14;
 
@@ -19,9 +21,8 @@ export const VALIDATION_TRACE_RESOLVER_COUNT = 14;
 export const VALIDATION_TRACE_DISPUTE_STEP_COUNT = 177;
 
 export const FAULT_PROOF_SHARED_TITLES = {
-  computationThreadMint: "computation_thread.mint.mint",
-  fraudProofMint: "fraud_proof.mint.mint",
-  fraudProofSpend: "fraud_proof.spend.else",
-  fieldPreimageCertificateMint:
-    "field_preimage_certificate.field_preimage_certificate.mint",
+  computationThreadMint: deployedTitle("computationThreadMint"),
+  fraudProofMint: deployedTitle("fraudProofMint"),
+  fraudProofSpend: deployedTitle("fraudProofSpend"),
+  fieldPreimageCertificateMint: deployedTitle("fieldPreimageCertificateMint"),
 } as const;

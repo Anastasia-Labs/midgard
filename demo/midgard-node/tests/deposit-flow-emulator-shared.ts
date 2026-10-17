@@ -892,11 +892,7 @@ export const runCommitWorkerUntilSubmitted = async ({
       await alignCommitSchedulerBeforeTestWorker({
         fixture,
         lucidService,
-        targetEndTimeMs:
-          Date.now() +
-          (production === undefined
-            ? COMMIT_MINIMUM_FUTURE_BUFFER_MS
-            : HISTORY_COMMIT_MINIMUM_FUTURE_BUFFER_MS),
+        targetEndTimeMs: Date.now() + HISTORY_COMMIT_MINIMUM_FUTURE_BUFFER_MS,
       });
     await production?.synchronize();
     // Without an owner, the driver's ingestion runs under the fixture gate;
@@ -1424,25 +1420,31 @@ export const commitConfirmRecoverAndMerge = async ({
   globals,
   expectedL2TxIds = [],
   production,
+  submitted,
 }: {
   readonly fixture: EmulatorFixture;
   readonly lucidService: Awaited<ReturnType<typeof makeLucidRuntimeService>>;
   readonly globals: Globals;
   readonly expectedL2TxIds?: readonly Buffer[];
   readonly production?: ProductionHistoryFixtureRuntime;
+  /** A commit the caller already submitted; this then confirms it. */
+  readonly submitted?: Awaited<
+    ReturnType<typeof runCommitWorkerUntilSubmitted>
+  >;
 }) => {
-  const latestBlockBeforeCommit = await fetchLatestCommittedBlock(
-    fixture.operatorLucid,
-    fixture.contracts,
-  );
-  const commitOutput = await runCommitWorkerUntilSubmitted({
-    fixture,
-    lucidService,
-    latestBlock: latestBlockBeforeCommit,
-    nodeConfig: production?.nodeConfig,
-    production:
-      production === undefined ? undefined : { ...production, globals },
-  });
+  const commitOutput =
+    submitted ??
+    (await runCommitWorkerUntilSubmitted({
+      fixture,
+      lucidService,
+      latestBlock: await fetchLatestCommittedBlock(
+        fixture.operatorLucid,
+        fixture.contracts,
+      ),
+      nodeConfig: production?.nodeConfig,
+      production:
+        production === undefined ? undefined : { ...production, globals },
+    }));
   await fixture.operatorLucid.awaitTx(commitOutput.submittedTxHash);
   await production?.synchronize();
   await runBlockConfirmation(
@@ -1471,9 +1473,10 @@ export const commitConfirmRecoverAndMerge = async ({
   expect(sortedStateQueueBeforeMerge.length).toBeGreaterThanOrEqual(2);
   const queuedBlockBeforeMerge =
     sortedStateQueueBeforeMerge[sortedStateQueueBeforeMerge.length - 1]!;
-  const queuedHeaderBeforeMerge = await Effect.runPromise(
-    SDK.getHeaderFromStateQueueDatum(queuedBlockBeforeMerge.datum),
-  );
+  const { header: queuedHeaderBeforeMerge, block_time: queuedBlockTime } =
+    await Effect.runPromise(
+      SDK.getStateQueueNodeFromStateQueueDatum(queuedBlockBeforeMerge.datum),
+    );
   const queuedHeaderHash = await Effect.runPromise(
     SDK.hashBlockHeader(queuedHeaderBeforeMerge),
   );
@@ -1501,10 +1504,8 @@ export const commitConfirmRecoverAndMerge = async ({
 
   await advanceEmulatorPastUnixTime(
     fixture,
-    mergeMaturityWindow(
-      fixture.operatorLucid,
-      Number(queuedHeaderBeforeMerge.endTime),
-    ).readyAfterUnixTime,
+    mergeMaturityWindow(fixture.operatorLucid, Number(queuedBlockTime))
+      .readyAfterUnixTime,
   );
   vi.setSystemTime(new Date(fixture.emulator.now()));
 

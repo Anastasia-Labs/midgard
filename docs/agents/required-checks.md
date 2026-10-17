@@ -112,13 +112,15 @@ pre-push hook. It blocks the push only on a failed check. Skip it once with
 - `demo/scripts/deployment-profile-aiken.mjs`
 - `demo/scripts/deployment-profile-identity.mjs`
 - `demo/scripts/deployment-profile-budgets.mjs`
-- `onchain/aiken/scripts/pinned-compiler.mjs`
+- `demo/flake.lock`
 - `demo/package.json`
 - `demo/pnpm-lock.yaml`
 - `demo/pnpm-workspace.yaml`
 - `demo/.nvmrc`
 - `demo/patches/**`
 - `demo/vendor/**`
+- `demo/scripts/package-tasks.mjs`
+- `demo/scripts/package-test.mjs`
 - `demo/midgard-test-support/**`
 - `scripts/preflight.mjs`
 - `scripts/preflight/**`
@@ -171,8 +173,8 @@ CI reuse retain their existing gates. No SDK evidence survives this run.
 
 ## Capabilities
 
-- `aiken`: the pinned Aiken fork (`AIKEN_FORK_VERSION` in the workflows), on
-  `PATH` or in `MIDGARD_AIKEN_BIN`.
+- `aiken`: nix can build the aiken `demo/flake.lock` pins; every check runs
+  it through `scripts/aiken`, and nothing reads `aiken` from `PATH`.
 - `node-modules`: `pnpm --dir demo install --frozen-lockfile` has run.
 - `docs-site-node-modules`: `pnpm --dir docs-site install --frozen-lockfile`
   has run; this is separate from the demo workspace's dependencies.
@@ -264,7 +266,7 @@ Workspace ESLint rules and their reasoned baseline.
 Workspace helper, ESLint plugin, deployment-profile and interactive-emulator cache self-tests.
 
 - Command: `node --test "demo/scripts/lib/*.test.mjs" demo/scripts/deployment-profiles.test.mjs demo/scripts/interactive-emulator.test.mjs`
-- Runs on: `demo/scripts/**`, `demo/eslint.config.mjs`, `.github/workflows/repo-tools-ci.yml`, `config/deployments/**`, `demo/midgard-test-support/interactive-emulator.js`, `demo/midgard-fault-proofs/scripts/traced-blueprint.mjs`, `demo/midgard-core/src/generated-deployment-profiles.ts`, `onchain/aiken/env/*.ak`, `onchain/aiken/scripts/pinned-compiler.mjs`, `.github/workflows/aiken-ci.yml`, `.github/workflows/midgard-node-ci.yml`, `demo/module-size-exceptions.json` and every file it caps
+- Runs on: `demo/scripts/**`, `demo/eslint.config.mjs`, `.github/workflows/repo-tools-ci.yml`, `config/deployments/**`, `demo/midgard-test-support/interactive-emulator.js`, `demo/midgard-fault-proofs/scripts/traced-blueprint.mjs`, `demo/midgard-core/src/generated-deployment-profiles.ts`, `onchain/aiken/env/*.ak`, `demo/flake.lock`, `demo/module-size-exceptions.json` and every file it caps
 - Needs: `node-modules`
 
 ### `aiken-script-tests`
@@ -400,6 +402,28 @@ Typecheck the touched packages and their dependents.
 - Needs: `node-modules`
 - Mode: Node CI owns the ordinary PR matrix; --full-local runs it locally
 
+### `demo-boundary`
+
+Installed production packages resolve public Node exports and CLI help.
+
+- Command: `node scripts/contrib.mjs boundary --package <each affected built package>`
+- Runs on:
+  - `demo/lucid-midgard/**`
+  - `demo/midgard-core/**`
+  - `demo/midgard-fault-proofs/**`
+  - `demo/midgard-validation/**`
+  - `demo/midgard-node/**`
+  - `demo/midgard-node-tools/**`
+  - `demo/midgard-sdk/**`
+  - `demo/midgard-watcher/**`
+  - `demo/da-committee-node/**`
+  - `demo/midgard-test-support/**`
+  - `demo/l1-node-transport/**`
+  - `demo/midgard-l1-follower/**`
+  - `.github/workflows/midgard-node-ci.yml`
+- Needs: `node-modules`
+- Mode: Node CI owns the ordinary PR matrix; --full-local runs it locally
+
 ### `golden:native-compact`
 
 Golden channel native-compact (@al-ft/lucid-midgard).
@@ -451,6 +475,7 @@ Golden channel native-tx-field-access-v1 (@al-ft/midgard-core).
 - Fix: `pnpm --dir demo/midgard-core run fixtures:native-tx-field-access-v1:sync`
 - Runs on:
   - `demo/midgard-core/scripts/generate-native-tx-field-access-v1-goldens.mjs`
+  - `demo/flake.lock`
   - `demo/midgard-core/scripts/generate-native-tx-field-access-v1-goldens.build-golden.mjs`
   - `demo/midgard-core/scripts/generate-native-tx-field-access-v1-goldens.render-aiken.mjs`
   - `demo/midgard-core/scripts/golden-channel.mjs`
@@ -458,7 +483,7 @@ Golden channel native-tx-field-access-v1 (@al-ft/midgard-core).
   - `demo/midgard-core/tests/fixtures/native-tx-field-access-v1.generated.json`
   - `docs/spec/midgard-tx.md`
   - `onchain/aiken/lib/midgard/native-tx-field-access-v1-golden.test.ak`
-  - `onchain/aiken/scripts/pinned-compiler.mjs`
+  - `scripts/lib/aiken.mjs`
   - `demo/midgard-core/src/**`
   - `demo/midgard-test-support/src/**`
   - `demo/l1-node-transport/src/**`
@@ -472,6 +497,7 @@ Golden channel native-tx-field-items-v1 (@al-ft/midgard-core).
 - Fix: `pnpm --dir demo/midgard-core run fixtures:native-tx-field-items-v1:sync`
 - Runs on:
   - `demo/midgard-core/scripts/generate-native-tx-field-items-v1-goldens.mjs`
+  - `demo/flake.lock`
   - `demo/midgard-core/scripts/generate-native-tx-field-items-v1-goldens.build-golden.mjs`
   - `demo/midgard-core/scripts/generate-native-tx-field-items-v1-goldens.build-straddle.mjs`
   - `demo/midgard-core/scripts/generate-native-tx-field-items-v1-goldens.registration.mjs`
@@ -482,7 +508,7 @@ Golden channel native-tx-field-items-v1 (@al-ft/midgard-core).
   - `demo/midgard-core/tests/fixtures/native-tx-field-items-v1.vectors.mjs`
   - `docs/spec/midgard-tx.md`
   - `onchain/aiken/lib/midgard/native-tx-field-items-v1-golden.test.ak`
-  - `onchain/aiken/scripts/pinned-compiler.mjs`
+  - `scripts/lib/aiken.mjs`
   - `demo/midgard-core/src/**`
   - `demo/midgard-test-support/src/**`
   - `demo/l1-node-transport/src/**`
@@ -496,12 +522,13 @@ Golden channel native-tx-vector-v1 (@al-ft/midgard-core).
 - Fix: `pnpm --dir demo/midgard-core run fixtures:native-tx-vector-v1:sync`
 - Runs on:
   - `demo/midgard-core/scripts/generate-native-tx-vector-v1-goldens.mjs`
+  - `demo/flake.lock`
   - `demo/midgard-core/scripts/golden-channel.mjs`
   - `demo/midgard-core/tests/fixtures/native-tx-vector-v1.generated.json`
   - `demo/midgard-core/tests/fixtures/native-tx-vector-v1.vectors.mjs`
   - `docs/spec/midgard-tx.md`
   - `onchain/aiken/lib/midgard/fraud-proofs/native-tx-v1.test.ak`
-  - `onchain/aiken/scripts/pinned-compiler.mjs`
+  - `scripts/lib/aiken.mjs`
   - `demo/midgard-core/src/**`
   - `demo/midgard-test-support/src/**`
   - `demo/l1-node-transport/src/**`
@@ -515,10 +542,11 @@ Golden channel cek-data-canonical-corpus-v1 (@al-ft/midgard-core).
 - Fix: `pnpm --dir demo/midgard-core run fixtures:cek-data-canonical-corpus-v1:sync`
 - Runs on:
   - `demo/midgard-core/scripts/generate-cek-data-canonical-corpus-v1-goldens.mjs`
+  - `demo/flake.lock`
   - `demo/midgard-core/scripts/golden-channel.mjs`
   - `demo/midgard-core/tests/fixtures/cek-data-canonical-corpus-v1.vectors.mjs`
   - `onchain/aiken/lib/midgard/cek-data-canonical-corpus-v1-golden.test.ak`
-  - `onchain/aiken/scripts/pinned-compiler.mjs`
+  - `scripts/lib/aiken.mjs`
   - `demo/midgard-core/src/**`
   - `demo/midgard-test-support/src/**`
   - `demo/l1-node-transport/src/**`
@@ -532,10 +560,11 @@ Golden channel mpf-node-encoding-v1 (@al-ft/midgard-core).
 - Fix: `pnpm --dir demo/midgard-core run fixtures:mpf-node-encoding-v1:sync`
 - Runs on:
   - `demo/midgard-core/scripts/generate-mpf-node-encoding-v1-goldens.mjs`
+  - `demo/flake.lock`
   - `demo/midgard-core/scripts/golden-channel.mjs`
   - `demo/midgard-core/tests/fixtures/mpf-node-encoding-v1.generated.json`
   - `onchain/aiken/lib/midgard/mpf-node-encoding-v1-golden.test.ak`
-  - `onchain/aiken/scripts/pinned-compiler.mjs`
+  - `scripts/lib/aiken.mjs`
   - `demo/midgard-core/src/**`
   - `demo/midgard-test-support/src/**`
   - `demo/l1-node-transport/src/**`
@@ -549,13 +578,14 @@ Golden channel forced-tx-admission-v1 (@al-ft/midgard-core).
 - Fix: `pnpm --dir demo/midgard-core run fixtures:forced-tx-admission-v1:sync`
 - Runs on:
   - `demo/midgard-core/scripts/generate-forced-tx-admission-v1-goldens.mjs`
+  - `demo/flake.lock`
   - `demo/midgard-core/scripts/generate-forced-tx-admission-v1-goldens.encoding.mjs`
   - `demo/midgard-core/scripts/generate-forced-tx-admission-v1-goldens.mint-rows.mjs`
   - `demo/midgard-core/scripts/generate-forced-tx-admission-v1-goldens.rows.mjs`
   - `demo/midgard-core/scripts/golden-channel.mjs`
   - `demo/midgard-core/tests/fixtures/forced-tx-admission-v1.generated.json`
   - `onchain/aiken/lib/midgard/user-events/forced-tx-admission-v1-golden.test.ak`
-  - `onchain/aiken/scripts/pinned-compiler.mjs`
+  - `scripts/lib/aiken.mjs`
   - `demo/midgard-core/src/**`
   - `demo/midgard-test-support/src/**`
   - `demo/l1-node-transport/src/**`
@@ -569,6 +599,7 @@ Golden channel ordered-collection-boundary-aiken (@al-ft/midgard-validation).
 - Fix: `pnpm --dir demo/midgard-validation run fixtures:ordered-collection-boundary-aiken:sync`
 - Runs on:
   - `demo/midgard-validation/scripts/generate-ordered-collection-boundary-aiken-goldens.mjs`
+  - `demo/midgard-node/blueprints/always-succeeds/plutus.json`
   - `demo/midgard-validation/scripts/generate-ordered-collection-boundary-aiken-goldens.aiken-families.mjs`
   - `demo/midgard-validation/scripts/generate-ordered-collection-boundary-aiken-goldens.terminal-fixture-constants.mjs`
   - `demo/midgard-validation/tests/blob-chunk-boundary.test.ts`
@@ -631,6 +662,7 @@ Golden channel nested-boundary-aiken (@al-ft/midgard-validation).
 - Fix: `pnpm --dir demo/midgard-validation run fixtures:nested-boundary-aiken:sync`
 - Runs on:
   - `demo/midgard-validation/scripts/generate-nested-boundary-aiken-goldens.mjs`
+  - `demo/midgard-node/blueprints/always-succeeds/plutus.json`
   - `demo/midgard-validation/tests/nested-data-boundary.test.ts`
   - `demo/midgard-validation/tests/nested-redeemer-data-boundary.test.ts`
   - `demo/midgard-validation/tests/nested-value-boundary.test.ts`
@@ -784,11 +816,12 @@ Golden channel cek-builtin-cardano-v1 (@al-ft/midgard-validation).
 - Fix: `pnpm --dir demo/midgard-validation run fixtures:cek-builtin-cardano-v1:sync`
 - Runs on:
   - `demo/midgard-validation/scripts/generate-cek-builtin-cardano-v1-goldens.mjs`
+  - `demo/flake.lock`
   - `demo/midgard-validation/tests/fixtures/cek-builtin-cardano-v1.arguments.mjs`
   - `demo/midgard-validation/tests/fixtures/cek-builtin-cardano-v1.cases.mjs`
   - `demo/midgard-validation/tests/fixtures/cek-builtin-cardano-v1.edges.mjs`
   - `demo/midgard-validation/tests/fixtures/cek-builtin-cardano-v1.generated.json`
-  - `onchain/aiken/scripts/pinned-compiler.mjs`
+  - `scripts/lib/aiken.mjs`
   - `demo/lucid-midgard/src/**`
   - `demo/midgard-core/src/**`
   - `demo/midgard-fault-proofs/src/**`
@@ -813,6 +846,7 @@ Golden channel transition-trace-abi (midgard-node).
   - `demo/midgard-node/scripts/generate-transition-trace-abi-fixture.mjs`
   - `demo/midgard-node/tests/fixtures/transition-trace-abi.json`
   - `demo/midgard-node/tests/sdk-abi-fixtures.test.ts`
+  - `onchain/aiken/env/testnet.ak`
   - `onchain/aiken/validators/fraud-proofs/transition-trace/abi-v1-golden.test.ak`
   - `demo/lucid-midgard/src/**`
   - `demo/midgard-core/src/**`
@@ -836,11 +870,12 @@ Golden channel transaction-root-v1 (midgard-node).
 - Fix: `pnpm --dir demo/midgard-node run fixtures:transaction-root-v1`
 - Runs on:
   - `demo/midgard-node/scripts/generate-transaction-root-v1-fixture.mjs`
+  - `demo/flake.lock`
   - `demo/midgard-node/scripts/generate-transaction-root-v1-fixture.parse-canonical-transaction.mjs`
   - `demo/midgard-node/tests/fixtures/transaction-root-v1.canonical.json`
   - `demo/midgard-node/tests/fixtures/transaction-root-v1.generated.json`
   - `onchain/aiken/lib/midgard/transaction-root-v1-golden.test.ak`
-  - `onchain/aiken/scripts/pinned-compiler.mjs`
+  - `scripts/lib/aiken.mjs`
   - `demo/lucid-midgard/src/**`
   - `demo/midgard-core/src/**`
   - `demo/midgard-fault-proofs/src/**`
@@ -940,6 +975,7 @@ Golden channel da-bond-pool-v1 (@al-ft/midgard-sdk).
 - Runs on:
   - `demo/midgard-sdk/scripts/generate-da-bond-pool-v1-goldens.mjs`
   - `config/deployments/env.ak.template`
+  - `demo/flake.lock`
   - `demo/midgard-core/src/generated-deployment-profiles.ts`
   - `demo/midgard-sdk/scripts/da-vector-support.mjs`
   - `demo/midgard-sdk/scripts/generate-da-bond-pool-v1-goldens.render-vector.mjs`
@@ -954,7 +990,7 @@ Golden channel da-bond-pool-v1 (@al-ft/midgard-sdk).
   - `onchain/aiken/env/preprod-testing.ak`
   - `onchain/aiken/env/testnet.ak`
   - `onchain/aiken/lib/midgard/da-bond-pool-v1-golden.test.ak`
-  - `onchain/aiken/scripts/pinned-compiler.mjs`
+  - `scripts/lib/aiken.mjs`
   - `demo/midgard-core/src/**`
   - `demo/midgard-sdk/src/**`
   - `demo/midgard-test-support/src/**`

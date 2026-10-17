@@ -1,5 +1,6 @@
 import { existsSync } from "node:fs";
 import { basename, resolve } from "node:path";
+import { packageTestTask } from "../../demo/scripts/package-tasks.mjs";
 
 import { parseSelectors } from "../../onchain/aiken/scripts/guard-focused-selector.mjs";
 import { reachablePackages } from "../contrib/reached.mjs";
@@ -29,8 +30,8 @@ export const FULL_RUN = [
   `${DEMO}/scripts/deployment-profile-aiken.mjs`,
   `${DEMO}/scripts/deployment-profile-identity.mjs`,
   `${DEMO}/scripts/deployment-profile-budgets.mjs`,
-  // The compiler pin's reader (the pin itself is compared by value, below).
-  `${AIKEN_PROJECT}/scripts/pinned-compiler.mjs`,
+  // The compiler: demo/flake.lock pins the aiken every check runs.
+  `${DEMO}/flake.lock`,
   // Workspace manifests, lockfile, toolchain pin, patched and vendored
   // dependencies.
   `${DEMO}/package.json`,
@@ -39,6 +40,9 @@ export const FULL_RUN = [
   `${DEMO}/.nvmrc`,
   `${DEMO}/patches/**`,
   `${DEMO}/vendor/**`,
+  // Shared task semantics drive every declared package build and test.
+  `${DEMO}/scripts/package-tasks.mjs`,
+  `${DEMO}/scripts/package-test.mjs`,
   // Shared test fixtures and harness every package's suite loads.
   `${DEMO}/midgard-test-support/**`,
   // Preflight itself: a selection bug cannot be allowed to select itself out.
@@ -175,7 +179,6 @@ export const aikenChecks = (root, index) => {
         }
         if (full || selectors.size > 64) {
           return [
-            step(node(`${AIKEN_PROJECT}/scripts/pinned-compiler.mjs`)),
             step(
               node(
                 `${AIKEN_PROJECT}/scripts/guard-focused-selector.mjs`,
@@ -323,10 +326,9 @@ export const demoChecks = (root, packages, ciPaths) => {
         ];
       }
       return selected.map((name) => {
-        const script = packages.find((pkg) => pkg.name === name).scripts.test;
-        // contrib runs Vitest suites only; a plain node --test package runs
-        // its script, whole.
-        return script === undefined || !/\bvitest\b/u.test(script)
+        const pkg = packages.find((pkg) => pkg.name === name);
+        // Only declared Vitest tasks support focused source selection.
+        return packageTestTask(pkg) === undefined
           ? step(pnpmRun([name], "test"))
           : step(
               node(
@@ -348,6 +350,32 @@ export const demoChecks = (root, packages, ciPaths) => {
       "build",
       { invalidates: ["core-dist"] },
     ),
+    boundary: {
+      id: "demo-boundary",
+      title:
+        "Installed production packages resolve public Node exports and CLI help",
+      triggers: [...triggers, ".github/workflows/midgard-node-ci.yml"],
+      capabilities: ["node-modules"],
+      invalidates: ["core-dist"],
+      display:
+        "node scripts/contrib.mjs boundary --package <each affected built package>",
+      plan: ({ matched, full }) => {
+        const names =
+          full || matched.includes(".github/workflows/midgard-node-ci.yml")
+            ? new Set(packages.map((pkg) => pkg.name))
+            : affected(matched);
+        const selected = packages.filter(
+          (pkg) => names.has(pkg.name) && pkg.scripts.build,
+        );
+        return selected.length
+          ? selected.map((pkg) =>
+              step(
+                node("scripts/contrib.mjs", "boundary", "--package", pkg.name),
+              ),
+            )
+          : null;
+      },
+    },
     typecheck: task(
       "demo-typecheck",
       "Typecheck the touched packages and their dependents",

@@ -11,6 +11,7 @@
 
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { dirname, join, relative, resolve, sep } from "node:path";
+import { packageTestTask } from "../../demo/scripts/package-tasks.mjs";
 
 const toPosix = (path) => path.split(sep).join("/");
 
@@ -91,17 +92,45 @@ const isTrackableFile = (path) =>
 // The repository files a script names in string literals or relative imports,
 // resolved the way the script resolves them: `./` and `../` against the
 // script's directory, anything else against the repository root and then the
-// script's package root. Referenced `.mjs` helpers and `.json` artifact manifests are followed, so a shared
-// helper's own inputs count too. Returns repository-relative paths.
+// script's package root. Follow typed fixture helpers and their exact private
+// package imports as well as `.mjs` and `.json` references, so helper-only edits
+// select the owning generator. Returns repository-relative paths.
 export const referencedFiles = (rootPath, file) => {
   const root = resolve(rootPath);
   const found = new Set();
   const visit = (absolute) => {
     const source = stripComments(readFileSync(absolute, "utf8"));
     const packageRoot = nearestPackageRoot(root, absolute);
-    for (const [, literal] of source.matchAll(
-      /["'`]((?:\.{1,2}\/)?[A-Za-z0-9_.@-]+(?:\/[A-Za-z0-9_.@-]+)*\.[A-Za-z0-9]+)["'`]/gu,
+    const literals = [
+      ...source.matchAll(
+        /["'`]((?:\.{1,2}\/)?[A-Za-z0-9_.@-]+(?:\/[A-Za-z0-9_.@-]+)*\.[A-Za-z0-9]+)["'`]/gu,
+      ),
+    ].map(([, literal]) => literal);
+    for (const [, specifier] of source.matchAll(
+      /\b(?:from\s+|import\s*(?:\(\s*)?|require\s*\(\s*)["'](#[A-Za-z0-9_./-]+)["']/gu,
     )) {
+      const manifest = packageRoot && join(packageRoot, "package.json");
+      const target =
+        manifest &&
+        JSON.parse(readFileSync(manifest, "utf8")).imports?.[specifier];
+      if (typeof target !== "string" || !target.startsWith("./")) {
+        throw new Error(
+          `${absolute}: private import '${specifier}' needs an exact local package target`,
+        );
+      }
+      const resolved = resolve(packageRoot, target);
+      if (
+        !resolved.startsWith(`${packageRoot}${sep}`) ||
+        !isTrackableFile(resolved)
+      ) {
+        throw new Error(
+          `${absolute}: private import '${specifier}' has no repository local target`,
+        );
+      }
+      found.add(toPosix(relative(root, manifest)));
+      literals.push(`./${toPosix(relative(dirname(absolute), resolved))}`);
+    }
+    for (const literal of literals) {
       const candidates = literal.startsWith(".")
         ? [resolve(dirname(absolute), literal)]
         : [
@@ -130,7 +159,7 @@ export const referencedFiles = (rootPath, file) => {
         continue;
       }
       found.add(path);
-      if (hit.endsWith(".mjs") || hit.endsWith(".json")) {
+      if (/\.(?:mjs|json|[cm]?ts)$/u.test(hit)) {
         visit(hit);
       }
     }
@@ -159,6 +188,7 @@ export const workspacePackages = (root) => {
     const manifestPath = `${DEMO}/${directory}/package.json`;
     const json = JSON.parse(readText(root, manifestPath));
     return {
+      ...json,
       directory: `${DEMO}/${directory}`,
       name: json.name,
       scripts: json.scripts ?? {},
@@ -207,29 +237,12 @@ export const workspaceDependentClosure = (packages, names) =>
       .map((pkg) => pkg.name),
   );
 
-// A package whose suites reach the test Postgres: a test file or its Vitest
-// config reads the destination (POSTGRES_HOST) or the per-run database prefix
-// (MIDGARD_TEST_DATABASE_PREFIX). Those suites cannot run without the server.
-export const packageNeedsPostgres = (root, pkg) => {
-  const directory = resolve(root, pkg.directory);
-  const files = readdirSync(directory)
-    .filter((name) => /^vitest\.config\.[cm]?[jt]s$/u.test(name))
-    .map((name) => join(directory, name));
-  const visit = (path) => {
-    for (const entry of readdirSync(path, { withFileTypes: true })) {
-      if (entry.name === "node_modules") continue;
-      const child = join(path, entry.name);
-      if (entry.isDirectory()) visit(child);
-      else if (/\.[cm]?[jt]s$/u.test(entry.name)) files.push(child);
-    }
-  };
-  if (existsSync(join(directory, "tests"))) visit(join(directory, "tests"));
-  return files.some((file) =>
-    /\b(?:POSTGRES_HOST|MIDGARD_TEST_DATABASE_PREFIX)\b/u.test(
-      readFileSync(file, "utf8"),
-    ),
-  );
-};
+// Test prerequisites are package contracts; source spelling cannot add or
+// remove a database obligation from the same task the runner executes.
+export const packageNeedsPostgres = (_root, pkg) =>
+  packageTestTask(pkg)?.prerequisites?.some(
+    ({ kind }) => kind === "postgres",
+  ) ?? false;
 
 // --- CI ---------------------------------------------------------------------
 

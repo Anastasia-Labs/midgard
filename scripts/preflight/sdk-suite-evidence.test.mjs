@@ -57,7 +57,11 @@ const withFixture = async (body) => {
     for (const [name, directory] of Object.entries(SDK_SUITES)) {
       write(
         `${directory}/package.json`,
-        JSON.stringify({ name, scripts: { test: "vitest run" } }),
+        JSON.stringify({
+          name,
+          scripts: { test: "node ../scripts/package-test.mjs" },
+          midgardTasks: { test: { command: ["vitest", "run"] } },
+        }),
       );
       write(`${directory}/src/index.ts`, "source");
       write(`${directory}/dist/index.js`, "compiled runtime");
@@ -105,6 +109,22 @@ test("SDK context binds actual source, installed and compiled dependencies, conf
       sdkContext(root, { ...env, NODE_OPTIONS: "--conditions=other" }),
       before,
     );
+    const manifestPath = "demo/midgard-sdk/package.json";
+    const manifestBytes = readFileSync(resolve(root, manifestPath));
+    const manifest = JSON.parse(manifestBytes);
+    manifest.midgardTasks.test.command.push("tests/example.test.ts");
+    write(manifestPath, JSON.stringify(manifest));
+    assert.throws(
+      () => sdkContext(root, env),
+      /SDK full-suite recipe missing or changed/u,
+    );
+    delete manifest.midgardTasks.test;
+    write(manifestPath, JSON.stringify(manifest));
+    assert.throws(
+      () => sdkContext(root, env),
+      /SDK full-suite recipe missing or changed/u,
+    );
+    write(manifestPath, manifestBytes);
     write(".git/info/exclude", "demo/private-sdk-input/\n");
     write(
       "demo/private-sdk-input/package.json",

@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import {
-  chmodSync,
   copyFileSync,
+  cpSync,
+  existsSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -18,39 +19,38 @@ import { fileURLToPath } from "node:url";
 // A bare `aiken fmt` formats the whole Aiken project, which rewrites about 250
 // unrelated .ak files and mixes them into whatever work the tree holds. The
 // generator must format only the environments it writes. This test copies it
-// into a throwaway tree with a fake `aiken` first on PATH and a stub profile
-// generator, and reads back what `aiken fmt` was asked to format.
+// into a throwaway project, built by the real aiken from demo/flake.lock, with
+// a stub profile generator that writes unformatted environments, and checks
+// that those are formatted while an unformatted library module is left alone.
 
+const here = dirname(fileURLToPath(import.meta.url));
+const root = join(here, "..");
 const scriptSource = join(
-  dirname(fileURLToPath(import.meta.url)),
+  here,
   "generate-user-events-witness-script-prefix.sh",
 );
 
 const mockRaw = "77".repeat(32);
-const prefix = "deadbeef5820";
 
-const fakeAiken = (log) => `#!/usr/bin/env bash
-set -euo pipefail
-echo "$*" >> '${log}'
-out=""
-args=("$@")
-for ((i = 0; i < \${#args[@]}; i++)); do
-  if [ "\${args[i]}" = "--out" ]; then out="\${args[i + 1]}"; fi
-done
-case "$1" in
-  build) echo '{"validators":[]}' > "$out" ;;
-  blueprint)
-    printf '{"validators":[{"title":"user_events/witness.main.publish","compiledCode":"%s"}]}\\n' \\
-      '${prefix}${mockRaw}ffff' > "$out" ;;
-  fmt) ;;
-  *) exit 42 ;;
-esac
+const witness = `use cardano/certificate.{Certificate}
+use cardano/transaction.{Transaction}
+
+validator main(nonce: ByteArray) {
+  publish(_redeemer: Data, _certificate: Certificate, _self: Transaction) {
+    nonce != #""
+  }
+
+  else(_) {
+    fail
+  }
+}
 `;
+const unformattedLib = "pub const  y = 2\n";
 
 // Stands in for `deployment-profiles.mjs generate`: writes two environments.
 const stubGenerator = `import { writeFileSync } from "node:fs";
 for (const name of ["default", "testnet"]) {
-  writeFileSync(new URL(\`../../onchain/aiken/env/\${name}.ak\`, import.meta.url), "pub const x = 1\\n");
+  writeFileSync(new URL(\`../../onchain/aiken/env/\${name}.ak\`, import.meta.url), "pub const  x = 1\\n");
 }
 `;
 
@@ -60,8 +60,6 @@ const withTree = (body) => {
   );
   try {
     const repo = join(scratch, "repo");
-    const bin = join(scratch, "bin");
-    const log = join(scratch, "aiken-calls.log");
     const write = (path, contents) => {
       mkdirSync(dirname(join(repo, path)), { recursive: true });
       writeFileSync(join(repo, path), contents);
@@ -71,44 +69,69 @@ const withTree = (body) => {
       'pub const user_events_witness_script_prefix: ByteArray =\n  #"00"\n',
     );
     write("demo/scripts/deployment-profiles.mjs", stubGenerator);
-    write("onchain/aiken/aiken.toml", 'name = "probe/probe"\n');
-    write("onchain/aiken/env/.keep", "");
-    write("scripts/.keep", "");
+    for (const path of [
+      "demo/flake.lock",
+      "scripts/aiken",
+      "scripts/lib/aiken.mjs",
+      "onchain/aiken/aiken.toml",
+      "onchain/aiken/aiken.lock",
+    ]) {
+      mkdirSync(dirname(join(repo, path)), { recursive: true });
+      cpSync(join(root, path), join(repo, path));
+    }
+    // The checkout's fetched dependencies, when present, save a download.
+    if (existsSync(join(root, "onchain/aiken/build/packages")))
+      cpSync(
+        join(root, "onchain/aiken/build/packages"),
+        join(repo, "onchain/aiken/build/packages"),
+        { recursive: true },
+      );
+    write("onchain/aiken/validators/user-events/witness.ak", witness);
+    write("onchain/aiken/lib/midgard/untouched.ak", unformattedLib);
+    for (const name of ["default", "testnet"])
+      write(`onchain/aiken/env/${name}.ak`, "pub const x = 1\n");
     copyFileSync(
       scriptSource,
       join(repo, "scripts/generate-user-events-witness-script-prefix.sh"),
     );
-    mkdirSync(bin);
-    writeFileSync(join(bin, "aiken"), fakeAiken(log));
-    chmodSync(join(bin, "aiken"), 0o755);
     const run = () =>
       spawnSync(
         "bash",
         [join(repo, "scripts/generate-user-events-witness-script-prefix.sh")],
-        {
-          cwd: repo,
-          encoding: "utf8",
-          env: { ...process.env, PATH: `${bin}:${process.env.PATH ?? ""}` },
-        },
+        { cwd: repo, encoding: "utf8" },
       );
-    const calls = () => readFileSync(log, "utf8").trimEnd().split("\n");
-    body({ repo, run, calls });
+    body({ repo, run });
   } finally {
     rmSync(scratch, { recursive: true, force: true });
   }
 };
 
-test("formats only the generated environments, never the whole project", () => {
-  withTree(({ repo, run, calls }) => {
+test("writes the prefix and formats only the generated environments", () => {
+  withTree(({ repo, run }) => {
     const result = run();
     assert.equal(result.status, 0, result.stderr);
-    assert.deepEqual(
-      calls().filter((call) => call.startsWith("fmt")),
-      ["fmt env/default.ak env/testnet.ak"],
+    const template = readFileSync(
+      join(repo, "config/deployments/env.ak.template"),
+      "utf8",
     );
+    const [, prefix] =
+      /^pub const user_events_witness_script_prefix: ByteArray =\n  #"([0-9a-f]+)"\n$/u.exec(
+        template,
+      ) ?? [];
+    assert.ok(prefix, template);
+    assert.ok(prefix.endsWith("5820"), prefix);
+    assert.ok(!prefix.includes(mockRaw));
+    for (const name of ["default", "testnet"])
+      assert.equal(
+        readFileSync(join(repo, `onchain/aiken/env/${name}.ak`), "utf8"),
+        "pub const x = 1\n",
+      );
     assert.equal(
-      readFileSync(join(repo, "config/deployments/env.ak.template"), "utf8"),
-      `pub const user_events_witness_script_prefix: ByteArray =\n  #"${prefix}"\n`,
+      readFileSync(
+        join(repo, "onchain/aiken/lib/midgard/untouched.ak"),
+        "utf8",
+      ),
+      unformattedLib,
     );
   });
 });

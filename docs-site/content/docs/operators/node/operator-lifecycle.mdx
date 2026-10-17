@@ -38,7 +38,7 @@ All values come from the deployed protocol parameters
 | Parameter                           | Value   | Where it bites                                                                      |
 | ----------------------------------- | ------- | ----------------------------------------------------------------------------------- |
 | `required_bond`                     | 900 ADA | Locked in the operator's list node at registration.                                 |
-| `slashing_penalty`                  | 500 ADA | Fee of a duplicate-registration slash; the remaining 400 ADA rewards the submitter. |
+| `slashing_penalty`                  | 500 ADA | Fee of a duplicate-registration slash; the remaining 400 ADA is the claimant's bounty. |
 | `inactivity_slashing_penalty`       | 100 ADA | Fee of a forced retirement; the retired node keeps 800 ADA.                         |
 | `max_inactivity_strikes`            | 5       | Strike count at which anyone may force-retire the operator.                         |
 | `shift_duration`                    | 30 min  | Length of one scheduler shift.                                                      |
@@ -68,7 +68,7 @@ prints the exact amount missing and exits without building a transaction.
 | `deregister-operator`                                | the operator              | Removes a `registered` node that was never activated and returns the bond.                                                                                                                        |
 | `strike-inactive-operator`                           | anyone                    | Strikes the scheduled operator for neglected L1 work and hands the shift to the next operator. Refused when no user event is undelivered, and before the inactivity threshold.                    |
 | `force-retire-operator --operator-key-hash <hex>`    | anyone                    | Retires an operator with 5 strikes. Pays 100 ADA of the bond as the transaction fee; the retired node keeps 800 ADA.                                                                              |
-| `slash-duplicate-operator --operator-key-hash <hex>` | anyone                    | Removes a `registered` node whose operator is already registered, active, or retired. Fee is 500 ADA of the bond; 400 ADA goes to the submitter.                                                  |
+| `slash-duplicate-operator --operator-key-hash <hex>` | anyone                    | Removes a `registered` node whose operator is already registered, active, or retired. Fee is 500 ADA of the bond; the 400 ADA bounty goes to the enterprise address of the node's wallet key, which signs as the claimant. |
 
 `retire-operator` cannot be used once the operator has 5 strikes. At that point
 only `force-retire-operator` applies, and anyone may run it.
@@ -236,7 +236,10 @@ The registered list is keyed by activation time, so nothing on-chain stops the
 same key from registering twice, or from registering while it is active or
 retired. A duplicate is a bond that could be used to re-enter the active set
 under a key that is already bonded, so the protocol lets anyone remove it and
-keep 400 ADA of it.
+claim the 400 ADA bounty. The claimant is named in the redeemer and must sign,
+and the bounty is paid as exactly one ADA-only output to the claimant key's
+enterprise address (no stake credential). A wallet whose own address carries a
+stake credential sees the bounty only at that enterprise address.
 
 - The node refuses locally to register a key it can already see in any list.
 - `slash-duplicate-operator` removes a duplicate `registered` node by proving

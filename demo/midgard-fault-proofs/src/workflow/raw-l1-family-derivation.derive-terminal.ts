@@ -5,6 +5,7 @@ import {
 } from "@al-ft/midgard-sdk";
 import { CML, coreToTxOutput, toUnit } from "@lucid-evolution/lucid";
 
+import { fraudSlashFeeLovelace } from "../remove-fraudulent-block.js";
 import {
   FRAUD_PROOF_WORKFLOW_TERMINAL_SCHEMA_VERSION,
   type FraudProofWorkflowTerminal,
@@ -146,22 +147,15 @@ export const deriveTerminal = async ({
     );
   }
   const policy = verifiedEconomics.policy;
-  const requiredBond = BigInt(policy.requiredBondLovelace);
-  const penalty = BigInt(policy.slashingPenaltyLovelace);
   const reward = BigInt(policy.fraudProverRewardLovelace);
-  const inactivityPenalty = BigInt(policy.inactivitySlashingPenaltyLovelace);
   const bondLovelace =
     coreToTxOutput(
       CML.TransactionOutput.from_cbor_hex(slash.bondInput.outputCbor),
     ).assets.lovelace ?? 0n;
   const slashFee = slashBody.fee();
-  const fullTranche = bondLovelace === requiredBond && slashFee === penalty;
-  const partialTranche =
-    bondLovelace === requiredBond - inactivityPenalty &&
-    slashFee === penalty - inactivityPenalty;
-  if (!fullTranche && !partialTranche) {
+  if (slashFee !== fraudSlashFeeLovelace(policy, bondLovelace)) {
     throw new Error(
-      "bond-consuming slash does not match the release-bound full or partial tranche",
+      "bond-consuming slash fee does not match the release-bound slash of its bond",
     );
   }
   const enterpriseOutputs = transactionOutputs(slash.transaction).filter(

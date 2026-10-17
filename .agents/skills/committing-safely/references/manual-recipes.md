@@ -11,8 +11,7 @@ throwaway repository on 2026-09-25.
 ```bash
 # 1. Format your files first; this commit skips the hook that would.
 #    demo TS/MD:  (cd demo && ./node_modules/.bin/prettier --write <paths relative to demo/>)
-#    .ak:         node onchain/aiken/scripts/pinned-compiler.mjs && aiken fmt <files> \
-#                   && sed -i 's/[[:space:]]\+$//' <files>
+#    .ak:         scripts/aiken fmt <files> && sed -i 's/[[:space:]]\+$//' <files>
 
 # 2. Build a private index from HEAD and stage only your paths into it.
 base=$(git rev-parse HEAD)

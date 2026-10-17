@@ -27,6 +27,7 @@ import {
   acceptanceEnvRun,
   bootstrapWithStubs,
   completeSnapshot,
+  contractProject,
   root,
   run,
   runReset,
@@ -87,14 +88,12 @@ test("protocol bootstrap builds the operator package before running operator com
   const tools = join(checkout, "demo/midgard-node-tools");
   const operator = join(checkout, "demo/midgard-node");
   const scripts = join(tools, "devnet/phase4-process/scripts");
-  const contracts = join(checkout, "onchain/aiken");
   const binaries = join(checkout, "bin");
   const runDir = join(checkout, "run");
   try {
     for (const directory of [
       scripts,
       operator,
-      contracts,
       binaries,
       join(runDir, "secrets"),
       join(runDir, "work"),
@@ -103,7 +102,7 @@ test("protocol bootstrap builds the operator package before running operator com
     for (const name of ["common.sh", "protocol-bootstrap.sh"]) {
       copyFileSync(join(root, "scripts", name), join(scripts, name));
     }
-    writeFileSync(join(contracts, "plutus.json"), "{}\n");
+    contractProject(checkout);
     writeFileSync(join(runDir, "secrets/node.env"), "");
     writeFileSync(
       join(runDir, "secrets/wallets.env"),
@@ -123,11 +122,7 @@ test("protocol bootstrap builds the operator package before running operator com
         "",
       ].join("\n"),
     );
-    for (const name of ["aiken", "jq", "node"]) {
-      writeFileSync(join(binaries, name), "#!/bin/sh\nexit 0\n", {
-        mode: 0o755,
-      });
-    }
+    writeFileSync(join(binaries, "jq"), "#!/bin/sh\nexit 0\n", { mode: 0o755 });
     // Stop at the first package build, before any database or L1 operation.
     writeFileSync(join(binaries, "pnpm"), "#!/bin/sh\npwd\nexit 73\n", {
       mode: 0o755,
@@ -138,6 +133,7 @@ test("protocol bootstrap builds the operator package before running operator com
         PATH: `${binaries}:${process.env.PATH}`,
         MIDGARD_PHASE4_RUN_DIR: runDir,
       },
+      timeoutMs: 20_000,
     });
     assert.equal(result.status, 73, result.stderr);
     assert.equal(result.stdout.trim(), operator);

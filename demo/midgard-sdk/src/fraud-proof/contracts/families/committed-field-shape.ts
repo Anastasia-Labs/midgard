@@ -1,3 +1,4 @@
+import { deploymentValidatorTitle as deployedTitle } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { Effect } from "effect";
 
 import {
@@ -16,8 +17,8 @@ import {
 } from "../types.js";
 
 export const COMMITTED_FIELD_SHAPE_FAULT_PROOF_TITLES = {
-  step01: "fraud_proofs/committed_field_shape/step_01.main.spend",
-  step02: "fraud_proofs/committed_field_shape/step_02.main.spend",
+  step01: deployedTitle("fraudProofCommittedFieldShape"),
+  step02: deployedTitle("fraudProofCommittedFieldShapeStep02"),
 } as const;
 
 export type CommittedFieldShapeFaultProofContracts = {

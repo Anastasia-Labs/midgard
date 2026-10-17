@@ -836,16 +836,11 @@ describe("spendInputSignerMissing registered-chain lifecycle", () => {
       hasAdjacentConsensusBound: false,
     });
     const blueprintBytes = await readFile(realBlueprintPath);
-    const blueprint = JSON.parse(blueprintBytes.toString("utf8")) as {
-      readonly preamble?: { readonly compiler?: { readonly version?: string } };
-    };
     const ledger = buildVanRossemFitLedger({
       category: "spendInputSignerMissing:00000027:testnet",
       blueprintSha256: createHash("sha256")
         .update(blueprintBytes)
         .digest("hex"),
-      compilerVersion:
-        blueprint.preamble?.compiler?.version ?? "unknown-aiken-compiler",
       measurements,
     });
     expect(ledger.entries).toHaveLength(measurements.length);

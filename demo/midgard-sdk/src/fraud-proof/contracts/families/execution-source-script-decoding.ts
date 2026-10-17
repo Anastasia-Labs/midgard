@@ -1,3 +1,4 @@
+import { deploymentValidatorTitle as deployedTitle } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { Effect } from "effect";
 
 import {
@@ -16,11 +17,11 @@ import {
 } from "../types.js";
 
 export const EXECUTION_SOURCE_SCRIPT_DECODING_FAULT_PROOF_TITLES = {
-  step01: "fraud_proofs/execution_source_script_decoding/step_01.main.spend",
-  step02: "fraud_proofs/execution_source_script_decoding/step_02.main.spend",
-  step03: "fraud_proofs/execution_source_script_decoding/step_03.main.spend",
-  step04: "fraud_proofs/execution_source_script_decoding/step_04.main.spend",
-  step05: "fraud_proofs/execution_source_script_decoding/step_05.main.spend",
+  step01: deployedTitle("fraudProofExecutionSourceScriptDecoding"),
+  step02: deployedTitle("fraudProofExecutionSourceScriptDecodingStep02"),
+  step03: deployedTitle("fraudProofExecutionSourceScriptDecodingStep03"),
+  step04: deployedTitle("fraudProofExecutionSourceScriptDecodingStep04"),
+  step05: deployedTitle("fraudProofExecutionSourceScriptDecodingStep05"),
 } as const;
 
 export type ExecutionSourceScriptDecodingFaultProofContracts = {

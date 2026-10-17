@@ -7,6 +7,7 @@ import { matchesAny } from "./derive.mjs";
 export const RUNTIME_CHECKS = [
   "demo-build",
   "demo-typecheck",
+  "demo-boundary",
   "demo-test",
   "demo-test-db",
   "tx-preparation:sdk",
@@ -75,6 +76,13 @@ export const readRuntimeWorkflow = (root, { yaml = loadYaml(root) } = {}) => {
       workflow: RUNTIME_WORKFLOW,
       gate: "Node CI gate",
       sdkLane: sdkLaneMatches(root),
+      boundaryLane:
+        jobs["installed-boundaries"]?.steps?.some(
+          (step) =>
+            step.run === "node scripts/preflight.mjs --run demo-boundary" &&
+            step.if === undefined &&
+            !step["continue-on-error"],
+        ) === true,
     };
   } catch {
     return undefined;

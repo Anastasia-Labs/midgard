@@ -1,3 +1,4 @@
+import { deploymentValidatorTitle as deployedTitle } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { Data, Network } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
@@ -19,10 +20,10 @@ import {
 } from "../types.js";
 
 export const DOUBLE_SPEND_FAULT_PROOF_TITLES = {
-  step01: "fraud_proofs/double_spend/step_01.main.spend",
-  step02: "fraud_proofs/double_spend/step_02.main.spend",
-  step03: "fraud_proofs/double_spend/step_03.main.spend",
-  step04: "fraud_proofs/double_spend/step_04.main.spend",
+  step01: deployedTitle("fraudProofDoubleSpend"),
+  step02: deployedTitle("fraudProofDoubleSpendStep02"),
+  step03: deployedTitle("fraudProofDoubleSpendStep03"),
+  step04: deployedTitle("fraudProofDoubleSpendStep04"),
 } as const;
 
 export type DoubleSpendFaultProofContracts = {

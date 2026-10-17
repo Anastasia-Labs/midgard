@@ -6,6 +6,7 @@ import {
   FRAUD_PROOF_RELEASE_FINALITY_AUTHORITY,
   FRAUD_PROOF_RELEASE_FINALITY_POLICY_SCHEMA_VERSION,
   headerDecisionCanonicalEvidence,
+  type LedgerAt,
   requireRunnableHeaderFault,
 } from "@al-ft/midgard-fault-proofs";
 import { authenticatedHeaderObservation } from "@al-ft/midgard-fault-proofs/test-support/canonical-block-evidence-fixture";
@@ -46,6 +47,7 @@ const releaseFinalityAuthority = {
  */
 export const verifyJourneyFixture = async (input: {
   category: SDK.FraudProofCatalogueCategoryName;
+  ledgerAt: LedgerAt;
   replayer: RetainedClassifierInput["replayer"];
   block: VerifiableJourneyBlock;
   predecessor?: VerifiableJourneyBlock;
@@ -61,6 +63,7 @@ export const verifyJourneyFixture = async (input: {
     deploymentFingerprint,
     releaseFinalityAuthority,
     replayer: input.replayer,
+    predecessorLedgerAt: input.ledgerAt,
     replayContext: input.replayContext,
     history: input.history,
     transitionTraceEventAuthority: input.transitionTraceEventAuthority,

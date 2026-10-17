@@ -1,3 +1,4 @@
+import { deploymentValidatorTitle as deployedTitle } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { Data, Network } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
@@ -19,10 +20,10 @@ import {
 } from "../types.js";
 
 export const NON_EXISTENT_INPUT_FAULT_PROOF_TITLES = {
-  step01: "fraud_proofs/no_input/step_01.main.spend",
-  step02: "fraud_proofs/no_input/step_02.main.spend",
-  step03: "fraud_proofs/no_input/step_03.main.spend",
-  step04: "fraud_proofs/no_input/step_04.main.spend",
+  step01: deployedTitle("fraudProofNonExistentInput"),
+  step02: deployedTitle("fraudProofNonExistentInputStep02"),
+  step03: deployedTitle("fraudProofNonExistentInputStep03"),
+  step04: deployedTitle("fraudProofNonExistentInputStep04"),
 } as const;
 
 export type NonExistentInputFaultProofContracts = {

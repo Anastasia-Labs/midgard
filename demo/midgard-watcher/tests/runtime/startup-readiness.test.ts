@@ -74,9 +74,16 @@ vi.mock("../../src/l1-follower/deployment-follower.js", () => ({
     close: async () => undefined,
   }),
 }));
-vi.mock("../../src/l1-follower/user-events.js", async (load) => ({
-  ...(await load<typeof import("../../src/l1-follower/user-events.js")>()),
-  createWatcherFollowerUserEvents: () => ({ close: async () => undefined }),
+// The replay host binds to the follower store, which this test replaces.
+vi.mock("../../src/runtime/watcher-runtime.replayed-ledger.js", () => ({
+  createWatcherRuntimeReplayHost: () => ({
+    retention: { floor: undefined },
+    bind: () => ({
+      userEvents: { close: async () => undefined },
+      keeper: {},
+      close: () => undefined,
+    }),
+  }),
 }));
 // The workflow readiness stage, reduced to its L1 read.
 vi.mock("../../src/runtime/watcher-runtime.prepare-services.js", () => ({

@@ -7,7 +7,10 @@ import {
   validatorToScriptHash,
 } from "@lucid-evolution/lucid";
 
-import { readFraudSlashFundingAuthority } from "../remove-fraudulent-block.js";
+import {
+  fraudSlashFeeLovelace,
+  readFraudSlashFundingAuthority,
+} from "../remove-fraudulent-block.js";
 import { assertWorkflowActuationPermitIdentity } from "./actuation-permit.js";
 import {
   assertAuthenticatedFraudSlashReward,
@@ -65,11 +68,8 @@ export const assertRuntimeTransactionBound = async ({
       rollbackGeneration: state.snapshot.rollbackGeneration,
     });
     const economics = policy.economics.policy;
-    const bond =
-      BigInt(economics.requiredBondLovelace) -
-      (slash.tranche === "full"
-        ? 0n
-        : BigInt(economics.inactivitySlashingPenaltyLovelace));
+    const bond = BigInt(slash.operatorBondLovelace);
+    const fee = fraudSlashFeeLovelace(economics, bond);
     const reward = BigInt(economics.fraudProverRewardLovelace);
     // Removal binds nextRemovalOutRef/fraudProofOutRef; actionKind also
     // accepts stage. Each refusal names the failed binding.
@@ -100,10 +100,10 @@ export const assertRuntimeTransactionBound = async ({
           "economics policy digest",
           slash.economicsPolicyDigest === policy.economicsPolicyDigest,
         ],
-        ["operator bond", BigInt(slash.operatorBondLovelace) === bond],
+        ["operator bond", fee !== null],
         ["reward", BigInt(slash.rewardLovelace) === reward],
-        ["exact fee", BigInt(slash.exactFeeLovelace) === bond - reward],
-        ["body fee", body.fee() === bond - reward],
+        ["exact fee", BigInt(slash.exactFeeLovelace) === fee],
+        ["body fee", body.fee() === fee],
         ["funding inputs", fundingOutRefs.length === 0],
         [
           "authority inputs",
@@ -341,7 +341,7 @@ export const assertRuntimeTransactionBound = async ({
       (input.assets.lovelace ?? 0n).toString() !== slash.operatorBondLovelace
     ) {
       throw new Error(
-        "fraud slash operator bond differs from its authenticated tranche",
+        "fraud slash operator bond differs from its authenticated bond",
       );
     }
     // Slashes reacquire live authority even for confirmed workflow lineage.

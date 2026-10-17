@@ -103,14 +103,11 @@ Every `expect` over `Data` is a decoder, and its domain is the set of values
 it accepts. Stock Aiken v1.1.22 named generated decoders by the local type
 name only, so two same-named types in different modules shared one decoder,
 and the shipped blueprint had under-strict decoders on the adjudication path
-(#521; `MintRedeemer` alone is declared in 12 modules). The fork pinned in CI
-fixes it
-`[ci: aiken-ci.yml/Assert the pinned compiler identity and put it on PATH]`,
-and local entry points assert the same pin
-`[script: onchain/aiken/scripts/pinned-compiler.mjs]` `[hook: pre-commit]`.
-Blind spot: the hook skips the check when no `aiken` binary is found, and a
-hand-typed `aiken check` asserts nothing; `aikup` can repoint the local
-`aiken` at stock.
+(#521; `MintRedeemer` alone is declared in 12 modules). The fork that
+`demo/flake.lock` pins fixes it, and every script, the pre-commit hook and CI
+run only that compiler, through `scripts/aiken`
+`[script: scripts/lib/aiken.mjs]` `[hook: pre-commit]`. Blind spot: a
+hand-typed bare `aiken` runs whatever is on `PATH`.
 
 Ask:
 
@@ -133,8 +130,11 @@ Every lovelace and token a transaction moves must be accounted for exactly.
 The fraud-prover reward is paid to the prover's enterprise address, ADA only,
 with no datum or reference script, and over- and under-payment are refused
 alike
-`[aiken-test: state-queue/]` (predicate `fraud_prover_reward_output_is_exact_v1`,
-`onchain/aiken/validators/state-queue.ak:189`).
+`[aiken-test: state-queue/]` (predicate `bounty_routing_is_exact_v1`,
+`onchain/aiken/lib/midgard/operator-directory.ak:226`). The duplicate-registration
+and bad-settlement slashes pay their bounty through the same predicate. A
+transaction carries one operator slash (`other_directory_is_untouched_v1`,
+`:257`), so one pinned fee and one bounty account for one bond.
 
 Ask:
 

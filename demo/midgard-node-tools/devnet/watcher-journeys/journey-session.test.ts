@@ -30,6 +30,7 @@ beforeEach(async () => {
   state.failBinding = false;
   state.failNativeClose = false;
   state.sessionSources = [];
+  state.replayCheckpointDirectories = [];
   state.watcherState = { state: "running", exitCode: null };
   await mkdir(join(state.runDirectory, "secrets"));
   for (const name of [
@@ -443,4 +444,33 @@ it.each([
   );
   expect(state.closed).toHaveLength(3);
   await expect(session.ensureWatcher()).rejects.toThrow("closed");
+});
+
+it("keeps concurrent sessions' real checkpoint writes in separately owned directories", async () => {
+  const sessions = await Promise.all([
+    openJourneySession(state.runDirectory),
+    openJourneySession(state.runDirectory),
+  ]);
+  try {
+    expect(new Set(state.replayCheckpointDirectories).size).toBe(2);
+    const hashes = ["91".repeat(28), "92".repeat(28)];
+    await Promise.all(
+      sessions.map((session, i) => session.ledgerAt(hashes[i])),
+    );
+    const stored = await Promise.all(
+      state.replayCheckpointDirectories.map(async (directory) =>
+        JSON.parse(
+          await readFile(
+            join(directory, `replayed-ledger-${"ab".repeat(32)}.json`),
+            "utf8",
+          ),
+        ),
+      ),
+    );
+    expect(stored.map((checkpoint) => checkpoint.headerHash).sort()).toEqual(
+      hashes,
+    );
+  } finally {
+    await Promise.all(sessions.map((session) => session.close()));
+  }
 });

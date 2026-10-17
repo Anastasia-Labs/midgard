@@ -191,13 +191,10 @@ testnet Aiken blueprint` (`midgard-node-ci.yml:187`) before any suite.
   Rebuild before comparing. Nothing detects a stale local blueprint
   `[review]`; the pre-commit hook only refuses to commit it `[hook:
 pre-commit]`.
-- **Stock Aiken.** `aikup` can repoint `aiken` on PATH to stock v1.1.22, which
-  is unsound (`onchain/aiken/scripts/pinned-compiler.mjs:3-10`). Check the pin
-  with `node onchain/aiken/scripts/pinned-compiler.mjs` before reproducing any
-  Aiken step `[script: onchain/aiken/scripts/pinned-compiler.mjs]`. CI asserts
-  it in `Assert the pinned compiler identity and put it on PATH` and `Assert
-no stock compiler is reachable` `[ci: aiken-ci/Assert no stock compiler is
-reachable]`; neither failed in the sampled runs.
+- **A different Aiken.** CI and every repository script run the aiken
+  `demo/flake.lock` pins, through `scripts/aiken`
+  `[script: scripts/lib/aiken.mjs]`. A bare `aiken` from your `PATH` is not
+  that compiler; reproduce Aiken steps with `scripts/aiken` only.
 - **No local Postgres.** Without a server on 5433 the node suites report "No
   test files found" and about 150 files never run
   (`scripts/start-test-postgres.sh:4-6`). That is a setup gap, not a pass.

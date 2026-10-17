@@ -1,3 +1,4 @@
+import { deploymentValidatorTitle as deployedTitle } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { Effect } from "effect";
 
 import {
@@ -16,16 +17,17 @@ import {
 } from "../types.js";
 
 export const SCRIPT_INTEGRITY_HASH_MISSING_FAULT_PROOF_TITLES = {
-  step01: "fraud_proofs/script_integrity_hash_missing/step_01.main.spend",
-  step02: "fraud_proofs/script_integrity_hash_missing/step_02.main.spend",
-  step03: "fraud_proofs/script_integrity_hash_missing/step_03.main.spend",
-  scriptGrammar:
-    "fraud_proofs/script_integrity_hash_missing/script_grammar.main.spend",
-  scriptScan:
-    "fraud_proofs/script_integrity_hash_missing/script_scan.main.spend",
-  redeemerGrammar:
-    "fraud_proofs/script_integrity_hash_missing/redeemer_grammar.main.spend",
-  step04: "fraud_proofs/script_integrity_hash_missing/step_04.main.spend",
+  step01: deployedTitle("fraudProofScriptIntegrityHashMissing"),
+  step02: deployedTitle("fraudProofScriptIntegrityHashMissingStep02"),
+  step03: deployedTitle("fraudProofScriptIntegrityHashMissingStep03"),
+  scriptGrammar: deployedTitle(
+    "fraudProofScriptIntegrityHashMissingScriptGrammar",
+  ),
+  scriptScan: deployedTitle("fraudProofScriptIntegrityHashMissingScriptScan"),
+  redeemerGrammar: deployedTitle(
+    "fraudProofScriptIntegrityHashMissingRedeemerGrammar",
+  ),
+  step04: deployedTitle("fraudProofScriptIntegrityHashMissingStep04"),
 } as const;
 
 export type ScriptIntegrityHashMissingFaultProofContracts = {

@@ -5,11 +5,14 @@
  * under a policy whose native script is ABSENT from the machine-consulted
  * source surface. Two journeys:
  *
- * - empty field 1, end to end — init → step-01 bind → step-02 claim →
- *   step-03 WitnessAbsence (empty field 6) → step-04 AdvanceComplete (empty
- *   field 1) → step-05 permanent fraud-proof token → fraudulent-block removal;
- * - one reference input, through the step-04 ResolveNext self-loop against a
- *   hand-built pre-state ledger trie, then AdvanceComplete → step-05.
+ * - empty fields 1 and 0, end to end — init → step-01 bind → step-02 claim
+ *   → step-03 WitnessAbsence (empty field 6) → step-04 AdvanceComplete
+ *   (empty field 1, then empty field 0) → step-05 permanent fraud-proof
+ *   token → fraudulent-block removal;
+ * - one reference input or one spent input, through the step-04 ResolveNext
+ *   self-loop against a hand-built pre-state ledger trie, then
+ *   AdvanceComplete → step-05. A resolved output carrying the claimed
+ *   policy's script refuses the claim whichever input field it sits in.
  *
  * Each journey commits its own block on a fresh harness: the thread token's
  * asset name is `categoryId ‖ header_hash`, so one committed header carries
@@ -157,16 +160,28 @@ describe("mint-authorization direction-A emulator lifecycle", () => {
       referenceScriptUtxo: step03Ref,
     });
 
-    const step04 = await submitMintAuthorizationStep04AdvanceComplete({
-      lucid: proverLucid,
-      contracts: family,
-      categoryId: category.categoryId,
-      signer: proverSigner,
-      threadOutRef: step03.nextThreadOutRef,
-      nativeTxCompactCbor: block.nativeTxCompactCbor,
-      referenceInputsItemCbors: subject.referenceInputItemCbors,
-      referenceScriptUtxo: step04Ref,
+    const advance = (threadOutRef: string) =>
+      submitMintAuthorizationStep04AdvanceComplete({
+        lucid: proverLucid,
+        contracts: family,
+        categoryId: category.categoryId,
+        signer: proverSigner,
+        threadOutRef,
+        nativeTxCompactCbor: block.nativeTxCompactCbor,
+        referenceInputsItemCbors: subject.referenceInputItemCbors,
+        spendInputsItemCbors: subject.spendInputItemCbors,
+        referenceScriptUtxo: step04Ref,
+      });
+    const step04References = await advance(step03.nextThreadOutRef);
+    expect(step04References.nextScan).toStrictEqual({
+      fieldIndex: 0n,
+      cursor: 0n,
     });
+    expect(step04References.nextStepAddress).toBe(
+      family.steps[3].spendingScriptAddress,
+    );
+    const step04 = await advance(step04References.nextThreadOutRef);
+    expect(step04.nextScan).toBeNull();
 
     const step05 = await submitMintAuthorizationStep05({
       lucid: proverLucid,
@@ -294,9 +309,14 @@ describe("mint-authorization direction-A emulator lifecycle", () => {
     ).rejects.toThrow(/State queue does not contain block/);
   }, 600_000);
 
-  it.each([false, true])(
-    "checks the final reference source with matching policy %s",
-    async (matching) => {
+  it.each([
+    { field: "reference", matching: false },
+    { field: "reference", matching: true },
+    { field: "spent", matching: false },
+    { field: "spent", matching: true },
+  ] as const)(
+    "checks the final $field input source with matching policy $matching",
+    async ({ field, matching }) => {
       const harness = await makeMintAuthorizationEmulatorHarness();
       const {
         realBlueprint,
@@ -308,9 +328,9 @@ describe("mint-authorization direction-A emulator lifecycle", () => {
         category,
       } = harness;
 
-      // One committed reference input; the pre-state ledger trie holds its
-      // descriptor, whose reference script hashes to something OTHER than the
-      // accused policy so the absence claim holds.
+      // One committed reference or spent input; the pre-state ledger trie
+      // holds its descriptor, whose reference script hashes to the accused
+      // policy only in the matching case.
       const refTxId = "cd".repeat(32);
       const refOutputIndex = 2;
       const ledger = await buildMintAuthorizationLedgerFixture({
@@ -328,7 +348,9 @@ describe("mint-authorization direction-A emulator lifecycle", () => {
               }),
             ]
           : smallMintItemCbors(),
-        referenceInputItemCbors: [
+        [field === "reference"
+          ? "referenceInputItemCbors"
+          : "spendInputItemCbors"]: [
           referenceInputItemCbor({
             txIdHex: refTxId,
             outputIndex: refOutputIndex,
@@ -404,38 +426,54 @@ describe("mint-authorization direction-A emulator lifecycle", () => {
         scriptTxWitsItemCbors: subject.scriptWitnessItemCbors,
         referenceScriptUtxo: step03Ref,
       });
-      const resolve = () =>
-        submitMintAuthorizationStep04ResolveNext({
-          lucid: proverLucid,
-          contracts: family,
-          categoryId: category.categoryId,
-          signer: proverSigner,
-          threadOutRef: step03.nextThreadOutRef,
-          nativeTxCompactCbor: block.nativeTxCompactCbor,
-          referenceInputsItemCbors: subject.referenceInputItemCbors,
-          trie: ledger.trie,
-          descriptorCborHex: ledger.descriptorCbor,
-          referenceScriptUtxo: step04Ref,
-        });
-      if (matching) {
-        await expect(resolve()).rejects.toThrow();
-        return;
-      }
-      const resolveNext = await resolve();
-      expect(resolveNext.nextRefCursor).toBe(1n);
-      expect(resolveNext.nextStepAddress).toBe(
-        family.steps[3].spendingScriptAddress,
-      );
-      const advance = await submitMintAuthorizationStep04AdvanceComplete({
+      const step04 = {
         lucid: proverLucid,
         contracts: family,
         categoryId: category.categoryId,
         signer: proverSigner,
-        threadOutRef: resolveNext.nextThreadOutRef,
         nativeTxCompactCbor: block.nativeTxCompactCbor,
         referenceInputsItemCbors: subject.referenceInputItemCbors,
+        spendInputsItemCbors: subject.spendInputItemCbors,
         referenceScriptUtxo: step04Ref,
+      };
+      const advanceFrom = (threadOutRef: string) =>
+        submitMintAuthorizationStep04AdvanceComplete({
+          ...step04,
+          threadOutRef,
+        });
+      // A spent input is scanned once the reference inputs are closed.
+      const scanOutRef =
+        field === "reference"
+          ? step03.nextThreadOutRef
+          : (await advanceFrom(step03.nextThreadOutRef)).nextThreadOutRef;
+      const scannedField = field === "reference" ? 1n : 0n;
+      const resolve = () =>
+        submitMintAuthorizationStep04ResolveNext({
+          ...step04,
+          threadOutRef: scanOutRef,
+          trie: ledger.trie,
+          descriptorCborHex: ledger.descriptorCbor,
+        });
+      if (matching) {
+        await expect(resolve()).rejects.toThrow(
+          `the resolved field-${scannedField.toString()} input at cursor 0 carries a reference script hashing to the claimed policy`,
+        );
+        return;
+      }
+      const resolveNext = await resolve();
+      expect(resolveNext.nextScan).toStrictEqual({
+        fieldIndex: scannedField,
+        cursor: 1n,
       });
+      expect(resolveNext.nextStepAddress).toBe(
+        family.steps[3].spendingScriptAddress,
+      );
+      let advance = await advanceFrom(resolveNext.nextThreadOutRef);
+      if (field === "reference") {
+        expect(advance.nextScan).toStrictEqual({ fieldIndex: 0n, cursor: 0n });
+        advance = await advanceFrom(advance.nextThreadOutRef);
+      }
+      expect(advance.nextScan).toBeNull();
       const step05 = await submitMintAuthorizationStep05({
         lucid: proverLucid,
         contracts: family,

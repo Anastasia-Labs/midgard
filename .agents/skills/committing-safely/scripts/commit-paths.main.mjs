@@ -24,6 +24,7 @@ import {
   USAGE,
   usage,
 } from "./commit-paths.parse-args.mjs";
+import { aikenBinary } from "../../../../scripts/lib/aiken.mjs";
 
 // ------------------------------------------------------------------- git
 
@@ -172,51 +173,35 @@ const checkFormatting = (committed) => {
 
   const aikenPaths = committed.filter(({ path }) => isAikenPath(path));
   if (aikenPaths.length > 0) {
-    const aiken = process.env.MIDGARD_AIKEN_BIN ?? "aiken";
-    const pinCheck = join(
-      repoRoot,
-      "onchain/aiken/scripts/pinned-compiler.mjs",
-    );
-    const probe = run(aiken, ["--version"]);
-    let missing;
-    if (probe.error !== undefined) {
-      missing = `could not run aiken '${aiken}' (${probe.error.message}); set MIDGARD_AIKEN_BIN to the pinned fork`;
-    } else if (!existsSync(pinCheck)) {
-      missing =
-        "onchain/aiken/scripts/pinned-compiler.mjs is missing, so the compiler identity cannot be verified";
-    }
-    if (missing !== undefined) {
+    let aiken;
+    try {
+      aiken = aikenBinary();
+    } catch (error) {
       for (const { path } of aikenPaths) {
-        report.unchecked.push(`${path}: ${missing}`);
+        report.unchecked.push(`${path}: ${error.message}`);
       }
-    } else {
-      const pin = run(process.execPath, [pinCheck, aiken]);
-      if (pin.status !== 0) {
-        report.failed.push(
-          `the aiken at '${aiken}' is not the pinned fork; nothing may be formatted or checked under it:\n${pin.stderr.toString().trim()}`,
-        );
-      } else {
-        for (const { path, entry } of aikenPaths) {
-          const source = blob(entry);
-          const result = run(aiken, ["fmt", "--stdin"], { input: source });
-          if (result.error !== undefined || result.status !== 0) {
-            report.failed.push(
-              `${path}: aiken fmt failed (does it parse?): ${(result.error?.message ?? result.stderr.toString()).trim()}`,
-            );
-            continue;
-          }
-          // CI (aiken-ci.yml "Run normalized Aiken auto-formatter check")
-          // formats, then strips trailing whitespace the formatter itself
-          // emits for monadic let/expect syntax, then compares. A bare
-          // `aiken fmt --check` would refuse files CI accepts.
-          const normalized = result.stdout
-            .toString("utf8")
-            .split("\n")
-            .map((line) => line.replace(/[ \t\r\f\v]+$/u, ""))
-            .join("\n");
-          if (normalized !== source.toString("utf8")) {
-            report.unformatted.push(`${path} (aiken fmt, CI-normalized)`);
-          }
+    }
+    if (aiken !== undefined) {
+      for (const { path, entry } of aikenPaths) {
+        const source = blob(entry);
+        const result = run(aiken, ["fmt", "--stdin"], { input: source });
+        if (result.error !== undefined || result.status !== 0) {
+          report.failed.push(
+            `${path}: aiken fmt failed (does it parse?): ${(result.error?.message ?? result.stderr.toString()).trim()}`,
+          );
+          continue;
+        }
+        // CI (aiken-ci.yml "Run normalized Aiken auto-formatter check")
+        // formats, then strips trailing whitespace the formatter itself
+        // emits for monadic let/expect syntax, then compares. A bare
+        // `aiken fmt --check` would refuse files CI accepts.
+        const normalized = result.stdout
+          .toString("utf8")
+          .split("\n")
+          .map((line) => line.replace(/[ \t\r\f\v]+$/u, ""))
+          .join("\n");
+        if (normalized !== source.toString("utf8")) {
+          report.unformatted.push(`${path} (aiken fmt, CI-normalized)`);
         }
       }
     }

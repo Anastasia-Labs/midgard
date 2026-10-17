@@ -59,25 +59,27 @@ export const encodeActiveOperatorSpendRedeemer = (
 /**
  * Mirrors `midgard/state_queue.SlashingApproach`.
  *
- * The two bond-consuming constructors carry
- * `m_fraud_prover_reward_output_index`, the output that pays the fraud prover
- * exactly `env.fraud_prover_reward` (2026-08-11 owner ruling 7, D3). It is
- * `null` exactly when that compiled reward is zero — today's placeholder
- * economics, which F04 §2.5 assigns to Q53. `OperatorAlreadySlashed` consumes
- * no bond and so cannot name a reward output at all: that is the type-level
- * half of the D4 exclusivity ruling.
+ * The two bond-consuming constructors pay the fraud prover exactly
+ * `env.fraud_prover_reward` (decision record 0002 §2.3): the validator finds
+ * the one output to the prover's enterprise address itself, so the redeemer
+ * names no output index. `OperatorAlreadySlashed` consumes no bond, and the
+ * validator refuses any exact reward output on that path.
+ *
+ * `DescendantOfValidationTraceConviction` (constructor 3, no fields) is the
+ * mandatory arm for removing a descendant (`RemoveFraudulentBlocksLink`) of a
+ * block convicted under the validation-trace category `00000006`: the
+ * descendant's operator is not slashed, and the validator refuses any exact
+ * reward output on that path too.
  */
 export const SlashingApproachSchema = Data.Enum([
   Data.Object({
     SlashActiveOperator: Data.Object({
       active_operators_redeemer_index: Data.Integer(),
-      m_fraud_prover_reward_output_index: Data.Nullable(Data.Integer()),
     }),
   }),
   Data.Object({
     SlashRetiredOperator: Data.Object({
       retired_operators_redeemer_index: Data.Integer(),
-      m_fraud_prover_reward_output_index: Data.Nullable(Data.Integer()),
     }),
   }),
   Data.Object({
@@ -86,6 +88,7 @@ export const SlashingApproachSchema = Data.Enum([
       retired_operators_element_ref_input_index: Data.Integer(),
     }),
   }),
+  Data.Literal("DescendantOfValidationTraceConviction"),
 ]);
 
 export type SlashingApproach = Data.Static<typeof SlashingApproachSchema>;
@@ -300,6 +303,8 @@ export const StateQueueSpendRedeemerSchema = Data.Enum([
       state_queue_input_index: Data.Integer(),
       state_queue_output_index: Data.Integer(),
       fraud_proof_asset_name: Data.Bytes({ minLength: 32, maxLength: 32 }),
+      /** `null`: minted in this tx; else the reference-input index holding it. */
+      m_fraud_proof_ref_input_index: Data.Nullable(Data.Integer()),
     }),
   }),
 ]);

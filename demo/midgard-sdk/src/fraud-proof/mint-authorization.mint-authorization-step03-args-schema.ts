@@ -75,7 +75,7 @@ export const MintAuthorizationStep03SpendRedeemer =
     MintAuthorizationStep03SpendRedeemerSchema,
   );
 
-// ## Step 04 — direction-A reference-input scan (self-loop)
+// ## Step 04 — direction-A resolved-input scan (self-loop)
 
 export const MintAuthorizationStep04DatumSchema = faultProofStepDatumSchema(
   MintAuthorizationStep04StateSchema,
@@ -90,15 +90,15 @@ export const MintAuthorizationStep04Datum =
 
 /**
  * Twin of `step_04.Args`: `ResolveNext` (self-loop over the cursor) is
- * constructor 0, `AdvanceComplete` (cursor equals the authenticated field-1
- * item count) is constructor 1.
+ * constructor 0, `AdvanceComplete` (cursor equals the authenticated item
+ * count of the scanned input field) is constructor 1.
  */
 export const MintAuthorizationStep04ArgsSchema = Data.Enum([
   Data.Object({
     ResolveNext: Data.Object({
       input_index: Data.Integer(),
       output_index: Data.Integer(),
-      reference_inputs_opening: FieldOpeningSchema,
+      inputs_opening: FieldOpeningSchema,
       descriptor_cbor: Data.Bytes(),
       ledger_membership_proof: ProofSchema,
     }),
@@ -107,7 +107,7 @@ export const MintAuthorizationStep04ArgsSchema = Data.Enum([
     AdvanceComplete: Data.Object({
       input_index: Data.Integer(),
       output_index: Data.Integer(),
-      reference_inputs_opening: FieldOpeningSchema,
+      inputs_opening: FieldOpeningSchema,
     }),
   }),
 ]);

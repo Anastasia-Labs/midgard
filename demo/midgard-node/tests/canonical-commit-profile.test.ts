@@ -136,6 +136,31 @@ vi.mock("../src/services/history-commit-window.js", async (importOriginal) => ({
       anchor: { hash: Buffer.alloc(32), height: 0, slot: 0 },
     }),
 }));
+// The clock fits, no event is pending, and DA admits the placeholder tx.
+vi.mock("../src/workers/commit-block-header.plan-event-window.js", () => {
+  const blockTimeMs = Date.parse("2026-01-01T00:07:00.999Z");
+  const counts = { deposits: 0, forcedTransactions: 0, withdrawals: 0 };
+  const window = { mode: "normal", endTimeMs: blockTimeMs, counts };
+  const plan = { kind: "selected", blockTimeMs, groups: [] };
+  return {
+    commitEventLimitsFromConsensusProfile: () => ({}),
+    planHistoryCommitEventWindow: () =>
+      Effect.succeed({
+        ...plan,
+        clockFit: { status: "fits", resolvedEndTime: blockTimeMs + 1 },
+        window: { ...window, includedInstantCount: 0 },
+      }),
+  };
+});
+vi.mock("../src/workers/commit-block-header.plan-additive-da.js", () => ({
+  planAdditiveCommitDa: (input: { window: unknown; candidates: unknown[] }) =>
+    Effect.succeed({
+      kind: "selected",
+      window: input.window,
+      candidateCount: input.candidates.length,
+      upperBoundBytes: 0n,
+    }),
+}));
 vi.mock("../src/forced-orders/horizon.js", () => ({
   forcedOrderHorizon: Effect.succeed(null),
 }));

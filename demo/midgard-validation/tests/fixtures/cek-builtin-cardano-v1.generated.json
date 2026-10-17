@@ -3727,11 +3727,7 @@
    ],
    "expected": {
     "kind": "error"
-   },
-   "aikenEvaluator": {
-    "kind": "abort"
-   },
-   "reason": "Cardano fails sliceByteString when an integer argument is outside Int64"
+   }
   },
   {
    "tag": 12,
@@ -3982,13 +3978,7 @@
    ],
    "expected": {
     "kind": "error"
-   },
-   "aikenEvaluator": {
-    "kind": "value",
-    "type": "bs",
-    "value": ""
-   },
-   "reason": "Cardano fails sliceByteString when an integer argument is outside Int64"
+   }
   },
   {
    "tag": 12,
@@ -4032,13 +4022,7 @@
    ],
    "expected": {
     "kind": "error"
-   },
-   "aikenEvaluator": {
-    "kind": "value",
-    "type": "bs",
-    "value": ""
-   },
-   "reason": "Cardano fails sliceByteString when an integer argument is outside Int64"
+   }
   },
   {
    "tag": 12,
@@ -4082,13 +4066,7 @@
    ],
    "expected": {
     "kind": "error"
-   },
-   "aikenEvaluator": {
-    "kind": "value",
-    "type": "bs",
-    "value": "00"
-   },
-   "reason": "Cardano fails sliceByteString when an integer argument is outside Int64"
+   }
   },
   {
    "tag": 12,
@@ -4132,13 +4110,7 @@
    ],
    "expected": {
     "kind": "error"
-   },
-   "aikenEvaluator": {
-    "kind": "value",
-    "type": "bs",
-    "value": "0011223344556677"
-   },
-   "reason": "Cardano fails sliceByteString when an integer argument is outside Int64"
+   }
   },
   {
    "tag": 12,
@@ -4182,11 +4154,7 @@
    ],
    "expected": {
     "kind": "error"
-   },
-   "aikenEvaluator": {
-    "kind": "abort"
-   },
-   "reason": "Cardano fails sliceByteString when an integer argument is outside Int64"
+   }
   },
   {
    "tag": 12,
@@ -4512,11 +4480,7 @@
    ],
    "expected": {
     "kind": "error"
-   },
-   "aikenEvaluator": {
-    "kind": "abort"
-   },
-   "reason": "Cardano fails a builtin whose machine-Int argument is outside Int64"
+   }
   },
   {
    "tag": 14,
@@ -7121,13 +7085,7 @@
     "kind": "value",
     "type": "bool",
     "value": false
-   },
-   "aikenEvaluator": {
-    "kind": "value",
-    "type": "bool",
-    "value": true
-   },
-   "reason": "libsodium crypto_sign_ed25519_verify_detached refuses a small-order public key"
+   }
   },
   {
    "tag": 21,
@@ -26902,13 +26860,7 @@
    ],
    "expected": {
     "kind": "error"
-   },
-   "aikenEvaluator": {
-    "kind": "value",
-    "type": "bool",
-    "value": true
-   },
-   "reason": "Cardano accepts only a 33-byte compressed secp256k1 verification key (CIP-49)"
+   }
   },
   {
    "tag": 52,

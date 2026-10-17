@@ -151,8 +151,6 @@ describe("state-queue withdraw-zero publication admission V1", () => {
       blueprintSha256: createHash("sha256")
         .update(blueprintBytes)
         .digest("hex"),
-      compilerVersion: JSON.parse(blueprintBytes.toString()).preamble.compiler
-        .version,
       measurements,
     });
     if (process.env.MIDGARD_WRITE_FIT_LEDGER === "1") {

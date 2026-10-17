@@ -10,7 +10,6 @@ import {
 const ledger: SplitFitLedger = {
   path: "/nowhere/example-fit-ledger.json",
   category: "example",
-  compilerVersion: "aiken test",
   caseCount: 3,
   parts: ["big", "rest"],
   source: "/nowhere/example-cases.ts",
@@ -34,7 +33,6 @@ const part = (
   schemaVersion: "midgard-split-fit-ledger-part-v1",
   ledger: "example-fit-ledger",
   category: "example",
-  compilerVersion: "aiken test",
   blueprintSha256,
   sourceSha256,
   caseCount: 3,
@@ -53,7 +51,6 @@ describe("split fit ledger merge", () => {
     const unsplit = buildVanRossemFitLedger({
       category: "example",
       blueprintSha256: "ab".repeat(32),
-      compilerVersion: "aiken test",
       measurements: [
         ["a", 1],
         ["b", 2],

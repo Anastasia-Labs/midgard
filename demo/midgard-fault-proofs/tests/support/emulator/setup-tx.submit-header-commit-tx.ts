@@ -168,6 +168,7 @@ export const submitHeaderCommitTx = async ({
   activeOperatorNode,
   confirmedStateRefInput,
   blockTime = header.endTime,
+  bondPaddingLovelace = 0n,
 }: {
   readonly lucid: SetupLucid;
   readonly contracts: SetupContracts;
@@ -182,6 +183,8 @@ export const submitHeaderCommitTx = async ({
   readonly confirmedStateRefInput?: UTxO;
   /** The commit's inclusive upper bound; `header.blockSlot` must name it. */
   readonly blockTime?: bigint;
+  /** Lovelace the operator adds to its active node at this commit. */
+  readonly bondPaddingLovelace?: bigint;
 }): Promise<{
   readonly fraudulentBlockUtxo: UTxO;
   readonly continuedActiveOperatorNode: UTxO;
@@ -281,7 +284,11 @@ export const submitHeaderCommitTx = async ({
         continuedActiveOperatorOutput: {
           address: contracts.activeOperators.spendingScriptAddress,
           datum: continuedActiveOperatorDatum,
-          assets: activeOperatorNode.assets,
+          assets: {
+            ...activeOperatorNode.assets,
+            lovelace:
+              (activeOperatorNode.assets.lovelace ?? 0n) + bondPaddingLovelace,
+          },
         },
         stateQueueSpendingScript: contracts.stateQueue.spendingScript,
         stateQueueMintingScript: contracts.stateQueue.mintingScript,
