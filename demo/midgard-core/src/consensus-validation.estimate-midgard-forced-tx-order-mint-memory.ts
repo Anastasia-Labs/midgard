@@ -12,26 +12,44 @@ import {
   TWO_ENTRY_OUTPUT_MAP_HEAD,
 } from "./consensus-validation.forced-tx-admission-reads.js";
 import type { MidgardForcedTxAdmissionInput } from "./consensus-validation.screen-midgard-forced-tx-admission.js";
+import { SCRIPT_BUDGET_BASIS, scriptBudget } from "./script-budgets.js";
 
 /**
  * The tx-order mint's memory budget for one order: the §3.3 reliability basis
- * (20% under the supported L1 floor of 16,500,000), as the tx-order mint
- * execution ledger (onchain/aiken/scripts/tx-order-mint-exec-ledger-v1.json)
- * prices it.
+ * (20% under the supported L1 floor of 16,500,000).
  */
-export const MIDGARD_FORCED_TX_ORDER_MINT_MEMORY_BASIS = 13_200_000;
+export const MIDGARD_FORCED_TX_ORDER_MINT_MEMORY_BASIS =
+  SCRIPT_BUDGET_BASIS.mem;
+
+const roundUpTo = (value: number, step: number): number =>
+  Math.ceil(value / step) * step;
+
+/** The door at the aggregate bound with fixed-stride fields. */
+const DOOR_AT_AGGREGATE_BOUND = scriptBudget(
+  "midgard/user_events/tx_order_v1.test/tx_order_mint_material_at_the_aggregate_bound",
+);
+
+/** The door's walk over 250 more items of a variable-width field. */
+const DOOR_WALK_OVER_250_ITEMS = scriptBudget(
+  "midgard/user_events/tx_order_v1.test/tx_order_mint_material_at_five_hundred_variable_width_items - tx_order_mint_material_at_two_hundred_fifty_variable_width_items",
+);
+
+/** The admission rules on a minimal order, net of their fixture-only control
+ * (603,349 - 338,205, `forced-tx-admission-v1-cost.test.ak`). */
+const RULES_ON_A_MINIMAL_ORDER = 603_349 - 338_205;
 
 /**
  * Per-shape memory the tx-order mint spends on a forced transaction's material
  * (its field door plus the admission rules), read off the measured rows of
- * `forced-tx-admission-v1-cost.test.ak` and the tx-order mint execution
- * ledger. Rule slopes subtract each row's fixture-only control; the door's
- * whole-test slope is conservative. Every rate rounds its measured slope up:
+ * `forced-tx-admission-v1-cost.test.ak` and the tx-order mint's script
+ * budgets (`script-budgets.json`). Rule slopes subtract each row's
+ * fixture-only control; the door's whole-test slope is conservative. Every
+ * rate rounds its measured slope up:
  *
- *   * `base`: the door at the aggregate bound with fixed-stride fields
- *     (2,370,675) plus the rules on a minimal order (603,349 - 338,205).
- *   * `variableItem`: the door's walk per item of a variable-width field,
- *     (12,660,422 - 7,319,914) / 250.
+ *   * `base`: the door at the aggregate bound with fixed-stride fields plus
+ *     the rules on a minimal order, rounded up to 10,000.
+ *   * `variableItem`: the door's walk per item of a variable-width field, its
+ *     500-item reading minus its 250-item reading over 250, rounded up to 100.
  *   * `fixedItem`: rule 4 per input, hash or address-witness item plus the
  *     door's share; the address-witness slope, the widest, is
  *     (2,474,726 - 408,908) / 316 rounded up with the door's 2,000.
@@ -64,8 +82,11 @@ export const MIDGARD_FORCED_TX_ORDER_MINT_MEMORY_BASIS = 13_200_000;
  * and carriage overhead that these admission-rule rows do not measure.
  */
 export const MIDGARD_FORCED_TX_ORDER_MINT_MEMORY_RATES = {
-  base: 2_640_000,
-  variableItem: 21_400,
+  base: roundUpTo(
+    DOOR_AT_AGGREGATE_BOUND.mem + RULES_ON_A_MINIMAL_ORDER,
+    10_000,
+  ),
+  variableItem: roundUpTo(DOOR_WALK_OVER_250_ITEMS.mem / 250, 100),
   fixedItem: 8_600,
   twoEntryOutput: 15_300,
   threeEntryOutput: 31_900,

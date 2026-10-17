@@ -10,59 +10,67 @@ import {
   hashMidgardNativeScriptDecodingControl,
   MIDGARD_BOUNDED_ITEM_CHUNK_BYTES,
   MidgardNativeScriptStructureStages,
+  SCRIPT_BUDGET_BASIS,
+  scriptBudget,
 } from "@al-ft/midgard-core";
 
 import { NATIVE_SCRIPT_DECODING_CATEGORY_LABEL } from "./contracts.js";
 
+const DEEP_FOLD_OVER_EIGHT_NODES = scriptBudget(
+  "midgard/fraud_proofs/native_script_decoding/exec_measure_v1.test/decoding_measure_deep_17_nodes - decoding_measure_deep_9_nodes",
+);
+
 /**
- * Execution-cost pins copied from the family exec ledger (compiler fork
- * `aiken v1.1.23+5adf783`, remeasured 2026-10-10).
- * The unit-test suite cross-checks every value here against the ledger JSON
- * itself, so a ledger re-pin that moves a number goes red here instead of
- * silently splitting the planner from the measurement.
+ * The costs the planner prices its plans at, read from the family's script
+ * budgets (`@al-ft/midgard-core` `script-budgets.json`). Each is a measured
+ * ceiling, so a prediction built from them can only over-price.
  */
-export const NATIVE_SCRIPT_DECODING_EXEC_PINS = {
+export const NATIVE_SCRIPT_DECODING_PLAN_COSTS = {
   /** GOAL_SPEC §3.3 basis the whole family is priced against. */
-  basisMemoryUnits: 13_200_000,
-  basisCpuUnits: 8_000_000_000,
+  basisMemoryUnits: SCRIPT_BUDGET_BASIS.mem,
+  basisCpuUnits: SCRIPT_BUDGET_BASIS.cpu,
   /**
-   * Deep fold slope between the ledger's 9- and 17-node rows, kept as an
-   * exact numerator/denominator pair: (12,666,128 − 6,699,789) / 8 mem and
-   * (5,080,012,828 − 2,667,230,989) / 8 cpu per node.
+   * Deep fold slope between the 9- and 17-node rows, kept as an exact
+   * numerator/denominator pair: the 17-node reading minus the 9-node reading,
+   * over 8 nodes, on each axis.
    */
-  deepMemSlopeNumerator: 5_966_339,
-  deepCpuSlopeNumerator: 2_412_781_839,
-  slopeDenominator: 8,
+  deepMemSlopeNumerator: DEEP_FOLD_OVER_EIGHT_NODES.mem,
+  deepCpuSlopeNumerator: DEEP_FOLD_OVER_EIGHT_NODES.cpu,
+  slopeDenominator: 17 - 9,
   /**
-   * The ≈1.0M per-transaction step envelope the ledger note prices outside
-   * the fold rows (thread token, control commitments, datum shuffle).
+   * The ≈1.0M per-transaction step envelope priced outside the fold rows
+   * (thread token, control commitments, datum shuffle).
    */
   scanStepEnvelopeMemoryUnits: 1_000_000,
   /**
-   * CPU envelope: the pinned direction-B terminal close — a complete fixture
-   * step including its own fold, so conservative for the shorter partial row.
+   * CPU envelope: the direction-B terminal close — a complete fixture step
+   * including its own fold, so conservative for the shorter partial row.
    */
-  scanStepEnvelopeCpuUnits: 1_587_037_816,
-  /** `advance_or_close_closes_a_direction_a_refusal`. */
-  verdictWrongfulAcceptance: { mem: 3_009_699, cpu: 1_267_696_384 },
-  /** `advance_or_close_closes_direction_b_at_the_exact_terminal`. */
-  verdictWrongfulRejection: { mem: 3_881_135, cpu: 1_587_037_816 },
-  /** `bind_descriptor_closes_a_non_native_direction_b_descriptor`. */
-  descriptorContradictionClose: { mem: 2_563_831, cpu: 1_061_053_854 },
+  scanStepEnvelopeCpuUnits: scriptBudget(
+    "fraud_proofs/native_script_decoding/step_03_advance_or_close/advance_or_close_closes_direction_b_at_the_exact_terminal",
+  ).cpu,
+  verdictWrongfulAcceptance: scriptBudget(
+    "fraud_proofs/native_script_decoding/step_03_advance_or_close/advance_or_close_closes_a_direction_a_refusal",
+  ),
+  verdictWrongfulRejection: scriptBudget(
+    "fraud_proofs/native_script_decoding/step_03_advance_or_close/advance_or_close_closes_direction_b_at_the_exact_terminal",
+  ),
+  descriptorContradictionClose: scriptBudget(
+    "fraud_proofs/native_script_decoding/step_03_bind_descriptor/bind_descriptor_closes_a_non_native_direction_b_descriptor",
+  ),
 } as const;
 
 /**
  * Default primitive-step budget per Scan transaction:
- * floor((basis − step envelope) / ceil(deep mem slope)) =
- * floor(12,200,000 / 745,793) = 16, the ledger note's "≈16 nodes per scan
- * transaction" priced at the worst (deep) slope.
+ * floor((basis − step envelope) / ceil(deep mem slope)), the "≈16 nodes per
+ * scan transaction" priced at the worst (deep) slope.
  */
 export const NATIVE_SCRIPT_DECODING_DEFAULT_MAX_STEPS_PER_TX = Math.floor(
-  (NATIVE_SCRIPT_DECODING_EXEC_PINS.basisMemoryUnits -
-    NATIVE_SCRIPT_DECODING_EXEC_PINS.scanStepEnvelopeMemoryUnits) /
+  (NATIVE_SCRIPT_DECODING_PLAN_COSTS.basisMemoryUnits -
+    NATIVE_SCRIPT_DECODING_PLAN_COSTS.scanStepEnvelopeMemoryUnits) /
     Math.ceil(
-      NATIVE_SCRIPT_DECODING_EXEC_PINS.deepMemSlopeNumerator /
-        NATIVE_SCRIPT_DECODING_EXEC_PINS.slopeDenominator,
+      NATIVE_SCRIPT_DECODING_PLAN_COSTS.deepMemSlopeNumerator /
+        NATIVE_SCRIPT_DECODING_PLAN_COSTS.slopeDenominator,
     ),
 );
 
@@ -150,15 +158,15 @@ export const assertWithinBasis = (
   what: string,
   predicted: { readonly mem: number; readonly cpu: number },
 ): void => {
-  const pins = NATIVE_SCRIPT_DECODING_EXEC_PINS;
+  const costs = NATIVE_SCRIPT_DECODING_PLAN_COSTS;
   if (
-    predicted.mem > pins.basisMemoryUnits ||
-    predicted.cpu > pins.basisCpuUnits
+    predicted.mem > costs.basisMemoryUnits ||
+    predicted.cpu > costs.basisCpuUnits
   ) {
     throw planError(
       `refusing to plan ${what} predicted over the execution basis ` +
         `(${predicted.mem} mem / ${predicted.cpu} cpu against ` +
-        `${pins.basisMemoryUnits} / ${pins.basisCpuUnits})`,
+        `${costs.basisMemoryUnits} / ${costs.basisCpuUnits})`,
     );
   }
 };
@@ -166,15 +174,15 @@ export const assertWithinBasis = (
 export const predictScanSegment = (
   stepCount: number,
 ): { readonly mem: number; readonly cpu: number } => {
-  const pins = NATIVE_SCRIPT_DECODING_EXEC_PINS;
+  const costs = NATIVE_SCRIPT_DECODING_PLAN_COSTS;
   return {
     mem: Math.ceil(
-      pins.scanStepEnvelopeMemoryUnits +
-        (stepCount * pins.deepMemSlopeNumerator) / pins.slopeDenominator,
+      costs.scanStepEnvelopeMemoryUnits +
+        (stepCount * costs.deepMemSlopeNumerator) / costs.slopeDenominator,
     ),
     cpu: Math.ceil(
-      pins.scanStepEnvelopeCpuUnits +
-        (stepCount * pins.deepCpuSlopeNumerator) / pins.slopeDenominator,
+      costs.scanStepEnvelopeCpuUnits +
+        (stepCount * costs.deepCpuSlopeNumerator) / costs.slopeDenominator,
     ),
   };
 };

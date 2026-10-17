@@ -84,11 +84,12 @@ In `demo/midgard-node/tests/reference-scripts.test.ts`, `toContain` checks
 notice removal of named targets, but do not reject unexpected additional ones.
 An exact independently defined roster may be appropriate when both matter.
 
-`onchain/aiken/scripts/exec-ledger-within-basis-v1.mjs` and related verifiers use
-exact execution measurements as part of their evidence contract. Replacing
-these with a ratchet changes what the gate proves; retain the existing contract
-unless an explicitly reviewed requirement changes it. Likewise a publication
-reserve below the ledger maximum is not automatically arbitrary.
+Execution measurements were held to exact recorded readings until 2026-10-16,
+when a reviewed change replaced that contract: every execution cost is now a
+ceiling in `demo/midgard-core/src/script-budgets.json`, judged
+`measured <= ceiling` by `onchain/aiken/scripts/script-budgets.mjs`. A raise
+records its reason; a reading that drops needs no edit. Likewise a publication
+reserve below a measured maximum is not automatically arbitrary.
 
 See [TQ-12](test-quality/tq-12-derive-not-photograph.md).
 

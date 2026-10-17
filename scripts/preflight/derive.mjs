@@ -366,55 +366,21 @@ export const aikenImportClosure = (index, moduleNames) => {
   );
 };
 
-// --- execution ledgers -------------------------------------------------------
+// --- script budgets ----------------------------------------------------------
 
-const LEDGER_SCRIPTS = `${AIKEN_PROJECT}/scripts`;
+export const SCRIPT_BUDGET_TABLE = `${DEMO}/midgard-core/src/script-budgets.json`;
+export const SCRIPT_BUDGET_JUDGE = `${AIKEN_PROJECT}/scripts/script-budgets.mjs`;
 
-export const execLedgers = (root) => {
-  const ledgers = [];
-  for (const name of readdirSync(resolve(root, LEDGER_SCRIPTS)).sort()) {
-    if (!/^verify-.+-exec-ledger-v1\.mjs$/u.test(name)) {
-      continue;
-    }
-    const verifier = `${LEDGER_SCRIPTS}/${name}`;
-    const source = readText(root, verifier);
-    const ledgerNames = new Set(
-      [
-        ...stripComments(source).matchAll(
-          /["'`]([a-z0-9-]+-exec-ledger-v1\.json)["'`]/gu,
-        ),
-      ].map(([, file]) => file),
-    );
-    if (ledgerNames.size !== 1) {
-      throw new Error(
-        `${verifier} must name exactly one ledger JSON; found ${String(ledgerNames.size)}`,
-      );
-    }
-    const ledger = `${LEDGER_SCRIPTS}/${[...ledgerNames][0]}`;
-    const modules = (JSON.parse(readText(root, ledger)).modules ?? []).map(
-      (entry) => entry.module,
-    );
-    if (modules.length === 0) {
-      throw new Error(`${ledger} measures no modules`);
-    }
-    // The verifier's own usage line names the Aiken environment it needs.
-    const environment = source.match(
-      new RegExp(
-        `MIDGARD_AIKEN_ENV=([a-z0-9_-]+)[^\\n]*scripts/${escapeRegExp(name)}`,
-        "u",
-      ),
-    )?.[1];
-    ledgers.push({
-      id: name.slice("verify-".length, -"-exec-ledger-v1.mjs".length),
-      verifier,
-      ledger,
-      modules,
-      environment,
-      scripts: referencedFiles(root, verifier),
-    });
+// The Aiken modules the script-budget table measures, in table order.
+export const scriptBudgetModules = (root) => {
+  const budgets = JSON.parse(readText(root, SCRIPT_BUDGET_TABLE)).budgets ?? {};
+  const modules = new Set(
+    Object.values(budgets).map((entry) =>
+      entry.test.slice(0, entry.test.lastIndexOf("/")),
+    ),
+  );
+  if (modules.size === 0) {
+    throw new Error(`${SCRIPT_BUDGET_TABLE} measures no modules`);
   }
-  if (ledgers.length === 0) {
-    throw new Error(`no execution-ledger verifiers under ${LEDGER_SCRIPTS}`);
-  }
-  return ledgers;
+  return [...modules];
 };

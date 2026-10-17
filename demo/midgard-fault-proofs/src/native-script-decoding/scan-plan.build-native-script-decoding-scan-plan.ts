@@ -17,14 +17,14 @@ import {
   assertWithinBasis,
   cutSegments,
   NATIVE_SCRIPT_DECODING_DEFAULT_MAX_STEPS_PER_TX,
-  NATIVE_SCRIPT_DECODING_EXEC_PINS,
+  NATIVE_SCRIPT_DECODING_PLAN_COSTS,
   NativeScriptDecodingPlanRoutes,
   type NativeScriptDecodingScanPlan,
   type NativeScriptDecodingVerdictPlan,
   planControl,
   planError,
   predictScanSegment,
-} from "./scan-plan.native-script-decoding-exec-pins.js";
+} from "./scan-plan.native-script-decoding-plan-costs.js";
 
 /**
  * Build the ordered transaction plans for one accused item in one claimed
@@ -58,7 +58,7 @@ export const buildNativeScriptDecodingScanPlan = ({
   if (!Number.isSafeInteger(maxStepsPerTx) || maxStepsPerTx < 1) {
     throw planError(`maxStepsPerTx must be a positive integer`);
   }
-  const pins = NATIVE_SCRIPT_DECODING_EXEC_PINS;
+  const costs = NATIVE_SCRIPT_DECODING_PLAN_COSTS;
   const wrongfulAcceptance =
     direction === MidgardNativeScriptDecodingDirections.WrongfulAcceptance;
   const chunkCount = midgardBoundedItemChunkCount(itemBytes.length);
@@ -71,7 +71,7 @@ export const buildNativeScriptDecodingScanPlan = ({
           "fault, not a wrongful rejection",
       );
     }
-    const predicted = pins.verdictWrongfulAcceptance;
+    const predicted = costs.verdictWrongfulAcceptance;
     assertWithinBasis("the bind-malformed verdict", predicted);
     return {
       route: NativeScriptDecodingPlanRoutes.BindMalformed,
@@ -98,7 +98,7 @@ export const buildNativeScriptDecodingScanPlan = ({
           "not a wrongful acceptance",
       );
     }
-    const predicted = pins.descriptorContradictionClose;
+    const predicted = costs.descriptorContradictionClose;
     assertWithinBasis("the descriptor-contradiction close", predicted);
     return {
       route: NativeScriptDecodingPlanRoutes.DescriptorContradiction,
@@ -217,7 +217,7 @@ export const buildNativeScriptDecodingScanPlan = ({
               chunkCount,
           }
         : null;
-    const predicted = pins.verdictWrongfulAcceptance;
+    const predicted = costs.verdictWrongfulAcceptance;
     assertWithinBasis("the wrongful-acceptance verdict", predicted);
     // The budget-1 Verdict fold must exhibit exactly the pinned refusal.
     const replay = budgetedMidgardNativeScriptDecodingScan({
@@ -246,7 +246,7 @@ export const buildNativeScriptDecodingScanPlan = ({
       predictedCpuUnits: predicted.cpu,
     };
   } else {
-    const predicted = pins.verdictWrongfulRejection;
+    const predicted = costs.verdictWrongfulRejection;
     assertWithinBasis("the wrongful-rejection verdict", predicted);
     verdict = {
       control: verdictControl,

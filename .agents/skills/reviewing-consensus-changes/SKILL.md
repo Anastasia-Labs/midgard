@@ -51,7 +51,7 @@ Each step ends on the condition written after "Done when".
 Fix the base (`git merge-base HEAD origin/main`, or the commit the task names)
 and produce the full diff, committed and uncommitted. List every touched
 subtree and pick its invariants file from the table below. List the gates that
-cover the touched paths (golden `:check` channels, execution ledgers, focused
+cover the touched paths (golden `:check` channels, script budgets, focused
 Aiken modules, emulator suites).
 
 Done when: the diff, the invariants files, and the gate list are written down.

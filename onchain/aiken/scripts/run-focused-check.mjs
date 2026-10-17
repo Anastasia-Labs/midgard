@@ -180,7 +180,7 @@ export const focusedCheck = ({
       stdout,
     };
   }
-  // stdout is Aiken's report, which the execution-ledger measurer parses; the
+  // stdout is Aiken's report, which the script-budget judge parses; the
   // summary goes to stderr.
   return {
     status: 0,
