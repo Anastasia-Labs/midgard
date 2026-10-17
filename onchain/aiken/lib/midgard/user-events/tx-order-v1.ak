@@ -1,8 +1,11 @@
 use aiken/builtin
 use aiken/collection/list
 use aiken/primitive/bytearray
+use cardano/address.{Address, Credential, Inline, Script, VerificationKey}
 use cardano/assets.{PolicyId}
-use cardano/transaction.{InlineDatum, Input, Output}
+use cardano/transaction.{
+  Datum as CardanoDatum, DatumHash, InlineDatum, Input, Output,
+}
 use midgard/common/utils
 use midgard/fraud_proofs/native_tx/codec.{decode_canonical_int_at}
 use midgard/fraud_proofs/native_tx/compact.{
@@ -80,6 +83,55 @@ pub fn material_carriage_matches_event(
   when event is {
     user_events.BurnEventNFT { .. } -> list.is_empty(material_carriage)
     user_events.AuthenticateEvent { .. } -> True
+  }
+}
+
+/// The order datum the mint admits, read from the event output's inline datum.
+///
+/// The shared `user_events.validate_mint` reads only the datum's first three
+/// fields. One typed `expect` here holds the whole datum to the type the spend
+/// handler and the omission proof cast it to: constructor 0, exactly five
+/// fields, each field at its type, and `refund_datum`'s inline payload left as
+/// `Data`.
+///
+/// The typed cast reads a hash as any byte string and reads a `Pointer` stake
+/// part, so the refund address and datum are then held to the shapes the
+/// ledger can pay at settle: a payment credential with a 28-byte hash, a stake
+/// part that is either absent or an `Inline` credential with a 28-byte hash,
+/// and a `DatumHash` of 32 bytes. Each is its own `expect`, so a traced run
+/// names the one that refused.
+///
+/// This lives in the library rather than inline in the mint so it has a test
+/// harness, as `material_carriage_matches_event` does.
+pub fn admitted_order_datum(order_data: Data) -> Datum {
+  expect order: Datum = order_data
+  let user_events.OptimisticDatum { refund_address, refund_datum, .. } = order
+  let Address { payment_credential, stake_credential } = refund_address
+  expect credential_hash_is_28_bytes(payment_credential)
+  expect refund_datum_hash_is_32_bytes(refund_datum)
+  when stake_credential is {
+    None -> order
+    Some(stake_part) -> {
+      expect Inline(stake_credential) = stake_part
+      expect credential_hash_is_28_bytes(stake_credential)
+      order
+    }
+  }
+}
+
+fn credential_hash_is_28_bytes(credential: Credential) -> Bool {
+  when credential is {
+    VerificationKey(hash) -> bytearray.length(hash) == 28
+    Script(hash) -> bytearray.length(hash) == 28
+  }
+}
+
+/// `NoDatum` and `InlineDatum` carry no hash, so only a `DatumHash` is held to
+/// a length.
+fn refund_datum_hash_is_32_bytes(refund_datum: CardanoDatum) -> Bool {
+  when refund_datum is {
+    DatumHash(hash) -> bytearray.length(hash) == 32
+    _ -> True
   }
 }
 
