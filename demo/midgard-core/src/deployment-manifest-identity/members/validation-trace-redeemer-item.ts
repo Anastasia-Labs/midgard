@@ -13,8 +13,8 @@ export const validationTraceRedeemerItemMembers = defineDeploymentFamily(
       validatorTitle:
         "fraud_proofs/validation_trace/script_sources_stage_one_redeemer_traversal_normalizer_v1.main.spend",
       familyPaths: [
-        ["steps", "98"],
         ["scriptSourcesStageOneRedeemerStages", "traversalNormalizer"],
+        ["steps", "98"],
       ],
     },
     validationTraceDisputeRedeemerItemOuterNormalizer: {
@@ -27,8 +27,8 @@ export const validationTraceRedeemerItemMembers = defineDeploymentFamily(
       validatorTitle:
         "fraud_proofs/validation_trace/script_sources_stage_one_redeemer_outer_normalizer_v1.main.spend",
       familyPaths: [
-        ["steps", "99"],
         ["scriptSourcesStageOneRedeemerStages", "outerNormalizer"],
+        ["steps", "99"],
       ],
     },
     validationTraceDisputeRedeemerItemSourceAuthenticator: {
@@ -41,8 +41,8 @@ export const validationTraceRedeemerItemMembers = defineDeploymentFamily(
       validatorTitle:
         "fraud_proofs/validation_trace/script_sources_stage_one_redeemer_source_authenticator.main.spend",
       familyPaths: [
-        ["steps", "100"],
         ["scriptSourcesStageOneRedeemerStages", "sourceAuthenticator"],
+        ["steps", "100"],
       ],
     },
     validationTraceDisputeRedeemerItemFoldMapExecutor: {
@@ -55,9 +55,9 @@ export const validationTraceRedeemerItemMembers = defineDeploymentFamily(
       validatorTitle:
         "fraud_proofs/validation_trace/script_sources_stage_one_redeemer_fold_map_executor_v1.main.spend",
       familyPaths: [
-        ["steps", "101"],
         ["scriptSourcesStageOneRedeemerStages", "executors", "0"],
         ["scriptSourcesStageOneRedeemerStages", "foldMapExecutor"],
+        ["steps", "101"],
       ],
     },
     validationTraceDisputeRedeemerItemFinalizeFrameExecutor: {
@@ -71,9 +71,9 @@ export const validationTraceRedeemerItemMembers = defineDeploymentFamily(
       validatorTitle:
         "fraud_proofs/validation_trace/script_sources_stage_one_redeemer_finalize_frame_executor_v1.main.spend",
       familyPaths: [
-        ["steps", "102"],
         ["scriptSourcesStageOneRedeemerStages", "executors", "1"],
         ["scriptSourcesStageOneRedeemerStages", "finalizeFrameExecutor"],
+        ["steps", "102"],
       ],
     },
     validationTraceDisputeRedeemerItemOpenHeaderExecutor: {
@@ -86,8 +86,8 @@ export const validationTraceRedeemerItemMembers = defineDeploymentFamily(
       validatorTitle:
         "fraud_proofs/validation_trace/script_sources_stage_one_redeemer_open_header_executor.main.spend",
       familyPaths: [
-        ["steps", "103"],
         ["scriptSourcesStageOneRedeemerStages", "executors", "2"],
+        ["steps", "103"],
       ],
     },
     validationTraceDisputeRedeemerItemOpenTailExecutor: {
@@ -100,8 +100,8 @@ export const validationTraceRedeemerItemMembers = defineDeploymentFamily(
       validatorTitle:
         "fraud_proofs/validation_trace/script_sources_stage_one_redeemer_open_tail_executor.main.spend",
       familyPaths: [
-        ["steps", "104"],
         ["scriptSourcesStageOneRedeemerStages", "executors", "3"],
+        ["steps", "104"],
       ],
     },
     validationTraceDisputeRedeemerItemHeadScalarExecutor: {
@@ -114,8 +114,8 @@ export const validationTraceRedeemerItemMembers = defineDeploymentFamily(
       validatorTitle:
         "fraud_proofs/validation_trace/script_sources_stage_one_redeemer_head_scalar_executor.main.spend",
       familyPaths: [
-        ["steps", "105"],
         ["scriptSourcesStageOneRedeemerStages", "executors", "4"],
+        ["steps", "105"],
       ],
     },
     validationTraceDisputeRedeemerItemHeadSequenceExecutor: {
@@ -128,8 +128,8 @@ export const validationTraceRedeemerItemMembers = defineDeploymentFamily(
       validatorTitle:
         "fraud_proofs/validation_trace/script_sources_stage_one_redeemer_head_sequence_executor.main.spend",
       familyPaths: [
-        ["steps", "106"],
         ["scriptSourcesStageOneRedeemerStages", "executors", "5"],
+        ["steps", "106"],
       ],
     },
     validationTraceDisputeRedeemerItemHeadMapExecutor: {
@@ -142,8 +142,8 @@ export const validationTraceRedeemerItemMembers = defineDeploymentFamily(
       validatorTitle:
         "fraud_proofs/validation_trace/script_sources_stage_one_redeemer_head_map_executor.main.spend",
       familyPaths: [
-        ["steps", "107"],
         ["scriptSourcesStageOneRedeemerStages", "executors", "6"],
+        ["steps", "107"],
       ],
     },
     validationTraceDisputeRedeemerItemHeadLargeConstructorExecutor: {
@@ -157,8 +157,8 @@ export const validationTraceRedeemerItemMembers = defineDeploymentFamily(
       validatorTitle:
         "fraud_proofs/validation_trace/script_sources_stage_one_redeemer_head_large_constructor_executor.main.spend",
       familyPaths: [
-        ["steps", "108"],
         ["scriptSourcesStageOneRedeemerStages", "executors", "7"],
+        ["steps", "108"],
       ],
     },
     validationTraceDisputeRedeemerItemAttachIntegerExecutor: {
@@ -172,8 +172,8 @@ export const validationTraceRedeemerItemMembers = defineDeploymentFamily(
       validatorTitle:
         "fraud_proofs/validation_trace/script_sources_stage_one_redeemer_attach_integer_executor.main.spend",
       familyPaths: [
-        ["steps", "109"],
         ["scriptSourcesStageOneRedeemerStages", "executors", "8"],
+        ["steps", "109"],
       ],
     },
     validationTraceDisputeRedeemerItemAttachBytesExecutor: {
@@ -186,8 +186,8 @@ export const validationTraceRedeemerItemMembers = defineDeploymentFamily(
       validatorTitle:
         "fraud_proofs/validation_trace/script_sources_stage_one_redeemer_attach_bytes_executor.main.spend",
       familyPaths: [
-        ["steps", "110"],
         ["scriptSourcesStageOneRedeemerStages", "executors", "9"],
+        ["steps", "110"],
       ],
     },
     validationTraceDisputeRedeemerItemFoldListExecutor: {
@@ -200,8 +200,8 @@ export const validationTraceRedeemerItemMembers = defineDeploymentFamily(
       validatorTitle:
         "fraud_proofs/validation_trace/script_sources_stage_one_redeemer_fold_list_executor.main.spend",
       familyPaths: [
-        ["steps", "111"],
         ["scriptSourcesStageOneRedeemerStages", "executors", "10"],
+        ["steps", "111"],
       ],
     },
     validationTraceDisputeRedeemerItemAdvanceIntegerExecutor: {
@@ -215,8 +215,8 @@ export const validationTraceRedeemerItemMembers = defineDeploymentFamily(
       validatorTitle:
         "fraud_proofs/validation_trace/script_sources_stage_one_redeemer_advance_integer_executor.main.spend",
       familyPaths: [
-        ["steps", "112"],
         ["scriptSourcesStageOneRedeemerStages", "executors", "11"],
+        ["steps", "112"],
       ],
     },
     validationTraceDisputeRedeemerItemAdvanceBytesExecutor: {
@@ -229,8 +229,8 @@ export const validationTraceRedeemerItemMembers = defineDeploymentFamily(
       validatorTitle:
         "fraud_proofs/validation_trace/script_sources_stage_one_redeemer_advance_bytes_executor.main.spend",
       familyPaths: [
-        ["steps", "113"],
         ["scriptSourcesStageOneRedeemerStages", "executors", "12"],
+        ["steps", "113"],
       ],
     },
     validationTraceDisputeRedeemerItemAdvanceLargeConstructorExecutor: {
@@ -244,8 +244,8 @@ export const validationTraceRedeemerItemMembers = defineDeploymentFamily(
       validatorTitle:
         "fraud_proofs/validation_trace/script_sources_stage_one_redeemer_advance_large_constructor_executor.main.spend",
       familyPaths: [
-        ["steps", "114"],
         ["scriptSourcesStageOneRedeemerStages", "executors", "13"],
+        ["steps", "114"],
       ],
     },
     validationTraceDisputeRedeemerItemAdvanceLargeFieldsExecutor: {
@@ -259,8 +259,8 @@ export const validationTraceRedeemerItemMembers = defineDeploymentFamily(
       validatorTitle:
         "fraud_proofs/validation_trace/script_sources_stage_one_redeemer_advance_large_fields_executor.main.spend",
       familyPaths: [
-        ["steps", "115"],
         ["scriptSourcesStageOneRedeemerStages", "executors", "14"],
+        ["steps", "115"],
       ],
     },
     validationTraceDisputeRedeemerItemCloseExecutor: {
@@ -273,8 +273,8 @@ export const validationTraceRedeemerItemMembers = defineDeploymentFamily(
       validatorTitle:
         "fraud_proofs/validation_trace/script_sources_stage_one_redeemer_close_executor.main.spend",
       familyPaths: [
-        ["steps", "116"],
         ["scriptSourcesStageOneRedeemerStages", "executors", "15"],
+        ["steps", "116"],
       ],
     },
     validationTraceDisputeRedeemerItemFinishDataExecutor: {
@@ -287,8 +287,8 @@ export const validationTraceRedeemerItemMembers = defineDeploymentFamily(
       validatorTitle:
         "fraud_proofs/validation_trace/script_sources_stage_one_redeemer_finish_data_executor.main.spend",
       familyPaths: [
-        ["steps", "117"],
         ["scriptSourcesStageOneRedeemerStages", "executors", "16"],
+        ["steps", "117"],
       ],
     },
     validationTraceDisputeRedeemerItemInvalidHeaderExecutor: {
@@ -302,8 +302,8 @@ export const validationTraceRedeemerItemMembers = defineDeploymentFamily(
       validatorTitle:
         "fraud_proofs/validation_trace/script_sources_stage_one_redeemer_invalid_header_executor.main.spend",
       familyPaths: [
-        ["steps", "118"],
         ["scriptSourcesStageOneRedeemerStages", "executors", "17"],
+        ["steps", "118"],
       ],
     },
     validationTraceDisputeRedeemerItemInvalidTailExecutor: {
@@ -316,8 +316,8 @@ export const validationTraceRedeemerItemMembers = defineDeploymentFamily(
       validatorTitle:
         "fraud_proofs/validation_trace/script_sources_stage_one_redeemer_invalid_tail_executor.main.spend",
       familyPaths: [
-        ["steps", "119"],
         ["scriptSourcesStageOneRedeemerStages", "executors", "18"],
+        ["steps", "119"],
       ],
     },
     validationTraceDisputeRedeemerItemInvalidDataExecutor: {
@@ -330,8 +330,8 @@ export const validationTraceRedeemerItemMembers = defineDeploymentFamily(
       validatorTitle:
         "fraud_proofs/validation_trace/script_sources_stage_one_redeemer_invalid_data_executor.main.spend",
       familyPaths: [
-        ["steps", "120"],
         ["scriptSourcesStageOneRedeemerStages", "executors", "19"],
+        ["steps", "120"],
       ],
     },
     validationTraceDisputeRedeemerItemInvalidScalarDataExecutor: {
@@ -345,8 +345,8 @@ export const validationTraceRedeemerItemMembers = defineDeploymentFamily(
       validatorTitle:
         "fraud_proofs/validation_trace/script_sources_stage_one_redeemer_invalid_scalar_data_executor.main.spend",
       familyPaths: [
-        ["steps", "121"],
         ["scriptSourcesStageOneRedeemerStages", "executors", "20"],
+        ["steps", "121"],
       ],
     },
     validationTraceDisputeRedeemerItemSettlement: {
@@ -359,8 +359,8 @@ export const validationTraceRedeemerItemMembers = defineDeploymentFamily(
       validatorTitle:
         "fraud_proofs/validation_trace/script_sources_stage_one_redeemer_execution_settlement_v1.main.spend",
       familyPaths: [
-        ["steps", "122"],
         ["scriptSourcesStageOneRedeemerStages", "settlement"],
+        ["steps", "122"],
       ],
     },
     validationTraceDisputeScriptSourcesRedeemerNormalizationSemantic: {
@@ -374,9 +374,9 @@ export const validationTraceRedeemerItemMembers = defineDeploymentFamily(
       validatorTitle:
         "fraud_proofs/validation_trace/script_sources_stage_one_redeemer_envelope_v1.main.spend",
       familyPaths: [
-        ["steps", "97"],
         ["scriptSourcesStageOneRedeemerStages", "envelope"],
         ["semanticResolvers", "90"],
+        ["steps", "97"],
       ],
     },
   },
