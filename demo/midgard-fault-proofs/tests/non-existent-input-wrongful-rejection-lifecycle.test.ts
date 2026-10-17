@@ -1,7 +1,3 @@
-import { createHash } from "node:crypto";
-import { readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
-
 import {
   computeHash28,
   computeMidgardNativeTxId,
@@ -15,7 +11,7 @@ import { materializeMidgardForcedTxFromCanonical } from "@al-ft/midgard-core/cod
 import * as SDK from "@al-ft/midgard-sdk";
 import { buildCanonicalMidgardLedgerEntryOutputMaterial } from "@al-ft/midgard-validation";
 import { Data, getAddressDetails, type UTxO } from "@lucid-evolution/lucid";
-import { afterAll, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import {
   certifyFaultProofFieldCarriage,
@@ -33,11 +29,6 @@ import {
   nonExistentInputForcedSourceMaterial,
   type PreparedNonExistentInputWrongfulRejection,
 } from "../src/non-existent-input/wrongful-rejection.js";
-import {
-  buildVanRossemFitLedger,
-  type VanRossemFitMeasurement,
-  writeVanRossemFitLedger,
-} from "../src/proof-fit/van-rossem-fit-ledger.js";
 import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.js";
 import { submitInit } from "../src/submit-init.js";
 import {
@@ -47,7 +38,6 @@ import {
   keyValuePhasRootWithCount,
 } from "../src/transition-trace/phas.js";
 import { submitZeroInputCancel } from "../src/zero-input/submit-cancel.js";
-import { realBlueprintPath } from "./support/emulator/blueprints.js";
 import { buildCatalogueDeploymentInfo } from "./support/emulator/catalogue.js";
 import { alignUnixTimeToEmulatorSlotBoundary } from "./support/emulator/emulator-context.js";
 import { makeFaultProofEmulatorHarness } from "./support/emulator/harness.js";
@@ -63,32 +53,6 @@ import {
   publishRemovalReferenceScripts,
 } from "./support/submit-init-emulator-shared.js";
 import { syntheticDeepMembershipProof } from "./support/synthetic-deep-proof.js";
-
-const measurements: VanRossemFitMeasurement[] = [];
-afterAll(async () => {
-  if (process.env.MIDGARD_WRITE_FIT_LEDGER !== "1") return;
-  expect(
-    measurements.some((row) =>
-      row.name.startsWith("819/818/true/false/step-4"),
-    ),
-  ).toBe(true);
-  const blueprint = realBlueprintPath;
-  await writeVanRossemFitLedger(
-    fileURLToPath(
-      new URL(
-        "../../../docs/fault-proofs/size-plans/non-existent-input-wrongful-rejection-v1-fit-ledger.json",
-        import.meta.url,
-      ),
-    ),
-    buildVanRossemFitLedger({
-      category: "nonExistentInput",
-      blueprintSha256: createHash("sha256")
-        .update(readFileSync(blueprint))
-        .digest("hex"),
-      measurements,
-    }),
-  );
-});
 
 describe("nonExistentInput wrongful rejection registered lifecycle", () => {
   it.each([
@@ -117,42 +81,25 @@ describe("nonExistentInput wrongful rejection registered lifecycle", () => {
         harness.contracts.fraudProofs,
       );
       const categoryId = catalogue.categories.nonExistentInput.categoryId;
-      const captures = async <T>(
-        name: string,
-        action: () => Promise<T>,
-        kind: "publication" | "lifecycle" = "lifecycle",
-      ) => {
+      const captures = async <T>(name: string, action: () => Promise<T>) => {
         const captured = await captureEmulatorSubmission(
           harness.emulator,
           action,
         ).catch((error) => {
           throw new Error(`stage ${name}: ${String(error)}`);
         });
-        captured.measurements.forEach((m, i) =>
-          measurements.push({
-            name: `${count}/${index}/${deep}/${honest}/${name}/${i}`,
-            kind,
-            maximumShape: `${count} inputs; ${deep ? 64 : 0} MPF branch levels per source/event/transition/ledger proof`,
-            signedBytes: m.completeSignedBytes,
-            memoryUnits: m.executionMemory,
-            cpuUnits: m.executionSteps,
-          }),
-        );
         return captured.result;
       };
       const references: UTxO[] = [];
       for (const [stepIndex, step] of contracts.steps.entries())
         references.push(
           (
-            await captures(
-              `publish-step-${stepIndex}`,
-              () =>
-                publishPlainReferenceScriptUtxo({
-                  lucid: harness.proverLucid,
-                  script: step.spendingScript,
-                  label: `no-input step ${stepIndex}`,
-                }),
-              "publication",
+            await captures(`publish-step-${stepIndex}`, () =>
+              publishPlainReferenceScriptUtxo({
+                lucid: harness.proverLucid,
+                script: step.spendingScript,
+                label: `no-input step ${stepIndex}`,
+              }),
             )
           ).utxo,
         );
@@ -419,17 +366,14 @@ describe("nonExistentInput wrongful rejection registered lifecycle", () => {
       const chunks =
         plan.plan.tier === "Inline"
           ? []
-          : await captures(
-              "field-publications",
-              () =>
-                publishFaultProofFieldCarriage({
-                  lucid: harness.proverLucid,
-                  signer: harness.proverSigner,
-                  planned: plan,
-                  publisherAddress: harness.proverSigner.address,
-                  label: "no-input field",
-                }),
-              "publication",
+          : await captures("field-publications", () =>
+              publishFaultProofFieldCarriage({
+                lucid: harness.proverLucid,
+                signer: harness.proverSigner,
+                planned: plan,
+                publisherAddress: harness.proverSigner.address,
+                label: "no-input field",
+              }),
             );
       let certificates: typeof references = [];
       if (plan.plan.tier === "Certified") {

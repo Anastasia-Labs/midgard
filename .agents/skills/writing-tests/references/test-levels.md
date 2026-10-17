@@ -99,9 +99,9 @@ shared plumbing in `demo/midgard-core/scripts/golden-channel.mjs`).
   read `onchain/aiken/plutus.json`, which is build output and untracked.
   `contrib test` makes it ready first: it copies one from a checkout with
   identical inputs, else runs `pnpm --dir demo deployment:build <profile>`,
-  which refuses any `aiken` but the pinned fork. The suites' global setup
-  refuses a blueprint whose build record names other sources or another
-  compiler.
+  which refuses any `aiken` but the pinned fork. A raw run gets the same from
+  the suites' global setup, which rebuilds a blueprint whose build record
+  names other sources or another compiler before any file starts.
 
 - **Focused run:**
 

@@ -7,7 +7,6 @@ import "@al-ft/midgard-sdk";
 import "@lucid-evolution/lucid";
 import "vitest";
 import "../../src/index.js";
-import "../../src/proof-fit/van-rossem-fit-ledger.js";
 import "../../src/transition-trace/history-opening.js";
 import "../../src/transition-trace/index.js";
 import "../../src/transition-trace/proof-carriage.js";

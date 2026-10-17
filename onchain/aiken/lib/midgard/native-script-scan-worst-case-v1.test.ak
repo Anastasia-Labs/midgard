@@ -4,16 +4,14 @@
 //// at four cardinalities on both shapes, with the two independent predicates
 //// decision 0005 A3 offers as alternatives measured on the same vectors.
 ////
-//// The readings are not published here. They are pinned, taken through
-//// `scripts/run-focused-check.mjs`, in
-//// `scripts/native-script-scan-exec-ledger-v1.json` and judged by
-//// `scripts/verify-native-script-scan-exec-ledger-v1.mjs`, which also
-//// recomputes the node counts below from the fresh readings rather than
-//// restating them.
+//// The readings are not published here. They are held to ceilings in
+//// `demo/midgard-core/src/script-budgets.json` and judged by
+//// `scripts/script-budgets.mjs`. The native-script scan planner derives its
+//// per-node costs from those ceilings.
 ////
 //// **The verdict, at the frozen basis.** `GOAL_SPEC_EXECUTION_BASIS_V1` is
 //// 13,200,000 memory units / 8,000,000,000 cpu units
-//// (`scripts/exec-ledger-within-basis-v1.mjs`; GOAL_SPEC §3.3 retires the
+//// (`SCRIPT_BUDGET_BASIS` in midgard-core; GOAL_SPEC §3.3 retires the
 //// 11,200,000 figure earlier benches used). Against it:
 ////
 //// * the deep worst case -- 16,341 bytes, 5,447 nodes, the largest payload the
@@ -22,7 +20,7 @@
 ////   **gate-derived from the curve in this module**, not a live measured row:
 ////   driving the vector costs ~12.6 GB of host memory and aborts the
 ////   whole-tree `aiken check`. The direct one-off reading of the same vector
-////   matched the derivation to 0.0007%; see the ledger's `derivedRows`;
+////   matched the derivation to 0.0007%;
 //// * the WIDE worst case -- 16,340 bytes, 5,446 nodes -- is the headline
 ////   **measured** row, live at 949,469,452 memory units, **71.9x over**, and
 ////   fails the precondition on its own;

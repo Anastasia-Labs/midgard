@@ -33,21 +33,21 @@ export const acceptedSuccess = async (
     setup.fraudulentBlockOutRef,
     setup.headerHash,
   );
-  record(`${prefix}-init`, shape.label, initialized.measurement);
+  record(`${prefix}-init`, initialized.measurement);
   const bound = await h.step01Accepted(
     initialized.result,
     finding,
     inclusions[0]!,
     setup.fraudulentBlockOutRef,
   );
-  record(`${prefix}-step01`, shape.label, bound.measurement);
+  record(`${prefix}-step01`, bound.measurement);
   const opened = await h.step02(
     bound.result.nextThreadOutRef,
     evidence,
     shape,
     staged,
   );
-  record(`${prefix}-step02`, shape.label, opened.measurement);
+  record(`${prefix}-step02`, opened.measurement);
   const decided = await h.scanAll(
     opened.result.nextThreadOutRef,
     evidence,
@@ -57,12 +57,8 @@ export const acceptedSuccess = async (
   );
   const proven = await h.step04(decided, evidence);
   expect(proven.result.fraudProofUnit).toBeTruthy();
-  record(`${prefix}-step04-proof-mint`, shape.label, proven.measurement);
+  record(`${prefix}-step04-proof-mint`, proven.measurement);
   coverage.reason(REASON_ARM, "accepted_invalid");
   coverage.scenario("wrongful_acceptance_success");
-  record(
-    `${prefix}-remove`,
-    shape.label,
-    (await h.removal(setup.headerHash)).measurement,
-  );
+  record(`${prefix}-remove`, (await h.removal(setup.headerHash)).measurement);
 };

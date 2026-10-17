@@ -33,28 +33,32 @@ import {
 import { buildBlock } from "./user-event-origin-fixture.build-block.js";
 import {
   blueprintBytes,
-  INITIALIZATION,
+  type MadeOriginDeployment,
   makeOriginDeployment,
+  originInitialization,
   type Point,
   pointAt,
   type SyntheticUserEventBlock,
 } from "./user-event-origin-fixture.make-config.js";
 
 /** The synthetic origin deployment and what its follower reads with. */
-export const followerUserEventsDeployment = (ruleBundleCommitment?: string) => {
+export const followerUserEventsDeployment = async (
+  ruleBundleCommitment?: string,
+) => {
   const followed = followerUserEventsDeploymentOf(
-    makeOriginDeployment(ruleBundleCommitment),
+    await makeOriginDeployment(ruleBundleCommitment),
   );
+  const { transactionCbor } = await originInitialization();
   return Object.freeze({
     ...followed,
     /** The hub-oracle output the activation transaction created. */
-    hubOutRef: activationHubOutRef(followed.scripts.hub),
+    hubOutRef: activationHubOutRef(transactionCbor, followed.scripts.hub),
   });
 };
 
 /** What a follower of `deployment` reads with. */
 export const followerUserEventsDeploymentOf = (
-  deployment: ReturnType<typeof makeOriginDeployment>,
+  deployment: MadeOriginDeployment,
 ) => {
   const deploymentIdentity = deployment.result;
   const scripts = readWatcherUserEventScriptBinding({
@@ -80,8 +84,8 @@ export const followerUserEventsDeploymentOf = (
   });
 };
 
-export type FollowerUserEventsDeployment = ReturnType<
-  typeof followerUserEventsDeployment
+export type FollowerUserEventsDeployment = Awaited<
+  ReturnType<typeof followerUserEventsDeployment>
 >;
 
 export type FollowedUserEventsDeployment = ReturnType<
@@ -89,11 +93,10 @@ export type FollowedUserEventsDeployment = ReturnType<
 >;
 
 const activationHubOutRef = (
+  activationCbor: string,
   hub: Readonly<{ policyId: string; assetName: string; addressHex: string }>,
 ): string => {
-  const transaction = CML.Transaction.from_cbor_hex(
-    INITIALIZATION.transactionCbor,
-  );
+  const transaction = CML.Transaction.from_cbor_hex(activationCbor);
   const outputs = transaction.body().outputs();
   for (let index = 0; index < outputs.len(); index += 1) {
     const output = outputs.get(index);

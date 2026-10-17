@@ -4,11 +4,8 @@ import { blake2b } from "@noble/hashes/blake2.js";
 import { Effect, Either } from "effect";
 import { describe, expect, it, vi } from "vitest";
 
-import {
-  buildDeterministicValidationMachineTrace,
-  DirectValidationTraceUnavailable,
-  RejectCodes,
-} from "../src/index.js";
+import { DirectValidationTraceUnavailable, RejectCodes } from "../src/index.js";
+import { buildDeterministicValidationMachineTrace } from "./helpers/trace-commit-golden.js";
 import { phaseARejection } from "./reject-subject.support.js";
 import {
   encodeRecomputedNativeTx,

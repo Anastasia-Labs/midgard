@@ -28,6 +28,7 @@ const makeFixture = async (t) => {
     "config/deployments",
     "demo/package.json",
     "demo/midgard-test-support/interactive-emulator.js",
+    "demo/midgard-test-support/build-lock.js",
     "demo/midgard-fault-proofs/scripts/traced-blueprint.mjs",
     "demo/scripts/deployment-profiles.mjs",
     "demo/scripts/deployment-profile-aiken.mjs",

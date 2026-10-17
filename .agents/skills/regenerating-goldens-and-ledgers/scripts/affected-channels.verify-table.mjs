@@ -8,7 +8,6 @@ import {
 import {
   expandSets,
   isGlob,
-  ledgerModules,
   matchesGlob,
   workspace,
 } from "./affected-channels.parse-arguments.mjs";
@@ -76,17 +75,6 @@ export const verifyTable = (tree, table) => {
     for (const root of channel.aikenClosure ?? []) {
       if (!trackedSet.has(root))
         problem(channel, `Aiken closure root ${root} is not tracked`);
-    }
-    if (channel.ledger) {
-      if (!trackedSet.has(channel.ledger))
-        problem(channel, `ledger ${channel.ledger} is not tracked`);
-      const modules = ledgerModules(tree, channel.ledger);
-      if (!modules.length)
-        problem(channel, `ledger ${channel.ledger} lists no measured modules`);
-      for (const { name, file } of modules) {
-        if (!file)
-          problem(channel, `measured module ${name} resolves to no .ak file`);
-      }
     }
     for (const reference of channel.packageScripts ?? []) {
       const { directory, script } = parsePackageScript(reference);

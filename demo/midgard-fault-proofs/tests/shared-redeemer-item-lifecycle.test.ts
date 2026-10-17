@@ -3,6 +3,7 @@ import {
   computeHash32,
   encodeCbor,
   MidgardRedeemerItemProofModes,
+  nextMidgardRedeemerItemProofSpan,
 } from "@al-ft/midgard-core";
 import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import {
@@ -80,11 +81,27 @@ it("executes every shared item executor through the exact CEK Pending to Verifie
   expect([...selected.keys()].sort((a, b) => a - b)).toEqual(
     Array.from({ length: 17 }, (_, i) => i),
   );
+  // The empty content step of B"", whose source window is empty.
+  const emptyContent = buildMidgardRedeemerItemProofTrace({
+    itemIndex: 0,
+    itemCount: 1,
+    itemBytes: encodeCbor([0n, 0n, Buffer.from("40", "hex"), [10n, 20n]]),
+    mode: MidgardRedeemerItemProofModes.Data,
+  }).steps.find(
+    (step) => nextMidgardRedeemerItemProofSpan(step.control)?.length === 0,
+  )!;
+  const steps = [
+    ...selected,
+    [
+      redeemerItemExecutor(emptyContent.control, emptyContent.witness).index,
+      emptyContent,
+    ] as const,
+  ];
   const account = generateEmulatorAccount({ lovelace: 40_000_000_000n });
   const prover = getAddressDetails(account.address).paymentCredential!.hash;
   const datum = (state: Data) =>
     Data.to(new Constr(0, [prover, new Constr(0, [state])]));
-  const cases = [...selected].map(([index, step]) => {
+  const cases = steps.map(([index, step], position) => {
     const witness = Data.from(
       Data.to<unknown>(redeemerItemProofWitnessData(step.witness)),
     );
@@ -96,7 +113,7 @@ it("executes every shared item executor through the exact CEK Pending to Verifie
     ]);
     return {
       index,
-      unit: policy + index.toString(16).padStart(64, "0"),
+      unit: policy + position.toString(16).padStart(64, "0"),
       plan: deriveCekRedeemerItemPlan({
         pending,
         witness,

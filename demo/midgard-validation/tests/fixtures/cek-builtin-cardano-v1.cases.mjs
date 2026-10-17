@@ -48,7 +48,8 @@ import { EDGES } from "./cek-builtin-cardano-v1.edges.mjs";
 
 /* ---------- per-tag random arguments ---------- */
 
-const randomArguments = (tag, rng) => {
+/** One seeded random argument list for `tag`, drawing from `rng`. */
+export const randomArguments = (tag, rng) => {
   const g1 = () => ({ ty: "g1", v: rng.pick(G1_POOL) });
   const g2 = () => ({ ty: "g2", v: rng.pick(G2_POOL) });
   const bytes = () => bs(randomBytes(rng));
@@ -234,6 +235,9 @@ const randomArguments = (tag, rng) => {
   }
 };
 
+/** The fixed edge vectors of `tag`, as `{ note, args, ... }`. */
+export const edgeCases = (tag) => EDGES[tag]?.() ?? [];
+
 const RANDOM_CASES = (tag) => {
   if (tag === 68 || tag === 69) return 0;
   if (tag >= 54 && tag <= 67) return 6;
@@ -257,7 +261,7 @@ export const buildCekBuiltinCardanoCases = () => {
         args: randomArguments(tag, rng),
       });
     }
-    for (const edge of EDGES[tag]?.() ?? []) cases.push({ tag, ...edge });
+    for (const edge of edgeCases(tag)) cases.push({ tag, ...edge });
   }
   return cases;
 };

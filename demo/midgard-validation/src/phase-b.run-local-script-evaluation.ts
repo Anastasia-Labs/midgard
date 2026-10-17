@@ -14,6 +14,7 @@ import {
   discoverLocalScriptExecutions,
   PURPOSE_KIND,
 } from "./phase-b.discover-local-script-executions.js";
+import { ScriptEvaluationIndeterminateError } from "./phase-b.evaluate-cek-script.js";
 import {
   type CandidateNode,
   collectScriptSources,
@@ -226,6 +227,15 @@ export const runLocalScriptEvaluation = (
         graph,
         execution: cek,
       });
+      if (result.kind === "indeterminate") {
+        return yield* Effect.fail(
+          new ScriptEvaluationIndeterminateError(
+            candidate.ledgerTx.txId,
+            `${execution.purpose.kind} ${execution.purpose.scriptHash}: ${result.detail}`,
+            { cause: result.cause },
+          ),
+        );
+      }
       if (result.kind === "script_invalid") {
         return {
           kind: "rejected",

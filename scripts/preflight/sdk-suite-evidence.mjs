@@ -122,7 +122,7 @@ export const sdkContext = (root, env) => {
       directory: `demo/${entry.name}`,
       name: json(root, `demo/${entry.name}/package.json`).name,
     }));
-  if (env.MIDGARD_REAL_BLUEPRINT_PATH || env.MIDGARD_BLUEPRINT_STAMP === "warn")
+  if (env.MIDGARD_REAL_BLUEPRINT_PATH)
     throw new Error("unsupported SDK blueprint profile");
   const inputs = [inputIdentity(root, "@repository").sha256];
   for (const name of Object.keys(SDK_SUITES)) {

@@ -29,6 +29,8 @@ export declare const rawSqlLoaderPlugin: () => {
 
 export declare const blueprintStampGlobalSetup: string;
 
+export declare const runSharedFixturesGlobalSetup: string;
+
 export declare const interactiveEmulatorBlueprint: string;
 export declare const interactiveEmulatorSetup: string;
 export declare const interactiveEmulatorPlugin: () => {

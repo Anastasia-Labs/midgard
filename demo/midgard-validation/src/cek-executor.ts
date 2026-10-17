@@ -16,8 +16,13 @@ export {
   type MidgardCekExecutionStep,
   type MidgardCekStructuralExecution,
 } from "./cek-executor.build-midgard-cek-execution-graph.js";
-export { executeMidgardCekStructuralProgram } from "./cek-executor.execute-midgard-cek-structural-program.js";
+export {
+  executeMidgardCekStructuralProgram,
+  type MidgardCekObservedRun,
+  startMidgardCekObservedRun,
+} from "./cek-executor.execute-midgard-cek-structural-program.js";
 export {
   type MidgardCekExecutionMode,
+  type MidgardCekStepObserver,
   type MidgardCekStructuralVerdict,
 } from "./cek-executor.step-recorder.js";

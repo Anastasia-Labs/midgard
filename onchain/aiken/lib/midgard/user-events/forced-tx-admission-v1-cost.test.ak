@@ -3,7 +3,7 @@
 //// the check report. Each measured row has a fixture-only control that builds
 //// the same views and runs no rule, so a row minus its control is the rules'
 //// own cost. The door's cost for the same material is the tx-order mint
-//// execution ledger's.
+//// script budget's.
 
 use aiken/collection/list
 use aiken/primitive/bytearray

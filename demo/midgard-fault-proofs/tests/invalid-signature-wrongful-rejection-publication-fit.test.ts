@@ -20,9 +20,6 @@ describe("invalidSignature signed publication fit", () => {
       });
       const measurement = published.publicationMeasurement;
       expect(measurement.completeSignedBytes).toBeLessThan(15_872);
-      console.info(
-        `[invalid-signature-publication] ${JSON.stringify({ step: index + 1, scriptHash: step.spendingScriptHash, bytes: measurement.completeSignedBytes, memory: measurement.executionMemory.toString(), cpu: measurement.executionSteps.toString() })}`,
-      );
     }
   }, 600_000);
 });

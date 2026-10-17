@@ -18,7 +18,7 @@ import {
 // Plutus evaluation, or public-chain inclusion.
 describe("state-queue catch-up finality", () => {
   it("observes a commit exactly when the follower's tip makes it release-deep", async () => {
-    const deployment = followerUserEventsDeployment();
+    const deployment = await followerUserEventsDeployment();
     const { authority } = deployment;
     const initialization = initializationTransaction(authority);
     const chain = syntheticChain();
