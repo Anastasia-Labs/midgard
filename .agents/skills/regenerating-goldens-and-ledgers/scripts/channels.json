@@ -694,7 +694,7 @@
     {
       "id": "script-source-lookup-rows",
       "kind": "golden",
-      "summary": "One-step script-source lookup vectors the TypeScript validation machine produces for each lookup row, rendered as a whole Aiken test module the on-chain machine must reproduce; the vitest suite writes it under MIDGARD_WRITE_SCRIPT_SOURCE_LOOKUP_ROWS=1 and compares it without.",
+      "summary": "One-step script-source lookup vectors the TypeScript validation machine produces for each lookup row, and its native execution scan vectors for each native row, rendered as a whole Aiken test module the on-chain machine must reproduce; the vitest suite writes it under MIDGARD_WRITE_SCRIPT_SOURCE_LOOKUP_ROWS=1 and compares it without.",
       "generators": [
         "demo/midgard-validation/tests/script-source-lookup.machine-rows.test.ts"
       ],
