@@ -146,7 +146,7 @@ differs from goldens, so they have their own page: [ledgers.md](ledgers.md).
 | `exec-ledger-transition-trace-descriptor`   | [review]: no CI step; needs `MIDGARD_AIKEN_ENV=testnet`                                                                                                                                      |
 | `forced-window-fit-ledger`                  | `pnpm --dir demo/midgard-fault-proofs fit:regenerate --check transition-trace-forced-window-fit-ledger.json` [ci: Midgard Node CI/Check the fit ledgers against a fresh run of their owners] |
 | `workflow-fit-ledger`                       | `pnpm --dir demo/midgard-fault-proofs fit:regenerate --check transition-trace-workflow-fit-ledger.json` [ci: Midgard Node CI/Check the fit ledgers against a fresh run of their owners]      |
-| `fault-proof-fit-ledgers`                   | `pnpm --dir demo/midgard-fault-proofs fit:regenerate --check --all` [ci: Midgard Node CI/Check the fit ledgers against a fresh run of their owners]; the ledgers no test writes: [review]    |
+| `fault-proof-fit-ledgers`                   | `pnpm --dir demo/midgard-fault-proofs fit:regenerate --check --all` [ci: Midgard Node CI/Check the fit ledgers against a fresh run of their owners]                                          |
 
 ## Blueprint-bound fixtures
 

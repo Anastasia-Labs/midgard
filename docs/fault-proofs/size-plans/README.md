@@ -9,7 +9,7 @@ compiler, blueprint, and shape; retaining a file does not make it current.
 | Contract             | Executable authority                                   | What it establishes                                                                                       |
 | -------------------- | ------------------------------------------------------ | --------------------------------------------------------------------------------------------------------- |
 | Fresh-run comparison | `fit:regenerate --check` ([below](#checking-a-ledger)) | Reruns each ledger's owning tests and compares the checked-in ledger with the one they write, row by row. |
-| Historical snapshot  | None                                                   | A ledger no test writes is recorded evidence only; it does not establish current-build fit.               |
+| Owner coverage       | `scripts/regenerate-fit-ledger.test.mjs`               | Every checked-in ledger has a test that writes it, so `--check` covers every one.                         |
 
 The `*-fit-ledger.test.ts` readers were removed on 2026-09-09: they compared
 a saved ledger to a transcribed copy of itself (or to a stale blueprint digest)
@@ -83,10 +83,8 @@ throws `FitLedgerWriteRefusedError` unless `MIDGARD_WRITE_FIT_LEDGER=1` is set,
 so an ordinary test run never rewrites one. Split ledgers and measured-fit
 fragments also need `MIDGARD_FIT_FRAGMENT_DIR` and a fresh
 `MIDGARD_FIT_MEASUREMENT_RUN` token. The command sets all three for its run;
-never set them by hand. Two variables instead name an output path, and naming
-it is the opt-in, so they need no flag: `MIN_ADA_FIT_LEDGER_PATH` (read by
-`min-ada-wrongful-rejection-lifecycle.test.ts`) and
-`TRANSITION_TRACE_FIT_LEDGER_PATH` (read by the three
+never set them by hand. One variable instead names an output path, and naming
+it is the opt-in, so it needs no flag: `TRANSITION_TRACE_FIT_LEDGER_PATH` (read by the three
 `submit-init-emulator-transition-trace-final*.test.ts` files). Of those three,
 `-final.test.ts` writes the named path itself; `-final-many-assets` and
 `-final-deep-deposit` write a sibling next to it, `<name>-many-assets<ext>` and
@@ -106,16 +104,11 @@ are numbered as one file running every case in order numbers them, and mint
 authorization's keep their `<scenario>/<stage>/...` names. A run that misses a
 part, or a part with a failed or filtered-out case, leaves the ledger untouched.
 
-No test writes twelve of the checked-in ledgers, and the command refuses
-each of them with the reason. `invalid-signature-wrongful-rejection-v1-fit-ledger.json`
-comes from `scripts/write-invalid-signature-fit-ledger.mjs`, which reads the
-log of a passing run, and `min-ada-wrongful-rejection-v1-fit-ledger.json` from
-the path `MIN_ADA_FIT_LEDGER_PATH` names. The other ten belong to families
-whose suites record measured-fit fragments
-(`tests/support/measured-fit-ledger.ts`) that nothing merges into a ledger.
-No test reads any of the twelve. The list is
-`LEDGERS_WITHOUT_SUITE_WRITER` in `fit-ledger-owners.mjs`; its test fails when
-the list and the test sources disagree.
+Every checked-in ledger has at least one owning test file. The node test
+`every committed fit ledger has a regenerating owner`
+(`scripts/regenerate-fit-ledger.test.mjs`) fails on a ledger no test writes,
+since nothing could compare it with the current build. Such a ledger is
+deleted, not kept as a snapshot.
 
 ## Fresh acceptance artifacts
 

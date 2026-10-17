@@ -15,7 +15,6 @@ import { test } from "node:test";
 
 import {
   discoverFitLedgerOwners,
-  LEDGERS_WITHOUT_SUITE_WRITER,
   packageDirectory,
   trackedFitLedgers,
 } from "./fit-ledger-owners.mjs";
@@ -27,17 +26,14 @@ import {
 const { ledgers: owners, unattributedWriters } = discoverFitLedgerOwners();
 const tracked = trackedFitLedgers();
 
-test("every checked-in fit ledger has an owning test file or a recorded other writer", () => {
+test("every committed fit ledger has a regenerating owner", () => {
+  // A ledger no test writes cannot be checked against the current build, so
+  // it is not kept: give it an owning test or delete it.
   assert.ok(tracked.length > 0);
-  const withoutOwner = tracked.filter((ledger) => !owners.get(ledger)?.length);
-  // Both ways: a ledger that gains a suite writer leaves the list, and one
-  // that loses it (or is written some new way) must be recorded there.
   assert.deepEqual(
-    withoutOwner,
-    [...LEDGERS_WITHOUT_SUITE_WRITER.keys()].sort(),
+    tracked.filter((ledger) => !owners.get(ledger)?.length),
+    [],
   );
-  for (const ledger of LEDGERS_WITHOUT_SUITE_WRITER.keys())
-    assert.ok(tracked.includes(ledger), `${ledger} is not checked in`);
 });
 
 test("every owner is a test file Vitest runs", () => {
@@ -85,7 +81,6 @@ test("every module that writes a fit ledger is attributed to the ledger it names
   // The rest take the path from their caller or from an environment
   // variable, or are unit tests writing under a temporary directory.
   assert.deepEqual(unattributedWriters, [
-    "tests/min-ada-wrongful-rejection-lifecycle.test.ts",
     "tests/support/measured-fit-ledger.ts",
     "tests/support/split-fit-ledger.ts",
     "tests/support/transition-trace-final-cases.register-transition-trace-final-cases.ts",
@@ -307,12 +302,12 @@ const cli = (...args) =>
     },
   );
 
-test("the command refuses a ledger no test writes, naming how it is written", () => {
-  const result = cli("zero-input-wrongful-rejection-v1-fit-ledger.json");
+test("the command refuses a ledger no test writes, naming it", () => {
+  const result = cli("unowned-fixture-fit-ledger.json");
   assert.equal(result.status, 2);
   assert.match(
     result.stderr,
-    /No test writes zero-input.*nothing merges them into this ledger/u,
+    /unowned-fixture-fit-ledger\.json is not a fit ledger any test names/u,
   );
 });
 

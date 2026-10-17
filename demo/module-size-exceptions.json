@@ -320,11 +320,6 @@
     "reason": "Retained test registration “production linear family authenticated state machine V1” (592 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor. DUPDEL (-6): the cross-block duplicate-event family was deleted; repeated deposit and withdrawal events are convicted by the fabricated-event families."
   },
   {
-    "file": "midgard-fault-proofs/tests/min-ada-wrongful-rejection-lifecycle.test.ts",
-    "max": 511,
-    "reason": "Retained test registration “minimum-Ada forced rejection” (566 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
-  },
-  {
     "file": "midgard-fault-proofs/tests/mint-declared-asset-limit-lifecycle.test.ts",
     "max": 1447,
     "reason": "Retained test registration “mintDeclaredAssetLimit registered-chain lifecycle” (1302 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor. C2a (+1): headers are committed with the commit slot as block_slot, and callers use the header the commit returns."
@@ -431,8 +426,8 @@
   },
   {
     "file": "midgard-fault-proofs/tests/submit-init-emulator-invalid-signature-lifecycle.test.ts",
-    "max": 752,
-    "reason": "Retained test registration “invalid-signature emulator lifecycle” (686 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor."
+    "max": 749,
+    "reason": "Retained test registration “invalid-signature emulator lifecycle” (683 lines): callbacks share suite-local fixtures, hooks or mocks. Top-level fixture helpers were extracted where independent; dividing the registration changes fixture lifetime or requires a separate harness refactor. The measurement log line that fed a deleted ledger writer was removed (-3)."
   },
   {
     "file": "midgard-fault-proofs/tests/submit-init-emulator-ledger-rules.test.ts",
@@ -491,8 +486,8 @@
   },
   {
     "file": "midgard-fault-proofs/tests/support/invalid-signature-wrongful-emulator.run-invalid-signature-wrongful-rejection-scenario.ts",
-    "max": 578,
-    "reason": "runInvalidSignatureWrongfulRejectionScenario is the dominant indivisible declaration (524 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. C2a (+1): headers are committed with the commit slot as block_slot, and callers use the header the commit returns."
+    "max": 575,
+    "reason": "runInvalidSignatureWrongfulRejectionScenario is the dominant indivisible declaration (521 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. C2a (+1): headers are committed with the commit slot as block_slot, and callers use the header the commit returns. The measurement log line that fed a deleted ledger writer was removed (-3)."
   },
   {
     "file": "midgard-fault-proofs/tests/support/mint-authorization-installed-lifecycle-cases.ts",

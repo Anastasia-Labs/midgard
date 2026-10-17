@@ -1,9 +1,5 @@
-import { createHash } from "node:crypto";
-import { readFile } from "node:fs/promises";
+import { describe, it } from "vitest";
 
-import { afterAll, describe, it } from "vitest";
-
-import { realBlueprintPath } from "./support/emulator/blueprints.js";
 import { runInvalidSignatureWrongfulRejectionScenario } from "./support/invalid-signature-wrongful-emulator.js";
 import { createMeasuredFitRecorder } from "./support/measured-fit-ledger.js";
 
@@ -32,13 +28,5 @@ describe("invalidSignature wrongful-rejection real lifecycle", () => {
     (scenario) =>
       runInvalidSignatureWrongfulRejectionScenario(scenario, measuredFit),
     600_000,
-  );
-});
-
-afterAll(async () => {
-  console.info(
-    `[invalid-signature-blueprint] ${createHash("sha256")
-      .update(await readFile(realBlueprintPath))
-      .digest("hex")}`,
   );
 });

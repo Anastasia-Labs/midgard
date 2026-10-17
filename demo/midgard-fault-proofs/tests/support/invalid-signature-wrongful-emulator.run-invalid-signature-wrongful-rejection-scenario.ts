@@ -572,7 +572,4 @@ export const runInvalidSignatureWrongfulRejectionScenario = async (
     expect(measurement.executionMemory).toBeLessThanOrEqual(16_500_000n);
     expect(measurement.executionSteps).toBeLessThanOrEqual(10_000_000_000n);
   }
-  console.info(
-    `[invalid-signature-forced-lifecycle-${decoyWitnessCount}-${rejectedIndex ?? "selected"}-${deepMembership ? "deep64" : "single"}] ${JSON.stringify(captures.flatMap((capture) => capture.measurements).map((measurement) => ({ bytes: measurement.completeSignedBytes, memory: measurement.executionMemory.toString(), cpu: measurement.executionSteps.toString() })))}`,
-  );
 };

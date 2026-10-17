@@ -1228,12 +1228,11 @@
     {
       "id": "fault-proof-fit-ledgers",
       "kind": "fit-ledger",
-      "summary": "The other fit ledgers under docs/fault-proofs/size-plans. Each one a test writes is checked by `fit:regenerate --check --all`, which compares a fresh run of its owners with the checked-in copy on every field except the blueprint and ledger digests. The ledgers no test writes (LEDGERS_WITHOUT_SUITE_WRITER in scripts/fit-ledger-owners.mjs) are recorded evidence that nothing compares with the current build.",
+      "summary": "The other fit ledgers under docs/fault-proofs/size-plans. Each one a test writes is checked by `fit:regenerate --check --all`, which compares a fresh run of its owners with the checked-in copy on every field except the blueprint and ledger digests. Every checked-in ledger has a test that writes it.",
       "generators": [
         "demo/midgard-fault-proofs/scripts/regenerate-fit-ledger.mjs",
         "demo/midgard-fault-proofs/tests/support/measured-fit-ledger.ts",
-        "demo/midgard-fault-proofs/tests/support/split-fit-ledger.ts",
-        "demo/midgard-fault-proofs/scripts/write-invalid-signature-fit-ledger.mjs"
+        "demo/midgard-fault-proofs/tests/support/split-fit-ledger.ts"
       ],
       "packageScripts": ["demo/midgard-fault-proofs:fit:regenerate"],
       "writerEnv": ["MIDGARD_WRITE_FIT_LEDGER"],

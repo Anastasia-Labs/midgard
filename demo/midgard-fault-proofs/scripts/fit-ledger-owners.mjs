@@ -28,46 +28,6 @@ export const packageDirectory = resolve(
 export const repositoryRoot = resolve(packageDirectory, "../..");
 export const SIZE_PLANS = "docs/fault-proofs/size-plans";
 
-/**
- * Checked-in ledgers that no test in this package writes, with how each one is
- * written instead. A test fails when this list and the discovered set differ,
- * so a ledger that gains or loses a suite writer must be moved in or out here.
- */
-const MEASURED_FRAGMENTS_ONLY =
-  "its suite records measured-fit fragments (tests/support/measured-fit-ledger.ts), and nothing merges them into this ledger";
-export const LEDGERS_WITHOUT_SUITE_WRITER = new Map([
-  [
-    "field-preimage-length-mismatch-v1-fit-ledger.json",
-    MEASURED_FRAGMENTS_ONLY,
-  ],
-  [
-    "input-set-uniqueness-wrongful-rejection-v1-fit-ledger.json",
-    MEASURED_FRAGMENTS_ONLY,
-  ],
-  [
-    "invalid-range-wrongful-rejection-v1-fit-ledger.json",
-    MEASURED_FRAGMENTS_ONLY,
-  ],
-  [
-    "invalid-signature-wrongful-rejection-v1-fit-ledger.json",
-    "scripts/write-invalid-signature-fit-ledger.mjs writes it from the log of a passing run; see that script's usage",
-  ],
-  [
-    "min-ada-wrongful-rejection-v1-fit-ledger.json",
-    "tests/min-ada-wrongful-rejection-lifecycle.test.ts writes only the path named by MIN_ADA_FIT_LEDGER_PATH",
-  ],
-  ["mint-declared-asset-limit-v1-fit-ledger.json", MEASURED_FRAGMENTS_ONLY],
-  ["missing-redeemer-v1-fit-ledger.json", MEASURED_FRAGMENTS_ONLY],
-  ["missing-script-source-v1-fit-ledger.json", MEASURED_FRAGMENTS_ONLY],
-  ["network-id-wrongful-rejection-v1-fit-ledger.json", MEASURED_FRAGMENTS_ONLY],
-  [
-    "protected-output-signer-missing-v1-fit-ledger.json",
-    MEASURED_FRAGMENTS_ONLY,
-  ],
-  ["redeemer-canonicity-v1-fit-ledger.json", MEASURED_FRAGMENTS_ONLY],
-  ["zero-input-wrongful-rejection-v1-fit-ledger.json", MEASURED_FRAGMENTS_ONLY],
-]);
-
 const SOURCE_FILE = /\.(?:ts|tsx|mts)$/u;
 const TEST_FILE = /\.test\.tsx?$/u;
 const WRITER_CALL = /\b(?:writeVanRossemFitLedger|createSplitFitLedgerPart)\(/u;

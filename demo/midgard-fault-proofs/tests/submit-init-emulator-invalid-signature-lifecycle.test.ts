@@ -219,9 +219,6 @@ describe("invalid-signature emulator lifecycle", () => {
         measurement.executionMemory === 0n ? "publication" : "lifecycle",
       );
       expectProofFit({ stage, measurement, maxTxExMem, maxTxExSteps });
-      console.info(
-        `[invalid-signature-accepted-fit] ${JSON.stringify({ stage, bytes: measurement.completeSignedBytes, memory: measurement.executionMemory.toString(), cpu: measurement.executionSteps.toString() })}`,
-      );
     }
 
     // The permanent token is minted and the thread NFT is burned: no step

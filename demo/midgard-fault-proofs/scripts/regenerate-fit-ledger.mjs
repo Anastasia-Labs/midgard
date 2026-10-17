@@ -46,7 +46,6 @@ import { fileURLToPath } from "node:url";
 
 import {
   discoverFitLedgerOwners,
-  LEDGERS_WITHOUT_SUITE_WRITER,
   packageDirectory,
   repositoryRoot,
   SIZE_PLANS,
@@ -333,7 +332,7 @@ const listing = (tracked, owners) =>
   tracked.map((ledger) =>
     owners.get(ledger)?.length
       ? `${ledger}: ${owners.get(ledger).join(" ")}`
-      : `${ledger}: no test writes it; ${LEDGERS_WITHOUT_SUITE_WRITER.get(ledger) ?? "unknown"}`,
+      : `${ledger}: no test writes it`,
   );
 
 export const main = async (argv, { run = runVitest } = {}) => {
@@ -363,19 +362,13 @@ export const main = async (argv, { run = runVitest } = {}) => {
     : [...new Set(named.map((name) => ledgerName(name, sizePlans, cwd)))];
   for (const ledger of requested) {
     if (owners.get(ledger)?.length) continue;
-    if (LEDGERS_WITHOUT_SUITE_WRITER.has(ledger))
-      throw new UsageError(
-        `No test writes ${ledger}: ${LEDGERS_WITHOUT_SUITE_WRITER.get(ledger)}`,
-      );
     throw new UsageError(
       `${ledger} is not a fit ledger any test names; ${COMMAND} --list shows them`,
     );
   }
   if (all)
     for (const ledger of tracked.filter((name) => !requested.includes(name)))
-      console.log(
-        `skipped: ${ledger} (no test writes it; ${LEDGERS_WITHOUT_SUITE_WRITER.get(ledger)})`,
-      );
+      console.log(`skipped: ${ledger} (no test writes it)`);
   console.log(
     `${check ? "Checking" : "Regenerating"} ${requested.join(", ")}\nby running ${[
       ...new Set(requested.flatMap((ledger) => owners.get(ledger))),

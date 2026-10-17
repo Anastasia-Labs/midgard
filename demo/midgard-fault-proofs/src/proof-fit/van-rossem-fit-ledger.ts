@@ -182,10 +182,9 @@ const outputPath = (path: string): string => {
  * Checked-in ledgers are evidence, so an ordinary test run must never rewrite
  * one: a write needs `MIDGARD_WRITE_FIT_LEDGER=1`. The one exception is
  * `namedByCaller`, for a path the person running the test supplied through the
- * test's own output variable (`MIN_ADA_FIT_LEDGER_PATH`,
- * `TRANSITION_TRACE_FIT_LEDGER_PATH`): setting that variable is the opt-in,
- * and requiring the global flag too would also rewrite every checked-in ledger
- * owned by another file in the same run.
+ * test's own output variable (`TRANSITION_TRACE_FIT_LEDGER_PATH`): setting
+ * that variable is the opt-in, and requiring the global flag too would also
+ * rewrite every checked-in ledger owned by another file in the same run.
  */
 export const writeVanRossemFitLedger = async (
   path: string,

@@ -122,10 +122,9 @@ is the authority. Its rules:
   transactions and writes the same ledger, execution budgets included. Other
   suites keep random wallets and a wall-clock start. A new owner needs the
   same call.
-- The ledgers no test writes (`LEDGERS_WITHOUT_SUITE_WRITER` in
-  `demo/midgard-fault-proofs/scripts/fit-ledger-owners.mjs`) are recorded
-  evidence. Nothing compares them with the current build, and no test reads
-  them.
+- Every checked-in ledger needs an owning test file. A ledger no test writes
+  cannot be compared with the current build, so it is deleted rather than
+  kept [ci: Midgard Node CI/Test the fit-ledger regeneration script].
 - Regenerate against a freshly built blueprint with
   `pnpm --dir demo/midgard-fault-proofs fit:regenerate <ledger>` (or `--all`;
   `--list` shows each ledger's owning test files). It finds the owning files
@@ -133,13 +132,12 @@ is the authority. Its rules:
   with a fragment directory and run token it makes for the run, and keeps the
   ledger only if every owning file passed and rewrote it; otherwise it puts
   the ledger back and exits 1. It sets `MIDGARD_FIT_FRAGMENT_DIR` and
-  `MIDGARD_FIT_MEASUREMENT_RUN` itself. The command refuses each ledger with
-  no suite writer, with the reason
-  [ci: Midgard Node CI/Test the fit-ledger regeneration script].
+  `MIDGARD_FIT_MEASUREMENT_RUN` itself. The command refuses a ledger no test
+  writes [ci: Midgard Node CI/Test the fit-ledger regeneration script].
 - Without the flag the writer throws `FitLedgerWriteRefusedError` for every
-  checked-in ledger, so no ledger changes; only the caller-named outputs
-  (`MIN_ADA_FIT_LEDGER_PATH`, `TRANSITION_TRACE_FIT_LEDGER_PATH`) write without
-  it [runtime: writeVanRossemFitLedger].
+  checked-in ledger, so no ledger changes; only the caller-named output
+  (`TRANSITION_TRACE_FIT_LEDGER_PATH`) writes without it
+  [runtime: writeVanRossemFitLedger].
 - Never replace a blueprint digest without re-measuring the transactions. A
   digest edited by hand makes an old measurement claim a new build [review].
 - Do not recommit a historical report just because a test run rewrote it.
