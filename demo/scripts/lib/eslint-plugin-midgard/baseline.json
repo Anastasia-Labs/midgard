@@ -1,30 +1,4 @@
 {
-  "midgard/apply-params-through-blueprint": {
-    "midgard-core/scripts/measure-validation-proof-item-envelope.mjs": {
-      "reason": "Measurement script that sizes applied validators outside the SDK; it never deploys or hashes a production script.",
-      "sites": ["script: applyParamsToScript("]
-    },
-    "midgard-fault-proofs/tests/cek-material-traversal-maximum.test.ts": {
-      "reason": "Test harness builds an applied script for the emulator directly to measure a traversal maximum; it is test material, not a deployed script.",
-      "sites": ["script: applyParamsToScript(validator.compiledCode, params),"]
-    },
-    "midgard-fault-proofs/tests/emulator-blueprint-boundary.test.ts": {
-      "reason": "Independent oracle: the test recomputes the same applied script outside the blueprint module with the pinned WASM API and canonical Plutus Data, comparing the guarded module's output independently. The original Lucid helper spelling changed; this remains the same single test oracle and does not deploy a production script.",
-      "sites": ["apply_params_to_script("]
-    },
-    "midgard-fault-proofs/tests/runtime-blueprint-construction.test.ts": {
-      "reason": "Independent oracle: the test recomputes the applied script outside the blueprint module to check that module's output against it.",
-      "sites": [").toBe(applyParamsToScript(compiledCode, [policy]));"]
-    },
-    "midgard-node/tests/reference-script-sweep-emulator.test.ts": {
-      "reason": "Test builds a sized always-succeeds filler script for a reference-script sweep; it is not a Midgard validator and has no blueprint entry.",
-      "sites": ["applyParamsToScript(alwaysSucceedsCode, ["]
-    },
-    "midgard-sdk/tests/fault-proof.expected-parameter-application.ts": {
-      "reason": "Independent test oracle migrated from the two resolver and contract-builder expectation files: encodes independently specified bindings with the supported pinned WASM API and canonical Plutus Data. Intentionally supports strict parameter prefixes to prove that underapplied hashes differ; it never deploys a production script.",
-      "sites": ["apply_params_to_script("]
-    }
-  },
   "midgard/depth-through-heads": {
     "midgard-core/src/availability-operation-journal.ts": {
       "reason": "Availability-challenge intent journal: cd/k shape check and the prune rule; I1 takes D-N8 (derived status for the SDK availability challenge).",
@@ -116,30 +90,6 @@
     "midgard-sdk/src/settlement.incomplete-resolve-settlement-program.ts": {
       "reason": "Genuine finding, recorded for the owner: disproveResolutionClaim sets the slashing penalty as the minimum fee and completes through completeTxWithLocalUPLCEvalProgram with coin selection on, so the fee can exceed the penalty. Only the event ABI test builds it today.",
       "sites": [".setMinFee(params.slashingPenaltyLovelace);"]
-    }
-  },
-  "midgard/fault-proof-reference-scripts-only": {
-    "midgard-sdk/src/fraud-proof/catalogue.ts": {
-      "reason": "One-shot catalogue initialization mint attaches its minting policy inline; it is not a fault-proof step validator, and whether the reference-script ruling covers it is an open owner question.",
-      "sites": [".attach.Script(params.validator.mintingScript);"]
-    },
-    "midgard-sdk/src/fraud-proof/field-preimage-carriage.build-unsigned-field-preimage-certification-program.ts": {
-      "reason": "The inline_emulator_only certificate witness branch, which exists for emulator tests; production carriage takes the reference-script branch.",
-      "sites": ["? transaction.attach.MintingPolicy("]
-    }
-  },
-  "midgard/local-uplc-eval": {
-    "midgard-node-tools/devnet/watcher-journeys/attestation-evaluation.test.ts": {
-      "reason": "Deliberate evaluator switch: MIDGARD_WATCHER_ATTESTATION_EVALUATOR=node hands evaluation to the real devnet node, which is the point of that journey mode.",
-      "sites": ["localUPLCEval:"]
-    },
-    "midgard-sdk/tests/scheduler-refresh.scheduler-refresh-sdk-builder-on-the-lucid-emulator.ts": {
-      "reason": "Structural test of script carriage (reference versus attached witness) whose causal negative expects the builder itself to throw; local evaluation would change why the negative fails, so switching it is not behaviour-neutral.",
-      "sites": [
-        ").complete({ localUPLCEval: false });",
-        ").complete({ localUPLCEval: false });",
-        ").complete({ localUPLCEval: false }),"
-      ]
     }
   },
   "midgard/locale-compare-explicit-locale": {
@@ -748,14 +698,6 @@
     "da-committee-node/src/l1/submitter.prune-in-flight-spends.ts": {
       "reason": "The DA submitter's readiness refresh pins the verified plain-ADA spendable set on purpose and re-runs before each submission; the persistent pin is the design, and releasing it would drop that filtering.",
       "sites": ["lucid.overrideUTxOs([...summary.spendableUtxos]);"]
-    }
-  },
-  "midgard/valid-from-wall-clock-margin": {
-    "midgard-sdk/src/operator-lifecycle/strike.plan-inactivity-takeover.ts": {
-      "reason": "Genuine finding, recorded for the owner: the inactivity takeover lower bound is max(nowMs, threshold + 1) with no backoff, so a submit whose node clock lags fails OutsideValidityInterval; changing it moves when a takeover becomes valid.",
-      "sites": [
-        "const validity: InactivityTakeoverValidity = { validFrom, validTo };"
-      ]
     }
   }
 }

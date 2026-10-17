@@ -69,6 +69,7 @@ export const publishForcedOrderCarriage = async (
       throw new Error("carriage publication output is missing");
     published.push(utxo);
   };
+  let certificatePolicyReferenceUtxo: UTxO | undefined;
   for (const field of plan.referenced) {
     for (const publication of SDK.fieldPreimagePublicationOutputs(field.plan)) {
       await publish(
@@ -82,6 +83,13 @@ export const publishForcedOrderCarriage = async (
       );
     }
     if (field.plan.tier === "Certified") {
+      certificatePolicyReferenceUtxo ??= (
+        await publishPlainReferenceScriptUtxo({
+          lucid: h.funderLucid,
+          script: h.contracts.fieldPreimageCertificate.mintingScript,
+          label: "forced-order field certificate",
+        })
+      ).utxo;
       await publish(
         `field-${field.fieldIndex}-certificate`,
         await Effect.runPromise(
@@ -91,11 +99,7 @@ export const publishForcedOrderCarriage = async (
             certificatePolicyId: h.contracts.fieldPreimageCertificate.policyId,
             certificateAddress:
               h.contracts.fieldPreimageCertificate.spendingScriptAddress,
-            certificateWitness: {
-              kind: "inline_emulator_only",
-              certificateScript:
-                h.contracts.fieldPreimageCertificate.mintingScript,
-            },
+            certificatePolicyReferenceUtxo,
             chunkUtxos: published.slice(-field.plan.publications.length),
             compactCbor: material.submitted_source.compact_cbor,
             witnessSetCompactCbor:

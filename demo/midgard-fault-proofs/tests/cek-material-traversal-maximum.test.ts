@@ -14,7 +14,6 @@ import {
 } from "@al-ft/midgard-core/cek-semantic";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
-  applyParamsToScript,
   type BuildTxWithRedeemer,
   Data,
   Emulator,
@@ -39,14 +38,10 @@ const blueprint = SDK.parseFaultProofBlueprint(
 const ctPolicy = "a1".repeat(28);
 const authPolicy = "b2".repeat(28);
 const threadUnit = ctPolicy + "c3".repeat(32);
-const appliedScript = (title: string, params: string[]): Script => {
-  const validator = blueprint.validators.find((entry) => entry.title === title);
-  if (validator === undefined) throw new Error(`Missing validator ${title}`);
-  return {
-    type: "PlutusV3",
-    script: applyParamsToScript(validator.compiledCode, params),
-  };
-};
+const appliedScript = (title: string, params: string[]): Script => ({
+  type: "PlutusV3",
+  script: SDK.applyBlueprintParams(blueprint, title, params),
+});
 const spendingScript = appliedScript(
   "fraud_proofs/validation_trace/cek_material_traversal_v1.main.spend",
   ["d4".repeat(28), ctPolicy, authPolicy],

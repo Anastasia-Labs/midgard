@@ -21,6 +21,7 @@ import { excludeUtxo } from "../../src/spend-input-witness.js";
 import { selectFeeInput } from "../../src/step-support.js";
 import { outputWithDatumAndUnitPredicate } from "../../src/tx-layout.js";
 import { witnessMintingPolicyCarriage } from "../../src/witness-reference-scripts.js";
+import { publishPlainReferenceScriptUtxo } from "./emulator/reference-scripts.js";
 import {
   makeMissingSignatureEmulatorHarness,
   type MissingSignatureScenario,
@@ -82,10 +83,13 @@ export const publishMissingSignatureField07Certificate = async ({
       plan: planned.plan,
       certificatePolicyId: certificate.policyId,
       certificateAddress: certificate.spendingScriptAddress,
-      certificateWitness: {
-        kind: "inline_emulator_only",
-        certificateScript: certificate.mintingScript,
-      },
+      certificatePolicyReferenceUtxo: (
+        await publishPlainReferenceScriptUtxo({
+          lucid: harness.funderLucid,
+          script: certificate.mintingScript,
+          label: "missing-signature field certificate",
+        })
+      ).utxo,
       chunkUtxos,
       compactCbor: scenario.block.nativeTxCompactCbor,
       witnessSetCompactCbor,

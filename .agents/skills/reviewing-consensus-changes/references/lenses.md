@@ -202,11 +202,9 @@ transaction executes, and a missing entry fails closed
 `demo/midgard-fault-proofs/src/linear-fault-family.ts:69`). Older families
 that still attach inline are not a precedent for new work.
 
-Blind spot: the runtime check covers only the builders that call it. No
-scan refuses a new `attach.*` in a fault-proof builder, and
-`inline_emulator_only` certificate witnesses
-(`demo/midgard-sdk/src/fraud-proof/field-preimage-carriage.ts:859`, `:920`)
-attach inline by design `[review]`.
+Blind spot: the runtime check covers only the builders that call it, and
+the lint `midgard/fault-proof-reference-scripts-only` refuses a new
+`attach.*` only inside the fault-proof source trees it lists `[review]`.
 
 Ask:
 

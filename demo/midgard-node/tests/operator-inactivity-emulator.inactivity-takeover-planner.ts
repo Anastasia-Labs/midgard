@@ -337,6 +337,35 @@ describe("inactivity takeover planner", () => {
     );
   });
 
+  it("starts the validity range before the planner's clock once the threshold allows it", () => {
+    const nowMs = thresholdMs + 90_000n;
+    const ready = SDK.planInactivityTakeover({
+      snapshot: fakeSnapshot({
+        operators: [OP_A, OP_B, OP_C],
+        currentOperator: OP_C,
+      }),
+      nowMs,
+      neglectedEvent,
+    });
+    expect(ready.kind).toBe("ready");
+    if (ready.kind !== "ready") {
+      return;
+    }
+    // Node submit validation can lag the planner's clock, so the lower bound
+    // keeps at least the repository's 30-second wall-clock margin, without
+    // reaching back to the threshold.
+    expect(ready.validity.validFrom).toBeLessThanOrEqual(nowMs - 30_000n);
+    expect(ready.validity.validFrom).toBeGreaterThan(thresholdMs);
+    // The submission still has the whole window ahead of the planner's clock.
+    expect(ready.validity.validTo).toBe(
+      nowMs + SDK.DEFAULT_STRIKE_VALIDITY_WINDOW_MS,
+    );
+    expect(ready.newStartTime).toBe(ready.validity.validTo - 1n);
+    expect(ready.newStartTime - ready.validity.validFrom).toBeLessThanOrEqual(
+      params.maxValidityRangeLengthMs,
+    );
+  });
+
   it("picks GoToNext for a non-head operator and Rewind for the head", () => {
     const operators = [OP_A, OP_B, OP_C];
     const goToNext = SDK.planInactivityTakeover({

@@ -1,19 +1,7 @@
 import { asDataType } from "@al-ft/midgard-core/lucid-data";
-import {
-  Assets,
-  Data,
-  fromText,
-  LucidEvolution,
-  toUnit,
-  TxBuilder,
-} from "@lucid-evolution/lucid";
-import { Effect } from "effect";
+import { Data, fromText } from "@lucid-evolution/lucid";
 
-import type {
-  AuthenticatedValidator,
-  FraudProofs,
-  MerkleRoot,
-} from "../common.js";
+import type { FraudProofs, MerkleRoot } from "../common.js";
 
 export const FRAUD_PROOF_CATALOGUE_ASSET_NAME = fromText(
   "MIDGARD_FRAUD_PROOF_CATALOGUE",
@@ -274,38 +262,3 @@ export const FraudProofCatalogueSpendRedeemer =
   asDataType<FraudProofCatalogueSpendRedeemer>(
     FraudProofCatalogueSpendRedeemerSchema,
   );
-
-export type FraudProofCatalogueInitParams = {
-  validator: AuthenticatedValidator;
-  mptRootHash: string;
-};
-
-/**
- * Init
- *
- * @param lucid - The LucidEvolution
- * @param params - The parameters
- * @returns {TxBuilder} A TxBuilder instance that can be used to build the transaction.
- */
-export const incompleteFraudProofCatalogueInitTxProgram = (
-  lucid: LucidEvolution,
-  params: FraudProofCatalogueInitParams,
-): Effect.Effect<TxBuilder, never> =>
-  Effect.gen(function* () {
-    const assets: Assets = {
-      [toUnit(params.validator.policyId, FRAUD_PROOF_CATALOGUE_ASSET_NAME)]: 1n,
-    };
-
-    return lucid
-      .newTx()
-      .mintAssets(assets, Data.to("Init", FraudProofCatalogueMintRedeemer))
-      .pay.ToAddressWithData(
-        params.validator.spendingScriptAddress,
-        {
-          kind: "inline",
-          value: Data.to(params.mptRootHash, FraudProofCatalogueDatum),
-        },
-        assets,
-      )
-      .attach.Script(params.validator.mintingScript);
-  });

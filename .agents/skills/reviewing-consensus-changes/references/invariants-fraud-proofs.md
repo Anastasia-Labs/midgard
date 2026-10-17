@@ -68,10 +68,9 @@ Provenance: the file header records the owner ruling of 2026-08-26
 (`witness-reference-scripts.ts:7-8`); `d3df3323e` (2026-08-29) removed the
 inline fallback.
 
-Blind spot: `inline_emulator_only` certificate witnesses
-(`demo/midgard-sdk/src/fraud-proof/field-preimage-carriage.ts:859`, `:920`)
-still attach inline, by design for the emulator. Nothing scans for a new
-inline attach.
+Blind spot: the lint (`midgard/fault-proof-reference-scripts-only`) bans
+inline attach only in the fault-proof source trees it lists; a fault-proof
+script attached from another tree is not caught.
 
 ## FP4. Only the pinned compiler builds consensus code
 
