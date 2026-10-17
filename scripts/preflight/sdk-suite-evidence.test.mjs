@@ -165,9 +165,6 @@ test("SDK context binds actual source, installed and compiled dependencies, conf
     );
     assert.notEqual(sdkContext(root, env), executableCache);
     assert.throws(() =>
-      sdkContext(root, { ...env, MIDGARD_BLUEPRINT_STAMP: "warn" }),
-    );
-    assert.throws(() =>
       sdkContext(root, {
         ...env,
         MIDGARD_REAL_BLUEPRINT_PATH: "/other/blueprint",

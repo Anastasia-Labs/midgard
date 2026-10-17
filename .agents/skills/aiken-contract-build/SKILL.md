@@ -84,7 +84,7 @@ Evidence must report a nonzero collected total, not only the process exit code.
 ## Repo Workflow
 
 - Treat `onchain/aiken/plutus.json` as the generated blueprint output unless a task explicitly chooses another `--out` path.
-- Run suites with `node scripts/contrib.mjs test`; its prepare step leaves a ready blueprint (copied from a checkout with identical inputs, else `deployment:build`) and refuses `MIDGARD_REAL_BLUEPRINT_PATH`. A blueprint a raw run names there must carry a fresh build record, or the stamp setup refuses it. [script: demo/midgard-test-support/blueprint-stamp-setup.js]
+- Run suites with `node scripts/contrib.mjs test`; its prepare step leaves a ready blueprint (copied from a checkout with identical inputs, else `deployment:build`) and refuses `MIDGARD_REAL_BLUEPRINT_PATH`. A raw run rebuilds a missing or stale default blueprint in its stamp setup; a blueprint it names there must carry a fresh build record, or the setup refuses it. [script: demo/midgard-test-support/blueprint-stamp-setup.js]
 - If tracing is needed for a script failure, rebuild with `--trace-level verbose --trace-filter all` before rerunning the failing emulator test.
 - Preserve production correctness: do not switch transaction completion to `.complete({ localUPLCEval: false })` to bypass failures. Blind spot: pre-existing uses are baselined with reasons (`docs/agents/lint-rules.md`). [eslint: midgard/local-uplc-eval]
 

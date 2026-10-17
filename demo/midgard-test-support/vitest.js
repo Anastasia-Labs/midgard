@@ -132,8 +132,8 @@ export const rawSqlLoaderPlugin = () => ({
 });
 
 /**
- * The global-setup module that refuses a run against a stale blueprint; see
- * `blueprint-stamp-setup.js`. Every package whose suites read
+ * The global-setup module that rebuilds a missing or stale blueprint before
+ * a run; see `blueprint-stamp-setup.js`. Every package whose suites read
  * `onchain/aiken/plutus.json` lists it in `globalSetup`.
  */
 export const blueprintStampGlobalSetup = fileURLToPath(

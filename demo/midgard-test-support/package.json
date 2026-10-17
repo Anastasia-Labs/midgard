@@ -72,6 +72,7 @@
     "workspace-bundle-files.js",
     "workspace-bundle-guard.js",
     "blueprint-stamp-setup.js",
+    "build-lock.js",
     "run-shared-fixtures.js",
     "run-shared-fixtures.d.ts",
     "run-shared-fixtures-setup.js",
