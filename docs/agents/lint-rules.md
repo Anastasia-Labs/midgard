@@ -116,3 +116,5 @@ every stale site and adds none (`--check` only reports).
   pass. Blind spot: a parameter under another name (`finalityDepth`) or from
   another module is not seen; block-mining loop counters are flagged (the
   baselined test drivers). [eslint: midgard/depth-through-heads]
+- **Redeemer ledger indices come from the builder callback.** Scope and blind
+  spots: the rule file's header. [eslint: midgard/redeemer-index-from-builder]

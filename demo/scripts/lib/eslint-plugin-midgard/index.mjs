@@ -14,6 +14,7 @@ import localUplcEval from "./rules/local-uplc-eval.mjs";
 import localeCompareExplicitLocale from "./rules/locale-compare-explicit-locale.mjs";
 import noRecursivePlutusData from "./rules/no-recursive-plutus-data.mjs";
 import nodeCliOperatorCommandsOnly from "./rules/node-cli-operator-commands-only.mjs";
+import redeemerIndexFromBuilder from "./rules/redeemer-index-from-builder.mjs";
 import scopedUtxoOverride from "./rules/scoped-utxo-override.mjs";
 import validFromWallClockMargin from "./rules/valid-from-wall-clock-margin.mjs";
 
@@ -32,6 +33,7 @@ export default {
     "locale-compare-explicit-locale": localeCompareExplicitLocale,
     "no-recursive-plutus-data": noRecursivePlutusData,
     "node-cli-operator-commands-only": nodeCliOperatorCommandsOnly,
+    "redeemer-index-from-builder": redeemerIndexFromBuilder,
     "scoped-utxo-override": scopedUtxoOverride,
     "valid-from-wall-clock-margin": validFromWallClockMargin,
   },

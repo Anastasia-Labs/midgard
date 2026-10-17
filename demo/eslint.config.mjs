@@ -323,6 +323,7 @@ export default tseslint.config(
       "midgard/locale-compare-explicit-locale": "error",
       "midgard/no-recursive-plutus-data": "error",
       "midgard/node-cli-operator-commands-only": "error",
+      "midgard/redeemer-index-from-builder": "error",
       "midgard/scoped-utxo-override": "error",
       "midgard/valid-from-wall-clock-margin": "error",
     },
