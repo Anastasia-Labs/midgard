@@ -59,6 +59,7 @@ vi.mock("../src/workflow/family-l1-observation.js", async (load) => {
 import {
   buildVanRossemFitLedger,
   type VanRossemFitMeasurement,
+  writeVanRossemFitLedger,
 } from "../src/proof-fit/van-rossem-fit-ledger.js";
 import {
   captureTransitionTraceL1Events,
@@ -90,6 +91,7 @@ import {
   FAMILY_HISTORY_HEADER_LEAD_MS,
   prepareFamilyHistory,
 } from "./support/emulator/family-history.js";
+import { fixFitLedgerOwnerEmulator } from "./support/emulator/fit-ledger-owner-emulator.js";
 import { makeFaultProofEmulatorHarness } from "./support/emulator/harness.js";
 import { insertHistoryFillerAfter } from "./support/emulator/history-pair.js";
 import { measureCompleteSignedTransaction } from "./support/emulator/measurement.js";
@@ -105,14 +107,12 @@ import {
 import { fixtureLedgerAt } from "./support/fixture-ledger.js";
 import { installedWorkflowEmulatorClock } from "./support/installed-workflow.advance-emulator-observation.js";
 import {
-  readBlueprintIdentity,
-  writeOrVerifyPinnedFitLedger,
-} from "./support/pinned-fit-ledger.js";
-import {
   transitionTraceDepositRetainedFixture,
   transitionTraceTimingRetainedFixture,
 } from "./support/transition-trace-retained.js";
 import { publishTransitionTraceYields } from "./support/transition-trace-yields.js";
+
+fixFitLedgerOwnerEmulator();
 // Explicit experimental payload bound; Cardano production limits are unchanged.
 const HISTORY_BOUNDS = {
   inlineLimitBytes: 512n,
@@ -213,13 +213,16 @@ afterAll(async () => {
     installedCases.map(({ name }) => name).sort(),
   );
   // Building the ledger checks every fresh row's Van Rossem margins on every
-  // run; the checked-in copy is rewritten only under MIDGARD_WRITE_FIT_LEDGER=1.
+  // run; `fit:regenerate` writes it and `fit:regenerate --check` compares it.
   const ledger = buildVanRossemFitLedger({
     category: "transitionTrace",
-    ...(await readBlueprintIdentity(realBlueprintPath)),
+    blueprintSha256: createHash("sha256")
+      .update(await readFile(realBlueprintPath))
+      .digest("hex"),
     measurements,
   });
-  await writeOrVerifyPinnedFitLedger(
+  if (process.env.MIDGARD_WRITE_FIT_LEDGER !== "1") return;
+  await writeVanRossemFitLedger(
     fileURLToPath(
       new URL(
         "../../../docs/fault-proofs/size-plans/transition-trace-workflow-fit-ledger.json",

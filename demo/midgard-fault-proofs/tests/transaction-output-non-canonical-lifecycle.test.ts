@@ -43,6 +43,7 @@ import {
 } from "../src/transaction-output-non-canonical/index.js";
 import { buildForcedTransactionLeafMembershipProof } from "../src/transition-trace/witnesses.js";
 import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
+import { fixFitLedgerOwnerEmulator } from "./support/emulator/fit-ledger-owner-emulator.js";
 import { makeFaultProofEmulatorHarness } from "./support/emulator/harness.js";
 import { captureEmulatorSubmission } from "./support/emulator/measurement.js";
 import { makeNativeTx } from "./support/emulator/native-tx.js";
@@ -96,6 +97,7 @@ import {
 } from "./transaction-output-non-canonical-lifecycle.registered-contracts.js";
 import { scanToTerminal } from "./transaction-output-non-canonical-lifecycle.scan-to-terminal.js";
 
+fixFitLedgerOwnerEmulator();
 describe("transactionOutputNonCanonical registered-chain lifecycle", () => {
   measureFitPart("lifecycle", [
     MEASURED_CASES.acceptedMaximum,

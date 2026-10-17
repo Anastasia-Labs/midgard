@@ -44,6 +44,7 @@ import {
 import { realBlueprintPath } from "./support/emulator/blueprints.js";
 import { runEmulatorLifecycleStage } from "./support/emulator/emulator-context.js";
 import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
+import { fixFitLedgerOwnerEmulator } from "./support/emulator/fit-ledger-owner-emulator.js";
 import {
   DEEP_MAXIMUM_DEPTH,
   MAXIMUM_FIELD_BYTES,
@@ -83,6 +84,7 @@ import {
   wideMaximumShape,
 } from "./witness-script-decoding-lifecycle.scan-honest-accepted-to-close.js";
 
+fixFitLedgerOwnerEmulator();
 // ---------------------------------------------------------------------------
 // Scenarios
 // ---------------------------------------------------------------------------

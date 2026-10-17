@@ -653,7 +653,30 @@ jobs:
         run: pnpm --dir demo/midgard-fault-proofs run typecheck
       - name: Test the fit-ledger regeneration script
         if: ${{ !cancelled() }}
-        run: node --test demo/midgard-fault-proofs/scripts/regenerate-fit-ledger.test.mjs
+        run: node --test demo/midgard-fault-proofs/scripts/regenerate-fit-ledger.test.mjs demo/midgard-fault-proofs/scripts/check-fit-ledger.test.mjs
+
+  # Every checked-in fit ledger a test writes, against a fresh run of its
+  # owning test files in one Vitest run. `fit:regenerate --check` has them
+  # write each ledger into a scratch directory and compares it with the
+  # checked-in copy on every field except the execution budgets and the two
+  # digests (scripts/fit-ledger-differences.mjs). It fails when a ledger
+  # differs, an owner fails or skips a case, or the run changes size-plans.
+  midgard-fault-proofs-fit-ledgers:
+    name: midgard-fault-proofs fit ledgers
+    needs: [aiken-fork, blueprint]
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    # Bound evaluator parallelism on the standard hosted runner.
+    env:
+      MIDGARD_FAULT_PROOF_FORKS: "2"
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: ./.github/actions/demo-setup
+        with:
+          blueprint: "true"
+          interactive-blueprint: "true"
+      - name: Check the fit ledgers against a fresh run of their owners
+        run: pnpm --dir demo/midgard-fault-proofs fit:regenerate --check --all
 
   # Six shards keep each job under 20 minutes. The suite is ~7,500 fork-seconds
   # on two forks (the five-run median per file in the package's
@@ -1238,6 +1261,7 @@ jobs:
       - midgard-sdk
       - midgard-validation
       - midgard-fault-proofs-build
+      - midgard-fault-proofs-fit-ledgers
       - midgard-fault-proofs
       - midgard-watcher-typecheck
       - midgard-watcher

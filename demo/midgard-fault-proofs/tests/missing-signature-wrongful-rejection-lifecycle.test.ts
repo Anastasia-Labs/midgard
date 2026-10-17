@@ -34,6 +34,7 @@ import {
 } from "../src/workflow/missing-signature.js";
 import { missingSignatureObservation } from "../src/workflow/missing-signature-state.js";
 import { FRAUD_PROOF_AUTHENTICATED_PUBLICATION_OBSERVER } from "../src/workflow/raw-l1-publication-observation.js";
+import { fixFitLedgerOwnerEmulator } from "./support/emulator/fit-ledger-owner-emulator.js";
 import { publishPlainReferenceScriptUtxo } from "./support/emulator/reference-scripts.js";
 import {
   network,
@@ -41,6 +42,8 @@ import {
 } from "./support/missing-signature-forced-scenario.js";
 import { buildMissingSignatureForcedTransaction as transactionFor } from "./support/missing-signature-forced-shapes.js";
 import { realBlueprintPath } from "./support/submit-init-emulator-shared.js";
+
+fixFitLedgerOwnerEmulator();
 const fitMeasurements: VanRossemFitMeasurement[] = [];
 afterAll(async () => {
   if (process.env.MIDGARD_WRITE_FIT_LEDGER !== "1") return;

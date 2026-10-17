@@ -79,6 +79,7 @@ import {
 } from "./resolved-output-non-canonical-lifecycle.record-carriage.js";
 import { refuseDatumSeams } from "./resolved-output-non-canonical-lifecycle.refuse-datum-seams.js";
 import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
+import { fixFitLedgerOwnerEmulator } from "./support/emulator/fit-ledger-owner-emulator.js";
 import {
   buildPriorLedger,
   buildSubjectTransaction,
@@ -98,6 +99,7 @@ import {
   subjectTransactionFor,
 } from "./support/resolved-output-non-canonical-emulator.js";
 
+fixFitLedgerOwnerEmulator();
 describe("resolvedOutputNonCanonical registered-chain lifecycle", () => {
   measureFitPart("lifecycle", [
     MEASURED_CASES.acceptedMaximum,

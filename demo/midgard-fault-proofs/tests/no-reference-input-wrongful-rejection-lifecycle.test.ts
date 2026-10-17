@@ -48,6 +48,7 @@ import { submitZeroInputCancel } from "../src/zero-input/submit-cancel.js";
 import { realBlueprintPath } from "./support/emulator/blueprints.js";
 import { buildCatalogueDeploymentInfo } from "./support/emulator/catalogue.js";
 import { alignUnixTimeToEmulatorSlotBoundary } from "./support/emulator/emulator-context.js";
+import { fixFitLedgerOwnerEmulator } from "./support/emulator/fit-ledger-owner-emulator.js";
 import { makeFaultProofEmulatorHarness } from "./support/emulator/harness.js";
 import { withCommitSlot } from "./support/emulator/header-fixtures.js";
 import { captureEmulatorSubmission } from "./support/emulator/measurement.js";
@@ -62,6 +63,7 @@ import {
 } from "./support/submit-init-emulator-shared.js";
 import { syntheticDeepMembershipProof } from "./support/synthetic-deep-proof.js";
 
+fixFitLedgerOwnerEmulator();
 const measurements: VanRossemFitMeasurement[] = [];
 afterAll(async () => {
   if (process.env.MIDGARD_WRITE_FIT_LEDGER !== "1") return;

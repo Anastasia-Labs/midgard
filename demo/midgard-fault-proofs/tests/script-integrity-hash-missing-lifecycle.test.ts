@@ -131,6 +131,7 @@ import {
   registeredFamily,
 } from "./script-integrity-hash-missing-lifecycle.registered-family.js";
 import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
+import { fixFitLedgerOwnerEmulator } from "./support/emulator/fit-ledger-owner-emulator.js";
 import { captureEmulatorSubmission } from "./support/emulator/measurement.js";
 import { buildDecodingBlockFixture } from "./support/native-script-decoding-emulator.js";
 import {
@@ -144,6 +145,7 @@ import {
   submitSetupTx,
 } from "./support/submit-init-emulator-shared.js";
 
+fixFitLedgerOwnerEmulator();
 describe("script-integrity-hash-missing real lifecycle", () => {
   it("publishes, proves accepted absent integrity hash, mints, and removes", async () => {
     const harness = await makeFaultProofEmulatorHarness({

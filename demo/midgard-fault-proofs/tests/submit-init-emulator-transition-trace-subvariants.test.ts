@@ -16,7 +16,6 @@ import "./support/emulator/family-history.js";
 import "./support/emulator/measurement.js";
 import "./support/emulator/native-tx.js";
 import "./support/legacy-submit-emulator.js";
-import "./support/pinned-fit-ledger.js";
 import "./support/submit-init-emulator-fixtures.js";
 import "./support/submit-init-emulator-shared.js";
 import "./support/transition-trace-yields.js";
@@ -51,6 +50,7 @@ import {
 import {
   buildVanRossemFitLedger,
   type VanRossemFitMeasurement,
+  writeVanRossemFitLedger,
 } from "../src/proof-fit/van-rossem-fit-ledger.js";
 import {
   alignedHeaderStart,
@@ -69,12 +69,9 @@ import {
 } from "./submit-init-emulator-transition-trace-subvariants.setup-challenge.js";
 import { realBlueprintPath } from "./support/emulator/blueprints.js";
 import { FAMILY_HISTORY_HEADER_LEAD_MS } from "./support/emulator/family-history.js";
+import { fixFitLedgerOwnerEmulator } from "./support/emulator/fit-ledger-owner-emulator.js";
 import { measureCompleteSignedTransaction } from "./support/emulator/measurement.js";
 import { makeNativeTx } from "./support/emulator/native-tx.js";
-import {
-  readBlueprintIdentity,
-  writeOrVerifyPinnedFitLedger,
-} from "./support/pinned-fit-ledger.js";
 import {
   expectSingleUtxoWithUnit,
   funderPaymentKeyHash,
@@ -86,6 +83,7 @@ import {
   withCommitSlot,
 } from "./support/submit-init-emulator-shared.js";
 
+fixFitLedgerOwnerEmulator();
 afterAll(async () => {
   const directory = process.env.MIDGARD_EVENT_HISTORY_EVIDENCE_DIR;
   if (directory === undefined) return;
@@ -114,19 +112,23 @@ const forcedWindowCases = new Set<boolean>();
 
 afterAll(async () => {
   expect(forcedWindowCases.size).toBe(2);
+  // Building the ledger checks every fresh row's margins on every run;
+  // `fit:regenerate` writes it and `fit:regenerate --check` compares it.
   const ledger = buildVanRossemFitLedger({
     category: "transitionTrace",
-    ...(await readBlueprintIdentity(realBlueprintPath)),
+    blueprintSha256: createHash("sha256")
+      .update(await readFile(realBlueprintPath))
+      .digest("hex"),
     measurements: forcedWindowMeasurements,
   });
+  if (process.env.MIDGARD_WRITE_FIT_LEDGER !== "1") return;
   const ledgerPath = fileURLToPath(
     new URL(
       "../../../docs/fault-proofs/size-plans/transition-trace-forced-window-fit-ledger.json",
       import.meta.url,
     ),
   );
-  // Fresh execution budgets may differ; identity and row coverage must not.
-  await writeOrVerifyPinnedFitLedger(ledgerPath, ledger);
+  await writeVanRossemFitLedger(ledgerPath, ledger);
 });
 
 describe("transition-trace omitted/out-of-window/count subvariant lifecycle", () => {

@@ -98,10 +98,12 @@ import {
 } from "./spend-input-signer-missing-lifecycle.registered-contracts.js";
 import { submitStep03WithForeignCertificate } from "./spend-input-signer-missing-lifecycle.submit-step03-with-foreign-certificate.js";
 import { realBlueprintPath } from "./support/emulator/blueprints.js";
+import { fixFitLedgerOwnerEmulator } from "./support/emulator/fit-ledger-owner-emulator.js";
 import { captureEmulatorSubmission } from "./support/emulator/measurement.js";
 import { makeNativeTx } from "./support/emulator/native-tx.js";
 import { transitionTraceOutRef } from "./support/submit-init-emulator-shared.js";
 
+fixFitLedgerOwnerEmulator();
 describe("spendInputSignerMissing registered-chain lifecycle", () => {
   it("runs the accepted 318-witness maximum from Init through proof mint, cancelling every physical step", async () => {
     const harness = await newHarness();

@@ -19,7 +19,6 @@ import {
   type BuildTxWithRedeemer,
   Data,
   Emulator,
-  generateEmulatorAccount,
   getAddressDetails,
   Lucid,
   PROTOCOL_PARAMETERS_DEFAULT,
@@ -37,8 +36,14 @@ import {
 } from "../src/proof-fit/van-rossem-fit-ledger.js";
 import { computationThreadOutputPredicate } from "../src/tx-layout.js";
 import { realBlueprintPath } from "./support/emulator/blueprints.js";
+import {
+  fitLedgerOwnerAccount,
+  fixFitLedgerOwnerEmulator,
+  startFitLedgerOwnerEmulator,
+} from "./support/emulator/fit-ledger-owner-emulator.js";
 import { measureCompleteSignedTransaction } from "./support/emulator/measurement.js";
 
+fixFitLedgerOwnerEmulator();
 const measurements: VanRossemFitMeasurement[] = [];
 let completed = 0;
 const blueprintBytes = readFileSync(realBlueprintPath);
@@ -196,10 +201,11 @@ describe("CEK material traversal published maximum task", () => {
           [stage.spendingScriptHash],
         ),
       };
-      const wallet = generateEmulatorAccount({
-        lovelace: 4_000_000_000n,
-        [roleUnit]: 1n,
-      });
+      const wallet = fitLedgerOwnerAccount(
+        "cekMaterialWallet",
+        4_000_000_000n,
+        { [roleUnit]: 1n },
+      );
       const owner = getAddressDetails(wallet.address).paymentCredential!.hash;
       const datum = Data.to(
         { fraud_prover: owner, data: before },
@@ -222,6 +228,7 @@ describe("CEK material traversal published maximum task", () => {
         ],
         PROTOCOL_PARAMETERS_DEFAULT,
       );
+      startFitLedgerOwnerEmulator(emulator);
       const lucid = await Lucid(emulator, "Custom");
       lucid.selectWallet.fromSeed(wallet.seedPhrase);
       const publish = async (

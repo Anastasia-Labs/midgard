@@ -14,6 +14,7 @@ import {
 } from "../src/proof-fit/van-rossem-fit-ledger.js";
 import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.js";
 import { realBlueprintPath } from "./support/emulator/blueprints.js";
+import { fixFitLedgerOwnerEmulator } from "./support/emulator/fit-ledger-owner-emulator.js";
 import { captureEmulatorSubmission } from "./support/emulator/measurement.js";
 import { makeMinFeeWrongfulRejectionScenario as setup } from "./support/min-fee-wrongful-emulator.js";
 import {
@@ -22,6 +23,7 @@ import {
   publishRemovalReferenceScripts,
 } from "./support/submit-init-emulator-shared.js";
 
+fixFitLedgerOwnerEmulator();
 const fitRows: VanRossemFitMeasurement[] = [];
 afterAll(async () => {
   if (process.env.MIDGARD_WRITE_FIT_LEDGER !== "1") return;

@@ -96,26 +96,37 @@ any length of time. When the affected-channels script lists one, run it by hand.
 
 ## Fit ledgers
 
-`docs/fault-proofs/size-plans/*-fit-ledger.json` (45 tracked files) record
-Van Rossem fit measurements. Each is stamped with the `blueprintSha256` and
-`compilerVersion` it was measured against.
+`docs/fault-proofs/size-plans/*-fit-ledger.json` record Van Rossem fit
+measurements. Each is stamped with the `blueprintSha256` it was measured
+against; the blueprint digest covers the compiler preamble, so there is no
+separate compiler version field.
 [`docs/fault-proofs/size-plans/README.md`](../../../../docs/fault-proofs/size-plans/README.md)
 is the authority. Its rules:
 
-- The `*-fit-ledger.test.ts` readers were removed on 2026-09-09. Most of these
-  files are recorded evidence and writer outputs. Nothing compares them with
-  the current build. `verifyMeasuredFitLedger`
-  (`demo/midgard-fault-proofs/tests/support/measured-fit-ledger.ts:85`) would,
-  but as of 2026-09-25 it has no caller.
-- Two ledgers are still held to the current build:
-  `transition-trace-forced-window-fit-ledger.json` (transition subvariants
-  suite) and `transition-trace-workflow-fit-ledger.json` (installed
-  transition-trace lifecycle suite). Each suite requires the recorded
-  `blueprintSha256` to equal the SHA-256 of the current blueprint, and the
-  scenario and row roster to equal a fresh run's; the budgets themselves may
-  differ (`demo/midgard-fault-proofs/tests/support/pinned-fit-ledger.ts`)
-  [ci: Midgard Node CI/Test fault-proof tooling]. Any
-  change that moves blueprint bytes makes both stale.
+- Every ledger a test writes is checked with
+  `pnpm --dir demo/midgard-fault-proofs fit:regenerate --check <ledger>` (or
+  `--check --all`). It runs the owning test files as a regeneration does, but
+  has them write each checked-in ledger into a scratch directory
+  (`MIDGARD_FIT_LEDGER_CHECK_DIR`), then compares the fresh ledger with the
+  checked-in copy on every field except the execution budgets and their
+  margins, `blueprintSha256` and `ledgerSha256`
+  (`demo/midgard-fault-proofs/scripts/fit-ledger-differences.mjs`). It fails
+  when a ledger differs, an owner fails or skips a case, or the run changes
+  anything under size-plans
+  [ci: Midgard Node CI/Check the fit ledgers against a fresh run of their owners].
+- Each owning test file calls `fixFitLedgerOwnerEmulator()`
+  (`demo/midgard-fault-proofs/tests/support/emulator/fit-ledger-owner-emulator.ts`)
+  when it loads. Its emulators then start at a fixed time and its wallets come
+  from fixed seed phrases, one per role, so a re-run builds the same
+  transactions and writes the same ledger, execution budgets included. Other
+  suites keep random wallets and a wall-clock start. A new owner needs the
+  same call.
+- The ledgers no test writes (`LEDGERS_WITHOUT_SUITE_WRITER` in
+  `demo/midgard-fault-proofs/scripts/fit-ledger-owners.mjs`) are recorded
+  evidence. Nothing compares them with the current build;
+  `verifyMeasuredFitLedger`
+  (`demo/midgard-fault-proofs/tests/support/measured-fit-ledger.ts`) would,
+  but it has no caller.
 - Regenerate against a freshly built blueprint with
   `pnpm --dir demo/midgard-fault-proofs fit:regenerate <ledger>` (or `--all`;
   `--list` shows each ledger's owning test files). It finds the owning files
@@ -123,10 +134,8 @@ is the authority. Its rules:
   with a fragment directory and run token it makes for the run, and keeps the
   ledger only if every owning file passed and rewrote it; otherwise it puts
   the ledger back and exits 1. It sets `MIDGARD_FIT_FRAGMENT_DIR` and
-  `MIDGARD_FIT_MEASUREMENT_RUN` itself. Thirteen checked-in ledgers have no
-  suite writer, and the command refuses each with the reason
-  (`LEDGERS_WITHOUT_SUITE_WRITER` in
-  `demo/midgard-fault-proofs/scripts/fit-ledger-owners.mjs`)
+  `MIDGARD_FIT_MEASUREMENT_RUN` itself. The command refuses each ledger with
+  no suite writer, with the reason
   [ci: Midgard Node CI/Test the fit-ledger regeneration script].
 - Without the flag the writer throws `FitLedgerWriteRefusedError` for every
   checked-in ledger, so no ledger changes; only the caller-named outputs

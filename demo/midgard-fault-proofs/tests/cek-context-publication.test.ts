@@ -8,7 +8,6 @@ import {
 } from "@al-ft/midgard-sdk";
 import {
   Emulator,
-  generateEmulatorAccount,
   Lucid,
   PROTOCOL_PARAMETERS_DEFAULT,
 } from "@lucid-evolution/lucid";
@@ -20,6 +19,11 @@ import {
   writeVanRossemFitLedger,
 } from "../src/proof-fit/van-rossem-fit-ledger.js";
 import {
+  fitLedgerOwnerAccount,
+  fixFitLedgerOwnerEmulator,
+  startFitLedgerOwnerEmulator,
+} from "./support/emulator/fit-ledger-owner-emulator.js";
+import {
   alwaysSucceedsBlueprintPath,
   buildMinimalFaultProofContracts,
   EMULATOR_PROTOCOL_PARAMETERS,
@@ -28,14 +32,19 @@ import {
   realBlueprintPath,
 } from "./support/submit-init-emulator-shared.js";
 
+fixFitLedgerOwnerEmulator();
 describe("CEK context tail publication", () => {
   it("publishes each parameterized continuation under the real L1 limit", async () => {
     const real = readBlueprint(realBlueprintPath);
-    const publisher = generateEmulatorAccount({ lovelace: 40_000_000_000n });
+    const publisher = fitLedgerOwnerAccount(
+      "cekContextPublisher",
+      40_000_000_000n,
+    );
     const emulator = new Emulator([publisher], {
       ...EMULATOR_PROTOCOL_PARAMETERS,
       maxTxSize: PROTOCOL_PARAMETERS_DEFAULT.maxTxSize,
     });
+    startFitLedgerOwnerEmulator(emulator);
     const lucid = await Lucid(emulator, "Custom");
     lucid.selectWallet.fromSeed(publisher.seedPhrase);
     const nonce = (await lucid.wallet().getUtxos())[0]!;

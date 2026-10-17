@@ -1,6 +1,7 @@
-import { mkdtemp, readdir, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 
 import { describe, expect, it, vi } from "vitest";
 
@@ -276,6 +277,66 @@ describe("Wave 0 shared off-chain substrate", () => {
     } finally {
       vi.unstubAllEnvs();
       await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("writes a checked-in ledger into MIDGARD_FIT_LEDGER_CHECK_DIR and leaves the checked-in copy alone", async () => {
+    const ledger = buildVanRossemFitLedger({
+      category: "exampleFamily",
+      blueprintSha256: "ab".repeat(32),
+      measurements: [
+        {
+          name: "step-01",
+          kind: "lifecycle",
+          maximumShape: "one item",
+          signedBytes: 1_000,
+          memoryUnits: 1_000n,
+          cpuUnits: 1_000n,
+        },
+      ],
+    });
+    // Joined, not one literal, so owner discovery (scripts/fit-ledger-owners.mjs)
+    // does not take this file for the ledger's writer.
+    const checkedIn = join(
+      fileURLToPath(
+        new URL("../../../docs/fault-proofs/size-plans", import.meta.url),
+      ),
+      "transition-trace-forced-window-fit-ledger.json",
+    );
+    const before = await readFile(checkedIn);
+    const directory = await mkdtemp(join(tmpdir(), "midgard-fit-"));
+    const elsewhere = join(directory, "elsewhere", "example-fit-ledger.json");
+    try {
+      vi.stubEnv("MIDGARD_WRITE_FIT_LEDGER", "1");
+      vi.stubEnv("MIDGARD_FIT_LEDGER_CHECK_DIR", join(directory, "check"));
+      await writeVanRossemFitLedger(checkedIn, ledger);
+      await writeVanRossemFitLedger(elsewhere, ledger);
+      expect(await readFile(checkedIn)).toStrictEqual(before);
+      expect(
+        JSON.parse(
+          await readFile(
+            join(
+              directory,
+              "check",
+              "transition-trace-forced-window-fit-ledger.json",
+            ),
+            "utf8",
+          ),
+        ),
+      ).toStrictEqual(ledger);
+      // Only a path in the checked-in directory moves.
+      expect(JSON.parse(await readFile(elsewhere, "utf8"))).toStrictEqual(
+        ledger,
+      );
+      expect(await readdir(join(directory, "check"))).toStrictEqual([
+        "transition-trace-forced-window-fit-ledger.json",
+      ]);
+    } finally {
+      vi.unstubAllEnvs();
+      await rm(directory, { recursive: true, force: true });
+      // A regression that writes the checked-in copy must not leave it changed.
+      if (!(await readFile(checkedIn)).equals(before))
+        await writeFile(checkedIn, before);
     }
   });
 

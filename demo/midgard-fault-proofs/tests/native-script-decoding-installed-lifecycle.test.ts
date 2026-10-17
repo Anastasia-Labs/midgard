@@ -32,6 +32,7 @@ import {
 } from "../src/workflow/journal.js";
 import { realBlueprintPath } from "./support/emulator/blueprints.js";
 import { alignUnixTimeToEmulatorSlotBoundary } from "./support/emulator/emulator-context.js";
+import { fixFitLedgerOwnerEmulator } from "./support/emulator/fit-ledger-owner-emulator.js";
 import { captureEmulatorSubmission } from "./support/emulator/measurement.js";
 import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.js";
 import {
@@ -48,6 +49,7 @@ import {
   publishRemovalReferenceScripts,
 } from "./support/submit-init-emulator-shared.js";
 
+fixFitLedgerOwnerEmulator();
 const measurements: VanRossemFitMeasurement[] = [];
 afterAll(async () => {
   if (process.env.MIDGARD_WRITE_FIT_LEDGER !== "1") return;

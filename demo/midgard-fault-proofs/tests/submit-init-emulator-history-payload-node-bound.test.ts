@@ -4,7 +4,9 @@
  * admission paths; one node past the bound is refused, and the same payload
  * lands under a deployment whose bound is one node larger.
  */
+import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
+import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 
 import { DEPLOYMENT_MANIFEST_MAX_PAYLOAD_NODES } from "@al-ft/midgard-core/deployment-manifest-identity";
@@ -16,18 +18,17 @@ import { afterAll, expect, it } from "vitest";
 import {
   buildVanRossemFitLedger,
   type VanRossemFitMeasurement,
+  writeVanRossemFitLedger,
 } from "../src/proof-fit/van-rossem-fit-ledger.js";
 import { realBlueprintPath } from "./support/emulator/blueprints.js";
+import { fixFitLedgerOwnerEmulator } from "./support/emulator/fit-ledger-owner-emulator.js";
 import {
   historyPairPayloads,
   setupHistoryPair,
 } from "./support/emulator/history-pair.js";
 import { type CompleteSignedTransactionMeasurement } from "./support/emulator/measurement.js";
-import {
-  readBlueprintIdentity,
-  writeOrVerifyPinnedFitLedger,
-} from "./support/pinned-fit-ledger.js";
 
+fixFitLedgerOwnerEmulator();
 const blueprint = SDK.parseFaultProofBlueprint(
   JSON.parse(readFileSync(realBlueprintPath).toString()),
 );
@@ -162,18 +163,24 @@ const ROWS: readonly Row[] = [
 
 afterAll(async () => {
   expect([...completed].sort()).toEqual(ROWS.map(({ name }) => name).sort());
-  await writeOrVerifyPinnedFitLedger(
+  // Building the ledger checks every fresh row's margins on every run;
+  // `fit:regenerate` writes it and `fit:regenerate --check` compares it.
+  const ledger = buildVanRossemFitLedger({
+    category: "eventHistoryAdmission",
+    blueprintSha256: createHash("sha256")
+      .update(await readFile(realBlueprintPath))
+      .digest("hex"),
+    measurements,
+  });
+  if (process.env.MIDGARD_WRITE_FIT_LEDGER !== "1") return;
+  await writeVanRossemFitLedger(
     fileURLToPath(
       new URL(
         "../../../docs/fault-proofs/size-plans/event-history-admission-fit-ledger.json",
         import.meta.url,
       ),
     ),
-    buildVanRossemFitLedger({
-      category: "eventHistoryAdmission",
-      ...(await readBlueprintIdentity(realBlueprintPath)),
-      measurements,
-    }),
+    ledger,
   );
 });
 

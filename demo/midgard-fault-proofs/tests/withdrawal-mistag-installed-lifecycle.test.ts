@@ -46,6 +46,7 @@ import {
 import { recordCrossBlockRawEmulator } from "./support/cross-block-raw-emulator.js";
 import { realBlueprintPath } from "./support/emulator/blueprints.js";
 import { alignUnixTimeToEmulatorSlotBoundary } from "./support/emulator/emulator-context.js";
+import { fixFitLedgerOwnerEmulator } from "./support/emulator/fit-ledger-owner-emulator.js";
 import { captureEmulatorSubmission } from "./support/emulator/measurement.js";
 import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.js";
 import {
@@ -60,6 +61,8 @@ import {
 } from "./support/withdrawal-mistag-emulator.js";
 import { runWithdrawalMistagMaximumProof } from "./support/withdrawal-mistag-maximum-proof.js";
 import { withdrawalMistagRetainedFixture } from "./support/withdrawal-mistag-retained.js";
+
+fixFitLedgerOwnerEmulator();
 const finalityPolicy = { ...DEPLOYMENT_MANIFEST_L1_FINALITY };
 const economicsPolicy = {
   profile: "bounded-acceptance-v1",

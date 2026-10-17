@@ -86,6 +86,7 @@ import {
 } from "./observers-forbidden-on-untagged-network-lifecycle.record.js";
 import { realBlueprintPath } from "./support/emulator/blueprints.js";
 import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
+import { fixFitLedgerOwnerEmulator } from "./support/emulator/fit-ledger-owner-emulator.js";
 import { captureEmulatorSubmission } from "./support/emulator/measurement.js";
 import {
   compactCborHex,
@@ -96,6 +97,7 @@ import {
   witnessSetCompactCborHex,
 } from "./support/observers-forbidden-on-untagged-network-raw.js";
 
+fixFitLedgerOwnerEmulator();
 describe("observersForbiddenOnUntaggedNetwork registered-chain lifecycle", () => {
   it("convicts the maximum accepted observer field on scalar 255 through the production actuator, cancels both steps, refuses every accepted seam and both honest accepted polarities, then mints and removes", async () => {
     const h = await makeHarness();

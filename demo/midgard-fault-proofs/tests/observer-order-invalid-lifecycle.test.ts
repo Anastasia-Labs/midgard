@@ -114,6 +114,7 @@ import {
 import { makeHarness } from "./observer-order-invalid-lifecycle.make-harness.js";
 import { realBlueprintPath } from "./support/emulator/blueprints.js";
 import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
+import { fixFitLedgerOwnerEmulator } from "./support/emulator/fit-ledger-owner-emulator.js";
 import { captureEmulatorSubmission } from "./support/emulator/measurement.js";
 import {
   ascendingObservers,
@@ -127,6 +128,7 @@ import {
   witnessSetCompactCborHex,
 } from "./support/observer-order-invalid-raw.js";
 
+fixFitLedgerOwnerEmulator();
 describe("observerOrderInvalid registered-chain lifecycle", () => {
   it("convicts the maximum accepted field at its last ordinal through the production actuator, cancels every step, refuses every accepted seam and the honest ordered field, then mints and removes", async () => {
     const h = await makeHarness();

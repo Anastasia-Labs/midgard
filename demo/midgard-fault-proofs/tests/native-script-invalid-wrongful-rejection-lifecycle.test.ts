@@ -54,8 +54,10 @@ import { fitRows } from "./native-script-invalid-wrongful-rejection-lifecycle.fi
 import { run } from "./native-script-invalid-wrongful-rejection-lifecycle.run.js";
 import { setup } from "./native-script-invalid-wrongful-rejection-lifecycle.setup.js";
 import { realBlueprintPath } from "./support/emulator/blueprints.js";
+import { fixFitLedgerOwnerEmulator } from "./support/emulator/fit-ledger-owner-emulator.js";
 import { captureEmulatorSubmission } from "./support/emulator/measurement.js";
 
+fixFitLedgerOwnerEmulator();
 afterAll(async () => {
   if (process.env.MIDGARD_WRITE_FIT_LEDGER !== "1") return;
   expect(fitRows).toHaveLength(8);

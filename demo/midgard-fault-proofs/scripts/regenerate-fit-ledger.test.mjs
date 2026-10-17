@@ -48,6 +48,19 @@ test("every owner is a test file Vitest runs", () => {
     }
 });
 
+test("every owner of a checked-in ledger fixes its wallet seeds and emulator clock", () => {
+  // Random wallets or a wall-clock start make a re-run build different
+  // transactions. `--check` sees moved bytes, but not moved execution
+  // budgets, which it does not compare.
+  for (const ledger of tracked)
+    for (const file of owners.get(ledger) ?? [])
+      assert.match(
+        readFileSync(join(packageDirectory, file), "utf8"),
+        /^fixFitLedgerOwnerEmulator\(\);$/mu,
+        `${file} (owner of ${ledger}) does not call fixFitLedgerOwnerEmulator()`,
+      );
+});
+
 test("discovery finds the single writer of a ledger named through a helper module", () => {
   // The literal lives in an authentication-seams module that several tests
   // import; only the lifecycle test that writes the ledger owns it.
@@ -74,9 +87,7 @@ test("every module that writes a fit ledger is attributed to the ledger it names
   // variable, or are unit tests writing under a temporary directory.
   assert.deepEqual(unattributedWriters, [
     "tests/min-ada-wrongful-rejection-lifecycle.test.ts",
-    "tests/pinned-fit-ledger.test.ts",
     "tests/support/measured-fit-ledger.ts",
-    "tests/support/pinned-fit-ledger.ts",
     "tests/support/split-fit-ledger.ts",
     "tests/support/transition-trace-final-cases.register-transition-trace-final-cases.ts",
     "tests/wave0-shared-substrate.test.ts",

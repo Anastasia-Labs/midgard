@@ -7,8 +7,7 @@
  * <name>-fit-ledger.json", import.meta.url)`, or the `path` of a
  * `SplitFitLedger`). The module holding that literal is the ledger's site. A
  * writer is a module that calls `writeVanRossemFitLedger`,
- * `writeOrVerifyPinnedFitLedger`, `createSplitFitLedgerPart` or
- * `verifyMeasuredFitLedger` and either is a site of the ledger or imports one
+ * `createSplitFitLedgerPart` or `verifyMeasuredFitLedger` and either is a site of the ledger or imports one
  * directly. The ledger's owners are the test
  * files that import such a writer, directly or through other modules, or are
  * one. For a split ledger that is every part file, because each part imports
@@ -73,7 +72,7 @@ export const LEDGERS_WITHOUT_SUITE_WRITER = new Map([
 const SOURCE_FILE = /\.(?:ts|tsx|mts)$/u;
 const TEST_FILE = /\.test\.tsx?$/u;
 const WRITER_CALL =
-  /\b(?:writeVanRossemFitLedger|writeOrVerifyPinnedFitLedger|createSplitFitLedgerPart|verifyMeasuredFitLedger)\(/u;
+  /\b(?:writeVanRossemFitLedger|createSplitFitLedgerPart|verifyMeasuredFitLedger)\(/u;
 const RELATIVE_IMPORT =
   /(?:\bfrom\s+|\bimport\s*\(\s*|\bimport\s+)["'](\.\.?\/[^"']+)["']/gu;
 const LEDGER_LITERAL =

@@ -5,10 +5,11 @@ import {
 import {
   type Emulator,
   type EmulatorAccount,
-  generateEmulatorAccount,
   Lucid,
   type LucidEvolution,
 } from "@lucid-evolution/lucid";
+
+import { fitLedgerOwnerAccount } from "./fit-ledger-owner-emulator.js";
 
 /**
  * The reference-script wallet: it holds the authentication policy key, pays
@@ -27,7 +28,7 @@ export type ReferenceScriptPublishingContracts = MidgardValidators & {
 export const referenceScriptPublisherAccount = (
   account?: EmulatorAccount,
 ): EmulatorAccount =>
-  account ?? generateEmulatorAccount({ lovelace: 40_000_000_000n });
+  account ?? fitLedgerOwnerAccount("publisher", 40_000_000_000n);
 
 /**
  * Reserve the contract nonce in the funder (operator) wallet, and bind the

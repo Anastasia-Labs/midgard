@@ -1,8 +1,10 @@
 /**
- * Regenerate checked-in fault-proof fit ledgers in one command.
+ * Regenerate or check the checked-in fault-proof fit ledgers in one command.
  *
  *   pnpm --dir demo/midgard-fault-proofs fit:regenerate <ledger>...
  *   pnpm --dir demo/midgard-fault-proofs fit:regenerate --all
+ *   pnpm --dir demo/midgard-fault-proofs fit:regenerate --check <ledger>...
+ *   pnpm --dir demo/midgard-fault-proofs fit:regenerate --check --all
  *   pnpm --dir demo/midgard-fault-proofs fit:regenerate --list
  *
  * A ledger is a file name in docs/fault-proofs/size-plans or a path to one.
@@ -17,6 +19,14 @@
  * is every other file under size-plans the run changed, and the command exits
  * 1. Vitest's own checks, including the stale-blueprint refusal, apply as in
  * any run. `--list` prints each ledger's owners without running anything.
+ *
+ * `--check` runs the same owners the same way, except that every checked-in
+ * ledger is written to a scratch directory (`MIDGARD_FIT_LEDGER_CHECK_DIR`,
+ * read by `writeVanRossemFitLedger`). Each fresh ledger is then compared with
+ * the checked-in one (scripts/fit-ledger-differences.mjs). The check passes
+ * only when every owning file passed with no skipped case, every fresh ledger
+ * matches, and the run left size-plans exactly as it found it. Anything the
+ * run changed there is put back.
  */
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
@@ -42,9 +52,11 @@ import {
   SIZE_PLANS,
   trackedFitLedgers,
 } from "./fit-ledger-owners.mjs";
+import { fitLedgerDifferences } from "./fit-ledger-differences.mjs";
 
 const COMMAND = "pnpm --dir demo/midgard-fault-proofs fit:regenerate";
-const USAGE = `Usage: ${COMMAND} <ledger>... | --all | --list`;
+const USAGE = `Usage: ${COMMAND} [--check] <ledger>... | [--check] --all | --list`;
+const FLAGS = ["--all", "--check", "--list"];
 
 class UsageError extends Error {}
 
@@ -132,6 +144,85 @@ export const runVitest = ({ files, env, reportPath }) =>
   });
 
 /**
+ * Runs the owners of `ledgers` once under the write flag. With
+ * `checkDirectory`, the owners write checked-in ledgers there instead. Returns
+ * size-plans as it was before the run, Vitest's status, and why each ledger's
+ * owners did not all pass (undefined when they did).
+ */
+const runOwners = async ({ ledgers, owners, sizePlans, root, run, check }) => {
+  // Vitest given no file runs the whole suite.
+  if (ledgers.length === 0 || ledgers.some((l) => !owners.get(l)?.length))
+    throw new Error("every ledger to regenerate needs an owning test file");
+  const files = [...new Set(ledgers.flatMap((ledger) => owners.get(ledger)))];
+  const before = snapshot(sizePlans);
+  const scratch = mkdtempSync(join(tmpdir(), "midgard-fit-regenerate-"));
+  const reportPath = join(scratch, "report.json");
+  const checkDirectory = join(scratch, "ledgers");
+  const { MIDGARD_FIT_LEDGER_CHECK_DIR: _inherited, ...inherited } =
+    process.env;
+  const fresh = new Map();
+  let status;
+  let report;
+  try {
+    status = await run({
+      files: files.map((file) => join(root, file)),
+      reportPath,
+      env: {
+        ...inherited,
+        MIDGARD_WRITE_FIT_LEDGER: "1",
+        MIDGARD_FIT_FRAGMENT_DIR: join(scratch, "fragments"),
+        MIDGARD_FIT_MEASUREMENT_RUN: `regenerate-${randomUUID()}`,
+        ...(check ? { MIDGARD_FIT_LEDGER_CHECK_DIR: checkDirectory } : {}),
+      },
+    });
+    if (existsSync(reportPath))
+      report = JSON.parse(readFileSync(reportPath, "utf8"));
+    for (const ledger of check ? ledgers : []) {
+      const path = join(checkDirectory, ledger);
+      if (existsSync(path)) fresh.set(ledger, readFileSync(path, "utf8"));
+    }
+  } finally {
+    rmSync(scratch, { recursive: true, force: true });
+  }
+  const failures = new Map(
+    files.map((file) => [file, fileFailure(report, join(root, file))]),
+  );
+  // A failed run with every file passing failed outside any file.
+  const unexplained =
+    status !== 0 && [...failures.values()].every((why) => why === undefined);
+  const notPassed = (ledger) => {
+    if (unexplained)
+      return `vitest exited ${status.toString()} outside any test file`;
+    const failed = owners
+      .get(ledger)
+      .filter((file) => failures.get(file) !== undefined)
+      .map((file) => `${file} ${failures.get(file)}`);
+    return failed.length > 0 ? failed.join("; ") : undefined;
+  };
+  return { before, status, notPassed, fresh };
+};
+
+/** Puts back every file under size-plans the run changed, except `kept`. */
+const restore = (sizePlans, before, kept) => {
+  const restored = [];
+  for (const name of fileNames(sizePlans)) {
+    if (kept.has(name)) continue;
+    const path = join(sizePlans, name);
+    const original = before.get(name);
+    if (original === undefined) rmSync(path, { force: true });
+    else if (written(path, original)) writeFileSync(path, original.bytes);
+    else continue;
+    restored.push(name);
+  }
+  for (const [name, { bytes }] of before)
+    if (!existsSync(join(sizePlans, name))) {
+      writeFileSync(join(sizePlans, name), bytes);
+      restored.push(name);
+    }
+  return restored;
+};
+
+/**
  * Runs the owners of `ledgers` once and keeps each ledger only if its owners
  * all passed and it was rewritten; every other change under size-plans is
  * undone. Returns the exit status and one line per ledger.
@@ -143,47 +234,18 @@ export const regenerateFitLedgers = async ({
   root = packageDirectory,
   run = runVitest,
 }) => {
-  // Vitest given no file runs the whole suite.
-  if (ledgers.length === 0 || ledgers.some((l) => !owners.get(l)?.length))
-    throw new Error("every ledger to regenerate needs an owning test file");
-  const files = [...new Set(ledgers.flatMap((ledger) => owners.get(ledger)))];
-  const before = snapshot(sizePlans);
-  const scratch = mkdtempSync(join(tmpdir(), "midgard-fit-regenerate-"));
-  const reportPath = join(scratch, "report.json");
-  let status;
-  let report;
-  try {
-    status = await run({
-      files: files.map((file) => join(root, file)),
-      reportPath,
-      env: {
-        ...process.env,
-        MIDGARD_WRITE_FIT_LEDGER: "1",
-        MIDGARD_FIT_FRAGMENT_DIR: join(scratch, "fragments"),
-        MIDGARD_FIT_MEASUREMENT_RUN: `regenerate-${randomUUID()}`,
-      },
-    });
-    if (existsSync(reportPath))
-      report = JSON.parse(readFileSync(reportPath, "utf8"));
-  } finally {
-    rmSync(scratch, { recursive: true, force: true });
-  }
-  const failures = new Map(
-    files.map((file) => [file, fileFailure(report, join(root, file))]),
-  );
-  // A failed run with every file passing failed outside any file.
-  const unexplained =
-    status !== 0 && [...failures.values()].every((why) => why === undefined);
+  const { before, status, notPassed } = await runOwners({
+    ledgers,
+    owners,
+    sizePlans,
+    root,
+    run,
+    check: false,
+  });
   const kept = new Set();
   const lines = ledgers.map((ledger) => {
-    const failed = owners
-      .get(ledger)
-      .filter((file) => failures.get(file) !== undefined)
-      .map((file) => `${file} ${failures.get(file)}`);
-    if (unexplained)
-      return `not rewritten: ${ledger} (vitest exited ${status.toString()} outside any test file)`;
-    if (failed.length > 0)
-      return `not rewritten: ${ledger} (${failed.join("; ")})`;
+    const why = notPassed(ledger);
+    if (why !== undefined) return `not rewritten: ${ledger} (${why})`;
     if (!written(join(sizePlans, ledger), before.get(ledger)))
       return `not rewritten: ${ledger} (its owners passed but did not write it: ${owners.get(ledger).join(", ")})`;
     kept.add(ledger);
@@ -193,18 +255,76 @@ export const regenerateFitLedgers = async ({
       ? `rewritten: ${ledger} (same bytes as before)`
       : `rewritten: ${ledger}`;
   });
-  for (const name of fileNames(sizePlans)) {
-    if (kept.has(name)) continue;
-    const path = join(sizePlans, name);
-    const original = before.get(name);
-    if (original === undefined) rmSync(path, { force: true });
-    else if (written(path, original)) writeFileSync(path, original.bytes);
-  }
-  for (const [name, { bytes }] of before)
-    if (!existsSync(join(sizePlans, name)))
-      writeFileSync(join(sizePlans, name), bytes);
+  restore(sizePlans, before, kept);
   return {
     status: kept.size === ledgers.length && status === 0 ? 0 : 1,
+    lines,
+  };
+};
+
+const parsed = (text) => {
+  try {
+    return JSON.parse(text);
+  } catch {
+    return undefined;
+  }
+};
+
+/**
+ * Runs the owners of `ledgers` once with checked-in ledgers written to a
+ * scratch directory, and compares each fresh ledger with the checked-in one.
+ * Returns the exit status and the lines describing each ledger.
+ */
+export const checkFitLedgers = async ({
+  ledgers,
+  owners,
+  sizePlans = join(repositoryRoot, SIZE_PLANS),
+  root = packageDirectory,
+  run = runVitest,
+}) => {
+  const { before, status, notPassed, fresh } = await runOwners({
+    ledgers,
+    owners,
+    sizePlans,
+    root,
+    run,
+    check: true,
+  });
+  let current = 0;
+  const lines = ledgers.map((ledger) => {
+    const why = notPassed(ledger);
+    if (why !== undefined) return `not checked: ${ledger} (${why})`;
+    if (!fresh.has(ledger))
+      return `not checked: ${ledger} (its owners passed but did not write it: ${owners.get(ledger).join(", ")})`;
+    const recorded = before.get(ledger);
+    if (recorded === undefined)
+      return `stale: ${ledger} (no checked-in copy; regenerate it)`;
+    const [saved, measured] = [
+      recorded.bytes.toString("utf8"),
+      fresh.get(ledger),
+    ].map(parsed);
+    if (saved === undefined || measured === undefined)
+      return `stale: ${ledger} (${saved === undefined ? "the checked-in copy" : "the fresh ledger"} is not JSON)`;
+    const differences = fitLedgerDifferences(saved, measured);
+    if (differences.length === 0) {
+      current++;
+      return `current: ${ledger}`;
+    }
+    return [
+      `stale: ${ledger}; regenerate it with \`${COMMAND} ${ledger}\``,
+      ...differences.map((difference) => `  ${difference}`),
+    ].join("\n");
+  });
+  const touched = restore(sizePlans, before, new Set());
+  for (const name of touched)
+    lines.push(
+      `the run changed ${name} under ${SIZE_PLANS}; a check never writes there, so it was put back`,
+    );
+  return {
+    status:
+      current === ledgers.length && status === 0 && touched.length === 0
+        ? 0
+        : 1,
     lines,
   };
 };
@@ -216,20 +336,21 @@ const listing = (tracked, owners) =>
       : `${ledger}: no test writes it; ${LEDGERS_WITHOUT_SUITE_WRITER.get(ledger) ?? "unknown"}`,
   );
 
-const main = async (argv) => {
+export const main = async (argv, { run = runVitest } = {}) => {
   const sizePlans = join(repositoryRoot, SIZE_PLANS);
   const { ledgers: owners } = discoverFitLedgerOwners();
   const tracked = trackedFitLedgers();
   const all = argv.includes("--all");
+  const check = argv.includes("--check");
   const list = argv.includes("--list");
   const named = argv.filter((argument) => !argument.startsWith("--"));
   const unknownFlags = argv.filter(
-    (argument) =>
-      argument.startsWith("--") && !["--all", "--list"].includes(argument),
+    (argument) => argument.startsWith("--") && !FLAGS.includes(argument),
   );
   if (
     unknownFlags.length > 0 ||
-    Number(all) + Number(list) + Number(named.length > 0) !== 1
+    Number(all) + Number(list) + Number(named.length > 0) !== 1 ||
+    (check && list)
   )
     throw new UsageError(USAGE);
   if (list) {
@@ -256,14 +377,17 @@ const main = async (argv) => {
         `skipped: ${ledger} (no test writes it; ${LEDGERS_WITHOUT_SUITE_WRITER.get(ledger)})`,
       );
   console.log(
-    `Regenerating ${requested.join(", ")}\nby running ${[
+    `${check ? "Checking" : "Regenerating"} ${requested.join(", ")}\nby running ${[
       ...new Set(requested.flatMap((ledger) => owners.get(ledger))),
     ].join(" ")}`,
   );
-  const { status, lines } = await regenerateFitLedgers({
+  const { status, lines } = await (
+    check ? checkFitLedgers : regenerateFitLedgers
+  )({
     ledgers: requested,
     owners,
     sizePlans,
+    run,
   });
   console.log(`\n${lines.join("\n")}`);
   return status;

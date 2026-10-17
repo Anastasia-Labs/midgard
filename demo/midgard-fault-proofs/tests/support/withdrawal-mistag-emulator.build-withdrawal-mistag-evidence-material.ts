@@ -6,7 +6,7 @@ import {
 import { replacePlutusConstrFieldCbor } from "@al-ft/midgard-core/plutus-data-cbor";
 import * as SDK from "@al-ft/midgard-sdk";
 import { buildCanonicalMidgardLedgerOutputMaterial } from "@al-ft/midgard-validation";
-import { CML, Data } from "@lucid-evolution/lucid";
+import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
 import {
@@ -15,6 +15,7 @@ import {
   keyValuePhasRootWithCount,
 } from "../../src/transition-trace/phas.js";
 import { type WithdrawalMistagCatalogueCategory } from "../../src/withdrawal-mistag/index.js";
+import { fitLedgerOwnerPrivateKey } from "./emulator/fit-ledger-owner-emulator.js";
 import { makeFaultProofEmulatorHarness } from "./submit-init-emulator-shared.js";
 import { syntheticDeepMembershipProof } from "./synthetic-deep-proof.js";
 
@@ -33,7 +34,7 @@ export const buildWithdrawalMistagEvidenceMaterial = async (
   /** Raw `l1_datum` CBOR spliced into the committed bytes as written. */
   l1DatumCbor?: string,
 ) => {
-  const privateKey = CML.PrivateKey.generate_ed25519();
+  const privateKey = fitLedgerOwnerPrivateKey("withdrawalOwner");
   const publicKey = privateKey.to_public();
   const owner = publicKey.hash().to_hex();
   const withdrawalId: SDK.OutputReference = {

@@ -12,7 +12,6 @@ import { DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE } from "@al-ft/mi
 import * as SDK from "@al-ft/midgard-sdk";
 import {
   Emulator,
-  generateEmulatorAccount,
   Lucid,
   paymentCredentialOf,
   validatorToScriptHash,
@@ -29,6 +28,11 @@ import {
   alignEmulatorToWholeSecond,
   requireUtxoWithUnit,
 } from "./emulator/emulator-context.js";
+import {
+  fitLedgerOwnerAccount,
+  fitLedgerOwnerSeedPhrase,
+  startFitLedgerOwnerEmulator,
+} from "./emulator/fit-ledger-owner-emulator.js";
 import { EMULATOR_DEPLOYMENT_L1_SLOT_CONFIG } from "./emulator/header-fixtures.js";
 import { measureCompleteSignedTransaction } from "./emulator/measurement.js";
 import { createReferenceScriptPublisher } from "./emulator/reference-script-publisher.js";
@@ -64,13 +68,23 @@ export const buildProvedFixtureDeploymentContext = async (
   if (coherentCanonicalEvidence) return buildCanonicalDeploymentContext();
   const realBlueprint = readBlueprint(realBlueprintPath);
   const alwaysBlueprint = readBlueprint(alwaysSucceedsBlueprintPath);
-  const funder = emulatorAccountFromSeed(40_000_000_000n, seeds.funder);
-  const prover = fundedProverEmulatorAccount(20_000_000_000n, seeds.prover);
-  const publisher = emulatorAccountFromSeed(40_000_000_000n, seeds.publisher);
+  const funder = emulatorAccountFromSeed(
+    40_000_000_000n,
+    seeds.funder ?? fitLedgerOwnerSeedPhrase("funder"),
+  );
+  const prover = fundedProverEmulatorAccount(
+    20_000_000_000n,
+    seeds.prover ?? fitLedgerOwnerSeedPhrase("prover"),
+  );
+  const publisher = emulatorAccountFromSeed(
+    40_000_000_000n,
+    seeds.publisher ?? fitLedgerOwnerSeedPhrase("publisher"),
+  );
   const emulator = new Emulator(
     [funder, prover, publisher],
     EMULATOR_PROTOCOL_PARAMETERS,
   );
+  startFitLedgerOwnerEmulator(emulator);
   alignEmulatorToWholeSecond(emulator);
   const funderLucid = await Lucid(emulator, "Custom");
   const proverLucid = await Lucid(emulator, "Custom");
@@ -137,14 +151,18 @@ const buildCanonicalDeploymentContext = async () => {
     "midgard-node/tests/helpers/reference-publication-chain"
   );
   const realBlueprint = readBlueprint(realBlueprintPath);
-  const funder = generateEmulatorAccount({ lovelace: 40_000_000_000n });
-  const prover = fundedProverEmulatorAccount(20_000_000_000n);
-  const publisher = generateEmulatorAccount({ lovelace: 4_000_000_000_000n });
-  const cosigner = generateEmulatorAccount({ lovelace: 0n });
+  const funder = fitLedgerOwnerAccount("funder", 40_000_000_000n);
+  const prover = fundedProverEmulatorAccount(
+    20_000_000_000n,
+    fitLedgerOwnerSeedPhrase("prover"),
+  );
+  const publisher = fitLedgerOwnerAccount("publisher", 4_000_000_000_000n);
+  const cosigner = fitLedgerOwnerAccount("deploymentCosigner", 0n);
   const emulator = new Emulator(
     [funder, prover, publisher],
     EMULATOR_PROTOCOL_PARAMETERS,
   );
+  startFitLedgerOwnerEmulator(emulator);
   // The deployment is a named-network (Preprod) one, so its commit yield
   // carries Preprod's slot mapping.
   alignEmulatorToWholeSecond(emulator);

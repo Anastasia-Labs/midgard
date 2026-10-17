@@ -19,6 +19,7 @@ import {
 } from "../src/transaction-output-non-canonical/index.js";
 import { densePlutusData } from "./support/dense-plutus-data.js";
 import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
+import { fixFitLedgerOwnerEmulator } from "./support/emulator/fit-ledger-owner-emulator.js";
 import {
   captureEmulatorSubmission,
   type CompleteSignedTransactionMeasurement,
@@ -64,6 +65,7 @@ import {
 } from "./transaction-output-non-canonical-lifecycle.registered-contracts.js";
 import { datumToVerdict } from "./transaction-output-non-canonical-lifecycle.scan-to-terminal.js";
 
+fixFitLedgerOwnerEmulator();
 /**
  * The datum step of transactionOutputNonCanonical: an output whose envelope
  * is canonical is judged by its inline datum, read as canonical Data a

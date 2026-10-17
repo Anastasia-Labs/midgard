@@ -41,6 +41,7 @@ import {
 } from "../src/proof-fit/van-rossem-fit-ledger.js";
 import { assertCompleteLifecycleCoverage } from "../src/testing/complete-lifecycle.js";
 import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
+import { fixFitLedgerOwnerEmulator } from "./support/emulator/fit-ledger-owner-emulator.js";
 import { createLifecycleCoverageRecorder } from "./support/lifecycle-coverage.js";
 import {
   commitAcceptedBlock,
@@ -65,6 +66,7 @@ import {
 } from "./support/output-reference-script-decoding-emulator.js";
 import { realBlueprintPath } from "./support/submit-init-emulator-shared.js";
 
+fixFitLedgerOwnerEmulator();
 const AUTHENTICATION_SEAMS = [
   "tx_membership",
   "field_certificate",

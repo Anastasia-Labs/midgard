@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { mkdir, open, rename } from "node:fs/promises";
-import { dirname } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
 export const VAN_ROSSEM_MAX_SIGNED_TX_BYTES = 16_384;
 export const VAN_ROSSEM_PUBLICATION_RESERVE_BYTES = 512;
@@ -160,6 +161,23 @@ export class FitLedgerWriteRefusedError extends Error {
   }
 }
 
+/** Where the checked-in fit ledgers live. */
+const SIZE_PLANS_DIRECTORY = fileURLToPath(
+  new URL("../../../../docs/fault-proofs/size-plans", import.meta.url),
+);
+
+/**
+ * `fit:regenerate --check` sets `MIDGARD_FIT_LEDGER_CHECK_DIR` so that a
+ * ledger aimed at the checked-in directory lands there instead, under its own
+ * file name, for the command to compare with the checked-in copy.
+ */
+const outputPath = (path: string): string => {
+  const checkDirectory = process.env.MIDGARD_FIT_LEDGER_CHECK_DIR;
+  return checkDirectory && dirname(resolve(path)) === SIZE_PLANS_DIRECTORY
+    ? join(checkDirectory, basename(path))
+    : path;
+};
+
 /**
  * Checked-in ledgers are evidence, so an ordinary test run must never rewrite
  * one: a write needs `MIDGARD_WRITE_FIT_LEDGER=1`. The one exception is
@@ -185,9 +203,9 @@ export const writeVanRossemFitLedger = async (
   if (actualDigest !== suppliedDigest) {
     throw new Error("fit ledger digest does not match its canonical body");
   }
-  const directory = dirname(path);
-  await mkdir(directory, { recursive: true });
-  const temporaryPath = `${path}.${randomUUID()}.tmp`;
+  const target = outputPath(path);
+  await mkdir(dirname(target), { recursive: true });
+  const temporaryPath = `${target}.${randomUUID()}.tmp`;
   const handle = await open(temporaryPath, "wx", 0o600);
   try {
     await handle.writeFile(`${JSON.stringify(ledger, null, 2)}\n`, "utf8");
@@ -195,5 +213,5 @@ export const writeVanRossemFitLedger = async (
   } finally {
     await handle.close();
   }
-  await rename(temporaryPath, path);
+  await rename(temporaryPath, target);
 };
