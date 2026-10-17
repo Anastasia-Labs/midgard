@@ -174,7 +174,6 @@ export const validateCandidateAgainstState = (
     }
 
     const spentValues = new Map<string, MidgardValue>();
-    let sawScriptInput = false;
 
     const witnessKeyHashes = new Set(candidate.derived.witnessKeyHashHexes);
     const resolvedReferenceInputs = resolveReferenceInputs(node, stateValue);
@@ -217,8 +216,6 @@ export const validateCandidateAgainstState = (
               spendSubject("SpendInputSignerMissing", inputOutRefHex),
             );
           }
-        } else {
-          sawScriptInput = true;
         }
 
         spentValues.set(inputOutRefHex, output.value);
@@ -248,22 +245,22 @@ export const validateCandidateAgainstState = (
       if (inspection.kind === "unsupported") break;
     }
 
-    if (sawScriptInput || candidate.derived.requiresLocalScriptDiscovery) {
-      const localScriptEvaluation = yield* runLocalScriptEvaluation(
-        node,
-        stateValue,
-        resolvedReferenceInputs,
-        witnessKeyHashes,
-        config,
+    // Plain candidates can reach this fallback through a scripted neighbor.
+    // Discovery also checks their output networks and script integrity hash.
+    const localScriptEvaluation = yield* runLocalScriptEvaluation(
+      node,
+      stateValue,
+      resolvedReferenceInputs,
+      witnessKeyHashes,
+      config,
+    );
+    if (localScriptEvaluation.kind === "rejected") {
+      return fail(
+        localScriptEvaluation.code,
+        localScriptEvaluation.detail,
+        localScriptEvaluation.consensusPhase,
+        localScriptEvaluation.subject,
       );
-      if (localScriptEvaluation.kind === "rejected") {
-        return fail(
-          localScriptEvaluation.code,
-          localScriptEvaluation.detail,
-          localScriptEvaluation.consensusPhase,
-          localScriptEvaluation.subject,
-        );
-      }
     }
 
     const valueAndMint = checkValueAndMint({
