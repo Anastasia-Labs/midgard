@@ -50,6 +50,7 @@ import {
   midgardLedgerOutputProofFactsComplete,
   MidgardRedeemerItemProofModes,
   MidgardRedeemerItemProofStages,
+  midgardScriptSourcePhysicalIndex,
   type MidgardValidationMerkleFrontier,
   type MidgardValidationMerkleMembership,
   type MidgardValidationPhaseName,
@@ -932,7 +933,7 @@ export const prepareValidationTrace = (input: ValidationMachineReplayInput) =>
         readonly candidateHash: Buffer;
         readonly descriptorFrontier: MidgardValidationMerkleFrontier;
       };
-      readonly sourceTotalCount?: number;
+      readonly inlineSourceCount?: number;
       readonly redeemerTotalCount?: number;
       readonly observerScan?: {
         readonly totalCount: number;
@@ -943,7 +944,7 @@ export const prepareValidationTrace = (input: ValidationMachineReplayInput) =>
       readonly discovery?: ScriptDiscoveryTraceControl;
       readonly pendingSource?: {
         readonly sourceIndex: number;
-        readonly sourceTotalCount: number;
+        readonly inlineSourceCount: number;
         readonly languageTag: 0 | 3 | 128;
         readonly payloadOffset: number;
         readonly payloadLength: number;
@@ -999,7 +1000,7 @@ export const prepareValidationTrace = (input: ValidationMachineReplayInput) =>
           receiveScan.candidateHash,
           encodeFrontierPeaks(receiveScan.descriptorFrontier),
         ],
-        BigInt(input.sourceTotalCount ?? input.sourceFrontier.count),
+        BigInt(input.inlineSourceCount ?? inlineScriptSourceFrontier.count),
         BigInt(input.redeemerTotalCount ?? input.redeemerFrontier.count),
         [
           BigInt(observerScan.totalCount),
@@ -1018,7 +1019,7 @@ export const prepareValidationTrace = (input: ValidationMachineReplayInput) =>
           encodeCbor([
             1n,
             BigInt(input.pendingSource.sourceIndex),
-            BigInt(input.pendingSource.sourceTotalCount),
+            BigInt(input.pendingSource.inlineSourceCount),
             BigInt(input.pendingSource.languageTag),
             BigInt(input.pendingSource.payloadOffset),
             BigInt(input.pendingSource.payloadLength),
@@ -2348,7 +2349,7 @@ export const prepareValidationTrace = (input: ValidationMachineReplayInput) =>
           const currentInlineSourceWitness = (
             pendingSource?: {
               readonly sourceIndex: number;
-              readonly sourceTotalCount: number;
+              readonly inlineSourceCount: number;
               readonly languageTag: 0 | 3 | 128;
               readonly payloadOffset: number;
               readonly payloadLength: number;
@@ -2362,7 +2363,7 @@ export const prepareValidationTrace = (input: ValidationMachineReplayInput) =>
               stage: 0,
               sourceFrontier: authenticatedInlineSourceFrontier,
               redeemerFrontier: emptyValidationFrontier,
-              sourceTotalCount: inlineSourceTotalCount,
+              inlineSourceCount: inlineSourceTotalCount,
               redeemerTotalCount: 0,
               pendingSource,
             });
@@ -2435,7 +2436,7 @@ export const prepareValidationTrace = (input: ValidationMachineReplayInput) =>
             const hashTrace = buildMidgardBlake2b224Trace(hashMessage);
             let pendingSource = {
               sourceIndex: item.itemIndex,
-              sourceTotalCount: inlineSourceTotalCount,
+              inlineSourceCount: inlineSourceTotalCount,
               languageTag: exactLanguageTag,
               payloadOffset,
               payloadLength: scriptPayload.value.length,
@@ -2539,7 +2540,7 @@ export const prepareValidationTrace = (input: ValidationMachineReplayInput) =>
               stage: 1,
               sourceFrontier: inlineScriptSourceFrontier,
               redeemerFrontier: authenticatedRedeemerFrontier,
-              sourceTotalCount: inlineSourceTotalCount,
+              inlineSourceCount: inlineSourceTotalCount,
               redeemerTotalCount,
               redeemerItemControlHash,
             });
@@ -2750,15 +2751,12 @@ export const prepareValidationTrace = (input: ValidationMachineReplayInput) =>
                     ),
                   );
                 }
-                if (
-                  node.sourceKind === "reference" &&
-                  descriptor.referenceScriptLanguage !== -1
-                ) {
+                if (descriptor.referenceScriptLanguage !== -1) {
                   const output = decodeMidgardTxOutput(outputCbor);
                   if (output.script_ref === undefined) {
                     return yield* Effect.fail(
                       new Error(
-                        "reference-input descriptor commits a missing retained reference script",
+                        "resolved-output descriptor commits a missing retained reference script",
                       ),
                     );
                   }
@@ -3631,10 +3629,15 @@ export const prepareValidationTrace = (input: ValidationMachineReplayInput) =>
                         }
                       | undefined;
                     for (
-                      let sourceIndex = 0;
-                      sourceIndex < scriptSourceEntries.length;
-                      sourceIndex += 1
+                      let sourceCursor = 0;
+                      sourceCursor < scriptSourceEntries.length;
+                      sourceCursor += 1
                     ) {
+                      const sourceIndex = midgardScriptSourcePhysicalIndex(
+                        inlineScriptSourceFrontier.count,
+                        scriptSourceEntries.length,
+                        sourceCursor,
+                      );
                       const source = scriptSourceEntries[sourceIndex]!;
                       pushWitness(
                         "scriptSources",
@@ -3654,7 +3657,7 @@ export const prepareValidationTrace = (input: ValidationMachineReplayInput) =>
                       const sourceHash = source.scriptHash;
                       discovery = {
                         ...discovery,
-                        sourceCursor: sourceIndex + 1,
+                        sourceCursor: sourceCursor + 1,
                       };
                       if (sourceHash.equals(purpose.scriptHash)) {
                         const exactLanguageTag = source.scriptLanguageTag;

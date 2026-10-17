@@ -496,7 +496,7 @@
   },
   {
     "file": "midgard-fault-proofs/tests/support/mint-authorization-installed-lifecycle-cases.ts",
-    "max": 830,
+    "max": 835,
     "reason": "captureAndRestart is the dominant indivisible declaration: the body of the retained test registration “mintAuthorization installed cursor actuator”, moved here unchanged so its five part files (mint-authorization-installed-lifecycle{,-native-wide,-native-deep,-reference,-field-maxima}.test.ts) run disjoint cases in parallel. Its staged control flow shares one scenario's harness, journal and adapter; dividing it changes fixture lifetime or requires a separate harness refactor."
   },
   {
@@ -1161,7 +1161,7 @@
   },
   {
     "file": "midgard-validation/src/validation-machine/trace-builder-prepare.prepare-validation-trace.ts",
-    "max": 4138,
+    "max": 4141,
     "reason": "prepareValidationTrace is the dominant indivisible declaration (3805 lines). Its staged control flow shares local state and error/cleanup ordering; surrounding independent declarations were extracted. Further reduction requires a separately verified function-body refactor rather than a module move. Integrated deep-data, exact-reason and canonical-redeemer behavior; cap remeasured on the combined source. Combined F1/RLO source measured at integration. Authenticated forced redeemer refusal integrated; measured after combined formatting."
   },
   {

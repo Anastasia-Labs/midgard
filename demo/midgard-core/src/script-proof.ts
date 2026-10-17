@@ -32,3 +32,4 @@ export {
   hashMidgardScriptSourceLeaf,
   hashMidgardV1VersionedScript,
 } from "./script-proof.hash-midgard-script-source-leaf.js";
+export { midgardScriptSourcePhysicalIndex } from "./script-proof.midgard-script-source-physical-index.js";

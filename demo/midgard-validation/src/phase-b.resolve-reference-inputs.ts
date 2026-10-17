@@ -269,7 +269,7 @@ export const ledgerOutputToTxOutput = (
   ...(output.scriptRef === undefined ? {} : { script_ref: output.scriptRef }),
 });
 
-export const collectInlineScriptSources = (
+const collectInlineScriptSources = (
   ledgerTx: MidgardLedgerTx,
 ): readonly ScriptSource[] =>
   ledgerTx.scriptWitnesses.map((witness) =>
@@ -279,6 +279,64 @@ export const collectInlineScriptSources = (
       `script_wit:${witness.index}`,
     ),
   );
+
+/**
+ * Script sources carried by spent outputs, in canonical out-ref order. A spent
+ * output that is absent or does not decode contributes nothing here: input
+ * resolution refuses the transaction before any source is looked up.
+ */
+const spentOutputScriptSources = (
+  node: CandidateNode,
+  stateValue: (outRefHex: string) => Buffer | undefined,
+): readonly ScriptSource[] =>
+  sortTxOutRefHexes(node.spentOutRefs).flatMap((outRefHex) => {
+    const outputBytes = stateValue(outRefHex);
+    if (outputBytes === undefined) return [];
+    let output: MidgardTxOutput;
+    try {
+      output = decodeMidgardTxOutput(outputBytes);
+    } catch {
+      return [];
+    }
+    return output.script_ref === undefined
+      ? []
+      : [
+          scriptSourceFromVersionedScript(
+            output.script_ref,
+            "reference",
+            outRefHex,
+          ),
+        ];
+  });
+
+/**
+ * The transaction's script-source universe in lookup order: the reference
+ * scripts of every resolved output (spent and reference inputs, in canonical
+ * out-ref order) before the inline script witnesses. A purpose resolves to the
+ * first source with its hash, so an inline witness whose script a resolved
+ * output already carries is never used.
+ */
+export const collectScriptSources = (
+  node: CandidateNode,
+  stateValue: (outRefHex: string) => Buffer | undefined,
+  references: ResolvedReferenceInputs,
+): readonly ScriptSource[] => {
+  const resolved = [
+    ...spentOutputScriptSources(node, stateValue),
+    ...references.scriptSources,
+  ];
+  const order = new Map(
+    sortTxOutRefHexes(new Set(resolved.map((source) => source.sourceId))).map(
+      (outRefHex, position) => [outRefHex, position],
+    ),
+  );
+  return [
+    ...resolved.sort(
+      (left, right) => order.get(left.sourceId)! - order.get(right.sourceId)!,
+    ),
+    ...collectInlineScriptSources(node.candidate.ledgerTx),
+  ];
+};
 
 const scriptLanguageForExecution = (
   execution: RequiredScriptExecution,

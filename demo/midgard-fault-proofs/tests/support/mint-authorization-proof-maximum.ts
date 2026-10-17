@@ -67,7 +67,9 @@ export const runMintAuthorizationProofMaximum = async (
     );
     return result.result;
   };
-  const reference = referenceInputItemCbor({
+  // The deep ledger opening is a spent input: step-04 closes the empty
+  // reference-input field and then resolves it in field 0.
+  const spent = referenceInputItemCbor({
     txIdHex: "cd".repeat(32),
     outputIndex: 2,
   });
@@ -76,14 +78,14 @@ export const runMintAuthorizationProofMaximum = async (
     outputIndex: 2,
   });
   const ledgerProof = syntheticDeepMembershipProof({
-    key: Buffer.from(reference, "hex"),
+    key: Buffer.from(spent, "hex"),
     value: Buffer.from(ledger.descriptorCbor, "hex"),
     branchLevels: 64,
   });
   const mint = selectedMint ?? mintAuthorizationMaximumMintField();
   const subject = buildMintAuthorizationSubject({
     mintItemCbors: mint.mintItemCbors,
-    referenceInputItemCbors: [reference],
+    spendInputItemCbors: [spent],
   });
   let claimEvidence:
     | Awaited<ReturnType<typeof buildMintAuthorizationStep02Evidence>>
@@ -342,11 +344,23 @@ export const runMintAuthorizationProofMaximum = async (
       referenceScriptUtxo: refs.steps[2],
     }),
   );
+  const inputFields = {
+    referenceInputsItemCbors: subject.referenceInputItemCbors,
+    spendInputsItemCbors: subject.spendInputItemCbors,
+  };
+  const references = await capture("step_04-complete-references", () =>
+    submitMintAuthorizationStep04AdvanceComplete({
+      ...common,
+      ...inputFields,
+      threadOutRef: three.nextThreadOutRef,
+      referenceScriptUtxo: refs.steps[3],
+    }),
+  );
   const four = await capture("step_04", () =>
     submitMintAuthorizationStep04ResolveNext({
       ...common,
-      threadOutRef: three.nextThreadOutRef,
-      referenceInputsItemCbors: subject.referenceInputItemCbors,
+      ...inputFields,
+      threadOutRef: references.nextThreadOutRef,
       trie: {
         rootHex: ledgerProof.transactionsPhasRoot,
         prove: async () => Buffer.from(ledgerProof.proofCbor, "hex"),
@@ -358,8 +372,8 @@ export const runMintAuthorizationProofMaximum = async (
   const final = await capture("step_04-complete", () =>
     submitMintAuthorizationStep04AdvanceComplete({
       ...common,
+      ...inputFields,
       threadOutRef: four.nextThreadOutRef,
-      referenceInputsItemCbors: subject.referenceInputItemCbors,
       referenceScriptUtxo: refs.steps[3],
     }),
   );

@@ -241,7 +241,7 @@ pub fn authenticate_purpose_control_v1(
       ),
       bytearray.length(required_script_hash) == 28,
       control.stage == 9,
-      control.source_total_count == control.source_count,
+      control.inline_source_count >= 0 && control.inline_source_count <= control.source_count,
       validation_merkle_v1.frontier_is_well_formed(
         control.source_count,
         control.source_peaks,
