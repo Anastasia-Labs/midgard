@@ -17,6 +17,7 @@ import {
   REFERENCE_SCRIPT_COMMAND_NAMES,
   type ReferenceScriptCommandName,
 } from "../deployable-scripts.js";
+export { deploymentInitializationNonceOutRefKeys } from "./reference-scripts.deployment-initialization-nonces.js";
 export {
   deployReferenceScriptCommandProgram,
   ensureNodeRuntimeReferenceScriptsProgram,

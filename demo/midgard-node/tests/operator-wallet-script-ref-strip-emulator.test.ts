@@ -24,6 +24,7 @@ import {
   stripOperatorWalletScriptRefsProgram,
 } from "../src/transactions/operator-wallet-script-ref-strip.js";
 import type { ReferenceScriptSweepLimits } from "../src/transactions/reference-script-sweep.js";
+import { deploymentInitializationNonceOutRefKeys } from "../src/transactions/reference-scripts.js";
 import {
   drainJournaledWithoutFollower,
   runWithoutFollower,
@@ -179,10 +180,12 @@ const strip = async (
     execute,
     wallet = fixture.operator,
     maxReferenceScriptBytesPerBatch,
+    reservedOutRefKeys = new Set<string>(),
   }: {
     readonly execute: boolean;
     readonly wallet?: Wallet;
     readonly maxReferenceScriptBytesPerBatch?: number;
+    readonly reservedOutRefKeys?: ReadonlySet<string>;
   },
 ): Promise<Either.Either<OperatorWalletScriptRefStripResult, unknown>> =>
   runWithoutFollower(
@@ -190,6 +193,7 @@ const strip = async (
       stripOperatorWalletScriptRefsProgram({
         lucid: wallet.lucid,
         referenceScriptsWalletAddress: fixture.reference.address,
+        reservedOutRefKeys,
         limits: fixture.limits,
         options: {
           execute,
@@ -396,5 +400,57 @@ describe("strip-operator-wallet-script-refs on the emulator", () => {
       lovelaceIn(before) - executed.submitted[0]!.fee,
     );
     expect(tokensIn(after)).toEqual(tokensIn(before));
+  }, 120_000);
+
+  it("never strips the deployment's reserved initialization nonce, even when it carries a reference script", async () => {
+    const fixture = await setUp();
+    await publishTo(fixture.emulator, fixture.operator, {
+      script: referenceScript(11, SCRIPT_BYTES),
+      lovelace: 70_000_000n,
+    });
+    const [nonce] = withScriptRef(await utxosOf(fixture, fixture.operator));
+    await publishTo(fixture.emulator, fixture.operator, {
+      script: referenceScript(12, SCRIPT_BYTES),
+      lovelace: 70_000_000n,
+    });
+    expect(
+      withScriptRef(await utxosOf(fixture, fixture.operator)),
+    ).toHaveLength(2);
+    const reservedOutRefKeys = deploymentInitializationNonceOutRefKeys(
+      await loadRealMidgardContractsForTest(nonce!),
+    );
+    expect([...reservedOutRefKeys]).toEqual([outRef(nonce!)]);
+    const executed = expectStripped(
+      await strip(fixture, { execute: true, reservedOutRefKeys }),
+    );
+    expect(executed.submitted.map((batch) => batch.inputCount)).toEqual([1]);
+    expect(
+      withScriptRef(await utxosOf(fixture, fixture.operator)).map(outRef),
+    ).toEqual([outRef(nonce!)]);
+  }, 240_000);
+
+  it("never takes the deployment's reserved initialization nonce for the fee", async () => {
+    const fixture = await setUp();
+    // As above, the batch needs a fee input; here the nonce is the only
+    // other operator-wallet UTxO.
+    await publishTo(fixture.emulator, fixture.operator, {
+      script: referenceScript(13, 0),
+      mint: {
+        policy: fixture.authPolicy,
+        tokenName: AUTH_TOKEN_NAME,
+      },
+    });
+    const before = await utxosOf(fixture, fixture.operator);
+    const plain = before.filter((utxo) => utxo.scriptRef == null);
+    expect(plain).toHaveLength(1);
+    const reservedOutRefKeys = deploymentInitializationNonceOutRefKeys(
+      await loadRealMidgardContractsForTest(plain[0]!),
+    );
+    expect([...reservedOutRefKeys]).toEqual([outRef(plain[0]!)]);
+    const result = await strip(fixture, { execute: true, reservedOutRefKeys });
+    expect(Either.isLeft(result)).toBe(true);
+    expect(outRefsOf(await utxosOf(fixture, fixture.operator))).toEqual(
+      outRefsOf(before),
+    );
   }, 120_000);
 });

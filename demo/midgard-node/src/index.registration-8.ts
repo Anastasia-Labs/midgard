@@ -6,7 +6,6 @@ import {
   failCli,
   parseL1AddressOption,
   parsePositiveIntegerOption,
-  provideLucidOnlyServices,
   provideTxServices,
   runCliEffect,
   tapJson,
@@ -27,6 +26,7 @@ import {
   referenceScriptSweepLimitsFromProtocolParameters,
   sweepRetiredReferenceScriptsProgram,
 } from "./transactions/reference-script-sweep.js";
+import { deploymentInitializationNonceOutRefKeys } from "./transactions/reference-scripts.js";
 import * as RegisterActiveOperator from "./transactions/register-active-operator.js";
 
 /** The current protocol parameters as the sweep and strip batch limits. */
@@ -164,8 +164,9 @@ program
       readonly maxReferenceScriptBytesPerBatch?: number;
       readonly execute?: boolean;
     };
-    const mainEffect = provideLucidOnlyServices(
+    const mainEffect = provideTxServices(
       Effect.gen(function* () {
+        const contracts = yield* Services.MidgardContracts;
         const lucidService = yield* Services.Lucid;
         yield* lucidService.switchToOperatorsMainWallet;
         const limits = yield* readBatchLimits(lucidService);
@@ -173,6 +174,8 @@ program
           lucid: lucidService.api,
           referenceScriptsWalletAddress:
             lucidService.referenceScriptsWalletAddress,
+          reservedOutRefKeys:
+            deploymentInitializationNonceOutRefKeys(contracts),
           limits,
           options: {
             execute: opts.execute === true,

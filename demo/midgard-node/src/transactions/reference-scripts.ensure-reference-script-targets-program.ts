@@ -25,6 +25,7 @@ import {
   referencePublicationOptions,
   referencePublicationPreparationFeeAllowance,
 } from "./reference-publication.js";
+import { deploymentInitializationNonceOutRefKeys } from "./reference-scripts.deployment-initialization-nonces.js";
 import {
   ensureReferenceScriptWalletWorkingCapital,
   nodeRuntimeReferenceScriptTargets,
@@ -41,7 +42,6 @@ import {
   type ReferenceScriptResolved,
   type ReferenceScriptTarget,
   type ReferenceScriptWalletStatusSummary,
-  utxoOutRefKey,
 } from "./reference-scripts.fetch-reference-script-utxos-program.js";
 import {
   awaitWalletViewUtxos,
@@ -417,15 +417,7 @@ export const ensureNodeRuntimeReferenceScriptsProgram = (
     fundingLucid,
     referenceScriptsAddress,
     minAuthPolicyRemainingMs,
-    new Set(
-      Object.values(SDK.requireEventHistoryContracts(contracts)).map(
-        ({ recipe }) =>
-          utxoOutRefKey({
-            txHash: recipe.initializationNonce.transactionId,
-            outputIndex: Number(recipe.initializationNonce.outputIndex),
-          }),
-      ),
-    ),
+    deploymentInitializationNonceOutRefKeys(contracts),
   );
 
 export const resolveReferenceScriptTargetsProgram = (

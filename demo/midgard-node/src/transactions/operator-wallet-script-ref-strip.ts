@@ -7,7 +7,9 @@
  * sweep, and are submitted and confirmed one at a time, each re-planned from
  * the wallet view. The fee comes from the batch's own inputs, with coin
  * selection over the operator wallet view adding another of its UTxOs only
- * when they do not cover it. The reference-script wallet is never touched.
+ * when they do not cover it. The reference-script wallet is never touched,
+ * and the deployment's reserved initialization nonces are left out of the
+ * view before planning, so neither a strip input nor a fee input is one.
  */
 import * as SDK from "@al-ft/midgard-sdk";
 import {
@@ -34,7 +36,10 @@ import {
   type ReferenceScriptSweepLimits,
   SIGNED_TX_WITNESS_ALLOWANCE_BYTES,
 } from "./reference-script-sweep.reference-script-fee.js";
-import { REFERENCE_SCRIPT_CONFIRMATION_TIMEOUT_MS } from "./reference-scripts.js";
+import {
+  REFERENCE_SCRIPT_CONFIRMATION_TIMEOUT_MS,
+  utxoOutRefKey,
+} from "./reference-scripts.js";
 import {
   handleSignSubmit,
   TxConfirmError,
@@ -204,15 +209,19 @@ const buildBatchTransaction = (
 /**
  * Plans (dry run, the default) or executes the strip. `lucid` has the
  * operator wallet selected; the reference-script wallet is refused.
+ * `reservedOutRefKeys` are the deployment's initialization nonces
+ * (`deploymentInitializationNonceOutRefKeys`).
  */
 export const stripOperatorWalletScriptRefsProgram = ({
   lucid,
   referenceScriptsWalletAddress,
+  reservedOutRefKeys,
   limits,
   options,
 }: {
   readonly lucid: LucidEvolution;
   readonly referenceScriptsWalletAddress: string;
+  readonly reservedOutRefKeys: ReadonlySet<string>;
   readonly limits: ReferenceScriptSweepLimits;
   readonly options: OperatorWalletScriptRefStripOptions;
 }): Effect.Effect<
@@ -240,7 +249,9 @@ export const stripOperatorWalletScriptRefsProgram = ({
           ),
         );
       const utxos = view.utxos.filter(
-        (utxo) => !spentOutRefs.has(outRefLabel(utxo)),
+        (utxo) =>
+          !spentOutRefs.has(outRefLabel(utxo)) &&
+          !reservedOutRefKeys.has(utxoOutRefKey(utxo)),
       );
       const plan = yield* Effect.try({
         try: () =>
