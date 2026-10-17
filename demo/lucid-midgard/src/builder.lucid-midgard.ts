@@ -1,3 +1,4 @@
+import { ledgerEd25519SignatureReady } from "@al-ft/midgard-core";
 import { type MidgardCekProgramMaterialEntry } from "@al-ft/midgard-core/cek-proof";
 import { type Network } from "@lucid-evolution/lucid";
 
@@ -173,6 +174,7 @@ export class LucidMidgard {
     networkOrConfig?: Network | LucidMidgardConfig,
   ): Promise<LucidMidgard> {
     const baseConfig = normalizeLucidMidgardConfig(networkOrConfig);
+    await ledgerEd25519SignatureReady;
     const { snapshot, config } = await readProviderSnapshot({
       provider,
       generation: 0,

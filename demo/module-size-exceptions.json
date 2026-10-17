@@ -96,8 +96,8 @@
   },
   {
     "file": "lucid-midgard/src/builder.lucid-midgard.ts",
-    "max": 511,
-    "reason": "LucidMidgard is one state owner: its methods share private state and lifecycle invariants. Further extraction would redesign ownership rather than separate independent declarations; surrounding helpers have been extracted."
+    "max": 513,
+    "reason": "LucidMidgard is one state owner: its methods share private state and lifecycle invariants. Further extraction would redesign ownership rather than separate independent declarations; surrounding helpers have been extracted. ED-F (+2): new() awaits the ledger-exact Ed25519 verifier's readiness before any instance exists, so the synchronous fromTx witness import never meets an unready verifier."
   },
   {
     "file": "lucid-midgard/src/builder.tx-builder.ts",
