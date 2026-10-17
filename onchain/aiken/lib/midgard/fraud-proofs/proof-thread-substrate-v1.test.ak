@@ -2,9 +2,11 @@
 //// proof-thread verdict-subject substrate.
 
 use aiken/cbor
+use aiken/merkle_patricia_forestry as mpf
 use aiken/primitive/bytearray
 use cardano/transaction
 use midgard/forced_submission_fixture as forced_fixture
+use midgard/fraud_proofs/input_existence_fixture_v1 as carriage_fixture
 use midgard/fraud_proofs/native_binding_fixture_v1 as fixture
 use midgard/fraud_proofs/native_script_decoding/thread_fixture_v1 as tf
 use midgard/fraud_proofs/native_tx/compact.{verify_native_tx_proof_source_v1} as native_compact
@@ -466,4 +468,70 @@ test proof_thread_event_key_binds_source_and_identity() {
       normal,
     ),
   }
+}
+
+// The event door is the only bound on the selected step index: an event
+// committed against a step past the header's last transition step is refused.
+
+fn event_door_step_index_v1(step_index: Int) -> Int {
+  let tx_id = fixture.challenged_block_v1().tx_id
+  let key = ledger_state.L2TransactionEventKey { tx_id }
+  let claim = tf.thread_claim_v1(
+    key,
+    ledger_state.L2Transaction,
+    prior_root,
+    None,
+  )
+  let value = ledger_state.EventToStepValue {
+    step_index,
+    phase: ledger_state.L2Transaction,
+  }
+  let phas_root = mpf.root(
+    mpf.insert(mpf.empty, cbor.serialise(key), cbor.serialise(value), []),
+  )
+  let header = ledger_state.HeaderV1 {
+    ..claim.header,
+    event_to_step_root: transition_trace.commit_counted_root(
+      transition_trace.EventToStepRootDomain,
+      phas_root,
+      1,
+    ),
+  }
+  let subject = substrate.VerdictSubjectV1 {
+    version: 1,
+    direction: 0,
+    source_kind: 0,
+    transaction_id: tx_id,
+    source_key: #"",
+    rejection_reason: None,
+  }
+  substrate.subject_event_step_index_v1(
+    header,
+    subject,
+    carriage_fixture.direct_carried_membership_v1(
+      transition_trace.RootMembershipProof {
+        ..claim.event_to_step_membership,
+        root: header.event_to_step_root,
+        phas_root,
+        value,
+      },
+      0,
+    ),
+    [],
+    [
+      fixture.phas_withdraw_redeemer_entry(
+        phas_root,
+        cbor.serialise(key),
+        cbor.serialise(value),
+      ),
+    ],
+  )
+}
+
+test proof_thread_event_door_accepts_the_last_transition_step() {
+  event_door_step_index_v1(0) == 0
+}
+
+test proof_thread_event_door_rejects_a_step_past_the_last_transition_step() fail {
+  event_door_step_index_v1(1) >= 0
 }
