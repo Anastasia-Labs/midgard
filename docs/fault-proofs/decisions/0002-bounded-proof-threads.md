@@ -61,4 +61,5 @@ scenarios together. A source installation is not release acceptance.
 
 Maximum-shape registered lifecycles must reach permanent proof mint and removal,
 refuse honest/substituted evidence, and cover applicable cancellation and recovery.
-Keep blueprint-bound fit ledgers alongside those executable checks.
+The fault-proof suite's submit guard holds every transaction those lifecycles
+submit to the Van Rossem limits, so they are also the family's fit proof.

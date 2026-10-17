@@ -18,9 +18,8 @@
  * from every physical step, resume from a live checkpoint, mint plus removal.
  * The datum step's own cases (its verdicts in both directions, its seams and
  * its cancel) are in resolved-output-non-canonical-datum-lifecycle.test.ts.
- * Every positive transaction is measured against the Van Rossem envelope;
- * the suite teardown pins the coverage gate and checks every measured row's
- * margins. The two files together write the fit ledger.
+ * Every transaction is held to the Van Rossem limits by the emulator submit
+ * guard; the suite teardown pins the coverage gate.
  */
 import "node:crypto";
 import "node:fs";
@@ -30,7 +29,6 @@ import "@al-ft/midgard-core";
 import "@al-ft/midgard-sdk";
 import "@lucid-evolution/lucid";
 import "vitest";
-import "../src/proof-fit/van-rossem-fit-ledger.js";
 import "../src/resolved-output-non-canonical/index.js";
 import "../src/testing/complete-lifecycle.js";
 import "../src/transition-trace/phas.js";
@@ -65,13 +63,8 @@ import { assertCompleteLifecycleCoverage } from "../src/testing/complete-lifecyc
 import { buildCountedRoot } from "../src/transition-trace/phas.js";
 import {
   AUTHENTICATION_SEAMS,
-  beginMeasuredCase,
   CANCELLABLE_STEPS,
   coverage,
-  expectMeasuredFit,
-  MEASURED_CASES,
-  measureFitPart,
-  passMeasuredCase,
   progress,
   record,
   recordCarriage,
@@ -79,7 +72,6 @@ import {
 } from "./resolved-output-non-canonical-lifecycle.record-carriage.js";
 import { refuseDatumSeams } from "./resolved-output-non-canonical-lifecycle.refuse-datum-seams.js";
 import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
-import { fixFitLedgerOwnerEmulator } from "./support/emulator/fit-ledger-owner-emulator.js";
 import {
   buildPriorLedger,
   buildSubjectTransaction,
@@ -99,15 +91,8 @@ import {
   subjectTransactionFor,
 } from "./support/resolved-output-non-canonical-emulator.js";
 
-fixFitLedgerOwnerEmulator();
 describe("resolvedOutputNonCanonical registered-chain lifecycle", () => {
-  measureFitPart("lifecycle", [
-    MEASURED_CASES.acceptedMaximum,
-    MEASURED_CASES.forcedMaximum,
-  ]);
-
   it("contradicts a wrongful acceptance of a non-canonical spend input at the maximum shape: refuses the accepted seams, resumes the scan, mints and removes", async () => {
-    beginMeasuredCase(MEASURED_CASES.acceptedMaximum);
     const context = await makeResolvedOutputContext();
     const prior = await buildPriorLedger({
       output: maximumMalformedOutput(),
@@ -327,11 +312,9 @@ describe("resolvedOutputNonCanonical registered-chain lifecycle", () => {
       (await stages.remove()).measurement,
     );
     coverage.scenario("permanent_proof_token_and_descendant_removal");
-    passMeasuredCase();
   }, 1_800_000);
 
   it("contradicts a wrongful forced rejection of a canonical reference input at the maximum shape: refuses every forced-door and certificate seam, closes at the exact end, mints and removes", async () => {
-    beginMeasuredCase(MEASURED_CASES.forcedMaximum);
     const context = await makeResolvedOutputContext();
     const prior = await buildPriorLedger({
       output: maximumCanonicalOutput(),
@@ -519,7 +502,6 @@ describe("resolvedOutputNonCanonical registered-chain lifecycle", () => {
       "forced-remove-fraudulent-block",
       (await stages.remove()).measurement,
     );
-    passMeasuredCase();
   }, 1_800_000);
 
   it("refuses to convict an honest accepted block: the finishable control cannot be advanced and a canonical verdict cannot mint under an accepted subject", async () => {
@@ -802,6 +784,5 @@ describe("resolvedOutputNonCanonical registered-chain lifecycle", () => {
       resumable: true,
       hasAdjacentConsensusBound: false,
     });
-    expectMeasuredFit();
   });
 });

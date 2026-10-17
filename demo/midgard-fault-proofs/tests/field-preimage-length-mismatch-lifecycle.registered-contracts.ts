@@ -15,13 +15,6 @@ import { makeFaultProofEmulatorHarness } from "./support/emulator/harness.js";
 import type { CompleteSignedTransactionMeasurement } from "./support/emulator/measurement.js";
 import { expectRegisteredChainParity } from "./support/emulator/registered-chain.js";
 import { createLifecycleCoverageRecorder } from "./support/lifecycle-coverage.js";
-import { createMeasuredFitRecorder } from "./support/measured-fit-ledger.js";
-
-const measuredFit = createMeasuredFitRecorder(
-  "field-preimage-length-mismatch",
-  "lifecycle",
-  "32,768-byte certified field preimage, inline carriage, both proof directions and cancellation",
-);
 
 export const REASON = "FieldPreimageLengthMismatch";
 
@@ -40,11 +33,6 @@ export const emitFit = (
   measurement: CompleteSignedTransactionMeasurement,
 ): void => {
   fitRows.push({ stage, measurement });
-  measuredFit.record(
-    stage,
-    measurement,
-    measurement.executionMemory === 0n ? "publication" : "lifecycle",
-  );
   expect(measurement.l1ByteMargin).toBeGreaterThan(0);
   expect(measurement.executionMemory).toBeLessThanOrEqual(16_500_000n);
   expect(measurement.executionSteps).toBeLessThanOrEqual(10_000_000_000n);

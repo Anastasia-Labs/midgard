@@ -46,7 +46,6 @@ import {
   submitRawInvalidSignatureStep02,
 } from "./support/invalid-signature-emulator.js";
 import { submitInit } from "./support/legacy-submit-emulator.js";
-import { createMeasuredFitRecorder } from "./support/measured-fit-ledger.js";
 import { expectStateQueueHeaderOrder } from "./support/submit-init-emulator-fixtures.js";
 import {
   buildRemovalDeploymentInfo,
@@ -58,12 +57,6 @@ import {
   network,
   publishRemovalReferenceScripts,
 } from "./support/submit-init-emulator-shared.js";
-
-const measuredFit = createMeasuredFitRecorder(
-  "invalid-signature-wrongful-rejection",
-  "accepted",
-  "accepted-invalid complete measured stage sequence using real scripts",
-);
 
 describe("invalid-signature emulator lifecycle", () => {
   it("convicts an invalid address witness end to end, mints the permanent fraud-proof token, and removes the fraudulent commitment", async () => {
@@ -213,11 +206,6 @@ describe("invalid-signature emulator lifecycle", () => {
     // transactions.
     expect(step02Capture.measurements).toHaveLength(1);
     for (const [stage, measurement] of Object.entries(proofFit)) {
-      measuredFit.record(
-        stage,
-        measurement,
-        measurement.executionMemory === 0n ? "publication" : "lifecycle",
-      );
       expectProofFit({ stage, measurement, maxTxExMem, maxTxExSteps });
     }
 

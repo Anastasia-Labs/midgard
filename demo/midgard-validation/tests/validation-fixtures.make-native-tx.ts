@@ -113,6 +113,14 @@ export const makeNativeTx = (opts: NativeTxOptions = {}): NativeTxFixture => {
               opts.privateKey ?? TEST_PRIVATE_KEY,
             ).to_cbor_bytes(),
           ),
+          ...(opts.extraVkeyWitnessKeys ?? []).map((key) =>
+            Buffer.from(
+              CML.make_vkey_witness(
+                CML.TransactionHash.from_raw_bytes(bodyHash),
+                key,
+              ).to_cbor_bytes(),
+            ),
+          ),
         ]);
 
   const witnessSet: MidgardNativeTxWitnessSetCanonical = {

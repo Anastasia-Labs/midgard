@@ -9,6 +9,7 @@ import "./validation-merkle.js";
 import "./validation-trace.encode-midgard-validation-machine-state.js";
 import "./validation-trace.decode-midgard-validation-machine-state.js";
 import "./validation-trace.build-midgard-validation-trace-tree.js";
+import "./validation-trace.trace-frontier.js";
 import "./validation-trace.rejection-reason-v1.js";
 import "./validation-trace.derive-midgard-validation-initial-state-v1.js";
 export {
@@ -58,3 +59,9 @@ export {
   type MidgardRejectionReasonV1ArmName,
   midgardRejectionReasonV1Parts,
 } from "./validation-trace.rejection-reason-v1.js";
+export {
+  midgardValidationTraceBranchHash,
+  MidgardValidationTraceFrontier,
+  midgardValidationTraceLeafHash,
+  MidgardValidationTracePadding,
+} from "./validation-trace.trace-frontier.js";

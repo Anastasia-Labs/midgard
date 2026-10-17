@@ -1,6 +1,3 @@
-import "node:crypto";
-import "node:fs/promises";
-import "node:url";
 import "@aiken-lang/merkle-patricia-forestry";
 import "@al-ft/midgard-core";
 import "@al-ft/midgard-core/codec/forced";
@@ -14,7 +11,6 @@ import "../src/field-opening.js";
 import "../src/linear-fault-family.js";
 import "../src/linear-fault-finalize.js";
 import "../src/linear-fault-submit.js";
-import "../src/proof-fit/van-rossem-fit-ledger.js";
 import "../src/remove-fraudulent-block.js";
 import "../src/spend-input-signer-missing/field-plans.js";
 import "../src/spend-input-signer-missing/index.js";
@@ -39,9 +35,7 @@ import "./spend-input-signer-missing-lifecycle.commit-forced-block.js";
 import "./spend-input-signer-missing-lifecycle.family-driver.js";
 import "./spend-input-signer-missing-lifecycle.submit-step03-with-foreign-certificate.js";
 
-import { createHash, sign } from "node:crypto";
-import { readFile } from "node:fs/promises";
-import { fileURLToPath } from "node:url";
+import { sign } from "node:crypto";
 
 import {
   computeMidgardNativeTxId,
@@ -59,10 +53,6 @@ import {
 } from "@al-ft/midgard-sdk";
 import { describe, expect, it } from "vitest";
 
-import {
-  buildVanRossemFitLedger,
-  writeVanRossemFitLedger,
-} from "../src/proof-fit/van-rossem-fit-ledger.js";
 import {
   classifySpendInputSignerMissingFinding,
   SPEND_INPUT_SIGNER_MISSING_ID,
@@ -83,9 +73,7 @@ import {
   FAMILY,
   garbageWitness,
   HONEST_ACCEPTED_WITNESSES,
-  MAXIMUM_SHAPE,
   MAXIMUM_WITNESSES,
-  measurements,
   newHarness,
   PHYSICAL_STEPS,
   prepareSpendInputSignerMissingEvidence,
@@ -97,13 +85,10 @@ import {
   witnessSetCompactHex,
 } from "./spend-input-signer-missing-lifecycle.registered-contracts.js";
 import { submitStep03WithForeignCertificate } from "./spend-input-signer-missing-lifecycle.submit-step03-with-foreign-certificate.js";
-import { realBlueprintPath } from "./support/emulator/blueprints.js";
-import { fixFitLedgerOwnerEmulator } from "./support/emulator/fit-ledger-owner-emulator.js";
 import { captureEmulatorSubmission } from "./support/emulator/measurement.js";
 import { makeNativeTx } from "./support/emulator/native-tx.js";
 import { transitionTraceOutRef } from "./support/submit-init-emulator-shared.js";
 
-fixFitLedgerOwnerEmulator();
 describe("spendInputSignerMissing registered-chain lifecycle", () => {
   it("runs the accepted 318-witness maximum from Init through proof mint, cancelling every physical step", async () => {
     const harness = await newHarness();
@@ -150,7 +135,7 @@ describe("spendInputSignerMissing registered-chain lifecycle", () => {
         harness.emulator,
         operation,
       );
-      recordMeasurements(name, "lifecycle", MAXIMUM_SHAPE, captured);
+      recordMeasurements(name, captured);
       return captured.result;
     };
 
@@ -191,8 +176,6 @@ describe("spendInputSignerMissing registered-chain lifecycle", () => {
     scans.forEach((scan, index) =>
       recordMeasurements(
         `accepted-step04-${index.toString().padStart(2, "0")}`,
-        "lifecycle",
-        MAXIMUM_SHAPE,
         scan,
       ),
     );
@@ -283,7 +266,7 @@ describe("spendInputSignerMissing registered-chain lifecycle", () => {
     }
     const removal = await run.removal(block.headerHash);
     expect(removal.result.fraudCategoryId).toBe(SPEND_INPUT_SIGNER_MISSING_ID);
-    recordMeasurements("accepted-remove", "lifecycle", MAXIMUM_SHAPE, removal);
+    recordMeasurements("accepted-remove", removal);
     coverage.scenario("permanent_proof_token_and_descendant_removal");
   }, 900_000);
 
@@ -319,8 +302,6 @@ describe("spendInputSignerMissing registered-chain lifecycle", () => {
     });
     expect(evidence.signerMissing).toBe(false);
     expect(evidence.validSignerHashes).toEqual([signerKey.keyHash]);
-    const shape =
-      "1 valid matching address witness; Inline field; one scan batch";
     const { references, certificateReference } = await publishReferences(
       harness,
       family,
@@ -336,7 +317,7 @@ describe("spendInputSignerMissing registered-chain lifecycle", () => {
         harness.emulator,
         operation,
       );
-      recordMeasurements(name, "lifecycle", shape, captured);
+      recordMeasurements(name, captured);
       return captured.result;
     };
     const thread = await measured("forced-init", () =>
@@ -378,7 +359,7 @@ describe("spendInputSignerMissing registered-chain lifecycle", () => {
     coverage.scenario("wrongful_forced_rejection_success");
     const removal = await run.removal(block.headerHash);
     expect(removal.result.fraudCategoryId).toBe(SPEND_INPUT_SIGNER_MISSING_ID);
-    recordMeasurements("forced-remove", "lifecycle", shape, removal);
+    recordMeasurements("forced-remove", removal);
   }, 600_000);
 
   it("refuses an honest accepted block, every substituted accepted seam, and a mutated spend coordinate on chain", async () => {
@@ -760,7 +741,6 @@ describe("spendInputSignerMissing registered-chain lifecycle", () => {
     });
     expect(evidence.route).toBe("script_credential");
     expect(evidence.signerRequired).toBe(false);
-    const shape = "script-locked spend input; direct terminal route; no scan";
     const { references, certificateReference } = await publishReferences(
       harness,
       family,
@@ -776,7 +756,7 @@ describe("spendInputSignerMissing registered-chain lifecycle", () => {
         harness.emulator,
         operation,
       );
-      recordMeasurements(name, "lifecycle", shape, captured);
+      recordMeasurements(name, captured);
       return captured.result;
     };
     const thread = await measured("forced-direct-init", () =>
@@ -819,10 +799,10 @@ describe("spendInputSignerMissing registered-chain lifecycle", () => {
     coverage.scenario("wrongful_forced_rejection_success");
     const removal = await run.removal(block.headerHash);
     expect(removal.result.fraudCategoryId).toBe(SPEND_INPUT_SIGNER_MISSING_ID);
-    recordMeasurements("forced-direct-remove", "lifecycle", shape, removal);
+    recordMeasurements("forced-direct-remove", removal);
   }, 600_000);
 
-  it("declares the complete lifecycle coverage it exercised and writes the fit ledger it measured", async () => {
+  it("declares the complete lifecycle coverage it exercised", () => {
     // Recorded while the suites above ran, never pre-filled. The aggregate
     // field bound (32,768 bytes, 318 witnesses) is this family's consensus
     // bound, but no lifecycle transaction can present the adjacent 319-witness
@@ -837,40 +817,5 @@ describe("spendInputSignerMissing registered-chain lifecycle", () => {
       resumable: true,
       hasAdjacentConsensusBound: false,
     });
-    const blueprintBytes = await readFile(realBlueprintPath);
-    const ledger = buildVanRossemFitLedger({
-      category: "spendInputSignerMissing:00000027:testnet",
-      blueprintSha256: createHash("sha256")
-        .update(blueprintBytes)
-        .digest("hex"),
-      measurements,
-    });
-    expect(ledger.entries).toHaveLength(measurements.length);
-    expect(
-      ledger.entries.every(
-        (entry) =>
-          entry.signedByteMargin > 0 &&
-          BigInt(entry.memoryUnitMargin) > 0n &&
-          BigInt(entry.cpuUnitMargin) > 0n,
-      ),
-    ).toBe(true);
-    expect(
-      ledger.entries
-        .filter((entry) => entry.kind === "publication")
-        .every((entry) => (entry.publicationReserveMargin ?? -1) >= 0),
-    ).toBe(true);
-    console.info(
-      `[spend-input-signer-missing-fit-ledger] ${JSON.stringify(ledger)}`,
-    );
-    if (process.env.MIDGARD_WRITE_FIT_LEDGER === "1")
-      await writeVanRossemFitLedger(
-        fileURLToPath(
-          new URL(
-            "../../../docs/fault-proofs/size-plans/spend-input-signer-missing-v1-fit-ledger.json",
-            import.meta.url,
-          ),
-        ),
-        ledger,
-      );
   });
 });

@@ -1,13 +1,10 @@
-import { createHash } from "node:crypto";
-import { readFile } from "node:fs/promises";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { fileURLToPath } from "node:url";
 
 import { midgardFieldCarriageBounds } from "@al-ft/midgard-core";
 import { forcedVerdictSubject } from "@al-ft/midgard-sdk";
-import { afterAll, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import {
   admitMissingSignatureForcedArtifact,
@@ -16,11 +13,6 @@ import {
 import * as family from "../src/missing-signature/index.js";
 import { submitMissingSignatureForcedCancel } from "../src/missing-signature/submit-forced.js";
 import { missingSignatureWrongfulRejectionCloses } from "../src/missing-signature/wrongful-rejection.js";
-import {
-  buildVanRossemFitLedger,
-  type VanRossemFitMeasurement,
-  writeVanRossemFitLedger,
-} from "../src/proof-fit/van-rossem-fit-ledger.js";
 import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.js";
 import {
   computeFraudProofWorkflowId,
@@ -34,40 +26,16 @@ import {
 } from "../src/workflow/missing-signature.js";
 import { missingSignatureObservation } from "../src/workflow/missing-signature-state.js";
 import { FRAUD_PROOF_AUTHENTICATED_PUBLICATION_OBSERVER } from "../src/workflow/raw-l1-publication-observation.js";
-import { fixFitLedgerOwnerEmulator } from "./support/emulator/fit-ledger-owner-emulator.js";
 import { publishPlainReferenceScriptUtxo } from "./support/emulator/reference-scripts.js";
 import {
   network,
   setupMissingSignatureForcedScenario,
 } from "./support/missing-signature-forced-scenario.js";
 import { buildMissingSignatureForcedTransaction as transactionFor } from "./support/missing-signature-forced-shapes.js";
-import { realBlueprintPath } from "./support/submit-init-emulator-shared.js";
-
-fixFitLedgerOwnerEmulator();
-const fitMeasurements: VanRossemFitMeasurement[] = [];
-afterAll(async () => {
-  if (process.env.MIDGARD_WRITE_FIT_LEDGER !== "1") return;
-  const ledger = buildVanRossemFitLedger({
-    category: "missingSignature:0000000e:wrongful-rejection:testnet",
-    blueprintSha256: createHash("sha256")
-      .update(await readFile(realBlueprintPath))
-      .digest("hex"),
-    measurements: fitMeasurements,
-  });
-  await writeVanRossemFitLedger(
-    fileURLToPath(
-      new URL(
-        "../../../docs/fault-proofs/size-plans/missing-signature-wrongful-rejection-v1-fit-ledger.json",
-        import.meta.url,
-      ),
-    ),
-    ledger,
-  );
-});
 const setupScenario = (
   shape?: Parameters<typeof transactionFor>[0],
   signerIndex?: bigint,
-) => setupMissingSignatureForcedScenario(fitMeasurements, shape, signerIndex);
+) => setupMissingSignatureForcedScenario(shape, signerIndex);
 
 describe("missingSignature wrongful rejection real lifecycle", () => {
   it("reloads the forced journal and captures each installed runner stage, refusing mutated source and witness evidence", async () => {

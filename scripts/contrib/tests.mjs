@@ -147,10 +147,6 @@ export const prepare = async (
   { signal, env = process.env, sourceOnly = false } = {},
 ) => {
   const plan = preparationPlan(root, name, { sourceOnly });
-  if (env.MIDGARD_BLUEPRINT_STAMP === "warn")
-    throw new Error(
-      "guarded runs refuse MIDGARD_BLUEPRINT_STAMP=warn: they test this checkout's own blueprint, which contrib prepare copies or builds; unset it",
-    );
   if (plan.postgres && env.MIDGARD_SKIP_DB_TESTS !== "1") {
     if (
       env.POSTGRES_HOST &&

@@ -221,7 +221,6 @@
     "tests/spend-input-signer-missing-workflow.test.ts": 2.3,
     "tests/spend-input-signer-missing.test.ts": 2.8,
     "tests/spend-input-witness.test.ts": 1.9,
-    "tests/split-fit-ledger.test.ts": 1.8,
     "tests/state-queue-yield-publication-admission.test.ts": 2.6,
     "tests/structural-na-event-window-variants.test.ts": 2,
     "tests/structured-data-preimage.test.ts": 3.6,

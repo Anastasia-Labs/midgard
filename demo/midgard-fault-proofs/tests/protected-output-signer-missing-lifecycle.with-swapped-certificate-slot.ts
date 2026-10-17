@@ -9,7 +9,6 @@ import {
   submitProtectedOutputSignerMissingStep03,
 } from "../src/protected-output-signer-missing/index.js";
 import { makeScenario } from "./protected-output-signer-missing-lifecycle.make-scenario.js";
-import { createMeasuredFitRecorder } from "./support/measured-fit-ledger.js";
 
 type Scenario = Awaited<ReturnType<typeof makeScenario>>;
 
@@ -49,9 +48,3 @@ export const withSwappedCertificateSlot = (
   certified.cert_ref_input_index = firstChunk;
   return copy as SDK.FieldOpening;
 };
-
-export const measuredFit = createMeasuredFitRecorder(
-  "protected-output-signer-missing",
-  "lifecycle",
-  "318 address witnesses in a three-chunk certified field 7; forced exact-reason and direct-terminal paths",
-);

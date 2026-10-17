@@ -12,8 +12,8 @@ import {
   CML,
   Data,
   Emulator,
-  type EmulatorAccount,
   fromText,
+  generateEmulatorAccount,
   getAddressDetails,
   Lucid,
   mintingPolicyToId,
@@ -25,10 +25,6 @@ import {
 import { Effect } from "effect";
 import { expect } from "vitest";
 
-import {
-  fitLedgerOwnerAccount,
-  startFitLedgerOwnerEmulator,
-} from "./fit-ledger-owner-emulator.js";
 import { index, same } from "./history-pair.index.js";
 import { measureCompleteSignedTransaction } from "./measurement.js";
 import { EMULATOR_PROTOCOL_PARAMETERS } from "./protocol-parameters.js";
@@ -42,24 +38,18 @@ export const setupHistoryPair = async ({
     maxPayloadBytes: 5000n,
     maxPayloadNodes: 512n,
   },
-  wallet = fitLedgerOwnerAccount("historyPair", 2_000_000_000n),
-  emulatorTimeMs,
 }: {
   readonly blueprint: FaultProofBlueprint;
   readonly records: unknown[];
   readonly protectionDurationMs?: bigint;
   readonly bounds?: EventHistoryPayloadBounds;
-  /** The pair's one wallet; a fit-ledger owner's fixed one by default. */
-  readonly wallet?: EmulatorAccount;
-  /** The emulator's start; a fit-ledger owner's fixed one by default. */
-  readonly emulatorTimeMs?: number;
 }) => {
+  const wallet = generateEmulatorAccount({ lovelace: 2_000_000_000n });
   const owner = getAddressDetails(wallet.address).paymentCredential!.hash;
   const issuer = scriptFromNative({ type: "sig", keyHash: owner });
   const hubPolicy = mintingPolicyToId(issuer);
   const hubAddress = validatorToAddress("Custom", issuer);
   const emulator = new Emulator([wallet], EMULATOR_PROTOCOL_PARAMETERS);
-  startFitLedgerOwnerEmulator(emulator, emulatorTimeMs);
   const lucid = await Lucid(emulator, "Custom");
   lucid.selectWallet.fromSeed(wallet.seedPhrase);
   const submit = async (label: string, tx: TxSignBuilder) => {

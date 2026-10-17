@@ -1,20 +1,9 @@
-import { createHash } from "node:crypto";
-import { readFile } from "node:fs/promises";
-import { fileURLToPath } from "node:url";
-
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
-import { afterAll, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import { admitMinFeeForcedArtifact } from "../src/min-fee-forced-artifact.js";
-import {
-  buildVanRossemFitLedger,
-  type VanRossemFitMeasurement,
-  writeVanRossemFitLedger,
-} from "../src/proof-fit/van-rossem-fit-ledger.js";
 import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.js";
-import { realBlueprintPath } from "./support/emulator/blueprints.js";
-import { fixFitLedgerOwnerEmulator } from "./support/emulator/fit-ledger-owner-emulator.js";
 import { captureEmulatorSubmission } from "./support/emulator/measurement.js";
 import { makeMinFeeWrongfulRejectionScenario as setup } from "./support/min-fee-wrongful-emulator.js";
 import {
@@ -22,28 +11,6 @@ import {
   network,
   publishRemovalReferenceScripts,
 } from "./support/submit-init-emulator-shared.js";
-
-fixFitLedgerOwnerEmulator();
-const fitRows: VanRossemFitMeasurement[] = [];
-afterAll(async () => {
-  if (process.env.MIDGARD_WRITE_FIT_LEDGER !== "1") return;
-  expect(new Set(fitRows.map((row) => row.maximumShape)).size).toBe(6);
-  const blueprintBytes = await readFile(realBlueprintPath);
-  const ledger = buildVanRossemFitLedger({
-    category: "minFee",
-    blueprintSha256: createHash("sha256").update(blueprintBytes).digest("hex"),
-    measurements: fitRows,
-  });
-  await writeVanRossemFitLedger(
-    fileURLToPath(
-      new URL(
-        "../../../docs/fault-proofs/size-plans/min-fee-wrongful-rejection-v1-fit-ledger.json",
-        import.meta.url,
-      ),
-    ),
-    ledger,
-  );
-});
 
 describe("minFee wrongful rejection registered lifecycle", () => {
   it.each([999n, 1_000n])(
@@ -193,52 +160,6 @@ describe("minFee wrongful rejection registered lifecycle", () => {
         expect(row.executionMemory).toBeLessThanOrEqual(13_200_000n);
         expect(row.executionSteps).toBeLessThanOrEqual(8_000_000_000n);
       }
-      const shape =
-        inputCount === -64
-          ? "maximum-proof-64-and-certified-field"
-          : inputCount === -80
-            ? "all-nine-populated"
-            : `field0-${inputCount}`;
-      const groups = [
-        {
-          name: "script-publication",
-          kind: "publication" as const,
-          rows: s.scriptPublications,
-        },
-        { name: "init", kind: "lifecycle" as const, rows: init.measurements },
-        { name: "bind", kind: "lifecycle" as const, rows: bind.measurements },
-        {
-          name: "field-publication",
-          kind: "publication" as const,
-          rows: publication.measurements,
-        },
-        {
-          name: "final",
-          kind: "lifecycle" as const,
-          rows: finished.measurements,
-        },
-        {
-          name: "removal-reference",
-          kind: "publication" as const,
-          rows: removal.slice(0, -1),
-        },
-        {
-          name: "removal",
-          kind: "lifecycle" as const,
-          rows: removal.slice(-1),
-        },
-      ];
-      for (const group of groups)
-        group.rows.forEach((row, index) =>
-          fitRows.push({
-            name: `${shape}-${group.name}-${index}`,
-            kind: group.kind,
-            maximumShape: shape,
-            signedBytes: row.completeSignedBytes,
-            memoryUnits: row.executionMemory,
-            cpuUnits: row.executionSteps,
-          }),
-        );
     },
     600_000,
   );

@@ -6,7 +6,13 @@ import {
   faultProofStepRedeemerSchema,
   type MidgardTxInput,
 } from "@al-ft/midgard-sdk";
-import { Data, Lucid, type Script, type UTxO } from "@lucid-evolution/lucid";
+import {
+  Data,
+  generateEmulatorAccount,
+  Lucid,
+  type Script,
+  type UTxO,
+} from "@lucid-evolution/lucid";
 
 import type { NativeScriptDecodingContracts } from "../../src/native-script-decoding/contracts.js";
 import {
@@ -16,7 +22,6 @@ import {
   type NativeScriptDecodingProverPolicy,
 } from "../../src/native-script-decoding/prover.js";
 import { resolveProverSigner } from "../../src/runtime.js";
-import { fitLedgerOwnerAccount } from "./emulator/fit-ledger-owner-emulator.js";
 import { buildDecodingBlockFixture } from "./native-script-decoding-emulator.build-decoding-block-fixture.js";
 import {
   buildDecodingLedgerFixture,
@@ -71,7 +76,7 @@ export const makeDecodingEmulatorHarness = async () => {
   // funder nor the prover, and that must never be able to drive or cancel
   // somebody else's thread. It starts empty; `fundDecodingOutsider` fills
   // it once the setup transaction has consumed the harness nonce UTxO.
-  const outsider = fitLedgerOwnerAccount("decodingOutsider", 0n);
+  const outsider = generateEmulatorAccount({ lovelace: 0n });
   const outsiderLucid = await Lucid(harness.emulator, "Custom");
   outsiderLucid.selectWallet.fromSeed(outsider.seedPhrase);
   const outsiderSigner = resolveProverSigner({

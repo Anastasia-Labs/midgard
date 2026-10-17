@@ -1,6 +1,5 @@
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
 
 import { Proof as MpfProof } from "@aiken-lang/merkle-patricia-forestry";
 import {
@@ -19,6 +18,7 @@ import {
   type BuildTxWithRedeemer,
   Data,
   Emulator,
+  generateEmulatorAccount,
   getAddressDetails,
   Lucid,
   PROTOCOL_PARAMETERS_DEFAULT,
@@ -27,25 +27,11 @@ import {
   validatorToRewardAddress,
   validatorToScriptHash,
 } from "@lucid-evolution/lucid";
-import { afterAll, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 
-import {
-  buildVanRossemFitLedger,
-  type VanRossemFitMeasurement,
-  writeVanRossemFitLedger,
-} from "../src/proof-fit/van-rossem-fit-ledger.js";
 import { computationThreadOutputPredicate } from "../src/tx-layout.js";
 import { realBlueprintPath } from "./support/emulator/blueprints.js";
-import {
-  fitLedgerOwnerAccount,
-  fixFitLedgerOwnerEmulator,
-  startFitLedgerOwnerEmulator,
-} from "./support/emulator/fit-ledger-owner-emulator.js";
-import { measureCompleteSignedTransaction } from "./support/emulator/measurement.js";
 
-fixFitLedgerOwnerEmulator();
-const measurements: VanRossemFitMeasurement[] = [];
-let completed = 0;
 const blueprintBytes = readFileSync(realBlueprintPath);
 const blueprint = SDK.parseFaultProofBlueprint(
   JSON.parse(blueprintBytes.toString()),
@@ -70,41 +56,6 @@ const stage = {
   spendingScriptAddress: validatorToAddress("Custom", spendingScript),
   spendingScriptHash: validatorToScriptHash(spendingScript),
 };
-const observe = (name: string, cbor: string) => {
-  const m = measureCompleteSignedTransaction(cbor);
-  measurements.push({
-    name,
-    maximumShape: name.split("/")[0]!,
-    kind:
-      m.executionMemory === 0n && m.executionSteps === 0n
-        ? "publication"
-        : "lifecycle",
-    signedBytes: m.completeSignedBytes,
-    memoryUnits: m.executionMemory,
-    cpuUnits: m.executionSteps,
-  });
-};
-
-afterAll(async () => {
-  if (process.env.MIDGARD_WRITE_FIT_LEDGER !== "1") return;
-  expect(completed).toBe(2);
-  await writeVanRossemFitLedger(
-    fileURLToPath(
-      new URL(
-        "../../../docs/fault-proofs/size-plans/validation-trace-cek-material-task-fit-ledger.json",
-        import.meta.url,
-      ),
-    ),
-    buildVanRossemFitLedger({
-      category: "validationTraceDispute/CEK material tasks",
-      blueprintSha256: createHash("sha256")
-        .update(blueprintBytes)
-        .digest("hex"),
-      measurements,
-    }),
-  );
-});
-
 const maximumEntry = (
   kind: "program" | "data",
 ): MidgardCekProgramMaterialEntry => {
@@ -201,11 +152,10 @@ describe("CEK material traversal published maximum task", () => {
           [stage.spendingScriptHash],
         ),
       };
-      const wallet = fitLedgerOwnerAccount(
-        "cekMaterialWallet",
-        4_000_000_000n,
-        { [roleUnit]: 1n },
-      );
+      const wallet = generateEmulatorAccount({
+        lovelace: 4_000_000_000n,
+        [roleUnit]: 1n,
+      });
       const owner = getAddressDetails(wallet.address).paymentCredential!.hash;
       const datum = Data.to(
         { fraud_prover: owner, data: before },
@@ -228,7 +178,6 @@ describe("CEK material traversal published maximum task", () => {
         ],
         PROTOCOL_PARAMETERS_DEFAULT,
       );
-      startFitLedgerOwnerEmulator(emulator);
       const lucid = await Lucid(emulator, "Custom");
       lucid.selectWallet.fromSeed(wallet.seedPhrase);
       const publish = async (
@@ -248,10 +197,6 @@ describe("CEK material traversal published maximum task", () => {
           )
           .complete({ localUPLCEval: true });
         const signed = await unsigned.sign.withWallet().complete();
-        observe(
-          `${kind}/${roleAsset === undefined ? "spend" : "yield"}-publication`,
-          signed.toCBOR(),
-        );
         const hash = await signed.submit();
         await lucid.awaitTx(hash);
         return (
@@ -348,9 +293,7 @@ describe("CEK material traversal published maximum task", () => {
       ] as const)
         await expect(build(mutation)).rejects.toThrow();
       const signed = await (await build()).sign.withWallet().complete();
-      observe(`${kind}/maximum-task`, signed.toCBOR());
       await lucid.awaitTx(await signed.submit());
-      completed++;
     },
     900_000,
   );

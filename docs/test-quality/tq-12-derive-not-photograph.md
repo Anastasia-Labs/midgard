@@ -22,12 +22,13 @@ Catalogue identity comes from its explicit ID map, not array position.
 
 ## Confirmed corrections to the original proposal
 
-- [The execution-ledger verifier](../../onchain/aiken/scripts/exec-ledger-within-basis-v1.mjs)
-  checks fresh measurements against the declared feasibility basis and then
-  requires exact recorded memory/CPU equality in verification mode. That is
-  an evidence-identity contract. **Preserve exactness.** Converting it to a
-  ratchet would accept different evidence and is outside routine cleanup;
-  it requires an explicit change to the verifier's acceptance contract.
+- Execution costs required exact recorded memory/CPU equality until a reviewed
+  acceptance change on 2026-10-16. They are now ceilings:
+  [the script-budget judge](../../onchain/aiken/scripts/script-budgets.mjs)
+  holds each fresh reading at or under its ceiling in
+  [`script-budgets.json`](../../demo/midgard-core/src/script-budgets.json),
+  and keeps the feasibility basis and the above-basis claims. Changing that
+  contract again is outside routine cleanup.
 - <!-- doc-links:historical --> The historical
   `lucid-midgard/tests/api-export-snapshot.test.ts`, now absent
   from the tree, protected an intentional exported set. Listing names is not
@@ -56,7 +57,7 @@ Catalogue identity comes from its explicit ID map, not array position.
    still detects the same regression. Keep independent cross-language twins.
 4. If performance bands are appropriate for a separate benchmark, state their
    purpose and bounds explicitly. They do not replace live verifier inputs or
-   exact execution-ledger identity checks.
+   the script-budget ceilings.
 5. Remove stale repinning history from comments where it obscures current
    intent, without discarding the evidence or its verification contract.
 

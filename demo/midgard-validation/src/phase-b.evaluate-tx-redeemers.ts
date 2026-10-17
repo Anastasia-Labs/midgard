@@ -147,7 +147,7 @@ export const evaluateMidgardTxRedeemers = (input: {
         input.config,
       );
       const pointer = `${execution.purpose.kind} redeemer ${redeemer.tag}:${redeemer.index}`;
-      if (result.kind === "script_invalid") {
+      if (result.kind !== "accepted") {
         return failed(`${pointer}: ${result.detail}`);
       }
       if (result.budget.memory > cap.memory || result.budget.cpu > cap.cpu) {

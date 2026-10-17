@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { join, parse } from "node:path";
+import { join } from "node:path";
 
 import { outRefLabel } from "@al-ft/midgard-core";
 import {
@@ -28,11 +28,6 @@ import {
   submitRemoveFraudulentBlock,
   submitTransitionTraceProof,
 } from "../../src/index.js";
-import {
-  buildVanRossemFitLedger,
-  type VanRossemFitMeasurement,
-  writeVanRossemFitLedger,
-} from "../../src/proof-fit/van-rossem-fit-ledger.js";
 import {
   type TransitionDepositOpening,
   transitionDepositOpening,
@@ -96,7 +91,7 @@ import {
 } from "./transition-trace-final-fixtures.js";
 import { publishTransitionTraceYields } from "./transition-trace-yields.js";
 
-type FitLedgerSuffix =
+type TransitionTraceFinalVariant =
   | "many-assets"
   | "deep-deposit"
   | "drained"
@@ -105,13 +100,12 @@ type FitLedgerSuffix =
   | "forced";
 
 /**
- * One case's run, recording its measurement rows into the file's fit ledger
- * and evidence. Each test file takes its own runner.
+ * One case's run, recording its evidence. Each test file takes its own
+ * runner.
  */
 export const transitionTraceFinalCaseRunner = (
-  fitLedgerSuffix?: FitLedgerSuffix,
+  variant?: TransitionTraceFinalVariant,
 ): ((finalCase: TransitionTraceFinalCase) => Promise<void>) => {
-  const fitRows: VanRossemFitMeasurement[] = [];
   // Records carry every transaction's CBOR: kept only when they are written,
   // so a thread of thousands of steps does not hold its history in memory.
   const evidenceDir = process.env.MIDGARD_EVENT_HISTORY_EVIDENCE_DIR;
@@ -126,10 +120,7 @@ export const transitionTraceFinalCaseRunner = (
     if (evidenceDir !== undefined) {
       mkdirSync(evidenceDir, { recursive: true });
       writeFileSync(
-        join(
-          evidenceDir,
-          `transition-final-${fitLedgerSuffix ?? "cases"}.json`,
-        ),
+        join(evidenceDir, `transition-final-${variant ?? "cases"}.json`),
         JSON.stringify(
           {
             scope:
@@ -144,23 +135,6 @@ export const transitionTraceFinalCaseRunner = (
         ) + "\n",
       );
     }
-    const configuredPath = process.env.TRANSITION_TRACE_FIT_LEDGER_PATH;
-    // Split files emit sibling ledgers instead of overwriting each other's rows.
-    const parsed = configuredPath ? parse(configuredPath) : undefined;
-    const path =
-      parsed !== undefined && fitLedgerSuffix !== undefined
-        ? join(parsed.dir, `${parsed.name}-${fitLedgerSuffix}${parsed.ext}`)
-        : configuredPath;
-    if (path)
-      await writeVanRossemFitLedger(
-        path,
-        buildVanRossemFitLedger({
-          category: "transitionTrace",
-          blueprintSha256: measuredBlueprintSha256,
-          measurements: fitRows,
-        }),
-        { namedByCaller: true },
-      );
   });
   return async ({
     assetCount,
@@ -220,32 +194,16 @@ export const transitionTraceFinalCaseRunner = (
       // One decode per transaction, freed here rather than left to finalizers.
       const transaction = CML.Transaction.from_cbor_hex(cbor);
       const body = transaction.body();
-      const outputs = body.outputs();
-      let publication = false;
-      for (let i = 0; i < outputs.len(); i++) {
-        const output = outputs.get(i);
-        const scriptRef = output.script_ref();
-        if (scriptRef != null) publication = true;
-        scriptRef?.free();
-        output.free();
-      }
       const fee = body.fee();
-      for (const freed of [outputs, body, transaction]) freed.free();
+      body.free();
+      transaction.free();
       const shape = `assets-${assetCount}-outputs-${outputCount}-bytes-${outputBytes}-field-${fieldBytes}-honest-${honest}-depth-${depth}-kind-${kind}-cancel-${cancelAt}-datum-${datumCbor === undefined ? datumBytes : `cbor-${datumCbor.length / 2}`}${exactOutput === undefined ? "" : `-output-${exactOutput.slice(0, 16)}-${exactOutput.length / 2}`}-corrupt-index-${corruptAssetIndex}-corrupt-walk-${corruptWalk}-corrupt-source-${corruptSourceReference}${spentCount > 0 ? `-spent-${spentCount}` : ""}${ledgerFill > 0 ? `-fill-${ledgerFill}` : ""}${ledgerDepth > 0 ? `-ledger-depth-${ledgerDepth}` : ""}${forced === undefined ? "" : `-forced-${forced}`}${forgeStep === undefined ? "" : `-forge-${forgeStep}`}`;
       record({
-        label: `${shape}/tx-${measuredIndex}`,
+        label: `${shape}/tx-${measuredIndex++}`,
         txHash: result,
         transactionCbor: cbor,
         measurement: m,
         fee,
-      });
-      fitRows.push({
-        name: `${shape}/tx-${measuredIndex++}`,
-        kind: publication ? "publication" : "lifecycle",
-        maximumShape: shape,
-        signedBytes: m.completeSignedBytes,
-        memoryUnits: m.executionMemory,
-        cpuUnits: m.executionSteps,
       });
       expect(m.executionMemory).toBeLessThanOrEqual(13_200_000n);
       if (
@@ -557,7 +515,7 @@ export const transitionTraceFinalCaseRunner = (
           "Deposit",
         ),
       );
-      if (fitLedgerSuffix === "deep-deposit")
+      if (variant === "deep-deposit")
         expect(
           assetsToValue(witness.anchor.utxo.assets).to_cbor_bytes().length,
         ).toBe(5000);
@@ -944,12 +902,12 @@ export const transitionTraceFinalCaseRunner = (
   };
 };
 
-/** Each test file registers its own suite, measurement rows and module spies. */
+/** Each test file registers its own suite, evidence records and module spies. */
 export const registerTransitionTraceFinalCases = (
   cases: readonly TransitionTraceFinalCase[],
-  fitLedgerSuffix?: FitLedgerSuffix,
+  variant?: TransitionTraceFinalVariant,
 ): void => {
-  const run = transitionTraceFinalCaseRunner(fitLedgerSuffix);
+  const run = transitionTraceFinalCaseRunner(variant);
   describe("fault-proof emulator integration", () => {
     it.each(cases)(
       "publishes accepted semantic yields and removes a wrong transition root assets=$assetCount outputs=$outputCount bytes=$outputBytes field=$fieldBytes honest=$honest depth=$depth kind=$kind cancel=$cancelAt datum=$datumBytes corruptIndex=$corruptAssetIndex corruptWalk=$corruptWalk corruptSource=$corruptSourceReference drained=$drained forced=$forced forge=$forgeStep",

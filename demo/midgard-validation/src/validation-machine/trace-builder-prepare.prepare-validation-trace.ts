@@ -34,6 +34,7 @@ import {
   hashMidgardScriptPurposeLeaf,
   hashMidgardScriptSourceLeaf,
   hashMidgardSignerLeaf,
+  hashMidgardValidationMachineState,
   inspectMidgardRedeemerData,
   MIDGARD_BOUNDED_ITEM_CHUNK_BYTES,
   MIDGARD_CONSENSUS_LIMITS,
@@ -147,12 +148,19 @@ import type {
   SignatureScanControl,
 } from "./trace-builder-types.js";
 import {
+  validationMachineStateV1,
+  type ValidationTraceRecording,
+} from "./trace-sink.js";
+import {
   type ValidationMachineReplayInput,
   type ValidationMachineSignerSetProof,
   type ValidationMachineWorkWitness,
 } from "./types.js";
 
-export const prepareValidationTrace = (input: ValidationMachineReplayInput) =>
+export const prepareValidationTrace = (
+  input: ValidationMachineReplayInput,
+  recording: ValidationTraceRecording,
+) =>
   Effect.gen(function* () {
     // The claim derives this context from the header; its time element is
     // `header.end_time` (see `ValidationMachineReplayInput.blockTimeMs`).
@@ -266,7 +274,12 @@ export const prepareValidationTrace = (input: ValidationMachineReplayInput) =>
               scriptEvaluations.push(evaluation);
           },
           ...(input.scriptEvaluations === undefined
-            ? { cekExecutionMode: "proof" as const }
+            ? {
+                cekExecutionMode:
+                  recording.mode === "proof"
+                    ? ("proof" as const)
+                    : ("verdict" as const),
+              }
             : {
                 evaluateProofScript: (
                   scriptBytes: Uint8Array,
@@ -1158,11 +1171,18 @@ export const prepareValidationTrace = (input: ValidationMachineReplayInput) =>
         new Error(`unknown validation terminal phase ${terminalPhase}`),
       );
     }
-    const witnesses: ValidationMachineWorkWitness[] = [];
-    const witnessExecutionBudgets: {
-      readonly cpu: bigint;
-      readonly memory: bigint;
-    }[] = [];
+    // Every state shares state 0's frame, and state 0 is the claim's
+    // derivation: the first push must reproduce it exactly.
+    const traceFrame = {
+      eventKeyHash: initialState.eventKeyHash,
+      transactionId: initialState.transactionId,
+      transactionCommitment: initialState.transactionCommitment,
+      validationContextHash: initialState.validationContextHash,
+      sourceKind: initialState.sourceKind,
+      priorLedgerRoot: initialState.priorLedgerRoot,
+    };
+    const initialStateHash = hashMidgardValidationMachineState(initialState);
+    const traceSink = recording.open(traceFrame);
     const executionBudget = { cpu: 0n, memory: 0n };
 
     const pushWitness = (
@@ -1170,16 +1190,23 @@ export const prepareValidationTrace = (input: ValidationMachineReplayInput) =>
       cbor: Buffer,
       auxiliary: ValidationMachineWorkWitness["auxiliary"] = null,
     ): void => {
-      witnesses.push({
+      const witness = {
         phase,
-        programCounter: witnesses.length,
+        programCounter: traceSink.length,
         cbor,
         auxiliary,
-      });
-      witnessExecutionBudgets.push({
-        cpu: executionBudget.cpu,
-        memory: executionBudget.memory,
-      });
+      };
+      if (
+        witness.programCounter === 0 &&
+        !hashMidgardValidationMachineState(
+          validationMachineStateV1(traceFrame, witness, executionBudget, null),
+        ).equals(initialStateHash)
+      ) {
+        throw new Error(
+          "validation trace does not start from the derived initial state",
+        );
+      }
+      traceSink.push(witness, executionBudget, null);
     };
     const macroWitness = (phase: MidgardValidationPhaseName): Buffer => {
       const witness = macroWitnessByPhase.get(phase);
@@ -1501,25 +1528,20 @@ export const prepareValidationTrace = (input: ValidationMachineReplayInput) =>
                 hashMidgardSignerLeaf(scan.decoded.signerHash),
               )
             : signatureControl.signerFrontier;
-          let signatureIsValid = false;
+          // The decoder fixed both widths, so a throw here is a fault of the
+          // check itself and the build stops with it, as Phase A does.
+          let signatureIsValid: boolean;
+          const publicKey = CML.PublicKey.from_bytes(
+            scan.decoded.verificationKey,
+          );
+          const signature = CML.Ed25519Signature.from_raw_bytes(
+            scan.decoded.signature,
+          );
           try {
-            const publicKey = CML.PublicKey.from_bytes(
-              scan.decoded.verificationKey,
-            );
-            const signature = CML.Ed25519Signature.from_raw_bytes(
-              scan.decoded.signature,
-            );
-            try {
-              signatureIsValid = publicKey.verify(
-                input.transactionId,
-                signature,
-              );
-            } finally {
-              publicKey.free();
-              signature.free();
-            }
-          } catch {
-            signatureIsValid = false;
+            signatureIsValid = publicKey.verify(input.transactionId, signature);
+          } finally {
+            publicKey.free();
+            signature.free();
           }
           const addressSeen = signatureControl.addressSeen + 1;
           const addressCount =
@@ -4099,9 +4121,8 @@ export const prepareValidationTrace = (input: ValidationMachineReplayInput) =>
       ledgerState,
       outputCbors,
       priorLedgerRoot,
-      witnesses,
-      witnessExecutionBudgets,
-      initialState,
+      traceSink,
+      recording,
       verdict,
       contextCbor,
       canonicalProgramMaterialSidecarCbor,

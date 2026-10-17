@@ -8,7 +8,6 @@ import "./support/emulator/harness.js";
 import "./support/emulator/registered-chain.js";
 import "./support/emulator/setup-tx.js";
 import "./support/lifecycle-coverage.js";
-import "./support/measured-fit-ledger.js";
 import "./support/submit-init-emulator-shared.js";
 
 import {

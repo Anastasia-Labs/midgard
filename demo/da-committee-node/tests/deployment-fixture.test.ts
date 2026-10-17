@@ -1,11 +1,10 @@
-import { readFile } from "node:fs/promises";
-
 import {
   DEPLOYMENT_MANIFEST_CONTRACT_NAMES,
   DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE,
   verifyFinalizedDeploymentManifest,
 } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { deploymentFraudProofCatalogueCategories } from "@al-ft/midgard-core/deployment-profile";
+import { deriveDaDeploymentInfo } from "midgard-node/tests/helpers/derived-da-deployment-info";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -13,13 +12,8 @@ import {
   readDaDeploymentFixture,
 } from "./helpers/deployment-fixture.js";
 
-const FIXTURE_URL = new URL(
-  "./fixtures/da-contract-deployment-info.json",
-  import.meta.url,
-);
-
 const readRawFixture = async (): Promise<Record<string, unknown>> =>
-  JSON.parse(await readFile(FIXTURE_URL, "utf8")) as Record<string, unknown>;
+  (await deriveDaDeploymentInfo()) as unknown as Record<string, unknown>;
 
 describe("DA deployment fixture", () => {
   it("contains exactly every canonical V1 contract record", async () => {

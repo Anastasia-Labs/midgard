@@ -20,7 +20,6 @@ import "../src/observer-order-invalid/submit-step-01.js";
 import "../src/observer-order-invalid/submit-step-02.js";
 import "../src/observer-order-invalid/submit-step-03.js";
 import "../src/observer-order-invalid/submit-step-04.js";
-import "../src/proof-fit/van-rossem-fit-ledger.js";
 import "../src/remove-fraudulent-block.js";
 import "../src/testing/complete-lifecycle.js";
 import "../src/workflow/transaction-boundary.js";
@@ -41,9 +40,6 @@ import "./observer-order-invalid-lifecycle.authentication-seams.js";
 import "./observer-order-invalid-lifecycle.make-harness.js";
 import "./observer-order-invalid-lifecycle.forced-success.js";
 import "./observer-order-invalid-lifecycle.accepted-success.js";
-
-import { createHash } from "node:crypto";
-import { readFileSync } from "node:fs";
 
 import { midgardFieldCommitment } from "@al-ft/midgard-core";
 import {
@@ -66,10 +62,6 @@ import {
   hashObserverOrderWalkCheckpoint,
   type ObserverOrderInvalidStagedPlan,
 } from "../src/observer-order-invalid/staged-plan.js";
-import {
-  buildVanRossemFitLedger,
-  writeVanRossemFitLedger,
-} from "../src/proof-fit/van-rossem-fit-ledger.js";
 import { advanceFieldSemanticCheckpoint } from "../src/staged-field-walk/index.js";
 import { assertCompleteLifecycleCoverage } from "../src/testing/complete-lifecycle.js";
 import { submitCapturedTransaction } from "../src/workflow/transaction-boundary.js";
@@ -77,14 +69,11 @@ import { acceptedSuccess } from "./observer-order-invalid-lifecycle.accepted-suc
 import {
   AUTHENTICATION_SEAMS,
   CANCELLABLE_STEPS,
-  CATEGORY_ID,
   coverage,
   LAST_ORDINAL,
-  ledgerPath,
   MAXIMUM_FIELD_BYTES,
   MAXIMUM_OBSERVERS,
   MAXIMUM_SCANS,
-  measurements,
   network,
   REASON_ARM,
   record,
@@ -112,9 +101,7 @@ import {
   twoOrderedShape,
 } from "./observer-order-invalid-lifecycle.forced-success.js";
 import { makeHarness } from "./observer-order-invalid-lifecycle.make-harness.js";
-import { realBlueprintPath } from "./support/emulator/blueprints.js";
 import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
-import { fixFitLedgerOwnerEmulator } from "./support/emulator/fit-ledger-owner-emulator.js";
 import { captureEmulatorSubmission } from "./support/emulator/measurement.js";
 import {
   ascendingObservers,
@@ -128,7 +115,6 @@ import {
   witnessSetCompactCborHex,
 } from "./support/observer-order-invalid-raw.js";
 
-fixFitLedgerOwnerEmulator();
 describe("observerOrderInvalid registered-chain lifecycle", () => {
   it("convicts the maximum accepted field at its last ordinal through the production actuator, cancels every step, refuses every accepted seam and the honest ordered field, then mints and removes", async () => {
     const h = await makeHarness();
@@ -156,7 +142,7 @@ describe("observerOrderInvalid registered-chain lifecycle", () => {
     expect(staged.walk).toHaveLength(MAXIMUM_SCANS);
 
     const published = await h.publishField(maximum);
-    h.recordCarriage("accepted", maximum, published);
+    h.recordCarriage("accepted", published);
     const artifact = buildObserverOrderInvalidArtifact({
       headerHash: setup.headerHash,
       detectionId: `${transactionIdOf(maximum)}:accepted:${LAST_ORDINAL.toString()}`,
@@ -237,7 +223,6 @@ describe("observerOrderInvalid registered-chain lifecycle", () => {
     );
     record(
       "accepted-cancel-step01",
-      maximum.label,
       (await h.cancel(h.threadOf(cancelAt01.result), 0)).measurement,
     );
     const cancelAt02 = await h.step01Accepted(
@@ -248,7 +233,6 @@ describe("observerOrderInvalid registered-chain lifecycle", () => {
     );
     record(
       "accepted-cancel-step02",
-      maximum.label,
       (await h.cancel(cancelAt02.result.nextThreadOutRef, 1)).measurement,
     );
     const cancelAt03 = await h.step02(
@@ -266,7 +250,6 @@ describe("observerOrderInvalid registered-chain lifecycle", () => {
     );
     record(
       "accepted-cancel-step03",
-      maximum.label,
       (await h.cancel(cancelAt03.result.nextThreadOutRef, 2)).measurement,
     );
 
@@ -276,7 +259,7 @@ describe("observerOrderInvalid registered-chain lifecycle", () => {
       setup.fraudulentBlockOutRef,
       setup.headerHash,
     );
-    record("accepted-init", maximum.label, restarted.measurement);
+    record("accepted-init", restarted.measurement);
     const step01 = await drive(
       {
         stage: "step_01",
@@ -285,7 +268,7 @@ describe("observerOrderInvalid registered-chain lifecycle", () => {
       },
       h.contracts.steps[1].spendingScriptAddress,
     );
-    record("accepted-step01", maximum.label, step01.measurement);
+    record("accepted-step01", step01.measurement);
     const step02 = await drive(
       {
         stage: "step_02",
@@ -294,7 +277,7 @@ describe("observerOrderInvalid registered-chain lifecycle", () => {
       },
       h.contracts.steps[2].spendingScriptAddress,
     );
-    record("accepted-step02", maximum.label, step02.measurement);
+    record("accepted-step02", step02.measurement);
     let cursor = step02.result.nextThreadOutRef;
     for (let ordinal = 0; ordinal < staged.walk.length; ordinal += 1) {
       const terminal = ordinal === staged.walk.length - 1;
@@ -302,11 +285,7 @@ describe("observerOrderInvalid registered-chain lifecycle", () => {
         { stage: "step_03", threadOutRef: cursor, walkOrdinal: ordinal },
         h.contracts.steps[terminal ? 3 : 2].spendingScriptAddress,
       );
-      record(
-        scanLabel("accepted", ordinal),
-        maximum.label,
-        scanned.measurement,
-      );
+      record(scanLabel("accepted", ordinal), scanned.measurement);
       cursor = scanned.result.nextThreadOutRef;
     }
     coverage.resumed();
@@ -315,7 +294,7 @@ describe("observerOrderInvalid registered-chain lifecycle", () => {
       h.harness.contracts.fraudProof.spendingScriptAddress,
     );
     expect(proven.result.fraudProofUnit).toBeTruthy();
-    record("accepted-step04-proof-mint", maximum.label, proven.measurement);
+    record("accepted-step04-proof-mint", proven.measurement);
     coverage.reason(REASON_ARM, "accepted_invalid");
     coverage.scenario("wrongful_acceptance_success");
     coverage.scenario("maximum_supported_evidence");
@@ -487,7 +466,6 @@ describe("observerOrderInvalid registered-chain lifecycle", () => {
     coverage.scenario("honest_accepted_block_refusal");
     record(
       "accepted-cancel-step04",
-      honest.label,
       (await h.cancel(honestDecided.result.nextThreadOutRef, 3)).measurement,
     );
     // Removal last, through the actuator's mutation-leased stage: it consumes
@@ -512,7 +490,7 @@ describe("observerOrderInvalid registered-chain lifecycle", () => {
         return { txHash };
       },
     );
-    record("accepted-remove", maximum.label, removal.measurement);
+    record("accepted-remove", removal.measurement);
     coverage.scenario("permanent_proof_token_and_descendant_removal");
   }, 1_800_000);
 
@@ -755,7 +733,7 @@ describe("observerOrderInvalid registered-chain lifecycle", () => {
     await h.cancel(thread, 0);
   }, 600_000);
 
-  it("closes the coverage gate and the Van Rossem fit ledger", async () => {
+  it("closes the coverage gate", () => {
     assertCompleteLifecycleCoverage({
       coverage: coverage.snapshot(),
       expectedReasonArms: [REASON_ARM],
@@ -768,30 +746,5 @@ describe("observerOrderInvalid registered-chain lifecycle", () => {
       // owned by the shared field door and its own families.
       hasAdjacentConsensusBound: false,
     });
-    const blueprintBytes = readFileSync(realBlueprintPath);
-    const ledger = buildVanRossemFitLedger({
-      category: `observerOrderInvalid:${CATEGORY_ID}:testnet`,
-      blueprintSha256: createHash("sha256")
-        .update(blueprintBytes)
-        .digest("hex"),
-      measurements,
-    });
-    for (const entry of ledger.entries) {
-      expect(entry.signedByteMargin, entry.name).toBeGreaterThan(0);
-      expect(BigInt(entry.memoryUnitMargin), entry.name).toBeGreaterThan(0n);
-      expect(BigInt(entry.cpuUnitMargin), entry.name).toBeGreaterThan(0n);
-      if (entry.kind === "publication")
-        expect(
-          entry.publicationReserveMargin,
-          entry.name,
-        ).toBeGreaterThanOrEqual(0);
-    }
-    if (process.env.MIDGARD_WRITE_FIT_LEDGER === "1") {
-      await writeVanRossemFitLedger(ledgerPath, ledger);
-      console.info(`[observer-order-invalid-fit-ledger] wrote ${ledgerPath}`);
-    }
-    console.info(
-      `[observer-order-invalid-fit-ledger] ${JSON.stringify(ledger.entries)}`,
-    );
   });
 });

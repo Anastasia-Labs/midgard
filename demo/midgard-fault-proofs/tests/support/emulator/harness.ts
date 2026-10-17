@@ -23,6 +23,7 @@ import {
   Data,
   Emulator,
   type EmulatorAccount,
+  generateEmulatorAccount,
   Lucid,
   type Script,
   scriptHashToCredential,
@@ -60,12 +61,9 @@ import { buildCatalogueDeploymentInfo, categoryIdSchema } from "./catalogue.js";
 import { buildMinimalFaultProofContracts } from "./contracts.js";
 import {
   alignEmulatorToWholeSecond,
+  fundedProverEmulatorAccount,
   registerPhasMembershipRewardAccount,
 } from "./emulator-context.js";
-import {
-  fitLedgerOwnerHarnessAccounts,
-  startFitLedgerOwnerEmulator,
-} from "./fit-ledger-owner-emulator.js";
 import { EMULATOR_DEPLOYMENT_L1_SLOT_CONFIG } from "./header-fixtures.js";
 import { EMULATOR_PROTOCOL_PARAMETERS } from "./protocol-parameters.js";
 import {
@@ -380,11 +378,16 @@ export const makeFaultProofEmulatorHarness = async ({
 } = {}): Promise<FaultProofEmulatorHarness> => {
   const realBlueprint = readBlueprint(realBlueprintPath);
   const alwaysBlueprint = readBlueprint(alwaysSucceedsBlueprintPath);
-  const { funder, prover } = fitLedgerOwnerHarnessAccounts(accounts);
+  const funder =
+    accounts?.funder ?? generateEmulatorAccount({ lovelace: 40_000_000_000n });
+  const prover =
+    accounts?.prover ?? fundedProverEmulatorAccount(20_000_000_000n);
   const publisher = referenceScriptPublisherAccount(accounts?.publisher);
   const genesis = [funder, prover, publisher];
   const emulator = new Emulator(genesis, EMULATOR_PROTOCOL_PARAMETERS);
-  startFitLedgerOwnerEmulator(emulator, emulatorTimeMs);
+  if (emulatorTimeMs !== undefined) {
+    emulator.time = emulatorTimeMs;
+  }
   alignEmulatorToWholeSecond(emulator);
   // A custom evaluator (Scalus, an isolated-process UPLC evaluator) gets the
   // exact-request reuse Midgard's Lucid patch gives only the default one; see

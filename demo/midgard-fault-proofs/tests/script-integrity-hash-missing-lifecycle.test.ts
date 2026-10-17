@@ -8,7 +8,6 @@ import "../src/evidence/forced-leaf-evidence.js";
 import "../src/field-opening.js";
 import "../src/index.js";
 import "../src/staged-field-walk/index.js";
-import "../src/proof-fit/van-rossem-fit-ledger.js";
 import "../src/script-integrity-hash-missing/actuator.js";
 import "../src/script-integrity-hash-missing/artifact.js";
 import "../src/script-integrity-hash-missing/family.js";
@@ -28,15 +27,8 @@ import "./support/emulator/registered-chain.js";
 import "./support/lifecycle-coverage.js";
 import "./support/native-script-decoding-emulator.js";
 import "./support/submit-init-emulator-shared.js";
-import "node:crypto";
-import "node:fs/promises";
-import "node:url";
 import "./script-integrity-hash-missing-lifecycle.registered-family.js";
 import "./script-integrity-hash-missing-lifecycle.make-scenario.js";
-
-import { createHash } from "node:crypto";
-import { readFile } from "node:fs/promises";
-import { fileURLToPath } from "node:url";
 
 import { EMPTY_NULL_ROOT } from "@al-ft/midgard-core";
 import {
@@ -64,11 +56,6 @@ import {
   publishFaultProofFieldCarriage,
 } from "../src/field-opening.js";
 import { submitRemoveFraudulentBlock } from "../src/index.js";
-import {
-  buildVanRossemFitLedger,
-  type VanRossemFitMeasurement,
-  writeVanRossemFitLedger,
-} from "../src/proof-fit/van-rossem-fit-ledger.js";
 import { createScriptIntegrityHashMissingTransactionPort } from "../src/script-integrity-hash-missing/actuator.js";
 import { testingOnlyScriptIntegrityHashMissingArtifact } from "../src/script-integrity-hash-missing/artifact.js";
 import { prepareScriptIntegrityHashMissingEvidence } from "../src/script-integrity-hash-missing/family.js";
@@ -131,7 +118,6 @@ import {
   registeredFamily,
 } from "./script-integrity-hash-missing-lifecycle.registered-family.js";
 import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
-import { fixFitLedgerOwnerEmulator } from "./support/emulator/fit-ledger-owner-emulator.js";
 import { captureEmulatorSubmission } from "./support/emulator/measurement.js";
 import { buildDecodingBlockFixture } from "./support/native-script-decoding-emulator.js";
 import {
@@ -145,7 +131,6 @@ import {
   submitSetupTx,
 } from "./support/submit-init-emulator-shared.js";
 
-fixFitLedgerOwnerEmulator();
 describe("script-integrity-hash-missing real lifecycle", () => {
   it("publishes, proves accepted absent integrity hash, mints, and removes", async () => {
     const harness = await makeFaultProofEmulatorHarness({
@@ -279,7 +264,7 @@ describe("script-integrity-hash-missing real lifecycle", () => {
       scriptLanguages: [3],
       redeemerCount: 0,
     });
-    const ledger: {
+    const rows: {
       label: string;
       bytes: number;
       memory: string;
@@ -295,7 +280,7 @@ describe("script-integrity-hash-missing real lifecycle", () => {
           `script-integrity lifecycle failed at ${label}: ${String(cause)}`,
         );
       }
-      ledger.push({
+      rows.push({
         label,
         bytes: captured.measurement.completeSignedBytes,
         memory: captured.measurement.executionMemory.toString(),
@@ -556,7 +541,7 @@ describe("script-integrity-hash-missing real lifecycle", () => {
     });
     expect(publication.every((bytes) => bytes <= 16_384)).toBe(true);
     expect(final.txHash).toMatch(/^[0-9a-f]{64}$/u);
-    for (const row of ledger) {
+    for (const row of rows) {
       expect(row.margin, row.label).toBeGreaterThan(0);
       expect(BigInt(row.memory), row.label).toBeLessThanOrEqual(16_500_000n);
       expect(BigInt(row.cpu), row.label).toBeLessThanOrEqual(10_000_000_000n);
@@ -568,7 +553,7 @@ describe("script-integrity-hash-missing real lifecycle", () => {
       `[script-integrity-hash-missing-publication] ${JSON.stringify(publication)}`,
     );
     console.info(
-      `[script-integrity-hash-missing-fit-ledger] ${JSON.stringify(ledger)}`,
+      `[script-integrity-hash-missing-rows] ${JSON.stringify(rows)}`,
     );
   }, 600_000);
 
@@ -848,12 +833,8 @@ describe("script-integrity-hash-missing real lifecycle", () => {
       contractOptions: { realScriptIntegrityHashMissing: true },
     });
     const { family, category } = await registeredFamily(harness);
-    const measurements: VanRossemFitMeasurement[] = [];
-    const maximumShape =
-      "224 script witnesses + 224 redeemers; certified two-chunk fields; 24-item resumable checkpoints";
     const measured = async <T>(
       name: string,
-      kind: "publication" | "lifecycle",
       operation: () => Promise<T>,
     ): Promise<T> => {
       const captured = await captureEmulatorSubmission(
@@ -865,14 +846,6 @@ describe("script-integrity-hash-missing real lifecycle", () => {
           captured.measurements.length === 1
             ? name
             : `${name}-${index.toString().padStart(2, "0")}`;
-        measurements.push({
-          name: measurementName,
-          kind,
-          maximumShape,
-          signedBytes: measurement.completeSignedBytes,
-          memoryUnits: measurement.executionMemory,
-          cpuUnits: measurement.executionSteps,
-        });
         console.info(
           `[script-integrity-max-row] ${JSON.stringify({ name: measurementName, bytes: measurement.completeSignedBytes, memory: measurement.executionMemory.toString(), cpu: measurement.executionSteps.toString() })}`,
         );
@@ -938,7 +911,6 @@ describe("script-integrity-hash-missing real lifecycle", () => {
         (
           await measured(
             `reference-script-${(index + 1).toString().padStart(2, "0")}`,
-            "publication",
             () =>
               publishPlainReferenceScriptUtxo({
                 lucid: harness.funderLucid,
@@ -949,7 +921,7 @@ describe("script-integrity-hash-missing real lifecycle", () => {
         ).utxo,
       );
     const certificateRef = (
-      await measured("field-certificate-reference-script", "publication", () =>
+      await measured("field-certificate-reference-script", () =>
         publishPlainReferenceScriptUtxo({
           lucid: harness.funderLucid,
           script: harness.contracts.fieldPreimageCertificate.mintingScript,
@@ -1000,7 +972,6 @@ describe("script-integrity-hash-missing real lifecycle", () => {
       );
       const chunks = await measured(
         `field-${planned.plan.fieldIndex.toString()}-chunks`,
-        "publication",
         () =>
           publishFaultProofFieldCarriage({
             lucid: harness.proverLucid,
@@ -1015,7 +986,6 @@ describe("script-integrity-hash-missing real lifecycle", () => {
       );
       const certified = await measured(
         `field-${planned.plan.fieldIndex.toString()}-certificate`,
-        "lifecycle",
         () =>
           certifyFaultProofFieldCarriage({
             lucid: harness.proverLucid,
@@ -1164,7 +1134,7 @@ describe("script-integrity-hash-missing real lifecycle", () => {
         { fraud_prover: owner, data } as never,
         ScriptIntegrityStepDatums[index] as never,
       );
-    const init = await measured("init", "lifecycle", () =>
+    const init = await measured("init", () =>
       submitScriptIntegrityHashMissingInit({
         lucid: harness.proverLucid,
         blueprint: harness.realBlueprint,
@@ -1183,7 +1153,7 @@ describe("script-integrity-hash-missing real lifecycle", () => {
       }),
     );
     console.info("[script-integrity-max] initialized");
-    const bound = await measured("step01", "lifecycle", () =>
+    const bound = await measured("step01", () =>
       submitScriptIntegrityHashMissingStep01Accepted({
         lucid: harness.proverLucid,
         blueprint: harness.realBlueprint,
@@ -1198,7 +1168,7 @@ describe("script-integrity-hash-missing real lifecycle", () => {
         witnessReferenceScripts: harness.witnessReferenceScripts,
       }),
     );
-    const subjectState = await measured("step02", "lifecycle", () =>
+    const subjectState = await measured("step02", () =>
       submitScriptIntegrityHashMissingStep02Accepted({
         lucid: harness.proverLucid,
         contracts: family,
@@ -1234,7 +1204,7 @@ describe("script-integrity-hash-missing real lifecycle", () => {
         },
       },
     };
-    let transition = await measured("step03-start-staged", "lifecycle", () =>
+    let transition = await measured("step03-start-staged", () =>
       productionTransition("step_03", 3, subjectState.nextThreadOutRef, 4),
     );
     console.info("[script-integrity-max] first staged transition confirmed");
@@ -1259,7 +1229,6 @@ describe("script-integrity-hash-missing real lifecycle", () => {
       };
       transition = await measured(
         `script-grammar-resume-${grammarResumeIndex.toString().padStart(2, "0")}`,
-        "lifecycle",
         () =>
           grammarResumeIndex === 0
             ? productionTransition("step_04", 4, outRef, 4)
@@ -1341,31 +1310,28 @@ describe("script-integrity-hash-missing real lifecycle", () => {
         },
       },
     };
-    transition = await measured(
-      "script-grammar-close-start-scan",
-      "lifecycle",
-      () =>
-        submitScriptIntegrityHashMissingScriptGrammar({
-          lucid: harness.proverLucid,
-          contracts: family,
-          categoryId: category.categoryId,
-          signer: harness.proverSigner,
-          threadOutRef: outRef,
-          referenceScriptUtxo: refs[3]!,
-          authenticatedCarriageUtxos: carriage(scriptPublished),
-          closes: true,
-          nextDatum: datum(4, state),
-          buildArgs: ({ input_index, output_index }) => ({
-            StartScan: {
-              input_index,
-              output_index,
-              opening: opening(scriptPlan, scriptPublished, refs[3]!),
-              checkpoint_bytes:
-                encodeFieldGrammarCheckpoint(grammar).toString("hex"),
-              item_budget: BigInt(itemBudget),
-            },
-          }),
+    transition = await measured("script-grammar-close-start-scan", () =>
+      submitScriptIntegrityHashMissingScriptGrammar({
+        lucid: harness.proverLucid,
+        contracts: family,
+        categoryId: category.categoryId,
+        signer: harness.proverSigner,
+        threadOutRef: outRef,
+        referenceScriptUtxo: refs[3]!,
+        authenticatedCarriageUtxos: carriage(scriptPublished),
+        closes: true,
+        nextDatum: datum(4, state),
+        buildArgs: ({ input_index, output_index }) => ({
+          StartScan: {
+            input_index,
+            output_index,
+            opening: opening(scriptPlan, scriptPublished, refs[3]!),
+            checkpoint_bytes:
+              encodeFieldGrammarCheckpoint(grammar).toString("hex"),
+            item_budget: BigInt(itemBudget),
+          },
         }),
+      }),
     );
     outRef = transition.nextThreadOutRef;
     let scanResumeIndex = 0;
@@ -1391,7 +1357,6 @@ describe("script-integrity-hash-missing real lifecycle", () => {
       };
       transition = await measured(
         `script-scan-${scanResumeIndex.toString().padStart(2, "0")}`,
-        "lifecycle",
         () =>
           submitScriptIntegrityHashMissingScriptScan({
             lucid: harness.proverLucid,
@@ -1440,7 +1405,7 @@ describe("script-integrity-hash-missing real lifecycle", () => {
         },
       },
     };
-    transition = await measured("redeemer-grammar-start", "lifecycle", () =>
+    transition = await measured("redeemer-grammar-start", () =>
       submitScriptIntegrityHashMissingRedeemerGrammar({
         lucid: harness.proverLucid,
         contracts: family,
@@ -1481,7 +1446,6 @@ describe("script-integrity-hash-missing real lifecycle", () => {
       };
       transition = await measured(
         `redeemer-grammar-resume-${redeemerResumeIndex.toString().padStart(2, "0")}`,
-        "lifecycle",
         () =>
           submitScriptIntegrityHashMissingRedeemerGrammar({
             lucid: harness.proverLucid,
@@ -1523,7 +1487,7 @@ describe("script-integrity-hash-missing real lifecycle", () => {
       contains_non_native_script: true,
       has_redeemers: true,
     };
-    transition = await measured("redeemer-grammar-finish", "lifecycle", () =>
+    transition = await measured("redeemer-grammar-finish", () =>
       submitScriptIntegrityHashMissingRedeemerGrammar({
         lucid: harness.proverLucid,
         contracts: family,
@@ -1544,7 +1508,7 @@ describe("script-integrity-hash-missing real lifecycle", () => {
         }),
       }),
     );
-    const final = await measured("step04-mint", "lifecycle", () =>
+    const final = await measured("step04-mint", () =>
       submitScriptIntegrityHashMissingStep04({
         lucid: harness.proverLucid,
         contracts: family,
@@ -1556,17 +1520,14 @@ describe("script-integrity-hash-missing real lifecycle", () => {
       }),
     );
     expect(final.fraudProofUnit).toContain(category.categoryId);
-    const removalRefs = await measured(
-      "removal-reference-scripts",
-      "publication",
-      () =>
-        publishRemovalReferenceScripts({
-          lucid: harness.proverLucid,
-          contracts: harness.contracts,
-        }),
+    const removalRefs = await measured("removal-reference-scripts", () =>
+      publishRemovalReferenceScripts({
+        lucid: harness.proverLucid,
+        contracts: harness.contracts,
+      }),
     );
     const now = BigInt(harness.emulator.now());
-    await measured("state-queue-removal", "lifecycle", () =>
+    await measured("state-queue-removal", () =>
       submitRemoveFraudulentBlock({
         lucid: harness.proverLucid,
         blueprint: harness.realBlueprint,
@@ -1585,44 +1546,6 @@ describe("script-integrity-hash-missing real lifecycle", () => {
         validTo: now + 300_000n,
       }),
     );
-    const blueprintBytes = await readFile(
-      new URL("../../../onchain/aiken/plutus.json", import.meta.url),
-    );
-    const ledger = buildVanRossemFitLedger({
-      category: "scriptIntegrityHashMissing",
-      blueprintSha256: createHash("sha256")
-        .update(blueprintBytes)
-        .digest("hex"),
-      measurements,
-    });
-    expect(ledger.entries).toHaveLength(measurements.length);
-    expect(
-      ledger.entries.every(
-        (entry) =>
-          entry.signedByteMargin > 0 &&
-          BigInt(entry.memoryUnitMargin) > 0n &&
-          BigInt(entry.cpuUnitMargin) > 0n,
-      ),
-    ).toBe(true);
-    expect(
-      ledger.entries
-        .filter((entry) => entry.kind === "publication")
-        .every((entry) => (entry.publicationReserveMargin ?? -1) >= 0),
-    ).toBe(true);
-    console.info(
-      `[script-integrity-hash-missing-max-fit-ledger] ${JSON.stringify(ledger)}`,
-    );
-    if (process.env.MIDGARD_WRITE_FIT_LEDGER === "1") {
-      await writeVanRossemFitLedger(
-        fileURLToPath(
-          new URL(
-            "../../../docs/fault-proofs/size-plans/script-integrity-hash-missing-v1-fit-ledger.json",
-            import.meta.url,
-          ),
-        ),
-        ledger,
-      );
-    }
     coverage.scenario("maximum_supported_evidence");
   }, 1_200_000);
 

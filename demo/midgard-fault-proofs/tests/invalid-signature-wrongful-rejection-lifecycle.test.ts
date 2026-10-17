@@ -1,13 +1,6 @@
 import { describe, it } from "vitest";
 
 import { runInvalidSignatureWrongfulRejectionScenario } from "./support/invalid-signature-wrongful-emulator.js";
-import { createMeasuredFitRecorder } from "./support/measured-fit-ledger.js";
-
-const measuredFit = createMeasuredFitRecorder(
-  "invalid-signature-wrongful-rejection",
-  "lifecycle",
-  "selected witness at counts 0, 139, 317 and maximum depth64 membership, exact and out-of-range forced coordinates",
-);
 
 describe("invalidSignature wrongful-rejection real lifecycle", () => {
   it.each([
@@ -25,8 +18,7 @@ describe("invalidSignature wrongful-rejection real lifecycle", () => {
     },
   ])(
     "runs exact forced lifecycle $decoyWitnessCount/$accused/$rejectedIndex/$deepMembership",
-    (scenario) =>
-      runInvalidSignatureWrongfulRejectionScenario(scenario, measuredFit),
+    (scenario) => runInvalidSignatureWrongfulRejectionScenario(scenario),
     600_000,
   );
 });

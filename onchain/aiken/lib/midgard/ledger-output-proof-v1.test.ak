@@ -9,6 +9,7 @@ use midgard/cek_data_v1
 use midgard/ledger_output_commitment_v1
 use midgard/ledger_output_proof_datum as narrow_datum
 use midgard/ledger_output_proof_raw as raw
+use midgard/ledger_output_proof_span as output_span
 use midgard/ledger_output_proof_stages as narrow
 use midgard/ledger_output_proof_v1
 use midgard/script_context_v1
@@ -616,5 +617,228 @@ test bound_window_bytes_binds_the_recorded_digest(
       length,
       small_datum_output,
     ) == None,
+  }
+}
+
+// Empty spans. An inline datum `B""` reads an empty span: no output bytes, so
+// the step takes no window and demands none. The first output ends with the
+// datum (its empty span starts at the output length); in the second a
+// reference script follows it.
+
+const empty_bytes_datum_output =
+  #"a300581d781111111111111111111111111111111111111111111111111111111101821a001e8480a0024140"
+
+const empty_bytes_datum_before_a_script_output =
+  #"a400581d781111111111111111111111111111111111111111111111111111111101821a001e8480a00241400382034100"
+
+/// The first datum-traversal step of a one-chunk proof, after its span
+/// attach: through the structure stage a chunk step while the scan takes one
+/// and a no-witness step otherwise, then no-witness steps through the value
+/// fold.
+fn datum_traversal_start(
+  control: ledger_output_proof_v1.LedgerOutputProofControlV1,
+  proof: bounded_item_v1.ChunkProofV1,
+) -> ledger_output_proof_v1.LedgerOutputProofControlV1 {
+  if control.stage == ledger_output_proof_v1.stage_datum_traversal {
+    advanced(ledger_output_proof_v1.step_v1(control, span_attach(proof)))
+  } else {
+    let no_witness = fn() {
+      advanced(
+        ledger_output_proof_v1.step_v1(
+          control,
+          ledger_output_proof_v1.LedgerOutputProofNoWitness,
+        ),
+      )
+    }
+    let next = if control.stage == ledger_output_proof_v1.stage_structure {
+      when ledger_output_proof_v1.step_v1(control, chunks(proof)) is {
+        Some(ledger_output_proof_v1.LedgerOutputProofAdvanced { control: next }) ->
+          next
+        _ -> no_witness()
+      }
+    } else {
+      expect control.stage == ledger_output_proof_v1.stage_value_fold
+      no_witness()
+    }
+    datum_traversal_start(next, proof)
+  }
+}
+
+fn active_datum(
+  control: ledger_output_proof_v1.LedgerOutputProofControlV1,
+) -> cek_data_traverse_v1.DataTraverseControlV1 {
+  expect Some(datum_control) = control.datum
+  datum_control
+}
+
+/// The window a datum step takes: the recorded window when the step demands
+/// a span, none otherwise.
+fn demanded_window(
+  control: ledger_output_proof_v1.LedgerOutputProofControlV1,
+  output: ByteArray,
+) -> Option<ByteArray> {
+  when ledger_output_proof_v1.demanded_span_v1(control) is {
+    None -> None
+    Some(_) -> Some(recorded_window(control, output))
+  }
+}
+
+/// One step of a byte-string datum: the head, then the bytes scalar until it
+/// attaches, then the hand-off out of the traversal.
+fn byte_string_datum_step(
+  control: ledger_output_proof_v1.LedgerOutputProofControlV1,
+  output: ByteArray,
+) -> ledger_output_proof_v1.LedgerOutputProofControlV1 {
+  let datum_control = active_datum(control)
+  let window = demanded_window(control, output)
+  if datum_control.stage == cek_data_traverse_v1.stage_head {
+    advanced(
+      ledger_output_proof_v1.step_v1(
+        control,
+        datum(cek_data_traverse_v1.HeadScalar, window),
+      ),
+    )
+  } else if datum_control.stage == cek_data_traverse_v1.stage_terminal {
+    advanced(
+      ledger_output_proof_v1.step_v1(
+        control,
+        ledger_output_proof_v1.LedgerOutputProofNoWitness,
+      ),
+    )
+  } else {
+    expect datum_control.stage == cek_data_traverse_v1.stage_bytes
+    when
+      ledger_output_proof_v1.step_v1(
+        control,
+        datum(cek_data_traverse_v1.NoAction, window),
+      )
+    is {
+      Some(ledger_output_proof_v1.LedgerOutputProofAdvanced { control: next }) ->
+        next
+      _ ->
+        advanced(
+          ledger_output_proof_v1.step_v1(
+            control,
+            datum(cek_data_traverse_v1.AttachScalar { parent: None }, window),
+          ),
+        )
+    }
+  }
+}
+
+/// Whether the datum step at `control` reads an empty span.
+fn reads_empty_span(
+  control: ledger_output_proof_v1.LedgerOutputProofControlV1,
+) -> Bool {
+  when cek_data_traverse_v1.next_source_span_v1(active_datum(control)) is {
+    None -> False
+    Some(source_span) -> source_span.length == 0
+  }
+}
+
+/// At a datum step over an empty span starting at `start`: the typed and
+/// split span selections demand no window, the typed step advances without
+/// one and refuses every window and a span attach, and the split span is the
+/// empty span at `start`.
+fn empty_span_takes_no_window(
+  control: ledger_output_proof_v1.LedgerOutputProofControlV1,
+  proof: bounded_item_v1.ChunkProofV1,
+  output: ByteArray,
+  start: Int,
+) -> Bool {
+  let control_frame = raw.open(
+    ledger_output_proof_v1.encode_control_v1(control),
+  )
+  let step = fn(window) {
+    ledger_output_proof_v1.step_v1(
+      control,
+      datum(cek_data_traverse_v1.NoAction, window),
+    )
+  }
+  and {
+    ledger_output_proof_v1.demanded_span_v1(control) == None,
+    output_span.demanded_span(control_frame) == None,
+    narrow_datum.next_source_span(control_frame) == Some((start, 0)),
+    step(None) != None,
+    step(Some(#"")) == None,
+    step(Some(output)) == None,
+    step(Some(recorded_window(control, output))) == None,
+    ledger_output_proof_v1.step_v1(control, span_attach(proof)) == None,
+  }
+}
+
+/// Drive a byte-string datum's traversal to its hand-off, checking every
+/// step that reads an empty span with `empty_span_takes_no_window` at
+/// `start`. Returns the control after the hand-off and the number of such
+/// steps.
+fn through_byte_string_datum(
+  control: ledger_output_proof_v1.LedgerOutputProofControlV1,
+  proof: bounded_item_v1.ChunkProofV1,
+  output: ByteArray,
+  start: Int,
+  empty_steps: Int,
+) -> (ledger_output_proof_v1.LedgerOutputProofControlV1, Int) {
+  if control.stage != ledger_output_proof_v1.stage_datum_traversal {
+    (control, empty_steps)
+  } else {
+    let empty = if reads_empty_span(control) {
+      expect empty_span_takes_no_window(control, proof, output, start)
+      1
+    } else {
+      0
+    }
+    through_byte_string_datum(
+      byte_string_datum_step(control, output),
+      proof,
+      output,
+      start,
+      empty_steps + empty,
+    )
+  }
+}
+
+/// Drive `output`'s byte-string datum from its initial control.
+fn byte_string_datum_read(
+  output: ByteArray,
+  start: Int,
+) -> (ledger_output_proof_v1.LedgerOutputProofControlV1, Int) {
+  let Pair(commitment, proof) = one_chunk_material(0, output)
+  let initial = ledger_output_proof_v1.initial_control_v1(
+    0,
+    bytearray.length(output),
+    commitment,
+  )
+  through_byte_string_datum(
+    datum_traversal_start(initial, proof),
+    proof,
+    output,
+    start,
+    0,
+  )
+}
+
+test empty_byte_string_datum_ending_the_output_is_read_without_a_window() {
+  let output = empty_bytes_datum_output
+  let (terminal, empty_steps) = byte_string_datum_read(
+    output,
+    bytearray.length(output),
+  )
+  and {
+    empty_steps == 1,
+    ledger_output_proof_v1.terminal_is_exact_v1(terminal),
+    ledger_output_proof_v1.cardano_spend_datum_summary_v1(terminal) == Some(
+      cek_data_v1.semantic_data_summary_v1(
+        builtin.constr_data(0, [builtin.b_data(#"")]),
+      ),
+    ),
+  }
+}
+
+test empty_byte_string_datum_before_a_reference_script_is_read_without_a_window() {
+  let output = empty_bytes_datum_before_a_script_output
+  let (after_datum, empty_steps) = byte_string_datum_read(output, 44)
+  and {
+    empty_steps == 1,
+    after_datum.stage == ledger_output_proof_v1.stage_reference_script_commitment,
   }
 }

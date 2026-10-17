@@ -51,7 +51,7 @@ violations while existing candidates are still being classified.
 | [TQ-12](tq-12-derive-not-photograph.md)          | Classify pins without weakening identity or budget gates            |
 | [TQ-13](tq-13-snapshot-artifacts.md)             | Preserve regression coverage while reducing snapshot noise          |
 | [TQ-14](tq-14-mocking-and-seams.md)              | Review interaction contracts and semantic test-only branches        |
-| [TQ-15](tq-15-fit-ledger-consolidation.md)       | Consolidate fit evidence without losing live measurements           |
+| [TQ-15](tq-15-fit-evidence-consolidation.md)     | Consolidate fit evidence without losing live measurements (done)    |
 | [TQ-16](tq-16-template-drift.md)                 | Share scenarios where it preserves coverage and readability         |
 | [TQ-17](tq-17-harness-flags.md)                  | State exactly which validators harness substitutions exercise       |
 | [TQ-18](tq-18-inverted-and-misnamed.md)          | Preserve fail-closed checks and correct overpromising names         |
@@ -59,11 +59,10 @@ violations while existing candidates are still being classified.
 
 ## Current evidence inventory
 
-There are 43 retained fit-ledger JSON inputs: 25 with current-build/live
-comparison consumers and 18 saved self-consistency fixtures. There are 22
-publication-fit test files and 40 fit-ledger test files. These counts describe
-different surfaces; they do not prove duplicate execution or readiness.
-TQ-01 records the provenance comparison procedure and its limitations.
+There are no fit ledger JSON inputs: every fault-proof emulator submission is
+held to the Van Rossem limits at submission (see TQ-15). There are 12
+publication-fit test files. TQ-01 records the provenance comparison procedure
+and its limitations.
 
 Already changed source examples include the reverse-checkpoint byte vector,
 the protocol-based oversized threshold, the empty missing-installation set,

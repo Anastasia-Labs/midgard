@@ -15,39 +15,21 @@
  * without any test noticing. This file closes it permanently: it publishes all
  * 83 applied semantic resolvers as reference scripts through the same helper
  * every other publication-fit suite uses, asserts the real 512-byte reserve on
- * each, and — under `MIDGARD_WRITE_FIT_LEDGER=1` — pins the measurements to
- * `docs/fault-proofs/size-plans/validation-trace-resolver-publication-fit-ledger.json`.
- * Every run checks that the checked-in ledger names exactly these resolvers.
- * `buildVanRossemFitLedger` throws on any row without a positive Van Rossem
- * margin and on any publication row past the 15,872-byte target, so a
- * regression fails a test instead of surviving to delivery.
+ * each, so a regression fails a test instead of surviving to delivery.
  */
-import { createHash } from "node:crypto";
-import { readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
-
 import {
   VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES,
   type ValidationTraceDisputeFaultProofContracts,
 } from "@al-ft/midgard-sdk";
 import {
   Emulator,
+  generateEmulatorAccount,
   Lucid,
   PROTOCOL_PARAMETERS_DEFAULT,
 } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
-import {
-  buildVanRossemFitLedger,
-  VAN_ROSSEM_PUBLICATION_RESERVE_BYTES,
-  type VanRossemFitMeasurement,
-  writeVanRossemFitLedger,
-} from "../src/proof-fit/van-rossem-fit-ledger.js";
-import {
-  fitLedgerOwnerAccount,
-  fixFitLedgerOwnerEmulator,
-  startFitLedgerOwnerEmulator,
-} from "./support/emulator/fit-ledger-owner-emulator.js";
+import { VAN_ROSSEM_PUBLICATION_RESERVE_BYTES } from "../src/proof-fit/van-rossem.js";
 import {
   alwaysSucceedsBlueprintPath,
   buildMinimalFaultProofContracts,
@@ -57,7 +39,6 @@ import {
   realBlueprintPath,
 } from "./support/submit-init-emulator-shared.js";
 
-fixFitLedgerOwnerEmulator();
 /**
  * Entry names in `semanticResolvers` order: the 82 keys of the `semantics`
  * title table, then the shared stage-one redeemer envelope that
@@ -68,25 +49,14 @@ const SEMANTIC_RESOLVER_NAMES: readonly string[] = [
   "scriptSourcesStageOneRedeemerEnvelope",
 ];
 
-const ledgerPath = fileURLToPath(
-  new URL(
-    "../../../docs/fault-proofs/size-plans/validation-trace-resolver-publication-fit-ledger.json",
-    import.meta.url,
-  ),
-);
-
 describe("validation-trace resolver publication", () => {
   it("publishes every semantic resolver under the real L1 limit", async () => {
     const real = readBlueprint(realBlueprintPath);
-    const publisher = fitLedgerOwnerAccount(
-      "resolverPublisher",
-      400_000_000_000n,
-    );
+    const publisher = generateEmulatorAccount({ lovelace: 400_000_000_000n });
     const emulator = new Emulator([publisher], {
       ...EMULATOR_PROTOCOL_PARAMETERS,
       maxTxSize: PROTOCOL_PARAMETERS_DEFAULT.maxTxSize,
     });
-    startFitLedgerOwnerEmulator(emulator);
     const lucid = await Lucid(emulator, "Custom");
     lucid.selectWallet.fromSeed(publisher.seedPhrase);
     const nonce = (await lucid.wallet().getUtxos())[0]!;
@@ -105,11 +75,6 @@ describe("validation-trace resolver publication", () => {
       SEMANTIC_RESOLVER_NAMES.length,
     );
 
-    const rows: VanRossemFitMeasurement[] = [];
-    const blueprintBytes = readFileSync(realBlueprintPath);
-    const blueprintSha256 = createHash("sha256")
-      .update(blueprintBytes)
-      .digest("hex");
     for (const [index, name] of SEMANTIC_RESOLVER_NAMES.entries()) {
       const contract = family.semanticResolvers[index];
       if (contract === undefined) {
@@ -123,33 +88,9 @@ describe("validation-trace resolver publication", () => {
         label: `validation semantic resolver ${name}`,
       });
       const measurement = result.publicationMeasurement;
-      rows.push({
-        name,
-        maximumShape: "parameterized semantic resolver publication",
-        kind: "publication",
-        signedBytes: measurement.completeSignedBytes,
-        memoryUnits: measurement.executionMemory,
-        cpuUnits: measurement.executionSteps,
-      });
       expect(measurement.l1ByteMargin, name).toBeGreaterThanOrEqual(
         VAN_ROSSEM_PUBLICATION_RESERVE_BYTES,
       );
     }
-
-    const ledger = buildVanRossemFitLedger({
-      category: "validationTraceDispute/semantic resolver publication",
-      blueprintSha256,
-      measurements: rows,
-    });
-    if (process.env.MIDGARD_WRITE_FIT_LEDGER === "1") {
-      await writeVanRossemFitLedger(ledgerPath, ledger);
-    }
-    // The checked-in ledger names exactly the resolvers measured here.
-    const checkedIn = JSON.parse(readFileSync(ledgerPath, "utf8")) as {
-      entries: readonly { name: string }[];
-    };
-    expect(checkedIn.entries.map(({ name }) => name).sort()).toEqual(
-      [...SEMANTIC_RESOLVER_NAMES].sort(),
-    );
   }, 1_800_000);
 });

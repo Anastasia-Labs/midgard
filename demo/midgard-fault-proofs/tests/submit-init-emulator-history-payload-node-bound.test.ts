@@ -4,31 +4,21 @@
  * admission paths; one node past the bound is refused, and the same payload
  * lands under a deployment whose bound is one node larger.
  */
-import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
-import { readFile } from "node:fs/promises";
-import { fileURLToPath } from "node:url";
 
 import { DEPLOYMENT_MANIFEST_MAX_PAYLOAD_NODES } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { replacePlutusConstrFieldCbor } from "@al-ft/midgard-core/plutus-data-cbor";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data, type UTxO } from "@lucid-evolution/lucid";
-import { afterAll, expect, it } from "vitest";
+import { expect, it } from "vitest";
 
-import {
-  buildVanRossemFitLedger,
-  type VanRossemFitMeasurement,
-  writeVanRossemFitLedger,
-} from "../src/proof-fit/van-rossem-fit-ledger.js";
 import { realBlueprintPath } from "./support/emulator/blueprints.js";
-import { fixFitLedgerOwnerEmulator } from "./support/emulator/fit-ledger-owner-emulator.js";
 import {
   historyPairPayloads,
   setupHistoryPair,
 } from "./support/emulator/history-pair.js";
 import { type CompleteSignedTransactionMeasurement } from "./support/emulator/measurement.js";
 
-fixFitLedgerOwnerEmulator();
 const blueprint = SDK.parseFaultProofBlueprint(
   JSON.parse(readFileSync(realBlueprintPath).toString()),
 );
@@ -100,9 +90,6 @@ const depositPayloadCbor = (
 const nodesAroundDatum = (payloadCbor: string) =>
   Number(SDK.countHistoryDataNodesCbor(payloadCbor, 1_000_000n)) - 1;
 
-const measurements: VanRossemFitMeasurement[] = [];
-const completed = new Set<string>();
-
 type Row = {
   readonly name: string;
   readonly shape: Shape;
@@ -160,29 +147,6 @@ const ROWS: readonly Row[] = [
     admitted: true,
   },
 ];
-
-afterAll(async () => {
-  expect([...completed].sort()).toEqual(ROWS.map(({ name }) => name).sort());
-  // Building the ledger checks every fresh row's margins on every run;
-  // `fit:regenerate` writes it and `fit:regenerate --check` compares it.
-  const ledger = buildVanRossemFitLedger({
-    category: "eventHistoryAdmission",
-    blueprintSha256: createHash("sha256")
-      .update(await readFile(realBlueprintPath))
-      .digest("hex"),
-    measurements,
-  });
-  if (process.env.MIDGARD_WRITE_FIT_LEDGER !== "1") return;
-  await writeVanRossemFitLedger(
-    fileURLToPath(
-      new URL(
-        "../../../docs/fault-proofs/size-plans/event-history-admission-fit-ledger.json",
-        import.meta.url,
-      ),
-    ),
-    ledger,
-  );
-});
 
 it.each(ROWS)(
   "$name: admitted=$admitted",
@@ -275,7 +239,6 @@ it.each(ROWS)(
       await expect(request()).rejects.toThrow();
       expect(await h.lucid.utxosAt(applied.address)).toEqual(listBefore);
       expect(await h.lucid.utxosByOutRef([nonce])).toHaveLength(1);
-      completed.add(row.name);
       return;
     }
     const admission = await request();
@@ -304,16 +267,6 @@ it.each(ROWS)(
         .payloadCbor,
     ).toBe(plan.payloadCbor);
     expect(await h.lucid.utxosByOutRef([nonce])).toHaveLength(0);
-    if (row.deploymentNodes === undefined)
-      measurements.push({
-        name: row.name,
-        kind: "lifecycle",
-        maximumShape: `${row.shape}, ${payloadNodes.toString()} payload nodes, ${plan.payloadBytes.toString()} payload bytes`,
-        signedBytes: measured.completeSignedBytes,
-        memoryUnits: measured.executionMemory,
-        cpuUnits: measured.executionSteps,
-      });
-    completed.add(row.name);
   },
   240_000,
 );

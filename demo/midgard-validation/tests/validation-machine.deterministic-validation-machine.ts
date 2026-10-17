@@ -27,7 +27,6 @@ import { describe, expect, it } from "vitest";
 
 import {
   advanceMidgardResolvedInputsAccumulator,
-  buildDeterministicValidationMachineTrace,
   buildValidationMachineLedgerInsertOp,
   buildValidationMachineLedgerMutationSteps,
   buildValidationOneStepArgument,
@@ -41,6 +40,7 @@ import {
   valueAndMintKind,
 } from "../src/index.js";
 import { exerciseMidgardRetainedDaCanonicalBoundary } from "./helpers/retained-da-boundary.js";
+import { buildDeterministicValidationMachineTrace } from "./helpers/trace-commit-golden.js";
 import {
   FUNDED_OUTPUT_LOVELACE,
   hashScriptWitness,
@@ -2387,10 +2387,9 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
     const reviewedScannerConsumers = [
       "lib/midgard/redeemer-item-proof-v1.ak",
       "lib/midgard/ledger-output-scan-v1.ak",
-      // Exact descriptor scalar headers and raw transaction EventKey grammar
-      // avoid recursive Data decoding of committed adversarial bytes.
+      // Exact descriptor scalar headers avoid recursive Data decoding of
+      // committed adversarial bytes.
       "lib/midgard/ledger-output-commitment-v1.ak",
-      "lib/midgard/fraud-proofs/transition-trace/proof.ak",
       // The three narrow total rules adjudicating the committed field-8
       // redeemer collection share one `head_at_v1` total header decode over
       // complete items delivered by batched §8 carriage.

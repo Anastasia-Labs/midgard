@@ -1,114 +1,35 @@
 # Fault-proof fit evidence
 
-This directory keeps JSON files that current tests read as regression inputs.
-It does not archive successful runs. Measurements belong to their recorded source,
-compiler, blueprint, and shape; retaining a file does not make it current.
+How a fault-proof transaction is shown to fit the Van Rossem limits, and the
+one measurement summary this directory keeps.
 
-## Verification contracts
+## Fit is enforced at submission
 
-| Contract             | Executable authority                                   | What it establishes                                                                                       |
-| -------------------- | ------------------------------------------------------ | --------------------------------------------------------------------------------------------------------- |
-| Fresh-run comparison | `fit:regenerate --check` ([below](#checking-a-ledger)) | Reruns each ledger's owning tests and compares the checked-in ledger with the one they write, row by row. |
-| Owner coverage       | `scripts/regenerate-fit-ledger.test.mjs`               | Every checked-in ledger has a test that writes it, so `--check` covers every one.                         |
+Every transaction a fault-proof emulator test submits is judged before the
+emulator sees it. The suite's setup file
+[`van-rossem-submit-guard.ts`](../../../demo/midgard-fault-proofs/tests/support/emulator/van-rossem-submit-guard.ts)
+refuses a transaction over 16,384 signed bytes, 16.5M memory units or 10G CPU
+units, and a publication (a transaction with zero execution units) over the
+15,872-byte publication target, which keeps a 512-byte reserve below the
+maximum. The refusal fails the test that submitted the transaction and names
+the axis and its negative margin. The limits live in
+[`src/proof-fit/van-rossem.ts`](../../../demo/midgard-fault-proofs/src/proof-fit/van-rossem.ts).
+The traced-refusal run is exempt, because its validators carry traces by
+design; the plain run is the one that proves fit.
 
-The `*-fit-ledger.test.ts` readers were removed on 2026-09-09: they compared
-a saved ledger to a transcribed copy of itself (or to a stale blueprint digest)
-and could not fail for any production reason. The live lifecycle suites that
-write these ledgers are the executable authority for fit: they assert every
-margin on fresh measurements and close with a fail-closed coverage check, and
-`fit:regenerate --check` (below) holds each ledger they write to their fresh
-run. A green snapshot cannot satisfy [release acceptance](../execution-plan.md).
+There are no fit ledgers. The per-family fit ledger JSON files, their
+writers and the `fit:regenerate` command were removed: the guard checks every
+transaction of every run against the current build, which a saved ledger could
+only restate.
 
-## Regenerating a ledger
+| Contract                                                                                         | Executable authority                                                                                                                                                                          |
+| ------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Every emulator transaction is within the Van Rossem maximum, every publication within the target | [Submit guard](../../../demo/midgard-fault-proofs/tests/support/emulator/van-rossem-submit-guard.ts) and its [test](../../../demo/midgard-fault-proofs/tests/van-rossem-submit-guard.test.ts) |
+| A family fits at its consensus-maximum shape                                                     | The family's lifecycle suite, which submits that shape from Init to conviction and removal                                                                                                    |
+| Resolver publications keep the 512-byte reserve                                                  | [Resolver publication test](../../../demo/midgard-fault-proofs/tests/validation-trace-resolver-publication.test.ts)                                                                           |
 
-Regenerate a ledger against a freshly built blueprint with one command from
-the repository root:
-
-```sh
-pnpm --dir demo/midgard-fault-proofs fit:regenerate mint-authorization-workflow-fit-ledger.json
-```
-
-It takes ledger file names or paths, or `--all` for every checked-in ledger a
-test writes; `--list` prints each ledger's owning test files and runs nothing.
-It finds the owning files in the test sources
-([`fit-ledger-owners.mjs`](../../../demo/midgard-fault-proofs/scripts/fit-ledger-owners.mjs)),
-then runs exactly those files, every case, in one Vitest run under
-`MIDGARD_WRITE_FIT_LEDGER=1`, with a fragment directory and run token it makes
-for that run and removes afterwards. It keeps a ledger only when every owning
-file passed with no skipped case and the run rewrote the ledger. Otherwise it
-puts the ledger back as it was and exits 1. It also puts back any other file
-in this directory the run changed. The stale-blueprint refusal applies as in
-any Vitest run. Owners run on fixed wallet seeds and a fixed emulator clock
-([below](#checking-a-ledger)), so with the same blueprint and owners a
-regeneration writes the same bytes.
-
-## Checking a ledger
-
-Check one ledger, or every ledger a test writes, against a fresh run of its
-owners:
-
-```sh
-pnpm --dir demo/midgard-fault-proofs fit:regenerate --check transition-trace-workflow-fit-ledger.json
-pnpm --dir demo/midgard-fault-proofs fit:regenerate --check --all
-```
-
-The check runs the owners exactly as a regeneration does, with one more
-variable, `MIDGARD_FIT_LEDGER_CHECK_DIR`, set to a scratch directory:
-`writeVanRossemFitLedger` writes a ledger bound for this directory there
-instead, so a check never rewrites a checked-in file. It then compares each
-checked-in ledger with the fresh one
-([`fit-ledger-differences.mjs`](../../../demo/midgard-fault-proofs/scripts/fit-ledger-differences.mjs)).
-Every field counts except the two digests, `blueprintSha256` and
-`ledgerSha256`: rows, their order, names, kinds, shapes, signed bytes, the
-execution budgets (`memoryUnits`, `cpuUnits`) and every margin must all match.
-A blueprint change therefore makes a ledger stale only if its numbers move. A
-field only one side has is a difference, so a ledger still carrying a dropped
-field such as `compilerVersion` is stale. The check exits 1 and names each
-difference when a ledger is stale, when an owning file failed, skipped a case
-or did not write its ledger, or when the run changed a file in this
-directory; any such file is put back. It needs no pinned blueprint hash or
-compiler version. CI runs `--check --all` in the
-`midgard-fault-proofs fit ledgers` job.
-
-A re-run has to build the same transactions for the comparison to mean
-anything. Each owning test file calls `fixFitLedgerOwnerEmulator()`
-([`fit-ledger-owner-emulator.ts`](../../../demo/midgard-fault-proofs/tests/support/emulator/fit-ledger-owner-emulator.ts))
-when it loads, so its emulators start at a fixed time and its wallets come
-from fixed seed phrases, one per role. Two runs then write the same ledger
-byte for byte, which is what lets the check compare the execution budgets.
-Other suites keep random wallets and a wall-clock start.
-
-Every checked-in ledger is written through `writeVanRossemFitLedger`, which
-throws `FitLedgerWriteRefusedError` unless `MIDGARD_WRITE_FIT_LEDGER=1` is set,
-so an ordinary test run never rewrites one. Split ledgers and measured-fit
-fragments also need `MIDGARD_FIT_FRAGMENT_DIR` and a fresh
-`MIDGARD_FIT_MEASUREMENT_RUN` token. The command sets all three for its run;
-never set them by hand. One variable instead names an output path, and naming
-it is the opt-in, so it needs no flag: `TRANSITION_TRACE_FIT_LEDGER_PATH` (read by the three
-`submit-init-emulator-transition-trace-final*.test.ts` files). Of those three,
-`-final.test.ts` writes the named path itself; `-final-many-assets` and
-`-final-deep-deposit` write a sibling next to it, `<name>-many-assets<ext>` and
-`<name>-deep-deposit<ext>`. Some producers regenerate only historical tables.
-Never replace a blueprint digest without remeasuring the transactions.
-
-Two ledgers are measured by several files that each run a disjoint part of one
-case table: `value-not-preserved-fit-ledger.json` by
-`value-conservation-lifecycle.test.ts` and its `-forced-assets` and
-`-non-forced-assets` siblings, and `mint-authorization-workflow-fit-ledger.json`
-by `mint-authorization-installed-lifecycle.test.ts` and its `-native-wide`,
-`-native-deep`, `-reference` and `-field-maxima` siblings. Each part stores its
-rows in the run's fragment directory once all its cases pass, and the last part
-of the run to pass merges them into the ledger
-(`tests/support/split-fit-ledger.ts`) in case order: value conservation's rows
-are numbered as one file running every case in order numbers them, and mint
-authorization's keep their `<scenario>/<stage>/...` names. A run that misses a
-part, or a part with a failed or filtered-out case, leaves the ledger untouched.
-
-Every checked-in ledger has at least one owning test file. The node test
-`every committed fit ledger has a regenerating owner`
-(`scripts/regenerate-fit-ledger.test.mjs`) fails on a ledger no test writes,
-since nothing could compare it with the current build. Such a ledger is
-deleted, not kept as a snapshot.
+A green run cannot satisfy [release acceptance](../execution-plan.md) by
+itself.
 
 ## Fresh acceptance artifacts
 
@@ -118,13 +39,11 @@ results with the release artifact. Publication rows alone do not prove execution
 atomic maximum rows do not prove registered lifecycle provenance.
 
 ScriptSources, Phase-A, LOP publication and transition test writers can emit
-measurement reports. Most are run outputs, not repository regression inputs. Do
-not recommit reports merely because a test regenerates a historical path.
-
-The blueprint hash covers the exact build, including its compiler preamble.
-Fit ledgers do not carry a separate compiler version label.
+measurement reports. They are run outputs, not repository regression inputs. Do
+not commit them.
 
 [Availability challenge](availability-challenge.md) is the remaining active
-publication plan. Implemented resolver decisions live in
+publication plan; its [measurement summary](availability-challenge-fit.json)
+records the measurements that plan cites. Implemented resolver decisions live in
 [ADR 0003](../decisions/0003-publishable-semantic-resolvers.md) and
 [ADR 0004](../decisions/0004-checkpointed-ledger-output-facts.md).

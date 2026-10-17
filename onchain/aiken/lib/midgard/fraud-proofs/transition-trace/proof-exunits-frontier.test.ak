@@ -565,16 +565,15 @@ test deposit_arm_datum_384_bytes_fixture_only() {
 // Neutralisation selectors
 //
 // A cost row over an arm that accepts everything measures nothing. This one
-// runs in the same invocation as every reading -- the exec ledger declares it
-// and the verifier refuses a ledger whose selectors did not run -- and shows
-// that the measured arm still rejects: the deposit arm returns `False` when
-// the projected value is not the descriptor it must be.
+// runs with every reading in the complete test suite, which fails unless it
+// passes, and shows that the measured arm still rejects: the deposit arm
+// returns `False` when the projected value is not the descriptor it must be.
 // ---------------------------------------------------------------------------
 
 /// The serialised width of the `l2_datum` a rung carries, in bytes.
 ///
 /// This is the axis the deposit sweep's crossing is published on, so it is
-/// pinned here rather than asserted only in the exec ledger: `0` means the
+/// pinned here rather than left to the script budgets: `0` means the
 /// field is absent altogether, `1` is a present-but-empty blob, and the rest
 /// grow with the user-supplied payload.
 fn sweep_datum_cbor_length(width: Int) -> Int {

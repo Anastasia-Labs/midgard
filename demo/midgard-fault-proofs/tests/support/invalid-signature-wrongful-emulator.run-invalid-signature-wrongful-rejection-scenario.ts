@@ -46,7 +46,6 @@ import {
   submitRawInvalidSignatureStep02,
 } from "./invalid-signature-emulator.js";
 import { network } from "./invalid-signature-wrongful-emulator.network.js";
-import { createMeasuredFitRecorder } from "./measured-fit-ledger.js";
 import { buildInvalidForcedTransitionTraceFixture } from "./submit-init-emulator-fixtures.js";
 import { publishPlainReferenceScriptUtxo } from "./submit-init-emulator-shared.js";
 import { publishRemovalReferenceScripts } from "./submit-init-emulator-shared.js";
@@ -54,15 +53,12 @@ import { syntheticDeepMembershipProof } from "./synthetic-deep-proof.js";
 
 /** Complete registered invalid-signature lifecycle, including raw on-chain
  * mutations of the exact rejected witness coordinate when deepMembership is set. */
-export const runInvalidSignatureWrongfulRejectionScenario = async (
-  scenario: {
-    decoyWitnessCount: number;
-    accused: "honest" | "invalid";
-    rejectedIndex: bigint | null;
-    deepMembership?: boolean;
-  },
-  measuredFit?: ReturnType<typeof createMeasuredFitRecorder>,
-) => {
+export const runInvalidSignatureWrongfulRejectionScenario = async (scenario: {
+  decoyWitnessCount: number;
+  accused: "honest" | "invalid";
+  rejectedIndex: bigint | null;
+  deepMembership?: boolean;
+}) => {
   const { decoyWitnessCount, accused, rejectedIndex } = scenario;
   const deepMembership = scenario.deepMembership === true;
   const harness = await makeFaultProofEmulatorHarness({
@@ -556,15 +552,6 @@ export const runInvalidSignatureWrongfulRejectionScenario = async (
       }),
     ),
   );
-  captures
-    .flatMap((capture) => capture.measurements)
-    .forEach((measurement, index) =>
-      measuredFit?.record(
-        `${decoyWitnessCount}-${rejectedIndex ?? "selected"}-${deepMembership ? "deep64" : "single"}/${index}`,
-        measurement,
-        measurement.executionMemory === 0n ? "publication" : "lifecycle",
-      ),
-    );
   for (const measurement of captures.flatMap(
     (capture) => capture.measurements,
   )) {

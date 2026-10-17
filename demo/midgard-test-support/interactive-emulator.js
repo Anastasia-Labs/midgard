@@ -1,16 +1,7 @@
 import { spawnSync } from "node:child_process";
-import { randomUUID } from "node:crypto";
-import {
-  existsSync,
-  mkdirSync,
-  readFileSync,
-  renameSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs";
+import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { setTimeout as pause } from "node:timers/promises";
 
 import {
   generateProfiles,
@@ -24,6 +15,7 @@ import {
   checkBlueprintStamp,
 } from "../scripts/lib/blueprint-stamp.mjs";
 import { aikenBinary } from "../../scripts/lib/aiken.mjs";
+import { withBuildLock } from "./build-lock.js";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 
@@ -80,67 +72,6 @@ export const emulatorProfileBlueprint = (profileName, directory) => {
 
   const fresh = () => staleness() === undefined;
 
-  const lock = `${blueprintPath}.lock`;
-
-  /** Publish a lock directory holding this process's PID, or return false. */
-  const tryLock = () => {
-    const staged = `${lock}.${process.pid}.${randomUUID()}`;
-    mkdirSync(staged);
-    writeFileSync(resolve(staged, "pid"), `${process.pid}\n`);
-    try {
-      // rename(2) refuses a non-empty target, so exactly one contender wins,
-      // and the lock never exists without its holder's PID.
-      renameSync(staged, lock);
-      return true;
-    } catch (error) {
-      rmSync(staged, { recursive: true, force: true });
-      if (error.code === "ENOTEMPTY" || error.code === "EEXIST") return false;
-      throw error;
-    }
-  };
-
-  /** Move the lock aside before deleting it, so no contender sees it half-removed. */
-  const discardLock = () => {
-    const discarded = `${lock}.discarded.${randomUUID()}`;
-    try {
-      renameSync(lock, discarded);
-    } catch (error) {
-      if (error.code === "ENOENT") return;
-      throw error;
-    }
-    rmSync(discarded, { recursive: true, force: true });
-  };
-
-  const lockHolder = () => {
-    try {
-      return Number.parseInt(readFileSync(resolve(lock, "pid"), "utf8"), 10);
-    } catch (error) {
-      if (error.code === "ENOENT" || error.code === "ENOTDIR") return undefined;
-      throw error;
-    }
-  };
-
-  /**
-   * A setup killed mid-build leaves its lock behind. Contenders break it one
-   * at a time, re-reading the holder under the guard so a lock another
-   * contender has just re-taken is never broken.
-   */
-  const breakStaleLock = () => {
-    const guard = `${lock}.break`;
-    try {
-      mkdirSync(guard);
-    } catch (error) {
-      if (error.code === "EEXIST") return;
-      throw error;
-    }
-    try {
-      const holder = lockHolder();
-      if (holder !== undefined && !running(holder)) discardLock();
-    } finally {
-      rmSync(guard, { recursive: true, force: true });
-    }
-  };
-
   /** Cached separately: never changes the live-testing blueprint or selected source profile. */
   const setup = async () => {
     // A stamp alone cannot prove generated constants agree with their producer.
@@ -153,63 +84,55 @@ export const emulatorProfileBlueprint = (profileName, directory) => {
         );
       return;
     }
-    mkdirSync(dirname(blueprintPath), { recursive: true });
-    const deadline = Date.now() + 600_000;
-    for (;;) {
-      if (fresh()) return;
-      if (tryLock()) break;
-      breakStaleLock();
-      if (Date.now() >= deadline)
-        throw new Error(
-          `Timed out waiting for emulator blueprint build lock ${lock} held by PID ${lockHolder()}`,
-        );
-      await pause(200);
-    }
-    try {
-      if (fresh()) return;
-      const profile = readProfiles()[profileName];
-      const sourceHash = blueprintSourceHash(root);
-      const recordPath = buildRecordPath(blueprintPath);
-      if (existsSync(recordPath)) rmSync(recordPath);
-      const result = spawnSync(
-        aikenBinary(),
-        [
-          "build",
-          "--env",
-          profileName.replaceAll("-", "_"),
-          "--out",
-          blueprintPath,
-        ],
-        {
-          cwd: resolve(root, "onchain/aiken"),
-          stdio: "inherit",
-        },
-      );
-      if (result.error) throw result.error;
-      if (result.status !== 0)
-        throw new Error(
-          `${profileName} emulator blueprint build failed (${result.status})`,
-        );
-      writeFileSync(
-        recordPath,
-        JSON.stringify(
+    await withBuildLock(
+      {
+        lock: `${blueprintPath}.lock`,
+        ready: fresh,
+        timeoutMs: 600_000,
+      },
+      () => {
+        const profile = readProfiles()[profileName];
+        const sourceHash = blueprintSourceHash(root);
+        const recordPath = buildRecordPath(blueprintPath);
+        if (existsSync(recordPath)) rmSync(recordPath);
+        const result = spawnSync(
+          aikenBinary(),
+          [
+            "build",
+            "--env",
+            profileName.replaceAll("-", "_"),
+            "--out",
+            blueprintPath,
+          ],
           {
-            profile,
-            profileDigest: profileDigest(profile),
-            blueprintHash: blueprintHash(blueprintPath),
-            sourceHash,
+            cwd: resolve(root, "onchain/aiken"),
+            stdio: "inherit",
           },
-          null,
-          2,
-        ) + "\n",
-      );
-      if (!fresh())
-        throw new Error(
-          `${profileName} emulator blueprint changed during its build`,
         );
-    } finally {
-      discardLock();
-    }
+        if (result.error) throw result.error;
+        if (result.status !== 0)
+          throw new Error(
+            `${profileName} emulator blueprint build failed (${result.status})`,
+          );
+        writeFileSync(
+          recordPath,
+          JSON.stringify(
+            {
+              profile,
+              profileDigest: profileDigest(profile),
+              blueprintHash: blueprintHash(blueprintPath),
+              sourceHash,
+            },
+            null,
+            2,
+          ) + "\n",
+        );
+        if (!fresh())
+          throw new Error(
+            `${profileName} emulator blueprint changed during its build`,
+          );
+      },
+    );
   };
 
   return { profile: profileName, blueprint: blueprintPath, plugin, setup };
@@ -221,15 +144,6 @@ export const emulatorProfileBlueprint = (profileName, directory) => {
  */
 const prebuiltBlueprintsRequired = () =>
   process.env.MIDGARD_REQUIRE_PREBUILT_BLUEPRINTS === "1";
-
-const running = (pid) => {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch (error) {
-    return error.code === "EPERM";
-  }
-};
 
 const interactive = emulatorProfileBlueprint(
   "preprod-emulator-testing",

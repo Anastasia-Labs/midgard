@@ -9,8 +9,8 @@ import {
   aikenChecks,
   demoChecks,
   FULL_RUN,
+  scriptBudgetCheck,
   VERIFICATION_ONLY,
-  ledgerChecks,
 } from "./registry.demo-checks.mjs";
 import {
   goldenChecks,
@@ -49,7 +49,7 @@ export const buildRegistry = (root) => {
     focused,
     blueprint,
     ...independent.filter((check) => check.id !== "tx-preparation:sdk"),
-    ...ledgerChecks(root, index, ciText),
+    scriptBudgetCheck(root, index, ciText),
     demo.test,
     demo.testDb,
     // This obligation can reuse only suites that have actually completed.

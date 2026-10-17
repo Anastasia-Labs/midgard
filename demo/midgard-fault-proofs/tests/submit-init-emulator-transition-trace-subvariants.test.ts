@@ -10,7 +10,6 @@ import "@lucid-evolution/lucid";
 import "effect";
 import "vitest";
 import "../src/index.js";
-import "../src/proof-fit/van-rossem-fit-ledger.js";
 import "./support/emulator/blueprints.js";
 import "./support/emulator/family-history.js";
 import "./support/emulator/measurement.js";
@@ -25,7 +24,6 @@ import "./submit-init-emulator-transition-trace-subvariants.remove-and-assert-pe
 import { createHash } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { fileURLToPath } from "node:url";
 
 import {
   computeMidgardForcedTxProofCommitment,
@@ -35,8 +33,8 @@ import { outRefLabel } from "@al-ft/midgard-core";
 import { deriveMidgardForcedTxProofSource } from "@al-ft/midgard-core/codec/forced";
 import { materializeMidgardForcedTxFromCanonical } from "@al-ft/midgard-core/codec/forced";
 import * as SDK from "@al-ft/midgard-sdk";
-import { CML, Data, Emulator, toUnit } from "@lucid-evolution/lucid";
-import { afterAll, describe, expect, it, vi } from "vitest";
+import { Data, toUnit } from "@lucid-evolution/lucid";
+import { afterAll, describe, expect, it } from "vitest";
 
 import {
   buildCountedRoot,
@@ -47,11 +45,6 @@ import {
   submitTransitionTraceProof,
   transitionTraceFinalIndex,
 } from "../src/index.js";
-import {
-  buildVanRossemFitLedger,
-  type VanRossemFitMeasurement,
-  writeVanRossemFitLedger,
-} from "../src/proof-fit/van-rossem-fit-ledger.js";
 import {
   alignedHeaderStart,
   removeAndAssertPermanentProof,
@@ -69,8 +62,6 @@ import {
 } from "./submit-init-emulator-transition-trace-subvariants.setup-challenge.js";
 import { realBlueprintPath } from "./support/emulator/blueprints.js";
 import { FAMILY_HISTORY_HEADER_LEAD_MS } from "./support/emulator/family-history.js";
-import { fixFitLedgerOwnerEmulator } from "./support/emulator/fit-ledger-owner-emulator.js";
-import { measureCompleteSignedTransaction } from "./support/emulator/measurement.js";
 import { makeNativeTx } from "./support/emulator/native-tx.js";
 import {
   expectSingleUtxoWithUnit,
@@ -83,7 +74,6 @@ import {
   withCommitSlot,
 } from "./support/submit-init-emulator-shared.js";
 
-fixFitLedgerOwnerEmulator();
 afterAll(async () => {
   const directory = process.env.MIDGARD_EVENT_HISTORY_EVIDENCE_DIR;
   if (directory === undefined) return;
@@ -104,31 +94,6 @@ afterAll(async () => {
       2,
     ) + "\n",
   );
-});
-
-const forcedWindowMeasurements: VanRossemFitMeasurement[] = [];
-
-const forcedWindowCases = new Set<boolean>();
-
-afterAll(async () => {
-  expect(forcedWindowCases.size).toBe(2);
-  // Building the ledger checks every fresh row's margins on every run;
-  // `fit:regenerate` writes it and `fit:regenerate --check` compares it.
-  const ledger = buildVanRossemFitLedger({
-    category: "transitionTrace",
-    blueprintSha256: createHash("sha256")
-      .update(await readFile(realBlueprintPath))
-      .digest("hex"),
-    measurements: forcedWindowMeasurements,
-  });
-  if (process.env.MIDGARD_WRITE_FIT_LEDGER !== "1") return;
-  const ledgerPath = fileURLToPath(
-    new URL(
-      "../../../docs/fault-proofs/size-plans/transition-trace-forced-window-fit-ledger.json",
-      import.meta.url,
-    ),
-  );
-  await writeVanRossemFitLedger(ledgerPath, ledger);
 });
 
 describe("transition-trace omitted/out-of-window/count subvariant lifecycle", () => {
@@ -188,209 +153,180 @@ describe("transition-trace omitted/out-of-window/count subvariant lifecycle", ()
   it.each([false, true])(
     "authenticates a late rejected order from immutable submitted bytes (wrong reason %s)",
     async (wrongReason) => {
-      const original = Emulator.prototype.submitTx;
-      let index = 0;
-      const capture = vi
-        .spyOn(Emulator.prototype, "submitTx")
-        .mockImplementation(async function (this: Emulator, cbor) {
-          const result = await original.call(this, cbor);
-          const m = measureCompleteSignedTransaction(cbor);
-          const outputs = CML.Transaction.from_cbor_hex(cbor).body().outputs();
-          forcedWindowMeasurements.push({
-            name: `${wrongReason ? "wrong-reason" : "rejected-source"}/${index++}`,
-            kind: Array.from({ length: outputs.len() }, (_, i) =>
-              outputs.get(i),
-            ).some((output) => output.script_ref() !== undefined)
-              ? "publication"
-              : "lifecycle",
-            maximumShape: "immutable-submission-rejected-verdict",
-            signedBytes: m.completeSignedBytes,
-            memoryUnits: m.executionMemory,
-            cpuUnits: m.executionSteps,
-          });
-          return result;
-        });
-      try {
-        const { harness, publications, transitionTraceReferenceScripts } =
-          await makeHarness();
-        const operator = await funderPaymentKeyHash(harness.funderLucid);
-        const startTime = await alignedHeaderStart(harness);
-        const id = transitionTraceOutRef("91");
-        const submitted = makeNativeTx({
-          spendInputCbors: [],
-          outputCbors: [],
-          fee: 0n,
-        });
-        const rawSource = deriveMidgardForcedTxProofSource(
-          materializeMidgardForcedTxFromCanonical(submitted),
-        );
-        const rejectedSource = deriveMidgardForcedTxProofSource(
-          materializeMidgardForcedTxFromCanonical(submitted),
-        );
-        const sourceData = (
-          source: typeof rawSource,
-        ): SDK.ForcedTxProofSource => ({
-          compact_cbor: source.compactCbor.toString("hex"),
-          witness_set_compact_cbor:
-            source.witnessSetCompactCbor.toString("hex"),
-          field_preimage_lengths_cbor:
-            source.fieldPreimageLengthsCbor.toString("hex"),
-        });
-        expect(sourceData(rawSource).compact_cbor).toBe(
-          sourceData(rejectedSource).compact_cbor,
-        );
-        const committed: SDK.ForcedInclusionTxV1 = {
-          tx_id: computeMidgardNativeTxId(submitted).toString("hex"),
-          submitted_source: sourceData(rejectedSource),
-          verdict: {
-            ForcedTxInvalid: {
-              reason: {
-                PlutusExecutionFailed: { purpose_kind: 0n, purpose_index: 0n },
-              },
+      const { harness, publications, transitionTraceReferenceScripts } =
+        await makeHarness();
+      const operator = await funderPaymentKeyHash(harness.funderLucid);
+      const startTime = await alignedHeaderStart(harness);
+      const id = transitionTraceOutRef("91");
+      const submitted = makeNativeTx({
+        spendInputCbors: [],
+        outputCbors: [],
+        fee: 0n,
+      });
+      const rawSource = deriveMidgardForcedTxProofSource(
+        materializeMidgardForcedTxFromCanonical(submitted),
+      );
+      const rejectedSource = deriveMidgardForcedTxProofSource(
+        materializeMidgardForcedTxFromCanonical(submitted),
+      );
+      const sourceData = (
+        source: typeof rawSource,
+      ): SDK.ForcedTxProofSource => ({
+        compact_cbor: source.compactCbor.toString("hex"),
+        witness_set_compact_cbor: source.witnessSetCompactCbor.toString("hex"),
+        field_preimage_lengths_cbor:
+          source.fieldPreimageLengthsCbor.toString("hex"),
+      });
+      expect(sourceData(rawSource).compact_cbor).toBe(
+        sourceData(rejectedSource).compact_cbor,
+      );
+      const committed: SDK.ForcedInclusionTxV1 = {
+        tx_id: computeMidgardNativeTxId(submitted).toString("hex"),
+        submitted_source: sourceData(rejectedSource),
+        verdict: {
+          ForcedTxInvalid: {
+            reason: {
+              PlutusExecutionFailed: { purpose_kind: 0n, purpose_index: 0n },
             },
           },
-        };
-        const root = await buildCountedRoot(
-          SDK.ROOT_DOMAINS.forcedTransactionsV1,
-          [
-            {
-              key: Buffer.from(Data.to(id, SDK.OutputReference), "hex"),
-              value: Buffer.from(
-                Data.to(committed, SDK.ForcedInclusionTxV1),
-                "hex",
-              ),
-            },
-          ],
-        );
-        const header = withCommitSlot(harness.contracts.l1SlotConfig, {
-          ...makeHeader(operator, startTime),
-          forcedTransactionsRoot: root.root,
-          forcedTransactionCount: 1n,
-          totalEventCount: 1n,
-          transitionStepCount: 1n,
-          transitionTraceRoot: "ab".repeat(32),
-          eventToStepRoot: "bc".repeat(32),
-        });
-        const lifecycle = await setupChallenge({
-          harness,
-          publications,
-          transitionTraceReferenceScripts,
-          header,
-        });
-        const assetName = "98",
-          unit = toUnit(harness.contracts.txOrder.policyId, assetName);
-        const datum: SDK.TxOrderDatum = {
-          event: {
-            id,
-            tx: {
-              tx_id: committed.tx_id,
-              submitted_source: sourceData(rawSource),
-              transaction_commitment: Buffer.from(
-                computeMidgardForcedTxProofCommitment(rawSource),
-              ).toString("hex"),
-            },
+        },
+      };
+      const root = await buildCountedRoot(
+        SDK.ROOT_DOMAINS.forcedTransactionsV1,
+        [
+          {
+            key: Buffer.from(Data.to(id, SDK.OutputReference), "hex"),
+            value: Buffer.from(
+              Data.to(committed, SDK.ForcedInclusionTxV1),
+              "hex",
+            ),
           },
-          inclusion_time: header.endTime + 1n,
-          witness: "76".repeat(28),
-          refund_address: {
-            paymentCredential: { PublicKeyCredential: ["77".repeat(28)] },
-            stakeCredential: null,
+        ],
+      );
+      const header = withCommitSlot(harness.contracts.l1SlotConfig, {
+        ...makeHeader(operator, startTime),
+        forcedTransactionsRoot: root.root,
+        forcedTransactionCount: 1n,
+        totalEventCount: 1n,
+        transitionStepCount: 1n,
+        transitionTraceRoot: "ab".repeat(32),
+        eventToStepRoot: "bc".repeat(32),
+      });
+      const lifecycle = await setupChallenge({
+        harness,
+        publications,
+        transitionTraceReferenceScripts,
+        header,
+      });
+      const assetName = "98",
+        unit = toUnit(harness.contracts.txOrder.policyId, assetName);
+      const datum: SDK.TxOrderDatum = {
+        event: {
+          id,
+          tx: {
+            tx_id: committed.tx_id,
+            submitted_source: sourceData(rawSource),
+            transaction_commitment: Buffer.from(
+              computeMidgardForcedTxProofCommitment(rawSource),
+            ).toString("hex"),
           },
-          refund_datum: "NoDatum",
-        };
-        const signed = await (
-          await harness.funderLucid
-            .newTx()
-            .mintAssets({ [unit]: 1n }, Data.void())
-            .pay.ToContract(
-              harness.contracts.txOrder.spendingScriptAddress,
-              { kind: "inline", value: Data.to(datum, SDK.TxOrderDatum) },
-              { lovelace: 5000000n, [unit]: 1n },
-            )
-            .attach.MintingPolicy(harness.contracts.txOrder.mintingScript)
-            .complete()
-        ).sign
-          .withWallet()
-          .complete();
-        await harness.funderLucid.awaitTx(await signed.submit());
-        const event = await expectSingleUtxoWithUnit(
-          harness.funderLucid,
-          harness.contracts.txOrder.spendingScriptAddress,
-          unit,
-        );
-        const refs = [
-          lifecycle.setup.hubOracle,
-          transitionTraceReferenceScripts.fraudProofTransitionTraceL1Event!
-            .utxo,
-          harness.witnessReferenceScripts.computationThreadMint!,
-          harness.witnessReferenceScripts.fraudProofMint!,
-          event,
-        ];
-        const proof: SDK.TransitionFaultProof = {
-          challenged_header_hash: lifecycle.setup.headerHash,
-          header,
-          fault: {
-            OutOfWindowSourceEvent: {
-              witness: {
-                OutOfWindowForcedTransaction: {
-                  event_ref_input_index: ledgerOrderedIndex(
-                    refs,
-                    event,
-                    "late rejected order",
-                  ),
-                  event_asset_name: assetName,
-                  validity_override: wrongReason
-                    ? {
-                        ForcedTxInvalid: {
-                          reason: {
-                            PlutusExecutionFailed: {
-                              purpose_kind: 0n,
-                              purpose_index: 1n,
-                            },
+        },
+        inclusion_time: header.endTime + 1n,
+        witness: "76".repeat(28),
+        refund_address: {
+          paymentCredential: { PublicKeyCredential: ["77".repeat(28)] },
+          stakeCredential: null,
+        },
+        refund_datum: "NoDatum",
+      };
+      const signed = await (
+        await harness.funderLucid
+          .newTx()
+          .mintAssets({ [unit]: 1n }, Data.void())
+          .pay.ToContract(
+            harness.contracts.txOrder.spendingScriptAddress,
+            { kind: "inline", value: Data.to(datum, SDK.TxOrderDatum) },
+            { lovelace: 5000000n, [unit]: 1n },
+          )
+          .attach.MintingPolicy(harness.contracts.txOrder.mintingScript)
+          .complete()
+      ).sign
+        .withWallet()
+        .complete();
+      await harness.funderLucid.awaitTx(await signed.submit());
+      const event = await expectSingleUtxoWithUnit(
+        harness.funderLucid,
+        harness.contracts.txOrder.spendingScriptAddress,
+        unit,
+      );
+      const refs = [
+        lifecycle.setup.hubOracle,
+        transitionTraceReferenceScripts.fraudProofTransitionTraceL1Event!.utxo,
+        harness.witnessReferenceScripts.computationThreadMint!,
+        harness.witnessReferenceScripts.fraudProofMint!,
+        event,
+      ];
+      const proof: SDK.TransitionFaultProof = {
+        challenged_header_hash: lifecycle.setup.headerHash,
+        header,
+        fault: {
+          OutOfWindowSourceEvent: {
+            witness: {
+              OutOfWindowForcedTransaction: {
+                event_ref_input_index: ledgerOrderedIndex(
+                  refs,
+                  event,
+                  "late rejected order",
+                ),
+                event_asset_name: assetName,
+                validity_override: wrongReason
+                  ? {
+                      ForcedTxInvalid: {
+                        reason: {
+                          PlutusExecutionFailed: {
+                            purpose_kind: 0n,
+                            purpose_index: 1n,
                           },
                         },
-                      }
-                    : committed.verdict,
-                  source_membership: {
-                    domain: root.domain,
-                    root: root.root,
-                    phas_root: root.phasRoot,
-                    count: root.count,
-                    key: id,
-                    value: committed,
-                    proof: [],
-                  },
+                      },
+                    }
+                  : committed.verdict,
+                source_membership: {
+                  domain: root.domain,
+                  root: root.root,
+                  phas_root: root.phasRoot,
+                  count: root.count,
+                  key: id,
+                  value: committed,
+                  proof: [],
                 },
               },
             },
           },
-        };
-        const thread = await firstThreadUtxo({ harness, init: lifecycle.init });
-        const run = () =>
-          submitTransitionTraceProof({
-            lucid: harness.proverLucid,
-            blueprint: harness.realBlueprint,
-            deploymentInfo: lifecycle.deploymentInfo,
-            network,
-            signer: harness.proverSigner,
-            threadOutRef: outRefLabel(thread),
-            proof,
-            additionalReferenceInputs: [event],
-            witnessReferenceScripts: harness.witnessReferenceScripts,
-            awaitConfirmation: true,
-          });
-        if (wrongReason) await expect(run()).rejects.toThrow();
-        else
-          await removeAndAssertPermanentProof({
-            harness,
-            setup: lifecycle.setup,
-            deploymentInfo: lifecycle.deploymentInfo,
-            proofResult: await run(),
-          });
-        forcedWindowCases.add(wrongReason);
-      } finally {
-        capture.mockRestore();
-      }
+        },
+      };
+      const thread = await firstThreadUtxo({ harness, init: lifecycle.init });
+      const run = () =>
+        submitTransitionTraceProof({
+          lucid: harness.proverLucid,
+          blueprint: harness.realBlueprint,
+          deploymentInfo: lifecycle.deploymentInfo,
+          network,
+          signer: harness.proverSigner,
+          threadOutRef: outRefLabel(thread),
+          proof,
+          additionalReferenceInputs: [event],
+          witnessReferenceScripts: harness.witnessReferenceScripts,
+          awaitConfirmation: true,
+        });
+      if (wrongReason) await expect(run()).rejects.toThrow();
+      else
+        await removeAndAssertPermanentProof({
+          harness,
+          setup: lifecycle.setup,
+          deploymentInfo: lifecycle.deploymentInfo,
+          proofResult: await run(),
+        });
     },
     180000,
   );
