@@ -1,5 +1,5 @@
 use midgard/computation_thread as ct
-use midgard/fraud_proofs/missing_redeemer/rule.{DecisionStateV1}
+use midgard/fraud_proofs/missing_redeemer/claim.{FinalStateV1}
 
 pub type Args {
   input_index: Int,
@@ -8,7 +8,7 @@ pub type Args {
 }
 
 pub type Datum =
-  ct.StepDatum<DecisionStateV1>
+  ct.StepDatum<FinalStateV1>
 
 pub type SpendRedeemer =
   ct.StepRedeemer<Args>

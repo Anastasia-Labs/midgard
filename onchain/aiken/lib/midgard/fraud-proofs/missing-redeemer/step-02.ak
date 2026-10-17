@@ -1,20 +1,17 @@
 use midgard/computation_thread as ct
-use midgard/fraud_proofs/missing_redeemer/rule.{BoundPurposeV1}
-use midgard/ledger_state
-use midgard/transition_trace
-use midgard/validation_trace_v1
+use midgard/fraud_proofs/direct_script_derivation/purpose_workers.{
+  SourceSelectionV1,
+}
+use midgard/fraud_proofs/field_opening_v1.{FieldOpeningV1}
 
 pub type Args {
   input_index: Int,
   output_index: Int,
-  trace_membership: transition_trace.RootMembershipProof<
-    ledger_state.EventKey,
-    validation_trace_v1.ValidationTraceDescriptorV1,
-  >,
+  opening: FieldOpeningV1,
 }
 
 pub type Datum =
-  ct.StepDatum<BoundPurposeV1>
+  ct.StepDatum<SourceSelectionV1>
 
 pub type SpendRedeemer =
   ct.StepRedeemer<Args>

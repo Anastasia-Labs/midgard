@@ -3,10 +3,14 @@ use cardano/assets.{PolicyId}
 use cardano/transaction.{OutputReference, Transaction}
 use midgard/computation_thread as ct
 use midgard/fraud_proofs/common.{cancel, continue}
-use midgard/fraud_proofs/missing_redeemer/rule.{authenticate_descriptor_v1}
+use midgard/fraud_proofs/missing_redeemer/rule
 use midgard/fraud_proofs/missing_redeemer/step_02.{Datum, SpendRedeemer}
 
-validator main(step_02a_hash: ScriptHash, computation_thread_policy: PolicyId) {
+validator main(
+  next_step_hash: ScriptHash,
+  computation_thread_policy: PolicyId,
+  field_preimage_certificate_policy: PolicyId,
+) {
   spend(
     datum: Option<Datum>,
     redeemer: SpendRedeemer,
@@ -24,25 +28,27 @@ validator main(step_02a_hash: ScriptHash, computation_thread_policy: PolicyId) {
           tx,
         )
       ct.Continue(args) -> {
-        let Transaction { inputs, outputs, .. } = tx
         expect Some(step_datum) = datum
-        let _, _, _, input_state, next_hash, next_state <- continue(
+        let _, _, _, input_state, output_hash, output_state <- continue(
           computation_thread_policy,
           step_datum,
           args.input_index,
           args.output_index,
           own_ref,
-          inputs,
-          outputs,
+          tx.inputs,
+          tx.outputs,
         )
-        expect Some(bound) = input_state
-        let expected: Data = authenticate_descriptor_v1(
-          bound,
-          args.trace_membership,
+        expect Some(state) = input_state
+        let Pair(initial, _) = rule.initial_scan_v1(
+          state,
+          args.opening,
+          tx.reference_inputs,
+          field_preimage_certificate_policy,
         )
+        let expected: Data = initial
         and {
-          next_hash == step_02a_hash,
-          next_state == expected,
+          output_hash == next_step_hash,
+          output_state == expected,
         }
       }
     }
