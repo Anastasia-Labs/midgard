@@ -165,7 +165,9 @@ patched fork, but locally every script ran whatever `aiken` was on PATH, and on
     either deleted or derived from the files.
   - **Done:** all 10 run, each even after another goes red, and
     `scripts/ci/exec-ledgers-wired.test.mjs` derives the claim from the files.
-    Only native-script-scan and tx-order-mint pass at `71e605e46`.
+    Only native-script-scan and tx-order-mint pass at `71e605e46`. The ledgers,
+    their verifiers and that test were deleted on 2026-10-16, when execution
+    costs became script-budget ceilings. <!-- doc-links:historical -->
 - [x] **W1.6 Run the repository's own tool tests in CI.** (S)
   - **Today:** `run-focused-check.test.mjs`, `guard-focused-selector.test.mjs`,
     `pinned-compiler.test.mjs` and

@@ -1,8 +1,5 @@
-import { fileURLToPath } from "node:url";
-
 import { expect } from "vitest";
 
-import { type VanRossemFitMeasurement } from "../src/proof-fit/van-rossem-fit-ledger.js";
 import { type CompleteSignedTransactionMeasurement } from "./support/emulator/measurement.js";
 import { createLifecycleCoverageRecorder } from "./support/lifecycle-coverage.js";
 
@@ -32,22 +29,11 @@ export const AUTHENTICATION_SEAMS = [
 
 export const CANCELLABLE_STEPS = ["step-01", "step-02", "step-03"] as const;
 
-export const ledgerPath = fileURLToPath(
-  new URL(
-    "../../../docs/fault-proofs/size-plans/field-item-width-illegal-v1-fit-ledger.json",
-    import.meta.url,
-  ),
-);
-
 export const coverage = createLifecycleCoverageRecorder();
-
-export const measurements: VanRossemFitMeasurement[] = [];
 
 export const record = (
   name: string,
-  maximumShape: string,
   measurement: CompleteSignedTransactionMeasurement,
-  kind: VanRossemFitMeasurement["kind"] = "lifecycle",
 ): void => {
   expect(measurement.l1ByteMargin, name).toBeGreaterThan(0);
   // Chunk publications and reference-script publications run no script; every
@@ -56,12 +42,4 @@ export const record = (
     expect(measurement.executionMemory, name).toBeGreaterThan(0n);
     expect(measurement.executionSteps, name).toBeGreaterThan(0n);
   }
-  measurements.push({
-    name,
-    kind,
-    maximumShape,
-    signedBytes: measurement.completeSignedBytes,
-    memoryUnits: measurement.executionMemory,
-    cpuUnits: measurement.executionSteps,
-  });
 };

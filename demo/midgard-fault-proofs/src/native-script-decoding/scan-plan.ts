@@ -31,11 +31,10 @@
  * submitter discover that on-chain.
  *
  * ExUnits discipline (§5.3): every plan carries a prediction derived from
- * the pinned exec ledger
- * (`onchain/aiken/scripts/native-script-decoding-engine-exec-ledger-v1.json`),
- * and the planner throws on any plan predicted over the 13.2M-mem/8B-cpu
- * GOAL_SPEC §3.3 basis. Scan predictions price every primitive step at the
- * ledger's deep per-NODE fold slope, which over-prices roughly 2–3× (a deep
+ * the family's script budgets (`@al-ft/midgard-core` `script-budgets.json`,
+ * each a measured ceiling), and the planner throws on any plan predicted over
+ * the 13.2M-mem/8B-cpu GOAL_SPEC §3.3 basis. Scan predictions price every
+ * primitive step at the deep per-NODE fold slope, which over-prices roughly 2–3× (a deep
  * node spends 2–3 primitive steps to earn one node's slope): the prediction
  * is a conservative ceiling, so "refuse to submit" can only fire early,
  * never lie low. Divergence between prediction and an emulator reading
@@ -44,12 +43,11 @@
 
 import "@al-ft/midgard-core";
 import "./contracts.js";
-import "./scan-plan.native-script-decoding-exec-pins.js";
+import "./scan-plan.native-script-decoding-plan-costs.js";
 import "./scan-plan.build-native-script-decoding-scan-plan.js";
 export { buildNativeScriptDecodingScanPlan } from "./scan-plan.build-native-script-decoding-scan-plan.js";
 export {
   NATIVE_SCRIPT_DECODING_DEFAULT_MAX_STEPS_PER_TX,
-  NATIVE_SCRIPT_DECODING_EXEC_PINS,
   type NativeScriptDecodingPlanControl,
   type NativeScriptDecodingPlanRoute,
   NativeScriptDecodingPlanRoutes,
@@ -57,4 +55,4 @@ export {
   type NativeScriptDecodingScanPlan,
   type NativeScriptDecodingScanSegmentPlan,
   type NativeScriptDecodingVerdictPlan,
-} from "./scan-plan.native-script-decoding-exec-pins.js";
+} from "./scan-plan.native-script-decoding-plan-costs.js";

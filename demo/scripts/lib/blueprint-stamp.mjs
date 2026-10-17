@@ -2,12 +2,15 @@
 
 // Whether `onchain/aiken/plutus.json` still describes the tree it sits in.
 //
-// The blueprint is untracked build output. Nothing rebuilds it when a
-// validator or an env module changes, so a suite can load a blueprint compiled
-// from last week's sources and report hundreds of reds (or greens) that say
-// nothing about the code under test. `deployment-profiles.mjs build` therefore
-// records, beside the blueprint, a hash of every compiler input; this module
-// computes that stamp and judges an existing one against the tree.
+// The blueprint is untracked build output. Editing a validator or an env
+// module does not rebuild it, so without a check a suite would load a
+// blueprint compiled from last week's sources and report hundreds of reds (or
+// greens) that say nothing about the code under test.
+// `deployment-profiles.mjs build` therefore records, beside the blueprint, a
+// hash of every compiler input; this module computes that stamp and judges an
+// existing one against the tree. The test suites' global setup
+// (`demo/midgard-test-support/blueprint-stamp-setup.js`) rebuilds a blueprint
+// this judges missing or stale before any file starts.
 //
 // CLI: `node demo/scripts/lib/blueprint-stamp.mjs [blueprint]` exits 0 when the
 // stamp is fresh, 1 when it is stale or missing, 3 when it could not be judged.

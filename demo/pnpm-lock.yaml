@@ -140,6 +140,9 @@ importers:
       fast-check:
         specifier: ^4.5.3
         version: 4.7.0
+      midgard-node:
+        specifier: workspace:*
+        version: link:../midgard-node
       midgard-watcher:
         specifier: workspace:*
         version: link:../midgard-watcher

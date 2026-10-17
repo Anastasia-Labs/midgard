@@ -14,23 +14,11 @@ import {
   type CompleteSignedTransactionMeasurement,
 } from "./support/emulator/measurement.js";
 import { publishPlainReferenceScriptUtxo } from "./support/emulator/reference-scripts.js";
-import { createMeasuredFitRecorder } from "./support/measured-fit-ledger.js";
-
-export const measuredFit = createMeasuredFitRecorder(
-  "redeemer-canonicity",
-  "lifecycle",
-  "224 redeemers in certified field 8, accepted-invalid and forced-rejection paths and cancellation",
-);
 
 export const emitFit = (
   stage: string,
   measurement: CompleteSignedTransactionMeasurement,
 ): void => {
-  measuredFit.record(
-    stage,
-    measurement,
-    measurement.executionMemory === 0n ? "publication" : "lifecycle",
-  );
   if (process.env.MIDGARD_PRINT_FIT !== "1") return;
   console.info(
     `[redeemer-canonicity-fit] ${JSON.stringify({

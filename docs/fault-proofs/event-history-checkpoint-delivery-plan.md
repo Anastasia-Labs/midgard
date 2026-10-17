@@ -102,7 +102,8 @@ Blueprint SHA256:
 Compiler:`aiken v1.1.23+5adf783`; Node22.22.2/pnpm9.15.4.
 `cp23-root-final-code-application.json` proves all eleven integrated code files
 match the verified snapshot; the separately verified generated fit ledger is
-recorded in `cp23-root-fit-ledger-application.json`. Every snapshot and failure
+recorded in the cp23 root fit ledger application record (fit ledgers have
+since been removed). Every snapshot and failure
 log remains preserved. Build-input provenance and per-file hashes accompany
 these records. No operator archive is treated as L1 authority.
 

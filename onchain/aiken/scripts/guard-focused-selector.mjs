@@ -33,7 +33,7 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { runShardInvocation } from "./complete-test-shards.mjs";
-import { GOAL_SPEC_EXECUTION_BASIS_V1 } from "./exec-ledger-within-basis-v1.mjs";
+import { SCRIPT_BUDGET_BASIS } from "../../../demo/midgard-core/src/script-budgets.ts";
 import { aikenBinary } from "../../../scripts/lib/aiken.mjs";
 
 const MAX_SELECTOR_COUNT = 64;
@@ -132,12 +132,12 @@ export const exUnitsSummary = (report) => {
     maxMem: {
       test: mem.test,
       mem: mem.mem,
-      ofBasis: share(mem.mem, GOAL_SPEC_EXECUTION_BASIS_V1.memoryUnits),
+      ofBasis: share(mem.mem, SCRIPT_BUDGET_BASIS.mem),
     },
     maxCpu: {
       test: cpu.test,
       cpu: cpu.cpu,
-      ofBasis: share(cpu.cpu, GOAL_SPEC_EXECUTION_BASIS_V1.cpuUnits),
+      ofBasis: share(cpu.cpu, SCRIPT_BUDGET_BASIS.cpu),
     },
   };
 };

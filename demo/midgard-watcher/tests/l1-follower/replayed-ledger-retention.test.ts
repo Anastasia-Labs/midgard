@@ -28,7 +28,7 @@ const retention = () =>
 
 describe("replay admission retention", () => {
   it("retains the signed event admission window when it exceeds the general transaction range", async () => {
-    const construction = followerUserEventsDeployment();
+    const construction = await followerUserEventsDeployment();
     const slotConfig = NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod;
     const rules = makeWatcherCanonicalRuleBundle({
       constructionIdentity: {
@@ -40,7 +40,7 @@ describe("replay admission retention", () => {
       },
       targetParameterSnapshot: WATCHER_TEST_CARDANO_PROTOCOL_PARAMETERS,
     });
-    const deployment = followerUserEventsDeployment(
+    const deployment = await followerUserEventsDeployment(
       computeWatcherRuleBundleCommitment(rules),
     );
     const authority = await loadWatcherVerifiedDeploymentAuthority({

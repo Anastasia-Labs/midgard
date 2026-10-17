@@ -83,7 +83,7 @@ const commitAtClock = (raw: string, clock: bigint): string => {
 };
 
 const setup = async () => {
-  const deployment = followerUserEventsDeployment();
+  const deployment = await followerUserEventsDeployment();
   const follower = await openFollowerUserEvents({ deployment });
   const chain = syntheticChain();
   const deposit = userEventId("d1"),
