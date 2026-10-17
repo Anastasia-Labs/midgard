@@ -9,7 +9,7 @@ import { decodeMidgardSubmittedTxFromCanonicalCbor } from "./ledger-tx/codec.js"
 import { findRedeemerByPointer } from "./midgard-redeemers.js";
 import { discoverLocalScriptExecutions } from "./phase-b.discover-local-script-executions.js";
 import {
-  collectInlineScriptSources,
+  collectScriptSources,
   resolveReferenceInputs,
 } from "./phase-b.resolve-reference-inputs.js";
 import {
@@ -103,10 +103,7 @@ export const evaluateMidgardTxRedeemers = (input: {
     const discovered = discoverLocalScriptExecutions(
       node,
       stateValue,
-      [
-        ...collectInlineScriptSources(candidate.ledgerTx),
-        ...references.scriptSources,
-      ],
+      collectScriptSources(node, stateValue, references),
       references.inputs,
       new Set(candidate.derived.witnessKeyHashHexes),
       input.config.l1SlotConfig,
