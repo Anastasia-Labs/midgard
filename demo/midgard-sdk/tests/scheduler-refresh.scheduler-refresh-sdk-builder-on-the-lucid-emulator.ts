@@ -190,7 +190,7 @@ describe("scheduler refresh SDK builder on the Lucid emulator", () => {
     const withReference = await buildSchedulerRefreshTx(
       { ...scene.baseConfig, selection },
       "00",
-    ).complete({ localUPLCEval: false });
+    ).complete({ localUPLCEval: true });
     const referenced = assembledIndices(withReference);
     expect(referenced.referenceInputs).toContain(
       outRefKey(scene.schedulerScriptRef),
@@ -207,7 +207,7 @@ describe("scheduler refresh SDK builder on the Lucid emulator", () => {
         selection,
       },
       "00",
-    ).complete({ localUPLCEval: false });
+    ).complete({ localUPLCEval: true });
     const attached = assembledIndices(withoutReference);
     expect(attached.referenceInputs).not.toContain(
       outRefKey(scene.schedulerScriptRef),
@@ -231,7 +231,7 @@ describe("scheduler refresh SDK builder on the Lucid emulator", () => {
           selection,
         },
         "00",
-      ).complete({ localUPLCEval: false }),
+      ).complete({ localUPLCEval: true }),
     ).rejects.toThrow();
   }, 300_000);
 
