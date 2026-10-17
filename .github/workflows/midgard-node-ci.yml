@@ -463,6 +463,16 @@ jobs:
       - name: Check V1 CEK core-step golden vectors
         if: ${{ !cancelled() }}
         run: node scripts/preflight.mjs --run golden:cek-core-step-v1
+      # The ledger output proof replay channel: outputs holding an empty field
+      # or a large chunked datum scalar, the witness list the TypeScript trace
+      # builder emits for each and the hash of its terminal control. The
+      # generator writes the JSON fixture and rebinds the witness lists and
+      # hashes by name into `ledger-output-proof-datum.test.ak`, where the
+      # on-chain steps replay them; without this step a drifting builder plus a
+      # `:sync` re-greens both language suites unnoticed.
+      - name: Check ledger output proof replay golden vectors
+        if: ${{ !cancelled() }}
+        run: node scripts/preflight.mjs --run golden:ledger-output-proof-replay
       # The V1 CEK builtin channel: every builtin tag evaluated by the pinned
       # Aiken evaluator, values and failures, with the cases where the ledger
       # and that evaluator differ recorded as overrides beside both outcomes.

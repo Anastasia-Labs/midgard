@@ -25,6 +25,7 @@ export {
   evaluateMidgardCekVerdict,
   type MidgardCekScriptRun,
   type MidgardCekVerdictRequest,
+  ScriptEvaluationIndeterminateError,
 } from "./phase-b.evaluate-cek-script.js";
 export {
   evaluateMidgardTxRedeemers,

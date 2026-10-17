@@ -490,6 +490,37 @@
       }
     },
     {
+      "id": "ledger-output-proof-replay",
+      "kind": "golden",
+      "summary": "Ledger output proof replay rows (empty fields, large datum scalars): JSON fixture plus each row's witness list, terminal hash and step-planner scalar claims rebound by name into a hand-written Aiken module.",
+      "generators": [
+        "demo/midgard-validation/scripts/generate-ledger-output-proof-replay-goldens.mjs"
+      ],
+      "packageScripts": [
+        "demo/midgard-validation:fixtures:ledger-output-proof-replay:sync",
+        "demo/midgard-validation:fixtures:ledger-output-proof-replay:check"
+      ],
+      "producers": ["demo/midgard-validation", "demo/midgard-fault-proofs"],
+      "inputs": [
+        "@golden-channel",
+        "demo/midgard-validation/tests/fixtures/ledger-output-proof-replay.vectors.mjs"
+      ],
+      "outputs": [
+        "demo/midgard-validation/tests/fixtures/ledger-output-proof-replay.generated.json",
+        "onchain/aiken/lib/midgard/ledger-output-proof-datum.test.ak"
+      ],
+      "sync": {
+        "run": "pnpm --dir demo/midgard-validation run fixtures:ledger-output-proof-replay:sync"
+      },
+      "check": {
+        "run": "pnpm --dir demo/midgard-validation run fixtures:ledger-output-proof-replay:check"
+      },
+      "ci": {
+        "workflow": ".github/workflows/midgard-node-ci.yml",
+        "step": "Check ledger output proof replay golden vectors"
+      }
+    },
+    {
       "id": "cek-cost-v1-aiken",
       "kind": "golden",
       "summary": "Every builtin's cpu and memory budget at a spread of argument sizes, from the pinned 350-entry Plutus V3 cost vector through the TypeScript cost twin: a whole generated Aiken module run against the on-chain cost table.",
@@ -924,6 +955,40 @@
         "step": "Check that aiken.lock is up-to-date"
       },
       "generators": []
+    },
+    {
+      "id": "cek-step-fuzz-coverage",
+      "kind": "fixture",
+      "summary": "Per-builtin coverage of the CEK step differential over its fixed seed set, written by the step-fuzz suite under MIDGARD_WRITE_CEK_STEP_FUZZ_COVERAGE=1 and asserted by the same suite without it.",
+      "generators": [
+        "demo/midgard-validation/tests/fuzz/cek-step-fuzz.test.ts"
+      ],
+      "writerEnv": ["MIDGARD_WRITE_CEK_STEP_FUZZ_COVERAGE"],
+      "producers": ["demo/midgard-validation"],
+      "aikenClosure": ["onchain/aiken/lib/midgard/cek-machine-v1.ak"],
+      "inputs": [
+        "demo/midgard-validation/tests/fuzz/cek-step-fuzz.*.ts",
+        "demo/midgard-validation/tests/helpers/cek-uplc-terms.ts",
+        "demo/midgard-validation/tests/fixtures/cek-builtin-cardano-v1.arguments.mjs",
+        "demo/midgard-validation/tests/fixtures/cek-core-step-v1.vectors.mjs",
+        "onchain/aiken/aiken.toml",
+        "onchain/aiken/aiken.lock",
+        "@compiler-pin"
+      ],
+      "outputs": [
+        "demo/midgard-validation/tests/fuzz/cek-step-fuzz.coverage.json"
+      ],
+      "sync": {
+        "run": "MIDGARD_WRITE_CEK_STEP_FUZZ_COVERAGE=1 pnpm --dir demo/midgard-validation exec vitest run tests/fuzz/cek-step-fuzz.test.ts -t \"fixed seed set\""
+      },
+      "check": {
+        "run": "pnpm --dir demo/midgard-validation exec vitest run tests/fuzz/cek-step-fuzz.test.ts -t \"fixed seed set\""
+      },
+      "ci": {
+        "workflow": ".github/workflows/midgard-node-ci.yml",
+        "step": "Build, typecheck, and test Midgard validation",
+        "via": "demo/midgard-validation/tests/fuzz/cek-step-fuzz.test.ts"
+      }
     },
     {
       "id": "bench-validation-fixtures",
