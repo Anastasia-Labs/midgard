@@ -64,7 +64,10 @@ pub fn script_hash_v1(language: Int, script_bytes: ByteArray) -> ByteArray {
   blake2b_224(builtin.cons_bytearray(language, script_bytes))
 }
 
-/// The bytes staged in the named reference inputs, in order.
+/// The bytes staged in the named reference inputs, in order: each datum's
+/// first field, a byte string. The datum's constructor and its other fields
+/// are not checked: the bytes are bound by their hash, which `Bind` makes
+/// the run's script hash and every `Walk` checks against it.
 pub fn staged_bytes_v1(
   reference_inputs: List<Input>,
   staging: List<Int>,
@@ -75,8 +78,12 @@ pub fn staged_bytes_v1(
     fn(index, rest) {
       expect Some(input) = list.at(reference_inputs, index)
       expect InlineDatum(datum) = input.output.datum
-      expect Pair(0, [bytes]) = builtin.un_constr_data(datum)
-      bytearray.concat(builtin.un_b_data(bytes), rest)
+      bytearray.concat(
+        builtin.un_b_data(
+          builtin.head_list(builtin.snd_pair(builtin.un_constr_data(datum))),
+        ),
+        rest,
+      )
     },
   )
 }
