@@ -7,6 +7,7 @@
  * to the emulator, which checks every signature and required signer.
  */
 import "node:fs";
+import "@al-ft/midgard-core";
 import "@lucid-evolution/lucid";
 import "effect";
 import "vitest";
@@ -16,11 +17,18 @@ import "../src/da-bond-pool.js";
 import "../src/da-bond-pool-quorum.js";
 import "../src/da-bond-pool-transactions.js";
 import "../src/index.js";
+import "../../midgard-validation/tests/ed25519-ledger-vectors.js";
 import "./da-bond-pool-quorum.setup-scene.js";
 
+import { ledgerEd25519SignatureReady } from "@al-ft/midgard-core";
 import { CML, Data } from "@lucid-evolution/lucid";
 import { beforeAll, describe, expect, it } from "vitest";
 
+import {
+  ledgerEd25519Verdict,
+  ownKeyIdentityRSignature,
+  signerPublicKey,
+} from "../../midgard-validation/tests/ed25519-ledger-vectors.js";
 import { decodeDaBondPoolDatum } from "../src/da-bond-pool.js";
 import {
   assembleDaBondPoolTx,
@@ -47,6 +55,7 @@ describe("DA bond pool owner-quorum primitives", () => {
   let scene: Scene;
 
   beforeAll(async () => {
+    await ledgerEd25519SignatureReady;
     scene = await setupScene();
   });
 
@@ -135,6 +144,52 @@ describe("DA bond pool owner-quorum primitives", () => {
         ),
       ).toBe("invalid_witness");
     }
+  });
+
+  it("refuses an owner witness the ledger refuses: own key, identity R, S = h·a", () => {
+    // ownerB is a normal key, so its raw bytes are its seed.
+    const seed = Buffer.from(
+      CML.PrivateKey.from_bech32(scene.ownerB.bech32).to_raw_bytes(),
+    );
+    const vkey = signerPublicKey(seed);
+    const message = Buffer.from(scene.txHash, "hex");
+    const signature = ownKeyIdentityRSignature(seed, message);
+    expect(
+      ledgerEd25519Verdict({ label: "owner", vkey, message, signature }),
+    ).toBe(false);
+    const list = CML.VkeywitnessList.new();
+    list.add(
+      CML.Vkeywitness.new(
+        CML.PublicKey.from_bytes(vkey),
+        CML.Ed25519Signature.from_raw_bytes(signature),
+      ),
+    );
+    const witnessSet = CML.TransactionWitnessSet.new();
+    witnessSet.set_vkeywitnesses(list);
+    const refused = witnessSet.to_cbor_hex();
+    expect(CML.PublicKey.from_bytes(vkey).hash().to_hex()).toBe(
+      scene.ownerB.keyHash,
+    );
+
+    expect(
+      reasonOf(() => verifiedDaBondPoolWitnessKeyHashes(scene.txCbor, refused)),
+    ).toBe("invalid_witness");
+    expect(
+      reasonOf(() =>
+        assertDaBondPoolWitnessQuorum({
+          txCbor: scene.txCbor,
+          witnessSetCbors: [
+            witnessDaBondPoolTx(scene.txCbor, scene.ownerA.bech32)
+              .witnessSetCbor,
+            refused,
+          ],
+          daParams: daParams([scene.ownerA, scene.ownerB], 2n),
+        }),
+      ),
+    ).toBe("invalid_witness");
+    expect(reasonOf(() => assembleDaBondPoolTx(scene.txCbor, [refused]))).toBe(
+      "invalid_witness",
+    );
   });
 
   it("refuses one of two owners with the exact shortfall message", () => {
