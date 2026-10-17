@@ -111,6 +111,10 @@ export const evaluateMidgardTxRedeemers = (input: {
     if (discovered.kind === "rejected") {
       return failed(`${discovered.code}: ${discovered.detail}`);
     }
+    if (discovered.unusedRedeemer !== undefined) {
+      const { code, detail } = discovered.unusedRedeemer;
+      return failed(`${code}: ${detail}`);
+    }
     const cap = {
       memory: BigInt(input.limits.minSupportedTransactionExecutionMemoryUnits),
       cpu: BigInt(input.limits.minSupportedTransactionExecutionCpuUnits),

@@ -3098,25 +3098,34 @@ export const prepareValidationTrace = (input: ValidationMachineReplayInput) =>
                 );
                 const output = decodeMidgardTxOutput(outputCbor);
                 const address = decodeMidgardAddressBytes(output.address);
+                // Stage 5 is where the machine refuses both output faults, so
+                // validation must have refused this output for the same one.
+                const networkFault =
+                  BigInt(address.networkId) !== input.expectedNetworkId;
                 if (
-                  outputNetworkRejection &&
-                  BigInt(address.networkId) !== input.expectedNetworkId
+                  networkFault ||
+                  (address.protected &&
+                    address.paymentCredential.kind === "PubKey" &&
+                    signerProof.kind !== "membership")
                 ) {
-                  stopReason = "NetworkIdMismatch";
-                  stoppedAtRejection = true;
-                  break;
-                }
-                if (
-                  protectedSignerRejection &&
-                  address.protected &&
-                  address.paymentCredential.kind === "PubKey" &&
-                  signerProof.kind !== "membership"
-                ) {
-                  stopReason = {
-                    ProtectedOutputSignerMissing: {
-                      output_index: BigInt(outputCursor),
-                    },
-                  };
+                  if (
+                    !(networkFault
+                      ? outputNetworkRejection
+                      : protectedSignerRejection)
+                  ) {
+                    return yield* Effect.fail(
+                      new Error(
+                        `output ${outputCursor} fails at stage 5 but replay rejected at ${terminalPhase}/${rejectionCode ?? "none"}`,
+                      ),
+                    );
+                  }
+                  stopReason = networkFault
+                    ? "NetworkIdMismatch"
+                    : {
+                        ProtectedOutputSignerMissing: {
+                          output_index: BigInt(outputCursor),
+                        },
+                      };
                   stoppedAtRejection = true;
                   break;
                 }

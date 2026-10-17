@@ -46,35 +46,25 @@ export const discoverLocalScriptExecutions = (
   | {
       readonly kind: "discovered";
       readonly executions: readonly RequiredScriptExecution[];
+      /** The unused-redeemer audit's refusal, if any; see below. */
+      readonly unusedRedeemer:
+        | Extract<LocalScriptValidationResult, { readonly kind: "rejected" }>
+        | undefined;
       readonly contextView: ScriptContextView;
     } => {
   const candidate = node.candidate;
   const { ledgerTx } = candidate;
   const redeemers = ledgerTx.redeemers;
-  const seenRedeemerPointers = new Set<string>();
-  for (const [redeemerIndex, redeemer] of redeemers.entries()) {
-    const key = midgardRedeemerPointerKey(redeemer);
-    if (seenRedeemerPointers.has(key)) {
-      // The earlier item with this pointer serves its purpose; this later
-      // one is the redeemer no purpose uses.
-      return {
-        kind: "rejected",
-        code: RejectCodes.InvalidFieldType,
-        detail: `duplicate redeemer ${key}`,
-        consensusPhase: "scriptSources",
-        subject: { arm: "UnusedRedeemer", index: BigInt(redeemerIndex) },
-      };
-    }
-    seenRedeemerPointers.add(key);
-  }
-
   const sortedSpent = sortTxOutRefHexes(node.spentOutRefs);
   const resolvedInputs: {
     readonly outRefHex: string;
     readonly output: MidgardTxOutput;
   }[] = [];
   const executions: RequiredScriptExecution[] = [];
-  const expectedPointers = new Set<string>();
+  // Raw field-8 positions of the redeemers selected executions use: the first
+  // redeemer at each non-native purpose's pointer, as the machine's stage-10
+  // search marks it.
+  const usedRedeemerIndices = new Set<number>();
 
   const addExecution = (
     purpose: MidgardScriptPurpose,
@@ -100,11 +90,13 @@ export const discoverLocalScriptExecutions = (
       };
     }
     // A native script runs without a redeemer, so a redeemer at its pointer
-    // stays unexpected and is refused below as extraneous.
+    // stays unused and is refused by the unused-redeemer audit.
     if (resolved.version !== "NativeCardano") {
-      expectedPointers.add(midgardRedeemerPointerKey(pointer));
-      const redeemer = findRedeemerByPointer(redeemers, pointer);
-      if (redeemer === undefined) {
+      const redeemerIndex = redeemers.findIndex(
+        (redeemer) =>
+          redeemer.tag === pointer.tag && redeemer.index === pointer.index,
+      );
+      if (redeemerIndex < 0) {
         return {
           kind: "rejected",
           code: RejectCodes.MissingRequiredWitness,
@@ -117,12 +109,21 @@ export const discoverLocalScriptExecutions = (
           },
         };
       }
+      usedRedeemerIndices.add(redeemerIndex);
     }
     const execution = { purpose, pointer, resolved };
     executions.push(execution);
     return { kind: "added", execution };
   };
 
+  // The machine's order: replay the spent inputs into spend purposes (stage
+  // 3), scan every output (stages 4-5), add the mint, observer and receive
+  // purposes (stages 6-7), and only then look each purpose's source and
+  // redeemer up (stages 8-10).
+  const purposes: {
+    readonly purpose: MidgardScriptPurpose;
+    readonly pointer: MidgardRedeemerPointer;
+  }[] = [];
   for (let index = 0; index < sortedSpent.length; index += 1) {
     const outRefHex = sortedSpent[index];
     const outputBytes = stateValue(outRefHex);
@@ -146,38 +147,10 @@ export const discoverLocalScriptExecutions = (
     ).paymentCredential;
     if (paymentCred.kind === "Script") {
       const scriptHash = paymentCred.hash.toString("hex");
-      const result = addExecution(
-        { kind: "spend", scriptHash, outRefHex },
-        { tag: MidgardRedeemerTag.Spend, index: BigInt(index) },
-      );
-      if (result.kind === "rejected") {
-        return result;
-      }
-    }
-  }
-
-  const mintValue = mintDeltaToScriptMintValue(candidate.derived.mintDelta);
-  const mintPolicies = candidate.derived.mintPolicyHashHexes;
-  for (let index = 0; index < mintPolicies.length; index += 1) {
-    const policyId = mintPolicies[index];
-    const result = addExecution(
-      { kind: "mint", scriptHash: policyId, policyId },
-      { tag: MidgardRedeemerTag.Mint, index: BigInt(index) },
-    );
-    if (result.kind === "rejected") {
-      return result;
-    }
-  }
-
-  const observers = [...candidate.derived.requiredObserverHashHexes].sort();
-  for (let index = 0; index < observers.length; index += 1) {
-    const observer = observers[index];
-    const result = addExecution(
-      { kind: "observe", scriptHash: observer },
-      { tag: MidgardRedeemerTag.Reward, index: BigInt(index) },
-    );
-    if (result.kind === "rejected") {
-      return result;
+      purposes.push({
+        purpose: { kind: "spend", scriptHash, outRefHex },
+        pointer: { tag: MidgardRedeemerTag.Spend, index: BigInt(index) },
+      });
     }
   }
 
@@ -220,33 +193,71 @@ export const discoverLocalScriptExecutions = (
     protectedReceivingHashes.add(scriptHash);
   }
 
+  const mintValue = mintDeltaToScriptMintValue(candidate.derived.mintDelta);
+  const mintPolicies = candidate.derived.mintPolicyHashHexes;
+  for (let index = 0; index < mintPolicies.length; index += 1) {
+    const policyId = mintPolicies[index];
+    purposes.push({
+      purpose: { kind: "mint", scriptHash: policyId, policyId },
+      pointer: { tag: MidgardRedeemerTag.Mint, index: BigInt(index) },
+    });
+  }
+
+  const observers = [...candidate.derived.requiredObserverHashHexes].sort();
+  for (let index = 0; index < observers.length; index += 1) {
+    purposes.push({
+      purpose: { kind: "observe", scriptHash: observers[index] },
+      pointer: { tag: MidgardRedeemerTag.Reward, index: BigInt(index) },
+    });
+  }
+
   const receivingHashes = [...protectedReceivingHashes].sort();
   for (let index = 0; index < receivingHashes.length; index += 1) {
-    const scriptHash = receivingHashes[index];
-    const result = addExecution(
-      { kind: "receive", scriptHash },
-      { tag: MidgardRedeemerTag.Receiving, index: BigInt(index) },
-    );
+    purposes.push({
+      purpose: { kind: "receive", scriptHash: receivingHashes[index] },
+      pointer: { tag: MidgardRedeemerTag.Receiving, index: BigInt(index) },
+    });
+  }
+
+  for (const { purpose, pointer } of purposes) {
+    const result = addExecution(purpose, pointer);
     if (result.kind === "rejected") {
       return result;
     }
   }
 
-  for (const [redeemerIndex, redeemer] of redeemers.entries()) {
-    if (!expectedPointers.has(midgardRedeemerPointerKey(redeemer))) {
-      return {
-        kind: "rejected",
-        code: RejectCodes.InvalidFieldType,
-        detail: `extraneous redeemer ${midgardRedeemerPointerKey(redeemer)}`,
-        consensusPhase: "scriptSources",
-        subject: { arm: "UnusedRedeemer", index: BigInt(redeemerIndex) },
-      };
-    }
-  }
+  // The machine audits unused redeemers (stage 12) only after its unused
+  // inline witness audit (stage 11), so the caller runs this one second. A
+  // redeemer repeating a used pointer, or at a native purpose's pointer, is
+  // unused; the first unused one in raw field-8 order is refused.
+  const unusedRedeemerIndex = redeemers.findIndex(
+    (_redeemer, redeemerIndex) => !usedRedeemerIndices.has(redeemerIndex),
+  );
+  const unusedKey =
+    unusedRedeemerIndex < 0
+      ? ""
+      : midgardRedeemerPointerKey(redeemers[unusedRedeemerIndex]!);
+  const repeatsPointer = redeemers
+    .slice(0, Math.max(unusedRedeemerIndex, 0))
+    .some((redeemer) => midgardRedeemerPointerKey(redeemer) === unusedKey);
+  const unusedRedeemer =
+    unusedRedeemerIndex < 0
+      ? undefined
+      : {
+          kind: "rejected" as const,
+          code: RejectCodes.InvalidFieldType,
+          detail: `${repeatsPointer ? "duplicate" : "extraneous"} redeemer ${unusedKey}`,
+          consensusPhase: "scriptSources" as const,
+          subject: {
+            arm: "UnusedRedeemer" as const,
+            index: BigInt(unusedRedeemerIndex),
+          },
+        };
 
   return {
     kind: "discovered",
     executions,
+    unusedRedeemer,
     contextView: {
       txId: ledgerTx.txId,
       inputs: resolvedInputs,

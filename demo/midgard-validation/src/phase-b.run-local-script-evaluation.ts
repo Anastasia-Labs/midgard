@@ -56,25 +56,6 @@ export const runLocalScriptEvaluation = (
     if (discovered.kind === "rejected") {
       return discovered;
     }
-    // Phase A refuses a candidate without a sidecar. One that reaches here
-    // without it runs on empty material, so every script goes through the
-    // structural executor.
-    let proofProgramMaterial: MidgardCekProgramMaterialSidecar = [];
-    if (candidate.submission.programMaterialSidecarCbor !== null) {
-      try {
-        proofProgramMaterial = decodeMidgardCekProgramMaterialSidecar(
-          candidate.submission.programMaterialSidecarCbor,
-        );
-      } catch (cause) {
-        return {
-          kind: "rejected",
-          code: RejectCodes.CekProgramMaterial,
-          detail: `invalid V1 CEK material during execution: ${String(cause)}`,
-          consensusPhase: "scriptSources",
-        };
-      }
-    }
-
     const usedInlineSourceIds = new Set(
       discovered.executions
         .filter((execution) => execution.resolved.source.origin === "inline")
@@ -93,6 +74,30 @@ export const runLocalScriptEvaluation = (
             arm: "UnusedScriptWitness",
             index: BigInt(ledgerTx.scriptWitnesses[position]!.index),
           },
+        };
+      }
+    }
+    // Stage 12 follows stage 11: an unused redeemer is refused only once every
+    // inline witness is used.
+    if (discovered.unusedRedeemer !== undefined) {
+      return discovered.unusedRedeemer;
+    }
+
+    // Phase A refuses a candidate without a sidecar. One that reaches here
+    // without it runs on empty material, so every script goes through the
+    // structural executor.
+    let proofProgramMaterial: MidgardCekProgramMaterialSidecar = [];
+    if (candidate.submission.programMaterialSidecarCbor !== null) {
+      try {
+        proofProgramMaterial = decodeMidgardCekProgramMaterialSidecar(
+          candidate.submission.programMaterialSidecarCbor,
+        );
+      } catch (cause) {
+        return {
+          kind: "rejected",
+          code: RejectCodes.CekProgramMaterial,
+          detail: `invalid V1 CEK material during execution: ${String(cause)}`,
+          consensusPhase: "scriptSources",
         };
       }
     }
