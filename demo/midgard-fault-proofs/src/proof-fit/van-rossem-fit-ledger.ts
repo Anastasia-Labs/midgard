@@ -37,7 +37,6 @@ export type VanRossemFitLedger = {
   readonly schemaVersion: typeof VAN_ROSSEM_FIT_LEDGER_SCHEMA_VERSION;
   readonly category: string;
   readonly blueprintSha256: string;
-  readonly compilerVersion: string;
   readonly entries: readonly VanRossemFitLedgerEntry[];
   readonly ledgerSha256: string;
 };
@@ -104,16 +103,13 @@ const entryFromMeasurement = (
 export const buildVanRossemFitLedger = ({
   category,
   blueprintSha256,
-  compilerVersion,
   measurements,
 }: {
   readonly category: string;
   readonly blueprintSha256: string;
-  readonly compilerVersion: string;
   readonly measurements: readonly VanRossemFitMeasurement[];
 }): VanRossemFitLedger => {
   requireCanonicalLabel(category, "fit ledger category");
-  requireCanonicalLabel(compilerVersion, "fit ledger compiler version");
   if (!/^[0-9a-f]{64}$/u.test(blueprintSha256)) {
     throw new Error("fit ledger blueprintSha256 must be 32-byte lowercase hex");
   }
@@ -141,7 +137,6 @@ export const buildVanRossemFitLedger = ({
     schemaVersion: VAN_ROSSEM_FIT_LEDGER_SCHEMA_VERSION,
     category,
     blueprintSha256,
-    compilerVersion,
     entries: Object.freeze(entries),
   });
   return Object.freeze({

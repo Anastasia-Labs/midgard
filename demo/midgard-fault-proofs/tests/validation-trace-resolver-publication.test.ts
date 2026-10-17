@@ -130,8 +130,6 @@ describe("validation-trace resolver publication", () => {
     const ledger = buildVanRossemFitLedger({
       category: "validationTraceDispute/semantic resolver publication",
       blueprintSha256,
-      compilerVersion: JSON.parse(blueprintBytes.toString()).preamble.compiler
-        .version,
       measurements: rows,
     });
     if (process.env.MIDGARD_WRITE_FIT_LEDGER === "1") {

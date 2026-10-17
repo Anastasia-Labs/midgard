@@ -22,7 +22,6 @@ const provenance = () => ({
   blueprintHash: "ef".repeat(32),
   aikenSourceHash: "11".repeat(32),
   compiler: {
-    version: "v1.1.22+fork",
     forkRepository: "https://github.com/Anastasia-Labs/aiken",
     forkRevision: "22".repeat(20),
     cargoLockHash: "33".repeat(32),

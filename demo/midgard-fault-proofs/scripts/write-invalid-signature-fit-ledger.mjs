@@ -121,7 +121,6 @@ if (
 const ledger = buildVanRossemFitLedger({
   category: "invalidSignature",
   blueprintSha256: digest,
-  compilerVersion: JSON.parse(blueprint.toString()).preamble.compiler.version,
   measurements,
 });
 await writeVanRossemFitLedger(

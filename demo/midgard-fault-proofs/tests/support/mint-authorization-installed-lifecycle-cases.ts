@@ -145,7 +145,6 @@ const MINT_AUTHORIZATION_FIT_LEDGER: SplitFitLedger = {
     ),
   ),
   category: "mintAuthorization",
-  compilerVersion: "aiken v1.1.23+5adf783",
   caseCount: MINT_AUTHORIZATION_INSTALLED_CASES.length,
   parts: MINT_AUTHORIZATION_INSTALLED_PARTS,
   source: fileURLToPath(import.meta.url),

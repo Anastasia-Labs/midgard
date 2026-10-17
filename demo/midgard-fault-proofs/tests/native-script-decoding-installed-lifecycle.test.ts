@@ -66,7 +66,6 @@ afterAll(async () => {
       blueprintSha256: createHash("sha256")
         .update(await readFile(realBlueprintPath))
         .digest("hex"),
-      compilerVersion: "aiken v1.1.23+5adf783",
       measurements,
     }),
   );
