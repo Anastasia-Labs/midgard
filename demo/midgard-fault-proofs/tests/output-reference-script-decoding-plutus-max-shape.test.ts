@@ -7,18 +7,19 @@
  *   (four bits each) until the bytes run out, so Cardano refuses it only at
  *   its last bit. Recording it walks every node, and step 04 convicts its
  *   acceptance.
- * - The shape whose record takes the most Walk transactions: a constant list
- *   of a unit pair chain over `list unit`, every element `[()]`. It decodes,
- *   and step 04 convicts a rejection that called it undecodable, reading the
- *   `Decoded` record.
+ * - The shape whose record takes the most Walk transactions: constant lists
+ *   nested 4 deep, each level holding a one-path list ahead of the deeper
+ *   list, the innermost holding 26 unit pair chains of depth 5 over `[()]`.
+ *   It decodes, and step 04 convicts a rejection that called it undecodable,
+ *   reading the `Decoded` record.
  *
  * The delay chain is recorded after Init, while the thread is open. The
  * Walk-heaviest record outlasts the emulator profile's block maturity on its
  * own, so it is recorded first, from the script alone, as a watcher can once
  * the forced transaction is visible, and the case then runs inside the window.
  * Its harness keeps the reference-script auth policy open for the longest
- * record the public Walk gate allows on top of the default window, so the
- * removal references can still be published after it.
+ * record the Walk gate allows on top of the default window, so the removal
+ * references can still be published after it.
  */
 import {
   acceptedVerdictSubject,
@@ -50,7 +51,7 @@ import {
   subjectTransaction,
 } from "./support/output-reference-script-decoding-emulator.js";
 import { scriptDecodeDeploymentOf } from "./support/script-decode-emulator.js";
-import { WALK_SHAPES } from "./support/script-decode-walk-shapes.js";
+import { costliestNestedLists } from "./support/script-decode-walk-shapes.js";
 
 /** Flat 1.1.0 followed by `flatBytes - 3` bytes of `delay delay`. */
 const delayChainScript = (flatBytes: number): Buffer => {
@@ -73,44 +74,48 @@ const delayChainOutputOfLength = (length: number) => {
   throw new Error(`no delay-chain output of ${length.toString()} bytes`);
 };
 
-/** The most Walk-heavy shape (see `script-decode-walk-gate.test.ts`). */
-const MAX_WALK_SHAPE =
-  WALK_SHAPES["list of a unit pair chain over list unit, every element [()]"];
+/** The chains in each innermost list of the most Walk-heavy shape. */
+const MAX_WALK_INNER = 26;
 
-/** The max-walk-shape output of exactly `length` canonical bytes, and its
- * script. */
+/**
+ * The output of exactly `length` canonical bytes holding the most Walk-heavy
+ * shape (see `script-decode-walk-gate.test.ts`), and its script: as many
+ * whole elements as fit, then a last element trimmed to the length.
+ */
 const maxWalkOutputOfLength = (length: number) => {
-  const outputOf = (count: number) =>
-    outputWithPlutusScript(MAX_WALK_SHAPE(count));
+  const outputOf = (count: number, last: number) =>
+    outputWithPlutusScript(costliestNestedLists(count, last));
   let low = 1;
   let high = 140_000;
   while (low < high) {
     const middle = Math.floor((low + high + 1) / 2);
-    if (outputOf(middle).length <= length) low = middle;
+    if (outputOf(middle, MAX_WALK_INNER).length <= length) low = middle;
     else high = middle - 1;
   }
-  const script = MAX_WALK_SHAPE(low);
-  const output = outputWithPlutusScript(script);
-  if (output.length !== length)
-    throw new Error(`no max-walk output of ${length.toString()} bytes`);
-  return { output, script };
+  for (const count of [low + 1, low]) {
+    for (let last = MAX_WALK_INNER; last >= 0; last -= 1) {
+      const script = costliestNestedLists(count, last);
+      const output = outputWithPlutusScript(script);
+      if (output.length === length) return { output, script };
+    }
+  }
+  throw new Error(`no max-walk output of ${length.toString()} bytes`);
 };
 
 const MAX_TX_BYTES = 16_384;
 
-/** D_case / 2 over the public profile's transaction interval. */
-const PUBLIC_WALK_GATE = 877;
+/** The most Walks a record may take (`script-decode-walk-gate.test.ts`). */
+const WALK_CEILING = 1_500;
 
 const PLUTUS_V3 = 3;
 
 /** One emulator block, which each Bind, Walk and Finish takes. */
 const EMULATOR_BLOCK_MS = 20_000;
 
-/** The default auth window plus the longest record the public gate allows
- * (Bind, 877 Walks, Finish). */
+/** The default auth window plus the longest record the gate allows (Bind,
+ * 1,500 Walks, Finish). */
 const MAX_WALK_AUTH_TIMELOCK_MS =
-  REFERENCE_SCRIPT_AUTH_TIMELOCK_MS +
-  (PUBLIC_WALK_GATE + 2) * EMULATOR_BLOCK_MS;
+  REFERENCE_SCRIPT_AUTH_TIMELOCK_MS + (WALK_CEILING + 2) * EMULATOR_BLOCK_MS;
 
 /** Every Walk fits the ledger's transaction limits. */
 const expectWalksFit = (
@@ -247,14 +252,14 @@ describe("outputReferenceScriptDecoding Plutus maximum shape", () => {
     expectWalksFit(recorded.walks, proverLucid.config().protocolParameters!);
     console.info(
       `[script-decode-max-shape] ${JSON.stringify({
-        shape: "unit pair chain over list unit, every element [()]",
+        shape: "lists 4 deep, a one-path list ahead of each deeper list",
         scriptBytes: script.length,
         ...walkSummary(recorded.walks),
         recordVirtualMs: recordedAt - recordedFrom,
       })}`,
     );
-    expect(recorded.walks.length).toBeGreaterThan(PUBLIC_WALK_GATE / 2);
-    expect(recorded.walks.length).toBeLessThanOrEqual(PUBLIC_WALK_GATE);
+    expect(recorded.walks.length).toBeGreaterThan(WALK_CEILING / 3);
+    expect(recorded.walks.length).toBeLessThanOrEqual(WALK_CEILING);
 
     const committedFrom = emulator.now();
     const block = await commitForcedBlock(context, [

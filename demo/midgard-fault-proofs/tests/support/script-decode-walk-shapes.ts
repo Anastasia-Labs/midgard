@@ -130,6 +130,104 @@ const nothing = () => {};
 const unitChainOver = (depth: number, leaf: readonly number[]): number[] =>
   depth === 0 ? [...leaf] : [7, 7, 6, 3, ...unitChainOver(depth - 1, leaf)];
 
+/**
+ * The bits of a value of `levels` nested lists whose innermost list holds
+ * `inner` unit pair chains, each over `[()]`. At each level above the
+ * innermost, `before` writes the elements ahead of the deeper list.
+ */
+const nestedValue = (
+  bits: FlatBits,
+  levels: number,
+  inner: number,
+  before: (bits: FlatBits, levels: number) => void,
+): void => {
+  if (levels === 1) {
+    for (let index = 0; index < inner; index += 1) {
+      bits.put(1, 1);
+      bits.put(2, 2);
+    }
+  } else {
+    before(bits, levels);
+    bits.put(1, 1);
+    nestedValue(bits, levels - 1, inner, before);
+  }
+  bits.put(0, 1);
+};
+
+/** A value of `levels` nested lists of one element each, down to one chain
+ * over `[()]`. */
+const onePath = (bits: FlatBits, levels: number): void => {
+  bits.put(1, 1);
+  if (levels === 1) bits.put(2, 2);
+  else onePath(bits, levels - 1);
+  bits.put(0, 1);
+};
+
+/**
+ * A constant list of `count` elements nested `levels` deep in all whose
+ * innermost lists each hold `inner` unit pair chains of `depth` over
+ * `list unit`, but the last element's, which holds `last`. With `inner` just
+ * over a tick's units, every element's bulk decode stops in its innermost
+ * list.
+ */
+const nestedListsEndingIn =
+  (
+    levels: number,
+    depth: number,
+    inner: number,
+    before: (bits: FlatBits, levels: number) => void = nothing,
+  ) =>
+  (count: number, last: number): Buffer =>
+    constantList(
+      [
+        ...Array.from({ length: levels - 1 }, () => [7, 5]).flat(),
+        ...unitChainOver(depth, [7, 5, 3]),
+      ],
+      (bits, index) =>
+        nestedValue(
+          bits,
+          levels - 1,
+          index === count - 1 ? last : inner,
+          before,
+        ),
+    )(count);
+
+/** As `nestedListsEndingIn`, the last element like the others. */
+const nestedLists =
+  (
+    levels: number,
+    depth: number,
+    inner: number,
+    before: (bits: FlatBits, levels: number) => void = nothing,
+  ) =>
+  (count: number): Buffer =>
+    nestedListsEndingIn(levels, depth, inner, before)(count, inner);
+
+/** An empty list ahead of the deeper list. */
+const emptyBefore = (bits: FlatBits): void => {
+  bits.put(1, 1);
+  bits.put(0, 1);
+};
+
+/** A one-element-per-level list ahead of the deeper list. */
+const onePathBefore = (bits: FlatBits, levels: number): void => {
+  bits.put(1, 1);
+  onePath(bits, levels - 1);
+};
+
+/**
+ * The costliest nested-list shape found (the walk gate's "lists 4 deep, a
+ * one-path list ahead of each deeper list" row), with `count` elements, the
+ * last holding `last` of the 26 chains: its scripts reach every length the
+ * row's scripts fall between.
+ */
+export const costliestNestedLists = nestedListsEndingIn(
+  4,
+  5,
+  26,
+  onePathBefore,
+);
+
 /** Each shape, as a function from repetitions to script bytes. */
 export const WALK_SHAPES = {
   "lambda-delay": (count: number) =>
@@ -225,6 +323,18 @@ export const WALK_SHAPES = {
     unitChainOver(7, [8]),
     (bits) => bits.chunks(Uint8Array.from([0x00])),
   ),
+  "lists 14 deep over 103 [()]": nestedLists(14, 0, 103),
+  "lists 2 deep over 23 unit pair chains of depth 6 over [()]": nestedLists(
+    2,
+    6,
+    23,
+  ),
+  "lists 6 deep, [] ahead of each deeper list, over 31 unit pair chains of depth 4 over [()]":
+    nestedLists(6, 4, 31, emptyBefore),
+  "lists 4 deep, [] ahead of each deeper list, over 26 unit pair chains of depth 5 over [()]":
+    nestedLists(4, 5, 26, emptyBefore),
+  "lists 4 deep, a one-path list ahead of each deeper list, over 26 unit pair chains of depth 5 over [()]":
+    (count: number) => costliestNestedLists(count, 26),
 } as const satisfies Record<string, (count: number) => Buffer>;
 
 export type WalkShape = keyof typeof WALK_SHAPES;
