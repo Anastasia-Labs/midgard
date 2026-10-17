@@ -46,10 +46,6 @@ const max_leaves = 4
 
 // ## Summaries
 
-fn ser(value: Int) -> ByteArray {
-  builtin.serialise_data(builtin.i_data(value))
-}
-
 /// The list-node domain, the 7-field array head and the head-root byte
 /// string head.
 const list_node_head = #"4d69646761726443656b446174614c6973744e6f64655631875820"
@@ -68,13 +64,14 @@ const last_item_tail: ByteArray =
     builtin.append_bytearray(cek_data_v1.empty_data_list_root_v1(), #"01"),
   )
 
-const empty_list_root: ByteArray = cek_data_v1.empty_data_list_root_v1()
-
 /// The entry of a summary.
 pub fn entry_of_v1(summary: DataSummaryV1) -> ByteArray {
   builtin.append_bytearray(
     summary.root,
-    builtin.append_bytearray(ser(summary.cbor_length), ser(summary.memory)),
+    builtin.append_bytearray(
+      builtin.serialise_data(builtin.i_data(summary.cbor_length)),
+      builtin.serialise_data(builtin.i_data(summary.memory)),
+    ),
   )
 }
 
@@ -88,11 +85,12 @@ pub fn summary_of_v1(entry: ByteArray, cbor: Int, data: Int) -> DataSummaryV1 {
 }
 
 /// The root of a list node: the head's entry over a tail root, where
-/// `length`, `payload` and `data` already count the head.
+/// `count` (the serialised length), `payload` and `data` already count the
+/// head.
 fn prepend_root(
   head: ByteArray,
   tail: ByteArray,
-  length: Int,
+  count: ByteArray,
   payload: Int,
   data: Int,
 ) -> ByteArray {
@@ -106,8 +104,11 @@ fn prepend_root(
           builtin.append_bytearray(
             tail,
             builtin.append_bytearray(
-              ser(length),
-              builtin.append_bytearray(ser(payload), ser(data)),
+              count,
+              builtin.append_bytearray(
+                builtin.serialise_data(builtin.i_data(payload)),
+                builtin.serialise_data(builtin.i_data(data)),
+              ),
             ),
           ),
         ),
@@ -125,7 +126,13 @@ pub fn prepend_v1(
   let payload = head.cbor_length + tail.payload_cbor_length
   let memory = head.memory + tail.memory
   DataSequenceSummaryV1 {
-    root: prepend_root(entry_of_v1(head), tail.root, length, payload, memory),
+    root: prepend_root(
+      entry_of_v1(head),
+      tail.root,
+      builtin.serialise_data(builtin.i_data(length)),
+      payload,
+      memory,
+    ),
     length,
     payload_cbor_length: payload,
     memory,
@@ -166,14 +173,20 @@ pub fn pair_entry_v1(
             inner,
             builtin.append_bytearray(
               #"02",
-              builtin.append_bytearray(ser(payload), ser(data)),
+              builtin.append_bytearray(
+                builtin.serialise_data(builtin.i_data(payload)),
+                builtin.serialise_data(builtin.i_data(data)),
+              ),
             ),
           ),
         ),
       ),
     ),
   )
-  let sizes = builtin.append_bytearray(ser(4 + payload), ser(4 + data))
+  let sizes = builtin.append_bytearray(
+    builtin.serialise_data(builtin.i_data(4 + payload)),
+    builtin.serialise_data(builtin.i_data(4 + data)),
+  )
   builtin.append_bytearray(
     blake2b_256(
       builtin.append_bytearray(
@@ -197,25 +210,25 @@ pub fn pair_summary_v1(a: DataSummaryV1, b: DataSummaryV1) -> DataSummaryV1 {
 }
 
 /// The entry of a list Data value over a sequence with root `root` of
-/// `length` items whose CBOR lengths sum to `payload` and Data memories to
-/// `data`: `cek_data_v1.list_data_summary_v1`. Its CBOR length is
-/// `list_cbor_length(length, payload)` and its Data memory `4 + data`.
+/// items whose count serialises to `count` and whose Data memories sum to
+/// `data`, the list's CBOR length being `cbor` (`list_cbor_length`):
+/// `cek_data_v1.list_data_summary_v1`. Its Data memory is `4 + data`.
 fn list_entry(
   root: ByteArray,
-  length: Int,
-  payload: Int,
+  count: ByteArray,
+  cbor: Int,
   data: Int,
 ) -> ByteArray {
   let sizes = builtin.append_bytearray(
-    ser(list_cbor_length(length, payload)),
-    ser(4 + data),
+    builtin.serialise_data(builtin.i_data(cbor)),
+    builtin.serialise_data(builtin.i_data(4 + data)),
   )
   builtin.append_bytearray(
     blake2b_256(
       builtin.append_bytearray(
         list_data_head,
         builtin.append_bytearray(
-          ser(length),
+          count,
           builtin.append_bytearray(
             #"5820",
             builtin.append_bytearray(root, sizes),
@@ -237,15 +250,187 @@ fn list_cbor_length(length: Int, payload: Int) -> Int {
 
 /// `cek_data_v1.list_data_summary_v1`.
 pub fn list_data_summary_v1(items: DataSequenceSummaryV1) -> DataSummaryV1 {
+  let cbor = list_cbor_length(items.length, items.payload_cbor_length)
   summary_of_v1(
     list_entry(
       items.root,
-      items.length,
-      items.payload_cbor_length,
+      builtin.serialise_data(builtin.i_data(items.length)),
+      cbor,
       items.memory,
     ),
-    list_cbor_length(items.length, items.payload_cbor_length),
+    cbor,
     4 + items.memory,
+  )
+}
+
+/// The data-node domain, then a byte string node's head up to its blob
+/// root: 5 fields, tag 5, a 32-byte string.
+const bytes_data_head = #"4d69646761726443656b446174614e6f6465563185055820"
+
+/// The data-node domain, then an integer node's head up to its CBOR root:
+/// 4 fields, tag 4, a 32-byte string.
+const integer_data_head = #"4d69646761726443656b446174614e6f6465563184045820"
+
+/// The data-node domain, then a map node's head: 5 fields, tag 2.
+const map_data_head = #"4d69646761726443656b446174614e6f646556318502"
+
+/// The pair-node domain, the 10-field array head and the key root's byte
+/// string head.
+const pair_node_list_head =
+  #"4d69646761726443656b44617461506169724e6f646556318a5820"
+
+const blob_chunk_domain = #"4d69646761726443656b426c6f624368756e6b5631"
+
+const empty_pairs_root: ByteArray = cek_data_v1.empty_data_pair_root_v1()
+
+/// The canonical CBOR of a byte string of at most 64 bytes: one definite
+/// head, as `serialise_data` writes it at that length.
+fn definite_bytes(bytes: ByteArray) -> ByteArray {
+  builtin.serialise_data(builtin.b_data(bytes))
+}
+
+/// The entry, CBOR length and Data memory of a byte string of at most 64
+/// bytes: `bits.short_bytes_summary`. Its CBOR is one definite head, so its
+/// CBOR length is that of `definite_bytes`.
+fn short_bytes_entry(bytes: ByteArray, k: fn(ByteArray, Int, Int) -> r) -> r {
+  let length = builtin.length_of_bytearray(bytes)
+  let encoded = definite_bytes(bytes)
+  let cbor = builtin.length_of_bytearray(encoded)
+  let data = 4 + cek_data_v1.bytes_memory_size_v1(length)
+  let sizes = builtin.append_bytearray(
+    builtin.serialise_data(builtin.i_data(cbor)),
+    builtin.serialise_data(builtin.i_data(data)),
+  )
+  k(
+    builtin.append_bytearray(
+      blake2b_256(
+        builtin.append_bytearray(
+          bytes_data_head,
+          builtin.append_bytearray(
+            blake2b_256(builtin.append_bytearray(blob_chunk_domain, encoded)),
+            builtin.append_bytearray(
+              builtin.serialise_data(builtin.i_data(length)),
+              sizes,
+            ),
+          ),
+        ),
+      ),
+      sizes,
+    ),
+    cbor,
+    data,
+  )
+}
+
+/// The entry, CBOR length and Data memory of an integer whose canonical CBOR
+/// is at most 64 bytes: `bits.integer_summary`.
+fn integer_entry(value: Int, k: fn(ByteArray, Int, Int) -> r) -> r {
+  let encoded = builtin.serialise_data(builtin.i_data(value))
+  let cbor = builtin.length_of_bytearray(encoded)
+  let data = 4 + cek_data_v1.integer_memory_size_v1(value)
+  let sizes = builtin.append_bytearray(
+    builtin.serialise_data(builtin.i_data(cbor)),
+    builtin.serialise_data(builtin.i_data(data)),
+  )
+  k(
+    builtin.append_bytearray(
+      blake2b_256(
+        builtin.append_bytearray(
+          integer_data_head,
+          builtin.append_bytearray(
+            blake2b_256(
+              builtin.append_bytearray(
+                blob_chunk_domain,
+                definite_bytes(encoded),
+              ),
+            ),
+            sizes,
+          ),
+        ),
+      ),
+      sizes,
+    ),
+    cbor,
+    data,
+  )
+}
+
+/// The root of a map entry node: the key's and value's entries over a tail
+/// root, where `length`, `payload` and `data` already count the entry.
+/// `cek_data_v1.prepend_data_pair_summary_v1`.
+fn prepend_pair_root(
+  key: ByteArray,
+  value: ByteArray,
+  tail: ByteArray,
+  length: Int,
+  payload: Int,
+  data: Int,
+) -> ByteArray {
+  blake2b_256(
+    builtin.append_bytearray(
+      pair_node_list_head,
+      builtin.append_bytearray(
+        key,
+        builtin.append_bytearray(
+          #"5820",
+          builtin.append_bytearray(
+            value,
+            builtin.append_bytearray(
+              #"5820",
+              builtin.append_bytearray(
+                tail,
+                builtin.append_bytearray(
+                  builtin.serialise_data(builtin.i_data(length)),
+                  builtin.append_bytearray(
+                    builtin.serialise_data(builtin.i_data(payload)),
+                    builtin.serialise_data(builtin.i_data(data)),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    ),
+  )
+}
+
+/// The CBOR length of a map of `length` entries whose CBOR lengths sum to
+/// `payload`.
+fn map_cbor_length(length: Int, payload: Int) -> Int {
+  if length < 24 {
+    1 + payload
+  } else if length <= 255 {
+    2 + payload
+  } else if length <= 65535 {
+    3 + payload
+  } else {
+    5 + payload
+  }
+}
+
+/// The entry of a map Data value over entries with root `root`, `length`
+/// of them, with CBOR length `cbor` and entries' Data memories summing to
+/// `data`: `cek_data_v1.map_data_summary_v1`. Its Data memory is `4 + data`.
+fn map_entry(root: ByteArray, length: Int, cbor: Int, data: Int) -> ByteArray {
+  let sizes = builtin.append_bytearray(
+    builtin.serialise_data(builtin.i_data(cbor)),
+    builtin.serialise_data(builtin.i_data(4 + data)),
+  )
+  builtin.append_bytearray(
+    blake2b_256(
+      builtin.append_bytearray(
+        map_data_head,
+        builtin.append_bytearray(
+          builtin.serialise_data(builtin.i_data(length)),
+          builtin.append_bytearray(
+            #"5820",
+            builtin.append_bytearray(root, sizes),
+          ),
+        ),
+      ),
+    ),
+    sizes,
   )
 }
 
@@ -297,6 +482,8 @@ pub type Kind {
   KData
   /// A Value with at least one currency.
   KValue
+  /// A list from its first cons bit, which the bit table it is the set
+  /// leaf of has read.
   KList { element: Shape, array: Bool }
   /// `stops` when a component never decodes here.
   KPair { first: Shape, second: Shape, stops: Bool }
@@ -503,7 +690,8 @@ fn wrap_entry(
   }
 }
 
-/// Wraps a decoded value's entry in `layers`, innermost first.
+/// Wraps a decoded value's entry in `layers`, innermost first. For a value
+/// decoded once, where compiling the layers would not pay.
 fn wrap_layers(
   layers: List<Layer>,
   entry: ByteArray,
@@ -539,6 +727,313 @@ fn wrap_layers(
         }
       }
   }
+}
+
+/// A compiled wrap: from a decoded value's entry, CBOR length and Data
+/// memory, goes on with those of the value wrapped in a KWrap's pairs.
+type Wrap<r> =
+  fn(ByteArray, Int, Int, fn(ByteArray, Int, Int) -> r) -> r
+
+/// Compiles `layers`, innermost first, into a wrap. Each pair's bytes that
+/// do not depend on the wrapped value are computed here, once: for a value
+/// that comes second, the head of the pair's outer list node; for a value
+/// that comes first, everything after its entry in that node, including
+/// the root of the one-item list holding the other component. The
+/// outermost pair goes on with the wrap's continuation itself.
+fn compile_layers(layers: List<Layer>) -> Wrap<r> {
+  when layers is {
+    [] ->
+      fn(entry, cbor, data, k) { k(entry, cbor, data) }
+    [LFirst { entry: other, cbor: other_cbor, data: other_data }, ..rest] ->
+      hold(
+        builtin.append_bytearray(
+          list_node_head,
+          builtin.append_bytearray(other, #"5820"),
+        ),
+        other_cbor,
+        other_data,
+        compile_layers(rest),
+        when rest is {
+          [] ->
+            fn(prefix, other_cbor, other_data, _next) {
+              fn(entry, cbor, data, k) {
+                let payload = other_cbor + cbor
+                let data = other_data + data
+                let cbor = 4 + payload
+                let memory = 4 + data
+                let sizes = builtin.append_bytearray(
+                  if cbor < 24 {
+                    builtin.cons_bytearray(cbor, #"")
+                  } else if cbor < 256 {
+                    builtin.cons_bytearray(
+                      24,
+                      builtin.cons_bytearray(cbor, #""),
+                    )
+                  } else {
+                    builtin.serialise_data(builtin.i_data(cbor))
+                  },
+                  builtin.serialise_data(builtin.i_data(memory)),
+                )
+                k(
+                  builtin.append_bytearray(
+                    blake2b_256(
+                      builtin.append_bytearray(
+                        pair_node_head,
+                        builtin.append_bytearray(
+                          blake2b_256(
+                            builtin.append_bytearray(
+                              prefix,
+                              builtin.append_bytearray(
+                                blake2b_256(
+                                  builtin.append_bytearray(
+                                    list_node_head,
+                                    builtin.append_bytearray(
+                                      entry,
+                                      builtin.append_bytearray(
+                                        last_item_tail,
+                                        builtin.slice_bytearray(32, 64, entry),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                                builtin.append_bytearray(
+                                  #"02",
+                                  builtin.append_bytearray(
+                                    builtin.serialise_data(
+                                      builtin.i_data(payload),
+                                    ),
+                                    builtin.serialise_data(builtin.i_data(data)),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                          sizes,
+                        ),
+                      ),
+                    ),
+                    sizes,
+                  ),
+                  cbor,
+                  memory,
+                )
+              }
+            }
+          _ ->
+            fn(prefix, other_cbor, other_data, next) {
+              fn(entry, cbor, data, k) {
+                let payload = other_cbor + cbor
+                let data = other_data + data
+                let cbor = 4 + payload
+                let memory = 4 + data
+                let sizes = builtin.append_bytearray(
+                  if cbor < 24 {
+                    builtin.cons_bytearray(cbor, #"")
+                  } else if cbor < 256 {
+                    builtin.cons_bytearray(
+                      24,
+                      builtin.cons_bytearray(cbor, #""),
+                    )
+                  } else {
+                    builtin.serialise_data(builtin.i_data(cbor))
+                  },
+                  builtin.serialise_data(builtin.i_data(memory)),
+                )
+                next(
+                  builtin.append_bytearray(
+                    blake2b_256(
+                      builtin.append_bytearray(
+                        pair_node_head,
+                        builtin.append_bytearray(
+                          blake2b_256(
+                            builtin.append_bytearray(
+                              prefix,
+                              builtin.append_bytearray(
+                                blake2b_256(
+                                  builtin.append_bytearray(
+                                    list_node_head,
+                                    builtin.append_bytearray(
+                                      entry,
+                                      builtin.append_bytearray(
+                                        last_item_tail,
+                                        builtin.slice_bytearray(32, 64, entry),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                                builtin.append_bytearray(
+                                  #"02",
+                                  builtin.append_bytearray(
+                                    builtin.serialise_data(
+                                      builtin.i_data(payload),
+                                    ),
+                                    builtin.serialise_data(builtin.i_data(data)),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                          sizes,
+                        ),
+                      ),
+                    ),
+                    sizes,
+                  ),
+                  cbor,
+                  memory,
+                  k,
+                )
+              }
+            }
+        },
+      )
+    [LSecond { entry: other, cbor: other_cbor, data: other_data }, ..rest] ->
+      hold(
+        builtin.append_bytearray(
+          #"5820",
+          builtin.append_bytearray(
+            blake2b_256(
+              builtin.append_bytearray(
+                list_node_head,
+                builtin.append_bytearray(
+                  other,
+                  builtin.append_bytearray(
+                    last_item_tail,
+                    builtin.slice_bytearray(32, 64, other),
+                  ),
+                ),
+              ),
+            ),
+            #"02",
+          ),
+        ),
+        other_cbor,
+        other_data,
+        compile_layers(rest),
+        when rest is {
+          [] ->
+            fn(suffix, other_cbor, other_data, _next) {
+              fn(entry, cbor, data, k) {
+                let payload = cbor + other_cbor
+                let data = data + other_data
+                let cbor = 4 + payload
+                let memory = 4 + data
+                let sizes = builtin.append_bytearray(
+                  if cbor < 24 {
+                    builtin.cons_bytearray(cbor, #"")
+                  } else if cbor < 256 {
+                    builtin.cons_bytearray(
+                      24,
+                      builtin.cons_bytearray(cbor, #""),
+                    )
+                  } else {
+                    builtin.serialise_data(builtin.i_data(cbor))
+                  },
+                  builtin.serialise_data(builtin.i_data(memory)),
+                )
+                k(
+                  builtin.append_bytearray(
+                    blake2b_256(
+                      builtin.append_bytearray(
+                        pair_node_head,
+                        builtin.append_bytearray(
+                          blake2b_256(
+                            builtin.append_bytearray(
+                              list_node_head,
+                              builtin.append_bytearray(
+                                entry,
+                                builtin.append_bytearray(
+                                  suffix,
+                                  builtin.append_bytearray(
+                                    builtin.serialise_data(
+                                      builtin.i_data(payload),
+                                    ),
+                                    builtin.serialise_data(builtin.i_data(data)),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                          sizes,
+                        ),
+                      ),
+                    ),
+                    sizes,
+                  ),
+                  cbor,
+                  memory,
+                )
+              }
+            }
+          _ ->
+            fn(suffix, other_cbor, other_data, next) {
+              fn(entry, cbor, data, k) {
+                let payload = cbor + other_cbor
+                let data = data + other_data
+                let cbor = 4 + payload
+                let memory = 4 + data
+                let sizes = builtin.append_bytearray(
+                  if cbor < 24 {
+                    builtin.cons_bytearray(cbor, #"")
+                  } else if cbor < 256 {
+                    builtin.cons_bytearray(
+                      24,
+                      builtin.cons_bytearray(cbor, #""),
+                    )
+                  } else {
+                    builtin.serialise_data(builtin.i_data(cbor))
+                  },
+                  builtin.serialise_data(builtin.i_data(memory)),
+                )
+                next(
+                  builtin.append_bytearray(
+                    blake2b_256(
+                      builtin.append_bytearray(
+                        pair_node_head,
+                        builtin.append_bytearray(
+                          blake2b_256(
+                            builtin.append_bytearray(
+                              list_node_head,
+                              builtin.append_bytearray(
+                                entry,
+                                builtin.append_bytearray(
+                                  suffix,
+                                  builtin.append_bytearray(
+                                    builtin.serialise_data(
+                                      builtin.i_data(payload),
+                                    ),
+                                    builtin.serialise_data(builtin.i_data(data)),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                          sizes,
+                        ),
+                      ),
+                    ),
+                    sizes,
+                  ),
+                  cbor,
+                  memory,
+                  k,
+                )
+              }
+            }
+        },
+      )
+  }
+}
+
+/// Builds a wrap from parts computed once, when it is compiled (see `join`).
+fn hold(
+  bytes: ByteArray,
+  cbor: Int,
+  data: Int,
+  next: Wrap<r>,
+  build: fn(ByteArray, Int, Int, Wrap<r>) -> Wrap<r>,
+) -> Wrap<r> {
+  build(bytes, cbor, data, next)
 }
 
 fn graft_first(a: Shape, b: Shape, general: Shape, summaries: Bool) -> Shape {
@@ -626,6 +1121,15 @@ fn join(
   build(a, b)
 }
 
+/// `join` for a decoder and a wrap.
+fn join_wrap(
+  a: Decoder<r>,
+  w: Wrap<r>,
+  build: fn(Decoder<r>, Wrap<r>) -> Decoder<r>,
+) -> Decoder<r> {
+  build(a, w)
+}
+
 fn stopped(
   _origin: Int,
   _position: Int,
@@ -638,32 +1142,31 @@ fn stopped(
 
 /// Compiles `shape` into a decoder over the window. A shape is compiled once
 /// per tick and its decoder run on every value the tick decodes.
+///
+/// Its callers keep the units they give it from going negative.
+///
+/// A decoder compiled without `metered` is for a fold, with summaries, of a
+/// run that a scan has already decoded within its units: it keeps no units,
+/// and the units and constant memory it gives are not those of the value.
+/// It reads only bits that scan read, all before `flat_bits`, so its list
+/// and bit-table steps do not check for the end of the bits.
 pub fn compile_v1(
   window: ByteArray,
   flat_bits: Int,
   shape: Shape,
   summaries: Bool,
+  metered: Bool,
 ) -> Decoder<r> {
-  join(
-    compile_node(window, flat_bits, shape, summaries),
-    stopped,
-    fn(node, _) {
-      fn(origin, position, units, ok, stop) {
-        if units < 0 {
-          stop(units)
-        } else {
-          node(origin, position, units, ok, stop)
-        }
-      }
-    },
-  )
+  compile_node(window, flat_bits, flat_bits + 7, shape, summaries, metered)
 }
 
 fn compile_node(
   window: ByteArray,
   flat_bits: Int,
+  top: Int,
   shape: Shape,
   summaries: Bool,
+  metered: Bool,
 ) -> Decoder<r> {
   when shape is {
     SFixed { entry, cbor, data, memory } ->
@@ -678,21 +1181,32 @@ fn compile_node(
       )
     SBit { zero, one } ->
       join(
-        compile_node(window, flat_bits, zero, summaries),
-        compile_node(window, flat_bits, one, summaries),
+        compile_node(window, flat_bits, top, zero, summaries, metered),
+        compile_node(window, flat_bits, top, one, summaries, metered),
         fn(zero, one) {
-          fn(origin, position, units, ok, stop) {
-            if position >= flat_bits {
-              stop(units)
-            } else if bit(window, flat_bits, position) {
-              one(origin, position + 1, units, ok, stop)
-            } else {
-              zero(origin, position + 1, units, ok, stop)
+          if metered {
+            fn(origin, position, units, ok, stop) {
+              if position >= flat_bits {
+                stop(units)
+              } else if builtin.read_bit(window, top - position) {
+                one(origin, position + 1, units, ok, stop)
+              } else {
+                zero(origin, position + 1, units, ok, stop)
+              }
+            }
+          } else {
+            fn(origin, position, units, ok, stop) {
+              if builtin.read_bit(window, top - position) {
+                one(origin, position + 1, units, ok, stop)
+              } else {
+                zero(origin, position + 1, units, ok, stop)
+              }
             }
           }
         },
       )
-    SGen { kind } -> compile_kind_v1(window, flat_bits, kind, summaries)
+    SGen { kind } ->
+      compile_kind_v1(window, flat_bits, top, kind, summaries, metered)
   }
 }
 
@@ -700,8 +1214,10 @@ fn compile_node(
 pub fn compile_kind_v1(
   window: ByteArray,
   flat_bits: Int,
+  top: Int,
   kind: Kind,
   summaries: Bool,
+  metered: Bool,
 ) -> Decoder<r> {
   when kind is {
     KInteger ->
@@ -765,37 +1281,86 @@ pub fn compile_kind_v1(
       }
     KList { element, array } ->
       join(
-        compile_v1(window, flat_bits, element, summaries),
+        compile_node(window, flat_bits, top, element, summaries, metered),
         stopped,
         fn(element, _) {
-          fn(origin, _position, units, ok, stop) {
-            items(
-              window,
-              flat_bits,
-              element,
-              origin,
-              units - 1,
-              summaries,
-              fn(after, root, length, payload, data, memory, left) {
-                ok(
-                  after,
-                  if summaries {
-                    list_entry(root, length, payload, data)
-                  } else {
-                    #""
-                  },
-                  list_cbor_length(length, payload),
-                  4 + data,
-                  if array {
-                    length
-                  } else {
-                    memory
-                  },
-                  left,
-                )
-              },
-              stop,
-            )
+          if !metered {
+            fn(origin, _position, units, ok, stop) {
+              fold_items_from(
+                window,
+                top,
+                element,
+                origin,
+                units,
+                fn(after, root, _length, count, payload, data, left) {
+                  let cbor = 2 + payload
+                  ok(
+                    after,
+                    list_entry(root, count, cbor, data),
+                    cbor,
+                    4 + data,
+                    0,
+                    left,
+                  )
+                },
+                stop,
+              )
+            }
+          } else if summaries {
+            fn(origin, _position, units, ok, stop) {
+              items_from(
+                window,
+                flat_bits,
+                top,
+                element,
+                origin,
+                units - 1,
+                fn(after, root, length, count, payload, data, memory, left) {
+                  let cbor = 2 + payload
+                  ok(
+                    after,
+                    list_entry(root, count, cbor, data),
+                    cbor,
+                    4 + data,
+                    if array {
+                      length
+                    } else {
+                      memory
+                    },
+                    left,
+                  )
+                },
+                stop,
+              )
+            }
+          } else {
+            fn(origin, _position, units, ok, stop) {
+              scan_items_from(
+                window,
+                flat_bits,
+                top,
+                element,
+                origin,
+                units - 1,
+                0,
+                0,
+                fn(after, length, memory, left) {
+                  ok(
+                    after,
+                    #"",
+                    0,
+                    0,
+                    if array {
+                      length
+                    } else {
+                      memory
+                    },
+                    left,
+                  )
+                },
+                stop,
+              )
+            }
           }
         },
       )
@@ -804,21 +1369,21 @@ pub fn compile_kind_v1(
         stopped
       } else {
         join(
-          compile_v1(window, flat_bits, first, summaries),
-          compile_v1(window, flat_bits, second, summaries),
+          compile_node(window, flat_bits, top, first, summaries, metered),
+          compile_node(window, flat_bits, top, second, summaries, metered),
           fn(first, second) {
-            if summaries {
+            if !metered {
               fn(origin, _position, units, ok, stop) {
                 first(
                   origin,
                   origin,
-                  units - pair_units,
-                  fn(middle, a, a_cbor, a_data, a_memory, left) {
+                  units,
+                  fn(middle, a, a_cbor, a_data, _a_memory, left) {
                     second(
                       middle,
                       middle,
                       left,
-                      fn(after, b, b_cbor, b_data, b_memory, rest) {
+                      fn(after, b, b_cbor, b_data, _b_memory, rest) {
                         let payload = a_cbor + b_cbor
                         let data = a_data + b_data
                         ok(
@@ -826,7 +1391,7 @@ pub fn compile_kind_v1(
                           pair_entry_v1(a, b, payload, data),
                           4 + payload,
                           4 + data,
-                          a_memory + b_memory,
+                          0,
                           rest,
                         )
                       },
@@ -836,44 +1401,99 @@ pub fn compile_kind_v1(
                   stop,
                 )
               }
+            } else if summaries {
+              fn(origin, _position, units, ok, stop) {
+                if units < pair_units {
+                  stop(units - pair_units)
+                } else {
+                  first(
+                    origin,
+                    origin,
+                    units - pair_units,
+                    fn(middle, a, a_cbor, a_data, a_memory, left) {
+                      second(
+                        middle,
+                        middle,
+                        left,
+                        fn(after, b, b_cbor, b_data, b_memory, rest) {
+                          let payload = a_cbor + b_cbor
+                          let data = a_data + b_data
+                          ok(
+                            after,
+                            pair_entry_v1(a, b, payload, data),
+                            4 + payload,
+                            4 + data,
+                            a_memory + b_memory,
+                            rest,
+                          )
+                        },
+                        stop,
+                      )
+                    },
+                    stop,
+                  )
+                }
+              }
             } else {
               fn(origin, _position, units, ok, stop) {
-                first(
-                  origin,
-                  origin,
-                  units - pair_units,
-                  fn(middle, _a, _a_cbor, _a_data, a_memory, left) {
-                    second(
-                      middle,
-                      middle,
-                      left,
-                      fn(after, _b, _b_cbor, _b_data, b_memory, rest) {
-                        ok(after, #"", 0, 0, a_memory + b_memory, rest)
-                      },
-                      stop,
-                    )
-                  },
-                  stop,
-                )
+                if units < pair_units {
+                  stop(units - pair_units)
+                } else {
+                  first(
+                    origin,
+                    origin,
+                    units - pair_units,
+                    fn(middle, _a, _a_cbor, _a_data, a_memory, left) {
+                      second(
+                        middle,
+                        middle,
+                        left,
+                        fn(after, _b, _b_cbor, _b_data, b_memory, rest) {
+                          ok(after, #"", 0, 0, a_memory + b_memory, rest)
+                        },
+                        stop,
+                      )
+                    },
+                    stop,
+                  )
+                }
               }
             }
           },
         )
       }
     KWrap { inner, layers, units: layer_units, memory: layer_memory } ->
-      join(
-        compile_kind_v1(window, flat_bits, inner, summaries),
-        stopped,
-        fn(inner, _) {
-          if summaries {
+      join_wrap(
+        compile_kind_v1(window, flat_bits, top, inner, summaries, metered),
+        compile_layers(layers),
+        fn(inner, wrap) {
+          if !metered {
+            fn(origin, position, units, ok, stop) {
+              inner(
+                origin,
+                position,
+                units,
+                fn(after, entry, cbor, data, memory, left) {
+                  wrap(
+                    entry,
+                    cbor,
+                    data,
+                    fn(entry, cbor, data) {
+                      ok(after, entry, cbor, data, memory, left)
+                    },
+                  )
+                },
+                stop,
+              )
+            }
+          } else if summaries {
             fn(origin, position, units, ok, stop) {
               inner(
                 origin,
                 position,
                 units - layer_units,
                 fn(after, entry, cbor, data, memory, left) {
-                  wrap_layers(
-                    layers,
+                  wrap(
                     entry,
                     cbor,
                     data,
@@ -901,6 +1521,44 @@ pub fn compile_kind_v1(
         },
       )
     KStop -> stopped
+  }
+}
+
+/// Compiles a decoder of one value of `kind` with summaries, for a single
+/// run: the pairs of a wrap are applied as they are, not compiled.
+pub fn compile_once_v1(
+  window: ByteArray,
+  flat_bits: Int,
+  kind: Kind,
+) -> Decoder<r> {
+  when kind is {
+    KWrap { inner, layers, units: layer_units, memory: layer_memory } ->
+      join(
+        compile_kind_v1(window, flat_bits, flat_bits + 7, inner, True, True),
+        stopped,
+        fn(inner, _) {
+          fn(origin, position, units, ok, stop) {
+            inner(
+              origin,
+              position,
+              units - layer_units,
+              fn(after, entry, cbor, data, memory, left) {
+                wrap_layers(
+                  layers,
+                  entry,
+                  cbor,
+                  data,
+                  fn(entry, cbor, data) {
+                    ok(after, entry, cbor, data, memory + layer_memory, left)
+                  },
+                )
+              },
+              stop,
+            )
+          }
+        },
+      )
+    _ -> compile_kind_v1(window, flat_bits, flat_bits + 7, kind, True, True)
   }
 }
 
@@ -2133,14 +2791,14 @@ fn value_constant(
     True,
     position,
     units,
-    fn(currencies, total, after, units) {
+    fn(root, count, payload, data, total, after, units) {
       if summaries {
-        let summary = cek_data_v1.map_data_summary_v1(currencies)
+        let cbor = map_cbor_length(count, payload)
         ok(
           after,
-          entry_of_v1(summary),
-          summary.cbor_length,
-          summary.memory,
+          map_entry(root, count, cbor, data),
+          cbor,
+          4 + data,
           total,
           units,
         )
@@ -2213,8 +2871,10 @@ fn v_chunks(
 }
 
 /// The currencies from the outer cons bit at `position`, after `previous`
-/// unless `first`: `k` gets their map entries, their token count, the
-/// position after them and the units left.
+/// unless `first`: `k` gets the root of their map entries, their count, the
+/// sums of the entries' CBOR lengths and Data memories, their token count,
+/// the position after them and the units left (the first four placeholders
+/// without summaries).
 fn v_currencies(
   window: ByteArray,
   flat_bits: Int,
@@ -2223,13 +2883,13 @@ fn v_currencies(
   first: Bool,
   position: Int,
   units: Int,
-  k: fn(DataSequenceSummaryV1, Int, Int, Int) -> r,
+  k: fn(ByteArray, Int, Int, Int, Int, Int, Int) -> r,
   stop: fn(Int) -> r,
 ) -> r {
   if position >= flat_bits {
     stop(units)
   } else if !bit(window, flat_bits, position) {
-    k(empty_pairs, 0, position + 1, units)
+    k(empty_pairs_root, 0, 0, 0, 0, position + 1, units)
   } else {
     let units = units - currency_units
     if units < 0 {
@@ -2252,7 +2912,7 @@ fn v_currencies(
               True,
               after,
               units,
-              fn(tokens, count, after, units) {
+              fn(tokens, count, tokens_payload, tokens_data, after, units) {
                 v_currencies(
                   window,
                   flat_bits,
@@ -2261,20 +2921,46 @@ fn v_currencies(
                   False,
                   after,
                   units,
-                  fn(tail, total, after, units) {
+                  fn(tail, length, payload, data, total, after, units) {
                     if summaries {
+                      short_bytes_entry(
+                        currency,
+                        fn(key, key_cbor, key_data) {
+                          let value_cbor = map_cbor_length(
+                            count,
+                            tokens_payload,
+                          )
+                          let length = length + 1
+                          let payload = key_cbor + value_cbor + payload
+                          let data = key_data + 4 + tokens_data + data
+                          k(
+                            prepend_pair_root(
+                              key,
+                              map_entry(tokens, count, value_cbor, tokens_data),
+                              tail,
+                              length,
+                              payload,
+                              data,
+                            ),
+                            length,
+                            payload,
+                            data,
+                            total + count,
+                            after,
+                            units,
+                          )
+                        },
+                      )
+                    } else {
                       k(
-                        cek_data_v1.prepend_data_pair_summary_v1(
-                          bits.short_bytes_summary(currency),
-                          cek_data_v1.map_data_summary_v1(tokens),
-                          tail,
-                        ),
+                        tail,
+                        length,
+                        payload,
+                        data,
                         total + count,
                         after,
                         units,
                       )
-                    } else {
-                      k(tail, total + count, after, units)
                     }
                   },
                   stop,
@@ -2291,7 +2977,10 @@ fn v_currencies(
 }
 
 /// The tokens of one currency from the inner cons bit at `position`, after
-/// `previous` unless `first`; a currency has at least one.
+/// `previous` unless `first`; a currency has at least one. `k` gets the root
+/// of their map entries, their count, the sums of the entries' CBOR lengths
+/// and Data memories, the position after them and the units left (the root
+/// and sums placeholders without summaries).
 fn v_tokens(
   window: ByteArray,
   flat_bits: Int,
@@ -2300,7 +2989,7 @@ fn v_tokens(
   first: Bool,
   position: Int,
   units: Int,
-  k: fn(DataSequenceSummaryV1, Int, Int, Int) -> r,
+  k: fn(ByteArray, Int, Int, Int, Int, Int) -> r,
   stop: fn(Int) -> r,
 ) -> r {
   if position >= flat_bits {
@@ -2309,7 +2998,7 @@ fn v_tokens(
     if first {
       stop(units)
     } else {
-      k(empty_pairs, 0, position + 1, units)
+      k(empty_pairs_root, 0, 0, 0, position + 1, units)
     }
   } else {
     let units = units - token_units
@@ -2346,20 +3035,38 @@ fn v_tokens(
                     False,
                     after,
                     units,
-                    fn(tail, count, after, units) {
+                    fn(tail, count, payload, data, after, units) {
                       if summaries {
-                        k(
-                          cek_data_v1.prepend_data_pair_summary_v1(
-                            bits.short_bytes_summary(token),
-                            bits.integer_summary(n),
-                            tail,
-                          ),
-                          count + 1,
-                          after,
-                          units,
+                        short_bytes_entry(
+                          token,
+                          fn(key, key_cbor, key_data) {
+                            integer_entry(
+                              n,
+                              fn(value, value_cbor, value_data) {
+                                let count = count + 1
+                                let payload = key_cbor + value_cbor + payload
+                                let data = key_data + value_data + data
+                                k(
+                                  prepend_pair_root(
+                                    key,
+                                    value,
+                                    tail,
+                                    count,
+                                    payload,
+                                    data,
+                                  ),
+                                  count,
+                                  payload,
+                                  data,
+                                  after,
+                                  units,
+                                )
+                              },
+                            )
+                          },
                         )
                       } else {
-                        k(tail, count + 1, after, units)
+                        k(tail, count + 1, payload, data, after, units)
                       }
                     },
                     stop,
@@ -2376,63 +3083,180 @@ fn v_tokens(
   }
 }
 
-/// The elements of a list from the cons bit at `position` to its end:
+/// The elements of a list from its first cons bit at `position`, which the
+/// list's bit table has read as set, to its end, with `units` to spend:
 /// `ok` gets the position after the end, the root of their sequence, their
-/// count, the sums of their CBOR lengths, Data memories and constant
-/// memories, and the units left.
-fn items(
+/// count and serialised count, the sums of their CBOR lengths, Data
+/// memories and constant memories, and the units left. The last element's
+/// sequence node is built from its entry, whose CBOR length and Data memory
+/// are the sequence's.
+fn items_from(
   window: ByteArray,
   flat_bits: Int,
+  top: Int,
   element: Decoder<r>,
   position: Int,
   units: Int,
-  summaries: Bool,
-  ok: fn(Int, ByteArray, Int, Int, Int, Int, Int) -> r,
+  ok: fn(Int, ByteArray, Int, ByteArray, Int, Int, Int, Int) -> r,
   stop: fn(Int) -> r,
 ) -> r {
-  if units < 0 {
-    stop(units)
-  } else if position >= flat_bits {
-    stop(units)
-  } else if bit(window, flat_bits, position) {
+  if units < element_units {
+    stop(units - element_units)
+  } else {
     element(
       position + 1,
       position + 1,
       units - element_units,
       fn(middle, head, cbor, data, memory, left) {
-        items(
+        if middle >= flat_bits {
+          stop(left)
+        } else if builtin.read_bit(window, top - middle) {
+          items_from(
+            window,
+            flat_bits,
+            top,
+            element,
+            middle,
+            left,
+            fn(after, root, length, _count, payload, data_sum, memory_sum, rest) {
+              let length = length + 1
+              let count = builtin.serialise_data(builtin.i_data(length))
+              let payload = payload + cbor
+              let data_sum = data_sum + data
+              ok(
+                after,
+                prepend_root(head, root, count, payload, data_sum),
+                length,
+                count,
+                payload,
+                data_sum,
+                memory_sum + memory,
+                rest,
+              )
+            },
+            stop,
+          )
+        } else {
+          ok(middle + 1, last_root(head), 1, #"01", cbor, data, memory, left)
+        }
+      },
+      stop,
+    )
+  }
+}
+
+/// The root of the one-item sequence of the value with entry `head`.
+fn last_root(head: ByteArray) -> ByteArray {
+  blake2b_256(
+    builtin.append_bytearray(
+      list_node_head,
+      builtin.append_bytearray(
+        head,
+        builtin.append_bytearray(
+          last_item_tail,
+          builtin.slice_bytearray(32, 64, head),
+        ),
+      ),
+    ),
+  )
+}
+
+/// `items_from` without summaries, with `length` elements and `memory`
+/// constant memory before the cons bit at `position`: `ok` gets the
+/// position after the end, the count of all the elements, their constant
+/// memory and the units left.
+fn scan_items_from(
+  window: ByteArray,
+  flat_bits: Int,
+  top: Int,
+  element: Decoder<r>,
+  position: Int,
+  units: Int,
+  length: Int,
+  memory: Int,
+  ok: fn(Int, Int, Int, Int) -> r,
+  stop: fn(Int) -> r,
+) -> r {
+  if units < element_units {
+    stop(units - element_units)
+  } else {
+    element(
+      position + 1,
+      position + 1,
+      units - element_units,
+      fn(middle, _head, _cbor, _data, value_memory, left) {
+        if middle >= flat_bits {
+          stop(left)
+        } else if builtin.read_bit(window, top - middle) {
+          scan_items_from(
+            window,
+            flat_bits,
+            top,
+            element,
+            middle,
+            left,
+            length + 1,
+            memory + value_memory,
+            ok,
+            stop,
+          )
+        } else {
+          ok(middle + 1, length + 1, memory + value_memory, left)
+        }
+      },
+      stop,
+    )
+  }
+}
+
+/// `items_from` for a fold, which keeps no units and constant memory and
+/// reads only bits a scan has read: `ok` gets the position after the end,
+/// the root of the elements' sequence, their count and serialised count,
+/// the sums of their CBOR lengths and Data memories, and the units.
+fn fold_items_from(
+  window: ByteArray,
+  top: Int,
+  element: Decoder<r>,
+  position: Int,
+  units: Int,
+  ok: fn(Int, ByteArray, Int, ByteArray, Int, Int, Int) -> r,
+  stop: fn(Int) -> r,
+) -> r {
+  element(
+    position + 1,
+    position + 1,
+    units,
+    fn(middle, head, cbor, data, _memory, left) {
+      if builtin.read_bit(window, top - middle) {
+        fold_items_from(
           window,
-          flat_bits,
+          top,
           element,
           middle,
           left,
-          summaries,
-          fn(after, root, length, payload, data_sum, memory_sum, rest) {
+          fn(after, root, length, _count, payload, data_sum, rest) {
             let length = length + 1
+            let count = builtin.serialise_data(builtin.i_data(length))
             let payload = payload + cbor
             let data_sum = data_sum + data
             ok(
               after,
-              if summaries {
-                prepend_root(head, root, length, payload, data_sum)
-              } else {
-                root
-              },
+              prepend_root(head, root, count, payload, data_sum),
               length,
+              count,
               payload,
               data_sum,
-              memory_sum + memory,
               rest,
             )
           },
           stop,
         )
-      },
-      stop,
-    )
-  } else {
-    ok(position + 1, empty_list_root, 0, 0, 0, 0, units)
-  }
+      } else {
+        ok(middle + 1, last_root(head), 1, #"01", cbor, data, left)
+      }
+    },
+    stop,
+  )
 }
 
 // ## Runs
@@ -2444,7 +3268,7 @@ pub fn scan_decoder_v1(
   flat_bits: Int,
   element: ConstantTypeV1,
 ) -> Decoder<(Int, Int, Int, Int)> {
-  compile_v1(window, flat_bits, shape_v1(element, False), False)
+  compile_v1(window, flat_bits, shape_v1(element, False), False, True)
 }
 
 /// The decoder a run fold uses for elements of type `element`.
@@ -2453,7 +3277,7 @@ pub fn fold_decoder_v1(
   flat_bits: Int,
   element: ConstantTypeV1,
 ) -> Decoder<DataSequenceSummaryV1> {
-  compile_v1(window, flat_bits, shape_v1(element, True), True)
+  compile_v1(window, flat_bits, shape_v1(element, True), True, False)
 }
 
 /// The run of list elements from the cons bit at `position` that a tick
@@ -2491,7 +3315,11 @@ fn run_loop(
 ) -> (Int, Int, Int, Int) {
   if position >= flat_bits {
     (count, position, memory, units_per_tick - units)
-  } else if builtin.read_bit(window, top - position) {
+  } else if !builtin.read_bit(window, top - position) {
+    (count, position, memory, units_per_tick - units)
+  } else if units < element_units {
+    (count, position, memory, units_per_tick - units)
+  } else {
     element(
       position + 1,
       position + 1,
@@ -2510,8 +3338,6 @@ fn run_loop(
       },
       fn(_left) { (count, position, memory, units_per_tick - units) },
     )
-  } else {
-    (count, position, memory, units_per_tick - units)
   }
 }
 
@@ -2570,7 +3396,13 @@ fn fold_loop(
             let payload = payload + cbor
             let data_sum = data_sum + data
             k(
-              prepend_root(head, root, length, payload, data_sum),
+              prepend_root(
+                head,
+                root,
+                builtin.serialise_data(builtin.i_data(length)),
+                payload,
+                data_sum,
+              ),
               length,
               payload,
               data_sum,

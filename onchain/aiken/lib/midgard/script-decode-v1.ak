@@ -1545,12 +1545,7 @@ fn piece(
             )
           }
           _ -> {
-            let general = bulk.compile_kind_v1(
-              env.window,
-              env.flat_bits,
-              kind,
-              True,
-            )
+            let general = bulk.compile_once_v1(env.window, env.flat_bits, kind)
             general(cursor, cursor, units, ok, fn(_left) { node() })
           }
         }
