@@ -103,6 +103,11 @@ The working capital is sized to the queue at preparation time. If the queue
 grows before removal, the opening and removal checks refuse with the missing
 amount; top the wallet up with ADA-only coins.
 
+The watcher does not prepare from token-bearing coins: its wallet needs
+plain-ADA collateral and working capital, so an operator whose watcher wallet
+holds only token-bearing coins runs `availability-challenge prepare` first
+with the watcher's seed.
+
 Each invocation advances at most one transaction. Repeated `respond`, `settle`
 or `timeout` invocations first reconcile prior intent and then continue from
 authenticated on-chain progress. An included transaction can permit the next
