@@ -1181,6 +1181,19 @@ export const prepareValidationTrace = (input: ValidationMachineReplayInput) =>
         new Error(`unknown validation terminal phase ${terminalPhase}`),
       );
     }
+    // The machine stops at `fault`, so replay must have rejected there too.
+    const requireRejection = (
+      fault: string,
+      phase: MidgardValidationPhaseName,
+      code: RejectCode,
+    ): Effect.Effect<void, Error> =>
+      terminalPhase === phase && rejectionCode === code
+        ? Effect.void
+        : Effect.fail(
+            new Error(
+              `${fault} but replay rejected at ${terminalPhase}/${rejectionCode ?? "none"}`,
+            ),
+          );
     const witnesses: ValidationMachineWorkWitness[] = [];
     const witnessExecutionBudgets: {
       readonly cpu: bigint;
@@ -1376,16 +1389,11 @@ export const prepareValidationTrace = (input: ValidationMachineReplayInput) =>
 
       if (spendCount === 0) {
         pushWitness("inputSets", currentInputSetsWitness());
-        if (
-          terminalPhase !== "inputSets" ||
-          rejectionCode !== RejectCodes.EmptyInputs
-        ) {
-          return yield* Effect.fail(
-            new Error(
-              `bounded input scan found no spend inputs but replay rejected at ${terminalPhase}/${rejectionCode ?? "none"}`,
-            ),
-          );
-        }
+        yield* requireRejection(
+          "bounded input scan found no spend inputs",
+          "inputSets",
+          RejectCodes.EmptyInputs,
+        );
         stopReason = "EmptyInputs";
         stoppedAtRejection = true;
       } else {
@@ -1402,16 +1410,11 @@ export const prepareValidationTrace = (input: ValidationMachineReplayInput) =>
             fieldPreimage: fieldPreimage(scan.collection.fieldIndex),
           });
           if (previousKey.length > 0 && key.equals(previousKey)) {
-            if (
-              terminalPhase !== "inputSets" ||
-              rejectionCode !== RejectCodes.DuplicateInputInTx
-            ) {
-              return yield* Effect.fail(
-                new Error(
-                  `bounded input scan found a duplicate but replay rejected at ${terminalPhase}/${rejectionCode ?? "none"}`,
-                ),
-              );
-            }
+            yield* requireRejection(
+              "bounded input scan found a duplicate",
+              "inputSets",
+              RejectCodes.DuplicateInputInTx,
+            );
             stopReason = {
               DuplicateInput: {
                 first_field_index: UNSET_REASON_COORDINATE,
@@ -1588,16 +1591,11 @@ export const prepareValidationTrace = (input: ValidationMachineReplayInput) =>
       if (signatureControl.requiredCount === 0) {
         pushSignatureWitness();
         if (signatureControl.firstInvalidWitnessIndex >= 0) {
-          if (
-            terminalPhase !== "signatures" ||
-            rejectionCode !== RejectCodes.InvalidSignature
-          ) {
-            return yield* Effect.fail(
-              new Error(
-                `signature scan found an invalid signature but replay rejected at ${terminalPhase}/${rejectionCode ?? "none"}`,
-              ),
-            );
-          }
+          yield* requireRejection(
+            "signature scan found an invalid signature",
+            "signatures",
+            RejectCodes.InvalidSignature,
+          );
           stopReason = {
             AddressWitnessSignatureInvalid: {
               witness_index: BigInt(signatureControl.firstInvalidWitnessIndex),
@@ -1624,16 +1622,11 @@ export const prepareValidationTrace = (input: ValidationMachineReplayInput) =>
             signerProof,
           });
           if (signerProof.kind !== "membership") {
-            if (
-              terminalPhase !== "signatures" ||
-              rejectionCode !== RejectCodes.MissingRequiredWitness
-            ) {
-              return yield* Effect.fail(
-                new Error(
-                  `required signer is absent but replay rejected at ${terminalPhase}/${rejectionCode ?? "none"}`,
-                ),
-              );
-            }
+            yield* requireRejection(
+              "required signer is absent",
+              "signatures",
+              RejectCodes.MissingRequiredWitness,
+            );
             stopReason = {
               RequiredSignerUnsigned: {
                 signer_index: BigInt(signatureControl.requiredSeen),
@@ -1656,16 +1649,11 @@ export const prepareValidationTrace = (input: ValidationMachineReplayInput) =>
             requiredSeen === requiredCount &&
             signatureControl.firstInvalidWitnessIndex >= 0
           ) {
-            if (
-              terminalPhase !== "signatures" ||
-              rejectionCode !== RejectCodes.InvalidSignature
-            ) {
-              return yield* Effect.fail(
-                new Error(
-                  `signature scan found an invalid signature but replay rejected at ${terminalPhase}/${rejectionCode ?? "none"}`,
-                ),
-              );
-            }
+            yield* requireRejection(
+              "signature scan found an invalid signature",
+              "signatures",
+              RejectCodes.InvalidSignature,
+            );
             stopReason = {
               AddressWitnessSignatureInvalid: {
                 witness_index: BigInt(
@@ -2218,16 +2206,11 @@ export const prepareValidationTrace = (input: ValidationMachineReplayInput) =>
               proofCbor: item.proofCbor,
               signerProof: { kind: "none" },
             });
-            if (
-              terminalPhase !== "resolveInputs" ||
-              rejectionCode !== RejectCodes.InputNotFound
-            ) {
-              return yield* Effect.fail(
-                new Error(
-                  `input resolution found no ledger member but replay rejected at ${terminalPhase}/${rejectionCode ?? "none"}`,
-                ),
-              );
-            }
+            yield* requireRejection(
+              "input resolution found no ledger member",
+              "resolveInputs",
+              RejectCodes.InputNotFound,
+            );
             stopReason = {
               InputNotFound: {
                 source_kind: item.sourceKind === "spend" ? 0n : 1n,
@@ -2308,12 +2291,17 @@ export const prepareValidationTrace = (input: ValidationMachineReplayInput) =>
               signerProof,
             },
           );
+          // A key-locked spend whose signer is absent stops the machine here,
+          // so validation must have refused this spend for the same fault.
           if (
-            terminalPhase === "resolveInputs" &&
-            rejectionCode === RejectCodes.MissingRequiredWitness &&
-            item.sourceKind === "spend" &&
-            signerProof.kind !== "membership"
+            signerProof.kind !== "membership" &&
+            signerProof.kind !== "none"
           ) {
+            yield* requireRejection(
+              "spend signer is missing",
+              "resolveInputs",
+              RejectCodes.MissingRequiredWitness,
+            );
             stopReason = {
               SpendInputSignerMissing: { input_index: UNSET_REASON_COORDINATE },
             };

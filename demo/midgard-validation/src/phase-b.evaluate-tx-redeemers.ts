@@ -10,7 +10,7 @@ import { findRedeemerByPointer } from "./midgard-redeemers.js";
 import { discoverLocalScriptExecutions } from "./phase-b.discover-local-script-executions.js";
 import {
   collectScriptSources,
-  resolveReferenceInputs,
+  resolveCandidateInputs,
 } from "./phase-b.resolve-reference-inputs.js";
 import {
   runScriptExecution,
@@ -96,15 +96,16 @@ export const evaluateMidgardTxRedeemers = (input: {
     ]);
     const stateValue = (outRefHex: string): Buffer | undefined =>
       state.get(outRefHex);
-    const references = resolveReferenceInputs(node, stateValue);
-    if ("code" in references) {
-      return failed(`${references.code}: ${references.detail ?? ""}`);
+    // Redeemer evaluation does not check spend signers.
+    const resolved = resolveCandidateInputs(node, stateValue);
+    if ("code" in resolved) {
+      return failed(`${resolved.code}: ${resolved.detail ?? ""}`);
     }
     const discovered = discoverLocalScriptExecutions(
       node,
       stateValue,
-      collectScriptSources(node, stateValue, references),
-      references.inputs,
+      collectScriptSources(node, stateValue, resolved),
+      resolved.inputs,
       new Set(candidate.derived.witnessKeyHashHexes),
       input.config.l1SlotConfig,
     );

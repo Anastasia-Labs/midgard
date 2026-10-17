@@ -2,11 +2,6 @@ import {
   inspectMidgardRedeemerData,
   type MidgardValidationPhaseName,
 } from "@al-ft/midgard-core";
-import {
-  decodeMidgardAddressBytes,
-  decodeMidgardTxOutput,
-  type MidgardValue,
-} from "@al-ft/midgard-core/codec";
 import { Effect } from "effect";
 
 import { LedgerColumns } from "./ledger.js";
@@ -15,14 +10,10 @@ import {
   type CandidateDecision,
   type CandidateNode,
   reject,
-  resolveReferenceInputs,
+  resolveCandidateInputs,
 } from "./phase-b.resolve-reference-inputs.js";
 import { runLocalScriptEvaluation } from "./phase-b.run-local-script-evaluation.js";
-import {
-  inputOrdinalOf,
-  REJECT_SOURCE_KIND_SPEND,
-  type RejectSubject,
-} from "./reject-subject.js";
+import { type RejectSubject } from "./reject-subject.js";
 import {
   PhaseAValidatedTx,
   PhaseBConfig,
@@ -136,23 +127,6 @@ export const validateCandidateAgainstState = (
       accepted: false as const,
       rejection: reject(ledgerTx.txId, code, detail, consensusPhase, subject),
     });
-    const spendSubject = (
-      arm:
-        | "InputNotFound"
-        | "InputSpentOutputNonCanonical"
-        | "SpendInputSignerMissing",
-      outRefHex: string,
-    ): RejectSubject => {
-      const index = inputOrdinalOf(
-        ledgerTx,
-        REJECT_SOURCE_KIND_SPEND,
-        outRefHex,
-      );
-      return arm === "SpendInputSignerMissing"
-        ? { arm, index }
-        : { arm, sourceKind: REJECT_SOURCE_KIND_SPEND, index };
-    };
-
     if (
       ledgerTx.validityIntervalStart !== undefined &&
       config.nowCardanoSlotNo < ledgerTx.validityIntervalStart
@@ -173,60 +147,17 @@ export const validateCandidateAgainstState = (
       );
     }
 
-    const spentValues = new Map<string, MidgardValue>();
-
     const witnessKeyHashes = new Set(candidate.derived.witnessKeyHashHexes);
-    const resolvedReferenceInputs = resolveReferenceInputs(node, stateValue);
-    if ("code" in resolvedReferenceInputs) {
+    const resolvedInputs = resolveCandidateInputs(node, stateValue, {
+      spentByAccepted,
+      witnessKeyHashes,
+    });
+    if ("code" in resolvedInputs) {
       return {
         index: node.index,
         accepted: false,
-        rejection: resolvedReferenceInputs,
+        rejection: resolvedInputs,
       };
-    }
-
-    for (const inputOutRefHex of node.spentOutRefs) {
-      if (spentByAccepted.has(inputOutRefHex)) {
-        return fail(RejectCodes.DoubleSpend, inputOutRefHex);
-      }
-
-      const inputOutput = stateValue(inputOutRefHex);
-      if (!inputOutput) {
-        return fail(
-          RejectCodes.InputNotFound,
-          inputOutRefHex,
-          "resolveInputs",
-          spendSubject("InputNotFound", inputOutRefHex),
-        );
-      }
-
-      try {
-        const output = decodeMidgardTxOutput(inputOutput);
-        const paymentCred = decodeMidgardAddressBytes(
-          output.address,
-        ).paymentCredential;
-
-        if (paymentCred.kind === "PubKey") {
-          const inputSigner = paymentCred.hash.toString("hex");
-          if (!witnessKeyHashes.has(inputSigner)) {
-            return fail(
-              RejectCodes.MissingRequiredWitness,
-              `missing witness for input signer ${inputSigner} (outref ${inputOutRefHex})`,
-              "resolveInputs",
-              spendSubject("SpendInputSignerMissing", inputOutRefHex),
-            );
-          }
-        }
-
-        spentValues.set(inputOutRefHex, output.value);
-      } catch (e) {
-        return fail(
-          RejectCodes.InvalidOutput,
-          `failed to decode input output: ${String(e)}`,
-          "resolveInputs",
-          spendSubject("InputSpentOutputNonCanonical", inputOutRefHex),
-        );
-      }
     }
 
     // Stage1 Data audit precedes all purpose/source discovery (including missing sources).
@@ -250,7 +181,7 @@ export const validateCandidateAgainstState = (
     const localScriptEvaluation = yield* runLocalScriptEvaluation(
       node,
       stateValue,
-      resolvedReferenceInputs,
+      resolvedInputs,
       witnessKeyHashes,
       config,
     );
@@ -267,7 +198,7 @@ export const validateCandidateAgainstState = (
       candidate,
       spentOutRefs: node.spentOutRefs,
       referenceOutRefs: node.referenceOutRefs,
-      spentValues,
+      spentValues: resolvedInputs.spentValues,
     });
     if (valueAndMint !== null) {
       return fail(

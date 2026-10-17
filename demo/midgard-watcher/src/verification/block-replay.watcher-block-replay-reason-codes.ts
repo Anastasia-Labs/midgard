@@ -64,12 +64,15 @@ export const WATCHER_BLOCK_REPLAY_STAGE_BY_CONSENSUS_PHASE = Object.freeze({
 >;
 
 /**
- * The two canonical detail prefixes phase-b.ts uses when the failing input is a
- * *reference* input rather than a spend input (`resolveReferenceInputs`,
- * phase-b.ts:191-207). Both rejections carry `consensusPhase: "resolveInputs"`,
- * so the phase alone cannot separate the spends stage from the references
- * stage; the canonical detail text can, and the suite pins both prefixes
- * against the canonical function so a producer-side rewording is caught.
+ * The two canonical detail prefixes Phase B uses when the failing input is a
+ * *reference* input rather than a spend input (`resolveCandidateInputs`,
+ * phase-b.resolve-reference-inputs.ts). That resolver walks spend and
+ * reference inputs as one merged schedule, and its missing-input and
+ * undecodable-output rejections carry `consensusPhase: "resolveInputs"` for
+ * either kind, so the phase alone cannot separate the spends stage from the
+ * references stage; the canonical detail text can, and the suite pins both
+ * prefixes against the canonical function so a producer-side rewording is
+ * caught.
  */
 export const WATCHER_BLOCK_REPLAY_REFERENCE_DETAIL_PREFIXES = Object.freeze([
   "reference input not found: ",

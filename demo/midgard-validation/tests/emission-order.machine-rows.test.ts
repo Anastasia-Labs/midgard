@@ -1,38 +1,34 @@
-import { encodeMidgardCekProgramMaterialSidecar } from "@al-ft/midgard-core/cek-proof";
-import { encodeCbor, protectMidgardAddress } from "@al-ft/midgard-core/codec";
-import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
-import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
-import type { MidgardRejectionReasonV1 } from "@al-ft/midgard-core/validation-trace";
-import { Lambda, UPLCEncoder, UPLCProgram, UPLCVar } from "@harmoniclabs/uplc";
-import { CML } from "@lucid-evolution/lucid";
-import { Effect } from "effect";
-import { describe, expect, it } from "vitest";
+import { protectMidgardAddress } from "@al-ft/midgard-core/codec";
+import { describe, it } from "vitest";
 
-import { buildMidgardCanonicalCekProgram } from "../src/cek-program.js";
-import {
-  buildDeterministicValidationMachineTrace,
-  buildValidationMachineLedgerInsertOp,
-  buildValidationMachineLedgerMutationSteps,
-  RejectCodes,
-  rejectionReasonOfSubject,
-  runPhaseAValidation,
-  runPhaseBValidationWithPatch,
-} from "../src/index.js";
+import { RejectCodes } from "../src/index.js";
 import { MidgardRedeemerTag } from "../src/midgard-redeemers.js";
-import type { RejectCode } from "../src/types.js";
-import { buildValidationOneStepArgument } from "../src/validation-machine-data.js";
+import {
+  EMPTY_SIDECAR,
+  expectControlledRows,
+  type Expected,
+  expectRowVerdicts,
+  funded,
+  keyAddress,
+  keySpent,
+  mintedOutput,
+  mintOf,
+  native,
+  NATIVE_POLICY,
+  nativeAll,
+  type NativeTxOptions,
+  plutus,
+  PLUTUS_SIDECAR,
+  type Row,
+} from "./emission-order.support.js";
 import { scriptAddressBytes } from "./reject-subject.support.js";
 import {
   FUNDED_OUTPUT_LOVELACE,
   hashScriptWitness,
-  makeMintPreimageCbor,
-  makeNativeTx,
   makeOutput,
   makeRedeemersCbor,
   nativeScriptWitness,
   outRefFromByte,
-  outRefFromTxId,
-  plutusV3ScriptWitness,
 } from "./validation-fixtures.js";
 
 /**
@@ -53,22 +49,6 @@ import {
  *   redeemer audit (stage 12).
  */
 
-// A fixed key, so that a row's bytes do not change between runs.
-const KEY = CML.PrivateKey.from_normal_bytes(Buffer.alloc(32, 0x6b));
-const keyAddress = (networkId: number, keyByte: number) =>
-  Buffer.from(
-    CML.EnterpriseAddress.new(
-      networkId,
-      CML.Credential.new_pub_key(
-        CML.PrivateKey.from_normal_bytes(Buffer.alloc(32, keyByte))
-          .to_public()
-          .hash(),
-      ),
-    )
-      .to_address()
-      .to_raw_bytes(),
-  );
-const KEY_ADDRESS = keyAddress(0, 0x6b);
 /** A key address on network 1; the rows expect network 0. */
 const FOREIGN_NETWORK_ADDRESS = keyAddress(1, 0x6b);
 /** A protected key output whose key does not sign. */
@@ -77,24 +57,6 @@ const PROTECTED_UNSIGNED = makeOutput(
   protectMidgardAddress(keyAddress(0, 0x6c)),
 );
 
-/** A Plutus V3 spend the rows never execute: each stops before the CEK. */
-const program = buildMidgardCanonicalCekProgram(
-  Buffer.from(
-    UPLCEncoder.compile(new UPLCProgram([1, 1, 0], new Lambda(new UPLCVar(0)))),
-  ),
-);
-const plutus = plutusV3ScriptWitness(program.envelopeCbor);
-const PLUTUS_SIDECAR = encodeMidgardCekProgramMaterialSidecar([
-  ...program.material.values(),
-]);
-const EMPTY_SIDECAR = encodeMidgardCekProgramMaterialSidecar([]);
-
-const nativeAll: Parameters<typeof nativeScriptWitness>[0] = {
-  type: "all",
-  scripts: [],
-};
-const native = nativeScriptWitness(nativeAll);
-const NATIVE_POLICY = hashScriptWitness(native);
 /** A second passing native script no purpose names. */
 const unusedNative = nativeScriptWitness({
   type: "any",
@@ -103,9 +65,7 @@ const unusedNative = nativeScriptWitness({
 /** A policy no source carries. */
 const ABSENT_POLICY = "ee".repeat(28);
 
-const keySpent = outRefFromByte(0x81);
 const plutusSpent = outRefFromByte(0x82);
-const funded = makeOutput(FUNDED_OUTPUT_LOVELACE, KEY_ADDRESS);
 const plutusLocked = makeOutput(
   FUNDED_OUTPUT_LOVELACE,
   scriptAddressBytes(hashScriptWitness(plutus)),
@@ -115,37 +75,8 @@ const absentLocked = makeOutput(
   scriptAddressBytes(ABSENT_POLICY),
 );
 
-const assetName = Buffer.from("42", "hex");
-const mintOf = (policy: string) =>
-  makeMintPreimageCbor(
-    new Map([[Buffer.from(policy, "hex"), new Map([[assetName, 5n]])]]),
-  );
-const mintedOutput = (policy: string) =>
-  makeOutput(
-    FUNDED_OUTPUT_LOVELACE,
-    KEY_ADDRESS,
-    new Map([[policy, new Map([[assetName.toString("hex"), 5n]])]]),
-  );
 const spendRedeemer = { tag: MidgardRedeemerTag.Spend, index: 0n };
 const mintRedeemer = { tag: MidgardRedeemerTag.Mint, index: 0n };
-
-type NativeTxOptions = NonNullable<Parameters<typeof makeNativeTx>[0]>;
-
-type Expected = {
-  readonly code: RejectCode;
-  readonly reason: MidgardRejectionReasonV1;
-};
-
-type Row = {
-  readonly name: string;
-  readonly kind: "multi" | "control" | "accept";
-  /** The producer already emitted this verdict before the reconciliation. */
-  readonly guard: boolean;
-  readonly state: readonly (readonly [Buffer, Buffer])[];
-  readonly tx: NativeTxOptions & { readonly spendInputs: readonly Buffer[] };
-  readonly sidecar: Buffer;
-  readonly expected: Expected | null;
-};
 
 const unusedRedeemer = (redeemer_index: bigint): Expected => ({
   code: RejectCodes.InvalidFieldType,
@@ -348,153 +279,10 @@ const ROWS: readonly Row[] = [
   },
 ];
 
-const PHASE_A_CONFIG = {
-  expectedNetworkId: 0n,
-  minFeeA: 0n,
-  minFeeB: 0n,
-  concurrency: 1,
-  strictnessProfile: "phase1_midgard",
-  consensusProfile: MIDGARD_CONSENSUS_PROFILE,
-} as const;
-
-const transactionOf = (row: Row) =>
-  makeNativeTx({ ...row.tx, privateKey: KEY });
-
-/** The producer: Phase A, then Phase B on what Phase A admits. */
-const producer = async (row: Row) => {
-  const transaction = transactionOf(row);
-  const phaseA = await Effect.runPromise(
-    runPhaseAValidation(
-      [
-        {
-          txId: transaction.txId,
-          txCbor: transaction.txCbor,
-          arrivalSeq: 0n,
-          createdAt: new Date(0),
-          programMaterialSidecarCbor: row.sidecar,
-        },
-      ],
-      PHASE_A_CONFIG,
-    ),
-  );
-  if (phaseA.rejected.length > 0) return phaseA.rejected[0]!;
-  const phaseB = await Effect.runPromise(
-    runPhaseBValidationWithPatch(
-      phaseA.accepted,
-      new Map(row.state.map(([key, output]) => [key.toString("hex"), output])),
-      {
-        nowCardanoSlotNo: 100n,
-        bucketConcurrency: 1,
-        l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
-      },
-    ),
-  );
-  return phaseB.rejected[0] ?? null;
-};
-
-const machineTrace = async (row: Row) => {
-  const transaction = transactionOf(row);
-  const entries = row.state.map(([outRef, output]) => ({ outRef, output }));
-  const accepted = row.expected === null;
-  const expectedLedgerOps = accepted
-    ? [
-        ...row.tx.spendInputs.map((key) => ({ type: "delete" as const, key })),
-        ...(row.tx.outputs ?? []).map((outputCbor, index) =>
-          buildValidationMachineLedgerInsertOp({
-            key: outRefFromTxId(transaction.txId, BigInt(index)),
-            outputCbor,
-          }),
-        ),
-      ]
-    : [];
-  const ledgerMutationSteps = accepted
-    ? await buildValidationMachineLedgerMutationSteps({
-        initialEntries: entries,
-        operations: expectedLedgerOps,
-      })
-    : [];
-  const unchangedRoot = Buffer.alloc(32, 0x2e).toString("hex");
-  return await Effect.runPromise(
-    buildDeterministicValidationMachineTrace({
-      l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
-      consensusProfile: MIDGARD_CONSENSUS_PROFILE,
-      eventKeyCbor: encodeCbor([2n, Buffer.alloc(32, 0x41)]),
-      sourceKind: "normal",
-      blockTimeMs: 1_750_000_000_000,
-      expectedNetworkId: 0n,
-      minFeeA: 0n,
-      minFeeB: 0n,
-      blockSlot: 100n,
-      transactionId: transaction.txId,
-      canonicalTransactionCbor: transaction.txCbor,
-      programMaterialSidecarCbor: row.sidecar,
-      priorUtxosRoot: accepted
-        ? ledgerMutationSteps[0]!.preRoot.toString("hex")
-        : unchangedRoot,
-      postUtxosRoot: accepted
-        ? ledgerMutationSteps.at(-1)!.postRoot.toString("hex")
-        : unchangedRoot,
-      ledgerWitnessEntries: entries,
-      expectedLedgerOps,
-      ledgerMutationSteps,
-      expectedVerdict: accepted ? "accepted" : "rejected",
-      expectedRejectionCode: row.expected?.code ?? null,
-    }),
-  );
-};
-
 describe("emission order: producer, trace builder and one-step agree on the first fault", () => {
   it("every multi-fault row has a single-fault control per fault", () => {
-    const names = ROWS.map(({ name }) => name);
-    expect(new Set(names).size).toBe(names.length);
-    expect(ROWS.filter(({ kind }) => kind === "accept")).toHaveLength(1);
-    for (const prefix of ["b_", "c_", "d_"]) {
-      const rows = ROWS.filter(({ name }) => name.startsWith(prefix));
-      const count = (kind: Row["kind"]) =>
-        rows.filter((row) => row.kind === kind).length;
-      expect(count("multi")).toBeGreaterThan(0);
-      expect(count("control")).toBeGreaterThanOrEqual(2);
-    }
+    expectControlledRows(ROWS, ["b_", "c_", "d_"]);
   });
 
-  it.each(ROWS)(
-    "$name",
-    async (row) => {
-      const rejection = await producer(row);
-      if (row.expected === null) {
-        expect(rejection).toBeNull();
-      } else {
-        expect(rejection?.code).toBe(row.expected.code);
-        // An output network mismatch is tx-global and records no subject.
-        const producerReason =
-          rejection?.subject === undefined
-            ? rejection?.code === RejectCodes.NetworkIdMismatch
-              ? "NetworkIdMismatch"
-              : undefined
-            : rejectionReasonOfSubject(rejection.subject, "machine");
-        expect(producerReason).toStrictEqual(row.expected.reason);
-      }
-
-      const trace = await machineTrace(row);
-      expect(trace.verdict).toBe(
-        row.expected === null ? "accepted" : "rejected",
-      );
-      expect(trace.rejectionCode).toBe(row.expected?.code ?? null);
-      expect(trace.rejectionReason).toStrictEqual(row.expected?.reason ?? null);
-
-      // The stopping step's one-step argument builds from this trace.
-      const stop =
-        trace.witnesses.length -
-        1 -
-        [...trace.witnesses]
-          .reverse()
-          .findIndex((witness) => witness.phase !== "terminal");
-      const argument = buildValidationOneStepArgument({
-        trace,
-        stateIndex: stop,
-      });
-      expect(argument.semanticResolverIndex).toBeGreaterThanOrEqual(0);
-    },
-    180_000,
-  );
+  it.each(ROWS)("$name", expectRowVerdicts, 180_000);
 });

@@ -1,0 +1,304 @@
+import { encodeMidgardCekProgramMaterialSidecar } from "@al-ft/midgard-core/cek-proof";
+import { encodeCbor } from "@al-ft/midgard-core/codec";
+import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
+import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
+import type { MidgardRejectionReasonV1 } from "@al-ft/midgard-core/validation-trace";
+import { Lambda, UPLCEncoder, UPLCProgram, UPLCVar } from "@harmoniclabs/uplc";
+import { CML } from "@lucid-evolution/lucid";
+import { Effect } from "effect";
+import { expect } from "vitest";
+
+import { buildMidgardCanonicalCekProgram } from "../src/cek-program.js";
+import {
+  buildDeterministicValidationMachineTrace,
+  buildValidationMachineLedgerInsertOp,
+  buildValidationMachineLedgerMutationSteps,
+  RejectCodes,
+  rejectionReasonOfSubject,
+  runPhaseAValidation,
+  runPhaseBValidationWithPatch,
+} from "../src/index.js";
+import type { RejectCode } from "../src/types.js";
+import { buildValidationOneStepArgument } from "../src/validation-machine-data.js";
+import {
+  FUNDED_OUTPUT_LOVELACE,
+  hashScriptWitness,
+  makeMintPreimageCbor,
+  makeNativeTx,
+  makeOutput,
+  nativeScriptWitness,
+  outRefFromByte,
+  outRefFromTxId,
+  plutusV3ScriptWitness,
+} from "./validation-fixtures.js";
+
+/**
+ * Shared harness of the emission-order rows. A row is one transaction against
+ * one pre-state. The producer (Phase A, then Phase B), the trace builder and
+ * the one-step argument of the trace's stopping step must all name the row's
+ * expected first fault.
+ */
+
+// A fixed key, so that a row's bytes do not change between runs.
+export const KEY = CML.PrivateKey.from_normal_bytes(Buffer.alloc(32, 0x6b));
+export const keyAddress = (networkId: number, keyByte: number) =>
+  Buffer.from(
+    CML.EnterpriseAddress.new(
+      networkId,
+      CML.Credential.new_pub_key(
+        CML.PrivateKey.from_normal_bytes(Buffer.alloc(32, keyByte))
+          .to_public()
+          .hash(),
+      ),
+    )
+      .to_address()
+      .to_raw_bytes(),
+  );
+export const KEY_ADDRESS = keyAddress(0, 0x6b);
+export const funded = makeOutput(FUNDED_OUTPUT_LOVELACE, KEY_ADDRESS);
+export const keySpent = outRefFromByte(0x81);
+export const EMPTY_SIDECAR = encodeMidgardCekProgramMaterialSidecar([]);
+
+/** A Plutus V3 spend the rows never execute: each stops before the CEK. */
+const program = buildMidgardCanonicalCekProgram(
+  Buffer.from(
+    UPLCEncoder.compile(new UPLCProgram([1, 1, 0], new Lambda(new UPLCVar(0)))),
+  ),
+);
+export const plutus = plutusV3ScriptWitness(program.envelopeCbor);
+export const PLUTUS_SIDECAR = encodeMidgardCekProgramMaterialSidecar([
+  ...program.material.values(),
+]);
+
+export const nativeAll: Parameters<typeof nativeScriptWitness>[0] = {
+  type: "all",
+  scripts: [],
+};
+export const native = nativeScriptWitness(nativeAll);
+export const NATIVE_POLICY = hashScriptWitness(native);
+
+const assetName = Buffer.from("42", "hex");
+export const mintOf = (policy: string) =>
+  makeMintPreimageCbor(
+    new Map([[Buffer.from(policy, "hex"), new Map([[assetName, 5n]])]]),
+  );
+export const mintedOutput = (policy: string) =>
+  makeOutput(
+    FUNDED_OUTPUT_LOVELACE,
+    KEY_ADDRESS,
+    new Map([[policy, new Map([[assetName.toString("hex"), 5n]])]]),
+  );
+
+export type NativeTxOptions = NonNullable<Parameters<typeof makeNativeTx>[0]>;
+
+/**
+ * An input-resolution reason with its `input_index` left out: the arm, and the
+ * source kind where the arm has one. The machine's input ordinal for these
+ * arms is pending X-N2C2, so a row asserts only the rest of the reason.
+ */
+export type PendingInputIndexReason = {
+  readonly pendingInputIndex:
+    | { readonly InputNotFound: { readonly source_kind: bigint } }
+    | { readonly SpendInputSignerMissing: Record<string, never> };
+};
+
+export type Expected = {
+  readonly code: RejectCode;
+  readonly reason: MidgardRejectionReasonV1 | PendingInputIndexReason;
+};
+
+/** A reason as a row asserts it: without `input_index` when that is pending. */
+const assertedReason = (
+  expected: Expected["reason"],
+  actual: MidgardRejectionReasonV1 | null | undefined,
+): unknown => {
+  if (typeof expected !== "object" || !("pendingInputIndex" in expected)) {
+    return actual;
+  }
+  if (typeof actual !== "object" || actual === null) return actual;
+  return Object.fromEntries(
+    Object.entries(actual).map(([arm, fields]) => {
+      const { input_index: _pending, ...rest } = fields as Record<
+        string,
+        unknown
+      >;
+      return [arm, rest];
+    }),
+  );
+};
+const expectedReason = (expected: Expected["reason"]): unknown =>
+  typeof expected === "object" && "pendingInputIndex" in expected
+    ? expected.pendingInputIndex
+    : expected;
+
+export type Row = {
+  readonly name: string;
+  readonly kind: "multi" | "control" | "accept";
+  /** The producer already emitted this verdict before the reconciliation. */
+  readonly guard: boolean;
+  /** The Phase B route Phase A admits the row to, when the row pins it. */
+  readonly route?: "full" | "plain";
+  readonly state: readonly (readonly [Buffer, Buffer])[];
+  readonly tx: NativeTxOptions & { readonly spendInputs: readonly Buffer[] };
+  readonly sidecar: Buffer;
+  readonly expected: Expected | null;
+};
+
+/** Every multi-fault row has a single-fault control per fault. */
+export const expectControlledRows = (
+  rows: readonly Row[],
+  prefixes: readonly string[],
+) => {
+  const names = rows.map(({ name }) => name);
+  expect(new Set(names).size).toBe(names.length);
+  expect(rows.filter(({ kind }) => kind === "accept")).toHaveLength(1);
+  for (const prefix of prefixes) {
+    const selected = rows.filter(({ name }) => name.startsWith(prefix));
+    const count = (kind: Row["kind"]) =>
+      selected.filter((row) => row.kind === kind).length;
+    expect(count("multi")).toBeGreaterThan(0);
+    expect(count("control")).toBeGreaterThanOrEqual(2);
+  }
+};
+
+const PHASE_A_CONFIG = {
+  expectedNetworkId: 0n,
+  minFeeA: 0n,
+  minFeeB: 0n,
+  concurrency: 1,
+  strictnessProfile: "phase1_midgard",
+  consensusProfile: MIDGARD_CONSENSUS_PROFILE,
+} as const;
+
+const transactionOf = (row: Row) =>
+  makeNativeTx({ ...row.tx, privateKey: KEY });
+
+/** The producer: Phase A, then Phase B on what Phase A admits. */
+export const producer = async (row: Row) => {
+  const transaction = transactionOf(row);
+  const phaseA = await Effect.runPromise(
+    runPhaseAValidation(
+      [
+        {
+          txId: transaction.txId,
+          txCbor: transaction.txCbor,
+          arrivalSeq: 0n,
+          createdAt: new Date(0),
+          programMaterialSidecarCbor: row.sidecar,
+        },
+      ],
+      PHASE_A_CONFIG,
+    ),
+  );
+  if (phaseA.rejected.length > 0) {
+    return { rejection: phaseA.rejected[0]!, route: undefined };
+  }
+  const route = phaseA.accepted[0]!.derived.requiresLocalScriptDiscovery
+    ? ("full" as const)
+    : ("plain" as const);
+  const phaseB = await Effect.runPromise(
+    runPhaseBValidationWithPatch(
+      phaseA.accepted,
+      new Map(row.state.map(([key, output]) => [key.toString("hex"), output])),
+      {
+        nowCardanoSlotNo: 100n,
+        bucketConcurrency: 1,
+        l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
+      },
+    ),
+  );
+  return { rejection: phaseB.rejected[0] ?? null, route };
+};
+
+export const machineTrace = async (row: Row) => {
+  const transaction = transactionOf(row);
+  const entries = row.state.map(([outRef, output]) => ({ outRef, output }));
+  const accepted = row.expected === null;
+  const expectedLedgerOps = accepted
+    ? [
+        ...row.tx.spendInputs.map((key) => ({ type: "delete" as const, key })),
+        ...(row.tx.outputs ?? []).map((outputCbor, index) =>
+          buildValidationMachineLedgerInsertOp({
+            key: outRefFromTxId(transaction.txId, BigInt(index)),
+            outputCbor,
+          }),
+        ),
+      ]
+    : [];
+  const ledgerMutationSteps = accepted
+    ? await buildValidationMachineLedgerMutationSteps({
+        initialEntries: entries,
+        operations: expectedLedgerOps,
+      })
+    : [];
+  const unchangedRoot = Buffer.alloc(32, 0x2e).toString("hex");
+  return await Effect.runPromise(
+    buildDeterministicValidationMachineTrace({
+      l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
+      consensusProfile: MIDGARD_CONSENSUS_PROFILE,
+      eventKeyCbor: encodeCbor([2n, Buffer.alloc(32, 0x41)]),
+      sourceKind: "normal",
+      blockTimeMs: 1_750_000_000_000,
+      expectedNetworkId: 0n,
+      minFeeA: 0n,
+      minFeeB: 0n,
+      blockSlot: 100n,
+      transactionId: transaction.txId,
+      canonicalTransactionCbor: transaction.txCbor,
+      programMaterialSidecarCbor: row.sidecar,
+      priorUtxosRoot: accepted
+        ? ledgerMutationSteps[0]!.preRoot.toString("hex")
+        : unchangedRoot,
+      postUtxosRoot: accepted
+        ? ledgerMutationSteps.at(-1)!.postRoot.toString("hex")
+        : unchangedRoot,
+      ledgerWitnessEntries: entries,
+      expectedLedgerOps,
+      ledgerMutationSteps,
+      expectedVerdict: accepted ? "accepted" : "rejected",
+      expectedRejectionCode: row.expected?.code ?? null,
+    }),
+  );
+};
+
+/** The producer's verdict, then the trace's, then the stopping step's. */
+export const expectRowVerdicts = async (row: Row) => {
+  const { rejection, route } = await producer(row);
+  if (row.route !== undefined) expect(route).toBe(row.route);
+  // An output network mismatch is tx-global and records no subject.
+  const producerReason =
+    rejection?.subject === undefined
+      ? rejection?.code === RejectCodes.NetworkIdMismatch
+        ? "NetworkIdMismatch"
+        : null
+      : rejectionReasonOfSubject(rejection.subject, "machine");
+  if (row.expected === null) {
+    expect(rejection).toBeNull();
+  } else {
+    expect(rejection?.code).toBe(row.expected.code);
+    expect(assertedReason(row.expected.reason, producerReason)).toStrictEqual(
+      expectedReason(row.expected.reason),
+    );
+  }
+
+  const trace = await machineTrace(row);
+  expect(trace.verdict).toBe(row.expected === null ? "accepted" : "rejected");
+  expect(trace.rejectionCode).toBe(row.expected?.code ?? null);
+  if (row.expected !== null) {
+    expect(
+      assertedReason(row.expected.reason, trace.rejectionReason),
+    ).toStrictEqual(expectedReason(row.expected.reason));
+  }
+  // The producer and the trace builder name the same reason, whole.
+  expect(trace.rejectionReason).toStrictEqual(producerReason);
+
+  // The stopping step's one-step argument builds from this trace.
+  const stop =
+    trace.witnesses.length -
+    1 -
+    [...trace.witnesses]
+      .reverse()
+      .findIndex((witness) => witness.phase !== "terminal");
+  const argument = buildValidationOneStepArgument({ trace, stateIndex: stop });
+  expect(argument.semanticResolverIndex).toBeGreaterThanOrEqual(0);
+};
