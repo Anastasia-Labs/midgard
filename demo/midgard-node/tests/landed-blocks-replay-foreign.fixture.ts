@@ -31,7 +31,7 @@ import {
   forcedOrderProjection,
   forcedOrderTrackedSet,
 } from "../src/forced-orders/index.js";
-import { userEventEntry } from "../src/l1-events/entries.js";
+import { readUserEvent } from "../src/l1-events/entries.js";
 import type { ReplayInput } from "../src/landed-blocks/replay.js";
 import { replayForeignBlock } from "../src/landed-blocks/replay-foreign.js";
 import { computeLedgerMpfRootFromLedgerEntries } from "../src/mpf/ledger-hydration.js";
@@ -195,15 +195,16 @@ export const repeating = (
   },
 });
 
-/** The deposits the view knows, decoded the way the replayer decodes them. */
+/** The deposits the view knows that the replayer reads, as it reads them. */
 export const depositsAt = async (store: FactStore) => {
   const view = (await store.currentView())!;
   const read = await eventsAt(store, listOf("deposit"), view.point);
   if (read.kind !== "ok") throw new Error(`eventsAt: ${read.kind}`);
-  return read.value.map((event) => {
-    const decoded = userEventEntry(event, NETWORK);
-    if (decoded.kind !== "deposit") throw new Error("not a deposit");
-    return { event, entry: decoded.entry };
+  return read.value.flatMap((event) => {
+    const reading = readUserEvent(event, NETWORK);
+    if (reading.kind === "undecodable") return [];
+    if (reading.entry.kind !== "deposit") throw new Error("not a deposit");
+    return [{ event, entry: reading.entry.entry }];
   });
 };
 

@@ -7,10 +7,12 @@
  * admitted order, live or spent since, whatever its resolution status: the
  * facts at the view, never the node's ingested rows). The block's event
  * sets must be exactly the in-window events known there
- * (`start < inclusion <= end`): an id the payload names that is not known
- * there at all is `event_unknown` (see `holds.ts` for why it is a wait); a
- * known id outside the window, a known in-window id it leaves out, or one
- * it names twice, is `invalid`; an in-window order whose output cannot be read
+ * (`start < inclusion <= end`), less those ingestion leaves out as
+ * undecodable (`readUserEvent`, so no honest block holds one): an id the
+ * payload names that is not known there at all is `event_unknown` (see
+ * `holds.ts` for why it is a wait); a known id outside the window, an
+ * undecodable one, a known in-window id it leaves out, or one it names
+ * twice, is `invalid`; an in-window order whose output cannot be read
  * back at the view is `forced_order_pending`. A block that ends past what
  * the view can know (`view time + event wait - 1`) is `missing`, like a DA
  * payload that is not available yet.
@@ -38,7 +40,7 @@ import {
   forcedOrdersAdmittedAt,
   outRefLabel,
 } from "../forced-orders/index.js";
-import { userEventEntry } from "../l1-events/entries.js";
+import { readUserEvent } from "../l1-events/entries.js";
 import {
   canonicalSlotConfigForLucid,
   unixTimeToSlotForConfig,
@@ -65,17 +67,25 @@ import type { WithdrawalMembership } from "./store.js";
  * `known` are the in-window ids, `seen` every id the view knows: an id
  * outside the window has a fixed inclusion time, so naming it is the
  * block's fault; one the view does not know at all may be a gap in this
- * node's facts, so it waits.
+ * node's facts, so it waits. `undecodable` are the in-window ids ingestion
+ * leaves out, with why: never in `known`, so a block need not name them,
+ * and naming one is the block's fault.
  */
 const exact = (
   known: ReadonlySet<string>,
   seen: ReadonlySet<string>,
   named: readonly SDK.DaPayloadEntry[],
   kind: string,
+  undecodable: ReadonlyMap<string, string> = new Map(),
 ) => {
   const ids = named.map(([key]) => key);
   if (new Set(ids).size !== ids.length)
     return invalid(`the block names a ${kind} twice`);
+  const unread = ids.find((id) => undecodable.has(id));
+  if (unread !== undefined)
+    return invalid(
+      `${kind} ${unread} is not a user event the node reads: ${undecodable.get(unread)}`,
+    );
   const outside = ids.find((id) => !known.has(id) && seen.has(id));
   if (outside !== undefined)
     return invalid(`${kind} ${outside} is outside the block's window`);
@@ -283,6 +293,7 @@ export const replayForeignBlock = (deps: {
         { l2Outref: string; l2Owner: string; l2Value: string; info: string }
       >();
       const seen = new Set<string>();
+      const undecodable = new Map<string, string>();
       for (const list of deps.events.lists) {
         const read = yield* Effect.promise(() =>
           eventsAt(deps.store, list, view.point),
@@ -294,7 +305,12 @@ export const replayForeignBlock = (deps: {
         for (const event of read.value) {
           seen.add(event.idCbor);
           if (!inWindow(event.inclusionTime)) continue;
-          const decoded = userEventEntry(event, config.NETWORK);
+          const reading = readUserEvent(event, config.NETWORK);
+          if (reading.kind === "undecodable") {
+            undecodable.set(event.idCbor, reading.detail);
+            continue;
+          }
+          const decoded = reading.entry;
           if (decoded.kind === "deposit")
             deposits.set(decoded.entry.idCbor, {
               key: depositLedgerKey(decoded.entry.idCbor).toString("hex"),
@@ -325,12 +341,19 @@ export const replayForeignBlock = (deps: {
       );
       const body = payload.block_body;
       const mismatch =
-        exact(new Set(deposits.keys()), seen, body.deposits, "deposit") ??
+        exact(
+          new Set(deposits.keys()),
+          seen,
+          body.deposits,
+          "deposit",
+          undecodable,
+        ) ??
         exact(
           new Set(withdrawals.keys()),
           seen,
           body.withdrawals,
           "withdrawal",
+          undecodable,
         ) ??
         exact(
           new Set(forced.keys()),

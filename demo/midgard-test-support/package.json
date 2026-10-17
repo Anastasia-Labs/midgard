@@ -29,6 +29,10 @@
       "midgard-source": "./src/hex.ts",
       "types": "./src/hex.ts"
     },
+    "./deep-plutus-data": {
+      "midgard-source": "./src/deep-plutus-data.ts",
+      "types": "./src/deep-plutus-data.ts"
+    },
     "./plutus-data-fuzz": {
       "midgard-source": "./src/plutus-data-fuzz.ts",
       "types": "./src/plutus-data-fuzz.ts"
