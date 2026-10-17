@@ -85,6 +85,7 @@ export type RegisterOperatorTxConfig = {
   readonly activeNotMemberWitness: NodeWithDatum;
   readonly retiredNotMemberWitness: NodeWithDatum;
   readonly registeredRootNode: NodeWithDatum;
+  /** Wallet inputs the builder spends; empty leaves funding to coin selection. */
   readonly registerFundingInputs: readonly UTxO[];
   readonly registerMintAssets: Assets;
   readonly prependedNodeDatum: SDK.LinkedListNodeView;
@@ -209,7 +210,7 @@ export const buildRegisterOperatorTx = (
   if (config.layout !== undefined) {
     config.onLayout?.(config.layout);
   }
-  return config.lucid
+  const tx = config.lucid
     .newTx()
     .collectFrom([config.registeredRootNode.utxo], LucidData.void())
     .readFrom([
@@ -236,8 +237,10 @@ export const buildRegisterOperatorTx = (
       config.registeredRootNode.utxo.assets,
     )
     .addSignerKey(config.operatorKeyHash)
-    .validTo(Number(config.registerValidTo))
-    .collectFrom([...config.registerFundingInputs]);
+    .validTo(Number(config.registerValidTo));
+  return config.registerFundingInputs.length === 0
+    ? tx
+    : tx.collectFrom([...config.registerFundingInputs]);
 };
 
 export type ActivateOperatorTxConfig = {

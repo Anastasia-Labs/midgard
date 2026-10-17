@@ -12,6 +12,9 @@ export const DEPLOYMENT_PROFILES = {
     timing: {
       block_maturity_ms: 604800000,
       dispute_response_window_ms: 300000,
+      dispute_side_clock_ms: 86400000,
+      dispute_max_validity_range_ms: 120000,
+      dispute_resolution_allowance_ms: 21600000,
       operator_shift_ms: 3600000,
       registration_ms: 30,
       event_wait_ms: 130080000,
@@ -37,6 +40,8 @@ export const DEPLOYMENT_PROFILES = {
       max_bisection_rounds: 32,
       max_inactivity_strikes: 5,
       coins_per_utxo_byte: 4310,
+      max_dispute_move_fee_lovelace: 1200000,
+      fraud_proof_output_lovelace: 2000000,
     },
     economics: {
       profile: "public-preprod-launch-v1",
@@ -45,6 +50,24 @@ export const DEPLOYMENT_PROFILES = {
       inactivitySlashingPenaltyLovelace: 10000000000,
       fraudProverRewardLovelace: 75000000000,
       proverCollateralFloorLovelace: 5000000,
+    },
+    protocol_treasury_native_script: {
+      type: "atLeast",
+      required: 2,
+      scripts: [
+        {
+          type: "sig",
+          keyHash: "706c616365686f6c6465723a74726573000000000000000000000001",
+        },
+        {
+          type: "sig",
+          keyHash: "706c616365686f6c6465723a74726573000000000000000000000002",
+        },
+        {
+          type: "sig",
+          keyHash: "706c616365686f6c6465723a74726573000000000000000000000003",
+        },
+      ],
     },
     allow_lists: {
       operators: ["706c616365686f6c6465723a6f706572000000000000000000000001"],
@@ -81,6 +104,9 @@ export const DEPLOYMENT_PROFILES = {
     timing: {
       block_maturity_ms: 604800000,
       dispute_response_window_ms: 300000,
+      dispute_side_clock_ms: 86400000,
+      dispute_max_validity_range_ms: 120000,
+      dispute_resolution_allowance_ms: 21600000,
       operator_shift_ms: 3600000,
       registration_ms: 30000,
       event_wait_ms: 1800000,
@@ -106,6 +132,8 @@ export const DEPLOYMENT_PROFILES = {
       max_bisection_rounds: 32,
       max_inactivity_strikes: 1000000,
       coins_per_utxo_byte: 4310,
+      max_dispute_move_fee_lovelace: 1200000,
+      fraud_proof_output_lovelace: 2000000,
     },
     economics: {
       profile: "public-preprod-launch-v1",
@@ -114,6 +142,24 @@ export const DEPLOYMENT_PROFILES = {
       inactivitySlashingPenaltyLovelace: 10000000000,
       fraudProverRewardLovelace: 75000000000,
       proverCollateralFloorLovelace: 5000000,
+    },
+    protocol_treasury_native_script: {
+      type: "atLeast",
+      required: 2,
+      scripts: [
+        {
+          type: "sig",
+          keyHash: "706c616365686f6c6465723a74726573000000000000000000000001",
+        },
+        {
+          type: "sig",
+          keyHash: "706c616365686f6c6465723a74726573000000000000000000000002",
+        },
+        {
+          type: "sig",
+          keyHash: "706c616365686f6c6465723a74726573000000000000000000000003",
+        },
+      ],
     },
     allow_lists: {
       operators: [
@@ -153,6 +199,9 @@ export const DEPLOYMENT_PROFILES = {
     timing: {
       block_maturity_ms: 900000,
       dispute_response_window_ms: 60000,
+      dispute_side_clock_ms: 3600000,
+      dispute_max_validity_range_ms: 20000,
+      dispute_resolution_allowance_ms: 900000,
       operator_shift_ms: 1800000,
       registration_ms: 30000,
       event_wait_ms: 300000,
@@ -178,6 +227,8 @@ export const DEPLOYMENT_PROFILES = {
       max_bisection_rounds: 32,
       max_inactivity_strikes: 5,
       coins_per_utxo_byte: 4310,
+      max_dispute_move_fee_lovelace: 1200000,
+      fraud_proof_output_lovelace: 2000000,
     },
     economics: {
       profile: "bounded-acceptance-v1",
@@ -186,6 +237,24 @@ export const DEPLOYMENT_PROFILES = {
       inactivitySlashingPenaltyLovelace: 100000000,
       fraudProverRewardLovelace: 400000000,
       proverCollateralFloorLovelace: 5000000,
+    },
+    protocol_treasury_native_script: {
+      type: "atLeast",
+      required: 2,
+      scripts: [
+        {
+          type: "sig",
+          keyHash: "706c616365686f6c6465723a74726573000000000000000000000001",
+        },
+        {
+          type: "sig",
+          keyHash: "706c616365686f6c6465723a74726573000000000000000000000002",
+        },
+        {
+          type: "sig",
+          keyHash: "706c616365686f6c6465723a74726573000000000000000000000003",
+        },
+      ],
     },
     allow_lists: {
       operators: null,
@@ -207,6 +276,9 @@ export const DEPLOYMENT_PROFILES = {
     timing: {
       block_maturity_ms: 900000,
       dispute_response_window_ms: 60000,
+      dispute_side_clock_ms: 3600000,
+      dispute_max_validity_range_ms: 20000,
+      dispute_resolution_allowance_ms: 900000,
       operator_shift_ms: 1800000,
       registration_ms: 30000,
       event_wait_ms: 300000,
@@ -232,6 +304,8 @@ export const DEPLOYMENT_PROFILES = {
       max_bisection_rounds: 32,
       max_inactivity_strikes: 5,
       coins_per_utxo_byte: 4310,
+      max_dispute_move_fee_lovelace: 1200000,
+      fraud_proof_output_lovelace: 2000000,
     },
     economics: {
       profile: "bounded-acceptance-v1",
@@ -240,6 +314,24 @@ export const DEPLOYMENT_PROFILES = {
       inactivitySlashingPenaltyLovelace: 100000000,
       fraudProverRewardLovelace: 400000000,
       proverCollateralFloorLovelace: 5000000,
+    },
+    protocol_treasury_native_script: {
+      type: "atLeast",
+      required: 2,
+      scripts: [
+        {
+          type: "sig",
+          keyHash: "706c616365686f6c6465723a74726573000000000000000000000001",
+        },
+        {
+          type: "sig",
+          keyHash: "706c616365686f6c6465723a74726573000000000000000000000002",
+        },
+        {
+          type: "sig",
+          keyHash: "706c616365686f6c6465723a74726573000000000000000000000003",
+        },
+      ],
     },
     allow_lists: {
       operators: null,
@@ -259,8 +351,11 @@ export const DEPLOYMENT_PROFILES = {
       slot_length_ms: 1000,
     },
     timing: {
-      block_maturity_ms: 14400000,
+      block_maturity_ms: 259200000,
       dispute_response_window_ms: 60000,
+      dispute_side_clock_ms: 3600000,
+      dispute_max_validity_range_ms: 20000,
+      dispute_resolution_allowance_ms: 900000,
       operator_shift_ms: 1800000,
       registration_ms: 30000,
       event_wait_ms: 600000,
@@ -273,7 +368,7 @@ export const DEPLOYMENT_PROFILES = {
       da_full_response_window_ms: 840000,
       da_challenge_window_ms: 1800000,
       da_slash_grace_ms: 300000,
-      da_bond_withdraw_delay_ms: 15180000,
+      da_bond_withdraw_delay_ms: 259980000,
     },
     da_bond: {
       da_bond_lovelace: 500000000,
@@ -286,6 +381,8 @@ export const DEPLOYMENT_PROFILES = {
       max_bisection_rounds: 32,
       max_inactivity_strikes: 5,
       coins_per_utxo_byte: 4310,
+      max_dispute_move_fee_lovelace: 1200000,
+      fraud_proof_output_lovelace: 2000000,
     },
     economics: {
       profile: "bounded-acceptance-v1",
@@ -294,6 +391,24 @@ export const DEPLOYMENT_PROFILES = {
       inactivitySlashingPenaltyLovelace: 100000000,
       fraudProverRewardLovelace: 400000000,
       proverCollateralFloorLovelace: 5000000,
+    },
+    protocol_treasury_native_script: {
+      type: "atLeast",
+      required: 2,
+      scripts: [
+        {
+          type: "sig",
+          keyHash: "706c616365686f6c6465723a74726573000000000000000000000001",
+        },
+        {
+          type: "sig",
+          keyHash: "706c616365686f6c6465723a74726573000000000000000000000002",
+        },
+        {
+          type: "sig",
+          keyHash: "706c616365686f6c6465723a74726573000000000000000000000003",
+        },
+      ],
     },
     allow_lists: {
       operators: null,
@@ -313,8 +428,11 @@ export const DEPLOYMENT_PROFILES = {
       slot_length_ms: 1000,
     },
     timing: {
-      block_maturity_ms: 14400000,
+      block_maturity_ms: 259200000,
       dispute_response_window_ms: 60000,
+      dispute_side_clock_ms: 3600000,
+      dispute_max_validity_range_ms: 20000,
+      dispute_resolution_allowance_ms: 900000,
       operator_shift_ms: 1800000,
       registration_ms: 30000,
       event_wait_ms: 600000,
@@ -327,7 +445,7 @@ export const DEPLOYMENT_PROFILES = {
       da_full_response_window_ms: 840000,
       da_challenge_window_ms: 1800000,
       da_slash_grace_ms: 300000,
-      da_bond_withdraw_delay_ms: 15180000,
+      da_bond_withdraw_delay_ms: 259980000,
     },
     da_bond: {
       da_bond_lovelace: 500000000,
@@ -340,6 +458,8 @@ export const DEPLOYMENT_PROFILES = {
       max_bisection_rounds: 32,
       max_inactivity_strikes: 5,
       coins_per_utxo_byte: 4310,
+      max_dispute_move_fee_lovelace: 1200000,
+      fraud_proof_output_lovelace: 2000000,
     },
     economics: {
       profile: "bounded-acceptance-v1",
@@ -348,6 +468,24 @@ export const DEPLOYMENT_PROFILES = {
       inactivitySlashingPenaltyLovelace: 100000000,
       fraudProverRewardLovelace: 400000000,
       proverCollateralFloorLovelace: 5000000,
+    },
+    protocol_treasury_native_script: {
+      type: "atLeast",
+      required: 2,
+      scripts: [
+        {
+          type: "sig",
+          keyHash: "706c616365686f6c6465723a74726573000000000000000000000001",
+        },
+        {
+          type: "sig",
+          keyHash: "706c616365686f6c6465723a74726573000000000000000000000002",
+        },
+        {
+          type: "sig",
+          keyHash: "706c616365686f6c6465723a74726573000000000000000000000003",
+        },
+      ],
     },
     allow_lists: {
       operators: ["8372d26e23e36568f931b8e3a418ca29dc545054f017548733c78198"],
@@ -374,17 +512,17 @@ export const DEPLOYMENT_PROFILES = {
 } as const;
 
 export const DEPLOYMENT_PROFILE_DIGESTS = {
-  mainnet: "8228a2d0552be07669710ff433b980772ae1506cf2bb3c7160782a6a59366912",
+  mainnet: "044406b9464921ec0c7deab82943d37385c64ad9fbaf5c80187a69a7a75d0da4",
   "preprod-public":
-    "8bd688e6ca826e9ccbdf290a6df6fa0da2badd462d6f3b9ed601ee7938bda0f5",
+    "5a7f63fb1225d639e113d67e4d2c67cc8e210dffe7c7683d8692e7e15077683b",
   "preprod-testing":
-    "30d117db4ca0852fc22f80a4c687b3c118e5eeb6eb3cf360f02c2e2d13ad2b70",
+    "cb943304680811f0445059d901cd967f011abfdb36623511900c7bea779176d3",
   "local-devnet-testing":
-    "15441a106087154f16c6052eb984260fe4bbb2c9b168fa7f15e2ab17082eda29",
+    "800570446eff7e5194fa6d1cce5602afda21ba1f7563f567ad68ea8a0e3e6ce3",
   "preprod-emulator-testing":
-    "4a3edd7153f17f26fc115b61a63721848ed6979e92a16e96789fabf629192789",
+    "8512bdcd872dff0b54ac7703b61a839ccc4bce69f72f8200ea570063b042b273",
   "preprod-emulator-curated":
-    "e4b118c838a4b968f6b77a1a71fd30c63b4489852d83ca5779ff0bd96ade6eb9",
+    "4d89aca5b3000750e02610f8828d5e068fc5fce6f766be51e9efd3efc7473b14",
 } as const;
 
 export const DEPLOYMENT_MANIFEST_ECONOMICS_BY_PROFILE = {
@@ -413,12 +551,18 @@ export const SELECTED_DEPLOYMENT_PROFILE =
   DEPLOYMENT_PROFILES["preprod-testing"];
 export const SELECTED_DEPLOYMENT_PROFILE_DIGEST =
   DEPLOYMENT_PROFILE_DIGESTS["preprod-testing"];
+const freezeNativeScript = (script: object): void => {
+  for (const child of Object.values(script) as unknown[])
+    if (typeof child === "object" && child !== null) freezeNativeScript(child);
+  Object.freeze(script);
+};
 for (const profile of Object.values(DEPLOYMENT_PROFILES)) {
   Object.freeze(profile.l1_finality);
   Object.freeze(profile.timing);
   Object.freeze(profile.da_bond);
   Object.freeze(profile.limits);
   Object.freeze(profile.economics);
+  freezeNativeScript(profile.protocol_treasury_native_script);
   for (const keys of Object.values(profile.allow_lists))
     if (keys !== null) Object.freeze(keys);
   Object.freeze(profile.allow_lists);

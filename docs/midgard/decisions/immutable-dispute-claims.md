@@ -1,6 +1,9 @@
 # Rejected execution preserves the disputed claim
 
-Status: Accepted; implemented validation-machine semantics.
+Status: Superseded (2026-10-14). The validation machine state no longer
+carries a ledger delta root, so there is no claimed delta for a transition to
+preserve; the rejection work witness and transition-binding obligations below
+are unchanged.
 
 Recorded: 2026-09-07, extracted from the delivered validation-machine repair.
 

@@ -187,10 +187,6 @@ const fixture = async (present: boolean, index: bigint, consumed = false) => {
   const root = await rootFor(SDK.ROOT_DOMAINS.forcedTransactionsV1, entries);
   const traceRoot = await rootFor(SDK.ROOT_DOMAINS.transitionTrace, traces);
   const eventRoot = await rootFor(SDK.ROOT_DOMAINS.eventToStep, events);
-  const validationRoot = await rootFor(
-    SDK.ROOT_DOMAINS.validationTraces,
-    validations,
-  );
   const counts = {
     ...base.reconstruction.payload.block_body.counts,
     forcedTransactionCount: BigInt(entries.length),
@@ -207,7 +203,9 @@ const fixture = async (present: boolean, index: bigint, consumed = false) => {
     forcedTransactionsRoot: root.root,
     transitionTraceRoot: traceRoot.root,
     eventToStepRoot: eventRoot.root,
-    validationTracesRoot: validationRoot.root,
+    // The header pins the validation-trace pair; the body keeps its traces.
+    validationTracesRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
+    validationTraceCount: 0n,
   };
   const headerHash = computeHash28(SDK.encodeHeaderCbor(header)).toString(
     "hex",

@@ -3,7 +3,6 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { MIDGARD_CONSENSUS_LIMITS } from "@al-ft/midgard-core/consensus-profile";
-import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import { inspectContracts } from "@al-ft/midgard-fault-proofs";
 import {
   createReferenceScriptAuthPolicy,
@@ -20,11 +19,11 @@ import {
 import { Effect } from "effect";
 import { beforeAll, describe, expect, it } from "vitest";
 
-import { buildContractDeploymentInfoFromContracts } from "../src/commands/contract-deployment-info.js";
 import {
   buildFraudProofCatalogueDeploymentInfo,
   fraudProofsToIndexedValidators,
 } from "../src/transactions/initialization.js";
+import { makeFinalizedDeploymentManifestFixture } from "./helpers/finalized-deployment-manifest.js";
 import { loadRealMidgardContractsForTest } from "./helpers/real-midgard-contracts.js";
 
 const moduleDir = dirname(fileURLToPath(import.meta.url));
@@ -44,8 +43,9 @@ const buildInspectionFixture = async () => {
     lucid,
     1_900_000_000_000,
   );
+  const nonce = { txHash: "ab".repeat(32), outputIndex: 0 };
   const appliedContracts = await loadRealMidgardContractsForTest(
-    { txHash: "ab".repeat(32), outputIndex: 0 },
+    nonce,
     authPolicy,
   );
   const fraudProofCatalogue = await Effect.runPromise(
@@ -53,19 +53,14 @@ const buildInspectionFixture = async () => {
       fraudProofsToIndexedValidators(appliedContracts.fraudProofs),
     ),
   );
-  // This is the production output before reference publication. The inspector
-  // reports identities; live publication admission is tested separately. The
-  // manifest wrapping it records the L1 slot mapping the contracts were applied
-  // with (Preprod's).
-  const deploymentInfo = {
-    ...buildContractDeploymentInfoFromContracts(
-      appliedContracts,
-      referenceScriptAuthPolicyDeploymentInfo(authPolicy),
-      undefined,
-      fraudProofCatalogue,
-    ),
-    l1SlotConfig: NAMED_NETWORK_L1_SLOT_CONFIGS.Preprod,
-  };
+  // The finalized deployment manifest, built as the deploy flow builds it:
+  // it records the hub-oracle one-shot the contracts were applied with, the
+  // L1 slot mapping and the availability challenge.
+  const deploymentInfo = await makeFinalizedDeploymentManifestFixture({
+    contracts: appliedContracts,
+    authPolicy: referenceScriptAuthPolicyDeploymentInfo(authPolicy),
+    nonce,
+  });
   return {
     blueprintJson,
     contracts: appliedContracts.fraudProofContracts,

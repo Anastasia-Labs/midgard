@@ -1,6 +1,7 @@
 import { NAMED_NETWORK_L1_SLOT_CONFIGS } from "@al-ft/midgard-core/l1-slot-config";
 import * as SDK from "@al-ft/midgard-sdk";
 import { h32 } from "@al-ft/midgard-test-support/hex";
+import { selectPlainFundingUtxos } from "@al-ft/midgard-test-support/reference-script-funding";
 import {
   type Assets,
   CML,
@@ -475,7 +476,7 @@ export const createFixture = async (
     const { tx, layout } = await Effect.runPromise(
       SDK.completeReferenceScriptPublicationTxProgram({
         lucid: publishingLucid,
-        selectedFundingInputs: SDK.selectReferenceScriptFundingUtxos(
+        selectedFundingInputs: selectPlainFundingUtxos(
           await publishingLucid.wallet().getUtxos(),
           SDK.referenceScriptPublicationFundingTarget(1),
         ),

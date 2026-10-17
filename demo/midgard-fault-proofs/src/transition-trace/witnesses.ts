@@ -12,6 +12,7 @@ export {
   buildL2TransactionTransitionWitness,
   buildOmittedDueL1EventFault,
   buildValidDepositTransitionWitness,
+  buildValidForcedTransactionTransitionWitness,
   eventKeyFromOmittedEvidence,
   type OmittedDueL1EventEvidence,
   type OutOfWindowSourceEventEvidence,

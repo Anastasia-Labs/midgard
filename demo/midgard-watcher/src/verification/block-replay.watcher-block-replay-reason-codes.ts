@@ -41,7 +41,7 @@ export const STAGE_ORDER: ReadonlyMap<WatcherBlockReplayStage, number> =
   new Map(WATCHER_BLOCK_REPLAY_STAGES.map((stage, index) => [stage, index]));
 
 /**
- * Canonical validation phase -> replay stage, for the eight phases the
+ * Canonical validation phase -> replay stage, for the seven phases the
  * canonical Phase B pipeline can attach to a rejection.
  *
  * The seven Phase A phases (`canonicalDecode` .. `phaseAScriptPreconditions`)
@@ -57,7 +57,6 @@ export const WATCHER_BLOCK_REPLAY_STAGE_BY_CONSENSUS_PHASE = Object.freeze({
   scriptIntegrity: "scripts",
   cek: "scripts",
   valueAndMint: "value",
-  ledgerDelta: "post_state",
   terminal: "post_state",
 } as const) satisfies Partial<
   Record<MidgardValidationPhaseName, WatcherBlockReplayStage>

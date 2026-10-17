@@ -22,6 +22,8 @@ import * as Ledger from "../database/utils/ledger.js";
 import { importCheckCommittedRunBytes } from "../import-check/kill.js";
 import {
   computeDaPayloadRoots,
+  headerCommittedCounts,
+  headerCommittedRoots,
   headerCounts,
   headerRoots,
   rootMismatches,
@@ -316,7 +318,9 @@ export const verifyAndImportBlock = (
     const roots = yield* computeDaPayloadRoots(payload).pipe(
       Effect.mapError((cause) => new LocalFailure("payload roots", cause)),
     );
-    const mismatches = [...rootMismatches(headerRoots(input.header), roots)];
+    const mismatches = [
+      ...rootMismatches(headerRoots(input.header), headerCommittedRoots(roots)),
+    ];
     const body = payload.block_body;
     const memberCounts: SDK.DaPayloadCounts = {
       depositCount: BigInt(body.deposits.length),
@@ -336,7 +340,8 @@ export const verifyAndImportBlock = (
       memberCounts,
     ) as (keyof SDK.DaPayloadCounts)[]) {
       if (
-        memberCounts[key] !== headerCounts(input.header)[key] ||
+        headerCommittedCounts(memberCounts)[key] !==
+          headerCounts(input.header)[key] ||
         body.counts[key] !== memberCounts[key]
       )
         mismatches.push(key);
@@ -377,8 +382,9 @@ export const verifyAndImportBlock = (
     const replayRoot = yield* computeLedgerMpfRootFromLedgerEntries(entries);
     if (replayRoot !== input.header.utxosRoot)
       return yield* fail("invalid", "foreign replay UTxO root mismatch");
-    // Replay compares every transition, mapping and validation descriptor by its
-    // canonical bytes, independently of the payload's internally consistent roots.
+    // Replay compares every transition and mapping by its canonical bytes,
+    // independently of the payload's internally consistent roots; validation
+    // descriptors, which the header does not commit, only by verdict.
     return {
       headerHash: input.headerHash,
       root: replayRoot,

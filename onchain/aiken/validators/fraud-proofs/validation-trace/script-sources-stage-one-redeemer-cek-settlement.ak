@@ -2,7 +2,7 @@ use aiken/crypto.{ScriptHash}
 use cardano/assets.{PolicyId}
 use cardano/transaction.{OutputReference, Transaction}
 use midgard/computation_thread as ct
-use midgard/fraud_proofs/common.{cancel, continue}
+use midgard/fraud_proofs/common.{ProverOnly, cancel, continue_validation_trace}
 use midgard/script_sources_item_normalization as normalized
 use midgard/script_sources_redeemer_normalization_v1 as envelope
 
@@ -46,14 +46,14 @@ validator main(
         )
       ct.Continue(ReturnItem { input_index, output_index, original_envelope }) -> {
         expect Some(step_datum) = datum
-        continue(
+        continue_validation_trace(
           computation_thread_policy_id,
           step_datum,
           input_index,
           output_index,
           own_out_ref,
-          tx.inputs,
-          tx.outputs,
+          tx,
+          ProverOnly,
           fn(
             input_script_hash,
             _token_name,

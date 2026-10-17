@@ -19,6 +19,12 @@ export type ReplayInput = Readonly<{
   header: SDK.Header;
   /** The block's commit time (its node's `block_time`). */
   blockTime: bigint;
+  /**
+   * Its node's availability status. While it is Unattested no commitment
+   * binds the payload, so a replay that refuses the payload is `missing`
+   * (another peer's copy may replay), never `invalid`.
+   */
+  daAvailability: SDK.DaAvailabilityStateQueueStatus;
   parentHeaderHash: string;
   parentUtxosRoot: string;
   parentEntries: readonly Ledger.MinimalEntry[];
@@ -54,7 +60,8 @@ export type Replayed = Readonly<{
  *   block (a local computation, or a replay failure it cannot classify);
  * - `verifier_unavailable`: this node's Ed25519 verifier could not answer
  *   during the replay, a local fault and never the block's;
- * - `invalid`: the block does not replay to its header.
+ * - `invalid`: the block does not replay to its header, and its node carries
+ *   the availability commitment of the payload replayed.
  */
 export type ReplayOutcome =
   | Replayed

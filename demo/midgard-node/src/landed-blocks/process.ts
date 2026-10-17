@@ -67,6 +67,7 @@ import {
 import {
   decodeHistory,
   type LandedNode,
+  landedNodeOf,
   lineageBack,
   type QueueHistory,
 } from "./history.js";
@@ -111,9 +112,7 @@ const decodeQueue = (queue: LandedStateQueue) =>
     )).data;
     const nodes: LandedNode[] = [];
     for (const { headerHash, element } of queue.nodes) {
-      const { header, block_time: blockTime } =
-        yield* SDK.getStateQueueNodeFromStateQueueDatum(element.datum);
-      nodes.push({ headerHash, header, blockTime });
+      nodes.push(yield* landedNodeOf(headerHash, element.datum));
     }
     return {
       root: {
@@ -230,9 +229,7 @@ const newRow = <R>(
     }
     const outcome = yield* Effect.either(
       ports.replay({
-        headerHash: node.headerHash,
-        header: node.header,
-        blockTime: node.blockTime,
+        ...node,
         parentHeaderHash: parent.headerHash,
         parentUtxosRoot: parent.utxosRoot,
         parentEntries: ledgerEntries(ledger),

@@ -49,6 +49,9 @@ const TEST_ONLY_FUNDER_SEED =
 const TEST_ONLY_PROVER_SEED =
   "test test test test test test test test test test test junk";
 
+const TEST_ONLY_PUBLISHER_SEED =
+  "legal winner thank year wave sausage worth useful legal winner thank yellow";
+
 const FIXED_EMULATOR_UNIX_MS = 1_735_689_600_000;
 
 const fixedBaseEmulatorAccount = (
@@ -251,6 +254,10 @@ export const makeEmulatorHarness = async () =>
       prover: fixedProverEmulatorAccount(
         TEST_ONLY_PROVER_SEED,
         20_000_000_000n,
+      ),
+      publisher: fixedBaseEmulatorAccount(
+        TEST_ONLY_PUBLISHER_SEED,
+        40_000_000_000n,
       ),
     },
     emulatorTimeMs: FIXED_EMULATOR_UNIX_MS,

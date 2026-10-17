@@ -1,13 +1,10 @@
 import { MIDGARD_TRANSITION_STEP_SCHEMA_VERSION } from "@al-ft/midgard-core/consensus-profile";
-import {
-  decodeMidgardValidationTraceDescriptor,
-  encodeMidgardValidationTraceDescriptor,
-  type MidgardValidationTraceDescriptor,
-} from "@al-ft/midgard-core/validation-trace";
+import { type MidgardValidationTraceDescriptor } from "@al-ft/midgard-core/validation-trace";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data as LucidData } from "@lucid-evolution/lucid";
 
 import type { PayloadCountSet } from "../domain.js";
+import { normalizeHex } from "../utils/hex.js";
 import {
   DaPayloadValidationError,
   decodeCanonicalData,
@@ -220,32 +217,26 @@ export const validateTraceCoverage = (payload: SDK.DaPayload): void => {
 };
 
 /**
- * Decodes one committed `validation_traces` value. The committed leaf is the
- * canonical Plutus Data form of `ValidationTraceDescriptorV1` (the bytes the
- * on-chain root membership check serialises), not the core codec's plain CBOR
- * array. The frozen V1 bounds (versions, step-count cap, terminal verdict,
- * verdict/rejection binding) are enforced by round-tripping through the core
- * codec.
+ * Decodes one committed `validation_traces` value with the SDK's descriptor
+ * decoder (the one block replay also runs), after the committee's hex
+ * normalisation. The committed leaf is the canonical Plutus Data form of
+ * `ValidationTraceDescriptorV1` (the bytes the on-chain root membership check
+ * serialises), not the core codec's plain CBOR array.
  */
 export const decodeCommittedValidationTraceDescriptor = (
   valueHex: string,
   fieldName: string,
 ): MidgardValidationTraceDescriptor => {
-  const data = decodeCanonicalData<SDK.ValidationTraceDescriptor>(
-    valueHex,
-    SDK.ValidationTraceDescriptorSchema as never,
-    fieldName,
-  );
+  const normalized = normalizeHex(valueHex, { fieldName });
   try {
-    return decodeMidgardValidationTraceDescriptor(
-      encodeMidgardValidationTraceDescriptor(
-        SDK.validationTraceDescriptorCoreFromData(data),
-      ),
-    );
+    return SDK.decodeCanonicalValidationTraceDescriptorData(normalized);
   } catch (cause) {
     throw new DaPayloadValidationError(
       "malformed_trace",
-      `${fieldName} is not a canonical bounded descriptor`,
+      cause instanceof SDK.ValidationTraceDescriptorDecodeError &&
+      cause.stage === "data"
+        ? `failed to decode ${fieldName}`
+        : `${fieldName} is not a canonical bounded descriptor`,
       { cause },
     );
   }

@@ -44,8 +44,10 @@ import {
   fixture,
   headerFor,
   ledgerEntries,
+  member,
   record,
   retainedPairs,
+  sourceRoot,
   type TestRoots,
 } from "./da-payload.record.js";
 
@@ -320,6 +322,80 @@ describe("DaPayloadV1 builder", () => {
         },
       ],
     });
+  });
+
+  it("persists a journal that carries validation traces under a header that pins the pair to the empty tree", async () => {
+    const depositEntries: readonly [Buffer, Buffer][] = [
+      [fixture("traced-deposit", 34), fixture("traced-deposit-info", 48)],
+    ];
+    const validationTraceEntries = retainedPairs("traced-validation", 1);
+    const { pending, header, headerHash } = await buildJournalFixture({
+      utxoEntries: ledgerEntries("traced-utxo", 1),
+      depositEntries,
+      transitionTraceEntries: retainedPairs("traced-trace", 1),
+      eventToStepEntries: retainedPairs("traced-event-to-step", 1),
+    });
+    expect(header.validationTracesRoot).toBe(SDK.EMPTY_MERKLE_TREE_ROOT);
+    expect(header.validationTraceCount).toBe(0n);
+    const journal: PendingBlockFinalizationsDB.Record = {
+      ...pending,
+      [PendingBlockFinalizationsDB.Columns.EXPECTED_VALIDATION_TRACES_ROOT]:
+        await Effect.runPromise(
+          sourceRoot(SDK.ROOT_DOMAINS.validationTraces, validationTraceEntries),
+        ),
+      [PendingBlockFinalizationsDB.Columns.EXPECTED_VALIDATION_TRACE_COUNT]: 1n,
+      validationTraceMembers: validationTraceEntries.map(
+        ([key, value], index) => member(headerHash, key, value, index),
+      ),
+    };
+
+    const insert = await Effect.runPromise(
+      buildDaPayloadInsert({ record: journal }),
+    );
+    const payload = SDK.decodeDaPayload(
+      (
+        await unwrapDaPayload(insert.payload_cbor, {
+          maxPayloadBytes: DA_TRANSPORT_LIMITS.maxPayloadBytes,
+        })
+      ).innerBytes,
+    );
+    expect(payload.block_body.header).toEqual(header);
+    expect(payload.block_body.validation_traces).toHaveLength(1);
+  });
+
+  it("refuses to persist a journal whose header commits its built validation-trace pair", async () => {
+    const validationTraceEntries = retainedPairs("committed-validation", 1);
+    const builtRoot = await Effect.runPromise(
+      sourceRoot(SDK.ROOT_DOMAINS.validationTraces, validationTraceEntries),
+    );
+    const { pending, header, headerHash } = await buildJournalFixture({
+      utxoEntries: ledgerEntries("committed-utxo", 1),
+      depositEntries: [
+        [fixture("committed-deposit", 34), fixture("committed-info", 48)],
+      ],
+      transitionTraceEntries: retainedPairs("committed-trace", 1),
+      eventToStepEntries: retainedPairs("committed-event-to-step", 1),
+      rootOverrides: { validationTracesRoot: builtRoot },
+      countOverrides: { validationTraceCount: 1n },
+    });
+    expect(header.validationTracesRoot).toBe(builtRoot);
+    expect(header.validationTraceCount).toBe(1n);
+    const journal: PendingBlockFinalizationsDB.Record = {
+      ...pending,
+      validationTraceMembers: validationTraceEntries.map(
+        ([key, value], index) => member(headerHash, key, value, index),
+      ),
+    };
+
+    const result = await Effect.runPromise(
+      Effect.either(buildDaPayloadInsert({ record: journal })),
+    );
+
+    expect(result._tag).toBe("Left");
+    if (result._tag === "Left")
+      expect(String(result.left.cause)).toMatch(
+        /mismatches=header_validation_traces_root,header_validation_trace_count$/,
+      );
   });
 
   it("rejects a payload whose recomputed roots do not match the journal", async () => {

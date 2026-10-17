@@ -33,8 +33,8 @@ import {
   resolveValidationWorkerPoolSize,
   seedPhraseAddress,
   validateDaKeySetEncoding,
-  validateSeedPhrase,
 } from "./config.node-config-dep.js";
+import { refuseSharedOperationalWallets } from "./config.operational-wallets.js";
 import {
   NATIVE_LEDGER_SETTING_NAMES,
   parseNativeLedgerSettings,
@@ -123,13 +123,8 @@ const makeConfig = Effect.gen(function* () {
       return value;
     }),
   );
-  const referenceScriptSeedPhrase = yield* Config.string(
+  const referenceScriptSeedPhrase = yield* requiredSeedPhrase(
     "L1_REFERENCE_SCRIPT_SEED_PHRASE",
-  ).pipe(
-    Config.withDefault(operatorSeedPhrase),
-    Config.mapAttempt((value) =>
-      validateSeedPhrase("L1_REFERENCE_SCRIPT_SEED_PHRASE", value),
-    ),
   );
   const configuredReferenceScriptAddress = yield* Config.string(
     "L1_REFERENCE_SCRIPT_ADDRESS",
@@ -174,6 +169,14 @@ const makeConfig = Effect.gen(function* () {
   const referenceScriptDeployAddress = yield* Config.string(
     "L1_REFERENCE_SCRIPT_DEPLOY_ADDRESS",
   ).pipe(Config.withDefault(referenceScriptAddress));
+  yield* refuseSharedOperationalWallets({
+    L1_OPERATOR_SEED_PHRASE: operatorSeedPhrase,
+    L1_OPERATOR_SEED_PHRASE_FOR_MERGE_TX: operatorSeedPhraseForMergeTx,
+    L1_SETTLEMENT_SEED_PHRASE: settlementSeedPhrase,
+    L1_REFERENCE_SCRIPT_SEED_PHRASE: referenceScriptSeedPhrase,
+    L1_REFERENCE_SCRIPT_DEPLOY_ADDRESS: referenceScriptDeployAddress,
+    NETWORK: network,
+  });
   const port = yield* Config.integer("PORT").pipe(Config.withDefault(3000));
   const waitBetweenBlockCommitment = yield* Config.integer(
     "WAIT_BETWEEN_BLOCK_COMMITMENT",

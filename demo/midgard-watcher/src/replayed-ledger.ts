@@ -1,6 +1,7 @@
 /** Supported replay host for the watcher and native watcher journeys. */
 export {
   createWatcherReplayedLedger,
+  watcherReplayAvailabilityAuthority,
   type WatcherReplayedLedger,
 } from "./fault-proofs/replayed-ledger.js";
 export {

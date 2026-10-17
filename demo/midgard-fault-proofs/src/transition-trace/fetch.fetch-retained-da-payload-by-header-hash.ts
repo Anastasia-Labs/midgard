@@ -23,8 +23,9 @@ import {
 } from "./fetch.verify-retained-da-payload-header.js";
 
 /**
- * Returns the first served copy that verifies against `headerHash`, not the
- * first answer: one peer serving wrong bytes must not hide the honest ones.
+ * Returns the first served copy that verifies against `headerHash` (and
+ * passes `verifyPayload`, when given), not the first answer: one peer serving
+ * wrong bytes must not hide the honest ones.
  * A source is retried only while every attempt it reported is plausibly
  * transient, and never after it served a bad copy. Without a verified copy the
  * fetch reports the payload unavailable, whatever the attempts said.
@@ -33,12 +34,19 @@ export const fetchRetainedDaPayloadByHeaderHash = async ({
   headerHash,
   sources,
   retries = 1,
+  verifyPayload: further,
 }: FetchRetainedDaPayloadOptions): Promise<RetainedDaPayloadFetchResult> => {
   const normalizedHeaderHash = normalizeHeaderHash(headerHash);
   const attempts: RetainedDaFetchAttempt[] = [];
+  const header = retainedDaPayloadHeaderVerifier(normalizedHeaderHash);
   // Sources that ignore the verifier still have their copy checked below.
   const verifyPayload = rememberingRetainedDaPayloadVerifier(
-    retainedDaPayloadHeaderVerifier(normalizedHeaderHash),
+    further === undefined
+      ? header
+      : async (payloadEnvelopeCbor) => {
+          const verdict = await header(payloadEnvelopeCbor);
+          return verdict.ok ? further(payloadEnvelopeCbor) : verdict;
+        },
   );
 
   for (const source of sources) {

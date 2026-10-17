@@ -248,8 +248,8 @@ export const normalFixture = async (
     payload: bound,
     sourceKey,
     transactionId: tx.txId.toString("hex"),
-    imported: () =>
-      verdict(bound, {
+    imported: (payload: SDK.DaPayload = bound) =>
+      verdict(payload, {
         parentUtxosRoot: prior,
         parentEntries: [{ outref: spent, output }],
       }),

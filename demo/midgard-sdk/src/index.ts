@@ -8,6 +8,7 @@ export * from "./cbor.js";
 export * from "./common.js";
 export * from "./correction-lock.js";
 export * from "./da-attestation.js";
+export * from "./da-availability-payload-binding.js";
 export * from "./da-availability-state.js";
 export * from "./da-bond-pool.js";
 export * from "./da-bond-pool-quorum.js";

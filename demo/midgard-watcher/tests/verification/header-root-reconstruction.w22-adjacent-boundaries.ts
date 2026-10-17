@@ -119,7 +119,7 @@ describe("W22 positive reconstruction", () => {
       deposit_count: "1",
       total_event_count: "4",
       transition_step_count: "0",
-      validation_trace_count: "2",
+      validation_trace_count: "0",
     });
     expect(WATCHER_HEADER_COUNT_FIELDS).toHaveLength(7);
   });

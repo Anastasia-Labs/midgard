@@ -35,7 +35,10 @@ import {
 import { nodeFamilyPredicate } from "../../src/services/l1-follower.intent-predicates.js";
 import { RESUBMIT_REJECTIONS_TO_ABANDON } from "../../src/services/l1-follower.intents.js";
 import { Lucid } from "../../src/services/lucid.js";
-import { ContractDeploymentIdentity } from "../../src/services/midgard-contracts.js";
+import {
+  availabilityParametersFromExplicitEnvironment,
+  ContractDeploymentIdentity,
+} from "../../src/services/midgard-contracts.js";
 import { selectNodeWallet } from "../../src/transactions/utils.wallet-view.js";
 import { SDK } from "../deposit-flow-emulator-shared.js";
 import type { Lifecycle } from "./correction-admission-scenario.js";
@@ -123,8 +126,16 @@ export const openNodeServices = async (life: Lifecycle) => {
             throw new Error(`The landed queue is unreadable: ${read.kind}`);
           return yield* withDriverView(view)(
             processLandedQueue(
-              nodeLandedBlockPorts(store as FactStore, plan, (reason) =>
-                Effect.promise(() => life.rebaseIfDue(reason)),
+              nodeLandedBlockPorts(
+                store as FactStore,
+                plan,
+                (reason) => Effect.promise(() => life.rebaseIfDue(reason)),
+                () => ({
+                  deploymentIdentity: contracts.hubOracle.policyId,
+                  responseGeometry:
+                    availabilityParametersFromExplicitEnvironment()
+                      .response_geometry,
+                }),
               ),
               read.queue,
             ),
