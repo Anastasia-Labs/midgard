@@ -629,6 +629,32 @@
       }
     },
     {
+      "id": "script-source-lookup-rows",
+      "kind": "golden",
+      "summary": "One-step script-source lookup vectors the TypeScript validation machine produces for each lookup row, rendered as a whole Aiken test module the on-chain machine must reproduce; the vitest suite writes it under MIDGARD_WRITE_SCRIPT_SOURCE_LOOKUP_ROWS=1 and compares it without.",
+      "generators": [
+        "demo/midgard-validation/tests/script-source-lookup.machine-rows.test.ts"
+      ],
+      "writerEnv": ["MIDGARD_WRITE_SCRIPT_SOURCE_LOOKUP_ROWS"],
+      "producers": ["demo/midgard-validation"],
+      "inputs": [],
+      "outputs": [
+        "onchain/aiken/lib/midgard/validation-machine-tests/script-source-lookup-rows.test.ak"
+      ],
+      "aikenImportsOfOutputs": true,
+      "sync": {
+        "run": "MIDGARD_WRITE_SCRIPT_SOURCE_LOOKUP_ROWS=1 pnpm --dir demo/midgard-validation exec vitest run tests/script-source-lookup.machine-rows.test.ts"
+      },
+      "check": {
+        "run": "pnpm --dir demo/midgard-validation exec vitest run tests/script-source-lookup.machine-rows.test.ts"
+      },
+      "ci": {
+        "workflow": ".github/workflows/midgard-node-ci.yml",
+        "step": "Build, typecheck, and test Midgard validation",
+        "via": "demo/midgard-validation/tests/script-source-lookup.machine-rows.test.ts"
+      }
+    },
+    {
       "id": "resolver-proof-fit-sweep-v1",
       "kind": "golden",
       "summary": "Resolver proof-fit sweep fixture. Frozen: it has no generator; its emulator worker was removed on 2026-09-09 and the wrapper script that could only fail was deleted on 2026-10-08.",

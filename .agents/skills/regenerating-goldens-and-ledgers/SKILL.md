@@ -38,7 +38,7 @@ that a reader would miss.
 
 2. **No channel reads the blueprint.** No committed file is derived from it
    (see [The blueprint](#the-blueprint)), so a channel check never needs a
-   fresh build.
+   fresh build. A new channel that reads it breaks that rule [review].
 
 3. **Run each listed check, in the order printed.** The order puts producers
    before consumers (lucid fixtures before `native-compact-aiken`, profiles
@@ -60,7 +60,7 @@ that a reader would miss.
    `node scripts/contrib.mjs artifacts sync --channel <id>` for executable
    channels: it generates and checks in a disposable checkout before applying
    an allowlisted packet. A manual channel retains its printed owner recipe.
-   Re-run the check; it must pass with no further edits.
+   Re-run the check; it must pass with no further edits. [review]
 
 6. **When you add or move a generator, update the table.** Add a channel to
    `scripts/channels.json` (or an `ignored` entry with a reason if its output is
